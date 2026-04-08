@@ -62,6 +62,7 @@ init:
     parse tungsten.json → EngineConfig
     open window (winit)
     init wgpu (instance, adapter, device, queue, surface)
+    build renderer (pipelines, samplers, GPU resource pools)
     load assets/manifest.json → validate → decode PNGs → upload textures
     build World; insert Resources: DeltaTime, InputState, Assets, WindowSize
 
@@ -72,10 +73,13 @@ loop:
     present         → swap buffers
 
 shutdown:
-    drop World (releases GPU handles via the registry)
+    drop World (drops the asset registry and its opaque handles)
+    drop renderer (releases GPU resources behind those handles)
     tear down wgpu in order
     close window
 ```
+
+**Phase 1 system ordering:** systems live in the `tungsten` app layer as a plain manually-ordered list. Registration order is execution order. No scheduler, labels, or dependency graph until a real need appears. The goal in M2–M4 is that input → simulation → animation ordering is obvious from reading one place.
 
 Parallelism, parallel system scheduling, and fixed-timestep simulation are all explicitly deferred. Revisit if and when there's a real reason.
 
@@ -94,6 +98,8 @@ Parallelism, parallel system scheduling, and fixed-timestep simulation are all e
 **The asset registry is a Resource.** It lives in the `World` alongside `DeltaTime` and `InputState`, not as a separately-passed object. This keeps the engine's "global-ish" state on a single pathway and makes the registry accessible to any system that needs it by the same mechanism as everything else.
 
 **Renderer-ECS coupling:** `tungsten-render` may depend on `tungsten-core` and use its types where it makes the glue simpler. The renderer is not *required* to be ECS-driven — direct-data APIs should also exist so the renderer can be tested against hand-built data — but the separation is not a rule.
+
+**Phase 1 render path:** systems mutate the `World` during `tick`. The render step then extracts plain render data into temporary buffers (`QuadInstance`, `SpriteInstance`, or similar) and passes slices of that data into `tungsten-render`. The renderer may read the asset registry to resolve IDs to runtime handles, but it should not require long-lived mutable access to the `World` during draw. This keeps borrow-checker pressure contained and preserves a direct-data API for testing.
 
 ### Data-driven config
 
@@ -145,6 +151,17 @@ Three reasons this is worth the slight extra ceremony:
 ```
 
 Paths are relative to the manifest file. Animations point to their own JSON files rather than being inlined — animation data grows and inlining would make the manifest hostile to read.
+
+### Multiple manifests
+
+When multiple manifests are loaded together, they **compose by extension, not override**.
+
+- Asset IDs must be globally unique across the merged manifest set.
+- Duplicate IDs are fatal at load time.
+- Each path is resolved relative to the manifest file that declared it.
+- A later manifest may reference IDs introduced by an earlier one, but it may not replace them.
+
+This keeps composition predictable and prevents an example-local asset from silently shadowing a shared one.
 
 ### Animation format
 Frame-based: a sequence of sprite IDs with per-frame durations. Each animation lives in its own JSON file under `assets/animations/`:
@@ -230,7 +247,9 @@ tungsten/
     └── 05_animation/       # M6
 ```
 
-The seam between core and render: `tungsten-core` decodes images to CPU-side bitmaps; `tungsten-render` uploads them to the GPU and returns handles; the registry (in core) stores the handles. Core defines the registry shape, render populates it at load time.
+The seam between core and render: `tungsten-core` decodes images to CPU-side bitmaps; `tungsten-render` uploads them to the GPU and returns opaque handles; the registry (in core) stores those handles. Core defines the registry shape, render populates it at load time.
+
+Those handles are **opaque runtime IDs/newtypes**, not raw `wgpu` texture objects. `tungsten-core` owns manifest data, decoded CPU-side asset data, animation data, and the registry shape; `tungsten-render` owns the actual GPU textures, samplers, and pipelines in an internal pool keyed by those opaque handles. This keeps `wgpu` out of `tungsten-core` while preserving the registry as the one lookup path for game-facing code.
 
 Examples progress cumulatively — each one builds on the primitives established by earlier milestones. `05_animation` depends on everything before it, which is fine because M6 is the end of Phase 1.
 
@@ -294,10 +313,10 @@ None of these are failure. They're feedback loops. The actual failure mode is qu
 
 ## Open questions
 
-1. **Entity ID shape.** `u32` is fine for M2. Revisit if an ECS rewrite happens.
-2. **ECS error strategy.** Panic on programmer error (wrong type, bad downcast), `Result` on runtime conditions (entity despawned). Leaning this way; confirm during M2.
-3. **Renderer wgpu exposure.** Wrap wgpu types or expose them? Leaning: wrap the happy path, expose an escape hatch. Defer to M3.
-4. **Fixed vs variable timestep.** Variable for now. Revisit if simulation gets nontrivial.
+1. **Entity ID shape.** `u32` is fine for M2. Lock it at M2 exit unless a real reason appears not to.
+2. **ECS error strategy.** Panic on programmer error (wrong type, bad downcast), `Result` on runtime conditions (entity despawned). Leaning this way; confirm during M2 before the query API spreads.
+3. **Renderer wgpu exposure.** Wrap wgpu types or expose them? Leaning: wrap the happy path, expose an escape hatch. Resolve at M3 exit after the first direct-data render path exists.
+4. **Fixed vs variable timestep.** Variable for now. Revisit only if simulation pain appears; not a Phase 1 design task.
 
 Resolved since earlier drafts: config format (JSON, see D-008), audio timing (deferred, no schedule), asset directory layout (by-type, D-013), render/ECS coupling (allowed, D-007).
 

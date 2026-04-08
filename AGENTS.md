@@ -50,7 +50,7 @@ tungsten/
 - New rendering primitive (pipeline, texture, buffer, sampler) → `tungsten-render`.
 - App/event-loop glue, input, time → `tungsten`.
 - Asset registry types, manifest schema, ID lookups → `tungsten-core`.
-- GPU upload of decoded assets → `tungsten-render`. The seam: core decodes to CPU bitmaps, render uploads to GPU, registry stores the GPU handles render gives back.
+- GPU upload of decoded assets → `tungsten-render`. The seam: core decodes to CPU bitmaps, render uploads to GPU, and the registry stores opaque asset handles that resolve through render-owned GPU pools.
 - Components and systems specific to a demo → stay in `examples/`, not in the library crates.
 - Math helpers → `tungsten-core` only if used in two places.
 

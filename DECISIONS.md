@@ -130,10 +130,10 @@ Append-only log of non-obvious decisions for Tungsten. Exists so future-me (or a
 ## D-014 — Asset registry is a Resource in the World
 **Date:** 2026-04-08
 **Status:** Active
-**Context:** The asset registry (sprite ID → GPU texture handle, animation ID → animation data) needs to live somewhere. Two natural options: as a `Resource` in the ECS World, alongside `DeltaTime` and `InputState`, or as a separately-passed object threaded through whatever needs it.
-**Decision:** The registry is a `Resource` in the World. Systems that need asset lookup get it through the same mechanism as any other resource. The renderer reaches into the World to extract it when needed.
+**Context:** The asset registry (sprite ID → runtime asset handle, animation ID → animation data) needs to live somewhere. Two natural options: as a `Resource` in the ECS World, alongside `DeltaTime` and `InputState`, or as a separately-passed object threaded through whatever needs it.
+**Decision:** The registry is a `Resource` in the World. Systems that need asset lookup get it through the same mechanism as any other resource. The renderer may read it when resolving asset IDs during extraction or draw setup.
 **Alternatives:** A separately-owned `Assets` object passed to whatever needs it (more explicit, but a second "global-ish" pathway in a design that's trying to have one). A static/singleton (ruled out — no global mutable state).
-**Consequences:** The registry's lifetime is tied to the World's. Systems have uniform access to assets. The renderer's dependency on core types is justified partly by needing to read this resource. If the World is ever dropped and recreated, the registry (and all its GPU handles) dies with it — which is probably fine, but worth knowing.
+**Consequences:** The registry's lifetime is tied to the World's. Systems have uniform access to assets. The renderer's dependency on core types is justified partly by needing to read this resource. If the World is ever dropped and recreated, the registry and its opaque handles die with it, while the renderer remains responsible for the actual `wgpu` resource lifetime behind those handles.
 
 ## D-015 — Dependency philosophy: three acceptance rules
 **Date:** 2026-04-08
@@ -146,3 +146,27 @@ Append-only log of non-obvious decisions for Tungsten. Exists so future-me (or a
 A crate that hands me something the project is supposed to teach me to build is not acceptable (any ECS crate, any higher-level engine, any rendering helper). Gray-zone crates get an explicit decision log entry when considered.
 **Alternatives:** No stated rule (status quo, ruled out for drift reasons). A stricter "no external crates ever" rule (ruled out — would force me to write my own JSON parser and PNG decoder, which is the opposite of the learning target). A looser "whatever ships the game" rule (ruled out — defeats principle 2).
 **Consequences:** Future dep decisions reference these rules and either find a match or become decision log entries arguing the gray zone. `symphonia` will probably be a gray-zone decision when audio starts. `rodio` / `kira` are already excluded by the "hands me an engine" side.
+
+## D-016 — `tungsten-core` stores opaque asset handles, not `wgpu` types
+**Date:** 2026-04-08
+**Status:** Active
+**Context:** The core/render seam already said core owns registry types while render uploads textures and returns handles, but "handle" was underspecified. Leaving it vague risked either leaking `wgpu` types into `tungsten-core` or pushing ad hoc ownership decisions into implementation.
+**Decision:** `tungsten-core` stores opaque runtime asset handles (newtypes or IDs), not raw `wgpu` objects. Core owns manifest data, decoded CPU-side asset data, animation data, and the registry shape. `tungsten-render` owns GPU textures, samplers, and other `wgpu` resources in internal pools keyed by those handles.
+**Alternatives:** Let core store `wgpu` texture objects directly (tighter coupling, weaker crate boundary). Make render own the full registry (rejected — breaks the "assets as a World resource" rule).
+**Consequences:** `tungsten-core` stays free of `wgpu` types. The registry remains the only game-facing lookup path, while render retains ownership of GPU resource lifetime and implementation details.
+
+## D-017 — Multiple manifests compose by extension, never override
+**Date:** 2026-04-08
+**Status:** Active
+**Context:** The design allowed shared assets at the workspace root and example-local manifests, but did not define how multiple manifests combine. That ambiguity would force the first loader implementation to invent conflict rules on the fly.
+**Decision:** Multiple manifests compose by extension only. Asset IDs must be globally unique across the merged manifest set; duplicate IDs are fatal at load time. Each path resolves relative to the manifest file that declared it. Later manifests may reference earlier IDs, but they may not replace them.
+**Alternatives:** Last-wins override semantics (rejected — too implicit and easy to misuse). Separate namespaces per manifest (rejected — extra ceremony with little payoff for Phase 1).
+**Consequences:** Manifest composition stays simple and predictable. Example-local assets can extend shared content without silently shadowing it.
+
+## D-018 — Phase 1 rendering extracts plain data before drawing
+**Date:** 2026-04-08
+**Status:** Active
+**Context:** The frame loop already separated tick and render, and the renderer was allowed to know about core types, but the exact World-to-render handoff was not named. That left unnecessary room for borrow-checker fights and accidental renderer dependence on long-lived World access.
+**Decision:** In Phase 1, systems mutate the `World` during `tick`, then the app extracts plain render data (`QuadInstance`, `SpriteInstance`, or similar) into temporary buffers and passes slices of that data into `tungsten-render`. The renderer may read the asset registry to resolve IDs to runtime handles, but it should not require long-lived mutable access to the `World` during draw.
+**Alternatives:** Let render operate directly on the `World` for the full frame (simpler at first, but tighter coupling and more borrow friction). Force a hard ECS/render separation everywhere (rejected — too much purity for this project).
+**Consequences:** Direct-data render APIs stay first-class for testing. The borrow boundary is clearer, and Phase 1 keeps the simple single-threaded flow without committing to a more elaborate extraction architecture.
