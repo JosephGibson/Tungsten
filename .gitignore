@@ -1,0 +1,35 @@
+# Rust build artifacts
+/target/
+**/target/
+**/*.rs.bk
+*.pdb
+
+# Cargo
+Cargo.lock
+# (Cargo.lock is committed for binaries — uncomment the line above only for libraries.
+# Tungsten will eventually have an umbrella binary; revisit when M0 lands.)
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# OS noise
+.AppleDouble
+.LSOverride
+ehthumbs.db
+Desktop.ini
+
+# Local-only files
+.env
+.env.local
+*.local
+
+# LLM tooling local state
+.aider*
+.cursor/
+.claude/

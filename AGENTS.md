@@ -1,0 +1,111 @@
+# AGENTS.md
+
+Operational notes for working on Tungsten, whether by me or an AI assistant I'm collaborating with. Read this at the start of a work session. Read `DESIGN.md` for architectural context. Read `DECISIONS.md` when you need to know *why* something is the way it is.
+
+## What Tungsten is
+
+A from-scratch Rust 2D game engine built as a hobby project. Native only. `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Three crates in a Cargo workspace: `tungsten-core`, `tungsten-render`, `tungsten`.
+
+The top priority is that working on this stays fun. Rules exist to protect that, not to gold-plate the code.
+
+## Commands
+
+From the workspace root:
+
+```bash
+# Build / test / lint
+cargo build --workspace
+cargo test --workspace
+cargo clippy --workspace --all-targets
+cargo fmt --all
+
+# Run an example
+cargo run -p example-01-window
+cargo run -p example-02-ecs
+cargo run -p example-03-dots
+cargo run -p example-04-sprites
+cargo run -p example-05-animation
+```
+
+Before committing something substantial: `cargo fmt && cargo test --workspace`. That's the bar. Clippy is advisory.
+
+## Repo layout
+
+```
+tungsten/
+├── crates/
+│   ├── tungsten-core/      # ECS, math, config, time, resources, asset registry
+│   ├── tungsten-render/    # wgpu wrapper, sprite drawing, samplers
+│   └── tungsten/           # umbrella + winit app loop + App type
+├── assets/
+│   ├── manifest.json
+│   ├── sprites/
+│   ├── animations/
+│   └── sounds/             # placeholder; audio is deferred
+└── examples/
+```
+
+### Where new code goes
+- New ECS mechanism (World, storage, queries) → `tungsten-core`.
+- New rendering primitive (pipeline, texture, buffer, sampler) → `tungsten-render`.
+- App/event-loop glue, input, time → `tungsten`.
+- Asset registry types, manifest schema, ID lookups → `tungsten-core`.
+- GPU upload of decoded assets → `tungsten-render`. The seam: core decodes to CPU bitmaps, render uploads to GPU, registry stores the GPU handles render gives back.
+- Components and systems specific to a demo → stay in `examples/`, not in the library crates.
+- Math helpers → `tungsten-core` only if used in two places.
+
+`tungsten-render` is allowed to know about `tungsten-core` types if it makes the glue simpler. See `DECISIONS.md` D-007.
+
+## Asset rules
+
+Anything that lives in `assets/` should also be registered in `assets/manifest.json`. The reverse is also true — every entry in the manifest must point to a real file. The loader validates this at startup, but it's worth keeping the convention tight by hand.
+
+- **New sprite:** drop the PNG in `assets/sprites/`, add an entry to the manifest's `sprites` map with a stable ID, decide its filter mode (`nearest` or `linear`).
+- **New animation:** create a JSON file in `assets/animations/` per the schema, add an entry to the manifest's `animations` map. All sprite IDs referenced from the animation must exist in the manifest.
+- **Examples that need their own assets:** put them in `examples/NN_name/assets/` with a local `manifest.json`. The loader takes a manifest path.
+- **Game code never references file paths.** Always reference assets by ID through the registry. This is the rule that makes Phase 2 hot reload feasible — don't break it for short-term convenience.
+
+## Things to actually not do
+
+- **No external game-engine or ECS crate.** Not `bevy_ecs`, `hecs`, `specs`, `legion`, `amethyst`, `fyrox`. Building these by hand is the point.
+- **No `async` runtimes** (`tokio`, `async-std`). The frame loop is synchronous.
+- **No global mutable state.** No `static mut`, no `lazy_static` singletons. State lives in the `World` or is passed explicitly. The asset registry is a `Resource` in the World, not a global.
+- **No new third-party runtime dep without a `DECISIONS.md` entry** explaining why. Dependency creep is how hobby projects become unmaintainable.
+- **No hardcoded asset paths in game code.** Use IDs through the registry.
+- **No scope-expanding a task mid-flight.** If the work grows, finish what's there and open a new task for the rest.
+
+## Conventions
+
+- `rustfmt` defaults. Don't hand-format.
+- Types `UpperCamelCase`, functions/vars `snake_case`, constants `SCREAMING_SNAKE`.
+- Doc comments on public items where the name isn't self-evident.
+- `unwrap` / `expect` are fine during early exploration; tighten up when a module stabilizes.
+- Tests next to the code they test (`#[cfg(test)] mod tests`).
+- `thiserror` when it actually helps; `anyhow` at the top level of examples and the app.
+- `log` crate for diagnostics. `println!` is fine in examples.
+
+## Working with an AI assistant
+
+- Start a fresh session per substantial task. Context pollution is real.
+- Drop this file, the relevant section of `DESIGN.md`, and any `DECISIONS.md` entries for the area being changed into the session at the start.
+- For anything non-trivial, ask for a short plan first — files to touch, rough API shape, what gets tested. Review before implementation.
+- After implementation, ask the assistant to critique its own diff against Tungsten's principles. Often surfaces things worth fixing.
+- I run the tests myself. "Looks right" is not an answer.
+
+## When stuck
+
+1. Re-read the milestone in `DESIGN.md`. Half of stuck is having drifted from the original goal.
+2. Check `DECISIONS.md` for prior art.
+3. If the problem is "this is no longer fun," that's a valid signal — see Kill criteria in `DESIGN.md`.
+4. Write the question down in a comment (`// TODO: ask about X`) and move on.
+
+## What I'm not doing
+
+- No CI pipeline. Local builds are the bar.
+- No `LEARNINGS.md`. Interesting things go in commit messages or `DECISIONS.md`.
+- No per-crate `AGENTS.md` until a crate actually needs one.
+- No mandatory self-review checklist.
+- No forced PR process — solo repo, commit to `main` or branch when convenient.
+- No asset preprocessing pipeline. Files on disk are loaded directly.
+
+If any of these become useful later, add them then.
