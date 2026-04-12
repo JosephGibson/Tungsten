@@ -33,5 +33,16 @@
     "walk": {
       "path": "animations/walk.json"
     }
+  },
+  "fonts": {
+    "sans": {
+      "path": "fonts/Inter/static/Inter-Regular.ttf"
+    },
+    "sans_bold": {
+      "path": "fonts/Inter/static/Inter-Bold.ttf"
+    },
+    "mono": {
+      "path": "fonts/JetBrainsMono/static/JetBrainsMono-Regular.ttf"
+    }
   }
 }

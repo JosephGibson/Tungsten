@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use crate::input_bridge;
 use tungsten_core::{AssetRegistry, Config, DeltaTime, InputState, World};
-use tungsten_render::{QuadInstance, Renderer, SpriteBatch};
+use tungsten_render::{QuadInstance, Renderer, SpriteBatch, TextSection};
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
@@ -17,6 +17,9 @@ pub type ExtractQuadsFn = Box<dyn Fn(&World) -> Vec<QuadInstance>>;
 
 /// A render-extraction function: reads the World and produces SpriteBatches.
 pub type ExtractSpritesFn = Box<dyn Fn(&World) -> Vec<SpriteBatch>>;
+
+/// A render-extraction function: reads the World and produces TextSections.
+pub type ExtractTextFn = Box<dyn Fn(&World) -> Vec<TextSection>>;
 
 /// Resource: current window dimensions in physical pixels.
 #[derive(Debug, Clone, Copy)]
@@ -37,6 +40,7 @@ pub struct App {
     systems: Vec<SystemFn>,
     extract_quads: Option<ExtractQuadsFn>,
     extract_sprites: Option<ExtractSpritesFn>,
+    extract_text: Option<ExtractTextFn>,
     startup: Option<StartupFn>,
     last_frame: Option<Instant>,
 }
@@ -60,6 +64,7 @@ impl App {
             systems: Vec::new(),
             extract_quads: None,
             extract_sprites: None,
+            extract_text: None,
             startup: None,
             last_frame: None,
         }
@@ -88,6 +93,11 @@ impl App {
     /// Set the function that extracts sprite render data from the World.
     pub fn set_extract_sprites(&mut self, f: impl Fn(&World) -> Vec<SpriteBatch> + 'static) {
         self.extract_sprites = Some(Box::new(f));
+    }
+
+    /// Set the function that extracts text render data from the World.
+    pub fn set_extract_text(&mut self, f: impl Fn(&World) -> Vec<TextSection> + 'static) {
+        self.extract_text = Some(Box::new(f));
     }
 
     /// Set a one-shot startup function that runs after the renderer is ready.
@@ -227,8 +237,14 @@ impl ApplicationHandler for App {
                     .map(|f| f(&self.world))
                     .unwrap_or_default();
 
-                if let Some(renderer) = &self.renderer {
-                    if let Err(e) = renderer.render_frame_full(&quads, &sprites) {
+                let text = self
+                    .extract_text
+                    .as_ref()
+                    .map(|f| f(&self.world))
+                    .unwrap_or_default();
+
+                if let Some(renderer) = &mut self.renderer {
+                    if let Err(e) = renderer.render_frame_full(&quads, &sprites, &text) {
                         log::error!("Render error: {e}");
                     }
                 }

@@ -25,6 +25,7 @@ cargo run -p example-02-ecs
 cargo run -p example-03-dots
 cargo run -p example-04-sprites
 cargo run -p example-05-animation
+cargo run -p example-06-text
 ```
 
 Before committing something substantial: `cargo fmt && cargo test --workspace`. That's the bar. Clippy is advisory.

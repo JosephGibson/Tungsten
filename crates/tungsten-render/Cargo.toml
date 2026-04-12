@@ -1,6 +1,6 @@
 [package]
 name = "tungsten-render"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "wgpu-based rendering backend for the Tungsten 2D engine"
@@ -12,5 +12,6 @@ winit = { workspace = true }
 glam = { workspace = true }
 bytemuck = { workspace = true }
 pollster = { workspace = true }
+glyphon = { workspace = true }
 log = { workspace = true }
 thiserror = { workspace = true }
