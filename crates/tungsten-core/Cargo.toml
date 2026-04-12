@@ -1,0 +1,14 @@
+[package]
+name = "tungsten-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+glam = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+log = { workspace = true }
+bytemuck = { workspace = true }
+image = { workspace = true }

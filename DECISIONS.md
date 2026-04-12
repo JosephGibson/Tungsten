@@ -170,3 +170,56 @@ A crate that hands me something the project is supposed to teach me to build is 
 **Decision:** In Phase 1, systems mutate the `World` during `tick`, then the app extracts plain render data (`QuadInstance`, `SpriteInstance`, or similar) into temporary buffers and passes slices of that data into `tungsten-render`. The renderer may read the asset registry to resolve IDs to runtime handles, but it should not require long-lived mutable access to the `World` during draw.
 **Alternatives:** Let render operate directly on the `World` for the full frame (simpler at first, but tighter coupling and more borrow friction). Force a hard ECS/render separation everywhere (rejected — too much purity for this project).
 **Consequences:** Direct-data render APIs stay first-class for testing. The borrow boundary is clearer, and Phase 1 keeps the simple single-threaded flow without committing to a more elaborate extraction architecture.
+
+## D-019 — `pollster` for blocking on wgpu async init
+**Date:** 2026-04-12
+**Status:** Active
+**Context:** wgpu v29 exposes `request_adapter` and `request_device` as async functions. The frame loop is synchronous (no async runtime, per DESIGN.md). Need a way to block on these one-shot init calls.
+**Decision:** Use `pollster` (v0.4). It's ~50 lines, zero dependencies, single purpose: block the current thread until a future completes. Used only during init, not at runtime.
+**Alternatives:** `futures::executor::block_on` (pulls in the full `futures` crate — heavier than needed). Hand-roll a trivial executor (not worth the effort for something this small). `tokio`/`async-std` (explicitly ruled out by DESIGN.md).
+**Consequences:** One small dep added. No async runtime in the project. If wgpu ever adds sync init wrappers, `pollster` can be dropped.
+
+## D-020 — `bytemuck` for GPU data layout
+
+**Date:** 2026-04-12
+**Status:** Active
+**Context:** Vertex buffers and instance buffers require `&[u8]` slices of tightly-packed struct data. Need a safe way to cast `&[T]` to `&[u8]` for GPU upload.
+**Decision:** Use `bytemuck` (v1) with the `derive` feature. Satisfies D-015 rule 3 — it provides a primitive (safe transmute for Plain Old Data) that is math-adjacent and a solved problem.
+**Alternatives:** `unsafe` manual casting (error-prone, defeats the point of safe Rust). `zerocopy` (similar purpose, slightly heavier API surface). Hand-written `as_bytes()` impls (tedious and bug-prone).
+**Consequences:** All GPU-uploaded structs derive `Pod` and `Zeroable`. Safe, zero-cost casting.
+
+## D-021 — Entity ID is u32, locked at M2 exit
+**Date:** 2026-04-12
+**Status:** Active
+**Context:** DESIGN.md open question 1: entity ID shape. `u32` was the leading candidate. After M2 implementation, no reason to change.
+**Decision:** Entity ID is `u32`. No generational index in Phase 1.
+**Alternatives:** `u64` (unnecessary address space for 2D games). Generational index (adds complexity; revisit only if entity reuse bugs appear).
+**Consequences:** ~4 billion entities. If despawn/respawn patterns cause ID aliasing bugs, upgrade to generational index.
+
+## D-022 — ECS error strategy: panic on programmer error, Result on runtime
+**Date:** 2026-04-12
+**Status:** Active
+**Context:** DESIGN.md open question 2: when to panic vs return errors. Decided at M2 exit after implementing the core World API.
+**Decision:** Panic on programmer errors (inserting on a dead entity, wrong type downcast). Return `Option`/`Result` on runtime conditions (entity not found, component not present).
+**Alternatives:** All-Result (too noisy for game code). All-panic (too fragile for runtime lookups).
+**Consequences:** `World::insert` asserts entity is alive. `World::get` returns `Option`. Consistent throughout the ECS API.
+
+## D-023 — WGSL shaders as embedded strings via include_str!
+**Date:** 2026-04-12
+**Status:** Active
+**Context:** Rolled-up plan Q7: inline strings vs separate `.wgsl` files. Shaders are in separate `.wgsl` files in the `tungsten-render` source directory, included at compile time via `include_str!`.
+**Decision:** Separate `.wgsl` files, compiled in via `include_str!`. Best of both worlds: easy to edit as standalone files, no runtime file loading needed.
+**Alternatives:** Inline strings (harder to edit, no syntax highlighting). Runtime file loading (unnecessary complexity in Phase 1, but enables hot reload in Phase 2).
+**Consequences:** Shader changes require recompilation. Phase 2 hot reload could add a runtime fallback path while keeping `include_str!` as the default.
+
+## D-024 — Phase 1 exit: gating decisions for Phase 2
+**Date:** 2026-04-12
+**Status:** Active
+**Context:** Phase 1 (M0–M6) is complete. DESIGN.md says to "stop and reassess" before Phase 2. These are the gating observations from Phase 1 implementation.
+**Decision:** Documented observations for Phase 2 planning:
+1. **Text rendering:** `glyphon` (built on `cosmic-text`) is the recommended crate. It's purpose-built for wgpu, satisfies D-015 rule 2. Fonts are already staged in `assets/fonts/`.
+2. **ECS performance:** The naive `HashMap<TypeId, HashMap<EntityId, Box<dyn Any>>>` storage works without issues at the scale of the Phase 1 examples. No performance pain observed. Archetypal rewrite is learning-motivated only, not a prerequisite.
+3. **Audio:** Deferred. When it enters, `symphonia` (decoder, D-015 rule 2) is likely fine. `kira` vs hand-rolled mixer needs a separate decision.
+4. **Hot reload:** The M5 architecture correctly preserves the registry-by-ID invariant needed for hot reload. No game code holds direct GPU handles. `notify` (D-015 rule 1) is the planned file-watching crate.
+**Alternatives:** N/A — these are observations, not choices.
+**Consequences:** Phase 2 planning can proceed with these as inputs.

@@ -1,0 +1,14 @@
+[package]
+name = "tungsten-render"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tungsten-core = { workspace = true }
+wgpu = { workspace = true }
+winit = { workspace = true }
+glam = { workspace = true }
+bytemuck = { workspace = true }
+pollster = { workspace = true }
+log = { workspace = true }
+thiserror = { workspace = true }

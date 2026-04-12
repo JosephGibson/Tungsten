@@ -1,0 +1,41 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/tungsten-core",
+    "crates/tungsten-render",
+    "crates/tungsten",
+    "examples/01_window",
+    "examples/02_ecs",
+    "examples/03_dots",
+    "examples/04_sprites",
+    "examples/05_animation",
+]
+
+[workspace.dependencies]
+tungsten-core = { path = "crates/tungsten-core" }
+tungsten-render = { path = "crates/tungsten-render" }
+tungsten = { path = "crates/tungsten" }
+
+# Platform abstractions (D-015 rule 1)
+wgpu = "29.0.1"
+winit = "0.30.12"
+
+# Data format parsing (D-015 rule 2)
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+image = { version = "0.25", default-features = false, features = ["png"] }
+pollster = "0.4"
+
+# Math primitives (D-015 rule 3)
+glam = "0.32.1"
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Logging
+log = "0.4"
+env_logger = "0.11"
+
+# GPU data layout
+bytemuck = { version = "1", features = ["derive"] }

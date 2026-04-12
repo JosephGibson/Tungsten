@@ -1,0 +1,9 @@
+{
+  "looping": true,
+  "frames": [
+    { "sprite": "walk_0", "duration_ms": 150 },
+    { "sprite": "walk_1", "duration_ms": 150 },
+    { "sprite": "walk_2", "duration_ms": 150 },
+    { "sprite": "walk_3", "duration_ms": 150 }
+  ]
+}

@@ -5,9 +5,7 @@
 *.pdb
 
 # Cargo
-Cargo.lock
-# (Cargo.lock is committed for binaries — uncomment the line above only for libraries.
-# Tungsten will eventually have an umbrella binary; revisit when M0 lands.)
+# Cargo.lock is committed — workspace contains binaries (examples).
 
 # Editor / IDE
 .vscode/

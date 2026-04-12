@@ -1,0 +1,37 @@
+{
+  "sprites": {
+    "red_square": {
+      "path": "sprites/red_square.png",
+      "filter": "nearest"
+    },
+    "blue_square": {
+      "path": "sprites/blue_square.png",
+      "filter": "nearest"
+    },
+    "green_circle": {
+      "path": "sprites/green_circle.png",
+      "filter": "linear"
+    },
+    "walk_0": {
+      "path": "sprites/walk_0.png",
+      "filter": "nearest"
+    },
+    "walk_1": {
+      "path": "sprites/walk_1.png",
+      "filter": "nearest"
+    },
+    "walk_2": {
+      "path": "sprites/walk_2.png",
+      "filter": "nearest"
+    },
+    "walk_3": {
+      "path": "sprites/walk_3.png",
+      "filter": "nearest"
+    }
+  },
+  "animations": {
+    "walk": {
+      "path": "animations/walk.json"
+    }
+  }
+}

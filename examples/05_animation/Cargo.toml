@@ -1,0 +1,13 @@
+[package]
+name = "example-05-animation"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+tungsten = { workspace = true }
+tungsten-core = { workspace = true }
+tungsten-render = { workspace = true }
+anyhow = { workspace = true }
+env_logger = { workspace = true }
+log = { workspace = true }
