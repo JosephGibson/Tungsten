@@ -19,20 +19,21 @@ fn animation_system(world: &mut World) {
     let dt = world.get_resource::<DeltaTime>().unwrap().seconds();
     let dt_ms = dt * 1000.0;
 
-    // Grab a raw pointer to the registry to avoid borrow conflicts.
-    // The registry is only read while we mutate AnimationState components.
+    // Clone the registry so we can mutate components freely.
     let anim_registry = match world.get_resource::<AnimationRegistry>() {
-        Some(r) => r as *const AnimationRegistry,
+        Some(r) => r.clone(),
         None => return,
     };
-    let anim_registry = unsafe { &*anim_registry };
 
     let entities = world.query_entities::<AnimationState>();
     for entity in entities {
-        let state = world.get_mut::<AnimationState>(entity).unwrap();
-        if let Some(new_sprite) = state.advance(dt_ms, anim_registry) {
+        let mut state = world.get::<AnimationState>(entity).unwrap().clone();
+        let new_sprite = state.advance(dt_ms, &anim_registry);
+        *world.get_mut::<AnimationState>(entity).unwrap() = state;
+
+        if let Some(sprite_id) = new_sprite {
             if let Some(cs) = world.get_mut::<CurrentSprite>(entity) {
-                cs.0 = new_sprite;
+                cs.0 = sprite_id;
             }
         }
     }

@@ -223,3 +223,11 @@ A crate that hands me something the project is supposed to teach me to build is 
 4. **Hot reload:** The M5 architecture correctly preserves the registry-by-ID invariant needed for hot reload. No game code holds direct GPU handles. `notify` (D-015 rule 1) is the planned file-watching crate.
 **Alternatives:** N/A — these are observations, not choices.
 **Consequences:** Phase 2 planning can proceed with these as inputs.
+
+## D-025 — License: MIT
+**Date:** 2026-04-12
+**Status:** Active
+**Context:** Phase 1 is complete and the project is being tagged 0.1.0-alpha for personal version tracking. The README said "not yet specified." Time to pick.
+**Decision:** MIT. Simple, permissive, well-understood, compatible with the Rust ecosystem norm.
+**Alternatives:** Apache-2.0 (patent clause adds complexity without clear benefit for a hobby project). Dual MIT/Apache-2.0 (Rust ecosystem standard, but unnecessary overhead for a solo project not published to crates.io).
+**Consequences:** `LICENSE` file at repo root. `license = "MIT"` in workspace `Cargo.toml`. All crates inherit it.

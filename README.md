@@ -2,6 +2,8 @@
 
 A from-scratch Rust 2D game engine, built as a hobby project. The point is the *building*, not the shipping — understanding how engines actually work from the ground up, with Rust as the language to learn deeply along the way.
 
+**Version:** 0.1.0-alpha
+
 **Status:** Phase 1 complete (M0–M6). All milestones implemented: workspace scaffold, wgpu rendering, hand-rolled ECS, colored-quad pipeline, input handling, manifest-driven sprite assets, and frame-based animation.
 
 ## Stack
@@ -49,4 +51,4 @@ cargo run -p example-05-animation   # M6: frame-based animation
 
 ## License
 
-Not yet specified. Will be added before any code is published.
+MIT — see [LICENSE](LICENSE).

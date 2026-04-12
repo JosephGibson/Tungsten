@@ -63,6 +63,8 @@ pub fn load_animations(manifest: &ResolvedManifest, world: &mut World) -> anyhow
 }
 
 /// Load all assets (sprites + animations) from a manifest.
+/// After loading, validates that every sprite ID referenced from animation
+/// frames exists in the sprite registry (D-009).
 pub fn load_all(
     manifest: &ResolvedManifest,
     world: &mut World,
@@ -70,5 +72,26 @@ pub fn load_all(
 ) -> anyhow::Result<()> {
     load_sprites(manifest, world, renderer)?;
     load_animations(manifest, world)?;
+
+    let registry = world
+        .get_resource::<AssetRegistry>()
+        .expect("AssetRegistry resource missing");
+    let anim_registry = world
+        .get_resource::<AnimationRegistry>()
+        .expect("AnimationRegistry resource missing");
+
+    for (anim_id, anim_data) in anim_registry.iter() {
+        for (i, frame) in anim_data.frames.iter().enumerate() {
+            if registry.get_sprite(&frame.sprite).is_none() {
+                return Err(anyhow::anyhow!(
+                    "Animation '{}' frame {} references unknown sprite ID '{}'",
+                    anim_id,
+                    i,
+                    frame.sprite,
+                ));
+            }
+        }
+    }
+
     Ok(())
 }

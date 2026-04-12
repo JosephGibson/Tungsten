@@ -32,6 +32,9 @@ impl AssetRegistry {
 
     /// Register a sprite and allocate an opaque texture handle.
     /// Called by the asset loading pipeline during startup.
+    ///
+    /// # Panics
+    /// Panics if a sprite with the same `id` is already registered (D-017).
     pub fn register_sprite(
         &mut self,
         id: String,
@@ -39,6 +42,10 @@ impl AssetRegistry {
         width: u32,
         height: u32,
     ) -> TextureHandle {
+        assert!(
+            !self.sprites.contains_key(&id),
+            "duplicate sprite ID '{id}' — each sprite must be registered exactly once"
+        );
         let handle = TextureHandle(self.next_texture_handle);
         self.next_texture_handle += 1;
         self.sprites.insert(
@@ -81,5 +88,13 @@ mod tests {
         let h1 = reg.register_sprite("a".into(), FilterMode::Nearest, 16, 16);
         let h2 = reg.register_sprite("b".into(), FilterMode::Linear, 32, 32);
         assert_ne!(h1, h2);
+    }
+
+    #[test]
+    #[should_panic(expected = "duplicate sprite ID")]
+    fn duplicate_sprite_id_panics() {
+        let mut reg = AssetRegistry::new();
+        reg.register_sprite("same".into(), FilterMode::Nearest, 16, 16);
+        reg.register_sprite("same".into(), FilterMode::Nearest, 16, 16);
     }
 }

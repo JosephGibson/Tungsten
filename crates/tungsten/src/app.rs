@@ -208,10 +208,9 @@ impl ApplicationHandler for App {
                 }
                 self.last_frame = Some(now);
 
-                if let Some(input) = self.world.get_resource_mut::<InputState>() {
-                    input.begin_frame();
-                }
-
+                // Systems run with this frame's accumulated input (edge state
+                // was populated by KeyboardInput/MouseInput events that arrived
+                // before RedrawRequested in the same event-loop turn).
                 for system in &mut self.systems {
                     system(&mut self.world);
                 }
@@ -232,6 +231,12 @@ impl ApplicationHandler for App {
                     if let Err(e) = renderer.render_frame_full(&quads, &sprites) {
                         log::error!("Render error: {e}");
                     }
+                }
+
+                // Clear edge state *after* systems have consumed it, so the
+                // next frame's input events start with a clean slate.
+                if let Some(input) = self.world.get_resource_mut::<InputState>() {
+                    input.begin_frame();
                 }
 
                 if let Some(window) = &self.window {

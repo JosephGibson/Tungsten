@@ -1,7 +1,9 @@
 [package]
 name = "tungsten-render"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
+license.workspace = true
+description = "wgpu-based rendering backend for the Tungsten 2D engine"
 
 [dependencies]
 tungsten-core = { workspace = true }

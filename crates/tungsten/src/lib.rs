@@ -1,3 +1,7 @@
+//! Umbrella crate for the Tungsten 2D engine. Ties together
+//! [`tungsten_core`] and [`tungsten_render`] with a winit-driven
+//! application loop, asset loading helpers, and input bridging.
+
 pub mod app;
 pub mod asset_loader;
 mod input_bridge;

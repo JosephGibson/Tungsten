@@ -37,7 +37,7 @@ impl AnimationData {
 }
 
 /// Registry of loaded animation data, keyed by animation ID.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct AnimationRegistry {
     animations: HashMap<String, AnimationData>,
 }
@@ -53,6 +53,10 @@ impl AnimationRegistry {
 
     pub fn get(&self, id: &str) -> Option<&AnimationData> {
         self.animations.get(id)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &AnimationData)> {
+        self.animations.iter().map(|(k, v)| (k.as_str(), v))
     }
 }
 
@@ -99,13 +103,16 @@ impl AnimationState {
         self.accumulated_ms += dt_ms;
         let old_frame = self.frame_index;
 
-        loop {
+        // Bound iterations to prevent infinite loops when frames have zero duration.
+        let max_steps = anim.frames.len() * 2;
+        for _ in 0..max_steps {
             let current_frame = &anim.frames[self.frame_index];
-            if self.accumulated_ms < current_frame.duration_ms as f32 {
+            let dur = (current_frame.duration_ms as f32).max(1.0);
+            if self.accumulated_ms < dur {
                 break;
             }
 
-            self.accumulated_ms -= current_frame.duration_ms as f32;
+            self.accumulated_ms -= dur;
             self.frame_index += 1;
 
             if self.frame_index >= anim.frames.len() {
@@ -221,5 +228,30 @@ mod tests {
         let new = state.advance(250.0, &registry);
         assert_eq!(new, Some("walk_2".into()));
         assert_eq!(state.frame_index, 2);
+    }
+
+    #[test]
+    fn zero_duration_does_not_infinite_loop() {
+        let mut registry = AnimationRegistry::new();
+        registry.insert(
+            "zeros".into(),
+            AnimationData {
+                looping: true,
+                frames: vec![
+                    AnimationFrame {
+                        sprite: "a".into(),
+                        duration_ms: 0,
+                    },
+                    AnimationFrame {
+                        sprite: "b".into(),
+                        duration_ms: 0,
+                    },
+                ],
+            },
+        );
+
+        let mut state = AnimationState::new("zeros");
+        // Must terminate rather than spin forever.
+        let _ = state.advance(100.0, &registry);
     }
 }

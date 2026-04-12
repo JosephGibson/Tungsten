@@ -238,6 +238,10 @@ impl SpritePipeline {
     }
 
     /// Upload a decoded RGBA image to the GPU and store it in the texture pool.
+    ///
+    /// # Panics
+    /// Panics if `width` or `height` is zero, or if `rgba_data` length does
+    /// not match `width * height * 4`.
     pub fn upload_texture(
         &mut self,
         device: &wgpu::Device,
@@ -247,6 +251,21 @@ impl SpritePipeline {
         width: u32,
         height: u32,
     ) {
+        assert!(
+            width > 0 && height > 0,
+            "texture dimensions must be non-zero"
+        );
+        let expected = (width as usize) * (height as usize) * 4;
+        assert_eq!(
+            rgba_data.len(),
+            expected,
+            "rgba_data length ({}) does not match {}x{}x4 ({})",
+            rgba_data.len(),
+            width,
+            height,
+            expected,
+        );
+
         let size = wgpu::Extent3d {
             width,
             height,

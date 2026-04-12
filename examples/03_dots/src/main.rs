@@ -1,6 +1,7 @@
 use tungsten::core::{Config, DeltaTime, Entity, InputState, KeyCode, MouseButton, World};
 use tungsten::render::QuadInstance;
 use tungsten::App;
+use tungsten::WindowSize;
 
 #[derive(Debug, Clone)]
 struct Position {
@@ -102,6 +103,11 @@ fn movement_system(world: &mut World) {
 }
 
 fn bounce_system(world: &mut World) {
+    let win = world
+        .get_resource::<WindowSize>()
+        .map(|ws| (ws.width as f32, ws.height as f32))
+        .unwrap_or((1280.0, 720.0));
+
     let entities = world.query_entities::<Velocity>();
     for entity in entities {
         let size = world
@@ -113,11 +119,11 @@ fn bounce_system(world: &mut World) {
         let mut vel = world.get::<Velocity>(entity).unwrap().clone();
         let mut bounced = false;
 
-        if pos.x < 0.0 || pos.x + size.0 > 1280.0 {
+        if pos.x < 0.0 || pos.x + size.0 > win.0 {
             vel.dx = -vel.dx;
             bounced = true;
         }
-        if pos.y < 0.0 || pos.y + size.1 > 720.0 {
+        if pos.y < 0.0 || pos.y + size.1 > win.1 {
             vel.dy = -vel.dy;
             bounced = true;
         }
@@ -125,8 +131,8 @@ fn bounce_system(world: &mut World) {
         if bounced {
             *world.get_mut::<Velocity>(entity).unwrap() = vel;
             let pos = world.get_mut::<Position>(entity).unwrap();
-            pos.x = pos.x.clamp(0.0, 1280.0 - size.0);
-            pos.y = pos.y.clamp(0.0, 720.0 - size.1);
+            pos.x = pos.x.clamp(0.0, win.0 - size.0);
+            pos.y = pos.y.clamp(0.0, win.1 - size.1);
         }
     }
 }
@@ -152,8 +158,7 @@ fn extract_quads(world: &World) -> Vec<QuadInstance> {
         .collect()
 }
 
-fn spawn_dot(
-    world: &mut World,
+struct DotDesc {
     x: f32,
     y: f32,
     dx: f32,
@@ -163,12 +168,22 @@ fn spawn_dot(
     b: f32,
     w: f32,
     h: f32,
-) -> Entity {
+}
+
+fn spawn_dot(world: &mut World, d: DotDesc) -> Entity {
     let e = world.spawn();
-    world.insert(e, Position { x, y });
-    world.insert(e, Velocity { dx, dy });
-    world.insert(e, Color { r, g, b, a: 1.0 });
-    world.insert(e, Size { w, h });
+    world.insert(e, Position { x: d.x, y: d.y });
+    world.insert(e, Velocity { dx: d.dx, dy: d.dy });
+    world.insert(
+        e,
+        Color {
+            r: d.r,
+            g: d.g,
+            b: d.b,
+            a: 1.0,
+        },
+    );
+    world.insert(e, Size { w: d.w, h: d.h });
     e
 }
 
@@ -196,18 +211,75 @@ fn main() -> anyhow::Result<()> {
     world.insert(player, Player);
 
     // Bouncing dots
-    spawn_dot(world, 100.0, 100.0, 200.0, 150.0, 1.0, 0.3, 0.3, 20.0, 20.0);
     spawn_dot(
-        world, 300.0, 200.0, -180.0, 220.0, 0.3, 1.0, 0.3, 15.0, 15.0,
+        world,
+        DotDesc {
+            x: 100.0,
+            y: 100.0,
+            dx: 200.0,
+            dy: 150.0,
+            r: 1.0,
+            g: 0.3,
+            b: 0.3,
+            w: 20.0,
+            h: 20.0,
+        },
     );
     spawn_dot(
-        world, 500.0, 300.0, 250.0, -100.0, 0.3, 0.3, 1.0, 25.0, 25.0,
+        world,
+        DotDesc {
+            x: 300.0,
+            y: 200.0,
+            dx: -180.0,
+            dy: 220.0,
+            r: 0.3,
+            g: 1.0,
+            b: 0.3,
+            w: 15.0,
+            h: 15.0,
+        },
     );
     spawn_dot(
-        world, 700.0, 400.0, -120.0, 180.0, 1.0, 1.0, 0.3, 12.0, 12.0,
+        world,
+        DotDesc {
+            x: 500.0,
+            y: 300.0,
+            dx: 250.0,
+            dy: -100.0,
+            r: 0.3,
+            g: 0.3,
+            b: 1.0,
+            w: 25.0,
+            h: 25.0,
+        },
     );
     spawn_dot(
-        world, 200.0, 500.0, 160.0, -200.0, 1.0, 0.3, 1.0, 18.0, 18.0,
+        world,
+        DotDesc {
+            x: 700.0,
+            y: 400.0,
+            dx: -120.0,
+            dy: 180.0,
+            r: 1.0,
+            g: 1.0,
+            b: 0.3,
+            w: 12.0,
+            h: 12.0,
+        },
+    );
+    spawn_dot(
+        world,
+        DotDesc {
+            x: 200.0,
+            y: 500.0,
+            dx: 160.0,
+            dy: -200.0,
+            r: 1.0,
+            g: 0.3,
+            b: 1.0,
+            w: 18.0,
+            h: 18.0,
+        },
     );
 
     app.add_system(player_control_system);
