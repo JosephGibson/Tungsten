@@ -1,6 +1,6 @@
 # Tungsten — Design Document
 
-**Status:** Draft v0.8 — Phase 2 in progress (M9 hot reload complete, M10 tilemaps next)
+**Status:** Phase 1 complete (M0–M6). Phase 2 through M9 complete (`v0.4.0-alpha`); M10 tilemaps next. Current branch: `0.4`. Milestone detail lives in `PHASE2.md`.
 **Project:** Tungsten, a from-scratch Rust 2D game engine.
 **Companion docs:** `AGENTS.md` (how to work in the repo), `DECISIONS.md` (decision log).
 
@@ -206,20 +206,19 @@ By-type at the top level. The manifest is easier to scan when sections match fol
 
 Examples that need throwaway assets ship their own local `examples/NN_name/assets/` with a local manifest. The loader takes a manifest path, so multiple manifests compose.
 
-### Hot reload — Phase 2
-M5 ships without hot reload. Assets load once at startup.
+### Hot reload — M9 (shipped)
 
-For Phase 2, a background thread runs `notify` on the assets directory, sends file-change messages to the main thread, and at the next frame boundary the main thread looks up which asset IDs the file maps to, decodes the new file, uploads to the GPU, and swaps the texture in the registry. Existing sprite components don't need to know — they reference by ID, the ID still resolves, the underlying data is just newer. If the manifest itself changes, reload and reconcile.
+A background thread runs `notify` on the assets directory and sends file-change messages to the main thread via `std::sync::mpsc`. At the next frame boundary the main thread resolves file paths back to asset IDs, decodes the new data, uploads to the GPU, and swaps the handle in the registry. Existing components that reference by ID pick up the new data automatically. Manifest changes trigger a reload-and-reconcile pass.
 
-Runtime cost: essentially zero in steady state. Implementation cost: probably a weekend.
+This works because the M5 architecture already enforces the registry-by-ID invariant: no game code holds direct GPU handles. Runtime cost is essentially zero in steady state. See `DECISIONS.md` D-031 for the `notify` decision and `PHASE2.md` M9 for acceptance criteria.
 
-The architectural prerequisite is *already* in M5: every asset reference goes through the registry by ID. Don't hand out direct texture handles to game code, ever, even when nothing's swapping yet. Break that and hot reload gets much harder later.
+**Do not break the registry-by-ID invariant** in future work, even for short-term convenience — it's what makes hot reload feasible.
 
-### Audio — M8
+### Audio — M8 (shipped)
 
-Manifest-driven: `assets/sounds/` holds OGG/WAV files; the manifest's `sounds` section registers them by ID. Game code plays sounds by ID through an `AudioCommands` resource — the same ID-through-registry discipline as sprites and fonts.
+Manifest-driven: `assets/sounds/` holds OGG/WAV/MP3 files; the manifest's `sounds` section registers them by ID. Game code plays sounds by ID through an `AudioCommands` resource — the same ID-through-registry discipline as sprites and fonts.
 
-`cpal` (D-015 rule 1) opens the audio device; `symphonia` (D-015 rule 2) decodes compressed audio at load time into raw PCM. A hand-rolled mixer runs in `cpal`'s callback thread — the only background thread in the engine. Game systems write `AudioCommand` values to the `AudioCommands` resource each tick; the callback thread drains them via `mpsc::try_recv`. No async runtime, no shared mutable state.
+`cpal` (D-027) opens the audio device. `symphonia` (D-028) decodes compressed audio at load time into `Vec<f32>` PCM — no decoder types appear at runtime in the callback. A hand-rolled mixer (D-029) runs in `cpal`'s callback thread; game systems write `AudioCommand` values each tick and the callback drains them via `mpsc::try_recv`. The `cpal` callback thread plus the M9 `notify` watcher thread are the only background threads in the engine. No async runtime, no shared mutable state.
 
 ## Project structure
 
@@ -244,80 +243,18 @@ tungsten/
 │   ├── tungsten-render/    # wgpu wrapper, sprite drawing, samplers
 │   └── tungsten/           # umbrella + winit app loop
 │
-└── examples/
-    ├── 01_window/          # M0–M1
-    ├── 02_ecs/             # M2
-    ├── 03_dots/            # M3–M4
-    ├── 04_sprites/         # M5
-    ├── 05_animation/       # M6
-    └── 06_text/            # M7 (Phase 2)
+└── examples/                # 01_window .. 08_hot_reload (see examples/ for the full list)
 ```
 
 The seam between core and render: `TextureHandle(u32)` is defined in `tungsten-core` — no `wgpu` types appear there. During startup the `tungsten` umbrella crate acts as mediator: core's `AssetRegistry` allocates handles and stores metadata; `tungsten` then calls `renderer.upload_texture(handle, rgba, ...)` to store the GPU resource in render's texture pool. Core never calls into render.
 
 Those handles are **opaque runtime IDs/newtypes**, not raw `wgpu` texture objects. `tungsten-core` owns manifest data, decoded CPU-side asset data, animation data, and the registry shape; `tungsten-render` owns the actual GPU textures, samplers, and pipelines in an internal pool keyed by those opaque handles. This keeps `wgpu` out of `tungsten-core` while preserving the registry as the one lookup path for game-facing code.
 
-Examples progress cumulatively — each one builds on the primitives established by earlier milestones. `05_animation` depends on everything before it, which is fine because M6 is the end of Phase 1. **`06_text`** (Phase 2, M7) adds manifest-driven fonts and the text render path; see `PHASE2.md` for Phase 2 versioning.
+Examples progress cumulatively — each one builds on the primitives established by earlier milestones. Phase 1 ended with `05_animation` (M6). Phase 2 adds `06_text` (M7), `07_audio` (M8), and `08_hot_reload` (M9); see `PHASE2.md` for the current milestone and versioning.
 
 ## Milestones
 
-Honest sizes, not fake-atomic tasks. Each milestone has a primary learning payout — the thing this milestone actually teaches, which matters because principle 4 says learning is a first-class goal.
-
-### M0 — Scaffold and window *(an evening or two)*
-Workspace builds. `01_window` opens a winit window and closes cleanly. No wgpu yet. Config crate exists with `Config::load` and defaults.
-**Learn:** Cargo workspace mechanics, `rust-toolchain.toml` pinning, winit event loop basics, serde derive for config.
-
-### M1 — wgpu clear *(multiple weekends)*
-`01_window` initializes a wgpu device and surface, clears to the color from `tungsten.json`, presents. Most-underestimated milestone.
-**Learn:** wgpu init flow (instance → adapter → device → queue), surface configuration, command encoders, render passes, the "why is this so much code" moment.
-**Checkpoint:** if after ~3 weekends I'm frustrated rather than curious, drop to `pixels` or `macroquad` and return to wgpu later.
-
-### M2 — Naive ECS *(a weekend or two)*
-Spawn entities, attach components, iterate one component type at a time, hand-written systems. `02_ecs` prints moving positions to stdout. No rendering.
-**Learn:** `TypeId`, `Any`, downcasting, heterogeneous storage, the borrow checker's opinions about `RefCell` in a `HashMap`, generic APIs over component types.
-
-### M3 — Moving quads *(multiple weekends)*
-`03_dots`: ECS holds positions and velocities, a system updates them, a render pass draws colored quads. First real 2D pipeline, first ECS↔renderer glue.
-**Learn:** wgpu render pipelines, vertex buffers, WGSL shaders, bind groups, the `tungsten-core`→`tungsten-render` seam.
-
-### M4 — Input *(a weekend)*
-winit input events feed an `InputState` resource. `03_dots` becomes interactive.
-**Learn:** winit event handling, edge-vs-level input state, resource mutation from inside the event loop.
-
-### M5 — Asset manifest and textured sprites *(multiple weekends)*
-Implements manifest loading and validation, PNG decoding via the `image` crate, GPU texture upload, per-filter samplers, the asset registry as a Resource. `04_sprites` loads a sprite from the manifest and draws it textured at a position. Critical architectural discipline: every asset reference goes through the registry by ID.
-**Learn:** texture creation in wgpu, bind groups with textures, samplers, PNG decode, schema validation with serde, the indirection pattern that makes hot reload feasible.
-
-### M6 — Frame-based animation *(a weekend or two)*
-`05_animation`: animation JSON files loaded through the manifest, animation component on entities, system that advances frames by accumulated time and swaps the rendered sprite. Plays a walk cycle.
-**Learn:** time-accumulator patterns (which generalize to many other things), animation state management, the payoff of the registry pattern when one entity's displayed sprite changes frame-by-frame.
-
-### After M6 — Phase 2
-
-Phase 1 ends here. Phase 2 is tracked in `PHASE2.md`. The gating questions from the Phase 1 exit review (D-024) are all resolved:
-
-| Question | Resolution | Ref |
-|---|---|---|
-| Text rendering approach | `glyphon` + `cosmic-text` | D-026 |
-| Audio decoder | `symphonia` | D-028 |
-| Audio mixer | Hand-rolled | D-029 |
-| Hot reload feasibility | M5 registry-by-ID invariant confirmed | D-024 |
-| ECS performance | No pain at Phase 1 scale; rewrite now conditional | D-024, D-030 |
-
-**Phase 2 status:** M7 (text rendering, `v0.2.0-alpha.0`) complete. M8 (audio, `v0.3.0-alpha`) complete. M9 (hot reload, `v0.4.0-alpha`) complete. Next: M10 tilemaps. Full milestone map and acceptance criteria in `PHASE2.md`.
-
-## Kill criteria
-
-Conditions under which the honest move is to stop, pivot, or rethink — not to push through out of sunk-cost.
-
-- **Two consecutive weekends of frustration without progress** on a milestone → step back, write the problem down, consider whether the approach is wrong.
-- **A milestone taking roughly 3× its soft estimate** → stop and write down why before continuing. Maybe the milestone is miscast, maybe the approach is wrong, maybe it needs splitting.
-- **Avoiding the project for more than 2 weeks** → something is wrong. Pushing through is not a virtue.
-- **Stuck on wgpu past M1 for more than a month** → drop to `pixels` or `macroquad`, keep the rest, come back to wgpu later.
-- **The ECS becomes the only thing I work on and rendering keeps slipping** → own that. Commit to one or the other explicitly.
-- **Writing process instead of code** (adding rules to AGENTS.md, restructuring DESIGN.md, refactoring the decision-log format) → hard stop. That's avoidance cosplaying as productivity.
-
-None of these are failure. They're feedback loops. The actual failure mode is quiet abandonment.
+Phase 1 (M0–M6) is complete. Phase 2 milestones, acceptance criteria, and release map live in `PHASE2.md`. The Phase 1 exit-review gating questions (text, audio decoder, audio mixer, hot reload feasibility, ECS performance) are all resolved — see `DECISIONS.md` D-024, plus D-026 (glyphon), D-028 (symphonia), D-029 (hand-rolled mixer), D-030 (M12 conditional), D-031 (notify).
 
 ## Open questions
 
@@ -348,7 +285,7 @@ Not promising and not scoped. Any of these can appear in a future phase, but not
 - Asset preprocessing / build pipeline
 - 3D rendering
 - WASM / browser support
-- Hot reload of config (assets get it in Phase 2; config does not)
+- Hot reload of config (assets have it as of M9; config does not)
 - Save / load
 - Multiplayer
 - GUI library

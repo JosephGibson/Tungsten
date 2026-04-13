@@ -1,107 +1,56 @@
 # Tungsten — Phase 2 Plan
 
-**Status:** Phase 2 in progress — **M7 complete** (`v0.2.0-alpha.0`); **M8 complete** (`v0.3.0-alpha`); **M9 complete** (`v0.4.0-alpha`); M10 tilemaps next.
+**Status:** Phase 2 in progress. **M7 complete** (`v0.2.0-alpha.0`), **M8 complete** (`v0.3.0-alpha`), **M9 complete** (`v0.4.0-alpha`). Next: **M10 tilemaps**.
 **Branch:** `0.4`
 **Prerequisite:** Phase 1 complete (M0–M6), tagged `v0.1.0-alpha`.
-**Companion docs:** `DESIGN.md` (architecture, Phase 1 milestones), `DECISIONS.md` (decision log, esp. D-024), `AGENTS.md` (operational rules).
+**Companion docs:** `DESIGN.md` (architecture), `DECISIONS.md` (decision log, esp. D-024 — Phase 1 exit observations), `AGENTS.md` (operational rules).
 
 ---
 
 ## Overview
 
-Phase 1 proved the engine's foundations: a hand-rolled ECS, a wgpu render pipeline, manifest-driven asset loading, input handling, and frame-based animation. Phase 2 turns those foundations into something that can run an actual game.
+Phase 1 proved the foundations: hand-rolled ECS, wgpu render pipeline, manifest-driven assets, input, and frame-based animation. Phase 2 turns those foundations into something that can run an actual game.
 
-The rollout model is **one major milestone per alpha version**. Each alpha ships when its milestone is complete, tested, and demonstrated by a new or extended example. When all milestones are done, the engine graduates to **v1.0.0** with a small proof-of-concept game built on top of everything.
-
-The milestone names and descriptions below match the terminology established in `DESIGN.md` ("After M6 — stop and reassess") and the gating observations recorded in `DECISIONS.md` D-024. The ordering reflects both dependency constraints and a preference for getting all major subsystems (rendering, audio, assets, physics) online before the big internal rewrite.
+**Rollout model:** one major milestone per alpha version. Each alpha ships when its milestone is complete, tested, and demonstrated by a new or extended example. When all milestones are done, the engine graduates to **v1.0.0** with a small proof-of-concept game built on top.
 
 ### Release map
 
-| Version        | Milestone | Name                   |
-| -------------- | --------- | ---------------------- |
-| `v0.2.0-alpha.0` | M7        | Text rendering — **complete** |
-| `v0.3.0-alpha` | M8        | Audio — **complete** |
-| `v0.4.0-alpha` | M9        | Hot reload — **complete** |
-| `v0.5.0-alpha` | M10       | Tilemaps               |
-| `v0.6.0-alpha` | M11       | 2D physics             |
-| `v0.7.0-alpha` | M12       | Archetypal ECS rewrite (conditional) |
-| `v1.0.0`       | M13       | A first actual game    |
+| Version          | Milestone | Name                                  | Status          |
+| ---------------- | --------- | ------------------------------------- | --------------- |
+| `v0.2.0-alpha.0` | M7        | Text rendering                        | **Complete**    |
+| `v0.3.0-alpha`   | M8        | Audio                                 | **Complete**    |
+| `v0.4.0-alpha`   | M9        | Hot reload                            | **Complete**    |
+| `v0.5.0-alpha`   | M10       | Tilemaps                              | In progress     |
+| `v0.6.0-alpha`   | M11       | 2D physics                            | Planned         |
+| `v0.7.0-alpha`   | M12       | Archetypal ECS rewrite                | **Conditional** (D-030) |
+| `v1.0.0`         | M13       | A first actual game                   | Planned         |
 
 ### Ordering rationale
 
-1. **Text rendering first** — it's the most self-contained new subsystem with the least dependency on other Phase 2 work. Fonts are already staged in `assets/fonts/`. Getting text on screen early means every subsequent milestone can use it for debug overlays, UI labels, and example polish.
-2. **Audio second** — the other major "new subsystem" milestone. Tackling it early means the game milestone (M13) has sound available from the start, and the audio API gets exercised across more milestones.
-3. **Hot reload third** — the architectural prerequisites are already in place from M5 (registry-by-ID invariant). Having hot reload before tilemaps and physics means faster iteration loops for all the content-heavy work that follows.
-4. **Tilemaps fourth** — "the natural next thing for actually building a game" (DESIGN.md). Depends on sprite rendering (done), benefits from hot reload (done).
-5. **2D physics fifth** — collision shapes and basic resolution. Benefits from having tilemaps to collide against and hot reload for tuning.
-6. **Archetypal ECS rewrite sixth** — learning-motivated, not a prerequisite for any other milestone. Positioned last before the game so there's maximum real workload (text, audio, tilemaps, physics entities) to benchmark the rewrite against. If the naive ECS never hurts, this milestone can be descoped or reframed without blocking v1.0.
-7. **A first actual game last** — the proof that the engine works. Everything else feeds into it.
+1. **Text first** — most self-contained new subsystem. Fonts already staged in `assets/fonts/`. Every later milestone can use text for debug overlays and UI.
+2. **Audio second** — other major "new subsystem" milestone. Early means M13 has sound available, and the API gets exercised across more milestones.
+3. **Hot reload third** — architectural prerequisites already in place from M5 (registry-by-ID). Faster iteration loops for the content-heavy work that follows.
+4. **Tilemaps fourth** — natural next step for building an actual game. Depends on sprite rendering, benefits from hot reload.
+5. **Physics fifth** — collision shapes and resolution. Needs tilemaps for static geometry; benefits from hot reload for tuning.
+6. **ECS rewrite sixth** — learning-motivated, not a prerequisite. Positioned last before the game to have maximum workload to benchmark against. Conditional per D-030.
+7. **The game last** — the proof that the engine works. Everything else feeds into it.
 
 ---
 
 ## M7 — Text rendering ✓ Complete
 
 **Version:** `v0.2.0-alpha.0`
-
-- [x] `assets/manifest.json` has a `fonts` section; fonts are loaded by ID, never by path.
-- [x] Text renders correctly at multiple sizes with at least two font families (sans + mono).
-- [x] A new example demonstrates text rendering: labels, a debug overlay with FPS, and mixed font usage.
-- [x] `cargo test --workspace` passes. `cargo fmt` clean.
-- [x] `DECISIONS.md` entry for the `glyphon`/`cosmic-text` dependency, citing D-015 rule 2.
-
----
+**Shipped:** `glyphon` / `cosmic-text` / `swash` text pipeline, `fonts` manifest section, `TextSection` render API, `example-06-text`. Three font families staged (Inter, Source Serif 4, JetBrains Mono). See `DECISIONS.md` D-026 and `CHANGELOG.md` for details.
 
 ## M8 — Audio ✓ Complete
 
 **Version:** `v0.3.0-alpha`
-
-- [x] `assets/manifest.json` has a `sounds` section; sounds are loaded by ID.
-- [x] At least one sound effect and one looping track play correctly.
-- [x] A new example demonstrates audio playback triggered by input or game events.
-- [x] Volume control works (at minimum: master volume, per-sound volume).
-- [x] `cargo test --workspace` passes. `cargo fmt` clean.
-- [x] `DECISIONS.md` entries for `cpal`, `symphonia`, and the mixer approach (hand-rolled vs `kira`).
-
----
+**Shipped:** `cpal` output device, hand-rolled mixer on callback thread, `symphonia` eager decode (OGG/WAV/MP3), `sounds` manifest section, `AudioCommands` resource, `example-07-audio`. See `DECISIONS.md` D-027/D-028/D-029 and `CHANGELOG.md` for details.
 
 ## M9 — Hot reload ✓ Complete
 
 **Version:** `v0.4.0-alpha`
-**Soft estimate:** A weekend or two
-**Learn:** File watching, cross-thread messaging, GPU resource replacement at runtime, the payoff of the registry-by-ID architecture.
-
-### Goals
-
-- When an asset file changes on disk, detect the change and swap the asset at the next frame boundary without restarting the engine.
-- Cover sprites, animations, and fonts. Audio hot reload is a stretch goal.
-- If the manifest itself changes, reload and reconcile.
-
-### Scope
-
-- **In scope:** File watching via `notify` (D-015 rule 1), change detection, decode-and-reupload for sprites, animation JSON reparse, font reloading, manifest reconciliation, visual confirmation in an existing or new example.
-- **Out of scope:** Hot reload of engine config (`tungsten.json`), hot reload of Rust code, hot reload of shaders (possible future extension).
-
-### Approach
-
-The sketch in `DESIGN.md` ("Hot reload — Phase 2") is the blueprint: a background thread runs `notify` on the assets directory, sends file-change messages to the main thread via a channel, and at the next frame boundary the main thread resolves file paths back to asset IDs, decodes the new data, uploads to the GPU, and swaps the handle in the registry. Existing components referencing by ID see the new data automatically.
-
-The M5 architecture already preserves the registry-by-ID invariant (confirmed in D-024). No game code holds direct GPU handles.
-
-### Acceptance criteria — all met
-
-- [x] Modifying a sprite PNG on disk causes the rendered sprite to update within a few frames, without restart.
-- [x] Modifying an animation JSON on disk causes the animation to update live.
-- [x] Modifying the manifest (adding/removing an entry) is handled gracefully — new assets load, removed assets either warn or are cleaned up.
-- [x] No crash or resource leak on rapid successive changes.
-- [x] `cargo test --workspace` passes. `cargo fmt` clean.
-- [x] `DECISIONS.md` entry for the `notify` dependency, citing D-015 rule 1 (D-031).
-- [x] Editing a TTF/OTF font updates text using that font within a few frames.
-- [x] New example `08_hot_reload` demonstrates live updates for sprites, animations, and fonts.
-
-### Dependencies
-
-- M7 (text) and M8 (audio) shipped. Font hot reload depends on M7's font loading infrastructure.
-- The registry-by-ID invariant from M5 (already in place).
+**Shipped:** `notify`-based file watcher on a dedicated thread, 50ms debounce, live reload for sprites / animations / fonts / manifest, `example-08-hot-reload`, `App::enable_hot_reload`. See `DECISIONS.md` D-031 and `CHANGELOG.md` for details.
 
 ---
 
@@ -109,7 +58,7 @@ The M5 architecture already preserves the registry-by-ID invariant (confirmed in
 
 **Version:** `v0.5.0-alpha`
 **Soft estimate:** Multiple weekends
-**Learn:** Tile-based map representation, efficient tilemap rendering (batching, culling), map data formats, the manifest pattern extended to maps, camera/viewport concepts.
+**Learn:** Tile-based map representation, efficient tilemap rendering (batching, culling), map data formats, manifest extension to maps, camera/viewport concepts.
 
 ### Goals
 
@@ -119,28 +68,25 @@ The M5 architecture already preserves the registry-by-ID invariant (confirmed in
 
 ### Scope
 
-- **In scope:** A custom JSON tilemap format (consistent with the animation format precedent from D-010), manifest `tilemaps` section, tileset references via sprite IDs, multi-layer rendering, camera scrolling/viewport, a new example showing a scrollable map.
-- **Out of scope:** Tiled (`.tmx`) import (could be a converter, not a runtime dependency), infinite/procedural maps, auto-tiling, tile animations (possible extension using the existing animation system).
+- **In scope:** Custom JSON tilemap format (consistent with the animation precedent from D-010), manifest `tilemaps` section, tileset references via sprite IDs, multi-layer rendering, camera scrolling/viewport, new example with a scrollable map.
+- **Out of scope:** Tiled `.tmx` import (possible future converter), infinite/procedural maps, auto-tiling, tile animations (possible extension over the existing animation system).
 
 ### Approach
 
-Tilemaps reference sprites from the existing manifest by ID — a tileset is a collection of sprite IDs, not a separate texture atlas. This keeps the architecture consistent and benefits from hot reload (M9). The tilemap renderer batches tiles into a single draw call per layer, similar to the existing sprite instancing.
-
-A camera/viewport resource controls which portion of the map is visible, enabling scrolling. This resource is useful beyond tilemaps and becomes part of the engine's core.
+Tilemaps reference sprites from the existing manifest by ID — a tileset is a collection of sprite IDs, not a separate atlas. Consistent with the rest of the architecture and benefits from M9 hot reload. The tilemap renderer batches tiles into a single draw call per layer, similar to sprite instancing. A new camera/viewport resource controls the visible portion of the map and becomes part of the engine core.
 
 ### Acceptance criteria
 
 - [ ] A tilemap loads from a JSON file registered in the manifest.
-- [ ] Multiple layers render in correct order (background behind foreground).
-- [ ] Camera scrolling works — arrow keys or WASD pan the viewport across a map larger than the window.
-- [ ] Performance is reasonable for maps of at least 100x100 tiles.
+- [ ] Multiple layers render in correct order.
+- [ ] Camera scrolling works — arrow keys or WASD pan a viewport across a map larger than the window.
+- [ ] Performance is reasonable for maps of at least 100×100 tiles.
 - [ ] A new example demonstrates a scrollable tilemap with multiple layers.
 - [ ] `cargo test --workspace` passes. `cargo fmt` clean.
 
 ### Dependencies
 
-- M5 (sprite rendering, asset registry) — tilemaps build on the sprite infrastructure.
-- M9 (hot reload) — not required, but tilemap iteration benefits greatly from live reloading.
+M5 (sprite rendering, asset registry). M9 not required but hot reload pays off heavily during map iteration.
 
 ---
 
@@ -148,40 +94,37 @@ A camera/viewport resource controls which portion of the map is visible, enablin
 
 **Version:** `v0.6.0-alpha`
 **Soft estimate:** Multiple weekends
-**Learn:** Collision detection algorithms (AABB, circle, SAT), collision response and resolution, spatial data structures, physics as ECS components and systems.
+**Learn:** AABB / circle / SAT collision, collision response and resolution, spatial data structures, physics as ECS components and systems.
 
 ### Goals
 
-- Provide basic 2D collision detection and response as ECS components and systems.
-- Support common collision shapes: axis-aligned bounding boxes (AABB), circles.
-- Integrate with the existing `Position` and `Velocity` components.
+- Basic 2D collision detection and response as ECS components and systems.
+- Support AABB and circle shapes.
+- Integrate with existing `Position` / `Velocity` components.
 
 ### Scope
 
-- **In scope:** Collision shapes (AABB, circle), broad-phase detection, narrow-phase resolution, static and dynamic bodies, collision events/callbacks, a tilemap collision layer (integrating with M10), a new example demonstrating physics interactions.
-- **Out of scope:** Joints/constraints, continuous collision detection (CCD), physics simulation stability at high speeds, soft bodies, fluid simulation. This is game-jam-grade physics, not Box2D.
+- **In scope:** Collision shapes (AABB, circle), broad-phase detection, narrow-phase resolution, static and dynamic bodies, collision events, tilemap collision layer integration (from M10), a demo example.
+- **Out of scope:** Joints, constraints, continuous collision detection, soft bodies, fluid simulation. Game-jam-grade physics, not Box2D.
 
 ### Approach
 
-Hand-rolled, consistent with the project's "build it to learn it" principle. No external physics crate. The physics system runs during the tick phase, after movement systems and before rendering.
+Hand-rolled, consistent with the build-it-to-learn-it principle. The physics system runs during tick, after movement systems and before rendering. Components: `Collider` (shape + offset), `RigidBody` (static vs dynamic, mass). Broad-phase via spatial hash/grid; narrow-phase via shape-vs-shape tests. Collision events collected into a resource that game systems read.
 
-Collision data is ECS components: a `Collider` component (shape + offset), a `RigidBody` component (static vs dynamic, mass). A physics system performs broad-phase (spatial hash or grid) then narrow-phase (shape-vs-shape tests) each tick. Collision events are collected into a resource that other systems can read.
-
-Tilemap collision layers (from M10) provide static geometry — tiles marked as solid in the tilemap data generate static colliders.
+Tilemap collision layers (from M10) provide static geometry — tiles marked solid in tilemap data generate static colliders.
 
 ### Acceptance criteria
 
 - [ ] AABB-vs-AABB and circle-vs-circle collision detection works correctly.
-- [ ] Dynamic bodies resolve collisions against static bodies (no tunneling at reasonable speeds).
+- [ ] Dynamic bodies resolve against static bodies without tunneling at reasonable speeds.
 - [ ] A tilemap collision layer blocks entity movement.
-- [ ] Collision events are accessible to game systems.
+- [ ] Collision events accessible to game systems.
 - [ ] A new example demonstrates entities colliding with each other and with tilemap geometry.
 - [ ] `cargo test --workspace` passes. `cargo fmt` clean.
 
 ### Dependencies
 
-- M10 (tilemaps) — for tilemap collision layers.
-- Phase 1 ECS (M2) — physics components and systems use the existing World.
+M10 (tilemap collision layers). Phase 1 ECS.
 
 ---
 
@@ -189,40 +132,39 @@ Tilemap collision layers (from M10) provide static geometry — tiles marked as 
 
 **Version:** `v0.7.0-alpha`
 **Soft estimate:** Multiple weekends (possibly the longest milestone)
-**Learn:** Archetypal storage, cache-friendly iteration, component move semantics, the tradeoffs between HashMap-of-Any and columnar storage, real-world benchmarking.
+**Learn:** Archetypal storage, cache-friendly iteration, component move semantics, columnar vs HashMap storage tradeoffs, real-world benchmarking.
 
-**This milestone is conditional.** After M11, assess whether the naive ECS has caused measurable friction — slow queries, borrow fights under load, correctness issues with many entities. If yes, proceed with the rewrite. If the naive implementation remains adequate, skip M12 and go directly to M13. Descoping is not failure; see D-005 and D-030.
+**This milestone is conditional.** After M11, assess whether the naive ECS has caused measurable friction — slow queries, borrow fights under load, correctness issues with many entities. If yes, proceed. If not, skip M12 and go directly to M13. Descoping is not failure (D-005, D-030).
 
 ### Goals
 
 - Replace the naive `HashMap<TypeId, HashMap<EntityId, Box<dyn Any>>>` storage with an archetypal layout.
-- Maintain the existing public API (`World`, `Entity`, component operations, queries, resources) — no breaking changes to examples or game code.
-- Measure and document the performance difference with real workloads from M7–M11.
+- Maintain the existing public API — no breaking changes to examples or game code.
+- Measure and document the performance difference with real M7–M11 workloads.
 
 ### Scope
 
-- **In scope:** Archetype table storage, component arrays laid out contiguously per archetype, archetype graph for add/remove transitions, updated query iteration, benchmarks comparing old vs new on representative workloads (many entities with physics, tilemaps, animations).
-- **Out of scope:** Parallel system scheduling, change detection, command buffers, reactive queries. These are potential future extensions, not part of the rewrite.
+- **In scope:** Archetype table storage, contiguous per-archetype component arrays, archetype graph for add/remove transitions, updated query iteration, benchmarks on representative workloads.
+- **Out of scope:** Parallel system scheduling, change detection, command buffers, reactive queries.
 
 ### Approach
 
-D-024 confirms the naive ECS works fine at Phase 1 scale. D-005 says "if naive stays good enough forever, that's a success, not a failure." If this milestone proceeds, it is learning-motivated — the goal is understanding archetypal storage, not fixing a performance crisis.
+D-024 confirmed the naive ECS works fine at Phase 1 scale. D-005 says "if naive stays good enough forever, that's a success, not a failure." If this milestone proceeds, it's learning-motivated — the goal is understanding archetypal storage, not fixing a crisis.
 
-The rewrite should be internal to `tungsten-core`. The `World` API stays the same; the storage engine behind it changes. All existing examples and any M7–M11 code should compile and run without modification after the rewrite.
+The rewrite is internal to `tungsten-core`. The `World` API stays the same; the storage engine behind it changes.
 
 ### Acceptance criteria
 
 - [ ] **Decision to proceed or skip logged in `DECISIONS.md` before the milestone begins** (cite D-030).
-- [ ] All existing examples (01–07 plus any M8–M11 examples) compile and pass without API changes.
-- [ ] `cargo test --workspace` passes — the ECS test suite is the primary validation.
-- [ ] A benchmark comparing iteration speed (old vs new) on at least 10,000 entities with 3+ component types.
-- [ ] Query iteration is cache-friendly: components of the same archetype are stored contiguously.
+- [ ] All existing examples compile and pass without API changes.
+- [ ] `cargo test --workspace` passes — ECS test suite is the primary validation.
+- [ ] A benchmark comparing iteration speed (old vs new) on ≥10,000 entities with 3+ component types.
+- [ ] Query iteration is cache-friendly: components of the same archetype stored contiguously.
 - [ ] `DECISIONS.md` entry documenting the storage design and benchmark results.
 
 ### Dependencies
 
-- All prior milestones (M8–M11) — the rewrite happens last so there's a real workload to test against.
-- The existing `World` public API from M2 — the contract is "same API, different internals."
+All prior milestones — the rewrite happens last so there's real workload to test against. The `World` public API from M2.
 
 ---
 
@@ -235,58 +177,33 @@ The rewrite should be internal to `tungsten-core`. The `World` API stays the sam
 ### Goals
 
 - Build a small but complete game using only the Tungsten engine.
-- Exercise every major subsystem: rendering (sprites, text, tilemaps), audio, input, physics, animation, the ECS.
-- Identify gaps, pain points, and missing conveniences that would inform a hypothetical Phase 3.
+- Exercise every major subsystem: sprites, text, tilemaps, audio, input, physics, animation, ECS.
+- Identify gaps, pain points, and missing conveniences for a hypothetical Phase 3.
 
 ### Scope
 
-- **In scope:** A playable game with a beginning and an end (or a clear loop). Player movement, collision, at least one game mechanic, sound effects, background music, text (title screen, score/UI), a tilemap-based level. All assets registered in the manifest. The game ships as a new example or a top-level `game/` crate.
-- **Out of scope:** Polish, save/load, multiple levels (unless trivial), menus beyond a title screen. This is a proof-of-concept, not a product.
+- **In scope:** A playable game with a beginning and an end (or clear loop). Player movement, collision, at least one mechanic, sound effects, music, text (title, score/UI), a tilemap level. All assets manifest-driven. Ships as a new example or a top-level `game/` crate.
+- **Out of scope:** Polish, save/load, multiple levels (unless trivial), menus beyond a title screen. Proof-of-concept, not product.
 
 ### Approach
 
-The game genre is decided at M13 start, not before. Don't pre-commit to a design that may not survive contact with the actual engine state after M11–M12. The game lives in the repo alongside the examples, uses the same manifest system, and follows all the same rules (no hardcoded paths, no external engine crates, no global state).
-
-Game-specific components and systems live in the game crate, not in the library crates. The engine stays general; the game is the consumer.
+Genre is decided at M13 start, not before. Don't pre-commit to a design that may not survive contact with the actual engine state after M11–M12. The game lives alongside the examples, uses the same manifest system, follows all the same rules. Game-specific components and systems live in the game crate, not library crates — the engine stays general.
 
 ### Acceptance criteria
 
-- [ ] The game is playable: it starts, the player can interact, there is a win/lose/loop condition.
-- [ ] Every major engine subsystem is exercised (sprites, text, tilemaps, audio, physics, animation, input, ECS).
+- [ ] Playable: starts, player can interact, has a win/lose/loop condition.
+- [ ] Every major engine subsystem is exercised.
 - [ ] All assets are manifest-driven.
-- [ ] The game runs at a smooth framerate on the development machine.
-- [ ] A retrospective section in `DECISIONS.md` or a dedicated document captures what worked, what didn't, and what's missing.
+- [ ] Runs at a smooth framerate on the development machine.
+- [ ] A retrospective captures what worked, what didn't, and what's missing.
 - [ ] `cargo test --workspace` passes. `cargo fmt` clean.
 
 ### Dependencies
 
-- All of Phase 2 (M7–M12). This is the capstone.
+All of Phase 2 (M7–M12). The capstone.
 
 ---
 
-## What this plan does not cover
+## Out of scope for Phase 2
 
-Items from `DESIGN.md` "Non-commitments" remain non-committed. None of the following are scheduled or scoped:
-
-- Networking / multiplayer
-- Scripting
-- Editor tooling
-- Asset preprocessing / build pipeline
-- 3D rendering
-- WASM / browser support
-- Hot reload of config (`tungsten.json`)
-- Save / load
-- GUI library
-- Texture atlases / sprite sheet packing
-- GPU-compressed texture formats
-- Skeletal animation
-- Streaming or async asset loading
-
-Any of these could appear in a future phase, but not without an explicit decision and a `DECISIONS.md` entry.
-
-## Kill criteria
-
-The Phase 1 kill criteria in `DESIGN.md` still apply. Two additions for Phase 2:
-
-- **A milestone consistently feels like a chore rather than learning** — consider descoping or reframing it. The archetypal ECS rewrite (M12) is the most likely candidate; it's explicitly okay to descope it if the naive version stays adequate.
-- **The game milestone (M13) can't find a genre that's fun to build** — that's a signal, not a failure. The engine still works; the game just needs a different shape.
+See `DESIGN.md` "Non-commitments" for the full list. Nothing in that list is scheduled or scoped for Phase 2 without an explicit `DECISIONS.md` entry.
