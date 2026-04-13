@@ -1,6 +1,6 @@
 # Tungsten — Design Document
 
-**Status:** Draft v0.5
+**Status:** Draft v0.6 — Phase 2 in progress (M7 complete, M8 audio next)
 **Project:** Tungsten, a from-scratch Rust 2D game engine.
 **Companion docs:** `AGENTS.md` (how to work in the repo), `DECISIONS.md` (decision log).
 
@@ -37,7 +37,7 @@ Five things, in priority order. Everything else bends to these.
 | Logging    | `log` + `env_logger`   | Standard facade + basic backend.               |
 | Errors     | `thiserror` / `anyhow` | Typed at library boundaries, anyhow at the top.|
 
-Explicitly not in Phase 1: async runtimes, `rayon`, audio, physics, networking, scripting.
+Explicitly not in Phase 1: async runtimes, `rayon`, audio, physics, networking, scripting. Phase 2 adds audio (M8), hot reload (M9), tilemaps (M10), and physics (M11); see `PHASE2.md`.
 
 ### Dependency philosophy
 
@@ -47,7 +47,7 @@ A crate is acceptable if **at least one** of these is true:
 2. **It implements a well-specified data format** that isn't the interesting part of what I'm building. `serde_json` (JSON), `image` (PNG). Reinventing format parsers is a side quest that doesn't teach engine architecture.
 3. **It provides a primitive that's math, not architecture.** `glam` falls here — linear algebra is a solved problem and writing my own vector types would not improve my understanding of ECS or rendering.
 
-A crate is **not** acceptable if it hands me something the project is supposed to teach me how to build. `bevy_ecs`, `hecs`, `specs`, `legion` are all out because ECS *is* the interesting thing. `ggez`, `macroquad`, `fyrox` are out because they *are* the engine. `rodio` and `kira` are in a gray zone I'll decide about if and when audio enters the project — the decoder (`symphonia`) is probably fine by rule 2; the mixer is probably not.
+A crate is **not** acceptable if it hands me something the project is supposed to teach me how to build. `bevy_ecs`, `hecs`, `specs`, `legion` are all out because ECS *is* the interesting thing. `ggez`, `macroquad`, `fyrox` are out because they *are* the engine. For audio (M8): `cpal` satisfies rule 1 (platform API), `symphonia` satisfies rule 2 (data format); the mixer is hand-rolled because it's one of the things M8 is here to teach. `rodio` and `kira` are out (see D-029).
 
 When a new dep is being considered, it gets a `DECISIONS.md` entry that identifies which rule it satisfies and what the alternative would have been. If none of the three rules clearly apply, the answer is no.
 
@@ -198,7 +198,8 @@ tungsten/
     ├── manifest.json
     ├── sprites/
     ├── animations/
-    └── sounds/        # placeholder; audio is deferred
+    ├── fonts/
+    └── sounds/
 ```
 
 By-type at the top level. The manifest is easier to scan when sections match folders, browsing matches the manifest structure, and adding a new asset type later is just a new directory plus a new manifest section. Sub-organizing inside a type folder (`sprites/player/`, `sprites/ui/`) is fine when it helps.
@@ -214,8 +215,11 @@ Runtime cost: essentially zero in steady state. Implementation cost: probably a 
 
 The architectural prerequisite is *already* in M5: every asset reference goes through the registry by ID. Don't hand out direct texture handles to game code, ever, even when nothing's swapping yet. Break that and hot reload gets much harder later.
 
-### Audio — deferred
-Not scheduled. When it eventually enters the project, it gets its own milestone group and its own decision about implementation depth. The `assets/sounds/` directory exists as a placeholder so the layout doesn't change later.
+### Audio — M8
+
+Manifest-driven: `assets/sounds/` holds OGG/WAV files; the manifest's `sounds` section registers them by ID. Game code plays sounds by ID through an `AudioCommands` resource — the same ID-through-registry discipline as sprites and fonts.
+
+`cpal` (D-015 rule 1) opens the audio device; `symphonia` (D-015 rule 2) decodes compressed audio at load time into raw PCM. A hand-rolled mixer runs in `cpal`'s callback thread — the only background thread in the engine. Game systems write `AudioCommand` values to the `AudioCommands` resource each tick; the callback thread drains them via `mpsc::try_recv`. No async runtime, no shared mutable state.
 
 ## Project structure
 
@@ -288,17 +292,19 @@ Implements manifest loading and validation, PNG decoding via the `image` crate, 
 `05_animation`: animation JSON files loaded through the manifest, animation component on entities, system that advances frames by accumulated time and swaps the rendered sprite. Plays a walk cycle.
 **Learn:** time-accumulator patterns (which generalize to many other things), animation state management, the payoff of the registry pattern when one entity's displayed sprite changes frame-by-frame.
 
-### After M6 — stop and reassess
-Phase 1 ends here. The **Phase 2 rollout** is tracked in `PHASE2.md` (ordering and versions differ slightly from the brainstorm below). **M7 — text rendering** (`v0.2.0-alpha`, `06_text`) is complete.
+### After M6 — Phase 2
 
-Original Phase 2 brainstorm (pre-`PHASE2.md`):
-- **Hot reload** of sprites and animations (sketched above).
-- **Tilemaps**, the natural next thing for actually building a game.
-- **Text rendering** — shipped as M7; see `PHASE2.md`.
-- **Archetypal ECS** rewrite, if the naive version is actually hurting.
-- **2D physics** — collision shapes, basic resolution, ECS components for bodies.
-- **Audio**, eventually.
-- **A first actual game** built on top of all of this.
+Phase 1 ends here. Phase 2 is tracked in `PHASE2.md`. The gating questions from the Phase 1 exit review (D-024) are all resolved:
+
+| Question | Resolution | Ref |
+|---|---|---|
+| Text rendering approach | `glyphon` + `cosmic-text` | D-026 |
+| Audio decoder | `symphonia` | D-028 |
+| Audio mixer | Hand-rolled | D-029 |
+| Hot reload feasibility | M5 registry-by-ID invariant confirmed | D-024 |
+| ECS performance | No pain at Phase 1 scale; rewrite now conditional | D-024, D-030 |
+
+**Phase 2 status:** M7 (text rendering, `v0.2.0-alpha.0`) complete. M8 (audio, `v0.3.0-alpha`) in progress. Full milestone map and acceptance criteria in `PHASE2.md`.
 
 ## Kill criteria
 
@@ -315,19 +321,27 @@ None of these are failure. They're feedback loops. The actual failure mode is qu
 
 ## Open questions
 
-1. **Entity ID shape.** `u32` is fine for M2. Lock it at M2 exit unless a real reason appears not to.
-2. **ECS error strategy.** Panic on programmer error (wrong type, bad downcast), `Result` on runtime conditions (entity despawned). Leaning this way; confirm during M2 before the query API spreads.
-3. **Renderer wgpu exposure.** Wrap wgpu types or expose them? Leaning: wrap the happy path, expose an escape hatch. Resolve at M3 exit after the first direct-data render path exists.
-4. **Fixed vs variable timestep.** Variable for now. Revisit only if simulation pain appears; not a Phase 1 design task.
+All Phase 1 open questions are resolved. See `DECISIONS.md`:
 
-Resolved since earlier drafts: config format (JSON, see D-008), audio timing (deferred, no schedule), asset directory layout (by-type, D-013), render/ECS coupling (allowed, D-007).
+| Question | Decision | Ref |
+|---|---|---|
+| Entity ID shape | `u32`, no generational index in Phase 1 | D-021 |
+| ECS error strategy | Panic on programmer error, `Result`/`Option` on runtime | D-022 |
+| Renderer wgpu exposure | Wrap the happy path; opaque handles in core | D-016 |
+| Fixed vs variable timestep | Variable; revisit only if simulation pain appears | — |
+| Config format | JSON, single `tungsten.json`, no hot reload | D-008 |
+| Asset layout | By-type, manifest-driven, ID-referenced | D-009, D-013 |
+| Render/ECS coupling | `tungsten-render` may depend on `tungsten-core` | D-007 |
+| Audio timing | M8 (Phase 2), `cpal` + hand-rolled mixer | D-027, D-029 |
+
+No open questions remain for Phase 2 start. New questions that arise during Phase 2 milestones are logged in `DECISIONS.md` as they are resolved.
 
 ## Non-commitments
 
 Not promising and not scoped. Any of these can appear in a future phase, but not without an explicit decision.
 
-- Audio
-- Physics
+*Note: Audio (M8) and 2D physics (M11) are now committed and scoped in `PHASE2.md`. Items below remain uncommitted.*
+
 - Networking
 - Scripting
 - Editor tooling

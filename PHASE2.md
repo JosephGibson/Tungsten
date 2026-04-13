@@ -1,7 +1,7 @@
 # Tungsten — Phase 2 Plan
 
-**Status:** Phase 2 in progress — **M7 complete** (`v0.2.0-alpha.0`); next milestone M8 (audio).
-**Branch:** `0.2`
+**Status:** Phase 2 in progress — **M7 complete** (`v0.2.0-alpha.0`); **M8 complete** (`v0.3.0-alpha`); M9 hot reload next.
+**Branch:** `0.3`
 **Prerequisite:** Phase 1 complete (M0–M6), tagged `v0.1.0-alpha`.
 **Companion docs:** `DESIGN.md` (architecture, Phase 1 milestones), `DECISIONS.md` (decision log, esp. D-024), `AGENTS.md` (operational rules).
 
@@ -19,12 +19,12 @@ The milestone names and descriptions below match the terminology established in 
 
 | Version        | Milestone | Name                   |
 | -------------- | --------- | ---------------------- |
-| `v0.2.0-alpha.0` | M7        | Text rendering — **done** |
-| `v0.3.0-alpha` | M8        | Audio                  |
+| `v0.2.0-alpha.0` | M7        | Text rendering — **complete** |
+| `v0.3.0-alpha` | M8        | Audio — **complete** |
 | `v0.4.0-alpha` | M9        | Hot reload             |
 | `v0.5.0-alpha` | M10       | Tilemaps               |
 | `v0.6.0-alpha` | M11       | 2D physics             |
-| `v0.7.0-alpha` | M12       | Archetypal ECS rewrite |
+| `v0.7.0-alpha` | M12       | Archetypal ECS rewrite (conditional) |
 | `v1.0.0`       | M13       | A first actual game    |
 
 ### Ordering rationale
@@ -39,7 +39,7 @@ The milestone names and descriptions below match the terminology established in 
 
 ---
 
-## M7 — Text rendering
+## M7 — Text rendering ✓ Complete
 
 **Version:** `v0.2.0-alpha.0`
 **Soft estimate:** Multiple weekends
@@ -63,7 +63,7 @@ Per D-024, `glyphon` (built on `cosmic-text`) is the recommended crate. It's pur
 
 The text pipeline should sit alongside the existing quad and sprite pipelines in `tungsten-render`. Font assets get opaque handles in the registry, same pattern as textures.
 
-### Acceptance criteria
+### Acceptance criteria — all met
 
 - [x] `assets/manifest.json` has a `fonts` section; fonts are loaded by ID, never by path.
 - [x] Text renders correctly at multiple sizes with at least two font families (sans + mono).
@@ -84,7 +84,7 @@ Workspace and library crate versions are **`0.2.0-alpha.0`**. When this commit i
 
 ---
 
-## M8 — Audio
+## M8 — Audio ✓ Complete
 
 **Version:** `v0.3.0-alpha`
 **Soft estimate:** Multiple weekends
@@ -109,18 +109,20 @@ Audio playback runs on a dedicated thread (via `cpal`'s callback model), but the
 
 ### Acceptance criteria
 
-- [ ] `assets/manifest.json` has a `sounds` section; sounds are loaded by ID.
-- [ ] At least one sound effect and one looping track play correctly.
-- [ ] A new example demonstrates audio playback triggered by input or game events.
-- [ ] Volume control works (at minimum: master volume, per-sound volume).
-- [ ] `cargo test --workspace` passes. `cargo fmt` clean.
-- [ ] `DECISIONS.md` entries for `cpal`, `symphonia`, and the mixer approach (hand-rolled vs `kira`).
+- [x] `assets/manifest.json` has a `sounds` section; sounds are loaded by ID.
+- [x] At least one sound effect and one looping track play correctly.
+- [x] A new example demonstrates audio playback triggered by input or game events.
+- [x] Volume control works (at minimum: master volume, per-sound volume).
+- [x] `cargo test --workspace` passes. `cargo fmt` clean.
+- [x] `DECISIONS.md` entries for `cpal`, `symphonia`, and the mixer approach (hand-rolled vs `kira`).
 
 ### Dependencies
 
 - M7 (text rendering) — not a hard technical dependency, but the versioning model requires M7 to ship first. Text is useful for audio example UI.
 
 ---
+
+<!-- OPEN: notify crate (D-015 rule 1) needs a DECISIONS.md entry before M9 ships -->
 
 ## M9 — Hot reload
 
@@ -241,11 +243,13 @@ Tilemap collision layers (from M10) provide static geometry — tiles marked as 
 
 ---
 
-## M12 — Archetypal ECS rewrite
+## M12 — Archetypal ECS rewrite (conditional)
 
 **Version:** `v0.7.0-alpha`
 **Soft estimate:** Multiple weekends (possibly the longest milestone)
 **Learn:** Archetypal storage, cache-friendly iteration, component move semantics, the tradeoffs between HashMap-of-Any and columnar storage, real-world benchmarking.
+
+**This milestone is conditional.** After M11, assess whether the naive ECS has caused measurable friction — slow queries, borrow fights under load, correctness issues with many entities. If yes, proceed with the rewrite. If the naive implementation remains adequate, skip M12 and go directly to M13. Descoping is not failure; see D-005 and D-030.
 
 ### Goals
 
@@ -260,15 +264,14 @@ Tilemap collision layers (from M10) provide static geometry — tiles marked as 
 
 ### Approach
 
-D-024 confirms the naive ECS works fine at Phase 1 scale. D-005 says "if naive stays good enough forever, that's a success, not a failure." This milestone is learning-motivated — the goal is understanding archetypal storage, not fixing a performance crisis.
+D-024 confirms the naive ECS works fine at Phase 1 scale. D-005 says "if naive stays good enough forever, that's a success, not a failure." If this milestone proceeds, it is learning-motivated — the goal is understanding archetypal storage, not fixing a performance crisis.
 
 The rewrite should be internal to `tungsten-core`. The `World` API stays the same; the storage engine behind it changes. All existing examples and any M7–M11 code should compile and run without modification after the rewrite.
 
-If the rewrite proves uninteresting or overly painful, it can be descoped to a partial rewrite (e.g., archetypal iteration for queries, HashMap fallback for everything else) without blocking v1.0.
-
 ### Acceptance criteria
 
-- [ ] All existing examples (01–05 plus any M7–M11 examples) compile and pass without API changes.
+- [ ] **Decision to proceed or skip logged in `DECISIONS.md` before the milestone begins** (cite D-030).
+- [ ] All existing examples (01–07 plus any M8–M11 examples) compile and pass without API changes.
 - [ ] `cargo test --workspace` passes — the ECS test suite is the primary validation.
 - [ ] A benchmark comparing iteration speed (old vs new) on at least 10,000 entities with 3+ component types.
 - [ ] Query iteration is cache-friendly: components of the same archetype are stored contiguously.
@@ -276,7 +279,7 @@ If the rewrite proves uninteresting or overly painful, it can be descoped to a p
 
 ### Dependencies
 
-- All prior milestones (M7–M11) — the rewrite happens last so there's a real workload to test against.
+- All prior milestones (M8–M11) — the rewrite happens last so there's a real workload to test against.
 - The existing `World` public API from M2 — the contract is "same API, different internals."
 
 ---
@@ -300,7 +303,7 @@ If the rewrite proves uninteresting or overly painful, it can be descoped to a p
 
 ### Approach
 
-The game genre should be whatever is fun and tractable — a top-down action game, a simple platformer, a Pac-Man-like. The choice gets made at M13 start based on what feels interesting. The game lives in the repo alongside the examples, uses the same manifest system, and follows all the same rules (no hardcoded paths, no external engine crates, no global state).
+The game genre is decided at M13 start, not before. Don't pre-commit to a design that may not survive contact with the actual engine state after M11–M12. The game lives in the repo alongside the examples, uses the same manifest system, and follows all the same rules (no hardcoded paths, no external engine crates, no global state).
 
 Game-specific components and systems live in the game crate, not in the library crates. The engine stays general; the game is the consumer.
 

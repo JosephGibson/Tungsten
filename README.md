@@ -2,9 +2,9 @@
 
 A from-scratch Rust 2D game engine, built as a hobby project. The point is the *building*, not the shipping — understanding how engines actually work from the ground up, with Rust as the language to learn deeply along the way.
 
-**Version:** 0.2.0-alpha
+**Version:** 0.3.0-alpha (in progress)
 
-**Status:** Phase 1 complete (M0–M6). Phase 2 started: **M7 text rendering** is complete — manifest `fonts`, glyphon/cosmic-text pipeline in `tungsten-render`, and `example-06-text`. Next: M8 audio (`v0.3.0-alpha`). See `PHASE2.md`.
+**Status:** Phase 1 complete (M0–M6). Phase 2 in progress: **M7 text rendering** complete (`v0.2.0-alpha.0`). **M8 audio** in progress (`v0.3.0-alpha`). See `PHASE2.md`.
 
 ## Stack
 
@@ -47,9 +47,10 @@ cargo run -p example-06-text        # M7: text rendering (Phase 2)
 3. `AGENTS.md` — how to actually work in the repo.
 
 ### For AI agents
-1. `AGENTS.md` — operational rules, what the project is, what not to do.
-2. The relevant section of `DESIGN.md` for whatever is being worked on.
-3. Any `DECISIONS.md` entries that touch the area being changed.
+1. `AGENTS.md` — operational rules, conventions, what not to do, session workflow.
+2. `DESIGN.md` — architecture, principles, current Phase 2 status.
+3. `PHASE2.md` — current milestone goals, scope, and acceptance criteria.
+4. `DECISIONS.md` — settled decisions; check before proposing anything architectural.
 
 ## License
 

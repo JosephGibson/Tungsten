@@ -3,15 +3,18 @@
 //! edge-triggered input, frame timing, and a manifest-driven asset registry.
 
 pub mod assets;
+pub mod audio;
 pub mod config;
 pub mod ecs;
 pub mod input;
 pub mod time;
 
 pub use assets::{
-    AnimationData, AnimationRegistry, AnimationState, AssetRegistry, FilterMode, FontEntry,
-    ManifestError, ResolvedFont, ResolvedManifest, SpriteAsset, TextureHandle,
+    AnimationData, AnimationRegistry, AnimationState, AssetRegistry, AudioHandle, FilterMode,
+    FontEntry, ManifestError, ResolvedFont, ResolvedManifest, ResolvedSound, SoundData, SoundEntry,
+    SoundRegistry, SpriteAsset, TextureHandle,
 };
+pub use audio::{AudioCommand, AudioCommands};
 pub use config::{Config, ConfigError};
 pub use ecs::{Entity, World};
 pub use input::{InputState, KeyCode, MouseButton};

@@ -15,6 +15,10 @@ pub enum KeyCode {
     KeyA,
     KeyS,
     KeyD,
+    KeyM,
+    Digit1,
+    Digit2,
+    Digit3,
     Other(u32),
 }
 
