@@ -120,6 +120,7 @@ If the task touches a specific crate, also read that crate's `lib.rs` and the re
 - Read the document being changed in full before editing.
 - `DECISIONS.md` is append-only — never edit an existing entry. Add a new one that supersedes it.
 - Update `CHANGELOG.md` when a milestone ships.
+- Update `README.md` version and status line when a milestone ships (before tagging a release).
 - Update `PHASE2.md` milestone status markers when acceptance criteria are met.
 
 ### Open decisions

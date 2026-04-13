@@ -143,6 +143,7 @@ impl ResolvedManifest {
                     path: full_path.display().to_string(),
                 });
             }
+            let full_path = full_path.canonicalize().unwrap_or(full_path);
             result.sprites.insert(
                 id,
                 ResolvedSprite {
@@ -160,6 +161,7 @@ impl ResolvedManifest {
                     path: full_path.display().to_string(),
                 });
             }
+            let full_path = full_path.canonicalize().unwrap_or(full_path);
             result
                 .animations
                 .insert(id, ResolvedAnimation { path: full_path });
@@ -173,6 +175,7 @@ impl ResolvedManifest {
                     path: full_path.display().to_string(),
                 });
             }
+            let full_path = full_path.canonicalize().unwrap_or(full_path);
             result.fonts.insert(id, ResolvedFont { path: full_path });
         }
 

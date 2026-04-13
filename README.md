@@ -2,9 +2,9 @@
 
 A from-scratch Rust 2D game engine, built as a hobby project. The point is the *building*, not the shipping — understanding how engines actually work from the ground up, with Rust as the language to learn deeply along the way.
 
-**Version:** 0.3.0-alpha
+**Version:** 0.4.0-alpha
 
-**Status:** Phase 1 complete (M0–M6). Phase 2 in progress: **M7 text rendering** complete (`v0.2.0-alpha.0`); **M8 audio** complete (`v0.3.0-alpha`). Next: M9 hot reload. See `PHASE2.md`.
+**Status:** Phase 1 complete (M0–M6). Phase 2 in progress: **M7 text rendering** complete (`v0.2.0-alpha.0`); **M8 audio** complete (`v0.3.0-alpha`); **M9 hot reload** complete (`v0.4.0-alpha`). Next: M10 tilemaps. See `PHASE2.md`.
 
 ## Stack
 
@@ -37,7 +37,8 @@ cargo run -p example-03-dots        # M3–M4: bouncing colored quads + input
 cargo run -p example-04-sprites     # M5: textured sprites from manifest
 cargo run -p example-05-animation   # M6: frame-based animation
 cargo run -p example-06-text        # M7: text rendering (Phase 2)
-cargo run -p example-07-audio      # M8: audio playback (Phase 2)
+cargo run -p example-07-audio       # M8: audio playback (Phase 2)
+cargo run -p example-08-hot-reload  # M9: live asset hot reload (Phase 2)
 ```
 
 ## Read order
