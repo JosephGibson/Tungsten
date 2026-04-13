@@ -1,6 +1,6 @@
 # Tungsten — Phase 2 Plan
 
-**Status:** Phase 2 in progress — **M7 complete** (`v0.2.0-alpha`); next milestone M8 (audio).
+**Status:** Phase 2 in progress — **M7 complete** (`v0.2.0-alpha.0`); next milestone M8 (audio).
 **Branch:** `0.2`
 **Prerequisite:** Phase 1 complete (M0–M6), tagged `v0.1.0-alpha`.
 **Companion docs:** `DESIGN.md` (architecture, Phase 1 milestones), `DECISIONS.md` (decision log, esp. D-024), `AGENTS.md` (operational rules).
@@ -19,7 +19,7 @@ The milestone names and descriptions below match the terminology established in 
 
 | Version        | Milestone | Name                   |
 | -------------- | --------- | ---------------------- |
-| `v0.2.0-alpha` | M7        | Text rendering — **done** |
+| `v0.2.0-alpha.0` | M7        | Text rendering — **done** |
 | `v0.3.0-alpha` | M8        | Audio                  |
 | `v0.4.0-alpha` | M9        | Hot reload             |
 | `v0.5.0-alpha` | M10       | Tilemaps               |
@@ -41,7 +41,7 @@ The milestone names and descriptions below match the terminology established in 
 
 ## M7 — Text rendering
 
-**Version:** `v0.2.0-alpha`
+**Version:** `v0.2.0-alpha.0`
 **Soft estimate:** Multiple weekends
 **Learn:** Font loading, glyph rasterization, text layout, GPU text rendering with wgpu, the manifest pattern extended to a new asset type.
 
@@ -76,11 +76,11 @@ The text pipeline should sit alongside the existing quad and sprite pipelines in
 - Phase 1 complete (M0–M6).
 - Font files in `assets/fonts/` (already staged).
 
-### Release `v0.2.0-alpha`
+### Release `v0.2.0-alpha.0`
 
-Workspace and library crate versions are **`0.2.0-alpha`**. When this commit is on `main` (or `0.2`), tag with:
+Workspace and library crate versions are **`0.2.0-alpha.0`**. When this commit is on `main` (or `0.2`), tag with:
 
-`git tag -a v0.2.0-alpha -m "M7 text rendering"`
+`git tag -a v0.2.0-alpha.0 -m "M7 text rendering"`
 
 ---
 
