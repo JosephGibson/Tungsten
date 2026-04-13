@@ -10,7 +10,7 @@ The canonical instruction file for all AI assistants is **`AGENTS.md`** — read
 
 A from-scratch Rust 2D game engine (hobby project). `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Three crates in a Cargo workspace: `tungsten-core`, `tungsten-render`, `tungsten`.
 
-**Phase 1 complete (M0–M6). Phase 2 in progress: M7 text rendering complete (`v0.2.0-alpha.0`); M8 audio complete (`v0.3.0-alpha`). Current: M9 hot reload.** See `PHASE2.md`.
+**Phase 1 complete (M0–M6). Phase 2 in progress: M7 text rendering complete (`v0.2.0-alpha.0`); M8 audio complete (`v0.3.0-alpha`); M9 hot reload complete (`v0.4.0-alpha`). Current: M10 tilemaps.** See `PHASE2.md`.
 
 ## Commands
 
@@ -28,6 +28,7 @@ cargo run -p example-04-sprites
 cargo run -p example-05-animation
 cargo run -p example-06-text
 cargo run -p example-07-audio
+cargo run -p example-08-hot-reload
 ```
 
 Before committing anything substantial: `cargo fmt && cargo test --workspace`.

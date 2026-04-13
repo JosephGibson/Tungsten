@@ -8,4 +8,4 @@ pub use audio::{AudioHandle, SoundData, SoundRegistry};
 pub use manifest::{
     FilterMode, FontEntry, ManifestError, ResolvedFont, ResolvedManifest, ResolvedSound, SoundEntry,
 };
-pub use registry::{AssetRegistry, SpriteAsset, TextureHandle};
+pub use registry::{AssetRegistry, FontRegistry, SpriteAsset, TextureHandle};

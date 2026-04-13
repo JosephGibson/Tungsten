@@ -264,6 +264,14 @@ A crate that hands me something the project is supposed to teach me to build is 
 **Alternatives:** Keep M12 as committed (rejected: premature optimization; the learning motivation only holds if the problem is real). Descope M12 now (rejected: premature in the other direction — may turn out to be needed after M10–M11 add entity counts).
 **Consequences:** M12 may not happen. The PHASE2.md milestone is now marked "conditional." v0.7.0-alpha may be skipped. v1.0.0 (M13) is unblocked by this decision.
 
+## D-031 — notify for file watching (hot reload)
+**Date:** 2026-04-13
+**Status:** Active
+**Context:** M9 hot reload requires watching the `assets/` directory for changes on Linux, macOS, and Windows without writing OS-specific `inotify`/`FSEvents`/`IOCP` code. D-015 rule 1 explicitly lists platform API abstraction as an acceptable reason to take a third-party dependency.
+**Decision:** Use `notify` v6 with `default-features = false`. `RecommendedWatcher` auto-selects the best backend per platform (inotify on Linux, FSEvents on macOS, ReadDirectoryChanges on Windows). Events cross threads via `std::sync::mpsc` only — no crossbeam, no async. A 50ms debounce window in the main-thread polling collapses editor double-writes (swap-save, vim-style write) into one reload event per path per window.
+**Alternatives:** `inotify` crate (Linux only, defeats platform abstraction). `kqueue` (macOS/BSD only). Hand-rolled polling via `fs::metadata` mtime (always-on overhead, misses rapid same-mtime writes). `watchexec-lib` (higher-level, brings in more deps than needed).
+**Consequences:** `notify` is a dep of `tungsten` only — same tier as `cpal` (D-027). The watcher thread is a second background thread alongside the `cpal` audio callback. Game logic remains single-threaded. No `notify` types appear in `tungsten-core` or `tungsten-render`.
+
 ## D-026 — glyphon + cosmic-text for text rendering
 **Date:** 2026-04-12
 **Status:** Active

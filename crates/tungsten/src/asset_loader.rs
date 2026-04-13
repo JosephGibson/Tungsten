@@ -1,5 +1,8 @@
+use std::path::Path;
+
 use tungsten_core::assets::{
-    AnimationData, AnimationRegistry, ResolvedManifest, SoundData, SoundRegistry, TextureHandle,
+    AnimationData, AnimationRegistry, FilterMode, FontRegistry, ResolvedManifest, SoundData,
+    SoundRegistry, TextureHandle,
 };
 use tungsten_core::{AssetRegistry, World};
 use tungsten_render::Renderer;
@@ -23,7 +26,13 @@ pub fn load_sprites(
             .to_rgba8();
 
         let (width, height) = img.dimensions();
-        let handle = registry.register_sprite(id.clone(), sprite.filter, width, height);
+        let handle = registry.register_sprite(
+            id.clone(),
+            sprite.filter,
+            width,
+            height,
+            sprite.path.clone(),
+        );
 
         log::info!(
             "Loaded sprite '{}' ({}x{}, {:?}) -> {:?}",
@@ -57,16 +66,23 @@ pub fn load_animations(manifest: &ResolvedManifest, world: &mut World) -> anyhow
             data.total_duration_ms(),
             data.looping,
         );
-        anim_registry.insert(id.clone(), data);
+        anim_registry.insert_with_path(id.clone(), data, anim_entry.path.clone());
     }
 
     world.insert_resource(anim_registry);
     Ok(())
 }
 
-/// Load all font assets from a resolved manifest: read TTF bytes and
-/// register them in the renderer's text pipeline.
-pub fn load_fonts(manifest: &ResolvedManifest, renderer: &mut Renderer) -> anyhow::Result<()> {
+/// Load all font assets from a resolved manifest: read TTF bytes, register them
+/// in the renderer's text pipeline, and store paths in `FontRegistry` for
+/// hot-reload reverse lookup.
+pub fn load_fonts(
+    manifest: &ResolvedManifest,
+    world: &mut World,
+    renderer: &mut Renderer,
+) -> anyhow::Result<()> {
+    let mut font_registry = FontRegistry::new();
+
     for (id, font_entry) in &manifest.fonts {
         let data = std::fs::read(&font_entry.path).map_err(|e| {
             anyhow::anyhow!(
@@ -83,7 +99,10 @@ pub fn load_fonts(manifest: &ResolvedManifest, renderer: &mut Renderer) -> anyho
             font_entry.path.display(),
         );
         renderer.load_font(id, data);
+        font_registry.register(id.clone(), font_entry.path.clone());
     }
+
+    world.insert_resource(font_registry);
     Ok(())
 }
 
@@ -126,7 +145,7 @@ pub fn load_all(
 ) -> anyhow::Result<()> {
     load_sprites(manifest, world, renderer)?;
     load_animations(manifest, world)?;
-    load_fonts(manifest, renderer)?;
+    load_fonts(manifest, world, renderer)?;
     load_sounds(manifest, world)?;
 
     let registry = world
@@ -149,5 +168,214 @@ pub fn load_all(
         }
     }
 
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Hot-reload helpers — called by App::process_hot_reload each frame.
+// All functions log errors and return Ok(()) to preserve last-known-good state.
+// ---------------------------------------------------------------------------
+
+/// Hot-reload a sprite: decode the new PNG and re-upload to the GPU behind
+/// the same TextureHandle. If dimensions changed the wgpu texture is recreated
+/// in-place (the old one is dropped and deferred-destroyed by wgpu).
+pub fn reload_sprite(
+    id: &str,
+    path: &Path,
+    filter: FilterMode,
+    world: &mut World,
+    renderer: &mut Renderer,
+) -> anyhow::Result<()> {
+    let img = match image::open(path) {
+        Ok(i) => i.to_rgba8(),
+        Err(e) => {
+            log::error!(
+                "Hot reload sprite '{id}': failed to decode '{}': {e}",
+                path.display()
+            );
+            return Ok(());
+        }
+    };
+
+    let (new_w, new_h) = img.dimensions();
+    let rgba = img.into_raw();
+
+    let handle = {
+        let registry = world
+            .get_resource::<AssetRegistry>()
+            .expect("AssetRegistry resource missing");
+        match registry.get_sprite(id) {
+            Some(a) => a.texture,
+            None => {
+                log::error!("Hot reload sprite '{id}': not found in registry");
+                return Ok(());
+            }
+        }
+    };
+
+    world
+        .get_resource_mut::<AssetRegistry>()
+        .expect("AssetRegistry resource missing")
+        .update_sprite_dimensions(id, new_w, new_h);
+
+    renderer.upload_texture(handle, &rgba, new_w, new_h);
+    log::info!(
+        "Hot-reloaded sprite '{id}' ({}x{}, {:?})",
+        new_w,
+        new_h,
+        filter
+    );
+    Ok(())
+}
+
+/// Hot-reload an animation: reparse the JSON and replace the entry in
+/// `AnimationRegistry`.
+pub fn reload_animation(id: &str, path: &Path, world: &mut World) -> anyhow::Result<()> {
+    let data = match AnimationData::load(path) {
+        Ok(d) => d,
+        Err(e) => {
+            log::error!("Hot reload animation '{id}': {e}");
+            return Ok(());
+        }
+    };
+
+    world
+        .get_resource_mut::<AnimationRegistry>()
+        .expect("AnimationRegistry resource missing")
+        .insert(id.to_string(), data);
+
+    log::info!("Hot-reloaded animation '{id}'");
+    Ok(())
+}
+
+/// Hot-reload a font: read new bytes and replace the face data in the
+/// renderer's text pipeline via `TextPipeline::reload_font`.
+pub fn reload_font(id: &str, path: &Path, renderer: &mut Renderer) -> anyhow::Result<()> {
+    let data = match std::fs::read(path) {
+        Ok(d) => d,
+        Err(e) => {
+            log::error!(
+                "Hot reload font '{id}': failed to read '{}': {e}",
+                path.display()
+            );
+            return Ok(());
+        }
+    };
+
+    renderer.reload_font(id, data);
+    log::info!("Hot-reloaded font '{id}'");
+    Ok(())
+}
+
+/// Hot-reload the manifest: load the new version, register any new asset IDs,
+/// warn about removed IDs (they stay stale — no removal), and log errors on
+/// conflicts. Never crashes — all errors are logged and kept last-known-good.
+pub fn reload_manifest(
+    manifest_path: &Path,
+    world: &mut World,
+    renderer: &mut Renderer,
+) -> anyhow::Result<()> {
+    let new_manifest = match ResolvedManifest::load(manifest_path) {
+        Ok(m) => m,
+        Err(e) => {
+            log::error!(
+                "Hot reload manifest: failed to parse '{}': {e}",
+                manifest_path.display()
+            );
+            return Ok(());
+        }
+    };
+
+    // --- Sprites: warn on removals, load additions ---
+    {
+        // Collect existing IDs to compare.
+        let existing: Vec<String> = world
+            .get_resource::<AssetRegistry>()
+            .expect("AssetRegistry resource missing")
+            .sprite_ids()
+            .map(|s| s.to_string())
+            .collect();
+
+        for id in &existing {
+            if !new_manifest.sprites.contains_key(id.as_str()) {
+                log::warn!("Manifest reload: sprite '{id}' removed — keeping stale");
+            }
+        }
+
+        let mut additions = ResolvedManifest::default();
+        for (id, entry) in &new_manifest.sprites {
+            if !existing.iter().any(|e| e == id) {
+                additions.sprites.insert(id.clone(), entry.clone());
+            }
+        }
+        if !additions.sprites.is_empty() {
+            if let Err(e) = load_sprites(&additions, world, renderer) {
+                log::error!("Manifest reload: new sprite error: {e}");
+            }
+        }
+    }
+
+    // --- Animations: warn on removals, load additions ---
+    {
+        let existing: Vec<String> = world
+            .get_resource::<AnimationRegistry>()
+            .map(|ar| ar.ids().map(|s| s.to_string()).collect())
+            .unwrap_or_default();
+
+        for id in &existing {
+            if !new_manifest.animations.contains_key(id.as_str()) {
+                log::warn!("Manifest reload: animation '{id}' removed — keeping stale");
+            }
+        }
+
+        let mut additions = ResolvedManifest::default();
+        for (id, entry) in &new_manifest.animations {
+            if !existing.iter().any(|e| e == id) {
+                additions.animations.insert(id.clone(), entry.clone());
+            }
+        }
+        if !additions.animations.is_empty() {
+            // load_animations replaces the whole registry resource; merge instead.
+            for (id, entry) in additions.animations {
+                match AnimationData::load(&entry.path) {
+                    Ok(data) => {
+                        if let Some(ar) = world.get_resource_mut::<AnimationRegistry>() {
+                            ar.insert_with_path(id.clone(), data, entry.path.clone());
+                            log::info!("Manifest reload: loaded new animation '{id}'");
+                        }
+                    }
+                    Err(e) => log::error!("Manifest reload: new animation '{id}': {e}"),
+                }
+            }
+        }
+    }
+
+    // --- Fonts: warn on removals, load additions ---
+    {
+        for (id, entry) in &new_manifest.fonts {
+            let already_loaded = world
+                .get_resource::<FontRegistry>()
+                .map(|fr| fr.contains_id(id))
+                .unwrap_or(false);
+
+            if !already_loaded {
+                match std::fs::read(&entry.path) {
+                    Ok(data) => {
+                        renderer.load_font(id, data);
+                        if let Some(fr) = world.get_resource_mut::<FontRegistry>() {
+                            fr.register(id.clone(), entry.path.clone());
+                            log::info!("Manifest reload: loaded new font '{id}'");
+                        }
+                    }
+                    Err(e) => log::error!(
+                        "Manifest reload: new font '{id}' at '{}': {e}",
+                        entry.path.display()
+                    ),
+                }
+            }
+        }
+    }
+
+    log::info!("Manifest reloaded from '{}'", manifest_path.display());
     Ok(())
 }

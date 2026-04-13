@@ -142,6 +142,11 @@ impl Renderer {
         self.text_pipeline.load_font(id, data);
     }
 
+    /// Hot-reload a font: replace the old face data with new bytes in-place.
+    pub fn reload_font(&mut self, id: &str, data: Vec<u8>) {
+        self.text_pipeline.reload_font(id, data);
+    }
+
     /// Reconfigure the surface after a window resize.
     pub fn resize(&mut self, width: u32, height: u32) {
         if width > 0 && height > 0 {

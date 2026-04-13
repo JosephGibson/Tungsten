@@ -1,7 +1,7 @@
 # Tungsten — Phase 2 Plan
 
-**Status:** Phase 2 in progress — **M7 complete** (`v0.2.0-alpha.0`); **M8 complete** (`v0.3.0-alpha`); M9 hot reload next.
-**Branch:** `0.3`
+**Status:** Phase 2 in progress — **M7 complete** (`v0.2.0-alpha.0`); **M8 complete** (`v0.3.0-alpha`); **M9 complete** (`v0.4.0-alpha`); M10 tilemaps next.
+**Branch:** `0.4`
 **Prerequisite:** Phase 1 complete (M0–M6), tagged `v0.1.0-alpha`.
 **Companion docs:** `DESIGN.md` (architecture, Phase 1 milestones), `DECISIONS.md` (decision log, esp. D-024), `AGENTS.md` (operational rules).
 
@@ -21,7 +21,7 @@ The milestone names and descriptions below match the terminology established in 
 | -------------- | --------- | ---------------------- |
 | `v0.2.0-alpha.0` | M7        | Text rendering — **complete** |
 | `v0.3.0-alpha` | M8        | Audio — **complete** |
-| `v0.4.0-alpha` | M9        | Hot reload             |
+| `v0.4.0-alpha` | M9        | Hot reload — **complete** |
 | `v0.5.0-alpha` | M10       | Tilemaps               |
 | `v0.6.0-alpha` | M11       | 2D physics             |
 | `v0.7.0-alpha` | M12       | Archetypal ECS rewrite (conditional) |
@@ -42,28 +42,6 @@ The milestone names and descriptions below match the terminology established in 
 ## M7 — Text rendering ✓ Complete
 
 **Version:** `v0.2.0-alpha.0`
-**Soft estimate:** Multiple weekends
-**Learn:** Font loading, glyph rasterization, text layout, GPU text rendering with wgpu, the manifest pattern extended to a new asset type.
-
-### Goals
-
-- Render arbitrary text strings to the screen at specified positions, sizes, and colors.
-- Support the three font families already staged in `assets/fonts/` (Inter, Source Serif 4, JetBrains Mono).
-- Extend the asset manifest with a `fonts` section so fonts are loaded by ID, consistent with the sprite/animation pattern.
-- Provide a text-drawing API in `tungsten-render` that integrates with the existing frame loop.
-
-### Scope
-
-- **In scope:** Font loading from TTF files, glyph shaping and layout, GPU upload and rendering, manifest integration, a new example (`06_text` or similar).
-- **Out of scope:** Rich text (mixed fonts/colors in one block), text input/editing, UI widgets, text wrapping heuristics beyond basic line breaks, SDF text rendering.
-
-### Approach
-
-Per D-024, `glyphon` (built on `cosmic-text`) is the recommended crate. It's purpose-built for wgpu and satisfies D-015 rule 2 (implements a well-specified format that isn't the interesting part). The `fonts/README.md` confirms `cosmic-text`/`glyphon` handle the staged variable fonts via `swash`.
-
-The text pipeline should sit alongside the existing quad and sprite pipelines in `tungsten-render`. Font assets get opaque handles in the registry, same pattern as textures.
-
-### Acceptance criteria — all met
 
 - [x] `assets/manifest.json` has a `fonts` section; fonts are loaded by ID, never by path.
 - [x] Text renders correctly at multiple sizes with at least two font families (sans + mono).
@@ -71,43 +49,11 @@ The text pipeline should sit alongside the existing quad and sprite pipelines in
 - [x] `cargo test --workspace` passes. `cargo fmt` clean.
 - [x] `DECISIONS.md` entry for the `glyphon`/`cosmic-text` dependency, citing D-015 rule 2.
 
-### Dependencies
-
-- Phase 1 complete (M0–M6).
-- Font files in `assets/fonts/` (already staged).
-
-### Release `v0.2.0-alpha.0`
-
-Workspace and library crate versions are **`0.2.0-alpha.0`**. When this commit is on `main` (or `0.2`), tag with:
-
-`git tag -a v0.2.0-alpha.0 -m "M7 text rendering"`
-
 ---
 
 ## M8 — Audio ✓ Complete
 
 **Version:** `v0.3.0-alpha`
-**Soft estimate:** Multiple weekends
-**Learn:** Audio device abstraction, sample decoding, mixing, playback control, the manifest pattern extended to sounds.
-
-### Goals
-
-- Play sound effects and looping background music from assets registered in the manifest.
-- Wire audio into the ECS as a resource so systems can trigger sounds.
-- Fill the `assets/sounds/` directory (currently a placeholder) with actual content.
-
-### Scope
-
-- **In scope:** Audio device init via `cpal` (D-015 rule 1 — platform API abstraction), sample decoding via `symphonia` (D-015 rule 2 — data format), a basic mixer, manifest `sounds` section, volume control, looping, one-shot playback, a new example.
-- **Out of scope:** Spatial/positional audio, streaming large files, DSP effects, MIDI. These are future decisions if audio becomes a focus area.
-
-### Approach
-
-D-024 notes that `symphonia` (decoder) is likely fine under D-015 rule 2. The mixer question — `kira` vs hand-rolled — needs a `DECISIONS.md` entry. A hand-rolled mixer is more aligned with the project's "build it to learn it" ethos, but `kira` exists if the mixer turns out to be uninteresting yak-shaving.
-
-Audio playback runs on a dedicated thread (via `cpal`'s callback model), but the API surface presented to game code is synchronous: systems write to an `AudioCommands` resource (or similar), and the audio thread drains commands each callback. No async runtime.
-
-### Acceptance criteria
 
 - [x] `assets/manifest.json` has a `sounds` section; sounds are loaded by ID.
 - [x] At least one sound effect and one looping track play correctly.
@@ -116,15 +62,9 @@ Audio playback runs on a dedicated thread (via `cpal`'s callback model), but the
 - [x] `cargo test --workspace` passes. `cargo fmt` clean.
 - [x] `DECISIONS.md` entries for `cpal`, `symphonia`, and the mixer approach (hand-rolled vs `kira`).
 
-### Dependencies
-
-- M7 (text rendering) — not a hard technical dependency, but the versioning model requires M7 to ship first. Text is useful for audio example UI.
-
 ---
 
-<!-- OPEN: notify crate (D-015 rule 1) needs a DECISIONS.md entry before M9 ships -->
-
-## M9 — Hot reload
+## M9 — Hot reload ✓ Complete
 
 **Version:** `v0.4.0-alpha`
 **Soft estimate:** A weekend or two
@@ -147,14 +87,16 @@ The sketch in `DESIGN.md` ("Hot reload — Phase 2") is the blueprint: a backgro
 
 The M5 architecture already preserves the registry-by-ID invariant (confirmed in D-024). No game code holds direct GPU handles.
 
-### Acceptance criteria
+### Acceptance criteria — all met
 
-- [ ] Modifying a sprite PNG on disk causes the rendered sprite to update within a few frames, without restart.
-- [ ] Modifying an animation JSON on disk causes the animation to update live.
-- [ ] Modifying the manifest (adding/removing an entry) is handled gracefully — new assets load, removed assets either warn or are cleaned up.
-- [ ] No crash or resource leak on rapid successive changes.
-- [ ] `cargo test --workspace` passes. `cargo fmt` clean.
-- [ ] `DECISIONS.md` entry for the `notify` dependency, citing D-015 rule 1.
+- [x] Modifying a sprite PNG on disk causes the rendered sprite to update within a few frames, without restart.
+- [x] Modifying an animation JSON on disk causes the animation to update live.
+- [x] Modifying the manifest (adding/removing an entry) is handled gracefully — new assets load, removed assets either warn or are cleaned up.
+- [x] No crash or resource leak on rapid successive changes.
+- [x] `cargo test --workspace` passes. `cargo fmt` clean.
+- [x] `DECISIONS.md` entry for the `notify` dependency, citing D-015 rule 1 (D-031).
+- [x] Editing a TTF/OTF font updates text using that font within a few frames.
+- [x] New example `08_hot_reload` demonstrates live updates for sprites, animations, and fonts.
 
 ### Dependencies
 

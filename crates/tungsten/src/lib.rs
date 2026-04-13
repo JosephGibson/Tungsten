@@ -5,8 +5,10 @@
 pub mod app;
 pub mod asset_loader;
 pub mod audio;
+pub mod hot_reload;
 mod input_bridge;
 
 pub use app::{App, WindowSize};
+pub use hot_reload::HotReloadWatcher;
 pub use tungsten_core as core;
 pub use tungsten_render as render;
