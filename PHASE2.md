@@ -1,7 +1,7 @@
 # Tungsten — Phase 2 Plan
 
-**Status:** Phase 2 in progress. **M7 complete** (`v0.2.0-alpha.0`), **M8 complete** (`v0.3.0-alpha`), **M9 complete** (`v0.4.0-alpha`). Next: **M10 tilemaps**.
-**Branch:** `0.4`
+**Status:** Phase 2 in progress. **M7 complete** (`v0.2.0-alpha.0`), **M8 complete** (`v0.3.0-alpha`), **M9 complete** (`v0.4.0-alpha`), **M10 complete** (`v0.5.0-alpha`). Next: **M11 2D physics**.
+**Branch:** `0.5`
 **Prerequisite:** Phase 1 complete (M0–M6), tagged `v0.1.0-alpha`.
 **Companion docs:** `DESIGN.md` (architecture), `DECISIONS.md` (decision log, esp. D-024 — Phase 1 exit observations), `AGENTS.md` (operational rules).
 
@@ -20,8 +20,8 @@ Phase 1 proved the foundations: hand-rolled ECS, wgpu render pipeline, manifest-
 | `v0.2.0-alpha.0` | M7        | Text rendering                        | **Complete**    |
 | `v0.3.0-alpha`   | M8        | Audio                                 | **Complete**    |
 | `v0.4.0-alpha`   | M9        | Hot reload                            | **Complete**    |
-| `v0.5.0-alpha`   | M10       | Tilemaps                              | In progress     |
-| `v0.6.0-alpha`   | M11       | 2D physics                            | Planned         |
+| `v0.5.0-alpha`   | M10       | Tilemaps                              | **Complete**    |
+| `v0.6.0-alpha`   | M11       | 2D physics                            | In progress     |
 | `v0.7.0-alpha`   | M12       | Archetypal ECS rewrite                | **Conditional** (D-030) |
 | `v1.0.0`         | M13       | A first actual game                   | Planned         |
 
@@ -54,39 +54,19 @@ Phase 1 proved the foundations: hand-rolled ECS, wgpu render pipeline, manifest-
 
 ---
 
-## M10 — Tilemaps
+## M10 — Tilemaps ✓ Complete
 
 **Version:** `v0.5.0-alpha`
-**Soft estimate:** Multiple weekends
-**Learn:** Tile-based map representation, efficient tilemap rendering (batching, culling), map data formats, manifest extension to maps, camera/viewport concepts.
-
-### Goals
-
-- Load and render tile-based maps from a data-driven format registered in the manifest.
-- Support multiple tile layers (background, foreground, collision).
-- Efficient rendering — tilemaps can be large; naive per-tile draw calls won't scale.
-
-### Scope
-
-- **In scope:** Custom JSON tilemap format (consistent with the animation precedent from D-010), manifest `tilemaps` section, tileset references via sprite IDs, multi-layer rendering, camera scrolling/viewport, new example with a scrollable map.
-- **Out of scope:** Tiled `.tmx` import (possible future converter), infinite/procedural maps, auto-tiling, tile animations (possible extension over the existing animation system).
-
-### Approach
-
-Tilemaps reference sprites from the existing manifest by ID — a tileset is a collection of sprite IDs, not a separate atlas. Consistent with the rest of the architecture and benefits from M9 hot reload. The tilemap renderer batches tiles into a single draw call per layer, similar to sprite instancing. A new camera/viewport resource controls the visible portion of the map and becomes part of the engine core.
+**Shipped:** Custom `.tmj` JSON tilemap format, `TilemapData`/`TilemapRegistry`/`TilemapInstance` in `tungsten-core`, manifest `tilemaps` section, `Camera2D` resource feeding view-projection into the sprite and quad pipelines, `extract_tilemaps(&World)` helper with visible-AABB tile culling, `.tmj` hot reload on the existing watcher path, `example-09-tilemap` with a 48×30 two-render-layer map plus a non-rendering collision layer (M11 seam). See `DECISIONS.md` D-032 and `CHANGELOG.md` for details.
 
 ### Acceptance criteria
 
-- [ ] A tilemap loads from a JSON file registered in the manifest.
-- [ ] Multiple layers render in correct order.
-- [ ] Camera scrolling works — arrow keys or WASD pan a viewport across a map larger than the window.
-- [ ] Performance is reasonable for maps of at least 100×100 tiles.
-- [ ] A new example demonstrates a scrollable tilemap with multiple layers.
-- [ ] `cargo test --workspace` passes. `cargo fmt` clean.
-
-### Dependencies
-
-M5 (sprite rendering, asset registry). M9 not required but hot reload pays off heavily during map iteration.
+- [x] A tilemap loads from a JSON file registered in the manifest.
+- [x] Multiple layers render in correct order.
+- [x] Camera scrolling works — arrow keys or WASD pan a viewport across a map larger than the window.
+- [x] Performance is reasonable for maps of at least 100×100 tiles (visible-AABB culling makes cost proportional to viewport, not map size).
+- [x] A new example demonstrates a scrollable tilemap with multiple layers.
+- [x] `cargo test --workspace` passes. `cargo fmt` clean.
 
 ---
 

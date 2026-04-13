@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.4.0-alpha"
+version = "0.5.0-alpha"
 edition = "2021"
 license = "MIT"
 
@@ -17,6 +17,7 @@ members = [
     "examples/06_text",
     "examples/07_audio",
     "examples/08_hot_reload",
+    "examples/09_tilemap",
 ]
 
 [workspace.dependencies]

@@ -686,7 +686,7 @@ dependencies = [
 
 [[package]]
 name = "example-01-window"
-version = "0.4.0-alpha"
+version = "0.5.0-alpha"
 dependencies = [
  "anyhow",
  "env_logger",
@@ -696,7 +696,7 @@ dependencies = [
 
 [[package]]
 name = "example-02-ecs"
-version = "0.4.0-alpha"
+version = "0.5.0-alpha"
 dependencies = [
  "env_logger",
  "log",
@@ -705,7 +705,7 @@ dependencies = [
 
 [[package]]
 name = "example-03-dots"
-version = "0.4.0-alpha"
+version = "0.5.0-alpha"
 dependencies = [
  "anyhow",
  "env_logger",
@@ -717,7 +717,7 @@ dependencies = [
 
 [[package]]
 name = "example-04-sprites"
-version = "0.4.0-alpha"
+version = "0.5.0-alpha"
 dependencies = [
  "anyhow",
  "env_logger",
@@ -729,7 +729,7 @@ dependencies = [
 
 [[package]]
 name = "example-05-animation"
-version = "0.4.0-alpha"
+version = "0.5.0-alpha"
 dependencies = [
  "anyhow",
  "env_logger",
@@ -741,7 +741,7 @@ dependencies = [
 
 [[package]]
 name = "example-06-text"
-version = "0.4.0-alpha"
+version = "0.5.0-alpha"
 dependencies = [
  "anyhow",
  "env_logger",
@@ -753,7 +753,7 @@ dependencies = [
 
 [[package]]
 name = "example-07-audio"
-version = "0.4.0-alpha"
+version = "0.5.0-alpha"
 dependencies = [
  "anyhow",
  "env_logger",
@@ -765,10 +765,23 @@ dependencies = [
 
 [[package]]
 name = "example-08-hot-reload"
-version = "0.4.0-alpha"
+version = "0.5.0-alpha"
 dependencies = [
  "anyhow",
  "env_logger",
+ "log",
+ "tungsten",
+ "tungsten-core",
+ "tungsten-render",
+]
+
+[[package]]
+name = "example-09-tilemap"
+version = "0.5.0-alpha"
+dependencies = [
+ "anyhow",
+ "env_logger",
+ "glam",
  "log",
  "tungsten",
  "tungsten-core",
@@ -2764,7 +2777,7 @@ dependencies = [
 
 [[package]]
 name = "tungsten"
-version = "0.4.0-alpha"
+version = "0.5.0-alpha"
 dependencies = [
  "anyhow",
  "cpal",
@@ -2782,7 +2795,7 @@ dependencies = [
 
 [[package]]
 name = "tungsten-core"
-version = "0.4.0-alpha"
+version = "0.5.0-alpha"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -2797,7 +2810,7 @@ dependencies = [
 
 [[package]]
 name = "tungsten-render"
-version = "0.4.0-alpha"
+version = "0.5.0-alpha"
 dependencies = [
  "bytemuck",
  "glam",

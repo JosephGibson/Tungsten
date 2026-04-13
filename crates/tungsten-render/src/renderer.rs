@@ -179,13 +179,22 @@ impl Renderer {
     }
 
     /// Render a frame with colored quads. Direct-data API per D-018.
+    /// Uses the pre-M10 default pixel ortho (no camera scrolling).
     pub fn render_frame_with_quads(&mut self, quads: &[QuadInstance]) -> Result<(), RenderError> {
-        self.render_frame_full(quads, &[], &[])
+        let w = self.surface_config.width as f32;
+        let h = self.surface_config.height as f32;
+        let default_view_proj = glam::Mat4::orthographic_rh(0.0, w, h, 0.0, -1.0, 1.0);
+        self.render_frame_full(&default_view_proj, quads, &[], &[])
     }
 
     /// Render a full frame with colored quads, textured sprites, and text.
+    ///
+    /// `view_proj` controls where world-space sprites and quads appear
+    /// on screen. Text is always drawn in screen space regardless of
+    /// the camera — glyphon manages its own viewport.
     pub fn render_frame_full(
         &mut self,
+        view_proj: &glam::Mat4,
         quads: &[QuadInstance],
         sprite_batches: &[SpriteBatch],
         text_sections: &[TextSection],
@@ -197,10 +206,8 @@ impl Renderer {
 
         let w = self.surface_config.width;
         let h = self.surface_config.height;
-        self.quad_pipeline
-            .update_camera(&self.queue, w as f32, h as f32);
-        self.sprite_pipeline
-            .update_camera(&self.queue, w as f32, h as f32);
+        self.quad_pipeline.update_camera(&self.queue, view_proj);
+        self.sprite_pipeline.update_camera(&self.queue, view_proj);
 
         self.text_pipeline
             .prepare(&self.device, &self.queue, text_sections, w, h);

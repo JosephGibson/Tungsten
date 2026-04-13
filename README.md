@@ -2,7 +2,7 @@
 
 A from-scratch Rust 2D game engine, built as a hobby project. The point is the *building*, not the shipping — understanding how engines work from the ground up, with Rust as the language to learn deeply.
 
-**Status:** `v0.4.0-alpha` — Phase 1 complete (M0–M6). Phase 2 through M9 complete (M7 text, M8 audio, M9 hot reload). Next: M10 tilemaps. See [PHASE2.md](PHASE2.md).
+**Status:** `v0.5.0-alpha` — Phase 1 complete (M0–M6). Phase 2 through M10 complete (M7 text, M8 audio, M9 hot reload, M10 tilemaps). Next: M11 2D physics. See [PHASE2.md](PHASE2.md).
 
 ## Stack
 

@@ -186,3 +186,16 @@ A crate that hands me something the project is supposed to teach me to build is 
 **Decision:** Use `notify` v6 with `default-features = false`. `RecommendedWatcher` auto-selects the backend per platform (inotify / FSEvents / ReadDirectoryChanges). Events cross threads via `std::sync::mpsc`. A 50ms debounce in main-thread polling collapses editor double-writes. Satisfies D-015 rule 1.
 **Why:** Avoids three OS file-watching codepaths.
 **Consequences:** `notify` is a dep of `tungsten` only. The watcher thread is a second background thread alongside the `cpal` audio callback; game logic stays single-threaded.
+
+## D-032 — M10 tilemap shape (format, pipeline reuse, camera default)
+**Date:** 2026-04-13
+**Decision:** Three coupled choices that define M10's shape:
+1. **`.tmj` extension for tilemap JSON.** Distinct from animation `.json` so the hot-reload dispatcher in `App::process_hot_reload` can route on extension alone. `notify` events only carry paths; content-sniffing to distinguish animation JSON from tilemap JSON would be a strict loss. Follows D-010 (custom JSON over Tiled `.tmx`) for the schema itself — tileset is `Vec<String>` of sprite IDs, layers hold flat row-major `Vec<i32>` with `-1` as the empty marker.
+2. **Tilemaps reuse the sprite pipeline.** `extract_tilemaps(&World)` resolves visible tiles into `SpriteBatch`es keyed by texture handle and returns them in layer order. The sprite pipeline draws them with zero changes. No new wgpu pipeline, no new shader, no new bind-group layout. Preserves D-007 (core/render seam): `tungsten-core` holds `TilemapData`/`TilemapRegistry`/`TilemapInstance` (plain data, no wgpu types); the umbrella crate's free function is where the AABB→tile-grid culling happens. Game code uses the D-018 direct-data API through `set_extract_sprites`, giving the caller control over ordering vs. entity sprites.
+3. **`Camera2D` default preserves pre-M10 behavior.** The new `Camera2D` resource (position top-left, zoom) produces its view-projection via `Mat4::orthographic_rh(pos.x, pos.x+w/zoom, pos.y+h/zoom, pos.y, -1, 1)`. At the default (position zero, zoom 1.0) this is the exact matrix the sprite pipeline built internally in M7–M9, so examples 01–08 are pixel-identical without being touched. A unit test in `camera.rs` asserts the equivalence.
+**Why:** The three decisions together keep M10 to pure additive work. No existing example or downstream code needed to change; all three crates compile with the new signatures behind defaults that match the old behavior. The `.tmj` split specifically buys clean hot-reload dispatch with zero parsing overhead.
+**Consequences:**
+- Text (glyphon) deliberately does **not** consume `Camera2D` — HUD/UI stays screen-space while the world scrolls. Documented on the `Camera2D` type.
+- `SpritePipeline::update_camera` and `QuadPipeline::update_camera` now take `&Mat4` instead of `(width, height)`; the umbrella crate computes the matrix each frame from `Camera2D` + `WindowSize`.
+- No new runtime dep (D-015 entry not required — `glam::Mat4` is already in use).
+- A non-rendering `LayerKind::Collision` is accepted by the loader and round-trips through the registry but is skipped by `extract_tilemaps`. This is the M11 seam — M11 will read it directly without format changes.

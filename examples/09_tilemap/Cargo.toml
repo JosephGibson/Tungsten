@@ -1,0 +1,14 @@
+[package]
+name = "example-09-tilemap"
+version.workspace = true
+edition = "2021"
+publish = false
+
+[dependencies]
+tungsten = { workspace = true }
+tungsten-core = { workspace = true }
+tungsten-render = { workspace = true }
+glam = { workspace = true }
+anyhow = { workspace = true }
+env_logger = { workspace = true }
+log = { workspace = true }

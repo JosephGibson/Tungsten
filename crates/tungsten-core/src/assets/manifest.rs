@@ -23,6 +23,8 @@ pub enum ManifestError {
     MissingFontFile { id: String, path: String },
     #[error("sound '{id}' references missing file: {path}")]
     MissingSoundFile { id: String, path: String },
+    #[error("tilemap '{id}' references missing file: {path}")]
+    MissingTilemapFile { id: String, path: String },
     #[error("duplicate asset ID '{id}' across manifests")]
     DuplicateId { id: String },
 }
@@ -38,6 +40,8 @@ pub struct RawManifest {
     pub fonts: HashMap<String, FontEntry>,
     #[serde(default)]
     pub sounds: HashMap<String, SoundEntry>,
+    #[serde(default)]
+    pub tilemaps: HashMap<String, TilemapEntry>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -83,6 +87,11 @@ fn default_volume() -> f32 {
     1.0
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct TilemapEntry {
+    pub path: String,
+}
+
 /// A fully resolved manifest with absolute paths.
 #[derive(Debug, Clone, Default)]
 pub struct ResolvedManifest {
@@ -90,6 +99,7 @@ pub struct ResolvedManifest {
     pub animations: HashMap<String, ResolvedAnimation>,
     pub fonts: HashMap<String, ResolvedFont>,
     pub sounds: HashMap<String, ResolvedSound>,
+    pub tilemaps: HashMap<String, ResolvedTilemap>,
 }
 
 #[derive(Debug, Clone)]
@@ -113,6 +123,11 @@ pub struct ResolvedSound {
     pub path: PathBuf,
     pub looping: bool,
     pub volume: f32,
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolvedTilemap {
+    pub path: PathBuf,
 }
 
 impl ResolvedManifest {
@@ -197,6 +212,20 @@ impl ResolvedManifest {
             );
         }
 
+        for (id, entry) in raw.tilemaps {
+            let full_path = base_dir.join(&entry.path);
+            if !full_path.exists() {
+                return Err(ManifestError::MissingTilemapFile {
+                    id,
+                    path: full_path.display().to_string(),
+                });
+            }
+            let full_path = full_path.canonicalize().unwrap_or(full_path);
+            result
+                .tilemaps
+                .insert(id, ResolvedTilemap { path: full_path });
+        }
+
         Ok(result)
     }
 
@@ -225,6 +254,12 @@ impl ResolvedManifest {
                 return Err(ManifestError::DuplicateId { id });
             }
             self.sounds.insert(id, sound);
+        }
+        for (id, tilemap) in other.tilemaps {
+            if self.tilemaps.contains_key(&id) {
+                return Err(ManifestError::DuplicateId { id });
+            }
+            self.tilemaps.insert(id, tilemap);
         }
         Ok(())
     }
@@ -472,6 +507,43 @@ mod tests {
 
         let err = a.merge(b).unwrap_err();
         assert!(matches!(err, ManifestError::DuplicateId { id } if id == "sfx_blip"));
+    }
+
+    #[test]
+    fn load_manifest_with_tilemaps() {
+        let tmp = tempdir();
+        write_file(&tmp, "maps/demo.tmj");
+        let path = write_manifest(&tmp, r#"{"tilemaps": {"demo": {"path": "maps/demo.tmj"}}}"#);
+        let m = ResolvedManifest::load(&path).unwrap();
+        assert!(m.tilemaps.contains_key("demo"));
+    }
+
+    #[test]
+    fn load_manifest_missing_tilemap_file() {
+        let tmp = tempdir();
+        let path = write_manifest(&tmp, r#"{"tilemaps": {"demo": {"path": "nope.tmj"}}}"#);
+        let err = ResolvedManifest::load(&path).unwrap_err();
+        assert!(matches!(err, ManifestError::MissingTilemapFile { .. }));
+    }
+
+    #[test]
+    fn merge_duplicate_tilemap_is_error() {
+        let mut a = ResolvedManifest::default();
+        a.tilemaps.insert(
+            "demo".into(),
+            ResolvedTilemap {
+                path: "demo.tmj".into(),
+            },
+        );
+        let mut b = ResolvedManifest::default();
+        b.tilemaps.insert(
+            "demo".into(),
+            ResolvedTilemap {
+                path: "demo2.tmj".into(),
+            },
+        );
+        let err = a.merge(b).unwrap_err();
+        assert!(matches!(err, ManifestError::DuplicateId { id } if id == "demo"));
     }
 
     #[test]

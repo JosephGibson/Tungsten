@@ -6,8 +6,8 @@ use crate::asset_loader;
 use crate::audio::AudioSystem;
 use crate::hot_reload::HotReloadWatcher;
 use crate::input_bridge;
-use tungsten_core::assets::{AnimationRegistry, FontRegistry, SoundRegistry};
-use tungsten_core::{AssetRegistry, AudioCommands, Config, DeltaTime, InputState, World};
+use tungsten_core::assets::{AnimationRegistry, FontRegistry, SoundRegistry, TilemapRegistry};
+use tungsten_core::{AssetRegistry, AudioCommands, Camera2D, Config, DeltaTime, InputState, World};
 use tungsten_render::{QuadInstance, Renderer, SpriteBatch, TextSection};
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, WindowEvent};
@@ -74,6 +74,8 @@ impl App {
         world.insert_resource(AssetRegistry::new());
         world.insert_resource(SoundRegistry::new());
         world.insert_resource(AudioCommands::new());
+        world.insert_resource(TilemapRegistry::new());
+        world.insert_resource(Camera2D::new());
 
         Self {
             config,
@@ -239,6 +241,22 @@ impl App {
                         log::debug!("Hot reload: no font registered for '{}'", canon.display());
                     }
                 }
+                "tmj" => {
+                    let id = self
+                        .world
+                        .get_resource::<TilemapRegistry>()
+                        .and_then(|tr| tr.id_for_path(&canon).map(|s| s.to_string()));
+                    if let Some(id) = id {
+                        if let Err(e) = asset_loader::reload_tilemap(&id, &canon, &mut self.world) {
+                            log::error!("Tilemap reload '{id}': {e}");
+                        }
+                    } else {
+                        log::debug!(
+                            "Hot reload: no tilemap registered for '{}'",
+                            canon.display()
+                        );
+                    }
+                }
                 _ => {}
             }
         }
@@ -394,7 +412,18 @@ impl ApplicationHandler for App {
                     .unwrap_or_default();
 
                 if let Some(renderer) = &mut self.renderer {
-                    if let Err(e) = renderer.render_frame_full(&quads, &sprites, &text) {
+                    let (vw, vh) = {
+                        let cfg = &renderer.surface_config;
+                        (cfg.width as f32, cfg.height as f32)
+                    };
+                    let view_proj = self
+                        .world
+                        .get_resource::<Camera2D>()
+                        .copied()
+                        .unwrap_or_default()
+                        .view_projection(vw, vh);
+                    if let Err(e) = renderer.render_frame_full(&view_proj, &quads, &sprites, &text)
+                    {
                         log::error!("Render error: {e}");
                     }
                 }
