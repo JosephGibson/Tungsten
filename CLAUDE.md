@@ -27,6 +27,12 @@ Before committing anything substantial: `cargo fmt && cargo test --workspace`.
 
 `cargo test --workspace` runs unit tests only — no GPU or display required. Examples need a real GPU and display; override the backend if wgpu picks the wrong one: `WGPU_BACKEND=vulkan` (Linux), `WGPU_BACKEND=metal` (macOS), `WGPU_BACKEND=dx12` (Windows).
 
+**Two test layers** (details in `AGENTS.md` → *Test layers*):
+
+- **Layer 1** — [crates/tungsten-core/tests/manifests.rs](crates/tungsten-core/tests/manifests.rs) validates every `manifest.json` under `cargo test --workspace`. Run before any commit touching manifests, assets, or the core/render seam.
+- **Layer 2** — [scripts/smoke-examples.sh](scripts/smoke-examples.sh) runs every example with `TUNGSTEN_SMOKE_FRAMES=3` (honoured by [crates/tungsten/src/app.rs](crates/tungsten/src/app.rs)) under a per-example timeout. Run before committing engine or example wiring changes. Needs GPU/display.
+- Clean checkout or dep bump → run both.
+
 ## Crate layout and where new code goes
 
 ```

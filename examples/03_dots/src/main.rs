@@ -103,10 +103,16 @@ fn movement_system(world: &mut World) {
 }
 
 fn bounce_system(world: &mut World) {
-    let win = world
-        .get_resource::<WindowSize>()
-        .map(|ws| (ws.width as f32, ws.height as f32))
-        .unwrap_or((1280.0, 720.0));
+    // Same class of bug as the ex09 camera clamp: a hardcoded fallback
+    // here would silently drift from the real window size after a resize.
+    // WindowSize is always inserted by App::new — if it's missing, the
+    // test/world construction is wrong and we want to hear about it.
+    let win = {
+        let ws = world
+            .get_resource::<WindowSize>()
+            .expect("WindowSize resource missing");
+        (ws.width as f32, ws.height as f32)
+    };
 
     let entities = world.query_entities::<Velocity>();
     for entity in entities {
@@ -289,4 +295,112 @@ fn main() -> anyhow::Result<()> {
     app.set_extract_quads(extract_quads);
 
     app.run()
+}
+
+#[cfg(test)]
+mod tests {
+    //! Headless system tests. The pattern: build a minimal World with
+    //! just the resources the system reads, drive one tick, assert on
+    //! component state. No GPU, no window, no event loop. This is the
+    //! "Layer 3" coverage that the manifest test (Layer 1) and the
+    //! smoke runner (Layer 2) can't give us — neither of those drive
+    //! input, so a silent "WASD does nothing" regression slips past.
+    use super::*;
+
+    fn player_world() -> (World, Entity) {
+        let mut world = World::new();
+        world.insert_resource(DeltaTime { dt: 0.1 });
+        world.insert_resource(InputState::new());
+        world.insert_resource(WindowSize {
+            width: 1280,
+            height: 720,
+        });
+        let player = world.spawn();
+        world.insert(player, Position { x: 100.0, y: 100.0 });
+        world.insert(player, Player);
+        (world, player)
+    }
+
+    #[test]
+    fn player_moves_right_on_d() {
+        let (mut world, player) = player_world();
+        world
+            .get_resource_mut::<InputState>()
+            .unwrap()
+            .key_down(KeyCode::KeyD);
+        player_control_system(&mut world);
+        let pos = world.get::<Position>(player).unwrap();
+        assert!(pos.x > 100.0, "player x did not increase: {}", pos.x);
+    }
+
+    #[test]
+    fn player_moves_up_on_w() {
+        // Y is down, so W should *decrease* y. This test pins that
+        // convention — flipping it silently would send WASD in opposite
+        // directions and neither smoke nor manifest tests would catch it.
+        let (mut world, player) = player_world();
+        world
+            .get_resource_mut::<InputState>()
+            .unwrap()
+            .key_down(KeyCode::KeyW);
+        player_control_system(&mut world);
+        let pos = world.get::<Position>(player).unwrap();
+        assert!(pos.y < 100.0, "player y did not decrease: {}", pos.y);
+    }
+
+    #[test]
+    fn player_idle_without_input() {
+        let (mut world, player) = player_world();
+        player_control_system(&mut world);
+        let pos = world.get::<Position>(player).unwrap();
+        assert_eq!((pos.x, pos.y), (100.0, 100.0));
+    }
+
+    #[test]
+    fn bounce_flips_velocity_at_right_edge() {
+        let mut world = World::new();
+        world.insert_resource(DeltaTime { dt: 0.016 });
+        world.insert_resource(WindowSize {
+            width: 200,
+            height: 200,
+        });
+        let e = world.spawn();
+        world.insert(e, Position { x: 190.0, y: 50.0 });
+        world.insert(e, Velocity { dx: 100.0, dy: 0.0 });
+        world.insert(e, Size { w: 20.0, h: 20.0 });
+
+        bounce_system(&mut world);
+
+        let vel = world.get::<Velocity>(e).unwrap();
+        assert!(vel.dx < 0.0, "velocity did not flip: {}", vel.dx);
+        let pos = world.get::<Position>(e).unwrap();
+        assert!(pos.x + 20.0 <= 200.0, "pos not clamped: {}", pos.x);
+    }
+
+    #[test]
+    fn bounce_flips_velocity_at_left_edge() {
+        let mut world = World::new();
+        world.insert_resource(DeltaTime { dt: 0.016 });
+        world.insert_resource(WindowSize {
+            width: 200,
+            height: 200,
+        });
+        let e = world.spawn();
+        world.insert(e, Position { x: -5.0, y: 50.0 });
+        world.insert(
+            e,
+            Velocity {
+                dx: -100.0,
+                dy: 0.0,
+            },
+        );
+        world.insert(e, Size { w: 20.0, h: 20.0 });
+
+        bounce_system(&mut world);
+
+        let vel = world.get::<Velocity>(e).unwrap();
+        assert!(vel.dx > 0.0, "velocity did not flip: {}", vel.dx);
+        let pos = world.get::<Position>(e).unwrap();
+        assert!(pos.x >= 0.0, "pos not clamped: {}", pos.x);
+    }
 }

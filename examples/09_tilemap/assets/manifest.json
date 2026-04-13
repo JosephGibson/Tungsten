@@ -7,8 +7,8 @@
     "ex09_flower": { "path": "sprites/tile_flower.png", "filter": "nearest" }
   },
   "fonts": {
-    "ex09_sans":      { "path": "../../assets/fonts/Inter/static/Inter-Regular.ttf" },
-    "ex09_sans_bold": { "path": "../../assets/fonts/Inter/static/Inter-Bold.ttf" }
+    "ex09_sans":      { "path": "../../../assets/fonts/Inter/static/Inter-Regular.ttf" },
+    "ex09_sans_bold": { "path": "../../../assets/fonts/Inter/static/Inter-Bold.ttf" }
   },
   "tilemaps": {
     "ex09_demo": { "path": "tilemaps/demo.tmj" }

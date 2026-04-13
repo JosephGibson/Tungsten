@@ -60,6 +60,10 @@ pub struct App {
     hot_reload: Option<HotReloadWatcher>,
     /// Path to the primary manifest file, used to detect manifest changes.
     manifest_path: Option<PathBuf>,
+    /// Smoke-test mode: when `Some(n)`, render `n` frames then exit cleanly.
+    /// Populated from the `TUNGSTEN_SMOKE_FRAMES` env var. Used by
+    /// `scripts/smoke-examples.sh` to drive examples in CI-like checks.
+    smoke_frames_remaining: Option<u32>,
 }
 
 impl App {
@@ -92,6 +96,10 @@ impl App {
             audio: None,
             hot_reload: None,
             manifest_path: None,
+            smoke_frames_remaining: std::env::var("TUNGSTEN_SMOKE_FRAMES")
+                .ok()
+                .and_then(|s| s.parse::<u32>().ok())
+                .filter(|n| *n > 0),
         }
     }
 
@@ -445,6 +453,14 @@ impl ApplicationHandler for App {
 
                 if let Some(window) = &self.window {
                     window.request_redraw();
+                }
+
+                if let Some(remaining) = self.smoke_frames_remaining.as_mut() {
+                    *remaining = remaining.saturating_sub(1);
+                    if *remaining == 0 {
+                        log::info!("TUNGSTEN_SMOKE_FRAMES reached; exiting cleanly");
+                        event_loop.exit();
+                    }
                 }
             }
             _ => {}

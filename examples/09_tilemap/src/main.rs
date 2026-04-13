@@ -71,29 +71,31 @@ fn camera_system(world: &mut World) {
 
     let step = PAN_SPEED_PX_PER_SEC * dt;
 
-    if let Some(camera) = world.get_resource_mut::<Camera2D>() {
-        camera.position.x += dx * step;
-        camera.position.y += dy * step;
+    // Clamp against live map + viewport dimensions. Reading from the
+    // resources on every tick keeps the pan bounds correct after a hot
+    // reload of the `.tmj` or a window resize — the previous version
+    // hardcoded 48×30@16 and 1280×720, and silently pinned the camera
+    // to (0, 0) as soon as either side of that assumption drifted.
+    let (map_w, map_h) = world
+        .get_resource::<TilemapRegistry>()
+        .and_then(|r| r.get("ex09_demo"))
+        .map(|d| {
+            (
+                (d.width * d.tile_width) as f32,
+                (d.height * d.tile_height) as f32,
+            )
+        })
+        .unwrap_or((f32::INFINITY, f32::INFINITY));
+    let (view_w, view_h) = world
+        .get_resource::<WindowSize>()
+        .map(|w| (w.width as f32, w.height as f32))
+        .unwrap_or((0.0, 0.0));
+    let max_x = (map_w - view_w).max(0.0);
+    let max_y = (map_h - view_h).max(0.0);
 
-        // Clamp to roughly the map bounds so the player can't scroll
-        // into empty space forever. Uses the demo tilemap size hardcoded
-        // here — cheap enough and the map only exists in this example.
-        const MAP_PX_W: f32 = 48.0 * 16.0;
-        const MAP_PX_H: f32 = 30.0 * 16.0;
-        const VIEW_W: f32 = 1280.0; // matches Config default; over-clamping is fine
-        const VIEW_H: f32 = 720.0;
-        let max_x: f32 = if MAP_PX_W > VIEW_W {
-            MAP_PX_W - VIEW_W
-        } else {
-            0.0
-        };
-        let max_y: f32 = if MAP_PX_H > VIEW_H {
-            MAP_PX_H - VIEW_H
-        } else {
-            0.0
-        };
-        camera.position.x = camera.position.x.clamp(0.0, max_x);
-        camera.position.y = camera.position.y.clamp(0.0, max_y);
+    if let Some(camera) = world.get_resource_mut::<Camera2D>() {
+        camera.position.x = (camera.position.x + dx * step).clamp(0.0, max_x);
+        camera.position.y = (camera.position.y + dy * step).clamp(0.0, max_y);
     }
 }
 
@@ -160,7 +162,14 @@ fn extract_text(world: &World) -> Vec<TextSection> {
 fn main() -> anyhow::Result<()> {
     env_logger::init();
 
-    let config = Config::load("tungsten.json")?;
+    // The demo tilemap is 48×30 @ 16px = 768×480. The shared
+    // `tungsten.json` defaults to 1280×720, which would fully contain the
+    // map and leave the camera with nothing to pan over. Shrink the window
+    // here so the map is strictly larger than the viewport — this is the
+    // whole point of the example.
+    let mut config = Config::load("tungsten.json")?;
+    config.window.width = 640;
+    config.window.height = 360;
     let mut app = App::new(config);
 
     // Watch the example-local assets directory. Manifest hot reload
@@ -189,6 +198,33 @@ fn main() -> anyhow::Result<()> {
         ] {
             assert!(registry.get_sprite(id).is_some(), "missing sprite '{id}'");
         }
+
+        // Guardrail: panning only makes sense when the map is strictly
+        // larger than the viewport on at least one axis. If the map fits,
+        // the camera clamp will pin to (0, 0) and the example silently
+        // looks "broken" (WASD does nothing). We hit that exact bug before
+        // — fail loudly at startup instead of letting it slip to runtime.
+        let map = world
+            .get_resource::<TilemapRegistry>()
+            .and_then(|r| r.get("ex09_demo"))
+            .expect("ex09_demo tilemap not registered");
+        let ws = world
+            .get_resource::<WindowSize>()
+            .copied()
+            .expect("WindowSize resource missing");
+        let map_px = (
+            (map.width * map.tile_width) as f32,
+            (map.height * map.tile_height) as f32,
+        );
+        if map_px.0 <= ws.width as f32 && map_px.1 <= ws.height as f32 {
+            log::warn!(
+                "ex09: map ({}x{} px) fits inside viewport ({}x{}) — panning will be a no-op",
+                map_px.0,
+                map_px.1,
+                ws.width,
+                ws.height,
+            );
+        }
     });
 
     app.add_system(camera_system);
@@ -196,4 +232,70 @@ fn main() -> anyhow::Result<()> {
     app.set_extract_text(extract_text);
 
     app.run()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tungsten::core::assets::{LayerKind, TilemapData, TilemapLayer};
+    use tungsten::core::World;
+
+    fn world_with_map(map_w: u32, map_h: u32, view_w: u32, view_h: u32) -> World {
+        let mut world = World::new();
+        world.insert_resource(DeltaTime { dt: 0.1 });
+        world.insert_resource(InputState::new());
+        world.insert_resource(Camera2D::new());
+        world.insert_resource(WindowSize {
+            width: view_w,
+            height: view_h,
+        });
+        let mut registry = TilemapRegistry::new();
+        let cells = (map_w * map_h) as usize;
+        let data = TilemapData {
+            tile_width: 16,
+            tile_height: 16,
+            width: map_w,
+            height: map_h,
+            tileset: vec![],
+            layers: vec![TilemapLayer {
+                name: "background".into(),
+                kind: LayerKind::Render,
+                tiles: vec![-1; cells],
+            }],
+        };
+        registry.insert("ex09_demo".into(), data);
+        world.insert_resource(registry);
+        world
+    }
+
+    #[test]
+    fn pans_right_when_map_larger_than_viewport() {
+        let mut world = world_with_map(48, 30, 320, 180);
+        world
+            .get_resource_mut::<InputState>()
+            .unwrap()
+            .key_down(KeyCode::KeyD);
+        camera_system(&mut world);
+        let cam = world.get_resource::<Camera2D>().unwrap();
+        assert!(
+            cam.position.x > 0.0,
+            "camera did not pan right: {:?}",
+            cam.position
+        );
+    }
+
+    #[test]
+    fn stays_put_when_map_fits_viewport() {
+        // This is the exact configuration that caused the original bug:
+        // a 768×480 map inside a 1280×720 viewport. Clamping to 0 is the
+        // correct answer here — there is nothing to pan into.
+        let mut world = world_with_map(48, 30, 1280, 720);
+        world
+            .get_resource_mut::<InputState>()
+            .unwrap()
+            .key_down(KeyCode::KeyD);
+        camera_system(&mut world);
+        let cam = world.get_resource::<Camera2D>().unwrap();
+        assert_eq!(cam.position.x, 0.0);
+    }
 }
