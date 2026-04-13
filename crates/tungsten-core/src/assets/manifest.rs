@@ -21,6 +21,8 @@ pub enum ManifestError {
     MissingAnimationFile { id: String, path: String },
     #[error("font '{id}' references missing file: {path}")]
     MissingFontFile { id: String, path: String },
+    #[error("sound '{id}' references missing file: {path}")]
+    MissingSoundFile { id: String, path: String },
     #[error("duplicate asset ID '{id}' across manifests")]
     DuplicateId { id: String },
 }
@@ -34,6 +36,8 @@ pub struct RawManifest {
     pub animations: HashMap<String, AnimationEntry>,
     #[serde(default)]
     pub fonts: HashMap<String, FontEntry>,
+    #[serde(default)]
+    pub sounds: HashMap<String, SoundEntry>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -64,12 +68,28 @@ pub struct FontEntry {
     pub path: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct SoundEntry {
+    pub path: String,
+    /// Whether this sound loops by default. Can be overridden at play time.
+    #[serde(default)]
+    pub looping: bool,
+    /// Base volume (0.0–1.0). Multiplied by the master volume at mix time.
+    #[serde(default = "default_volume")]
+    pub volume: f32,
+}
+
+fn default_volume() -> f32 {
+    1.0
+}
+
 /// A fully resolved manifest with absolute paths.
 #[derive(Debug, Clone, Default)]
 pub struct ResolvedManifest {
     pub sprites: HashMap<String, ResolvedSprite>,
     pub animations: HashMap<String, ResolvedAnimation>,
     pub fonts: HashMap<String, ResolvedFont>,
+    pub sounds: HashMap<String, ResolvedSound>,
 }
 
 #[derive(Debug, Clone)]
@@ -86,6 +106,13 @@ pub struct ResolvedAnimation {
 #[derive(Debug, Clone)]
 pub struct ResolvedFont {
     pub path: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolvedSound {
+    pub path: PathBuf,
+    pub looping: bool,
+    pub volume: f32,
 }
 
 impl ResolvedManifest {
@@ -149,6 +176,24 @@ impl ResolvedManifest {
             result.fonts.insert(id, ResolvedFont { path: full_path });
         }
 
+        for (id, entry) in raw.sounds {
+            let full_path = base_dir.join(&entry.path);
+            if !full_path.exists() {
+                return Err(ManifestError::MissingSoundFile {
+                    id,
+                    path: full_path.display().to_string(),
+                });
+            }
+            result.sounds.insert(
+                id,
+                ResolvedSound {
+                    path: full_path,
+                    looping: entry.looping,
+                    volume: entry.volume,
+                },
+            );
+        }
+
         Ok(result)
     }
 
@@ -171,6 +216,12 @@ impl ResolvedManifest {
                 return Err(ManifestError::DuplicateId { id });
             }
             self.fonts.insert(id, font);
+        }
+        for (id, sound) in other.sounds {
+            if self.sounds.contains_key(&id) {
+                return Err(ManifestError::DuplicateId { id });
+            }
+            self.sounds.insert(id, sound);
         }
         Ok(())
     }
@@ -358,6 +409,66 @@ mod tests {
 
         let err = a.merge(b).unwrap_err();
         assert!(matches!(err, ManifestError::DuplicateId { id } if id == "sans"));
+    }
+
+    #[test]
+    fn load_manifest_with_sounds() {
+        let tmp = tempdir();
+        write_file(&tmp, "blip.ogg");
+        let path = write_manifest(
+            &tmp,
+            r#"{"sounds": {"sfx_blip": {"path": "blip.ogg", "looping": false, "volume": 0.8}}}"#,
+        );
+        let m = ResolvedManifest::load(&path).unwrap();
+        assert!(m.sounds.contains_key("sfx_blip"));
+        let s = &m.sounds["sfx_blip"];
+        assert!(!s.looping);
+        assert!((s.volume - 0.8).abs() < 1e-6);
+    }
+
+    #[test]
+    fn sound_defaults_looping_false_volume_one() {
+        let tmp = tempdir();
+        write_file(&tmp, "blip.ogg");
+        let path = write_manifest(&tmp, r#"{"sounds": {"sfx_blip": {"path": "blip.ogg"}}}"#);
+        let m = ResolvedManifest::load(&path).unwrap();
+        let s = &m.sounds["sfx_blip"];
+        assert!(!s.looping);
+        assert!((s.volume - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn load_manifest_missing_sound_file() {
+        let tmp = tempdir();
+        let path = write_manifest(&tmp, r#"{"sounds": {"sfx_blip": {"path": "missing.ogg"}}}"#);
+        let err = ResolvedManifest::load(&path).unwrap_err();
+        assert!(matches!(err, ManifestError::MissingSoundFile { .. }));
+    }
+
+    #[test]
+    fn merge_duplicate_sound_is_error() {
+        let mut a = ResolvedManifest::default();
+        a.sounds.insert(
+            "sfx_blip".into(),
+            ResolvedSound {
+                path: "blip.ogg".into(),
+                looping: false,
+                volume: 1.0,
+            },
+        );
+
+        let mut b = ResolvedManifest::default();
+        b.sounds.insert(
+            "sfx_blip".into(),
+            ResolvedSound {
+                path: "blip2.ogg".into(),
+                looping: false,
+                volume: 1.0,
+            },
+        );
+
+        let err = a.merge(b).unwrap_err();
+        assert!(matches!(err, ManifestError::DuplicateId { id } if id == "sfx_blip"));
     }
 
     #[test]

@@ -1,8 +1,10 @@
 use std::sync::Arc;
 use std::time::Instant;
 
+use crate::audio::AudioSystem;
 use crate::input_bridge;
-use tungsten_core::{AssetRegistry, Config, DeltaTime, InputState, World};
+use tungsten_core::assets::SoundRegistry;
+use tungsten_core::{AssetRegistry, AudioCommands, Config, DeltaTime, InputState, World};
 use tungsten_render::{QuadInstance, Renderer, SpriteBatch, TextSection};
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, WindowEvent};
@@ -37,12 +39,20 @@ pub struct App {
     window: Option<Arc<Window>>,
     renderer: Option<Renderer>,
     world: World,
+    // Systems run in registration order. No priority or grouping mechanism.
+    // If ordering becomes painful by M13, revisit with named priorities.
     systems: Vec<SystemFn>,
     extract_quads: Option<ExtractQuadsFn>,
     extract_sprites: Option<ExtractSpritesFn>,
     extract_text: Option<ExtractTextFn>,
     startup: Option<StartupFn>,
     last_frame: Option<Instant>,
+    /// If true (the default), the Escape key exits the process. Set to false
+    /// when game code needs Escape for its own purposes (e.g. pause menus).
+    exit_on_escape: bool,
+    /// Audio subsystem — initialized after the startup callback runs.
+    /// Kept alive here so the cpal stream doesn't drop.
+    audio: Option<AudioSystem>,
 }
 
 impl App {
@@ -55,6 +65,8 @@ impl App {
             height: config.window.height,
         });
         world.insert_resource(AssetRegistry::new());
+        world.insert_resource(SoundRegistry::new());
+        world.insert_resource(AudioCommands::new());
 
         Self {
             config,
@@ -67,7 +79,15 @@ impl App {
             extract_text: None,
             startup: None,
             last_frame: None,
+            exit_on_escape: true,
+            audio: None,
         }
+    }
+
+    /// Control whether the Escape key exits the process (default: true).
+    /// Disable when game code uses Escape for its own purposes (e.g. pause menus).
+    pub fn set_exit_on_escape(&mut self, exit: bool) {
+        self.exit_on_escape = exit;
     }
 
     /// Access the World for setup (spawning entities, inserting resources).
@@ -157,6 +177,19 @@ impl ApplicationHandler for App {
                 startup(&mut self.world, renderer);
             }
         }
+
+        // Initialize audio after the startup callback so that load_sounds()
+        // has already populated the SoundRegistry resource.
+        if let Some(sound_registry) = self.world.get_resource::<SoundRegistry>() {
+            match AudioSystem::init(sound_registry) {
+                Ok(sys) => {
+                    self.audio = Some(sys);
+                }
+                Err(e) => {
+                    log::warn!("Audio init failed (continuing without audio): {}", e);
+                }
+            }
+        }
     }
 
     fn window_event(
@@ -186,12 +219,14 @@ impl ApplicationHandler for App {
                         ElementState::Released => input.key_up(key),
                     }
                 }
-                if event.state == ElementState::Pressed {
-                    if let winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::Escape) =
-                        event.physical_key
-                    {
-                        event_loop.exit();
-                    }
+                if self.exit_on_escape
+                    && event.state == ElementState::Pressed
+                    && matches!(
+                        event.physical_key,
+                        winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::Escape)
+                    )
+                {
+                    event_loop.exit();
                 }
             }
             WindowEvent::MouseInput { state, button, .. } => {
@@ -246,6 +281,15 @@ impl ApplicationHandler for App {
                 if let Some(renderer) = &mut self.renderer {
                     if let Err(e) = renderer.render_frame_full(&quads, &sprites, &text) {
                         log::error!("Render error: {e}");
+                    }
+                }
+
+                // Forward audio commands to the audio thread.
+                if let (Some(audio), Some(cmds)) =
+                    (&self.audio, self.world.get_resource_mut::<AudioCommands>())
+                {
+                    for cmd in cmds.drain() {
+                        let _ = audio.sender().send(cmd);
                     }
                 }
 

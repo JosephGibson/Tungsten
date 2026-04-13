@@ -117,10 +117,7 @@ impl TextPipeline {
         width: u32,
         height: u32,
     ) {
-        self.viewport.update(
-            queue,
-            Resolution { width, height },
-        );
+        self.viewport.update(queue, Resolution { width, height });
 
         let mut text_areas: Vec<(Buffer, TextSection)> = Vec::with_capacity(sections.len());
 
@@ -180,10 +177,7 @@ impl TextPipeline {
     }
 
     /// Draw prepared text into an active render pass.
-    pub fn render<'pass>(
-        &'pass self,
-        pass: &mut RenderPass<'pass>,
-    ) {
+    pub fn render<'pass>(&'pass self, pass: &mut RenderPass<'pass>) {
         if let Err(e) = self.text_renderer.render(&self.atlas, &self.viewport, pass) {
             log::error!("Text render error: {e:?}");
         }
@@ -193,7 +187,6 @@ impl TextPipeline {
     pub fn post_frame(&mut self) {
         self.atlas.trim();
     }
-
 }
 
 fn clip_bounds_for_section(section: &TextSection, width: u32, height: u32) -> TextBounds {
@@ -203,12 +196,8 @@ fn clip_bounds_for_section(section: &TextSection, width: u32, height: u32) -> Te
         Some([bw, bh]) if bw > 0.0 && bh > 0.0 => {
             let left = section.position[0].max(0.0).floor() as i32;
             let top = section.position[1].max(0.0).floor() as i32;
-            let right = (section.position[0] + bw)
-                .min(width as f32)
-                .floor() as i32;
-            let bottom = (section.position[1] + bh)
-                .min(height as f32)
-                .floor() as i32;
+            let right = (section.position[0] + bw).min(width as f32).floor() as i32;
+            let bottom = (section.position[1] + bh).min(height as f32).floor() as i32;
             TextBounds {
                 left,
                 top,

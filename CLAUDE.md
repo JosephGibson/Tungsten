@@ -10,7 +10,7 @@ The canonical instruction file for all AI assistants is **`AGENTS.md`** — read
 
 A from-scratch Rust 2D game engine (hobby project). `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Three crates in a Cargo workspace: `tungsten-core`, `tungsten-render`, `tungsten`.
 
-**Phase 1 complete (M0–M6). Phase 2 in progress: M7 text rendering complete. Next: M8 audio.** See `PHASE2.md`.
+**Phase 1 complete (M0–M6). Phase 2 in progress: M7 text rendering complete (`v0.2.0-alpha.0`); M8 audio complete (`v0.3.0-alpha`). Current: M9 hot reload.** See `PHASE2.md`.
 
 ## Commands
 
@@ -27,6 +27,7 @@ cargo run -p example-03-dots
 cargo run -p example-04-sprites
 cargo run -p example-05-animation
 cargo run -p example-06-text
+cargo run -p example-07-audio
 ```
 
 Before committing anything substantial: `cargo fmt && cargo test --workspace`.
@@ -66,12 +67,13 @@ crates/
 
 ## Asset rules
 
-- Every **asset file** in `assets/` must be in `assets/manifest.json`, and vice versa. Asset files are sprites (PNG), animations (JSON), fonts (TTF/OTF), and sounds. Non-asset files (READMEs, platform detritus) are ignored by the loader.
+- Every **asset file** in `assets/` must be in `assets/manifest.json`, and vice versa. Asset files are sprites (PNG), animations (JSON), fonts (TTF/OTF), and sounds. Non-asset files (READMEs, platform detritus) are ignored by the loader. **Exception: font family directories** (`assets/fonts/<Family>/`) may contain the full downloaded family (all weights and styles); only the specific weights in active use need manifest entries. Unused weights are not loaded.
 - **Shaders** (`*.wgsl`) live in `tungsten-render/src/` and are compiled into the binary — they are not manifest-tracked.
 - **Game code never references file paths.** Always use string IDs through the registry. This is the architectural prerequisite for Phase 2 hot reload — do not break it.
 - New sprite: drop PNG in `assets/sprites/`, add entry to manifest's `sprites` map with a stable ID and filter mode (`nearest` or `linear`).
 - New animation: create JSON in `assets/animations/`, add entry to manifest's `animations` map. All referenced sprite IDs must exist in the manifest.
 - New font: drop TTF/OTF in `assets/fonts/<Family>/`, add entry to manifest's `fonts` map with a stable ID.
+- New sound: drop OGG/WAV in `assets/sounds/`, add entry to manifest's `sounds` map with a stable ID and optional `looping`/`volume` fields.
 - Example-local assets: `examples/NN_name/assets/` with a local `manifest.json`. Asset IDs must be globally unique across all loaded manifests — duplicate IDs are fatal at load time.
 
 ## Hard rules — do not violate

@@ -4,6 +4,7 @@
 
 pub mod app;
 pub mod asset_loader;
+pub mod audio;
 mod input_bridge;
 
 pub use app::{App, WindowSize};

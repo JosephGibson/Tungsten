@@ -232,6 +232,38 @@ A crate that hands me something the project is supposed to teach me to build is 
 **Alternatives:** Apache-2.0 (patent clause adds complexity without clear benefit for a hobby project). Dual MIT/Apache-2.0 (Rust ecosystem standard, but unnecessary overhead for a solo project not published to crates.io).
 **Consequences:** `LICENSE` file at repo root. `license = "MIT"` in workspace `Cargo.toml`. All crates inherit it.
 
+## D-027 — cpal for audio device access
+**Date:** 2026-04-13
+**Status:** Active
+**Context:** M8 needs to open an audio output device and stream PCM samples to it. Writing OS-specific WASAPI/CoreAudio/ALSA code is a three-platform maintenance burden with no learning payoff in game engine architecture or audio mixing.
+**Decision:** Use `cpal` (v0.15). Satisfies D-015 rule 1: it abstracts a platform API (OS audio device enumeration and output streaming) that would otherwise require three separate codepaths. The `cpal` data callback runs on a dedicated thread; game code communicates with it via `mpsc` channels, consistent with the frame loop design documented in `DESIGN.md`.
+**Alternatives:** `rodio` (higher level, abstracts both device and format — does too much). Hand-written platform code (three codepaths, months of work, no audio learning payoff). `sdl2-mixer` (heavier dependency tree, SDL2 is a larger abstraction than needed).
+**Consequences:** Audio output is cross-platform. The callback thread is the only background thread in the engine. `cpal` is a dep of `tungsten` only — not `tungsten-core` or `tungsten-render`.
+
+## D-028 — symphonia for audio decoding
+**Date:** 2026-04-13
+**Status:** Active
+**Context:** M8 needs to decode OGG Vorbis and WAV files into raw PCM samples at load time. Implementing a Vorbis decoder from scratch is a multi-month project that teaches audio codec internals, not game engine architecture.
+**Decision:** Use `symphonia` (v0.5, features: `ogg`, `wav`, `mp3`). Satisfies D-015 rule 2: it implements well-specified data formats (OGG Vorbis, WAV, MP3) that are not the interesting part of what the engine is building. Decoding happens once at load time; decoded PCM is stored as `Vec<f32>` in `SoundData`. No symphonia types appear at runtime in the audio callback.
+**Alternatives:** `lewton` (OGG-only, unmaintained). `minimp3` (MP3-only). Hand-rolled Vorbis (rejected — see above). `rodio` (bundles decoder and a mixer — does too much, same reason `kira` is out).
+**Consequences:** Supported formats: OGG Vorbis, WAV, MP3. Decoding is eager (at load time, fully into RAM). `symphonia` is a dep of `tungsten-core` (where decoding happens during asset loading) and transitively `tungsten`.
+
+## D-029 — Hand-rolled mixer, no kira
+**Date:** 2026-04-13
+**Status:** Active
+**Context:** M8 needs to mix multiple playing sounds into the `cpal` output buffer. `kira` is a mature Rust game audio library that includes a mixer. The question is whether to use it or build the mixer by hand.
+**Decision:** Hand-rolled. `kira` does not satisfy any D-015 rule: it is not a platform API abstraction (`cpal` handles that), not a data format parser (`symphonia` handles that), and not a math primitive. More importantly, the mixer — the `cpal` callback contract, sample-level PCM arithmetic, the loop/one-shot state machine, thread-safe command passing via `mpsc` — is exactly what M8 is here to teach. The implementation is approximately 150 lines and fully understandable. `kira`'s envelope curves, tweened fades, and effects chains are all out of M8 scope and would be dead weight.
+**Alternatives:** `kira` (rejected: fails all D-015 rules, too much handed for free). `rodio` (rejected: bundles decoder and device, even more opinionated).
+**Consequences:** The mixer is a closure owned by the `cpal` stream callback in `tungsten/src/audio.rs`. No DSP effects, no envelope curves, no spatial audio. Feature set: play/stop/loop, master volume, per-sound volume. These cover M8's stated scope.
+
+## D-030 — M12 ECS rewrite is conditional, not committed
+**Date:** 2026-04-13
+**Status:** Active
+**Context:** PHASE2.md originally positioned M12 (archetypal ECS rewrite) as a committed milestone before the final game (M13). D-005 already said "if naive stays good enough forever, that's a success, not a failure." After Phase 1 and M7, the naive ECS has caused zero performance pain at the scale exercised by examples.
+**Decision:** M12 is now conditional: after M11 (2D physics), assess whether the naive ECS has caused measurable friction — slow queries under load, borrow fights, correctness issues. If yes, proceed with M12. If not, skip M12 and go directly to M13. A new DECISIONS.md entry is required before M12 begins (either confirming it's needed or explicitly descoping it).
+**Alternatives:** Keep M12 as committed (rejected: premature optimization; the learning motivation only holds if the problem is real). Descope M12 now (rejected: premature in the other direction — may turn out to be needed after M10–M11 add entity counts).
+**Consequences:** M12 may not happen. The PHASE2.md milestone is now marked "conditional." v0.7.0-alpha may be skipped. v1.0.0 (M13) is unblocked by this decision.
+
 ## D-026 — glyphon + cosmic-text for text rendering
 **Date:** 2026-04-12
 **Status:** Active

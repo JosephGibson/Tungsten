@@ -1,4 +1,6 @@
-use tungsten_core::assets::{AnimationData, AnimationRegistry, ResolvedManifest, TextureHandle};
+use tungsten_core::assets::{
+    AnimationData, AnimationRegistry, ResolvedManifest, SoundData, SoundRegistry, TextureHandle,
+};
 use tungsten_core::{AssetRegistry, World};
 use tungsten_render::Renderer;
 
@@ -85,7 +87,36 @@ pub fn load_fonts(manifest: &ResolvedManifest, renderer: &mut Renderer) -> anyho
     Ok(())
 }
 
-/// Load all assets (sprites + animations + fonts) from a manifest.
+/// Load all sound assets from a resolved manifest: decode audio files and
+/// register them in the `SoundRegistry` resource.
+pub fn load_sounds(manifest: &ResolvedManifest, world: &mut World) -> anyhow::Result<()> {
+    let mut sound_registry = SoundRegistry::new();
+
+    for (id, sound_entry) in &manifest.sounds {
+        let data = SoundData::decode(&sound_entry.path).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to decode sound '{}' at '{}': {}",
+                id,
+                sound_entry.path.display(),
+                e
+            )
+        })?;
+        log::info!(
+            "Loaded sound '{}' ({} samples, {}Hz, {} ch) from '{}'",
+            id,
+            data.samples.len(),
+            data.sample_rate,
+            data.channels,
+            sound_entry.path.display(),
+        );
+        sound_registry.register(id.clone(), data, sound_entry.volume, sound_entry.looping);
+    }
+
+    world.insert_resource(sound_registry);
+    Ok(())
+}
+
+/// Load all assets (sprites + animations + fonts + sounds) from a manifest.
 /// After loading, validates that every sprite ID referenced from animation
 /// frames exists in the sprite registry (D-009).
 pub fn load_all(
@@ -96,6 +127,7 @@ pub fn load_all(
     load_sprites(manifest, world, renderer)?;
     load_animations(manifest, world)?;
     load_fonts(manifest, renderer)?;
+    load_sounds(manifest, world)?;
 
     let registry = world
         .get_resource::<AssetRegistry>()

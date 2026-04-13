@@ -44,5 +44,17 @@
     "mono": {
       "path": "fonts/JetBrainsMono/static/JetBrainsMono-Regular.ttf"
     }
+  },
+  "sounds": {
+    "sfx_blip": {
+      "path": "sounds/sfx_blip.ogg",
+      "looping": false,
+      "volume": 0.8
+    },
+    "music_main": {
+      "path": "sounds/music_main.ogg",
+      "looping": true,
+      "volume": 0.4
+    }
   }
 }

@@ -14,3 +14,4 @@ anyhow = { workspace = true }
 log = { workspace = true }
 bytemuck = { workspace = true }
 image = { workspace = true }
+symphonia = { workspace = true }
