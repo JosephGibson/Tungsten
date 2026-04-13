@@ -11,8 +11,8 @@ pub mod time;
 
 pub use assets::{
     AnimationData, AnimationRegistry, AnimationState, AssetRegistry, AudioHandle, FilterMode,
-    FontEntry, ManifestError, ResolvedFont, ResolvedManifest, ResolvedSound, SoundData, SoundEntry,
-    SoundRegistry, SpriteAsset, TextureHandle,
+    FontEntry, FontRegistry, ManifestError, ResolvedFont, ResolvedManifest, ResolvedSound,
+    SoundData, SoundEntry, SoundRegistry, SpriteAsset, TextureHandle,
 };
 pub use audio::{AudioCommand, AudioCommands};
 pub use config::{Config, ConfigError};

@@ -28,6 +28,9 @@ struct StoredFontAttrs {
     family: String,
     weight: Weight,
     style: Style,
+    /// fontdb face IDs for all faces loaded from this manifest entry,
+    /// kept so that `reload_font` can selectively remove them.
+    face_ids: Vec<glyphon::fontdb::ID>,
 }
 
 /// Owns all glyphon state and provides prepare/render methods that sit
@@ -94,6 +97,7 @@ impl TextPipeline {
             .unwrap_or_default();
         let weight = face.weight;
         let style = face.style;
+        let face_ids: Vec<_> = new_faces.iter().map(|f| f.id).collect();
         log::info!(
             "Registered font '{id}' -> family=\"{family}\", weight={weight:?}, style={style:?}",
         );
@@ -103,8 +107,23 @@ impl TextPipeline {
                 family,
                 weight,
                 style,
+                face_ids,
             },
         );
+    }
+
+    /// Hot-reload a font: remove old face data from fontdb, flush the glyph
+    /// atlas, then re-register with the new bytes.
+    pub fn reload_font(&mut self, id: &str, data: Vec<u8>) {
+        if let Some(old) = self.font_attrs.remove(id) {
+            let db = self.font_system.db_mut();
+            for face_id in old.face_ids {
+                db.remove_face(face_id);
+            }
+        }
+        // Evict any cached glyph bitmaps that referenced the old face data.
+        self.atlas.trim();
+        self.load_font(id, data);
     }
 
     /// Build glyphon Buffers from TextSections, upload glyphs, and prepare

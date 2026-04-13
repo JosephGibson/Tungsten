@@ -1,9 +1,12 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
+use crate::asset_loader;
 use crate::audio::AudioSystem;
+use crate::hot_reload::HotReloadWatcher;
 use crate::input_bridge;
-use tungsten_core::assets::SoundRegistry;
+use tungsten_core::assets::{AnimationRegistry, FontRegistry, SoundRegistry};
 use tungsten_core::{AssetRegistry, AudioCommands, Config, DeltaTime, InputState, World};
 use tungsten_render::{QuadInstance, Renderer, SpriteBatch, TextSection};
 use winit::application::ApplicationHandler;
@@ -53,6 +56,10 @@ pub struct App {
     /// Audio subsystem — initialized after the startup callback runs.
     /// Kept alive here so the cpal stream doesn't drop.
     audio: Option<AudioSystem>,
+    /// Hot-reload file watcher. None when hot reload is not enabled.
+    hot_reload: Option<HotReloadWatcher>,
+    /// Path to the primary manifest file, used to detect manifest changes.
+    manifest_path: Option<PathBuf>,
 }
 
 impl App {
@@ -81,6 +88,8 @@ impl App {
             last_frame: None,
             exit_on_escape: true,
             audio: None,
+            hot_reload: None,
+            manifest_path: None,
         }
     }
 
@@ -126,11 +135,113 @@ impl App {
         self.startup = Some(Box::new(f));
     }
 
+    /// Enable hot reload: watch `assets_dir` for file changes and reload
+    /// assets at the next frame boundary. `manifest_path` is used to detect
+    /// manifest changes specifically. Has no effect if the watcher fails to
+    /// start (the error is logged and the engine continues without hot reload).
+    pub fn enable_hot_reload(&mut self, assets_dir: PathBuf, manifest_path: PathBuf) {
+        self.hot_reload = HotReloadWatcher::new(assets_dir);
+        self.manifest_path = Some(manifest_path);
+    }
+
     /// Run the application. Blocks until the window is closed.
     pub fn run(mut self) -> anyhow::Result<()> {
         let event_loop = EventLoop::new()?;
         event_loop.run_app(&mut self)?;
         Ok(())
+    }
+
+    /// Poll the hot-reload watcher and apply any ready changes. Called after
+    /// tick() and before render() each frame. No-op when hot reload is disabled.
+    fn process_hot_reload(&mut self) {
+        let ready = match self.hot_reload.as_mut() {
+            Some(w) => w.drain_ready(),
+            None => return,
+        };
+        if ready.is_empty() {
+            return;
+        }
+
+        let renderer = match self.renderer.as_mut() {
+            Some(r) => r,
+            None => return,
+        };
+
+        for path in &ready {
+            let canon = path.canonicalize().unwrap_or_else(|_| path.clone());
+
+            // Check if this is the manifest file.
+            if let Some(mp) = &self.manifest_path {
+                let canon_mp = mp.canonicalize().unwrap_or_else(|_| mp.clone());
+                if canon == canon_mp {
+                    let mp = mp.clone();
+                    if let Err(e) = asset_loader::reload_manifest(&mp, &mut self.world, renderer) {
+                        log::error!("Manifest reload error: {e}");
+                    }
+                    continue;
+                }
+            }
+
+            let ext = canon.extension().and_then(|e| e.to_str()).unwrap_or("");
+            match ext {
+                "png" | "jpg" | "jpeg" => {
+                    // Scope the immutable borrow so it drops before we pass
+                    // &mut self.world to reload_sprite.
+                    let id_filter = {
+                        let reg = self
+                            .world
+                            .get_resource::<AssetRegistry>()
+                            .expect("AssetRegistry resource missing");
+                        reg.sprite_id_for_path(&canon)
+                            .and_then(|id| reg.get_sprite(id).map(|a| (id.to_string(), a.filter)))
+                    };
+                    if let Some((id, filter)) = id_filter {
+                        if let Err(e) = asset_loader::reload_sprite(
+                            &id,
+                            &canon,
+                            filter,
+                            &mut self.world,
+                            renderer,
+                        ) {
+                            log::error!("Sprite reload '{id}': {e}");
+                        }
+                    } else {
+                        log::debug!("Hot reload: no sprite registered for '{}'", canon.display());
+                    }
+                }
+                "json" => {
+                    let id = self
+                        .world
+                        .get_resource::<AnimationRegistry>()
+                        .and_then(|ar| ar.id_for_path(&canon).map(|s| s.to_string()));
+                    if let Some(id) = id {
+                        if let Err(e) = asset_loader::reload_animation(&id, &canon, &mut self.world)
+                        {
+                            log::error!("Animation reload '{id}': {e}");
+                        }
+                    } else {
+                        log::debug!(
+                            "Hot reload: no animation registered for '{}'",
+                            canon.display()
+                        );
+                    }
+                }
+                "ttf" | "otf" => {
+                    let id = self
+                        .world
+                        .get_resource::<FontRegistry>()
+                        .and_then(|fr| fr.id_for_path(&canon).map(|s| s.to_string()));
+                    if let Some(id) = id {
+                        if let Err(e) = asset_loader::reload_font(&id, &canon, renderer) {
+                            log::error!("Font reload '{id}': {e}");
+                        }
+                    } else {
+                        log::debug!("Hot reload: no font registered for '{}'", canon.display());
+                    }
+                }
+                _ => {}
+            }
+        }
     }
 }
 
@@ -259,6 +370,10 @@ impl ApplicationHandler for App {
                 for system in &mut self.systems {
                     system(&mut self.world);
                 }
+
+                // Poll file watcher and apply any ready asset changes.
+                // Runs after tick() and before render() as required.
+                self.process_hot_reload();
 
                 let quads = self
                     .extract_quads

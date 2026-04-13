@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.3.0-alpha"
+version = "0.4.0-alpha"
 edition = "2021"
 license = "MIT"
 
@@ -16,6 +16,7 @@ members = [
     "examples/05_animation",
     "examples/06_text",
     "examples/07_audio",
+    "examples/08_hot_reload",
 ]
 
 [workspace.dependencies]
@@ -27,6 +28,7 @@ tungsten = { path = "crates/tungsten" }
 wgpu = "29.0.1"
 winit = "0.30.12"
 cpal = "0.15"
+notify = { version = "6", default-features = false }
 
 # Data format parsing (D-015 rule 2)
 serde = { version = "1", features = ["derive"] }

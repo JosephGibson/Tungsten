@@ -1,6 +1,6 @@
 # Tungsten — Design Document
 
-**Status:** Draft v0.7 — Phase 2 in progress (M8 audio complete, M9 hot reload next)
+**Status:** Draft v0.8 — Phase 2 in progress (M9 hot reload complete, M10 tilemaps next)
 **Project:** Tungsten, a from-scratch Rust 2D game engine.
 **Companion docs:** `AGENTS.md` (how to work in the repo), `DECISIONS.md` (decision log).
 
@@ -304,7 +304,7 @@ Phase 1 ends here. Phase 2 is tracked in `PHASE2.md`. The gating questions from 
 | Hot reload feasibility | M5 registry-by-ID invariant confirmed | D-024 |
 | ECS performance | No pain at Phase 1 scale; rewrite now conditional | D-024, D-030 |
 
-**Phase 2 status:** M7 (text rendering, `v0.2.0-alpha.0`) complete. M8 (audio, `v0.3.0-alpha`) complete. Next: M9 hot reload. Full milestone map and acceptance criteria in `PHASE2.md`.
+**Phase 2 status:** M7 (text rendering, `v0.2.0-alpha.0`) complete. M8 (audio, `v0.3.0-alpha`) complete. M9 (hot reload, `v0.4.0-alpha`) complete. Next: M10 tilemaps. Full milestone map and acceptance criteria in `PHASE2.md`.
 
 ## Kill criteria
 

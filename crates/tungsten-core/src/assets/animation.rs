@@ -1,6 +1,6 @@
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// A single frame in an animation sequence.
 #[derive(Debug, Clone, Deserialize)]
@@ -40,6 +40,7 @@ impl AnimationData {
 #[derive(Debug, Default, Clone)]
 pub struct AnimationRegistry {
     animations: HashMap<String, AnimationData>,
+    path_to_id: HashMap<PathBuf, String>,
 }
 
 impl AnimationRegistry {
@@ -51,12 +52,27 @@ impl AnimationRegistry {
         self.animations.insert(id, data);
     }
 
+    /// Insert an animation and register its source path for hot-reload reverse lookup.
+    pub fn insert_with_path(&mut self, id: String, data: AnimationData, path: PathBuf) {
+        self.path_to_id.insert(path, id.clone());
+        self.animations.insert(id, data);
+    }
+
     pub fn get(&self, id: &str) -> Option<&AnimationData> {
         self.animations.get(id)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&str, &AnimationData)> {
         self.animations.iter().map(|(k, v)| (k.as_str(), v))
+    }
+
+    /// Reverse-lookup: find the animation ID registered for a given file path.
+    pub fn id_for_path(&self, path: &Path) -> Option<&str> {
+        self.path_to_id.get(path).map(|s| s.as_str())
+    }
+
+    pub fn ids(&self) -> impl Iterator<Item = &str> {
+        self.animations.keys().map(|s| s.as_str())
     }
 }
 
