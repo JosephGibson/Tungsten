@@ -63,7 +63,7 @@ tungsten/
 
 ## Asset rules
 
-Anything that lives in `assets/` should also be registered in `assets/manifest.json`. The reverse is also true — every entry in the manifest must point to a real file. The loader validates this at startup, but it's worth keeping the convention tight by hand.
+Anything that lives in `assets/` should also be registered in `assets/manifest.json`. The reverse is also true — every entry in the manifest must point to a real file. The loader validates this at startup, but it's worth keeping the convention tight by hand. **Exception: font family directories** (`assets/fonts/<Family>/`) may contain the full downloaded family (all weights and styles); only the specific weights in active use need manifest entries — the rest are staged for future use and are never loaded.
 
 - **New sprite:** drop the PNG in `assets/sprites/`, add an entry to the manifest's `sprites` map with a stable ID, decide its filter mode (`nearest` or `linear`).
 - **New animation:** create a JSON file in `assets/animations/` per the schema, add an entry to the manifest's `animations` map. All sprite IDs referenced from the animation must exist in the manifest.

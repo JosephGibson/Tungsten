@@ -109,7 +109,7 @@ pub fn load_sounds(manifest: &ResolvedManifest, world: &mut World) -> anyhow::Re
             data.channels,
             sound_entry.path.display(),
         );
-        sound_registry.register(id.clone(), data);
+        sound_registry.register(id.clone(), data, sound_entry.volume, sound_entry.looping);
     }
 
     world.insert_resource(sound_registry);

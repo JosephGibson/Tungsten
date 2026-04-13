@@ -9,7 +9,12 @@ use tungsten::App;
 struct AudioState {
     sfx_handle: AudioHandle,
     music_handle: AudioHandle,
+    /// Manifest-declared per-sound volume for the SFX (applied at play time).
+    sfx_volume: f32,
+    /// Manifest-declared per-sound volume for the music (applied at play time).
+    music_volume: f32,
     music_playing: bool,
+    /// Global master volume, controlled by keys 1/2/3 and displayed on screen.
     master_volume: f32,
     sfx_count: u32,
 }
@@ -35,8 +40,7 @@ fn audio_input_system(world: &mut World) {
         just_pressed_s = input.just_pressed(KeyCode::KeyS);
     }
 
-    let state_ref = world.get_resource::<AudioState>();
-    if state_ref.is_none() {
+    if world.get_resource::<AudioState>().is_none() {
         return;
     }
 
@@ -82,13 +86,14 @@ fn audio_input_system(world: &mut World) {
         }
     }
 
-    // Send audio commands.
-    let (sfx_handle, music_handle, music_was_playing, master_vol);
+    // Read back what we need to issue commands.
+    let (sfx_handle, music_handle, sfx_volume, music_volume, music_was_playing);
     {
         let state = world.get_resource::<AudioState>().unwrap();
         sfx_handle = state.sfx_handle;
         music_handle = state.music_handle;
-        master_vol = state.master_volume;
+        sfx_volume = state.sfx_volume;
+        music_volume = state.music_volume;
         // After toggle: state.music_playing reflects the NEW desired state.
         music_was_playing = state.music_playing;
     }
@@ -97,18 +102,19 @@ fn audio_input_system(world: &mut World) {
 
     if let Some(v) = new_volume {
         cmds.set_master_volume(v);
-        let _ = v; // used above
     }
     if stop_all {
         cmds.stop_all();
     }
     if play_sfx {
-        cmds.play(sfx_handle);
+        // Use the manifest-declared per-sound volume; master volume is applied
+        // separately by the mixer via set_master_volume.
+        cmds.play_with(sfx_handle, sfx_volume, false);
     }
     if toggle_music {
         if music_was_playing {
-            // Just toggled ON — start music.
-            cmds.play_with(music_handle, master_vol, true);
+            // Just toggled ON — start music at its manifest volume, looping.
+            cmds.play_with(music_handle, music_volume, true);
         } else {
             // Just toggled OFF — stop music.
             cmds.stop(music_handle);
@@ -182,8 +188,8 @@ fn main() -> anyhow::Result<()> {
             ResolvedManifest::load("assets/manifest.json").expect("Failed to load manifest");
         asset_loader::load_all(&manifest, world, renderer).expect("Failed to load assets");
 
-        // Resolve sound handles from the registry populated by load_sounds().
-        let (sfx_handle, music_handle) = {
+        // Resolve sound handles and manifest defaults from the registry.
+        let (sfx_handle, music_handle, sfx_volume, music_volume) = {
             let reg = world
                 .get_resource::<SoundRegistry>()
                 .expect("SoundRegistry missing");
@@ -193,12 +199,14 @@ fn main() -> anyhow::Result<()> {
             let music = reg
                 .get_by_id("music_main")
                 .expect("music_main not found in manifest");
-            (sfx, music)
+            (sfx, music, reg.get_volume(sfx), reg.get_volume(music))
         };
 
         world.insert_resource(AudioState {
             sfx_handle,
             music_handle,
+            sfx_volume,
+            music_volume,
             music_playing: false,
             master_volume: 0.5,
             sfx_count: 0,

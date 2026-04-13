@@ -67,7 +67,7 @@ crates/
 
 ## Asset rules
 
-- Every **asset file** in `assets/` must be in `assets/manifest.json`, and vice versa. Asset files are sprites (PNG), animations (JSON), fonts (TTF/OTF), and sounds. Non-asset files (READMEs, platform detritus) are ignored by the loader.
+- Every **asset file** in `assets/` must be in `assets/manifest.json`, and vice versa. Asset files are sprites (PNG), animations (JSON), fonts (TTF/OTF), and sounds. Non-asset files (READMEs, platform detritus) are ignored by the loader. **Exception: font family directories** (`assets/fonts/<Family>/`) may contain the full downloaded family (all weights and styles); only the specific weights in active use need manifest entries. Unused weights are not loaded.
 - **Shaders** (`*.wgsl`) live in `tungsten-render/src/` and are compiled into the binary — they are not manifest-tracked.
 - **Game code never references file paths.** Always use string IDs through the registry. This is the architectural prerequisite for Phase 2 hot reload — do not break it.
 - New sprite: drop PNG in `assets/sprites/`, add entry to manifest's `sprites` map with a stable ID and filter mode (`nearest` or `linear`).

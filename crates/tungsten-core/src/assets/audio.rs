@@ -111,11 +111,14 @@ impl SoundData {
 }
 
 /// Registry of decoded sound assets. Stored as a Resource in the World.
-/// Allocates `AudioHandle`s and stores `SoundData` by handle.
+/// Allocates `AudioHandle`s, stores `SoundData`, and tracks the manifest-declared
+/// default volume and looping flag for each sound.
 pub struct SoundRegistry {
     next_id: u32,
     sounds: HashMap<AudioHandle, SoundData>,
     id_map: HashMap<String, AudioHandle>,
+    /// Manifest-declared (volume, looping) defaults, keyed by handle.
+    defaults: HashMap<AudioHandle, (f32, bool)>,
 }
 
 impl SoundRegistry {
@@ -124,15 +127,23 @@ impl SoundRegistry {
             next_id: 0,
             sounds: HashMap::new(),
             id_map: HashMap::new(),
+            defaults: HashMap::new(),
         }
     }
 
-    /// Register a decoded sound and return its handle.
-    pub fn register(&mut self, id: String, data: SoundData) -> AudioHandle {
+    /// Register a decoded sound with its manifest-declared defaults and return its handle.
+    pub fn register(
+        &mut self,
+        id: String,
+        data: SoundData,
+        volume: f32,
+        looping: bool,
+    ) -> AudioHandle {
         let handle = AudioHandle(self.next_id);
         self.next_id += 1;
         self.id_map.insert(id, handle);
         self.sounds.insert(handle, data);
+        self.defaults.insert(handle, (volume, looping));
         handle
     }
 
@@ -142,6 +153,16 @@ impl SoundRegistry {
 
     pub fn get_by_id(&self, id: &str) -> Option<AudioHandle> {
         self.id_map.get(id).copied()
+    }
+
+    /// Manifest-declared default volume for this handle (falls back to 1.0 if missing).
+    pub fn get_volume(&self, handle: AudioHandle) -> f32 {
+        self.defaults.get(&handle).map(|&(v, _)| v).unwrap_or(1.0)
+    }
+
+    /// Manifest-declared default looping flag for this handle (falls back to false if missing).
+    pub fn get_looping(&self, handle: AudioHandle) -> bool {
+        self.defaults.get(&handle).map(|&(_, l)| l).unwrap_or(false)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (AudioHandle, &SoundData)> {
@@ -172,8 +193,8 @@ mod tests {
             sample_rate: 44100,
             channels: 2,
         };
-        let h1 = reg.register("sfx_a".into(), data1);
-        let h2 = reg.register("sfx_b".into(), data2);
+        let h1 = reg.register("sfx_a".into(), data1, 1.0, false);
+        let h2 = reg.register("sfx_b".into(), data2, 1.0, false);
         assert_ne!(h1, h2);
     }
 
@@ -191,7 +212,7 @@ mod tests {
             sample_rate: 44100,
             channels: 2,
         };
-        let handle = reg.register("sfx_blip".into(), data);
+        let handle = reg.register("sfx_blip".into(), data, 0.8, false);
         let retrieved = reg.get(handle).unwrap();
         assert_eq!(retrieved.sample_rate, 44100);
         assert_eq!(retrieved.samples.len(), 2);
@@ -205,8 +226,40 @@ mod tests {
             sample_rate: 48000,
             channels: 1,
         };
-        let handle = reg.register("music_main".into(), data);
+        let handle = reg.register("music_main".into(), data, 0.4, true);
         assert_eq!(reg.get_by_id("music_main"), Some(handle));
         assert_eq!(reg.get_by_id("nonexistent"), None);
+    }
+
+    #[test]
+    fn manifest_defaults_roundtrip() {
+        let mut reg = SoundRegistry::new();
+        let sfx = reg.register(
+            "sfx_blip".into(),
+            SoundData {
+                samples: vec![],
+                sample_rate: 44100,
+                channels: 2,
+            },
+            0.8,
+            false,
+        );
+        let music = reg.register(
+            "music_main".into(),
+            SoundData {
+                samples: vec![],
+                sample_rate: 44100,
+                channels: 2,
+            },
+            0.4,
+            true,
+        );
+        assert!((reg.get_volume(sfx) - 0.8).abs() < 1e-6);
+        assert!(!reg.get_looping(sfx));
+        assert!((reg.get_volume(music) - 0.4).abs() < 1e-6);
+        assert!(reg.get_looping(music));
+        // Unknown handle falls back to safe defaults.
+        assert!((reg.get_volume(AudioHandle(99)) - 1.0).abs() < 1e-6);
+        assert!(!reg.get_looping(AudioHandle(99)));
     }
 }
