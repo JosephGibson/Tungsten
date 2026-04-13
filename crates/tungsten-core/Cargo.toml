@@ -1,6 +1,6 @@
 [package]
 name = "tungsten-core"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Core ECS, math, config, time, input, and asset registry for the Tungsten 2D engine"

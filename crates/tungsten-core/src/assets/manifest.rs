@@ -19,6 +19,8 @@ pub enum ManifestError {
     MissingFile { id: String, path: String },
     #[error("animation '{id}' references missing file: {path}")]
     MissingAnimationFile { id: String, path: String },
+    #[error("font '{id}' references missing file: {path}")]
+    MissingFontFile { id: String, path: String },
     #[error("duplicate asset ID '{id}' across manifests")]
     DuplicateId { id: String },
 }
@@ -30,6 +32,8 @@ pub struct RawManifest {
     pub sprites: HashMap<String, SpriteEntry>,
     #[serde(default)]
     pub animations: HashMap<String, AnimationEntry>,
+    #[serde(default)]
+    pub fonts: HashMap<String, FontEntry>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -55,11 +59,17 @@ pub struct AnimationEntry {
     pub path: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct FontEntry {
+    pub path: String,
+}
+
 /// A fully resolved manifest with absolute paths.
 #[derive(Debug, Clone, Default)]
 pub struct ResolvedManifest {
     pub sprites: HashMap<String, ResolvedSprite>,
     pub animations: HashMap<String, ResolvedAnimation>,
+    pub fonts: HashMap<String, ResolvedFont>,
 }
 
 #[derive(Debug, Clone)]
@@ -70,6 +80,11 @@ pub struct ResolvedSprite {
 
 #[derive(Debug, Clone)]
 pub struct ResolvedAnimation {
+    pub path: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolvedFont {
     pub path: PathBuf,
 }
 
@@ -123,6 +138,17 @@ impl ResolvedManifest {
                 .insert(id, ResolvedAnimation { path: full_path });
         }
 
+        for (id, entry) in raw.fonts {
+            let full_path = base_dir.join(&entry.path);
+            if !full_path.exists() {
+                return Err(ManifestError::MissingFontFile {
+                    id,
+                    path: full_path.display().to_string(),
+                });
+            }
+            result.fonts.insert(id, ResolvedFont { path: full_path });
+        }
+
         Ok(result)
     }
 
@@ -139,6 +165,12 @@ impl ResolvedManifest {
                 return Err(ManifestError::DuplicateId { id });
             }
             self.animations.insert(id, anim);
+        }
+        for (id, font) in other.fonts {
+            if self.fonts.contains_key(&id) {
+                return Err(ManifestError::DuplicateId { id });
+            }
+            self.fonts.insert(id, font);
         }
         Ok(())
     }
@@ -172,6 +204,7 @@ mod tests {
         let m = ResolvedManifest::load(&path).unwrap();
         assert!(m.sprites.is_empty());
         assert!(m.animations.is_empty());
+        assert!(m.fonts.is_empty());
     }
 
     #[test]
@@ -286,6 +319,45 @@ mod tests {
 
         let err = a.merge(b).unwrap_err();
         assert!(matches!(err, ManifestError::DuplicateId { id } if id == "walk"));
+    }
+
+    #[test]
+    fn load_manifest_with_fonts() {
+        let tmp = tempdir();
+        write_file(&tmp, "sans.ttf");
+        let path = write_manifest(&tmp, r#"{"fonts": {"sans": {"path": "sans.ttf"}}}"#);
+        let m = ResolvedManifest::load(&path).unwrap();
+        assert!(m.fonts.contains_key("sans"));
+    }
+
+    #[test]
+    fn load_manifest_missing_font_file() {
+        let tmp = tempdir();
+        let path = write_manifest(&tmp, r#"{"fonts": {"sans": {"path": "missing.ttf"}}}"#);
+        let err = ResolvedManifest::load(&path).unwrap_err();
+        assert!(matches!(err, ManifestError::MissingFontFile { .. }));
+    }
+
+    #[test]
+    fn merge_duplicate_font_is_error() {
+        let mut a = ResolvedManifest::default();
+        a.fonts.insert(
+            "sans".into(),
+            ResolvedFont {
+                path: "sans.ttf".into(),
+            },
+        );
+
+        let mut b = ResolvedManifest::default();
+        b.fonts.insert(
+            "sans".into(),
+            ResolvedFont {
+                path: "sans2.ttf".into(),
+            },
+        );
+
+        let err = a.merge(b).unwrap_err();
+        assert!(matches!(err, ManifestError::DuplicateId { id } if id == "sans"));
     }
 
     #[test]

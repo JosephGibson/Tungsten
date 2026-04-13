@@ -1,5 +1,5 @@
 [package]
-name = "example-03-dots"
+name = "example-06-text"
 version.workspace = true
 edition = "2021"
 publish = false

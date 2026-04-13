@@ -55,7 +55,7 @@ When a new dep is being considered, it gets a `DECISIONS.md` entry that identifi
 
 ### Frame loop
 
-Single-threaded, fixed-order, synchronous.
+Single-threaded, fixed-order, synchronous. Exception: the audio subsystem (M8+) runs `cpal`'s callback on a dedicated thread. Game code writes to an `AudioCommands` resource; the audio thread drains it each callback. No shared mutable state, no async runtime — the game loop itself stays single-threaded.
 
 ```
 init:
@@ -99,7 +99,7 @@ Parallelism, parallel system scheduling, and fixed-timestep simulation are all e
 
 **Renderer-ECS coupling:** `tungsten-render` may depend on `tungsten-core` and use its types where it makes the glue simpler. The renderer is not *required* to be ECS-driven — direct-data APIs should also exist so the renderer can be tested against hand-built data — but the separation is not a rule.
 
-**Phase 1 render path:** systems mutate the `World` during `tick`. The render step then extracts plain render data into temporary buffers (`QuadInstance`, `SpriteInstance`, or similar) and passes slices of that data into `tungsten-render`. The renderer may read the asset registry to resolve IDs to runtime handles, but it should not require long-lived mutable access to the `World` during draw. This keeps borrow-checker pressure contained and preserves a direct-data API for testing.
+**Phase 1 render path:** systems mutate the `World` during `tick`. Extract functions then receive `&World` and resolve string IDs → `TextureHandle` via `AssetRegistry`, producing `SpriteBatch`/`QuadInstance`/`TextSection` slices with all handles pre-resolved. Only those POD slices are passed to `render_frame_full`. The renderer never reads the registry at draw time. This keeps borrow-checker pressure contained and preserves a direct-data API for testing.
 
 ### Data-driven config
 
@@ -232,6 +232,7 @@ tungsten/
 │   ├── manifest.json
 │   ├── sprites/
 │   ├── animations/
+│   ├── fonts/
 │   └── sounds/
 │
 ├── crates/
@@ -244,14 +245,15 @@ tungsten/
     ├── 02_ecs/             # M2
     ├── 03_dots/            # M3–M4
     ├── 04_sprites/         # M5
-    └── 05_animation/       # M6
+    ├── 05_animation/       # M6
+    └── 06_text/            # M7 (Phase 2)
 ```
 
-The seam between core and render: `tungsten-core` decodes images to CPU-side bitmaps; `tungsten-render` uploads them to the GPU and returns opaque handles; the registry (in core) stores those handles. Core defines the registry shape, render populates it at load time.
+The seam between core and render: `TextureHandle(u32)` is defined in `tungsten-core` — no `wgpu` types appear there. During startup the `tungsten` umbrella crate acts as mediator: core's `AssetRegistry` allocates handles and stores metadata; `tungsten` then calls `renderer.upload_texture(handle, rgba, ...)` to store the GPU resource in render's texture pool. Core never calls into render.
 
 Those handles are **opaque runtime IDs/newtypes**, not raw `wgpu` texture objects. `tungsten-core` owns manifest data, decoded CPU-side asset data, animation data, and the registry shape; `tungsten-render` owns the actual GPU textures, samplers, and pipelines in an internal pool keyed by those opaque handles. This keeps `wgpu` out of `tungsten-core` while preserving the registry as the one lookup path for game-facing code.
 
-Examples progress cumulatively — each one builds on the primitives established by earlier milestones. `05_animation` depends on everything before it, which is fine because M6 is the end of Phase 1.
+Examples progress cumulatively — each one builds on the primitives established by earlier milestones. `05_animation` depends on everything before it, which is fine because M6 is the end of Phase 1. **`06_text`** (Phase 2, M7) adds manifest-driven fonts and the text render path; see `PHASE2.md` for Phase 2 versioning.
 
 ## Milestones
 
@@ -287,16 +289,16 @@ Implements manifest loading and validation, PNG decoding via the `image` crate, 
 **Learn:** time-accumulator patterns (which generalize to many other things), animation state management, the payoff of the registry pattern when one entity's displayed sprite changes frame-by-frame.
 
 ### After M6 — stop and reassess
-Phase 1 ends here. Possible Phase 2 directions in rough order of how interesting they feel now:
+Phase 1 ends here. The **Phase 2 rollout** is tracked in `PHASE2.md` (ordering and versions differ slightly from the brainstorm below). **M7 — text rendering** (`v0.2.0-alpha`, `06_text`) is complete.
+
+Original Phase 2 brainstorm (pre-`PHASE2.md`):
 - **Hot reload** of sprites and animations (sketched above).
 - **Tilemaps**, the natural next thing for actually building a game.
-- **Text rendering**, which is a whole iceberg of its own.
+- **Text rendering** — shipped as M7; see `PHASE2.md`.
 - **Archetypal ECS** rewrite, if the naive version is actually hurting.
 - **2D physics** — collision shapes, basic resolution, ECS components for bodies.
 - **Audio**, eventually.
 - **A first actual game** built on top of all of this.
-
-Phase 2 plan gets written at Phase 1 exit, not now.
 
 ## Kill criteria
 
@@ -336,7 +338,6 @@ Not promising and not scoped. Any of these can appear in a future phase, but not
 - Save / load
 - Multiplayer
 - GUI library
-- Text rendering
 - Texture atlases / sprite sheet packing
 - GPU-compressed texture formats (KTX2, Basis Universal)
 - Skeletal animation

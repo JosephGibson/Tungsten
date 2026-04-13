@@ -231,3 +231,11 @@ A crate that hands me something the project is supposed to teach me to build is 
 **Decision:** MIT. Simple, permissive, well-understood, compatible with the Rust ecosystem norm.
 **Alternatives:** Apache-2.0 (patent clause adds complexity without clear benefit for a hobby project). Dual MIT/Apache-2.0 (Rust ecosystem standard, but unnecessary overhead for a solo project not published to crates.io).
 **Consequences:** `LICENSE` file at repo root. `license = "MIT"` in workspace `Cargo.toml`. All crates inherit it.
+
+## D-026 — glyphon + cosmic-text for text rendering
+**Date:** 2026-04-12
+**Status:** Active
+**Context:** M7 adds text rendering. Font loading, glyph shaping, layout, and GPU rasterization are well-understood problems with mature solutions. Building them by hand would be a multi-month side quest that doesn't teach engine architecture — it teaches font internals. `glyphon` is purpose-built for wgpu, wrapping `cosmic-text` (which handles shaping via `swash` and layout) and providing a thin GPU text atlas + renderer.
+**Decision:** Use `glyphon` (which pulls in `cosmic-text`, `swash`, and `fontdb`). Satisfies D-015 rule 2: it implements a well-specified data format (TrueType/OpenType font rendering) that isn't the interesting part of what the engine is supposed to teach. Currently pinned to a git dependency (`main` branch) because glyphon 0.10.0 on crates.io requires `wgpu ^28.0.0` and the project is on wgpu 29. The `main` branch has a wgpu 29 update (March 2026) but no release yet.
+**Alternatives:** `ab_glyph` + hand-rolled atlas (more work, less features, no layout). `wgpu-text` (thinner wrapper, less mature). Hand-rolled everything (months of work on font parsing, shaping, atlas packing — exactly the kind of yak-shaving D-015 exists to prevent).
+**Consequences:** `glyphon` is a git dep until a wgpu-29-compatible release ships, at which point it should be pinned to a crates.io version. The text pipeline sits alongside quad and sprite pipelines in `tungsten-render`. Font assets get manifest entries and are loaded by ID, consistent with the sprite/animation pattern.

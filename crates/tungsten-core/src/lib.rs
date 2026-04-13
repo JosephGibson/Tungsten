@@ -9,8 +9,8 @@ pub mod input;
 pub mod time;
 
 pub use assets::{
-    AnimationData, AnimationRegistry, AnimationState, AssetRegistry, FilterMode, ManifestError,
-    ResolvedManifest, SpriteAsset, TextureHandle,
+    AnimationData, AnimationRegistry, AnimationState, AssetRegistry, FilterMode, FontEntry,
+    ManifestError, ResolvedFont, ResolvedManifest, SpriteAsset, TextureHandle,
 };
 pub use config::{Config, ConfigError};
 pub use ecs::{Entity, World};

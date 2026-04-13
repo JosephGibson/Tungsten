@@ -2,9 +2,9 @@
 
 A from-scratch Rust 2D game engine, built as a hobby project. The point is the *building*, not the shipping — understanding how engines actually work from the ground up, with Rust as the language to learn deeply along the way.
 
-**Version:** 0.1.0-alpha
+**Version:** 0.2.0-alpha
 
-**Status:** Phase 1 complete (M0–M6). All milestones implemented: workspace scaffold, wgpu rendering, hand-rolled ECS, colored-quad pipeline, input handling, manifest-driven sprite assets, and frame-based animation.
+**Status:** Phase 1 complete (M0–M6). Phase 2 started: **M7 text rendering** is complete — manifest `fonts`, glyphon/cosmic-text pipeline in `tungsten-render`, and `example-06-text`. Next: M8 audio (`v0.3.0-alpha`). See `PHASE2.md`.
 
 ## Stack
 
@@ -18,6 +18,7 @@ A from-scratch Rust 2D game engine, built as a hobby project. The point is the *
 | `DESIGN.md`      | Architecture, principles, milestones, kill criteria. **Start here for context.** |
 | `AGENTS.md`      | Operational rules for working in the repo. **Start here for tasks.** |
 | `DECISIONS.md`   | Append-only log of non-obvious decisions, with rationale.          |
+| `PHASE2.md`      | Phase 2 milestones (M7+), release map, acceptance criteria.       |
 | `CLAUDE.md`      | Pointer file for Claude Code; the canonical instructions are in `AGENTS.md`. |
 
 ## Quick start
@@ -35,6 +36,7 @@ cargo run -p example-02-ecs         # M2: ECS demo (stdout)
 cargo run -p example-03-dots        # M3–M4: bouncing colored quads + input
 cargo run -p example-04-sprites     # M5: textured sprites from manifest
 cargo run -p example-05-animation   # M6: frame-based animation
+cargo run -p example-06-text        # M7: text rendering (Phase 2)
 ```
 
 ## Read order

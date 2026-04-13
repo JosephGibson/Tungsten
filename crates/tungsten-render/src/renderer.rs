@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::quad::{QuadInstance, QuadPipeline};
 use crate::sprite::{SpriteBatch, SpritePipeline};
+use crate::text::{TextPipeline, TextSection};
 use thiserror::Error;
 use tungsten_core::assets::TextureHandle;
 use tungsten_core::config::RenderConfig;
@@ -28,6 +29,7 @@ pub struct Renderer {
     pub clear_color: wgpu::Color,
     quad_pipeline: QuadPipeline,
     sprite_pipeline: SpritePipeline,
+    text_pipeline: TextPipeline,
 }
 
 impl Renderer {
@@ -97,6 +99,7 @@ impl Renderer {
 
         let quad_pipeline = QuadPipeline::new(&device, format);
         let sprite_pipeline = SpritePipeline::new(&device, format);
+        let text_pipeline = TextPipeline::new(&device, &queue, format);
 
         Ok(Self {
             instance,
@@ -108,6 +111,7 @@ impl Renderer {
             clear_color,
             quad_pipeline,
             sprite_pipeline,
+            text_pipeline,
         })
     }
 
@@ -131,6 +135,11 @@ impl Renderer {
             width,
             height,
         );
+    }
+
+    /// Load a font from raw TTF/OTF bytes and register it under a manifest ID.
+    pub fn load_font(&mut self, id: &str, data: Vec<u8>) {
+        self.text_pipeline.load_font(id, data);
     }
 
     /// Reconfigure the surface after a window resize.
@@ -160,30 +169,36 @@ impl Renderer {
     }
 
     /// Render a frame: clear to the configured color (no geometry).
-    pub fn render_frame(&self) -> Result<(), RenderError> {
+    pub fn render_frame(&mut self) -> Result<(), RenderError> {
         self.render_frame_with_quads(&[])
     }
 
     /// Render a frame with colored quads. Direct-data API per D-018.
-    pub fn render_frame_with_quads(&self, quads: &[QuadInstance]) -> Result<(), RenderError> {
-        self.render_frame_full(quads, &[])
+    pub fn render_frame_with_quads(&mut self, quads: &[QuadInstance]) -> Result<(), RenderError> {
+        self.render_frame_full(quads, &[], &[])
     }
 
-    /// Render a full frame with both colored quads and textured sprites.
+    /// Render a full frame with colored quads, textured sprites, and text.
     pub fn render_frame_full(
-        &self,
+        &mut self,
         quads: &[QuadInstance],
         sprite_batches: &[SpriteBatch],
+        text_sections: &[TextSection],
     ) -> Result<(), RenderError> {
         let output = match self.acquire_texture()? {
             Some(tex) => tex,
             None => return Ok(()),
         };
 
-        let w = self.surface_config.width as f32;
-        let h = self.surface_config.height as f32;
-        self.quad_pipeline.update_camera(&self.queue, w, h);
-        self.sprite_pipeline.update_camera(&self.queue, w, h);
+        let w = self.surface_config.width;
+        let h = self.surface_config.height;
+        self.quad_pipeline
+            .update_camera(&self.queue, w as f32, h as f32);
+        self.sprite_pipeline
+            .update_camera(&self.queue, w as f32, h as f32);
+
+        self.text_pipeline
+            .prepare(&self.device, &self.queue, text_sections, w, h);
 
         let view = output
             .texture
@@ -215,10 +230,13 @@ impl Renderer {
                 .draw(&self.device, &mut render_pass, quads);
             self.sprite_pipeline
                 .draw(&self.device, &mut render_pass, sprite_batches);
+            self.text_pipeline.render(&mut render_pass);
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
+
+        self.text_pipeline.post_frame();
 
         Ok(())
     }

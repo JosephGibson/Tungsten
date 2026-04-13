@@ -62,7 +62,30 @@ pub fn load_animations(manifest: &ResolvedManifest, world: &mut World) -> anyhow
     Ok(())
 }
 
-/// Load all assets (sprites + animations) from a manifest.
+/// Load all font assets from a resolved manifest: read TTF bytes and
+/// register them in the renderer's text pipeline.
+pub fn load_fonts(manifest: &ResolvedManifest, renderer: &mut Renderer) -> anyhow::Result<()> {
+    for (id, font_entry) in &manifest.fonts {
+        let data = std::fs::read(&font_entry.path).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to read font '{}' at '{}': {}",
+                id,
+                font_entry.path.display(),
+                e
+            )
+        })?;
+        log::info!(
+            "Loaded font '{}' ({} bytes) from '{}'",
+            id,
+            data.len(),
+            font_entry.path.display(),
+        );
+        renderer.load_font(id, data);
+    }
+    Ok(())
+}
+
+/// Load all assets (sprites + animations + fonts) from a manifest.
 /// After loading, validates that every sprite ID referenced from animation
 /// frames exists in the sprite registry (D-009).
 pub fn load_all(
@@ -72,6 +95,7 @@ pub fn load_all(
 ) -> anyhow::Result<()> {
     load_sprites(manifest, world, renderer)?;
     load_animations(manifest, world)?;
+    load_fonts(manifest, renderer)?;
 
     let registry = world
         .get_resource::<AssetRegistry>()

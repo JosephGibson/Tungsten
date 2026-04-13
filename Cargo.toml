@@ -1,4 +1,5 @@
 [workspace.package]
+version = "0.2.0-alpha.0"
 edition = "2021"
 license = "MIT"
 
@@ -13,6 +14,7 @@ members = [
     "examples/03_dots",
     "examples/04_sprites",
     "examples/05_animation",
+    "examples/06_text",
 ]
 
 [workspace.dependencies]
@@ -40,6 +42,9 @@ anyhow = "1"
 # Logging
 log = "0.4"
 env_logger = "0.11"
+
+# Text rendering (D-015 rule 2, D-026)
+glyphon = { git = "https://github.com/grovesNL/glyphon.git", branch = "main" }
 
 # GPU data layout
 bytemuck = { version = "1", features = ["derive"] }
