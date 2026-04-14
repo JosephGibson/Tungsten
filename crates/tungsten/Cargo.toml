@@ -18,3 +18,4 @@ anyhow = { workspace = true }
 pollster = { workspace = true }
 cpal = { workspace = true }
 notify = { workspace = true }
+rtrb = { workspace = true }

@@ -81,6 +81,7 @@ Log of non-obvious decisions for Tungsten. Numbered sequentially; entries are co
 **Decision:** The asset registry is a `Resource` in the World, accessed by the same mechanism as `DeltaTime` and `InputState`.
 **Why:** Avoids a second "global-ish" pathway in a design that's trying to have exactly one. Static/singleton is ruled out by the no-global-mutable-state rule.
 **Consequences:** If the World is dropped and recreated, the registry and its opaque handles die with it, while the renderer remains responsible for the actual `wgpu` resource lifetime.
+**Known limitation (teardown order):** Drop order between World and the renderer's wgpu resource pools is not explicitly guaranteed. For the current hobby scope the process exits via OS kill; no explicit teardown is required. A multi-scene or long-lived-window design would need either documented drop order (World before renderer) or explicit pool invalidation on World drop to avoid GPU resource leaks.
 
 ## D-015 — Dependency philosophy: three acceptance rules
 **Date:** 2026-04-08
@@ -155,7 +156,8 @@ A crate that hands me something the project is supposed to teach me to build is 
 **Date:** 2026-04-12
 **Decision:** Use `glyphon` (pulls in `cosmic-text`, `swash`, `fontdb`) for M7 text rendering. Satisfies D-015 rule 2 (TrueType/OpenType is a well-specified format).
 **Why:** Font parsing, shaping, layout, and GPU rasterization are a multi-month side quest that teaches font internals, not engine architecture. Purpose-built for wgpu.
-**Consequences:** Currently a git dep pinned to `main` because glyphon 0.10.0 on crates.io requires `wgpu ^28.0.0` and this project is on wgpu 29. Pin to a crates.io version once a wgpu-29 release ships.
+**Consequences:** Currently a git dep pinned to a specific commit on `main` because glyphon 0.10.0 on crates.io requires `wgpu ^28.0.0` and this project is on wgpu 29. Pin to a crates.io version once a wgpu-29 release ships.
+**Known fragility:** A branch pin (`branch = "main"`) is more fragile than a commit hash — upstream can advance and silently break builds for old commits. This plan pins to a specific rev; the pin should be updated to a crates.io release once one ships.
 
 ## D-027 — `cpal` for audio device access
 **Date:** 2026-04-13
@@ -174,6 +176,8 @@ A crate that hands me something the project is supposed to teach me to build is 
 **Decision:** Hand-roll the mixer as a closure owned by the `cpal` callback in `tungsten/src/audio.rs`. Feature set: play/stop/loop, master volume, per-sound volume. No DSP effects, envelope curves, or spatial audio.
 **Why:** `kira` fails all D-015 rules — the mixer (cpal callback contract, sample-level PCM, loop/one-shot state machine, `mpsc` command passing) is exactly what M8 is here to teach. ~150 lines.
 **Rejected:** `kira` (hands me the mixer); `rodio` (bundles decoder and device — even more opinionated).
+**Known limitation (device format):** The mixer assumes the cpal output device operates at the same sample rate and channel count as the decoded PCM (44.1 kHz stereo f32). Format mismatches are not detected or converted at runtime. This is acceptable for the hobby scope: all target audio files are 44.1 kHz stereo. If cpal cannot open a stream with the requested format, it returns an error at stream-open time; the engine will panic with a clear message rather than silently producing wrong-pitch or clipping audio.
+**Note (command channel):** The original implementation used `std::sync::mpsc::try_recv` in the callback thread. This was replaced with a wait-free SPSC ring buffer (`rtrb`) in D-034 to eliminate the theoretical RT-unsafe allocation.
 
 ## D-030 — M12 ECS rewrite is conditional
 **Date:** 2026-04-13
@@ -190,7 +194,7 @@ A crate that hands me something the project is supposed to teach me to build is 
 ## D-032 — M10 tilemap shape (format, pipeline reuse, camera default)
 **Date:** 2026-04-13
 **Decision:** Three coupled choices that define M10's shape:
-1. **`.tmj` extension for tilemap JSON.** Distinct from animation `.json` so the hot-reload dispatcher in `App::process_hot_reload` can route on extension alone. `notify` events only carry paths; content-sniffing to distinguish animation JSON from tilemap JSON would be a strict loss. Follows D-010 (custom JSON over Tiled `.tmx`) for the schema itself — tileset is `Vec<String>` of sprite IDs, layers hold flat row-major `Vec<i32>` with `-1` as the empty marker.
+1. **`.tmj` extension for tilemap JSON, Tiled-compatible schema.** Distinct from animation `.json` so the hot-reload dispatcher in `App::process_hot_reload` can route on extension alone. `notify` events only carry paths; content-sniffing to distinguish animation JSON from tilemap JSON would be a strict loss. **Supersedes the original custom schema:** the loader was updated to parse Tiled's standard `.tmj` JSON format verbatim (width/height/tilewidth/tileheight/layers[]/tilesets[]). Collision-layer metadata is carried via Tiled's custom `properties` array on layers. This unblocks standard off-the-shelf Tiled editor use for M13 content creation.
 2. **Tilemaps reuse the sprite pipeline.** `extract_tilemaps(&World)` resolves visible tiles into `SpriteBatch`es keyed by texture handle and returns them in layer order. The sprite pipeline draws them with zero changes. No new wgpu pipeline, no new shader, no new bind-group layout. Preserves D-007 (core/render seam): `tungsten-core` holds `TilemapData`/`TilemapRegistry`/`TilemapInstance` (plain data, no wgpu types); the umbrella crate's free function is where the AABB→tile-grid culling happens. Game code uses the D-018 direct-data API through `set_extract_sprites`, giving the caller control over ordering vs. entity sprites.
 3. **`Camera2D` default preserves pre-M10 behavior.** The new `Camera2D` resource (position top-left, zoom) produces its view-projection via `Mat4::orthographic_rh(pos.x, pos.x+w/zoom, pos.y+h/zoom, pos.y, -1, 1)`. At the default (position zero, zoom 1.0) this is the exact matrix the sprite pipeline built internally in M7–M9, so examples 01–08 are pixel-identical without being touched. A unit test in `camera.rs` asserts the equivalence.
 **Why:** The three decisions together keep M10 to pure additive work. No existing example or downstream code needed to change; all three crates compile with the new signatures behind defaults that match the old behavior. The `.tmj` split specifically buys clean hot-reload dispatch with zero parsing overhead.
@@ -214,3 +218,18 @@ A crate that hands me something the project is supposed to teach me to build is 
 - `PhysicsConfig::gravity` defaults to `Vec2::ZERO` so top-down games pay no physics tax; example-10-platformer overrides it at startup. No crate-level "physics feature flag" — unused if the user never registers `physics_step`.
 - D-015 not triggered: no new runtime dep (glam is already in; `HashMap` is std).
 - `physics_step` is a plain system registered by the user via `app.add_system(physics_step)`. The frame loop doesn't hard-wire it, keeping ordering under game-code control (input systems before, gameplay reads events after).
+**Known limitation (tilemap collider cost):** Tilemap collision proxies are regenerated per substep (transient by design, see point 4). With 8 substeps and a 256×256 map this is ~512 K AABB checks per frame. **Tile-count budget for current implementation: ≤128×128 maps.** Larger maps should pre-bake a static spatial index rebuilt only on hot reload. This is a M13 concern; no current example exceeds the budget.
+
+## D-034 — Lock-free SPSC ring for the audio command channel
+**Date:** 2026-04-14
+**Decision:** Replace `std::sync::mpsc` in the `cpal` audio callback with `rtrb` v0.3, a wait-free single-producer single-consumer ring buffer. Ring capacity: 64 commands. Drain capped at ring capacity per callback invocation (bounded by construction).
+**Why:** `std::sync::mpsc::try_recv` is non-blocking but can allocate on internal state transitions; it provides no hard real-time guarantee. `rtrb::Consumer::pop` is allocation-free and wait-free on the fast path. Satisfies D-015 rule 3 (well-specified primitive; lock-free ring buffers are a solved problem). Also a good learning exercise before M13.
+**Rejected:** Hand-rolling a ring buffer (not worth the surface area); `ringbuf` (functionally equivalent, `rtrb` is more ergonomic).
+**Consequences:** `rtrb` is added as a dep of `tungsten` only. `D-027` consequence updated: "game code communicates with the callback via rtrb, not mpsc."
+
+## D-035 — Manifest merge order: call-site order, forward references are runtime None
+**Date:** 2026-04-14
+**Decision:** When multiple manifests are loaded together, merge order is call-site order (the order `Manifest::load` is called by the app — typically root manifest first, then example-local manifests). Later manifests may reference IDs introduced by earlier ones; the registry returns `None` at runtime for unresolved forward references (no forward-reference detection at load time).
+**Why:** DFS-include or lexical ordering would require a manifest-level include directive that doesn't exist yet and adds parsing complexity. Call-site order is explicit and predictable for the current use case (one root manifest + one example-local manifest).
+**Global uniqueness:** Enforced by the Layer 1 integration test (`crates/tungsten-core/tests/manifests.rs` — `all_manifest_ids_are_globally_unique`), which aggregates all discovered manifests and asserts no ID collision. Duplicate IDs remain fatal at load time per D-017.
+**Consequences:** A future DFS-include directive or explicit load-order manifest field is the preferred upgrade if manifest composition grows complex.

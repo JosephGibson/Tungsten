@@ -104,6 +104,12 @@ Tilemap collision layers (from M10) provide static geometry — tiles marked sol
 - [x] A new example demonstrates entities colliding with each other and with tilemap geometry.
 - [x] `cargo test --workspace` passes. `cargo fmt` clean.
 
+### Known limitations and deferred scope
+
+- **Variable-dt physics.** The physics step runs under a variable timestep with a substep cap (see D-033). This is acceptable for hobby-scope gameplay but can produce frame-rate-dependent behaviour at high speeds. A semi-fixed accumulator loop is the preferred upgrade before M13 if instability is observed in practice.
+- **Tilemap collider cost is O(tiles × substeps).** Collision proxies for every tile are regenerated each substep (see D-033). Acceptable for maps ≤128×128 tiles; larger maps should pre-bake a static spatial index.
+- **Advanced physics scenarios are out of scope for M11.** Stacking bodies, moving platforms, contact persistence, and high-speed edge cases are not tested and are not failure modes — they are M13 concerns. M11 acceptance criteria are met for the platformer example as shipped.
+
 ### Dependencies
 
 M10 (tilemap collision layers). Phase 1 ECS.
@@ -121,7 +127,7 @@ M10 (tilemap collision layers). Phase 1 ECS.
 ### Goals
 
 - Replace the naive `HashMap<TypeId, HashMap<EntityId, Box<dyn Any>>>` storage with an archetypal layout.
-- Maintain the existing public API — no breaking changes to examples or game code.
+- Maintain **source-level compatibility** for example APIs — existing example code should compile unchanged. Iteration order, internal borrow semantics, and minor behavioral details may change; these are not considered breaking. Determinism and ordering tests will be added as part of M12 acceptance to catch regressions.
 - Measure and document the performance difference with real M7–M11 workloads.
 
 ### Scope
@@ -182,7 +188,7 @@ Genre is decided at M13 start, not before. Don't pre-commit to a design that may
 
 ### Dependencies
 
-All of Phase 2 (M7–M12). The capstone.
+All of M7–M11, and M12 if executed. The capstone.
 
 ---
 

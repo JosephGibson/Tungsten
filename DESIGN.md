@@ -81,7 +81,7 @@ shutdown:
 
 **Phase 1 system ordering:** systems live in the `tungsten` app layer as a plain manually-ordered list. Registration order is execution order. No scheduler, labels, or dependency graph until a real need appears. The goal in M2–M4 is that input → simulation → animation ordering is obvious from reading one place.
 
-Parallelism, parallel system scheduling, and fixed-timestep simulation are all explicitly deferred. Revisit if and when there's a real reason.
+Parallelism and parallel system scheduling are explicitly deferred. **Physics (M11) runs under a variable timestep** with a substep cap (see D-033 and `PHASE2.md` M11 known limitations). This is acceptable for hobby-scope gameplay; a semi-fixed accumulator loop is the preferred upgrade before M13 if frame-rate-dependent physics behaviour is observed in practice.
 
 ### ECS sketch
 
@@ -100,6 +100,8 @@ Parallelism, parallel system scheduling, and fixed-timestep simulation are all e
 **Renderer-ECS coupling:** `tungsten-render` may depend on `tungsten-core` and use its types where it makes the glue simpler. The renderer is not *required* to be ECS-driven — direct-data APIs should also exist so the renderer can be tested against hand-built data — but the separation is not a rule.
 
 **Render path (D-018):** systems mutate the `World` during `tick`. Extract functions then receive `&World` and resolve string IDs → `TextureHandle` via `AssetRegistry`, producing `SpriteBatch`/`QuadInstance`/`TextSection` slices with handles pre-resolved where extract runs. POD draw data is passed into `render_frame_full`; the renderer does not require long-lived mutable `World` access at draw time. The renderer may read the asset registry for ID resolution when an implementation needs it — prefer resolving IDs in extract when practical. This keeps borrow-checker pressure contained and preserves a direct-data API for testing.
+
+**Handle lifetime and hot-reload safety:** No `TextureHandle` values are cached in draw lists across frames — handles are re-resolved from the registry on every extract pass. This means handle-reuse ABA (use-after-free via recycled pool index) is not a concern for the current architecture: a stale handle from the previous frame is never observed because the extract phase always re-derives handles from the live registry before drawing.
 
 ### Data-driven config
 
@@ -218,7 +220,9 @@ This works because the M5 architecture already enforces the registry-by-ID invar
 
 Manifest-driven: `assets/sounds/` holds OGG/WAV/MP3 files; the manifest's `sounds` section registers them by ID. Game code plays sounds by ID through an `AudioCommands` resource — the same ID-through-registry discipline as sprites and fonts.
 
-`cpal` (D-027) opens the audio device. `symphonia` (D-028) decodes compressed audio at load time into `Vec<f32>` PCM — no decoder types appear at runtime in the callback. A hand-rolled mixer (D-029) runs in `cpal`'s callback thread; game systems write `AudioCommand` values each tick and the callback drains them via `mpsc::try_recv`. The `cpal` callback thread plus the M9 `notify` watcher thread are the only background threads in the engine. No async runtime, no shared mutable state.
+`cpal` (D-027) opens the audio device. `symphonia` (D-028) decodes compressed audio at load time into `Vec<f32>` PCM — no decoder types appear at runtime in the callback. A hand-rolled mixer (D-029) runs in `cpal`'s callback thread; game systems write `AudioCommand` values each tick and the callback drains them via a lock-free SPSC ring (rtrb, D-034). The `cpal` callback thread plus the M9 `notify` watcher thread are the only background threads in the engine. No async runtime, no shared mutable state.
+
+**Audio assets are not hot-reloadable.** The M9 file watcher covers sprites, animations, fonts, and manifest changes only. PCM buffers decoded at startup remain fixed for the session — the callback thread always holds the original buffer references. This is a deliberate scope boundary, not an oversight: audio hot reload would require lock-free double-buffering of PCM data across the callback boundary, which is a separate feature with its own complexity budget.
 
 ## Project structure
 

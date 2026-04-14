@@ -30,7 +30,7 @@ Examples need a real GPU and display. Override the backend if wgpu picks the wro
 Two layers of automated checks exist beyond `cargo test`. Use them deliberately — they exist because earlier bugs (e.g. a manifest path resolving outside its intended target) slipped through unit tests.
 
 - **Layer 1 — manifest integration test.** [crates/tungsten-core/tests/manifests.rs](crates/tungsten-core/tests/manifests.rs) discovers every `manifest.json` in the workspace (root + `examples/*/assets/`) and calls `ResolvedManifest::load` on each. Runs as part of `cargo test --workspace`, no GPU needed. Fast and free.
-- **Layer 2 — example smoke test.** [crates/tungsten/src/app.rs](crates/tungsten/src/app.rs) honours `TUNGSTEN_SMOKE_FRAMES`: when set, `App` renders that many frames and exits cleanly. [scripts/smoke-examples.sh](scripts/smoke-examples.sh) runs every example with `TUNGSTEN_SMOKE_FRAMES=3` under a per-example timeout, logs to `/tmp`, and reports pass/fail with the tail of any failing log. Needs a real GPU/display. ~1–2 min with a warm cache.
+- **Layer 2 — example smoke test.** [crates/tungsten/src/app.rs](crates/tungsten/src/app.rs) honours `TUNGSTEN_SMOKE_FRAMES`: when set, `App` renders that many frames and exits cleanly. [scripts/smoke-examples.sh](scripts/smoke-examples.sh) runs every example with `TUNGSTEN_SMOKE_FRAMES=3` under a per-example timeout, logs to `/tmp`, and reports pass/fail with the tail of any failing log. Needs a real GPU/display. ~1–2 min with a warm cache. **Linux only** — the script uses bash arrays and GNU `timeout`; Windows contributors should run examples manually with `TUNGSTEN_SMOKE_FRAMES=3`.
 
 **When to run which:**
 
@@ -86,14 +86,14 @@ Adding a new asset:
 | Font      | `assets/fonts/<Fam>/` | `fonts`          | stable ID                                 |
 | Sound     | `assets/sounds/`      | `sounds`         | stable ID, optional `looping` / `volume`  |
 
-- **Shaders** (`*.wgsl`) live in `tungsten-render/src/` and are compiled in via `include_str!`. Not manifest-tracked.
+- **Shaders** (`*.wgsl`) live in `tungsten-render/src/` and are compiled in via `include_str!` (D-023). Not manifest-tracked and **excluded from M9 hot reload** — shader changes require a binary rebuild.
 - **Example-local assets:** `examples/NN_name/assets/` with a local `manifest.json`. Asset IDs must be globally unique across all loaded manifests — duplicate IDs are fatal at load time.
 - **Game code never references file paths.** Always reference assets by ID through the registry. This invariant is what makes hot reload (M9) work — don't break it.
 
 ## Things to actually not do
 
 - **No external ECS or game-engine crate** (`bevy_ecs`, `hecs`, `specs`, `legion`, `amethyst`, `fyrox`, `ggez`, `macroquad`). Building them by hand is the point.
-- **No async runtimes** (`tokio`, `async-std`). The `cpal` audio callback thread (M8+) and the `notify` watcher thread (M9+) are the only permitted background threads; they communicate with the main thread via `mpsc`, not an async runtime.
+- **No async runtimes** (`tokio`, `async-std`). The `cpal` audio callback thread (M8+) and the `notify` watcher thread (M9+) are the only permitted background threads. The audio thread receives commands via a lock-free `rtrb` ring (D-034); the notify watcher sends file events via `std::sync::mpsc`. No async runtime.
 - **No global mutable state.** No `static mut`, no `lazy_static` singletons. State lives in the `World` or is passed explicitly. The asset registry is a `Resource`, not a global.
 - **No new third-party runtime dep without a `DECISIONS.md` entry** citing which D-015 rule applies.
 - **No hardcoded asset paths in game code.** Use IDs through the registry.

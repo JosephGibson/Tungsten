@@ -63,3 +63,29 @@ fn all_manifests_load() {
         failures.join("\n  - ")
     );
 }
+
+/// Verifies that asset IDs are globally unique across all manifests in the
+/// workspace (D-017, D-035). Each manifest is loaded individually first so
+/// path resolution errors don't contaminate the merge step.
+#[test]
+fn all_manifest_ids_are_globally_unique() {
+    let root = workspace_root();
+    let manifests = collect_manifests(&root);
+    assert!(
+        !manifests.is_empty(),
+        "no manifests discovered under {} — test is broken",
+        root.display()
+    );
+
+    let mut merged = ResolvedManifest::default();
+    for manifest_path in &manifests {
+        let loaded = ResolvedManifest::load(manifest_path)
+            .unwrap_or_else(|e| panic!("manifest failed to load (run all_manifests_load for details): {}: {e:?}", manifest_path.display()));
+        if let Err(e) = merged.merge(loaded) {
+            panic!(
+                "duplicate asset ID detected across manifests — {} introduced a collision: {e:?}",
+                manifest_path.display()
+            );
+        }
+    }
+}
