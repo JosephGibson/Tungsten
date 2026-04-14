@@ -2,7 +2,7 @@
 
 A from-scratch Rust 2D game engine, built as a hobby project. The point is the *building*, not the shipping — understanding how engines work from the ground up, with Rust as the language to learn deeply.
 
-**Status:** `v0.5.0-alpha` — Phase 1 complete (M0–M6). Phase 2 through M10 complete (M7 text, M8 audio, M9 hot reload, M10 tilemaps). Next: M11 2D physics. See [PHASE2.md](PHASE2.md).
+**Status:** `v0.6.0-alpha` — Phase 1 complete (M0–M6). Phase 2 through M11 complete (M7 text through M11 2D physics). Next: M12 ECS rewrite (conditional) or M13 first game. See [PHASE2.md](PHASE2.md).
 
 ## Stack
 
@@ -17,6 +17,7 @@ A from-scratch Rust 2D game engine, built as a hobby project. The point is the *
 | `DECISIONS.md` | Log of non-obvious decisions with rationale.                     |
 | `PHASE2.md`    | Phase 2 milestones, release map, acceptance criteria.            |
 | `CLAUDE.md`    | Pointer file for Claude Code; canonical rules are `AGENTS.md`.   |
+| `docs/LLM_INDEX.md` | Subsystem → source paths for coding agents (optional).    |
 | `CHANGELOG.md` | Per-version change log.                                          |
 
 ## Quick start
