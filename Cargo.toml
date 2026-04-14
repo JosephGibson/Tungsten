@@ -9,16 +9,7 @@ members = [
     "crates/tungsten-core",
     "crates/tungsten-render",
     "crates/tungsten",
-    "examples/01_window",
-    "examples/02_ecs",
-    "examples/03_dots",
-    "examples/04_sprites",
-    "examples/05_animation",
-    "examples/06_text",
-    "examples/07_audio",
-    "examples/08_hot_reload",
-    "examples/09_tilemap",
-    "examples/10_platformer",
+    "examples/01_platformer",
 ]
 
 [workspace.dependencies]

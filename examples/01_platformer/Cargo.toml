@@ -1,5 +1,5 @@
 [package]
-name = "example-03-dots"
+name = "example-01-platformer"
 version.workspace = true
 edition = "2021"
 publish = false
@@ -8,6 +8,7 @@ publish = false
 tungsten = { workspace = true }
 tungsten-core = { workspace = true }
 tungsten-render = { workspace = true }
+glam = { workspace = true }
 anyhow = { workspace = true }
 env_logger = { workspace = true }
 log = { workspace = true }
