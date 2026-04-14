@@ -30,7 +30,7 @@ Examples need a real GPU and display. Override the backend if wgpu picks the wro
 Two layers of automated checks exist beyond `cargo test`. Use them deliberately — they exist because earlier bugs (e.g. a manifest path resolving outside its intended target) slipped through unit tests.
 
 - **Layer 1 — manifest integration test.** [crates/tungsten-core/tests/manifests.rs](crates/tungsten-core/tests/manifests.rs) discovers every `manifest.json` in the workspace (root + `examples/*/assets/`) and calls `ResolvedManifest::load` on each. Runs as part of `cargo test --workspace`, no GPU needed. Fast and free.
-- **Layer 2 — example smoke test.** [crates/tungsten/src/app.rs](crates/tungsten/src/app.rs) honours `TUNGSTEN_SMOKE_FRAMES`: when set, `App` renders that many frames and exits cleanly. [scripts/smoke-examples.sh](scripts/smoke-examples.sh) runs every example with `TUNGSTEN_SMOKE_FRAMES=3` under a per-example timeout, logs to `/tmp`, and reports pass/fail with the tail of any failing log. Needs a real GPU/display. ~1–2 min with a warm cache.
+- **Layer 2 — example smoke test.** [crates/tungsten/src/app.rs](crates/tungsten/src/app.rs) honours `TUNGSTEN_SMOKE_FRAMES`: when set, `App` renders that many frames and exits cleanly. [scripts/smoke-examples.sh](scripts/smoke-examples.sh) runs every example with `TUNGSTEN_SMOKE_FRAMES=3` under a per-example timeout, logs to a temp directory, and reports pass/fail with the tail of any failing log. Needs a real GPU/display. ~1–2 min with a warm cache. **Linux only** — the script uses bash arrays and GNU `timeout`; Windows contributors should run examples manually with `TUNGSTEN_SMOKE_FRAMES=3`.
 
 **When to run which:**
 
@@ -86,14 +86,14 @@ Adding a new asset:
 | Font      | `assets/fonts/<Fam>/` | `fonts`          | stable ID                                 |
 | Sound     | `assets/sounds/`      | `sounds`         | stable ID, optional `looping` / `volume`  |
 
-- **Shaders** (`*.wgsl`) live in `tungsten-render/src/` and are compiled in via `include_str!`. Not manifest-tracked.
+- **Shaders** (`*.wgsl`) live in `tungsten-render/src/` and are compiled in via `include_str!` (D-023). Not manifest-tracked and **excluded from M9 hot reload** — shader changes require a binary rebuild.
 - **Example-local assets:** `examples/NN_name/assets/` with a local `manifest.json`. Asset IDs must be globally unique across all loaded manifests — duplicate IDs are fatal at load time.
 - **Game code never references file paths.** Always reference assets by ID through the registry. This invariant is what makes hot reload (M9) work — don't break it.
 
 ## Things to actually not do
 
 - **No external ECS or game-engine crate** (`bevy_ecs`, `hecs`, `specs`, `legion`, `amethyst`, `fyrox`, `ggez`, `macroquad`). Building them by hand is the point.
-- **No async runtimes** (`tokio`, `async-std`). The `cpal` audio callback thread (M8+) and the `notify` watcher thread (M9+) are the only permitted background threads; they communicate with the main thread via `mpsc`, not an async runtime.
+- **No async runtimes** (`tokio`, `async-std`). The `cpal` audio callback thread (M8+) and the `notify` watcher thread (M9+) are the only permitted background threads. The audio thread receives commands via a lock-free `rtrb` ring (D-034); the notify watcher sends file events via `std::sync::mpsc`. No async runtime.
 - **No global mutable state.** No `static mut`, no `lazy_static` singletons. State lives in the `World` or is passed explicitly. The asset registry is a `Resource`, not a global.
 - **No new third-party runtime dep without a `DECISIONS.md` entry** citing which D-015 rule applies.
 - **No hardcoded asset paths in game code.** Use IDs through the registry.
@@ -111,17 +111,17 @@ Adding a new asset:
 
 ## Working with an AI assistant
 
-**Startup reading order:** `AGENTS.md` (this file) → `DESIGN.md` → `PHASE2.md` → `DECISIONS.md`. If the task touches a specific crate, also read its `lib.rs` and the relevant source files before proposing changes. Don't propose changes to code you haven't read.
+**Startup reading order:** `AGENTS.md` (this file) → `docs/LLM_INDEX.md` → only the source files this task touches. Read `DESIGN.md` for architecture context and `DECISIONS.md` (grep by `D-0xx`) for rationale — but only when the task requires it. `PHASE2.md` for milestone scope. Don't read these end-to-end by default. Don't propose changes to code you haven't read.
 
 **Subsystem → file map:** [docs/LLM_INDEX.md](docs/LLM_INDEX.md) (optional shortcut before diving into a crate).
+
+**Plan files (optional handoff).** For work that spans sessions or long chats, write the execution plan to [`docs/plans/<topic>.md`](docs/plans/) and continue from that file in a fresh context instead of replaying the whole thread. Conventions: [CLAUDE.md](CLAUDE.md). Milestone direction stays canonical in `PHASE2.md`; architecture decisions in `DECISIONS.md`.
 
 **Session types.**
 
 - **Feature session** (implementing a milestone): ask for a plan first — files, API shape, tests. Any new dep cites its D-015 rule and gets a `DECISIONS.md` entry. After implementation: `cargo fmt && cargo test --workspace`.
 - **Audit session** (reviewing quality/debt/ergonomics): read the full crate surface before proposing changes. Flag, don't fix — findings in one session, fixes in another. Check `DECISIONS.md` before calling anything "wrong"; most architectural choices have a logged reason.
 - **Docs session** (planning documents): read the full doc before editing. `DECISIONS.md` entries are immutable once settled — reversals add a new entry marked `Superseded by D-XXX`. Update `CHANGELOG.md`, `README.md` status line, and `PHASE2.md` milestone markers when a milestone ships.
-
-**Open decisions.** Decisions still pending are marked `<!-- OPEN: ... -->` in `PHASE2.md`. Resolve before the relevant milestone ships.
 
 **Pre-implementation checklist.**
 

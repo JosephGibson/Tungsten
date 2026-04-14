@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.6.0-alpha"
+version = "0.7.0-alpha"
 edition = "2021"
 license = "MIT"
 
@@ -51,10 +51,14 @@ log = "0.4"
 env_logger = "0.11"
 
 # Text rendering (D-015 rule 2, D-026)
-# Pinned to git main because glyphon 0.10.0 on crates.io requires wgpu ^28; the main
+# Pinned to a specific commit because glyphon 0.10.0 on crates.io requires wgpu ^28; the main
 # branch has wgpu 29 support but no release yet. Switch to a crates.io pin once one ships.
 # Tracking: https://github.com/grovesNL/glyphon/releases
-glyphon = { git = "https://github.com/grovesNL/glyphon.git", branch = "main" }
+# Pinned commit: 2026-04-14 HEAD — update this when upgrading wgpu or when a crates.io release ships.
+glyphon = { git = "https://github.com/grovesNL/glyphon.git", rev = "5ac022456ad16ae3ddb60c4f1db1f0f63e412571" }
 
 # GPU data layout
 bytemuck = { version = "1", features = ["derive"] }
+
+# Lock-free SPSC ring buffer for audio command channel (D-015 rule 3, D-034)
+rtrb = "0.3"

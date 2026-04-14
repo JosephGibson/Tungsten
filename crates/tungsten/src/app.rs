@@ -287,11 +287,14 @@ impl ApplicationHandler for App {
                 self.config.window.height,
             ));
 
-        let window = Arc::new(
-            event_loop
-                .create_window(attrs)
-                .expect("failed to create window"),
-        );
+        let window = match event_loop.create_window(attrs) {
+            Ok(w) => Arc::new(w),
+            Err(e) => {
+                log::error!("Failed to create window: {e}");
+                event_loop.exit();
+                return;
+            }
+        };
 
         match Renderer::new(
             window.clone(),
@@ -440,11 +443,12 @@ impl ApplicationHandler for App {
                 }
 
                 // Forward audio commands to the audio thread.
-                if let (Some(audio), Some(cmds)) =
-                    (&self.audio, self.world.get_resource_mut::<AudioCommands>())
-                {
+                if let (Some(audio), Some(cmds)) = (
+                    &mut self.audio,
+                    self.world.get_resource_mut::<AudioCommands>(),
+                ) {
                     for cmd in cmds.drain() {
-                        let _ = audio.sender().send(cmd);
+                        audio.send(cmd);
                     }
                 }
 

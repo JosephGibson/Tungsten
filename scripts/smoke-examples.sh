@@ -17,17 +17,10 @@ cd "$(dirname "$0")/.."
 SMOKE_FRAMES="${TUNGSTEN_SMOKE_FRAMES:-3}"
 TIMEOUT_SECS="${TUNGSTEN_SMOKE_TIMEOUT:-90}"
 
-EXAMPLES=(
-  example-01-window
-  example-02-ecs
-  example-03-dots
-  example-04-sprites
-  example-05-animation
-  example-06-text
-  example-07-audio
-  example-08-hot-reload
-  example-09-tilemap
-  example-10-platformer
+mapfile -t EXAMPLES < <(
+  cargo metadata --no-deps --format-version 1 \
+    | jq -r '.packages[] | select(.name | test("^example-")) | .name' \
+    | sort
 )
 
 echo "Pre-building all examples..."

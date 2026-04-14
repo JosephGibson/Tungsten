@@ -1,0 +1,11 @@
+# Build artifacts (local; huge)
+target/
+**/target/
+
+# Binary assets — referenced by ID in code; manifest stays tracked
+**/*.ttf
+**/*.png
+**/*.ogg
+
+# Optional: uncomment if lockfile noise is a problem
+# /Cargo.lock

@@ -1,9 +1,14 @@
 use std::collections::HashMap;
-use std::sync::mpsc;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use rtrb::RingBuffer;
 use tungsten_core::assets::{AudioHandle, SoundData, SoundRegistry};
 use tungsten_core::audio::AudioCommand;
+
+/// Capacity of the lock-free SPSC ring buffer used to send commands from the
+/// game thread to the cpal callback thread. 64 slots covers any realistic burst
+/// of AudioCommands in a single frame (D-034).
+const CMD_RING_CAPACITY: usize = 64;
 
 /// Internal state for one playing sound in the mixer.
 struct PlayingSound {
@@ -17,11 +22,11 @@ struct PlayingSound {
 }
 
 /// The audio subsystem. Owns the `cpal::Stream` (must stay alive) and the
-/// sender end of the command channel. Created once during `App::resumed()`.
+/// producer end of the lock-free command ring. Created once during `App::resumed()`.
 pub struct AudioSystem {
     /// Kept alive so the cpal stream continues playing.
     _stream: cpal::Stream,
-    sender: mpsc::Sender<AudioCommand>,
+    producer: rtrb::Producer<AudioCommand>,
 }
 
 impl AudioSystem {
@@ -57,7 +62,7 @@ impl AudioSystem {
             captured_sounds.insert(handle, pcm);
         }
 
-        let (sender, receiver) = mpsc::channel::<AudioCommand>();
+        let (producer, mut consumer) = RingBuffer::<AudioCommand>::new(CMD_RING_CAPACITY);
 
         let mut playing: Vec<PlayingSound> = Vec::new();
         let mut master_volume: f32 = 1.0;
@@ -66,8 +71,9 @@ impl AudioSystem {
             .build_output_stream(
                 &config.into(),
                 move |output: &mut [f32], _info| {
-                    // Drain incoming commands (non-blocking).
-                    while let Ok(cmd) = receiver.try_recv() {
+                    // Drain incoming commands. rtrb::Consumer::pop is wait-free
+                    // and allocation-free on the callback thread (D-034).
+                    while let Ok(cmd) = consumer.pop() {
                         process_command(cmd, &mut playing, &mut master_volume);
                     }
 
@@ -99,12 +105,15 @@ impl AudioSystem {
 
         Ok(AudioSystem {
             _stream: stream,
-            sender,
+            producer,
         })
     }
 
-    pub fn sender(&self) -> &mpsc::Sender<AudioCommand> {
-        &self.sender
+    /// Send a command to the audio callback thread. Drops the command silently
+    /// if the ring is full (a full ring means >64 commands in a single frame,
+    /// which is not a realistic scenario).
+    pub fn send(&mut self, cmd: AudioCommand) {
+        let _ = self.producer.push(cmd);
     }
 }
 

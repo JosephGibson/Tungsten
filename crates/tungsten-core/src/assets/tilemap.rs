@@ -1,20 +1,73 @@
 //! Tilemap data: layered, sprite-ID-referenced, JSON-driven.
 //!
-//! Follows the custom-JSON precedent set by `AnimationData` (D-010): a
-//! `TilemapData::load(path)` constructor parses a human-authored `.tmj`
-//! file and the loader validates cross-references (each tileset entry
-//! must be a known sprite ID) at startup.
+//! Parses Tiled's standard `.tmj` JSON map format (D-032). The on-disk
+//! schema is Tiled-compatible (tilewidth/tileheight, tilesets[], layers[]
+//! with GID data arrays) so maps can be authored in the Tiled editor
+//! directly. Tungsten sprite IDs are stored in per-tile custom properties
+//! (`"sprite_id"`) rather than deriving from image paths, keeping the
+//! manifest-driven invariant intact.
 //!
 //! Tilemaps do **not** own their own atlas. Each entry in the `tileset`
 //! array is a sprite ID that already lives in `AssetRegistry`, and the
 //! renderer batches tiles per-texture the same way it batches sprites.
 //! This keeps the core/render seam clean (D-007) and means hot reload
 //! of a tile sprite's PNG is automatically reflected on the next frame.
+//!
+//! Only embedded image-collection tilesets are supported. External `.tsx`
+//! tileset files are not parsed; reference the tileset inline in the `.tmj`.
 
 use glam::Vec2;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+
+// ---------------------------------------------------------------------------
+// Private Tiled .tmj deserialization types
+// These reflect the subset of Tiled's JSON map format that Tungsten cares
+// about. Unknown fields are ignored via `#[serde(deny_unknown_fields)]`
+// being intentionally absent — Tiled adds many optional fields we don't need.
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct TiledMap {
+    tilewidth: u32,
+    tileheight: u32,
+    width: u32,
+    height: u32,
+    tilesets: Vec<TiledTileset>,
+    layers: Vec<TiledLayer>,
+}
+
+#[derive(Deserialize)]
+struct TiledTileset {
+    firstgid: u32,
+    #[serde(default)]
+    tiles: Vec<TiledTile>,
+}
+
+#[derive(Deserialize, Clone)]
+struct TiledTile {
+    id: u32, // 0-based local ID within this tileset
+    #[serde(default)]
+    properties: Vec<TiledProperty>,
+}
+
+#[derive(Deserialize)]
+struct TiledLayer {
+    #[serde(rename = "type")]
+    layer_type: String,
+    name: String,
+    #[serde(default)]
+    data: Option<Vec<u32>>,
+    #[serde(default)]
+    properties: Vec<TiledProperty>,
+}
+
+#[derive(Deserialize, Clone)]
+struct TiledProperty {
+    name: String,
+    value: serde_json::Value,
+}
 
 /// Index into a tilemap's `tileset` array. `-1` (= `EMPTY_TILE`) marks
 /// an empty cell; values `>= 0` index into `TilemapData::tileset`.
@@ -59,19 +112,110 @@ pub struct TilemapData {
 }
 
 impl TilemapData {
-    /// Load and validate a tilemap JSON file. Validation failures are
+    /// Load and validate a Tiled `.tmj` map file. Validation failures are
     /// fatal (returned as `anyhow::Error`): bad layer length, out-of-range
-    /// tile index, zero dimensions.
+    /// tile GID, zero dimensions.
     ///
-    /// Sprite-ID existence is *not* checked here because `TilemapData`
-    /// has no access to `AssetRegistry`. That check lives in the asset
-    /// loader, mirroring animation-frame validation.
+    /// Expects Tiled's standard JSON map format with an embedded
+    /// image-collection tileset. Sprite IDs are read from per-tile custom
+    /// properties named `"sprite_id"`. Sprite-ID existence is *not* checked
+    /// here — that lives in the asset loader (no `AssetRegistry` access here).
+    ///
+    /// Only layers with `"type": "tilelayer"` are processed. The layer kind
+    /// (Render vs Collision) is read from a custom property `"kind"` on the
+    /// layer; the default is `Render`.
     pub fn load(path: impl AsRef<Path>) -> Result<Self, anyhow::Error> {
         let path = path.as_ref();
         let contents = std::fs::read_to_string(path)
             .map_err(|e| anyhow::anyhow!("Failed to read tilemap '{}': {}", path.display(), e))?;
-        let data: TilemapData = serde_json::from_str(&contents)
-            .map_err(|e| anyhow::anyhow!("Invalid tilemap '{}': {}", path.display(), e))?;
+
+        let tiled: TiledMap = serde_json::from_str(&contents)
+            .map_err(|e| anyhow::anyhow!("Invalid Tiled .tmj '{}': {}", path.display(), e))?;
+
+        // --- Build the tileset sprite-ID array ---
+        // We only support a single tileset per map for now.
+        let ts = tiled
+            .tilesets
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("Tilemap '{}': no tilesets defined", path.display()))?;
+        let firstgid = ts.firstgid;
+
+        // Sort tiles by local id to build a contiguous 0-based array.
+        let mut sorted_tiles = ts.tiles.clone();
+        sorted_tiles.sort_by_key(|t| t.id);
+
+        let mut tileset: Vec<String> = Vec::with_capacity(sorted_tiles.len());
+        for tile in &sorted_tiles {
+            let sprite_id = tile
+                .properties
+                .iter()
+                .find(|p| p.name == "sprite_id")
+                .and_then(|p| p.value.as_str())
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Tilemap '{}': tile id={} has no 'sprite_id' property",
+                        path.display(),
+                        tile.id
+                    )
+                })?;
+            tileset.push(sprite_id.to_owned());
+        }
+
+        // --- Build layers ---
+        let mut layers: Vec<TilemapLayer> = Vec::new();
+        for tl in &tiled.layers {
+            if tl.layer_type != "tilelayer" {
+                continue; // objectgroup, imagelayer, etc. are ignored
+            }
+            let data = tl.data.as_ref().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Tilemap '{}': tilelayer '{}' has no data array",
+                    path.display(),
+                    tl.name
+                )
+            })?;
+
+            // Read layer kind from custom properties.
+            let kind = tl
+                .properties
+                .iter()
+                .find(|p| p.name == "kind")
+                .and_then(|p| p.value.as_str())
+                .map(|s| match s {
+                    "collision" => LayerKind::Collision,
+                    _ => LayerKind::Render,
+                })
+                .unwrap_or(LayerKind::Render);
+
+            // Convert Tiled GIDs → internal tile indices.
+            // GID 0 = empty → -1; GID N = (N - firstgid) for tiles in our tileset.
+            let tiles: Vec<TileIndex> = data
+                .iter()
+                .map(|&gid| {
+                    if gid == 0 {
+                        EMPTY_TILE
+                    } else {
+                        (gid - firstgid) as TileIndex
+                    }
+                })
+                .collect();
+
+            layers.push(TilemapLayer {
+                name: tl.name.clone(),
+                kind,
+                tiles,
+            });
+        }
+
+        let data = TilemapData {
+            tile_width: tiled.tilewidth,
+            tile_height: tiled.tileheight,
+            width: tiled.width,
+            height: tiled.height,
+            tileset,
+            layers,
+        };
+
         data.validate()
             .map_err(|e| anyhow::anyhow!("Tilemap '{}': {}", path.display(), e))?;
         Ok(data)
@@ -283,6 +427,7 @@ mod tests {
 
     #[test]
     fn load_parses_a_real_file() {
+        // Tests Tiled .tmj format parsing (D-032).
         let dir = std::env::temp_dir().join(format!(
             "tungsten_tilemap_test_{}_{}",
             std::process::id(),
@@ -293,14 +438,32 @@ mod tests {
         let mut f = std::fs::File::create(&path).unwrap();
         f.write_all(
             br#"{
-                "tile_width": 8, "tile_height": 8,
-                "width": 2, "height": 2,
-                "tileset": ["a", "b"],
-                "layers": [
-                  { "name": "ground", "kind": "render", "tiles": [0, 1, 1, 0] },
-                  { "name": "solid",  "kind": "collision", "tiles": [-1, 0, -1, -1] }
-                ]
-            }"#,
+          "type": "map", "version": "1.10",
+          "orientation": "orthogonal", "renderorder": "right-down",
+          "tilewidth": 8, "tileheight": 8,
+          "width": 2, "height": 2,
+          "infinite": false,
+          "tilesets": [{
+            "firstgid": 1, "columns": 0, "name": "test",
+            "spacing": 0, "margin": 0,
+            "tilewidth": 8, "tileheight": 8, "tilecount": 2,
+            "tiles": [
+              { "id": 0, "image": "a.png",
+                "properties": [{"name": "sprite_id", "type": "string", "value": "a"}] },
+              { "id": 1, "image": "b.png",
+                "properties": [{"name": "sprite_id", "type": "string", "value": "b"}] }
+            ]
+          }],
+          "layers": [
+            { "id": 1, "type": "tilelayer", "name": "ground",
+              "x": 0, "y": 0, "width": 2, "height": 2,
+              "data": [1, 2, 2, 1] },
+            { "id": 2, "type": "tilelayer", "name": "solid",
+              "x": 0, "y": 0, "width": 2, "height": 2,
+              "properties": [{"name": "kind", "type": "string", "value": "collision"}],
+              "data": [0, 1, 0, 0] }
+          ]
+        }"#,
         )
         .unwrap();
         drop(f);
@@ -309,7 +472,10 @@ mod tests {
         assert_eq!(m.width, 2);
         assert_eq!(m.tileset, vec!["a".to_string(), "b".to_string()]);
         assert_eq!(m.layers.len(), 2);
+        // GID 1 → index 0, GID 2 → index 1
+        assert_eq!(m.layers[0].tiles, vec![0, 1, 1, 0]);
         assert_eq!(m.layers[1].kind, LayerKind::Collision);
+        // GID 0 → EMPTY_TILE (-1), GID 1 → index 0
         assert_eq!(m.layers[1].tiles, vec![-1, 0, -1, -1]);
     }
 

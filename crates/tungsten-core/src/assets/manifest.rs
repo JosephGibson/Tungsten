@@ -202,6 +202,7 @@ impl ResolvedManifest {
                     path: full_path.display().to_string(),
                 });
             }
+            let full_path = full_path.canonicalize().unwrap_or(full_path);
             result.sounds.insert(
                 id,
                 ResolvedSound {
