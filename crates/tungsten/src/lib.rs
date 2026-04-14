@@ -7,8 +7,10 @@ pub mod asset_loader;
 pub mod audio;
 pub mod hot_reload;
 mod input_bridge;
+mod tilemap_extract;
 
 pub use app::{App, WindowSize};
 pub use hot_reload::HotReloadWatcher;
+pub use tilemap_extract::extract_tilemaps;
 pub use tungsten_core as core;
 pub use tungsten_render as render;

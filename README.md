@@ -1,58 +1,38 @@
 # Tungsten
 
-A from-scratch Rust 2D game engine, built as a hobby project. The point is the *building*, not the shipping — understanding how engines actually work from the ground up, with Rust as the language to learn deeply along the way.
+A from-scratch Rust 2D game engine, built as a hobby project. The point is the *building*, not the shipping — understanding how engines work from the ground up, with Rust as the language to learn deeply.
 
-**Version:** 0.4.0-alpha
-
-**Status:** Phase 1 complete (M0–M6). Phase 2 in progress: **M7 text rendering** complete (`v0.2.0-alpha.0`); **M8 audio** complete (`v0.3.0-alpha`); **M9 hot reload** complete (`v0.4.0-alpha`). Next: M10 tilemaps. See `PHASE2.md`.
+**Status:** `v0.5.0-alpha` — Phase 1 complete (M0–M6). Phase 2 through M10 complete (M7 text, M8 audio, M9 hot reload, M10 tilemaps). Next: M11 2D physics. See [PHASE2.md](PHASE2.md).
 
 ## Stack
 
-`winit` (windowing) + `wgpu` (rendering) + `glam` (math) + a hand-rolled ECS + `serde_json` for data-driven config and asset manifests. Native targets only — no WASM.
+`winit` + `wgpu` + `glam` + hand-rolled ECS + `serde_json`-driven config and asset manifests. Native only (Linux / macOS / Windows) — no WASM.
 
 ## Documents
 
-| File             | Purpose                                                            |
-| ---------------- | ------------------------------------------------------------------ |
-| `README.md`      | This file. Orientation.                                            |
-| `DESIGN.md`      | Architecture, principles, milestones, kill criteria. **Start here for context.** |
-| `AGENTS.md`      | Operational rules for working in the repo. **Start here for tasks.** |
-| `DECISIONS.md`   | Append-only log of non-obvious decisions, with rationale.          |
-| `PHASE2.md`      | Phase 2 milestones (M7+), release map, acceptance criteria.       |
-| `CLAUDE.md`      | Pointer file for Claude Code; the canonical instructions are in `AGENTS.md`. |
+| File           | Purpose                                                          |
+| -------------- | ---------------------------------------------------------------- |
+| `DESIGN.md`    | Architecture, principles, dependency philosophy. **Context.**    |
+| `AGENTS.md`    | Operational rules for working in the repo. **Tasks.**            |
+| `DECISIONS.md` | Log of non-obvious decisions with rationale.                     |
+| `PHASE2.md`    | Phase 2 milestones, release map, acceptance criteria.            |
+| `CLAUDE.md`    | Pointer file for Claude Code; canonical rules are `AGENTS.md`.   |
+| `CHANGELOG.md` | Per-version change log.                                          |
 
 ## Quick start
 
 ```bash
-# Build everything
 cargo build --workspace
-
-# Run tests
 cargo test --workspace
-
-# Run examples
-cargo run -p example-01-window      # M0–M1: window + wgpu clear
-cargo run -p example-02-ecs         # M2: ECS demo (stdout)
-cargo run -p example-03-dots        # M3–M4: bouncing colored quads + input
-cargo run -p example-04-sprites     # M5: textured sprites from manifest
-cargo run -p example-05-animation   # M6: frame-based animation
-cargo run -p example-06-text        # M7: text rendering (Phase 2)
-cargo run -p example-07-audio       # M8: audio playback (Phase 2)
-cargo run -p example-08-hot-reload  # M9: live asset hot reload (Phase 2)
+cargo run -p example-NN-name       # see examples/ for the list
 ```
 
 ## Read order
 
-### For humans
-1. `DESIGN.md` — what Tungsten is, why the choices were made, what the milestones are.
-2. `DECISIONS.md` — the log of *why* specific things are the way they are.
-3. `AGENTS.md` — how to actually work in the repo.
-
-### For AI agents
-1. `AGENTS.md` — operational rules, conventions, what not to do, session workflow.
-2. `DESIGN.md` — architecture, principles, current Phase 2 status.
-3. `PHASE2.md` — current milestone goals, scope, and acceptance criteria.
-4. `DECISIONS.md` — settled decisions; check before proposing anything architectural.
+| Audience  | Order                                                    |
+| --------- | -------------------------------------------------------- |
+| Human     | `DESIGN.md` → `DECISIONS.md` → `AGENTS.md`               |
+| AI agent  | `AGENTS.md` → `DESIGN.md` → `PHASE2.md` → `DECISIONS.md` |
 
 ## License
 

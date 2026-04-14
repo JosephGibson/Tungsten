@@ -4,6 +4,7 @@
 
 pub mod assets;
 pub mod audio;
+pub mod camera;
 pub mod config;
 pub mod ecs;
 pub mod input;
@@ -11,10 +12,12 @@ pub mod time;
 
 pub use assets::{
     AnimationData, AnimationRegistry, AnimationState, AssetRegistry, AudioHandle, FilterMode,
-    FontEntry, FontRegistry, ManifestError, ResolvedFont, ResolvedManifest, ResolvedSound,
-    SoundData, SoundEntry, SoundRegistry, SpriteAsset, TextureHandle,
+    FontEntry, FontRegistry, LayerKind, ManifestError, ResolvedFont, ResolvedManifest,
+    ResolvedSound, SoundData, SoundEntry, SoundRegistry, SpriteAsset, TextureHandle, TileIndex,
+    TilemapData, TilemapInstance, TilemapLayer, TilemapRegistry, EMPTY_TILE,
 };
 pub use audio::{AudioCommand, AudioCommands};
+pub use camera::Camera2D;
 pub use config::{Config, ConfigError};
 pub use ecs::{Entity, World};
 pub use input::{InputState, KeyCode, MouseButton};

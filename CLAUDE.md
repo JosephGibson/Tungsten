@@ -1,8 +1,8 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code (claude.ai/code) in this repository.
 
-The canonical instruction file for all AI assistants is **`AGENTS.md`** — read it for the full operational rules. This file inlines the essentials so Claude Code doesn't require a second read.
+The canonical instruction file for all AI assistants is **`AGENTS.md`** — read it for the full operational rules. This file inlines the essentials so Claude Code doesn't need a second read.
 
 ---
 
@@ -10,7 +10,7 @@ The canonical instruction file for all AI assistants is **`AGENTS.md`** — read
 
 A from-scratch Rust 2D game engine (hobby project). `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Three crates in a Cargo workspace: `tungsten-core`, `tungsten-render`, `tungsten`.
 
-**Phase 1 complete (M0–M6). Phase 2 in progress: M7 text rendering complete (`v0.2.0-alpha.0`); M8 audio complete (`v0.3.0-alpha`); M9 hot reload complete (`v0.4.0-alpha`). Current: M10 tilemaps.** See `PHASE2.md`.
+**Status:** Phase 1 complete. Phase 2 through M10 complete (`v0.5.0-alpha`, branch `0.5`). Current milestone: M11 2D physics. See `PHASE2.md`.
 
 ## Commands
 
@@ -20,20 +20,18 @@ cargo test --workspace
 cargo clippy --workspace --all-targets   # advisory only
 cargo fmt --all
 
-# Run examples
-cargo run -p example-01-window
-cargo run -p example-02-ecs
-cargo run -p example-03-dots
-cargo run -p example-04-sprites
-cargo run -p example-05-animation
-cargo run -p example-06-text
-cargo run -p example-07-audio
-cargo run -p example-08-hot-reload
+cargo run -p example-NN-name              # see examples/ for the current list
 ```
 
 Before committing anything substantial: `cargo fmt && cargo test --workspace`.
 
-`cargo test --workspace` runs unit tests only — no GPU or display required. Examples need a real GPU and display; if wgpu auto-selects the wrong backend, override it: `WGPU_BACKEND=vulkan` (Linux), `WGPU_BACKEND=metal` (macOS), `WGPU_BACKEND=dx12` (Windows).
+`cargo test --workspace` runs unit tests only — no GPU or display required. Examples need a real GPU and display; override the backend if wgpu picks the wrong one: `WGPU_BACKEND=vulkan` (Linux), `WGPU_BACKEND=metal` (macOS), `WGPU_BACKEND=dx12` (Windows).
+
+**Two test layers** (details in `AGENTS.md` → *Test layers*):
+
+- **Layer 1** — [crates/tungsten-core/tests/manifests.rs](crates/tungsten-core/tests/manifests.rs) validates every `manifest.json` under `cargo test --workspace`. Run before any commit touching manifests, assets, or the core/render seam.
+- **Layer 2** — [scripts/smoke-examples.sh](scripts/smoke-examples.sh) runs every example with `TUNGSTEN_SMOKE_FRAMES=3` (honoured by [crates/tungsten/src/app.rs](crates/tungsten/src/app.rs)) under a per-example timeout. Run before committing engine or example wiring changes. Needs GPU/display.
+- Clean checkout or dep bump → run both.
 
 ## Crate layout and where new code goes
 
@@ -41,7 +39,7 @@ Before committing anything substantial: `cargo fmt && cargo test --workspace`.
 crates/
 ├── tungsten-core/    # ECS, math, config, time, resources, asset registry types
 ├── tungsten-render/  # wgpu wrapper, sprite drawing, samplers, GPU resource pools
-└── tungsten/         # umbrella crate: winit app loop, App type, input, time glue
+└── tungsten/         # umbrella: winit app loop, App type, input, time glue
 ```
 
 - New ECS mechanism (World, storage, queries) → `tungsten-core`
@@ -49,56 +47,74 @@ crates/
 - App/event-loop glue, input, time → `tungsten`
 - Asset registry types, manifest schema, ID lookups → `tungsten-core`
 - GPU upload of decoded assets → `tungsten-render`
-- **The seam:** `TextureHandle(u32)` is defined in `tungsten-core` — no `wgpu` types ever appear there. The `tungsten` umbrella crate is the mediator: during startup it calls `AssetRegistry::register_sprite` (allocates a handle, stores metadata in core), then calls `renderer.upload_texture(handle, rgba, ...)` (stores the actual GPU texture in render's pool, keyed by the same handle). Core never calls into render. Game code looks up sprites by string ID → gets a `TextureHandle` from core's registry → render resolves that handle to a `wgpu` texture internally.
-- Components and systems specific to a demo → stay in `examples/`, not library crates
-- Math helpers → `tungsten-core` only if used in two or more places
+- Demo-specific components/systems → `examples/`, not library crates
+- Math helpers → `tungsten-core` only when used in two or more places
 - `tungsten-render` may depend on `tungsten-core` types (see `DECISIONS.md` D-007)
+
+### The core/render seam
+
+- `TextureHandle(u32)` is defined in `tungsten-core`; no `wgpu` types ever appear there.
+- The `tungsten` umbrella crate mediates: it calls `AssetRegistry::register_sprite` (allocates a handle, stores metadata in core), then `renderer.upload_texture(handle, rgba, ...)` (stores the GPU texture in render's pool, keyed by the same handle).
+- Core never calls into render.
+- Game-code lookup path: string ID → `TextureHandle` from core's registry → render resolves internally to a `wgpu` texture.
 
 ## Architecture
 
-**Single-threaded, fixed-order, synchronous frame loop:** poll events → tick systems → render → present. Exception: the audio subsystem (M8+) runs `cpal`'s callback on a dedicated thread. Game code writes to an `AudioCommands` resource; the audio thread drains it each callback. No shared mutable state, no async runtime.
+**Frame loop.** Single-threaded, fixed-order, synchronous: poll events → tick systems → render → present. Exception: the audio subsystem (M8+) runs `cpal`'s callback on a dedicated thread; game code writes to an `AudioCommands` resource which the audio thread drains each callback. No shared mutable state, no async runtime.
 
-**ECS:** Entity (opaque integer ID), Component (plain data), System (function), World (owns everything), Resource (singleton state — `DeltaTime`, `InputState`, `WindowSize`, `Assets`). Iteration-1 storage is `HashMap<TypeId, HashMap<EntityId, Box<dyn Any>>>` — intentionally naive.
+**ECS.**
+- Entity: opaque integer ID (`u32`)
+- Component: plain data
+- System: a function
+- World: owns entities, components, and resources
+- Resource: singleton state — `DeltaTime`, `InputState`, `WindowSize`, `Assets`
+- Iteration-1 storage: `HashMap<TypeId, HashMap<EntityId, Box<dyn Any>>>` — intentionally naive
 
-**Asset registry is a Resource in the World**, not a global singleton.
+**Asset registry** is a `Resource` in the World, not a global singleton.
 
-**Render path:** systems mutate World during `tick`; extract functions receive `&World` and resolve string IDs → `TextureHandle` via `AssetRegistry`, producing `SpriteBatch`/`QuadInstance`/`TextSection` slices with all handles pre-resolved. Only those POD slices reach `render_frame_full`. The renderer never reads the registry at draw time.
+**Render path.** Systems mutate the World during `tick`. Extract functions receive `&World` and resolve string IDs → `TextureHandle` via `AssetRegistry`, producing `SpriteBatch` / `QuadInstance` / `TextSection` slices with handles pre-resolved. Only those POD slices reach `render_frame_full`. The renderer never reads the registry at draw time.
 
-**Config:** `tungsten.json` at workspace root, loaded once at startup, passed by value. Missing → defaults with warning, invalid → fatal.
+**Config.** `tungsten.json` at workspace root, loaded once at startup, passed by value. Missing → defaults with warning. Invalid → fatal naming the bad field.
 
 ## Asset rules
 
-- Every **asset file** in `assets/` must be in `assets/manifest.json`, and vice versa. Asset files are sprites (PNG), animations (JSON), fonts (TTF/OTF), and sounds. Non-asset files (READMEs, platform detritus) are ignored by the loader. **Exception: font family directories** (`assets/fonts/<Family>/`) may contain the full downloaded family (all weights and styles); only the specific weights in active use need manifest entries. Unused weights are not loaded.
-- **Shaders** (`*.wgsl`) live in `tungsten-render/src/` and are compiled into the binary — they are not manifest-tracked.
-- **Game code never references file paths.** Always use string IDs through the registry. This is the architectural prerequisite for Phase 2 hot reload — do not break it.
-- New sprite: drop PNG in `assets/sprites/`, add entry to manifest's `sprites` map with a stable ID and filter mode (`nearest` or `linear`).
-- New animation: create JSON in `assets/animations/`, add entry to manifest's `animations` map. All referenced sprite IDs must exist in the manifest.
-- New font: drop TTF/OTF in `assets/fonts/<Family>/`, add entry to manifest's `fonts` map with a stable ID.
-- New sound: drop OGG/WAV in `assets/sounds/`, add entry to manifest's `sounds` map with a stable ID and optional `looping`/`volume` fields.
-- Example-local assets: `examples/NN_name/assets/` with a local `manifest.json`. Asset IDs must be globally unique across all loaded manifests — duplicate IDs are fatal at load time.
+- Every **asset file** in `assets/` must be in `assets/manifest.json`, and vice versa. Asset files are sprites (PNG), animations (JSON), fonts (TTF/OTF), and sounds (OGG/WAV). Non-asset files (READMEs, platform detritus) are ignored.
+- **Exception:** font family directories (`assets/fonts/<Family>/`) may contain the full downloaded family (all weights and styles); only weights in active use need manifest entries. Unused weights are never loaded.
+- **Shaders** (`*.wgsl`) live in `tungsten-render/src/` and are compiled in via `include_str!`. Not manifest-tracked.
+- **Game code never references file paths.** Always use string IDs through the registry. This invariant is what makes hot reload (M9) work — do not break it.
+- **Example-local assets**: `examples/NN_name/assets/` with a local `manifest.json`. Asset IDs must be globally unique across all loaded manifests — duplicate IDs are fatal at load time.
+
+Adding a new asset:
+
+| Type      | Location              | Manifest section | Required fields                            |
+| --------- | --------------------- | ---------------- | ------------------------------------------ |
+| Sprite    | `assets/sprites/`     | `sprites`        | stable ID, filter (`nearest` \| `linear`)  |
+| Animation | `assets/animations/`  | `animations`     | stable ID; referenced sprite IDs must exist|
+| Font      | `assets/fonts/<Fam>/` | `fonts`          | stable ID                                  |
+| Sound     | `assets/sounds/`      | `sounds`         | stable ID, optional `looping` / `volume`   |
 
 ## Hard rules — do not violate
 
-- **No external ECS or game-engine crates.** Not `bevy_ecs`, `hecs`, `specs`, `legion`, `ggez`, `macroquad`, `fyrox`. Building these by hand is the point.
-- **No `async` runtimes** (`tokio`, `async-std`). The frame loop and all game logic are synchronous. The `cpal` audio callback thread (M8+) is the only background thread permitted — it communicates via `AudioCommands`, not an async runtime.
+- **No external ECS or game-engine crates** (`bevy_ecs`, `hecs`, `specs`, `legion`, `ggez`, `macroquad`, `fyrox`). Building them by hand is the point.
+- **No async runtimes** (`tokio`, `async-std`). The `cpal` audio callback thread is the only permitted background thread; it communicates via `AudioCommands`.
 - **No global mutable state.** No `static mut`, no `lazy_static` singletons.
-- **No new third-party runtime dep without a `DECISIONS.md` entry** — explain which of the three dependency rules it satisfies (platform API abstraction, well-specified data format, or math primitive).
+- **No new third-party runtime dep without a `DECISIONS.md` entry** citing which D-015 rule it satisfies (platform API abstraction, well-specified data format, or math primitive).
 - **No hardcoded asset paths in game code.**
-- **No scope-expanding a task mid-flight.** Finish what's scoped, open a new task for the rest.
+- **No scope-expanding a task mid-flight.** Finish what's scoped; open a new task for the rest.
 
 ## Conventions
 
 - `rustfmt` defaults. Doc comments on public items where the name isn't self-evident.
 - `unwrap`/`expect` fine during early exploration; tighten when a module stabilizes.
 - Tests next to the code: `#[cfg(test)] mod tests`.
-- `thiserror` at library boundaries, `anyhow` at the top level of examples and the app.
-- `log` crate for diagnostics. `println!` is fine in examples.
+- Errors: `thiserror` at library boundaries, `anyhow` at the top level of examples and the app.
+- Logging: `log` crate for diagnostics; `println!` fine in examples.
 
 ## Key documents
 
-| File           | Purpose |
-|----------------|---------|
-| `AGENTS.md`    | Full operational rules — read this for any substantial task |
-| `DESIGN.md`    | Architecture, principles, milestones, kill criteria |
-| `DECISIONS.md` | Append-only log of non-obvious decisions with rationale |
-| `PHASE2.md`    | Phase 2 milestones (M7+), release map, acceptance criteria |
+| File           | Purpose                                                         |
+| -------------- | --------------------------------------------------------------- |
+| `AGENTS.md`    | Full operational rules — read for any substantial task         |
+| `DESIGN.md`    | Architecture, principles, dependency philosophy                 |
+| `DECISIONS.md` | Append-only log of non-obvious decisions with rationale         |
+| `PHASE2.md`    | Phase 2 milestones (M7+), release map, acceptance criteria      |

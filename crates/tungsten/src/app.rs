@@ -6,8 +6,8 @@ use crate::asset_loader;
 use crate::audio::AudioSystem;
 use crate::hot_reload::HotReloadWatcher;
 use crate::input_bridge;
-use tungsten_core::assets::{AnimationRegistry, FontRegistry, SoundRegistry};
-use tungsten_core::{AssetRegistry, AudioCommands, Config, DeltaTime, InputState, World};
+use tungsten_core::assets::{AnimationRegistry, FontRegistry, SoundRegistry, TilemapRegistry};
+use tungsten_core::{AssetRegistry, AudioCommands, Camera2D, Config, DeltaTime, InputState, World};
 use tungsten_render::{QuadInstance, Renderer, SpriteBatch, TextSection};
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, WindowEvent};
@@ -60,6 +60,10 @@ pub struct App {
     hot_reload: Option<HotReloadWatcher>,
     /// Path to the primary manifest file, used to detect manifest changes.
     manifest_path: Option<PathBuf>,
+    /// Smoke-test mode: when `Some(n)`, render `n` frames then exit cleanly.
+    /// Populated from the `TUNGSTEN_SMOKE_FRAMES` env var. Used by
+    /// `scripts/smoke-examples.sh` to drive examples in CI-like checks.
+    smoke_frames_remaining: Option<u32>,
 }
 
 impl App {
@@ -74,6 +78,8 @@ impl App {
         world.insert_resource(AssetRegistry::new());
         world.insert_resource(SoundRegistry::new());
         world.insert_resource(AudioCommands::new());
+        world.insert_resource(TilemapRegistry::new());
+        world.insert_resource(Camera2D::new());
 
         Self {
             config,
@@ -90,6 +96,10 @@ impl App {
             audio: None,
             hot_reload: None,
             manifest_path: None,
+            smoke_frames_remaining: std::env::var("TUNGSTEN_SMOKE_FRAMES")
+                .ok()
+                .and_then(|s| s.parse::<u32>().ok())
+                .filter(|n| *n > 0),
         }
     }
 
@@ -237,6 +247,22 @@ impl App {
                         }
                     } else {
                         log::debug!("Hot reload: no font registered for '{}'", canon.display());
+                    }
+                }
+                "tmj" => {
+                    let id = self
+                        .world
+                        .get_resource::<TilemapRegistry>()
+                        .and_then(|tr| tr.id_for_path(&canon).map(|s| s.to_string()));
+                    if let Some(id) = id {
+                        if let Err(e) = asset_loader::reload_tilemap(&id, &canon, &mut self.world) {
+                            log::error!("Tilemap reload '{id}': {e}");
+                        }
+                    } else {
+                        log::debug!(
+                            "Hot reload: no tilemap registered for '{}'",
+                            canon.display()
+                        );
                     }
                 }
                 _ => {}
@@ -394,7 +420,18 @@ impl ApplicationHandler for App {
                     .unwrap_or_default();
 
                 if let Some(renderer) = &mut self.renderer {
-                    if let Err(e) = renderer.render_frame_full(&quads, &sprites, &text) {
+                    let (vw, vh) = {
+                        let cfg = &renderer.surface_config;
+                        (cfg.width as f32, cfg.height as f32)
+                    };
+                    let view_proj = self
+                        .world
+                        .get_resource::<Camera2D>()
+                        .copied()
+                        .unwrap_or_default()
+                        .view_projection(vw, vh);
+                    if let Err(e) = renderer.render_frame_full(&view_proj, &quads, &sprites, &text)
+                    {
                         log::error!("Render error: {e}");
                     }
                 }
@@ -416,6 +453,14 @@ impl ApplicationHandler for App {
 
                 if let Some(window) = &self.window {
                     window.request_redraw();
+                }
+
+                if let Some(remaining) = self.smoke_frames_remaining.as_mut() {
+                    *remaining = remaining.saturating_sub(1);
+                    if *remaining == 0 {
+                        log::info!("TUNGSTEN_SMOKE_FRAMES reached; exiting cleanly");
+                        event_loop.exit();
+                    }
                 }
             }
             _ => {}

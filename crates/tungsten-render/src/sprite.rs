@@ -342,9 +342,11 @@ impl SpritePipeline {
         );
     }
 
-    pub fn update_camera(&self, queue: &wgpu::Queue, width: f32, height: f32) {
-        let projection = glam::Mat4::orthographic_rh(0.0, width, height, 0.0, -1.0, 1.0);
-        let matrix_ref: &[f32; 16] = projection.as_ref();
+    /// Upload the camera view-projection matrix. Caller owns matrix
+    /// construction (typically `Camera2D::view_projection(w, h)`) so
+    /// tilemaps, sprites, and quads all share a single source of truth.
+    pub fn update_camera(&self, queue: &wgpu::Queue, view_proj: &glam::Mat4) {
+        let matrix_ref: &[f32; 16] = view_proj.as_ref();
         queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(matrix_ref));
     }
 

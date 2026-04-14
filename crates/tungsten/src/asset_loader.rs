@@ -2,7 +2,7 @@ use std::path::Path;
 
 use tungsten_core::assets::{
     AnimationData, AnimationRegistry, FilterMode, FontRegistry, ResolvedManifest, SoundData,
-    SoundRegistry, TextureHandle,
+    SoundRegistry, TextureHandle, TilemapData, TilemapRegistry,
 };
 use tungsten_core::{AssetRegistry, World};
 use tungsten_render::Renderer;
@@ -135,9 +135,34 @@ pub fn load_sounds(manifest: &ResolvedManifest, world: &mut World) -> anyhow::Re
     Ok(())
 }
 
-/// Load all assets (sprites + animations + fonts + sounds) from a manifest.
-/// After loading, validates that every sprite ID referenced from animation
-/// frames exists in the sprite registry (D-009).
+/// Load all tilemap data from a resolved manifest. Sprite-ID validation
+/// of each tilemap's `tileset` happens in `load_all` after sprites are
+/// loaded (mirrors the animation-frame validation path).
+pub fn load_tilemaps(manifest: &ResolvedManifest, world: &mut World) -> anyhow::Result<()> {
+    let mut tilemap_registry = TilemapRegistry::new();
+
+    for (id, entry) in &manifest.tilemaps {
+        let data = TilemapData::load(&entry.path)?;
+        log::info!(
+            "Loaded tilemap '{}' ({}x{} tiles @ {}x{}px, {} layers)",
+            id,
+            data.width,
+            data.height,
+            data.tile_width,
+            data.tile_height,
+            data.layers.len(),
+        );
+        tilemap_registry.insert_with_path(id.clone(), data, entry.path.clone());
+    }
+
+    world.insert_resource(tilemap_registry);
+    Ok(())
+}
+
+/// Load all assets (sprites + animations + fonts + sounds + tilemaps).
+/// After loading, validates cross-references: animation frames must
+/// name known sprites (D-009), and tileset entries must name known
+/// sprites.
 pub fn load_all(
     manifest: &ResolvedManifest,
     world: &mut World,
@@ -147,6 +172,7 @@ pub fn load_all(
     load_animations(manifest, world)?;
     load_fonts(manifest, world, renderer)?;
     load_sounds(manifest, world)?;
+    load_tilemaps(manifest, world)?;
 
     let registry = world
         .get_resource::<AssetRegistry>()
@@ -163,6 +189,23 @@ pub fn load_all(
                     anim_id,
                     i,
                     frame.sprite,
+                ));
+            }
+        }
+    }
+
+    let tilemap_registry = world
+        .get_resource::<TilemapRegistry>()
+        .expect("TilemapRegistry resource missing");
+
+    for (map_id, map_data) in tilemap_registry.iter() {
+        for (i, sprite_id) in map_data.tileset.iter().enumerate() {
+            if registry.get_sprite(sprite_id).is_none() {
+                return Err(anyhow::anyhow!(
+                    "Tilemap '{}' tileset[{}] references unknown sprite ID '{}'",
+                    map_id,
+                    i,
+                    sprite_id,
                 ));
             }
         }
@@ -245,6 +288,44 @@ pub fn reload_animation(id: &str, path: &Path, world: &mut World) -> anyhow::Res
         .insert(id.to_string(), data);
 
     log::info!("Hot-reloaded animation '{id}'");
+    Ok(())
+}
+
+/// Hot-reload a tilemap: reparse the `.tmj` JSON and replace the entry
+/// in `TilemapRegistry`. Failures are logged and the last-known-good
+/// data is kept so a typo in the JSON doesn't crash the running example.
+pub fn reload_tilemap(id: &str, path: &Path, world: &mut World) -> anyhow::Result<()> {
+    let data = match TilemapData::load(path) {
+        Ok(d) => d,
+        Err(e) => {
+            log::error!("Hot reload tilemap '{id}': {e}");
+            return Ok(());
+        }
+    };
+
+    // Validate tileset sprite IDs before accepting the reload — a typo
+    // in a newly-added tileset entry would otherwise silently empty out
+    // parts of the map.
+    {
+        let registry = world
+            .get_resource::<AssetRegistry>()
+            .expect("AssetRegistry resource missing");
+        for (i, sprite_id) in data.tileset.iter().enumerate() {
+            if registry.get_sprite(sprite_id).is_none() {
+                log::error!(
+                    "Hot reload tilemap '{id}': tileset[{i}] references unknown sprite '{sprite_id}' — keeping stale"
+                );
+                return Ok(());
+            }
+        }
+    }
+
+    world
+        .get_resource_mut::<TilemapRegistry>()
+        .expect("TilemapRegistry resource missing")
+        .insert(id.to_string(), data);
+
+    log::info!("Hot-reloaded tilemap '{id}'");
     Ok(())
 }
 
@@ -346,6 +427,50 @@ pub fn reload_manifest(
                     }
                     Err(e) => log::error!("Manifest reload: new animation '{id}': {e}"),
                 }
+            }
+        }
+    }
+
+    // --- Tilemaps: warn on removals, load additions ---
+    {
+        let existing: Vec<String> = world
+            .get_resource::<TilemapRegistry>()
+            .map(|tr| tr.ids().map(|s| s.to_string()).collect())
+            .unwrap_or_default();
+
+        for id in &existing {
+            if !new_manifest.tilemaps.contains_key(id.as_str()) {
+                log::warn!("Manifest reload: tilemap '{id}' removed — keeping stale");
+            }
+        }
+
+        for (id, entry) in &new_manifest.tilemaps {
+            if existing.iter().any(|e| e == id) {
+                continue;
+            }
+            match TilemapData::load(&entry.path) {
+                Ok(data) => {
+                    // Validate tileset sprite IDs before inserting.
+                    let all_known = {
+                        let registry = world
+                            .get_resource::<AssetRegistry>()
+                            .expect("AssetRegistry resource missing");
+                        data.tileset
+                            .iter()
+                            .all(|sid| registry.get_sprite(sid).is_some())
+                    };
+                    if !all_known {
+                        log::error!(
+                            "Manifest reload: new tilemap '{id}' references unknown sprite IDs — skipping"
+                        );
+                        continue;
+                    }
+                    if let Some(tr) = world.get_resource_mut::<TilemapRegistry>() {
+                        tr.insert_with_path(id.clone(), data, entry.path.clone());
+                        log::info!("Manifest reload: loaded new tilemap '{id}'");
+                    }
+                }
+                Err(e) => log::error!("Manifest reload: new tilemap '{id}': {e}"),
             }
         }
     }

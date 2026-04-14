@@ -1,0 +1,16 @@
+{
+  "sprites": {
+    "ex09_grass":  { "path": "sprites/tile_grass.png",  "filter": "nearest" },
+    "ex09_dirt":   { "path": "sprites/tile_dirt.png",   "filter": "nearest" },
+    "ex09_stone":  { "path": "sprites/tile_stone.png",  "filter": "nearest" },
+    "ex09_water":  { "path": "sprites/tile_water.png",  "filter": "nearest" },
+    "ex09_flower": { "path": "sprites/tile_flower.png", "filter": "nearest" }
+  },
+  "fonts": {
+    "ex09_sans":      { "path": "../../../assets/fonts/Inter/static/Inter-Regular.ttf" },
+    "ex09_sans_bold": { "path": "../../../assets/fonts/Inter/static/Inter-Bold.ttf" }
+  },
+  "tilemaps": {
+    "ex09_demo": { "path": "tilemaps/demo.tmj" }
+  }
+}
