@@ -119,14 +119,13 @@ fn extract_text(world: &World) -> Vec<TextSection> {
             bounds: None,
         },
         TextSection {
-            content: format!(
-                "Edit these files while running (no restart):\n\
+            content: "Edit these files while running (no restart):\n\
                  \n\
                  assets/sprites/red_square.png   → static sprite (top-right)\n\
                  assets/animations/walk.json     → walk cycle (bottom row)\n\
                  assets/fonts/Inter/static/Inter-Regular.ttf  → this text\n\
                  assets/manifest.json            → add/remove entries"
-            ),
+                .into(),
             font_id: "sans".into(),
             font_size: 16.0,
             line_height: 24.0,

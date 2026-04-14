@@ -1,7 +1,7 @@
 # Tungsten — Phase 2 Plan
 
 **Status:** Phase 2 in progress. **M7 complete** (`v0.2.0-alpha.0`), **M8 complete** (`v0.3.0-alpha`), **M9 complete** (`v0.4.0-alpha`), **M10 complete** (`v0.5.0-alpha`), **M11 complete** (`v0.6.0-alpha`). Next: **M12 ECS rewrite (conditional)** or **M13 first game**.
-**Branch:** `0.5`
+**Branch:** `0.6`
 **Prerequisite:** Phase 1 complete (M0–M6), tagged `v0.1.0-alpha`.
 **Companion docs:** `DESIGN.md` (architecture), `DECISIONS.md` (decision log, esp. D-024 — Phase 1 exit observations), `AGENTS.md` (operational rules).
 

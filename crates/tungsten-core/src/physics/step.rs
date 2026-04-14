@@ -26,11 +26,16 @@ use crate::time::DeltaTime;
 use glam::Vec2;
 
 /// Internal per-step proxy record. One per dynamic/static collider,
-/// including tilemap tiles (which carry `entity = None`).
+/// including tilemap tiles (which carry `entity = None`). Mutated
+/// in-place during resolution so sequential contacts see the
+/// already-corrected state (avoids stacking impulses when a body
+/// straddles two adjacent static tiles).
 #[derive(Debug, Clone, Copy)]
 struct Proxy {
     entity: Option<Entity>,
     center: Vec2,
+    velocity: Vec2,
+    offset: Vec2,
     shape: Shape,
     is_dynamic: bool,
     inv_mass: f32,
@@ -151,6 +156,11 @@ fn resolve_collisions(world: &mut World, config: &PhysicsConfig) {
         let position = world.get::<Position>(*entity).copied().unwrap().0;
         let collider = *world.get::<Collider>(*entity).unwrap();
         let body = world.get::<RigidBody>(*entity).copied();
+        let velocity = world
+            .get::<Velocity>(*entity)
+            .copied()
+            .map(|v| v.0)
+            .unwrap_or(Vec2::ZERO);
         let (is_dynamic, inv_mass, restitution) = match body {
             Some(b) => (
                 b.kind == BodyKind::Dynamic,
@@ -168,6 +178,8 @@ fn resolve_collisions(world: &mut World, config: &PhysicsConfig) {
         proxies.push(Proxy {
             entity: Some(*entity),
             center: position + collider.offset,
+            velocity,
+            offset: collider.offset,
             shape: collider.shape,
             is_dynamic,
             inv_mass,
@@ -185,11 +197,13 @@ fn resolve_collisions(world: &mut World, config: &PhysicsConfig) {
     }
 
     // 4. For each dynamic proxy, query the grid and run narrow-phase.
-    // Collect the resolution decisions first, then apply them — writing
-    // back into `world` while we still hold `&proxies` would tangle the
-    // borrow. Per-proxy position deltas accumulate across every pair
-    // in a single substep.
-    let mut deltas: Vec<(usize, Vec2, Vec2)> = Vec::new(); // (proxy_idx, dpos, dvel)
+    //    Contacts are resolved *sequentially* into `proxies`: each pair
+    //    re-tests the narrow phase against the current (already-corrected)
+    //    centers and reads the current velocities, so overlapping contacts
+    //    (a body straddling two adjacent static tiles) don't stack
+    //    impulses. Gauss–Seidel style — the ordering isn't physically
+    //    unique but at game-jam scale the difference is invisible, and
+    //    the alternative (batched deltas) doubles bounces on shared seams.
     let mut events: Vec<CollisionEvent> = Vec::new();
     let mut candidates: Vec<ProxyId> = Vec::new();
 
@@ -208,19 +222,11 @@ fn resolve_collisions(world: &mut World, config: &PhysicsConfig) {
                 continue;
             }
 
+            // Re-test narrow phase with current (possibly already
+            // corrected) centers. If a prior contact in this substep
+            // already separated the shapes, this returns None.
             let contact = narrow_phase(&proxies[a_idx], &proxies[b_idx]);
             let Some(contact) = contact else { continue };
-
-            let a_vel = proxies[a_idx]
-                .entity
-                .and_then(|e| world.get::<Velocity>(e).copied())
-                .map(|v| v.0)
-                .unwrap_or(Vec2::ZERO);
-            let b_vel = proxies[b_idx]
-                .entity
-                .and_then(|e| world.get::<Velocity>(e).copied())
-                .map(|v| v.0)
-                .unwrap_or(Vec2::ZERO);
 
             let inv_mass_sum = proxies[a_idx].inv_mass + proxies[b_idx].inv_mass;
             if inv_mass_sum <= 0.0 {
@@ -236,14 +242,16 @@ fn resolve_collisions(world: &mut World, config: &PhysicsConfig) {
             // combined restitution. `normal` points from a toward a's
             // free space, so relative velocity along the normal closing
             // the gap is `(vb - va) · n`.
+            let a_vel = proxies[a_idx].velocity;
+            let b_vel = proxies[b_idx].velocity;
             let relative = b_vel - a_vel;
             let vel_along_normal = relative.dot(contact.normal);
             let restitution = proxies[a_idx].restitution.max(proxies[b_idx].restitution);
 
-            let (a_dv, b_dv) = if vel_along_normal < 0.0 {
-                // Bodies already separating — don't add impulse, but
-                // still correct positions so resting contacts don't
-                // accumulate penetration.
+            let (a_dv, b_dv) = if vel_along_normal <= 0.0 {
+                // Bodies already separating (or tangent) — don't add
+                // impulse, but still correct positions so resting
+                // contacts don't accumulate penetration.
                 (Vec2::ZERO, Vec2::ZERO)
             } else {
                 let j = -(1.0 + restitution) * vel_along_normal / inv_mass_sum;
@@ -254,9 +262,13 @@ fn resolve_collisions(world: &mut World, config: &PhysicsConfig) {
                 )
             };
 
-            deltas.push((a_idx, correction * a_share, a_dv));
+            // Apply in-place so the next contact on this proxy sees the
+            // corrected state. Static `b` proxies are never mutated.
+            proxies[a_idx].center += correction * a_share;
+            proxies[a_idx].velocity += a_dv;
             if proxies[b_idx].is_dynamic {
-                deltas.push((b_idx, -correction * b_share, b_dv));
+                proxies[b_idx].center -= correction * b_share;
+                proxies[b_idx].velocity += b_dv;
             }
 
             if let Some(a_entity) = proxies[a_idx].entity {
@@ -270,18 +282,17 @@ fn resolve_collisions(world: &mut World, config: &PhysicsConfig) {
         }
     }
 
-    // 5. Apply deltas and update `proxies` so the next substep pair
-    //    queries (this call's own later iterations) see the corrected
-    //    position without re-running broad-phase insertion.
-    for (idx, dpos, dvel) in &deltas {
-        proxies[*idx].center += *dpos;
-        if let Some(entity) = proxies[*idx].entity {
-            if let Some(pos) = world.get_mut::<Position>(entity) {
-                pos.0 += *dpos;
-            }
-            if let Some(vel) = world.get_mut::<Velocity>(entity) {
-                vel.0 += *dvel;
-            }
+    // 5. Write the resolved proxy state back into the world.
+    for proxy in &proxies {
+        if !proxy.is_dynamic {
+            continue;
+        }
+        let Some(entity) = proxy.entity else { continue };
+        if let Some(pos) = world.get_mut::<Position>(entity) {
+            pos.0 = proxy.center - proxy.offset;
+        }
+        if let Some(vel) = world.get_mut::<Velocity>(entity) {
+            vel.0 = proxy.velocity;
         }
     }
 
@@ -356,6 +367,8 @@ fn gather_tilemap_proxies(world: &World, proxies: &mut Vec<Proxy>) {
                     proxies.push(Proxy {
                         entity: None,
                         center,
+                        velocity: Vec2::ZERO,
+                        offset: Vec2::ZERO,
                         shape: Shape::Aabb { half_extents: half },
                         is_dynamic: false,
                         inv_mass: 0.0,
@@ -519,6 +532,92 @@ mod tests {
 
         let pos = world.get::<Position>(dynamic).unwrap();
         assert!(pos.0.x + 4.0 <= 40.0 - 4.0 + 1e-3, "tunneled: {:?}", pos.0);
+    }
+
+    #[test]
+    fn zero_restitution_body_does_not_bounce_off_multi_tile_floor() {
+        // Regression: the old batched delta resolver summed one full
+        // impulse per contact, so a body straddling two adjacent floor
+        // tiles bounced upward at its incoming speed even with
+        // restitution 0. This test pins sequential resolution in place.
+        let mut world = seed_world();
+        world.get_resource_mut::<TilemapRegistry>().unwrap().insert(
+            "floor".into(),
+            TilemapData {
+                tile_width: 16,
+                tile_height: 16,
+                width: 4,
+                height: 1,
+                tileset: vec!["solid".into()],
+                layers: vec![TilemapLayer {
+                    name: "collision".into(),
+                    kind: LayerKind::Collision,
+                    tiles: vec![0, 0, 0, 0],
+                }],
+            },
+        );
+        let map = world.spawn();
+        world.insert(map, TilemapInstance::new("floor", Vec2::new(0.0, 16.0)));
+
+        // Player straddles the seam between tile cols 0 and 1.
+        let player = world.spawn();
+        world.insert(player, Position(Vec2::new(16.0, 9.0)));
+        world.insert(player, Velocity(Vec2::new(0.0, 50.0)));
+        world.insert(player, Collider::aabb(Vec2::new(6.0, 7.0)));
+        world.insert(player, RigidBody::dynamic().with_restitution(0.0));
+
+        physics_step(&mut world);
+
+        let vel = world.get::<Velocity>(player).unwrap().0;
+        assert!(
+            vel.y >= -1e-3,
+            "zero-restitution body bounced upward off flat floor: {:?}",
+            vel
+        );
+    }
+
+    #[test]
+    fn bouncy_ball_does_not_double_impulse_on_multi_tile_seam() {
+        // Same bug as above but with restitution 0.85: the ball should
+        // rebound at 0.85× its incoming vertical speed, not 2–3×.
+        let mut world = seed_world();
+        world.get_resource_mut::<TilemapRegistry>().unwrap().insert(
+            "floor".into(),
+            TilemapData {
+                tile_width: 16,
+                tile_height: 16,
+                width: 4,
+                height: 1,
+                tileset: vec!["solid".into()],
+                layers: vec![TilemapLayer {
+                    name: "collision".into(),
+                    kind: LayerKind::Collision,
+                    tiles: vec![0, 0, 0, 0],
+                }],
+            },
+        );
+        let map = world.spawn();
+        world.insert(map, TilemapInstance::new("floor", Vec2::new(0.0, 16.0)));
+
+        let ball = world.spawn();
+        // Centered on the seam between tile cols 0 and 1, above the floor.
+        world.insert(ball, Position(Vec2::new(16.0, 9.0)));
+        world.insert(ball, Velocity(Vec2::new(0.0, 50.0)));
+        world.insert(ball, Collider::aabb(Vec2::new(6.0, 6.0)));
+        world.insert(ball, RigidBody::dynamic().with_restitution(0.85));
+
+        physics_step(&mut world);
+
+        let vel = world.get::<Velocity>(ball).unwrap().0;
+        // Incoming v_y = 50 + gravity*dt. With restitution 0.85 the
+        // post-bounce speed along +y (downward) must be less than the
+        // incoming speed. The pre-fix bug produced |v_y| well above
+        // the incoming speed (≈2–3× amplification).
+        assert!(
+            vel.y > -60.0,
+            "ball impulse was doubled — rebounded too fast: {:?}",
+            vel
+        );
     }
 
     // Helper extension used by tests.

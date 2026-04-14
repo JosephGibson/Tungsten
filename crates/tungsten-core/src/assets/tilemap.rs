@@ -27,17 +27,12 @@ pub const EMPTY_TILE: TileIndex = -1;
 /// What a layer is used for. Only `Render` is consumed by M10; `Collision`
 /// is accepted and round-trips so the M10→M11 seam works without a
 /// breaking JSON change when collision response lands.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum LayerKind {
+    #[default]
     Render,
     Collision,
-}
-
-impl Default for LayerKind {
-    fn default() -> Self {
-        Self::Render
-    }
 }
 
 /// A single layer of a tilemap. `tiles` is a flat row-major array of

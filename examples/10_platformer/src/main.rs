@@ -65,11 +65,7 @@ fn player_input(world: &mut World) {
         None => return,
     };
 
-    let player_entities: Vec<_> = world
-        .query::<Player>()
-        .into_iter()
-        .map(|(e, _)| e)
-        .collect();
+    let player_entities: Vec<_> = world.query::<Player>().map(|(e, _)| e).collect();
 
     for entity in player_entities {
         let mut dx = 0.0f32;
@@ -111,11 +107,7 @@ fn ground_detection(world: &mut World) {
         None => return,
     };
 
-    let player_entities: Vec<_> = world
-        .query::<Player>()
-        .into_iter()
-        .map(|(e, _)| e)
-        .collect();
+    let player_entities: Vec<_> = world.query::<Player>().map(|(e, _)| e).collect();
 
     for entity in player_entities {
         let grounded = events.iter().any(|ev| ev.a == entity && ev.normal.y < -0.5);
@@ -144,7 +136,6 @@ fn camera_follow(world: &mut World) {
 
     let player_pos = world
         .query::<Player>()
-        .into_iter()
         .next()
         .and_then(|(e, _)| world.get::<Position>(e).copied())
         .map(|p| p.0);
@@ -170,7 +161,6 @@ fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     if let Some(player_asset) = assets.get_sprite("ex10_player") {
         let instances: Vec<SpriteInstance> = world
             .query::<Player>()
-            .into_iter()
             .filter_map(|(e, _)| world.get::<Position>(e).copied())
             .map(|p| SpriteInstance {
                 position: [p.0.x - PLAYER_HALF.x, p.0.y - PLAYER_HALF.y],
@@ -190,7 +180,6 @@ fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     if let Some(ball_asset) = assets.get_sprite("ex10_ball") {
         let instances: Vec<SpriteInstance> = world
             .query::<Ball>()
-            .into_iter()
             .filter_map(|(e, _)| world.get::<Position>(e).copied())
             .map(|p| SpriteInstance {
                 position: [p.0.x - BALL_RADIUS, p.0.y - BALL_RADIUS],
@@ -216,7 +205,6 @@ fn extract_text(world: &World) -> Vec<TextSection> {
         .unwrap_or(0);
     let grounded = world
         .query::<Player>()
-        .into_iter()
         .next()
         .map(|(_, p)| p.grounded)
         .unwrap_or(false);
