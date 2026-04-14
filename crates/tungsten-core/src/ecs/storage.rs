@@ -358,7 +358,7 @@ impl Archetypes {
 ///
 /// Panics if `a == b`.
 fn split_two_mut(
-    archetypes: &mut Vec<Archetype>,
+    archetypes: &mut [Archetype],
     a: ArchetypeId,
     b: ArchetypeId,
 ) -> (&mut Archetype, &mut Archetype) {

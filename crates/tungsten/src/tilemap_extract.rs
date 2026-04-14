@@ -24,7 +24,7 @@ use crate::WindowSize;
 ///
 /// Only layers with `kind = render` contribute draw calls. Collision
 /// layers are accepted by the loader and round-trip through the
-/// registry but are skipped here — M11 will read them directly.
+/// registry but are skipped here — `physics_step` reads them directly.
 pub fn extract_tilemaps(world: &World) -> Vec<SpriteBatch> {
     let tilemaps = match world.get_resource::<TilemapRegistry>() {
         Some(r) => r,

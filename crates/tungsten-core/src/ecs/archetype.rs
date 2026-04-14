@@ -186,14 +186,12 @@ impl Archetype {
         // depend on column contents, so it's safe to call before we
         // swap-remove from self.
         for &tid in &types_to_move {
-            if !dest.columns.contains_key(&tid) {
-                let empty = self
-                    .columns
+            dest.columns.entry(tid).or_insert_with(|| {
+                self.columns
                     .get(&tid)
                     .expect("move_components_to: source column missing for new_empty")
-                    .new_empty();
-                dest.columns.insert(tid, empty);
-            }
+                    .new_empty()
+            });
         }
 
         // Pass 2 — move data: swap-remove from self, push into dest.
