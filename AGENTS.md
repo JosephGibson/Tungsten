@@ -111,7 +111,7 @@ Adding a new asset:
 
 ## Working with an AI assistant
 
-**Startup reading order:** `AGENTS.md` (this file) → `DESIGN.md` → `PHASE2.md` → `DECISIONS.md`. If the task touches a specific crate, also read its `lib.rs` and the relevant source files before proposing changes. Don't propose changes to code you haven't read.
+**Startup reading order:** `AGENTS.md` (this file) → `docs/LLM_INDEX.md` → only the source files this task touches. Read `DESIGN.md` for architecture context and `DECISIONS.md` (grep by `D-0xx`) for rationale — but only when the task requires it. `PHASE2.md` for milestone scope. Don't read these end-to-end by default. Don't propose changes to code you haven't read.
 
 **Subsystem → file map:** [docs/LLM_INDEX.md](docs/LLM_INDEX.md) (optional shortcut before diving into a crate).
 
@@ -122,8 +122,6 @@ Adding a new asset:
 - **Feature session** (implementing a milestone): ask for a plan first — files, API shape, tests. Any new dep cites its D-015 rule and gets a `DECISIONS.md` entry. After implementation: `cargo fmt && cargo test --workspace`.
 - **Audit session** (reviewing quality/debt/ergonomics): read the full crate surface before proposing changes. Flag, don't fix — findings in one session, fixes in another. Check `DECISIONS.md` before calling anything "wrong"; most architectural choices have a logged reason.
 - **Docs session** (planning documents): read the full doc before editing. `DECISIONS.md` entries are immutable once settled — reversals add a new entry marked `Superseded by D-XXX`. Update `CHANGELOG.md`, `README.md` status line, and `PHASE2.md` milestone markers when a milestone ships.
-
-**Open decisions.** Decisions still pending are marked `<!-- OPEN: ... -->` in `PHASE2.md`. Resolve before the relevant milestone ships.
 
 **Pre-implementation checklist.**
 

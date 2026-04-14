@@ -4,7 +4,9 @@ Pointer file for [Claude Code](https://claude.ai/code).
 
 **Read [`AGENTS.md`](AGENTS.md) first** — canonical commands, test layers, hard rules, and where new code belongs.
 
-Optional quick navigation for assistants: [`docs/LLM_INDEX.md`](docs/LLM_INDEX.md).
+**Index first.** Open [`docs/LLM_INDEX.md`](docs/LLM_INDEX.md) before any broad repo search or glob. It maps every subsystem to its primary source files.
+
+**Agent read path:** `AGENTS.md` → `LLM_INDEX.md` → only the files this task touches. Skip `DESIGN.md` and `DECISIONS.md` unless the task requires architecture context or rationale (grep `D-0xx` in `DECISIONS.md`; never read it serially). Skip `CHANGELOG.md` unless releasing.
 
 ## Session plans on disk
 
@@ -14,4 +16,4 @@ At the top of the file: **status** (`draft` · `in progress` · `done`), goal, n
 
 Long-lived direction belongs in [`PHASE2.md`](PHASE2.md) and settled rationale in [`DECISIONS.md`](DECISIONS.md). `docs/plans/` is for **time-bounded execution plans** only.
 
-**Status:** `v0.6.0-alpha` (Phase 2 through M11). Next: M12 ECS rewrite (conditional) or M13 first game — [`PHASE2.md`](PHASE2.md).
+**Status:** `v0.7.0-alpha` (Phase 2 through M12). Next: M13 first game — [`PHASE2.md`](PHASE2.md).
