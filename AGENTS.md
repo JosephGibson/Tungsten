@@ -115,6 +115,8 @@ Adding a new asset:
 
 **Subsystem → file map:** [docs/LLM_INDEX.md](docs/LLM_INDEX.md) (optional shortcut before diving into a crate).
 
+**Plan files (optional handoff).** For work that spans sessions or long chats, write the execution plan to [`docs/plans/<topic>.md`](docs/plans/) and continue from that file in a fresh context instead of replaying the whole thread. Conventions: [CLAUDE.md](CLAUDE.md). Milestone direction stays canonical in `PHASE2.md`; architecture decisions in `DECISIONS.md`.
+
 **Session types.**
 
 - **Feature session** (implementing a milestone): ask for a plan first — files, API shape, tests. Any new dep cites its D-015 rule and gets a `DECISIONS.md` entry. After implementation: `cargo fmt && cargo test --workspace`.
