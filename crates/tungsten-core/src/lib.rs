@@ -8,6 +8,7 @@ pub mod camera;
 pub mod config;
 pub mod ecs;
 pub mod input;
+pub mod physics;
 pub mod time;
 
 pub use assets::{
@@ -21,4 +22,9 @@ pub use camera::Camera2D;
 pub use config::{Config, ConfigError};
 pub use ecs::{Entity, World};
 pub use input::{InputState, KeyCode, MouseButton};
+pub use physics::{
+    aabb_vs_aabb, aabb_vs_circle, circle_vs_circle, physics_step, Aabb, BodyKind, Collider,
+    CollisionEvent, CollisionEvents, Contact, PhysicsConfig, Position, RigidBody, Shape,
+    SpatialGrid, Velocity,
+};
 pub use time::DeltaTime;

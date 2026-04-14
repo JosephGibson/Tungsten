@@ -1,6 +1,6 @@
 # Tungsten — Design Document
 
-**Status:** Phase 1 complete (M0–M6). Phase 2 through M9 complete (`v0.4.0-alpha`); M10 tilemaps next. Current branch: `0.4`. Milestone detail lives in `PHASE2.md`.
+**Status:** Phase 1 complete (M0–M6). Phase 2 through M11 complete (`v0.6.0-alpha`). Next: M12 ECS rewrite (conditional) or M13 first game. Current branch: `0.6`. Milestone detail lives in `PHASE2.md`.
 **Project:** Tungsten, a from-scratch Rust 2D game engine.
 **Companion docs:** `AGENTS.md` (how to work in the repo), `DECISIONS.md` (decision log).
 
@@ -37,7 +37,7 @@ Five things, in priority order. Everything else bends to these.
 | Logging    | `log` + `env_logger`   | Standard facade + basic backend.               |
 | Errors     | `thiserror` / `anyhow` | Typed at library boundaries, anyhow at the top.|
 
-Explicitly not in Phase 1: async runtimes, `rayon`, audio, physics, networking, scripting. Phase 2 adds audio (M8), hot reload (M9), tilemaps (M10), and physics (M11); see `PHASE2.md`.
+Explicitly not in Phase 1: async runtimes, `rayon`, networking, scripting. Phase 2 added audio (M8), hot reload (M9), tilemaps (M10), and physics (M11); see `PHASE2.md` for what ships next.
 
 ### Dependency philosophy
 
@@ -99,7 +99,7 @@ Parallelism, parallel system scheduling, and fixed-timestep simulation are all e
 
 **Renderer-ECS coupling:** `tungsten-render` may depend on `tungsten-core` and use its types where it makes the glue simpler. The renderer is not *required* to be ECS-driven — direct-data APIs should also exist so the renderer can be tested against hand-built data — but the separation is not a rule.
 
-**Phase 1 render path:** systems mutate the `World` during `tick`. Extract functions then receive `&World` and resolve string IDs → `TextureHandle` via `AssetRegistry`, producing `SpriteBatch`/`QuadInstance`/`TextSection` slices with all handles pre-resolved. Only those POD slices are passed to `render_frame_full`. The renderer never reads the registry at draw time. This keeps borrow-checker pressure contained and preserves a direct-data API for testing.
+**Render path (D-018):** systems mutate the `World` during `tick`. Extract functions then receive `&World` and resolve string IDs → `TextureHandle` via `AssetRegistry`, producing `SpriteBatch`/`QuadInstance`/`TextSection` slices with handles pre-resolved where extract runs. POD draw data is passed into `render_frame_full`; the renderer does not require long-lived mutable `World` access at draw time. The renderer may read the asset registry for ID resolution when an implementation needs it — prefer resolving IDs in extract when practical. This keeps borrow-checker pressure contained and preserves a direct-data API for testing.
 
 ### Data-driven config
 

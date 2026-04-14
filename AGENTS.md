@@ -69,6 +69,8 @@ tungsten/
 
 **The core/render seam.** `TextureHandle(u32)` is defined in `tungsten-core`; no `wgpu` types appear there. The `tungsten` umbrella crate mediates: `AssetRegistry::register_sprite` allocates a handle and stores metadata in core, then `renderer.upload_texture(handle, rgba, ...)` stores the GPU texture in render's pool under the same key. Core never calls into render. `tungsten-render` may depend on `tungsten-core` types (see `DECISIONS.md` D-007).
 
+**Render path vs draw time (D-018).** Extract runs on the main thread with `&World`, resolves string asset IDs to `TextureHandle` where practical, and passes POD slices into render. The renderer does not need mutable `World` access at draw time; it may still read the asset registry for ID resolution when the implementation requires it — see `DECISIONS.md` D-018.
+
 ## Asset rules
 
 Anything in `assets/` must be registered in `assets/manifest.json`, and every manifest entry must point to a real file. The loader validates at startup; keep the convention tight by hand.
@@ -110,6 +112,8 @@ Adding a new asset:
 ## Working with an AI assistant
 
 **Startup reading order:** `AGENTS.md` (this file) → `DESIGN.md` → `PHASE2.md` → `DECISIONS.md`. If the task touches a specific crate, also read its `lib.rs` and the relevant source files before proposing changes. Don't propose changes to code you haven't read.
+
+**Subsystem → file map:** [docs/LLM_INDEX.md](docs/LLM_INDEX.md) (optional shortcut before diving into a crate).
 
 **Session types.**
 
