@@ -1,12 +1,10 @@
 # AGENTS.md
 
-Operational notes for working on Tungsten. Canonical rulebook for any AI assistant. Read `DESIGN.md` for architectural context, `DECISIONS.md` for why a thing is the way it is, and `PHASE2.md` for the current milestone.
+Operational notes for working on Tungsten. Canonical rulebook for any AI assistant. Read `DESIGN.md` for architectural context and `DECISIONS.md` for why a thing is the way it is.
 
 ## What Tungsten is
 
-A from-scratch Rust 2D game engine, hobby project, native only. `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Three crates in a Cargo workspace: `tungsten-core`, `tungsten-render`, `tungsten`.
-
-The top priority is that working on this stays fun. Rules exist to protect that, not to gold-plate the code.
+A from-scratch Rust 2D game engine, native only. `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Three crates in a Cargo workspace: `tungsten-core`, `tungsten-render`, `tungsten`. Phase 2 complete (M7–M12); all subsystems shipped.
 
 ## Commands
 
@@ -86,13 +84,13 @@ Adding a new asset:
 | Font      | `assets/fonts/<Fam>/` | `fonts`          | stable ID                                 |
 | Sound     | `assets/sounds/`      | `sounds`         | stable ID, optional `looping` / `volume`  |
 
-- **Shaders** (`*.wgsl`) live in `tungsten-render/src/` and are compiled in via `include_str!` (D-023). Not manifest-tracked and **excluded from M9 hot reload** — shader changes require a binary rebuild.
+- **Shaders** (`*.wgsl`) live in `tungsten-render/src/` and are compiled in via `include_str!` (D-023). Not manifest-tracked and **excluded from hot reload** — shader changes require a binary rebuild.
 - **Example-local assets:** `examples/NN_name/assets/` with a local `manifest.json`. Asset IDs must be globally unique across all loaded manifests — duplicate IDs are fatal at load time.
 - **Game code never references file paths.** Always reference assets by ID through the registry. This invariant is what makes hot reload (M9) work — don't break it.
 
 ## Things to actually not do
 
-- **No external ECS or game-engine crate** (`bevy_ecs`, `hecs`, `specs`, `legion`, `amethyst`, `fyrox`, `ggez`, `macroquad`). Building them by hand is the point.
+- **No external ECS or game-engine crate** (`bevy_ecs`, `hecs`, `specs`, `legion`, `amethyst`, `fyrox`, `ggez`, `macroquad`). These are implemented in-project by design (D-005).
 - **No async runtimes** (`tokio`, `async-std`). The `cpal` audio callback thread (M8+) and the `notify` watcher thread (M9+) are the only permitted background threads. The audio thread receives commands via a lock-free `rtrb` ring (D-034); the notify watcher sends file events via `std::sync::mpsc`. No async runtime.
 - **No global mutable state.** No `static mut`, no `lazy_static` singletons. State lives in the `World` or is passed explicitly. The asset registry is a `Resource`, not a global.
 - **No new third-party runtime dep without a `DECISIONS.md` entry** citing which D-015 rule applies.
@@ -111,17 +109,19 @@ Adding a new asset:
 
 ## Working with an AI assistant
 
-**Startup reading order:** `AGENTS.md` (this file) → `docs/LLM_INDEX.md` → only the source files this task touches. Read `DESIGN.md` for architecture context and `DECISIONS.md` (grep by `D-0xx`) for rationale — but only when the task requires it. `PHASE2.md` for milestone scope. Don't read these end-to-end by default. Don't propose changes to code you haven't read.
+**Startup reading order:** `AGENTS.md` (this file) → `docs/LLM_INDEX.md` → only the source files this task touches. Read `DESIGN.md` for architecture context and `DECISIONS.md` (grep by `D-0xx`) for rationale — but only when the task requires it. Don't read these end-to-end by default. Don't propose changes to code you haven't read.
+
+**Never read `docs/plans/archive/`.** That directory contains completed or abandoned plans — historical records with no operational value. Skip it entirely during any search or glob.
 
 **Subsystem → file map:** [docs/LLM_INDEX.md](docs/LLM_INDEX.md) (optional shortcut before diving into a crate).
 
-**Plan files (optional handoff).** For work that spans sessions or long chats, write the execution plan to [`docs/plans/<topic>.md`](docs/plans/) and continue from that file in a fresh context instead of replaying the whole thread. Conventions: [CLAUDE.md](CLAUDE.md). Milestone direction stays canonical in `PHASE2.md`; architecture decisions in `DECISIONS.md`.
+**Plan files (optional handoff).** For work that spans sessions or long chats, write the execution plan to [`docs/plans/<topic>.md`](docs/plans/) and continue from that file in a fresh context instead of replaying the whole thread. Conventions: [CLAUDE.md](CLAUDE.md). Architecture decisions live in `DECISIONS.md`.
 
 **Session types.**
 
 - **Feature session** (implementing a milestone): ask for a plan first — files, API shape, tests. Any new dep cites its D-015 rule and gets a `DECISIONS.md` entry. After implementation: `cargo fmt && cargo test --workspace`.
 - **Audit session** (reviewing quality/debt/ergonomics): read the full crate surface before proposing changes. Flag, don't fix — findings in one session, fixes in another. Check `DECISIONS.md` before calling anything "wrong"; most architectural choices have a logged reason.
-- **Docs session** (planning documents): read the full doc before editing. `DECISIONS.md` entries are immutable once settled — reversals add a new entry marked `Superseded by D-XXX`. Update `CHANGELOG.md`, `README.md` status line, and `PHASE2.md` milestone markers when a milestone ships.
+- **Docs session** (planning documents): read the full doc before editing. `DECISIONS.md` entries are immutable once settled — reversals add a new entry marked `Superseded by D-XXX`. Update `CHANGELOG.md` and `README.md` status when a milestone ships.
 
 **Pre-implementation checklist.**
 
@@ -135,10 +135,9 @@ Adding a new asset:
 
 ## When stuck
 
-1. Re-read the current milestone in `PHASE2.md`. Half of stuck is having drifted from the goal.
+1. Re-read the task scope. Half of stuck is having drifted from the goal.
 2. Check `DECISIONS.md` for prior art.
-3. If the problem is "this is no longer fun," step back — that's a real signal, not a failure. Consider descoping before pushing through.
-4. Write the question in a `// TODO: ask about X` comment and move on.
+3. Write the question in a `// TODO: ask about X` comment and move on.
 
 ## What this project is not doing
 

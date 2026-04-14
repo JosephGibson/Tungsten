@@ -1,6 +1,6 @@
 # LLM navigation index
 
-Short map from subsystem to primary source files. Authoritative rules and commands live in [`AGENTS.md`](../AGENTS.md); architecture in [`DESIGN.md`](../DESIGN.md); milestones in [`PHASE2.md`](../PHASE2.md).
+Short map from subsystem to primary source files. Authoritative rules and commands live in [`AGENTS.md`](../AGENTS.md); architecture in [`DESIGN.md`](../DESIGN.md); rationale in [`DECISIONS.md`](../DECISIONS.md).
 
 | Area | Start here |
 | ---- | ---------- |
