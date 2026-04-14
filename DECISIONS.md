@@ -233,3 +233,40 @@ A crate that hands me something the project is supposed to teach me to build is 
 **Why:** DFS-include or lexical ordering would require a manifest-level include directive that doesn't exist yet and adds parsing complexity. Call-site order is explicit and predictable for the current use case (one root manifest + one example-local manifest).
 **Global uniqueness:** Enforced by the Layer 1 integration test (`crates/tungsten-core/tests/manifests.rs` — `all_manifest_ids_are_globally_unique`), which aggregates all discovered manifests and asserts no ID collision. Duplicate IDs remain fatal at load time per D-017.
 **Consequences:** A future DFS-include directive or explicit load-order manifest field is the preferred upgrade if manifest composition grows complex.
+
+## D-036 — M12: Proceed with archetypal ECS rewrite
+**Date:** 2026-04-14
+**Decision:** Proceed with M12. After M11 the full M7–M11 workload is in place — text, audio, hot reload, tilemaps, physics — giving a realistic benchmark target. The naive ECS has caused no correctness issues, but M12 is learning-motivated (archetypal storage, cache-friendly iteration, component move semantics), not a fix for a crisis. D-030 satisfied.
+
+### Storage design
+Replace `HashMap<TypeId, HashMap<EntityId, Box<dyn Any>>>` with an archetype graph:
+- **`AnyColumn` trait** — type-erased interface over `Vec<T>`. Implemented by `TypedVec<T>(Vec<T>)`. Downcast cost is one `downcast_ref::<TypedVec<T>>()` per archetype per query, not per element; elements are then accessed as `col.0[i]` over a contiguous `Vec<T>`.
+- **`Archetype`** — a table whose columns are `HashMap<TypeId, Box<dyn AnyColumn>>` plus a parallel `Vec<Entity>` row index. `component_types: Box<[TypeId]>` (sorted) uniquely identifies each archetype.
+- **`Archetypes` registry** — `Vec<Archetype>` (index = ArchetypeId) + `HashMap<Box<[TypeId]>, ArchetypeId>` for O(1) archetype lookup by component set. Archetype 0 is the empty archetype; all freshly spawned entities start there.
+- **Archetype graph edges** — lazy: on the first `insert<T>` / `remove<T>` from a given archetype, the target archetype id is computed (sorted union/difference) and cached in `add_edges[TypeId]` / `remove_edges[TypeId]`. Repeat transitions are O(1) edge lookup.
+- **Column initialization** — new archetype columns are created lazily on first use: `AnyColumn::new_empty()` clones the column type so `move_components_to` can create a matching empty `TypedVec<T>` in a destination archetype without requiring the concrete type `T` at the call site.
+- **Modelling after hecs** — `Box<dyn AnyColumn>` (typed columns, no unsafe raw bytes) rather than Bevy's `BlobVec`. Teaches the concepts without unsafe noise. `BlobVec` is the documented deferred upgrade path for maximum cache performance (M13+ concern).
+
+### Generational entity IDs (Expansion 2)
+`Entity` changes from `Entity(u32)` to `Entity { index: u32, generation: u32 }`. Rationale: M12 rewrites the entity table anyway; generational indices catch stale-handle bugs that parent/child relationships in M13 will expose (D-021 deferred "upgrade only if bugs appear"; M13 creates exactly that risk). `entity.id()` continues to return `index` as `u32` — source-compatible. Generation wraps at `u32::MAX` (theoretical, not a practical concern at hobby scale; noted but not guarded).
+
+### Multi-component tuple queries (Expansion 1)
+`query2<A, B>()`, `query2_entities<A, B>()`, `query3<A, B, C>()`, `query3_entities<A, B, C>()` — immutable; one downcast per archetype per type, then sequential row access over contiguous `Vec<T>` slices. Mutable multi-component queries require unsafe split-borrow and are deferred.
+
+### New dependency
+`criterion` added to `[dev-dependencies]` in `tungsten-core/Cargo.toml` for the M12 benchmark suite. Dev-only; satisfies D-015 rule 3 (solved primitive for microbenchmarking).
+
+### Benchmark results
+Measured on the development machine (release profile, Criterion 0.5, 10k entities, 3+ component types). Naive baseline is an inline `HashMap<TypeId, HashMap<u32, Box<dyn Any>>>` simulation in the same bench file.
+
+| Benchmark | Archetypal (new) | Naive (old) | Ratio |
+|-----------|-----------------|-------------|-------|
+| `query::<Position>` — single type, 10k entities | **6.8 µs** | 43.4 µs | ~6× faster |
+| `query2::<Position, Velocity>` — 10k, one archetype | **7.1 µs** | 1 424 µs (query_entities+get) | ~200× faster |
+| `query2::<Position, Velocity>` — 10k, 5 archetypes | **7.5 µs** | same naive | ~190× faster |
+| spawn + 3 inserts × 10k | 4.4 ms | — | — |
+
+The single-type query win (~6×) comes from linear `Vec<T>` access vs. per-element `HashMap::get` + `downcast_ref`. The multi-component query win (~200×) is larger: the naive pattern requires N separate `HashMap::get` calls for the second component type; the archetypal `query2` does one downcast per archetype then zips two `Vec<T>` slices directly.
+
+### Deferred / out of scope
+Parallel system scheduling, change detection, command buffers, reactive queries, `BlobVec` raw-byte columns, SparseSet storage, dynamic components.

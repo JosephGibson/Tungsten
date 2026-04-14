@@ -440,9 +440,10 @@ impl ApplicationHandler for App {
                 }
 
                 // Forward audio commands to the audio thread.
-                if let (Some(audio), Some(cmds)) =
-                    (&mut self.audio, self.world.get_resource_mut::<AudioCommands>())
-                {
+                if let (Some(audio), Some(cmds)) = (
+                    &mut self.audio,
+                    self.world.get_resource_mut::<AudioCommands>(),
+                ) {
                     for cmd in cmds.drain() {
                         audio.send(cmd);
                     }

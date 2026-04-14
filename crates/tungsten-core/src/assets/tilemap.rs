@@ -134,9 +134,10 @@ impl TilemapData {
 
         // --- Build the tileset sprite-ID array ---
         // We only support a single tileset per map for now.
-        let ts = tiled.tilesets.first().ok_or_else(|| {
-            anyhow::anyhow!("Tilemap '{}': no tilesets defined", path.display())
-        })?;
+        let ts = tiled
+            .tilesets
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("Tilemap '{}': no tilesets defined", path.display()))?;
         let firstgid = ts.firstgid;
 
         // Sort tiles by local id to build a contiguous 0-based array.
@@ -435,7 +436,8 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("demo.tmj");
         let mut f = std::fs::File::create(&path).unwrap();
-        f.write_all(br#"{
+        f.write_all(
+            br#"{
           "type": "map", "version": "1.10",
           "orientation": "orthogonal", "renderorder": "right-down",
           "tilewidth": 8, "tileheight": 8,
@@ -461,7 +463,9 @@ mod tests {
               "properties": [{"name": "kind", "type": "string", "value": "collision"}],
               "data": [0, 1, 0, 0] }
           ]
-        }"#).unwrap();
+        }"#,
+        )
+        .unwrap();
         drop(f);
 
         let m = TilemapData::load(&path).unwrap();

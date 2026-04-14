@@ -1,7 +1,7 @@
 # Tungsten — Phase 2 Plan
 
-**Status:** Phase 2 in progress. **M7 complete** (`v0.2.0-alpha.0`), **M8 complete** (`v0.3.0-alpha`), **M9 complete** (`v0.4.0-alpha`), **M10 complete** (`v0.5.0-alpha`), **M11 complete** (`v0.6.0-alpha`). Next: **M12 ECS rewrite (conditional)** or **M13 first game**.
-**Branch:** `0.6`
+**Status:** Phase 2 in progress. **M7 complete** (`v0.2.0-alpha.0`), **M8 complete** (`v0.3.0-alpha`), **M9 complete** (`v0.4.0-alpha`), **M10 complete** (`v0.5.0-alpha`), **M11 complete** (`v0.6.0-alpha`), **M12 complete** (`v0.7.0-alpha`). Next: **M13 first game**.
+**Branch:** `0.7`
 **Prerequisite:** Phase 1 complete (M0–M6), tagged `v0.1.0-alpha`.
 **Companion docs:** `DESIGN.md` (architecture), `DECISIONS.md` (decision log, esp. D-024 — Phase 1 exit observations), `AGENTS.md` (operational rules).
 
@@ -22,7 +22,7 @@ Phase 1 proved the foundations: hand-rolled ECS, wgpu render pipeline, manifest-
 | `v0.4.0-alpha`   | M9        | Hot reload                            | **Complete**    |
 | `v0.5.0-alpha`   | M10       | Tilemaps                              | **Complete**    |
 | `v0.6.0-alpha`   | M11       | 2D physics                            | Complete        |
-| `v0.7.0-alpha`   | M12       | Archetypal ECS rewrite                | **Conditional** (D-030) |
+| `v0.7.0-alpha`   | M12       | Archetypal ECS rewrite                | **Complete**    |
 | `v1.0.0`         | M13       | A first actual game                   | Planned         |
 
 ### Ordering rationale
@@ -116,13 +116,13 @@ M10 (tilemap collision layers). Phase 1 ECS.
 
 ---
 
-## M12 — Archetypal ECS rewrite (conditional)
+## M12 — Archetypal ECS rewrite ✓ Complete
 
 **Version:** `v0.7.0-alpha`
 **Soft estimate:** Multiple weekends (possibly the longest milestone)
 **Learn:** Archetypal storage, cache-friendly iteration, component move semantics, columnar vs HashMap storage tradeoffs, real-world benchmarking.
 
-**This milestone is conditional.** After M11, assess whether the naive ECS has caused measurable friction — slow queries, borrow fights under load, correctness issues with many entities. If yes, proceed. If not, skip M12 and go directly to M13. Descoping is not failure (D-005, D-030).
+**Shipped:** Archetypal storage with `Box<dyn AnyColumn>` typed columns, `TypedVec<T>` per-component `Vec<T>`, archetype graph with lazy edge caching, generational entity IDs, `query2`/`query2_entities`/`query3`/`query3_entities` multi-component queries, Criterion benchmark suite. Decision to proceed logged in D-036 (cites D-030). ~6× improvement on single-type queries; ~200× on multi-component queries vs. naive `HashMap<TypeId, HashMap<u32, Box<dyn Any>>>` baseline. All 10 examples compile and smoke-test clean without modification.
 
 ### Goals
 
@@ -143,12 +143,12 @@ The rewrite is internal to `tungsten-core`. The `World` API stays the same; the 
 
 ### Acceptance criteria
 
-- [ ] **Decision to proceed or skip logged in `DECISIONS.md` before the milestone begins** (cite D-030).
-- [ ] All existing examples compile and pass without API changes.
-- [ ] `cargo test --workspace` passes — ECS test suite is the primary validation.
-- [ ] A benchmark comparing iteration speed (old vs new) on ≥10,000 entities with 3+ component types.
-- [ ] Query iteration is cache-friendly: components of the same archetype stored contiguously.
-- [ ] `DECISIONS.md` entry documenting the storage design and benchmark results.
+- [x] **Decision to proceed or skip logged in `DECISIONS.md` before the milestone begins** (cite D-030).
+- [x] All existing examples compile and pass without API changes.
+- [x] `cargo test --workspace` passes — ECS test suite is the primary validation.
+- [x] A benchmark comparing iteration speed (old vs new) on ≥10,000 entities with 3+ component types.
+- [x] Query iteration is cache-friendly: components of the same archetype stored contiguously.
+- [x] `DECISIONS.md` entry documenting the storage design and benchmark results.
 
 ### Dependencies
 

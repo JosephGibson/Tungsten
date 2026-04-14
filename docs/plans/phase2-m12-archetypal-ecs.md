@@ -1,6 +1,6 @@
 # Phase 2 — M12: Archetypal ECS Rewrite
 
-**Status:** in progress  
+**Status:** done  
 **Branch:** `0.7`  
 **Version:** `v0.7.0-alpha`  
 **Goal:** Replace the naive `HashMap<TypeId, HashMap<EntityId, Box<dyn Any>>>` storage with an archetypal layout — contiguous per-archetype component arrays — plus generational entity IDs and multi-component tuple queries.  
