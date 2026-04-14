@@ -13,4 +13,5 @@ pub use app::{App, WindowSize};
 pub use hot_reload::HotReloadWatcher;
 pub use tilemap_extract::extract_tilemaps;
 pub use tungsten_core as core;
+pub use tungsten_core::physics;
 pub use tungsten_render as render;

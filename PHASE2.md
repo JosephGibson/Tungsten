@@ -1,6 +1,6 @@
 # Tungsten — Phase 2 Plan
 
-**Status:** Phase 2 in progress. **M7 complete** (`v0.2.0-alpha.0`), **M8 complete** (`v0.3.0-alpha`), **M9 complete** (`v0.4.0-alpha`), **M10 complete** (`v0.5.0-alpha`). Next: **M11 2D physics**.
+**Status:** Phase 2 in progress. **M7 complete** (`v0.2.0-alpha.0`), **M8 complete** (`v0.3.0-alpha`), **M9 complete** (`v0.4.0-alpha`), **M10 complete** (`v0.5.0-alpha`), **M11 complete** (`v0.6.0-alpha`). Next: **M12 ECS rewrite (conditional)** or **M13 first game**.
 **Branch:** `0.5`
 **Prerequisite:** Phase 1 complete (M0–M6), tagged `v0.1.0-alpha`.
 **Companion docs:** `DESIGN.md` (architecture), `DECISIONS.md` (decision log, esp. D-024 — Phase 1 exit observations), `AGENTS.md` (operational rules).
@@ -21,7 +21,7 @@ Phase 1 proved the foundations: hand-rolled ECS, wgpu render pipeline, manifest-
 | `v0.3.0-alpha`   | M8        | Audio                                 | **Complete**    |
 | `v0.4.0-alpha`   | M9        | Hot reload                            | **Complete**    |
 | `v0.5.0-alpha`   | M10       | Tilemaps                              | **Complete**    |
-| `v0.6.0-alpha`   | M11       | 2D physics                            | In progress     |
+| `v0.6.0-alpha`   | M11       | 2D physics                            | Complete        |
 | `v0.7.0-alpha`   | M12       | Archetypal ECS rewrite                | **Conditional** (D-030) |
 | `v1.0.0`         | M13       | A first actual game                   | Planned         |
 
@@ -70,11 +70,13 @@ Phase 1 proved the foundations: hand-rolled ECS, wgpu render pipeline, manifest-
 
 ---
 
-## M11 — 2D physics
+## M11 — 2D physics ✓ Complete
 
 **Version:** `v0.6.0-alpha`
 **Soft estimate:** Multiple weekends
 **Learn:** AABB / circle / SAT collision, collision response and resolution, spatial data structures, physics as ECS components and systems.
+
+**Shipped:** Hand-rolled `tungsten-core::physics` module with `Position`/`Velocity`/`Collider`/`RigidBody` components, `PhysicsConfig` + `CollisionEvents` resources, AABB/circle narrow-phase, uniform-grid broad-phase rebuilt per substep, MTV resolution with restitution, tunneling-aware substep driver, `LayerKind::Collision` tilemap layers read transiently as static AABBs, and `example-10-platformer` (side-scroller with gravity, grounded detection via `CollisionEvents`, bouncing circles). See `DECISIONS.md` D-033 and `CHANGELOG.md` for details.
 
 ### Goals
 
@@ -95,12 +97,12 @@ Tilemap collision layers (from M10) provide static geometry — tiles marked sol
 
 ### Acceptance criteria
 
-- [ ] AABB-vs-AABB and circle-vs-circle collision detection works correctly.
-- [ ] Dynamic bodies resolve against static bodies without tunneling at reasonable speeds.
-- [ ] A tilemap collision layer blocks entity movement.
-- [ ] Collision events accessible to game systems.
-- [ ] A new example demonstrates entities colliding with each other and with tilemap geometry.
-- [ ] `cargo test --workspace` passes. `cargo fmt` clean.
+- [x] AABB-vs-AABB and circle-vs-circle collision detection works correctly.
+- [x] Dynamic bodies resolve against static bodies without tunneling at reasonable speeds.
+- [x] A tilemap collision layer blocks entity movement.
+- [x] Collision events accessible to game systems.
+- [x] A new example demonstrates entities colliding with each other and with tilemap geometry.
+- [x] `cargo test --workspace` passes. `cargo fmt` clean.
 
 ### Dependencies
 

@@ -7,6 +7,7 @@ use crate::audio::AudioSystem;
 use crate::hot_reload::HotReloadWatcher;
 use crate::input_bridge;
 use tungsten_core::assets::{AnimationRegistry, FontRegistry, SoundRegistry, TilemapRegistry};
+use tungsten_core::physics::{CollisionEvents, PhysicsConfig};
 use tungsten_core::{AssetRegistry, AudioCommands, Camera2D, Config, DeltaTime, InputState, World};
 use tungsten_render::{QuadInstance, Renderer, SpriteBatch, TextSection};
 use winit::application::ApplicationHandler;
@@ -80,6 +81,8 @@ impl App {
         world.insert_resource(AudioCommands::new());
         world.insert_resource(TilemapRegistry::new());
         world.insert_resource(Camera2D::new());
+        world.insert_resource(PhysicsConfig::default());
+        world.insert_resource(CollisionEvents::new());
 
         Self {
             config,

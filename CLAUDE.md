@@ -10,7 +10,7 @@ The canonical instruction file for all AI assistants is **`AGENTS.md`** — read
 
 A from-scratch Rust 2D game engine (hobby project). `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Three crates in a Cargo workspace: `tungsten-core`, `tungsten-render`, `tungsten`.
 
-**Status:** Phase 1 complete. Phase 2 through M10 complete (`v0.5.0-alpha`, branch `0.5`). Current milestone: M11 2D physics. See `PHASE2.md`.
+**Status:** Phase 1 complete. Phase 2 through M11 complete (`v0.6.0-alpha`, branch `0.6`). Next: M12 ECS rewrite (conditional) or M13 first game. See `PHASE2.md`.
 
 ## Commands
 

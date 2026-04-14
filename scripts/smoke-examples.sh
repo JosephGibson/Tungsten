@@ -27,6 +27,7 @@ EXAMPLES=(
   example-07-audio
   example-08-hot-reload
   example-09-tilemap
+  example-10-platformer
 )
 
 echo "Pre-building all examples..."
