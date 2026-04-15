@@ -1,6 +1,6 @@
 # Tungsten — Design
 
-**Status:** `v0.7.0-alpha` — Phase 2 complete (M7–M12). Branch: `0.8`.  
+**Status:** `v0.9.0-alpha` — Phase 3 M12 complete. Branch: `0.9`.  
 **Companion docs:** [`AGENTS.md`](AGENTS.md) (operational rules), [`DECISIONS.md`](DECISIONS.md) (rationale by D-NNN).
 
 ---
@@ -47,6 +47,7 @@ Any crate that would hand over something the project is supposed to build is rej
 | Text | `glyphon` + `cosmic-text` | TrueType/OpenType layout + wgpu rasterization |
 | wgpu init | `pollster` | Sync wrapper for wgpu's async adapter/device init |
 | GPU data | `bytemuck` | Safe `&[T]` → `&[u8]` for vertex/instance buffers |
+| Perf micro-benches | `criterion` | Repeatable ECS / physics / render CPU benchmarks |
 
 ---
 
@@ -68,6 +69,7 @@ init:
 loop:
     poll events     → drain winit events into InputState resource
     tick            → update DeltaTime; run systems in declared order
+    telemetry       → record update/extract/render/audio/hot-reload timings
     render          → extract renderables from World; record + submit draw calls
     present         → swap buffers
 
@@ -90,6 +92,8 @@ System registration order is execution order. No scheduler, labels, or dependenc
 **Queries:** `query<A>()`, `query2<A,B>()`, `query3<A,B,C>()` plus `_entities` variants — immutable; one downcast per archetype per type, then sequential row access over contiguous `Vec<T>`. Mutable multi-component queries require unsafe split-borrow and are deferred.
 
 **Resources:** singleton state in the `World` accessed by the same mechanism as components. `DeltaTime`, `InputState`, `WindowSize`, `AssetRegistry`, `AudioCommands`, `PhysicsConfig`, `CollisionEvents`, `Camera2D` are all resources.
+
+**Runtime telemetry (M12):** `FrameTimings` is also a `World` resource. `App` measures stage timings inline with `std::time::Instant`, stores the latest frame totals, and records a per-system `Vec<(String, f32)>` in registration order. GPU-facing diagnostics live in `tungsten-render::GpuFrameTimings`, mirrored into the `World` by the umbrella crate after renderer init and each frame.
 
 **ECS error strategy (D-022):** panic on programmer errors (insert on dead entity, wrong downcast); `Option`/`Result` on runtime conditions (entity not found, component absent).
 
@@ -188,6 +192,16 @@ Storage design described in [§ECS](#ecs) above. Decision to proceed: D-036 (cit
 | spawn + 3 inserts × 10k | 4.4 ms | — | — |
 
 Deferred: parallel system scheduling, change detection, command buffers, reactive queries, `BlobVec` raw-byte columns.
+
+### Performance baseline + profiling harness — Phase 3 M12
+
+M12 establishes the baseline for all later Phase 3 work.
+
+- **CPU telemetry:** `App` instruments update, extract, render, audio, hot reload, and total frame time. Per-system timings are available through `FrameTimings::system_timings` and a `slowest_system()` helper.
+- **GPU telemetry:** `Renderer::render_frame_full_timed()` uses `wgpu` timestamp queries when `TIMESTAMP_QUERY` is available on the active adapter. The path is opt-in via `TUNGSTEN_GPU_TIMING` because it blocks on GPU completion to read the timestamps back.
+- **Canonical scenes:** `example-01-platformer` remains the broad feature scene; `example-02-sprite-stress` is the canonical sprite-throughput scene for perf capture.
+- **Bench coverage:** Criterion suites now cover ECS, physics, and CPU-only render-data construction. These are intended as repeatable regression detectors, not exhaustive throughput claims.
+- **Capture tooling:** `scripts/perf-capture.sh` and `docs/perf/profiling-workflow.md` define the repeatable Linux profiling workflow: release builds with frame pointers, smoke-frame-bounded runs, optional flamegraph/perf artifacts, and timestamped output directories under `perf-runs/`.
 
 ---
 

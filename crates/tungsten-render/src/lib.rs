@@ -9,6 +9,6 @@ pub mod sprite;
 pub mod text;
 
 pub use quad::QuadInstance;
-pub use renderer::Renderer;
+pub use renderer::{GpuFrameTimings, Renderer};
 pub use sprite::{SpriteBatch, SpriteInstance, SpritePipeline};
 pub use text::{TextPipeline, TextSection};

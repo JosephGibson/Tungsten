@@ -16,4 +16,4 @@ At the top of the file: **status** (`draft` · `in progress` · `done`), goal, n
 
 Settled rationale lives in [`DECISIONS.md`](DECISIONS.md). `docs/plans/` is for **time-bounded execution plans** only.
 
-**Status:** `v0.7.0-alpha` — Phase 2 complete (M7–M12). Branch: `0.8`.
+**Status:** `v0.9.0-alpha` — Phase 3 M12 complete. Branch: `0.9`.

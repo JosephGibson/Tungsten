@@ -804,7 +804,20 @@ dependencies = [
 
 [[package]]
 name = "example-01-platformer"
-version = "0.8.0-alpha"
+version = "0.9.0-alpha"
+dependencies = [
+ "anyhow",
+ "env_logger",
+ "glam",
+ "log",
+ "tungsten",
+ "tungsten-core",
+ "tungsten-render",
+]
+
+[[package]]
+name = "example-02-sprite-stress"
+version = "0.9.0-alpha"
 dependencies = [
  "anyhow",
  "env_logger",
@@ -2888,7 +2901,7 @@ dependencies = [
 
 [[package]]
 name = "tungsten"
-version = "0.8.0-alpha"
+version = "0.9.0-alpha"
 dependencies = [
  "anyhow",
  "cpal",
@@ -2907,7 +2920,7 @@ dependencies = [
 
 [[package]]
 name = "tungsten-core"
-version = "0.8.0-alpha"
+version = "0.9.0-alpha"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -2923,9 +2936,10 @@ dependencies = [
 
 [[package]]
 name = "tungsten-render"
-version = "0.8.0-alpha"
+version = "0.9.0-alpha"
 dependencies = [
  "bytemuck",
+ "criterion",
  "glam",
  "glyphon",
  "log",

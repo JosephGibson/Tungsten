@@ -4,7 +4,7 @@ Operational notes for working on Tungsten. Canonical rulebook for any AI assista
 
 ## What Tungsten is
 
-A from-scratch Rust 2D game engine, native only. `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Three crates in a Cargo workspace: `tungsten-core`, `tungsten-render`, `tungsten`. Phase 2 complete (M7–M12); all subsystems shipped.
+A from-scratch Rust 2D game engine, native only. `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Three crates in a Cargo workspace: `tungsten-core`, `tungsten-render`, `tungsten`. Phase 3 Milestone 12 is complete: the engine now has CPU/GPU telemetry, benchmark harnesses, and baseline profiling tooling in addition to the Phase 2 runtime subsystems.
 
 ## Commands
 
@@ -17,11 +17,14 @@ cargo clippy --workspace --all-targets    # advisory only
 cargo fmt --all
 
 cargo run -p example-NN-name              # see examples/ for the current list
+./scripts/perf-capture.sh sprite-stress 300   # Linux perf capture workflow
 ```
 
 Before committing anything substantial: `cargo fmt && cargo test --workspace`. Clippy is advisory.
 
 Examples need a real GPU and display. Override the backend if wgpu picks the wrong one: `WGPU_BACKEND=vulkan` (Linux) / `metal` (macOS) / `dx12` (Windows).
+
+For the profiling workflow and capture rules, see [`docs/perf/profiling-workflow.md`](docs/perf/profiling-workflow.md).
 
 ## Test layers
 

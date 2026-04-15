@@ -1,0 +1,14 @@
+[package]
+name = "example-02-sprite-stress"
+version.workspace = true
+edition = "2021"
+publish = false
+
+[dependencies]
+tungsten = { workspace = true }
+tungsten-core = { workspace = true }
+tungsten-render = { workspace = true }
+glam = { workspace = true }
+anyhow = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
