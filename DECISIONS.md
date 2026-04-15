@@ -163,3 +163,11 @@ Log of non-obvious decisions for Tungsten. Numbered sequentially; immutable once
 **Decision:** Proceed with M12. After M11 the full M7–M11 workload was in place — a realistic benchmark target. Satisfies D-030.  
 **Storage design:** See `DESIGN.md` §ECS for the full description (archetype graph, `AnyColumn`/`TypedVec<T>`, lazy edges, generational IDs, `query2`/`query3`).  
 **Results:** ~6× on single-type queries, ~200× on multi-component queries vs. naive `HashMap<TypeId, HashMap<u32, Box<dyn Any>>>` baseline (10k entities, release profile). See `DESIGN.md` §Archetypal ECS for the benchmark table.
+
+## D-037 — `criterion` added to `tungsten-render` dev-dependencies
+**Date:** 2026-04-15  
+**Decision:** Add `criterion = { version = "0.5", features = ["html_reports"] }` as a `[dev-dependencies]` entry in `crates/tungsten-render/Cargo.toml` for render-side micro-benchmarks (sprite batch build, extract cost). Satisfies D-015 rule 3 (benchmark harness is a solved primitive). `criterion` is already a `tungsten-core` dev-dep at the same version; this extends the pattern symmetrically.
+
+## D-038 — M12 CPU telemetry: std::time::Instant inline, no external dep
+**Date:** 2026-04-15  
+**Decision:** Frame-stage timings (update/extract/render/audio/hot-reload) measured with `std::time::Instant::now()` / `.elapsed()` inline in `app.rs`, accumulated in a `FrameTimings` struct stored as a World resource. No external profiling crate is introduced. Rationale: (1) `std::time::Instant` gives millisecond-resolution diagnostics sufficient for Phase 3 scale; (2) keeping measurements in the same file as timed code avoids over-abstraction; (3) M18 HUD can consume `FrameTimings` from the resource with no API change. Per-system timing: `App` stores system names alongside closures (`system_names: Vec<String>`, `system_name_counter: usize`). Each system call is wrapped with `Instant`; durations populate `FrameTimings::system_timings: Vec<(String, f32)>`. Cost: one `Instant::now()` + `.elapsed()` per system per frame — acceptable at Phase 3 scale.

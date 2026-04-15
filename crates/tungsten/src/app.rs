@@ -6,10 +6,11 @@ use crate::asset_loader;
 use crate::audio::AudioSystem;
 use crate::hot_reload::HotReloadWatcher;
 use crate::input_bridge;
+use crate::telemetry::FrameTimings;
 use tungsten_core::assets::{AnimationRegistry, FontRegistry, SoundRegistry, TilemapRegistry};
 use tungsten_core::physics::{CollisionEvents, PhysicsConfig};
 use tungsten_core::{AssetRegistry, AudioCommands, Camera2D, Config, DeltaTime, InputState, World};
-use tungsten_render::{QuadInstance, Renderer, SpriteBatch, TextSection};
+use tungsten_render::{GpuFrameTimings, QuadInstance, Renderer, SpriteBatch, TextSection};
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
@@ -65,6 +66,13 @@ pub struct App {
     /// Populated from the `TUNGSTEN_SMOKE_FRAMES` env var. Used by
     /// `scripts/smoke-examples.sh` to drive examples in CI-like checks.
     smoke_frames_remaining: Option<u32>,
+    /// Names for registered systems, parallel to `systems`.
+    system_names: Vec<String>,
+    /// Auto-incrementing counter for unnamed system registration.
+    system_name_counter: usize,
+    /// When true, use render_frame_full_timed each frame (adds device.poll stall).
+    /// Set via TUNGSTEN_GPU_TIMING env var. Never enable in production.
+    gpu_timing_enabled: bool,
 }
 
 impl App {
@@ -83,6 +91,8 @@ impl App {
         world.insert_resource(Camera2D::new());
         world.insert_resource(PhysicsConfig::default());
         world.insert_resource(CollisionEvents::new());
+        world.insert_resource(FrameTimings::new());
+        world.insert_resource(GpuFrameTimings::default());
 
         Self {
             config,
@@ -103,6 +113,9 @@ impl App {
                 .ok()
                 .and_then(|s| s.parse::<u32>().ok())
                 .filter(|n| *n > 0),
+            system_names: Vec::new(),
+            system_name_counter: 0,
+            gpu_timing_enabled: std::env::var("TUNGSTEN_GPU_TIMING").is_ok(),
         }
     }
 
@@ -124,6 +137,21 @@ impl App {
 
     /// Register a system that runs each tick.
     pub fn add_system(&mut self, system: impl FnMut(&mut World) + 'static) {
+        let name = format!("system_{}", self.system_name_counter);
+        self.system_name_counter += 1;
+        self.system_names.push(name);
+        self.systems.push(Box::new(system));
+    }
+
+    /// Register a named system. The name appears in FrameTimings::system_timings
+    /// for per-system profiling. Prefer this when the system name matters for
+    /// diagnostics output.
+    pub fn add_system_named(
+        &mut self,
+        name: impl Into<String>,
+        system: impl FnMut(&mut World) + 'static,
+    ) {
+        self.system_names.push(name.into());
         self.systems.push(Box::new(system));
     }
 
@@ -305,6 +333,31 @@ impl ApplicationHandler for App {
             self.config.window.vsync,
         ) {
             Ok(renderer) => {
+                if std::env::var("TUNGSTEN_PERF_LOG").is_ok() {
+                    log::debug!(
+                        "backend: {} adapter: {} present_mode: {} max_frame_latency: {} timestamp_query: {}",
+                        renderer
+                            .gpu_timings
+                            .backend
+                            .as_deref()
+                            .unwrap_or("unknown"),
+                        renderer
+                            .gpu_timings
+                            .adapter_name
+                            .as_deref()
+                            .unwrap_or("unknown"),
+                        renderer
+                            .gpu_timings
+                            .present_mode
+                            .as_deref()
+                            .unwrap_or("unknown"),
+                        renderer.gpu_timings.max_frame_latency.unwrap_or(0),
+                        renderer.timestamp_support
+                    );
+                }
+                if let Some(gpu) = self.world.get_resource_mut::<GpuFrameTimings>() {
+                    *gpu = renderer.gpu_timings.clone();
+                }
                 self.renderer = Some(renderer);
             }
             Err(e) => {
@@ -395,6 +448,9 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::RedrawRequested => {
+                let frame_start = Instant::now();
+
+                // --- Delta time ---
                 let now = Instant::now();
                 if let Some(last) = self.last_frame {
                     let dt = now.duration_since(last).as_secs_f32();
@@ -404,17 +460,27 @@ impl ApplicationHandler for App {
                 }
                 self.last_frame = Some(now);
 
-                // Systems run with this frame's accumulated input (edge state
-                // was populated by KeyboardInput/MouseInput events that arrived
-                // before RedrawRequested in the same event-loop turn).
-                for system in &mut self.systems {
+                // --- Update stage: all registered systems ---
+                let update_start = Instant::now();
+                let mut system_timings: Vec<(String, f32)> = Vec::with_capacity(self.systems.len());
+                debug_assert_eq!(self.systems.len(), self.system_names.len());
+                for (system, name) in self.systems.iter_mut().zip(self.system_names.iter()) {
+                    // Systems run with this frame's accumulated input (edge state
+                    // was populated by KeyboardInput/MouseInput events that arrived
+                    // before RedrawRequested in the same event-loop turn).
+                    let t0 = Instant::now();
                     system(&mut self.world);
+                    system_timings.push((name.clone(), t0.elapsed().as_secs_f64() as f32 * 1000.0));
                 }
+                let update_ms = update_start.elapsed().as_secs_f64() as f32 * 1000.0;
 
-                // Poll file watcher and apply any ready asset changes.
-                // Runs after tick() and before render() as required.
+                // --- Hot reload stage ---
+                let hot_reload_start = Instant::now();
                 self.process_hot_reload();
+                let hot_reload_ms = hot_reload_start.elapsed().as_secs_f64() as f32 * 1000.0;
 
+                // --- Extract stage ---
+                let extract_start = Instant::now();
                 let quads = self
                     .extract_quads
                     .as_ref()
@@ -432,7 +498,14 @@ impl ApplicationHandler for App {
                     .as_ref()
                     .map(|f| f(&self.world))
                     .unwrap_or_default();
+                let extract_ms = extract_start.elapsed().as_secs_f64() as f32 * 1000.0;
 
+                // --- Render stage ---
+                let render_start = Instant::now();
+                let mut render_acquire_ms = 0.0f32;
+                let mut render_encode_ms = 0.0f32;
+                let mut render_submit_present_ms = 0.0f32;
+                let mut gpu_frame_ms = None;
                 if let Some(renderer) = &mut self.renderer {
                     let (vw, vh) = {
                         let cfg = &renderer.surface_config;
@@ -444,13 +517,26 @@ impl ApplicationHandler for App {
                         .copied()
                         .unwrap_or_default()
                         .view_projection(vw, vh);
-                    if let Err(e) = renderer.render_frame_full(&view_proj, &quads, &sprites, &text)
-                    {
+                    let result = if self.gpu_timing_enabled {
+                        renderer.render_frame_full_timed(&view_proj, &quads, &sprites, &text)
+                    } else {
+                        renderer.render_frame_full(&view_proj, &quads, &sprites, &text)
+                    };
+                    if let Err(e) = result {
                         log::error!("Render error: {e}");
                     }
+                    render_acquire_ms = renderer.cpu_timings.acquire_ms;
+                    render_encode_ms = renderer.cpu_timings.encode_ms;
+                    render_submit_present_ms = renderer.cpu_timings.submit_present_ms;
+                    gpu_frame_ms = renderer.gpu_timings.frame_gpu_ms;
+                    if let Some(gpu) = self.world.get_resource_mut::<GpuFrameTimings>() {
+                        *gpu = renderer.gpu_timings.clone();
+                    }
                 }
+                let render_ms = render_start.elapsed().as_secs_f64() as f32 * 1000.0;
 
-                // Forward audio commands to the audio thread.
+                // --- Audio stage ---
+                let audio_start = Instant::now();
                 if let (Some(audio), Some(cmds)) = (
                     &mut self.audio,
                     self.world.get_resource_mut::<AudioCommands>(),
@@ -459,11 +545,45 @@ impl ApplicationHandler for App {
                         audio.send(cmd);
                     }
                 }
+                let audio_ms = audio_start.elapsed().as_secs_f64() as f32 * 1000.0;
 
                 // Clear edge state *after* systems have consumed it, so the
                 // next frame's input events start with a clean slate.
                 if let Some(input) = self.world.get_resource_mut::<InputState>() {
                     input.begin_frame();
+                }
+
+                let total_ms = frame_start.elapsed().as_secs_f64() as f32 * 1000.0;
+                if let Some(ft) = self.world.get_resource_mut::<FrameTimings>() {
+                    ft.update_ms = update_ms;
+                    ft.extract_ms = extract_ms;
+                    ft.render_ms = render_ms;
+                    ft.render_acquire_ms = render_acquire_ms;
+                    ft.render_encode_ms = render_encode_ms;
+                    ft.render_submit_present_ms = render_submit_present_ms;
+                    ft.audio_ms = audio_ms;
+                    ft.hot_reload_ms = hot_reload_ms;
+                    ft.total_ms = total_ms;
+                    ft.system_timings = system_timings;
+                }
+
+                if std::env::var("TUNGSTEN_PERF_LOG").is_ok() {
+                    let gpu_for_log = gpu_frame_ms
+                        .map(|ms| format!("{ms:.2}ms"))
+                        .unwrap_or_else(|| "n/a".to_string());
+                    log::debug!(
+                        "frame: total={:.2}ms update={:.2}ms extract={:.2}ms render={:.2}ms render_acquire={:.2}ms render_encode={:.2}ms render_submit_present={:.2}ms gpu={} audio={:.2}ms hot_reload={:.2}ms",
+                        total_ms,
+                        update_ms,
+                        extract_ms,
+                        render_ms,
+                        render_acquire_ms,
+                        render_encode_ms,
+                        render_submit_present_ms,
+                        gpu_for_log,
+                        audio_ms,
+                        hot_reload_ms
+                    );
                 }
 
                 if let Some(window) = &self.window {

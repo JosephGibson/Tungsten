@@ -49,7 +49,7 @@ fn default_height() -> u32 {
     720
 }
 fn default_vsync() -> bool {
-    true
+    false
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -131,7 +131,7 @@ mod tests {
         assert_eq!(config.window.title, "Tungsten");
         assert_eq!(config.window.width, 1280);
         assert_eq!(config.window.height, 720);
-        assert!(config.window.vsync);
+        assert!(!config.window.vsync);
     }
 
     #[test]

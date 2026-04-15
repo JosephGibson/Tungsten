@@ -22,3 +22,7 @@ criterion = { version = "0.5", features = ["html_reports"] }
 [[bench]]
 name = "ecs_bench"
 harness = false
+
+[[bench]]
+name = "physics_bench"
+harness = false

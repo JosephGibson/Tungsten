@@ -448,10 +448,7 @@ fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
         batch.instances.push(SpriteInstance {
             // Centre horizontally on physics centre; align sprite bottom with
             // physics AABB bottom so the character stands on the ground.
-            position: [
-                pos.0.x - sprite_w * 0.5,
-                pos.0.y + PLAYER_HALF.y - sprite_h,
-            ],
+            position: [pos.0.x - sprite_w * 0.5, pos.0.y + PLAYER_HALF.y - sprite_h],
             size: [sprite_w, sprite_h],
         });
     }
@@ -513,7 +510,11 @@ fn text_outlined(section: TextSection) -> impl Iterator<Item = TextSection> {
 fn extract_text(world: &World) -> Vec<TextSection> {
     let disp = world
         .get_resource::<TextDisplayState>()
-        .map(|s| (s.fps, s.contacts, s.grounded, s.music_on, s.vol_pct, s.zoom_pct))
+        .map(|s| {
+            (
+                s.fps, s.contacts, s.grounded, s.music_on, s.vol_pct, s.zoom_pct,
+            )
+        })
         .unwrap_or((0, 0, false, false, 50, 100));
     let (fps, contacts, grounded, music_on, vol_pct, zoom_pct) = disp;
 
@@ -637,26 +638,33 @@ fn main() -> anyhow::Result<()> {
 
     app.on_startup(|world, renderer| {
         // Root manifest: fonts (sans, sans_bold, mono), walk animation + sprites, sounds.
-        let root =
-            ResolvedManifest::load(MANIFEST_ROOT).expect("Failed to load root manifest");
+        let root = ResolvedManifest::load(MANIFEST_ROOT).expect("Failed to load root manifest");
         asset_loader::load_all(&root, world, renderer).expect("Failed to load root assets");
 
         // Local manifest: tile sprites + tilemap only. Call individual loaders rather than
         // load_all to avoid overwriting the SoundRegistry/AnimationRegistry/FontRegistry
         // that were just populated from the root manifest (those registries are replaced on
         // every load_all call).
-        let local =
-            ResolvedManifest::load(MANIFEST_LOCAL).expect("Failed to load local manifest");
+        let local = ResolvedManifest::load(MANIFEST_LOCAL).expect("Failed to load local manifest");
         asset_loader::load_sprites(&local, world, renderer).expect("Failed to load local sprites");
         asset_loader::load_tilemaps(&local, world).expect("Failed to load local tilemaps");
 
         // Verify required assets.
         let registry = world.get_resource::<AssetRegistry>().unwrap();
-        for id in ["ex10_ground", "ex10_platform", "ex10_sky", "ex10_ball", "walk_0"] {
+        for id in [
+            "ex10_ground",
+            "ex10_platform",
+            "ex10_sky",
+            "ex10_ball",
+            "walk_0",
+        ] {
             assert!(registry.get_sprite(id).is_some(), "missing sprite '{id}'");
         }
         let tilemaps = world.get_resource::<TilemapRegistry>().unwrap();
-        assert!(tilemaps.get("ex10_level").is_some(), "missing tilemap 'ex10_level'");
+        assert!(
+            tilemaps.get("ex10_level").is_some(),
+            "missing tilemap 'ex10_level'"
+        );
 
         // Resolve audio handles and stash them in a resource.
         let (sfx_handle, music_handle, sfx_volume, music_volume) = {

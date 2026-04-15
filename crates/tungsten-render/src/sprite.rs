@@ -96,6 +96,9 @@ pub struct SpriteBatch {
 pub struct SpritePipeline {
     pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
+    instance_buffer: wgpu::Buffer,
+    instance_capacity: usize,
+    instance_upload: Vec<SpriteInstance>,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
     texture_bind_group_layout: wgpu::BindGroupLayout,
@@ -210,6 +213,13 @@ impl SpritePipeline {
             contents: bytemuck::cast_slice(SPRITE_VERTICES),
             usage: wgpu::BufferUsages::VERTEX,
         });
+        let instance_capacity = 1;
+        let instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("sprite_instance_buffer"),
+            size: (instance_capacity * std::mem::size_of::<SpriteInstance>()) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
 
         let sampler_nearest = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("sampler_nearest"),
@@ -228,6 +238,9 @@ impl SpritePipeline {
         Self {
             pipeline,
             vertex_buffer,
+            instance_buffer,
+            instance_capacity,
+            instance_upload: Vec::new(),
             camera_buffer,
             camera_bind_group,
             texture_bind_group_layout,
@@ -350,21 +363,52 @@ impl SpritePipeline {
         queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(matrix_ref));
     }
 
+    fn ensure_instance_capacity(&mut self, device: &wgpu::Device, required_instances: usize) {
+        if required_instances <= self.instance_capacity {
+            return;
+        }
+
+        self.instance_capacity = required_instances.next_power_of_two().max(1);
+        self.instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("sprite_instance_buffer"),
+            size: (self.instance_capacity * std::mem::size_of::<SpriteInstance>()) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+    }
+
     /// Draw sprite batches. Each batch is a set of instances sharing a texture.
     pub fn draw(
-        &self,
+        &mut self,
         device: &wgpu::Device,
+        queue: &wgpu::Queue,
         render_pass: &mut wgpu::RenderPass<'_>,
         batches: &[SpriteBatch],
     ) {
-        if batches.is_empty() {
+        let total_instances: usize = batches.iter().map(|batch| batch.instances.len()).sum();
+        if total_instances == 0 {
             return;
         }
+
+        self.ensure_instance_capacity(device, total_instances);
+        self.instance_upload.clear();
+        self.instance_upload.extend(
+            batches
+                .iter()
+                .flat_map(|batch| batch.instances.iter().copied()),
+        );
+        queue.write_buffer(
+            &self.instance_buffer,
+            0,
+            bytemuck::cast_slice(&self.instance_upload),
+        );
 
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
 
+        let instance_stride = std::mem::size_of::<SpriteInstance>() as wgpu::BufferAddress;
+        let mut base_instance = 0usize;
         for batch in batches {
             if batch.instances.is_empty() {
                 continue;
@@ -382,16 +426,13 @@ impl SpritePipeline {
                 FilterMode::Nearest => &gpu_tex.bind_group_nearest,
                 FilterMode::Linear => &gpu_tex.bind_group_linear,
             };
-
-            let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("sprite_instance_buffer"),
-                contents: bytemuck::cast_slice(&batch.instances),
-                usage: wgpu::BufferUsages::VERTEX,
-            });
+            let start = (base_instance as wgpu::BufferAddress) * instance_stride;
+            let end = start + (batch.instances.len() as wgpu::BufferAddress) * instance_stride;
 
             render_pass.set_bind_group(1, bind_group, &[]);
-            render_pass.set_vertex_buffer(1, instance_buffer.slice(..));
+            render_pass.set_vertex_buffer(1, self.instance_buffer.slice(start..end));
             render_pass.draw(0..6, 0..batch.instances.len() as u32);
+            base_instance += batch.instances.len();
         }
     }
 }

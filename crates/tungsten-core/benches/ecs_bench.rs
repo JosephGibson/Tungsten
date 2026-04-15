@@ -1,14 +1,14 @@
 /// M12 ECS benchmarks — archetypal storage vs. naive HashMap baseline.
 ///
 /// Measures:
-///   - `spawn_insert` — 10k entity spawn + 3-component insert
-///   - `query_single` — iterate 10k entities via `query::<Position>()`
-///   - `query2_homogeneous` — iterate 10k entities (one archetype) via
-///                            `query2::<Position, Velocity>()`
-///   - `query2_fragmented` — iterate 10k entities spread across 5 archetypes
-///                           (different component supersets) via `query2`
-///   - `naive_query_single` — same workload via a minimal HashMap simulation
-///                            (stand-in for the pre-M12 storage)
+/// - `spawn_insert` — 10k entity spawn + 3-component insert
+/// - `query_single` — iterate 10k entities via `query::<Position>()`
+/// - `query2_homogeneous` — iterate 10k entities (one archetype) via
+///   `query2::<Position, Velocity>()`
+/// - `query2_fragmented` — iterate 10k entities spread across 5 archetypes
+///   (different component supersets) via `query2`
+/// - `naive_query_single` — same workload via a minimal HashMap simulation
+///   (stand-in for the pre-M12 storage)
 ///
 /// Results are documented in DECISIONS.md D-036.
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
@@ -20,24 +20,29 @@ use tungsten_core::ecs::World;
 // Component types
 // ---------------------------------------------------------------------------
 
+#[allow(dead_code)]
 #[derive(Clone, Copy)]
 struct Position {
     x: f32,
     y: f32,
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Copy)]
 struct Velocity {
     dx: f32,
     dy: f32,
 }
 
+#[allow(dead_code)]
 #[derive(Clone)]
 struct Name(String);
 
+#[allow(dead_code)]
 #[derive(Clone, Copy)]
 struct Health(f32);
 
+#[allow(dead_code)]
 #[derive(Clone, Copy)]
 struct Mass(f32);
 
@@ -211,6 +216,96 @@ fn bench_query2_fragmented(c: &mut Criterion) {
     });
 }
 
+fn bench_query2_10k_5archetypes_pv(c: &mut Criterion) {
+    use glam::Vec2;
+    use tungsten_core::{Collider, Position, RigidBody, Shape, Velocity, World};
+
+    const CHUNK: usize = 2_000;
+
+    let mut world = World::new();
+
+    for i in 0..CHUNK {
+        let e = world.spawn();
+        world.insert(e, Position(Vec2::new(i as f32, 0.0)));
+        world.insert(e, Velocity(Vec2::new(1.0, 0.0)));
+    }
+
+    for i in 0..CHUNK {
+        let e = world.spawn();
+        world.insert(e, Position(Vec2::new(i as f32, 100.0)));
+        world.insert(e, Velocity(Vec2::splat(0.5)));
+        world.insert(e, RigidBody::dynamic());
+    }
+
+    for i in 0..CHUNK {
+        let e = world.spawn();
+        world.insert(e, Position(Vec2::new(i as f32, 200.0)));
+        world.insert(e, Velocity(Vec2::ONE));
+        world.insert(
+            e,
+            Collider {
+                shape: Shape::Aabb {
+                    half_extents: Vec2::splat(8.0),
+                },
+                offset: Vec2::ZERO,
+            },
+        );
+    }
+
+    for i in 0..CHUNK {
+        let e = world.spawn();
+        world.insert(e, Position(Vec2::new(i as f32, 300.0)));
+        world.insert(e, Velocity(Vec2::new(0.25, 0.75)));
+        world.insert(e, RigidBody::r#static());
+        world.insert(
+            e,
+            Collider {
+                shape: Shape::Circle { radius: 8.0 },
+                offset: Vec2::ZERO,
+            },
+        );
+    }
+
+    for i in 0..CHUNK {
+        let e = world.spawn();
+        world.insert(e, Position(Vec2::new(i as f32, 400.0)));
+        world.insert(e, Velocity(Vec2::new(0.75, 0.25)));
+        world.insert(e, Health(100.0));
+        world.insert(e, Mass(1.0));
+    }
+
+    c.bench_function("query2_10k_5archetypes_pv", |b| {
+        b.iter(|| {
+            let sum: Vec2 = world
+                .query2::<Position, Velocity>()
+                .fold(Vec2::ZERO, |acc, (_, p, v)| acc + p.0 + v.0);
+            black_box(sum);
+        });
+    });
+}
+
+fn bench_spawn_despawn_1k(c: &mut Criterion) {
+    use glam::Vec2;
+    use tungsten_core::{Position, World};
+
+    c.bench_function("spawn_despawn_1k", |b| {
+        b.iter(|| {
+            let mut world = World::new();
+            let entities: Vec<_> = (0..1_000u32)
+                .map(|i| {
+                    let e = world.spawn();
+                    world.insert(e, Position(Vec2::new(i as f32, 0.0)));
+                    e
+                })
+                .collect();
+            for e in &entities {
+                world.despawn(*e);
+            }
+            black_box(world);
+        });
+    });
+}
+
 // ---------------------------------------------------------------------------
 // Naive baseline: minimal HashMap simulation of the pre-M12 storage.
 //
@@ -333,6 +428,8 @@ criterion_group!(
     bench_query_single,
     bench_query2_homogeneous,
     bench_query2_fragmented,
+    bench_query2_10k_5archetypes_pv,
+    bench_spawn_despawn_1k,
     bench_naive_query_single,
     bench_naive_query2_via_entities,
 );

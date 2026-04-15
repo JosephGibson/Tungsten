@@ -33,6 +33,25 @@ struct StoredFontAttrs {
     face_ids: Vec<glyphon::fontdb::ID>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct TextLayoutKey {
+    content: String,
+    font_id: String,
+    font_size_bits: u32,
+    line_height_bits: u32,
+    buffer_width_bits: Option<u32>,
+    buffer_height_bits: Option<u32>,
+}
+
+#[derive(Debug)]
+struct CachedTextBuffer {
+    buffer: Buffer,
+    last_used_frame: u64,
+}
+
+const BUFFER_CACHE_PRUNE_INTERVAL_FRAMES: u64 = 120;
+const BUFFER_CACHE_TTL_FRAMES: u64 = 360;
+
 /// Owns all glyphon state and provides prepare/render methods that sit
 /// alongside the quad and sprite pipelines in the Renderer.
 pub struct TextPipeline {
@@ -42,6 +61,8 @@ pub struct TextPipeline {
     atlas: TextAtlas,
     text_renderer: TextRenderer,
     font_attrs: HashMap<String, StoredFontAttrs>,
+    buffer_cache: HashMap<TextLayoutKey, CachedTextBuffer>,
+    frame_counter: u64,
 }
 
 impl TextPipeline {
@@ -61,6 +82,8 @@ impl TextPipeline {
             atlas,
             text_renderer,
             font_attrs: HashMap::new(),
+            buffer_cache: HashMap::new(),
+            frame_counter: 0,
         }
     }
 
@@ -110,6 +133,9 @@ impl TextPipeline {
                 face_ids,
             },
         );
+        // Font face registration can change fallback/selection outcomes.
+        // Invalidate shaped buffers so they are rebuilt with current fontdb state.
+        self.buffer_cache.clear();
     }
 
     /// Hot-reload a font: remove old face data from fontdb, flush the glyph
@@ -123,6 +149,7 @@ impl TextPipeline {
         }
         // Evict any cached glyph bitmaps that referenced the old face data.
         self.atlas.trim();
+        self.buffer_cache.clear();
         self.load_font(id, data);
     }
 
@@ -137,8 +164,10 @@ impl TextPipeline {
         height: u32,
     ) {
         self.viewport.update(queue, Resolution { width, height });
+        self.frame_counter = self.frame_counter.wrapping_add(1);
+        let frame_counter = self.frame_counter;
 
-        let mut text_areas: Vec<(Buffer, TextSection)> = Vec::with_capacity(sections.len());
+        let mut keys: Vec<TextLayoutKey> = Vec::with_capacity(sections.len());
 
         for section in sections {
             let mut buffer = Buffer::new(
@@ -150,8 +179,15 @@ impl TextPipeline {
                 Some([w, h]) => (Some(w), Some(h)),
                 None => (Some(width as f32), None),
             };
-            buffer.set_size(&mut self.font_system, buf_w, buf_h);
+            let key = TextLayoutKey::new(section, buf_w, buf_h);
+            keys.push(key.clone());
 
+            if let Some(cached) = self.buffer_cache.get_mut(&key) {
+                cached.last_used_frame = frame_counter;
+                continue;
+            }
+
+            buffer.set_size(&mut self.font_system, buf_w, buf_h);
             let attrs = make_attrs(&self.font_attrs, &section.font_id);
             buffer.set_text(
                 &mut self.font_system,
@@ -161,17 +197,30 @@ impl TextPipeline {
                 None,
             );
             buffer.shape_until_scroll(&mut self.font_system, false);
-
-            text_areas.push((buffer, section.clone()));
+            self.buffer_cache.insert(
+                key,
+                CachedTextBuffer {
+                    buffer,
+                    last_used_frame: frame_counter,
+                },
+            );
         }
 
-        let areas: Vec<TextArea<'_>> = text_areas
+        if frame_counter.is_multiple_of(BUFFER_CACHE_PRUNE_INTERVAL_FRAMES) {
+            self.buffer_cache.retain(|_, v| {
+                frame_counter.saturating_sub(v.last_used_frame) <= BUFFER_CACHE_TTL_FRAMES
+            });
+        }
+
+        let areas: Vec<TextArea<'_>> = sections
             .iter()
-            .map(|(buffer, section)| {
+            .zip(keys.iter())
+            .filter_map(|(section, key)| self.buffer_cache.get(key).map(|cached| (section, cached)))
+            .map(|(section, cached)| {
                 let [r, g, b, a] = section.color;
                 let bounds = clip_bounds_for_section(section, width, height);
                 TextArea {
-                    buffer,
+                    buffer: &cached.buffer,
                     left: section.position[0],
                     top: section.position[1],
                     scale: 1.0,
@@ -205,6 +254,19 @@ impl TextPipeline {
     /// Trim unused atlas entries after presenting. Call once per frame.
     pub fn post_frame(&mut self) {
         self.atlas.trim();
+    }
+}
+
+impl TextLayoutKey {
+    fn new(section: &TextSection, buffer_width: Option<f32>, buffer_height: Option<f32>) -> Self {
+        Self {
+            content: section.content.clone(),
+            font_id: section.font_id.clone(),
+            font_size_bits: section.font_size.to_bits(),
+            line_height_bits: section.line_height.to_bits(),
+            buffer_width_bits: buffer_width.map(f32::to_bits),
+            buffer_height_bits: buffer_height.map(f32::to_bits),
+        }
     }
 }
 
