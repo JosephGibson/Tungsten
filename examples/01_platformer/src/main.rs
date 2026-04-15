@@ -36,6 +36,7 @@ use tungsten::{extract_tilemaps, App, WindowSize};
 
 const MANIFEST_ROOT: &str = "assets/manifest.json";
 const MANIFEST_LOCAL: &str = "examples/01_platformer/assets/manifest.json";
+const ASSETS_ROOT: &str = "assets";
 const ASSETS_LOCAL: &str = "examples/01_platformer/assets";
 
 const TILE: f32 = 16.0;
@@ -563,8 +564,12 @@ fn main() -> anyhow::Result<()> {
     let window_height = config.window.height;
     let mut app = App::new(config);
 
-    // Hot reload watches the local assets dir (tilemap, tile sprites).
-    app.enable_hot_reload(PathBuf::from(ASSETS_LOCAL), PathBuf::from(MANIFEST_LOCAL));
+    // Hot reload watches both the shared root assets dir (walk sprites,
+    // animation, fonts) and the local example dir (tilemap, tile sprites).
+    app.enable_hot_reload(
+        &[PathBuf::from(ASSETS_ROOT), PathBuf::from(ASSETS_LOCAL)],
+        PathBuf::from(MANIFEST_LOCAL),
+    );
 
     {
         let world = app.world_mut();

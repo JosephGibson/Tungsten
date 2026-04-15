@@ -2,7 +2,7 @@
 
 A from-scratch Rust 2D game engine. `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Native only (Linux / macOS / Windows) — no WASM.
 
-**Status:** `v0.7.0-alpha` — Phase 2 complete (M7–M12). Next: 0.8.
+**Status:** `v0.8.0-alpha` — Phase 2 integration complete. Next: Phase 3 (M13–M21).
 
 ## Stack
 
@@ -24,7 +24,7 @@ Hand-rolled ECS (archetypal storage), wgpu rendering, manifest-driven assets, te
 ```bash
 cargo build --workspace
 cargo test --workspace
-cargo run -p example-NN-name       # see examples/ for the list
+cargo run -p example-01-platformer  # comprehensive Phase 2 demo
 ```
 
 ## Read order

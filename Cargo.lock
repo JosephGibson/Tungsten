@@ -804,7 +804,7 @@ dependencies = [
 
 [[package]]
 name = "example-01-platformer"
-version = "0.7.0-alpha"
+version = "0.8.0-alpha"
 dependencies = [
  "anyhow",
  "env_logger",
@@ -2888,7 +2888,7 @@ dependencies = [
 
 [[package]]
 name = "tungsten"
-version = "0.7.0-alpha"
+version = "0.8.0-alpha"
 dependencies = [
  "anyhow",
  "cpal",
@@ -2907,7 +2907,7 @@ dependencies = [
 
 [[package]]
 name = "tungsten-core"
-version = "0.7.0-alpha"
+version = "0.8.0-alpha"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -2923,7 +2923,7 @@ dependencies = [
 
 [[package]]
 name = "tungsten-render"
-version = "0.7.0-alpha"
+version = "0.8.0-alpha"
 dependencies = [
  "bytemuck",
  "glam",
