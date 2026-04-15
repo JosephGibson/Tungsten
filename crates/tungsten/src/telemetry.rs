@@ -25,6 +25,9 @@ pub struct FrameTimings {
     pub audio_ms: f32,
     /// Time spent in process_hot_reload.
     pub hot_reload_ms: f32,
+    /// Time spent draining and applying the `CommandBuffer` resource each frame.
+    /// Includes all deferred spawn/despawn/insert/remove mutations from this frame's systems.
+    pub flush_ms: f32,
     /// Total wall time for the frame (RedrawRequested entry to end of render).
     pub total_ms: f32,
     /// Per-system breakdown: (name, duration_ms) in registration order.
@@ -59,6 +62,7 @@ mod tests {
         assert_eq!(ft.render_acquire_ms, 0.0);
         assert_eq!(ft.render_encode_ms, 0.0);
         assert_eq!(ft.render_submit_present_ms, 0.0);
+        assert_eq!(ft.flush_ms, 0.0);
         assert!(ft.system_timings.is_empty());
     }
 

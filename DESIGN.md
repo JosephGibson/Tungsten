@@ -1,6 +1,6 @@
 # Tungsten — Design
 
-**Status:** `v0.9.0` — Phase 3 M12 complete. Branch: `0.9`.  
+**Status:** `v0.10.0` — Phase 3 M13 complete. Branch: `0.10`.  
 **Companion docs:** [`AGENTS.md`](AGENTS.md) (operational rules), [`DECISIONS.md`](DECISIONS.md) (rationale by D-NNN).
 
 ---

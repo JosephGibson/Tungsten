@@ -2,11 +2,11 @@
 
 A from-scratch Rust 2D game engine. `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Native only (Linux / macOS / Windows) — no WASM.
 
-**Status:** `v0.9.0` — Phase 3 M12 complete. CPU/GPU telemetry, benchmark harnesses, and baseline capture tooling are in place. Next: M13 command buffers.
+**Status:** `v0.10.0` — Phase 3 M13 complete. Deferred ECS command buffers now land at a fixed frame boundary alongside the existing telemetry, benchmark, and profiling tooling. Next: M14 event queues.
 
 ## Stack
 
-Hand-rolled ECS (archetypal storage), wgpu rendering, manifest-driven assets, text (glyphon), audio (cpal + symphonia + hand-rolled mixer), hot reload (notify), tilemaps (.tmj / Tiled), 2D physics (AABB + circle, uniform-grid broad-phase), and Phase 3 baseline tooling (frame telemetry, Criterion benches, perf capture workflow).
+Hand-rolled ECS (archetypal storage + deferred command buffers), wgpu rendering, manifest-driven assets, text (glyphon), audio (cpal + symphonia + hand-rolled mixer), hot reload (notify), tilemaps (.tmj / Tiled), 2D physics (AABB + circle, uniform-grid broad-phase), and Phase 3 tooling (frame telemetry, Criterion benches, perf capture workflow).
 
 ## Documents
 
