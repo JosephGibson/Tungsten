@@ -51,10 +51,42 @@ PERF_STAT_OUT="$OUT_DIR/perf-stat.txt"
 PERF_RECORD_OUT="$OUT_DIR/perf-record.data"
 README_OUT="$OUT_DIR/README.md"
 
+avg_metric() {
+  local file="$1"
+  local key="$2"
+  awk -v warmup="$WARMUP_FRAMES" -v key="$key" '
+    /frame:/ {
+      seen += 1
+      if (seen <= warmup) {
+        next
+      }
+      for (i = 1; i <= NF; i++) {
+        prefix = key "="
+        if (index($i, prefix) == 1) {
+          value = $i
+          sub("^" prefix, "", value)
+          sub(/ms$/, "", value)
+          if (value != "n/a") {
+            sum += value
+            n += 1
+          }
+        }
+      }
+    }
+    END {
+      if (n > 0) {
+        printf "%.2f", sum / n
+      } else {
+        printf "n/a"
+      }
+    }
+  ' "$file"
+}
+
 echo "Capturing engine telemetry..."
 TUNGSTEN_SMOKE_FRAMES="$TOTAL_FRAMES" \
 TUNGSTEN_PERF_LOG=1 \
-RUST_LOG=debug \
+RUST_LOG=tungsten::app=debug \
 "$BINARY" >"$ENGINE_LOG" 2>&1
 engine_status=$?
 if [ "$engine_status" -ne 0 ]; then
@@ -66,7 +98,7 @@ echo "Capturing GPU timing telemetry..."
 TUNGSTEN_SMOKE_FRAMES="$TOTAL_FRAMES" \
 TUNGSTEN_PERF_LOG=1 \
 TUNGSTEN_GPU_TIMING=1 \
-RUST_LOG=debug \
+RUST_LOG=tungsten::app=debug \
 "$BINARY" >"$GPU_LOG" 2>&1
 gpu_status=$?
 if [ "$gpu_status" -ne 0 ]; then
@@ -100,35 +132,14 @@ else
   echo "perf not installed; skipping perf captures."
 fi
 
-AVG_TOTAL_MS="$(
-  awk '
-    /frame:/ {
-      seen += 1
-      if (seen <= warmup) {
-        next
-      }
-      for (i = 1; i <= NF; i++) {
-        if ($i ~ /^total=/) {
-          value = $i
-          sub(/^total=/, "", value)
-          sub(/ms$/, "", value)
-          sum += value
-          n += 1
-        }
-      }
-    }
-    END {
-      if (n > 0) {
-        printf "%.2f", sum / n
-      } else {
-        printf "n/a"
-      }
-    }
-  ' warmup="$WARMUP_FRAMES" "$ENGINE_LOG"
-)"
+AVG_TOTAL_MS="$(avg_metric "$ENGINE_LOG" "total")"
+AVG_RENDER_ACQUIRE_MS="$(avg_metric "$ENGINE_LOG" "render_acquire")"
+AVG_RENDER_ENCODE_MS="$(avg_metric "$ENGINE_LOG" "render_encode")"
+AVG_RENDER_SUBMIT_MS="$(avg_metric "$ENGINE_LOG" "render_submit_present")"
+AVG_GPU_MS="$(avg_metric "$GPU_LOG" "gpu")"
 
 CPU_MODEL="$(grep -m1 'model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2- | sed 's/^ //')"
-GPU_INFO="$(grep -m1 'backend:' "$GPU_LOG" 2>/dev/null || true)"
+GPU_INFO="$(grep -m1 'tungsten::app] backend:' "$GPU_LOG" 2>/dev/null || true)"
 HOST_KERNEL="$(uname -sr)"
 
 cat >"$README_OUT" <<EOF
@@ -158,6 +169,10 @@ cat >"$README_OUT" <<EOF
 | Metric | Value |
 | --- | --- |
 | Average total frame ms | $AVG_TOTAL_MS |
+| Average render acquire ms | $AVG_RENDER_ACQUIRE_MS |
+| Average render encode ms | $AVG_RENDER_ENCODE_MS |
+| Average render submit/present ms | $AVG_RENDER_SUBMIT_MS |
+| Average GPU frame ms | $AVG_GPU_MS |
 | GPU timing line | ${GPU_INFO:-not found} |
 | Warm-up frames skipped | $WARMUP_FRAMES |
 | Measured frames requested | $FRAMES |

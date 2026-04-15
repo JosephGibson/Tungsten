@@ -1,14 +1,14 @@
 /// M12 ECS benchmarks — archetypal storage vs. naive HashMap baseline.
 ///
 /// Measures:
-///   - `spawn_insert` — 10k entity spawn + 3-component insert
-///   - `query_single` — iterate 10k entities via `query::<Position>()`
-///   - `query2_homogeneous` — iterate 10k entities (one archetype) via
-///                            `query2::<Position, Velocity>()`
-///   - `query2_fragmented` — iterate 10k entities spread across 5 archetypes
-///                           (different component supersets) via `query2`
-///   - `naive_query_single` — same workload via a minimal HashMap simulation
-///                            (stand-in for the pre-M12 storage)
+/// - `spawn_insert` — 10k entity spawn + 3-component insert
+/// - `query_single` — iterate 10k entities via `query::<Position>()`
+/// - `query2_homogeneous` — iterate 10k entities (one archetype) via
+///   `query2::<Position, Velocity>()`
+/// - `query2_fragmented` — iterate 10k entities spread across 5 archetypes
+///   (different component supersets) via `query2`
+/// - `naive_query_single` — same workload via a minimal HashMap simulation
+///   (stand-in for the pre-M12 storage)
 ///
 /// Results are documented in DECISIONS.md D-036.
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
@@ -20,24 +20,29 @@ use tungsten_core::ecs::World;
 // Component types
 // ---------------------------------------------------------------------------
 
+#[allow(dead_code)]
 #[derive(Clone, Copy)]
 struct Position {
     x: f32,
     y: f32,
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Copy)]
 struct Velocity {
     dx: f32,
     dy: f32,
 }
 
+#[allow(dead_code)]
 #[derive(Clone)]
 struct Name(String);
 
+#[allow(dead_code)]
 #[derive(Clone, Copy)]
 struct Health(f32);
 
+#[allow(dead_code)]
 #[derive(Clone, Copy)]
 struct Mass(f32);
 

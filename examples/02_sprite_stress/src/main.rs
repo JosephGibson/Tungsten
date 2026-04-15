@@ -15,14 +15,13 @@
 
 use glam::Vec2;
 use tungsten::core::{Camera2D, Config, World};
-use tungsten::render::{SpriteBatch, SpriteInstance};
+use tungsten::render::{GpuFrameTimings, SpriteBatch, SpriteInstance};
 use tungsten::{App, FrameTimings};
 use tungsten_core::assets::{FilterMode, TextureHandle};
 
 const DEFAULT_SPRITE_COUNT: usize = 2_000;
 const COLS: usize = 50;
 const SPRITE_SIZE: f32 = 16.0;
-const WARMUP_FRAMES: u32 = 60;
 const LOG_INTERVAL: u32 = 60;
 const PLACEHOLDER_HANDLE: TextureHandle = TextureHandle(0);
 
@@ -36,8 +35,7 @@ struct SpriteEntry {
 struct SceneState {
     sprites: Vec<SpriteEntry>,
     frame_count: u32,
-    total_frame_ms: f64,
-    stat_frames: u32,
+    metadata_logged: bool,
 }
 
 fn tick_sprites(world: &mut World) {
@@ -55,27 +53,49 @@ fn tick_sprites(world: &mut World) {
 }
 
 fn log_telemetry(world: &mut World) {
-    let frame_count = match world.get_resource::<SceneState>() {
-        Some(state) => state.frame_count,
+    let (frame_count, metadata_logged) = match world.get_resource::<SceneState>() {
+        Some(state) => (state.frame_count, state.metadata_logged),
         None => return,
     };
+    let sample_frame = frame_count.saturating_sub(1);
 
-    if frame_count % LOG_INTERVAL == 0 {
-        if let Some(ft) = world.get_resource::<FrameTimings>() {
-            println!(
-                "[frame {:>5}] total={:.2}ms update={:.2}ms extract={:.2}ms render={:.2}ms",
-                frame_count, ft.total_ms, ft.update_ms, ft.extract_ms, ft.render_ms
-            );
+    if !metadata_logged {
+        let metadata_line = world.get_resource::<GpuFrameTimings>().map(|gpu| {
+            format!(
+                "[gpu] backend={} adapter={} present_mode={} max_frame_latency={}",
+                gpu.backend.as_deref().unwrap_or("unknown"),
+                gpu.adapter_name.as_deref().unwrap_or("unknown"),
+                gpu.present_mode.as_deref().unwrap_or("unknown"),
+                gpu.max_frame_latency.unwrap_or(0)
+            )
+        });
+        if let Some(line) = metadata_line {
+            println!("{line}");
+            if let Some(state) = world.get_resource_mut::<SceneState>() {
+                state.metadata_logged = true;
+            }
         }
     }
 
-    let total_ms = world
-        .get_resource::<FrameTimings>()
-        .map(|ft| ft.total_ms as f64);
-    if frame_count > WARMUP_FRAMES {
-        if let (Some(total_ms), Some(state)) = (total_ms, world.get_resource_mut::<SceneState>()) {
-            state.total_frame_ms += total_ms;
-            state.stat_frames += 1;
+    if sample_frame > 0 && sample_frame % LOG_INTERVAL == 0 {
+        if let Some(ft) = world.get_resource::<FrameTimings>() {
+            let gpu_ms = world
+                .get_resource::<GpuFrameTimings>()
+                .and_then(|gpu| gpu.frame_gpu_ms)
+                .map(|ms| format!("{ms:.2}ms"))
+                .unwrap_or_else(|| "n/a".to_string());
+            println!(
+                "[frame {:>5}] total={:.2}ms update={:.2}ms extract={:.2}ms render={:.2}ms acquire={:.2}ms encode={:.2}ms submit={:.2}ms gpu={}",
+                sample_frame,
+                ft.total_ms,
+                ft.update_ms,
+                ft.extract_ms,
+                ft.render_ms,
+                ft.render_acquire_ms,
+                ft.render_encode_ms,
+                ft.render_submit_present_ms,
+                gpu_ms
+            );
         }
     }
 }
@@ -133,8 +153,7 @@ fn main() -> anyhow::Result<()> {
         world.insert_resource(SceneState {
             sprites,
             frame_count: 0,
-            total_frame_ms: 0.0,
-            stat_frames: 0,
+            metadata_logged: false,
         });
 
         if let Some(cam) = world.get_resource_mut::<Camera2D>() {

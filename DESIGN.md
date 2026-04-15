@@ -1,6 +1,6 @@
 # Tungsten — Design
 
-**Status:** `v0.9.0-alpha` — Phase 3 M12 complete. Branch: `0.9`.  
+**Status:** `v0.9.0` — Phase 3 M12 complete. Branch: `0.9`.  
 **Companion docs:** [`AGENTS.md`](AGENTS.md) (operational rules), [`DECISIONS.md`](DECISIONS.md) (rationale by D-NNN).
 
 ---
@@ -93,7 +93,7 @@ System registration order is execution order. No scheduler, labels, or dependenc
 
 **Resources:** singleton state in the `World` accessed by the same mechanism as components. `DeltaTime`, `InputState`, `WindowSize`, `AssetRegistry`, `AudioCommands`, `PhysicsConfig`, `CollisionEvents`, `Camera2D` are all resources.
 
-**Runtime telemetry (M12):** `FrameTimings` is also a `World` resource. `App` measures stage timings inline with `std::time::Instant`, stores the latest frame totals, and records a per-system `Vec<(String, f32)>` in registration order. GPU-facing diagnostics live in `tungsten-render::GpuFrameTimings`, mirrored into the `World` by the umbrella crate after renderer init and each frame.
+**Runtime telemetry (M12):** `FrameTimings` is also a `World` resource. `App` measures stage timings inline with `std::time::Instant`, stores the latest frame totals, and records a per-system `Vec<(String, f32)>` in registration order. The render stage is further split into acquire, encode, and submit/present buckets for profiling. GPU-facing diagnostics live in `tungsten-render::GpuFrameTimings`, mirrored into the `World` by the umbrella crate after renderer init and each frame.
 
 **ECS error strategy (D-022):** panic on programmer errors (insert on dead entity, wrong downcast); `Option`/`Result` on runtime conditions (entity not found, component absent).
 
@@ -107,7 +107,7 @@ Single `tungsten.json` at workspace root, loaded once at startup. Missing → de
 
 ```json
 {
-  "window": { "title": "Tungsten", "width": 1280, "height": 720, "vsync": true },
+  "window": { "title": "Tungsten", "width": 1280, "height": 720, "vsync": false },
   "render":  { "clear_color": [0.05, 0.05, 0.08, 1.0] },
   "logging": { "level": "info" }
 }
@@ -197,8 +197,8 @@ Deferred: parallel system scheduling, change detection, command buffers, reactiv
 
 M12 establishes the baseline for all later Phase 3 work.
 
-- **CPU telemetry:** `App` instruments update, extract, render, audio, hot reload, and total frame time. Per-system timings are available through `FrameTimings::system_timings` and a `slowest_system()` helper.
-- **GPU telemetry:** `Renderer::render_frame_full_timed()` uses `wgpu` timestamp queries when `TIMESTAMP_QUERY` is available on the active adapter. The path is opt-in via `TUNGSTEN_GPU_TIMING` because it blocks on GPU completion to read the timestamps back.
+- **CPU telemetry:** `App` instruments update, extract, render, audio, hot reload, and total frame time. The render stage is broken out into surface acquire, CPU encode, and submit/present timing to separate swapchain pacing from command generation. Per-system timings are available through `FrameTimings::system_timings` and a `slowest_system()` helper.
+- **GPU telemetry:** `Renderer::render_frame_full_timed()` uses `wgpu` timestamp queries when `TIMESTAMP_QUERY` is available on the active adapter. The path is opt-in via `TUNGSTEN_GPU_TIMING` because it blocks on GPU completion to read the timestamps back. `GpuFrameTimings` also exposes backend, adapter, present mode, and max-frame-latency metadata for capture logs.
 - **Canonical scenes:** `example-01-platformer` remains the broad feature scene; `example-02-sprite-stress` is the canonical sprite-throughput scene for perf capture.
 - **Bench coverage:** Criterion suites now cover ECS, physics, and CPU-only render-data construction. These are intended as repeatable regression detectors, not exhaustive throughput claims.
 - **Capture tooling:** `scripts/perf-capture.sh` and `docs/perf/profiling-workflow.md` define the repeatable Linux profiling workflow: release builds with frame pointers, smoke-frame-bounded runs, optional flamegraph/perf artifacts, and timestamped output directories under `perf-runs/`.

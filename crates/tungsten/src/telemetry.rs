@@ -13,8 +13,14 @@ pub struct FrameTimings {
     pub update_ms: f32,
     /// Time spent in all extract closures (quads + sprites + text).
     pub extract_ms: f32,
-    /// Time from render_frame_full call start to return.
+    /// Total time spent in the render stage, including encode plus submit/present waits.
     pub render_ms: f32,
+    /// CPU time spent acquiring the next surface texture.
+    pub render_acquire_ms: f32,
+    /// CPU time spent preparing render data, recording commands, and finishing the encoder.
+    pub render_encode_ms: f32,
+    /// CPU time spent submitting work, presenting, and waiting on present/readback.
+    pub render_submit_present_ms: f32,
     /// Time spent draining AudioCommands and forwarding to the audio thread.
     pub audio_ms: f32,
     /// Time spent in process_hot_reload.
@@ -50,6 +56,9 @@ mod tests {
         let ft = FrameTimings::new();
         assert_eq!(ft.update_ms, 0.0);
         assert_eq!(ft.render_ms, 0.0);
+        assert_eq!(ft.render_acquire_ms, 0.0);
+        assert_eq!(ft.render_encode_ms, 0.0);
+        assert_eq!(ft.render_submit_present_ms, 0.0);
         assert!(ft.system_timings.is_empty());
     }
 

@@ -333,6 +333,28 @@ impl ApplicationHandler for App {
             self.config.window.vsync,
         ) {
             Ok(renderer) => {
+                if std::env::var("TUNGSTEN_PERF_LOG").is_ok() {
+                    log::debug!(
+                        "backend: {} adapter: {} present_mode: {} max_frame_latency: {} timestamp_query: {}",
+                        renderer
+                            .gpu_timings
+                            .backend
+                            .as_deref()
+                            .unwrap_or("unknown"),
+                        renderer
+                            .gpu_timings
+                            .adapter_name
+                            .as_deref()
+                            .unwrap_or("unknown"),
+                        renderer
+                            .gpu_timings
+                            .present_mode
+                            .as_deref()
+                            .unwrap_or("unknown"),
+                        renderer.gpu_timings.max_frame_latency.unwrap_or(0),
+                        renderer.timestamp_support
+                    );
+                }
                 if let Some(gpu) = self.world.get_resource_mut::<GpuFrameTimings>() {
                     *gpu = renderer.gpu_timings.clone();
                 }
@@ -480,6 +502,10 @@ impl ApplicationHandler for App {
 
                 // --- Render stage ---
                 let render_start = Instant::now();
+                let mut render_acquire_ms = 0.0f32;
+                let mut render_encode_ms = 0.0f32;
+                let mut render_submit_present_ms = 0.0f32;
+                let mut gpu_frame_ms = None;
                 if let Some(renderer) = &mut self.renderer {
                     let (vw, vh) = {
                         let cfg = &renderer.surface_config;
@@ -499,6 +525,10 @@ impl ApplicationHandler for App {
                     if let Err(e) = result {
                         log::error!("Render error: {e}");
                     }
+                    render_acquire_ms = renderer.cpu_timings.acquire_ms;
+                    render_encode_ms = renderer.cpu_timings.encode_ms;
+                    render_submit_present_ms = renderer.cpu_timings.submit_present_ms;
+                    gpu_frame_ms = renderer.gpu_timings.frame_gpu_ms;
                     if let Some(gpu) = self.world.get_resource_mut::<GpuFrameTimings>() {
                         *gpu = renderer.gpu_timings.clone();
                     }
@@ -528,6 +558,9 @@ impl ApplicationHandler for App {
                     ft.update_ms = update_ms;
                     ft.extract_ms = extract_ms;
                     ft.render_ms = render_ms;
+                    ft.render_acquire_ms = render_acquire_ms;
+                    ft.render_encode_ms = render_encode_ms;
+                    ft.render_submit_present_ms = render_submit_present_ms;
                     ft.audio_ms = audio_ms;
                     ft.hot_reload_ms = hot_reload_ms;
                     ft.total_ms = total_ms;
@@ -535,12 +568,19 @@ impl ApplicationHandler for App {
                 }
 
                 if std::env::var("TUNGSTEN_PERF_LOG").is_ok() {
+                    let gpu_for_log = gpu_frame_ms
+                        .map(|ms| format!("{ms:.2}ms"))
+                        .unwrap_or_else(|| "n/a".to_string());
                     log::debug!(
-                        "frame: total={:.2}ms update={:.2}ms extract={:.2}ms render={:.2}ms audio={:.2}ms hot_reload={:.2}ms",
+                        "frame: total={:.2}ms update={:.2}ms extract={:.2}ms render={:.2}ms render_acquire={:.2}ms render_encode={:.2}ms render_submit_present={:.2}ms gpu={} audio={:.2}ms hot_reload={:.2}ms",
                         total_ms,
                         update_ms,
                         extract_ms,
                         render_ms,
+                        render_acquire_ms,
+                        render_encode_ms,
+                        render_submit_present_ms,
+                        gpu_for_log,
                         audio_ms,
                         hot_reload_ms
                     );

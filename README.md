@@ -2,7 +2,7 @@
 
 A from-scratch Rust 2D game engine. `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Native only (Linux / macOS / Windows) — no WASM.
 
-**Status:** `v0.9.0-alpha` — Phase 3 M12 complete. CPU/GPU telemetry, benchmark harnesses, and baseline capture tooling are in place. Next: M13 command buffers.
+**Status:** `v0.9.0` — Phase 3 M12 complete. CPU/GPU telemetry, benchmark harnesses, and baseline capture tooling are in place. Next: M13 command buffers.
 
 ## Stack
 

@@ -33,24 +33,26 @@ The script automatically runs `60 + requested_frames` total frames and computes 
 Enable stage-level frame logging with:
 
 ```bash
-TUNGSTEN_SMOKE_FRAMES=360 TUNGSTEN_PERF_LOG=1 RUST_LOG=debug \
+TUNGSTEN_SMOKE_FRAMES=360 TUNGSTEN_PERF_LOG=1 RUST_LOG=tungsten::app=debug \
   cargo run --release -p example-02-sprite-stress
 ```
 
 Output format:
 
 ```text
-frame: total=3.21ms update=0.42ms extract=0.37ms render=2.11ms audio=0.01ms hot_reload=0.00ms
+backend: Vulkan adapter: AMD RADV NAVI10 present_mode: Immediate max_frame_latency: 1 timestamp_query: true
+frame: total=3.21ms update=0.42ms extract=0.37ms render=2.11ms render_acquire=1.44ms render_encode=0.48ms render_submit_present=0.17ms gpu=n/a audio=0.01ms hot_reload=0.00ms
 ```
 
-These values come from `tungsten::FrameTimings`, populated once per `RedrawRequested`.
+`frame:` values come from `tungsten::FrameTimings`, populated once per `RedrawRequested`. The `gpu=` field is populated only when `TUNGSTEN_GPU_TIMING=1` is enabled; otherwise it remains `n/a`.
 
 ## GPU Diagnostics
 
 Enable GPU pass timing with:
 
 ```bash
-TUNGSTEN_SMOKE_FRAMES=360 TUNGSTEN_GPU_TIMING=1 cargo run --release -p example-02-sprite-stress
+TUNGSTEN_SMOKE_FRAMES=360 TUNGSTEN_PERF_LOG=1 TUNGSTEN_GPU_TIMING=1 \
+  cargo run --release -p example-02-sprite-stress
 ```
 
 Caveat: GPU timing forces a blocking `device.poll(wait_indefinitely())` readback every frame. This is for diagnosis only and will inflate CPU-side frame timings. Do not use it during flamegraph or `perf` captures.
@@ -89,7 +91,7 @@ perf report
 | `gl` | fallback | may be unavailable or noisy |
 | `auto` | any | convenient, but less reproducible |
 
-`GpuFrameTimings::frame_gpu_ms` is expected to be `None` when the active backend or adapter does not expose timestamp queries.
+`GpuFrameTimings::frame_gpu_ms` is expected to be `None` when the active backend or adapter does not expose timestamp queries. Backend, adapter, chosen present mode, and max-frame-latency hint are emitted once at renderer startup when `TUNGSTEN_PERF_LOG=1` is set.
 
 ## RenderDoc Workflow
 
@@ -127,6 +129,7 @@ When reading flamegraphs, start by searching for:
 - `wgpu`
 
 Cross-reference hot flamegraph regions with `TUNGSTEN_PERF_LOG` stage timings. A hot render stack with low `render_ms` often means sampling noise; a hot stage and a matching telemetry spike usually indicates a real regression.
+When `render_ms` is high, use `render_acquire`, `render_encode`, and `render_submit_present` to decide whether the regression is swapchain pacing, CPU command generation, or present/readback wait.
 
 ## Regression Policy
 

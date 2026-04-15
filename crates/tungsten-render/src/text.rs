@@ -206,7 +206,7 @@ impl TextPipeline {
             );
         }
 
-        if frame_counter % BUFFER_CACHE_PRUNE_INTERVAL_FRAMES == 0 {
+        if frame_counter.is_multiple_of(BUFFER_CACHE_PRUNE_INTERVAL_FRAMES) {
             self.buffer_cache.retain(|_, v| {
                 frame_counter.saturating_sub(v.last_used_frame) <= BUFFER_CACHE_TTL_FRAMES
             });
