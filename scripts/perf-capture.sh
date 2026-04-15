@@ -246,7 +246,7 @@ main() {
 | Renderer backend | ${METADATA_BACKEND} |
 | Renderer adapter | ${METADATA_ADAPTER} |
 | Present mode | ${METADATA_PRESENT_MODE} |
-| Max frame latency | ${METADATA_MAX_FRAME_LATENCY} |
+| Requested max frame latency hint | ${METADATA_MAX_FRAME_LATENCY} |
 | Timestamp query support | ${METADATA_TIMESTAMP_QUERY} |
 
 ## Captured Outputs

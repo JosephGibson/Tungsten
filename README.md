@@ -2,11 +2,18 @@
 
 A from-scratch Rust 2D game engine. `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Native only (Linux / macOS / Windows) — no WASM.
 
-**Status:** `v0.10.0` — Phase 3 M13 complete. Deferred ECS command buffers now land at a fixed frame boundary alongside the existing telemetry, benchmark, and profiling tooling. Next: M14 event queues.
+**Status:** `v0.10.0` — release line prepared. Deferred ECS command buffers now land at a fixed frame boundary alongside the existing telemetry, benchmark, profiling tooling, and swapchain frame-pacing follow-up. Next: M14 event queues.
 
 ## Stack
 
 Hand-rolled ECS (archetypal storage + deferred command buffers), wgpu rendering, manifest-driven assets, text (glyphon), audio (cpal + symphonia + hand-rolled mixer), hot reload (notify), tilemaps (.tmj / Tiled), 2D physics (AABB + circle, uniform-grid broad-phase), and Phase 3 tooling (frame telemetry, Criterion benches, perf capture workflow).
+
+## 0.10 Highlights
+
+- Deferred ECS command buffers with a fixed post-system flush boundary.
+- Swapchain pacing controls in `tungsten.json`: `render.present_mode` and `render.max_frame_latency`.
+- Perf capture reporting now includes renderer metadata plus `p50`/`p95`/`p99` for total and acquire timing.
+- Canonical Linux profiling workflow documented in [`docs/perf/profiling-workflow.md`](docs/perf/profiling-workflow.md).
 
 ## Documents
 
@@ -33,6 +40,7 @@ For reproducible profiling captures on Linux:
 
 ```bash
 WGPU_BACKEND=vulkan ./scripts/perf-capture.sh sprite-stress 300
+bash scripts/test-perf-capture.sh
 ```
 
 ## Read order

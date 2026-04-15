@@ -1,6 +1,6 @@
 # Tungsten — Design
 
-**Status:** `v0.10.0` — Phase 3 M13 complete. Branch: `0.10`.  
+**Status:** `v0.10.0` — release line prepared. Phase 3 M13 complete. Branch: `0.10`.  
 **Companion docs:** [`AGENTS.md`](AGENTS.md) (operational rules), [`DECISIONS.md`](DECISIONS.md) (rationale by D-NNN).
 
 ---
@@ -120,6 +120,9 @@ Single `tungsten.json` at workspace root, loaded once at startup. Missing → de
 `render.present_mode` overrides `window.vsync` when set to a concrete mode such as
 `"immediate"` or `"mailbox"`. When absent or set to `"auto"`, `window.vsync`
 selects between the auto-vsync and auto-no-vsync families.
+`render.max_frame_latency` is the requested frames-in-flight hint passed into
+`wgpu::SurfaceConfiguration`; backends may clamp it, so runtime telemetry should be
+treated as the configured hint unless the backend exposes stronger confirmation.
 
 ### Asset system
 
@@ -209,7 +212,7 @@ M12 establishes the baseline for all later Phase 3 work.
 - **GPU telemetry:** `Renderer::render_frame_full_timed()` uses `wgpu` timestamp queries when `TIMESTAMP_QUERY` is available on the active adapter. The path is opt-in via `TUNGSTEN_GPU_TIMING` because it blocks on GPU completion to read the timestamps back. `GpuFrameTimings` also exposes backend, adapter, present mode, and max-frame-latency metadata for capture logs.
 - **Canonical scenes:** `example-01-platformer` remains the broad feature scene; `example-02-sprite-stress` is the canonical sprite-throughput scene for perf capture.
 - **Bench coverage:** Criterion suites now cover ECS, physics, and CPU-only render-data construction. These are intended as repeatable regression detectors, not exhaustive throughput claims.
-- **Capture tooling:** `scripts/perf-capture.sh` and `docs/perf/profiling-workflow.md` define the repeatable Linux profiling workflow: release builds with frame pointers, smoke-frame-bounded runs, optional flamegraph/perf artifacts, and timestamped output directories under `perf-runs/`.
+- **Capture tooling:** `scripts/perf-capture.sh` and `docs/perf/profiling-workflow.md` define the repeatable Linux profiling workflow: release builds with frame pointers, smoke-frame-bounded runs, parsed renderer metadata, `p50`/`p95`/`p99` capture summaries, optional flamegraph/perf artifacts, and timestamped output directories under `perf-runs/`.
 
 ---
 

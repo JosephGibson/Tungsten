@@ -32,11 +32,19 @@ The script automatically runs `60 + requested_frames` total frames, parses rende
 into separate README rows, and computes post-warm-up averages plus `p50`/`p95`/`p99` for
 `total` and `render_acquire`.
 
+Parser-only verification for the reporting helpers:
+
+```bash
+bash scripts/test-perf-capture.sh
+```
+
 ## Frame Pacing Policy
 
 `render.present_mode` is the final authority when set to a concrete value. The checked-in
 default keeps `render.present_mode = "auto"` and `render.max_frame_latency = 1`, so
 `window.vsync` still selects the auto-vsync vs auto-no-vsync family on the default path.
+`max_frame_latency` should be read as the requested `wgpu` hint, not a backend-confirmed
+effective queue depth.
 
 Reference Vulkan matrix captured on April 15, 2026 on an AMD Radeon 660M (`RADV REMBRANDT`):
 
@@ -78,8 +86,8 @@ frame: total=3.21ms update=0.42ms extract=0.37ms render=2.11ms render_acquire=1.
 ```
 
 `frame:` values come from `tungsten::FrameTimings`, populated once per `RedrawRequested`. The `gpu=` field is populated only when `TUNGSTEN_GPU_TIMING=1` is enabled; otherwise it remains `n/a`.
-The startup metadata line is the source of truth for the actual renderer backend, adapter,
-present mode, and max-frame-latency value used in the run.
+The startup metadata line is the source of truth for the renderer backend, adapter, chosen
+present mode, and requested max-frame-latency hint used in the run.
 
 ## GPU Diagnostics
 
@@ -132,7 +140,7 @@ perf report
 | `gl` | fallback | may be unavailable or noisy |
 | `auto` | any | convenient, but less reproducible |
 
-`GpuFrameTimings::frame_gpu_ms` is expected to be `None` when the active backend or adapter does not expose timestamp queries. Backend, adapter, chosen present mode, and max-frame-latency hint are emitted once at renderer startup when `TUNGSTEN_PERF_LOG=1` is set.
+`GpuFrameTimings::frame_gpu_ms` is expected to be `None` when the active backend or adapter does not expose timestamp queries. Backend, adapter, chosen present mode, and requested max-frame-latency hint are emitted once at renderer startup when `TUNGSTEN_PERF_LOG=1` is set.
 
 ## RenderDoc Workflow
 

@@ -1,5 +1,5 @@
 ---
-status: in progress
+status: done
 goal: Explain Tungsten's current swapchain pacing bottleneck and define a practical follow-up plan to reduce acquire/present stalls without regressing correctness.
 non-goals: solving VRR/exclusive-fullscreen across all platforms, replacing wgpu, introducing new runtime dependencies, compositor-specific or OS-specific tuning hacks
 files-to-touch:
@@ -13,6 +13,21 @@ files-to-touch:
 ---
 
 # Swapchain Frame Pacing Follow-Up
+
+## Implementation Result
+
+Implemented on 2026-04-15 for the `0.10.0` release line:
+
+- `render.present_mode` and `render.max_frame_latency` shipped as typed config knobs.
+- Renderer init now rejects `max_frame_latency = 0` and fails fast on unsupported explicit
+  concrete present modes.
+- `scripts/perf-capture.sh` now reports parsed renderer metadata and post-warm-up
+  `p50`/`p95`/`p99` for `total` and `render_acquire`, with
+  `scripts/test-perf-capture.sh` covering the parser/percentile helpers.
+- Full Vulkan matrix results were documented in
+  [docs/perf/profiling-workflow.md](../perf/profiling-workflow.md).
+- Checked-in default remains `render.present_mode = "auto"` with
+  `render.max_frame_latency = 1`; the later-acquire render-loop refactor was deferred.
 
 ## Goal
 
