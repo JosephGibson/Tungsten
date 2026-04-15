@@ -1,5 +1,9 @@
 {
   "window": { "title": "Tungsten", "width": 1280, "height": 720, "vsync": false },
-  "render": { "clear_color": [0.05, 0.05, 0.08, 1.0] },
+  "render": {
+    "clear_color": [0.05, 0.05, 0.08, 1.0],
+    "max_frame_latency": 1,
+    "present_mode": "auto"
+  },
   "logging": { "level": "info" }
 }

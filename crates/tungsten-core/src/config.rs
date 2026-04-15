@@ -52,16 +52,31 @@ fn default_vsync() -> bool {
     false
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PresentModeConfig {
+    Auto,
+    Immediate,
+    Mailbox,
+    Fifo,
+    AutoVsync,
+    AutoNoVsync,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct RenderConfig {
     #[serde(default = "default_clear_color")]
     pub clear_color: [f64; 4],
+    pub max_frame_latency: Option<u32>,
+    pub present_mode: Option<PresentModeConfig>,
 }
 
 impl Default for RenderConfig {
     fn default() -> Self {
         Self {
             clear_color: default_clear_color(),
+            max_frame_latency: None,
+            present_mode: None,
         }
     }
 }
@@ -132,6 +147,8 @@ mod tests {
         assert_eq!(config.window.width, 1280);
         assert_eq!(config.window.height, 720);
         assert!(!config.window.vsync);
+        assert!(config.render.max_frame_latency.is_none());
+        assert!(config.render.present_mode.is_none());
     }
 
     #[test]
@@ -140,6 +157,26 @@ mod tests {
         let config: Config = serde_json::from_str(json).unwrap();
         assert_eq!(config.window.title, "Test");
         assert_eq!(config.window.width, 1280); // default
+        assert!(config.render.max_frame_latency.is_none());
+        assert!(config.render.present_mode.is_none());
+    }
+
+    #[test]
+    fn parses_render_present_mode_and_latency() {
+        let json = r#"{
+            "render": {
+                "max_frame_latency": 3,
+                "present_mode": "auto_no_vsync"
+            }
+        }"#;
+
+        let config: Config = serde_json::from_str(json).unwrap();
+
+        assert_eq!(config.render.max_frame_latency, Some(3));
+        assert_eq!(
+            config.render.present_mode,
+            Some(PresentModeConfig::AutoNoVsync)
+        );
     }
 
     #[test]

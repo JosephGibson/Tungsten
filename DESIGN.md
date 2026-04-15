@@ -108,10 +108,18 @@ Single `tungsten.json` at workspace root, loaded once at startup. Missing → de
 ```json
 {
   "window": { "title": "Tungsten", "width": 1280, "height": 720, "vsync": false },
-  "render":  { "clear_color": [0.05, 0.05, 0.08, 1.0] },
+  "render":  {
+    "clear_color": [0.05, 0.05, 0.08, 1.0],
+    "max_frame_latency": 1,
+    "present_mode": "auto"
+  },
   "logging": { "level": "info" }
 }
 ```
+
+`render.present_mode` overrides `window.vsync` when set to a concrete mode such as
+`"immediate"` or `"mailbox"`. When absent or set to `"auto"`, `window.vsync`
+selects between the auto-vsync and auto-no-vsync families.
 
 ### Asset system
 

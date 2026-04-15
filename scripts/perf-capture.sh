@@ -2,56 +2,18 @@
 
 set -u
 
-cd "$(dirname "$0")/.."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-SCENE="${1:-sprite-stress}"
-FRAMES="${2:-300}"
-WARMUP_FRAMES=60
-TOTAL_FRAMES=$((FRAMES + WARMUP_FRAMES))
-TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-OUT_DIR="perf-runs/${TIMESTAMP}-${SCENE}"
-mkdir -p "$OUT_DIR"
+: "${WARMUP_FRAMES:=60}"
 
-case "$SCENE" in
-  sprite-stress)
-    PKG="example-02-sprite-stress"
-    ;;
-  platformer)
-    PKG="example-01-platformer"
-    ;;
-  *)
-    echo "Unknown scene '$SCENE'. Expected: sprite-stress or platformer."
-    exit 1
-    ;;
-esac
+METADATA_BACKEND="unknown"
+METADATA_ADAPTER="unknown"
+METADATA_PRESENT_MODE="unknown"
+METADATA_MAX_FRAME_LATENCY="unknown"
+METADATA_TIMESTAMP_QUERY="unknown"
 
-echo "Building $PKG with frame pointers..."
-if ! RUSTFLAGS="-C force-frame-pointers=yes" cargo build --release -p "$PKG"; then
-  echo "Build failed."
-  exit 1
-fi
-
-BINARY="target/release/$PKG"
-if [ ! -x "$BINARY" ]; then
-  ALT_BINARY="target/release/${PKG//-/_}"
-  if [ -x "$ALT_BINARY" ]; then
-    BINARY="$ALT_BINARY"
-  else
-    echo "Could not find built binary for $PKG."
-    exit 1
-  fi
-fi
-
-echo "Output directory: $OUT_DIR"
-
-ENGINE_LOG="$OUT_DIR/engine-telemetry.txt"
-GPU_LOG="$OUT_DIR/gpu-timing.txt"
-FLAMEGRAPH_OUT="$OUT_DIR/flamegraph.svg"
-PERF_STAT_OUT="$OUT_DIR/perf-stat.txt"
-PERF_RECORD_OUT="$OUT_DIR/perf-record.data"
-README_OUT="$OUT_DIR/README.md"
-
-avg_metric() {
+metric_samples() {
   local file="$1"
   local key="$2"
   awk -v warmup="$WARMUP_FRAMES" -v key="$key" '
@@ -67,11 +29,21 @@ avg_metric() {
           sub("^" prefix, "", value)
           sub(/ms$/, "", value)
           if (value != "n/a") {
-            sum += value
-            n += 1
+            print value
           }
         }
       }
+    }
+  ' "$file"
+}
+
+avg_metric() {
+  local file="$1"
+  local key="$2"
+  metric_samples "$file" "$key" | awk '
+    {
+      sum += $1
+      n += 1
     }
     END {
       if (n > 0) {
@@ -80,79 +52,202 @@ avg_metric() {
         printf "n/a"
       }
     }
-  ' "$file"
+  '
 }
 
-echo "Capturing engine telemetry..."
-TUNGSTEN_SMOKE_FRAMES="$TOTAL_FRAMES" \
-TUNGSTEN_PERF_LOG=1 \
-RUST_LOG=tungsten::app=debug \
-"$BINARY" >"$ENGINE_LOG" 2>&1
-engine_status=$?
-if [ "$engine_status" -ne 0 ]; then
-  echo "Engine telemetry capture failed."
-  exit "$engine_status"
-fi
+percentile_metric() {
+  local file="$1"
+  local key="$2"
+  local percentile="$3"
+  metric_samples "$file" "$key" | sort -g | awk -v percentile="$percentile" '
+    {
+      values[NR] = $1
+    }
+    END {
+      if (NR == 0) {
+        printf "n/a"
+        exit
+      }
+      rank = int((percentile * NR + 99) / 100)
+      if (rank < 1) {
+        rank = 1
+      }
+      if (rank > NR) {
+        rank = NR
+      }
+      printf "%.2f", values[rank]
+    }
+  '
+}
 
-echo "Capturing GPU timing telemetry..."
-TUNGSTEN_SMOKE_FRAMES="$TOTAL_FRAMES" \
-TUNGSTEN_PERF_LOG=1 \
-TUNGSTEN_GPU_TIMING=1 \
-RUST_LOG=tungsten::app=debug \
-"$BINARY" >"$GPU_LOG" 2>&1
-gpu_status=$?
-if [ "$gpu_status" -ne 0 ]; then
-  echo "GPU timing capture failed."
-  exit "$gpu_status"
-fi
+parse_backend_metadata() {
+  local file="$1"
+  local line
+  line="$(grep -m1 'backend:' "$file" 2>/dev/null || true)"
 
-if cargo flamegraph --help >/dev/null 2>&1; then
-  echo "Capturing flamegraph..."
-  env TUNGSTEN_SMOKE_FRAMES="$TOTAL_FRAMES" RUST_LOG=error \
-  cargo flamegraph \
-    --package "$PKG" \
-    --bin "$PKG" \
-    --release \
-    --output "$FLAMEGRAPH_OUT" \
-    -- \
-    >/dev/null 2>&1 || true
-else
-  echo "cargo-flamegraph not installed; skipping flamegraph capture."
-fi
+  METADATA_BACKEND="unknown"
+  METADATA_ADAPTER="unknown"
+  METADATA_PRESENT_MODE="unknown"
+  METADATA_MAX_FRAME_LATENCY="unknown"
+  METADATA_TIMESTAMP_QUERY="unknown"
 
-if command -v perf >/dev/null 2>&1; then
-  echo "Capturing perf stat..."
-  perf stat -d -o "$PERF_STAT_OUT" \
-    env TUNGSTEN_SMOKE_FRAMES="$TOTAL_FRAMES" RUST_LOG=error "$BINARY" >/dev/null 2>&1 || true
+  if [[ "$line" =~ backend:\ ([^[:space:]]+)\ adapter:\ (.+)\ present_mode:\ ([^[:space:]]+)\ max_frame_latency:\ ([0-9]+)\ timestamp_query:\ (true|false) ]]; then
+    METADATA_BACKEND="${BASH_REMATCH[1]}"
+    METADATA_ADAPTER="${BASH_REMATCH[2]}"
+    METADATA_PRESENT_MODE="${BASH_REMATCH[3]}"
+    METADATA_MAX_FRAME_LATENCY="${BASH_REMATCH[4]}"
+    METADATA_TIMESTAMP_QUERY="${BASH_REMATCH[5]}"
+  fi
+}
 
-  echo "Capturing perf record..."
-  perf record --call-graph dwarf -o "$PERF_RECORD_OUT" \
-    env TUNGSTEN_SMOKE_FRAMES="$TOTAL_FRAMES" RUST_LOG=error "$BINARY" >/dev/null 2>&1 || true
-else
-  echo "perf not installed; skipping perf captures."
-fi
+main() {
+  cd "$REPO_ROOT"
 
-AVG_TOTAL_MS="$(avg_metric "$ENGINE_LOG" "total")"
-AVG_RENDER_ACQUIRE_MS="$(avg_metric "$ENGINE_LOG" "render_acquire")"
-AVG_RENDER_ENCODE_MS="$(avg_metric "$ENGINE_LOG" "render_encode")"
-AVG_RENDER_SUBMIT_MS="$(avg_metric "$ENGINE_LOG" "render_submit_present")"
-AVG_GPU_MS="$(avg_metric "$GPU_LOG" "gpu")"
+  local scene="${1:-sprite-stress}"
+  local frames="${2:-300}"
+  local total_frames=$((frames + WARMUP_FRAMES))
+  local timestamp
+  timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  local out_dir="perf-runs/${timestamp}-${scene}"
+  mkdir -p "$out_dir"
 
-CPU_MODEL="$(grep -m1 'model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2- | sed 's/^ //')"
-GPU_INFO="$(grep -m1 'tungsten::app] backend:' "$GPU_LOG" 2>/dev/null || true)"
-HOST_KERNEL="$(uname -sr)"
+  local pkg
+  case "$scene" in
+    sprite-stress)
+      pkg="example-02-sprite-stress"
+      ;;
+    platformer)
+      pkg="example-01-platformer"
+      ;;
+    *)
+      echo "Unknown scene '$scene'. Expected: sprite-stress or platformer."
+      exit 1
+      ;;
+  esac
 
-cat >"$README_OUT" <<EOF
-# Perf Capture: $SCENE
+  echo "Building $pkg with frame pointers..."
+  if ! RUSTFLAGS="-C force-frame-pointers=yes" cargo build --release -p "$pkg"; then
+    echo "Build failed."
+    exit 1
+  fi
+
+  local binary="target/release/$pkg"
+  if [ ! -x "$binary" ]; then
+    local alt_binary="target/release/${pkg//-/_}"
+    if [ -x "$alt_binary" ]; then
+      binary="$alt_binary"
+    else
+      echo "Could not find built binary for $pkg."
+      exit 1
+    fi
+  fi
+
+  echo "Output directory: $out_dir"
+
+  local engine_log="$out_dir/engine-telemetry.txt"
+  local gpu_log="$out_dir/gpu-timing.txt"
+  local flamegraph_out="$out_dir/flamegraph.svg"
+  local perf_stat_out="$out_dir/perf-stat.txt"
+  local perf_record_out="$out_dir/perf-record.data"
+  local readme_out="$out_dir/README.md"
+
+  echo "Capturing engine telemetry..."
+  TUNGSTEN_SMOKE_FRAMES="$total_frames" \
+  TUNGSTEN_PERF_LOG=1 \
+  RUST_LOG=tungsten::app=debug \
+  "$binary" >"$engine_log" 2>&1
+  local engine_status=$?
+  if [ "$engine_status" -ne 0 ]; then
+    echo "Engine telemetry capture failed."
+    exit "$engine_status"
+  fi
+
+  echo "Capturing GPU timing telemetry..."
+  TUNGSTEN_SMOKE_FRAMES="$total_frames" \
+  TUNGSTEN_PERF_LOG=1 \
+  TUNGSTEN_GPU_TIMING=1 \
+  RUST_LOG=tungsten::app=debug \
+  "$binary" >"$gpu_log" 2>&1
+  local gpu_status=$?
+  if [ "$gpu_status" -ne 0 ]; then
+    echo "GPU timing capture failed."
+    exit "$gpu_status"
+  fi
+
+  if cargo flamegraph --help >/dev/null 2>&1; then
+    echo "Capturing flamegraph..."
+    env TUNGSTEN_SMOKE_FRAMES="$total_frames" RUST_LOG=error \
+    cargo flamegraph \
+      --package "$pkg" \
+      --bin "$pkg" \
+      --release \
+      --output "$flamegraph_out" \
+      -- \
+      >/dev/null 2>&1 || true
+  else
+    echo "cargo-flamegraph not installed; skipping flamegraph capture."
+  fi
+
+  if command -v perf >/dev/null 2>&1; then
+    echo "Capturing perf stat..."
+    perf stat -d -o "$perf_stat_out" \
+      env TUNGSTEN_SMOKE_FRAMES="$total_frames" RUST_LOG=error "$binary" >/dev/null 2>&1 || true
+
+    echo "Capturing perf record..."
+    perf record --call-graph dwarf -o "$perf_record_out" \
+      env TUNGSTEN_SMOKE_FRAMES="$total_frames" RUST_LOG=error "$binary" >/dev/null 2>&1 || true
+  else
+    echo "perf not installed; skipping perf captures."
+  fi
+
+  parse_backend_metadata "$engine_log"
+
+  local avg_total_ms
+  avg_total_ms="$(avg_metric "$engine_log" "total")"
+  local p50_total_ms
+  p50_total_ms="$(percentile_metric "$engine_log" "total" 50)"
+  local p95_total_ms
+  p95_total_ms="$(percentile_metric "$engine_log" "total" 95)"
+  local p99_total_ms
+  p99_total_ms="$(percentile_metric "$engine_log" "total" 99)"
+
+  local avg_render_acquire_ms
+  avg_render_acquire_ms="$(avg_metric "$engine_log" "render_acquire")"
+  local p50_render_acquire_ms
+  p50_render_acquire_ms="$(percentile_metric "$engine_log" "render_acquire" 50)"
+  local p95_render_acquire_ms
+  p95_render_acquire_ms="$(percentile_metric "$engine_log" "render_acquire" 95)"
+  local p99_render_acquire_ms
+  p99_render_acquire_ms="$(percentile_metric "$engine_log" "render_acquire" 99)"
+
+  local avg_render_encode_ms
+  avg_render_encode_ms="$(avg_metric "$engine_log" "render_encode")"
+  local avg_render_submit_ms
+  avg_render_submit_ms="$(avg_metric "$engine_log" "render_submit_present")"
+  local avg_gpu_ms
+  avg_gpu_ms="$(avg_metric "$gpu_log" "gpu")"
+
+  local cpu_model
+  cpu_model="$(grep -m1 'model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2- | sed 's/^ //')"
+  local host_kernel
+  host_kernel="$(uname -sr)"
+
+  cat >"$readme_out" <<EOF
+# Perf Capture: $scene
 
 ## Machine
 
 | Field | Value |
 | --- | --- |
-| Kernel | ${HOST_KERNEL:-unknown} |
-| CPU | ${CPU_MODEL:-unknown} |
-| Binary | $BINARY |
+| Kernel | ${host_kernel:-unknown} |
+| CPU | ${cpu_model:-unknown} |
+| Binary | $binary |
 | Backend env | ${WGPU_BACKEND:-auto} |
+| Renderer backend | ${METADATA_BACKEND} |
+| Renderer adapter | ${METADATA_ADAPTER} |
+| Present mode | ${METADATA_PRESENT_MODE} |
+| Max frame latency | ${METADATA_MAX_FRAME_LATENCY} |
+| Timestamp query support | ${METADATA_TIMESTAMP_QUERY} |
 
 ## Captured Outputs
 
@@ -168,14 +263,19 @@ cat >"$README_OUT" <<EOF
 
 | Metric | Value |
 | --- | --- |
-| Average total frame ms | $AVG_TOTAL_MS |
-| Average render acquire ms | $AVG_RENDER_ACQUIRE_MS |
-| Average render encode ms | $AVG_RENDER_ENCODE_MS |
-| Average render submit/present ms | $AVG_RENDER_SUBMIT_MS |
-| Average GPU frame ms | $AVG_GPU_MS |
-| GPU timing line | ${GPU_INFO:-not found} |
+| Average total frame ms | $avg_total_ms |
+| p50 total frame ms | $p50_total_ms |
+| p95 total frame ms | $p95_total_ms |
+| p99 total frame ms | $p99_total_ms |
+| Average render acquire ms | $avg_render_acquire_ms |
+| p50 render acquire ms | $p50_render_acquire_ms |
+| p95 render acquire ms | $p95_render_acquire_ms |
+| p99 render acquire ms | $p99_render_acquire_ms |
+| Average render encode ms | $avg_render_encode_ms |
+| Average render submit/present ms | $avg_render_submit_ms |
+| Average GPU frame ms | $avg_gpu_ms |
 | Warm-up frames skipped | $WARMUP_FRAMES |
-| Measured frames requested | $FRAMES |
+| Measured frames requested | $frames |
 
 ## Budget Targets
 
@@ -190,7 +290,12 @@ cat >"$README_OUT" <<EOF
 ## Notes
 
 - Flamegraph and perf captures intentionally run without \`TUNGSTEN_GPU_TIMING\` to avoid the blocking timestamp readback stall.
-- Compare like-for-like runs only: same scene, resolution, backend, and release build.
+- Compare like-for-like runs only: same scene, resolution, backend, release build, present mode, and max frame latency.
 EOF
 
-echo "Capture complete."
+  echo "Capture complete."
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

@@ -6,7 +6,7 @@ use crate::sprite::{SpriteBatch, SpritePipeline};
 use crate::text::{TextPipeline, TextSection};
 use thiserror::Error;
 use tungsten_core::assets::TextureHandle;
-use tungsten_core::config::RenderConfig;
+use tungsten_core::config::{PresentModeConfig, RenderConfig};
 use winit::window::Window;
 
 /// GPU-side frame timing, in milliseconds.
@@ -45,8 +45,142 @@ pub enum RenderError {
     NoAdapter(#[from] wgpu::RequestAdapterError),
     #[error("failed to request device: {0}")]
     RequestDevice(#[from] wgpu::RequestDeviceError),
+    #[error(
+        "unsupported present mode '{requested}'; available configurable modes: {}",
+        available.join(", ")
+    )]
+    UnsupportedPresentMode {
+        requested: String,
+        available: Vec<String>,
+    },
+    #[error("invalid max frame latency '{0}'; expected >= 1")]
+    InvalidFrameLatency(u32),
     #[error("surface error: {0}")]
     Surface(String),
+}
+
+fn present_mode_label(mode: wgpu::PresentMode) -> &'static str {
+    match mode {
+        wgpu::PresentMode::Fifo => "fifo",
+        wgpu::PresentMode::FifoRelaxed => "fifo_relaxed",
+        wgpu::PresentMode::Immediate => "immediate",
+        wgpu::PresentMode::Mailbox => "mailbox",
+        wgpu::PresentMode::AutoVsync => "auto_vsync",
+        wgpu::PresentMode::AutoNoVsync => "auto_no_vsync",
+    }
+}
+
+fn requested_present_mode_label(mode: PresentModeConfig) -> &'static str {
+    match mode {
+        PresentModeConfig::Auto => "auto",
+        PresentModeConfig::Immediate => "immediate",
+        PresentModeConfig::Mailbox => "mailbox",
+        PresentModeConfig::Fifo => "fifo",
+        PresentModeConfig::AutoVsync => "auto_vsync",
+        PresentModeConfig::AutoNoVsync => "auto_no_vsync",
+    }
+}
+
+fn choose_auto_vsync_present_mode(supported: &[wgpu::PresentMode]) -> wgpu::PresentMode {
+    if supported.contains(&wgpu::PresentMode::Fifo) {
+        wgpu::PresentMode::Fifo
+    } else {
+        wgpu::PresentMode::AutoVsync
+    }
+}
+
+fn choose_auto_no_vsync_present_mode(supported: &[wgpu::PresentMode]) -> wgpu::PresentMode {
+    if supported.contains(&wgpu::PresentMode::Immediate) {
+        wgpu::PresentMode::Immediate
+    } else if supported.contains(&wgpu::PresentMode::Mailbox) {
+        wgpu::PresentMode::Mailbox
+    } else {
+        wgpu::PresentMode::AutoNoVsync
+    }
+}
+
+fn available_present_mode_labels(supported: &[wgpu::PresentMode]) -> Vec<String> {
+    [
+        wgpu::PresentMode::Fifo,
+        wgpu::PresentMode::Immediate,
+        wgpu::PresentMode::Mailbox,
+    ]
+    .into_iter()
+    .filter(|mode| supported.contains(mode))
+    .map(present_mode_label)
+    .map(str::to_string)
+    .collect()
+}
+
+fn resolve_present_mode(
+    supported: &[wgpu::PresentMode],
+    requested: Option<PresentModeConfig>,
+    vsync: bool,
+) -> Result<wgpu::PresentMode, RenderError> {
+    let requested = requested.unwrap_or(PresentModeConfig::Auto);
+    match requested {
+        PresentModeConfig::Auto => {
+            if vsync {
+                Ok(choose_auto_vsync_present_mode(supported))
+            } else {
+                Ok(choose_auto_no_vsync_present_mode(supported))
+            }
+        }
+        PresentModeConfig::AutoVsync => Ok(choose_auto_vsync_present_mode(supported)),
+        PresentModeConfig::AutoNoVsync => Ok(choose_auto_no_vsync_present_mode(supported)),
+        PresentModeConfig::Immediate => {
+            if supported.contains(&wgpu::PresentMode::Immediate) {
+                Ok(wgpu::PresentMode::Immediate)
+            } else {
+                Err(RenderError::UnsupportedPresentMode {
+                    requested: requested_present_mode_label(requested).to_string(),
+                    available: available_present_mode_labels(supported),
+                })
+            }
+        }
+        PresentModeConfig::Mailbox => {
+            if supported.contains(&wgpu::PresentMode::Mailbox) {
+                Ok(wgpu::PresentMode::Mailbox)
+            } else {
+                Err(RenderError::UnsupportedPresentMode {
+                    requested: requested_present_mode_label(requested).to_string(),
+                    available: available_present_mode_labels(supported),
+                })
+            }
+        }
+        PresentModeConfig::Fifo => {
+            if supported.contains(&wgpu::PresentMode::Fifo) {
+                Ok(wgpu::PresentMode::Fifo)
+            } else {
+                Err(RenderError::UnsupportedPresentMode {
+                    requested: requested_present_mode_label(requested).to_string(),
+                    available: available_present_mode_labels(supported),
+                })
+            }
+        }
+    }
+}
+
+fn default_max_frame_latency(present_mode: wgpu::PresentMode) -> u32 {
+    if matches!(
+        present_mode,
+        wgpu::PresentMode::Immediate | wgpu::PresentMode::Mailbox | wgpu::PresentMode::AutoNoVsync
+    ) {
+        1
+    } else {
+        2
+    }
+}
+
+fn resolve_max_frame_latency(
+    requested: Option<u32>,
+    present_mode: wgpu::PresentMode,
+) -> Result<u32, RenderError> {
+    match requested {
+        Some(0) => Err(RenderError::InvalidFrameLatency(0)),
+        Some(value) => Ok(value),
+        None => Ok(default_max_frame_latency(present_mode)),
+    }
 }
 
 /// Core renderer state wrapping wgpu resources.
@@ -70,22 +204,6 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    fn choose_present_mode(supported: &[wgpu::PresentMode], vsync: bool) -> wgpu::PresentMode {
-        if vsync {
-            if supported.contains(&wgpu::PresentMode::Fifo) {
-                wgpu::PresentMode::Fifo
-            } else {
-                wgpu::PresentMode::AutoVsync
-            }
-        } else if supported.contains(&wgpu::PresentMode::Immediate) {
-            wgpu::PresentMode::Immediate
-        } else if supported.contains(&wgpu::PresentMode::Mailbox) {
-            wgpu::PresentMode::Mailbox
-        } else {
-            wgpu::PresentMode::AutoNoVsync
-        }
-    }
-
     /// Initialize wgpu and create a renderer attached to the given window.
     pub fn new(
         window: Arc<Window>,
@@ -132,17 +250,10 @@ impl Renderer {
             .copied()
             .unwrap_or(surface_caps.formats[0]);
 
-        let present_mode = Self::choose_present_mode(&surface_caps.present_modes, vsync);
-        let desired_maximum_frame_latency = if matches!(
-            present_mode,
-            wgpu::PresentMode::Immediate
-                | wgpu::PresentMode::Mailbox
-                | wgpu::PresentMode::AutoNoVsync
-        ) {
-            1
-        } else {
-            2
-        };
+        let present_mode =
+            resolve_present_mode(&surface_caps.present_modes, config.present_mode, vsync)?;
+        let desired_maximum_frame_latency =
+            resolve_max_frame_latency(config.max_frame_latency, present_mode)?;
 
         let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -471,5 +582,98 @@ impl Renderer {
             submit_present_start.elapsed().as_secs_f64() as f32 * 1000.0;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn auto_present_mode_preserves_vsync_selection() {
+        let supported = [wgpu::PresentMode::Fifo, wgpu::PresentMode::Immediate];
+
+        assert_eq!(
+            resolve_present_mode(&supported, None, true).unwrap(),
+            wgpu::PresentMode::Fifo
+        );
+        assert_eq!(
+            resolve_present_mode(&supported, Some(PresentModeConfig::Auto), false).unwrap(),
+            wgpu::PresentMode::Immediate
+        );
+    }
+
+    #[test]
+    fn auto_present_mode_uses_documented_fallbacks() {
+        assert_eq!(
+            resolve_present_mode(&[wgpu::PresentMode::Mailbox], None, false).unwrap(),
+            wgpu::PresentMode::Mailbox
+        );
+        assert_eq!(
+            resolve_present_mode(&[wgpu::PresentMode::FifoRelaxed], None, false).unwrap(),
+            wgpu::PresentMode::AutoNoVsync
+        );
+        assert_eq!(
+            resolve_present_mode(&[wgpu::PresentMode::FifoRelaxed], None, true).unwrap(),
+            wgpu::PresentMode::AutoVsync
+        );
+    }
+
+    #[test]
+    fn explicit_present_mode_override_beats_vsync() {
+        let supported = [wgpu::PresentMode::Fifo, wgpu::PresentMode::Immediate];
+        let chosen =
+            resolve_present_mode(&supported, Some(PresentModeConfig::Immediate), true).unwrap();
+        assert_eq!(chosen, wgpu::PresentMode::Immediate);
+    }
+
+    #[test]
+    fn unsupported_explicit_present_mode_returns_error() {
+        let err = resolve_present_mode(
+            &[wgpu::PresentMode::Fifo],
+            Some(PresentModeConfig::Mailbox),
+            false,
+        )
+        .unwrap_err();
+
+        match err {
+            RenderError::UnsupportedPresentMode {
+                requested,
+                available,
+            } => {
+                assert_eq!(requested, "mailbox");
+                assert_eq!(available, vec!["fifo".to_string()]);
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn zero_frame_latency_is_rejected() {
+        let err = resolve_max_frame_latency(Some(0), wgpu::PresentMode::Fifo).unwrap_err();
+        match err {
+            RenderError::InvalidFrameLatency(0) => {}
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn default_frame_latency_preserves_existing_policy() {
+        assert_eq!(
+            resolve_max_frame_latency(None, wgpu::PresentMode::Immediate).unwrap(),
+            1
+        );
+        assert_eq!(
+            resolve_max_frame_latency(None, wgpu::PresentMode::Mailbox).unwrap(),
+            1
+        );
+        assert_eq!(
+            resolve_max_frame_latency(None, wgpu::PresentMode::AutoNoVsync).unwrap(),
+            1
+        );
+        assert_eq!(
+            resolve_max_frame_latency(None, wgpu::PresentMode::Fifo).unwrap(),
+            2
+        );
     }
 }

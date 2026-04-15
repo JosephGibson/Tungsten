@@ -8,7 +8,8 @@
 //!   Backend:      WGPU_BACKEND=vulkan  (Linux)
 //!   Resolution:   1920 × 1080  (set in code)
 //!   Frame window: 300 frames after 60-frame warm-up
-//!   VSync:        disabled (`config.window.vsync = false`)
+//!   Present path: auto no-vsync (`config.render.present_mode = "auto"`
+//!                 and `config.window.vsync = false`)
 //!
 //! Telemetry output: printed to stdout every 60 frames.
 //! Baseline capture: pipe to `tee perf-runs/<timestamp>/sprite-stress.txt`
