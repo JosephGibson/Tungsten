@@ -19,6 +19,8 @@ pub enum KeyCode {
     Digit1,
     Digit2,
     Digit3,
+    Equal,
+    Minus,
     Other(u32),
 }
 

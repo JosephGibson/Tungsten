@@ -10,6 +10,7 @@
 //!   M               toggle background music
 //!   1 / 2 / 3       master volume: 20% / 50% / 100%
 //!   S               stop all sounds
+//!   = / -           zoom in / zoom out (50%–200% of base)
 //!
 //! Two manifests are loaded at startup:
 //!   • assets/manifest.json        — fonts, walk animation, sounds (shared root)
@@ -41,6 +42,10 @@ const TILE: f32 = 16.0;
 const MAP_COLS: u32 = 48;
 const MAP_ROWS: u32 = 18;
 
+/// How often the HUD values (FPS, contacts, etc.) are refreshed in seconds.
+/// Values are cached between refreshes so they don't flicker every frame.
+const TEXT_UPDATE_INTERVAL: f32 = 0.25;
+
 const PLAYER_HALF: Vec2 = Vec2::new(6.0, 7.0);
 const PLAYER_MOVE_SPEED: f32 = 140.0;
 const PLAYER_JUMP_IMPULSE: f32 = 320.0;
@@ -59,6 +64,38 @@ struct AudioState {
     music_volume: f32,
     music_playing: bool,
     master_volume: f32,
+}
+
+/// Cached HUD values, updated at `TEXT_UPDATE_INTERVAL` by `update_text_display`.
+/// Avoids rebuilding the text layout every frame and stops numbers from flickering.
+struct TextDisplayState {
+    fps: u32,
+    contacts: usize,
+    grounded: bool,
+    music_on: bool,
+    vol_pct: u32,
+    zoom_pct: u32,
+    timer: f32,
+}
+
+impl Default for TextDisplayState {
+    fn default() -> Self {
+        Self {
+            fps: 0,
+            contacts: 0,
+            grounded: false,
+            music_on: false,
+            vol_pct: 50,
+            zoom_pct: 100,
+            timer: 0.0,
+        }
+    }
+}
+
+/// Persistent camera zoom multiplier, adjusted by `camera_input_system`.
+/// Applied on top of the base zoom derived from window height in `camera_follow`.
+struct CameraState {
+    zoom_scale: f32,
 }
 
 // ---------------------------------------------------------------------------
@@ -207,6 +244,31 @@ fn audio_input_system(world: &mut World) {
     }
 }
 
+/// = / - to zoom in or out. Adjusts `CameraState.zoom_scale` in 25% steps,
+/// clamped to [0.5, 2.0] relative to the base window-height zoom.
+fn camera_input_system(world: &mut World) {
+    let (just_equal, just_minus);
+    {
+        let input = match world.get_resource::<InputState>() {
+            Some(i) => i,
+            None => return,
+        };
+        just_equal = input.just_pressed(KeyCode::Equal);
+        just_minus = input.just_pressed(KeyCode::Minus);
+    }
+    if !just_equal && !just_minus {
+        return;
+    }
+    if let Some(state) = world.get_resource_mut::<CameraState>() {
+        if just_equal {
+            state.zoom_scale = (state.zoom_scale + 0.25).min(2.0);
+        }
+        if just_minus {
+            state.zoom_scale = (state.zoom_scale - 0.25).max(0.5);
+        }
+    }
+}
+
 /// Advances `AnimationState` and writes the resulting sprite ID into `CurrentSprite`.
 fn animation_system(world: &mut World) {
     let dt_ms = world.get_resource::<DeltaTime>().unwrap().seconds() * 1000.0;
@@ -243,35 +305,110 @@ fn ground_detection(world: &mut World) {
     }
 }
 
-/// Pins the camera to the player (centred horizontally, slightly above centre
-/// vertically) and clamps to the level bounds.
+/// Refreshes `TextDisplayState` at `TEXT_UPDATE_INTERVAL` so HUD values
+/// update at a readable rate instead of every frame.
+fn update_text_display(world: &mut World) {
+    let dt = world
+        .get_resource::<DeltaTime>()
+        .map(|d| d.seconds())
+        .unwrap_or(0.0);
+
+    let timer = world
+        .get_resource::<TextDisplayState>()
+        .map(|s| s.timer)
+        .unwrap_or(0.0);
+    let new_timer = timer + dt;
+
+    if new_timer < TEXT_UPDATE_INTERVAL {
+        if let Some(state) = world.get_resource_mut::<TextDisplayState>() {
+            state.timer = new_timer;
+        }
+        return;
+    }
+
+    let fps = if dt > 0.0 {
+        (1.0 / dt).round() as u32
+    } else {
+        0
+    };
+    let contacts = world
+        .get_resource::<CollisionEvents>()
+        .map(|e| e.len())
+        .unwrap_or(0);
+    let grounded = world
+        .query::<Player>()
+        .next()
+        .map(|(_, p)| p.grounded)
+        .unwrap_or(false);
+    let (music_on, vol_pct) = world
+        .get_resource::<AudioState>()
+        .map(|s| (s.music_playing, (s.master_volume * 100.0).round() as u32))
+        .unwrap_or((false, 0));
+    let zoom_pct = world
+        .get_resource::<CameraState>()
+        .map(|s| (s.zoom_scale * 100.0).round() as u32)
+        .unwrap_or(100);
+
+    if let Some(state) = world.get_resource_mut::<TextDisplayState>() {
+        state.fps = fps;
+        state.contacts = contacts;
+        state.grounded = grounded;
+        state.music_on = music_on;
+        state.vol_pct = vol_pct;
+        state.zoom_pct = zoom_pct;
+        state.timer = new_timer - TEXT_UPDATE_INTERVAL;
+    }
+}
+
+/// Pins the camera to the player (centred horizontally, fixed vertically since
+/// the level exactly fills the viewport height) and clamps to the level bounds.
+///
+/// Zoom is derived from `window.height / map_h` at runtime rather than using
+/// the hardcoded `CAMERA_ZOOM` constant. This makes the camera correct at any
+/// physical resolution (including HiDPI displays where the OS reports a larger
+/// physical pixel size than the logical 1920×1080 we request): the level
+/// always fills the window height exactly, and `max_x` is always 256 world
+/// units for any 16∶9 aspect ratio.
+///
+/// Uses `query2` to fetch Player+Position in one pass so no second `world.get`
+/// call is needed while the query borrow is live.
 fn camera_follow(world: &mut World) {
     let window = world
         .get_resource::<WindowSize>()
         .copied()
         .unwrap_or(WindowSize {
-            width: 480,
-            height: 288,
+            width: 1920,
+            height: 1080,
         });
+
     let map_w = (MAP_COLS as f32) * TILE;
     let map_h = (MAP_ROWS as f32) * TILE;
-    let max_x = (map_w - window.width as f32).max(0.0);
-    let max_y = (map_h - window.height as f32).max(0.0);
 
+    // Derive zoom from the actual window height so the level fills the screen
+    // vertically regardless of physical resolution or DPI scale factor.
+    // Multiply by the user-adjustable zoom_scale (= / - keys).
+    let zoom_scale = world
+        .get_resource::<CameraState>()
+        .map_or(1.0, |s| s.zoom_scale);
+    let zoom = (window.height as f32 / map_h).max(f32::EPSILON) * zoom_scale;
+    let viewport_w = window.width as f32 / zoom;
+    let max_x = (map_w - viewport_w).max(0.0);
+
+    // query2 reads Player and Position together — no separate world.get needed.
+    // Position.0 is the physics AABB centre (same convention as Circle centre).
     let player_pos = world
-        .query::<Player>()
+        .query2::<Player, Position>()
         .next()
-        .and_then(|(e, _)| world.get::<Position>(e).copied())
-        .map(|p| p.0);
+        .map(|(_, _, pos)| pos.0);
 
     let Some(player) = player_pos else { return };
 
-    let target_x = player.x - window.width as f32 * 0.5;
-    let target_y = player.y - window.height as f32 * 0.6;
+    let target_x = player.x - viewport_w * 0.5;
 
     if let Some(camera) = world.get_resource_mut::<Camera2D>() {
+        camera.zoom = zoom;
         camera.position.x = target_x.clamp(0.0, max_x);
-        camera.position.y = target_y.clamp(0.0, max_y);
+        camera.position.y = 0.0;
     }
 }
 
@@ -286,6 +423,9 @@ fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     };
 
     // Player — sprite frame driven by CurrentSprite / AnimationState.
+    // Rendered at 1:1 world-pixel scale (camera zoom handles the screen
+    // upscale). Sprite is bottom-aligned to the physics AABB so the player
+    // visually stands on surfaces rather than sinking into them.
     let mut player_batches: std::collections::HashMap<String, SpriteBatch> =
         std::collections::HashMap::new();
     for (entity, cs) in world.query::<CurrentSprite>() {
@@ -295,7 +435,8 @@ fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
         let Some(asset) = assets.get_sprite(&cs.0) else {
             continue;
         };
-        const SCALE: f32 = 2.0;
+        let sprite_w = asset.width as f32;
+        let sprite_h = asset.height as f32;
         let batch = player_batches
             .entry(cs.0.clone())
             .or_insert_with(|| SpriteBatch {
@@ -304,8 +445,13 @@ fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
                 instances: Vec::new(),
             });
         batch.instances.push(SpriteInstance {
-            position: [pos.0.x - PLAYER_HALF.x, pos.0.y - PLAYER_HALF.y],
-            size: [asset.width as f32 * SCALE, asset.height as f32 * SCALE],
+            // Centre horizontally on physics centre; align sprite bottom with
+            // physics AABB bottom so the character stands on the ground.
+            position: [
+                pos.0.x - sprite_w * 0.5,
+                pos.0.y + PLAYER_HALF.y - sprite_h,
+            ],
+            size: [sprite_w, sprite_h],
         });
     }
     batches.extend(player_batches.into_values());
@@ -332,55 +478,76 @@ fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     batches
 }
 
-fn extract_text(world: &World) -> Vec<TextSection> {
-    let dt = world.get_resource::<DeltaTime>().unwrap();
-    let fps = if dt.seconds() > 0.0 {
-        (1.0 / dt.seconds()).round() as u32
-    } else {
-        0
-    };
-    let contacts = world
-        .get_resource::<CollisionEvents>()
-        .map(|e| e.len())
-        .unwrap_or(0);
-    let grounded = world
-        .query::<Player>()
-        .next()
-        .map(|(_, p)| p.grounded)
-        .unwrap_or(false);
-    let (music_on, vol_pct) = world
-        .get_resource::<AudioState>()
-        .map(|s| (s.music_playing, (s.master_volume * 100.0).round() as u32))
-        .unwrap_or((false, 0));
+/// Renders `section` with a solid dark outline by drawing the same text at
+/// eight pixel offsets in a dark colour first, then the original on top.
+/// No engine changes needed — just extra TextSections in draw order.
+fn text_outlined(section: TextSection) -> impl Iterator<Item = TextSection> {
+    const STROKE: f32 = 2.0;
+    const OUTLINE: [u8; 4] = [0, 0, 0, 210];
+    let offsets: &[[f32; 2]] = &[
+        [-STROKE, 0.0],
+        [STROKE, 0.0],
+        [0.0, -STROKE],
+        [0.0, STROKE],
+        [-STROKE, -STROKE],
+        [STROKE, -STROKE],
+        [-STROKE, STROKE],
+        [STROKE, STROKE],
+    ];
+    let shadows: Vec<TextSection> = offsets
+        .iter()
+        .map(|&[dx, dy]| TextSection {
+            content: section.content.clone(),
+            font_id: section.font_id.clone(),
+            font_size: section.font_size,
+            line_height: section.line_height,
+            color: OUTLINE,
+            position: [section.position[0] + dx, section.position[1] + dy],
+            bounds: section.bounds,
+        })
+        .collect();
+    shadows.into_iter().chain(std::iter::once(section))
+}
 
-    vec![
-        TextSection {
-            content: "Tungsten Platformer".into(),
-            font_id: "sans_bold".into(),
-            font_size: 14.0,
-            line_height: 18.0,
-            color: [255, 255, 255, 220],
-            position: [8.0, 6.0],
-            bounds: None,
-        },
-        TextSection {
-            content: format!(
-                "A/D move  Space jump  M music  1/2/3 vol  S stop\n\
-                 grounded:{:<4} contacts:{:<3} music:{:<4} vol:{}%  FPS:{}",
-                if grounded { "yes" } else { "no" },
-                contacts,
-                if music_on { "on" } else { "off" },
-                vol_pct,
-                fps,
-            ),
-            font_id: "mono".into(),
-            font_size: 10.0,
-            line_height: 14.0,
-            color: [200, 220, 255, 200],
-            position: [8.0, 26.0],
-            bounds: None,
-        },
-    ]
+fn extract_text(world: &World) -> Vec<TextSection> {
+    let disp = world
+        .get_resource::<TextDisplayState>()
+        .map(|s| (s.fps, s.contacts, s.grounded, s.music_on, s.vol_pct, s.zoom_pct))
+        .unwrap_or((0, 0, false, false, 50, 100));
+    let (fps, contacts, grounded, music_on, vol_pct, zoom_pct) = disp;
+
+    let mut sections = Vec::new();
+
+    sections.extend(text_outlined(TextSection {
+        content: "Tungsten Platformer".into(),
+        font_id: "sans_bold".into(),
+        font_size: 36.0,
+        line_height: 44.0,
+        color: [255, 255, 255, 230],
+        position: [16.0, 14.0],
+        bounds: None,
+    }));
+
+    sections.extend(text_outlined(TextSection {
+        content: format!(
+            "A/D move  Space jump  M music  1/2/3 vol  S stop  =/- zoom\n\
+             grounded:{:<4} contacts:{:<3} music:{:<4} vol:{}%  zoom:{}%  FPS:{}",
+            if grounded { "yes" } else { "no" },
+            contacts,
+            if music_on { "on" } else { "off" },
+            vol_pct,
+            zoom_pct,
+            fps,
+        ),
+        font_id: "mono".into(),
+        font_size: 24.0,
+        line_height: 32.0,
+        color: [200, 220, 255, 210],
+        position: [16.0, 70.0],
+        bounds: None,
+    }));
+
+    sections
 }
 
 // ---------------------------------------------------------------------------
@@ -391,8 +558,9 @@ fn main() -> anyhow::Result<()> {
     env_logger::init();
 
     let mut config = Config::load("tungsten.json")?;
-    config.window.width = 480;
-    config.window.height = 288;
+    config.window.width = 1920;
+    config.window.height = 1080;
+    let window_height = config.window.height;
     let mut app = App::new(config);
 
     // Hot reload watches the local assets dir (tilemap, tile sprites).
@@ -405,30 +573,51 @@ fn main() -> anyhow::Result<()> {
             cfg.gravity = Vec2::new(0.0, GRAVITY_Y);
             cfg.broadphase_cell_size = 32.0;
         }
+        world.insert_resource(TextDisplayState::default());
+        world.insert_resource(CameraState { zoom_scale: 1.0 });
+
+        // Set an initial zoom from the configured window height so the first
+        // frame renders at the right scale before camera_follow runs. The
+        // exact value is updated every frame by camera_follow anyway.
+        let initial_zoom = window_height as f32 / (MAP_ROWS as f32 * TILE);
+        if let Some(camera) = world.get_resource_mut::<Camera2D>() {
+            camera.zoom = initial_zoom;
+        }
 
         // Tilemap — provides the static ground, platforms, and collision layer.
         let map = world.spawn();
         world.insert(map, TilemapInstance::new("ex10_level", Vec2::ZERO));
 
-        // Player.
+        // Player — spawn past the camera dead-zone (x > viewport_w/2 = 256) so
+        // the camera is visibly scrolled from the first frame. At x = 320 the
+        // camera starts at position 320 - 256 = 64, putting the player centred
+        // on screen. Moving left scrolls the background right; moving right
+        // scrolls it left (until the right edge clamp at max_x = 256).
         let player = world.spawn();
         world.insert(player, Player::default());
-        world.insert(player, Position(Vec2::new(3.0 * TILE + 8.0, 13.0 * TILE)));
+        world.insert(player, Position(Vec2::new(20.0 * TILE, 13.0 * TILE)));
         world.insert(player, Velocity(Vec2::ZERO));
         world.insert(player, Collider::aabb(PLAYER_HALF));
         world.insert(player, RigidBody::dynamic().with_restitution(0.0));
         world.insert(player, AnimationState::new("walk"));
         world.insert(player, CurrentSprite("walk_0".into()));
 
-        // Three bouncy balls at different spots on the level.
-        for (i, spawn_x) in [8.0, 20.0, 32.0].iter().enumerate() {
+        // Bouncing balls spread across the level: (col, row, initial vx).
+        let ball_spawns: &[(f32, f32, f32)] = &[
+            (6.0, 3.0, 70.0),
+            (10.0, 5.0, -50.0),
+            (15.0, 3.0, 90.0),
+            (20.0, 5.0, -80.0),
+            (25.0, 3.0, 55.0),
+            (30.0, 5.0, -65.0),
+            (35.0, 3.0, 75.0),
+            (40.0, 5.0, -45.0),
+        ];
+        for &(col, row, vx) in ball_spawns {
             let ball = world.spawn();
             world.insert(ball, Ball);
-            world.insert(
-                ball,
-                Position(Vec2::new(spawn_x * TILE, 3.0 * TILE + i as f32 * 8.0)),
-            );
-            world.insert(ball, Velocity(Vec2::new(60.0 - i as f32 * 45.0, 0.0)));
+            world.insert(ball, Position(Vec2::new(col * TILE, row * TILE)));
+            world.insert(ball, Velocity(Vec2::new(vx, 0.0)));
             world.insert(ball, Collider::circle(BALL_RADIUS));
             world.insert(
                 ball,
@@ -447,10 +636,14 @@ fn main() -> anyhow::Result<()> {
             ResolvedManifest::load(MANIFEST_ROOT).expect("Failed to load root manifest");
         asset_loader::load_all(&root, world, renderer).expect("Failed to load root assets");
 
-        // Local manifest: tilemap level + tile sprites.
+        // Local manifest: tile sprites + tilemap only. Call individual loaders rather than
+        // load_all to avoid overwriting the SoundRegistry/AnimationRegistry/FontRegistry
+        // that were just populated from the root manifest (those registries are replaced on
+        // every load_all call).
         let local =
             ResolvedManifest::load(MANIFEST_LOCAL).expect("Failed to load local manifest");
-        asset_loader::load_all(&local, world, renderer).expect("Failed to load local assets");
+        asset_loader::load_sprites(&local, world, renderer).expect("Failed to load local sprites");
+        asset_loader::load_tilemaps(&local, world).expect("Failed to load local tilemaps");
 
         // Verify required assets.
         let registry = world.get_resource::<AssetRegistry>().unwrap();
@@ -482,9 +675,11 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
-    // Ordering: input → audio → animation → physics → post-physics → camera.
+    // Ordering: text-display-cache → input → audio → animation → physics → post-physics → camera.
+    app.add_system(update_text_display);
     app.add_system(player_input);
     app.add_system(audio_input_system);
+    app.add_system(camera_input_system);
     app.add_system(animation_system);
     app.add_system(physics_step);
     app.add_system(ground_detection);
@@ -660,7 +855,10 @@ mod tests {
         camera_follow(&mut world);
 
         let cam = world.get_resource::<Camera2D>().unwrap();
-        let max_x = (MAP_COLS as f32 * TILE - 480.0).max(0.0);
+        // camera_follow derives zoom from window.height / map_h.
+        // seed_world uses 480x288, map_h = 288, so zoom = 1.0 and viewport_w = 480.
+        let zoom = 288.0 / (MAP_ROWS as f32 * TILE);
+        let max_x = (MAP_COLS as f32 * TILE - 480.0 / zoom).max(0.0);
         assert!(
             cam.position.x <= max_x,
             "camera not clamped: {} > {}",

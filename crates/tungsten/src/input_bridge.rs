@@ -19,6 +19,8 @@ pub fn translate_key(key: PhysicalKey) -> KeyCode {
             WinitKeyCode::Digit1 => KeyCode::Digit1,
             WinitKeyCode::Digit2 => KeyCode::Digit2,
             WinitKeyCode::Digit3 => KeyCode::Digit3,
+            WinitKeyCode::Equal => KeyCode::Equal,
+            WinitKeyCode::Minus => KeyCode::Minus,
             other => KeyCode::Other(other as u32),
         },
         PhysicalKey::Unidentified(_) => KeyCode::Other(0),

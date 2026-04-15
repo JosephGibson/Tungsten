@@ -312,7 +312,6 @@ impl ApplicationHandler for App {
         }
 
         self.window = Some(window);
-        self.last_frame = Some(Instant::now());
 
         // Run startup callback (asset loading, etc.)
         if let Some(startup) = self.startup.take() {
@@ -320,6 +319,12 @@ impl ApplicationHandler for App {
                 startup(&mut self.world, renderer);
             }
         }
+
+        // Stamp last_frame AFTER startup so asset-loading time is not counted
+        // as the first game frame's dt. A large first-frame dt would cause
+        // fast-moving bodies (including a player falling under gravity) to
+        // tunnel through thin collision geometry in a single substep.
+        self.last_frame = Some(Instant::now());
 
         // Initialize audio after the startup callback so that load_sounds()
         // has already populated the SoundRegistry resource.
