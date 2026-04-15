@@ -1,6 +1,13 @@
+# Phase 2 archive — M7–M12 (complete)
+
+This file is the archived Phase 2 plan. Phase 2 shipped in full as of `v0.7.0-alpha`.
+Milestone detail is in `CHANGELOG.md`; design decisions are in `DECISIONS.md` (D-024–D-036).
+
+---
+
 # Tungsten — Phase 2 Plan
 
-**Status:** Phase 2 in progress. **M7 complete** (`v0.2.0-alpha.0`), **M8 complete** (`v0.3.0-alpha`), **M9 complete** (`v0.4.0-alpha`), **M10 complete** (`v0.5.0-alpha`), **M11 complete** (`v0.6.0-alpha`), **M12 complete** (`v0.7.0-alpha`). Next: **M13 first game**.
+**Status:** Phase 2 complete. M7 (`v0.2.0-alpha.0`), M8 (`v0.3.0-alpha`), M9 (`v0.4.0-alpha`), M10 (`v0.5.0-alpha`), M11 (`v0.6.0-alpha`), M12 (`v0.7.0-alpha`) all shipped.
 **Branch:** `0.7`
 **Prerequisite:** Phase 1 complete (M0–M6), tagged `v0.1.0-alpha`.
 **Companion docs:** `DESIGN.md` (architecture), `DECISIONS.md` (decision log, esp. D-024 — Phase 1 exit observations), `AGENTS.md` (operational rules).
@@ -21,9 +28,8 @@ Phase 1 proved the foundations: hand-rolled ECS, wgpu render pipeline, manifest-
 | `v0.3.0-alpha`   | M8        | Audio                                 | **Complete**    |
 | `v0.4.0-alpha`   | M9        | Hot reload                            | **Complete**    |
 | `v0.5.0-alpha`   | M10       | Tilemaps                              | **Complete**    |
-| `v0.6.0-alpha`   | M11       | 2D physics                            | Complete        |
+| `v0.6.0-alpha`   | M11       | 2D physics                            | **Complete**    |
 | `v0.7.0-alpha`   | M12       | Archetypal ECS rewrite                | **Complete**    |
-| `v1.0.0`         | M13       | A first actual game                   | Planned         |
 
 ### Ordering rationale
 
@@ -33,7 +39,6 @@ Phase 1 proved the foundations: hand-rolled ECS, wgpu render pipeline, manifest-
 4. **Tilemaps fourth** — natural next step for building an actual game. Depends on sprite rendering, benefits from hot reload.
 5. **Physics fifth** — collision shapes and resolution. Needs tilemaps for static geometry; benefits from hot reload for tuning.
 6. **ECS rewrite sixth** — learning-motivated, not a prerequisite. Positioned last before the game to have maximum workload to benchmark against. Conditional per D-030.
-7. **The game last** — the proof that the engine works. Everything else feeds into it.
 
 ---
 
@@ -73,27 +78,8 @@ Phase 1 proved the foundations: hand-rolled ECS, wgpu render pipeline, manifest-
 ## M11 — 2D physics ✓ Complete
 
 **Version:** `v0.6.0-alpha`
-**Soft estimate:** Multiple weekends
-**Learn:** AABB / circle / SAT collision, collision response and resolution, spatial data structures, physics as ECS components and systems.
 
 **Shipped:** Hand-rolled `tungsten-core::physics` module with `Position`/`Velocity`/`Collider`/`RigidBody` components, `PhysicsConfig` + `CollisionEvents` resources, AABB/circle narrow-phase, uniform-grid broad-phase rebuilt per substep, MTV resolution with restitution, tunneling-aware substep driver, `LayerKind::Collision` tilemap layers read transiently as static AABBs, and `example-10-platformer` (side-scroller with gravity, grounded detection via `CollisionEvents`, bouncing circles). See `DECISIONS.md` D-033 and `CHANGELOG.md` for details.
-
-### Goals
-
-- Basic 2D collision detection and response as ECS components and systems.
-- Support AABB and circle shapes.
-- Integrate with existing `Position` / `Velocity` components.
-
-### Scope
-
-- **In scope:** Collision shapes (AABB, circle), broad-phase detection, narrow-phase resolution, static and dynamic bodies, collision events, tilemap collision layer integration (from M10), a demo example.
-- **Out of scope:** Joints, constraints, continuous collision detection, soft bodies, fluid simulation. Game-jam-grade physics, not Box2D.
-
-### Approach
-
-Hand-rolled, consistent with the build-it-to-learn-it principle. The physics system runs during tick, after movement systems and before rendering. Components: `Collider` (shape + offset), `RigidBody` (static vs dynamic, mass). Broad-phase via spatial hash/grid; narrow-phase via shape-vs-shape tests. Collision events collected into a resource that game systems read.
-
-Tilemap collision layers (from M10) provide static geometry — tiles marked solid in tilemap data generate static colliders.
 
 ### Acceptance criteria
 
@@ -104,94 +90,30 @@ Tilemap collision layers (from M10) provide static geometry — tiles marked sol
 - [x] A new example demonstrates entities colliding with each other and with tilemap geometry.
 - [x] `cargo test --workspace` passes. `cargo fmt` clean.
 
-### Known limitations and deferred scope
+### Known limitations
 
-- **Variable-dt physics.** The physics step runs under a variable timestep with a substep cap (see D-033). This is acceptable for hobby-scope gameplay but can produce frame-rate-dependent behaviour at high speeds. A semi-fixed accumulator loop is the preferred upgrade before M13 if instability is observed in practice.
-- **Tilemap collider cost is O(tiles × substeps).** Collision proxies for every tile are regenerated each substep (see D-033). Acceptable for maps ≤128×128 tiles; larger maps should pre-bake a static spatial index.
-- **Advanced physics scenarios are out of scope for M11.** Stacking bodies, moving platforms, contact persistence, and high-speed edge cases are not tested and are not failure modes — they are M13 concerns. M11 acceptance criteria are met for the platformer example as shipped.
-
-### Dependencies
-
-M10 (tilemap collision layers). Phase 1 ECS.
+- **Variable-dt physics.** Runs under a variable timestep with a substep cap (D-033). Can produce frame-rate-dependent behaviour at high speeds. Semi-fixed accumulator loop is the preferred upgrade if instability is observed.
+- **Tilemap collider cost is O(tiles × substeps).** Proxies regenerated each substep (D-033). Budget: ≤128×128 tiles; larger maps should pre-bake a static spatial index.
 
 ---
 
 ## M12 — Archetypal ECS rewrite ✓ Complete
 
 **Version:** `v0.7.0-alpha`
-**Soft estimate:** Multiple weekends (possibly the longest milestone)
-**Learn:** Archetypal storage, cache-friendly iteration, component move semantics, columnar vs HashMap storage tradeoffs, real-world benchmarking.
 
 **Shipped:** Archetypal storage with `Box<dyn AnyColumn>` typed columns, `TypedVec<T>` per-component `Vec<T>`, archetype graph with lazy edge caching, generational entity IDs, `query2`/`query2_entities`/`query3`/`query3_entities` multi-component queries, Criterion benchmark suite. Decision to proceed logged in D-036 (cites D-030). ~6× improvement on single-type queries; ~200× on multi-component queries vs. naive `HashMap<TypeId, HashMap<u32, Box<dyn Any>>>` baseline. All 10 examples compile and smoke-test clean without modification.
 
-### Goals
-
-- Replace the naive `HashMap<TypeId, HashMap<EntityId, Box<dyn Any>>>` storage with an archetypal layout.
-- Maintain **source-level compatibility** for example APIs — existing example code should compile unchanged. Iteration order, internal borrow semantics, and minor behavioral details may change; these are not considered breaking. Determinism and ordering tests will be added as part of M12 acceptance to catch regressions.
-- Measure and document the performance difference with real M7–M11 workloads.
-
-### Scope
-
-- **In scope:** Archetype table storage, contiguous per-archetype component arrays, archetype graph for add/remove transitions, updated query iteration, benchmarks on representative workloads.
-- **Out of scope:** Parallel system scheduling, change detection, command buffers, reactive queries.
-
-### Approach
-
-D-024 confirmed the naive ECS works fine at Phase 1 scale. D-005 says "if naive stays good enough forever, that's a success, not a failure." If this milestone proceeds, it's learning-motivated — the goal is understanding archetypal storage, not fixing a crisis.
-
-The rewrite is internal to `tungsten-core`. The `World` API stays the same; the storage engine behind it changes.
-
 ### Acceptance criteria
 
-- [x] **Decision to proceed or skip logged in `DECISIONS.md` before the milestone begins** (cite D-030).
+- [x] Decision to proceed or skip logged in `DECISIONS.md` before the milestone begins (cite D-030).
 - [x] All existing examples compile and pass without API changes.
 - [x] `cargo test --workspace` passes — ECS test suite is the primary validation.
 - [x] A benchmark comparing iteration speed (old vs new) on ≥10,000 entities with 3+ component types.
 - [x] Query iteration is cache-friendly: components of the same archetype stored contiguously.
 - [x] `DECISIONS.md` entry documenting the storage design and benchmark results.
 
-### Dependencies
-
-All prior milestones — the rewrite happens last so there's real workload to test against. The `World` public API from M2.
-
----
-
-## M13 — A first actual game
-
-**Version:** `v1.0.0`
-**Soft estimate:** Multiple weekends
-**Learn:** What works, what's missing, what's painful — the engine's first real stress test from the user's perspective.
-
-### Goals
-
-- Build a small but complete game using only the Tungsten engine.
-- Exercise every major subsystem: sprites, text, tilemaps, audio, input, physics, animation, ECS.
-- Identify gaps, pain points, and missing conveniences for a hypothetical Phase 3.
-
-### Scope
-
-- **In scope:** A playable game with a beginning and an end (or clear loop). Player movement, collision, at least one mechanic, sound effects, music, text (title, score/UI), a tilemap level. All assets manifest-driven. Ships as a new example or a top-level `game/` crate.
-- **Out of scope:** Polish, save/load, multiple levels (unless trivial), menus beyond a title screen. Proof-of-concept, not product.
-
-### Approach
-
-Genre is decided at M13 start, not before. Don't pre-commit to a design that may not survive contact with the actual engine state after M11–M12. The game lives alongside the examples, uses the same manifest system, follows all the same rules. Game-specific components and systems live in the game crate, not library crates — the engine stays general.
-
-### Acceptance criteria
-
-- [ ] Playable: starts, player can interact, has a win/lose/loop condition.
-- [ ] Every major engine subsystem is exercised.
-- [ ] All assets are manifest-driven.
-- [ ] Runs at a smooth framerate on the development machine.
-- [ ] A retrospective captures what worked, what didn't, and what's missing.
-- [ ] `cargo test --workspace` passes. `cargo fmt` clean.
-
-### Dependencies
-
-All of M7–M11, and M12 if executed. The capstone.
-
 ---
 
 ## Out of scope for Phase 2
 
-See `DESIGN.md` "Non-commitments" for the full list. Nothing in that list is scheduled or scoped for Phase 2 without an explicit `DECISIONS.md` entry.
+See `DESIGN.md` "Non-commitments" for the full list.

@@ -1828,6 +1828,13 @@
       "height": 18,
       "opacity": 1,
       "visible": true,
+      "properties": [
+        {
+          "name": "kind",
+          "type": "string",
+          "value": "collision"
+        }
+      ],
       "data": [
         2,
         0,
@@ -2693,13 +2700,6 @@
         1,
         1,
         1
-      ],
-      "properties": [
-        {
-          "name": "kind",
-          "type": "string",
-          "value": "collision"
-        }
       ]
     }
   ]

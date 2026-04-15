@@ -20,10 +20,11 @@ pub struct HotReloadWatcher {
 }
 
 impl HotReloadWatcher {
-    /// Start watching `watch_dir` recursively. Returns `None` if watcher
-    /// setup fails (unsupported platform, permission error, etc.); the caller
-    /// should log and run without hot reload.
-    pub fn new(watch_dir: PathBuf) -> Option<Self> {
+    /// Start watching each directory in `watch_dirs` recursively. Returns
+    /// `None` if watcher setup fails (unsupported platform, permission error,
+    /// etc.); the caller should log and run without hot reload. Directories
+    /// that do not exist are skipped with a warning rather than failing.
+    pub fn new(watch_dirs: &[PathBuf]) -> Option<Self> {
         let (tx, rx) = mpsc::channel::<PathBuf>();
 
         let mut watcher = match notify::recommended_watcher(move |res: notify::Result<Event>| {
@@ -43,12 +44,25 @@ impl HotReloadWatcher {
             }
         };
 
-        if let Err(e) = watcher.watch(&watch_dir, RecursiveMode::Recursive) {
-            log::error!("Hot reload: failed to watch '{}': {e}", watch_dir.display());
+        let mut watched_any = false;
+        for dir in watch_dirs {
+            if !dir.exists() {
+                log::warn!("Hot reload: skipping non-existent dir '{}'", dir.display());
+                continue;
+            }
+            if let Err(e) = watcher.watch(dir, RecursiveMode::Recursive) {
+                log::error!("Hot reload: failed to watch '{}': {e}", dir.display());
+                return None;
+            }
+            log::info!("Hot reload watching '{}'", dir.display());
+            watched_any = true;
+        }
+
+        if !watched_any {
+            log::warn!("Hot reload: no directories to watch — hot reload disabled");
             return None;
         }
 
-        log::info!("Hot reload watching '{}'", watch_dir.display());
         Some(Self {
             _watcher: watcher,
             receiver: rx,

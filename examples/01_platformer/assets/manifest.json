@@ -3,12 +3,7 @@
     "ex10_ground":   { "path": "sprites/ground.png",   "filter": "nearest" },
     "ex10_platform": { "path": "sprites/platform.png", "filter": "nearest" },
     "ex10_sky":      { "path": "sprites/sky.png",      "filter": "nearest" },
-    "ex10_player":   { "path": "sprites/player.png",   "filter": "nearest" },
     "ex10_ball":     { "path": "sprites/ball.png",     "filter": "nearest" }
-  },
-  "fonts": {
-    "ex10_sans":      { "path": "../../../assets/fonts/Inter/static/Inter-Regular.ttf" },
-    "ex10_sans_bold": { "path": "../../../assets/fonts/Inter/static/Inter-Bold.ttf" }
   },
   "tilemaps": {
     "ex10_level": { "path": "tilemaps/level.tmj" }

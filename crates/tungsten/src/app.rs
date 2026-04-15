@@ -148,12 +148,15 @@ impl App {
         self.startup = Some(Box::new(f));
     }
 
-    /// Enable hot reload: watch `assets_dir` for file changes and reload
-    /// assets at the next frame boundary. `manifest_path` is used to detect
-    /// manifest changes specifically. Has no effect if the watcher fails to
-    /// start (the error is logged and the engine continues without hot reload).
-    pub fn enable_hot_reload(&mut self, assets_dir: PathBuf, manifest_path: PathBuf) {
-        self.hot_reload = HotReloadWatcher::new(assets_dir);
+    /// Enable hot reload: watch each directory in `assets_dirs` for file
+    /// changes and reload assets at the next frame boundary. Pass multiple
+    /// directories when assets span more than one location (e.g. a shared
+    /// root `assets/` plus an example-local `assets/`). `manifest_path` is
+    /// used to detect manifest-file changes specifically. Has no effect if
+    /// the watcher fails to start (the error is logged and the engine
+    /// continues without hot reload).
+    pub fn enable_hot_reload(&mut self, assets_dirs: &[PathBuf], manifest_path: PathBuf) {
+        self.hot_reload = HotReloadWatcher::new(assets_dirs);
         self.manifest_path = Some(manifest_path);
     }
 
@@ -312,7 +315,6 @@ impl ApplicationHandler for App {
         }
 
         self.window = Some(window);
-        self.last_frame = Some(Instant::now());
 
         // Run startup callback (asset loading, etc.)
         if let Some(startup) = self.startup.take() {
@@ -320,6 +322,12 @@ impl ApplicationHandler for App {
                 startup(&mut self.world, renderer);
             }
         }
+
+        // Stamp last_frame AFTER startup so asset-loading time is not counted
+        // as the first game frame's dt. A large first-frame dt would cause
+        // fast-moving bodies (including a player falling under gravity) to
+        // tunnel through thin collision geometry in a single substep.
+        self.last_frame = Some(Instant::now());
 
         // Initialize audio after the startup callback so that load_sounds()
         // has already populated the SoundRegistry resource.
