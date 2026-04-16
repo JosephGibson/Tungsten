@@ -1,8 +1,6 @@
 # M12 Profiling Workflow
 
-Purpose: establish a reproducible CPU/GPU baseline before later Phase 3 work.
-
-Rule: compare runs only when scene, build mode, backend, and frame window match.
+Establish a reproducible CPU/GPU baseline before later Phase 3 work. Compare runs only when scene, build mode, backend, and frame window match.
 
 ## Canonical Capture Rules
 
@@ -29,23 +27,9 @@ WGPU_BACKEND=vulkan ./scripts/perf-capture.sh sprite-stress 300
 WGPU_BACKEND=vulkan ./scripts/perf-capture.sh platformer 300
 ```
 
-Each run writes a timestamped directory under `perf-runs/` with:
+Each run writes a timestamped directory under `perf-runs/` with telemetry logs, optional GPU timing logs, optional `perf` artifacts, and a per-run `README.md`. The script runs `60 + requested_frames` total frames, parses renderer metadata into separate README rows, and computes post-warm-up averages plus `p50` / `p95` / `p99` for `total` and `render_acquire`.
 
-- telemetry logs
-- optional GPU timing logs
-- optional `perf` artifacts
-- a per-run `README.md`
-
-Script behavior:
-
-- runs `60 + requested_frames` total frames
-- parses renderer metadata into separate README rows
-- computes post-warm-up averages plus `p50` / `p95` / `p99` for `total` and `render_acquire`
-
-Published Vulkan frame-pacing matrix workflow:
-
-- keep default rows as full captures
-- use telemetry-only override rows for alternate configs
+For the published Vulkan frame-pacing matrix, keep default rows as full captures and use telemetry-only override rows for alternate configs:
 
 ```bash
 WGPU_BACKEND=vulkan ./scripts/perf-capture.sh sprite-stress 300
@@ -58,10 +42,7 @@ WGPU_BACKEND=vulkan ./scripts/perf-capture.sh platformer 300 --present-mode imme
 WGPU_BACKEND=vulkan ./scripts/perf-capture.sh platformer 300 --present-mode mailbox --max-frame-latency 2 --telemetry-only
 ```
 
-Override behavior:
-
-- `--present-mode` and `--max-frame-latency` inject child-only `TUNGSTEN_RENDER_PRESENT_MODE` / `TUNGSTEN_RENDER_MAX_FRAME_LATENCY`
-- checked-in `tungsten.json` stays unchanged
+`--present-mode` and `--max-frame-latency` inject child-only `TUNGSTEN_RENDER_PRESENT_MODE` / `TUNGSTEN_RENDER_MAX_FRAME_LATENCY`, so the checked-in `tungsten.json` stays unchanged.
 
 Parser-only verification:
 
@@ -71,20 +52,9 @@ bash scripts/test-perf-capture.sh
 
 ## Frame Pacing Policy
 
-Policy:
+`render.present_mode` is the final authority when set to a concrete value. The checked-in defaults are `render.present_mode = "auto"` and `render.max_frame_latency = 1`, so `window.vsync` still selects the auto-vsync vs auto-no-vsync family on the default path. `max_frame_latency` is the requested `wgpu` hint, not a backend-confirmed effective queue depth.
 
-- `render.present_mode` is the final authority when set to a concrete value
-- checked-in defaults are `render.present_mode = "auto"` and `render.max_frame_latency = 1`
-- on the default path, `window.vsync` still selects the auto-vsync vs auto-no-vsync family
-- `max_frame_latency` is the requested `wgpu` hint, not a backend-confirmed effective queue depth
-
-Reference Vulkan matrix captured on April 16, 2026:
-
-- GPU: AMD Radeon 660M (`RADV REMBRANDT`)
-- CPU: AMD Ryzen 5 6600H
-- OS: Arch Linux
-- Rust: `rustc 1.94.1`
-- Profile flags: `lto = "thin"`, `codegen-units = 1`, `panic = "abort"`, `target-cpu=native`
+Reference Vulkan matrix captured on April 16, 2026 on AMD Radeon 660M (`RADV REMBRANDT`) + AMD Ryzen 5 6600H, Arch Linux, `rustc 1.94.1`, with `lto = "thin"`, `codegen-units = 1`, `panic = "abort"`, and `target-cpu=native`:
 
 | Config | Scene | Avg total | p95 total | p99 total | Avg acquire | p95 acquire | p99 acquire |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -99,13 +69,9 @@ Reference Vulkan matrix captured on April 16, 2026:
 
 Takeaways:
 
-- `Mailbox / 3` produced the lowest sprite-stress averages on this machine
-- `Mailbox / 2` was close behind and remains a useful explicit pacing-sensitivity knob
-- none of the non-default rows displaced the checked-in default
-- `Immediate / 1` remains the shipped path because the engine’s `auto` mode intentionally preserves the existing `Immediate`-first no-vsync selection
-- platformer gains were too small to justify a blanket override
-- keep `max_frame_latency = 1` as the checked-in default
-- treat `2` and `3` as opt-in tuning values, not blanket upgrades
+- `Mailbox / 3` produced the lowest sprite-stress averages on this machine; `Mailbox / 2` was close behind and remains a useful explicit pacing-sensitivity knob.
+- None of the non-default rows displaced the checked-in default. `Immediate / 1` remains the shipped path because the engine’s `auto` mode intentionally preserves the existing `Immediate`-first no-vsync selection, and platformer gains were too small to justify a blanket override.
+- Keep `max_frame_latency = 1` as the checked-in default. Treat `2` and `3` as opt-in tuning values, not blanket upgrades.
 
 ## Engine Telemetry
 
@@ -123,13 +89,7 @@ backend: Vulkan adapter: AMD Radeon 660M (RADV REMBRANDT) present_mode: Immediat
 frame: total=3.21ms update=0.42ms flush=0.00ms extract=0.37ms render=2.11ms render_acquire=1.44ms render_encode=0.48ms render_submit_present=0.17ms gpu=n/a audio=0.01ms hot_reload=0.00ms
 ```
 
-Interpretation:
-
-- `frame:` values come from `tungsten::FrameTimings`
-- values are populated once per `RedrawRequested`
-- `gpu=` is populated only when `TUNGSTEN_GPU_TIMING=1` is enabled
-- otherwise `gpu=` remains `n/a`
-- startup metadata is the source of truth for renderer backend, adapter, chosen present mode, and requested max-frame-latency hint
+`frame:` values come from `tungsten::FrameTimings` and are populated once per `RedrawRequested`. `gpu=` is populated only when `TUNGSTEN_GPU_TIMING=1` is enabled; otherwise it remains `n/a`. Startup metadata is the source of truth for renderer backend, adapter, chosen present mode, and requested max-frame-latency hint.
 
 ## GPU Diagnostics
 
@@ -140,12 +100,7 @@ TUNGSTEN_SMOKE_FRAMES=360 TUNGSTEN_PERF_LOG=1 TUNGSTEN_GPU_TIMING=1 \
   cargo run --release -p example-02-sprite-stress
 ```
 
-Caveat:
-
-- GPU timing forces a blocking `device.poll(wait_indefinitely())` readback every frame
-- use it for diagnosis only
-- it inflates CPU-side frame timings
-- do not use it during flamegraph or `perf` captures
+GPU timing forces a blocking `device.poll(wait_indefinitely())` readback every frame. Use it for diagnosis only. It inflates CPU-side frame timings. Do not use it during flamegraph or `perf` captures.
 
 Reference GPU spot-check from April 16, 2026 on the same Vulkan setup:
 
@@ -187,10 +142,7 @@ perf report
 | `gl` | fallback | may be unavailable or noisy |
 | `auto` | any | convenient, but less reproducible |
 
-Notes:
-
-- `GpuFrameTimings::frame_gpu_ms` is expected to be `None` when the active backend or adapter does not expose timestamp queries
-- backend, adapter, chosen present mode, and requested max-frame-latency hint are emitted once at renderer startup when `TUNGSTEN_PERF_LOG=1` is set
+`GpuFrameTimings::frame_gpu_ms` is expected to be `None` when the active backend or adapter does not expose timestamp queries. Backend, adapter, chosen present mode, and requested max-frame-latency hint are emitted once at renderer startup when `TUNGSTEN_PERF_LOG=1` is set.
 
 ## RenderDoc Workflow
 
@@ -229,13 +181,10 @@ Search for these first in flamegraphs:
 
 Interpretation:
 
-- cross-reference hot flamegraph regions with `TUNGSTEN_PERF_LOG` stage timings
-- a hot render stack with low `render_ms` often means sampling noise
-- a hot stage plus a matching telemetry spike usually indicates a real regression
-- when `render_ms` is high, use `render_acquire`, `render_encode`, and `render_submit_present` to classify the regression:
-  swapchain pacing,
-  CPU command generation,
-  or present/readback wait
+- Cross-reference hot flamegraph regions with `TUNGSTEN_PERF_LOG` stage timings.
+- A hot render stack with low `render_ms` often means sampling noise.
+- A hot stage plus a matching telemetry spike usually indicates a real regression.
+- When `render_ms` is high, use `render_acquire`, `render_encode`, and `render_submit_present` to classify the regression as swapchain pacing, CPU command generation, or present/readback wait.
 
 ## Regression Policy
 

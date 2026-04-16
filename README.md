@@ -1,31 +1,14 @@
 # Tungsten
 
-From-scratch Rust 2D game engine.
-
-- Stack: `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets
-- Targets: native only (`Linux`, `macOS`, `Windows`)
-- Exclusion: no WASM
+From-scratch Rust 2D game engine. Stack: `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Targets: native only (`Linux`, `macOS`, `Windows`). No WASM.
 
 ## Status
 
-- Workspace version: `v0.11.0`
-- Current branch: `0.12`
-- Shipped milestone: Phase 3 M14
-- Current engine state:
-  typed two-window event queues flush at a fixed post-system frame boundary beside deferred ECS command buffers, M12 telemetry, benchmark coverage, profiling tooling, and the swapchain frame-pacing follow-up
-- Next milestone: M15 transform + render components
+Workspace `v0.11.0` on branch `0.12`. Phase 3 M14 is shipped. The engine now has typed two-window event queues flushing at a fixed post-system frame boundary beside deferred ECS command buffers, M12 telemetry, benchmark coverage, profiling tooling, and the swapchain frame-pacing follow-up. Next milestone: M15 transform + render components.
 
 ## Stack
 
-- ECS: archetypal storage + deferred command buffers + typed event queues
-- Rendering: `wgpu`
-- Assets: manifest-driven loading by ID
-- Text: `glyphon`
-- Audio: `cpal` + `symphonia` + hand-rolled mixer
-- Hot reload: `notify`
-- Tilemaps: `.tmj` / Tiled-compatible
-- Physics: 2D AABB + circle, uniform-grid broad-phase
-- Tooling: frame telemetry, Criterion benches, perf capture workflow
+Hand-rolled ECS with archetypal storage, deferred command buffers, and typed event queues; `wgpu` rendering; manifest-driven assets; `glyphon` text; `cpal` + `symphonia` + hand-rolled audio mixer; `notify` hot reload; `.tmj` / Tiled-compatible tilemaps; 2D AABB + circle physics with a uniform-grid broad-phase; frame telemetry, Criterion benches, and a perf capture workflow.
 
 ## 0.11 Highlights
 
@@ -64,10 +47,8 @@ bash scripts/test-perf-capture.sh
 
 ## Read Order
 
-| Audience | Order |
-| --- | --- |
-| Human | `README.md` → `DESIGN.md` → `DECISIONS.md` → `AGENTS.md` |
-| AI agent | `AGENTS.md` → `docs/LLM_INDEX.md` → touched files only; use `DESIGN.md` for architecture and `DECISIONS.md` for rationale when needed |
+- Human: `README.md` → `DESIGN.md` → `DECISIONS.md` → `AGENTS.md`
+- AI agent: `AGENTS.md` → `docs/LLM_INDEX.md` → touched files only; use `DESIGN.md` for architecture and `DECISIONS.md` for rationale when needed
 
 ## License
 

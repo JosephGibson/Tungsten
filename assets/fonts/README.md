@@ -1,10 +1,6 @@
 # Fonts
 
-Base font assets for the project.
-
-- Families: sans-serif, serif, monospace
-- Licenses: all three families use SIL OFL 1.1
-- License files: each family directory includes its own `LICENSE.txt`
+Base font assets for the project: sans-serif, serif, and monospace families. All three use SIL OFL 1.1, and each family directory includes its own `LICENSE.txt`.
 
 | Role | Family | License |
 | --- | --- | --- |
@@ -34,12 +30,7 @@ fonts/
 
 ## Load Choice
 
-Use the variable font (`*-Variable.ttf`) when the text stack supports it.
-
-- One file covers weights `100–900`
-- Italic axis comes from the matching `-Italic-Variable.ttf`
-- This is the modern default
-- This keeps the asset footprint small
+Use the variable font (`*-Variable.ttf`) when the text stack supports it. One file covers weights `100–900`, the italic axis comes from the matching `-Italic-Variable.ttf`, this is the modern default, and it keeps the asset footprint small.
 
 Rust crates known to handle variable fonts well:
 
@@ -48,20 +39,9 @@ Rust crates known to handle variable fonts well:
 - `ab_glyph` — supports variable fonts
 - `fontdue` — supports variable fonts
 
-Use the static instances in `static/` when any of these apply:
+Use the static instances in `static/` when your engine or text crate does not read variation axes, when you only need `1–2` weights and want the smallest possible asset footprint, or when you target a platform where variable font support is flaky.
 
-- Your engine or text crate does not read variation axes
-- You only need `1–2` weights and want the smallest possible asset footprint
-- You target a platform where variable font support is flaky
-
-Static instances were generated from the variable masters at standard weights:
-
-- Regular `400`
-- Medium `500`
-- SemiBold `600`
-- Bold `700`
-
-For Inter and Source Serif 4, the optical-size axis was pinned to `14` (text-optimized).
+Static instances were generated from the variable masters at standard weights Regular `400`, Medium `500`, SemiBold `600`, and Bold `700`. For Inter and Source Serif 4, the optical-size axis was pinned to `14` (text-optimized).
 
 ## Recommended Starting Set
 
@@ -92,6 +72,4 @@ font.mono          → JetBrains Mono
 
 ## Attribution
 
-- OFL does not require attribution in the shipped product
-- You must include `LICENSE.txt` or `OFL.txt` alongside redistributed font files
-- Keeping the per-family `LICENSE.txt` files in this folder satisfies that requirement
+OFL does not require attribution in the shipped product, but you must include `LICENSE.txt` or `OFL.txt` alongside redistributed font files. Keeping the per-family `LICENSE.txt` files in this folder satisfies that requirement.
