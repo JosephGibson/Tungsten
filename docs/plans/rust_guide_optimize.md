@@ -1,7 +1,7 @@
 ---
-status: in progress
-completed: Steps 1–4, 6 (all non-GPU steps)
-remaining: Step 5 (smoke-examples.sh) and Step 7 (perf-capture re-baseline) — both require GPU/display
+status: complete
+completed: Steps 1–7
+remaining: none
 ---
 
 # Cargo Profile Optimization Plan
@@ -36,8 +36,11 @@ cross-cutting concerns (`target-cpu`) that benefit both profiles.
 |------|--------|--------|
 | `.cargo/config.toml` | New — `target-cpu=native`, mold stub | **done** |
 | `Cargo.toml` (workspace root) | `[profile.release]`, `[profile.dev.package."*"]` | **done** |
+| `crates/tungsten-core/src/config.rs` | Child-process render override parsing for perf capture | **done** |
+| `scripts/perf-capture.sh` | `--present-mode`, `--max-frame-latency`, `--telemetry-only` | **done** |
+| `scripts/test-perf-capture.sh` | Override-label regression coverage | **done** |
 | `DECISIONS.md` | D-041 with post-optimization benchmark table | **done** |
-| `docs/perf/profiling-workflow.md` | Update reference matrix after re-capture | **pending GPU** |
+| `docs/perf/profiling-workflow.md` | Update reference matrix after re-capture | **done** |
 
 ---
 
@@ -46,7 +49,7 @@ cross-cutting concerns (`target-cpu`) that benefit both profiles.
 | Choice | Resolution | Outcome |
 |--------|-----------|---------|
 | LTO flavor | `"thin"` | Confirmed: parallel, fast link, meaningful gains |
-| `panic = "abort"` | Included — passed verification | 188/188 tests pass, `cpal` audio path unaffected |
+| `panic = "abort"` | Included — passed verification | Final follow-up validation passed `cargo test --workspace` cleanly; `cpal` audio path unaffected |
 | `target-cpu=native` scope | Checked into `.cargo/config.toml` | Applied to all builds including `cargo bench` |
 | Linker | No explicit flag needed | Arch Linux system Rust (1.94.1) already routes through `lld` via `x86_64-linux-gnu-gcc` built-in spec. Adding `-fuse-ld=mold` conflicted and broke the build — removed. Install `mold` (`pacman -S mold`) and uncomment the stub in `.cargo/config.toml` for an additional link-time speedup if wanted later. |
 
@@ -103,14 +106,16 @@ strip = "none"
 
 ### ✅ Step 4 — Verify `panic = "abort"` safety
 
-**Done.** `cargo build --workspace` succeeded. `cargo test --workspace` passed all 188 tests
-including the `cpal` audio path (`tungsten::audio` tests all green).
+**Done.** `cargo build --workspace` succeeded. The final follow-up validation run passed
+`cargo test --workspace` cleanly with 193 tests, including the `cpal` audio path
+(`tungsten::audio` tests all green).
 
 ---
 
-### ⏳ Step 5 — Smoke test (GPU required)
+### ✅ Step 5 — Smoke test (GPU required)
 
-**Pending.** Requires a display and GPU.
+**Done.** `./scripts/smoke-examples.sh` passed `2/2` examples on the 2026-04-16 follow-up
+validation run.
 
 ```bash
 ./scripts/smoke-examples.sh      # layer 2: ~1–2 min with warm cache, Linux only
@@ -150,25 +155,34 @@ unchanged; both sides improved proportionally.
 
 ---
 
-### ⏳ Step 7 — Re-capture profiling baselines (GPU required)
+### ✅ Step 7 — Re-capture profiling baselines (GPU required)
 
-**Pending.** The reference Vulkan matrix in `docs/perf/profiling-workflow.md` (2026-04-15)
-was captured under default release settings. Re-run after Step 5 passes:
+**Done.** `scripts/perf-capture.sh` now supports child-process render overrides via
+`--present-mode`, `--max-frame-latency`, and `--telemetry-only`, so the published Vulkan
+matrix can be regenerated without editing `tungsten.json`.
 
 ```bash
 WGPU_BACKEND=vulkan ./scripts/perf-capture.sh sprite-stress 300
 WGPU_BACKEND=vulkan ./scripts/perf-capture.sh platformer 300
+WGPU_BACKEND=vulkan ./scripts/perf-capture.sh sprite-stress 300 --present-mode immediate --max-frame-latency 2 --telemetry-only
+WGPU_BACKEND=vulkan ./scripts/perf-capture.sh sprite-stress 300 --present-mode immediate --max-frame-latency 3 --telemetry-only
+WGPU_BACKEND=vulkan ./scripts/perf-capture.sh sprite-stress 300 --present-mode mailbox --max-frame-latency 2 --telemetry-only
+WGPU_BACKEND=vulkan ./scripts/perf-capture.sh sprite-stress 300 --present-mode mailbox --max-frame-latency 3 --telemetry-only
+WGPU_BACKEND=vulkan ./scripts/perf-capture.sh platformer 300 --present-mode immediate --max-frame-latency 2 --telemetry-only
+WGPU_BACKEND=vulkan ./scripts/perf-capture.sh platformer 300 --present-mode mailbox --max-frame-latency 2 --telemetry-only
 ```
 
-Then update the reference matrix table in `docs/perf/profiling-workflow.md` and add a
-footnote recording the profile flags (`lto = "thin"`, `codegen-units = 1`, `panic = "abort"`,
-`target-cpu=native`, AMD Ryzen 5 6600U / Radeon 660M, rustc 1.94.1).
+`docs/perf/profiling-workflow.md` is now updated from the 2026-04-16 re-capture sweep with
+profile flags recorded in the matrix header (`lto = "thin"`, `codegen-units = 1`,
+`panic = "abort"`, `target-cpu=native`, AMD Ryzen 5 6600H / Radeon 660M, rustc 1.94.1).
 
-**Expected outcome:** The April 2026 data shows `avg_gpu ≈ 0.61 ms` vs
-`avg_total ≈ 3.64 ms` — the workload is presentation-pacing-bound, not CPU-bound. LTO and
-`target-cpu=native` primarily improve CPU throughput; frame times may shift only marginally
-while the Criterion micro-benchmarks showed the clear wins. Either result is useful:
-improvement confirms headroom was being left; no change confirms the profiling model.
+**Observed outcome:** The post-optimization sweep still reads as presentation-pacing-bound.
+`example-02-sprite-stress` kept `avg_gpu ≈ 0.61 ms` on the default `Immediate / 1` path
+while total/acquire timing moved primarily with present mode and max-frame-latency choices.
+`Mailbox / 3` produced the lowest sprite-stress averages (`avg_total = 2.46 ms`,
+`avg_acquire = 2.07 ms`), but the checked-in default remains `Immediate / 1` because the
+engine's `auto` path intentionally preserves the existing no-vsync selection and the
+cross-scene gains were not strong enough to justify a blanket override.
 
 ---
 
@@ -178,11 +192,11 @@ improvement confirms headroom was being left; no change confirms the profiling m
 - [x] `[profile.release]` in workspace `Cargo.toml` — `lto`, `codegen-units`, `panic`, `debug`, `strip`
 - [x] `[profile.dev.package."*"]` in workspace `Cargo.toml` — `opt-level = 2`
 - [x] `cargo build --workspace` succeeds
-- [x] `cargo test --workspace` passes (188/188)
-- [ ] `./scripts/smoke-examples.sh` passes **(GPU required)**
+- [x] `cargo test --workspace` passes (`193/193` on the final follow-up validation run)
+- [x] `./scripts/smoke-examples.sh` passes
 - [x] `cargo bench --workspace` completes without errors
 - [x] `DECISIONS.md` D-041 records post-optimization numbers and host CPU
-- [ ] `docs/perf/profiling-workflow.md` reference matrix updated **(GPU required)**
+- [x] `docs/perf/profiling-workflow.md` reference matrix updated
 
 ---
 

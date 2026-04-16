@@ -71,14 +71,7 @@ fn present_mode_label(mode: wgpu::PresentMode) -> &'static str {
 }
 
 fn requested_present_mode_label(mode: PresentModeConfig) -> &'static str {
-    match mode {
-        PresentModeConfig::Auto => "auto",
-        PresentModeConfig::Immediate => "immediate",
-        PresentModeConfig::Mailbox => "mailbox",
-        PresentModeConfig::Fifo => "fifo",
-        PresentModeConfig::AutoVsync => "auto_vsync",
-        PresentModeConfig::AutoNoVsync => "auto_no_vsync",
-    }
+    mode.as_str()
 }
 
 fn choose_auto_vsync_present_mode(supported: &[wgpu::PresentMode]) -> wgpu::PresentMode {

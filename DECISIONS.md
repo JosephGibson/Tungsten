@@ -185,12 +185,12 @@ Log of non-obvious decisions for Tungsten. Numbered sequentially; immutable once
 **Decision:** Apply the following compilation flags across the workspace:
 
 *`.cargo/config.toml` (all builds on this machine):*
-- `-C target-cpu=native` — enables AVX2/FMA and the full native ISA. Non-portable binary. All benchmark numbers below are keyed to this flag on AMD Radeon 660M / AMD Ryzen 5 6600U (Arch Linux, rustc 1.94.1).
+- `-C target-cpu=native` — enables AVX2/FMA and the full native ISA. Non-portable binary. All benchmark numbers below are keyed to this flag on AMD Radeon 660M / AMD Ryzen 5 6600H (Arch Linux, rustc 1.94.1).
 
 *`[profile.release]` in workspace `Cargo.toml`:*
 - `lto = "thin"` — ThinLTO: parallel cross-CGU import/export pass, cross-crate inlining.
 - `codegen-units = 1` — single LLVM CGU, maximum within-crate inlining budget.
-- `panic = "abort"` — removes landing pads and unwind tables from LLVM IR; verified safe across all deps including `cpal` (all 188 tests pass).
+- `panic = "abort"` — removes landing pads and unwind tables from LLVM IR; verified safe across all deps including `cpal` on the 2026-04-16 validation pass (188 tests in the suite at that time).
 - `debug = 1` — line-number tables only; preserves `perf`/flamegraph source annotation.
 - `strip = "none"` — explicit; profiling workflow requires symbols in the binary.
 
