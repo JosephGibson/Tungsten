@@ -1,3 +1,5 @@
+use std::any::TypeId;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
@@ -8,9 +10,10 @@ use crate::hot_reload::HotReloadWatcher;
 use crate::input_bridge;
 use crate::telemetry::FrameTimings;
 use tungsten_core::assets::{AnimationRegistry, FontRegistry, SoundRegistry, TilemapRegistry};
-use tungsten_core::physics::{CollisionEvents, PhysicsConfig};
+use tungsten_core::physics::{CollisionEvent, PhysicsConfig};
 use tungsten_core::{
-    AssetRegistry, AudioCommands, Camera2D, CommandBuffer, Config, DeltaTime, InputState, World,
+    AssetRegistry, AudioCommands, Camera2D, CommandBuffer, Config, DeltaTime, EventQueue,
+    InputState, World,
 };
 use tungsten_render::{GpuFrameTimings, QuadInstance, Renderer, SpriteBatch, TextSection};
 use winit::application::ApplicationHandler;
@@ -39,6 +42,8 @@ pub struct WindowSize {
 
 /// Called once after the renderer is initialized, for asset loading.
 pub type StartupFn = Box<dyn FnOnce(&mut World, &mut Renderer)>;
+
+type EventFlusher = Box<dyn FnMut(&mut World)>;
 
 /// Top-level application that drives the winit event loop, ECS, and renderer.
 pub struct App {
@@ -75,9 +80,32 @@ pub struct App {
     /// When true, use render_frame_full_timed each frame (adds device.poll stall).
     /// Set via TUNGSTEN_GPU_TIMING env var. Never enable in production.
     gpu_timing_enabled: bool,
+    /// Type-erased flush closures for registered event queues.
+    /// Populated by `register_event::<T>()` and run once per frame after the
+    /// command-buffer flush stage.
+    event_flushers: Vec<EventFlusher>,
+    /// Event types that already have queue resources registered.
+    registered_event_types: HashSet<TypeId>,
 }
 
 impl App {
+    fn register_event_inner<T: 'static>(
+        world: &mut World,
+        event_flushers: &mut Vec<EventFlusher>,
+        registered_event_types: &mut HashSet<TypeId>,
+    ) {
+        if !registered_event_types.insert(TypeId::of::<T>()) {
+            return;
+        }
+
+        world.insert_resource(EventQueue::<T>::new());
+        event_flushers.push(Box::new(|world: &mut World| {
+            if let Some(queue) = world.get_resource_mut::<EventQueue<T>>() {
+                queue.flush();
+            }
+        }));
+    }
+
     pub fn new(config: Config) -> Self {
         let mut world = World::new();
         world.insert_resource(DeltaTime::new());
@@ -92,10 +120,16 @@ impl App {
         world.insert_resource(TilemapRegistry::new());
         world.insert_resource(Camera2D::new());
         world.insert_resource(PhysicsConfig::default());
-        world.insert_resource(CollisionEvents::new());
         world.insert_resource(FrameTimings::new());
         world.insert_resource(GpuFrameTimings::default());
         world.insert_resource(CommandBuffer::new());
+        let mut event_flushers: Vec<EventFlusher> = Vec::new();
+        let mut registered_event_types = HashSet::new();
+        Self::register_event_inner::<CollisionEvent>(
+            &mut world,
+            &mut event_flushers,
+            &mut registered_event_types,
+        );
 
         Self {
             config,
@@ -119,6 +153,8 @@ impl App {
             system_names: Vec::new(),
             system_name_counter: 0,
             gpu_timing_enabled: std::env::var("TUNGSTEN_GPU_TIMING").is_ok(),
+            event_flushers,
+            registered_event_types,
         }
     }
 
@@ -156,6 +192,19 @@ impl App {
     ) {
         self.system_names.push(name.into());
         self.systems.push(Box::new(system));
+    }
+
+    /// Register an event type with the engine.
+    ///
+    /// Inserts an `EventQueue<T>` resource and schedules its flush once per
+    /// frame after systems complete. Call during startup before `run()`.
+    /// Duplicate registration of the same event type is ignored.
+    pub fn register_event<T: 'static>(&mut self) {
+        Self::register_event_inner::<T>(
+            &mut self.world,
+            &mut self.event_flushers,
+            &mut self.registered_event_types,
+        );
     }
 
     /// Set the function that extracts quad render data from the World.
@@ -479,7 +528,7 @@ impl ApplicationHandler for App {
 
                 // --- Flush stage: apply deferred command buffers ---
                 // Frame order invariant (Phase 3 guardrail):
-                //   run systems -> flush commands -> hot-reload -> extract -> render
+                //   run systems -> flush commands -> flush events -> hot-reload -> extract -> render
                 // Mutations are NOT visible to frame-N systems (they ran before this point).
                 // Mutations ARE visible to extract/render within this frame.
                 let flush_start = Instant::now();
@@ -490,6 +539,13 @@ impl ApplicationHandler for App {
                 self.world.flush(flush_buf);
                 self.world.insert_resource(CommandBuffer::new());
                 let flush_ms = flush_start.elapsed().as_secs_f64() as f32 * 1000.0;
+
+                // --- Event queue flush stage ---
+                // Frame order invariant (Phase 3 guardrail):
+                //   run systems -> flush commands -> flush events -> hot-reload -> extract -> render
+                for flusher in self.event_flushers.iter_mut() {
+                    flusher(&mut self.world);
+                }
 
                 // --- Hot reload stage ---
                 let hot_reload_start = Instant::now();
@@ -619,5 +675,41 @@ impl ApplicationHandler for App {
             }
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::App;
+    use tungsten_core::{CollisionEvent, Config, EventQueue};
+
+    #[derive(Debug, Clone, Copy)]
+    struct ExampleEvent;
+
+    #[test]
+    fn register_event_is_idempotent_per_type() {
+        let mut app = App::new(Config::default());
+        let initial_flushers = app.event_flushers.len();
+
+        app.register_event::<ExampleEvent>();
+        let after_first = app.event_flushers.len();
+        app.register_event::<ExampleEvent>();
+
+        assert_eq!(after_first, initial_flushers + 1);
+        assert_eq!(app.event_flushers.len(), after_first);
+        assert!(app
+            .world
+            .get_resource::<EventQueue<ExampleEvent>>()
+            .is_some());
+    }
+
+    #[test]
+    fn collision_event_is_pre_registered() {
+        let mut app = App::new(Config::default());
+        let initial_flushers = app.event_flushers.len();
+
+        app.register_event::<CollisionEvent>();
+
+        assert_eq!(app.event_flushers.len(), initial_flushers);
     }
 }

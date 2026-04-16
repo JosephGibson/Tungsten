@@ -14,7 +14,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
-use tungsten_core::{CommandBuffer, World};
+use tungsten_core::{CommandBuffer, EventQueue, World};
 
 // ---------------------------------------------------------------------------
 // Component types
@@ -443,6 +443,82 @@ fn bench_naive_query2_via_entities(c: &mut Criterion) {
 }
 
 // ---------------------------------------------------------------------------
+// M14 — EventQueue flush cost (10 queue types, 100 events each)
+// ---------------------------------------------------------------------------
+
+#[allow(dead_code)]
+#[derive(Clone, Copy)]
+struct Ev00(u32);
+#[allow(dead_code)]
+#[derive(Clone, Copy)]
+struct Ev01(u32);
+#[allow(dead_code)]
+#[derive(Clone, Copy)]
+struct Ev02(u32);
+#[allow(dead_code)]
+#[derive(Clone, Copy)]
+struct Ev03(u32);
+#[allow(dead_code)]
+#[derive(Clone, Copy)]
+struct Ev04(u32);
+#[allow(dead_code)]
+#[derive(Clone, Copy)]
+struct Ev05(u32);
+#[allow(dead_code)]
+#[derive(Clone, Copy)]
+struct Ev06(u32);
+#[allow(dead_code)]
+#[derive(Clone, Copy)]
+struct Ev07(u32);
+#[allow(dead_code)]
+#[derive(Clone, Copy)]
+struct Ev08(u32);
+#[allow(dead_code)]
+#[derive(Clone, Copy)]
+struct Ev09(u32);
+
+fn bench_event_queue_flush_10_types(c: &mut Criterion) {
+    c.bench_function("event_queue_flush_10_types", |b| {
+        b.iter(|| {
+            let mut q0: EventQueue<Ev00> = EventQueue::new();
+            let mut q1: EventQueue<Ev01> = EventQueue::new();
+            let mut q2: EventQueue<Ev02> = EventQueue::new();
+            let mut q3: EventQueue<Ev03> = EventQueue::new();
+            let mut q4: EventQueue<Ev04> = EventQueue::new();
+            let mut q5: EventQueue<Ev05> = EventQueue::new();
+            let mut q6: EventQueue<Ev06> = EventQueue::new();
+            let mut q7: EventQueue<Ev07> = EventQueue::new();
+            let mut q8: EventQueue<Ev08> = EventQueue::new();
+            let mut q9: EventQueue<Ev09> = EventQueue::new();
+
+            for i in 0..100u32 {
+                q0.send(Ev00(i));
+                q1.send(Ev01(i));
+                q2.send(Ev02(i));
+                q3.send(Ev03(i));
+                q4.send(Ev04(i));
+                q5.send(Ev05(i));
+                q6.send(Ev06(i));
+                q7.send(Ev07(i));
+                q8.send(Ev08(i));
+                q9.send(Ev09(i));
+            }
+
+            black_box(&mut q0).flush();
+            black_box(&mut q1).flush();
+            black_box(&mut q2).flush();
+            black_box(&mut q3).flush();
+            black_box(&mut q4).flush();
+            black_box(&mut q5).flush();
+            black_box(&mut q6).flush();
+            black_box(&mut q7).flush();
+            black_box(&mut q8).flush();
+            black_box(&mut q9).flush();
+        });
+    });
+}
+
+// ---------------------------------------------------------------------------
 
 criterion_group!(
     benches,
@@ -455,5 +531,6 @@ criterion_group!(
     bench_command_buffer_flush_1k,
     bench_naive_query_single,
     bench_naive_query2_via_entities,
+    bench_event_queue_flush_10_types,
 );
 criterion_main!(benches);

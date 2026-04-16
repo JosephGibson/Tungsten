@@ -1,5 +1,5 @@
 ---
-status: draft
+status: in progress
 goal: Ship Phase 3 capabilities for production-style 2D games
 non-goals: networking, 3D, scripting, WASM, parallel scheduler, full UI library
 files-to-touch: crates/tungsten-core/src/ecs/, crates/tungsten-core/src/, crates/tungsten/src/, crates/tungsten-render/src/, examples/, tungsten.json
@@ -29,10 +29,21 @@ Recommended execution order: M12 -> M13 -> M14 -> M15 -> M16 -> M17 -> M18 -> M1
 
 Deferred to Phase 4: change detection, full UI library, save/load, scripting, parallel scheduler.
 
+## Current status
+
+- Release line: `0.11.0` on branch `0.11`.
+- Completed milestones: M12 (profiling baseline), M13 (command buffers), M14 (event queues).
+- Next recommended milestone: M15 — Transform + Render Components.
+- Archived detailed milestone plans:
+  [M12](archive/Phase3-Milestone12-plan.md),
+  [M13](archive/Phase3-Milestone13-plan.md),
+  [M14](archive/Phase3-Milestone14-plan.md).
+
 ## Execution contract (for Claude Code)
 
 - Implement milestones strictly in `M#` order unless a dependency explicitly allows parallel work.
 - For each milestone: implement only scoped deliverables, run required checks, then update plan status notes before starting next milestone.
+- Archive milestone-specific plans under `docs/plans/archive/` once they are `done`, so only active rollout docs remain at the top level.
 - Do not introduce new runtime dependencies without a `DECISIONS.md` entry.
 - Keep ownership boundaries explicit: ECS/data objects in `tungsten-core`, app wiring in `tungsten`, GPU/render primitives in `tungsten-render`.
 
@@ -50,7 +61,7 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 
 - Keep ECS structural mutation deferred (command buffers), then flush at a fixed frame boundary.
 - Keep events typed and buffered for at least two update windows to avoid order-sensitive drops.
-- Keep frame-boundary order explicit and stable: run systems -> flush command buffers -> flush event queues -> extract/render.
+- Keep frame-boundary order explicit and stable: run systems -> flush command buffers -> flush event queues -> hot reload -> extract -> render.
 - Prefer deterministic behavior: flush buffers in stable registration order, not undefined order.
 - Keep public API surface minimal (`World` gets `flush`; advanced behavior lives in resources/helpers).
 - Define milestone completion by observable behavior and tests, not implementation details.
@@ -103,6 +114,9 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 
 ### M14 - Event Queue
 
+> **Status: complete** (v0.11.0, 2026-04-16)
+> Detailed implementation plan archived at [`docs/plans/archive/Phase3-Milestone14-plan.md`](archive/Phase3-Milestone14-plan.md).
+
 **Goal:** Replace ad hoc event resources with one typed engine pattern.
 
 **Design:**
@@ -120,6 +134,8 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 **Risk to manage:** missed reads from run-conditions; keep two-window lifetime and document it.
 
 ### M15 - Transform + Render Components
+
+> **Status: next up**
 
 **Goal:** Make common sprite rendering data-driven without custom extract closures.
 

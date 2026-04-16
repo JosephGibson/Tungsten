@@ -4,7 +4,7 @@ Operational notes for working on Tungsten. Canonical rulebook for any AI assista
 
 ## What Tungsten is
 
-A from-scratch Rust 2D game engine, native only. `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Three crates in a Cargo workspace: `tungsten-core`, `tungsten-render`, `tungsten`. The `0.10.0` release line is prepared: Phase 3 Milestone 13 is complete, and the engine now has deferred ECS command buffers alongside the M12 CPU/GPU telemetry, benchmark harnesses, baseline profiling tooling, and the swapchain frame-pacing follow-up.
+A from-scratch Rust 2D game engine, native only. `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Three crates in a Cargo workspace: `tungsten-core`, `tungsten-render`, `tungsten`. The `0.11.0` release line is prepared: Phase 3 Milestone 14 is complete, and the engine now has typed two-window event queues alongside deferred ECS command buffers, the M12 CPU/GPU telemetry, benchmark harnesses, baseline profiling tooling, and the swapchain frame-pacing follow-up.
 
 ## Commands
 

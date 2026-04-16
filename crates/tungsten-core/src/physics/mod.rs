@@ -12,8 +12,8 @@
 //!
 //! Components (`Position`, `Velocity`, `Collider`, `RigidBody`) live in
 //! `components.rs`; the step function, broadphase grid, and narrow-phase
-//! shape tests are in sibling modules. `CollisionEvents` is populated
-//! each step for gameplay systems to read.
+//! shape tests are in sibling modules. Collision contacts are delivered via
+//! `EventQueue<CollisionEvent>` each step for gameplay systems to read.
 
 pub mod broadphase;
 pub mod collision;
@@ -24,7 +24,7 @@ pub mod step;
 pub use broadphase::{ProxyId, SpatialGrid};
 pub use collision::{aabb_vs_aabb, aabb_vs_circle, circle_vs_circle, Aabb, Contact};
 pub use components::{BodyKind, Collider, Position, RigidBody, Shape, Velocity};
-pub use events::{CollisionEvent, CollisionEvents};
+pub use events::CollisionEvent;
 pub use step::physics_step;
 
 use glam::Vec2;

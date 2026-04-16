@@ -2,18 +2,18 @@
 
 A from-scratch Rust 2D game engine. `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Native only (Linux / macOS / Windows) — no WASM.
 
-**Status:** `v0.10.0` — release line prepared. Deferred ECS command buffers now land at a fixed frame boundary alongside the existing telemetry, benchmark, profiling tooling, and swapchain frame-pacing follow-up. Next: M14 event queues.
+**Status:** `v0.11.0` — release line prepared. Typed two-window event queues now land at a fixed post-system frame boundary alongside deferred ECS command buffers and the existing telemetry, benchmark, profiling tooling, and swapchain frame-pacing follow-up. Next: M15 transform + render components.
 
 ## Stack
 
-Hand-rolled ECS (archetypal storage + deferred command buffers), wgpu rendering, manifest-driven assets, text (glyphon), audio (cpal + symphonia + hand-rolled mixer), hot reload (notify), tilemaps (.tmj / Tiled), 2D physics (AABB + circle, uniform-grid broad-phase), and Phase 3 tooling (frame telemetry, Criterion benches, perf capture workflow).
+Hand-rolled ECS (archetypal storage + deferred command buffers + typed event queues), wgpu rendering, manifest-driven assets, text (glyphon), audio (cpal + symphonia + hand-rolled mixer), hot reload (notify), tilemaps (.tmj / Tiled), 2D physics (AABB + circle, uniform-grid broad-phase), and Phase 3 tooling (frame telemetry, Criterion benches, perf capture workflow).
 
-## 0.10 Highlights
+## 0.11 Highlights
 
-- Deferred ECS command buffers with a fixed post-system flush boundary.
-- Swapchain pacing controls in `tungsten.json`: `render.present_mode` and `render.max_frame_latency`.
-- Perf capture reporting now includes renderer metadata plus `p50`/`p95`/`p99` for total and acquire timing.
-- Canonical Linux profiling workflow documented in [`docs/perf/profiling-workflow.md`](docs/perf/profiling-workflow.md).
+- Typed two-window `EventQueue<T>` with automatic frame-end flush after command buffers.
+- Physics collision signaling now uses `EventQueue<CollisionEvent>` with no per-system manual clear.
+- `App::register_event::<T>()` provides startup event registration for arbitrary event types.
+- Criterion coverage now includes event-queue flush cost alongside the existing ECS and physics benches.
 
 ## Documents
 

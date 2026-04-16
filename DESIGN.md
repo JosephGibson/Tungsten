@@ -1,6 +1,6 @@
 # Tungsten — Design
 
-**Status:** `v0.10.0` — release line prepared. Phase 3 M13 complete. Branch: `0.10`.  
+**Status:** `v0.11.0` — release line prepared. Phase 3 M14 complete. Branch: `0.11`.
 **Companion docs:** [`AGENTS.md`](AGENTS.md) (operational rules), [`DECISIONS.md`](DECISIONS.md) (rationale by D-NNN).
 
 ---
@@ -69,6 +69,8 @@ init:
 loop:
     poll events     → drain winit events into InputState resource
     tick            → update DeltaTime; run systems in declared order
+    flush           → apply CommandBuffer, then rotate EventQueue resources
+    hot reload      → apply ready asset/manifest changes at the frame boundary
     telemetry       → record update/extract/render/audio/hot-reload timings
     render          → extract renderables from World; record + submit draw calls
     present         → swap buffers
@@ -91,7 +93,9 @@ System registration order is execution order. No scheduler, labels, or dependenc
 
 **Queries:** `query<A>()`, `query2<A,B>()`, `query3<A,B,C>()` plus `_entities` variants — immutable; one downcast per archetype per type, then sequential row access over contiguous `Vec<T>`. Mutable multi-component queries require unsafe split-borrow and are deferred.
 
-**Resources:** singleton state in the `World` accessed by the same mechanism as components. `DeltaTime`, `InputState`, `WindowSize`, `AssetRegistry`, `AudioCommands`, `PhysicsConfig`, `CollisionEvents`, `Camera2D` are all resources.
+**Resources:** singleton state in the `World` accessed by the same mechanism as components. `DeltaTime`, `InputState`, `WindowSize`, `AssetRegistry`, `AudioCommands`, `PhysicsConfig`, `EventQueue<CollisionEvent>`, `Camera2D` are all resources.
+
+**Event delivery (M14):** `EventQueue<T>` stores `previous` + `current` windows. Systems send into `current`; readers normally consume `iter()` (previous then current) to avoid order-sensitive missed reads. `App` rotates queues once per frame after `CommandBuffer` flush and before hot reload, extract, and render.
 
 **Runtime telemetry (M12):** `FrameTimings` is also a `World` resource. `App` measures stage timings inline with `std::time::Instant`, stores the latest frame totals, and records a per-system `Vec<(String, f32)>` in registration order. The render stage is further split into acquire, encode, and submit/present buckets for profiling. GPU-facing diagnostics live in `tungsten-render::GpuFrameTimings`, mirrored into the `World` by the umbrella crate after renderer init and each frame.
 
@@ -183,7 +187,7 @@ Examples ship `examples/NN_name/assets/` with a local manifest. The loader takes
 
 ### Physics — M11
 
-`tungsten-core::physics` (D-033). Components: `Position`, `Velocity`, `Collider` (AABB or circle, with offset), `RigidBody` (static or dynamic). Resources: `PhysicsConfig` (gravity, substep cap, cell size), `CollisionEvents`. Broad-phase: uniform spatial grid rebuilt per substep (`HashMap<IVec2, Vec<ProxyId>>`, default cell size 32.0). Narrow-phase: AABB/AABB, circle/circle, AABB/circle. MTV resolution with restitution. Tilemap collision layers emitted as transient static AABBs per substep.
+`tungsten-core::physics` (D-033). Components: `Position`, `Velocity`, `Collider` (AABB or circle, with offset), `RigidBody` (static or dynamic). Resources: `PhysicsConfig` (gravity, substep cap, cell size), `EventQueue<CollisionEvent>`. Broad-phase: uniform spatial grid rebuilt per substep (`HashMap<IVec2, Vec<ProxyId>>`, default cell size 32.0). Narrow-phase: AABB/AABB, circle/circle, AABB/circle. MTV resolution with restitution. Tilemap collision layers emitted as transient static AABBs per substep.
 
 **Known limits:** variable-dt with substep cap (D-033) — preferred upgrade is semi-fixed accumulator; tilemap collider budget ≤128×128 tiles per substep.
 

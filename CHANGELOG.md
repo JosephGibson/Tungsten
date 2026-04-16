@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.11.0] - 2026-04-16
+
+Phase 3 Milestone 14 — typed event queues and fixed-frame event flush.
+
+### Added
+
+- **Typed event buffering:** `tungsten_core::EventQueue<T>` adds a reusable two-window event resource with `send`, `iter`, `iter_current`, `flush`, `len`, `is_empty`, and `Default`.
+- **App-level event registration:** `App::register_event::<T>()` inserts an `EventQueue<T>` resource and schedules its per-frame flush alongside the existing command-buffer lifecycle.
+- **Event-queue benchmark:** `event_queue_flush_10_types` added to the `tungsten-core` ECS Criterion suite; current local result is ~2.44 us for 10 queue types with 100 events each.
+- **DECISIONS.md D-040:** Records the two-window event design, frame-boundary flush order, startup-only registration contract, and initial benchmark result.
+
+### Changed
+
+- Workspace version bumped to `0.11.0`.
+- `App` frame order is now explicit: run systems, flush command buffers, flush event queues, then hot reload, extract, and render.
+- Physics collision signaling migrated from the bespoke `CollisionEvents` resource to `EventQueue<CollisionEvent>`.
+- `example-01-platformer` now consumes collision contacts through `EventQueue<CollisionEvent>` for grounded detection and HUD contact counts.
+- `README.md`, `DESIGN.md`, `CLAUDE.md`, `AGENTS.md`, and `docs/plans/Phase3.md` now reflect the shipped `0.11.0` release line and Phase 3 M14 completion.
+- Release QA pass completed locally: `cargo fmt --all`, `cargo test --workspace`, `./scripts/smoke-examples.sh`, and `cargo bench -p tungsten-core --bench ecs_bench -- event_queue_flush_10_types` all passed.
+
+### Fixed
+
+- **Release metadata drift:** top-level status docs and workspace version metadata now agree on the active `0.11.0` release line instead of mixing `0.10.0` and M14-complete language.
+
 ## [0.10.0] - 2026-04-15
 
 Phase 3 Milestone 13 — command buffers and fixed-frame structural mutation flush.
