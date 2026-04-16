@@ -3,7 +3,7 @@
 //!
 //! Per frame:
 //!
-//!   1. Clear the `CollisionEvents` resource.
+//!   1. Populate `EventQueue<CollisionEvent>` with resolved contacts.
 //!   2. Decide substep count from max dynamic speed and min half-extent.
 //!   3. For each substep: apply gravity, integrate positions, rebuild
 //!      the broad-phase grid from scratch, emit tilemap static colliders
@@ -18,10 +18,10 @@
 use super::broadphase::{ProxyId, SpatialGrid};
 use super::collision::{aabb_vs_aabb, aabb_vs_circle, circle_vs_circle, Aabb, Contact};
 use super::components::{BodyKind, Collider, Position, RigidBody, Shape, Velocity};
-use super::events::{CollisionEvent, CollisionEvents};
+use super::events::CollisionEvent;
 use super::PhysicsConfig;
 use crate::assets::{LayerKind, TilemapInstance, TilemapRegistry};
-use crate::ecs::{Entity, World};
+use crate::ecs::{Entity, EventQueue, World};
 use crate::time::DeltaTime;
 use glam::Vec2;
 
@@ -60,9 +60,6 @@ pub fn physics_step(world: &mut World) {
         .map(|d| d.seconds())
         .unwrap_or(0.0);
     if dt <= 0.0 {
-        if let Some(events) = world.get_resource_mut::<CollisionEvents>() {
-            events.clear();
-        }
         return;
     }
 
@@ -70,10 +67,6 @@ pub fn physics_step(world: &mut World) {
         .get_resource::<PhysicsConfig>()
         .copied()
         .unwrap_or_default();
-
-    if let Some(events) = world.get_resource_mut::<CollisionEvents>() {
-        events.clear();
-    }
 
     let substeps = compute_substeps(world, dt, &config);
     let sub_dt = dt / substeps as f32;
@@ -298,8 +291,10 @@ fn resolve_collisions(world: &mut World, config: &PhysicsConfig) {
 
     // 6. Push events into the resource.
     if !events.is_empty() {
-        if let Some(sink) = world.get_resource_mut::<CollisionEvents>() {
-            sink.events.extend(events);
+        if let Some(sink) = world.get_resource_mut::<EventQueue<CollisionEvent>>() {
+            for event in events {
+                sink.send(event);
+            }
         }
     }
 }
@@ -389,7 +384,7 @@ mod tests {
     fn seed_world() -> World {
         let mut world = World::new();
         world.insert_resource(DeltaTime { dt: 1.0 / 60.0 });
-        world.insert_resource(CollisionEvents::new());
+        world.insert_resource(EventQueue::<CollisionEvent>::new());
         world.insert_resource(PhysicsConfig::default());
         world.insert_resource(TilemapRegistry::new());
         world
@@ -439,7 +434,7 @@ mod tests {
             "penetrated: {:?}",
             pos.0
         );
-        let events = world.get_resource::<CollisionEvents>().unwrap();
+        let events = world.get_resource::<EventQueue<CollisionEvent>>().unwrap();
         assert!(!events.is_empty(), "expected at least one collision event");
     }
 
@@ -483,7 +478,7 @@ mod tests {
         // Solid tile spans x in [32, 48]. Player half-extent 7 means
         // the center must stay ≤ 32 - 7 = 25.
         assert!(pos.0.x <= 25.0 + 1e-3, "penetrated tile: {:?}", pos.0);
-        let events = world.get_resource::<CollisionEvents>().unwrap();
+        let events = world.get_resource::<EventQueue<CollisionEvent>>().unwrap();
         assert!(events.iter_any_tile(), "expected a tile collision event");
     }
 
@@ -621,13 +616,13 @@ mod tests {
     }
 
     // Helper extension used by tests.
-    trait CollisionEventsExt {
+    trait CollisionEventQueueExt {
         fn iter_any_tile(&self) -> bool;
     }
 
-    impl CollisionEventsExt for CollisionEvents {
+    impl CollisionEventQueueExt for EventQueue<CollisionEvent> {
         fn iter_any_tile(&self) -> bool {
-            self.events.iter().any(|e| e.b.is_none())
+            self.iter_current().any(|e| e.b.is_none())
         }
     }
 }

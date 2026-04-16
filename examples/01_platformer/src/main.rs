@@ -25,11 +25,11 @@ use glam::Vec2;
 use tungsten::asset_loader;
 use tungsten::core::{
     AnimationRegistry, AnimationState, AssetRegistry, AudioCommands, AudioHandle, Camera2D, Config,
-    DeltaTime, InputState, KeyCode, ResolvedManifest, SoundRegistry, TilemapInstance,
+    DeltaTime, EventQueue, InputState, KeyCode, ResolvedManifest, SoundRegistry, TilemapInstance,
     TilemapRegistry, World,
 };
 use tungsten::physics::{
-    physics_step, BodyKind, Collider, CollisionEvents, PhysicsConfig, Position, RigidBody, Velocity,
+    physics_step, BodyKind, Collider, CollisionEvent, PhysicsConfig, Position, RigidBody, Velocity,
 };
 use tungsten::render::{SpriteBatch, SpriteInstance, TextSection};
 use tungsten::{extract_tilemaps, App, WindowSize};
@@ -290,10 +290,10 @@ fn animation_system(world: &mut World) {
     }
 }
 
-/// Scans `CollisionEvents` and flags the player as grounded on an upward contact.
+/// Scans `EventQueue<CollisionEvent>` and flags the player as grounded on an upward contact.
 fn ground_detection(world: &mut World) {
-    let events = match world.get_resource::<CollisionEvents>() {
-        Some(e) => e.events.clone(),
+    let events: Vec<CollisionEvent> = match world.get_resource::<EventQueue<CollisionEvent>>() {
+        Some(queue) => queue.iter().copied().collect(),
         None => return,
     };
     let player_entities: Vec<_> = world.query::<Player>().map(|(e, _)| e).collect();
@@ -333,8 +333,8 @@ fn update_text_display(world: &mut World) {
         0
     };
     let contacts = world
-        .get_resource::<CollisionEvents>()
-        .map(|e| e.len())
+        .get_resource::<EventQueue<CollisionEvent>>()
+        .map(|queue| queue.len())
         .unwrap_or(0);
     let grounded = world
         .query::<Player>()
@@ -717,7 +717,7 @@ mod tests {
         let mut world = World::new();
         world.insert_resource(DeltaTime { dt: 1.0 / 60.0 });
         world.insert_resource(InputState::new());
-        world.insert_resource(CollisionEvents::new());
+        world.insert_resource(EventQueue::<CollisionEvent>::new());
         world.insert_resource(PhysicsConfig {
             gravity: Vec2::new(0.0, GRAVITY_Y),
             ..PhysicsConfig::default()
@@ -795,6 +795,10 @@ mod tests {
             player_input(&mut world);
             physics_step(&mut world);
             ground_detection(&mut world);
+            world
+                .get_resource_mut::<EventQueue<CollisionEvent>>()
+                .unwrap()
+                .flush();
         }
 
         let p = world.get::<Player>(player).unwrap();

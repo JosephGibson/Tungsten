@@ -1,7 +1,4 @@
-//! Collision events. Each physics step clears the event list and then
-//! appends one `CollisionEvent` per resolved contact. Game systems read
-//! this resource after the physics step to react (ground detection,
-//! trigger volumes, damage, etc).
+//! Collision event payloads emitted by the physics step.
 
 use crate::ecs::Entity;
 use glam::Vec2;
@@ -21,42 +18,4 @@ pub struct CollisionEvent {
     pub b: Option<Entity>,
     pub normal: Vec2,
     pub penetration: f32,
-}
-
-/// Resource: per-frame collision events. Cleared at the start of every
-/// physics step and refilled during narrow-phase resolution.
-#[derive(Debug, Clone, Default)]
-pub struct CollisionEvents {
-    pub events: Vec<CollisionEvent>,
-}
-
-impl CollisionEvents {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// True if any event names `entity` as the `a` side (the dynamic
-    /// body that was pushed out). Game code uses this for ground
-    /// detection and trigger polling.
-    pub fn involves(&self, entity: Entity) -> bool {
-        self.events
-            .iter()
-            .any(|e| e.a == entity || e.b == Some(entity))
-    }
-
-    pub fn clear(&mut self) {
-        self.events.clear();
-    }
-
-    pub fn push(&mut self, event: CollisionEvent) {
-        self.events.push(event);
-    }
-
-    pub fn len(&self) -> usize {
-        self.events.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.events.is_empty()
-    }
 }

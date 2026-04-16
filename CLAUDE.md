@@ -16,4 +16,4 @@ At the top of the file: **status** (`draft` · `in progress` · `done`), goal, n
 
 Settled rationale lives in [`DECISIONS.md`](DECISIONS.md). `docs/plans/` is for **time-bounded execution plans** only.
 
-**Status:** `v0.10.0` — release line prepared. Phase 3 M13 complete; frame-pacing docs and perf-capture reporting are up to date. Branch: `0.10`.
+**Status:** `v0.11.0` — release line prepared. Phase 3 M14 complete; event-queue docs, frame-order docs, and perf/benchmark references are up to date. Branch: `0.11`.
