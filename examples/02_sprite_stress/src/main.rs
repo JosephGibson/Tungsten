@@ -114,6 +114,8 @@ fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
         .map(|s| SpriteInstance {
             position: [s.base_x, s.base_y + s.y_offset],
             size: [SPRITE_SIZE, SPRITE_SIZE],
+            rotation: 0.0,
+            color: [255; 4],
         })
         .collect();
 

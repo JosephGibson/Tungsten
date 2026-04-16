@@ -10,6 +10,7 @@ Use this as the first repo map. Keep scope tight.
 | --- | --- |
 | ECS (`World`, entities, components, resources) | [`crates/tungsten-core/src/ecs/`](../crates/tungsten-core/src/ecs/), [`lib.rs`](../crates/tungsten-core/src/lib.rs) |
 | Event queue (`EventQueue<T>`, frame flush) | [`crates/tungsten-core/src/ecs/event_queue.rs`](../crates/tungsten-core/src/ecs/event_queue.rs) |
+| Render components (`Transform`, `Sprite`, `Visibility`, `Tag`) + default sprite extract | [`crates/tungsten-core/src/components.rs`](../crates/tungsten-core/src/components.rs), [`crates/tungsten/src/sprite_extract.rs`](../crates/tungsten/src/sprite_extract.rs) |
 | Asset manifest, registry, IDs | [`crates/tungsten-core/src/assets/manifest.rs`](../crates/tungsten-core/src/assets/manifest.rs), [`registry.rs`](../crates/tungsten-core/src/assets/registry.rs), [`assets/mod.rs`](../crates/tungsten-core/src/assets/mod.rs) |
 | App / `winit` loop, smoke frames | [`crates/tungsten/src/app.rs`](../crates/tungsten/src/app.rs), [`lib.rs`](../crates/tungsten/src/lib.rs) |
 | Runtime telemetry | [`crates/tungsten/src/telemetry.rs`](../crates/tungsten/src/telemetry.rs), [`crates/tungsten/src/app.rs`](../crates/tungsten/src/app.rs) |

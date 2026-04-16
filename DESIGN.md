@@ -102,6 +102,19 @@ Execution order is registration order. There is no scheduler, label system, or d
 
 **Core/render seam:** `TextureHandle(u32)` lives in `tungsten-core`; no `wgpu` types appear in core. `tungsten` mediates the bridge: `AssetRegistry::register_sprite` allocates the handle in core, and `renderer.upload_texture(handle, rgba, …)` stores the GPU resource in render under the same key. Core never calls into render. `tungsten-render` may depend on `tungsten-core` types (`D-007`).
 
+**Render components (M15, `D-042`):** four engine-level component types live in `tungsten_core::components`:
+
+- `Transform { position: Vec2, rotation: f32, scale: Vec2 }` — world-space pose. Rotation is in radians, CCW positive, applied around the quad centre by the sprite shader; scale multiplies the sprite's intrinsic pixel size per-axis.
+- `Sprite { asset_id: String, color: [u8; 4], z_order: i32 }` — asset lookup + tint + stable ascending sort key.
+- `Visibility { visible: bool }` — explicit render gate.
+- `Tag { name: String }` — debug-friendly entity label for find-by-name lookups.
+
+Physics `Position` stays separate (`D-033`). A free-fn `sync_position_to_transform(&mut World)` copies `Position.0` into `Transform.position` one-way; callers register it after `physics_step` when they want the post-physics position to reach the extract stage.
+
+`SpriteInstance` carries the rotation and tint across the core/render seam as a 24-byte GPU-facing POD (`position`, `size`, `rotation` as `f32`, `color` as `Unorm8x4`). The WGSL pipeline multiplies the sampled texel by the tint and rotates around the quad centre. Every sprite path — component-driven, tilemap, and custom extracts alike — uses the same layout.
+
+**Default sprite extract:** if the user does not call `App::set_extract_sprites`, the engine installs `tungsten::extract_sprites_default` at the start of `App::run`. It iterates `query3::<Transform, Sprite, Visibility>`, resolves each sprite through `AssetRegistry`, filters out entities where `visible == false`, sorts entries stably by `z_order` ascending, and batches by `(texture, filter)` within each z-order run so painter ordering is preserved. `Visibility` is required: entities with `Transform + Sprite` but no `Visibility` are never emitted. There is no implicit fallback.
+
 ### Data-Driven Config
 
 Config model: single `tungsten.json` at workspace root, loaded once at startup. Missing file → defaults with warning. Invalid file → fatal error naming the bad field.

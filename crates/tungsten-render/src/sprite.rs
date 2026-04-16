@@ -5,17 +5,30 @@ use tungsten_core::assets::{FilterMode, TextureHandle};
 use wgpu::util::DeviceExt;
 
 /// Per-instance sprite data sent to the GPU.
+///
+/// Layout (24 bytes total):
+///
+/// - `position`: world-space top-left of the non-rotated quad AABB.
+/// - `size`: world-space width/height of the quad.
+/// - `rotation`: radians, CCW positive, applied around the quad centre by the
+///   vertex shader. `0.0` reproduces the pre-M15 top-left-anchored behaviour.
+/// - `color`: RGBA8 tint, uploaded as `Unorm8x4` and multiplied into the
+///   sampled texel in the fragment shader. `[255; 4]` = no tint.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct SpriteInstance {
     pub position: [f32; 2],
     pub size: [f32; 2],
+    pub rotation: f32,
+    pub color: [u8; 4],
 }
 
 impl SpriteInstance {
-    const ATTRIBS: [wgpu::VertexAttribute; 2] = wgpu::vertex_attr_array![
+    const ATTRIBS: [wgpu::VertexAttribute; 4] = wgpu::vertex_attr_array![
         2 => Float32x2,
         3 => Float32x2,
+        4 => Float32,
+        5 => Unorm8x4,
     ];
 
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
@@ -23,6 +36,17 @@ impl SpriteInstance {
             array_stride: std::mem::size_of::<SpriteInstance>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Instance,
             attributes: &Self::ATTRIBS,
+        }
+    }
+}
+
+impl Default for SpriteInstance {
+    fn default() -> Self {
+        Self {
+            position: [0.0, 0.0],
+            size: [0.0, 0.0],
+            rotation: 0.0,
+            color: [255; 4],
         }
     }
 }

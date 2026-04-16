@@ -519,6 +519,71 @@ fn bench_event_queue_flush_10_types(c: &mut Criterion) {
 }
 
 // ---------------------------------------------------------------------------
+// M15 — Sprite-component query cost (Transform + Sprite + Visibility across
+// 5 archetypes, 2k matching entities). Regression gate for the default
+// sprite-extract path: verifies `query3` over the render-component triple
+// stays within ~10 % of the analogous `query2_fragmented_5arch_10k` scaled
+// baseline. See D-042.
+// ---------------------------------------------------------------------------
+
+fn bench_sprite_components_query3_2k(c: &mut Criterion) {
+    use glam::Vec2;
+    use tungsten_core::{Sprite, Tag, Transform, Visibility, World};
+
+    const CHUNK: usize = 2_000 / 2;
+
+    let mut world = World::new();
+
+    // Archetype A: {Transform, Sprite, Visibility}  (matches)
+    for i in 0..CHUNK {
+        let e = world.spawn();
+        world.insert(e, Transform::from_position(Vec2::new(i as f32, 0.0)));
+        world.insert(e, Sprite::new("a"));
+        world.insert(e, Visibility::default());
+    }
+
+    // Archetype B: {Transform, Sprite, Visibility, Tag}  (matches — superset)
+    for i in 0..CHUNK {
+        let e = world.spawn();
+        world.insert(e, Transform::from_position(Vec2::new(i as f32, 1.0)));
+        world.insert(e, Sprite::new("b"));
+        world.insert(e, Visibility::default());
+        world.insert(e, Tag::new("b"));
+    }
+
+    // Archetype C: {Transform, Sprite}  (excluded — no Visibility)
+    for i in 0..CHUNK {
+        let e = world.spawn();
+        world.insert(e, Transform::from_position(Vec2::new(i as f32, 2.0)));
+        world.insert(e, Sprite::new("c"));
+    }
+
+    // Archetype D: {Transform, Visibility}  (excluded — no Sprite)
+    for i in 0..CHUNK {
+        let e = world.spawn();
+        world.insert(e, Transform::from_position(Vec2::new(i as f32, 3.0)));
+        world.insert(e, Visibility::default());
+    }
+
+    // Archetype E: {Sprite, Visibility}  (excluded — no Transform)
+    for _ in 0..CHUNK {
+        let e = world.spawn();
+        world.insert(e, Sprite::new("e"));
+        world.insert(e, Visibility::default());
+    }
+
+    c.bench_function("sprite_components_query3_2k", |b| {
+        b.iter(|| {
+            let sum: i64 = world
+                .query3::<Transform, Sprite, Visibility>()
+                .map(|(_, _, s, _)| s.z_order as i64)
+                .sum();
+            black_box(sum);
+        });
+    });
+}
+
+// ---------------------------------------------------------------------------
 
 criterion_group!(
     benches,
@@ -532,5 +597,6 @@ criterion_group!(
     bench_naive_query_single,
     bench_naive_query2_via_entities,
     bench_event_queue_flush_10_types,
+    bench_sprite_components_query3_2k,
 );
 criterion_main!(benches);

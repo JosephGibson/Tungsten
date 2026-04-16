@@ -31,11 +31,11 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 
 ## Current Status
 
-- Workspace version metadata: `0.11.0`
+- Workspace version metadata: `0.12.0`
 - Current branch: `0.12`
-- Completed milestones: `M12` profiling baseline, `M13` command buffers, `M14` event queues
-- Next recommended milestone: `M15 — Transform + Render Components`
-- Archived detailed milestone plans: [M12](archive/Phase3-Milestone12-plan.md), [M13](archive/Phase3-Milestone13-plan.md), [M14](archive/Phase3-Milestone14-plan.md)
+- Completed milestones: `M12` profiling baseline, `M13` command buffers, `M14` event queues, `M15` transform + render components
+- Next recommended milestone: `M16 — Camera Module`
+- Archived detailed milestone plans: [M12](archive/Phase3-Milestone12-plan.md), [M13](archive/Phase3-Milestone13-plan.md), [M14](archive/Phase3-Milestone14-plan.md), [M15](archive/Phase3-Milestone15-plan.md)
 
 ## Execution Contract
 
@@ -97,7 +97,8 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 
 ### M15 - Transform + Render Components
 
-> **Status: next up**
+> **Status: complete** (`v0.12.0`, `2026-04-16`)
+> Detailed implementation plan archived at [`docs/plans/archive/Phase3-Milestone15-plan.md`](archive/Phase3-Milestone15-plan.md).
 
 - Goal: make common sprite rendering data-driven without custom extract closures.
 - Add: `Transform { position, rotation, scale }`, `Sprite { asset_id, color, z_order }`, `Visibility { visible }`, and `Tag { name }` (debug aid).

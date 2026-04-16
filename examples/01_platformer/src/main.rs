@@ -450,6 +450,8 @@ fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
             // physics AABB bottom so the character stands on the ground.
             position: [pos.0.x - sprite_w * 0.5, pos.0.y + PLAYER_HALF.y - sprite_h],
             size: [sprite_w, sprite_h],
+            rotation: 0.0,
+            color: [255; 4],
         });
     }
     batches.extend(player_batches.into_values());
@@ -462,6 +464,8 @@ fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
             .map(|p| SpriteInstance {
                 position: [p.0.x - BALL_RADIUS, p.0.y - BALL_RADIUS],
                 size: [BALL_RADIUS * 2.0, BALL_RADIUS * 2.0],
+                rotation: 0.0,
+                color: [255; 4],
             })
             .collect();
         if !instances.is_empty() {

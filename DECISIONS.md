@@ -220,3 +220,18 @@ Decision log for non-obvious Tungsten choices.
 | `sprite_extract_batch_build_2k` | 5.842 µs | −20.4% | |
 
 The prior D-036 comparison ratios (~6× and ~200× archetypal vs. naive) still hold directionally; the absolute numbers for both sides improved proportionally under the new profile. The archetypal advantage is unchanged.
+
+## D-042 — M15 Transform + render components
+**Date:** 2026-04-16  
+**Decision:** Four coupled choices:
+
+1. New engine-level components live in `tungsten-core::components`:
+   - `Transform { position: Vec2, rotation: f32, scale: Vec2 }`
+   - `Sprite { asset_id: String, color: [u8; 4], z_order: i32 }`
+   - `Visibility { visible: bool }`
+   - `Tag { name: String }`
+2. Physics `Position` stays separate (per `D-033`). `Position -> Transform.position` is an opt-in free-fn system `sync_position_to_transform`; examples register it between `physics_step` and any extract stage that needs authoritative visuals. There is no reverse sync; physics remains the source of truth for `Position`.
+3. `SpriteInstance` grows by two fields (`rotation: f32`, `color: [u8; 4]`) so the component data can reach the GPU; all in-tree call sites migrate in the same commit — no backwards-compat shim.
+4. If the App has no custom sprite-extract, `extract_sprites_default` runs over `Transform + Sprite + Visibility`. `Visibility` is required — entities with `Transform + Sprite` but no `Visibility` are never emitted by the default path. No implicit fallback.
+
+Plan number conflict note: the M15 plan originally reserved `D-041`, but that ID was claimed on the same day by the Cargo profile entry; the M15 decision was renumbered to `D-042` on close-out.

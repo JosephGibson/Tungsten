@@ -16,6 +16,7 @@ pub enum KeyCode {
     KeyS,
     KeyD,
     KeyM,
+    KeyV,
     Digit1,
     Digit2,
     Digit3,
