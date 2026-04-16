@@ -1,12 +1,12 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+Records all notable project changes.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [0.11.0] - 2026-04-16
 
-Phase 3 Milestone 14 — typed event queues and fixed-frame event flush.
+Summary: Phase 3 Milestone 14 — typed event queues and fixed-frame event flush.
 
 ### Added
 
@@ -30,7 +30,7 @@ Phase 3 Milestone 14 — typed event queues and fixed-frame event flush.
 
 ## [0.10.0] - 2026-04-15
 
-Phase 3 Milestone 13 — command buffers and fixed-frame structural mutation flush.
+Summary: Phase 3 Milestone 13 — command buffers and fixed-frame structural mutation flush.
 
 ### Added
 
@@ -59,7 +59,7 @@ Phase 3 Milestone 13 — command buffers and fixed-frame structural mutation flu
 
 ## [0.9.0] - 2026-04-15
 
-Phase 3 Milestone 12 — performance baseline, telemetry, and profiling harness.
+Summary: Phase 3 Milestone 12 — performance baseline, telemetry, and profiling harness.
 
 ### Added
 
@@ -82,7 +82,7 @@ Phase 3 Milestone 12 — performance baseline, telemetry, and profiling harness.
 
 ## [0.8.0-alpha] - 2026-04-15
 
-Phase 2 integration — comprehensive platformer demo, example consolidation, and Phase 3 planning.
+Summary: Phase 2 integration — comprehensive platformer demo, example consolidation, and Phase 3 planning.
 
 ### Added
 
@@ -103,7 +103,7 @@ Phase 2 integration — comprehensive platformer demo, example consolidation, an
 
 ## [0.7.0-alpha] - 2026-04-14
 
-Phase 2 Milestone 12 — Archetypal ECS rewrite.
+Summary: Phase 2 Milestone 12 — Archetypal ECS rewrite.
 
 ### Added
 
@@ -129,7 +129,7 @@ Phase 2 Milestone 12 — Archetypal ECS rewrite.
 
 ## [0.6.0-alpha] - 2026-04-14
 
-Phase 2 Milestone 11 — 2D Physics.
+Summary: Phase 2 Milestone 11 — 2D Physics.
 
 ### Added
 
@@ -152,7 +152,7 @@ Phase 2 Milestone 11 — 2D Physics.
 
 ## [0.5.0-alpha] - 2026-04-13
 
-Phase 2 Milestone 10 — Tilemaps.
+Summary: Phase 2 Milestone 10 — Tilemaps.
 
 ### Added
 
@@ -178,7 +178,7 @@ Phase 2 Milestone 10 — Tilemaps.
 
 ## [0.4.0-alpha] - 2026-04-13
 
-Phase 2 Milestone 9 — Hot Reload.
+Summary: Phase 2 Milestone 9 — Hot Reload.
 
 ### Added
 
@@ -205,7 +205,7 @@ Phase 2 Milestone 9 — Hot Reload.
 
 ## [0.3.0-alpha] - 2026-04-13
 
-Phase 2 Milestone 8 — Audio.
+Summary: Phase 2 Milestone 8 — Audio.
 
 ### Added
 
@@ -238,7 +238,7 @@ Phase 2 Milestone 8 — Audio.
 
 ## [0.2.0-alpha.0] - 2026-04-12
 
-Phase 2 Milestone 7 — Text rendering.
+Summary: Phase 2 Milestone 7 — Text rendering.
 
 ### Added
 
@@ -251,7 +251,7 @@ Phase 2 Milestone 7 — Text rendering.
 
 ## [0.1.0-alpha] - 2026-04-12
 
-Phase 1 complete (milestones M0 through M6).
+Summary: Phase 1 complete (milestones M0 through M6).
 
 ### Added
 

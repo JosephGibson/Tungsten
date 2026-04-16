@@ -1,63 +1,81 @@
 # Tungsten — Design
 
-**Status:** `v0.11.0` — release line prepared. Phase 3 M14 complete. Branch: `0.11`.
-**Companion docs:** [`AGENTS.md`](AGENTS.md) (operational rules), [`DECISIONS.md`](DECISIONS.md) (rationale by D-NNN).
+## Status
 
----
+- Workspace version: `v0.11.0`
+- Current branch: `0.12`
+- Shipped milestone: Phase 3 M14
+- Companion docs:
+  [`AGENTS.md`](AGENTS.md) for operational rules,
+  [`DECISIONS.md`](DECISIONS.md) for rationale by `D-NNN`
 
-## What it is
+## What It Is
 
-Tungsten is a from-scratch Rust 2D game engine. Native only (Linux / macOS / Windows). Three-crate Cargo workspace: `tungsten-core`, `tungsten-render`, `tungsten`. 2D only — no 3D math beyond what `glam` provides, no model formats, no skeletal animation, no PBR.
+Tungsten is a from-scratch Rust 2D game engine.
+
+- Targets: native only (`Linux`, `macOS`, `Windows`)
+- Workspace crates:
+  `tungsten-core`,
+  `tungsten-render`,
+  `tungsten`
+- Scope limit:
+  2D only; no 3D math beyond what `glam` provides, no model formats, no skeletal animation, no PBR
 
 ## Principles
 
-1. **Build from scratch where practical.** No ECS crates, no engine crates, no rendering helpers.
-2. **wgpu for rendering.** Modern GPU API at a manageable level.
-3. **ECS-first for game state, built by hand.**
-4. **Data over code for content.** Engine config, asset registration, and animation definitions live in JSON.
+1. Build from scratch where practical. No ECS crates, engine crates, or rendering helpers.
+2. Use `wgpu` for rendering. Modern GPU API at a manageable level.
+3. Keep game state ECS-first. Build the ECS in-project.
+4. Keep content data-driven. Engine config, asset registration, and animation definitions live in JSON.
 
-### Dependency philosophy
+### Dependency Philosophy
 
-A dependency is acceptable if at least one of these applies (D-015):
+A dependency is acceptable only if at least one D-015 rule applies.
 
-| Rule | Applies to |
-|---|---|
+| Rule | Applies To |
+| --- | --- |
 | 1. Platform API abstraction | `winit`, `wgpu`, `notify`, `cpal` |
 | 2. Well-specified data format | `serde_json`, `image`, `symphonia` |
 | 3. Math / primitive (solved problem) | `glam`, `bytemuck`, `pollster`, `rtrb` |
 
-Any crate that would hand over something the project is supposed to build is rejected (`bevy_ecs`, `hecs`, `rapier2d`, `rodio`, etc.). Borderline cases get a `DECISIONS.md` entry.
+Reject crates that would hand over work this project is supposed to build. Examples: `bevy_ecs`, `hecs`, `rapier2d`, `rodio`. Borderline cases require a `DECISIONS.md` entry.
 
 ## Stack
 
 | Concern | Choice | Role |
-|---|---|---|
+| --- | --- | --- |
 | Windowing | `winit` | OS window and event abstraction |
 | Rendering | `wgpu` | GPU API abstraction |
 | Math | `glam` | Vectors, matrices, transforms |
-| ECS | hand-rolled | Archetypal storage, built in-project |
+| ECS | hand-rolled | Archetypal storage built in-project |
 | Config | `serde` + `serde_json` | JSON schema derive + parsing |
 | Image | `image` | PNG decoding to CPU bitmaps |
 | Logging | `log` + `env_logger` | Standard facade + basic backend |
 | Errors | `thiserror` / `anyhow` | Typed at library boundaries, anyhow at top level |
-| Audio device | `cpal` | Platform audio API (WASAPI / CoreAudio / ALSA) |
-| Audio decode | `symphonia` | OGG / WAV / MP3 decode |
+| Audio device | `cpal` | Platform audio API (`WASAPI` / `CoreAudio` / `ALSA`) |
+| Audio decode | `symphonia` | `OGG` / `WAV` / `MP3` decode |
 | File watch | `notify` | Platform file-change events |
 | Audio ring | `rtrb` | Wait-free SPSC ring for audio commands |
-| Text | `glyphon` + `cosmic-text` | TrueType/OpenType layout + wgpu rasterization |
-| wgpu init | `pollster` | Sync wrapper for wgpu's async adapter/device init |
-| GPU data | `bytemuck` | Safe `&[T]` → `&[u8]` for vertex/instance buffers |
+| Text | `glyphon` + `cosmic-text` | `TrueType`/`OpenType` layout + `wgpu` rasterization |
+| `wgpu` init | `pollster` | Sync wrapper for async adapter/device init |
+| GPU data | `bytemuck` | Safe `&[T]` → `&[u8]` conversion for GPU buffers |
 | Perf micro-benches | `criterion` | Repeatable ECS / physics / render CPU benchmarks |
-
----
 
 ## Architecture
 
-### Frame loop
+### Frame Loop
 
-Single-threaded, fixed-order, synchronous. The `cpal` audio callback and the `notify` watcher are the only background threads. Game logic stays single-threaded throughout.
+Properties:
 
-```
+- Single-threaded
+- Fixed-order
+- Synchronous
+- Only background threads:
+  `cpal` audio callback,
+  `notify` watcher
+- All game logic stays single-threaded
+
+```text
 init:
     parse tungsten.json → EngineConfig
     open window (winit)
@@ -81,33 +99,130 @@ shutdown:
     tear down wgpu; close window
 ```
 
-System registration order is execution order. No scheduler, labels, or dependency graph.
+Execution order is registration order. There is no scheduler, label system, or dependency graph.
 
 ### ECS
 
-**Entity** — `Entity { index: u32, generation: u32 }`. Generational IDs catch stale-handle bugs. `entity.id()` returns `index` as `u32` for source compatibility.
+**Entity**
 
-**Archetypal storage (M12):** Each archetype is a table of columns — `HashMap<TypeId, Box<dyn AnyColumn>>` plus a parallel `Vec<Entity>` row index. `AnyColumn` is a type-erased interface over `TypedVec<T>(Vec<T>)`. One downcast per archetype per type; elements accessed as contiguous `Vec<T>` slices.
+- Type: `Entity { index: u32, generation: u32 }`
+- Purpose: generational IDs catch stale-handle bugs
+- Compatibility: `entity.id()` returns `index` as `u32`
 
-**Archetype graph:** `Vec<Archetype>` indexed by `ArchetypeId` + `HashMap<Box<[TypeId]>, ArchetypeId>` for O(1) lookup by component set. Archetype 0 is the empty archetype; all freshly spawned entities start there. `add_edges` / `remove_edges` are lazy — cached on first `insert<T>` / `remove<T>` from a given archetype; subsequent transitions are O(1) edge lookup.
+**Archetypal storage (M12)**
 
-**Queries:** `query<A>()`, `query2<A,B>()`, `query3<A,B,C>()` plus `_entities` variants — immutable; one downcast per archetype per type, then sequential row access over contiguous `Vec<T>`. Mutable multi-component queries require unsafe split-borrow and are deferred.
+- Each archetype is a table of columns:
+  `HashMap<TypeId, Box<dyn AnyColumn>>`
+  plus a parallel `Vec<Entity>` row index
+- `AnyColumn` is a type-erased interface over `TypedVec<T>(Vec<T>)`
+- Cost model:
+  one downcast per archetype per type,
+  then contiguous `Vec<T>` slice access
 
-**Resources:** singleton state in the `World` accessed by the same mechanism as components. `DeltaTime`, `InputState`, `WindowSize`, `AssetRegistry`, `AudioCommands`, `PhysicsConfig`, `EventQueue<CollisionEvent>`, `Camera2D` are all resources.
+**Archetype graph**
 
-**Event delivery (M14):** `EventQueue<T>` stores `previous` + `current` windows. Systems send into `current`; readers normally consume `iter()` (previous then current) to avoid order-sensitive missed reads. `App` rotates queues once per frame after `CommandBuffer` flush and before hot reload, extract, and render.
+- Storage:
+  `Vec<Archetype>` indexed by `ArchetypeId`
+  plus `HashMap<Box<[TypeId]>, ArchetypeId>` for O(1) lookup by component set
+- Archetype `0` is the empty archetype
+- Freshly spawned entities start in archetype `0`
+- `add_edges` / `remove_edges` are lazy:
+  first `insert<T>` / `remove<T>` from an archetype builds the edge,
+  later transitions use O(1) cached lookup
 
-**Runtime telemetry (M12):** `FrameTimings` is also a `World` resource. `App` measures stage timings inline with `std::time::Instant`, stores the latest frame totals, and records a per-system `Vec<(String, f32)>` in registration order. The render stage is further split into acquire, encode, and submit/present buckets for profiling. GPU-facing diagnostics live in `tungsten-render::GpuFrameTimings`, mirrored into the `World` by the umbrella crate after renderer init and each frame.
+**Queries**
 
-**ECS error strategy (D-022):** panic on programmer errors (insert on dead entity, wrong downcast); `Option`/`Result` on runtime conditions (entity not found, component absent).
+- Immutable queries:
+  `query<A>()`,
+  `query2<A,B>()`,
+  `query3<A,B,C>()`,
+  plus `_entities` variants
+- Cost model:
+  one downcast per archetype per type,
+  then sequential row access over contiguous `Vec<T>`
+- Mutable multi-component queries remain deferred; they require unsafe split-borrow
 
-**Render path (D-018):** systems mutate the `World` during `tick`; extract functions receive `&World`, resolve string IDs → `TextureHandle` via `AssetRegistry`, and produce POD slices (`SpriteBatch`, `QuadInstance`, `TextSection`) passed into `render_frame_full`. The renderer may read the asset registry for ID resolution but needs no long-lived mutable `World` access at draw time.
+**Resources**
 
-**Core/render seam:** `TextureHandle(u32)` defined in `tungsten-core` — no `wgpu` types appear there. `tungsten` mediates: `AssetRegistry::register_sprite` allocates a handle in core; `renderer.upload_texture(handle, rgba, …)` stores the GPU resource in render's pool under the same key. Core never calls into render. `tungsten-render` may depend on `tungsten-core` types (D-007).
+Singleton state lives in the `World` and uses the same access path as components.
 
-### Data-driven config
+Examples:
 
-Single `tungsten.json` at workspace root, loaded once at startup. Missing → defaults with warning. Invalid → fatal naming the bad field.
+- `DeltaTime`
+- `InputState`
+- `WindowSize`
+- `AssetRegistry`
+- `AudioCommands`
+- `PhysicsConfig`
+- `EventQueue<CollisionEvent>`
+- `Camera2D`
+
+**Event delivery (M14)**
+
+- `EventQueue<T>` stores `previous` + `current`
+- Systems send into `current`
+- Readers normally use `iter()`:
+  `previous` first, then `current`
+- Goal:
+  avoid order-sensitive missed reads
+- `App` rotates queues once per frame:
+  after `CommandBuffer` flush,
+  before hot reload, extract, and render
+
+**Runtime telemetry (M12)**
+
+- `FrameTimings` is a `World` resource
+- `App` measures stage timings inline with `std::time::Instant`
+- Stored data:
+  latest frame totals,
+  per-system `Vec<(String, f32)>` in registration order
+- Render is split into:
+  acquire,
+  encode,
+  submit/present
+- GPU-facing diagnostics live in `tungsten-render::GpuFrameTimings`
+- The umbrella crate mirrors those diagnostics into the `World` after renderer init and after each frame
+
+**ECS error strategy (D-022)**
+
+- Panic on programmer errors:
+  insert on dead entity,
+  wrong downcast
+- Return `Option` / `Result` on runtime conditions:
+  entity not found,
+  component absent
+
+**Render path (D-018)**
+
+- Systems mutate the `World` during `tick`
+- Extract functions receive `&World`
+- Extract resolves string IDs → `TextureHandle` via `AssetRegistry`
+- Extract produces POD slices:
+  `SpriteBatch`,
+  `QuadInstance`,
+  `TextSection`
+- Those slices feed `render_frame_full`
+- The renderer may read the asset registry for ID resolution
+- The renderer does not need long-lived mutable `World` access at draw time
+
+**Core/render seam**
+
+- `TextureHandle(u32)` lives in `tungsten-core`
+- No `wgpu` types appear in core
+- `tungsten` mediates the bridge:
+  `AssetRegistry::register_sprite` allocates the handle in core,
+  `renderer.upload_texture(handle, rgba, …)` stores the GPU resource in render under the same key
+- Core never calls into render
+- `tungsten-render` may depend on `tungsten-core` types (`D-007`)
+
+### Data-Driven Config
+
+Config model:
+
+- Single `tungsten.json` at workspace root
+- Loaded once at startup
+- Missing file → defaults with warning
+- Invalid file → fatal error naming the bad field
 
 ```json
 {
@@ -121,20 +236,34 @@ Single `tungsten.json` at workspace root, loaded once at startup. Missing → de
 }
 ```
 
-`render.present_mode` overrides `window.vsync` when set to a concrete mode such as
-`"immediate"` or `"mailbox"`. When absent or set to `"auto"`, `window.vsync`
-selects between the auto-vsync and auto-no-vsync families.
-`render.max_frame_latency` is the requested frames-in-flight hint passed into
-`wgpu::SurfaceConfiguration`; backends may clamp it, so runtime telemetry should be
-treated as the configured hint unless the backend exposes stronger confirmation.
+Render config semantics:
 
-### Asset system
+- `render.present_mode` is authoritative when set to a concrete mode such as `"immediate"` or `"mailbox"`
+- When `render.present_mode` is absent or `"auto"`, `window.vsync` selects between the auto-vsync and auto-no-vsync families
+- `render.max_frame_latency` is the requested frames-in-flight hint passed into `wgpu::SurfaceConfiguration`
+- Backends may clamp `render.max_frame_latency`
+- Treat runtime telemetry as the configured hint unless the backend exposes stronger confirmation
 
-**Manifest-driven, ID-referenced (D-009).** `assets/manifest.json` registers every asset by string ID. Game code references assets by ID, never by path. Validation at load time catches missing files and unresolved references.
+### Asset System
 
-**Multiple manifests compose by extension, never override (D-017).** IDs must be globally unique across the merged set; duplicates are fatal. Each path resolves relative to its declaring manifest. Merge order is call-site order (D-035).
+**Manifest-driven, ID-referenced (D-009)**
 
-**Animation format (D-010):** frame-based, per-frame durations, each animation in its own file under `assets/animations/`:
+- `assets/manifest.json` registers every asset by string ID
+- Game code uses IDs, never paths
+- Validation at load time catches missing files and unresolved references
+
+**Multiple manifests compose by extension, never override (D-017)**
+
+- IDs must be globally unique across the merged set
+- Duplicate IDs are fatal
+- Each path resolves relative to its declaring manifest
+- Merge order is call-site order (`D-035`)
+
+**Animation format (D-010)**
+
+- Frame-based
+- Per-frame durations
+- One animation per file under `assets/animations/`
 
 ```json
 {
@@ -146,11 +275,17 @@ treated as the configured hint unless the backend exposes stronger confirmation.
 }
 ```
 
-**Per-sprite filter mode (D-011):** `nearest` (default) or `linear` in the manifest. The renderer creates one sampler per mode and binds the right one per sprite. Enables mixed pixel-art and high-res content in the same frame.
+**Per-sprite filter mode (D-011)**
 
-**Directory layout:**
+- Manifest values:
+  `nearest` (default),
+  `linear`
+- Renderer creates one sampler per mode
+- Mixed pixel-art and high-res content can coexist in one frame
 
-```
+**Directory layout**
+
+```text
 assets/
 ├── manifest.json
 ├── sprites/
@@ -159,68 +294,162 @@ assets/
 └── sounds/
 ```
 
-Examples ship `examples/NN_name/assets/` with a local manifest. The loader takes a manifest path; multiple manifests compose.
+- Examples ship `examples/NN_name/assets/` with a local manifest
+- The loader takes a manifest path
+- Multiple manifests compose
 
-**Opaque handles (D-016):** `tungsten-core` stores opaque `TextureHandle(u32)` IDs — no `wgpu` types. `tungsten-render` owns GPU textures, samplers, and pipelines in internal pools keyed by those handles. The registry is the one game-facing lookup path.
+**Opaque handles (D-016)**
 
----
+- `tungsten-core` stores opaque `TextureHandle(u32)` IDs
+- `tungsten-render` owns GPU textures, samplers, and pipelines in internal pools keyed by those handles
+- The registry is the one game-facing lookup path
 
 ## Subsystems
 
 ### Text — M7
 
-`glyphon` + `cosmic-text` + `swash` handle font parsing, shaping, layout, and GPU rasterization (D-026). Fonts registered in the manifest by ID under `fonts`. `TextSection` is extracted each frame; text deliberately ignores `Camera2D` — it stays screen-space while the world scrolls.
+- Stack:
+  `glyphon` + `cosmic-text` + `swash`
+- Responsibilities:
+  font parsing,
+  shaping,
+  layout,
+  GPU rasterization
+- Decision: `D-026`
+- Fonts are registered in the manifest by ID under `fonts`
+- `TextSection` is extracted each frame
+- Text ignores `Camera2D`; it stays screen-space while the world scrolls
 
 ### Audio — M8
 
-`cpal` (D-027) opens the audio device. `symphonia` (D-028) decodes OGG/WAV/MP3 at load time into `Vec<f32>` PCM — no decoder types appear at runtime. A hand-rolled mixer (~150 lines, D-029) runs in the `cpal` callback thread. Game systems write `AudioCommand` values each tick; the callback drains them via an `rtrb` wait-free SPSC ring (D-034, capacity 64). Audio assets are not hot-reloadable — PCM buffers decoded at startup remain fixed for the session.
+- `cpal` (`D-027`) opens the audio device
+- `symphonia` (`D-028`) decodes `OGG` / `WAV` / `MP3` at load time into `Vec<f32>` PCM
+- No decoder types appear at runtime
+- A hand-rolled mixer (~150 lines, `D-029`) runs in the `cpal` callback thread
+- Game systems write `AudioCommand` values each tick
+- The callback drains commands through an `rtrb` wait-free SPSC ring (`D-034`, capacity `64`)
+- Audio assets are not hot-reloadable; PCM buffers decoded at startup stay fixed for the session
 
-### Hot reload — M9
+### Hot Reload — M9
 
-`notify` v6 (D-031) runs on a dedicated background thread, sending file-change events to the main thread via `std::sync::mpsc`. A 50ms debounce collapses editor double-writes. At the next frame boundary the main thread resolves file paths → asset IDs, decodes new data, uploads to GPU, and swaps handles in the registry. Covers: sprites, animations, fonts, manifest. **Shaders excluded** — shader changes require a binary rebuild (D-023).
-
-**Do not break the registry-by-ID invariant** — it is what makes hot reload feasible. No game code should hold direct GPU handles.
+- `notify` v6 (`D-031`) runs on a dedicated background thread
+- File events cross to the main thread through `std::sync::mpsc`
+- A `50ms` debounce collapses editor double-writes
+- At the next frame boundary the main thread:
+  resolves file paths → asset IDs,
+  decodes new data,
+  uploads to GPU,
+  swaps handles in the registry
+- Covered asset classes:
+  sprites,
+  animations,
+  fonts,
+  manifest
+- Exclusion:
+  shaders are excluded; shader changes require a binary rebuild (`D-023`)
+- Invariant:
+  do not break the registry-by-ID model; game code must not hold direct GPU handles
 
 ### Tilemaps — M10
 
-`.tmj` extension, Tiled-compatible schema (D-032). `TilemapData` / `TilemapRegistry` / `TilemapInstance` live in `tungsten-core` (plain data, no wgpu). `extract_tilemaps(&World)` resolves visible tiles into `SpriteBatch`es and returns them in layer order — the sprite pipeline draws them with zero changes (no new wgpu pipeline). `Camera2D` resource (position, zoom) feeds view-projection into sprite and quad pipelines. Visible-AABB culling keeps cost proportional to viewport, not map size. `LayerKind::Collision` layers are accepted by the loader but skipped by extract; physics reads them directly.
+- Extension: `.tmj`
+- Schema: Tiled-compatible (`D-032`)
+- Core data types:
+  `TilemapData`,
+  `TilemapRegistry`,
+  `TilemapInstance`
+- Those types live in `tungsten-core`
+- They are plain data; no `wgpu`
+- `extract_tilemaps(&World)` resolves visible tiles into `SpriteBatch`es
+- Tilemaps reuse the sprite pipeline; no new `wgpu` pipeline exists
+- `Camera2D` (`position`, `zoom`) feeds view-projection into sprite and quad pipelines
+- Visible-AABB culling keeps cost proportional to viewport, not map size
+- `LayerKind::Collision` layers are accepted by the loader but skipped by extract; physics reads them directly
 
 ### Physics — M11
 
-`tungsten-core::physics` (D-033). Components: `Position`, `Velocity`, `Collider` (AABB or circle, with offset), `RigidBody` (static or dynamic). Resources: `PhysicsConfig` (gravity, substep cap, cell size), `EventQueue<CollisionEvent>`. Broad-phase: uniform spatial grid rebuilt per substep (`HashMap<IVec2, Vec<ProxyId>>`, default cell size 32.0). Narrow-phase: AABB/AABB, circle/circle, AABB/circle. MTV resolution with restitution. Tilemap collision layers emitted as transient static AABBs per substep.
+- Module: `tungsten-core::physics` (`D-033`)
+- Components:
+  `Position`,
+  `Velocity`,
+  `Collider` (AABB or circle, with offset),
+  `RigidBody` (static or dynamic)
+- Resources:
+  `PhysicsConfig`,
+  `EventQueue<CollisionEvent>`
+- Broad-phase:
+  uniform spatial grid rebuilt per substep,
+  `HashMap<IVec2, Vec<ProxyId>>`,
+  default cell size `32.0`
+- Narrow-phase:
+  `AABB/AABB`,
+  `circle/circle`,
+  `AABB/circle`
+- Response:
+  MTV resolution with restitution
+- Tilemap collision layers become transient static AABBs per substep
 
-**Known limits:** variable-dt with substep cap (D-033) — preferred upgrade is semi-fixed accumulator; tilemap collider budget ≤128×128 tiles per substep.
+Known limits:
 
-`physics_step` is a plain system — the user registers it via `app.add_system(physics_step)`. `PhysicsConfig::gravity` defaults to `Vec2::ZERO` so top-down games pay no physics overhead.
+- Variable-dt with substep cap (`D-033`); preferred upgrade is a semi-fixed accumulator
+- Tilemap collider budget: `<= 128×128` tiles per substep
+
+`physics_step` is a plain system.
+
+- User registration path: `app.add_system(physics_step)`
+- `PhysicsConfig::gravity` default: `Vec2::ZERO`
+- Result: top-down games pay no gravity overhead by default
 
 ### Archetypal ECS — M12
 
-Storage design described in [§ECS](#ecs) above. Decision to proceed: D-036 (cites D-030).
+Storage design is described in [§ECS](#ecs). Decision to proceed: `D-036` (cites `D-030`).
 
-**Benchmark results** (release, Criterion 0.5, 10k entities, naive `HashMap<TypeId, HashMap<u32, Box<dyn Any>>>` baseline):
+Benchmark results:
 
 | Benchmark | Archetypal | Naive | Ratio |
-|---|---|---|---|
-| `query::<Position>` — 10k entities | 6.8 µs | 43.4 µs | ~6× |
-| `query2::<Position, Velocity>` — 10k, 1 archetype | 7.1 µs | 1 424 µs | ~200× |
-| `query2::<Position, Velocity>` — 10k, 5 archetypes | 7.5 µs | 1 424 µs | ~190× |
-| spawn + 3 inserts × 10k | 4.4 ms | — | — |
+| --- | --- | --- | --- |
+| `query::<Position>` — 10k entities | `6.8 µs` | `43.4 µs` | `~6×` |
+| `query2::<Position, Velocity>` — 10k, 1 archetype | `7.1 µs` | `1 424 µs` | `~200×` |
+| `query2::<Position, Velocity>` — 10k, 5 archetypes | `7.5 µs` | `1 424 µs` | `~190×` |
+| spawn + 3 inserts × 10k | `4.4 ms` | `—` | `—` |
 
-Deferred: parallel system scheduling, change detection, command buffers, reactive queries, `BlobVec` raw-byte columns.
+Deferred work:
 
-### Performance baseline + profiling harness — Phase 3 M12
+- parallel system scheduling
+- change detection
+- command buffers
+- reactive queries
+- `BlobVec` raw-byte columns
 
-M12 establishes the baseline for all later Phase 3 work.
+### Performance Baseline + Profiling Harness — Phase 3 M12
 
-- **CPU telemetry:** `App` instruments update, extract, render, audio, hot reload, and total frame time. The render stage is broken out into surface acquire, CPU encode, and submit/present timing to separate swapchain pacing from command generation. Per-system timings are available through `FrameTimings::system_timings` and a `slowest_system()` helper.
-- **GPU telemetry:** `Renderer::render_frame_full_timed()` uses `wgpu` timestamp queries when `TIMESTAMP_QUERY` is available on the active adapter. The path is opt-in via `TUNGSTEN_GPU_TIMING` because it blocks on GPU completion to read the timestamps back. `GpuFrameTimings` also exposes backend, adapter, present mode, and max-frame-latency metadata for capture logs.
-- **Canonical scenes:** `example-01-platformer` remains the broad feature scene; `example-02-sprite-stress` is the canonical sprite-throughput scene for perf capture.
-- **Bench coverage:** Criterion suites now cover ECS, physics, and CPU-only render-data construction. These are intended as repeatable regression detectors, not exhaustive throughput claims.
-- **Capture tooling:** `scripts/perf-capture.sh` and `docs/perf/profiling-workflow.md` define the repeatable Linux profiling workflow: release builds with frame pointers, smoke-frame-bounded runs, parsed renderer metadata, `p50`/`p95`/`p99` capture summaries, optional flamegraph/perf artifacts, and timestamped output directories under `perf-runs/`.
+M12 defines the baseline for later Phase 3 work.
 
----
+- CPU telemetry:
+  `App` instruments update, extract, render, audio, hot reload, and total frame time.
+  Render is split into surface acquire, CPU encode, and submit/present timing.
+  Per-system timings live in `FrameTimings::system_timings`, plus `slowest_system()`.
+- GPU telemetry:
+  `Renderer::render_frame_full_timed()` uses `wgpu` timestamp queries when `TIMESTAMP_QUERY` is available on the active adapter.
+  The path is opt-in via `TUNGSTEN_GPU_TIMING`.
+  It blocks on GPU completion to read timestamps back.
+  `GpuFrameTimings` also exposes backend, adapter, present mode, and max-frame-latency metadata.
+- Canonical scenes:
+  `example-01-platformer` is the broad feature scene.
+  `example-02-sprite-stress` is the canonical sprite-throughput scene.
+- Bench coverage:
+  Criterion suites cover ECS, physics, and CPU-only render-data construction.
+  They are regression detectors, not exhaustive throughput claims.
+- Capture tooling:
+  `scripts/perf-capture.sh` and `docs/perf/profiling-workflow.md` define the repeatable Linux workflow:
+  release builds with frame pointers,
+  smoke-frame-bounded runs,
+  parsed renderer metadata,
+  `p50` / `p95` / `p99` summaries,
+  optional flamegraph / `perf` artifacts,
+  timestamped output directories under `perf-runs/`
 
-## Non-commitments
+## Non-Commitments
 
 Not scoped without an explicit decision:
 
@@ -234,7 +463,7 @@ Not scoped without an explicit decision:
 - Save / load
 - GUI library
 - Texture atlases / sprite sheet packing
-- GPU-compressed texture formats (KTX2, Basis Universal)
+- GPU-compressed texture formats (`KTX2`, `Basis Universal`)
 - Skeletal animation
 - Streaming or async asset loading
 - Per-platform asset variants

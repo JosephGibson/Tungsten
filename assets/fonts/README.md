@@ -1,18 +1,22 @@
 # Fonts
 
-Base font assets for the project. Three families covering sans-serif, serif, and monospace.
+Base font assets for the project.
 
-| Role  | Family          | License        |
-|-------|-----------------|----------------|
-| Sans  | Inter           | SIL OFL 1.1    |
-| Serif | Source Serif 4  | SIL OFL 1.1    |
-| Mono  | JetBrains Mono  | SIL OFL 1.1    |
+- Families: sans-serif, serif, monospace
+- Licenses: all three families use SIL OFL 1.1
+- License files: each family directory includes its own `LICENSE.txt`
 
-All three are under the SIL Open Font License — free for commercial use, modification, and embedding. The full license text lives in each family's `LICENSE.txt`.
+| Role | Family | License |
+| --- | --- | --- |
+| Sans | Inter | SIL OFL 1.1 |
+| Serif | Source Serif 4 | SIL OFL 1.1 |
+| Mono | JetBrains Mono | SIL OFL 1.1 |
+
+SIL OFL permits commercial use, modification, and embedding.
 
 ## Layout
 
-```
+```text
 fonts/
 ├── Inter/
 │   ├── Inter-Variable.ttf            # variable font (wght 100–900, opsz 14–32)
@@ -28,38 +32,52 @@ fonts/
 └── JetBrainsMono/  (same layout)
 ```
 
-## Which file should I load?
+## Load Choice
 
-**Use the variable font (`*-Variable.ttf`)** if your text stack supports it. One file gives you every weight from 100 to 900, plus the italic axis from the matching `-Italic-Variable.ttf`. This is the modern default and keeps your binary small.
+Use the variable font (`*-Variable.ttf`) when the text stack supports it.
+
+- One file covers weights `100–900`
+- Italic axis comes from the matching `-Italic-Variable.ttf`
+- This is the modern default
+- This keeps the asset footprint small
 
 Rust crates known to handle variable fonts well:
+
 - `cosmic-text` / `glyphon` (via `swash`) — full support
 - `swash` — full support
 - `ab_glyph` — supports variable fonts
 - `fontdue` — supports variable fonts
 
-**Use the static instances in `static/`** if:
-- Your engine or text crate doesn't read variation axes
-- You only need 1–2 weights and want the smallest possible asset footprint
-- You're targeting a platform where variable font support is flaky
+Use the static instances in `static/` when any of these apply:
 
-The statics were generated from the variable masters at the standard weights (Regular 400, Medium 500, SemiBold 600, Bold 700). For Inter and Source Serif 4, the optical-size axis was pinned to 14 (text-optimized).
+- Your engine or text crate does not read variation axes
+- You only need `1–2` weights and want the smallest possible asset footprint
+- You target a platform where variable font support is flaky
 
-## Recommended starting set
+Static instances were generated from the variable masters at standard weights:
 
-If you just want to load the minimum and move on:
+- Regular `400`
+- Medium `500`
+- SemiBold `600`
+- Bold `700`
+
+For Inter and Source Serif 4, the optical-size axis was pinned to `14` (text-optimized).
+
+## Recommended Starting Set
+
+Load these first if you want the minimum useful set:
 
 - `Inter/static/Inter-Regular.ttf` — body UI text
 - `Inter/static/Inter-Bold.ttf` — UI emphasis / headings
 - `JetBrainsMono/static/JetBrainsMono-Regular.ttf` — code, debug overlays, console
 
-Add the serif and other weights when you actually need them.
+Add the serif family and additional weights only when needed.
 
-## Suggested role aliases
+## Suggested Role Aliases
 
-When you wire these into your engine, alias them by role rather than family name so you can swap fonts later without touching call sites:
+Alias by role, not family name. This keeps call sites stable if the family changes later.
 
-```
+```text
 font.sans          → Inter
 font.sans.bold     → Inter Bold
 font.serif         → Source Serif 4
@@ -74,4 +92,6 @@ font.mono          → JetBrains Mono
 
 ## Attribution
 
-The OFL does not require attribution in your shipped product, but you must include the `LICENSE.txt` (or `OFL.txt`) alongside the font files if you redistribute them. Keeping the per-family `LICENSE.txt` files in this folder satisfies that.
+- OFL does not require attribution in the shipped product
+- You must include `LICENSE.txt` or `OFL.txt` alongside redistributed font files
+- Keeping the per-family `LICENSE.txt` files in this folder satisfies that requirement
