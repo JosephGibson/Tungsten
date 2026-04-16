@@ -60,6 +60,8 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 
 ### M12 - Performance Baseline + Profiling Harness
 
+> **Status: complete** (v0.9.0, 2026-04-15)
+
 **Goal:** Establish reliable CPU/GPU diagnostics and a reproducible baseline before adding more engine complexity.
 
 **Why now:** Feature work without early perf visibility risks compounding regressions and makes root-cause analysis harder.
@@ -81,6 +83,8 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 - Subsequent milestones reference this baseline when evaluating regressions.
 
 ### M13 - Command Buffers
+
+> **Status: complete** (v0.10.0, 2026-04-15)
 
 **Goal:** Remove `&mut World` structural-mutation pressure inside system loops.
 

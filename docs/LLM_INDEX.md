@@ -15,6 +15,6 @@ Short map from subsystem to primary source files. Authoritative rules and comman
 | 2D physics (M11) | [`crates/tungsten-core/src/physics/`](../crates/tungsten-core/src/physics/) |
 | Config (`tungsten.json`) | [`crates/tungsten-core/src/config.rs`](../crates/tungsten-core/src/config.rs), [`tungsten.json`](../tungsten.json) at workspace root |
 | Examples (by feature) | [`examples/`](../examples/) — `cargo run -p example-NN-name` |
-| Perf workflow | [`docs/perf/profiling-workflow.md`](../docs/perf/profiling-workflow.md), [`scripts/perf-capture.sh`](../scripts/perf-capture.sh) |
+| Perf workflow | [`docs/perf/profiling-workflow.md`](../docs/perf/profiling-workflow.md), [`scripts/perf-capture.sh`](../scripts/perf-capture.sh), [`scripts/test-perf-capture.sh`](../scripts/test-perf-capture.sh) |
 
 Core/render seam and invariants: `AGENTS.md` and `DECISIONS.md` (D-007, D-018).

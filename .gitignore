@@ -27,6 +27,21 @@ Desktop.ini
 .env.local
 *.local
 
+# Performance / profiling / test artifacts
+/perf-runs/*
+!/perf-runs/.gitkeep
+*.profraw
+*.profdata
+*.gcda
+*.gcno
+lcov.info
+coverage/
+.tarpaulin/
+tarpaulin-report.html
+perf.data
+perf.data.old
+flamegraph.svg
+
 # LLM tooling local state
 .aider*
 .cursor/

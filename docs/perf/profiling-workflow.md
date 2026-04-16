@@ -11,7 +11,9 @@ M12 establishes a reproducible CPU/GPU baseline before Phase 3 feature work. Use
 | Secondary scene | `example-01-platformer` |
 | Linux backend | `WGPU_BACKEND=vulkan` |
 | Resolution | `1920x1080` for sprite stress |
-| VSync | disabled for throughput measurement |
+| Present mode | `render.present_mode = "auto"` |
+| VSync selector | `window.vsync = false` for throughput measurement |
+| Default max frame latency | `1` |
 | Warm-up window | first 60 frames ignored |
 | Capture window | 300 measured frames after warm-up |
 | GPU timings | opt-in via `TUNGSTEN_GPU_TIMING=1` only |
@@ -26,7 +28,46 @@ WGPU_BACKEND=vulkan ./scripts/perf-capture.sh platformer 300
 ```
 
 Each run writes a timestamped directory under `perf-runs/` with telemetry logs, optional GPU timing logs, optional `perf` artifacts, and a per-run `README.md`.
-The script automatically runs `60 + requested_frames` total frames and computes averages from the post-warm-up portion only.
+The script automatically runs `60 + requested_frames` total frames, parses renderer metadata
+into separate README rows, and computes post-warm-up averages plus `p50`/`p95`/`p99` for
+`total` and `render_acquire`.
+
+Parser-only verification for the reporting helpers:
+
+```bash
+bash scripts/test-perf-capture.sh
+```
+
+## Frame Pacing Policy
+
+`render.present_mode` is the final authority when set to a concrete value. The checked-in
+default keeps `render.present_mode = "auto"` and `render.max_frame_latency = 1`, so
+`window.vsync` still selects the auto-vsync vs auto-no-vsync family on the default path.
+`max_frame_latency` should be read as the requested `wgpu` hint, not a backend-confirmed
+effective queue depth.
+
+Reference Vulkan matrix captured on April 15, 2026 on an AMD Radeon 660M (`RADV REMBRANDT`):
+
+| Config | Scene | Avg total | p95 total | p99 total | Avg acquire | p95 acquire | p99 acquire |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `Immediate / 1` | sprite-stress | `3.64ms` | `13.18ms` | `17.23ms` | `3.24ms` | `12.36ms` | `16.85ms` |
+| `Immediate / 2` | sprite-stress | `4.08ms` | `12.64ms` | `17.54ms` | `3.65ms` | `11.79ms` | `17.14ms` |
+| `Immediate / 3` | sprite-stress | `3.56ms` | `14.47ms` | `16.95ms` | `3.18ms` | `13.62ms` | `16.53ms` |
+| `Mailbox / 2` | sprite-stress | `2.80ms` | `13.12ms` | `17.25ms` | `2.42ms` | `12.16ms` | `16.28ms` |
+| `Mailbox / 3` | sprite-stress | `2.70ms` | `14.31ms` | `17.98ms` | `2.32ms` | `13.30ms` | `17.58ms` |
+| `Immediate / 1` | platformer | `4.82ms` | `16.30ms` | `18.55ms` | `4.05ms` | `14.63ms` | `17.37ms` |
+| `Immediate / 2` | platformer | `5.12ms` | `17.12ms` | `19.85ms` | `4.42ms` | `16.30ms` | `18.65ms` |
+| `Mailbox / 2` | platformer | `4.70ms` | `16.62ms` | `20.71ms` | `3.93ms` | `15.63ms` | `20.01ms` |
+
+Takeaways:
+
+- `Mailbox / 2` is a useful explicit profiling knob: it cut sprite-stress averages
+  materially on this machine.
+- It did not win the cross-scene default because platformer tails regressed versus
+  `Immediate / 1`, and the default `auto` path intentionally preserves the
+  existing `Immediate`-first no-vsync behavior when supported.
+- Keep `max_frame_latency = 1` as the checked-in default for now. Treat `2` and `3`
+  as opt-in tuning values, not blanket upgrades.
 
 ## Engine Telemetry
 
@@ -45,6 +86,8 @@ frame: total=3.21ms update=0.42ms extract=0.37ms render=2.11ms render_acquire=1.
 ```
 
 `frame:` values come from `tungsten::FrameTimings`, populated once per `RedrawRequested`. The `gpu=` field is populated only when `TUNGSTEN_GPU_TIMING=1` is enabled; otherwise it remains `n/a`.
+The startup metadata line is the source of truth for the renderer backend, adapter, chosen
+present mode, and requested max-frame-latency hint used in the run.
 
 ## GPU Diagnostics
 
@@ -56,6 +99,12 @@ TUNGSTEN_SMOKE_FRAMES=360 TUNGSTEN_PERF_LOG=1 TUNGSTEN_GPU_TIMING=1 \
 ```
 
 Caveat: GPU timing forces a blocking `device.poll(wait_indefinitely())` readback every frame. This is for diagnosis only and will inflate CPU-side frame timings. Do not use it during flamegraph or `perf` captures.
+
+Reference GPU spot-check from April 15, 2026 on the same Vulkan setup:
+
+- `Immediate / 1` on `example-02-sprite-stress`: `avg_total = 4.54ms`, `avg_render_acquire = 1.46ms`, `avg_gpu = 0.61ms`.
+- The GPU pass stayed far below total frame time, reinforcing that the dominant cost in these
+  captures is presentation pacing rather than shader or draw throughput.
 
 ## Manual CPU Profiling
 
@@ -91,7 +140,7 @@ perf report
 | `gl` | fallback | may be unavailable or noisy |
 | `auto` | any | convenient, but less reproducible |
 
-`GpuFrameTimings::frame_gpu_ms` is expected to be `None` when the active backend or adapter does not expose timestamp queries. Backend, adapter, chosen present mode, and max-frame-latency hint are emitted once at renderer startup when `TUNGSTEN_PERF_LOG=1` is set.
+`GpuFrameTimings::frame_gpu_ms` is expected to be `None` when the active backend or adapter does not expose timestamp queries. Backend, adapter, chosen present mode, and requested max-frame-latency hint are emitted once at renderer startup when `TUNGSTEN_PERF_LOG=1` is set.
 
 ## RenderDoc Workflow
 

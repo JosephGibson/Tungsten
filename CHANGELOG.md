@@ -4,6 +4,35 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.10.0] - 2026-04-15
+
+Phase 3 Milestone 13 — command buffers and fixed-frame structural mutation flush.
+
+### Added
+
+- **Deferred ECS mutation path:** `tungsten_core::CommandBuffer` and `PendingEntity` provide queued `spawn`, `despawn`, `insert`, `insert_pending`, and `remove_component` operations without requiring structural mutation during system iteration.
+- **`World::flush`:** New two-pass flush API resolves pending spawns first, then replays queued mutations in registration order with dead-entity guards for late inserts/despawns.
+- **Flush telemetry:** `tungsten::FrameTimings` now records `flush_ms`, and `App` logs flush timing in `TUNGSTEN_PERF_LOG` output.
+- **M13 ECS coverage:** New unit/integration tests cover command buffer queueing, pending-entity resolution, command ordering, dead-entity guards, and empty-buffer no-op behavior.
+- **Command-buffer benchmark:** `command_buffer_flush_1k_spawns` added to `tungsten-core` Criterion benches; current local result is ~252 us for 1k spawns plus 2k deferred inserts.
+- **Frame-pacing config knobs:** `render.present_mode` and `render.max_frame_latency` are now typed `tungsten.json` fields backed by `PresentModeConfig`.
+- **Perf-capture parser regression test:** `scripts/test-perf-capture.sh` exercises metadata parsing plus nearest-rank `p50`/`p95`/`p99` calculations against a synthetic telemetry log.
+- **DECISIONS.md D-039:** Records the resource-based command-buffer delivery model, two-pass flush design, and initial benchmark numbers.
+
+### Changed
+
+- Workspace version bumped to `0.10.0`.
+- `App` now inserts a fresh `CommandBuffer` resource on startup and drains/replaces it once per frame between system execution and hot reload/extract.
+- `tungsten-render` now resolves present mode through explicit precedence rules: concrete `render.present_mode` overrides `window.vsync`, unsupported concrete modes fail fast, and `render.max_frame_latency = 0` is rejected at renderer init.
+- `scripts/perf-capture.sh` now records renderer backend/adapter/present-mode metadata as separate README rows and reports post-warm-up `p50`/`p95`/`p99` for total and acquire timing.
+- `docs/perf/profiling-workflow.md`, `README.md`, `DESIGN.md`, `CLAUDE.md`, `AGENTS.md`, and `docs/plans/Phase3.md` now reflect the shipped `0.10.0` release line instead of a pre-release state.
+- Release QA pass completed locally: `cargo fmt --all`, `cargo test --workspace`, `./scripts/smoke-examples.sh`, `cargo clippy --workspace --all-targets`, `bash scripts/test-perf-capture.sh`, the new `command_buffer_flush_1k_spawns` bench, and steady-state ECS regression benches all passed.
+
+### Fixed
+
+- **Perf metadata wording:** release docs now describe `max_frame_latency` as the requested `wgpu` hint rather than a backend-confirmed effective queue depth.
+- **Sprite-stress capture note:** example docs now describe the checked-in default auto no-vsync path without implying that the example hard-overrides `render.present_mode` from `tungsten.json`.
+
 ## [0.9.0] - 2026-04-15
 
 Phase 3 Milestone 12 — performance baseline, telemetry, and profiling harness.

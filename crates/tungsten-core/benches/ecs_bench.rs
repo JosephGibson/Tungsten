@@ -14,7 +14,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
-use tungsten_core::ecs::World;
+use tungsten_core::{CommandBuffer, World};
 
 // ---------------------------------------------------------------------------
 // Component types
@@ -306,6 +306,28 @@ fn bench_spawn_despawn_1k(c: &mut Criterion) {
     });
 }
 
+fn bench_command_buffer_flush_1k(c: &mut Criterion) {
+    c.bench_function("command_buffer_flush_1k_spawns", |b| {
+        b.iter(|| {
+            let mut world = World::new();
+            let mut buf = CommandBuffer::new();
+            for i in 0..1_000u32 {
+                let pending = buf.spawn();
+                buf.insert_pending(
+                    pending,
+                    Position {
+                        x: i as f32,
+                        y: 0.0,
+                    },
+                );
+                buf.insert_pending(pending, Velocity { dx: 1.0, dy: 0.0 });
+            }
+            world.flush(buf);
+            black_box(&world);
+        });
+    });
+}
+
 // ---------------------------------------------------------------------------
 // Naive baseline: minimal HashMap simulation of the pre-M12 storage.
 //
@@ -430,6 +452,7 @@ criterion_group!(
     bench_query2_fragmented,
     bench_query2_10k_5archetypes_pv,
     bench_spawn_despawn_1k,
+    bench_command_buffer_flush_1k,
     bench_naive_query_single,
     bench_naive_query2_via_entities,
 );

@@ -20,7 +20,7 @@ pub use assets::{
 pub use audio::{AudioCommand, AudioCommands};
 pub use camera::Camera2D;
 pub use config::{Config, ConfigError};
-pub use ecs::{Entity, World};
+pub use ecs::{CommandBuffer, Entity, PendingEntity, World};
 pub use input::{InputState, KeyCode, MouseButton};
 pub use physics::{
     aabb_vs_aabb, aabb_vs_circle, circle_vs_circle, physics_step, Aabb, BodyKind, Collider,

@@ -1,6 +1,7 @@
 use std::any::TypeId;
 
 use super::archetype::TypedVec;
+use super::command_buffer::{Command, CommandBuffer, CommandTarget};
 use super::entity::Entity;
 use super::resource::ResourceMap;
 use super::storage::Archetypes;
@@ -211,6 +212,49 @@ impl World {
     pub fn remove_resource<T: 'static>(&mut self) -> Option<T> {
         self.resources.remove::<T>()
     }
+
+    /// Apply all queued commands in `buffer` to the world, then drop it.
+    ///
+    /// Pass 1 allocates real entities for every queued spawn, building a
+    /// `pending_id -> Entity` table. Pass 2 replays all mutations in their
+    /// original registration order.
+    pub fn flush(&mut self, buffer: CommandBuffer) {
+        let mut pending_entities: Vec<Entity> = Vec::with_capacity(buffer.pending_count as usize);
+        for cmd in &buffer.commands {
+            if let Command::Spawn { pending_id } = cmd {
+                debug_assert_eq!(
+                    *pending_id as usize,
+                    pending_entities.len(),
+                    "pending_id must be allocated sequentially"
+                );
+                pending_entities.push(self.spawn());
+            }
+        }
+
+        for cmd in buffer.commands {
+            match cmd {
+                Command::Spawn { .. } => {}
+                Command::Insert { target, setter } => {
+                    let entity = match target {
+                        CommandTarget::Live(entity) => {
+                            if !self.is_alive(entity) {
+                                continue;
+                            }
+                            entity
+                        }
+                        CommandTarget::Pending(id) => pending_entities[id as usize],
+                    };
+                    setter.apply(self, entity);
+                }
+                Command::Remove(remove) => remove(self),
+                Command::Despawn(entity) => {
+                    if self.is_alive(entity) {
+                        self.despawn(entity);
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl Default for World {
@@ -225,6 +269,7 @@ impl Default for World {
 
 #[cfg(test)]
 mod tests {
+    use super::super::command_buffer::CommandBuffer;
     use super::*;
 
     #[derive(Debug, Clone, PartialEq)]
@@ -466,5 +511,157 @@ mod tests {
 
         let positions: Vec<_> = world.query::<Position>().collect();
         assert_eq!(positions.len(), 3);
+    }
+
+    #[test]
+    fn flush_spawn_entity_is_alive() {
+        let mut world = World::new();
+        let mut buffer = CommandBuffer::new();
+        let pending = buffer.spawn();
+        buffer.insert_pending(pending, Name("spawned".into()));
+
+        world.flush(buffer);
+
+        let results: Vec<_> = world.query::<Name>().collect();
+        assert_eq!(results.len(), 1);
+        assert!(world.is_alive(results[0].0));
+    }
+
+    #[test]
+    fn flush_spawn_insert_pending_components_visible() {
+        let mut world = World::new();
+        let mut buffer = CommandBuffer::new();
+        let pending = buffer.spawn();
+        buffer.insert_pending(pending, Position { x: 1.0, y: 2.0 });
+        buffer.insert_pending(pending, Velocity { dx: 3.0, dy: 4.0 });
+
+        world.flush(buffer);
+
+        let results: Vec<_> = world.query2::<Position, Velocity>().collect();
+        assert_eq!(results.len(), 1);
+        let (_, position, velocity) = results[0];
+        assert_eq!(*position, Position { x: 1.0, y: 2.0 });
+        assert_eq!(*velocity, Velocity { dx: 3.0, dy: 4.0 });
+    }
+
+    #[test]
+    fn flush_insert_live_entity() {
+        let mut world = World::new();
+        let entity = world.spawn();
+        let mut buffer = CommandBuffer::new();
+
+        buffer.insert(entity, Name("live".into()));
+        world.flush(buffer);
+
+        assert_eq!(world.get::<Name>(entity).unwrap(), &Name("live".into()));
+    }
+
+    #[test]
+    fn flush_despawn_entity_is_dead() {
+        let mut world = World::new();
+        let entity = world.spawn();
+        let mut buffer = CommandBuffer::new();
+
+        buffer.despawn(entity);
+        world.flush(buffer);
+
+        assert!(!world.is_alive(entity));
+    }
+
+    #[test]
+    fn flush_remove_component() {
+        let mut world = World::new();
+        let entity = world.spawn();
+        world.insert(entity, Position { x: 1.0, y: 2.0 });
+        let mut buffer = CommandBuffer::new();
+
+        buffer.remove_component::<Position>(entity);
+        world.flush(buffer);
+
+        assert!(world.get::<Position>(entity).is_none());
+    }
+
+    #[test]
+    fn flush_command_order_preserved() {
+        let mut world = World::new();
+        let entity = world.spawn();
+        let mut buffer = CommandBuffer::new();
+
+        buffer.insert(entity, Position { x: 1.0, y: 2.0 });
+        buffer.insert(entity, Velocity { dx: 3.0, dy: 4.0 });
+        buffer.remove_component::<Position>(entity);
+        world.flush(buffer);
+
+        assert!(world.get::<Position>(entity).is_none());
+        assert_eq!(
+            world.get::<Velocity>(entity),
+            Some(&Velocity { dx: 3.0, dy: 4.0 })
+        );
+    }
+
+    #[test]
+    fn flush_despawn_dead_entity_is_silent() {
+        let mut world = World::new();
+        let entity = world.spawn();
+        world.despawn(entity);
+        let mut buffer = CommandBuffer::new();
+
+        buffer.despawn(entity);
+        world.flush(buffer);
+
+        assert!(!world.is_alive(entity));
+    }
+
+    #[test]
+    fn flush_insert_skips_entity_despawned_earlier_in_same_buffer() {
+        let mut world = World::new();
+        let entity = world.spawn();
+        let mut buffer = CommandBuffer::new();
+
+        buffer.despawn(entity);
+        buffer.insert(entity, Name("late".into()));
+        world.flush(buffer);
+
+        assert!(!world.is_alive(entity));
+        assert!(world.get::<Name>(entity).is_none());
+    }
+
+    #[test]
+    fn flush_empty_buffer_is_noop() {
+        let mut world = World::new();
+        let entity = world.spawn();
+        world.insert(entity, Position { x: 1.0, y: 2.0 });
+
+        let before = world.query::<Position>().count();
+        world.flush(CommandBuffer::new());
+        let after = world.query::<Position>().count();
+
+        assert_eq!(before, after);
+    }
+
+    #[test]
+    fn flush_multiple_pending_entities() {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        struct Marker(u32);
+
+        let mut world = World::new();
+        let mut buffer = CommandBuffer::new();
+
+        for i in 0..3u32 {
+            let pending = buffer.spawn();
+            buffer.insert_pending(pending, Marker(i));
+        }
+
+        world.flush(buffer);
+
+        let mut markers: Vec<_> = world
+            .query::<Marker>()
+            .map(|(entity, marker)| {
+                assert!(world.is_alive(entity));
+                marker.0
+            })
+            .collect();
+        markers.sort_unstable();
+        assert_eq!(markers, vec![0, 1, 2]);
     }
 }

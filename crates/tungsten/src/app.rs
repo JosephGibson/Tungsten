@@ -9,7 +9,9 @@ use crate::input_bridge;
 use crate::telemetry::FrameTimings;
 use tungsten_core::assets::{AnimationRegistry, FontRegistry, SoundRegistry, TilemapRegistry};
 use tungsten_core::physics::{CollisionEvents, PhysicsConfig};
-use tungsten_core::{AssetRegistry, AudioCommands, Camera2D, Config, DeltaTime, InputState, World};
+use tungsten_core::{
+    AssetRegistry, AudioCommands, Camera2D, CommandBuffer, Config, DeltaTime, InputState, World,
+};
 use tungsten_render::{GpuFrameTimings, QuadInstance, Renderer, SpriteBatch, TextSection};
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, WindowEvent};
@@ -93,6 +95,7 @@ impl App {
         world.insert_resource(CollisionEvents::new());
         world.insert_resource(FrameTimings::new());
         world.insert_resource(GpuFrameTimings::default());
+        world.insert_resource(CommandBuffer::new());
 
         Self {
             config,
@@ -474,6 +477,20 @@ impl ApplicationHandler for App {
                 }
                 let update_ms = update_start.elapsed().as_secs_f64() as f32 * 1000.0;
 
+                // --- Flush stage: apply deferred command buffers ---
+                // Frame order invariant (Phase 3 guardrail):
+                //   run systems -> flush commands -> hot-reload -> extract -> render
+                // Mutations are NOT visible to frame-N systems (they ran before this point).
+                // Mutations ARE visible to extract/render within this frame.
+                let flush_start = Instant::now();
+                let flush_buf = self
+                    .world
+                    .remove_resource::<CommandBuffer>()
+                    .expect("CommandBuffer resource missing -- was it removed by a system?");
+                self.world.flush(flush_buf);
+                self.world.insert_resource(CommandBuffer::new());
+                let flush_ms = flush_start.elapsed().as_secs_f64() as f32 * 1000.0;
+
                 // --- Hot reload stage ---
                 let hot_reload_start = Instant::now();
                 self.process_hot_reload();
@@ -563,6 +580,7 @@ impl ApplicationHandler for App {
                     ft.render_submit_present_ms = render_submit_present_ms;
                     ft.audio_ms = audio_ms;
                     ft.hot_reload_ms = hot_reload_ms;
+                    ft.flush_ms = flush_ms;
                     ft.total_ms = total_ms;
                     ft.system_timings = system_timings;
                 }
@@ -572,9 +590,10 @@ impl ApplicationHandler for App {
                         .map(|ms| format!("{ms:.2}ms"))
                         .unwrap_or_else(|| "n/a".to_string());
                     log::debug!(
-                        "frame: total={:.2}ms update={:.2}ms extract={:.2}ms render={:.2}ms render_acquire={:.2}ms render_encode={:.2}ms render_submit_present={:.2}ms gpu={} audio={:.2}ms hot_reload={:.2}ms",
+                        "frame: total={:.2}ms update={:.2}ms flush={:.2}ms extract={:.2}ms render={:.2}ms render_acquire={:.2}ms render_encode={:.2}ms render_submit_present={:.2}ms gpu={} audio={:.2}ms hot_reload={:.2}ms",
                         total_ms,
                         update_ms,
+                        flush_ms,
                         extract_ms,
                         render_ms,
                         render_acquire_ms,

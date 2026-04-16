@@ -4,7 +4,7 @@ Operational notes for working on Tungsten. Canonical rulebook for any AI assista
 
 ## What Tungsten is
 
-A from-scratch Rust 2D game engine, native only. `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Three crates in a Cargo workspace: `tungsten-core`, `tungsten-render`, `tungsten`. Phase 3 Milestone 12 is complete: the engine now has CPU/GPU telemetry, benchmark harnesses, and baseline profiling tooling in addition to the Phase 2 runtime subsystems.
+A from-scratch Rust 2D game engine, native only. `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Three crates in a Cargo workspace: `tungsten-core`, `tungsten-render`, `tungsten`. The `0.10.0` release line is prepared: Phase 3 Milestone 13 is complete, and the engine now has deferred ECS command buffers alongside the M12 CPU/GPU telemetry, benchmark harnesses, baseline profiling tooling, and the swapchain frame-pacing follow-up.
 
 ## Commands
 
@@ -18,6 +18,7 @@ cargo fmt --all
 
 cargo run -p example-NN-name              # see examples/ for the current list
 ./scripts/perf-capture.sh sprite-stress 300   # Linux perf capture workflow
+bash scripts/test-perf-capture.sh         # perf-capture parser/percentile regression check
 ```
 
 Before committing anything substantial: `cargo fmt && cargo test --workspace`. Clippy is advisory.
@@ -39,6 +40,7 @@ Two layers of automated checks exist beyond `cargo test`. Use them deliberately 
 | ----------------------------------------------------- | -------------------------------------------- |
 | Manifests, assets, or the core/render seam            | `cargo test --workspace` (layer 1)           |
 | Engine wiring or example wiring                       | `./scripts/smoke-examples.sh` (layer 2)      |
+| Perf-capture parsing/reporting                        | `bash scripts/test-perf-capture.sh`          |
 | Clean checkout, dep bump, or anything non-trivial     | Both                                         |
 
 ## Repo layout
