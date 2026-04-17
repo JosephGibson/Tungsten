@@ -6,6 +6,7 @@ Pointer file for [Claude Code](https://claude.ai/code).
 
 - Read [AGENTS.md](AGENTS.md) first; it is the canonical source for commands, test layers, hard rules, and code-placement rules.
 - Open [docs/LLM_INDEX.md](docs/LLM_INDEX.md) before any broad repo search or glob; it maps each subsystem to its primary source files.
+- For rationale lookup, check [docs/DECISION_INDEX.md](docs/DECISION_INDEX.md) before opening [DECISIONS.md](DECISIONS.md).
 - Agent read path: `AGENTS.md` → `docs/LLM_INDEX.md` → only the files touched by the task.
 - Skip `DESIGN.md` and `DECISIONS.md` unless the task needs architecture context or rationale; for `DECISIONS.md`, grep `D-0xx` and do not read it serially.
 - Skip `CHANGELOG.md` unless releasing.
