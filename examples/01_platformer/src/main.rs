@@ -24,15 +24,16 @@ use std::path::PathBuf;
 use glam::Vec2;
 use tungsten::asset_loader;
 use tungsten::core::{
-    AnimationRegistry, AnimationState, AssetRegistry, AudioCommands, AudioHandle, Camera2D, Config,
-    DeltaTime, EventQueue, InputState, KeyCode, ResolvedManifest, SoundRegistry, TilemapInstance,
-    TilemapRegistry, World,
+    sync_position_to_transform, AnimationRegistry, AnimationState, AssetRegistry, AudioCommands,
+    AudioHandle, CameraBounds, CameraController, CameraMode, CameraState, Config, DeltaTime,
+    Entity, EventQueue, InputState, KeyCode, ResolvedManifest, SoundRegistry, TilemapInstance,
+    TilemapRegistry, Transform, World,
 };
 use tungsten::physics::{
     physics_step, BodyKind, Collider, CollisionEvent, PhysicsConfig, Position, RigidBody, Velocity,
 };
 use tungsten::render::{SpriteBatch, SpriteInstance, TextSection};
-use tungsten::{extract_tilemaps, App, WindowSize};
+use tungsten::{camera_update_system, extract_tilemaps, App, WindowSize};
 
 const MANIFEST_ROOT: &str = "assets/manifest.json";
 const MANIFEST_LOCAL: &str = "examples/01_platformer/assets/manifest.json";
@@ -91,12 +92,6 @@ impl Default for TextDisplayState {
             timer: 0.0,
         }
     }
-}
-
-/// Persistent camera zoom multiplier, adjusted by `camera_input_system`.
-/// Applied on top of the base zoom derived from window height in `camera_follow`.
-struct CameraState {
-    zoom_scale: f32,
 }
 
 // ---------------------------------------------------------------------------
@@ -245,9 +240,9 @@ fn audio_input_system(world: &mut World) {
     }
 }
 
-/// = / - to zoom in or out. Adjusts `CameraState.zoom_scale` in 25% steps,
+/// = / - to zoom in or out. Adjusts `CameraController.zoom_multiplier` in 25% steps,
 /// clamped to [0.5, 2.0] relative to the base window-height zoom.
-fn camera_input_system(world: &mut World) {
+fn camera_zoom_input_system(world: &mut World) {
     let (just_equal, just_minus);
     {
         let input = match world.get_resource::<InputState>() {
@@ -260,12 +255,12 @@ fn camera_input_system(world: &mut World) {
     if !just_equal && !just_minus {
         return;
     }
-    if let Some(state) = world.get_resource_mut::<CameraState>() {
+    if let Some(controller) = world.get_resource_mut::<CameraController>() {
         if just_equal {
-            state.zoom_scale = (state.zoom_scale + 0.25).min(2.0);
+            controller.zoom_multiplier = (controller.zoom_multiplier + 0.25).min(2.0);
         }
         if just_minus {
-            state.zoom_scale = (state.zoom_scale - 0.25).max(0.5);
+            controller.zoom_multiplier = (controller.zoom_multiplier - 0.25).max(0.5);
         }
     }
 }
@@ -346,8 +341,8 @@ fn update_text_display(world: &mut World) {
         .map(|s| (s.music_playing, (s.master_volume * 100.0).round() as u32))
         .unwrap_or((false, 0));
     let zoom_pct = world
-        .get_resource::<CameraState>()
-        .map(|s| (s.zoom_scale * 100.0).round() as u32)
+        .get_resource::<CameraController>()
+        .map(|controller| (controller.zoom_multiplier * 100.0).round() as u32)
         .unwrap_or(100);
 
     if let Some(state) = world.get_resource_mut::<TextDisplayState>() {
@@ -361,19 +356,10 @@ fn update_text_display(world: &mut World) {
     }
 }
 
-/// Pins the camera to the player (centred horizontally, fixed vertically since
-/// the level exactly fills the viewport height) and clamps to the level bounds.
-///
-/// Zoom is derived from `window.height / map_h` at runtime rather than using
-/// the hardcoded `CAMERA_ZOOM` constant. This makes the camera correct at any
-/// physical resolution (including HiDPI displays where the OS reports a larger
-/// physical pixel size than the logical 1920×1080 we request): the level
-/// always fills the window height exactly, and `max_x` is always 256 world
-/// units for any 16∶9 aspect ratio.
-///
-/// Uses `query2` to fetch Player+Position in one pass so no second `world.get`
-/// call is needed while the query borrow is live.
-fn camera_follow(world: &mut World) {
+/// Recomputes the platformer's base zoom from the current window height.
+/// `camera_update_system` multiplies this by `CameraController.zoom_multiplier`
+/// before producing the authoritative `CameraState` for the frame.
+fn platformer_camera_base_zoom(world: &mut World) {
     let window = world
         .get_resource::<WindowSize>()
         .copied()
@@ -381,35 +367,27 @@ fn camera_follow(world: &mut World) {
             width: 1920,
             height: 1080,
         });
-
-    let map_w = (MAP_COLS as f32) * TILE;
     let map_h = (MAP_ROWS as f32) * TILE;
+    let base_zoom = (window.height as f32 / map_h).max(f32::EPSILON);
+    if let Some(camera) = world.get_resource_mut::<CameraState>() {
+        camera.zoom = base_zoom;
+    }
+}
 
-    // Derive zoom from the actual window height so the level fills the screen
-    // vertically regardless of physical resolution or DPI scale factor.
-    // Multiply by the user-adjustable zoom_scale (= / - keys).
-    let zoom_scale = world
-        .get_resource::<CameraState>()
-        .map_or(1.0, |s| s.zoom_scale);
-    let zoom = (window.height as f32 / map_h).max(f32::EPSILON) * zoom_scale;
-    let viewport_w = window.width as f32 / zoom;
-    let max_x = (map_w - viewport_w).max(0.0);
-
-    // query2 reads Player and Position together — no separate world.get needed.
-    // Position.0 is the physics AABB centre (same convention as Circle centre).
-    let player_pos = world
-        .query2::<Player, Position>()
-        .next()
-        .map(|(_, _, pos)| pos.0);
-
-    let Some(player) = player_pos else { return };
-
-    let target_x = player.x - viewport_w * 0.5;
-
-    if let Some(camera) = world.get_resource_mut::<Camera2D>() {
-        camera.zoom = zoom;
-        camera.position.x = target_x.clamp(0.0, max_x);
-        camera.position.y = 0.0;
+fn configure_platformer_camera(world: &mut World, player: Entity) {
+    let map_bounds = CameraBounds {
+        min: Vec2::ZERO,
+        max: Vec2::new(MAP_COLS as f32 * TILE, MAP_ROWS as f32 * TILE),
+    };
+    if let Some(controller) = world.get_resource_mut::<CameraController>() {
+        controller.mode = CameraMode::Follow(player);
+        controller.dead_zone_size = Vec2::ZERO;
+        controller.smoothing_factor = 1.0;
+        controller.bounds = Some(map_bounds);
+        controller.zoom_multiplier = 1.0;
+        controller.shake_amplitude = Vec2::ZERO;
+        controller.shake_frequency_hz = 0.0;
+        controller.shake_phase = 0.0;
     }
 }
 
@@ -566,7 +544,6 @@ fn main() -> anyhow::Result<()> {
     let mut config = Config::load("tungsten.json")?;
     config.window.width = 1920;
     config.window.height = 1080;
-    let window_height = config.window.height;
     let mut app = App::new(config);
 
     // Hot reload watches both the shared root assets dir (walk sprites,
@@ -584,15 +561,6 @@ fn main() -> anyhow::Result<()> {
             cfg.broadphase_cell_size = 32.0;
         }
         world.insert_resource(TextDisplayState::default());
-        world.insert_resource(CameraState { zoom_scale: 1.0 });
-
-        // Set an initial zoom from the configured window height so the first
-        // frame renders at the right scale before camera_follow runs. The
-        // exact value is updated every frame by camera_follow anyway.
-        let initial_zoom = window_height as f32 / (MAP_ROWS as f32 * TILE);
-        if let Some(camera) = world.get_resource_mut::<Camera2D>() {
-            camera.zoom = initial_zoom;
-        }
 
         // Tilemap — provides the static ground, platforms, and collision layer.
         let map = world.spawn();
@@ -604,13 +572,16 @@ fn main() -> anyhow::Result<()> {
         // on screen. Moving left scrolls the background right; moving right
         // scrolls it left (until the right edge clamp at max_x = 256).
         let player = world.spawn();
+        let player_start = Vec2::new(20.0 * TILE, 13.0 * TILE);
         world.insert(player, Player::default());
-        world.insert(player, Position(Vec2::new(20.0 * TILE, 13.0 * TILE)));
+        world.insert(player, Position(player_start));
+        world.insert(player, Transform::from_position(player_start));
         world.insert(player, Velocity(Vec2::ZERO));
         world.insert(player, Collider::aabb(PLAYER_HALF));
         world.insert(player, RigidBody::dynamic().with_restitution(0.0));
         world.insert(player, AnimationState::new("walk"));
         world.insert(player, CurrentSprite("walk_0".into()));
+        configure_platformer_camera(world, player);
 
         // Bouncing balls spread across the level: (col, row, initial vx).
         let ball_spawns: &[(f32, f32, f32)] = &[
@@ -692,15 +663,18 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
-    // Ordering: text-display-cache → input → audio → animation → physics → post-physics → camera.
+    // Ordering: text-display-cache → input → audio → animation → physics →
+    // post-physics state sync → shared camera update.
     app.add_system(update_text_display);
     app.add_system(player_input);
     app.add_system(audio_input_system);
-    app.add_system(camera_input_system);
+    app.add_system(camera_zoom_input_system);
     app.add_system(animation_system);
     app.add_system(physics_step);
     app.add_system(ground_detection);
-    app.add_system(camera_follow);
+    app.add_system(sync_position_to_transform);
+    app.add_system(platformer_camera_base_zoom);
+    app.add_system(camera_update_system);
     app.set_extract_sprites(extract_sprites);
     app.set_extract_text(extract_text);
 
@@ -727,7 +701,8 @@ mod tests {
             ..PhysicsConfig::default()
         });
         world.insert_resource(TilemapRegistry::new());
-        world.insert_resource(Camera2D::new());
+        world.insert_resource(CameraState::new());
+        world.insert_resource(CameraController::default());
         world.insert_resource(WindowSize {
             width: 480,
             height: 288,
@@ -762,6 +737,7 @@ mod tests {
         let player = world.spawn();
         world.insert(player, Player::default());
         world.insert(player, Position(Vec2::new(100.0, 100.0)));
+        world.insert(player, Transform::from_position(Vec2::new(100.0, 100.0)));
         world.insert(player, Velocity(Vec2::ZERO));
         world.insert(player, Collider::aabb(PLAYER_HALF));
         world.insert(player, RigidBody::dynamic());
@@ -791,6 +767,7 @@ mod tests {
         let player = world.spawn();
         world.insert(player, Player::default());
         world.insert(player, Position(Vec2::new(40.0, 8.0)));
+        world.insert(player, Transform::from_position(Vec2::new(40.0, 8.0)));
         world.insert(player, Velocity(Vec2::ZERO));
         world.insert(player, Collider::aabb(PLAYER_HALF));
         world.insert(player, RigidBody::dynamic());
@@ -822,6 +799,7 @@ mod tests {
         let player = world.spawn();
         world.insert(player, Player { grounded: false });
         world.insert(player, Position(Vec2::new(40.0, 40.0)));
+        world.insert(player, Transform::from_position(Vec2::new(40.0, 40.0)));
         world.insert(player, Velocity(Vec2::ZERO));
         world.insert(player, Collider::aabb(PLAYER_HALF));
         world.insert(player, RigidBody::dynamic());
@@ -843,18 +821,22 @@ mod tests {
     // --- Camera ---
 
     #[test]
-    fn camera_follows_player() {
+    fn shared_camera_tracks_player() {
         let mut world = seed_world();
         let player = world.spawn();
         world.insert(player, Player::default());
         world.insert(player, Position(Vec2::new(300.0, 100.0)));
+        world.insert(player, Transform::from_position(Vec2::new(300.0, 100.0)));
         world.insert(player, Velocity(Vec2::ZERO));
         world.insert(player, Collider::aabb(PLAYER_HALF));
         world.insert(player, RigidBody::dynamic());
+        configure_platformer_camera(&mut world, player);
 
-        camera_follow(&mut world);
+        sync_position_to_transform(&mut world);
+        platformer_camera_base_zoom(&mut world);
+        camera_update_system(&mut world);
 
-        let cam = world.get_resource::<Camera2D>().unwrap();
+        let cam = world.get_resource::<CameraState>().unwrap();
         assert!(
             cam.position.x > 0.0,
             "camera did not follow player: {:?}",
@@ -869,14 +851,18 @@ mod tests {
         world.insert(player, Player::default());
         // Place the player far past the right edge of the map.
         world.insert(player, Position(Vec2::new(9999.0, 100.0)));
+        world.insert(player, Transform::from_position(Vec2::new(9999.0, 100.0)));
         world.insert(player, Velocity(Vec2::ZERO));
         world.insert(player, Collider::aabb(PLAYER_HALF));
         world.insert(player, RigidBody::dynamic());
+        configure_platformer_camera(&mut world, player);
 
-        camera_follow(&mut world);
+        sync_position_to_transform(&mut world);
+        platformer_camera_base_zoom(&mut world);
+        camera_update_system(&mut world);
 
-        let cam = world.get_resource::<Camera2D>().unwrap();
-        // camera_follow derives zoom from window.height / map_h.
+        let cam = world.get_resource::<CameraState>().unwrap();
+        // The shared camera path derives zoom from window.height / map_h.
         // seed_world uses 480x288, map_h = 288, so zoom = 1.0 and viewport_w = 480.
         let zoom = 288.0 / (MAP_ROWS as f32 * TILE);
         let max_x = (MAP_COLS as f32 * TILE - 480.0 / zoom).max(0.0);

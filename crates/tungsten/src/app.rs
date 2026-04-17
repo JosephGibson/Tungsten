@@ -12,8 +12,8 @@ use crate::telemetry::FrameTimings;
 use tungsten_core::assets::{AnimationRegistry, FontRegistry, SoundRegistry, TilemapRegistry};
 use tungsten_core::physics::{CollisionEvent, PhysicsConfig};
 use tungsten_core::{
-    AssetRegistry, AudioCommands, Camera2D, CommandBuffer, Config, DeltaTime, EventQueue,
-    InputState, World,
+    AssetRegistry, AudioCommands, CameraController, CameraState, CommandBuffer, Config, DeltaTime,
+    EventQueue, InputState, World,
 };
 use tungsten_render::{GpuFrameTimings, QuadInstance, Renderer, SpriteBatch, TextSection};
 use winit::application::ApplicationHandler;
@@ -118,7 +118,8 @@ impl App {
         world.insert_resource(SoundRegistry::new());
         world.insert_resource(AudioCommands::new());
         world.insert_resource(TilemapRegistry::new());
-        world.insert_resource(Camera2D::new());
+        world.insert_resource(CameraState::new());
+        world.insert_resource(CameraController::default());
         world.insert_resource(PhysicsConfig::default());
         world.insert_resource(FrameTimings::new());
         world.insert_resource(GpuFrameTimings::default());
@@ -597,7 +598,7 @@ impl ApplicationHandler for App {
                     };
                     let view_proj = self
                         .world
-                        .get_resource::<Camera2D>()
+                        .get_resource::<CameraState>()
                         .copied()
                         .unwrap_or_default()
                         .view_projection(vw, vh);

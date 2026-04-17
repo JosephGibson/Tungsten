@@ -16,7 +16,7 @@
 //! Baseline capture: pipe to `tee perf-runs/<timestamp>/sprite-stress.txt`
 
 use glam::Vec2;
-use tungsten::core::{Camera2D, Config, World};
+use tungsten::core::{CameraState, Config, World};
 use tungsten::render::{GpuFrameTimings, SpriteBatch, SpriteInstance};
 use tungsten::{App, FrameTimings};
 use tungsten_core::assets::{FilterMode, TextureHandle};
@@ -160,7 +160,7 @@ fn main() -> anyhow::Result<()> {
             metadata_logged: false,
         });
 
-        if let Some(cam) = world.get_resource_mut::<Camera2D>() {
+        if let Some(cam) = world.get_resource_mut::<CameraState>() {
             cam.zoom = 1.0;
             cam.position = Vec2::ZERO;
         }

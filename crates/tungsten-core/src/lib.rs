@@ -19,7 +19,7 @@ pub use assets::{
     TilemapData, TilemapInstance, TilemapLayer, TilemapRegistry, EMPTY_TILE,
 };
 pub use audio::{AudioCommand, AudioCommands};
-pub use camera::Camera2D;
+pub use camera::{CameraBounds, CameraController, CameraMode, CameraState};
 pub use components::{sync_position_to_transform, Sprite, Tag, Transform, Visibility};
 pub use config::{Config, ConfigError};
 pub use ecs::{CommandBuffer, Entity, EventQueue, PendingEntity, World};
