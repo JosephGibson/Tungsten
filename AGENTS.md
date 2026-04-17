@@ -4,7 +4,7 @@ Canonical operating rules for Tungsten. Read this first. Use `DESIGN.md` for arc
 
 ## What Tungsten Is
 
-From-scratch Rust 2D game engine. Stack: `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Workspace crates: `tungsten-core`, `tungsten-render`, `tungsten`. Native only. Current repo state: workspace version `0.12.0`, branch `0.12`, Phase 3 Milestone 15 complete. Current shipped capabilities include typed two-window event queues, deferred ECS command buffers, M12 CPU/GPU telemetry, benchmark harnesses, baseline profiling tooling, the swapchain frame-pacing follow-up, and canonical gameplay-side components (`Transform`/`Sprite`/`Visibility`/`Tag`) with an opt-in default sprite-extract path.
+From-scratch Rust 2D game engine. Stack: `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Workspace crates: `tungsten-core`, `tungsten-render`, `tungsten`. Native only. Current repo state: workspace version `0.13.0`, branch `0.13`, Phase 3 Milestone 16 complete. Current shipped capabilities include typed two-window event queues, deferred ECS command buffers, M12 CPU/GPU telemetry, benchmark harnesses, baseline profiling tooling, the swapchain frame-pacing follow-up, canonical gameplay-side components (`Transform`/`Sprite`/`Visibility`/`Tag`) with an opt-in default sprite-extract path, and a shared camera module built around `CameraState` / `CameraController`.
 
 ## Commands
 

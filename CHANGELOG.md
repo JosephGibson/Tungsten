@@ -4,6 +4,29 @@ Records all notable project changes.
 
 Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.13.0] - 2026-04-17
+
+Summary: Phase 3 Milestone 16 — shared camera module and authoritative camera flow.
+
+### Added
+
+- **Shared camera data model (`tungsten_core::camera`):** `CameraState { position, zoom, rotation }`, `CameraController`, `CameraMode`, and `CameraBounds` centralize camera ownership and follow behavior. The default camera still matches the pre-M10 top-left pixel-ortho matrix at `(0, 0)` / `zoom = 1.0`.
+- **Shared camera update system:** `tungsten::camera_update_system` reads `CameraController`, `DeltaTime`, `WindowSize`, and a followed entity `Transform`, then writes the authoritative `CameraState` for the frame.
+- **Controller features:** follow/free/scripted modes, dead-zone sizing, smoothing, bounds clamp, zoom multiplier, and deterministic shake fields (`shake_amplitude`, `shake_frequency_hz`, `shake_phase`).
+- **Camera test coverage:** `crates/tungsten/tests/camera.rs` covers follow, bounds clamp, scripted zoom scaling, pre-M10 zero-rotation matrix parity, zoom-multiplier changes, and deterministic shake; `tungsten-core::camera` unit tests cover bounds math plus rotated visible-AABB over-coverage.
+
+### Changed
+
+- Workspace version bumped to `0.13.0`.
+- `App::new` now inserts `CameraState` and `CameraController` resources by default alongside the existing runtime resources.
+- `example-01-platformer` now configures player follow and map-bounds clamp through `CameraController`, recomputes base zoom from window height each frame, and runs `camera_update_system` after `sync_position_to_transform`.
+- `extract_tilemaps` now culls through `CameraState::visible_world_aabb(...)`, so tile visibility follows the shared camera state and still over-covers safely when camera rotation is non-zero.
+- `README.md`, `DESIGN.md`, `AGENTS.md`, `CLAUDE.md`, and `docs/plans/Phase3.md` now reflect the shipped `0.13.0` / M16 release line.
+
+### Fixed
+
+- **Base-camera stability:** shared camera bookkeeping now avoids compounding `zoom_multiplier` or shake offsets when gameplay rewrites the base camera pose/zoom each frame before `camera_update_system` runs.
+
 ## [0.12.0] - 2026-04-16
 
 Summary: Phase 3 Milestone 15 — canonical render components (`Transform`, `Sprite`, `Visibility`, `Tag`) and a default sprite-extract path that removes the need for per-example extract closures in the common case.
