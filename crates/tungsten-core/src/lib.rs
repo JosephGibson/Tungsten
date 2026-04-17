@@ -7,6 +7,7 @@ pub mod audio;
 pub mod camera;
 pub mod components;
 pub mod config;
+pub mod display;
 pub mod ecs;
 pub mod input;
 pub mod physics;
@@ -22,6 +23,9 @@ pub use audio::{AudioCommand, AudioCommands};
 pub use camera::{CameraBounds, CameraController, CameraMode, CameraState};
 pub use components::{sync_position_to_transform, Sprite, Tag, Transform, Visibility};
 pub use config::{Config, ConfigError};
+pub use display::{
+    DisplayConfig, DisplayMode, DisplayState, DisplayValidationError, Resolution, ScaleMode,
+};
 pub use ecs::{CommandBuffer, Entity, EventQueue, PendingEntity, World};
 pub use input::{InputState, KeyCode, MouseButton};
 pub use physics::{

@@ -11,9 +11,9 @@ Establish a reproducible CPU/GPU baseline before later Phase 3 work. Compare run
 | Secondary scene | `example-01-platformer` |
 | Linux backend | `WGPU_BACKEND=vulkan` |
 | Resolution | `1920x1080` for sprite stress |
-| Present mode | `render.present_mode = "auto"` |
-| VSync selector | `window.vsync = false` for throughput measurement |
-| Default max frame latency | `1` |
+| Present mode | `display.present_mode = "auto"` |
+| VSync selector | `display.vsync = false` for throughput measurement |
+| Default max frame latency | `display.max_frame_latency = 1` |
 | Warm-up window | first `60` frames ignored |
 | Capture window | `300` measured frames after warm-up |
 | GPU timings | opt-in via `TUNGSTEN_GPU_TIMING=1` only |
@@ -42,7 +42,7 @@ WGPU_BACKEND=vulkan ./scripts/perf-capture.sh platformer 300 --present-mode imme
 WGPU_BACKEND=vulkan ./scripts/perf-capture.sh platformer 300 --present-mode mailbox --max-frame-latency 2 --telemetry-only
 ```
 
-`--present-mode` and `--max-frame-latency` inject child-only `TUNGSTEN_RENDER_PRESENT_MODE` / `TUNGSTEN_RENDER_MAX_FRAME_LATENCY`, so the checked-in `tungsten.json` stays unchanged.
+`--present-mode` and `--max-frame-latency` inject child-only `TUNGSTEN_RENDER_PRESENT_MODE` / `TUNGSTEN_RENDER_MAX_FRAME_LATENCY` compatibility overrides, so the checked-in `tungsten.json` stays unchanged while the runtime display resolver still lands on the requested pacing values.
 
 Parser-only verification:
 
@@ -52,7 +52,7 @@ bash scripts/test-perf-capture.sh
 
 ## Frame Pacing Policy
 
-`render.present_mode` is the final authority when set to a concrete value. The checked-in defaults are `render.present_mode = "auto"` and `render.max_frame_latency = 1`, so `window.vsync` still selects the auto-vsync vs auto-no-vsync family on the default path. `max_frame_latency` is the requested `wgpu` hint, not a backend-confirmed effective queue depth.
+`display.present_mode` is the final authority when set to a concrete value. The checked-in defaults are `display.present_mode = "auto"`, `display.vsync = false`, and `display.max_frame_latency = 1`, so the default path still resolves to the engine's auto no-vsync family. Legacy `window.vsync` / `render.present_mode` / `render.max_frame_latency` fields and env overrides remain valid compatibility inputs in M17. `max_frame_latency` is the requested `wgpu` hint, not a backend-confirmed effective queue depth.
 
 Reference Vulkan matrix captured on April 16, 2026 on AMD Radeon 660M (`RADV REMBRANDT`) + AMD Ryzen 5 6600H, Arch Linux, `rustc 1.94.1`, with `lto = "thin"`, `codegen-units = 1`, `panic = "abort"`, and `target-cpu=native`:
 
@@ -71,7 +71,7 @@ Takeaways:
 
 - `Mailbox / 3` produced the lowest sprite-stress averages on this machine; `Mailbox / 2` was close behind and remains a useful explicit pacing-sensitivity knob.
 - None of the non-default rows displaced the checked-in default. `Immediate / 1` remains the shipped path because the engine’s `auto` mode intentionally preserves the existing `Immediate`-first no-vsync selection, and platformer gains were too small to justify a blanket override.
-- Keep `max_frame_latency = 1` as the checked-in default. Treat `2` and `3` as opt-in tuning values, not blanket upgrades.
+- Keep `display.max_frame_latency = 1` as the checked-in default. Treat `2` and `3` as opt-in tuning values, not blanket upgrades.
 
 ## Engine Telemetry
 
@@ -85,7 +85,7 @@ TUNGSTEN_SMOKE_FRAMES=360 TUNGSTEN_PERF_LOG=1 RUST_LOG=tungsten::app=debug \
 Output format:
 
 ```text
-backend: Vulkan adapter: AMD Radeon 660M (RADV REMBRANDT) present_mode: Immediate max_frame_latency: 1 timestamp_query: true
+backend: Vulkan adapter: AMD Radeon 660M (RADV REMBRANDT) present_mode: immediate max_frame_latency: 1 timestamp_query: true
 frame: total=3.21ms update=0.42ms flush=0.00ms extract=0.37ms render=2.11ms render_acquire=1.44ms render_encode=0.48ms render_submit_present=0.17ms gpu=n/a audio=0.01ms hot_reload=0.00ms
 ```
 

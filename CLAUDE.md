@@ -21,4 +21,4 @@ Pointer file for [Claude Code](https://claude.ai/code).
 
 ## Status
 
-Workspace `v0.13.0` on branch `0.13`. Phase 3 M16 is complete. Camera-module docs, frame-order docs, and perf/benchmark references are up to date.
+Workspace `v0.14.0` on branch `0.14`. Phase 3 M17 is complete. Display-state/config docs, frame-order docs, and perf/benchmark references are up to date.

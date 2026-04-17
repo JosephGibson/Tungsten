@@ -6,17 +6,17 @@
 //! Fixed capture rules (M12 baseline):
 //!   Build mode:   release  (`cargo run -p example-02-sprite-stress --release`)
 //!   Backend:      WGPU_BACKEND=vulkan  (Linux)
-//!   Resolution:   1920 × 1080  (set in code)
+//!   Resolution:   1920 × 1080  (set through `config.display.resolution`)
 //!   Frame window: 300 frames after 60-frame warm-up
 //!   Present path: checked-in default auto no-vsync (`tungsten.json` keeps
-//!                 `render.present_mode = "auto"` and this example forces
-//!                 `config.window.vsync = false`)
+//!                 `display.present_mode = "auto"` and this example keeps
+//!                 `display.vsync = false`)
 //!
 //! Telemetry output: printed to stdout every 60 frames.
 //! Baseline capture: pipe to `tee perf-runs/<timestamp>/sprite-stress.txt`
 
 use glam::Vec2;
-use tungsten::core::{CameraState, Config, World};
+use tungsten::core::{CameraState, Config, Resolution, World};
 use tungsten::render::{GpuFrameTimings, SpriteBatch, SpriteInstance};
 use tungsten::{App, FrameTimings};
 use tungsten_core::assets::{FilterMode, TextureHandle};
@@ -136,9 +136,11 @@ fn main() -> anyhow::Result<()> {
 
     let mut config = Config::load("tungsten.json")?;
     config.window.title = format!("Sprite Stress ({sprite_count} sprites)");
-    config.window.width = 1920;
-    config.window.height = 1080;
-    config.window.vsync = false;
+    config.display.resolution = Some(Resolution {
+        width: 1920,
+        height: 1080,
+    });
+    config.display.vsync = Some(false);
 
     let mut app = App::new(config);
 

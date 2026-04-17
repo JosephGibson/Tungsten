@@ -11,6 +11,8 @@
 //!   1 / 2 / 3       master volume: 20% / 50% / 100%
 //!   S               stop all sounds
 //!   = / -           zoom in / zoom out (50%–200% of base)
+//!   F9              toggle vsync
+//!   F11             toggle windowed / borderless fullscreen
 //!
 //! Two manifests are loaded at startup:
 //!   • assets/manifest.json        — fonts, walk animation, sounds (shared root)
@@ -26,14 +28,14 @@ use tungsten::asset_loader;
 use tungsten::core::{
     sync_position_to_transform, AnimationRegistry, AnimationState, AssetRegistry, AudioCommands,
     AudioHandle, CameraBounds, CameraController, CameraMode, CameraState, Config, DeltaTime,
-    Entity, EventQueue, InputState, KeyCode, ResolvedManifest, SoundRegistry, TilemapInstance,
-    TilemapRegistry, Transform, World,
+    DisplayMode, DisplayState, Entity, EventQueue, InputState, KeyCode, ResolvedManifest,
+    SoundRegistry, TilemapInstance, TilemapRegistry, Transform, World,
 };
 use tungsten::physics::{
     physics_step, BodyKind, Collider, CollisionEvent, PhysicsConfig, Position, RigidBody, Velocity,
 };
 use tungsten::render::{SpriteBatch, SpriteInstance, TextSection};
-use tungsten::{camera_update_system, extract_tilemaps, App, WindowSize};
+use tungsten::{camera_update_system, extract_tilemaps, request_display_settings, App, WindowSize};
 
 const MANIFEST_ROOT: &str = "assets/manifest.json";
 const MANIFEST_LOCAL: &str = "examples/01_platformer/assets/manifest.json";
@@ -262,6 +264,48 @@ fn camera_zoom_input_system(world: &mut World) {
         if just_minus {
             controller.zoom_multiplier = (controller.zoom_multiplier - 0.25).max(0.5);
         }
+    }
+}
+
+/// F11 toggles windowed/borderless fullscreen. F9 toggles vsync and clears
+/// `present_mode` so the renderer re-resolves from the new vsync intent.
+fn display_input_system(world: &mut World) {
+    let (just_f9, just_f11);
+    {
+        let input = match world.get_resource::<InputState>() {
+            Some(i) => i,
+            None => return,
+        };
+        just_f9 = input.just_pressed(KeyCode::F9);
+        just_f11 = input.just_pressed(KeyCode::F11);
+    }
+
+    if !just_f9 && !just_f11 {
+        return;
+    }
+
+    let current = world
+        .get_resource::<DisplayState>()
+        .copied()
+        .unwrap_or_default();
+    let mut next = current;
+
+    if just_f11 {
+        next.display_mode = match current.display_mode {
+            DisplayMode::Windowed => DisplayMode::BorderlessFullscreen,
+            DisplayMode::BorderlessFullscreen | DisplayMode::ExclusiveFullscreen => {
+                DisplayMode::Windowed
+            }
+        };
+    }
+
+    if just_f9 {
+        next.vsync = !current.vsync;
+        next.present_mode = None;
+    }
+
+    if let Err(err) = request_display_settings(world, next) {
+        log::error!("Display request rejected: {err}");
     }
 }
 
@@ -514,7 +558,7 @@ fn extract_text(world: &World) -> Vec<TextSection> {
 
     sections.extend(text_outlined(TextSection {
         content: format!(
-            "A/D move  Space jump  M music  1/2/3 vol  S stop  =/- zoom\n\
+            "A/D move  Space jump  M music  1/2/3 vol  S stop  =/- zoom  F9 vsync  F11 fullscreen\n\
              grounded:{:<4} contacts:{:<3} music:{:<4} vol:{}%  zoom:{}%  FPS:{}",
             if grounded { "yes" } else { "no" },
             contacts,
@@ -541,9 +585,7 @@ fn extract_text(world: &World) -> Vec<TextSection> {
 fn main() -> anyhow::Result<()> {
     env_logger::init();
 
-    let mut config = Config::load("tungsten.json")?;
-    config.window.width = 1920;
-    config.window.height = 1080;
+    let config = Config::load("tungsten.json")?;
     let mut app = App::new(config);
 
     // Hot reload watches both the shared root assets dir (walk sprites,
@@ -666,6 +708,7 @@ fn main() -> anyhow::Result<()> {
     // Ordering: text-display-cache → input → audio → animation → physics →
     // post-physics state sync → shared camera update.
     app.add_system(update_text_display);
+    app.add_system(display_input_system);
     app.add_system(player_input);
     app.add_system(audio_input_system);
     app.add_system(camera_zoom_input_system);

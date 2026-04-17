@@ -2,7 +2,7 @@
 
 ## Status
 
-Workspace `v0.13.0` on branch `0.13`. Phase 3 M16 is shipped. Companion docs: [`AGENTS.md`](AGENTS.md) for operational rules, [`DECISIONS.md`](DECISIONS.md) for rationale by `D-NNN`.
+Workspace `v0.14.0` on branch `0.14`. Phase 3 M17 is shipped. Companion docs: [`AGENTS.md`](AGENTS.md) for operational rules, [`DECISIONS.md`](DECISIONS.md) for rationale by `D-NNN`.
 
 ## What It Is
 
@@ -90,11 +90,11 @@ Execution order is registration order. There is no scheduler, label system, or d
 
 **Queries:** immutable queries are `query<A>()`, `query2<A,B>()`, `query3<A,B,C>()`, plus `_entities` variants. Cost model: one downcast per archetype per type, then sequential row access over contiguous `Vec<T>`. Mutable multi-component queries remain deferred because they require unsafe split-borrow.
 
-**Resources:** singleton state lives in the `World` and uses the same access path as components. Examples: `DeltaTime`, `InputState`, `WindowSize`, `AssetRegistry`, `AudioCommands`, `PhysicsConfig`, `EventQueue<CollisionEvent>`, `CameraState`, `CameraController`.
+**Resources:** singleton state lives in the `World` and uses the same access path as components. Examples: `DeltaTime`, `InputState`, `WindowSize`, `AssetRegistry`, `AudioCommands`, `PhysicsConfig`, `EventQueue<CollisionEvent>`, `CameraState`, `CameraController`, `DisplayState`, and `DisplayTelemetry`.
 
 **Event delivery (M14):** `EventQueue<T>` stores `previous` + `current`. Systems send into `current`. Readers normally use `iter()`, which yields `previous` first and then `current`, to avoid order-sensitive missed reads. `App` rotates queues once per frame after `CommandBuffer` flush and before hot reload, extract, and render.
 
-**Runtime telemetry (M12):** `FrameTimings` is a `World` resource. `App` measures stage timings inline with `std::time::Instant`, stores the latest frame totals, and keeps a per-system `Vec<(String, f32)>` in registration order. Render is split into acquire, encode, and submit/present. GPU-facing diagnostics live in `tungsten-render::GpuFrameTimings`, and the umbrella crate mirrors those diagnostics into the `World` after renderer init and after each frame.
+**Runtime telemetry (M12+):** `FrameTimings` is a `World` resource. `App` measures stage timings inline with `std::time::Instant`, stores the latest frame totals, and keeps a per-system `Vec<(String, f32)>` in registration order. Render is split into acquire, encode, and submit/present. GPU-facing diagnostics live in `tungsten-render::GpuFrameTimings`, and the umbrella crate mirrors those diagnostics into the `World` after renderer init and after each frame. Display-facing diagnostics live in `tungsten::DisplayTelemetry`, which tracks the authoritative resolution, display mode, vsync intent, applied present-mode label, max-frame-latency hint, scale mode, and frame-rate cap.
 
 **ECS error strategy (D-022):** panic on programmer errors such as insert on dead entity or wrong downcast; return `Option` / `Result` on runtime conditions such as entity not found or component absent.
 
@@ -122,16 +122,21 @@ Config model: single `tungsten.json` at workspace root, loaded once at startup. 
 ```json
 {
   "window": { "title": "Tungsten", "width": 1280, "height": 720, "vsync": false },
-  "render":  {
-    "clear_color": [0.05, 0.05, 0.08, 1.0],
+  "display": {
+    "resolution": { "width": 1280, "height": 720 },
+    "display_mode": "windowed",
+    "vsync": false,
+    "present_mode": "auto",
     "max_frame_latency": 1,
-    "present_mode": "auto"
+    "scale_mode": "stretch",
+    "frame_rate_cap": null
   },
+  "render": { "clear_color": [0.05, 0.05, 0.08, 1.0], "max_frame_latency": 1, "present_mode": "auto" },
   "logging": { "level": "info" }
 }
 ```
 
-Render config semantics: `render.present_mode` is authoritative when set to a concrete mode such as `"immediate"` or `"mailbox"`. When absent or `"auto"`, `window.vsync` selects between the auto-vsync and auto-no-vsync families. `render.max_frame_latency` is the requested frames-in-flight hint passed into `wgpu::SurfaceConfiguration`; backends may clamp it, so treat runtime telemetry as the configured hint unless the backend exposes stronger confirmation.
+Display config semantics: checked-in display settings live under `display.*`. `display.present_mode` is authoritative when set to a concrete mode such as `"immediate"` or `"mailbox"`. When absent or `"auto"`, `display.vsync` selects between the auto-vsync and auto-no-vsync families. `display.max_frame_latency` is the requested frames-in-flight hint passed into `wgpu::SurfaceConfiguration`; backends may clamp it, so treat runtime telemetry as the configured hint unless the backend exposes stronger confirmation. Legacy `window.width`, `window.height`, `window.vsync`, `render.present_mode`, and `render.max_frame_latency` remain valid compatibility inputs in M17, but `display.*` wins whenever both specify the same concern.
 
 ### Asset System
 

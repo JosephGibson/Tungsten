@@ -2,24 +2,28 @@ use std::any::TypeId;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::asset_loader;
 use crate::audio::AudioSystem;
+use crate::display::{
+    frame_budget_for, sync_display_state_and_telemetry, sync_window_resolution,
+    take_pending_display, DisplayDelta, PendingDisplay,
+};
 use crate::hot_reload::HotReloadWatcher;
 use crate::input_bridge;
-use crate::telemetry::FrameTimings;
+use crate::telemetry::{DisplayTelemetry, FrameTimings};
 use tungsten_core::assets::{AnimationRegistry, FontRegistry, SoundRegistry, TilemapRegistry};
 use tungsten_core::physics::{CollisionEvent, PhysicsConfig};
 use tungsten_core::{
     AssetRegistry, AudioCommands, CameraController, CameraState, CommandBuffer, Config, DeltaTime,
-    EventQueue, InputState, World,
+    DisplayMode, DisplayState, EventQueue, InputState, World,
 };
 use tungsten_render::{GpuFrameTimings, QuadInstance, Renderer, SpriteBatch, TextSection};
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, WindowEvent};
-use winit::event_loop::{ActiveEventLoop, EventLoop};
-use winit::window::{Window, WindowId};
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::window::{Fullscreen, Window, WindowId};
 
 /// A system function that runs each tick.
 pub type SystemFn = Box<dyn FnMut(&mut World)>;
@@ -86,6 +90,8 @@ pub struct App {
     event_flushers: Vec<EventFlusher>,
     /// Event types that already have queue resources registered.
     registered_event_types: HashSet<TypeId>,
+    /// Optional frame pacing budget derived from `DisplayState.frame_rate_cap`.
+    frame_budget: Option<Duration>,
 }
 
 impl App {
@@ -107,12 +113,13 @@ impl App {
     }
 
     pub fn new(config: Config) -> Self {
+        let resolved_display = resolve_startup_display(&config);
         let mut world = World::new();
         world.insert_resource(DeltaTime::new());
         world.insert_resource(InputState::new());
         world.insert_resource(WindowSize {
-            width: config.window.width,
-            height: config.window.height,
+            width: resolved_display.resolution.width,
+            height: resolved_display.resolution.height,
         });
         world.insert_resource(AssetRegistry::new());
         world.insert_resource(SoundRegistry::new());
@@ -123,6 +130,9 @@ impl App {
         world.insert_resource(PhysicsConfig::default());
         world.insert_resource(FrameTimings::new());
         world.insert_resource(GpuFrameTimings::default());
+        world.insert_resource(resolved_display);
+        world.insert_resource(PendingDisplay::default());
+        world.insert_resource(DisplayTelemetry::from_state(&resolved_display, None));
         world.insert_resource(CommandBuffer::new());
         let mut event_flushers: Vec<EventFlusher> = Vec::new();
         let mut registered_event_types = HashSet::new();
@@ -156,6 +166,7 @@ impl App {
             gpu_timing_enabled: std::env::var("TUNGSTEN_GPU_TIMING").is_ok(),
             event_flushers,
             registered_event_types,
+            frame_budget: frame_budget_for(resolved_display.frame_rate_cap),
         }
     }
 
@@ -367,6 +378,135 @@ impl App {
             }
         }
     }
+
+    fn apply_pending_display_request(&mut self) {
+        let Some(requested) = take_pending_display(&mut self.world) else {
+            return;
+        };
+
+        let current = self
+            .world
+            .get_resource::<DisplayState>()
+            .copied()
+            .unwrap_or_default();
+        let delta = DisplayDelta::between(&current, &requested);
+        let mut effective = current;
+
+        let Some(window) = self.window.as_ref() else {
+            sync_display_state_and_telemetry(&mut self.world, current, None);
+            return;
+        };
+
+        let mut actual_present_mode = self
+            .renderer
+            .as_ref()
+            .and_then(|renderer| renderer.gpu_timings.present_mode.clone());
+
+        if delta.display_mode_changed {
+            let runtime_mode = runtime_display_mode(requested.display_mode);
+            if runtime_mode != requested.display_mode {
+                log::warn!(
+                    "Display mode '{}' is not supported at runtime yet; downgrading to '{}'",
+                    requested.display_mode.as_str(),
+                    runtime_mode.as_str()
+                );
+            }
+            apply_window_fullscreen(window, runtime_mode);
+            effective.display_mode = runtime_mode;
+
+            let size = window.inner_size();
+            if size.width > 0 && size.height > 0 {
+                effective.resolution.width = size.width;
+                effective.resolution.height = size.height;
+            }
+        }
+
+        if delta.resize && matches!(effective.display_mode, DisplayMode::Windowed) {
+            let fallback_size = window.inner_size();
+            let actual_size = window
+                .request_inner_size(winit::dpi::PhysicalSize::new(
+                    requested.resolution.width,
+                    requested.resolution.height,
+                ))
+                .unwrap_or(fallback_size);
+            if actual_size.width > 0 && actual_size.height > 0 {
+                effective.resolution.width = actual_size.width;
+                effective.resolution.height = actual_size.height;
+            }
+        }
+
+        if delta.surface_pacing_changed {
+            if let Some(renderer) = self.renderer.as_mut() {
+                match renderer.reconfigure_surface_pacing(
+                    requested.present_mode,
+                    requested.vsync,
+                    requested.max_frame_latency,
+                ) {
+                    Ok(()) => {
+                        effective.vsync = requested.vsync;
+                        effective.present_mode = requested.present_mode;
+                        effective.max_frame_latency = requested.max_frame_latency;
+                        actual_present_mode = renderer.gpu_timings.present_mode.clone();
+                        if let Some(gpu) = self.world.get_resource_mut::<GpuFrameTimings>() {
+                            *gpu = renderer.gpu_timings.clone();
+                        }
+                    }
+                    Err(err) => {
+                        log::error!("Failed to apply display pacing change: {err}");
+                    }
+                }
+            }
+        }
+
+        if delta.scale_mode_changed {
+            effective.scale_mode = requested.scale_mode;
+        }
+
+        if delta.frame_rate_cap_changed {
+            effective.frame_rate_cap = requested.frame_rate_cap;
+            self.frame_budget = frame_budget_for(requested.frame_rate_cap);
+        }
+
+        if delta.resize && !matches!(effective.display_mode, DisplayMode::Windowed) {
+            let size = window.inner_size();
+            if size.width > 0 && size.height > 0 {
+                effective.resolution.width = size.width;
+                effective.resolution.height = size.height;
+            }
+        }
+
+        sync_display_state_and_telemetry(&mut self.world, effective, actual_present_mode);
+    }
+}
+
+fn resolve_startup_display(config: &Config) -> DisplayState {
+    let resolved = config.display.resolve(&config.window, &config.render);
+    match resolved.validate() {
+        Ok(()) => resolved,
+        Err(err) => {
+            log::warn!("Resolved display settings are invalid ({err}); using engine defaults");
+            DisplayState::default()
+        }
+    }
+}
+
+fn runtime_display_mode(requested: DisplayMode) -> DisplayMode {
+    match requested {
+        DisplayMode::ExclusiveFullscreen => DisplayMode::BorderlessFullscreen,
+        other => other,
+    }
+}
+
+fn apply_window_fullscreen(window: &Window, mode: DisplayMode) {
+    match mode {
+        DisplayMode::Windowed => window.set_fullscreen(None),
+        DisplayMode::BorderlessFullscreen => {
+            window.set_fullscreen(Some(Fullscreen::Borderless(None)));
+        }
+        DisplayMode::ExclusiveFullscreen => {
+            unreachable!("exclusive mode is downgraded before apply")
+        }
+    }
 }
 
 impl ApplicationHandler for App {
@@ -375,11 +515,16 @@ impl ApplicationHandler for App {
             return;
         }
 
+        let requested_display = self
+            .world
+            .get_resource::<DisplayState>()
+            .copied()
+            .unwrap_or_default();
         let attrs = Window::default_attributes()
             .with_title(&self.config.window.title)
-            .with_inner_size(winit::dpi::LogicalSize::new(
-                self.config.window.width,
-                self.config.window.height,
+            .with_inner_size(winit::dpi::PhysicalSize::new(
+                requested_display.resolution.width,
+                requested_display.resolution.height,
             ));
 
         let window = match event_loop.create_window(attrs) {
@@ -391,11 +536,26 @@ impl ApplicationHandler for App {
             }
         };
 
-        match Renderer::new(
-            window.clone(),
-            &self.config.render,
-            self.config.window.vsync,
-        ) {
+        let startup_mode = runtime_display_mode(requested_display.display_mode);
+        if startup_mode != requested_display.display_mode {
+            log::warn!(
+                "Display mode '{}' is not supported at runtime yet; downgrading to '{}'",
+                requested_display.display_mode.as_str(),
+                startup_mode.as_str()
+            );
+        }
+        apply_window_fullscreen(&window, startup_mode);
+        let initial_inner_size = window.inner_size();
+
+        let mut render_config = self.config.render.clone();
+        let startup_state = DisplayState {
+            display_mode: startup_mode,
+            ..requested_display
+        };
+        render_config.present_mode = startup_state.present_mode;
+        render_config.max_frame_latency = startup_state.max_frame_latency;
+
+        match Renderer::new(window.clone(), &render_config, startup_state.vsync) {
             Ok(renderer) => {
                 if std::env::var("TUNGSTEN_PERF_LOG").is_ok() {
                     log::debug!(
@@ -422,6 +582,17 @@ impl ApplicationHandler for App {
                 if let Some(gpu) = self.world.get_resource_mut::<GpuFrameTimings>() {
                     *gpu = renderer.gpu_timings.clone();
                 }
+                sync_display_state_and_telemetry(
+                    &mut self.world,
+                    startup_state,
+                    renderer.gpu_timings.present_mode.clone(),
+                );
+                sync_window_resolution(
+                    &mut self.world,
+                    initial_inner_size.width,
+                    initial_inner_size.height,
+                    renderer.gpu_timings.present_mode.clone(),
+                );
                 self.renderer = Some(renderer);
             }
             Err(e) => {
@@ -474,10 +645,16 @@ impl ApplicationHandler for App {
                 if let Some(renderer) = &mut self.renderer {
                     renderer.resize(size.width, size.height);
                 }
-                if let Some(ws) = self.world.get_resource_mut::<WindowSize>() {
-                    ws.width = size.width;
-                    ws.height = size.height;
-                }
+                let actual_present_mode = self
+                    .renderer
+                    .as_ref()
+                    .and_then(|renderer| renderer.gpu_timings.present_mode.clone());
+                sync_window_resolution(
+                    &mut self.world,
+                    size.width,
+                    size.height,
+                    actual_present_mode,
+                );
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 let key = input_bridge::translate_key(event.physical_key);
@@ -513,6 +690,7 @@ impl ApplicationHandler for App {
             }
             WindowEvent::RedrawRequested => {
                 let frame_start = Instant::now();
+                self.apply_pending_display_request();
 
                 // --- Delta time ---
                 let now = Instant::now();
@@ -677,6 +855,12 @@ impl ApplicationHandler for App {
                     window.request_redraw();
                 }
 
+                if let Some(budget) = self.frame_budget {
+                    event_loop.set_control_flow(ControlFlow::WaitUntil(frame_start + budget));
+                } else {
+                    event_loop.set_control_flow(ControlFlow::Wait);
+                }
+
                 if let Some(remaining) = self.smoke_frames_remaining.as_mut() {
                     *remaining = remaining.saturating_sub(1);
                     if *remaining == 0 {
@@ -692,8 +876,8 @@ impl ApplicationHandler for App {
 
 #[cfg(test)]
 mod tests {
-    use super::App;
-    use tungsten_core::{CollisionEvent, Config, EventQueue};
+    use super::{resolve_startup_display, runtime_display_mode, App};
+    use tungsten_core::{CollisionEvent, Config, DisplayMode, DisplayState, EventQueue};
 
     #[derive(Debug, Clone, Copy)]
     struct ExampleEvent;
@@ -759,5 +943,26 @@ mod tests {
         assert_eq!(batches.len(), 1);
         assert_eq!(batches[0].texture, TextureHandle(42));
         assert_eq!(batches[0].instances[0].color, [1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn startup_display_downgrades_invalid_resolution_to_engine_defaults() {
+        let mut config = Config::default();
+        config.window.width = 0;
+
+        let resolved = resolve_startup_display(&config);
+        assert_eq!(resolved, DisplayState::default());
+    }
+
+    #[test]
+    fn runtime_display_mode_downgrades_exclusive_fullscreen() {
+        assert_eq!(
+            runtime_display_mode(DisplayMode::ExclusiveFullscreen),
+            DisplayMode::BorderlessFullscreen
+        );
+        assert_eq!(
+            runtime_display_mode(DisplayMode::Windowed),
+            DisplayMode::Windowed
+        );
     }
 }

@@ -22,8 +22,8 @@ Scenes:
   platformer
 
 Flags:
-  --present-mode <mode>       Override render.present_mode for child capture runs
-  --max-frame-latency <n>     Override render.max_frame_latency for child capture runs
+  --present-mode <mode>       Override the resolved present mode for child capture runs
+  --max-frame-latency <n>     Override the requested max-frame-latency hint for child capture runs
   --telemetry-only            Skip flamegraph/perf artifact capture; still writes telemetry logs and README
 EOF
 }

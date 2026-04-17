@@ -12,6 +12,7 @@ Use this as the first repo map. Keep scope tight.
 | Event queue (`EventQueue<T>`, frame flush) | [`crates/tungsten-core/src/ecs/event_queue.rs`](../crates/tungsten-core/src/ecs/event_queue.rs) |
 | Render components (`Transform`, `Sprite`, `Visibility`, `Tag`) + default sprite extract | [`crates/tungsten-core/src/components.rs`](../crates/tungsten-core/src/components.rs), [`crates/tungsten/src/sprite_extract.rs`](../crates/tungsten/src/sprite_extract.rs) |
 | Camera module | [`crates/tungsten-core/src/camera.rs`](../crates/tungsten-core/src/camera.rs), [`crates/tungsten/src/camera.rs`](../crates/tungsten/src/camera.rs) |
+| Display state/config + runtime apply boundary | [`crates/tungsten-core/src/display.rs`](../crates/tungsten-core/src/display.rs), [`crates/tungsten/src/display.rs`](../crates/tungsten/src/display.rs), [`tungsten.json`](../tungsten.json) |
 | Asset manifest, registry, IDs | [`crates/tungsten-core/src/assets/manifest.rs`](../crates/tungsten-core/src/assets/manifest.rs), [`registry.rs`](../crates/tungsten-core/src/assets/registry.rs), [`assets/mod.rs`](../crates/tungsten-core/src/assets/mod.rs) |
 | App / `winit` loop, smoke frames | [`crates/tungsten/src/app.rs`](../crates/tungsten/src/app.rs), [`lib.rs`](../crates/tungsten/src/lib.rs) |
 | Runtime telemetry | [`crates/tungsten/src/telemetry.rs`](../crates/tungsten/src/telemetry.rs), [`crates/tungsten/src/app.rs`](../crates/tungsten/src/app.rs) |
