@@ -4,18 +4,18 @@ From-scratch Rust 2D game engine. Stack: `winit` + `wgpu` + `glam` + hand-rolled
 
 ## Status
 
-Workspace `v0.12.0` on branch `0.12`. Phase 3 M15 is shipped. The engine now has typed two-window event queues flushing at a fixed post-system frame boundary beside deferred ECS command buffers, M12 telemetry, benchmark coverage, profiling tooling, the swapchain frame-pacing follow-up, and canonical gameplay-side render components with an opt-in default sprite-extract path. Next milestone: M16 camera module.
+Workspace `v0.13.0` on branch `0.13`. Phase 3 M16 is shipped. The engine now pairs typed two-window event queues and deferred ECS command buffers with a shared camera module built around authoritative `CameraState` and `CameraController` resources, plus M12 telemetry, benchmark coverage, profiling tooling, the swapchain frame-pacing follow-up, and canonical gameplay-side render components with an opt-in default sprite-extract path. Next milestone: M17 display state + config.
 
 ## Stack
 
 Hand-rolled ECS with archetypal storage, deferred command buffers, and typed event queues; `wgpu` rendering; manifest-driven assets; `glyphon` text; `cpal` + `symphonia` + hand-rolled audio mixer; `notify` hot reload; `.tmj` / Tiled-compatible tilemaps; 2D AABB + circle physics with a uniform-grid broad-phase; frame telemetry, Criterion benches, and a perf capture workflow.
 
-## 0.12 Highlights
+## 0.13 Highlights
 
-- Canonical `Transform`, `Sprite`, `Visibility`, and `Tag` components now live in `tungsten_core`
-- `App` installs `extract_sprites_default` automatically when no custom sprite extract is set
-- `SpriteInstance` now carries per-instance rotation and tint for every sprite path
-- New `example-03-component-sprites` demonstrates rotation, scale, tint, z-order, and `Visibility` toggling
+- Shared `CameraState`, `CameraController`, `CameraMode`, and `CameraBounds` now ship from `tungsten_core`
+- `camera_update_system` writes one authoritative camera state per frame with follow, dead-zone, smoothing, bounds clamp, zoom multiplier, and deterministic shake support
+- `example-01-platformer` now uses the shared camera path for player follow, map-edge clamp, and window-height-derived zoom
+- Camera tests cover follow/clamp behavior, zero-rotation matrix compatibility, zoom-multiplier updates, and deterministic shake
 
 ## Documents
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-Workspace `v0.12.0` on branch `0.12`. Phase 3 M15 is shipped. Companion docs: [`AGENTS.md`](AGENTS.md) for operational rules, [`DECISIONS.md`](DECISIONS.md) for rationale by `D-NNN`.
+Workspace `v0.13.0` on branch `0.13`. Phase 3 M16 is shipped. Companion docs: [`AGENTS.md`](AGENTS.md) for operational rules, [`DECISIONS.md`](DECISIONS.md) for rationale by `D-NNN`.
 
 ## What It Is
 
@@ -90,7 +90,7 @@ Execution order is registration order. There is no scheduler, label system, or d
 
 **Queries:** immutable queries are `query<A>()`, `query2<A,B>()`, `query3<A,B,C>()`, plus `_entities` variants. Cost model: one downcast per archetype per type, then sequential row access over contiguous `Vec<T>`. Mutable multi-component queries remain deferred because they require unsafe split-borrow.
 
-**Resources:** singleton state lives in the `World` and uses the same access path as components. Examples: `DeltaTime`, `InputState`, `WindowSize`, `AssetRegistry`, `AudioCommands`, `PhysicsConfig`, `EventQueue<CollisionEvent>`, `Camera2D`.
+**Resources:** singleton state lives in the `World` and uses the same access path as components. Examples: `DeltaTime`, `InputState`, `WindowSize`, `AssetRegistry`, `AudioCommands`, `PhysicsConfig`, `EventQueue<CollisionEvent>`, `CameraState`, `CameraController`.
 
 **Event delivery (M14):** `EventQueue<T>` stores `previous` + `current`. Systems send into `current`. Readers normally use `iter()`, which yields `previous` first and then `current`, to avoid order-sensitive missed reads. `App` rotates queues once per frame after `CommandBuffer` flush and before hot reload, extract, and render.
 
@@ -172,7 +172,7 @@ Examples ship `examples/NN_name/assets/` with a local manifest. The loader takes
 
 ### Text — M7
 
-Stack: `glyphon` + `cosmic-text` + `swash`. Responsibilities: font parsing, shaping, layout, and GPU rasterization. Decision: `D-026`. Fonts are registered in the manifest by ID under `fonts`. `TextSection` is extracted each frame. Text ignores `Camera2D`; it stays screen-space while the world scrolls.
+Stack: `glyphon` + `cosmic-text` + `swash`. Responsibilities: font parsing, shaping, layout, and GPU rasterization. Decision: `D-026`. Fonts are registered in the manifest by ID under `fonts`. `TextSection` is extracted each frame. Text ignores the world camera; it stays screen-space while the world scrolls.
 
 ### Audio — M8
 
@@ -184,7 +184,7 @@ Stack: `glyphon` + `cosmic-text` + `swash`. Responsibilities: font parsing, shap
 
 ### Tilemaps — M10
 
-Extension: `.tmj`. Schema: Tiled-compatible (`D-032`). Core data types `TilemapData`, `TilemapRegistry`, and `TilemapInstance` live in `tungsten-core` as plain data; no `wgpu`. `extract_tilemaps(&World)` resolves visible tiles into `SpriteBatch`es. Tilemaps reuse the sprite pipeline; there is no new `wgpu` pipeline. `Camera2D` (`position`, `zoom`) feeds view-projection into sprite and quad pipelines. Visible-AABB culling keeps cost proportional to viewport, not map size. `LayerKind::Collision` layers are accepted by the loader but skipped by extract; physics reads them directly.
+Extension: `.tmj`. Schema: Tiled-compatible (`D-032`). Core data types `TilemapData`, `TilemapRegistry`, and `TilemapInstance` live in `tungsten-core` as plain data; no `wgpu`. `extract_tilemaps(&World)` resolves visible tiles into `SpriteBatch`es. Tilemaps reuse the sprite pipeline; there is no new `wgpu` pipeline. `CameraState` (`position`, `zoom`, `rotation`) feeds view-projection into sprite and quad pipelines, and `visible_world_aabb()` keeps tile culling proportional to viewport size while over-covering safely under rotation. `LayerKind::Collision` layers are accepted by the loader but skipped by extract; physics reads them directly.
 
 ### Physics — M11
 

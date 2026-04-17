@@ -31,10 +31,10 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 
 ## Current Status
 
-- Workspace version metadata: `0.12.0`
-- Current branch: `0.12`
-- Completed milestones: `M12` profiling baseline, `M13` command buffers, `M14` event queues, `M15` transform + render components
-- Next recommended milestone: `M16 — Camera Module`
+- Workspace version metadata: `0.13.0`
+- Current branch: `0.13`
+- Completed milestones: `M12` profiling baseline, `M13` command buffers, `M14` event queues, `M15` transform + render components, `M16` camera module
+- Next recommended milestone: `M17 — Display State + Config`
 - Archived detailed milestone plans: [M12](archive/Phase3-Milestone12-plan.md), [M13](archive/Phase3-Milestone13-plan.md), [M14](archive/Phase3-Milestone14-plan.md), [M15](archive/Phase3-Milestone15-plan.md)
 
 ## Execution Contract
@@ -107,7 +107,7 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 
 ### M16 - Camera Module
 
-> **Status: complete**
+> **Status: complete** (`v0.13.0`, `2026-04-17`)
 
 - Goal: centralize camera behavior in one engine module/class-like API instead of ad hoc example logic.
 - Design: add `CameraState` (`position`, `zoom`, `rotation`, viewport behavior), `CameraController` (follow target, dead-zone, smoothing, bounds clamp, shake), and `CameraMode` (free, follow entity, scripted); keep render integration through the existing camera math path; standardize ownership/update flow; run camera update as a normal system; write one authoritative camera state per frame; provide example-level hooks for gameplay-specific tuning without forking engine internals.
@@ -193,7 +193,7 @@ Close each milestone only after:
 - [ ] Runtime spawn/despawn and event flows work without `&mut World` iteration hazards
 - [ ] Debug overlays are one-key-toggle in at least one representative example
 - [ ] Performance baseline and profiling workflow exist before major feature milestones
-- [ ] Camera module owns camera behavior for at least one representative gameplay example
+- [x] Camera module owns camera behavior for at least one representative gameplay example
 - [ ] Display state/config layer is active and future settings-menu-ready
 - [ ] Runtime telemetry HUD exposes core state (`FPS` / `camera` / `player` / system timing) in a representative example
 - [ ] Deterministic screenshot + scripted input checks run for representative flows
