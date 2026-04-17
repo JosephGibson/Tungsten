@@ -8,6 +8,7 @@ Establish a reproducible CPU/GPU baseline before later Phase 3 work. Compare run
 | --- | --- |
 | Build mode | `--release` |
 | Primary scene | `example-02-sprite-stress` |
+| Additional stress scene | `example-02-sprite-stress` with `STRESS_SCENE=ecs-high-load` |
 | Secondary scene | `example-01-platformer` |
 | Linux backend | `WGPU_BACKEND=vulkan` |
 | Resolution | `1920x1080` for sprite stress |
@@ -24,15 +25,19 @@ Run the capture script from the repo root:
 
 ```bash
 WGPU_BACKEND=vulkan ./scripts/perf-capture.sh sprite-stress 300
+WGPU_BACKEND=vulkan ./scripts/perf-capture.sh ecs-high-load 300
 WGPU_BACKEND=vulkan ./scripts/perf-capture.sh platformer 300
 ```
 
 Each run writes a timestamped directory under `perf-runs/` with telemetry logs, optional GPU timing logs, optional `perf` artifacts, and a per-run `README.md`. The script runs `60 + requested_frames` total frames, parses renderer metadata into separate README rows, and computes post-warm-up averages plus `p50` / `p95` / `p99` for `total` and `render_acquire`.
 
+`ecs-high-load` still launches `example-02-sprite-stress`; the capture script injects `STRESS_SCENE=ecs-high-load` for the child process and also resets any inherited `STRESS_SCENE` / `STRESS_COUNT` so canonical runs stay reproducible.
+
 For the published Vulkan frame-pacing matrix, keep default rows as full captures and use telemetry-only override rows for alternate configs:
 
 ```bash
 WGPU_BACKEND=vulkan ./scripts/perf-capture.sh sprite-stress 300
+WGPU_BACKEND=vulkan ./scripts/perf-capture.sh ecs-high-load 300
 WGPU_BACKEND=vulkan ./scripts/perf-capture.sh platformer 300
 WGPU_BACKEND=vulkan ./scripts/perf-capture.sh sprite-stress 300 --present-mode immediate --max-frame-latency 2 --telemetry-only
 WGPU_BACKEND=vulkan ./scripts/perf-capture.sh sprite-stress 300 --present-mode immediate --max-frame-latency 3 --telemetry-only
@@ -80,6 +85,10 @@ Enable stage-level frame logging:
 ```bash
 TUNGSTEN_SMOKE_FRAMES=360 TUNGSTEN_PERF_LOG=1 RUST_LOG=tungsten::app=debug \
   cargo run --release -p example-02-sprite-stress
+
+TUNGSTEN_SMOKE_FRAMES=360 TUNGSTEN_PERF_LOG=1 RUST_LOG=tungsten::app=debug \
+  STRESS_SCENE=ecs-high-load \
+  cargo run --release -p example-02-sprite-stress
 ```
 
 Output format:
@@ -97,6 +106,10 @@ Enable GPU pass timing:
 
 ```bash
 TUNGSTEN_SMOKE_FRAMES=360 TUNGSTEN_PERF_LOG=1 TUNGSTEN_GPU_TIMING=1 \
+  cargo run --release -p example-02-sprite-stress
+
+TUNGSTEN_SMOKE_FRAMES=360 TUNGSTEN_PERF_LOG=1 TUNGSTEN_GPU_TIMING=1 \
+  STRESS_SCENE=ecs-high-load \
   cargo run --release -p example-02-sprite-stress
 ```
 
@@ -117,18 +130,31 @@ TUNGSTEN_SMOKE_FRAMES=360 RUSTFLAGS="-C force-frame-pointers=yes" cargo flamegra
   --package example-02-sprite-stress \
   --bin example-02-sprite-stress \
   --release
+
+TUNGSTEN_SMOKE_FRAMES=360 STRESS_SCENE=ecs-high-load \
+  RUSTFLAGS="-C force-frame-pointers=yes" cargo flamegraph \
+  --package example-02-sprite-stress \
+  --bin example-02-sprite-stress \
+  --release
 ```
 
 ### `perf stat`
 
 ```bash
 TUNGSTEN_SMOKE_FRAMES=360 perf stat -d -- cargo run --release -p example-02-sprite-stress
+
+TUNGSTEN_SMOKE_FRAMES=360 STRESS_SCENE=ecs-high-load \
+  perf stat -d -- cargo run --release -p example-02-sprite-stress
 ```
 
 ### `perf record`
 
 ```bash
 TUNGSTEN_SMOKE_FRAMES=360 perf record --call-graph dwarf -- cargo run --release -p example-02-sprite-stress
+perf report
+
+TUNGSTEN_SMOKE_FRAMES=360 STRESS_SCENE=ecs-high-load \
+  perf record --call-graph dwarf -- cargo run --release -p example-02-sprite-stress
 perf report
 ```
 
