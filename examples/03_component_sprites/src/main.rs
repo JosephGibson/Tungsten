@@ -15,10 +15,14 @@ use tungsten::core::{
     AssetRegistry, CameraState, Config, DeltaTime, InputState, KeyCode, ResolvedManifest, Sprite,
     Tag, Transform, Visibility, World,
 };
-use tungsten::{asset_loader, App};
+use tungsten::render::TextSection;
+use tungsten::{asset_loader, App, WindowSize};
 
+const MANIFEST_ROOT: &str = "assets/manifest.json";
 const MANIFEST_LOCAL: &str = "examples/03_component_sprites/assets/manifest.json";
 const QUAD_ID: &str = "ex03_quad";
+const DEMO_ZOOM: f32 = 5.0;
+const HUD_MARGIN: f32 = 16.0;
 
 /// Marker for the spinning quad.
 struct Spinner;
@@ -31,6 +35,30 @@ struct Pulser {
 /// Marker for the tint-cycling quad.
 struct Tinter {
     time: f32,
+}
+
+fn centered_camera_position(window: WindowSize, zoom: f32) -> Vec2 {
+    let zoom = zoom.max(f32::EPSILON);
+    Vec2::new(
+        -(window.width as f32 / zoom) * 0.5,
+        -(window.height as f32 / zoom) * 0.5,
+    )
+}
+
+/// Keep world origin centred in the viewport so the demo scene can stay
+/// authored around `(0, 0)` even though `CameraState` is top-left anchored.
+fn layout_camera_system(world: &mut World) {
+    let window = world
+        .get_resource::<WindowSize>()
+        .copied()
+        .unwrap_or(WindowSize {
+            width: 800,
+            height: 600,
+        });
+    if let Some(camera) = world.get_resource_mut::<CameraState>() {
+        camera.zoom = DEMO_ZOOM;
+        camera.position = centered_camera_position(window, DEMO_ZOOM);
+    }
 }
 
 /// Spins a `Transform.rotation` at 1.0 rad/s.
@@ -116,6 +144,81 @@ fn visibility_toggle_system(world: &mut World) {
     }
 }
 
+fn player_visible(world: &World) -> bool {
+    world
+        .query2::<Tag, Visibility>()
+        .find_map(|(_, tag, visibility)| (tag.name == "player").then_some(visibility.visible))
+        .unwrap_or(false)
+}
+
+fn text_outlined(section: TextSection) -> impl Iterator<Item = TextSection> {
+    const STROKE: f32 = 2.0;
+    const OUTLINE: [u8; 4] = [0, 0, 0, 220];
+    let offsets: &[[f32; 2]] = &[
+        [-STROKE, 0.0],
+        [STROKE, 0.0],
+        [0.0, -STROKE],
+        [0.0, STROKE],
+        [-STROKE, -STROKE],
+        [STROKE, -STROKE],
+        [-STROKE, STROKE],
+        [STROKE, STROKE],
+    ];
+    let shadows: Vec<TextSection> = offsets
+        .iter()
+        .map(|&[dx, dy]| TextSection {
+            content: section.content.clone(),
+            font_id: section.font_id.clone(),
+            font_size: section.font_size,
+            line_height: section.line_height,
+            color: OUTLINE,
+            position: [section.position[0] + dx, section.position[1] + dy],
+            bounds: section.bounds,
+        })
+        .collect();
+    shadows.into_iter().chain(std::iter::once(section))
+}
+
+fn extract_text(world: &World) -> Vec<TextSection> {
+    let window = world
+        .get_resource::<WindowSize>()
+        .copied()
+        .unwrap_or(WindowSize {
+            width: 800,
+            height: 600,
+        });
+    let hud_width = (window.width as f32 - HUD_MARGIN * 2.0).max(0.0);
+    let player_status = if player_visible(world) {
+        "visible"
+    } else {
+        "hidden"
+    };
+
+    let mut sections = Vec::new();
+    sections.extend(text_outlined(TextSection {
+        content: "Component Sprites".into(),
+        font_id: "sans_bold".into(),
+        font_size: 34.0,
+        line_height: 40.0,
+        color: [255, 248, 232, 255],
+        position: [HUD_MARGIN, HUD_MARGIN],
+        bounds: Some([hud_width, 52.0]),
+    }));
+    sections.extend(text_outlined(TextSection {
+        content: format!(
+            "Spinner: rotation  Pulser: scale  Tinter: tint  Stack: z-order\n\
+             V toggles the player spinner  player spinner: {player_status}"
+        ),
+        font_id: "mono".into(),
+        font_size: 21.0,
+        line_height: 28.0,
+        color: [205, 225, 255, 240],
+        position: [HUD_MARGIN, 64.0],
+        bounds: Some([hud_width, 80.0]),
+    }));
+    sections
+}
+
 fn main() -> anyhow::Result<()> {
     env_logger::init();
 
@@ -127,17 +230,14 @@ fn main() -> anyhow::Result<()> {
     let mut app = App::new(config);
 
     app.on_startup(|world, renderer| {
+        let root_manifest =
+            ResolvedManifest::load(MANIFEST_ROOT).expect("Failed to load root manifest");
         let manifest =
             ResolvedManifest::load(MANIFEST_LOCAL).expect("Failed to load local manifest");
+        asset_loader::load_fonts(&root_manifest, world, renderer)
+            .expect("Failed to load shared fonts");
         asset_loader::load_sprites(&manifest, world, renderer)
             .expect("Failed to load example 03 sprites");
-
-        // Centre camera at the origin; world-space positions below are
-        // relative to screen centre via the default CameraState.
-        if let Some(cam) = world.get_resource_mut::<CameraState>() {
-            cam.zoom = 3.0;
-            cam.position = Vec2::ZERO;
-        }
 
         // --- Entity 1: spinning quad, z = 0, tagged "player" for the V toggle.
         let spinner = world.spawn();
@@ -228,11 +328,67 @@ fn main() -> anyhow::Result<()> {
         log::info!("startup: tagged 'player' entity count = {player_tag_count}");
     });
 
+    app.add_system_named("layout_camera_system", layout_camera_system);
     app.add_system_named("spin_system", spin_system);
     app.add_system_named("pulse_system", pulse_system);
     app.add_system_named("tint_system", tint_system);
     app.add_system_named("visibility_toggle_system", visibility_toggle_system);
     // No set_extract_sprites — engine installs extract_sprites_default (D-042).
+    app.set_extract_text(extract_text);
 
     app.run()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn layout_camera_centres_world_origin_in_window() {
+        let mut world = World::new();
+        world.insert_resource(CameraState::new());
+        world.insert_resource(WindowSize {
+            width: 800,
+            height: 600,
+        });
+
+        layout_camera_system(&mut world);
+
+        let camera = world.get_resource::<CameraState>().unwrap();
+        assert_eq!(camera.zoom, DEMO_ZOOM);
+        assert_eq!(camera.position, Vec2::new(-80.0, -60.0));
+    }
+
+    #[test]
+    fn player_visible_reads_tagged_entity_visibility() {
+        let mut world = World::new();
+
+        let other = world.spawn();
+        world.insert(other, Tag::new("stack_0"));
+        world.insert(other, Visibility { visible: true });
+
+        let player = world.spawn();
+        world.insert(player, Tag::new("player"));
+        world.insert(player, Visibility { visible: false });
+
+        assert!(!player_visible(&world));
+    }
+
+    #[test]
+    fn extract_text_reports_player_visibility_state() {
+        let mut world = World::new();
+        world.insert_resource(WindowSize {
+            width: 800,
+            height: 600,
+        });
+
+        let player = world.spawn();
+        world.insert(player, Tag::new("player"));
+        world.insert(player, Visibility::default());
+
+        let sections = extract_text(&world);
+        assert!(sections
+            .iter()
+            .any(|section| section.content.contains("player spinner: visible")));
+    }
 }
