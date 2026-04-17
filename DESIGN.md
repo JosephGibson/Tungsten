@@ -2,7 +2,7 @@
 
 ## Status
 
-Workspace `v0.11.0` on branch `0.12`. Phase 3 M14 is shipped. Companion docs: [`AGENTS.md`](AGENTS.md) for operational rules, [`DECISIONS.md`](DECISIONS.md) for rationale by `D-NNN`.
+Workspace `v0.12.0` on branch `0.12`. Phase 3 M15 is shipped. Companion docs: [`AGENTS.md`](AGENTS.md) for operational rules, [`DECISIONS.md`](DECISIONS.md) for rationale by `D-NNN`.
 
 ## What It Is
 

@@ -438,6 +438,13 @@ impl SpritePipeline {
                 continue;
             }
 
+            let start = (base_instance as wgpu::BufferAddress) * instance_stride;
+            let end = start + (batch.instances.len() as wgpu::BufferAddress) * instance_stride;
+            // Every batch already occupies a contiguous range in `instance_upload`,
+            // even if we end up skipping the draw because its GPU texture is
+            // missing. Advance first so later batches keep the correct slice.
+            base_instance += batch.instances.len();
+
             let gpu_tex = match self.textures.get(&batch.texture) {
                 Some(t) => t,
                 None => {
@@ -450,13 +457,10 @@ impl SpritePipeline {
                 FilterMode::Nearest => &gpu_tex.bind_group_nearest,
                 FilterMode::Linear => &gpu_tex.bind_group_linear,
             };
-            let start = (base_instance as wgpu::BufferAddress) * instance_stride;
-            let end = start + (batch.instances.len() as wgpu::BufferAddress) * instance_stride;
 
             render_pass.set_bind_group(1, bind_group, &[]);
             render_pass.set_vertex_buffer(1, self.instance_buffer.slice(start..end));
             render_pass.draw(0..6, 0..batch.instances.len() as u32);
-            base_instance += batch.instances.len();
         }
     }
 }

@@ -21,4 +21,4 @@ Pointer file for [Claude Code](https://claude.ai/code).
 
 ## Status
 
-Workspace `v0.11.0` on branch `0.12`. Phase 3 M14 is complete. Event-queue docs, frame-order docs, and perf/benchmark references are up to date.
+Workspace `v0.12.0` on branch `0.12`. Phase 3 M15 is complete. Render-component docs, frame-order docs, and perf/benchmark references are up to date.
