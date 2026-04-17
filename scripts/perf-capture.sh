@@ -13,6 +13,21 @@ METADATA_PRESENT_MODE="unknown"
 METADATA_MAX_FRAME_LATENCY="unknown"
 METADATA_TIMESTAMP_QUERY="unknown"
 
+usage() {
+  cat <<'EOF'
+Usage: perf-capture.sh [scene] [frames] [--present-mode <mode>] [--max-frame-latency <n>] [--telemetry-only]
+
+Scenes:
+  sprite-stress
+  platformer
+
+Flags:
+  --present-mode <mode>       Override render.present_mode for child capture runs
+  --max-frame-latency <n>     Override render.max_frame_latency for child capture runs
+  --telemetry-only            Skip flamegraph/perf artifact capture; still writes telemetry logs and README
+EOF
+}
+
 metric_samples() {
   local file="$1"
   local key="$2"
@@ -100,15 +115,112 @@ parse_backend_metadata() {
   fi
 }
 
+capture_config_suffix() {
+  local present_mode_override="${1:-}"
+  local max_frame_latency_override="${2:-}"
+  local -a parts=()
+
+  if [ -n "$present_mode_override" ]; then
+    parts+=("$present_mode_override")
+  fi
+  if [ -n "$max_frame_latency_override" ]; then
+    parts+=("lat${max_frame_latency_override}")
+  fi
+
+  if [ "${#parts[@]}" -eq 0 ]; then
+    return 0
+  fi
+
+  local IFS='-'
+  printf '%s' "${parts[*]}"
+}
+
+requested_value_or_none() {
+  local value="${1:-}"
+  if [ -n "$value" ]; then
+    printf '%s' "$value"
+  else
+    printf 'none'
+  fi
+}
+
+capture_mode_label() {
+  local telemetry_only="${1:-0}"
+  if [ "$telemetry_only" -eq 1 ]; then
+    printf 'telemetry-only'
+  else
+    printf 'full'
+  fi
+}
+
 main() {
   cd "$REPO_ROOT"
 
-  local scene="${1:-sprite-stress}"
-  local frames="${2:-300}"
+  local scene=""
+  local frames=""
+  local requested_present_mode=""
+  local requested_max_frame_latency=""
+  local telemetry_only=0
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --present-mode)
+        if [ "$#" -lt 2 ]; then
+          echo "Missing value for --present-mode"
+          usage
+          exit 1
+        fi
+        requested_present_mode="$2"
+        shift 2
+        ;;
+      --max-frame-latency)
+        if [ "$#" -lt 2 ]; then
+          echo "Missing value for --max-frame-latency"
+          usage
+          exit 1
+        fi
+        requested_max_frame_latency="$2"
+        shift 2
+        ;;
+      --telemetry-only)
+        telemetry_only=1
+        shift
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      -*)
+        echo "Unknown flag '$1'"
+        usage
+        exit 1
+        ;;
+      *)
+        if [ -z "$scene" ]; then
+          scene="$1"
+        elif [ -z "$frames" ]; then
+          frames="$1"
+        else
+          echo "Unexpected argument '$1'"
+          usage
+          exit 1
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  scene="${scene:-sprite-stress}"
+  frames="${frames:-300}"
   local total_frames=$((frames + WARMUP_FRAMES))
   local timestamp
   timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  local config_suffix
+  config_suffix="$(capture_config_suffix "$requested_present_mode" "$requested_max_frame_latency")"
   local out_dir="perf-runs/${timestamp}-${scene}"
+  if [ -n "$config_suffix" ]; then
+    out_dir="${out_dir}-${config_suffix}"
+  fi
   mkdir -p "$out_dir"
 
   local pkg
@@ -151,11 +263,36 @@ main() {
   local perf_record_out="$out_dir/perf-record.data"
   local readme_out="$out_dir/README.md"
 
+  local -a env_base=(
+    env
+    -u TUNGSTEN_RENDER_PRESENT_MODE
+    -u TUNGSTEN_RENDER_MAX_FRAME_LATENCY
+  )
+  if [ -n "$requested_present_mode" ]; then
+    env_base+=("TUNGSTEN_RENDER_PRESENT_MODE=$requested_present_mode")
+  fi
+  if [ -n "$requested_max_frame_latency" ]; then
+    env_base+=("TUNGSTEN_RENDER_MAX_FRAME_LATENCY=$requested_max_frame_latency")
+  fi
+
+  local -a telemetry_env=(
+    "${env_base[@]}"
+    "TUNGSTEN_SMOKE_FRAMES=$total_frames"
+    "TUNGSTEN_PERF_LOG=1"
+    "RUST_LOG=tungsten::app=debug"
+  )
+  local -a gpu_telemetry_env=(
+    "${telemetry_env[@]}"
+    "TUNGSTEN_GPU_TIMING=1"
+  )
+  local -a profile_env=(
+    "${env_base[@]}"
+    "TUNGSTEN_SMOKE_FRAMES=$total_frames"
+    "RUST_LOG=error"
+  )
+
   echo "Capturing engine telemetry..."
-  TUNGSTEN_SMOKE_FRAMES="$total_frames" \
-  TUNGSTEN_PERF_LOG=1 \
-  RUST_LOG=tungsten::app=debug \
-  "$binary" >"$engine_log" 2>&1
+  "${telemetry_env[@]}" "$binary" >"$engine_log" 2>&1
   local engine_status=$?
   if [ "$engine_status" -ne 0 ]; then
     echo "Engine telemetry capture failed."
@@ -163,41 +300,39 @@ main() {
   fi
 
   echo "Capturing GPU timing telemetry..."
-  TUNGSTEN_SMOKE_FRAMES="$total_frames" \
-  TUNGSTEN_PERF_LOG=1 \
-  TUNGSTEN_GPU_TIMING=1 \
-  RUST_LOG=tungsten::app=debug \
-  "$binary" >"$gpu_log" 2>&1
+  "${gpu_telemetry_env[@]}" "$binary" >"$gpu_log" 2>&1
   local gpu_status=$?
   if [ "$gpu_status" -ne 0 ]; then
     echo "GPU timing capture failed."
     exit "$gpu_status"
   fi
 
-  if cargo flamegraph --help >/dev/null 2>&1; then
-    echo "Capturing flamegraph..."
-    env TUNGSTEN_SMOKE_FRAMES="$total_frames" RUST_LOG=error \
-    cargo flamegraph \
-      --package "$pkg" \
-      --bin "$pkg" \
-      --release \
-      --output "$flamegraph_out" \
-      -- \
-      >/dev/null 2>&1 || true
-  else
-    echo "cargo-flamegraph not installed; skipping flamegraph capture."
-  fi
+  if [ "$telemetry_only" -eq 0 ]; then
+    if cargo flamegraph --help >/dev/null 2>&1; then
+      echo "Capturing flamegraph..."
+      "${profile_env[@]}" \
+      cargo flamegraph \
+        --package "$pkg" \
+        --bin "$pkg" \
+        --release \
+        --output "$flamegraph_out" \
+        -- \
+        >/dev/null 2>&1 || true
+    else
+      echo "cargo-flamegraph not installed; skipping flamegraph capture."
+    fi
 
-  if command -v perf >/dev/null 2>&1; then
-    echo "Capturing perf stat..."
-    perf stat -d -o "$perf_stat_out" \
-      env TUNGSTEN_SMOKE_FRAMES="$total_frames" RUST_LOG=error "$binary" >/dev/null 2>&1 || true
+    if command -v perf >/dev/null 2>&1; then
+      echo "Capturing perf stat..."
+      "${profile_env[@]}" perf stat -d -o "$perf_stat_out" "$binary" >/dev/null 2>&1 || true
 
-    echo "Capturing perf record..."
-    perf record --call-graph dwarf -o "$perf_record_out" \
-      env TUNGSTEN_SMOKE_FRAMES="$total_frames" RUST_LOG=error "$binary" >/dev/null 2>&1 || true
+      echo "Capturing perf record..."
+      "${profile_env[@]}" perf record --call-graph dwarf -o "$perf_record_out" "$binary" >/dev/null 2>&1 || true
+    else
+      echo "perf not installed; skipping perf captures."
+    fi
   else
-    echo "perf not installed; skipping perf captures."
+    echo "Telemetry-only mode: skipping flamegraph and perf captures."
   fi
 
   parse_backend_metadata "$engine_log"
@@ -231,6 +366,45 @@ main() {
   cpu_model="$(grep -m1 'model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2- | sed 's/^ //')"
   local host_kernel
   host_kernel="$(uname -sr)"
+  local capture_mode
+  capture_mode="$(capture_mode_label "$telemetry_only")"
+  local requested_present_mode_label
+  requested_present_mode_label="$(requested_value_or_none "$requested_present_mode")"
+  local requested_max_frame_latency_label
+  requested_max_frame_latency_label="$(requested_value_or_none "$requested_max_frame_latency")"
+  local flamegraph_note
+  local perf_stat_note
+  local perf_record_note
+
+  if [ "$telemetry_only" -eq 1 ]; then
+    flamegraph_note="Skipped (--telemetry-only)"
+    perf_stat_note="Skipped (--telemetry-only)"
+    perf_record_note="Skipped (--telemetry-only)"
+  else
+    if [ -f "$flamegraph_out" ]; then
+      flamegraph_note="Captured"
+    elif cargo flamegraph --help >/dev/null 2>&1; then
+      flamegraph_note="Skipped (capture failed)"
+    else
+      flamegraph_note="Skipped (cargo-flamegraph not installed)"
+    fi
+
+    if [ -f "$perf_stat_out" ]; then
+      perf_stat_note="Captured"
+    elif command -v perf >/dev/null 2>&1; then
+      perf_stat_note="Skipped (capture failed)"
+    else
+      perf_stat_note="Skipped (perf not installed)"
+    fi
+
+    if [ -f "$perf_record_out" ]; then
+      perf_record_note="Captured"
+    elif command -v perf >/dev/null 2>&1; then
+      perf_record_note="Skipped (capture failed)"
+    else
+      perf_record_note="Skipped (perf not installed)"
+    fi
+  fi
 
   cat >"$readme_out" <<EOF
 # Perf Capture: $scene
@@ -243,6 +417,9 @@ main() {
 | CPU | ${cpu_model:-unknown} |
 | Binary | $binary |
 | Backend env | ${WGPU_BACKEND:-auto} |
+| Capture mode | ${capture_mode} |
+| Requested present mode override | ${requested_present_mode_label} |
+| Requested max frame latency override | ${requested_max_frame_latency_label} |
 | Renderer backend | ${METADATA_BACKEND} |
 | Renderer adapter | ${METADATA_ADAPTER} |
 | Present mode | ${METADATA_PRESENT_MODE} |
@@ -255,9 +432,9 @@ main() {
 | --- | --- |
 | \`engine-telemetry.txt\` | Stage-level frame timing log |
 | \`gpu-timing.txt\` | Same run with \`TUNGSTEN_GPU_TIMING=1\` |
-| \`flamegraph.svg\` | Present when cargo-flamegraph is installed |
-| \`perf-stat.txt\` | Present when \`perf stat\` succeeded |
-| \`perf-record.data\` | Present when \`perf record\` succeeded |
+| \`flamegraph.svg\` | ${flamegraph_note} |
+| \`perf-stat.txt\` | ${perf_stat_note} |
+| \`perf-record.data\` | ${perf_record_note} |
 
 ## Measured Values
 
@@ -289,6 +466,7 @@ main() {
 
 ## Notes
 
+- Render overrides are injected only into child capture processes; the parent shell environment is left unchanged.
 - Flamegraph and perf captures intentionally run without \`TUNGSTEN_GPU_TIMING\` to avoid the blocking timestamp readback stall.
 - Compare like-for-like runs only: same scene, resolution, backend, release build, present mode, and max frame latency.
 EOF

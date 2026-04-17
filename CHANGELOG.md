@@ -1,12 +1,40 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+Records all notable project changes.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+## [0.12.0] - 2026-04-16
+
+Summary: Phase 3 Milestone 15 — canonical render components (`Transform`, `Sprite`, `Visibility`, `Tag`) and a default sprite-extract path that removes the need for per-example extract closures in the common case.
+
+### Added
+
+- **Render components (`tungsten_core::components`):** `Transform { position, rotation, scale }`, `Sprite { asset_id, color, z_order }`, `Visibility { visible }`, and `Tag { name }` ship as the baseline gameplay/render component types. Re-exported from `tungsten_core` for convenience.
+- **One-way physics sync:** `tungsten_core::sync_position_to_transform` copies physics `Position.0` into `Transform.position` for every entity that carries both. Explicit, opt-in registration; there is no reverse sync (`D-033`).
+- **Default sprite extract:** `tungsten::extract_sprites_default` iterates `Transform + Sprite + Visibility`, resolves each sprite against `AssetRegistry`, and builds per-`(texture, filter)` `SpriteBatch`es stably sorted by `z_order`. Installed automatically by `App::run` when no custom sprite extract is set. `Visibility` is required — no implicit fallback (`D-042`).
+- **Per-instance rotation + tint on the GPU:** `SpriteInstance` now carries `rotation: f32` (radians, CCW, around the quad centre) and `color: [u8; 4]` (RGBA `Unorm8x4`). The WGSL pipeline rotates around centre and multiplies the sampled texel by the tint.
+- **`KeyCode::KeyV`:** added for the new example's `Visibility` toggle demo.
+- **Example `examples/03_component_sprites`:** renders rotating, pulsing, tint-cycling, and z-stacked sprites through the default extract path with no `set_extract_sprites` call. `V` toggles visibility on a tagged entity.
+- **Bench `sprite_components_query3_2k`:** new ecs_bench entry that regression-tests `query3::<Transform, Sprite, Visibility>` over 2 000 matching entities spread across five archetypes.
+- **DECISIONS.md D-042:** records the four coupled M15 choices — component ownership in `tungsten-core`, the one-way physics sync, the `SpriteInstance` layout change, and the `Visibility`-required default extract.
+
+### Changed
+
+- Workspace version bumped to `0.12.0`.
+- `SpriteInstance` size grew from 16 bytes to 24 bytes; all in-tree call sites (`tilemap_extract`, `01_platformer`, `02_sprite_stress`, render bench) migrated in the same commit with no backwards-compat shim.
+- `sprite.wgsl` now applies centre-origin rotation. When `rotation == 0.0`, `world_pos` reduces algebraically to the pre-M15 top-left-anchored expression so existing sprites render unchanged.
+- `FilterMode` derives `Hash` so `(TextureHandle, FilterMode)` can key batch maps.
+- `DESIGN.md`, `docs/LLM_INDEX.md`, and `docs/plans/Phase3.md` updated to reference the new component surface and default extract path.
+- Release QA pass completed locally: `cargo fmt --all -- --check`, `cargo build --workspace`, `cargo clippy --workspace --all-targets`, `cargo test --workspace`, `bash scripts/test-perf-capture.sh`, `./scripts/smoke-examples.sh`, `cargo bench -p tungsten-core --bench ecs_bench -- sprite_components_query3_2k`, and `cargo bench -p tungsten-render --bench render_bench -- sprite_extract_batch_build_2k` all passed. Current local bench medians: `sprite_components_query3_2k` ~`711 ns`, `sprite_extract_batch_build_2k` ~`5.79 us`.
+
+### Fixed
+
+- `SpritePipeline::draw` now advances its packed instance-buffer cursor even when a batch is skipped for a missing GPU texture, so later batches keep the correct instance slice instead of rendering misaligned sprite data.
 
 ## [0.11.0] - 2026-04-16
 
-Phase 3 Milestone 14 — typed event queues and fixed-frame event flush.
+Summary: Phase 3 Milestone 14 — typed event queues and fixed-frame event flush.
 
 ### Added
 
@@ -30,7 +58,7 @@ Phase 3 Milestone 14 — typed event queues and fixed-frame event flush.
 
 ## [0.10.0] - 2026-04-15
 
-Phase 3 Milestone 13 — command buffers and fixed-frame structural mutation flush.
+Summary: Phase 3 Milestone 13 — command buffers and fixed-frame structural mutation flush.
 
 ### Added
 
@@ -59,7 +87,7 @@ Phase 3 Milestone 13 — command buffers and fixed-frame structural mutation flu
 
 ## [0.9.0] - 2026-04-15
 
-Phase 3 Milestone 12 — performance baseline, telemetry, and profiling harness.
+Summary: Phase 3 Milestone 12 — performance baseline, telemetry, and profiling harness.
 
 ### Added
 
@@ -82,7 +110,7 @@ Phase 3 Milestone 12 — performance baseline, telemetry, and profiling harness.
 
 ## [0.8.0-alpha] - 2026-04-15
 
-Phase 2 integration — comprehensive platformer demo, example consolidation, and Phase 3 planning.
+Summary: Phase 2 integration — comprehensive platformer demo, example consolidation, and Phase 3 planning.
 
 ### Added
 
@@ -103,7 +131,7 @@ Phase 2 integration — comprehensive platformer demo, example consolidation, an
 
 ## [0.7.0-alpha] - 2026-04-14
 
-Phase 2 Milestone 12 — Archetypal ECS rewrite.
+Summary: Phase 2 Milestone 12 — Archetypal ECS rewrite.
 
 ### Added
 
@@ -129,7 +157,7 @@ Phase 2 Milestone 12 — Archetypal ECS rewrite.
 
 ## [0.6.0-alpha] - 2026-04-14
 
-Phase 2 Milestone 11 — 2D Physics.
+Summary: Phase 2 Milestone 11 — 2D Physics.
 
 ### Added
 
@@ -152,7 +180,7 @@ Phase 2 Milestone 11 — 2D Physics.
 
 ## [0.5.0-alpha] - 2026-04-13
 
-Phase 2 Milestone 10 — Tilemaps.
+Summary: Phase 2 Milestone 10 — Tilemaps.
 
 ### Added
 
@@ -178,7 +206,7 @@ Phase 2 Milestone 10 — Tilemaps.
 
 ## [0.4.0-alpha] - 2026-04-13
 
-Phase 2 Milestone 9 — Hot Reload.
+Summary: Phase 2 Milestone 9 — Hot Reload.
 
 ### Added
 
@@ -205,7 +233,7 @@ Phase 2 Milestone 9 — Hot Reload.
 
 ## [0.3.0-alpha] - 2026-04-13
 
-Phase 2 Milestone 8 — Audio.
+Summary: Phase 2 Milestone 8 — Audio.
 
 ### Added
 
@@ -238,7 +266,7 @@ Phase 2 Milestone 8 — Audio.
 
 ## [0.2.0-alpha.0] - 2026-04-12
 
-Phase 2 Milestone 7 — Text rendering.
+Summary: Phase 2 Milestone 7 — Text rendering.
 
 ### Added
 
@@ -251,7 +279,7 @@ Phase 2 Milestone 7 — Text rendering.
 
 ## [0.1.0-alpha] - 2026-04-12
 
-Phase 1 complete (milestones M0 through M6).
+Summary: Phase 1 complete (milestones M0 through M6).
 
 ### Added
 

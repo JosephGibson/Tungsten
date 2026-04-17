@@ -29,6 +29,8 @@ fn bench_sprite_extract_batch_build_2k(c: &mut Criterion) {
                 batches[tex_idx].instances.push(SpriteInstance {
                     position: [i as f32, (i / TEXTURES) as f32],
                     size: [16.0, 16.0],
+                    rotation: 0.0,
+                    color: [255; 4],
                 });
             }
 

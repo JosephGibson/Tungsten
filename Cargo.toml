@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.11.0"
+version = "0.12.0"
 edition = "2021"
 license = "MIT"
 
@@ -11,6 +11,7 @@ members = [
     "crates/tungsten",
     "examples/01_platformer",
     "examples/02_sprite_stress",
+    "examples/03_component_sprites",
 ]
 
 [workspace.dependencies]
@@ -54,3 +55,30 @@ bytemuck = { version = "1", features = ["derive"] }
 
 # Lock-free SPSC ring buffer for audio command channel (D-015 rule 3, D-034)
 rtrb = "0.3"
+
+# ---------------------------------------------------------------------------
+# Profiles
+# ---------------------------------------------------------------------------
+
+# Dev: project crates at opt-level 0 (fast incremental); all external deps at
+# opt-level 2 so wgpu / winit / glam / cpal run at acceptable speed in debug mode.
+# Deps rarely change, so the one-time compile cost does not hurt iteration speed.
+[profile.dev.package."*"]
+opt-level = 2
+
+# Release: maximize binary performance.
+#   lto = "thin"      — parallel cross-crate inlining via ThinLTO
+#   codegen-units = 1 — single LLVM CGU, maximum within-crate inlining budget
+#   panic = "abort"   — removes landing pads / unwind tables from LLVM IR
+#   debug = 1         — line-number tables only; keeps `perf`/flamegraph annotations
+#   strip = "none"    — explicit: symbols stay in binary for profiling workflow
+#
+# The bench profile inherits these settings. Re-baseline DECISIONS.md D-036
+# after any change here.
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+debug = 1
+strip = "none"

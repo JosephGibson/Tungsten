@@ -1,6 +1,10 @@
 # DECISIONS.md
 
-Log of non-obvious decisions for Tungsten. Numbered sequentially; immutable once settled. Reversals add a new entry marked `Superseded by D-XXX`.
+Decision log for non-obvious Tungsten choices.
+
+- IDs are sequential
+- Settled entries are immutable
+- Reversals add a new entry marked `Superseded by D-XXX`
 
 ---
 
@@ -179,3 +183,55 @@ Log of non-obvious decisions for Tungsten. Numbered sequentially; immutable once
 ## D-040 — M14 EventQueue: two-window typed event buffering
 **Date:** 2026-04-16
 **Decision:** Add `EventQueue<T>` as the canonical event-passing primitive. Each queue stores two windows (`previous`, `current`) so readers always see at least the most recent frame's events regardless of system registration order. `send()` appends to `current`; `iter()` yields `previous` then `current`; `iter_current()` is the opt-in same-frame-only view. `flush()` rotates at the same frame boundary as `CommandBuffer` flush — after systems, before hot reload, extract, and render. `App::register_event::<T>()` is a startup-only API that inserts the resource and stores a type-erased per-frame flush closure. Re-registering the same type is a no-op so duplicate startup calls cannot accidentally double-flush a queue. `flush()` remains `pub` so the umbrella crate can invoke it across crate boundaries, with docs warning that game systems should not call it directly. `CollisionEvents` is removed with no compatibility shim; all call sites migrate to `EventQueue<CollisionEvent>`. Bench: `event_queue_flush_10_types` measured ~= 2.44 us on the 2026-04-16 final local verification run (Criterion range: 2.4234-2.4597 us for 10 queue types with 100 events each).
+
+## D-041 — Cargo profile optimization: release LTO + codegen-units + panic=abort + target-cpu=native
+**Date:** 2026-04-16  
+**Decision:** Apply these compilation flags across the workspace:
+
+**`.cargo/config.toml`** (all builds on this machine):
+- `-C target-cpu=native` — enables AVX2/FMA and the full native ISA. Non-portable binary. All benchmark numbers below are keyed to this flag on AMD Radeon 660M / AMD Ryzen 5 6600H (Arch Linux, rustc 1.94.1).
+
+**`[profile.release]` in workspace `Cargo.toml`:**
+- `lto = "thin"` — ThinLTO: parallel cross-CGU import/export pass, cross-crate inlining.
+- `codegen-units = 1` — single LLVM CGU, maximum within-crate inlining budget.
+- `panic = "abort"` — removes landing pads and unwind tables from LLVM IR; verified safe across all deps including `cpal` on the 2026-04-16 validation pass (188 tests in the suite at that time).
+- `debug = 1` — line-number tables only; preserves `perf`/flamegraph source annotation.
+- `strip = "none"` — explicit; profiling workflow requires symbols in the binary.
+
+**`[profile.dev.package."*"]`:**
+- `opt-level = 2` for all external deps in dev builds — `wgpu`/`winit`/`glam`/`cpal` run at useful speed; project crates remain at opt-level 0 for fast incremental cycles.
+
+**Benchmark results** (post-optimization, 2026-04-16, Criterion `bench` profile inherits `[profile.release]`):
+
+| Benchmark | Time | vs. D-036/D-039/D-040 baseline | Note |
+|-----------|------|-------------------------------|------|
+| `spawn_insert_3_components_10k` | 3.736 ms | −12.6% | |
+| `query_single_10k` | 6.746 µs | −1.5% | |
+| `query2_homogeneous_10k` | 6.789 µs | −6.5% | |
+| `query2_fragmented_5arch_10k` | 7.045 µs | −8.0% | |
+| `query2_10k_5archetypes_pv` | 13.845 µs | −3.2% | |
+| `spawn_despawn_1k` | 72.964 µs | −9.5% | |
+| `command_buffer_flush_1k_spawns` | 236.89 µs | −7.6% | |
+| `naive_query_single_10k` | 29.976 µs | −20.8% | HashMap baseline; LTO inlines HashMap internals more aggressively |
+| `naive_query2_via_entities_10k` | 652.22 µs | −31.4% | Same |
+| `event_queue_flush_10_types` | 2.486 µs | −19.3% | |
+| `position_integration_50k` | 1.980 ms | −3.7% | glam Vec2 gains from FMA/AVX |
+| `broadphase_rebuild_5k_dynamic` | 312.56 µs | −37.3% | Largest gain; AABB/grid code fully vectorised |
+| `sprite_extract_batch_build_2k` | 5.842 µs | −20.4% | |
+
+The prior D-036 comparison ratios (~6× and ~200× archetypal vs. naive) still hold directionally; the absolute numbers for both sides improved proportionally under the new profile. The archetypal advantage is unchanged.
+
+## D-042 — M15 Transform + render components
+**Date:** 2026-04-16  
+**Decision:** Four coupled choices:
+
+1. New engine-level components live in `tungsten-core::components`:
+   - `Transform { position: Vec2, rotation: f32, scale: Vec2 }`
+   - `Sprite { asset_id: String, color: [u8; 4], z_order: i32 }`
+   - `Visibility { visible: bool }`
+   - `Tag { name: String }`
+2. Physics `Position` stays separate (per `D-033`). `Position -> Transform.position` is an opt-in free-fn system `sync_position_to_transform`; examples register it between `physics_step` and any extract stage that needs authoritative visuals. There is no reverse sync; physics remains the source of truth for `Position`.
+3. `SpriteInstance` grows by two fields (`rotation: f32`, `color: [u8; 4]`) so the component data can reach the GPU; all in-tree call sites migrate in the same commit — no backwards-compat shim.
+4. If the App has no custom sprite-extract, `extract_sprites_default` runs over `Transform + Sprite + Visibility`. `Visibility` is required — entities with `Transform + Sprite` but no `Visibility` are never emitted by the default path. No implicit fallback.
+
+Plan number conflict note: the M15 plan originally reserved `D-041`, but that ID was claimed on the same day by the Cargo profile entry; the M15 decision was renumbered to `D-042` on close-out.

@@ -1,3 +1,3 @@
-# Session plans
+# Session Plans
 
-Short-lived multi-step plans live here as `*.md` so a **fresh** assistant context can read them instead of inheriting long chat history. When to write them and what to include: [CLAUDE.md](../../CLAUDE.md).
+Use this directory for short-lived multi-step plans saved as `*.md`. Purpose: give a fresh assistant context a handoff artifact instead of long chat history. Conventions: see [CLAUDE.md](../../CLAUDE.md).

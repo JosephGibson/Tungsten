@@ -120,6 +120,8 @@ pub fn extract_tilemaps(world: &World) -> Vec<SpriteBatch> {
                         .push(SpriteInstance {
                             position: [world_x, world_y],
                             size: [tw, th],
+                            rotation: 0.0,
+                            color: [255; 4],
                         });
                 }
             }

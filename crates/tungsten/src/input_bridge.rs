@@ -16,6 +16,7 @@ pub fn translate_key(key: PhysicalKey) -> KeyCode {
             WinitKeyCode::KeyS => KeyCode::KeyS,
             WinitKeyCode::KeyD => KeyCode::KeyD,
             WinitKeyCode::KeyM => KeyCode::KeyM,
+            WinitKeyCode::KeyV => KeyCode::KeyV,
             WinitKeyCode::Digit1 => KeyCode::Digit1,
             WinitKeyCode::Digit2 => KeyCode::Digit2,
             WinitKeyCode::Digit3 => KeyCode::Digit3,

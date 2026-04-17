@@ -1,55 +1,56 @@
 # Tungsten
 
-A from-scratch Rust 2D game engine. `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Native only (Linux / macOS / Windows) — no WASM.
+From-scratch Rust 2D game engine. Stack: `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Targets: native only (`Linux`, `macOS`, `Windows`). No WASM.
 
-**Status:** `v0.11.0` — release line prepared. Typed two-window event queues now land at a fixed post-system frame boundary alongside deferred ECS command buffers and the existing telemetry, benchmark, profiling tooling, and swapchain frame-pacing follow-up. Next: M15 transform + render components.
+## Status
+
+Workspace `v0.12.0` on branch `0.12`. Phase 3 M15 is shipped. The engine now has typed two-window event queues flushing at a fixed post-system frame boundary beside deferred ECS command buffers, M12 telemetry, benchmark coverage, profiling tooling, the swapchain frame-pacing follow-up, and canonical gameplay-side render components with an opt-in default sprite-extract path. Next milestone: M16 camera module.
 
 ## Stack
 
-Hand-rolled ECS (archetypal storage + deferred command buffers + typed event queues), wgpu rendering, manifest-driven assets, text (glyphon), audio (cpal + symphonia + hand-rolled mixer), hot reload (notify), tilemaps (.tmj / Tiled), 2D physics (AABB + circle, uniform-grid broad-phase), and Phase 3 tooling (frame telemetry, Criterion benches, perf capture workflow).
+Hand-rolled ECS with archetypal storage, deferred command buffers, and typed event queues; `wgpu` rendering; manifest-driven assets; `glyphon` text; `cpal` + `symphonia` + hand-rolled audio mixer; `notify` hot reload; `.tmj` / Tiled-compatible tilemaps; 2D AABB + circle physics with a uniform-grid broad-phase; frame telemetry, Criterion benches, and a perf capture workflow.
 
-## 0.11 Highlights
+## 0.12 Highlights
 
-- Typed two-window `EventQueue<T>` with automatic frame-end flush after command buffers.
-- Physics collision signaling now uses `EventQueue<CollisionEvent>` with no per-system manual clear.
-- `App::register_event::<T>()` provides startup event registration for arbitrary event types.
-- Criterion coverage now includes event-queue flush cost alongside the existing ECS and physics benches.
+- Canonical `Transform`, `Sprite`, `Visibility`, and `Tag` components now live in `tungsten_core`
+- `App` installs `extract_sprites_default` automatically when no custom sprite extract is set
+- `SpriteInstance` now carries per-instance rotation and tint for every sprite path
+- New `example-03-component-sprites` demonstrates rotation, scale, tint, z-order, and `Visibility` toggling
 
 ## Documents
 
-| File | Purpose |
-|---|---|
-| [`DESIGN.md`](DESIGN.md) | Architecture, stack, subsystem detail. **Context.** |
-| [`AGENTS.md`](AGENTS.md) | Operational rules for working in the repo. **Tasks.** |
-| [`DECISIONS.md`](DECISIONS.md) | Log of non-obvious decisions with rationale (D-NNN). |
-| [`CLAUDE.md`](CLAUDE.md) | Pointer file for Claude Code. |
-| [`docs/LLM_INDEX.md`](docs/LLM_INDEX.md) | Subsystem → source paths for coding agents. |
-| [`docs/perf/profiling-workflow.md`](docs/perf/profiling-workflow.md) | Canonical profiling workflow, capture rules, and perf budgets. |
-| [`CHANGELOG.md`](CHANGELOG.md) | Per-version change log. |
+| File | Use |
+| --- | --- |
+| [`DESIGN.md`](DESIGN.md) | Architecture, stack, subsystem detail |
+| [`AGENTS.md`](AGENTS.md) | Repo rules, commands, test layers, task workflow |
+| [`DECISIONS.md`](DECISIONS.md) | Non-obvious decisions and rationale (`D-NNN`) |
+| [`CLAUDE.md`](CLAUDE.md) | Claude Code pointer file |
+| [`docs/LLM_INDEX.md`](docs/LLM_INDEX.md) | Subsystem → source-path map for coding agents |
+| [`docs/perf/profiling-workflow.md`](docs/perf/profiling-workflow.md) | Canonical profiling workflow, capture rules, perf budgets |
+| [`CHANGELOG.md`](CHANGELOG.md) | Versioned change history |
 
-## Quick start
+## Quick Start
 
 ```bash
 cargo build --workspace
 cargo test --workspace
 cargo run -p example-01-platformer      # comprehensive engine demo
 cargo run -p example-02-sprite-stress   # canonical perf stress scene
+cargo run -p example-03-component-sprites
 ```
 
-For reproducible profiling captures on Linux:
+Reproducible Linux perf capture:
 
 ```bash
 WGPU_BACKEND=vulkan ./scripts/perf-capture.sh sprite-stress 300
 bash scripts/test-perf-capture.sh
 ```
 
-## Read order
+## Read Order
 
-| Audience | Order |
-|---|---|
-| Human | `DESIGN.md` → `DECISIONS.md` → `AGENTS.md` |
-| AI agent | `AGENTS.md` → `DESIGN.md` → `DECISIONS.md` |
+- Human: `README.md` → `DESIGN.md` → `DECISIONS.md` → `AGENTS.md`
+- AI agent: `AGENTS.md` → `docs/LLM_INDEX.md` → touched files only; use `DESIGN.md` for architecture and `DECISIONS.md` for rationale when needed
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
