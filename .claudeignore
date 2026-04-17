@@ -2,10 +2,22 @@
 target/
 **/target/
 
+# Archived plans and release history — high token cost, low day-to-day value
+docs/plans/archive/
+CHANGELOG.md
+
+# Local profiling / coverage outputs
+perf-runs/
+coverage/
+flamegraph.svg
+perf.data
+perf.data.old
+
 # Binary assets — referenced by ID in code; manifest stays tracked
 **/*.ttf
 **/*.png
 **/*.ogg
+examples/**/assets/tilemaps/*.tmj
 
-# Optional: uncomment if lockfile noise is a problem
+# Optional: uncomment when not doing dependency work
 # /Cargo.lock
