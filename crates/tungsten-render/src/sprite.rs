@@ -380,7 +380,7 @@ impl SpritePipeline {
     }
 
     /// Upload the camera view-projection matrix. Caller owns matrix
-    /// construction (typically `Camera2D::view_projection(w, h)`) so
+    /// construction (typically `CameraState::view_projection(w, h)`) so
     /// tilemaps, sprites, and quads all share a single source of truth.
     pub fn update_camera(&self, queue: &wgpu::Queue, view_proj: &glam::Mat4) {
         let matrix_ref: &[f32; 16] = view_proj.as_ref();

@@ -12,8 +12,8 @@
 use glam::Vec2;
 
 use tungsten::core::{
-    AssetRegistry, Camera2D, Config, DeltaTime, InputState, KeyCode, ResolvedManifest, Sprite, Tag,
-    Transform, Visibility, World,
+    AssetRegistry, CameraState, Config, DeltaTime, InputState, KeyCode, ResolvedManifest, Sprite,
+    Tag, Transform, Visibility, World,
 };
 use tungsten::{asset_loader, App};
 
@@ -133,8 +133,8 @@ fn main() -> anyhow::Result<()> {
             .expect("Failed to load example 03 sprites");
 
         // Centre camera at the origin; world-space positions below are
-        // relative to screen centre via the default Camera2D.
-        if let Some(cam) = world.get_resource_mut::<Camera2D>() {
+        // relative to screen centre via the default CameraState.
+        if let Some(cam) = world.get_resource_mut::<CameraState>() {
             cam.zoom = 3.0;
             cam.position = Vec2::ZERO;
         }

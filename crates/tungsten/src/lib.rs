@@ -5,6 +5,7 @@
 pub mod app;
 pub mod asset_loader;
 pub mod audio;
+pub mod camera;
 pub mod hot_reload;
 mod input_bridge;
 pub mod sprite_extract;
@@ -12,6 +13,7 @@ pub mod telemetry;
 mod tilemap_extract;
 
 pub use app::{App, WindowSize};
+pub use camera::camera_update_system;
 pub use hot_reload::HotReloadWatcher;
 pub use sprite_extract::extract_sprites_default;
 pub use telemetry::FrameTimings;

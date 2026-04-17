@@ -164,7 +164,8 @@ impl QuadPipeline {
     }
 
     /// Upload the camera view-projection matrix. Caller owns matrix
-    /// construction; see `SpritePipeline::update_camera` for context.
+    /// construction; see `CameraState::view_projection` usage in the
+    /// umbrella crate for context.
     pub fn update_camera(&self, queue: &wgpu::Queue, view_proj: &glam::Mat4) {
         let matrix_ref: &[f32; 16] = view_proj.as_ref();
         queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(matrix_ref));

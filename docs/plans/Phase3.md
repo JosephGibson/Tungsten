@@ -107,6 +107,8 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 
 ### M16 - Camera Module
 
+> **Status: complete**
+
 - Goal: centralize camera behavior in one engine module/class-like API instead of ad hoc example logic.
 - Design: add `CameraState` (`position`, `zoom`, `rotation`, viewport behavior), `CameraController` (follow target, dead-zone, smoothing, bounds clamp, shake), and `CameraMode` (free, follow entity, scripted); keep render integration through the existing camera math path; standardize ownership/update flow; run camera update as a normal system; write one authoritative camera state per frame; provide example-level hooks for gameplay-specific tuning without forking engine internals.
 - Done when: platformer uses camera follow + bounds clamp through the camera module rather than one-off logic, render consumes position/zoom from the new authoritative camera state, and at least one deterministic scripted scenario tests camera behavior.

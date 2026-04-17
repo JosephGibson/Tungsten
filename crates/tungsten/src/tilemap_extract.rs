@@ -9,14 +9,14 @@
 use std::collections::HashMap;
 
 use tungsten_core::assets::{LayerKind, TilemapRegistry};
-use tungsten_core::{AssetRegistry, Camera2D, TilemapInstance, World};
+use tungsten_core::{AssetRegistry, CameraState, TilemapInstance, World};
 use tungsten_render::{SpriteBatch, SpriteInstance};
 
 use crate::WindowSize;
 
 /// Walk every entity with a `TilemapInstance` component and return
 /// per-texture `SpriteBatch`es for the tiles currently visible through
-/// the `Camera2D` resource.
+/// the `CameraState` resource.
 ///
 /// Batches are returned in layer order within each tilemap, which
 /// preserves back-to-front draw order when the caller concatenates
@@ -35,7 +35,7 @@ pub fn extract_tilemaps(world: &World) -> Vec<SpriteBatch> {
         None => return vec![],
     };
     let camera = world
-        .get_resource::<Camera2D>()
+        .get_resource::<CameraState>()
         .copied()
         .unwrap_or_default();
     let window = world
