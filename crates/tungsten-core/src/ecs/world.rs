@@ -36,7 +36,9 @@ impl World {
 
     /// Despawn an entity, removing all of its components.
     ///
-    /// Panics if the entity is already dead (D-022).
+    /// No-op if the entity is already dead, so that deferred `CommandBuffer`
+    /// despawns remain idempotent when multiple systems target the same
+    /// entity in a single frame.
     pub fn despawn(&mut self, entity: Entity) {
         if self.is_alive(entity) {
             self.archetypes.despawn(entity);
