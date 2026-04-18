@@ -4,6 +4,32 @@ Records all notable project changes.
 
 Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.14.0] - 2026-04-17
+
+Summary: Phase 3 Milestone 17 — display state/config, frame-boundary runtime display changes, and release-line alignment.
+
+### Added
+
+- **Display model (`tungsten_core::display`):** `DisplayState`, `DisplayConfig`, `DisplayMode`, `ScaleMode`, `Resolution`, and `DisplayValidationError` now ship as the core-owned display data/validation surface. The checked-in `tungsten.json` now includes a canonical `display` block while legacy `window.*` / `render.*` display inputs remain valid for M17 compatibility.
+- **Single runtime display request path:** `tungsten::request_display_settings(&mut World, DisplayState)` validates requests up front, queues one pending change, and lets `App` apply fullscreen, resize, surface-pacing, and frame-cap deltas only at the top of `RedrawRequested`.
+- **Display telemetry:** `tungsten::DisplayTelemetry` mirrors authoritative resolution, display mode, vsync intent, lower-case applied present-mode label, max-frame-latency hint, scale mode, and frame-rate cap back into the `World`.
+- **Runtime display demo wiring:** `example-01-platformer` now exercises the runtime path directly: `F11` toggles borderless fullscreen and `F9` toggles `vsync` while re-running auto present-mode selection.
+- **Decision record + archived plan:** `DECISIONS.md` now includes `D-043` for the single-file display config shape and frame-boundary apply rule, and the detailed M17 rollout plan now lives at `docs/plans/archive/Phase3-Milestone17-plan.md`.
+
+### Changed
+
+- Workspace version bumped to `0.14.0`.
+- `README.md`, `DESIGN.md`, `AGENTS.md`, `CLAUDE.md`, `docs/plans/Phase3.md`, and `docs/perf/profiling-workflow.md` now reflect the shipped `0.14.0` / M17 release line and the `display.*` config surface.
+- `example-02-sprite-stress` and `example-03-component-sprites` now express startup sizing through `config.display.resolution` instead of post-load legacy `config.window.*` mutations that are shadowed by the checked-in `display` block.
+- `scripts/perf-capture.sh` help text now describes pacing overrides without pointing at superseded pre-M17 config wording.
+- Release QA pass completed locally: `cargo fmt --all`, `cargo test --workspace`, and `./scripts/smoke-examples.sh` all passed.
+
+### Fixed
+
+- **Release metadata drift:** top-level docs, planning docs, and changelog entries now agree on branch `0.14`, workspace `0.14.0`, and M17 shipped state.
+- **Example display override drift:** sprite-stress and component-sprites no longer rely on legacy startup window overrides that do not win over the resolved `display` block after `Config::load()`.
+- **Config error masking:** `example-03-component-sprites` now propagates `Config::load` failures instead of silently falling back to defaults.
+
 ## [0.13.0] - 2026-04-17
 
 Summary: Phase 3 Milestone 16 — shared camera module and authoritative camera flow.

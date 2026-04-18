@@ -12,8 +12,8 @@
 use glam::Vec2;
 
 use tungsten::core::{
-    AssetRegistry, CameraState, Config, DeltaTime, InputState, KeyCode, ResolvedManifest, Sprite,
-    Tag, Transform, Visibility, World,
+    AssetRegistry, CameraState, Config, DeltaTime, InputState, KeyCode, Resolution,
+    ResolvedManifest, Sprite, Tag, Transform, Visibility, World,
 };
 use tungsten::render::TextSection;
 use tungsten::{asset_loader, App, WindowSize};
@@ -222,10 +222,12 @@ fn extract_text(world: &World) -> Vec<TextSection> {
 fn main() -> anyhow::Result<()> {
     env_logger::init();
 
-    let mut config = Config::load("tungsten.json").unwrap_or_default();
+    let mut config = Config::load("tungsten.json")?;
     config.window.title = "Component Sprites".to_string();
-    config.window.width = 800;
-    config.window.height = 600;
+    config.display.resolution = Some(Resolution {
+        width: 800,
+        height: 600,
+    });
 
     let mut app = App::new(config);
 

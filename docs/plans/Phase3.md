@@ -31,11 +31,11 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 
 ## Current Status
 
-- Workspace version metadata: `0.13.0`
-- Current branch: `0.13`
-- Completed milestones: `M12` profiling baseline, `M13` command buffers, `M14` event queues, `M15` transform + render components, `M16` camera module
-- Next recommended milestone: `M17 — Display State + Config`
-- Archived detailed milestone plans: [M12](archive/Phase3-Milestone12-plan.md), [M13](archive/Phase3-Milestone13-plan.md), [M14](archive/Phase3-Milestone14-plan.md), [M15](archive/Phase3-Milestone15-plan.md)
+- Workspace version metadata: `0.14.0`
+- Current branch: `0.14`
+- Completed milestones: `M12` profiling baseline, `M13` command buffers, `M14` event queues, `M15` transform + render components, `M16` camera module, `M17` display state + config
+- Next recommended milestone: `M18 — Runtime Telemetry HUD`
+- Archived detailed milestone plans: [M12](archive/Phase3-Milestone12-plan.md), [M13](archive/Phase3-Milestone13-plan.md), [M14](archive/Phase3-Milestone14-plan.md), [M15](archive/Phase3-Milestone15-plan.md), [M16](archive/phase3-milestone16-plan.md), [M17](archive/Phase3-Milestone17-plan.md)
 
 ## Execution Contract
 
@@ -51,7 +51,7 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 - `EventQueue<T>` (`tungsten-core`): typed 2-window event buffering
 - `Transform` / `Sprite` / `Visibility` / `Tag` (`tungsten-core`): baseline gameplay/render components
 - `CameraState` / `CameraController` / `CameraMode` (`tungsten` + core-facing data where needed): authoritative camera flow
-- `DisplayState` + config schema (`tungsten` + `tungsten.json`): runtime display settings boundary
+- `DisplayState` / `DisplayConfig` (`tungsten-core`) + request/apply wiring (`tungsten`): runtime display settings boundary
 - `DebugHud` telemetry model (`tungsten`): in-game text diagnostics and extension hook
 - `StateStack` + `GameState` (`tungsten`): scene/state transitions
 
@@ -115,8 +115,11 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 
 ### M17 - Display State + Config
 
+> **Status: complete** (`v0.14.0`, `2026-04-17`)
+> Detailed implementation plan archived at [`docs/plans/archive/Phase3-Milestone17-plan.md`](archive/Phase3-Milestone17-plan.md).
+
 - Goal: introduce a display abstraction that owns runtime display/window settings and prepares for future settings UI.
-- Design: add `DisplayState` for display mode, resolution, vsync, scale mode, and fullscreen intent; add file-backed display config via `display.json` or a `tungsten.json` section; add startup load/validate/apply flow; route runtime changes through `apply_display_settings`; keep menu UI out of scope for Phase 3 because this milestone only establishes the data model and application path.
+- Design: add core-owned `DisplayState` / `DisplayConfig`, store display settings in the workspace-root `tungsten.json` `display` section, expose runtime changes through `request_display_settings`, and apply all window/surface mutations only at the top of `RedrawRequested`; keep menu UI out of scope for Phase 3 because this milestone only establishes the data model and application path.
 - Done when: the engine starts with display settings from config and reports active values in runtime telemetry, one API boundary exists for resolution/fullscreen/vsync changes even if examples expose it only through debug keys, and invalid display config fails gracefully with safe defaults plus a warning log.
 
 ### M18 - Runtime Telemetry HUD
@@ -194,7 +197,7 @@ Close each milestone only after:
 - [ ] Debug overlays are one-key-toggle in at least one representative example
 - [ ] Performance baseline and profiling workflow exist before major feature milestones
 - [x] Camera module owns camera behavior for at least one representative gameplay example
-- [ ] Display state/config layer is active and future settings-menu-ready
+- [x] Display state/config layer is active and future settings-menu-ready
 - [ ] Runtime telemetry HUD exposes core state (`FPS` / `camera` / `player` / system timing) in a representative example
 - [ ] Deterministic screenshot + scripted input checks run for representative flows
 - [ ] Sprite atlas path is transparent to game code and reduces texture pressure

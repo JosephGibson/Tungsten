@@ -235,3 +235,12 @@ The prior D-036 comparison ratios (~6× and ~200× archetypal vs. naive) still h
 4. If the App has no custom sprite-extract, `extract_sprites_default` runs over `Transform + Sprite + Visibility`. `Visibility` is required — entities with `Transform + Sprite` but no `Visibility` are never emitted by the default path. No implicit fallback.
 
 Plan number conflict note: the M15 plan originally reserved `D-041`, but that ID was claimed on the same day by the Cargo profile entry; the M15 decision was renumbered to `D-042` on close-out.
+
+## D-043 — M17 display settings live in `tungsten.json` and apply at a frame boundary
+**Date:** 2026-04-17  
+**Decision:** Four coupled choices:
+
+1. Display settings live under a `display` section inside the existing workspace-root `tungsten.json`, not in a second `display.json` file. This preserves D-008's single-config-file rule.
+2. `tungsten-core` owns the plain data model (`DisplayState`, `DisplayConfig`, `DisplayMode`, `ScaleMode`, `Resolution`) and validation only. No `winit` or `wgpu` types cross into core, preserving D-007 and D-016.
+3. Gameplay/example code requests runtime changes through one public API: `tungsten::request_display_settings(&mut World, DisplayState)`. Actual window/surface mutation happens only at the top of `WindowEvent::RedrawRequested`, before surface acquire, so systems never mutate `winit`/`wgpu` state mid-frame.
+4. Legacy `window.*` and `render.*` display fields remain valid for M17. The new `display.*` fields win when both specify the same concern. `exclusive_fullscreen` is accepted in config and requests, but runtime support is still limited to windowed and borderless fullscreen, so exclusive requests are downgraded to borderless with a warning until a later milestone adds real video-mode selection.

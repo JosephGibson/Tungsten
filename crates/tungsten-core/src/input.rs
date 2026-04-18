@@ -11,6 +11,8 @@ pub enum KeyCode {
     Space,
     Enter,
     Escape,
+    F9,
+    F11,
     KeyW,
     KeyA,
     KeyS,

@@ -42,6 +42,15 @@ assert_eq "full" "$(capture_mode_label 0)" "full capture mode label"
 assert_eq "telemetry-only" "$(capture_mode_label 1)" "telemetry-only capture mode label"
 assert_eq "mailbox" "$(requested_value_or_none "mailbox")" "requested value passthrough"
 assert_eq "none" "$(requested_value_or_none "")" "requested value empty label"
+assert_eq "example-02-sprite-stress" "$(resolve_scene_package "ecs-high-load")" "ecs-high-load package"
+
+mapfile -t ecs_scene_env < <(scene_env_overrides "ecs-high-load")
+assert_eq "1" "${#ecs_scene_env[@]}" "ecs-high-load env count"
+assert_eq "STRESS_SCENE=ecs-high-load" "${ecs_scene_env[0]}" "ecs-high-load env override"
+
+mapfile -t baseline_scene_env < <(scene_env_overrides "sprite-stress")
+assert_eq "1" "${#baseline_scene_env[@]}" "baseline env count"
+assert_eq "STRESS_SCENE=baseline" "${baseline_scene_env[0]}" "baseline env override"
 
 assert_eq "3.00" "$(avg_metric "$log_file" "total")" "average total"
 assert_eq "3.00" "$(percentile_metric "$log_file" "total" 50)" "p50 total"

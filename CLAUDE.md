@@ -6,6 +6,7 @@ Pointer file for [Claude Code](https://claude.ai/code).
 
 - Read [AGENTS.md](AGENTS.md) first; it is the canonical source for commands, test layers, hard rules, and code-placement rules.
 - Open [docs/LLM_INDEX.md](docs/LLM_INDEX.md) before any broad repo search or glob; it maps each subsystem to its primary source files.
+- For rationale lookup, check [docs/DECISION_INDEX.md](docs/DECISION_INDEX.md) before opening [DECISIONS.md](DECISIONS.md).
 - Agent read path: `AGENTS.md` → `docs/LLM_INDEX.md` → only the files touched by the task.
 - Skip `DESIGN.md` and `DECISIONS.md` unless the task needs architecture context or rationale; for `DECISIONS.md`, grep `D-0xx` and do not read it serially.
 - Skip `CHANGELOG.md` unless releasing.
@@ -21,4 +22,4 @@ Pointer file for [Claude Code](https://claude.ai/code).
 
 ## Status
 
-Workspace `v0.13.0` on branch `0.13`. Phase 3 M16 is complete. Camera-module docs, frame-order docs, and perf/benchmark references are up to date.
+Workspace `v0.14.0` on branch `0.14`. Phase 3 M17 is complete. Display-state/config docs, frame-order docs, and perf/benchmark references are up to date.

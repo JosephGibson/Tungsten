@@ -4,6 +4,8 @@
 //! It is consumed by the runtime HUD (M18) and offline tooling.
 //! All timings are wall-clock milliseconds from `std::time::Instant`.
 
+use tungsten_core::{DisplayMode, DisplayState, ScaleMode};
+
 /// Per-stage CPU timing for a single frame, in milliseconds.
 /// Populated by `App` at the end of each `RedrawRequested` pass and
 /// inserted as a resource so any system or HUD can read it.
@@ -47,6 +49,42 @@ impl FrameTimings {
             .iter()
             .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
             .map(|(name, ms)| (name.as_str(), *ms))
+    }
+}
+
+/// Runtime display/window telemetry published by the umbrella crate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DisplayTelemetry {
+    pub resolution: (u32, u32),
+    pub display_mode: DisplayMode,
+    pub vsync: bool,
+    pub actual_present_mode: Option<String>,
+    pub max_frame_latency: Option<u32>,
+    pub scale_mode: ScaleMode,
+    pub frame_rate_cap: Option<u32>,
+}
+
+impl DisplayTelemetry {
+    pub fn from_state(state: &DisplayState, actual_present_mode: Option<String>) -> Self {
+        Self {
+            resolution: (state.resolution.width, state.resolution.height),
+            display_mode: state.display_mode,
+            vsync: state.vsync,
+            actual_present_mode,
+            max_frame_latency: state.max_frame_latency,
+            scale_mode: state.scale_mode,
+            frame_rate_cap: state.frame_rate_cap,
+        }
+    }
+
+    pub fn apply_state(&mut self, state: &DisplayState, actual_present_mode: Option<String>) {
+        *self = Self::from_state(state, actual_present_mode);
+    }
+}
+
+impl Default for DisplayTelemetry {
+    fn default() -> Self {
+        Self::from_state(&DisplayState::default(), None)
     }
 }
 

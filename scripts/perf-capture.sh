@@ -19,11 +19,12 @@ Usage: perf-capture.sh [scene] [frames] [--present-mode <mode>] [--max-frame-lat
 
 Scenes:
   sprite-stress
+  ecs-high-load
   platformer
 
 Flags:
-  --present-mode <mode>       Override render.present_mode for child capture runs
-  --max-frame-latency <n>     Override render.max_frame_latency for child capture runs
+  --present-mode <mode>       Override the resolved present mode for child capture runs
+  --max-frame-latency <n>     Override the requested max-frame-latency hint for child capture runs
   --telemetry-only            Skip flamegraph/perf artifact capture; still writes telemetry logs and README
 EOF
 }
@@ -153,6 +154,38 @@ capture_mode_label() {
   fi
 }
 
+resolve_scene_package() {
+  local scene="$1"
+  case "$scene" in
+    sprite-stress|ecs-high-load)
+      printf '%s' "example-02-sprite-stress"
+      ;;
+    platformer)
+      printf '%s' "example-01-platformer"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+scene_env_overrides() {
+  local scene="$1"
+  case "$scene" in
+    sprite-stress)
+      printf '%s\n' "STRESS_SCENE=baseline"
+      ;;
+    ecs-high-load)
+      printf '%s\n' "STRESS_SCENE=ecs-high-load"
+      ;;
+    platformer)
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 main() {
   cd "$REPO_ROOT"
 
@@ -224,18 +257,12 @@ main() {
   mkdir -p "$out_dir"
 
   local pkg
-  case "$scene" in
-    sprite-stress)
-      pkg="example-02-sprite-stress"
-      ;;
-    platformer)
-      pkg="example-01-platformer"
-      ;;
-    *)
-      echo "Unknown scene '$scene'. Expected: sprite-stress or platformer."
-      exit 1
-      ;;
-  esac
+  if ! pkg="$(resolve_scene_package "$scene")"; then
+    echo "Unknown scene '$scene'. Expected: sprite-stress, ecs-high-load, or platformer."
+    exit 1
+  fi
+  local -a scene_env=()
+  mapfile -t scene_env < <(scene_env_overrides "$scene")
 
   echo "Building $pkg with frame pointers..."
   if ! RUSTFLAGS="-C force-frame-pointers=yes" cargo build --release -p "$pkg"; then
@@ -267,6 +294,8 @@ main() {
     env
     -u TUNGSTEN_RENDER_PRESENT_MODE
     -u TUNGSTEN_RENDER_MAX_FRAME_LATENCY
+    -u STRESS_SCENE
+    -u STRESS_COUNT
   )
   if [ -n "$requested_present_mode" ]; then
     env_base+=("TUNGSTEN_RENDER_PRESENT_MODE=$requested_present_mode")
@@ -277,6 +306,7 @@ main() {
 
   local -a telemetry_env=(
     "${env_base[@]}"
+    "${scene_env[@]}"
     "TUNGSTEN_SMOKE_FRAMES=$total_frames"
     "TUNGSTEN_PERF_LOG=1"
     "RUST_LOG=tungsten::app=debug"
@@ -287,6 +317,7 @@ main() {
   )
   local -a profile_env=(
     "${env_base[@]}"
+    "${scene_env[@]}"
     "TUNGSTEN_SMOKE_FRAMES=$total_frames"
     "RUST_LOG=error"
   )
@@ -467,6 +498,7 @@ main() {
 ## Notes
 
 - Render overrides are injected only into child capture processes; the parent shell environment is left unchanged.
+- Scene selection is also injected only into child capture processes so shell-local `STRESS_SCENE` / `STRESS_COUNT` values cannot skew canonical runs.
 - Flamegraph and perf captures intentionally run without \`TUNGSTEN_GPU_TIMING\` to avoid the blocking timestamp readback stall.
 - Compare like-for-like runs only: same scene, resolution, backend, release build, present mode, and max frame latency.
 EOF

@@ -4,18 +4,18 @@ From-scratch Rust 2D game engine. Stack: `winit` + `wgpu` + `glam` + hand-rolled
 
 ## Status
 
-Workspace `v0.13.0` on branch `0.13`. Phase 3 M16 is shipped. The engine now pairs typed two-window event queues and deferred ECS command buffers with a shared camera module built around authoritative `CameraState` and `CameraController` resources, plus M12 telemetry, benchmark coverage, profiling tooling, the swapchain frame-pacing follow-up, and canonical gameplay-side render components with an opt-in default sprite-extract path. Next milestone: M17 display state + config.
+Workspace `v0.14.0` on branch `0.14`. Phase 3 M17 is shipped. The engine now pairs typed two-window event queues and deferred ECS command buffers with a shared camera module plus a core-owned display state/config model, frame-boundary runtime display requests, and display telemetry wired up for the upcoming HUD work. Next milestone: `M18` runtime telemetry HUD.
 
 ## Stack
 
 Hand-rolled ECS with archetypal storage, deferred command buffers, and typed event queues; `wgpu` rendering; manifest-driven assets; `glyphon` text; `cpal` + `symphonia` + hand-rolled audio mixer; `notify` hot reload; `.tmj` / Tiled-compatible tilemaps; 2D AABB + circle physics with a uniform-grid broad-phase; frame telemetry, Criterion benches, and a perf capture workflow.
 
-## 0.13 Highlights
+## 0.14 Highlights
 
-- Shared `CameraState`, `CameraController`, `CameraMode`, and `CameraBounds` now ship from `tungsten_core`
-- `camera_update_system` writes one authoritative camera state per frame with follow, dead-zone, smoothing, bounds clamp, zoom multiplier, and deterministic shake support
-- `example-01-platformer` now uses the shared camera path for player follow, map-edge clamp, and window-height-derived zoom
-- Camera tests cover follow/clamp behavior, zero-rotation matrix compatibility, zoom-multiplier updates, and deterministic shake
+- `tungsten_core` now ships `DisplayState`, `DisplayConfig`, `DisplayMode`, `ScaleMode`, `Resolution`, and `DisplayValidationError`
+- `tungsten.json` now carries a canonical `display` block while legacy `window.*` and `render.*` display fields remain valid for M17 compatibility
+- `tungsten::request_display_settings` is the single public runtime mutation path, and `tungsten::DisplayTelemetry` mirrors the effective display state back into the `World`
+- `example-01-platformer` now exercises the runtime path directly: `F11` toggles borderless fullscreen and `F9` toggles `vsync` while re-running auto present-mode selection
 
 ## Documents
 

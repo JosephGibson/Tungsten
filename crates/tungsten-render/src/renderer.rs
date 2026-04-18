@@ -264,7 +264,7 @@ impl Renderer {
             frame_gpu_ms: None,
             backend: Some(format!("{:?}", adapter_info.backend)),
             adapter_name: Some(adapter_info.name.clone()),
-            present_mode: Some(format!("{:?}", present_mode)),
+            present_mode: Some(present_mode_label(present_mode).to_string()),
             max_frame_latency: Some(desired_maximum_frame_latency),
         };
 
@@ -336,6 +336,27 @@ impl Renderer {
             self.surface_config.height = height;
             self.surface.configure(&self.device, &self.surface_config);
         }
+    }
+
+    pub fn reconfigure_surface_pacing(
+        &mut self,
+        present_mode: Option<PresentModeConfig>,
+        vsync: bool,
+        max_frame_latency: Option<u32>,
+    ) -> Result<(), RenderError> {
+        let surface_caps = self.surface.get_capabilities(&self.adapter);
+        let resolved_present_mode =
+            resolve_present_mode(&surface_caps.present_modes, present_mode, vsync)?;
+        let resolved_max_frame_latency =
+            resolve_max_frame_latency(max_frame_latency, resolved_present_mode)?;
+
+        self.surface_config.present_mode = resolved_present_mode;
+        self.surface_config.desired_maximum_frame_latency = resolved_max_frame_latency;
+        self.surface.configure(&self.device, &self.surface_config);
+
+        self.gpu_timings.present_mode = Some(present_mode_label(resolved_present_mode).to_string());
+        self.gpu_timings.max_frame_latency = Some(resolved_max_frame_latency);
+        Ok(())
     }
 
     fn acquire_texture(&self) -> Result<Option<wgpu::SurfaceTexture>, RenderError> {
@@ -667,6 +688,24 @@ mod tests {
         assert_eq!(
             resolve_max_frame_latency(None, wgpu::PresentMode::Fifo).unwrap(),
             2
+        );
+    }
+
+    #[test]
+    fn present_mode_labels_are_stable_lowercase_strings() {
+        assert_eq!(present_mode_label(wgpu::PresentMode::Fifo), "fifo");
+        assert_eq!(
+            present_mode_label(wgpu::PresentMode::Immediate),
+            "immediate"
+        );
+        assert_eq!(present_mode_label(wgpu::PresentMode::Mailbox), "mailbox");
+        assert_eq!(
+            present_mode_label(wgpu::PresentMode::AutoVsync),
+            "auto_vsync"
+        );
+        assert_eq!(
+            present_mode_label(wgpu::PresentMode::AutoNoVsync),
+            "auto_no_vsync"
         );
     }
 }
