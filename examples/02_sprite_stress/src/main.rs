@@ -135,6 +135,7 @@ struct StressAgent {
 
 #[derive(Debug, Clone, Copy)]
 struct HighLoadSceneState {
+    #[cfg_attr(not(test), allow(dead_code))]
     leader: tungsten::core::Entity,
     entity_count: usize,
 }
@@ -279,7 +280,7 @@ fn seed_high_load_world(world: &mut World, entity_count: usize) {
     }
 
     let cols = high_load_cols(entity_count);
-    let rows = (entity_count + cols - 1) / cols;
+    let rows = entity_count.div_ceil(cols);
     let usable_width = (HIGH_LOAD_WORLD_WIDTH - HIGH_LOAD_PADDING * 2.0 - HIGH_LOAD_SPRITE_SIZE)
         .max(HIGH_LOAD_SPRITE_SIZE);
     let usable_height = (HIGH_LOAD_WORLD_HEIGHT - HIGH_LOAD_PADDING * 2.0 - HIGH_LOAD_SPRITE_SIZE)

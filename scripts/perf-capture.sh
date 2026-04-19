@@ -498,7 +498,7 @@ main() {
 ## Notes
 
 - Render overrides are injected only into child capture processes; the parent shell environment is left unchanged.
-- Scene selection is also injected only into child capture processes so shell-local `STRESS_SCENE` / `STRESS_COUNT` values cannot skew canonical runs.
+- Scene selection is also injected only into child capture processes so shell-local \`STRESS_SCENE\` / \`STRESS_COUNT\` values cannot skew canonical runs.
 - Flamegraph and perf captures intentionally run without \`TUNGSTEN_GPU_TIMING\` to avoid the blocking timestamp readback stall.
 - Compare like-for-like runs only: same scene, resolution, backend, release build, present mode, and max frame latency.
 EOF
