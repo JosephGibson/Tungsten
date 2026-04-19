@@ -26,3 +26,7 @@ harness = false
 [[bench]]
 name = "physics_bench"
 harness = false
+
+[[bench]]
+name = "action_map_bench"
+harness = false

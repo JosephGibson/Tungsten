@@ -1,0 +1,18 @@
+{
+  "actions": {
+    "move_left":   [{ "kind": "key", "code": "ArrowLeft" },  { "kind": "key", "code": "KeyA" }],
+    "move_right":  [{ "kind": "key", "code": "ArrowRight" }, { "kind": "key", "code": "KeyD" }],
+    "jump":        [{ "kind": "key", "code": "Space" }, { "kind": "mouse", "button": "left" }],
+    "zoom_in":     [{ "kind": "key", "code": "Equal" }, { "kind": "scroll", "direction": "up" }],
+    "zoom_out":    [{ "kind": "key", "code": "Minus" }, { "kind": "scroll", "direction": "down" }],
+    "audio_toggle_music": [{ "kind": "key", "code": "KeyM" }, { "kind": "mouse", "button": "right" }],
+    "audio_stop_all":     [{ "kind": "key", "code": "KeyS" }, { "kind": "mouse", "button": "middle" }],
+    "volume_preset_low":  [{ "kind": "key", "code": "Digit1" }],
+    "volume_preset_mid":  [{ "kind": "key", "code": "Digit2" }],
+    "volume_preset_high": [{ "kind": "key", "code": "Digit3" }],
+    "engine_toggle_hud": [{ "kind": "key", "code": "F4" }],
+    "engine_toggle_vsync": [{ "kind": "key", "code": "F9" }],
+    "engine_toggle_fullscreen": [{ "kind": "key", "code": "F11" }],
+    "engine_exit": [{ "kind": "key", "code": "Escape" }]
+  }
+}

@@ -1,6 +1,6 @@
 use std::any::TypeId;
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -8,8 +8,8 @@ use crate::asset_loader;
 use crate::audio::AudioSystem;
 use crate::debug_hud::{compose_hud_text_sections, hud_toggle_system, DebugHud};
 use crate::display::{
-    frame_budget_for, sync_display_state_and_telemetry, sync_window_resolution,
-    take_pending_display, DisplayDelta, PendingDisplay,
+    engine_display_input_system, frame_budget_for, sync_display_state_and_telemetry,
+    sync_window_resolution, take_pending_display, DisplayDelta, PendingDisplay,
 };
 use crate::hot_reload::HotReloadWatcher;
 use crate::input_bridge;
@@ -17,12 +17,12 @@ use crate::telemetry::{DisplayTelemetry, FrameTimings, RenderCounts};
 use tungsten_core::assets::{AnimationRegistry, FontRegistry, SoundRegistry, TilemapRegistry};
 use tungsten_core::physics::{CollisionEvent, PhysicsConfig};
 use tungsten_core::{
-    AssetRegistry, AudioCommands, CameraController, CameraState, CommandBuffer, Config, DeltaTime,
-    DisplayMode, DisplayState, EventQueue, InputState, World,
+    ActionMap, AssetRegistry, AudioCommands, CameraController, CameraState, CommandBuffer, Config,
+    DeltaTime, DisplayMode, DisplayState, EventQueue, InputState, World,
 };
 use tungsten_render::{GpuFrameTimings, QuadInstance, Renderer, SpriteBatch, TextSection};
 use winit::application::ApplicationHandler;
-use winit::event::{ElementState, WindowEvent};
+use winit::event::{ElementState, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Fullscreen, Window, WindowId};
 
@@ -64,8 +64,10 @@ pub struct App {
     extract_text: Option<ExtractTextFn>,
     startup: Option<StartupFn>,
     last_frame: Option<Instant>,
-    /// If true (the default), the Escape key exits the process. Set to false
-    /// when game code needs Escape for its own purposes (e.g. pause menus).
+    /// If true (the default), the engine's exit action exits the process.
+    /// The default binding is `Escape`, but `input.json` may rebind it. Set
+    /// this to false when game code needs to keep the engine-side exit action
+    /// disabled (e.g. a pause menu that owns Escape itself).
     exit_on_escape: bool,
     /// Audio subsystem — initialized after the startup callback runs.
     /// Kept alive here so the cpal stream doesn't drop.
@@ -74,6 +76,9 @@ pub struct App {
     hot_reload: Option<HotReloadWatcher>,
     /// Path to the primary manifest file, used to detect manifest changes.
     manifest_path: Option<PathBuf>,
+    /// Workspace-root `input.json` path. Present from `App::new`; wired
+    /// into the hot-reload watcher when `enable_hot_reload` is called.
+    input_map_path: PathBuf,
     /// Smoke-test mode: when `Some(n)`, render `n` frames then exit cleanly.
     /// Populated from the `TUNGSTEN_SMOKE_FRAMES` env var. Used by
     /// `scripts/smoke-examples.sh` to drive examples in CI-like checks.
@@ -113,11 +118,14 @@ impl App {
         }));
     }
 
-    pub fn new(config: Config) -> Self {
+    pub fn new(config: Config) -> anyhow::Result<Self> {
         let resolved_display = resolve_startup_display(&config);
+        let input_map_path = PathBuf::from("input.json");
+        let action_map = load_action_map_at_startup(&input_map_path)?;
         let mut world = World::new();
         world.insert_resource(DeltaTime::new());
         world.insert_resource(InputState::new());
+        world.insert_resource(action_map);
         world.insert_resource(WindowSize {
             width: resolved_display.resolution.width,
             height: resolved_display.resolution.height,
@@ -160,6 +168,7 @@ impl App {
             audio: None,
             hot_reload: None,
             manifest_path: None,
+            input_map_path,
             smoke_frames_remaining: std::env::var("TUNGSTEN_SMOKE_FRAMES")
                 .ok()
                 .and_then(|s| s.parse::<u32>().ok())
@@ -172,13 +181,12 @@ impl App {
             frame_budget: frame_budget_for(resolved_display.frame_rate_cap),
         };
 
-        // Register the HUD toggle as the very first system so it observes
-        // input before any user system consumes `just_pressed`. Pushed
-        // directly onto the internal vectors to bypass the public
-        // naming/counter behaviour used by `add_system` / `add_system_named`.
+        // Register engine-owned action consumers before user systems so they
+        // observe edge-triggered input deterministically every frame.
         app.add_engine_system("__hud_toggle", hud_toggle_system);
+        app.add_engine_system("__display_input", engine_display_input_system);
 
-        app
+        Ok(app)
     }
 
     /// Register an engine-owned system at the current end of the system list
@@ -189,8 +197,9 @@ impl App {
         self.systems.push(Box::new(system));
     }
 
-    /// Control whether the Escape key exits the process (default: true).
-    /// Disable when game code uses Escape for its own purposes (e.g. pause menus).
+    /// Control whether the engine exit action exits the process (default: true).
+    /// The default binding is `Escape`; rebinding still routes through this
+    /// gate. Disable when game code wants to own the mapped input itself.
     pub fn set_exit_on_escape(&mut self, exit: bool) {
         self.exit_on_escape = exit;
     }
@@ -267,7 +276,8 @@ impl App {
     /// the watcher fails to start (the error is logged and the engine
     /// continues without hot reload).
     pub fn enable_hot_reload(&mut self, assets_dirs: &[PathBuf], manifest_path: PathBuf) {
-        self.hot_reload = HotReloadWatcher::new(assets_dirs);
+        let extra_files = [self.input_map_path.clone()];
+        self.hot_reload = HotReloadWatcher::new(assets_dirs, &extra_files);
         self.manifest_path = Some(manifest_path);
     }
 
@@ -289,6 +299,20 @@ impl App {
         }
     }
 
+    fn engine_exit_requested(&self) -> bool {
+        if !self.exit_on_escape {
+            return false;
+        }
+
+        let Some(input) = self.world.get_resource::<InputState>() else {
+            return false;
+        };
+        let Some(actions) = self.world.get_resource::<ActionMap>() else {
+            return false;
+        };
+        actions.just_pressed(input, "engine_exit")
+    }
+
     /// Poll the hot-reload watcher and apply any ready changes. Called after
     /// tick() and before render() each frame. No-op when hot reload is disabled.
     fn process_hot_reload(&mut self) {
@@ -307,6 +331,16 @@ impl App {
 
         for path in &ready {
             let canon = path.canonicalize().unwrap_or_else(|_| path.clone());
+
+            // Check if this is the workspace-root input.json first — its
+            // name-based match takes priority over the manifest/extension
+            // dispatch below.
+            if canon.file_name().is_some_and(|name| name == "input.json") {
+                if let Err(e) = asset_loader::reload_action_map(&canon, &mut self.world) {
+                    log::error!("Action map reload: {e}");
+                }
+                continue;
+            }
 
             // Check if this is the manifest file.
             if let Some(mp) = &self.manifest_path {
@@ -498,6 +532,28 @@ impl App {
     }
 }
 
+/// Startup load for `input.json`. Missing file → engine defaults with an
+/// info log. IO or parse errors are fatal so they surface from `App::new`
+/// the same way `ConfigError` does from `Config::load` (per `D-008`).
+fn load_action_map_at_startup(path: &Path) -> anyhow::Result<ActionMap> {
+    match ActionMap::load(path) {
+        Ok(loaded) => {
+            log::info!("Loaded action map from '{}'", path.display());
+            Ok(ActionMap::merged_with_defaults(loaded))
+        }
+        Err(err) if err.is_not_found() => {
+            log::info!(
+                "Action map '{}' not found; using engine defaults",
+                path.display()
+            );
+            let mut map = ActionMap::default_map();
+            map.set_source_path(path);
+            Ok(map)
+        }
+        Err(err) => Err(err.into()),
+    }
+}
+
 fn resolve_startup_display(config: &Config) -> DisplayState {
     let resolved = config.display.resolve(&config.window, &config.render);
     match resolved.validate() {
@@ -683,15 +739,6 @@ impl ApplicationHandler for App {
                         ElementState::Released => input.key_up(key),
                     }
                 }
-                if self.exit_on_escape
-                    && event.state == ElementState::Pressed
-                    && matches!(
-                        event.physical_key,
-                        winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::Escape)
-                    )
-                {
-                    event_loop.exit();
-                }
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 let btn = input_bridge::translate_mouse_button(button);
@@ -704,7 +751,17 @@ impl ApplicationHandler for App {
             }
             WindowEvent::CursorMoved { position, .. } => {
                 if let Some(input) = self.world.get_resource_mut::<InputState>() {
-                    input.cursor_position = Some((position.x as f32, position.y as f32));
+                    input.update_cursor_position(position.x as f32, position.y as f32);
+                }
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                if let Some(input) = self.world.get_resource_mut::<InputState>() {
+                    match delta {
+                        MouseScrollDelta::LineDelta(x, y) => input.add_scroll_line_delta(x, y),
+                        MouseScrollDelta::PixelDelta(delta) => {
+                            input.add_scroll_pixel_delta(delta.x as f32, delta.y as f32)
+                        }
+                    }
                 }
             }
             WindowEvent::RedrawRequested => {
@@ -743,6 +800,11 @@ impl ApplicationHandler for App {
                     system_timings.push((name.clone(), t0.elapsed().as_secs_f64() as f32 * 1000.0));
                 }
                 let update_ms = update_start.elapsed().as_secs_f64() as f32 * 1000.0;
+
+                if self.engine_exit_requested() {
+                    event_loop.exit();
+                    return;
+                }
 
                 // --- Flush stage: apply deferred command buffers ---
                 // Frame order invariant (Phase 3 guardrail):

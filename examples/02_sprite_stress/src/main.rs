@@ -171,7 +171,7 @@ fn main() -> anyhow::Result<()> {
     });
     config.display.vsync = Some(false);
 
-    let mut app = App::new(config);
+    let mut app = App::new(config)?;
 
     match options.scene {
         StressScene::Baseline => configure_baseline_scene(&mut app, options.count),

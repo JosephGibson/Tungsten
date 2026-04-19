@@ -27,7 +27,9 @@ pub use display::{
     DisplayConfig, DisplayMode, DisplayState, DisplayValidationError, Resolution, ScaleMode,
 };
 pub use ecs::{CommandBuffer, Entity, EventQueue, PendingEntity, World};
-pub use input::{InputState, KeyCode, MouseButton};
+pub use input::{
+    ActionMap, ActionMapError, Binding, InputState, KeyCode, MouseButton, ScrollDirection,
+};
 pub use physics::{
     aabb_vs_aabb, aabb_vs_circle, circle_vs_circle, physics_step, Aabb, BodyKind, Collider,
     CollisionEvent, Contact, PhysicsConfig, Position, RigidBody, Shape, SpatialGrid, Velocity,

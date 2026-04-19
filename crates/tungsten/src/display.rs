@@ -2,7 +2,9 @@ use std::time::Duration;
 
 use crate::app::WindowSize;
 use crate::telemetry::DisplayTelemetry;
-use tungsten_core::{DisplayState, DisplayValidationError, Resolution, World};
+use tungsten_core::{
+    ActionMap, DisplayMode, DisplayState, DisplayValidationError, InputState, Resolution, World,
+};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct PendingDisplay(pub(crate) Option<DisplayState>);
@@ -41,6 +43,52 @@ pub fn request_display_settings(
         world.insert_resource(PendingDisplay(Some(requested)));
     }
     Ok(())
+}
+
+/// Engine-owned display hotkeys, now routed through `ActionMap` instead of
+/// hardcoded key branches. Defaults remain `F9` (vsync) and `F11`
+/// (fullscreen), but `input.json` can override them.
+pub(crate) fn engine_display_input_system(world: &mut World) {
+    let (toggle_vsync, toggle_fullscreen) = {
+        let Some(input) = world.get_resource::<InputState>() else {
+            return;
+        };
+        let Some(actions) = world.get_resource::<ActionMap>() else {
+            return;
+        };
+        (
+            actions.just_pressed(input, "engine_toggle_vsync"),
+            actions.just_pressed(input, "engine_toggle_fullscreen"),
+        )
+    };
+
+    if !toggle_vsync && !toggle_fullscreen {
+        return;
+    }
+
+    let current = world
+        .get_resource::<DisplayState>()
+        .copied()
+        .unwrap_or_default();
+    let mut next = current;
+
+    if toggle_fullscreen {
+        next.display_mode = match current.display_mode {
+            DisplayMode::Windowed => DisplayMode::BorderlessFullscreen,
+            DisplayMode::BorderlessFullscreen | DisplayMode::ExclusiveFullscreen => {
+                DisplayMode::Windowed
+            }
+        };
+    }
+
+    if toggle_vsync {
+        next.vsync = !current.vsync;
+        next.present_mode = None;
+    }
+
+    if let Err(err) = request_display_settings(world, next) {
+        log::error!("Display request rejected: {err}");
+    }
 }
 
 pub(crate) fn take_pending_display(world: &mut World) -> Option<DisplayState> {
@@ -110,7 +158,7 @@ pub(crate) fn sync_window_resolution(
 mod tests {
     use super::*;
     use crate::telemetry::DisplayTelemetry;
-    use tungsten_core::{DisplayMode, ScaleMode};
+    use tungsten_core::{ActionMap, DisplayMode, InputState, KeyCode, ScaleMode};
 
     fn seed_world() -> World {
         let mut world = World::new();
@@ -191,5 +239,26 @@ mod tests {
         assert_eq!(telemetry.actual_present_mode.as_deref(), Some("fifo"));
         assert_eq!(window_size.width, 1920);
         assert_eq!(window_size.height, 1080);
+    }
+
+    #[test]
+    fn engine_display_input_system_uses_engine_actions() {
+        let mut world = seed_world();
+        let current = world
+            .get_resource::<DisplayState>()
+            .copied()
+            .unwrap_or_default();
+        let mut input = InputState::new();
+        input.key_down(KeyCode::F9);
+        input.key_down(KeyCode::F11);
+        world.insert_resource(input);
+        world.insert_resource(ActionMap::default_map());
+
+        engine_display_input_system(&mut world);
+
+        let requested = take_pending_display(&mut world).unwrap();
+        assert_eq!(requested.display_mode, DisplayMode::BorderlessFullscreen);
+        assert_eq!(requested.vsync, !current.vsync);
+        assert_eq!(requested.present_mode, None);
     }
 }

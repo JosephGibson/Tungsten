@@ -36,7 +36,8 @@ pub fn translate_mouse_button(button: winit::event::MouseButton) -> MouseButton 
         winit::event::MouseButton::Left => MouseButton::Left,
         winit::event::MouseButton::Right => MouseButton::Right,
         winit::event::MouseButton::Middle => MouseButton::Middle,
+        winit::event::MouseButton::Back => MouseButton::Other(4),
+        winit::event::MouseButton::Forward => MouseButton::Other(5),
         winit::event::MouseButton::Other(id) => MouseButton::Other(id),
-        _ => MouseButton::Other(0),
     }
 }

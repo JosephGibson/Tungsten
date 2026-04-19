@@ -31,11 +31,12 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 
 ## Current Status
 
-- Workspace version metadata: `0.15.0`
-- Current branch: `0.15`
-- Completed milestones: `M12` profiling baseline, `M13` command buffers, `M14` event queues, `M15` transform + render components, `M16` camera module, `M17` display state + config, `M18` runtime telemetry HUD
-- Next recommended milestone: `M19 — Input Mapping`
-- Archived detailed milestone plans: [M12](archive/Phase3-Milestone12-plan.md), [M13](archive/Phase3-Milestone13-plan.md), [M14](archive/Phase3-Milestone14-plan.md), [M15](archive/Phase3-Milestone15-plan.md), [M16](archive/phase3-milestone16-plan.md), [M17](archive/Phase3-Milestone17-plan.md), [M18](archive/Phase3-Milestone18-plan.md)
+- Workspace version metadata: `0.16.0`
+- Current branch: `0.16`
+- Completed milestones: `M12` profiling baseline, `M13` command buffers, `M14` event queues, `M15` transform + render components, `M16` camera module, `M17` display state + config, `M18` runtime telemetry HUD, `M19` input mapping
+- Next recommended milestone: `M20 — Scene/State System`
+- In progress milestone: none
+- Archived detailed milestone plans: [M12](archive/Phase3-Milestone12-plan.md), [M13](archive/Phase3-Milestone13-plan.md), [M14](archive/Phase3-Milestone14-plan.md), [M15](archive/Phase3-Milestone15-plan.md), [M16](archive/phase3-milestone16-plan.md), [M17](archive/Phase3-Milestone17-plan.md), [M18](archive/Phase3-Milestone18-plan.md), [M19](archive/phase3-milestone19-plan.md)
 
 ## Execution Contract
 
@@ -134,9 +135,12 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 
 ### M19 - Input Mapping
 
+> **Status: complete** (`v0.16.0`, `2026-04-19`)
+> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone19-plan.md`](archive/phase3-milestone19-plan.md).
+
 - Goal: replace hardcoded key checks with action-based bindings.
-- Design: add `ActionMap` loaded from optional `input.json`; keep API parity with input state through `is_pressed`, `just_pressed`, and `just_released`; keep hot-reload behavior for `input.json`.
-- Done when: an example migrates from raw key checks to action checks, and rebinding through `input.json` works at runtime.
+- Design: add `ActionMap` loaded from optional `input.json`; keep API parity with input state through `is_pressed`, `just_pressed`, and `just_released`; add mouse buttons, cursor + wheel surfaces, live `input.json` hot reload, runtime persist writes, and engine-owned action bindings for HUD/display/exit controls.
+- Done when: in-tree examples read gameplay input through actions, rebinding through `input.json` works at runtime, mouse buttons and scroll dispatch through the same pipeline, and engine-owned controls round-trip through the action map rather than hardcoded key branches.
 
 ### M20 - Scene/State System
 

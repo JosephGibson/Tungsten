@@ -1,9 +1,9 @@
 use tungsten::core::{
-    AnimationRegistry, AnimationState, AudioCommands, CameraController, CameraState, DeltaTime,
-    DisplayMode, DisplayState, EventQueue, InputState, KeyCode, World,
+    ActionMap, AnimationRegistry, AnimationState, AudioCommands, CameraController, CameraState,
+    DeltaTime, EventQueue, InputState, World,
 };
 use tungsten::physics::{CollisionEvent, Velocity};
-use tungsten::{request_display_settings, WindowSize};
+use tungsten::WindowSize;
 
 use crate::state::{
     AudioState, CurrentSprite, Player, TextDisplayState, MAP_ROWS, PLAYER_JUMP_IMPULSE,
@@ -16,13 +16,15 @@ use crate::state::{
 pub(crate) fn player_input(world: &mut World) {
     let (pressed_left, pressed_right, pressed_space);
     {
-        let input = match world.get_resource::<InputState>() {
-            Some(i) => i,
-            None => return,
+        let Some(input) = world.get_resource::<InputState>() else {
+            return;
         };
-        pressed_left = input.is_pressed(KeyCode::ArrowLeft) || input.is_pressed(KeyCode::KeyA);
-        pressed_right = input.is_pressed(KeyCode::ArrowRight) || input.is_pressed(KeyCode::KeyD);
-        pressed_space = input.is_pressed(KeyCode::Space);
+        let Some(actions) = world.get_resource::<ActionMap>() else {
+            return;
+        };
+        pressed_left = actions.is_pressed(input, "move_left");
+        pressed_right = actions.is_pressed(input, "move_right");
+        pressed_space = actions.is_pressed(input, "jump");
     }
 
     let player_entities: Vec<_> = world.query::<Player>().map(|(e, _)| e).collect();
@@ -73,15 +75,17 @@ pub(crate) fn player_input(world: &mut World) {
 pub(crate) fn audio_input_system(world: &mut World) {
     let (just_m, just_1, just_2, just_3, just_s);
     {
-        let input = match world.get_resource::<InputState>() {
-            Some(i) => i,
-            None => return,
+        let Some(input) = world.get_resource::<InputState>() else {
+            return;
         };
-        just_m = input.just_pressed(KeyCode::KeyM);
-        just_1 = input.just_pressed(KeyCode::Digit1);
-        just_2 = input.just_pressed(KeyCode::Digit2);
-        just_3 = input.just_pressed(KeyCode::Digit3);
-        just_s = input.just_pressed(KeyCode::KeyS);
+        let Some(actions) = world.get_resource::<ActionMap>() else {
+            return;
+        };
+        just_m = actions.just_pressed(input, "audio_toggle_music");
+        just_1 = actions.just_pressed(input, "volume_preset_low");
+        just_2 = actions.just_pressed(input, "volume_preset_mid");
+        just_3 = actions.just_pressed(input, "volume_preset_high");
+        just_s = actions.just_pressed(input, "audio_stop_all");
     }
 
     if world.get_resource::<AudioState>().is_none() {
@@ -136,67 +140,27 @@ pub(crate) fn audio_input_system(world: &mut World) {
 /// = / - to zoom in or out. Adjusts `CameraController.zoom_multiplier` in 25%
 /// steps, clamped to [0.5, 2.0] relative to the base window-height zoom.
 pub(crate) fn camera_zoom_input_system(world: &mut World) {
-    let (just_equal, just_minus);
+    let (just_zoom_in, just_zoom_out);
     {
-        let input = match world.get_resource::<InputState>() {
-            Some(i) => i,
-            None => return,
+        let Some(input) = world.get_resource::<InputState>() else {
+            return;
         };
-        just_equal = input.just_pressed(KeyCode::Equal);
-        just_minus = input.just_pressed(KeyCode::Minus);
+        let Some(actions) = world.get_resource::<ActionMap>() else {
+            return;
+        };
+        just_zoom_in = actions.just_pressed(input, "zoom_in");
+        just_zoom_out = actions.just_pressed(input, "zoom_out");
     }
-    if !just_equal && !just_minus {
+    if !just_zoom_in && !just_zoom_out {
         return;
     }
     if let Some(controller) = world.get_resource_mut::<CameraController>() {
-        if just_equal {
+        if just_zoom_in {
             controller.zoom_multiplier = (controller.zoom_multiplier + 0.25).min(2.0);
         }
-        if just_minus {
+        if just_zoom_out {
             controller.zoom_multiplier = (controller.zoom_multiplier - 0.25).max(0.5);
         }
-    }
-}
-
-/// F11 toggles windowed/borderless fullscreen. F9 toggles vsync and clears
-/// `present_mode` so the renderer re-resolves from the new vsync intent.
-pub(crate) fn display_input_system(world: &mut World) {
-    let (just_f9, just_f11);
-    {
-        let input = match world.get_resource::<InputState>() {
-            Some(i) => i,
-            None => return,
-        };
-        just_f9 = input.just_pressed(KeyCode::F9);
-        just_f11 = input.just_pressed(KeyCode::F11);
-    }
-
-    if !just_f9 && !just_f11 {
-        return;
-    }
-
-    let current = world
-        .get_resource::<DisplayState>()
-        .copied()
-        .unwrap_or_default();
-    let mut next = current;
-
-    if just_f11 {
-        next.display_mode = match current.display_mode {
-            DisplayMode::Windowed => DisplayMode::BorderlessFullscreen,
-            DisplayMode::BorderlessFullscreen | DisplayMode::ExclusiveFullscreen => {
-                DisplayMode::Windowed
-            }
-        };
-    }
-
-    if just_f9 {
-        next.vsync = !current.vsync;
-        next.present_mode = None;
-    }
-
-    if let Err(err) = request_display_settings(world, next) {
-        log::error!("Display request rejected: {err}");
     }
 }
 

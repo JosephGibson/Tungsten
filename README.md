@@ -4,7 +4,7 @@ From-scratch Rust 2D game engine. Stack: `winit` + `wgpu` + `glam` + hand-rolled
 
 ## Status
 
-Workspace `v0.15.0` on branch `0.15`. Phase 3 M18 is shipped. The engine now pairs typed two-window event queues and deferred ECS command buffers with a shared camera module, a core-owned display state/config model with frame-boundary runtime apply, and a runtime telemetry HUD rendered through the existing text pipeline. Next milestone: `M19` input mapping.
+Workspace `v0.16.0` on branch `0.16`. Phase 3 M19 is shipped. The engine now pairs typed two-window event queues and deferred ECS command buffers with a shared camera module, a core-owned display state/config model with frame-boundary runtime apply, a runtime telemetry HUD rendered through the existing text pipeline, and a workspace-root `input.json` action map that covers keyboard, mouse buttons, wheel directions, hot reload, and engine-owned HUD/display/exit controls. Next milestone: `M20` scene/state system.
 
 ## Stack
 

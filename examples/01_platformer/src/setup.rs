@@ -19,15 +19,14 @@ use crate::state::{
     PLAYER_HALF, TILE,
 };
 use crate::systems::{
-    animation_system, audio_input_system, camera_zoom_input_system, display_input_system,
-    ground_detection, platformer_camera_base_zoom, player_input, update_text_display,
+    animation_system, audio_input_system, camera_zoom_input_system, ground_detection,
+    platformer_camera_base_zoom, player_input, update_text_display,
 };
 
 type ExampleSystem = fn(&mut World);
 
 pub(crate) const RUNTIME_SYSTEM_ORDER: &[(&str, ExampleSystem)] = &[
     ("update_text_display", update_text_display),
-    ("display_input_system", display_input_system),
     ("player_input", player_input),
     ("audio_input_system", audio_input_system),
     ("camera_zoom_input_system", camera_zoom_input_system),
@@ -184,8 +183,8 @@ fn install_startup(app: &mut App) {
 }
 
 fn install_runtime(app: &mut App) {
-    // Ordering: text-display-cache → input → audio → animation → physics →
-    // post-physics state sync → shared camera update.
+    // Ordering: text-display-cache → gameplay input → audio → animation →
+    // physics → post-physics state sync → shared camera update.
     for (name, system) in RUNTIME_SYSTEM_ORDER {
         app.add_system_named(*name, *system);
     }

@@ -6,7 +6,7 @@ struct ExampleEvent;
 
 #[test]
 fn register_event_is_idempotent_per_type() {
-    let mut app = App::new(Config::default());
+    let mut app = App::new(Config::default()).expect("App::new failed");
     let initial_flushers = app.event_flushers.len();
 
     app.register_event::<ExampleEvent>();
@@ -23,7 +23,7 @@ fn register_event_is_idempotent_per_type() {
 
 #[test]
 fn collision_event_is_pre_registered() {
-    let mut app = App::new(Config::default());
+    let mut app = App::new(Config::default()).expect("App::new failed");
     let initial_flushers = app.event_flushers.len();
 
     app.register_event::<CollisionEvent>();
@@ -33,7 +33,7 @@ fn collision_event_is_pre_registered() {
 
 #[test]
 fn default_sprite_extract_installed_when_not_set() {
-    let mut app = App::new(Config::default());
+    let mut app = App::new(Config::default()).expect("App::new failed");
     assert!(app.extract_sprites.is_none());
     app.install_default_extracts();
     assert!(app.extract_sprites.is_some());
@@ -44,7 +44,7 @@ fn user_extract_sprites_overrides_default() {
     use tungsten_core::assets::{FilterMode, TextureHandle};
     use tungsten_render::{SpriteBatch, SpriteInstance};
 
-    let mut app = App::new(Config::default());
+    let mut app = App::new(Config::default()).expect("App::new failed");
     // Sentinel closure: returns a batch with one specific SpriteInstance.
     app.set_extract_sprites(|_| {
         vec![SpriteBatch {

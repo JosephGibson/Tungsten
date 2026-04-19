@@ -1,10 +1,11 @@
 //! Runtime developer HUD (M18).
 //!
 //! `DebugHud` is a world resource that aggregates telemetry rows and owns an
-//! ordered list of built-in plus user-registered row providers. `F4` toggles
-//! visibility through [`hud_toggle_system`], registered by `App::new` as the
-//! first system each frame. Default state is off; examples opt in by mutating
-//! the resource during setup.
+//! ordered list of built-in plus user-registered row providers.
+//! `engine_toggle_hud` (default `F4`) toggles visibility through
+//! [`hud_toggle_system`], registered by `App::new` as the first system each
+//! frame. Default state is off; examples opt in by mutating the resource
+//! during setup.
 //!
 //! Rows are rendered through the existing `glyphon` text pipeline as a single
 //! [`TextSection`], composed every frame by [`compose_hud_text_sections`].
@@ -13,7 +14,7 @@
 
 use tungsten_core::camera::{CameraController, CameraMode, CameraState};
 use tungsten_core::components::{Tag, Transform};
-use tungsten_core::input::{InputState, KeyCode};
+use tungsten_core::input::{ActionMap, InputState};
 use tungsten_core::physics::Velocity;
 use tungsten_core::World;
 use tungsten_render::TextSection;
@@ -364,14 +365,19 @@ pub(crate) fn compose_hud_text_sections(
     sections
 }
 
-/// Engine-registered system: toggles `DebugHud.enabled` on `F4` edge. Runs
-/// as the first system each frame so input is observed before any user
-/// system consumes `just_pressed`.
+/// Engine-registered system: toggles `DebugHud.enabled` on the
+/// `engine_toggle_hud` action edge. Runs as the first system each frame so
+/// input is observed before any user system consumes `just_pressed`.
 pub fn hud_toggle_system(world: &mut World) {
-    let pressed = world
-        .get_resource::<InputState>()
-        .map(|i| i.just_pressed(KeyCode::F4))
-        .unwrap_or(false);
+    let pressed = {
+        let Some(input) = world.get_resource::<InputState>() else {
+            return;
+        };
+        let Some(actions) = world.get_resource::<ActionMap>() else {
+            return;
+        };
+        actions.just_pressed(input, "engine_toggle_hud")
+    };
     if pressed {
         if let Some(hud) = world.get_resource_mut::<DebugHud>() {
             hud.toggle();
@@ -384,6 +390,8 @@ mod tests {
     use super::*;
     use glam::Vec2;
     use tungsten_core::components::Transform;
+    use tungsten_core::input::{InputState, KeyCode};
+    use tungsten_core::ActionMap;
 
     #[test]
     fn default_hud_is_disabled_and_empty_world_yields_no_rows() {
@@ -402,6 +410,20 @@ mod tests {
         assert!(hud.enabled);
         hud.toggle();
         assert!(!hud.enabled);
+    }
+
+    #[test]
+    fn action_map_hud_toggle_uses_engine_action() {
+        let mut world = World::new();
+        let mut input = InputState::new();
+        input.key_down(KeyCode::F4);
+        world.insert_resource(input);
+        world.insert_resource(ActionMap::default_map());
+        world.insert_resource(DebugHud::new());
+
+        hud_toggle_system(&mut world);
+
+        assert!(world.get_resource::<DebugHud>().unwrap().enabled);
     }
 
     #[test]

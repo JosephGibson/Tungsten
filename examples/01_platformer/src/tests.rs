@@ -1,8 +1,9 @@
 use glam::Vec2;
 use tungsten::core::assets::{LayerKind, TilemapData, TilemapLayer};
 use tungsten::core::{
-    sync_position_to_transform, AnimationState, CameraController, CameraMode, CameraState, Config,
-    DeltaTime, EventQueue, InputState, KeyCode, TilemapInstance, TilemapRegistry, Transform, World,
+    sync_position_to_transform, ActionMap, AnimationState, CameraController, CameraMode,
+    CameraState, Config, DeltaTime, EventQueue, InputState, KeyCode, TilemapInstance,
+    TilemapRegistry, Transform, World,
 };
 use tungsten::physics::{
     physics_step, Collider, CollisionEvent, PhysicsConfig, Position, RigidBody, Velocity,
@@ -19,6 +20,7 @@ fn seed_world() -> World {
     let mut world = World::new();
     world.insert_resource(DeltaTime { dt: 1.0 / 60.0 });
     world.insert_resource(InputState::new());
+    world.insert_resource(ActionMap::default_map());
     world.insert_resource(EventQueue::<CollisionEvent>::new());
     world.insert_resource(PhysicsConfig {
         gravity: Vec2::new(0.0, GRAVITY_Y),
@@ -55,7 +57,7 @@ fn solid_floor(width: u32) -> TilemapData {
 
 #[test]
 fn configure_app_seeds_expected_bootstrap_state() {
-    let mut app = App::new(Config::default());
+    let mut app = App::new(Config::default()).expect("App::new failed");
     crate::setup::configure_app(&mut app);
 
     let world = app.world_mut();
@@ -85,7 +87,6 @@ fn runtime_system_order_matches_expected_pipeline() {
         names,
         vec![
             "update_text_display",
-            "display_input_system",
             "player_input",
             "audio_input_system",
             "camera_zoom_input_system",
