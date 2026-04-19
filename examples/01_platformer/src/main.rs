@@ -6,7 +6,8 @@
 //!
 //! Controls (defaults; see `input.json` at the workspace root to rebind):
 //!   A / D or ←/→   move_left / move_right
-//!   Space or LMB    jump (when grounded; plays a sound effect)
+//!   Space           jump (when grounded; plays a sound effect)
+//!   LMB             spawn_ball at the cursor (world-space)
 //!   M or RMB        audio_toggle_music
 //!   1 / 2 / 3       volume_preset_low / volume_preset_mid / volume_preset_high
 //!   S or MMB        audio_stop_all
@@ -15,6 +16,11 @@
 //!   F9              engine_toggle_vsync
 //!   F11             engine_toggle_fullscreen
 //!   Escape          engine_exit
+//!
+//! Cursor: the native OS cursor stays visible (winit default). A custom
+//! crosshair sprite (`ex10_cursor`) is drawn in world space at the same
+//! point so both layers are visible at once, demoing a sprite-cursor path
+//! without having to hide the OS pointer.
 //!
 //! Two manifests are loaded at startup:
 //!   • assets/manifest.json        — fonts, walk animation, sounds (shared root)

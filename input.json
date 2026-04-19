@@ -2,7 +2,8 @@
   "actions": {
     "move_left":   [{ "kind": "key", "code": "ArrowLeft" },  { "kind": "key", "code": "KeyA" }],
     "move_right":  [{ "kind": "key", "code": "ArrowRight" }, { "kind": "key", "code": "KeyD" }],
-    "jump":        [{ "kind": "key", "code": "Space" }, { "kind": "mouse", "button": "left" }],
+    "jump":        [{ "kind": "key", "code": "Space" }],
+    "spawn_ball":  [{ "kind": "mouse", "button": "left" }],
     "zoom_in":     [{ "kind": "key", "code": "Equal" }, { "kind": "scroll", "direction": "up" }],
     "zoom_out":    [{ "kind": "key", "code": "Minus" }, { "kind": "scroll", "direction": "down" }],
     "audio_toggle_music": [{ "kind": "key", "code": "KeyM" }, { "kind": "mouse", "button": "right" }],

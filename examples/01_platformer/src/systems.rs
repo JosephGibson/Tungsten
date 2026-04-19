@@ -1,13 +1,15 @@
+use glam::Vec2;
 use tungsten::core::{
     ActionMap, AnimationRegistry, AnimationState, AudioCommands, CameraController, CameraState,
-    DeltaTime, EventQueue, InputState, World,
+    CommandBuffer, DeltaTime, Entity, EventQueue, InputState, World,
 };
-use tungsten::physics::{CollisionEvent, Velocity};
+use tungsten::physics::{BodyKind, Collider, CollisionEvent, Position, RigidBody, Velocity};
 use tungsten::WindowSize;
 
 use crate::state::{
-    AudioState, CurrentSprite, Player, TextDisplayState, MAP_ROWS, PLAYER_JUMP_IMPULSE,
-    PLAYER_MOVE_SPEED, TEXT_UPDATE_INTERVAL, TILE,
+    AudioState, Ball, CurrentSprite, Player, TextDisplayState, BALL_RADIUS, BALL_RESTITUTION,
+    MAP_ROWS, PLAYER_JUMP_IMPULSE, PLAYER_MOVE_SPEED, PLAYER_SPAWN, TEXT_UPDATE_INTERVAL, TILE,
+    WORLD_BOUNDS_MAX, WORLD_BOUNDS_MIN,
 };
 
 /// Horizontal movement + jump. Plays the jump SFX when the player leaves the
@@ -253,6 +255,122 @@ pub(crate) fn update_text_display(world: &mut World) {
         state.zoom_pct = zoom_pct;
         state.timer = new_timer - TEXT_UPDATE_INTERVAL;
     }
+}
+
+/// Convert a screen-space cursor position (physical pixels, top-left origin)
+/// into a world-space point using the non-rotated camera transform. Returns
+/// `None` if the camera is rotated (the platformer never rotates, so rather
+/// than silently producing the wrong point we refuse).
+pub(crate) fn cursor_to_world(cursor: Vec2, camera: &CameraState) -> Option<Vec2> {
+    if camera.rotation != 0.0 {
+        return None;
+    }
+    let zoom = camera.zoom.max(f32::EPSILON);
+    Some(Vec2::new(
+        camera.position.x + cursor.x / zoom,
+        camera.position.y + cursor.y / zoom,
+    ))
+}
+
+/// Spawns a ball at the world-space cursor position each time `spawn_ball`
+/// fires. Uses the deferred `CommandBuffer` so the new entity is visible to
+/// this frame's extract stage but not to systems that already ran.
+pub(crate) fn spawn_ball_system(world: &mut World) {
+    let fired = {
+        let Some(input) = world.get_resource::<InputState>() else {
+            return;
+        };
+        let Some(actions) = world.get_resource::<ActionMap>() else {
+            return;
+        };
+        actions.just_pressed(input, "spawn_ball")
+    };
+    if !fired {
+        return;
+    }
+    let cursor = match world
+        .get_resource::<InputState>()
+        .and_then(|i| i.cursor_position())
+    {
+        Some((x, y)) => Vec2::new(x, y),
+        None => return,
+    };
+    let camera = match world.get_resource::<CameraState>().copied() {
+        Some(c) => c,
+        None => return,
+    };
+    let Some(world_pos) = cursor_to_world(cursor, &camera) else {
+        return;
+    };
+    if let Some(cmds) = world.get_resource_mut::<CommandBuffer>() {
+        let ball = cmds.spawn();
+        cmds.insert_pending(ball, Ball);
+        cmds.insert_pending(ball, Position(world_pos));
+        cmds.insert_pending(ball, Velocity(Vec2::ZERO));
+        cmds.insert_pending(ball, Collider::circle(BALL_RADIUS));
+        cmds.insert_pending(
+            ball,
+            RigidBody {
+                kind: BodyKind::Dynamic,
+                inv_mass: 1.0,
+                restitution: BALL_RESTITUTION,
+            },
+        );
+    }
+}
+
+/// Culls bodies that have escaped the active physics region defined by
+/// `WORLD_BOUNDS_MIN`/`WORLD_BOUNDS_MAX`. Runaway balls are despawned via
+/// the command buffer; the player is teleported back to `PLAYER_SPAWN`
+/// with zero velocity. Runs after `physics_step`/`ground_detection` so
+/// the position it checks is the post-resolve value for the frame.
+///
+/// Why: `compute_substeps` scales the whole world's cost by the single
+/// worst `velocity / min_half_extent` ratio. A ball in free fall past the
+/// tilemap accumulates velocity indefinitely and pegs that ratio to the
+/// `PhysicsConfig::max_substeps` cap (default 8), multiplying every
+/// frame's physics cost by ~8×. Bounding the active region keeps all
+/// dynamic bodies inside the bounce regime.
+pub(crate) fn despawn_out_of_bounds(world: &mut World) {
+    let escaped_balls: Vec<Entity> = world
+        .query::<Ball>()
+        .filter_map(|(entity, _)| {
+            let pos = world.get::<Position>(entity)?.0;
+            is_out_of_bounds(pos).then_some(entity)
+        })
+        .collect();
+
+    if !escaped_balls.is_empty() {
+        if let Some(cmds) = world.get_resource_mut::<CommandBuffer>() {
+            for entity in escaped_balls {
+                cmds.despawn(entity);
+            }
+        }
+    }
+
+    let escaped_players: Vec<Entity> = world
+        .query::<Player>()
+        .filter_map(|(entity, _)| {
+            let pos = world.get::<Position>(entity)?.0;
+            is_out_of_bounds(pos).then_some(entity)
+        })
+        .collect();
+
+    for entity in escaped_players {
+        if let Some(pos) = world.get_mut::<Position>(entity) {
+            pos.0 = PLAYER_SPAWN;
+        }
+        if let Some(vel) = world.get_mut::<Velocity>(entity) {
+            vel.0 = Vec2::ZERO;
+        }
+    }
+}
+
+fn is_out_of_bounds(pos: Vec2) -> bool {
+    pos.x < WORLD_BOUNDS_MIN.x
+        || pos.x > WORLD_BOUNDS_MAX.x
+        || pos.y < WORLD_BOUNDS_MIN.y
+        || pos.y > WORLD_BOUNDS_MAX.y
 }
 
 /// Recomputes the platformer's base zoom from the current window height.

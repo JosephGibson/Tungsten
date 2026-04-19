@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 
-use tungsten::core::{AssetRegistry, InputState, World};
+use glam::Vec2;
+use tungsten::core::{AssetRegistry, CameraState, InputState, World};
 use tungsten::extract_tilemaps;
 use tungsten::physics::Position;
 use tungsten::render::{SpriteBatch, SpriteInstance, TextSection};
 
 use crate::state::{Ball, CurrentSprite, TextDisplayState, BALL_RADIUS, PLAYER_HALF};
+use crate::systems::cursor_to_world;
 
 pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     let mut batches = extract_tilemaps(world);
@@ -62,6 +64,38 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
                 texture: ball_asset.texture,
                 filter: ball_asset.filter,
                 instances,
+            });
+        }
+    }
+
+    // Custom cursor sprite. Drawn last so it sits on top of every other
+    // world-space batch. The native OS cursor stays visible (winit default);
+    // this sprite rides along to demo a custom cursor layer without hiding
+    // the pointer. The world-space point is reconstructed from the physical
+    // cursor position via `cursor_to_world`, matching where a left click
+    // would spawn a ball.
+    if let Some(cursor_asset) = assets.get_sprite("ex10_cursor") {
+        if let Some(world_pos) = world
+            .get_resource::<InputState>()
+            .and_then(|input| input.cursor_position())
+            .map(|(x, y)| Vec2::new(x, y))
+            .and_then(|cursor| {
+                world
+                    .get_resource::<CameraState>()
+                    .and_then(|cam| cursor_to_world(cursor, cam))
+            })
+        {
+            let sprite_w = cursor_asset.width as f32;
+            let sprite_h = cursor_asset.height as f32;
+            batches.push(SpriteBatch {
+                texture: cursor_asset.texture,
+                filter: cursor_asset.filter,
+                instances: vec![SpriteInstance {
+                    position: [world_pos.x - sprite_w * 0.5, world_pos.y - sprite_h * 0.5],
+                    size: [sprite_w, sprite_h],
+                    rotation: 0.0,
+                    color: [255; 4],
+                }],
             });
         }
     }
@@ -140,7 +174,7 @@ pub(crate) fn extract_text(world: &World) -> Vec<TextSection> {
 
     sections.extend(text_outlined(TextSection {
         content: format!(
-            "A/D or ←/→ move  Space/LMB jump  M/RMB music  S/MMB stop  1/2/3 volume\n\
+            "A/D or ←/→ move  Space jump  LMB spawn ball  M/RMB music  S/MMB stop  1/2/3 volume\n\
              =/- or wheel zoom  F4 HUD  F9 vsync  F11 fullscreen  Esc exit\n\
              grounded:{:<4} contacts:{:<3} music:{:<4} vol:{}%  zoom:{}%  FPS:{}\n\
              cursor:{}  delta:{:.1},{:.1}  wheel lines:{:.1},{:.1}  pixels:{:.1},{:.1}",

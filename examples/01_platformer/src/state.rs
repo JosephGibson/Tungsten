@@ -15,11 +15,22 @@ pub(crate) const MAP_ROWS: u32 = 18;
 pub(crate) const TEXT_UPDATE_INTERVAL: f32 = 0.25;
 
 pub(crate) const PLAYER_HALF: Vec2 = Vec2::new(6.0, 7.0);
+pub(crate) const PLAYER_SPAWN: Vec2 = Vec2::new(20.0 * TILE, 13.0 * TILE);
 pub(crate) const PLAYER_MOVE_SPEED: f32 = 140.0;
 pub(crate) const PLAYER_JUMP_IMPULSE: f32 = 320.0;
 pub(crate) const GRAVITY_Y: f32 = 900.0;
 pub(crate) const BALL_RADIUS: f32 = 6.0;
 pub(crate) const BALL_RESTITUTION: f32 = 0.85;
+
+// Active physics region. Anything outside gets culled (balls despawn,
+// player resets to `PLAYER_SPAWN`) so runaway velocities can't inflate
+// `compute_substeps` and drag the whole simulation to the 8× substep cap.
+// Margins are generous — normal bounces stay well inside.
+pub(crate) const WORLD_BOUNDS_MIN: Vec2 = Vec2::new(-TILE * 2.0, -TILE * 8.0);
+pub(crate) const WORLD_BOUNDS_MAX: Vec2 = Vec2::new(
+    (MAP_COLS as f32 + 2.0) * TILE,
+    (MAP_ROWS as f32 + 8.0) * TILE,
+);
 
 pub(crate) struct AudioState {
     pub(crate) sfx_handle: AudioHandle,

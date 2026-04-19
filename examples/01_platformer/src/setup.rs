@@ -16,11 +16,12 @@ use crate::extract::{extract_sprites, extract_text};
 use crate::state::{
     AudioState, Ball, CurrentSprite, Player, TextDisplayState, ASSETS_LOCAL, ASSETS_ROOT,
     BALL_RADIUS, BALL_RESTITUTION, GRAVITY_Y, MANIFEST_LOCAL, MANIFEST_ROOT, MAP_COLS, MAP_ROWS,
-    PLAYER_HALF, TILE,
+    PLAYER_HALF, PLAYER_SPAWN, TILE,
 };
 use crate::systems::{
-    animation_system, audio_input_system, camera_zoom_input_system, ground_detection,
-    platformer_camera_base_zoom, player_input, update_text_display,
+    animation_system, audio_input_system, camera_zoom_input_system, despawn_out_of_bounds,
+    ground_detection, platformer_camera_base_zoom, player_input, spawn_ball_system,
+    update_text_display,
 };
 
 type ExampleSystem = fn(&mut World);
@@ -28,11 +29,13 @@ type ExampleSystem = fn(&mut World);
 pub(crate) const RUNTIME_SYSTEM_ORDER: &[(&str, ExampleSystem)] = &[
     ("update_text_display", update_text_display),
     ("player_input", player_input),
+    ("spawn_ball_system", spawn_ball_system),
     ("audio_input_system", audio_input_system),
     ("camera_zoom_input_system", camera_zoom_input_system),
     ("animation_system", animation_system),
     ("physics_step", physics_step),
     ("ground_detection", ground_detection),
+    ("despawn_out_of_bounds", despawn_out_of_bounds),
     ("sync_position_to_transform", sync_position_to_transform),
     ("platformer_camera_base_zoom", platformer_camera_base_zoom),
     ("camera_update_system", camera_update_system),
@@ -71,10 +74,9 @@ fn seed_world(world: &mut World) {
     // on screen. Moving left scrolls the background right; moving right
     // scrolls it left (until the right edge clamp at max_x = 256).
     let player = world.spawn();
-    let player_start = Vec2::new(20.0 * TILE, 13.0 * TILE);
     world.insert(player, Player::default());
-    world.insert(player, Position(player_start));
-    world.insert(player, Transform::from_position(player_start));
+    world.insert(player, Position(PLAYER_SPAWN));
+    world.insert(player, Transform::from_position(PLAYER_SPAWN));
     world.insert(player, Velocity(Vec2::ZERO));
     world.insert(player, Collider::aabb(PLAYER_HALF));
     world.insert(player, RigidBody::dynamic().with_restitution(0.0));
@@ -149,6 +151,7 @@ fn install_startup(app: &mut App) {
             "ex10_platform",
             "ex10_sky",
             "ex10_ball",
+            "ex10_cursor",
             "walk_0",
         ] {
             assert!(registry.get_sprite(id).is_some(), "missing sprite '{id}'");

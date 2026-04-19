@@ -197,80 +197,97 @@ fn resolve_collisions(world: &mut World, config: &PhysicsConfig) {
     //    impulses. Gauss–Seidel style — the ordering isn't physically
     //    unique but at game-jam scale the difference is invisible, and
     //    the alternative (batched deltas) doubles bounces on shared seams.
+    //
+    //    The outer `for _ in 0..iterations` loop is what makes stacks
+    //    stable: single-pass resolution can't clear penetration that
+    //    appears mid-pass (e.g. ball A lands on ball B which was already
+    //    resolved against the floor — B now overlaps the floor again, but
+    //    its pair was already processed). Each extra iteration re-tests
+    //    every pair against the updated centers. Velocity impulse only
+    //    fires on closing contacts, so resting stacks converge without
+    //    over-damping bounces on first contact. Events are emitted on
+    //    iteration 0 only so resting contacts don't inflate the queue
+    //    by `solver_iterations`×.
     let mut events: Vec<CollisionEvent> = Vec::new();
     let mut candidates: Vec<ProxyId> = Vec::new();
+    let iterations = config.solver_iterations.max(1);
 
-    for a_idx in 0..proxies.len() {
-        if !proxies[a_idx].is_dynamic {
-            continue;
-        }
-        let a_aabb = proxies[a_idx].world_aabb();
-        grid.query(&a_aabb, Some(a_idx as ProxyId), &mut candidates);
-
-        for &b_id in &candidates {
-            let b_idx = b_id as usize;
-            // Resolve each unordered pair once per substep: when both
-            // sides are dynamic, only process when a_idx < b_idx.
-            if proxies[b_idx].is_dynamic && b_idx <= a_idx {
+    for iteration in 0..iterations {
+        let emit_events = iteration == 0;
+        for a_idx in 0..proxies.len() {
+            if !proxies[a_idx].is_dynamic {
                 continue;
             }
+            let a_aabb = proxies[a_idx].world_aabb();
+            grid.query(&a_aabb, Some(a_idx as ProxyId), &mut candidates);
 
-            // Re-test narrow phase with current (possibly already
-            // corrected) centers. If a prior contact in this substep
-            // already separated the shapes, this returns None.
-            let contact = narrow_phase(&proxies[a_idx], &proxies[b_idx]);
-            let Some(contact) = contact else { continue };
+            for &b_id in &candidates {
+                let b_idx = b_id as usize;
+                // Resolve each unordered pair once per iteration: when
+                // both sides are dynamic, only process when a_idx < b_idx.
+                if proxies[b_idx].is_dynamic && b_idx <= a_idx {
+                    continue;
+                }
 
-            let inv_mass_sum = proxies[a_idx].inv_mass + proxies[b_idx].inv_mass;
-            if inv_mass_sum <= 0.0 {
-                continue;
-            }
+                // Re-test narrow phase with current (possibly already
+                // corrected) centers. If a prior contact in this substep
+                // already separated the shapes, this returns None.
+                let contact = narrow_phase(&proxies[a_idx], &proxies[b_idx]);
+                let Some(contact) = contact else { continue };
 
-            // Positional correction: split along inverse-mass ratio.
-            let a_share = proxies[a_idx].inv_mass / inv_mass_sum;
-            let b_share = proxies[b_idx].inv_mass / inv_mass_sum;
-            let correction = contact.normal * contact.penetration;
+                let inv_mass_sum = proxies[a_idx].inv_mass + proxies[b_idx].inv_mass;
+                if inv_mass_sum <= 0.0 {
+                    continue;
+                }
 
-            // Velocity resolution: projection along contact normal with
-            // combined restitution. `normal` points from a toward a's
-            // free space, so relative velocity along the normal closing
-            // the gap is `(vb - va) · n`.
-            let a_vel = proxies[a_idx].velocity;
-            let b_vel = proxies[b_idx].velocity;
-            let relative = b_vel - a_vel;
-            let vel_along_normal = relative.dot(contact.normal);
-            let restitution = proxies[a_idx].restitution.max(proxies[b_idx].restitution);
+                // Positional correction: split along inverse-mass ratio.
+                let a_share = proxies[a_idx].inv_mass / inv_mass_sum;
+                let b_share = proxies[b_idx].inv_mass / inv_mass_sum;
+                let correction = contact.normal * contact.penetration;
 
-            let (a_dv, b_dv) = if vel_along_normal <= 0.0 {
-                // Bodies already separating (or tangent) — don't add
-                // impulse, but still correct positions so resting
-                // contacts don't accumulate penetration.
-                (Vec2::ZERO, Vec2::ZERO)
-            } else {
-                let j = -(1.0 + restitution) * vel_along_normal / inv_mass_sum;
-                let impulse = contact.normal * j;
-                (
-                    -impulse * proxies[a_idx].inv_mass,
-                    impulse * proxies[b_idx].inv_mass,
-                )
-            };
+                // Velocity resolution: projection along contact normal with
+                // combined restitution. `normal` points from a toward a's
+                // free space, so relative velocity along the normal closing
+                // the gap is `(vb - va) · n`.
+                let a_vel = proxies[a_idx].velocity;
+                let b_vel = proxies[b_idx].velocity;
+                let relative = b_vel - a_vel;
+                let vel_along_normal = relative.dot(contact.normal);
+                let restitution = proxies[a_idx].restitution.max(proxies[b_idx].restitution);
 
-            // Apply in-place so the next contact on this proxy sees the
-            // corrected state. Static `b` proxies are never mutated.
-            proxies[a_idx].center += correction * a_share;
-            proxies[a_idx].velocity += a_dv;
-            if proxies[b_idx].is_dynamic {
-                proxies[b_idx].center -= correction * b_share;
-                proxies[b_idx].velocity += b_dv;
-            }
+                let (a_dv, b_dv) = if vel_along_normal <= 0.0 {
+                    // Bodies already separating (or tangent) — don't add
+                    // impulse, but still correct positions so resting
+                    // contacts don't accumulate penetration.
+                    (Vec2::ZERO, Vec2::ZERO)
+                } else {
+                    let j = -(1.0 + restitution) * vel_along_normal / inv_mass_sum;
+                    let impulse = contact.normal * j;
+                    (
+                        -impulse * proxies[a_idx].inv_mass,
+                        impulse * proxies[b_idx].inv_mass,
+                    )
+                };
 
-            if let Some(a_entity) = proxies[a_idx].entity {
-                events.push(CollisionEvent {
-                    a: a_entity,
-                    b: proxies[b_idx].entity,
-                    normal: contact.normal,
-                    penetration: contact.penetration,
-                });
+                // Apply in-place so the next contact on this proxy sees the
+                // corrected state. Static `b` proxies are never mutated.
+                proxies[a_idx].center += correction * a_share;
+                proxies[a_idx].velocity += a_dv;
+                if proxies[b_idx].is_dynamic {
+                    proxies[b_idx].center -= correction * b_share;
+                    proxies[b_idx].velocity += b_dv;
+                }
+
+                if emit_events {
+                    if let Some(a_entity) = proxies[a_idx].entity {
+                        events.push(CollisionEvent {
+                            a: a_entity,
+                            b: proxies[b_idx].entity,
+                            normal: contact.normal,
+                            penetration: contact.penetration,
+                        });
+                    }
+                }
             }
         }
     }
@@ -613,6 +630,66 @@ mod tests {
             "ball impulse was doubled — rebounded too fast: {:?}",
             vel
         );
+    }
+
+    #[test]
+    fn stack_of_dynamic_bodies_does_not_tunnel_static_floor() {
+        // Regression: single-pass Gauss–Seidel couldn't clear penetration
+        // introduced mid-pass by an upper body pushing into a lower body
+        // whose floor contact had already been resolved. Piling balls in
+        // one spot squeezed the bottom ball through the tile. With
+        // `solver_iterations >= 2` each iteration re-tests every pair
+        // against the updated centers, so pressure propagates to static
+        // contacts before the substep ends.
+        let mut world = seed_world();
+        if let Some(cfg) = world.get_resource_mut::<PhysicsConfig>() {
+            cfg.gravity = Vec2::new(0.0, 900.0);
+        }
+
+        // Solid floor at y = 100, 128px wide.
+        let floor = world.spawn();
+        world.insert(floor, Position(Vec2::new(64.0, 108.0)));
+        world.insert(floor, Collider::aabb(Vec2::new(64.0, 8.0)));
+        world.insert(floor, RigidBody::r#static());
+
+        // Four bouncy balls stacked above the floor, pre-separated so the
+        // initial configuration is penetration-free. Under gravity they
+        // settle into a stack; with single-pass resolution the bottom one
+        // ends up below the floor's top edge within a few frames.
+        const BALLS: u32 = 4;
+        const RADIUS: f32 = 4.0;
+        let mut ball_entities = Vec::new();
+        for i in 0..BALLS {
+            let e = world.spawn();
+            let y = 100.0 - 8.0 - RADIUS - (i as f32) * (RADIUS * 2.0 + 0.5);
+            world.insert(e, Position(Vec2::new(64.0, y)));
+            world.insert(e, Velocity(Vec2::ZERO));
+            world.insert(e, Collider::circle(RADIUS));
+            world.insert(e, RigidBody::dynamic().with_restitution(0.3));
+            ball_entities.push(e);
+        }
+
+        // Simulate long enough for the stack to settle.
+        for _ in 0..120 {
+            physics_step(&mut world);
+            world
+                .get_resource_mut::<EventQueue<CollisionEvent>>()
+                .unwrap()
+                .flush();
+        }
+
+        // Floor's top edge is at y = 100. Ball centres must stay above
+        // y = 100 - RADIUS = 96 with a small tolerance for numerical slop.
+        let floor_top = 100.0;
+        for (i, &ball) in ball_entities.iter().enumerate() {
+            let pos = world.get::<Position>(ball).unwrap().0;
+            assert!(
+                pos.y + RADIUS <= floor_top + 0.5,
+                "ball {i} clipped through floor: y={} (top={})",
+                pos.y,
+                pos.y + RADIUS
+            );
+        }
     }
 
     // Helper extension used by tests.
