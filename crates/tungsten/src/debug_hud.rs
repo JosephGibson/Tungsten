@@ -59,9 +59,16 @@ pub struct DebugHud {
     pub color: [u8; 4],
     pub padding_px: f32,
     pub top_n_systems: usize,
+    /// Minimum wall-clock interval between text refreshes, in milliseconds.
+    /// EWMA keeps updating every frame; only the displayed snapshot is
+    /// throttled so fast-changing values stay readable. Defaults to 250 ms
+    /// (4 Hz). Set to `0.0` to refresh every frame.
+    pub refresh_interval_ms: f32,
     fps_ewma: f32,
     frame_ms_ewma: f32,
     ewma_alpha: f32,
+    time_since_refresh_ms: f32,
+    cached_sections: Vec<TextSection>,
     built_in: Vec<HudRowProvider>,
     custom: Vec<HudRowProvider>,
 }
@@ -79,14 +86,17 @@ impl DebugHud {
             enabled: false,
             corner: HudCorner::TopLeft,
             font_id: "mono".to_string(),
-            font_size: 16.0,
-            line_height: 20.0,
+            font_size: 18.0,
+            line_height: 24.0,
             color: [230, 230, 230, 230],
             padding_px: 8.0,
             top_n_systems: 3,
+            refresh_interval_ms: 250.0,
             fps_ewma: 0.0,
             frame_ms_ewma: 0.0,
             ewma_alpha: 0.1,
+            time_since_refresh_ms: f32::INFINITY,
+            cached_sections: Vec::new(),
             built_in,
             custom: Vec::new(),
         }
@@ -265,16 +275,29 @@ pub(crate) fn compose_hud_text_sections(
     frame_ms: f32,
 ) -> Vec<TextSection> {
     if !hud.enabled {
+        hud.cached_sections.clear();
+        hud.time_since_refresh_ms = f32::INFINITY;
         return Vec::new();
     }
 
-    // EWMA smoothing of frame time / fps.
+    // EWMA smoothing of frame time / fps. Runs every frame so the snapshot
+    // captured at the next refresh tick reflects all frames in between.
     hud.frame_ms_ewma = (1.0 - hud.ewma_alpha) * hud.frame_ms_ewma + hud.ewma_alpha * frame_ms;
     hud.fps_ewma = if hud.frame_ms_ewma > 0.0 {
         1000.0 / hud.frame_ms_ewma
     } else {
         0.0
     };
+
+    // Throttle refresh so fast-changing values stay readable. The cached
+    // sections are re-emitted between ticks; `time_since_refresh_ms` is
+    // seeded to +infinity so the very first call after enable always
+    // rebuilds.
+    hud.time_since_refresh_ms += frame_ms;
+    if hud.time_since_refresh_ms < hud.refresh_interval_ms && !hud.cached_sections.is_empty() {
+        return hud.cached_sections.clone();
+    }
+    hud.time_since_refresh_ms = 0.0;
 
     let mut rows = hud.fps_row();
     for provider in &hud.built_in {
@@ -286,6 +309,7 @@ pub(crate) fn compose_hud_text_sections(
     }
 
     if rows.is_empty() {
+        hud.cached_sections.clear();
         return Vec::new();
     }
 
@@ -327,7 +351,7 @@ pub(crate) fn compose_hud_text_sections(
         }
     };
 
-    vec![TextSection {
+    let sections = vec![TextSection {
         content,
         font_id: hud.font_id.clone(),
         font_size: hud.font_size,
@@ -335,7 +359,9 @@ pub(crate) fn compose_hud_text_sections(
         color: hud.color,
         position: [x, y],
         bounds: None,
-    }]
+    }];
+    hud.cached_sections = sections.clone();
+    sections
 }
 
 /// Engine-registered system: toggles `DebugHud.enabled` on `F4` edge. Runs
@@ -437,6 +463,9 @@ mod tests {
         let mut hud = DebugHud::new();
         hud.enabled = true;
         hud.top_n_systems = 5;
+        // Disable refresh throttle so both compose calls rebuild — the
+        // assertions below flip `top_n_systems` between calls.
+        hud.refresh_interval_ms = 0.0;
         // HUD is intentionally NOT inserted into the world; compose must not
         // depend on `world.get_resource::<DebugHud>()` for configuration.
         let sections = compose_hud_text_sections(&mut hud, &world, (1280, 720), 16.67);
@@ -474,6 +503,29 @@ mod tests {
         let fps_idx = content.find("fps").expect("fps row missing");
         let extra_idx = content.find("extra").expect("extra row missing");
         assert!(fps_idx < extra_idx);
+    }
+
+    #[test]
+    fn refresh_throttle_reuses_cached_sections_between_ticks() {
+        let mut hud = DebugHud::new();
+        hud.enabled = true;
+        hud.refresh_interval_ms = 100.0;
+        let world = World::new();
+
+        // First call always rebuilds (cache empty, time seeded to +inf).
+        let first = compose_hud_text_sections(&mut hud, &world, (1280, 720), 16.67);
+        assert_eq!(first.len(), 1);
+        let first_content = first[0].content.clone();
+
+        // Mutate a displayed field; cache should still win because only
+        // 16.67 ms has elapsed of the 100 ms interval.
+        hud.top_n_systems = 0;
+        let second = compose_hud_text_sections(&mut hud, &world, (1280, 720), 16.67);
+        assert_eq!(second[0].content, first_content);
+
+        // Advance past the interval with a large frame_ms; rebuild kicks in.
+        let third = compose_hud_text_sections(&mut hud, &world, (1280, 720), 200.0);
+        assert_ne!(third[0].content, first_content);
     }
 
     #[test]
