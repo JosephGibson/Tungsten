@@ -4,6 +4,29 @@ Records all notable project changes.
 
 Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.15.0] - 2026-04-18
+
+Summary: Phase 3 Milestone 18 — runtime telemetry HUD, diagnostic counters, and release-line alignment.
+
+### Added
+
+- **Runtime telemetry HUD (`tungsten::debug_hud`):** `DebugHud`, `HudCorner`, `HudRow`, `HudActiveState`, `hud_toggle_system`, and built-in/custom row providers now ship in the umbrella crate. Built-in rows cover FPS/frame ms, camera state, display state, tagged player position/speed, live entity + sprite counts, and top-N slowest systems.
+- **Diagnostic counters:** `tungsten::RenderCounts` mirrors per-frame entity and sprite counts into the `World`, while `tungsten_core::World::entity_count()` exposes the live ECS entity count in O(1).
+- **HUD toggle + example wiring:** `KeyCode::F4` is now plumbed through the input bridge, `example-01-platformer` tags the player entity for HUD lookup, and the controls text documents the new developer HUD toggle.
+- **Decision record + archived plan:** `DECISIONS.md` now includes `D-044`, the detailed M18 rollout plan now lives at `docs/plans/archive/Phase3-Milestone18-plan.md`, and the capture summary lives at `perf-runs/M18-hud/README.md`.
+
+### Changed
+
+- Workspace version bumped to `0.15.0`.
+- `README.md`, `DESIGN.md`, `AGENTS.md`, `CLAUDE.md`, and `docs/plans/Phase3.md` now reflect the shipped `0.15.0` / M18 release line and the next-step `M19` planning state.
+- The shipped HUD defaults now favor readability in busy scenes: larger text, taller line spacing, and a throttled text refresh interval while the EWMA timing row keeps updating from frame telemetry.
+- Release QA pass completed locally: `cargo fmt --all`, `cargo build --workspace`, `cargo clippy --workspace --all-targets`, `cargo test --workspace`, `bash scripts/test-perf-capture.sh`, `WGPU_BACKEND=vulkan ./scripts/perf-capture.sh sprite-stress 300 --telemetry-only`, and `WGPU_BACKEND=vulkan ./scripts/smoke-examples.sh` all passed.
+
+### Fixed
+
+- **Perf-capture README quoting:** `scripts/perf-capture.sh` now escapes the literal `` `STRESS_SCENE` `` / `` `STRESS_COUNT` `` notes in its generated README so shell command substitution cannot corrupt the notes section.
+- **Sprite-stress lint noise:** `example-02-sprite-stress` now uses `usize::div_ceil` for row count calculation and gates the `leader` field's dead-code allowance to non-test builds.
+
 ## [0.14.0] - 2026-04-17
 
 Summary: Phase 3 Milestone 17 — display state/config, frame-boundary runtime display changes, and release-line alignment.

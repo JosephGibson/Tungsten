@@ -4,7 +4,7 @@ use glam::Vec2;
 use tungsten::asset_loader;
 use tungsten::core::{
     sync_position_to_transform, AssetRegistry, AudioCommands, CameraBounds, CameraController,
-    CameraMode, Entity, ResolvedManifest, SoundRegistry, TilemapInstance, TilemapRegistry,
+    CameraMode, Entity, ResolvedManifest, SoundRegistry, Tag, TilemapInstance, TilemapRegistry,
     Transform, World,
 };
 use tungsten::physics::{
@@ -81,6 +81,7 @@ fn seed_world(world: &mut World) {
     world.insert(player, RigidBody::dynamic().with_restitution(0.0));
     world.insert(player, tungsten::core::AnimationState::new("walk"));
     world.insert(player, CurrentSprite("walk_0".into()));
+    world.insert(player, Tag::new("player"));
     configure_platformer_camera(world, player);
 
     // Bouncing balls spread across the level: (col, row, initial vx).

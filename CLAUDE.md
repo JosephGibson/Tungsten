@@ -22,4 +22,4 @@ Pointer file for [Claude Code](https://claude.ai/code).
 
 ## Status
 
-Workspace `v0.14.0` on branch `0.14`. Phase 3 M17 is complete. Display-state/config docs, frame-order docs, and perf/benchmark references are up to date.
+Workspace `v0.15.0` on branch `0.15`. Phase 3 M18 is complete. Runtime HUD docs, frame-order docs, and perf/benchmark references are up to date.

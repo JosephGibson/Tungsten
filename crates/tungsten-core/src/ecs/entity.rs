@@ -134,6 +134,11 @@ impl Entities {
             .get(entity.index as usize)
             .is_some_and(|m| m.generation == entity.generation && m.location.is_some())
     }
+
+    /// Number of currently live entity slots. O(1).
+    pub fn live_count(&self) -> u32 {
+        (self.meta.len() - self.free.len()) as u32
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -253,6 +258,30 @@ mod tests {
         let c = e.alloc(); // should reuse a's slot (LIFO)
         assert_eq!(c.index, a.index);
         assert_eq!(c.generation, 1);
+    }
+
+    #[test]
+    fn live_count_tracks_alloc_and_free() {
+        let mut e = Entities::new();
+        assert_eq!(e.live_count(), 0);
+        let mut handles = Vec::new();
+        for _ in 0..5 {
+            let h = e.alloc();
+            e.set_location(
+                h,
+                EntityLocation {
+                    archetype_id: 0,
+                    row: 0,
+                },
+            );
+            handles.push(h);
+        }
+        assert_eq!(e.live_count(), 5);
+        e.free(handles[0]);
+        e.free(handles[1]);
+        assert_eq!(e.live_count(), 3);
+        let _ = e.alloc();
+        assert_eq!(e.live_count(), 4);
     }
 
     #[test]

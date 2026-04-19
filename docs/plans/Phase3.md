@@ -31,11 +31,11 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 
 ## Current Status
 
-- Workspace version metadata: `0.14.0`
-- Current branch: `0.14`
-- Completed milestones: `M12` profiling baseline, `M13` command buffers, `M14` event queues, `M15` transform + render components, `M16` camera module, `M17` display state + config
-- Next recommended milestone: `M18 — Runtime Telemetry HUD`
-- Archived detailed milestone plans: [M12](archive/Phase3-Milestone12-plan.md), [M13](archive/Phase3-Milestone13-plan.md), [M14](archive/Phase3-Milestone14-plan.md), [M15](archive/Phase3-Milestone15-plan.md), [M16](archive/phase3-milestone16-plan.md), [M17](archive/Phase3-Milestone17-plan.md)
+- Workspace version metadata: `0.15.0`
+- Current branch: `0.15`
+- Completed milestones: `M12` profiling baseline, `M13` command buffers, `M14` event queues, `M15` transform + render components, `M16` camera module, `M17` display state + config, `M18` runtime telemetry HUD
+- Next recommended milestone: `M19 — Input Mapping`
+- Archived detailed milestone plans: [M12](archive/Phase3-Milestone12-plan.md), [M13](archive/Phase3-Milestone13-plan.md), [M14](archive/Phase3-Milestone14-plan.md), [M15](archive/Phase3-Milestone15-plan.md), [M16](archive/phase3-milestone16-plan.md), [M17](archive/Phase3-Milestone17-plan.md), [M18](archive/Phase3-Milestone18-plan.md)
 
 ## Execution Contract
 
@@ -124,6 +124,9 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 
 ### M18 - Runtime Telemetry HUD
 
+> **Status: complete** (`v0.15.0`, `2026-04-18`)
+> Detailed implementation plan archived at [`docs/plans/archive/Phase3-Milestone18-plan.md`](archive/Phase3-Milestone18-plan.md).
+
 - Goal: add a lightweight in-game HUD for developers and playtesters.
 - Why early: it makes correctness and perf issues visible during normal gameplay rather than only after failures.
 - Design: add a `DebugHud` resource rendered through the existing text pipeline; add an engine telemetry model of key/value rows in a fixed screen corner; built-in rows include FPS + frame time (`ms`), camera mode + position/zoom, display mode (resolution, fullscreen, vsync), player position/speed when a tagged player entity exists, active state/scene name, entity count and sprite count, and a last-frame system timing summary for the top `N` slowest systems; default toggle is `F4`; default state is off in release-oriented examples; add an opt-in extension point so examples can register custom rows without engine changes.
@@ -198,7 +201,7 @@ Close each milestone only after:
 - [ ] Performance baseline and profiling workflow exist before major feature milestones
 - [x] Camera module owns camera behavior for at least one representative gameplay example
 - [x] Display state/config layer is active and future settings-menu-ready
-- [ ] Runtime telemetry HUD exposes core state (`FPS` / `camera` / `player` / system timing) in a representative example
+- [x] Runtime telemetry HUD exposes core state (`FPS` / `camera` / `player` / system timing) in a representative example
 - [ ] Deterministic screenshot + scripted input checks run for representative flows
 - [ ] Sprite atlas path is transparent to game code and reduces texture pressure
 - [ ] Bench scenarios above are recorded and reviewed for regressions

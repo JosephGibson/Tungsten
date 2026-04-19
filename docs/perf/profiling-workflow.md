@@ -7,9 +7,8 @@ Establish a reproducible CPU/GPU baseline before later Phase 3 work. Compare run
 | Setting | Value |
 | --- | --- |
 | Build mode | `--release` |
-| Primary scene | `example-02-sprite-stress` |
-| Additional stress scene | `example-02-sprite-stress` with `STRESS_SCENE=ecs-high-load` |
-| Secondary scene | `example-01-platformer` |
+| Primary scene | `example-02-sprite-stress` with `STRESS_SCENE=ecs-high-load` (full-system stress: ECS, physics, steering, camera, render) |
+| Secondary scene | `example-02-sprite-stress` with `STRESS_SCENE=baseline` (render-hot-path baseline, preserves M17/M18 history) |
 | Linux backend | `WGPU_BACKEND=vulkan` |
 | Resolution | `1920x1080` for sprite stress |
 | Present mode | `display.present_mode = "auto"` |
@@ -24,27 +23,25 @@ Establish a reproducible CPU/GPU baseline before later Phase 3 work. Compare run
 Run the capture script from the repo root:
 
 ```bash
-WGPU_BACKEND=vulkan ./scripts/perf-capture.sh sprite-stress 300
-WGPU_BACKEND=vulkan ./scripts/perf-capture.sh ecs-high-load 300
-WGPU_BACKEND=vulkan ./scripts/perf-capture.sh platformer 300
+WGPU_BACKEND=vulkan ./scripts/perf-capture.sh                    # defaults to ecs-high-load 300
+WGPU_BACKEND=vulkan ./scripts/perf-capture.sh ecs-high-load 300  # explicit primary scene
+WGPU_BACKEND=vulkan ./scripts/perf-capture.sh sprite-stress 300  # render-hot-path baseline
 ```
 
 Each run writes a timestamped directory under `perf-runs/` with telemetry logs, optional GPU timing logs, optional `perf` artifacts, and a per-run `README.md`. The script runs `60 + requested_frames` total frames, parses renderer metadata into separate README rows, and computes post-warm-up averages plus `p50` / `p95` / `p99` for `total` and `render_acquire`.
 
-`ecs-high-load` still launches `example-02-sprite-stress`; the capture script injects `STRESS_SCENE=ecs-high-load` for the child process and also resets any inherited `STRESS_SCENE` / `STRESS_COUNT` so canonical runs stay reproducible.
+Both scenes launch `example-02-sprite-stress`; the capture script injects `STRESS_SCENE=ecs-high-load` or `STRESS_SCENE=baseline` for the child process and resets any inherited `STRESS_SCENE` / `STRESS_COUNT` so canonical runs stay reproducible.
 
-For the published Vulkan frame-pacing matrix, keep default rows as full captures and use telemetry-only override rows for alternate configs:
+For Vulkan frame-pacing sweeps, keep the default rows as full captures and use telemetry-only override rows for alternate configs:
 
 ```bash
-WGPU_BACKEND=vulkan ./scripts/perf-capture.sh sprite-stress 300
 WGPU_BACKEND=vulkan ./scripts/perf-capture.sh ecs-high-load 300
-WGPU_BACKEND=vulkan ./scripts/perf-capture.sh platformer 300
-WGPU_BACKEND=vulkan ./scripts/perf-capture.sh sprite-stress 300 --present-mode immediate --max-frame-latency 2 --telemetry-only
-WGPU_BACKEND=vulkan ./scripts/perf-capture.sh sprite-stress 300 --present-mode immediate --max-frame-latency 3 --telemetry-only
-WGPU_BACKEND=vulkan ./scripts/perf-capture.sh sprite-stress 300 --present-mode mailbox --max-frame-latency 2 --telemetry-only
+WGPU_BACKEND=vulkan ./scripts/perf-capture.sh sprite-stress 300
+WGPU_BACKEND=vulkan ./scripts/perf-capture.sh ecs-high-load 300 --present-mode immediate --max-frame-latency 2 --telemetry-only
+WGPU_BACKEND=vulkan ./scripts/perf-capture.sh ecs-high-load 300 --present-mode immediate --max-frame-latency 3 --telemetry-only
+WGPU_BACKEND=vulkan ./scripts/perf-capture.sh ecs-high-load 300 --present-mode mailbox --max-frame-latency 2 --telemetry-only
+WGPU_BACKEND=vulkan ./scripts/perf-capture.sh ecs-high-load 300 --present-mode mailbox --max-frame-latency 3 --telemetry-only
 WGPU_BACKEND=vulkan ./scripts/perf-capture.sh sprite-stress 300 --present-mode mailbox --max-frame-latency 3 --telemetry-only
-WGPU_BACKEND=vulkan ./scripts/perf-capture.sh platformer 300 --present-mode immediate --max-frame-latency 2 --telemetry-only
-WGPU_BACKEND=vulkan ./scripts/perf-capture.sh platformer 300 --present-mode mailbox --max-frame-latency 2 --telemetry-only
 ```
 
 `--present-mode` and `--max-frame-latency` inject child-only `TUNGSTEN_RENDER_PRESENT_MODE` / `TUNGSTEN_RENDER_MAX_FRAME_LATENCY` compatibility overrides, so the checked-in `tungsten.json` stays unchanged while the runtime display resolver still lands on the requested pacing values.

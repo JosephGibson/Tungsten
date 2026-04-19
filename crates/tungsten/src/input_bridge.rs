@@ -11,6 +11,7 @@ pub fn translate_key(key: PhysicalKey) -> KeyCode {
             WinitKeyCode::Space => KeyCode::Space,
             WinitKeyCode::Enter => KeyCode::Enter,
             WinitKeyCode::Escape => KeyCode::Escape,
+            WinitKeyCode::F4 => KeyCode::F4,
             WinitKeyCode::F9 => KeyCode::F9,
             WinitKeyCode::F11 => KeyCode::F11,
             WinitKeyCode::KeyW => KeyCode::KeyW,
