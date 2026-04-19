@@ -10,12 +10,12 @@ Workspace `v0.16.0` on branch `0.16`. Phase 3 M19 is shipped. The engine now pai
 
 Hand-rolled ECS with archetypal storage, deferred command buffers, and typed event queues; `wgpu` rendering; manifest-driven assets; `glyphon` text; `cpal` + `symphonia` + hand-rolled audio mixer; `notify` hot reload; `.tmj` / Tiled-compatible tilemaps; 2D AABB + circle physics with a uniform-grid broad-phase; frame telemetry, Criterion benches, and a perf capture workflow.
 
-## 0.15 Highlights
+## 0.16 Highlights
 
-- `tungsten::DebugHud` now ships as a world resource with built-in FPS, camera, display, player, counts, and top-N system timing rows plus a custom-row extension hook
-- `F4` toggles the developer HUD at runtime, and `example-01-platformer` now tags the player entity so the HUD can report position and speed directly
-- `tungsten::RenderCounts` and `World::entity_count()` expose frame-local render counts and O(1) live-entity counts for diagnostics
-- The shipped HUD defaults now favor readability on busy scenes: larger text, a taller line height, and a throttled text refresh interval while EWMA timing still updates every frame
+- `input.json` at the workspace root maps named actions to keyboard, mouse-button, and scroll bindings; it loads at startup, merges with built-in defaults, and survives layout-preserving rewrites through `ActionMap::persist`
+- `ActionMap` is a world resource exposing `is_pressed`, `just_pressed`, and `just_released` per action; `tungsten::InputState` now also tracks cursor position/delta plus line and pixel scroll deltas
+- Engine-owned actions cover HUD toggle (`engine_toggle_hud`), vsync toggle (`engine_toggle_vsync`), fullscreen toggle (`engine_toggle_fullscreen`), and exit (`engine_exit`); gameplay binds its own actions in `input.json` instead of hardcoded keycodes
+- The hot-reload watcher now observes `input.json` alongside the asset manifests, so binding edits take effect at the next frame boundary without a restart
 
 ## Documents
 
