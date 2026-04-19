@@ -439,7 +439,8 @@ fn spawn_black_hole_system_drags_active_hole_to_cursor_while_held() {
         "hold must not spawn a second hole per frame"
     );
 
-    // Frame 3: release — active entity must clear so later holes fade normally.
+    // Frame 3: release — the dragged hole despawns immediately and the
+    // active slot clears so later presses start fresh.
     {
         let input = world.get_resource_mut::<InputState>().unwrap();
         input.begin_frame();
@@ -447,6 +448,11 @@ fn spawn_black_hole_system_drags_active_hole_to_cursor_while_held() {
     }
     spawn_black_hole_system(&mut world);
     assert_eq!(world.get_resource::<ActiveBlackHole>().unwrap().0, None);
+    assert_eq!(
+        world.query::<BlackHole>().count(),
+        0,
+        "release must despawn the dragged hole immediately, not let it fade"
+    );
 }
 
 #[test]

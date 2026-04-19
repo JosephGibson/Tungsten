@@ -354,9 +354,9 @@ pub(crate) fn spawn_ball_system(world: &mut World) {
 /// Spawns a black hole at the world-space cursor position on Mouse2 press
 /// and drags it along while the button is held. While held, the hole's
 /// `remaining` is refreshed every frame so it never expires mid-drag; on
-/// release the normal `BLACK_HOLE_LIFETIME` countdown resumes.
-/// `ActiveBlackHole` tracks the dragged entity so earlier holes still
-/// fading out aren't also snapped to the cursor.
+/// release the dragged hole is despawned immediately. `ActiveBlackHole`
+/// tracks the dragged entity so the release path only affects the hole
+/// the user was actively controlling.
 pub(crate) fn spawn_black_hole_system(world: &mut World) {
     let (just_pressed, is_held, just_released) = {
         let Some(input) = world.get_resource::<InputState>() else {
@@ -373,8 +373,11 @@ pub(crate) fn spawn_black_hole_system(world: &mut World) {
     };
 
     if just_released {
-        if let Some(active) = world.get_resource_mut::<ActiveBlackHole>() {
-            active.0 = None;
+        let prev = world
+            .get_resource_mut::<ActiveBlackHole>()
+            .and_then(|a| a.0.take());
+        if let Some(entity) = prev {
+            world.despawn(entity);
         }
     }
     if !is_held {

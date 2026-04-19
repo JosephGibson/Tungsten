@@ -38,7 +38,7 @@ pub(crate) const BLACK_HOLE_FORCE: f32 = 3000.0;
 /// the full duration of the drag.
 pub(crate) const BLACK_HOLE_LIFETIME: f32 = 2.0;
 /// Visual diameter of the purple blob sprite in world pixels.
-pub(crate) const BLACK_HOLE_VISUAL_DIAMETER: f32 = 30.0;
+pub(crate) const BLACK_HOLE_VISUAL_DIAMETER: f32 = 45.0;
 
 // Active physics region. Anything outside gets culled (balls despawn,
 // player resets to `PLAYER_SPAWN`) so runaway velocities can't inflate
