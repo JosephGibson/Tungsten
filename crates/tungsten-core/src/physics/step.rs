@@ -51,6 +51,22 @@ impl Proxy {
     }
 }
 
+/// Persistent per-frame scratch buffers. Stored as a `World` resource so
+/// the physics step doesn't reallocate its proxy, pair, event, candidate
+/// vectors or the broadphase grid every substep. Fields are private —
+/// `physics_step` is the only writer. Inserted on first call via
+/// `Default`; games don't need to seed it.
+#[derive(Debug, Default)]
+pub struct PhysicsBuffers {
+    proxies: Vec<Proxy>,
+    pairs: Vec<(u32, u32)>,
+    events: Vec<CollisionEvent>,
+    candidates: Vec<ProxyId>,
+    grid: SpatialGrid,
+    collider_entities: Vec<Entity>,
+    dynamic_entities: Vec<Entity>,
+}
+
 /// Entry point registered with `app.add_system`. Runs one physics tick
 /// with N substeps, where N is chosen to avoid tunneling at current
 /// velocity.
@@ -71,10 +87,18 @@ pub fn physics_step(world: &mut World) {
     let substeps = compute_substeps(world, dt, &config);
     let sub_dt = dt / substeps as f32;
 
+    // Take ownership of the persistent buffers for the duration of the
+    // step. We can't hold a `&mut` into `World::resources` while also
+    // calling `get::<Position>` / `get_mut::<Velocity>` on entities, so
+    // remove + reinsert is the pattern.
+    let mut buffers = world.remove_resource::<PhysicsBuffers>().unwrap_or_default();
+
     for _ in 0..substeps {
-        apply_gravity_and_integrate(world, sub_dt, config.gravity);
-        resolve_collisions(world, &config);
+        apply_gravity_and_integrate(world, sub_dt, config.gravity, &mut buffers);
+        resolve_collisions(world, &config, &mut buffers);
     }
+
+    world.insert_resource(buffers);
 }
 
 /// Decide how many substeps this frame needs so that no dynamic body
@@ -109,19 +133,23 @@ fn compute_substeps(world: &World, dt: f32, config: &PhysicsConfig) -> u32 {
     needed.min(config.max_substeps.max(1))
 }
 
-fn apply_gravity_and_integrate(world: &mut World, sub_dt: f32, gravity: Vec2) {
-    let dynamic_entities: Vec<Entity> = world
-        .query_entities::<RigidBody>()
-        .into_iter()
-        .filter(|e| {
-            matches!(
-                world.get::<RigidBody>(*e).map(|b| b.kind),
-                Some(BodyKind::Dynamic)
-            )
-        })
-        .collect();
+fn apply_gravity_and_integrate(
+    world: &mut World,
+    sub_dt: f32,
+    gravity: Vec2,
+    buffers: &mut PhysicsBuffers,
+) {
+    buffers.dynamic_entities.clear();
+    for e in world.query_entities::<RigidBody>() {
+        if matches!(
+            world.get::<RigidBody>(e).map(|b| b.kind),
+            Some(BodyKind::Dynamic)
+        ) {
+            buffers.dynamic_entities.push(e);
+        }
+    }
 
-    for entity in dynamic_entities {
+    for &entity in &buffers.dynamic_entities {
         if let Some(vel) = world.get_mut::<Velocity>(entity) {
             vel.0 += gravity * sub_dt;
         }
@@ -135,17 +163,38 @@ fn apply_gravity_and_integrate(world: &mut World, sub_dt: f32, gravity: Vec2) {
     }
 }
 
-fn resolve_collisions(world: &mut World, config: &PhysicsConfig) {
-    let mut proxies: Vec<Proxy> = Vec::new();
+fn resolve_collisions(world: &mut World, config: &PhysicsConfig, buffers: &mut PhysicsBuffers) {
+    let PhysicsBuffers {
+        proxies,
+        pairs,
+        events,
+        candidates,
+        grid,
+        collider_entities,
+        ..
+    } = buffers;
+    proxies.clear();
+    pairs.clear();
+    events.clear();
+    candidates.clear();
+    collider_entities.clear();
+
+    // Keep the grid's HashMap + query_marks allocations between frames;
+    // only reset if the configured cell size changed.
+    if (grid.cell_size() - config.broadphase_cell_size).abs() > f32::EPSILON {
+        grid.set_cell_size(config.broadphase_cell_size);
+    } else {
+        grid.clear();
+    }
 
     // 1. Collect entity proxies.
-    let entities_with_collider: Vec<Entity> = world
-        .query_entities::<Collider>()
-        .into_iter()
-        .filter(|e| world.get::<Position>(*e).is_some())
-        .collect();
+    for e in world.query_entities::<Collider>() {
+        if world.get::<Position>(e).is_some() {
+            collider_entities.push(e);
+        }
+    }
 
-    for entity in &entities_with_collider {
+    for entity in collider_entities.iter() {
         let position = world.get::<Position>(*entity).copied().unwrap().0;
         let collider = *world.get::<Collider>(*entity).unwrap();
         let body = world.get::<RigidBody>(*entity).copied();
@@ -181,119 +230,124 @@ fn resolve_collisions(world: &mut World, config: &PhysicsConfig) {
     }
 
     // 2. Emit tilemap static tile proxies.
-    gather_tilemap_proxies(world, &mut proxies);
+    gather_tilemap_proxies(world, proxies);
 
     // 3. Build the broad-phase grid.
-    let mut grid = SpatialGrid::new(config.broadphase_cell_size);
     for (id, proxy) in proxies.iter().enumerate() {
         grid.insert(id as ProxyId, &proxy.world_aabb());
     }
 
-    // 4. For each dynamic proxy, query the grid and run narrow-phase.
-    //    Contacts are resolved *sequentially* into `proxies`: each pair
-    //    re-tests the narrow phase against the current (already-corrected)
-    //    centers and reads the current velocities, so overlapping contacts
-    //    (a body straddling two adjacent static tiles) don't stack
-    //    impulses. Gauss–Seidel style — the ordering isn't physically
-    //    unique but at game-jam scale the difference is invisible, and
-    //    the alternative (batched deltas) doubles bounces on shared seams.
+    // 4. Build the candidate pair list once per substep. Previously the
+    //    broadphase query ran inside the solver iteration loop, costing
+    //    `solver_iterations`× redundant grid queries; cache the pairs
+    //    here so iteration work stays proportional to contact count.
     //
-    //    The outer `for _ in 0..iterations` loop is what makes stacks
-    //    stable: single-pass resolution can't clear penetration that
-    //    appears mid-pass (e.g. ball A lands on ball B which was already
-    //    resolved against the floor — B now overlaps the floor again, but
-    //    its pair was already processed). Each extra iteration re-tests
-    //    every pair against the updated centers. Velocity impulse only
-    //    fires on closing contacts, so resting stacks converge without
-    //    over-damping bounces on first contact. Events are emitted on
-    //    iteration 0 only so resting contacts don't inflate the queue
-    //    by `solver_iterations`×.
-    let mut events: Vec<CollisionEvent> = Vec::new();
-    let mut candidates: Vec<ProxyId> = Vec::new();
-    let iterations = config.solver_iterations.max(1);
-
-    for iteration in 0..iterations {
-        let emit_events = iteration == 0;
-        for a_idx in 0..proxies.len() {
-            if !proxies[a_idx].is_dynamic {
+    //    The pair list is built from the current (pre-resolution) grid.
+    //    Corrections inside the solver loop shift centers but we don't
+    //    re-query — a shifted body could drift into a cell that wasn't
+    //    on its original candidate set and miss a contact that iteration.
+    //    That's a tradeoff against the iteration cost: per-substep
+    //    corrections are bounded by max penetration depth (a few pixels
+    //    at game-jam scale), which is well under one cell size, so the
+    //    miss is rare and recovered on the next substep's broadphase.
+    for a_idx in 0..proxies.len() {
+        if !proxies[a_idx].is_dynamic {
+            continue;
+        }
+        let a_aabb = proxies[a_idx].world_aabb();
+        grid.query(&a_aabb, Some(a_idx as ProxyId), candidates);
+        for &b_id in candidates.iter() {
+            let b_idx = b_id as usize;
+            // Resolve each unordered pair once: when both sides are dynamic
+            // only keep `a_idx < b_idx`, otherwise a cheaper dedup.
+            if proxies[b_idx].is_dynamic && b_idx <= a_idx {
                 continue;
             }
-            let a_aabb = proxies[a_idx].world_aabb();
-            grid.query(&a_aabb, Some(a_idx as ProxyId), &mut candidates);
+            pairs.push((a_idx as u32, b_idx as u32));
+        }
+    }
 
-            for &b_id in &candidates {
-                let b_idx = b_id as usize;
-                // Resolve each unordered pair once per iteration: when
-                // both sides are dynamic, only process when a_idx < b_idx.
-                if proxies[b_idx].is_dynamic && b_idx <= a_idx {
-                    continue;
-                }
+    // 5. Gauss–Seidel solver over the cached pair list. Each pair re-runs
+    //    narrow-phase against current (already-corrected) centers so
+    //    overlapping contacts (a body straddling two adjacent static
+    //    tiles) don't stack impulses. The outer iteration loop is what
+    //    makes stacks stable: single-pass resolution can't clear
+    //    penetration introduced mid-pass (e.g. ball A lands on ball B,
+    //    whose floor contact was already resolved — B now overlaps the
+    //    floor again but its pair was already processed). Each extra
+    //    iteration re-tests every pair against the updated centers.
+    //    Velocity impulse fires only on closing contacts, so resting
+    //    stacks converge without over-damping first-contact bounces.
+    //    Events are emitted on iteration 0 only so resting contacts
+    //    don't inflate the queue by `solver_iterations`×.
+    let iterations = config.solver_iterations.max(1);
+    for iteration in 0..iterations {
+        let emit_events = iteration == 0;
+        for &(a_u, b_u) in pairs.iter() {
+            let a_idx = a_u as usize;
+            let b_idx = b_u as usize;
 
-                // Re-test narrow phase with current (possibly already
-                // corrected) centers. If a prior contact in this substep
-                // already separated the shapes, this returns None.
-                let contact = narrow_phase(&proxies[a_idx], &proxies[b_idx]);
-                let Some(contact) = contact else { continue };
+            let contact = narrow_phase(&proxies[a_idx], &proxies[b_idx]);
+            let Some(contact) = contact else { continue };
 
-                let inv_mass_sum = proxies[a_idx].inv_mass + proxies[b_idx].inv_mass;
-                if inv_mass_sum <= 0.0 {
-                    continue;
-                }
+            let inv_mass_sum = proxies[a_idx].inv_mass + proxies[b_idx].inv_mass;
+            if inv_mass_sum <= 0.0 {
+                continue;
+            }
 
-                // Positional correction: split along inverse-mass ratio.
-                let a_share = proxies[a_idx].inv_mass / inv_mass_sum;
-                let b_share = proxies[b_idx].inv_mass / inv_mass_sum;
-                let correction = contact.normal * contact.penetration;
+            // Positional correction: split along inverse-mass ratio.
+            let a_share = proxies[a_idx].inv_mass / inv_mass_sum;
+            let b_share = proxies[b_idx].inv_mass / inv_mass_sum;
+            let correction = contact.normal * contact.penetration;
 
-                // Velocity resolution: projection along contact normal with
-                // combined restitution. `normal` points from a toward a's
-                // free space, so relative velocity along the normal closing
-                // the gap is `(vb - va) · n`.
-                let a_vel = proxies[a_idx].velocity;
-                let b_vel = proxies[b_idx].velocity;
-                let relative = b_vel - a_vel;
-                let vel_along_normal = relative.dot(contact.normal);
-                let restitution = proxies[a_idx].restitution.max(proxies[b_idx].restitution);
+            // Velocity resolution: projection along contact normal with
+            // combined restitution. `normal` points from a toward a's
+            // free space, so relative velocity along the normal closing
+            // the gap is `(vb - va) · n`.
+            let a_vel = proxies[a_idx].velocity;
+            let b_vel = proxies[b_idx].velocity;
+            let relative = b_vel - a_vel;
+            let vel_along_normal = relative.dot(contact.normal);
+            let restitution = proxies[a_idx].restitution.max(proxies[b_idx].restitution);
 
-                let (a_dv, b_dv) = if vel_along_normal <= 0.0 {
-                    // Bodies already separating (or tangent) — don't add
-                    // impulse, but still correct positions so resting
-                    // contacts don't accumulate penetration.
-                    (Vec2::ZERO, Vec2::ZERO)
-                } else {
-                    let j = -(1.0 + restitution) * vel_along_normal / inv_mass_sum;
-                    let impulse = contact.normal * j;
-                    (
-                        -impulse * proxies[a_idx].inv_mass,
-                        impulse * proxies[b_idx].inv_mass,
-                    )
-                };
+            let (a_dv, b_dv) = if vel_along_normal <= 0.0 {
+                // Bodies already separating (or tangent) — don't add
+                // impulse, but still correct positions so resting
+                // contacts don't accumulate penetration.
+                (Vec2::ZERO, Vec2::ZERO)
+            } else {
+                let j = -(1.0 + restitution) * vel_along_normal / inv_mass_sum;
+                let impulse = contact.normal * j;
+                (
+                    -impulse * proxies[a_idx].inv_mass,
+                    impulse * proxies[b_idx].inv_mass,
+                )
+            };
 
-                // Apply in-place so the next contact on this proxy sees the
-                // corrected state. Static `b` proxies are never mutated.
-                proxies[a_idx].center += correction * a_share;
-                proxies[a_idx].velocity += a_dv;
-                if proxies[b_idx].is_dynamic {
-                    proxies[b_idx].center -= correction * b_share;
-                    proxies[b_idx].velocity += b_dv;
-                }
+            // Apply in-place so the next contact on this proxy sees the
+            // corrected state. Static `b` proxies are never mutated.
+            proxies[a_idx].center += correction * a_share;
+            proxies[a_idx].velocity += a_dv;
+            if proxies[b_idx].is_dynamic {
+                proxies[b_idx].center -= correction * b_share;
+                proxies[b_idx].velocity += b_dv;
+            }
 
-                if emit_events {
-                    if let Some(a_entity) = proxies[a_idx].entity {
-                        events.push(CollisionEvent {
-                            a: a_entity,
-                            b: proxies[b_idx].entity,
-                            normal: contact.normal,
-                            penetration: contact.penetration,
-                        });
-                    }
+            if emit_events {
+                if let Some(a_entity) = proxies[a_idx].entity {
+                    events.push(CollisionEvent {
+                        a: a_entity,
+                        b: proxies[b_idx].entity,
+                        normal: contact.normal,
+                        penetration: contact.penetration,
+                    });
                 }
             }
         }
     }
 
-    // 5. Write the resolved proxy state back into the world.
-    for proxy in &proxies {
+    // 6. Write the resolved proxy state back into the world.
+    for proxy in proxies.iter() {
         if !proxy.is_dynamic {
             continue;
         }
@@ -306,12 +360,15 @@ fn resolve_collisions(world: &mut World, config: &PhysicsConfig) {
         }
     }
 
-    // 6. Push events into the resource.
+    // 7. Push events into the resource. Drain rather than consume so the
+    //    backing allocation stays with `buffers`.
     if !events.is_empty() {
         if let Some(sink) = world.get_resource_mut::<EventQueue<CollisionEvent>>() {
-            for event in events {
+            for event in events.drain(..) {
                 sink.send(event);
             }
+        } else {
+            events.clear();
         }
     }
 }

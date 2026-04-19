@@ -25,7 +25,7 @@ pub use broadphase::{ProxyId, SpatialGrid};
 pub use collision::{aabb_vs_aabb, aabb_vs_circle, circle_vs_circle, Aabb, Contact};
 pub use components::{BodyKind, Collider, Position, RigidBody, Shape, Velocity};
 pub use events::CollisionEvent;
-pub use step::physics_step;
+pub use step::{physics_step, PhysicsBuffers};
 
 use glam::Vec2;
 

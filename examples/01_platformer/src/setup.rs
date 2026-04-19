@@ -63,7 +63,13 @@ fn enable_hot_reload(app: &mut App) {
 fn seed_world(world: &mut World) {
     if let Some(cfg) = world.get_resource_mut::<PhysicsConfig>() {
         cfg.gravity = Vec2::new(0.0, GRAVITY_Y);
-        cfg.broadphase_cell_size = 32.0;
+        // One tile wide. Smaller cells cap per-cell proxy counts so the
+        // narrow-phase inside a dense pile doesn't go quadratic in the
+        // ~1000-ball stress test. At ball radius 6 a 16×16 cell holds
+        // ~4 tightly-packed balls instead of ~16, cutting pair candidates
+        // by roughly 16×; we pay a small 2× insert cost from balls
+        // occasionally straddling two cells.
+        cfg.broadphase_cell_size = 16.0;
     }
     world.insert_resource(TextDisplayState::default());
     world.insert_resource(BallSpawnState::default());

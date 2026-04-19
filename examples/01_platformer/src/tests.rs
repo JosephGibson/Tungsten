@@ -69,7 +69,7 @@ fn configure_app_seeds_expected_bootstrap_state() {
     let world = app.world_mut();
     let physics = world.get_resource::<PhysicsConfig>().unwrap();
     assert_eq!(physics.gravity, Vec2::new(0.0, GRAVITY_Y));
-    assert_eq!(physics.broadphase_cell_size, 32.0);
+    assert_eq!(physics.broadphase_cell_size, 16.0);
     assert!(world.get_resource::<TextDisplayState>().is_some());
 
     let player_entities: Vec<_> = world.query::<Player>().map(|(e, _)| e).collect();

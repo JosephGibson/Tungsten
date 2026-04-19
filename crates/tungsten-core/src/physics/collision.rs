@@ -107,9 +107,10 @@ pub fn aabb_vs_aabb(a: &Aabb, b: &Aabb) -> Option<Contact> {
     }
 }
 
-/// Circle vs circle. Treats concentric circles as a horizontal contact
-/// rather than emitting a zero-normal event, because a zero normal
-/// can't be used by the MTV resolver downstream.
+/// Circle vs circle. Treats concentric circles as a contact with a
+/// position-derived escape normal rather than emitting a zero-normal
+/// event, because a zero normal can't be used by the MTV resolver
+/// downstream.
 pub fn circle_vs_circle(
     center_a: Vec2,
     radius_a: f32,
@@ -128,8 +129,15 @@ pub fn circle_vs_circle(
         // a out of b (i.e. from b's interior back to a).
         (-delta / dist, r_sum - dist)
     } else {
-        // Degenerate: concentric. Pick an arbitrary axis.
-        (Vec2::new(-1.0, 0.0), r_sum)
+        // Degenerate: concentric. A fixed normal (the old `(-1, 0)`)
+        // pushes every coincident pair the same way, so a pile of
+        // coincident bodies all drift in that direction each substep.
+        // Hash the position bits into an angle so different concentric
+        // pairs escape along different axes; still deterministic for
+        // reproducibility.
+        let bits = center_a.x.to_bits() ^ center_a.y.to_bits().rotate_left(13);
+        let angle = (bits as f32) * (std::f32::consts::TAU / u32::MAX as f32);
+        (Vec2::new(angle.cos(), angle.sin()), r_sum)
     };
     Some(Contact {
         normal,
