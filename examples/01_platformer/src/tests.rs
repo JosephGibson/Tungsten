@@ -13,8 +13,8 @@ use tungsten::{camera_update_system, App, WindowSize};
 use crate::setup::{configure_platformer_camera, RUNTIME_SYSTEM_ORDER};
 use crate::state::{
     ActiveBlackHole, Ball, BallSpawnState, BlackHole, CurrentSprite, Player, TextDisplayState,
-    BLACK_HOLE_LIFETIME, BLACK_HOLE_RADIUS, GRAVITY_Y, MAP_COLS, MAP_ROWS, PLAYER_HALF,
-    PLAYER_SPAWN, TILE, WORLD_BOUNDS_MAX, WORLD_BOUNDS_MIN,
+    BALL_SPAWN_JITTER, BLACK_HOLE_LIFETIME, BLACK_HOLE_RADIUS, GRAVITY_Y, MAP_COLS, MAP_ROWS,
+    PLAYER_HALF, PLAYER_SPAWN, TILE, WORLD_BOUNDS_MAX, WORLD_BOUNDS_MIN,
 };
 use crate::systems::{
     black_hole_force_system, black_hole_lifetime_system, cursor_to_world, despawn_out_of_bounds,
@@ -301,9 +301,28 @@ fn spawn_ball_system_spawns_at_fixed_rate_while_held() {
     world.insert_resource(CommandBuffer::new());
 
     assert_eq!(world.query::<Ball>().count(), 5);
-    for (entity, _) in world.query::<Ball>() {
-        let pos = world.get::<Position>(entity).unwrap().0;
-        assert_eq!(pos, Vec2::new(240.0, 144.0));
+    let center = Vec2::new(240.0, 144.0);
+    let positions: Vec<Vec2> = world
+        .query::<Ball>()
+        .map(|(e, _)| world.get::<Position>(e).unwrap().0)
+        .collect();
+    for pos in &positions {
+        let dist = (*pos - center).length();
+        assert!(
+            (dist - BALL_SPAWN_JITTER).abs() < 1.0e-3,
+            "ball {pos:?} not on jitter ring (dist {dist}, expected {BALL_SPAWN_JITTER})"
+        );
+    }
+    // Coincident spawns were the root cause of the pile-drift bug; every
+    // spawn in a single hold must resolve to a distinct world position.
+    for i in 0..positions.len() {
+        for j in (i + 1)..positions.len() {
+            assert_ne!(
+                positions[i], positions[j],
+                "balls {i} and {j} coincident at {:?}",
+                positions[i]
+            );
+        }
     }
 }
 

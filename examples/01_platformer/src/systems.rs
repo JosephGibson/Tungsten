@@ -8,9 +8,10 @@ use tungsten::WindowSize;
 
 use crate::state::{
     ActiveBlackHole, AudioState, Ball, BallSpawnState, BlackHole, CurrentSprite, Player,
-    TextDisplayState, BALL_RADIUS, BALL_RESTITUTION, BALL_SPAWN_INTERVAL, BLACK_HOLE_FORCE,
-    BLACK_HOLE_LIFETIME, BLACK_HOLE_RADIUS, MAP_ROWS, PLAYER_JUMP_IMPULSE, PLAYER_MOVE_SPEED,
-    PLAYER_SPAWN, TEXT_UPDATE_INTERVAL, TILE, WORLD_BOUNDS_MAX, WORLD_BOUNDS_MIN,
+    TextDisplayState, BALL_RADIUS, BALL_RESTITUTION, BALL_SPAWN_INTERVAL, BALL_SPAWN_JITTER,
+    BLACK_HOLE_FORCE, BLACK_HOLE_LIFETIME, BLACK_HOLE_RADIUS, MAP_ROWS, PLAYER_JUMP_IMPULSE,
+    PLAYER_MOVE_SPEED, PLAYER_SPAWN, TEXT_UPDATE_INTERVAL, TILE, WORLD_BOUNDS_MAX,
+    WORLD_BOUNDS_MIN,
 };
 
 /// Horizontal movement + jump. Plays the jump SFX when the player leaves the
@@ -301,7 +302,7 @@ pub(crate) fn spawn_ball_system(world: &mut World) {
         .get_resource::<DeltaTime>()
         .map(|d| d.seconds())
         .unwrap_or(0.0);
-    let spawn_count = {
+    let (spawn_count, phase_start) = {
         let state = match world.get_resource_mut::<BallSpawnState>() {
             Some(s) => s,
             None => return,
@@ -312,7 +313,9 @@ pub(crate) fn spawn_ball_system(world: &mut World) {
             state.accumulator -= BALL_SPAWN_INTERVAL;
             count += 1;
         }
-        count
+        let phase_start = state.spawn_phase;
+        state.spawn_phase = state.spawn_phase.wrapping_add(count);
+        (count, phase_start)
     };
     if spawn_count == 0 {
         return;
@@ -332,11 +335,18 @@ pub(crate) fn spawn_ball_system(world: &mut World) {
     let Some(world_pos) = cursor_to_world(cursor, &camera) else {
         return;
     };
+    // Golden angle (π(3 - √5)) distributes consecutive indices over the
+    // circle with no rational period, so no two spawned balls share a
+    // jitter offset in any session.
+    const GOLDEN_ANGLE: f32 = 2.399_963_2;
     if let Some(cmds) = world.get_resource_mut::<CommandBuffer>() {
-        for _ in 0..spawn_count {
+        for i in 0..spawn_count {
+            let phase = phase_start.wrapping_add(i);
+            let angle = phase as f32 * GOLDEN_ANGLE;
+            let offset = Vec2::new(angle.cos(), angle.sin()) * BALL_SPAWN_JITTER;
             let ball = cmds.spawn();
             cmds.insert_pending(ball, Ball);
-            cmds.insert_pending(ball, Position(world_pos));
+            cmds.insert_pending(ball, Position(world_pos + offset));
             cmds.insert_pending(ball, Velocity(Vec2::ZERO));
             cmds.insert_pending(ball, Collider::circle(BALL_RADIUS));
             cmds.insert_pending(

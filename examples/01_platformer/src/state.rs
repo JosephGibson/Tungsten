@@ -26,6 +26,14 @@ pub(crate) const BALL_RESTITUTION: f32 = 0.85;
 /// Seconds between ball spawns while `spawn_ball` is held. Driven by a
 /// fixed accumulator over frame `DeltaTime`, not wall-clock.
 pub(crate) const BALL_SPAWN_INTERVAL: f32 = 0.032;
+/// Sub-pixel offset applied to each spawned ball via a golden-angle spiral.
+/// Why: `circle_vs_circle` degenerates when two circles are exactly
+/// coincident and falls back to a fixed `(-1, 0)` normal, so a pile of
+/// balls spawned at one point drifts systematically southeast every
+/// substep. Breaking coincidence at spawn time avoids the degenerate path
+/// entirely while staying well under `BALL_RADIUS` so the jitter is
+/// visually invisible.
+pub(crate) const BALL_SPAWN_JITTER: f32 = 1.0;
 
 // --- Black-hole tunables ---
 /// Pull radius in world pixels. Entities outside are untouched.
@@ -105,9 +113,12 @@ pub(crate) struct BlackHole {
 
 /// Fixed-accumulator state for ball-spawn-hold. Advanced by `DeltaTime`
 /// each frame; every `BALL_SPAWN_INTERVAL` drained spawns one ball.
+/// `spawn_phase` indexes into the golden-angle jitter spiral so
+/// consecutive spawns are never coincident.
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct BallSpawnState {
     pub(crate) accumulator: f32,
+    pub(crate) spawn_phase: u32,
 }
 
 /// Entity of the black hole currently being dragged by the held Mouse2
