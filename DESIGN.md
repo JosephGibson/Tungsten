@@ -218,7 +218,7 @@ M12 defines the baseline for later Phase 3 work.
 
 - CPU telemetry: `App` instruments update, extract, render, audio, hot reload, and total frame time. Render is split into surface acquire, CPU encode, and submit/present timing. Per-system timings live in `FrameTimings::system_timings`, plus `slowest_system()`.
 - GPU telemetry: `Renderer::render_frame_full_timed()` uses `wgpu` timestamp queries when `TIMESTAMP_QUERY` is available on the active adapter. The path is opt-in via `TUNGSTEN_GPU_TIMING`, blocks on GPU completion to read timestamps back, and exposes backend, adapter, present mode, and max-frame-latency metadata through `GpuFrameTimings`.
-- Canonical scenes: `example-01-platformer` is the broad feature scene; `example-02-sprite-stress` is the canonical sprite-throughput scene.
+- Canonical scenes: `example-02-sprite-stress` with `STRESS_SCENE=ecs-high-load` is the primary full-system stress scene (ECS, physics grid, steering, camera follow, render); the same binary under `STRESS_SCENE=baseline` remains the render-hot-path sprite-throughput baseline. `example-01-platformer` is the broad feature scene and is no longer part of the canonical perf matrix.
 - Bench coverage: Criterion suites cover ECS, physics, and CPU-only render-data construction. They are regression detectors, not exhaustive throughput claims.
 - Capture tooling: `scripts/perf-capture.sh` and `docs/perf/profiling-workflow.md` define the repeatable Linux workflow: release builds with frame pointers, smoke-frame-bounded runs, parsed renderer metadata, `p50` / `p95` / `p99` summaries, optional flamegraph / `perf` artifacts, and timestamped output directories under `perf-runs/`.
 

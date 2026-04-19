@@ -42,7 +42,8 @@ cargo run -p example-03-component-sprites
 Reproducible Linux perf capture:
 
 ```bash
-WGPU_BACKEND=vulkan ./scripts/perf-capture.sh sprite-stress 300
+WGPU_BACKEND=vulkan ./scripts/perf-capture.sh ecs-high-load 300   # primary scene (default)
+WGPU_BACKEND=vulkan ./scripts/perf-capture.sh sprite-stress 300   # render-hot-path baseline
 bash scripts/test-perf-capture.sh
 ```
 

@@ -140,6 +140,19 @@ struct HighLoadSceneState {
     entity_count: usize,
 }
 
+#[derive(Debug)]
+struct HighLoadSteeringScratch {
+    grid: SpatialGrid,
+}
+
+impl Default for HighLoadSteeringScratch {
+    fn default() -> Self {
+        Self {
+            grid: SpatialGrid::new(HIGH_LOAD_GRID_CELL_SIZE),
+        }
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     env_logger::init();
 
@@ -275,6 +288,10 @@ fn configure_high_load_scene(app: &mut App, entity_count: usize) {
 }
 
 fn seed_high_load_world(world: &mut World, entity_count: usize) {
+    // Reuse steering broadphase allocations across frames; only the contents
+    // are rebuilt each tick.
+    world.insert_resource(HighLoadSteeringScratch::default());
+
     if entity_count == 0 {
         return;
     }
@@ -420,13 +437,13 @@ fn steer_agents_system(world: &mut World) {
         .filter(|dt| *dt > 0.0)
         .unwrap_or(1.0 / 60.0);
     let frame = telemetry_frame(world) as f32;
+    let half_size = Vec2::splat(HIGH_LOAD_HALF_SIZE);
 
     let mut positions = Vec::with_capacity(entities.len());
     let mut velocities = Vec::with_capacity(entities.len());
     let mut agents = Vec::with_capacity(entities.len());
-    let mut grid = SpatialGrid::new(HIGH_LOAD_GRID_CELL_SIZE);
 
-    for (index, entity) in entities.iter().enumerate() {
+    for entity in &entities {
         let position = world
             .get::<Position>(*entity)
             .copied()
@@ -443,65 +460,81 @@ fn steer_agents_system(world: &mut World) {
         positions.push(center);
         velocities.push(velocity);
         agents.push(agent);
-        grid.insert(
-            index as u32,
-            &Aabb::new(center, Vec2::splat(HIGH_LOAD_HALF_SIZE)),
-        );
     }
 
     let world_center = Vec2::new(HIGH_LOAD_WORLD_WIDTH * 0.5, HIGH_LOAD_WORLD_HEIGHT * 0.5);
-    let mut candidates = Vec::new();
+    let mut next_velocities = Vec::with_capacity(entities.len());
 
-    for (index, entity) in entities.iter().enumerate() {
-        let position = positions[index];
-        let velocity = velocities[index];
-        let agent = agents[index];
+    {
+        let Some(scratch) = world.get_resource_mut::<HighLoadSteeringScratch>() else {
+            return;
+        };
+        scratch.grid.clear();
+        for (index, &center) in positions.iter().enumerate() {
+            scratch
+                .grid
+                .insert(index as u32, &Aabb::new(center, half_size));
+        }
 
-        let mut repulsion = Vec2::ZERO;
-        let neighborhood = Aabb::new(
-            position,
-            Vec2::splat(HIGH_LOAD_NEIGHBOR_RADIUS + HIGH_LOAD_HALF_SIZE),
-        );
-        grid.query(&neighborhood, Some(index as u32), &mut candidates);
+        let mut candidates = Vec::new();
+        for index in 0..entities.len() {
+            let position = positions[index];
+            let velocity = velocities[index];
+            let agent = agents[index];
 
-        for &candidate in &candidates {
-            let other = positions[candidate as usize];
-            let delta = position - other;
-            let dist_sq = delta.length_squared();
-            if dist_sq <= 0.0001 || dist_sq >= HIGH_LOAD_NEIGHBOR_RADIUS.powi(2) {
-                continue;
+            let mut repulsion = Vec2::ZERO;
+            let neighborhood = Aabb::new(
+                position,
+                Vec2::splat(HIGH_LOAD_NEIGHBOR_RADIUS + HIGH_LOAD_HALF_SIZE),
+            );
+            scratch
+                .grid
+                .query(&neighborhood, Some(index as u32), &mut candidates);
+
+            for &candidate in &candidates {
+                let other = positions[candidate as usize];
+                let delta = position - other;
+                let dist_sq = delta.length_squared();
+                if dist_sq <= 0.0001 || dist_sq >= HIGH_LOAD_NEIGHBOR_RADIUS.powi(2) {
+                    continue;
+                }
+
+                let distance = dist_sq.sqrt();
+                repulsion += delta / distance
+                    * ((HIGH_LOAD_NEIGHBOR_RADIUS - distance) / HIGH_LOAD_NEIGHBOR_RADIUS);
             }
 
-            let distance = dist_sq.sqrt();
-            repulsion += delta / distance
-                * ((HIGH_LOAD_NEIGHBOR_RADIUS - distance) / HIGH_LOAD_NEIGHBOR_RADIUS);
+            let to_center = world_center - position;
+            let tangent = Vec2::new(-to_center.y, to_center.x).normalize_or_zero();
+            let flow = Vec2::new(
+                (position.y * 0.004 + frame * 0.015 + agent.phase).sin(),
+                (position.x * 0.003 - frame * 0.013 + agent.phase * 1.4).cos(),
+            );
+            let drift = Vec2::new(
+                (agent.tint_seed * std::f32::consts::TAU).cos(),
+                (agent.tint_seed * std::f32::consts::TAU).sin(),
+            ) * 8.0;
+            let steering = flow * HIGH_LOAD_FLOW_STRENGTH
+                + repulsion * HIGH_LOAD_REPULSION_STRENGTH
+                + tangent * HIGH_LOAD_TANGENT_STRENGTH
+                + drift;
+
+            let mut next_velocity = velocity + steering * dt;
+            let speed = next_velocity.length();
+            if speed <= f32::EPSILON {
+                next_velocity =
+                    Vec2::new(agent.phase.cos(), agent.phase.sin()) * HIGH_LOAD_MIN_SPEED;
+            } else if speed < HIGH_LOAD_MIN_SPEED {
+                next_velocity = next_velocity / speed * HIGH_LOAD_MIN_SPEED;
+            } else if speed > HIGH_LOAD_MAX_SPEED {
+                next_velocity = next_velocity / speed * HIGH_LOAD_MAX_SPEED;
+            }
+
+            next_velocities.push(next_velocity);
         }
+    }
 
-        let to_center = world_center - position;
-        let tangent = Vec2::new(-to_center.y, to_center.x).normalize_or_zero();
-        let flow = Vec2::new(
-            (position.y * 0.004 + frame * 0.015 + agent.phase).sin(),
-            (position.x * 0.003 - frame * 0.013 + agent.phase * 1.4).cos(),
-        );
-        let drift = Vec2::new(
-            (agent.tint_seed * std::f32::consts::TAU).cos(),
-            (agent.tint_seed * std::f32::consts::TAU).sin(),
-        ) * 8.0;
-        let steering = flow * HIGH_LOAD_FLOW_STRENGTH
-            + repulsion * HIGH_LOAD_REPULSION_STRENGTH
-            + tangent * HIGH_LOAD_TANGENT_STRENGTH
-            + drift;
-
-        let mut next_velocity = velocity + steering * dt;
-        let speed = next_velocity.length();
-        if speed <= f32::EPSILON {
-            next_velocity = Vec2::new(agent.phase.cos(), agent.phase.sin()) * HIGH_LOAD_MIN_SPEED;
-        } else if speed < HIGH_LOAD_MIN_SPEED {
-            next_velocity = next_velocity / speed * HIGH_LOAD_MIN_SPEED;
-        } else if speed > HIGH_LOAD_MAX_SPEED {
-            next_velocity = next_velocity / speed * HIGH_LOAD_MAX_SPEED;
-        }
-
+    for (entity, next_velocity) in entities.iter().zip(next_velocities) {
         if let Some(vel) = world.get_mut::<Velocity>(*entity) {
             vel.0 = next_velocity;
         }
@@ -767,6 +800,7 @@ mod tests {
         });
         world.insert_resource(FrameTimings::new());
         world.insert_resource(AssetRegistry::new());
+        world.insert_resource(HighLoadSteeringScratch::default());
         world
     }
 
@@ -826,6 +860,7 @@ mod tests {
 
         let state = world.get_resource::<HighLoadSceneState>().unwrap();
         assert_eq!(state.entity_count, 32);
+        assert!(world.get_resource::<HighLoadSteeringScratch>().is_some());
 
         let controller = world.get_resource::<CameraController>().unwrap();
         assert!(matches!(controller.mode, CameraMode::Follow(entity) if entity == state.leader));

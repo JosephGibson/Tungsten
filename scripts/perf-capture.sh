@@ -18,9 +18,8 @@ usage() {
 Usage: perf-capture.sh [scene] [frames] [--present-mode <mode>] [--max-frame-latency <n>] [--telemetry-only]
 
 Scenes:
+  ecs-high-load (default)
   sprite-stress
-  ecs-high-load
-  platformer
 
 Flags:
   --present-mode <mode>       Override the resolved present mode for child capture runs
@@ -160,9 +159,6 @@ resolve_scene_package() {
     sprite-stress|ecs-high-load)
       printf '%s' "example-02-sprite-stress"
       ;;
-    platformer)
-      printf '%s' "example-01-platformer"
-      ;;
     *)
       return 1
       ;;
@@ -177,8 +173,6 @@ scene_env_overrides() {
       ;;
     ecs-high-load)
       printf '%s\n' "STRESS_SCENE=ecs-high-load"
-      ;;
-    platformer)
       ;;
     *)
       return 1
@@ -243,7 +237,7 @@ main() {
     esac
   done
 
-  scene="${scene:-sprite-stress}"
+  scene="${scene:-ecs-high-load}"
   frames="${frames:-300}"
   local total_frames=$((frames + WARMUP_FRAMES))
   local timestamp
@@ -258,7 +252,7 @@ main() {
 
   local pkg
   if ! pkg="$(resolve_scene_package "$scene")"; then
-    echo "Unknown scene '$scene'. Expected: sprite-stress, ecs-high-load, or platformer."
+    echo "Unknown scene '$scene'. Expected: ecs-high-load or sprite-stress."
     exit 1
   fi
   local -a scene_env=()

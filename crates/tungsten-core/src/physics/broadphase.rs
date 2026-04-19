@@ -29,6 +29,8 @@ pub type ProxyId = u32;
 pub struct SpatialGrid {
     cell_size: f32,
     cells: HashMap<IVec2, Vec<ProxyId>>,
+    query_marks: Vec<u32>,
+    query_generation: u32,
 }
 
 impl SpatialGrid {
@@ -37,6 +39,8 @@ impl SpatialGrid {
         Self {
             cell_size: cell_size.max(1.0),
             cells: HashMap::new(),
+            query_marks: Vec::new(),
+            query_generation: 1,
         }
     }
 
@@ -62,23 +66,43 @@ impl SpatialGrid {
     /// Collect every unique proxy whose cells overlap `query`. Includes
     /// `exclude` only if it was never inserted; the caller is expected
     /// to filter self-pairs after the fact.
-    pub fn query(&self, query: &Aabb, exclude: Option<ProxyId>, out: &mut Vec<ProxyId>) {
+    ///
+    /// Uses a reusable generation-mark table so duplicates from overlapping
+    /// cells are filtered in O(1) per candidate instead of scanning `out`.
+    pub fn query(&mut self, query: &Aabb, exclude: Option<ProxyId>, out: &mut Vec<ProxyId>) {
         out.clear();
+        let generation = self.begin_query();
         let (min_cell, max_cell) = self.cell_range(query);
+        let cells = &self.cells;
+        let query_marks = &mut self.query_marks;
         for y in min_cell.y..=max_cell.y {
             for x in min_cell.x..=max_cell.x {
-                if let Some(bucket) = self.cells.get(&IVec2::new(x, y)) {
+                if let Some(bucket) = cells.get(&IVec2::new(x, y)) {
                     for &id in bucket {
                         if Some(id) == exclude {
                             continue;
                         }
-                        if !out.contains(&id) {
-                            out.push(id);
+                        let mark = mark_slot(query_marks, id);
+                        if *mark == generation {
+                            continue;
                         }
+                        *mark = generation;
+                        out.push(id);
                     }
                 }
             }
         }
+    }
+
+    fn begin_query(&mut self) -> u32 {
+        if self.query_generation == u32::MAX {
+            self.query_marks.fill(0);
+            self.query_generation = 1;
+        }
+
+        let generation = self.query_generation;
+        self.query_generation += 1;
+        generation
     }
 
     fn cell_range(&self, aabb: &Aabb) -> (IVec2, IVec2) {
@@ -96,6 +120,14 @@ impl SpatialGrid {
         let max_cell = IVec2::new(max_cell.x.max(min_cell.x), max_cell.y.max(min_cell.y));
         (min_cell, max_cell)
     }
+}
+
+fn mark_slot(query_marks: &mut Vec<u32>, id: ProxyId) -> &mut u32 {
+    let index = id as usize;
+    if index >= query_marks.len() {
+        query_marks.resize(index + 1, 0);
+    }
+    &mut query_marks[index]
 }
 
 #[cfg(test)]
@@ -145,6 +177,20 @@ mod tests {
         let mut out = Vec::new();
         grid.query(&aabb(0.0, 0.0, 4.0, 4.0), Some(0), &mut out);
         assert_eq!(out, vec![1]);
+    }
+
+    #[test]
+    fn repeated_queries_reset_dedup_marks() {
+        let mut grid = SpatialGrid::new(32.0);
+        let a = aabb(0.0, 0.0, 40.0, 40.0);
+        grid.insert(7, &a);
+
+        let mut out = Vec::new();
+        grid.query(&a, None, &mut out);
+        assert_eq!(out, vec![7]);
+
+        grid.query(&a, None, &mut out);
+        assert_eq!(out, vec![7]);
     }
 
     #[test]

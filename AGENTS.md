@@ -17,7 +17,7 @@ cargo clippy --workspace --all-targets    # advisory only
 cargo fmt --all
 
 cargo run -p example-NN-name              # see examples/ for the current list
-./scripts/perf-capture.sh sprite-stress 300   # Linux perf capture workflow
+./scripts/perf-capture.sh ecs-high-load 300   # Linux perf capture workflow (default scene)
 bash scripts/test-perf-capture.sh         # perf-capture parser/percentile regression check
 ```
 
