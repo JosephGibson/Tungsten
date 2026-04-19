@@ -16,7 +16,9 @@
 //! and sidesteps incremental-update bugs.
 
 use super::broadphase::{ProxyId, SpatialGrid};
-use super::collision::{aabb_vs_aabb, aabb_vs_circle, circle_vs_circle, Aabb, Contact};
+use super::collision::{
+    aabb_vs_aabb, aabb_vs_circle, circle_vs_circle, sweep_aabb_vs_aabb, Aabb, Contact,
+};
 use super::components::{BodyKind, Collider, Position, RigidBody, Shape, Velocity};
 use super::events::CollisionEvent;
 use super::PhysicsConfig;
@@ -34,6 +36,10 @@ use glam::Vec2;
 struct Proxy {
     entity: Option<Entity>,
     center: Vec2,
+    /// Pre-integration center for this substep — used by the speculative
+    /// sweep test to catch tunneling when the substep cap binds. Equal
+    /// to `center` for static proxies.
+    prev_center: Vec2,
     velocity: Vec2,
     offset: Vec2,
     shape: Shape,
@@ -44,10 +50,33 @@ struct Proxy {
 
 impl Proxy {
     fn world_aabb(&self) -> Aabb {
+        Aabb::new(self.center, self.half_extents())
+    }
+
+    fn half_extents(&self) -> Vec2 {
         match self.shape {
-            Shape::Aabb { half_extents } => Aabb::new(self.center, half_extents),
-            Shape::Circle { radius } => Aabb::new(self.center, Vec2::splat(radius)),
+            Shape::Aabb { half_extents } => half_extents,
+            Shape::Circle { radius } => Vec2::splat(radius),
         }
+    }
+
+    fn min_half_extent(&self) -> f32 {
+        match self.shape {
+            Shape::Aabb { half_extents } => half_extents.x.min(half_extents.y),
+            Shape::Circle { radius } => radius,
+        }
+    }
+
+    /// Union of the pre- and post-integration AABBs. Used as the
+    /// broadphase query shape for fast dynamic proxies so the swept
+    /// path finds static tiles it would otherwise skip past.
+    fn swept_aabb(&self) -> Aabb {
+        let cur = self.world_aabb();
+        if self.prev_center == self.center {
+            return cur;
+        }
+        let prev = Aabb::new(self.prev_center, self.half_extents());
+        cur.union(&prev)
     }
 }
 
@@ -95,7 +124,7 @@ pub fn physics_step(world: &mut World) {
 
     for _ in 0..substeps {
         apply_gravity_and_integrate(world, sub_dt, config.gravity, &mut buffers);
-        resolve_collisions(world, &config, &mut buffers);
+        resolve_collisions(world, &config, sub_dt, &mut buffers);
     }
 
     world.insert_resource(buffers);
@@ -163,7 +192,12 @@ fn apply_gravity_and_integrate(
     }
 }
 
-fn resolve_collisions(world: &mut World, config: &PhysicsConfig, buffers: &mut PhysicsBuffers) {
+fn resolve_collisions(
+    world: &mut World,
+    config: &PhysicsConfig,
+    sub_dt: f32,
+    buffers: &mut PhysicsBuffers,
+) {
     let PhysicsBuffers {
         proxies,
         pairs,
@@ -217,9 +251,20 @@ fn resolve_collisions(world: &mut World, config: &PhysicsConfig, buffers: &mut P
             // of the query, but it can't generate events as `a`.
             None => (false, 0.0, 0.0),
         };
+        let center = position + collider.offset;
+        // Pre-integration center: apply_gravity_and_integrate already
+        // moved the body by `velocity * sub_dt` this substep, so reversing
+        // it recovers where the body was when the substep started. Static
+        // proxies never moved, so prev == center.
+        let prev_center = if is_dynamic {
+            center - velocity * sub_dt
+        } else {
+            center
+        };
         proxies.push(Proxy {
             entity: Some(*entity),
-            center: position + collider.offset,
+            center,
+            prev_center,
             velocity,
             offset: collider.offset,
             shape: collider.shape,
@@ -237,24 +282,42 @@ fn resolve_collisions(world: &mut World, config: &PhysicsConfig, buffers: &mut P
         grid.insert(id as ProxyId, &proxy.world_aabb());
     }
 
-    // 4. Build the candidate pair list once per substep. Previously the
-    //    broadphase query ran inside the solver iteration loop, costing
-    //    `solver_iterations`× redundant grid queries; cache the pairs
-    //    here so iteration work stays proportional to contact count.
+    // 3b. Speculative sweep for *extreme* cap-bound tunneling: clamps
+    //     any dynamic proxy whose per-substep travel exceeds its own
+    //     min half-extent directly to its first static contact along
+    //     the integration path. Gated on travel so resting piles pay
+    //     nothing; restricted to static targets so dynamic-vs-dynamic
+    //     doesn't feed back into itself. The common tunneling and
+    //     resolution-slip cases are handled by the inflated pair
+    //     query below (step 4), so this pass mostly fires in the
+    //     pathological FPS-collapse + external-forcing scenario.
+    speculative_pass(proxies, grid, candidates, events);
+
+    // 4. Build the candidate pair list once per substep. Each dynamic
+    //    queries with the *swept* AABB inflated by half a broadphase
+    //    cell:
     //
-    //    The pair list is built from the current (pre-resolution) grid.
-    //    Corrections inside the solver loop shift centers but we don't
-    //    re-query — a shifted body could drift into a cell that wasn't
-    //    on its original candidate set and miss a contact that iteration.
-    //    That's a tradeoff against the iteration cost: per-substep
-    //    corrections are bounded by max penetration depth (a few pixels
-    //    at game-jam scale), which is well under one cell size, so the
-    //    miss is rare and recovered on the next substep's broadphase.
+    //    - swept (union of pre- and post-integration AABBs) covers the
+    //      tunneling case — a body that ended the substep past a thin
+    //      wall still pairs with the wall because its path crossed
+    //      the wall's cell.
+    //    - half-cell inflation covers resolution slip — sequential GS
+    //      iterations can shove a body several pixels out of its
+    //      pre-resolution cell, and without the margin it would drift
+    //      into a wall that was never in its pair list. With a 1000-ball
+    //      pile and cell size 16, slip of 4–8 px per substep is common
+    //      enough to surface as visible tunneling.
+    //
+    //    Querying once per substep (instead of per iteration) stays
+    //    cheap; a spurious pair just fails the iteration's narrow_phase
+    //    and is skipped.
+    let query_margin = Vec2::splat(config.broadphase_cell_size * 0.5);
     for a_idx in 0..proxies.len() {
         if !proxies[a_idx].is_dynamic {
             continue;
         }
-        let a_aabb = proxies[a_idx].world_aabb();
+        let mut a_aabb = proxies[a_idx].swept_aabb();
+        a_aabb.half_extents += query_margin;
         grid.query(&a_aabb, Some(a_idx as ProxyId), candidates);
         for &b_id in candidates.iter() {
             let b_idx = b_id as usize;
@@ -373,6 +436,105 @@ fn resolve_collisions(world: &mut World, config: &PhysicsConfig, buffers: &mut P
     }
 }
 
+/// Clamp fast dynamic proxies to just before their first static
+/// contact along the substep's integration path. Only activates when
+/// per-substep travel exceeds the proxy's minimum half-extent — the
+/// same condition that can smuggle a body through a wall in one
+/// integration. Slow bodies (resting piles, routine motion) exit
+/// immediately.
+///
+/// For each qualifying proxy we query the grid with the swept union
+/// AABB (covers every cell the path crosses), pick the earliest hit
+/// against a static target, back the center off by a small epsilon,
+/// and reflect velocity along the contact normal with the body's
+/// restitution. The iteration loop below then sees a non-penetrating
+/// state for that pair and does nothing further.
+///
+/// Circles approximate their shape as a point vs. an AABB expanded by
+/// the radius — corners over-report contact slightly, but that's the
+/// safe direction (hit a little early rather than tunnel through).
+fn speculative_pass(
+    proxies: &mut [Proxy],
+    grid: &mut SpatialGrid,
+    candidates: &mut Vec<ProxyId>,
+    events: &mut Vec<CollisionEvent>,
+) {
+    const BACKOFF: f32 = 1.0e-3;
+
+    for a_idx in 0..proxies.len() {
+        let proxy = &proxies[a_idx];
+        if !proxy.is_dynamic {
+            continue;
+        }
+        let min_extent = proxy.min_half_extent();
+        if min_extent <= 0.0 {
+            continue;
+        }
+        let travel_sq = (proxy.center - proxy.prev_center).length_squared();
+        // Same tunneling threshold the substep picker uses internally,
+        // just expressed squared to avoid a sqrt per proxy.
+        if travel_sq <= min_extent * min_extent {
+            continue;
+        }
+
+        let swept = proxy.swept_aabb();
+        grid.query(&swept, Some(a_idx as ProxyId), candidates);
+
+        let a_prev = proxy.prev_center;
+        let a_cur = proxy.center;
+        let a_half = proxy.half_extents();
+
+        let mut best: Option<(f32, Vec2, usize)> = None;
+        for &b_id in candidates.iter() {
+            let b_idx = b_id as usize;
+            let target = &proxies[b_idx];
+            if target.is_dynamic {
+                continue;
+            }
+            let Shape::Aabb {
+                half_extents: b_half,
+            } = target.shape
+            else {
+                // Static circles aren't emitted today; if they appear
+                // later, fall back to the iteration-loop resolver.
+                continue;
+            };
+            if let Some((t, n)) = sweep_aabb_vs_aabb(a_prev, a_cur, a_half, target.center, b_half) {
+                if best.is_none_or(|(best_t, _, _)| t < best_t) {
+                    best = Some((t, n, b_idx));
+                }
+            }
+        }
+
+        let Some((t_hit, normal, b_idx)) = best else {
+            continue;
+        };
+        let t_safe = (t_hit - BACKOFF).max(0.0);
+        let clamped = a_prev + (a_cur - a_prev) * t_safe;
+        proxies[a_idx].center = clamped;
+
+        // Reflect the closing velocity component with restitution. Normal
+        // points from the contact back into a's free space, so closing
+        // motion has v·n < 0 and the impulse adds `-(1+e)·v·n` along n.
+        let v = proxies[a_idx].velocity;
+        let v_along_normal = v.dot(normal);
+        if v_along_normal < 0.0 {
+            let restitution = proxies[a_idx].restitution;
+            let impulse = -(1.0 + restitution) * v_along_normal;
+            proxies[a_idx].velocity = v + normal * impulse;
+        }
+
+        if let Some(a_entity) = proxies[a_idx].entity {
+            events.push(CollisionEvent {
+                a: a_entity,
+                b: proxies[b_idx].entity,
+                normal,
+                penetration: 0.0,
+            });
+        }
+    }
+}
+
 fn narrow_phase(a: &Proxy, b: &Proxy) -> Option<Contact> {
     match (a.shape, b.shape) {
         (
@@ -436,6 +598,7 @@ fn gather_tilemap_proxies(world: &World, proxies: &mut Vec<Proxy>) {
                     proxies.push(Proxy {
                         entity: None,
                         center,
+                        prev_center: center,
                         velocity: Vec2::ZERO,
                         offset: Vec2::ZERO,
                         shape: Shape::Aabb { half_extents: half },
@@ -601,6 +764,120 @@ mod tests {
 
         let pos = world.get::<Position>(dynamic).unwrap();
         assert!(pos.0.x + 4.0 <= 40.0 - 4.0 + 1e-3, "tunneled: {:?}", pos.0);
+    }
+
+    #[test]
+    fn inflated_broadphase_catches_resolution_slip_into_unpaired_wall() {
+        // Pile-pressure slip reproducer. The ball's pre-GS AABB sits in
+        // broadphase cell 0 and the wall's AABB sits in cell 1, so a
+        // tight pair-build query never emits the (ball, wall) pair. A
+        // heavy shover rams the ball during integration; with the shover
+        // at 10× the ball's mass, GS positional correction pushes the
+        // light ball rightward by most of the penetration depth — enough
+        // to end up overlapping the wall inside a single substep. We cap
+        // `max_substeps` at 1 so all the slip happens before the world
+        // writeback gives the ball a chance to re-pair. Without the
+        // half-cell margin on the swept pair-build query the iteration
+        // loop can't resolve the overlap and the ball sits inside the
+        // wall.
+        let mut world = seed_world();
+        if let Some(cfg) = world.get_resource_mut::<PhysicsConfig>() {
+            cfg.broadphase_cell_size = 16.0;
+            cfg.max_substeps = 1;
+        }
+
+        // Wall AABB x ∈ [18, 22] → cell 1.
+        let wall = world.spawn();
+        world.insert(wall, Position(Vec2::new(20.0, 0.0)));
+        world.insert(wall, Collider::aabb(Vec2::new(2.0, 8.0)));
+        world.insert(wall, RigidBody::r#static());
+
+        // Heavy shover: with max_substeps=1 it travels its full 500/60
+        // ≈ 8.33 px in one integration, plunging 6+ px into the ball.
+        let shover = world.spawn();
+        world.insert(shover, Position(Vec2::new(0.0, 0.0)));
+        world.insert(shover, Velocity(Vec2::new(500.0, 0.0)));
+        world.insert(shover, Collider::circle(4.0));
+        world.insert(
+            shover,
+            RigidBody {
+                kind: BodyKind::Dynamic,
+                inv_mass: 0.1,
+                restitution: 0.0,
+            },
+        );
+
+        // Target ball: light mass, pre-GS AABB x ∈ [6, 14] → cell 0.
+        let ball = world.spawn();
+        world.insert(ball, Position(Vec2::new(10.0, 0.0)));
+        world.insert(ball, Velocity(Vec2::ZERO));
+        world.insert(ball, Collider::circle(4.0));
+        world.insert(ball, RigidBody::dynamic().with_restitution(0.0));
+
+        if let Some(dt) = world.get_resource_mut::<DeltaTime>() {
+            dt.dt = 1.0 / 60.0;
+        }
+        physics_step(&mut world);
+
+        // Wall's left face sits at x = 18; the ball (radius 4) must stay
+        // with center ≤ 14 rather than ending up inside the wall.
+        let ball_pos = world.get::<Position>(ball).unwrap().0;
+        assert!(
+            ball_pos.x <= 14.0 + 0.2,
+            "ball slipped through wall during GS resolution: {:?}",
+            ball_pos
+        );
+    }
+
+    #[test]
+    fn speculative_pass_prevents_tunneling_when_substep_cap_binds() {
+        // Reproduces the pile-vs-wall tunneling symptom: once `compute_substeps`
+        // caps at `max_substeps`, `sub_dt` can be too coarse for a fast body
+        // to see a thin wall between integrations. With speculative contacts
+        // on, the body clamps to the wall instead of clearing it.
+        let mut world = seed_world();
+        if let Some(cfg) = world.get_resource_mut::<PhysicsConfig>() {
+            // Cap at 1 substep so we force sub_dt = dt and observe the
+            // cap-bound failure mode directly.
+            cfg.max_substeps = 1;
+        }
+        if let Some(dt) = world.get_resource_mut::<DeltaTime>() {
+            dt.dt = 1.0 / 30.0;
+        }
+
+        let ball = world.spawn();
+        world.insert(ball, Position(Vec2::new(0.0, 0.0)));
+        // 4000 px/s over sub_dt ≈ 133 px; ball radius 4 and wall thickness
+        // 4 are well inside that travel. Without speculative the ball
+        // integrates straight through the wall.
+        world.insert(ball, Velocity(Vec2::new(4000.0, 0.0)));
+        world.insert(ball, Collider::circle(4.0));
+        world.insert(ball, RigidBody::dynamic().with_restitution(0.5));
+
+        let wall = world.spawn();
+        world.insert(wall, Position(Vec2::new(40.0, 0.0)));
+        world.insert(wall, Collider::aabb(Vec2::new(4.0, 32.0)));
+        world.insert(wall, RigidBody::r#static());
+
+        physics_step(&mut world);
+
+        let pos = world.get::<Position>(ball).unwrap();
+        // Wall's left face is at x = 36; the ball's centre must stay to
+        // the left of it (plus a small backoff) instead of clearing the
+        // right face at x = 44.
+        assert!(
+            pos.0.x <= 36.0 + 0.5,
+            "ball tunneled through wall despite speculative pass: {:?}",
+            pos.0
+        );
+        // Velocity should also be reflected (restitution 0.5, incoming +x,
+        // so post-bounce along -x at roughly half the incoming speed).
+        let vel = world.get::<Velocity>(ball).unwrap().0;
+        assert!(
+            vel.x < 0.0,
+            "velocity should reflect off wall under speculative: {:?}",
+            vel
+        );
     }
 
     #[test]
