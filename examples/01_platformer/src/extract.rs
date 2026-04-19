@@ -6,7 +6,10 @@ use tungsten::extract_tilemaps;
 use tungsten::physics::Position;
 use tungsten::render::{SpriteBatch, SpriteInstance, TextSection};
 
-use crate::state::{Ball, CurrentSprite, TextDisplayState, BALL_RADIUS, PLAYER_HALF};
+use crate::state::{
+    Ball, BlackHole, CurrentSprite, TextDisplayState, BALL_RADIUS, BLACK_HOLE_VISUAL_DIAMETER,
+    PLAYER_HALF,
+};
 use crate::systems::cursor_to_world;
 
 pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
@@ -14,6 +17,32 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     let Some(assets) = world.get_resource::<AssetRegistry>() else {
         return batches;
     };
+
+    // Black hole — drawn after the tilemap but before the player/balls so
+    // attracted bodies visibly pass over it. The ball sprite is reused as
+    // a round blob; a purple tint makes it read as an attractor. Quads
+    // render before sprites in the engine pipeline, so using the sprite
+    // pipeline is the path that sits above the sky tiles.
+    if let Some(hole_asset) = assets.get_sprite("ex10_ball") {
+        let half = BLACK_HOLE_VISUAL_DIAMETER * 0.5;
+        let instances: Vec<SpriteInstance> = world
+            .query::<BlackHole>()
+            .filter_map(|(e, _)| world.get::<Position>(e).copied())
+            .map(|p| SpriteInstance {
+                position: [p.0.x - half, p.0.y - half],
+                size: [BLACK_HOLE_VISUAL_DIAMETER, BLACK_HOLE_VISUAL_DIAMETER],
+                rotation: 0.0,
+                color: [115, 20, 191, 230],
+            })
+            .collect();
+        if !instances.is_empty() {
+            batches.push(SpriteBatch {
+                texture: hole_asset.texture,
+                filter: hole_asset.filter,
+                instances,
+            });
+        }
+    }
 
     // Player — sprite frame driven by CurrentSprite / AnimationState.
     // Rendered at 1:1 world-pixel scale (camera zoom handles the screen
@@ -174,7 +203,7 @@ pub(crate) fn extract_text(world: &World) -> Vec<TextSection> {
 
     sections.extend(text_outlined(TextSection {
         content: format!(
-            "A/D or ←/→ move  Space jump  LMB spawn ball  M/RMB music  S/MMB stop  1/2/3 volume\n\
+            "A/D or ←/→ move  Space jump  LMB hold spawn ball  RMB black hole  M music  S/MMB stop  1/2/3 volume\n\
              =/- or wheel zoom  F4 HUD  F9 vsync  F11 fullscreen  Esc exit\n\
              grounded:{:<4} contacts:{:<3} music:{:<4} vol:{}%  zoom:{}%  FPS:{}\n\
              cursor:{}  delta:{:.1},{:.1}  wheel lines:{:.1},{:.1}  pixels:{:.1},{:.1}",

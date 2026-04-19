@@ -7,8 +7,9 @@
 //! Controls (defaults; see `input.json` at the workspace root to rebind):
 //!   A / D or ←/→   move_left / move_right
 //!   Space           jump (when grounded; plays a sound effect)
-//!   LMB             spawn_ball at the cursor (world-space)
-//!   M or RMB        audio_toggle_music
+//!   LMB (hold)      spawn_ball at the cursor (one every 32 ms while held)
+//!   RMB             spawn_black_hole at the cursor
+//!   M               audio_toggle_music
 //!   1 / 2 / 3       volume_preset_low / volume_preset_mid / volume_preset_high
 //!   S or MMB        audio_stop_all
 //!   = / - or wheel  zoom_in / zoom_out (50%–200% of base)

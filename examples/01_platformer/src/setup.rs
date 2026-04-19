@@ -14,14 +14,14 @@ use tungsten::{camera_update_system, App};
 
 use crate::extract::{extract_sprites, extract_text};
 use crate::state::{
-    AudioState, Ball, CurrentSprite, Player, TextDisplayState, ASSETS_LOCAL, ASSETS_ROOT,
-    BALL_RADIUS, BALL_RESTITUTION, GRAVITY_Y, MANIFEST_LOCAL, MANIFEST_ROOT, MAP_COLS, MAP_ROWS,
-    PLAYER_HALF, PLAYER_SPAWN, TILE,
+    ActiveBlackHole, AudioState, Ball, BallSpawnState, CurrentSprite, Player, TextDisplayState,
+    ASSETS_LOCAL, ASSETS_ROOT, BALL_RADIUS, BALL_RESTITUTION, GRAVITY_Y, MANIFEST_LOCAL,
+    MANIFEST_ROOT, MAP_COLS, MAP_ROWS, PLAYER_HALF, PLAYER_SPAWN, TILE,
 };
 use crate::systems::{
-    animation_system, audio_input_system, camera_zoom_input_system, despawn_out_of_bounds,
-    ground_detection, platformer_camera_base_zoom, player_input, spawn_ball_system,
-    update_text_display,
+    animation_system, audio_input_system, black_hole_force_system, black_hole_lifetime_system,
+    camera_zoom_input_system, despawn_out_of_bounds, ground_detection, platformer_camera_base_zoom,
+    player_input, spawn_ball_system, spawn_black_hole_system, update_text_display,
 };
 
 type ExampleSystem = fn(&mut World);
@@ -30,11 +30,14 @@ pub(crate) const RUNTIME_SYSTEM_ORDER: &[(&str, ExampleSystem)] = &[
     ("update_text_display", update_text_display),
     ("player_input", player_input),
     ("spawn_ball_system", spawn_ball_system),
+    ("spawn_black_hole_system", spawn_black_hole_system),
+    ("black_hole_force_system", black_hole_force_system),
     ("audio_input_system", audio_input_system),
     ("camera_zoom_input_system", camera_zoom_input_system),
     ("animation_system", animation_system),
     ("physics_step", physics_step),
     ("ground_detection", ground_detection),
+    ("black_hole_lifetime_system", black_hole_lifetime_system),
     ("despawn_out_of_bounds", despawn_out_of_bounds),
     ("sync_position_to_transform", sync_position_to_transform),
     ("platformer_camera_base_zoom", platformer_camera_base_zoom),
@@ -63,6 +66,8 @@ fn seed_world(world: &mut World) {
         cfg.broadphase_cell_size = 32.0;
     }
     world.insert_resource(TextDisplayState::default());
+    world.insert_resource(BallSpawnState::default());
+    world.insert_resource(ActiveBlackHole::default());
 
     // Tilemap — provides the static ground, platforms, and collision layer.
     let map = world.spawn();

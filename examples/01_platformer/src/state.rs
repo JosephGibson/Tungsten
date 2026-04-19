@@ -1,5 +1,5 @@
 use glam::Vec2;
-use tungsten::core::AudioHandle;
+use tungsten::core::{AudioHandle, Entity};
 
 pub(crate) const MANIFEST_ROOT: &str = "assets/manifest.json";
 pub(crate) const MANIFEST_LOCAL: &str = "examples/01_platformer/assets/manifest.json";
@@ -21,6 +21,24 @@ pub(crate) const PLAYER_JUMP_IMPULSE: f32 = 320.0;
 pub(crate) const GRAVITY_Y: f32 = 900.0;
 pub(crate) const BALL_RADIUS: f32 = 6.0;
 pub(crate) const BALL_RESTITUTION: f32 = 0.85;
+
+// --- Ball-spawn-hold tunables ---
+/// Seconds between ball spawns while `spawn_ball` is held. Driven by a
+/// fixed accumulator over frame `DeltaTime`, not wall-clock.
+pub(crate) const BALL_SPAWN_INTERVAL: f32 = 0.032;
+
+// --- Black-hole tunables ---
+/// Pull radius in world pixels. Entities outside are untouched.
+pub(crate) const BLACK_HOLE_RADIUS: f32 = 96.0;
+/// Peak inward acceleration in px/s² at the black hole's centre.
+/// Falls off linearly with distance to zero at `BLACK_HOLE_RADIUS`.
+pub(crate) const BLACK_HOLE_FORCE: f32 = 3000.0;
+/// Seconds the black hole stays active after the cursor is released.
+/// Refreshed every frame while Mouse2 is held so the hole persists for
+/// the full duration of the drag.
+pub(crate) const BLACK_HOLE_LIFETIME: f32 = 2.0;
+/// Visual diameter of the purple blob sprite in world pixels.
+pub(crate) const BLACK_HOLE_VISUAL_DIAMETER: f32 = 30.0;
 
 // Active physics region. Anything outside gets culled (balls despawn,
 // player resets to `PLAYER_SPAWN`) so runaway velocities can't inflate
@@ -77,6 +95,26 @@ pub(crate) struct Player {
 /// Marker for the bouncing circle entities.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Ball;
+
+/// Black-hole attractor. Despawned by `black_hole_lifetime_system` once
+/// `remaining` reaches zero.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct BlackHole {
+    pub(crate) remaining: f32,
+}
+
+/// Fixed-accumulator state for ball-spawn-hold. Advanced by `DeltaTime`
+/// each frame; every `BALL_SPAWN_INTERVAL` drained spawns one ball.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct BallSpawnState {
+    pub(crate) accumulator: f32,
+}
+
+/// Entity of the black hole currently being dragged by the held Mouse2
+/// button, if any. Cleared on release so subsequent holes fade with their
+/// remaining lifetime instead of being dragged around.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct ActiveBlackHole(pub(crate) Option<Entity>);
 
 /// Current sprite frame driven by `AnimationState` — updated by `animation_system`.
 #[derive(Debug, Clone)]

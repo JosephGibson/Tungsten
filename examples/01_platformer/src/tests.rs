@@ -12,12 +12,14 @@ use tungsten::{camera_update_system, App, WindowSize};
 
 use crate::setup::{configure_platformer_camera, RUNTIME_SYSTEM_ORDER};
 use crate::state::{
-    Ball, CurrentSprite, Player, TextDisplayState, GRAVITY_Y, MAP_COLS, MAP_ROWS, PLAYER_HALF,
+    ActiveBlackHole, Ball, BallSpawnState, BlackHole, CurrentSprite, Player, TextDisplayState,
+    BLACK_HOLE_LIFETIME, BLACK_HOLE_RADIUS, GRAVITY_Y, MAP_COLS, MAP_ROWS, PLAYER_HALF,
     PLAYER_SPAWN, TILE, WORLD_BOUNDS_MAX, WORLD_BOUNDS_MIN,
 };
 use crate::systems::{
-    cursor_to_world, despawn_out_of_bounds, ground_detection, platformer_camera_base_zoom,
-    player_input, spawn_ball_system,
+    black_hole_force_system, black_hole_lifetime_system, cursor_to_world, despawn_out_of_bounds,
+    ground_detection, platformer_camera_base_zoom, player_input, spawn_ball_system,
+    spawn_black_hole_system,
 };
 
 fn seed_world() -> World {
@@ -93,11 +95,14 @@ fn runtime_system_order_matches_expected_pipeline() {
             "update_text_display",
             "player_input",
             "spawn_ball_system",
+            "spawn_black_hole_system",
+            "black_hole_force_system",
             "audio_input_system",
             "camera_zoom_input_system",
             "animation_system",
             "physics_step",
             "ground_detection",
+            "black_hole_lifetime_system",
             "despawn_out_of_bounds",
             "sync_position_to_transform",
             "platformer_camera_base_zoom",
@@ -256,9 +261,10 @@ fn cursor_to_world_inverts_camera_translation_and_zoom() {
 }
 
 #[test]
-fn spawn_ball_system_queues_ball_at_cursor_on_click() {
+fn spawn_ball_system_spawns_at_fixed_rate_while_held() {
     let mut world = seed_world();
     world.insert_resource(CommandBuffer::new());
+    world.insert_resource(BallSpawnState::default());
 
     // Bind spawn_ball to LMB for the test (engine default does not include it).
     world
@@ -283,21 +289,242 @@ fn spawn_ball_system_queues_ball_at_cursor_on_click() {
         camera.zoom = 1.0;
     }
 
-    assert_eq!(world.query::<Ball>().count(), 0);
+    // One 170 ms step at a held LMB should yield floor(0.170 / 0.032) = 5 balls.
+    // (Avoids the floating-point cliff at exactly 5 * interval.)
+    world.get_resource_mut::<DeltaTime>().unwrap().dt = 0.170;
     spawn_ball_system(&mut world);
 
     let buffer = world
         .remove_resource::<CommandBuffer>()
         .expect("CommandBuffer present");
-    assert_eq!(buffer.len(), 6, "expected 1 spawn + 5 inserts queued");
     world.flush(buffer);
     world.insert_resource(CommandBuffer::new());
 
-    let balls: Vec<_> = world.query::<Ball>().collect();
-    assert_eq!(balls.len(), 1);
-    let ball_entity = balls[0].0;
-    let pos = world.get::<Position>(ball_entity).unwrap().0;
-    assert_eq!(pos, Vec2::new(240.0, 144.0));
+    assert_eq!(world.query::<Ball>().count(), 5);
+    for (entity, _) in world.query::<Ball>() {
+        let pos = world.get::<Position>(entity).unwrap().0;
+        assert_eq!(pos, Vec2::new(240.0, 144.0));
+    }
+}
+
+#[test]
+fn spawn_ball_system_resets_accumulator_on_release() {
+    let mut world = seed_world();
+    world.insert_resource(CommandBuffer::new());
+    world.insert_resource(BallSpawnState::default());
+    world
+        .get_resource_mut::<ActionMap>()
+        .unwrap()
+        .replace_bindings(
+            "spawn_ball",
+            vec![Binding::Mouse {
+                button: MouseButton::Left,
+            }],
+        );
+
+    // Half a spawn interval while held — not enough to fire yet.
+    world.get_resource_mut::<DeltaTime>().unwrap().dt = 0.016;
+    world
+        .get_resource_mut::<InputState>()
+        .unwrap()
+        .mouse_down(MouseButton::Left);
+    spawn_ball_system(&mut world);
+    assert!(world.get_resource::<BallSpawnState>().unwrap().accumulator > 0.0);
+
+    // Release: accumulator must snap back to zero so a later press starts fresh.
+    world
+        .get_resource_mut::<InputState>()
+        .unwrap()
+        .mouse_up(MouseButton::Left);
+    spawn_ball_system(&mut world);
+    assert_eq!(
+        world.get_resource::<BallSpawnState>().unwrap().accumulator,
+        0.0
+    );
+}
+
+#[test]
+fn spawn_black_hole_system_creates_attractor_at_cursor_on_right_click() {
+    let mut world = seed_world();
+    world.insert_resource(ActiveBlackHole::default());
+    world
+        .get_resource_mut::<ActionMap>()
+        .unwrap()
+        .replace_bindings(
+            "spawn_black_hole",
+            vec![Binding::Mouse {
+                button: MouseButton::Right,
+            }],
+        );
+
+    {
+        let input = world.get_resource_mut::<InputState>().unwrap();
+        input.update_cursor_position(120.0, 80.0);
+        input.mouse_down(MouseButton::Right);
+    }
+    {
+        let camera = world.get_resource_mut::<CameraState>().unwrap();
+        camera.position = Vec2::ZERO;
+        camera.zoom = 1.0;
+    }
+
+    spawn_black_hole_system(&mut world);
+
+    let holes: Vec<_> = world.query::<BlackHole>().collect();
+    assert_eq!(holes.len(), 1);
+    let (hole_entity, hole) = holes[0];
+    assert_eq!(hole.remaining, BLACK_HOLE_LIFETIME);
+    let pos = world.get::<Position>(hole_entity).unwrap().0;
+    assert_eq!(pos, Vec2::new(120.0, 80.0));
+    assert_eq!(
+        world.get_resource::<ActiveBlackHole>().unwrap().0,
+        Some(hole_entity),
+        "press must record the dragged entity"
+    );
+}
+
+#[test]
+fn spawn_black_hole_system_drags_active_hole_to_cursor_while_held() {
+    let mut world = seed_world();
+    world.insert_resource(ActiveBlackHole::default());
+    world
+        .get_resource_mut::<ActionMap>()
+        .unwrap()
+        .replace_bindings(
+            "spawn_black_hole",
+            vec![Binding::Mouse {
+                button: MouseButton::Right,
+            }],
+        );
+    {
+        let camera = world.get_resource_mut::<CameraState>().unwrap();
+        camera.position = Vec2::ZERO;
+        camera.zoom = 1.0;
+    }
+
+    // Frame 1: press at (50, 60) — spawns and tracks the hole.
+    {
+        let input = world.get_resource_mut::<InputState>().unwrap();
+        input.update_cursor_position(50.0, 60.0);
+        input.mouse_down(MouseButton::Right);
+    }
+    spawn_black_hole_system(&mut world);
+    let hole_entity = world
+        .get_resource::<ActiveBlackHole>()
+        .unwrap()
+        .0
+        .expect("press should register active hole");
+
+    // Frame 2: still held, cursor moved to (200, 150), and age it a bit.
+    if let Some(hole) = world.get_mut::<BlackHole>(hole_entity) {
+        hole.remaining = 0.5;
+    }
+    {
+        let input = world.get_resource_mut::<InputState>().unwrap();
+        input.begin_frame();
+        input.update_cursor_position(200.0, 150.0);
+    }
+    spawn_black_hole_system(&mut world);
+
+    let pos = world.get::<Position>(hole_entity).unwrap().0;
+    assert_eq!(pos, Vec2::new(200.0, 150.0), "hole should follow cursor");
+    assert_eq!(
+        world.get::<BlackHole>(hole_entity).unwrap().remaining,
+        BLACK_HOLE_LIFETIME,
+        "holding must refresh lifetime so the hole never expires mid-drag"
+    );
+    assert_eq!(
+        world.query::<BlackHole>().count(),
+        1,
+        "hold must not spawn a second hole per frame"
+    );
+
+    // Frame 3: release — active entity must clear so later holes fade normally.
+    {
+        let input = world.get_resource_mut::<InputState>().unwrap();
+        input.begin_frame();
+        input.mouse_up(MouseButton::Right);
+    }
+    spawn_black_hole_system(&mut world);
+    assert_eq!(world.get_resource::<ActiveBlackHole>().unwrap().0, None);
+}
+
+#[test]
+fn black_hole_force_system_pulls_dynamic_body_toward_hole() {
+    let mut world = seed_world();
+    world.get_resource_mut::<DeltaTime>().unwrap().dt = 1.0 / 60.0;
+
+    let hole = world.spawn();
+    world.insert(
+        hole,
+        BlackHole {
+            remaining: BLACK_HOLE_LIFETIME,
+        },
+    );
+    world.insert(hole, Position(Vec2::new(0.0, 0.0)));
+
+    let ball = world.spawn();
+    world.insert(ball, Ball);
+    world.insert(ball, Position(Vec2::new(BLACK_HOLE_RADIUS * 0.5, 0.0)));
+    world.insert(ball, Velocity(Vec2::ZERO));
+    world.insert(ball, Collider::circle(6.0));
+    world.insert(ball, RigidBody::dynamic());
+
+    black_hole_force_system(&mut world);
+
+    let vel = world.get::<Velocity>(ball).unwrap().0;
+    assert!(
+        vel.x < 0.0,
+        "ball should accelerate toward the hole (-x), got {vel:?}"
+    );
+    assert_eq!(vel.y, 0.0);
+}
+
+#[test]
+fn black_hole_force_system_ignores_bodies_outside_radius() {
+    let mut world = seed_world();
+    world.get_resource_mut::<DeltaTime>().unwrap().dt = 1.0 / 60.0;
+
+    let hole = world.spawn();
+    world.insert(
+        hole,
+        BlackHole {
+            remaining: BLACK_HOLE_LIFETIME,
+        },
+    );
+    world.insert(hole, Position(Vec2::ZERO));
+
+    let ball = world.spawn();
+    world.insert(ball, Ball);
+    world.insert(ball, Position(Vec2::new(BLACK_HOLE_RADIUS + 10.0, 0.0)));
+    world.insert(ball, Velocity(Vec2::ZERO));
+    world.insert(ball, Collider::circle(6.0));
+    world.insert(ball, RigidBody::dynamic());
+
+    black_hole_force_system(&mut world);
+    assert_eq!(world.get::<Velocity>(ball).unwrap().0, Vec2::ZERO);
+}
+
+#[test]
+fn black_hole_lifetime_system_despawns_expired_hole() {
+    let mut world = seed_world();
+    world.insert_resource(CommandBuffer::new());
+    world.get_resource_mut::<DeltaTime>().unwrap().dt = BLACK_HOLE_LIFETIME + 0.1;
+
+    let hole = world.spawn();
+    world.insert(
+        hole,
+        BlackHole {
+            remaining: BLACK_HOLE_LIFETIME,
+        },
+    );
+    world.insert(hole, Position(Vec2::ZERO));
+
+    black_hole_lifetime_system(&mut world);
+    let buffer = world.remove_resource::<CommandBuffer>().unwrap();
+    world.flush(buffer);
+
+    assert_eq!(world.query::<BlackHole>().count(), 0);
 }
 
 #[test]

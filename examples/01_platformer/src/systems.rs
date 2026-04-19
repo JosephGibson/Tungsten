@@ -7,9 +7,10 @@ use tungsten::physics::{BodyKind, Collider, CollisionEvent, Position, RigidBody,
 use tungsten::WindowSize;
 
 use crate::state::{
-    AudioState, Ball, CurrentSprite, Player, TextDisplayState, BALL_RADIUS, BALL_RESTITUTION,
-    MAP_ROWS, PLAYER_JUMP_IMPULSE, PLAYER_MOVE_SPEED, PLAYER_SPAWN, TEXT_UPDATE_INTERVAL, TILE,
-    WORLD_BOUNDS_MAX, WORLD_BOUNDS_MIN,
+    ActiveBlackHole, AudioState, Ball, BallSpawnState, BlackHole, CurrentSprite, Player,
+    TextDisplayState, BALL_RADIUS, BALL_RESTITUTION, BALL_SPAWN_INTERVAL, BLACK_HOLE_FORCE,
+    BLACK_HOLE_LIFETIME, BLACK_HOLE_RADIUS, MAP_ROWS, PLAYER_JUMP_IMPULSE, PLAYER_MOVE_SPEED,
+    PLAYER_SPAWN, TEXT_UPDATE_INTERVAL, TILE, WORLD_BOUNDS_MAX, WORLD_BOUNDS_MIN,
 };
 
 /// Horizontal movement + jump. Plays the jump SFX when the player leaves the
@@ -272,22 +273,51 @@ pub(crate) fn cursor_to_world(cursor: Vec2, camera: &CameraState) -> Option<Vec2
     ))
 }
 
-/// Spawns a ball at the world-space cursor position each time `spawn_ball`
-/// fires. Uses the deferred `CommandBuffer` so the new entity is visible to
-/// this frame's extract stage but not to systems that already ran.
+/// Spawns balls at the world-space cursor position while `spawn_ball` is
+/// held. A fixed accumulator advanced by `DeltaTime` produces one ball
+/// per `BALL_SPAWN_INTERVAL` of held time, so the rate is stable under
+/// variable frame times. Uses the deferred `CommandBuffer` so new
+/// entities are visible to this frame's extract stage but not to
+/// systems that already ran.
 pub(crate) fn spawn_ball_system(world: &mut World) {
-    let fired = {
+    let held = {
         let Some(input) = world.get_resource::<InputState>() else {
             return;
         };
         let Some(actions) = world.get_resource::<ActionMap>() else {
             return;
         };
-        actions.just_pressed(input, "spawn_ball")
+        actions.is_pressed(input, "spawn_ball")
     };
-    if !fired {
+
+    if !held {
+        if let Some(state) = world.get_resource_mut::<BallSpawnState>() {
+            state.accumulator = 0.0;
+        }
         return;
     }
+
+    let dt = world
+        .get_resource::<DeltaTime>()
+        .map(|d| d.seconds())
+        .unwrap_or(0.0);
+    let spawn_count = {
+        let state = match world.get_resource_mut::<BallSpawnState>() {
+            Some(s) => s,
+            None => return,
+        };
+        state.accumulator += dt;
+        let mut count = 0u32;
+        while state.accumulator >= BALL_SPAWN_INTERVAL {
+            state.accumulator -= BALL_SPAWN_INTERVAL;
+            count += 1;
+        }
+        count
+    };
+    if spawn_count == 0 {
+        return;
+    }
+
     let cursor = match world
         .get_resource::<InputState>()
         .and_then(|i| i.cursor_position())
@@ -303,19 +333,176 @@ pub(crate) fn spawn_ball_system(world: &mut World) {
         return;
     };
     if let Some(cmds) = world.get_resource_mut::<CommandBuffer>() {
-        let ball = cmds.spawn();
-        cmds.insert_pending(ball, Ball);
-        cmds.insert_pending(ball, Position(world_pos));
-        cmds.insert_pending(ball, Velocity(Vec2::ZERO));
-        cmds.insert_pending(ball, Collider::circle(BALL_RADIUS));
-        cmds.insert_pending(
-            ball,
-            RigidBody {
-                kind: BodyKind::Dynamic,
-                inv_mass: 1.0,
-                restitution: BALL_RESTITUTION,
+        for _ in 0..spawn_count {
+            let ball = cmds.spawn();
+            cmds.insert_pending(ball, Ball);
+            cmds.insert_pending(ball, Position(world_pos));
+            cmds.insert_pending(ball, Velocity(Vec2::ZERO));
+            cmds.insert_pending(ball, Collider::circle(BALL_RADIUS));
+            cmds.insert_pending(
+                ball,
+                RigidBody {
+                    kind: BodyKind::Dynamic,
+                    inv_mass: 1.0,
+                    restitution: BALL_RESTITUTION,
+                },
+            );
+        }
+    }
+}
+
+/// Spawns a black hole at the world-space cursor position on Mouse2 press
+/// and drags it along while the button is held. While held, the hole's
+/// `remaining` is refreshed every frame so it never expires mid-drag; on
+/// release the normal `BLACK_HOLE_LIFETIME` countdown resumes.
+/// `ActiveBlackHole` tracks the dragged entity so earlier holes still
+/// fading out aren't also snapped to the cursor.
+pub(crate) fn spawn_black_hole_system(world: &mut World) {
+    let (just_pressed, is_held, just_released) = {
+        let Some(input) = world.get_resource::<InputState>() else {
+            return;
+        };
+        let Some(actions) = world.get_resource::<ActionMap>() else {
+            return;
+        };
+        (
+            actions.just_pressed(input, "spawn_black_hole"),
+            actions.is_pressed(input, "spawn_black_hole"),
+            actions.just_released(input, "spawn_black_hole"),
+        )
+    };
+
+    if just_released {
+        if let Some(active) = world.get_resource_mut::<ActiveBlackHole>() {
+            active.0 = None;
+        }
+    }
+    if !is_held {
+        return;
+    }
+
+    let cursor = match world
+        .get_resource::<InputState>()
+        .and_then(|i| i.cursor_position())
+    {
+        Some((x, y)) => Vec2::new(x, y),
+        None => return,
+    };
+    let camera = match world.get_resource::<CameraState>().copied() {
+        Some(c) => c,
+        None => return,
+    };
+    let Some(world_pos) = cursor_to_world(cursor, &camera) else {
+        return;
+    };
+
+    if just_pressed {
+        let entity = world.spawn();
+        world.insert(
+            entity,
+            BlackHole {
+                remaining: BLACK_HOLE_LIFETIME,
             },
         );
+        world.insert(entity, Position(world_pos));
+        if let Some(active) = world.get_resource_mut::<ActiveBlackHole>() {
+            active.0 = Some(entity);
+        }
+        return;
+    }
+
+    let active_entity = world.get_resource::<ActiveBlackHole>().and_then(|a| a.0);
+    if let Some(entity) = active_entity {
+        if let Some(pos) = world.get_mut::<Position>(entity) {
+            pos.0 = world_pos;
+        }
+        if let Some(hole) = world.get_mut::<BlackHole>(entity) {
+            hole.remaining = BLACK_HOLE_LIFETIME;
+        }
+    }
+}
+
+/// Applies an attractive acceleration to every dynamic body within
+/// `BLACK_HOLE_RADIUS` of any active black hole. Pull strength peaks at
+/// `BLACK_HOLE_FORCE` px/s² at the centre and falls linearly to zero at
+/// the radius. Runs BEFORE `physics_step` so the velocity change is
+/// integrated in the same frame. Tiles have no `Velocity` component
+/// and are naturally excluded.
+pub(crate) fn black_hole_force_system(world: &mut World) {
+    let dt = world
+        .get_resource::<DeltaTime>()
+        .map(|d| d.seconds())
+        .unwrap_or(0.0);
+    if dt <= 0.0 {
+        return;
+    }
+
+    let holes: Vec<Vec2> = world
+        .query::<BlackHole>()
+        .filter_map(|(entity, _)| world.get::<Position>(entity).map(|p| p.0))
+        .collect();
+    if holes.is_empty() {
+        return;
+    }
+
+    let targets: Vec<Entity> = world.query_entities::<Velocity>();
+    for entity in targets {
+        let body_is_dynamic = world
+            .get::<RigidBody>(entity)
+            .map(|b| b.kind == BodyKind::Dynamic)
+            .unwrap_or(false);
+        if !body_is_dynamic {
+            continue;
+        }
+        let Some(pos) = world.get::<Position>(entity).copied() else {
+            continue;
+        };
+
+        let mut accel = Vec2::ZERO;
+        for &hole_pos in &holes {
+            let delta = hole_pos - pos.0;
+            let dist_sq = delta.length_squared();
+            if dist_sq >= BLACK_HOLE_RADIUS * BLACK_HOLE_RADIUS || dist_sq < 1.0e-4 {
+                continue;
+            }
+            let dist = dist_sq.sqrt();
+            let falloff = 1.0 - (dist / BLACK_HOLE_RADIUS);
+            let dir = delta / dist;
+            accel += dir * BLACK_HOLE_FORCE * falloff;
+        }
+        if accel == Vec2::ZERO {
+            continue;
+        }
+        if let Some(vel) = world.get_mut::<Velocity>(entity) {
+            vel.0 += accel * dt;
+        }
+    }
+}
+
+/// Decrements the lifetime counter on every active black hole and
+/// despawns those whose lifetime has expired.
+pub(crate) fn black_hole_lifetime_system(world: &mut World) {
+    let dt = world
+        .get_resource::<DeltaTime>()
+        .map(|d| d.seconds())
+        .unwrap_or(0.0);
+
+    let entities = world.query_entities::<BlackHole>();
+    let mut to_despawn: Vec<Entity> = Vec::new();
+    for entity in entities {
+        if let Some(hole) = world.get_mut::<BlackHole>(entity) {
+            hole.remaining -= dt;
+            if hole.remaining <= 0.0 {
+                to_despawn.push(entity);
+            }
+        }
+    }
+    if !to_despawn.is_empty() {
+        if let Some(cmds) = world.get_resource_mut::<CommandBuffer>() {
+            for entity in to_despawn {
+                cmds.despawn(entity);
+            }
+        }
     }
 }
 
