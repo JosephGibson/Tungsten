@@ -33,8 +33,8 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 
 - Workspace version metadata: `0.14.0`
 - Current branch: `0.14`
-- Completed milestones: `M12` profiling baseline, `M13` command buffers, `M14` event queues, `M15` transform + render components, `M16` camera module, `M17` display state + config
-- Next recommended milestone: `M18 — Runtime Telemetry HUD`
+- Completed milestones: `M12` profiling baseline, `M13` command buffers, `M14` event queues, `M15` transform + render components, `M16` camera module, `M17` display state + config, `M18` runtime telemetry HUD
+- Next recommended milestone: `M19 — Input Mapping`
 - Archived detailed milestone plans: [M12](archive/Phase3-Milestone12-plan.md), [M13](archive/Phase3-Milestone13-plan.md), [M14](archive/Phase3-Milestone14-plan.md), [M15](archive/Phase3-Milestone15-plan.md), [M16](archive/phase3-milestone16-plan.md), [M17](archive/Phase3-Milestone17-plan.md)
 
 ## Execution Contract
@@ -123,6 +123,9 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 - Done when: the engine starts with display settings from config and reports active values in runtime telemetry, one API boundary exists for resolution/fullscreen/vsync changes even if examples expose it only through debug keys, and invalid display config fails gracefully with safe defaults plus a warning log.
 
 ### M18 - Runtime Telemetry HUD
+
+> **Status: complete** (`v0.15.0`, `2026-04-18`)
+> Detailed implementation plan: [`docs/plans/phase3-milestone18-plan.md`](phase3-milestone18-plan.md).
 
 - Goal: add a lightweight in-game HUD for developers and playtesters.
 - Why early: it makes correctness and perf issues visible during normal gameplay rather than only after failures.

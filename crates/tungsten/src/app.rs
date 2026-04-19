@@ -6,13 +6,14 @@ use std::time::{Duration, Instant};
 
 use crate::asset_loader;
 use crate::audio::AudioSystem;
+use crate::debug_hud::{compose_hud_text_sections, hud_toggle_system, DebugHud};
 use crate::display::{
     frame_budget_for, sync_display_state_and_telemetry, sync_window_resolution,
     take_pending_display, DisplayDelta, PendingDisplay,
 };
 use crate::hot_reload::HotReloadWatcher;
 use crate::input_bridge;
-use crate::telemetry::{DisplayTelemetry, FrameTimings};
+use crate::telemetry::{DisplayTelemetry, FrameTimings, RenderCounts};
 use tungsten_core::assets::{AnimationRegistry, FontRegistry, SoundRegistry, TilemapRegistry};
 use tungsten_core::physics::{CollisionEvent, PhysicsConfig};
 use tungsten_core::{
@@ -134,6 +135,8 @@ impl App {
         world.insert_resource(PendingDisplay::default());
         world.insert_resource(DisplayTelemetry::from_state(&resolved_display, None));
         world.insert_resource(CommandBuffer::new());
+        world.insert_resource(DebugHud::new());
+        world.insert_resource(RenderCounts::default());
         let mut event_flushers: Vec<EventFlusher> = Vec::new();
         let mut registered_event_types = HashSet::new();
         Self::register_event_inner::<CollisionEvent>(
@@ -142,7 +145,7 @@ impl App {
             &mut registered_event_types,
         );
 
-        Self {
+        let mut app = Self {
             config,
             window: None,
             renderer: None,
@@ -167,7 +170,23 @@ impl App {
             event_flushers,
             registered_event_types,
             frame_budget: frame_budget_for(resolved_display.frame_rate_cap),
-        }
+        };
+
+        // Register the HUD toggle as the very first system so it observes
+        // input before any user system consumes `just_pressed`. Pushed
+        // directly onto the internal vectors to bypass the public
+        // naming/counter behaviour used by `add_system` / `add_system_named`.
+        app.add_engine_system("__hud_toggle", hud_toggle_system);
+
+        app
+    }
+
+    /// Register an engine-owned system at the current end of the system list
+    /// without touching the auto-naming counter. Used for systems that should
+    /// run regardless of user setup (e.g. the HUD toggle).
+    fn add_engine_system(&mut self, name: &str, system: impl FnMut(&mut World) + 'static) {
+        self.system_names.push(name.to_string());
+        self.systems.push(Box::new(system));
     }
 
     /// Control whether the Escape key exits the process (default: true).
@@ -692,6 +711,15 @@ impl ApplicationHandler for App {
                 let frame_start = Instant::now();
                 self.apply_pending_display_request();
 
+                // Snapshot the previous frame's total so the HUD can smooth
+                // frame-ms without needing compose to run after render (which
+                // would hide the HUD this frame).
+                let prev_total_ms = self
+                    .world
+                    .get_resource::<FrameTimings>()
+                    .map(|ft| ft.total_ms)
+                    .unwrap_or(0.0);
+
                 // --- Delta time ---
                 let now = Instant::now();
                 if let Some(last) = self.last_frame {
@@ -756,11 +784,36 @@ impl ApplicationHandler for App {
                     .map(|f| f(&self.world))
                     .unwrap_or_default();
 
-                let text = self
+                let mut text = self
                     .extract_text
                     .as_ref()
                     .map(|f| f(&self.world))
                     .unwrap_or_default();
+
+                // Populate RenderCounts from this frame's live entity count
+                // and extracted sprite instances. Must run before HUD compose
+                // so the `counts` row reflects this frame.
+                let entity_count = self.world.entity_count();
+                let sprite_instance_count: u32 =
+                    sprites.iter().map(|b| b.instances.len() as u32).sum();
+                if let Some(rc) = self.world.get_resource_mut::<RenderCounts>() {
+                    rc.entities = entity_count;
+                    rc.sprite_instances = sprite_instance_count;
+                }
+
+                // HUD compose. Temporarily remove the resource so providers
+                // can hold `&World` while the helper holds `&mut DebugHud`.
+                let viewport = self
+                    .world
+                    .get_resource::<WindowSize>()
+                    .map(|w| (w.width, w.height))
+                    .unwrap_or((0, 0));
+                if let Some(mut hud) = self.world.remove_resource::<DebugHud>() {
+                    let hud_sections =
+                        compose_hud_text_sections(&mut hud, &self.world, viewport, prev_total_ms);
+                    self.world.insert_resource(hud);
+                    text.extend(hud_sections);
+                }
                 let extract_ms = extract_start.elapsed().as_secs_f64() as f32 * 1000.0;
 
                 // --- Render stage ---

@@ -244,3 +244,14 @@ Plan number conflict note: the M15 plan originally reserved `D-041`, but that ID
 2. `tungsten-core` owns the plain data model (`DisplayState`, `DisplayConfig`, `DisplayMode`, `ScaleMode`, `Resolution`) and validation only. No `winit` or `wgpu` types cross into core, preserving D-007 and D-016.
 3. Gameplay/example code requests runtime changes through one public API: `tungsten::request_display_settings(&mut World, DisplayState)`. Actual window/surface mutation happens only at the top of `WindowEvent::RedrawRequested`, before surface acquire, so systems never mutate `winit`/`wgpu` state mid-frame.
 4. Legacy `window.*` and `render.*` display fields remain valid for M17. The new `display.*` fields win when both specify the same concern. `exclusive_fullscreen` is accepted in config and requests, but runtime support is still limited to windowed and borderless fullscreen, so exclusive requests are downgraded to borderless with a warning until a later milestone adds real video-mode selection.
+
+## D-044 — M18 runtime telemetry HUD
+**Date:** 2026-04-18  
+**Decision:** Six coupled choices:
+
+1. HUD implementation lives in the umbrella crate (`crates/tungsten/src/debug_hud.rs`) and reads existing telemetry resources (`FrameTimings`, `DisplayTelemetry`, `CameraState` / `CameraController`, `RenderCounts`, optional `HudActiveState`) rather than owning a parallel timing path. `D-038` / `D-043` / `D-042` dictate where those resources already live; HUD does not duplicate or bypass them.
+2. `F4` is a hardcoded engine toggle, routed through one engine-owned system (`hud_toggle_system`) registered by `App::new` as the first system each frame. Rebinding waits for `M19`'s `ActionMap`.
+3. The extension point is `Vec<Box<dyn Fn(&World) -> Vec<HudRow>>>`. Providers return `Vec<HudRow>` rather than a single row so one provider can emit the top-N slowest systems as N rows in a stable slot.
+4. `DebugHud::enabled` defaults to `false` and every in-tree example ships off-by-default. Examples opt in by mutating the resource during setup (`world.get_resource_mut::<DebugHud>().unwrap().enabled = true`).
+5. HUD-side frame-time smoothing uses EWMA (`alpha = 0.1`) applied to the previous frame's `FrameTimings::total_ms`. The one-frame lag is intentional: it keeps the compose helper in the extract stage (so the HUD is visible in the same frame its rows describe, apart from the fps/frame-ms row) and avoids a second post-render pass.
+6. Perf budget is qualitative: "negligible at Phase 3 scale", tracked via `perf-capture.sh` sprite-stress runs recorded in `perf-runs/M18-hud/`. A regression over 5% requires a `DECISIONS.md` amendment before milestone close.

@@ -11,6 +11,7 @@
 //!   1 / 2 / 3       master volume: 20% / 50% / 100%
 //!   S               stop all sounds
 //!   = / -           zoom in / zoom out (50%–200% of base)
+//!   F4              toggle developer HUD
 //!   F9              toggle vsync
 //!   F11             toggle windowed / borderless fullscreen
 //!

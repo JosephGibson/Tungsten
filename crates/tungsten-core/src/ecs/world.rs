@@ -49,6 +49,11 @@ impl World {
         self.archetypes.entities.is_alive(entity)
     }
 
+    /// Number of currently live entities in the world. O(1).
+    pub fn entity_count(&self) -> u32 {
+        self.archetypes.entities.live_count()
+    }
+
     // ------------------------------------------------------------------
     // Component access
     // ------------------------------------------------------------------
@@ -639,6 +644,21 @@ mod tests {
         let after = world.query::<Position>().count();
 
         assert_eq!(before, after);
+    }
+
+    #[test]
+    fn entity_count_tracks_spawn_and_despawn() {
+        let mut world = World::new();
+        assert_eq!(world.entity_count(), 0);
+        let a = world.spawn();
+        let b = world.spawn();
+        let c = world.spawn();
+        assert_eq!(world.entity_count(), 3);
+        world.despawn(b);
+        assert_eq!(world.entity_count(), 2);
+        world.despawn(a);
+        world.despawn(c);
+        assert_eq!(world.entity_count(), 0);
     }
 
     #[test]

@@ -88,6 +88,14 @@ impl Default for DisplayTelemetry {
     }
 }
 
+/// Per-frame counts of what the render path saw this frame. Populated by
+/// `App` after the extract stage and read by the runtime HUD (M18).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RenderCounts {
+    pub entities: u32,
+    pub sprite_instances: u32,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
