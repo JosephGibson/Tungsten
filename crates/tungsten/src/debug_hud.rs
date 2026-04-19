@@ -58,6 +58,13 @@ pub struct DebugHud {
     pub font_size: f32,
     pub line_height: f32,
     pub color: [u8; 4],
+    /// Outline color drawn behind the main text. Four cardinal offset copies
+    /// are emitted at `+/- outline_px` to fake a stroke; `glyphon` has no
+    /// native stroke API so this is the minimal path.
+    pub outline_color: [u8; 4],
+    /// Outline offset in pixels. Set to `0.0` to disable the outline and skip
+    /// the extra text sections.
+    pub outline_px: f32,
     pub padding_px: f32,
     pub top_n_systems: usize,
     /// Minimum wall-clock interval between text refreshes, in milliseconds.
@@ -85,12 +92,14 @@ impl DebugHud {
         ];
         Self {
             enabled: false,
-            corner: HudCorner::TopLeft,
+            corner: HudCorner::TopRight,
             font_id: "mono".to_string(),
-            font_size: 18.0,
-            line_height: 24.0,
-            color: [230, 230, 230, 230],
-            padding_px: 8.0,
+            font_size: 22.0,
+            line_height: 28.0,
+            color: [240, 240, 240, 240],
+            outline_color: [0, 0, 0, 220],
+            outline_px: 1.0,
+            padding_px: 10.0,
             top_n_systems: 3,
             refresh_interval_ms: 250.0,
             fps_ewma: 0.0,
@@ -352,7 +361,7 @@ pub(crate) fn compose_hud_text_sections(
         }
     };
 
-    let sections = vec![TextSection {
+    let main = TextSection {
         content,
         font_id: hud.font_id.clone(),
         font_size: hud.font_size,
@@ -360,7 +369,27 @@ pub(crate) fn compose_hud_text_sections(
         color: hud.color,
         position: [x, y],
         bounds: None,
-    }];
+    };
+
+    let sections = if hud.outline_px > 0.0 {
+        let ox = hud.outline_px;
+        let mut out = Vec::with_capacity(5);
+        for (dx, dy) in [(-ox, 0.0), (ox, 0.0), (0.0, -ox), (0.0, ox)] {
+            out.push(TextSection {
+                content: main.content.clone(),
+                font_id: main.font_id.clone(),
+                font_size: main.font_size,
+                line_height: main.line_height,
+                color: hud.outline_color,
+                position: [x + dx, y + dy],
+                bounds: None,
+            });
+        }
+        out.push(main);
+        out
+    } else {
+        vec![main]
+    };
     hud.cached_sections = sections.clone();
     sections
 }
@@ -491,8 +520,8 @@ mod tests {
         // HUD is intentionally NOT inserted into the world; compose must not
         // depend on `world.get_resource::<DebugHud>()` for configuration.
         let sections = compose_hud_text_sections(&mut hud, &world, (1280, 720), 16.67);
-        assert_eq!(sections.len(), 1);
-        let content = &sections[0].content;
+        assert!(!sections.is_empty());
+        let content = &sections.last().unwrap().content;
         // All five system rows must appear (cap=5), not just the default 3.
         for name in ["0:b ", "1:e ", "2:c ", "3:d ", "4:a "] {
             assert!(
@@ -504,7 +533,7 @@ mod tests {
         // And cap=0 must suppress every `sys` row.
         hud.top_n_systems = 0;
         let sections = compose_hud_text_sections(&mut hud, &world, (1280, 720), 16.67);
-        assert!(!sections[0].content.contains("sys"));
+        assert!(!sections.last().unwrap().content.contains("sys"));
     }
 
     #[test]
@@ -519,8 +548,8 @@ mod tests {
         });
         let world = World::new();
         let sections = compose_hud_text_sections(&mut hud, &world, (1280, 720), 16.67);
-        assert_eq!(sections.len(), 1);
-        let content = &sections[0].content;
+        assert!(!sections.is_empty());
+        let content = &sections.last().unwrap().content;
         // fps row (built-in, emitted first) must precede the custom "extra" row.
         let fps_idx = content.find("fps").expect("fps row missing");
         let extra_idx = content.find("extra").expect("extra row missing");
@@ -536,8 +565,8 @@ mod tests {
 
         // First call always rebuilds (cache empty, time seeded to +inf).
         let first = compose_hud_text_sections(&mut hud, &world, (1280, 720), 16.67);
-        assert_eq!(first.len(), 1);
-        let first_content = first[0].content.clone();
+        assert!(!first.is_empty());
+        let first_content = first.last().unwrap().content.clone();
 
         // Mutate a displayed field; cache should still win because only
         // 16.67 ms has elapsed of the 100 ms interval.
@@ -572,6 +601,39 @@ mod tests {
             "frame_ms_ewma did not converge: {}",
             hud.frame_ms_ewma
         );
+    }
+
+    #[test]
+    fn outline_emits_extra_sections_behind_main() {
+        let mut hud = DebugHud::new();
+        hud.enabled = true;
+        hud.outline_px = 1.0;
+        let world = World::new();
+        let sections = compose_hud_text_sections(&mut hud, &world, (1280, 720), 16.67);
+        assert_eq!(sections.len(), 5);
+        // All outline sections share the main color's content but wear the outline color.
+        for s in &sections[..4] {
+            assert_eq!(s.color, hud.outline_color);
+        }
+        let main = sections.last().unwrap();
+        assert_eq!(main.color, hud.color);
+        // Outline copies sit at +/- outline_px around the main position.
+        let [mx, my] = main.position;
+        let offsets: Vec<[f32; 2]> = sections[..4].iter().map(|s| s.position).collect();
+        assert!(offsets.contains(&[mx - 1.0, my]));
+        assert!(offsets.contains(&[mx + 1.0, my]));
+        assert!(offsets.contains(&[mx, my - 1.0]));
+        assert!(offsets.contains(&[mx, my + 1.0]));
+    }
+
+    #[test]
+    fn outline_disabled_emits_single_section() {
+        let mut hud = DebugHud::new();
+        hud.enabled = true;
+        hud.outline_px = 0.0;
+        let world = World::new();
+        let sections = compose_hud_text_sections(&mut hud, &world, (1280, 720), 16.67);
+        assert_eq!(sections.len(), 1);
     }
 
     #[test]
