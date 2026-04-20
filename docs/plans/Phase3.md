@@ -34,8 +34,8 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 - Workspace version metadata: `0.17.0`
 - Current branch: `0.17`
 - Completed milestones: `M12` profiling baseline, `M13` command buffers, `M14` event queues, `M15` transform + render components, `M16` camera module, `M17` display state + config, `M18` runtime telemetry HUD, `M19` input mapping, `M20` scene/state system
-- Next recommended milestone: `M21 — Debug Tooling`
-- In progress milestone: none
+- Next recommended milestone: `M22 — Sprite Atlases`
+- In progress milestone: `M21 — Debug Tooling`
 - Archived detailed milestone plans: [M12](archive/Phase3-Milestone12-plan.md), [M13](archive/Phase3-Milestone13-plan.md), [M14](archive/Phase3-Milestone14-plan.md), [M15](archive/Phase3-Milestone15-plan.md), [M16](archive/phase3-milestone16-plan.md), [M17](archive/Phase3-Milestone17-plan.md), [M18](archive/Phase3-Milestone18-plan.md), [M19](archive/phase3-milestone19-plan.md), [M20](archive/Phase3-Milestone20-plan.md)
 
 ## Execution Contract
@@ -153,6 +153,9 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 - Risk: runtime system-list churn; prefer a single dispatcher system over app-loop rewiring.
 
 ### M21 - Debug Tooling
+
+> **Status: in progress** (target `v0.18.0`)
+> Detailed implementation plan: [`docs/plans/Phase3-Milestone-21-debug-tooling.md`](Phase3-Milestone-21-debug-tooling.md).
 
 - Goal: ship practical debugging/profiling tools using current render primitives.
 - Note: M18 ships first and provides persistent textual telemetry; M21 focuses on geometric overlays and inspection workflows.

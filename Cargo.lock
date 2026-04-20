@@ -2955,6 +2955,7 @@ dependencies = [
  "criterion",
  "glam",
  "glyphon",
+ "image",
  "log",
  "pollster",
  "thiserror 2.0.18",

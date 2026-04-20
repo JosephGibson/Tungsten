@@ -72,6 +72,7 @@ pub struct QuadPipeline {
     vertex_buffer: wgpu::Buffer,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
+    camera_bind_group_layout: wgpu::BindGroupLayout,
 }
 
 impl QuadPipeline {
@@ -160,7 +161,21 @@ impl QuadPipeline {
             vertex_buffer,
             camera_buffer,
             camera_bind_group,
+            camera_bind_group_layout,
         }
+    }
+
+    /// Expose the camera bind group layout so sibling pipelines (e.g. the
+    /// M21 `DebugLinePipeline`) can share the same camera uniform without
+    /// allocating a second `view_proj` buffer on the GPU.
+    pub fn camera_bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+        &self.camera_bind_group_layout
+    }
+
+    /// Expose the bound camera bind group so sibling pipelines can rebind it
+    /// at draw time against their own render pass.
+    pub fn camera_bind_group(&self) -> &wgpu::BindGroup {
+        &self.camera_bind_group
     }
 
     /// Upload the camera view-projection matrix. Caller owns matrix

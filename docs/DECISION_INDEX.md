@@ -71,6 +71,7 @@ If you need deeper context, grep the specific `D-0xx` entry in the full log inst
 | `D-044` | Runtime HUD lives in the umbrella crate, reads existing telemetry resources, and ships off-by-default with EWMA-smoothed frame timing; the original M18 `F4` toggle later moved under `D-045`'s action map. |
 | `D-045` | Input actions map string names to `Vec<Binding>` in `tungsten-core`; load and persist through workspace-root `input.json`, hot-reload through the existing `notify` watcher, and cover keyboard, mouse buttons, wheel directions, and engine-owned controls. |
 | `D-046` | Scene/state system: single engine-owned dispatcher drives a `StateStack` + `GameState` trait; `SceneEntity { state_id }` marker auto-despawns through `CommandBuffer` on exit; `scene.json` reuses M15 components; `state_start` / `state_pause` / `state_back` action defaults ship with `ActionMap`. |
+| `D-047` | Debug tooling: `DebugDraw` is core POD drained into `QuadInstance` (AABB edges) + `DebugLineInstance` (lines/circles); overlays are independent action-toggled resources (`F1`/`F2`/`F3`), not HUD rows; screenshots render to an offscreen `RENDER_ATTACHMENT \| COPY_SRC` texture and read back via row-padded `MAP_READ` buffer; GPU debug groups + explicit wgpu labels are always-on. |
 
 ## When To Open Full `DECISIONS.md`
 

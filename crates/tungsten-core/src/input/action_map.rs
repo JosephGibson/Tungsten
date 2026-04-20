@@ -81,8 +81,9 @@ impl ActionMap {
     }
 
     /// Engine default bindings. These cover every action consumed by the
-    /// in-tree examples plus the engine-owned controls (`F4`, `F9`, `F11`,
-    /// `Escape`) so the default behaviour survives deleting `input.json`.
+    /// in-tree examples plus the engine-owned controls (`F1`, `F2`, `F3`,
+    /// `F4`, `F9`, `F11`, `Escape`) so the default behaviour survives
+    /// deleting `input.json`.
     pub fn default_map() -> Self {
         let mut actions: HashMap<String, Vec<Binding>> = HashMap::new();
         actions.insert(
@@ -179,6 +180,18 @@ impl ActionMap {
             vec![Binding::Key {
                 code: KeyCode::Digit3,
             }],
+        );
+        actions.insert(
+            "engine_toggle_physics_debug".into(),
+            vec![Binding::Key { code: KeyCode::F1 }],
+        );
+        actions.insert(
+            "engine_toggle_systems_overlay".into(),
+            vec![Binding::Key { code: KeyCode::F2 }],
+        );
+        actions.insert(
+            "engine_toggle_inspector".into(),
+            vec![Binding::Key { code: KeyCode::F3 }],
         );
         actions.insert(
             "engine_toggle_hud".into(),
@@ -616,6 +629,9 @@ mod tests {
             "volume_preset_high",
             "zoom_in",
             "zoom_out",
+            "engine_toggle_physics_debug",
+            "engine_toggle_systems_overlay",
+            "engine_toggle_inspector",
             "engine_toggle_hud",
             "engine_toggle_vsync",
             "engine_toggle_fullscreen",
