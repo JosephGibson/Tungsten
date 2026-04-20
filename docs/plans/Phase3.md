@@ -31,7 +31,7 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 
 ## Current Status
 
-- Workspace version metadata: `0.18.0`
+- Workspace version metadata: `0.19.0`
 - Current branch: `0.19`
 - Completed milestones: `M12` profiling baseline, `M13` command buffers, `M14` event queues, `M15` transform + render components, `M16` camera module, `M17` display state + config, `M18` runtime telemetry HUD, `M19` input mapping, `M20` scene/state system, `M21` debug tooling
 - Next recommended milestone: `M22 — Sprite Atlases`
@@ -108,6 +108,7 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 ### M16 - Camera Module
 
 > **Status: complete** (`v0.13.0`, `2026-04-17`)
+> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone-16-plan.md`](archive/phase3-milestone-16-plan.md).
 
 - Goal: centralize camera behavior in one engine module/class-like API instead of ad hoc example logic.
 - Design: add `CameraState` (`position`, `zoom`, `rotation`, viewport behavior), `CameraController` (follow target, dead-zone, smoothing, bounds clamp, shake), and `CameraMode` (free, follow entity, scripted); keep render integration through the existing camera math path; standardize ownership/update flow; run camera update as a normal system; write one authoritative camera state per frame; provide example-level hooks for gameplay-specific tuning without forking engine internals.

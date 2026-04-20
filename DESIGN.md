@@ -2,7 +2,7 @@
 
 ## Status
 
-Workspace `v0.18.0` on branch `0.19`. Phase 3 M21 is shipped; next recommended milestone is `M22` sprite atlases. Companion docs: [`AGENTS.md`](AGENTS.md) for operational rules, [`DECISIONS.md`](DECISIONS.md) for rationale by `D-NNN`.
+Workspace `v0.19.0` on branch `0.19`. Phase 3 M21 is shipped; next recommended milestone is `M22` sprite atlases. Companion docs: [`AGENTS.md`](AGENTS.md) for operational rules, [`DECISIONS.md`](DECISIONS.md) for rationale by `D-NNN`.
 
 ## What It Is
 

@@ -1,8 +1,8 @@
 ---
 status: done
 milestone: M21
-branch: 0.18
-version-target: 0.18.0
+branch: 0.19
+version-target: 0.19.0
 shipped-on: 2026-04-20
 depends-on: M14 complete, M15 complete, M18 complete, M19 complete
 unblocks: ship/debug quality — collider visualisation, per-system timing review, deterministic visual regression checks
@@ -116,7 +116,7 @@ Plus (scope-in for M21 after plan review):
 | `docs/LLM_INDEX.md` | add subsystem row `Debug tooling (M21)` → debug_draw / physics_debug / systems_overlay / inspector / screenshot / image_diff files; task row `Fix a debug overlay or screenshot check` → same files + `docs/DECISION_INDEX.md` for `D-047` |
 | `docs/DECISION_INDEX.md` | add `D-047` one-liner under `ECS / Runtime Flow` |
 | `DECISIONS.md` | add full `D-047` entry covering (a) `DebugDraw` lives in core as POD and crosses the seam via `QuadInstance` (AABB edges) + `DebugLineInstance` (lines, circle polylines) — no second AABB pipeline, `DebugLinePipeline` shares `QuadPipeline`'s camera bind group layout; (b) overlays are independent action-toggled resources, not `DebugHud` rows; (c) screenshot path renders the capture frame into an offscreen `RENDER_ATTACHMENT \| COPY_SRC` texture, reads back via row-padded `MAP_READ` buffer, encodes with `image::save_buffer` — swapchain is never `COPY_SRC`; (d) image-diff is per-pixel RGBA with a tolerance threshold, no perceptual metric; (e) GPU debug groups + explicit wgpu labels are always-on (no feature gate) so RenderDoc captures self-document frame structure |
-| `docs/plans/Phase3.md` | flip `M21` status to `in progress` on start; to `complete` on land with `v0.18.0` + date; link this plan once archived |
+| `docs/plans/Phase3.md` | flip `M21` status to `in progress` on start; to `complete` on land with `v0.19.0` + date; link this plan once archived |
 | `perf-runs/M21-debug-tooling/README.md` | **new** — sprite-stress 300-frame capture pair: all overlays off (baseline) vs. all overlays on; record `total_ms` mean / p95 / p99, flag any regression > 5 % |
 
 ## Public surface after M21
