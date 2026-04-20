@@ -128,7 +128,9 @@ pub fn physics_step(world: &mut World) {
     // step. We can't hold a `&mut` into `World::resources` while also
     // calling `get::<Position>` / `get_mut::<Velocity>` on entities, so
     // remove + reinsert is the pattern.
-    let mut buffers = world.remove_resource::<PhysicsBuffers>().unwrap_or_default();
+    let mut buffers = world
+        .remove_resource::<PhysicsBuffers>()
+        .unwrap_or_default();
 
     for _ in 0..substeps {
         apply_gravity_and_integrate(world, sub_dt, config.gravity, &mut buffers);
@@ -587,11 +589,16 @@ fn narrow_phase(a: &Proxy, b: &Proxy) -> Option<Contact> {
             // Helper's `a` is our b (the aabb). Its returned normal is the
             // direction the aabb escapes the circle, which is exactly the
             // opposite of the direction our `a` (the circle) needs to move.
-            aabb_vs_circle_masked(&Aabb::new(b.center, half_extents), a.center, radius, b.face_mask)
-                .map(|c| Contact {
-                    normal: -c.normal,
-                    penetration: c.penetration,
-                })
+            aabb_vs_circle_masked(
+                &Aabb::new(b.center, half_extents),
+                a.center,
+                radius,
+                b.face_mask,
+            )
+            .map(|c| Contact {
+                normal: -c.normal,
+                penetration: c.penetration,
+            })
         }
     }
 }

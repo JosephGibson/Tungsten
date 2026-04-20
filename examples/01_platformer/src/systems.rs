@@ -475,7 +475,7 @@ pub(crate) fn black_hole_force_system(world: &mut World) {
         for &hole_pos in &holes {
             let delta = hole_pos - pos.0;
             let dist_sq = delta.length_squared();
-            if dist_sq >= BLACK_HOLE_RADIUS * BLACK_HOLE_RADIUS || dist_sq < 1.0e-4 {
+            if !(1.0e-4..BLACK_HOLE_RADIUS * BLACK_HOLE_RADIUS).contains(&dist_sq) {
                 continue;
             }
             let dist = dist_sq.sqrt();
