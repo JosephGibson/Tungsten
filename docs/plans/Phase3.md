@@ -155,7 +155,7 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 ### M21 - Debug Tooling
 
 > **Status: in progress** (target `v0.18.0`)
-> Detailed implementation plan: [`docs/plans/Phase3-Milestone-21-debug-tooling.md`](Phase3-Milestone-21-debug-tooling.md).
+> Detailed implementation plan: [`docs/plans/archive/Phase3-Milestone-21-debug-tooling.md`](archive/Phase3-Milestone-21-debug-tooling.md).
 
 - Goal: ship practical debugging/profiling tools using current render primitives.
 - Note: M18 ships first and provides persistent textual telemetry; M21 focuses on geometric overlays and inspection workflows.
