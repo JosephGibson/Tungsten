@@ -2,7 +2,7 @@
 
 ## Status
 
-Workspace `v0.17.0` on branch `0.17`. Phase 3 M20 is shipped. Companion docs: [`AGENTS.md`](AGENTS.md) for operational rules, [`DECISIONS.md`](DECISIONS.md) for rationale by `D-NNN`.
+Workspace `v0.18.0` on branch `0.19`. Phase 3 M21 is shipped; next recommended milestone is `M22` sprite atlases. Companion docs: [`AGENTS.md`](AGENTS.md) for operational rules, [`DECISIONS.md`](DECISIONS.md) for rationale by `D-NNN`.
 
 ## What It Is
 
@@ -52,7 +52,7 @@ Reject crates that would hand over work this project is supposed to build. Examp
 
 ### Frame Loop
 
-Single-threaded, fixed-order, synchronous. Only the `cpal` audio callback and `notify` watcher are background threads. All game logic stays single-threaded.
+Single-threaded, fixed-order, synchronous. Only the `cpal` audio callback and `notify` watcher are background threads.
 
 ```text
 init:

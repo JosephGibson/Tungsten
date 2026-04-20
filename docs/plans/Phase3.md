@@ -31,12 +31,11 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 
 ## Current Status
 
-- Workspace version metadata: `0.17.0`
-- Current branch: `0.17`
-- Completed milestones: `M12` profiling baseline, `M13` command buffers, `M14` event queues, `M15` transform + render components, `M16` camera module, `M17` display state + config, `M18` runtime telemetry HUD, `M19` input mapping, `M20` scene/state system
+- Workspace version metadata: `0.18.0`
+- Current branch: `0.19`
+- Completed milestones: `M12` profiling baseline, `M13` command buffers, `M14` event queues, `M15` transform + render components, `M16` camera module, `M17` display state + config, `M18` runtime telemetry HUD, `M19` input mapping, `M20` scene/state system, `M21` debug tooling
 - Next recommended milestone: `M22 — Sprite Atlases`
-- In progress milestone: `M21 — Debug Tooling`
-- Archived detailed milestone plans: [M12](archive/Phase3-Milestone12-plan.md), [M13](archive/Phase3-Milestone13-plan.md), [M14](archive/Phase3-Milestone14-plan.md), [M15](archive/Phase3-Milestone15-plan.md), [M16](archive/phase3-milestone16-plan.md), [M17](archive/Phase3-Milestone17-plan.md), [M18](archive/Phase3-Milestone18-plan.md), [M19](archive/phase3-milestone19-plan.md), [M20](archive/Phase3-Milestone20-plan.md)
+- Archived detailed milestone plans: [M12](archive/phase3-milestone-12-plan.md), [M13](archive/phase3-milestone-13-plan.md), [M14](archive/phase3-milestone-14-plan.md), [M15](archive/phase3-milestone-15-plan.md), [M16](archive/phase3-milestone-16-plan.md), [M17](archive/phase3-milestone-17-plan.md), [M18](archive/phase3-milestone-18-plan.md), [M19](archive/phase3-milestone-19-plan.md), [M20](archive/phase3-milestone-20-plan.md), [M21](archive/phase3-milestone-21-debug-tooling.md)
 
 ## Execution Contract
 
@@ -89,7 +88,7 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 ### M14 - Event Queue
 
 > **Status: complete** (`v0.11.0`, `2026-04-16`)
-> Detailed implementation plan archived at [`docs/plans/archive/Phase3-Milestone14-plan.md`](archive/Phase3-Milestone14-plan.md).
+> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone-14-plan.md`](archive/phase3-milestone-14-plan.md).
 
 - Goal: replace ad hoc event resources with one typed engine pattern.
 - Design: add `EventQueue<T> { current, previous }`; `send()` appends to `current`; readers iterate `previous + current`; `flush()` rotates buffers once per frame at the same boundary as command flush; migrate `CollisionEvents` to `EventQueue<CollisionEvent>`; add `App::register_event::<T>()`.
@@ -99,7 +98,7 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 ### M15 - Transform + Render Components
 
 > **Status: complete** (`v0.12.0`, `2026-04-16`)
-> Detailed implementation plan archived at [`docs/plans/archive/Phase3-Milestone15-plan.md`](archive/Phase3-Milestone15-plan.md).
+> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone-15-plan.md`](archive/phase3-milestone-15-plan.md).
 
 - Goal: make common sprite rendering data-driven without custom extract closures.
 - Add: `Transform { position, rotation, scale }`, `Sprite { asset_id, color, z_order }`, `Visibility { visible }`, and `Tag { name }` (debug aid).
@@ -117,7 +116,7 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 ### M17 - Display State + Config
 
 > **Status: complete** (`v0.14.0`, `2026-04-17`)
-> Detailed implementation plan archived at [`docs/plans/archive/Phase3-Milestone17-plan.md`](archive/Phase3-Milestone17-plan.md).
+> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone-17-plan.md`](archive/phase3-milestone-17-plan.md).
 
 - Goal: introduce a display abstraction that owns runtime display/window settings and prepares for future settings UI.
 - Design: add core-owned `DisplayState` / `DisplayConfig`, store display settings in the workspace-root `tungsten.json` `display` section, expose runtime changes through `request_display_settings`, and apply all window/surface mutations only at the top of `RedrawRequested`; keep menu UI out of scope for Phase 3 because this milestone only establishes the data model and application path.
@@ -126,7 +125,7 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 ### M18 - Runtime Telemetry HUD
 
 > **Status: complete** (`v0.15.0`, `2026-04-18`)
-> Detailed implementation plan archived at [`docs/plans/archive/Phase3-Milestone18-plan.md`](archive/Phase3-Milestone18-plan.md).
+> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone-18-plan.md`](archive/phase3-milestone-18-plan.md).
 
 - Goal: add a lightweight in-game HUD for developers and playtesters.
 - Why early: it makes correctness and perf issues visible during normal gameplay rather than only after failures.
@@ -136,7 +135,7 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 ### M19 - Input Mapping
 
 > **Status: complete** (`v0.16.0`, `2026-04-19`)
-> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone19-plan.md`](archive/phase3-milestone19-plan.md).
+> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone-19-plan.md`](archive/phase3-milestone-19-plan.md).
 
 - Goal: replace hardcoded key checks with action-based bindings.
 - Design: add `ActionMap` loaded from optional `input.json`; keep API parity with input state through `is_pressed`, `just_pressed`, and `just_released`; add mouse buttons, cursor + wheel surfaces, live `input.json` hot reload, runtime persist writes, and engine-owned action bindings for HUD/display/exit controls.
@@ -145,7 +144,7 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 ### M20 - Scene/State System
 
 > **Status: complete** (`v0.17.0`, `2026-04-20`)
-> Detailed implementation plan archived at [`docs/plans/archive/Phase3-Milestone20-plan.md`](archive/Phase3-Milestone20-plan.md).
+> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone-20-plan.md`](archive/phase3-milestone-20-plan.md).
 
 - Goal: support `MainMenu -> Gameplay -> Pause -> Gameplay` style flow without manual world-reset logic.
 - Design: add a `GameState` trait with `on_enter`, `on_exit`, and state-scoped systems; add `StateStack` with deferred `push` / `pop` / `replace`; tag scene-owned entities and clean them on exit; add a minimal `scene.json` for data-driven scene entity spawn.
@@ -154,8 +153,8 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 
 ### M21 - Debug Tooling
 
-> **Status: in progress** (target `v0.18.0`)
-> Detailed implementation plan: [`docs/plans/archive/Phase3-Milestone-21-debug-tooling.md`](archive/Phase3-Milestone-21-debug-tooling.md).
+> **Status: complete** (`v0.18.0`, `2026-04-20`)
+> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone-21-debug-tooling.md`](archive/phase3-milestone-21-debug-tooling.md).
 
 - Goal: ship practical debugging/profiling tools using current render primitives.
 - Note: M18 ships first and provides persistent textual telemetry; M21 focuses on geometric overlays and inspection workflows.
@@ -207,7 +206,7 @@ Close each milestone only after:
 
 - [x] Multi-screen game loop (`menu` / `gameplay` / `pause`) ships without custom extract plumbing
 - [ ] Runtime spawn/despawn and event flows work without `&mut World` iteration hazards
-- [ ] Debug overlays are one-key-toggle in at least one representative example
+- [x] Debug overlays are one-key-toggle in at least one representative example
 - [ ] Performance baseline and profiling workflow exist before major feature milestones
 - [x] Camera module owns camera behavior for at least one representative gameplay example
 - [x] Display state/config layer is active and future settings-menu-ready

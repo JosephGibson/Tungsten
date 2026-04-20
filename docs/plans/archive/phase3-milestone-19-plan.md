@@ -57,7 +57,7 @@ unblocks: M20 (scene/state), future settings menu, ergonomic rebinding in M21+ e
 9. `crates/tungsten/src/asset_loader.rs` (reload entry-point pattern: `reload_manifest`, `reload_sprite`, etc.)
 10. `examples/01_platformer/src/systems.rs` (raw `is_pressed` / `just_pressed` call sites to migrate)
 11. `examples/01_platformer/src/main.rs` (header `Controls:` block to update)
-12. `docs/plans/archive/Phase3-Milestone18-plan.md` (format precedent)
+12. `docs/plans/archive/phase3-milestone-18-plan.md` (format precedent)
 13. `DECISIONS.md` via `rg "D-007|D-008|D-015|D-022|D-031|D-043|D-044" DECISIONS.md`
 
 ## External references (for the future iterating pass)

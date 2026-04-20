@@ -484,8 +484,8 @@ Run in this order:
    against the previous run under the same machine/profile; record deltas.
 7. If any bench breaks `<= 10%` regression on a steady-state runtime bench,
    either fix before close or add a `D-0xx` entry with rationale.
-8. Archive this plan: `git mv docs/plans/Phase3-Milestone15-plan.md
-   docs/plans/archive/Phase3-Milestone15-plan.md` and flip `status: done`.
+8. Archive this plan: `git mv docs/plans/phase3-milestone-15-plan.md
+   docs/plans/archive/phase3-milestone-15-plan.md` and flip `status: done`.
 9. Bump workspace version `0.11.0 → 0.12.0` in the root `Cargo.toml`
    `[workspace.package]` block. Update `AGENTS.md` status line.
 
