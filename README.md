@@ -16,7 +16,7 @@ Hand-rolled ECS with archetypal storage, deferred command buffers, and typed eve
 - `SceneEntity { state_id }` marker auto-despawns scene-owned entities through the `CommandBuffer` when a state exits, inheriting the M13 frame-boundary visibility rules
 - `scene.json` reuses the M15 `Transform` / `Sprite` / `Visibility` / `Tag` components; `asset_loader::spawn_scene` spawns every entry through the command buffer
 - `ActionMap::default_map()` now ships `state_start` (`Enter`), `state_pause` (`KeyP`), and `state_back` (`Backspace`) so the new example flow works out-of-the-box without editing `input.json`
-- New `example-04-scene-state` demonstrates the `MainMenu → Gameplay → Pause → Gameplay` loop and the data-driven `scene.json` spawn path end-to-end
+- New `example-03-scene-state` demonstrates the `MainMenu → Gameplay → Pause → Gameplay` loop and the data-driven `scene.json` spawn path end-to-end
 
 ## Documents
 
@@ -37,8 +37,7 @@ cargo build --workspace
 cargo test --workspace
 cargo run -p example-01-platformer      # comprehensive engine demo
 cargo run -p example-02-sprite-stress   # canonical perf stress scene
-cargo run -p example-03-component-sprites
-cargo run -p example-04-scene-state
+cargo run -p example-03-scene-state
 ```
 
 Reproducible Linux perf capture:

@@ -1,19 +1,26 @@
-//! States for example 04: `MainMenuState`, `GameplayState`, `PauseState`.
+//! States for example 03: `MainMenuState`, `GameplayState`, `PauseState`.
 //!
-//! Each state is visualised by a sprite quad so the default sprite extract
-//! path renders the scene without custom extract plumbing.
+//! `MainMenuState` spawns a rotating ring of decorator quads so the idle
+//! screen has motion. `GameplayState` delegates to `asset_loader::spawn_scene`
+//! with the bundled `scene.json` (1 central hub + three orbital rings).
+//! `PauseState` overlays a full-screen dim quad — because `push` fires
+//! `on_pause` (not `on_exit`), the gameplay scene stays alive beneath it and
+//! its orbit system stops running thanks to the top-state gate in `main.rs`.
 
-use std::path::PathBuf;
+use std::path::Path;
 
 use glam::Vec2;
 
-use tungsten::asset_loader;
-use tungsten::core::{
-    ActionMap, CommandBuffer, InputState, SceneData, Sprite, Tag, Transform, Visibility,
-};
-use tungsten::{GameState, SceneEntity, StateContext, StateId, StateStack};
+use tungsten::core::{ActionMap, InputState, SceneData, World};
+use tungsten::core::{CommandBuffer, Sprite, Tag, Transform, Visibility};
+use tungsten::{asset_loader, GameState, SceneEntity, StateContext, StateId, StateStack};
 
-const QUAD_ID: &str = "ex04_quad";
+use crate::{QUAD_ID, SPRITE_HALF, VIEW_CENTER};
+
+const SCENE_PATH: &str = "examples/03_scene_state/assets/scene.json";
+const MENU_DECORATION_COUNT: usize = 16;
+const MENU_DECORATION_RADIUS: f32 = 300.0;
+const MENU_DECORATION_SCALE: f32 = 1.5;
 
 #[derive(Default)]
 pub struct MainMenuState;
@@ -24,47 +31,30 @@ impl GameState for MainMenuState {
     }
 
     fn on_enter(&mut self, ctx: &mut StateContext) {
-        let buf = ctx
-            .world
-            .get_resource_mut::<CommandBuffer>()
-            .expect("CommandBuffer resource missing");
-        let e = buf.spawn();
-        buf.insert_pending(e, Transform::from_position(Vec2::ZERO));
-        buf.insert_pending(
-            e,
-            Sprite {
-                asset_id: QUAD_ID.into(),
-                color: [200, 80, 80, 255],
-                z_order: 0,
-            },
-        );
-        buf.insert_pending(e, Visibility { visible: true });
-        buf.insert_pending(e, Tag::new("menu_marker"));
-        buf.insert_pending(e, SceneEntity { state_id: "menu" });
+        if let Some(clock) = ctx.world.get_resource_mut::<crate::MenuClock>() {
+            clock.0 = 0.0;
+        }
+        spawn_menu_decorations(ctx.world);
     }
 
     fn on_exit(&mut self, _ctx: &mut StateContext) {}
 
-    fn update(&mut self, world: &mut tungsten::core::World) {
+    fn update(&mut self, world: &mut World) {
         if action_just_pressed(world, "state_start") {
             if let Some(stack) = world.get_resource_mut::<StateStack>() {
-                stack.request_replace(GameplayState::new(
-                    "examples/04_scene_state/assets/scene.json",
-                ));
+                stack.request_replace(GameplayState::new(SCENE_PATH));
             }
         }
     }
 }
 
 pub struct GameplayState {
-    scene_path: PathBuf,
+    scene_path: &'static str,
 }
 
 impl GameplayState {
-    pub fn new(path: impl Into<PathBuf>) -> Self {
-        Self {
-            scene_path: path.into(),
-        }
+    pub fn new(path: &'static str) -> Self {
+        Self { scene_path: path }
     }
 }
 
@@ -74,13 +64,21 @@ impl GameState for GameplayState {
     }
 
     fn on_enter(&mut self, ctx: &mut StateContext) {
-        let scene = SceneData::load(&self.scene_path).expect("scene.json missing or invalid");
+        if let Some(clock) = ctx.world.get_resource_mut::<crate::GameplayClock>() {
+            clock.0 = 0.0;
+        }
+        let scene =
+            SceneData::load(Path::new(self.scene_path)).expect("scene.json missing or invalid");
         asset_loader::spawn_scene(ctx.world, &scene, "gameplay");
     }
 
     fn on_exit(&mut self, _ctx: &mut StateContext) {}
 
-    fn update(&mut self, world: &mut tungsten::core::World) {
+    fn on_pause(&mut self, _ctx: &mut StateContext) {}
+
+    fn on_resume(&mut self, _ctx: &mut StateContext) {}
+
+    fn update(&mut self, world: &mut World) {
         if action_just_pressed(world, "state_pause") {
             if let Some(stack) = world.get_resource_mut::<StateStack>() {
                 stack.request_push(PauseState);
@@ -102,37 +100,118 @@ impl GameState for PauseState {
     }
 
     fn on_enter(&mut self, ctx: &mut StateContext) {
-        let buf = ctx
-            .world
-            .get_resource_mut::<CommandBuffer>()
-            .expect("CommandBuffer resource missing");
-        let e = buf.spawn();
-        buf.insert_pending(e, Transform::from_position(Vec2::new(0.0, -40.0)));
-        buf.insert_pending(
-            e,
-            Sprite {
-                asset_id: QUAD_ID.into(),
-                color: [40, 40, 40, 200],
-                z_order: 100,
-            },
-        );
-        buf.insert_pending(e, Visibility { visible: true });
-        buf.insert_pending(e, Tag::new("pause_overlay"));
-        buf.insert_pending(e, SceneEntity { state_id: "pause" });
+        spawn_pause_overlay(ctx.world);
     }
 
     fn on_exit(&mut self, _ctx: &mut StateContext) {}
 
-    fn update(&mut self, world: &mut tungsten::core::World) {
+    fn update(&mut self, world: &mut World) {
         if action_just_pressed(world, "state_pause") {
             if let Some(stack) = world.get_resource_mut::<StateStack>() {
                 stack.request_pop();
+            }
+        } else if action_just_pressed(world, "state_back") {
+            if let Some(stack) = world.get_resource_mut::<StateStack>() {
+                stack.request_replace(MainMenuState);
             }
         }
     }
 }
 
-fn action_just_pressed(world: &tungsten::core::World, action: &str) -> bool {
+fn spawn_menu_decorations(world: &mut World) {
+    let buf = world
+        .get_resource_mut::<CommandBuffer>()
+        .expect("CommandBuffer resource missing");
+    let half = Vec2::splat(MENU_DECORATION_SCALE * SPRITE_HALF);
+
+    for i in 0..MENU_DECORATION_COUNT {
+        let theta = (i as f32 / MENU_DECORATION_COUNT as f32) * std::f32::consts::TAU;
+        let ring_center =
+            VIEW_CENTER + Vec2::new(theta.cos(), theta.sin()) * MENU_DECORATION_RADIUS;
+        let hue = i as f32 / MENU_DECORATION_COUNT as f32;
+        let color = menu_palette(hue);
+
+        let entity = buf.spawn();
+        buf.insert_pending(
+            entity,
+            Transform {
+                position: ring_center - half,
+                rotation: theta,
+                scale: Vec2::splat(MENU_DECORATION_SCALE),
+            },
+        );
+        buf.insert_pending(
+            entity,
+            Sprite {
+                asset_id: QUAD_ID.into(),
+                color,
+                z_order: 2,
+            },
+        );
+        buf.insert_pending(entity, Visibility { visible: true });
+        buf.insert_pending(entity, Tag::new("menu_decoration"));
+        buf.insert_pending(entity, SceneEntity { state_id: "menu" });
+    }
+}
+
+fn spawn_pause_overlay(world: &mut World) {
+    let buf = world
+        .get_resource_mut::<CommandBuffer>()
+        .expect("CommandBuffer resource missing");
+
+    let dim = buf.spawn();
+    buf.insert_pending(
+        dim,
+        Transform {
+            position: Vec2::ZERO,
+            rotation: 0.0,
+            scale: Vec2::new(80.0, 45.0),
+        },
+    );
+    buf.insert_pending(
+        dim,
+        Sprite {
+            asset_id: QUAD_ID.into(),
+            color: [6, 10, 20, 170],
+            z_order: 500,
+        },
+    );
+    buf.insert_pending(dim, Visibility { visible: true });
+    buf.insert_pending(dim, Tag::new("pause_dim"));
+    buf.insert_pending(dim, SceneEntity { state_id: "pause" });
+
+    let banner = buf.spawn();
+    let banner_half = Vec2::new(24.0 * SPRITE_HALF, 6.0 * SPRITE_HALF);
+    buf.insert_pending(
+        banner,
+        Transform {
+            position: VIEW_CENTER - banner_half,
+            rotation: 0.0,
+            scale: Vec2::new(24.0, 6.0),
+        },
+    );
+    buf.insert_pending(
+        banner,
+        Sprite {
+            asset_id: QUAD_ID.into(),
+            color: [28, 36, 60, 220],
+            z_order: 510,
+        },
+    );
+    buf.insert_pending(banner, Visibility { visible: true });
+    buf.insert_pending(banner, Tag::new("pause_banner"));
+    buf.insert_pending(banner, SceneEntity { state_id: "pause" });
+}
+
+fn menu_palette(t: f32) -> [u8; 4] {
+    let tau = std::f32::consts::TAU;
+    let r = ((t * tau).sin() * 0.5 + 0.5) * 140.0 + 100.0;
+    let g = ((t * tau + 2.1).sin() * 0.5 + 0.5) * 160.0 + 80.0;
+    let b = ((t * tau + 4.2).sin() * 0.5 + 0.5) * 180.0 + 75.0;
+    [r as u8, g as u8, b as u8, 240]
+}
+
+fn action_just_pressed(world: &World, action: &str) -> bool {
     let Some(input) = world.get_resource::<InputState>() else {
         return false;
     };

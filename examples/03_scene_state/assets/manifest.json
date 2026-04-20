@@ -1,5 +1,5 @@
 {
   "sprites": {
-    "ex04_quad": { "path": "quad.png", "filter": "nearest" }
+    "ex03_quad": { "path": "quad.png", "filter": "nearest" }
   }
 }

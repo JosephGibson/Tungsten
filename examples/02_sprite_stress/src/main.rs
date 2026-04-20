@@ -2,7 +2,7 @@
 //!
 //! Two scene modes live under the same package:
 //!   - `baseline` (default): the original M12 sine-wave sprite scene
-//!   - `ecs-high-load`: a 20k-entity ECS + render + camera stress scene
+//!   - `ecs-high-load`: a 50k-entity ECS + render + camera stress scene
 //!
 //! Env vars:
 //!   - `STRESS_SCENE=baseline|ecs-high-load`
@@ -35,7 +35,7 @@ use tungsten_core::physics::SpatialGrid;
 
 const MANIFEST_ROOT: &str = "assets/manifest.json";
 const DEFAULT_SPRITE_COUNT: usize = 2_000;
-const DEFAULT_HIGH_LOAD_COUNT: usize = 20_000;
+const DEFAULT_HIGH_LOAD_COUNT: usize = 50_000;
 const BASELINE_SPRITE_SIZE: f32 = 16.0;
 const BASELINE_PLACEHOLDER_HANDLE: TextureHandle = TextureHandle(0);
 const LOG_INTERVAL: u32 = 60;
@@ -281,15 +281,19 @@ fn extract_baseline_sprites(world: &World) -> Vec<SpriteBatch> {
         None => return Vec::new(),
     };
 
-    let color = rgb_wheel_color(state.elapsed);
+    let time = state.elapsed;
     let instances: Vec<SpriteInstance> = state
         .sprites
         .iter()
-        .map(|sprite| SpriteInstance {
-            position: [sprite.base_x, sprite.base_y + sprite.y_offset],
-            size: [BASELINE_SPRITE_SIZE, BASELINE_SPRITE_SIZE],
-            rotation: 0.0,
-            color,
+        .map(|sprite| {
+            let pulse = 1.0 + 0.25 * (time * 2.0 + sprite.phase).sin();
+            let size = BASELINE_SPRITE_SIZE * pulse;
+            SpriteInstance {
+                position: [sprite.base_x, sprite.base_y + sprite.y_offset],
+                size: [size, size],
+                rotation: time * 0.5 + sprite.phase,
+                color: rgb_wheel_color(time, sprite.phase),
+            }
         })
         .collect();
 
@@ -416,8 +420,8 @@ fn configure_high_load_camera(world: &mut World, leader: tungsten::core::Entity)
             max: Vec2::new(HIGH_LOAD_WORLD_WIDTH, HIGH_LOAD_WORLD_HEIGHT),
         });
         controller.zoom_multiplier = 1.0;
-        controller.shake_amplitude = Vec2::ZERO;
-        controller.shake_frequency_hz = 0.0;
+        controller.shake_amplitude = Vec2::new(3.0, 2.0);
+        controller.shake_frequency_hz = 4.0;
         controller.shake_phase = 0.0;
     }
 }
@@ -660,19 +664,22 @@ fn tint_agents_system(world: &mut World) {
         state.elapsed += dt;
         state.elapsed
     };
-    let color = rgb_wheel_color(elapsed);
-    let entities = world.query_entities::<Sprite>();
+    let entities = world.query2_entities::<StressAgent, Sprite>();
     for entity in entities {
+        let Some(tint_seed) = world.get::<StressAgent>(entity).map(|a| a.tint_seed) else {
+            continue;
+        };
+        let color = rgb_wheel_color(elapsed, tint_seed * std::f32::consts::TAU);
         if let Some(sprite) = world.get_mut::<Sprite>(entity) {
             sprite.color = color;
         }
     }
 }
 
-fn rgb_wheel_color(time: f32) -> [u8; 4] {
-    let r = ((time * 0.9).sin() * 0.5 + 0.5) * 255.0;
-    let g = ((time * 1.1 + 2.1).sin() * 0.5 + 0.5) * 255.0;
-    let b = ((time * 1.3 + 4.2).sin() * 0.5 + 0.5) * 255.0;
+fn rgb_wheel_color(time: f32, phase: f32) -> [u8; 4] {
+    let r = ((time * 0.9 + phase).sin() * 0.5 + 0.5) * 255.0;
+    let g = ((time * 1.1 + phase + 2.1).sin() * 0.5 + 0.5) * 255.0;
+    let b = ((time * 1.3 + phase + 4.2).sin() * 0.5 + 0.5) * 255.0;
     [r as u8, g as u8, b as u8, 255]
 }
 
@@ -903,7 +910,7 @@ mod tests {
     }
 
     #[test]
-    fn high_load_mode_defaults_to_twenty_thousand_entities() {
+    fn high_load_mode_defaults_to_configured_count() {
         assert_eq!(
             resolve_count(StressScene::EcsHighLoad, None),
             DEFAULT_HIGH_LOAD_COUNT

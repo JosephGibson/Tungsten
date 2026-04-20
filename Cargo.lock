@@ -829,20 +829,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "example-03-component-sprites"
-version = "0.17.0"
-dependencies = [
- "anyhow",
- "env_logger",
- "glam",
- "log",
- "tungsten",
- "tungsten-core",
- "tungsten-render",
-]
-
-[[package]]
-name = "example-04-scene-state"
+name = "example-03-scene-state"
 version = "0.17.0"
 dependencies = [
  "anyhow",
