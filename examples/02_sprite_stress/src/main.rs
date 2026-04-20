@@ -29,7 +29,10 @@ use tungsten::core::{
     RigidBody, Sprite, Transform, Velocity, Visibility, World,
 };
 use tungsten::render::{GpuFrameTimings, SpriteBatch, SpriteInstance, TextSection};
-use tungsten::{asset_loader, camera_update_system, App, FrameTimings, WindowSize};
+use tungsten::{
+    asset_loader, camera_update_system, App, FrameTimings, InspectorState, PhysicsDebugOverlay,
+    SystemTimingOverlay, WindowSize,
+};
 use tungsten_core::assets::TextureHandle;
 use tungsten_core::physics::SpatialGrid;
 
@@ -179,7 +182,42 @@ fn main() -> anyhow::Result<()> {
         StressScene::EcsHighLoad => configure_high_load_scene(&mut app, options.count),
     }
 
+    apply_overlay_env(&mut app);
+
     app.run()
+}
+
+/// Flips matching overlay resources `.enabled = true` based on the
+/// comma-separated `TUNGSTEN_OVERLAYS_ON` env var. Supported tokens:
+/// `physics`, `systems`, `inspector`. Unknown tokens are ignored so perf
+/// captures can tolerate typos without failing.
+fn apply_overlay_env(app: &mut App) {
+    let Ok(raw) = std::env::var("TUNGSTEN_OVERLAYS_ON") else {
+        return;
+    };
+    let world = app.world_mut();
+    for token in raw.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        match token {
+            "physics" => {
+                if let Some(overlay) = world.get_resource_mut::<PhysicsDebugOverlay>() {
+                    overlay.enabled = true;
+                }
+            }
+            "systems" => {
+                if let Some(overlay) = world.get_resource_mut::<SystemTimingOverlay>() {
+                    overlay.enabled = true;
+                }
+            }
+            "inspector" => {
+                if let Some(state) = world.get_resource_mut::<InspectorState>() {
+                    state.enabled = true;
+                }
+            }
+            other => {
+                log::warn!("TUNGSTEN_OVERLAYS_ON: ignoring unknown token '{other}'");
+            }
+        }
+    }
 }
 
 fn configure_baseline_scene(app: &mut App, sprite_count: usize) {

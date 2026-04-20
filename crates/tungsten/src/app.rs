@@ -13,15 +13,27 @@ use crate::display::{
 };
 use crate::hot_reload::HotReloadWatcher;
 use crate::input_bridge;
+use crate::inspector::{
+    compose_inspector_text_section, inspector_pick_system, inspector_toggle_system, InspectorState,
+};
+use crate::physics_debug::{
+    physics_debug_emit_system, physics_debug_toggle_system, PhysicsDebugOverlay,
+};
 use crate::state::{state_dispatcher_system, StateStack};
+use crate::systems_overlay::{
+    compose_systems_overlay_text_section, systems_overlay_toggle_system, SystemTimingOverlay,
+};
 use crate::telemetry::{DisplayTelemetry, FrameTimings, RenderCounts};
 use tungsten_core::assets::{AnimationRegistry, FontRegistry, SoundRegistry, TilemapRegistry};
 use tungsten_core::physics::{CollisionEvent, PhysicsConfig};
 use tungsten_core::{
     ActionMap, AssetRegistry, AudioCommands, CameraController, CameraState, CommandBuffer, Config,
-    DeltaTime, DisplayMode, DisplayState, EventQueue, InputState, World,
+    DebugDraw, DebugShape, DeltaTime, DisplayMode, DisplayState, EventQueue, InputState,
+    Inspectable, World,
 };
-use tungsten_render::{GpuFrameTimings, QuadInstance, Renderer, SpriteBatch, TextSection};
+use tungsten_render::{
+    DebugLineInstance, GpuFrameTimings, QuadInstance, Renderer, SpriteBatch, TextSection,
+};
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
@@ -99,6 +111,22 @@ pub struct App {
     registered_event_types: HashSet<TypeId>,
     /// Optional frame pacing budget derived from `DisplayState.frame_rate_cap`.
     frame_budget: Option<Duration>,
+    /// Screenshot capture wiring driven by `TUNGSTEN_CAPTURE_FRAME` /
+    /// `TUNGSTEN_CAPTURE_PATH`. `None` unless the env var is set.
+    capture_config: Option<CaptureConfig>,
+    /// Monotonic rendered-frame counter; only incremented after a successful
+    /// `render_frame_full[_timed]` call so capture targets an actually-drawn
+    /// frame rather than an early-exit frame.
+    frames_rendered: u64,
+}
+
+/// Resolved `TUNGSTEN_CAPTURE_FRAME` / `TUNGSTEN_CAPTURE_PATH` config. One-shot
+/// screenshot hook: once `captured` flips true the hook never fires again.
+#[derive(Debug, Clone)]
+struct CaptureConfig {
+    target_frame: u64,
+    path: PathBuf,
+    captured: bool,
 }
 
 impl App {
@@ -148,6 +176,10 @@ impl App {
         world.insert_resource(StateStack::new());
         world.insert_resource(HudActiveState::default());
         world.insert_resource(RenderCounts::default());
+        world.insert_resource(DebugDraw::new());
+        world.insert_resource(PhysicsDebugOverlay::default());
+        world.insert_resource(SystemTimingOverlay::default());
+        world.insert_resource(InspectorState::new_with_defaults());
         let mut event_flushers: Vec<EventFlusher> = Vec::new();
         let mut registered_event_types = HashSet::new();
         Self::register_event_inner::<CollisionEvent>(
@@ -182,15 +214,32 @@ impl App {
             event_flushers,
             registered_event_types,
             frame_budget: frame_budget_for(resolved_display.frame_rate_cap),
+            capture_config: parse_capture_config(),
+            frames_rendered: 0,
         };
 
         // Register engine-owned action consumers before user systems so they
-        // observe edge-triggered input deterministically every frame.
+        // observe edge-triggered input deterministically every frame. Debug
+        // overlays toggle first so a single input frame carrying F1/F2/F3
+        // alongside F4 resolves all four edges consistently.
+        app.add_engine_system("__physics_debug_toggle", physics_debug_toggle_system);
+        app.add_engine_system("__systems_overlay_toggle", systems_overlay_toggle_system);
+        app.add_engine_system("__inspector_toggle", inspector_toggle_system);
+        app.add_engine_system("__inspector_pick", inspector_pick_system);
         app.add_engine_system("__hud_toggle", hud_toggle_system);
         app.add_engine_system("__display_input", engine_display_input_system);
         app.add_engine_system("__state_dispatcher", state_dispatcher_system);
 
         Ok(app)
+    }
+
+    /// Register a component type with the inspector so it contributes rows
+    /// when the entity carrying it is selected. The `label` appears in the
+    /// overlay as a heading above the component's rows.
+    pub fn register_inspectable<T: 'static + Inspectable>(&mut self, label: &'static str) {
+        if let Some(state) = self.world.get_resource_mut::<InspectorState>() {
+            state.register::<T>(label);
+        }
     }
 
     /// Register an engine-owned system at the current end of the system list
@@ -559,13 +608,119 @@ fn load_action_map_at_startup(path: &Path) -> anyhow::Result<ActionMap> {
 }
 
 fn resolve_startup_display(config: &Config) -> DisplayState {
-    let resolved = config.display.resolve(&config.window, &config.render);
+    let mut resolved = config.display.resolve(&config.window, &config.render);
+    if let Some((w, h)) = parse_capture_resolution() {
+        resolved.resolution.width = w;
+        resolved.resolution.height = h;
+    }
     match resolved.validate() {
         Ok(()) => resolved,
         Err(err) => {
             log::warn!("Resolved display settings are invalid ({err}); using engine defaults");
             DisplayState::default()
         }
+    }
+}
+
+/// Parse the `TUNGSTEN_CAPTURE_RESOLUTION=WxH` env var. Returns `None` when
+/// unset or malformed so visual-regression fixtures can pin a resolution
+/// without touching `tungsten.json`.
+fn parse_capture_resolution() -> Option<(u32, u32)> {
+    let raw = std::env::var("TUNGSTEN_CAPTURE_RESOLUTION").ok()?;
+    let (w, h) = raw.split_once('x')?;
+    let w: u32 = w.trim().parse().ok()?;
+    let h: u32 = h.trim().parse().ok()?;
+    if w == 0 || h == 0 {
+        return None;
+    }
+    Some((w, h))
+}
+
+/// Parse the `TUNGSTEN_CAPTURE_FRAME` / `TUNGSTEN_CAPTURE_PATH` pair. The
+/// frame number is required; the path defaults to `./actual.png`.
+fn parse_capture_config() -> Option<CaptureConfig> {
+    let target_frame: u64 = std::env::var("TUNGSTEN_CAPTURE_FRAME").ok()?.parse().ok()?;
+    if target_frame == 0 {
+        return None;
+    }
+    let path = std::env::var("TUNGSTEN_CAPTURE_PATH")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("actual.png"));
+    Some(CaptureConfig {
+        target_frame,
+        path,
+        captured: false,
+    })
+}
+
+/// Expand an AABB outline into four thin axis-aligned edge quads. Edges are
+/// inset by `thickness / 2` so the outline tracks the AABB interior rather
+/// than ballooning outward for large thicknesses.
+fn expand_aabb(
+    out: &mut Vec<QuadInstance>,
+    min: glam::Vec2,
+    max: glam::Vec2,
+    color: [f32; 4],
+    thickness: f32,
+) {
+    let t = thickness.max(0.0);
+    let w = (max.x - min.x).max(0.0);
+    let h = (max.y - min.y).max(0.0);
+    // Top
+    out.push(QuadInstance {
+        position: [min.x, min.y],
+        size: [w, t],
+        color,
+    });
+    // Bottom
+    out.push(QuadInstance {
+        position: [min.x, (max.y - t).max(min.y)],
+        size: [w, t],
+        color,
+    });
+    // Left
+    out.push(QuadInstance {
+        position: [min.x, min.y],
+        size: [t, h],
+        color,
+    });
+    // Right
+    out.push(QuadInstance {
+        position: [(max.x - t).max(min.x), min.y],
+        size: [t, h],
+        color,
+    });
+}
+
+/// Expand a circle command into a closed polyline of `segments` line
+/// instances. Degenerate cases (`radius <= 0` or `segments == 0`) emit
+/// nothing so downstream pipelines short-circuit on empty slices.
+fn expand_circle(
+    out: &mut Vec<DebugLineInstance>,
+    center: glam::Vec2,
+    radius: f32,
+    segments: u16,
+    color: [f32; 4],
+    thickness: f32,
+) {
+    if radius <= 0.0 || segments == 0 {
+        return;
+    }
+    let two_pi = std::f32::consts::TAU;
+    let step = two_pi / segments as f32;
+    let mut prev = center + glam::Vec2::new(radius, 0.0);
+    for i in 1..=segments {
+        let t = i as f32 * step;
+        let (sin, cos) = t.sin_cos();
+        let next = center + glam::Vec2::new(cos * radius, sin * radius);
+        out.push(DebugLineInstance {
+            a: prev.to_array(),
+            b: next.to_array(),
+            thickness,
+            _pad: 0.0,
+            color,
+        });
+        prev = next;
     }
 }
 
@@ -867,6 +1022,49 @@ impl ApplicationHandler for App {
                     rc.sprite_instances = sprite_instance_count;
                 }
 
+                // Physics debug emits into DebugDraw at the start of extract
+                // so the drain below sees this frame's commands on the same
+                // frame they were produced.
+                physics_debug_emit_system(&mut self.world);
+
+                // Drain DebugDraw into the two render channels. AABB edges
+                // reuse QuadPipeline; arbitrary-angle lines + circle polylines
+                // use DebugLinePipeline.
+                let mut debug_quads: Vec<QuadInstance> = Vec::new();
+                let mut debug_lines: Vec<DebugLineInstance> = Vec::new();
+                if let Some(dd) = self.world.get_resource_mut::<DebugDraw>() {
+                    for cmd in dd.drain() {
+                        match cmd.shape {
+                            DebugShape::Aabb { min, max } => {
+                                expand_aabb(&mut debug_quads, min, max, cmd.color, cmd.thickness);
+                            }
+                            DebugShape::Circle {
+                                center,
+                                radius,
+                                segments,
+                            } => {
+                                expand_circle(
+                                    &mut debug_lines,
+                                    center,
+                                    radius,
+                                    segments,
+                                    cmd.color,
+                                    cmd.thickness,
+                                );
+                            }
+                            DebugShape::Line { a, b } => {
+                                debug_lines.push(DebugLineInstance {
+                                    a: a.to_array(),
+                                    b: b.to_array(),
+                                    thickness: cmd.thickness,
+                                    _pad: 0.0,
+                                    color: cmd.color,
+                                });
+                            }
+                        }
+                    }
+                }
+
                 // HUD compose. Temporarily remove the resource so providers
                 // can hold `&World` while the helper holds `&mut DebugHud`.
                 let viewport = self
@@ -879,6 +1077,29 @@ impl ApplicationHandler for App {
                         compose_hud_text_sections(&mut hud, &self.world, viewport, prev_total_ms);
                     self.world.insert_resource(hud);
                     text.extend(hud_sections);
+                }
+
+                // Systems-timing overlay compose. Same borrow dance as the
+                // HUD so the helper can read FrameTimings without fighting
+                // the resource borrow.
+                if let Some(mut overlay) = self.world.remove_resource::<SystemTimingOverlay>() {
+                    let sections = compose_systems_overlay_text_section(
+                        &mut overlay,
+                        &self.world,
+                        viewport,
+                        prev_total_ms,
+                    );
+                    self.world.insert_resource(overlay);
+                    text.extend(sections);
+                }
+
+                // Inspector compose. Inspector is read-only during compose, so
+                // the borrow dance is only required because `compose` takes
+                // `&InspectorState` while the iterated registry needs `&World`.
+                if let Some(state) = self.world.remove_resource::<InspectorState>() {
+                    let sections = compose_inspector_text_section(&state, &self.world, viewport);
+                    self.world.insert_resource(state);
+                    text.extend(sections);
                 }
                 let extract_ms = extract_start.elapsed().as_secs_f64() as f32 * 1000.0;
 
@@ -899,13 +1120,53 @@ impl ApplicationHandler for App {
                         .copied()
                         .unwrap_or_default()
                         .view_projection(vw, vh);
+                    // Screenshot capture hook: arm the renderer for the
+                    // target frame so the offscreen readback runs on the same
+                    // frame we count below.
+                    if let Some(cfg) = self.capture_config.as_mut() {
+                        if !cfg.captured && self.frames_rendered + 1 == cfg.target_frame {
+                            if let Err(e) = renderer.capture_frame(&cfg.path) {
+                                log::warn!(
+                                    "capture_frame({}) failed to arm: {e}",
+                                    cfg.path.display()
+                                );
+                            }
+                        }
+                    }
+
                     let result = if self.gpu_timing_enabled {
-                        renderer.render_frame_full_timed(&view_proj, &quads, &sprites, &text)
+                        renderer.render_frame_full_timed(
+                            &view_proj,
+                            &quads,
+                            &sprites,
+                            &debug_quads,
+                            &debug_lines,
+                            &text,
+                        )
                     } else {
-                        renderer.render_frame_full(&view_proj, &quads, &sprites, &text)
+                        renderer.render_frame_full(
+                            &view_proj,
+                            &quads,
+                            &sprites,
+                            &debug_quads,
+                            &debug_lines,
+                            &text,
+                        )
                     };
                     if let Err(e) = result {
                         log::error!("Render error: {e}");
+                    } else {
+                        self.frames_rendered = self.frames_rendered.saturating_add(1);
+                        if let Some(cfg) = self.capture_config.as_mut() {
+                            if !cfg.captured && self.frames_rendered == cfg.target_frame {
+                                cfg.captured = true;
+                                log::info!(
+                                    "captured frame {} -> {}",
+                                    cfg.target_frame,
+                                    cfg.path.display()
+                                );
+                            }
+                        }
                     }
                     render_acquire_ms = renderer.cpu_timings.acquire_ms;
                     render_encode_ms = renderer.cpu_timings.encode_ms;

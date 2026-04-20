@@ -4,6 +4,27 @@ Records all notable project changes.
 
 Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+Targeting `0.18.0` on branch `0.18`. Phase 3 Milestone 21 — debug tooling. Code-complete; still owed before release: reference-machine baseline PNG, overlays-off vs. overlays-on perf numbers, RenderDoc label check.
+
+### Added
+
+- **Core debug primitives (`tungsten_core`):** `DebugDraw`, `DebugShape::{Aabb, Circle, Line}`, `DebugCommand`, and `DEFAULT_CIRCLE_SEGMENTS` ship as pure POD in `crates/tungsten-core/src/debug_draw.rs`. `Inspectable` (`crates/tungsten-core/src/inspect.rs`) is a trait with blanket impls for `Tag`, `Transform`, `Visibility`, `Position`, `Velocity`, and `Sprite`. `KeyCode::{F1, F2, F3}` are new variants and round-trip through the input bridge and `key_serde` tables.
+- **Engine overlays (`tungsten`):** `PhysicsDebugOverlay` (`F1`), `SystemTimingOverlay` (`F2`, EWMA-smoothed per-system timings sourced from `FrameTimings`), and `InspectorState` (`F3`, LMB pick + registered `Inspectable` row renderers) ship as independent action-toggled resources; `App::register_inspectable::<T: Inspectable>(label)` wires new component types into the inspector.
+- **Action-map defaults + `input.json` entries:** `engine_toggle_physics_debug` (`F1`), `engine_toggle_systems_overlay` (`F2`), `engine_toggle_inspector` (`F3`) merge into user input maps via `ActionMap::merged_with_defaults`.
+- **Render seam (`tungsten_render`):** new `DebugLinePipeline` + `DebugLineInstance` draws oriented lines and circle polylines and borrows `QuadPipeline`'s camera bind group layout so only one `view_proj` uniform ships on the GPU. `Renderer::render_frame_full[_timed]` gain `debug_quads: &[QuadInstance]` and `debug_lines: &[DebugLineInstance]` parameters; AABB edges expand into four thin `QuadInstance`s drawn through the existing pipeline. `QuadPipeline::camera_bind_group_layout()` / `camera_bind_group()` are now public accessors.
+- **Screenshot + visual-regression helpers (`tungsten_render`):** `Renderer::capture_frame(path)` renders into an offscreen `RENDER_ATTACHMENT | COPY_SRC` texture and encodes the readback via `image::save_buffer`; `image_diff::compare_png(lhs, rhs, tolerance)` returns a `DiffReport { width, height, max_delta, mean_delta, pixels_above_tolerance }`. Capture is armed via `TUNGSTEN_CAPTURE_FRAME=<n>` plus optional `TUNGSTEN_CAPTURE_PATH` / `TUNGSTEN_CAPTURE_RESOLUTION=<WxH>` and is off by default. An opt-in integration test (`examples/02_sprite_stress/tests/visual_regression.rs`) gated on `TUNGSTEN_VISUAL_REGRESSION=1` shells out to `example-02-sprite-stress` and diffs against the committed baseline.
+- **GPU debug groups + explicit wgpu labels:** the encoder wraps each frame in `push_debug_group("tungsten_frame")`; the main pass opens named groups for `quads`, `sprites`, `debug_quads`, `debug_lines`, and `text`. Always-on, no feature gate; RenderDoc captures are self-describing.
+- **Perf-capture scaffolding:** `examples/02_sprite_stress` parses `TUNGSTEN_OVERLAYS_ON=physics,systems,inspector` to flip overlay `.enabled` flags before `App::run`, so the overlays-on vs. overlays-off capture pair is driven purely from the command line. A perf-run skeleton lives at `perf-runs/M21-debug-tooling/README.md`.
+- **Decision record + detailed plan:** `DECISIONS.md` now includes `D-047`; the implementation plan is at `docs/plans/Phase3-Milestone-21-debug-tooling.md`; `docs/DECISION_INDEX.md` and `docs/LLM_INDEX.md` carry the new subsystem/task rows.
+
+### Changed
+
+- `App::new` now inserts `DebugDraw`, `PhysicsDebugOverlay`, `SystemTimingOverlay`, and `InspectorState` world resources; engine toggle systems (`__physics_debug_toggle`, `__systems_overlay_toggle`, `__inspector_toggle`, `__inspector_pick`) register at the head of the engine chain so they observe `just_pressed` before user systems. `physics_debug_emit_system` runs at the start of the extract stage before `DebugDraw::drain`, then commands are split into `Vec<QuadInstance>` (AABB edges) + `Vec<DebugLineInstance>` (lines / circle polylines) and passed through to `Renderer::render_frame_full[_timed]` alongside the existing quad / sprite / text channels.
+- `example-01-platformer`'s header `Controls:` block documents the new `F1` / `F2` / `F3` overlays.
+- `tungsten-render` gains `image = { workspace = true }` as a direct dependency (the workspace dep already existed for `asset_loader`); no new workspace dependency.
+
 ## [0.17.0] - 2026-04-20
 
 Summary: Phase 3 Milestone 20 — scene / state dispatcher, `scene.json` data-driven spawn path, and release-line alignment.

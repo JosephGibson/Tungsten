@@ -13,6 +13,9 @@
 //!   1 / 2 / 3       volume_preset_low / volume_preset_mid / volume_preset_high
 //!   S or MMB        audio_stop_all
 //!   = / - or wheel  zoom_in / zoom_out (50%–200% of base)
+//!   F1              engine_toggle_physics_debug
+//!   F2              engine_toggle_systems_overlay
+//!   F3              engine_toggle_inspector
 //!   F4              engine_toggle_hud
 //!   F9              engine_toggle_vsync
 //!   F11             engine_toggle_fullscreen

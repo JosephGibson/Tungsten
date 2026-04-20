@@ -1,10 +1,13 @@
 ---
-status: draft
+status: in progress
 milestone: M21
 branch: 0.18
 version-target: 0.18.0
 depends-on: M14 complete, M15 complete, M18 complete, M19 complete
 unblocks: ship/debug quality — collider visualisation, per-system timing review, deterministic visual regression checks
+notes:
+  - Code path (steps 1–10 plus the step-11 env-var hook) is landed on branch `0.18`; `cargo fmt --all`, `cargo clippy --workspace --all-targets`, `cargo test --workspace`, and `./scripts/smoke-examples.sh` are all clean.
+  - Remaining work before flipping to `done` / archiving: (1) generate `examples/02_sprite_stress/tests/fixtures/baseline-sprite-stress.png` on the reference machine per its `README.md`; (2) fill in `perf-runs/M21-debug-tooling/README.md` with the overlays-off vs. overlays-on 300-frame captures; (3) RenderDoc capture to eyeball the debug-group labels. All three require a GPU + display and belong to the pre-`v0.18.0` reference-machine pass.
 ---
 
 # Phase 3 Milestone 21 — Debug Tooling
