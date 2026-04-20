@@ -1,0 +1,17 @@
+{
+  "entities": [
+    {
+      "transform": { "position": [-64, 0] },
+      "sprite": { "asset_id": "ex04_quad", "color": [255, 120, 120, 255], "z_order": 0 }
+    },
+    {
+      "transform": { "position": [64, 0], "rotation": 0.5 },
+      "sprite": { "asset_id": "ex04_quad", "color": [120, 120, 255, 255], "z_order": 0 }
+    },
+    {
+      "transform": { "position": [0, -80], "scale": [2.0, 0.25] },
+      "sprite": { "asset_id": "ex04_quad", "color": [200, 200, 200, 255], "z_order": 0 },
+      "tag": "gameplay_marker"
+    }
+  ]
+}

@@ -16,8 +16,9 @@ pub mod time;
 pub use assets::{
     AnimationData, AnimationRegistry, AnimationState, AssetRegistry, AudioHandle, FilterMode,
     FontEntry, FontRegistry, LayerKind, ManifestError, ResolvedFont, ResolvedManifest,
-    ResolvedSound, SoundData, SoundEntry, SoundRegistry, SpriteAsset, TextureHandle, TileIndex,
-    TilemapData, TilemapInstance, TilemapLayer, TilemapRegistry, EMPTY_TILE,
+    ResolvedSound, SceneData, SceneEntry, SceneError, SceneSprite, SceneTransform, SoundData,
+    SoundEntry, SoundRegistry, SpriteAsset, TextureHandle, TileIndex, TilemapData, TilemapInstance,
+    TilemapLayer, TilemapRegistry, EMPTY_TILE,
 };
 pub use audio::{AudioCommand, AudioCommands};
 pub use camera::{CameraBounds, CameraController, CameraMode, CameraState};

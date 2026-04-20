@@ -198,6 +198,24 @@ impl ActionMap {
                 code: KeyCode::Escape,
             }],
         );
+        actions.insert(
+            "state_start".into(),
+            vec![Binding::Key {
+                code: KeyCode::Enter,
+            }],
+        );
+        actions.insert(
+            "state_pause".into(),
+            vec![Binding::Key {
+                code: KeyCode::KeyP,
+            }],
+        );
+        actions.insert(
+            "state_back".into(),
+            vec![Binding::Key {
+                code: KeyCode::Backspace,
+            }],
+        );
         Self {
             actions,
             source_path: None,
@@ -602,6 +620,9 @@ mod tests {
             "engine_toggle_vsync",
             "engine_toggle_fullscreen",
             "engine_exit",
+            "state_start",
+            "state_pause",
+            "state_back",
         ] {
             assert!(
                 !map.bindings(action).is_empty(),

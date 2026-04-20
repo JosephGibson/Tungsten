@@ -11,6 +11,7 @@ mod display;
 pub mod hot_reload;
 mod input_bridge;
 pub mod sprite_extract;
+pub mod state;
 pub mod telemetry;
 mod tilemap_extract;
 
@@ -20,6 +21,10 @@ pub use debug_hud::{hud_toggle_system, DebugHud, HudActiveState, HudCorner, HudR
 pub use display::request_display_settings;
 pub use hot_reload::HotReloadWatcher;
 pub use sprite_extract::extract_sprites_default;
+pub use state::{
+    despawn_scene_entities, state_dispatcher_system, GameState, SceneEntity, StateContext, StateId,
+    StateStack,
+};
 pub use telemetry::{DisplayTelemetry, FrameTimings, RenderCounts};
 pub use tilemap_extract::extract_tilemaps;
 pub use tungsten_core as core;

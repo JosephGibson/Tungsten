@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.16.0"
+version = "0.17.0"
 edition = "2021"
 license = "MIT"
 
@@ -12,6 +12,7 @@ members = [
     "examples/01_platformer",
     "examples/02_sprite_stress",
     "examples/03_component_sprites",
+    "examples/04_scene_state",
 ]
 
 [workspace.dependencies]

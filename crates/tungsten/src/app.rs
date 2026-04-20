@@ -6,13 +6,14 @@ use std::time::{Duration, Instant};
 
 use crate::asset_loader;
 use crate::audio::AudioSystem;
-use crate::debug_hud::{compose_hud_text_sections, hud_toggle_system, DebugHud};
+use crate::debug_hud::{compose_hud_text_sections, hud_toggle_system, DebugHud, HudActiveState};
 use crate::display::{
     engine_display_input_system, frame_budget_for, sync_display_state_and_telemetry,
     sync_window_resolution, take_pending_display, DisplayDelta, PendingDisplay,
 };
 use crate::hot_reload::HotReloadWatcher;
 use crate::input_bridge;
+use crate::state::{state_dispatcher_system, StateStack};
 use crate::telemetry::{DisplayTelemetry, FrameTimings, RenderCounts};
 use tungsten_core::assets::{AnimationRegistry, FontRegistry, SoundRegistry, TilemapRegistry};
 use tungsten_core::physics::{CollisionEvent, PhysicsConfig};
@@ -144,6 +145,8 @@ impl App {
         world.insert_resource(DisplayTelemetry::from_state(&resolved_display, None));
         world.insert_resource(CommandBuffer::new());
         world.insert_resource(DebugHud::new());
+        world.insert_resource(StateStack::new());
+        world.insert_resource(HudActiveState::default());
         world.insert_resource(RenderCounts::default());
         let mut event_flushers: Vec<EventFlusher> = Vec::new();
         let mut registered_event_types = HashSet::new();
@@ -185,6 +188,7 @@ impl App {
         // observe edge-triggered input deterministically every frame.
         app.add_engine_system("__hud_toggle", hud_toggle_system);
         app.add_engine_system("__display_input", engine_display_input_system);
+        app.add_engine_system("__state_dispatcher", state_dispatcher_system);
 
         Ok(app)
     }

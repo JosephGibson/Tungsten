@@ -1,0 +1,5 @@
+{
+  "sprites": {
+    "ex04_quad": { "path": "quad.png", "filter": "nearest" }
+  }
+}

@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 goal: Ship M20 Scene/State System. `StateStack` + `GameState` drive a `MainMenu -> Gameplay -> Pause -> Gameplay` flow through a single dispatcher system; scene-owned entities auto-despawn on state exit; `scene.json` spawns baseline entities data-driven.
 non-goals:
   - UI widget library / menu layout engine

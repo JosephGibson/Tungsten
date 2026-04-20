@@ -1,11 +1,17 @@
 use std::path::Path;
 
+use glam::Vec2;
 use tungsten_core::assets::{
-    AnimationData, AnimationRegistry, FilterMode, FontRegistry, ResolvedManifest, SoundData,
-    SoundRegistry, TextureHandle, TilemapData, TilemapRegistry,
+    AnimationData, AnimationRegistry, FilterMode, FontRegistry, ResolvedManifest, SceneData,
+    SoundData, SoundRegistry, TextureHandle, TilemapData, TilemapRegistry,
 };
-use tungsten_core::{ActionMap, ActionMapError, AssetRegistry, World};
+use tungsten_core::{
+    ActionMap, ActionMapError, AssetRegistry, CommandBuffer, Sprite, Tag, Transform, Visibility,
+    World,
+};
 use tungsten_render::Renderer;
+
+use crate::state::{SceneEntity, StateId};
 
 /// Load all sprite assets from a resolved manifest: decode PNGs to CPU bitmaps,
 /// register in the asset registry, and upload textures to the GPU.
@@ -218,6 +224,57 @@ pub fn load_all(
 // Hot-reload helpers — called by App::process_hot_reload each frame.
 // All functions log errors and return Ok(()) to preserve last-known-good state.
 // ---------------------------------------------------------------------------
+
+/// Load a `scene.json` file. Thin wrapper over [`SceneData::load`] that
+/// maps `SceneError` into `anyhow::Error` with the path attached.
+pub fn load_scene(path: &Path) -> anyhow::Result<SceneData> {
+    SceneData::load(path)
+        .map_err(|source| anyhow::anyhow!("Failed to load scene '{}': {source}", path.display()))
+}
+
+/// Spawn every entity in `data` through the world's [`CommandBuffer`], with
+/// each spawned entity tagged `SceneEntity { state_id }` so the state
+/// dispatcher can auto-despawn them on exit.
+///
+/// Sprite IDs are not validated here — missing IDs fall through to the
+/// sprite-extract warning path, matching how tilemaps handle unresolved
+/// tile IDs (see `D-046`).
+pub fn spawn_scene(world: &mut World, data: &SceneData, state_id: StateId) {
+    let buf = world
+        .get_resource_mut::<CommandBuffer>()
+        .expect("CommandBuffer resource missing");
+    for entry in &data.entities {
+        let pending = buf.spawn();
+        buf.insert_pending(
+            pending,
+            Transform {
+                position: Vec2::from(entry.transform.position),
+                rotation: entry.transform.rotation,
+                scale: Vec2::from(entry.transform.scale),
+            },
+        );
+        if let Some(sprite) = &entry.sprite {
+            buf.insert_pending(
+                pending,
+                Sprite {
+                    asset_id: sprite.asset_id.clone(),
+                    color: sprite.color,
+                    z_order: sprite.z_order,
+                },
+            );
+        }
+        buf.insert_pending(
+            pending,
+            Visibility {
+                visible: entry.visible,
+            },
+        );
+        if let Some(name) = &entry.tag {
+            buf.insert_pending(pending, Tag::new(name.clone()));
+        }
+        buf.insert_pending(pending, SceneEntity { state_id });
+    }
+}
 
 /// Hot-reload a sprite: decode the new PNG and re-upload to the GPU behind
 /// the same TextureHandle. If dimensions changed the wgpu texture is recreated
