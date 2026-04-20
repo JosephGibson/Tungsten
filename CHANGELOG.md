@@ -4,6 +4,25 @@ Records all notable project changes.
 
 Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.17.0] - 2026-04-20
+
+Summary: Phase 3 Milestone 20 — scene / state dispatcher, `scene.json` data-driven spawn path, and release-line alignment.
+
+### Added
+
+- **Scene / state system (`tungsten::state`):** `StateStack`, the `GameState` trait, `StateContext`, `StateId`, and a `SceneEntity { state_id }` marker now ship in the umbrella crate. A single engine-owned `state_dispatcher_system` drains deferred `request_push` / `request_pop` / `request_replace` requests each frame, fires the `on_pause` / `on_enter` / `on_exit` / `on_resume` matrix, auto-despawns scene-owned entities through `CommandBuffer` on exit, and mirrors the active state id into `HudActiveState` so the M18 `state` HUD row keeps rendering.
+- **Scene data model (`tungsten_core::assets::scene`):** `SceneData`, `SceneEntry`, `SceneTransform`, `SceneSprite`, and `SceneError` define a minimal JSON schema that reuses the M15 `Transform` / `Sprite` / `Visibility` / `Tag` components. `SceneData::load` parses a `scene.json` file; `asset_loader::load_scene` and `asset_loader::spawn_scene` wrap the load + `CommandBuffer` spawn path so scenes land at the canonical frame boundary.
+- **State-transition action defaults:** `ActionMap::default_map()` now ships `state_start` (`Enter`), `state_pause` (`KeyP`), and `state_back` (`Backspace`) so examples drive transitions without an edited `input.json`. `KeyCode::Backspace` and `KeyCode::KeyP` are new variants on the core-owned keyboard enum (and route through the input bridge + serde tables).
+- **New example — `example-03-scene-state`:** end-to-end demo of the `MainMenu → Gameplay → Pause → Gameplay` flow. Gameplay entities come from `scene.json` via `spawn_scene` (25-entity constellation: pulsing hub + three counter-rotating orbital rings); Pause overlays Gameplay without tearing the scene down; the HUD `state` row mirrors the active state id.
+- **Decision record + detailed plan:** `DECISIONS.md` now includes `D-046`; the implementation plan is archived at `docs/plans/archive/Phase3-Milestone20-plan.md`; `docs/DECISION_INDEX.md` and `docs/LLM_INDEX.md` reflect the new subsystem.
+
+### Changed
+
+- Workspace version bumped to `0.17.0`.
+- `App::new` now inserts `StateStack` and `HudActiveState` as world resources and registers `__state_dispatcher` immediately after `__display_input` so state transitions fire before user systems observe this frame's input.
+- `README.md`, `DESIGN.md`, `AGENTS.md`, `CLAUDE.md`, `docs/LLM_INDEX.md`, `docs/DECISION_INDEX.md`, and `docs/plans/Phase3.md` now reflect the shipped `0.17.0` / M20 release line and the next-step `M21` planning state.
+- Release QA pass completed locally: `cargo fmt --all --check`, `cargo build --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `bash scripts/test-perf-capture.sh`, and `WGPU_BACKEND=vulkan bash scripts/smoke-examples.sh` all passed (4/4 examples).
+
 ## [0.16.0] - 2026-04-19
 
 Summary: Phase 3 Milestone 19 — input mapping, mouse support, runtime rebind persistence, and release-line alignment.

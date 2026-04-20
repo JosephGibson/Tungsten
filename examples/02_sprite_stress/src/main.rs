@@ -2,7 +2,7 @@
 //!
 //! Two scene modes live under the same package:
 //!   - `baseline` (default): the original M12 sine-wave sprite scene
-//!   - `ecs-high-load`: a 20k-entity ECS + render + camera stress scene
+//!   - `ecs-high-load`: a 50k-entity ECS + render + camera stress scene
 //!
 //! Env vars:
 //!   - `STRESS_SCENE=baseline|ecs-high-load`
@@ -35,8 +35,7 @@ use tungsten_core::physics::SpatialGrid;
 
 const MANIFEST_ROOT: &str = "assets/manifest.json";
 const DEFAULT_SPRITE_COUNT: usize = 2_000;
-const DEFAULT_HIGH_LOAD_COUNT: usize = 20_000;
-const COLS: usize = 50;
+const DEFAULT_HIGH_LOAD_COUNT: usize = 50_000;
 const BASELINE_SPRITE_SIZE: f32 = 16.0;
 const BASELINE_PLACEHOLDER_HANDLE: TextureHandle = TextureHandle(0);
 const LOG_INTERVAL: u32 = 60;
@@ -125,6 +124,7 @@ struct BaselineSpriteEntry {
 #[derive(Debug)]
 struct BaselineSceneState {
     sprites: Vec<BaselineSpriteEntry>,
+    elapsed: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -138,6 +138,7 @@ struct HighLoadSceneState {
     #[cfg_attr(not(test), allow(dead_code))]
     leader: tungsten::core::Entity,
     entity_count: usize,
+    elapsed: f32,
 }
 
 #[derive(Debug)]
@@ -203,16 +204,50 @@ fn configure_baseline_scene(app: &mut App, sprite_count: usize) {
 }
 
 fn seed_baseline_world(world: &mut World, sprite_count: usize) {
+    let window = world
+        .get_resource::<WindowSize>()
+        .copied()
+        .unwrap_or(WindowSize {
+            width: 1_920,
+            height: 1_080,
+        });
+    let (cols, step_x, step_y) = baseline_grid_layout(window, sprite_count);
+
     let sprites: Vec<BaselineSpriteEntry> = (0..sprite_count)
         .map(|i| BaselineSpriteEntry {
-            base_x: (i % COLS) as f32 * BASELINE_SPRITE_SIZE,
-            base_y: (i / COLS) as f32 * BASELINE_SPRITE_SIZE,
+            base_x: (i % cols) as f32 * step_x,
+            base_y: (i / cols) as f32 * step_y,
             phase: i as f32 * 0.1,
             y_offset: 0.0,
         })
         .collect();
 
-    world.insert_resource(BaselineSceneState { sprites });
+    world.insert_resource(BaselineSceneState {
+        sprites,
+        elapsed: 0.0,
+    });
+}
+
+fn baseline_grid_layout(window: WindowSize, sprite_count: usize) -> (usize, f32, f32) {
+    if sprite_count == 0 {
+        return (1, 0.0, 0.0);
+    }
+    let width = (window.width as f32).max(BASELINE_SPRITE_SIZE);
+    let height = (window.height as f32).max(BASELINE_SPRITE_SIZE);
+    let aspect = width / height;
+    let cols = ((sprite_count as f32 * aspect).sqrt().ceil() as usize).max(1);
+    let rows = sprite_count.div_ceil(cols);
+    let step_x = if cols > 1 {
+        (width - BASELINE_SPRITE_SIZE) / (cols - 1) as f32
+    } else {
+        0.0
+    };
+    let step_y = if rows > 1 {
+        (height - BASELINE_SPRITE_SIZE) / (rows - 1) as f32
+    } else {
+        0.0
+    };
+    (cols, step_x, step_y)
 }
 
 fn tick_baseline_sprites(world: &mut World) {
@@ -224,11 +259,17 @@ fn tick_baseline_sprites(world: &mut World) {
         telemetry.frame_count as f32
     };
 
+    let dt = world
+        .get_resource::<DeltaTime>()
+        .map(|d| d.seconds())
+        .unwrap_or(1.0 / 60.0);
+
     let state = match world.get_resource_mut::<BaselineSceneState>() {
         Some(state) => state,
         None => return,
     };
 
+    state.elapsed += dt;
     for sprite in &mut state.sprites {
         sprite.y_offset = (frame * 0.02 + sprite.phase).sin() * 4.0;
     }
@@ -240,14 +281,19 @@ fn extract_baseline_sprites(world: &World) -> Vec<SpriteBatch> {
         None => return Vec::new(),
     };
 
+    let time = state.elapsed;
     let instances: Vec<SpriteInstance> = state
         .sprites
         .iter()
-        .map(|sprite| SpriteInstance {
-            position: [sprite.base_x, sprite.base_y + sprite.y_offset],
-            size: [BASELINE_SPRITE_SIZE, BASELINE_SPRITE_SIZE],
-            rotation: 0.0,
-            color: [255; 4],
+        .map(|sprite| {
+            let pulse = 1.0 + 0.25 * (time * 2.0 + sprite.phase).sin();
+            let size = BASELINE_SPRITE_SIZE * pulse;
+            SpriteInstance {
+                position: [sprite.base_x, sprite.base_y + sprite.y_offset],
+                size: [size, size],
+                rotation: time * 0.5 + sprite.phase,
+                color: rgb_wheel_color(time, sprite.phase),
+            }
         })
         .collect();
 
@@ -280,6 +326,7 @@ fn configure_high_load_scene(app: &mut App, entity_count: usize) {
     app.add_system_named("confine_agents_system", confine_agents_system);
     app.add_system_named("sync_position_to_transform", sync_position_to_transform);
     app.add_system_named("orient_agents_system", orient_agents_system);
+    app.add_system_named("tint_agents_system", tint_agents_system);
     app.add_system_named("high_load_camera_base_system", high_load_camera_base_system);
     app.add_system_named("camera_update_system", camera_update_system);
     app.add_system_named("log_telemetry", log_telemetry);
@@ -358,6 +405,7 @@ fn seed_high_load_world(world: &mut World, entity_count: usize) {
         world.insert_resource(HighLoadSceneState {
             leader,
             entity_count,
+            elapsed: 0.0,
         });
     }
 }
@@ -372,8 +420,8 @@ fn configure_high_load_camera(world: &mut World, leader: tungsten::core::Entity)
             max: Vec2::new(HIGH_LOAD_WORLD_WIDTH, HIGH_LOAD_WORLD_HEIGHT),
         });
         controller.zoom_multiplier = 1.0;
-        controller.shake_amplitude = Vec2::ZERO;
-        controller.shake_frequency_hz = 0.0;
+        controller.shake_amplitude = Vec2::new(3.0, 2.0);
+        controller.shake_frequency_hz = 4.0;
         controller.shake_phase = 0.0;
     }
 }
@@ -604,6 +652,37 @@ fn orient_agents_system(world: &mut World) {
     }
 }
 
+fn tint_agents_system(world: &mut World) {
+    let dt = world
+        .get_resource::<DeltaTime>()
+        .map(|d| d.seconds())
+        .unwrap_or(1.0 / 60.0);
+    let elapsed = {
+        let Some(state) = world.get_resource_mut::<HighLoadSceneState>() else {
+            return;
+        };
+        state.elapsed += dt;
+        state.elapsed
+    };
+    let entities = world.query2_entities::<StressAgent, Sprite>();
+    for entity in entities {
+        let Some(tint_seed) = world.get::<StressAgent>(entity).map(|a| a.tint_seed) else {
+            continue;
+        };
+        let color = rgb_wheel_color(elapsed, tint_seed * std::f32::consts::TAU);
+        if let Some(sprite) = world.get_mut::<Sprite>(entity) {
+            sprite.color = color;
+        }
+    }
+}
+
+fn rgb_wheel_color(time: f32, phase: f32) -> [u8; 4] {
+    let r = ((time * 0.9 + phase).sin() * 0.5 + 0.5) * 255.0;
+    let g = ((time * 1.1 + phase + 2.1).sin() * 0.5 + 0.5) * 255.0;
+    let b = ((time * 1.3 + phase + 4.2).sin() * 0.5 + 0.5) * 255.0;
+    [r as u8, g as u8, b as u8, 255]
+}
+
 fn high_load_camera_base_system(world: &mut World) {
     if let Some(camera) = world.get_resource_mut::<CameraState>() {
         camera.zoom = HIGH_LOAD_CAMERA_ZOOM;
@@ -831,7 +910,7 @@ mod tests {
     }
 
     #[test]
-    fn high_load_mode_defaults_to_twenty_thousand_entities() {
+    fn high_load_mode_defaults_to_configured_count() {
         assert_eq!(
             resolve_count(StressScene::EcsHighLoad, None),
             DEFAULT_HIGH_LOAD_COUNT
@@ -1010,6 +1089,7 @@ mod tests {
         world.insert_resource(HighLoadSceneState {
             leader,
             entity_count: 42,
+            elapsed: 0.0,
         });
         if let Some(timings) = world.get_resource_mut::<FrameTimings>() {
             timings.total_ms = 20.0;

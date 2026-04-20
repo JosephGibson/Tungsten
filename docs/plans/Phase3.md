@@ -31,12 +31,12 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 
 ## Current Status
 
-- Workspace version metadata: `0.16.0`
-- Current branch: `0.16`
-- Completed milestones: `M12` profiling baseline, `M13` command buffers, `M14` event queues, `M15` transform + render components, `M16` camera module, `M17` display state + config, `M18` runtime telemetry HUD, `M19` input mapping
-- Next recommended milestone: `M20 — Scene/State System`
+- Workspace version metadata: `0.17.0`
+- Current branch: `0.17`
+- Completed milestones: `M12` profiling baseline, `M13` command buffers, `M14` event queues, `M15` transform + render components, `M16` camera module, `M17` display state + config, `M18` runtime telemetry HUD, `M19` input mapping, `M20` scene/state system
+- Next recommended milestone: `M21 — Debug Tooling`
 - In progress milestone: none
-- Archived detailed milestone plans: [M12](archive/Phase3-Milestone12-plan.md), [M13](archive/Phase3-Milestone13-plan.md), [M14](archive/Phase3-Milestone14-plan.md), [M15](archive/Phase3-Milestone15-plan.md), [M16](archive/phase3-milestone16-plan.md), [M17](archive/Phase3-Milestone17-plan.md), [M18](archive/Phase3-Milestone18-plan.md), [M19](archive/phase3-milestone19-plan.md)
+- Archived detailed milestone plans: [M12](archive/Phase3-Milestone12-plan.md), [M13](archive/Phase3-Milestone13-plan.md), [M14](archive/Phase3-Milestone14-plan.md), [M15](archive/Phase3-Milestone15-plan.md), [M16](archive/phase3-milestone16-plan.md), [M17](archive/Phase3-Milestone17-plan.md), [M18](archive/Phase3-Milestone18-plan.md), [M19](archive/phase3-milestone19-plan.md), [M20](archive/Phase3-Milestone20-plan.md)
 
 ## Execution Contract
 
@@ -144,6 +144,9 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 
 ### M20 - Scene/State System
 
+> **Status: complete** (`v0.17.0`, `2026-04-20`)
+> Detailed implementation plan archived at [`docs/plans/archive/Phase3-Milestone20-plan.md`](archive/Phase3-Milestone20-plan.md).
+
 - Goal: support `MainMenu -> Gameplay -> Pause -> Gameplay` style flow without manual world-reset logic.
 - Design: add a `GameState` trait with `on_enter`, `on_exit`, and state-scoped systems; add `StateStack` with deferred `push` / `pop` / `replace`; tag scene-owned entities and clean them on exit; add a minimal `scene.json` for data-driven scene entity spawn.
 - Done when: example flow is `MainMenu -> Gameplay -> Pause -> Gameplay`, enter/exit hooks spawn and despawn cleanly, and smoke tests pass.
@@ -199,7 +202,7 @@ Close each milestone only after:
 
 ## Phase 3 Done When
 
-- [ ] Multi-screen game loop (`menu` / `gameplay` / `pause`) ships without custom extract plumbing
+- [x] Multi-screen game loop (`menu` / `gameplay` / `pause`) ships without custom extract plumbing
 - [ ] Runtime spawn/despawn and event flows work without `&mut World` iteration hazards
 - [ ] Debug overlays are one-key-toggle in at least one representative example
 - [ ] Performance baseline and profiling workflow exist before major feature milestones

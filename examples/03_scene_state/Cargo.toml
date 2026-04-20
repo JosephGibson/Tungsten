@@ -1,5 +1,5 @@
 [package]
-name = "example-03-component-sprites"
+name = "example-03-scene-state"
 version.workspace = true
 edition = "2021"
 publish = false

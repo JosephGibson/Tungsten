@@ -4,18 +4,19 @@ From-scratch Rust 2D game engine. Stack: `winit` + `wgpu` + `glam` + hand-rolled
 
 ## Status
 
-Workspace `v0.16.0` on branch `0.16`. Phase 3 M19 is shipped. The engine now pairs typed two-window event queues and deferred ECS command buffers with a shared camera module, a core-owned display state/config model with frame-boundary runtime apply, a runtime telemetry HUD rendered through the existing text pipeline, and a workspace-root `input.json` action map that covers keyboard, mouse buttons, wheel directions, hot reload, and engine-owned HUD/display/exit controls. Next milestone: `M20` scene/state system.
+Workspace `v0.17.0` on branch `0.17`. Phase 3 M20 is shipped. The engine now pairs typed two-window event queues and deferred ECS command buffers with a shared camera module, a core-owned display state/config model with frame-boundary runtime apply, a runtime telemetry HUD rendered through the existing text pipeline, a workspace-root `input.json` action map (keyboard / mouse / wheel + hot reload + engine-owned HUD/display/exit controls), and a scene/state dispatcher that drives `MainMenu → Gameplay → Pause → Gameplay` flow with scene-owned entity auto-cleanup and data-driven `scene.json` spawning. Next milestone: `M21` debug tooling.
 
 ## Stack
 
 Hand-rolled ECS with archetypal storage, deferred command buffers, and typed event queues; `wgpu` rendering; manifest-driven assets; `glyphon` text; `cpal` + `symphonia` + hand-rolled audio mixer; `notify` hot reload; `.tmj` / Tiled-compatible tilemaps; 2D AABB + circle physics with a uniform-grid broad-phase; frame telemetry, Criterion benches, and a perf capture workflow.
 
-## 0.16 Highlights
+## 0.17 Highlights
 
-- `input.json` at the workspace root maps named actions to keyboard, mouse-button, and scroll bindings; it loads at startup, merges with built-in defaults, and survives layout-preserving rewrites through `ActionMap::persist`
-- `ActionMap` is a world resource exposing `is_pressed`, `just_pressed`, and `just_released` per action; `tungsten::InputState` now also tracks cursor position/delta plus line and pixel scroll deltas
-- Engine-owned actions cover HUD toggle (`engine_toggle_hud`), vsync toggle (`engine_toggle_vsync`), fullscreen toggle (`engine_toggle_fullscreen`), and exit (`engine_exit`); gameplay binds its own actions in `input.json` instead of hardcoded keycodes
-- The hot-reload watcher now observes `input.json` alongside the asset manifests, so binding edits take effect at the next frame boundary without a restart
+- `StateStack` + `GameState` trait drive deferred `push` / `pop` / `replace` transitions through a single engine-owned dispatcher system; `on_pause` / `on_resume` default to no-op so a Pause state overlays Gameplay without tearing its scene down
+- `SceneEntity { state_id }` marker auto-despawns scene-owned entities through the `CommandBuffer` when a state exits, inheriting the M13 frame-boundary visibility rules
+- `scene.json` reuses the M15 `Transform` / `Sprite` / `Visibility` / `Tag` components; `asset_loader::spawn_scene` spawns every entry through the command buffer
+- `ActionMap::default_map()` now ships `state_start` (`Enter`), `state_pause` (`KeyP`), and `state_back` (`Backspace`) so the new example flow works out-of-the-box without editing `input.json`
+- New `example-03-scene-state` demonstrates the `MainMenu → Gameplay → Pause → Gameplay` loop and the data-driven `scene.json` spawn path end-to-end
 
 ## Documents
 
@@ -36,7 +37,7 @@ cargo build --workspace
 cargo test --workspace
 cargo run -p example-01-platformer      # comprehensive engine demo
 cargo run -p example-02-sprite-stress   # canonical perf stress scene
-cargo run -p example-03-component-sprites
+cargo run -p example-03-scene-state
 ```
 
 Reproducible Linux perf capture:
