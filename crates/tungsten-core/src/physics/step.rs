@@ -17,7 +17,8 @@
 
 use super::broadphase::{ProxyId, SpatialGrid};
 use super::collision::{
-    aabb_vs_aabb, aabb_vs_circle, circle_vs_circle, sweep_aabb_vs_aabb, Aabb, Contact,
+    aabb_vs_aabb_masked, aabb_vs_circle_masked, circle_vs_circle, sweep_aabb_vs_aabb, Aabb,
+    Contact, FACE_ALL, FACE_BOTTOM, FACE_LEFT, FACE_RIGHT, FACE_TOP,
 };
 use super::components::{BodyKind, Collider, Position, RigidBody, Shape, Velocity};
 use super::events::CollisionEvent;
@@ -46,6 +47,13 @@ struct Proxy {
     is_dynamic: bool,
     inv_mass: f32,
     restitution: f32,
+    /// Bitmask of exposed faces. Tile proxies clear the bit for each
+    /// face shared with an adjacent solid tile so contacts that land on
+    /// a seam are suppressed — otherwise a concave-corner contact can
+    /// squeeze a body through the boundary between two tiles (e.g. a
+    /// ball resting in the inside corner of an L-shaped level escaping
+    /// through the floor). Non-tile proxies use `FACE_ALL`.
+    face_mask: u8,
 }
 
 impl Proxy {
@@ -271,6 +279,7 @@ fn resolve_collisions(
             is_dynamic,
             inv_mass,
             restitution,
+            face_mask: FACE_ALL,
         });
     }
 
@@ -500,6 +509,22 @@ fn speculative_pass(
                 continue;
             };
             if let Some((t, n)) = sweep_aabb_vs_aabb(a_prev, a_cur, a_half, target.center, b_half) {
+                // Map the sweep's axis-aligned normal to the target's
+                // face bit so we skip hits on internal (neighbor-shared)
+                // faces — a tilemap column of solid tiles would
+                // otherwise report every inner face as an entry point.
+                let face_bit = if n.x < 0.0 {
+                    FACE_LEFT
+                } else if n.x > 0.0 {
+                    FACE_RIGHT
+                } else if n.y < 0.0 {
+                    FACE_TOP
+                } else {
+                    FACE_BOTTOM
+                };
+                if target.face_mask & face_bit == 0 {
+                    continue;
+                }
                 if best.is_none_or(|(best_t, _, _)| t < best_t) {
                     best = Some((t, n, b_idx));
                 }
@@ -544,21 +569,29 @@ fn narrow_phase(a: &Proxy, b: &Proxy) -> Option<Contact> {
             Shape::Aabb {
                 half_extents: hb, ..
             },
-        ) => aabb_vs_aabb(&Aabb::new(a.center, ha), &Aabb::new(b.center, hb)),
+        ) => aabb_vs_aabb_masked(
+            &Aabb::new(a.center, ha),
+            &Aabb::new(b.center, hb),
+            b.face_mask,
+        ),
         (Shape::Circle { radius: ra }, Shape::Circle { radius: rb }) => {
             circle_vs_circle(a.center, ra, b.center, rb)
         }
-        (Shape::Aabb { half_extents }, Shape::Circle { radius }) => {
-            aabb_vs_circle(&Aabb::new(a.center, half_extents), b.center, radius)
-        }
+        (Shape::Aabb { half_extents }, Shape::Circle { radius }) => aabb_vs_circle_masked(
+            &Aabb::new(a.center, half_extents),
+            b.center,
+            radius,
+            a.face_mask,
+        ),
         (Shape::Circle { radius }, Shape::Aabb { half_extents }) => {
             // Helper's `a` is our b (the aabb). Its returned normal is the
             // direction the aabb escapes the circle, which is exactly the
             // opposite of the direction our `a` (the circle) needs to move.
-            aabb_vs_circle(&Aabb::new(b.center, half_extents), a.center, radius).map(|c| Contact {
-                normal: -c.normal,
-                penetration: c.penetration,
-            })
+            aabb_vs_circle_masked(&Aabb::new(b.center, half_extents), a.center, radius, b.face_mask)
+                .map(|c| Contact {
+                    normal: -c.normal,
+                    penetration: c.penetration,
+                })
         }
     }
 }
@@ -584,12 +617,39 @@ fn gather_tilemap_proxies(world: &World, proxies: &mut Vec<Proxy>) {
             if layer.kind != LayerKind::Collision {
                 continue;
             }
+            let w = data.width as i32;
+            let h = data.height as i32;
+            let is_solid = |c: i32, r: i32| -> bool {
+                if c < 0 || r < 0 || c >= w || r >= h {
+                    return false;
+                }
+                let idx = (r as usize) * (data.width as usize) + (c as usize);
+                layer.tiles[idx] >= 0
+            };
             for row in 0..data.height {
                 for col in 0..data.width {
                     let idx = (row as usize) * (data.width as usize) + (col as usize);
                     let tile = layer.tiles[idx];
                     if tile < 0 {
                         continue;
+                    }
+                    let c = col as i32;
+                    let r = row as i32;
+                    // Faces shared with a solid neighbor are internal;
+                    // out-of-bounds neighbors count as empty so map-edge
+                    // faces stay exposed.
+                    let mut face_mask: u8 = 0;
+                    if !is_solid(c, r - 1) {
+                        face_mask |= FACE_TOP;
+                    }
+                    if !is_solid(c, r + 1) {
+                        face_mask |= FACE_BOTTOM;
+                    }
+                    if !is_solid(c - 1, r) {
+                        face_mask |= FACE_LEFT;
+                    }
+                    if !is_solid(c + 1, r) {
+                        face_mask |= FACE_RIGHT;
                     }
                     let center = Vec2::new(
                         instance.origin.x + (col as f32) * tw + half.x,
@@ -605,6 +665,7 @@ fn gather_tilemap_proxies(world: &World, proxies: &mut Vec<Proxy>) {
                         is_dynamic: false,
                         inv_mass: 0.0,
                         restitution: 0.0,
+                        face_mask,
                     });
                 }
             }
@@ -1022,6 +1083,99 @@ mod tests {
                 "ball {i} clipped through floor: y={} (top={})",
                 pos.y,
                 pos.y + RADIUS
+            );
+        }
+    }
+
+    #[test]
+    fn pile_of_balls_does_not_escape_bottom_right_corner() {
+        // Reproduces the platformer's "balls escape from the bottom-right
+        // corner" symptom. Geometry mirrors the real level: a 48×18
+        // tilemap with walls down col 0 and col 47 and a two-row floor
+        // on rows 16,17, forming an L-shaped bucket. At the inside
+        // corner (col 46, row 15), the wall and floor share an internal
+        // seam — before the face-mask filter, mutual pile pressure
+        // squeezed balls through the seam and they escaped through the
+        // tilemap geometry.
+        let mut world = seed_world();
+        if let Some(cfg) = world.get_resource_mut::<PhysicsConfig>() {
+            cfg.gravity = Vec2::new(0.0, 900.0);
+            cfg.broadphase_cell_size = 16.0;
+        }
+
+        const W: u32 = 48;
+        const H: u32 = 18;
+        let mut tiles = vec![-1i32; (W * H) as usize];
+        for row in 0..H {
+            for col in 0..W {
+                let solid = col == 0 || col == W - 1 || row == H - 2 || row == H - 1;
+                if solid {
+                    tiles[(row * W + col) as usize] = 0;
+                }
+            }
+        }
+        world.get_resource_mut::<TilemapRegistry>().unwrap().insert(
+            "level".into(),
+            TilemapData {
+                tile_width: 16,
+                tile_height: 16,
+                width: W,
+                height: H,
+                tileset: vec!["solid".into()],
+                layers: vec![TilemapLayer {
+                    name: "collision".into(),
+                    kind: LayerKind::Collision,
+                    tiles,
+                }],
+            },
+        );
+        let map = world.spawn();
+        world.insert(map, TilemapInstance::new("level", Vec2::ZERO));
+
+        // Dense pile of balls packed above the bottom-right inside corner.
+        // Mutual pressure means the bottom ball is squeezed against both
+        // the wall and the floor at once.
+        const RADIUS: f32 = 6.0;
+        const COLS: u32 = 6;
+        const ROWS: u32 = 8;
+        let wall_inner_x = (W - 1) as f32 * 16.0;
+        let floor_top_y = (H - 2) as f32 * 16.0;
+        let mut ball_entities = Vec::new();
+        for row in 0..ROWS {
+            for col in 0..COLS {
+                let x = wall_inner_x - RADIUS - (col as f32) * (RADIUS * 2.0 + 0.25);
+                let y = floor_top_y - RADIUS - (row as f32) * (RADIUS * 2.0 + 0.25);
+                let e = world.spawn();
+                world.insert(e, Position(Vec2::new(x, y)));
+                world.insert(e, Velocity(Vec2::ZERO));
+                world.insert(e, Collider::circle(RADIUS));
+                world.insert(e, RigidBody::dynamic().with_restitution(0.85));
+                ball_entities.push(e);
+            }
+        }
+
+        for _ in 0..240 {
+            physics_step(&mut world);
+            world
+                .get_resource_mut::<EventQueue<CollisionEvent>>()
+                .unwrap()
+                .flush();
+        }
+
+        for (i, &ball) in ball_entities.iter().enumerate() {
+            let pos = world.get::<Position>(ball).unwrap().0;
+            assert!(
+                pos.x <= wall_inner_x + 0.5,
+                "ball {i} escaped past right wall (x = {}, wall = {}), full pos {:?}",
+                pos.x,
+                wall_inner_x,
+                pos,
+            );
+            assert!(
+                pos.y <= floor_top_y + 0.5,
+                "ball {i} escaped below floor (y = {}, floor = {})",
+                pos.y,
+                floor_top_y,
             );
         }
     }

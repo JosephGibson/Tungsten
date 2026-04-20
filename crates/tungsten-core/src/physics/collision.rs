@@ -15,6 +15,18 @@
 
 use glam::Vec2;
 
+/// Bitmask of exposed faces on an AABB, used for internal-edge filtering
+/// when the AABB is a tile in a tilemap and its face is shared with an
+/// adjacent solid tile. A clear bit means "this face is internal — any
+/// contact that lands on it is spurious (the neighbor tile will generate
+/// the correct face contact through its exposed side)". Non-tile colliders
+/// pass `FACE_ALL`.
+pub const FACE_TOP: u8 = 1 << 0;
+pub const FACE_BOTTOM: u8 = 1 << 1;
+pub const FACE_LEFT: u8 = 1 << 2;
+pub const FACE_RIGHT: u8 = 1 << 3;
+pub const FACE_ALL: u8 = FACE_TOP | FACE_BOTTOM | FACE_LEFT | FACE_RIGHT;
+
 /// A resolved contact between two shapes. `normal` points from `a`
 /// toward `b`'s free space (i.e. the direction `a` should move to
 /// leave `b`).
@@ -82,6 +94,15 @@ impl Aabb {
 /// free space. Touching (`overlap == 0`) is treated as separated so
 /// sliding along a wall doesn't generate spurious events.
 pub fn aabb_vs_aabb(a: &Aabb, b: &Aabb) -> Option<Contact> {
+    aabb_vs_aabb_masked(a, b, FACE_ALL)
+}
+
+/// AABB vs AABB with `b`'s face mask respected. When `b` is a tile in a
+/// tilemap, MTV axes that point toward an internal (neighbor-shared)
+/// face are suppressed so the dynamic body is pushed out through an
+/// exposed face instead. If both axes resolve to internal faces, the
+/// contact is dropped entirely.
+pub fn aabb_vs_aabb_masked(a: &Aabb, b: &Aabb, b_face_mask: u8) -> Option<Contact> {
     let delta = b.center - a.center;
     let overlap_x = (a.half_extents.x + b.half_extents.x) - delta.x.abs();
     let overlap_y = (a.half_extents.y + b.half_extents.y) - delta.y.abs();
@@ -90,9 +111,24 @@ pub fn aabb_vs_aabb(a: &Aabb, b: &Aabb) -> Option<Contact> {
         return None;
     }
 
-    // Minimum-translation axis — the smaller overlap is the shorter
-    // push out of the penetration.
-    if overlap_x < overlap_y {
+    // Which face of b would each axis's MTV push through? delta = b - a.
+    // delta.x < 0 → a is right of b → push along +x clears a through b's
+    // RIGHT face; delta.x > 0 → push along -x clears through b's LEFT face.
+    let x_face = if delta.x < 0.0 { FACE_RIGHT } else { FACE_LEFT };
+    let y_face = if delta.y < 0.0 { FACE_BOTTOM } else { FACE_TOP };
+    let x_ok = b_face_mask & x_face != 0;
+    let y_ok = b_face_mask & y_face != 0;
+
+    // Pick the smaller overlap unless its face is internal; fall back to
+    // the other axis when possible, and skip when neither is exposed.
+    let use_x = match (x_ok, y_ok) {
+        (false, false) => return None,
+        (true, false) => true,
+        (false, true) => false,
+        (true, true) => overlap_x < overlap_y,
+    };
+
+    if use_x {
         let sign = if delta.x < 0.0 { 1.0 } else { -1.0 };
         Some(Contact {
             normal: Vec2::new(sign, 0.0),
@@ -213,6 +249,23 @@ fn sweep_slab(prev: f32, delta: f32, min: f32, max: f32) -> Option<(f32, f32)> {
 /// center, then treats that point as the contact location. Handles
 /// both edge, corner, and circle-inside-box cases.
 pub fn aabb_vs_circle(aabb: &Aabb, circle_center: Vec2, radius: f32) -> Option<Contact> {
+    aabb_vs_circle_masked(aabb, circle_center, radius, FACE_ALL)
+}
+
+/// AABB vs circle with face-mask filtering. When the AABB is a tile,
+/// contacts whose closest point sits on an internal (neighbor-shared)
+/// face are dropped — the adjacent tile generates the correct face
+/// contact from its exposed side. Vertex contacts at tile corners
+/// require both incident faces to be exposed; otherwise they resolve to
+/// diagonal impulses that squeeze bodies through the seam between two
+/// tiles. When the circle center is inside the box, exits pick the
+/// nearest *exposed* face so an interior path can't be chosen.
+pub fn aabb_vs_circle_masked(
+    aabb: &Aabb,
+    circle_center: Vec2,
+    radius: f32,
+    face_mask: u8,
+) -> Option<Contact> {
     let min = aabb.min();
     let max = aabb.max();
     let closest = Vec2::new(
@@ -231,6 +284,28 @@ pub fn aabb_vs_circle(aabb: &Aabb, circle_center: Vec2, radius: f32) -> Option<C
         // normal is a→b, i.e. the direction the AABB should move to
         // escape the circle, which points from the circle back toward
         // the box's closest point.
+        //
+        // Determine which face(s) the closest point touches. For a pure
+        // face contact exactly one of the four bits is set; for a vertex
+        // contact two bits are set (the two faces meeting at that
+        // corner). Any bit set in `involved` must be an exposed face for
+        // this contact to be legitimate; otherwise the neighbor tile on
+        // the internal side handles it via a proper face contact.
+        let mut involved: u8 = 0;
+        if circle_center.x < min.x {
+            involved |= FACE_LEFT;
+        } else if circle_center.x > max.x {
+            involved |= FACE_RIGHT;
+        }
+        if circle_center.y < min.y {
+            involved |= FACE_TOP;
+        } else if circle_center.y > max.y {
+            involved |= FACE_BOTTOM;
+        }
+        if involved & !face_mask != 0 {
+            return None;
+        }
+
         let dist = dist_sq.sqrt();
         Some(Contact {
             normal: -delta / dist,
@@ -238,29 +313,45 @@ pub fn aabb_vs_circle(aabb: &Aabb, circle_center: Vec2, radius: f32) -> Option<C
         })
     } else {
         // Circle center is inside the box. The shortest exit is along
-        // whichever face is nearest. Compute penetration on each axis
-        // and take the smaller one. Pushing the AABB in the +axis direction
-        // pops the circle out through the -axis face, so when the circle
-        // is closer to the low-side face we push the box toward +axis.
+        // whichever face is nearest; face-mask filtering picks the
+        // nearest *exposed* face so we don't push the circle through a
+        // neighbor-shared seam into another solid tile.
         let dx_left = circle_center.x - min.x;
         let dx_right = max.x - circle_center.x;
         let dy_top = circle_center.y - min.y;
         let dy_bot = max.y - circle_center.y;
-        let min_x = dx_left.min(dx_right);
-        let min_y = dy_top.min(dy_bot);
-        if min_x < min_y {
-            let sign = if dx_left < dx_right { 1.0 } else { -1.0 };
-            Some(Contact {
-                normal: Vec2::new(sign, 0.0),
-                penetration: min_x + radius,
-            })
-        } else {
-            let sign = if dy_top < dy_bot { 1.0 } else { -1.0 };
-            Some(Contact {
-                normal: Vec2::new(0.0, sign),
-                penetration: min_y + radius,
-            })
+
+        let mut best_dist = f32::INFINITY;
+        let mut best_normal = Vec2::ZERO;
+        // Order matches the original tie-break: x-axis first, then y.
+        // Pushing the AABB in the +axis direction pops the circle out
+        // through the -axis face.
+        if face_mask & FACE_LEFT != 0 && dx_left < best_dist {
+            best_dist = dx_left;
+            best_normal = Vec2::new(1.0, 0.0);
         }
+        if face_mask & FACE_RIGHT != 0 && dx_right < best_dist {
+            best_dist = dx_right;
+            best_normal = Vec2::new(-1.0, 0.0);
+        }
+        if face_mask & FACE_TOP != 0 && dy_top < best_dist {
+            best_dist = dy_top;
+            best_normal = Vec2::new(0.0, 1.0);
+        }
+        if face_mask & FACE_BOTTOM != 0 && dy_bot < best_dist {
+            best_dist = dy_bot;
+            best_normal = Vec2::new(0.0, -1.0);
+        }
+        if best_normal == Vec2::ZERO {
+            // Fully enclosed tile (all faces internal). A body inside
+            // one of these is geometrically unreachable under normal
+            // integration; skip rather than push it somewhere worse.
+            return None;
+        }
+        Some(Contact {
+            normal: best_normal,
+            penetration: best_dist + radius,
+        })
     }
 }
 

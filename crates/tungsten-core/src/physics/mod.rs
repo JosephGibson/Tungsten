@@ -22,7 +22,10 @@ pub mod events;
 pub mod step;
 
 pub use broadphase::{ProxyId, SpatialGrid};
-pub use collision::{aabb_vs_aabb, aabb_vs_circle, circle_vs_circle, Aabb, Contact};
+pub use collision::{
+    aabb_vs_aabb, aabb_vs_aabb_masked, aabb_vs_circle, aabb_vs_circle_masked, circle_vs_circle,
+    Aabb, Contact, FACE_ALL, FACE_BOTTOM, FACE_LEFT, FACE_RIGHT, FACE_TOP,
+};
 pub use components::{BodyKind, Collider, Position, RigidBody, Shape, Velocity};
 pub use events::CollisionEvent;
 pub use step::{physics_step, PhysicsBuffers};
