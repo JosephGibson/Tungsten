@@ -394,6 +394,35 @@ pub(crate) fn compose_hud_text_sections(
     sections
 }
 
+/// Compute the top-left origin for a multi-line text block anchored to one of
+/// the four screen corners. Shared by the systems-timing overlay and the
+/// entity inspector so their layout math stays in one place. Width is
+/// estimated with the same `font_size * 0.55` monospace heuristic used by
+/// HUD's right-side corners.
+pub(crate) fn anchor_text_block(
+    corner: HudCorner,
+    lines: &[String],
+    font_size: f32,
+    line_height: f32,
+    padding: f32,
+    viewport: (u32, u32),
+) -> (f32, f32) {
+    let (vw, vh) = (viewport.0 as f32, viewport.1 as f32);
+    let line_count = lines.len().max(1) as f32;
+    let max_chars = lines.iter().map(|s| s.chars().count()).max().unwrap_or(0) as f32;
+    let text_w = font_size * 0.55 * max_chars;
+    let text_h = line_count * line_height;
+    match corner {
+        HudCorner::TopLeft => (padding, padding),
+        HudCorner::TopRight => ((vw - text_w - padding).max(0.0), padding),
+        HudCorner::BottomLeft => (padding, (vh - text_h - padding).max(0.0)),
+        HudCorner::BottomRight => (
+            (vw - text_w - padding).max(0.0),
+            (vh - text_h - padding).max(0.0),
+        ),
+    }
+}
+
 /// Engine-registered system: toggles `DebugHud.enabled` on the
 /// `engine_toggle_hud` action edge. Runs as the first system each frame so
 /// input is observed before any user system consumes `just_pressed`.

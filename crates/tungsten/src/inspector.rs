@@ -1,7 +1,8 @@
 //! Text-only entity inspector (M21, `F3`). Users register component types
-//! that implement [`Inspectable`]; while the overlay is enabled, LMB picks
-//! the nearest entity to the cursor in world space and the compose helper
-//! renders every registered component's labelled rows.
+//! that implement [`Inspectable`]; while the overlay is enabled, the nearest
+//! entity to the mouse cursor in world space is re-picked every frame
+//! (hover-to-inspect) and the compose helper renders every registered
+//! component's labelled rows.
 //!
 //! Registration uses an opaque `InspectFn` closure captured at
 //! `register::<T>(label)` time. The closure reads `world.get::<T>(entity)`
@@ -17,12 +18,13 @@
 use glam::Vec2;
 
 use tungsten_core::components::{Sprite, Tag, Transform, Visibility};
-use tungsten_core::input::{ActionMap, InputState, MouseButton};
+use tungsten_core::input::{ActionMap, InputState};
 use tungsten_core::physics::{Position, Velocity};
 use tungsten_core::{CameraState, Entity, Inspectable, World};
 use tungsten_render::TextSection;
 
 use crate::app::WindowSize;
+use crate::debug_hud::{anchor_text_block, HudCorner};
 
 pub type InspectFn = Box<dyn Fn(&World, Entity) -> Vec<(&'static str, String)>>;
 
@@ -30,7 +32,8 @@ pub struct InspectorState {
     pub enabled: bool,
     pub selected: Option<Entity>,
     registered: Vec<(&'static str, InspectFn)>,
-    pub position: [f32; 2],
+    pub corner: HudCorner,
+    pub padding_px: f32,
     pub font_id: String,
     pub font_size: f32,
     pub line_height: f32,
@@ -45,13 +48,17 @@ impl Default for InspectorState {
             enabled: false,
             selected: None,
             registered: Vec::new(),
-            position: [12.0, 12.0],
+            // BottomLeft so the inspector does not stomp on the systems
+            // overlay (TopLeft) or the debug HUD (TopRight) when all three
+            // are visible at once.
+            corner: HudCorner::BottomLeft,
+            padding_px: 12.0,
             font_id: "mono".to_string(),
-            font_size: 18.0,
-            line_height: 22.0,
+            font_size: 22.0,
+            line_height: 26.0,
             color: [240, 240, 240, 240],
             outline_color: [0, 0, 0, 220],
-            outline_px: 1.0,
+            outline_px: 1.5,
         }
     }
 }
@@ -132,13 +139,13 @@ pub(crate) fn inspector_pick_system(world: &mut World) {
         }
     }
 
+    // Hover-to-inspect: every frame, when the cursor is inside the window,
+    // re-pick the nearest `Transform` entity. No button edge required. The
+    // previous LMB-edge gate is documented in D-047 / plan notes.
     let (cursor, camera, viewport) = {
         let Some(input) = world.get_resource::<InputState>() else {
             return;
         };
-        if !input.mouse_just_pressed(MouseButton::Left) {
-            return;
-        }
         let Some(cursor) = input.cursor_position() else {
             return;
         };
@@ -185,7 +192,7 @@ fn screen_to_world(cursor: (f32, f32), camera: &CameraState, _viewport: WindowSi
 pub(crate) fn compose_inspector_text_section(
     state: &InspectorState,
     world: &World,
-    _viewport: (u32, u32),
+    viewport: (u32, u32),
 ) -> Vec<TextSection> {
     if !state.enabled {
         return Vec::new();
@@ -194,10 +201,10 @@ pub(crate) fn compose_inspector_text_section(
     let mut lines: Vec<String> = Vec::new();
     match state.selected {
         None => {
-            lines.push("inspector: no selection - LMB to pick".to_string());
+            lines.push("inspector: hover over an entity".to_string());
         }
         Some(entity) if !world.is_alive(entity) => {
-            lines.push("inspector: no selection - LMB to pick".to_string());
+            lines.push("inspector: hover over an entity".to_string());
         }
         Some(entity) => {
             lines.push(format!("inspector: {entity}"));
@@ -215,7 +222,14 @@ pub(crate) fn compose_inspector_text_section(
     }
 
     let content = lines.join("\n");
-    let [x, y] = state.position;
+    let (x, y) = anchor_text_block(
+        state.corner,
+        &lines,
+        state.font_size,
+        state.line_height,
+        state.padding_px,
+        viewport,
+    );
     let main = TextSection {
         content,
         font_id: state.font_id.clone(),
@@ -283,7 +297,7 @@ mod tests {
     }
 
     #[test]
-    fn pick_selects_nearest_transform_entity_on_lmb() {
+    fn pick_selects_nearest_transform_entity_on_hover() {
         let mut world = make_world();
         world.get_resource_mut::<InspectorState>().unwrap().enabled = true;
 
@@ -293,9 +307,9 @@ mod tests {
         let near = world.spawn();
         world.insert(near, Transform::from_position(Vec2::new(110.0, 110.0)));
 
+        // Hover-only: the cursor is present but no mouse button is down.
         let mut input = InputState::new();
         input.update_cursor_position(100.0, 100.0);
-        input.mouse_down(MouseButton::Left);
         world.insert_resource(input);
 
         inspector_pick_system(&mut world);
@@ -312,8 +326,25 @@ mod tests {
 
         let mut input = InputState::new();
         input.update_cursor_position(0.0, 0.0);
-        input.mouse_down(MouseButton::Left);
         world.insert_resource(input);
+
+        inspector_pick_system(&mut world);
+
+        assert!(world
+            .get_resource::<InspectorState>()
+            .unwrap()
+            .selected
+            .is_none());
+    }
+
+    #[test]
+    fn pick_skips_when_cursor_is_outside_window() {
+        let mut world = make_world();
+        world.get_resource_mut::<InspectorState>().unwrap().enabled = true;
+        let e = world.spawn();
+        world.insert(e, Transform::from_position(Vec2::ZERO));
+        // InputState with no cursor_position set must not cause a pick.
+        world.insert_resource(InputState::new());
 
         inspector_pick_system(&mut world);
 
@@ -353,7 +384,9 @@ mod tests {
         let world = World::new();
         let sections = compose_inspector_text_section(&state, &world, (800, 600));
         assert!(!sections.is_empty());
-        assert!(sections.iter().any(|s| s.content.contains("no selection")));
+        assert!(sections
+            .iter()
+            .any(|s| s.content.contains("hover over an entity")));
     }
 
     #[test]

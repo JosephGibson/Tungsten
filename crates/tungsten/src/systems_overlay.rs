@@ -13,6 +13,7 @@ use tungsten_core::input::{ActionMap, InputState};
 use tungsten_core::World;
 use tungsten_render::TextSection;
 
+use crate::debug_hud::{anchor_text_block, HudCorner};
 use crate::telemetry::FrameTimings;
 
 #[derive(Debug)]
@@ -20,7 +21,8 @@ pub struct SystemTimingOverlay {
     pub enabled: bool,
     pub alpha: f32,
     pub refresh_interval_ms: f32,
-    pub position: [f32; 2],
+    pub corner: HudCorner,
+    pub padding_px: f32,
     pub font_id: String,
     pub font_size: f32,
     pub line_height: f32,
@@ -38,13 +40,14 @@ impl Default for SystemTimingOverlay {
             enabled: false,
             alpha: 0.1,
             refresh_interval_ms: 250.0,
-            position: [12.0, 12.0],
+            corner: HudCorner::TopLeft,
+            padding_px: 12.0,
             font_id: "mono".to_string(),
-            font_size: 18.0,
-            line_height: 22.0,
+            font_size: 22.0,
+            line_height: 26.0,
             color: [240, 240, 240, 240],
             outline_color: [0, 0, 0, 220],
-            outline_px: 1.0,
+            outline_px: 1.5,
             ewma: BTreeMap::new(),
             cached_sections: Vec::new(),
             time_since_refresh_ms: f32::INFINITY,
@@ -91,7 +94,7 @@ pub(crate) fn systems_overlay_toggle_system(world: &mut World) {
 pub(crate) fn compose_systems_overlay_text_section(
     overlay: &mut SystemTimingOverlay,
     world: &World,
-    _viewport: (u32, u32),
+    viewport: (u32, u32),
     frame_ms: f32,
 ) -> Vec<TextSection> {
     if !overlay.enabled {
@@ -138,7 +141,14 @@ pub(crate) fn compose_systems_overlay_text_section(
         .map(|(name, ms)| format!("{name:>30}  {ms:>6.2}ms"))
         .collect();
     let content = rendered.join("\n");
-    let [x, y] = overlay.position;
+    let (x, y) = anchor_text_block(
+        overlay.corner,
+        &rendered,
+        overlay.font_size,
+        overlay.line_height,
+        overlay.padding_px,
+        viewport,
+    );
 
     let main = TextSection {
         content,
