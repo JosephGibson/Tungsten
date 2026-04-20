@@ -24,4 +24,5 @@ pub use telemetry::{DisplayTelemetry, FrameTimings, RenderCounts};
 pub use tilemap_extract::extract_tilemaps;
 pub use tungsten_core as core;
 pub use tungsten_core::physics;
+pub use tungsten_core::{ActionMap, ActionMapError, Binding};
 pub use tungsten_render as render;

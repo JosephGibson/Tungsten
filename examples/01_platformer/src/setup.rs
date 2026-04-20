@@ -14,26 +14,31 @@ use tungsten::{camera_update_system, App};
 
 use crate::extract::{extract_sprites, extract_text};
 use crate::state::{
-    AudioState, Ball, CurrentSprite, Player, TextDisplayState, ASSETS_LOCAL, ASSETS_ROOT,
-    BALL_RADIUS, BALL_RESTITUTION, GRAVITY_Y, MANIFEST_LOCAL, MANIFEST_ROOT, MAP_COLS, MAP_ROWS,
-    PLAYER_HALF, TILE,
+    ActiveBlackHole, AudioState, Ball, BallSpawnState, CurrentSprite, Player, TextDisplayState,
+    ASSETS_LOCAL, ASSETS_ROOT, BALL_RADIUS, BALL_RESTITUTION, GRAVITY_Y, MANIFEST_LOCAL,
+    MANIFEST_ROOT, MAP_COLS, MAP_ROWS, PLAYER_HALF, PLAYER_SPAWN, TILE,
 };
 use crate::systems::{
-    animation_system, audio_input_system, camera_zoom_input_system, display_input_system,
-    ground_detection, platformer_camera_base_zoom, player_input, update_text_display,
+    animation_system, audio_input_system, black_hole_force_system, black_hole_lifetime_system,
+    camera_zoom_input_system, despawn_out_of_bounds, ground_detection, platformer_camera_base_zoom,
+    player_input, spawn_ball_system, spawn_black_hole_system, update_text_display,
 };
 
 type ExampleSystem = fn(&mut World);
 
 pub(crate) const RUNTIME_SYSTEM_ORDER: &[(&str, ExampleSystem)] = &[
     ("update_text_display", update_text_display),
-    ("display_input_system", display_input_system),
     ("player_input", player_input),
+    ("spawn_ball_system", spawn_ball_system),
+    ("spawn_black_hole_system", spawn_black_hole_system),
+    ("black_hole_force_system", black_hole_force_system),
     ("audio_input_system", audio_input_system),
     ("camera_zoom_input_system", camera_zoom_input_system),
     ("animation_system", animation_system),
     ("physics_step", physics_step),
     ("ground_detection", ground_detection),
+    ("black_hole_lifetime_system", black_hole_lifetime_system),
+    ("despawn_out_of_bounds", despawn_out_of_bounds),
     ("sync_position_to_transform", sync_position_to_transform),
     ("platformer_camera_base_zoom", platformer_camera_base_zoom),
     ("camera_update_system", camera_update_system),
@@ -58,9 +63,17 @@ fn enable_hot_reload(app: &mut App) {
 fn seed_world(world: &mut World) {
     if let Some(cfg) = world.get_resource_mut::<PhysicsConfig>() {
         cfg.gravity = Vec2::new(0.0, GRAVITY_Y);
-        cfg.broadphase_cell_size = 32.0;
+        // One tile wide. Smaller cells cap per-cell proxy counts so the
+        // narrow-phase inside a dense pile doesn't go quadratic in the
+        // ~1000-ball stress test. At ball radius 6 a 16×16 cell holds
+        // ~4 tightly-packed balls instead of ~16, cutting pair candidates
+        // by roughly 16×; we pay a small 2× insert cost from balls
+        // occasionally straddling two cells.
+        cfg.broadphase_cell_size = 16.0;
     }
     world.insert_resource(TextDisplayState::default());
+    world.insert_resource(BallSpawnState::default());
+    world.insert_resource(ActiveBlackHole::default());
 
     // Tilemap — provides the static ground, platforms, and collision layer.
     let map = world.spawn();
@@ -72,10 +85,9 @@ fn seed_world(world: &mut World) {
     // on screen. Moving left scrolls the background right; moving right
     // scrolls it left (until the right edge clamp at max_x = 256).
     let player = world.spawn();
-    let player_start = Vec2::new(20.0 * TILE, 13.0 * TILE);
     world.insert(player, Player::default());
-    world.insert(player, Position(player_start));
-    world.insert(player, Transform::from_position(player_start));
+    world.insert(player, Position(PLAYER_SPAWN));
+    world.insert(player, Transform::from_position(PLAYER_SPAWN));
     world.insert(player, Velocity(Vec2::ZERO));
     world.insert(player, Collider::aabb(PLAYER_HALF));
     world.insert(player, RigidBody::dynamic().with_restitution(0.0));
@@ -150,6 +162,7 @@ fn install_startup(app: &mut App) {
             "ex10_platform",
             "ex10_sky",
             "ex10_ball",
+            "ex10_cursor",
             "walk_0",
         ] {
             assert!(registry.get_sprite(id).is_some(), "missing sprite '{id}'");
@@ -184,8 +197,8 @@ fn install_startup(app: &mut App) {
 }
 
 fn install_runtime(app: &mut App) {
-    // Ordering: text-display-cache → input → audio → animation → physics →
-    // post-physics state sync → shared camera update.
+    // Ordering: text-display-cache → gameplay input → audio → animation →
+    // physics → post-physics state sync → shared camera update.
     for (name, system) in RUNTIME_SYSTEM_ORDER {
         app.add_system_named(*name, *system);
     }

@@ -4,7 +4,7 @@ use tungsten_core::assets::{
     AnimationData, AnimationRegistry, FilterMode, FontRegistry, ResolvedManifest, SoundData,
     SoundRegistry, TextureHandle, TilemapData, TilemapRegistry,
 };
-use tungsten_core::{AssetRegistry, World};
+use tungsten_core::{ActionMap, ActionMapError, AssetRegistry, World};
 use tungsten_render::Renderer;
 
 /// Load all sprite assets from a resolved manifest: decode PNGs to CPU bitmaps,
@@ -345,6 +345,23 @@ pub fn reload_font(id: &str, path: &Path, renderer: &mut Renderer) -> anyhow::Re
 
     renderer.reload_font(id, data);
     log::info!("Hot-reloaded font '{id}'");
+    Ok(())
+}
+
+/// Hot-reload the workspace-root `input.json` action map. Loads the new
+/// bindings, merges them with the engine defaults, and swaps the
+/// `ActionMap` resource. On load failure the previous map is preserved
+/// and the error is returned to the caller (the app layer logs and
+/// continues).
+pub fn reload_action_map(path: &Path, world: &mut World) -> Result<(), ActionMapError> {
+    let loaded = ActionMap::load(path)?;
+    let merged = ActionMap::merged_with_defaults(loaded);
+    if let Some(map) = world.get_resource_mut::<ActionMap>() {
+        *map = merged;
+    } else {
+        world.insert_resource(merged);
+    }
+    log::info!("Hot-reloaded action map from '{}'", path.display());
     Ok(())
 }
 

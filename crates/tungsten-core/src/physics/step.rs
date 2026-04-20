@@ -16,7 +16,10 @@
 //! and sidesteps incremental-update bugs.
 
 use super::broadphase::{ProxyId, SpatialGrid};
-use super::collision::{aabb_vs_aabb, aabb_vs_circle, circle_vs_circle, Aabb, Contact};
+use super::collision::{
+    aabb_vs_aabb_masked, aabb_vs_circle_masked, circle_vs_circle, sweep_aabb_vs_aabb, Aabb,
+    Contact, FACE_ALL, FACE_BOTTOM, FACE_LEFT, FACE_RIGHT, FACE_TOP,
+};
 use super::components::{BodyKind, Collider, Position, RigidBody, Shape, Velocity};
 use super::events::CollisionEvent;
 use super::PhysicsConfig;
@@ -34,21 +37,71 @@ use glam::Vec2;
 struct Proxy {
     entity: Option<Entity>,
     center: Vec2,
+    /// Pre-integration center for this substep — used by the speculative
+    /// sweep test to catch tunneling when the substep cap binds. Equal
+    /// to `center` for static proxies.
+    prev_center: Vec2,
     velocity: Vec2,
     offset: Vec2,
     shape: Shape,
     is_dynamic: bool,
     inv_mass: f32,
     restitution: f32,
+    /// Bitmask of exposed faces. Tile proxies clear the bit for each
+    /// face shared with an adjacent solid tile so contacts that land on
+    /// a seam are suppressed — otherwise a concave-corner contact can
+    /// squeeze a body through the boundary between two tiles (e.g. a
+    /// ball resting in the inside corner of an L-shaped level escaping
+    /// through the floor). Non-tile proxies use `FACE_ALL`.
+    face_mask: u8,
 }
 
 impl Proxy {
     fn world_aabb(&self) -> Aabb {
+        Aabb::new(self.center, self.half_extents())
+    }
+
+    fn half_extents(&self) -> Vec2 {
         match self.shape {
-            Shape::Aabb { half_extents } => Aabb::new(self.center, half_extents),
-            Shape::Circle { radius } => Aabb::new(self.center, Vec2::splat(radius)),
+            Shape::Aabb { half_extents } => half_extents,
+            Shape::Circle { radius } => Vec2::splat(radius),
         }
     }
+
+    fn min_half_extent(&self) -> f32 {
+        match self.shape {
+            Shape::Aabb { half_extents } => half_extents.x.min(half_extents.y),
+            Shape::Circle { radius } => radius,
+        }
+    }
+
+    /// Union of the pre- and post-integration AABBs. Used as the
+    /// broadphase query shape for fast dynamic proxies so the swept
+    /// path finds static tiles it would otherwise skip past.
+    fn swept_aabb(&self) -> Aabb {
+        let cur = self.world_aabb();
+        if self.prev_center == self.center {
+            return cur;
+        }
+        let prev = Aabb::new(self.prev_center, self.half_extents());
+        cur.union(&prev)
+    }
+}
+
+/// Persistent per-frame scratch buffers. Stored as a `World` resource so
+/// the physics step doesn't reallocate its proxy, pair, event, candidate
+/// vectors or the broadphase grid every substep. Fields are private —
+/// `physics_step` is the only writer. Inserted on first call via
+/// `Default`; games don't need to seed it.
+#[derive(Debug, Default)]
+pub struct PhysicsBuffers {
+    proxies: Vec<Proxy>,
+    pairs: Vec<(u32, u32)>,
+    events: Vec<CollisionEvent>,
+    candidates: Vec<ProxyId>,
+    grid: SpatialGrid,
+    collider_entities: Vec<Entity>,
+    dynamic_entities: Vec<Entity>,
 }
 
 /// Entry point registered with `app.add_system`. Runs one physics tick
@@ -71,10 +124,20 @@ pub fn physics_step(world: &mut World) {
     let substeps = compute_substeps(world, dt, &config);
     let sub_dt = dt / substeps as f32;
 
+    // Take ownership of the persistent buffers for the duration of the
+    // step. We can't hold a `&mut` into `World::resources` while also
+    // calling `get::<Position>` / `get_mut::<Velocity>` on entities, so
+    // remove + reinsert is the pattern.
+    let mut buffers = world
+        .remove_resource::<PhysicsBuffers>()
+        .unwrap_or_default();
+
     for _ in 0..substeps {
-        apply_gravity_and_integrate(world, sub_dt, config.gravity);
-        resolve_collisions(world, &config);
+        apply_gravity_and_integrate(world, sub_dt, config.gravity, &mut buffers);
+        resolve_collisions(world, &config, sub_dt, &mut buffers);
     }
+
+    world.insert_resource(buffers);
 }
 
 /// Decide how many substeps this frame needs so that no dynamic body
@@ -109,19 +172,23 @@ fn compute_substeps(world: &World, dt: f32, config: &PhysicsConfig) -> u32 {
     needed.min(config.max_substeps.max(1))
 }
 
-fn apply_gravity_and_integrate(world: &mut World, sub_dt: f32, gravity: Vec2) {
-    let dynamic_entities: Vec<Entity> = world
-        .query_entities::<RigidBody>()
-        .into_iter()
-        .filter(|e| {
-            matches!(
-                world.get::<RigidBody>(*e).map(|b| b.kind),
-                Some(BodyKind::Dynamic)
-            )
-        })
-        .collect();
+fn apply_gravity_and_integrate(
+    world: &mut World,
+    sub_dt: f32,
+    gravity: Vec2,
+    buffers: &mut PhysicsBuffers,
+) {
+    buffers.dynamic_entities.clear();
+    for e in world.query_entities::<RigidBody>() {
+        if matches!(
+            world.get::<RigidBody>(e).map(|b| b.kind),
+            Some(BodyKind::Dynamic)
+        ) {
+            buffers.dynamic_entities.push(e);
+        }
+    }
 
-    for entity in dynamic_entities {
+    for &entity in &buffers.dynamic_entities {
         if let Some(vel) = world.get_mut::<Velocity>(entity) {
             vel.0 += gravity * sub_dt;
         }
@@ -135,17 +202,43 @@ fn apply_gravity_and_integrate(world: &mut World, sub_dt: f32, gravity: Vec2) {
     }
 }
 
-fn resolve_collisions(world: &mut World, config: &PhysicsConfig) {
-    let mut proxies: Vec<Proxy> = Vec::new();
+fn resolve_collisions(
+    world: &mut World,
+    config: &PhysicsConfig,
+    sub_dt: f32,
+    buffers: &mut PhysicsBuffers,
+) {
+    let PhysicsBuffers {
+        proxies,
+        pairs,
+        events,
+        candidates,
+        grid,
+        collider_entities,
+        ..
+    } = buffers;
+    proxies.clear();
+    pairs.clear();
+    events.clear();
+    candidates.clear();
+    collider_entities.clear();
+
+    // Keep the grid's HashMap + query_marks allocations between frames;
+    // only reset if the configured cell size changed.
+    if (grid.cell_size() - config.broadphase_cell_size).abs() > f32::EPSILON {
+        grid.set_cell_size(config.broadphase_cell_size);
+    } else {
+        grid.clear();
+    }
 
     // 1. Collect entity proxies.
-    let entities_with_collider: Vec<Entity> = world
-        .query_entities::<Collider>()
-        .into_iter()
-        .filter(|e| world.get::<Position>(*e).is_some())
-        .collect();
+    for e in world.query_entities::<Collider>() {
+        if world.get::<Position>(e).is_some() {
+            collider_entities.push(e);
+        }
+    }
 
-    for entity in &entities_with_collider {
+    for entity in collider_entities.iter() {
         let position = world.get::<Position>(*entity).copied().unwrap().0;
         let collider = *world.get::<Collider>(*entity).unwrap();
         let body = world.get::<RigidBody>(*entity).copied();
@@ -168,56 +261,106 @@ fn resolve_collisions(world: &mut World, config: &PhysicsConfig) {
             // of the query, but it can't generate events as `a`.
             None => (false, 0.0, 0.0),
         };
+        let center = position + collider.offset;
+        // Pre-integration center: apply_gravity_and_integrate already
+        // moved the body by `velocity * sub_dt` this substep, so reversing
+        // it recovers where the body was when the substep started. Static
+        // proxies never moved, so prev == center.
+        let prev_center = if is_dynamic {
+            center - velocity * sub_dt
+        } else {
+            center
+        };
         proxies.push(Proxy {
             entity: Some(*entity),
-            center: position + collider.offset,
+            center,
+            prev_center,
             velocity,
             offset: collider.offset,
             shape: collider.shape,
             is_dynamic,
             inv_mass,
             restitution,
+            face_mask: FACE_ALL,
         });
     }
 
     // 2. Emit tilemap static tile proxies.
-    gather_tilemap_proxies(world, &mut proxies);
+    gather_tilemap_proxies(world, proxies);
 
     // 3. Build the broad-phase grid.
-    let mut grid = SpatialGrid::new(config.broadphase_cell_size);
     for (id, proxy) in proxies.iter().enumerate() {
         grid.insert(id as ProxyId, &proxy.world_aabb());
     }
 
-    // 4. For each dynamic proxy, query the grid and run narrow-phase.
-    //    Contacts are resolved *sequentially* into `proxies`: each pair
-    //    re-tests the narrow phase against the current (already-corrected)
-    //    centers and reads the current velocities, so overlapping contacts
-    //    (a body straddling two adjacent static tiles) don't stack
-    //    impulses. Gauss–Seidel style — the ordering isn't physically
-    //    unique but at game-jam scale the difference is invisible, and
-    //    the alternative (batched deltas) doubles bounces on shared seams.
-    let mut events: Vec<CollisionEvent> = Vec::new();
-    let mut candidates: Vec<ProxyId> = Vec::new();
+    // 3b. Speculative sweep for *extreme* cap-bound tunneling: clamps
+    //     any dynamic proxy whose per-substep travel exceeds its own
+    //     min half-extent directly to its first static contact along
+    //     the integration path. Gated on travel so resting piles pay
+    //     nothing; restricted to static targets so dynamic-vs-dynamic
+    //     doesn't feed back into itself. The common tunneling and
+    //     resolution-slip cases are handled by the inflated pair
+    //     query below (step 4), so this pass mostly fires in the
+    //     pathological FPS-collapse + external-forcing scenario.
+    speculative_pass(proxies, grid, candidates, events);
 
+    // 4. Build the candidate pair list once per substep. Each dynamic
+    //    queries with the *swept* AABB inflated by half a broadphase
+    //    cell:
+    //
+    //    - swept (union of pre- and post-integration AABBs) covers the
+    //      tunneling case — a body that ended the substep past a thin
+    //      wall still pairs with the wall because its path crossed
+    //      the wall's cell.
+    //    - half-cell inflation covers resolution slip — sequential GS
+    //      iterations can shove a body several pixels out of its
+    //      pre-resolution cell, and without the margin it would drift
+    //      into a wall that was never in its pair list. With a 1000-ball
+    //      pile and cell size 16, slip of 4–8 px per substep is common
+    //      enough to surface as visible tunneling.
+    //
+    //    Querying once per substep (instead of per iteration) stays
+    //    cheap; a spurious pair just fails the iteration's narrow_phase
+    //    and is skipped.
+    let query_margin = Vec2::splat(config.broadphase_cell_size * 0.5);
     for a_idx in 0..proxies.len() {
         if !proxies[a_idx].is_dynamic {
             continue;
         }
-        let a_aabb = proxies[a_idx].world_aabb();
-        grid.query(&a_aabb, Some(a_idx as ProxyId), &mut candidates);
-
-        for &b_id in &candidates {
+        let mut a_aabb = proxies[a_idx].swept_aabb();
+        a_aabb.half_extents += query_margin;
+        grid.query(&a_aabb, Some(a_idx as ProxyId), candidates);
+        for &b_id in candidates.iter() {
             let b_idx = b_id as usize;
-            // Resolve each unordered pair once per substep: when both
-            // sides are dynamic, only process when a_idx < b_idx.
+            // Resolve each unordered pair once: when both sides are dynamic
+            // only keep `a_idx < b_idx`, otherwise a cheaper dedup.
             if proxies[b_idx].is_dynamic && b_idx <= a_idx {
                 continue;
             }
+            pairs.push((a_idx as u32, b_idx as u32));
+        }
+    }
 
-            // Re-test narrow phase with current (possibly already
-            // corrected) centers. If a prior contact in this substep
-            // already separated the shapes, this returns None.
+    // 5. Gauss–Seidel solver over the cached pair list. Each pair re-runs
+    //    narrow-phase against current (already-corrected) centers so
+    //    overlapping contacts (a body straddling two adjacent static
+    //    tiles) don't stack impulses. The outer iteration loop is what
+    //    makes stacks stable: single-pass resolution can't clear
+    //    penetration introduced mid-pass (e.g. ball A lands on ball B,
+    //    whose floor contact was already resolved — B now overlaps the
+    //    floor again but its pair was already processed). Each extra
+    //    iteration re-tests every pair against the updated centers.
+    //    Velocity impulse fires only on closing contacts, so resting
+    //    stacks converge without over-damping first-contact bounces.
+    //    Events are emitted on iteration 0 only so resting contacts
+    //    don't inflate the queue by `solver_iterations`×.
+    let iterations = config.solver_iterations.max(1);
+    for iteration in 0..iterations {
+        let emit_events = iteration == 0;
+        for &(a_u, b_u) in pairs.iter() {
+            let a_idx = a_u as usize;
+            let b_idx = b_u as usize;
+
             let contact = narrow_phase(&proxies[a_idx], &proxies[b_idx]);
             let Some(contact) = contact else { continue };
 
@@ -264,19 +407,21 @@ fn resolve_collisions(world: &mut World, config: &PhysicsConfig) {
                 proxies[b_idx].velocity += b_dv;
             }
 
-            if let Some(a_entity) = proxies[a_idx].entity {
-                events.push(CollisionEvent {
-                    a: a_entity,
-                    b: proxies[b_idx].entity,
-                    normal: contact.normal,
-                    penetration: contact.penetration,
-                });
+            if emit_events {
+                if let Some(a_entity) = proxies[a_idx].entity {
+                    events.push(CollisionEvent {
+                        a: a_entity,
+                        b: proxies[b_idx].entity,
+                        normal: contact.normal,
+                        penetration: contact.penetration,
+                    });
+                }
             }
         }
     }
 
-    // 5. Write the resolved proxy state back into the world.
-    for proxy in &proxies {
+    // 6. Write the resolved proxy state back into the world.
+    for proxy in proxies.iter() {
         if !proxy.is_dynamic {
             continue;
         }
@@ -289,12 +434,130 @@ fn resolve_collisions(world: &mut World, config: &PhysicsConfig) {
         }
     }
 
-    // 6. Push events into the resource.
+    // 7. Push events into the resource. Drain rather than consume so the
+    //    backing allocation stays with `buffers`.
     if !events.is_empty() {
         if let Some(sink) = world.get_resource_mut::<EventQueue<CollisionEvent>>() {
-            for event in events {
+            for event in events.drain(..) {
                 sink.send(event);
             }
+        } else {
+            events.clear();
+        }
+    }
+}
+
+/// Clamp fast dynamic proxies to just before their first static
+/// contact along the substep's integration path. Only activates when
+/// per-substep travel exceeds the proxy's minimum half-extent — the
+/// same condition that can smuggle a body through a wall in one
+/// integration. Slow bodies (resting piles, routine motion) exit
+/// immediately.
+///
+/// For each qualifying proxy we query the grid with the swept union
+/// AABB (covers every cell the path crosses), pick the earliest hit
+/// against a static target, back the center off by a small epsilon,
+/// and reflect velocity along the contact normal with the body's
+/// restitution. The iteration loop below then sees a non-penetrating
+/// state for that pair and does nothing further.
+///
+/// Circles approximate their shape as a point vs. an AABB expanded by
+/// the radius — corners over-report contact slightly, but that's the
+/// safe direction (hit a little early rather than tunnel through).
+fn speculative_pass(
+    proxies: &mut [Proxy],
+    grid: &mut SpatialGrid,
+    candidates: &mut Vec<ProxyId>,
+    events: &mut Vec<CollisionEvent>,
+) {
+    const BACKOFF: f32 = 1.0e-3;
+
+    for a_idx in 0..proxies.len() {
+        let proxy = &proxies[a_idx];
+        if !proxy.is_dynamic {
+            continue;
+        }
+        let min_extent = proxy.min_half_extent();
+        if min_extent <= 0.0 {
+            continue;
+        }
+        let travel_sq = (proxy.center - proxy.prev_center).length_squared();
+        // Same tunneling threshold the substep picker uses internally,
+        // just expressed squared to avoid a sqrt per proxy.
+        if travel_sq <= min_extent * min_extent {
+            continue;
+        }
+
+        let swept = proxy.swept_aabb();
+        grid.query(&swept, Some(a_idx as ProxyId), candidates);
+
+        let a_prev = proxy.prev_center;
+        let a_cur = proxy.center;
+        let a_half = proxy.half_extents();
+
+        let mut best: Option<(f32, Vec2, usize)> = None;
+        for &b_id in candidates.iter() {
+            let b_idx = b_id as usize;
+            let target = &proxies[b_idx];
+            if target.is_dynamic {
+                continue;
+            }
+            let Shape::Aabb {
+                half_extents: b_half,
+            } = target.shape
+            else {
+                // Static circles aren't emitted today; if they appear
+                // later, fall back to the iteration-loop resolver.
+                continue;
+            };
+            if let Some((t, n)) = sweep_aabb_vs_aabb(a_prev, a_cur, a_half, target.center, b_half) {
+                // Map the sweep's axis-aligned normal to the target's
+                // face bit so we skip hits on internal (neighbor-shared)
+                // faces — a tilemap column of solid tiles would
+                // otherwise report every inner face as an entry point.
+                let face_bit = if n.x < 0.0 {
+                    FACE_LEFT
+                } else if n.x > 0.0 {
+                    FACE_RIGHT
+                } else if n.y < 0.0 {
+                    FACE_TOP
+                } else {
+                    FACE_BOTTOM
+                };
+                if target.face_mask & face_bit == 0 {
+                    continue;
+                }
+                if best.is_none_or(|(best_t, _, _)| t < best_t) {
+                    best = Some((t, n, b_idx));
+                }
+            }
+        }
+
+        let Some((t_hit, normal, b_idx)) = best else {
+            continue;
+        };
+        let t_safe = (t_hit - BACKOFF).max(0.0);
+        let clamped = a_prev + (a_cur - a_prev) * t_safe;
+        proxies[a_idx].center = clamped;
+
+        // Reflect the closing velocity component with restitution. Normal
+        // points from the contact back into a's free space, so closing
+        // motion has v·n < 0 and the impulse adds `-(1+e)·v·n` along n.
+        let v = proxies[a_idx].velocity;
+        let v_along_normal = v.dot(normal);
+        if v_along_normal < 0.0 {
+            let restitution = proxies[a_idx].restitution;
+            let impulse = -(1.0 + restitution) * v_along_normal;
+            proxies[a_idx].velocity = v + normal * impulse;
+        }
+
+        if let Some(a_entity) = proxies[a_idx].entity {
+            events.push(CollisionEvent {
+                a: a_entity,
+                b: proxies[b_idx].entity,
+                normal,
+                penetration: 0.0,
+            });
         }
     }
 }
@@ -308,18 +571,31 @@ fn narrow_phase(a: &Proxy, b: &Proxy) -> Option<Contact> {
             Shape::Aabb {
                 half_extents: hb, ..
             },
-        ) => aabb_vs_aabb(&Aabb::new(a.center, ha), &Aabb::new(b.center, hb)),
+        ) => aabb_vs_aabb_masked(
+            &Aabb::new(a.center, ha),
+            &Aabb::new(b.center, hb),
+            b.face_mask,
+        ),
         (Shape::Circle { radius: ra }, Shape::Circle { radius: rb }) => {
             circle_vs_circle(a.center, ra, b.center, rb)
         }
-        (Shape::Aabb { half_extents }, Shape::Circle { radius }) => {
-            aabb_vs_circle(&Aabb::new(a.center, half_extents), b.center, radius)
-        }
+        (Shape::Aabb { half_extents }, Shape::Circle { radius }) => aabb_vs_circle_masked(
+            &Aabb::new(a.center, half_extents),
+            b.center,
+            radius,
+            a.face_mask,
+        ),
         (Shape::Circle { radius }, Shape::Aabb { half_extents }) => {
             // Helper's `a` is our b (the aabb). Its returned normal is the
             // direction the aabb escapes the circle, which is exactly the
             // opposite of the direction our `a` (the circle) needs to move.
-            aabb_vs_circle(&Aabb::new(b.center, half_extents), a.center, radius).map(|c| Contact {
+            aabb_vs_circle_masked(
+                &Aabb::new(b.center, half_extents),
+                a.center,
+                radius,
+                b.face_mask,
+            )
+            .map(|c| Contact {
                 normal: -c.normal,
                 penetration: c.penetration,
             })
@@ -348,12 +624,39 @@ fn gather_tilemap_proxies(world: &World, proxies: &mut Vec<Proxy>) {
             if layer.kind != LayerKind::Collision {
                 continue;
             }
+            let w = data.width as i32;
+            let h = data.height as i32;
+            let is_solid = |c: i32, r: i32| -> bool {
+                if c < 0 || r < 0 || c >= w || r >= h {
+                    return false;
+                }
+                let idx = (r as usize) * (data.width as usize) + (c as usize);
+                layer.tiles[idx] >= 0
+            };
             for row in 0..data.height {
                 for col in 0..data.width {
                     let idx = (row as usize) * (data.width as usize) + (col as usize);
                     let tile = layer.tiles[idx];
                     if tile < 0 {
                         continue;
+                    }
+                    let c = col as i32;
+                    let r = row as i32;
+                    // Faces shared with a solid neighbor are internal;
+                    // out-of-bounds neighbors count as empty so map-edge
+                    // faces stay exposed.
+                    let mut face_mask: u8 = 0;
+                    if !is_solid(c, r - 1) {
+                        face_mask |= FACE_TOP;
+                    }
+                    if !is_solid(c, r + 1) {
+                        face_mask |= FACE_BOTTOM;
+                    }
+                    if !is_solid(c - 1, r) {
+                        face_mask |= FACE_LEFT;
+                    }
+                    if !is_solid(c + 1, r) {
+                        face_mask |= FACE_RIGHT;
                     }
                     let center = Vec2::new(
                         instance.origin.x + (col as f32) * tw + half.x,
@@ -362,12 +665,14 @@ fn gather_tilemap_proxies(world: &World, proxies: &mut Vec<Proxy>) {
                     proxies.push(Proxy {
                         entity: None,
                         center,
+                        prev_center: center,
                         velocity: Vec2::ZERO,
                         offset: Vec2::ZERO,
                         shape: Shape::Aabb { half_extents: half },
                         is_dynamic: false,
                         inv_mass: 0.0,
                         restitution: 0.0,
+                        face_mask,
                     });
                 }
             }
@@ -530,6 +835,120 @@ mod tests {
     }
 
     #[test]
+    fn inflated_broadphase_catches_resolution_slip_into_unpaired_wall() {
+        // Pile-pressure slip reproducer. The ball's pre-GS AABB sits in
+        // broadphase cell 0 and the wall's AABB sits in cell 1, so a
+        // tight pair-build query never emits the (ball, wall) pair. A
+        // heavy shover rams the ball during integration; with the shover
+        // at 10× the ball's mass, GS positional correction pushes the
+        // light ball rightward by most of the penetration depth — enough
+        // to end up overlapping the wall inside a single substep. We cap
+        // `max_substeps` at 1 so all the slip happens before the world
+        // writeback gives the ball a chance to re-pair. Without the
+        // half-cell margin on the swept pair-build query the iteration
+        // loop can't resolve the overlap and the ball sits inside the
+        // wall.
+        let mut world = seed_world();
+        if let Some(cfg) = world.get_resource_mut::<PhysicsConfig>() {
+            cfg.broadphase_cell_size = 16.0;
+            cfg.max_substeps = 1;
+        }
+
+        // Wall AABB x ∈ [18, 22] → cell 1.
+        let wall = world.spawn();
+        world.insert(wall, Position(Vec2::new(20.0, 0.0)));
+        world.insert(wall, Collider::aabb(Vec2::new(2.0, 8.0)));
+        world.insert(wall, RigidBody::r#static());
+
+        // Heavy shover: with max_substeps=1 it travels its full 500/60
+        // ≈ 8.33 px in one integration, plunging 6+ px into the ball.
+        let shover = world.spawn();
+        world.insert(shover, Position(Vec2::new(0.0, 0.0)));
+        world.insert(shover, Velocity(Vec2::new(500.0, 0.0)));
+        world.insert(shover, Collider::circle(4.0));
+        world.insert(
+            shover,
+            RigidBody {
+                kind: BodyKind::Dynamic,
+                inv_mass: 0.1,
+                restitution: 0.0,
+            },
+        );
+
+        // Target ball: light mass, pre-GS AABB x ∈ [6, 14] → cell 0.
+        let ball = world.spawn();
+        world.insert(ball, Position(Vec2::new(10.0, 0.0)));
+        world.insert(ball, Velocity(Vec2::ZERO));
+        world.insert(ball, Collider::circle(4.0));
+        world.insert(ball, RigidBody::dynamic().with_restitution(0.0));
+
+        if let Some(dt) = world.get_resource_mut::<DeltaTime>() {
+            dt.dt = 1.0 / 60.0;
+        }
+        physics_step(&mut world);
+
+        // Wall's left face sits at x = 18; the ball (radius 4) must stay
+        // with center ≤ 14 rather than ending up inside the wall.
+        let ball_pos = world.get::<Position>(ball).unwrap().0;
+        assert!(
+            ball_pos.x <= 14.0 + 0.2,
+            "ball slipped through wall during GS resolution: {:?}",
+            ball_pos
+        );
+    }
+
+    #[test]
+    fn speculative_pass_prevents_tunneling_when_substep_cap_binds() {
+        // Reproduces the pile-vs-wall tunneling symptom: once `compute_substeps`
+        // caps at `max_substeps`, `sub_dt` can be too coarse for a fast body
+        // to see a thin wall between integrations. With speculative contacts
+        // on, the body clamps to the wall instead of clearing it.
+        let mut world = seed_world();
+        if let Some(cfg) = world.get_resource_mut::<PhysicsConfig>() {
+            // Cap at 1 substep so we force sub_dt = dt and observe the
+            // cap-bound failure mode directly.
+            cfg.max_substeps = 1;
+        }
+        if let Some(dt) = world.get_resource_mut::<DeltaTime>() {
+            dt.dt = 1.0 / 30.0;
+        }
+
+        let ball = world.spawn();
+        world.insert(ball, Position(Vec2::new(0.0, 0.0)));
+        // 4000 px/s over sub_dt ≈ 133 px; ball radius 4 and wall thickness
+        // 4 are well inside that travel. Without speculative the ball
+        // integrates straight through the wall.
+        world.insert(ball, Velocity(Vec2::new(4000.0, 0.0)));
+        world.insert(ball, Collider::circle(4.0));
+        world.insert(ball, RigidBody::dynamic().with_restitution(0.5));
+
+        let wall = world.spawn();
+        world.insert(wall, Position(Vec2::new(40.0, 0.0)));
+        world.insert(wall, Collider::aabb(Vec2::new(4.0, 32.0)));
+        world.insert(wall, RigidBody::r#static());
+
+        physics_step(&mut world);
+
+        let pos = world.get::<Position>(ball).unwrap();
+        // Wall's left face is at x = 36; the ball's centre must stay to
+        // the left of it (plus a small backoff) instead of clearing the
+        // right face at x = 44.
+        assert!(
+            pos.0.x <= 36.0 + 0.5,
+            "ball tunneled through wall despite speculative pass: {:?}",
+            pos.0
+        );
+        // Velocity should also be reflected (restitution 0.5, incoming +x,
+        // so post-bounce along -x at roughly half the incoming speed).
+        let vel = world.get::<Velocity>(ball).unwrap().0;
+        assert!(
+            vel.x < 0.0,
+            "velocity should reflect off wall under speculative: {:?}",
+            vel
+        );
+    }
+
+    #[test]
     fn zero_restitution_body_does_not_bounce_off_multi_tile_floor() {
         // Regression: the old batched delta resolver summed one full
         // impulse per contact, so a body straddling two adjacent floor
@@ -613,6 +1032,159 @@ mod tests {
             "ball impulse was doubled — rebounded too fast: {:?}",
             vel
         );
+    }
+
+    #[test]
+    fn stack_of_dynamic_bodies_does_not_tunnel_static_floor() {
+        // Regression: single-pass Gauss–Seidel couldn't clear penetration
+        // introduced mid-pass by an upper body pushing into a lower body
+        // whose floor contact had already been resolved. Piling balls in
+        // one spot squeezed the bottom ball through the tile. With
+        // `solver_iterations >= 2` each iteration re-tests every pair
+        // against the updated centers, so pressure propagates to static
+        // contacts before the substep ends.
+        let mut world = seed_world();
+        if let Some(cfg) = world.get_resource_mut::<PhysicsConfig>() {
+            cfg.gravity = Vec2::new(0.0, 900.0);
+        }
+
+        // Solid floor at y = 100, 128px wide.
+        let floor = world.spawn();
+        world.insert(floor, Position(Vec2::new(64.0, 108.0)));
+        world.insert(floor, Collider::aabb(Vec2::new(64.0, 8.0)));
+        world.insert(floor, RigidBody::r#static());
+
+        // Four bouncy balls stacked above the floor, pre-separated so the
+        // initial configuration is penetration-free. Under gravity they
+        // settle into a stack; with single-pass resolution the bottom one
+        // ends up below the floor's top edge within a few frames.
+        const BALLS: u32 = 4;
+        const RADIUS: f32 = 4.0;
+        let mut ball_entities = Vec::new();
+        for i in 0..BALLS {
+            let e = world.spawn();
+            let y = 100.0 - 8.0 - RADIUS - (i as f32) * (RADIUS * 2.0 + 0.5);
+            world.insert(e, Position(Vec2::new(64.0, y)));
+            world.insert(e, Velocity(Vec2::ZERO));
+            world.insert(e, Collider::circle(RADIUS));
+            world.insert(e, RigidBody::dynamic().with_restitution(0.3));
+            ball_entities.push(e);
+        }
+
+        // Simulate long enough for the stack to settle.
+        for _ in 0..120 {
+            physics_step(&mut world);
+            world
+                .get_resource_mut::<EventQueue<CollisionEvent>>()
+                .unwrap()
+                .flush();
+        }
+
+        // Floor's top edge is at y = 100. Ball centres must stay above
+        // y = 100 - RADIUS = 96 with a small tolerance for numerical slop.
+        let floor_top = 100.0;
+        for (i, &ball) in ball_entities.iter().enumerate() {
+            let pos = world.get::<Position>(ball).unwrap().0;
+            assert!(
+                pos.y + RADIUS <= floor_top + 0.5,
+                "ball {i} clipped through floor: y={} (top={})",
+                pos.y,
+                pos.y + RADIUS
+            );
+        }
+    }
+
+    #[test]
+    fn pile_of_balls_does_not_escape_bottom_right_corner() {
+        // Reproduces the platformer's "balls escape from the bottom-right
+        // corner" symptom. Geometry mirrors the real level: a 48×18
+        // tilemap with walls down col 0 and col 47 and a two-row floor
+        // on rows 16,17, forming an L-shaped bucket. At the inside
+        // corner (col 46, row 15), the wall and floor share an internal
+        // seam — before the face-mask filter, mutual pile pressure
+        // squeezed balls through the seam and they escaped through the
+        // tilemap geometry.
+        let mut world = seed_world();
+        if let Some(cfg) = world.get_resource_mut::<PhysicsConfig>() {
+            cfg.gravity = Vec2::new(0.0, 900.0);
+            cfg.broadphase_cell_size = 16.0;
+        }
+
+        const W: u32 = 48;
+        const H: u32 = 18;
+        let mut tiles = vec![-1i32; (W * H) as usize];
+        for row in 0..H {
+            for col in 0..W {
+                let solid = col == 0 || col == W - 1 || row == H - 2 || row == H - 1;
+                if solid {
+                    tiles[(row * W + col) as usize] = 0;
+                }
+            }
+        }
+        world.get_resource_mut::<TilemapRegistry>().unwrap().insert(
+            "level".into(),
+            TilemapData {
+                tile_width: 16,
+                tile_height: 16,
+                width: W,
+                height: H,
+                tileset: vec!["solid".into()],
+                layers: vec![TilemapLayer {
+                    name: "collision".into(),
+                    kind: LayerKind::Collision,
+                    tiles,
+                }],
+            },
+        );
+        let map = world.spawn();
+        world.insert(map, TilemapInstance::new("level", Vec2::ZERO));
+
+        // Dense pile of balls packed above the bottom-right inside corner.
+        // Mutual pressure means the bottom ball is squeezed against both
+        // the wall and the floor at once.
+        const RADIUS: f32 = 6.0;
+        const COLS: u32 = 6;
+        const ROWS: u32 = 8;
+        let wall_inner_x = (W - 1) as f32 * 16.0;
+        let floor_top_y = (H - 2) as f32 * 16.0;
+        let mut ball_entities = Vec::new();
+        for row in 0..ROWS {
+            for col in 0..COLS {
+                let x = wall_inner_x - RADIUS - (col as f32) * (RADIUS * 2.0 + 0.25);
+                let y = floor_top_y - RADIUS - (row as f32) * (RADIUS * 2.0 + 0.25);
+                let e = world.spawn();
+                world.insert(e, Position(Vec2::new(x, y)));
+                world.insert(e, Velocity(Vec2::ZERO));
+                world.insert(e, Collider::circle(RADIUS));
+                world.insert(e, RigidBody::dynamic().with_restitution(0.85));
+                ball_entities.push(e);
+            }
+        }
+
+        for _ in 0..240 {
+            physics_step(&mut world);
+            world
+                .get_resource_mut::<EventQueue<CollisionEvent>>()
+                .unwrap()
+                .flush();
+        }
+
+        for (i, &ball) in ball_entities.iter().enumerate() {
+            let pos = world.get::<Position>(ball).unwrap().0;
+            assert!(
+                pos.x <= wall_inner_x + 0.5,
+                "ball {i} escaped past right wall (x = {}, wall = {}), full pos {:?}",
+                pos.x,
+                wall_inner_x,
+                pos,
+            );
+            assert!(
+                pos.y <= floor_top_y + 0.5,
+                "ball {i} escaped below floor (y = {}, floor = {})",
+                pos.y,
+                floor_top_y,
+            );
+        }
     }
 
     // Helper extension used by tests.

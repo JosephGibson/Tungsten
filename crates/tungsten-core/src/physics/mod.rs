@@ -22,10 +22,13 @@ pub mod events;
 pub mod step;
 
 pub use broadphase::{ProxyId, SpatialGrid};
-pub use collision::{aabb_vs_aabb, aabb_vs_circle, circle_vs_circle, Aabb, Contact};
+pub use collision::{
+    aabb_vs_aabb, aabb_vs_aabb_masked, aabb_vs_circle, aabb_vs_circle_masked, circle_vs_circle,
+    Aabb, Contact, FACE_ALL, FACE_BOTTOM, FACE_LEFT, FACE_RIGHT, FACE_TOP,
+};
 pub use components::{BodyKind, Collider, Position, RigidBody, Shape, Velocity};
 pub use events::CollisionEvent;
-pub use step::physics_step;
+pub use step::{physics_step, PhysicsBuffers};
 
 use glam::Vec2;
 
@@ -38,9 +41,19 @@ pub struct PhysicsConfig {
     /// widths is typical. Larger cells trade per-cell bucket size for
     /// fewer cells per AABB; smaller cells trade the other way.
     pub broadphase_cell_size: f32,
-    /// Upper bound on substeps per frame. Guards against pathological
-    /// dt or velocity spikes monopolizing the frame budget.
+    /// Upper bound on substeps per frame. Guards against tunneling from
+    /// pathological dt or velocity spikes. Orthogonal to `solver_iterations`:
+    /// substeps are about integration granularity, iterations about contact
+    /// convergence.
     pub max_substeps: u32,
+    /// Number of Gauss–Seidel constraint passes per substep. 1 is enough
+    /// for isolated contacts; stacks of dynamic bodies need 3–8 so pressure
+    /// from upper bodies doesn't squeeze the bottom through a static tile
+    /// before its pair is revisited. Velocity impulses are self-limiting
+    /// (separation gates further impulse on the same pair), so additional
+    /// iterations mainly tighten position correction — they don't over-damp
+    /// bounces.
+    pub solver_iterations: u32,
     /// World-space acceleration applied to every dynamic body each
     /// substep. Defaults to zero so top-down games cost nothing;
     /// a platformer sets `Vec2::new(0.0, 900.0)` or similar.
@@ -52,6 +65,7 @@ impl Default for PhysicsConfig {
         Self {
             broadphase_cell_size: 32.0,
             max_substeps: 8,
+            solver_iterations: 4,
             gravity: Vec2::ZERO,
         }
     }

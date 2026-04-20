@@ -1,13 +1,17 @@
+use glam::Vec2;
 use tungsten::core::{
-    AnimationRegistry, AnimationState, AudioCommands, CameraController, CameraState, DeltaTime,
-    DisplayMode, DisplayState, EventQueue, InputState, KeyCode, World,
+    ActionMap, AnimationRegistry, AnimationState, AudioCommands, CameraController, CameraState,
+    CommandBuffer, DeltaTime, Entity, EventQueue, InputState, World,
 };
-use tungsten::physics::{CollisionEvent, Velocity};
-use tungsten::{request_display_settings, WindowSize};
+use tungsten::physics::{BodyKind, Collider, CollisionEvent, Position, RigidBody, Velocity};
+use tungsten::WindowSize;
 
 use crate::state::{
-    AudioState, CurrentSprite, Player, TextDisplayState, MAP_ROWS, PLAYER_JUMP_IMPULSE,
-    PLAYER_MOVE_SPEED, TEXT_UPDATE_INTERVAL, TILE,
+    ActiveBlackHole, AudioState, Ball, BallSpawnState, BlackHole, CurrentSprite, Player,
+    TextDisplayState, BALL_RADIUS, BALL_RESTITUTION, BALL_SPAWN_INTERVAL, BALL_SPAWN_JITTER,
+    BLACK_HOLE_FORCE, BLACK_HOLE_LIFETIME, BLACK_HOLE_RADIUS, MAP_ROWS, PLAYER_JUMP_IMPULSE,
+    PLAYER_MOVE_SPEED, PLAYER_SPAWN, TEXT_UPDATE_INTERVAL, TILE, WORLD_BOUNDS_MAX,
+    WORLD_BOUNDS_MIN,
 };
 
 /// Horizontal movement + jump. Plays the jump SFX when the player leaves the
@@ -16,13 +20,15 @@ use crate::state::{
 pub(crate) fn player_input(world: &mut World) {
     let (pressed_left, pressed_right, pressed_space);
     {
-        let input = match world.get_resource::<InputState>() {
-            Some(i) => i,
-            None => return,
+        let Some(input) = world.get_resource::<InputState>() else {
+            return;
         };
-        pressed_left = input.is_pressed(KeyCode::ArrowLeft) || input.is_pressed(KeyCode::KeyA);
-        pressed_right = input.is_pressed(KeyCode::ArrowRight) || input.is_pressed(KeyCode::KeyD);
-        pressed_space = input.is_pressed(KeyCode::Space);
+        let Some(actions) = world.get_resource::<ActionMap>() else {
+            return;
+        };
+        pressed_left = actions.is_pressed(input, "move_left");
+        pressed_right = actions.is_pressed(input, "move_right");
+        pressed_space = actions.is_pressed(input, "jump");
     }
 
     let player_entities: Vec<_> = world.query::<Player>().map(|(e, _)| e).collect();
@@ -73,15 +79,17 @@ pub(crate) fn player_input(world: &mut World) {
 pub(crate) fn audio_input_system(world: &mut World) {
     let (just_m, just_1, just_2, just_3, just_s);
     {
-        let input = match world.get_resource::<InputState>() {
-            Some(i) => i,
-            None => return,
+        let Some(input) = world.get_resource::<InputState>() else {
+            return;
         };
-        just_m = input.just_pressed(KeyCode::KeyM);
-        just_1 = input.just_pressed(KeyCode::Digit1);
-        just_2 = input.just_pressed(KeyCode::Digit2);
-        just_3 = input.just_pressed(KeyCode::Digit3);
-        just_s = input.just_pressed(KeyCode::KeyS);
+        let Some(actions) = world.get_resource::<ActionMap>() else {
+            return;
+        };
+        just_m = actions.just_pressed(input, "audio_toggle_music");
+        just_1 = actions.just_pressed(input, "volume_preset_low");
+        just_2 = actions.just_pressed(input, "volume_preset_mid");
+        just_3 = actions.just_pressed(input, "volume_preset_high");
+        just_s = actions.just_pressed(input, "audio_stop_all");
     }
 
     if world.get_resource::<AudioState>().is_none() {
@@ -136,67 +144,27 @@ pub(crate) fn audio_input_system(world: &mut World) {
 /// = / - to zoom in or out. Adjusts `CameraController.zoom_multiplier` in 25%
 /// steps, clamped to [0.5, 2.0] relative to the base window-height zoom.
 pub(crate) fn camera_zoom_input_system(world: &mut World) {
-    let (just_equal, just_minus);
+    let (just_zoom_in, just_zoom_out);
     {
-        let input = match world.get_resource::<InputState>() {
-            Some(i) => i,
-            None => return,
+        let Some(input) = world.get_resource::<InputState>() else {
+            return;
         };
-        just_equal = input.just_pressed(KeyCode::Equal);
-        just_minus = input.just_pressed(KeyCode::Minus);
+        let Some(actions) = world.get_resource::<ActionMap>() else {
+            return;
+        };
+        just_zoom_in = actions.just_pressed(input, "zoom_in");
+        just_zoom_out = actions.just_pressed(input, "zoom_out");
     }
-    if !just_equal && !just_minus {
+    if !just_zoom_in && !just_zoom_out {
         return;
     }
     if let Some(controller) = world.get_resource_mut::<CameraController>() {
-        if just_equal {
+        if just_zoom_in {
             controller.zoom_multiplier = (controller.zoom_multiplier + 0.25).min(2.0);
         }
-        if just_minus {
+        if just_zoom_out {
             controller.zoom_multiplier = (controller.zoom_multiplier - 0.25).max(0.5);
         }
-    }
-}
-
-/// F11 toggles windowed/borderless fullscreen. F9 toggles vsync and clears
-/// `present_mode` so the renderer re-resolves from the new vsync intent.
-pub(crate) fn display_input_system(world: &mut World) {
-    let (just_f9, just_f11);
-    {
-        let input = match world.get_resource::<InputState>() {
-            Some(i) => i,
-            None => return,
-        };
-        just_f9 = input.just_pressed(KeyCode::F9);
-        just_f11 = input.just_pressed(KeyCode::F11);
-    }
-
-    if !just_f9 && !just_f11 {
-        return;
-    }
-
-    let current = world
-        .get_resource::<DisplayState>()
-        .copied()
-        .unwrap_or_default();
-    let mut next = current;
-
-    if just_f11 {
-        next.display_mode = match current.display_mode {
-            DisplayMode::Windowed => DisplayMode::BorderlessFullscreen,
-            DisplayMode::BorderlessFullscreen | DisplayMode::ExclusiveFullscreen => {
-                DisplayMode::Windowed
-            }
-        };
-    }
-
-    if just_f9 {
-        next.vsync = !current.vsync;
-        next.present_mode = None;
-    }
-
-    if let Err(err) = request_display_settings(world, next) {
-        log::error!("Display request rejected: {err}");
     }
 }
 
@@ -289,6 +257,320 @@ pub(crate) fn update_text_display(world: &mut World) {
         state.zoom_pct = zoom_pct;
         state.timer = new_timer - TEXT_UPDATE_INTERVAL;
     }
+}
+
+/// Convert a screen-space cursor position (physical pixels, top-left origin)
+/// into a world-space point using the non-rotated camera transform. Returns
+/// `None` if the camera is rotated (the platformer never rotates, so rather
+/// than silently producing the wrong point we refuse).
+pub(crate) fn cursor_to_world(cursor: Vec2, camera: &CameraState) -> Option<Vec2> {
+    if camera.rotation != 0.0 {
+        return None;
+    }
+    let zoom = camera.zoom.max(f32::EPSILON);
+    Some(Vec2::new(
+        camera.position.x + cursor.x / zoom,
+        camera.position.y + cursor.y / zoom,
+    ))
+}
+
+/// Spawns balls at the world-space cursor position while `spawn_ball` is
+/// held. A fixed accumulator advanced by `DeltaTime` produces one ball
+/// per `BALL_SPAWN_INTERVAL` of held time, so the rate is stable under
+/// variable frame times. Uses the deferred `CommandBuffer` so new
+/// entities are visible to this frame's extract stage but not to
+/// systems that already ran.
+pub(crate) fn spawn_ball_system(world: &mut World) {
+    let held = {
+        let Some(input) = world.get_resource::<InputState>() else {
+            return;
+        };
+        let Some(actions) = world.get_resource::<ActionMap>() else {
+            return;
+        };
+        actions.is_pressed(input, "spawn_ball")
+    };
+
+    if !held {
+        if let Some(state) = world.get_resource_mut::<BallSpawnState>() {
+            state.accumulator = 0.0;
+        }
+        return;
+    }
+
+    let dt = world
+        .get_resource::<DeltaTime>()
+        .map(|d| d.seconds())
+        .unwrap_or(0.0);
+    let (spawn_count, phase_start) = {
+        let state = match world.get_resource_mut::<BallSpawnState>() {
+            Some(s) => s,
+            None => return,
+        };
+        state.accumulator += dt;
+        let mut count = 0u32;
+        while state.accumulator >= BALL_SPAWN_INTERVAL {
+            state.accumulator -= BALL_SPAWN_INTERVAL;
+            count += 1;
+        }
+        let phase_start = state.spawn_phase;
+        state.spawn_phase = state.spawn_phase.wrapping_add(count);
+        (count, phase_start)
+    };
+    if spawn_count == 0 {
+        return;
+    }
+
+    let cursor = match world
+        .get_resource::<InputState>()
+        .and_then(|i| i.cursor_position())
+    {
+        Some((x, y)) => Vec2::new(x, y),
+        None => return,
+    };
+    let camera = match world.get_resource::<CameraState>().copied() {
+        Some(c) => c,
+        None => return,
+    };
+    let Some(world_pos) = cursor_to_world(cursor, &camera) else {
+        return;
+    };
+    // Golden angle (π(3 - √5)) distributes consecutive indices over the
+    // circle with no rational period, so no two spawned balls share a
+    // jitter offset in any session.
+    const GOLDEN_ANGLE: f32 = 2.399_963_2;
+    if let Some(cmds) = world.get_resource_mut::<CommandBuffer>() {
+        for i in 0..spawn_count {
+            let phase = phase_start.wrapping_add(i);
+            let angle = phase as f32 * GOLDEN_ANGLE;
+            let offset = Vec2::new(angle.cos(), angle.sin()) * BALL_SPAWN_JITTER;
+            let ball = cmds.spawn();
+            cmds.insert_pending(ball, Ball);
+            cmds.insert_pending(ball, Position(world_pos + offset));
+            cmds.insert_pending(ball, Velocity(Vec2::ZERO));
+            cmds.insert_pending(ball, Collider::circle(BALL_RADIUS));
+            cmds.insert_pending(
+                ball,
+                RigidBody {
+                    kind: BodyKind::Dynamic,
+                    inv_mass: 1.0,
+                    restitution: BALL_RESTITUTION,
+                },
+            );
+        }
+    }
+}
+
+/// Spawns a black hole at the world-space cursor position on Mouse2 press
+/// and drags it along while the button is held. While held, the hole's
+/// `remaining` is refreshed every frame so it never expires mid-drag; on
+/// release the dragged hole is despawned immediately. `ActiveBlackHole`
+/// tracks the dragged entity so the release path only affects the hole
+/// the user was actively controlling.
+pub(crate) fn spawn_black_hole_system(world: &mut World) {
+    let (just_pressed, is_held, just_released) = {
+        let Some(input) = world.get_resource::<InputState>() else {
+            return;
+        };
+        let Some(actions) = world.get_resource::<ActionMap>() else {
+            return;
+        };
+        (
+            actions.just_pressed(input, "spawn_black_hole"),
+            actions.is_pressed(input, "spawn_black_hole"),
+            actions.just_released(input, "spawn_black_hole"),
+        )
+    };
+
+    if just_released {
+        let prev = world
+            .get_resource_mut::<ActiveBlackHole>()
+            .and_then(|a| a.0.take());
+        if let Some(entity) = prev {
+            world.despawn(entity);
+        }
+    }
+    if !is_held {
+        return;
+    }
+
+    let cursor = match world
+        .get_resource::<InputState>()
+        .and_then(|i| i.cursor_position())
+    {
+        Some((x, y)) => Vec2::new(x, y),
+        None => return,
+    };
+    let camera = match world.get_resource::<CameraState>().copied() {
+        Some(c) => c,
+        None => return,
+    };
+    let Some(world_pos) = cursor_to_world(cursor, &camera) else {
+        return;
+    };
+
+    if just_pressed {
+        let entity = world.spawn();
+        world.insert(
+            entity,
+            BlackHole {
+                remaining: BLACK_HOLE_LIFETIME,
+            },
+        );
+        world.insert(entity, Position(world_pos));
+        if let Some(active) = world.get_resource_mut::<ActiveBlackHole>() {
+            active.0 = Some(entity);
+        }
+        return;
+    }
+
+    let active_entity = world.get_resource::<ActiveBlackHole>().and_then(|a| a.0);
+    if let Some(entity) = active_entity {
+        if let Some(pos) = world.get_mut::<Position>(entity) {
+            pos.0 = world_pos;
+        }
+        if let Some(hole) = world.get_mut::<BlackHole>(entity) {
+            hole.remaining = BLACK_HOLE_LIFETIME;
+        }
+    }
+}
+
+/// Applies an attractive acceleration to every dynamic body within
+/// `BLACK_HOLE_RADIUS` of any active black hole. Pull strength peaks at
+/// `BLACK_HOLE_FORCE` px/s² at the centre and falls linearly to zero at
+/// the radius. Runs BEFORE `physics_step` so the velocity change is
+/// integrated in the same frame. Tiles have no `Velocity` component
+/// and are naturally excluded.
+pub(crate) fn black_hole_force_system(world: &mut World) {
+    let dt = world
+        .get_resource::<DeltaTime>()
+        .map(|d| d.seconds())
+        .unwrap_or(0.0);
+    if dt <= 0.0 {
+        return;
+    }
+
+    let holes: Vec<Vec2> = world
+        .query::<BlackHole>()
+        .filter_map(|(entity, _)| world.get::<Position>(entity).map(|p| p.0))
+        .collect();
+    if holes.is_empty() {
+        return;
+    }
+
+    let targets: Vec<Entity> = world.query_entities::<Velocity>();
+    for entity in targets {
+        let body_is_dynamic = world
+            .get::<RigidBody>(entity)
+            .map(|b| b.kind == BodyKind::Dynamic)
+            .unwrap_or(false);
+        if !body_is_dynamic {
+            continue;
+        }
+        let Some(pos) = world.get::<Position>(entity).copied() else {
+            continue;
+        };
+
+        let mut accel = Vec2::ZERO;
+        for &hole_pos in &holes {
+            let delta = hole_pos - pos.0;
+            let dist_sq = delta.length_squared();
+            if !(1.0e-4..BLACK_HOLE_RADIUS * BLACK_HOLE_RADIUS).contains(&dist_sq) {
+                continue;
+            }
+            let dist = dist_sq.sqrt();
+            let falloff = 1.0 - (dist / BLACK_HOLE_RADIUS);
+            let dir = delta / dist;
+            accel += dir * BLACK_HOLE_FORCE * falloff;
+        }
+        if accel == Vec2::ZERO {
+            continue;
+        }
+        if let Some(vel) = world.get_mut::<Velocity>(entity) {
+            vel.0 += accel * dt;
+        }
+    }
+}
+
+/// Decrements the lifetime counter on every active black hole and
+/// despawns those whose lifetime has expired.
+pub(crate) fn black_hole_lifetime_system(world: &mut World) {
+    let dt = world
+        .get_resource::<DeltaTime>()
+        .map(|d| d.seconds())
+        .unwrap_or(0.0);
+
+    let entities = world.query_entities::<BlackHole>();
+    let mut to_despawn: Vec<Entity> = Vec::new();
+    for entity in entities {
+        if let Some(hole) = world.get_mut::<BlackHole>(entity) {
+            hole.remaining -= dt;
+            if hole.remaining <= 0.0 {
+                to_despawn.push(entity);
+            }
+        }
+    }
+    if !to_despawn.is_empty() {
+        if let Some(cmds) = world.get_resource_mut::<CommandBuffer>() {
+            for entity in to_despawn {
+                cmds.despawn(entity);
+            }
+        }
+    }
+}
+
+/// Culls bodies that have escaped the active physics region defined by
+/// `WORLD_BOUNDS_MIN`/`WORLD_BOUNDS_MAX`. Runaway balls are despawned via
+/// the command buffer; the player is teleported back to `PLAYER_SPAWN`
+/// with zero velocity. Runs after `physics_step`/`ground_detection` so
+/// the position it checks is the post-resolve value for the frame.
+///
+/// Why: `compute_substeps` scales the whole world's cost by the single
+/// worst `velocity / min_half_extent` ratio. A ball in free fall past the
+/// tilemap accumulates velocity indefinitely and pegs that ratio to the
+/// `PhysicsConfig::max_substeps` cap (default 8), multiplying every
+/// frame's physics cost by ~8×. Bounding the active region keeps all
+/// dynamic bodies inside the bounce regime.
+pub(crate) fn despawn_out_of_bounds(world: &mut World) {
+    let escaped_balls: Vec<Entity> = world
+        .query::<Ball>()
+        .filter_map(|(entity, _)| {
+            let pos = world.get::<Position>(entity)?.0;
+            is_out_of_bounds(pos).then_some(entity)
+        })
+        .collect();
+
+    if !escaped_balls.is_empty() {
+        if let Some(cmds) = world.get_resource_mut::<CommandBuffer>() {
+            for entity in escaped_balls {
+                cmds.despawn(entity);
+            }
+        }
+    }
+
+    let escaped_players: Vec<Entity> = world
+        .query::<Player>()
+        .filter_map(|(entity, _)| {
+            let pos = world.get::<Position>(entity)?.0;
+            is_out_of_bounds(pos).then_some(entity)
+        })
+        .collect();
+
+    for entity in escaped_players {
+        if let Some(pos) = world.get_mut::<Position>(entity) {
+            pos.0 = PLAYER_SPAWN;
+        }
+        if let Some(vel) = world.get_mut::<Velocity>(entity) {
+            vel.0 = Vec2::ZERO;
+        }
+    }
+}
+
+fn is_out_of_bounds(pos: Vec2) -> bool {
+    pos.x < WORLD_BOUNDS_MIN.x
+        || pos.x > WORLD_BOUNDS_MAX.x
+        || pos.y < WORLD_BOUNDS_MIN.y
+        || pos.y > WORLD_BOUNDS_MAX.y
 }
 
 /// Recomputes the platformer's base zoom from the current window height.

@@ -33,6 +33,12 @@ pub struct SpatialGrid {
     query_generation: u32,
 }
 
+impl Default for SpatialGrid {
+    fn default() -> Self {
+        Self::new(32.0)
+    }
+}
+
 impl SpatialGrid {
     pub fn new(cell_size: f32) -> Self {
         debug_assert!(cell_size > 0.0, "cell_size must be positive");
@@ -42,6 +48,16 @@ impl SpatialGrid {
             query_marks: Vec::new(),
             query_generation: 1,
         }
+    }
+
+    /// Change the grid's cell size, discarding any existing cell buckets.
+    /// Called by `physics_step` if `PhysicsConfig::broadphase_cell_size`
+    /// was mutated between frames so the persistent grid resource stays
+    /// in sync with config without reallocating the whole struct.
+    pub fn set_cell_size(&mut self, cell_size: f32) {
+        debug_assert!(cell_size > 0.0, "cell_size must be positive");
+        self.cell_size = cell_size.max(1.0);
+        self.cells.clear();
     }
 
     pub fn clear(&mut self) {

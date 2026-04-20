@@ -229,7 +229,7 @@ fn main() -> anyhow::Result<()> {
         height: 600,
     });
 
-    let mut app = App::new(config);
+    let mut app = App::new(config)?;
 
     app.on_startup(|world, renderer| {
         let root_manifest =

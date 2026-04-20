@@ -3,7 +3,8 @@
     "ex10_ground":   { "path": "sprites/ground.png",   "filter": "nearest" },
     "ex10_platform": { "path": "sprites/platform.png", "filter": "nearest" },
     "ex10_sky":      { "path": "sprites/sky.png",      "filter": "nearest" },
-    "ex10_ball":     { "path": "sprites/ball.png",     "filter": "nearest" }
+    "ex10_ball":     { "path": "sprites/ball.png",     "filter": "nearest" },
+    "ex10_cursor":   { "path": "sprites/cursor.png",   "filter": "nearest" }
   },
   "tilemaps": {
     "ex10_level": { "path": "tilemaps/level.tmj" }

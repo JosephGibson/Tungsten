@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 milestone: M19
 branch: 0.16
 version-target: 0.16.0
@@ -15,17 +15,19 @@ unblocks: M20 (scene/state), future settings menu, ergonomic rebinding in M21+ e
 - Introduce a core-owned `ActionMap` resource: `action_name -> Vec<Binding>`, queried through `is_pressed` / `just_pressed` / `just_released` methods that take an `&InputState`.
 - Load bindings at startup from an optional workspace-root `input.json`; fall back to an engine-default map when the file is absent or invalid.
 - Wire `input.json` into the existing `notify`-based hot-reload path so edits rebind live without restart.
-- Migrate the platformer example (`examples/01_platformer`) from raw `KeyCode` checks (`move_left`, `move_right`, `jump`, plus audio/zoom/sfx keys) to action lookups as the reference consumer.
+- Add mouse support to the same action-map pipeline: buttons, cursor position + per-frame delta, wheel line/pixel deltas, and discrete scroll-up / scroll-down bindings.
+- Persist runtime rebinds back to `input.json` from the engine with an atomic writer path and best-effort formatting preservation.
+- Migrate engine-reserved controls (`F4`, `F9`, `F11`, `Escape`) onto action bindings with sensible engine defaults.
+- Migrate the platformer example (`examples/01_platformer`) from raw `KeyCode` checks to action lookups as the reference consumer, including at least one mouse-button action and one scroll action.
 
 ## Non-goals
 
 - Gamepad / controller bindings. Ship keyboard + mouse only in M19.
 - Axis, 1D/2D virtual axes, analog deadzones, chord/sequence bindings. All actions are boolean in M19.
 - Runtime rebinding UI or settings menu. M19 only exposes the data + runtime-reload surface.
-- Persisting rebinds back to `input.json` from the engine (config writes are explicitly out).
-- Migrating engine-reserved debug/control keys (`F4` HUD toggle, `F9` vsync toggle, `F11` fullscreen toggle, `Escape`) to action bindings. These remain hardcoded per `D-044` + `D-043`; M19 only changes *gameplay* keys.
 - Input replay / scripted-input playback (M21 gate: "scripted input playback for at least one menu-gameplay-pause scenario" — that ships with M20/M21).
 - Deep schema validation (JSON-schema style); keep validation to structural parse + unknown-key warnings.
+- Perfect round-trip preservation of arbitrary file layout/comments in `input.json`. Persist is best-effort: preserve existing top-level structure/formatting where practical, otherwise rewrite canonical JSON.
 - Release bookkeeping (`CHANGELOG.md`, version bump, plan archival) before the milestone lands.
 - Adding a new runtime dependency (`input.json` reuses `serde_json`; hot reload reuses `notify`).
 
@@ -37,6 +39,7 @@ unblocks: M20 (scene/state), future settings menu, ergonomic rebinding in M21+ e
 - `D-022`: Panic on programmer errors (looking up a typoed action name returns `false` — this is a runtime miss, not a bug). Return `Result` only at load boundaries.
 - `D-031`: Reuse the existing `HotReloadWatcher`; no second watcher instance; 50 ms debounce already covers editor swap-saves.
 - `D-039` / `D-040`: `ActionMap` is a pure data resource. Hot-reload swap happens inside the existing hot-reload stage (`systems -> flush commands -> flush events -> hot reload -> extract -> render`).
+- Engine-owned actions (`engine_toggle_hud`, `engine_toggle_vsync`, `engine_toggle_fullscreen`, `engine_exit`) still ship with default bindings in the built-in map so deleting `input.json` cannot strand the user.
 - Frame-order invariant unchanged. `ActionMap` reads are pure queries of `InputState`; no new frame-boundary mutation.
 - Empty-overhead gate when no `input.json` is present: engine still loads the built-in default map; cost is a one-time `HashMap` build at startup.
 - Do not read `docs/plans/archive/`.
@@ -68,18 +71,22 @@ unblocks: M20 (scene/state), future settings menu, ergonomic rebinding in M21+ e
 
 | File | Change |
 |------|--------|
-| `crates/tungsten-core/src/input.rs` | split into module: existing `InputState` / `KeyCode` / `MouseButton` stay; add submodules below, expose via `pub use` |
-| `crates/tungsten-core/src/input/action_map.rs` | **new** — `Binding`, `ActionMap`, `ActionMapError`, default map builder, (de)serialization, unit tests |
-| `crates/tungsten-core/src/input/key_serde.rs` | **new** — `KeyCode <-> &str` lookup tables used by `Deserialize`/`Serialize`; keep string identifiers stable (matches `winit`/`KeyCode` variant names) |
+| `crates/tungsten-core/src/input.rs` | extend `InputState` with cursor position/delta, scroll line/pixel deltas, scroll-direction edges, and helper methods; expose submodules below |
+| `crates/tungsten-core/src/input/action_map.rs` | `Binding`, `ActionMap`, `ActionMapError`, default map builder, mouse/scroll bindings, persist/atomic-save path, unit tests |
+| `crates/tungsten-core/src/input/key_serde.rs` | `KeyCode` / `MouseButton` / scroll-direction string helpers; support extra mouse buttons in JSON |
 | `crates/tungsten-core/src/lib.rs` | `pub use input::{ActionMap, ActionMapError, Binding}` |
 | `crates/tungsten/src/input_bridge.rs` | no behavioural change; only touched if a missing `KeyCode` variant surfaces while exercising `input.json` defaults |
-| `crates/tungsten/src/asset_loader.rs` | **new** `reload_action_map(path, &mut world) -> Result<(), ...>` entry-point mirroring `reload_manifest` |
-| `crates/tungsten/src/hot_reload.rs` | no API change; confirm current watcher already reports top-level file edits (watches workspace root is not current — see step 5) |
-| `crates/tungsten/src/app.rs` | load `ActionMap` in `App::new` (or first `run()` call so `input.json` path is resolvable); insert as world resource; extend `enable_hot_reload` path so `input.json` is watched; add `.json` dispatch arm in `process_hot_reload` that routes `input.json` through `reload_action_map`; extend smoke tests if any input-action path is exercised |
+| `crates/tungsten/src/asset_loader.rs` | `reload_action_map(path, &mut world) -> Result<(), ...>` mirroring `reload_manifest`, preserving last-known-good on reload failure |
+| `crates/tungsten/src/hot_reload.rs` | keep watching asset dirs plus extra watched files (workspace-root `input.json`) |
+| `crates/tungsten/src/app.rs` | load `ActionMap` in `App::new`; insert as world resource; watch `input.json`; route reloads through `reload_action_map`; feed cursor/scroll events into `InputState`; route `engine_exit` through the action map |
+| `crates/tungsten/src/display.rs` | move `F9` / `F11` handling to an engine-owned action-driven system |
+| `crates/tungsten/src/debug_hud.rs` | route HUD toggle through `engine_toggle_hud` rather than a hardcoded `F4` check |
 | `crates/tungsten/src/lib.rs` | re-export `ActionMap`, `ActionMapError`, `Binding` from the umbrella for ergonomic `tungsten::ActionMap` |
-| `input.json` | **new**, workspace root, optional but shipped as the engine default (keeps the "default present" ergonomic consistent with `tungsten.json`) |
-| `examples/01_platformer/src/systems.rs` | replace `input.is_pressed(KeyCode::KeyA)` etc. with `action_map.is_pressed(&input, "move_left")`; same for `move_right`, `jump`, `audio_toggle_music`, `volume_preset_{low,mid,high}`, `audio_stop_all`, `zoom_in`, `zoom_out` |
-| `examples/01_platformer/src/main.rs` | header `Controls:` block: annotate each row with the action name it maps to (e.g. `A / D or ←/→  move_left / move_right`) |
+| `input.json` | workspace-root default bindings, now including engine actions, mouse buttons, and scroll actions |
+| `examples/01_platformer/src/systems.rs` | action lookups for gameplay controls only; remove example-owned reserved-key handling once engine systems own it |
+| `examples/01_platformer/src/main.rs` | header `Controls:` block: annotate each row with the action name it maps to, including mouse/scroll defaults |
+| `examples/01_platformer/src/extract.rs` | surface cursor position/delta and scroll deltas in the on-screen reference text for manual verification |
+| `examples/01_platformer/src/tests.rs` | extend tests for action defaults and the updated runtime system order |
 | `examples/01_platformer/assets/` | **no** local `input.json`; root `input.json` covers it |
 | `docs/LLM_INDEX.md` | add subsystem row `Input action map (M19)` → `crates/tungsten-core/src/input/`, `crates/tungsten/src/asset_loader.rs`, `input.json`; add task row `Fix action lookups, input.json parsing, or rebind hot reload` |
 | `docs/DECISION_INDEX.md` | add `D-045` one-liner under `ECS / Runtime Flow` |
@@ -93,11 +100,13 @@ unblocks: M20 (scene/state), future settings menu, ergonomic rebinding in M21+ e
 - `tungsten::{ActionMap, ActionMapError, Binding}` (re-exports)
 - `ActionMap::load(path: &Path) -> Result<Self, ActionMapError>`
 - `ActionMap::default_map() -> Self` (engine defaults; see schema below)
+- `ActionMap::persist(&mut self) -> Result<(), ActionMapError>` and/or `persist_to(path)` for runtime rebind writes
 - `ActionMap::is_pressed(&self, input: &InputState, action: &str) -> bool`
 - `ActionMap::just_pressed(&self, input: &InputState, action: &str) -> bool`
 - `ActionMap::just_released(&self, input: &InputState, action: &str) -> bool`
 - `ActionMap::bindings(&self, action: &str) -> &[Binding]` (read-only inspection for HUD / debug tooling in M21)
-- `ActionMap::replace_bindings(&mut self, action: impl Into<String>, bindings: Vec<Binding>)` (runtime rebind; no disk write)
+- `ActionMap::replace_bindings(&mut self, action: impl Into<String>, bindings: Vec<Binding>)` (runtime rebind, paired with explicit persist)
+- `InputState::cursor_position()`, `cursor_delta()`, `scroll_line_delta()`, `scroll_pixel_delta()`
 - `tungsten::asset_loader::reload_action_map(path, &mut World) -> Result<(), ActionMapError>` (pub within umbrella for completeness; optional)
 
 Keep private:
@@ -113,6 +122,7 @@ Keep private:
 pub enum Binding {
     Key   { code: KeyCode },
     Mouse { button: MouseButton },
+    Scroll { direction: ScrollDirection },
 }
 ```
 
@@ -121,6 +131,7 @@ Struct variants (not tuple) so serde's `tag = "kind"` produces a flat object wit
 ```json
 { "kind": "key",   "code": "KeyA" }
 { "kind": "mouse", "button": "left" }
+{ "kind": "scroll", "direction": "up" }
 ```
 
 `KeyCode` serializes to its variant name (`"ArrowLeft"`, `"KeyA"`, `"Space"`, ...). `MouseButton` serializes to lowercase (`"left"`, `"right"`, `"middle"`). Unknown strings → `ActionMapError::UnknownKey { name }`.
@@ -141,7 +152,11 @@ Workspace-root file. All fields optional; missing actions fall back to `default_
     "audio_stop_all":     [{ "kind": "key", "code": "KeyS" }],
     "volume_preset_low":  [{ "kind": "key", "code": "Digit1" }],
     "volume_preset_mid":  [{ "kind": "key", "code": "Digit2" }],
-    "volume_preset_high": [{ "kind": "key", "code": "Digit3" }]
+    "volume_preset_high": [{ "kind": "key", "code": "Digit3" }],
+    "engine_toggle_hud":        [{ "kind": "key", "code": "F4" }],
+    "engine_toggle_vsync":      [{ "kind": "key", "code": "F9" }],
+    "engine_toggle_fullscreen": [{ "kind": "key", "code": "F11" }],
+    "engine_exit":              [{ "kind": "key", "code": "Escape" }]
   }
 }
 ```
@@ -153,6 +168,7 @@ Rules:
 - Duplicate bindings within one action → deduplicated silently.
 - Empty binding list → legal (action exists, never fires).
 - Parse error on load → startup fatal (`ConfigError`-style); on hot-reload → error log + keep previous map.
+- Runtime persist writes atomically to `input.json` and best-effort preserves the surrounding file layout when the existing file already parses as valid JSON.
 
 ## Engine default map (used when `input.json` is absent)
 
@@ -183,6 +199,7 @@ Mirrors the JSON schema above. Lives as const-ish data in `action_map.rs` so tes
   pub enum Binding {
       Key   { code: KeyCode },
       Mouse { button: MouseButton },
+      Scroll { direction: ScrollDirection },
   }
 
   #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -221,13 +238,16 @@ Mirrors the JSON schema above. Lives as const-ish data in `action_map.rs` so tes
   - Empty binding list or unknown action → `false` for all three.
 
 - Tests in the same file:
-  - `default_map_has_platformer_actions` — asserts `move_left`, `move_right`, `jump`, `audio_toggle_music`, `volume_preset_{low,mid,high}`, `audio_stop_all`, `zoom_in`, `zoom_out`.
+  - `default_map_has_platformer_actions` — asserts gameplay, engine, and mouse/scroll-backed defaults.
   - `unknown_action_returns_false`
   - `merged_with_defaults_preserves_user_overrides`
   - `load_parses_sample_input_json` using a `include_str!` fixture string (in-memory, no disk).
   - `load_invalid_json_is_error`
   - `query_respects_multiple_bindings` (map `move_left` to [ArrowLeft, KeyA], press KeyA, assert `is_pressed == true`).
   - `edge_query_just_pressed_any_binding` (press ArrowLeft, assert `just_pressed("move_left")` once, then `begin_frame`, assert false).
+  - `mouse_button_binding_dispatches`
+  - `scroll_binding_dispatches`
+  - `persist_round_trips_rebound_actions`
 
 - Exit: `cargo test -p tungsten-core` passes.
 
@@ -277,33 +297,40 @@ Mirrors the JSON schema above. Lives as const-ish data in `action_map.rs` so tes
   ```
 - Exit: edit `input.json` while platformer is running; action lookup picks up the new binding within one frame after the 50 ms debounce.
 
-### 6. Platformer migration
+### 6. Mouse surface and platformer migration
 
 - `examples/01_platformer/src/systems.rs`:
-  - Replace every `input.is_pressed(KeyCode::…)` / `input.just_pressed(...)` in `player_input` and `audio_input_system` with `action_map.is_pressed(&input, "move_left")` etc.
+  - Replace every gameplay `input.is_pressed(KeyCode::…)` / `input.just_pressed(...)` with `action_map.is_pressed(&input, "...")`.
   - Borrow pattern: take an immutable borrow of both `InputState` and `ActionMap` at the top of the system, then release before mutable world borrows (mirrors existing pattern that scopes the `InputState` borrow).
-  - Zoom system: migrate `=` / `-` into `zoom_in` / `zoom_out`.
+  - Demonstrate mouse buttons by binding at least one gameplay action to left/right/middle mouse defaults without removing the keyboard equivalents.
+  - Demonstrate scroll by binding `zoom_in` / `zoom_out` (or equivalent clearly visible actions) to scroll-up / scroll-down.
+- `examples/01_platformer/src/extract.rs` / `state.rs`:
+  - Surface cursor position, per-frame delta, and scroll line/pixel deltas in the on-screen reference text so manual runtime checks have a visible target.
 - `examples/01_platformer/src/main.rs`:
   - Header `Controls:` block: add a trailing column noting the action name.
   - Example line: `A / D or ←/→   horizontal movement   (actions: move_left / move_right)`.
   - Add a note at the bottom: `Edit ./input.json and save while running to rebind at runtime (hot reload).`
-- No changes to `setup.rs`, `state.rs`, `extract.rs`.
-- Do not migrate debug keys (`F4`, `F9`, `F11`, `Escape`); these stay hardcoded in the engine.
+- Engine side:
+  - Move `F9` / `F11` display toggles and `F4` HUD toggle to action lookups.
+  - Replace the hardcoded Escape event check with an `engine_exit` action lookup, still gated by `App::set_exit_on_escape(false)` for examples that want to disable engine-side exit.
 - Exit: platformer runs identically to pre-M19; modifying `input.json` rebinds live.
 
-### 7. Ship the default `input.json` at the workspace root
+### 7. Persist path + ship the default `input.json`
 
 - Contents match the schema section above.
 - Purpose: give users a discoverable starting point and match the `tungsten.json` "default present" ergonomic.
 - Because `ActionMap::default_map()` already encodes the same map, deleting `input.json` keeps behaviour identical — verify with a smoke run.
+- Add a runtime writer path that:
+  - writes `input.json` atomically via temp-file + rename in the same directory,
+  - best-effort preserves the surrounding JSON layout when the existing file can be patched in place,
+  - falls back to canonical pretty JSON when the existing layout cannot be preserved safely.
 - Exit: `cargo run -p example-01-platformer` with and without `input.json` is behaviourally equivalent.
 
 ### 8. Benchmark / perf check
 
 - Expected cost: per-action lookup is a small `HashMap` get + O(bindings) scan. Default map has ≤ 10 actions with ≤ 2 bindings each. No new allocation on the query path (return `&[Binding]` slice).
-- Add a `criterion` micro-bench under `crates/tungsten-core/benches/` (or reuse the nearest existing) measuring `is_pressed` / `just_pressed` throughput for the default map at 10k calls — expected ≤ 1 µs per call.
-- Not a gating regression check; noted so the iterating pass can confirm the query stays cheap enough for per-frame use in many systems.
-- Exit: micro-bench committed; number logged in the M19 close-out note.
+- Add/extend a `criterion` micro-bench under `crates/tungsten-core/benches/` measuring both keyboard and mouse-source dispatch (`mouse button` and `scroll`) against the ≤ 1 µs per-call target.
+- Exit: micro-bench committed; key + mouse numbers logged verbatim in the M19 close-out note.
 
 ### 9. Docs and decision record
 
@@ -311,14 +338,16 @@ Mirrors the JSON schema above. Lives as const-ish data in `action_map.rs` so tes
   - Subsystem row `Input action map (M19)` → `crates/tungsten-core/src/input/`, `crates/tungsten/src/asset_loader.rs`, `input.json`.
   - Task row `Fix action lookups, input.json parsing, or rebind hot reload` → same files + `docs/DECISION_INDEX.md` for `D-045`.
 - `docs/DECISION_INDEX.md`: add `D-045` under `ECS / Runtime Flow`: "Input actions map string names to `Vec<Binding>` in `tungsten-core`; loaded from optional workspace-root `input.json`, hot-reloaded through the existing `notify` watcher; engine debug keys stay hardcoded."
+- `docs/DECISION_INDEX.md`: update `D-044` / `D-045` summaries to reflect that engine-reserved controls now route through the action map.
 - `docs/plans/Phase3.md`: flip M19 from "next recommended" to `in progress` on start; to `complete` on land with `v0.16.0` + date; add a "Detailed implementation plan" link to this file, then update to the archived path after archival.
 - `DECISIONS.md` add `D-045` with:
   - Scope: boolean actions, keyboard + mouse, no gamepad/axis.
   - Reason `ActionMap` lives in `tungsten-core`: core already owns `InputState` + `KeyCode`; no winit leak; `D-007` compliance.
   - Reason no new dep: `serde`/`serde_json`/`notify` already cover load + reload (`D-015` rules 2/1).
-  - Reason engine debug keys stay hardcoded: they address engine features, not gameplay; rebinding them risks locking a user out of vsync/fullscreen/HUD toggles.
+  - Reason engine-reserved controls still belong to engine-owned action names even though the physical bindings are rebindable.
   - Merge rule: user-supplied `input.json` entries override defaults per action; missing actions inherit defaults.
   - Hot-reload failure mode: keep previous map, log error; no behaviour break mid-session.
+  - Persist rule: runtime rebind writes stay in the same file and use an atomic save path.
 - Exit: `D-045` resolvable from `docs/DECISION_INDEX.md`; fresh-agent navigation works.
 
 ### 10. Validate
@@ -333,6 +362,8 @@ Run in order:
 6. Default-fallback check: delete `input.json`; re-run platformer; confirm unchanged behaviour.
 7. Invalid-JSON check: corrupt `input.json`; re-run; confirm fatal startup error with a clear message; restore file.
 8. Hot-reload invalid-JSON check: while running, write invalid JSON to `input.json`; confirm error log + bindings unchanged.
+9. Mouse checks: click each bound mouse button; move the cursor and confirm position + delta update; scroll up/down and confirm the bound actions fire; hot-reload a mouse-button rebind.
+10. Reserved-key migration: confirm `F4`, `F9`, `F11`, and `Escape` now fire through engine-owned actions rather than hardcoded key branches.
 
 Manual spot checks:
 
@@ -348,9 +379,10 @@ Manual spot checks:
 - Optional workspace-root `input.json` overrides default bindings per action; missing actions inherit defaults; unknown action names query `false` without panic.
 - Invalid `input.json` at startup is fatal with a clear error (mirrors `Config::load`). Invalid `input.json` on hot reload logs an error and preserves the previous map.
 - Hot reload of `input.json` is wired through the existing `notify` watcher; editing and saving the file rebinds actions within one debounced frame.
-- `examples/01_platformer` reads gameplay input through action lookups only; no remaining `is_pressed(KeyCode::*)` call outside engine-reserved keys (`F4`/`F9`/`F11`/`Escape`).
-- `KeyCode` and `MouseButton` (de)serialize round-trip cleanly for every currently shipped variant; unknown key names surface `ActionMapError::UnknownKey`.
-- `ActionMap::bindings` returns a borrowed slice (no allocation on the query path); micro-bench records ≤ 1 µs per query for the default map.
+- `examples/01_platformer` reads gameplay input through action lookups only; engine-reserved controls (`F4`/`F9`/`F11`/`Escape`) also route through action lookups.
+- `KeyCode`, `MouseButton`, and scroll-direction strings round-trip cleanly for every currently shipped variant, including extra mouse buttons in JSON.
+- `InputState` exposes cursor position, per-frame cursor delta, wheel line delta, and wheel pixel delta to game code.
+- `ActionMap::bindings` returns a borrowed slice (no allocation on the query path); micro-bench records ≤ 1 µs per query for both keyboard and mouse paths.
 - `cargo test --workspace` passes.
 - `./scripts/smoke-examples.sh` passes.
 - `docs/LLM_INDEX.md`, `docs/DECISION_INDEX.md`, `docs/plans/Phase3.md`, and `DECISIONS.md` (`D-045`) match the shipped shape.

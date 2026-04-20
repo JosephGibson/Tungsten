@@ -4,6 +4,31 @@ Records all notable project changes.
 
 Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.16.0] - 2026-04-19
+
+Summary: Phase 3 Milestone 19 — input mapping, mouse support, runtime rebind persistence, and release-line alignment.
+
+### Added
+
+- **Core action map (`tungsten_core::input`):** `ActionMap`, `Binding`, and `ActionMapError` now ship as the core-owned boolean input binding surface. Actions resolve through keys, mouse buttons, or discrete wheel directions and are re-exported from both `tungsten_core` and `tungsten`.
+- **Workspace-root `input.json`:** default bindings now live in a checked-in action-map file with hot reload, missing-file fallback, startup-fatal invalid JSON handling, and a runtime persist path that writes atomically back to disk.
+- **Mouse input surface:** `InputState` now exposes current cursor position, per-frame cursor delta, wheel line delta, and wheel pixel delta; extra mouse buttons serialize as `button4`, `button5`, etc.
+- **Engine-owned actions:** HUD toggle, vsync toggle, fullscreen toggle, and exit now route through action names (`engine_toggle_hud`, `engine_toggle_vsync`, `engine_toggle_fullscreen`, `engine_exit`) instead of hardcoded key branches.
+- **Action-map micro-bench:** `crates/tungsten-core/benches/action_map_bench.rs` now records per-call keyboard and mouse dispatch costs. Current local medians: `action_map_is_pressed_key` ~`51.051 ns`, `action_map_just_pressed_key` ~`34.912 ns`, `action_map_is_pressed_mouse_button` ~`32.267 ns`, `action_map_just_pressed_scroll` ~`35.365 ns`.
+
+### Changed
+
+- Workspace version bumped to `0.16.0`.
+- `example-01-platformer` now consumes gameplay input exclusively through action lookups, demonstrates mouse-button bindings (`LMB` jump, `RMB` music toggle, `MMB` stop-all) plus scroll zoom, and renders live cursor / wheel telemetry in the on-screen text.
+- `docs/plans/Phase3.md`, `AGENTS.md`, `CLAUDE.md`, `README.md`, `DESIGN.md`, `docs/LLM_INDEX.md`, and `docs/DECISION_INDEX.md` now reflect the shipped M19 release line; the detailed plan moved to `docs/plans/archive/phase3-milestone19-plan.md`.
+- Release QA pass completed locally: `cargo build --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `cargo fmt --all --check`, `./scripts/smoke-examples.sh`, and `cargo bench -p tungsten-core --bench action_map_bench` all passed.
+
+### Fixed
+
+- **Reserved-key drift:** `F4`, `F9`, `F11`, and `Escape` now share the same action-map pipeline as gameplay bindings, removing the last hardcoded key checks from the shipped engine flow.
+- **Mouse extra-button coverage:** the input bridge now preserves `winit` back/forward mouse buttons as rebindable extra-button IDs instead of collapsing them into an unusable fallback.
+- **Action-map persistence coverage:** runtime rebinds can now round-trip back to `input.json` without discarding unrelated top-level fields when the existing file layout can be safely patched.
+
 ## [0.15.0] - 2026-04-18
 
 Summary: Phase 3 Milestone 18 — runtime telemetry HUD, diagnostic counters, and release-line alignment.

@@ -1,17 +1,48 @@
 use std::collections::HashMap;
 
-use tungsten::core::{AssetRegistry, World};
+use glam::Vec2;
+use tungsten::core::{AssetRegistry, CameraState, InputState, World};
 use tungsten::extract_tilemaps;
 use tungsten::physics::Position;
 use tungsten::render::{SpriteBatch, SpriteInstance, TextSection};
 
-use crate::state::{Ball, CurrentSprite, TextDisplayState, BALL_RADIUS, PLAYER_HALF};
+use crate::state::{
+    Ball, BlackHole, CurrentSprite, TextDisplayState, BALL_RADIUS, BLACK_HOLE_VISUAL_DIAMETER,
+    PLAYER_HALF,
+};
+use crate::systems::cursor_to_world;
 
 pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     let mut batches = extract_tilemaps(world);
     let Some(assets) = world.get_resource::<AssetRegistry>() else {
         return batches;
     };
+
+    // Black hole — drawn after the tilemap but before the player/balls so
+    // attracted bodies visibly pass over it. The ball sprite is reused as
+    // a round blob; a purple tint makes it read as an attractor. Quads
+    // render before sprites in the engine pipeline, so using the sprite
+    // pipeline is the path that sits above the sky tiles.
+    if let Some(hole_asset) = assets.get_sprite("ex10_ball") {
+        let half = BLACK_HOLE_VISUAL_DIAMETER * 0.5;
+        let instances: Vec<SpriteInstance> = world
+            .query::<BlackHole>()
+            .filter_map(|(e, _)| world.get::<Position>(e).copied())
+            .map(|p| SpriteInstance {
+                position: [p.0.x - half, p.0.y - half],
+                size: [BLACK_HOLE_VISUAL_DIAMETER, BLACK_HOLE_VISUAL_DIAMETER],
+                rotation: 0.0,
+                color: [115, 20, 191, 230],
+            })
+            .collect();
+        if !instances.is_empty() {
+            batches.push(SpriteBatch {
+                texture: hole_asset.texture,
+                filter: hole_asset.filter,
+                instances,
+            });
+        }
+    }
 
     // Player — sprite frame driven by CurrentSprite / AnimationState.
     // Rendered at 1:1 world-pixel scale (camera zoom handles the screen
@@ -66,6 +97,38 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
         }
     }
 
+    // Custom cursor sprite. Drawn last so it sits on top of every other
+    // world-space batch. The native OS cursor stays visible (winit default);
+    // this sprite rides along to demo a custom cursor layer without hiding
+    // the pointer. The world-space point is reconstructed from the physical
+    // cursor position via `cursor_to_world`, matching where a left click
+    // would spawn a ball.
+    if let Some(cursor_asset) = assets.get_sprite("ex10_cursor") {
+        if let Some(world_pos) = world
+            .get_resource::<InputState>()
+            .and_then(|input| input.cursor_position())
+            .map(|(x, y)| Vec2::new(x, y))
+            .and_then(|cursor| {
+                world
+                    .get_resource::<CameraState>()
+                    .and_then(|cam| cursor_to_world(cursor, cam))
+            })
+        {
+            let sprite_w = cursor_asset.width as f32;
+            let sprite_h = cursor_asset.height as f32;
+            batches.push(SpriteBatch {
+                texture: cursor_asset.texture,
+                filter: cursor_asset.filter,
+                instances: vec![SpriteInstance {
+                    position: [world_pos.x - sprite_w * 0.5, world_pos.y - sprite_h * 0.5],
+                    size: [sprite_w, sprite_h],
+                    rotation: 0.0,
+                    color: [255; 4],
+                }],
+            });
+        }
+    }
+
     batches
 }
 
@@ -111,6 +174,20 @@ pub(crate) fn extract_text(world: &World) -> Vec<TextSection> {
         })
         .unwrap_or((0, 0, false, false, 50, 100));
     let (fps, contacts, grounded, music_on, vol_pct, zoom_pct) = disp;
+    let (cursor_pos, cursor_delta, scroll_lines, scroll_pixels) = world
+        .get_resource::<InputState>()
+        .map(|input| {
+            (
+                input.cursor_position(),
+                input.cursor_delta(),
+                input.scroll_line_delta(),
+                input.scroll_pixel_delta(),
+            )
+        })
+        .unwrap_or((None, (0.0, 0.0), (0.0, 0.0), (0.0, 0.0)));
+    let cursor_label = cursor_pos
+        .map(|(x, y)| format!("{x:.1},{y:.1}"))
+        .unwrap_or_else(|| "off-window".to_string());
 
     let mut sections = Vec::new();
 
@@ -126,14 +203,23 @@ pub(crate) fn extract_text(world: &World) -> Vec<TextSection> {
 
     sections.extend(text_outlined(TextSection {
         content: format!(
-            "A/D move  Space jump  M music  1/2/3 vol  S stop  =/- zoom  F9 vsync  F11 fullscreen\n\
-             grounded:{:<4} contacts:{:<3} music:{:<4} vol:{}%  zoom:{}%  FPS:{}",
+            "A/D or ←/→ move  Space jump  LMB hold spawn ball  RMB black hole  M music  S/MMB stop  1/2/3 volume\n\
+             =/- or wheel zoom  F4 HUD  F9 vsync  F11 fullscreen  Esc exit\n\
+             grounded:{:<4} contacts:{:<3} music:{:<4} vol:{}%  zoom:{}%  FPS:{}\n\
+             cursor:{}  delta:{:.1},{:.1}  wheel lines:{:.1},{:.1}  pixels:{:.1},{:.1}",
             if grounded { "yes" } else { "no" },
             contacts,
             if music_on { "on" } else { "off" },
             vol_pct,
             zoom_pct,
             fps,
+            cursor_label,
+            cursor_delta.0,
+            cursor_delta.1,
+            scroll_lines.0,
+            scroll_lines.1,
+            scroll_pixels.0,
+            scroll_pixels.1,
         ),
         font_id: "mono".into(),
         font_size: 24.0,

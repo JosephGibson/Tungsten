@@ -68,7 +68,8 @@ If you need deeper context, grep the specific `D-0xx` entry in the full log inst
 | `D-039` | `CommandBuffer` is a world resource with post-system flush; deferred structural changes are visible to extract/render in the same frame and to systems on the next frame. |
 | `D-040` | `EventQueue<T>` keeps two windows (`previous`, `current`) and flushes once per frame after systems. |
 | `D-043` | Display settings live in `tungsten.json`, runtime changes go through `request_display_settings`, and actual window/surface mutation happens only at a frame boundary. |
-| `D-044` | Runtime HUD lives in the umbrella crate, reads existing telemetry resources, uses `F4` as a hardcoded toggle until M19, and ships off-by-default with EWMA-smoothed frame timing. |
+| `D-044` | Runtime HUD lives in the umbrella crate, reads existing telemetry resources, and ships off-by-default with EWMA-smoothed frame timing; the original M18 `F4` toggle later moved under `D-045`'s action map. |
+| `D-045` | Input actions map string names to `Vec<Binding>` in `tungsten-core`; load and persist through workspace-root `input.json`, hot-reload through the existing `notify` watcher, and cover keyboard, mouse buttons, wheel directions, and engine-owned controls. |
 
 ## When To Open Full `DECISIONS.md`
 
