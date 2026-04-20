@@ -22,4 +22,4 @@ Pointer file for [Claude Code](https://claude.ai/code).
 
 ## Status
 
-Workspace `v0.17.0` on branch `0.17`. Phase 3 M20 is complete. Input/action-map docs, scene/state docs, frame-order docs, and perf/benchmark references are up to date.
+Workspace `v0.17.0` on branch `main`. Phase 3 M21 (Debug Tooling) is complete. Input/action-map docs, scene/state docs, frame-order docs, and perf/benchmark references are up to date.
