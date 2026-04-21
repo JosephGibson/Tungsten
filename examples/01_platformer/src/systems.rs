@@ -1,7 +1,8 @@
 use glam::Vec2;
 use tungsten::core::{
     ActionMap, AnimationRegistry, AnimationState, AudioCommands, CameraController, CameraState,
-    CommandBuffer, DeltaTime, Entity, EventQueue, InputState, World,
+    CommandBuffer, DeltaTime, Entity, EventQueue, InputState, ParticleConfigRegistry,
+    ParticleEmitter, ParticleEmitterState, Transform, World,
 };
 use tungsten::physics::{BodyKind, Collider, CollisionEvent, Position, RigidBody, Velocity};
 use tungsten::WindowSize;
@@ -418,6 +419,14 @@ pub(crate) fn spawn_black_hole_system(world: &mut World) {
             },
         );
         world.insert(entity, Position(world_pos));
+        world.insert(entity, Transform::from_position(world_pos));
+        if let Some(cfg_id) = world
+            .get_resource::<ParticleConfigRegistry>()
+            .and_then(|r| r.id_for_name("ex10_black_hole"))
+        {
+            world.insert(entity, ParticleEmitter::new(cfg_id));
+            world.insert(entity, ParticleEmitterState::default());
+        }
         if let Some(active) = world.get_resource_mut::<ActiveBlackHole>() {
             active.0 = Some(entity);
         }
@@ -428,6 +437,9 @@ pub(crate) fn spawn_black_hole_system(world: &mut World) {
     if let Some(entity) = active_entity {
         if let Some(pos) = world.get_mut::<Position>(entity) {
             pos.0 = world_pos;
+        }
+        if let Some(t) = world.get_mut::<Transform>(entity) {
+            t.position = world_pos;
         }
         if let Some(hole) = world.get_mut::<BlackHole>(entity) {
             hole.remaining = BLACK_HOLE_LIFETIME;

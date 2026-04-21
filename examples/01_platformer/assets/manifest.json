@@ -4,9 +4,13 @@
     "ex10_platform": { "path": "sprites/platform.png", "filter": "nearest" },
     "ex10_sky":      { "path": "sprites/sky.png",      "filter": "nearest" },
     "ex10_ball":     { "path": "sprites/ball.png",     "filter": "nearest" },
-    "ex10_cursor":   { "path": "sprites/cursor.png",   "filter": "nearest" }
+    "ex10_cursor":   { "path": "sprites/cursor.png",   "filter": "nearest" },
+    "ex10_spark":    { "path": "sprites/spark.png",    "filter": "linear"  }
   },
   "tilemaps": {
     "ex10_level": { "path": "tilemaps/level.tmj" }
+  },
+  "particles": {
+    "ex10_black_hole": { "path": "particles/black_hole.json" }
   }
 }

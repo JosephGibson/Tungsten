@@ -1,7 +1,10 @@
 use std::collections::HashMap;
 
 use glam::Vec2;
-use tungsten::core::{AssetRegistry, CameraState, InputState, World};
+use tungsten::core::{
+    AssetRegistry, CameraState, FilterMode, InputState, Particle, Sprite, Transform, Visibility,
+    World,
+};
 use tungsten::extract_tilemaps;
 use tungsten::physics::Position;
 use tungsten::render::{SpriteBatch, SpriteInstance, TextSection};
@@ -17,6 +20,46 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     let Some(assets) = world.get_resource::<AssetRegistry>() else {
         return batches;
     };
+
+    // M23 particles — drawn before the black-hole disc so the dark core
+    // sits on top of its own aura. This example overrides the default
+    // sprite extract entirely, so particle entities (Particle + Transform
+    // + Sprite + Visibility) would otherwise never reach the renderer.
+    let mut particle_batches: HashMap<(u32, FilterMode), SpriteBatch> = HashMap::new();
+    for (e, _p, t, s) in world.query3::<Particle, Transform, Sprite>() {
+        let visible = world
+            .get::<Visibility>(e)
+            .map(|v| v.visible)
+            .unwrap_or(false);
+        if !visible {
+            continue;
+        }
+        let Some(asset) = assets.get_sprite(&s.asset_id) else {
+            continue;
+        };
+        let uv_size = [
+            asset.uv.max[0] - asset.uv.min[0],
+            asset.uv.max[1] - asset.uv.min[1],
+        ];
+        let width_world = asset.width as f32 * t.scale.x;
+        let height_world = asset.height as f32 * t.scale.y;
+        let batch = particle_batches
+            .entry((asset.atlas.0, asset.filter))
+            .or_insert_with(|| SpriteBatch {
+                texture: asset.atlas,
+                filter: asset.filter,
+                instances: Vec::new(),
+            });
+        batch.instances.push(SpriteInstance {
+            position: [t.position.x, t.position.y],
+            size: [width_world, height_world],
+            rotation: t.rotation,
+            color: s.color,
+            uv_min: asset.uv.min,
+            uv_size,
+        });
+    }
+    batches.extend(particle_batches.into_values());
 
     // Black hole — drawn after the tilemap but before the player/balls so
     // attracted bodies visibly pass over it. The ball sprite is reused as

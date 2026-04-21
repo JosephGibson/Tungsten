@@ -25,6 +25,8 @@ pub enum ManifestError {
     MissingSoundFile { id: String, path: String },
     #[error("tilemap '{id}' references missing file: {path}")]
     MissingTilemapFile { id: String, path: String },
+    #[error("particle '{id}' references missing file: {path}")]
+    MissingParticleFile { id: String, path: String },
     #[error("duplicate asset ID '{id}' across manifests")]
     DuplicateId { id: String },
 }
@@ -42,6 +44,8 @@ pub struct RawManifest {
     pub sounds: HashMap<String, SoundEntry>,
     #[serde(default)]
     pub tilemaps: HashMap<String, TilemapEntry>,
+    #[serde(default)]
+    pub particles: HashMap<String, ParticleEntry>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -92,6 +96,11 @@ pub struct TilemapEntry {
     pub path: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct ParticleEntry {
+    pub path: String,
+}
+
 /// A fully resolved manifest with absolute paths.
 #[derive(Debug, Clone, Default)]
 pub struct ResolvedManifest {
@@ -100,6 +109,7 @@ pub struct ResolvedManifest {
     pub fonts: HashMap<String, ResolvedFont>,
     pub sounds: HashMap<String, ResolvedSound>,
     pub tilemaps: HashMap<String, ResolvedTilemap>,
+    pub particles: HashMap<String, ResolvedParticle>,
 }
 
 #[derive(Debug, Clone)]
@@ -127,6 +137,11 @@ pub struct ResolvedSound {
 
 #[derive(Debug, Clone)]
 pub struct ResolvedTilemap {
+    pub path: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolvedParticle {
     pub path: PathBuf,
 }
 
@@ -227,6 +242,20 @@ impl ResolvedManifest {
                 .insert(id, ResolvedTilemap { path: full_path });
         }
 
+        for (id, entry) in raw.particles {
+            let full_path = base_dir.join(&entry.path);
+            if !full_path.exists() {
+                return Err(ManifestError::MissingParticleFile {
+                    id,
+                    path: full_path.display().to_string(),
+                });
+            }
+            let full_path = full_path.canonicalize().unwrap_or(full_path);
+            result
+                .particles
+                .insert(id, ResolvedParticle { path: full_path });
+        }
+
         Ok(result)
     }
 
@@ -261,6 +290,12 @@ impl ResolvedManifest {
                 return Err(ManifestError::DuplicateId { id });
             }
             self.tilemaps.insert(id, tilemap);
+        }
+        for (id, particle) in other.particles {
+            if self.particles.contains_key(&id) {
+                return Err(ManifestError::DuplicateId { id });
+            }
+            self.particles.insert(id, particle);
         }
         Ok(())
     }
@@ -545,6 +580,46 @@ mod tests {
         );
         let err = a.merge(b).unwrap_err();
         assert!(matches!(err, ManifestError::DuplicateId { id } if id == "demo"));
+    }
+
+    #[test]
+    fn load_manifest_with_particles() {
+        let tmp = tempdir();
+        write_file(&tmp, "particles/spark.json");
+        let path = write_manifest(
+            &tmp,
+            r#"{"particles": {"spark": {"path": "particles/spark.json"}}}"#,
+        );
+        let m = ResolvedManifest::load(&path).unwrap();
+        assert!(m.particles.contains_key("spark"));
+    }
+
+    #[test]
+    fn load_manifest_missing_particle_file() {
+        let tmp = tempdir();
+        let path = write_manifest(&tmp, r#"{"particles": {"spark": {"path": "nope.json"}}}"#);
+        let err = ResolvedManifest::load(&path).unwrap_err();
+        assert!(matches!(err, ManifestError::MissingParticleFile { .. }));
+    }
+
+    #[test]
+    fn merge_duplicate_particle_is_error() {
+        let mut a = ResolvedManifest::default();
+        a.particles.insert(
+            "spark".into(),
+            ResolvedParticle {
+                path: "spark.json".into(),
+            },
+        );
+        let mut b = ResolvedManifest::default();
+        b.particles.insert(
+            "spark".into(),
+            ResolvedParticle {
+                path: "spark2.json".into(),
+            },
+        );
+        let err = a.merge(b).unwrap_err();
+        assert!(matches!(err, ManifestError::DuplicateId { id } if id == "spark"));
     }
 
     #[test]

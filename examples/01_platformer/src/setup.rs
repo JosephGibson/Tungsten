@@ -154,6 +154,7 @@ fn install_startup(app: &mut App) {
         let local = ResolvedManifest::load(MANIFEST_LOCAL).expect("Failed to load local manifest");
         asset_loader::load_sprites(&local, world, renderer).expect("Failed to load local sprites");
         asset_loader::load_tilemaps(&local, world).expect("Failed to load local tilemaps");
+        asset_loader::load_particles(&local, world).expect("Failed to load local particles");
 
         // Verify required assets.
         let registry = world.get_resource::<AssetRegistry>().unwrap();
@@ -163,6 +164,7 @@ fn install_startup(app: &mut App) {
             "ex10_sky",
             "ex10_ball",
             "ex10_cursor",
+            "ex10_spark",
             "walk_0",
         ] {
             assert!(registry.get_sprite(id).is_some(), "missing sprite '{id}'");

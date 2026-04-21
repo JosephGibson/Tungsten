@@ -13,18 +13,25 @@ pub mod ecs;
 pub mod input;
 pub mod inspect;
 pub mod physics;
+pub mod rng;
 pub mod time;
 
 pub use assets::{
-    AnimationData, AnimationRegistry, AnimationState, AssetRegistry, AudioHandle, FilterMode,
-    FontEntry, FontRegistry, LayerKind, ManifestError, ResolvedFont, ResolvedManifest,
-    ResolvedSound, SceneData, SceneEntry, SceneError, SceneSprite, SceneTransform, SoundData,
-    SoundEntry, SoundRegistry, SpriteAsset, TextureHandle, TileIndex, TilemapData, TilemapInstance,
-    TilemapLayer, TilemapRegistry, EMPTY_TILE,
+    AnimationData, AnimationRegistry, AnimationState, AssetId, AssetRegistry, AudioHandle,
+    BlendMode, Curve, EmissionKind, FilterMode, FontEntry, FontRegistry, InitialVelocity,
+    LayerKind, Lerp, ManifestError, ParticleActive, ParticleBudget, ParticleConfig,
+    ParticleConfigError, ParticleConfigRegistry, ParticleEntry, Range, ResolvedFont,
+    ResolvedManifest, ResolvedParticle, ResolvedSound, SceneData, SceneEntry, SceneError,
+    SceneSprite, SceneTransform, SoundData, SoundEntry, SoundRegistry, SpriteAsset, TextureHandle,
+    TileIndex, TilemapData, TilemapInstance, TilemapLayer, TilemapRegistry, WorldRngSeed,
+    EMPTY_TILE,
 };
 pub use audio::{AudioCommand, AudioCommands};
 pub use camera::{CameraBounds, CameraController, CameraMode, CameraState};
-pub use components::{sync_position_to_transform, Sprite, Tag, Transform, Visibility};
+pub use components::{
+    sync_position_to_transform, Particle, ParticleEmitter, ParticleEmitterState, Sprite, Tag,
+    Transform, Visibility,
+};
 pub use config::{Config, ConfigError};
 pub use debug_draw::{DebugCommand, DebugDraw, DebugShape, DEFAULT_CIRCLE_SEGMENTS};
 pub use display::{
@@ -39,4 +46,5 @@ pub use physics::{
     aabb_vs_aabb, aabb_vs_circle, circle_vs_circle, physics_step, Aabb, BodyKind, Collider,
     CollisionEvent, Contact, PhysicsConfig, Position, RigidBody, Shape, SpatialGrid, Velocity,
 };
+pub use rng::{splitmix64, Pcg32};
 pub use time::DeltaTime;

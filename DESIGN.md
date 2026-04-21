@@ -2,7 +2,7 @@
 
 ## Status
 
-Workspace `v0.19.0` on branch `0.19`. Phase 3 M22 (Sprite Atlases) is shipped; next recommended milestone is `M23` particle system. Companion docs: [`AGENTS.md`](AGENTS.md) for operational rules, [`DECISIONS.md`](DECISIONS.md) for rationale by `D-NNN`.
+Workspace `v0.20.0` on branch `0.20`. Phase 3 M23 (Particle System) is shipped; next recommended milestone is `M24` tween system. Companion docs: [`AGENTS.md`](AGENTS.md) for operational rules, [`DECISIONS.md`](DECISIONS.md) for rationale by `D-NNN`.
 
 ## What It Is
 
@@ -247,7 +247,6 @@ Not scoped without an explicit decision:
 - Hot reload of config (assets have it; config does not)
 - Save / load
 - GUI library
-- Texture atlases / sprite sheet packing
 - GPU-compressed texture formats (`KTX2`, `Basis Universal`)
 - Skeletal animation
 - Streaming or async asset loading

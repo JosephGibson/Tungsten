@@ -4,7 +4,7 @@ From-scratch Rust 2D game engine. Stack: `winit` + `wgpu` + `glam` + hand-rolled
 
 ## Status
 
-Workspace `v0.19.0` on branch `0.19`. Phase 3 M22 (Sprite Atlases) is shipped. Next milestone: `M23` particle system.
+Workspace `v0.20.0` on branch `0.20`. Phase 3 M23 (Particle System) is shipped. Next milestone: `M24` tween system.
 
 ## Stack
 
