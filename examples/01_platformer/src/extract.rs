@@ -27,7 +27,10 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     // + Sprite + Visibility) would otherwise never reach the renderer.
     let mut particle_batches: HashMap<(u32, FilterMode), SpriteBatch> = HashMap::new();
     for (e, _p, t, s) in world.query3::<Particle, Transform, Sprite>() {
-        let visible = world.get::<Visibility>(e).map(|v| v.visible).unwrap_or(false);
+        let visible = world
+            .get::<Visibility>(e)
+            .map(|v| v.visible)
+            .unwrap_or(false);
         if !visible {
             continue;
         }

@@ -247,7 +247,6 @@ Not scoped without an explicit decision:
 - Hot reload of config (assets have it; config does not)
 - Save / load
 - GUI library
-- Texture atlases / sprite sheet packing
 - GPU-compressed texture formats (`KTX2`, `Basis Universal`)
 - Skeletal animation
 - Streaming or async asset loading

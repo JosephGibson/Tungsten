@@ -29,7 +29,7 @@ Summary: Phase 3 Milestone 23 — particle system (ECS-native emitters with Arc-
 ### Changed
 
 - Workspace version bumped to `0.20.0`.
-- `README.md`, `CLAUDE.md`, and `docs/plans/Phase3.md` now reflect the shipped `0.20.0` / M23 release line and the next-step `M24` planning state.
+- `README.md`, `AGENTS.md`, `DESIGN.md`, `CLAUDE.md`, and `docs/plans/Phase3.md` now reflect the shipped `0.20.0` / M23 release line and the next-step `M24` planning state; `DESIGN.md` Non-Commitments drops the stale "Texture atlases / sprite sheet packing" bullet now covered by M22.
 
 ## [0.19.0] - 2026-04-20
 
