@@ -19,3 +19,10 @@ pollster = { workspace = true }
 cpal = { workspace = true }
 notify = { workspace = true }
 rtrb = { workspace = true }
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "particle_tick"
+harness = false

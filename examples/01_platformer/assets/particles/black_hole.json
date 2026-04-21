@@ -1,0 +1,32 @@
+{
+  "sprite": "ex10_spark",
+  "max_alive": 384,
+  "seed": 48657,
+  "blend": "premultiplied",
+  "emission": { "kind": "continuous", "rate_hz": 160.0 },
+  "lifetime": { "min": 0.4, "max": 1.1 },
+  "initial_velocity": {
+    "kind": "radial",
+    "speed": { "min": 40.0, "max": 140.0 }
+  },
+  "gravity": [0.0, 0.0],
+  "drag_per_sec": 1.2,
+  "angular_velocity": { "min": -6.0, "max": 6.0 },
+  "start_scale": { "min": 0.6, "max": 1.2 },
+  "scale_over_life": [
+    [0.0, 0.0],
+    [0.15, 1.0],
+    [1.0, 0.0]
+  ],
+  "color_over_life": [
+    [0.0, [1.0, 0.6, 1.0, 1.0]],
+    [0.5, [0.55, 0.3, 1.0, 1.0]],
+    [1.0, [0.2, 0.0, 0.4, 1.0]]
+  ],
+  "alpha_over_life": [
+    [0.0, 0.0],
+    [0.15, 1.0],
+    [1.0, 0.0]
+  ],
+  "tint": [1.0, 1.0, 1.0, 1.0]
+}

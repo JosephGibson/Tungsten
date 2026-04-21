@@ -21,10 +21,14 @@
 //!
 //! `Transform` is `Copy`; `Sprite` and `Tag` hold `String`s and are not.
 
+use std::sync::Arc;
+
 use glam::Vec2;
 
-use crate::ecs::World;
+use crate::assets::{AssetId, ParticleConfig};
+use crate::ecs::{Entity, World};
 use crate::physics::Position;
+use crate::rng::Pcg32;
 
 /// World-space transform for a visual entity. Rotation is in radians, CCW
 /// positive, applied around the quad centre at draw time; scale is per-axis
@@ -103,6 +107,84 @@ impl Tag {
     pub fn new(name: impl Into<String>) -> Self {
         Self { name: name.into() }
     }
+}
+
+/// Declarative particle emitter. The config id resolves against
+/// [`ParticleConfigRegistry`](crate::assets::ParticleConfigRegistry); the
+/// optional seed override pins the per-emitter RNG for reproducible replays.
+///
+/// An emitter is always paired with a [`ParticleEmitterState`] — one is the
+/// immutable declaration, the other holds the evolving runtime state.
+#[derive(Debug, Clone, Copy)]
+pub struct ParticleEmitter {
+    pub config: AssetId<ParticleConfig>,
+    pub seed_override: Option<u64>,
+}
+
+impl ParticleEmitter {
+    pub fn new(config: AssetId<ParticleConfig>) -> Self {
+        Self {
+            config,
+            seed_override: None,
+        }
+    }
+
+    pub fn with_seed(config: AssetId<ParticleConfig>, seed: u64) -> Self {
+        Self {
+            config,
+            seed_override: Some(seed),
+        }
+    }
+}
+
+/// Runtime state for a [`ParticleEmitter`]. Holds the `Arc` snapshot taken at
+/// first tick so hot-reloads can swap the registry entry without perturbing
+/// in-flight emitters (plan: "in-flight snapshot semantics").
+#[derive(Debug, Clone)]
+pub struct ParticleEmitterState {
+    pub config_snapshot: Option<Arc<ParticleConfig>>,
+    pub rng: Pcg32,
+    pub elapsed: f32,
+    pub continuous_accum: f32,
+    pub pulse_timer: f32,
+    pub pulses_fired: u32,
+    pub active_count: u32,
+    pub drained: bool,
+    pub first_tick_done: bool,
+    pub drain_reported: bool,
+}
+
+impl Default for ParticleEmitterState {
+    fn default() -> Self {
+        Self {
+            config_snapshot: None,
+            rng: Pcg32::seeded(0),
+            elapsed: 0.0,
+            continuous_accum: 0.0,
+            pulse_timer: 0.0,
+            pulses_fired: 0,
+            active_count: 0,
+            drained: false,
+            first_tick_done: false,
+            drain_reported: false,
+        }
+    }
+}
+
+/// A live particle. Stored per-entity alongside `Transform + Sprite +
+/// Visibility` so the default M15 extract path picks it up. All sampled
+/// values are captured at spawn — the `Arc<ParticleConfig>` lives on the
+/// particle so hot-reload cannot retroactively rewrite its motion or colour.
+#[derive(Debug, Clone)]
+pub struct Particle {
+    pub config: Arc<ParticleConfig>,
+    pub emitter: Option<Entity>,
+    pub age: f32,
+    pub lifetime: f32,
+    pub velocity: Vec2,
+    pub angular_velocity: f32,
+    pub start_scale: f32,
+    pub base_rgba: [f32; 4],
 }
 
 /// Opt-in system: copies `Position.0` into `Transform.position` for every

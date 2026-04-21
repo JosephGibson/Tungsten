@@ -31,11 +31,11 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 
 ## Current Status
 
-- Workspace version metadata: `0.19.0`
-- Current branch: `0.19`
-- Completed milestones: `M12` profiling baseline, `M13` command buffers, `M14` event queues, `M15` transform + render components, `M16` camera module, `M17` display state + config, `M18` runtime telemetry HUD, `M19` input mapping, `M20` scene/state system, `M21` debug tooling, `M22` sprite atlases
-- Next recommended milestone: `M23 — Particle System`
-- Archived detailed milestone plans: [M12](archive/phase3-milestone-12-plan.md), [M13](archive/phase3-milestone-13-plan.md), [M14](archive/phase3-milestone-14-plan.md), [M15](archive/phase3-milestone-15-plan.md), [M16](archive/phase3-milestone-16-plan.md), [M17](archive/phase3-milestone-17-plan.md), [M18](archive/phase3-milestone-18-plan.md), [M19](archive/phase3-milestone-19-plan.md), [M20](archive/phase3-milestone-20-plan.md), [M21](archive/phase3-milestone-21-debug-tooling.md), [M22](archive/phase3-milestone-22-sprite-atlases.md)
+- Workspace version metadata: `0.20.0`
+- Current branch: `0.20`
+- Completed milestones: `M12` profiling baseline, `M13` command buffers, `M14` event queues, `M15` transform + render components, `M16` camera module, `M17` display state + config, `M18` runtime telemetry HUD, `M19` input mapping, `M20` scene/state system, `M21` debug tooling, `M22` sprite atlases, `M23` particle system
+- Next recommended milestone: `M24 — Tween System`
+- Archived detailed milestone plans: [M12](archive/phase3-milestone-12-plan.md), [M13](archive/phase3-milestone-13-plan.md), [M14](archive/phase3-milestone-14-plan.md), [M15](archive/phase3-milestone-15-plan.md), [M16](archive/phase3-milestone-16-plan.md), [M17](archive/phase3-milestone-17-plan.md), [M18](archive/phase3-milestone-18-plan.md), [M19](archive/phase3-milestone-19-plan.md), [M20](archive/phase3-milestone-20-plan.md), [M21](archive/phase3-milestone-21-debug-tooling.md), [M22](archive/phase3-milestone-22-sprite-atlases.md), [M23](archive/phase3-milestone-23-particle-system.md)
 
 ## Execution Contract
 
@@ -173,8 +173,11 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 
 ### M23 - Particle System
 
+> **Status: complete** (`v0.20.0`, `2026-04-20`)
+> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone-23-particle-system.md`](archive/phase3-milestone-23-particle-system.md).
+
 - Goal: provide reusable particle effects without new render-pipeline work.
-- Design: `ParticleEmitter` supports burst/continuous modes and bounded emission; a tick system advances particles, emits new particles, and despawns expired particles through the command buffer; reuse the `Sprite` path from `M15`; support hot-reloadable emitter config.
+- Design: `ParticleEmitter` supports burst/continuous/pulse modes and bounded emission; a tick system advances particles, emits new particles, and despawns expired particles through the command buffer; reuse the `Sprite` path from `M15`; support hot-reloadable emitter config.
 - Done when: an example shows explosion/trail effects and runtime config edits apply.
 
 ### M24 - Tween System

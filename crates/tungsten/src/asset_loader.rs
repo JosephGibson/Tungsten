@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 use glam::Vec2;
 use tungsten_core::assets::{
     pack_shelf, AnimationData, AnimationRegistry, FilterMode, FontRegistry, PackInput,
-    PackedSprite, ResolvedManifest, SceneData, SoundData, SoundRegistry, TextureHandle,
-    TilemapData, TilemapRegistry, UvRect,
+    PackedSprite, ParticleConfig, ParticleConfigRegistry, ResolvedManifest, SceneData, SoundData,
+    SoundRegistry, TextureHandle, TilemapData, TilemapRegistry, UvRect,
 };
 use tungsten_core::{
     ActionMap, ActionMapError, AssetRegistry, CommandBuffer, Sprite, Tag, Transform, Visibility,
@@ -330,10 +330,30 @@ pub fn load_tilemaps(manifest: &ResolvedManifest, world: &mut World) -> anyhow::
     Ok(())
 }
 
-/// Load all assets (sprites + animations + fonts + sounds + tilemaps).
+/// Load every particle config referenced by the manifest. Each entry is
+/// parsed, validated, and registered in the [`ParticleConfigRegistry`] under
+/// a freshly minted [`AssetId`](tungsten_core::AssetId). Sprite cross-reference
+/// validation lives in `load_all` so it runs after sprites are registered.
+pub fn load_particles(manifest: &ResolvedManifest, world: &mut World) -> anyhow::Result<()> {
+    let mut registry = ParticleConfigRegistry::new();
+    for (id, entry) in &manifest.particles {
+        let cfg = ParticleConfig::load(&entry.path).map_err(|e| anyhow::anyhow!("{e}"))?;
+        log::info!(
+            "Loaded particle config '{}' -> sprite '{}' ({} max)",
+            id,
+            cfg.sprite,
+            cfg.max_alive,
+        );
+        registry.register(id.clone(), entry.path.clone(), cfg);
+    }
+    world.insert_resource(registry);
+    Ok(())
+}
+
+/// Load all assets (sprites + animations + fonts + sounds + tilemaps + particles).
 /// After loading, validates cross-references: animation frames must
-/// name known sprites (D-009), and tileset entries must name known
-/// sprites.
+/// name known sprites (D-009), tileset entries must name known sprites,
+/// and particle configs must name known sprites.
 pub fn load_all(
     manifest: &ResolvedManifest,
     world: &mut World,
@@ -344,6 +364,7 @@ pub fn load_all(
     load_fonts(manifest, world, renderer)?;
     load_sounds(manifest, world)?;
     load_tilemaps(manifest, world)?;
+    load_particles(manifest, world)?;
 
     let registry = world
         .get_resource::<AssetRegistry>()
@@ -379,6 +400,25 @@ pub fn load_all(
                     sprite_id,
                 ));
             }
+        }
+    }
+
+    let particle_registry = world
+        .get_resource::<ParticleConfigRegistry>()
+        .expect("ParticleConfigRegistry resource missing");
+    for (id, entry) in &manifest.particles {
+        let Some(asset_id) = particle_registry.id_for_path(&entry.path) else {
+            continue;
+        };
+        let cfg = particle_registry
+            .get(asset_id)
+            .expect("registered asset id lost its config");
+        if registry.get_sprite(&cfg.sprite).is_none() {
+            return Err(anyhow::anyhow!(
+                "Particle config '{}' references unknown sprite ID '{}'",
+                id,
+                cfg.sprite,
+            ));
         }
     }
 
@@ -756,6 +796,48 @@ pub fn reload_tilemap(id: &str, path: &Path, world: &mut World) -> anyhow::Resul
         .insert(id.to_string(), data);
 
     log::info!("Hot-reloaded tilemap '{id}'");
+    Ok(())
+}
+
+/// Hot-reload a particle config. Parses and validates the updated JSON, then
+/// `Arc::swap`s the registry entry under the same `AssetId`. In-flight
+/// emitters and particles keep the `Arc` snapshot they captured at spawn, so
+/// the visible change is bounded to newly spawned particles (plan: in-flight
+/// snapshot semantics). Parse failures log an error and preserve the
+/// last-known-good config.
+pub fn reload_particle(id: &str, path: &Path, world: &mut World) -> anyhow::Result<()> {
+    let cfg = match ParticleConfig::load(path) {
+        Ok(c) => c,
+        Err(e) => {
+            log::error!("Hot reload particle '{id}': {e}");
+            return Ok(());
+        }
+    };
+
+    // Validate sprite cross-reference.
+    {
+        let registry = world
+            .get_resource::<AssetRegistry>()
+            .expect("AssetRegistry resource missing");
+        if registry.get_sprite(&cfg.sprite).is_none() {
+            log::error!(
+                "Hot reload particle '{id}': sprite '{}' not registered — keeping stale",
+                cfg.sprite
+            );
+            return Ok(());
+        }
+    }
+
+    let particle_registry = world
+        .get_resource_mut::<ParticleConfigRegistry>()
+        .expect("ParticleConfigRegistry resource missing");
+    let Some(asset_id) = particle_registry.id_for_name(id) else {
+        log::warn!("Hot reload particle '{id}': unknown asset id — keeping stale");
+        return Ok(());
+    };
+    particle_registry.replace(asset_id, cfg);
+
+    log::info!("Hot-reloaded particle '{id}'");
     Ok(())
 }
 

@@ -24,12 +24,14 @@ use crate::systems_overlay::{
     compose_systems_overlay_text_section, systems_overlay_toggle_system, SystemTimingOverlay,
 };
 use crate::telemetry::{DisplayTelemetry, FrameTimings, RenderCounts};
-use tungsten_core::assets::{AnimationRegistry, FontRegistry, SoundRegistry, TilemapRegistry};
+use tungsten_core::assets::{
+    AnimationRegistry, FontRegistry, ParticleConfigRegistry, SoundRegistry, TilemapRegistry,
+};
 use tungsten_core::physics::{CollisionEvent, PhysicsConfig};
 use tungsten_core::{
     ActionMap, AssetRegistry, AudioCommands, CameraController, CameraState, CommandBuffer, Config,
     DebugDraw, DebugShape, DeltaTime, DisplayMode, DisplayState, EventQueue, InputState,
-    Inspectable, World,
+    Inspectable, ParticleActive, ParticleBudget, World, WorldRngSeed,
 };
 use tungsten_render::{
     DebugLineInstance, GpuFrameTimings, QuadInstance, Renderer, SpriteBatch, TextSection,
@@ -163,6 +165,10 @@ impl App {
         world.insert_resource(SoundRegistry::new());
         world.insert_resource(AudioCommands::new());
         world.insert_resource(TilemapRegistry::new());
+        world.insert_resource(ParticleConfigRegistry::new());
+        world.insert_resource(ParticleBudget::default());
+        world.insert_resource(ParticleActive::default());
+        world.insert_resource(WorldRngSeed::default());
         world.insert_resource(CameraState::new());
         world.insert_resource(CameraController::default());
         world.insert_resource(PhysicsConfig::default());
@@ -183,6 +189,16 @@ impl App {
         let mut event_flushers: Vec<EventFlusher> = Vec::new();
         let mut registered_event_types = HashSet::new();
         Self::register_event_inner::<CollisionEvent>(
+            &mut world,
+            &mut event_flushers,
+            &mut registered_event_types,
+        );
+        Self::register_event_inner::<crate::particles::ParticleBurstEmitted>(
+            &mut world,
+            &mut event_flushers,
+            &mut registered_event_types,
+        );
+        Self::register_event_inner::<crate::particles::ParticleSystemDrained>(
             &mut world,
             &mut event_flushers,
             &mut registered_event_types,
@@ -435,18 +451,30 @@ impl App {
                     }
                 }
                 "json" => {
-                    let id = self
+                    let anim_id = self
                         .world
                         .get_resource::<AnimationRegistry>()
                         .and_then(|ar| ar.id_for_path(&canon).map(|s| s.to_string()));
-                    if let Some(id) = id {
+                    let particle_id = self
+                        .world
+                        .get_resource::<ParticleConfigRegistry>()
+                        .and_then(|pr| {
+                            pr.id_for_path(&canon)
+                                .and_then(|aid| pr.name_for_id(aid).map(|s| s.to_string()))
+                        });
+                    if let Some(id) = anim_id {
                         if let Err(e) = asset_loader::reload_animation(&id, &canon, &mut self.world)
                         {
                             log::error!("Animation reload '{id}': {e}");
                         }
+                    } else if let Some(id) = particle_id {
+                        if let Err(e) = asset_loader::reload_particle(&id, &canon, &mut self.world)
+                        {
+                            log::error!("Particle reload '{id}': {e}");
+                        }
                     } else {
                         log::debug!(
-                            "Hot reload: no animation registered for '{}'",
+                            "Hot reload: no animation or particle registered for '{}'",
                             canon.display()
                         );
                     }
@@ -964,6 +992,15 @@ impl ApplicationHandler for App {
                     event_loop.exit();
                     return;
                 }
+
+                // --- Particle stage (M23): count refresh → emit → tick ---
+                // Runs after user systems and before the command-buffer flush.
+                // Emission before tick guarantees newly-spawned particles get
+                // their first integration step on the following frame, and
+                // despawns are still queued via CommandBuffer for the flush.
+                crate::particles::particle_count_refresh_system(&mut self.world);
+                crate::particles::particle_emit_system(&mut self.world);
+                crate::particles::particle_tick_system(&mut self.world);
 
                 // --- Flush stage: apply deferred command buffers ---
                 // Frame order invariant (Phase 3 guardrail):

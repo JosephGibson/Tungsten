@@ -11,6 +11,7 @@ mod display;
 pub mod hot_reload;
 mod input_bridge;
 pub mod inspector;
+pub mod particles;
 pub mod physics_debug;
 pub mod sprite_extract;
 pub mod state;
@@ -24,6 +25,10 @@ pub use debug_hud::{hud_toggle_system, DebugHud, HudActiveState, HudCorner, HudR
 pub use display::request_display_settings;
 pub use hot_reload::HotReloadWatcher;
 pub use inspector::InspectorState;
+pub use particles::{
+    particle_count_refresh_system, particle_emit_system, particle_tick_system,
+    ParticleBurstEmitted, ParticleSystemDrained,
+};
 pub use physics_debug::PhysicsDebugOverlay;
 pub use sprite_extract::extract_sprites_default;
 pub use state::{

@@ -73,6 +73,9 @@ If you need deeper context, grep the specific `D-0xx` entry in the full log inst
 | `D-045` | Input actions map string names to `Vec<Binding>` in `tungsten-core`; load and persist through workspace-root `input.json`, hot-reload through the existing `notify` watcher, and cover keyboard, mouse buttons, wheel directions, and engine-owned controls. |
 | `D-046` | Scene/state system: single engine-owned dispatcher drives a `StateStack` + `GameState` trait; `SceneEntity { state_id }` marker auto-despawns through `CommandBuffer` on exit; `scene.json` reuses M15 components; `state_start` / `state_pause` / `state_back` action defaults ship with `ActionMap`. |
 | `D-047` | Debug tooling: `DebugDraw` is core POD drained into `QuadInstance` (AABB edges) + `DebugLineInstance` (lines/circles); overlays are independent action-toggled resources (`F1`/`F2`/`F3`), not HUD rows; screenshots render to an offscreen `RENDER_ATTACHMENT \| COPY_SRC` texture and read back via row-padded `MAP_READ` buffer; GPU debug groups + explicit wgpu labels are always-on. |
+| `D-049` | M23 ships a hand-rolled PCG32 + SplitMix64 PRNG in `tungsten-core`; no `rand` / `getrandom` dependency. |
+| `D-050` | M23 particle configs live behind `Arc<ParticleConfig>`; emitters snapshot on first tick and live particles keep their original `Arc` across hot-reload, so in-flight curves never reinterpret mid-life. |
+| `D-051` | M23 uses one ECS entity per live particle (no pool); despawns route through the standard `CommandBuffer` flush, and `max_alive` + global `ParticleBudget` bound the archetype. |
 
 ## When To Open Full `DECISIONS.md`
 
