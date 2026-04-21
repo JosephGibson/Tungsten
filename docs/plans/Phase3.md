@@ -33,9 +33,9 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 
 - Workspace version metadata: `0.19.0`
 - Current branch: `0.19`
-- Completed milestones: `M12` profiling baseline, `M13` command buffers, `M14` event queues, `M15` transform + render components, `M16` camera module, `M17` display state + config, `M18` runtime telemetry HUD, `M19` input mapping, `M20` scene/state system, `M21` debug tooling
-- Next recommended milestone: `M22 — Sprite Atlases`
-- Archived detailed milestone plans: [M12](archive/phase3-milestone-12-plan.md), [M13](archive/phase3-milestone-13-plan.md), [M14](archive/phase3-milestone-14-plan.md), [M15](archive/phase3-milestone-15-plan.md), [M16](archive/phase3-milestone-16-plan.md), [M17](archive/phase3-milestone-17-plan.md), [M18](archive/phase3-milestone-18-plan.md), [M19](archive/phase3-milestone-19-plan.md), [M20](archive/phase3-milestone-20-plan.md), [M21](archive/phase3-milestone-21-debug-tooling.md)
+- Completed milestones: `M12` profiling baseline, `M13` command buffers, `M14` event queues, `M15` transform + render components, `M16` camera module, `M17` display state + config, `M18` runtime telemetry HUD, `M19` input mapping, `M20` scene/state system, `M21` debug tooling, `M22` sprite atlases
+- Next recommended milestone: `M23 — Particle System`
+- Archived detailed milestone plans: [M12](archive/phase3-milestone-12-plan.md), [M13](archive/phase3-milestone-13-plan.md), [M14](archive/phase3-milestone-14-plan.md), [M15](archive/phase3-milestone-15-plan.md), [M16](archive/phase3-milestone-16-plan.md), [M17](archive/phase3-milestone-17-plan.md), [M18](archive/phase3-milestone-18-plan.md), [M19](archive/phase3-milestone-19-plan.md), [M20](archive/phase3-milestone-20-plan.md), [M21](archive/phase3-milestone-21-debug-tooling.md), [M22](archive/milestone-22-sprite-atlases.md)
 
 ## Execution Contract
 
@@ -164,6 +164,9 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 
 ### M22 - Sprite Atlases
 
+> **Status: complete** (`v0.19.0`, `2026-04-20`)
+> Detailed implementation plan archived at [`docs/plans/archive/milestone-22-sprite-atlases.md`](archive/milestone-22-sprite-atlases.md).
+
 - Goal: reduce texture bind churn while keeping the game-facing API unchanged.
 - Design: pack sprites into atlas textures at load time with an in-engine packer and no new dependency; store UV rect per sprite asset; keep sprite ID access unchanged; split atlases by sampler mode (`nearest`, `linear`); on hot-reload growth, allow full rebuild and log a warning.
 - Done when: existing examples render correctly, texture count is measurably lower on representative scenes, and filter behavior is unchanged with `nearest` / `linear` parity verified against pre-atlas output.
@@ -213,6 +216,6 @@ Close each milestone only after:
 - [x] Display state/config layer is active and future settings-menu-ready
 - [x] Runtime telemetry HUD exposes core state (`FPS` / `camera` / `player` / system timing) in a representative example
 - [ ] Deterministic screenshot + scripted input checks run for representative flows
-- [ ] Sprite atlas path is transparent to game code and reduces texture pressure
+- [x] Sprite atlas path is transparent to game code and reduces texture pressure
 - [ ] Bench scenarios above are recorded and reviewed for regressions
 - [ ] Example smoke runs pass for all examples

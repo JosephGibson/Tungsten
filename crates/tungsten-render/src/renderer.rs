@@ -8,7 +8,7 @@ use crate::screenshot::{aligned_bytes_per_row, strip_row_padding};
 use crate::sprite::{SpriteBatch, SpritePipeline};
 use crate::text::{TextPipeline, TextSection};
 use thiserror::Error;
-use tungsten_core::assets::TextureHandle;
+use tungsten_core::assets::{FilterMode, TextureHandle};
 use tungsten_core::config::{PresentModeConfig, RenderConfig};
 use winit::window::Window;
 
@@ -313,13 +313,16 @@ impl Renderer {
         self.surface_config.format
     }
 
-    /// Upload a decoded RGBA texture to the GPU.
+    /// Upload a decoded RGBA texture to the GPU. Post-M22 the `filter` is
+    /// baked into the bind group at upload time — atlases are single-filter,
+    /// so the sprite pipeline no longer selects between samplers per-batch.
     pub fn upload_texture(
         &mut self,
         handle: TextureHandle,
         rgba_data: &[u8],
         width: u32,
         height: u32,
+        filter: FilterMode,
     ) {
         self.sprite_pipeline.upload_texture(
             &self.device,
@@ -328,7 +331,44 @@ impl Renderer {
             rgba_data,
             width,
             height,
+            filter,
         );
+    }
+
+    /// Mint a fresh monotonic `TextureHandle`. Handle authority lives with the
+    /// GPU pool (M22) so `AssetRegistry` never needs to know how many atlas
+    /// pages the packer produced.
+    pub fn allocate_texture_handle(&mut self) -> TextureHandle {
+        self.sprite_pipeline.allocate_texture_handle()
+    }
+
+    /// Drop a pool entry and its bind group. Used when a hot-reload rebuild
+    /// shrinks the atlas page count.
+    pub fn drop_texture(&mut self, handle: TextureHandle) {
+        self.sprite_pipeline.drop_texture(handle);
+    }
+
+    /// Maximum atlas page dimension the packer may request. Clamped to 8192
+    /// so atlas pages stay within the portable-core `Limits` ceiling; every
+    /// shipping adapter exposes at least `max_texture_dimension_2d = 8192`.
+    pub fn max_2d_texture_dimension(&self) -> u32 {
+        self.device.limits().max_texture_dimension_2d.min(8192)
+    }
+
+    /// Copy a sub-rect of RGBA data into an existing atlas page. Used by the
+    /// hot-reload in-place path when a reloaded sprite fits inside its
+    /// originally packed rect.
+    pub fn write_subtexture(
+        &self,
+        handle: TextureHandle,
+        rgba: &[u8],
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+    ) {
+        self.sprite_pipeline
+            .write_subtexture(&self.queue, handle, rgba, x, y, width, height);
     }
 
     /// Load a font from raw TTF/OTF bytes and register it under a manifest ID.

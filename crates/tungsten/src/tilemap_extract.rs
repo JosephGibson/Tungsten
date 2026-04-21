@@ -109,10 +109,14 @@ pub fn extract_tilemaps(world: &World) -> Vec<SpriteBatch> {
                     let world_x = instance.origin.x + (col as f32) * tw;
                     let world_y = instance.origin.y + (row as f32) * th;
 
+                    let uv_size = [
+                        asset.uv.max[0] - asset.uv.min[0],
+                        asset.uv.max[1] - asset.uv.min[1],
+                    ];
                     per_texture
-                        .entry(asset.texture.0)
+                        .entry(asset.atlas.0)
                         .or_insert_with(|| SpriteBatch {
-                            texture: asset.texture,
+                            texture: asset.atlas,
                             filter: asset.filter,
                             instances: Vec::new(),
                         })
@@ -122,6 +126,8 @@ pub fn extract_tilemaps(world: &World) -> Vec<SpriteBatch> {
                             size: [tw, th],
                             rotation: 0.0,
                             color: [255; 4],
+                            uv_min: asset.uv.min,
+                            uv_size,
                         });
                 }
             }

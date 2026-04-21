@@ -50,12 +50,12 @@ fn user_extract_sprites_overrides_default() {
         vec![SpriteBatch {
             texture: TextureHandle(42),
             filter: FilterMode::Linear,
-            instances: vec![SpriteInstance {
-                position: [1.5, 2.5],
-                size: [3.0, 4.0],
-                rotation: 0.25,
-                color: [1, 2, 3, 4],
-            }],
+            instances: vec![SpriteInstance::whole(
+                [1.5, 2.5],
+                [3.0, 4.0],
+                0.25,
+                [1, 2, 3, 4],
+            )],
         }]
     });
 

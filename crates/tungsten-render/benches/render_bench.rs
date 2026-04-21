@@ -1,13 +1,14 @@
-//! Render-side micro-benchmarks (M12).
+//! Render-side micro-benchmarks (M12, M22).
 //!
 //! CPU-only: measures cost of building render data structures.
 //! No wgpu device is created; no display or GPU required.
 //!
 //! Scenarios:
 //!   - sprite_extract_batch_build_2k — build SpriteBatch vec for 2k sprites / 10 textures
+//!   - atlas_pack_startup_200        — shelf-pack 200 sprites through the M22 packer
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use tungsten_core::assets::{FilterMode, TextureHandle};
+use tungsten_core::assets::{pack_shelf, FilterMode, PackInput, TextureHandle};
 use tungsten_render::{SpriteBatch, SpriteInstance};
 
 fn bench_sprite_extract_batch_build_2k(c: &mut Criterion) {
@@ -26,12 +27,12 @@ fn bench_sprite_extract_batch_build_2k(c: &mut Criterion) {
 
             for i in 0..N {
                 let tex_idx = i % TEXTURES;
-                batches[tex_idx].instances.push(SpriteInstance {
-                    position: [i as f32, (i / TEXTURES) as f32],
-                    size: [16.0, 16.0],
-                    rotation: 0.0,
-                    color: [255; 4],
-                });
+                batches[tex_idx].instances.push(SpriteInstance::whole(
+                    [i as f32, (i / TEXTURES) as f32],
+                    [16.0, 16.0],
+                    0.0,
+                    [255; 4],
+                ));
             }
 
             black_box(batches);
@@ -39,5 +40,53 @@ fn bench_sprite_extract_batch_build_2k(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_sprite_extract_batch_build_2k);
+/// XorShift64* — deterministic, dependency-free RNG. Anchors the atlas-pack
+/// startup bench numbers at [phase3-milestone-22-plan.md:210-211] so the gate
+/// in [Phase3.md:202] reflects fixed input across machines.
+fn xorshift64(state: &mut u64) -> u64 {
+    let mut x = *state;
+    x ^= x << 13;
+    x ^= x >> 7;
+    x ^= x << 17;
+    *state = x;
+    x
+}
+
+fn bench_atlas_pack_startup_200(c: &mut Criterion) {
+    const N: usize = 200;
+    const MAX_DIM: u32 = 8192;
+    const PADDING: u32 = 1;
+
+    let mut rng: u64 = 0xA71A5;
+    let sizes: Vec<(u32, u32)> = (0..N)
+        .map(|_| {
+            let w = 8 + (xorshift64(&mut rng) as u32 % 121);
+            let h = 8 + (xorshift64(&mut rng) as u32 % 121);
+            (w, h)
+        })
+        .collect();
+    let ids: Vec<String> = (0..N).map(|i| format!("s{i:03}")).collect();
+
+    c.bench_function("atlas_pack_startup_200", |b| {
+        b.iter(|| {
+            let inputs: Vec<PackInput<'_>> = ids
+                .iter()
+                .zip(sizes.iter())
+                .map(|(id, &(w, h))| PackInput {
+                    id: id.as_str(),
+                    width: w,
+                    height: h,
+                })
+                .collect();
+            let result = pack_shelf(&inputs, MAX_DIM, PADDING);
+            black_box(result);
+        });
+    });
+}
+
+criterion_group!(
+    benches,
+    bench_sprite_extract_batch_build_2k,
+    bench_atlas_pack_startup_200
+);
 criterion_main!(benches);

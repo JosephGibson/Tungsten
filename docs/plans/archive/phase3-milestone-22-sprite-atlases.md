@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 goal: Pack manifest-registered sprites into per-filter atlas textures at load time, store a per-sprite UV rect, keep the game-facing `AssetRegistry` / `Sprite` / `Transform` API unchanged, and measurably reduce live sprite-texture bind count on representative scenes.
 non-goals:
   - New runtime dependencies — packer is hand-rolled per [Phase3.md:167-169](Phase3.md#L167-L169)

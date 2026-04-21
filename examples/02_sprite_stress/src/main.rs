@@ -233,7 +233,13 @@ fn configure_baseline_scene(app: &mut App, sprite_count: usize) {
 
     app.on_startup(|_world, renderer| {
         let rgba = vec![255u8; 16 * 16 * 4];
-        renderer.upload_texture(BASELINE_PLACEHOLDER_HANDLE, &rgba, 16, 16);
+        renderer.upload_texture(
+            BASELINE_PLACEHOLDER_HANDLE,
+            &rgba,
+            16,
+            16,
+            FilterMode::Nearest,
+        );
     });
 
     app.add_system_named("tick_sprites", tick_baseline_sprites);
@@ -326,12 +332,12 @@ fn extract_baseline_sprites(world: &World) -> Vec<SpriteBatch> {
         .map(|sprite| {
             let pulse = 1.0 + 0.25 * (time * 2.0 + sprite.phase).sin();
             let size = BASELINE_SPRITE_SIZE * pulse;
-            SpriteInstance {
-                position: [sprite.base_x, sprite.base_y + sprite.y_offset],
-                size: [size, size],
-                rotation: time * 0.5 + sprite.phase,
-                color: rgb_wheel_color(time, sprite.phase),
-            }
+            SpriteInstance::whole(
+                [sprite.base_x, sprite.base_y + sprite.y_offset],
+                [size, size],
+                time * 0.5 + sprite.phase,
+                rgb_wheel_color(time, sprite.phase),
+            )
         })
         .collect();
 
@@ -466,7 +472,8 @@ fn configure_high_load_camera(world: &mut World, leader: tungsten::core::Entity)
 
 fn register_high_load_sprite(world: &mut World, renderer: &mut tungsten::render::Renderer) {
     let rgba = build_high_load_sprite_rgba();
-    let handle = {
+    let handle = renderer.allocate_texture_handle();
+    {
         let registry = world
             .get_resource_mut::<AssetRegistry>()
             .expect("AssetRegistry resource missing");
@@ -476,13 +483,16 @@ fn register_high_load_sprite(world: &mut World, renderer: &mut tungsten::render:
             HIGH_LOAD_SPRITE_SIZE_PX,
             HIGH_LOAD_SPRITE_SIZE_PX,
             PathBuf::from(HIGH_LOAD_SPRITE_PATH),
-        )
-    };
+            handle,
+            tungsten::core::assets::UvRect::FULL,
+        );
+    }
     renderer.upload_texture(
         handle,
         &rgba,
         HIGH_LOAD_SPRITE_SIZE_PX,
         HIGH_LOAD_SPRITE_SIZE_PX,
+        FilterMode::Nearest,
     );
 }
 
@@ -768,12 +778,12 @@ fn extract_high_load_sprites(world: &World) -> Vec<SpriteBatch> {
             continue;
         }
 
-        instances.push(SpriteInstance {
-            position: [transform.position.x, transform.position.y],
-            size: [size.x, size.y],
-            rotation: transform.rotation,
-            color: sprite.color,
-        });
+        instances.push(SpriteInstance::whole(
+            [transform.position.x, transform.position.y],
+            [size.x, size.y],
+            transform.rotation,
+            sprite.color,
+        ));
     }
 
     if instances.is_empty() {
@@ -781,7 +791,7 @@ fn extract_high_load_sprites(world: &World) -> Vec<SpriteBatch> {
     }
 
     vec![SpriteBatch {
-        texture: asset.texture,
+        texture: asset.atlas,
         filter: asset.filter,
         instances,
     }]
@@ -931,6 +941,8 @@ mod tests {
             HIGH_LOAD_SPRITE_SIZE_PX,
             HIGH_LOAD_SPRITE_SIZE_PX,
             PathBuf::from(HIGH_LOAD_SPRITE_PATH),
+            TextureHandle(0),
+            tungsten::core::assets::UvRect::FULL,
         );
     }
 
