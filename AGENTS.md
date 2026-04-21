@@ -4,7 +4,7 @@ Canonical operating rules for Tungsten. Read this first. Use `DESIGN.md` for arc
 
 ## What Tungsten Is
 
-From-scratch Rust 2D game engine. Stack: `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Workspace crates: `tungsten-core`, `tungsten-render`, `tungsten`. Native only. Current repo state: workspace version `0.19.0`, branch `0.19`, Phase 3 Milestone 21 (Debug Tooling) shipped; next recommended milestone is `M22` sprite atlases.
+From-scratch Rust 2D game engine. Stack: `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Workspace crates: `tungsten-core`, `tungsten-render`, `tungsten`. Native only. Current repo state: workspace version `0.19.0`, branch `0.19`, Phase 3 Milestone 22 (Sprite Atlases) shipped; next recommended milestone is `M23` particle system.
 
 ## Commands
 

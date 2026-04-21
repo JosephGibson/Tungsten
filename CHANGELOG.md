@@ -6,7 +6,31 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-Targeting `0.19.0` on branch `0.19`. Phase 3 Milestone 22 — sprite atlases — is the next recommended milestone.
+Targeting `0.20.0`. Phase 3 Milestone 23 — particle system — is the next recommended milestone.
+
+## [0.19.0] - 2026-04-20
+
+Summary: Phase 3 Milestone 22 — sprite atlases (shelf-next-fit packer, per-filter pages, half-texel UV inset, renderer-minted texture handles, rebuild-on-growth hot reload), and release-line alignment.
+
+### Added
+
+- **CPU-side atlas packer (`tungsten_core::assets::atlas`):** new module `crates/tungsten-core/src/assets/atlas.rs` ships `UvRect { min, max }` (plus the `UvRect::FULL` constant), `PackInput { id, width, height }`, `PackedSprite { id, page, x, y, width, height }`, `AtlasPage { width, height }`, and `PackResult { pages, sprites }`. `pack_shelf(inputs, max_dim, padding)` sorts a stable copy by `(height desc, width desc, id asc)`, fills shelves inside the current page until either axis overflows `max_dim`, then opens a new power-of-two-sized page. Panics when a single sprite exceeds `max_dim - 2 * padding` on either axis. Unit tests cover empty input, single-sprite origin placement, shared-page packing, two-page overflow, oversize panic, and determinism.
+- **Per-filter atlas registry (`tungsten::asset_loader`):** new `AtlasRegistry { nearest_pages, linear_pages, packed: HashMap<String, PackedSprite> }` resource partitions sprites by `FilterMode` and records each sprite's packed rect. `build_atlas_for_filter` packs one filter class, uploads every page through `Renderer::upload_texture`, and registers each sprite with a half-texel-inset `UvRect` so bilinear sampling cannot reach the transparent padding column. `load_sprites` logs `Packed N sprites → M atlas pages (X nearest + Y linear)` for every manifest load.
+- **Renderer-minted texture handles (`tungsten_render::sprite`):** `SpritePipeline::allocate_texture_handle()` returns a monotonically increasing `TextureHandle`; `drop_texture(handle)` removes the `GpuTexture` pool entry on rebuild shrink; `upload_texture(handle, bytes, w, h, filter)` now takes the filter up front so the bind group bakes in the sampler and `SpritePipeline::draw` no longer switches samplers per batch. `write_subtexture(queue, handle, rgba, x, y, w, h)` supports in-place sub-region uploads. `Renderer::max_2d_texture_dimension()` exposes the backend's max page dimension clamped to 8192. A `SpriteInstance::whole()` constructor builds an instance with `uv_min = [0.0, 0.0]` / `uv_size = [1.0, 1.0]` for callers that want full-texture behaviour.
+- **Per-instance UV slice on the GPU:** `SpriteInstance` gains `uv_min: [f32; 2]` at `@location(6)` and `uv_size: [f32; 2]` at `@location(7)`. `sprite.wgsl` computes `out.tex_coord = instance.inst_uv_min + vertex.uv * instance.inst_uv_size`, so one atlas texture serves many sprites within a single bind group.
+- **Hot-reload rebuild-on-growth (`tungsten::asset_loader`):** `reload_sprite` takes the in-place fast path via `write_subtexture` when the new decode is `≤` the packed rect on both axes (leaving `SpriteAsset.uv` untouched); otherwise `rebuild_atlas_for_filter` re-reads every sprite in the affected filter class from disk, repacks, reuses old `TextureHandle`s 1:1, drops excess, and writes the new atlas bindings through `AssetRegistry::update_sprite_entry`. Decode errors anywhere in the rebuild partition abandon the rebuild and keep the previous atlas (last-known-good per `D-031`). Manifest additions run through the same rebuild path with placeholder (`atlas = TextureHandle(0)`, `uv = UvRect::FULL`) entries so the orphan case is bounded.
+- **Atlas integration test:** `crates/tungsten/tests/atlas_integration.rs` asserts that two sprites sharing an atlas collapse to a single `SpriteBatch` with distinct `uv_min` slices, and that three sprites across two atlases produce two batches sized `2` and `1` through the default extract path.
+- **Atlas pack bench baseline:** `atlas_pack_startup_200` ≈ `7.45 µs` on AMD Radeon 660M / RADV Vulkan — first recorded number on this machine; future runs guard the `≤20%` regression rule from `docs/plans/Phase3.md`.
+- **Decision record + archived plan:** `DECISIONS.md` now includes `D-048` covering the six coupled M22 choices (shelf packer, per-filter pages, half-texel inset, rebuild-on-growth hot reload, renderer handle authority, manifest-addition path); the implementation plan is archived at `docs/plans/archive/phase3-milestone-22-sprite-atlases.md`; `docs/DECISION_INDEX.md` and `docs/LLM_INDEX.md` carry the new subsystem/task rows.
+
+### Changed
+
+- Workspace version bumped to `0.19.0`.
+- **`AssetRegistry::register_sprite` signature (`tungsten_core::assets::registry`):** now takes `(id, filter, width, height, path, atlas: TextureHandle, uv: UvRect)` — the registry no longer mints handles, and every sprite carries its packed UV slice. `SpriteAsset` gains `atlas: TextureHandle` and `uv: UvRect` alongside the existing `filter / width / height / path`. `update_sprite_entry(id, atlas, uv, width, height)` replaces the M9-era `update_sprite_dimensions` path used by hot reload.
+- **Batch key (`tungsten::sprite_extract`):** the default extract now groups by `(asset.atlas.0, asset.filter)` and emits one `SpriteInstance` per entity with `uv_min = asset.uv.min` and `uv_size = asset.uv.max - asset.uv.min`. Sprites that share an atlas page collapse into a single batch; `SpritePipeline::draw` warns and skips when the pool entry's filter disagrees with the batch's filter.
+- **`SpriteInstance` size grew from 24 B to 40 B (+66%)** to carry the per-instance UV slice. `sprite_extract_batch_build_2k` measures pre-M22 ≈ `6.32 µs` vs. post-M22 ≈ `7.72 µs` (+22%). The bench pre-allocates 10 fixed batches and does not exercise batch collapse, so the synthetic regression is stride-dominated; the engineered-in wins (fewer bind-group switches, fewer live textures) land in the real-scene draw path.
+- Image diff (Pillow per-pixel RGBA, tolerance `0`): `01_platformer`, `02_sprite_stress`, and `03_scene_state` are pixel-identical against the pre-M22 HEAD capture.
+- `README.md`, `DESIGN.md`, `AGENTS.md`, `CLAUDE.md`, and `docs/plans/Phase3.md` now reflect the shipped `0.19.0` / M22 release line and the next-step `M23` planning state.
 
 ## [0.18.0] - 2026-04-20
 
