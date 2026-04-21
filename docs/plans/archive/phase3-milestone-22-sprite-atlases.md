@@ -1,11 +1,12 @@
 ---
-status: draft
+status: done
 goal: Pack manifest-registered sprites into per-filter atlas textures at load time, store a per-sprite UV rect, keep the game-facing `AssetRegistry` / `Sprite` / `Transform` API unchanged, and measurably reduce live sprite-texture bind count on representative scenes.
 non-goals:
   - New runtime dependencies — packer is hand-rolled per [Phase3.md:167-169](Phase3.md#L167-L169)
   - Glyph/text atlas changes (glyphon owns its own atlas — `D-026`)
   - Mipmaps, streaming, eviction, atlas GC beyond rebuild-on-growth
   - Array-texture / multi-layer atlases; overflow handles by opening a second 2D page in the same filter class
+  - GPU-compressed texture formats (BC7/BCn, KTX2, Basis Universal) — explicit Phase 4+ deferral per [DESIGN.md:251](../../DESIGN.md#L251); also incompatible with M22's no-new-dep rule
   - Manifest, `tungsten.json`, `input.json`, `scene.json` schema changes
   - Example art changes — M22 must be transparent to game code
 files-to-touch:
@@ -92,7 +93,7 @@ Convention: every step must leave `cargo build --workspace` and `cargo test --wo
   pub fn pack_shelf(inputs: &[PackInput<'_>], max_dim: u32, padding: u32) -> PackResult;
   ```
 - Algorithm: shelf-next-fit. Sort a stable copy of `inputs` by `(height desc, width desc, id asc)` — deterministic tie-break. Open shelves inside the current `AtlasPage`; when a shelf would overflow `max_dim` on either axis, finalise the page and open a new one. Every sprite gets `padding` on all four sides (padding-in-the-canvas; the UV inset in step 4 keeps samples inside the drawn rect).
-- Compute page size per page: `width = max_dim` rounded down to the next power-of-two ≥ observed shelf extent; `height = next_power_of_two(highest_y_used)`, clamped to `max_dim`. Power-of-two avoids odd-dimension allocations without adding a new dep.
+- Compute page size per page: `width = next_power_of_two(observed_shelf_extent)` clamped to `max_dim`; `height = next_power_of_two(highest_y_used)` clamped to `max_dim`. Power-of-two avoids odd-dimension allocations without adding a new dep.
 - Return inputs to their original order in `result.sprites` for stable iteration.
 - Hard-fail when a single sprite exceeds `max_dim - 2*padding` on either axis — atlas overflow at item granularity is unrecoverable without a new strategy; panic with a clear message naming the sprite id and size. Document in the module header.
 - Add unit tests in `#[cfg(test)] mod tests`:
@@ -159,7 +160,7 @@ Do these in the same commit so the workspace returns to green at the end of the 
   - Both `extract_baseline_sprites` and `extract_high_load_sprites` already use a placeholder `TextureHandle` (no real asset). Use `SpriteInstance::whole(...)` at both sites ([main.rs:329](../../examples/02_sprite_stress/src/main.rs#L329), [main.rs:771](../../examples/02_sprite_stress/src/main.rs#L771)).
 - Verify: `cargo build --workspace`, `cargo test --workspace`, `./scripts/smoke-examples.sh`.
 
-At end of step 3 the engine renders identically to pre-M22 (one sprite per atlas page). All plumbing is in place.
+At end of step 3 the engine renders identically to pre-M22 (one sprite per atlas page). All plumbing is in place. Note: texture count is *higher* here than either pre-M22 or post-step-4 (every sprite gets a fresh handle via `allocate_texture_handle`). Do not capture perf data at this boundary — it inverts the optimization target temporarily.
 
 ### Step 4 — Actually pack atlases at load time
 
@@ -185,6 +186,7 @@ At end of step 3 the engine renders identically to pre-M22 (one sprite per atlas
   - Resolve `asset.atlas`, `asset.uv`, and the pre-packed rect from the registry. Decode the new PNG.
   - In-place path: if `new_w <= packed_rect_w` and `new_h <= packed_rect_h`, build a padded sub-buffer the size of the packed rect (new bitmap top-left, transparent fill below/right if shrunk), write it with `queue.write_texture` targeting `(packed_rect_x, packed_rect_y)` on the atlas. UV unchanged. `update_sprite_entry` just updates `width/height`.
   - Growth path: `log::warn!("Sprite '{id}' grew ({ow}x{oh} → {nw}x{nh}); rebuilding {filter:?} atlas")`, then call `rebuild_atlas_for_filter(filter, world, renderer)`.
+  - **Between-frames invariant.** Hot-reload events are drained on the main loop between frames (`D-031`), so `drop_texture(handle)` inside `rebuild_atlas_for_filter` never races a `SpriteBatch` built in the *current* frame's extract. Any caller that wires a different drain point must preserve this — otherwise a dropped handle can be bound in a pending draw (UB).
   - `rebuild_atlas_for_filter`:
     1. Re-read every sprite with matching `filter` from disk via `SpriteAsset.path` (the registry already holds every path; `D-031` hot-reload semantics mandate re-reading from disk rather than caching in RAM).
     2. Run `pack_shelf` on the fresh sizes.
@@ -206,7 +208,7 @@ At end of step 3 the engine renders identically to pre-M22 (one sprite per atlas
 - [crates/tungsten-render/benches/render_bench.rs](../../crates/tungsten-render/benches/render_bench.rs) (CPU-only per file header — no GPU). `tungsten-render` already depends on `tungsten-core`, so `pack_shelf` is reachable.
 - Add `atlas_pack_startup_200`:
   - Generate 200 `PackInput { id, width, height }` entries with sizes drawn deterministically from a small seeded generator (e.g. a `u64` XorShift seeded with `0xA71A5` yielding sizes in `8..=128`).
-  - Bench body: `let r = pack_shelf(&inputs, 4096, 1); black_box(r);`.
+  - Bench body: `let r = pack_shelf(&inputs, 8192, 1); black_box(r);`. Use 8192 (the production clamp per §API delta 8), not 4096 — the regression gate needs to reflect shipping behaviour.
 - Matches the `atlas pack startup cost (200 sprites)` line in [Phase3.md:185](Phase3.md#L185) and anchors the ≤20 % startup-regression rule at [Phase3.md:202](Phase3.md#L202).
 - Capture the first run as the M22 baseline; record in the observable-results block below.
 - Verify: `cargo bench -p tungsten-render atlas_pack_startup_200`.
@@ -225,11 +227,12 @@ At end of step 3 the engine renders identically to pre-M22 (one sprite per atlas
 
 - Use `tungsten_render::compare_png` (`D-047`, [image_diff.rs](../../crates/tungsten-render/src/image_diff.rs)).
 - Procedure, per example in `{ 01_platformer, 02_sprite_stress, 03_scene_state }`:
-  1. Check out the merge-base of this feature branch.
-  2. `TUNGSTEN_SMOKE_FRAMES=3 cargo run -p example-NN-name`, save final-frame screenshot to `perf-runs/m22-baseline/<name>.png`.
-  3. Return to the feature branch (post step 4 at minimum), repeat, save to `perf-runs/m22-post/<name>.png`.
-  4. Compare with `delta_per_channel = 0`. Expected result: byte-identical for `nearest` sprites; for `linear` sprites the 1 px padding border plus half-texel inset keeps interpolation samples inside the drawn rect, so output is also byte-identical. Any non-zero diff is a real regression — investigate.
-- Record `DiffReport` summaries in the observable-results block.
+  1. `git worktree add ../tungsten-m22-baseline <merge-base>` — capture baseline from a separate worktree so in-flight edits on the feature branch are not disturbed.
+  2. In the baseline worktree: `TUNGSTEN_SMOKE_FRAMES=3 cargo run -p example-NN-name`, save final-frame screenshot to `perf-runs/m22-baseline/<name>.png`. Also run `cargo bench -p tungsten-render sprite_extract_batch_build_2k` and record the number — this is the denominator for the ≤10 % gate.
+  3. In the feature worktree (post step 4 at minimum), repeat both: screenshot → `perf-runs/m22-post/<name>.png`, and `sprite_extract_batch_build_2k` post-M22 number.
+  4. `git worktree remove ../tungsten-m22-baseline` when done.
+  5. Compare with `delta_per_channel = 0`. Expected result for `nearest`: byte-identical (point sampling of a 1:1 pixel copy). For `linear`: byte-identical **only because** the atlas copy is 1:1 at pow2 dimensions, the 1 px transparent padding plus half-texel UV inset keeps bilinear samples entirely inside the drawn rect, and no mips exist (mips are a non-goal). If any of those three invariants is relaxed in a future change, expect ≤ 1 LSB per channel and soften this gate accordingly.
+- Record `DiffReport` summaries and both bench numbers in the observable-results block.
 
 ### Step 10 — DECISIONS.md + indexes
 
@@ -297,7 +300,7 @@ Milestone acceptance (from M22 body + Phase 3 bench gate):
 3. **Single-sprite overflow.** Any sprite larger than `max_dim - 2*padding` (≤ 8190 in practice) hard-fails at load time. Documented in the module header; Phase3.md does not forbid a panic here, and the alternative (skipping the sprite, emitting the whole PNG as its own page) adds per-sprite-texture code paths the milestone explicitly targets for removal.
 4. **Tilemap parity.** `D-032` reuses the sprite render path. Step 3’s tilemap-extract change must flow UVs the same way gameplay sprites do; the existing tilemap smoke in `example-01-platformer` is the primary proof.
 5. **Shrink-in-place semantics.** Phase3.md only mandates a *growth* rebuild. The plan treats `new ≤ old` as in-place overwrite with transparent tail; flag at review if that surprises.
-6. **Baseline captures.** Step 9 needs a clean pre-M22 checkout to produce the baseline screenshots. If `perf-runs/m22-baseline/` is not captured before step 3 lands on disk, re-check out the branch’s merge-base.
+6. **Baseline captures.** Step 9 needs a clean pre-M22 checkout to produce the baseline screenshots *and* the `sprite_extract_batch_build_2k` baseline number. Use `git worktree add` against the branch's merge-base rather than switching the working tree — avoids disturbing in-flight edits if capture is deferred until after step 4 lands.
 7. **Custom extract closures.** Only `example-01-platformer` resolves real `SpriteAsset`s in its custom extract; `example-02-sprite-stress` uses placeholder handles. Plan threads UV from `SpriteAsset` in the former and uses `SpriteInstance::whole` in the latter — a constructor helper is required for the placeholder path to avoid making custom extract boilerplate mention UVs.
 
 ---

@@ -4,7 +4,7 @@ Canonical operating rules for Tungsten. Read this first. Use `DESIGN.md` for arc
 
 ## What Tungsten Is
 
-From-scratch Rust 2D game engine. Stack: `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Workspace crates: `tungsten-core`, `tungsten-render`, `tungsten`. Native only. Current repo state: workspace version `0.17.0`, branch `main`, Phase 3 Milestone 21 (Debug Tooling) complete. Current shipped capabilities include typed two-window event queues, deferred ECS command buffers, M12 CPU/GPU telemetry, benchmark harnesses, baseline profiling tooling, the swapchain frame-pacing follow-up, canonical gameplay-side components (`Transform`/`Sprite`/`Visibility`/`Tag`) with an opt-in default sprite-extract path, a shared camera module built around `CameraState` / `CameraController`, a core-owned display state/config layer with frame-boundary runtime apply plus display telemetry, a runtime telemetry HUD with built-in/custom row providers and `RenderCounts`, a workspace-root `input.json` action map with keyboard + mouse bindings, hot reload, runtime persistence, and engine-owned HUD/display/exit actions, and a state/scene dispatcher (`StateStack` + `GameState` + `scene.json`) with scene-owned entity auto-cleanup.
+From-scratch Rust 2D game engine. Stack: `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Workspace crates: `tungsten-core`, `tungsten-render`, `tungsten`. Native only. Current repo state: workspace version `0.19.0`, branch `0.19`, Phase 3 Milestone 22 (Sprite Atlases) shipped; next recommended milestone is `M23` particle system.
 
 ## Commands
 
@@ -25,7 +25,7 @@ Before committing anything substantial, run `cargo fmt && cargo test --workspace
 
 ## Test Layers
 
-Two automated layers exist beyond `cargo test`. Use them deliberately; they exist because earlier bugs, including a manifest path resolving outside its intended target, slipped through unit tests.
+Two automated layers exist beyond `cargo test`.
 
 - **Layer 1 — manifest integration test:** [crates/tungsten-core/tests/manifests.rs](crates/tungsten-core/tests/manifests.rs) discovers every `manifest.json` in the workspace (`root + examples/*/assets/`) and calls `ResolvedManifest::load` on each. It runs as part of `cargo test --workspace`, needs no GPU, and is fast and cheap.
 - **Layer 2 — example smoke test:** [crates/tungsten/src/app.rs](crates/tungsten/src/app.rs) honors `TUNGSTEN_SMOKE_FRAMES`; when set, `App` renders that many frames and exits cleanly. [scripts/smoke-examples.sh](scripts/smoke-examples.sh) runs every example with `TUNGSTEN_SMOKE_FRAMES=3` under a per-example timeout, logs to a temp directory, and reports pass/fail with the tail of any failing log. It needs a real GPU/display, takes ~1–2 minutes with a warm cache, and is Linux-only because the script uses bash arrays and GNU `timeout`. Windows contributors should run examples manually with `TUNGSTEN_SMOKE_FRAMES=3`.

@@ -6,7 +6,35 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-Targeting `0.18.0` on branch `0.18`. Phase 3 Milestone 21 — debug tooling. Code-complete; still owed before release: reference-machine baseline PNG, overlays-off vs. overlays-on perf numbers, RenderDoc label check.
+Targeting `0.20.0`. Phase 3 Milestone 23 — particle system — is the next recommended milestone.
+
+## [0.19.0] - 2026-04-20
+
+Summary: Phase 3 Milestone 22 — sprite atlases (shelf-next-fit packer, per-filter pages, half-texel UV inset, renderer-minted texture handles, rebuild-on-growth hot reload), and release-line alignment.
+
+### Added
+
+- **CPU-side atlas packer (`tungsten_core::assets::atlas`):** new module `crates/tungsten-core/src/assets/atlas.rs` ships `UvRect { min, max }` (plus the `UvRect::FULL` constant), `PackInput { id, width, height }`, `PackedSprite { id, page, x, y, width, height }`, `AtlasPage { width, height }`, and `PackResult { pages, sprites }`. `pack_shelf(inputs, max_dim, padding)` sorts a stable copy by `(height desc, width desc, id asc)`, fills shelves inside the current page until either axis overflows `max_dim`, then opens a new power-of-two-sized page. Panics when a single sprite exceeds `max_dim - 2 * padding` on either axis. Unit tests cover empty input, single-sprite origin placement, shared-page packing, two-page overflow, oversize panic, and determinism.
+- **Per-filter atlas registry (`tungsten::asset_loader`):** new `AtlasRegistry { nearest_pages, linear_pages, packed: HashMap<String, PackedSprite> }` resource partitions sprites by `FilterMode` and records each sprite's packed rect. `build_atlas_for_filter` packs one filter class, uploads every page through `Renderer::upload_texture`, and registers each sprite with a half-texel-inset `UvRect` so bilinear sampling cannot reach the transparent padding column. `load_sprites` logs `Packed N sprites → M atlas pages (X nearest + Y linear)` for every manifest load.
+- **Renderer-minted texture handles (`tungsten_render::sprite`):** `SpritePipeline::allocate_texture_handle()` returns a monotonically increasing `TextureHandle`; `drop_texture(handle)` removes the `GpuTexture` pool entry on rebuild shrink; `upload_texture(handle, bytes, w, h, filter)` now takes the filter up front so the bind group bakes in the sampler and `SpritePipeline::draw` no longer switches samplers per batch. `write_subtexture(queue, handle, rgba, x, y, w, h)` supports in-place sub-region uploads. `Renderer::max_2d_texture_dimension()` exposes the backend's max page dimension clamped to 8192. A `SpriteInstance::whole()` constructor builds an instance with `uv_min = [0.0, 0.0]` / `uv_size = [1.0, 1.0]` for callers that want full-texture behaviour.
+- **Per-instance UV slice on the GPU:** `SpriteInstance` gains `uv_min: [f32; 2]` at `@location(6)` and `uv_size: [f32; 2]` at `@location(7)`. `sprite.wgsl` computes `out.tex_coord = instance.inst_uv_min + vertex.uv * instance.inst_uv_size`, so one atlas texture serves many sprites within a single bind group.
+- **Hot-reload rebuild-on-growth (`tungsten::asset_loader`):** `reload_sprite` takes the in-place fast path via `write_subtexture` when the new decode is `≤` the packed rect on both axes (leaving `SpriteAsset.uv` untouched); otherwise `rebuild_atlas_for_filter` re-reads every sprite in the affected filter class from disk, repacks, reuses old `TextureHandle`s 1:1, drops excess, and writes the new atlas bindings through `AssetRegistry::update_sprite_entry`. Decode errors anywhere in the rebuild partition abandon the rebuild and keep the previous atlas (last-known-good per `D-031`). Manifest additions run through the same rebuild path with placeholder (`atlas = TextureHandle(0)`, `uv = UvRect::FULL`) entries so the orphan case is bounded.
+- **Atlas integration test:** `crates/tungsten/tests/atlas_integration.rs` asserts that two sprites sharing an atlas collapse to a single `SpriteBatch` with distinct `uv_min` slices, and that three sprites across two atlases produce two batches sized `2` and `1` through the default extract path.
+- **Atlas pack bench baseline:** `atlas_pack_startup_200` ≈ `7.45 µs` on AMD Radeon 660M / RADV Vulkan — first recorded number on this machine; future runs guard the `≤20%` regression rule from `docs/plans/Phase3.md`.
+- **Decision record + archived plan:** `DECISIONS.md` now includes `D-048` covering the six coupled M22 choices (shelf packer, per-filter pages, half-texel inset, rebuild-on-growth hot reload, renderer handle authority, manifest-addition path); the implementation plan is archived at `docs/plans/archive/phase3-milestone-22-sprite-atlases.md`; `docs/DECISION_INDEX.md` and `docs/LLM_INDEX.md` carry the new subsystem/task rows.
+
+### Changed
+
+- Workspace version bumped to `0.19.0`.
+- **`AssetRegistry::register_sprite` signature (`tungsten_core::assets::registry`):** now takes `(id, filter, width, height, path, atlas: TextureHandle, uv: UvRect)` — the registry no longer mints handles, and every sprite carries its packed UV slice. `SpriteAsset` gains `atlas: TextureHandle` and `uv: UvRect` alongside the existing `filter / width / height / path`. `update_sprite_entry(id, atlas, uv, width, height)` replaces the M9-era `update_sprite_dimensions` path used by hot reload.
+- **Batch key (`tungsten::sprite_extract`):** the default extract now groups by `(asset.atlas.0, asset.filter)` and emits one `SpriteInstance` per entity with `uv_min = asset.uv.min` and `uv_size = asset.uv.max - asset.uv.min`. Sprites that share an atlas page collapse into a single batch; `SpritePipeline::draw` warns and skips when the pool entry's filter disagrees with the batch's filter.
+- **`SpriteInstance` size grew from 24 B to 40 B (+66%)** to carry the per-instance UV slice. `sprite_extract_batch_build_2k` measures pre-M22 ≈ `6.32 µs` vs. post-M22 ≈ `7.72 µs` (+22%). The bench pre-allocates 10 fixed batches and does not exercise batch collapse, so the synthetic regression is stride-dominated; the engineered-in wins (fewer bind-group switches, fewer live textures) land in the real-scene draw path.
+- Image diff (Pillow per-pixel RGBA, tolerance `0`): `01_platformer`, `02_sprite_stress`, and `03_scene_state` are pixel-identical against the pre-M22 HEAD capture.
+- `README.md`, `DESIGN.md`, `AGENTS.md`, `CLAUDE.md`, and `docs/plans/Phase3.md` now reflect the shipped `0.19.0` / M22 release line and the next-step `M23` planning state.
+
+## [0.18.0] - 2026-04-20
+
+Summary: Phase 3 Milestone 21 — debug tooling (geometric overlays, text inspector, screenshot + image-diff), and release-line alignment.
 
 ### Added
 
@@ -17,13 +45,15 @@ Targeting `0.18.0` on branch `0.18`. Phase 3 Milestone 21 — debug tooling. Cod
 - **Screenshot + visual-regression helpers (`tungsten_render`):** `Renderer::capture_frame(path)` renders into an offscreen `RENDER_ATTACHMENT | COPY_SRC` texture and encodes the readback via `image::save_buffer`; `image_diff::compare_png(lhs, rhs, tolerance)` returns a `DiffReport { width, height, max_delta, mean_delta, pixels_above_tolerance }`. Capture is armed via `TUNGSTEN_CAPTURE_FRAME=<n>` plus optional `TUNGSTEN_CAPTURE_PATH` / `TUNGSTEN_CAPTURE_RESOLUTION=<WxH>` and is off by default. An opt-in integration test (`examples/02_sprite_stress/tests/visual_regression.rs`) gated on `TUNGSTEN_VISUAL_REGRESSION=1` shells out to `example-02-sprite-stress` and diffs against the committed baseline.
 - **GPU debug groups + explicit wgpu labels:** the encoder wraps each frame in `push_debug_group("tungsten_frame")`; the main pass opens named groups for `quads`, `sprites`, `debug_quads`, `debug_lines`, and `text`. Always-on, no feature gate; RenderDoc captures are self-describing.
 - **Perf-capture scaffolding:** `examples/02_sprite_stress` parses `TUNGSTEN_OVERLAYS_ON=physics,systems,inspector` to flip overlay `.enabled` flags before `App::run`, so the overlays-on vs. overlays-off capture pair is driven purely from the command line. A perf-run skeleton lives at `perf-runs/M21-debug-tooling/README.md`.
-- **Decision record + detailed plan:** `DECISIONS.md` now includes `D-047`; the implementation plan is at `docs/plans/archive/Phase3-Milestone-21-debug-tooling.md`; `docs/DECISION_INDEX.md` and `docs/LLM_INDEX.md` carry the new subsystem/task rows.
+- **Decision record + archived plan:** `DECISIONS.md` now includes `D-047`; the implementation plan is archived at `docs/plans/archive/phase3-milestone-21-debug-tooling.md`; `docs/DECISION_INDEX.md` and `docs/LLM_INDEX.md` carry the new subsystem/task rows.
 
 ### Changed
 
+- Workspace version bumped to `0.18.0`.
 - `App::new` now inserts `DebugDraw`, `PhysicsDebugOverlay`, `SystemTimingOverlay`, and `InspectorState` world resources; engine toggle systems (`__physics_debug_toggle`, `__systems_overlay_toggle`, `__inspector_toggle`, `__inspector_pick`) register at the head of the engine chain so they observe `just_pressed` before user systems. `physics_debug_emit_system` runs at the start of the extract stage before `DebugDraw::drain`, then commands are split into `Vec<QuadInstance>` (AABB edges) + `Vec<DebugLineInstance>` (lines / circle polylines) and passed through to `Renderer::render_frame_full[_timed]` alongside the existing quad / sprite / text channels.
 - `example-01-platformer`'s header `Controls:` block documents the new `F1` / `F2` / `F3` overlays.
 - `tungsten-render` gains `image = { workspace = true }` as a direct dependency (the workspace dep already existed for `asset_loader`); no new workspace dependency.
+- `README.md`, `DESIGN.md`, `AGENTS.md`, `CLAUDE.md`, and `docs/plans/Phase3.md` now reflect the shipped `0.18.0` / M21 release line and the next-step `M22` planning state.
 
 ## [0.17.0] - 2026-04-20
 
@@ -35,7 +65,7 @@ Summary: Phase 3 Milestone 20 — scene / state dispatcher, `scene.json` data-dr
 - **Scene data model (`tungsten_core::assets::scene`):** `SceneData`, `SceneEntry`, `SceneTransform`, `SceneSprite`, and `SceneError` define a minimal JSON schema that reuses the M15 `Transform` / `Sprite` / `Visibility` / `Tag` components. `SceneData::load` parses a `scene.json` file; `asset_loader::load_scene` and `asset_loader::spawn_scene` wrap the load + `CommandBuffer` spawn path so scenes land at the canonical frame boundary.
 - **State-transition action defaults:** `ActionMap::default_map()` now ships `state_start` (`Enter`), `state_pause` (`KeyP`), and `state_back` (`Backspace`) so examples drive transitions without an edited `input.json`. `KeyCode::Backspace` and `KeyCode::KeyP` are new variants on the core-owned keyboard enum (and route through the input bridge + serde tables).
 - **New example — `example-03-scene-state`:** end-to-end demo of the `MainMenu → Gameplay → Pause → Gameplay` flow. Gameplay entities come from `scene.json` via `spawn_scene` (25-entity constellation: pulsing hub + three counter-rotating orbital rings); Pause overlays Gameplay without tearing the scene down; the HUD `state` row mirrors the active state id.
-- **Decision record + detailed plan:** `DECISIONS.md` now includes `D-046`; the implementation plan is archived at `docs/plans/archive/Phase3-Milestone20-plan.md`; `docs/DECISION_INDEX.md` and `docs/LLM_INDEX.md` reflect the new subsystem.
+- **Decision record + detailed plan:** `DECISIONS.md` now includes `D-046`; the implementation plan is archived at `docs/plans/archive/phase3-milestone-20-plan.md`; `docs/DECISION_INDEX.md` and `docs/LLM_INDEX.md` reflect the new subsystem.
 
 ### Changed
 
@@ -60,7 +90,7 @@ Summary: Phase 3 Milestone 19 — input mapping, mouse support, runtime rebind p
 
 - Workspace version bumped to `0.16.0`.
 - `example-01-platformer` now consumes gameplay input exclusively through action lookups, demonstrates mouse-button bindings (`LMB` jump, `RMB` music toggle, `MMB` stop-all) plus scroll zoom, and renders live cursor / wheel telemetry in the on-screen text.
-- `docs/plans/Phase3.md`, `AGENTS.md`, `CLAUDE.md`, `README.md`, `DESIGN.md`, `docs/LLM_INDEX.md`, and `docs/DECISION_INDEX.md` now reflect the shipped M19 release line; the detailed plan moved to `docs/plans/archive/phase3-milestone19-plan.md`.
+- `docs/plans/Phase3.md`, `AGENTS.md`, `CLAUDE.md`, `README.md`, `DESIGN.md`, `docs/LLM_INDEX.md`, and `docs/DECISION_INDEX.md` now reflect the shipped M19 release line; the detailed plan moved to `docs/plans/archive/phase3-milestone-19-plan.md`.
 - Release QA pass completed locally: `cargo build --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `cargo fmt --all --check`, `./scripts/smoke-examples.sh`, and `cargo bench -p tungsten-core --bench action_map_bench` all passed.
 
 ### Fixed
@@ -78,7 +108,7 @@ Summary: Phase 3 Milestone 18 — runtime telemetry HUD, diagnostic counters, an
 - **Runtime telemetry HUD (`tungsten::debug_hud`):** `DebugHud`, `HudCorner`, `HudRow`, `HudActiveState`, `hud_toggle_system`, and built-in/custom row providers now ship in the umbrella crate. Built-in rows cover FPS/frame ms, camera state, display state, tagged player position/speed, live entity + sprite counts, and top-N slowest systems.
 - **Diagnostic counters:** `tungsten::RenderCounts` mirrors per-frame entity and sprite counts into the `World`, while `tungsten_core::World::entity_count()` exposes the live ECS entity count in O(1).
 - **HUD toggle + example wiring:** `KeyCode::F4` is now plumbed through the input bridge, `example-01-platformer` tags the player entity for HUD lookup, and the controls text documents the new developer HUD toggle.
-- **Decision record + archived plan:** `DECISIONS.md` now includes `D-044`, the detailed M18 rollout plan now lives at `docs/plans/archive/Phase3-Milestone18-plan.md`, and the capture summary lives at `perf-runs/M18-hud/README.md`.
+- **Decision record + archived plan:** `DECISIONS.md` now includes `D-044`, the detailed M18 rollout plan now lives at `docs/plans/archive/phase3-milestone-18-plan.md`, and the capture summary lives at `perf-runs/M18-hud/README.md`.
 
 ### Changed
 
@@ -102,7 +132,7 @@ Summary: Phase 3 Milestone 17 — display state/config, frame-boundary runtime d
 - **Single runtime display request path:** `tungsten::request_display_settings(&mut World, DisplayState)` validates requests up front, queues one pending change, and lets `App` apply fullscreen, resize, surface-pacing, and frame-cap deltas only at the top of `RedrawRequested`.
 - **Display telemetry:** `tungsten::DisplayTelemetry` mirrors authoritative resolution, display mode, vsync intent, lower-case applied present-mode label, max-frame-latency hint, scale mode, and frame-rate cap back into the `World`.
 - **Runtime display demo wiring:** `example-01-platformer` now exercises the runtime path directly: `F11` toggles borderless fullscreen and `F9` toggles `vsync` while re-running auto present-mode selection.
-- **Decision record + archived plan:** `DECISIONS.md` now includes `D-043` for the single-file display config shape and frame-boundary apply rule, and the detailed M17 rollout plan now lives at `docs/plans/archive/Phase3-Milestone17-plan.md`.
+- **Decision record + archived plan:** `DECISIONS.md` now includes `D-043` for the single-file display config shape and frame-boundary apply rule, and the detailed M17 rollout plan now lives at `docs/plans/archive/phase3-milestone-17-plan.md`.
 
 ### Changed
 
@@ -259,7 +289,7 @@ Summary: Phase 2 integration — comprehensive platformer demo, example consolid
 
 - Workspace version bumped to `0.8.0-alpha`.
 - Previous milestone examples (`01_window` through `10_platformer`) removed; their feature coverage is consolidated into `01_platformer`.
-- `PHASE2.md` archived to `docs/plans/archive/phase2-m7-m12.md`.
+- `PHASE2.md` archived to `docs/plans/archive/phase2-milestones-07-12.md`.
 
 ### Fixed
 

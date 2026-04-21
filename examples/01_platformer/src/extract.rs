@@ -25,6 +25,11 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     // pipeline is the path that sits above the sky tiles.
     if let Some(hole_asset) = assets.get_sprite("ex10_ball") {
         let half = BLACK_HOLE_VISUAL_DIAMETER * 0.5;
+        let uv_min = hole_asset.uv.min;
+        let uv_size = [
+            hole_asset.uv.max[0] - hole_asset.uv.min[0],
+            hole_asset.uv.max[1] - hole_asset.uv.min[1],
+        ];
         let instances: Vec<SpriteInstance> = world
             .query::<BlackHole>()
             .filter_map(|(e, _)| world.get::<Position>(e).copied())
@@ -33,11 +38,13 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
                 size: [BLACK_HOLE_VISUAL_DIAMETER, BLACK_HOLE_VISUAL_DIAMETER],
                 rotation: 0.0,
                 color: [115, 20, 191, 230],
+                uv_min,
+                uv_size,
             })
             .collect();
         if !instances.is_empty() {
             batches.push(SpriteBatch {
-                texture: hole_asset.texture,
+                texture: hole_asset.atlas,
                 filter: hole_asset.filter,
                 instances,
             });
@@ -58,10 +65,15 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
         };
         let sprite_w = asset.width as f32;
         let sprite_h = asset.height as f32;
+        let uv_min = asset.uv.min;
+        let uv_size = [
+            asset.uv.max[0] - asset.uv.min[0],
+            asset.uv.max[1] - asset.uv.min[1],
+        ];
         let batch = player_batches
             .entry(cs.0.clone())
             .or_insert_with(|| SpriteBatch {
-                texture: asset.texture,
+                texture: asset.atlas,
                 filter: asset.filter,
                 instances: Vec::new(),
             });
@@ -72,12 +84,19 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
             size: [sprite_w, sprite_h],
             rotation: 0.0,
             color: [255; 4],
+            uv_min,
+            uv_size,
         });
     }
     batches.extend(player_batches.into_values());
 
     // Bouncing balls.
     if let Some(ball_asset) = assets.get_sprite("ex10_ball") {
+        let uv_min = ball_asset.uv.min;
+        let uv_size = [
+            ball_asset.uv.max[0] - ball_asset.uv.min[0],
+            ball_asset.uv.max[1] - ball_asset.uv.min[1],
+        ];
         let instances: Vec<SpriteInstance> = world
             .query::<Ball>()
             .filter_map(|(e, _)| world.get::<Position>(e).copied())
@@ -86,11 +105,13 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
                 size: [BALL_RADIUS * 2.0, BALL_RADIUS * 2.0],
                 rotation: 0.0,
                 color: [255; 4],
+                uv_min,
+                uv_size,
             })
             .collect();
         if !instances.is_empty() {
             batches.push(SpriteBatch {
-                texture: ball_asset.texture,
+                texture: ball_asset.atlas,
                 filter: ball_asset.filter,
                 instances,
             });
@@ -116,14 +137,21 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
         {
             let sprite_w = cursor_asset.width as f32;
             let sprite_h = cursor_asset.height as f32;
+            let uv_min = cursor_asset.uv.min;
+            let uv_size = [
+                cursor_asset.uv.max[0] - cursor_asset.uv.min[0],
+                cursor_asset.uv.max[1] - cursor_asset.uv.min[1],
+            ];
             batches.push(SpriteBatch {
-                texture: cursor_asset.texture,
+                texture: cursor_asset.atlas,
                 filter: cursor_asset.filter,
                 instances: vec![SpriteInstance {
                     position: [world_pos.x - sprite_w * 0.5, world_pos.y - sprite_h * 0.5],
                     size: [sprite_w, sprite_h],
                     rotation: 0.0,
                     color: [255; 4],
+                    uv_min,
+                    uv_size,
                 }],
             });
         }

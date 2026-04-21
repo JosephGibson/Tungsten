@@ -58,7 +58,7 @@ unblocks: faster iteration across M19-M24
 9. `crates/tungsten-core/src/input.rs`, `crates/tungsten/src/input_bridge.rs` (`F9` / `F11` precedent)
 10. `crates/tungsten-render/src/text.rs` (`TextSection` fields; unknown `font_id` is already a no-op at draw time)
 11. `examples/01_platformer/src/{extract,setup,systems,state}.rs`
-12. `docs/plans/archive/Phase3-Milestone17-plan.md` (format precedent)
+12. `docs/plans/archive/phase3-milestone-17-plan.md` (format precedent)
 13. `DECISIONS.md` with `rg "D-007|D-016|D-018|D-038|D-042|D-043" DECISIONS.md`
 
 ## Files to touch

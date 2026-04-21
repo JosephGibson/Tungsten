@@ -6,7 +6,7 @@ use wgpu::util::DeviceExt;
 
 /// Per-instance sprite data sent to the GPU.
 ///
-/// Layout (24 bytes total):
+/// Layout (40 bytes total):
 ///
 /// - `position`: world-space top-left of the non-rotated quad AABB.
 /// - `size`: world-space width/height of the quad.
@@ -14,6 +14,9 @@ use wgpu::util::DeviceExt;
 ///   vertex shader. `0.0` reproduces the pre-M15 top-left-anchored behaviour.
 /// - `color`: RGBA8 tint, uploaded as `Unorm8x4` and multiplied into the
 ///   sampled texel in the fragment shader. `[255; 4]` = no tint.
+/// - `uv_min`, `uv_size`: atlas UV rect for this instance. The vertex shader
+///   computes `uv = uv_min + vertex.uv * uv_size`, so `uv_min=[0,0]`,
+///   `uv_size=[1,1]` reproduces pre-M22 full-quad sampling.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct SpriteInstance {
@@ -21,14 +24,18 @@ pub struct SpriteInstance {
     pub size: [f32; 2],
     pub rotation: f32,
     pub color: [u8; 4],
+    pub uv_min: [f32; 2],
+    pub uv_size: [f32; 2],
 }
 
 impl SpriteInstance {
-    const ATTRIBS: [wgpu::VertexAttribute; 4] = wgpu::vertex_attr_array![
+    const ATTRIBS: [wgpu::VertexAttribute; 6] = wgpu::vertex_attr_array![
         2 => Float32x2,
         3 => Float32x2,
         4 => Float32,
         5 => Unorm8x4,
+        6 => Float32x2,
+        7 => Float32x2,
     ];
 
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
@@ -36,6 +43,20 @@ impl SpriteInstance {
             array_stride: std::mem::size_of::<SpriteInstance>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Instance,
             attributes: &Self::ATTRIBS,
+        }
+    }
+
+    /// Construct an instance that samples the entire bound texture. Used by
+    /// the sprite-stress baseline and any placeholder-texture path that does
+    /// not go through the `AssetRegistry`.
+    pub fn whole(position: [f32; 2], size: [f32; 2], rotation: f32, color: [u8; 4]) -> Self {
+        Self {
+            position,
+            size,
+            rotation,
+            color,
+            uv_min: [0.0, 0.0],
+            uv_size: [1.0, 1.0],
         }
     }
 }
@@ -47,6 +68,8 @@ impl Default for SpriteInstance {
             size: [0.0, 0.0],
             rotation: 0.0,
             color: [255; 4],
+            uv_min: [0.0, 0.0],
+            uv_size: [1.0, 1.0],
         }
     }
 }
@@ -100,16 +123,18 @@ const SPRITE_VERTICES: &[SpriteVertex] = &[
     },
 ];
 
-/// A GPU texture entry in the texture pool.
+/// A GPU texture entry in the texture pool. One atlas page per entry; the
+/// sampler filter is baked into the bind group at upload time (M22), so
+/// `draw` no longer chooses between samplers per-batch.
 #[allow(dead_code)]
 struct GpuTexture {
     texture: wgpu::Texture,
     view: wgpu::TextureView,
-    bind_group_nearest: wgpu::BindGroup,
-    bind_group_linear: wgpu::BindGroup,
+    bind_group: wgpu::BindGroup,
+    filter: FilterMode,
 }
 
-/// A batch of sprites sharing the same texture handle.
+/// A batch of sprites sharing the same atlas-page texture handle.
 pub struct SpriteBatch {
     pub texture: TextureHandle,
     pub filter: FilterMode,
@@ -129,6 +154,7 @@ pub struct SpritePipeline {
     sampler_nearest: wgpu::Sampler,
     sampler_linear: wgpu::Sampler,
     textures: HashMap<TextureHandle, GpuTexture>,
+    next_handle: u32,
 }
 
 impl SpritePipeline {
@@ -271,14 +297,33 @@ impl SpritePipeline {
             sampler_nearest,
             sampler_linear,
             textures: HashMap::new(),
+            next_handle: 0,
         }
     }
 
-    /// Upload a decoded RGBA image to the GPU and store it in the texture pool.
+    /// Mint a fresh monotonic handle. Post-M22 the renderer owns handle
+    /// allocation so `AssetRegistry` never has to know how many atlas pages
+    /// the packer produced.
+    pub fn allocate_texture_handle(&mut self) -> TextureHandle {
+        let handle = TextureHandle(self.next_handle);
+        self.next_handle += 1;
+        handle
+    }
+
+    /// Remove a texture and its bind group from the pool. Used by hot-reload
+    /// rebuild when a rebuilt atlas has fewer pages than the old one.
+    pub fn drop_texture(&mut self, handle: TextureHandle) {
+        self.textures.remove(&handle);
+    }
+
+    /// Upload a decoded RGBA image to the GPU and store it in the texture
+    /// pool. Exactly one sampler (`filter`) is baked into the bind group so
+    /// `draw` does not need to pick per-batch.
     ///
     /// # Panics
     /// Panics if `width` or `height` is zero, or if `rgba_data` length does
     /// not match `width * height * 4`.
+    #[allow(clippy::too_many_arguments)] // stable M22 surface; see D-048
     pub fn upload_texture(
         &mut self,
         device: &wgpu::Device,
@@ -287,6 +332,7 @@ impl SpritePipeline {
         rgba_data: &[u8],
         width: u32,
         height: u32,
+        filter: FilterMode,
     ) {
         assert!(
             width > 0 && height > 0,
@@ -338,8 +384,12 @@ impl SpritePipeline {
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-        let bind_group_nearest = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some(&format!("sprite_bg_nearest_{}", handle.0)),
+        let sampler = match filter {
+            FilterMode::Nearest => &self.sampler_nearest,
+            FilterMode::Linear => &self.sampler_linear,
+        };
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(&format!("sprite_bg_{}", handle.0)),
             layout: &self.texture_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
@@ -348,22 +398,7 @@ impl SpritePipeline {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&self.sampler_nearest),
-                },
-            ],
-        });
-
-        let bind_group_linear = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some(&format!("sprite_bg_linear_{}", handle.0)),
-            layout: &self.texture_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&self.sampler_linear),
+                    resource: wgpu::BindingResource::Sampler(sampler),
                 },
             ],
         });
@@ -373,8 +408,65 @@ impl SpritePipeline {
             GpuTexture {
                 texture,
                 view,
-                bind_group_nearest,
-                bind_group_linear,
+                bind_group,
+                filter,
+            },
+        );
+    }
+
+    /// Copy a rectangle of RGBA data into an existing atlas page via
+    /// `queue.write_texture`. No new `GpuTexture` is created. Used by the
+    /// hot-reload in-place path when a reloaded sprite fits inside its
+    /// originally packed rect.
+    ///
+    /// # Panics
+    /// Panics if the target handle is not in the pool, if the destination
+    /// rect escapes the texture, or if `rgba` length does not match
+    /// `width * height * 4`.
+    #[allow(clippy::too_many_arguments)] // stable M22 surface; see D-048
+    pub fn write_subtexture(
+        &self,
+        queue: &wgpu::Queue,
+        handle: TextureHandle,
+        rgba: &[u8],
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+    ) {
+        let gpu_tex = self
+            .textures
+            .get(&handle)
+            .expect("write_subtexture: handle not in pool");
+        assert_eq!(
+            rgba.len(),
+            (width as usize) * (height as usize) * 4,
+            "write_subtexture: rgba length mismatch"
+        );
+        let tex_size = gpu_tex.texture.size();
+        assert!(
+            x + width <= tex_size.width && y + height <= tex_size.height,
+            "write_subtexture: rect ({x},{y},{width},{height}) escapes texture {}x{}",
+            tex_size.width,
+            tex_size.height
+        );
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &gpu_tex.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d { x, y, z: 0 },
+                aspect: wgpu::TextureAspect::All,
+            },
+            rgba,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(4 * width),
+                rows_per_image: Some(height),
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
             },
         );
     }
@@ -453,14 +545,36 @@ impl SpritePipeline {
                 }
             };
 
-            let bind_group = match batch.filter {
-                FilterMode::Nearest => &gpu_tex.bind_group_nearest,
-                FilterMode::Linear => &gpu_tex.bind_group_linear,
-            };
+            if batch.filter != gpu_tex.filter {
+                log::warn!(
+                    "sprite batch filter {:?} != pool filter {:?} for handle {:?}",
+                    batch.filter,
+                    gpu_tex.filter,
+                    batch.texture
+                );
+                continue;
+            }
 
-            render_pass.set_bind_group(1, bind_group, &[]);
+            render_pass.set_bind_group(1, &gpu_tex.bind_group, &[]);
             render_pass.set_vertex_buffer(1, self.instance_buffer.slice(start..end));
             render_pass.draw(0..6, 0..batch.instances.len() as u32);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sprite_instance_stride_matches_attribute_layout() {
+        assert_eq!(std::mem::size_of::<SpriteInstance>(), 40);
+    }
+
+    #[test]
+    fn whole_instance_fills_full_uv() {
+        let inst = SpriteInstance::whole([0.0, 0.0], [16.0, 16.0], 0.0, [255; 4]);
+        assert_eq!(inst.uv_min, [0.0, 0.0]);
+        assert_eq!(inst.uv_size, [1.0, 1.0]);
     }
 }

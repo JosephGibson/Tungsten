@@ -19,6 +19,8 @@ struct InstanceInput {
     @location(3) inst_size: vec2<f32>,
     @location(4) inst_rot: f32,
     @location(5) inst_tint: vec4<f32>,
+    @location(6) inst_uv_min: vec2<f32>,
+    @location(7) inst_uv_size: vec2<f32>,
 };
 
 struct VertexOutput {
@@ -46,7 +48,7 @@ fn vs_main(vertex: VertexInput, instance: InstanceInput) -> VertexOutput {
 
     var out: VertexOutput;
     out.clip_position = camera.projection * vec4<f32>(world_pos, 0.0, 1.0);
-    out.tex_coord = vertex.uv;
+    out.tex_coord = instance.inst_uv_min + vertex.uv * instance.inst_uv_size;
     out.tint = instance.inst_tint;
     return out;
 }

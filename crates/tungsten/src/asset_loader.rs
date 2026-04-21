@@ -1,9 +1,11 @@
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 use glam::Vec2;
 use tungsten_core::assets::{
-    AnimationData, AnimationRegistry, FilterMode, FontRegistry, ResolvedManifest, SceneData,
-    SoundData, SoundRegistry, TextureHandle, TilemapData, TilemapRegistry,
+    pack_shelf, AnimationData, AnimationRegistry, FilterMode, FontRegistry, PackInput,
+    PackedSprite, ResolvedManifest, SceneData, SoundData, SoundRegistry, TextureHandle,
+    TilemapData, TilemapRegistry, UvRect,
 };
 use tungsten_core::{
     ActionMap, ActionMapError, AssetRegistry, CommandBuffer, Sprite, Tag, Transform, Visibility,
@@ -13,49 +15,212 @@ use tungsten_render::Renderer;
 
 use crate::state::{SceneEntity, StateId};
 
-/// Load all sprite assets from a resolved manifest: decode PNGs to CPU bitmaps,
-/// register in the asset registry, and upload textures to the GPU.
+/// Umbrella-crate resource tracking live atlas-page handles and every sprite's
+/// packed rect. Hot-reload paths consult this to decide between in-place
+/// overwrite and full rebuild, and to drop stale page handles when a rebuild
+/// shrinks the page count. Populated by `load_sprites` and kept in sync by
+/// `rebuild_atlas_for_filter`.
+#[derive(Debug, Default)]
+pub struct AtlasRegistry {
+    pub nearest_pages: Vec<TextureHandle>,
+    pub linear_pages: Vec<TextureHandle>,
+    pub packed: HashMap<String, PackedSprite>,
+}
+
+impl AtlasRegistry {
+    pub fn page_handles(&self, filter: FilterMode) -> &[TextureHandle] {
+        match filter {
+            FilterMode::Nearest => &self.nearest_pages,
+            FilterMode::Linear => &self.linear_pages,
+        }
+    }
+
+    pub fn page_handles_mut(&mut self, filter: FilterMode) -> &mut Vec<TextureHandle> {
+        match filter {
+            FilterMode::Nearest => &mut self.nearest_pages,
+            FilterMode::Linear => &mut self.linear_pages,
+        }
+    }
+}
+
+/// One decoded sprite awaiting packing. CPU-side; no GPU handle yet. The
+/// filter class is carried by the caller partition — one `Vec<Decoded>` per
+/// filter — so it is not stored per entry.
+struct Decoded {
+    id: String,
+    path: PathBuf,
+    width: u32,
+    height: u32,
+    rgba: Vec<u8>,
+}
+
+/// Pack `decoded` (one filter class) into one or more atlas pages, allocate
+/// page handles from `renderer`, upload each page canvas, register every
+/// sprite in `registry` with its half-texel-inset UV, and record results in
+/// `atlas_registry`. Returns the list of page handles — used by the caller to
+/// drop stale handles when a rebuild shrinks the page count.
+///
+/// The half-texel UV inset plus the packer's 1 px transparent padding keep
+/// bilinear samples entirely inside the drawn rect at non-mip sampling; if
+/// mipmaps are enabled in a future change, the inset math needs revisiting.
+fn build_atlas_for_filter(
+    filter: FilterMode,
+    decoded: &[Decoded],
+    renderer: &mut Renderer,
+    registry: &mut AssetRegistry,
+    atlas_registry: &mut AtlasRegistry,
+    max_dim: u32,
+) -> Vec<TextureHandle> {
+    if decoded.is_empty() {
+        atlas_registry.page_handles_mut(filter).clear();
+        return Vec::new();
+    }
+
+    let inputs: Vec<PackInput<'_>> = decoded
+        .iter()
+        .map(|d| PackInput {
+            id: d.id.as_str(),
+            width: d.width,
+            height: d.height,
+        })
+        .collect();
+    let pack = pack_shelf(&inputs, max_dim, 1);
+    let by_id: HashMap<&str, &Decoded> = decoded.iter().map(|d| (d.id.as_str(), d)).collect();
+
+    let mut canvases: Vec<Vec<u8>> = pack
+        .pages
+        .iter()
+        .map(|p| vec![0u8; (p.width as usize) * (p.height as usize) * 4])
+        .collect();
+
+    for packed in &pack.sprites {
+        let src = by_id[packed.id.as_str()];
+        let page = &pack.pages[packed.page as usize];
+        let canvas = &mut canvases[packed.page as usize];
+        let page_stride = (page.width as usize) * 4;
+        let sprite_stride = (packed.width as usize) * 4;
+        for row in 0..(packed.height as usize) {
+            let dst_y = (packed.y as usize) + row;
+            let dst_start = dst_y * page_stride + (packed.x as usize) * 4;
+            let dst_end = dst_start + sprite_stride;
+            let src_start = row * sprite_stride;
+            let src_end = src_start + sprite_stride;
+            canvas[dst_start..dst_end].copy_from_slice(&src.rgba[src_start..src_end]);
+        }
+    }
+
+    let mut page_handles: Vec<TextureHandle> = Vec::with_capacity(pack.pages.len());
+    for (page_idx, page) in pack.pages.iter().enumerate() {
+        let handle = renderer.allocate_texture_handle();
+        renderer.upload_texture(handle, &canvases[page_idx], page.width, page.height, filter);
+        page_handles.push(handle);
+    }
+
+    for packed in &pack.sprites {
+        let src = by_id[packed.id.as_str()];
+        let page = &pack.pages[packed.page as usize];
+        let pw = page.width as f32;
+        let ph = page.height as f32;
+        let uv = UvRect {
+            min: [(packed.x as f32 + 0.5) / pw, (packed.y as f32 + 0.5) / ph],
+            max: [
+                (packed.x as f32 + packed.width as f32 - 0.5) / pw,
+                (packed.y as f32 + packed.height as f32 - 0.5) / ph,
+            ],
+        };
+        let atlas = page_handles[packed.page as usize];
+        registry.register_sprite(
+            src.id.clone(),
+            filter,
+            src.width,
+            src.height,
+            src.path.clone(),
+            atlas,
+            uv,
+        );
+        atlas_registry.packed.insert(src.id.clone(), packed.clone());
+    }
+
+    *atlas_registry.page_handles_mut(filter) = page_handles.clone();
+    page_handles
+}
+
+/// Decode every sprite PNG named by `manifest`, pack each filter class into
+/// one or more atlas pages, upload the pages to the GPU, and register sprites
+/// with their per-sprite UV. Populates the `AtlasRegistry` resource so the
+/// hot-reload paths can distinguish in-place overwrite from full rebuild.
+///
+/// Called once at startup. Step 6 removes the additions-path call from
+/// `reload_manifest`; until then, calling this with a partial manifest is
+/// supported but leaves only the additions in the `AtlasRegistry` — pre-Step-6
+/// hot-reload-add is the single caller and it does not rely on the resource.
 pub fn load_sprites(
     manifest: &ResolvedManifest,
     world: &mut World,
     renderer: &mut Renderer,
 ) -> anyhow::Result<()> {
-    let registry = world
-        .get_resource_mut::<AssetRegistry>()
-        .expect("AssetRegistry resource missing");
-
-    let mut uploads: Vec<(TextureHandle, Vec<u8>, u32, u32)> = Vec::new();
-
+    let mut decoded_nearest: Vec<Decoded> = Vec::new();
+    let mut decoded_linear: Vec<Decoded> = Vec::new();
     for (id, sprite) in &manifest.sprites {
         let img = image::open(&sprite.path)
             .map_err(|e| anyhow::anyhow!("Failed to decode '{}': {}", sprite.path.display(), e))?
             .to_rgba8();
-
         let (width, height) = img.dimensions();
-        let handle = registry.register_sprite(
-            id.clone(),
-            sprite.filter,
+        let entry = Decoded {
+            id: id.clone(),
+            path: sprite.path.clone(),
             width,
             height,
-            sprite.path.clone(),
-        );
-
-        log::info!(
-            "Loaded sprite '{}' ({}x{}, {:?}) -> {:?}",
-            id,
-            width,
-            height,
-            sprite.filter,
-            handle,
-        );
-
-        uploads.push((handle, img.into_raw(), width, height));
+            rgba: img.into_raw(),
+        };
+        match sprite.filter {
+            FilterMode::Nearest => decoded_nearest.push(entry),
+            FilterMode::Linear => decoded_linear.push(entry),
+        }
     }
 
-    for (handle, rgba, width, height) in uploads {
-        renderer.upload_texture(handle, &rgba, width, height);
-    }
+    let max_dim = renderer.max_2d_texture_dimension();
+    let n_sprites = decoded_nearest.len() + decoded_linear.len();
 
+    // Pull the AtlasRegistry out of the world for the duration of the build
+    // so we can hold &mut to it and &mut AssetRegistry at the same time.
+    let mut atlas_registry = world
+        .get_resource_mut::<AtlasRegistry>()
+        .map(std::mem::take)
+        .unwrap_or_default();
+
+    let (nearest_handles, linear_handles) = {
+        let registry = world
+            .get_resource_mut::<AssetRegistry>()
+            .expect("AssetRegistry resource missing");
+        let n = build_atlas_for_filter(
+            FilterMode::Nearest,
+            &decoded_nearest,
+            renderer,
+            registry,
+            &mut atlas_registry,
+            max_dim,
+        );
+        let l = build_atlas_for_filter(
+            FilterMode::Linear,
+            &decoded_linear,
+            renderer,
+            registry,
+            &mut atlas_registry,
+            max_dim,
+        );
+        (n, l)
+    };
+
+    log::info!(
+        "Packed {} sprites → {} atlas pages ({} nearest + {} linear)",
+        n_sprites,
+        nearest_handles.len() + linear_handles.len(),
+        nearest_handles.len(),
+        linear_handles.len(),
+    );
+
+    world.insert_resource(atlas_registry);
     Ok(())
 }
 
@@ -276,9 +441,18 @@ pub fn spawn_scene(world: &mut World, data: &SceneData, state_id: StateId) {
     }
 }
 
-/// Hot-reload a sprite: decode the new PNG and re-upload to the GPU behind
-/// the same TextureHandle. If dimensions changed the wgpu texture is recreated
-/// in-place (the old one is dropped and deferred-destroyed by wgpu).
+/// Hot-reload a single sprite. If the new decoded size fits inside the
+/// sprite's pre-packed rect, overwrite the rect in place (no handle churn —
+/// `SpriteBatch`es already bound in this frame stay valid). Otherwise rebuild
+/// the entire filter-class atlas via `rebuild_atlas_for_filter`.
+///
+/// # Between-frames invariant (D-031)
+///
+/// Hot-reload events are drained on the main loop between frames, so a
+/// rebuild's `drop_texture` never races a `SpriteBatch` built in the current
+/// frame's extract. Any caller that wires a different drain point must keep
+/// this invariant — otherwise a dropped handle could be bound in a pending
+/// draw (UB).
 pub fn reload_sprite(
     id: &str,
     path: &Path,
@@ -296,35 +470,234 @@ pub fn reload_sprite(
             return Ok(());
         }
     };
-
     let (new_w, new_h) = img.dimensions();
     let rgba = img.into_raw();
 
-    let handle = {
-        let registry = world
+    // Look up atlas handle + packed rect (may be absent for sprites registered
+    // outside `load_sprites`, e.g. the sprite-stress high-load generated sprite).
+    let (atlas_handle, uv, old_w, old_h, packed_xywh) = {
+        let asset_reg = world
             .get_resource::<AssetRegistry>()
             .expect("AssetRegistry resource missing");
-        match registry.get_sprite(id) {
-            Some(a) => a.texture,
+        let asset = match asset_reg.get_sprite(id) {
+            Some(a) => a,
             None => {
                 log::error!("Hot reload sprite '{id}': not found in registry");
                 return Ok(());
             }
-        }
+        };
+        let packed = world
+            .get_resource::<AtlasRegistry>()
+            .and_then(|ar| ar.packed.get(id))
+            .map(|p| (p.x, p.y, p.width, p.height));
+        (asset.atlas, asset.uv, asset.width, asset.height, packed)
     };
 
-    world
-        .get_resource_mut::<AssetRegistry>()
-        .expect("AssetRegistry resource missing")
-        .update_sprite_dimensions(id, new_w, new_h);
+    let Some((px, py, pw, ph)) = packed_xywh else {
+        log::error!("Hot reload sprite '{id}': no atlas-registry entry; keeping previous state");
+        return Ok(());
+    };
 
-    renderer.upload_texture(handle, &rgba, new_w, new_h);
-    log::info!(
-        "Hot-reloaded sprite '{id}' ({}x{}, {:?})",
-        new_w,
-        new_h,
-        filter
+    if new_w <= pw && new_h <= ph {
+        // In-place: build a packed-rect-sized canvas, new bitmap top-left,
+        // transparent below/right if shrunk. UV stays pointing at the full
+        // packed rect (shrink-with-transparent-tail — plan risk #5).
+        let cell_w = pw as usize;
+        let cell_h = ph as usize;
+        let mut canvas = vec![0u8; cell_w * cell_h * 4];
+        let nw = new_w as usize;
+        for row in 0..(new_h as usize) {
+            let dst_start = row * cell_w * 4;
+            let dst_end = dst_start + nw * 4;
+            let src_start = row * nw * 4;
+            let src_end = src_start + nw * 4;
+            canvas[dst_start..dst_end].copy_from_slice(&rgba[src_start..src_end]);
+        }
+        renderer.write_subtexture(atlas_handle, &canvas, px, py, pw, ph);
+
+        world
+            .get_resource_mut::<AssetRegistry>()
+            .expect("AssetRegistry resource missing")
+            .update_sprite_entry(id, atlas_handle, uv, new_w, new_h);
+        log::info!(
+            "Hot-reloaded sprite '{id}' ({}x{}, {:?}) in-place",
+            new_w,
+            new_h,
+            filter
+        );
+        return Ok(());
+    }
+
+    log::warn!(
+        "Sprite '{id}' grew ({old_w}x{old_h} → {new_w}x{new_h}); rebuilding {:?} atlas",
+        filter,
     );
+    rebuild_atlas_for_filter(filter, world, renderer)?;
+    Ok(())
+}
+
+/// Re-pack and re-upload every sprite in a single filter class from disk.
+/// Reuses old page handles where possible so pending `SpriteBatch`es stay
+/// valid across the swap (see the between-frames invariant on `reload_sprite`).
+///
+/// On a decode error in any sprite belonging to this filter class, the entire
+/// rebuild is abandoned and the previous atlas is kept — last-known-good
+/// discipline, matching [`reload_sprite`].
+pub fn rebuild_atlas_for_filter(
+    filter: FilterMode,
+    world: &mut World,
+    renderer: &mut Renderer,
+) -> anyhow::Result<()> {
+    // Snapshot every sprite in this filter class via its path.
+    let entries: Vec<(String, PathBuf)> = {
+        let registry = world
+            .get_resource::<AssetRegistry>()
+            .expect("AssetRegistry resource missing");
+        registry
+            .sprite_ids()
+            .filter_map(|id| {
+                let asset = registry.get_sprite(id)?;
+                if asset.filter == filter {
+                    Some((id.to_string(), asset.path.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    };
+
+    if entries.is_empty() {
+        // Drop any orphan pages for the now-empty filter class.
+        let stale: Vec<TextureHandle> = world
+            .get_resource_mut::<AtlasRegistry>()
+            .map(|ar| std::mem::take(ar.page_handles_mut(filter)))
+            .unwrap_or_default();
+        for h in stale {
+            renderer.drop_texture(h);
+        }
+        return Ok(());
+    }
+
+    let mut decoded: Vec<Decoded> = Vec::with_capacity(entries.len());
+    for (id, path) in entries {
+        let img = match image::open(&path) {
+            Ok(i) => i.to_rgba8(),
+            Err(e) => {
+                log::error!(
+                    "Rebuild {:?} atlas: decode '{}' ({}) failed: {e}; keeping previous atlas",
+                    filter,
+                    id,
+                    path.display()
+                );
+                return Ok(());
+            }
+        };
+        let (w, h) = img.dimensions();
+        decoded.push(Decoded {
+            id,
+            path,
+            width: w,
+            height: h,
+            rgba: img.into_raw(),
+        });
+    }
+
+    let max_dim = renderer.max_2d_texture_dimension();
+    let inputs: Vec<PackInput<'_>> = decoded
+        .iter()
+        .map(|d| PackInput {
+            id: d.id.as_str(),
+            width: d.width,
+            height: d.height,
+        })
+        .collect();
+    let pack = pack_shelf(&inputs, max_dim, 1);
+
+    let mut atlas_registry = world
+        .get_resource_mut::<AtlasRegistry>()
+        .map(std::mem::take)
+        .unwrap_or_default();
+    let old_handles: Vec<TextureHandle> = atlas_registry.page_handles(filter).to_vec();
+
+    let mut new_handles: Vec<TextureHandle> = Vec::with_capacity(pack.pages.len());
+    for i in 0..pack.pages.len() {
+        if i < old_handles.len() {
+            new_handles.push(old_handles[i]);
+        } else {
+            new_handles.push(renderer.allocate_texture_handle());
+        }
+    }
+    for &h in old_handles.iter().skip(new_handles.len()) {
+        renderer.drop_texture(h);
+    }
+
+    let by_id: HashMap<&str, &Decoded> = decoded.iter().map(|d| (d.id.as_str(), d)).collect();
+
+    let mut canvases: Vec<Vec<u8>> = pack
+        .pages
+        .iter()
+        .map(|p| vec![0u8; (p.width as usize) * (p.height as usize) * 4])
+        .collect();
+    for packed in &pack.sprites {
+        let src = by_id[packed.id.as_str()];
+        let page = &pack.pages[packed.page as usize];
+        let canvas = &mut canvases[packed.page as usize];
+        let page_stride = (page.width as usize) * 4;
+        let sprite_stride = (packed.width as usize) * 4;
+        for row in 0..(packed.height as usize) {
+            let dst_y = (packed.y as usize) + row;
+            let dst_start = dst_y * page_stride + (packed.x as usize) * 4;
+            let dst_end = dst_start + sprite_stride;
+            let src_start = row * sprite_stride;
+            let src_end = src_start + sprite_stride;
+            canvas[dst_start..dst_end].copy_from_slice(&src.rgba[src_start..src_end]);
+        }
+    }
+
+    for (page_idx, page) in pack.pages.iter().enumerate() {
+        renderer.upload_texture(
+            new_handles[page_idx],
+            &canvases[page_idx],
+            page.width,
+            page.height,
+            filter,
+        );
+    }
+
+    {
+        let registry = world
+            .get_resource_mut::<AssetRegistry>()
+            .expect("AssetRegistry resource missing");
+        for packed in &pack.sprites {
+            let src = by_id[packed.id.as_str()];
+            let page = &pack.pages[packed.page as usize];
+            let pw = page.width as f32;
+            let ph = page.height as f32;
+            let uv = UvRect {
+                min: [(packed.x as f32 + 0.5) / pw, (packed.y as f32 + 0.5) / ph],
+                max: [
+                    (packed.x as f32 + packed.width as f32 - 0.5) / pw,
+                    (packed.y as f32 + packed.height as f32 - 0.5) / ph,
+                ],
+            };
+            registry.update_sprite_entry(
+                &src.id,
+                new_handles[packed.page as usize],
+                uv,
+                src.width,
+                src.height,
+            );
+        }
+    }
+
+    for packed in &pack.sprites {
+        atlas_registry
+            .packed
+            .insert(packed.id.clone(), packed.clone());
+    }
+    *atlas_registry.page_handles_mut(filter) = new_handles;
+
+    world.insert_resource(atlas_registry);
     Ok(())
 }
 
@@ -457,15 +830,48 @@ pub fn reload_manifest(
             }
         }
 
-        let mut additions = ResolvedManifest::default();
-        for (id, entry) in &new_manifest.sprites {
-            if !existing.iter().any(|e| e == id) {
-                additions.sprites.insert(id.clone(), entry.clone());
+        // An added sprite is a growth event for its filter class: register
+        // the new ID with placeholder atlas/UV, then rebuild the whole filter
+        // class from disk (existing + added). `rebuild_atlas_for_filter`
+        // re-decodes every sprite by path and calls `update_sprite_entry`
+        // with real dimensions + UV, so the placeholders are always overwritten
+        // unless the rebuild bails (decode error); in that last-known-good
+        // case the orphan entry has width/height = 0 and will be cleaned on
+        // the next successful reload.
+        let mut gained_nearest = false;
+        let mut gained_linear = false;
+        {
+            let registry = world
+                .get_resource_mut::<AssetRegistry>()
+                .expect("AssetRegistry resource missing");
+            for (id, entry) in &new_manifest.sprites {
+                if existing.iter().any(|e| e == id) {
+                    continue;
+                }
+                registry.register_sprite(
+                    id.clone(),
+                    entry.filter,
+                    0,
+                    0,
+                    entry.path.clone(),
+                    TextureHandle(0),
+                    UvRect::FULL,
+                );
+                match entry.filter {
+                    FilterMode::Nearest => gained_nearest = true,
+                    FilterMode::Linear => gained_linear = true,
+                }
+                log::info!("Manifest reload: staging new sprite '{id}'");
             }
         }
-        if !additions.sprites.is_empty() {
-            if let Err(e) = load_sprites(&additions, world, renderer) {
-                log::error!("Manifest reload: new sprite error: {e}");
+        if gained_nearest {
+            if let Err(e) = rebuild_atlas_for_filter(FilterMode::Nearest, world, renderer) {
+                log::error!("Manifest reload: nearest atlas rebuild failed: {e}");
+            }
+        }
+        if gained_linear {
+            if let Err(e) = rebuild_atlas_for_filter(FilterMode::Linear, world, renderer) {
+                log::error!("Manifest reload: linear atlas rebuild failed: {e}");
             }
         }
     }

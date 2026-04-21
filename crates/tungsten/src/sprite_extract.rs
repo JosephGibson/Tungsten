@@ -39,7 +39,7 @@ pub fn extract_sprites_default(world: &World) -> Vec<SpriteBatch> {
         .collect();
     entries.sort_by_key(|(_, s, _)| s.z_order);
 
-    // Phase B: batch by (texture, filter) within each z_order run.
+    // Phase B: batch by (atlas, filter) within each z_order run.
     let mut out: Vec<SpriteBatch> = Vec::new();
     let mut current_z: Option<i32> = None;
     let mut per_key: HashMap<(u32, FilterMode), usize> = HashMap::new();
@@ -48,14 +48,14 @@ pub fn extract_sprites_default(world: &World) -> Vec<SpriteBatch> {
             per_key.clear();
             current_z = Some(s.z_order);
         }
-        let key = (asset.texture.0, asset.filter);
+        let key = (asset.atlas.0, asset.filter);
         let idx = match per_key.get(&key) {
             Some(&i) => i,
             None => {
                 let i = out.len();
                 per_key.insert(key, i);
                 out.push(SpriteBatch {
-                    texture: asset.texture,
+                    texture: asset.atlas,
                     filter: asset.filter,
                     instances: Vec::new(),
                 });
@@ -64,11 +64,17 @@ pub fn extract_sprites_default(world: &World) -> Vec<SpriteBatch> {
         };
         let width_world = asset.width as f32 * t.scale.x;
         let height_world = asset.height as f32 * t.scale.y;
+        let uv_size = [
+            asset.uv.max[0] - asset.uv.min[0],
+            asset.uv.max[1] - asset.uv.min[1],
+        ];
         out[idx].instances.push(SpriteInstance {
             position: [t.position.x, t.position.y],
             size: [width_world, height_world],
             rotation: t.rotation,
             color: s.color,
+            uv_min: asset.uv.min,
+            uv_size,
         });
     }
     out
@@ -79,6 +85,7 @@ mod tests {
     use super::*;
     use glam::Vec2;
     use std::path::PathBuf;
+    use tungsten_core::assets::{TextureHandle, UvRect};
     use tungsten_core::{AssetRegistry, Sprite, Transform, Visibility, World};
 
     fn register_sprite(world: &mut World, id: &str, filter: FilterMode) {
@@ -91,6 +98,8 @@ mod tests {
             16,
             16,
             PathBuf::from(format!("test/{id}.png")),
+            TextureHandle(0),
+            UvRect::FULL,
         );
     }
 
@@ -170,6 +179,8 @@ mod tests {
         assert_eq!(inst.size, [32.0, 48.0]);
         assert_eq!(inst.rotation, 0.5);
         assert_eq!(inst.color, [255; 4]);
+        assert_eq!(inst.uv_min, [0.0, 0.0]);
+        assert_eq!(inst.uv_size, [1.0, 1.0]);
     }
 
     #[test]
