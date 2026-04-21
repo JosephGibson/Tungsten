@@ -1,18 +1,18 @@
 {
   "sprite": "ex10_spark",
-  "max_alive": 384,
+  "max_alive": 900,
   "seed": 48657,
   "blend": "premultiplied",
-  "emission": { "kind": "continuous", "rate_hz": 160.0 },
-  "lifetime": { "min": 0.4, "max": 1.1 },
+  "emission": { "kind": "continuous", "rate_hz": 500.0 },
+  "lifetime": { "min": 0.6, "max": 1.4 },
   "initial_velocity": {
     "kind": "radial",
-    "speed": { "min": 40.0, "max": 140.0 }
+    "speed": { "min": 60.0, "max": 180.0 }
   },
   "gravity": [0.0, 0.0],
   "drag_per_sec": 1.2,
   "angular_velocity": { "min": -6.0, "max": 6.0 },
-  "start_scale": { "min": 0.6, "max": 1.2 },
+  "start_scale": { "min": 2.5, "max": 4.5 },
   "scale_over_life": [
     [0.0, 0.0],
     [0.15, 1.0],
