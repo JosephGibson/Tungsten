@@ -74,7 +74,7 @@ fn configure_app_seeds_expected_bootstrap_state() {
 
     let player_entities: Vec<_> = world.query::<Player>().map(|(e, _)| e).collect();
     assert_eq!(player_entities.len(), 1);
-    assert_eq!(world.query::<Ball>().count(), 8);
+    assert_eq!(world.query::<Ball>().count(), 9);
     assert_eq!(world.query::<TilemapInstance>().count(), 1);
 
     let player = player_entities[0];
@@ -201,8 +201,11 @@ fn shared_camera_tracks_player() {
     let mut world = seed_world();
     let player = world.spawn();
     world.insert(player, Player::default());
-    world.insert(player, Position(Vec2::new(300.0, 100.0)));
-    world.insert(player, Transform::from_position(Vec2::new(300.0, 100.0)));
+    // Place the player well past the half-viewport. With the 84x32 map, the
+    // base zoom is 288/(32*TILE) ≈ 0.5625, so half the 480px window spans
+    // ≈ 427 world px — anything smaller keeps the camera clamped at 0.
+    world.insert(player, Position(Vec2::new(800.0, 100.0)));
+    world.insert(player, Transform::from_position(Vec2::new(800.0, 100.0)));
     world.insert(player, Velocity(Vec2::ZERO));
     world.insert(player, Collider::aabb(PLAYER_HALF));
     world.insert(player, RigidBody::dynamic());

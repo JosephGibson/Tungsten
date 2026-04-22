@@ -97,15 +97,18 @@ fn seed_world(world: &mut World) {
     configure_platformer_camera(world, player);
 
     // Bouncing balls spread across the level: (col, row, initial vx).
+    // Rows sit just above the platform band (new rows 20..27) so balls land
+    // on geometry quickly instead of raining from the full new headroom.
     let ball_spawns: &[(f32, f32, f32)] = &[
-        (6.0, 3.0, 70.0),
-        (10.0, 5.0, -50.0),
-        (15.0, 3.0, 90.0),
-        (20.0, 5.0, -80.0),
-        (25.0, 3.0, 55.0),
-        (30.0, 5.0, -65.0),
-        (35.0, 3.0, 75.0),
-        (40.0, 5.0, -45.0),
+        (6.0, 17.0, 70.0),
+        (10.0, 19.0, -50.0),
+        (18.0, 17.0, 90.0),
+        (26.0, 19.0, -80.0),
+        (34.0, 17.0, 55.0),
+        (44.0, 19.0, -65.0),
+        (56.0, 17.0, 75.0),
+        (68.0, 19.0, -45.0),
+        (76.0, 17.0, 60.0),
     ];
     for &(col, row, vx) in ball_spawns {
         let ball = world.spawn();

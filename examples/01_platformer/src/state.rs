@@ -7,15 +7,15 @@ pub(crate) const ASSETS_ROOT: &str = "assets";
 pub(crate) const ASSETS_LOCAL: &str = "examples/01_platformer/assets";
 
 pub(crate) const TILE: f32 = 16.0;
-pub(crate) const MAP_COLS: u32 = 48;
-pub(crate) const MAP_ROWS: u32 = 18;
+pub(crate) const MAP_COLS: u32 = 84;
+pub(crate) const MAP_ROWS: u32 = 32;
 
 /// How often the HUD values (FPS, contacts, etc.) are refreshed in seconds.
 /// Values are cached between refreshes so they don't flicker every frame.
 pub(crate) const TEXT_UPDATE_INTERVAL: f32 = 0.25;
 
 pub(crate) const PLAYER_HALF: Vec2 = Vec2::new(6.0, 7.0);
-pub(crate) const PLAYER_SPAWN: Vec2 = Vec2::new(20.0 * TILE, 13.0 * TILE);
+pub(crate) const PLAYER_SPAWN: Vec2 = Vec2::new(20.0 * TILE, 27.0 * TILE);
 pub(crate) const PLAYER_MOVE_SPEED: f32 = 140.0;
 pub(crate) const PLAYER_JUMP_IMPULSE: f32 = 320.0;
 pub(crate) const GRAVITY_Y: f32 = 900.0;
