@@ -671,6 +671,15 @@ struct FrameStageTimings {
 }
 
 impl App {
+    // Stage methods are marked `#[inline(always)]` so debug builds flatten
+    // them back into `RedrawRequested` (release already does via LTO). Without
+    // these hints `opt-level=0` keeps every stage as its own stack frame plus
+    // struct-return memcpys (`FrameExtract`, `FrameStageTimings`,
+    // `FrameRenderOut`), which shows up first at ~1000-entity physics loads.
+    // Each stage is called exactly once per frame from the `RedrawRequested`
+    // arm, so `always` cannot cause code bloat beyond the one inlined copy.
+
+    #[inline(always)]
     fn stage_delta_time(&mut self) {
         let now = Instant::now();
         if let Some(last) = self.last_frame {
@@ -682,6 +691,7 @@ impl App {
         self.last_frame = Some(now);
     }
 
+    #[inline(always)]
     fn stage_update(&mut self) -> (f32, Vec<(String, f32)>) {
         let update_start = Instant::now();
         let mut system_timings: Vec<(String, f32)> = Vec::with_capacity(self.systems.len());
@@ -698,6 +708,7 @@ impl App {
         (update_ms, system_timings)
     }
 
+    #[inline(always)]
     fn stage_particles(&mut self) {
         // M23: count refresh → emit → tick. Runs after user systems and
         // before the command-buffer flush. Emission before tick guarantees
@@ -709,6 +720,7 @@ impl App {
         crate::particles::particle_tick_system(&mut self.world);
     }
 
+    #[inline(always)]
     fn stage_flush_commands(&mut self) -> f32 {
         // Frame order invariant (Phase 3 guardrail):
         //   run systems -> flush commands -> flush events -> hot-reload -> extract -> render
@@ -724,18 +736,21 @@ impl App {
         flush_start.elapsed().as_secs_f64() as f32 * 1000.0
     }
 
+    #[inline(always)]
     fn stage_flush_events(&mut self) {
         for flusher in self.event_flushers.iter_mut() {
             flusher(&mut self.world);
         }
     }
 
+    #[inline(always)]
     fn stage_hot_reload(&mut self) -> f32 {
         let hot_reload_start = Instant::now();
         self.process_hot_reload();
         hot_reload_start.elapsed().as_secs_f64() as f32 * 1000.0
     }
 
+    #[inline(always)]
     fn stage_extract(&mut self, prev_total_ms: f32) -> FrameExtract {
         let extract_start = Instant::now();
         let quads = self
@@ -818,6 +833,7 @@ impl App {
         }
     }
 
+    #[inline(always)]
     fn stage_render(&mut self, extract: &FrameExtract) -> FrameRenderOut {
         let render_start = Instant::now();
         let mut out = FrameRenderOut::default();
@@ -889,6 +905,7 @@ impl App {
         out
     }
 
+    #[inline(always)]
     fn stage_audio(&mut self) -> f32 {
         let audio_start = Instant::now();
         if let (Some(audio), Some(cmds)) = (
@@ -902,6 +919,7 @@ impl App {
         audio_start.elapsed().as_secs_f64() as f32 * 1000.0
     }
 
+    #[inline(always)]
     fn stage_telemetry(&mut self, t: FrameStageTimings) {
         if let Some(ft) = self.world.get_resource_mut::<FrameTimings>() {
             ft.update_ms = t.update_ms;
@@ -918,6 +936,7 @@ impl App {
         }
     }
 
+    #[inline(always)]
     fn stage_pacing(&self, event_loop: &ActiveEventLoop, frame_start: Instant) {
         if let Some(budget) = self.frame_budget {
             event_loop.set_control_flow(ControlFlow::WaitUntil(frame_start + budget));
@@ -926,6 +945,7 @@ impl App {
         }
     }
 
+    #[inline(always)]
     fn stage_smoke_exit(&mut self, event_loop: &ActiveEventLoop) {
         if let Some(remaining) = self.smoke_frames_remaining.as_mut() {
             *remaining = remaining.saturating_sub(1);
@@ -937,6 +957,7 @@ impl App {
     }
 }
 
+#[inline(always)]
 fn drain_debug_draw(world: &mut World) -> (Vec<QuadInstance>, Vec<DebugLineInstance>) {
     let mut debug_quads: Vec<QuadInstance> = Vec::new();
     let mut debug_lines: Vec<DebugLineInstance> = Vec::new();
@@ -975,6 +996,7 @@ fn drain_debug_draw(world: &mut World) -> (Vec<QuadInstance>, Vec<DebugLineInsta
     (debug_quads, debug_lines)
 }
 
+#[inline(always)]
 fn log_perf_line(
     total_ms: f32,
     update_ms: f32,
