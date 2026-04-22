@@ -37,6 +37,8 @@ If you need deeper context, grep the specific `D-0xx` entry in the full log inst
 | `D-032` | Tilemaps use Tiled-compatible `.tmj` data and reuse the sprite render path instead of a separate tile pipeline. |
 | `D-042` | `Transform`, `Sprite`, `Visibility`, and `Tag` are engine-level components; default sprite extraction is explicit and opt-in through those components. |
 | `D-048` | M22 sprite atlases: shelf-next-fit packer in `tungsten-core` with a mandatory deterministic tie-break, per-filter page lists, 1 px transparent padding + half-texel UV inset, renderer mints `TextureHandle`s, rebuild-on-growth with in-place shrink, and manifest hot-reload additions routed through `rebuild_atlas_for_filter`. |
+| `D-052` | Asset composition is owned by the umbrella: `App::set_manifest_roots` + `asset_loader::load_all_merged` merge manifests via `ResolvedManifest::load_and_merge_many` and run `load_all` once on the result, with the merged graph stored as a `LoadedManifest` world resource; per-type loaders stay public but must not be used to compose. |
+| `D-053` | Hot-reload support matrix is one published table in `DESIGN.md §Hot Reload — M9`: sprites/animations/fonts/tilemaps/particles support single-file and manifest-add reloads with warn-only removal; sounds are session-static (mixer owns cloned PCM). Particle manifest-add mirrors the tilemap-add validation path; `LoadedManifest` is refreshed on every successful manifest reload. |
 
 ## Dependencies / Tooling
 

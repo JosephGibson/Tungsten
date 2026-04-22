@@ -14,11 +14,13 @@
 
 mod states;
 
+use std::path::PathBuf;
+
 use glam::Vec2;
 
-use tungsten::core::{Config, DeltaTime, ResolvedManifest, Tag, Transform, World};
+use tungsten::core::{Config, DeltaTime, Tag, Transform, World};
 use tungsten::render::TextSection;
-use tungsten::{asset_loader, App, DebugHud, StateStack};
+use tungsten::{App, DebugHud, StateStack};
 
 use crate::states::MainMenuState;
 
@@ -42,6 +44,10 @@ fn main() -> anyhow::Result<()> {
     config.window.title = "Scene / State System — M20".to_string();
 
     let mut app = App::new(config)?;
+    app.set_manifest_roots(vec![
+        PathBuf::from(ROOT_MANIFEST),
+        PathBuf::from(LOCAL_MANIFEST),
+    ]);
 
     {
         let world = app.world_mut();
@@ -49,14 +55,7 @@ fn main() -> anyhow::Result<()> {
         world.insert_resource(MenuClock::default());
     }
 
-    app.on_startup(|world, renderer| {
-        let root = ResolvedManifest::load(ROOT_MANIFEST).expect("Failed to load root manifest");
-        asset_loader::load_fonts(&root, world, renderer).expect("Failed to load shared fonts");
-
-        let local = ResolvedManifest::load(LOCAL_MANIFEST).expect("Failed to load local manifest");
-        asset_loader::load_sprites(&local, world, renderer)
-            .expect("Failed to load example 03 sprites");
-
+    app.on_startup(|world, _renderer| {
         if let Some(hud) = world.get_resource_mut::<DebugHud>() {
             hud.enabled = true;
         }

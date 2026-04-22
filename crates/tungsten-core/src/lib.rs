@@ -19,7 +19,7 @@ pub mod time;
 pub use assets::{
     AnimationData, AnimationRegistry, AnimationState, AssetId, AssetRegistry, AudioHandle,
     BlendMode, Curve, EmissionKind, FilterMode, FontEntry, FontRegistry, InitialVelocity,
-    LayerKind, Lerp, ManifestError, ParticleActive, ParticleBudget, ParticleConfig,
+    LayerKind, Lerp, LoadedManifest, ManifestError, ParticleActive, ParticleBudget, ParticleConfig,
     ParticleConfigError, ParticleConfigRegistry, ParticleEntry, Range, ResolvedFont,
     ResolvedManifest, ResolvedParticle, ResolvedSound, SceneData, SceneEntry, SceneError,
     SceneSprite, SceneTransform, SoundData, SoundEntry, SoundRegistry, SpriteAsset, TextureHandle,

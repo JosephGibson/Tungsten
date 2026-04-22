@@ -163,13 +163,7 @@ impl HotReloadWatcher {
     }
 
     fn accept(&self, path: &Path) -> bool {
-        let canon = canonical_or_clone(path);
-        if self.allowed_extra_files.contains(&canon) {
-            return true;
-        }
-        self.recursive_roots
-            .iter()
-            .any(|root| canon.starts_with(root))
+        accept_path(path, &self.recursive_roots, &self.allowed_extra_files)
     }
 }
 
@@ -177,12 +171,122 @@ fn canonical_or_clone(path: &Path) -> PathBuf {
     path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
 }
 
+/// Pure path-filter logic. A path is accepted if it exactly matches one of
+/// the explicit extra-file entries (name-based match for things like
+/// `input.json`) or if it lives under any of the recursive watch roots.
+/// Extracted from [`HotReloadWatcher::accept`] so the filter can be unit
+/// tested without spinning up a real file watcher.
+fn accept_path(
+    path: &Path,
+    recursive_roots: &[PathBuf],
+    allowed_extra_files: &HashSet<PathBuf>,
+) -> bool {
+    let canon = canonical_or_clone(path);
+    if allowed_extra_files.contains(&canon) {
+        return true;
+    }
+    recursive_roots.iter().any(|root| canon.starts_with(root))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::DEBOUNCE_MS;
+    use std::collections::HashSet;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    use super::{accept_path, canonical_or_clone, DEBOUNCE_MS};
+
+    static COUNTER: AtomicU32 = AtomicU32::new(0);
+
+    fn tempdir() -> PathBuf {
+        let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+        let dir =
+            std::env::temp_dir().join(format!("tungsten_hotreload_{}_{n}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn touch(path: &Path) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::File::create(path).unwrap();
+    }
 
     #[test]
     fn debounce_constant_is_50ms() {
         assert_eq!(DEBOUNCE_MS, 50);
+    }
+
+    #[test]
+    fn accept_extra_file_matches_exact_path() {
+        let dir = tempdir();
+        let input_json = dir.join("input.json");
+        touch(&input_json);
+
+        let mut extras = HashSet::new();
+        extras.insert(canonical_or_clone(&input_json));
+        let roots: Vec<PathBuf> = Vec::new();
+
+        assert!(accept_path(&input_json, &roots, &extras));
+    }
+
+    #[test]
+    fn accept_recursive_root_matches_nested_file() {
+        let dir = tempdir();
+        let assets = dir.join("assets");
+        fs::create_dir_all(&assets).unwrap();
+        let nested = assets.join("sprites").join("hero.png");
+        touch(&nested);
+
+        let roots = vec![canonical_or_clone(&assets)];
+        let extras = HashSet::new();
+
+        assert!(
+            accept_path(&nested, &roots, &extras),
+            "files under a recursive root must be accepted"
+        );
+    }
+
+    #[test]
+    fn reject_sibling_file_in_extra_file_parent() {
+        // Workspace-root `input.json` case: watching the parent
+        // non-recursively should NOT accept unrelated siblings like
+        // `tungsten.json` that happen to share the parent.
+        let dir = tempdir();
+        let input_json = dir.join("input.json");
+        let tungsten_json = dir.join("tungsten.json");
+        touch(&input_json);
+        touch(&tungsten_json);
+
+        let mut extras = HashSet::new();
+        extras.insert(canonical_or_clone(&input_json));
+        let roots: Vec<PathBuf> = Vec::new();
+
+        assert!(
+            !accept_path(&tungsten_json, &roots, &extras),
+            "sibling of an extra-file entry must be filtered out"
+        );
+    }
+
+    #[test]
+    fn reject_parent_directory_of_recursive_root() {
+        // A recursive watch on `dir/assets` must not match events for
+        // `dir/other.txt` — `starts_with` is directional.
+        let dir = tempdir();
+        let assets = dir.join("assets");
+        fs::create_dir_all(&assets).unwrap();
+        let outside = dir.join("other.txt");
+        touch(&outside);
+
+        let roots = vec![canonical_or_clone(&assets)];
+        let extras = HashSet::new();
+
+        assert!(
+            !accept_path(&outside, &roots, &extras),
+            "a sibling of the watched root must not match"
+        );
     }
 }

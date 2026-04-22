@@ -185,7 +185,22 @@ Stack: `glyphon` + `cosmic-text` + `swash`. Responsibilities: font parsing, shap
 
 ### Hot Reload — M9
 
-`notify` v6 (`D-031`) runs on a dedicated background thread. File events cross to the main thread through `std::sync::mpsc`. A `50ms` debounce collapses editor double-writes. At the next frame boundary the main thread resolves file paths → asset IDs, decodes new data, uploads to GPU, and swaps handles in the registry. Covered asset classes: sprites, animations, fonts, manifest. Exclusion: shaders are excluded, so shader changes require a binary rebuild (`D-023`). Invariant: do not break the registry-by-ID model; game code must not hold direct GPU handles.
+`notify` v6 (`D-031`) runs on a dedicated background thread. File events cross to the main thread through `std::sync::mpsc`. A `50ms` debounce collapses editor double-writes. At the next frame boundary the main thread resolves file paths → asset IDs, decodes new data, uploads to GPU, and swaps handles in the registry. Exclusion: shaders are excluded, so shader changes require a binary rebuild (`D-023`). Invariant: do not break the registry-by-ID model; game code must not hold direct GPU handles.
+
+**Supported reload matrix (`D-053`):**
+
+| Asset class | Single-file edit | Manifest-add | Manifest-remove |
+| --- | --- | --- | --- |
+| Sprite (`.png`/`.jpg`/`.jpeg`) | yes — `reload_sprite` with in-place overwrite for shrink/equal, `rebuild_atlas_for_filter` for growth | yes — registered with placeholder then atlas class rebuilt | warn-only; stale entry kept |
+| Animation (`.json`) | yes — `reload_animation` replaces entry in `AnimationRegistry` | yes — inserted into `AnimationRegistry` | warn-only; stale entry kept |
+| Tilemap (`.tmj`) | yes — `reload_tilemap` replaces entry, rejects unknown tileset sprite IDs | yes — inserted after tileset validation | warn-only; stale entry kept |
+| Font (`.ttf`/`.otf`) | yes — `reload_font` swaps face data in `TextPipeline` | yes — added through `renderer.load_font` + `FontRegistry::register` | warn-only; stale entry kept |
+| Particle (`.json`) | yes — `reload_particle` swaps the `Arc<ParticleConfig>` under the same `AssetId` (`D-050`) | yes — inserted into `ParticleConfigRegistry` after sprite validation | warn-only; stale entry kept |
+| Sound (decoded PCM) | **not supported** — mixer owns cloned PCM; session-static | **not supported** — no manifest-add path | n/a |
+| `input.json` | yes — `reload_action_map` merges with defaults and swaps `ActionMap` | n/a | n/a |
+| `manifest.json` | yes — `reload_manifest` walks every class above | n/a | n/a |
+
+Audio is session-static by design: `AudioSystem::init` reads every decoded `SoundData::samples` into a callback-owned `HashMap<AudioHandle, Vec<f32>>` (`D-027` / `D-029` / `D-034`), and the mixer closure captures that map at startup. Adding a runtime PCM-swap command is a future milestone; until then, "sound hot reload" is explicitly out of scope and the watcher logs at `debug` when a `.ogg`/`.wav`/`.mp3` under the asset tree changes.
 
 ### Tilemaps — M10
 

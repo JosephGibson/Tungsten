@@ -543,6 +543,12 @@ impl ParticleConfigRegistry {
     pub fn is_empty(&self) -> bool {
         self.by_id.is_empty()
     }
+
+    /// Iterate every registered particle's string name. Ordering matches the
+    /// underlying `HashMap` and is not stable across runs.
+    pub fn names(&self) -> impl Iterator<Item = &str> {
+        self.id_by_name.keys().map(|s| s.as_str())
+    }
 }
 
 fn validate_rgba_curve(c: &Curve<[f32; 4]>, field: &str) -> Result<(), String> {

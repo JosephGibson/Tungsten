@@ -1,11 +1,9 @@
 use std::path::PathBuf;
 
 use glam::Vec2;
-use tungsten::asset_loader;
 use tungsten::core::{
     sync_position_to_transform, AssetRegistry, AudioCommands, CameraBounds, CameraController,
-    CameraMode, Entity, ResolvedManifest, SoundRegistry, Tag, TilemapInstance, TilemapRegistry,
-    Transform, World,
+    CameraMode, Entity, SoundRegistry, Tag, TilemapInstance, TilemapRegistry, Transform, World,
 };
 use tungsten::physics::{
     physics_step, BodyKind, Collider, PhysicsConfig, Position, RigidBody, Velocity,
@@ -46,6 +44,10 @@ pub(crate) const RUNTIME_SYSTEM_ORDER: &[(&str, ExampleSystem)] = &[
 
 pub(crate) fn configure_app(app: &mut App) {
     enable_hot_reload(app);
+    app.set_manifest_roots(vec![
+        PathBuf::from(MANIFEST_ROOT),
+        PathBuf::from(MANIFEST_LOCAL),
+    ]);
     seed_world(app.world_mut());
     install_startup(app);
     install_runtime(app);
@@ -145,21 +147,10 @@ pub(crate) fn configure_platformer_camera(world: &mut World, player: Entity) {
 }
 
 fn install_startup(app: &mut App) {
-    app.on_startup(|world, renderer| {
-        // Root manifest: fonts (sans, sans_bold, mono), walk animation + sprites, sounds.
-        let root = ResolvedManifest::load(MANIFEST_ROOT).expect("Failed to load root manifest");
-        asset_loader::load_all(&root, world, renderer).expect("Failed to load root assets");
-
-        // Local manifest: tile sprites + tilemap only. Call individual loaders rather than
-        // load_all to avoid overwriting the SoundRegistry/AnimationRegistry/FontRegistry
-        // that were just populated from the root manifest (those registries are replaced on
-        // every load_all call).
-        let local = ResolvedManifest::load(MANIFEST_LOCAL).expect("Failed to load local manifest");
-        asset_loader::load_sprites(&local, world, renderer).expect("Failed to load local sprites");
-        asset_loader::load_tilemaps(&local, world).expect("Failed to load local tilemaps");
-        asset_loader::load_particles(&local, world).expect("Failed to load local particles");
-
-        // Verify required assets.
+    app.on_startup(|world, _renderer| {
+        // Engine merged and loaded both manifest roots before this closure
+        // runs (see App::set_manifest_roots / D-052). This callback's job is
+        // to wire game-specific state that depends on loaded assets.
         let registry = world.get_resource::<AssetRegistry>().unwrap();
         for id in [
             "ex10_ground",
@@ -178,7 +169,6 @@ fn install_startup(app: &mut App) {
             "missing tilemap 'ex10_level'"
         );
 
-        // Resolve audio handles and stash them in a resource.
         let (sfx_handle, music_handle, sfx_volume, music_volume) = {
             let reg = world
                 .get_resource::<SoundRegistry>()

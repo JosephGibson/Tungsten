@@ -101,6 +101,23 @@ pub struct ParticleEntry {
     pub path: String,
 }
 
+/// Resource wrapping the fully merged manifest graph the umbrella loaded at
+/// startup. Stored in the `World` by `App::new_with_manifest_roots` so
+/// hot-reload and diagnostic paths have one source of truth for what the
+/// running session sees as "loaded" (D-052).
+#[derive(Debug, Clone, Default)]
+pub struct LoadedManifest(pub ResolvedManifest);
+
+impl LoadedManifest {
+    pub fn new(manifest: ResolvedManifest) -> Self {
+        Self(manifest)
+    }
+
+    pub fn as_resolved(&self) -> &ResolvedManifest {
+        &self.0
+    }
+}
+
 /// A fully resolved manifest with absolute paths.
 #[derive(Debug, Clone, Default)]
 pub struct ResolvedManifest {
@@ -257,6 +274,22 @@ impl ResolvedManifest {
         }
 
         Ok(result)
+    }
+
+    /// Load and merge every manifest in `roots` into a single resolved graph.
+    /// Order matches the slice; duplicate IDs across manifests surface as
+    /// `ManifestError::DuplicateId` and halt composition (D-017). The returned
+    /// graph is the single source of truth the umbrella stores as the
+    /// `LoadedManifest` resource and hands to `asset_loader::load_all`.
+    pub fn load_and_merge_many(
+        roots: &[impl AsRef<Path>],
+    ) -> Result<ResolvedManifest, ManifestError> {
+        let mut merged = ResolvedManifest::default();
+        for root in roots {
+            let next = ResolvedManifest::load(root)?;
+            merged.merge(next)?;
+        }
+        Ok(merged)
     }
 
     /// Merge another manifest into this one. Duplicate IDs are fatal (D-017).
