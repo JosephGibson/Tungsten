@@ -371,5 +371,5 @@ fn raw_u32(value: &Value) -> Option<u32> {
 }
 
 #[cfg(test)]
-#[path = "config_tests.rs"]
+#[path = "tests/config.rs"]
 mod tests;

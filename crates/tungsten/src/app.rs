@@ -1456,5 +1456,5 @@ impl ApplicationHandler for App {
 }
 
 #[cfg(test)]
-#[path = "app_tests.rs"]
+#[path = "tests/app.rs"]
 mod tests;

@@ -40,6 +40,7 @@ mod state;
 mod systems;
 
 #[cfg(test)]
+#[path = "tests/main.rs"]
 mod tests;
 
 use tungsten::core::Config;

@@ -399,5 +399,5 @@ fn describe_json_value(value: &Value) -> String {
 }
 
 #[cfg(test)]
-#[path = "display_tests.rs"]
+#[path = "tests/display.rs"]
 mod tests;
