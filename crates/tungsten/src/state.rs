@@ -125,7 +125,8 @@ pub fn despawn_scene_entities(world: &mut World, id: StateId) {
 
 /// Engine-owned system: drains `StateStack.pending`, fires lifecycle hooks,
 /// calls `update` on the current top, and mirrors the active id into
-/// `HudActiveState` so the M18 `state_provider` row renders correctly.
+/// `HudActiveState` so consumers (custom HUD rows, external panels) can
+/// read the active state without reaching into `StateStack`.
 pub fn state_dispatcher_system(world: &mut World) {
     let pending: Vec<StateCommand> = match world.get_resource_mut::<StateStack>() {
         Some(stack) => std::mem::take(&mut stack.pending),

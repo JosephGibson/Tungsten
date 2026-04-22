@@ -194,6 +194,12 @@ impl ActionMap {
             vec![Binding::Key { code: KeyCode::F3 }],
         );
         actions.insert(
+            "engine_inspector_pick".into(),
+            vec![Binding::Mouse {
+                button: MouseButton::Middle,
+            }],
+        );
+        actions.insert(
             "engine_toggle_hud".into(),
             vec![Binding::Key { code: KeyCode::F4 }],
         );

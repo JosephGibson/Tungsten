@@ -10,8 +10,7 @@ use tungsten::physics::Position;
 use tungsten::render::{SpriteBatch, SpriteInstance, TextSection};
 
 use crate::state::{
-    Ball, BlackHole, CurrentSprite, TextDisplayState, BALL_RADIUS, BLACK_HOLE_VISUAL_DIAMETER,
-    PLAYER_HALF,
+    Ball, BlackHole, CurrentSprite, BALL_RADIUS, BLACK_HOLE_VISUAL_DIAMETER, PLAYER_HALF,
 };
 use crate::systems::cursor_to_world;
 
@@ -235,70 +234,22 @@ fn text_outlined(section: TextSection) -> impl Iterator<Item = TextSection> {
     shadows.into_iter().chain(std::iter::once(section))
 }
 
-pub(crate) fn extract_text(world: &World) -> Vec<TextSection> {
-    let disp = world
-        .get_resource::<TextDisplayState>()
-        .map(|s| {
-            (
-                s.fps, s.contacts, s.grounded, s.music_on, s.vol_pct, s.zoom_pct,
-            )
-        })
-        .unwrap_or((0, 0, false, false, 50, 100));
-    let (fps, contacts, grounded, music_on, vol_pct, zoom_pct) = disp;
-    let (cursor_pos, cursor_delta, scroll_lines, scroll_pixels) = world
-        .get_resource::<InputState>()
-        .map(|input| {
-            (
-                input.cursor_position(),
-                input.cursor_delta(),
-                input.scroll_line_delta(),
-                input.scroll_pixel_delta(),
-            )
-        })
-        .unwrap_or((None, (0.0, 0.0), (0.0, 0.0), (0.0, 0.0)));
-    let cursor_label = cursor_pos
-        .map(|(x, y)| format!("{x:.1},{y:.1}"))
-        .unwrap_or_else(|| "off-window".to_string());
-
+pub(crate) fn extract_text(_world: &World) -> Vec<TextSection> {
+    // Controls-only overlay. Title, status readouts (FPS / contacts /
+    // grounded / music / volume / zoom), and raw input telemetry (cursor
+    // pos, mouse delta, scroll) are left to the debug HUD (F4) and
+    // inspector (F3); this example only needs to spell out the bindings.
     let mut sections = Vec::new();
-
     sections.extend(text_outlined(TextSection {
-        content: "Tungsten Platformer".into(),
-        font_id: "sans_bold".into(),
-        font_size: 36.0,
-        line_height: 44.0,
-        color: [255, 255, 255, 230],
-        position: [16.0, 14.0],
-        bounds: None,
-    }));
-
-    sections.extend(text_outlined(TextSection {
-        content: format!(
-            "A/D or ←/→ move  Space jump  LMB hold spawn ball  RMB black hole  M music  S/MMB stop  1/2/3 volume\n\
-             =/- or wheel zoom  F4 HUD  F9 vsync  F11 fullscreen  Esc exit\n\
-             grounded:{:<4} contacts:{:<3} music:{:<4} vol:{}%  zoom:{}%  FPS:{}\n\
-             cursor:{}  delta:{:.1},{:.1}  wheel lines:{:.1},{:.1}  pixels:{:.1},{:.1}",
-            if grounded { "yes" } else { "no" },
-            contacts,
-            if music_on { "on" } else { "off" },
-            vol_pct,
-            zoom_pct,
-            fps,
-            cursor_label,
-            cursor_delta.0,
-            cursor_delta.1,
-            scroll_lines.0,
-            scroll_lines.1,
-            scroll_pixels.0,
-            scroll_pixels.1,
-        ),
+        content: "A/D or ←/→ move  Space jump  LMB hold spawn ball  RMB black hole  M music  S/MMB stop  1/2/3 volume\n\
+                  =/- or wheel zoom  F4 HUD  F9 vsync  F11 fullscreen  Esc exit"
+            .into(),
         font_id: "mono".into(),
         font_size: 24.0,
         line_height: 32.0,
         color: [200, 220, 255, 210],
-        position: [16.0, 70.0],
+        position: [16.0, 14.0],
         bounds: None,
     }));
-
     sections
 }

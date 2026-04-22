@@ -13,13 +13,18 @@
 //! provider.
 
 use tungsten_core::camera::{CameraController, CameraMode, CameraState};
-use tungsten_core::components::{Tag, Transform};
 use tungsten_core::input::{ActionMap, InputState};
-use tungsten_core::physics::Velocity;
 use tungsten_core::World;
-use tungsten_render::TextSection;
+use tungsten_render::{GpuFrameTimings, TextSection};
 
 use crate::telemetry::{DisplayTelemetry, FrameTimings, RenderCounts};
+
+/// Fraction of `font_size` used as the glyph advance width when estimating
+/// block width without running `glyphon` layout. JetBrains Mono (our
+/// default "mono") measures ~0.60 em; 0.65 adds margin for the small
+/// glyphon side-bearing padding so right-anchored blocks never spill past
+/// the viewport edge.
+pub(crate) const MONO_ADVANCE_RATIO: f32 = 0.65;
 
 /// Screen-anchor corner for the HUD block. Right-side corners use a
 /// monospace-width heuristic to estimate pixel width without running
@@ -45,8 +50,11 @@ pub struct HudRow {
 /// must never panic when a backing resource or entity is absent.
 pub type HudRowProvider = Box<dyn Fn(&World) -> Vec<HudRow> + 'static>;
 
-/// Optional placeholder populated by the M20 scene/state stack. M18 only
-/// reads this resource; when absent, the `state` row is omitted.
+/// Optional hint populated by the M20 scene/state stack. Held separately
+/// from the HUD itself so user code — a custom row provider, an external
+/// diagnostic panel — can surface the active state id without pulling on
+/// `StateStack` directly. The HUD's built-in row set is render-focused and
+/// does not consume this resource.
 #[derive(Debug, Clone, Default)]
 pub struct HudActiveState(pub String);
 
@@ -66,11 +74,11 @@ pub struct DebugHud {
     /// the extra text sections.
     pub outline_px: f32,
     pub padding_px: f32,
-    pub top_n_systems: usize,
     /// Minimum wall-clock interval between text refreshes, in milliseconds.
     /// EWMA keeps updating every frame; only the displayed snapshot is
-    /// throttled so fast-changing values stay readable. Defaults to 250 ms
-    /// (4 Hz). Set to `0.0` to refresh every frame.
+    /// throttled so fast-changing values stay readable. Defaults to 500 ms
+    /// (2 Hz) — values dwell long enough for the human eye to actually
+    /// read them. Set to `0.0` to refresh every frame.
     pub refresh_interval_ms: f32,
     fps_ewma: f32,
     frame_ms_ewma: f32,
@@ -83,25 +91,27 @@ pub struct DebugHud {
 
 impl DebugHud {
     pub fn new() -> Self {
+        // Render-focused: the HUD is the at-a-glance render dashboard. Per-
+        // system timings belong in the systems overlay (`F2`), per-entity
+        // state belongs in the inspector (`F3`).
         let built_in: Vec<HudRowProvider> = vec![
-            Box::new(camera_provider),
+            Box::new(gpu_provider),
             Box::new(display_provider),
-            Box::new(player_provider),
-            Box::new(state_provider),
+            Box::new(camera_provider),
             Box::new(counts_provider),
+            Box::new(render_cpu_provider),
         ];
         Self {
             enabled: false,
             corner: HudCorner::TopRight,
             font_id: "mono".to_string(),
-            font_size: 22.0,
-            line_height: 28.0,
+            font_size: 26.0,
+            line_height: 30.0,
             color: [240, 240, 240, 240],
             outline_color: [0, 0, 0, 220],
             outline_px: 1.0,
             padding_px: 10.0,
-            top_n_systems: 3,
-            refresh_interval_ms: 250.0,
+            refresh_interval_ms: 500.0,
             fps_ewma: 0.0,
             frame_ms_ewma: 0.0,
             ewma_alpha: 0.1,
@@ -115,6 +125,21 @@ impl DebugHud {
     /// Flip `enabled`.
     pub fn toggle(&mut self) {
         self.enabled = !self.enabled;
+    }
+
+    /// Vertical pixel extent of the HUD as composed on the last frame,
+    /// including top padding. Returns `0.0` when disabled or before the
+    /// first compose call. Used by the systems-timing overlay to stack
+    /// itself directly below the HUD without guessing dimensions.
+    pub fn rendered_height_px(&self) -> f32 {
+        if !self.enabled {
+            return 0.0;
+        }
+        let Some(main) = self.cached_sections.last() else {
+            return 0.0;
+        };
+        let lines = main.content.lines().count().max(1) as f32;
+        self.padding_px + lines * self.line_height
     }
 
     /// Register an additional row provider. Custom rows render after all
@@ -132,36 +157,8 @@ impl DebugHud {
     fn fps_row(&self) -> Vec<HudRow> {
         vec![HudRow {
             label: "fps",
-            value: format!("{:>4.0}  {:>5.2} ms", self.fps_ewma, self.frame_ms_ewma),
+            value: format!("{:>5.1}  {:>5.2}ms", self.fps_ewma, self.frame_ms_ewma),
         }]
-    }
-
-    /// Compute the top-N slowest systems rows. Kept as a method — and invoked
-    /// directly from `compose_hud_text_sections` — so `top_n_systems` is read
-    /// from `self` rather than via `world.get_resource::<DebugHud>()`. The
-    /// compose borrow-dance removes `DebugHud` from the world for the
-    /// duration of compose, so any provider that went looking for it would
-    /// silently see `None`.
-    fn systems_top_n_row(&self, world: &World) -> Vec<HudRow> {
-        let ft = match world.get_resource::<FrameTimings>() {
-            Some(ft) => ft,
-            None => return Vec::new(),
-        };
-        if self.top_n_systems == 0 || ft.system_timings.is_empty() {
-            return Vec::new();
-        }
-        let mut sorted = ft.system_timings.clone();
-        sorted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        let take = self.top_n_systems.min(sorted.len());
-        sorted
-            .into_iter()
-            .take(take)
-            .enumerate()
-            .map(|(i, (name, ms))| HudRow {
-                label: "sys",
-                value: format!("{}:{} {:.2}ms", i, name, ms),
-            })
-            .collect()
     }
 }
 
@@ -186,14 +183,14 @@ fn camera_provider(world: &World) -> Vec<HudRow> {
     };
     let mode = match controller.mode {
         CameraMode::Free => "free",
-        CameraMode::Follow(_) => "follow",
-        CameraMode::Scripted => "scripted",
+        CameraMode::Follow(_) => "foll",
+        CameraMode::Scripted => "scr",
     };
     vec![HudRow {
         label: "cam",
         value: format!(
-            "{} pos=({:.0},{:.0}) zoom={:.2}",
-            mode, state.position.x, state.position.y, state.zoom
+            "({:.0},{:.0}) z{:.2} {}",
+            state.position.x, state.position.y, state.zoom, mode
         ),
     }]
 }
@@ -203,54 +200,34 @@ fn display_provider(world: &World) -> Vec<HudRow> {
         Some(d) => d,
         None => return Vec::new(),
     };
+    let vsync = if dt.vsync { "on" } else { "off" };
     vec![HudRow {
-        label: "display",
+        label: "view",
         value: format!(
-            "{}x{} {} vsync={}",
+            "{}x{} {} vs:{}",
             dt.resolution.0,
             dt.resolution.1,
             dt.display_mode.as_str(),
-            dt.vsync
+            vsync
         ),
     }]
 }
 
-fn player_provider(world: &World) -> Vec<HudRow> {
-    let mut matched = None;
-    for (entity, tag, transform) in world.query2::<Tag, Transform>() {
-        if tag.name == "player" {
-            matched = Some((entity, *transform));
-            break;
-        }
-    }
-    let (entity, transform) = match matched {
-        Some(x) => x,
+fn gpu_provider(world: &World) -> Vec<HudRow> {
+    let gpu = match world.get_resource::<GpuFrameTimings>() {
+        Some(g) => g,
         None => return Vec::new(),
     };
-    let speed = world
-        .get::<Velocity>(entity)
-        .map(|v| v.0.length())
-        .unwrap_or(0.0);
-    vec![HudRow {
-        label: "player",
-        value: format!(
-            "pos=({:.0},{:.0}) speed={:.0}",
-            transform.position.x, transform.position.y, speed
-        ),
-    }]
-}
-
-fn state_provider(world: &World) -> Vec<HudRow> {
-    let s = match world.get_resource::<HudActiveState>() {
-        Some(s) => s,
-        None => return Vec::new(),
+    // Two compact fields: gpu timing + backend name. Present mode is
+    // already on the `view` row, so don't duplicate it here.
+    let gpu_ms = match gpu.frame_gpu_ms {
+        Some(ms) => format!("{ms:.2}ms"),
+        None => "n/a".to_string(),
     };
-    if s.0.is_empty() {
-        return Vec::new();
-    }
+    let backend = gpu.backend.as_deref().unwrap_or("?");
     vec![HudRow {
-        label: "state",
-        value: s.0.clone(),
+        label: "gpu",
+        value: format!("{gpu_ms} {backend}"),
     }]
 }
 
@@ -260,8 +237,22 @@ fn counts_provider(world: &World) -> Vec<HudRow> {
         None => return Vec::new(),
     };
     vec![HudRow {
-        label: "counts",
-        value: format!("ents={} sprites={}", rc.entities, rc.sprite_instances),
+        label: "draw",
+        value: format!("{} ents  {} spr", rc.entities, rc.sprite_instances),
+    }]
+}
+
+fn render_cpu_provider(world: &World) -> Vec<HudRow> {
+    let ft = match world.get_resource::<FrameTimings>() {
+        Some(ft) => ft,
+        None => return Vec::new(),
+    };
+    vec![HudRow {
+        label: "cpu",
+        value: format!(
+            "acq {:.2} enc {:.2} sub {:.2}ms",
+            ft.render_acquire_ms, ft.render_encode_ms, ft.render_submit_present_ms
+        ),
     }]
 }
 
@@ -313,7 +304,6 @@ pub(crate) fn compose_hud_text_sections(
     for provider in &hud.built_in {
         rows.extend(provider(world));
     }
-    rows.extend(hud.systems_top_n_row(world));
     for provider in &hud.custom {
         rows.extend(provider(world));
     }
@@ -323,9 +313,18 @@ pub(crate) fn compose_hud_text_sections(
         return Vec::new();
     }
 
+    // Right-align the label column and separate from the value with a
+    // single space. Values are already whitespace-compact so double-
+    // spacing here would just pad the row for no signal.
+    let label_w = rows
+        .iter()
+        .map(|r| r.label.chars().count())
+        .max()
+        .unwrap_or(0)
+        .max(3);
     let rendered: Vec<String> = rows
         .iter()
-        .map(|r| format!("{:>7}  {}", r.label, r.value))
+        .map(|r| format!("{:>w$} {}", r.label, r.value, w = label_w))
         .collect();
     let content = rendered.join("\n");
 
@@ -337,7 +336,7 @@ pub(crate) fn compose_hud_text_sections(
         HudCorner::TopLeft => (pad, pad),
         HudCorner::BottomLeft => (pad, (vh - line_count * hud.line_height - pad).max(0.0)),
         HudCorner::TopRight => {
-            let char_w = hud.font_size * 0.55;
+            let char_w = hud.font_size * MONO_ADVANCE_RATIO;
             let max_chars = rendered
                 .iter()
                 .map(|s| s.chars().count())
@@ -347,7 +346,7 @@ pub(crate) fn compose_hud_text_sections(
             ((vw - text_w - pad).max(0.0), pad)
         }
         HudCorner::BottomRight => {
-            let char_w = hud.font_size * 0.55;
+            let char_w = hud.font_size * MONO_ADVANCE_RATIO;
             let max_chars = rendered
                 .iter()
                 .map(|s| s.chars().count())
@@ -397,8 +396,8 @@ pub(crate) fn compose_hud_text_sections(
 /// Compute the top-left origin for a multi-line text block anchored to one of
 /// the four screen corners. Shared by the systems-timing overlay and the
 /// entity inspector so their layout math stays in one place. Width is
-/// estimated with the same `font_size * 0.55` monospace heuristic used by
-/// HUD's right-side corners.
+/// estimated with the same `font_size * MONO_ADVANCE_RATIO` monospace
+/// heuristic used by HUD's right-side corners.
 pub(crate) fn anchor_text_block(
     corner: HudCorner,
     lines: &[String],
@@ -410,7 +409,7 @@ pub(crate) fn anchor_text_block(
     let (vw, vh) = (viewport.0 as f32, viewport.1 as f32);
     let line_count = lines.len().max(1) as f32;
     let max_chars = lines.iter().map(|s| s.chars().count()).max().unwrap_or(0) as f32;
-    let text_w = font_size * 0.55 * max_chars;
+    let text_w = font_size * MONO_ADVANCE_RATIO * max_chars;
     let text_h = line_count * line_height;
     match corner {
         HudCorner::TopLeft => (padding, padding),
@@ -446,8 +445,6 @@ pub fn hud_toggle_system(world: &mut World) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use glam::Vec2;
-    use tungsten_core::components::Transform;
     use tungsten_core::input::{InputState, KeyCode};
     use tungsten_core::ActionMap;
 
@@ -485,84 +482,45 @@ mod tests {
     }
 
     #[test]
-    fn player_provider_requires_tag_and_transform() {
-        let mut world = World::new();
-        // Without player tag, no row.
-        let e = world.spawn();
-        world.insert(e, Transform::from_position(Vec2::new(10.0, 20.0)));
-        assert!(player_provider(&world).is_empty());
-
-        // With tag + transform, row appears.
-        world.insert(e, Tag::new("player"));
-        let rows = player_provider(&world);
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].label, "player");
-        assert!(rows[0].value.contains("pos=(10,20)"));
-    }
-
-    #[test]
-    fn systems_top_n_respects_cap_and_sorts_desc() {
+    fn hud_excludes_player_state_and_systems_rows() {
+        // Regression for the render-focused refactor: the HUD must not
+        // surface per-entity or per-system info anymore. Those live in the
+        // inspector (F3) and systems overlay (F2) respectively.
         let mut world = World::new();
         let mut ft = FrameTimings::new();
-        ft.system_timings = vec![
-            ("a".into(), 1.0),
-            ("b".into(), 5.0),
-            ("c".into(), 3.0),
-            ("d".into(), 2.0),
-        ];
+        ft.system_timings = vec![("sys_a".into(), 1.0), ("sys_b".into(), 5.0)];
         world.insert_resource(ft);
-        let mut hud = DebugHud::new();
-        hud.top_n_systems = 2;
-
-        let rows = hud.systems_top_n_row(&world);
-        assert_eq!(rows.len(), 2);
-        assert!(rows[0].value.starts_with("0:b "));
-        assert!(rows[1].value.starts_with("1:c "));
-    }
-
-    #[test]
-    fn compose_honours_user_top_n_through_borrow_dance() {
-        // Regression: `systems_top_n` used to be a free-function provider that
-        // read `DebugHud` from the world. During compose, `App` removes the
-        // `DebugHud` resource (see `app.rs` borrow dance), so the provider
-        // always observed `None` and silently fell back to the hardcoded
-        // default of 3. This test pins the fix by running the live compose
-        // path with the HUD removed from the world while a non-default
-        // `top_n_systems` is in effect.
-        let mut world = World::new();
-        let mut ft = FrameTimings::new();
-        ft.system_timings = vec![
-            ("a".into(), 1.0),
-            ("b".into(), 5.0),
-            ("c".into(), 3.0),
-            ("d".into(), 2.0),
-            ("e".into(), 4.0),
-        ];
-        world.insert_resource(ft);
+        world.insert_resource(HudActiveState("gameplay".into()));
 
         let mut hud = DebugHud::new();
         hud.enabled = true;
-        hud.top_n_systems = 5;
-        // Disable refresh throttle so both compose calls rebuild — the
-        // assertions below flip `top_n_systems` between calls.
         hud.refresh_interval_ms = 0.0;
-        // HUD is intentionally NOT inserted into the world; compose must not
-        // depend on `world.get_resource::<DebugHud>()` for configuration.
         let sections = compose_hud_text_sections(&mut hud, &world, (1280, 720), 16.67);
-        assert!(!sections.is_empty());
         let content = &sections.last().unwrap().content;
-        // All five system rows must appear (cap=5), not just the default 3.
-        for name in ["0:b ", "1:e ", "2:c ", "3:d ", "4:a "] {
-            assert!(
-                content.contains(name),
-                "missing expected system entry {name:?} in\n{content}"
-            );
-        }
+        assert!(!content.contains("player"));
+        assert!(!content.contains("state"));
+        assert!(!content.contains("gameplay"));
+        assert!(!content.contains("sys_a"));
+        assert!(!content.contains("sys_b"));
+    }
 
-        // And cap=0 must suppress every `sys` row.
-        hud.top_n_systems = 0;
+    #[test]
+    fn counts_row_renders_entity_and_sprite_totals() {
+        let mut world = World::new();
+        world.insert_resource(RenderCounts {
+            entities: 42,
+            sprite_instances: 128,
+        });
+
+        let mut hud = DebugHud::new();
+        hud.enabled = true;
+        hud.refresh_interval_ms = 0.0;
         let sections = compose_hud_text_sections(&mut hud, &world, (1280, 720), 16.67);
-        assert!(!sections.last().unwrap().content.contains("sys"));
+        let content = &sections.last().unwrap().content;
+        assert!(
+            content.contains("draw ") && content.contains("42 ents") && content.contains("128 spr"),
+            "draw row missing entity/sprite totals in:\n{content}"
+        );
     }
 
     #[test]
@@ -590,6 +548,12 @@ mod tests {
         let mut hud = DebugHud::new();
         hud.enabled = true;
         hud.refresh_interval_ms = 100.0;
+        hud.add_row(|_| {
+            vec![HudRow {
+                label: "tick",
+                value: "one".into(),
+            }]
+        });
         let world = World::new();
 
         // First call always rebuilds (cache empty, time seeded to +inf).
@@ -597,9 +561,14 @@ mod tests {
         assert!(!first.is_empty());
         let first_content = first.last().unwrap().content.clone();
 
-        // Mutate a displayed field; cache should still win because only
-        // 16.67 ms has elapsed of the 100 ms interval.
-        hud.top_n_systems = 0;
+        // Re-register a different custom row; cache should still win because
+        // only 16.67 ms has elapsed of the 100 ms interval.
+        hud.add_row(|_| {
+            vec![HudRow {
+                label: "tick",
+                value: "two".into(),
+            }]
+        });
         let second = compose_hud_text_sections(&mut hud, &world, (1280, 720), 16.67);
         assert_eq!(second[0].content, first_content);
 
@@ -663,17 +632,5 @@ mod tests {
         let world = World::new();
         let sections = compose_hud_text_sections(&mut hud, &world, (1280, 720), 16.67);
         assert_eq!(sections.len(), 1);
-    }
-
-    #[test]
-    fn state_provider_empty_when_string_blank_or_absent() {
-        let mut world = World::new();
-        assert!(state_provider(&world).is_empty());
-        world.insert_resource(HudActiveState(String::new()));
-        assert!(state_provider(&world).is_empty());
-        world.insert_resource(HudActiveState("menu".into()));
-        let rows = state_provider(&world);
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].value, "menu");
     }
 }

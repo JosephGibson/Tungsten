@@ -1130,11 +1130,16 @@ impl ApplicationHandler for App {
                     text.extend(sections);
                 }
 
-                // Inspector compose. Inspector is read-only during compose, so
-                // the borrow dance is only required because `compose` takes
-                // `&InspectorState` while the iterated registry needs `&World`.
-                if let Some(state) = self.world.remove_resource::<InspectorState>() {
-                    let sections = compose_inspector_text_section(&state, &self.world, viewport);
+                // Inspector compose. Borrow dance mirrors HUD/overlay: the
+                // helper holds `&mut InspectorState` for cache/throttle
+                // updates while iterating the registry against `&World`.
+                if let Some(mut state) = self.world.remove_resource::<InspectorState>() {
+                    let sections = compose_inspector_text_section(
+                        &mut state,
+                        &self.world,
+                        viewport,
+                        prev_total_ms,
+                    );
                     self.world.insert_resource(state);
                     text.extend(sections);
                 }

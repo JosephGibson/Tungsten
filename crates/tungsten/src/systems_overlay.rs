@@ -13,7 +13,7 @@ use tungsten_core::input::{ActionMap, InputState};
 use tungsten_core::World;
 use tungsten_render::TextSection;
 
-use crate::debug_hud::{anchor_text_block, HudCorner};
+use crate::debug_hud::{anchor_text_block, DebugHud, HudCorner};
 use crate::telemetry::FrameTimings;
 
 #[derive(Debug)]
@@ -39,12 +39,12 @@ impl Default for SystemTimingOverlay {
         Self {
             enabled: false,
             alpha: 0.1,
-            refresh_interval_ms: 250.0,
-            corner: HudCorner::TopLeft,
+            refresh_interval_ms: 500.0,
+            corner: HudCorner::BottomRight,
             padding_px: 12.0,
             font_id: "mono".to_string(),
-            font_size: 22.0,
-            line_height: 26.0,
+            font_size: 28.0,
+            line_height: 32.0,
             color: [240, 240, 240, 240],
             outline_color: [0, 0, 0, 220],
             outline_px: 1.5,
@@ -141,7 +141,7 @@ pub(crate) fn compose_systems_overlay_text_section(
         .map(|(name, ms)| format!("{name:>30}  {ms:>6.2}ms"))
         .collect();
     let content = rendered.join("\n");
-    let (x, y) = anchor_text_block(
+    let (x, mut y) = anchor_text_block(
         overlay.corner,
         &rendered,
         overlay.font_size,
@@ -149,6 +149,19 @@ pub(crate) fn compose_systems_overlay_text_section(
         overlay.padding_px,
         viewport,
     );
+    // When anchored to the top, shift down so the overlay sits directly
+    // below the HUD's rendered block rather than colliding with it at the
+    // top row. The HUD is re-inserted into the world before this helper
+    // runs (see `app.rs`), so its `cached_sections` reflect the current
+    // frame.
+    if matches!(overlay.corner, HudCorner::TopLeft | HudCorner::TopRight) {
+        if let Some(hud) = world.get_resource::<DebugHud>() {
+            let hud_bottom = hud.rendered_height_px();
+            if hud_bottom > 0.0 {
+                y = y.max(hud_bottom + overlay.padding_px);
+            }
+        }
+    }
 
     let main = TextSection {
         content,
@@ -240,6 +253,38 @@ mod tests {
         let _ = compose_systems_overlay_text_section(&mut overlay, &world_b, (1280, 720), 16.0);
         assert!(overlay.ewma_for("alpha").is_some());
         assert!(overlay.ewma_for("beta").is_none());
+    }
+
+    #[test]
+    fn overlay_y_is_pushed_below_hud_when_hud_is_left_anchored() {
+        use crate::debug_hud::{compose_hud_text_sections, DebugHud};
+
+        let mut world = world_with_timings(&[("alpha", 1.0)]);
+        let mut hud = DebugHud::new();
+        hud.enabled = true;
+        hud.corner = HudCorner::TopLeft;
+        hud.refresh_interval_ms = 0.0;
+        // Prime the HUD so its cached_sections populate, then reinsert so
+        // the overlay can read the height back out of the world.
+        let _ = compose_hud_text_sections(&mut hud, &world, (1280, 720), 16.0);
+        let hud_bottom = hud.rendered_height_px();
+        assert!(hud_bottom > 0.0);
+        world.insert_resource(hud);
+
+        let mut overlay = SystemTimingOverlay {
+            enabled: true,
+            refresh_interval_ms: 0.0,
+            corner: HudCorner::TopLeft,
+            ..Default::default()
+        };
+        let sections =
+            compose_systems_overlay_text_section(&mut overlay, &world, (1280, 720), 16.0);
+        assert!(!sections.is_empty());
+        let main_y = sections.last().unwrap().position[1];
+        assert!(
+            main_y >= hud_bottom,
+            "overlay y={main_y} should be >= hud_bottom={hud_bottom}"
+        );
     }
 
     #[test]
