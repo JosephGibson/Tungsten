@@ -2,7 +2,7 @@
 
 ## Status
 
-Workspace `v0.20.0` on branch `0.20`. Phase 3 M23 (Particle System) is shipped; next recommended milestone is `M24` tween system. Companion docs: [`AGENTS.md`](AGENTS.md) for operational rules, [`DECISIONS.md`](DECISIONS.md) for rationale by `D-NNN`.
+Workspace `v0.21.0` on branch `0.21`. Phase 3 M24 (Tween System) is shipped. Phase 3 is complete; Phase 4 scope is under planning. Companion docs: [`AGENTS.md`](AGENTS.md) for operational rules, [`DECISIONS.md`](DECISIONS.md) for rationale by `D-NNN`.
 
 ## What It Is
 
@@ -237,7 +237,13 @@ Engine-owned actions (`engine_toggle_hud`, `engine_toggle_vsync`, `engine_toggle
 
 `tungsten::state::StateStack` is a `World` resource driving a `Vec<Box<dyn GameState>>` through deferred `request_push` / `request_pop` / `request_replace` queues. A single engine-owned `state_dispatcher_system`, registered immediately after `__display_input`, drains the pending queue each frame and fires the transition matrix: `push` triggers `old.on_pause` → `new.on_enter`; `pop` triggers `old.on_exit` (after auto-despawn) → `next.on_resume`; `replace` triggers `old.on_exit` (after auto-despawn) → `new.on_enter`. `on_pause` / `on_resume` default to no-op so Pause overlays Gameplay without tearing the scene down. The dispatcher also mirrors the active state id into `HudActiveState` so the M18 state row keeps rendering correctly.
 
-Scene-owned entities carry a `SceneEntity { state_id }` marker. On state exit the dispatcher walks `query::<SceneEntity>()` and enqueues `CommandBuffer::despawn` for each matching entity before the user's `on_exit` runs; the engine's post-systems `CommandBuffer` flush (`D-039`) applies the despawns so the last frame of the exiting state already sees its scene entities gone and the first frame of the next state already sees its scene entities present. `tungsten_core::assets::scene::SceneData` is a minimal JSON schema that reuses the M15 components — each `SceneEntry` maps to `Transform + Sprite? + Visibility + Tag?`. `asset_loader::spawn_scene(world, &data, state_id)` funnels every entry through `CommandBuffer` so the spawn lands at the normal frame boundary; sprite id validation is intentionally deferred to the extract path, matching the tilemap behaviour. `ActionMap::default_map()` now ships `state_start` (`Enter`), `state_pause` (`KeyP`), and `state_back` (`Backspace`) so the example flow works without edits to `input.json`. Decision: `D-046`.
+Scene-owned entities carry a `SceneEntity { state_id }` marker. On state exit the dispatcher walks `query::<SceneEntity>()` and enqueues `CommandBuffer::despawn` for each matching entity before the user's `on_exit` runs; the engine's post-systems `CommandBuffer` flush (`D-039`) applies the despawns so the last frame of the exiting state already sees its scene entities gone and the first frame of the next state already sees its scene entities present. `tungsten_core::assets::scene::SceneData` is a minimal JSON schema that reuses the M15 components — each `SceneEntry` maps to `Transform + Sprite? + Visibility + Tag?` and may carry scene-authored tweens. `asset_loader::spawn_scene(world, &data, state_id)` funnels every entry through `CommandBuffer` so the spawn lands at the normal frame boundary; sprite id validation is intentionally deferred to the extract path, matching the tilemap behaviour, and scene tween authoring inserts at most one `Tween` component per spawned entity. `ActionMap::default_map()` now ships `state_start` (`Enter`), `state_pause` (`KeyP`), and `state_back` (`Backspace`) so the example flow works without edits to `input.json`. Decision: `D-046`.
+
+### Tween System — M24
+
+`tungsten_core::tween` adds a component-driven animation surface: `Tween` holds one timing model plus a `Vec<TweenChannel>` so position, rotation, scale, and sprite color can animate together on one entity. Easings are a closed `enum` (`Easing`) with a pure `apply(t)` implementation; repeat modes are `Once`, `Loop`, `PingPong`, and `Times(n)`.
+
+`tungsten::tweens::tween_tick_system` advances every live tween from `DeltaTime`, writes `Transform` / `Sprite` fields in place, emits `TweenComplete` through `EventQueue<TweenComplete>`, and defers terminal `Tween` removal through `CommandBuffer` so archetypes never mutate mid-iteration. The frame slot is `particles -> tweens -> flush commands -> flush events`, which keeps tween writes visible to extract/render in the same frame while preserving the fixed frame-boundary mutation/event rules. Scene JSON can author tweens directly, making state-transition fades and simple data-driven motion possible without bespoke example systems. Decisions: `D-054`, `D-055`, `D-056`.
 
 ### Performance Baseline + Profiling Harness — Phase 3 M12
 
@@ -266,4 +272,3 @@ Not scoped without an explicit decision:
 - Skeletal animation
 - Streaming or async asset loading
 - Per-platform asset variants
-- Tweened transforms as a separate animation system

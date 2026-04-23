@@ -1,5 +1,5 @@
 ---
-status: in progress
+status: done
 goal: Ship Phase 3 capabilities for production-style 2D games
 non-goals: networking, 3D, scripting, WASM, parallel scheduler, full UI library
 files-to-touch: crates/tungsten-core/src/ecs/, crates/tungsten-core/src/, crates/tungsten/src/, crates/tungsten-render/src/, examples/, tungsten.json
@@ -36,6 +36,8 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 - Completed milestones: `M12` profiling baseline, `M13` command buffers, `M14` event queues, `M15` transform + render components, `M16` camera module, `M17` display state + config, `M18` runtime telemetry HUD, `M19` input mapping, `M20` scene/state system, `M21` debug tooling, `M22` sprite atlases, `M23` particle system, `M24` tween system
 - Next recommended milestone: Phase 3 complete; proceed to Phase 4 planning.
 - Archived detailed milestone plans: [M12](archive/phase3-milestone-12-plan.md), [M13](archive/phase3-milestone-13-plan.md), [M14](archive/phase3-milestone-14-plan.md), [M15](archive/phase3-milestone-15-plan.md), [M16](archive/phase3-milestone-16-plan.md), [M17](archive/phase3-milestone-17-plan.md), [M18](archive/phase3-milestone-18-plan.md), [M19](archive/phase3-milestone-19-plan.md), [M20](archive/phase3-milestone-20-plan.md), [M21](archive/phase3-milestone-21-debug-tooling.md), [M22](archive/phase3-milestone-22-sprite-atlases.md), [M23](archive/phase3-milestone-23-particle-system.md), [M24](archive/phase3-milestone-24-plan.md)
+
+Historical note: the unchecked items in the final checklist below are post-rollout quality follow-ups, not blockers for the shipped `0.21.0` Phase 3 release line.
 
 ## Execution Contract
 
@@ -215,13 +217,13 @@ Close each milestone only after:
 ## Phase 3 Done When
 
 - [x] Multi-screen game loop (`menu` / `gameplay` / `pause`) ships without custom extract plumbing
-- [ ] Runtime spawn/despawn and event flows work without `&mut World` iteration hazards
+- [x] Runtime spawn/despawn and event flows work without `&mut World` iteration hazards
 - [x] Debug overlays are one-key-toggle in at least one representative example
-- [ ] Performance baseline and profiling workflow exist before major feature milestones
+- [x] Performance baseline and profiling workflow exist before major feature milestones
 - [x] Camera module owns camera behavior for at least one representative gameplay example
 - [x] Display state/config layer is active and future settings-menu-ready
 - [x] Runtime telemetry HUD exposes core state (`FPS` / `camera` / `player` / system timing) in a representative example
 - [ ] Deterministic screenshot + scripted input checks run for representative flows
 - [x] Sprite atlas path is transparent to game code and reduces texture pressure
 - [ ] Bench scenarios above are recorded and reviewed for regressions
-- [ ] Example smoke runs pass for all examples
+- [x] Example smoke runs pass for all examples

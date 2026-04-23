@@ -1,49 +1,71 @@
 {
   "entities": [
     {
-      "transform": { "position": [616, 336], "scale": [3.0, 3.0] },
-      "sprite": { "asset_id": "ex03_quad", "color": [255, 250, 240, 0], "z_order": 10 },
+      "transform": { "position": [618.8, 338.8], "scale": [2.65, 2.65] },
+      "sprite": { "asset_id": "ex03_quad", "color": [255, 250, 240, 255], "z_order": 10 },
       "tag": "hub",
       "tweens": [
         {
-          "duration": 0.45,
-          "easing": "cubic_out",
-          "repeat": "once",
-          "tag": "scene_fade_in",
-          "channels": [ { "kind": "color_a", "from": 0, "to": 255 } ]
+          "duration": 1.745,
+          "easing": "sine_in_out",
+          "repeat": "ping_pong",
+          "channels": [
+            { "kind": "scale_x", "from": 2.65, "to": 3.35 },
+            { "kind": "scale_y", "from": 2.65, "to": 3.35 }
+          ]
         }
       ]
     },
 
     { "transform": { "position": [738, 348], "rotation": 0.0, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [255, 110,  60, 0], "z_order": 5 }, "tag": "ring_a",
       "tweens": [ { "duration": 0.45, "easing": "cubic_out", "repeat": "once", "tag": "scene_fade_in", "channels": [ { "kind": "color_a", "from": 0, "to": 255 } ] } ] },
-    { "transform": { "position": [706, 426], "rotation": 0.5, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [255, 145,  60, 255], "z_order": 5 }, "tag": "ring_a" },
-    { "transform": { "position": [628, 458], "rotation": 1.0, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [255, 180,  60, 255], "z_order": 5 }, "tag": "ring_a" },
-    { "transform": { "position": [550, 426], "rotation": 1.5, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [255, 215,  70, 255], "z_order": 5 }, "tag": "ring_a" },
+    { "transform": { "position": [706, 426], "rotation": 0.5, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [255, 145,  60, 0], "z_order": 5 }, "tag": "ring_a",
+      "tweens": [ { "duration": 0.45, "easing": "cubic_out", "repeat": "once", "tag": "scene_fade_in", "channels": [ { "kind": "color_a", "from": 0, "to": 255 } ] } ] },
+    { "transform": { "position": [628, 458], "rotation": 1.0, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [255, 180,  60, 0], "z_order": 5 }, "tag": "ring_a",
+      "tweens": [ { "duration": 0.45, "easing": "cubic_out", "repeat": "once", "tag": "scene_fade_in", "channels": [ { "kind": "color_a", "from": 0, "to": 255 } ] } ] },
+    { "transform": { "position": [550, 426], "rotation": 1.5, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [255, 215,  70, 0], "z_order": 5 }, "tag": "ring_a",
+      "tweens": [ { "duration": 0.45, "easing": "cubic_out", "repeat": "once", "tag": "scene_fade_in", "channels": [ { "kind": "color_a", "from": 0, "to": 255 } ] } ] },
     { "transform": { "position": [518, 348], "rotation": 2.0, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [255, 220,  90, 0], "z_order": 5 }, "tag": "ring_a",
       "tweens": [ { "duration": 0.45, "easing": "cubic_out", "repeat": "once", "tag": "scene_fade_in", "channels": [ { "kind": "color_a", "from": 0, "to": 255 } ] } ] },
-    { "transform": { "position": [550, 270], "rotation": 2.5, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [255, 175,  60, 255], "z_order": 5 }, "tag": "ring_a" },
-    { "transform": { "position": [628, 238], "rotation": 3.0, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [255, 145,  60, 255], "z_order": 5 }, "tag": "ring_a" },
-    { "transform": { "position": [706, 270], "rotation": 3.5, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [255, 115,  60, 255], "z_order": 5 }, "tag": "ring_a" },
+    { "transform": { "position": [550, 270], "rotation": 2.5, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [255, 175,  60, 0], "z_order": 5 }, "tag": "ring_a",
+      "tweens": [ { "duration": 0.45, "easing": "cubic_out", "repeat": "once", "tag": "scene_fade_in", "channels": [ { "kind": "color_a", "from": 0, "to": 255 } ] } ] },
+    { "transform": { "position": [628, 238], "rotation": 3.0, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [255, 145,  60, 0], "z_order": 5 }, "tag": "ring_a",
+      "tweens": [ { "duration": 0.45, "easing": "cubic_out", "repeat": "once", "tag": "scene_fade_in", "channels": [ { "kind": "color_a", "from": 0, "to": 255 } ] } ] },
+    { "transform": { "position": [706, 270], "rotation": 3.5, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [255, 115,  60, 0], "z_order": 5 }, "tag": "ring_a",
+      "tweens": [ { "duration": 0.45, "easing": "cubic_out", "repeat": "once", "tag": "scene_fade_in", "channels": [ { "kind": "color_a", "from": 0, "to": 255 } ] } ] },
 
     { "transform": { "position": [813, 348], "rotation": 0.2, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [ 60, 220, 180, 0], "z_order": 5 }, "tag": "ring_b",
       "tweens": [ { "duration": 0.45, "easing": "cubic_out", "repeat": "once", "tag": "scene_fade_in", "channels": [ { "kind": "color_a", "from": 0, "to": 255 } ] } ] },
-    { "transform": { "position": [759, 479], "rotation": 0.7, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [ 60, 200, 220, 255], "z_order": 5 }, "tag": "ring_b" },
-    { "transform": { "position": [628, 533], "rotation": 1.2, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [ 60, 180, 240, 255], "z_order": 5 }, "tag": "ring_b" },
-    { "transform": { "position": [497, 479], "rotation": 1.7, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [ 60, 160, 220, 255], "z_order": 5 }, "tag": "ring_b" },
-    { "transform": { "position": [443, 348], "rotation": 2.2, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [ 80, 200, 200, 255], "z_order": 5 }, "tag": "ring_b" },
-    { "transform": { "position": [497, 217], "rotation": 2.7, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [ 60, 180, 240, 255], "z_order": 5 }, "tag": "ring_b" },
-    { "transform": { "position": [628, 163], "rotation": 3.2, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [ 60, 200, 220, 255], "z_order": 5 }, "tag": "ring_b" },
-    { "transform": { "position": [759, 217], "rotation": 3.7, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [ 60, 220, 180, 255], "z_order": 5 }, "tag": "ring_b" },
+    { "transform": { "position": [759, 479], "rotation": 0.7, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [ 60, 200, 220, 0], "z_order": 5 }, "tag": "ring_b",
+      "tweens": [ { "duration": 0.45, "easing": "cubic_out", "repeat": "once", "tag": "scene_fade_in", "channels": [ { "kind": "color_a", "from": 0, "to": 255 } ] } ] },
+    { "transform": { "position": [628, 533], "rotation": 1.2, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [ 60, 180, 240, 0], "z_order": 5 }, "tag": "ring_b",
+      "tweens": [ { "duration": 0.45, "easing": "cubic_out", "repeat": "once", "tag": "scene_fade_in", "channels": [ { "kind": "color_a", "from": 0, "to": 255 } ] } ] },
+    { "transform": { "position": [497, 479], "rotation": 1.7, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [ 60, 160, 220, 0], "z_order": 5 }, "tag": "ring_b",
+      "tweens": [ { "duration": 0.45, "easing": "cubic_out", "repeat": "once", "tag": "scene_fade_in", "channels": [ { "kind": "color_a", "from": 0, "to": 255 } ] } ] },
+    { "transform": { "position": [443, 348], "rotation": 2.2, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [ 80, 200, 200, 0], "z_order": 5 }, "tag": "ring_b",
+      "tweens": [ { "duration": 0.45, "easing": "cubic_out", "repeat": "once", "tag": "scene_fade_in", "channels": [ { "kind": "color_a", "from": 0, "to": 255 } ] } ] },
+    { "transform": { "position": [497, 217], "rotation": 2.7, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [ 60, 180, 240, 0], "z_order": 5 }, "tag": "ring_b",
+      "tweens": [ { "duration": 0.45, "easing": "cubic_out", "repeat": "once", "tag": "scene_fade_in", "channels": [ { "kind": "color_a", "from": 0, "to": 255 } ] } ] },
+    { "transform": { "position": [628, 163], "rotation": 3.2, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [ 60, 200, 220, 0], "z_order": 5 }, "tag": "ring_b",
+      "tweens": [ { "duration": 0.45, "easing": "cubic_out", "repeat": "once", "tag": "scene_fade_in", "channels": [ { "kind": "color_a", "from": 0, "to": 255 } ] } ] },
+    { "transform": { "position": [759, 217], "rotation": 3.7, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [ 60, 220, 180, 0], "z_order": 5 }, "tag": "ring_b",
+      "tweens": [ { "duration": 0.45, "easing": "cubic_out", "repeat": "once", "tag": "scene_fade_in", "channels": [ { "kind": "color_a", "from": 0, "to": 255 } ] } ] },
 
     { "transform": { "position": [883, 348], "rotation": 0.4, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [180,  90, 230, 0], "z_order": 5 }, "tag": "ring_c",
       "tweens": [ { "duration": 0.45, "easing": "cubic_out", "repeat": "once", "tag": "scene_fade_in", "channels": [ { "kind": "color_a", "from": 0, "to": 255 } ] } ] },
-    { "transform": { "position": [808, 528], "rotation": 0.9, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [220,  90, 200, 255], "z_order": 5 }, "tag": "ring_c" },
-    { "transform": { "position": [628, 603], "rotation": 1.4, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [240, 100, 180, 255], "z_order": 5 }, "tag": "ring_c" },
-    { "transform": { "position": [448, 528], "rotation": 1.9, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [220, 110, 220, 255], "z_order": 5 }, "tag": "ring_c" },
-    { "transform": { "position": [373, 348], "rotation": 2.4, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [190,  90, 240, 255], "z_order": 5 }, "tag": "ring_c" },
-    { "transform": { "position": [448, 168], "rotation": 2.9, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [160,  90, 230, 255], "z_order": 5 }, "tag": "ring_c" },
-    { "transform": { "position": [628,  93], "rotation": 3.4, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [150, 100, 220, 255], "z_order": 5 }, "tag": "ring_c" },
-    { "transform": { "position": [808, 168], "rotation": 3.9, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [170,  90, 235, 255], "z_order": 5 }, "tag": "ring_c" }
+    { "transform": { "position": [808, 528], "rotation": 0.9, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [220,  90, 200, 0], "z_order": 5 }, "tag": "ring_c",
+      "tweens": [ { "duration": 0.45, "easing": "cubic_out", "repeat": "once", "tag": "scene_fade_in", "channels": [ { "kind": "color_a", "from": 0, "to": 255 } ] } ] },
+    { "transform": { "position": [628, 603], "rotation": 1.4, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [240, 100, 180, 0], "z_order": 5 }, "tag": "ring_c",
+      "tweens": [ { "duration": 0.45, "easing": "cubic_out", "repeat": "once", "tag": "scene_fade_in", "channels": [ { "kind": "color_a", "from": 0, "to": 255 } ] } ] },
+    { "transform": { "position": [448, 528], "rotation": 1.9, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [220, 110, 220, 0], "z_order": 5 }, "tag": "ring_c",
+      "tweens": [ { "duration": 0.45, "easing": "cubic_out", "repeat": "once", "tag": "scene_fade_in", "channels": [ { "kind": "color_a", "from": 0, "to": 255 } ] } ] },
+    { "transform": { "position": [373, 348], "rotation": 2.4, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [190,  90, 240, 0], "z_order": 5 }, "tag": "ring_c",
+      "tweens": [ { "duration": 0.45, "easing": "cubic_out", "repeat": "once", "tag": "scene_fade_in", "channels": [ { "kind": "color_a", "from": 0, "to": 255 } ] } ] },
+    { "transform": { "position": [448, 168], "rotation": 2.9, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [160,  90, 230, 0], "z_order": 5 }, "tag": "ring_c",
+      "tweens": [ { "duration": 0.45, "easing": "cubic_out", "repeat": "once", "tag": "scene_fade_in", "channels": [ { "kind": "color_a", "from": 0, "to": 255 } ] } ] },
+    { "transform": { "position": [628,  93], "rotation": 3.4, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [150, 100, 220, 0], "z_order": 5 }, "tag": "ring_c",
+      "tweens": [ { "duration": 0.45, "easing": "cubic_out", "repeat": "once", "tag": "scene_fade_in", "channels": [ { "kind": "color_a", "from": 0, "to": 255 } ] } ] },
+    { "transform": { "position": [808, 168], "rotation": 3.9, "scale": [1.5, 1.5] }, "sprite": { "asset_id": "ex03_quad", "color": [170,  90, 235, 0], "z_order": 5 }, "tag": "ring_c",
+      "tweens": [ { "duration": 0.45, "easing": "cubic_out", "repeat": "once", "tag": "scene_fade_in", "channels": [ { "kind": "color_a", "from": 0, "to": 255 } ] } ] }
   ]
 }

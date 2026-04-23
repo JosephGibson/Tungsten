@@ -28,9 +28,11 @@ Summary: Phase 3 Milestone 24 — tween system (closed-enum easings, multi-chann
 ### Changed
 
 - Workspace version bumped to `0.21.0`.
+- `README.md`, `AGENTS.md`, `DESIGN.md`, `CLAUDE.md`, and `docs/plans/Phase3.md` now reflect the shipped `0.21.0` / branch `0.21` release line, `M24` complete, and Phase 3 closeout.
 - `docs/LLM_INDEX.md` gains a Tweens subsystem row and a "Change tween easing/channel behavior or scene-tween authoring" task row.
 - `docs/plans/Phase3.md` marks `M24` as `complete` at `v0.21.0` / `2026-04-23`; the implementation plan is archived at `docs/plans/archive/phase3-milestone-24-plan.md`.
 - `CLAUDE.md` Status line now reflects `0.21.0` on branch `0.21` with M24 shipped.
+- Release QA pass completed locally: `cargo fmt --all`, `cargo test --workspace`, and `./scripts/smoke-examples.sh` all passed.
 
 ## [0.20.0] - 2026-04-20
 

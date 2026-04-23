@@ -136,10 +136,8 @@ fn gameplay_orbit_system(world: &mut World) {
         };
 
         if tag_name == "hub" {
-            let pulse = 3.0 + (elapsed * 1.8).sin() * 0.35;
             if let Some(t) = world.get_mut::<Transform>(entity) {
-                t.scale = Vec2::splat(pulse);
-                let half = Vec2::splat(pulse * SPRITE_HALF);
+                let half = Vec2::splat(t.scale.x * SPRITE_HALF);
                 t.position = VIEW_CENTER - half;
                 t.rotation += dt * 0.6;
             }
