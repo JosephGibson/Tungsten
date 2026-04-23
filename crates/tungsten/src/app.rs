@@ -177,6 +177,11 @@ impl App {
             &mut event_flushers,
             &mut registered_event_types,
         );
+        Self::register_event_inner::<tungsten_core::TweenComplete>(
+            &mut world,
+            &mut event_flushers,
+            &mut registered_event_types,
+        );
 
         let mut app = Self {
             config,
@@ -632,6 +637,12 @@ impl App {
         crate::particles::particle_count_refresh_system(&mut self.world);
         crate::particles::particle_emit_system(&mut self.world);
         crate::particles::particle_tick_system(&mut self.world);
+    }
+
+    #[inline(always)]
+    fn stage_tweens(&mut self) {
+        // Tween writes override particle writes; `TweenComplete` lands before event flush rotates.
+        crate::tweens::tween_tick_system(&mut self.world);
     }
 
     #[inline(always)]
@@ -1278,6 +1289,7 @@ impl ApplicationHandler for App {
                 }
 
                 self.stage_particles();
+                self.stage_tweens();
                 let flush_ms = self.stage_flush_commands();
                 self.stage_flush_events();
                 let hot_reload_ms = self.stage_hot_reload();

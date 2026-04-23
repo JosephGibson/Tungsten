@@ -31,5 +31,9 @@ harness = false
 name = "action_map_bench"
 harness = false
 
+[[bench]]
+name = "tween_tick"
+harness = false
+
 [lints]
 workspace = true

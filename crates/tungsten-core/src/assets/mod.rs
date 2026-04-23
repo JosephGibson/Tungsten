@@ -19,7 +19,10 @@ pub use particle::{
     ParticleConfig, ParticleConfigError, ParticleConfigRegistry, Range, WorldRngSeed,
 };
 pub use registry::{AssetRegistry, FontRegistry, SpriteAsset, TextureHandle};
-pub use scene::{SceneData, SceneEntry, SceneError, SceneSprite, SceneTransform};
+pub use scene::{
+    SceneData, SceneEntry, SceneError, SceneSprite, SceneTransform, SceneTween, SceneTweenChannel,
+    SceneTweenRepeat,
+};
 pub use tilemap::{
     LayerKind, TileIndex, TilemapData, TilemapInstance, TilemapLayer, TilemapRegistry, EMPTY_TILE,
 };

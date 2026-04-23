@@ -16,6 +16,7 @@ pub mod state;
 pub mod systems_overlay;
 pub mod telemetry;
 mod tilemap_extract;
+pub mod tweens;
 
 pub use app::{App, WindowSize};
 pub use camera::camera_update_system;
@@ -40,3 +41,4 @@ pub use tungsten_core as core;
 pub use tungsten_core::physics;
 pub use tungsten_core::{ActionMap, ActionMapError, Binding, DebugDraw, DebugShape, Inspectable};
 pub use tungsten_render as render;
+pub use tweens::tween_tick_system;

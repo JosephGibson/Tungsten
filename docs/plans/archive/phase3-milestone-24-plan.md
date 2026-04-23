@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 goal: Ship a core-owned tween system that animates `Transform`/`Sprite` channels with built-in easings, fires `TweenComplete` through `EventQueue<T>`, self-removes via `CommandBuffer::remove_component`, is authorable from `scene.json`, and demonstrates a state-transition fade in `examples/03_scene_state/`.
 non-goals: runtime tween builders exposed as a fluent DSL, custom easing curves outside the built-in enum, dependency tree animation, skeletal animation, spline/path tweens, GPU-side interpolation, easing author UI, tween scripting, physics-coupled tweens, serialized tween state across runs, Phase-4 timeline/sequencer.
 files-to-touch:

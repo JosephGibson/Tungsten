@@ -22,4 +22,4 @@ Pointer file for [Claude Code](https://claude.ai/code).
 
 ## Status
 
-Workspace `v0.20.0` on branch `0.20`. Phase 3 M23 (Particle System) shipped. Next recommended milestone: `M24` tween system.
+Workspace `v0.21.0` on branch `0.21`. Phase 3 M24 (Tween System) shipped. Phase 3 is complete; Phase 4 scope is under planning.

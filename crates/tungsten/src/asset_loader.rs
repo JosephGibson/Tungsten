@@ -410,6 +410,7 @@ pub fn load_scene(path: &Path) -> anyhow::Result<SceneData> {
 }
 
 /// Spawn scene entities through `CommandBuffer`; D-046 leaves sprite IDs unresolved.
+/// D-055 one `Tween` per entity — additional tween entries log `ERROR` and are dropped.
 pub fn spawn_scene(world: &mut World, data: &SceneData, state_id: StateId) {
     let buf = world
         .get_resource_mut::<CommandBuffer>()
@@ -444,6 +445,15 @@ pub fn spawn_scene(world: &mut World, data: &SceneData, state_id: StateId) {
             buf.insert_pending(pending, Tag::new(name.clone()));
         }
         buf.insert_pending(pending, SceneEntity { state_id });
+        if let Some(tween) = entry.tweens.first() {
+            if entry.tweens.len() > 1 {
+                log::error!(
+                    "Scene entry carries {} tweens; D-055 allows one -- keeping the first",
+                    entry.tweens.len()
+                );
+            }
+            buf.insert_pending(pending, tween.into_tween());
+        }
     }
 }
 

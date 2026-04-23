@@ -13,6 +13,7 @@ pub mod inspect;
 pub mod physics;
 pub mod rng;
 pub mod time;
+pub mod tween;
 
 pub use assets::{
     AnimationData, AnimationRegistry, AnimationState, AssetId, AssetRegistry, AudioHandle,
@@ -20,9 +21,9 @@ pub use assets::{
     LayerKind, Lerp, LoadedManifest, ManifestError, ParticleActive, ParticleBudget, ParticleConfig,
     ParticleConfigError, ParticleConfigRegistry, ParticleEntry, Range, ResolvedFont,
     ResolvedManifest, ResolvedParticle, ResolvedSound, SceneData, SceneEntry, SceneError,
-    SceneSprite, SceneTransform, SoundData, SoundEntry, SoundRegistry, SpriteAsset, TextureHandle,
-    TileIndex, TilemapData, TilemapInstance, TilemapLayer, TilemapRegistry, WorldRngSeed,
-    EMPTY_TILE,
+    SceneSprite, SceneTransform, SceneTween, SceneTweenChannel, SceneTweenRepeat, SoundData,
+    SoundEntry, SoundRegistry, SpriteAsset, TextureHandle, TileIndex, TilemapData, TilemapInstance,
+    TilemapLayer, TilemapRegistry, WorldRngSeed, EMPTY_TILE,
 };
 pub use audio::{AudioCommand, AudioCommands};
 pub use camera::{CameraBounds, CameraController, CameraMode, CameraState};
@@ -46,3 +47,6 @@ pub use physics::{
 };
 pub use rng::{splitmix64, Pcg32};
 pub use time::DeltaTime;
+pub use tween::{
+    lerp_f32, lerp_u8, Easing, Tween, TweenChannel, TweenComplete, TweenDirection, TweenRepeat,
+};

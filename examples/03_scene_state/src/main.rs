@@ -12,7 +12,7 @@ use tungsten::core::{Config, DeltaTime, Tag, Transform, World};
 use tungsten::render::TextSection;
 use tungsten::{App, DebugHud, StateStack};
 
-use crate::states::MainMenuState;
+use crate::states::{handle_tween_complete_system, MainMenuState};
 
 const ROOT_MANIFEST: &str = "assets/manifest.json";
 const LOCAL_MANIFEST: &str = "examples/03_scene_state/assets/manifest.json";
@@ -58,6 +58,7 @@ fn main() -> anyhow::Result<()> {
 
     app.add_system_named("menu_idle_system", menu_idle_system);
     app.add_system_named("gameplay_orbit_system", gameplay_orbit_system);
+    app.add_system_named("handle_tween_complete", handle_tween_complete_system);
     app.set_extract_text(state_driven_text);
 
     app.run()

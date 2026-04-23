@@ -37,6 +37,8 @@ If you need deeper context, grep the specific `D-0xx` entry in the full log inst
 | `D-032` | Tilemaps use Tiled-compatible `.tmj` data and reuse the sprite render path instead of a separate tile pipeline. |
 | `D-042` | `Transform`, `Sprite`, `Visibility`, and `Tag` are engine-level components; default sprite extraction is explicit and opt-in through those components. |
 | `D-048` | M22 sprite atlases: shelf-next-fit packer in `tungsten-core` with a mandatory deterministic tie-break, per-filter page lists, 1 px transparent padding + half-texel UV inset, renderer mints `TextureHandle`s, rebuild-on-growth with in-place shrink, and manifest hot-reload additions routed through `rebuild_atlas_for_filter`. |
+| `D-054` | M24 tween easings are a closed `enum` with a pure `fn apply(t) -> f32`; no trait object, no dependency (curve math is ~60 lines of closed-form). |
+| `D-055` | M24 single `Tween` component per entity, multi-property via `Vec<TweenChannel>` sharing the easing + duration; more than one tween per scene entry logs `ERROR` and keeps the first. |
 | `D-052` | Asset composition is owned by the umbrella: `App::set_manifest_roots` + `asset_loader::load_all_merged` merge manifests via `ResolvedManifest::load_and_merge_many` and run `load_all` once on the result, with the merged graph stored as a `LoadedManifest` world resource; per-type loaders stay public but must not be used to compose. |
 | `D-053` | Hot-reload support matrix is one published table in `DESIGN.md §Hot Reload — M9`: sprites/animations/fonts/tilemaps/particles support single-file and manifest-add reloads with warn-only removal; sounds are session-static (mixer owns cloned PCM). Particle manifest-add mirrors the tilemap-add validation path; `LoadedManifest` is refreshed on every successful manifest reload. |
 
@@ -78,6 +80,7 @@ If you need deeper context, grep the specific `D-0xx` entry in the full log inst
 | `D-049` | M23 ships a hand-rolled PCG32 + SplitMix64 PRNG in `tungsten-core`; no `rand` / `getrandom` dependency. |
 | `D-050` | M23 particle configs live behind `Arc<ParticleConfig>`; emitters snapshot on first tick and live particles keep their original `Arc` across hot-reload, so in-flight curves never reinterpret mid-life. |
 | `D-051` | M23 uses one ECS entity per live particle (no pool); despawns route through the standard `CommandBuffer` flush, and `max_alive` + global `ParticleBudget` bound the archetype. |
+| `D-056` | M24 `TweenComplete` routes through `EventQueue<TweenComplete>` and terminal `Tween` removal routes through `CommandBuffer::remove_component`; a `pending_remove` latch prevents re-fire between tick and frame-end flush. |
 
 ## When To Open Full `DECISIONS.md`
 
