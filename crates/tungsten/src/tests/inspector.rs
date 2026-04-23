@@ -15,8 +15,7 @@ fn make_world() -> World {
     world
 }
 
-/// Registers an `id`×`id` sized sprite asset and spawns a sprite entity
-/// at `pos` (treated as the top-left corner, matching the shader).
+/// Register square sprite and spawn at top-left position.
 fn spawn_sprite(world: &mut World, id: &str, pos: Vec2, size: u32) -> Entity {
     world
         .get_resource_mut::<AssetRegistry>()
@@ -69,12 +68,9 @@ fn pick_selects_sprite_under_cursor_on_mouse3_edge() {
     let mut world = make_world();
     world.get_resource_mut::<InspectorState>().unwrap().enabled = true;
 
-    // Sprite at (100, 100) with 16×16 footprint → covers (100..116, 100..116).
     let target = spawn_sprite(&mut world, "target", Vec2::new(100.0, 100.0), 16);
-    // Decoy sprite well away from the cursor.
     let _decoy = spawn_sprite(&mut world, "decoy", Vec2::new(500.0, 500.0), 16);
 
-    // Cursor inside the target sprite's AABB.
     press_mouse3_at(&mut world, 108.0, 108.0);
     inspector_pick_system(&mut world);
 
@@ -84,19 +80,13 @@ fn pick_selects_sprite_under_cursor_on_mouse3_edge() {
 
 #[test]
 fn pick_clears_selection_when_cursor_is_in_empty_space() {
-    // Regression for the example-01 bug: the previous nearest-distance
-    // picker always picked *some* entity (typically the camera-followed
-    // player), so clicking into empty sky still surfaced that entity.
-    // The AABB-based picker must return no selection when the cursor is
-    // outside every sprite's footprint.
+    // Regression: empty-space click clears instead of nearest-picking.
     let mut world = make_world();
     world.get_resource_mut::<InspectorState>().unwrap().enabled = true;
 
     let player = spawn_sprite(&mut world, "player", Vec2::new(100.0, 100.0), 16);
-    // Seed a prior selection so we can observe the clear.
     world.get_resource_mut::<InspectorState>().unwrap().selected = Some(player);
 
-    // Cursor is far from every sprite's AABB.
     press_mouse3_at(&mut world, 600.0, 400.0);
     inspector_pick_system(&mut world);
 
@@ -111,11 +101,9 @@ fn pick_prefers_smaller_aabb_when_sprites_overlap() {
     let mut world = make_world();
     world.get_resource_mut::<InspectorState>().unwrap().enabled = true;
 
-    // Big background sprite and a small foreground sprite, overlapping.
     let _bg = spawn_sprite(&mut world, "bg", Vec2::new(0.0, 0.0), 200);
     let fg = spawn_sprite(&mut world, "fg", Vec2::new(90.0, 90.0), 20);
 
-    // Cursor lies inside both AABBs; smallest wins.
     press_mouse3_at(&mut world, 100.0, 100.0);
     inspector_pick_system(&mut world);
 
@@ -127,22 +115,16 @@ fn pick_prefers_smaller_aabb_when_sprites_overlap() {
 
 #[test]
 fn pick_hits_physics_body_without_sprite_component() {
-    // Regression for example 01: the platformer renders the player
-    // through a custom extract path keyed off `CurrentSprite`, not the
-    // default `Sprite` component. Picking must still find it via its
-    // physics `Collider + Position` footprint.
+    // Regression: custom-extracted player still pickable via physics footprint.
     use tungsten_core::physics::{Collider, Position};
 
     let mut world = make_world();
     world.get_resource_mut::<InspectorState>().unwrap().enabled = true;
 
     let body = world.spawn();
-    // Player-like: centered at (200, 200), ±16 half-extents → covers
-    // (184..216, 184..216). No Sprite component on the entity.
     world.insert(body, Position(Vec2::new(200.0, 200.0)));
     world.insert(body, Collider::aabb(Vec2::splat(16.0)));
 
-    // A far-away distractor to pin down the selection.
     let _decoy = spawn_sprite(&mut world, "decoy", Vec2::new(800.0, 800.0), 16);
 
     press_mouse3_at(&mut world, 205.0, 205.0);
@@ -162,7 +144,6 @@ fn pick_hits_circle_collider_bounding_box() {
     world.get_resource_mut::<InspectorState>().unwrap().enabled = true;
 
     let ball = world.spawn();
-    // Centered at (100, 100) with radius 8 → bounding AABB (92..108, 92..108).
     world.insert(ball, Position(Vec2::new(100.0, 100.0)));
     world.insert(ball, Collider::circle(8.0));
 
@@ -200,7 +181,6 @@ fn pick_ignores_hover_without_mouse3_edge() {
 
     let _e = spawn_sprite(&mut world, "e", Vec2::new(100.0, 100.0), 16);
 
-    // Cursor sits over the sprite but no button is pressed.
     let mut input = InputState::new();
     input.update_cursor_position(108.0, 108.0);
     world.insert_resource(input);
@@ -236,7 +216,6 @@ fn pick_skips_when_cursor_is_outside_window() {
     world.insert_resource(ActionMap::default_map());
     let _e = spawn_sprite(&mut world, "e", Vec2::ZERO, 16);
 
-    // No cursor position, even with Mouse 3 pressed, must not pick.
     let mut input = InputState::new();
     input.mouse_down(MouseButton::Middle);
     world.insert_resource(input);
@@ -301,13 +280,11 @@ fn compose_renders_registered_rows_for_selected_entity() {
         .map(|s| s.content.as_str())
         .collect::<Vec<_>>()
         .join("\n");
-    // Compact layout: section name inline as the row prefix, no
-    // bracketed header and no blank separator lines.
+    // Compact layout: no bracketed headers or blank separators.
     assert!(joined.contains("Tag"));
     assert!(joined.contains("hero"));
     assert!(joined.contains("Transform"));
     assert!(joined.contains("pos"));
-    // No leftover header characters from the old layout.
     assert!(!joined.contains("[ Tag ]"));
     assert!(!joined.contains("────"));
 }
@@ -334,23 +311,18 @@ fn compose_throttles_rebuild_between_intervals() {
     let first = compose_inspector_text_section(&mut state, &world, (800, 600), 16.0);
     let first_content = first.last().unwrap().content.clone();
 
-    // Change something observable between frames; cache still wins because
-    // only 16 ms has elapsed of the 100 ms interval.
+    // Cache wins inside 100 ms interval.
     world.get_mut::<Tag>(e).unwrap().name = "villain".into();
     let second = compose_inspector_text_section(&mut state, &world, (800, 600), 16.0);
     assert_eq!(second.last().unwrap().content, first_content);
 
-    // Advancing past the interval must rebuild.
     let third = compose_inspector_text_section(&mut state, &world, (800, 600), 200.0);
     assert!(third.last().unwrap().content.contains("villain"));
 }
 
 #[test]
 fn compose_rebuilds_immediately_when_selection_changes() {
-    // Regression: at 500 ms throttle, clicking Mouse 3 on a new entity
-    // used to leave the inspector showing the previous selection (or
-    // the hint) for up to half a second. A selection edge must bypass
-    // the throttle so picks feel responsive.
+    // Regression: selection edge bypasses 500 ms throttle.
     let mut world = World::new();
     let hero = world.spawn();
     world.insert(hero, Tag::new("hero"));
@@ -365,8 +337,6 @@ fn compose_rebuilds_immediately_when_selection_changes() {
     let first = compose_inspector_text_section(&mut state, &world, (800, 600), 16.0);
     assert!(first.last().unwrap().content.contains("hero"));
 
-    // Well under the 500 ms throttle; a selection change must still
-    // rebuild the cached sections.
     state.selected = Some(villain);
     let second = compose_inspector_text_section(&mut state, &world, (800, 600), 16.0);
     assert!(second.last().unwrap().content.contains("villain"));

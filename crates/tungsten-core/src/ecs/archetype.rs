@@ -3,19 +3,9 @@ use std::collections::HashMap;
 
 use super::entity::Entity;
 
-// ---------------------------------------------------------------------------
-// Type-erased column trait
-// ---------------------------------------------------------------------------
-
-/// Type-erased interface for a `Vec<T>` column inside an [`Archetype`].
+/// Type-erased `Vec<T>` column interface.
 ///
-/// Every method operates on heap-boxed `dyn Any` values so the archetype
-/// transition logic in `storage.rs` can move components between archetypes
-/// without knowing the concrete type. The one-downcast-per-archetype pattern
-/// used by the query iterators (`as_any().downcast_ref::<TypedVec<T>>()`) pays
-/// the type-erasure cost once, then accesses elements via `col.0[i]` over a
-/// contiguous `Vec<T>` — the cache-friendly win vs. the old
-/// `HashMap<u32, Box<dyn Any>>` layout.
+/// Query cost: one downcast per archetype/type, then contiguous `Vec<T>` access.
 #[allow(dead_code)]
 pub(crate) trait AnyColumn: Any {
     fn push_erased(&mut self, val: Box<dyn Any>);
@@ -26,18 +16,11 @@ pub(crate) trait AnyColumn: Any {
     fn type_id(&self) -> TypeId;
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
-    /// Create a new, empty column of the same concrete type.
-    ///
-    /// Used by `Archetype::move_components_to` when the destination archetype
-    /// has not yet allocated a column for this type (first-time transition).
+    /// Empty column of same concrete type.
     fn new_empty(&self) -> Box<dyn AnyColumn>;
 }
 
-// ---------------------------------------------------------------------------
-// Concrete column implementation
-// ---------------------------------------------------------------------------
-
-/// A concrete, typed column: just a `Vec<T>` with type-erased access.
+/// Typed component column.
 pub(crate) struct TypedVec<T: 'static>(pub Vec<T>);
 
 impl<T: 'static> AnyColumn for TypedVec<T> {
@@ -79,36 +62,27 @@ impl<T: 'static> AnyColumn for TypedVec<T> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Archetype table
-// ---------------------------------------------------------------------------
-
 /// Identifies an archetype in the `Archetypes` registry.
 pub(crate) type ArchetypeId = u32;
 
-/// The archetype that freshly-spawned entities start in (zero components).
+/// Fresh-spawn archetype.
 pub(crate) const EMPTY_ARCHETYPE: ArchetypeId = 0;
 
-/// A table of entities that all share exactly the same component set.
+/// Entities sharing one component set.
 ///
-/// Each component type occupies one column (`TypedVec<T>` behind a
-/// `Box<dyn AnyColumn>`). Every column and `entities` always have the same
-/// length. Rows are kept compact via swap-remove: removing row `r` moves the
-/// last row to `r` in every column and in `entities` simultaneously.
+/// Invariant: every column and `entities` have equal length; rows compact via swap-remove.
 pub(crate) struct Archetype {
     #[allow(dead_code)]
     pub id: ArchetypeId,
-    /// Sorted list of `TypeId`s that uniquely identifies this archetype.
+    /// Sorted component type key.
     pub component_types: Box<[TypeId]>,
-    /// One column per component type. Populated lazily on first use — a newly
-    /// created archetype starts with an empty map; columns are added during
-    /// the first entity transition into this archetype.
+    /// Columns allocated lazily on first transition into archetype.
     pub columns: HashMap<TypeId, Box<dyn AnyColumn>>,
-    /// The entity at each row. Always the same length as every column.
+    /// Entity per row.
     pub entities: Vec<Entity>,
-    /// Lazy add-edges: `TypeId` → target `ArchetypeId` after inserting that type.
+    /// Lazy add-edge cache.
     pub add_edges: HashMap<TypeId, ArchetypeId>,
-    /// Lazy remove-edges: `TypeId` → target `ArchetypeId` after removing that type.
+    /// Lazy remove-edge cache.
     pub remove_edges: HashMap<TypeId, ArchetypeId>,
 }
 
@@ -133,16 +107,7 @@ impl Archetype {
         self.entities.len()
     }
 
-    /// Swap-remove the row at `row` from **all columns and the entity list**.
-    ///
-    /// Returns the entity that was displaced from the last position into `row`
-    /// (i.e., the entity that was at `self.entities[old_last]`), or `None` if
-    /// the removed row was already the last row.
-    ///
-    /// The caller is responsible for updating the displaced entity's
-    /// `EntityLocation` to `(self.id, row)`.
-    ///
-    /// Used during `despawn`.
+    /// Swap-remove row from every column; caller updates displaced location.
     pub fn swap_remove_row(&mut self, row: usize) -> Option<Entity> {
         let last = self.entities.len().saturating_sub(1);
         for col in self.columns.values_mut() {
@@ -150,30 +115,13 @@ impl Archetype {
         }
         self.entities.swap_remove(row);
         if row < last {
-            // The entity that was at `last` is now at `row`.
             Some(self.entities[row])
         } else {
             None
         }
     }
 
-    /// Move all component data for `row` into `dest` for the types that
-    /// `dest` declares in its `component_types`.
-    ///
-    /// For each `TypeId` in `self.component_types`:
-    /// - If `dest` should have it (`dest.component_types.contains`): create
-    ///   the column in `dest` if absent (via `new_empty`), then
-    ///   `swap_remove_erased` from `self` and `push_erased` into `dest`.
-    /// - Otherwise (the type is being removed, e.g. during `remove<T>`):
-    ///   skip it — the caller extracts it separately.
-    ///
-    /// **Does not touch `self.entities` or `dest.entities`** — the caller
-    /// handles those.
-    ///
-    /// After this call the source's columns for the moved types have
-    /// `n − 1` elements (swap-remove semantics). The caller must also do
-    /// `self.entities.swap_remove(row)` and update the displaced entity's
-    /// location.
+    /// Move row component data into `dest`; caller handles entity rows/locations.
     pub fn move_components_to(&mut self, row: usize, dest: &mut Archetype) {
         let types_to_move: Vec<TypeId> = self
             .component_types
@@ -182,9 +130,7 @@ impl Archetype {
             .filter(|tid| dest.component_types.contains(tid))
             .collect();
 
-        // Pass 1 — create any missing columns in dest. `new_empty()` doesn't
-        // depend on column contents, so it's safe to call before we
-        // swap-remove from self.
+        // Create destination columns before source swap-remove.
         for &tid in &types_to_move {
             dest.columns.entry(tid).or_insert_with(|| {
                 self.columns
@@ -194,7 +140,6 @@ impl Archetype {
             });
         }
 
-        // Pass 2 — move data: swap-remove from self, push into dest.
         for tid in types_to_move {
             let val = self
                 .columns

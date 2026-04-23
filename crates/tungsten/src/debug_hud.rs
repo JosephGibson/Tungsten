@@ -1,16 +1,4 @@
-//! Runtime developer HUD (M18).
-//!
-//! `DebugHud` is a world resource that aggregates telemetry rows and owns an
-//! ordered list of built-in plus user-registered row providers.
-//! `engine_toggle_hud` (default `F4`) toggles visibility through
-//! [`hud_toggle_system`], registered by `App::new` as the first system each
-//! frame. Default state is off; examples opt in by mutating the resource
-//! during setup.
-//!
-//! Rows are rendered through the existing `glyphon` text pipeline as a single
-//! [`TextSection`], composed every frame by [`compose_hud_text_sections`].
-//! When disabled the compose helper returns an empty `Vec` without running any
-//! provider.
+//! Runtime developer HUD; toggled by `engine_toggle_hud`.
 
 use tungsten_core::camera::{CameraController, CameraMode, CameraState};
 use tungsten_core::input::{ActionMap, InputState};
@@ -19,16 +7,10 @@ use tungsten_render::{GpuFrameTimings, TextSection};
 
 use crate::telemetry::{DisplayTelemetry, FrameTimings, RenderCounts};
 
-/// Fraction of `font_size` used as the glyph advance width when estimating
-/// block width without running `glyphon` layout. JetBrains Mono (our
-/// default "mono") measures ~0.60 em; 0.65 adds margin for the small
-/// glyphon side-bearing padding so right-anchored blocks never spill past
-/// the viewport edge.
+/// Monospace width heuristic for right-anchored text.
 pub(crate) const MONO_ADVANCE_RATIO: f32 = 0.65;
 
-/// Screen-anchor corner for the HUD block. Right-side corners use a
-/// monospace-width heuristic to estimate pixel width without running
-/// `glyphon` layout; they are approximate by design.
+/// Screen-anchor corner.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HudCorner {
     TopLeft,
@@ -37,28 +19,21 @@ pub enum HudCorner {
     BottomRight,
 }
 
-/// A single diagnostic row: `"<label>  <value>"`. Providers return a `Vec`
-/// because some built-ins emit multiple rows (e.g. top-N slowest systems).
+/// Diagnostic row.
 #[derive(Debug, Clone)]
 pub struct HudRow {
     pub label: &'static str,
     pub value: String,
 }
 
-/// Closure contract for a row provider. Providers read from `World` and
-/// return zero or more [`HudRow`]s. An empty `Vec` means "skip"; providers
-/// must never panic when a backing resource or entity is absent.
+/// HUD row provider; missing resources should return no rows.
 pub type HudRowProvider = Box<dyn Fn(&World) -> Vec<HudRow> + 'static>;
 
-/// Optional hint populated by the M20 scene/state stack. Held separately
-/// from the HUD itself so user code — a custom row provider, an external
-/// diagnostic panel — can surface the active state id without pulling on
-/// `StateStack` directly. The HUD's built-in row set is render-focused and
-/// does not consume this resource.
+/// Active state hint for custom diagnostics.
 #[derive(Debug, Clone, Default)]
 pub struct HudActiveState(pub String);
 
-/// World resource: runtime developer HUD model.
+/// Runtime developer HUD resource.
 pub struct DebugHud {
     pub enabled: bool,
     pub corner: HudCorner,
@@ -66,19 +41,12 @@ pub struct DebugHud {
     pub font_size: f32,
     pub line_height: f32,
     pub color: [u8; 4],
-    /// Outline color drawn behind the main text. Four cardinal offset copies
-    /// are emitted at `+/- outline_px` to fake a stroke; `glyphon` has no
-    /// native stroke API so this is the minimal path.
+    /// Outline color.
     pub outline_color: [u8; 4],
-    /// Outline offset in pixels. Set to `0.0` to disable the outline and skip
-    /// the extra text sections.
+    /// Outline offset; `0.0` disables outline.
     pub outline_px: f32,
     pub padding_px: f32,
-    /// Minimum wall-clock interval between text refreshes, in milliseconds.
-    /// EWMA keeps updating every frame; only the displayed snapshot is
-    /// throttled so fast-changing values stay readable. Defaults to 500 ms
-    /// (2 Hz) — values dwell long enough for the human eye to actually
-    /// read them. Set to `0.0` to refresh every frame.
+    /// Text refresh interval; EWMA still updates every frame.
     pub refresh_interval_ms: f32,
     fps_ewma: f32,
     frame_ms_ewma: f32,
@@ -91,9 +59,7 @@ pub struct DebugHud {
 
 impl DebugHud {
     pub fn new() -> Self {
-        // Render-focused: the HUD is the at-a-glance render dashboard. Per-
-        // system timings belong in the systems overlay (`F2`), per-entity
-        // state belongs in the inspector (`F3`).
+        // HUD stays render-focused; systems/inspector own deeper views.
         let built_in: Vec<HudRowProvider> = vec![
             Box::new(gpu_provider),
             Box::new(display_provider),
@@ -122,15 +88,12 @@ impl DebugHud {
         }
     }
 
-    /// Flip `enabled`.
+    /// Toggle visibility.
     pub fn toggle(&mut self) {
         self.enabled = !self.enabled;
     }
 
-    /// Vertical pixel extent of the HUD as composed on the last frame,
-    /// including top padding. Returns `0.0` when disabled or before the
-    /// first compose call. Used by the systems-timing overlay to stack
-    /// itself directly below the HUD without guessing dimensions.
+    /// Last composed height, including top padding.
     pub fn rendered_height_px(&self) -> f32 {
         if !self.enabled {
             return 0.0;
@@ -142,8 +105,7 @@ impl DebugHud {
         self.padding_px + lines * self.line_height
     }
 
-    /// Register an additional row provider. Custom rows render after all
-    /// built-ins, in registration order.
+    /// Register custom rows after built-ins.
     pub fn add_row<F>(&mut self, provider: F)
     where
         F: Fn(&World) -> Vec<HudRow> + 'static,
@@ -151,9 +113,6 @@ impl DebugHud {
         self.custom.push(Box::new(provider));
     }
 
-    /// Compute the FPS / frame-ms row from the smoothed state. Kept as a
-    /// method rather than a free-function provider so the smoothed values
-    /// can be read without stashing them in a shadow resource.
     fn fps_row(&self) -> Vec<HudRow> {
         vec![HudRow {
             label: "fps",
@@ -167,10 +126,6 @@ impl Default for DebugHud {
         Self::new()
     }
 }
-
-// ---------------------------------------------------------------------------
-// Built-in providers
-// ---------------------------------------------------------------------------
 
 fn camera_provider(world: &World) -> Vec<HudRow> {
     let state = match world.get_resource::<CameraState>() {
@@ -218,8 +173,6 @@ fn gpu_provider(world: &World) -> Vec<HudRow> {
         Some(g) => g,
         None => return Vec::new(),
     };
-    // Two compact fields: gpu timing + backend name. Present mode is
-    // already on the `view` row, so don't duplicate it here.
     let gpu_ms = match gpu.frame_gpu_ms {
         Some(ms) => format!("{ms:.2}ms"),
         None => "n/a".to_string(),
@@ -256,19 +209,7 @@ fn render_cpu_provider(world: &World) -> Vec<HudRow> {
     }]
 }
 
-// ---------------------------------------------------------------------------
-// Compose / toggle
-// ---------------------------------------------------------------------------
-
-/// Called by `App` each frame after the extract stage. Updates the HUD's
-/// EWMA smoothing and produces a single `TextSection` holding all active
-/// rows. Returns an empty `Vec` when the HUD is disabled, without running
-/// any provider.
-///
-/// The canonical call pattern in `App` is: `remove_resource::<DebugHud>()`,
-/// call this helper with `&mut hud` and `&world`, then `insert_resource(hud)`
-/// afterwards. That dance is needed because the providers take `&World` and
-/// the HUD itself lives as a `World` resource.
+/// Compose HUD sections; caller removes/reinserts resource to split borrows.
 pub(crate) fn compose_hud_text_sections(
     hud: &mut DebugHud,
     world: &World,
@@ -281,8 +222,7 @@ pub(crate) fn compose_hud_text_sections(
         return Vec::new();
     }
 
-    // EWMA smoothing of frame time / fps. Runs every frame so the snapshot
-    // captured at the next refresh tick reflects all frames in between.
+    // EWMA updates every frame, displayed snapshot is throttled.
     hud.frame_ms_ewma = (1.0 - hud.ewma_alpha) * hud.frame_ms_ewma + hud.ewma_alpha * frame_ms;
     hud.fps_ewma = if hud.frame_ms_ewma > 0.0 {
         1000.0 / hud.frame_ms_ewma
@@ -290,10 +230,6 @@ pub(crate) fn compose_hud_text_sections(
         0.0
     };
 
-    // Throttle refresh so fast-changing values stay readable. The cached
-    // sections are re-emitted between ticks; `time_since_refresh_ms` is
-    // seeded to +infinity so the very first call after enable always
-    // rebuilds.
     hud.time_since_refresh_ms += frame_ms;
     if hud.time_since_refresh_ms < hud.refresh_interval_ms && !hud.cached_sections.is_empty() {
         return hud.cached_sections.clone();
@@ -313,9 +249,7 @@ pub(crate) fn compose_hud_text_sections(
         return Vec::new();
     }
 
-    // Right-align the label column and separate from the value with a
-    // single space. Values are already whitespace-compact so double-
-    // spacing here would just pad the row for no signal.
+    // Right-align labels; values stay compact.
     let label_w = rows
         .iter()
         .map(|r| r.label.chars().count())
@@ -393,11 +327,7 @@ pub(crate) fn compose_hud_text_sections(
     sections
 }
 
-/// Compute the top-left origin for a multi-line text block anchored to one of
-/// the four screen corners. Shared by the systems-timing overlay and the
-/// entity inspector so their layout math stays in one place. Width is
-/// estimated with the same `font_size * MONO_ADVANCE_RATIO` monospace
-/// heuristic used by HUD's right-side corners.
+/// Anchor multi-line text block using HUD monospace heuristic.
 pub(crate) fn anchor_text_block(
     corner: HudCorner,
     lines: &[String],
@@ -422,9 +352,7 @@ pub(crate) fn anchor_text_block(
     }
 }
 
-/// Engine-registered system: toggles `DebugHud.enabled` on the
-/// `engine_toggle_hud` action edge. Runs as the first system each frame so
-/// input is observed before any user system consumes `just_pressed`.
+/// Toggle HUD on `engine_toggle_hud` edge.
 pub fn hud_toggle_system(world: &mut World) {
     let pressed = {
         let Some(input) = world.get_resource::<InputState>() else {

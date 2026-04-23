@@ -1,12 +1,4 @@
-//! Per-pixel RGBA image diff (M21). Decodes two PNG paths via `image::open`
-//! and walks the RGBA byte arrays; `max_delta` is the maximum per-channel
-//! absolute difference across all pixels, `mean_delta` is the mean of the
-//! same metric, and `pixels_above_tolerance` counts pixels whose worst
-//! channel delta exceeds the supplied tolerance.
-//!
-//! Deliberately not a perceptual metric. The visual-regression fixture
-//! ships with `tolerance = 2` and expects `pixels_above_tolerance == 0` on
-//! the reference machine; bumping the tolerance floor is a `D-047` decision.
+//! D-047 per-pixel RGBA diff; non-perceptual by design.
 
 use std::path::Path;
 

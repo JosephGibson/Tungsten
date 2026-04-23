@@ -5,45 +5,29 @@ use std::time::{Duration, Instant};
 
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 
-/// Debounce window: collapse rapid successive writes (e.g. editor swap-saves)
-/// into a single reload event per path per window.
+/// Collapse editor swap-saves into one reload event per path.
 const DEBOUNCE_MS: u64 = 50;
 
-/// Watches asset directories and optional extra files on a background thread
-/// and forwards file-change events to the main thread via `std::sync::mpsc`.
-/// No Arc<Mutex>, no async.
-///
-/// Recursive asset directories are watched as `RecursiveMode::Recursive`.
-/// Extra files (e.g. workspace-root `input.json`) are handled by watching
-/// their parent non-recursively and filtering in `drain_ready` so only the
-/// explicit file bubbles up — keeping noise from unrelated files in the
-/// same directory out of the reload path.
+/// Background file watcher; `mpsc`, no async, no shared mutable state.
 pub struct HotReloadWatcher {
-    /// Kept alive so the OS watcher doesn't stop when this struct is held.
+    /// Keep OS watcher alive.
     _watcher: RecommendedWatcher,
     receiver: Receiver<PathBuf>,
-    /// Paths with pending events; value is the time of the last event seen.
+    /// Pending path -> last event time.
     pending: HashMap<PathBuf, Instant>,
-    /// Canonical roots of recursive watches. A received path is accepted if
-    /// it starts with any of these.
+    /// Canonical recursive watch roots.
     recursive_roots: Vec<PathBuf>,
-    /// Canonical paths of extra files watched via their parent directory.
+    /// Canonical extra files watched via parent directories.
     allowed_extra_files: HashSet<PathBuf>,
 }
 
 impl HotReloadWatcher {
-    /// Start watching each directory in `watch_dirs` recursively and each
-    /// path in `extra_files` non-recursively (via its parent). Returns
-    /// `None` if watcher setup fails (unsupported platform, permission
-    /// error, etc.); the caller should log and run without hot reload.
-    /// Directories or extra-file parents that do not exist are skipped
-    /// with a warning rather than failing.
+    /// Start recursive dir watches plus parent watches for explicit files.
     pub fn new(watch_dirs: &[PathBuf], extra_files: &[PathBuf]) -> Option<Self> {
         let (tx, rx) = mpsc::channel::<PathBuf>();
 
         let mut watcher = match notify::recommended_watcher(move |res: notify::Result<Event>| {
             if let Ok(event) = res {
-                // Only react to data writes, not metadata or access events.
                 if matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_)) {
                     for path in event.paths {
                         let _ = tx.send(path);
@@ -74,9 +58,7 @@ impl HotReloadWatcher {
             watched_any = true;
         }
 
-        // Extra files: watch each unique parent non-recursively. Register
-        // the canonical file path so `drain_ready` can filter unrelated
-        // events from the same parent directory.
+        // Extra files: watch unique parents, filter to explicit files later.
         let mut allowed_extra_files = HashSet::new();
         let mut watched_parents: HashSet<PathBuf> = HashSet::new();
         for file in extra_files {
@@ -123,17 +105,12 @@ impl HotReloadWatcher {
         })
     }
 
-    /// Drain all events whose debounce window has elapsed. Call once per
-    /// frame, after tick() and before render(). Returns absolute file paths
-    /// ready for processing, filtered to events that fall under a recursive
-    /// root or match an explicit extra file.
+    /// Drain debounced, accepted paths; call once per frame before render.
     pub fn drain_ready(&mut self) -> Vec<PathBuf> {
         let now = Instant::now();
         let window = Duration::from_millis(DEBOUNCE_MS);
 
-        // Absorb all queued events, resetting each accepted path's deadline.
-        // Events that fall outside our configured scope (e.g. unrelated files
-        // in a non-recursively watched parent) are dropped here.
+        // Accepted events reset the path debounce deadline.
         loop {
             match self.receiver.try_recv() {
                 Ok(path) => {
@@ -149,7 +126,6 @@ impl HotReloadWatcher {
             }
         }
 
-        // Collect paths whose last event was more than DEBOUNCE_MS ago.
         let mut ready = Vec::new();
         self.pending.retain(|path, last_seen| {
             if now.duration_since(*last_seen) >= window {
@@ -171,11 +147,7 @@ fn canonical_or_clone(path: &Path) -> PathBuf {
     path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
 }
 
-/// Pure path-filter logic. A path is accepted if it exactly matches one of
-/// the explicit extra-file entries (name-based match for things like
-/// `input.json`) or if it lives under any of the recursive watch roots.
-/// Extracted from [`HotReloadWatcher::accept`] so the filter can be unit
-/// tested without spinning up a real file watcher.
+/// Accept explicit extra files or paths under recursive roots.
 fn accept_path(
     path: &Path,
     recursive_roots: &[PathBuf],

@@ -1,13 +1,4 @@
-//! Core-owned action map. Maps string action names to lists of `Binding`
-//! (keys, mouse buttons, or discrete scroll directions) and resolves
-//! edge/pressed queries against `InputState`. Loaded from an optional
-//! workspace-root `input.json`; a built-in default map covers every action
-//! consumed by the in-tree examples so missing bindings fall back gracefully.
-//!
-//! Frame-order invariant: `ActionMap` is a pure data resource. Queries are
-//! read-only against `InputState` and can run anywhere in the update stage
-//! without affecting the canonical system -> flush -> event -> hot reload ->
-//! extract -> render order.
+//! Core-owned action map; pure data over read-only `InputState` queries.
 
 use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
@@ -20,9 +11,7 @@ use thiserror::Error;
 
 use crate::input::{InputState, KeyCode, MouseButton, ScrollDirection};
 
-/// A single physical input binding. `Key` fires against keyboard scan codes,
-/// `Mouse` fires against mouse buttons, and `Scroll` fires as a one-frame
-/// impulse for the matching wheel direction.
+/// Physical input binding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Binding {
@@ -31,9 +20,7 @@ pub enum Binding {
     Scroll { direction: ScrollDirection },
 }
 
-/// Core-owned action map. The inner storage is a plain `HashMap<String,
-/// Vec<Binding>>`. Queries take an `&InputState` so the resource stays
-/// read-only during a frame.
+/// String action names mapped to physical bindings.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ActionMap {
     #[serde(default)]
@@ -66,24 +53,19 @@ pub enum ActionMapError {
 }
 
 impl ActionMapError {
-    /// True when the underlying cause is a missing file. Callers use this to
-    /// fall back to `ActionMap::default_map()` without treating the missing
-    /// file as an error.
+    /// Missing-file error check for default fallback.
     pub fn is_not_found(&self) -> bool {
         matches!(self, Self::Io { source, .. } if source.kind() == std::io::ErrorKind::NotFound)
     }
 }
 
 impl ActionMap {
-    /// Build an empty map. Use `default_map` for the engine-default bindings.
+    /// Empty action map.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Engine default bindings. These cover every action consumed by the
-    /// in-tree examples plus the engine-owned controls (`F1`, `F2`, `F3`,
-    /// `F4`, `F9`, `F11`, `Escape`) so the default behaviour survives
-    /// deleting `input.json`.
+    /// Engine default bindings for examples and engine-owned controls.
     pub fn default_map() -> Self {
         let mut actions: HashMap<String, Vec<Binding>> = HashMap::new();
         actions.insert(
@@ -242,15 +224,12 @@ impl ActionMap {
         }
     }
 
-    /// Record where this action map should be written when persisted. Useful
-    /// when the map was synthesized from defaults because `input.json` was
-    /// absent at startup.
+    /// Set path for later persistence.
     pub fn set_source_path(&mut self, path: impl Into<PathBuf>) {
         self.source_path = Some(path.into());
     }
 
-    /// Load an action map from a JSON file. Parse errors carry the path so the
-    /// caller can surface a clear startup-fatal message.
+    /// Load action map JSON.
     pub fn load(path: &Path) -> Result<Self, ActionMapError> {
         let contents = std::fs::read_to_string(path).map_err(|source| ActionMapError::Io {
             path: path.display().to_string(),
@@ -259,7 +238,7 @@ impl ActionMap {
         Self::from_json(&contents, path)
     }
 
-    /// Parse an action map from a JSON string. Used by `load` and tests.
+    /// Parse action map JSON text.
     pub fn from_json(contents: &str, path: &Path) -> Result<Self, ActionMapError> {
         let mut map: Self =
             serde_json::from_str(contents).map_err(|source| ActionMapError::Parse {
@@ -272,9 +251,7 @@ impl ActionMap {
         Ok(map)
     }
 
-    /// Merge `loaded` on top of the engine defaults. User-supplied entries
-    /// override the default for that action (even an empty list disables the
-    /// action). Actions present only in defaults are preserved.
+    /// Merge loaded map over defaults; empty list disables action.
     pub fn merged_with_defaults(loaded: Self) -> Self {
         let ActionMap {
             actions,
@@ -291,8 +268,7 @@ impl ActionMap {
         merged
     }
 
-    /// Persist the current map back to its remembered source path. Uses an
-    /// atomic temp-file + rename path inside the source directory.
+    /// Persist to remembered source path via temp-file rename.
     pub fn persist(&mut self) -> Result<(), ActionMapError> {
         let path = self
             .source_path
@@ -301,8 +277,7 @@ impl ActionMap {
         self.persist_to(&path)
     }
 
-    /// Persist the current map to `path`, updating the remembered source path
-    /// and raw source text on success.
+    /// Persist to path and remember it.
     pub fn persist_to(&mut self, path: &Path) -> Result<(), ActionMapError> {
         let rendered = self.render_for_save()?;
         atomic_write(path, &rendered)?;
@@ -311,23 +286,19 @@ impl ActionMap {
         Ok(())
     }
 
-    /// Return the bindings for an action, or `&[]` if the action is unknown.
-    /// Borrowed slice: no allocation on the query path.
+    /// Bindings for action; unknown returns empty slice.
     pub fn bindings(&self, action: &str) -> &[Binding] {
         self.actions.get(action).map(Vec::as_slice).unwrap_or(&[])
     }
 
-    /// Replace every binding for `action`. Used by runtime rebind flows
-    /// (debug tooling, eventual settings menu). Call `persist` afterwards if
-    /// the new binding should be written back to `input.json`.
+    /// Replace action bindings; call `persist` to save.
     pub fn replace_bindings(&mut self, action: impl Into<String>, bindings: Vec<Binding>) {
         let mut bindings = bindings;
         dedupe_in_place(&mut bindings);
         self.actions.insert(action.into(), bindings);
     }
 
-    /// Convenience for engine-side runtime rebind flows: replace the action's
-    /// bindings, then immediately write the updated map back to disk.
+    /// Replace bindings and persist immediately.
     pub fn replace_bindings_and_persist(
         &mut self,
         action: impl Into<String>,
@@ -337,8 +308,7 @@ impl ActionMap {
         self.persist()
     }
 
-    /// True if any binding for `action` is currently held. Unknown or empty
-    /// actions return `false`.
+    /// Any binding currently held.
     pub fn is_pressed(&self, input: &InputState, action: &str) -> bool {
         self.bindings(action).iter().any(|binding| match *binding {
             Binding::Key { code } => input.is_pressed(code),
@@ -347,8 +317,7 @@ impl ActionMap {
         })
     }
 
-    /// True if any binding for `action` transitioned from released to pressed
-    /// this frame.
+    /// Any binding transitioned pressed this frame.
     pub fn just_pressed(&self, input: &InputState, action: &str) -> bool {
         self.bindings(action).iter().any(|binding| match *binding {
             Binding::Key { code } => input.just_pressed(code),
@@ -357,8 +326,7 @@ impl ActionMap {
         })
     }
 
-    /// True if any binding for `action` transitioned from pressed to released
-    /// this frame.
+    /// Any binding transitioned released this frame.
     pub fn just_released(&self, input: &InputState, action: &str) -> bool {
         self.bindings(action).iter().any(|binding| match *binding {
             Binding::Key { code } => input.just_released(code),
@@ -367,8 +335,7 @@ impl ActionMap {
         })
     }
 
-    /// Iterator over `(action, bindings)` pairs. Stable ordering is not
-    /// guaranteed (backed by `HashMap`).
+    /// Iterate `(action, bindings)`; order unstable.
     pub fn iter(&self) -> impl Iterator<Item = (&str, &[Binding])> {
         self.actions
             .iter()
@@ -602,8 +569,7 @@ fn next_temp_path(parent: &Path, file_name: &str) -> PathBuf {
     parent.join(format!(".{file_name}.{}.{}.tmp", std::process::id(), nonce))
 }
 
-/// Convenience: resolve a relative or absolute path to an absolute `PathBuf`.
-/// Used by call sites that want to report a canonical path in log messages.
+/// Resolve path for logging.
 pub fn resolve_path(path: &Path) -> PathBuf {
     path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
 }

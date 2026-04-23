@@ -1,40 +1,31 @@
-//! CPU frame-stage timing telemetry.
-//!
-//! `FrameTimings` is a World resource populated each frame by `App`.
-//! It is consumed by the runtime HUD (M18) and offline tooling.
-//! All timings are wall-clock milliseconds from `std::time::Instant`.
+//! CPU frame-stage telemetry; timings are wall-clock milliseconds.
 
 use tungsten_core::{DisplayMode, DisplayState, ScaleMode};
 
-/// Per-stage CPU timing for a single frame, in milliseconds.
-/// Populated by `App` at the end of each `RedrawRequested` pass and
-/// inserted as a resource so any system or HUD can read it.
+/// Per-frame stage timings.
 #[derive(Debug, Clone, Default)]
 pub struct FrameTimings {
-    /// Total wall time for all registered systems (sum of system_timings durations).
+    /// Total registered-system time.
     pub update_ms: f32,
-    /// Time spent in all extract closures (quads + sprites + text).
+    /// Extract closure time.
     pub extract_ms: f32,
-    /// Total time spent in the render stage, including encode plus submit/present waits.
+    /// Render stage time.
     pub render_ms: f32,
-    /// CPU time spent acquiring the next surface texture.
+    /// Surface acquire time.
     pub render_acquire_ms: f32,
-    /// CPU time spent preparing render data, recording commands, and finishing the encoder.
+    /// Encode/command recording time.
     pub render_encode_ms: f32,
-    /// CPU time spent submitting work, presenting, and waiting on present/readback.
+    /// Submit/present/readback wait time.
     pub render_submit_present_ms: f32,
-    /// Time spent draining AudioCommands and forwarding to the audio thread.
+    /// Audio command forwarding time.
     pub audio_ms: f32,
-    /// Time spent in process_hot_reload.
+    /// Hot-reload processing time.
     pub hot_reload_ms: f32,
-    /// Time spent draining and applying the `CommandBuffer` resource each frame.
-    /// Includes all deferred spawn/despawn/insert/remove mutations from this frame's systems.
+    /// CommandBuffer flush time.
     pub flush_ms: f32,
-    /// Total wall time for the frame (RedrawRequested entry to end of render).
+    /// Total frame wall time.
     pub total_ms: f32,
-    /// Per-system breakdown: (name, duration_ms) in registration order.
-    /// Systems registered with `App::add_system` use auto-generated name "system_N".
-    /// Systems registered with `App::add_system_named` use the provided name.
+    /// Per-system `(name, duration_ms)` in registration order.
     pub system_timings: Vec<(String, f32)>,
 }
 
@@ -43,7 +34,7 @@ impl FrameTimings {
         Self::default()
     }
 
-    /// Return the name and duration of the slowest system this frame, or None.
+    /// Slowest system this frame.
     pub fn slowest_system(&self) -> Option<(&str, f32)> {
         self.system_timings
             .iter()
@@ -52,7 +43,7 @@ impl FrameTimings {
     }
 }
 
-/// Runtime display/window telemetry published by the umbrella crate.
+/// Runtime display/window telemetry.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DisplayTelemetry {
     pub resolution: (u32, u32),
@@ -88,8 +79,7 @@ impl Default for DisplayTelemetry {
     }
 }
 
-/// Per-frame counts of what the render path saw this frame. Populated by
-/// `App` after the extract stage and read by the runtime HUD (M18).
+/// Per-frame render counts from extract.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct RenderCounts {
     pub entities: u32,

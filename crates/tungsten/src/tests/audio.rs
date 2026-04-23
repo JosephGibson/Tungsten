@@ -72,7 +72,6 @@ fn prepare_pcm_upmix_mono_to_stereo() {
         channels: 1,
     };
     let out = prepare_pcm(&data, 44100, 2);
-    // Each mono sample should appear twice (L and R)
     assert_eq!(out.len(), 6);
     assert!((out[0] - 0.5).abs() < 1e-6);
     assert!((out[1] - 0.5).abs() < 1e-6);

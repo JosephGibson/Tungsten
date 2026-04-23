@@ -201,9 +201,7 @@ fn shared_camera_tracks_player() {
     let mut world = seed_world();
     let player = world.spawn();
     world.insert(player, Player::default());
-    // Place the player well past the half-viewport. With the 84x32 map, the
-    // base zoom is 288/(32*TILE) ≈ 0.5625, so half the 480px window spans
-    // ≈ 427 world px — anything smaller keeps the camera clamped at 0.
+    // Past half-viewport so follow camera unclamps from origin.
     world.insert(player, Position(Vec2::new(800.0, 100.0)));
     world.insert(player, Transform::from_position(Vec2::new(800.0, 100.0)));
     world.insert(player, Velocity(Vec2::ZERO));
@@ -228,7 +226,6 @@ fn camera_clamped_at_right_boundary() {
     let mut world = seed_world();
     let player = world.spawn();
     world.insert(player, Player::default());
-    // Place the player far past the right edge of the map.
     world.insert(player, Position(Vec2::new(9999.0, 100.0)));
     world.insert(player, Transform::from_position(Vec2::new(9999.0, 100.0)));
     world.insert(player, Velocity(Vec2::ZERO));
@@ -241,8 +238,7 @@ fn camera_clamped_at_right_boundary() {
     camera_update_system(&mut world);
 
     let cam = world.get_resource::<CameraState>().unwrap();
-    // The shared camera path derives zoom from window.height / map_h.
-    // seed_world uses 480x288, map_h = 288, so zoom = 1.0 and viewport_w = 480.
+    // Seeded zoom=1.0, viewport_w=480.
     let zoom = 288.0 / (MAP_ROWS as f32 * TILE);
     let max_x = (MAP_COLS as f32 * TILE - 480.0 / zoom).max(0.0);
     assert!(
@@ -269,7 +265,6 @@ fn spawn_ball_system_spawns_at_fixed_rate_while_held() {
     world.insert_resource(CommandBuffer::new());
     world.insert_resource(BallSpawnState::default());
 
-    // Bind spawn_ball to LMB for the test (engine default does not include it).
     world
         .get_resource_mut::<ActionMap>()
         .unwrap()
@@ -292,8 +287,7 @@ fn spawn_ball_system_spawns_at_fixed_rate_while_held() {
         camera.zoom = 1.0;
     }
 
-    // One 170 ms step at a held LMB should yield floor(0.170 / 0.032) = 5 balls.
-    // (Avoids the floating-point cliff at exactly 5 * interval.)
+    // 170 ms avoids exact-multiple floating-point cliff: floor(0.170 / 0.032) = 5.
     world.get_resource_mut::<DeltaTime>().unwrap().dt = 0.170;
     spawn_ball_system(&mut world);
 
@@ -316,8 +310,7 @@ fn spawn_ball_system_spawns_at_fixed_rate_while_held() {
             "ball {pos:?} not on jitter ring (dist {dist}, expected {BALL_SPAWN_JITTER})"
         );
     }
-    // Coincident spawns were the root cause of the pile-drift bug; every
-    // spawn in a single hold must resolve to a distinct world position.
+    // Regression: no coincident spawns within one hold.
     for i in 0..positions.len() {
         for j in (i + 1)..positions.len() {
             assert_ne!(
@@ -344,7 +337,6 @@ fn spawn_ball_system_resets_accumulator_on_release() {
             }],
         );
 
-    // Half a spawn interval while held — not enough to fire yet.
     world.get_resource_mut::<DeltaTime>().unwrap().dt = 0.016;
     world
         .get_resource_mut::<InputState>()
@@ -353,7 +345,7 @@ fn spawn_ball_system_resets_accumulator_on_release() {
     spawn_ball_system(&mut world);
     assert!(world.get_resource::<BallSpawnState>().unwrap().accumulator > 0.0);
 
-    // Release: accumulator must snap back to zero so a later press starts fresh.
+    // Release resets held-spawn accumulator.
     world
         .get_resource_mut::<InputState>()
         .unwrap()
@@ -424,7 +416,7 @@ fn spawn_black_hole_system_drags_active_hole_to_cursor_while_held() {
         camera.zoom = 1.0;
     }
 
-    // Frame 1: press at (50, 60) — spawns and tracks the hole.
+    // Frame 1: press spawns and tracks.
     {
         let input = world.get_resource_mut::<InputState>().unwrap();
         input.update_cursor_position(50.0, 60.0);
@@ -437,7 +429,7 @@ fn spawn_black_hole_system_drags_active_hole_to_cursor_while_held() {
         .0
         .expect("press should register active hole");
 
-    // Frame 2: still held, cursor moved to (200, 150), and age it a bit.
+    // Frame 2: hold moves and refreshes lifetime.
     if let Some(hole) = world.get_mut::<BlackHole>(hole_entity) {
         hole.remaining = 0.5;
     }
@@ -461,8 +453,7 @@ fn spawn_black_hole_system_drags_active_hole_to_cursor_while_held() {
         "hold must not spawn a second hole per frame"
     );
 
-    // Frame 3: release — the dragged hole despawns immediately and the
-    // active slot clears so later presses start fresh.
+    // Frame 3: release despawns dragged entity and clears slot.
     {
         let input = world.get_resource_mut::<InputState>().unwrap();
         input.begin_frame();
@@ -560,7 +551,6 @@ fn despawn_out_of_bounds_culls_escaped_balls_and_keeps_in_bounds_balls() {
     let mut world = seed_world();
     world.insert_resource(CommandBuffer::new());
 
-    // In-bounds ball (centre of map).
     let inside = world.spawn();
     world.insert(inside, Ball);
     world.insert(
@@ -571,7 +561,6 @@ fn despawn_out_of_bounds_culls_escaped_balls_and_keeps_in_bounds_balls() {
         )),
     );
 
-    // Out-of-bounds ball (far below the map, as if it escaped the floor).
     let outside = world.spawn();
     world.insert(outside, Ball);
     world.insert(
@@ -601,7 +590,6 @@ fn despawn_out_of_bounds_resets_escaped_player_to_spawn() {
 
     let player = world.spawn();
     world.insert(player, Player::default());
-    // Below the world-bounds lower edge — simulates falling through the map.
     world.insert(
         player,
         Position(Vec2::new(100.0, WORLD_BOUNDS_MAX.y + 50.0)),

@@ -1,7 +1,6 @@
-/// Resource that tracks elapsed time between frames.
+/// Elapsed seconds between frames.
 #[derive(Debug, Clone, Copy)]
 pub struct DeltaTime {
-    /// Seconds elapsed since last frame.
     pub dt: f32,
 }
 

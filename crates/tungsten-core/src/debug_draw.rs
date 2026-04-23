@@ -1,17 +1,11 @@
-//! `DebugDraw` resource (M21): pure POD debug primitives produced by systems
-//! and drained by the umbrella crate's extract stage. `tungsten-core` stays
-//! free of `wgpu`/`winit` types per `D-007` / `D-016`; the render seam is
-//! crossed by expanding commands into `QuadInstance` (AABB edges) and
-//! `DebugLineInstance` (arbitrary-angle lines, circle polylines) POD slices
-//! inside `tungsten`.
+//! D-007/D-016 debug draw commands; core stays renderer-free.
 
 use glam::Vec2;
 
-/// Default polyline segment count used for `draw_circle` commands.
+/// Default circle polyline segment count.
 pub const DEFAULT_CIRCLE_SEGMENTS: u16 = 24;
 
-/// Debug primitive shape. All fields are world-space; thickness is carried on
-/// `DebugCommand`.
+/// World-space debug primitive shape.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum DebugShape {
     Aabb {
@@ -29,8 +23,7 @@ pub enum DebugShape {
     },
 }
 
-/// One queued debug draw command. `color` is linear-space RGBA; `thickness`
-/// is in pixels.
+/// Queued debug draw command.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DebugCommand {
     pub shape: DebugShape,
@@ -38,8 +31,7 @@ pub struct DebugCommand {
     pub thickness: f32,
 }
 
-/// Accumulator resource. Systems push commands; the extract stage drains and
-/// clears the vector before the render stage consumes the expansion.
+/// Debug command accumulator resource.
 #[derive(Debug, Default)]
 pub struct DebugDraw {
     cmds: Vec<DebugCommand>,

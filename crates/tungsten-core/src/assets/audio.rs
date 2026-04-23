@@ -1,24 +1,21 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-/// Opaque handle to a registered sound asset. Keyed by the same u32 scheme
-/// as `TextureHandle` — core allocates IDs; `tungsten` stores the decoded PCM.
+/// Registered sound handle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AudioHandle(pub u32);
 
-/// Decoded PCM audio data. Stored fully in RAM at load time (eager decode).
-/// Samples are interleaved stereo f32 values at the file's native sample rate.
-/// The audio thread resamples to the device rate at init time if needed.
+/// Eager-decoded PCM audio data.
 pub struct SoundData {
-    /// Interleaved stereo PCM samples (L, R, L, R, …).
+    /// Interleaved f32 PCM samples.
     pub samples: Vec<f32>,
     pub sample_rate: u32,
-    /// Number of channels in the original file (1 = mono, 2 = stereo).
+    /// Source channel count.
     pub channels: u16,
 }
 
 impl SoundData {
-    /// Decode an audio file (OGG, WAV, MP3) to raw PCM via symphonia.
+    /// Decode audio file to raw PCM via symphonia.
     pub fn decode(path: &Path) -> anyhow::Result<SoundData> {
         use symphonia::core::audio::SampleBuffer;
         use symphonia::core::codecs::DecoderOptions;
@@ -110,14 +107,12 @@ impl SoundData {
     }
 }
 
-/// Registry of decoded sound assets. Stored as a Resource in the World.
-/// Allocates `AudioHandle`s, stores `SoundData`, and tracks the manifest-declared
-/// default volume and looping flag for each sound.
+/// Decoded sound registry resource.
 pub struct SoundRegistry {
     next_id: u32,
     sounds: HashMap<AudioHandle, SoundData>,
     id_map: HashMap<String, AudioHandle>,
-    /// Manifest-declared (volume, looping) defaults, keyed by handle.
+    /// Manifest `(volume, looping)` defaults.
     defaults: HashMap<AudioHandle, (f32, bool)>,
 }
 
@@ -131,7 +126,7 @@ impl SoundRegistry {
         }
     }
 
-    /// Register a decoded sound with its manifest-declared defaults and return its handle.
+    /// Register decoded sound and defaults.
     pub fn register(
         &mut self,
         id: String,
@@ -155,12 +150,12 @@ impl SoundRegistry {
         self.id_map.get(id).copied()
     }
 
-    /// Manifest-declared default volume for this handle (falls back to 1.0 if missing).
+    /// Manifest default volume.
     pub fn get_volume(&self, handle: AudioHandle) -> f32 {
         self.defaults.get(&handle).map(|&(v, _)| v).unwrap_or(1.0)
     }
 
-    /// Manifest-declared default looping flag for this handle (falls back to false if missing).
+    /// Manifest default looping flag.
     pub fn get_looping(&self, handle: AudioHandle) -> bool {
         self.defaults.get(&handle).map(|&(_, l)| l).unwrap_or(false)
     }

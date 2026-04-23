@@ -33,7 +33,6 @@ fn missing_visibility_emits_nothing() {
     let e = world.spawn();
     world.insert(e, Transform::default());
     world.insert(e, Sprite::new("quad"));
-    // intentionally no Visibility
 
     let batches = extract_sprites_default(&world);
     let total: usize = batches.iter().map(|b| b.instances.len()).sum();
@@ -58,7 +57,6 @@ fn invisible_entity_emits_nothing() {
 #[test]
 fn missing_asset_id_emits_nothing() {
     let mut world = world_with_registry();
-    // No sprite registered for "ghost".
 
     let e = world.spawn();
     world.insert(e, Transform::default());
@@ -125,9 +123,7 @@ fn z_order_groups_do_not_merge_across_a_lower_z_entry() {
     let mut world = world_with_registry();
     register_sprite(&mut world, "quad", FilterMode::Nearest);
 
-    // Spawn three entities all sharing the same (texture, filter) key
-    // but at different z_orders. Because the per-key batch map resets
-    // between z-order runs, we get 3 batches, not 1.
+    // Batch map resets between z-order runs.
     for z in [-1, 0, 1] {
         let e = world.spawn();
         world.insert(e, Transform::default());

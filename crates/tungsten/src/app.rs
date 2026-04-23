@@ -41,93 +41,63 @@ use winit::event::{ElementState, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Fullscreen, Window, WindowId};
 
-/// A system function that runs each tick.
+/// Tick system.
 pub type SystemFn = Box<dyn FnMut(&mut World)>;
 
-/// A render-extraction function: reads the World and produces QuadInstances.
+/// World-to-quad extract.
 pub type ExtractQuadsFn = Box<dyn Fn(&World) -> Vec<QuadInstance>>;
 
-/// A render-extraction function: reads the World and produces SpriteBatches.
+/// World-to-sprite extract.
 pub type ExtractSpritesFn = Box<dyn Fn(&World) -> Vec<SpriteBatch>>;
 
-/// A render-extraction function: reads the World and produces TextSections.
+/// World-to-text extract.
 pub type ExtractTextFn = Box<dyn Fn(&World) -> Vec<TextSection>>;
 
-/// Resource: current window dimensions in physical pixels.
+/// Window dimensions in physical pixels.
 #[derive(Debug, Clone, Copy)]
 pub struct WindowSize {
     pub width: u32,
     pub height: u32,
 }
 
-/// Called once after the renderer is initialized, for asset loading.
+/// Post-renderer startup hook.
 pub type StartupFn = Box<dyn FnOnce(&mut World, &mut Renderer)>;
 
 type EventFlusher = Box<dyn FnMut(&mut World)>;
 
-/// Top-level application that drives the winit event loop, ECS, and renderer.
+/// Winit loop, ECS, and renderer owner.
 pub struct App {
     config: Config,
     window: Option<Arc<Window>>,
     renderer: Option<Renderer>,
     world: World,
-    // Systems run in registration order. No priority or grouping mechanism.
-    // If ordering becomes painful by M13, revisit with named priorities.
+    // Order: registration order; no priorities.
     systems: Vec<SystemFn>,
     extract_quads: Option<ExtractQuadsFn>,
     extract_sprites: Option<ExtractSpritesFn>,
     extract_text: Option<ExtractTextFn>,
     startup: Option<StartupFn>,
     last_frame: Option<Instant>,
-    /// If true (the default), the engine's exit action exits the process.
-    /// The default binding is `Escape`, but `input.json` may rebind it. Set
-    /// this to false when game code needs to keep the engine-side exit action
-    /// disabled (e.g. a pause menu that owns Escape itself).
     exit_on_escape: bool,
-    /// Audio subsystem — initialized after the startup callback runs.
-    /// Kept alive here so the cpal stream doesn't drop.
     audio: Option<AudioSystem>,
-    /// Hot-reload file watcher. None when hot reload is not enabled.
     hot_reload: Option<HotReloadWatcher>,
-    /// Path to the primary manifest file, used to detect manifest changes.
     manifest_path: Option<PathBuf>,
-    /// Ordered list of manifest JSON paths the engine merges and loads at
-    /// startup (D-052). Populated by `set_manifest_roots`; when empty,
-    /// asset composition is left entirely to the user's `on_startup` hook.
+    // D-052: ordered manifest roots merged before user startup.
     manifest_roots: Vec<PathBuf>,
-    /// Workspace-root `input.json` path. Present from `App::new`; wired
-    /// into the hot-reload watcher when `enable_hot_reload` is called.
     input_map_path: PathBuf,
-    /// Smoke-test mode: when `Some(n)`, render `n` frames then exit cleanly.
-    /// Populated from the `TUNGSTEN_SMOKE_FRAMES` env var. Used by
-    /// `scripts/smoke-examples.sh` to drive examples in CI-like checks.
     smoke_frames_remaining: Option<u32>,
-    /// Names for registered systems, parallel to `systems`.
     system_names: Vec<String>,
-    /// Auto-incrementing counter for unnamed system registration.
     system_name_counter: usize,
-    /// When true, use render_frame_full_timed each frame (adds device.poll stall).
-    /// Set via TUNGSTEN_GPU_TIMING env var. Never enable in production.
+    // GPU timing path adds `device.poll` stall.
     gpu_timing_enabled: bool,
-    /// Type-erased flush closures for registered event queues.
-    /// Populated by `register_event::<T>()` and run once per frame after the
-    /// command-buffer flush stage.
+    // Event queue flushers run after command flush.
     event_flushers: Vec<EventFlusher>,
-    /// Event types that already have queue resources registered.
     registered_event_types: HashSet<TypeId>,
-    /// Optional frame pacing budget derived from `DisplayState.frame_rate_cap`.
     frame_budget: Option<Duration>,
-    /// Screenshot capture wiring driven by `TUNGSTEN_CAPTURE_FRAME` /
-    /// `TUNGSTEN_CAPTURE_PATH`. `None` unless the env var is set.
     capture_config: Option<CaptureConfig>,
-    /// Monotonic rendered-frame counter; only incremented after a successful
-    /// `render_frame_full[_timed]` call so capture targets an actually-drawn
-    /// frame rather than an early-exit frame.
     frames_rendered: u64,
 }
 
-/// Resolved `TUNGSTEN_CAPTURE_FRAME` / `TUNGSTEN_CAPTURE_PATH` config. One-shot
-/// screenshot hook: once `captured` flips true the hook never fires again.
 #[derive(Debug, Clone)]
 struct CaptureConfig {
     target_frame: u64,
@@ -239,10 +209,7 @@ impl App {
             frames_rendered: 0,
         };
 
-        // Register engine-owned action consumers before user systems so they
-        // observe edge-triggered input deterministically every frame. Debug
-        // overlays toggle first so a single input frame carrying F1/F2/F3
-        // alongside F4 resolves all four edges consistently.
+        // Engine input consumers precede user systems; overlay toggles precede HUD.
         app.add_engine_system("__physics_debug_toggle", physics_debug_toggle_system);
         app.add_engine_system("__systems_overlay_toggle", systems_overlay_toggle_system);
         app.add_engine_system("__inspector_toggle", inspector_toggle_system);
@@ -254,41 +221,35 @@ impl App {
         Ok(app)
     }
 
-    /// Register a component type with the inspector so it contributes rows
-    /// when the entity carrying it is selected. The `label` appears in the
-    /// overlay as a heading above the component's rows.
+    /// Register inspectable component rows under `label`.
     pub fn register_inspectable<T: 'static + Inspectable>(&mut self, label: &'static str) {
         if let Some(state) = self.world.get_resource_mut::<InspectorState>() {
             state.register::<T>(label);
         }
     }
 
-    /// Register an engine-owned system at the current end of the system list
-    /// without touching the auto-naming counter. Used for systems that should
-    /// run regardless of user setup (e.g. the HUD toggle).
+    /// Register engine system without touching user-system naming.
     fn add_engine_system(&mut self, name: &str, system: impl FnMut(&mut World) + 'static) {
         self.system_names.push(name.to_string());
         self.systems.push(Box::new(system));
     }
 
-    /// Control whether the engine exit action exits the process (default: true).
-    /// The default binding is `Escape`; rebinding still routes through this
-    /// gate. Disable when game code wants to own the mapped input itself.
+    /// Enable or disable engine exit action handling.
     pub fn set_exit_on_escape(&mut self, exit: bool) {
         self.exit_on_escape = exit;
     }
 
-    /// Access the World for setup (spawning entities, inserting resources).
+    /// Mutable world access for setup.
     pub fn world_mut(&mut self) -> &mut World {
         &mut self.world
     }
 
-    /// Access the renderer (available after the window is created).
+    /// Mutable renderer access after window creation.
     pub fn renderer_mut(&mut self) -> Option<&mut Renderer> {
         self.renderer.as_mut()
     }
 
-    /// Register a system that runs each tick.
+    /// Register unnamed tick system.
     pub fn add_system(&mut self, system: impl FnMut(&mut World) + 'static) {
         let name = format!("system_{}", self.system_name_counter);
         self.system_name_counter += 1;
@@ -296,9 +257,7 @@ impl App {
         self.systems.push(Box::new(system));
     }
 
-    /// Register a named system. The name appears in FrameTimings::system_timings
-    /// for per-system profiling. Prefer this when the system name matters for
-    /// diagnostics output.
+    /// Register named tick system for profiling output.
     pub fn add_system_named(
         &mut self,
         name: impl Into<String>,
@@ -308,11 +267,7 @@ impl App {
         self.systems.push(Box::new(system));
     }
 
-    /// Register an event type with the engine.
-    ///
-    /// Inserts an `EventQueue<T>` resource and schedules its flush once per
-    /// frame after systems complete. Call during startup before `run()`.
-    /// Duplicate registration of the same event type is ignored.
+    /// Register `EventQueue<T>`; flushes once per frame after command flush.
     pub fn register_event<T: 'static>(&mut self) {
         Self::register_event_inner::<T>(
             &mut self.world,
@@ -321,54 +276,39 @@ impl App {
         );
     }
 
-    /// Set the function that extracts quad render data from the World.
+    /// Set quad extract function.
     pub fn set_extract_quads(&mut self, f: impl Fn(&World) -> Vec<QuadInstance> + 'static) {
         self.extract_quads = Some(Box::new(f));
     }
 
-    /// Set the function that extracts sprite render data from the World.
+    /// Set sprite extract function.
     pub fn set_extract_sprites(&mut self, f: impl Fn(&World) -> Vec<SpriteBatch> + 'static) {
         self.extract_sprites = Some(Box::new(f));
     }
 
-    /// Set the function that extracts text render data from the World.
+    /// Set text extract function.
     pub fn set_extract_text(&mut self, f: impl Fn(&World) -> Vec<TextSection> + 'static) {
         self.extract_text = Some(Box::new(f));
     }
 
-    /// Set a one-shot startup function that runs after the renderer is ready.
-    /// Use this for asset loading that requires GPU access.
+    /// Set post-renderer startup hook.
     pub fn on_startup(&mut self, f: impl FnOnce(&mut World, &mut Renderer) + 'static) {
         self.startup = Some(Box::new(f));
     }
 
-    /// Register an ordered list of manifest JSON paths the engine merges and
-    /// loads before the user's [`on_startup`] callback runs (D-052). The
-    /// merged graph is stored as a [`tungsten_core::assets::LoadedManifest`]
-    /// resource so hot-reload and diagnostics can diff against it.
-    ///
-    /// Duplicate IDs across manifests are fatal at boot (D-017). Prefer this
-    /// over calling per-type loaders from `on_startup`; those replace
-    /// registries wholesale and are the reason composition used to be
-    /// call-site-dependent.
+    /// D-052 manifest composition roots; D-017 duplicate IDs are fatal.
     pub fn set_manifest_roots(&mut self, roots: Vec<PathBuf>) {
         self.manifest_roots = roots;
     }
 
-    /// Enable hot reload: watch each directory in `assets_dirs` for file
-    /// changes and reload assets at the next frame boundary. Pass multiple
-    /// directories when assets span more than one location (e.g. a shared
-    /// root `assets/` plus an example-local `assets/`). `manifest_path` is
-    /// used to detect manifest-file changes specifically. Has no effect if
-    /// the watcher fails to start (the error is logged and the engine
-    /// continues without hot reload).
+    /// Watch asset roots; reload at frame boundary.
     pub fn enable_hot_reload(&mut self, assets_dirs: &[PathBuf], manifest_path: PathBuf) {
         let extra_files = [self.input_map_path.clone()];
         self.hot_reload = HotReloadWatcher::new(assets_dirs, &extra_files);
         self.manifest_path = Some(manifest_path);
     }
 
-    /// Run the application. Blocks until the window is closed.
+    /// Run until window close or explicit exit.
     pub fn run(mut self) -> anyhow::Result<()> {
         self.install_default_extracts();
         let event_loop = EventLoop::new()?;
@@ -376,10 +316,7 @@ impl App {
         Ok(())
     }
 
-    /// Install default render-extract closures when the user did not supply
-    /// their own. Today this only covers the sprite-extract slot (M15 /
-    /// D-042). Called at the start of [`Self::run`] and from tests; safe to
-    /// call multiple times because the conditional checks for `None`.
+    /// Install default extracts; idempotent.
     fn install_default_extracts(&mut self) {
         if self.extract_sprites.is_none() {
             self.extract_sprites = Some(Box::new(crate::sprite_extract::extract_sprites_default));
@@ -400,8 +337,7 @@ impl App {
         actions.just_pressed(input, "engine_exit")
     }
 
-    /// Poll the hot-reload watcher and apply any ready changes. Called after
-    /// tick() and before render() each frame. No-op when hot reload is disabled.
+    /// Poll hot reload; apply before extract/render.
     fn process_hot_reload(&mut self) {
         let ready = match self.hot_reload.as_mut() {
             Some(w) => w.drain_ready(),
@@ -419,9 +355,6 @@ impl App {
         for path in &ready {
             let canon = path.canonicalize().unwrap_or_else(|_| path.clone());
 
-            // Check if this is the workspace-root input.json first — its
-            // name-based match takes priority over the manifest/extension
-            // dispatch below.
             if canon.file_name().is_some_and(|name| name == "input.json") {
                 if let Err(e) = asset_loader::reload_action_map(&canon, &mut self.world) {
                     log::error!("Action map reload: {e}");
@@ -429,7 +362,6 @@ impl App {
                 continue;
             }
 
-            // Check if this is the manifest file.
             if let Some(mp) = &self.manifest_path {
                 let canon_mp = mp.canonicalize().unwrap_or_else(|_| mp.clone());
                 if canon == canon_mp {
@@ -444,8 +376,7 @@ impl App {
             let ext = canon.extension().and_then(|e| e.to_str()).unwrap_or("");
             match ext {
                 "png" | "jpg" | "jpeg" => {
-                    // Scope the immutable borrow so it drops before we pass
-                    // &mut self.world to reload_sprite.
+                    // Drop registry borrow before `reload_sprite(&mut World)`.
                     let id_filter = {
                         let reg = self
                             .world
@@ -631,8 +562,7 @@ impl App {
     }
 }
 
-/// Output of the extract stage: everything needed to call `render_frame_full`.
-/// Kept in the umbrella crate so it doesn't leak into `tungsten-render`.
+// Extract output kept in umbrella crate; renderer stays World-free.
 struct FrameExtract {
     quads: Vec<QuadInstance>,
     sprites: Vec<SpriteBatch>,
@@ -642,8 +572,6 @@ struct FrameExtract {
     extract_ms: f32,
 }
 
-/// Output of the render stage. Timings are forwarded to `FrameTimings`
-/// after the audio + input stages.
 #[derive(Default)]
 struct FrameRenderOut {
     render_ms: f32,
@@ -653,9 +581,7 @@ struct FrameRenderOut {
     gpu_frame_ms: Option<f32>,
 }
 
-/// Bundle of frame timings written in one pass at the end of each frame.
-/// Prevents the telemetry stage from holding a long `&mut FrameTimings`
-/// borrow across the render/audio stages.
+// One-pass telemetry write; no long `&mut FrameTimings` borrow across stages.
 struct FrameStageTimings {
     update_ms: f32,
     flush_ms: f32,
@@ -671,13 +597,7 @@ struct FrameStageTimings {
 }
 
 impl App {
-    // Stage methods are marked `#[inline(always)]` so debug builds flatten
-    // them back into `RedrawRequested` (release already does via LTO). Without
-    // these hints `opt-level=0` keeps every stage as its own stack frame plus
-    // struct-return memcpys (`FrameExtract`, `FrameStageTimings`,
-    // `FrameRenderOut`), which shows up first at ~1000-entity physics loads.
-    // Each stage is called exactly once per frame from the `RedrawRequested`
-    // arm, so `always` cannot cause code bloat beyond the one inlined copy.
+    // Debug perf: flatten single-call frame stages to avoid stack/memcpy overhead.
 
     #[inline(always)]
     fn stage_delta_time(&mut self) {
@@ -697,9 +617,7 @@ impl App {
         let mut system_timings: Vec<(String, f32)> = Vec::with_capacity(self.systems.len());
         debug_assert_eq!(self.systems.len(), self.system_names.len());
         for (system, name) in self.systems.iter_mut().zip(self.system_names.iter()) {
-            // Systems run with this frame's accumulated input (edge state
-            // was populated by KeyboardInput/MouseInput events that arrived
-            // before RedrawRequested in the same event-loop turn).
+            // Input edges: events received before RedrawRequested in same loop turn.
             let t0 = Instant::now();
             system(&mut self.world);
             system_timings.push((name.clone(), t0.elapsed().as_secs_f64() as f32 * 1000.0));
@@ -710,11 +628,7 @@ impl App {
 
     #[inline(always)]
     fn stage_particles(&mut self) {
-        // M23: count refresh → emit → tick. Runs after user systems and
-        // before the command-buffer flush. Emission before tick guarantees
-        // newly-spawned particles get their first integration step on the
-        // following frame, and despawns are still queued via CommandBuffer
-        // for the flush.
+        // Order: count refresh -> emit -> tick, after systems and before command flush.
         crate::particles::particle_count_refresh_system(&mut self.world);
         crate::particles::particle_emit_system(&mut self.world);
         crate::particles::particle_tick_system(&mut self.world);
@@ -722,10 +636,8 @@ impl App {
 
     #[inline(always)]
     fn stage_flush_commands(&mut self) -> f32 {
-        // Frame order invariant (Phase 3 guardrail):
-        //   run systems -> flush commands -> flush events -> hot-reload -> extract -> render
-        // Mutations are NOT visible to frame-N systems (they ran before this point).
-        // Mutations ARE visible to extract/render within this frame.
+        // Frame order: systems -> command flush -> event flush -> hot reload -> extract -> render.
+        // Frame-N command mutations: invisible to systems, visible to extract/render.
         let flush_start = Instant::now();
         let flush_buf = self
             .world
@@ -771,9 +683,7 @@ impl App {
             .map(|f| f(&self.world))
             .unwrap_or_default();
 
-        // Populate RenderCounts from this frame's live entity count and
-        // extracted sprite instances. Must run before HUD compose so the
-        // `counts` row reflects this frame.
+        // Before HUD compose: counts row uses this frame's extract.
         let entity_count = self.world.entity_count();
         let sprite_instance_count: u32 = sprites.iter().map(|b| b.instances.len() as u32).sum();
         if let Some(rc) = self.world.get_resource_mut::<RenderCounts>() {
@@ -781,19 +691,13 @@ impl App {
             rc.sprite_instances = sprite_instance_count;
         }
 
-        // Physics debug emits into DebugDraw at the start of extract so the
-        // drain below sees this frame's commands on the same frame they were
-        // produced.
+        // Extract-start emit: debug draw visible same frame.
         physics_debug_emit_system(&mut self.world);
 
-        // Drain DebugDraw into the two render channels. AABB edges reuse
-        // QuadPipeline; arbitrary-angle lines + circle polylines use
-        // DebugLinePipeline.
+        // AABBs -> quads; angled lines/circles -> debug-line pipeline.
         let (debug_quads, debug_lines) = drain_debug_draw(&mut self.world);
 
-        // HUD / systems-overlay / inspector compose. Each uses the same
-        // borrow dance: remove the resource so providers can hold `&World`
-        // while the helper holds `&mut` to the resource, then re-insert.
+        // Borrow split: remove UI state, compose with `&World`, reinsert.
         let viewport = self
             .world
             .get_resource::<WindowSize>()
@@ -849,8 +753,7 @@ impl App {
                 .unwrap_or_default()
                 .view_projection(vw, vh);
 
-            // Screenshot capture hook: arm the renderer for the target frame
-            // so the offscreen readback runs on the same frame we count below.
+            // Arm before target render; mark captured after successful submit.
             if let Some(cfg) = self.capture_config.as_mut() {
                 if !cfg.captured && self.frames_rendered + 1 == cfg.target_frame {
                     if let Err(e) = renderer.capture_frame(&cfg.path) {
@@ -1026,9 +929,7 @@ fn log_perf_line(
     );
 }
 
-/// Startup load for `input.json`. Missing file → engine defaults with an
-/// info log. IO or parse errors are fatal so they surface from `App::new`
-/// the same way `ConfigError` does from `Config::load` (per `D-008`).
+/// D-008: missing `input.json` uses defaults; parse/IO errors are fatal.
 fn load_action_map_at_startup(path: &Path) -> anyhow::Result<ActionMap> {
     match ActionMap::load(path) {
         Ok(loaded) => {
@@ -1063,9 +964,7 @@ fn resolve_startup_display(config: &Config) -> DisplayState {
     }
 }
 
-/// Parse the `TUNGSTEN_CAPTURE_RESOLUTION=WxH` env var. Returns `None` when
-/// unset or malformed so visual-regression fixtures can pin a resolution
-/// without touching `tungsten.json`.
+/// Parse `TUNGSTEN_CAPTURE_RESOLUTION=WxH`.
 fn parse_capture_resolution() -> Option<(u32, u32)> {
     let raw = std::env::var("TUNGSTEN_CAPTURE_RESOLUTION").ok()?;
     let (w, h) = raw.split_once('x')?;
@@ -1077,8 +976,7 @@ fn parse_capture_resolution() -> Option<(u32, u32)> {
     Some((w, h))
 }
 
-/// Parse the `TUNGSTEN_CAPTURE_FRAME` / `TUNGSTEN_CAPTURE_PATH` pair. The
-/// frame number is required; the path defaults to `./actual.png`.
+/// Parse one-shot capture env vars.
 fn parse_capture_config() -> Option<CaptureConfig> {
     let target_frame: u64 = std::env::var("TUNGSTEN_CAPTURE_FRAME").ok()?.parse().ok()?;
     if target_frame == 0 {
@@ -1094,9 +992,7 @@ fn parse_capture_config() -> Option<CaptureConfig> {
     })
 }
 
-/// Expand an AABB outline into four thin axis-aligned edge quads. Edges are
-/// inset by `thickness / 2` so the outline tracks the AABB interior rather
-/// than ballooning outward for large thicknesses.
+/// Expand AABB outline into interior edge quads.
 fn expand_aabb(
     out: &mut Vec<QuadInstance>,
     min: glam::Vec2,
@@ -1107,25 +1003,21 @@ fn expand_aabb(
     let t = thickness.max(0.0);
     let w = (max.x - min.x).max(0.0);
     let h = (max.y - min.y).max(0.0);
-    // Top
     out.push(QuadInstance {
         position: [min.x, min.y],
         size: [w, t],
         color,
     });
-    // Bottom
     out.push(QuadInstance {
         position: [min.x, (max.y - t).max(min.y)],
         size: [w, t],
         color,
     });
-    // Left
     out.push(QuadInstance {
         position: [min.x, min.y],
         size: [t, h],
         color,
     });
-    // Right
     out.push(QuadInstance {
         position: [(max.x - t).max(min.x), min.y],
         size: [t, h],
@@ -1133,9 +1025,7 @@ fn expand_aabb(
     });
 }
 
-/// Expand a circle command into a closed polyline of `segments` line
-/// instances. Degenerate cases (`radius <= 0` or `segments == 0`) emit
-/// nothing so downstream pipelines short-circuit on empty slices.
+/// Expand circle into closed polyline; degenerate inputs emit nothing.
 fn expand_circle(
     out: &mut Vec<DebugLineInstance>,
     center: glam::Vec2,
@@ -1279,9 +1169,7 @@ impl ApplicationHandler for App {
 
         self.window = Some(window);
 
-        // Merge-first asset composition (D-052). Runs before the user's
-        // `on_startup` closure so game code can spawn against loaded assets.
-        // Duplicate IDs across manifests halt boot with `ManifestError::DuplicateId`.
+        // D-052: merge manifests before user startup; duplicate IDs halt boot.
         if !self.manifest_roots.is_empty() {
             if let Some(renderer) = &mut self.renderer {
                 if let Err(e) =
@@ -1294,21 +1182,16 @@ impl ApplicationHandler for App {
             }
         }
 
-        // Run startup callback (asset loading, etc.)
         if let Some(startup) = self.startup.take() {
             if let Some(renderer) = &mut self.renderer {
                 startup(&mut self.world, renderer);
             }
         }
 
-        // Stamp last_frame AFTER startup so asset-loading time is not counted
-        // as the first game frame's dt. A large first-frame dt would cause
-        // fast-moving bodies (including a player falling under gravity) to
-        // tunnel through thin collision geometry in a single substep.
+        // Startup time excluded from first-frame dt; prevents first-substep tunneling.
         self.last_frame = Some(Instant::now());
 
-        // Initialize audio after the startup callback so that load_sounds()
-        // has already populated the SoundRegistry resource.
+        // Audio init after startup: SoundRegistry populated.
         if let Some(sound_registry) = self.world.get_resource::<SoundRegistry>() {
             match AudioSystem::init(sound_registry) {
                 Ok(sys) => {
@@ -1383,9 +1266,7 @@ impl ApplicationHandler for App {
                 let frame_start = Instant::now();
                 self.apply_pending_display_request();
 
-                // Snapshot the previous frame's total so the HUD can smooth
-                // frame-ms without needing compose to run after render (which
-                // would hide the HUD this frame).
+                // HUD smoothing uses previous frame; compose still occurs before render.
                 let prev_total_ms = self
                     .world
                     .get_resource::<FrameTimings>()

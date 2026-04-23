@@ -1,13 +1,4 @@
-//! Debug-mode physics timing probes. These tests always pass — their stdout
-//! output is the signal. Invoke with:
-//!
-//! ```bash
-//! cargo test -p tungsten-core --test physics_timing -- --nocapture
-//! ```
-//!
-//! Exists so "debug build feels slow with N balls" claims can be checked
-//! against a stable scenario instead of a live example window. Release mode
-//! numbers are not interesting here — add a criterion bench if that changes.
+//! Debug-mode physics timing probes; stdout is the signal.
 
 use std::time::Instant;
 
@@ -108,13 +99,11 @@ fn full_frame_timing_probe_1000_balls() {
 
     let mut world = build_world();
 
-    // Add Transform to every ball so sync_position_to_transform has real work.
     let balls: Vec<_> = world.query_entities::<Position>();
     for e in balls {
         world.insert(e, Transform::from_position(Vec2::ZERO));
     }
 
-    // Warm up.
     for _ in 0..3 {
         physics_step(&mut world);
         sync_position_to_transform(&mut world);

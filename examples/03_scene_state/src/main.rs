@@ -1,16 +1,6 @@
-//! Example 03 — Scene/State System (M20)
+//! Example 03: scene/state system.
 //!
-//! Demonstrates the `StateStack` dispatcher driving a
-//! `MainMenu → Gameplay → Pause → Gameplay` flow, scene-owned entity
-//! auto-despawn via `SceneEntity { state_id }`, and the data-driven
-//! `scene.json` loader.
-//!
-//! Controls:
-//!   Enter     — menu: start gameplay (loads `scene.json`)
-//!   P         — gameplay: pause; pause: resume
-//!   Backspace — gameplay: return to menu
-//!   F4        — toggle the debug HUD (the `state` row mirrors the top state id)
-//!   Esc       — exit
+//! Flow: menu -> gameplay -> pause -> gameplay. Scene-owned despawn via `SceneEntity`.
 
 mod states;
 

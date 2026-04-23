@@ -17,7 +17,6 @@ fn single_cell_insert_and_query() {
 #[test]
 fn shape_spanning_cells_is_returned_once() {
     let mut grid = SpatialGrid::new(32.0);
-    // AABB spans 4 cells (straddles origin).
     let a = aabb(0.0, 0.0, 40.0, 40.0);
     grid.insert(7, &a);
     let mut out = Vec::new();

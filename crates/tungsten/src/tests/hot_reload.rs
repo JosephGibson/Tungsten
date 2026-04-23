@@ -59,9 +59,7 @@ fn accept_recursive_root_matches_nested_file() {
 
 #[test]
 fn reject_sibling_file_in_extra_file_parent() {
-    // Workspace-root `input.json` case: watching the parent
-    // non-recursively should NOT accept unrelated siblings like
-    // `tungsten.json` that happen to share the parent.
+    // Extra-file watch is exact, not parent-wide.
     let dir = tempdir();
     let input_json = dir.join("input.json");
     let tungsten_json = dir.join("tungsten.json");
@@ -80,8 +78,7 @@ fn reject_sibling_file_in_extra_file_parent() {
 
 #[test]
 fn reject_parent_directory_of_recursive_root() {
-    // A recursive watch on `dir/assets` must not match events for
-    // `dir/other.txt` — `starts_with` is directional.
+    // Recursive root match is directional.
     let dir = tempdir();
     let assets = dir.join("assets");
     fs::create_dir_all(&assets).unwrap();

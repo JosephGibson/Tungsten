@@ -31,7 +31,7 @@ pub enum ManifestError {
     DuplicateId { id: String },
 }
 
-/// Raw manifest as deserialized from JSON.
+/// Raw manifest JSON.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct RawManifest {
     #[serde(default)]
@@ -79,10 +79,10 @@ pub struct FontEntry {
 #[derive(Debug, Clone, Deserialize)]
 pub struct SoundEntry {
     pub path: String,
-    /// Whether this sound loops by default. Can be overridden at play time.
+    /// Default loop flag.
     #[serde(default)]
     pub looping: bool,
-    /// Base volume (0.0–1.0). Multiplied by the master volume at mix time.
+    /// Base volume before master volume.
     #[serde(default = "default_volume")]
     pub volume: f32,
 }
@@ -101,10 +101,7 @@ pub struct ParticleEntry {
     pub path: String,
 }
 
-/// Resource wrapping the fully merged manifest graph the umbrella loaded at
-/// startup. Stored in the `World` by `App::new_with_manifest_roots` so
-/// hot-reload and diagnostic paths have one source of truth for what the
-/// running session sees as "loaded" (D-052).
+/// D-052 loaded merged manifest resource.
 #[derive(Debug, Clone, Default)]
 pub struct LoadedManifest(pub ResolvedManifest);
 
@@ -118,7 +115,7 @@ impl LoadedManifest {
     }
 }
 
-/// A fully resolved manifest with absolute paths.
+/// Manifest with resolved paths.
 #[derive(Debug, Clone, Default)]
 pub struct ResolvedManifest {
     pub sprites: HashMap<String, ResolvedSprite>,
@@ -163,8 +160,7 @@ pub struct ResolvedParticle {
 }
 
 impl ResolvedManifest {
-    /// Load and resolve a single manifest file. Paths are resolved relative
-    /// to the manifest's parent directory.
+    /// Load manifest and resolve paths relative to its parent.
     pub fn load(manifest_path: impl AsRef<Path>) -> Result<Self, ManifestError> {
         let manifest_path = manifest_path.as_ref();
         let contents = std::fs::read_to_string(manifest_path).map_err(|e| ManifestError::Io {
@@ -276,11 +272,7 @@ impl ResolvedManifest {
         Ok(result)
     }
 
-    /// Load and merge every manifest in `roots` into a single resolved graph.
-    /// Order matches the slice; duplicate IDs across manifests surface as
-    /// `ManifestError::DuplicateId` and halt composition (D-017). The returned
-    /// graph is the single source of truth the umbrella stores as the
-    /// `LoadedManifest` resource and hands to `asset_loader::load_all`.
+    /// Load ordered roots into one graph; duplicate IDs are fatal (D-017).
     pub fn load_and_merge_many(
         roots: &[impl AsRef<Path>],
     ) -> Result<ResolvedManifest, ManifestError> {
@@ -292,7 +284,7 @@ impl ResolvedManifest {
         Ok(merged)
     }
 
-    /// Merge another manifest into this one. Duplicate IDs are fatal (D-017).
+    /// Merge another manifest; duplicate IDs are fatal (D-017).
     pub fn merge(&mut self, other: ResolvedManifest) -> Result<(), ManifestError> {
         for (id, sprite) in other.sprites {
             if self.sprites.contains_key(&id) {

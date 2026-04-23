@@ -1,8 +1,4 @@
-//! Integration tests for the M23 particle system — exercises the full
-//! `particle_count_refresh_system → particle_emit_system → particle_tick_system`
-//! chain plus the CommandBuffer flush, in a headless `World` with no
-//! renderer. Each test wires its own minimal `ParticleConfigRegistry` so no
-//! manifest / disk I/O is involved.
+//! Particle integration: refresh -> emit -> tick -> CommandBuffer flush.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -118,11 +114,10 @@ fn burst_once_emits_exactly_count_then_drains() {
     );
     let emitter = spawn_emitter(&mut world, id);
 
-    // Frame 1: emit fires, particles spawn on flush.
     tick(&mut world, 1.0 / 60.0);
     assert_eq!(count_particles(&mut world), 8);
 
-    // Burst event fired in previous frame, moved to `previous` window by flush.
+    // Event visible after flush in previous window.
     let bursts_prev: Vec<_> = world
         .get_resource::<EventQueue<ParticleBurstEmitted>>()
         .unwrap()
@@ -131,12 +126,9 @@ fn burst_once_emits_exactly_count_then_drains() {
         .collect();
     assert_eq!(bursts_prev, vec![8]);
 
-    // Subsequent ticks should not emit more — drained latch holds.
     for _ in 0..4 {
         tick(&mut world, 1.0 / 60.0);
     }
-    // All 8 particles have aged out (lifetime = 0.5s, five ticks ~0.083s).
-    // Can't rely on exact count; just verify no new emissions.
     let state = world.get::<ParticleEmitterState>(emitter).unwrap();
     assert!(state.drained);
 }
@@ -145,7 +137,6 @@ fn burst_once_emits_exactly_count_then_drains() {
 fn continuous_rate_matches_expected_count() {
     let mut world = world_with_resources();
     let mut cfg = base_cfg(EmissionKind::Continuous { rate_hz: 100.0 }, 500);
-    // Long lifetime so we don't lose particles to age-out mid-test.
     cfg.lifetime = Range {
         min: 10.0,
         max: 10.0,
@@ -153,8 +144,7 @@ fn continuous_rate_matches_expected_count() {
     let id = register_config(&mut world, cfg, "cont");
     let _ = spawn_emitter(&mut world, id);
 
-    // 60 ticks at 1/60s = 1.0s → expect ~100 particles. Accumulator rounding
-    // can under-shoot by up to 1 (leftover fractional accum).
+    // 1 second at 100 Hz; allow accumulator rounding.
     for _ in 0..60 {
         tick(&mut world, 1.0 / 60.0);
     }
@@ -176,8 +166,7 @@ fn pulse_emits_fixed_pulses_then_drains() {
     let id = register_config(&mut world, cfg, "pulse");
     let emitter = spawn_emitter(&mut world, id);
 
-    // Step 0.05s per tick; need 3 pulses = 0.3s of timer accumulation.
-    // Plus one extra tick for the drain event to fire after active_count hits 0.
+    // Extra ticks let drain fire after active_count reaches zero.
     for _ in 0..40 {
         tick(&mut world, 0.05);
     }
@@ -222,7 +211,6 @@ fn global_budget_cap_clips_across_emitters() {
     let _ = spawn_emitter(&mut world, id);
 
     tick(&mut world, 1.0 / 60.0);
-    // Total must not exceed global cap.
     assert!(count_particles(&mut world) <= 10);
 }
 
@@ -241,14 +229,12 @@ fn hot_reload_snapshot_preserves_live_particles() {
     tick(&mut world, 1.0 / 60.0);
     assert_eq!(count_particles(&mut world), 4);
 
-    // Snapshot existing particles' config pointers.
     let entities = world.query_entities::<Particle>();
     let original_arcs: Vec<_> = entities
         .iter()
         .map(|e| Arc::as_ptr(&world.get::<Particle>(*e).unwrap().config))
         .collect();
 
-    // Swap the registry entry with a different Arc.
     let new_cfg = Arc::new(base_cfg(
         EmissionKind::Burst {
             count: 4,
@@ -261,7 +247,7 @@ fn hot_reload_snapshot_preserves_live_particles() {
         .unwrap()
         .replace(id, new_cfg.clone());
 
-    // Live particles must still point at their original Arc.
+    // Live particles keep original config Arc across hot reload.
     let entities = world.query_entities::<Particle>();
     for (e, original) in entities.iter().zip(original_arcs.iter()) {
         let current = Arc::as_ptr(&world.get::<Particle>(*e).unwrap().config);

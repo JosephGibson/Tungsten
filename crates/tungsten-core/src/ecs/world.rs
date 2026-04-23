@@ -6,12 +6,9 @@ use super::entity::Entity;
 use super::resource::ResourceMap;
 use super::storage::Archetypes;
 
-/// The World owns all entities, components, and resources.
+/// Entity/component/resource container.
 ///
-/// The public API is identical to the pre-M12 naive implementation so that
-/// all examples compile without changes. The storage engine behind it is now
-/// an archetypal layout: contiguous `Vec<T>` columns per archetype, with O(1)
-/// edge-cached archetype transitions on component add/remove (D-036).
+/// D-036: archetypal storage with contiguous columns and edge-cached transitions.
 pub struct World {
     archetypes: Archetypes,
     resources: ResourceMap,
@@ -25,20 +22,12 @@ impl World {
         }
     }
 
-    // ------------------------------------------------------------------
-    // Entity lifecycle
-    // ------------------------------------------------------------------
-
-    /// Spawn a new entity. Starts in the empty archetype with no components.
+    /// Spawn entity in empty archetype.
     pub fn spawn(&mut self) -> Entity {
         self.archetypes.spawn()
     }
 
-    /// Despawn an entity, removing all of its components.
-    ///
-    /// No-op if the entity is already dead, so that deferred `CommandBuffer`
-    /// despawns remain idempotent when multiple systems target the same
-    /// entity in a single frame.
+    /// Despawn entity; dead entity is no-op for deferred idempotence.
     pub fn despawn(&mut self, entity: Entity) {
         if self.is_alive(entity) {
             self.archetypes.despawn(entity);
@@ -49,17 +38,12 @@ impl World {
         self.archetypes.entities.is_alive(entity)
     }
 
-    /// Number of currently live entities in the world. O(1).
+    /// Live entity count. O(1).
     pub fn entity_count(&self) -> u32 {
         self.archetypes.entities.live_count()
     }
 
-    // ------------------------------------------------------------------
-    // Component access
-    // ------------------------------------------------------------------
-
-    /// Attach a component to an entity. Panics if the entity is not alive
-    /// (programmer error per D-022).
+    /// Attach component; D-022 dead entity panics.
     pub fn insert<T: 'static>(&mut self, entity: Entity, component: T) {
         self.archetypes.insert(entity, component);
     }
@@ -80,16 +64,7 @@ impl World {
         self.archetypes.has::<T>(entity)
     }
 
-    // ------------------------------------------------------------------
-    // Queries
-    // ------------------------------------------------------------------
-
-    /// Iterate all entities that have component type `T`.
-    /// Returns `(Entity, &T)` pairs.
-    ///
-    /// Iteration order is archetype-stable: entities within an archetype are
-    /// visited in row order (stable until a swap-remove occurs). Across
-    /// archetypes the order follows the archetype creation order.
+    /// Iterate `(Entity, &T)` in archetype/row order.
     pub fn query<T: 'static>(&self) -> impl Iterator<Item = (Entity, &T)> {
         self.archetypes.archetypes_with::<T>().flat_map(|arch| {
             let t_id = TypeId::of::<T>();
@@ -101,10 +76,7 @@ impl World {
         })
     }
 
-    /// Collect entity IDs that have component type `T`.
-    ///
-    /// Useful when you need to mutate components of multiple types in the
-    /// same loop (collect entity IDs first, then call `get_mut` per entity).
+    /// Collect entities with `T`; use before mixed mutable access.
     pub fn query_entities<T: 'static>(&self) -> Vec<Entity> {
         self.archetypes
             .archetypes_with::<T>()
@@ -112,11 +84,7 @@ impl World {
             .collect()
     }
 
-    /// Immutable 2-component query. Iterates all entities that have both `A`
-    /// and `B`, visiting each archetype's contiguous column data directly.
-    ///
-    /// One downcast per archetype per type — not per element. This is the
-    /// primary cache-friendly iteration path added in M12 (D-036 Expansion 1).
+    /// Immutable two-component query; one downcast per archetype/type.
     pub fn query2<A: 'static, B: 'static>(&self) -> impl Iterator<Item = (Entity, &A, &B)> {
         let a_id = TypeId::of::<A>();
         let b_id = TypeId::of::<B>();
@@ -139,9 +107,7 @@ impl World {
             })
     }
 
-    /// Collect entity IDs that have both `A` and `B`.
-    ///
-    /// Use this with `get_mut` when mutation of either type is needed.
+    /// Collect entities with `A` and `B`; use before mutable access.
     pub fn query2_entities<A: 'static, B: 'static>(&self) -> Vec<Entity> {
         let a_id = TypeId::of::<A>();
         let b_id = TypeId::of::<B>();
@@ -151,8 +117,7 @@ impl World {
             .collect()
     }
 
-    /// Immutable 3-component query. Iterates all entities that have `A`, `B`,
-    /// and `C`.
+    /// Immutable three-component query.
     pub fn query3<A: 'static, B: 'static, C: 'static>(
         &self,
     ) -> impl Iterator<Item = (Entity, &A, &B, &C)> {
@@ -183,9 +148,7 @@ impl World {
             })
     }
 
-    /// Collect entity IDs that have `A`, `B`, and `C`.
-    ///
-    /// Use this with `get_mut` when mutation is needed.
+    /// Collect entities with `A`, `B`, and `C`; use before mutable access.
     pub fn query3_entities<A: 'static, B: 'static, C: 'static>(&self) -> Vec<Entity> {
         let a_id = TypeId::of::<A>();
         let b_id = TypeId::of::<B>();
@@ -195,10 +158,6 @@ impl World {
             .flat_map(|arch| arch.entities.iter().copied())
             .collect()
     }
-
-    // ------------------------------------------------------------------
-    // Resources
-    // ------------------------------------------------------------------
 
     pub fn insert_resource<T: 'static>(&mut self, resource: T) {
         self.resources.insert(resource);
@@ -220,11 +179,7 @@ impl World {
         self.resources.remove::<T>()
     }
 
-    /// Apply all queued commands in `buffer` to the world, then drop it.
-    ///
-    /// Pass 1 allocates real entities for every queued spawn, building a
-    /// `pending_id -> Entity` table. Pass 2 replays all mutations in their
-    /// original registration order.
+    /// Flush queued commands: allocate pending spawns, then replay mutations in order.
     pub fn flush(&mut self, buffer: CommandBuffer) {
         let mut pending_entities: Vec<Entity> = Vec::with_capacity(buffer.pending_count as usize);
         for cmd in &buffer.commands {
@@ -269,9 +224,6 @@ impl Default for World {
         Self::new()
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests — the 9 original pre-M12 tests, byte-for-byte unchanged
 
 #[cfg(test)]
 #[path = "../tests/ecs/world.rs"]

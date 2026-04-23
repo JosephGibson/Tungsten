@@ -1,6 +1,4 @@
-//! Telemetry + shared helpers used by both the baseline and ECS-high-load
-//! scenes. Kept out of each scene module so neither can drift away from the
-//! common stdout format the perf harness consumes.
+//! Shared telemetry and color helpers; perf stdout format stays centralized.
 
 use tungsten::core::World;
 use tungsten::render::GpuFrameTimings;

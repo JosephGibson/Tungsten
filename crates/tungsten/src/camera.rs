@@ -1,8 +1,4 @@
-//! Shared camera update system for the umbrella crate.
-//!
-//! Gameplay code owns the camera resources (`CameraState` and
-//! `CameraController`) and registers this system explicitly wherever the
-//! frame order should place camera updates.
+//! Shared camera update system; gameplay owns resources and frame placement.
 
 use std::f32::consts::{FRAC_PI_2, TAU};
 
@@ -37,9 +33,7 @@ fn solve_follow_position(
     next
 }
 
-/// Shared engine-side camera system. Reads `CameraController`, `DeltaTime`,
-/// `WindowSize`, and a followed entity `Transform`, then writes the
-/// authoritative `CameraState` for the frame.
+/// Update authoritative camera state for the frame.
 pub fn camera_update_system(world: &mut World) {
     let mut camera = match world.get_resource::<CameraState>().copied() {
         Some(camera) => camera,

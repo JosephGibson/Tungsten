@@ -4,19 +4,12 @@ use std::collections::HashMap;
 use super::archetype::{Archetype, ArchetypeId, TypedVec, EMPTY_ARCHETYPE};
 use super::entity::{Entities, Entity, EntityLocation};
 
-// ---------------------------------------------------------------------------
-// Archetypes registry
-// ---------------------------------------------------------------------------
-
-/// The central store for all entity and component data.
+/// Entity/component storage and archetype registry.
 ///
-/// Owns the `Entities` allocation table and the `Vec<Archetype>` list.
-/// ArchetypeId is an index into `archetypes`; archetype 0 is the empty
-/// archetype that all freshly spawned entities live in.
+/// D-036: `ArchetypeId` indexes `archetypes`; 0 is empty archetype.
 pub(crate) struct Archetypes {
     pub archetypes: Vec<Archetype>,
-    /// Sorted `Box<[TypeId]>` → ArchetypeId for O(1) archetype lookup.
-    /// TypeId: Ord is stable since Rust 1.86 (D-036).
+    /// Sorted `TypeId` set -> archetype.
     index: HashMap<Box<[TypeId]>, ArchetypeId>,
     pub entities: Entities,
 }
@@ -33,11 +26,7 @@ impl Archetypes {
         }
     }
 
-    // ------------------------------------------------------------------
-    // Archetype lookup / creation
-    // ------------------------------------------------------------------
-
-    /// Find the archetype for `types` (must already be sorted), or create it.
+    /// Find or create archetype for sorted `types`.
     pub fn find_or_create(&mut self, types: &[TypeId]) -> ArchetypeId {
         if let Some(&id) = self.index.get(types) {
             return id;
@@ -49,11 +38,7 @@ impl Archetypes {
         id
     }
 
-    // ------------------------------------------------------------------
-    // Lifecycle
-    // ------------------------------------------------------------------
-
-    /// Spawn a new entity. Starts in the empty archetype (no components).
+    /// Spawn entity in empty archetype.
     pub fn spawn(&mut self) -> Entity {
         let entity = self.entities.alloc();
         let row = self.archetypes[EMPTY_ARCHETYPE as usize].entities.len() as u32;
@@ -70,9 +55,7 @@ impl Archetypes {
         entity
     }
 
-    /// Despawn an entity, removing it from its archetype.
-    ///
-    /// Panics if the entity is already dead.
+    /// Despawn live entity; dead entity panics.
     pub fn despawn(&mut self, entity: Entity) {
         let loc = self
             .entities
@@ -95,17 +78,7 @@ impl Archetypes {
         self.entities.free(entity);
     }
 
-    // ------------------------------------------------------------------
-    // Component access
-    // ------------------------------------------------------------------
-
-    /// Insert (or overwrite) component `T` on `entity`.
-    ///
-    /// If the entity already has `T`, the value is overwritten in-place (no
-    /// archetype transition). Otherwise the entity moves to a new archetype
-    /// that includes `T`.
-    ///
-    /// Panics if the entity is dead (D-022).
+    /// Insert or overwrite component; D-022 dead entity panics.
     pub fn insert<T: 'static>(&mut self, entity: Entity, value: T) {
         assert!(
             self.entities.is_alive(entity),
@@ -118,7 +91,6 @@ impl Archetypes {
 
         let t_id = TypeId::of::<T>();
 
-        // Case 1: entity already has T — overwrite in place, no transition.
         if self.archetypes[old_arch_id as usize].has(t_id) {
             *self.archetypes[old_arch_id as usize]
                 .columns
@@ -130,9 +102,7 @@ impl Archetypes {
             return;
         }
 
-        // Case 2: entity doesn't have T — compute new type set and transition.
         let new_arch_id = {
-            // Check the lazy edge cache first.
             if let Some(&cached) = self.archetypes[old_arch_id as usize].add_edges.get(&t_id) {
                 cached
             } else {
@@ -149,31 +119,21 @@ impl Archetypes {
             }
         };
 
-        // Split the borrow: we need &mut on both old and new archetypes.
-        // Use indices to avoid simultaneous mutable refs into the same Vec.
-        //
-        // Safety / soundness: old_arch_id != new_arch_id (T was absent from
-        // the old archetype, so they can't be the same archetype).
+        // Borrow split: old/new archetypes must differ because `T` was absent.
         debug_assert_ne!(old_arch_id, new_arch_id);
 
-        // Move existing components from old → new archetype.
-        // We use split_at_mut to hold two mutable references into archetypes.
         let (old_arch, new_arch) = split_two_mut(&mut self.archetypes, old_arch_id, new_arch_id);
         old_arch.move_components_to(row, new_arch);
 
-        // Push T into the new archetype. Create the column if this is the
-        // first entity of this type to enter the archetype.
         new_arch
             .columns
             .entry(t_id)
             .or_insert_with(|| Box::new(TypedVec::<T>(Vec::new())))
             .push_erased(Box::new(value));
 
-        // Add entity to new archetype's entity list.
         let new_row = new_arch.entities.len() as u32;
         new_arch.entities.push(entity);
 
-        // Remove entity from old archetype's entity list (swap-remove).
         let last = self.archetypes[old_arch_id as usize]
             .entities
             .len()
@@ -182,7 +142,6 @@ impl Archetypes {
             .entities
             .swap_remove(row);
 
-        // Update current entity's location to new archetype.
         self.entities.set_location(
             entity,
             EntityLocation {
@@ -191,7 +150,6 @@ impl Archetypes {
             },
         );
 
-        // If swap-remove displaced an entity, update its location.
         if row < last {
             let displaced = self.archetypes[old_arch_id as usize].entities[row];
             self.entities.set_location(
@@ -204,11 +162,7 @@ impl Archetypes {
         }
     }
 
-    /// Remove component `T` from `entity`. Returns the removed value, or
-    /// `None` if the entity doesn't have `T`.
-    ///
-    /// The entity moves to the archetype without `T`. If this was the only
-    /// component, the entity moves back to the empty archetype.
+    /// Remove component and transition to archetype without `T`.
     pub fn remove<T: 'static>(&mut self, entity: Entity) -> Option<T> {
         let loc = self.entities.get(entity)?;
         let old_arch_id = loc.archetype_id;
@@ -219,7 +173,6 @@ impl Archetypes {
             return None;
         }
 
-        // Compute the destination archetype (current types minus T).
         let new_arch_id = {
             if let Some(&cached) = self.archetypes[old_arch_id as usize]
                 .remove_edges
@@ -233,7 +186,6 @@ impl Archetypes {
                     .copied()
                     .filter(|&tid| tid != t_id)
                     .collect();
-                // new_types is already sorted (we filtered a sorted slice).
                 let id = self.find_or_create(&new_types);
                 self.archetypes[old_arch_id as usize]
                     .remove_edges
@@ -242,11 +194,9 @@ impl Archetypes {
             }
         };
 
-        // Move all columns except T from old → new archetype.
         let (old_arch, new_arch) = split_two_mut(&mut self.archetypes, old_arch_id, new_arch_id);
         old_arch.move_components_to(row, new_arch);
 
-        // Extract T's value from the source (it was skipped by move_components_to).
         let t_boxed = self.archetypes[old_arch_id as usize]
             .columns
             .get_mut(&t_id)
@@ -254,11 +204,9 @@ impl Archetypes {
             .swap_remove_erased(row);
         let t_value = *t_boxed.downcast::<T>().unwrap();
 
-        // Add entity to new archetype's entity list.
         let new_row = self.archetypes[new_arch_id as usize].entities.len() as u32;
         self.archetypes[new_arch_id as usize].entities.push(entity);
 
-        // Swap-remove entity from old archetype's entity list.
         let last = self.archetypes[old_arch_id as usize]
             .entities
             .len()
@@ -267,7 +215,6 @@ impl Archetypes {
             .entities
             .swap_remove(row);
 
-        // Update current entity's location.
         self.entities.set_location(
             entity,
             EntityLocation {
@@ -276,7 +223,6 @@ impl Archetypes {
             },
         );
 
-        // Update displaced entity's location if swap-remove moved one.
         if row < last {
             let displaced = self.archetypes[old_arch_id as usize].entities[row];
             self.entities.set_location(
@@ -290,10 +236,6 @@ impl Archetypes {
 
         Some(t_value)
     }
-
-    // ------------------------------------------------------------------
-    // Single-entity component access
-    // ------------------------------------------------------------------
 
     pub fn get<T: 'static>(&self, entity: Entity) -> Option<&T> {
         let loc = self.entities.get(entity)?;
@@ -320,24 +262,20 @@ impl Archetypes {
         self.archetypes[loc.archetype_id as usize].has(TypeId::of::<T>())
     }
 
-    // ------------------------------------------------------------------
-    // Archetype-level iteration helpers (for queries)
-    // ------------------------------------------------------------------
-
-    /// Iterate over all archetypes that contain component type `T`.
+    /// Archetypes containing component `T`.
     pub fn archetypes_with<T: 'static>(&self) -> impl Iterator<Item = &Archetype> {
         let t_id = TypeId::of::<T>();
         self.archetypes.iter().filter(move |a| a.has(t_id))
     }
 
-    /// Iterate over all archetypes that contain both `a` and `b`.
+    /// Archetypes containing `a` and `b`.
     pub fn archetypes_with_two(&self, a: TypeId, b: TypeId) -> impl Iterator<Item = &Archetype> {
         self.archetypes
             .iter()
             .filter(move |arch| arch.has(a) && arch.has(b))
     }
 
-    /// Iterate over all archetypes that contain `a`, `b`, and `c`.
+    /// Archetypes containing `a`, `b`, and `c`.
     pub fn archetypes_with_three(
         &self,
         a: TypeId,
@@ -350,13 +288,7 @@ impl Archetypes {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Helper: split a Vec into two mutable references by index
-// ---------------------------------------------------------------------------
-
-/// Return mutable references to two distinct elements in a slice.
-///
-/// Panics if `a == b`.
+/// Mutable refs to two distinct archetypes.
 fn split_two_mut(
     archetypes: &mut [Archetype],
     a: ArchetypeId,

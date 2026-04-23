@@ -4,17 +4,11 @@ use std::path::{Path, PathBuf};
 use super::atlas::UvRect;
 use super::manifest::FilterMode;
 
-/// Opaque handle to a GPU texture. The actual wgpu texture lives in
-/// tungsten-render's texture pool, keyed by this handle. Core never
-/// sees wgpu types (D-016).
+/// GPU texture handle; core never sees `wgpu` types (D-016).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TextureHandle(pub u32);
 
-/// Metadata about a loaded sprite.
-///
-/// Post-M22 the `atlas` handle may be shared between many sprites; every
-/// sprite also carries a `uv` rect that locates it on its atlas page. Pre-M22
-/// one-sprite-per-texture callers remain correct by using `UvRect::FULL`.
+/// Loaded sprite metadata; atlas handle may be shared.
 #[derive(Debug, Clone)]
 pub struct SpriteAsset {
     pub atlas: TextureHandle,
@@ -22,12 +16,11 @@ pub struct SpriteAsset {
     pub filter: FilterMode,
     pub width: u32,
     pub height: u32,
-    /// Absolute path to the source PNG, used for hot-reload reverse lookup.
+    /// Source PNG path for hot reload.
     pub path: PathBuf,
 }
 
-/// Runtime asset registry, stored as a Resource in the World (D-014).
-/// Maps string IDs to loaded asset data.
+/// D-014 runtime asset registry resource.
 #[derive(Debug, Default)]
 pub struct AssetRegistry {
     sprites: HashMap<String, SpriteAsset>,
@@ -39,13 +32,10 @@ impl AssetRegistry {
         Self::default()
     }
 
-    /// Register a sprite with a pre-allocated atlas handle and UV rect.
-    /// Post-M22 handle authority lives with the renderer's texture pool —
-    /// callers pass in the `atlas` handle produced by
-    /// `Renderer::allocate_texture_handle`.
+    /// Register sprite with renderer-owned atlas handle and UV rect.
     ///
     /// # Panics
-    /// Panics if a sprite with the same `id` is already registered (D-017).
+    /// Panics on duplicate sprite ID (D-017).
     #[allow(clippy::too_many_arguments)] // stable M22 surface; see D-048
     pub fn register_sprite(
         &mut self,
@@ -83,13 +73,12 @@ impl AssetRegistry {
         self.sprites.keys().map(|s| s.as_str())
     }
 
-    /// Reverse-lookup: find the sprite ID registered for a given file path.
+    /// Sprite ID for source path.
     pub fn sprite_id_for_path(&self, path: &Path) -> Option<&str> {
         self.path_to_sprite_id.get(path).map(|s| s.as_str())
     }
 
-    /// Update the stored atlas binding and/or dimensions after a hot-reload.
-    /// Used by both the in-place (`atlas`/`uv` unchanged) and rebuild paths.
+    /// Update atlas/UV/dimensions after hot reload.
     pub fn update_sprite_entry(
         &mut self,
         id: &str,
@@ -107,7 +96,7 @@ impl AssetRegistry {
     }
 }
 
-/// Tracks loaded font IDs and their file paths for hot-reload reverse-lookup.
+/// Font path reverse-lookup registry.
 #[derive(Debug, Default)]
 pub struct FontRegistry {
     path_to_id: HashMap<PathBuf, String>,

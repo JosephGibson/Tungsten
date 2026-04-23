@@ -63,8 +63,7 @@ fn overlay_y_is_pushed_below_hud_when_hud_is_left_anchored() {
     hud.enabled = true;
     hud.corner = HudCorner::TopLeft;
     hud.refresh_interval_ms = 0.0;
-    // Prime the HUD so its cached_sections populate, then reinsert so
-    // the overlay can read the height back out of the world.
+    // Prime HUD cache before overlay reads rendered height.
     let _ = compose_hud_text_sections(&mut hud, &world, (1280, 720), 16.0);
     let hud_bottom = hud.rendered_height_px();
     assert!(hud_bottom > 0.0);

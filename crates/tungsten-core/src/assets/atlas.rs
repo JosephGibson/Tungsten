@@ -1,44 +1,9 @@
-//! CPU-side sprite atlas packer (M22).
+//! CPU-side shelf atlas packer; no I/O, no `wgpu`.
 //!
-//! Pure-data module: no `wgpu`, no I/O. Given a slice of [`PackInput`] sized
-//! rectangles and a `max_dim`/`padding` budget, returns a [`PackResult`] that
-//! names one or more power-of-two [`AtlasPage`]s and places every sprite on
-//! exactly one page with `(x, y, width, height)` coordinates.
-//!
-//! ## Algorithm — shelf next-fit, deterministic tie-break
-//!
-//! A stable copy of `inputs` is sorted by `(height desc, width desc, id asc)`.
-//! The packer opens shelves top-to-bottom inside the current page; each sprite
-//! is placed on the rightmost position of the current shelf that still fits.
-//! When a sprite would overflow the shelf horizontally, a new shelf of the new
-//! sprite's height is started below. When the new shelf would overflow the
-//! page vertically, the page is finalised and a new page opens.
-//!
-//! Per-sprite padding of `padding` pixels is baked in on every side — the
-//! drawn texels are placed at `(x + padding/2, y + padding/2)` with the
-//! sprite width/height. Callers apply a half-texel UV inset so bilinear
-//! sampling cannot reach the padding column.
-//!
-//! Page dimensions are powers of two (`next_power_of_two` of the observed
-//! extent), clamped to `max_dim`. Sprites are returned in the original
-//! `inputs` order for stable iteration by caller code.
-//!
-//! ## Overflow
-//!
-//! A sprite whose width or height exceeds `max_dim - 2 * padding` panics
-//! with a clear message — at item granularity an atlas layout is
-//! unrecoverable without switching strategy (array textures, BC-compressed
-//! pages, etc. — all explicit Phase 4 non-goals).
-//!
-//! ## Mipmaps
-//!
-//! The half-texel UV inset plus 1 px transparent padding suppress neighbour
-//! bleed at non-mip bilinear sampling. Mipmaps are out of scope; enabling
-//! them in the future needs either wider padding or dedicated per-sprite
-//! sub-textures — do not silently turn mips on without revisiting this
-//! module.
+//! Order: sort by height desc, width desc, id asc; return sprites in input order.
+//! Mip invariant: half-texel inset + 1 px padding assumes non-mip sampling.
 
-/// A normalised UV rectangle on a single atlas page.
+/// Normalized UV rectangle on one atlas page.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct UvRect {
     pub min: [f32; 2],
@@ -46,15 +11,14 @@ pub struct UvRect {
 }
 
 impl UvRect {
-    /// The full `[0,0]..[1,1]` rectangle — useful for callers that want the
-    /// pipeline to behave as if the texture is their own private sprite.
+    /// Full page rectangle.
     pub const FULL: Self = Self {
         min: [0.0, 0.0],
         max: [1.0, 1.0],
     };
 }
 
-/// Input to the packer: a logical sprite id plus its source dimensions.
+/// Packer input sprite dimensions.
 #[derive(Debug, Clone, Copy)]
 pub struct PackInput<'a> {
     pub id: &'a str,
@@ -62,7 +26,7 @@ pub struct PackInput<'a> {
     pub height: u32,
 }
 
-/// Output of the packer: the page index and pixel rect for a single sprite.
+/// Packed sprite page and pixel rect.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PackedSprite {
     pub id: String,
@@ -73,28 +37,25 @@ pub struct PackedSprite {
     pub height: u32,
 }
 
-/// Dimensions of a packed atlas page (in pixels).
+/// Atlas page dimensions in pixels.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AtlasPage {
     pub width: u32,
     pub height: u32,
 }
 
-/// Complete pack result: one entry per page, one entry per packed sprite.
+/// Packed pages and sprites.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PackResult {
     pub pages: Vec<AtlasPage>,
     pub sprites: Vec<PackedSprite>,
 }
 
-/// Run the shelf-next-fit packer.
+/// Run deterministic shelf-next-fit packer.
 ///
 /// # Panics
 ///
-/// Panics when any single sprite exceeds `max_dim - 2 * padding` on either
-/// axis — the caller cannot recover from that without a new strategy, and
-/// downgrading to per-sprite textures would defeat the point of this
-/// milestone.
+/// Panics when a sprite exceeds `max_dim - 2 * padding`.
 pub fn pack_shelf(inputs: &[PackInput<'_>], max_dim: u32, padding: u32) -> PackResult {
     if inputs.is_empty() {
         return PackResult {
@@ -117,7 +78,7 @@ pub fn pack_shelf(inputs: &[PackInput<'_>], max_dim: u32, padding: u32) -> PackR
         );
     }
 
-    // Stable copy, indexed so we can return sprites in original order.
+    // Sort copy; emit original order.
     let mut ordered: Vec<(usize, PackInput<'_>)> = inputs.iter().copied().enumerate().collect();
     ordered.sort_by(|a, b| {
         b.1.height
@@ -135,11 +96,9 @@ pub fn pack_shelf(inputs: &[PackInput<'_>], max_dim: u32, padding: u32) -> PackR
         height: u32,
     }
 
-    // Page accumulator state.
     let mut placements: Vec<Option<PagePlacement>> = vec![None; inputs.len()];
     let mut pages: Vec<AtlasPage> = Vec::new();
 
-    // Current page's shelf geometry.
     let mut cur_page: u32 = 0;
     let mut shelf_y: u32 = pad;
     let mut shelf_x: u32 = pad;
@@ -193,17 +152,13 @@ pub fn pack_shelf(inputs: &[PackInput<'_>], max_dim: u32, padding: u32) -> PackR
         let cell_w = input.width + pad;
         let cell_h = input.height + pad;
 
-        // Opening a fresh shelf (shelf_height == 0) sets its height to this sprite's.
         if shelf_height == 0 {
             shelf_height = cell_h;
         }
 
-        // If adding to the current shelf would overflow in X, close the shelf
-        // and move down.
         if shelf_x + cell_w > max_dim {
             let new_shelf_y = shelf_y + shelf_height;
             if new_shelf_y + cell_h > max_dim {
-                // Page vertical overflow: finalise this page and open a new one.
                 finalise_page(&mut pages, page_extent_x, page_extent_y);
                 open_page(
                     &mut cur_page,

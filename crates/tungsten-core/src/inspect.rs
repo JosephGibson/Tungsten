@@ -1,13 +1,9 @@
-//! `Inspectable` trait (M21): user-supplied label -> value rows rendered by
-//! the text-only entity inspector overlay. Blanket impls cover the canonical
-//! engine components (`Tag`, `Transform`, `Visibility`, `Sprite`, `Position`,
-//! `Velocity`) so consumers get useful output without extra wiring.
+//! Inspector row trait plus canonical engine component impls.
 
 use crate::components::{Sprite, Tag, Transform, Visibility};
 use crate::physics::{Position, Velocity};
 
-/// Opt-in per-component inspector. Implementors return a list of
-/// `(label, rendered value)` pairs; the overlay joins them with newlines.
+/// Per-component inspector rows.
 pub trait Inspectable {
     fn inspect_rows(&self) -> Vec<(&'static str, String)>;
 }

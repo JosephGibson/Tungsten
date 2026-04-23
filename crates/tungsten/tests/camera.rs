@@ -109,11 +109,7 @@ fn zero_rotation_camera_remains_pre_m10_ortho_through_shared_path() {
 
 #[test]
 fn zoom_multiplier_change_applies_when_gameplay_rewrites_base_each_frame() {
-    // Reproduces the platformer pattern: gameplay writes CameraState.zoom to
-    // the base value every frame before camera_update_system runs, then
-    // toggles CameraController.zoom_multiplier. The effective zoom must
-    // follow the multiplier even when the base happens to equal last
-    // frame's output (base * 1.0 == output).
+    // Regression: gameplay base-zoom rewrite must not hide multiplier changes.
     let mut world = seed_world();
     let base_zoom: f32 = 3.0;
 

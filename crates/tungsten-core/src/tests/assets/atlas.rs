@@ -45,9 +45,7 @@ fn two_equal_sprites_share_a_page() {
 
 #[test]
 fn three_sprites_overflow_to_two_pages() {
-    // Three 128-wide, 130-tall sprites in a 256-wide page: two share the
-    // first shelf (2 × 128 == 256 width), the third forces a second shelf
-    // whose bottom (130 + 130 = 260) exceeds max_dim → new page.
+    // Third sprite forces page overflow: 130 + 130 > 256.
     let inputs = [pi("a", 128, 130), pi("b", 128, 130), pi("c", 128, 130)];
     let result = pack_shelf(&inputs, 256, 0);
     assert_eq!(result.pages.len(), 2);
@@ -61,8 +59,6 @@ fn three_sprites_overflow_to_two_pages() {
 #[should_panic(expected = "exceeds max atlas page dimension")]
 fn single_sprite_exceeding_max_panics() {
     let inputs = [pi("huge", 200, 200)];
-    // max_dim = 256, padding = 1 → usable 254; 200 <= 254 passes, so use
-    // a larger sprite to force the panic path.
     let _ = pack_shelf(&[pi("huge", 256, 256)], 256, 1);
     let _ = inputs;
 }

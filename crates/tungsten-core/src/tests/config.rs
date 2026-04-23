@@ -19,7 +19,7 @@ fn parses_partial_json() {
     let json = r#"{ "window": { "title": "Test" } }"#;
     let config: Config = serde_json::from_str(json).unwrap();
     assert_eq!(config.window.title, "Test");
-    assert_eq!(config.window.width, 1280); // default
+    assert_eq!(config.window.width, 1280);
     assert!(config.display.resolution.is_none());
     assert!(config.render.max_frame_latency.is_none());
     assert!(config.render.present_mode.is_none());

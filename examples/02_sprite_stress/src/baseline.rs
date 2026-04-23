@@ -1,9 +1,4 @@
-//! Baseline sprite-stress scene (M12 sine-wave demo). Synthetic white 16×16
-//! texture uploaded to a placeholder handle, N sprites laid out on a grid, each
-//! oscillating vertically with a per-sprite phase. Serves as the render-hot-path
-//! baseline for the perf harness — any throughput regression shows up here
-//! first because there is no ECS traversal cost, no camera follow, and no HUD
-//! text to dilute the sprite-extract signal.
+//! Render-hot-path baseline: synthetic texture, grid sprites, no ECS traversal.
 
 use glam::Vec2;
 use tungsten::core::{CameraState, DeltaTime, FilterMode, World};

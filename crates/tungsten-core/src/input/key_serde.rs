@@ -1,7 +1,4 @@
-//! Stable string names for `KeyCode` / `MouseButton` used by `input.json`
-//! parsing and serde helpers. Names track the `winit::keyboard::KeyCode`
-//! variant names exactly (e.g. `"ArrowLeft"`, `"KeyA"`, `"Space"`) so a
-//! user writing `input.json` can rely on a single canonical spelling.
+//! Canonical `input.json` names for keys, mouse buttons, and scroll directions.
 
 use crate::input::{KeyCode, MouseButton, ScrollDirection};
 

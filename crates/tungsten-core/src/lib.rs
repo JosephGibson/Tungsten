@@ -1,6 +1,4 @@
-//! Core building blocks for the Tungsten 2D engine: a hand-rolled ECS
-//! (World, Entity, Components, Resources), data-driven configuration,
-//! edge-triggered input, frame timing, and a manifest-driven asset registry.
+//! Core building blocks for Tungsten: ECS, config, input, timing, assets.
 
 pub mod assets;
 pub mod audio;

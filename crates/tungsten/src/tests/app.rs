@@ -45,7 +45,6 @@ fn user_extract_sprites_overrides_default() {
     use tungsten_render::{SpriteBatch, SpriteInstance};
 
     let mut app = App::new(Config::default()).expect("App::new failed");
-    // Sentinel closure: returns a batch with one specific SpriteInstance.
     app.set_extract_sprites(|_| {
         vec![SpriteBatch {
             texture: TextureHandle(42),

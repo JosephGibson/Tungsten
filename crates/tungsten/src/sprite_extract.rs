@@ -1,32 +1,19 @@
-//! Default sprite extract: `Transform + Sprite + Visibility` components
-//! -> [`SpriteBatch`] values consumed by the renderer.
+//! Default sprite extract: `Transform + Sprite + Visibility` -> [`SpriteBatch`].
 //!
-//! Installed automatically by [`App`](crate::App) when the user did not call
-//! [`App::set_extract_sprites`](crate::App::set_extract_sprites). Entities
-//! with `Transform + Sprite` but no `Visibility` are not emitted — an
-//! explicit `Visibility` component is required (D-042). There is no implicit
-//! fallback.
-//!
-//! Ordering: entries are sorted by [`Sprite::z_order`] ascending; ties
-//! preserve the underlying archetype iteration order because
-//! [`Vec::sort_by_key`] is stable. Within a `z_order` group, entries are
-//! batched by `(texture, filter)`; the per-group batch map resets when the
-//! `z_order` value changes, so lower-z entries never merge into a later
-//! higher-z batch of the same texture (painter-order preserved).
+//! D-042: explicit `Visibility` required. Order: stable `z_order`, batched within z-runs.
 
 use std::collections::HashMap;
 
 use tungsten_core::{AssetRegistry, FilterMode, Sprite, SpriteAsset, Transform, Visibility, World};
 use tungsten_render::{SpriteBatch, SpriteInstance};
 
-/// Default sprite-extract entry point. See module docs.
+/// Default sprite extract.
 pub fn extract_sprites_default(world: &World) -> Vec<SpriteBatch> {
     let Some(assets) = world.get_resource::<AssetRegistry>() else {
         return Vec::new();
     };
 
-    // Phase A: collect references, filtered by visibility and asset
-    // resolution, sorted stably by z_order ascending.
+    // Collect visible sprites with resolved assets; stable sort by z.
     let mut entries: Vec<(&Transform, &Sprite, &SpriteAsset)> = world
         .query3::<Transform, Sprite, Visibility>()
         .filter_map(|(_e, t, s, v)| {
@@ -39,7 +26,7 @@ pub fn extract_sprites_default(world: &World) -> Vec<SpriteBatch> {
         .collect();
     entries.sort_by_key(|(_, s, _)| s.z_order);
 
-    // Phase B: batch by (atlas, filter) within each z_order run.
+    // Batch by `(atlas, filter)` within each z-run only.
     let mut out: Vec<SpriteBatch> = Vec::new();
     let mut current_z: Option<i32> = None;
     let mut per_key: HashMap<(u32, FilterMode), usize> = HashMap::new();

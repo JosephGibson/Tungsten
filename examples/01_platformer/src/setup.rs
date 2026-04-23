@@ -54,8 +54,7 @@ pub(crate) fn configure_app(app: &mut App) {
 }
 
 fn enable_hot_reload(app: &mut App) {
-    // Hot reload watches both the shared root assets dir (walk sprites,
-    // animation, fonts) and the local example dir (tilemap, tile sprites).
+    // Watch shared and example-local assets.
     app.enable_hot_reload(
         &[PathBuf::from(ASSETS_ROOT), PathBuf::from(ASSETS_LOCAL)],
         PathBuf::from(MANIFEST_LOCAL),
@@ -65,27 +64,17 @@ fn enable_hot_reload(app: &mut App) {
 fn seed_world(world: &mut World) {
     if let Some(cfg) = world.get_resource_mut::<PhysicsConfig>() {
         cfg.gravity = Vec2::new(0.0, GRAVITY_Y);
-        // One tile wide. Smaller cells cap per-cell proxy counts so the
-        // narrow-phase inside a dense pile doesn't go quadratic in the
-        // ~1000-ball stress test. At ball radius 6 a 16×16 cell holds
-        // ~4 tightly-packed balls instead of ~16, cutting pair candidates
-        // by roughly 16×; we pay a small 2× insert cost from balls
-        // occasionally straddling two cells.
+        // One-tile cells cap dense-pile pair candidates.
         cfg.broadphase_cell_size = 16.0;
     }
     world.insert_resource(TextDisplayState::default());
     world.insert_resource(BallSpawnState::default());
     world.insert_resource(ActiveBlackHole::default());
 
-    // Tilemap — provides the static ground, platforms, and collision layer.
     let map = world.spawn();
     world.insert(map, TilemapInstance::new("ex10_level", Vec2::ZERO));
 
-    // Player — spawn past the camera dead-zone (x > viewport_w/2 = 256) so
-    // the camera is visibly scrolled from the first frame. At x = 320 the
-    // camera starts at position 320 - 256 = 64, putting the player centred
-    // on screen. Moving left scrolls the background right; moving right
-    // scrolls it left (until the right edge clamp at max_x = 256).
+    // Spawn past dead-zone so camera starts visibly scrolled.
     let player = world.spawn();
     world.insert(player, Player::default());
     world.insert(player, Position(PLAYER_SPAWN));
@@ -98,9 +87,6 @@ fn seed_world(world: &mut World) {
     world.insert(player, Tag::new("player"));
     configure_platformer_camera(world, player);
 
-    // Bouncing balls spread across the level: (col, row, initial vx).
-    // Rows sit just above the platform band (new rows 20..27) so balls land
-    // on geometry quickly instead of raining from the full new headroom.
     let ball_spawns: &[(f32, f32, f32)] = &[
         (6.0, 17.0, 70.0),
         (10.0, 19.0, -50.0),
@@ -148,9 +134,7 @@ pub(crate) fn configure_platformer_camera(world: &mut World, player: Entity) {
 
 fn install_startup(app: &mut App) {
     app.on_startup(|world, _renderer| {
-        // Engine merged and loaded both manifest roots before this closure
-        // runs (see App::set_manifest_roots / D-052). This callback's job is
-        // to wire game-specific state that depends on loaded assets.
+        // D-052: manifests loaded before startup; wire asset-dependent state.
         let registry = world.get_resource::<AssetRegistry>().unwrap();
         for id in [
             "ex10_ground",
@@ -192,8 +176,7 @@ fn install_startup(app: &mut App) {
 }
 
 fn install_runtime(app: &mut App) {
-    // Ordering: text-display-cache → gameplay input → audio → animation →
-    // physics → post-physics state sync → shared camera update.
+    // Order: text cache -> input/gameplay -> physics -> sync -> camera.
     for (name, system) in RUNTIME_SYSTEM_ORDER {
         app.add_system_named(*name, *system);
     }

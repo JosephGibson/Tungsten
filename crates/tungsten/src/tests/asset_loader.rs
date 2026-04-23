@@ -1,8 +1,4 @@
-//! Headless hot-reload tests (D-053). These cover every `reload_*` path
-//! that does not need a live `Renderer` — animation, tilemap, and
-//! particle reloads for both single-file edits and the
-//! preserve-last-known-good branch. Sprite and font reloads need GPU
-//! upload and are covered by the Layer 2 smoke suite.
+//! D-053 headless hot-reload tests; GPU upload paths covered by smoke suite.
 
 use std::fs;
 use std::io::Write;
@@ -190,7 +186,6 @@ fn reload_tilemap_rejects_unknown_sprite_id() {
         .unwrap()
         .insert_with_path("level".into(), initial, tmj.clone());
 
-    // Swap in a tileset entry that names a sprite that is not registered.
     write(&tmj, &build_minimal_tmj("not_a_real_sprite"));
     reload_tilemap("level", &tmj, &mut world).unwrap();
 
@@ -218,8 +213,7 @@ fn reload_particle_swaps_arc_under_same_asset_id() {
         .unwrap()
         .register("spark".into(), cfg_path.clone(), initial);
 
-    // Bump `max_alive` and reload. The `AssetId` must be stable across
-    // reloads (D-050) so live emitters keep their snapshot valid.
+    // D-050: stable AssetId across particle reloads.
     let bumped = build_minimal_particle_json("ex10_spark")
         .replace("\"max_alive\": 100", "\"max_alive\": 250");
     write(&cfg_path, &bumped);
@@ -249,7 +243,6 @@ fn reload_particle_preserves_previous_on_unknown_sprite() {
         .unwrap()
         .register("spark".into(), cfg_path.clone(), initial);
 
-    // Reload with a config that names a sprite that isn't registered.
     write(&cfg_path, &build_minimal_particle_json("ghost_sprite"));
     reload_particle("spark", &cfg_path, &mut world).unwrap();
 
@@ -264,10 +257,7 @@ fn reload_particle_preserves_previous_on_unknown_sprite() {
 
 #[test]
 fn load_all_merged_populates_loaded_manifest_resource() {
-    // No renderer needed to exercise the merge step: use an empty roots
-    // list and check the merged `LoadedManifest` lands in the world.
-    // End-to-end composition is already covered by
-    // `crates/tungsten-core/tests/composition.rs`.
+    // Merge step is renderer-free; end-to-end composition lives in core tests.
     let empty: &[PathBuf] = &[];
     let merged = tungsten_core::assets::ResolvedManifest::load_and_merge_many(empty)
         .expect("empty merge should succeed");
@@ -280,8 +270,5 @@ fn load_all_merged_populates_loaded_manifest_resource() {
     assert!(resource.as_resolved().sprites.is_empty());
 }
 
-// Suppress unused-import warnings: some items are only referenced via
-// the test helpers above and rustc does not always infer that through
-// the seed/build helpers.
 #[allow(dead_code)]
 fn _touch_imports(_layer: TilemapLayer) {}

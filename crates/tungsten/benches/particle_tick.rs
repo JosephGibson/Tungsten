@@ -1,11 +1,4 @@
-//! M23 particle integrator micro-benchmark.
-//!
-//! Scenario `particle_tick_5k`: 5,000 live `Particle` entities with gravity,
-//! drag, scale-over-life, and alpha-over-life curves active — i.e. the full
-//! per-particle work of [`particle_tick_system`] on every frame.
-//!
-//! The bench rebuilds each particle's `age = 0` at the start of every
-//! iteration so Criterion's warmup does not drain the population.
+//! Particle integrator bench: 5k live particles, full curve/tint work.
 
 use std::sync::Arc;
 
@@ -96,14 +89,13 @@ fn bench_particle_tick_5k(c: &mut Criterion) {
 
     c.bench_function("particle_tick_5k", |b| {
         b.iter(|| {
-            // Reset ages so no particle despawns during the measurement.
+            // Keep population constant across Criterion iterations.
             for &e in &entities {
                 if let Some(p) = world.get_mut::<Particle>(e) {
                     p.age = 0.0;
                 }
             }
             particle_tick_system(&mut world);
-            // Drain any despawn commands the integrator queued.
             if let Some(buf) = world.remove_resource::<CommandBuffer>() {
                 world.flush(buf);
                 world.insert_resource(CommandBuffer::new());

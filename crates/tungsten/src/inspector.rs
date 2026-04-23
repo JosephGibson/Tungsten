@@ -1,35 +1,6 @@
-//! Text-only entity inspector (M21, `F3`). Users register component types
-//! that implement [`Inspectable`]; while the overlay is enabled, the entity
-//! whose sprite or collider footprint contains the cursor is picked on
-//! the `engine_inspector_pick` edge (default: middle mouse button /
-//! "Mouse 3") and the compose helper renders every registered component's
-//! labelled rows. The selection sticks until another pick edge fires or
-//! the entity despawns, so the operator can read the dump without the
-//! cursor moving the selection out from under them.
+//! Text-only entity inspector; pick uses sprite AABB, then collider AABB.
 //!
-//! Registration uses an opaque `InspectFn` closure captured at
-//! `register::<T>(label)` time. The closure reads `world.get::<T>(entity)`
-//! and falls back to an empty row list when the component is absent, so
-//! rows for missing components simply don't appear.
-//!
-//! Picking is axis-aligned-bounding-box (AABB) containment evaluated
-//! against two footprint sources per entity, in this order:
-//!
-//! 1. `Sprite + Transform + Visibility`, sized from the `AssetRegistry`
-//!    sprite entry. Footprint uses top-left [`Transform::position`] +
-//!    `asset.size * scale` so it matches the sprite shader.
-//! 2. `Collider + Position` (physics bodies). Footprint is the collider's
-//!    bounding box centered at `Position + offset`. Circles use
-//!    `(radius, radius)` as half-extents. This is what catches entities
-//!    whose visuals come from custom extract paths (marker components,
-//!    animation-frame lookups) rather than the default `Sprite` draw path.
-//!
-//! When multiple footprints contain the cursor the smallest AABB wins —
-//! approximates "topmost visual" without a full z-order walk. A click
-//! that hits nothing clears the selection. Rotation is ignored in the hit
-//! test (rotated sprites are approximated by their bounding AABB).
-//! Selection is cleared on the next frame after the referenced entity is
-//! despawned so the overlay never dereferences a stale id.
+//! Smallest footprint wins; selection clears after despawn to avoid stale IDs.
 
 use glam::Vec2;
 
@@ -56,10 +27,7 @@ pub struct InspectorState {
     pub color: [u8; 4],
     pub outline_color: [u8; 4],
     pub outline_px: f32,
-    /// Minimum wall-clock interval between rebuilds of the displayed text,
-    /// in milliseconds. Defaults to 500 ms (2 Hz) so fast-changing values
-    /// dwell long enough for the eye to read them; the cached sections
-    /// are re-emitted in between.
+    /// Text rebuild interval; cached sections re-emitted between ticks.
     pub refresh_interval_ms: f32,
     cached_sections: Vec<TextSection>,
     cached_viewport: (u32, u32),
@@ -73,9 +41,7 @@ impl Default for InspectorState {
             enabled: false,
             selected: None,
             registered: Vec::new(),
-            // BottomLeft so the inspector does not stomp on the systems
-            // overlay (BottomRight) or the debug HUD (TopRight) when all
-            // three are visible at once.
+            // Avoid HUD TopRight and systems overlay BottomRight.
             corner: HudCorner::BottomLeft,
             padding_px: 12.0,
             font_id: "mono".to_string(),
@@ -98,8 +64,7 @@ impl InspectorState {
         Self::default()
     }
 
-    /// Pre-registers the engine's canonical inspectable components so fresh
-    /// `App` instances produce useful inspector output without extra wiring.
+    /// Register canonical inspectable components.
     pub fn new_with_defaults() -> Self {
         let mut state = Self::default();
         state.register::<Tag>("Tag");
@@ -169,10 +134,7 @@ pub(crate) fn inspector_pick_system(world: &mut World) {
         }
     }
 
-    // Click-to-inspect on `engine_inspector_pick` (default: Mouse 3 /
-    // middle button). Selection sticks until the next pick edge or until
-    // the target entity despawns, so the operator can read the dump
-    // without the cursor dragging the selection around.
+    // Pick edge sticks selection until next pick or despawn.
     let (cursor, camera, viewport) = {
         let Some(input) = world.get_resource::<InputState>() else {
             return;
@@ -202,13 +164,10 @@ pub(crate) fn inspector_pick_system(world: &mut World) {
     }
 }
 
-/// AABB hit-test: return the entity whose footprint (sprite or collider)
-/// contains `world_cursor`, preferring the smallest-area hit when
-/// multiple overlap. See the module docstring for the footprint rules.
+/// Pick smallest sprite/collider AABB containing `world_cursor`.
 fn pick_entity_under_cursor(world: &World, world_cursor: Vec2) -> Option<Entity> {
     let mut best: Option<(Entity, f32)> = None;
 
-    // Source 1: default-sprite footprint (Transform + Sprite + Visibility).
     if let Some(registry) = world.get_resource::<AssetRegistry>() {
         for (entity, transform, sprite) in world.query2::<Transform, Sprite>() {
             let visible = world
@@ -229,9 +188,7 @@ fn pick_entity_under_cursor(world: &World, world_cursor: Vec2) -> Option<Entity>
         }
     }
 
-    // Source 2: physics collider footprint. Catches the player, balls,
-    // black holes, and any other gameplay entity whose visual is drawn by
-    // a custom extract path rather than a default `Sprite` component.
+    // Collider fallback catches custom-extract visuals.
     for (entity, collider, position) in world.query2::<Collider, Position>() {
         let centre = position.0 + collider.offset;
         let half = match collider.shape {
@@ -292,11 +249,7 @@ pub(crate) fn compose_inspector_text_section(
     }
 
     state.time_since_refresh_ms += frame_ms;
-    // Cache reuse requires every invariant to match: the refresh window
-    // must still be open, the viewport must match (layout depends on it),
-    // and the selection must match (selection edges should appear
-    // immediately — otherwise the operator clicks Mouse 3 and waits up to
-    // `refresh_interval_ms` to see their pick).
+    // Cache key: refresh window, viewport, selected entity.
     if state.time_since_refresh_ms < state.refresh_interval_ms
         && !state.cached_sections.is_empty()
         && state.cached_viewport == viewport
@@ -363,10 +316,7 @@ fn render_inspector_lines(state: &InspectorState, world: &World) -> Vec<String> 
             lines.push("mouse 3 to pick".to_string());
         }
         Some(entity) => {
-            // Pre-scan once to size the section and row-label columns to
-            // whichever components actually returned rows. Gives tight,
-            // inline "Section Label Value" rows without per-section
-            // headers or blank separator lines.
+            // Size columns from visible component rows only.
             let mut visible: Vec<(&str, Vec<(&'static str, String)>)> = Vec::new();
             for (section, inspect) in &state.registered {
                 let rows = inspect(world, entity);

@@ -1,8 +1,4 @@
-//! Headless composition test for the D-052 asset-composition contract. Builds
-//! two manifests under a temp dir, exercises `ResolvedManifest::load_and_merge_many`,
-//! and confirms duplicate IDs halt the composition with `ManifestError::DuplicateId`.
-//!
-//! Runs under `cargo test --workspace` with no GPU or display.
+//! D-052 headless asset-composition contract.
 
 use std::fs;
 use std::io::Write;
@@ -39,16 +35,12 @@ fn write_manifest(dir: &Path, subdir: &str, contents: &str) -> PathBuf {
     path
 }
 
-/// Every asset class composes correctly when the two manifests are disjoint.
-/// Verifies that `load_and_merge_many` produces one `ResolvedManifest` holding
-/// the union of sprites, animations, fonts, sounds, tilemaps, and particles.
+/// Disjoint roots compose all asset classes.
 #[test]
 fn merge_compose_two_manifests_disjoint_ids_all_types() {
     let dir = tempdir();
 
-    // Root manifest: sprites, animations, fonts, sounds. Uses placeholder
-    // binary content because the loader only checks file existence (JSON files
-    // for animations/tilemaps/particles are not parsed by `ResolvedManifest`).
+    // Placeholder bytes: `ResolvedManifest` checks existence only.
     write_file(&dir, "root/hero.png", b"\x89PNG stub");
     write_file(&dir, "root/walk.json", b"{}");
     write_file(&dir, "root/sans.ttf", b"ttf stub");
@@ -72,7 +64,6 @@ fn merge_compose_two_manifests_disjoint_ids_all_types() {
         }"#,
     );
 
-    // Local manifest: tilemaps, particles, and one extra sprite.
     write_file(&dir, "local/tiles/grass.png", b"\x89PNG stub");
     write_file(&dir, "local/map.tmj", b"{}");
     write_file(&dir, "local/spark.json", b"{}");
@@ -105,10 +96,7 @@ fn merge_compose_two_manifests_disjoint_ids_all_types() {
     assert!(merged.particles.contains_key("spark"));
 }
 
-/// Duplicate IDs across manifests halt composition with `DuplicateId`
-/// (D-017). Confirms the merge-first contract does not silently overwrite —
-/// the previous loader shape where `world.insert_resource` replaced registries
-/// wholesale is the thing this test guards against.
+/// D-017: duplicate cross-root IDs are fatal.
 #[test]
 fn merge_duplicate_id_across_manifests_is_fatal() {
     let dir = tempdir();
@@ -128,9 +116,7 @@ fn merge_duplicate_id_across_manifests_is_fatal() {
     );
 }
 
-/// Empty roots list is valid and produces a default-empty manifest — matches
-/// how `App::set_manifest_roots(vec![])` leaves composition to the user's
-/// `on_startup` hook.
+/// Empty roots list leaves composition to user startup.
 #[test]
 fn merge_empty_roots_produces_empty_manifest() {
     let empty: &[PathBuf] = &[];

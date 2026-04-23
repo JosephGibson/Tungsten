@@ -20,10 +20,7 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
         return batches;
     };
 
-    // M23 particles — drawn before the black-hole disc so the dark core
-    // sits on top of its own aura. This example overrides the default
-    // sprite extract entirely, so particle entities (Particle + Transform
-    // + Sprite + Visibility) would otherwise never reach the renderer.
+    // Particles before black-hole core; custom extract must include them explicitly.
     let mut particle_batches: HashMap<(u32, FilterMode), SpriteBatch> = HashMap::new();
     for (e, _p, t, s) in world.query3::<Particle, Transform, Sprite>() {
         let visible = world
@@ -60,11 +57,7 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     }
     batches.extend(particle_batches.into_values());
 
-    // Black hole — drawn after the tilemap but before the player/balls so
-    // attracted bodies visibly pass over it. The ball sprite is reused as
-    // a round blob; a purple tint makes it read as an attractor. Quads
-    // render before sprites in the engine pipeline, so using the sprite
-    // pipeline is the path that sits above the sky tiles.
+    // Black hole after tilemap, before player/balls.
     if let Some(hole_asset) = assets.get_sprite("ex10_ball") {
         let half = BLACK_HOLE_VISUAL_DIAMETER * 0.5;
         let uv_min = hole_asset.uv.min;
@@ -93,10 +86,7 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
         }
     }
 
-    // Player — sprite frame driven by CurrentSprite / AnimationState.
-    // Rendered at 1:1 world-pixel scale (camera zoom handles the screen
-    // upscale). Sprite is bottom-aligned to the physics AABB so the player
-    // visually stands on surfaces rather than sinking into them.
+    // Player sprite bottom-aligned to physics AABB.
     let mut player_batches: HashMap<String, SpriteBatch> = HashMap::new();
     for (entity, cs) in world.query::<CurrentSprite>() {
         let Some(pos) = world.get::<Position>(entity).copied() else {
@@ -120,8 +110,6 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
                 instances: Vec::new(),
             });
         batch.instances.push(SpriteInstance {
-            // Centre horizontally on physics centre; align sprite bottom with
-            // physics AABB bottom so the character stands on the ground.
             position: [pos.0.x - sprite_w * 0.5, pos.0.y + PLAYER_HALF.y - sprite_h],
             size: [sprite_w, sprite_h],
             rotation: 0.0,
@@ -132,7 +120,6 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     }
     batches.extend(player_batches.into_values());
 
-    // Bouncing balls.
     if let Some(ball_asset) = assets.get_sprite("ex10_ball") {
         let uv_min = ball_asset.uv.min;
         let uv_size = [
@@ -160,12 +147,7 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
         }
     }
 
-    // Custom cursor sprite. Drawn last so it sits on top of every other
-    // world-space batch. The native OS cursor stays visible (winit default);
-    // this sprite rides along to demo a custom cursor layer without hiding
-    // the pointer. The world-space point is reconstructed from the physical
-    // cursor position via `cursor_to_world`, matching where a left click
-    // would spawn a ball.
+    // Cursor sprite last; world point matches click-spawn mapping.
     if let Some(cursor_asset) = assets.get_sprite("ex10_cursor") {
         if let Some(world_pos) = world
             .get_resource::<InputState>()
@@ -202,9 +184,7 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     batches
 }
 
-/// Renders `section` with a solid dark outline by drawing the same text at
-/// eight pixel offsets in a dark colour first, then the original on top.
-/// No engine changes needed — just extra TextSections in draw order.
+/// Text outline via eight shadow sections plus original.
 fn text_outlined(section: TextSection) -> impl Iterator<Item = TextSection> {
     const STROKE: f32 = 2.0;
     const OUTLINE: [u8; 4] = [0, 0, 0, 210];
@@ -235,10 +215,7 @@ fn text_outlined(section: TextSection) -> impl Iterator<Item = TextSection> {
 }
 
 pub(crate) fn extract_text(_world: &World) -> Vec<TextSection> {
-    // Controls-only overlay. Title, status readouts (FPS / contacts /
-    // grounded / music / volume / zoom), and raw input telemetry (cursor
-    // pos, mouse delta, scroll) are left to the debug HUD (F4) and
-    // inspector (F3); this example only needs to spell out the bindings.
+    // Controls only; telemetry lives in HUD/inspector.
     let mut sections = Vec::new();
     sections.extend(text_outlined(TextSection {
         content: "A/D or ←/→ move  Space jump  LMB hold spawn ball  RMB black hole  M music  S/MMB stop  1/2/3 volume\n\

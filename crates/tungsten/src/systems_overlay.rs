@@ -1,11 +1,4 @@
-//! System timing overlay (M21, `F2`). Reads `FrameTimings::system_timings`,
-//! EWMA-smooths each entry by system name, and renders a sorted table
-//! through the existing `glyphon` text pipeline. Stale system names that
-//! were not seen this frame are dropped so registration changes do not
-//! leave orphaned rows.
-//!
-//! The overlay is independent of `DebugHud` (`D-044`): toggling the HUD
-//! does not disturb this resource and vice versa.
+//! D-044 independent system timing overlay.
 
 use std::collections::BTreeMap;
 
@@ -70,7 +63,7 @@ impl SystemTimingOverlay {
     }
 }
 
-/// Engine system: flips enabled on the `engine_toggle_systems_overlay` edge.
+/// Toggle on `engine_toggle_systems_overlay` edge.
 pub(crate) fn systems_overlay_toggle_system(world: &mut World) {
     let pressed = {
         let Some(input) = world.get_resource::<InputState>() else {
@@ -88,9 +81,7 @@ pub(crate) fn systems_overlay_toggle_system(world: &mut World) {
     }
 }
 
-/// Compose helper. Call with the resource removed from the world (mirrors the
-/// `DebugHud` borrow dance) so providers can read `FrameTimings` without
-/// fighting the resource borrow.
+/// Compose overlay; caller removes/reinserts resource to split borrows.
 pub(crate) fn compose_systems_overlay_text_section(
     overlay: &mut SystemTimingOverlay,
     world: &World,
@@ -149,11 +140,7 @@ pub(crate) fn compose_systems_overlay_text_section(
         overlay.padding_px,
         viewport,
     );
-    // When anchored to the top, shift down so the overlay sits directly
-    // below the HUD's rendered block rather than colliding with it at the
-    // top row. The HUD is re-inserted into the world before this helper
-    // runs (see `app.rs`), so its `cached_sections` reflect the current
-    // frame.
+    // Top anchors stack below current HUD block.
     if matches!(overlay.corner, HudCorner::TopLeft | HudCorner::TopRight) {
         if let Some(hud) = world.get_resource::<DebugHud>() {
             let hud_bottom = hud.rendered_height_px();

@@ -82,7 +82,7 @@ fn validate_rejects_zero_dims() {
 
 #[test]
 fn load_parses_a_real_file() {
-    // Tests Tiled .tmj format parsing (D-032).
+    // D-032: Tiled .tmj parsing.
     let dir = std::env::temp_dir().join(format!(
         "tungsten_tilemap_test_{}_{}",
         std::process::id(),
@@ -127,10 +127,8 @@ fn load_parses_a_real_file() {
     assert_eq!(m.width, 2);
     assert_eq!(m.tileset, vec!["a".to_string(), "b".to_string()]);
     assert_eq!(m.layers.len(), 2);
-    // GID 1 → index 0, GID 2 → index 1
     assert_eq!(m.layers[0].tiles, vec![0, 1, 1, 0]);
     assert_eq!(m.layers[1].kind, LayerKind::Collision);
-    // GID 0 → EMPTY_TILE (-1), GID 1 → index 0
     assert_eq!(m.layers[1].tiles, vec![-1, 0, -1, -1]);
 }
 

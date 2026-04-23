@@ -1,14 +1,4 @@
-//! Scene data model (M20).
-//!
-//! A `scene.json` file lists entities to spawn when a `GameState` becomes
-//! active. Each entry reuses the M15 render components (`Transform`, `Sprite`,
-//! `Visibility`, `Tag`) via a minimal JSON schema; spawn-time wiring lives in
-//! the umbrella crate's `asset_loader::spawn_scene` (see `D-046`).
-//!
-//! This module owns only the plain data model and its JSON serde. Sprite ID
-//! validation is intentionally deferred to the extract path — missing IDs
-//! fall through to the sprite-extract default warning, matching
-//! `TilemapInstance`.
+//! D-046 scene data model; sprite ID validation deferred to extract path.
 
 use std::path::Path;
 

@@ -1,11 +1,4 @@
-//! Integration-level guarantees the M22 atlas work introduced at the extract
-//! seam: sprites that share a `TextureHandle` (i.e. live on the same atlas
-//! page) collapse into a single `SpriteBatch`, each instance carrying its own
-//! `uv_min`/`uv_size` slice of the page. Sprites that land on different
-//! atlases emit separate batches in z-order / iteration order.
-//!
-//! No GPU is touched — the test drives the default extract directly against a
-//! synthetic `AssetRegistry` whose `TextureHandle`s are fabricated.
+//! Atlas extract seam: shared TextureHandle batches; distinct atlases split.
 
 use std::path::PathBuf;
 
@@ -60,7 +53,6 @@ fn spawn(world: &mut World, id: &str, position: Vec2) {
 fn two_sprites_sharing_atlas_collapse_to_one_batch() {
     let mut world = world_with_registry();
 
-    // Same atlas handle, distinct packed rects.
     let uv_a = UvRect {
         min: [0.0, 0.0],
         max: [0.5, 1.0],
@@ -105,8 +97,7 @@ fn two_sprites_sharing_atlas_collapse_to_one_batch() {
 fn three_sprites_across_two_atlases_produce_two_batches() {
     let mut world = world_with_registry();
 
-    // Two sprites on atlas A, one on atlas B. Same filter, same z_order:
-    // the only thing keeping them apart is the `TextureHandle`.
+    // TextureHandle alone splits batches here.
     let uv_a0 = UvRect {
         min: [0.0, 0.0],
         max: [0.5, 1.0],

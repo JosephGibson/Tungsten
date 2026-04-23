@@ -1,42 +1,27 @@
-//! Scene/state system (M20, `D-046`).
+//! D-046 state stack; D-039 scene despawns go through `CommandBuffer`.
 //!
-//! A single `state_dispatcher_system` drives a `StateStack` of
-//! `Box<dyn GameState>`. Deferred `request_push` / `request_pop` /
-//! `request_replace` requests queue on the stack and are drained by the
-//! dispatcher once per frame, firing `on_pause` / `on_exit` / `on_enter` /
-//! `on_resume` per the transition matrix in the M20 plan.
-//!
-//! Entities spawned with a `SceneEntity { state_id }` marker during
-//! `on_enter` are auto-despawned (through `CommandBuffer`, per `D-039`) when
-//! that state exits. Pause doesn't auto-despawn: `push` fires `on_pause` on
-//! the old top, not `on_exit`.
+//! Push pauses old top; pop/replace exits and auto-despawns matching `SceneEntity`s.
 
 use tungsten_core::{CommandBuffer, World};
 
 use crate::debug_hud::HudActiveState;
 
-/// Stable string identifier for a state. Static lifetime so trait objects
-/// can return it without allocation.
+/// Static state identifier.
 pub type StateId = &'static str;
 
-/// Argument passed to `on_enter` / `on_exit` / `on_pause` / `on_resume`.
-/// Mirrors the state's id so hooks can spawn `SceneEntity { state_id }`
-/// markers without capturing the state's `self`.
+/// Lifecycle hook context.
 pub struct StateContext<'a> {
     pub world: &'a mut World,
     pub state_id: StateId,
 }
 
-/// Marker inserted on every entity owned by a state. The dispatcher walks
-/// this component on state exit and queues a `CommandBuffer::despawn` for
-/// each matching entity before the user's `on_exit` runs.
+/// State-owned entity marker.
 #[derive(Debug, Clone, Copy)]
 pub struct SceneEntity {
     pub state_id: StateId,
 }
 
-/// Trait implemented by game states. `on_pause` / `on_resume` are no-op
-/// defaults so Pause can overlay Gameplay without tearing the scene down.
+/// Game state lifecycle trait.
 pub trait GameState: 'static {
     fn id(&self) -> StateId;
     fn on_enter(&mut self, ctx: &mut StateContext);
@@ -52,9 +37,7 @@ pub(crate) enum StateCommand {
     Replace(Box<dyn GameState>),
 }
 
-/// World resource: the authoritative state stack plus a pending-command
-/// queue that `request_*` methods append to. The dispatcher drains the
-/// queue once per frame.
+/// State stack resource plus pending transition queue.
 pub struct StateStack {
     pub(crate) stack: Vec<Box<dyn GameState>>,
     pub(crate) pending: Vec<StateCommand>,
@@ -68,30 +51,27 @@ impl StateStack {
         }
     }
 
-    /// Queue a push. Fires `on_pause` on the current top, then `on_enter`
-    /// on the new state.
+    /// Queue push: pause old top, enter new state.
     pub fn request_push(&mut self, state: impl GameState) {
         self.pending.push(StateCommand::Push(Box::new(state)));
     }
 
-    /// Queue a pop. Fires `on_exit` on the current top (auto-despawning its
-    /// `SceneEntity`s first), then `on_resume` on the uncovered state.
+    /// Queue pop: exit old top, resume uncovered state.
     pub fn request_pop(&mut self) {
         self.pending.push(StateCommand::Pop);
     }
 
-    /// Queue a replace. Fires `on_exit` on the current top (auto-despawning
-    /// its `SceneEntity`s first), then `on_enter` on the new state.
+    /// Queue replace: exit old top, enter new state.
     pub fn request_replace(&mut self, state: impl GameState) {
         self.pending.push(StateCommand::Replace(Box::new(state)));
     }
 
-    /// Identifier of the state on top of the stack, if any.
+    /// Active state ID.
     pub fn active_id(&self) -> Option<StateId> {
         self.stack.last().map(|s| s.id())
     }
 
-    /// Number of states on the stack.
+    /// Stack depth.
     pub fn depth(&self) -> usize {
         self.stack.len()
     }
@@ -103,10 +83,7 @@ impl Default for StateStack {
     }
 }
 
-/// Enqueue a `CommandBuffer::despawn` for every entity carrying a
-/// `SceneEntity { state_id }` matching `id`. The actual removal happens at
-/// the next command-buffer flush — callers relying on post-despawn queries
-/// must run a flush between this call and the query.
+/// Queue despawn for entities owned by `id`; removal waits for command flush.
 pub fn despawn_scene_entities(world: &mut World, id: StateId) {
     let targets: Vec<_> = world
         .query::<SceneEntity>()
@@ -123,10 +100,7 @@ pub fn despawn_scene_entities(world: &mut World, id: StateId) {
     }
 }
 
-/// Engine-owned system: drains `StateStack.pending`, fires lifecycle hooks,
-/// calls `update` on the current top, and mirrors the active id into
-/// `HudActiveState` so consumers (custom HUD rows, external panels) can
-/// read the active state without reaching into `StateStack`.
+/// Drain transitions, update top state, mirror active ID.
 pub fn state_dispatcher_system(world: &mut World) {
     let pending: Vec<StateCommand> = match world.get_resource_mut::<StateStack>() {
         Some(stack) => std::mem::take(&mut stack.pending),

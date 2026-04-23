@@ -78,7 +78,6 @@ fn manifest_defaults_roundtrip() {
     assert!(!reg.get_looping(sfx));
     assert!((reg.get_volume(music) - 0.4).abs() < 1e-6);
     assert!(reg.get_looping(music));
-    // Unknown handle falls back to safe defaults.
     assert!((reg.get_volume(AudioHandle(99)) - 1.0).abs() < 1e-6);
     assert!(!reg.get_looping(AudioHandle(99)));
 }

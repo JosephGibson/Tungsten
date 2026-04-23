@@ -1,14 +1,4 @@
-//! Uniform spatial grid used by the physics step to cull collision
-//! pairs. Every collider is inserted into each cell its world-space
-//! AABB overlaps; candidate pairs come from querying cells that a
-//! test AABB overlaps.
-//!
-//! Cell size is a knob on `PhysicsConfig::broadphase_cell_size`. A
-//! reasonable default is one to two tile widths — small enough that
-//! each cell rarely holds more than a handful of proxies, large
-//! enough that most proxies land in a single cell. The grid is
-//! rebuilt from scratch each physics step; there is no incremental
-//! update.
+//! Uniform-grid broadphase; rebuilt from scratch each physics step.
 
 use super::collision::Aabb;
 use glam::IVec2;
@@ -16,15 +6,10 @@ use glam::IVec2;
 use glam::Vec2;
 use std::collections::HashMap;
 
-/// Opaque id used by `SpatialGrid` to refer back to an inserted proxy.
-/// The physics step stores one proxy per collider-bearing entity and
-/// one per tilemap-derived static tile; the returned id is the index
-/// into whatever parallel `Vec` the caller uses to resolve it.
+/// Caller-owned proxy index.
 pub type ProxyId = u32;
 
-/// Uniform grid broad-phase. Cells are integer-indexed from the floor
-/// of `position / cell_size`; negative coordinates and unbounded worlds
-/// both work because `HashMap<IVec2, _>` allocates on demand.
+/// HashMap-backed uniform grid; negative/unbounded coordinates allowed.
 #[derive(Debug, Clone)]
 pub struct SpatialGrid {
     cell_size: f32,
@@ -50,10 +35,7 @@ impl SpatialGrid {
         }
     }
 
-    /// Change the grid's cell size, discarding any existing cell buckets.
-    /// Called by `physics_step` if `PhysicsConfig::broadphase_cell_size`
-    /// was mutated between frames so the persistent grid resource stays
-    /// in sync with config without reallocating the whole struct.
+    /// Change cell size and discard buckets.
     pub fn set_cell_size(&mut self, cell_size: f32) {
         debug_assert!(cell_size > 0.0, "cell_size must be positive");
         self.cell_size = cell_size.max(1.0);
@@ -68,8 +50,7 @@ impl SpatialGrid {
         self.cell_size
     }
 
-    /// Insert `id` into every cell that `aabb` overlaps. Called once
-    /// per proxy per physics step.
+    /// Insert `id` into every overlapped cell.
     pub fn insert(&mut self, id: ProxyId, aabb: &Aabb) {
         let (min_cell, max_cell) = self.cell_range(aabb);
         for y in min_cell.y..=max_cell.y {
@@ -79,12 +60,7 @@ impl SpatialGrid {
         }
     }
 
-    /// Collect every unique proxy whose cells overlap `query`. Includes
-    /// `exclude` only if it was never inserted; the caller is expected
-    /// to filter self-pairs after the fact.
-    ///
-    /// Uses a reusable generation-mark table so duplicates from overlapping
-    /// cells are filtered in O(1) per candidate instead of scanning `out`.
+    /// Collect unique proxies overlapping `query`; generation marks dedupe cells.
     pub fn query(&mut self, query: &Aabb, exclude: Option<ProxyId>, out: &mut Vec<ProxyId>) {
         out.clear();
         let generation = self.begin_query();
@@ -125,14 +101,12 @@ impl SpatialGrid {
         let inv = 1.0 / self.cell_size;
         let min = aabb.min() * inv;
         let max = aabb.max() * inv;
-        // `ceil - 1` on max so a shape whose right edge sits exactly on
-        // a cell boundary doesn't spuriously claim the next cell over.
+        // Right/bottom edge exactly on boundary does not claim next cell.
         let min_cell = IVec2::new(min.x.floor() as i32, min.y.floor() as i32);
         let max_cell = IVec2::new(
             (max.x - f32::EPSILON).floor() as i32,
             (max.y - f32::EPSILON).floor() as i32,
         );
-        // Guard against the case where max < min due to an empty AABB.
         let max_cell = IVec2::new(max_cell.x.max(min_cell.x), max_cell.y.max(min_cell.y));
         (min_cell, max_cell)
     }

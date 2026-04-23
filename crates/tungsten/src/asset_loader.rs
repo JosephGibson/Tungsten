@@ -15,11 +15,7 @@ use tungsten_render::Renderer;
 
 use crate::state::{SceneEntity, StateId};
 
-/// Umbrella-crate resource tracking live atlas-page handles and every sprite's
-/// packed rect. Hot-reload paths consult this to decide between in-place
-/// overwrite and full rebuild, and to drop stale page handles when a rebuild
-/// shrinks the page count. Populated by `load_sprites` and kept in sync by
-/// `rebuild_atlas_for_filter`.
+/// Live atlas pages plus sprite packed rects for hot reload.
 #[derive(Debug, Default)]
 pub struct AtlasRegistry {
     pub nearest_pages: Vec<TextureHandle>,
@@ -43,9 +39,7 @@ impl AtlasRegistry {
     }
 }
 
-/// One decoded sprite awaiting packing. CPU-side; no GPU handle yet. The
-/// filter class is carried by the caller partition — one `Vec<Decoded>` per
-/// filter — so it is not stored per entry.
+/// Decoded CPU-side sprite awaiting atlas packing.
 struct Decoded {
     id: String,
     path: PathBuf,
@@ -54,15 +48,7 @@ struct Decoded {
     rgba: Vec<u8>,
 }
 
-/// Pack `decoded` (one filter class) into one or more atlas pages, allocate
-/// page handles from `renderer`, upload each page canvas, register every
-/// sprite in `registry` with its half-texel-inset UV, and record results in
-/// `atlas_registry`. Returns the list of page handles — used by the caller to
-/// drop stale handles when a rebuild shrinks the page count.
-///
-/// The half-texel UV inset plus the packer's 1 px transparent padding keep
-/// bilinear samples entirely inside the drawn rect at non-mip sampling; if
-/// mipmaps are enabled in a future change, the inset math needs revisiting.
+/// Build one filter-class atlas; half-texel UV inset assumes no mipmaps.
 fn build_atlas_for_filter(
     filter: FilterMode,
     decoded: &[Decoded],
@@ -145,15 +131,7 @@ fn build_atlas_for_filter(
     page_handles
 }
 
-/// Decode every sprite PNG named by `manifest`, pack each filter class into
-/// one or more atlas pages, upload the pages to the GPU, and register sprites
-/// with their per-sprite UV. Populates the `AtlasRegistry` resource so the
-/// hot-reload paths can distinguish in-place overwrite from full rebuild.
-///
-/// Called once at startup. Step 6 removes the additions-path call from
-/// `reload_manifest`; until then, calling this with a partial manifest is
-/// supported but leaves only the additions in the `AtlasRegistry` — pre-Step-6
-/// hot-reload-add is the single caller and it does not rely on the resource.
+/// Load sprites into filter-class atlases and update `AtlasRegistry`.
 pub fn load_sprites(
     manifest: &ResolvedManifest,
     world: &mut World,
@@ -182,8 +160,7 @@ pub fn load_sprites(
     let max_dim = renderer.max_2d_texture_dimension();
     let n_sprites = decoded_nearest.len() + decoded_linear.len();
 
-    // Pull the AtlasRegistry out of the world for the duration of the build
-    // so we can hold &mut to it and &mut AssetRegistry at the same time.
+    // Borrow split: `AtlasRegistry` plus `AssetRegistry`.
     let mut atlas_registry = world
         .get_resource_mut::<AtlasRegistry>()
         .map(std::mem::take)
@@ -224,7 +201,7 @@ pub fn load_sprites(
     Ok(())
 }
 
-/// Load all animation data from a resolved manifest.
+/// Load animation data from manifest.
 pub fn load_animations(manifest: &ResolvedManifest, world: &mut World) -> anyhow::Result<()> {
     let mut anim_registry = AnimationRegistry::new();
 
@@ -244,9 +221,7 @@ pub fn load_animations(manifest: &ResolvedManifest, world: &mut World) -> anyhow
     Ok(())
 }
 
-/// Load all font assets from a resolved manifest: read TTF bytes, register them
-/// in the renderer's text pipeline, and store paths in `FontRegistry` for
-/// hot-reload reverse lookup.
+/// Load fonts into renderer and path registry.
 pub fn load_fonts(
     manifest: &ResolvedManifest,
     world: &mut World,
@@ -277,8 +252,7 @@ pub fn load_fonts(
     Ok(())
 }
 
-/// Load all sound assets from a resolved manifest: decode audio files and
-/// register them in the `SoundRegistry` resource.
+/// Decode sounds into `SoundRegistry`.
 pub fn load_sounds(manifest: &ResolvedManifest, world: &mut World) -> anyhow::Result<()> {
     let mut sound_registry = SoundRegistry::new();
 
@@ -306,9 +280,7 @@ pub fn load_sounds(manifest: &ResolvedManifest, world: &mut World) -> anyhow::Re
     Ok(())
 }
 
-/// Load all tilemap data from a resolved manifest. Sprite-ID validation
-/// of each tilemap's `tileset` happens in `load_all` after sprites are
-/// loaded (mirrors the animation-frame validation path).
+/// Load tilemaps; sprite-ID validation happens after sprite load.
 pub fn load_tilemaps(manifest: &ResolvedManifest, world: &mut World) -> anyhow::Result<()> {
     let mut tilemap_registry = TilemapRegistry::new();
 
@@ -330,10 +302,7 @@ pub fn load_tilemaps(manifest: &ResolvedManifest, world: &mut World) -> anyhow::
     Ok(())
 }
 
-/// Load every particle config referenced by the manifest. Each entry is
-/// parsed, validated, and registered in the [`ParticleConfigRegistry`] under
-/// a freshly minted [`AssetId`](tungsten_core::AssetId). Sprite cross-reference
-/// validation lives in `load_all` so it runs after sprites are registered.
+/// Load particle configs; sprite-ID validation happens after sprite load.
 pub fn load_particles(manifest: &ResolvedManifest, world: &mut World) -> anyhow::Result<()> {
     let mut registry = ParticleConfigRegistry::new();
     for (id, entry) in &manifest.particles {
@@ -350,10 +319,7 @@ pub fn load_particles(manifest: &ResolvedManifest, world: &mut World) -> anyhow:
     Ok(())
 }
 
-/// Load all assets (sprites + animations + fonts + sounds + tilemaps + particles).
-/// After loading, validates cross-references: animation frames must
-/// name known sprites (D-009), tileset entries must name known sprites,
-/// and particle configs must name known sprites.
+/// Load all assets and validate sprite cross-references (D-009).
 pub fn load_all(
     manifest: &ResolvedManifest,
     world: &mut World,
@@ -425,15 +391,7 @@ pub fn load_all(
     Ok(())
 }
 
-/// Composition entry point (D-052). Reads every manifest path in `roots`,
-/// merges them via [`ResolvedManifest::load_and_merge_many`] (duplicate IDs
-/// are fatal per D-017), stores the merged graph as a [`LoadedManifest`]
-/// resource, and runs [`load_all`] once against it.
-///
-/// This is the only call site that should decide composition. Per-type
-/// loaders (`load_sprites`, `load_animations`, etc.) stay public for the
-/// narrow synthetic-sprite case but must not be used to compose manifests —
-/// several of them replace registry resources wholesale on each call.
+/// D-052 composition entry; D-017 duplicate IDs fatal.
 pub fn load_all_merged(
     roots: &[impl AsRef<Path>],
     world: &mut World,
@@ -445,25 +403,13 @@ pub fn load_all_merged(
     Ok(())
 }
 
-// ---------------------------------------------------------------------------
-// Hot-reload helpers — called by App::process_hot_reload each frame.
-// All functions log errors and return Ok(()) to preserve last-known-good state.
-// ---------------------------------------------------------------------------
-
-/// Load a `scene.json` file. Thin wrapper over [`SceneData::load`] that
-/// maps `SceneError` into `anyhow::Error` with the path attached.
+/// Load scene file with path context.
 pub fn load_scene(path: &Path) -> anyhow::Result<SceneData> {
     SceneData::load(path)
         .map_err(|source| anyhow::anyhow!("Failed to load scene '{}': {source}", path.display()))
 }
 
-/// Spawn every entity in `data` through the world's [`CommandBuffer`], with
-/// each spawned entity tagged `SceneEntity { state_id }` so the state
-/// dispatcher can auto-despawn them on exit.
-///
-/// Sprite IDs are not validated here — missing IDs fall through to the
-/// sprite-extract warning path, matching how tilemaps handle unresolved
-/// tile IDs (see `D-046`).
+/// Spawn scene entities through `CommandBuffer`; D-046 leaves sprite IDs unresolved.
 pub fn spawn_scene(world: &mut World, data: &SceneData, state_id: StateId) {
     let buf = world
         .get_resource_mut::<CommandBuffer>()
@@ -501,18 +447,7 @@ pub fn spawn_scene(world: &mut World, data: &SceneData, state_id: StateId) {
     }
 }
 
-/// Hot-reload a single sprite. If the new decoded size fits inside the
-/// sprite's pre-packed rect, overwrite the rect in place (no handle churn —
-/// `SpriteBatch`es already bound in this frame stay valid). Otherwise rebuild
-/// the entire filter-class atlas via `rebuild_atlas_for_filter`.
-///
-/// # Between-frames invariant (D-031)
-///
-/// Hot-reload events are drained on the main loop between frames, so a
-/// rebuild's `drop_texture` never races a `SpriteBatch` built in the current
-/// frame's extract. Any caller that wires a different drain point must keep
-/// this invariant — otherwise a dropped handle could be bound in a pending
-/// draw (UB).
+/// Hot-reload sprite; D-031 requires between-frame drain before handle drops.
 pub fn reload_sprite(
     id: &str,
     path: &Path,
@@ -533,8 +468,7 @@ pub fn reload_sprite(
     let (new_w, new_h) = img.dimensions();
     let rgba = img.into_raw();
 
-    // Look up atlas handle + packed rect (may be absent for sprites registered
-    // outside `load_sprites`, e.g. the sprite-stress high-load generated sprite).
+    // Generated sprites may lack atlas packed rects.
     let (atlas_handle, uv, old_w, old_h, packed_xywh) = {
         let asset_reg = world
             .get_resource::<AssetRegistry>()
@@ -559,9 +493,7 @@ pub fn reload_sprite(
     };
 
     if new_w <= pw && new_h <= ph {
-        // In-place: build a packed-rect-sized canvas, new bitmap top-left,
-        // transparent below/right if shrunk. UV stays pointing at the full
-        // packed rect (shrink-with-transparent-tail — plan risk #5).
+        // In-place shrink: UV still covers full packed rect; transparent tail.
         let cell_w = pw as usize;
         let cell_h = ph as usize;
         let mut canvas = vec![0u8; cell_w * cell_h * 4];
@@ -596,19 +528,12 @@ pub fn reload_sprite(
     Ok(())
 }
 
-/// Re-pack and re-upload every sprite in a single filter class from disk.
-/// Reuses old page handles where possible so pending `SpriteBatch`es stay
-/// valid across the swap (see the between-frames invariant on `reload_sprite`).
-///
-/// On a decode error in any sprite belonging to this filter class, the entire
-/// rebuild is abandoned and the previous atlas is kept — last-known-good
-/// discipline, matching [`reload_sprite`].
+/// Repack one filter class; decode failure keeps last-known-good atlas.
 pub fn rebuild_atlas_for_filter(
     filter: FilterMode,
     world: &mut World,
     renderer: &mut Renderer,
 ) -> anyhow::Result<()> {
-    // Snapshot every sprite in this filter class via its path.
     let entries: Vec<(String, PathBuf)> = {
         let registry = world
             .get_resource::<AssetRegistry>()
@@ -627,7 +552,6 @@ pub fn rebuild_atlas_for_filter(
     };
 
     if entries.is_empty() {
-        // Drop any orphan pages for the now-empty filter class.
         let stale: Vec<TextureHandle> = world
             .get_resource_mut::<AtlasRegistry>()
             .map(|ar| std::mem::take(ar.page_handles_mut(filter)))
@@ -761,8 +685,7 @@ pub fn rebuild_atlas_for_filter(
     Ok(())
 }
 
-/// Hot-reload an animation: reparse the JSON and replace the entry in
-/// `AnimationRegistry`.
+/// Hot-reload animation JSON.
 pub fn reload_animation(id: &str, path: &Path, world: &mut World) -> anyhow::Result<()> {
     let data = match AnimationData::load(path) {
         Ok(d) => d,
@@ -781,9 +704,7 @@ pub fn reload_animation(id: &str, path: &Path, world: &mut World) -> anyhow::Res
     Ok(())
 }
 
-/// Hot-reload a tilemap: reparse the `.tmj` JSON and replace the entry
-/// in `TilemapRegistry`. Failures are logged and the last-known-good
-/// data is kept so a typo in the JSON doesn't crash the running example.
+/// Hot-reload tilemap; failures keep last-known-good data.
 pub fn reload_tilemap(id: &str, path: &Path, world: &mut World) -> anyhow::Result<()> {
     let data = match TilemapData::load(path) {
         Ok(d) => d,
@@ -793,9 +714,7 @@ pub fn reload_tilemap(id: &str, path: &Path, world: &mut World) -> anyhow::Resul
         }
     };
 
-    // Validate tileset sprite IDs before accepting the reload — a typo
-    // in a newly-added tileset entry would otherwise silently empty out
-    // parts of the map.
+    // Validate sprite IDs before accepting tilemap reload.
     {
         let registry = world
             .get_resource::<AssetRegistry>()
@@ -819,12 +738,7 @@ pub fn reload_tilemap(id: &str, path: &Path, world: &mut World) -> anyhow::Resul
     Ok(())
 }
 
-/// Hot-reload a particle config. Parses and validates the updated JSON, then
-/// `Arc::swap`s the registry entry under the same `AssetId`. In-flight
-/// emitters and particles keep the `Arc` snapshot they captured at spawn, so
-/// the visible change is bounded to newly spawned particles (plan: in-flight
-/// snapshot semantics). Parse failures log an error and preserve the
-/// last-known-good config.
+/// Hot-reload particle config; in-flight `Arc` snapshots keep old config.
 pub fn reload_particle(id: &str, path: &Path, world: &mut World) -> anyhow::Result<()> {
     let cfg = match ParticleConfig::load(path) {
         Ok(c) => c,
@@ -834,7 +748,6 @@ pub fn reload_particle(id: &str, path: &Path, world: &mut World) -> anyhow::Resu
         }
     };
 
-    // Validate sprite cross-reference.
     {
         let registry = world
             .get_resource::<AssetRegistry>()
@@ -861,8 +774,7 @@ pub fn reload_particle(id: &str, path: &Path, world: &mut World) -> anyhow::Resu
     Ok(())
 }
 
-/// Hot-reload a font: read new bytes and replace the face data in the
-/// renderer's text pipeline via `TextPipeline::reload_font`.
+/// Hot-reload font bytes.
 pub fn reload_font(id: &str, path: &Path, renderer: &mut Renderer) -> anyhow::Result<()> {
     let data = match std::fs::read(path) {
         Ok(d) => d,
@@ -880,11 +792,7 @@ pub fn reload_font(id: &str, path: &Path, renderer: &mut Renderer) -> anyhow::Re
     Ok(())
 }
 
-/// Hot-reload the workspace-root `input.json` action map. Loads the new
-/// bindings, merges them with the engine defaults, and swaps the
-/// `ActionMap` resource. On load failure the previous map is preserved
-/// and the error is returned to the caller (the app layer logs and
-/// continues).
+/// Hot-reload `input.json`; load failure preserves previous map.
 pub fn reload_action_map(path: &Path, world: &mut World) -> Result<(), ActionMapError> {
     let loaded = ActionMap::load(path)?;
     let merged = ActionMap::merged_with_defaults(loaded);
@@ -897,9 +805,7 @@ pub fn reload_action_map(path: &Path, world: &mut World) -> Result<(), ActionMap
     Ok(())
 }
 
-/// Hot-reload the manifest: load the new version, register any new asset IDs,
-/// warn about removed IDs (they stay stale — no removal), and log errors on
-/// conflicts. Never crashes — all errors are logged and kept last-known-good.
+/// Hot-reload manifest additions; removals stay stale and last-known-good wins.
 pub fn reload_manifest(
     manifest_path: &Path,
     world: &mut World,
@@ -916,9 +822,7 @@ pub fn reload_manifest(
         }
     };
 
-    // --- Sprites: warn on removals, load additions ---
     {
-        // Collect existing IDs to compare.
         let existing: Vec<String> = world
             .get_resource::<AssetRegistry>()
             .expect("AssetRegistry resource missing")
@@ -932,14 +836,7 @@ pub fn reload_manifest(
             }
         }
 
-        // An added sprite is a growth event for its filter class: register
-        // the new ID with placeholder atlas/UV, then rebuild the whole filter
-        // class from disk (existing + added). `rebuild_atlas_for_filter`
-        // re-decodes every sprite by path and calls `update_sprite_entry`
-        // with real dimensions + UV, so the placeholders are always overwritten
-        // unless the rebuild bails (decode error); in that last-known-good
-        // case the orphan entry has width/height = 0 and will be cleaned on
-        // the next successful reload.
+        // Added sprite stages placeholder, then filter-class rebuild overwrites it.
         let mut gained_nearest = false;
         let mut gained_linear = false;
         {
@@ -978,7 +875,6 @@ pub fn reload_manifest(
         }
     }
 
-    // --- Animations: warn on removals, load additions ---
     {
         let existing: Vec<String> = world
             .get_resource::<AnimationRegistry>()
@@ -998,7 +894,6 @@ pub fn reload_manifest(
             }
         }
         if !additions.animations.is_empty() {
-            // load_animations replaces the whole registry resource; merge instead.
             for (id, entry) in additions.animations {
                 match AnimationData::load(&entry.path) {
                     Ok(data) => {
@@ -1013,7 +908,6 @@ pub fn reload_manifest(
         }
     }
 
-    // --- Tilemaps: warn on removals, load additions ---
     {
         let existing: Vec<String> = world
             .get_resource::<TilemapRegistry>()
@@ -1032,7 +926,6 @@ pub fn reload_manifest(
             }
             match TilemapData::load(&entry.path) {
                 Ok(data) => {
-                    // Validate tileset sprite IDs before inserting.
                     let all_known = {
                         let registry = world
                             .get_resource::<AssetRegistry>()
@@ -1057,7 +950,6 @@ pub fn reload_manifest(
         }
     }
 
-    // --- Fonts: warn on removals, load additions ---
     {
         for (id, entry) in &new_manifest.fonts {
             let already_loaded = world
@@ -1083,7 +975,6 @@ pub fn reload_manifest(
         }
     }
 
-    // --- Particles: warn on removals, load additions (D-053) ---
     {
         let existing: Vec<String> = world
             .get_resource::<ParticleConfigRegistry>()
@@ -1102,8 +993,6 @@ pub fn reload_manifest(
             }
             match ParticleConfig::load(&entry.path) {
                 Ok(cfg) => {
-                    // Validate sprite cross-reference mirror-for-mirror with
-                    // the tilemap-add path.
                     let sprite_ok = {
                         let registry = world
                             .get_resource::<AssetRegistry>()
@@ -1127,9 +1016,7 @@ pub fn reload_manifest(
         }
     }
 
-    // --- Sounds: audio is session-static (D-053). Mixer owns cloned PCM so
-    // registry mutations never reach live playback. Log instead of pretending
-    // to support adds/removes.
+    // D-053: audio session-static; mixer owns cloned PCM.
     {
         let existing_count = world
             .get_resource::<SoundRegistry>()
@@ -1143,8 +1030,7 @@ pub fn reload_manifest(
         }
     }
 
-    // Update the `LoadedManifest` resource so downstream diagnostics and
-    // future reload-diff paths see the current composed graph.
+    // Keep diagnostics/reload diff graph current.
     world.insert_resource(tungsten_core::assets::LoadedManifest::new(new_manifest));
 
     log::info!("Manifest reloaded from '{}'", manifest_path.display());

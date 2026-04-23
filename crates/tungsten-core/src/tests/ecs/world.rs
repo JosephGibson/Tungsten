@@ -140,10 +140,6 @@ fn multiple_component_types() {
     assert!(world.has::<Name>(e));
 }
 
-// ------------------------------------------------------------------
-// New M12 tests — multi-component queries
-// ------------------------------------------------------------------
-
 #[test]
 fn query2_returns_matching_entities() {
     let mut world = World::new();
@@ -155,21 +151,17 @@ fn query2_returns_matching_entities() {
     world.insert(e1, Velocity { dx: 1.0, dy: 0.0 });
 
     world.insert(e2, Position { x: 2.0, y: 0.0 });
-    // e2 has no Velocity
 
     world.insert(e3, Position { x: 3.0, y: 0.0 });
     world.insert(e3, Velocity { dx: 3.0, dy: 0.0 });
 
     let results: Vec<_> = world.query2::<Position, Velocity>().collect();
     assert_eq!(results.len(), 2);
-    // e2 must not appear.
     assert!(results.iter().all(|(e, _, _)| *e != e2));
 }
 
 #[test]
 fn query2_includes_supersets() {
-    // An entity with {Position, Velocity, Name} should appear in
-    // query2::<Position, Velocity>().
     let mut world = World::new();
     let e = world.spawn();
     world.insert(e, Position { x: 0.0, y: 0.0 });
@@ -213,7 +205,6 @@ fn query3_returns_three_component_entities() {
     world.insert(e1, Velocity { dx: 1.0, dy: 0.0 });
     world.insert(e1, Name("full".into()));
 
-    // e2 only has Position + Velocity, no Name.
     world.insert(e2, Position { x: 2.0, y: 0.0 });
     world.insert(e2, Velocity { dx: 2.0, dy: 0.0 });
 
@@ -224,19 +215,17 @@ fn query3_returns_three_component_entities() {
 
 #[test]
 fn query_across_multiple_archetypes() {
-    // Entities spread across 3 different archetypes all contribute to
-    // a query for Position.
     let mut world = World::new();
     let e1 = world.spawn();
     let e2 = world.spawn();
     let e3 = world.spawn();
 
-    world.insert(e1, Position { x: 1.0, y: 0.0 }); // archetype {Pos}
+    world.insert(e1, Position { x: 1.0, y: 0.0 });
     world.insert(e2, Position { x: 2.0, y: 0.0 });
-    world.insert(e2, Velocity { dx: 0.0, dy: 0.0 }); // archetype {Pos, Vel}
+    world.insert(e2, Velocity { dx: 0.0, dy: 0.0 });
     world.insert(e3, Position { x: 3.0, y: 0.0 });
     world.insert(e3, Velocity { dx: 0.0, dy: 0.0 });
-    world.insert(e3, Name("three".into())); // archetype {Pos, Vel, Name}
+    world.insert(e3, Name("three".into()));
 
     let positions: Vec<_> = world.query::<Position>().collect();
     assert_eq!(positions.len(), 3);

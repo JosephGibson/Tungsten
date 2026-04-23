@@ -32,8 +32,6 @@ fn make_entity(index: u32) -> Entity {
     }
 }
 
-// ------------------------------------------------------------------
-
 #[test]
 fn push_and_get() {
     let mut arch = make_arch(1, &[TypeId::of::<u32>(), TypeId::of::<f32>()]);
@@ -60,13 +58,11 @@ fn swap_remove_row_middle() {
     push_row::<u32, f32>(&mut arch, e1, 1u32, 1.0f32);
     push_row::<u32, f32>(&mut arch, e2, 2u32, 2.0f32);
 
-    // Remove row 1 (e1). e2 should displace into row 1.
     let displaced = arch.swap_remove_row(1);
     assert_eq!(displaced, Some(e2));
     assert_eq!(arch.row_count(), 2);
     assert_eq!(arch.entities[1], e2);
 
-    // Check column consistency.
     let u32_col = arch.columns[&TypeId::of::<u32>()]
         .as_any()
         .downcast_ref::<TypedVec<u32>>()
@@ -85,8 +81,7 @@ fn swap_remove_last_row_returns_none() {
     let mut arch = make_arch(1, &[TypeId::of::<u32>()]);
     arch.columns
         .insert(TypeId::of::<u32>(), Box::new(TypedVec::<u32>(Vec::new())));
-    push_row::<u32, u32>(&mut arch, make_entity(0), 99u32, 99u32); // only one col
-                                                                   // Manually fix: just one column
+    push_row::<u32, u32>(&mut arch, make_entity(0), 99u32, 99u32);
     arch.columns.clear();
     arch.columns
         .insert(TypeId::of::<u32>(), Box::new(TypedVec::<u32>(vec![99u32])));
@@ -99,7 +94,6 @@ fn swap_remove_last_row_returns_none() {
 
 #[test]
 fn move_components_to_transfers_matching_types() {
-    // Source: {u32, f32, i32}. Dest: {u32, f32} (removing i32).
     let mut src = make_arch(
         1,
         &[
@@ -123,12 +117,8 @@ fn move_components_to_transfers_matching_types() {
     src.entities = vec![make_entity(0), make_entity(1)];
 
     let mut dst = make_arch(2, &[TypeId::of::<u32>(), TypeId::of::<f32>()]);
-    // dst columns are initially empty (lazy creation).
-
-    // Move row 0 (value 10 / 1.0 / -1).
     src.move_components_to(0, &mut dst);
 
-    // dst should now have row 0.
     let dst_u32 = dst.columns[&TypeId::of::<u32>()]
         .as_any()
         .downcast_ref::<TypedVec<u32>>()
@@ -141,16 +131,13 @@ fn move_components_to_transfers_matching_types() {
         .unwrap();
     assert_eq!(dst_f32.0, vec![1.0f32]);
 
-    // i32 was NOT in dst.component_types, so it was left in src.
+    // Non-matching i32 column stays in source.
     let src_i32 = src.columns[&TypeId::of::<i32>()]
         .as_any()
         .downcast_ref::<TypedVec<i32>>()
         .unwrap();
-    // src had 2 rows; after move_components_to(0, …) the moved columns are
-    // now 1 row with the last element at index 0.
     assert_eq!(src_i32.0.len(), 2, "i32 column should be untouched");
 
-    // src u32/f32 columns should each have 1 row remaining.
     let src_u32 = src.columns[&TypeId::of::<u32>()]
         .as_any()
         .downcast_ref::<TypedVec<u32>>()
@@ -167,7 +154,6 @@ fn columns_consistent_length_after_multiple_removals() {
         push_row::<u32, bool>(&mut arch, make_entity(i), i, i % 2 == 0);
     }
 
-    // Remove rows 2, then 0.
     arch.swap_remove_row(2);
     arch.swap_remove_row(0);
 

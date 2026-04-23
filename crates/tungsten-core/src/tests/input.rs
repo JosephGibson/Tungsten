@@ -35,7 +35,7 @@ fn duplicate_key_down_does_not_re_trigger() {
     let mut input = InputState::new();
     input.key_down(KeyCode::KeyW);
     input.begin_frame();
-    input.key_down(KeyCode::KeyW); // still held, no new press
+    input.key_down(KeyCode::KeyW);
     assert!(!input.just_pressed(KeyCode::KeyW));
     assert!(input.is_pressed(KeyCode::KeyW));
 }

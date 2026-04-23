@@ -1,29 +1,7 @@
-//! Example 02 — Sprite Stress
+//! Example 02: sprite stress.
 //!
-//! Two scene modes live under the same binary:
-//!   - `baseline` (default): original M12 sine-wave sprite scene
-//!   - `ecs-high-load`: 50k-entity ECS + render + camera stress scene
-//!
-//! Env vars:
-//!   - `STRESS_SCENE=baseline|ecs-high-load`
-//!   - `STRESS_COUNT=<n>` overrides the scene-specific default count
-//!
-//! Fixed capture rules (M12 baseline):
-//!   Build mode:   release  (`cargo run -p example-02-sprite-stress --release`)
-//!   Backend:      WGPU_BACKEND=vulkan  (Linux)
-//!   Resolution:   1920 × 1080  (set through `config.display.resolution`)
-//!   Frame window: 300 frames after 60-frame warm-up
-//!   Present path: checked-in default auto no-vsync (`tungsten.json` keeps
-//!                 `display.present_mode = "auto"` and this example keeps
-//!                 `display.vsync = false`)
-//!
-//! Scene ownership:
-//!   - [`baseline`]        → baseline.rs
-//!   - [`ecs_high_load`]   → ecs_high_load.rs
-//!   - Shared telemetry    → shared.rs
-//!
-//! Telemetry output: printed to stdout every 60 frames.
-//! Baseline capture: pipe to `tee perf-runs/<timestamp>/sprite-stress.txt`
+//! Modes: `baseline` default, `ecs-high-load`. Env: `STRESS_SCENE`, `STRESS_COUNT`.
+//! Perf capture: release, Vulkan, 1920x1080, 300 frames after 60-frame warm-up.
 
 mod baseline;
 mod ecs_high_load;
@@ -113,10 +91,7 @@ fn main() -> anyhow::Result<()> {
     app.run()
 }
 
-/// Flips matching overlay resources `.enabled = true` based on the
-/// comma-separated `TUNGSTEN_OVERLAYS_ON` env var. Supported tokens:
-/// `physics`, `systems`, `inspector`. Unknown tokens are ignored so perf
-/// captures can tolerate typos without failing.
+/// Enable overlays listed in `TUNGSTEN_OVERLAYS_ON`.
 fn apply_overlay_env(app: &mut App) {
     let Ok(raw) = std::env::var("TUNGSTEN_OVERLAYS_ON") else {
         return;

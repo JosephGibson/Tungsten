@@ -71,14 +71,13 @@ fn non_looping_animation_finishes() {
     registry.insert("once".into(), anim);
 
     let mut state = AnimationState::new("once");
-    // Advance through all frames
-    state.advance(100.0, &registry); // -> frame 1
-    state.advance(100.0, &registry); // -> frame 2
-    state.advance(100.0, &registry); // -> frame 3
-    let new = state.advance(100.0, &registry); // should finish
+    state.advance(100.0, &registry);
+    state.advance(100.0, &registry);
+    state.advance(100.0, &registry);
+    let new = state.advance(100.0, &registry);
     assert_eq!(state.frame_index, 3);
     assert!(state.finished);
-    assert_eq!(new, None); // already finished, no change
+    assert_eq!(new, None);
 }
 
 #[test]
@@ -113,6 +112,5 @@ fn zero_duration_does_not_infinite_loop() {
     );
 
     let mut state = AnimationState::new("zeros");
-    // Must terminate rather than spin forever.
     let _ = state.advance(100.0, &registry);
 }

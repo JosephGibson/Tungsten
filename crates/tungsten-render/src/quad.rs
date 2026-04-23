@@ -1,7 +1,7 @@
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
 
-/// Per-instance data for a colored quad, sent to the GPU.
+/// Colored quad instance.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct QuadInstance {
@@ -26,7 +26,7 @@ impl QuadInstance {
     }
 }
 
-/// Unit-square vertex data: two triangles covering [0,0] to [1,1].
+/// Unit-square two-triangle vertex.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 struct Vertex {
@@ -66,7 +66,7 @@ const QUAD_VERTICES: &[Vertex] = &[
     },
 ];
 
-/// Manages the colored-quad render pipeline, camera uniform, and vertex buffer.
+/// Colored-quad pipeline and shared camera uniform.
 pub struct QuadPipeline {
     pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
@@ -84,7 +84,7 @@ impl QuadPipeline {
 
         let camera_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("camera_uniform"),
-            size: 64, // mat4x4<f32>
+            size: 64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -165,28 +165,23 @@ impl QuadPipeline {
         }
     }
 
-    /// Expose the camera bind group layout so sibling pipelines (e.g. the
-    /// M21 `DebugLinePipeline`) can share the same camera uniform without
-    /// allocating a second `view_proj` buffer on the GPU.
+    /// Shared camera layout for sibling pipelines.
     pub fn camera_bind_group_layout(&self) -> &wgpu::BindGroupLayout {
         &self.camera_bind_group_layout
     }
 
-    /// Expose the bound camera bind group so sibling pipelines can rebind it
-    /// at draw time against their own render pass.
+    /// Shared camera bind group.
     pub fn camera_bind_group(&self) -> &wgpu::BindGroup {
         &self.camera_bind_group
     }
 
-    /// Upload the camera view-projection matrix. Caller owns matrix
-    /// construction; see `CameraState::view_projection` usage in the
-    /// umbrella crate for context.
+    /// Upload caller-owned camera view-projection matrix.
     pub fn update_camera(&self, queue: &wgpu::Queue, view_proj: &glam::Mat4) {
         let matrix_ref: &[f32; 16] = view_proj.as_ref();
         queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(matrix_ref));
     }
 
-    /// Draw a batch of colored quads. Call within an active render pass.
+    /// Draw colored quads.
     pub fn draw(
         &self,
         device: &wgpu::Device,

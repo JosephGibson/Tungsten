@@ -2,8 +2,7 @@ use super::*;
 
 #[test]
 fn splitmix64_reference_vectors() {
-    // SplitMix64 output for inputs {0, 1, 2, 3}. Regenerated if the
-    // algorithm ever changes — this pins the exact byte pattern.
+    // SplitMix64 byte-pattern guard for inputs 0..=3.
     assert_eq!(splitmix64(0), 0xE220_A839_7B1D_CDAF);
     assert_eq!(splitmix64(1), 0x910A_2DEC_8902_5CC1);
     assert_eq!(splitmix64(2), 0x9758_35DE_1C97_56CE);

@@ -11,7 +11,7 @@ fn aligned_row_rounds_up_to_256() {
 fn strip_row_padding_removes_tail() {
     let width = 3;
     let height = 2;
-    let padded_bpr = 16; // 12 bytes real, 4 bytes padding
+    let padded_bpr = 16;
     let mut padded = Vec::new();
     for row in 0..height {
         for px in 0..width {

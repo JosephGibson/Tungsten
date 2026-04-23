@@ -15,9 +15,7 @@ use crate::state::{
     WORLD_BOUNDS_MIN,
 };
 
-/// Horizontal movement + jump. Plays the jump SFX when the player leaves the
-/// ground. Runs BEFORE `physics_step` so velocity changes are integrated in
-/// the same frame.
+/// Player input before physics; jump SFX only on grounded launch.
 pub(crate) fn player_input(world: &mut World) {
     let (pressed_left, pressed_right, pressed_space);
     {
@@ -58,7 +56,7 @@ pub(crate) fn player_input(world: &mut World) {
             }
         }
 
-        // Consume the grounded flag; `ground_detection` will re-set it below.
+        // Consumed here; `ground_detection` re-sets after physics.
         if let Some(player) = world.get_mut::<Player>(entity) {
             player.grounded = false;
         }
@@ -76,7 +74,6 @@ pub(crate) fn player_input(world: &mut World) {
     }
 }
 
-/// Music toggle (M), volume steps (1/2/3), stop-all (S).
 pub(crate) fn audio_input_system(world: &mut World) {
     let (just_m, just_1, just_2, just_3, just_s);
     {
@@ -142,8 +139,6 @@ pub(crate) fn audio_input_system(world: &mut World) {
     }
 }
 
-/// = / - to zoom in or out. Adjusts `CameraController.zoom_multiplier` in 25%
-/// steps, clamped to [0.5, 2.0] relative to the base window-height zoom.
 pub(crate) fn camera_zoom_input_system(world: &mut World) {
     let (just_zoom_in, just_zoom_out);
     {
@@ -169,7 +164,6 @@ pub(crate) fn camera_zoom_input_system(world: &mut World) {
     }
 }
 
-/// Advances `AnimationState` and writes the resulting sprite ID into `CurrentSprite`.
 pub(crate) fn animation_system(world: &mut World) {
     let dt_ms = world.get_resource::<DeltaTime>().unwrap().seconds() * 1000.0;
     let anim_registry = match world.get_resource::<AnimationRegistry>() {
@@ -189,7 +183,6 @@ pub(crate) fn animation_system(world: &mut World) {
     }
 }
 
-/// Scans `EventQueue<CollisionEvent>` and flags the player as grounded on an upward contact.
 pub(crate) fn ground_detection(world: &mut World) {
     let events: Vec<CollisionEvent> = match world.get_resource::<EventQueue<CollisionEvent>>() {
         Some(queue) => queue.iter().copied().collect(),
@@ -205,8 +198,6 @@ pub(crate) fn ground_detection(world: &mut World) {
     }
 }
 
-/// Refreshes `TextDisplayState` at `TEXT_UPDATE_INTERVAL` so HUD values
-/// update at a readable rate instead of every frame.
 pub(crate) fn update_text_display(world: &mut World) {
     let dt = world
         .get_resource::<DeltaTime>()
@@ -260,10 +251,7 @@ pub(crate) fn update_text_display(world: &mut World) {
     }
 }
 
-/// Convert a screen-space cursor position (physical pixels, top-left origin)
-/// into a world-space point using the non-rotated camera transform. Returns
-/// `None` if the camera is rotated (the platformer never rotates, so rather
-/// than silently producing the wrong point we refuse).
+/// Screen cursor to world point; rotated cameras refused.
 pub(crate) fn cursor_to_world(cursor: Vec2, camera: &CameraState) -> Option<Vec2> {
     if camera.rotation != 0.0 {
         return None;
@@ -275,12 +263,7 @@ pub(crate) fn cursor_to_world(cursor: Vec2, camera: &CameraState) -> Option<Vec2
     ))
 }
 
-/// Spawns balls at the world-space cursor position while `spawn_ball` is
-/// held. A fixed accumulator advanced by `DeltaTime` produces one ball
-/// per `BALL_SPAWN_INTERVAL` of held time, so the rate is stable under
-/// variable frame times. Uses the deferred `CommandBuffer` so new
-/// entities are visible to this frame's extract stage but not to
-/// systems that already ran.
+/// Hold-to-spawn balls via fixed accumulator and deferred commands.
 pub(crate) fn spawn_ball_system(world: &mut World) {
     let held = {
         let Some(input) = world.get_resource::<InputState>() else {
@@ -336,9 +319,7 @@ pub(crate) fn spawn_ball_system(world: &mut World) {
     let Some(world_pos) = cursor_to_world(cursor, &camera) else {
         return;
     };
-    // Golden angle (π(3 - √5)) distributes consecutive indices over the
-    // circle with no rational period, so no two spawned balls share a
-    // jitter offset in any session.
+    // Golden-angle jitter avoids coincident circle degeneracy.
     const GOLDEN_ANGLE: f32 = 2.399_963_2;
     if let Some(cmds) = world.get_resource_mut::<CommandBuffer>() {
         for i in 0..spawn_count {
@@ -362,12 +343,7 @@ pub(crate) fn spawn_ball_system(world: &mut World) {
     }
 }
 
-/// Spawns a black hole at the world-space cursor position on Mouse2 press
-/// and drags it along while the button is held. While held, the hole's
-/// `remaining` is refreshed every frame so it never expires mid-drag; on
-/// release the dragged hole is despawned immediately. `ActiveBlackHole`
-/// tracks the dragged entity so the release path only affects the hole
-/// the user was actively controlling.
+/// Mouse2 drag-spawns active black hole; release despawns dragged entity.
 pub(crate) fn spawn_black_hole_system(world: &mut World) {
     let (just_pressed, is_held, just_released) = {
         let Some(input) = world.get_resource::<InputState>() else {
@@ -447,12 +423,7 @@ pub(crate) fn spawn_black_hole_system(world: &mut World) {
     }
 }
 
-/// Applies an attractive acceleration to every dynamic body within
-/// `BLACK_HOLE_RADIUS` of any active black hole. Pull strength peaks at
-/// `BLACK_HOLE_FORCE` px/s² at the centre and falls linearly to zero at
-/// the radius. Runs BEFORE `physics_step` so the velocity change is
-/// integrated in the same frame. Tiles have no `Velocity` component
-/// and are naturally excluded.
+/// Black-hole acceleration before physics; static tiles excluded by no velocity.
 pub(crate) fn black_hole_force_system(world: &mut World) {
     let dt = world
         .get_resource::<DeltaTime>()
@@ -504,8 +475,6 @@ pub(crate) fn black_hole_force_system(world: &mut World) {
     }
 }
 
-/// Decrements the lifetime counter on every active black hole and
-/// despawns those whose lifetime has expired.
 pub(crate) fn black_hole_lifetime_system(world: &mut World) {
     let dt = world
         .get_resource::<DeltaTime>()
@@ -531,18 +500,7 @@ pub(crate) fn black_hole_lifetime_system(world: &mut World) {
     }
 }
 
-/// Culls bodies that have escaped the active physics region defined by
-/// `WORLD_BOUNDS_MIN`/`WORLD_BOUNDS_MAX`. Runaway balls are despawned via
-/// the command buffer; the player is teleported back to `PLAYER_SPAWN`
-/// with zero velocity. Runs after `physics_step`/`ground_detection` so
-/// the position it checks is the post-resolve value for the frame.
-///
-/// Why: `compute_substeps` scales the whole world's cost by the single
-/// worst `velocity / min_half_extent` ratio. A ball in free fall past the
-/// tilemap accumulates velocity indefinitely and pegs that ratio to the
-/// `PhysicsConfig::max_substeps` cap (default 8), multiplying every
-/// frame's physics cost by ~8×. Bounding the active region keeps all
-/// dynamic bodies inside the bounce regime.
+/// Cull escaped bodies after physics; bounds prevent substep-cost runaway.
 pub(crate) fn despawn_out_of_bounds(world: &mut World) {
     let escaped_balls: Vec<Entity> = world
         .query::<Ball>()
@@ -585,9 +543,7 @@ fn is_out_of_bounds(pos: Vec2) -> bool {
         || pos.y > WORLD_BOUNDS_MAX.y
 }
 
-/// Recomputes the platformer's base zoom from the current window height.
-/// `camera_update_system` multiplies this by `CameraController.zoom_multiplier`
-/// before producing the authoritative `CameraState` for the frame.
+/// Base zoom from window height before shared camera update.
 pub(crate) fn platformer_camera_base_zoom(world: &mut World) {
     let window = world
         .get_resource::<WindowSize>()

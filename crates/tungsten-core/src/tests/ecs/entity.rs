@@ -40,9 +40,8 @@ fn stale_handle_returns_none() {
         },
     );
     e.free(a);
-    let _b = e.alloc(); // reuses the slot
+    let _b = e.alloc();
 
-    // Original handle has old generation — should not resolve.
     assert!(e.get(a).is_none());
     assert!(!e.is_alive(a));
 }
@@ -67,7 +66,6 @@ fn is_alive_false_after_free() {
 fn is_alive_false_before_location_set() {
     let mut e = Entities::new();
     let a = e.alloc();
-    // Freshly allocated slot has no location yet.
     assert!(!e.is_alive(a));
 }
 
@@ -106,7 +104,7 @@ fn free_list_order_is_lifo() {
     e.free(b);
     e.free(a);
 
-    let c = e.alloc(); // should reuse a's slot (LIFO)
+    let c = e.alloc();
     assert_eq!(c.index, a.index);
     assert_eq!(c.generation, 1);
 }

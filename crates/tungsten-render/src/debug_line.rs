@@ -1,26 +1,9 @@
-//! `DebugLinePipeline` (M21): draws oriented-quad lines for arbitrary-angle
-//! debug primitives — single lines and circle polylines emitted by
-//! `DebugDraw`. Axis-aligned AABB outlines are drawn via the existing
-//! `QuadPipeline`, not here.
-//!
-//! Camera uniform is borrowed from `QuadPipeline::camera_bind_group_layout()`
-//! (and the bind group is passed into `draw`) so only one `view_proj` buffer
-//! lives on the GPU across quad / sprite / debug-line paths.
-//!
-//! Thickness is specified in world-space units; expansion is computed in the
-//! vertex shader from the line's tangent. This avoids any viewport uniform
-//! or push constants — debug rendering at 1x camera zoom treats one world
-//! unit as one screen pixel (see the ortho projection in
-//! `Renderer::render_frame_with_quads`).
+//! Debug line pipeline; shares quad camera bind group and expands in shader.
 
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
 
-/// Per-instance data for one oriented-quad line segment.
-///
-/// `_pad` keeps the `color` field 8-byte aligned after the `thickness`
-/// scalar. Layout is vertex-buffer-only; no uniform/storage buffer path
-/// depends on WGSL struct alignment rules.
+/// Oriented-quad line instance.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct DebugLineInstance {

@@ -45,9 +45,7 @@ pub fn request_display_settings(
     Ok(())
 }
 
-/// Engine-owned display hotkeys, now routed through `ActionMap` instead of
-/// hardcoded key branches. Defaults remain `F9` (vsync) and `F11`
-/// (fullscreen), but `input.json` can override them.
+/// Display hotkeys through `ActionMap`; defaults F9/F11.
 pub(crate) fn engine_display_input_system(world: &mut World) {
     let (toggle_vsync, toggle_fullscreen) = {
         let Some(input) = world.get_resource::<InputState>() else {

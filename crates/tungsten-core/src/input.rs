@@ -7,8 +7,7 @@ pub mod key_serde;
 
 pub use action_map::{ActionMap, ActionMapError, Binding};
 
-/// Keyboard key codes, matching winit's `KeyCode` variants we actually use.
-/// Kept separate from winit so tungsten-core doesn't depend on it.
+/// Winit-like key codes without core depending on winit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum KeyCode {
     ArrowUp,
@@ -40,7 +39,7 @@ pub enum KeyCode {
     Other(u32),
 }
 
-/// Mouse button identifiers.
+/// Mouse button identifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MouseButton {
     Left,
@@ -49,10 +48,7 @@ pub enum MouseButton {
     Other(u16),
 }
 
-/// Discrete scroll directions exposed to the action map. Wheel motion is still
-/// available as raw line/pixel deltas on `InputState`; these directions exist
-/// so scroll-up / scroll-down can participate in the same boolean action path
-/// as keys and mouse buttons.
+/// Discrete scroll direction for action bindings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ScrollDirection {
     Up,
@@ -106,8 +102,7 @@ impl<'de> Deserialize<'de> for ScrollDirection {
     }
 }
 
-/// Resource tracking keyboard and mouse state with edge detection.
-/// Inserted as a Resource in the World. Updated each frame by the app layer.
+/// Keyboard/mouse/scroll state with per-frame edges.
 #[derive(Debug, Clone)]
 pub struct InputState {
     pressed: HashSet<KeyCode>,
@@ -147,8 +142,7 @@ impl InputState {
         }
     }
 
-    /// Clear per-frame edge state. Call at the start of each frame
-    /// before processing new events.
+    /// Clear per-frame edges and deltas.
     pub fn begin_frame(&mut self) {
         self.just_pressed.clear();
         self.just_released.clear();
@@ -208,8 +202,6 @@ impl InputState {
         self.scroll_pixel_delta.1 += y;
         self.register_scroll_direction(y);
     }
-
-    // --- Query methods ---
 
     pub fn is_pressed(&self, key: KeyCode) -> bool {
         self.pressed.contains(&key)

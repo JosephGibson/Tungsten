@@ -1,10 +1,4 @@
-//! Tilemap → sprite-batch extraction. Called by example code inside its
-//! `set_extract_sprites` closure. Separate from `app.rs` so the free
-//! function can be reused without going through an App-owned closure slot.
-//!
-//! The caller decides ordering — concatenate the tilemap batches before
-//! or after gameplay sprites depending on whether the tilemap should sit
-//! behind the actors or on top of them (usually behind).
+//! Tilemap-to-sprite extraction; caller owns batch ordering.
 
 use std::collections::HashMap;
 
@@ -14,17 +8,7 @@ use tungsten_render::{SpriteBatch, SpriteInstance};
 
 use crate::WindowSize;
 
-/// Walk every entity with a `TilemapInstance` component and return
-/// per-texture `SpriteBatch`es for the tiles currently visible through
-/// the `CameraState` resource.
-///
-/// Batches are returned in layer order within each tilemap, which
-/// preserves back-to-front draw order when the caller concatenates
-/// multiple tilemaps or mixes in entity sprites.
-///
-/// Only layers with `kind = render` contribute draw calls. Collision
-/// layers are accepted by the loader and round-trip through the
-/// registry but are skipped here — `physics_step` reads them directly.
+/// Extract visible render layers as sprite batches; collision layers skipped.
 pub fn extract_tilemaps(world: &World) -> Vec<SpriteBatch> {
     let tilemaps = match world.get_resource::<TilemapRegistry>() {
         Some(r) => r,
@@ -65,8 +49,7 @@ pub fn extract_tilemaps(world: &World) -> Vec<SpriteBatch> {
         let tw = data.tile_width as f32;
         let th = data.tile_height as f32;
 
-        // Clip the visible AABB to this tilemap's local tile grid.
-        // Local coords: subtract the instance origin from world coords.
+        // World AABB -> tilemap-local grid range.
         let local_min_x = view_min.x - instance.origin.x;
         let local_min_y = view_min.y - instance.origin.y;
         let local_max_x = view_max.x - instance.origin.x;
@@ -86,8 +69,7 @@ pub fn extract_tilemaps(world: &World) -> Vec<SpriteBatch> {
                 continue;
             }
 
-            // Batch per texture handle within this layer. Different
-            // layers emit separate batches so draw order is preserved.
+            // Per-layer batches preserve layer draw order.
             let mut per_texture: HashMap<u32, SpriteBatch> = HashMap::new();
 
             for row in row_start..row_end {

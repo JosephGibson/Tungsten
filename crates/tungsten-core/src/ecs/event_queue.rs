@@ -1,17 +1,8 @@
-//! Typed two-window event queue.
+//! Two-window event queue: `previous <- current`, then `current <- empty`.
 //!
-//! Each [`EventQueue<T>`] resource holds two `Vec<T>` windows: `previous` and
-//! `current`. Senders call [`EventQueue::send`] during the update stage.
-//! Readers call [`EventQueue::iter`] for the canonical two-window view or
-//! [`EventQueue::iter_current`] when they are guaranteed to run after all
-//! senders in the same frame.
-//!
-//! The App frame loop calls [`EventQueue::flush`] once per frame at the same
-//! boundary as `CommandBuffer` flush: after systems and before hot reload,
-//! extract, and render. Flush rotates the windows so `previous <- current` and
-//! `current <- empty`.
+//! App flushes once per frame after systems and command flush, before hot reload/extract/render.
 
-/// A typed two-window event buffer stored as a World resource.
+/// Typed two-window event buffer resource.
 pub struct EventQueue<T> {
     current: Vec<T>,
     previous: Vec<T>,
@@ -25,22 +16,22 @@ impl<T> EventQueue<T> {
         }
     }
 
-    /// Append an event to the current frame's window.
+    /// Append event to current window.
     pub fn send(&mut self, event: T) {
         self.current.push(event);
     }
 
-    /// Iterate events across both windows, previous frame first.
+    /// Iterate previous frame first, then current.
     pub fn iter(&self) -> impl Iterator<Item = &T> {
         self.previous.iter().chain(self.current.iter())
     }
 
-    /// Iterate only the current frame's events.
+    /// Iterate current window only.
     pub fn iter_current(&self) -> impl Iterator<Item = &T> {
         self.current.iter()
     }
 
-    /// Returns `true` when both windows are empty.
+    /// Both windows empty.
     pub fn is_empty(&self) -> bool {
         self.current.is_empty() && self.previous.is_empty()
     }
@@ -50,10 +41,7 @@ impl<T> EventQueue<T> {
         self.previous.len() + self.current.len()
     }
 
-    /// Rotate the windows: `previous <- current`, `current <- empty`.
-    ///
-    /// Called once per frame by the App event-flush stage. Game systems should
-    /// not call this directly.
+    /// Rotate windows; App-owned frame boundary.
     pub fn flush(&mut self) {
         self.previous.clear();
         std::mem::swap(&mut self.current, &mut self.previous);

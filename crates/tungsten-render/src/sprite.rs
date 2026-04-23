@@ -4,19 +4,7 @@ use bytemuck::{Pod, Zeroable};
 use tungsten_core::assets::{FilterMode, TextureHandle};
 use wgpu::util::DeviceExt;
 
-/// Per-instance sprite data sent to the GPU.
-///
-/// Layout (40 bytes total):
-///
-/// - `position`: world-space top-left of the non-rotated quad AABB.
-/// - `size`: world-space width/height of the quad.
-/// - `rotation`: radians, CCW positive, applied around the quad centre by the
-///   vertex shader. `0.0` reproduces the pre-M15 top-left-anchored behaviour.
-/// - `color`: RGBA8 tint, uploaded as `Unorm8x4` and multiplied into the
-///   sampled texel in the fragment shader. `[255; 4]` = no tint.
-/// - `uv_min`, `uv_size`: atlas UV rect for this instance. The vertex shader
-///   computes `uv = uv_min + vertex.uv * uv_size`, so `uv_min=[0,0]`,
-///   `uv_size=[1,1]` reproduces pre-M22 full-quad sampling.
+/// GPU sprite instance; 40-byte POD layout.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct SpriteInstance {
@@ -46,9 +34,7 @@ impl SpriteInstance {
         }
     }
 
-    /// Construct an instance that samples the entire bound texture. Used by
-    /// the sprite-stress baseline and any placeholder-texture path that does
-    /// not go through the `AssetRegistry`.
+    /// Full-texture instance for non-atlas paths.
     pub fn whole(position: [f32; 2], size: [f32; 2], rotation: f32, color: [u8; 4]) -> Self {
         Self {
             position,
@@ -123,9 +109,7 @@ const SPRITE_VERTICES: &[SpriteVertex] = &[
     },
 ];
 
-/// A GPU texture entry in the texture pool. One atlas page per entry; the
-/// sampler filter is baked into the bind group at upload time (M22), so
-/// `draw` no longer chooses between samplers per-batch.
+/// Texture pool entry; sampler filter baked into bind group.
 #[allow(dead_code)]
 struct GpuTexture {
     texture: wgpu::Texture,
@@ -134,14 +118,14 @@ struct GpuTexture {
     filter: FilterMode,
 }
 
-/// A batch of sprites sharing the same atlas-page texture handle.
+/// Sprite batch sharing one texture handle.
 pub struct SpriteBatch {
     pub texture: TextureHandle,
     pub filter: FilterMode,
     pub instances: Vec<SpriteInstance>,
 }
 
-/// Manages the textured-sprite pipeline, samplers, and texture pool.
+/// Textured sprite pipeline, samplers, and texture pool.
 pub struct SpritePipeline {
     pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
@@ -301,28 +285,22 @@ impl SpritePipeline {
         }
     }
 
-    /// Mint a fresh monotonic handle. Post-M22 the renderer owns handle
-    /// allocation so `AssetRegistry` never has to know how many atlas pages
-    /// the packer produced.
+    /// Mint renderer-owned texture handle.
     pub fn allocate_texture_handle(&mut self) -> TextureHandle {
         let handle = TextureHandle(self.next_handle);
         self.next_handle += 1;
         handle
     }
 
-    /// Remove a texture and its bind group from the pool. Used by hot-reload
-    /// rebuild when a rebuilt atlas has fewer pages than the old one.
+    /// Remove texture and bind group from pool.
     pub fn drop_texture(&mut self, handle: TextureHandle) {
         self.textures.remove(&handle);
     }
 
-    /// Upload a decoded RGBA image to the GPU and store it in the texture
-    /// pool. Exactly one sampler (`filter`) is baked into the bind group so
-    /// `draw` does not need to pick per-batch.
+    /// Upload RGBA texture; sampler filter baked into bind group.
     ///
     /// # Panics
-    /// Panics if `width` or `height` is zero, or if `rgba_data` length does
-    /// not match `width * height * 4`.
+    /// Panics on zero dimensions or RGBA length mismatch.
     #[allow(clippy::too_many_arguments)] // stable M22 surface; see D-048
     pub fn upload_texture(
         &mut self,
@@ -414,15 +392,10 @@ impl SpritePipeline {
         );
     }
 
-    /// Copy a rectangle of RGBA data into an existing atlas page via
-    /// `queue.write_texture`. No new `GpuTexture` is created. Used by the
-    /// hot-reload in-place path when a reloaded sprite fits inside its
-    /// originally packed rect.
+    /// Copy RGBA rectangle into existing atlas page.
     ///
     /// # Panics
-    /// Panics if the target handle is not in the pool, if the destination
-    /// rect escapes the texture, or if `rgba` length does not match
-    /// `width * height * 4`.
+    /// Panics on missing handle, escaped rect, or RGBA length mismatch.
     #[allow(clippy::too_many_arguments)] // stable M22 surface; see D-048
     pub fn write_subtexture(
         &self,
@@ -471,9 +444,7 @@ impl SpritePipeline {
         );
     }
 
-    /// Upload the camera view-projection matrix. Caller owns matrix
-    /// construction (typically `CameraState::view_projection(w, h)`) so
-    /// tilemaps, sprites, and quads all share a single source of truth.
+    /// Upload caller-owned camera view-projection matrix.
     pub fn update_camera(&self, queue: &wgpu::Queue, view_proj: &glam::Mat4) {
         let matrix_ref: &[f32; 16] = view_proj.as_ref();
         queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(matrix_ref));
@@ -493,7 +464,7 @@ impl SpritePipeline {
         });
     }
 
-    /// Draw sprite batches. Each batch is a set of instances sharing a texture.
+    /// Draw sprite batches.
     pub fn draw(
         &mut self,
         device: &wgpu::Device,
@@ -532,9 +503,7 @@ impl SpritePipeline {
 
             let start = (base_instance as wgpu::BufferAddress) * instance_stride;
             let end = start + (batch.instances.len() as wgpu::BufferAddress) * instance_stride;
-            // Every batch already occupies a contiguous range in `instance_upload`,
-            // even if we end up skipping the draw because its GPU texture is
-            // missing. Advance first so later batches keep the correct slice.
+            // Advance before possible skip; upload slices stay aligned.
             base_instance += batch.instances.len();
 
             let gpu_tex = match self.textures.get(&batch.texture) {

@@ -38,7 +38,6 @@ fn aabb_overlap_y_axis_gives_y_normal() {
 
 #[test]
 fn aabb_picks_axis_of_min_overlap() {
-    // Deep x overlap, shallow y overlap — y should win.
     let a = aabb(0.0, 0.0, 5.0, 1.0);
     let b = aabb(0.0, 1.8, 5.0, 1.0);
     let c = aabb_vs_aabb(&a, &b).unwrap();
@@ -53,7 +52,6 @@ fn circle_separated() {
 #[test]
 fn circle_overlap_normal_points_away_from_b() {
     let c = circle_vs_circle(Vec2::ZERO, 1.0, Vec2::new(1.5, 0.0), 1.0).unwrap();
-    // Expected: contact pushes a (at origin) to the left, away from b.
     assert!(c.normal.x < 0.0);
     assert!((c.penetration - 0.5).abs() < 1e-5);
 }
@@ -74,9 +72,7 @@ fn aabb_circle_separated() {
 #[test]
 fn aabb_circle_edge_contact() {
     let a = aabb(0.0, 0.0, 1.0, 1.0);
-    // Circle center 1.5 right of origin, radius 1.0 → overlap 0.5 on +x.
-    // Normal is a→b, i.e. direction the aabb moves to escape the
-    // circle, which here is -x.
+    // Circle right overlap 0.5; AABB escape normal -x.
     let c = aabb_vs_circle(&a, Vec2::new(1.5, 0.0), 1.0).unwrap();
     assert!((c.penetration - 0.5).abs() < 1e-5);
     assert!(c.normal.x < -0.9);
@@ -85,10 +81,7 @@ fn aabb_circle_edge_contact() {
 #[test]
 fn aabb_circle_corner_contact() {
     let a = aabb(0.0, 0.0, 1.0, 1.0);
-    // Circle center just outside the +x/+y corner, radius big enough
-    // to reach (1,1).
     let c = aabb_vs_circle(&a, Vec2::new(1.3, 1.3), 0.5).unwrap();
-    // Normal points from circle back toward the aabb (−x, −y).
     assert!(c.normal.x < 0.0 && c.normal.y < 0.0);
     assert!(c.penetration > 0.0);
 }
@@ -96,18 +89,14 @@ fn aabb_circle_corner_contact() {
 #[test]
 fn aabb_circle_center_inside_picks_nearest_face() {
     let a = aabb(0.0, 0.0, 5.0, 1.0);
-    // Circle center slightly above center, nearest face is top (min-y).
-    // Pushing the aabb in +y pops the circle out through that face.
+    // Inside circle uses nearest face normal.
     let c = aabb_vs_circle(&a, Vec2::new(0.0, -0.5), 0.1).unwrap();
     assert!(c.normal.y > 0.0);
 }
 
 #[test]
 fn sweep_hits_static_aabb_in_path() {
-    // Moving box at origin half (0.5,0.5), sweeping right toward a
-    // static box at (5,0) half (1,1). Expanded target half = (1.5, 1.5),
-    // so sweep's x-enter is at center = 5 - 1.5 = 3.5. Starting from
-    // x=0 over delta=6, t = 3.5/6 ≈ 0.5833.
+    // Expanded target x-enter: (5 - 1.5) / 6 = 0.5833.
     let hit = sweep_aabb_vs_aabb(
         Vec2::new(0.0, 0.0),
         Vec2::new(6.0, 0.0),
@@ -122,7 +111,6 @@ fn sweep_hits_static_aabb_in_path() {
 
 #[test]
 fn sweep_misses_when_offset_from_target() {
-    // Same static target but the sweep is offset in y so it never crosses.
     assert!(sweep_aabb_vs_aabb(
         Vec2::new(0.0, 10.0),
         Vec2::new(6.0, 10.0),
@@ -135,9 +123,7 @@ fn sweep_misses_when_offset_from_target() {
 
 #[test]
 fn sweep_already_overlapping_returns_none() {
-    // Caller is expected to hand already-penetrating pairs to the
-    // iteration resolver; the sweep test only catches tunneling along
-    // the integration path.
+    // Already-penetrating pairs are handled by iteration resolver.
     assert!(sweep_aabb_vs_aabb(
         Vec2::new(0.0, 0.0),
         Vec2::new(1.0, 0.0),
@@ -150,11 +136,7 @@ fn sweep_already_overlapping_returns_none() {
 
 #[test]
 fn sweep_picks_entry_axis_for_normal() {
-    // Sweep diagonally into the corner of a target expanded to
-    // (3.5..6.5) on both axes. delta = (6, 4) means x-slab enters
-    // at t = 3.5/6 ≈ 0.583 and y-slab enters at t = 3.5/4 = 0.875;
-    // y is the later entry and therefore the contact axis, so the
-    // normal is along -y.
+    // Later entry axis wins: x=0.583, y=0.875 -> -y normal.
     let hit = sweep_aabb_vs_aabb(
         Vec2::new(0.0, 0.0),
         Vec2::new(6.0, 4.0),

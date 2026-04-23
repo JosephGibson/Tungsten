@@ -1,16 +1,9 @@
-//! Physics debug overlay (M21, `F1`). Emits `DebugDraw` commands outlining
-//! every `Position + Collider` entity in the world so collision geometry
-//! can be sanity-checked at runtime without touching render code.
-//!
-//! The overlay reads from physics components (`Position`, `Collider`) — not
-//! `Transform` — so what you see matches the authoritative collision state
-//! per D-042. When `enabled = false` the emit system is a no-op.
+//! D-042 physics debug overlay reads `Position + Collider`, not `Transform`.
 
 use tungsten_core::physics::{Collider, Position, Shape};
 use tungsten_core::{ActionMap, DebugDraw, InputState, World};
 
-/// Per-overlay configuration. Colors are linear RGBA `[0..1]`; thickness is
-/// world-space width (one world unit == one pixel at camera zoom 1x).
+/// Physics debug overlay config.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PhysicsDebugOverlay {
     pub enabled: bool,
@@ -36,9 +29,7 @@ impl PhysicsDebugOverlay {
     }
 }
 
-/// Engine system: flips `PhysicsDebugOverlay.enabled` on
-/// `engine_toggle_physics_debug` action edge. Registered ahead of the HUD
-/// toggle so the input edge is consumed on the same frame it arrives.
+/// Toggle on `engine_toggle_physics_debug` edge.
 pub(crate) fn physics_debug_toggle_system(world: &mut World) {
     let pressed = {
         let Some(input) = world.get_resource::<InputState>() else {
@@ -56,10 +47,7 @@ pub(crate) fn physics_debug_toggle_system(world: &mut World) {
     }
 }
 
-/// Engine extract-stage system: walks every `(Position, Collider)` entity
-/// and pushes outline commands into `DebugDraw`. Call this before the
-/// DebugDraw drain in `App::render_redraw` so the commands reach the
-/// renderer on the same frame they are produced.
+/// Emit collider outlines before `DebugDraw` drain.
 pub(crate) fn physics_debug_emit_system(world: &mut World) {
     let Some(overlay) = world.get_resource::<PhysicsDebugOverlay>() else {
         return;

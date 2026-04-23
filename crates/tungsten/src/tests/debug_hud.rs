@@ -37,9 +37,7 @@ fn action_map_hud_toggle_uses_engine_action() {
 
 #[test]
 fn hud_excludes_player_state_and_systems_rows() {
-    // Regression for the render-focused refactor: the HUD must not
-    // surface per-entity or per-system info anymore. Those live in the
-    // inspector (F3) and systems overlay (F2) respectively.
+    // HUD excludes inspector/system-overlay ownership.
     let mut world = World::new();
     let mut ft = FrameTimings::new();
     ft.system_timings = vec![("sys_a".into(), 1.0), ("sys_b".into(), 5.0)];
@@ -91,7 +89,6 @@ fn custom_row_appears_after_built_in() {
     let sections = compose_hud_text_sections(&mut hud, &world, (1280, 720), 16.67);
     assert!(!sections.is_empty());
     let content = &sections.last().unwrap().content;
-    // fps row (built-in, emitted first) must precede the custom "extra" row.
     let fps_idx = content.find("fps").expect("fps row missing");
     let extra_idx = content.find("extra").expect("extra row missing");
     assert!(fps_idx < extra_idx);
@@ -110,13 +107,11 @@ fn refresh_throttle_reuses_cached_sections_between_ticks() {
     });
     let world = World::new();
 
-    // First call always rebuilds (cache empty, time seeded to +inf).
     let first = compose_hud_text_sections(&mut hud, &world, (1280, 720), 16.67);
     assert!(!first.is_empty());
     let first_content = first.last().unwrap().content.clone();
 
-    // Re-register a different custom row; cache should still win because
-    // only 16.67 ms has elapsed of the 100 ms interval.
+    // Cache wins inside 100 ms refresh interval.
     hud.add_row(|_| {
         vec![HudRow {
             label: "tick",
@@ -126,7 +121,6 @@ fn refresh_throttle_reuses_cached_sections_between_ticks() {
     let second = compose_hud_text_sections(&mut hud, &world, (1280, 720), 16.67);
     assert_eq!(second[0].content, first_content);
 
-    // Advance past the interval with a large frame_ms; rebuild kicks in.
     let third = compose_hud_text_sections(&mut hud, &world, (1280, 720), 200.0);
     assert_ne!(third[0].content, first_content);
 }
@@ -163,13 +157,11 @@ fn outline_emits_extra_sections_behind_main() {
     let world = World::new();
     let sections = compose_hud_text_sections(&mut hud, &world, (1280, 720), 16.67);
     assert_eq!(sections.len(), 5);
-    // All outline sections share the main color's content but wear the outline color.
     for s in &sections[..4] {
         assert_eq!(s.color, hud.outline_color);
     }
     let main = sections.last().unwrap();
     assert_eq!(main.color, hud.color);
-    // Outline copies sit at +/- outline_px around the main position.
     let [mx, my] = main.position;
     let offsets: Vec<[f32; 2]> = sections[..4].iter().map(|s| s.position).collect();
     assert!(offsets.contains(&[mx - 1.0, my]));

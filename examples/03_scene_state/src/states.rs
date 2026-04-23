@@ -1,11 +1,6 @@
-//! States for example 03: `MainMenuState`, `GameplayState`, `PauseState`.
+//! Example 03 states: menu, gameplay, pause.
 //!
-//! `MainMenuState` spawns a rotating ring of decorator quads so the idle
-//! screen has motion. `GameplayState` delegates to `asset_loader::spawn_scene`
-//! with the bundled `scene.json` (1 central hub + three orbital rings).
-//! `PauseState` overlays a full-screen dim quad — because `push` fires
-//! `on_pause` (not `on_exit`), the gameplay scene stays alive beneath it and
-//! its orbit system stops running thanks to the top-state gate in `main.rs`.
+//! Pause uses push/on_pause; gameplay scene persists under top-state gate.
 
 use std::path::Path;
 

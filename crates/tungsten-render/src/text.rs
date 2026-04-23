@@ -6,21 +6,18 @@ use glyphon::{
 };
 use wgpu::{Device, MultisampleState, Queue, RenderPass, TextureFormat};
 
-/// High-level text draw command. Game code produces these; the renderer
-/// converts them into glyphon buffers each frame.
+/// High-level text draw command.
 #[derive(Debug, Clone)]
 pub struct TextSection {
     pub content: String,
     pub font_id: String,
     pub font_size: f32,
     pub line_height: f32,
-    /// RGBA color, each channel 0–255.
+    /// RGBA color.
     pub color: [u8; 4],
-    /// Screen-space position in pixels (left, top).
+    /// Screen-space top-left position.
     pub position: [f32; 2],
-    /// Optional (width, height): passed to the layout buffer for wrapping, and
-    /// used with [`position`](Self::position) to build glyphon clip bounds
-    /// (intersected with the viewport). Omit for full-viewport clipping only.
+    /// Optional wrap/clip bounds.
     pub bounds: Option<[f32; 2]>,
 }
 
@@ -28,8 +25,7 @@ struct StoredFontAttrs {
     family: String,
     weight: Weight,
     style: Style,
-    /// fontdb face IDs for all faces loaded from this manifest entry,
-    /// kept so that `reload_font` can selectively remove them.
+    /// fontdb faces loaded from this manifest entry.
     face_ids: Vec<glyphon::fontdb::ID>,
 }
 
@@ -52,8 +48,7 @@ struct CachedTextBuffer {
 const BUFFER_CACHE_PRUNE_INTERVAL_FRAMES: u64 = 120;
 const BUFFER_CACHE_TTL_FRAMES: u64 = 360;
 
-/// Owns all glyphon state and provides prepare/render methods that sit
-/// alongside the quad and sprite pipelines in the Renderer.
+/// Glyphon text pipeline state.
 pub struct TextPipeline {
     font_system: FontSystem,
     swash_cache: SwashCache,
@@ -87,8 +82,7 @@ impl TextPipeline {
         }
     }
 
-    /// Load a font from raw TTF/OTF bytes and associate it with a manifest ID.
-    /// The font's family name and weight are auto-detected from the file.
+    /// Load font bytes under manifest ID.
     pub fn load_font(&mut self, id: &str, data: Vec<u8>) {
         let ids_before: HashSet<_> = self.font_system.db().faces().map(|f| f.id).collect();
         self.font_system.db_mut().load_font_data(data);
@@ -133,13 +127,11 @@ impl TextPipeline {
                 face_ids,
             },
         );
-        // Font face registration can change fallback/selection outcomes.
-        // Invalidate shaped buffers so they are rebuilt with current fontdb state.
+        // Fontdb changes can alter fallback/selection.
         self.buffer_cache.clear();
     }
 
-    /// Hot-reload a font: remove old face data from fontdb, flush the glyph
-    /// atlas, then re-register with the new bytes.
+    /// Hot-reload font bytes and evict dependent caches.
     pub fn reload_font(&mut self, id: &str, data: Vec<u8>) {
         if let Some(old) = self.font_attrs.remove(id) {
             let db = self.font_system.db_mut();
@@ -147,14 +139,12 @@ impl TextPipeline {
                 db.remove_face(face_id);
             }
         }
-        // Evict any cached glyph bitmaps that referenced the old face data.
         self.atlas.trim();
         self.buffer_cache.clear();
         self.load_font(id, data);
     }
 
-    /// Build glyphon Buffers from TextSections, upload glyphs, and prepare
-    /// vertex data for rendering. Must be called before `render`.
+    /// Prepare glyph buffers and atlas for render.
     pub fn prepare(
         &mut self,
         device: &Device,
@@ -244,14 +234,14 @@ impl TextPipeline {
         }
     }
 
-    /// Draw prepared text into an active render pass.
+    /// Draw prepared text.
     pub fn render<'pass>(&'pass self, pass: &mut RenderPass<'pass>) {
         if let Err(e) = self.text_renderer.render(&self.atlas, &self.viewport, pass) {
             log::error!("Text render error: {e:?}");
         }
     }
 
-    /// Trim unused atlas entries after presenting. Call once per frame.
+    /// Trim unused atlas entries after presenting.
     pub fn post_frame(&mut self) {
         self.atlas.trim();
     }

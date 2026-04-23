@@ -2,14 +2,14 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-/// A single frame in an animation sequence.
+/// Animation frame.
 #[derive(Debug, Clone, Deserialize)]
 pub struct AnimationFrame {
     pub sprite: String,
     pub duration_ms: u32,
 }
 
-/// Animation data loaded from JSON (per D-010).
+/// D-010 animation data.
 #[derive(Debug, Clone, Deserialize)]
 pub struct AnimationData {
     pub looping: bool,
@@ -36,7 +36,7 @@ impl AnimationData {
     }
 }
 
-/// Registry of loaded animation data, keyed by animation ID.
+/// Animation registry resource.
 #[derive(Debug, Default, Clone)]
 pub struct AnimationRegistry {
     animations: HashMap<String, AnimationData>,
@@ -52,7 +52,7 @@ impl AnimationRegistry {
         self.animations.insert(id, data);
     }
 
-    /// Insert an animation and register its source path for hot-reload reverse lookup.
+    /// Insert with source-path reverse lookup.
     pub fn insert_with_path(&mut self, id: String, data: AnimationData, path: PathBuf) {
         self.path_to_id.insert(path, id.clone());
         self.animations.insert(id, data);
@@ -66,7 +66,7 @@ impl AnimationRegistry {
         self.animations.iter().map(|(k, v)| (k.as_str(), v))
     }
 
-    /// Reverse-lookup: find the animation ID registered for a given file path.
+    /// Animation ID for source path.
     pub fn id_for_path(&self, path: &Path) -> Option<&str> {
         self.path_to_id.get(path).map(|s| s.as_str())
     }
@@ -76,7 +76,7 @@ impl AnimationRegistry {
     }
 }
 
-/// ECS component holding animation playback state for an entity.
+/// Animation playback component.
 #[derive(Debug, Clone)]
 pub struct AnimationState {
     pub animation_id: String,
@@ -97,15 +97,14 @@ impl AnimationState {
         }
     }
 
-    /// Get the current sprite ID for this animation state.
+    /// Current sprite ID.
     pub fn current_sprite<'a>(&self, registry: &'a AnimationRegistry) -> Option<&'a str> {
         let anim = registry.get(&self.animation_id)?;
         let frame = anim.frames.get(self.frame_index)?;
         Some(&frame.sprite)
     }
 
-    /// Advance the animation by `dt_ms` milliseconds. Returns the new current
-    /// sprite ID if the frame changed, or None if it didn't.
+    /// Advance by milliseconds; returns sprite ID on frame change.
     pub fn advance(&mut self, dt_ms: f32, registry: &AnimationRegistry) -> Option<String> {
         if !self.playing || self.finished {
             return None;
@@ -119,7 +118,7 @@ impl AnimationState {
         self.accumulated_ms += dt_ms;
         let old_frame = self.frame_index;
 
-        // Bound iterations to prevent infinite loops when frames have zero duration.
+        // Bound zero-duration frame loops.
         let max_steps = anim.frames.len() * 2;
         for _ in 0..max_steps {
             let current_frame = &anim.frames[self.frame_index];

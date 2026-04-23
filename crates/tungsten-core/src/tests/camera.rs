@@ -11,10 +11,7 @@ fn assert_vec2_close(actual: Vec2, expected: Vec2) {
 
 #[test]
 fn default_matches_pre_m10_ortho() {
-    // The pre-M10 pipeline built:
-    //   Mat4::orthographic_rh(0.0, width, height, 0.0, -1.0, 1.0)
-    // CameraState::default() must produce the same matrix, otherwise
-    // examples 01–08 would shift after the refactor.
+    // Pre-M10 default ortho compatibility.
     let cam = CameraState::new();
     let got = cam.view_projection(1280.0, 720.0);
     let expected = Mat4::orthographic_rh(0.0, 1280.0, 720.0, 0.0, -1.0, 1.0);
@@ -43,7 +40,6 @@ fn zoom_shrinks_visible_area() {
 fn zero_zoom_does_not_panic() {
     let mut cam = CameraState::new();
     cam.zoom = 0.0;
-    // Should clamp internally, not divide by zero.
     let _ = cam.view_projection(800.0, 600.0);
     let _ = cam.visible_world_aabb(800.0, 600.0);
 }

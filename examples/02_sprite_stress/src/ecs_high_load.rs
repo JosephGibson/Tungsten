@@ -1,11 +1,6 @@
-//! ECS high-load scene — the canonical full-system stress case for
-//! [`docs/perf/profiling-workflow.md`]. 50k entities, boid-style steering,
-//! physics broadphase rebuilt per frame, camera follow, animated tints.
+//! Full-system perf case: 50k ECS agents, steering, broadphase, camera, tints.
 //!
-//! This is the package's primary perf harness. It creates a synthetic
-//! `ex02_high_load_agent` sprite through `register_sprite` + `upload_texture`
-//! directly — intentionally bypassing the manifest-driven registry so the
-//! perf capture stays self-contained (no sample sprites to keep in sync).
+//! Synthetic sprite bypasses manifest so perf capture stays self-contained.
 
 use std::path::PathBuf;
 

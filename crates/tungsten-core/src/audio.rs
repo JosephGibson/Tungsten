@@ -1,30 +1,25 @@
 use crate::assets::AudioHandle;
 
-/// A command to the audio thread. Game systems push these to `AudioCommands`
-/// each tick; the audio callback thread drains them via mpsc.
+/// Audio thread command.
 #[derive(Debug, Clone)]
 pub enum AudioCommand {
-    /// Begin playing a sound. Overrides the manifest defaults for looping and volume.
+    /// Begin playback.
     Play {
         handle: AudioHandle,
-        /// Volume scale (0.0–1.0). Multiplied by the sound's manifest volume.
+        /// Volume scale.
         volume: f32,
-        /// Whether the sound loops after reaching its end.
+        /// Loop at end.
         looping: bool,
     },
-    /// Stop all active instances of this sound.
+    /// Stop active instances of sound.
     Stop { handle: AudioHandle },
-    /// Silence all currently playing sounds.
+    /// Stop all sounds.
     StopAll,
-    /// Set the master volume (0.0–1.0). Applied to all sounds.
+    /// Set master volume.
     SetMasterVolume(f32),
 }
 
-/// Resource that game systems write audio commands to each tick.
-/// The audio callback thread drains it via an mpsc channel set up by `AudioSystem`.
-///
-/// Game code should push at most a handful of commands per frame. This is a
-/// "fire on event" API, not a "call every tick" API.
+/// Per-frame audio command queue resource.
 pub struct AudioCommands {
     commands: Vec<AudioCommand>,
 }
@@ -36,7 +31,7 @@ impl AudioCommands {
         }
     }
 
-    /// Play a sound using its manifest defaults for looping and volume.
+    /// Play once.
     pub fn play(&mut self, handle: AudioHandle) {
         self.commands.push(AudioCommand::Play {
             handle,
@@ -45,7 +40,7 @@ impl AudioCommands {
         });
     }
 
-    /// Play a sound that loops using its manifest default volume.
+    /// Play looping.
     pub fn play_looping(&mut self, handle: AudioHandle) {
         self.commands.push(AudioCommand::Play {
             handle,
@@ -54,7 +49,7 @@ impl AudioCommands {
         });
     }
 
-    /// Play a sound with explicit volume and loop settings.
+    /// Play with explicit volume/loop.
     pub fn play_with(&mut self, handle: AudioHandle, volume: f32, looping: bool) {
         self.commands.push(AudioCommand::Play {
             handle,
@@ -63,23 +58,22 @@ impl AudioCommands {
         });
     }
 
-    /// Stop all active instances of a sound.
+    /// Stop active instances of sound.
     pub fn stop(&mut self, handle: AudioHandle) {
         self.commands.push(AudioCommand::Stop { handle });
     }
 
-    /// Stop all currently playing sounds.
+    /// Stop all sounds.
     pub fn stop_all(&mut self) {
         self.commands.push(AudioCommand::StopAll);
     }
 
-    /// Set the global master volume (0.0–1.0).
+    /// Set master volume.
     pub fn set_master_volume(&mut self, volume: f32) {
         self.commands.push(AudioCommand::SetMasterVolume(volume));
     }
 
-    /// Drain all pending commands. Called by `App` after each tick to forward
-    /// commands to the audio thread.
+    /// Drain pending commands after tick.
     pub fn drain(&mut self) -> Vec<AudioCommand> {
         std::mem::take(&mut self.commands)
     }
