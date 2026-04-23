@@ -327,7 +327,7 @@ Plan number conflict note: the M15 plan originally reserved `D-041`, but that ID
 
 - Image diff (Pillow per-pixel RGBA, tolerance = 0): `01_platformer`, `02_sprite_stress`, `03_scene_state` all pixel-identical vs. the pre-M22 HEAD capture.
 - `sprite_extract_batch_build_2k`: pre-M22 ≈ 6.32 µs, post-M22 ≈ 7.72 µs (+22 %). The bench pre-allocates 10 fixed batches and does not exercise batch-collapse, so the measurement is dominated by the `SpriteInstance` stride growth (24 B → 40 B, +66 %). The plan's ≤10 % gate assumed batch collapse would compensate inside this micro-bench; in practice the collapse lives in the real-scene draw path, not the synthetic struct-push loop. The engineered-in wins (fewer bind-group switches, fewer live textures) show up in `SpritePipeline::draw` and the startup texture-count reduction, not here.
-- `atlas_pack_startup_200` baseline: ≈ 7.45 µs (first recorded number on this machine; future runs guard the ≤20 % regression rule at [Phase3.md:202](docs/plans/Phase3.md#L202)).
+- `atlas_pack_startup_200` baseline: ≈ 7.45 µs (first recorded number on this machine; future runs guard the ≤20 % regression rule from the archived Phase 3 rollout plan, [`docs/plans/archive/phase3-rollout.md`](docs/plans/archive/phase3-rollout.md), Benchmark And Quality Gates).
 
 **Rejected alternatives:**
 

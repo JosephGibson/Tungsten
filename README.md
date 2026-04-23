@@ -4,7 +4,7 @@ From-scratch Rust 2D game engine. Stack: `winit` + `wgpu` + `glam` + hand-rolled
 
 ## Status
 
-Workspace `v0.21.0` on branch `0.21`. Phase 3 M24 (Tween System) is shipped. Phase 3 is complete; Phase 4 scope is under planning.
+Workspace `v0.21.0` on branch `0.21`. Phase 3 is complete; all milestones `M12`–`M24` shipped. The rollout plan is archived at [`docs/plans/archive/phase3-rollout.md`](docs/plans/archive/phase3-rollout.md). Phase 4 is not yet scoped.
 
 ## Stack
 
