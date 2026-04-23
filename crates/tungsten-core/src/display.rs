@@ -16,6 +16,7 @@ pub enum DisplayMode {
 }
 
 impl DisplayMode {
+    #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Windowed => "windowed",
@@ -24,6 +25,7 @@ impl DisplayMode {
         }
     }
 
+    #[must_use]
     pub fn from_str_name(value: &str) -> Option<Self> {
         match value {
             "windowed" => Some(Self::Windowed),
@@ -41,6 +43,7 @@ pub enum ScaleMode {
 }
 
 impl ScaleMode {
+    #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Stretch => "stretch",
@@ -48,6 +51,7 @@ impl ScaleMode {
         }
     }
 
+    #[must_use]
     pub fn from_str_name(value: &str) -> Option<Self> {
         match value {
             "stretch" => Some(Self::Stretch),
@@ -126,6 +130,7 @@ pub struct DisplayConfig {
 }
 
 impl DisplayConfig {
+    #[must_use]
     pub fn resolve(&self, window: &WindowConfig, render: &RenderConfig) -> DisplayState {
         let mut resolved = DisplayState {
             resolution: Resolution {
@@ -243,18 +248,16 @@ fn parse_named_enum<T>(
 ) -> Option<T> {
     match value {
         Value::Null => None,
-        Value::String(raw) => match parser(raw) {
-            Some(parsed) => Some(parsed),
-            None => {
+        Value::String(raw) => {
+            if let Some(parsed) = parser(raw) {
+                Some(parsed)
+            } else {
                 log::warn!(
-                    "Config {}='{}' is invalid; expected {}; falling back",
-                    field_name,
-                    raw,
-                    expected
+                    "Config {field_name}='{raw}' is invalid; expected {expected}; falling back"
                 );
                 None
             }
-        },
+        }
         other => {
             log::warn!(
                 "Config {}={} is invalid; expected {}; falling back",
@@ -288,8 +291,7 @@ fn parse_optional_positive_u32(field_name: &str, value: &Value) -> Option<u32> {
         Value::Number(number) => match number.as_u64().and_then(|raw| u32::try_from(raw).ok()) {
             Some(0) => {
                 log::warn!(
-                    "Config {}=0 is invalid; expected an integer >= 1; falling back",
-                    field_name
+                    "Config {field_name}=0 is invalid; expected an integer >= 1; falling back"
                 );
                 None
             }
@@ -361,9 +363,7 @@ fn parse_resolution(value: &Value) -> Option<Resolution> {
         }
         (Some(width), Some(height)) => {
             log::warn!(
-                "Config display.resolution={}x{} is invalid; expected width >= 1 and height >= 1; falling back",
-                width,
-                height
+                "Config display.resolution={width}x{height} is invalid; expected width >= 1 and height >= 1; falling back"
             );
             None
         }

@@ -89,6 +89,7 @@ pub enum PresentModeConfig {
 pub struct ParsePresentModeConfigError;
 
 impl PresentModeConfig {
+    #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Auto => "auto",

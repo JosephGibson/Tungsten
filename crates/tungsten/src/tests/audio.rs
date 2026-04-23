@@ -17,7 +17,7 @@ fn process_play_adds_entry() {
     let mut playing = Vec::new();
     let mut master = 1.0f32;
     process_command(
-        AudioCommand::Play {
+        &AudioCommand::Play {
             handle: AudioHandle(0),
             volume: 0.5,
             looping: true,
@@ -35,7 +35,7 @@ fn process_stop_marks_finished() {
     let mut playing = vec![make_playing(AudioHandle(1))];
     let mut master = 1.0f32;
     process_command(
-        AudioCommand::Stop {
+        &AudioCommand::Stop {
             handle: AudioHandle(1),
         },
         &mut playing,
@@ -48,7 +48,7 @@ fn process_stop_marks_finished() {
 fn process_stop_all_marks_all_finished() {
     let mut playing = vec![make_playing(AudioHandle(0)), make_playing(AudioHandle(1))];
     let mut master = 1.0f32;
-    process_command(AudioCommand::StopAll, &mut playing, &mut master);
+    process_command(&AudioCommand::StopAll, &mut playing, &mut master);
     assert!(playing.iter().all(|ps| ps.finished));
 }
 
@@ -57,7 +57,7 @@ fn process_set_master_volume() {
     let mut playing = Vec::new();
     let mut master = 1.0f32;
     process_command(
-        AudioCommand::SetMasterVolume(0.3),
+        &AudioCommand::SetMasterVolume(0.3),
         &mut playing,
         &mut master,
     );

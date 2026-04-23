@@ -78,8 +78,7 @@ pub struct PhysicsBuffers {
 pub fn physics_step(world: &mut World) {
     let dt = world
         .get_resource::<DeltaTime>()
-        .map(|d| d.seconds())
-        .unwrap_or(0.0);
+        .map_or(0.0, super::super::time::DeltaTime::seconds);
     if dt <= 0.0 {
         return;
     }
@@ -155,8 +154,7 @@ fn apply_gravity_and_integrate(
         }
         let step = world
             .get::<Velocity>(entity)
-            .map(|v| v.0 * sub_dt)
-            .unwrap_or(Vec2::ZERO);
+            .map_or(Vec2::ZERO, |v| v.0 * sub_dt);
         if let Some(pos) = world.get_mut::<Position>(entity) {
             pos.0 += step;
         }
@@ -204,8 +202,7 @@ fn resolve_collisions(
         let velocity = world
             .get::<Velocity>(*entity)
             .copied()
-            .map(|v| v.0)
-            .unwrap_or(Vec2::ZERO);
+            .map_or(Vec2::ZERO, |v| v.0);
         let (is_dynamic, inv_mass, restitution) = match body {
             Some(b) => (
                 b.kind == BodyKind::Dynamic,

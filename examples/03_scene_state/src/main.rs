@@ -66,9 +66,8 @@ fn main() -> anyhow::Result<()> {
 fn active_id_is(world: &World, expected: &str) -> bool {
     world
         .get_resource::<StateStack>()
-        .and_then(|stack| stack.active_id())
-        .map(|id| id == expected)
-        .unwrap_or(false)
+        .and_then(StateStack::active_id)
+        .is_some_and(|id| id == expected)
 }
 
 fn menu_idle_system(world: &mut World) {
@@ -78,8 +77,7 @@ fn menu_idle_system(world: &mut World) {
 
     let dt = world
         .get_resource::<DeltaTime>()
-        .map(|d| d.seconds())
-        .unwrap_or(1.0 / 60.0);
+        .map_or(1.0 / 60.0, DeltaTime::seconds);
 
     if let Some(clock) = world.get_resource_mut::<MenuClock>() {
         clock.0 += dt;
@@ -89,8 +87,7 @@ fn menu_idle_system(world: &mut World) {
     for entity in entities {
         let is_decoration = world
             .get::<Tag>(entity)
-            .map(|t| t.name == "menu_decoration")
-            .unwrap_or(false);
+            .is_some_and(|t| t.name == "menu_decoration");
         if !is_decoration {
             continue;
         }
@@ -122,8 +119,7 @@ fn gameplay_orbit_system(world: &mut World) {
 
     let dt = world
         .get_resource::<DeltaTime>()
-        .map(|d| d.seconds())
-        .unwrap_or(1.0 / 60.0);
+        .map_or(1.0 / 60.0, DeltaTime::seconds);
 
     let elapsed = if let Some(clock) = world.get_resource_mut::<GameplayClock>() {
         clock.0 += dt;
@@ -193,10 +189,7 @@ fn state_driven_text(world: &World) -> Vec<TextSection> {
 }
 
 fn menu_text(world: &World) -> Vec<TextSection> {
-    let elapsed = world
-        .get_resource::<MenuClock>()
-        .map(|c| c.0)
-        .unwrap_or(0.0);
+    let elapsed = world.get_resource::<MenuClock>().map_or(0.0, |c| c.0);
     let prompt_alpha = (((elapsed * 2.0).sin() * 0.5 + 0.5) * 130.0 + 125.0) as u8;
 
     vec![
@@ -240,10 +233,7 @@ fn menu_text(world: &World) -> Vec<TextSection> {
 }
 
 fn gameplay_text(world: &World) -> Vec<TextSection> {
-    let elapsed = world
-        .get_resource::<GameplayClock>()
-        .map(|c| c.0)
-        .unwrap_or(0.0);
+    let elapsed = world.get_resource::<GameplayClock>().map_or(0.0, |c| c.0);
 
     vec![
         TextSection {
@@ -256,10 +246,7 @@ fn gameplay_text(world: &World) -> Vec<TextSection> {
             bounds: None,
         },
         TextSection {
-            content: format!(
-                "t = {:6.2}s   ·   P pauses   ·   Backspace returns to menu",
-                elapsed
-            ),
+            content: format!("t = {elapsed:6.2}s   ·   P pauses   ·   Backspace returns to menu"),
             font_id: "mono".into(),
             font_size: 16.0,
             line_height: 20.0,

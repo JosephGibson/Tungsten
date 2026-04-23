@@ -38,6 +38,7 @@ pub struct DebugDraw {
 }
 
 impl DebugDraw {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -97,14 +98,17 @@ impl DebugDraw {
         self.cmds.drain(..)
     }
 
+    #[must_use]
     pub fn commands(&self) -> &[DebugCommand] {
         &self.cmds
     }
 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.cmds.is_empty()
     }
 
+    #[must_use]
     pub fn len(&self) -> usize {
         self.cmds.len()
     }

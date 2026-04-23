@@ -1,4 +1,4 @@
-/// ECS benches: archetypal storage vs naive HashMap baseline.
+/// ECS benches: archetypal storage vs naive `HashMap` baseline.
 ///
 /// D-036 result set.
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
@@ -329,7 +329,7 @@ impl NaiveWorld {
             })
     }
 
-    /// Old query2 shape: query plus per-entity HashMap lookup.
+    /// Old query2 shape: query plus per-entity `HashMap` lookup.
     fn query_entities<T: 'static>(&self) -> Vec<u32> {
         self.stores
             .get(&TypeId::of::<T>())
@@ -516,7 +516,7 @@ fn bench_sprite_components_query3_2k(c: &mut Criterion) {
         b.iter(|| {
             let sum: i64 = world
                 .query3::<Transform, Sprite, Visibility>()
-                .map(|(_, _, s, _)| s.z_order as i64)
+                .map(|(_, _, s, _)| i64::from(s.z_order))
                 .sum();
             black_box(sum);
         });

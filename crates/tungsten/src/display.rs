@@ -9,6 +9,7 @@ use tungsten_core::{
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct PendingDisplay(pub(crate) Option<DisplayState>);
 
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct DisplayDelta {
     pub(crate) resize: bool,

@@ -50,7 +50,7 @@ pub fn compare_png(lhs: &Path, rhs: &Path, tolerance: u8) -> Result<DiffReport, 
     let mut max_delta: u8 = 0;
     let mut sum_delta: u64 = 0;
     let mut pixels_above_tolerance: u32 = 0;
-    let pixel_count = (w as u64) * (h as u64);
+    let pixel_count = u64::from(w) * u64::from(h);
 
     for i in 0..pixel_count as usize {
         let base = i * 4;
@@ -62,7 +62,7 @@ pub fn compare_png(lhs: &Path, rhs: &Path, tolerance: u8) -> Result<DiffReport, 
         if worst > max_delta {
             max_delta = worst;
         }
-        sum_delta += worst as u64;
+        sum_delta += u64::from(worst);
         if worst > tolerance {
             pixels_above_tolerance += 1;
         }

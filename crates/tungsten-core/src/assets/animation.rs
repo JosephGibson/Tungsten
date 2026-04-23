@@ -31,6 +31,7 @@ impl AnimationData {
         Ok(data)
     }
 
+    #[must_use]
     pub fn total_duration_ms(&self) -> u32 {
         self.frames.iter().map(|f| f.duration_ms).sum()
     }
@@ -44,6 +45,7 @@ pub struct AnimationRegistry {
 }
 
 impl AnimationRegistry {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -58,6 +60,7 @@ impl AnimationRegistry {
         self.animations.insert(id, data);
     }
 
+    #[must_use]
     pub fn get(&self, id: &str) -> Option<&AnimationData> {
         self.animations.get(id)
     }
@@ -67,12 +70,13 @@ impl AnimationRegistry {
     }
 
     /// Animation ID for source path.
+    #[must_use]
     pub fn id_for_path(&self, path: &Path) -> Option<&str> {
-        self.path_to_id.get(path).map(|s| s.as_str())
+        self.path_to_id.get(path).map(String::as_str)
     }
 
     pub fn ids(&self) -> impl Iterator<Item = &str> {
-        self.animations.keys().map(|s| s.as_str())
+        self.animations.keys().map(String::as_str)
     }
 }
 
@@ -98,6 +102,7 @@ impl AnimationState {
     }
 
     /// Current sprite ID.
+    #[must_use]
     pub fn current_sprite<'a>(&self, registry: &'a AnimationRegistry) -> Option<&'a str> {
         let anim = registry.get(&self.animation_id)?;
         let frame = anim.frames.get(self.frame_index)?;

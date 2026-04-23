@@ -94,6 +94,7 @@ impl DebugHud {
     }
 
     /// Last composed height, including top padding.
+    #[must_use]
     pub fn rendered_height_px(&self) -> f32 {
         if !self.enabled {
             return 0.0;
@@ -128,13 +129,11 @@ impl Default for DebugHud {
 }
 
 fn camera_provider(world: &World) -> Vec<HudRow> {
-    let state = match world.get_resource::<CameraState>() {
-        Some(s) => s,
-        None => return Vec::new(),
+    let Some(state) = world.get_resource::<CameraState>() else {
+        return Vec::new();
     };
-    let controller = match world.get_resource::<CameraController>() {
-        Some(c) => c,
-        None => return Vec::new(),
+    let Some(controller) = world.get_resource::<CameraController>() else {
+        return Vec::new();
     };
     let mode = match controller.mode {
         CameraMode::Free => "free",
@@ -151,9 +150,8 @@ fn camera_provider(world: &World) -> Vec<HudRow> {
 }
 
 fn display_provider(world: &World) -> Vec<HudRow> {
-    let dt = match world.get_resource::<DisplayTelemetry>() {
-        Some(d) => d,
-        None => return Vec::new(),
+    let Some(dt) = world.get_resource::<DisplayTelemetry>() else {
+        return Vec::new();
     };
     let vsync = if dt.vsync { "on" } else { "off" };
     vec![HudRow {
@@ -169,9 +167,8 @@ fn display_provider(world: &World) -> Vec<HudRow> {
 }
 
 fn gpu_provider(world: &World) -> Vec<HudRow> {
-    let gpu = match world.get_resource::<GpuFrameTimings>() {
-        Some(g) => g,
-        None => return Vec::new(),
+    let Some(gpu) = world.get_resource::<GpuFrameTimings>() else {
+        return Vec::new();
     };
     let gpu_ms = match gpu.frame_gpu_ms {
         Some(ms) => format!("{ms:.2}ms"),
@@ -196,9 +193,8 @@ fn counts_provider(world: &World) -> Vec<HudRow> {
 }
 
 fn render_cpu_provider(world: &World) -> Vec<HudRow> {
-    let ft = match world.get_resource::<FrameTimings>() {
-        Some(ft) => ft,
-        None => return Vec::new(),
+    let Some(ft) = world.get_resource::<FrameTimings>() else {
+        return Vec::new();
     };
     vec![HudRow {
         label: "cpu",
@@ -323,7 +319,7 @@ pub(crate) fn compose_hud_text_sections(
     } else {
         vec![main]
     };
-    hud.cached_sections = sections.clone();
+    hud.cached_sections.clone_from(&sections);
     sections
 }
 

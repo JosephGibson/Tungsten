@@ -17,6 +17,7 @@ impl QuadInstance {
         3 => Float32x4,
     ];
 
+    #[must_use]
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<QuadInstance>() as wgpu::BufferAddress,
@@ -76,6 +77,7 @@ pub struct QuadPipeline {
 }
 
 impl QuadPipeline {
+    #[must_use]
     pub fn new(device: &wgpu::Device, surface_format: wgpu::TextureFormat) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("quad_shader"),
@@ -126,7 +128,7 @@ impl QuadPipeline {
                 module: &shader,
                 entry_point: Some("vs_main"),
                 buffers: &[Vertex::desc(), QuadInstance::desc()],
-                compilation_options: Default::default(),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -136,7 +138,7 @@ impl QuadPipeline {
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
-                compilation_options: Default::default(),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
             primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList,
@@ -166,11 +168,13 @@ impl QuadPipeline {
     }
 
     /// Shared camera layout for sibling pipelines.
+    #[must_use]
     pub fn camera_bind_group_layout(&self) -> &wgpu::BindGroupLayout {
         &self.camera_bind_group_layout
     }
 
     /// Shared camera bind group.
+    #[must_use]
     pub fn camera_bind_group(&self) -> &wgpu::BindGroup {
         &self.camera_bind_group
     }

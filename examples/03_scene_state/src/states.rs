@@ -1,6 +1,6 @@
 //! Example 03 states: menu, gameplay, pause.
 //!
-//! Pause uses push/on_pause; gameplay scene persists under top-state gate.
+//! Pause uses `push/on_pause`; gameplay scene persists under top-state gate.
 
 use std::path::Path;
 

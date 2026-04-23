@@ -40,6 +40,7 @@ const MOUSE_BUTTON_NAMES: &[(MouseButton, &str)] = &[
 const SCROLL_DIRECTION_NAMES: &[(ScrollDirection, &str)] =
     &[(ScrollDirection::Up, "up"), (ScrollDirection::Down, "down")];
 
+#[must_use]
 pub fn keycode_from_str(name: &str) -> Option<KeyCode> {
     KEYCODE_NAMES
         .iter()
@@ -47,6 +48,7 @@ pub fn keycode_from_str(name: &str) -> Option<KeyCode> {
         .map(|(code, _)| *code)
 }
 
+#[must_use]
 pub fn keycode_to_str(code: KeyCode) -> Option<&'static str> {
     KEYCODE_NAMES
         .iter()
@@ -69,17 +71,18 @@ pub fn mouse_button_from_str(name: &str) -> Option<MouseButton> {
         .map(MouseButton::Other)
 }
 
+#[must_use]
 pub fn mouse_button_to_string(button: MouseButton) -> String {
     match button {
         MouseButton::Other(id) => format!("button{id}"),
         standard => MOUSE_BUTTON_NAMES
             .iter()
             .find(|(candidate, _)| *candidate == standard)
-            .map(|(_, name)| (*name).to_string())
-            .unwrap_or_else(|| "button0".to_string()),
+            .map_or_else(|| "button0".to_string(), |(_, name)| (*name).to_string()),
     }
 }
 
+#[must_use]
 pub fn scroll_direction_from_str(name: &str) -> Option<ScrollDirection> {
     SCROLL_DIRECTION_NAMES
         .iter()
@@ -87,6 +90,7 @@ pub fn scroll_direction_from_str(name: &str) -> Option<ScrollDirection> {
         .map(|(direction, _)| *direction)
 }
 
+#[must_use]
 pub fn scroll_direction_to_str(direction: ScrollDirection) -> &'static str {
     SCROLL_DIRECTION_NAMES
         .iter()

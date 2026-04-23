@@ -30,3 +30,6 @@ harness = false
 [[bench]]
 name = "action_map_bench"
 harness = false
+
+[lints]
+workspace = true

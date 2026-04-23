@@ -7,6 +7,7 @@ use super::entity::{Entities, Entity, EntityLocation};
 /// Entity/component storage and archetype registry.
 ///
 /// D-036: `ArchetypeId` indexes `archetypes`; 0 is empty archetype.
+#[allow(clippy::struct_field_names)]
 pub(crate) struct Archetypes {
     pub archetypes: Vec<Archetype>,
     /// Sorted `TypeId` set -> archetype.

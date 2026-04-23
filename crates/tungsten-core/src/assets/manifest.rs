@@ -106,10 +106,12 @@ pub struct ParticleEntry {
 pub struct LoadedManifest(pub ResolvedManifest);
 
 impl LoadedManifest {
+    #[must_use]
     pub fn new(manifest: ResolvedManifest) -> Self {
         Self(manifest)
     }
 
+    #[must_use]
     pub fn as_resolved(&self) -> &ResolvedManifest {
         &self.0
     }

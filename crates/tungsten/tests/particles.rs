@@ -1,4 +1,4 @@
-//! Particle integration: refresh -> emit -> tick -> CommandBuffer flush.
+//! Particle integration: refresh -> emit -> tick -> `CommandBuffer` flush.
 
 use std::path::PathBuf;
 use std::sync::Arc;

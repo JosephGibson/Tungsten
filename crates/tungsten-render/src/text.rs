@@ -61,6 +61,7 @@ pub struct TextPipeline {
 }
 
 impl TextPipeline {
+    #[must_use]
     pub fn new(device: &Device, queue: &Queue, format: TextureFormat) -> Self {
         let font_system = FontSystem::new();
         let swash_cache = SwashCache::new();

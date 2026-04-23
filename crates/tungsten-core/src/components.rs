@@ -19,6 +19,7 @@ pub struct Transform {
 
 impl Transform {
     /// Unit-scale transform at `position`.
+    #[must_use]
     pub fn from_position(position: Vec2) -> Self {
         Self {
             position,
@@ -89,6 +90,7 @@ pub struct ParticleEmitter {
 }
 
 impl ParticleEmitter {
+    #[must_use]
     pub fn new(config: AssetId<ParticleConfig>) -> Self {
         Self {
             config,
@@ -96,6 +98,7 @@ impl ParticleEmitter {
         }
     }
 
+    #[must_use]
     pub fn with_seed(config: AssetId<ParticleConfig>, seed: u64) -> Self {
         Self {
             config,

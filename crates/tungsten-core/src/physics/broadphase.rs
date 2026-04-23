@@ -25,6 +25,7 @@ impl Default for SpatialGrid {
 }
 
 impl SpatialGrid {
+    #[must_use]
     pub fn new(cell_size: f32) -> Self {
         debug_assert!(cell_size > 0.0, "cell_size must be positive");
         Self {
@@ -46,6 +47,7 @@ impl SpatialGrid {
         self.cells.clear();
     }
 
+    #[must_use]
     pub fn cell_size(&self) -> f32 {
         self.cell_size
     }

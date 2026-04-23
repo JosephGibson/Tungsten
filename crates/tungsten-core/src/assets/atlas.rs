@@ -56,6 +56,7 @@ pub struct PackResult {
 /// # Panics
 ///
 /// Panics when a sprite exceeds `max_dim - 2 * padding`.
+#[must_use]
 pub fn pack_shelf(inputs: &[PackInput<'_>], max_dim: u32, padding: u32) -> PackResult {
     if inputs.is_empty() {
         return PackResult {

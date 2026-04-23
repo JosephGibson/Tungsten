@@ -4,8 +4,11 @@ use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
 
 /// Oriented-quad line instance.
+///
+/// `_pad` keeps the struct 16-byte aligned for GPU vertex layout — not dead code.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
+#[allow(clippy::pub_underscore_fields)]
 pub struct DebugLineInstance {
     pub a: [f32; 2],
     pub b: [f32; 2],
@@ -23,6 +26,7 @@ impl DebugLineInstance {
         5 => Float32x4,
     ];
 
+    #[must_use]
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<DebugLineInstance>() as wgpu::BufferAddress,
@@ -65,6 +69,7 @@ pub struct DebugLinePipeline {
 }
 
 impl DebugLinePipeline {
+    #[must_use]
     pub fn new(
         device: &wgpu::Device,
         surface_format: wgpu::TextureFormat,
@@ -88,7 +93,7 @@ impl DebugLinePipeline {
                 module: &shader,
                 entry_point: Some("vs_main"),
                 buffers: &[Vertex::desc(), DebugLineInstance::desc()],
-                compilation_options: Default::default(),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -98,7 +103,7 @@ impl DebugLinePipeline {
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
-                compilation_options: Default::default(),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
             primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList,

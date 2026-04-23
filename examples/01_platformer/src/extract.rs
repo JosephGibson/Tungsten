@@ -23,10 +23,7 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     // Particles before black-hole core; custom extract must include them explicitly.
     let mut particle_batches: HashMap<(u32, FilterMode), SpriteBatch> = HashMap::new();
     for (e, _p, t, s) in world.query3::<Particle, Transform, Sprite>() {
-        let visible = world
-            .get::<Visibility>(e)
-            .map(|v| v.visible)
-            .unwrap_or(false);
+        let visible = world.get::<Visibility>(e).is_some_and(|v| v.visible);
         if !visible {
             continue;
         }
@@ -151,7 +148,7 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     if let Some(cursor_asset) = assets.get_sprite("ex10_cursor") {
         if let Some(world_pos) = world
             .get_resource::<InputState>()
-            .and_then(|input| input.cursor_position())
+            .and_then(InputState::cursor_position)
             .map(|(x, y)| Vec2::new(x, y))
             .and_then(|cursor| {
                 world

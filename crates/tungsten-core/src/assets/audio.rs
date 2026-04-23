@@ -20,14 +20,14 @@ impl SoundData {
         use symphonia::core::audio::SampleBuffer;
         use symphonia::core::codecs::DecoderOptions;
         use symphonia::core::formats::FormatOptions;
-        use symphonia::core::io::MediaSourceStream;
+        use symphonia::core::io::{MediaSourceStream, MediaSourceStreamOptions};
         use symphonia::core::meta::MetadataOptions;
         use symphonia::core::probe::Hint;
 
         let file = std::fs::File::open(path)
             .map_err(|e| anyhow::anyhow!("Failed to open '{}': {}", path.display(), e))?;
 
-        let mss = MediaSourceStream::new(Box::new(file), Default::default());
+        let mss = MediaSourceStream::new(Box::new(file), MediaSourceStreamOptions::default());
 
         let mut hint = Hint::new();
         if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
@@ -56,15 +56,11 @@ impl SoundData {
             .codec_params
             .sample_rate
             .ok_or_else(|| anyhow::anyhow!("Unknown sample rate in '{}'", path.display()))?;
-        let channels = track
-            .codec_params
-            .channels
-            .map(|c| c.count() as u16)
-            .unwrap_or(2);
+        let channels = track.codec_params.channels.map_or(2, |c| c.count() as u16);
 
         let mut decoder = symphonia::default::get_codecs()
             .make(&track.codec_params, &DecoderOptions::default())
-            .map_err(|e| anyhow::anyhow!("Failed to create decoder: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to create decoder: {e}"))?;
 
         let mut all_samples: Vec<f32> = Vec::new();
 
@@ -76,7 +72,7 @@ impl SoundData {
                     decoder.reset();
                     continue;
                 }
-                Err(e) => return Err(anyhow::anyhow!("Decode error: {}", e)),
+                Err(e) => return Err(anyhow::anyhow!("Decode error: {e}")),
             };
 
             if packet.track_id() != track_id {
@@ -95,7 +91,7 @@ impl SoundData {
                 Err(symphonia::core::errors::Error::DecodeError(e)) => {
                     log::warn!("Decode warning in '{}': {}", path.display(), e);
                 }
-                Err(e) => return Err(anyhow::anyhow!("Decode error: {}", e)),
+                Err(e) => return Err(anyhow::anyhow!("Decode error: {e}")),
             }
         }
 
@@ -117,6 +113,7 @@ pub struct SoundRegistry {
 }
 
 impl SoundRegistry {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             next_id: 0,
@@ -142,22 +139,26 @@ impl SoundRegistry {
         handle
     }
 
+    #[must_use]
     pub fn get(&self, handle: AudioHandle) -> Option<&SoundData> {
         self.sounds.get(&handle)
     }
 
+    #[must_use]
     pub fn get_by_id(&self, id: &str) -> Option<AudioHandle> {
         self.id_map.get(id).copied()
     }
 
     /// Manifest default volume.
+    #[must_use]
     pub fn get_volume(&self, handle: AudioHandle) -> f32 {
-        self.defaults.get(&handle).map(|&(v, _)| v).unwrap_or(1.0)
+        self.defaults.get(&handle).map_or(1.0, |&(v, _)| v)
     }
 
     /// Manifest default looping flag.
+    #[must_use]
     pub fn get_looping(&self, handle: AudioHandle) -> bool {
-        self.defaults.get(&handle).map(|&(_, l)| l).unwrap_or(false)
+        self.defaults.get(&handle).is_some_and(|&(_, l)| l)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (AudioHandle, &SoundData)> {

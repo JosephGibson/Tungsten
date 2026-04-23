@@ -245,7 +245,7 @@ fn steer_agents_system(world: &mut World) {
 
     let dt = world
         .get_resource::<DeltaTime>()
-        .map(|delta| delta.seconds())
+        .map(tungsten_core::DeltaTime::seconds)
         .filter(|dt| *dt > 0.0)
         .unwrap_or(1.0 / 60.0);
     let frame = telemetry_frame(world) as f32;
@@ -259,13 +259,11 @@ fn steer_agents_system(world: &mut World) {
         let position = world
             .get::<Position>(*entity)
             .copied()
-            .map(|p| p.0)
-            .unwrap_or(Vec2::ZERO);
+            .map_or(Vec2::ZERO, |p| p.0);
         let velocity = world
             .get::<Velocity>(*entity)
             .copied()
-            .map(|v| v.0)
-            .unwrap_or(Vec2::ZERO);
+            .map_or(Vec2::ZERO, |v| v.0);
         let agent = *world.get::<StressAgent>(*entity).unwrap();
         let center = position + Vec2::splat(HIGH_LOAD_HALF_SIZE);
 
@@ -419,8 +417,7 @@ fn orient_agents_system(world: &mut World) {
 fn tint_agents_system(world: &mut World) {
     let dt = world
         .get_resource::<DeltaTime>()
-        .map(|d| d.seconds())
-        .unwrap_or(1.0 / 60.0);
+        .map_or(1.0 / 60.0, tungsten_core::DeltaTime::seconds);
     let elapsed = {
         let Some(state) = world.get_resource_mut::<HighLoadSceneState>() else {
             return;
@@ -512,8 +509,7 @@ fn extract_high_load_text(world: &World) -> Vec<TextSection> {
     };
     let total_ms = world
         .get_resource::<FrameTimings>()
-        .map(|timings| timings.total_ms)
-        .unwrap_or(0.0);
+        .map_or(0.0, |timings| timings.total_ms);
     let fps = if total_ms > 0.0 {
         (1_000.0 / total_ms).round() as u32
     } else {

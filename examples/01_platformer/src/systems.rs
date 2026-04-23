@@ -42,10 +42,7 @@ pub(crate) fn player_input(world: &mut World) {
             dx += 1.0;
         }
 
-        let grounded = world
-            .get::<Player>(entity)
-            .map(|p| p.grounded)
-            .unwrap_or(false);
+        let grounded = world.get::<Player>(entity).is_some_and(|p| p.grounded);
         let want_jump = pressed_space && grounded;
 
         if let Some(vel) = world.get_mut::<Velocity>(entity) {
@@ -201,13 +198,11 @@ pub(crate) fn ground_detection(world: &mut World) {
 pub(crate) fn update_text_display(world: &mut World) {
     let dt = world
         .get_resource::<DeltaTime>()
-        .map(|d| d.seconds())
-        .unwrap_or(0.0);
+        .map_or(0.0, DeltaTime::seconds);
 
     let timer = world
         .get_resource::<TextDisplayState>()
-        .map(|s| s.timer)
-        .unwrap_or(0.0);
+        .map_or(0.0, |s| s.timer);
     let new_timer = timer + dt;
 
     if new_timer < TEXT_UPDATE_INTERVAL {
@@ -224,21 +219,19 @@ pub(crate) fn update_text_display(world: &mut World) {
     };
     let contacts = world
         .get_resource::<EventQueue<CollisionEvent>>()
-        .map(|queue| queue.len())
-        .unwrap_or(0);
+        .map_or(0, EventQueue::len);
     let grounded = world
         .query::<Player>()
         .next()
-        .map(|(_, p)| p.grounded)
-        .unwrap_or(false);
-    let (music_on, vol_pct) = world
-        .get_resource::<AudioState>()
-        .map(|s| (s.music_playing, (s.master_volume * 100.0).round() as u32))
-        .unwrap_or((false, 0));
+        .is_some_and(|(_, p)| p.grounded);
+    let (music_on, vol_pct) = world.get_resource::<AudioState>().map_or((false, 0), |s| {
+        (s.music_playing, (s.master_volume * 100.0).round() as u32)
+    });
     let zoom_pct = world
         .get_resource::<CameraController>()
-        .map(|controller| (controller.zoom_multiplier * 100.0).round() as u32)
-        .unwrap_or(100);
+        .map_or(100, |controller| {
+            (controller.zoom_multiplier * 100.0).round() as u32
+        });
 
     if let Some(state) = world.get_resource_mut::<TextDisplayState>() {
         state.fps = fps;
@@ -284,12 +277,10 @@ pub(crate) fn spawn_ball_system(world: &mut World) {
 
     let dt = world
         .get_resource::<DeltaTime>()
-        .map(|d| d.seconds())
-        .unwrap_or(0.0);
+        .map_or(0.0, DeltaTime::seconds);
     let (spawn_count, phase_start) = {
-        let state = match world.get_resource_mut::<BallSpawnState>() {
-            Some(s) => s,
-            None => return,
+        let Some(state) = world.get_resource_mut::<BallSpawnState>() else {
+            return;
         };
         state.accumulator += dt;
         let mut count = 0u32;
@@ -305,16 +296,15 @@ pub(crate) fn spawn_ball_system(world: &mut World) {
         return;
     }
 
-    let cursor = match world
+    let Some((cursor_x, cursor_y)) = world
         .get_resource::<InputState>()
-        .and_then(|i| i.cursor_position())
-    {
-        Some((x, y)) => Vec2::new(x, y),
-        None => return,
+        .and_then(InputState::cursor_position)
+    else {
+        return;
     };
-    let camera = match world.get_resource::<CameraState>().copied() {
-        Some(c) => c,
-        None => return,
+    let cursor = Vec2::new(cursor_x, cursor_y);
+    let Some(camera) = world.get_resource::<CameraState>().copied() else {
+        return;
     };
     let Some(world_pos) = cursor_to_world(cursor, &camera) else {
         return;
@@ -371,16 +361,15 @@ pub(crate) fn spawn_black_hole_system(world: &mut World) {
         return;
     }
 
-    let cursor = match world
+    let Some((cursor_x, cursor_y)) = world
         .get_resource::<InputState>()
-        .and_then(|i| i.cursor_position())
-    {
-        Some((x, y)) => Vec2::new(x, y),
-        None => return,
+        .and_then(InputState::cursor_position)
+    else {
+        return;
     };
-    let camera = match world.get_resource::<CameraState>().copied() {
-        Some(c) => c,
-        None => return,
+    let cursor = Vec2::new(cursor_x, cursor_y);
+    let Some(camera) = world.get_resource::<CameraState>().copied() else {
+        return;
     };
     let Some(world_pos) = cursor_to_world(cursor, &camera) else {
         return;
@@ -427,8 +416,7 @@ pub(crate) fn spawn_black_hole_system(world: &mut World) {
 pub(crate) fn black_hole_force_system(world: &mut World) {
     let dt = world
         .get_resource::<DeltaTime>()
-        .map(|d| d.seconds())
-        .unwrap_or(0.0);
+        .map_or(0.0, DeltaTime::seconds);
     if dt <= 0.0 {
         return;
     }
@@ -445,8 +433,7 @@ pub(crate) fn black_hole_force_system(world: &mut World) {
     for entity in targets {
         let body_is_dynamic = world
             .get::<RigidBody>(entity)
-            .map(|b| b.kind == BodyKind::Dynamic)
-            .unwrap_or(false);
+            .is_some_and(|b| b.kind == BodyKind::Dynamic);
         if !body_is_dynamic {
             continue;
         }
@@ -478,8 +465,7 @@ pub(crate) fn black_hole_force_system(world: &mut World) {
 pub(crate) fn black_hole_lifetime_system(world: &mut World) {
     let dt = world
         .get_resource::<DeltaTime>()
-        .map(|d| d.seconds())
-        .unwrap_or(0.0);
+        .map_or(0.0, DeltaTime::seconds);
 
     let entities = world.query_entities::<BlackHole>();
     let mut to_despawn: Vec<Entity> = Vec::new();

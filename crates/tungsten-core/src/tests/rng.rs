@@ -52,10 +52,10 @@ fn next_range_distribution_mean_within_tolerance() {
     for _ in 0..N {
         let v = rng.next_range(lo, hi);
         assert!((lo..hi).contains(&v), "out of range: {v}");
-        sum += v as f64;
+        sum += f64::from(v);
     }
-    let mean = sum / N as f64;
-    let expected = ((lo + hi) / 2.0) as f64;
+    let mean = sum / f64::from(N);
+    let expected = f64::from(f32::midpoint(lo, hi));
     assert!(
         (mean - expected).abs() < 0.25,
         "mean {mean} far from expected {expected}"

@@ -129,7 +129,7 @@ fn player_moves_right_on_d() {
     player_input(&mut world);
 
     let vel = world.get::<Velocity>(player).unwrap().0;
-    assert!(vel.x > 0.0, "velocity.x did not increase: {:?}", vel);
+    assert!(vel.x > 0.0, "velocity.x did not increase: {vel:?}");
 }
 
 #[test]
@@ -191,8 +191,7 @@ fn jump_impulse_only_applies_when_grounded() {
     let vel = world.get::<Velocity>(player).unwrap().0;
     assert!(
         vel.y >= 0.0,
-        "jump fired while airborne — should be gated: {:?}",
-        vel
+        "jump fired while airborne — should be gated: {vel:?}"
     );
 }
 

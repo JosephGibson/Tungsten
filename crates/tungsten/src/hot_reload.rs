@@ -23,6 +23,7 @@ pub struct HotReloadWatcher {
 
 impl HotReloadWatcher {
     /// Start recursive dir watches plus parent watches for explicit files.
+    #[must_use]
     pub fn new(watch_dirs: &[PathBuf], extra_files: &[PathBuf]) -> Option<Self> {
         let (tx, rx) = mpsc::channel::<PathBuf>();
 

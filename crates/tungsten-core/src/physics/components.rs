@@ -7,6 +7,7 @@ use glam::Vec2;
 pub struct Position(pub Vec2);
 
 impl Position {
+    #[must_use]
     pub fn new(x: f32, y: f32) -> Self {
         Self(Vec2::new(x, y))
     }
@@ -17,6 +18,7 @@ impl Position {
 pub struct Velocity(pub Vec2);
 
 impl Velocity {
+    #[must_use]
     pub fn new(x: f32, y: f32) -> Self {
         Self(Vec2::new(x, y))
     }
@@ -33,6 +35,7 @@ pub enum Shape {
 
 impl Shape {
     /// Smallest bounding half-extent for substep tunneling guard.
+    #[must_use]
     pub fn min_half_extent(&self) -> f32 {
         match *self {
             Shape::Aabb { half_extents } => half_extents.x.min(half_extents.y).max(0.0),
@@ -49,6 +52,7 @@ pub struct Collider {
 }
 
 impl Collider {
+    #[must_use]
     pub fn aabb(half_extents: Vec2) -> Self {
         Self {
             shape: Shape::Aabb { half_extents },
@@ -56,6 +60,7 @@ impl Collider {
         }
     }
 
+    #[must_use]
     pub fn circle(radius: f32) -> Self {
         Self {
             shape: Shape::Circle { radius },
@@ -63,6 +68,7 @@ impl Collider {
         }
     }
 
+    #[must_use]
     pub fn with_offset(mut self, offset: Vec2) -> Self {
         self.offset = offset;
         self
@@ -86,6 +92,7 @@ pub struct RigidBody {
 
 impl RigidBody {
     /// Unit-mass dynamic body.
+    #[must_use]
     pub fn dynamic() -> Self {
         Self {
             kind: BodyKind::Dynamic,
@@ -95,6 +102,7 @@ impl RigidBody {
     }
 
     /// Immovable static body.
+    #[must_use]
     pub fn r#static() -> Self {
         Self {
             kind: BodyKind::Static,
@@ -103,11 +111,13 @@ impl RigidBody {
         }
     }
 
+    #[must_use]
     pub fn with_mass(mut self, mass: f32) -> Self {
         self.inv_mass = if mass > 0.0 { 1.0 / mass } else { 0.0 };
         self
     }
 
+    #[must_use]
     pub fn with_restitution(mut self, restitution: f32) -> Self {
         self.restitution = restitution.clamp(0.0, 1.0);
         self

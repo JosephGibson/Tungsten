@@ -200,6 +200,7 @@ pub struct Renderer {
 
 impl Renderer {
     /// Initialize wgpu renderer for `window`.
+    #[allow(clippy::needless_pass_by_value)] // Arc<Window> is cheap; public ctor shape matters.
     pub fn new(
         window: Arc<Window>,
         config: &RenderConfig,
@@ -437,9 +438,8 @@ impl Renderer {
     ) -> Result<(), RenderError> {
         self.cpu_timings = CpuFrameTimings::default();
         let acquire_start = Instant::now();
-        let output = match self.acquire_texture()? {
-            Some(tex) => tex,
-            None => return Ok(()),
+        let Some(output) = self.acquire_texture()? else {
+            return Ok(());
         };
         self.cpu_timings.acquire_ms = acquire_start.elapsed().as_secs_f64() as f32 * 1000.0;
 
@@ -646,9 +646,8 @@ impl Renderer {
         });
 
         let acquire_start = Instant::now();
-        let output = match self.acquire_texture()? {
-            Some(tex) => tex,
-            None => return Ok(()),
+        let Some(output) = self.acquire_texture()? else {
+            return Ok(());
         };
         self.cpu_timings.acquire_ms = acquire_start.elapsed().as_secs_f64() as f32 * 1000.0;
 
@@ -785,7 +784,7 @@ impl Renderer {
         });
         let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
 
-        if receiver.recv().ok().and_then(|r| r.ok()).is_some() {
+        if receiver.recv().ok().and_then(Result::ok).is_some() {
             let data = slice.get_mapped_range();
             let ts0 = u64::from_le_bytes(data[0..8].try_into().unwrap_or([0u8; 8]));
             let ts1 = u64::from_le_bytes(data[8..16].try_into().unwrap_or([0u8; 8]));
@@ -793,7 +792,7 @@ impl Renderer {
             readback_buf.unmap();
 
             let period = self.queue.get_timestamp_period();
-            let delta_ns = ts1.wrapping_sub(ts0) as f64 * period as f64;
+            let delta_ns = ts1.wrapping_sub(ts0) as f64 * f64::from(period);
             self.gpu_timings.frame_gpu_ms = Some((delta_ns / 1_000_000.0) as f32);
         }
         self.cpu_timings.submit_present_ms =
@@ -834,7 +833,7 @@ pub(crate) fn create_capture_target(
     let padded_bytes_per_row = aligned_bytes_per_row(width);
     let readback = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("tungsten_screenshot_readback"),
-        size: (padded_bytes_per_row as u64) * (height as u64),
+        size: u64::from(padded_bytes_per_row) * u64::from(height),
         usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
         mapped_at_creation: false,
     });

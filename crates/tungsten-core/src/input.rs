@@ -124,6 +124,7 @@ pub struct InputState {
 }
 
 impl InputState {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             pressed: HashSet::new(),
@@ -203,54 +204,67 @@ impl InputState {
         self.register_scroll_direction(y);
     }
 
+    #[must_use]
     pub fn is_pressed(&self, key: KeyCode) -> bool {
         self.pressed.contains(&key)
     }
 
+    #[must_use]
     pub fn just_pressed(&self, key: KeyCode) -> bool {
         self.just_pressed.contains(&key)
     }
 
+    #[must_use]
     pub fn just_released(&self, key: KeyCode) -> bool {
         self.just_released.contains(&key)
     }
 
+    #[must_use]
     pub fn is_mouse_pressed(&self, button: MouseButton) -> bool {
         self.mouse_pressed.contains(&button)
     }
 
+    #[must_use]
     pub fn mouse_just_pressed(&self, button: MouseButton) -> bool {
         self.mouse_just_pressed.contains(&button)
     }
 
+    #[must_use]
     pub fn mouse_just_released(&self, button: MouseButton) -> bool {
         self.mouse_just_released.contains(&button)
     }
 
+    #[must_use]
     pub fn is_scroll_active(&self, direction: ScrollDirection) -> bool {
         self.scroll_pressed.contains(&direction)
     }
 
+    #[must_use]
     pub fn scroll_just_pressed(&self, direction: ScrollDirection) -> bool {
         self.scroll_just_pressed.contains(&direction)
     }
 
+    #[must_use]
     pub fn scroll_just_released(&self, direction: ScrollDirection) -> bool {
         self.scroll_just_released.contains(&direction)
     }
 
+    #[must_use]
     pub fn cursor_position(&self) -> Option<(f32, f32)> {
         self.cursor_position
     }
 
+    #[must_use]
     pub fn cursor_delta(&self) -> (f32, f32) {
         self.cursor_delta
     }
 
+    #[must_use]
     pub fn scroll_line_delta(&self) -> (f32, f32) {
         self.scroll_line_delta
     }
 
+    #[must_use]
     pub fn scroll_pixel_delta(&self) -> (f32, f32) {
         self.scroll_pixel_delta
     }

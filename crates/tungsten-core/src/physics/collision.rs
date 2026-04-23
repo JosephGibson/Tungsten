@@ -24,6 +24,7 @@ pub struct Aabb {
 }
 
 impl Aabb {
+    #[must_use]
     pub fn new(center: Vec2, half_extents: Vec2) -> Self {
         Self {
             center,
@@ -32,6 +33,7 @@ impl Aabb {
     }
 
     /// Construct from min/max corners.
+    #[must_use]
     pub fn from_min_max(min: Vec2, max: Vec2) -> Self {
         let center = (min + max) * 0.5;
         let half_extents = (max - min) * 0.5;
@@ -41,15 +43,18 @@ impl Aabb {
         }
     }
 
+    #[must_use]
     pub fn min(&self) -> Vec2 {
         self.center - self.half_extents
     }
 
+    #[must_use]
     pub fn max(&self) -> Vec2 {
         self.center + self.half_extents
     }
 
     /// Bounding union.
+    #[must_use]
     pub fn union(&self, other: &Aabb) -> Aabb {
         let min = self.min().min(other.min());
         let max = self.max().max(other.max());
@@ -57,6 +62,7 @@ impl Aabb {
     }
 
     /// Strict overlap test.
+    #[must_use]
     pub fn overlaps(&self, other: &Aabb) -> bool {
         let a_min = self.min();
         let a_max = self.max();
@@ -67,11 +73,13 @@ impl Aabb {
 }
 
 /// AABB vs AABB; touching is separated.
+#[must_use]
 pub fn aabb_vs_aabb(a: &Aabb, b: &Aabb) -> Option<Contact> {
     aabb_vs_aabb_masked(a, b, FACE_ALL)
 }
 
 /// AABB vs AABB with `b` internal faces suppressed.
+#[must_use]
 pub fn aabb_vs_aabb_masked(a: &Aabb, b: &Aabb, b_face_mask: u8) -> Option<Contact> {
     let delta = b.center - a.center;
     let overlap_x = (a.half_extents.x + b.half_extents.x) - delta.x.abs();
@@ -111,6 +119,7 @@ pub fn aabb_vs_aabb_masked(a: &Aabb, b: &Aabb, b_face_mask: u8) -> Option<Contac
 }
 
 /// Circle vs circle; concentric pairs get deterministic nonzero normal.
+#[must_use]
 pub fn circle_vs_circle(
     center_a: Vec2,
     radius_a: f32,
@@ -139,6 +148,7 @@ pub fn circle_vs_circle(
 }
 
 /// Swept moving AABB vs static AABB; overlap at `t = 0` is ignored.
+#[must_use]
 pub fn sweep_aabb_vs_aabb(
     a_prev: Vec2,
     a_cur: Vec2,
@@ -187,11 +197,13 @@ fn sweep_slab(prev: f32, delta: f32, min: f32, max: f32) -> Option<(f32, f32)> {
 }
 
 /// AABB vs circle using closest point.
+#[must_use]
 pub fn aabb_vs_circle(aabb: &Aabb, circle_center: Vec2, radius: f32) -> Option<Contact> {
     aabb_vs_circle_masked(aabb, circle_center, radius, FACE_ALL)
 }
 
 /// AABB vs circle with tile internal-face filtering.
+#[must_use]
 pub fn aabb_vs_circle_masked(
     aabb: &Aabb,
     circle_center: Vec2,

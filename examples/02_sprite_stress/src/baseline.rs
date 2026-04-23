@@ -112,12 +112,10 @@ fn tick_baseline_sprites(world: &mut World) {
 
     let dt = world
         .get_resource::<DeltaTime>()
-        .map(|d| d.seconds())
-        .unwrap_or(1.0 / 60.0);
+        .map_or(1.0 / 60.0, tungsten_core::DeltaTime::seconds);
 
-    let state = match world.get_resource_mut::<BaselineSceneState>() {
-        Some(state) => state,
-        None => return,
+    let Some(state) = world.get_resource_mut::<BaselineSceneState>() else {
+        return;
     };
 
     state.elapsed += dt;
@@ -127,9 +125,8 @@ fn tick_baseline_sprites(world: &mut World) {
 }
 
 fn extract_baseline_sprites(world: &World) -> Vec<SpriteBatch> {
-    let state = match world.get_resource::<BaselineSceneState>() {
-        Some(state) => state,
-        None => return Vec::new(),
+    let Some(state) = world.get_resource::<BaselineSceneState>() else {
+        return Vec::new();
     };
 
     let time = state.elapsed;

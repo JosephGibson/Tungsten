@@ -26,6 +26,7 @@ impl SpriteInstance {
         7 => Float32x2,
     ];
 
+    #[must_use]
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<SpriteInstance>() as wgpu::BufferAddress,
@@ -35,6 +36,7 @@ impl SpriteInstance {
     }
 
     /// Full-texture instance for non-atlas paths.
+    #[must_use]
     pub fn whole(position: [f32; 2], size: [f32; 2], rotation: f32, color: [u8; 4]) -> Self {
         Self {
             position,
@@ -142,6 +144,7 @@ pub struct SpritePipeline {
 }
 
 impl SpritePipeline {
+    #[must_use]
     pub fn new(device: &wgpu::Device, surface_format: wgpu::TextureFormat) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("sprite_shader"),
@@ -218,7 +221,7 @@ impl SpritePipeline {
                 module: &shader,
                 entry_point: Some("vs_main"),
                 buffers: &[SpriteVertex::desc(), SpriteInstance::desc()],
-                compilation_options: Default::default(),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -228,7 +231,7 @@ impl SpritePipeline {
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
-                compilation_options: Default::default(),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
             primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList,
@@ -506,12 +509,9 @@ impl SpritePipeline {
             // Advance before possible skip; upload slices stay aligned.
             base_instance += batch.instances.len();
 
-            let gpu_tex = match self.textures.get(&batch.texture) {
-                Some(t) => t,
-                None => {
-                    log::warn!("Missing GPU texture for handle {:?}", batch.texture);
-                    continue;
-                }
+            let Some(gpu_tex) = self.textures.get(&batch.texture) else {
+                log::warn!("Missing GPU texture for handle {:?}", batch.texture);
+                continue;
             };
 
             if batch.filter != gpu_tex.filter {

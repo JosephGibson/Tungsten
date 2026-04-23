@@ -347,9 +347,8 @@ impl App {
             return;
         }
 
-        let renderer = match self.renderer.as_mut() {
-            Some(r) => r,
-            None => return,
+        let Some(renderer) = self.renderer.as_mut() else {
+            return;
         };
 
         for path in &ready {
@@ -403,13 +402,13 @@ impl App {
                     let anim_id = self
                         .world
                         .get_resource::<AnimationRegistry>()
-                        .and_then(|ar| ar.id_for_path(&canon).map(|s| s.to_string()));
+                        .and_then(|ar| ar.id_for_path(&canon).map(ToString::to_string));
                     let particle_id = self
                         .world
                         .get_resource::<ParticleConfigRegistry>()
                         .and_then(|pr| {
                             pr.id_for_path(&canon)
-                                .and_then(|aid| pr.name_for_id(aid).map(|s| s.to_string()))
+                                .and_then(|aid| pr.name_for_id(aid).map(ToString::to_string))
                         });
                     if let Some(id) = anim_id {
                         if let Err(e) = asset_loader::reload_animation(&id, &canon, &mut self.world)
@@ -432,7 +431,7 @@ impl App {
                     let id = self
                         .world
                         .get_resource::<FontRegistry>()
-                        .and_then(|fr| fr.id_for_path(&canon).map(|s| s.to_string()));
+                        .and_then(|fr| fr.id_for_path(&canon).map(ToString::to_string));
                     if let Some(id) = id {
                         if let Err(e) = asset_loader::reload_font(&id, &canon, renderer) {
                             log::error!("Font reload '{id}': {e}");
@@ -445,7 +444,7 @@ impl App {
                     let id = self
                         .world
                         .get_resource::<TilemapRegistry>()
-                        .and_then(|tr| tr.id_for_path(&canon).map(|s| s.to_string()));
+                        .and_then(|tr| tr.id_for_path(&canon).map(ToString::to_string));
                     if let Some(id) = id {
                         if let Err(e) = asset_loader::reload_tilemap(&id, &canon, &mut self.world) {
                             log::error!("Tilemap reload '{id}': {e}");
@@ -529,7 +528,7 @@ impl App {
                         effective.vsync = requested.vsync;
                         effective.present_mode = requested.present_mode;
                         effective.max_frame_latency = requested.max_frame_latency;
-                        actual_present_mode = renderer.gpu_timings.present_mode.clone();
+                        actual_present_mode.clone_from(&renderer.gpu_timings.present_mode);
                         if let Some(gpu) = self.world.get_resource_mut::<GpuFrameTimings>() {
                             *gpu = renderer.gpu_timings.clone();
                         }
@@ -572,6 +571,7 @@ struct FrameExtract {
     extract_ms: f32,
 }
 
+#[allow(clippy::struct_field_names)]
 #[derive(Default)]
 struct FrameRenderOut {
     render_ms: f32,
@@ -650,7 +650,7 @@ impl App {
 
     #[inline(always)]
     fn stage_flush_events(&mut self) {
-        for flusher in self.event_flushers.iter_mut() {
+        for flusher in &mut self.event_flushers {
             flusher(&mut self.world);
         }
     }
@@ -701,8 +701,7 @@ impl App {
         let viewport = self
             .world
             .get_resource::<WindowSize>()
-            .map(|w| (w.width, w.height))
-            .unwrap_or((0, 0));
+            .map_or((0, 0), |w| (w.width, w.height));
         if let Some(mut hud) = self.world.remove_resource::<DebugHud>() {
             let hud_sections =
                 compose_hud_text_sections(&mut hud, &self.world, viewport, prev_total_ms);
@@ -911,8 +910,7 @@ fn log_perf_line(
 ) {
     let gpu_for_log = render_out
         .gpu_frame_ms
-        .map(|ms| format!("{ms:.2}ms"))
-        .unwrap_or_else(|| "n/a".to_string());
+        .map_or_else(|| "n/a".to_string(), |ms| format!("{ms:.2}ms"));
     log::debug!(
         "frame: total={:.2}ms update={:.2}ms flush={:.2}ms extract={:.2}ms render={:.2}ms render_acquire={:.2}ms render_encode={:.2}ms render_submit_present={:.2}ms gpu={} audio={:.2}ms hot_reload={:.2}ms",
         total_ms,
@@ -983,8 +981,7 @@ fn parse_capture_config() -> Option<CaptureConfig> {
         return None;
     }
     let path = std::env::var("TUNGSTEN_CAPTURE_PATH")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("actual.png"));
+        .map_or_else(|_| PathBuf::from("actual.png"), PathBuf::from);
     Some(CaptureConfig {
         target_frame,
         path,
@@ -1038,10 +1035,10 @@ fn expand_circle(
         return;
     }
     let two_pi = std::f32::consts::TAU;
-    let step = two_pi / segments as f32;
+    let step = two_pi / f32::from(segments);
     let mut prev = center + glam::Vec2::new(radius, 0.0);
     for i in 1..=segments {
-        let t = i as f32 * step;
+        let t = f32::from(i) * step;
         let (sin, cos) = t.sin_cos();
         let next = center + glam::Vec2::new(cos * radius, sin * radius);
         out.push(DebugLineInstance {
@@ -1198,7 +1195,7 @@ impl ApplicationHandler for App {
                     self.audio = Some(sys);
                 }
                 Err(e) => {
-                    log::warn!("Audio init failed (continuing without audio): {}", e);
+                    log::warn!("Audio init failed (continuing without audio): {e}");
                 }
             }
         }
@@ -1257,7 +1254,7 @@ impl ApplicationHandler for App {
                     match delta {
                         MouseScrollDelta::LineDelta(x, y) => input.add_scroll_line_delta(x, y),
                         MouseScrollDelta::PixelDelta(delta) => {
-                            input.add_scroll_pixel_delta(delta.x as f32, delta.y as f32)
+                            input.add_scroll_pixel_delta(delta.x as f32, delta.y as f32);
                         }
                     }
                 }
@@ -1270,8 +1267,7 @@ impl ApplicationHandler for App {
                 let prev_total_ms = self
                     .world
                     .get_resource::<FrameTimings>()
-                    .map(|ft| ft.total_ms)
-                    .unwrap_or(0.0);
+                    .map_or(0.0, |ft| ft.total_ms);
 
                 self.stage_delta_time();
                 let (update_ms, system_timings) = self.stage_update();

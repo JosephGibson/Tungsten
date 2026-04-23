@@ -21,7 +21,7 @@ pub struct FrameTimings {
     pub audio_ms: f32,
     /// Hot-reload processing time.
     pub hot_reload_ms: f32,
-    /// CommandBuffer flush time.
+    /// `CommandBuffer` flush time.
     pub flush_ms: f32,
     /// Total frame wall time.
     pub total_ms: f32,
@@ -30,11 +30,13 @@ pub struct FrameTimings {
 }
 
 impl FrameTimings {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Slowest system this frame.
+    #[must_use]
     pub fn slowest_system(&self) -> Option<(&str, f32)> {
         self.system_timings
             .iter()
@@ -56,6 +58,7 @@ pub struct DisplayTelemetry {
 }
 
 impl DisplayTelemetry {
+    #[must_use]
     pub fn from_state(state: &DisplayState, actual_present_mode: Option<String>) -> Self {
         Self {
             resolution: (state.resolution.width, state.resolution.height),

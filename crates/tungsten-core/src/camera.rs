@@ -49,6 +49,7 @@ pub struct CameraBounds {
 
 impl CameraBounds {
     /// Clamp top-left anchor so visible AABB stays within bounds.
+    #[must_use]
     pub fn clamp_position(
         &self,
         position: Vec2,
@@ -109,6 +110,7 @@ impl Default for CameraController {
 
 impl CameraController {
     /// Infer base zoom without compounding multiplier output.
+    #[must_use]
     pub fn resolve_base_zoom(&self, current_zoom: f32) -> f32 {
         let current_zoom = current_zoom.max(f32::EPSILON);
         if self.last_output_zoom == Some(current_zoom) {
@@ -126,6 +128,7 @@ impl CameraController {
     }
 
     /// Infer base position without accumulating shake output.
+    #[must_use]
     pub fn resolve_base_position(&self, current_position: Vec2) -> Vec2 {
         if self.last_output_position == Some(current_position) {
             return current_position - self.last_shake_offset;
@@ -152,6 +155,7 @@ pub struct CameraState {
 }
 
 impl CameraState {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             position: Vec2::ZERO,
@@ -161,6 +165,7 @@ impl CameraState {
     }
 
     /// View-projection matrix for physical viewport size.
+    #[must_use]
     pub fn view_projection(&self, viewport_w: f32, viewport_h: f32) -> Mat4 {
         let zoom = self.zoom.max(f32::EPSILON);
         if self.rotation == 0.0 {
@@ -181,6 +186,7 @@ impl CameraState {
     }
 
     /// Visible world AABB; rotation returns conservative bounding box.
+    #[must_use]
     pub fn visible_world_aabb(&self, viewport_w: f32, viewport_h: f32) -> (Vec2, Vec2) {
         let view_size = viewport_size(viewport_w, viewport_h, self.zoom);
         let (offset_min, offset_max) = rotated_view_extents(view_size, self.rotation);

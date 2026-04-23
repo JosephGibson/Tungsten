@@ -97,7 +97,7 @@ fn apply_overlay_env(app: &mut App) {
         return;
     };
     let world = app.world_mut();
-    for token in raw.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+    for token in raw.split(',').map(str::trim).filter(|s| !s.is_empty()) {
         match token {
             "physics" => {
                 if let Some(overlay) = world.get_resource_mut::<PhysicsDebugOverlay>() {

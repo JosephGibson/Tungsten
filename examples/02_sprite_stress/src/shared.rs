@@ -42,8 +42,7 @@ pub(crate) fn log_telemetry(world: &mut World) {
             let gpu_ms = world
                 .get_resource::<GpuFrameTimings>()
                 .and_then(|gpu| gpu.frame_gpu_ms)
-                .map(|ms| format!("{ms:.2}ms"))
-                .unwrap_or_else(|| "n/a".to_string());
+                .map_or_else(|| "n/a".to_string(), |ms| format!("{ms:.2}ms"));
             println!(
                 "[frame {:>5}] total={:.2}ms update={:.2}ms extract={:.2}ms render={:.2}ms acquire={:.2}ms encode={:.2}ms submit={:.2}ms gpu={}",
                 sample_frame,
@@ -63,8 +62,7 @@ pub(crate) fn log_telemetry(world: &mut World) {
 pub(crate) fn telemetry_frame(world: &World) -> u32 {
     world
         .get_resource::<TelemetryState>()
-        .map(|state| state.frame_count)
-        .unwrap_or(0)
+        .map_or(0, |state| state.frame_count)
 }
 
 pub(crate) fn rgb_wheel_color(time: f32, phase: f32) -> [u8; 4] {

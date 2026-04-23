@@ -1,4 +1,4 @@
-/// ActionMap query bench: one query per Criterion iteration.
+/// `ActionMap` query bench: one query per Criterion iteration.
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use tungsten_core::{ActionMap, InputState, KeyCode, MouseButton};
 

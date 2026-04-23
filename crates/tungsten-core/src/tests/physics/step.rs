@@ -187,8 +187,7 @@ fn inflated_broadphase_catches_resolution_slip_into_unpaired_wall() {
     let ball_pos = world.get::<Position>(ball).unwrap().0;
     assert!(
         ball_pos.x <= 14.0 + 0.2,
-        "ball slipped through wall during GS resolution: {:?}",
-        ball_pos
+        "ball slipped through wall during GS resolution: {ball_pos:?}"
     );
 }
 
@@ -227,8 +226,7 @@ fn speculative_pass_prevents_tunneling_when_substep_cap_binds() {
     let vel = world.get::<Velocity>(ball).unwrap().0;
     assert!(
         vel.x < 0.0,
-        "velocity should reflect off wall under speculative: {:?}",
-        vel
+        "velocity should reflect off wall under speculative: {vel:?}"
     );
 }
 
@@ -265,8 +263,7 @@ fn zero_restitution_body_does_not_bounce_off_multi_tile_floor() {
     let vel = world.get::<Velocity>(player).unwrap().0;
     assert!(
         vel.y >= -1e-3,
-        "zero-restitution body bounced upward off flat floor: {:?}",
-        vel
+        "zero-restitution body bounced upward off flat floor: {vel:?}"
     );
 }
 
@@ -304,8 +301,7 @@ fn bouncy_ball_does_not_double_impulse_on_multi_tile_seam() {
     // Bound catches old 2x-3x seam amplification.
     assert!(
         vel.y > -60.0,
-        "ball impulse was doubled — rebounded too fast: {:?}",
-        vel
+        "ball impulse was doubled — rebounded too fast: {vel:?}"
     );
 }
 

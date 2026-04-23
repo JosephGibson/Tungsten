@@ -25,6 +25,7 @@ pub struct AudioCommands {
 }
 
 impl AudioCommands {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             commands: Vec::new(),

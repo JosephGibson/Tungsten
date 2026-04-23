@@ -139,11 +139,10 @@ impl TilemapData {
                 .iter()
                 .find(|p| p.name == "kind")
                 .and_then(|p| p.value.as_str())
-                .map(|s| match s {
+                .map_or(LayerKind::Render, |s| match s {
                     "collision" => LayerKind::Collision,
                     _ => LayerKind::Render,
-                })
-                .unwrap_or(LayerKind::Render);
+                });
 
             let tiles: Vec<TileIndex> = data
                 .iter()
@@ -217,6 +216,7 @@ impl TilemapData {
     }
 
     /// Tile index at `(col, row)`.
+    #[must_use]
     pub fn tile_at(&self, layer: usize, col: u32, row: u32) -> Option<TileIndex> {
         let layer = self.layers.get(layer)?;
         if col >= self.width || row >= self.height {
@@ -227,6 +227,7 @@ impl TilemapData {
     }
 
     /// Map pixel size excluding instance origin.
+    #[must_use]
     pub fn pixel_size(&self) -> Vec2 {
         Vec2::new(
             (self.width * self.tile_width) as f32,
@@ -243,6 +244,7 @@ pub struct TilemapRegistry {
 }
 
 impl TilemapRegistry {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -257,6 +259,7 @@ impl TilemapRegistry {
         self.maps.insert(id, data);
     }
 
+    #[must_use]
     pub fn get(&self, id: &str) -> Option<&TilemapData> {
         self.maps.get(id)
     }
@@ -266,11 +269,12 @@ impl TilemapRegistry {
     }
 
     pub fn ids(&self) -> impl Iterator<Item = &str> {
-        self.maps.keys().map(|s| s.as_str())
+        self.maps.keys().map(String::as_str)
     }
 
+    #[must_use]
     pub fn id_for_path(&self, path: &Path) -> Option<&str> {
-        self.path_to_id.get(path).map(|s| s.as_str())
+        self.path_to_id.get(path).map(String::as_str)
     }
 }
 

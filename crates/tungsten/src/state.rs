@@ -44,6 +44,7 @@ pub struct StateStack {
 }
 
 impl StateStack {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             stack: Vec::new(),
@@ -67,11 +68,13 @@ impl StateStack {
     }
 
     /// Active state ID.
+    #[must_use]
     pub fn active_id(&self) -> Option<StateId> {
         self.stack.last().map(|s| s.id())
     }
 
     /// Stack depth.
+    #[must_use]
     pub fn depth(&self) -> usize {
         self.stack.len()
     }

@@ -8,6 +8,7 @@ use tungsten_core::{AssetRegistry, FilterMode, Sprite, SpriteAsset, Transform, V
 use tungsten_render::{SpriteBatch, SpriteInstance};
 
 /// Default sprite extract.
+#[must_use]
 pub fn extract_sprites_default(world: &World) -> Vec<SpriteBatch> {
     let Some(assets) = world.get_resource::<AssetRegistry>() else {
         return Vec::new();
@@ -36,18 +37,17 @@ pub fn extract_sprites_default(world: &World) -> Vec<SpriteBatch> {
             current_z = Some(s.z_order);
         }
         let key = (asset.atlas.0, asset.filter);
-        let idx = match per_key.get(&key) {
-            Some(&i) => i,
-            None => {
-                let i = out.len();
-                per_key.insert(key, i);
-                out.push(SpriteBatch {
-                    texture: asset.atlas,
-                    filter: asset.filter,
-                    instances: Vec::new(),
-                });
-                i
-            }
+        let idx = if let Some(&i) = per_key.get(&key) {
+            i
+        } else {
+            let i = out.len();
+            per_key.insert(key, i);
+            out.push(SpriteBatch {
+                texture: asset.atlas,
+                filter: asset.filter,
+                instances: Vec::new(),
+            });
+            i
         };
         let width_world = asset.width as f32 * t.scale.x;
         let height_world = asset.height as f32 * t.scale.y;

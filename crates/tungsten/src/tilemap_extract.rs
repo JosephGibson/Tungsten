@@ -9,14 +9,13 @@ use tungsten_render::{SpriteBatch, SpriteInstance};
 use crate::WindowSize;
 
 /// Extract visible render layers as sprite batches; collision layers skipped.
+#[must_use]
 pub fn extract_tilemaps(world: &World) -> Vec<SpriteBatch> {
-    let tilemaps = match world.get_resource::<TilemapRegistry>() {
-        Some(r) => r,
-        None => return vec![],
+    let Some(tilemaps) = world.get_resource::<TilemapRegistry>() else {
+        return vec![];
     };
-    let assets = match world.get_resource::<AssetRegistry>() {
-        Some(r) => r,
-        None => return vec![],
+    let Some(assets) = world.get_resource::<AssetRegistry>() else {
+        return vec![];
     };
     let camera = world
         .get_resource::<CameraState>()
@@ -35,15 +34,12 @@ pub fn extract_tilemaps(world: &World) -> Vec<SpriteBatch> {
     let mut out: Vec<SpriteBatch> = Vec::new();
 
     for (_entity, instance) in world.query::<TilemapInstance>() {
-        let data = match tilemaps.get(&instance.id) {
-            Some(d) => d,
-            None => {
-                log::warn!(
-                    "extract_tilemaps: no tilemap registered for '{}'",
-                    instance.id
-                );
-                continue;
-            }
+        let Some(data) = tilemaps.get(&instance.id) else {
+            log::warn!(
+                "extract_tilemaps: no tilemap registered for '{}'",
+                instance.id
+            );
+            continue;
         };
 
         let tw = data.tile_width as f32;
@@ -79,13 +75,11 @@ pub fn extract_tilemaps(world: &World) -> Vec<SpriteBatch> {
                     if tile < 0 {
                         continue;
                     }
-                    let sprite_id = match data.tileset.get(tile as usize) {
-                        Some(s) => s,
-                        None => continue,
+                    let Some(sprite_id) = data.tileset.get(tile as usize) else {
+                        continue;
                     };
-                    let asset = match assets.get_sprite(sprite_id) {
-                        Some(a) => a,
-                        None => continue,
+                    let Some(asset) = assets.get_sprite(sprite_id) else {
+                        continue;
                     };
 
                     let world_x = instance.origin.x + (col as f32) * tw;

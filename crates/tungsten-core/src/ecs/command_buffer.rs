@@ -43,6 +43,7 @@ pub struct CommandBuffer {
 }
 
 impl CommandBuffer {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             commands: Vec::new(),
@@ -50,10 +51,12 @@ impl CommandBuffer {
         }
     }
 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.commands.is_empty()
     }
 
+    #[must_use]
     pub fn len(&self) -> usize {
         self.commands.len()
     }

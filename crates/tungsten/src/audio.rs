@@ -35,7 +35,7 @@ impl AudioSystem {
 
         let config = device
             .default_output_config()
-            .map_err(|e| anyhow::anyhow!("Failed to get output config: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to get output config: {e}"))?;
 
         log::info!(
             "Audio device: '{}', format: {:?}, sample rate: {}, channels: {}",
@@ -66,7 +66,7 @@ impl AudioSystem {
                 move |output: &mut [f32], _info| {
                     // D-034: wait-free, allocation-free callback command drain.
                     while let Ok(cmd) = consumer.pop() {
-                        process_command(cmd, &mut playing, &mut master_volume);
+                        process_command(&cmd, &mut playing, &mut master_volume);
                     }
 
                     for s in output.iter_mut() {
@@ -82,15 +82,15 @@ impl AudioSystem {
                     playing.retain(|ps| !ps.finished);
                 },
                 |err| {
-                    log::error!("Audio stream error: {}", err);
+                    log::error!("Audio stream error: {err}");
                 },
                 None,
             )
-            .map_err(|e| anyhow::anyhow!("Failed to build output stream: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to build output stream: {e}"))?;
 
         stream
             .play()
-            .map_err(|e| anyhow::anyhow!("Failed to start audio stream: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to start audio stream: {e}"))?;
 
         Ok(AudioSystem {
             _stream: stream,
@@ -123,7 +123,7 @@ fn prepare_pcm(data: &SoundData, target_rate: u32, target_channels: usize) -> Ve
             stereo
         }
     } else {
-        let ratio = src_rate as f64 / target_rate as f64;
+        let ratio = f64::from(src_rate) / f64::from(target_rate);
         let target_frames = (src_frames as f64 / ratio).ceil() as usize;
         let mut out = Vec::with_capacity(target_frames * target_channels.max(2));
 
@@ -151,8 +151,8 @@ fn lerp(a: f32, b: f32, t: f32) -> f32 {
     a + (b - a) * t
 }
 
-fn process_command(cmd: AudioCommand, playing: &mut Vec<PlayingSound>, master_volume: &mut f32) {
-    match cmd {
+fn process_command(cmd: &AudioCommand, playing: &mut Vec<PlayingSound>, master_volume: &mut f32) {
+    match *cmd {
         AudioCommand::Play {
             handle,
             volume,

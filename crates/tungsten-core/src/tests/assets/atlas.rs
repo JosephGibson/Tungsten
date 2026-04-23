@@ -1,6 +1,6 @@
 use super::*;
 
-fn pi<'a>(id: &'a str, w: u32, h: u32) -> PackInput<'a> {
+fn pi(id: &str, w: u32, h: u32) -> PackInput<'_> {
     PackInput {
         id,
         width: w,

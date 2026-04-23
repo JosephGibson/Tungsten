@@ -35,13 +35,11 @@ fn solve_follow_position(
 
 /// Update authoritative camera state for the frame.
 pub fn camera_update_system(world: &mut World) {
-    let mut camera = match world.get_resource::<CameraState>().copied() {
-        Some(camera) => camera,
-        None => return,
+    let Some(mut camera) = world.get_resource::<CameraState>().copied() else {
+        return;
     };
-    let mut controller = match world.get_resource::<CameraController>().copied() {
-        Some(controller) => controller,
-        None => return,
+    let Some(mut controller) = world.get_resource::<CameraController>().copied() else {
+        return;
     };
     let window = world
         .get_resource::<WindowSize>()
@@ -52,8 +50,7 @@ pub fn camera_update_system(world: &mut World) {
         });
     let dt = world
         .get_resource::<DeltaTime>()
-        .map(|delta| delta.seconds())
-        .unwrap_or(0.0);
+        .map_or(0.0, tungsten_core::DeltaTime::seconds);
 
     let base_position = controller.resolve_base_position(camera.position);
     let base_zoom = controller.resolve_base_zoom(camera.zoom);
@@ -66,17 +63,18 @@ pub fn camera_update_system(world: &mut World) {
     let dead_zone_size = controller.dead_zone_size.clamp(Vec2::ZERO, viewport_size);
 
     let desired_position = match controller.mode {
-        CameraMode::Follow(entity) => world
-            .get::<Transform>(entity)
-            .map(|transform| {
-                solve_follow_position(
-                    base_position,
-                    transform.position,
-                    viewport_size,
-                    dead_zone_size,
-                )
-            })
-            .unwrap_or(base_position),
+        CameraMode::Follow(entity) => {
+            world
+                .get::<Transform>(entity)
+                .map_or(base_position, |transform| {
+                    solve_follow_position(
+                        base_position,
+                        transform.position,
+                        viewport_size,
+                        dead_zone_size,
+                    )
+                })
+        }
         CameraMode::Free | CameraMode::Scripted => base_position,
     };
 

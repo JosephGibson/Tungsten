@@ -60,11 +60,13 @@ impl Default for InspectorState {
 }
 
 impl InspectorState {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Register canonical inspectable components.
+    #[must_use]
     pub fn new_with_defaults() -> Self {
         let mut state = Self::default();
         state.register::<Tag>("Tag");
@@ -82,12 +84,13 @@ impl InspectorState {
             Box::new(|world: &World, entity: Entity| {
                 world
                     .get::<T>(entity)
-                    .map(|c| c.inspect_rows())
+                    .map(tungsten_core::Inspectable::inspect_rows)
                     .unwrap_or_default()
             }),
         ));
     }
 
+    #[must_use]
     pub fn registered_len(&self) -> usize {
         self.registered.len()
     }
@@ -117,8 +120,7 @@ pub(crate) fn inspector_toggle_system(world: &mut World) {
 pub(crate) fn inspector_pick_system(world: &mut World) {
     let enabled = world
         .get_resource::<InspectorState>()
-        .map(|s| s.enabled)
-        .unwrap_or(false);
+        .is_some_and(|s| s.enabled);
     if !enabled {
         return;
     }
@@ -170,10 +172,7 @@ fn pick_entity_under_cursor(world: &World, world_cursor: Vec2) -> Option<Entity>
 
     if let Some(registry) = world.get_resource::<AssetRegistry>() {
         for (entity, transform, sprite) in world.query2::<Transform, Sprite>() {
-            let visible = world
-                .get::<Visibility>(entity)
-                .map(|v| v.visible)
-                .unwrap_or(false);
+            let visible = world.get::<Visibility>(entity).is_some_and(|v| v.visible);
             if !visible {
                 continue;
             }
@@ -216,7 +215,7 @@ fn try_hit_aabb(
         return;
     }
     let area = size.x * size.y;
-    if best.map(|(_, a)| area < a).unwrap_or(true) {
+    if best.is_none_or(|(_, a)| area < a) {
         *best = Some((entity, area));
     }
 }
@@ -300,7 +299,7 @@ pub(crate) fn compose_inspector_text_section(
     } else {
         vec![main]
     };
-    state.cached_sections = sections.clone();
+    state.cached_sections.clone_from(&sections);
     sections
 }
 
@@ -342,9 +341,7 @@ fn render_inspector_lines(state: &InspectorState, world: &World) -> Vec<String> 
                 for (section, rows) in &visible {
                     for (row_label, value) in rows {
                         lines.push(format!(
-                            "{section:<sw$} {row_label:<lw$} {value}",
-                            sw = section_w,
-                            lw = label_w
+                            "{section:<section_w$} {row_label:<label_w$} {value}"
                         ));
                     }
                 }

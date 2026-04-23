@@ -55,8 +55,7 @@ pub fn particle_count_refresh_system(world: &mut World) {
 pub fn particle_emit_system(world: &mut World) {
     let dt = world
         .get_resource::<tungsten_core::DeltaTime>()
-        .map(|d| d.dt)
-        .unwrap_or(0.0);
+        .map_or(0.0, |d| d.dt);
 
     let budget = world
         .get_resource::<ParticleBudget>()
@@ -64,8 +63,7 @@ pub fn particle_emit_system(world: &mut World) {
         .unwrap_or_default();
     let mut global_active = world
         .get_resource::<ParticleActive>()
-        .map(|a| a.count)
-        .unwrap_or(0);
+        .map_or(0, |a| a.count);
 
     let emitter_entities =
         world.query3_entities::<ParticleEmitter, ParticleEmitterState, Transform>();
@@ -79,8 +77,7 @@ pub fn particle_emit_system(world: &mut World) {
         // Config snapshot resolved once, on first tick.
         let needs_snapshot = world
             .get::<ParticleEmitterState>(emitter_ent)
-            .map(|s| !s.first_tick_done)
-            .unwrap_or(false);
+            .is_some_and(|s| !s.first_tick_done);
 
         if needs_snapshot {
             let snapshot = world
@@ -106,17 +103,15 @@ pub fn particle_emit_system(world: &mut World) {
             }
         }
 
-        let snapshot = match world
+        let Some(snapshot) = world
             .get::<ParticleEmitterState>(emitter_ent)
             .and_then(|s| s.config_snapshot.clone())
-        {
-            Some(s) => s,
-            None => continue,
+        else {
+            continue;
         };
 
-        let origin = match world.get::<Transform>(emitter_ent) {
-            Some(t) => t.position,
-            None => continue,
+        let Some(origin) = world.get::<Transform>(emitter_ent).map(|t| t.position) else {
+            continue;
         };
 
         let (to_emit, is_discrete) = plan_emission(world, emitter_ent, dt, &snapshot);
@@ -128,10 +123,7 @@ pub fn particle_emit_system(world: &mut World) {
 
         let (active_count, max_alive) = {
             let state = world.get::<ParticleEmitterState>(emitter_ent);
-            (
-                state.map(|s| s.active_count).unwrap_or(0),
-                snapshot.max_alive,
-            )
+            (state.map_or(0, |s| s.active_count), snapshot.max_alive)
         };
         let per_emitter_headroom = max_alive.saturating_sub(active_count);
         let global_headroom = budget.global_cap.saturating_sub(global_active);
@@ -143,9 +135,8 @@ pub fn particle_emit_system(world: &mut World) {
         }
 
         // Batch spawn without holding a `&mut World` resource borrow.
-        let mut buf = match world.remove_resource::<CommandBuffer>() {
-            Some(b) => b,
-            None => continue,
+        let Some(mut buf) = world.remove_resource::<CommandBuffer>() else {
+            continue;
         };
 
         for _ in 0..n_eff {
@@ -185,24 +176,21 @@ pub fn particle_emit_system(world: &mut World) {
 pub fn particle_tick_system(world: &mut World) {
     let dt = world
         .get_resource::<tungsten_core::DeltaTime>()
-        .map(|d| d.dt)
-        .unwrap_or(0.0);
+        .map_or(0.0, |d| d.dt);
     if dt <= 0.0 {
         return;
     }
 
-    let mut buf = match world.remove_resource::<CommandBuffer>() {
-        Some(b) => b,
-        None => return,
+    let Some(mut buf) = world.remove_resource::<CommandBuffer>() else {
+        return;
     };
 
     let particle_entities = world.query3_entities::<Particle, Transform, Sprite>();
     for entity in particle_entities {
         // Snapshot before writeback to keep borrows disjoint.
         let (config, age_new, lifetime) = {
-            let p = match world.get::<Particle>(entity) {
-                Some(p) => p,
-                None => continue,
+            let Some(p) = world.get::<Particle>(entity) else {
+                continue;
             };
             (p.config.clone(), p.age + dt, p.lifetime)
         };
@@ -275,9 +263,8 @@ fn plan_emission(
     dt: f32,
     cfg: &Arc<ParticleConfig>,
 ) -> (u32, bool) {
-    let state = match world.get_mut::<ParticleEmitterState>(emitter_ent) {
-        Some(s) => s,
-        None => return (0, false),
+    let Some(state) = world.get_mut::<ParticleEmitterState>(emitter_ent) else {
+        return (0, false);
     };
     state.elapsed += dt;
 
@@ -429,7 +416,7 @@ fn sample_initial_velocity(rng: &mut tungsten_core::Pcg32, iv: &InitialVelocity)
 }
 
 fn sample_or_one(curve: Option<&Curve<f32>>, t: f32) -> f32 {
-    curve.map(|c| c.sample(t)).unwrap_or(1.0)
+    curve.map_or(1.0, |c| c.sample(t))
 }
 
 /// Spawn a fully formed particle without the emit system.

@@ -24,6 +24,7 @@ pub struct AtlasRegistry {
 }
 
 impl AtlasRegistry {
+    #[must_use]
     pub fn page_handles(&self, filter: FilterMode) -> &[TextureHandle] {
         match filter {
             FilterMode::Nearest => &self.nearest_pages,
@@ -127,7 +128,9 @@ fn build_atlas_for_filter(
         atlas_registry.packed.insert(src.id.clone(), packed.clone());
     }
 
-    *atlas_registry.page_handles_mut(filter) = page_handles.clone();
+    atlas_registry
+        .page_handles_mut(filter)
+        .clone_from(&page_handles);
     page_handles
 }
 
@@ -360,10 +363,7 @@ pub fn load_all(
         for (i, sprite_id) in map_data.tileset.iter().enumerate() {
             if registry.get_sprite(sprite_id).is_none() {
                 return Err(anyhow::anyhow!(
-                    "Tilemap '{}' tileset[{}] references unknown sprite ID '{}'",
-                    map_id,
-                    i,
-                    sprite_id,
+                    "Tilemap '{map_id}' tileset[{i}] references unknown sprite ID '{sprite_id}'",
                 ));
             }
         }
@@ -473,12 +473,9 @@ pub fn reload_sprite(
         let asset_reg = world
             .get_resource::<AssetRegistry>()
             .expect("AssetRegistry resource missing");
-        let asset = match asset_reg.get_sprite(id) {
-            Some(a) => a,
-            None => {
-                log::error!("Hot reload sprite '{id}': not found in registry");
-                return Ok(());
-            }
+        let Some(asset) = asset_reg.get_sprite(id) else {
+            log::error!("Hot reload sprite '{id}': not found in registry");
+            return Ok(());
         };
         let packed = world
             .get_resource::<AtlasRegistry>()
@@ -511,18 +508,12 @@ pub fn reload_sprite(
             .get_resource_mut::<AssetRegistry>()
             .expect("AssetRegistry resource missing")
             .update_sprite_entry(id, atlas_handle, uv, new_w, new_h);
-        log::info!(
-            "Hot-reloaded sprite '{id}' ({}x{}, {:?}) in-place",
-            new_w,
-            new_h,
-            filter
-        );
+        log::info!("Hot-reloaded sprite '{id}' ({new_w}x{new_h}, {filter:?}) in-place");
         return Ok(());
     }
 
     log::warn!(
-        "Sprite '{id}' grew ({old_w}x{old_h} → {new_w}x{new_h}); rebuilding {:?} atlas",
-        filter,
+        "Sprite '{id}' grew ({old_w}x{old_h} → {new_w}x{new_h}); rebuilding {filter:?} atlas",
     );
     rebuild_atlas_for_filter(filter, world, renderer)?;
     Ok(())
@@ -827,7 +818,7 @@ pub fn reload_manifest(
             .get_resource::<AssetRegistry>()
             .expect("AssetRegistry resource missing")
             .sprite_ids()
-            .map(|s| s.to_string())
+            .map(ToString::to_string)
             .collect();
 
         for id in &existing {
@@ -878,7 +869,7 @@ pub fn reload_manifest(
     {
         let existing: Vec<String> = world
             .get_resource::<AnimationRegistry>()
-            .map(|ar| ar.ids().map(|s| s.to_string()).collect())
+            .map(|ar| ar.ids().map(ToString::to_string).collect())
             .unwrap_or_default();
 
         for id in &existing {
@@ -911,7 +902,7 @@ pub fn reload_manifest(
     {
         let existing: Vec<String> = world
             .get_resource::<TilemapRegistry>()
-            .map(|tr| tr.ids().map(|s| s.to_string()).collect())
+            .map(|tr| tr.ids().map(ToString::to_string).collect())
             .unwrap_or_default();
 
         for id in &existing {
@@ -954,8 +945,7 @@ pub fn reload_manifest(
         for (id, entry) in &new_manifest.fonts {
             let already_loaded = world
                 .get_resource::<FontRegistry>()
-                .map(|fr| fr.contains_id(id))
-                .unwrap_or(false);
+                .is_some_and(|fr| fr.contains_id(id));
 
             if !already_loaded {
                 match std::fs::read(&entry.path) {
@@ -978,7 +968,7 @@ pub fn reload_manifest(
     {
         let existing: Vec<String> = world
             .get_resource::<ParticleConfigRegistry>()
-            .map(|pr| pr.names().map(|s| s.to_string()).collect())
+            .map(|pr| pr.names().map(ToString::to_string).collect())
             .unwrap_or_default();
 
         for id in &existing {
@@ -1020,8 +1010,7 @@ pub fn reload_manifest(
     {
         let existing_count = world
             .get_resource::<SoundRegistry>()
-            .map(|sr| sr.iter().count())
-            .unwrap_or(0);
+            .map_or(0, |sr| sr.iter().count());
         let new_count = new_manifest.sounds.len();
         if existing_count != new_count {
             log::debug!(

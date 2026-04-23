@@ -9,6 +9,7 @@ pub struct EventQueue<T> {
 }
 
 impl<T> EventQueue<T> {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             current: Vec::new(),
@@ -32,11 +33,13 @@ impl<T> EventQueue<T> {
     }
 
     /// Both windows empty.
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.current.is_empty() && self.previous.is_empty()
     }
 
     /// Total event count across both windows.
+    #[must_use]
     pub fn len(&self) -> usize {
         self.previous.len() + self.current.len()
     }

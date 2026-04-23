@@ -28,6 +28,7 @@ pub struct AssetRegistry {
 }
 
 impl AssetRegistry {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -65,17 +66,19 @@ impl AssetRegistry {
         );
     }
 
+    #[must_use]
     pub fn get_sprite(&self, id: &str) -> Option<&SpriteAsset> {
         self.sprites.get(id)
     }
 
     pub fn sprite_ids(&self) -> impl Iterator<Item = &str> {
-        self.sprites.keys().map(|s| s.as_str())
+        self.sprites.keys().map(String::as_str)
     }
 
     /// Sprite ID for source path.
+    #[must_use]
     pub fn sprite_id_for_path(&self, path: &Path) -> Option<&str> {
-        self.path_to_sprite_id.get(path).map(|s| s.as_str())
+        self.path_to_sprite_id.get(path).map(String::as_str)
     }
 
     /// Update atlas/UV/dimensions after hot reload.
@@ -103,6 +106,7 @@ pub struct FontRegistry {
 }
 
 impl FontRegistry {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -111,10 +115,12 @@ impl FontRegistry {
         self.path_to_id.insert(path, id);
     }
 
+    #[must_use]
     pub fn id_for_path(&self, path: &Path) -> Option<&str> {
-        self.path_to_id.get(path).map(|s| s.as_str())
+        self.path_to_id.get(path).map(String::as_str)
     }
 
+    #[must_use]
     pub fn contains_id(&self, id: &str) -> bool {
         self.path_to_id.values().any(|v| v == id)
     }

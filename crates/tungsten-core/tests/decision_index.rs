@@ -12,7 +12,7 @@ fn extract_decision_ids(text: &str) -> BTreeSet<String> {
         }
 
         let digits = &bytes[index + 2..index + 5];
-        if digits.iter().all(|byte| byte.is_ascii_digit()) {
+        if digits.iter().all(u8::is_ascii_digit) {
             ids.insert(text[index..index + 5].to_string());
         }
     }

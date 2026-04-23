@@ -11,6 +11,7 @@ pub struct Entity {
 
 impl Entity {
     /// Slot index.
+    #[must_use]
     pub fn id(self) -> u32 {
         self.index
     }

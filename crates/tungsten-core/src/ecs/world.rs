@@ -15,6 +15,7 @@ pub struct World {
 }
 
 impl World {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             archetypes: Archetypes::new(),
@@ -34,11 +35,13 @@ impl World {
         }
     }
 
+    #[must_use]
     pub fn is_alive(&self, entity: Entity) -> bool {
         self.archetypes.entities.is_alive(entity)
     }
 
     /// Live entity count. O(1).
+    #[must_use]
     pub fn entity_count(&self) -> u32 {
         self.archetypes.entities.live_count()
     }
@@ -52,6 +55,7 @@ impl World {
         self.archetypes.remove::<T>(entity)
     }
 
+    #[must_use]
     pub fn get<T: 'static>(&self, entity: Entity) -> Option<&T> {
         self.archetypes.get::<T>(entity)
     }
@@ -60,6 +64,7 @@ impl World {
         self.archetypes.get_mut::<T>(entity)
     }
 
+    #[must_use]
     pub fn has<T: 'static>(&self, entity: Entity) -> bool {
         self.archetypes.has::<T>(entity)
     }
@@ -77,6 +82,7 @@ impl World {
     }
 
     /// Collect entities with `T`; use before mixed mutable access.
+    #[must_use]
     pub fn query_entities<T: 'static>(&self) -> Vec<Entity> {
         self.archetypes
             .archetypes_with::<T>()
@@ -108,6 +114,7 @@ impl World {
     }
 
     /// Collect entities with `A` and `B`; use before mutable access.
+    #[must_use]
     pub fn query2_entities<A: 'static, B: 'static>(&self) -> Vec<Entity> {
         let a_id = TypeId::of::<A>();
         let b_id = TypeId::of::<B>();
@@ -149,6 +156,7 @@ impl World {
     }
 
     /// Collect entities with `A`, `B`, and `C`; use before mutable access.
+    #[must_use]
     pub fn query3_entities<A: 'static, B: 'static, C: 'static>(&self) -> Vec<Entity> {
         let a_id = TypeId::of::<A>();
         let b_id = TypeId::of::<B>();
@@ -163,6 +171,7 @@ impl World {
         self.resources.insert(resource);
     }
 
+    #[must_use]
     pub fn get_resource<T: 'static>(&self) -> Option<&T> {
         self.resources.get::<T>()
     }
@@ -171,6 +180,7 @@ impl World {
         self.resources.get_mut::<T>()
     }
 
+    #[must_use]
     pub fn has_resource<T: 'static>(&self) -> bool {
         self.resources.contains::<T>()
     }

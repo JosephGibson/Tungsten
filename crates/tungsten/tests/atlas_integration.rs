@@ -1,4 +1,4 @@
-//! Atlas extract seam: shared TextureHandle batches; distinct atlases split.
+//! Atlas extract seam: shared `TextureHandle` batches; distinct atlases split.
 
 use std::path::PathBuf;
 

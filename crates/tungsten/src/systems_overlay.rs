@@ -180,7 +180,7 @@ pub(crate) fn compose_systems_overlay_text_section(
         vec![main]
     };
 
-    overlay.cached_sections = sections.clone();
+    overlay.cached_sections.clone_from(&sections);
     sections
 }
 

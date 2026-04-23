@@ -20,6 +20,7 @@ pub struct AssetId<T> {
 }
 
 impl<T> AssetId<T> {
+    #[must_use]
     pub fn new(index: u32) -> Self {
         Self {
             index,
@@ -27,6 +28,7 @@ impl<T> AssetId<T> {
         }
     }
 
+    #[must_use]
     pub fn index(self) -> u32 {
         self.index
     }
@@ -79,6 +81,7 @@ pub struct Range {
 }
 
 impl Range {
+    #[must_use]
     pub fn single(value: f32) -> Self {
         Self {
             min: value,
@@ -167,11 +170,13 @@ pub struct Curve<V: Copy> {
 }
 
 impl<V: Copy + Lerp> Curve<V> {
+    #[must_use]
     pub fn sample(&self, t: f32) -> V {
         let pts = self.points.as_slice();
-        if pts.is_empty() {
-            panic!("Curve::sample called on empty curve — validate() should have caught this");
-        }
+        assert!(
+            !pts.is_empty(),
+            "Curve::sample called on empty curve — validate() should have caught this"
+        );
         if t <= pts[0].0 {
             return pts[0].1;
         }
@@ -282,7 +287,7 @@ impl ParticleConfig {
         if self.max_alive == 0 {
             return Err("max_alive must be >= 1".into());
         }
-        check_finite_range(&self.lifetime, "lifetime")?;
+        check_finite_range(self.lifetime, "lifetime")?;
         if self.lifetime.max <= 0.0 {
             return Err("lifetime.max must be > 0".into());
         }
@@ -292,8 +297,8 @@ impl ParticleConfig {
         if !self.drag_per_sec.is_finite() || self.drag_per_sec < 0.0 {
             return Err("drag_per_sec must be finite and >= 0".into());
         }
-        check_finite_range(&self.angular_velocity, "angular_velocity")?;
-        check_finite_range(&self.start_scale, "start_scale")?;
+        check_finite_range(self.angular_velocity, "angular_velocity")?;
+        check_finite_range(self.start_scale, "start_scale")?;
         if self.start_scale.min < 0.0 {
             return Err("start_scale.min must be >= 0".into());
         }
@@ -337,18 +342,18 @@ impl ParticleConfig {
                 spread_deg,
                 speed,
             } => {
-                check_finite_vec2(direction, "initial_velocity.cone.direction")?;
+                check_finite_vec2(*direction, "initial_velocity.cone.direction")?;
                 if !spread_deg.is_finite() {
                     return Err("initial_velocity.cone.spread_deg must be finite".into());
                 }
-                check_finite_range(speed, "initial_velocity.cone.speed")?;
+                check_finite_range(*speed, "initial_velocity.cone.speed")?;
             }
             InitialVelocity::Radial { speed } => {
-                check_finite_range(speed, "initial_velocity.radial.speed")?;
+                check_finite_range(*speed, "initial_velocity.radial.speed")?;
             }
             InitialVelocity::Vector { direction, speed } => {
-                check_finite_vec2(direction, "initial_velocity.vector.direction")?;
-                check_finite_range(speed, "initial_velocity.vector.speed")?;
+                check_finite_vec2(*direction, "initial_velocity.vector.direction")?;
+                check_finite_range(*speed, "initial_velocity.vector.speed")?;
             }
         }
         if let Some(c) = &self.scale_over_life {
@@ -364,7 +369,7 @@ impl ParticleConfig {
     }
 }
 
-fn check_finite_range(r: &Range, field: &str) -> Result<(), String> {
+fn check_finite_range(r: Range, field: &str) -> Result<(), String> {
     if !r.min.is_finite() || !r.max.is_finite() {
         return Err(format!("{field}.min/max must be finite"));
     }
@@ -374,7 +379,7 @@ fn check_finite_range(r: &Range, field: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn check_finite_vec2(v: &[f32; 2], field: &str) -> Result<(), String> {
+fn check_finite_vec2(v: [f32; 2], field: &str) -> Result<(), String> {
     if !v[0].is_finite() || !v[1].is_finite() {
         return Err(format!("{field} must be finite"));
     }
@@ -422,13 +427,14 @@ pub struct ParticleActive {
     pub count: u32,
 }
 
-/// World RNG seed source; SplitMix64 preserves deterministic replay.
+/// World RNG seed source; `SplitMix64` preserves deterministic replay.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct WorldRngSeed {
     pub next: u64,
 }
 
 impl WorldRngSeed {
+    #[must_use]
     pub fn new(start: u64) -> Self {
         Self { next: start }
     }
@@ -453,6 +459,7 @@ pub struct ParticleConfigRegistry {
 }
 
 impl ParticleConfigRegistry {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -479,37 +486,44 @@ impl ParticleConfigRegistry {
         self.by_id.insert(id, config);
     }
 
+    #[must_use]
     pub fn get(&self, id: AssetId<ParticleConfig>) -> Option<&Arc<ParticleConfig>> {
         self.by_id.get(&id)
     }
 
+    #[must_use]
     pub fn id_for_name(&self, name: &str) -> Option<AssetId<ParticleConfig>> {
         self.id_by_name.get(name).copied()
     }
 
+    #[must_use]
     pub fn name_for_id(&self, id: AssetId<ParticleConfig>) -> Option<&str> {
-        self.name_by_id.get(&id).map(|s| s.as_str())
+        self.name_by_id.get(&id).map(String::as_str)
     }
 
+    #[must_use]
     pub fn id_for_path(&self, path: &Path) -> Option<AssetId<ParticleConfig>> {
         self.id_by_path.get(path).copied()
     }
 
+    #[must_use]
     pub fn path_for_id(&self, id: AssetId<ParticleConfig>) -> Option<&Path> {
-        self.path_by_id.get(&id).map(|p| p.as_path())
+        self.path_by_id.get(&id).map(PathBuf::as_path)
     }
 
+    #[must_use]
     pub fn len(&self) -> usize {
         self.by_id.len()
     }
 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.by_id.is_empty()
     }
 
     /// Registered particle names; unstable `HashMap` order.
     pub fn names(&self) -> impl Iterator<Item = &str> {
-        self.id_by_name.keys().map(|s| s.as_str())
+        self.id_by_name.keys().map(String::as_str)
     }
 }
 

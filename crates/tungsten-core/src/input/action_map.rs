@@ -54,6 +54,7 @@ pub enum ActionMapError {
 
 impl ActionMapError {
     /// Missing-file error check for default fallback.
+    #[must_use]
     pub fn is_not_found(&self) -> bool {
         matches!(self, Self::Io { source, .. } if source.kind() == std::io::ErrorKind::NotFound)
     }
@@ -61,11 +62,13 @@ impl ActionMapError {
 
 impl ActionMap {
     /// Empty action map.
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Engine default bindings for examples and engine-owned controls.
+    #[must_use]
     pub fn default_map() -> Self {
         let mut actions: HashMap<String, Vec<Binding>> = HashMap::new();
         actions.insert(
@@ -252,6 +255,7 @@ impl ActionMap {
     }
 
     /// Merge loaded map over defaults; empty list disables action.
+    #[must_use]
     pub fn merged_with_defaults(loaded: Self) -> Self {
         let ActionMap {
             actions,
@@ -288,7 +292,7 @@ impl ActionMap {
 
     /// Bindings for action; unknown returns empty slice.
     pub fn bindings(&self, action: &str) -> &[Binding] {
-        self.actions.get(action).map(Vec::as_slice).unwrap_or(&[])
+        self.actions.get(action).map_or(&[], Vec::as_slice)
     }
 
     /// Replace action bindings; call `persist` to save.
@@ -309,6 +313,7 @@ impl ActionMap {
     }
 
     /// Any binding currently held.
+    #[must_use]
     pub fn is_pressed(&self, input: &InputState, action: &str) -> bool {
         self.bindings(action).iter().any(|binding| match *binding {
             Binding::Key { code } => input.is_pressed(code),
@@ -318,6 +323,7 @@ impl ActionMap {
     }
 
     /// Any binding transitioned pressed this frame.
+    #[must_use]
     pub fn just_pressed(&self, input: &InputState, action: &str) -> bool {
         self.bindings(action).iter().any(|binding| match *binding {
             Binding::Key { code } => input.just_pressed(code),
@@ -327,6 +333,7 @@ impl ActionMap {
     }
 
     /// Any binding transitioned released this frame.
+    #[must_use]
     pub fn just_released(&self, input: &InputState, action: &str) -> bool {
         self.bindings(action).iter().any(|binding| match *binding {
             Binding::Key { code } => input.just_released(code),
@@ -501,7 +508,7 @@ fn skip_ws(bytes: &[u8], mut index: usize) -> usize {
 }
 
 fn line_indent(source: &str, index: usize) -> String {
-    let line_start = source[..index].rfind('\n').map(|pos| pos + 1).unwrap_or(0);
+    let line_start = source[..index].rfind('\n').map_or(0, |pos| pos + 1);
     source[line_start..index]
         .chars()
         .take_while(|ch| ch.is_whitespace())
@@ -570,6 +577,7 @@ fn next_temp_path(parent: &Path, file_name: &str) -> PathBuf {
 }
 
 /// Resolve path for logging.
+#[must_use]
 pub fn resolve_path(path: &Path) -> PathBuf {
     path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
 }
