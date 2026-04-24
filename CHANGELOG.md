@@ -6,7 +6,12 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-Phase 3 complete. Phase 4 scope is tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md).
+Workspace version now targets `0.22.0` on branch `0.22`. Phase 4 scope is tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md).
+
+### Changed
+
+- Workspace version bumped to `0.22.0`.
+- `README.md`, `AGENTS.md`, `DESIGN.md`, `CLAUDE.md`, `docs/plans/phase4.md`, and `docs/plans/phase4-milestone-25-render-foundation.md` now reflect branch `0.22` as the active integration line.
 
 ## [0.21.0] - 2026-04-23
 

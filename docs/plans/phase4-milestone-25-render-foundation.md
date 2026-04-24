@@ -62,7 +62,7 @@ done-when:
 
 ## Context Digest
 
-Tungsten `0.21` renders directly to the swapchain through one forward pass: `render_frame_full` clears the surface, then draws quads → sprites → debug quads → debug lines → text in order, all inside one `begin_render_pass` ([renderer.rs:471-494](crates/tungsten-render/src/renderer.rs#L471-L494)). No depth, no MSAA, no offscreen target. Call sites at [app.rs:775-793](crates/tungsten/src/app.rs#L775-L793).
+Tungsten `0.22` currently renders directly to the swapchain through one forward pass, matching the `0.21` release baseline: `render_frame_full` clears the surface, then draws quads → sprites → debug quads → debug lines → text in order, all inside one `begin_render_pass` ([renderer.rs:471-494](crates/tungsten-render/src/renderer.rs#L471-L494)). No depth, no MSAA, no offscreen target. Call sites at [app.rs:775-793](crates/tungsten/src/app.rs#L775-L793).
 
 Shaders are source-embedded via `include_str!` at pipeline construction ([sprite.rs:151](crates/tungsten-render/src/sprite.rs#L151), [quad.rs:84](crates/tungsten-render/src/quad.rs#L84), [debug_line.rs:80](crates/tungsten-render/src/debug_line.rs#L80)); text uses `glyphon`. `D-023` captures this. `D-053` publishes the hot-reload matrix. M25 adds a new row (`shader` — body-edit only) that narrows `D-023` rather than reversing it.
 
@@ -253,7 +253,7 @@ Under `depth_sort=gpu_depth`, pass 1 binds `SceneDepth`; sprite pipeline writes 
 
 ### 16. Flip plan status
 - File: `docs/plans/phase4-milestone-25-render-foundation.md`.
-- Action: `status: draft` → `status: done` once steps 1–15 land on `0.21`.
+- Action: `status: draft` → `status: done` once steps 1–15 land on `0.22`.
 - Verify: `rg -n "^status:" docs/plans/phase4-milestone-25-render-foundation.md` shows `done`.
 
 ## Verification Commands Summary

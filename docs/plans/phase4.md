@@ -15,7 +15,7 @@ ordered steps:
   - "Execute M25 → M26 → M27 → M28 in order. M29 ↔ M30 order is free. M31 before M32. M32 last."
   - "For each milestone, write the plan, implement it, produce an acceptance artifact, and flip status to done."
 done-when:
-  - "All 8 milestones landed on the active integration branch (`0.21` today; `main` if the repo flips before Phase 4 starts), each with `status: done` in its plan file."
+  - "All 8 milestones landed on the active integration branch (`0.22` today; `main` if the repo flips before Phase 4 starts), each with `status: done` in its plan file."
   - "DESIGN.md Status, CHANGELOG.md, and docs/DECISION_INDEX.md are updated where milestone decisions change canonical project guidance."
   - "This file is flipped to `status: done`, and any milestone that changes the shader/text/hot-reload rules updates AGENTS.md in the same change."
 ---
