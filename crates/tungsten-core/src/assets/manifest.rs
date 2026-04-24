@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
+use crate::assets::material::MaterialUniformDefaults;
+
 #[derive(Debug, Error)]
 pub enum ManifestError {
     #[error("failed to read manifest '{path}': {source}")]
@@ -29,6 +31,8 @@ pub enum ManifestError {
     MissingParticleFile { id: String, path: String },
     #[error("shader '{id}' references missing file: {path}")]
     MissingShaderFile { id: String, path: String },
+    #[error("material '{id}' references unknown shader '{shader}'")]
+    MaterialShaderMissing { id: String, shader: String },
     #[error("duplicate asset ID '{id}' across manifests")]
     DuplicateId { id: String },
 }
@@ -50,6 +54,8 @@ pub struct RawManifest {
     pub particles: HashMap<String, ParticleEntry>,
     #[serde(default)]
     pub shaders: HashMap<String, ShaderEntry>,
+    #[serde(default)]
+    pub materials: HashMap<String, MaterialEntry>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -110,6 +116,17 @@ pub struct ShaderEntry {
     pub path: String,
 }
 
+/// M26 material entry: a WGSL shader id plus an authored `UniformOverrideBlock`
+/// default payload. Material serialisation lives inside the manifest — there
+/// is no standalone per-material JSON file in M26.
+#[derive(Debug, Clone, Deserialize)]
+pub struct MaterialEntry {
+    /// Stable shader id (must exist under `shaders`).
+    pub shader: String,
+    #[serde(default)]
+    pub uniform_defaults: MaterialUniformDefaults,
+}
+
 /// D-052 loaded merged manifest resource.
 #[derive(Debug, Clone, Default)]
 pub struct LoadedManifest(pub ResolvedManifest);
@@ -136,6 +153,7 @@ pub struct ResolvedManifest {
     pub tilemaps: HashMap<String, ResolvedTilemap>,
     pub particles: HashMap<String, ResolvedParticle>,
     pub shaders: HashMap<String, ResolvedShader>,
+    pub materials: HashMap<String, ResolvedMaterial>,
 }
 
 #[derive(Debug, Clone)]
@@ -174,6 +192,19 @@ pub struct ResolvedParticle {
 #[derive(Debug, Clone)]
 pub struct ResolvedShader {
     pub path: PathBuf,
+}
+
+/// Resolved material: shader resolution is deferred to asset load (ID
+/// allocation is a runtime, not a parse-time, concern).
+#[derive(Debug, Clone)]
+pub struct ResolvedMaterial {
+    /// Manifest path that this entry was parsed from; fed back into the
+    /// hot-reload routing to locate the source manifest after an edit.
+    pub source_manifest: PathBuf,
+    /// Name of the shader entry this material targets; resolved to a
+    /// `ShaderAssetId` by `asset_loader::material::load_materials`.
+    pub shader: String,
+    pub uniform_defaults: MaterialUniformDefaults,
 }
 
 impl ResolvedManifest {
@@ -300,6 +331,28 @@ impl ResolvedManifest {
                 .insert(id, ResolvedShader { path: full_path });
         }
 
+        // Materials are cross-ref-validated against the local shader set;
+        // merged manifests re-validate on merge so cross-file references work.
+        let source_manifest = manifest_path
+            .canonicalize()
+            .unwrap_or_else(|_| manifest_path.to_path_buf());
+        for (id, entry) in raw.materials {
+            if !result.shaders.contains_key(&entry.shader) {
+                return Err(ManifestError::MaterialShaderMissing {
+                    id,
+                    shader: entry.shader,
+                });
+            }
+            result.materials.insert(
+                id,
+                ResolvedMaterial {
+                    source_manifest: source_manifest.clone(),
+                    shader: entry.shader,
+                    uniform_defaults: entry.uniform_defaults,
+                },
+            );
+        }
+
         Ok(result)
     }
 
@@ -358,6 +411,20 @@ impl ResolvedManifest {
                 return Err(ManifestError::DuplicateId { id });
             }
             self.shaders.insert(id, shader);
+        }
+        for (id, material) in other.materials {
+            if self.materials.contains_key(&id) {
+                return Err(ManifestError::DuplicateId { id });
+            }
+            // Re-validate cross-ref: when a material merges in from a sibling
+            // manifest, the shader may live in the merged graph we just built.
+            if !self.shaders.contains_key(&material.shader) {
+                return Err(ManifestError::MaterialShaderMissing {
+                    id,
+                    shader: material.shader,
+                });
+            }
+            self.materials.insert(id, material);
         }
         Ok(())
     }

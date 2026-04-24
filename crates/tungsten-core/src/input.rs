@@ -28,7 +28,10 @@ pub enum KeyCode {
     KeyA,
     KeyS,
     KeyD,
+    KeyB,
+    KeyC,
     KeyM,
+    KeyN,
     KeyP,
     KeyV,
     Digit1,
@@ -36,6 +39,8 @@ pub enum KeyCode {
     Digit3,
     Equal,
     Minus,
+    BracketLeft,
+    BracketRight,
     Other(u32),
 }
 

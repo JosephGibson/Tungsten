@@ -3,13 +3,33 @@
 //! D-042: explicit `Visibility` required. Order: stable `(z_order, entity.id)`,
 //! batched within z-runs. `z_norm` is derived from the same painter ordering
 //! so `DepthSortMode::GpuDepth` reproduces the CPU-visible order.
+//!
+//! M26: batch key extends with `(material_id, uniform_overrides_hash)` so
+//! per-entity material animations never alias through one UBO upload. Same-
+//! material same-override batches still collapse; the M25 default bytes are
+//! byte-identical when no sprite carries `material_id`.
 
 use std::collections::HashMap;
 
+use tungsten_core::tween::UniformOverrideBlock;
 use tungsten_core::{
-    AssetRegistry, Entity, FilterMode, Sprite, SpriteAsset, Transform, Visibility, World,
+    AssetRegistry, Entity, FilterMode, MaterialAssetId, Sprite, SpriteAsset, Transform, Visibility,
+    World,
 };
 use tungsten_render::{SpriteBatch, SpriteInstance};
+
+/// Hash of a `UniformOverrideBlock`'s 256-byte payload, used as a batch-split
+/// key so per-entity overrides cannot alias through one UBO upload.
+fn override_key(block: &UniformOverrideBlock) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for byte in block.to_bytes() {
+        byte.hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
+type BatchKey = (u32, FilterMode, Option<MaterialAssetId>, Option<u64>);
 
 /// Default sprite extract.
 #[must_use]
@@ -38,26 +58,27 @@ pub fn extract_sprites_default(world: &World) -> Vec<SpriteBatch> {
 
     let total = entries.len();
 
-    // Batch by `(atlas, filter)` within each z-run only.
+    // Batch by effective material state inside each z-run.
     let mut out: Vec<SpriteBatch> = Vec::new();
     let mut current_z: Option<i32> = None;
-    let mut per_key: HashMap<(u32, FilterMode), usize> = HashMap::new();
-    for (idx_in_order, (_e, t, s, asset)) in entries.iter().enumerate() {
+    let mut per_key: HashMap<BatchKey, usize> = HashMap::new();
+    for (idx_in_order, (entity, t, s, asset)) in entries.iter().enumerate() {
         if current_z != Some(s.z_order) {
             per_key.clear();
             current_z = Some(s.z_order);
         }
-        let key = (asset.atlas.0, asset.filter);
+        let override_block = world.get::<UniformOverrideBlock>(*entity);
+        let override_hash = override_block.map(override_key);
+        let key: BatchKey = (asset.atlas.0, asset.filter, s.material_id, override_hash);
         let batch_idx = if let Some(&i) = per_key.get(&key) {
             i
         } else {
             let i = out.len();
             per_key.insert(key, i);
-            out.push(SpriteBatch {
-                texture: asset.atlas,
-                filter: asset.filter,
-                instances: Vec::new(),
-            });
+            let mut batch = SpriteBatch::new(asset.atlas, asset.filter);
+            batch.material_id = s.material_id;
+            batch.uniform_overrides = override_block.copied();
+            out.push(batch);
             i
         };
         let width_world = asset.width as f32 * t.scale.x;

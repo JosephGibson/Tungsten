@@ -102,6 +102,7 @@ fn runtime_system_order_matches_expected_pipeline() {
             "animation_system",
             "physics_step",
             "ground_detection",
+            "damage_flash_on_ball_hit",
             "black_hole_lifetime_system",
             "despawn_out_of_bounds",
             "sync_position_to_transform",

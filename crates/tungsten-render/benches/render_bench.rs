@@ -11,11 +11,7 @@ fn bench_sprite_extract_batch_build_2k(c: &mut Criterion) {
     c.bench_function("sprite_extract_batch_build_2k", |b| {
         b.iter(|| {
             let mut batches: Vec<SpriteBatch> = (0..TEXTURES)
-                .map(|i| SpriteBatch {
-                    texture: TextureHandle(i as u32),
-                    filter: FilterMode::Nearest,
-                    instances: Vec::new(),
-                })
+                .map(|i| SpriteBatch::new(TextureHandle(i as u32), FilterMode::Nearest))
                 .collect();
 
             for i in 0..N {

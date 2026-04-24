@@ -199,6 +199,7 @@ fn spawn_menu_decorations(world: &mut World) {
                 asset_id: QUAD_ID.into(),
                 color,
                 z_order: 2,
+                material_id: None,
             },
         );
         buf.insert_pending(entity, Visibility { visible: true });
@@ -227,6 +228,7 @@ fn spawn_pause_overlay(world: &mut World) {
             asset_id: QUAD_ID.into(),
             color: [6, 10, 20, 170],
             z_order: 500,
+            material_id: None,
         },
     );
     buf.insert_pending(dim, Visibility { visible: true });
@@ -249,6 +251,7 @@ fn spawn_pause_overlay(world: &mut World) {
             asset_id: QUAD_ID.into(),
             color: [28, 36, 60, 220],
             z_order: 510,
+            material_id: None,
         },
     );
     buf.insert_pending(banner, Visibility { visible: true });
@@ -276,6 +279,7 @@ fn spawn_fade_overlay(world: &mut World, state_id: StateId) {
             asset_id: QUAD_ID.into(),
             color: [0, 0, 0, 255],
             z_order: 900,
+            material_id: None,
         },
     );
     buf.insert_pending(overlay, Visibility { visible: true });

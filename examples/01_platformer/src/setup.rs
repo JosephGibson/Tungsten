@@ -18,8 +18,9 @@ use crate::state::{
 };
 use crate::systems::{
     animation_system, audio_input_system, black_hole_force_system, black_hole_lifetime_system,
-    camera_zoom_input_system, despawn_out_of_bounds, ground_detection, platformer_camera_base_zoom,
-    player_input, spawn_ball_system, spawn_black_hole_system, update_text_display,
+    camera_zoom_input_system, damage_flash_on_ball_hit, despawn_out_of_bounds, ground_detection,
+    platformer_camera_base_zoom, player_input, spawn_ball_system, spawn_black_hole_system,
+    update_text_display,
 };
 
 type ExampleSystem = fn(&mut World);
@@ -35,6 +36,7 @@ pub(crate) const RUNTIME_SYSTEM_ORDER: &[(&str, ExampleSystem)] = &[
     ("animation_system", animation_system),
     ("physics_step", physics_step),
     ("ground_detection", ground_detection),
+    ("damage_flash_on_ball_hit", damage_flash_on_ball_hit),
     ("black_hole_lifetime_system", black_hole_lifetime_system),
     ("despawn_out_of_bounds", despawn_out_of_bounds),
     ("sync_position_to_transform", sync_position_to_transform),
@@ -85,6 +87,17 @@ fn seed_world(world: &mut World) {
     world.insert(player, tungsten::core::AnimationState::new("walk"));
     world.insert(player, CurrentSprite("walk_0".into()));
     world.insert(player, Tag::new("player"));
+    // M26 damage-flash: attach an empty override block and the `damage_flash`
+    // material id (if registered). Default zero overlay leaves the frame
+    // byte-identical to the pre-M26 baseline — the tween in `systems.rs` is
+    // what actually lights it up on a collision.
+    world.insert(player, tungsten::core::UniformOverrideBlock::default());
+    if let Some(material_id) = world
+        .get_resource::<tungsten::core::MaterialRegistry>()
+        .and_then(|mr| mr.get("damage_flash"))
+    {
+        world.insert(player, crate::state::PlayerMaterial { material_id });
+    }
     configure_platformer_camera(world, player);
 
     let ball_spawns: &[(f32, f32, f32)] = &[

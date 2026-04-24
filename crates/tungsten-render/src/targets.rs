@@ -9,11 +9,18 @@
 use wgpu::{Extent3d, TextureFormat, TextureUsages};
 
 /// Named render-target slots referenced by `PassDesc`.
+///
+/// M26 adds `PostPing` and `PostPong`: two fullscreen color textures the
+/// post-stack ping-pongs between. They match `SceneColor`'s format and
+/// sample count 1 — post passes never multisample, the scene pass already
+/// resolved into `SceneColor`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TargetId {
     SceneColor,
     SceneDepth,
     SceneColorMsaa,
+    PostPing,
+    PostPong,
     Swapchain,
 }
 
@@ -24,6 +31,10 @@ pub struct SceneTarget {
     pub color: (wgpu::Texture, wgpu::TextureView),
     pub depth: Option<(wgpu::Texture, wgpu::TextureView)>,
     pub color_msaa: Option<(wgpu::Texture, wgpu::TextureView)>,
+    /// M26 post-stack ping target. Always allocated; same format as `color`.
+    pub post_ping: (wgpu::Texture, wgpu::TextureView),
+    /// M26 post-stack pong target. Always allocated; same format as `color`.
+    pub post_pong: (wgpu::Texture, wgpu::TextureView),
     pub size: (u32, u32),
     pub sample_count: u32,
     pub format: TextureFormat,
@@ -73,15 +84,40 @@ impl SceneTarget {
             None
         };
 
+        let post_ping = create_post_target(device, "tungsten_post_ping", w, h, format);
+        let post_pong = create_post_target(device, "tungsten_post_pong", w, h, format);
+
         Self {
             color,
             depth,
             color_msaa,
+            post_ping,
+            post_pong,
             size: (w, h),
             sample_count,
             format,
             depth_enabled,
         }
+    }
+
+    #[must_use]
+    pub fn post_ping_view(&self) -> &wgpu::TextureView {
+        &self.post_ping.1
+    }
+
+    #[must_use]
+    pub fn post_pong_view(&self) -> &wgpu::TextureView {
+        &self.post_pong.1
+    }
+
+    #[must_use]
+    pub fn post_ping_texture(&self) -> &wgpu::Texture {
+        &self.post_ping.0
+    }
+
+    #[must_use]
+    pub fn post_pong_texture(&self) -> &wgpu::Texture {
+        &self.post_pong.0
     }
 
     #[must_use]
@@ -153,6 +189,36 @@ fn create_resolved_color(
     height: u32,
     format: TextureFormat,
 ) -> (wgpu::Texture, wgpu::TextureView) {
+    let tex = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some(label),
+        size: Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage: TextureUsages::RENDER_ATTACHMENT
+            | TextureUsages::TEXTURE_BINDING
+            | TextureUsages::COPY_SRC,
+        view_formats: &[],
+    });
+    let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
+    (tex, view)
+}
+
+fn create_post_target(
+    device: &wgpu::Device,
+    label: &'static str,
+    width: u32,
+    height: u32,
+    format: TextureFormat,
+) -> (wgpu::Texture, wgpu::TextureView) {
+    // Post targets need RENDER_ATTACHMENT (to be written by a pass) +
+    // TEXTURE_BINDING (to be sampled by the next pass) + COPY_SRC so the
+    // screenshot path can read back from the last-written post target.
     let tex = device.create_texture(&wgpu::TextureDescriptor {
         label: Some(label),
         size: Extent3d {

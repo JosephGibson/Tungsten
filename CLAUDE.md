@@ -15,11 +15,14 @@ Pointer file for [Claude Code](https://claude.ai/code).
 ## Session Plans on Disk
 
 - For multi-step work, write the agreed plan to [`docs/plans/<descriptive-topic>.md`](docs/plans/) instead of leaving it only in chat.
+- Milestone implementation plans use `docs/plans/phaseN-milestone-NN-short-topic.md`.
+- Naming rule: `N` is the phase number, `NN` is the zero-padded milestone number, and `short-topic` is a concise kebab-case feature slug. Example: `docs/plans/phase4-milestone-26-materials-post-stack.md`.
+- Non-milestone handoff plans keep the descriptive-topic pattern.
 - That file is the handoff artifact for a fresh context; a typical restart prompt is `read docs/plans/… and implement; stay in scope`.
 - Required header fields: `status` (`draft` / `in progress` / `done`), goal, non-goals, files to touch, ordered steps, done-when checks.
-- Update status when work finishes. Archive or rename obsolete plans so only one active plan drives a given thread of work.
+- Update status when work finishes. Archive or rename obsolete plans so only one active plan drives a given thread of work. When archiving a milestone plan, keep the same basename under `docs/plans/archive/`.
 - Settled rationale lives in [DECISIONS.md](DECISIONS.md). `docs/plans/` is for time-bounded execution plans only.
 
 ## Status
 
-Workspace `v0.22.0` on branch `0.22`. Phase 3 is complete; all milestones `M12`–`M24` shipped and the rollout plan is archived at [`docs/plans/archive/phase3-rollout.md`](docs/plans/archive/phase3-rollout.md). Phase 4 scope is tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md).
+Workspace `v0.23.0` on branch `0.23`. Phase 3 is complete; all milestones `M12`–`M24` shipped and the rollout plan is archived at [`docs/plans/archive/phase3.md`](docs/plans/archive/phase3.md). Phase 4 is underway with M25 and M26 shipped; remaining scope is tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md).

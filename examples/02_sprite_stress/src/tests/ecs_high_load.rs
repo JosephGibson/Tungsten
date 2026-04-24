@@ -179,6 +179,7 @@ fn high_load_extract_culls_offscreen_agents_and_batches_visible_ones() {
             asset_id: HIGH_LOAD_SPRITE_ID.into(),
             color: [12, 34, 56, 255],
             z_order: 0,
+            material_id: None,
         },
     );
     world.insert(also_visible, Visibility::default());

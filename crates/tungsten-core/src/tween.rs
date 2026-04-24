@@ -1,6 +1,11 @@
 //! M24 tween primitives. D-054 closed easings, D-055 one `Tween` per entity,
 //! D-056 completion via `EventQueue` + removal via `CommandBuffer`.
+//!
+//! M26 extends `TweenChannel` with uniform-slot variants that write into
+//! `UniformOverrideBlock`. The block is a 256-byte GPU-ready payload shared
+//! between material UBOs (M26) and MSDF outline/glow (M32).
 
+use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
 
 use crate::ecs::Entity;
@@ -162,17 +167,178 @@ fn bounce_out(t: f32) -> f32 {
     }
 }
 
+/// M26 4x `vec4<f32>` slot in `UniformOverrideBlock`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Vec4Slot {
+    V0,
+    V1,
+    V2,
+    V3,
+}
+
+/// M26 4x `f32` scalar slot in `UniformOverrideBlock`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScalarSlot {
+    F0,
+    F1,
+    F2,
+    F3,
+}
+
+/// M26 4x `i32` slot in `UniformOverrideBlock` (stepped, not lerped).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IntSlot {
+    I0,
+    I1,
+    I2,
+    I3,
+}
+
+impl Vec4Slot {
+    #[must_use]
+    pub fn index(self) -> usize {
+        match self {
+            Self::V0 => 0,
+            Self::V1 => 1,
+            Self::V2 => 2,
+            Self::V3 => 3,
+        }
+    }
+}
+
+impl ScalarSlot {
+    #[must_use]
+    pub fn index(self) -> usize {
+        match self {
+            Self::F0 => 0,
+            Self::F1 => 1,
+            Self::F2 => 2,
+            Self::F3 => 3,
+        }
+    }
+}
+
+impl IntSlot {
+    #[must_use]
+    pub fn index(self) -> usize {
+        match self {
+            Self::I0 => 0,
+            Self::I1 => 1,
+            Self::I2 => 2,
+            Self::I3 => 3,
+        }
+    }
+}
+
+/// M26 entity-local animation surface. 256 bytes, `std140`-friendly layout:
+/// 4 `vec4<f32>` slots (64 bytes), 4 `f32` scalars (16 bytes), 4 `i32` slots
+/// (16 bytes), then 160 bytes of reserved tail. Shared between material UBOs
+/// and the future M32 MSDF outline/glow surface; writing through slot enums
+/// keeps layout decisions out of call sites.
+#[repr(C, align(16))]
+#[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
+pub struct UniformOverrideBlock {
+    pub vec4: [[f32; 4]; 4],
+    pub f32s: [f32; 4],
+    pub i32s: [i32; 4],
+    /// Reserved zero-padding to reach a fixed 256-byte binding. Laid out as
+    /// `vec4<u32>`-sized rows so it remains `bytemuck::Pod`-compatible. Do not
+    /// read; future slot growth should rename pieces out of this tail.
+    _reserved: [[u32; 4]; 10],
+}
+
+impl Default for UniformOverrideBlock {
+    fn default() -> Self {
+        Self {
+            vec4: [[0.0; 4]; 4],
+            f32s: [0.0; 4],
+            i32s: [0; 4],
+            _reserved: [[0; 4]; 10],
+        }
+    }
+}
+
+impl UniformOverrideBlock {
+    /// Construct a block from the authored/public slots while preserving the
+    /// zeroed reserved tail.
+    #[must_use]
+    pub fn from_slots(vec4: [[f32; 4]; 4], f32s: [f32; 4], i32s: [i32; 4]) -> Self {
+        Self {
+            vec4,
+            f32s,
+            i32s,
+            ..Self::default()
+        }
+    }
+
+    /// GPU-ready 256-byte payload.
+    #[must_use]
+    pub fn to_bytes(&self) -> [u8; 256] {
+        let mut out = [0u8; 256];
+        out.copy_from_slice(bytemuck::bytes_of(self));
+        out
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TweenChannel {
-    PositionX { from: f32, to: f32 },
-    PositionY { from: f32, to: f32 },
-    Rotation { from: f32, to: f32 },
-    ScaleX { from: f32, to: f32 },
-    ScaleY { from: f32, to: f32 },
-    ColorR { from: u8, to: u8 },
-    ColorG { from: u8, to: u8 },
-    ColorB { from: u8, to: u8 },
-    ColorA { from: u8, to: u8 },
+    PositionX {
+        from: f32,
+        to: f32,
+    },
+    PositionY {
+        from: f32,
+        to: f32,
+    },
+    Rotation {
+        from: f32,
+        to: f32,
+    },
+    ScaleX {
+        from: f32,
+        to: f32,
+    },
+    ScaleY {
+        from: f32,
+        to: f32,
+    },
+    ColorR {
+        from: u8,
+        to: u8,
+    },
+    ColorG {
+        from: u8,
+        to: u8,
+    },
+    ColorB {
+        from: u8,
+        to: u8,
+    },
+    ColorA {
+        from: u8,
+        to: u8,
+    },
+    /// Drives one lane (`0..=3`) of a `UniformOverrideBlock.vec4[slot]` slot.
+    UniformVec4Lane {
+        slot: Vec4Slot,
+        lane: u8,
+        from: f32,
+        to: f32,
+    },
+    UniformScalar {
+        slot: ScalarSlot,
+        from: f32,
+        to: f32,
+    },
+    /// Integer step: `to` once `k >= 0.5`, else `from`. Not linearly interpolated.
+    UniformInt {
+        slot: IntSlot,
+        from: i32,
+        to: i32,
+    },
 }
 
 /// `Loop` and `PingPong` never emit `TweenComplete`.

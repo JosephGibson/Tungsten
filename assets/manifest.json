@@ -60,6 +60,70 @@
   "shaders": {
     "sprite": {
       "path": "shaders/sprite.wgsl"
+    },
+    "damage_flash": {
+      "path": "shaders/damage_flash.wgsl"
+    },
+    "tonemap": {
+      "path": "shaders/stock/tonemap.wgsl"
+    },
+    "vignette": {
+      "path": "shaders/stock/vignette.wgsl"
+    },
+    "lut": {
+      "path": "shaders/stock/lut.wgsl"
+    },
+    "chromatic_aberration": {
+      "path": "shaders/stock/chromatic_aberration.wgsl"
+    },
+    "color_adjust": {
+      "path": "shaders/stock/color_adjust.wgsl"
+    },
+    "tone_mono": {
+      "path": "shaders/stock/tone_mono.wgsl"
+    },
+    "crt": {
+      "path": "shaders/stock/crt.wgsl"
+    },
+    "film_grain": {
+      "path": "shaders/stock/film_grain.wgsl"
+    },
+    "dither": {
+      "path": "shaders/stock/dither.wgsl"
+    },
+    "pixel_outline": {
+      "path": "shaders/stock/pixel_outline.wgsl"
+    },
+    "fade": {
+      "path": "shaders/stock/fade.wgsl"
+    },
+    "wipe_radial": {
+      "path": "shaders/stock/wipe_radial.wgsl"
+    },
+    "dissolve": {
+      "path": "shaders/stock/dissolve.wgsl"
+    },
+    "glitch": {
+      "path": "shaders/stock/glitch.wgsl"
+    },
+    "pixelate": {
+      "path": "shaders/stock/pixelate.wgsl"
+    },
+    "fog": {
+      "path": "shaders/stock/fog.wgsl"
+    },
+    "god_rays": {
+      "path": "shaders/stock/god_rays.wgsl"
+    }
+  },
+  "materials": {
+    "damage_flash": {
+      "shader": "damage_flash",
+      "uniform_defaults": {
+        "vec4": [[1.0, 0.2, 0.1, 1.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]],
+        "f32s": [0.0, 0.0, 0.0, 0.0],
+        "i32s": [0, 0, 0, 0]
+      }
     }
   }
 }

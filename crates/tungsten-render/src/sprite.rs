@@ -1,8 +1,11 @@
 use std::collections::HashMap;
 
 use bytemuck::{Pod, Zeroable};
-use tungsten_core::assets::{FilterMode, TextureHandle};
+use tungsten_core::assets::{FilterMode, MaterialAssetId, TextureHandle};
+use tungsten_core::tween::UniformOverrideBlock;
 use wgpu::util::DeviceExt;
+
+use crate::material::MaterialPipeline;
 
 /// GPU sprite instance; POD layout.
 ///
@@ -134,10 +137,35 @@ struct GpuTexture {
 }
 
 /// Sprite batch sharing one texture handle.
+///
+/// M26: adding `material_id` + `uniform_overrides` stays additive — leaving
+/// both at their defaults preserves the M25 byte-identical sprite draw path.
+/// The extract layer must split batches on effective material state so the
+/// renderer can upload per-batch UBOs without re-reading world data.
 pub struct SpriteBatch {
     pub texture: TextureHandle,
     pub filter: FilterMode,
     pub instances: Vec<SpriteInstance>,
+    /// When set, the batch renders through the matching `MaterialPipeline`
+    /// on `Renderer::materials`. `None` keeps the built-in sprite pipeline.
+    pub material_id: Option<MaterialAssetId>,
+    /// Per-entity animation override payload. `None` means the batch uses
+    /// the material's authored defaults. Ignored when `material_id` is `None`.
+    pub uniform_overrides: Option<UniformOverrideBlock>,
+}
+
+impl SpriteBatch {
+    /// Built-in pipeline batch; material slot defaults to `None`.
+    #[must_use]
+    pub fn new(texture: TextureHandle, filter: FilterMode) -> Self {
+        Self {
+            texture,
+            filter,
+            instances: Vec::new(),
+            material_id: None,
+            uniform_overrides: None,
+        }
+    }
 }
 
 /// Textured sprite pipeline, samplers, and texture pool.
@@ -150,6 +178,7 @@ pub struct SpritePipeline {
     instance_upload: Vec<SpriteInstance>,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
+    camera_bind_group_layout: wgpu::BindGroupLayout,
     texture_bind_group_layout: wgpu::BindGroupLayout,
     sampler_nearest: wgpu::Sampler,
     sampler_linear: wgpu::Sampler,
@@ -280,12 +309,32 @@ impl SpritePipeline {
             instance_upload: Vec::new(),
             camera_buffer,
             camera_bind_group,
+            camera_bind_group_layout,
             texture_bind_group_layout,
             sampler_nearest,
             sampler_linear,
             textures: HashMap::new(),
             next_handle: 0,
         }
+    }
+
+    /// Camera-uniform bind-group layout used by the built-in sprite pipeline.
+    /// Material pipelines reuse it so vertex/instance buffers stay interchangeable.
+    #[must_use]
+    pub fn camera_bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+        &self.camera_bind_group_layout
+    }
+
+    /// Texture bind-group layout (group 1). Material pipelines reuse it.
+    #[must_use]
+    pub fn texture_bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+        &self.texture_bind_group_layout
+    }
+
+    /// Camera bind group (group 0) the sprite draw binds every frame.
+    #[must_use]
+    pub fn camera_bind_group(&self) -> &wgpu::BindGroup {
+        &self.camera_bind_group
     }
 
     /// Hot-reload entry point: swap the live pipeline to one built against
@@ -489,13 +538,17 @@ impl SpritePipeline {
         });
     }
 
-    /// Draw sprite batches.
+    /// Draw sprite batches. `material_pipelines` is the renderer-owned
+    /// registry of user-authored material pipelines; a batch with
+    /// `material_id = Some(_)` re-binds the matching pipeline and its
+    /// material UBO (group 2), otherwise the built-in sprite pipeline runs.
     pub fn draw(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         render_pass: &mut wgpu::RenderPass<'_>,
         batches: &[SpriteBatch],
+        material_pipelines: &HashMap<MaterialAssetId, MaterialPipeline>,
     ) {
         let total_instances: usize = batches.iter().map(|batch| batch.instances.len()).sum();
         if total_instances == 0 {
@@ -515,12 +568,15 @@ impl SpritePipeline {
             bytemuck::cast_slice(&self.instance_upload),
         );
 
-        render_pass.set_pipeline(&self.pipeline);
         render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
 
+        // Track the last-bound pipeline so adjacent same-material batches
+        // don't rebind unnecessarily. `None` key = built-in sprite pipeline.
         let instance_stride = std::mem::size_of::<SpriteInstance>() as wgpu::BufferAddress;
         let mut base_instance = 0usize;
+        let mut last_pipeline_key: Option<Option<MaterialAssetId>> = None;
+
         for batch in batches {
             if batch.instances.is_empty() {
                 continue;
@@ -546,10 +602,36 @@ impl SpritePipeline {
                 continue;
             }
 
+            let material_pipeline = batch.material_id.and_then(|id| material_pipelines.get(&id));
+            let pipeline_key = material_pipeline.map(|_| batch.material_id.unwrap());
+            let pipeline_key_slot = Some(pipeline_key);
+            if last_pipeline_key != pipeline_key_slot {
+                if let Some(mp) = material_pipeline {
+                    render_pass.set_pipeline(&mp.pipeline);
+                } else {
+                    render_pass.set_pipeline(&self.pipeline);
+                }
+                last_pipeline_key = pipeline_key_slot;
+            }
+
             render_pass.set_bind_group(1, &gpu_tex.bind_group, &[]);
+            if let Some(mp) = material_pipeline {
+                let payload = batch
+                    .uniform_overrides
+                    .unwrap_or_else(|| mp.defaults.to_override_block());
+                queue.write_buffer(&mp.ubo, 0, &payload.to_bytes());
+                render_pass.set_bind_group(2, &mp.bind_group, &[]);
+            }
             render_pass.set_vertex_buffer(1, self.instance_buffer.slice(start..end));
             render_pass.draw(0..6, 0..batch.instances.len() as u32);
         }
+    }
+
+    /// Vertex layout used by both the built-in sprite pipeline and any
+    /// `MaterialPipeline` rendering sprites.
+    #[must_use]
+    pub fn vertex_layouts() -> [wgpu::VertexBufferLayout<'static>; 2] {
+        [SpriteVertex::desc(), SpriteInstance::desc()]
     }
 }
 

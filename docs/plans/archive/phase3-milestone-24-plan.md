@@ -1,8 +1,9 @@
 ---
 status: done
+milestone: M24
 goal: Ship a core-owned tween system that animates `Transform`/`Sprite` channels with built-in easings, fires `TweenComplete` through `EventQueue<T>`, self-removes via `CommandBuffer::remove_component`, is authorable from `scene.json`, and demonstrates a state-transition fade in `examples/03_scene_state/`.
 non-goals: runtime tween builders exposed as a fluent DSL, custom easing curves outside the built-in enum, dependency tree animation, skeletal animation, spline/path tweens, GPU-side interpolation, easing author UI, tween scripting, physics-coupled tweens, serialized tween state across runs, Phase-4 timeline/sequencer.
-files-to-touch:
+files to touch:
   - crates/tungsten-core/src/components.rs
   - crates/tungsten-core/src/tween.rs (new)
   - crates/tungsten-core/src/lib.rs
@@ -25,7 +26,7 @@ files-to-touch:
   - Cargo.toml
 ---
 
-# Phase 3 M24 — Tween System
+# Phase 3 Milestone 24 — Tween System
 
 ## Context Digest
 
@@ -247,7 +248,7 @@ Add rows for each to [docs/DECISION_INDEX.md](DECISION_INDEX.md) under the appro
 16. Add `DECISIONS.md` entries `D-054`/`D-055`/`D-056` per the Decision Records section; register in [docs/DECISION_INDEX.md](DECISION_INDEX.md).
 17. Flip this plan's frontmatter `status: done` and move to `docs/plans/archive/phase3-milestone-24-plan.md`.
 
-## Done When
+## Done-when checks
 
 - [ ] `crates/tungsten-core/src/tween.rs` defines `Easing`, `Tween`, `TweenChannel`, `TweenRepeat`, `TweenDirection`, `TweenComplete`, re-exported from `tungsten_core::*`.
 - [ ] `Easing::apply` covers Linear/Quad/Cubic/Quart/Sine/Expo/Back/Bounce with In/Out/InOut variants; endpoint + known-sample unit tests pass.

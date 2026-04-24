@@ -10,7 +10,8 @@ use tungsten::physics::Position;
 use tungsten::render::{SpriteBatch, SpriteInstance, TextSection};
 
 use crate::state::{
-    Ball, BlackHole, CurrentSprite, BALL_RADIUS, BLACK_HOLE_VISUAL_DIAMETER, PLAYER_HALF,
+    Ball, BlackHole, CurrentSprite, PlayerMaterial, BALL_RADIUS, BLACK_HOLE_VISUAL_DIAMETER,
+    PLAYER_HALF,
 };
 use crate::systems::cursor_to_world;
 
@@ -38,11 +39,7 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
         let height_world = asset.height as f32 * t.scale.y;
         let batch = particle_batches
             .entry((asset.atlas.0, asset.filter))
-            .or_insert_with(|| SpriteBatch {
-                texture: asset.atlas,
-                filter: asset.filter,
-                instances: Vec::new(),
-            });
+            .or_insert_with(|| SpriteBatch::new(asset.atlas, asset.filter));
         batch.instances.push(SpriteInstance {
             position: [t.position.x, t.position.y],
             size: [width_world, height_world],
@@ -79,11 +76,9 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
             })
             .collect();
         if !instances.is_empty() {
-            batches.push(SpriteBatch {
-                texture: hole_asset.atlas,
-                filter: hole_asset.filter,
-                instances,
-            });
+            let mut batch = SpriteBatch::new(hole_asset.atlas, hole_asset.filter);
+            batch.instances = instances;
+            batches.push(batch);
         }
     }
 
@@ -103,13 +98,16 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
             asset.uv.max[0] - asset.uv.min[0],
             asset.uv.max[1] - asset.uv.min[1],
         ];
-        let batch = player_batches
-            .entry(cs.0.clone())
-            .or_insert_with(|| SpriteBatch {
-                texture: asset.atlas,
-                filter: asset.filter,
-                instances: Vec::new(),
-            });
+        let material_id = world.get::<PlayerMaterial>(entity).map(|m| m.material_id);
+        let override_block = world
+            .get::<tungsten::core::UniformOverrideBlock>(entity)
+            .copied();
+        let batch = player_batches.entry(cs.0.clone()).or_insert_with(|| {
+            let mut b = SpriteBatch::new(asset.atlas, asset.filter);
+            b.material_id = material_id;
+            b.uniform_overrides = override_block;
+            b
+        });
         batch.instances.push(SpriteInstance {
             position: [pos.0.x - sprite_w * 0.5, pos.0.y + PLAYER_HALF.y - sprite_h],
             size: [sprite_w, sprite_h],
@@ -144,11 +142,9 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
             })
             .collect();
         if !instances.is_empty() {
-            batches.push(SpriteBatch {
-                texture: ball_asset.atlas,
-                filter: ball_asset.filter,
-                instances,
-            });
+            let mut batch = SpriteBatch::new(ball_asset.atlas, ball_asset.filter);
+            batch.instances = instances;
+            batches.push(batch);
         }
     }
 
@@ -171,20 +167,18 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
                 cursor_asset.uv.max[0] - cursor_asset.uv.min[0],
                 cursor_asset.uv.max[1] - cursor_asset.uv.min[1],
             ];
-            batches.push(SpriteBatch {
-                texture: cursor_asset.atlas,
-                filter: cursor_asset.filter,
-                instances: vec![SpriteInstance {
-                    position: [world_pos.x - sprite_w * 0.5, world_pos.y - sprite_h * 0.5],
-                    size: [sprite_w, sprite_h],
-                    rotation: 0.0,
-                    color: [255; 4],
-                    uv_min,
-                    uv_size,
-                    z_norm: 0.0,
-                    _pad: 0.0,
-                }],
-            });
+            let mut batch = SpriteBatch::new(cursor_asset.atlas, cursor_asset.filter);
+            batch.instances = vec![SpriteInstance {
+                position: [world_pos.x - sprite_w * 0.5, world_pos.y - sprite_h * 0.5],
+                size: [sprite_w, sprite_h],
+                rotation: 0.0,
+                color: [255; 4],
+                uv_min,
+                uv_size,
+                z_norm: 0.0,
+                _pad: 0.0,
+            }];
+            batches.push(batch);
         }
     }
 

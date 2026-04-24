@@ -155,6 +155,7 @@ fn seed_high_load_world(world: &mut World, entity_count: usize) {
                 asset_id: HIGH_LOAD_SPRITE_ID.into(),
                 color: stress_agent_color(tint_seed),
                 z_order: 0,
+                material_id: None,
             },
         );
         world.insert(entity, Visibility::default());
@@ -496,11 +497,9 @@ fn extract_high_load_sprites(world: &World) -> Vec<SpriteBatch> {
         return Vec::new();
     }
 
-    vec![SpriteBatch {
-        texture: asset.atlas,
-        filter: asset.filter,
-        instances,
-    }]
+    let mut batch = SpriteBatch::new(asset.atlas, asset.filter);
+    batch.instances = instances;
+    vec![batch]
 }
 
 fn extract_high_load_text(world: &World) -> Vec<TextSection> {

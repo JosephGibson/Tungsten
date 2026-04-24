@@ -9,16 +9,20 @@ non-goals:
   - "No cleanup-only milestone; each feature milestone slices the monoliths it touches."
 files to touch:
   - "docs/plans/phase4.md"
-  - "docs/plans/phase4-milestone-25-*.md through docs/plans/phase4-milestone-33-*.md"
+  - "docs/plans/phase4-milestone-NN-short-topic.md for each Phase 4 milestone (`NN` = zero-padded milestone number, `short-topic` = concise kebab-case slug)"
 ordered steps:
-  - "Promote each milestone below to its own phase4-milestone-NN-*.md plan file."
+  - "Promote each milestone below to its own `phase4-milestone-NN-short-topic.md` plan file."
   - "Execute M25 → M26 → M27 → M28 → M29 in order. M30 ↔ M31 order is free. M32 before M33. M33 last."
   - "For each milestone, write the plan, implement it, produce an acceptance artifact, and flip status to done."
 done-when:
-  - "All 9 milestones landed on the active integration branch (`0.22` today; `main` if the repo flips before Phase 4 starts), each with `status: done` in its plan file."
+  - "All 9 milestones landed on the active integration branch (`0.23` today; `main` if the repo flips before Phase 4 starts), each with `status: done` in its plan file."
   - "DESIGN.md Status, CHANGELOG.md, and docs/DECISION_INDEX.md are updated where milestone decisions change canonical project guidance."
   - "This file is flipped to `status: done`, and any milestone that changes the shader/text/hot-reload rules updates AGENTS.md in the same change."
 ---
+
+## Milestone Plan Filenames
+
+Phase 4 milestone plans use `phase4-milestone-NN-short-topic.md`, where `NN` is the zero-padded milestone number and `short-topic` is a concise kebab-case slug. Example: `phase4-milestone-25-render-foundation.md`.
 
 ## Current Renderer Baseline
 
@@ -45,7 +49,7 @@ Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user mate
 
 ## M25 — Render Foundation
 
-**Status:** done (plan at [`docs/plans/phase4-milestone-25-render-foundation.md`](phase4-milestone-25-render-foundation.md)).
+**Status:** done — shipped in `0.22` (plan archived at [`docs/plans/archive/phase4-milestone-25-render-foundation.md`](archive/phase4-milestone-25-render-foundation.md)).
 
 **Depends on:** none.
 
@@ -82,6 +86,8 @@ Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user mate
 ---
 
 ## M26 — Materials + Post-Stack + Tween→Material Bridge
+
+**Status:** done — shipped in `0.23` (plan archived at [`docs/plans/archive/phase4-milestone-26-materials-post-stack.md`](archive/phase4-milestone-26-materials-post-stack.md)).
 
 **Depends on:** M25.
 

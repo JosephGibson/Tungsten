@@ -1,9 +1,12 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
 use crate::debug_line::{DebugLineInstance, DebugLinePipeline};
-use crate::passes::{default_pass_order, PassRecorder, TargetId};
+use crate::material::{build_material_pipeline, MaterialPipeline};
+use crate::passes::{default_pass_order, text_overlay_target, PassRecorder, TargetId};
+use crate::post::PostStackRenderer;
 use crate::quad::{QuadInstance, QuadPipeline};
 use crate::screenshot::{aligned_bytes_per_row, strip_row_padding};
 use crate::shader_hot_reload::{ShaderError, ShaderModuleCache};
@@ -13,8 +16,11 @@ use crate::targets::RenderTargetPool;
 use crate::text::{TextPipeline, TextSection};
 pub use crate::timing::{CpuFrameTimings, GpuFrameTimings};
 use thiserror::Error;
-use tungsten_core::assets::{FilterMode, ShaderAssetId, TextureHandle};
+use tungsten_core::assets::{
+    FilterMode, MaterialAssetId, MaterialUniformDefaults, ShaderAssetId, TextureHandle,
+};
 use tungsten_core::config::{is_supported_msaa, DepthSortMode, PresentModeConfig, RenderConfig};
+use tungsten_core::post::PostStack;
 use winit::window::Window;
 
 #[derive(Debug, Error)]
@@ -57,12 +63,23 @@ pub struct Renderer {
     debug_line_pipeline: DebugLinePipeline,
     text_pipeline: TextPipeline,
     present_blit: PresentBlitPipeline,
+    post_stack: PostStackRenderer,
     target_pool: RenderTargetPool,
     shader_cache: ShaderModuleCache,
     sample_count: u32,
     depth_enabled: bool,
     depth_sort: DepthSortMode,
+    #[allow(dead_code)] // kept for symmetry with shader_ids map; future work wires to debug HUD.
     sprite_shader_id: ShaderAssetId,
+    /// M26 material pipelines keyed by id.
+    materials: HashMap<MaterialAssetId, MaterialPipeline>,
+    /// M26 known manifest-tracked shader ids (name → id). The built-in
+    /// sprite shader is always pre-seeded; material/stock loads register the
+    /// rest. `upload_shader` / `reload_shader` consult this map to pick the
+    /// correct id and rebuild the right set of pipelines.
+    shader_ids: HashMap<String, ShaderAssetId>,
+    /// Next id for a non-sprite shader.
+    next_shader_id: u32,
     /// Timestamp query support.
     pub timestamp_support: bool,
     /// Last GPU frame timings.
@@ -189,8 +206,11 @@ impl Renderer {
             sample_count,
             depth_attached,
         );
-        let text_pipeline =
-            TextPipeline::new(&device, &queue, format, sample_count, depth_attached);
+        // Text renders in its own overlay pass after the post stack, which
+        // always targets a single-sample color texture with no depth. Baking
+        // those attachment bits here keeps text pixels out of the post stack
+        // regardless of scene MSAA / depth config.
+        let text_pipeline = TextPipeline::new(&device, &queue, format, 1, false);
 
         let target_pool = RenderTargetPool::new(
             &device,
@@ -211,6 +231,11 @@ impl Renderer {
             .upload(&device, sprite_shader_id, SPRITE_SHADER_NAME, sprite_src)
             .expect("compile-time sprite shader must validate");
 
+        let post_stack = PostStackRenderer::new(&device, format);
+
+        let mut shader_ids = HashMap::new();
+        shader_ids.insert(SPRITE_SHADER_NAME.to_string(), sprite_shader_id);
+
         Ok(Self {
             instance,
             adapter,
@@ -224,12 +249,16 @@ impl Renderer {
             debug_line_pipeline,
             text_pipeline,
             present_blit,
+            post_stack,
             target_pool,
             shader_cache,
             sample_count,
             depth_enabled,
             depth_sort,
             sprite_shader_id,
+            materials: HashMap::new(),
+            shader_ids,
+            next_shader_id: 1,
             timestamp_support,
             gpu_timings,
             cpu_timings: CpuFrameTimings::default(),
@@ -312,46 +341,42 @@ impl Renderer {
         self.text_pipeline.reload_font(id, data);
     }
 
-    /// Register a manifest-tracked shader. The well-known `"sprite"` name
-    /// short-circuits when the bytes match the pre-seeded compile-time default.
+    /// Register a manifest-tracked shader. `"sprite"` rebuilds the built-in
+    /// sprite pipeline. Other ids are cached for later use by material or
+    /// post pipelines. Byte-equal short-circuits skip validation.
     pub fn upload_shader(
         &mut self,
         name: &str,
         wgsl: String,
     ) -> Result<ShaderAssetId, RenderError> {
-        let id = if name == SPRITE_SHADER_NAME {
-            self.sprite_shader_id
-        } else {
-            // M25 only bridges `sprite`; future shaders can extend this.
-            return Err(RenderError::Shader(ShaderError::Validation {
-                name: name.to_string(),
-                report: format!("unknown shader id '{name}'"),
-            }));
-        };
+        let id = self.resolve_or_allocate_shader_id(name);
 
         if self.shader_cache.bytes_equal(id, &wgsl) {
             return Ok(id);
         }
 
-        // Validate + build candidate module; only commit after pipeline rebuild.
         let module = self.shader_cache.validate(&self.device, name, &wgsl)?;
-        self.sprite_pipeline.rebuild_with_shader(
-            &self.device,
-            &module,
-            self.surface_config.format,
-            self.sample_count,
-            matches!(self.depth_sort, DepthSortMode::GpuDepth),
-        );
+        if name == SPRITE_SHADER_NAME {
+            self.sprite_pipeline.rebuild_with_shader(
+                &self.device,
+                &module,
+                self.surface_config.format,
+                self.sample_count,
+                matches!(self.depth_sort, DepthSortMode::GpuDepth),
+            );
+        }
         self.shader_cache.commit(id, wgsl, module);
+        // Any material bound to this shader needs a rebuild against the new module.
+        if name != SPRITE_SHADER_NAME {
+            self.rebuild_materials_for_shader(name);
+        }
         Ok(id)
     }
 
     /// Hot-reload a manifest-tracked shader. Failures log and keep the live
-    /// `ShaderModule` + pipeline untouched.
+    /// `ShaderModule` + pipelines untouched (last-known-good).
     pub fn reload_shader(&mut self, name: &str, wgsl: String) -> Result<(), RenderError> {
-        let id = if name == SPRITE_SHADER_NAME {
-            self.sprite_shader_id
-        } else {
+        let Some(id) = self.shader_ids.get(name).copied() else {
             log::error!("shader reload: unknown id '{name}'");
             return Ok(());
         };
@@ -365,19 +390,116 @@ impl Renderer {
                 return Ok(());
             }
         };
-        // M25 simple path: rebuild always succeeds under stable signature;
-        // a future panic-catch wrapper can keep last-known-good on rebuild
-        // error without unwinding.
-        self.sprite_pipeline.rebuild_with_shader(
+        if name == SPRITE_SHADER_NAME {
+            self.sprite_pipeline.rebuild_with_shader(
+                &self.device,
+                &module,
+                self.surface_config.format,
+                self.sample_count,
+                matches!(self.depth_sort, DepthSortMode::GpuDepth),
+            );
+        }
+        self.shader_cache.commit(id, wgsl, module);
+        if name != SPRITE_SHADER_NAME {
+            self.rebuild_materials_for_shader(name);
+        }
+        log::info!("shader '{name}' reloaded");
+        Ok(())
+    }
+
+    fn resolve_or_allocate_shader_id(&mut self, name: &str) -> ShaderAssetId {
+        if let Some(&id) = self.shader_ids.get(name) {
+            return id;
+        }
+        let id = ShaderAssetId(self.next_shader_id);
+        self.next_shader_id += 1;
+        self.shader_ids.insert(name.to_string(), id);
+        id
+    }
+
+    /// Upload a new user-authored material (M26). Validation-failed builds
+    /// keep the last-known-good entry; first-time failure leaves nothing.
+    pub fn upload_material(
+        &mut self,
+        id: MaterialAssetId,
+        name: &str,
+        shader_name: &str,
+        defaults: MaterialUniformDefaults,
+    ) -> Result<(), RenderError> {
+        let Some(shader_id) = self.shader_ids.get(shader_name).copied() else {
+            return Err(RenderError::Shader(ShaderError::Validation {
+                name: name.to_string(),
+                report: format!("material references unknown shader id '{shader_name}'"),
+            }));
+        };
+        let Some(module) = self.shader_cache.get(shader_id) else {
+            return Err(RenderError::Shader(ShaderError::Validation {
+                name: name.to_string(),
+                report: format!("shader '{shader_name}' has no live module"),
+            }));
+        };
+
+        let (pipeline, material_bgl, ubo, bind_group) = build_material_pipeline(
             &self.device,
-            &module,
+            module,
+            self.sprite_pipeline.camera_bind_group_layout(),
+            self.sprite_pipeline.texture_bind_group_layout(),
             self.surface_config.format,
             self.sample_count,
             matches!(self.depth_sort, DepthSortMode::GpuDepth),
+            name,
         );
-        self.shader_cache.commit(id, wgsl, module);
-        log::info!("shader '{name}' reloaded");
+        // Seed defaults so first-frame draws don't read uninitialised memory.
+        self.queue
+            .write_buffer(&ubo, 0, &defaults.to_override_block().to_bytes());
+
+        self.materials.insert(
+            id,
+            MaterialPipeline {
+                pipeline,
+                ubo,
+                bind_group,
+                material_bind_group_layout: material_bgl,
+                defaults,
+                name: name.to_string(),
+                shader_id_name: shader_name.to_string(),
+                material_id: id,
+            },
+        );
+        log::info!("material '{name}' uploaded (shader={shader_name})");
         Ok(())
+    }
+
+    /// Hot-reload a material. Body-only edits: rebuilds the pipeline against
+    /// the current shader module and the stored shader name. Validation
+    /// failure logs and keeps the prior pipeline.
+    pub fn reload_material(
+        &mut self,
+        id: MaterialAssetId,
+        defaults: MaterialUniformDefaults,
+    ) -> Result<(), RenderError> {
+        let (shader_name, name) = {
+            let Some(mp) = self.materials.get(&id) else {
+                log::error!("material reload: unknown id {id:?}");
+                return Ok(());
+            };
+            (mp.shader_id_name.clone(), mp.name.clone())
+        };
+        self.upload_material(id, &name, &shader_name, defaults)
+    }
+
+    fn rebuild_materials_for_shader(&mut self, shader_name: &str) {
+        let ids_to_rebuild: Vec<(MaterialAssetId, String, MaterialUniformDefaults)> = self
+            .materials
+            .iter()
+            .filter(|(_, mp)| mp.shader_id_name == shader_name)
+            .map(|(id, mp)| (*id, mp.name.clone(), mp.defaults))
+            .collect();
+        for (id, name, defaults) in ids_to_rebuild {
+            if let Err(e) = self.upload_material(id, &name, shader_name, defaults) {
+                log::error!("material '{name}' rebuild after shader reload failed: {e}");
+            }
+        }
     }
 
     /// Reconfigure surface after resize.
@@ -444,10 +566,12 @@ impl Renderer {
         let w = self.surface_config.width as f32;
         let h = self.surface_config.height as f32;
         let default_view_proj = glam::Mat4::orthographic_rh(0.0, w, h, 0.0, -1.0, 1.0);
-        self.render_frame_full(&default_view_proj, quads, &[], &[], &[], &[])
+        let empty_stack = PostStack::default();
+        self.render_frame_full(&default_view_proj, quads, &[], &[], &[], &[], &empty_stack)
     }
 
     /// Render quads, sprites, debug primitives, and screen-space text.
+    #[allow(clippy::too_many_arguments)]
     pub fn render_frame_full(
         &mut self,
         view_proj: &glam::Mat4,
@@ -456,6 +580,7 @@ impl Renderer {
         debug_quads: &[QuadInstance],
         debug_lines: &[DebugLineInstance],
         text_sections: &[TextSection],
+        post_stack: &PostStack,
     ) -> Result<(), RenderError> {
         self.render_frame_internal(
             view_proj,
@@ -464,11 +589,13 @@ impl Renderer {
             debug_quads,
             debug_lines,
             text_sections,
+            post_stack,
             None,
         )
     }
 
     /// Timed full frame; stalls on `device.poll(wait_indefinitely())`.
+    #[allow(clippy::too_many_arguments)]
     pub fn render_frame_full_timed(
         &mut self,
         view_proj: &glam::Mat4,
@@ -477,6 +604,7 @@ impl Renderer {
         debug_quads: &[QuadInstance],
         debug_lines: &[DebugLineInstance],
         text_sections: &[TextSection],
+        post_stack: &PostStack,
     ) -> Result<(), RenderError> {
         if !self.timestamp_support {
             self.gpu_timings.frame_gpu_ms = None;
@@ -487,6 +615,7 @@ impl Renderer {
                 debug_quads,
                 debug_lines,
                 text_sections,
+                post_stack,
             );
         }
 
@@ -521,6 +650,7 @@ impl Renderer {
             debug_quads,
             debug_lines,
             text_sections,
+            post_stack,
             Some(timing),
         )
     }
@@ -534,6 +664,7 @@ impl Renderer {
         debug_quads: &[QuadInstance],
         debug_lines: &[DebugLineInstance],
         text_sections: &[TextSection],
+        post_stack: &PostStack,
         timing: Option<TimingResources>,
     ) -> Result<(), RenderError> {
         self.cpu_timings = CpuFrameTimings::default();
@@ -565,17 +696,45 @@ impl Renderer {
                 label: Some("frame_encoder"),
             });
 
+        let post_stack_len = post_stack.len();
+        // After M26/text-overlay split: the present-blit and screenshot
+        // source both sample the text-overlay target, which is whichever
+        // of SceneColor/PostPing/PostPong holds the composited frame.
+        let final_source_target = text_overlay_target(post_stack_len);
+        let final_source_view = match final_source_target {
+            TargetId::PostPing => self.target_pool.scene.post_ping_view(),
+            TargetId::PostPong => self.target_pool.scene.post_pong_view(),
+            _ => self.target_pool.scene.color_view(),
+        };
         // Rebuild the present-blit bind group every frame against the live
-        // scene color view; cheap, avoids stale-view hazards after resize.
+        // source view; cheap, avoids stale-view hazards after resize.
         let blit_bind_group = self
             .present_blit
-            .make_bind_group(&self.device, self.target_pool.scene.color_view());
+            .make_bind_group(&self.device, final_source_view);
 
-        let order = default_pass_order(self.sample_count, self.depth_sort, self.depth_enabled);
+        let order = default_pass_order(
+            self.sample_count,
+            self.depth_sort,
+            self.depth_enabled,
+            post_stack_len,
+        );
+        let post_plan = PostStackRenderer::plan_targets(post_stack_len);
+        // Text overlay sits between the last post pass (or the scene pass) and
+        // the present pass. `post_stack_len + 1` accounts for the leading
+        // scene pass.
+        let text_overlay_idx = post_stack_len + 1;
 
         encoder.push_debug_group("tungsten_frame");
         for (idx, pass_desc) in order.as_slice().iter().enumerate() {
             let is_scene = idx == 0;
+            let is_present = pass_desc.color == TargetId::Swapchain;
+            let is_text_overlay = !is_scene && !is_present && idx == text_overlay_idx;
+            let post_index = if !is_scene && !is_present && !is_text_overlay {
+                Some(idx - 1)
+            } else {
+                None
+            };
+
             let clear_override = if is_scene {
                 Some(self.clear_color)
             } else {
@@ -609,29 +768,52 @@ impl Renderer {
                     &self.quad_pipeline,
                     &mut self.sprite_pipeline,
                     &self.debug_line_pipeline,
-                    &self.text_pipeline,
                     quads,
                     sprite_batches,
                     debug_quads,
                     debug_lines,
+                    &self.materials,
                 );
-            } else if pass_desc.color == TargetId::Swapchain {
+            } else if is_text_overlay {
+                pass.push_debug_group("text");
+                self.text_pipeline.render(&mut pass);
+                pass.pop_debug_group();
+            } else if is_present {
                 pass.set_pipeline(&self.present_blit.pipeline);
                 pass.set_bind_group(0, &blit_bind_group, &[]);
                 pass.draw(0..3, 0..1);
+            } else if let Some(pi) = post_index {
+                if let (Some(post_pass), Some(&(src, _dst))) =
+                    (post_stack.0.get(pi), post_plan.get(pi))
+                {
+                    self.post_stack.record_pass(
+                        &self.device,
+                        &self.queue,
+                        &mut pass,
+                        &self.target_pool,
+                        post_pass,
+                        src,
+                    );
+                }
             }
         }
 
-        // Screenshot path: readback from `SceneColor` (already the final
-        // pre-swapchain color, matches default output byte-for-byte).
+        // Screenshot path: readback from the final composed frame source,
+        // which is the text-overlay target (post-target when the stack is
+        // non-empty, else SceneColor).
         let capture_path = self.pending_capture.take();
         let capture_target = capture_path
             .as_ref()
             .map(|_| create_capture_target(&self.device, self.surface_config.format, w, h));
         if let Some(target) = capture_target.as_ref() {
+            let capture_src_texture = match final_source_target {
+                TargetId::PostPing => self.target_pool.scene.post_ping_texture(),
+                TargetId::PostPong => self.target_pool.scene.post_pong_texture(),
+                _ => self.target_pool.scene.color_texture(),
+            };
             encoder.copy_texture_to_buffer(
                 wgpu::TexelCopyTextureInfo {
-                    texture: self.target_pool.scene.color_texture(),
+                    texture: capture_src_texture,
                     mip_level: 0,
                     origin: wgpu::Origin3d::ZERO,
                     aspect: wgpu::TextureAspect::All,
@@ -720,18 +902,18 @@ fn record_main_draws<'a>(
     quad_pipeline: &'a QuadPipeline,
     sprite_pipeline: &'a mut SpritePipeline,
     debug_line_pipeline: &'a DebugLinePipeline,
-    text_pipeline: &'a TextPipeline,
     quads: &[QuadInstance],
     sprite_batches: &[SpriteBatch],
     debug_quads: &[QuadInstance],
     debug_lines: &[DebugLineInstance],
+    materials: &'a HashMap<MaterialAssetId, MaterialPipeline>,
 ) {
     render_pass.push_debug_group("quads");
     quad_pipeline.draw(device, render_pass, quads);
     render_pass.pop_debug_group();
 
     render_pass.push_debug_group("sprites");
-    sprite_pipeline.draw(device, queue, render_pass, sprite_batches);
+    sprite_pipeline.draw(device, queue, render_pass, sprite_batches, materials);
     render_pass.pop_debug_group();
 
     render_pass.push_debug_group("debug_quads");
@@ -745,10 +927,6 @@ fn record_main_draws<'a>(
         quad_pipeline.camera_bind_group(),
         debug_lines,
     );
-    render_pass.pop_debug_group();
-
-    render_pass.push_debug_group("text");
-    text_pipeline.render(render_pass);
     render_pass.pop_debug_group();
 }
 
@@ -772,11 +950,15 @@ fn begin_scene_pass_with_timestamps<'a>(
             .scene
             .color_msaa_view()
             .expect("SceneColorMsaa requested but sample_count == 1"),
+        TargetId::PostPing => pool.scene.post_ping_view(),
+        TargetId::PostPong => pool.scene.post_pong_view(),
         TargetId::Swapchain => swap_view,
         TargetId::SceneDepth => unreachable!("depth is not a valid color target"),
     };
     let resolve_view_opt = desc.color_resolve.map(|target| match target {
         TargetId::SceneColor => pool.scene.color_view(),
+        TargetId::PostPing => pool.scene.post_ping_view(),
+        TargetId::PostPong => pool.scene.post_pong_view(),
         TargetId::Swapchain => swap_view,
         _ => unreachable!("invalid resolve target"),
     });

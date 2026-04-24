@@ -18,6 +18,9 @@
     "engine_toggle_hud": [{ "kind": "key", "code": "F4" }],
     "engine_toggle_vsync": [{ "kind": "key", "code": "F9" }],
     "engine_toggle_fullscreen": [{ "kind": "key", "code": "F11" }],
-    "engine_exit": [{ "kind": "key", "code": "Escape" }]
+    "engine_exit": [{ "kind": "key", "code": "Escape" }],
+    "post_next":  [{ "kind": "key", "code": "BracketRight" }, { "kind": "key", "code": "KeyN" }],
+    "post_prev":  [{ "kind": "key", "code": "BracketLeft" },  { "kind": "key", "code": "KeyB" }],
+    "post_clear": [{ "kind": "key", "code": "Backspace" }, { "kind": "key", "code": "KeyC" }]
   }
 }

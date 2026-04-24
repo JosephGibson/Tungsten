@@ -1,7 +1,12 @@
 //! M24 tween tick. Slot: `particles → tweens → flush commands → flush events` (D-039, D-040).
 //! Writes `Transform`/`Sprite` in-place; completion + removal buffered so the archetype is
 //! never mutated mid-iteration.
+//!
+//! M26 also dispatches `UniformVec4Lane`/`UniformScalar`/`UniformInt` into
+//! `UniformOverrideBlock`; missing-block channels log and are skipped so a
+//! tween authored for an absent component never panics.
 
+use tungsten_core::tween::UniformOverrideBlock;
 use tungsten_core::{
     lerp_f32, lerp_u8, CommandBuffer, DeltaTime, Entity, EventQueue, Sprite, Transform, Tween,
     TweenChannel, TweenComplete, TweenDirection, TweenRepeat, World,
@@ -179,6 +184,38 @@ fn apply_channels(world: &mut World, entity: Entity, channels: &[TweenChannel], 
             TweenChannel::ColorA { from, to } => {
                 if let Some(s) = world.get_mut::<Sprite>(entity) {
                     s.color[3] = lerp_u8(*from, *to, k);
+                }
+            }
+            TweenChannel::UniformVec4Lane {
+                slot,
+                lane,
+                from,
+                to,
+            } => {
+                let lane = (*lane as usize).min(3);
+                if let Some(block) = world.get_mut::<UniformOverrideBlock>(entity) {
+                    block.vec4[slot.index()][lane] = lerp_f32(*from, *to, k);
+                } else {
+                    log::debug!(
+                        "tween UniformVec4Lane on entity {entity:?}: no UniformOverrideBlock"
+                    );
+                }
+            }
+            TweenChannel::UniformScalar { slot, from, to } => {
+                if let Some(block) = world.get_mut::<UniformOverrideBlock>(entity) {
+                    block.f32s[slot.index()] = lerp_f32(*from, *to, k);
+                } else {
+                    log::debug!(
+                        "tween UniformScalar on entity {entity:?}: no UniformOverrideBlock"
+                    );
+                }
+            }
+            TweenChannel::UniformInt { slot, from, to } => {
+                let value = if k >= 0.5 { *to } else { *from };
+                if let Some(block) = world.get_mut::<UniformOverrideBlock>(entity) {
+                    block.i32s[slot.index()] = value;
+                } else {
+                    log::debug!("tween UniformInt on entity {entity:?}: no UniformOverrideBlock");
                 }
             }
         }

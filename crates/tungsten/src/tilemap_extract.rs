@@ -91,11 +91,7 @@ pub fn extract_tilemaps(world: &World) -> Vec<SpriteBatch> {
                     ];
                     per_texture
                         .entry(asset.atlas.0)
-                        .or_insert_with(|| SpriteBatch {
-                            texture: asset.atlas,
-                            filter: asset.filter,
-                            instances: Vec::new(),
-                        })
+                        .or_insert_with(|| SpriteBatch::new(asset.atlas, asset.filter))
                         .instances
                         .push(SpriteInstance {
                             position: [world_x, world_y],
