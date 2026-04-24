@@ -12,7 +12,10 @@
   "render": {
     "clear_color": [0.05, 0.05, 0.08, 1.0],
     "max_frame_latency": 1,
-    "present_mode": "auto"
+    "present_mode": "auto",
+    "msaa": 1,
+    "depth_enabled": true,
+    "depth_sort": "cpu_stable"
   },
   "logging": { "level": "info" }
 }

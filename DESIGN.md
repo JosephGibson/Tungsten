@@ -2,7 +2,7 @@
 
 ## Status
 
-Workspace `v0.22.0` on branch `0.22`. Phase 3 is complete; all milestones `M12`–`M24` shipped and the rollout plan is archived at [`docs/plans/archive/phase3-rollout.md`](docs/plans/archive/phase3-rollout.md). Phase 4 scope is tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md). Companion docs: [`AGENTS.md`](AGENTS.md) for operational rules, [`DECISIONS.md`](DECISIONS.md) for rationale by `D-NNN`.
+Workspace `v0.22.0` on branch `0.22`. Phase 3 is complete; all milestones `M12`–`M24` shipped and the rollout plan is archived at [`docs/plans/archive/phase3-rollout.md`](docs/plans/archive/phase3-rollout.md). Phase 4 scope is tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md). M25 (`D-057`) is live: offscreen `SceneTarget` + ordered named-pass list (`scene` → `present`), optional MSAA (1/2/4/8) and opt-in GPU depth-test sprite path, WGSL shaders are manifest-tracked with body-edit hot reload via `wgpu::naga` validation. `SceneColor` format equals the swapchain sRGB format in M25; M27 will add an HDR sibling target for bloom input. Companion docs: [`AGENTS.md`](AGENTS.md) for operational rules, [`DECISIONS.md`](DECISIONS.md) for rationale by `D-NNN`.
 
 ## What It Is
 
@@ -185,7 +185,7 @@ Stack: `glyphon` + `cosmic-text` + `swash`. Responsibilities: font parsing, shap
 
 ### Hot Reload — M9
 
-`notify` v6 (`D-031`) runs on a dedicated background thread. File events cross to the main thread through `std::sync::mpsc`. A `50ms` debounce collapses editor double-writes. At the next frame boundary the main thread resolves file paths → asset IDs, decodes new data, uploads to GPU, and swaps handles in the registry. Exclusion: shaders are excluded, so shader changes require a binary rebuild (`D-023`). Invariant: do not break the registry-by-ID model; game code must not hold direct GPU handles.
+`notify` v6 (`D-031`) runs on a dedicated background thread. File events cross to the main thread through `std::sync::mpsc`. A `50ms` debounce collapses editor double-writes. At the next frame boundary the main thread resolves file paths → asset IDs, decodes new data, uploads to GPU, and swaps handles in the registry. M25 (`D-057`) brings shaders into the same path: `.wgsl` edits validate through `wgpu::naga` and only commit to the live `ShaderModule` after the dependent pipeline rebuilds. Signature / bind-group-layout changes still require a binary rebuild, narrowing `D-023`. Invariant: do not break the registry-by-ID model; game code must not hold direct GPU handles.
 
 **Supported reload matrix (`D-053`):**
 
@@ -197,6 +197,7 @@ Stack: `glyphon` + `cosmic-text` + `swash`. Responsibilities: font parsing, shap
 | Font (`.ttf`/`.otf`) | yes — `reload_font` swaps face data in `TextPipeline` | yes — added through `renderer.load_font` + `FontRegistry::register` | warn-only; stale entry kept |
 | Particle (`.json`) | yes — `reload_particle` swaps the `Arc<ParticleConfig>` under the same `AssetId` (`D-050`) | yes — inserted into `ParticleConfigRegistry` after sprite validation | warn-only; stale entry kept |
 | Sound (decoded PCM) | **not supported** — mixer owns cloned PCM; session-static | **not supported** — no manifest-add path | n/a |
+| Shader (`.wgsl`) | yes (body-edit only) — `reload_shader` re-validates through `wgpu::naga` and rebuilds the sprite pipeline; signature / bind-group-layout changes still need a rebuild (`D-057`, narrowing `D-023`) | n/a in M25 (`shaders` section is write-once at startup) | warn-only; stale entry kept |
 | `input.json` | yes — `reload_action_map` merges with defaults and swaps `ActionMap` | n/a | n/a |
 | `manifest.json` | yes — `reload_manifest` walks every class above | n/a | n/a |
 

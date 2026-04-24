@@ -44,6 +44,8 @@ Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user mate
 
 ## M25 — Render Foundation
 
+**Status:** done (plan at [`docs/plans/phase4-milestone-25-render-foundation.md`](phase4-milestone-25-render-foundation.md)).
+
 **Depends on:** none.
 
 **Adds (crates/tungsten-render/src/):**

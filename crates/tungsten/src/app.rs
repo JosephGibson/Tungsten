@@ -25,7 +25,8 @@ use crate::systems_overlay::{
 };
 use crate::telemetry::{DisplayTelemetry, FrameTimings, RenderCounts};
 use tungsten_core::assets::{
-    AnimationRegistry, FontRegistry, ParticleConfigRegistry, SoundRegistry, TilemapRegistry,
+    AnimationRegistry, FontRegistry, ParticleConfigRegistry, ShaderRegistry, SoundRegistry,
+    TilemapRegistry,
 };
 use tungsten_core::physics::{CollisionEvent, PhysicsConfig};
 use tungsten_core::{
@@ -140,6 +141,7 @@ impl App {
         world.insert_resource(AudioCommands::new());
         world.insert_resource(TilemapRegistry::new());
         world.insert_resource(ParticleConfigRegistry::new());
+        world.insert_resource(ShaderRegistry::new());
         world.insert_resource(ParticleBudget::default());
         world.insert_resource(ParticleActive::default());
         world.insert_resource(WorldRngSeed::default());
@@ -459,6 +461,21 @@ impl App {
                             "Hot reload: no tilemap registered for '{}'",
                             canon.display()
                         );
+                    }
+                }
+                "wgsl" => {
+                    let id = self.world.get_resource::<ShaderRegistry>().and_then(|reg| {
+                        reg.id_for_path(&canon)
+                            .and_then(|sid| reg.name_for_id(sid).map(ToString::to_string))
+                    });
+                    if let Some(id) = id {
+                        if let Err(e) =
+                            asset_loader::reload_shader(&id, &canon, &mut self.world, renderer)
+                        {
+                            log::error!("Shader reload '{id}': {e}");
+                        }
+                    } else {
+                        log::debug!("Hot reload: no shader registered for '{}'", canon.display());
                     }
                 }
                 _ => {}

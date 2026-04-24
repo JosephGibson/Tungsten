@@ -5,7 +5,7 @@ use glam::Vec2;
 use tungsten_core::assets::{
     pack_shelf, AnimationData, AnimationRegistry, FilterMode, FontRegistry, LoadedManifest,
     PackInput, PackedSprite, ParticleConfig, ParticleConfigRegistry, ResolvedManifest, SceneData,
-    SoundData, SoundRegistry, TextureHandle, TilemapData, TilemapRegistry, UvRect,
+    ShaderRegistry, SoundData, SoundRegistry, TextureHandle, TilemapData, TilemapRegistry, UvRect,
 };
 use tungsten_core::{
     ActionMap, ActionMapError, AssetRegistry, CommandBuffer, Sprite, Tag, Transform, Visibility,
@@ -305,6 +305,49 @@ pub fn load_tilemaps(manifest: &ResolvedManifest, world: &mut World) -> anyhow::
     Ok(())
 }
 
+/// Register manifest-tracked shaders with the renderer + `ShaderRegistry`.
+///
+/// Upload is byte-equal short-circuited by `Renderer::upload_shader`: when
+/// the on-disk WGSL matches the compile-time default already seeded at
+/// `Renderer::new`, no pipeline rebuild happens. This keeps the default
+/// config byte-identical to the 0.21 baseline and avoids a first-frame stall.
+pub fn load_shaders(
+    manifest: &ResolvedManifest,
+    world: &mut World,
+    renderer: &mut Renderer,
+) -> anyhow::Result<()> {
+    let mut registry = world
+        .remove_resource::<ShaderRegistry>()
+        .unwrap_or_default();
+
+    for (id, entry) in &manifest.shaders {
+        let source = match std::fs::read_to_string(&entry.path) {
+            Ok(s) => s,
+            Err(e) => {
+                log::error!(
+                    "load_shaders '{id}': failed to read '{}': {e}; keeping compile-time default",
+                    entry.path.display()
+                );
+                continue;
+            }
+        };
+        registry.allocate(id, entry.path.clone());
+        match renderer.upload_shader(id, source) {
+            Ok(_) => {
+                log::info!("Loaded shader '{id}' from '{}'", entry.path.display());
+            }
+            Err(e) => {
+                log::error!(
+                    "load_shaders '{id}': validation failed ({e}); keeping compile-time default"
+                );
+            }
+        }
+    }
+
+    world.insert_resource(registry);
+    Ok(())
+}
+
 /// Load particle configs; sprite-ID validation happens after sprite load.
 pub fn load_particles(manifest: &ResolvedManifest, world: &mut World) -> anyhow::Result<()> {
     let mut registry = ParticleConfigRegistry::new();
@@ -331,6 +374,7 @@ pub fn load_all(
     load_sprites(manifest, world, renderer)?;
     load_animations(manifest, world)?;
     load_fonts(manifest, world, renderer)?;
+    load_shaders(manifest, world, renderer)?;
     load_sounds(manifest, world)?;
     load_tilemaps(manifest, world)?;
     load_particles(manifest, world)?;
@@ -772,6 +816,30 @@ pub fn reload_particle(id: &str, path: &Path, world: &mut World) -> anyhow::Resu
     particle_registry.replace(asset_id, cfg);
 
     log::info!("Hot-reloaded particle '{id}'");
+    Ok(())
+}
+
+/// Hot-reload WGSL shader; validation or rebuild failure logs and keeps the
+/// previous `ShaderModule` + pipeline intact.
+pub fn reload_shader(
+    id: &str,
+    path: &Path,
+    _world: &mut World,
+    renderer: &mut Renderer,
+) -> anyhow::Result<()> {
+    let source = match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!(
+                "Hot reload shader '{id}': failed to read '{}': {e}",
+                path.display()
+            );
+            return Ok(());
+        }
+    };
+    if let Err(e) = renderer.reload_shader(id, source) {
+        log::error!("Hot reload shader '{id}': {e}");
+    }
     Ok(())
 }
 

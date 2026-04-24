@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 goal: "Ship M25 Render Foundation: offscreen `SceneTarget` (color+depth, optional MSAA), ordered named-pass list, WGSL hot reload with `naga` validation, opt-in GPU depth-test sprite path. Under the default config (`msaa=1`, `depth_sort=cpu_stable`) output is byte-identical to the `0.21` baseline (image-diff asserted)."
 non-goals:
   - "No post-stack, materials, bloom, lighting (M26–M28)."

@@ -10,12 +10,18 @@ const DISPLAY_RESOLUTION_ENV: &str = "TUNGSTEN_DISPLAY_RESOLUTION";
 const DISPLAY_FRAME_RATE_CAP_ENV: &str = "TUNGSTEN_DISPLAY_FRAME_RATE_CAP";
 const RENDER_PRESENT_MODE_ENV: &str = "TUNGSTEN_RENDER_PRESENT_MODE";
 const RENDER_MAX_FRAME_LATENCY_ENV: &str = "TUNGSTEN_RENDER_MAX_FRAME_LATENCY";
+const RENDER_MSAA_ENV: &str = "TUNGSTEN_RENDER_MSAA";
+const RENDER_DEPTH_ENABLED_ENV: &str = "TUNGSTEN_RENDER_DEPTH_ENABLED";
+const RENDER_DEPTH_SORT_ENV: &str = "TUNGSTEN_RENDER_DEPTH_SORT";
 const DISPLAY_MODE_EXPECTED: &str = "one of: windowed, borderless_fullscreen, exclusive_fullscreen";
 const DISPLAY_RESOLUTION_EXPECTED: &str = "WIDTHxHEIGHT with integers >= 1";
 const DISPLAY_FRAME_RATE_CAP_EXPECTED: &str = "an integer >= 0";
 const PRESENT_MODE_EXPECTED: &str =
     "one of: auto, immediate, mailbox, fifo, auto_vsync, auto_no_vsync";
 const MAX_FRAME_LATENCY_EXPECTED: &str = "an integer >= 1";
+const MSAA_EXPECTED: &str = "one of: 1, 2, 4, 8";
+const DEPTH_ENABLED_EXPECTED: &str = "one of: true, false, 1, 0";
+const DEPTH_SORT_EXPECTED: &str = "one of: cpu_stable, gpu_depth";
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
@@ -118,12 +124,52 @@ impl FromStr for PresentModeConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DepthSortMode {
+    #[default]
+    CpuStable,
+    GpuDepth,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[error("expected {DEPTH_SORT_EXPECTED}")]
+pub struct ParseDepthSortModeError;
+
+impl DepthSortMode {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::CpuStable => "cpu_stable",
+            Self::GpuDepth => "gpu_depth",
+        }
+    }
+}
+
+impl FromStr for DepthSortMode {
+    type Err = ParseDepthSortModeError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "cpu_stable" => Ok(Self::CpuStable),
+            "gpu_depth" => Ok(Self::GpuDepth),
+            _ => Err(ParseDepthSortModeError),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct RenderConfig {
     #[serde(default = "default_clear_color")]
     pub clear_color: [f64; 4],
     pub max_frame_latency: Option<u32>,
     pub present_mode: Option<PresentModeConfig>,
+    #[serde(default = "default_msaa")]
+    pub msaa: u32,
+    #[serde(default = "default_depth_enabled")]
+    pub depth_enabled: bool,
+    #[serde(default)]
+    pub depth_sort: DepthSortMode,
 }
 
 impl Default for RenderConfig {
@@ -132,12 +178,28 @@ impl Default for RenderConfig {
             clear_color: default_clear_color(),
             max_frame_latency: None,
             present_mode: None,
+            msaa: default_msaa(),
+            depth_enabled: default_depth_enabled(),
+            depth_sort: DepthSortMode::default(),
         }
     }
 }
 
 fn default_clear_color() -> [f64; 4] {
     [0.05, 0.05, 0.08, 1.0]
+}
+
+fn default_msaa() -> u32 {
+    1
+}
+
+fn default_depth_enabled() -> bool {
+    true
+}
+
+#[must_use]
+pub const fn is_supported_msaa(sample_count: u32) -> bool {
+    matches!(sample_count, 1 | 2 | 4 | 8)
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -183,10 +245,19 @@ impl Config {
                         source: e,
                     })?;
                 warn_display_conflicts(&raw);
-                serde_json::from_value(raw).map_err(|e| ConfigError::Parse {
-                    path: path.display().to_string(),
-                    source: e,
-                })?
+                let parsed: Config =
+                    serde_json::from_value(raw).map_err(|e| ConfigError::Parse {
+                        path: path.display().to_string(),
+                        source: e,
+                    })?;
+                if !is_supported_msaa(parsed.render.msaa) {
+                    return Err(ConfigError::InvalidEnvOverride {
+                        var: "render.msaa",
+                        value: parsed.render.msaa.to_string(),
+                        expected: MSAA_EXPECTED,
+                    });
+                }
+                parsed
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 log::warn!("Config file '{}' not found, using defaults", path.display());
@@ -218,6 +289,56 @@ impl Config {
         if let Ok(value) = std::env::var(RENDER_MAX_FRAME_LATENCY_ENV) {
             self.apply_max_frame_latency_override(&value)?;
         }
+        if let Ok(value) = std::env::var(RENDER_MSAA_ENV) {
+            self.apply_msaa_override(&value)?;
+        }
+        if let Ok(value) = std::env::var(RENDER_DEPTH_ENABLED_ENV) {
+            self.apply_depth_enabled_override(&value)?;
+        }
+        if let Ok(value) = std::env::var(RENDER_DEPTH_SORT_ENV) {
+            self.apply_depth_sort_override(&value)?;
+        }
+        Ok(())
+    }
+
+    fn apply_msaa_override(&mut self, value: &str) -> Result<(), ConfigError> {
+        let parsed = value
+            .parse::<u32>()
+            .ok()
+            .filter(|v| is_supported_msaa(*v))
+            .ok_or_else(|| ConfigError::InvalidEnvOverride {
+                var: RENDER_MSAA_ENV,
+                value: value.to_string(),
+                expected: MSAA_EXPECTED,
+            })?;
+        self.render.msaa = parsed;
+        Ok(())
+    }
+
+    fn apply_depth_enabled_override(&mut self, value: &str) -> Result<(), ConfigError> {
+        let parsed = match value {
+            "true" | "1" => true,
+            "false" | "0" => false,
+            _ => {
+                return Err(ConfigError::InvalidEnvOverride {
+                    var: RENDER_DEPTH_ENABLED_ENV,
+                    value: value.to_string(),
+                    expected: DEPTH_ENABLED_EXPECTED,
+                })
+            }
+        };
+        self.render.depth_enabled = parsed;
+        Ok(())
+    }
+
+    fn apply_depth_sort_override(&mut self, value: &str) -> Result<(), ConfigError> {
+        let parsed =
+            DepthSortMode::from_str(value).map_err(|_| ConfigError::InvalidEnvOverride {
+                var: RENDER_DEPTH_SORT_ENV,
+                value: value.to_string(),
+                expected: DEPTH_SORT_EXPECTED,
+            })?;
+        self.render.depth_sort = parsed;
         Ok(())
     }
 

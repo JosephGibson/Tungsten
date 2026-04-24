@@ -3,40 +3,19 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::debug_line::{DebugLineInstance, DebugLinePipeline};
+use crate::passes::{default_pass_order, PassRecorder, TargetId};
 use crate::quad::{QuadInstance, QuadPipeline};
 use crate::screenshot::{aligned_bytes_per_row, strip_row_padding};
+use crate::shader_hot_reload::{ShaderError, ShaderModuleCache};
 use crate::sprite::{SpriteBatch, SpritePipeline};
+use crate::surface::{present_mode_label, resolve_max_frame_latency, resolve_present_mode};
+use crate::targets::RenderTargetPool;
 use crate::text::{TextPipeline, TextSection};
+pub use crate::timing::{CpuFrameTimings, GpuFrameTimings};
 use thiserror::Error;
-use tungsten_core::assets::{FilterMode, TextureHandle};
-use tungsten_core::config::{PresentModeConfig, RenderConfig};
+use tungsten_core::assets::{FilterMode, ShaderAssetId, TextureHandle};
+use tungsten_core::config::{is_supported_msaa, DepthSortMode, PresentModeConfig, RenderConfig};
 use winit::window::Window;
-
-/// GPU frame timing/adapter metadata.
-#[derive(Debug, Clone, Default)]
-pub struct GpuFrameTimings {
-    /// Render-pass GPU duration; `None` without timestamp queries.
-    pub frame_gpu_ms: Option<f32>,
-    /// Adapter backend name.
-    pub backend: Option<String>,
-    /// Adapter name.
-    pub adapter_name: Option<String>,
-    /// Actual present mode.
-    pub present_mode: Option<String>,
-    /// Surface frame-latency hint.
-    pub max_frame_latency: Option<u32>,
-}
-
-/// CPU render-frame timing.
-#[derive(Debug, Clone, Default)]
-pub struct CpuFrameTimings {
-    /// Surface acquire time.
-    pub acquire_ms: f32,
-    /// Encode/command-recording time.
-    pub encode_ms: f32,
-    /// Submit/present/readback wait time.
-    pub submit_present_ms: f32,
-}
 
 #[derive(Debug, Error)]
 pub enum RenderError {
@@ -56,124 +35,13 @@ pub enum RenderError {
     InvalidFrameLatency(u32),
     #[error("surface error: {0}")]
     Surface(String),
+    #[error("shader error: {0}")]
+    Shader(#[from] ShaderError),
 }
 
-fn present_mode_label(mode: wgpu::PresentMode) -> &'static str {
-    match mode {
-        wgpu::PresentMode::Fifo => "fifo",
-        wgpu::PresentMode::FifoRelaxed => "fifo_relaxed",
-        wgpu::PresentMode::Immediate => "immediate",
-        wgpu::PresentMode::Mailbox => "mailbox",
-        wgpu::PresentMode::AutoVsync => "auto_vsync",
-        wgpu::PresentMode::AutoNoVsync => "auto_no_vsync",
-    }
-}
-
-fn requested_present_mode_label(mode: PresentModeConfig) -> &'static str {
-    mode.as_str()
-}
-
-fn choose_auto_vsync_present_mode(supported: &[wgpu::PresentMode]) -> wgpu::PresentMode {
-    if supported.contains(&wgpu::PresentMode::Fifo) {
-        wgpu::PresentMode::Fifo
-    } else {
-        wgpu::PresentMode::AutoVsync
-    }
-}
-
-fn choose_auto_no_vsync_present_mode(supported: &[wgpu::PresentMode]) -> wgpu::PresentMode {
-    if supported.contains(&wgpu::PresentMode::Immediate) {
-        wgpu::PresentMode::Immediate
-    } else if supported.contains(&wgpu::PresentMode::Mailbox) {
-        wgpu::PresentMode::Mailbox
-    } else {
-        wgpu::PresentMode::AutoNoVsync
-    }
-}
-
-fn available_present_mode_labels(supported: &[wgpu::PresentMode]) -> Vec<String> {
-    [
-        wgpu::PresentMode::Fifo,
-        wgpu::PresentMode::Immediate,
-        wgpu::PresentMode::Mailbox,
-    ]
-    .into_iter()
-    .filter(|mode| supported.contains(mode))
-    .map(present_mode_label)
-    .map(str::to_string)
-    .collect()
-}
-
-fn resolve_present_mode(
-    supported: &[wgpu::PresentMode],
-    requested: Option<PresentModeConfig>,
-    vsync: bool,
-) -> Result<wgpu::PresentMode, RenderError> {
-    let requested = requested.unwrap_or(PresentModeConfig::Auto);
-    match requested {
-        PresentModeConfig::Auto => {
-            if vsync {
-                Ok(choose_auto_vsync_present_mode(supported))
-            } else {
-                Ok(choose_auto_no_vsync_present_mode(supported))
-            }
-        }
-        PresentModeConfig::AutoVsync => Ok(choose_auto_vsync_present_mode(supported)),
-        PresentModeConfig::AutoNoVsync => Ok(choose_auto_no_vsync_present_mode(supported)),
-        PresentModeConfig::Immediate => {
-            if supported.contains(&wgpu::PresentMode::Immediate) {
-                Ok(wgpu::PresentMode::Immediate)
-            } else {
-                Err(RenderError::UnsupportedPresentMode {
-                    requested: requested_present_mode_label(requested).to_string(),
-                    available: available_present_mode_labels(supported),
-                })
-            }
-        }
-        PresentModeConfig::Mailbox => {
-            if supported.contains(&wgpu::PresentMode::Mailbox) {
-                Ok(wgpu::PresentMode::Mailbox)
-            } else {
-                Err(RenderError::UnsupportedPresentMode {
-                    requested: requested_present_mode_label(requested).to_string(),
-                    available: available_present_mode_labels(supported),
-                })
-            }
-        }
-        PresentModeConfig::Fifo => {
-            if supported.contains(&wgpu::PresentMode::Fifo) {
-                Ok(wgpu::PresentMode::Fifo)
-            } else {
-                Err(RenderError::UnsupportedPresentMode {
-                    requested: requested_present_mode_label(requested).to_string(),
-                    available: available_present_mode_labels(supported),
-                })
-            }
-        }
-    }
-}
-
-fn default_max_frame_latency(present_mode: wgpu::PresentMode) -> u32 {
-    if matches!(
-        present_mode,
-        wgpu::PresentMode::Immediate | wgpu::PresentMode::Mailbox | wgpu::PresentMode::AutoNoVsync
-    ) {
-        1
-    } else {
-        2
-    }
-}
-
-fn resolve_max_frame_latency(
-    requested: Option<u32>,
-    present_mode: wgpu::PresentMode,
-) -> Result<u32, RenderError> {
-    match requested {
-        Some(0) => Err(RenderError::InvalidFrameLatency(0)),
-        Some(value) => Ok(value),
-        None => Ok(default_max_frame_latency(present_mode)),
-    }
-}
+/// Stable well-known id for the engine-internal sprite shader. Matches the
+/// manifest entry under `shaders.sprite`.
+pub const SPRITE_SHADER_NAME: &str = "sprite";
 
 /// WGPU renderer state.
 pub struct Renderer {
@@ -188,6 +56,13 @@ pub struct Renderer {
     sprite_pipeline: SpritePipeline,
     debug_line_pipeline: DebugLinePipeline,
     text_pipeline: TextPipeline,
+    present_blit: PresentBlitPipeline,
+    target_pool: RenderTargetPool,
+    shader_cache: ShaderModuleCache,
+    sample_count: u32,
+    depth_enabled: bool,
+    depth_sort: DepthSortMode,
+    sprite_shader_id: ShaderAssetId,
     /// Timestamp query support.
     pub timestamp_support: bool,
     /// Last GPU frame timings.
@@ -278,11 +153,63 @@ impl Renderer {
             a: c[3],
         };
 
-        let quad_pipeline = QuadPipeline::new(&device, format);
-        let sprite_pipeline = SpritePipeline::new(&device, format);
-        let debug_line_pipeline =
-            DebugLinePipeline::new(&device, format, quad_pipeline.camera_bind_group_layout());
-        let text_pipeline = TextPipeline::new(&device, &queue, format);
+        let sample_count = if is_supported_msaa(config.msaa) {
+            config.msaa
+        } else {
+            log::warn!(
+                "unsupported msaa sample_count {} in RenderConfig; falling back to 1",
+                config.msaa
+            );
+            1
+        };
+        let depth_enabled = config.depth_enabled;
+        // `GpuDepth` without a depth target is a nonsense combo; normalize
+        // before any pipeline/pass decision reads it so the two knobs can
+        // never disagree at runtime.
+        let depth_sort = if matches!(config.depth_sort, DepthSortMode::GpuDepth) && !depth_enabled {
+            log::warn!(
+                "render.depth_sort = gpu_depth requires depth_enabled = true; falling back to cpu_stable"
+            );
+            DepthSortMode::CpuStable
+        } else {
+            config.depth_sort
+        };
+        // Every pipeline that renders into the scene pass must agree with
+        // the pass attachments. Under GpuDepth the pass has a depth buffer,
+        // so quad/debug_line/text get a read-only `Always` depth state and
+        // sprite gets the writing `LessEqual` variant.
+        let depth_attached = matches!(depth_sort, DepthSortMode::GpuDepth);
+
+        let quad_pipeline = QuadPipeline::new(&device, format, sample_count, depth_attached);
+        let sprite_pipeline = SpritePipeline::new(&device, format, sample_count, depth_attached);
+        let debug_line_pipeline = DebugLinePipeline::new(
+            &device,
+            format,
+            quad_pipeline.camera_bind_group_layout(),
+            sample_count,
+            depth_attached,
+        );
+        let text_pipeline =
+            TextPipeline::new(&device, &queue, format, sample_count, depth_attached);
+
+        let target_pool = RenderTargetPool::new(
+            &device,
+            (surface_config.width, surface_config.height),
+            format,
+            sample_count,
+            depth_enabled,
+        );
+        let present_blit = PresentBlitPipeline::new(&device, format);
+
+        // Seed the shader cache with the compile-time sprite WGSL so the
+        // first `asset_loader::load_shaders` call is a no-op when the
+        // on-disk bytes match.
+        let mut shader_cache = ShaderModuleCache::new();
+        let sprite_shader_id = ShaderAssetId(0);
+        let sprite_src = include_str!("../../../assets/shaders/sprite.wgsl").to_string();
+        shader_cache
+            .upload(&device, sprite_shader_id, SPRITE_SHADER_NAME, sprite_src)
+            .expect("compile-time sprite shader must validate");
 
         Ok(Self {
             instance,
@@ -296,6 +223,13 @@ impl Renderer {
             sprite_pipeline,
             debug_line_pipeline,
             text_pipeline,
+            present_blit,
+            target_pool,
+            shader_cache,
+            sample_count,
+            depth_enabled,
+            depth_sort,
+            sprite_shader_id,
             timestamp_support,
             gpu_timings,
             cpu_timings: CpuFrameTimings::default(),
@@ -305,6 +239,18 @@ impl Renderer {
 
     pub fn surface_format(&self) -> wgpu::TextureFormat {
         self.surface_config.format
+    }
+
+    /// Current MSAA sample count.
+    #[must_use]
+    pub fn sample_count(&self) -> u32 {
+        self.sample_count
+    }
+
+    /// Current depth-sort mode.
+    #[must_use]
+    pub fn depth_sort(&self) -> DepthSortMode {
+        self.depth_sort
     }
 
     /// Upload RGBA texture; sampler filter is baked into bind group.
@@ -366,12 +312,87 @@ impl Renderer {
         self.text_pipeline.reload_font(id, data);
     }
 
+    /// Register a manifest-tracked shader. The well-known `"sprite"` name
+    /// short-circuits when the bytes match the pre-seeded compile-time default.
+    pub fn upload_shader(
+        &mut self,
+        name: &str,
+        wgsl: String,
+    ) -> Result<ShaderAssetId, RenderError> {
+        let id = if name == SPRITE_SHADER_NAME {
+            self.sprite_shader_id
+        } else {
+            // M25 only bridges `sprite`; future shaders can extend this.
+            return Err(RenderError::Shader(ShaderError::Validation {
+                name: name.to_string(),
+                report: format!("unknown shader id '{name}'"),
+            }));
+        };
+
+        if self.shader_cache.bytes_equal(id, &wgsl) {
+            return Ok(id);
+        }
+
+        // Validate + build candidate module; only commit after pipeline rebuild.
+        let module = self.shader_cache.validate(&self.device, name, &wgsl)?;
+        self.sprite_pipeline.rebuild_with_shader(
+            &self.device,
+            &module,
+            self.surface_config.format,
+            self.sample_count,
+            matches!(self.depth_sort, DepthSortMode::GpuDepth),
+        );
+        self.shader_cache.commit(id, wgsl, module);
+        Ok(id)
+    }
+
+    /// Hot-reload a manifest-tracked shader. Failures log and keep the live
+    /// `ShaderModule` + pipeline untouched.
+    pub fn reload_shader(&mut self, name: &str, wgsl: String) -> Result<(), RenderError> {
+        let id = if name == SPRITE_SHADER_NAME {
+            self.sprite_shader_id
+        } else {
+            log::error!("shader reload: unknown id '{name}'");
+            return Ok(());
+        };
+        if self.shader_cache.bytes_equal(id, &wgsl) {
+            return Ok(());
+        }
+        let module = match self.shader_cache.validate(&self.device, name, &wgsl) {
+            Ok(m) => m,
+            Err(e) => {
+                log::error!("shader '{name}' validation failed: {e}");
+                return Ok(());
+            }
+        };
+        // M25 simple path: rebuild always succeeds under stable signature;
+        // a future panic-catch wrapper can keep last-known-good on rebuild
+        // error without unwinding.
+        self.sprite_pipeline.rebuild_with_shader(
+            &self.device,
+            &module,
+            self.surface_config.format,
+            self.sample_count,
+            matches!(self.depth_sort, DepthSortMode::GpuDepth),
+        );
+        self.shader_cache.commit(id, wgsl, module);
+        log::info!("shader '{name}' reloaded");
+        Ok(())
+    }
+
     /// Reconfigure surface after resize.
     pub fn resize(&mut self, width: u32, height: u32) {
         if width > 0 && height > 0 {
             self.surface_config.width = width;
             self.surface_config.height = height;
             self.surface.configure(&self.device, &self.surface_config);
+            self.target_pool.resize(
+                &self.device,
+                (width, height),
+                self.surface_config.format,
+                self.sample_count,
+                self.depth_enabled,
+            );
         }
     }
 
@@ -436,170 +457,15 @@ impl Renderer {
         debug_lines: &[DebugLineInstance],
         text_sections: &[TextSection],
     ) -> Result<(), RenderError> {
-        self.cpu_timings = CpuFrameTimings::default();
-        let acquire_start = Instant::now();
-        let Some(output) = self.acquire_texture()? else {
-            return Ok(());
-        };
-        self.cpu_timings.acquire_ms = acquire_start.elapsed().as_secs_f64() as f32 * 1000.0;
-
-        let encode_start = Instant::now();
-        let w = self.surface_config.width;
-        let h = self.surface_config.height;
-        self.quad_pipeline.update_camera(&self.queue, view_proj);
-        self.sprite_pipeline.update_camera(&self.queue, view_proj);
-
-        self.text_pipeline
-            .prepare(&self.device, &self.queue, text_sections, w, h);
-
-        let view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("frame_encoder"),
-            });
-
-        let capture_path = self.pending_capture.take();
-        let capture_target = capture_path
-            .as_ref()
-            .map(|_| create_capture_target(&self.device, self.surface_config.format, w, h));
-
-        encoder.push_debug_group("tungsten_frame");
-        {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("tungsten_main_pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(self.clear_color),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                ..Default::default()
-            });
-
-            self.record_main_draws(
-                &mut render_pass,
-                quads,
-                sprite_batches,
-                debug_quads,
-                debug_lines,
-            );
-        }
-
-        if let Some(target) = capture_target.as_ref() {
-            encoder.push_debug_group("tungsten_capture_pass");
-            {
-                let mut capture_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("tungsten_capture_main_pass"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &target.view,
-                        depth_slice: None,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(self.clear_color),
-                            store: wgpu::StoreOp::Store,
-                        },
-                    })],
-                    depth_stencil_attachment: None,
-                    ..Default::default()
-                });
-
-                self.record_main_draws(
-                    &mut capture_pass,
-                    quads,
-                    sprite_batches,
-                    debug_quads,
-                    debug_lines,
-                );
-            }
-
-            encoder.copy_texture_to_buffer(
-                wgpu::TexelCopyTextureInfo {
-                    texture: &target.texture,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                wgpu::TexelCopyBufferInfo {
-                    buffer: &target.readback,
-                    layout: wgpu::TexelCopyBufferLayout {
-                        offset: 0,
-                        bytes_per_row: Some(target.padded_bytes_per_row),
-                        rows_per_image: Some(h),
-                    },
-                },
-                wgpu::Extent3d {
-                    width: w,
-                    height: h,
-                    depth_or_array_layers: 1,
-                },
-            );
-            encoder.pop_debug_group();
-        }
-
-        encoder.pop_debug_group();
-
-        let finished = encoder.finish();
-        self.cpu_timings.encode_ms = encode_start.elapsed().as_secs_f64() as f32 * 1000.0;
-
-        let submit_present_start = Instant::now();
-        self.queue.submit(std::iter::once(finished));
-        output.present();
-
-        if let (Some(path), Some(target)) = (capture_path, capture_target) {
-            if let Err(e) = finalize_capture(&self.device, &target, w, h, &path) {
-                log::warn!("screenshot capture failed: {e}");
-            }
-        }
-
-        self.text_pipeline.post_frame();
-        self.cpu_timings.submit_present_ms =
-            submit_present_start.elapsed().as_secs_f64() as f32 * 1000.0;
-
-        Ok(())
-    }
-
-    fn record_main_draws<'a>(
-        &'a mut self,
-        render_pass: &mut wgpu::RenderPass<'a>,
-        quads: &[QuadInstance],
-        sprite_batches: &[SpriteBatch],
-        debug_quads: &[QuadInstance],
-        debug_lines: &[DebugLineInstance],
-    ) {
-        render_pass.push_debug_group("quads");
-        self.quad_pipeline.draw(&self.device, render_pass, quads);
-        render_pass.pop_debug_group();
-
-        render_pass.push_debug_group("sprites");
-        self.sprite_pipeline
-            .draw(&self.device, &self.queue, render_pass, sprite_batches);
-        render_pass.pop_debug_group();
-
-        render_pass.push_debug_group("debug_quads");
-        self.quad_pipeline
-            .draw(&self.device, render_pass, debug_quads);
-        render_pass.pop_debug_group();
-
-        render_pass.push_debug_group("debug_lines");
-        self.debug_line_pipeline.draw(
-            &self.device,
-            render_pass,
-            self.quad_pipeline.camera_bind_group(),
+        self.render_frame_internal(
+            view_proj,
+            quads,
+            sprite_batches,
+            debug_quads,
             debug_lines,
-        );
-        render_pass.pop_debug_group();
-
-        render_pass.push_debug_group("text");
-        self.text_pipeline.render(render_pass);
-        render_pass.pop_debug_group();
+            text_sections,
+            None,
+        )
     }
 
     /// Timed full frame; stalls on `device.poll(wait_indefinitely())`.
@@ -612,9 +478,8 @@ impl Renderer {
         debug_lines: &[DebugLineInstance],
         text_sections: &[TextSection],
     ) -> Result<(), RenderError> {
-        self.cpu_timings = CpuFrameTimings::default();
-        self.gpu_timings.frame_gpu_ms = None;
         if !self.timestamp_support {
+            self.gpu_timings.frame_gpu_ms = None;
             return self.render_frame_full(
                 view_proj,
                 quads,
@@ -630,20 +495,51 @@ impl Renderer {
             count: 2,
             ty: wgpu::QueryType::Timestamp,
         });
-
         let resolve_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("ts_resolve"),
             size: 16,
             usage: wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
-
         let readback_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("ts_readback"),
             size: 16,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
+
+        let timing = TimingResources {
+            query_set,
+            resolve_buf,
+            readback_buf,
+        };
+
+        self.render_frame_internal(
+            view_proj,
+            quads,
+            sprite_batches,
+            debug_quads,
+            debug_lines,
+            text_sections,
+            Some(timing),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)] // stable frame-extract surface mirrors render_frame_full.
+    fn render_frame_internal(
+        &mut self,
+        view_proj: &glam::Mat4,
+        quads: &[QuadInstance],
+        sprite_batches: &[SpriteBatch],
+        debug_quads: &[QuadInstance],
+        debug_lines: &[DebugLineInstance],
+        text_sections: &[TextSection],
+        timing: Option<TimingResources>,
+    ) -> Result<(), RenderError> {
+        self.cpu_timings = CpuFrameTimings::default();
+        if timing.is_some() {
+            self.gpu_timings.frame_gpu_ms = None;
+        }
 
         let acquire_start = Instant::now();
         let Some(output) = self.acquire_texture()? else {
@@ -659,84 +555,83 @@ impl Renderer {
         self.text_pipeline
             .prepare(&self.device, &self.queue, text_sections, w, h);
 
-        let view = output
+        let swap_view = output
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("frame_encoder_timed"),
+                label: Some("frame_encoder"),
             });
 
-        let capture_path = self.pending_capture.take();
-        let capture_target = capture_path
-            .as_ref()
-            .map(|_| create_capture_target(&self.device, self.surface_config.format, w, h));
+        // Rebuild the present-blit bind group every frame against the live
+        // scene color view; cheap, avoids stale-view hazards after resize.
+        let blit_bind_group = self
+            .present_blit
+            .make_bind_group(&self.device, self.target_pool.scene.color_view());
+
+        let order = default_pass_order(self.sample_count, self.depth_sort, self.depth_enabled);
 
         encoder.push_debug_group("tungsten_frame");
-        {
-            let ts_writes = wgpu::RenderPassTimestampWrites {
-                query_set: &query_set,
-                beginning_of_pass_write_index: Some(0),
-                end_of_pass_write_index: Some(1),
+        for (idx, pass_desc) in order.as_slice().iter().enumerate() {
+            let is_scene = idx == 0;
+            let clear_override = if is_scene {
+                Some(self.clear_color)
+            } else {
+                None
+            };
+            let mut pass = if is_scene && timing.is_some() {
+                // Attach timestamp queries to the main scene pass.
+                begin_scene_pass_with_timestamps(
+                    &mut encoder,
+                    pass_desc,
+                    &self.target_pool,
+                    &swap_view,
+                    self.clear_color,
+                    timing.as_ref().map(|t| &t.query_set),
+                )
+            } else {
+                PassRecorder::begin(
+                    &mut encoder,
+                    pass_desc,
+                    &self.target_pool,
+                    &swap_view,
+                    clear_override,
+                )
             };
 
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("tungsten_main_pass_timed"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(self.clear_color),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: Some(ts_writes),
-                ..Default::default()
-            });
-
-            self.record_main_draws(
-                &mut render_pass,
-                quads,
-                sprite_batches,
-                debug_quads,
-                debug_lines,
-            );
-        }
-
-        if let Some(target) = capture_target.as_ref() {
-            encoder.push_debug_group("tungsten_capture_pass");
-            {
-                let mut capture_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("tungsten_capture_main_pass_timed"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &target.view,
-                        depth_slice: None,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(self.clear_color),
-                            store: wgpu::StoreOp::Store,
-                        },
-                    })],
-                    depth_stencil_attachment: None,
-                    ..Default::default()
-                });
-
-                self.record_main_draws(
-                    &mut capture_pass,
+            if is_scene {
+                record_main_draws(
+                    &mut pass,
+                    &self.device,
+                    &self.queue,
+                    &self.quad_pipeline,
+                    &mut self.sprite_pipeline,
+                    &self.debug_line_pipeline,
+                    &self.text_pipeline,
                     quads,
                     sprite_batches,
                     debug_quads,
                     debug_lines,
                 );
+            } else if pass_desc.color == TargetId::Swapchain {
+                pass.set_pipeline(&self.present_blit.pipeline);
+                pass.set_bind_group(0, &blit_bind_group, &[]);
+                pass.draw(0..3, 0..1);
             }
+        }
 
+        // Screenshot path: readback from `SceneColor` (already the final
+        // pre-swapchain color, matches default output byte-for-byte).
+        let capture_path = self.pending_capture.take();
+        let capture_target = capture_path
+            .as_ref()
+            .map(|_| create_capture_target(&self.device, self.surface_config.format, w, h));
+        if let Some(target) = capture_target.as_ref() {
             encoder.copy_texture_to_buffer(
                 wgpu::TexelCopyTextureInfo {
-                    texture: &target.texture,
+                    texture: self.target_pool.scene.color_texture(),
                     mip_level: 0,
                     origin: wgpu::Origin3d::ZERO,
                     aspect: wgpu::TextureAspect::All,
@@ -755,13 +650,14 @@ impl Renderer {
                     depth_or_array_layers: 1,
                 },
             );
-            encoder.pop_debug_group();
+        }
+
+        if let Some(t) = timing.as_ref() {
+            encoder.resolve_query_set(&t.query_set, 0..2, &t.resolve_buf, 0);
+            encoder.copy_buffer_to_buffer(&t.resolve_buf, 0, &t.readback_buf, 0, 16);
         }
 
         encoder.pop_debug_group();
-
-        encoder.resolve_query_set(&query_set, 0..2, &resolve_buf, 0);
-        encoder.copy_buffer_to_buffer(&resolve_buf, 0, &readback_buf, 0, 16);
 
         let finished = encoder.finish();
         self.cpu_timings.encode_ms = encode_start.elapsed().as_secs_f64() as f32 * 1000.0;
@@ -769,21 +665,39 @@ impl Renderer {
         let submit_present_start = Instant::now();
         self.queue.submit(std::iter::once(finished));
         output.present();
-        self.text_pipeline.post_frame();
 
         if let (Some(path), Some(target)) = (capture_path, capture_target) {
-            if let Err(e) = finalize_capture(&self.device, &target, w, h, &path) {
+            if let Err(e) = finalize_capture(
+                &self.device,
+                &target,
+                self.surface_config.format,
+                w,
+                h,
+                &path,
+            ) {
                 log::warn!("screenshot capture failed: {e}");
             }
         }
 
+        self.text_pipeline.post_frame();
+
+        if let Some(t) = timing {
+            self.read_gpu_timestamp(&t.readback_buf);
+        }
+
+        self.cpu_timings.submit_present_ms =
+            submit_present_start.elapsed().as_secs_f64() as f32 * 1000.0;
+
+        Ok(())
+    }
+
+    fn read_gpu_timestamp(&mut self, readback_buf: &wgpu::Buffer) {
         let slice = readback_buf.slice(..);
         let (sender, receiver) = std::sync::mpsc::channel();
         slice.map_async(wgpu::MapMode::Read, move |result| {
             let _ = sender.send(result);
         });
         let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
-
         if receiver.recv().ok().and_then(Result::ok).is_some() {
             let data = slice.get_mapped_range();
             let ts0 = u64::from_le_bytes(data[0..8].try_into().unwrap_or([0u8; 8]));
@@ -795,41 +709,219 @@ impl Renderer {
             let delta_ns = ts1.wrapping_sub(ts0) as f64 * f64::from(period);
             self.gpu_timings.frame_gpu_ms = Some((delta_ns / 1_000_000.0) as f32);
         }
-        self.cpu_timings.submit_present_ms =
-            submit_present_start.elapsed().as_secs_f64() as f32 * 1000.0;
+    }
+}
 
-        Ok(())
+#[allow(clippy::too_many_arguments)]
+fn record_main_draws<'a>(
+    render_pass: &mut wgpu::RenderPass<'a>,
+    device: &'a wgpu::Device,
+    queue: &'a wgpu::Queue,
+    quad_pipeline: &'a QuadPipeline,
+    sprite_pipeline: &'a mut SpritePipeline,
+    debug_line_pipeline: &'a DebugLinePipeline,
+    text_pipeline: &'a TextPipeline,
+    quads: &[QuadInstance],
+    sprite_batches: &[SpriteBatch],
+    debug_quads: &[QuadInstance],
+    debug_lines: &[DebugLineInstance],
+) {
+    render_pass.push_debug_group("quads");
+    quad_pipeline.draw(device, render_pass, quads);
+    render_pass.pop_debug_group();
+
+    render_pass.push_debug_group("sprites");
+    sprite_pipeline.draw(device, queue, render_pass, sprite_batches);
+    render_pass.pop_debug_group();
+
+    render_pass.push_debug_group("debug_quads");
+    quad_pipeline.draw(device, render_pass, debug_quads);
+    render_pass.pop_debug_group();
+
+    render_pass.push_debug_group("debug_lines");
+    debug_line_pipeline.draw(
+        device,
+        render_pass,
+        quad_pipeline.camera_bind_group(),
+        debug_lines,
+    );
+    render_pass.pop_debug_group();
+
+    render_pass.push_debug_group("text");
+    text_pipeline.render(render_pass);
+    render_pass.pop_debug_group();
+}
+
+struct TimingResources {
+    query_set: wgpu::QuerySet,
+    resolve_buf: wgpu::Buffer,
+    readback_buf: wgpu::Buffer,
+}
+
+fn begin_scene_pass_with_timestamps<'a>(
+    encoder: &'a mut wgpu::CommandEncoder,
+    desc: &crate::passes::PassDesc,
+    pool: &'a RenderTargetPool,
+    swap_view: &'a wgpu::TextureView,
+    clear: wgpu::Color,
+    query_set: Option<&'a wgpu::QuerySet>,
+) -> wgpu::RenderPass<'a> {
+    let color_view = match desc.color {
+        TargetId::SceneColor => pool.scene.color_view(),
+        TargetId::SceneColorMsaa => pool
+            .scene
+            .color_msaa_view()
+            .expect("SceneColorMsaa requested but sample_count == 1"),
+        TargetId::Swapchain => swap_view,
+        TargetId::SceneDepth => unreachable!("depth is not a valid color target"),
+    };
+    let resolve_view_opt = desc.color_resolve.map(|target| match target {
+        TargetId::SceneColor => pool.scene.color_view(),
+        TargetId::Swapchain => swap_view,
+        _ => unreachable!("invalid resolve target"),
+    });
+    let depth_attachment = desc.depth.map(|target| {
+        let view = match target {
+            TargetId::SceneDepth => pool
+                .scene
+                .depth_view()
+                .expect("SceneDepth requested but depth_enabled = false"),
+            _ => unreachable!("invalid depth target"),
+        };
+        let load = desc
+            .depth_clear
+            .map_or(wgpu::LoadOp::Load, wgpu::LoadOp::Clear);
+        wgpu::RenderPassDepthStencilAttachment {
+            view,
+            depth_ops: Some(wgpu::Operations {
+                load,
+                store: wgpu::StoreOp::Store,
+            }),
+            stencil_ops: None,
+        }
+    });
+    let ts_writes = query_set.map(|qs| wgpu::RenderPassTimestampWrites {
+        query_set: qs,
+        beginning_of_pass_write_index: Some(0),
+        end_of_pass_write_index: Some(1),
+    });
+
+    let load = if desc.clear.is_some() {
+        wgpu::LoadOp::Clear(clear)
+    } else {
+        wgpu::LoadOp::Load
+    };
+
+    encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        label: Some(desc.label),
+        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+            view: color_view,
+            depth_slice: None,
+            resolve_target: resolve_view_opt,
+            ops: wgpu::Operations {
+                load,
+                store: wgpu::StoreOp::Store,
+            },
+        })],
+        depth_stencil_attachment: depth_attachment,
+        timestamp_writes: ts_writes,
+        ..Default::default()
+    })
+}
+
+/// Fullscreen-triangle blit pipeline copying `SceneColor` → swapchain.
+struct PresentBlitPipeline {
+    pipeline: wgpu::RenderPipeline,
+    bind_group_layout: wgpu::BindGroupLayout,
+}
+
+impl PresentBlitPipeline {
+    fn new(device: &wgpu::Device, target_format: wgpu::TextureFormat) -> Self {
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("present_blit_shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/present_blit.wgsl").into()),
+        });
+        let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("present_blit_bgl"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            }],
+        });
+        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("present_blit_layout"),
+            bind_group_layouts: &[Some(&bgl)],
+            immediate_size: 0,
+        });
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("present_blit_pipeline"),
+            layout: Some(&layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                buffers: &[],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: target_format,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                ..Default::default()
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+        Self {
+            pipeline,
+            bind_group_layout: bgl,
+        }
+    }
+
+    fn make_bind_group(
+        &self,
+        device: &wgpu::Device,
+        source_view: &wgpu::TextureView,
+    ) -> wgpu::BindGroup {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("present_blit_bg"),
+            layout: &self.bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(source_view),
+            }],
+        })
     }
 }
 
 pub(crate) struct CaptureTarget {
-    pub(crate) texture: wgpu::Texture,
-    pub(crate) view: wgpu::TextureView,
     pub(crate) readback: wgpu::Buffer,
     pub(crate) padded_bytes_per_row: u32,
 }
 
 pub(crate) fn create_capture_target(
     device: &wgpu::Device,
-    format: wgpu::TextureFormat,
+    _format: wgpu::TextureFormat,
     width: u32,
     height: u32,
 ) -> CaptureTarget {
-    let texture = device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("tungsten_screenshot_target"),
-        size: wgpu::Extent3d {
-            width,
-            height,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
-        view_formats: &[],
-    });
-    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
     let padded_bytes_per_row = aligned_bytes_per_row(width);
     let readback = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("tungsten_screenshot_readback"),
@@ -838,8 +930,6 @@ pub(crate) fn create_capture_target(
         mapped_at_creation: false,
     });
     CaptureTarget {
-        texture,
-        view,
         readback,
         padded_bytes_per_row,
     }
@@ -848,6 +938,7 @@ pub(crate) fn create_capture_target(
 pub(crate) fn finalize_capture(
     device: &wgpu::Device,
     target: &CaptureTarget,
+    format: wgpu::TextureFormat,
     width: u32,
     height: u32,
     path: &std::path::Path,
@@ -878,7 +969,7 @@ pub(crate) fn finalize_capture(
     }
 
     let is_bgra = matches!(
-        target.texture.format(),
+        format,
         wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb
     );
     let mut rgba = rgba_surface;

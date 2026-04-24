@@ -85,7 +85,7 @@ Adding a new asset:
 
 Additional rules:
 
-- **Shaders** (`*.wgsl`) live in `tungsten-render/src/`, are compiled in through `include_str!` (`D-023`), are not manifest-tracked, and are excluded from hot reload; shader changes require a binary rebuild.
+- **Shaders** (`*.wgsl`) live in `assets/shaders/` and register in the manifest under a `shaders` section (`D-057`). The engine-internal sprite shader is also `include_str!`d at the same path so the compile-time default and the manifest-tracked runtime source come from one file; the renderer byte-equal short-circuits the load call when they match. Body edits hot-reload through the existing umbrella watcher with `wgpu::naga` validation; signature / bind-group layout changes still require a rebuild (narrowing, not reversing, `D-023`).
 - **Example-local assets** live in `examples/NN_name/assets/` with a local `manifest.json`; asset IDs must be globally unique across all loaded manifests, and duplicate IDs are fatal at load time.
 - **Game code never references file paths;** always use asset IDs through the registry. That invariant is what makes hot reload (`M9`) work.
 

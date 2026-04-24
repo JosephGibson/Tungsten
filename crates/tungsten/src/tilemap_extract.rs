@@ -104,6 +104,8 @@ pub fn extract_tilemaps(world: &World) -> Vec<SpriteBatch> {
                             color: [255; 4],
                             uv_min: asset.uv.min,
                             uv_size,
+                            z_norm: 0.0,
+                            _pad: 0.0,
                         });
                 }
             }

@@ -62,14 +62,28 @@ pub struct TextPipeline {
 
 impl TextPipeline {
     #[must_use]
-    pub fn new(device: &Device, queue: &Queue, format: TextureFormat) -> Self {
+    pub fn new(
+        device: &Device,
+        queue: &Queue,
+        format: TextureFormat,
+        sample_count: u32,
+        depth_attached: bool,
+    ) -> Self {
         let font_system = FontSystem::new();
         let swash_cache = SwashCache::new();
         let cache = Cache::new(device);
         let viewport = Viewport::new(device, &cache);
         let mut atlas = TextAtlas::new(device, queue, &cache, format);
-        let text_renderer =
-            TextRenderer::new(&mut atlas, device, MultisampleState::default(), None);
+        let text_renderer = TextRenderer::new(
+            &mut atlas,
+            device,
+            MultisampleState {
+                count: sample_count,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            crate::quad::passthrough_depth_stencil(depth_attached),
+        );
 
         Self {
             font_system,

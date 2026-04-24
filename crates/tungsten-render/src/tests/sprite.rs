@@ -2,7 +2,9 @@ use super::*;
 
 #[test]
 fn sprite_instance_stride_matches_attribute_layout() {
-    assert_eq!(std::mem::size_of::<SpriteInstance>(), 40);
+    // M25: 40-byte base layout + `z_norm: f32` + explicit `_pad: f32`
+    // for 16-byte alignment on the GPU side.
+    assert_eq!(std::mem::size_of::<SpriteInstance>(), 48);
 }
 
 #[test]

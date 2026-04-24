@@ -31,7 +31,7 @@ pub use components::{
     sync_position_to_transform, Particle, ParticleEmitter, ParticleEmitterState, Sprite, Tag,
     Transform, Visibility,
 };
-pub use config::{Config, ConfigError};
+pub use config::{Config, ConfigError, DepthSortMode, RenderConfig};
 pub use debug_draw::{DebugCommand, DebugDraw, DebugShape, DEFAULT_CIRCLE_SEGMENTS};
 pub use display::{
     DisplayConfig, DisplayMode, DisplayState, DisplayValidationError, Resolution, ScaleMode,

@@ -41,6 +41,7 @@ If you need deeper context, grep the specific `D-0xx` entry in the full log inst
 | `D-055` | M24 single `Tween` component per entity, multi-property via `Vec<TweenChannel>` sharing the easing + duration; more than one tween per scene entry logs `ERROR` and keeps the first. |
 | `D-052` | Asset composition is owned by the umbrella: `App::set_manifest_roots` + `asset_loader::load_all_merged` merge manifests via `ResolvedManifest::load_and_merge_many` and run `load_all` once on the result, with the merged graph stored as a `LoadedManifest` world resource; per-type loaders stay public but must not be used to compose. |
 | `D-053` | Hot-reload support matrix is one published table in `DESIGN.md §Hot Reload — M9`: sprites/animations/fonts/tilemaps/particles support single-file and manifest-add reloads with warn-only removal; sounds are session-static (mixer owns cloned PCM). Particle manifest-add mirrors the tilemap-add validation path; `LoadedManifest` is refreshed on every successful manifest reload. |
+| `D-057` | M25 shaders are manifest-tracked `.wgsl` assets bridged through `ShaderRegistry` + `ShaderModuleCache`; body edits hot-reload through the existing umbrella watcher after `wgpu::naga` validation, signature changes still need a rebuild, `SceneColor` format equals the swapchain sRGB format, and MSAA sample-count swaps require a relaunch. Narrows `D-023`, extends `D-053`. |
 
 ## Dependencies / Tooling
 

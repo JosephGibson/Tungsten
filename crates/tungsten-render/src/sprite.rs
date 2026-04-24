@@ -4,9 +4,15 @@ use bytemuck::{Pod, Zeroable};
 use tungsten_core::assets::{FilterMode, TextureHandle};
 use wgpu::util::DeviceExt;
 
-/// GPU sprite instance; 40-byte POD layout.
+/// GPU sprite instance; POD layout.
+///
+/// `z_norm` is the [0, 1] NDC-space depth derived from stable CPU painter
+/// order. It is ignored by the pipeline unless `DepthSortMode::GpuDepth` is
+/// active, in which case it drives the depth buffer; under `CpuStable` it
+/// stays a benign per-instance pass-through.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
+#[allow(clippy::pub_underscore_fields)]
 pub struct SpriteInstance {
     pub position: [f32; 2],
     pub size: [f32; 2],
@@ -14,16 +20,19 @@ pub struct SpriteInstance {
     pub color: [u8; 4],
     pub uv_min: [f32; 2],
     pub uv_size: [f32; 2],
+    pub z_norm: f32,
+    pub _pad: f32,
 }
 
 impl SpriteInstance {
-    const ATTRIBS: [wgpu::VertexAttribute; 6] = wgpu::vertex_attr_array![
+    const ATTRIBS: [wgpu::VertexAttribute; 7] = wgpu::vertex_attr_array![
         2 => Float32x2,
         3 => Float32x2,
         4 => Float32,
         5 => Unorm8x4,
         6 => Float32x2,
         7 => Float32x2,
+        8 => Float32,
     ];
 
     #[must_use]
@@ -45,6 +54,8 @@ impl SpriteInstance {
             color,
             uv_min: [0.0, 0.0],
             uv_size: [1.0, 1.0],
+            z_norm: 0.0,
+            _pad: 0.0,
         }
     }
 }
@@ -58,6 +69,8 @@ impl Default for SpriteInstance {
             color: [255; 4],
             uv_min: [0.0, 0.0],
             uv_size: [1.0, 1.0],
+            z_norm: 0.0,
+            _pad: 0.0,
         }
     }
 }
@@ -130,6 +143,7 @@ pub struct SpriteBatch {
 /// Textured sprite pipeline, samplers, and texture pool.
 pub struct SpritePipeline {
     pipeline: wgpu::RenderPipeline,
+    pipeline_layout: wgpu::PipelineLayout,
     vertex_buffer: wgpu::Buffer,
     instance_buffer: wgpu::Buffer,
     instance_capacity: usize,
@@ -145,10 +159,17 @@ pub struct SpritePipeline {
 
 impl SpritePipeline {
     #[must_use]
-    pub fn new(device: &wgpu::Device, surface_format: wgpu::TextureFormat) -> Self {
+    pub fn new(
+        device: &wgpu::Device,
+        surface_format: wgpu::TextureFormat,
+        sample_count: u32,
+        depth_write: bool,
+    ) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("sprite_shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("sprite.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(
+                include_str!("../../../assets/shaders/sprite.wgsl").into(),
+            ),
         });
 
         let camera_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -214,36 +235,14 @@ impl SpritePipeline {
             immediate_size: 0,
         });
 
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("sprite_pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[SpriteVertex::desc(), SpriteInstance::desc()],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: surface_format,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: None,
-                ..Default::default()
-            },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview_mask: None,
-            cache: None,
-        });
+        let pipeline = build_sprite_pipeline(
+            device,
+            &shader,
+            &pipeline_layout,
+            surface_format,
+            sample_count,
+            depth_write,
+        );
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("sprite_vertex_buffer"),
@@ -274,6 +273,7 @@ impl SpritePipeline {
 
         Self {
             pipeline,
+            pipeline_layout,
             vertex_buffer,
             instance_buffer,
             instance_capacity,
@@ -286,6 +286,28 @@ impl SpritePipeline {
             textures: HashMap::new(),
             next_handle: 0,
         }
+    }
+
+    /// Hot-reload entry point: swap the live pipeline to one built against
+    /// `new_module`. Leaves texture bind groups, samplers, and buffers intact.
+    /// `depth_write = true` produces the GpuDepth variant (LessEqual + write);
+    /// `false` produces the CpuStable variant (no depth_stencil state).
+    pub fn rebuild_with_shader(
+        &mut self,
+        device: &wgpu::Device,
+        new_module: &wgpu::ShaderModule,
+        surface_format: wgpu::TextureFormat,
+        sample_count: u32,
+        depth_write: bool,
+    ) {
+        self.pipeline = build_sprite_pipeline(
+            device,
+            new_module,
+            &self.pipeline_layout,
+            surface_format,
+            sample_count,
+            depth_write,
+        );
     }
 
     /// Mint renderer-owned texture handle.
@@ -529,6 +551,60 @@ impl SpritePipeline {
             render_pass.draw(0..6, 0..batch.instances.len() as u32);
         }
     }
+}
+
+fn build_sprite_pipeline(
+    device: &wgpu::Device,
+    shader: &wgpu::ShaderModule,
+    layout: &wgpu::PipelineLayout,
+    surface_format: wgpu::TextureFormat,
+    sample_count: u32,
+    depth_write: bool,
+) -> wgpu::RenderPipeline {
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("sprite_pipeline"),
+        layout: Some(layout),
+        vertex: wgpu::VertexState {
+            module: shader,
+            entry_point: Some("vs_main"),
+            buffers: &[SpriteVertex::desc(), SpriteInstance::desc()],
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: shader,
+            entry_point: Some("fs_main"),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: surface_format,
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+        }),
+        primitive: wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleList,
+            front_face: wgpu::FrontFace::Ccw,
+            cull_mode: None,
+            ..Default::default()
+        },
+        depth_stencil: if depth_write {
+            Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth32Float,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(wgpu::CompareFunction::LessEqual),
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            })
+        } else {
+            None
+        },
+        multisample: wgpu::MultisampleState {
+            count: sample_count,
+            mask: !0,
+            alpha_to_coverage_enabled: false,
+        },
+        multiview_mask: None,
+        cache: None,
+    })
 }
 
 #[cfg(test)]
