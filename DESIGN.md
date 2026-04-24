@@ -2,7 +2,7 @@
 
 ## Status
 
-Workspace `v0.22.0` on branch `0.22`. Phase 3 is complete; all milestones `M12`–`M24` shipped and the rollout plan is archived at [`docs/plans/archive/phase3.md`](docs/plans/archive/phase3.md). Phase 4 scope is tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md). M25 (`D-057`) is live: offscreen `SceneTarget` + ordered named-pass list (`scene` → `present`), optional MSAA (1/2/4/8) and opt-in GPU depth-test sprite path, WGSL shaders are manifest-tracked with body-edit hot reload via `wgpu::naga` validation. `SceneColor` format equals the swapchain sRGB format in M25; M27 will add an HDR sibling target for bloom input. Companion docs: [`AGENTS.md`](AGENTS.md) for operational rules, [`DECISIONS.md`](DECISIONS.md) for rationale by `D-NNN`.
+Workspace `v0.23.0` on branch `0.23`. Phase 3 is complete; all milestones `M12`–`M24` shipped and the rollout plan is archived at [`docs/plans/archive/phase3.md`](docs/plans/archive/phase3.md). Phase 4 scope is tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md). M25 (`D-057`) is live: offscreen `SceneTarget` + ordered named-pass list (`scene` → `present`), optional MSAA (1/2/4/8) and opt-in GPU depth-test sprite path, WGSL shaders are manifest-tracked with body-edit hot reload via `wgpu::naga` validation. `SceneColor` format equals the swapchain sRGB format in M25; M27 will add an HDR sibling target for bloom input. Companion docs: [`AGENTS.md`](AGENTS.md) for operational rules, [`DECISIONS.md`](DECISIONS.md) for rationale by `D-NNN`.
 
 ## What It Is
 
