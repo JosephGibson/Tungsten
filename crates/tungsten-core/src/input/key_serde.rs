@@ -21,7 +21,10 @@ const KEYCODE_NAMES: &[(KeyCode, &str)] = &[
     (KeyCode::KeyA, "KeyA"),
     (KeyCode::KeyS, "KeyS"),
     (KeyCode::KeyD, "KeyD"),
+    (KeyCode::KeyB, "KeyB"),
+    (KeyCode::KeyC, "KeyC"),
     (KeyCode::KeyM, "KeyM"),
+    (KeyCode::KeyN, "KeyN"),
     (KeyCode::KeyP, "KeyP"),
     (KeyCode::KeyV, "KeyV"),
     (KeyCode::Digit1, "Digit1"),
@@ -29,6 +32,8 @@ const KEYCODE_NAMES: &[(KeyCode, &str)] = &[
     (KeyCode::Digit3, "Digit3"),
     (KeyCode::Equal, "Equal"),
     (KeyCode::Minus, "Minus"),
+    (KeyCode::BracketLeft, "BracketLeft"),
+    (KeyCode::BracketRight, "BracketRight"),
 ];
 
 const MOUSE_BUTTON_NAMES: &[(MouseButton, &str)] = &[

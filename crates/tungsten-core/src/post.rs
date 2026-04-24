@@ -302,12 +302,17 @@ pub struct GodRaysParams {
 
 impl Default for GodRaysParams {
     fn default() -> Self {
+        // 16 samples is the sweet spot for a full-viewport pass at 1080p:
+        // halves texture-fetch bandwidth vs. the textbook 32-sample default
+        // and keeps the ray length visually coherent. `weight = 0.15` pairs
+        // with the in-shader `0.6` brightness threshold so only highlights
+        // bloom — no additive blow-out on flat mid-grey scenes.
         Self {
             center: [0.5, 0.5],
-            density: 0.94,
-            decay: 0.96,
-            weight: 0.4,
-            samples: 32,
+            density: 0.9,
+            decay: 0.92,
+            weight: 0.15,
+            samples: 16,
         }
     }
 }

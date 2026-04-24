@@ -40,8 +40,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let seed = params.f.z;
     let block_y = floor(in.uv.y * 40.0);
     let r = hash12(vec2<f32>(block_y, seed));
-    let active = step(1.0 - clamp(params.f.x, 0.0, 1.0), r);
+    let is_active = step(1.0 - clamp(params.f.x, 0.0, 1.0), r);
     let shift = params.f.y / max(dims.x, 1.0);
-    let shifted_uv = in.uv + vec2<f32>(shift * (r - 0.5) * 2.0 * active, 0.0);
+    let shifted_uv = in.uv + vec2<f32>(shift * (r - 0.5) * 2.0 * is_active, 0.0);
     return textureSample(src, src_sampler, shifted_uv);
 }

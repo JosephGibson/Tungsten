@@ -41,16 +41,19 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let sample = textureSample(src, src_sampler, in.uv);
     let mode = u32(params.f.x);
     let exposure = max(params.f.y, 0.0);
-    let white = max(params.f.z, 1e-4);
+    let white = max(params.f.z, 0.1);
     var rgb = sample.rgb * exposure;
     if (mode == 1u) {
         rgb = aces_approx(rgb);
     } else if (mode == 2u) {
         rgb = aces_approx(rgb * 0.6);
     } else {
-        let m = max(white, 1e-4);
+        // Reinhard (extended): `rgb / (rgb + 1)` re-normalised so that a
+        // source luminance of `white` maps to 1.0. At `white = 1` the default
+        // params behave like classic Reinhard with a mid-grey roll-off, not a
+        // divide-by-zero blow-out.
         rgb = rgb / (rgb + vec3<f32>(1.0));
-        rgb = rgb * (m / (m - 1.0 + 1e-4));
+        rgb = rgb * ((white + 1.0) / white);
     }
-    return vec4<f32>(rgb, sample.a);
+    return vec4<f32>(clamp(rgb, vec3<f32>(0.0), vec3<f32>(1.0)), sample.a);
 }

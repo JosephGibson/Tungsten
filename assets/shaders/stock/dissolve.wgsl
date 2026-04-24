@@ -40,9 +40,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let scale = max(params.f.y, 1.0);
     let n = hash12(floor(in.uv * scale));
     let progress = clamp(params.f.x, 0.0, 1.0);
-    if (n < progress - 0.05) {
+    let edge_width = 0.05;
+    // Dissolved blocks go to black; blocks in the transition band glow in
+    // `edge_color`. Both branches stay inactive at progress == 0 so the
+    // pass-through path is a true no-op.
+    if (progress > 0.0 && n < progress) {
         return vec4<f32>(0.0, 0.0, 0.0, sample.a);
-    } else if (n < progress + 0.05) {
+    }
+    if (progress > 0.0 && n < progress + edge_width) {
         return vec4<f32>(params.v0.rgb, sample.a);
     }
     return sample;
