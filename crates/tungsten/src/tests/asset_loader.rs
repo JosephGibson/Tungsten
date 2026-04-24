@@ -53,6 +53,7 @@ fn seed_world() -> World {
     world.insert_resource(AnimationRegistry::new());
     world.insert_resource(TilemapRegistry::new());
     world.insert_resource(ParticleConfigRegistry::new());
+    world.insert_resource(tungsten_core::assets::ShaderRegistry::new());
     world
 }
 
@@ -253,6 +254,25 @@ fn reload_particle_preserves_previous_on_unknown_sprite() {
         "ex10_spark",
         "unknown-sprite reload must be rejected and leave last-known-good"
     );
+}
+
+#[test]
+fn shader_registry_allocate_reverse_lookup_roundtrips() {
+    // The device-touching path is smoke-tested by the msaa × depth_sort
+    // matrix; here we lock down the core-side path the umbrella crate uses
+    // to bridge `.wgsl` hot-reload events back to a renderer id.
+    use std::path::PathBuf;
+    use tungsten_core::assets::ShaderRegistry;
+
+    let mut world = seed_world();
+    let path = PathBuf::from("/tmp/tungsten_reload_shader_test/sprite.wgsl");
+    {
+        let reg = world.get_resource_mut::<ShaderRegistry>().unwrap();
+        let id = reg.allocate("sprite", path.clone());
+        assert_eq!(reg.get("sprite"), Some(id));
+        assert_eq!(reg.id_for_path(&path), Some(id));
+        assert_eq!(reg.name_for_id(id), Some("sprite"));
+    }
 }
 
 #[test]

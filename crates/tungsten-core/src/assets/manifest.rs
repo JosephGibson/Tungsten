@@ -27,6 +27,8 @@ pub enum ManifestError {
     MissingTilemapFile { id: String, path: String },
     #[error("particle '{id}' references missing file: {path}")]
     MissingParticleFile { id: String, path: String },
+    #[error("shader '{id}' references missing file: {path}")]
+    MissingShaderFile { id: String, path: String },
     #[error("duplicate asset ID '{id}' across manifests")]
     DuplicateId { id: String },
 }
@@ -46,6 +48,8 @@ pub struct RawManifest {
     pub tilemaps: HashMap<String, TilemapEntry>,
     #[serde(default)]
     pub particles: HashMap<String, ParticleEntry>,
+    #[serde(default)]
+    pub shaders: HashMap<String, ShaderEntry>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -101,6 +105,11 @@ pub struct ParticleEntry {
     pub path: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct ShaderEntry {
+    pub path: String,
+}
+
 /// D-052 loaded merged manifest resource.
 #[derive(Debug, Clone, Default)]
 pub struct LoadedManifest(pub ResolvedManifest);
@@ -126,6 +135,7 @@ pub struct ResolvedManifest {
     pub sounds: HashMap<String, ResolvedSound>,
     pub tilemaps: HashMap<String, ResolvedTilemap>,
     pub particles: HashMap<String, ResolvedParticle>,
+    pub shaders: HashMap<String, ResolvedShader>,
 }
 
 #[derive(Debug, Clone)]
@@ -158,6 +168,11 @@ pub struct ResolvedTilemap {
 
 #[derive(Debug, Clone)]
 pub struct ResolvedParticle {
+    pub path: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolvedShader {
     pub path: PathBuf,
 }
 
@@ -271,6 +286,20 @@ impl ResolvedManifest {
                 .insert(id, ResolvedParticle { path: full_path });
         }
 
+        for (id, entry) in raw.shaders {
+            let full_path = base_dir.join(&entry.path);
+            if !full_path.exists() {
+                return Err(ManifestError::MissingShaderFile {
+                    id,
+                    path: full_path.display().to_string(),
+                });
+            }
+            let full_path = full_path.canonicalize().unwrap_or(full_path);
+            result
+                .shaders
+                .insert(id, ResolvedShader { path: full_path });
+        }
+
         Ok(result)
     }
 
@@ -323,6 +352,12 @@ impl ResolvedManifest {
                 return Err(ManifestError::DuplicateId { id });
             }
             self.particles.insert(id, particle);
+        }
+        for (id, shader) in other.shaders {
+            if self.shaders.contains_key(&id) {
+                return Err(ManifestError::DuplicateId { id });
+            }
+            self.shaders.insert(id, shader);
         }
         Ok(())
     }

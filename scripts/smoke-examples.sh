@@ -64,3 +64,45 @@ if [ ${#fail[@]} -gt 0 ]; then
   done
   exit 1
 fi
+
+# M25: msaa × depth_sort matrix over example-02-sprite-stress. Uses env
+# overrides from `tungsten-core::config` so no tracked config edits are
+# needed. Each row still honors TUNGSTEN_SMOKE_FRAMES + the per-example
+# timeout from above.
+matrix_pkg="example-02-sprite-stress"
+matrix_pass=()
+matrix_fail=()
+echo
+echo "M25 MSAA × depth_sort matrix (pkg: $matrix_pkg)"
+for msaa in 1 4; do
+  for sort in cpu_stable gpu_depth; do
+    label="msaa=${msaa} depth_sort=${sort}"
+    printf "  %-28s ... " "$label"
+    log_file="$log_dir/${matrix_pkg}-msaa${msaa}-${sort}.log"
+    if TUNGSTEN_SMOKE_FRAMES="$SMOKE_FRAMES" \
+       TUNGSTEN_RENDER_MSAA="$msaa" \
+       TUNGSTEN_RENDER_DEPTH_SORT="$sort" \
+       timeout --preserve-status "$TIMEOUT_SECS" \
+       cargo run -p "$matrix_pkg" --quiet >"$log_file" 2>&1; then
+      echo "OK"
+      matrix_pass+=("$label")
+    else
+      code=$?
+      if [ "$code" -eq 124 ]; then
+        echo "TIMEOUT (${TIMEOUT_SECS}s)"
+      else
+        echo "FAIL (exit $code)"
+      fi
+      matrix_fail+=("$label ($log_file)")
+    fi
+  done
+done
+
+echo "Matrix passed: ${#matrix_pass[@]}/4"
+if [ ${#matrix_fail[@]} -gt 0 ]; then
+  echo "Matrix failures:"
+  for row in "${matrix_fail[@]}"; do
+    echo "  - $row"
+  done
+  exit 1
+fi

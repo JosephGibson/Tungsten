@@ -56,5 +56,10 @@
       "looping": true,
       "volume": 0.4
     }
+  },
+  "shaders": {
+    "sprite": {
+      "path": "shaders/sprite.wgsl"
+    }
   }
 }

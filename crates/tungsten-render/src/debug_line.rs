@@ -74,6 +74,8 @@ impl DebugLinePipeline {
         device: &wgpu::Device,
         surface_format: wgpu::TextureFormat,
         camera_bind_group_layout: &wgpu::BindGroupLayout,
+        sample_count: u32,
+        depth_attached: bool,
     ) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("debug_line_shader"),
@@ -111,8 +113,12 @@ impl DebugLinePipeline {
                 cull_mode: None,
                 ..Default::default()
             },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
+            depth_stencil: crate::quad::passthrough_depth_stencil(depth_attached),
+            multisample: wgpu::MultisampleState {
+                count: sample_count,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
             multiview_mask: None,
             cache: None,
         });

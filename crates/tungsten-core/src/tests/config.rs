@@ -12,6 +12,105 @@ fn defaults_are_sane() {
     assert!(config.display.frame_rate_cap.is_none());
     assert!(config.render.max_frame_latency.is_none());
     assert!(config.render.present_mode.is_none());
+    assert_eq!(config.render.msaa, 1);
+    assert!(config.render.depth_enabled);
+    assert_eq!(config.render.depth_sort, DepthSortMode::CpuStable);
+}
+
+#[test]
+fn render_config_defaults_from_empty_json() {
+    let parsed: RenderConfig = serde_json::from_str("{}").unwrap();
+    assert_eq!(parsed.msaa, 1);
+    assert!(parsed.depth_enabled);
+    assert_eq!(parsed.depth_sort, DepthSortMode::CpuStable);
+}
+
+#[test]
+fn render_config_parses_depth_sort_gpu_depth() {
+    let json = r#"{ "depth_sort": "gpu_depth" }"#;
+    let parsed: RenderConfig = serde_json::from_str(json).unwrap();
+    assert_eq!(parsed.depth_sort, DepthSortMode::GpuDepth);
+}
+
+#[test]
+fn render_config_parses_depth_sort_cpu_stable() {
+    let json = r#"{ "depth_sort": "cpu_stable" }"#;
+    let parsed: RenderConfig = serde_json::from_str(json).unwrap();
+    assert_eq!(parsed.depth_sort, DepthSortMode::CpuStable);
+}
+
+#[test]
+fn render_config_rejects_unknown_depth_sort() {
+    let json = r#"{ "depth_sort": "painters" }"#;
+    let err = serde_json::from_str::<RenderConfig>(json).unwrap_err();
+    assert!(err.is_data());
+}
+
+#[test]
+fn msaa_override_accepts_supported_values() {
+    for value in ["1", "2", "4", "8"] {
+        let mut config = Config::default();
+        config.apply_msaa_override(value).unwrap();
+        assert_eq!(config.render.msaa, value.parse::<u32>().unwrap());
+    }
+}
+
+#[test]
+fn msaa_override_rejects_unsupported_values() {
+    let mut config = Config::default();
+    let err = config.apply_msaa_override("3").unwrap_err();
+    match err {
+        ConfigError::InvalidEnvOverride {
+            var,
+            value,
+            expected,
+        } => {
+            assert_eq!(var, RENDER_MSAA_ENV);
+            assert_eq!(value, "3");
+            assert_eq!(expected, MSAA_EXPECTED);
+        }
+        other => panic!("unexpected error: {other}"),
+    }
+}
+
+#[test]
+fn depth_enabled_override_accepts_boolish_strings() {
+    let mut config = Config::default();
+    config.apply_depth_enabled_override("false").unwrap();
+    assert!(!config.render.depth_enabled);
+    config.apply_depth_enabled_override("1").unwrap();
+    assert!(config.render.depth_enabled);
+    config.apply_depth_enabled_override("0").unwrap();
+    assert!(!config.render.depth_enabled);
+    config.apply_depth_enabled_override("true").unwrap();
+    assert!(config.render.depth_enabled);
+}
+
+#[test]
+fn depth_sort_override_parses_both_modes() {
+    let mut config = Config::default();
+    config.apply_depth_sort_override("gpu_depth").unwrap();
+    assert_eq!(config.render.depth_sort, DepthSortMode::GpuDepth);
+    config.apply_depth_sort_override("cpu_stable").unwrap();
+    assert_eq!(config.render.depth_sort, DepthSortMode::CpuStable);
+}
+
+#[test]
+fn depth_sort_override_rejects_unknown() {
+    let mut config = Config::default();
+    let err = config.apply_depth_sort_override("painters").unwrap_err();
+    match err {
+        ConfigError::InvalidEnvOverride {
+            var,
+            value,
+            expected,
+        } => {
+            assert_eq!(var, RENDER_DEPTH_SORT_ENV);
+            assert_eq!(value, "painters");
+            assert_eq!(expected, DEPTH_SORT_EXPECTED);
+        }
+        other => panic!("unexpected error: {other}"),
+    }
 }
 
 #[test]

@@ -50,6 +50,8 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
             color: s.color,
             uv_min: asset.uv.min,
             uv_size,
+            z_norm: 0.0,
+            _pad: 0.0,
         });
     }
     batches.extend(particle_batches.into_values());
@@ -72,6 +74,8 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
                 color: [115, 20, 191, 230],
                 uv_min,
                 uv_size,
+                z_norm: 0.0,
+                _pad: 0.0,
             })
             .collect();
         if !instances.is_empty() {
@@ -113,6 +117,8 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
             color: [255; 4],
             uv_min,
             uv_size,
+            z_norm: 0.0,
+            _pad: 0.0,
         });
     }
     batches.extend(player_batches.into_values());
@@ -133,6 +139,8 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
                 color: [255; 4],
                 uv_min,
                 uv_size,
+                z_norm: 0.0,
+                _pad: 0.0,
             })
             .collect();
         if !instances.is_empty() {
@@ -173,6 +181,8 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
                     color: [255; 4],
                     uv_min,
                     uv_size,
+                    z_norm: 0.0,
+                    _pad: 0.0,
                 }],
             });
         }

@@ -1,23 +1,23 @@
 ---
 status: draft
-goal: Phase 4 ships 8 milestones (M25–M32) covering render foundation, materials, stock post-effects, bloom, 2D lighting, parallax + game-feel, instanced mesh particles + transitions, MSDF text, and a collaborative showcase example.
+goal: "Phase 4 ships 9 milestones (M25–M33) covering render foundation, materials, stock post-effects, SMAA presentation AA, bloom, 2D lighting, parallax + game-feel, instanced mesh particles + transitions, MSDF text, and a collaborative showcase example."
 non-goals:
-  - No 3D, scripting, networking, WASM, editor (DESIGN.md §Non-Commitments).
-  - No capture tooling (GIF/video/screenshot automation); manual acceptance artifacts are still expected.
-  - No deferred lighting, shadow casters, occluder polygons, volumetric lights, GI (Phase 5).
-  - No asset-preprocessing pipeline (MSDF bakes at startup, not ahead of time).
-  - No cleanup-only milestone; each feature milestone slices the monoliths it touches.
+  - "No 3D, scripting, networking, WASM, editor (DESIGN.md §Non-Commitments)."
+  - "No capture tooling (GIF/video/screenshot automation); manual acceptance artifacts are still expected."
+  - "No deferred lighting, shadow casters, occluder polygons, volumetric lights, GI (Phase 5)."
+  - "No asset-preprocessing pipeline (MSDF bakes at startup, not ahead of time)."
+  - "No cleanup-only milestone; each feature milestone slices the monoliths it touches."
 files to touch:
-  - `docs/plans/phase4-ideas.md` (this index)
-  - `docs/plans/phase4-milestone-25-*.md` through `docs/plans/phase4-milestone-32-*.md`
+  - "docs/plans/phase4.md"
+  - "docs/plans/phase4-milestone-25-*.md through docs/plans/phase4-milestone-33-*.md"
 ordered steps:
-  1. Promote each milestone below to its own `phase4-milestone-NN-*.md` plan file.
-  2. Execute M25 → M26 → M27 → M28 in order. M29 ↔ M30 order is free. M31 before M32. M32 last.
-  3. Each milestone: write plan, implement, produce acceptance artifact, flip status to done.
+  - "Promote each milestone below to its own phase4-milestone-NN-*.md plan file."
+  - "Execute M25 → M26 → M27 → M28 → M29 in order. M30 ↔ M31 order is free. M32 before M33. M33 last."
+  - "For each milestone, write the plan, implement it, produce an acceptance artifact, and flip status to done."
 done-when:
-  - All 8 milestones landed on the active integration branch (`0.21` today; `main` if the repo flips before Phase 4 starts), each with `status: done` in its plan file.
-  - `DESIGN.md § Status`, `CHANGELOG.md`, and `docs/DECISION_INDEX.md` are updated where milestone decisions change canonical project guidance.
-  - This file flipped to `status: done`, and any milestone that changes the shader/text/hot-reload rules updates `AGENTS.md` in the same change.
+  - "All 9 milestones landed on the active integration branch (`0.22` today; `main` if the repo flips before Phase 4 starts), each with `status: done` in its plan file."
+  - "DESIGN.md Status, CHANGELOG.md, and docs/DECISION_INDEX.md are updated where milestone decisions change canonical project guidance."
+  - "This file is flipped to `status: done`, and any milestone that changes the shader/text/hot-reload rules updates AGENTS.md in the same change."
 ---
 
 ## Current Renderer Baseline
@@ -28,7 +28,7 @@ done-when:
 - WGSL embedded via `include_str!`, no hot reload ([D-023](DECISIONS.md)).
 - [renderer.rs](crates/tungsten-render/src/renderer.rs) entrypoints: `render_frame`, `render_frame_with_quads`, `render_frame_full`, `render_frame_full_timed`.
 
-Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user materials, post-stack, bloom, normal-mapped lighting, parallax, screen-shake, squash/stretch, instanced mesh particles, screen transitions, MSDF text, capstone example.
+Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user materials, post-stack, SMAA presentation AA, bloom, normal-mapped lighting, parallax, screen-shake, squash/stretch, instanced mesh particles, screen transitions, MSDF text, capstone example.
 
 ---
 
@@ -38,11 +38,14 @@ Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user mate
 - `Tween` remains one component per entity ([D-055](DECISIONS.md)); Phase 4 extends entity-local `TweenChannel`/override data instead of introducing a cross-entity tween target model.
 - Screen transitions stay umbrella-owned while `StateStack` queues concrete `GameState` values; do not move state-request abstractions into `tungsten-core` in Phase 4.
 - `CameraState` stays render output only; shake/trauma lives in `CameraController` or a sibling camera-control resource.
-- M31 stays within the current thread policy: no general worker pool or async runtime.
+- Screen-space text stays on the existing `ExtractTextFn` seam; when presentation AA lands, those sections move to a final overlay pass after the post chain so HUD/debug text stays crisp.
+- M32 stays within the current thread policy: no general worker pool or async runtime.
 
 ---
 
 ## M25 — Render Foundation
+
+**Status:** done (plan at [`docs/plans/phase4-milestone-25-render-foundation.md`](phase4-milestone-25-render-foundation.md)).
 
 **Depends on:** none.
 
@@ -96,6 +99,7 @@ Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user mate
 - `struct MaterialAssetId(u32)` + `MaterialRegistry` resource.
 - `enum PostPass { Tonemap(TonemapParams), Vignette(VignetteParams), Lut(LutParams), ChromaticAberration(f32), ColorAdjust { hue, sat, contrast }, ToneMono(ToneMonoParams), Crt(CrtParams), FilmGrain(f32), Dither(DitherParams), PixelOutline(PixelOutlineParams), Fade(f32), WipeRadial(f32), Dissolve(f32), Glitch(GlitchParams), Pixelate(f32), Fog(FogParams), GodRays(GodRaysParams) }`.
 - `struct PostStack(Vec<PostPass>)` resource.
+- `PostStack` stays reorderable art-direction passes only; M27 adds presentation AA as a fixed tail stage, not a `PostPass` variant.
 
 **Adds (Sprite extension):**
 - `Sprite.material_id: Option<MaterialAssetId>` — `None` uses built-in `sprite.wgsl`.
@@ -105,7 +109,7 @@ Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user mate
 - LUT images go under `sprites` section as regular assets.
 
 **Adds (entity-local uniform bridge — `tungsten-core/src/tween.rs` + `components.rs`):**
-- `UniformOverrideBlock` (name TBD) — fixed-layout per-entity override data for 4 `vec4`, 4 scalar, and 4 int slots; sprite materials are the first consumer and M31 reuses the same block for MSDF outline/glow.
+- `UniformOverrideBlock` (name TBD) — fixed-layout per-entity override data for 4 `vec4`, 4 scalar, and 4 int slots; sprite materials are the first consumer and M32 reuses the same block for MSDF outline/glow.
 - `TweenChannel` grows uniform-slot variants keyed by slot / lane; no new `TweenTarget`, and the one-`Tween`-per-entity rule from [D-055](DECISIONS.md) stays intact.
 - `tween_tick_system` writes into the entity-local override block; the renderer falls back to manifest defaults when no override is present.
 
@@ -129,7 +133,41 @@ Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user mate
 
 ---
 
-## M27 — Bloom
+## M27 — SMAA Presentation AA
+
+**Depends on:** M25, M26.
+
+**Adds (crates/tungsten-core/src/config.rs):**
+- `render.post_aa: PostAaMode` — `Off | SmaaLow | SmaaMedium | SmaaHigh | SmaaUltra` (default `Off`).
+
+**Adds (crates/tungsten-render/src/):**
+- `post/smaa.rs` — `SmaaPipeline { edge_detect, blend_weights, neighborhood }`.
+- `shaders/stock/smaa_edge.wgsl`, `smaa_blend_weights.wgsl`, `smaa_neighborhood_blend.wgsl`.
+- Vendored official SMAA lookup textures (`area`, `search`) with attribution, shipped as engine-internal assets (`include_bytes!` / generated texture upload), not manifest-tracked content.
+
+**Adds (targeting / frame order):**
+- Extend the post target pool with `SmaaEdges` and `SmaaBlend` intermediates sized to the viewport.
+- `PostStack` output flows into SMAA as a fixed presentation tail, then into a final offscreen present source that the existing blit pass copies to the swapchain.
+- `TextSection` / HUD / inspector / overlay text draw after SMAA into that same final offscreen present source, so SMAA smooths scene edges without softening screen-space text and capture/readback still matches what the player saw.
+
+**Adds (DECISIONS.md):**
+- New entry: post AA is a renderer-owned presentation choice, not a reorderable `PostPass`; Phase 4 ships SMAA 1x presets only (no T2x / 4x / temporal history), and screen-space text draws after the post-AA tail.
+
+**Touches:**
+- [renderer.rs](crates/tungsten-render/src/renderer.rs) — split scene / post / presentation / overlay recording so the frame becomes `SceneColor -> PostStack -> SMAA? -> final present source -> Swapchain`.
+- [targets.rs](crates/tungsten-render/src/targets.rs) — add SMAA intermediates alongside the M26 post ping-pong targets.
+- [passes/](crates/tungsten-render/src/passes/) — route the fixed tail stage after the reorderable post stack.
+- [text.rs](crates/tungsten-render/src/text.rs) — reused in the final overlay pass; no new text extraction seam.
+- [app.rs](crates/tungsten/src/app.rs) — API surface unchanged; extracted text remains screen-space, but render order changes.
+
+**Acceptance:**
+- `examples/04_shader_playground/` gets `post_aa off/low/high` hotkeys and on-screen status.
+- Side-by-side capture artifact under `docs/showcase/` shows a deliberately aliased scene with `post_aa = off` vs `smaa_high`.
+- [examples/03_scene_state/](examples/03_scene_state/) keeps menu / pause text visibly crisp while SMAA is enabled, proving the overlay split.
+
+---
+
+## M28 — Bloom
 
 **Depends on:** M25, M26.
 
@@ -156,9 +194,9 @@ Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user mate
 
 ---
 
-## M28 — 2D Lighting (Forward, Normal-Mapped)
+## M29 — 2D Lighting (Forward, Normal-Mapped)
 
-**Depends on:** M25, M26. M27 recommended (bloom + emissive).
+**Depends on:** M25, M26. M28 recommended (bloom + emissive).
 
 **Adds (crates/tungsten-core/src/):**
 - `components.rs` — `Light { kind: LightKind, color: Vec3, intensity: f32 }`, `enum LightKind { Point { radius: f32, falloff: f32 }, Directional { angle: f32 } }`.
@@ -179,11 +217,11 @@ Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user mate
 
 **Light cull:** distance-to-camera-AABB sort, keep nearest 16.
 
-**Acceptance:** [examples/01_platformer/](examples/01_platformer/) gets normal-mapped character + 2 colored point lights + 1 directional; gif shows lighting response during movement; emissive eyes trigger M27 bloom.
+**Acceptance:** [examples/01_platformer/](examples/01_platformer/) gets normal-mapped character + 2 colored point lights + 1 directional; gif shows lighting response during movement; emissive eyes trigger M28 bloom.
 
 ---
 
-## M29 — Parallax + Screen-Shake + Squash/Stretch
+## M30 — Parallax + Screen-Shake + Squash/Stretch
 
 **Depends on:** M25 (extract changes share seam).
 
@@ -212,7 +250,7 @@ Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user mate
 
 ---
 
-## M30 — Instanced Mesh Particles + Screen Transitions
+## M31 — Instanced Mesh Particles + Screen Transitions
 
 **Depends on:** M23 (particles), M26 (materials/post-stack).
 
@@ -239,7 +277,7 @@ Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user mate
 
 ---
 
-## M31 — MSDF Text
+## M32 — MSDF Text
 
 **Depends on:** M25 (shader assets), M26 (shared entity-local uniform override for outline/glow controls).
 
@@ -258,8 +296,8 @@ Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user mate
 - `fonts.<id>.msdf: bool | MsdfOptions` opt-in on the current keyed font entries; no parallel font-manifest format.
 
 **Bake pipeline:**
-- At startup, for each manifest font with `msdf: true`, `msdfgen` + `ttf_parser` generate a 512×512 atlas synchronously in the existing asset-load path (ASCII + Latin-1 Supplement + user-declared extra ranges). No general worker pool in M31.
-- Atlas cached in memory only (no disk cache in M31).
+- At startup, for each manifest font with `msdf: true`, `msdfgen` + `ttf_parser` generate a 512×512 atlas synchronously in the existing asset-load path (ASCII + Latin-1 Supplement + user-declared extra ranges). No general worker pool in M32.
+- Atlas cached in memory only (no disk cache in M32).
 
 **Extract:**
 - `extract_msdf_text(&World)` — queries `(Transform, MsdfText, Visibility)` plus the optional M26 uniform override block, resolves via `MsdfFontRegistry`, uses `cosmic-text` `Buffer` for layout, emits per-glyph quad instances referencing atlas UVs.
@@ -272,18 +310,18 @@ Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user mate
 
 ---
 
-## M32 — Showcase Example (scope-locked at kickoff, not now)
+## M33 — Showcase Example (scope-locked at kickoff, not now)
 
-**Depends on:** M25–M31 all done.
+**Depends on:** M25–M32 all done.
 
-**Hard rule:** no `examples/05_showcase/` directory, no asset production, no scope lock until M31 is flipped to `status: done`.
+**Hard rule:** no `examples/05_showcase/` directory, no asset production, no scope lock until M32 is flipped to `status: done`.
 
 **Locked requirements (only these):**
 - Lives in `examples/05_showcase/` with local `assets/manifest.json`.
-- Must exercise: materials + ≥5 stock effects (M26), bloom (M27), ≥2 point lights + 1 directional + normal maps (M28), ≥3 parallax layers + shake + squash (M29), ≥1 mesh-instanced particle system + ≥1 screen transition (M30), MSDF title card (M31).
+- Must exercise: materials + ≥5 stock effects (M26), SMAA (M27), bloom (M28), ≥2 point lights + 1 directional + normal maps (M29), ≥3 parallax layers + shake + squash (M30), ≥1 mesh-instanced particle system + ≥1 screen transition (M31), MSDF title card (M32).
 - Acceptance: ~30-second clip + 3 PNG stills committed under `docs/showcase/`.
 
-Shape (game or non-game), assets, and systems are designed in the M32 plan file, not here.
+Shape (game or non-game), assets, and systems are designed in the M33 plan file, not here.
 
 ---
 
@@ -293,29 +331,31 @@ Shape (game or non-game), assets, and systems are designed in the M32 plan file,
 | --- | --- | --- | --- |
 | 1 | M25 | Render foundation | — |
 | 2 | M26 | Materials + post-stack + tween→material | M25 |
-| 3 | M27 | Bloom | M25, M26 |
-| 4 | M28 | 2D lighting + emissive + rim | M25, M26 |
-| 5 | M29 | Parallax + shake + squash | M25 |
-| 6 | M30 | Mesh particles + transitions | M23, M26 |
-| 7 | M31 | MSDF text | M25, M26 |
-| 8 | M32 | Showcase | M25–M31 |
+| 3 | M27 | SMAA presentation AA | M25, M26 |
+| 4 | M28 | Bloom | M25, M26 |
+| 5 | M29 | 2D lighting + emissive + rim | M25, M26 |
+| 6 | M30 | Parallax + shake + squash | M25 |
+| 7 | M31 | Mesh particles + transitions | M23, M26 |
+| 8 | M32 | MSDF text | M25, M26 |
+| 9 | M33 | Showcase | M25–M32 |
 
-M29 and M30 may swap. M31 must precede M32.
+M30 and M31 may swap. M32 must precede M33.
 
 ## Resolved Decisions
 
-- 8 milestones. Locked.
-- 17 stock effects in M26; bloom in M27; emissive + rim in M28 lit path. Total Phase 4 effect count: 20.
+- 9 milestones. Locked.
+- 17 stock effects in M26; SMAA ships in M27 as a fixed presentation tail, not a reorderable `PostPass`; bloom in M28; emissive + rim in M29 lit path.
 - LYGIA WGSL snippets vendored under `crates/tungsten-render/src/shaders/stock/lygia/` with header attribution. No crate dependency.
 - MSDF narrows [D-026](DECISIONS.md) (does not reverse). `cosmic-text` retained for layout.
 - [D-023](DECISIONS.md) narrowed by M25 decision entry. Shader hot reload for body edits only; signature changes require rebuild.
 - New manifest sections follow the existing keyed object shape (`id -> entry`), not `Vec`-only formats.
 - Material/MSDF animation stays entity-local by extending `TweenChannel` plus shared override data; no cross-entity `TweenTarget` in Phase 4.
 - Screen transitions stay in `tungsten` alongside `StateStack`; no core `StateRequest` in Phase 4.
-- M29 shake extends `CameraController`, not `CameraState`.
-- M31 MSDF bake stays synchronous in the existing startup load path; parallel baking is Phase 5 work if startup cost justifies it.
-- Every new `D-0xx` added in Phase 4 updates [docs/DECISION_INDEX.md](docs/DECISION_INDEX.md) in the same change; M25/M31 also sync [AGENTS.md](AGENTS.md) and [DESIGN.md](DESIGN.md) when canonical shader/text guidance changes.
-- M26 `04_shader_playground` stays minimal. Heavy example authoring only in M32.
+- SMAA is a renderer-owned presentation choice exposed through `render.post_aa`; it runs after the reorderable post stack and before screen-space text.
+- M30 shake extends `CameraController`, not `CameraState`.
+- M32 MSDF bake stays synchronous in the existing startup load path; parallel baking is Phase 5 work if startup cost justifies it.
+- Every new `D-0xx` added in Phase 4 updates [docs/DECISION_INDEX.md](docs/DECISION_INDEX.md) in the same change; M25/M32 also sync [AGENTS.md](AGENTS.md) and [DESIGN.md](DESIGN.md) when canonical shader/text guidance changes.
+- M26 `04_shader_playground` stays minimal. Heavy example authoring only in M33.
 - Depth-test sprite path ships in M25 as opt-in; `z_order` CPU-sort remains default.
 
 ## Sources
@@ -324,6 +364,9 @@ M29 and M30 may swap. M31 must precede M32.
 - [msdfgen Rust crate](https://docs.rs/msdfgen)
 - [awesome-msdf — shader collection](https://github.com/Blatko1/awesome-msdf)
 - [SDF Fonts — redblobgames](https://www.redblobgames.com/blog/2024-03-21-sdf-fonts/)
+- [SMAA official site](https://www.iryoku.com/smaa/)
+- [SMAA paper (Eurographics 2012 PDF)](https://www.iryoku.com/smaa/downloads/SMAA-Enhanced-Subpixel-Morphological-Antialiasing.pdf)
+- [SMAA reference implementation](https://github.com/iryoku/smaa)
 - [LYGIA shader library](https://lygia.xyz/)
 - [Godot CanvasItem shader reference](https://docs.godotengine.org/en/stable/tutorials/shaders/shader_reference/canvas_item_shader.html)
 - [gdquest-demos/godot-shaders — 2D reference](https://github.com/gdquest-demos/godot-shaders)

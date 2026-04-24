@@ -25,7 +25,8 @@ use crate::systems_overlay::{
 };
 use crate::telemetry::{DisplayTelemetry, FrameTimings, RenderCounts};
 use tungsten_core::assets::{
-    AnimationRegistry, FontRegistry, ParticleConfigRegistry, SoundRegistry, TilemapRegistry,
+    AnimationRegistry, FontRegistry, ParticleConfigRegistry, ShaderRegistry, SoundRegistry,
+    TilemapRegistry,
 };
 use tungsten_core::physics::{CollisionEvent, PhysicsConfig};
 use tungsten_core::{
@@ -40,6 +41,11 @@ use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Fullscreen, Window, WindowId};
+
+/// Fixed per-frame dt (seconds) used under `TUNGSTEN_SMOKE_FRAMES`. Pinned to
+/// 60 Hz so smoke-mode captures and visual regressions are frame-deterministic
+/// across runs regardless of build profile or host load.
+const SMOKE_MODE_FIXED_DT_SECS: f32 = 1.0 / 60.0;
 
 /// Tick system.
 pub type SystemFn = Box<dyn FnMut(&mut World)>;
@@ -140,6 +146,7 @@ impl App {
         world.insert_resource(AudioCommands::new());
         world.insert_resource(TilemapRegistry::new());
         world.insert_resource(ParticleConfigRegistry::new());
+        world.insert_resource(ShaderRegistry::new());
         world.insert_resource(ParticleBudget::default());
         world.insert_resource(ParticleActive::default());
         world.insert_resource(WorldRngSeed::default());
@@ -461,6 +468,21 @@ impl App {
                         );
                     }
                 }
+                "wgsl" => {
+                    let id = self.world.get_resource::<ShaderRegistry>().and_then(|reg| {
+                        reg.id_for_path(&canon)
+                            .and_then(|sid| reg.name_for_id(sid).map(ToString::to_string))
+                    });
+                    if let Some(id) = id {
+                        if let Err(e) =
+                            asset_loader::reload_shader(&id, &canon, &mut self.world, renderer)
+                        {
+                            log::error!("Shader reload '{id}': {e}");
+                        }
+                    } else {
+                        log::debug!("Hot reload: no shader registered for '{}'", canon.display());
+                    }
+                }
                 _ => {}
             }
         }
@@ -608,7 +630,18 @@ impl App {
     fn stage_delta_time(&mut self) {
         let now = Instant::now();
         if let Some(last) = self.last_frame {
-            let dt = now.duration_since(last).as_secs_f32();
+            // Smoke mode (TUNGSTEN_SMOKE_FRAMES set) pins dt to 60 Hz so
+            // physics / particles / tweens / scene animation produce
+            // frame-accurate deterministic output. Wall-clock dt varies
+            // with CPU load and makes visual-regression captures drift
+            // between runs on the same binary. The capture path used by
+            // `visual_regression.rs` (smoke frames + capture frame env
+            // vars) is the canonical consumer.
+            let dt = if self.smoke_frames_remaining.is_some() {
+                SMOKE_MODE_FIXED_DT_SECS
+            } else {
+                now.duration_since(last).as_secs_f32()
+            };
             if let Some(delta) = self.world.get_resource_mut::<DeltaTime>() {
                 delta.dt = dt;
             }

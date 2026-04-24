@@ -4,7 +4,7 @@ Canonical operating rules for Tungsten. Read this first. Use `DESIGN.md` for arc
 
 ## What Tungsten Is
 
-From-scratch Rust 2D game engine. Stack: `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Workspace crates: `tungsten-core`, `tungsten-render`, `tungsten`. Native only. Current repo state: workspace version `0.21.0`, branch `0.21`, Phase 3 complete with all milestones `M12`–`M24` shipped; the rollout plan is archived at [`docs/plans/archive/phase3-rollout.md`](docs/plans/archive/phase3-rollout.md). Phase 4 is not yet scoped.
+From-scratch Rust 2D game engine. Stack: `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Workspace crates: `tungsten-core`, `tungsten-render`, `tungsten`. Native only. Current repo state: workspace version `0.22.0`, branch `0.22`, Phase 3 complete with all milestones `M12`–`M24` shipped; the rollout plan is archived at [`docs/plans/archive/phase3-rollout.md`](docs/plans/archive/phase3-rollout.md). Phase 4 scope is tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md).
 
 ## Commands
 
@@ -85,7 +85,7 @@ Adding a new asset:
 
 Additional rules:
 
-- **Shaders** (`*.wgsl`) live in `tungsten-render/src/`, are compiled in through `include_str!` (`D-023`), are not manifest-tracked, and are excluded from hot reload; shader changes require a binary rebuild.
+- **Shaders** (`*.wgsl`) live in `assets/shaders/` and register in the manifest under a `shaders` section (`D-057`). The engine-internal sprite shader is also `include_str!`d at the same path so the compile-time default and the manifest-tracked runtime source come from one file; the renderer byte-equal short-circuits the load call when they match. Body edits hot-reload through the existing umbrella watcher with `wgpu::naga` validation; signature / bind-group layout changes still require a rebuild (narrowing, not reversing, `D-023`).
 - **Example-local assets** live in `examples/NN_name/assets/` with a local `manifest.json`; asset IDs must be globally unique across all loaded manifests, and duplicate IDs are fatal at load time.
 - **Game code never references file paths;** always use asset IDs through the registry. That invariant is what makes hot reload (`M9`) work.
 

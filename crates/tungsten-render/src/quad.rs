@@ -78,7 +78,12 @@ pub struct QuadPipeline {
 
 impl QuadPipeline {
     #[must_use]
-    pub fn new(device: &wgpu::Device, surface_format: wgpu::TextureFormat) -> Self {
+    pub fn new(
+        device: &wgpu::Device,
+        surface_format: wgpu::TextureFormat,
+        sample_count: u32,
+        depth_attached: bool,
+    ) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("quad_shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("quad.wgsl").into()),
@@ -146,8 +151,12 @@ impl QuadPipeline {
                 cull_mode: None,
                 ..Default::default()
             },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
+            depth_stencil: passthrough_depth_stencil(depth_attached),
+            multisample: wgpu::MultisampleState {
+                count: sample_count,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
             multiview_mask: None,
             cache: None,
         });
@@ -208,4 +217,21 @@ impl QuadPipeline {
         render_pass.set_vertex_buffer(1, instance_buffer.slice(..));
         render_pass.draw(0..6, 0..instances.len() as u32);
     }
+}
+
+/// Read-only depth state for pipelines that render alongside sprites in a
+/// depth-attached scene pass. wgpu requires the pipeline's `DepthStencilState`
+/// to match the pass attachment exactly; quads/debug lines/text do not
+/// participate in depth sorting, so we give them `Always + no write`.
+pub(crate) fn passthrough_depth_stencil(depth_attached: bool) -> Option<wgpu::DepthStencilState> {
+    if !depth_attached {
+        return None;
+    }
+    Some(wgpu::DepthStencilState {
+        format: wgpu::TextureFormat::Depth32Float,
+        depth_write_enabled: Some(false),
+        depth_compare: Some(wgpu::CompareFunction::Always),
+        stencil: wgpu::StencilState::default(),
+        bias: wgpu::DepthBiasState::default(),
+    })
 }

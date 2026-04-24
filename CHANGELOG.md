@@ -6,7 +6,38 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-Phase 3 complete. Phase 4 scope is under planning.
+## [0.22.0] - 2026-04-24
+
+Summary: Phase 4 Milestone 25 — render foundation (offscreen `SceneTarget` with optional depth + MSAA, named/ordered pass list with an engine-internal present blit, manifest-tracked WGSL with body-edit hot reload, and opt-in GPU depth-test sprite path). Phase 4 scope is tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md).
+
+### Added
+
+- M25 render foundation (`D-057`): offscreen `SceneTarget` (color + optional depth + optional MSAA) driven by a named, ordered pass list (`scene` → `present`). The present pass blits `SceneColor` into the swapchain via an engine-internal `shaders/present_blit.wgsl` with exact-texel `textureLoad` so the default `msaa=1`, `depth_sort=cpu_stable` config stays byte-identical to the 0.21 baseline.
+- M25 config knobs in `RenderConfig`: `msaa` (1 | 2 | 4 | 8, default 1), `depth_enabled` (default `true`), `depth_sort` (`cpu_stable` default, `gpu_depth` opt-in) with matching `TUNGSTEN_RENDER_MSAA`, `TUNGSTEN_RENDER_DEPTH_ENABLED`, `TUNGSTEN_RENDER_DEPTH_SORT` env overrides.
+- M25 WGSL hot reload: shaders move into `assets/shaders/` under a manifest `shaders` section with a core-side `ShaderRegistry` + render-side `ShaderModuleCache`. Body edits hot-reload through the existing umbrella `notify` watcher after `wgpu::naga` parse + validation; the previous `ShaderModule` + live pipeline stay intact on any validation or rebuild failure.
+- M25 GPU depth-test sprite path: `SpriteInstance` gains a `z_norm` field derived from deterministic `(z_order, Entity::id)` painter order; under `depth_sort = "gpu_depth"` the sprite pipeline attaches `Depth32Float` with `depth_compare = LessEqual` so the depth buffer reproduces the same visible order as the CPU-stable path.
+- `scripts/smoke-examples.sh` appends a `{msaa ∈ 1, 4} × {depth_sort ∈ cpu_stable, gpu_depth}` matrix over `example-02-sprite-stress` via the new env overrides.
+
+### Changed
+
+- Workspace version bumped to `0.22.0`.
+- `README.md`, `AGENTS.md`, `DESIGN.md`, `CLAUDE.md`, `docs/plans/phase4.md`, and `docs/plans/phase4-milestone-25-render-foundation.md` now reflect branch `0.22` as the active integration line.
+- `AGENTS.md` §Asset Rules: shaders are now manifest-tracked with body-edit hot reload (`D-057`).
+- `DESIGN.md` §Status + §Hot Reload matrix: `shader` row added, `SceneColor` format noted.
+- `tungsten.json` `render` block documents the new `msaa` / `depth_enabled` / `depth_sort` defaults.
+- `renderer.rs` is split: surface/present-mode helpers moved to `surface.rs`, frame timing types moved to `timing.rs`, and the main frame now loops over a `PassOrder` instead of a single inline `begin_render_pass`.
+- `SpriteInstance` grew from 40 B to 48 B (+20%) to carry the new `z_norm: f32` and an explicit 4-byte `_pad` for 16-byte GPU alignment. The default-data path still writes `z_norm = 0.0` for callers that build instances by hand (`SpriteInstance::whole`, tilemap extract, custom example extracts).
+- Screenshot path simplified: captures now read directly from `SceneColor` after the scene pass (single draw, no duplicate capture-only pass). Under `msaa > 1` the read picks up the resolved target. Baseline image-diff is still byte-stable for the default config.
+
+### Fixed
+
+- **Smoke-mode dt is now deterministic.** Under `TUNGSTEN_SMOKE_FRAMES`, `App::stage_delta_time` pins the per-frame `DeltaTime.dt` to `1/60 s` instead of reading wall-clock. Previously the visual-regression fixture run and a subsequent test re-run would integrate different `dt` values at frame N, so sprite positions (and therefore pixels) diverged across otherwise-identical runs. With the pin in place, smoke-mode captures are reproducible across build profiles and host load, which is what the `visual_regression` fixture requires. Outside smoke mode, dt continues to come from `Instant::now()` as before.
+- **M25 QA pass:** four `GpuDepth` / MSAA bugs that would have reached 0.22 release without this sweep.
+  - `depth_sort = gpu_depth` now forces the quad / debug-line / text pipelines to carry a matching read-only `DepthStencilState` (`Always` + no write). Previously they declared no depth state and wgpu rejected them the moment the pass attached `SceneDepth`.
+  - `Renderer::new` now builds the sprite pipeline with the correct `depth_write` up front; the first frame under `gpu_depth` no longer boots a `depth: None` pipeline against a depth-attached pass.
+  - `SceneColorMsaa` drops `COPY_SRC` + `TEXTURE_BINDING` from its usage flags — multisampled textures reject `COPY_SRC` in wgpu, and nothing reads from the MSAA color target directly (the present blit reads the resolved `SceneColor`).
+  - `depth_sort = gpu_depth` + `depth_enabled = false` used to panic in the recorder (requested a depth target the pool never allocated). `Renderer::new` now logs and falls back to `cpu_stable` for that combination; `default_pass_order` takes `depth_enabled` so the depth attachment can never disagree with the pool.
+- **Painter-order depth orientation:** `z_norm` now decreases along painter order (`(total-1-i)/total`) so `LessEqual` accepts later-drawn fragments as they overwrite earlier overlaps. The previous ascending formula silently culled every later-drawn sprite in overlapping stacks under `gpu_depth`.
 
 ## [0.21.0] - 2026-04-23
 

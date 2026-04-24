@@ -318,6 +318,47 @@ fn merge_duplicate_particle_is_error() {
 }
 
 #[test]
+fn load_manifest_with_shaders() {
+    let tmp = tempdir();
+    write_file(&tmp, "shaders/sprite.wgsl");
+    let path = write_manifest(
+        &tmp,
+        r#"{"shaders": {"sprite": {"path": "shaders/sprite.wgsl"}}}"#,
+    );
+    let m = ResolvedManifest::load(&path).unwrap();
+    assert!(m.shaders.contains_key("sprite"));
+    assert!(m.shaders["sprite"].path.ends_with("sprite.wgsl"));
+}
+
+#[test]
+fn load_manifest_missing_shader_file() {
+    let tmp = tempdir();
+    let path = write_manifest(&tmp, r#"{"shaders": {"sprite": {"path": "missing.wgsl"}}}"#);
+    let err = ResolvedManifest::load(&path).unwrap_err();
+    assert!(matches!(err, ManifestError::MissingShaderFile { .. }));
+}
+
+#[test]
+fn merge_duplicate_shader_is_error() {
+    let mut a = ResolvedManifest::default();
+    a.shaders.insert(
+        "sprite".into(),
+        ResolvedShader {
+            path: "sprite.wgsl".into(),
+        },
+    );
+    let mut b = ResolvedManifest::default();
+    b.shaders.insert(
+        "sprite".into(),
+        ResolvedShader {
+            path: "sprite2.wgsl".into(),
+        },
+    );
+    let err = a.merge(b).unwrap_err();
+    assert!(matches!(err, ManifestError::DuplicateId { id } if id == "sprite"));
+}
+
+#[test]
 fn default_filter_is_nearest() {
     let tmp = tempdir();
     write_file(&tmp, "hero.png");
