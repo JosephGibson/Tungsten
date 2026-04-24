@@ -144,3 +144,38 @@ fn tween_new_positive_duration_is_preserved() {
     assert!(t.duration.is_finite() && t.duration > 0.0);
     assert_eq!(t.duration, 0.1);
 }
+
+#[test]
+fn uniform_override_block_default_is_all_zero_bytes() {
+    let block = UniformOverrideBlock::default();
+    assert_eq!(block.to_bytes(), [0u8; 256]);
+}
+
+#[test]
+fn uniform_override_block_writes_land_in_expected_bytes() {
+    // vec4[0] is the first 16 bytes; lane 2 is bytes 8..12.
+    let mut block = UniformOverrideBlock::default();
+    block.vec4[0][2] = 1.0_f32;
+    let bytes = block.to_bytes();
+    assert_eq!(&bytes[8..12], &1.0_f32.to_le_bytes());
+    // vec4[0][3] stays zero
+    assert_eq!(&bytes[12..16], &0.0_f32.to_le_bytes());
+    // f32s start at offset 64 (4 vec4s of 16 bytes)
+    let mut block = UniformOverrideBlock::default();
+    block.f32s[1] = 0.5;
+    let bytes = block.to_bytes();
+    assert_eq!(&bytes[64 + 4..64 + 8], &0.5_f32.to_le_bytes());
+    // i32s start at offset 80
+    let mut block = UniformOverrideBlock::default();
+    block.i32s[2] = 7;
+    let bytes = block.to_bytes();
+    assert_eq!(&bytes[80 + 8..80 + 12], &7_i32.to_le_bytes());
+}
+
+#[test]
+fn slot_enum_indices_are_dense() {
+    assert_eq!(Vec4Slot::V0.index(), 0);
+    assert_eq!(Vec4Slot::V3.index(), 3);
+    assert_eq!(ScalarSlot::F2.index(), 2);
+    assert_eq!(IntSlot::I1.index(), 1);
+}

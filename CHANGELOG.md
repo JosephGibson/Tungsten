@@ -6,6 +6,16 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- M26 materials + post-stack + tween→material bridge (`D-058`). New `materials` section in the manifest graph maps a stable material id to a WGSL shader id + 256-byte `MaterialUniformDefaults`; render-side `MaterialPipeline` reuses the built-in sprite layout and adds a per-material UBO at group 2. New `PostStack` world resource (default empty, byte-identical to the M25 baseline) carries a reorderable `Vec<PostPass>` — 17 stock effects (tonemap, vignette, lut, chromatic_aberration, color_adjust, tone_mono, crt, film_grain, dither, pixel_outline, fade, wipe_radial, dissolve, glitch, pixelate, fog, god_rays) ping-pong between `PostPing` / `PostPong` offscreen targets before the present blit. New `UniformOverrideBlock` component + `TweenChannel::UniformVec4Lane` / `UniformScalar` / `UniformInt` drive per-entity animation into the same 256-byte payload shared with the M32 MSDF outline/glow slot. Stock shaders live under `crates/tungsten-render/src/shaders/stock/` with MIT LYGIA-derived helpers; `assets/shaders/stock/` mirrors them for manifest-driven hot reload. New workspace `damage_flash` material + platformer ball-hit tween fires through the new `Sprite.material_id` path. New `example-04-shader-playground` crate exercises the 17-effect fixture under `TUNGSTEN_POST_STACK_FIXTURE`.
+- `scripts/smoke-examples.sh` appends a `TUNGSTEN_POST_STACK_FIXTURE ∈ empty, all` matrix over `example-04-shader-playground`.
+
+### Changed
+
+- `AGENTS.md` §Asset Rules lists the new `materials` manifest section and the vendored `assets/shaders/stock/` mirror rule.
+- `DESIGN.md` §Status and §Hot Reload matrix: M26 row added; `shader` row widened to include material-pipeline rebuilds on shader reload.
+
 ## [0.22.0] - 2026-04-24
 
 Summary: Phase 4 Milestone 25 — render foundation (offscreen `SceneTarget` with optional depth + MSAA, named/ordered pass list with an engine-internal present blit, manifest-tracked WGSL with body-edit hot reload, and opt-in GPU depth-test sprite path). Phase 4 scope is tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md).

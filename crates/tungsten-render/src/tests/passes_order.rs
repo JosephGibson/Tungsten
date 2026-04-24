@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn default_order_msaa1_cpu_stable_is_scene_then_present() {
-    let order = default_pass_order(1, DepthSortMode::CpuStable, true);
+    let order = default_pass_order(1, DepthSortMode::CpuStable, true, 0);
     let passes = order.as_slice();
     assert_eq!(passes.len(), 2);
 
@@ -24,7 +24,7 @@ fn default_order_msaa1_cpu_stable_is_scene_then_present() {
 
 #[test]
 fn default_order_msaa4_cpu_stable_resolves_to_scene_color() {
-    let order = default_pass_order(4, DepthSortMode::CpuStable, true);
+    let order = default_pass_order(4, DepthSortMode::CpuStable, true, 0);
     let scene = &order.as_slice()[0];
     assert_eq!(scene.color, TargetId::SceneColorMsaa);
     assert_eq!(scene.color_resolve, Some(TargetId::SceneColor));
@@ -33,7 +33,7 @@ fn default_order_msaa4_cpu_stable_resolves_to_scene_color() {
 
 #[test]
 fn default_order_msaa4_gpu_depth_attaches_depth_and_resolve() {
-    let order = default_pass_order(4, DepthSortMode::GpuDepth, true);
+    let order = default_pass_order(4, DepthSortMode::GpuDepth, true, 0);
     let scene = &order.as_slice()[0];
     assert_eq!(scene.color, TargetId::SceneColorMsaa);
     assert_eq!(scene.color_resolve, Some(TargetId::SceneColor));
@@ -43,7 +43,7 @@ fn default_order_msaa4_gpu_depth_attaches_depth_and_resolve() {
 
 #[test]
 fn default_order_msaa1_gpu_depth_attaches_depth_no_resolve() {
-    let order = default_pass_order(1, DepthSortMode::GpuDepth, true);
+    let order = default_pass_order(1, DepthSortMode::GpuDepth, true, 0);
     let scene = &order.as_slice()[0];
     assert_eq!(scene.color, TargetId::SceneColor);
     assert!(scene.color_resolve.is_none());
@@ -55,8 +55,56 @@ fn gpu_depth_with_depth_disabled_drops_the_depth_attachment() {
     // `depth_sort = GpuDepth` + `depth_enabled = false` would otherwise
     // reference a `SceneDepth` view that `SceneTarget::new` never allocated
     // under the same flag, and the recorder would panic.
-    let order = default_pass_order(1, DepthSortMode::GpuDepth, false);
+    let order = default_pass_order(1, DepthSortMode::GpuDepth, false, 0);
     let scene = &order.as_slice()[0];
     assert!(scene.depth.is_none());
     assert!(scene.depth_clear.is_none());
+}
+
+#[test]
+fn post_stack_zero_is_byte_identical_m25_order() {
+    let order = default_pass_order(1, DepthSortMode::CpuStable, true, 0);
+    let passes = order.as_slice();
+    assert_eq!(passes.len(), 2);
+    assert_eq!(passes[0].label, "tungsten_scene_pass");
+    assert_eq!(passes[1].label, "tungsten_present_pass");
+    assert_eq!(passes[1].color, TargetId::Swapchain);
+}
+
+#[test]
+fn post_stack_one_splices_a_post_ping_pass_before_present() {
+    let order = default_pass_order(1, DepthSortMode::CpuStable, true, 1);
+    let passes = order.as_slice();
+    assert_eq!(passes.len(), 3);
+    assert_eq!(passes[0].color, TargetId::SceneColor);
+    assert_eq!(passes[1].label, "tungsten_post_pass_0");
+    assert_eq!(passes[1].color, TargetId::PostPing);
+    assert!(passes[1].clear.is_none());
+    assert_eq!(passes[2].label, "tungsten_present_pass");
+    assert_eq!(passes[2].color, TargetId::Swapchain);
+}
+
+#[test]
+fn post_stack_two_alternates_ping_and_pong() {
+    let order = default_pass_order(1, DepthSortMode::CpuStable, true, 2);
+    let passes = order.as_slice();
+    assert_eq!(passes.len(), 4);
+    assert_eq!(passes[1].color, TargetId::PostPing);
+    assert_eq!(passes[2].color, TargetId::PostPong);
+}
+
+#[test]
+fn post_stack_seventeen_ends_on_ping_pattern() {
+    let order = default_pass_order(1, DepthSortMode::CpuStable, true, 17);
+    let passes = order.as_slice();
+    assert_eq!(passes.len(), 19);
+    for i in 0..17 {
+        let expected = if i % 2 == 0 {
+            TargetId::PostPing
+        } else {
+            TargetId::PostPong
+        };
+        assert_eq!(passes[1 + i].color, expected, "pass {i}");
+    }
+    assert_eq!(passes[18].color, TargetId::Swapchain);
 }

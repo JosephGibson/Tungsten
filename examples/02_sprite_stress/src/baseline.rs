@@ -145,9 +145,7 @@ fn extract_baseline_sprites(world: &World) -> Vec<SpriteBatch> {
         })
         .collect();
 
-    vec![SpriteBatch {
-        texture: BASELINE_PLACEHOLDER_HANDLE,
-        filter: FilterMode::Nearest,
-        instances,
-    }]
+    let mut batch = SpriteBatch::new(BASELINE_PLACEHOLDER_HANDLE, FilterMode::Nearest);
+    batch.instances = instances;
+    vec![batch]
 }

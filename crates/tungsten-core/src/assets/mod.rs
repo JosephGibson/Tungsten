@@ -2,6 +2,7 @@ pub mod animation;
 pub mod atlas;
 pub mod audio;
 pub mod manifest;
+pub mod material;
 pub mod particle;
 pub mod registry;
 pub mod scene;
@@ -12,10 +13,11 @@ pub use animation::{AnimationData, AnimationFrame, AnimationRegistry, AnimationS
 pub use atlas::{pack_shelf, AtlasPage, PackInput, PackResult, PackedSprite, UvRect};
 pub use audio::{AudioHandle, SoundData, SoundRegistry};
 pub use manifest::{
-    FilterMode, FontEntry, LoadedManifest, ManifestError, ParticleEntry, ResolvedFont,
-    ResolvedManifest, ResolvedParticle, ResolvedShader, ResolvedSound, ResolvedTilemap,
-    ShaderEntry, SoundEntry, TilemapEntry,
+    FilterMode, FontEntry, LoadedManifest, ManifestError, MaterialEntry, ParticleEntry,
+    ResolvedFont, ResolvedManifest, ResolvedMaterial, ResolvedParticle, ResolvedShader,
+    ResolvedSound, ResolvedTilemap, ShaderEntry, SoundEntry, TilemapEntry,
 };
+pub use material::{MaterialAssetId, MaterialRegistry, MaterialUniformDefaults};
 pub use particle::{
     AssetId, BlendMode, Curve, EmissionKind, InitialVelocity, Lerp, ParticleActive, ParticleBudget,
     ParticleConfig, ParticleConfigError, ParticleConfigRegistry, Range, WorldRngSeed,

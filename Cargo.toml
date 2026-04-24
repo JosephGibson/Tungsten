@@ -12,6 +12,7 @@ members = [
     "examples/01_platformer",
     "examples/02_sprite_stress",
     "examples/03_scene_state",
+    "examples/04_shader_playground",
 ]
 
 [workspace.dependencies]

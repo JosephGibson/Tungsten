@@ -106,3 +106,41 @@ if [ ${#matrix_fail[@]} -gt 0 ]; then
   done
   exit 1
 fi
+
+# M26: post-stack fixture matrix over example-04-shader-playground. Keeps the
+# byte-identity gate separate from the 17-effect walk so a per-effect failure
+# surfaces without pulling the empty-stack row down.
+post_pkg="example-04-shader-playground"
+post_pass=()
+post_fail=()
+echo
+echo "M26 post-stack fixture matrix (pkg: $post_pkg)"
+for fixture in empty all; do
+  label="fixture=${fixture}"
+  printf "  %-28s ... " "$label"
+  log_file="$log_dir/${post_pkg}-${fixture}.log"
+  if TUNGSTEN_SMOKE_FRAMES="$SMOKE_FRAMES" \
+     TUNGSTEN_POST_STACK_FIXTURE="$fixture" \
+     timeout --preserve-status "$TIMEOUT_SECS" \
+     cargo run -p "$post_pkg" --quiet >"$log_file" 2>&1; then
+    echo "OK"
+    post_pass+=("$label")
+  else
+    code=$?
+    if [ "$code" -eq 124 ]; then
+      echo "TIMEOUT (${TIMEOUT_SECS}s)"
+    else
+      echo "FAIL (exit $code)"
+    fi
+    post_fail+=("$label ($log_file)")
+  fi
+done
+
+echo "Post-stack passed: ${#post_pass[@]}/2"
+if [ ${#post_fail[@]} -gt 0 ]; then
+  echo "Post-stack failures:"
+  for row in "${post_fail[@]}"; do
+    echo "  - $row"
+  done
+  exit 1
+fi

@@ -195,6 +195,58 @@ pub(crate) fn ground_detection(world: &mut World) {
     }
 }
 
+/// M26 damage-flash: when the player collides with a Ball, queue a one-shot
+/// tween that drives the `damage_flash` material uniform block from a lit-up
+/// red overlay back to zero in 250 ms.
+pub(crate) fn damage_flash_on_ball_hit(world: &mut World) {
+    use crate::state::{Ball, PlayerMaterial};
+    use tungsten::core::{Easing, ScalarSlot, Tween, TweenChannel, UniformOverrideBlock, Vec4Slot};
+
+    let events: Vec<CollisionEvent> = match world.get_resource::<EventQueue<CollisionEvent>>() {
+        Some(queue) => queue.iter().copied().collect(),
+        None => return,
+    };
+    if events.is_empty() {
+        return;
+    }
+
+    // Pre-collect players with the damage material; skip work when none exist.
+    let players: Vec<_> = world.query::<PlayerMaterial>().map(|(e, _)| e).collect();
+    if players.is_empty() {
+        return;
+    }
+    let balls: std::collections::HashSet<_> = world.query::<Ball>().map(|(e, _)| e).collect();
+
+    for player in players {
+        let was_hit = events.iter().any(|ev| {
+            (ev.a == player && ev.b.map_or(false, |b| balls.contains(&b)))
+                || (ev.b == Some(player) && balls.contains(&ev.a))
+        });
+        if !was_hit {
+            continue;
+        }
+        // D-055 keeps one Tween per entity — overwrite any active tween.
+        let tween = Tween::new(0.25, Easing::QuadOut)
+            .with_channel(TweenChannel::UniformVec4Lane {
+                slot: Vec4Slot::V0,
+                lane: 0,
+                from: 1.0,
+                to: 0.0,
+            })
+            .with_channel(TweenChannel::UniformScalar {
+                slot: ScalarSlot::F0,
+                from: 0.8,
+                to: 0.0,
+            });
+        // Seed the override block at its hit-state so the first frame is red.
+        if let Some(block) = world.get_mut::<UniformOverrideBlock>(player) {
+            block.vec4[Vec4Slot::V0.index()] = [1.0, 0.2, 0.1, 1.0];
+            block.f32s[ScalarSlot::F0.index()] = 0.8;
+        }
+        world.insert(player, tween);
+    }
+}
+
 pub(crate) fn update_text_display(world: &mut World) {
     let dt = world
         .get_resource::<DeltaTime>()

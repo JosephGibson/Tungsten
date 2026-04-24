@@ -44,6 +44,7 @@ fn spawn(world: &mut World, id: &str, position: Vec2) {
             asset_id: id.to_string(),
             color: [255; 4],
             z_order: 0,
+            material_id: None,
         },
     );
     world.insert(e, Visibility::default());

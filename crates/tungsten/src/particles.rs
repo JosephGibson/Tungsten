@@ -381,6 +381,7 @@ fn build_particle(
         asset_id: cfg.sprite.clone(),
         color: initial_color,
         z_order: 0,
+        material_id: None,
     };
     (particle, transform, sprite)
 }
@@ -457,6 +458,7 @@ pub fn spawn_particle_via(
             asset_id: sprite_id,
             color: [255, 255, 255, 255],
             z_order: 0,
+            material_id: None,
         },
     );
     cmd.insert_pending(pending, Visibility { visible: true });

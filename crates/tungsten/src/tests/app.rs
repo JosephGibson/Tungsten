@@ -46,16 +46,14 @@ fn user_extract_sprites_overrides_default() {
 
     let mut app = App::new(Config::default()).expect("App::new failed");
     app.set_extract_sprites(|_| {
-        vec![SpriteBatch {
-            texture: TextureHandle(42),
-            filter: FilterMode::Linear,
-            instances: vec![SpriteInstance::whole(
-                [1.5, 2.5],
-                [3.0, 4.0],
-                0.25,
-                [1, 2, 3, 4],
-            )],
-        }]
+        let mut batch = SpriteBatch::new(TextureHandle(42), FilterMode::Linear);
+        batch.instances = vec![SpriteInstance::whole(
+            [1.5, 2.5],
+            [3.0, 4.0],
+            0.25,
+            [1, 2, 3, 4],
+        )];
+        vec![batch]
     });
 
     app.install_default_extracts();

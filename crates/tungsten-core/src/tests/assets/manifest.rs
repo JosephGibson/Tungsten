@@ -1,4 +1,5 @@
 use super::*;
+use crate::assets::material::MaterialUniformDefaults;
 use std::io::Write;
 
 fn write_manifest(dir: &Path, content: &str) -> PathBuf {
@@ -356,6 +357,106 @@ fn merge_duplicate_shader_is_error() {
     );
     let err = a.merge(b).unwrap_err();
     assert!(matches!(err, ManifestError::DuplicateId { id } if id == "sprite"));
+}
+
+#[test]
+fn load_manifest_with_materials_resolves_shader_cross_ref() {
+    let tmp = tempdir();
+    write_file(&tmp, "shaders/flash.wgsl");
+    let path = write_manifest(
+        &tmp,
+        r#"{
+            "shaders": {"flash": {"path": "shaders/flash.wgsl"}},
+            "materials": {"damage_flash": {"shader": "flash", "uniform_defaults": {"f32s": [0.5, 0.0, 0.0, 0.0]}}}
+        }"#,
+    );
+    let m = ResolvedManifest::load(&path).unwrap();
+    let material = m.materials.get("damage_flash").expect("material present");
+    assert_eq!(material.shader, "flash");
+    assert!((material.uniform_defaults.f32s[0] - 0.5).abs() < 1e-6);
+}
+
+#[test]
+fn load_manifest_material_shader_missing_is_error() {
+    let tmp = tempdir();
+    let path = write_manifest(
+        &tmp,
+        r#"{"materials": {"damage_flash": {"shader": "nope"}}}"#,
+    );
+    let err = ResolvedManifest::load(&path).unwrap_err();
+    assert!(
+        matches!(err, ManifestError::MaterialShaderMissing { id, shader } if id == "damage_flash" && shader == "nope")
+    );
+}
+
+#[test]
+fn merge_material_resolves_shader_from_sibling_manifest() {
+    let mut a = ResolvedManifest::default();
+    a.shaders.insert(
+        "flash".into(),
+        ResolvedShader {
+            path: "flash.wgsl".into(),
+        },
+    );
+    let mut b = ResolvedManifest::default();
+    b.materials.insert(
+        "damage_flash".into(),
+        ResolvedMaterial {
+            source_manifest: "b.json".into(),
+            shader: "flash".into(),
+            uniform_defaults: MaterialUniformDefaults::default(),
+        },
+    );
+    a.merge(b).unwrap();
+    assert!(a.materials.contains_key("damage_flash"));
+}
+
+#[test]
+fn merge_material_missing_shader_is_error() {
+    let mut a = ResolvedManifest::default();
+    let mut b = ResolvedManifest::default();
+    b.materials.insert(
+        "damage_flash".into(),
+        ResolvedMaterial {
+            source_manifest: "b.json".into(),
+            shader: "absent_shader".into(),
+            uniform_defaults: MaterialUniformDefaults::default(),
+        },
+    );
+    let err = a.merge(b).unwrap_err();
+    assert!(
+        matches!(err, ManifestError::MaterialShaderMissing { id, shader } if id == "damage_flash" && shader == "absent_shader")
+    );
+}
+
+#[test]
+fn merge_duplicate_material_is_error() {
+    let mut a = ResolvedManifest::default();
+    a.shaders.insert(
+        "flash".into(),
+        ResolvedShader {
+            path: "flash.wgsl".into(),
+        },
+    );
+    a.materials.insert(
+        "damage_flash".into(),
+        ResolvedMaterial {
+            source_manifest: "a.json".into(),
+            shader: "flash".into(),
+            uniform_defaults: MaterialUniformDefaults::default(),
+        },
+    );
+    let mut b = ResolvedManifest::default();
+    b.materials.insert(
+        "damage_flash".into(),
+        ResolvedMaterial {
+            source_manifest: "b.json".into(),
+            shader: "flash".into(),
+            uniform_defaults: MaterialUniformDefaults::default(),
+        },
+    );
+    let err = a.merge(b).unwrap_err();
+    assert!(matches!(err, ManifestError::DuplicateId { id } if id == "damage_flash"));
 }
 
 #[test]

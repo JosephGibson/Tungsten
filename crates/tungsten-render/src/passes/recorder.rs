@@ -81,6 +81,8 @@ fn resolve_view<'a>(
             .scene
             .depth_view()
             .expect("SceneDepth requested but depth_enabled = false"),
+        TargetId::PostPing => pool.scene.post_ping_view(),
+        TargetId::PostPong => pool.scene.post_pong_view(),
         TargetId::Swapchain => swap_view,
     }
 }

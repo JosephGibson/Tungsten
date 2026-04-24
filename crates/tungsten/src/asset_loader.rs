@@ -4,8 +4,9 @@ use std::path::{Path, PathBuf};
 use glam::Vec2;
 use tungsten_core::assets::{
     pack_shelf, AnimationData, AnimationRegistry, FilterMode, FontRegistry, LoadedManifest,
-    PackInput, PackedSprite, ParticleConfig, ParticleConfigRegistry, ResolvedManifest, SceneData,
-    ShaderRegistry, SoundData, SoundRegistry, TextureHandle, TilemapData, TilemapRegistry, UvRect,
+    MaterialRegistry, PackInput, PackedSprite, ParticleConfig, ParticleConfigRegistry,
+    ResolvedManifest, SceneData, ShaderRegistry, SoundData, SoundRegistry, TextureHandle,
+    TilemapData, TilemapRegistry, UvRect,
 };
 use tungsten_core::{
     ActionMap, ActionMapError, AssetRegistry, CommandBuffer, Sprite, Tag, Transform, Visibility,
@@ -348,6 +349,97 @@ pub fn load_shaders(
     Ok(())
 }
 
+/// Register manifest-tracked materials: allocate `MaterialAssetId`, resolve
+/// the shader cross-ref, and build the `MaterialPipeline` on the renderer.
+/// Call after `load_shaders` so shader-id resolution can succeed.
+pub fn load_materials(
+    manifest: &ResolvedManifest,
+    world: &mut World,
+    renderer: &mut Renderer,
+) -> anyhow::Result<()> {
+    let mut registry = world
+        .remove_resource::<MaterialRegistry>()
+        .unwrap_or_default();
+
+    for (id, material) in &manifest.materials {
+        let asset_id = registry.allocate(
+            id,
+            material.source_manifest.clone(),
+            material.shader.clone(),
+            material.uniform_defaults,
+        );
+        if let Err(e) =
+            renderer.upload_material(asset_id, id, &material.shader, material.uniform_defaults)
+        {
+            log::error!("load_materials '{id}': {e}; keeping last-known-good");
+            continue;
+        }
+        log::info!("Loaded material '{id}' (shader={})", material.shader);
+    }
+
+    world.insert_resource(registry);
+    Ok(())
+}
+
+/// Hot-reload a manifest-tracked material: look up by name, re-upload under
+/// the current `ResolvedMaterial` entry. Validation failure keeps the prior
+/// live pipeline (last-known-good).
+pub fn reload_material(id: &str, world: &mut World, renderer: &mut Renderer) -> anyhow::Result<()> {
+    let (asset_id, shader_name, defaults) = {
+        let registry = match world.get_resource::<MaterialRegistry>() {
+            Some(r) => r,
+            None => {
+                log::error!("reload_material '{id}': no MaterialRegistry");
+                return Ok(());
+            }
+        };
+        let Some(asset_id) = registry.get(id) else {
+            log::error!("reload_material '{id}': unknown material id");
+            return Ok(());
+        };
+        let Some(shader_name) = registry
+            .shader_name_for_id(asset_id)
+            .map(ToString::to_string)
+        else {
+            log::error!("reload_material '{id}': no shader name on record");
+            return Ok(());
+        };
+        let defaults = registry.defaults_for_id(asset_id).unwrap_or_default();
+        (asset_id, shader_name, defaults)
+    };
+
+    // Prefer the current `LoadedManifest` view so authored `uniform_defaults`
+    // edits flow through without a separate material JSON file.
+    let live_defaults = world
+        .get_resource::<LoadedManifest>()
+        .and_then(|m| {
+            m.as_resolved()
+                .materials
+                .get(id)
+                .map(|rm| rm.uniform_defaults)
+        })
+        .unwrap_or(defaults);
+
+    if let Err(e) = renderer.upload_material(asset_id, id, &shader_name, live_defaults) {
+        log::error!("reload_material '{id}': {e}; keeping last-known-good");
+        return Ok(());
+    }
+    // Update the registry's defaults cache so subsequent reloads start from
+    // the live value.
+    if let Some(reg) = world.get_resource_mut::<MaterialRegistry>() {
+        reg.allocate(
+            id,
+            reg.path_for_id(asset_id)
+                .map(Path::to_path_buf)
+                .unwrap_or_default(),
+            shader_name.clone(),
+            live_defaults,
+        );
+    }
+    log::info!("Hot-reloaded material '{id}'");
+    Ok(())
+}
+
 /// Load particle configs; sprite-ID validation happens after sprite load.
 pub fn load_particles(manifest: &ResolvedManifest, world: &mut World) -> anyhow::Result<()> {
     let mut registry = ParticleConfigRegistry::new();
@@ -375,6 +467,7 @@ pub fn load_all(
     load_animations(manifest, world)?;
     load_fonts(manifest, world, renderer)?;
     load_shaders(manifest, world, renderer)?;
+    load_materials(manifest, world, renderer)?;
     load_sounds(manifest, world)?;
     load_tilemaps(manifest, world)?;
     load_particles(manifest, world)?;
@@ -476,6 +569,7 @@ pub fn spawn_scene(world: &mut World, data: &SceneData, state_id: StateId) {
                     asset_id: sprite.asset_id.clone(),
                     color: sprite.color,
                     z_order: sprite.z_order,
+                    material_id: None,
                 },
             );
         }
@@ -1097,8 +1191,70 @@ pub fn reload_manifest(
         }
     }
 
+    // M26 materials: register new, refresh existing. Materials live inside
+    // the manifest graph, so every manifest edit flows through this branch.
+    {
+        let existing: Vec<String> = world
+            .get_resource::<MaterialRegistry>()
+            .map(|mr| mr.iter().map(|(name, _)| name.to_string()).collect())
+            .unwrap_or_default();
+
+        // Warn on removals (last-known-good).
+        for id in &existing {
+            if !new_manifest.materials.contains_key(id.as_str()) {
+                log::warn!("Manifest reload: material '{id}' removed — keeping stale");
+            }
+        }
+
+        for (id, entry) in &new_manifest.materials {
+            if existing.iter().any(|e| e == id) {
+                // Refresh existing pipeline against new defaults / shader pointer.
+                // Stash the updated entry into LoadedManifest below so
+                // `reload_material` picks it up.
+                continue;
+            }
+            // Newly-added material: allocate an id and upload.
+            let mut registry = world
+                .remove_resource::<MaterialRegistry>()
+                .unwrap_or_default();
+            let asset_id = registry.allocate(
+                id,
+                entry.source_manifest.clone(),
+                entry.shader.clone(),
+                entry.uniform_defaults,
+            );
+            world.insert_resource(registry);
+            if let Err(e) =
+                renderer.upload_material(asset_id, id, &entry.shader, entry.uniform_defaults)
+            {
+                log::error!(
+                    "Manifest reload: new material '{id}' upload failed: {e}; keeping stale"
+                );
+            } else {
+                log::info!("Manifest reload: loaded new material '{id}'");
+            }
+        }
+    }
+
     // Keep diagnostics/reload diff graph current.
-    world.insert_resource(tungsten_core::assets::LoadedManifest::new(new_manifest));
+    world.insert_resource(tungsten_core::assets::LoadedManifest::new(
+        new_manifest.clone(),
+    ));
+
+    // Re-upload every existing material against the current LoadedManifest so
+    // body-only uniform_defaults edits land. This mirrors the particle and
+    // tilemap re-load patterns (D-053).
+    let existing_ids: Vec<String> = world
+        .get_resource::<MaterialRegistry>()
+        .map(|mr| mr.iter().map(|(name, _)| name.to_string()).collect())
+        .unwrap_or_default();
+    for id in existing_ids {
+        if new_manifest.materials.contains_key(&id) {
+            if let Err(e) = reload_material(&id, world, renderer) {
+                log::error!("Manifest reload: material '{id}' refresh failed: {e}");
+            }
+        }
+    }
 
     log::info!("Manifest reloaded from '{}'", manifest_path.display());
     Ok(())

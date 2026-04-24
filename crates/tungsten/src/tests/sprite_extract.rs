@@ -110,6 +110,7 @@ fn sprite_color_reaches_instance() {
             asset_id: "quad".into(),
             color: [10, 20, 30, 255],
             z_order: 0,
+            material_id: None,
         },
     );
     world.insert(e, Visibility::default());
@@ -133,6 +134,7 @@ fn z_order_groups_do_not_merge_across_a_lower_z_entry() {
                 asset_id: "quad".into(),
                 color: [255; 4],
                 z_order: z,
+                material_id: None,
             },
         );
         world.insert(e, Visibility::default());
@@ -184,6 +186,7 @@ fn same_z_order_breaks_ties_by_entity_id() {
             asset_id: "a".into(),
             color: [1, 0, 0, 255],
             z_order: 0,
+            material_id: None,
         },
     );
     world.insert(e0, Visibility::default());
@@ -196,6 +199,7 @@ fn same_z_order_breaks_ties_by_entity_id() {
             asset_id: "b".into(),
             color: [0, 2, 0, 255],
             z_order: 0,
+            material_id: None,
         },
     );
     world.insert(e1, Visibility::default());
@@ -230,6 +234,7 @@ fn z_norm_decreases_along_painter_order_for_less_equal_depth_test() {
                 asset_id: "quad".into(),
                 color: [255; 4],
                 z_order: z,
+                material_id: None,
             },
         );
         world.insert(e, Visibility::default());

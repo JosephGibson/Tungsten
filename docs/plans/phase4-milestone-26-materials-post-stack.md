@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 milestone: M26
 goal: "Ship M26 Materials + Post-Stack + Tween→Material Bridge: manifest-tracked WGSL materials selectable per sprite batch, a reorderable `PostStack` of 17 stock effects ping-ponging between offscreen targets before the present blit, and an entity-local `UniformOverrideBlock` that `Tween` channels can drive. Under an empty `PostStack` and no `material_id`, output is byte-identical to the M25 `0.22` baseline (image-diff asserted)."
 non-goals:

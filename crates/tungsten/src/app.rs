@@ -167,6 +167,8 @@ impl App {
         world.insert_resource(PhysicsDebugOverlay::default());
         world.insert_resource(SystemTimingOverlay::default());
         world.insert_resource(InspectorState::new_with_defaults());
+        // M26: empty post stack by default — byte-identical to M25 baseline.
+        world.insert_resource(tungsten_core::post::PostStack::new());
         let mut event_flushers: Vec<EventFlusher> = Vec::new();
         let mut registered_event_types = HashSet::new();
         Self::register_event_inner::<CollisionEvent>(
@@ -805,6 +807,13 @@ impl App {
                 }
             }
 
+            // M26: PostStack is a world resource; default is empty.
+            let post_stack = self
+                .world
+                .get_resource::<tungsten_core::post::PostStack>()
+                .cloned()
+                .unwrap_or_default();
+
             let result = if self.gpu_timing_enabled {
                 renderer.render_frame_full_timed(
                     &view_proj,
@@ -813,6 +822,7 @@ impl App {
                     &extract.debug_quads,
                     &extract.debug_lines,
                     &extract.text,
+                    &post_stack,
                 )
             } else {
                 renderer.render_frame_full(
@@ -822,6 +832,7 @@ impl App {
                     &extract.debug_quads,
                     &extract.debug_lines,
                     &extract.text,
+                    &post_stack,
                 )
             };
             if let Err(e) = result {

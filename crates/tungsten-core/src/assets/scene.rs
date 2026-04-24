@@ -6,7 +6,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::tween::{Easing, Tween, TweenChannel, TweenRepeat};
+use crate::tween::{Easing, IntSlot, ScalarSlot, Tween, TweenChannel, TweenRepeat, Vec4Slot};
 
 #[derive(Debug, Error)]
 pub enum SceneError {
@@ -58,15 +58,59 @@ pub struct SceneTween {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SceneTweenChannel {
-    PositionX { from: f32, to: f32 },
-    PositionY { from: f32, to: f32 },
-    Rotation { from: f32, to: f32 },
-    ScaleX { from: f32, to: f32 },
-    ScaleY { from: f32, to: f32 },
-    ColorR { from: u8, to: u8 },
-    ColorG { from: u8, to: u8 },
-    ColorB { from: u8, to: u8 },
-    ColorA { from: u8, to: u8 },
+    PositionX {
+        from: f32,
+        to: f32,
+    },
+    PositionY {
+        from: f32,
+        to: f32,
+    },
+    Rotation {
+        from: f32,
+        to: f32,
+    },
+    ScaleX {
+        from: f32,
+        to: f32,
+    },
+    ScaleY {
+        from: f32,
+        to: f32,
+    },
+    ColorR {
+        from: u8,
+        to: u8,
+    },
+    ColorG {
+        from: u8,
+        to: u8,
+    },
+    ColorB {
+        from: u8,
+        to: u8,
+    },
+    ColorA {
+        from: u8,
+        to: u8,
+    },
+    /// Drives one lane of a `UniformOverrideBlock.vec4[slot]` slot.
+    UniformVec4Lane {
+        slot: Vec4Slot,
+        lane: u8,
+        from: f32,
+        to: f32,
+    },
+    UniformScalar {
+        slot: ScalarSlot,
+        from: f32,
+        to: f32,
+    },
+    UniformInt {
+        slot: IntSlot,
+        from: i32,
+        to: i32,
+    },
 }
 
 impl From<SceneTweenChannel> for TweenChannel {
@@ -81,6 +125,23 @@ impl From<SceneTweenChannel> for TweenChannel {
             SceneTweenChannel::ColorG { from, to } => TweenChannel::ColorG { from, to },
             SceneTweenChannel::ColorB { from, to } => TweenChannel::ColorB { from, to },
             SceneTweenChannel::ColorA { from, to } => TweenChannel::ColorA { from, to },
+            SceneTweenChannel::UniformVec4Lane {
+                slot,
+                lane,
+                from,
+                to,
+            } => TweenChannel::UniformVec4Lane {
+                slot,
+                lane,
+                from,
+                to,
+            },
+            SceneTweenChannel::UniformScalar { slot, from, to } => {
+                TweenChannel::UniformScalar { slot, from, to }
+            }
+            SceneTweenChannel::UniformInt { slot, from, to } => {
+                TweenChannel::UniformInt { slot, from, to }
+            }
         }
     }
 }

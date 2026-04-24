@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use glam::Vec2;
 
-use crate::assets::{AssetId, ParticleConfig};
+use crate::assets::{AssetId, MaterialAssetId, ParticleConfig};
 use crate::ecs::{Entity, World};
 use crate::physics::Position;
 use crate::rng::Pcg32;
@@ -40,21 +40,33 @@ impl Default for Transform {
 }
 
 /// Sprite render data resolved by asset ID at extract time.
+///
+/// M26: `material_id` selects a user-authored WGSL material pipeline on the
+/// sprite draw path; `None` keeps the built-in sprite pipeline and the M25
+/// default output bytes.
 #[derive(Debug, Clone)]
 pub struct Sprite {
     pub asset_id: String,
     pub color: [u8; 4],
     pub z_order: i32,
+    pub material_id: Option<MaterialAssetId>,
 }
 
 impl Sprite {
-    /// No tint, z-order 0.
+    /// No tint, z-order 0, built-in sprite pipeline.
     pub fn new(asset_id: impl Into<String>) -> Self {
         Self {
             asset_id: asset_id.into(),
             color: [255; 4],
             z_order: 0,
+            material_id: None,
         }
+    }
+
+    #[must_use]
+    pub fn with_material(mut self, material: MaterialAssetId) -> Self {
+        self.material_id = Some(material);
+        self
     }
 }
 

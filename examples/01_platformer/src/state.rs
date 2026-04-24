@@ -93,3 +93,10 @@ pub(crate) struct ActiveBlackHole(pub(crate) Option<Entity>);
 
 #[derive(Debug, Clone)]
 pub(crate) struct CurrentSprite(pub(crate) String);
+
+/// M26: marks the player entity as rendered through the `damage_flash`
+/// material. Present only when the material id resolved at setup time.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PlayerMaterial {
+    pub(crate) material_id: tungsten::core::MaterialAssetId,
+}
