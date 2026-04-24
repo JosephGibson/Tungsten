@@ -6,6 +6,10 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-04-24
+
+Summary: Phase 4 Milestone 26 — materials + post-stack + tween→material bridge (manifest-tracked materials, a reorderable 17-effect post stack, entity-local uniform overrides shared with tween channels, and a new shader-playground example). Phase 4 scope is tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md).
+
 ### Added
 
 - M26 materials + post-stack + tween→material bridge (`D-058`). New `materials` section in the manifest graph maps a stable material id to a WGSL shader id + 256-byte `MaterialUniformDefaults`; render-side `MaterialPipeline` reuses the built-in sprite layout and adds a per-material UBO at group 2. New `PostStack` world resource (default empty, byte-identical to the M25 baseline) carries a reorderable `Vec<PostPass>` — 17 stock effects (tonemap, vignette, lut, chromatic_aberration, color_adjust, tone_mono, crt, film_grain, dither, pixel_outline, fade, wipe_radial, dissolve, glitch, pixelate, fog, god_rays) ping-pong between `PostPing` / `PostPong` offscreen targets before the present blit. New `UniformOverrideBlock` component + `TweenChannel::UniformVec4Lane` / `UniformScalar` / `UniformInt` drive per-entity animation into the same 256-byte payload shared with the M32 MSDF outline/glow slot. Stock shaders live under `crates/tungsten-render/src/shaders/stock/` with MIT LYGIA-derived helpers; `assets/shaders/stock/` mirrors them for manifest-driven hot reload. New workspace `damage_flash` material + platformer ball-hit tween fires through the new `Sprite.material_id` path. New `example-04-shader-playground` crate exercises the 17-effect fixture under `TUNGSTEN_POST_STACK_FIXTURE`.
@@ -13,8 +17,15 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Workspace version bumped to `0.23.0`.
+- `README.md`, `AGENTS.md`, `CLAUDE.md`, and `docs/plans/phase4.md` now reflect branch `0.23` with both M25 and M26 shipped; the detailed M26 plan moved to [`docs/plans/archive/phase4-milestone-26-materials-post-stack.md`](docs/plans/archive/phase4-milestone-26-materials-post-stack.md).
 - `AGENTS.md` §Asset Rules lists the new `materials` manifest section and the vendored `assets/shaders/stock/` mirror rule.
 - `DESIGN.md` §Status and §Hot Reload matrix: M26 row added; `shader` row widened to include material-pipeline rebuilds on shader reload.
+
+### Fixed
+
+- **M26 release-polish QA pass:** `MaterialUniformDefaults::to_override_block()` now builds its `UniformOverrideBlock` in one initializer, `PostStack::{as_slice, as_slice_mut}` are marked `#[must_use]`, and `UniformOverrideBlock` no longer exposes its reserved padding tail as a public field. This keeps `cargo clippy --workspace --all-targets -- -D warnings` green without weakening the lint surface.
+- Release QA pass completed locally: `cargo fmt --all --check`, `cargo build --workspace`, `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, `bash scripts/test-perf-capture.sh`, `WGPU_BACKEND=vulkan ./scripts/perf-capture.sh ecs-high-load 300 --telemetry-only`, and `WGPU_BACKEND=vulkan ./scripts/smoke-examples.sh` all passed.
 
 ## [0.22.0] - 2026-04-24
 

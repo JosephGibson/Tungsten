@@ -219,7 +219,7 @@ pub(crate) fn damage_flash_on_ball_hit(world: &mut World) {
 
     for player in players {
         let was_hit = events.iter().any(|ev| {
-            (ev.a == player && ev.b.map_or(false, |b| balls.contains(&b)))
+            (ev.a == player && ev.b.is_some_and(|b| balls.contains(&b)))
                 || (ev.b == Some(player) && balls.contains(&ev.a))
         });
         if !was_hit {

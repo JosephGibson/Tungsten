@@ -31,11 +31,7 @@ impl MaterialUniformDefaults {
     /// Project these defaults onto a fresh override block.
     #[must_use]
     pub fn to_override_block(&self) -> UniformOverrideBlock {
-        let mut block = UniformOverrideBlock::default();
-        block.vec4 = self.vec4;
-        block.f32s = self.f32s;
-        block.i32s = self.i32s;
-        block
+        UniformOverrideBlock::from_slots(self.vec4, self.f32s, self.i32s)
     }
 }
 

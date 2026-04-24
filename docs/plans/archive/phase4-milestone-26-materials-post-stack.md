@@ -377,9 +377,9 @@ Signature-level changes (bind-group layout, instance attributes) still require a
 - Verify: `rg -n 'material|PostStack' AGENTS.md DESIGN.md CHANGELOG.md docs/LLM_INDEX.md` returns the new rows; spot-check `cargo test --workspace` that the `DECISION_INDEX` coverage test (see `D-053` precedent) still passes.
 
 ### 23. Flip plan status
-- File: [docs/plans/phase4-milestone-26-materials-post-stack.md](docs/plans/phase4-milestone-26-materials-post-stack.md).
+- File: [docs/plans/archive/phase4-milestone-26-materials-post-stack.md](phase4-milestone-26-materials-post-stack.md).
 - Action: `status: draft` → `status: done` once steps 1–22 land on `0.23`.
-- Verify: `rg -n "^status:" docs/plans/phase4-milestone-26-materials-post-stack.md` shows `done`.
+- Verify: `rg -n "^status:" docs/plans/archive/phase4-milestone-26-materials-post-stack.md` shows `done`.
 
 ## Verification Commands Summary
 

@@ -63,7 +63,7 @@ pub struct Renderer {
     debug_line_pipeline: DebugLinePipeline,
     text_pipeline: TextPipeline,
     present_blit: PresentBlitPipeline,
-    post_stack_renderer: PostStackRenderer,
+    post_stack: PostStackRenderer,
     target_pool: RenderTargetPool,
     shader_cache: ShaderModuleCache,
     sample_count: u32,
@@ -231,7 +231,7 @@ impl Renderer {
             .upload(&device, sprite_shader_id, SPRITE_SHADER_NAME, sprite_src)
             .expect("compile-time sprite shader must validate");
 
-        let post_stack_renderer = PostStackRenderer::new(&device, format);
+        let post_stack = PostStackRenderer::new(&device, format);
 
         let mut shader_ids = HashMap::new();
         shader_ids.insert(SPRITE_SHADER_NAME.to_string(), sprite_shader_id);
@@ -249,7 +249,7 @@ impl Renderer {
             debug_line_pipeline,
             text_pipeline,
             present_blit,
-            post_stack_renderer,
+            post_stack,
             target_pool,
             shader_cache,
             sample_count,
@@ -376,12 +376,9 @@ impl Renderer {
     /// Hot-reload a manifest-tracked shader. Failures log and keep the live
     /// `ShaderModule` + pipelines untouched (last-known-good).
     pub fn reload_shader(&mut self, name: &str, wgsl: String) -> Result<(), RenderError> {
-        let id = match self.shader_ids.get(name).copied() {
-            Some(id) => id,
-            None => {
-                log::error!("shader reload: unknown id '{name}'");
-                return Ok(());
-            }
+        let Some(id) = self.shader_ids.get(name).copied() else {
+            log::error!("shader reload: unknown id '{name}'");
+            return Ok(());
         };
         if self.shader_cache.bytes_equal(id, &wgsl) {
             return Ok(());
@@ -429,23 +426,17 @@ impl Renderer {
         shader_name: &str,
         defaults: MaterialUniformDefaults,
     ) -> Result<(), RenderError> {
-        let shader_id = match self.shader_ids.get(shader_name).copied() {
-            Some(id) => id,
-            None => {
-                return Err(RenderError::Shader(ShaderError::Validation {
-                    name: name.to_string(),
-                    report: format!("material references unknown shader id '{shader_name}'"),
-                }));
-            }
+        let Some(shader_id) = self.shader_ids.get(shader_name).copied() else {
+            return Err(RenderError::Shader(ShaderError::Validation {
+                name: name.to_string(),
+                report: format!("material references unknown shader id '{shader_name}'"),
+            }));
         };
-        let module = match self.shader_cache.get(shader_id) {
-            Some(m) => m,
-            None => {
-                return Err(RenderError::Shader(ShaderError::Validation {
-                    name: name.to_string(),
-                    report: format!("shader '{shader_name}' has no live module"),
-                }));
-            }
+        let Some(module) = self.shader_cache.get(shader_id) else {
+            return Err(RenderError::Shader(ShaderError::Validation {
+                name: name.to_string(),
+                report: format!("shader '{shader_name}' has no live module"),
+            }));
         };
 
         let (pipeline, material_bgl, ubo, bind_group) = build_material_pipeline(
@@ -795,7 +786,7 @@ impl Renderer {
                 if let (Some(post_pass), Some(&(src, _dst))) =
                     (post_stack.0.get(pi), post_plan.get(pi))
                 {
-                    self.post_stack_renderer.record_pass(
+                    self.post_stack.record_pass(
                         &self.device,
                         &self.queue,
                         &mut pass,

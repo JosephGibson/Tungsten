@@ -135,14 +135,64 @@ struct BouncerSpec {
 
 fn spawn_bouncers(world: &mut World) {
     let specs: &[BouncerSpec] = &[
-        BouncerSpec { position: Vec2::new(200.0, 160.0), velocity: Vec2::new(220.0, 160.0), rotation: 0.0, scale_mul: 6.0, angular_velocity: 1.6, color: [255, 255, 255, 255] },
-        BouncerSpec { position: Vec2::new(480.0, 300.0), velocity: Vec2::new(-320.0, 140.0), rotation: 0.7, scale_mul: 4.0, angular_velocity: -2.4, color: [255, 110, 110, 255] },
-        BouncerSpec { position: Vec2::new(780.0, 220.0), velocity: Vec2::new(260.0, -260.0), rotation: 1.2, scale_mul: 8.0, angular_velocity: 0.9, color: [110, 255, 150, 255] },
-        BouncerSpec { position: Vec2::new(960.0, 520.0), velocity: Vec2::new(-180.0, -200.0), rotation: 2.1, scale_mul: 3.0, angular_velocity: -1.2, color: [120, 180, 255, 255] },
-        BouncerSpec { position: Vec2::new(540.0, 600.0), velocity: Vec2::new(380.0, 280.0), rotation: 0.3, scale_mul: 5.5, angular_velocity: 2.6, color: [240, 210, 110, 255] },
-        BouncerSpec { position: Vec2::new(1080.0, 140.0), velocity: Vec2::new(-140.0, 340.0), rotation: 1.7, scale_mul: 7.0, angular_velocity: -0.6, color: [255, 140, 220, 255] },
+        BouncerSpec {
+            position: Vec2::new(200.0, 160.0),
+            velocity: Vec2::new(220.0, 160.0),
+            rotation: 0.0,
+            scale_mul: 6.0,
+            angular_velocity: 1.6,
+            color: [255, 255, 255, 255],
+        },
+        BouncerSpec {
+            position: Vec2::new(480.0, 300.0),
+            velocity: Vec2::new(-320.0, 140.0),
+            rotation: 0.7,
+            scale_mul: 4.0,
+            angular_velocity: -2.4,
+            color: [255, 110, 110, 255],
+        },
+        BouncerSpec {
+            position: Vec2::new(780.0, 220.0),
+            velocity: Vec2::new(260.0, -260.0),
+            rotation: 1.2,
+            scale_mul: 8.0,
+            angular_velocity: 0.9,
+            color: [110, 255, 150, 255],
+        },
+        BouncerSpec {
+            position: Vec2::new(960.0, 520.0),
+            velocity: Vec2::new(-180.0, -200.0),
+            rotation: 2.1,
+            scale_mul: 3.0,
+            angular_velocity: -1.2,
+            color: [120, 180, 255, 255],
+        },
+        BouncerSpec {
+            position: Vec2::new(540.0, 600.0),
+            velocity: Vec2::new(380.0, 280.0),
+            rotation: 0.3,
+            scale_mul: 5.5,
+            angular_velocity: 2.6,
+            color: [240, 210, 110, 255],
+        },
+        BouncerSpec {
+            position: Vec2::new(1080.0, 140.0),
+            velocity: Vec2::new(-140.0, 340.0),
+            rotation: 1.7,
+            scale_mul: 7.0,
+            angular_velocity: -0.6,
+            color: [255, 140, 220, 255],
+        },
     ];
-    for &BouncerSpec { position, velocity, rotation, scale_mul, angular_velocity, color } in specs {
+    for &BouncerSpec {
+        position,
+        velocity,
+        rotation,
+        scale_mul,
+        angular_velocity,
+        color,
+    } in specs
+    {
         let entity = world.spawn();
         world.insert(
             entity,
@@ -527,11 +577,11 @@ fn cycle_input_system(world: &mut World) {
 }
 
 fn playground_text(world: &World) -> Vec<TextSection> {
-    let cursor = world.get_resource::<CycleCursor>().copied().unwrap_or_default();
-    let stack_len = world
-        .get_resource::<PostStack>()
-        .map(PostStack::len)
-        .unwrap_or(0);
+    let cursor = world
+        .get_resource::<CycleCursor>()
+        .copied()
+        .unwrap_or_default();
+    let stack_len = world.get_resource::<PostStack>().map_or(0, PostStack::len);
     let active_name = if cursor.fixture_lock {
         format!("fixture-locked ({stack_len} effect[s])")
     } else {
@@ -588,10 +638,12 @@ fn effect_label(i: usize) -> &'static str {
 const EFFECT_ROSTER: &[fn() -> PostPass] = &[
     || PostPass::Tonemap(TonemapParams::default()),
     || PostPass::Vignette(VignetteParams::default()),
-    || PostPass::Lut(LutParams {
-        mix: 0.75,
-        ..LutParams::default()
-    }),
+    || {
+        PostPass::Lut(LutParams {
+            mix: 0.75,
+            ..LutParams::default()
+        })
+    },
     || PostPass::ChromaticAberration(2.5),
     || PostPass::ColorAdjust(ColorAdjustParams::default()),
     || PostPass::ToneMono(ToneMonoParams::default()),
@@ -599,20 +651,26 @@ const EFFECT_ROSTER: &[fn() -> PostPass] = &[
     || PostPass::FilmGrain(FilmGrainParams::default()),
     || PostPass::Dither(DitherParams::default()),
     || PostPass::PixelOutline(PixelOutlineParams::default()),
-    || PostPass::Fade(FadeParams {
-        progress: 0.4,
-        ..FadeParams::default()
-    }),
-    || PostPass::WipeRadial(WipeRadialParams {
-        progress: 0.6,
-        softness: 0.08,
-        ..WipeRadialParams::default()
-    }),
-    || PostPass::Dissolve(DissolveParams {
-        progress: 0.5,
-        noise_scale: 24.0,
-        ..DissolveParams::default()
-    }),
+    || {
+        PostPass::Fade(FadeParams {
+            progress: 0.4,
+            ..FadeParams::default()
+        })
+    },
+    || {
+        PostPass::WipeRadial(WipeRadialParams {
+            progress: 0.6,
+            softness: 0.08,
+            ..WipeRadialParams::default()
+        })
+    },
+    || {
+        PostPass::Dissolve(DissolveParams {
+            progress: 0.5,
+            noise_scale: 24.0,
+            ..DissolveParams::default()
+        })
+    },
     || PostPass::Glitch(tungsten_core::post::GlitchParams::default()),
     || PostPass::Pixelate(4.0),
     || PostPass::Fog(FogParams::default()),

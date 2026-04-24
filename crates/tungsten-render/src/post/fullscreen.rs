@@ -13,6 +13,7 @@
 //! stay uncomplicated.
 
 /// Build the bind-group layouts shared by every stock post pipeline.
+#[must_use]
 pub fn build_layouts(device: &wgpu::Device) -> StockLayouts {
     let source_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("post_source_bgl"),
@@ -62,6 +63,7 @@ pub struct StockLayouts {
 /// Build one stock effect pipeline. Each effect module calls this exactly once
 /// at renderer init. `wgsl_source` is `include_str!`'d; a matching file lives
 /// under `assets/shaders/stock/` so the manifest can hot-reload the body.
+#[must_use]
 pub fn build_pipeline(
     device: &wgpu::Device,
     layouts: &StockLayouts,
@@ -111,6 +113,7 @@ pub fn build_pipeline(
 }
 
 /// 256-byte effect UBO buffer allocator.
+#[must_use]
 pub fn build_params_ubo(device: &wgpu::Device, label: &str) -> wgpu::Buffer {
     device.create_buffer(&wgpu::BufferDescriptor {
         label: Some(&format!("{label}_params")),
@@ -120,6 +123,7 @@ pub fn build_params_ubo(device: &wgpu::Device, label: &str) -> wgpu::Buffer {
     })
 }
 
+#[must_use]
 pub fn build_params_bind_group(
     device: &wgpu::Device,
     layouts: &StockLayouts,
@@ -136,6 +140,7 @@ pub fn build_params_bind_group(
     })
 }
 
+#[must_use]
 pub fn build_source_bind_group(
     device: &wgpu::Device,
     layouts: &StockLayouts,

@@ -386,12 +386,9 @@ pub fn load_materials(
 /// live pipeline (last-known-good).
 pub fn reload_material(id: &str, world: &mut World, renderer: &mut Renderer) -> anyhow::Result<()> {
     let (asset_id, shader_name, defaults) = {
-        let registry = match world.get_resource::<MaterialRegistry>() {
-            Some(r) => r,
-            None => {
-                log::error!("reload_material '{id}': no MaterialRegistry");
-                return Ok(());
-            }
+        let Some(registry) = world.get_resource::<MaterialRegistry>() else {
+            log::error!("reload_material '{id}': no MaterialRegistry");
+            return Ok(());
         };
         let Some(asset_id) = registry.get(id) else {
             log::error!("reload_material '{id}': unknown material id");

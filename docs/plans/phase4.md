@@ -87,6 +87,8 @@ Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user mate
 
 ## M26 — Materials + Post-Stack + Tween→Material Bridge
 
+**Status:** done — shipped in `0.23` (plan archived at [`docs/plans/archive/phase4-milestone-26-materials-post-stack.md`](archive/phase4-milestone-26-materials-post-stack.md)).
+
 **Depends on:** M25.
 
 **Adds (crates/tungsten-render/src/):**

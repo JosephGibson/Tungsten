@@ -413,10 +413,12 @@ impl PostStack {
         self.0.insert(to, pass);
     }
 
+    #[must_use]
     pub fn as_slice(&self) -> &[PostPass] {
         &self.0
     }
 
+    #[must_use]
     pub fn as_slice_mut(&mut self) -> &mut [PostPass] {
         &mut self.0
     }

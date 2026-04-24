@@ -107,6 +107,7 @@ pub struct PostStackRenderer {
 }
 
 impl PostStackRenderer {
+    #[must_use]
     pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
         let resources = StockResources::new(device);
         Self {
@@ -265,14 +266,14 @@ impl PostStackRenderer {
     pub fn plan_targets(len: usize) -> Vec<(TargetId, TargetId)> {
         let mut out = Vec::with_capacity(len);
         for i in 0..len {
-            let dst = if i % 2 == 0 {
+            let dst = if i.is_multiple_of(2) {
                 TargetId::PostPing
             } else {
                 TargetId::PostPong
             };
             let src = if i == 0 {
                 TargetId::SceneColor
-            } else if (i - 1) % 2 == 0 {
+            } else if (i - 1).is_multiple_of(2) {
                 TargetId::PostPing
             } else {
                 TargetId::PostPong
@@ -289,7 +290,7 @@ impl PostStackRenderer {
         if len == 0 {
             return None;
         }
-        Some(if (len - 1) % 2 == 0 {
+        Some(if (len - 1).is_multiple_of(2) {
             TargetId::PostPing
         } else {
             TargetId::PostPong

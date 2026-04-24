@@ -247,7 +247,7 @@ pub struct UniformOverrideBlock {
     /// Reserved zero-padding to reach a fixed 256-byte binding. Laid out as
     /// `vec4<u32>`-sized rows so it remains `bytemuck::Pod`-compatible. Do not
     /// read; future slot growth should rename pieces out of this tail.
-    pub _reserved: [[u32; 4]; 10],
+    _reserved: [[u32; 4]; 10],
 }
 
 impl Default for UniformOverrideBlock {
@@ -262,6 +262,18 @@ impl Default for UniformOverrideBlock {
 }
 
 impl UniformOverrideBlock {
+    /// Construct a block from the authored/public slots while preserving the
+    /// zeroed reserved tail.
+    #[must_use]
+    pub fn from_slots(vec4: [[f32; 4]; 4], f32s: [f32; 4], i32s: [i32; 4]) -> Self {
+        Self {
+            vec4,
+            f32s,
+            i32s,
+            ..Self::default()
+        }
+    }
+
     /// GPU-ready 256-byte payload.
     #[must_use]
     pub fn to_bytes(&self) -> [u8; 256] {

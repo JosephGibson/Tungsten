@@ -46,9 +46,8 @@ fn plan_three_passes_returns_to_ping() {
 fn plan_seventeen_passes_stays_valid_all_the_way() {
     let plan = PostStackRenderer::plan_targets(17);
     assert_eq!(plan.len(), 17);
-    for i in 0..17 {
-        let (src, dst) = plan[i];
-        let expected_dst = if i % 2 == 0 {
+    for (i, &(src, dst)) in plan.iter().enumerate() {
+        let expected_dst = if i.is_multiple_of(2) {
             TargetId::PostPing
         } else {
             TargetId::PostPong
@@ -57,7 +56,7 @@ fn plan_seventeen_passes_stays_valid_all_the_way() {
         if i == 0 {
             assert_eq!(src, TargetId::SceneColor);
         } else {
-            let prev_dst = if (i - 1) % 2 == 0 {
+            let prev_dst = if (i - 1).is_multiple_of(2) {
                 TargetId::PostPing
             } else {
                 TargetId::PostPong

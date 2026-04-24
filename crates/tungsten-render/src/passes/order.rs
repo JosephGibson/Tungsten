@@ -52,7 +52,7 @@ const POST_PASS_LABELS: [&str; 32] = [
 ];
 
 fn post_target_for_index(i: usize) -> TargetId {
-    if i % 2 == 0 {
+    if i.is_multiple_of(2) {
         TargetId::PostPing
     } else {
         TargetId::PostPong
@@ -112,10 +112,7 @@ pub fn default_pass_order(
     }
 
     let overlay_target = text_overlay_target(post_stack_len);
-    passes.push(PassDesc::new(
-        "tungsten_text_overlay_pass",
-        overlay_target,
-    ));
+    passes.push(PassDesc::new("tungsten_text_overlay_pass", overlay_target));
 
     passes.push(PassDesc::new("tungsten_present_pass", TargetId::Swapchain));
 

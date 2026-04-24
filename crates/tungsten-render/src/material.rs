@@ -27,6 +27,7 @@ pub struct MaterialPipeline {
 }
 
 #[allow(clippy::too_many_arguments)]
+#[must_use]
 pub fn build_material_pipeline(
     device: &wgpu::Device,
     module: &wgpu::ShaderModule,
