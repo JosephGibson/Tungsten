@@ -13,11 +13,14 @@
 //! the smoke matrix, not interactive inspection.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use glam::Vec2;
 use tungsten::core::{
-    ActionMap, Config, DeltaTime, InputState, Sprite, Transform, Visibility, World,
+    ActionMap, BlendMode, CommandBuffer, Config, Curve, DeltaTime, EmissionKind, InitialVelocity,
+    InputState, ParticleConfig, Pcg32, Range, Sprite, Transform, Visibility, World,
 };
+use tungsten::particles::spawn_particle_via;
 use tungsten::{render::TextSection, App};
 use tungsten_core::post::{
     ColorAdjustParams, CrtParams, DissolveParams, DitherParams, FadeParams, FilmGrainParams,
@@ -32,6 +35,14 @@ const QUAD_ID: &str = "ex04_quad";
 const QUAD_TEXELS: f32 = 16.0;
 const WINDOW_W: f32 = 1280.0;
 const WINDOW_H: f32 = 720.0;
+/// Reflection bounds run past the window edges so the flock roams a roomier
+/// arena while the window config stays untouched.
+const ARENA_SCALE: f32 = 1.75;
+const ARENA_W: f32 = WINDOW_W * ARENA_SCALE;
+const ARENA_H: f32 = WINDOW_H * ARENA_SCALE;
+/// Wall/pair burst counts — tuned for visible pop without blowing the cap.
+const WALL_BURST_COUNT: u32 = 14;
+const PAIR_BURST_COUNT: u32 = 22;
 
 /// Per-entity bounce state. Lives alongside `Transform` so each sprite moves,
 /// spins, and reflects off window edges independently.
@@ -52,6 +63,16 @@ struct CycleCursor {
     fixture_lock: bool,
 }
 
+/// Shared burst templates; `Arc` so per-spawn clones stay cheap.
+#[derive(Clone)]
+struct SparkRecipes {
+    wall: Arc<ParticleConfig>,
+    pair: Arc<ParticleConfig>,
+}
+
+/// Dedicated RNG for burst jitter so bouncer motion stays deterministic.
+struct SparkRng(Pcg32);
+
 fn main() -> anyhow::Result<()> {
     env_logger::init();
 
@@ -67,6 +88,11 @@ fn main() -> anyhow::Result<()> {
     {
         let world = app.world_mut();
         world.insert_resource(CycleCursor::default());
+        world.insert_resource(SparkRecipes {
+            wall: wall_spark_config(),
+            pair: pair_spark_config(),
+        });
+        world.insert_resource(SparkRng(Pcg32::seeded(0xEF04_5A9C_A2D1_7B03)));
     }
 
     app.on_startup(|world, _renderer| {
@@ -90,6 +116,7 @@ fn main() -> anyhow::Result<()> {
     });
 
     app.add_system_named("playground_bounce", bounce_system);
+    app.add_system_named("playground_collisions", pair_collision_system);
     app.add_system_named("playground_cycle_input", cycle_input_system);
     app.set_extract_text(playground_text);
 
@@ -145,6 +172,10 @@ fn bounce_system(world: &mut World) {
         .get_resource::<DeltaTime>()
         .map_or(1.0 / 60.0, DeltaTime::seconds);
 
+    // Outward normals for each axis the entity crossed this tick. Collected
+    // first so the burst spawn pass runs after every world.get_mut release.
+    let mut contacts: Vec<(Vec2, Vec2)> = Vec::new();
+
     for entity in world.query2_entities::<Transform, Bouncer>() {
         let (mut velocity, angular_velocity, size) = {
             let b = world.get::<Bouncer>(entity).copied().unwrap();
@@ -159,16 +190,20 @@ fn bounce_system(world: &mut World) {
             if t.position.x - half < 0.0 {
                 t.position.x = half;
                 velocity.x = velocity.x.abs();
-            } else if t.position.x + half > WINDOW_W {
-                t.position.x = WINDOW_W - half;
+                contacts.push((Vec2::new(0.0, t.position.y), Vec2::new(1.0, 0.0)));
+            } else if t.position.x + half > ARENA_W {
+                t.position.x = ARENA_W - half;
                 velocity.x = -velocity.x.abs();
+                contacts.push((Vec2::new(ARENA_W, t.position.y), Vec2::new(-1.0, 0.0)));
             }
             if t.position.y - half < 0.0 {
                 t.position.y = half;
                 velocity.y = velocity.y.abs();
-            } else if t.position.y + half > WINDOW_H {
-                t.position.y = WINDOW_H - half;
+                contacts.push((Vec2::new(t.position.x, 0.0), Vec2::new(0.0, 1.0)));
+            } else if t.position.y + half > ARENA_H {
+                t.position.y = ARENA_H - half;
                 velocity.y = -velocity.y.abs();
+                contacts.push((Vec2::new(t.position.x, ARENA_H), Vec2::new(0.0, -1.0)));
             }
         }
 
@@ -176,6 +211,269 @@ fn bounce_system(world: &mut World) {
             b.velocity = velocity;
         }
     }
+
+    if contacts.is_empty() {
+        return;
+    }
+    let Some(recipe) = world.get_resource::<SparkRecipes>().map(|r| r.wall.clone()) else {
+        return;
+    };
+    with_spawn_ctx(world, |buf, rng| {
+        for (point, normal) in contacts {
+            emit_cone_burst(
+                buf,
+                rng,
+                &recipe,
+                point,
+                normal,
+                WALL_BURST_COUNT,
+                (180.0, 420.0),
+                90.0,
+                (0.25, 0.55),
+                (0.3, 0.55),
+            );
+        }
+    });
+}
+
+/// Pair collisions as AABB (`Bouncer.size`), resolved by swapping the velocity
+/// component along the shallowest overlap axis and separating along the same.
+fn pair_collision_system(world: &mut World) {
+    let entities = world.query2_entities::<Transform, Bouncer>();
+    let mut snapshots: Vec<(usize, Vec2, f32, Vec2)> = entities
+        .iter()
+        .enumerate()
+        .filter_map(|(i, e)| {
+            let pos = world.get::<Transform>(*e)?.position;
+            let b = world.get::<Bouncer>(*e)?;
+            Some((i, pos, b.size, b.velocity))
+        })
+        .collect();
+
+    let mut contacts: Vec<Vec2> = Vec::new();
+    for i in 0..snapshots.len() {
+        for j in (i + 1)..snapshots.len() {
+            let (_, pa, sa, va) = snapshots[i];
+            let (_, pb, sb, vb) = snapshots[j];
+            let ha = sa * 0.5;
+            let hb = sb * 0.5;
+            let delta = pb - pa;
+            let overlap_x = (ha + hb) - delta.x.abs();
+            let overlap_y = (ha + hb) - delta.y.abs();
+            if overlap_x <= 0.0 || overlap_y <= 0.0 {
+                continue;
+            }
+
+            // Shallowest axis wins — that is the pushout direction.
+            if overlap_x < overlap_y {
+                let sign = if delta.x >= 0.0 { 1.0 } else { -1.0 };
+                let push = overlap_x * 0.5 * sign;
+                snapshots[i].1.x -= push;
+                snapshots[j].1.x += push;
+                // Only swap if they are actually approaching along the normal.
+                let rel = vb.x - va.x;
+                if rel * sign < 0.0 {
+                    let va_new = Vec2::new(vb.x, va.y);
+                    let vb_new = Vec2::new(va.x, vb.y);
+                    snapshots[i].3 = va_new;
+                    snapshots[j].3 = vb_new;
+                }
+                let contact_x = pa.x + sign * ha;
+                let contact_y = 0.5 * (pa.y + pb.y);
+                contacts.push(Vec2::new(contact_x, contact_y));
+            } else {
+                let sign = if delta.y >= 0.0 { 1.0 } else { -1.0 };
+                let push = overlap_y * 0.5 * sign;
+                snapshots[i].1.y -= push;
+                snapshots[j].1.y += push;
+                let rel = vb.y - va.y;
+                if rel * sign < 0.0 {
+                    let va_new = Vec2::new(va.x, vb.y);
+                    let vb_new = Vec2::new(vb.x, va.y);
+                    snapshots[i].3 = va_new;
+                    snapshots[j].3 = vb_new;
+                }
+                let contact_x = 0.5 * (pa.x + pb.x);
+                let contact_y = pa.y + sign * ha;
+                contacts.push(Vec2::new(contact_x, contact_y));
+            }
+        }
+    }
+
+    // Write back resolved state.
+    for (idx, pos, _, vel) in &snapshots {
+        let e = entities[*idx];
+        if let Some(t) = world.get_mut::<Transform>(e) {
+            t.position = *pos;
+        }
+        if let Some(b) = world.get_mut::<Bouncer>(e) {
+            b.velocity = *vel;
+        }
+    }
+
+    if contacts.is_empty() {
+        return;
+    }
+    let Some(recipe) = world.get_resource::<SparkRecipes>().map(|r| r.pair.clone()) else {
+        return;
+    };
+    with_spawn_ctx(world, |buf, rng| {
+        for point in contacts {
+            emit_cone_burst(
+                buf,
+                rng,
+                &recipe,
+                point,
+                Vec2::ZERO,
+                PAIR_BURST_COUNT,
+                (160.0, 360.0),
+                360.0,
+                (0.35, 0.7),
+                (0.35, 0.65),
+            );
+        }
+    });
+}
+
+/// Temporarily takes the `CommandBuffer` and `SparkRng` out of the world so
+/// the closure can mutate both without fighting the ECS borrow checker.
+fn with_spawn_ctx(world: &mut World, f: impl FnOnce(&mut CommandBuffer, &mut Pcg32)) {
+    let Some(mut buf) = world.remove_resource::<CommandBuffer>() else {
+        return;
+    };
+    let mut rng = world
+        .remove_resource::<SparkRng>()
+        .unwrap_or(SparkRng(Pcg32::seeded(1)));
+    f(&mut buf, &mut rng.0);
+    world.insert_resource(rng);
+    world.insert_resource(buf);
+}
+
+/// Spawn `count` particles fanned around `direction` (pass `Vec2::ZERO` for
+/// full-circle radial). `speed`/`life`/`scale` are `(min, max)` ranges.
+#[allow(clippy::too_many_arguments)]
+fn emit_cone_burst(
+    buf: &mut CommandBuffer,
+    rng: &mut Pcg32,
+    config: &Arc<ParticleConfig>,
+    origin: Vec2,
+    direction: Vec2,
+    count: u32,
+    speed: (f32, f32),
+    spread_deg: f32,
+    life: (f32, f32),
+    scale: (f32, f32),
+) {
+    let use_radial = direction.length_squared() < 1.0e-6;
+    let base = if use_radial {
+        Vec2::ZERO
+    } else {
+        direction.normalize_or_zero()
+    };
+    for _ in 0..count {
+        let dir = if use_radial {
+            rng.next_unit_vec2()
+        } else {
+            let spread_rad = spread_deg.to_radians();
+            let jitter = rng.next_range(-spread_rad * 0.5, spread_rad * 0.5);
+            let (s, c) = jitter.sin_cos();
+            Vec2::new(base.x * c - base.y * s, base.x * s + base.y * c)
+        };
+        let v = dir * rng.next_range(speed.0, speed.1);
+        let lifetime = rng.next_range(life.0, life.1);
+        let start_scale = rng.next_range(scale.0, scale.1);
+        spawn_particle_via(buf, None, config.clone(), origin, v, lifetime, start_scale);
+    }
+}
+
+/// Cool-blue streak recipe for wall impacts. Only `spawn_particle_via`-read
+/// fields matter (sprite, tint, drag, gravity, curves, blend) — emission and
+/// initial_velocity are never consulted, so their values are placeholders.
+fn wall_spark_config() -> Arc<ParticleConfig> {
+    Arc::new(ParticleConfig {
+        sprite: QUAD_ID.into(),
+        max_alive: 1,
+        seed: None,
+        blend: BlendMode::Alpha,
+        emission: EmissionKind::Burst {
+            count: 1,
+            once: true,
+        },
+        lifetime: Range {
+            min: 0.25,
+            max: 0.55,
+        },
+        initial_velocity: InitialVelocity::Radial {
+            speed: Range::single(1.0),
+        },
+        gravity: [0.0, 520.0],
+        drag_per_sec: 2.4,
+        angular_velocity: Range::single(0.0),
+        start_scale: Range {
+            min: 0.3,
+            max: 0.55,
+        },
+        scale_over_life: Some(Curve {
+            points: vec![(0.0, 1.0), (1.0, 0.0)],
+        }),
+        color_over_life: Some(Curve {
+            points: vec![
+                (0.0, [1.0, 1.0, 1.0, 1.0]),
+                (0.35, [0.7, 0.9, 1.0, 1.0]),
+                (1.0, [0.2, 0.4, 0.95, 1.0]),
+            ],
+        }),
+        alpha_over_life: Some(Curve {
+            points: vec![(0.0, 0.0), (0.12, 1.0), (1.0, 0.0)],
+        }),
+        tint: [1.0, 1.0, 1.0, 1.0],
+    })
+}
+
+/// Hot-orange radial recipe for entity-entity hits — distinct silhouette and
+/// palette from the wall sparks so the two are legible side-by-side.
+fn pair_spark_config() -> Arc<ParticleConfig> {
+    Arc::new(ParticleConfig {
+        sprite: QUAD_ID.into(),
+        max_alive: 1,
+        seed: None,
+        blend: BlendMode::Alpha,
+        emission: EmissionKind::Burst {
+            count: 1,
+            once: true,
+        },
+        lifetime: Range {
+            min: 0.35,
+            max: 0.7,
+        },
+        initial_velocity: InitialVelocity::Radial {
+            speed: Range::single(1.0),
+        },
+        gravity: [0.0, 260.0],
+        drag_per_sec: 1.8,
+        angular_velocity: Range {
+            min: -6.0,
+            max: 6.0,
+        },
+        start_scale: Range {
+            min: 0.35,
+            max: 0.65,
+        },
+        scale_over_life: Some(Curve {
+            points: vec![(0.0, 0.6), (0.2, 1.0), (1.0, 0.0)],
+        }),
+        color_over_life: Some(Curve {
+            points: vec![
+                (0.0, [1.0, 1.0, 0.85, 1.0]),
+                (0.4, [1.0, 0.55, 0.15, 1.0]),
+                (1.0, [0.6, 0.1, 0.0, 1.0]),
+            ],
+        }),
+        alpha_over_life: Some(Curve {
+            points: vec![(0.0, 0.0), (0.1, 1.0), (1.0, 0.0)],
+        }),
+        tint: [1.0, 1.0, 1.0, 1.0],
+    })
 }
 
 fn cycle_input_system(world: &mut World) {
