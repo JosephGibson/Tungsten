@@ -145,7 +145,7 @@ Summary: Phase 3 Milestone 20 — scene / state dispatcher, `scene.json` data-dr
 - **Scene data model (`tungsten_core::assets::scene`):** `SceneData`, `SceneEntry`, `SceneTransform`, `SceneSprite`, and `SceneError` define a minimal JSON schema that reuses the M15 `Transform` / `Sprite` / `Visibility` / `Tag` components. `SceneData::load` parses a `scene.json` file; `asset_loader::load_scene` and `asset_loader::spawn_scene` wrap the load + `CommandBuffer` spawn path so scenes land at the canonical frame boundary.
 - **State-transition action defaults:** `ActionMap::default_map()` now ships `state_start` (`Enter`), `state_pause` (`KeyP`), and `state_back` (`Backspace`) so examples drive transitions without an edited `input.json`. `KeyCode::Backspace` and `KeyCode::KeyP` are new variants on the core-owned keyboard enum (and route through the input bridge + serde tables).
 - **New example — `example-03-scene-state`:** end-to-end demo of the `MainMenu → Gameplay → Pause → Gameplay` flow. Gameplay entities come from `scene.json` via `spawn_scene` (25-entity constellation: pulsing hub + three counter-rotating orbital rings); Pause overlays Gameplay without tearing the scene down; the HUD `state` row mirrors the active state id.
-- **Decision record + detailed plan:** `DECISIONS.md` now includes `D-046`; the implementation plan is archived at `docs/plans/archive/phase3-milestone-20-plan.md`; `docs/DECISION_INDEX.md` and `docs/LLM_INDEX.md` reflect the new subsystem.
+- **Decision record + detailed plan:** `DECISIONS.md` now includes `D-046`; the implementation plan is archived at `docs/plans/archive/phase3-milestone-20-scene-state-system.md`; `docs/DECISION_INDEX.md` and `docs/LLM_INDEX.md` reflect the new subsystem.
 
 ### Changed
 
@@ -170,7 +170,7 @@ Summary: Phase 3 Milestone 19 — input mapping, mouse support, runtime rebind p
 
 - Workspace version bumped to `0.16.0`.
 - `example-01-platformer` now consumes gameplay input exclusively through action lookups, demonstrates mouse-button bindings (`LMB` jump, `RMB` music toggle, `MMB` stop-all) plus scroll zoom, and renders live cursor / wheel telemetry in the on-screen text.
-- `docs/plans/Phase3.md`, `AGENTS.md`, `CLAUDE.md`, `README.md`, `DESIGN.md`, `docs/LLM_INDEX.md`, and `docs/DECISION_INDEX.md` now reflect the shipped M19 release line; the detailed plan moved to `docs/plans/archive/phase3-milestone-19-plan.md`.
+- `docs/plans/Phase3.md`, `AGENTS.md`, `CLAUDE.md`, `README.md`, `DESIGN.md`, `docs/LLM_INDEX.md`, and `docs/DECISION_INDEX.md` now reflect the shipped M19 release line; the detailed plan moved to `docs/plans/archive/phase3-milestone-19-input-mapping.md`.
 - Release QA pass completed locally: `cargo build --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `cargo fmt --all --check`, `./scripts/smoke-examples.sh`, and `cargo bench -p tungsten-core --bench action_map_bench` all passed.
 
 ### Fixed
@@ -188,7 +188,7 @@ Summary: Phase 3 Milestone 18 — runtime telemetry HUD, diagnostic counters, an
 - **Runtime telemetry HUD (`tungsten::debug_hud`):** `DebugHud`, `HudCorner`, `HudRow`, `HudActiveState`, `hud_toggle_system`, and built-in/custom row providers now ship in the umbrella crate. Built-in rows cover FPS/frame ms, camera state, display state, tagged player position/speed, live entity + sprite counts, and top-N slowest systems.
 - **Diagnostic counters:** `tungsten::RenderCounts` mirrors per-frame entity and sprite counts into the `World`, while `tungsten_core::World::entity_count()` exposes the live ECS entity count in O(1).
 - **HUD toggle + example wiring:** `KeyCode::F4` is now plumbed through the input bridge, `example-01-platformer` tags the player entity for HUD lookup, and the controls text documents the new developer HUD toggle.
-- **Decision record + archived plan:** `DECISIONS.md` now includes `D-044`, the detailed M18 rollout plan now lives at `docs/plans/archive/phase3-milestone-18-plan.md`, and the capture summary lives at `perf-runs/M18-hud/README.md`.
+- **Decision record + archived plan:** `DECISIONS.md` now includes `D-044`, the detailed M18 rollout plan now lives at `docs/plans/archive/phase3-milestone-18-runtime-telemetry-hud.md`, and the capture summary lives at `perf-runs/M18-hud/README.md`.
 
 ### Changed
 
@@ -212,7 +212,7 @@ Summary: Phase 3 Milestone 17 — display state/config, frame-boundary runtime d
 - **Single runtime display request path:** `tungsten::request_display_settings(&mut World, DisplayState)` validates requests up front, queues one pending change, and lets `App` apply fullscreen, resize, surface-pacing, and frame-cap deltas only at the top of `RedrawRequested`.
 - **Display telemetry:** `tungsten::DisplayTelemetry` mirrors authoritative resolution, display mode, vsync intent, lower-case applied present-mode label, max-frame-latency hint, scale mode, and frame-rate cap back into the `World`.
 - **Runtime display demo wiring:** `example-01-platformer` now exercises the runtime path directly: `F11` toggles borderless fullscreen and `F9` toggles `vsync` while re-running auto present-mode selection.
-- **Decision record + archived plan:** `DECISIONS.md` now includes `D-043` for the single-file display config shape and frame-boundary apply rule, and the detailed M17 rollout plan now lives at `docs/plans/archive/phase3-milestone-17-plan.md`.
+- **Decision record + archived plan:** `DECISIONS.md` now includes `D-043` for the single-file display config shape and frame-boundary apply rule, and the detailed M17 rollout plan now lives at `docs/plans/archive/phase3-milestone-17-display-state-config.md`.
 
 ### Changed
 
@@ -369,7 +369,7 @@ Summary: Phase 2 integration — comprehensive platformer demo, example consolid
 
 - Workspace version bumped to `0.8.0-alpha`.
 - Previous milestone examples (`01_window` through `10_platformer`) removed; their feature coverage is consolidated into `01_platformer`.
-- `PHASE2.md` archived to `docs/plans/archive/phase2-milestones-07-12.md`.
+- `PHASE2.md` archived to `docs/plans/archive/phase2.md`.
 
 ### Fixed
 

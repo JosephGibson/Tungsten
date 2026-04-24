@@ -4,7 +4,7 @@ Canonical operating rules for Tungsten. Read this first. Use `DESIGN.md` for arc
 
 ## What Tungsten Is
 
-From-scratch Rust 2D game engine. Stack: `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Workspace crates: `tungsten-core`, `tungsten-render`, `tungsten`. Native only. Current repo state: workspace version `0.22.0`, branch `0.22`, Phase 3 complete with all milestones `M12`–`M24` shipped; the rollout plan is archived at [`docs/plans/archive/phase3-rollout.md`](docs/plans/archive/phase3-rollout.md). Phase 4 scope is tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md).
+From-scratch Rust 2D game engine. Stack: `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Workspace crates: `tungsten-core`, `tungsten-render`, `tungsten`. Native only. Current repo state: workspace version `0.22.0`, branch `0.22`, Phase 3 complete with all milestones `M12`–`M24` shipped; the rollout plan is archived at [`docs/plans/archive/phase3.md`](docs/plans/archive/phase3.md). Phase 4 scope is tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md).
 
 ## Commands
 
@@ -114,11 +114,12 @@ Startup reading order: `AGENTS.md` → `docs/LLM_INDEX.md` → only the source f
 
 Hard rule: never read `docs/plans/archive/`. That directory contains completed or abandoned plans, has no operational value, and should be skipped in all searches and globs.
 
-Shortcuts: subsystem → file map: [docs/LLM_INDEX.md](docs/LLM_INDEX.md). Optional plan handoff path: [`docs/plans/<topic>.md`](docs/plans/). Plan conventions: [CLAUDE.md](CLAUDE.md). Architecture decisions live in `DECISIONS.md`.
+Shortcuts: subsystem → file map: [docs/LLM_INDEX.md](docs/LLM_INDEX.md). Optional plan handoff path: [`docs/plans/<descriptive-topic>.md`](docs/plans/). Milestone implementation plans use `docs/plans/phaseN-milestone-NN-short-topic.md` (`N` = phase number, `NN` = zero-padded milestone number, `short-topic` = concise kebab-case slug). Plan conventions: [CLAUDE.md](CLAUDE.md). Architecture decisions live in `DECISIONS.md`.
 
 Session types:
 
 - **Feature session:** implementing a milestone. Ask for a plan first: files, API shape, tests. Any new dependency must cite its `D-015` rule and get a `DECISIONS.md` entry. After implementation: `cargo fmt && cargo test --workspace`.
+  Milestone plan filenames should use `phaseN-milestone-NN-short-topic.md`; when the work ships, archive the file under `docs/plans/archive/` with the same basename.
 - **Audit session:** reviewing quality, debt, or ergonomics. Read the full crate surface before proposing changes. Flag issues; do not fix them in the same session. Use one session for findings and another for fixes. Check `DECISIONS.md` before calling anything “wrong”; many architectural choices are intentional.
 - **Docs session:** planning/documentation work. Read the full doc before editing. `DECISIONS.md` entries are immutable once settled; reversals add a new entry marked `Superseded by D-XXX`. Update `CHANGELOG.md` and `README.md` status when a milestone ships.
 

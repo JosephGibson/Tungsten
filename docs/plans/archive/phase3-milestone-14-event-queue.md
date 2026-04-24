@@ -1,8 +1,8 @@
 ---
 status: done
 milestone: M14
-version: 0.11.0
-date: 2026-04-16
+version-target: 0.11.0
+shipped-on: 2026-04-16
 depends-on: M13
 unblocks: M20, M21, M23, M24
 ---
@@ -33,7 +33,7 @@ perspective, and wire automatic per-frame flush into the App frame loop.
 - Change detection or reactive systems
 - Any milestone beyond M14 scope
 
-## Affected files
+## Files to touch
 
 | File | Change |
 |------|--------|
@@ -50,7 +50,7 @@ perspective, and wire automatic per-frame flush into the App frame loop.
 | `DESIGN.md` | replace `CollisionEvents` mentions with `EventQueue<CollisionEvent>` |
 | `DECISIONS.md` | add D-040 |
 
-## Pre-execution reads
+## Read before coding
 
 Before writing any code, read these files to confirm current signatures:
 
@@ -64,7 +64,7 @@ Before writing any code, read these files to confirm current signatures:
 
 ---
 
-## Implementation steps
+## Ordered steps
 
 ### Phase 0 — DECISIONS.md entry
 
@@ -730,7 +730,7 @@ Expected outcomes:
 
 ---
 
-## Done-when checklist
+## Done-when checks
 
 - [ ] `EventQueue<T>` in `tungsten-core::ecs::event_queue` with `send`, `flush`,
       `iter`, `iter_current`, `is_empty`, `len`, `Default`
@@ -749,7 +749,7 @@ Expected outcomes:
 - [ ] `DESIGN.md` `CollisionEvents` mentions replaced
 - [ ] Status updated to `in progress` at start, `done` when checklist complete
 
-## Open questions / assumptions
+## Open Questions
 
 - **A-1:** `EventQueue::flush()` is `pub` so the `tungsten` crate's App closure
   can call it across crate boundaries.  Alternative: `pub(crate)` + internal

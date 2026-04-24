@@ -1,13 +1,13 @@
 ---
 status: done
 milestone: M17
-target-branch: 0.14
+branch: 0.14
 version-target: 0.14.0
 depends-on: M16 complete
 unblocks: M18, future settings menu
 ---
 
-# Phase 3 Milestone 17 - Display State + Config
+# Phase 3 Milestone 17 — Display State + Config
 
 ## Goal
 

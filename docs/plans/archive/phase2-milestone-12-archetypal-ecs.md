@@ -1,12 +1,13 @@
-# Phase 2 — M12: Archetypal ECS Rewrite
-
-**Status:** done  
-**Branch:** `0.7`  
-**Version:** `v0.7.0-alpha`  
-**Goal:** Replace the naive `HashMap<TypeId, HashMap<EntityId, Box<dyn Any>>>` storage with an archetypal layout — contiguous per-archetype component arrays — plus generational entity IDs and multi-component tuple queries.  
-**Non-goals:** parallel scheduling, change detection, command buffers, reactive queries, raw BlobVec columns (Bevy-style), mutable multi-component queries.
-
 ---
+status: done
+milestone: M12
+branch: 0.7
+version-target: 0.7.0-alpha
+goal: Replace the naive `HashMap<TypeId, HashMap<EntityId, Box<dyn Any>>>` storage with an archetypal layout — contiguous per-archetype component arrays — plus generational entity IDs and multi-component tuple queries.
+non-goals: parallel scheduling, change detection, command buffers, reactive queries, raw BlobVec columns (Bevy-style), mutable multi-component queries
+---
+
+# Phase 2 Milestone 12 — Archetypal ECS Rewrite
 
 ## Context
 
@@ -330,7 +331,7 @@ pub fn query2<A: 'static, B: 'static>(&self) -> impl Iterator<Item = (Entity, &A
 
 ---
 
-## Implementation Phases
+## Ordered steps
 
 ### Phase 1 — Entity (generational)
 **Files:** `entity.rs`
@@ -388,7 +389,7 @@ Add `criterion` to `[dev-dependencies]` in `tungsten-core/Cargo.toml` if absent.
 
 ---
 
-## Files Modified / Created
+## Files to touch
 
 | Path | Action | Notes |
 |------|--------|-------|
@@ -428,13 +429,13 @@ No changes to `tungsten-render`, `tungsten`, or any example.
 - [ ] [EXPANSION 1] `query2`, `query2_entities`, `query3`, `query3_entities` added and tested
 - [ ] [EXPANSION 2] Generational entity IDs; `entity.id()` returns index (`u32`), source-compatible
 
-## Done When
+## Done-when checks
 
 `cargo test --workspace` is green, all 10 examples smoke-test clean, benchmarks are documented in D-036, and `PHASE2.md` M12 acceptance criteria are all checked.
 
 ---
 
-## Non-Goals / Deferred
+## Non-goals
 
 - Mutable multi-component queries (unsafe split-borrow required)
 - Parallel system scheduling

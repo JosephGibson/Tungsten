@@ -40,7 +40,7 @@ any user closure.
 - Backwards-compat shims for `SpriteInstance` — update all call sites in-tree
 - Auto-synchronizing physics `Position ↔ Transform.position` (keep explicit per `D-033`)
 
-## Affected files
+## Files to touch
 
 | File | Change |
 |------|--------|
@@ -63,7 +63,7 @@ any user closure.
 | `DECISIONS.md` | add `D-041` — justify `SpriteInstance` layout change, explicit `Visibility`, explicit `Position → Transform` sync |
 | `docs/plans/Phase3.md` | flip M15 `status` marker to `in progress` then `complete` on close |
 
-## Pre-execution reads
+## Read before coding
 
 Open exactly these files before writing any code on this branch:
 
@@ -82,7 +82,7 @@ Do not open `docs/plans/archive/`.
 
 ---
 
-## Implementation steps
+## Ordered steps
 
 Execute in this order. Each phase leaves the tree compiling.
 
@@ -484,8 +484,8 @@ Run in this order:
    against the previous run under the same machine/profile; record deltas.
 7. If any bench breaks `<= 10%` regression on a steady-state runtime bench,
    either fix before close or add a `D-0xx` entry with rationale.
-8. Archive this plan: `git mv docs/plans/phase3-milestone-15-plan.md
-   docs/plans/archive/phase3-milestone-15-plan.md` and flip `status: done`.
+8. Archive this plan: `git mv docs/plans/phase3-milestone-15-transform-render-components.md
+   docs/plans/archive/phase3-milestone-15-transform-render-components.md` and flip `status: done`.
 9. Bump workspace version `0.11.0 → 0.12.0` in the root `Cargo.toml`
    `[workspace.package]` block. Update `AGENTS.md` status line.
 

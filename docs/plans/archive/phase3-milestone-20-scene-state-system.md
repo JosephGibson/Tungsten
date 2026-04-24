@@ -1,5 +1,6 @@
 ---
 status: done
+milestone: M20
 goal: Ship M20 Scene/State System. `StateStack` + `GameState` drive a `MainMenu -> Gameplay -> Pause -> Gameplay` flow through a single dispatcher system; scene-owned entities auto-despawn on state exit; `scene.json` spawns baseline entities data-driven.
 non-goals:
   - UI widget library / menu layout engine
@@ -9,30 +10,30 @@ non-goals:
   - Scene hot reload for `scene.json`
   - Nested sub-states / hierarchical state machines
   - Change detection / system run-conditions
-files-to-touch:
-  - /home/joker/Projects/Tungsten/crates/tungsten-core/src/assets/scene.rs              (new)
-  - /home/joker/Projects/Tungsten/crates/tungsten-core/src/assets/mod.rs                (exports)
-  - /home/joker/Projects/Tungsten/crates/tungsten-core/src/lib.rs                       (re-exports)
-  - /home/joker/Projects/Tungsten/crates/tungsten-core/src/input/action_map.rs          (default bindings)
-  - /home/joker/Projects/Tungsten/crates/tungsten/src/state.rs                          (new)
-  - /home/joker/Projects/Tungsten/crates/tungsten/src/lib.rs                            (exports)
-  - /home/joker/Projects/Tungsten/crates/tungsten/src/app.rs                            (resource+dispatcher wiring)
-  - /home/joker/Projects/Tungsten/crates/tungsten/src/asset_loader.rs                   (scene load/spawn helpers)
-  - /home/joker/Projects/Tungsten/examples/04_scene_state/Cargo.toml                    (new)
-  - /home/joker/Projects/Tungsten/examples/04_scene_state/src/main.rs                   (new)
-  - /home/joker/Projects/Tungsten/examples/04_scene_state/src/states.rs                 (new)
-  - /home/joker/Projects/Tungsten/examples/04_scene_state/assets/manifest.json          (new)
-  - /home/joker/Projects/Tungsten/examples/04_scene_state/assets/scene.json             (new)
-  - /home/joker/Projects/Tungsten/examples/04_scene_state/assets/quad.png               (new, copy from ex03 or 1x1)
-  - /home/joker/Projects/Tungsten/Cargo.toml                                            (workspace member)
-  - /home/joker/Projects/Tungsten/docs/LLM_INDEX.md                                     (subsystem rows)
-  - /home/joker/Projects/Tungsten/AGENTS.md                                             (status line)
-  - /home/joker/Projects/Tungsten/DECISIONS.md                                          (D-046 entry)
-  - /home/joker/Projects/Tungsten/docs/DECISION_INDEX.md                                (D-046 row)
-  - /home/joker/Projects/Tungsten/docs/plans/Phase3.md                                  (status + archive pointer)
+files to touch:
+  - crates/tungsten-core/src/assets/scene.rs (new)
+  - crates/tungsten-core/src/assets/mod.rs (exports)
+  - crates/tungsten-core/src/lib.rs (re-exports)
+  - crates/tungsten-core/src/input/action_map.rs (default bindings)
+  - crates/tungsten/src/state.rs (new)
+  - crates/tungsten/src/lib.rs (exports)
+  - crates/tungsten/src/app.rs (resource+dispatcher wiring)
+  - crates/tungsten/src/asset_loader.rs (scene load/spawn helpers)
+  - examples/04_scene_state/Cargo.toml (new)
+  - examples/04_scene_state/src/main.rs (new)
+  - examples/04_scene_state/src/states.rs (new)
+  - examples/04_scene_state/assets/manifest.json (new)
+  - examples/04_scene_state/assets/scene.json (new)
+  - examples/04_scene_state/assets/quad.png (new, copy from ex03 or 1x1)
+  - Cargo.toml (workspace member)
+  - docs/LLM_INDEX.md (subsystem rows)
+  - AGENTS.md (status line)
+  - DECISIONS.md (D-046 entry)
+  - docs/DECISION_INDEX.md (D-046 row)
+  - docs/plans/Phase3.md (status + archive pointer)
 ---
 
-# M20 — Scene/State System
+# Phase 3 Milestone 20 — Scene/State System
 
 ## Core Types (target shape)
 
@@ -187,7 +188,7 @@ fn push_top(world: &mut World, s: Box<dyn GameState>) {
 
 - Entity-visibility rule: `on_enter` / `on_exit` enqueue into the `CommandBuffer` resource; the engine's post-systems flush (`app.rs:814-820` `RedrawRequested` flow) applies them before extract/render, so the first frame of a state already renders its new scene entities and the last frame of an exiting state already sees its `SceneEntity`s gone.
 
-## Ordered Steps
+## Ordered steps
 
 1. `/home/joker/Projects/Tungsten/crates/tungsten-core/src/assets/scene.rs` — create file. Define `SceneData`, `SceneEntry`, `SceneTransform`, `SceneSprite`, `SceneError` (via `thiserror::Error` with `Io{path,source}`, `Parse{path,source}`). Implement `SceneData::load(&Path)` using `serde_json::from_str`. Defaults: `scale = [1.0, 1.0]`, `color = [255; 4]`, `visible = true`, `rotation = 0.0`. Unit tests: round-trip parse of a minimal fixture string; missing-optional fields get defaults; empty `entities` list valid.
 
@@ -309,7 +310,7 @@ fn push_top(world: &mut World, s: Box<dyn GameState>) {
     - `cargo build --workspace` — confirms `example-04-scene-state` compiles.
     - `./scripts/smoke-examples.sh` — all four examples (01, 02, 03, 04) boot and exit cleanly under `TUNGSTEN_SMOKE_FRAMES=3`.
 
-## Done-When Checks
+## Done-when checks
 
 - `cargo test --workspace` green, with at least these new tests passing:
   - `tungsten_core::assets::scene::tests::load_parses_minimal_fixture`

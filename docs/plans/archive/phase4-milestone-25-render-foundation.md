@@ -1,5 +1,6 @@
 ---
 status: done
+milestone: M25
 goal: "Ship M25 Render Foundation: offscreen `SceneTarget` (color+depth, optional MSAA), ordered named-pass list, WGSL hot reload with `naga` validation, opt-in GPU depth-test sprite path. Under the default config (`msaa=1`, `depth_sort=cpu_stable`) output is byte-identical to the `0.21` baseline (image-diff asserted)."
 non-goals:
   - "No post-stack, materials, bloom, lighting (M26–M28)."
@@ -57,8 +58,10 @@ done-when:
   - "Editing `assets/shaders/sprite.wgsl` (body-only, e.g. swap `color.rgb` for `vec3<f32>(1.0) - color.rgb`) while `example-01-platformer` runs updates rendered output within < ~200 ms, no rebuild."
   - "Editing `assets/shaders/sprite.wgsl` to introduce a parse/validation or pipeline-rebuild error logs `shader 'sprite' validation failed: ...` (or equivalent rebuild failure) and keeps the old `ShaderModule` + live pipeline; app does not panic."
   - "`DECISIONS.md` has the new `D-0NN` entry (number resolved via `rg -n '^### D-0' DECISIONS.md | tail -1`); `docs/DECISION_INDEX.md` has the matching row; `AGENTS.md`, `DESIGN.md`, and `CHANGELOG.md` are updated in the same change."
-  - "Plan file flipped to `status: done`."
+- "Plan file flipped to `status: done`."
 ---
+
+# Phase 4 Milestone 25 — Render Foundation
 
 ## Context Digest
 

@@ -1,8 +1,9 @@
 ---
 status: done
+milestone: M13
 goal: Implement M13 — Command Buffers (deferred structural world mutation)
 non-goals: parallel command buffers, per-system buffer isolation, cancel-spawn, command priorities
-files-to-touch:
+files to touch:
   - crates/tungsten-core/src/ecs/command_buffer.rs  (new)
   - crates/tungsten-core/src/ecs/mod.rs
   - crates/tungsten-core/src/ecs/world.rs
@@ -14,7 +15,7 @@ files-to-touch:
   - docs/plans/Phase3.md  (mark M12 + M13 complete)
 ---
 
-# Phase 3 – Milestone 13: Command Buffers
+# Phase 3 Milestone 13 — Command Buffers
 
 ## Risks and Open Questions
 
@@ -152,7 +153,7 @@ pub fn flush(&mut self, buffer: CommandBuffer)
 
 ---
 
-## Implementation phases
+## Ordered steps
 
 > **Execute phases in numbered order.** Phase 4 (App) depends on Phase 3 (FrameTimings)
 > because `app.rs` writes `ft.flush_ms` which does not exist until Phase 3 adds the field.
@@ -644,7 +645,7 @@ pub fn flush(&mut self, buffer: CommandBuffer)
 
 ---
 
-## Done when
+## Done-when checks
 
 All of the following are true:
 

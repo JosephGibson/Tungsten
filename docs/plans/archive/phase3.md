@@ -35,7 +35,7 @@ Deferred to Phase 4: change detection, full UI library, save/load, scripting, pa
 - Current branch: `0.21`
 - Completed milestones: `M12` profiling baseline, `M13` command buffers, `M14` event queues, `M15` transform + render components, `M16` camera module, `M17` display state + config, `M18` runtime telemetry HUD, `M19` input mapping, `M20` scene/state system, `M21` debug tooling, `M22` sprite atlases, `M23` particle system, `M24` tween system
 - Next recommended milestone: Phase 3 complete and archived; Phase 4 scope is not yet defined.
-- Archived detailed milestone plans: [M12](phase3-milestone-12-plan.md), [M13](phase3-milestone-13-plan.md), [M14](phase3-milestone-14-plan.md), [M15](phase3-milestone-15-plan.md), [M16](phase3-milestone-16-plan.md), [M17](phase3-milestone-17-plan.md), [M18](phase3-milestone-18-plan.md), [M19](phase3-milestone-19-plan.md), [M20](phase3-milestone-20-plan.md), [M21](phase3-milestone-21-debug-tooling.md), [M22](phase3-milestone-22-sprite-atlases.md), [M23](phase3-milestone-23-particle-system.md), [M24](phase3-milestone-24-plan.md)
+- Archived detailed milestone plans: [M12](phase3-milestone-12-performance-baseline-profiling-harness.md), [M13](phase3-milestone-13-command-buffers.md), [M14](phase3-milestone-14-event-queue.md), [M15](phase3-milestone-15-transform-render-components.md), [M16](phase3-milestone-16-camera-module.md), [M17](phase3-milestone-17-display-state-config.md), [M18](phase3-milestone-18-runtime-telemetry-hud.md), [M19](phase3-milestone-19-input-mapping.md), [M20](phase3-milestone-20-scene-state-system.md), [M21](phase3-milestone-21-debug-tooling.md), [M22](phase3-milestone-22-sprite-atlases.md), [M23](phase3-milestone-23-particle-system.md), [M24](phase3-milestone-24-plan.md)
 
 Historical note: the unchecked items in the final checklist below are post-rollout quality follow-ups, not blockers for the shipped `0.21.0` Phase 3 release line.
 
@@ -90,7 +90,7 @@ Historical note: the unchecked items in the final checklist below are post-rollo
 ### M14 - Event Queue
 
 > **Status: complete** (`v0.11.0`, `2026-04-16`)
-> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone-14-plan.md`](archive/phase3-milestone-14-plan.md).
+> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone-14-event-queue.md`](phase3-milestone-14-event-queue.md).
 
 - Goal: replace ad hoc event resources with one typed engine pattern.
 - Design: add `EventQueue<T> { current, previous }`; `send()` appends to `current`; readers iterate `previous + current`; `flush()` rotates buffers once per frame at the same boundary as command flush; migrate `CollisionEvents` to `EventQueue<CollisionEvent>`; add `App::register_event::<T>()`.
@@ -100,7 +100,7 @@ Historical note: the unchecked items in the final checklist below are post-rollo
 ### M15 - Transform + Render Components
 
 > **Status: complete** (`v0.12.0`, `2026-04-16`)
-> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone-15-plan.md`](archive/phase3-milestone-15-plan.md).
+> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone-15-transform-render-components.md`](phase3-milestone-15-transform-render-components.md).
 
 - Goal: make common sprite rendering data-driven without custom extract closures.
 - Add: `Transform { position, rotation, scale }`, `Sprite { asset_id, color, z_order }`, `Visibility { visible }`, and `Tag { name }` (debug aid).
@@ -110,7 +110,7 @@ Historical note: the unchecked items in the final checklist below are post-rollo
 ### M16 - Camera Module
 
 > **Status: complete** (`v0.13.0`, `2026-04-17`)
-> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone-16-plan.md`](archive/phase3-milestone-16-plan.md).
+> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone-16-camera-module.md`](phase3-milestone-16-camera-module.md).
 
 - Goal: centralize camera behavior in one engine module/class-like API instead of ad hoc example logic.
 - Design: add `CameraState` (`position`, `zoom`, `rotation`, viewport behavior), `CameraController` (follow target, dead-zone, smoothing, bounds clamp, shake), and `CameraMode` (free, follow entity, scripted); keep render integration through the existing camera math path; standardize ownership/update flow; run camera update as a normal system; write one authoritative camera state per frame; provide example-level hooks for gameplay-specific tuning without forking engine internals.
@@ -119,7 +119,7 @@ Historical note: the unchecked items in the final checklist below are post-rollo
 ### M17 - Display State + Config
 
 > **Status: complete** (`v0.14.0`, `2026-04-17`)
-> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone-17-plan.md`](archive/phase3-milestone-17-plan.md).
+> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone-17-display-state-config.md`](phase3-milestone-17-display-state-config.md).
 
 - Goal: introduce a display abstraction that owns runtime display/window settings and prepares for future settings UI.
 - Design: add core-owned `DisplayState` / `DisplayConfig`, store display settings in the workspace-root `tungsten.json` `display` section, expose runtime changes through `request_display_settings`, and apply all window/surface mutations only at the top of `RedrawRequested`; keep menu UI out of scope for Phase 3 because this milestone only establishes the data model and application path.
@@ -128,7 +128,7 @@ Historical note: the unchecked items in the final checklist below are post-rollo
 ### M18 - Runtime Telemetry HUD
 
 > **Status: complete** (`v0.15.0`, `2026-04-18`)
-> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone-18-plan.md`](archive/phase3-milestone-18-plan.md).
+> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone-18-runtime-telemetry-hud.md`](phase3-milestone-18-runtime-telemetry-hud.md).
 
 - Goal: add a lightweight in-game HUD for developers and playtesters.
 - Why early: it makes correctness and perf issues visible during normal gameplay rather than only after failures.
@@ -138,7 +138,7 @@ Historical note: the unchecked items in the final checklist below are post-rollo
 ### M19 - Input Mapping
 
 > **Status: complete** (`v0.16.0`, `2026-04-19`)
-> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone-19-plan.md`](archive/phase3-milestone-19-plan.md).
+> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone-19-input-mapping.md`](phase3-milestone-19-input-mapping.md).
 
 - Goal: replace hardcoded key checks with action-based bindings.
 - Design: add `ActionMap` loaded from optional `input.json`; keep API parity with input state through `is_pressed`, `just_pressed`, and `just_released`; add mouse buttons, cursor + wheel surfaces, live `input.json` hot reload, runtime persist writes, and engine-owned action bindings for HUD/display/exit controls.
@@ -147,7 +147,7 @@ Historical note: the unchecked items in the final checklist below are post-rollo
 ### M20 - Scene/State System
 
 > **Status: complete** (`v0.17.0`, `2026-04-20`)
-> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone-20-plan.md`](archive/phase3-milestone-20-plan.md).
+> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone-20-scene-state-system.md`](phase3-milestone-20-scene-state-system.md).
 
 - Goal: support `MainMenu -> Gameplay -> Pause -> Gameplay` style flow without manual world-reset logic.
 - Design: add a `GameState` trait with `on_enter`, `on_exit`, and state-scoped systems; add `StateStack` with deferred `push` / `pop` / `replace`; tag scene-owned entities and clean them on exit; add a minimal `scene.json` for data-driven scene entity spawn.
@@ -157,7 +157,7 @@ Historical note: the unchecked items in the final checklist below are post-rollo
 ### M21 - Debug Tooling
 
 > **Status: complete** (`v0.18.0`, `2026-04-20`)
-> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone-21-debug-tooling.md`](archive/phase3-milestone-21-debug-tooling.md).
+> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone-21-debug-tooling.md`](phase3-milestone-21-debug-tooling.md).
 
 - Goal: ship practical debugging/profiling tools using current render primitives.
 - Note: M18 ships first and provides persistent textual telemetry; M21 focuses on geometric overlays and inspection workflows.
@@ -167,7 +167,7 @@ Historical note: the unchecked items in the final checklist below are post-rollo
 ### M22 - Sprite Atlases
 
 > **Status: complete** (`v0.19.0`, `2026-04-20`)
-> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone-22-sprite-atlases.md`](archive/phase3-milestone-22-sprite-atlases.md).
+> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone-22-sprite-atlases.md`](phase3-milestone-22-sprite-atlases.md).
 
 - Goal: reduce texture bind churn while keeping the game-facing API unchanged.
 - Design: pack sprites into atlas textures at load time with an in-engine packer and no new dependency; store UV rect per sprite asset; keep sprite ID access unchanged; split atlases by sampler mode (`nearest`, `linear`); on hot-reload growth, allow full rebuild and log a warning.
@@ -176,7 +176,7 @@ Historical note: the unchecked items in the final checklist below are post-rollo
 ### M23 - Particle System
 
 > **Status: complete** (`v0.20.0`, `2026-04-20`)
-> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone-23-particle-system.md`](archive/phase3-milestone-23-particle-system.md).
+> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone-23-particle-system.md`](phase3-milestone-23-particle-system.md).
 
 - Goal: provide reusable particle effects without new render-pipeline work.
 - Design: `ParticleEmitter` supports burst/continuous/pulse modes and bounded emission; a tick system advances particles, emits new particles, and despawns expired particles through the command buffer; reuse the `Sprite` path from `M15`; support hot-reloadable emitter config.
@@ -185,7 +185,7 @@ Historical note: the unchecked items in the final checklist below are post-rollo
 ### M24 - Tween System
 
 > **Status: complete** (`v0.21.0`, `2026-04-23`)
-> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone-24-plan.md`](archive/phase3-milestone-24-plan.md).
+> Detailed implementation plan archived at [`docs/plans/archive/phase3-milestone-24-plan.md`](phase3-milestone-24-plan.md).
 
 - Goal: add lightweight property animation and completion signaling.
 - Design: add a `Tween` component with target, easing, duration, and elapsed; use built-in easings only and add no dependency; on completion, emit `TweenComplete` and remove the tween through the command buffer; allow scene JSON to define tweens.

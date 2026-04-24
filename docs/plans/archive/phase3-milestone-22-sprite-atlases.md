@@ -1,5 +1,6 @@
 ---
 status: done
+milestone: M22
 goal: Pack manifest-registered sprites into per-filter atlas textures at load time, store a per-sprite UV rect, keep the game-facing `AssetRegistry` / `Sprite` / `Transform` API unchanged, and measurably reduce live sprite-texture bind count on representative scenes.
 non-goals:
   - New runtime dependencies — packer is hand-rolled per [Phase3.md:167-169](Phase3.md#L167-L169)
@@ -9,7 +10,7 @@ non-goals:
   - GPU-compressed texture formats (BC7/BCn, KTX2, Basis Universal) — explicit Phase 4+ deferral per [DESIGN.md:251](../../DESIGN.md#L251); also incompatible with M22's no-new-dep rule
   - Manifest, `tungsten.json`, `input.json`, `scene.json` schema changes
   - Example art changes — M22 must be transparent to game code
-files-to-touch:
+files to touch:
   - [crates/tungsten-core/src/assets/atlas.rs](../../crates/tungsten-core/src/assets/atlas.rs) (new)
   - [crates/tungsten-core/src/assets/mod.rs](../../crates/tungsten-core/src/assets/mod.rs)
   - [crates/tungsten-core/src/assets/registry.rs](../../crates/tungsten-core/src/assets/registry.rs)
@@ -30,6 +31,8 @@ files-to-touch:
   - [docs/plans/Phase3.md](Phase3.md) (status flip + archive pointer on close)
 
 ---
+
+# Phase 3 Milestone 22 — Sprite Atlases
 
 ## Scope (lifted from Phase3.md M22)
 
@@ -73,7 +76,7 @@ On-disk formats are unchanged. `SpriteInstance` is an in-process POD vertex stre
 
 ---
 
-## Ordered Steps
+## Ordered steps
 
 Convention: every step must leave `cargo build --workspace` and `cargo test --workspace` green at the step boundary. Verifications listed per step are the ones that *prove* that step.
 
@@ -254,13 +257,13 @@ At end of step 3 the engine renders identically to pre-M22 (one sprite per atlas
 ### Step 12 — Phase3 status + archive
 
 - On close-out only:
-  - Flip M22 in [Phase3.md](Phase3.md) to `> **Status: complete** (vX.Y.Z, YYYY-MM-DD)` and add `Detailed implementation plan archived at docs/plans/archive/milestone-22-sprite-atlases.md`.
-  - `git mv docs/plans/milestone-22-sprite-atlases.md docs/plans/archive/milestone-22-sprite-atlases.md`.
+  - Flip M22 in [Phase3.md](Phase3.md) to `> **Status: complete** (vX.Y.Z, YYYY-MM-DD)` and add `Detailed implementation plan archived at docs/plans/archive/phase3-milestone-22-sprite-atlases.md`.
+  - `git mv docs/plans/phase3-milestone-22-sprite-atlases.md docs/plans/archive/phase3-milestone-22-sprite-atlases.md`.
   - Tick the `[ ] Sprite atlas path is transparent to game code and reduces texture pressure` box in Phase3.md’s close-out list.
 
 ---
 
-## Done-When Checks
+## Done-when checks
 
 Commands (from [AGENTS.md](../../AGENTS.md) `## Commands`):
 

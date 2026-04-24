@@ -1,8 +1,9 @@
 ---
 status: done
+milestone: M23
 goal: Ship ECS-native particle emitters/particles that reuse the M15 sprite path, load config from a manifest `particles` section via asset ID, hot-reload with in-flight snapshot semantics, enforce per-emitter + global caps, emit typed lifecycle events, and demonstrate in the platformer black hole.
 non-goals: new render pipeline, additive GPU blend pass, compute/GPU particles, mesh or ribbon trails, sub-emitters, particle-collision response, authoring UI, serialized emitter state across runs, Phase-4 physics integration.
-files-to-touch:
+files to touch:
   - crates/tungsten-core/src/components.rs
   - crates/tungsten-core/src/assets/manifest.rs
   - crates/tungsten-core/src/assets/registry.rs
@@ -26,7 +27,7 @@ files-to-touch:
   - CHANGELOG.md
 ---
 
-# Phase 3 M23 — Particle System
+# Phase 3 Milestone 23 — Particle System
 
 ## Context Digest
 
@@ -282,7 +283,7 @@ File: `crates/tungsten/src/particles.rs`.
 19. Append `CHANGELOG.md` under next version: "M23 Particle System — manifest-registered emitters, hot-reloadable, adaptive blending, platformer black-hole demo".
 20. Move this plan to `docs/plans/archive/phase3-milestone-23-particle-system.md` on close; flip frontmatter `status: done`.
 
-## Done When
+## Done-when checks
 
 - [ ] `ParticleEmitter`, `ParticleEmitterState`, `Particle` exist in `tungsten-core` with the signatures above.
 - [ ] `particles` manifest section parses, resolves, and rejects duplicates + unknown sprite refs.

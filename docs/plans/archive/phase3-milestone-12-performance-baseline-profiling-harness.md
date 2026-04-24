@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 goal: Establish CPU/GPU diagnostics and a reproducible performance baseline before Phase 3 feature work begins
 non-goals: In-game HUD (M18), runtime display settings (M17), debug overlays (M21), async profiling, distributed tracing
 milestone: M12
@@ -7,7 +7,7 @@ depends-on: none
 unblocks: all Phase 3 milestones (M13–M24)
 ---
 
-# Phase 3 — Milestone 12: Performance Baseline + Profiling Harness
+# Phase 3 Milestone 12 — Performance Baseline + Profiling Harness
 
 ## Context
 
@@ -52,7 +52,7 @@ codebase at branch `0.9`.
 
 ---
 
-## Pre-execution: read these first
+## Read before coding
 
 Before any code change, the implementing agent must read these files in full:
 
@@ -1436,7 +1436,7 @@ If not present, use `env_logger = "0.11"` directly in the example `Cargo.toml`.
 
 ---
 
-## Done-when checklist (M12 completion criteria)
+## Done-when checks
 
 - [ ] `cargo test --workspace` green with zero regressions
 - [ ] `FrameTimings` resource available in `World` every frame; `TUNGSTEN_PERF_LOG=1 RUST_LOG=debug` produces "frame:" lines with non-zero values
