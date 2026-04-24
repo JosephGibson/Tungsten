@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.20.0"
+version = "0.21.0"
 edition = "2021"
 license = "MIT"
 
@@ -82,3 +82,55 @@ codegen-units = 1
 panic = "abort"
 debug = 1
 strip = "none"
+
+# ---------------------------------------------------------------------------
+# Lints
+# ---------------------------------------------------------------------------
+#
+# Pedantic-clippy is enabled workspace-wide with a targeted allow list. The
+# allow list is deliberate, not a blanket escape hatch:
+#
+#   * Numeric-cast lints (`cast_precision_loss`, `cast_possible_truncation`,
+#     `cast_sign_loss`, `cast_possible_wrap`, `cast_lossless`) — graphics and
+#     physics code constantly moves between `u32`/`usize`/`f32`/`u8`
+#     (indices, color channels, timings). The casts are intentional; the
+#     pedantic warnings are pure noise here.
+#   * `float_cmp` — we compare floats against exact sentinels (0.0, epsilon,
+#     literal constants in test fixtures) and that is fine.
+#   * `similar_names` — short binding names (x1/x2, aa/ab, dt/t) are idiomatic
+#     in math-heavy code.
+#   * `too_many_lines` — a few setup / pipeline-build functions are long on
+#     purpose; splitting them would only hide the linearity.
+#   * `missing_errors_doc` / `missing_panics_doc` / `doc_markdown` — we do not
+#     treat public API docs as a per-function ritual; rationale belongs in
+#     `DECISIONS.md` and module headers, not on every `Result`-returning fn.
+#   * `items_after_statements` — fine; moving `const`s to the top of a
+#     function is a no-signal reorganization.
+#   * `if_not_else` — `if x != y` often reads more naturally than the
+#     inverted form; preserving author intent is worth more than the lint.
+#   * `inline_always` — the per-stage hot-path schedulers in `tungsten::app`
+#     deliberately request always-inline; the lint is opinionated not
+#     correctness-bearing.
+#   * `module_name_repetitions` — the facade crate re-exports types whose
+#     names already carry the subsystem prefix (`InputState`, `AudioSystem`);
+#     renaming them would harm discoverability.
+#
+# Everything else stays on. Keep this list narrow.
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+cast_lossless = "allow"
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+doc_markdown = "allow"
+float_cmp = "allow"
+if_not_else = "allow"
+inline_always = "allow"
+items_after_statements = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+similar_names = "allow"
+too_many_lines = "allow"

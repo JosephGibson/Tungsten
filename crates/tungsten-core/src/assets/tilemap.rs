@@ -1,32 +1,11 @@
-//! Tilemap data: layered, sprite-ID-referenced, JSON-driven.
+//! D-032 tilemaps: Tiled `.tmj`, sprite IDs in `"sprite_id"` properties.
 //!
-//! Parses Tiled's standard `.tmj` JSON map format (D-032). The on-disk
-//! schema is Tiled-compatible (tilewidth/tileheight, tilesets[], layers[]
-//! with GID data arrays) so maps can be authored in the Tiled editor
-//! directly. Tungsten sprite IDs are stored in per-tile custom properties
-//! (`"sprite_id"`) rather than deriving from image paths, keeping the
-//! manifest-driven invariant intact.
-//!
-//! Tilemaps do **not** own their own atlas. Each entry in the `tileset`
-//! array is a sprite ID that already lives in `AssetRegistry`, and the
-//! renderer batches tiles per-texture the same way it batches sprites.
-//! This keeps the core/render seam clean (D-007) and means hot reload
-//! of a tile sprite's PNG is automatically reflected on the next frame.
-//!
-//! Only embedded image-collection tilesets are supported. External `.tsx`
-//! tileset files are not parsed; reference the tileset inline in the `.tmj`.
+//! D-007: tilemaps reference `AssetRegistry` sprite IDs, never own atlases.
 
 use glam::Vec2;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-
-// ---------------------------------------------------------------------------
-// Private Tiled .tmj deserialization types
-// These reflect the subset of Tiled's JSON map format that Tungsten cares
-// about. Unknown fields are ignored via `#[serde(deny_unknown_fields)]`
-// being intentionally absent — Tiled adds many optional fields we don't need.
-// ---------------------------------------------------------------------------
 
 #[derive(Deserialize)]
 struct TiledMap {
@@ -47,7 +26,7 @@ struct TiledTileset {
 
 #[derive(Deserialize, Clone)]
 struct TiledTile {
-    id: u32, // 0-based local ID within this tileset
+    id: u32,
     #[serde(default)]
     properties: Vec<TiledProperty>,
 }
@@ -69,17 +48,13 @@ struct TiledProperty {
     value: serde_json::Value,
 }
 
-/// Index into a tilemap's `tileset` array. `-1` (= `EMPTY_TILE`) marks
-/// an empty cell; values `>= 0` index into `TilemapData::tileset`.
+/// Index into `TilemapData::tileset`; negative means empty.
 pub type TileIndex = i32;
 
-/// Sentinel value meaning "no tile here". Any negative value is treated
-/// as empty on the render path, but authors should emit `-1`.
+/// Empty tile sentinel.
 pub const EMPTY_TILE: TileIndex = -1;
 
-/// What a layer is used for. Only `Render` is consumed by M10; `Collision`
-/// is accepted and round-trips so the M10→M11 seam works without a
-/// breaking JSON change when collision response lands.
+/// Tile layer purpose.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum LayerKind {
@@ -88,9 +63,7 @@ pub enum LayerKind {
     Collision,
 }
 
-/// A single layer of a tilemap. `tiles` is a flat row-major array of
-/// length `width * height` where `width`/`height` come from the parent
-/// `TilemapData`.
+/// Row-major tilemap layer.
 #[derive(Debug, Clone, Deserialize)]
 pub struct TilemapLayer {
     pub name: String,
@@ -99,31 +72,20 @@ pub struct TilemapLayer {
     pub tiles: Vec<TileIndex>,
 }
 
-/// Fully parsed tilemap. Produced by `TilemapData::load`.
+/// Parsed tilemap data.
 #[derive(Debug, Clone, Deserialize)]
 pub struct TilemapData {
     pub tile_width: u32,
     pub tile_height: u32,
     pub width: u32,
     pub height: u32,
-    /// Sprite IDs (must already be registered in `AssetRegistry`).
+    /// Sprite IDs registered in `AssetRegistry`.
     pub tileset: Vec<String>,
     pub layers: Vec<TilemapLayer>,
 }
 
 impl TilemapData {
-    /// Load and validate a Tiled `.tmj` map file. Validation failures are
-    /// fatal (returned as `anyhow::Error`): bad layer length, out-of-range
-    /// tile GID, zero dimensions.
-    ///
-    /// Expects Tiled's standard JSON map format with an embedded
-    /// image-collection tileset. Sprite IDs are read from per-tile custom
-    /// properties named `"sprite_id"`. Sprite-ID existence is *not* checked
-    /// here — that lives in the asset loader (no `AssetRegistry` access here).
-    ///
-    /// Only layers with `"type": "tilelayer"` are processed. The layer kind
-    /// (Render vs Collision) is read from a custom property `"kind"` on the
-    /// layer; the default is `Render`.
+    /// Load and validate Tiled `.tmj`; sprite existence checked by asset loader.
     pub fn load(path: impl AsRef<Path>) -> Result<Self, anyhow::Error> {
         let path = path.as_ref();
         let contents = std::fs::read_to_string(path)
@@ -132,15 +94,13 @@ impl TilemapData {
         let tiled: TiledMap = serde_json::from_str(&contents)
             .map_err(|e| anyhow::anyhow!("Invalid Tiled .tmj '{}': {}", path.display(), e))?;
 
-        // --- Build the tileset sprite-ID array ---
-        // We only support a single tileset per map for now.
+        // Single embedded tileset; sprite IDs come from tile properties.
         let ts = tiled
             .tilesets
             .first()
             .ok_or_else(|| anyhow::anyhow!("Tilemap '{}': no tilesets defined", path.display()))?;
         let firstgid = ts.firstgid;
 
-        // Sort tiles by local id to build a contiguous 0-based array.
         let mut sorted_tiles = ts.tiles.clone();
         sorted_tiles.sort_by_key(|t| t.id);
 
@@ -161,11 +121,10 @@ impl TilemapData {
             tileset.push(sprite_id.to_owned());
         }
 
-        // --- Build layers ---
         let mut layers: Vec<TilemapLayer> = Vec::new();
         for tl in &tiled.layers {
             if tl.layer_type != "tilelayer" {
-                continue; // objectgroup, imagelayer, etc. are ignored
+                continue;
             }
             let data = tl.data.as_ref().ok_or_else(|| {
                 anyhow::anyhow!(
@@ -175,20 +134,16 @@ impl TilemapData {
                 )
             })?;
 
-            // Read layer kind from custom properties.
             let kind = tl
                 .properties
                 .iter()
                 .find(|p| p.name == "kind")
                 .and_then(|p| p.value.as_str())
-                .map(|s| match s {
+                .map_or(LayerKind::Render, |s| match s {
                     "collision" => LayerKind::Collision,
                     _ => LayerKind::Render,
-                })
-                .unwrap_or(LayerKind::Render);
+                });
 
-            // Convert Tiled GIDs → internal tile indices.
-            // GID 0 = empty → -1; GID N = (N - firstgid) for tiles in our tileset.
             let tiles: Vec<TileIndex> = data
                 .iter()
                 .map(|&gid| {
@@ -260,8 +215,8 @@ impl TilemapData {
         Ok(())
     }
 
-    /// Tile index at (col, row) in the given layer, or `None` if any
-    /// index is out of bounds.
+    /// Tile index at `(col, row)`.
+    #[must_use]
     pub fn tile_at(&self, layer: usize, col: u32, row: u32) -> Option<TileIndex> {
         let layer = self.layers.get(layer)?;
         if col >= self.width || row >= self.height {
@@ -271,8 +226,8 @@ impl TilemapData {
         layer.tiles.get(idx).copied()
     }
 
-    /// World-space pixel size of the whole map (one instance of it,
-    /// ignoring the `TilemapInstance::origin` offset).
+    /// Map pixel size excluding instance origin.
+    #[must_use]
     pub fn pixel_size(&self) -> Vec2 {
         Vec2::new(
             (self.width * self.tile_width) as f32,
@@ -281,9 +236,7 @@ impl TilemapData {
     }
 }
 
-/// Runtime registry of loaded tilemaps, stored as a Resource in the
-/// World. Mirrors `AnimationRegistry` so the hot-reload dispatch code
-/// can extend uniformly.
+/// Loaded tilemap registry resource.
 #[derive(Debug, Default, Clone)]
 pub struct TilemapRegistry {
     maps: HashMap<String, TilemapData>,
@@ -291,6 +244,7 @@ pub struct TilemapRegistry {
 }
 
 impl TilemapRegistry {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -299,12 +253,13 @@ impl TilemapRegistry {
         self.maps.insert(id, data);
     }
 
-    /// Insert with a source-path registration for hot-reload reverse lookup.
+    /// Insert with source-path reverse lookup.
     pub fn insert_with_path(&mut self, id: String, data: TilemapData, path: PathBuf) {
         self.path_to_id.insert(path, id.clone());
         self.maps.insert(id, data);
     }
 
+    #[must_use]
     pub fn get(&self, id: &str) -> Option<&TilemapData> {
         self.maps.get(id)
     }
@@ -314,21 +269,20 @@ impl TilemapRegistry {
     }
 
     pub fn ids(&self) -> impl Iterator<Item = &str> {
-        self.maps.keys().map(|s| s.as_str())
+        self.maps.keys().map(String::as_str)
     }
 
+    #[must_use]
     pub fn id_for_path(&self, path: &Path) -> Option<&str> {
-        self.path_to_id.get(path).map(|s| s.as_str())
+        self.path_to_id.get(path).map(String::as_str)
     }
 }
 
-/// ECS component: a placed instance of a tilemap at a given world origin.
-/// One entity per tilemap instance. Game code spawns an entity, attaches
-/// `TilemapInstance { id, origin }`, and the extract helper pulls it in.
+/// Placed tilemap instance component.
 #[derive(Debug, Clone)]
 pub struct TilemapInstance {
     pub id: String,
-    /// World-space pixel position of the tilemap's top-left corner.
+    /// Top-left world pixel position.
     pub origin: Vec2,
 }
 
@@ -342,157 +296,5 @@ impl TilemapInstance {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::io::Write;
-
-    fn tiny_map() -> TilemapData {
-        TilemapData {
-            tile_width: 16,
-            tile_height: 16,
-            width: 3,
-            height: 2,
-            tileset: vec!["grass".into(), "dirt".into()],
-            layers: vec![
-                TilemapLayer {
-                    name: "bg".into(),
-                    kind: LayerKind::Render,
-                    tiles: vec![0, 0, 0, 1, 1, 1],
-                },
-                TilemapLayer {
-                    name: "fg".into(),
-                    kind: LayerKind::Render,
-                    tiles: vec![-1, 0, -1, -1, -1, -1],
-                },
-            ],
-        }
-    }
-
-    #[test]
-    fn tile_at_reads_row_major() {
-        let m = tiny_map();
-        assert_eq!(m.tile_at(0, 0, 0), Some(0));
-        assert_eq!(m.tile_at(0, 2, 0), Some(0));
-        assert_eq!(m.tile_at(0, 0, 1), Some(1));
-        assert_eq!(m.tile_at(1, 1, 0), Some(0));
-        assert_eq!(m.tile_at(1, 0, 0), Some(-1));
-    }
-
-    #[test]
-    fn tile_at_out_of_bounds_is_none() {
-        let m = tiny_map();
-        assert_eq!(m.tile_at(0, 3, 0), None);
-        assert_eq!(m.tile_at(0, 0, 2), None);
-        assert_eq!(m.tile_at(2, 0, 0), None);
-    }
-
-    #[test]
-    fn pixel_size_multiplies_dimensions() {
-        let m = tiny_map();
-        assert_eq!(m.pixel_size(), Vec2::new(48.0, 32.0));
-    }
-
-    #[test]
-    fn validate_rejects_wrong_layer_length() {
-        let mut m = tiny_map();
-        m.layers[0].tiles.pop();
-        assert!(m.validate().is_err());
-    }
-
-    #[test]
-    fn validate_rejects_out_of_range_index() {
-        let mut m = tiny_map();
-        m.layers[0].tiles[0] = 99;
-        let err = m.validate().unwrap_err();
-        assert!(err.contains("out of range"));
-    }
-
-    #[test]
-    fn validate_allows_negative_indices_as_empty() {
-        let mut m = tiny_map();
-        m.layers[0].tiles[0] = -1;
-        m.layers[0].tiles[1] = -42;
-        assert!(m.validate().is_ok());
-    }
-
-    #[test]
-    fn validate_rejects_zero_dims() {
-        let mut m = tiny_map();
-        m.width = 0;
-        assert!(m.validate().is_err());
-        let mut m = tiny_map();
-        m.tile_width = 0;
-        assert!(m.validate().is_err());
-    }
-
-    #[test]
-    fn load_parses_a_real_file() {
-        // Tests Tiled .tmj format parsing (D-032).
-        let dir = std::env::temp_dir().join(format!(
-            "tungsten_tilemap_test_{}_{}",
-            std::process::id(),
-            std::time::UNIX_EPOCH.elapsed().unwrap().as_nanos()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("demo.tmj");
-        let mut f = std::fs::File::create(&path).unwrap();
-        f.write_all(
-            br#"{
-          "type": "map", "version": "1.10",
-          "orientation": "orthogonal", "renderorder": "right-down",
-          "tilewidth": 8, "tileheight": 8,
-          "width": 2, "height": 2,
-          "infinite": false,
-          "tilesets": [{
-            "firstgid": 1, "columns": 0, "name": "test",
-            "spacing": 0, "margin": 0,
-            "tilewidth": 8, "tileheight": 8, "tilecount": 2,
-            "tiles": [
-              { "id": 0, "image": "a.png",
-                "properties": [{"name": "sprite_id", "type": "string", "value": "a"}] },
-              { "id": 1, "image": "b.png",
-                "properties": [{"name": "sprite_id", "type": "string", "value": "b"}] }
-            ]
-          }],
-          "layers": [
-            { "id": 1, "type": "tilelayer", "name": "ground",
-              "x": 0, "y": 0, "width": 2, "height": 2,
-              "data": [1, 2, 2, 1] },
-            { "id": 2, "type": "tilelayer", "name": "solid",
-              "x": 0, "y": 0, "width": 2, "height": 2,
-              "properties": [{"name": "kind", "type": "string", "value": "collision"}],
-              "data": [0, 1, 0, 0] }
-          ]
-        }"#,
-        )
-        .unwrap();
-        drop(f);
-
-        let m = TilemapData::load(&path).unwrap();
-        assert_eq!(m.width, 2);
-        assert_eq!(m.tileset, vec!["a".to_string(), "b".to_string()]);
-        assert_eq!(m.layers.len(), 2);
-        // GID 1 → index 0, GID 2 → index 1
-        assert_eq!(m.layers[0].tiles, vec![0, 1, 1, 0]);
-        assert_eq!(m.layers[1].kind, LayerKind::Collision);
-        // GID 0 → EMPTY_TILE (-1), GID 1 → index 0
-        assert_eq!(m.layers[1].tiles, vec![-1, 0, -1, -1]);
-    }
-
-    #[test]
-    fn layer_kind_defaults_to_render() {
-        let json = r#"{"name": "x", "tiles": []}"#;
-        let layer: TilemapLayer = serde_json::from_str(json).unwrap();
-        assert_eq!(layer.kind, LayerKind::Render);
-    }
-
-    #[test]
-    fn registry_insert_and_lookup() {
-        let mut reg = TilemapRegistry::new();
-        reg.insert_with_path("demo".into(), tiny_map(), PathBuf::from("/tmp/demo.tmj"));
-        assert!(reg.get("demo").is_some());
-        assert_eq!(reg.id_for_path(Path::new("/tmp/demo.tmj")), Some("demo"),);
-        let ids: Vec<&str> = reg.ids().collect();
-        assert_eq!(ids, vec!["demo"]);
-    }
-}
+#[path = "../tests/assets/tilemap.rs"]
+mod tests;

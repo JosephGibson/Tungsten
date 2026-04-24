@@ -1,28 +1,14 @@
-//! `DebugLinePipeline` (M21): draws oriented-quad lines for arbitrary-angle
-//! debug primitives — single lines and circle polylines emitted by
-//! `DebugDraw`. Axis-aligned AABB outlines are drawn via the existing
-//! `QuadPipeline`, not here.
-//!
-//! Camera uniform is borrowed from `QuadPipeline::camera_bind_group_layout()`
-//! (and the bind group is passed into `draw`) so only one `view_proj` buffer
-//! lives on the GPU across quad / sprite / debug-line paths.
-//!
-//! Thickness is specified in world-space units; expansion is computed in the
-//! vertex shader from the line's tangent. This avoids any viewport uniform
-//! or push constants — debug rendering at 1x camera zoom treats one world
-//! unit as one screen pixel (see the ortho projection in
-//! `Renderer::render_frame_with_quads`).
+//! Debug line pipeline; shares quad camera bind group and expands in shader.
 
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
 
-/// Per-instance data for one oriented-quad line segment.
+/// Oriented-quad line instance.
 ///
-/// `_pad` keeps the `color` field 8-byte aligned after the `thickness`
-/// scalar. Layout is vertex-buffer-only; no uniform/storage buffer path
-/// depends on WGSL struct alignment rules.
+/// `_pad` keeps the struct 16-byte aligned for GPU vertex layout — not dead code.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
+#[allow(clippy::pub_underscore_fields)]
 pub struct DebugLineInstance {
     pub a: [f32; 2],
     pub b: [f32; 2],
@@ -40,6 +26,7 @@ impl DebugLineInstance {
         5 => Float32x4,
     ];
 
+    #[must_use]
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<DebugLineInstance>() as wgpu::BufferAddress,
@@ -82,6 +69,7 @@ pub struct DebugLinePipeline {
 }
 
 impl DebugLinePipeline {
+    #[must_use]
     pub fn new(
         device: &wgpu::Device,
         surface_format: wgpu::TextureFormat,
@@ -105,7 +93,7 @@ impl DebugLinePipeline {
                 module: &shader,
                 entry_point: Some("vs_main"),
                 buffers: &[Vertex::desc(), DebugLineInstance::desc()],
-                compilation_options: Default::default(),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -115,7 +103,7 @@ impl DebugLinePipeline {
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
-                compilation_options: Default::default(),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
             primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList,
@@ -167,25 +155,5 @@ impl DebugLinePipeline {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn debug_line_instance_layout_is_stable() {
-        assert_eq!(std::mem::size_of::<DebugLineInstance>(), 40);
-        assert_eq!(std::mem::align_of::<DebugLineInstance>(), 4);
-    }
-
-    #[test]
-    fn debug_line_instance_is_pod() {
-        let inst = DebugLineInstance {
-            a: [0.0, 0.0],
-            b: [10.0, 0.0],
-            thickness: 1.5,
-            _pad: 0.0,
-            color: [1.0, 0.0, 0.0, 1.0],
-        };
-        let bytes: &[u8] = bytemuck::bytes_of(&inst);
-        assert_eq!(bytes.len(), std::mem::size_of::<DebugLineInstance>());
-    }
-}
+#[path = "tests/debug_line.rs"]
+mod tests;

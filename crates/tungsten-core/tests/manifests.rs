@@ -1,14 +1,9 @@
-//! Repo-wide manifest validation: every `manifest.json` in the workspace must
-//! load without error. Catches broken relative paths, missing asset files,
-//! malformed JSON, and duplicate-ID collisions before they reach runtime.
-//!
-//! No GPU or display required — this runs as part of `cargo test --workspace`.
+//! Repo-wide manifest validation; no GPU/display.
 
 use std::path::{Path, PathBuf};
 use tungsten_core::assets::manifest::ResolvedManifest;
 
 fn workspace_root() -> PathBuf {
-    // CARGO_MANIFEST_DIR for tungsten-core is `<root>/crates/tungsten-core`.
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(Path::parent)
@@ -64,9 +59,7 @@ fn all_manifests_load() {
     );
 }
 
-/// Verifies that asset IDs are globally unique across all manifests in the
-/// workspace (D-017, D-035). Each manifest is loaded individually first so
-/// path resolution errors don't contaminate the merge step.
+/// D-017/D-035: asset IDs globally unique across loaded manifests.
 #[test]
 fn all_manifest_ids_are_globally_unique() {
     let root = workspace_root();

@@ -1,19 +1,12 @@
-//! Scene data model (M20).
-//!
-//! A `scene.json` file lists entities to spawn when a `GameState` becomes
-//! active. Each entry reuses the M15 render components (`Transform`, `Sprite`,
-//! `Visibility`, `Tag`) via a minimal JSON schema; spawn-time wiring lives in
-//! the umbrella crate's `asset_loader::spawn_scene` (see `D-046`).
-//!
-//! This module owns only the plain data model and its JSON serde. Sprite ID
-//! validation is intentionally deferred to the extract path — missing IDs
-//! fall through to the sprite-extract default warning, matching
-//! `TilemapInstance`.
+//! D-046 scene data model; sprite ID validation deferred to extract path.
+//! D-054/D-055 scene tweens map one `Tween` per entry.
 
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+
+use crate::tween::{Easing, Tween, TweenChannel, TweenRepeat};
 
 #[derive(Debug, Error)]
 pub enum SceneError {
@@ -27,6 +20,8 @@ pub enum SceneError {
         path: String,
         source: serde_json::Error,
     },
+    #[error("invalid scene '{path}': {message}")]
+    Validation { path: String, message: String },
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -44,6 +39,98 @@ pub struct SceneEntry {
     pub visible: bool,
     #[serde(default)]
     pub tag: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tweens: Vec<SceneTween>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SceneTween {
+    pub duration: f32,
+    #[serde(default)]
+    pub easing: Easing,
+    #[serde(default)]
+    pub repeat: SceneTweenRepeat,
+    #[serde(default)]
+    pub tag: Option<String>,
+    pub channels: Vec<SceneTweenChannel>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SceneTweenChannel {
+    PositionX { from: f32, to: f32 },
+    PositionY { from: f32, to: f32 },
+    Rotation { from: f32, to: f32 },
+    ScaleX { from: f32, to: f32 },
+    ScaleY { from: f32, to: f32 },
+    ColorR { from: u8, to: u8 },
+    ColorG { from: u8, to: u8 },
+    ColorB { from: u8, to: u8 },
+    ColorA { from: u8, to: u8 },
+}
+
+impl From<SceneTweenChannel> for TweenChannel {
+    fn from(c: SceneTweenChannel) -> Self {
+        match c {
+            SceneTweenChannel::PositionX { from, to } => TweenChannel::PositionX { from, to },
+            SceneTweenChannel::PositionY { from, to } => TweenChannel::PositionY { from, to },
+            SceneTweenChannel::Rotation { from, to } => TweenChannel::Rotation { from, to },
+            SceneTweenChannel::ScaleX { from, to } => TweenChannel::ScaleX { from, to },
+            SceneTweenChannel::ScaleY { from, to } => TweenChannel::ScaleY { from, to },
+            SceneTweenChannel::ColorR { from, to } => TweenChannel::ColorR { from, to },
+            SceneTweenChannel::ColorG { from, to } => TweenChannel::ColorG { from, to },
+            SceneTweenChannel::ColorB { from, to } => TweenChannel::ColorB { from, to },
+            SceneTweenChannel::ColorA { from, to } => TweenChannel::ColorA { from, to },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SceneTweenRepeat {
+    #[default]
+    Once,
+    Loop,
+    PingPong,
+    Times(u32),
+}
+
+impl From<SceneTweenRepeat> for TweenRepeat {
+    fn from(r: SceneTweenRepeat) -> Self {
+        match r {
+            SceneTweenRepeat::Once => TweenRepeat::Once,
+            SceneTweenRepeat::Loop => TweenRepeat::Loop,
+            SceneTweenRepeat::PingPong => TweenRepeat::PingPong,
+            SceneTweenRepeat::Times(n) => TweenRepeat::Times(n),
+        }
+    }
+}
+
+impl SceneTween {
+    #[must_use]
+    pub fn into_tween(&self) -> Tween {
+        let mut t = Tween::new(self.duration, self.easing).with_repeat(self.repeat.into());
+        for ch in &self.channels {
+            t = t.with_channel((*ch).into());
+        }
+        if let Some(tag) = &self.tag {
+            t = t.with_tag(tag.clone());
+        }
+        t
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if !self.duration.is_finite() || self.duration <= 0.0 {
+            return Err(format!(
+                "tween duration must be finite and > 0 (got {})",
+                self.duration
+            ));
+        }
+        if self.channels.is_empty() {
+            return Err("tween requires at least one channel".to_string());
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -82,80 +169,23 @@ impl SceneData {
             path: path.display().to_string(),
             source,
         })?;
-        serde_json::from_str(&contents).map_err(|source| SceneError::Parse {
-            path: path.display().to_string(),
-            source,
-        })
+        let data: SceneData =
+            serde_json::from_str(&contents).map_err(|source| SceneError::Parse {
+                path: path.display().to_string(),
+                source,
+            })?;
+        for (i, entry) in data.entities.iter().enumerate() {
+            for (j, tween) in entry.tweens.iter().enumerate() {
+                tween.validate().map_err(|msg| SceneError::Validation {
+                    path: path.display().to_string(),
+                    message: format!("entities[{i}].tweens[{j}]: {msg}"),
+                })?;
+            }
+        }
+        Ok(data)
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    const MINIMAL: &str = r#"{
-        "entities": [
-            {
-                "transform": { "position": [10.0, -4.0], "rotation": 0.5, "scale": [2.0, 3.0] },
-                "sprite": { "asset_id": "hero", "color": [10, 20, 30, 255], "z_order": 5 },
-                "visible": false,
-                "tag": "player"
-            }
-        ]
-    }"#;
-
-    #[test]
-    fn load_parses_minimal_fixture() {
-        let data: SceneData = serde_json::from_str(MINIMAL).expect("parse minimal");
-        assert_eq!(data.entities.len(), 1);
-        let entry = &data.entities[0];
-        assert_eq!(entry.transform.position, [10.0, -4.0]);
-        assert_eq!(entry.transform.rotation, 0.5);
-        assert_eq!(entry.transform.scale, [2.0, 3.0]);
-        let sprite = entry.sprite.as_ref().expect("sprite present");
-        assert_eq!(sprite.asset_id, "hero");
-        assert_eq!(sprite.color, [10, 20, 30, 255]);
-        assert_eq!(sprite.z_order, 5);
-        assert!(!entry.visible);
-        assert_eq!(entry.tag.as_deref(), Some("player"));
-    }
-
-    #[test]
-    fn defaults_fill_missing_fields() {
-        let src = r#"{
-            "entities": [
-                {
-                    "transform": { "position": [0.0, 0.0] },
-                    "sprite": { "asset_id": "s" }
-                }
-            ]
-        }"#;
-        let data: SceneData = serde_json::from_str(src).expect("parse defaults");
-        let entry = &data.entities[0];
-        assert_eq!(entry.transform.rotation, 0.0);
-        assert_eq!(entry.transform.scale, [1.0, 1.0]);
-        let sprite = entry.sprite.as_ref().unwrap();
-        assert_eq!(sprite.color, [255, 255, 255, 255]);
-        assert_eq!(sprite.z_order, 0);
-        assert!(entry.visible);
-        assert!(entry.tag.is_none());
-    }
-
-    #[test]
-    fn empty_entities_list_is_valid() {
-        let data: SceneData = serde_json::from_str(r#"{ "entities": [] }"#).unwrap();
-        assert!(data.entities.is_empty());
-    }
-
-    #[test]
-    fn round_trip_preserves_fields() {
-        let data: SceneData = serde_json::from_str(MINIMAL).unwrap();
-        let encoded = serde_json::to_string(&data).unwrap();
-        let reparsed: SceneData = serde_json::from_str(&encoded).unwrap();
-        assert_eq!(reparsed.entities.len(), data.entities.len());
-        assert_eq!(
-            reparsed.entities[0].transform.position,
-            data.entities[0].transform.position
-        );
-    }
-}
+#[path = "../tests/assets/scene.rs"]
+mod tests;

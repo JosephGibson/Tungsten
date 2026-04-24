@@ -1,24 +1,10 @@
-/// M12 ECS benchmarks — archetypal storage vs. naive HashMap baseline.
+/// ECS benches: archetypal storage vs naive `HashMap` baseline.
 ///
-/// Measures:
-/// - `spawn_insert` — 10k entity spawn + 3-component insert
-/// - `query_single` — iterate 10k entities via `query::<Position>()`
-/// - `query2_homogeneous` — iterate 10k entities (one archetype) via
-///   `query2::<Position, Velocity>()`
-/// - `query2_fragmented` — iterate 10k entities spread across 5 archetypes
-///   (different component supersets) via `query2`
-/// - `naive_query_single` — same workload via a minimal HashMap simulation
-///   (stand-in for the pre-M12 storage)
-///
-/// Results are documented in DECISIONS.md D-036.
+/// D-036 result set.
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use tungsten_core::{CommandBuffer, EventQueue, World};
-
-// ---------------------------------------------------------------------------
-// Component types
-// ---------------------------------------------------------------------------
 
 #[allow(dead_code)]
 #[derive(Clone, Copy)]
@@ -48,10 +34,6 @@ struct Mass(f32);
 
 const N: usize = 10_000;
 
-// ---------------------------------------------------------------------------
-// Benchmark: spawn + insert (construction cost)
-// ---------------------------------------------------------------------------
-
 fn bench_spawn_insert(c: &mut Criterion) {
     c.bench_function("spawn_insert_3_components_10k", |b| {
         b.iter(|| {
@@ -72,10 +54,6 @@ fn bench_spawn_insert(c: &mut Criterion) {
         });
     });
 }
-
-// ---------------------------------------------------------------------------
-// Benchmark: query<Position> — single-type iteration, 10k entities
-// ---------------------------------------------------------------------------
 
 fn bench_query_single(c: &mut Criterion) {
     let mut world = World::new();
@@ -99,10 +77,6 @@ fn bench_query_single(c: &mut Criterion) {
         });
     });
 }
-
-// ---------------------------------------------------------------------------
-// Benchmark: query2<Position, Velocity> — homogeneous (one archetype)
-// ---------------------------------------------------------------------------
 
 fn bench_query2_homogeneous(c: &mut Criterion) {
     let mut world = World::new();
@@ -128,17 +102,6 @@ fn bench_query2_homogeneous(c: &mut Criterion) {
         });
     });
 }
-
-// ---------------------------------------------------------------------------
-// Benchmark: query2<Position, Velocity> — fragmented (5 archetypes)
-//
-// 2k entities per archetype:
-//   arch 1: {Position, Velocity}
-//   arch 2: {Position, Velocity, Health}
-//   arch 3: {Position, Velocity, Mass}
-//   arch 4: {Position, Velocity, Health, Mass}
-//   arch 5: {Position, Velocity, Name}
-// ---------------------------------------------------------------------------
 
 fn bench_query2_fragmented(c: &mut Criterion) {
     let mut world = World::new();
@@ -328,14 +291,7 @@ fn bench_command_buffer_flush_1k(c: &mut Criterion) {
     });
 }
 
-// ---------------------------------------------------------------------------
-// Naive baseline: minimal HashMap simulation of the pre-M12 storage.
-//
-// This is an inline reproduction of the pre-M12 ComponentStore approach:
-//   HashMap<TypeId, HashMap<u32, Box<dyn Any>>>
-// Used to establish a comparison point for D-036's benchmark results.
-// ---------------------------------------------------------------------------
-
+// D-036 baseline: HashMap<TypeId, HashMap<u32, Box<dyn Any>>>.
 struct NaiveWorld {
     next_id: u32,
     stores: HashMap<TypeId, HashMap<u32, Box<dyn Any>>>,
@@ -373,7 +329,7 @@ impl NaiveWorld {
             })
     }
 
-    /// Simulate query2 via query + per-entity HashMap lookup (old mutation pattern).
+    /// Old query2 shape: query plus per-entity `HashMap` lookup.
     fn query_entities<T: 'static>(&self) -> Vec<u32> {
         self.stores
             .get(&TypeId::of::<T>())
@@ -441,10 +397,6 @@ fn bench_naive_query2_via_entities(c: &mut Criterion) {
         });
     });
 }
-
-// ---------------------------------------------------------------------------
-// M14 — EventQueue flush cost (10 queue types, 100 events each)
-// ---------------------------------------------------------------------------
 
 #[allow(dead_code)]
 #[derive(Clone, Copy)]
@@ -518,14 +470,7 @@ fn bench_event_queue_flush_10_types(c: &mut Criterion) {
     });
 }
 
-// ---------------------------------------------------------------------------
-// M15 — Sprite-component query cost (Transform + Sprite + Visibility across
-// 5 archetypes, 2k matching entities). Regression gate for the default
-// sprite-extract path: verifies `query3` over the render-component triple
-// stays within ~10 % of the analogous `query2_fragmented_5arch_10k` scaled
-// baseline. See D-042.
-// ---------------------------------------------------------------------------
-
+// D-042 gate: query3 sprite path across matching and excluded archetypes.
 fn bench_sprite_components_query3_2k(c: &mut Criterion) {
     use glam::Vec2;
     use tungsten_core::{Sprite, Tag, Transform, Visibility, World};
@@ -534,7 +479,6 @@ fn bench_sprite_components_query3_2k(c: &mut Criterion) {
 
     let mut world = World::new();
 
-    // Archetype A: {Transform, Sprite, Visibility}  (matches)
     for i in 0..CHUNK {
         let e = world.spawn();
         world.insert(e, Transform::from_position(Vec2::new(i as f32, 0.0)));
@@ -542,7 +486,6 @@ fn bench_sprite_components_query3_2k(c: &mut Criterion) {
         world.insert(e, Visibility::default());
     }
 
-    // Archetype B: {Transform, Sprite, Visibility, Tag}  (matches — superset)
     for i in 0..CHUNK {
         let e = world.spawn();
         world.insert(e, Transform::from_position(Vec2::new(i as f32, 1.0)));
@@ -551,21 +494,18 @@ fn bench_sprite_components_query3_2k(c: &mut Criterion) {
         world.insert(e, Tag::new("b"));
     }
 
-    // Archetype C: {Transform, Sprite}  (excluded — no Visibility)
     for i in 0..CHUNK {
         let e = world.spawn();
         world.insert(e, Transform::from_position(Vec2::new(i as f32, 2.0)));
         world.insert(e, Sprite::new("c"));
     }
 
-    // Archetype D: {Transform, Visibility}  (excluded — no Sprite)
     for i in 0..CHUNK {
         let e = world.spawn();
         world.insert(e, Transform::from_position(Vec2::new(i as f32, 3.0)));
         world.insert(e, Visibility::default());
     }
 
-    // Archetype E: {Sprite, Visibility}  (excluded — no Transform)
     for _ in 0..CHUNK {
         let e = world.spawn();
         world.insert(e, Sprite::new("e"));
@@ -576,14 +516,12 @@ fn bench_sprite_components_query3_2k(c: &mut Criterion) {
         b.iter(|| {
             let sum: i64 = world
                 .query3::<Transform, Sprite, Visibility>()
-                .map(|(_, _, s, _)| s.z_order as i64)
+                .map(|(_, _, s, _)| i64::from(s.z_order))
                 .sum();
             black_box(sum);
         });
     });
 }
-
-// ---------------------------------------------------------------------------
 
 criterion_group!(
     benches,

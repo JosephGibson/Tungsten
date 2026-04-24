@@ -1,26 +1,13 @@
-//! Text-only entity inspector (M21, `F3`). Users register component types
-//! that implement [`Inspectable`]; while the overlay is enabled, the nearest
-//! entity to the mouse cursor in world space is re-picked every frame
-//! (hover-to-inspect) and the compose helper renders every registered
-//! component's labelled rows.
+//! Text-only entity inspector; pick uses sprite AABB, then collider AABB.
 //!
-//! Registration uses an opaque `InspectFn` closure captured at
-//! `register::<T>(label)` time. The closure reads `world.get::<T>(entity)`
-//! and falls back to an empty row list when the component is absent, so
-//! rows for missing components simply don't appear.
-//!
-//! Picking uses world-space squared distance between the cursor (mapped
-//! through [`CameraState::position`], `zoom`, and `rotation`) and every
-//! entity's [`Transform::position`]. Entities without `Transform` are not
-//! selectable. Selection is cleared on the next frame after the referenced
-//! entity is despawned so the overlay never dereferences a stale id.
+//! Smallest footprint wins; selection clears after despawn to avoid stale IDs.
 
 use glam::Vec2;
 
 use tungsten_core::components::{Sprite, Tag, Transform, Visibility};
 use tungsten_core::input::{ActionMap, InputState};
-use tungsten_core::physics::{Position, Velocity};
-use tungsten_core::{CameraState, Entity, Inspectable, World};
+use tungsten_core::physics::{Collider, Position, Shape, Velocity};
+use tungsten_core::{AssetRegistry, CameraState, Entity, Inspectable, World};
 use tungsten_render::TextSection;
 
 use crate::app::WindowSize;
@@ -40,6 +27,12 @@ pub struct InspectorState {
     pub color: [u8; 4],
     pub outline_color: [u8; 4],
     pub outline_px: f32,
+    /// Text rebuild interval; cached sections re-emitted between ticks.
+    pub refresh_interval_ms: f32,
+    cached_sections: Vec<TextSection>,
+    cached_viewport: (u32, u32),
+    cached_selected: Option<Entity>,
+    time_since_refresh_ms: f32,
 }
 
 impl Default for InspectorState {
@@ -48,28 +41,32 @@ impl Default for InspectorState {
             enabled: false,
             selected: None,
             registered: Vec::new(),
-            // BottomLeft so the inspector does not stomp on the systems
-            // overlay (TopLeft) or the debug HUD (TopRight) when all three
-            // are visible at once.
+            // Avoid HUD TopRight and systems overlay BottomRight.
             corner: HudCorner::BottomLeft,
             padding_px: 12.0,
             font_id: "mono".to_string(),
-            font_size: 22.0,
-            line_height: 26.0,
+            font_size: 28.0,
+            line_height: 32.0,
             color: [240, 240, 240, 240],
             outline_color: [0, 0, 0, 220],
             outline_px: 1.5,
+            refresh_interval_ms: 500.0,
+            cached_sections: Vec::new(),
+            cached_viewport: (0, 0),
+            cached_selected: None,
+            time_since_refresh_ms: f32::INFINITY,
         }
     }
 }
 
 impl InspectorState {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Pre-registers the engine's canonical inspectable components so fresh
-    /// `App` instances produce useful inspector output without extra wiring.
+    /// Register canonical inspectable components.
+    #[must_use]
     pub fn new_with_defaults() -> Self {
         let mut state = Self::default();
         state.register::<Tag>("Tag");
@@ -87,12 +84,13 @@ impl InspectorState {
             Box::new(|world: &World, entity: Entity| {
                 world
                     .get::<T>(entity)
-                    .map(|c| c.inspect_rows())
+                    .map(tungsten_core::Inspectable::inspect_rows)
                     .unwrap_or_default()
             }),
         ));
     }
 
+    #[must_use]
     pub fn registered_len(&self) -> usize {
         self.registered.len()
     }
@@ -122,8 +120,7 @@ pub(crate) fn inspector_toggle_system(world: &mut World) {
 pub(crate) fn inspector_pick_system(world: &mut World) {
     let enabled = world
         .get_resource::<InspectorState>()
-        .map(|s| s.enabled)
-        .unwrap_or(false);
+        .is_some_and(|s| s.enabled);
     if !enabled {
         return;
     }
@@ -139,13 +136,17 @@ pub(crate) fn inspector_pick_system(world: &mut World) {
         }
     }
 
-    // Hover-to-inspect: every frame, when the cursor is inside the window,
-    // re-pick the nearest `Transform` entity. No button edge required. The
-    // previous LMB-edge gate is documented in D-047 / plan notes.
+    // Pick edge sticks selection until next pick or despawn.
     let (cursor, camera, viewport) = {
         let Some(input) = world.get_resource::<InputState>() else {
             return;
         };
+        let Some(actions) = world.get_resource::<ActionMap>() else {
+            return;
+        };
+        if !actions.just_pressed(input, "engine_inspector_pick") {
+            return;
+        }
         let Some(cursor) = input.cursor_position() else {
             return;
         };
@@ -159,18 +160,63 @@ pub(crate) fn inspector_pick_system(world: &mut World) {
     };
 
     let world_cursor = screen_to_world(cursor, &camera, viewport);
+    let picked = pick_entity_under_cursor(world, world_cursor);
+    if let Some(state) = world.get_resource_mut::<InspectorState>() {
+        state.selected = picked;
+    }
+}
 
+/// Pick smallest sprite/collider AABB containing `world_cursor`.
+fn pick_entity_under_cursor(world: &World, world_cursor: Vec2) -> Option<Entity> {
     let mut best: Option<(Entity, f32)> = None;
-    for (entity, transform) in world.query::<Transform>() {
-        let dist_sq = (transform.position - world_cursor).length_squared();
-        if best.map(|(_, b)| dist_sq < b).unwrap_or(true) {
-            best = Some((entity, dist_sq));
+
+    if let Some(registry) = world.get_resource::<AssetRegistry>() {
+        for (entity, transform, sprite) in world.query2::<Transform, Sprite>() {
+            let visible = world.get::<Visibility>(entity).is_some_and(|v| v.visible);
+            if !visible {
+                continue;
+            }
+            let Some(asset) = registry.get_sprite(&sprite.asset_id) else {
+                continue;
+            };
+            let size = Vec2::new(
+                asset.width as f32 * transform.scale.x.abs(),
+                asset.height as f32 * transform.scale.y.abs(),
+            );
+            try_hit_aabb(&mut best, entity, world_cursor, transform.position, size);
         }
     }
 
-    let picked = best.map(|(e, _)| e);
-    if let Some(state) = world.get_resource_mut::<InspectorState>() {
-        state.selected = picked;
+    // Collider fallback catches custom-extract visuals.
+    for (entity, collider, position) in world.query2::<Collider, Position>() {
+        let centre = position.0 + collider.offset;
+        let half = match collider.shape {
+            Shape::Aabb { half_extents } => Vec2::new(half_extents.x.abs(), half_extents.y.abs()),
+            Shape::Circle { radius } => Vec2::splat(radius.abs()),
+        };
+        try_hit_aabb(&mut best, entity, world_cursor, centre - half, half * 2.0);
+    }
+
+    best.map(|(e, _)| e)
+}
+
+fn try_hit_aabb(
+    best: &mut Option<(Entity, f32)>,
+    entity: Entity,
+    cursor: Vec2,
+    min: Vec2,
+    size: Vec2,
+) {
+    if size.x <= 0.0 || size.y <= 0.0 {
+        return;
+    }
+    let max = min + size;
+    if cursor.x < min.x || cursor.x > max.x || cursor.y < min.y || cursor.y > max.y {
+        return;
+    }
+    let area = size.x * size.y;
+    if best.is_none_or(|(_, a)| area < a) {
+        *best = Some((entity, area));
     }
 }
 
@@ -190,37 +236,31 @@ fn screen_to_world(cursor: (f32, f32), camera: &CameraState, _viewport: WindowSi
 }
 
 pub(crate) fn compose_inspector_text_section(
-    state: &InspectorState,
+    state: &mut InspectorState,
     world: &World,
     viewport: (u32, u32),
+    frame_ms: f32,
 ) -> Vec<TextSection> {
     if !state.enabled {
+        state.cached_sections.clear();
+        state.time_since_refresh_ms = f32::INFINITY;
         return Vec::new();
     }
 
-    let mut lines: Vec<String> = Vec::new();
-    match state.selected {
-        None => {
-            lines.push("inspector: hover over an entity".to_string());
-        }
-        Some(entity) if !world.is_alive(entity) => {
-            lines.push("inspector: hover over an entity".to_string());
-        }
-        Some(entity) => {
-            lines.push(format!("inspector: {entity}"));
-            for (label, inspect) in &state.registered {
-                let rows = inspect(world, entity);
-                if rows.is_empty() {
-                    continue;
-                }
-                lines.push(format!("[{label}]"));
-                for (row_label, value) in rows {
-                    lines.push(format!("  {row_label:>10}  {value}"));
-                }
-            }
-        }
+    state.time_since_refresh_ms += frame_ms;
+    // Cache key: refresh window, viewport, selected entity.
+    if state.time_since_refresh_ms < state.refresh_interval_ms
+        && !state.cached_sections.is_empty()
+        && state.cached_viewport == viewport
+        && state.cached_selected == state.selected
+    {
+        return state.cached_sections.clone();
     }
+    state.time_since_refresh_ms = 0.0;
+    state.cached_viewport = viewport;
+    state.cached_selected = state.selected;
 
+    let lines = render_inspector_lines(state, world);
     let content = lines.join("\n");
     let (x, y) = anchor_text_block(
         state.corner,
@@ -240,7 +280,7 @@ pub(crate) fn compose_inspector_text_section(
         bounds: None,
     };
 
-    if state.outline_px > 0.0 {
+    let sections = if state.outline_px > 0.0 {
         let ox = state.outline_px;
         let mut out = Vec::with_capacity(5);
         for (dx, dy) in [(-ox, 0.0), (ox, 0.0), (0.0, -ox), (0.0, ox)] {
@@ -258,165 +298,59 @@ pub(crate) fn compose_inspector_text_section(
         out
     } else {
         vec![main]
+    };
+    state.cached_sections.clone_from(&sections);
+    sections
+}
+
+fn render_inspector_lines(state: &InspectorState, world: &World) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    let selected = match state.selected {
+        Some(e) if world.is_alive(e) => Some(e),
+        _ => None,
+    };
+
+    match selected {
+        None => {
+            lines.push("mouse 3 to pick".to_string());
+        }
+        Some(entity) => {
+            // Size columns from visible component rows only.
+            let mut visible: Vec<(&str, Vec<(&'static str, String)>)> = Vec::new();
+            for (section, inspect) in &state.registered {
+                let rows = inspect(world, entity);
+                if rows.is_empty() {
+                    continue;
+                }
+                visible.push((section, rows));
+            }
+            lines.push(format!("entity {entity}"));
+            if visible.is_empty() {
+                lines.push("(no registered components)".to_string());
+            } else {
+                let section_w = visible
+                    .iter()
+                    .map(|(name, _)| name.chars().count())
+                    .max()
+                    .unwrap_or(0);
+                let label_w = visible
+                    .iter()
+                    .flat_map(|(_, rows)| rows.iter().map(|(l, _)| l.chars().count()))
+                    .max()
+                    .unwrap_or(0);
+                for (section, rows) in &visible {
+                    for (row_label, value) in rows {
+                        lines.push(format!(
+                            "{section:<section_w$} {row_label:<label_w$} {value}"
+                        ));
+                    }
+                }
+            }
+        }
     }
+    lines
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use tungsten_core::input::KeyCode;
-
-    fn make_world() -> World {
-        let mut world = World::new();
-        world.insert_resource(InspectorState::new_with_defaults());
-        world.insert_resource(CameraState::new());
-        world.insert_resource(WindowSize {
-            width: 800,
-            height: 600,
-        });
-        world
-    }
-
-    #[test]
-    fn default_registers_canonical_components() {
-        let state = InspectorState::new_with_defaults();
-        assert_eq!(state.registered_len(), 6);
-    }
-
-    #[test]
-    fn toggle_on_f3_action_flips_enabled() {
-        let mut world = make_world();
-        let mut input = InputState::new();
-        input.key_down(KeyCode::F3);
-        world.insert_resource(input);
-        world.insert_resource(ActionMap::default_map());
-
-        inspector_toggle_system(&mut world);
-
-        assert!(world.get_resource::<InspectorState>().unwrap().enabled);
-    }
-
-    #[test]
-    fn pick_selects_nearest_transform_entity_on_hover() {
-        let mut world = make_world();
-        world.get_resource_mut::<InspectorState>().unwrap().enabled = true;
-
-        let far = world.spawn();
-        world.insert(far, Transform::from_position(Vec2::new(500.0, 500.0)));
-
-        let near = world.spawn();
-        world.insert(near, Transform::from_position(Vec2::new(110.0, 110.0)));
-
-        // Hover-only: the cursor is present but no mouse button is down.
-        let mut input = InputState::new();
-        input.update_cursor_position(100.0, 100.0);
-        world.insert_resource(input);
-
-        inspector_pick_system(&mut world);
-
-        let selected = world.get_resource::<InspectorState>().unwrap().selected;
-        assert_eq!(selected, Some(near));
-    }
-
-    #[test]
-    fn pick_noop_when_disabled() {
-        let mut world = make_world();
-        let e = world.spawn();
-        world.insert(e, Transform::from_position(Vec2::ZERO));
-
-        let mut input = InputState::new();
-        input.update_cursor_position(0.0, 0.0);
-        world.insert_resource(input);
-
-        inspector_pick_system(&mut world);
-
-        assert!(world
-            .get_resource::<InspectorState>()
-            .unwrap()
-            .selected
-            .is_none());
-    }
-
-    #[test]
-    fn pick_skips_when_cursor_is_outside_window() {
-        let mut world = make_world();
-        world.get_resource_mut::<InspectorState>().unwrap().enabled = true;
-        let e = world.spawn();
-        world.insert(e, Transform::from_position(Vec2::ZERO));
-        // InputState with no cursor_position set must not cause a pick.
-        world.insert_resource(InputState::new());
-
-        inspector_pick_system(&mut world);
-
-        assert!(world
-            .get_resource::<InspectorState>()
-            .unwrap()
-            .selected
-            .is_none());
-    }
-
-    #[test]
-    fn stale_selection_is_cleared_before_picking() {
-        let mut world = make_world();
-        world.get_resource_mut::<InspectorState>().unwrap().enabled = true;
-
-        let doomed = world.spawn();
-        world.insert(doomed, Transform::from_position(Vec2::ZERO));
-        world.get_resource_mut::<InspectorState>().unwrap().selected = Some(doomed);
-        world.despawn(doomed);
-
-        let input = InputState::new();
-        world.insert_resource(input);
-
-        inspector_pick_system(&mut world);
-
-        assert!(world
-            .get_resource::<InspectorState>()
-            .unwrap()
-            .selected
-            .is_none());
-    }
-
-    #[test]
-    fn compose_renders_no_selection_message_when_enabled() {
-        let mut state = InspectorState::new_with_defaults();
-        state.enabled = true;
-        let world = World::new();
-        let sections = compose_inspector_text_section(&state, &world, (800, 600));
-        assert!(!sections.is_empty());
-        assert!(sections
-            .iter()
-            .any(|s| s.content.contains("hover over an entity")));
-    }
-
-    #[test]
-    fn compose_renders_registered_rows_for_selected_entity() {
-        let mut world = World::new();
-        let e = world.spawn();
-        world.insert(e, Tag::new("hero"));
-        world.insert(e, Transform::from_position(Vec2::new(3.0, 5.0)));
-
-        let mut state = InspectorState::new_with_defaults();
-        state.enabled = true;
-        state.selected = Some(e);
-
-        let sections = compose_inspector_text_section(&state, &world, (800, 600));
-        let joined: String = sections
-            .iter()
-            .map(|s| s.content.as_str())
-            .collect::<Vec<_>>()
-            .join("\n");
-        assert!(joined.contains("[Tag]"));
-        assert!(joined.contains("hero"));
-        assert!(joined.contains("[Transform]"));
-        assert!(joined.contains("pos"));
-    }
-
-    #[test]
-    fn compose_returns_empty_when_disabled() {
-        let state = InspectorState::new_with_defaults();
-        let world = World::new();
-        let sections = compose_inspector_text_section(&state, &world, (800, 600));
-        assert!(sections.is_empty());
-    }
-}
+#[path = "tests/inspector.rs"]
+mod tests;

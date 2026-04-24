@@ -1,12 +1,6 @@
-//! Screenshot capture (M21): renders the next frame additionally into an
-//! offscreen `RENDER_ATTACHMENT | COPY_SRC` texture, reads it back through a
-//! row-padded `MAP_READ` buffer, and encodes the result as PNG via
-//! `image::save_buffer`.
+//! Screenshot capture via offscreen render target plus padded readback buffer.
 //!
-//! The swapchain surface is never `COPY_SRC`: the offscreen target is the
-//! canonical readback source. Arming `capture_frame` incurs one extra render
-//! pass and one device poll-wait on the next frame; it is a dev-tool path
-//! and not safe for production frame-critical flows.
+//! Dev-tool path: extra render pass plus poll-wait.
 
 use std::path::{Path, PathBuf};
 
@@ -33,23 +27,19 @@ pub enum ScreenshotError {
 }
 
 impl Renderer {
-    /// Arm a screenshot capture for the next call to `render_frame_full` /
-    /// `render_frame_full_timed`. The path is captured-by-copy; the next
-    /// frame writes a PNG there and then disarms the capture.
+    /// Arm one-shot PNG capture for next full frame.
     pub fn capture_frame(&mut self, path: &Path) -> Result<(), ScreenshotError> {
         self.pending_capture = Some(path.to_path_buf());
         Ok(())
     }
 
-    /// Whether a capture is currently armed.
+    /// Capture armed.
     pub fn capture_armed(&self) -> bool {
         self.pending_capture.is_some()
     }
 }
 
-/// Row-padded readback helper. `wgpu::COPY_BYTES_PER_ROW_ALIGNMENT` requires
-/// each row of a `copy_texture_to_buffer` destination buffer to be aligned
-/// to 256 bytes. `strip_row_padding` removes the tail padding after mapping.
+/// Row-padded readback stride.
 pub(crate) fn aligned_bytes_per_row(width: u32) -> u32 {
     let unpadded = width * 4;
     let alignment = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
@@ -73,32 +63,5 @@ pub(crate) fn strip_row_padding(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn aligned_row_rounds_up_to_256() {
-        assert_eq!(aligned_bytes_per_row(64), 256);
-        assert_eq!(aligned_bytes_per_row(65), 512);
-        assert_eq!(aligned_bytes_per_row(1280), 5120);
-    }
-
-    #[test]
-    fn strip_row_padding_removes_tail() {
-        let width = 3;
-        let height = 2;
-        let padded_bpr = 16; // 12 bytes real, 4 bytes padding
-        let mut padded = Vec::new();
-        for row in 0..height {
-            for px in 0..width {
-                let base = (row * 10 + px) as u8;
-                padded.extend_from_slice(&[base, base + 1, base + 2, 255]);
-            }
-            padded.extend_from_slice(&[0, 0, 0, 0]);
-        }
-        let stripped = strip_row_padding(&padded, width, height, padded_bpr);
-        assert_eq!(stripped.len(), (width * height * 4) as usize);
-        assert_eq!(stripped[0..4], [0, 1, 2, 255]);
-        assert_eq!(stripped[12..16], [10, 11, 12, 255]);
-    }
-}
+#[path = "tests/screenshot.rs"]
+mod tests;

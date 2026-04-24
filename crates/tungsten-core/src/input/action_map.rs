@@ -1,13 +1,4 @@
-//! Core-owned action map. Maps string action names to lists of `Binding`
-//! (keys, mouse buttons, or discrete scroll directions) and resolves
-//! edge/pressed queries against `InputState`. Loaded from an optional
-//! workspace-root `input.json`; a built-in default map covers every action
-//! consumed by the in-tree examples so missing bindings fall back gracefully.
-//!
-//! Frame-order invariant: `ActionMap` is a pure data resource. Queries are
-//! read-only against `InputState` and can run anywhere in the update stage
-//! without affecting the canonical system -> flush -> event -> hot reload ->
-//! extract -> render order.
+//! Core-owned action map; pure data over read-only `InputState` queries.
 
 use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
@@ -20,9 +11,7 @@ use thiserror::Error;
 
 use crate::input::{InputState, KeyCode, MouseButton, ScrollDirection};
 
-/// A single physical input binding. `Key` fires against keyboard scan codes,
-/// `Mouse` fires against mouse buttons, and `Scroll` fires as a one-frame
-/// impulse for the matching wheel direction.
+/// Physical input binding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Binding {
@@ -31,9 +20,7 @@ pub enum Binding {
     Scroll { direction: ScrollDirection },
 }
 
-/// Core-owned action map. The inner storage is a plain `HashMap<String,
-/// Vec<Binding>>`. Queries take an `&InputState` so the resource stays
-/// read-only during a frame.
+/// String action names mapped to physical bindings.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ActionMap {
     #[serde(default)]
@@ -66,24 +53,22 @@ pub enum ActionMapError {
 }
 
 impl ActionMapError {
-    /// True when the underlying cause is a missing file. Callers use this to
-    /// fall back to `ActionMap::default_map()` without treating the missing
-    /// file as an error.
+    /// Missing-file error check for default fallback.
+    #[must_use]
     pub fn is_not_found(&self) -> bool {
         matches!(self, Self::Io { source, .. } if source.kind() == std::io::ErrorKind::NotFound)
     }
 }
 
 impl ActionMap {
-    /// Build an empty map. Use `default_map` for the engine-default bindings.
+    /// Empty action map.
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Engine default bindings. These cover every action consumed by the
-    /// in-tree examples plus the engine-owned controls (`F1`, `F2`, `F3`,
-    /// `F4`, `F9`, `F11`, `Escape`) so the default behaviour survives
-    /// deleting `input.json`.
+    /// Engine default bindings for examples and engine-owned controls.
+    #[must_use]
     pub fn default_map() -> Self {
         let mut actions: HashMap<String, Vec<Binding>> = HashMap::new();
         actions.insert(
@@ -194,6 +179,12 @@ impl ActionMap {
             vec![Binding::Key { code: KeyCode::F3 }],
         );
         actions.insert(
+            "engine_inspector_pick".into(),
+            vec![Binding::Mouse {
+                button: MouseButton::Middle,
+            }],
+        );
+        actions.insert(
             "engine_toggle_hud".into(),
             vec![Binding::Key { code: KeyCode::F4 }],
         );
@@ -236,15 +227,12 @@ impl ActionMap {
         }
     }
 
-    /// Record where this action map should be written when persisted. Useful
-    /// when the map was synthesized from defaults because `input.json` was
-    /// absent at startup.
+    /// Set path for later persistence.
     pub fn set_source_path(&mut self, path: impl Into<PathBuf>) {
         self.source_path = Some(path.into());
     }
 
-    /// Load an action map from a JSON file. Parse errors carry the path so the
-    /// caller can surface a clear startup-fatal message.
+    /// Load action map JSON.
     pub fn load(path: &Path) -> Result<Self, ActionMapError> {
         let contents = std::fs::read_to_string(path).map_err(|source| ActionMapError::Io {
             path: path.display().to_string(),
@@ -253,7 +241,7 @@ impl ActionMap {
         Self::from_json(&contents, path)
     }
 
-    /// Parse an action map from a JSON string. Used by `load` and tests.
+    /// Parse action map JSON text.
     pub fn from_json(contents: &str, path: &Path) -> Result<Self, ActionMapError> {
         let mut map: Self =
             serde_json::from_str(contents).map_err(|source| ActionMapError::Parse {
@@ -266,9 +254,8 @@ impl ActionMap {
         Ok(map)
     }
 
-    /// Merge `loaded` on top of the engine defaults. User-supplied entries
-    /// override the default for that action (even an empty list disables the
-    /// action). Actions present only in defaults are preserved.
+    /// Merge loaded map over defaults; empty list disables action.
+    #[must_use]
     pub fn merged_with_defaults(loaded: Self) -> Self {
         let ActionMap {
             actions,
@@ -285,8 +272,7 @@ impl ActionMap {
         merged
     }
 
-    /// Persist the current map back to its remembered source path. Uses an
-    /// atomic temp-file + rename path inside the source directory.
+    /// Persist to remembered source path via temp-file rename.
     pub fn persist(&mut self) -> Result<(), ActionMapError> {
         let path = self
             .source_path
@@ -295,8 +281,7 @@ impl ActionMap {
         self.persist_to(&path)
     }
 
-    /// Persist the current map to `path`, updating the remembered source path
-    /// and raw source text on success.
+    /// Persist to path and remember it.
     pub fn persist_to(&mut self, path: &Path) -> Result<(), ActionMapError> {
         let rendered = self.render_for_save()?;
         atomic_write(path, &rendered)?;
@@ -305,23 +290,19 @@ impl ActionMap {
         Ok(())
     }
 
-    /// Return the bindings for an action, or `&[]` if the action is unknown.
-    /// Borrowed slice: no allocation on the query path.
+    /// Bindings for action; unknown returns empty slice.
     pub fn bindings(&self, action: &str) -> &[Binding] {
-        self.actions.get(action).map(Vec::as_slice).unwrap_or(&[])
+        self.actions.get(action).map_or(&[], Vec::as_slice)
     }
 
-    /// Replace every binding for `action`. Used by runtime rebind flows
-    /// (debug tooling, eventual settings menu). Call `persist` afterwards if
-    /// the new binding should be written back to `input.json`.
+    /// Replace action bindings; call `persist` to save.
     pub fn replace_bindings(&mut self, action: impl Into<String>, bindings: Vec<Binding>) {
         let mut bindings = bindings;
         dedupe_in_place(&mut bindings);
         self.actions.insert(action.into(), bindings);
     }
 
-    /// Convenience for engine-side runtime rebind flows: replace the action's
-    /// bindings, then immediately write the updated map back to disk.
+    /// Replace bindings and persist immediately.
     pub fn replace_bindings_and_persist(
         &mut self,
         action: impl Into<String>,
@@ -331,8 +312,8 @@ impl ActionMap {
         self.persist()
     }
 
-    /// True if any binding for `action` is currently held. Unknown or empty
-    /// actions return `false`.
+    /// Any binding currently held.
+    #[must_use]
     pub fn is_pressed(&self, input: &InputState, action: &str) -> bool {
         self.bindings(action).iter().any(|binding| match *binding {
             Binding::Key { code } => input.is_pressed(code),
@@ -341,8 +322,8 @@ impl ActionMap {
         })
     }
 
-    /// True if any binding for `action` transitioned from released to pressed
-    /// this frame.
+    /// Any binding transitioned pressed this frame.
+    #[must_use]
     pub fn just_pressed(&self, input: &InputState, action: &str) -> bool {
         self.bindings(action).iter().any(|binding| match *binding {
             Binding::Key { code } => input.just_pressed(code),
@@ -351,8 +332,8 @@ impl ActionMap {
         })
     }
 
-    /// True if any binding for `action` transitioned from pressed to released
-    /// this frame.
+    /// Any binding transitioned released this frame.
+    #[must_use]
     pub fn just_released(&self, input: &InputState, action: &str) -> bool {
         self.bindings(action).iter().any(|binding| match *binding {
             Binding::Key { code } => input.just_released(code),
@@ -361,8 +342,7 @@ impl ActionMap {
         })
     }
 
-    /// Iterator over `(action, bindings)` pairs. Stable ordering is not
-    /// guaranteed (backed by `HashMap`).
+    /// Iterate `(action, bindings)`; order unstable.
     pub fn iter(&self) -> impl Iterator<Item = (&str, &[Binding])> {
         self.actions
             .iter()
@@ -528,7 +508,7 @@ fn skip_ws(bytes: &[u8], mut index: usize) -> usize {
 }
 
 fn line_indent(source: &str, index: usize) -> String {
-    let line_start = source[..index].rfind('\n').map(|pos| pos + 1).unwrap_or(0);
+    let line_start = source[..index].rfind('\n').map_or(0, |pos| pos + 1);
     source[line_start..index]
         .chars()
         .take_while(|ch| ch.is_whitespace())
@@ -596,309 +576,12 @@ fn next_temp_path(parent: &Path, file_name: &str) -> PathBuf {
     parent.join(format!(".{file_name}.{}.{}.tmp", std::process::id(), nonce))
 }
 
-/// Convenience: resolve a relative or absolute path to an absolute `PathBuf`.
-/// Used by call sites that want to report a canonical path in log messages.
+/// Resolve path for logging.
+#[must_use]
 pub fn resolve_path(path: &Path) -> PathBuf {
     path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    const SAMPLE_JSON: &str = r#"{
-        "actions": {
-            "move_left":   [{ "kind": "key", "code": "ArrowLeft" }, { "kind": "key", "code": "KeyA" }],
-            "jump":        [{ "kind": "key", "code": "Enter" }, { "kind": "mouse", "button": "button4" }],
-            "zoom_in":     [{ "kind": "scroll", "direction": "up" }],
-            "fire":        [{ "kind": "mouse", "button": "left" }]
-        }
-    }"#;
-
-    #[test]
-    fn default_map_has_platformer_and_engine_actions() {
-        let map = ActionMap::default_map();
-        for action in [
-            "move_left",
-            "move_right",
-            "jump",
-            "audio_toggle_music",
-            "audio_stop_all",
-            "volume_preset_low",
-            "volume_preset_mid",
-            "volume_preset_high",
-            "zoom_in",
-            "zoom_out",
-            "engine_toggle_physics_debug",
-            "engine_toggle_systems_overlay",
-            "engine_toggle_inspector",
-            "engine_toggle_hud",
-            "engine_toggle_vsync",
-            "engine_toggle_fullscreen",
-            "engine_exit",
-            "state_start",
-            "state_pause",
-            "state_back",
-        ] {
-            assert!(
-                !map.bindings(action).is_empty(),
-                "default map missing action '{action}'"
-            );
-        }
-        assert!(map.bindings("jump").contains(&Binding::Mouse {
-            button: MouseButton::Left
-        }));
-        assert!(map.bindings("zoom_in").contains(&Binding::Scroll {
-            direction: ScrollDirection::Up
-        }));
-    }
-
-    #[test]
-    fn unknown_action_returns_false() {
-        let map = ActionMap::default_map();
-        let input = InputState::new();
-        assert!(!map.is_pressed(&input, "dance"));
-        assert!(!map.just_pressed(&input, "dance"));
-        assert!(!map.just_released(&input, "dance"));
-        assert!(map.bindings("dance").is_empty());
-    }
-
-    #[test]
-    fn merged_with_defaults_preserves_user_overrides() {
-        let loaded: ActionMap =
-            ActionMap::from_json(SAMPLE_JSON, Path::new("<test>")).expect("parse sample");
-        let merged = ActionMap::merged_with_defaults(loaded);
-
-        let jump = merged.bindings("jump");
-        assert_eq!(
-            jump,
-            &[
-                Binding::Key {
-                    code: KeyCode::Enter
-                },
-                Binding::Mouse {
-                    button: MouseButton::Other(4)
-                }
-            ]
-        );
-
-        assert!(merged
-            .bindings("engine_toggle_hud")
-            .contains(&Binding::Key { code: KeyCode::F4 }));
-
-        assert_eq!(
-            merged.bindings("fire"),
-            &[Binding::Mouse {
-                button: MouseButton::Left
-            }]
-        );
-    }
-
-    #[test]
-    fn load_parses_sample_input_json() {
-        let map = ActionMap::from_json(SAMPLE_JSON, Path::new("<sample>")).unwrap();
-        assert_eq!(
-            map.bindings("move_left"),
-            &[
-                Binding::Key {
-                    code: KeyCode::ArrowLeft
-                },
-                Binding::Key {
-                    code: KeyCode::KeyA
-                }
-            ]
-        );
-        assert_eq!(
-            map.bindings("jump"),
-            &[
-                Binding::Key {
-                    code: KeyCode::Enter
-                },
-                Binding::Mouse {
-                    button: MouseButton::Other(4)
-                }
-            ]
-        );
-        assert_eq!(
-            map.bindings("zoom_in"),
-            &[Binding::Scroll {
-                direction: ScrollDirection::Up
-            }]
-        );
-    }
-
-    #[test]
-    fn load_invalid_json_is_error() {
-        let err = ActionMap::from_json("{ not json", Path::new("<bad>")).unwrap_err();
-        assert!(matches!(err, ActionMapError::Parse { .. }));
-    }
-
-    #[test]
-    fn query_respects_multiple_bindings() {
-        let map = ActionMap::default_map();
-        let mut input = InputState::new();
-        input.key_down(KeyCode::KeyA);
-        assert!(map.is_pressed(&input, "move_left"));
-        input.key_up(KeyCode::KeyA);
-        input.begin_frame();
-        input.key_down(KeyCode::ArrowLeft);
-        assert!(map.is_pressed(&input, "move_left"));
-    }
-
-    #[test]
-    fn edge_query_just_pressed_any_binding() {
-        let map = ActionMap::default_map();
-        let mut input = InputState::new();
-        input.key_down(KeyCode::ArrowLeft);
-        assert!(map.just_pressed(&input, "move_left"));
-        input.begin_frame();
-        assert!(!map.just_pressed(&input, "move_left"));
-    }
-
-    #[test]
-    fn mouse_button_binding_dispatches() {
-        let map = ActionMap::default_map();
-        let mut input = InputState::new();
-        input.mouse_down(MouseButton::Left);
-        assert!(map.is_pressed(&input, "jump"));
-        assert!(map.just_pressed(&input, "jump"));
-        input.begin_frame();
-        input.mouse_up(MouseButton::Left);
-        assert!(map.just_released(&input, "jump"));
-    }
-
-    #[test]
-    fn scroll_binding_dispatches() {
-        let map = ActionMap::default_map();
-        let mut input = InputState::new();
-        input.add_scroll_line_delta(0.0, 1.0);
-        assert!(map.is_pressed(&input, "zoom_in"));
-        assert!(map.just_pressed(&input, "zoom_in"));
-        input.begin_frame();
-        assert!(!map.is_pressed(&input, "zoom_in"));
-        assert!(map.just_released(&input, "zoom_in"));
-    }
-
-    #[test]
-    fn replace_bindings_rebinds_runtime() {
-        let mut map = ActionMap::default_map();
-        map.replace_bindings(
-            "jump",
-            vec![
-                Binding::Key {
-                    code: KeyCode::Enter,
-                },
-                Binding::Mouse {
-                    button: MouseButton::Other(5),
-                },
-            ],
-        );
-        let mut input = InputState::new();
-        input.key_down(KeyCode::Enter);
-        assert!(map.is_pressed(&input, "jump"));
-        input.key_up(KeyCode::Enter);
-        input.mouse_down(MouseButton::Other(5));
-        assert!(map.is_pressed(&input, "jump"));
-        input.mouse_up(MouseButton::Other(5));
-        input.key_down(KeyCode::Space);
-        assert!(!map.is_pressed(&input, "jump"));
-    }
-
-    #[test]
-    fn duplicate_bindings_are_deduplicated() {
-        let dupes = r#"{ "actions": { "jump": [
-            { "kind": "key", "code": "Space" },
-            { "kind": "key", "code": "Space" },
-            { "kind": "scroll", "direction": "up" },
-            { "kind": "scroll", "direction": "up" }
-        ] } }"#;
-        let map = ActionMap::from_json(dupes, Path::new("<dupe>")).unwrap();
-        assert_eq!(
-            map.bindings("jump"),
-            &[
-                Binding::Key {
-                    code: KeyCode::Space
-                },
-                Binding::Scroll {
-                    direction: ScrollDirection::Up
-                }
-            ]
-        );
-    }
-
-    #[test]
-    fn binding_round_trip_json() {
-        let bindings = vec![
-            Binding::Key {
-                code: KeyCode::ArrowLeft,
-            },
-            Binding::Mouse {
-                button: MouseButton::Other(4),
-            },
-            Binding::Scroll {
-                direction: ScrollDirection::Down,
-            },
-        ];
-        let json = serde_json::to_string(&bindings).unwrap();
-        let parsed: Vec<Binding> = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed, bindings);
-    }
-
-    #[test]
-    fn persist_round_trips_rebound_actions_and_preserves_other_top_level_fields() {
-        let dir = tempdir();
-        let path = dir.join("input.json");
-        std::fs::write(
-            &path,
-            "{\n  \"note\": \"keep\",\n  \"actions\": {\n    \"jump\": [{ \"kind\": \"key\", \"code\": \"Space\" }]\n  }\n}\n",
-        )
-        .unwrap();
-
-        let mut map = ActionMap::load(&path).unwrap();
-        map.replace_bindings(
-            "jump",
-            vec![Binding::Key {
-                code: KeyCode::Enter,
-            }],
-        );
-        map.persist().unwrap();
-
-        let persisted = std::fs::read_to_string(&path).unwrap();
-        assert!(persisted.contains("\"note\": \"keep\""));
-        assert!(persisted.contains("\"Enter\""));
-
-        let reparsed = ActionMap::load(&path).unwrap();
-        assert_eq!(
-            reparsed.bindings("jump"),
-            &[Binding::Key {
-                code: KeyCode::Enter
-            }]
-        );
-    }
-
-    #[test]
-    fn persist_can_create_missing_input_json_from_defaults() {
-        let dir = tempdir();
-        let path = dir.join("input.json");
-        let mut map = ActionMap::default_map();
-        map.set_source_path(&path);
-        map.persist().unwrap();
-
-        let persisted = std::fs::read_to_string(&path).unwrap();
-        assert!(persisted.contains("\"engine_toggle_hud\""));
-        assert!(persisted.contains("\"zoom_in\""));
-    }
-
-    fn tempdir() -> PathBuf {
-        static COUNTER: AtomicU32 = AtomicU32::new(0);
-        let nonce = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!(
-            "tungsten_action_map_test_{}_{}",
-            std::process::id(),
-            nonce
-        ));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
-    }
-}
+#[path = "../tests/input/action_map.rs"]
+mod tests;

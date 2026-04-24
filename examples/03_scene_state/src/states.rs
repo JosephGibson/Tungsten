@@ -1,18 +1,18 @@
-//! States for example 03: `MainMenuState`, `GameplayState`, `PauseState`.
+//! Example 03 states: menu, gameplay, pause.
 //!
-//! `MainMenuState` spawns a rotating ring of decorator quads so the idle
-//! screen has motion. `GameplayState` delegates to `asset_loader::spawn_scene`
-//! with the bundled `scene.json` (1 central hub + three orbital rings).
-//! `PauseState` overlays a full-screen dim quad — because `push` fires
-//! `on_pause` (not `on_exit`), the gameplay scene stays alive beneath it and
-//! its orbit system stops running thanks to the top-state gate in `main.rs`.
+//! Pause uses `push/on_pause`; gameplay scene persists under top-state gate.
+//! Gameplay fades a black overlay in on enter and defers a state replace until the
+//! reverse tween emits `TweenComplete { tag: "state_exit" }`.
 
 use std::path::Path;
 
 use glam::Vec2;
 
 use tungsten::core::{ActionMap, InputState, SceneData, World};
-use tungsten::core::{CommandBuffer, Sprite, Tag, Transform, Visibility};
+use tungsten::core::{
+    CommandBuffer, EventQueue, Sprite, Tag, Transform, Tween, TweenChannel, TweenComplete,
+    Visibility,
+};
 use tungsten::{asset_loader, GameState, SceneEntity, StateContext, StateId, StateStack};
 
 use crate::{QUAD_ID, SPRITE_HALF, VIEW_CENTER};
@@ -21,6 +21,19 @@ const SCENE_PATH: &str = "examples/03_scene_state/assets/scene.json";
 const MENU_DECORATION_COUNT: usize = 16;
 const MENU_DECORATION_RADIUS: f32 = 300.0;
 const MENU_DECORATION_SCALE: f32 = 1.5;
+const FADE_OVERLAY_TAG: &str = "fade_overlay";
+const FADE_IN_DURATION: f32 = 0.45;
+const FADE_OUT_DURATION: f32 = 0.35;
+const FADE_OUT_TAG: &str = "state_exit";
+
+/// `StateStack` mutation waits for the matching `TweenComplete { tag: "state_exit" }`.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PendingTransition(pub Option<TransitionTarget>);
+
+#[derive(Debug, Clone, Copy)]
+pub enum TransitionTarget {
+    ReplaceWithMenu,
+}
 
 #[derive(Default)]
 pub struct MainMenuState;
@@ -67,9 +80,15 @@ impl GameState for GameplayState {
         if let Some(clock) = ctx.world.get_resource_mut::<crate::GameplayClock>() {
             clock.0 = 0.0;
         }
+        if let Some(pending) = ctx.world.get_resource_mut::<PendingTransition>() {
+            pending.0 = None;
+        } else {
+            ctx.world.insert_resource(PendingTransition::default());
+        }
         let scene =
             SceneData::load(Path::new(self.scene_path)).expect("scene.json missing or invalid");
         asset_loader::spawn_scene(ctx.world, &scene, "gameplay");
+        spawn_fade_overlay(ctx.world, "gameplay");
     }
 
     fn on_exit(&mut self, _ctx: &mut StateContext) {}
@@ -84,8 +103,15 @@ impl GameState for GameplayState {
                 stack.request_push(PauseState);
             }
         } else if action_just_pressed(world, "state_back") {
-            if let Some(stack) = world.get_resource_mut::<StateStack>() {
-                stack.request_replace(MainMenuState);
+            let already_pending = world
+                .get_resource::<PendingTransition>()
+                .is_some_and(|p| p.0.is_some());
+            if already_pending {
+                return;
+            }
+            start_fade_out(world);
+            if let Some(pending) = world.get_resource_mut::<PendingTransition>() {
+                pending.0 = Some(TransitionTarget::ReplaceWithMenu);
             }
         }
     }
@@ -111,6 +137,33 @@ impl GameState for PauseState {
                 stack.request_pop();
             }
         } else if action_just_pressed(world, "state_back") {
+            if let Some(stack) = world.get_resource_mut::<StateStack>() {
+                stack.request_replace(MainMenuState);
+            }
+        }
+    }
+}
+
+/// Reads both `EventQueue` windows (D-040) — the completion lands in `previous`
+/// by the frame this runs.
+pub fn handle_tween_complete_system(world: &mut World) {
+    let Some(queue) = world.get_resource::<EventQueue<TweenComplete>>() else {
+        return;
+    };
+    let fired = queue
+        .iter()
+        .any(|ev| ev.tag.as_deref() == Some(FADE_OUT_TAG));
+    if !fired {
+        return;
+    }
+    let Some(pending) = world.get_resource_mut::<PendingTransition>() else {
+        return;
+    };
+    let Some(target) = pending.0.take() else {
+        return;
+    };
+    match target {
+        TransitionTarget::ReplaceWithMenu => {
             if let Some(stack) = world.get_resource_mut::<StateStack>() {
                 stack.request_replace(MainMenuState);
             }
@@ -201,6 +254,62 @@ fn spawn_pause_overlay(world: &mut World) {
     buf.insert_pending(banner, Visibility { visible: true });
     buf.insert_pending(banner, Tag::new("pause_banner"));
     buf.insert_pending(banner, SceneEntity { state_id: "pause" });
+}
+
+fn spawn_fade_overlay(world: &mut World, state_id: StateId) {
+    let buf = world
+        .get_resource_mut::<CommandBuffer>()
+        .expect("CommandBuffer resource missing");
+
+    let overlay = buf.spawn();
+    buf.insert_pending(
+        overlay,
+        Transform {
+            position: Vec2::ZERO,
+            rotation: 0.0,
+            scale: Vec2::new(160.0, 90.0),
+        },
+    );
+    buf.insert_pending(
+        overlay,
+        Sprite {
+            asset_id: QUAD_ID.into(),
+            color: [0, 0, 0, 255],
+            z_order: 900,
+        },
+    );
+    buf.insert_pending(overlay, Visibility { visible: true });
+    buf.insert_pending(overlay, Tag::new(FADE_OVERLAY_TAG));
+    buf.insert_pending(overlay, SceneEntity { state_id });
+    buf.insert_pending(
+        overlay,
+        Tween::new(FADE_IN_DURATION, tungsten::core::Easing::CubicOut)
+            .with_channel(TweenChannel::ColorA { from: 255, to: 0 }),
+    );
+}
+
+fn start_fade_out(world: &mut World) {
+    let entities = world.query2_entities::<Tag, Sprite>();
+    let Some(overlay) = entities.into_iter().find(|e| {
+        world
+            .get::<Tag>(*e)
+            .is_some_and(|t| t.name == FADE_OVERLAY_TAG)
+    }) else {
+        return;
+    };
+    let starting_alpha = world.get::<Sprite>(overlay).map_or(0, |s| s.color[3]);
+    if let Some(buf) = world.get_resource_mut::<CommandBuffer>() {
+        buf.remove_component::<Tween>(overlay);
+        buf.insert(
+            overlay,
+            Tween::new(FADE_OUT_DURATION, tungsten::core::Easing::CubicIn)
+                .with_channel(TweenChannel::ColorA {
+                    from: starting_alpha,
+                    to: 255,
+                })
+                .with_tag(FADE_OUT_TAG),
+        );
+    }
 }
 
 fn menu_palette(t: f32) -> [u8; 4] {

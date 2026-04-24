@@ -1,6 +1,4 @@
-/// M19 ActionMap query benchmark — one query per iteration so Criterion's
-/// reported time is directly comparable to the ≤ 1 µs per-call target for
-/// keyboard and mouse-source dispatch.
+/// `ActionMap` query bench: one query per Criterion iteration.
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use tungsten_core::{ActionMap, InputState, KeyCode, MouseButton};
 

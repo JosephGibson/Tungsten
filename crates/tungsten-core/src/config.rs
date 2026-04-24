@@ -89,6 +89,7 @@ pub enum PresentModeConfig {
 pub struct ParsePresentModeConfigError;
 
 impl PresentModeConfig {
+    #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Auto => "auto",
@@ -157,7 +158,7 @@ fn default_level() -> String {
     "info".to_string()
 }
 
-/// Top-level engine configuration, loaded from `tungsten.json`.
+/// Top-level engine configuration.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct Config {
     #[serde(default)]
@@ -171,8 +172,7 @@ pub struct Config {
 }
 
 impl Config {
-    /// Load config from the given path. Falls back to defaults with a warning
-    /// if the file is missing. Fatals on invalid JSON, naming the bad field.
+    /// Load config; missing file falls back to defaults.
     pub fn load(path: impl AsRef<Path>) -> Result<Self, ConfigError> {
         let path = path.as_ref();
         let mut config = match std::fs::read_to_string(path) {
@@ -371,5 +371,5 @@ fn raw_u32(value: &Value) -> Option<u32> {
 }
 
 #[cfg(test)]
-#[path = "config_tests.rs"]
+#[path = "tests/config.rs"]
 mod tests;

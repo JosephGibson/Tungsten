@@ -1,17 +1,9 @@
-//! Collision event payloads emitted by the physics step.
+//! Physics collision events.
 
 use crate::ecs::Entity;
 use glam::Vec2;
 
-/// A single resolved contact from the narrow-phase.
-///
-/// `normal` points **from `a` into the free space of `b`** — i.e. the
-/// direction `a` was pushed to resolve the penetration. Ground detection
-/// on a downward-gravity world is thus `normal.y < 0.0` from the falling
-/// body's perspective (the ground pushes it up).
-///
-/// `b_entity == None` when the other side is a static tilemap tile:
-/// tile colliders are transient and don't own an Entity id.
+/// Resolved contact; `normal` is direction `a` was pushed. Tile `b` is `None`.
 #[derive(Debug, Clone, Copy)]
 pub struct CollisionEvent {
     pub a: Entity,

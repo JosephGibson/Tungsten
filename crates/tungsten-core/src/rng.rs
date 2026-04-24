@@ -1,25 +1,12 @@
-//! In-tree PCG32 PRNG + SplitMix64 seed mixer.
+//! In-tree deterministic PCG32 PRNG plus `SplitMix64` seed mixer.
 //!
-//! Rolled here instead of pulling in `rand` or `fastrand` because the only
-//! consumer is the M23 particle system, and its deterministic-replay
-//! requirement is satisfied by a 16-byte state machine. See `DECISIONS.md`.
-//!
-//! `Pcg32` is the XSH-RR 64/32 LCG from pcg-random.org: state advances with a
-//! fixed multiplier, output is a permuted 32-bit lane. `SplitMix64` derives
-//! an independent stream-selector (`inc`) from the input seed so consecutive
-//! seed values still produce uncorrelated streams.
-//!
-//! Not cryptographic. Do not use for anything that needs unpredictability.
-//!
-//! Determinism: `Pcg32::seeded(seed)` is a pure function — the same seed
-//! always produces the same stream, across platforms and across runs.
+//! Not cryptographic.
 
 use glam::Vec2;
 
 const PCG32_MULT: u64 = 6_364_136_223_846_793_005;
 
-/// PCG32 (XSH-RR 64/32). Two 64-bit words of state: `state` is the LCG
-/// accumulator, `inc` is the stream selector (always odd).
+/// PCG32 XSH-RR 64/32.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Pcg32 {
     state: u64,
@@ -27,20 +14,18 @@ pub struct Pcg32 {
 }
 
 impl Pcg32 {
-    /// Seed both words from a single `u64`. `inc` is derived via
-    /// [`splitmix64`] and forced odd so two consecutive seed values still
-    /// produce uncorrelated streams.
+    /// Seed deterministic stream from one `u64`.
+    #[must_use]
     pub fn seeded(seed: u64) -> Self {
         let inc = splitmix64(seed ^ 0xda3e_39cb_94b9_5bdb) | 1;
         let mut rng = Self { state: 0, inc };
-        // Canonical pcg32 init: one advance, add seed, one advance.
         let _ = rng.next_u32();
         rng.state = rng.state.wrapping_add(splitmix64(seed));
         let _ = rng.next_u32();
         rng
     }
 
-    /// Draw the next 32-bit output.
+    /// Next 32-bit output.
     pub fn next_u32(&mut self) -> u32 {
         let old = self.state;
         self.state = old.wrapping_mul(PCG32_MULT).wrapping_add(self.inc);
@@ -54,12 +39,12 @@ impl Pcg32 {
         (self.next_u32() >> 8) as f32 / (1u32 << 24) as f32
     }
 
-    /// Uniform `f32` on `[lo, hi)`. Returns `lo` if `lo == hi`.
+    /// Uniform `f32` on `[lo, hi)`.
     pub fn next_range(&mut self, lo: f32, hi: f32) -> f32 {
         lo + (hi - lo) * self.next_f32_unit()
     }
 
-    /// Uniform unit-length `Vec2` sampled from the full circle.
+    /// Uniform unit vector.
     pub fn next_unit_vec2(&mut self) -> Vec2 {
         let theta = self.next_f32_unit() * std::f32::consts::TAU;
         let (s, c) = theta.sin_cos();
@@ -67,8 +52,8 @@ impl Pcg32 {
     }
 }
 
-/// SplitMix64 `finalise` mix, the canonical variant from Steele/Vigna 2014.
-/// Also used to derive sequential seeds from a monotonic counter.
+/// `SplitMix64` finalizer.
+#[must_use]
 pub fn splitmix64(seed: u64) -> u64 {
     let mut z = seed.wrapping_add(0x9E37_79B9_7F4A_7C15);
     z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
@@ -77,79 +62,5 @@ pub fn splitmix64(seed: u64) -> u64 {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn splitmix64_reference_vectors() {
-        // SplitMix64 output for inputs {0, 1, 2, 3}. Regenerated if the
-        // algorithm ever changes — this pins the exact byte pattern.
-        assert_eq!(splitmix64(0), 0xE220_A839_7B1D_CDAF);
-        assert_eq!(splitmix64(1), 0x910A_2DEC_8902_5CC1);
-        assert_eq!(splitmix64(2), 0x9758_35DE_1C97_56CE);
-        assert_eq!(splitmix64(3), 0x1D0B_14E4_DB01_8FED);
-    }
-
-    #[test]
-    fn pcg32_same_seed_same_sequence() {
-        let mut a = Pcg32::seeded(42);
-        let mut b = Pcg32::seeded(42);
-        for _ in 0..16 {
-            assert_eq!(a.next_u32(), b.next_u32());
-        }
-    }
-
-    #[test]
-    fn pcg32_different_seeds_diverge_quickly() {
-        let mut a = Pcg32::seeded(1);
-        let mut b = Pcg32::seeded(2);
-        let mut diffs = 0;
-        for _ in 0..32 {
-            if a.next_u32() != b.next_u32() {
-                diffs += 1;
-            }
-        }
-        assert!(
-            diffs >= 30,
-            "consecutive seeds should produce independent streams (diffs={diffs})"
-        );
-    }
-
-    #[test]
-    fn next_f32_unit_is_bounded() {
-        let mut rng = Pcg32::seeded(7);
-        for _ in 0..10_000 {
-            let v = rng.next_f32_unit();
-            assert!((0.0..1.0).contains(&v), "f32_unit out of range: {v}");
-        }
-    }
-
-    #[test]
-    fn next_range_distribution_mean_within_tolerance() {
-        let mut rng = Pcg32::seeded(0xdead_beef);
-        let (lo, hi) = (-3.0f32, 5.0f32);
-        const N: u32 = 10_000;
-        let mut sum = 0.0f64;
-        for _ in 0..N {
-            let v = rng.next_range(lo, hi);
-            assert!((lo..hi).contains(&v), "out of range: {v}");
-            sum += v as f64;
-        }
-        let mean = sum / N as f64;
-        let expected = ((lo + hi) / 2.0) as f64;
-        assert!(
-            (mean - expected).abs() < 0.25,
-            "mean {mean} far from expected {expected}"
-        );
-    }
-
-    #[test]
-    fn next_unit_vec2_length_is_one() {
-        let mut rng = Pcg32::seeded(99);
-        for _ in 0..256 {
-            let v = rng.next_unit_vec2();
-            let len = v.length();
-            assert!((len - 1.0).abs() < 1.0e-5, "|v| = {len}");
-        }
-    }
-}
+#[path = "tests/rng.rs"]
+mod tests;

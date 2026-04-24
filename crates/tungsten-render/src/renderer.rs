@@ -12,33 +12,29 @@ use tungsten_core::assets::{FilterMode, TextureHandle};
 use tungsten_core::config::{PresentModeConfig, RenderConfig};
 use winit::window::Window;
 
-/// GPU-side frame timing, in milliseconds.
-/// All fields are `Option<f32>` because `TIMESTAMP_QUERY` may be unavailable
-/// (software renderers, older Vulkan, WebGPU compatibility layer). Callers must
-/// handle `None`.
+/// GPU frame timing/adapter metadata.
 #[derive(Debug, Clone, Default)]
 pub struct GpuFrameTimings {
-    /// Render-pass GPU duration (begin to end). `None` when TIMESTAMP_QUERY
-    /// is unavailable on the active backend.
+    /// Render-pass GPU duration; `None` without timestamp queries.
     pub frame_gpu_ms: Option<f32>,
-    /// Backend name from `wgpu::Adapter::get_info().backend`. Always `Some` after init.
+    /// Adapter backend name.
     pub backend: Option<String>,
-    /// Adapter name from `wgpu::Adapter::get_info().name`. Always `Some` after init.
+    /// Adapter name.
     pub adapter_name: Option<String>,
-    /// Actual surface present mode chosen at renderer init.
+    /// Actual present mode.
     pub present_mode: Option<String>,
-    /// Requested frames-in-flight hint used for the surface configuration.
+    /// Surface frame-latency hint.
     pub max_frame_latency: Option<u32>,
 }
 
-/// CPU-side render-frame timing, in milliseconds.
+/// CPU render-frame timing.
 #[derive(Debug, Clone, Default)]
 pub struct CpuFrameTimings {
-    /// CPU time spent acquiring the next surface texture.
+    /// Surface acquire time.
     pub acquire_ms: f32,
-    /// CPU time spent preparing render data, recording commands, and finishing the encoder.
+    /// Encode/command-recording time.
     pub encode_ms: f32,
-    /// CPU time spent submitting work, presenting, and any present/readback waits.
+    /// Submit/present/readback wait time.
     pub submit_present_ms: f32,
 }
 
@@ -179,7 +175,7 @@ fn resolve_max_frame_latency(
     }
 }
 
-/// Core renderer state wrapping wgpu resources.
+/// WGPU renderer state.
 pub struct Renderer {
     pub instance: wgpu::Instance,
     pub adapter: wgpu::Adapter,
@@ -192,20 +188,19 @@ pub struct Renderer {
     sprite_pipeline: SpritePipeline,
     debug_line_pipeline: DebugLinePipeline,
     text_pipeline: TextPipeline,
-    /// Whether TIMESTAMP_QUERY is available. Determined at init time; never changes.
+    /// Timestamp query support.
     pub timestamp_support: bool,
-    /// Most recently computed GPU frame timings.
+    /// Last GPU frame timings.
     pub gpu_timings: GpuFrameTimings,
-    /// Most recently computed CPU render timings.
+    /// Last CPU render timings.
     pub cpu_timings: CpuFrameTimings,
-    /// When `Some`, the next `render_frame_full[_timed]` call additionally
-    /// renders the frame into an offscreen texture and writes a PNG to the
-    /// path before disarming. Set via `capture_frame(path)`.
+    /// One-shot offscreen PNG capture target.
     pub(crate) pending_capture: Option<PathBuf>,
 }
 
 impl Renderer {
-    /// Initialize wgpu and create a renderer attached to the given window.
+    /// Initialize wgpu renderer for `window`.
+    #[allow(clippy::needless_pass_by_value)] // Arc<Window> is cheap; public ctor shape matters.
     pub fn new(
         window: Arc<Window>,
         config: &RenderConfig,
@@ -226,8 +221,7 @@ impl Renderer {
             force_fallback_adapter: false,
         }))?;
 
-        // Request TIMESTAMP_QUERY only when the adapter supports it; never fail
-        // device creation over a missing optional feature.
+        // Optional feature only; device creation must not depend on timestamps.
         let adapter_features = adapter.features();
         let desired_features = adapter_features & wgpu::Features::TIMESTAMP_QUERY;
 
@@ -313,9 +307,7 @@ impl Renderer {
         self.surface_config.format
     }
 
-    /// Upload a decoded RGBA texture to the GPU. Post-M22 the `filter` is
-    /// baked into the bind group at upload time — atlases are single-filter,
-    /// so the sprite pipeline no longer selects between samplers per-batch.
+    /// Upload RGBA texture; sampler filter is baked into bind group.
     pub fn upload_texture(
         &mut self,
         handle: TextureHandle,
@@ -335,29 +327,22 @@ impl Renderer {
         );
     }
 
-    /// Mint a fresh monotonic `TextureHandle`. Handle authority lives with the
-    /// GPU pool (M22) so `AssetRegistry` never needs to know how many atlas
-    /// pages the packer produced.
+    /// Mint renderer-owned texture handle.
     pub fn allocate_texture_handle(&mut self) -> TextureHandle {
         self.sprite_pipeline.allocate_texture_handle()
     }
 
-    /// Drop a pool entry and its bind group. Used when a hot-reload rebuild
-    /// shrinks the atlas page count.
+    /// Drop texture pool entry and bind group.
     pub fn drop_texture(&mut self, handle: TextureHandle) {
         self.sprite_pipeline.drop_texture(handle);
     }
 
-    /// Maximum atlas page dimension the packer may request. Clamped to 8192
-    /// so atlas pages stay within the portable-core `Limits` ceiling; every
-    /// shipping adapter exposes at least `max_texture_dimension_2d = 8192`.
+    /// Portable atlas page dimension cap.
     pub fn max_2d_texture_dimension(&self) -> u32 {
         self.device.limits().max_texture_dimension_2d.min(8192)
     }
 
-    /// Copy a sub-rect of RGBA data into an existing atlas page. Used by the
-    /// hot-reload in-place path when a reloaded sprite fits inside its
-    /// originally packed rect.
+    /// Copy RGBA sub-rect into existing texture.
     pub fn write_subtexture(
         &self,
         handle: TextureHandle,
@@ -371,17 +356,17 @@ impl Renderer {
             .write_subtexture(&self.queue, handle, rgba, x, y, width, height);
     }
 
-    /// Load a font from raw TTF/OTF bytes and register it under a manifest ID.
+    /// Load font bytes under manifest ID.
     pub fn load_font(&mut self, id: &str, data: Vec<u8>) {
         self.text_pipeline.load_font(id, data);
     }
 
-    /// Hot-reload a font: replace the old face data with new bytes in-place.
+    /// Hot-reload font bytes.
     pub fn reload_font(&mut self, id: &str, data: Vec<u8>) {
         self.text_pipeline.reload_font(id, data);
     }
 
-    /// Reconfigure the surface after a window resize.
+    /// Reconfigure surface after resize.
     pub fn resize(&mut self, width: u32, height: u32) {
         if width > 0 && height > 0 {
             self.surface_config.width = width;
@@ -428,13 +413,12 @@ impl Renderer {
         }
     }
 
-    /// Render a frame: clear to the configured color (no geometry).
+    /// Clear-only frame.
     pub fn render_frame(&mut self) -> Result<(), RenderError> {
         self.render_frame_with_quads(&[])
     }
 
-    /// Render a frame with colored quads. Direct-data API per D-018.
-    /// Uses the pre-M10 default pixel ortho (no camera scrolling).
+    /// D-018 direct-data quad frame with default pixel ortho.
     pub fn render_frame_with_quads(&mut self, quads: &[QuadInstance]) -> Result<(), RenderError> {
         let w = self.surface_config.width as f32;
         let h = self.surface_config.height as f32;
@@ -442,17 +426,7 @@ impl Renderer {
         self.render_frame_full(&default_view_proj, quads, &[], &[], &[], &[])
     }
 
-    /// Render a full frame with colored quads, textured sprites, and text.
-    ///
-    /// `view_proj` controls where world-space sprites and quads appear
-    /// on screen. Text is always drawn in screen space regardless of
-    /// the camera — glyphon manages its own viewport.
-    ///
-    /// `debug_quads` are drawn through the same `QuadPipeline` as `quads`
-    /// (M21 axis-aligned AABB edges — reuse keeps a second pipeline off the
-    /// GPU). `debug_lines` are drawn through `DebugLinePipeline`
-    /// (oriented-quad segments for arbitrary-angle lines and circle
-    /// polylines). Both channels short-circuit on an empty slice.
+    /// Render quads, sprites, debug primitives, and screen-space text.
     pub fn render_frame_full(
         &mut self,
         view_proj: &glam::Mat4,
@@ -464,9 +438,8 @@ impl Renderer {
     ) -> Result<(), RenderError> {
         self.cpu_timings = CpuFrameTimings::default();
         let acquire_start = Instant::now();
-        let output = match self.acquire_texture()? {
-            Some(tex) => tex,
-            None => return Ok(()),
+        let Some(output) = self.acquire_texture()? else {
+            return Ok(());
         };
         self.cpu_timings.acquire_ms = acquire_start.elapsed().as_secs_f64() as f32 * 1000.0;
 
@@ -629,15 +602,7 @@ impl Renderer {
         render_pass.pop_debug_group();
     }
 
-    /// Render a full frame and record GPU timing in `self.gpu_timings.frame_gpu_ms`.
-    ///
-    /// When `TIMESTAMP_QUERY` is available, injects timestamps at render-pass begin/end
-    /// via `RenderPassDescriptor.timestamp_writes` and reads them back after submit.
-    /// When unavailable, falls through to `render_frame_full` and `frame_gpu_ms` stays `None`.
-    ///
-    /// CAUTION: Calls `device.poll(wait_indefinitely())` per frame to read back timestamps.
-    /// This stalls the CPU until GPU work is done and inflates frame timings.
-    /// Only call when `TUNGSTEN_GPU_TIMING=1`. Never call in production.
+    /// Timed full frame; stalls on `device.poll(wait_indefinitely())`.
     pub fn render_frame_full_timed(
         &mut self,
         view_proj: &glam::Mat4,
@@ -681,9 +646,8 @@ impl Renderer {
         });
 
         let acquire_start = Instant::now();
-        let output = match self.acquire_texture()? {
-            Some(tex) => tex,
-            None => return Ok(()),
+        let Some(output) = self.acquire_texture()? else {
+            return Ok(());
         };
         self.cpu_timings.acquire_ms = acquire_start.elapsed().as_secs_f64() as f32 * 1000.0;
 
@@ -820,7 +784,7 @@ impl Renderer {
         });
         let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
 
-        if receiver.recv().ok().and_then(|r| r.ok()).is_some() {
+        if receiver.recv().ok().and_then(Result::ok).is_some() {
             let data = slice.get_mapped_range();
             let ts0 = u64::from_le_bytes(data[0..8].try_into().unwrap_or([0u8; 8]));
             let ts1 = u64::from_le_bytes(data[8..16].try_into().unwrap_or([0u8; 8]));
@@ -828,7 +792,7 @@ impl Renderer {
             readback_buf.unmap();
 
             let period = self.queue.get_timestamp_period();
-            let delta_ns = ts1.wrapping_sub(ts0) as f64 * period as f64;
+            let delta_ns = ts1.wrapping_sub(ts0) as f64 * f64::from(period);
             self.gpu_timings.frame_gpu_ms = Some((delta_ns / 1_000_000.0) as f32);
         }
         self.cpu_timings.submit_present_ms =
@@ -869,7 +833,7 @@ pub(crate) fn create_capture_target(
     let padded_bytes_per_row = aligned_bytes_per_row(width);
     let readback = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("tungsten_screenshot_readback"),
-        size: (padded_bytes_per_row as u64) * (height as u64),
+        size: u64::from(padded_bytes_per_row) * u64::from(height),
         usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
         mapped_at_creation: false,
     });
@@ -937,112 +901,5 @@ pub(crate) fn finalize_capture(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn auto_present_mode_preserves_vsync_selection() {
-        let supported = [wgpu::PresentMode::Fifo, wgpu::PresentMode::Immediate];
-
-        assert_eq!(
-            resolve_present_mode(&supported, None, true).unwrap(),
-            wgpu::PresentMode::Fifo
-        );
-        assert_eq!(
-            resolve_present_mode(&supported, Some(PresentModeConfig::Auto), false).unwrap(),
-            wgpu::PresentMode::Immediate
-        );
-    }
-
-    #[test]
-    fn auto_present_mode_uses_documented_fallbacks() {
-        assert_eq!(
-            resolve_present_mode(&[wgpu::PresentMode::Mailbox], None, false).unwrap(),
-            wgpu::PresentMode::Mailbox
-        );
-        assert_eq!(
-            resolve_present_mode(&[wgpu::PresentMode::FifoRelaxed], None, false).unwrap(),
-            wgpu::PresentMode::AutoNoVsync
-        );
-        assert_eq!(
-            resolve_present_mode(&[wgpu::PresentMode::FifoRelaxed], None, true).unwrap(),
-            wgpu::PresentMode::AutoVsync
-        );
-    }
-
-    #[test]
-    fn explicit_present_mode_override_beats_vsync() {
-        let supported = [wgpu::PresentMode::Fifo, wgpu::PresentMode::Immediate];
-        let chosen =
-            resolve_present_mode(&supported, Some(PresentModeConfig::Immediate), true).unwrap();
-        assert_eq!(chosen, wgpu::PresentMode::Immediate);
-    }
-
-    #[test]
-    fn unsupported_explicit_present_mode_returns_error() {
-        let err = resolve_present_mode(
-            &[wgpu::PresentMode::Fifo],
-            Some(PresentModeConfig::Mailbox),
-            false,
-        )
-        .unwrap_err();
-
-        match err {
-            RenderError::UnsupportedPresentMode {
-                requested,
-                available,
-            } => {
-                assert_eq!(requested, "mailbox");
-                assert_eq!(available, vec!["fifo".to_string()]);
-            }
-            other => panic!("unexpected error: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn zero_frame_latency_is_rejected() {
-        let err = resolve_max_frame_latency(Some(0), wgpu::PresentMode::Fifo).unwrap_err();
-        match err {
-            RenderError::InvalidFrameLatency(0) => {}
-            other => panic!("unexpected error: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn default_frame_latency_preserves_existing_policy() {
-        assert_eq!(
-            resolve_max_frame_latency(None, wgpu::PresentMode::Immediate).unwrap(),
-            1
-        );
-        assert_eq!(
-            resolve_max_frame_latency(None, wgpu::PresentMode::Mailbox).unwrap(),
-            1
-        );
-        assert_eq!(
-            resolve_max_frame_latency(None, wgpu::PresentMode::AutoNoVsync).unwrap(),
-            1
-        );
-        assert_eq!(
-            resolve_max_frame_latency(None, wgpu::PresentMode::Fifo).unwrap(),
-            2
-        );
-    }
-
-    #[test]
-    fn present_mode_labels_are_stable_lowercase_strings() {
-        assert_eq!(present_mode_label(wgpu::PresentMode::Fifo), "fifo");
-        assert_eq!(
-            present_mode_label(wgpu::PresentMode::Immediate),
-            "immediate"
-        );
-        assert_eq!(present_mode_label(wgpu::PresentMode::Mailbox), "mailbox");
-        assert_eq!(
-            present_mode_label(wgpu::PresentMode::AutoVsync),
-            "auto_vsync"
-        );
-        assert_eq!(
-            present_mode_label(wgpu::PresentMode::AutoNoVsync),
-            "auto_no_vsync"
-        );
-    }
-}
+#[path = "tests/renderer.rs"]
+mod tests;

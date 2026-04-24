@@ -41,89 +41,63 @@ use winit::event::{ElementState, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Fullscreen, Window, WindowId};
 
-/// A system function that runs each tick.
+/// Tick system.
 pub type SystemFn = Box<dyn FnMut(&mut World)>;
 
-/// A render-extraction function: reads the World and produces QuadInstances.
+/// World-to-quad extract.
 pub type ExtractQuadsFn = Box<dyn Fn(&World) -> Vec<QuadInstance>>;
 
-/// A render-extraction function: reads the World and produces SpriteBatches.
+/// World-to-sprite extract.
 pub type ExtractSpritesFn = Box<dyn Fn(&World) -> Vec<SpriteBatch>>;
 
-/// A render-extraction function: reads the World and produces TextSections.
+/// World-to-text extract.
 pub type ExtractTextFn = Box<dyn Fn(&World) -> Vec<TextSection>>;
 
-/// Resource: current window dimensions in physical pixels.
+/// Window dimensions in physical pixels.
 #[derive(Debug, Clone, Copy)]
 pub struct WindowSize {
     pub width: u32,
     pub height: u32,
 }
 
-/// Called once after the renderer is initialized, for asset loading.
+/// Post-renderer startup hook.
 pub type StartupFn = Box<dyn FnOnce(&mut World, &mut Renderer)>;
 
 type EventFlusher = Box<dyn FnMut(&mut World)>;
 
-/// Top-level application that drives the winit event loop, ECS, and renderer.
+/// Winit loop, ECS, and renderer owner.
 pub struct App {
     config: Config,
     window: Option<Arc<Window>>,
     renderer: Option<Renderer>,
     world: World,
-    // Systems run in registration order. No priority or grouping mechanism.
-    // If ordering becomes painful by M13, revisit with named priorities.
+    // Order: registration order; no priorities.
     systems: Vec<SystemFn>,
     extract_quads: Option<ExtractQuadsFn>,
     extract_sprites: Option<ExtractSpritesFn>,
     extract_text: Option<ExtractTextFn>,
     startup: Option<StartupFn>,
     last_frame: Option<Instant>,
-    /// If true (the default), the engine's exit action exits the process.
-    /// The default binding is `Escape`, but `input.json` may rebind it. Set
-    /// this to false when game code needs to keep the engine-side exit action
-    /// disabled (e.g. a pause menu that owns Escape itself).
     exit_on_escape: bool,
-    /// Audio subsystem — initialized after the startup callback runs.
-    /// Kept alive here so the cpal stream doesn't drop.
     audio: Option<AudioSystem>,
-    /// Hot-reload file watcher. None when hot reload is not enabled.
     hot_reload: Option<HotReloadWatcher>,
-    /// Path to the primary manifest file, used to detect manifest changes.
     manifest_path: Option<PathBuf>,
-    /// Workspace-root `input.json` path. Present from `App::new`; wired
-    /// into the hot-reload watcher when `enable_hot_reload` is called.
+    // D-052: ordered manifest roots merged before user startup.
+    manifest_roots: Vec<PathBuf>,
     input_map_path: PathBuf,
-    /// Smoke-test mode: when `Some(n)`, render `n` frames then exit cleanly.
-    /// Populated from the `TUNGSTEN_SMOKE_FRAMES` env var. Used by
-    /// `scripts/smoke-examples.sh` to drive examples in CI-like checks.
     smoke_frames_remaining: Option<u32>,
-    /// Names for registered systems, parallel to `systems`.
     system_names: Vec<String>,
-    /// Auto-incrementing counter for unnamed system registration.
     system_name_counter: usize,
-    /// When true, use render_frame_full_timed each frame (adds device.poll stall).
-    /// Set via TUNGSTEN_GPU_TIMING env var. Never enable in production.
+    // GPU timing path adds `device.poll` stall.
     gpu_timing_enabled: bool,
-    /// Type-erased flush closures for registered event queues.
-    /// Populated by `register_event::<T>()` and run once per frame after the
-    /// command-buffer flush stage.
+    // Event queue flushers run after command flush.
     event_flushers: Vec<EventFlusher>,
-    /// Event types that already have queue resources registered.
     registered_event_types: HashSet<TypeId>,
-    /// Optional frame pacing budget derived from `DisplayState.frame_rate_cap`.
     frame_budget: Option<Duration>,
-    /// Screenshot capture wiring driven by `TUNGSTEN_CAPTURE_FRAME` /
-    /// `TUNGSTEN_CAPTURE_PATH`. `None` unless the env var is set.
     capture_config: Option<CaptureConfig>,
-    /// Monotonic rendered-frame counter; only incremented after a successful
-    /// `render_frame_full[_timed]` call so capture targets an actually-drawn
-    /// frame rather than an early-exit frame.
     frames_rendered: u64,
 }
 
-/// Resolved `TUNGSTEN_CAPTURE_FRAME` / `TUNGSTEN_CAPTURE_PATH` config. One-shot
-/// screenshot hook: once `captured` flips true the hook never fires again.
 #[derive(Debug, Clone)]
 struct CaptureConfig {
     target_frame: u64,
@@ -203,6 +177,11 @@ impl App {
             &mut event_flushers,
             &mut registered_event_types,
         );
+        Self::register_event_inner::<tungsten_core::TweenComplete>(
+            &mut world,
+            &mut event_flushers,
+            &mut registered_event_types,
+        );
 
         let mut app = Self {
             config,
@@ -219,6 +198,7 @@ impl App {
             audio: None,
             hot_reload: None,
             manifest_path: None,
+            manifest_roots: Vec::new(),
             input_map_path,
             smoke_frames_remaining: std::env::var("TUNGSTEN_SMOKE_FRAMES")
                 .ok()
@@ -234,10 +214,7 @@ impl App {
             frames_rendered: 0,
         };
 
-        // Register engine-owned action consumers before user systems so they
-        // observe edge-triggered input deterministically every frame. Debug
-        // overlays toggle first so a single input frame carrying F1/F2/F3
-        // alongside F4 resolves all four edges consistently.
+        // Engine input consumers precede user systems; overlay toggles precede HUD.
         app.add_engine_system("__physics_debug_toggle", physics_debug_toggle_system);
         app.add_engine_system("__systems_overlay_toggle", systems_overlay_toggle_system);
         app.add_engine_system("__inspector_toggle", inspector_toggle_system);
@@ -249,41 +226,35 @@ impl App {
         Ok(app)
     }
 
-    /// Register a component type with the inspector so it contributes rows
-    /// when the entity carrying it is selected. The `label` appears in the
-    /// overlay as a heading above the component's rows.
+    /// Register inspectable component rows under `label`.
     pub fn register_inspectable<T: 'static + Inspectable>(&mut self, label: &'static str) {
         if let Some(state) = self.world.get_resource_mut::<InspectorState>() {
             state.register::<T>(label);
         }
     }
 
-    /// Register an engine-owned system at the current end of the system list
-    /// without touching the auto-naming counter. Used for systems that should
-    /// run regardless of user setup (e.g. the HUD toggle).
+    /// Register engine system without touching user-system naming.
     fn add_engine_system(&mut self, name: &str, system: impl FnMut(&mut World) + 'static) {
         self.system_names.push(name.to_string());
         self.systems.push(Box::new(system));
     }
 
-    /// Control whether the engine exit action exits the process (default: true).
-    /// The default binding is `Escape`; rebinding still routes through this
-    /// gate. Disable when game code wants to own the mapped input itself.
+    /// Enable or disable engine exit action handling.
     pub fn set_exit_on_escape(&mut self, exit: bool) {
         self.exit_on_escape = exit;
     }
 
-    /// Access the World for setup (spawning entities, inserting resources).
+    /// Mutable world access for setup.
     pub fn world_mut(&mut self) -> &mut World {
         &mut self.world
     }
 
-    /// Access the renderer (available after the window is created).
+    /// Mutable renderer access after window creation.
     pub fn renderer_mut(&mut self) -> Option<&mut Renderer> {
         self.renderer.as_mut()
     }
 
-    /// Register a system that runs each tick.
+    /// Register unnamed tick system.
     pub fn add_system(&mut self, system: impl FnMut(&mut World) + 'static) {
         let name = format!("system_{}", self.system_name_counter);
         self.system_name_counter += 1;
@@ -291,9 +262,7 @@ impl App {
         self.systems.push(Box::new(system));
     }
 
-    /// Register a named system. The name appears in FrameTimings::system_timings
-    /// for per-system profiling. Prefer this when the system name matters for
-    /// diagnostics output.
+    /// Register named tick system for profiling output.
     pub fn add_system_named(
         &mut self,
         name: impl Into<String>,
@@ -303,11 +272,7 @@ impl App {
         self.systems.push(Box::new(system));
     }
 
-    /// Register an event type with the engine.
-    ///
-    /// Inserts an `EventQueue<T>` resource and schedules its flush once per
-    /// frame after systems complete. Call during startup before `run()`.
-    /// Duplicate registration of the same event type is ignored.
+    /// Register `EventQueue<T>`; flushes once per frame after command flush.
     pub fn register_event<T: 'static>(&mut self) {
         Self::register_event_inner::<T>(
             &mut self.world,
@@ -316,41 +281,39 @@ impl App {
         );
     }
 
-    /// Set the function that extracts quad render data from the World.
+    /// Set quad extract function.
     pub fn set_extract_quads(&mut self, f: impl Fn(&World) -> Vec<QuadInstance> + 'static) {
         self.extract_quads = Some(Box::new(f));
     }
 
-    /// Set the function that extracts sprite render data from the World.
+    /// Set sprite extract function.
     pub fn set_extract_sprites(&mut self, f: impl Fn(&World) -> Vec<SpriteBatch> + 'static) {
         self.extract_sprites = Some(Box::new(f));
     }
 
-    /// Set the function that extracts text render data from the World.
+    /// Set text extract function.
     pub fn set_extract_text(&mut self, f: impl Fn(&World) -> Vec<TextSection> + 'static) {
         self.extract_text = Some(Box::new(f));
     }
 
-    /// Set a one-shot startup function that runs after the renderer is ready.
-    /// Use this for asset loading that requires GPU access.
+    /// Set post-renderer startup hook.
     pub fn on_startup(&mut self, f: impl FnOnce(&mut World, &mut Renderer) + 'static) {
         self.startup = Some(Box::new(f));
     }
 
-    /// Enable hot reload: watch each directory in `assets_dirs` for file
-    /// changes and reload assets at the next frame boundary. Pass multiple
-    /// directories when assets span more than one location (e.g. a shared
-    /// root `assets/` plus an example-local `assets/`). `manifest_path` is
-    /// used to detect manifest-file changes specifically. Has no effect if
-    /// the watcher fails to start (the error is logged and the engine
-    /// continues without hot reload).
+    /// D-052 manifest composition roots; D-017 duplicate IDs are fatal.
+    pub fn set_manifest_roots(&mut self, roots: Vec<PathBuf>) {
+        self.manifest_roots = roots;
+    }
+
+    /// Watch asset roots; reload at frame boundary.
     pub fn enable_hot_reload(&mut self, assets_dirs: &[PathBuf], manifest_path: PathBuf) {
         let extra_files = [self.input_map_path.clone()];
         self.hot_reload = HotReloadWatcher::new(assets_dirs, &extra_files);
         self.manifest_path = Some(manifest_path);
     }
 
-    /// Run the application. Blocks until the window is closed.
+    /// Run until window close or explicit exit.
     pub fn run(mut self) -> anyhow::Result<()> {
         self.install_default_extracts();
         let event_loop = EventLoop::new()?;
@@ -358,10 +321,7 @@ impl App {
         Ok(())
     }
 
-    /// Install default render-extract closures when the user did not supply
-    /// their own. Today this only covers the sprite-extract slot (M15 /
-    /// D-042). Called at the start of [`Self::run`] and from tests; safe to
-    /// call multiple times because the conditional checks for `None`.
+    /// Install default extracts; idempotent.
     fn install_default_extracts(&mut self) {
         if self.extract_sprites.is_none() {
             self.extract_sprites = Some(Box::new(crate::sprite_extract::extract_sprites_default));
@@ -382,8 +342,7 @@ impl App {
         actions.just_pressed(input, "engine_exit")
     }
 
-    /// Poll the hot-reload watcher and apply any ready changes. Called after
-    /// tick() and before render() each frame. No-op when hot reload is disabled.
+    /// Poll hot reload; apply before extract/render.
     fn process_hot_reload(&mut self) {
         let ready = match self.hot_reload.as_mut() {
             Some(w) => w.drain_ready(),
@@ -393,17 +352,13 @@ impl App {
             return;
         }
 
-        let renderer = match self.renderer.as_mut() {
-            Some(r) => r,
-            None => return,
+        let Some(renderer) = self.renderer.as_mut() else {
+            return;
         };
 
         for path in &ready {
             let canon = path.canonicalize().unwrap_or_else(|_| path.clone());
 
-            // Check if this is the workspace-root input.json first — its
-            // name-based match takes priority over the manifest/extension
-            // dispatch below.
             if canon.file_name().is_some_and(|name| name == "input.json") {
                 if let Err(e) = asset_loader::reload_action_map(&canon, &mut self.world) {
                     log::error!("Action map reload: {e}");
@@ -411,7 +366,6 @@ impl App {
                 continue;
             }
 
-            // Check if this is the manifest file.
             if let Some(mp) = &self.manifest_path {
                 let canon_mp = mp.canonicalize().unwrap_or_else(|_| mp.clone());
                 if canon == canon_mp {
@@ -426,8 +380,7 @@ impl App {
             let ext = canon.extension().and_then(|e| e.to_str()).unwrap_or("");
             match ext {
                 "png" | "jpg" | "jpeg" => {
-                    // Scope the immutable borrow so it drops before we pass
-                    // &mut self.world to reload_sprite.
+                    // Drop registry borrow before `reload_sprite(&mut World)`.
                     let id_filter = {
                         let reg = self
                             .world
@@ -454,13 +407,13 @@ impl App {
                     let anim_id = self
                         .world
                         .get_resource::<AnimationRegistry>()
-                        .and_then(|ar| ar.id_for_path(&canon).map(|s| s.to_string()));
+                        .and_then(|ar| ar.id_for_path(&canon).map(ToString::to_string));
                     let particle_id = self
                         .world
                         .get_resource::<ParticleConfigRegistry>()
                         .and_then(|pr| {
                             pr.id_for_path(&canon)
-                                .and_then(|aid| pr.name_for_id(aid).map(|s| s.to_string()))
+                                .and_then(|aid| pr.name_for_id(aid).map(ToString::to_string))
                         });
                     if let Some(id) = anim_id {
                         if let Err(e) = asset_loader::reload_animation(&id, &canon, &mut self.world)
@@ -483,7 +436,7 @@ impl App {
                     let id = self
                         .world
                         .get_resource::<FontRegistry>()
-                        .and_then(|fr| fr.id_for_path(&canon).map(|s| s.to_string()));
+                        .and_then(|fr| fr.id_for_path(&canon).map(ToString::to_string));
                     if let Some(id) = id {
                         if let Err(e) = asset_loader::reload_font(&id, &canon, renderer) {
                             log::error!("Font reload '{id}': {e}");
@@ -496,7 +449,7 @@ impl App {
                     let id = self
                         .world
                         .get_resource::<TilemapRegistry>()
-                        .and_then(|tr| tr.id_for_path(&canon).map(|s| s.to_string()));
+                        .and_then(|tr| tr.id_for_path(&canon).map(ToString::to_string));
                     if let Some(id) = id {
                         if let Err(e) = asset_loader::reload_tilemap(&id, &canon, &mut self.world) {
                             log::error!("Tilemap reload '{id}': {e}");
@@ -580,7 +533,7 @@ impl App {
                         effective.vsync = requested.vsync;
                         effective.present_mode = requested.present_mode;
                         effective.max_frame_latency = requested.max_frame_latency;
-                        actual_present_mode = renderer.gpu_timings.present_mode.clone();
+                        actual_present_mode.clone_from(&renderer.gpu_timings.present_mode);
                         if let Some(gpu) = self.world.get_resource_mut::<GpuFrameTimings>() {
                             *gpu = renderer.gpu_timings.clone();
                         }
@@ -613,9 +566,379 @@ impl App {
     }
 }
 
-/// Startup load for `input.json`. Missing file → engine defaults with an
-/// info log. IO or parse errors are fatal so they surface from `App::new`
-/// the same way `ConfigError` does from `Config::load` (per `D-008`).
+// Extract output kept in umbrella crate; renderer stays World-free.
+struct FrameExtract {
+    quads: Vec<QuadInstance>,
+    sprites: Vec<SpriteBatch>,
+    text: Vec<TextSection>,
+    debug_quads: Vec<QuadInstance>,
+    debug_lines: Vec<DebugLineInstance>,
+    extract_ms: f32,
+}
+
+#[allow(clippy::struct_field_names)]
+#[derive(Default)]
+struct FrameRenderOut {
+    render_ms: f32,
+    render_acquire_ms: f32,
+    render_encode_ms: f32,
+    render_submit_present_ms: f32,
+    gpu_frame_ms: Option<f32>,
+}
+
+// One-pass telemetry write; no long `&mut FrameTimings` borrow across stages.
+struct FrameStageTimings {
+    update_ms: f32,
+    flush_ms: f32,
+    hot_reload_ms: f32,
+    extract_ms: f32,
+    render_ms: f32,
+    render_acquire_ms: f32,
+    render_encode_ms: f32,
+    render_submit_present_ms: f32,
+    audio_ms: f32,
+    total_ms: f32,
+    system_timings: Vec<(String, f32)>,
+}
+
+impl App {
+    // Debug perf: flatten single-call frame stages to avoid stack/memcpy overhead.
+
+    #[inline(always)]
+    fn stage_delta_time(&mut self) {
+        let now = Instant::now();
+        if let Some(last) = self.last_frame {
+            let dt = now.duration_since(last).as_secs_f32();
+            if let Some(delta) = self.world.get_resource_mut::<DeltaTime>() {
+                delta.dt = dt;
+            }
+        }
+        self.last_frame = Some(now);
+    }
+
+    #[inline(always)]
+    fn stage_update(&mut self) -> (f32, Vec<(String, f32)>) {
+        let update_start = Instant::now();
+        let mut system_timings: Vec<(String, f32)> = Vec::with_capacity(self.systems.len());
+        debug_assert_eq!(self.systems.len(), self.system_names.len());
+        for (system, name) in self.systems.iter_mut().zip(self.system_names.iter()) {
+            // Input edges: events received before RedrawRequested in same loop turn.
+            let t0 = Instant::now();
+            system(&mut self.world);
+            system_timings.push((name.clone(), t0.elapsed().as_secs_f64() as f32 * 1000.0));
+        }
+        let update_ms = update_start.elapsed().as_secs_f64() as f32 * 1000.0;
+        (update_ms, system_timings)
+    }
+
+    #[inline(always)]
+    fn stage_particles(&mut self) {
+        // Order: count refresh -> emit -> tick, after systems and before command flush.
+        crate::particles::particle_count_refresh_system(&mut self.world);
+        crate::particles::particle_emit_system(&mut self.world);
+        crate::particles::particle_tick_system(&mut self.world);
+    }
+
+    #[inline(always)]
+    fn stage_tweens(&mut self) {
+        // Tween writes override particle writes; `TweenComplete` lands before event flush rotates.
+        crate::tweens::tween_tick_system(&mut self.world);
+    }
+
+    #[inline(always)]
+    fn stage_flush_commands(&mut self) -> f32 {
+        // Frame order: systems -> command flush -> event flush -> hot reload -> extract -> render.
+        // Frame-N command mutations: invisible to systems, visible to extract/render.
+        let flush_start = Instant::now();
+        let flush_buf = self
+            .world
+            .remove_resource::<CommandBuffer>()
+            .expect("CommandBuffer resource missing -- was it removed by a system?");
+        self.world.flush(flush_buf);
+        self.world.insert_resource(CommandBuffer::new());
+        flush_start.elapsed().as_secs_f64() as f32 * 1000.0
+    }
+
+    #[inline(always)]
+    fn stage_flush_events(&mut self) {
+        for flusher in &mut self.event_flushers {
+            flusher(&mut self.world);
+        }
+    }
+
+    #[inline(always)]
+    fn stage_hot_reload(&mut self) -> f32 {
+        let hot_reload_start = Instant::now();
+        self.process_hot_reload();
+        hot_reload_start.elapsed().as_secs_f64() as f32 * 1000.0
+    }
+
+    #[inline(always)]
+    fn stage_extract(&mut self, prev_total_ms: f32) -> FrameExtract {
+        let extract_start = Instant::now();
+        let quads = self
+            .extract_quads
+            .as_ref()
+            .map(|f| f(&self.world))
+            .unwrap_or_default();
+
+        let sprites = self
+            .extract_sprites
+            .as_ref()
+            .map(|f| f(&self.world))
+            .unwrap_or_default();
+
+        let mut text = self
+            .extract_text
+            .as_ref()
+            .map(|f| f(&self.world))
+            .unwrap_or_default();
+
+        // Before HUD compose: counts row uses this frame's extract.
+        let entity_count = self.world.entity_count();
+        let sprite_instance_count: u32 = sprites.iter().map(|b| b.instances.len() as u32).sum();
+        if let Some(rc) = self.world.get_resource_mut::<RenderCounts>() {
+            rc.entities = entity_count;
+            rc.sprite_instances = sprite_instance_count;
+        }
+
+        // Extract-start emit: debug draw visible same frame.
+        physics_debug_emit_system(&mut self.world);
+
+        // AABBs -> quads; angled lines/circles -> debug-line pipeline.
+        let (debug_quads, debug_lines) = drain_debug_draw(&mut self.world);
+
+        // Borrow split: remove UI state, compose with `&World`, reinsert.
+        let viewport = self
+            .world
+            .get_resource::<WindowSize>()
+            .map_or((0, 0), |w| (w.width, w.height));
+        if let Some(mut hud) = self.world.remove_resource::<DebugHud>() {
+            let hud_sections =
+                compose_hud_text_sections(&mut hud, &self.world, viewport, prev_total_ms);
+            self.world.insert_resource(hud);
+            text.extend(hud_sections);
+        }
+        if let Some(mut overlay) = self.world.remove_resource::<SystemTimingOverlay>() {
+            let sections = compose_systems_overlay_text_section(
+                &mut overlay,
+                &self.world,
+                viewport,
+                prev_total_ms,
+            );
+            self.world.insert_resource(overlay);
+            text.extend(sections);
+        }
+        if let Some(mut state) = self.world.remove_resource::<InspectorState>() {
+            let sections =
+                compose_inspector_text_section(&mut state, &self.world, viewport, prev_total_ms);
+            self.world.insert_resource(state);
+            text.extend(sections);
+        }
+
+        let extract_ms = extract_start.elapsed().as_secs_f64() as f32 * 1000.0;
+        FrameExtract {
+            quads,
+            sprites,
+            text,
+            debug_quads,
+            debug_lines,
+            extract_ms,
+        }
+    }
+
+    #[inline(always)]
+    fn stage_render(&mut self, extract: &FrameExtract) -> FrameRenderOut {
+        let render_start = Instant::now();
+        let mut out = FrameRenderOut::default();
+        if let Some(renderer) = &mut self.renderer {
+            let (vw, vh) = {
+                let cfg = &renderer.surface_config;
+                (cfg.width as f32, cfg.height as f32)
+            };
+            let view_proj = self
+                .world
+                .get_resource::<CameraState>()
+                .copied()
+                .unwrap_or_default()
+                .view_projection(vw, vh);
+
+            // Arm before target render; mark captured after successful submit.
+            if let Some(cfg) = self.capture_config.as_mut() {
+                if !cfg.captured && self.frames_rendered + 1 == cfg.target_frame {
+                    if let Err(e) = renderer.capture_frame(&cfg.path) {
+                        log::warn!("capture_frame({}) failed to arm: {e}", cfg.path.display());
+                    }
+                }
+            }
+
+            let result = if self.gpu_timing_enabled {
+                renderer.render_frame_full_timed(
+                    &view_proj,
+                    &extract.quads,
+                    &extract.sprites,
+                    &extract.debug_quads,
+                    &extract.debug_lines,
+                    &extract.text,
+                )
+            } else {
+                renderer.render_frame_full(
+                    &view_proj,
+                    &extract.quads,
+                    &extract.sprites,
+                    &extract.debug_quads,
+                    &extract.debug_lines,
+                    &extract.text,
+                )
+            };
+            if let Err(e) = result {
+                log::error!("Render error: {e}");
+            } else {
+                self.frames_rendered = self.frames_rendered.saturating_add(1);
+                if let Some(cfg) = self.capture_config.as_mut() {
+                    if !cfg.captured && self.frames_rendered == cfg.target_frame {
+                        cfg.captured = true;
+                        log::info!(
+                            "captured frame {} -> {}",
+                            cfg.target_frame,
+                            cfg.path.display()
+                        );
+                    }
+                }
+            }
+            out.render_acquire_ms = renderer.cpu_timings.acquire_ms;
+            out.render_encode_ms = renderer.cpu_timings.encode_ms;
+            out.render_submit_present_ms = renderer.cpu_timings.submit_present_ms;
+            out.gpu_frame_ms = renderer.gpu_timings.frame_gpu_ms;
+            if let Some(gpu) = self.world.get_resource_mut::<GpuFrameTimings>() {
+                *gpu = renderer.gpu_timings.clone();
+            }
+        }
+        out.render_ms = render_start.elapsed().as_secs_f64() as f32 * 1000.0;
+        out
+    }
+
+    #[inline(always)]
+    fn stage_audio(&mut self) -> f32 {
+        let audio_start = Instant::now();
+        if let (Some(audio), Some(cmds)) = (
+            &mut self.audio,
+            self.world.get_resource_mut::<AudioCommands>(),
+        ) {
+            for cmd in cmds.drain() {
+                audio.send(cmd);
+            }
+        }
+        audio_start.elapsed().as_secs_f64() as f32 * 1000.0
+    }
+
+    #[inline(always)]
+    fn stage_telemetry(&mut self, t: FrameStageTimings) {
+        if let Some(ft) = self.world.get_resource_mut::<FrameTimings>() {
+            ft.update_ms = t.update_ms;
+            ft.extract_ms = t.extract_ms;
+            ft.render_ms = t.render_ms;
+            ft.render_acquire_ms = t.render_acquire_ms;
+            ft.render_encode_ms = t.render_encode_ms;
+            ft.render_submit_present_ms = t.render_submit_present_ms;
+            ft.audio_ms = t.audio_ms;
+            ft.hot_reload_ms = t.hot_reload_ms;
+            ft.flush_ms = t.flush_ms;
+            ft.total_ms = t.total_ms;
+            ft.system_timings = t.system_timings;
+        }
+    }
+
+    #[inline(always)]
+    fn stage_pacing(&self, event_loop: &ActiveEventLoop, frame_start: Instant) {
+        if let Some(budget) = self.frame_budget {
+            event_loop.set_control_flow(ControlFlow::WaitUntil(frame_start + budget));
+        } else {
+            event_loop.set_control_flow(ControlFlow::Wait);
+        }
+    }
+
+    #[inline(always)]
+    fn stage_smoke_exit(&mut self, event_loop: &ActiveEventLoop) {
+        if let Some(remaining) = self.smoke_frames_remaining.as_mut() {
+            *remaining = remaining.saturating_sub(1);
+            if *remaining == 0 {
+                log::info!("TUNGSTEN_SMOKE_FRAMES reached; exiting cleanly");
+                event_loop.exit();
+            }
+        }
+    }
+}
+
+#[inline(always)]
+fn drain_debug_draw(world: &mut World) -> (Vec<QuadInstance>, Vec<DebugLineInstance>) {
+    let mut debug_quads: Vec<QuadInstance> = Vec::new();
+    let mut debug_lines: Vec<DebugLineInstance> = Vec::new();
+    if let Some(dd) = world.get_resource_mut::<DebugDraw>() {
+        for cmd in dd.drain() {
+            match cmd.shape {
+                DebugShape::Aabb { min, max } => {
+                    expand_aabb(&mut debug_quads, min, max, cmd.color, cmd.thickness);
+                }
+                DebugShape::Circle {
+                    center,
+                    radius,
+                    segments,
+                } => {
+                    expand_circle(
+                        &mut debug_lines,
+                        center,
+                        radius,
+                        segments,
+                        cmd.color,
+                        cmd.thickness,
+                    );
+                }
+                DebugShape::Line { a, b } => {
+                    debug_lines.push(DebugLineInstance {
+                        a: a.to_array(),
+                        b: b.to_array(),
+                        thickness: cmd.thickness,
+                        _pad: 0.0,
+                        color: cmd.color,
+                    });
+                }
+            }
+        }
+    }
+    (debug_quads, debug_lines)
+}
+
+#[inline(always)]
+fn log_perf_line(
+    total_ms: f32,
+    update_ms: f32,
+    flush_ms: f32,
+    extract_ms: f32,
+    render_out: &FrameRenderOut,
+    audio_ms: f32,
+    hot_reload_ms: f32,
+) {
+    let gpu_for_log = render_out
+        .gpu_frame_ms
+        .map_or_else(|| "n/a".to_string(), |ms| format!("{ms:.2}ms"));
+    log::debug!(
+        "frame: total={:.2}ms update={:.2}ms flush={:.2}ms extract={:.2}ms render={:.2}ms render_acquire={:.2}ms render_encode={:.2}ms render_submit_present={:.2}ms gpu={} audio={:.2}ms hot_reload={:.2}ms",
+        total_ms,
+        update_ms,
+        flush_ms,
+        extract_ms,
+        render_out.render_ms,
+        render_out.render_acquire_ms,
+        render_out.render_encode_ms,
+        render_out.render_submit_present_ms,
+        gpu_for_log,
+        audio_ms,
+        hot_reload_ms
+    );
+}
+
+/// D-008: missing `input.json` uses defaults; parse/IO errors are fatal.
 fn load_action_map_at_startup(path: &Path) -> anyhow::Result<ActionMap> {
     match ActionMap::load(path) {
         Ok(loaded) => {
@@ -650,9 +973,7 @@ fn resolve_startup_display(config: &Config) -> DisplayState {
     }
 }
 
-/// Parse the `TUNGSTEN_CAPTURE_RESOLUTION=WxH` env var. Returns `None` when
-/// unset or malformed so visual-regression fixtures can pin a resolution
-/// without touching `tungsten.json`.
+/// Parse `TUNGSTEN_CAPTURE_RESOLUTION=WxH`.
 fn parse_capture_resolution() -> Option<(u32, u32)> {
     let raw = std::env::var("TUNGSTEN_CAPTURE_RESOLUTION").ok()?;
     let (w, h) = raw.split_once('x')?;
@@ -664,16 +985,14 @@ fn parse_capture_resolution() -> Option<(u32, u32)> {
     Some((w, h))
 }
 
-/// Parse the `TUNGSTEN_CAPTURE_FRAME` / `TUNGSTEN_CAPTURE_PATH` pair. The
-/// frame number is required; the path defaults to `./actual.png`.
+/// Parse one-shot capture env vars.
 fn parse_capture_config() -> Option<CaptureConfig> {
     let target_frame: u64 = std::env::var("TUNGSTEN_CAPTURE_FRAME").ok()?.parse().ok()?;
     if target_frame == 0 {
         return None;
     }
     let path = std::env::var("TUNGSTEN_CAPTURE_PATH")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("actual.png"));
+        .map_or_else(|_| PathBuf::from("actual.png"), PathBuf::from);
     Some(CaptureConfig {
         target_frame,
         path,
@@ -681,9 +1000,7 @@ fn parse_capture_config() -> Option<CaptureConfig> {
     })
 }
 
-/// Expand an AABB outline into four thin axis-aligned edge quads. Edges are
-/// inset by `thickness / 2` so the outline tracks the AABB interior rather
-/// than ballooning outward for large thicknesses.
+/// Expand AABB outline into interior edge quads.
 fn expand_aabb(
     out: &mut Vec<QuadInstance>,
     min: glam::Vec2,
@@ -694,25 +1011,21 @@ fn expand_aabb(
     let t = thickness.max(0.0);
     let w = (max.x - min.x).max(0.0);
     let h = (max.y - min.y).max(0.0);
-    // Top
     out.push(QuadInstance {
         position: [min.x, min.y],
         size: [w, t],
         color,
     });
-    // Bottom
     out.push(QuadInstance {
         position: [min.x, (max.y - t).max(min.y)],
         size: [w, t],
         color,
     });
-    // Left
     out.push(QuadInstance {
         position: [min.x, min.y],
         size: [t, h],
         color,
     });
-    // Right
     out.push(QuadInstance {
         position: [(max.x - t).max(min.x), min.y],
         size: [t, h],
@@ -720,9 +1033,7 @@ fn expand_aabb(
     });
 }
 
-/// Expand a circle command into a closed polyline of `segments` line
-/// instances. Degenerate cases (`radius <= 0` or `segments == 0`) emit
-/// nothing so downstream pipelines short-circuit on empty slices.
+/// Expand circle into closed polyline; degenerate inputs emit nothing.
 fn expand_circle(
     out: &mut Vec<DebugLineInstance>,
     center: glam::Vec2,
@@ -735,10 +1046,10 @@ fn expand_circle(
         return;
     }
     let two_pi = std::f32::consts::TAU;
-    let step = two_pi / segments as f32;
+    let step = two_pi / f32::from(segments);
     let mut prev = center + glam::Vec2::new(radius, 0.0);
     for i in 1..=segments {
-        let t = i as f32 * step;
+        let t = f32::from(i) * step;
         let (sin, cos) = t.sin_cos();
         let next = center + glam::Vec2::new(cos * radius, sin * radius);
         out.push(DebugLineInstance {
@@ -866,28 +1177,36 @@ impl ApplicationHandler for App {
 
         self.window = Some(window);
 
-        // Run startup callback (asset loading, etc.)
+        // D-052: merge manifests before user startup; duplicate IDs halt boot.
+        if !self.manifest_roots.is_empty() {
+            if let Some(renderer) = &mut self.renderer {
+                if let Err(e) =
+                    asset_loader::load_all_merged(&self.manifest_roots, &mut self.world, renderer)
+                {
+                    log::error!("Manifest composition failed: {e}");
+                    event_loop.exit();
+                    return;
+                }
+            }
+        }
+
         if let Some(startup) = self.startup.take() {
             if let Some(renderer) = &mut self.renderer {
                 startup(&mut self.world, renderer);
             }
         }
 
-        // Stamp last_frame AFTER startup so asset-loading time is not counted
-        // as the first game frame's dt. A large first-frame dt would cause
-        // fast-moving bodies (including a player falling under gravity) to
-        // tunnel through thin collision geometry in a single substep.
+        // Startup time excluded from first-frame dt; prevents first-substep tunneling.
         self.last_frame = Some(Instant::now());
 
-        // Initialize audio after the startup callback so that load_sounds()
-        // has already populated the SoundRegistry resource.
+        // Audio init after startup: SoundRegistry populated.
         if let Some(sound_registry) = self.world.get_resource::<SoundRegistry>() {
             match AudioSystem::init(sound_registry) {
                 Ok(sys) => {
                     self.audio = Some(sys);
                 }
                 Err(e) => {
-                    log::warn!("Audio init failed (continuing without audio): {}", e);
+                    log::warn!("Audio init failed (continuing without audio): {e}");
                 }
             }
         }
@@ -946,7 +1265,7 @@ impl ApplicationHandler for App {
                     match delta {
                         MouseScrollDelta::LineDelta(x, y) => input.add_scroll_line_delta(x, y),
                         MouseScrollDelta::PixelDelta(delta) => {
-                            input.add_scroll_pixel_delta(delta.x as f32, delta.y as f32)
+                            input.add_scroll_pixel_delta(delta.x as f32, delta.y as f32);
                         }
                     }
                 }
@@ -955,316 +1274,61 @@ impl ApplicationHandler for App {
                 let frame_start = Instant::now();
                 self.apply_pending_display_request();
 
-                // Snapshot the previous frame's total so the HUD can smooth
-                // frame-ms without needing compose to run after render (which
-                // would hide the HUD this frame).
+                // HUD smoothing uses previous frame; compose still occurs before render.
                 let prev_total_ms = self
                     .world
                     .get_resource::<FrameTimings>()
-                    .map(|ft| ft.total_ms)
-                    .unwrap_or(0.0);
+                    .map_or(0.0, |ft| ft.total_ms);
 
-                // --- Delta time ---
-                let now = Instant::now();
-                if let Some(last) = self.last_frame {
-                    let dt = now.duration_since(last).as_secs_f32();
-                    if let Some(delta) = self.world.get_resource_mut::<DeltaTime>() {
-                        delta.dt = dt;
-                    }
-                }
-                self.last_frame = Some(now);
-
-                // --- Update stage: all registered systems ---
-                let update_start = Instant::now();
-                let mut system_timings: Vec<(String, f32)> = Vec::with_capacity(self.systems.len());
-                debug_assert_eq!(self.systems.len(), self.system_names.len());
-                for (system, name) in self.systems.iter_mut().zip(self.system_names.iter()) {
-                    // Systems run with this frame's accumulated input (edge state
-                    // was populated by KeyboardInput/MouseInput events that arrived
-                    // before RedrawRequested in the same event-loop turn).
-                    let t0 = Instant::now();
-                    system(&mut self.world);
-                    system_timings.push((name.clone(), t0.elapsed().as_secs_f64() as f32 * 1000.0));
-                }
-                let update_ms = update_start.elapsed().as_secs_f64() as f32 * 1000.0;
+                self.stage_delta_time();
+                let (update_ms, system_timings) = self.stage_update();
 
                 if self.engine_exit_requested() {
                     event_loop.exit();
                     return;
                 }
 
-                // --- Particle stage (M23): count refresh → emit → tick ---
-                // Runs after user systems and before the command-buffer flush.
-                // Emission before tick guarantees newly-spawned particles get
-                // their first integration step on the following frame, and
-                // despawns are still queued via CommandBuffer for the flush.
-                crate::particles::particle_count_refresh_system(&mut self.world);
-                crate::particles::particle_emit_system(&mut self.world);
-                crate::particles::particle_tick_system(&mut self.world);
+                self.stage_particles();
+                self.stage_tweens();
+                let flush_ms = self.stage_flush_commands();
+                self.stage_flush_events();
+                let hot_reload_ms = self.stage_hot_reload();
 
-                // --- Flush stage: apply deferred command buffers ---
-                // Frame order invariant (Phase 3 guardrail):
-                //   run systems -> flush commands -> flush events -> hot-reload -> extract -> render
-                // Mutations are NOT visible to frame-N systems (they ran before this point).
-                // Mutations ARE visible to extract/render within this frame.
-                let flush_start = Instant::now();
-                let flush_buf = self
-                    .world
-                    .remove_resource::<CommandBuffer>()
-                    .expect("CommandBuffer resource missing -- was it removed by a system?");
-                self.world.flush(flush_buf);
-                self.world.insert_resource(CommandBuffer::new());
-                let flush_ms = flush_start.elapsed().as_secs_f64() as f32 * 1000.0;
+                let extract_out = self.stage_extract(prev_total_ms);
+                let extract_ms = extract_out.extract_ms;
 
-                // --- Event queue flush stage ---
-                // Frame order invariant (Phase 3 guardrail):
-                //   run systems -> flush commands -> flush events -> hot-reload -> extract -> render
-                for flusher in self.event_flushers.iter_mut() {
-                    flusher(&mut self.world);
-                }
+                let render_out = self.stage_render(&extract_out);
 
-                // --- Hot reload stage ---
-                let hot_reload_start = Instant::now();
-                self.process_hot_reload();
-                let hot_reload_ms = hot_reload_start.elapsed().as_secs_f64() as f32 * 1000.0;
+                let audio_ms = self.stage_audio();
 
-                // --- Extract stage ---
-                let extract_start = Instant::now();
-                let quads = self
-                    .extract_quads
-                    .as_ref()
-                    .map(|f| f(&self.world))
-                    .unwrap_or_default();
-
-                let sprites = self
-                    .extract_sprites
-                    .as_ref()
-                    .map(|f| f(&self.world))
-                    .unwrap_or_default();
-
-                let mut text = self
-                    .extract_text
-                    .as_ref()
-                    .map(|f| f(&self.world))
-                    .unwrap_or_default();
-
-                // Populate RenderCounts from this frame's live entity count
-                // and extracted sprite instances. Must run before HUD compose
-                // so the `counts` row reflects this frame.
-                let entity_count = self.world.entity_count();
-                let sprite_instance_count: u32 =
-                    sprites.iter().map(|b| b.instances.len() as u32).sum();
-                if let Some(rc) = self.world.get_resource_mut::<RenderCounts>() {
-                    rc.entities = entity_count;
-                    rc.sprite_instances = sprite_instance_count;
-                }
-
-                // Physics debug emits into DebugDraw at the start of extract
-                // so the drain below sees this frame's commands on the same
-                // frame they were produced.
-                physics_debug_emit_system(&mut self.world);
-
-                // Drain DebugDraw into the two render channels. AABB edges
-                // reuse QuadPipeline; arbitrary-angle lines + circle polylines
-                // use DebugLinePipeline.
-                let mut debug_quads: Vec<QuadInstance> = Vec::new();
-                let mut debug_lines: Vec<DebugLineInstance> = Vec::new();
-                if let Some(dd) = self.world.get_resource_mut::<DebugDraw>() {
-                    for cmd in dd.drain() {
-                        match cmd.shape {
-                            DebugShape::Aabb { min, max } => {
-                                expand_aabb(&mut debug_quads, min, max, cmd.color, cmd.thickness);
-                            }
-                            DebugShape::Circle {
-                                center,
-                                radius,
-                                segments,
-                            } => {
-                                expand_circle(
-                                    &mut debug_lines,
-                                    center,
-                                    radius,
-                                    segments,
-                                    cmd.color,
-                                    cmd.thickness,
-                                );
-                            }
-                            DebugShape::Line { a, b } => {
-                                debug_lines.push(DebugLineInstance {
-                                    a: a.to_array(),
-                                    b: b.to_array(),
-                                    thickness: cmd.thickness,
-                                    _pad: 0.0,
-                                    color: cmd.color,
-                                });
-                            }
-                        }
-                    }
-                }
-
-                // HUD compose. Temporarily remove the resource so providers
-                // can hold `&World` while the helper holds `&mut DebugHud`.
-                let viewport = self
-                    .world
-                    .get_resource::<WindowSize>()
-                    .map(|w| (w.width, w.height))
-                    .unwrap_or((0, 0));
-                if let Some(mut hud) = self.world.remove_resource::<DebugHud>() {
-                    let hud_sections =
-                        compose_hud_text_sections(&mut hud, &self.world, viewport, prev_total_ms);
-                    self.world.insert_resource(hud);
-                    text.extend(hud_sections);
-                }
-
-                // Systems-timing overlay compose. Same borrow dance as the
-                // HUD so the helper can read FrameTimings without fighting
-                // the resource borrow.
-                if let Some(mut overlay) = self.world.remove_resource::<SystemTimingOverlay>() {
-                    let sections = compose_systems_overlay_text_section(
-                        &mut overlay,
-                        &self.world,
-                        viewport,
-                        prev_total_ms,
-                    );
-                    self.world.insert_resource(overlay);
-                    text.extend(sections);
-                }
-
-                // Inspector compose. Inspector is read-only during compose, so
-                // the borrow dance is only required because `compose` takes
-                // `&InspectorState` while the iterated registry needs `&World`.
-                if let Some(state) = self.world.remove_resource::<InspectorState>() {
-                    let sections = compose_inspector_text_section(&state, &self.world, viewport);
-                    self.world.insert_resource(state);
-                    text.extend(sections);
-                }
-                let extract_ms = extract_start.elapsed().as_secs_f64() as f32 * 1000.0;
-
-                // --- Render stage ---
-                let render_start = Instant::now();
-                let mut render_acquire_ms = 0.0f32;
-                let mut render_encode_ms = 0.0f32;
-                let mut render_submit_present_ms = 0.0f32;
-                let mut gpu_frame_ms = None;
-                if let Some(renderer) = &mut self.renderer {
-                    let (vw, vh) = {
-                        let cfg = &renderer.surface_config;
-                        (cfg.width as f32, cfg.height as f32)
-                    };
-                    let view_proj = self
-                        .world
-                        .get_resource::<CameraState>()
-                        .copied()
-                        .unwrap_or_default()
-                        .view_projection(vw, vh);
-                    // Screenshot capture hook: arm the renderer for the
-                    // target frame so the offscreen readback runs on the same
-                    // frame we count below.
-                    if let Some(cfg) = self.capture_config.as_mut() {
-                        if !cfg.captured && self.frames_rendered + 1 == cfg.target_frame {
-                            if let Err(e) = renderer.capture_frame(&cfg.path) {
-                                log::warn!(
-                                    "capture_frame({}) failed to arm: {e}",
-                                    cfg.path.display()
-                                );
-                            }
-                        }
-                    }
-
-                    let result = if self.gpu_timing_enabled {
-                        renderer.render_frame_full_timed(
-                            &view_proj,
-                            &quads,
-                            &sprites,
-                            &debug_quads,
-                            &debug_lines,
-                            &text,
-                        )
-                    } else {
-                        renderer.render_frame_full(
-                            &view_proj,
-                            &quads,
-                            &sprites,
-                            &debug_quads,
-                            &debug_lines,
-                            &text,
-                        )
-                    };
-                    if let Err(e) = result {
-                        log::error!("Render error: {e}");
-                    } else {
-                        self.frames_rendered = self.frames_rendered.saturating_add(1);
-                        if let Some(cfg) = self.capture_config.as_mut() {
-                            if !cfg.captured && self.frames_rendered == cfg.target_frame {
-                                cfg.captured = true;
-                                log::info!(
-                                    "captured frame {} -> {}",
-                                    cfg.target_frame,
-                                    cfg.path.display()
-                                );
-                            }
-                        }
-                    }
-                    render_acquire_ms = renderer.cpu_timings.acquire_ms;
-                    render_encode_ms = renderer.cpu_timings.encode_ms;
-                    render_submit_present_ms = renderer.cpu_timings.submit_present_ms;
-                    gpu_frame_ms = renderer.gpu_timings.frame_gpu_ms;
-                    if let Some(gpu) = self.world.get_resource_mut::<GpuFrameTimings>() {
-                        *gpu = renderer.gpu_timings.clone();
-                    }
-                }
-                let render_ms = render_start.elapsed().as_secs_f64() as f32 * 1000.0;
-
-                // --- Audio stage ---
-                let audio_start = Instant::now();
-                if let (Some(audio), Some(cmds)) = (
-                    &mut self.audio,
-                    self.world.get_resource_mut::<AudioCommands>(),
-                ) {
-                    for cmd in cmds.drain() {
-                        audio.send(cmd);
-                    }
-                }
-                let audio_ms = audio_start.elapsed().as_secs_f64() as f32 * 1000.0;
-
-                // Clear edge state *after* systems have consumed it, so the
-                // next frame's input events start with a clean slate.
                 if let Some(input) = self.world.get_resource_mut::<InputState>() {
                     input.begin_frame();
                 }
 
                 let total_ms = frame_start.elapsed().as_secs_f64() as f32 * 1000.0;
-                if let Some(ft) = self.world.get_resource_mut::<FrameTimings>() {
-                    ft.update_ms = update_ms;
-                    ft.extract_ms = extract_ms;
-                    ft.render_ms = render_ms;
-                    ft.render_acquire_ms = render_acquire_ms;
-                    ft.render_encode_ms = render_encode_ms;
-                    ft.render_submit_present_ms = render_submit_present_ms;
-                    ft.audio_ms = audio_ms;
-                    ft.hot_reload_ms = hot_reload_ms;
-                    ft.flush_ms = flush_ms;
-                    ft.total_ms = total_ms;
-                    ft.system_timings = system_timings;
-                }
+                self.stage_telemetry(FrameStageTimings {
+                    update_ms,
+                    flush_ms,
+                    hot_reload_ms,
+                    extract_ms,
+                    render_ms: render_out.render_ms,
+                    render_acquire_ms: render_out.render_acquire_ms,
+                    render_encode_ms: render_out.render_encode_ms,
+                    render_submit_present_ms: render_out.render_submit_present_ms,
+                    audio_ms,
+                    total_ms,
+                    system_timings,
+                });
 
                 if std::env::var("TUNGSTEN_PERF_LOG").is_ok() {
-                    let gpu_for_log = gpu_frame_ms
-                        .map(|ms| format!("{ms:.2}ms"))
-                        .unwrap_or_else(|| "n/a".to_string());
-                    log::debug!(
-                        "frame: total={:.2}ms update={:.2}ms flush={:.2}ms extract={:.2}ms render={:.2}ms render_acquire={:.2}ms render_encode={:.2}ms render_submit_present={:.2}ms gpu={} audio={:.2}ms hot_reload={:.2}ms",
+                    log_perf_line(
                         total_ms,
                         update_ms,
                         flush_ms,
                         extract_ms,
-                        render_ms,
-                        render_acquire_ms,
-                        render_encode_ms,
-                        render_submit_present_ms,
-                        gpu_for_log,
+                        &render_out,
                         audio_ms,
-                        hot_reload_ms
+                        hot_reload_ms,
                     );
                 }
 
@@ -1272,19 +1336,8 @@ impl ApplicationHandler for App {
                     window.request_redraw();
                 }
 
-                if let Some(budget) = self.frame_budget {
-                    event_loop.set_control_flow(ControlFlow::WaitUntil(frame_start + budget));
-                } else {
-                    event_loop.set_control_flow(ControlFlow::Wait);
-                }
-
-                if let Some(remaining) = self.smoke_frames_remaining.as_mut() {
-                    *remaining = remaining.saturating_sub(1);
-                    if *remaining == 0 {
-                        log::info!("TUNGSTEN_SMOKE_FRAMES reached; exiting cleanly");
-                        event_loop.exit();
-                    }
-                }
+                self.stage_pacing(event_loop, frame_start);
+                self.stage_smoke_exit(event_loop);
             }
             _ => {}
         }
@@ -1292,5 +1345,5 @@ impl ApplicationHandler for App {
 }
 
 #[cfg(test)]
-#[path = "app_tests.rs"]
+#[path = "tests/app.rs"]
 mod tests;

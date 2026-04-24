@@ -6,7 +6,33 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-Targeting `0.21.0`. Phase 3 Milestone 24 — tween system — is the next recommended milestone.
+Phase 3 complete. Phase 4 scope is under planning.
+
+## [0.21.0] - 2026-04-23
+
+Summary: Phase 3 Milestone 24 — tween system (closed-enum easings, multi-channel tweens on one component, `TweenComplete` via `EventQueue`, scene-authored tweens, and a fade-on-state-transition demo in `03_scene_state`).
+
+### Added
+
+- **Tween primitives (`tungsten_core::tween`):** `Easing` (Linear/Quad/Cubic/Quart/Sine/Expo/Back/Bounce × In/Out/InOut; `Easing::apply(t)` pre-clamped `[0,1]` — Back/Bounce overshoot intentionally), `TweenChannel` (per-property track for `PositionX/Y`, `Rotation`, `ScaleX/Y`, `ColorR/G/B/A`), `TweenRepeat { Once, Loop, PingPong, Times(u32) }`, `TweenDirection`, `Tween { channels, easing, duration, elapsed, repeat, direction, completed_cycles, on_complete_tag, pending_remove }` with `Tween::new(duration, easing).with_channel().with_repeat().with_tag()` builders, `lerp_f32` / `lerp_u8` helpers, and `TweenComplete { entity, tag }`. Closed `enum` avoids a trait-object dependency per `D-054` / `D-015` rule 3.
+- **Scene-authored tweens (`tungsten_core::assets::scene`):** `SceneEntry.tweens: Vec<SceneTween>` plus `SceneTween { duration, easing, repeat, tag, channels }`, `SceneTweenChannel` (tagged-union mirror of `TweenChannel`), and `SceneTweenRepeat` (`once | loop | ping_pong | { "times": n }`). `SceneData::load` runs `SceneTween::validate()` on every tween — non-finite / non-positive durations and empty channel lists are fatal via a new `SceneError::Validation` variant.
+- **`tween_tick_system` (`tungsten::tweens`):** advances every `Tween` using `DeltaTime.dt`, writes interpolated `Transform` / `Sprite` fields in-place, and defers terminal completion through `EventQueue<TweenComplete>` + `CommandBuffer::remove_component::<Tween>`; `Once` / `Times(n)` emit exactly one `TweenComplete` and latch `pending_remove` so subsequent ticks cannot re-fire before the next frame-end flush; `Loop` rewinds silently, `PingPong` flips direction at each boundary.
+- **Frame-order slot:** `App::render_frame_*` now runs `stage_tweens` between `stage_particles` and `stage_flush_commands`, so tween writes override particle writes on the same frame and `TweenComplete` enqueues before the event flush window rotates (D-039 / D-040).
+- **`App::new` event registration:** `EventQueue<TweenComplete>` is pre-registered alongside `CollisionEvent`, `ParticleBurstEmitted`, and `ParticleSystemDrained`.
+- **Scene spawn (`tungsten::asset_loader`):** `spawn_scene` inserts one `Tween` per entry; entries carrying more than one tween log `ERROR` and keep the first (D-055 archetypal one-component-per-type).
+- **Example 03 fade transitions (`examples/03_scene_state`):** `scene.json` now ships `color_a 0 → 255 / cubic_out / 0.45s` fade-in tweens on five representative hub/ring sprites. `GameplayState::on_enter` spawns a full-viewport black `fade_overlay` that tweens `color_a 255 → 0`. Pressing `state_back` inserts a reverse `color_a → 255 / 0.35s / cubic_in` tween tagged `state_exit`; the new `handle_tween_complete_system` reads `EventQueue<TweenComplete>` and calls `StateStack::request_replace(MainMenuState)` only after the opaque frame arrives. A `PendingTransition` resource gates re-presses while the fade-out is in flight.
+- **`tween_tick` bench (`crates/tungsten-core/benches/tween_tick.rs`):** 5 000 entities each carrying `Tween + Transform + Sprite` with two channels and `cubic_in_out` easing; one `criterion` iteration advances the inline equivalent of `tween_tick_system`. Baseline additive to the existing `particle_tick_5k` / `position_integration_50k` / `broadphase_rebuild_5k` / `action_map_dispatch` benches.
+- **Integration tests (`crates/tungsten/src/tests/tweens.rs`):** `tween_once_completes_and_removes_component`, `tween_times_fires_once_after_n_cycles`, `tween_loop_never_completes`, `tween_pingpong_reverses_at_boundary`, `tween_position_and_color_together_at_u_half`, `tween_complete_carries_tag`, `tween_without_target_components_is_noop`, `scene_tween_spawns_component_through_command_buffer`. Core unit tests in `crates/tungsten-core/src/tests/tween.rs` cover every easing endpoint + known-sample values and `lerp_u8` clamp behavior. Scene tween parsing + validation covered in `crates/tungsten-core/src/tests/assets/scene.rs`.
+- **Decision records:** `DECISIONS.md` adds `D-054` (closed-enum easings, no trait object, no dependency), `D-055` (single `Tween` component per entity with `Vec<TweenChannel>`), and `D-056` (`TweenComplete` routes through `EventQueue`, component removal through `CommandBuffer`). `docs/DECISION_INDEX.md` carries matching takeaways.
+
+### Changed
+
+- Workspace version bumped to `0.21.0`.
+- `README.md`, `AGENTS.md`, `DESIGN.md`, `CLAUDE.md`, and `docs/plans/Phase3.md` now reflect the shipped `0.21.0` / branch `0.21` release line, `M24` complete, and Phase 3 closeout.
+- `docs/LLM_INDEX.md` gains a Tweens subsystem row and a "Change tween easing/channel behavior or scene-tween authoring" task row.
+- `docs/plans/Phase3.md` marks `M24` as `complete` at `v0.21.0` / `2026-04-23`; the implementation plan is archived at `docs/plans/archive/phase3-milestone-24-plan.md`.
+- `CLAUDE.md` Status line now reflects `0.21.0` on branch `0.21` with M24 shipped.
+- Release QA pass completed locally: `cargo fmt --all`, `cargo test --workspace`, and `./scripts/smoke-examples.sh` all passed.
 
 ## [0.20.0] - 2026-04-20
 

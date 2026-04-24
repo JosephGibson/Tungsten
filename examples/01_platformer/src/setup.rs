@@ -1,11 +1,9 @@
 use std::path::PathBuf;
 
 use glam::Vec2;
-use tungsten::asset_loader;
 use tungsten::core::{
     sync_position_to_transform, AssetRegistry, AudioCommands, CameraBounds, CameraController,
-    CameraMode, Entity, ResolvedManifest, SoundRegistry, Tag, TilemapInstance, TilemapRegistry,
-    Transform, World,
+    CameraMode, Entity, SoundRegistry, Tag, TilemapInstance, TilemapRegistry, Transform, World,
 };
 use tungsten::physics::{
     physics_step, BodyKind, Collider, PhysicsConfig, Position, RigidBody, Velocity,
@@ -46,14 +44,17 @@ pub(crate) const RUNTIME_SYSTEM_ORDER: &[(&str, ExampleSystem)] = &[
 
 pub(crate) fn configure_app(app: &mut App) {
     enable_hot_reload(app);
+    app.set_manifest_roots(vec![
+        PathBuf::from(MANIFEST_ROOT),
+        PathBuf::from(MANIFEST_LOCAL),
+    ]);
     seed_world(app.world_mut());
     install_startup(app);
     install_runtime(app);
 }
 
 fn enable_hot_reload(app: &mut App) {
-    // Hot reload watches both the shared root assets dir (walk sprites,
-    // animation, fonts) and the local example dir (tilemap, tile sprites).
+    // Watch shared and example-local assets.
     app.enable_hot_reload(
         &[PathBuf::from(ASSETS_ROOT), PathBuf::from(ASSETS_LOCAL)],
         PathBuf::from(MANIFEST_LOCAL),
@@ -63,27 +64,17 @@ fn enable_hot_reload(app: &mut App) {
 fn seed_world(world: &mut World) {
     if let Some(cfg) = world.get_resource_mut::<PhysicsConfig>() {
         cfg.gravity = Vec2::new(0.0, GRAVITY_Y);
-        // One tile wide. Smaller cells cap per-cell proxy counts so the
-        // narrow-phase inside a dense pile doesn't go quadratic in the
-        // ~1000-ball stress test. At ball radius 6 a 16×16 cell holds
-        // ~4 tightly-packed balls instead of ~16, cutting pair candidates
-        // by roughly 16×; we pay a small 2× insert cost from balls
-        // occasionally straddling two cells.
+        // One-tile cells cap dense-pile pair candidates.
         cfg.broadphase_cell_size = 16.0;
     }
     world.insert_resource(TextDisplayState::default());
     world.insert_resource(BallSpawnState::default());
     world.insert_resource(ActiveBlackHole::default());
 
-    // Tilemap — provides the static ground, platforms, and collision layer.
     let map = world.spawn();
     world.insert(map, TilemapInstance::new("ex10_level", Vec2::ZERO));
 
-    // Player — spawn past the camera dead-zone (x > viewport_w/2 = 256) so
-    // the camera is visibly scrolled from the first frame. At x = 320 the
-    // camera starts at position 320 - 256 = 64, putting the player centred
-    // on screen. Moving left scrolls the background right; moving right
-    // scrolls it left (until the right edge clamp at max_x = 256).
+    // Spawn past dead-zone so camera starts visibly scrolled.
     let player = world.spawn();
     world.insert(player, Player::default());
     world.insert(player, Position(PLAYER_SPAWN));
@@ -96,16 +87,16 @@ fn seed_world(world: &mut World) {
     world.insert(player, Tag::new("player"));
     configure_platformer_camera(world, player);
 
-    // Bouncing balls spread across the level: (col, row, initial vx).
     let ball_spawns: &[(f32, f32, f32)] = &[
-        (6.0, 3.0, 70.0),
-        (10.0, 5.0, -50.0),
-        (15.0, 3.0, 90.0),
-        (20.0, 5.0, -80.0),
-        (25.0, 3.0, 55.0),
-        (30.0, 5.0, -65.0),
-        (35.0, 3.0, 75.0),
-        (40.0, 5.0, -45.0),
+        (6.0, 17.0, 70.0),
+        (10.0, 19.0, -50.0),
+        (18.0, 17.0, 90.0),
+        (26.0, 19.0, -80.0),
+        (34.0, 17.0, 55.0),
+        (44.0, 19.0, -65.0),
+        (56.0, 17.0, 75.0),
+        (68.0, 19.0, -45.0),
+        (76.0, 17.0, 60.0),
     ];
     for &(col, row, vx) in ball_spawns {
         let ball = world.spawn();
@@ -142,21 +133,8 @@ pub(crate) fn configure_platformer_camera(world: &mut World, player: Entity) {
 }
 
 fn install_startup(app: &mut App) {
-    app.on_startup(|world, renderer| {
-        // Root manifest: fonts (sans, sans_bold, mono), walk animation + sprites, sounds.
-        let root = ResolvedManifest::load(MANIFEST_ROOT).expect("Failed to load root manifest");
-        asset_loader::load_all(&root, world, renderer).expect("Failed to load root assets");
-
-        // Local manifest: tile sprites + tilemap only. Call individual loaders rather than
-        // load_all to avoid overwriting the SoundRegistry/AnimationRegistry/FontRegistry
-        // that were just populated from the root manifest (those registries are replaced on
-        // every load_all call).
-        let local = ResolvedManifest::load(MANIFEST_LOCAL).expect("Failed to load local manifest");
-        asset_loader::load_sprites(&local, world, renderer).expect("Failed to load local sprites");
-        asset_loader::load_tilemaps(&local, world).expect("Failed to load local tilemaps");
-        asset_loader::load_particles(&local, world).expect("Failed to load local particles");
-
-        // Verify required assets.
+    app.on_startup(|world, _renderer| {
+        // D-052: manifests loaded before startup; wire asset-dependent state.
         let registry = world.get_resource::<AssetRegistry>().unwrap();
         for id in [
             "ex10_ground",
@@ -175,7 +153,6 @@ fn install_startup(app: &mut App) {
             "missing tilemap 'ex10_level'"
         );
 
-        // Resolve audio handles and stash them in a resource.
         let (sfx_handle, music_handle, sfx_volume, music_volume) = {
             let reg = world
                 .get_resource::<SoundRegistry>()
@@ -199,8 +176,7 @@ fn install_startup(app: &mut App) {
 }
 
 fn install_runtime(app: &mut App) {
-    // Ordering: text-display-cache → gameplay input → audio → animation →
-    // physics → post-physics state sync → shared camera update.
+    // Order: text cache -> input/gameplay -> physics -> sync -> camera.
     for (name, system) in RUNTIME_SYSTEM_ORDER {
         app.add_system_named(*name, *system);
     }

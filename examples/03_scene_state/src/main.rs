@@ -1,26 +1,18 @@
-//! Example 03 — Scene/State System (M20)
+//! Example 03: scene/state system.
 //!
-//! Demonstrates the `StateStack` dispatcher driving a
-//! `MainMenu → Gameplay → Pause → Gameplay` flow, scene-owned entity
-//! auto-despawn via `SceneEntity { state_id }`, and the data-driven
-//! `scene.json` loader.
-//!
-//! Controls:
-//!   Enter     — menu: start gameplay (loads `scene.json`)
-//!   P         — gameplay: pause; pause: resume
-//!   Backspace — gameplay: return to menu
-//!   F4        — toggle the debug HUD (the `state` row mirrors the top state id)
-//!   Esc       — exit
+//! Flow: menu -> gameplay -> pause -> gameplay. Scene-owned despawn via `SceneEntity`.
 
 mod states;
 
+use std::path::PathBuf;
+
 use glam::Vec2;
 
-use tungsten::core::{Config, DeltaTime, ResolvedManifest, Tag, Transform, World};
+use tungsten::core::{Config, DeltaTime, Tag, Transform, World};
 use tungsten::render::TextSection;
-use tungsten::{asset_loader, App, DebugHud, StateStack};
+use tungsten::{App, DebugHud, StateStack};
 
-use crate::states::MainMenuState;
+use crate::states::{handle_tween_complete_system, MainMenuState};
 
 const ROOT_MANIFEST: &str = "assets/manifest.json";
 const LOCAL_MANIFEST: &str = "examples/03_scene_state/assets/manifest.json";
@@ -42,6 +34,10 @@ fn main() -> anyhow::Result<()> {
     config.window.title = "Scene / State System — M20".to_string();
 
     let mut app = App::new(config)?;
+    app.set_manifest_roots(vec![
+        PathBuf::from(ROOT_MANIFEST),
+        PathBuf::from(LOCAL_MANIFEST),
+    ]);
 
     {
         let world = app.world_mut();
@@ -49,14 +45,7 @@ fn main() -> anyhow::Result<()> {
         world.insert_resource(MenuClock::default());
     }
 
-    app.on_startup(|world, renderer| {
-        let root = ResolvedManifest::load(ROOT_MANIFEST).expect("Failed to load root manifest");
-        asset_loader::load_fonts(&root, world, renderer).expect("Failed to load shared fonts");
-
-        let local = ResolvedManifest::load(LOCAL_MANIFEST).expect("Failed to load local manifest");
-        asset_loader::load_sprites(&local, world, renderer)
-            .expect("Failed to load example 03 sprites");
-
+    app.on_startup(|world, _renderer| {
         if let Some(hud) = world.get_resource_mut::<DebugHud>() {
             hud.enabled = true;
         }
@@ -69,6 +58,7 @@ fn main() -> anyhow::Result<()> {
 
     app.add_system_named("menu_idle_system", menu_idle_system);
     app.add_system_named("gameplay_orbit_system", gameplay_orbit_system);
+    app.add_system_named("handle_tween_complete", handle_tween_complete_system);
     app.set_extract_text(state_driven_text);
 
     app.run()
@@ -77,9 +67,8 @@ fn main() -> anyhow::Result<()> {
 fn active_id_is(world: &World, expected: &str) -> bool {
     world
         .get_resource::<StateStack>()
-        .and_then(|stack| stack.active_id())
-        .map(|id| id == expected)
-        .unwrap_or(false)
+        .and_then(StateStack::active_id)
+        .is_some_and(|id| id == expected)
 }
 
 fn menu_idle_system(world: &mut World) {
@@ -89,8 +78,7 @@ fn menu_idle_system(world: &mut World) {
 
     let dt = world
         .get_resource::<DeltaTime>()
-        .map(|d| d.seconds())
-        .unwrap_or(1.0 / 60.0);
+        .map_or(1.0 / 60.0, DeltaTime::seconds);
 
     if let Some(clock) = world.get_resource_mut::<MenuClock>() {
         clock.0 += dt;
@@ -100,8 +88,7 @@ fn menu_idle_system(world: &mut World) {
     for entity in entities {
         let is_decoration = world
             .get::<Tag>(entity)
-            .map(|t| t.name == "menu_decoration")
-            .unwrap_or(false);
+            .is_some_and(|t| t.name == "menu_decoration");
         if !is_decoration {
             continue;
         }
@@ -133,8 +120,7 @@ fn gameplay_orbit_system(world: &mut World) {
 
     let dt = world
         .get_resource::<DeltaTime>()
-        .map(|d| d.seconds())
-        .unwrap_or(1.0 / 60.0);
+        .map_or(1.0 / 60.0, DeltaTime::seconds);
 
     let elapsed = if let Some(clock) = world.get_resource_mut::<GameplayClock>() {
         clock.0 += dt;
@@ -150,10 +136,8 @@ fn gameplay_orbit_system(world: &mut World) {
         };
 
         if tag_name == "hub" {
-            let pulse = 3.0 + (elapsed * 1.8).sin() * 0.35;
             if let Some(t) = world.get_mut::<Transform>(entity) {
-                t.scale = Vec2::splat(pulse);
-                let half = Vec2::splat(pulse * SPRITE_HALF);
+                let half = Vec2::splat(t.scale.x * SPRITE_HALF);
                 t.position = VIEW_CENTER - half;
                 t.rotation += dt * 0.6;
             }
@@ -204,10 +188,7 @@ fn state_driven_text(world: &World) -> Vec<TextSection> {
 }
 
 fn menu_text(world: &World) -> Vec<TextSection> {
-    let elapsed = world
-        .get_resource::<MenuClock>()
-        .map(|c| c.0)
-        .unwrap_or(0.0);
+    let elapsed = world.get_resource::<MenuClock>().map_or(0.0, |c| c.0);
     let prompt_alpha = (((elapsed * 2.0).sin() * 0.5 + 0.5) * 130.0 + 125.0) as u8;
 
     vec![
@@ -251,10 +232,7 @@ fn menu_text(world: &World) -> Vec<TextSection> {
 }
 
 fn gameplay_text(world: &World) -> Vec<TextSection> {
-    let elapsed = world
-        .get_resource::<GameplayClock>()
-        .map(|c| c.0)
-        .unwrap_or(0.0);
+    let elapsed = world.get_resource::<GameplayClock>().map_or(0.0, |c| c.0);
 
     vec![
         TextSection {
@@ -267,10 +245,7 @@ fn gameplay_text(world: &World) -> Vec<TextSection> {
             bounds: None,
         },
         TextSection {
-            content: format!(
-                "t = {:6.2}s   ·   P pauses   ·   Backspace returns to menu",
-                elapsed
-            ),
+            content: format!("t = {elapsed:6.2}s   ·   P pauses   ·   Backspace returns to menu"),
             font_id: "mono".into(),
             font_size: 16.0,
             line_height: 20.0,

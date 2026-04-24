@@ -1,44 +1,22 @@
-//! Narrow-phase shape-vs-shape collision tests.
-//!
-//! All three pair types return an `Option<Contact>`: `None` when the
-//! shapes are separated, `Some` when they overlap. The contact carries
-//! a unit `normal` pointing from `a` into `b`'s free space and the
-//! `penetration` depth along that normal — enough to perform a
-//! minimum-translation-vector resolution at the call site.
-//!
-//! Shapes in M11 are all axis-aligned, so full SAT isn't needed: AABB
-//! separation reduces to per-axis overlap, circle separation reduces
-//! to a distance check, and AABB-vs-circle reduces to a closest-point
-//! test. The SAT generalization is the same idea (project onto candidate
-//! axes, pick the axis of minimum overlap) — documented here rather than
-//! implemented because M11 has no rotating shapes.
+//! Axis-aligned narrow phase; contact normals move `a` out of `b`.
 
 use glam::Vec2;
 
-/// Bitmask of exposed faces on an AABB, used for internal-edge filtering
-/// when the AABB is a tile in a tilemap and its face is shared with an
-/// adjacent solid tile. A clear bit means "this face is internal — any
-/// contact that lands on it is spurious (the neighbor tile will generate
-/// the correct face contact through its exposed side)". Non-tile colliders
-/// pass `FACE_ALL`.
+/// AABB exposed-face mask for tile internal-edge filtering.
 pub const FACE_TOP: u8 = 1 << 0;
 pub const FACE_BOTTOM: u8 = 1 << 1;
 pub const FACE_LEFT: u8 = 1 << 2;
 pub const FACE_RIGHT: u8 = 1 << 3;
 pub const FACE_ALL: u8 = FACE_TOP | FACE_BOTTOM | FACE_LEFT | FACE_RIGHT;
 
-/// A resolved contact between two shapes. `normal` points from `a`
-/// toward `b`'s free space (i.e. the direction `a` should move to
-/// leave `b`).
+/// Contact normal moves `a` out of `b`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Contact {
     pub normal: Vec2,
     pub penetration: f32,
 }
 
-/// An axis-aligned bounding box in world space, expressed as center
-/// and half-extents. This is the canonical broad-phase proxy for every
-/// collider type — circles promote to their bounding square.
+/// World-space AABB; circles promote to bounding square for broadphase.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Aabb {
     pub center: Vec2,
@@ -46,6 +24,7 @@ pub struct Aabb {
 }
 
 impl Aabb {
+    #[must_use]
     pub fn new(center: Vec2, half_extents: Vec2) -> Self {
         Self {
             center,
@@ -54,6 +33,7 @@ impl Aabb {
     }
 
     /// Construct from min/max corners.
+    #[must_use]
     pub fn from_min_max(min: Vec2, max: Vec2) -> Self {
         let center = (min + max) * 0.5;
         let half_extents = (max - min) * 0.5;
@@ -63,23 +43,26 @@ impl Aabb {
         }
     }
 
+    #[must_use]
     pub fn min(&self) -> Vec2 {
         self.center - self.half_extents
     }
 
+    #[must_use]
     pub fn max(&self) -> Vec2 {
         self.center + self.half_extents
     }
 
-    /// Expand this AABB to also contain `other`. Used by the broad-phase
-    /// when a shape overlaps multiple grid cells.
+    /// Bounding union.
+    #[must_use]
     pub fn union(&self, other: &Aabb) -> Aabb {
         let min = self.min().min(other.min());
         let max = self.max().max(other.max());
         Aabb::from_min_max(min, max)
     }
 
-    /// Quick overlap test. Used for broad-phase filtering.
+    /// Strict overlap test.
+    #[must_use]
     pub fn overlaps(&self, other: &Aabb) -> bool {
         let a_min = self.min();
         let a_max = self.max();
@@ -89,19 +72,14 @@ impl Aabb {
     }
 }
 
-/// AABB vs AABB. Returns the minimum-translation-vector on the axis of
-/// smallest overlap, with the normal pointing from `a` toward `b`'s
-/// free space. Touching (`overlap == 0`) is treated as separated so
-/// sliding along a wall doesn't generate spurious events.
+/// AABB vs AABB; touching is separated.
+#[must_use]
 pub fn aabb_vs_aabb(a: &Aabb, b: &Aabb) -> Option<Contact> {
     aabb_vs_aabb_masked(a, b, FACE_ALL)
 }
 
-/// AABB vs AABB with `b`'s face mask respected. When `b` is a tile in a
-/// tilemap, MTV axes that point toward an internal (neighbor-shared)
-/// face are suppressed so the dynamic body is pushed out through an
-/// exposed face instead. If both axes resolve to internal faces, the
-/// contact is dropped entirely.
+/// AABB vs AABB with `b` internal faces suppressed.
+#[must_use]
 pub fn aabb_vs_aabb_masked(a: &Aabb, b: &Aabb, b_face_mask: u8) -> Option<Contact> {
     let delta = b.center - a.center;
     let overlap_x = (a.half_extents.x + b.half_extents.x) - delta.x.abs();
@@ -111,16 +89,13 @@ pub fn aabb_vs_aabb_masked(a: &Aabb, b: &Aabb, b_face_mask: u8) -> Option<Contac
         return None;
     }
 
-    // Which face of b would each axis's MTV push through? delta = b - a.
-    // delta.x < 0 → a is right of b → push along +x clears a through b's
-    // RIGHT face; delta.x > 0 → push along -x clears through b's LEFT face.
+    // Map MTV axis to `b` face bit.
     let x_face = if delta.x < 0.0 { FACE_RIGHT } else { FACE_LEFT };
     let y_face = if delta.y < 0.0 { FACE_BOTTOM } else { FACE_TOP };
     let x_ok = b_face_mask & x_face != 0;
     let y_ok = b_face_mask & y_face != 0;
 
-    // Pick the smaller overlap unless its face is internal; fall back to
-    // the other axis when possible, and skip when neither is exposed.
+    // Prefer smallest exposed overlap; drop fully internal contacts.
     let use_x = match (x_ok, y_ok) {
         (false, false) => return None,
         (true, false) => true,
@@ -143,10 +118,8 @@ pub fn aabb_vs_aabb_masked(a: &Aabb, b: &Aabb, b_face_mask: u8) -> Option<Contac
     }
 }
 
-/// Circle vs circle. Treats concentric circles as a contact with a
-/// position-derived escape normal rather than emitting a zero-normal
-/// event, because a zero normal can't be used by the MTV resolver
-/// downstream.
+/// Circle vs circle; concentric pairs get deterministic nonzero normal.
+#[must_use]
 pub fn circle_vs_circle(
     center_a: Vec2,
     radius_a: f32,
@@ -161,16 +134,9 @@ pub fn circle_vs_circle(
     }
     let dist = dist_sq.sqrt();
     let (normal, penetration) = if dist > f32::EPSILON {
-        // Normal points from a toward b, then negated so it pushes
-        // a out of b (i.e. from b's interior back to a).
         (-delta / dist, r_sum - dist)
     } else {
-        // Degenerate: concentric. A fixed normal (the old `(-1, 0)`)
-        // pushes every coincident pair the same way, so a pile of
-        // coincident bodies all drift in that direction each substep.
-        // Hash the position bits into an angle so different concentric
-        // pairs escape along different axes; still deterministic for
-        // reproducibility.
+        // Hash position bits to avoid same-axis drift for coincident piles.
         let bits = center_a.x.to_bits() ^ center_a.y.to_bits().rotate_left(13);
         let angle = (bits as f32) * (std::f32::consts::TAU / u32::MAX as f32);
         (Vec2::new(angle.cos(), angle.sin()), r_sum)
@@ -181,22 +147,8 @@ pub fn circle_vs_circle(
     })
 }
 
-/// Swept AABB vs static AABB. Casts the path of a moving AABB (from
-/// `a_prev` to `a_cur`, half-extents `a_half`) against a stationary
-/// target AABB (`b_center`, `b_half`). Returns `Some((t, normal))`
-/// where `t ∈ [0, 1]` is the fraction of the sweep at first contact
-/// and `normal` points from the contact face back toward `a`'s free
-/// space (same convention as `aabb_vs_aabb`). Returns `None` if the
-/// path doesn't reach the target in `[0, 1]` or if they already
-/// overlap at `t = 0` (leave overlapping cases to the regular
-/// narrow-phase resolver).
-///
-/// Used by the speculative-contact path in `physics_step` to catch
-/// tunneling when the substep cap binds. Circles against static AABBs
-/// reuse this by approximating the circle as a point and expanding
-/// the target by the circle's radius; the corner-rounding error is
-/// conservative (may trigger slightly early) which is the safe
-/// direction for tunneling prevention.
+/// Swept moving AABB vs static AABB; overlap at `t = 0` is ignored.
+#[must_use]
 pub fn sweep_aabb_vs_aabb(
     a_prev: Vec2,
     a_cur: Vec2,
@@ -218,8 +170,7 @@ pub fn sweep_aabb_vs_aabb(
     let t_near = tx_near.max(ty_near);
     let t_far = tx_far.min(ty_far);
 
-    // No overlap on the combined interval, out of reach this sweep,
-    // or already overlapping at t=0 (let the iteration resolver handle it).
+    // Exclude misses and already-overlapping starts.
     if t_near >= t_far || !(0.0..=1.0).contains(&t_near) {
         return None;
     }
@@ -245,21 +196,14 @@ fn sweep_slab(prev: f32, delta: f32, min: f32, max: f32) -> Option<(f32, f32)> {
     Some((t1.min(t2), t1.max(t2)))
 }
 
-/// AABB vs circle. Finds the closest point on the box to the circle
-/// center, then treats that point as the contact location. Handles
-/// both edge, corner, and circle-inside-box cases.
+/// AABB vs circle using closest point.
+#[must_use]
 pub fn aabb_vs_circle(aabb: &Aabb, circle_center: Vec2, radius: f32) -> Option<Contact> {
     aabb_vs_circle_masked(aabb, circle_center, radius, FACE_ALL)
 }
 
-/// AABB vs circle with face-mask filtering. When the AABB is a tile,
-/// contacts whose closest point sits on an internal (neighbor-shared)
-/// face are dropped — the adjacent tile generates the correct face
-/// contact from its exposed side. Vertex contacts at tile corners
-/// require both incident faces to be exposed; otherwise they resolve to
-/// diagonal impulses that squeeze bodies through the seam between two
-/// tiles. When the circle center is inside the box, exits pick the
-/// nearest *exposed* face so an interior path can't be chosen.
+/// AABB vs circle with tile internal-face filtering.
+#[must_use]
 pub fn aabb_vs_circle_masked(
     aabb: &Aabb,
     circle_center: Vec2,
@@ -280,17 +224,7 @@ pub fn aabb_vs_circle_masked(
     }
 
     if dist_sq > f32::EPSILON {
-        // Circle outside the box (or touching a face/corner): contact
-        // normal is a→b, i.e. the direction the AABB should move to
-        // escape the circle, which points from the circle back toward
-        // the box's closest point.
-        //
-        // Determine which face(s) the closest point touches. For a pure
-        // face contact exactly one of the four bits is set; for a vertex
-        // contact two bits are set (the two faces meeting at that
-        // corner). Any bit set in `involved` must be an exposed face for
-        // this contact to be legitimate; otherwise the neighbor tile on
-        // the internal side handles it via a proper face contact.
+        // Closest-point face bits must all be exposed; vertex needs both faces.
         let mut involved: u8 = 0;
         if circle_center.x < min.x {
             involved |= FACE_LEFT;
@@ -312,10 +246,6 @@ pub fn aabb_vs_circle_masked(
             penetration: radius - dist,
         })
     } else {
-        // Circle center is inside the box. The shortest exit is along
-        // whichever face is nearest; face-mask filtering picks the
-        // nearest *exposed* face so we don't push the circle through a
-        // neighbor-shared seam into another solid tile.
         let dx_left = circle_center.x - min.x;
         let dx_right = max.x - circle_center.x;
         let dy_top = circle_center.y - min.y;
@@ -323,9 +253,7 @@ pub fn aabb_vs_circle_masked(
 
         let mut best_dist = f32::INFINITY;
         let mut best_normal = Vec2::ZERO;
-        // Order matches the original tie-break: x-axis first, then y.
-        // Pushing the AABB in the +axis direction pops the circle out
-        // through the -axis face.
+        // Tie-break: x-axis before y-axis.
         if face_mask & FACE_LEFT != 0 && dx_left < best_dist {
             best_dist = dx_left;
             best_normal = Vec2::new(1.0, 0.0);
@@ -343,9 +271,6 @@ pub fn aabb_vs_circle_masked(
             best_normal = Vec2::new(0.0, -1.0);
         }
         if best_normal == Vec2::ZERO {
-            // Fully enclosed tile (all faces internal). A body inside
-            // one of these is geometrically unreachable under normal
-            // integration; skip rather than push it somewhere worse.
             return None;
         }
         Some(Contact {
@@ -356,182 +281,5 @@ pub fn aabb_vs_circle_masked(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn aabb(cx: f32, cy: f32, hx: f32, hy: f32) -> Aabb {
-        Aabb::new(Vec2::new(cx, cy), Vec2::new(hx, hy))
-    }
-
-    #[test]
-    fn aabb_separated_returns_none() {
-        let a = aabb(0.0, 0.0, 1.0, 1.0);
-        let b = aabb(5.0, 0.0, 1.0, 1.0);
-        assert!(aabb_vs_aabb(&a, &b).is_none());
-    }
-
-    #[test]
-    fn aabb_touching_is_separated() {
-        let a = aabb(0.0, 0.0, 1.0, 1.0);
-        let b = aabb(2.0, 0.0, 1.0, 1.0);
-        assert!(aabb_vs_aabb(&a, &b).is_none());
-    }
-
-    #[test]
-    fn aabb_overlap_x_axis_gives_x_normal() {
-        let a = aabb(0.0, 0.0, 1.0, 1.0);
-        let b = aabb(1.5, 0.0, 1.0, 1.0);
-        let c = aabb_vs_aabb(&a, &b).unwrap();
-        assert_eq!(c.normal, Vec2::new(-1.0, 0.0));
-        assert!((c.penetration - 0.5).abs() < 1e-5);
-    }
-
-    #[test]
-    fn aabb_overlap_y_axis_gives_y_normal() {
-        let a = aabb(0.0, 0.0, 2.0, 1.0);
-        let b = aabb(0.0, 1.5, 2.0, 1.0);
-        let c = aabb_vs_aabb(&a, &b).unwrap();
-        assert_eq!(c.normal, Vec2::new(0.0, -1.0));
-        assert!((c.penetration - 0.5).abs() < 1e-5);
-    }
-
-    #[test]
-    fn aabb_picks_axis_of_min_overlap() {
-        // Deep x overlap, shallow y overlap — y should win.
-        let a = aabb(0.0, 0.0, 5.0, 1.0);
-        let b = aabb(0.0, 1.8, 5.0, 1.0);
-        let c = aabb_vs_aabb(&a, &b).unwrap();
-        assert!(c.normal.y.abs() > c.normal.x.abs());
-    }
-
-    #[test]
-    fn circle_separated() {
-        assert!(circle_vs_circle(Vec2::ZERO, 1.0, Vec2::new(3.0, 0.0), 1.0).is_none());
-    }
-
-    #[test]
-    fn circle_overlap_normal_points_away_from_b() {
-        let c = circle_vs_circle(Vec2::ZERO, 1.0, Vec2::new(1.5, 0.0), 1.0).unwrap();
-        // Expected: contact pushes a (at origin) to the left, away from b.
-        assert!(c.normal.x < 0.0);
-        assert!((c.penetration - 0.5).abs() < 1e-5);
-    }
-
-    #[test]
-    fn circle_concentric_is_contact() {
-        let c = circle_vs_circle(Vec2::ZERO, 1.0, Vec2::ZERO, 1.0).unwrap();
-        assert!((c.penetration - 2.0).abs() < 1e-5);
-        assert!((c.normal.length() - 1.0).abs() < 1e-5);
-    }
-
-    #[test]
-    fn aabb_circle_separated() {
-        let a = aabb(0.0, 0.0, 1.0, 1.0);
-        assert!(aabb_vs_circle(&a, Vec2::new(5.0, 5.0), 1.0).is_none());
-    }
-
-    #[test]
-    fn aabb_circle_edge_contact() {
-        let a = aabb(0.0, 0.0, 1.0, 1.0);
-        // Circle center 1.5 right of origin, radius 1.0 → overlap 0.5 on +x.
-        // Normal is a→b, i.e. direction the aabb moves to escape the
-        // circle, which here is -x.
-        let c = aabb_vs_circle(&a, Vec2::new(1.5, 0.0), 1.0).unwrap();
-        assert!((c.penetration - 0.5).abs() < 1e-5);
-        assert!(c.normal.x < -0.9);
-    }
-
-    #[test]
-    fn aabb_circle_corner_contact() {
-        let a = aabb(0.0, 0.0, 1.0, 1.0);
-        // Circle center just outside the +x/+y corner, radius big enough
-        // to reach (1,1).
-        let c = aabb_vs_circle(&a, Vec2::new(1.3, 1.3), 0.5).unwrap();
-        // Normal points from circle back toward the aabb (−x, −y).
-        assert!(c.normal.x < 0.0 && c.normal.y < 0.0);
-        assert!(c.penetration > 0.0);
-    }
-
-    #[test]
-    fn aabb_circle_center_inside_picks_nearest_face() {
-        let a = aabb(0.0, 0.0, 5.0, 1.0);
-        // Circle center slightly above center, nearest face is top (min-y).
-        // Pushing the aabb in +y pops the circle out through that face.
-        let c = aabb_vs_circle(&a, Vec2::new(0.0, -0.5), 0.1).unwrap();
-        assert!(c.normal.y > 0.0);
-    }
-
-    #[test]
-    fn sweep_hits_static_aabb_in_path() {
-        // Moving box at origin half (0.5,0.5), sweeping right toward a
-        // static box at (5,0) half (1,1). Expanded target half = (1.5, 1.5),
-        // so sweep's x-enter is at center = 5 - 1.5 = 3.5. Starting from
-        // x=0 over delta=6, t = 3.5/6 ≈ 0.5833.
-        let hit = sweep_aabb_vs_aabb(
-            Vec2::new(0.0, 0.0),
-            Vec2::new(6.0, 0.0),
-            Vec2::new(0.5, 0.5),
-            Vec2::new(5.0, 0.0),
-            Vec2::new(1.0, 1.0),
-        )
-        .unwrap();
-        assert!((hit.0 - 0.5833).abs() < 1e-3, "t = {}", hit.0);
-        assert_eq!(hit.1, Vec2::new(-1.0, 0.0));
-    }
-
-    #[test]
-    fn sweep_misses_when_offset_from_target() {
-        // Same static target but the sweep is offset in y so it never crosses.
-        assert!(sweep_aabb_vs_aabb(
-            Vec2::new(0.0, 10.0),
-            Vec2::new(6.0, 10.0),
-            Vec2::new(0.5, 0.5),
-            Vec2::new(5.0, 0.0),
-            Vec2::new(1.0, 1.0),
-        )
-        .is_none());
-    }
-
-    #[test]
-    fn sweep_already_overlapping_returns_none() {
-        // Caller is expected to hand already-penetrating pairs to the
-        // iteration resolver; the sweep test only catches tunneling along
-        // the integration path.
-        assert!(sweep_aabb_vs_aabb(
-            Vec2::new(0.0, 0.0),
-            Vec2::new(1.0, 0.0),
-            Vec2::new(0.5, 0.5),
-            Vec2::new(0.0, 0.0),
-            Vec2::new(1.0, 1.0),
-        )
-        .is_none());
-    }
-
-    #[test]
-    fn sweep_picks_entry_axis_for_normal() {
-        // Sweep diagonally into the corner of a target expanded to
-        // (3.5..6.5) on both axes. delta = (6, 4) means x-slab enters
-        // at t = 3.5/6 ≈ 0.583 and y-slab enters at t = 3.5/4 = 0.875;
-        // y is the later entry and therefore the contact axis, so the
-        // normal is along -y.
-        let hit = sweep_aabb_vs_aabb(
-            Vec2::new(0.0, 0.0),
-            Vec2::new(6.0, 4.0),
-            Vec2::new(0.5, 0.5),
-            Vec2::new(5.0, 5.0),
-            Vec2::new(1.0, 1.0),
-        )
-        .unwrap();
-        assert_eq!(hit.1, Vec2::new(0.0, -1.0));
-    }
-
-    #[test]
-    fn aabb_overlap_and_union() {
-        let a = aabb(0.0, 0.0, 1.0, 1.0);
-        let b = aabb(1.5, 0.0, 1.0, 1.0);
-        assert!(a.overlaps(&b));
-        let u = a.union(&b);
-        assert!((u.min().x - (-1.0)).abs() < 1e-5);
-        assert!((u.max().x - 2.5).abs() < 1e-5);
-    }
-}
+#[path = "../tests/physics/collision.rs"]
+mod tests;

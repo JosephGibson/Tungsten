@@ -1,6 +1,6 @@
 # M12 Profiling Workflow
 
-Establish a reproducible CPU/GPU baseline before later Phase 3 work. Compare runs only when scene, build mode, backend, and frame window match.
+Establishes the reproducible CPU/GPU baseline that anchored Phase 3 perf gates and remains the canonical capture contract for ongoing work. Compare runs only when scene, build mode, backend, and frame window match.
 
 ## Canonical Capture Rules
 

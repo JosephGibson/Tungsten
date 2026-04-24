@@ -1,16 +1,9 @@
-//! Physics debug overlay (M21, `F1`). Emits `DebugDraw` commands outlining
-//! every `Position + Collider` entity in the world so collision geometry
-//! can be sanity-checked at runtime without touching render code.
-//!
-//! The overlay reads from physics components (`Position`, `Collider`) — not
-//! `Transform` — so what you see matches the authoritative collision state
-//! per D-042. When `enabled = false` the emit system is a no-op.
+//! D-042 physics debug overlay reads `Position + Collider`, not `Transform`.
 
 use tungsten_core::physics::{Collider, Position, Shape};
 use tungsten_core::{ActionMap, DebugDraw, InputState, World};
 
-/// Per-overlay configuration. Colors are linear RGBA `[0..1]`; thickness is
-/// world-space width (one world unit == one pixel at camera zoom 1x).
+/// Physics debug overlay config.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PhysicsDebugOverlay {
     pub enabled: bool,
@@ -36,9 +29,7 @@ impl PhysicsDebugOverlay {
     }
 }
 
-/// Engine system: flips `PhysicsDebugOverlay.enabled` on
-/// `engine_toggle_physics_debug` action edge. Registered ahead of the HUD
-/// toggle so the input edge is consumed on the same frame it arrives.
+/// Toggle on `engine_toggle_physics_debug` edge.
 pub(crate) fn physics_debug_toggle_system(world: &mut World) {
     let pressed = {
         let Some(input) = world.get_resource::<InputState>() else {
@@ -56,10 +47,7 @@ pub(crate) fn physics_debug_toggle_system(world: &mut World) {
     }
 }
 
-/// Engine extract-stage system: walks every `(Position, Collider)` entity
-/// and pushes outline commands into `DebugDraw`. Call this before the
-/// DebugDraw drain in `App::render_redraw` so the commands reach the
-/// renderer on the same frame they are produced.
+/// Emit collider outlines before `DebugDraw` drain.
 pub(crate) fn physics_debug_emit_system(world: &mut World) {
     let Some(overlay) = world.get_resource::<PhysicsDebugOverlay>() else {
         return;
@@ -134,59 +122,5 @@ enum DebugEmit {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use glam::Vec2;
-    use tungsten_core::input::KeyCode;
-
-    #[test]
-    fn emit_system_is_noop_when_disabled() {
-        let mut world = World::new();
-        world.insert_resource(DebugDraw::new());
-        world.insert_resource(PhysicsDebugOverlay::default());
-        let e = world.spawn();
-        world.insert(e, Position(Vec2::new(4.0, 6.0)));
-        world.insert(e, Collider::aabb(Vec2::splat(2.0)));
-
-        physics_debug_emit_system(&mut world);
-
-        assert_eq!(world.get_resource::<DebugDraw>().unwrap().len(), 0);
-    }
-
-    #[test]
-    fn emit_system_pushes_one_command_per_collider_when_enabled() {
-        let mut world = World::new();
-        world.insert_resource(DebugDraw::new());
-        world.insert_resource(PhysicsDebugOverlay {
-            enabled: true,
-            ..Default::default()
-        });
-
-        let a = world.spawn();
-        world.insert(a, Position(Vec2::new(0.0, 0.0)));
-        world.insert(a, Collider::aabb(Vec2::splat(2.0)));
-
-        let b = world.spawn();
-        world.insert(b, Position(Vec2::new(10.0, 0.0)));
-        world.insert(b, Collider::circle(3.0));
-
-        physics_debug_emit_system(&mut world);
-
-        let dd = world.get_resource::<DebugDraw>().unwrap();
-        assert_eq!(dd.len(), 2);
-    }
-
-    #[test]
-    fn toggle_system_flips_on_f1_action() {
-        let mut world = World::new();
-        let mut input = InputState::new();
-        input.key_down(KeyCode::F1);
-        world.insert_resource(input);
-        world.insert_resource(ActionMap::default_map());
-        world.insert_resource(PhysicsDebugOverlay::default());
-
-        physics_debug_toggle_system(&mut world);
-
-        assert!(world.get_resource::<PhysicsDebugOverlay>().unwrap().enabled);
-    }
-}
+#[path = "tests/physics_debug.rs"]
+mod tests;

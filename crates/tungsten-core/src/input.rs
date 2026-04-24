@@ -7,8 +7,7 @@ pub mod key_serde;
 
 pub use action_map::{ActionMap, ActionMapError, Binding};
 
-/// Keyboard key codes, matching winit's `KeyCode` variants we actually use.
-/// Kept separate from winit so tungsten-core doesn't depend on it.
+/// Winit-like key codes without core depending on winit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum KeyCode {
     ArrowUp,
@@ -40,7 +39,7 @@ pub enum KeyCode {
     Other(u32),
 }
 
-/// Mouse button identifiers.
+/// Mouse button identifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MouseButton {
     Left,
@@ -49,10 +48,7 @@ pub enum MouseButton {
     Other(u16),
 }
 
-/// Discrete scroll directions exposed to the action map. Wheel motion is still
-/// available as raw line/pixel deltas on `InputState`; these directions exist
-/// so scroll-up / scroll-down can participate in the same boolean action path
-/// as keys and mouse buttons.
+/// Discrete scroll direction for action bindings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ScrollDirection {
     Up,
@@ -106,8 +102,7 @@ impl<'de> Deserialize<'de> for ScrollDirection {
     }
 }
 
-/// Resource tracking keyboard and mouse state with edge detection.
-/// Inserted as a Resource in the World. Updated each frame by the app layer.
+/// Keyboard/mouse/scroll state with per-frame edges.
 #[derive(Debug, Clone)]
 pub struct InputState {
     pressed: HashSet<KeyCode>,
@@ -129,6 +124,7 @@ pub struct InputState {
 }
 
 impl InputState {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             pressed: HashSet::new(),
@@ -147,8 +143,7 @@ impl InputState {
         }
     }
 
-    /// Clear per-frame edge state. Call at the start of each frame
-    /// before processing new events.
+    /// Clear per-frame edges and deltas.
     pub fn begin_frame(&mut self) {
         self.just_pressed.clear();
         self.just_released.clear();
@@ -209,56 +204,67 @@ impl InputState {
         self.register_scroll_direction(y);
     }
 
-    // --- Query methods ---
-
+    #[must_use]
     pub fn is_pressed(&self, key: KeyCode) -> bool {
         self.pressed.contains(&key)
     }
 
+    #[must_use]
     pub fn just_pressed(&self, key: KeyCode) -> bool {
         self.just_pressed.contains(&key)
     }
 
+    #[must_use]
     pub fn just_released(&self, key: KeyCode) -> bool {
         self.just_released.contains(&key)
     }
 
+    #[must_use]
     pub fn is_mouse_pressed(&self, button: MouseButton) -> bool {
         self.mouse_pressed.contains(&button)
     }
 
+    #[must_use]
     pub fn mouse_just_pressed(&self, button: MouseButton) -> bool {
         self.mouse_just_pressed.contains(&button)
     }
 
+    #[must_use]
     pub fn mouse_just_released(&self, button: MouseButton) -> bool {
         self.mouse_just_released.contains(&button)
     }
 
+    #[must_use]
     pub fn is_scroll_active(&self, direction: ScrollDirection) -> bool {
         self.scroll_pressed.contains(&direction)
     }
 
+    #[must_use]
     pub fn scroll_just_pressed(&self, direction: ScrollDirection) -> bool {
         self.scroll_just_pressed.contains(&direction)
     }
 
+    #[must_use]
     pub fn scroll_just_released(&self, direction: ScrollDirection) -> bool {
         self.scroll_just_released.contains(&direction)
     }
 
+    #[must_use]
     pub fn cursor_position(&self) -> Option<(f32, f32)> {
         self.cursor_position
     }
 
+    #[must_use]
     pub fn cursor_delta(&self) -> (f32, f32) {
         self.cursor_delta
     }
 
+    #[must_use]
     pub fn scroll_line_delta(&self) -> (f32, f32) {
         self.scroll_line_delta
     }
 
+    #[must_use]
     pub fn scroll_pixel_delta(&self) -> (f32, f32) {
         self.scroll_pixel_delta
     }
@@ -288,84 +294,5 @@ impl Default for InputState {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn key_press_and_release() {
-        let mut input = InputState::new();
-        input.key_down(KeyCode::Space);
-        assert!(input.is_pressed(KeyCode::Space));
-        assert!(input.just_pressed(KeyCode::Space));
-
-        input.begin_frame();
-        assert!(input.is_pressed(KeyCode::Space));
-        assert!(!input.just_pressed(KeyCode::Space));
-
-        input.key_up(KeyCode::Space);
-        assert!(!input.is_pressed(KeyCode::Space));
-        assert!(input.just_released(KeyCode::Space));
-    }
-
-    #[test]
-    fn mouse_press_and_release() {
-        let mut input = InputState::new();
-        input.mouse_down(MouseButton::Left);
-        assert!(input.is_mouse_pressed(MouseButton::Left));
-        assert!(input.mouse_just_pressed(MouseButton::Left));
-
-        input.begin_frame();
-        assert!(!input.mouse_just_pressed(MouseButton::Left));
-
-        input.mouse_up(MouseButton::Left);
-        assert!(input.mouse_just_released(MouseButton::Left));
-    }
-
-    #[test]
-    fn duplicate_key_down_does_not_re_trigger() {
-        let mut input = InputState::new();
-        input.key_down(KeyCode::KeyW);
-        input.begin_frame();
-        input.key_down(KeyCode::KeyW); // still held, no new press
-        assert!(!input.just_pressed(KeyCode::KeyW));
-        assert!(input.is_pressed(KeyCode::KeyW));
-    }
-
-    #[test]
-    fn cursor_delta_accumulates_within_a_frame_and_resets_next_frame() {
-        let mut input = InputState::new();
-        input.update_cursor_position(10.0, 20.0);
-        input.update_cursor_position(14.0, 25.0);
-        input.update_cursor_position(20.0, 35.0);
-
-        assert_eq!(input.cursor_position(), Some((20.0, 35.0)));
-        assert_eq!(input.cursor_delta(), (10.0, 15.0));
-
-        input.begin_frame();
-        assert_eq!(input.cursor_delta(), (0.0, 0.0));
-        assert_eq!(input.cursor_position(), Some((20.0, 35.0)));
-    }
-
-    #[test]
-    fn scroll_delta_and_edges_reset_across_frames() {
-        let mut input = InputState::new();
-        input.add_scroll_line_delta(0.0, 1.0);
-        input.add_scroll_pixel_delta(2.0, -4.0);
-
-        assert_eq!(input.scroll_line_delta(), (0.0, 1.0));
-        assert_eq!(input.scroll_pixel_delta(), (2.0, -4.0));
-        assert!(input.is_scroll_active(ScrollDirection::Up));
-        assert!(input.scroll_just_pressed(ScrollDirection::Up));
-        assert!(input.is_scroll_active(ScrollDirection::Down));
-        assert!(input.scroll_just_pressed(ScrollDirection::Down));
-
-        input.begin_frame();
-
-        assert_eq!(input.scroll_line_delta(), (0.0, 0.0));
-        assert_eq!(input.scroll_pixel_delta(), (0.0, 0.0));
-        assert!(!input.is_scroll_active(ScrollDirection::Up));
-        assert!(input.scroll_just_released(ScrollDirection::Up));
-        assert!(!input.is_scroll_active(ScrollDirection::Down));
-        assert!(input.scroll_just_released(ScrollDirection::Down));
-    }
-}
+#[path = "tests/input.rs"]
+mod tests;

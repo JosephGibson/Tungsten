@@ -1,7 +1,7 @@
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
 
-/// Per-instance data for a colored quad, sent to the GPU.
+/// Colored quad instance.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct QuadInstance {
@@ -17,6 +17,7 @@ impl QuadInstance {
         3 => Float32x4,
     ];
 
+    #[must_use]
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<QuadInstance>() as wgpu::BufferAddress,
@@ -26,7 +27,7 @@ impl QuadInstance {
     }
 }
 
-/// Unit-square vertex data: two triangles covering [0,0] to [1,1].
+/// Unit-square two-triangle vertex.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 struct Vertex {
@@ -66,7 +67,7 @@ const QUAD_VERTICES: &[Vertex] = &[
     },
 ];
 
-/// Manages the colored-quad render pipeline, camera uniform, and vertex buffer.
+/// Colored-quad pipeline and shared camera uniform.
 pub struct QuadPipeline {
     pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
@@ -76,6 +77,7 @@ pub struct QuadPipeline {
 }
 
 impl QuadPipeline {
+    #[must_use]
     pub fn new(device: &wgpu::Device, surface_format: wgpu::TextureFormat) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("quad_shader"),
@@ -84,7 +86,7 @@ impl QuadPipeline {
 
         let camera_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("camera_uniform"),
-            size: 64, // mat4x4<f32>
+            size: 64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -126,7 +128,7 @@ impl QuadPipeline {
                 module: &shader,
                 entry_point: Some("vs_main"),
                 buffers: &[Vertex::desc(), QuadInstance::desc()],
-                compilation_options: Default::default(),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -136,7 +138,7 @@ impl QuadPipeline {
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
-                compilation_options: Default::default(),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
             primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList,
@@ -165,28 +167,25 @@ impl QuadPipeline {
         }
     }
 
-    /// Expose the camera bind group layout so sibling pipelines (e.g. the
-    /// M21 `DebugLinePipeline`) can share the same camera uniform without
-    /// allocating a second `view_proj` buffer on the GPU.
+    /// Shared camera layout for sibling pipelines.
+    #[must_use]
     pub fn camera_bind_group_layout(&self) -> &wgpu::BindGroupLayout {
         &self.camera_bind_group_layout
     }
 
-    /// Expose the bound camera bind group so sibling pipelines can rebind it
-    /// at draw time against their own render pass.
+    /// Shared camera bind group.
+    #[must_use]
     pub fn camera_bind_group(&self) -> &wgpu::BindGroup {
         &self.camera_bind_group
     }
 
-    /// Upload the camera view-projection matrix. Caller owns matrix
-    /// construction; see `CameraState::view_projection` usage in the
-    /// umbrella crate for context.
+    /// Upload caller-owned camera view-projection matrix.
     pub fn update_camera(&self, queue: &wgpu::Queue, view_proj: &glam::Mat4) {
         let matrix_ref: &[f32; 16] = view_proj.as_ref();
         queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(matrix_ref));
     }
 
-    /// Draw a batch of colored quads. Call within an active render pass.
+    /// Draw colored quads.
     pub fn draw(
         &self,
         device: &wgpu::Device,

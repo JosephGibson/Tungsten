@@ -1,8 +1,7 @@
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 
-/// Singleton resource storage. Resources are not tied to any entity —
-/// they're global state like DeltaTime, InputState, WindowSize, etc.
+/// Type-indexed singleton resource storage.
 pub(crate) struct ResourceMap {
     resources: HashMap<TypeId, Box<dyn Any>>,
 }

@@ -1,6 +1,4 @@
-//! Umbrella crate for the Tungsten 2D engine. Ties together
-//! [`tungsten_core`] and [`tungsten_render`] with a winit-driven
-//! application loop, asset loading helpers, and input bridging.
+//! Tungsten umbrella crate: app loop, asset loading, input bridge.
 
 pub mod app;
 pub mod asset_loader;
@@ -18,6 +16,7 @@ pub mod state;
 pub mod systems_overlay;
 pub mod telemetry;
 mod tilemap_extract;
+pub mod tweens;
 
 pub use app::{App, WindowSize};
 pub use camera::camera_update_system;
@@ -42,3 +41,4 @@ pub use tungsten_core as core;
 pub use tungsten_core::physics;
 pub use tungsten_core::{ActionMap, ActionMapError, Binding, DebugDraw, DebugShape, Inspectable};
 pub use tungsten_render as render;
+pub use tweens::tween_tick_system;

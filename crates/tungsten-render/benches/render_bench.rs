@@ -1,11 +1,4 @@
-//! Render-side micro-benchmarks (M12, M22).
-//!
-//! CPU-only: measures cost of building render data structures.
-//! No wgpu device is created; no display or GPU required.
-//!
-//! Scenarios:
-//!   - sprite_extract_batch_build_2k — build SpriteBatch vec for 2k sprites / 10 textures
-//!   - atlas_pack_startup_200        — shelf-pack 200 sprites through the M22 packer
+//! CPU-only render micro-benches; no wgpu device or display.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use tungsten_core::assets::{pack_shelf, FilterMode, PackInput, TextureHandle};
@@ -40,9 +33,7 @@ fn bench_sprite_extract_batch_build_2k(c: &mut Criterion) {
     });
 }
 
-/// XorShift64* — deterministic, dependency-free RNG. Anchors the atlas-pack
-/// startup bench numbers at [phase3-milestone-22-plan.md:210-211] so the gate
-/// in [Phase3.md:202] reflects fixed input across machines.
+/// Deterministic dependency-free RNG for fixed atlas-pack input.
 fn xorshift64(state: &mut u64) -> u64 {
     let mut x = *state;
     x ^= x << 13;

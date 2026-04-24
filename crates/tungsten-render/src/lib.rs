@@ -1,7 +1,4 @@
-//! wgpu-based rendering backend for the Tungsten 2D engine.
-//! Provides a colored-quad pipeline, a textured-sprite pipeline with
-//! per-sprite filter modes, a texture pool keyed by opaque handles,
-//! and a text pipeline backed by glyphon/cosmic-text.
+//! WGPU rendering backend: quads, sprites, debug lines, screenshots, text.
 
 pub mod debug_line;
 pub mod image_diff;

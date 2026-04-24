@@ -5,34 +5,28 @@ use rtrb::RingBuffer;
 use tungsten_core::assets::{AudioHandle, SoundData, SoundRegistry};
 use tungsten_core::audio::AudioCommand;
 
-/// Capacity of the lock-free SPSC ring buffer used to send commands from the
-/// game thread to the cpal callback thread. 64 slots covers any realistic burst
-/// of AudioCommands in a single frame (D-034).
+/// D-034 SPSC command ring capacity.
 const CMD_RING_CAPACITY: usize = 64;
 
-/// Internal state for one playing sound in the mixer.
 struct PlayingSound {
     handle: AudioHandle,
-    /// Current read position in `SoundData::samples` (interleaved stereo index).
+    /// Interleaved sample cursor.
     cursor: usize,
-    /// Per-instance volume scale (0.0–1.0).
+    /// Per-instance volume.
     volume: f32,
     looping: bool,
     finished: bool,
 }
 
-/// The audio subsystem. Owns the `cpal::Stream` (must stay alive) and the
-/// producer end of the lock-free command ring. Created once during `App::resumed()`.
+/// Audio subsystem: live cpal stream plus command producer.
 pub struct AudioSystem {
-    /// Kept alive so the cpal stream continues playing.
+    /// Keep cpal stream alive.
     _stream: cpal::Stream,
     producer: rtrb::Producer<AudioCommand>,
 }
 
 impl AudioSystem {
-    /// Initialize the audio subsystem. Opens a cpal output device, clones all
-    /// decoded sound data from the registry into the callback closure, and
-    /// spawns the stream. The stream runs on cpal's own thread.
+    /// Initialize output stream and callback-owned sound data.
     pub fn init(sound_registry: &SoundRegistry) -> anyhow::Result<Self> {
         let host = cpal::default_host();
         let device = host
@@ -41,7 +35,7 @@ impl AudioSystem {
 
         let config = device
             .default_output_config()
-            .map_err(|e| anyhow::anyhow!("Failed to get output config: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to get output config: {e}"))?;
 
         log::info!(
             "Audio device: '{}', format: {:?}, sample rate: {}, channels: {}",
@@ -54,8 +48,7 @@ impl AudioSystem {
         let device_sample_rate = config.sample_rate().0;
         let device_channels = config.channels() as usize;
 
-        // Clone all sound data into a map the callback closure will own.
-        // Resample to the device's sample rate and upmix mono→stereo as needed.
+        // Callback owns cloned/resampled PCM.
         let mut captured_sounds: HashMap<AudioHandle, Vec<f32>> = HashMap::new();
         for (handle, data) in sound_registry.iter() {
             let pcm = prepare_pcm(data, device_sample_rate, device_channels);
@@ -71,37 +64,33 @@ impl AudioSystem {
             .build_output_stream(
                 &config.into(),
                 move |output: &mut [f32], _info| {
-                    // Drain incoming commands. rtrb::Consumer::pop is wait-free
-                    // and allocation-free on the callback thread (D-034).
+                    // D-034: wait-free, allocation-free callback command drain.
                     while let Ok(cmd) = consumer.pop() {
-                        process_command(cmd, &mut playing, &mut master_volume);
+                        process_command(&cmd, &mut playing, &mut master_volume);
                     }
 
-                    // Zero the output buffer.
                     for s in output.iter_mut() {
                         *s = 0.0;
                     }
 
-                    // Mix active sounds.
                     for ps in &mut playing {
                         if let Some(src) = captured_sounds.get(&ps.handle) {
                             mix_sound(ps, src, output, master_volume, device_channels);
                         }
                     }
 
-                    // Drop finished sounds.
                     playing.retain(|ps| !ps.finished);
                 },
                 |err| {
-                    log::error!("Audio stream error: {}", err);
+                    log::error!("Audio stream error: {err}");
                 },
                 None,
             )
-            .map_err(|e| anyhow::anyhow!("Failed to build output stream: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to build output stream: {e}"))?;
 
         stream
             .play()
-            .map_err(|e| anyhow::anyhow!("Failed to start audio stream: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to start audio stream: {e}"))?;
 
         Ok(AudioSystem {
             _stream: stream,
@@ -109,39 +98,32 @@ impl AudioSystem {
         })
     }
 
-    /// Send a command to the audio callback thread. Drops the command silently
-    /// if the ring is full (a full ring means >64 commands in a single frame,
-    /// which is not a realistic scenario).
+    /// Send command to callback thread; full ring drops command.
     pub fn send(&mut self, cmd: AudioCommand) {
         let _ = self.producer.push(cmd);
     }
 }
 
-/// Resample `data` to `target_rate` and upmix to `target_channels`.
-/// Returns interleaved stereo (or mono, if target_channels == 1) f32 samples.
+/// Resample/upmix PCM to device format.
 fn prepare_pcm(data: &SoundData, target_rate: u32, target_channels: usize) -> Vec<f32> {
     let src_channels = data.channels as usize;
     let src_rate = data.sample_rate;
 
-    // Step 1: Convert to stereo if needed.
     let stereo: Vec<f32> = if src_channels == 1 {
-        // Duplicate mono → stereo
         data.samples.iter().flat_map(|&s| [s, s]).collect()
     } else {
         data.samples.clone()
     };
 
-    // Step 2: Resample if sample rates differ (linear interpolation).
-    let src_frames = stereo.len() / 2; // stereo frames
+    let src_frames = stereo.len() / 2;
     if src_rate == target_rate {
         if target_channels == 1 {
-            // Downmix to mono (average L+R)
             stereo.chunks(2).map(|c| (c[0] + c[1]) * 0.5).collect()
         } else {
             stereo
         }
     } else {
-        let ratio = src_rate as f64 / target_rate as f64;
+        let ratio = f64::from(src_rate) / f64::from(target_rate);
         let target_frames = (src_frames as f64 / ratio).ceil() as usize;
         let mut out = Vec::with_capacity(target_frames * target_channels.max(2));
 
@@ -169,9 +151,8 @@ fn lerp(a: f32, b: f32, t: f32) -> f32 {
     a + (b - a) * t
 }
 
-/// Process one `AudioCommand`, mutating `playing` and `master_volume`.
-fn process_command(cmd: AudioCommand, playing: &mut Vec<PlayingSound>, master_volume: &mut f32) {
-    match cmd {
+fn process_command(cmd: &AudioCommand, playing: &mut Vec<PlayingSound>, master_volume: &mut f32) {
+    match *cmd {
         AudioCommand::Play {
             handle,
             volume,
@@ -203,7 +184,6 @@ fn process_command(cmd: AudioCommand, playing: &mut Vec<PlayingSound>, master_vo
     }
 }
 
-/// Mix `ps` into `output` from `src`, advancing the cursor.
 fn mix_sound(
     ps: &mut PlayingSound,
     src: &[f32],
@@ -212,7 +192,7 @@ fn mix_sound(
     channels: usize,
 ) {
     let gain = ps.volume * master_volume;
-    let step = channels; // samples per frame in the output buffer
+    let step = channels;
 
     let mut out_idx = 0;
     while out_idx < output.len() {
@@ -224,7 +204,6 @@ fn mix_sound(
                 break;
             }
         }
-        // Mix one frame
         for c in 0..step {
             if ps.cursor + c < src.len() {
                 output[out_idx + c] += src[ps.cursor + c] * gain;
@@ -236,95 +215,5 @@ fn mix_sound(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use tungsten_core::assets::AudioHandle;
-    use tungsten_core::audio::AudioCommand;
-
-    fn make_playing(handle: AudioHandle) -> PlayingSound {
-        PlayingSound {
-            handle,
-            cursor: 0,
-            volume: 1.0,
-            looping: false,
-            finished: false,
-        }
-    }
-
-    #[test]
-    fn process_play_adds_entry() {
-        let mut playing = Vec::new();
-        let mut master = 1.0f32;
-        process_command(
-            AudioCommand::Play {
-                handle: AudioHandle(0),
-                volume: 0.5,
-                looping: true,
-            },
-            &mut playing,
-            &mut master,
-        );
-        assert_eq!(playing.len(), 1);
-        assert_eq!(playing[0].handle, AudioHandle(0));
-        assert!(playing[0].looping);
-    }
-
-    #[test]
-    fn process_stop_marks_finished() {
-        let mut playing = vec![make_playing(AudioHandle(1))];
-        let mut master = 1.0f32;
-        process_command(
-            AudioCommand::Stop {
-                handle: AudioHandle(1),
-            },
-            &mut playing,
-            &mut master,
-        );
-        assert!(playing[0].finished);
-    }
-
-    #[test]
-    fn process_stop_all_marks_all_finished() {
-        let mut playing = vec![make_playing(AudioHandle(0)), make_playing(AudioHandle(1))];
-        let mut master = 1.0f32;
-        process_command(AudioCommand::StopAll, &mut playing, &mut master);
-        assert!(playing.iter().all(|ps| ps.finished));
-    }
-
-    #[test]
-    fn process_set_master_volume() {
-        let mut playing = Vec::new();
-        let mut master = 1.0f32;
-        process_command(
-            AudioCommand::SetMasterVolume(0.3),
-            &mut playing,
-            &mut master,
-        );
-        assert!((master - 0.3).abs() < 1e-6);
-    }
-
-    #[test]
-    fn prepare_pcm_upmix_mono_to_stereo() {
-        let data = SoundData {
-            samples: vec![0.5, 0.6, 0.7],
-            sample_rate: 44100,
-            channels: 1,
-        };
-        let out = prepare_pcm(&data, 44100, 2);
-        // Each mono sample should appear twice (L and R)
-        assert_eq!(out.len(), 6);
-        assert!((out[0] - 0.5).abs() < 1e-6);
-        assert!((out[1] - 0.5).abs() < 1e-6);
-    }
-
-    #[test]
-    fn prepare_pcm_no_resample_passthrough() {
-        let data = SoundData {
-            samples: vec![0.1, 0.2, 0.3, 0.4],
-            sample_rate: 44100,
-            channels: 2,
-        };
-        let out = prepare_pcm(&data, 44100, 2);
-        assert_eq!(out.len(), 4);
-    }
-}
+#[path = "tests/audio.rs"]
+mod tests;

@@ -1,36 +1,33 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-/// Opaque handle to a registered sound asset. Keyed by the same u32 scheme
-/// as `TextureHandle` — core allocates IDs; `tungsten` stores the decoded PCM.
+/// Registered sound handle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AudioHandle(pub u32);
 
-/// Decoded PCM audio data. Stored fully in RAM at load time (eager decode).
-/// Samples are interleaved stereo f32 values at the file's native sample rate.
-/// The audio thread resamples to the device rate at init time if needed.
+/// Eager-decoded PCM audio data.
 pub struct SoundData {
-    /// Interleaved stereo PCM samples (L, R, L, R, …).
+    /// Interleaved f32 PCM samples.
     pub samples: Vec<f32>,
     pub sample_rate: u32,
-    /// Number of channels in the original file (1 = mono, 2 = stereo).
+    /// Source channel count.
     pub channels: u16,
 }
 
 impl SoundData {
-    /// Decode an audio file (OGG, WAV, MP3) to raw PCM via symphonia.
+    /// Decode audio file to raw PCM via symphonia.
     pub fn decode(path: &Path) -> anyhow::Result<SoundData> {
         use symphonia::core::audio::SampleBuffer;
         use symphonia::core::codecs::DecoderOptions;
         use symphonia::core::formats::FormatOptions;
-        use symphonia::core::io::MediaSourceStream;
+        use symphonia::core::io::{MediaSourceStream, MediaSourceStreamOptions};
         use symphonia::core::meta::MetadataOptions;
         use symphonia::core::probe::Hint;
 
         let file = std::fs::File::open(path)
             .map_err(|e| anyhow::anyhow!("Failed to open '{}': {}", path.display(), e))?;
 
-        let mss = MediaSourceStream::new(Box::new(file), Default::default());
+        let mss = MediaSourceStream::new(Box::new(file), MediaSourceStreamOptions::default());
 
         let mut hint = Hint::new();
         if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
@@ -59,15 +56,11 @@ impl SoundData {
             .codec_params
             .sample_rate
             .ok_or_else(|| anyhow::anyhow!("Unknown sample rate in '{}'", path.display()))?;
-        let channels = track
-            .codec_params
-            .channels
-            .map(|c| c.count() as u16)
-            .unwrap_or(2);
+        let channels = track.codec_params.channels.map_or(2, |c| c.count() as u16);
 
         let mut decoder = symphonia::default::get_codecs()
             .make(&track.codec_params, &DecoderOptions::default())
-            .map_err(|e| anyhow::anyhow!("Failed to create decoder: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to create decoder: {e}"))?;
 
         let mut all_samples: Vec<f32> = Vec::new();
 
@@ -79,7 +72,7 @@ impl SoundData {
                     decoder.reset();
                     continue;
                 }
-                Err(e) => return Err(anyhow::anyhow!("Decode error: {}", e)),
+                Err(e) => return Err(anyhow::anyhow!("Decode error: {e}")),
             };
 
             if packet.track_id() != track_id {
@@ -98,7 +91,7 @@ impl SoundData {
                 Err(symphonia::core::errors::Error::DecodeError(e)) => {
                     log::warn!("Decode warning in '{}': {}", path.display(), e);
                 }
-                Err(e) => return Err(anyhow::anyhow!("Decode error: {}", e)),
+                Err(e) => return Err(anyhow::anyhow!("Decode error: {e}")),
             }
         }
 
@@ -110,18 +103,17 @@ impl SoundData {
     }
 }
 
-/// Registry of decoded sound assets. Stored as a Resource in the World.
-/// Allocates `AudioHandle`s, stores `SoundData`, and tracks the manifest-declared
-/// default volume and looping flag for each sound.
+/// Decoded sound registry resource.
 pub struct SoundRegistry {
     next_id: u32,
     sounds: HashMap<AudioHandle, SoundData>,
     id_map: HashMap<String, AudioHandle>,
-    /// Manifest-declared (volume, looping) defaults, keyed by handle.
+    /// Manifest `(volume, looping)` defaults.
     defaults: HashMap<AudioHandle, (f32, bool)>,
 }
 
 impl SoundRegistry {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             next_id: 0,
@@ -131,7 +123,7 @@ impl SoundRegistry {
         }
     }
 
-    /// Register a decoded sound with its manifest-declared defaults and return its handle.
+    /// Register decoded sound and defaults.
     pub fn register(
         &mut self,
         id: String,
@@ -147,22 +139,26 @@ impl SoundRegistry {
         handle
     }
 
+    #[must_use]
     pub fn get(&self, handle: AudioHandle) -> Option<&SoundData> {
         self.sounds.get(&handle)
     }
 
+    #[must_use]
     pub fn get_by_id(&self, id: &str) -> Option<AudioHandle> {
         self.id_map.get(id).copied()
     }
 
-    /// Manifest-declared default volume for this handle (falls back to 1.0 if missing).
+    /// Manifest default volume.
+    #[must_use]
     pub fn get_volume(&self, handle: AudioHandle) -> f32 {
-        self.defaults.get(&handle).map(|&(v, _)| v).unwrap_or(1.0)
+        self.defaults.get(&handle).map_or(1.0, |&(v, _)| v)
     }
 
-    /// Manifest-declared default looping flag for this handle (falls back to false if missing).
+    /// Manifest default looping flag.
+    #[must_use]
     pub fn get_looping(&self, handle: AudioHandle) -> bool {
-        self.defaults.get(&handle).map(|&(_, l)| l).unwrap_or(false)
+        self.defaults.get(&handle).is_some_and(|&(_, l)| l)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (AudioHandle, &SoundData)> {
@@ -177,89 +173,5 @@ impl Default for SoundRegistry {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn handle_allocation_produces_distinct_ids() {
-        let mut reg = SoundRegistry::new();
-        let data1 = SoundData {
-            samples: vec![],
-            sample_rate: 44100,
-            channels: 2,
-        };
-        let data2 = SoundData {
-            samples: vec![],
-            sample_rate: 44100,
-            channels: 2,
-        };
-        let h1 = reg.register("sfx_a".into(), data1, 1.0, false);
-        let h2 = reg.register("sfx_b".into(), data2, 1.0, false);
-        assert_ne!(h1, h2);
-    }
-
-    #[test]
-    fn get_returns_none_for_unknown_handle() {
-        let reg = SoundRegistry::new();
-        assert!(reg.get(AudioHandle(99)).is_none());
-    }
-
-    #[test]
-    fn get_returns_data_for_registered_handle() {
-        let mut reg = SoundRegistry::new();
-        let data = SoundData {
-            samples: vec![0.0, 0.0],
-            sample_rate: 44100,
-            channels: 2,
-        };
-        let handle = reg.register("sfx_blip".into(), data, 0.8, false);
-        let retrieved = reg.get(handle).unwrap();
-        assert_eq!(retrieved.sample_rate, 44100);
-        assert_eq!(retrieved.samples.len(), 2);
-    }
-
-    #[test]
-    fn get_by_id_resolves_string_to_handle() {
-        let mut reg = SoundRegistry::new();
-        let data = SoundData {
-            samples: vec![],
-            sample_rate: 48000,
-            channels: 1,
-        };
-        let handle = reg.register("music_main".into(), data, 0.4, true);
-        assert_eq!(reg.get_by_id("music_main"), Some(handle));
-        assert_eq!(reg.get_by_id("nonexistent"), None);
-    }
-
-    #[test]
-    fn manifest_defaults_roundtrip() {
-        let mut reg = SoundRegistry::new();
-        let sfx = reg.register(
-            "sfx_blip".into(),
-            SoundData {
-                samples: vec![],
-                sample_rate: 44100,
-                channels: 2,
-            },
-            0.8,
-            false,
-        );
-        let music = reg.register(
-            "music_main".into(),
-            SoundData {
-                samples: vec![],
-                sample_rate: 44100,
-                channels: 2,
-            },
-            0.4,
-            true,
-        );
-        assert!((reg.get_volume(sfx) - 0.8).abs() < 1e-6);
-        assert!(!reg.get_looping(sfx));
-        assert!((reg.get_volume(music) - 0.4).abs() < 1e-6);
-        assert!(reg.get_looping(music));
-        // Unknown handle falls back to safe defaults.
-        assert!((reg.get_volume(AudioHandle(99)) - 1.0).abs() < 1e-6);
-        assert!(!reg.get_looping(AudioHandle(99)));
-    }
-}
+#[path = "../tests/assets/audio.rs"]
+mod tests;

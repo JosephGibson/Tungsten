@@ -1,19 +1,7 @@
-//! Opt-in visual regression fixture for `02_sprite_stress`.
+//! Opt-in visual regression fixture.
 //!
-//! Gated on `TUNGSTEN_VISUAL_REGRESSION=1` so it does not run under
-//! `cargo test --workspace` (per `D-002`, CI is not a release gate and this
-//! check needs a real GPU + display). When the env var is unset the test
-//! returns early and is reported as passing.
-//!
-//! Procedure:
-//!   1. Shell out to the example binary with `TUNGSTEN_SMOKE_FRAMES=8`,
-//!      `TUNGSTEN_CAPTURE_FRAME=5`, `TUNGSTEN_CAPTURE_RESOLUTION=1280x720`,
-//!      `TUNGSTEN_CAPTURE_PATH=<tempfile>`.
-//!   2. Compare the produced PNG to the committed baseline via
-//!      `tungsten_render::compare_png` with `tolerance = 2`.
-//!   3. Assert `pixels_above_tolerance == 0`.
-//!
-//! Baseline regeneration: see `tests/fixtures/README.md`.
+//! Gate: `TUNGSTEN_VISUAL_REGRESSION=1` (D-002, needs GPU/display).
+//! Capture: 8 smoke frames, compare frame 5 at 1280x720, tolerance 2.
 
 use std::path::Path;
 

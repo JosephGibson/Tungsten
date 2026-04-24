@@ -4,7 +4,7 @@ From-scratch Rust 2D game engine. Stack: `winit` + `wgpu` + `glam` + hand-rolled
 
 ## Status
 
-Workspace `v0.20.0` on branch `0.20`. Phase 3 M23 (Particle System) is shipped. Next milestone: `M24` tween system.
+Workspace `v0.21.0` on branch `0.21`. Phase 3 is complete; all milestones `M12`–`M24` shipped. The rollout plan is archived at [`docs/plans/archive/phase3-rollout.md`](docs/plans/archive/phase3-rollout.md). Phase 4 is not yet scoped.
 
 ## Stack
 
@@ -29,7 +29,7 @@ cargo build --workspace
 cargo test --workspace
 cargo run -p example-01-platformer      # comprehensive engine demo
 cargo run -p example-02-sprite-stress   # canonical perf stress scene
-cargo run -p example-03-scene-state
+cargo run -p example-03-scene-state     # scene/state + tween transition demo
 ```
 
 Reproducible Linux perf capture:

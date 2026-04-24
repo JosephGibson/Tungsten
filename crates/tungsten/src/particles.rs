@@ -1,21 +1,6 @@
-//! M23 particle systems: count refresh → emit → tick.
+//! Particle lifecycle: count refresh -> emit -> tick -> command flush -> event flush.
 //!
-//! These three systems own the full particle lifecycle. The frame-order slot,
-//! specified in [`docs/plans/phase3-milestone-23-particle-system.md`], is:
-//!
-//! ```text
-//! user systems
-//!   → particle_count_refresh_system   (populates ParticleActive + per-emitter counts)
-//!   → particle_emit_system            (spawns new particles, emits ParticleBurstEmitted)
-//!   → particle_tick_system            (ages, integrates, despawns via CommandBuffer)
-//!   → CommandBuffer flush
-//!   → event flush
-//!   → hot reload → extract → render
-//! ```
-//!
-//! Newly-spawned particles are only visible after the command-buffer flush, so
-//! they appear one frame after their burst event fires. This matches the
-//! despawn policy and keeps the pipeline deterministic.
+//! Spawn/despawn visibility waits for command flush; burst/drain events flush after it.
 
 use std::sync::Arc;
 
@@ -27,25 +12,20 @@ use tungsten_core::{
     ParticleEmitterState, Range, Sprite, Transform, Visibility, World, WorldRngSeed,
 };
 
-/// Emitted when a `burst` or `pulse` emission fires with at least one
-/// particle. The `count` is the clamped value that actually reached the
-/// world after per-emitter and global budget clipping.
+/// Discrete emission event; `count` is post-budget clipping.
 #[derive(Debug, Clone, Copy)]
 pub struct ParticleBurstEmitted {
     pub emitter: Entity,
     pub count: u32,
 }
 
-/// Emitted once when an emitter drains — `drained` flag flipped and the last
-/// in-flight particle has aged out.
+/// One-shot event after emitter drains and live particles age out.
 #[derive(Debug, Clone, Copy)]
 pub struct ParticleSystemDrained {
     pub emitter: Entity,
 }
 
-/// Rebuild per-emitter `active_count` and the global `ParticleActive::count`
-/// by scanning every live `Particle`. Runs before `particle_emit_system` so
-/// budget clipping uses this frame's pre-emission state.
+/// Rebuild active counts before emission budget clipping.
 pub fn particle_count_refresh_system(world: &mut World) {
     let emitter_entities = world.query2_entities::<ParticleEmitter, ParticleEmitterState>();
     for e in &emitter_entities {
@@ -71,16 +51,11 @@ pub fn particle_count_refresh_system(world: &mut World) {
     }
 }
 
-/// Drive emission for every `ParticleEmitter`. Resolves `Arc<ParticleConfig>`
-/// once per emitter on the first tick, seeds the PRNG, and enqueues spawns via
-/// the command buffer. `ParticleBurstEmitted` fires on every `burst` / `pulse`
-/// discrete emission (not on `continuous`). Drain transitions are surfaced via
-/// `ParticleSystemDrained` once `active_count` reaches zero after draining.
+/// Emit particles via command buffer; discrete emissions enqueue burst events.
 pub fn particle_emit_system(world: &mut World) {
     let dt = world
         .get_resource::<tungsten_core::DeltaTime>()
-        .map(|d| d.dt)
-        .unwrap_or(0.0);
+        .map_or(0.0, |d| d.dt);
 
     let budget = world
         .get_resource::<ParticleBudget>()
@@ -88,8 +63,7 @@ pub fn particle_emit_system(world: &mut World) {
         .unwrap_or_default();
     let mut global_active = world
         .get_resource::<ParticleActive>()
-        .map(|a| a.count)
-        .unwrap_or(0);
+        .map_or(0, |a| a.count);
 
     let emitter_entities =
         world.query3_entities::<ParticleEmitter, ParticleEmitterState, Transform>();
@@ -100,11 +74,10 @@ pub fn particle_emit_system(world: &mut World) {
             None => continue,
         };
 
-        // Ensure snapshot exists. Resolve once, on first tick.
+        // Config snapshot resolved once, on first tick.
         let needs_snapshot = world
             .get::<ParticleEmitterState>(emitter_ent)
-            .map(|s| !s.first_tick_done)
-            .unwrap_or(false);
+            .is_some_and(|s| !s.first_tick_done);
 
         if needs_snapshot {
             let snapshot = world
@@ -130,17 +103,15 @@ pub fn particle_emit_system(world: &mut World) {
             }
         }
 
-        let snapshot = match world
+        let Some(snapshot) = world
             .get::<ParticleEmitterState>(emitter_ent)
             .and_then(|s| s.config_snapshot.clone())
-        {
-            Some(s) => s,
-            None => continue,
+        else {
+            continue;
         };
 
-        let origin = match world.get::<Transform>(emitter_ent) {
-            Some(t) => t.position,
-            None => continue,
+        let Some(origin) = world.get::<Transform>(emitter_ent).map(|t| t.position) else {
+            continue;
         };
 
         let (to_emit, is_discrete) = plan_emission(world, emitter_ent, dt, &snapshot);
@@ -150,13 +121,9 @@ pub fn particle_emit_system(world: &mut World) {
             continue;
         }
 
-        // Clip against per-emitter and global caps.
         let (active_count, max_alive) = {
             let state = world.get::<ParticleEmitterState>(emitter_ent);
-            (
-                state.map(|s| s.active_count).unwrap_or(0),
-                snapshot.max_alive,
-            )
+            (state.map_or(0, |s| s.active_count), snapshot.max_alive)
         };
         let per_emitter_headroom = max_alive.saturating_sub(active_count);
         let global_headroom = budget.global_cap.saturating_sub(global_active);
@@ -167,10 +134,9 @@ pub fn particle_emit_system(world: &mut World) {
             continue;
         }
 
-        // Drain the command buffer out of the world for the spawn batch.
-        let mut buf = match world.remove_resource::<CommandBuffer>() {
-            Some(b) => b,
-            None => continue,
+        // Batch spawn without holding a `&mut World` resource borrow.
+        let Some(mut buf) = world.remove_resource::<CommandBuffer>() else {
+            continue;
         };
 
         for _ in 0..n_eff {
@@ -184,9 +150,7 @@ pub fn particle_emit_system(world: &mut World) {
         }
         world.insert_resource(buf);
 
-        // Bookkeeping: active counts (pre-flush, so next system sees the same
-        // pre-flush world; count_refresh_system on the next frame is what
-        // reconciles with actual archetype state).
+        // Pre-flush bookkeeping; next count refresh reconciles archetype state.
         if let Some(state) = world.get_mut::<ParticleEmitterState>(emitter_ent) {
             state.active_count = state.active_count.saturating_add(n_eff);
         }
@@ -208,31 +172,25 @@ pub fn particle_emit_system(world: &mut World) {
     }
 }
 
-/// Age, integrate, and despawn live particles. Despawns go through the
-/// command buffer so the flush stage is the single point where entity
-/// lifetimes change within the frame.
+/// Age/integrate particles; despawns deferred to command flush.
 pub fn particle_tick_system(world: &mut World) {
     let dt = world
         .get_resource::<tungsten_core::DeltaTime>()
-        .map(|d| d.dt)
-        .unwrap_or(0.0);
+        .map_or(0.0, |d| d.dt);
     if dt <= 0.0 {
         return;
     }
 
-    let mut buf = match world.remove_resource::<CommandBuffer>() {
-        Some(b) => b,
-        None => return,
+    let Some(mut buf) = world.remove_resource::<CommandBuffer>() else {
+        return;
     };
 
     let particle_entities = world.query3_entities::<Particle, Transform, Sprite>();
     for entity in particle_entities {
-        // Snapshot every piece we need so we can do the math and then write
-        // back without fighting the borrow checker.
+        // Snapshot before writeback to keep borrows disjoint.
         let (config, age_new, lifetime) = {
-            let p = match world.get::<Particle>(entity) {
-                Some(p) => p,
-                None => continue,
+            let Some(p) = world.get::<Particle>(entity) else {
+                continue;
             };
             (p.config.clone(), p.age + dt, p.lifetime)
         };
@@ -244,7 +202,6 @@ pub fn particle_tick_system(world: &mut World) {
 
         let u = (age_new / lifetime).clamp(0.0, 1.0);
 
-        // Integrate motion.
         let drag_factor = (-config.drag_per_sec * dt).exp();
         let gravity = Vec2::new(config.gravity[0], config.gravity[1]);
         let (new_vel, new_ang_vel, start_scale, base_rgba) = {
@@ -269,7 +226,6 @@ pub fn particle_tick_system(world: &mut World) {
             t.scale = Vec2::splat(scale);
         }
 
-        // Color + alpha sampling.
         let mut rgba = match config.color_over_life.as_ref() {
             Some(c) => c.sample(u),
             None => [1.0, 1.0, 1.0, 1.0],
@@ -282,7 +238,6 @@ pub fn particle_tick_system(world: &mut World) {
             rgba[1] *= rgba[3];
             rgba[2] *= rgba[3];
         }
-        // Combine with the particle's own base rgba (tint * spawn sample).
         let final_rgba = [
             (rgba[0] * base_rgba[0]).clamp(0.0, 1.0),
             (rgba[1] * base_rgba[1]).clamp(0.0, 1.0),
@@ -308,9 +263,8 @@ fn plan_emission(
     dt: f32,
     cfg: &Arc<ParticleConfig>,
 ) -> (u32, bool) {
-    let state = match world.get_mut::<ParticleEmitterState>(emitter_ent) {
-        Some(s) => s,
-        None => return (0, false),
+    let Some(state) = world.get_mut::<ParticleEmitterState>(emitter_ent) else {
+        return (0, false);
     };
     state.elapsed += dt;
 
@@ -320,9 +274,7 @@ fn plan_emission(
 
     match cfg.emission {
         EmissionKind::Burst { count, once } => {
-            // Burst fires exactly once on the tick after first_tick_done flips.
-            // We use `continuous_accum` as a one-shot latch: zero = not yet fired,
-            // 1 = fired.
+            // One-shot latch: `continuous_accum` 0 = pending, 1 = fired.
             if state.continuous_accum >= 1.0 {
                 return (0, true);
             }
@@ -344,7 +296,7 @@ fn plan_emission(
             total_pulses,
         } => {
             state.pulse_timer += dt;
-            // Fire at-most-one pulse per tick; extra pulses owed wait until next tick.
+            // At most one pulse per tick; overflow waits.
             if state.pulse_timer < interval_sec {
                 return (0, true);
             }
@@ -390,7 +342,6 @@ fn build_particle(
     let angular_velocity = sample_range(&mut state.rng, cfg.angular_velocity);
     let velocity = sample_initial_velocity(&mut state.rng, &cfg.initial_velocity);
 
-    // Sample base color at age=0.
     let mut rgba = match cfg.color_over_life.as_ref() {
         Some(c) => c.sample(0.0),
         None => [1.0, 1.0, 1.0, 1.0],
@@ -465,12 +416,10 @@ fn sample_initial_velocity(rng: &mut tungsten_core::Pcg32, iv: &InitialVelocity)
 }
 
 fn sample_or_one(curve: Option<&Curve<f32>>, t: f32) -> f32 {
-    curve.map(|c| c.sample(t)).unwrap_or(1.0)
+    curve.map_or(1.0, |c| c.sample(t))
 }
 
-/// Allow external callers (example code, bench harnesses) to spawn a fully
-/// formed particle without going through the emit system. Mirrors the
-/// behavior of the emit path's `build_particle` helper.
+/// Spawn a fully formed particle without the emit system.
 pub fn spawn_particle_via(
     cmd: &mut CommandBuffer,
     emitter_ent: Option<Entity>,

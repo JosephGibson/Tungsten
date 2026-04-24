@@ -1,8 +1,4 @@
-//! Physics subsystem micro-benchmarks (M12).
-//!
-//! Scenarios:
-//!   - position_integration_50k  — 50k entity position integration
-//!   - broadphase_rebuild_5k     — SpatialGrid rebuild from 5k bodies
+//! Physics micro-benches: position integration and broadphase rebuild.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use glam::Vec2;
