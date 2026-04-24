@@ -4,7 +4,7 @@ From-scratch Rust 2D game engine. Stack: `winit` + `wgpu` + `glam` + hand-rolled
 
 ## Status
 
-Workspace `v0.23.0` on branch `0.23`. Phase 3 is complete; all milestones `M12`–`M24` shipped. The rollout plan is archived at [`docs/plans/archive/phase3.md`](docs/plans/archive/phase3.md). Phase 4 is underway: M25 (render foundation) and M26 (materials + post-stack + tween→material bridge) are live; remaining milestones are tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md).
+Workspace `v0.24.0` on branch `0.24`. Phase 3 is complete; all milestones `M12`–`M24` shipped. The rollout plan is archived at [`docs/plans/archive/phase3.md`](docs/plans/archive/phase3.md). Phase 4 is underway: M25 (render foundation) and M26 (materials + post-stack + tween→material bridge) are live; remaining milestones are tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md).
 
 ## Stack
 

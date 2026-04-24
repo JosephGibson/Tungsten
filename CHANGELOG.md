@@ -6,6 +6,11 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Workspace version bumped to `0.24.0`.
+- `README.md`, `AGENTS.md`, `DESIGN.md`, `CLAUDE.md`, and `docs/plans/phase4.md` now reflect branch `0.24` as the active integration line.
+
 ## [0.23.0] - 2026-04-24
 
 Summary: Phase 4 Milestone 26 — materials + post-stack + tween→material bridge (manifest-tracked materials, a reorderable 17-effect post stack, entity-local uniform overrides shared with tween channels, and a new shader-playground example). Phase 4 scope is tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md).

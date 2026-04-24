@@ -2,7 +2,7 @@
 
 ## Status
 
-Workspace `v0.23.0` on branch `0.23`. Phase 3 is complete; all milestones `M12`–`M24` shipped and the rollout plan is archived at [`docs/plans/archive/phase3.md`](docs/plans/archive/phase3.md). Phase 4 scope is tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md). M25 (`D-057`) is live: offscreen `SceneTarget` + ordered named-pass list (`scene` → `present`), optional MSAA (1/2/4/8) and opt-in GPU depth-test sprite path, WGSL shaders are manifest-tracked with body-edit hot reload via `wgpu::naga` validation. M26 (`D-058`) is live: manifest-tracked materials (WGSL pipeline + 256-byte UBO) selectable per `SpriteBatch`, a reorderable `PostStack` of 17 stock effects ping-ponging between `PostPing` / `PostPong` offscreen targets before the present blit, and `UniformOverrideBlock` + `TweenChannel::Uniform*` wiring a single entity-local animation surface shared with the future M32 MSDF outline/glow. `PostStack::default()` is empty so the default frame stays byte-identical to the M25 baseline. `SceneColor` format stays swapchain sRGB in M26; M27 adds an HDR sibling target for bloom input. Companion docs: [`AGENTS.md`](AGENTS.md) for operational rules, [`DECISIONS.md`](DECISIONS.md) for rationale by `D-NNN`.
+Workspace `v0.24.0` on branch `0.24`. Phase 3 is complete; all milestones `M12`–`M24` shipped and the rollout plan is archived at [`docs/plans/archive/phase3.md`](docs/plans/archive/phase3.md). Phase 4 scope is tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md). M25 (`D-057`) is live: offscreen `SceneTarget` + ordered named-pass list (`scene` → `present`), optional MSAA (1/2/4/8) and opt-in GPU depth-test sprite path, WGSL shaders are manifest-tracked with body-edit hot reload via `wgpu::naga` validation. M26 (`D-058`) is live: manifest-tracked materials (WGSL pipeline + 256-byte UBO) selectable per `SpriteBatch`, a reorderable `PostStack` of 17 stock effects ping-ponging between `PostPing` / `PostPong` offscreen targets before the present blit, and `UniformOverrideBlock` + `TweenChannel::Uniform*` wiring a single entity-local animation surface shared with the future M32 MSDF outline/glow. `PostStack::default()` is empty so the default frame stays byte-identical to the M25 baseline. `SceneColor` format stays swapchain sRGB in M26; M27 is planned as SMAA presentation AA, while bloom remains M28 scope. Companion docs: [`AGENTS.md`](AGENTS.md) for operational rules, [`DECISIONS.md`](DECISIONS.md) for rationale by `D-NNN`.
 
 ## What It Is
 
@@ -131,7 +131,14 @@ Config model: single `tungsten.json` at workspace root, loaded once at startup. 
     "scale_mode": "stretch",
     "frame_rate_cap": null
   },
-  "render": { "clear_color": [0.05, 0.05, 0.08, 1.0], "max_frame_latency": 1, "present_mode": "auto" },
+  "render": {
+    "clear_color": [0.05, 0.05, 0.08, 1.0],
+    "max_frame_latency": 1,
+    "present_mode": "auto",
+    "msaa": 1,
+    "depth_enabled": true,
+    "depth_sort": "cpu_stable"
+  },
   "logging": { "level": "info" }
 }
 ```
