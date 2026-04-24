@@ -6,7 +6,9 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-Workspace version now targets `0.22.0` on branch `0.22`. Phase 4 scope is tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md).
+## [0.22.0] - 2026-04-24
+
+Summary: Phase 4 Milestone 25 — render foundation (offscreen `SceneTarget` with optional depth + MSAA, named/ordered pass list with an engine-internal present blit, manifest-tracked WGSL with body-edit hot reload, and opt-in GPU depth-test sprite path). Phase 4 scope is tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md).
 
 ### Added
 
@@ -29,6 +31,7 @@ Workspace version now targets `0.22.0` on branch `0.22`. Phase 4 scope is tracke
 
 ### Fixed
 
+- **Smoke-mode dt is now deterministic.** Under `TUNGSTEN_SMOKE_FRAMES`, `App::stage_delta_time` pins the per-frame `DeltaTime.dt` to `1/60 s` instead of reading wall-clock. Previously the visual-regression fixture run and a subsequent test re-run would integrate different `dt` values at frame N, so sprite positions (and therefore pixels) diverged across otherwise-identical runs. With the pin in place, smoke-mode captures are reproducible across build profiles and host load, which is what the `visual_regression` fixture requires. Outside smoke mode, dt continues to come from `Instant::now()` as before.
 - **M25 QA pass:** four `GpuDepth` / MSAA bugs that would have reached 0.22 release without this sweep.
   - `depth_sort = gpu_depth` now forces the quad / debug-line / text pipelines to carry a matching read-only `DepthStencilState` (`Always` + no write). Previously they declared no depth state and wgpu rejected them the moment the pass attached `SceneDepth`.
   - `Renderer::new` now builds the sprite pipeline with the correct `depth_write` up front; the first frame under `gpu_depth` no longer boots a `depth: None` pipeline against a depth-attached pass.

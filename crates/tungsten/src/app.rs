@@ -42,6 +42,11 @@ use winit::event::{ElementState, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Fullscreen, Window, WindowId};
 
+/// Fixed per-frame dt (seconds) used under `TUNGSTEN_SMOKE_FRAMES`. Pinned to
+/// 60 Hz so smoke-mode captures and visual regressions are frame-deterministic
+/// across runs regardless of build profile or host load.
+const SMOKE_MODE_FIXED_DT_SECS: f32 = 1.0 / 60.0;
+
 /// Tick system.
 pub type SystemFn = Box<dyn FnMut(&mut World)>;
 
@@ -625,7 +630,18 @@ impl App {
     fn stage_delta_time(&mut self) {
         let now = Instant::now();
         if let Some(last) = self.last_frame {
-            let dt = now.duration_since(last).as_secs_f32();
+            // Smoke mode (TUNGSTEN_SMOKE_FRAMES set) pins dt to 60 Hz so
+            // physics / particles / tweens / scene animation produce
+            // frame-accurate deterministic output. Wall-clock dt varies
+            // with CPU load and makes visual-regression captures drift
+            // between runs on the same binary. The capture path used by
+            // `visual_regression.rs` (smoke frames + capture frame env
+            // vars) is the canonical consumer.
+            let dt = if self.smoke_frames_remaining.is_some() {
+                SMOKE_MODE_FIXED_DT_SECS
+            } else {
+                now.duration_since(last).as_secs_f32()
+            };
             if let Some(delta) = self.world.get_resource_mut::<DeltaTime>() {
                 delta.dt = dt;
             }
