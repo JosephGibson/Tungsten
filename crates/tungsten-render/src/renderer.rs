@@ -5,7 +5,7 @@ use std::time::Instant;
 
 use crate::debug_line::{DebugLineInstance, DebugLinePipeline};
 use crate::material::{build_material_pipeline, MaterialPipeline};
-use crate::passes::{default_pass_order, PassRecorder, TargetId};
+use crate::passes::{default_pass_order, text_overlay_target, PassRecorder, TargetId};
 use crate::post::PostStackRenderer;
 use crate::quad::{QuadInstance, QuadPipeline};
 use crate::screenshot::{aligned_bytes_per_row, strip_row_padding};
@@ -206,8 +206,11 @@ impl Renderer {
             sample_count,
             depth_attached,
         );
-        let text_pipeline =
-            TextPipeline::new(&device, &queue, format, sample_count, depth_attached);
+        // Text renders in its own overlay pass after the post stack, which
+        // always targets a single-sample color texture with no depth. Baking
+        // those attachment bits here keeps text pixels out of the post stack
+        // regardless of scene MSAA / depth config.
+        let text_pipeline = TextPipeline::new(&device, &queue, format, 1, false);
 
         let target_pool = RenderTargetPool::new(
             &device,
@@ -703,12 +706,13 @@ impl Renderer {
             });
 
         let post_stack_len = post_stack.len();
-        let final_post_target = PostStackRenderer::final_target(post_stack_len);
-
-        // Pick the present-blit source: last post-target when present, else SceneColor.
-        let final_source_view = match final_post_target {
-            Some(TargetId::PostPing) => self.target_pool.scene.post_ping_view(),
-            Some(TargetId::PostPong) => self.target_pool.scene.post_pong_view(),
+        // After M26/text-overlay split: the present-blit and screenshot
+        // source both sample the text-overlay target, which is whichever
+        // of SceneColor/PostPing/PostPong holds the composited frame.
+        let final_source_target = text_overlay_target(post_stack_len);
+        let final_source_view = match final_source_target {
+            TargetId::PostPing => self.target_pool.scene.post_ping_view(),
+            TargetId::PostPong => self.target_pool.scene.post_pong_view(),
             _ => self.target_pool.scene.color_view(),
         };
         // Rebuild the present-blit bind group every frame against the live
@@ -724,12 +728,17 @@ impl Renderer {
             post_stack_len,
         );
         let post_plan = PostStackRenderer::plan_targets(post_stack_len);
+        // Text overlay sits between the last post pass (or the scene pass) and
+        // the present pass. `post_stack_len + 1` accounts for the leading
+        // scene pass.
+        let text_overlay_idx = post_stack_len + 1;
 
         encoder.push_debug_group("tungsten_frame");
         for (idx, pass_desc) in order.as_slice().iter().enumerate() {
             let is_scene = idx == 0;
             let is_present = pass_desc.color == TargetId::Swapchain;
-            let post_index = if !is_scene && !is_present {
+            let is_text_overlay = !is_scene && !is_present && idx == text_overlay_idx;
+            let post_index = if !is_scene && !is_present && !is_text_overlay {
                 Some(idx - 1)
             } else {
                 None
@@ -768,13 +777,16 @@ impl Renderer {
                     &self.quad_pipeline,
                     &mut self.sprite_pipeline,
                     &self.debug_line_pipeline,
-                    &self.text_pipeline,
                     quads,
                     sprite_batches,
                     debug_quads,
                     debug_lines,
                     &self.materials,
                 );
+            } else if is_text_overlay {
+                pass.push_debug_group("text");
+                self.text_pipeline.render(&mut pass);
+                pass.pop_debug_group();
             } else if is_present {
                 pass.set_pipeline(&self.present_blit.pipeline);
                 pass.set_bind_group(0, &blit_bind_group, &[]);
@@ -795,17 +807,17 @@ impl Renderer {
             }
         }
 
-        // Screenshot path: readback from the final frame source (post-target
-        // if the stack produced one, else SceneColor). Byte-identical to M25
-        // output when the stack is empty — the image-diff gate depends on it.
+        // Screenshot path: readback from the final composed frame source,
+        // which is the text-overlay target (post-target when the stack is
+        // non-empty, else SceneColor).
         let capture_path = self.pending_capture.take();
         let capture_target = capture_path
             .as_ref()
             .map(|_| create_capture_target(&self.device, self.surface_config.format, w, h));
         if let Some(target) = capture_target.as_ref() {
-            let capture_src_texture = match final_post_target {
-                Some(TargetId::PostPing) => self.target_pool.scene.post_ping_texture(),
-                Some(TargetId::PostPong) => self.target_pool.scene.post_pong_texture(),
+            let capture_src_texture = match final_source_target {
+                TargetId::PostPing => self.target_pool.scene.post_ping_texture(),
+                TargetId::PostPong => self.target_pool.scene.post_pong_texture(),
                 _ => self.target_pool.scene.color_texture(),
             };
             encoder.copy_texture_to_buffer(
@@ -899,7 +911,6 @@ fn record_main_draws<'a>(
     quad_pipeline: &'a QuadPipeline,
     sprite_pipeline: &'a mut SpritePipeline,
     debug_line_pipeline: &'a DebugLinePipeline,
-    text_pipeline: &'a TextPipeline,
     quads: &[QuadInstance],
     sprite_batches: &[SpriteBatch],
     debug_quads: &[QuadInstance],
@@ -925,10 +936,6 @@ fn record_main_draws<'a>(
         quad_pipeline.camera_bind_group(),
         debug_lines,
     );
-    render_pass.pop_debug_group();
-
-    render_pass.push_debug_group("text");
-    text_pipeline.render(render_pass);
     render_pass.pop_debug_group();
 }
 

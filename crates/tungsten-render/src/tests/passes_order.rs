@@ -1,10 +1,10 @@
 use super::*;
 
 #[test]
-fn default_order_msaa1_cpu_stable_is_scene_then_present() {
+fn default_order_msaa1_cpu_stable_is_scene_overlay_then_present() {
     let order = default_pass_order(1, DepthSortMode::CpuStable, true, 0);
     let passes = order.as_slice();
-    assert_eq!(passes.len(), 2);
+    assert_eq!(passes.len(), 3);
 
     let scene = &passes[0];
     assert_eq!(scene.label, "tungsten_scene_pass");
@@ -14,7 +14,13 @@ fn default_order_msaa1_cpu_stable_is_scene_then_present() {
     assert!(scene.clear.is_some());
     assert!(scene.depth_clear.is_none());
 
-    let present = &passes[1];
+    let overlay = &passes[1];
+    assert_eq!(overlay.label, "tungsten_text_overlay_pass");
+    assert_eq!(overlay.color, TargetId::SceneColor);
+    assert!(overlay.clear.is_none());
+    assert!(overlay.depth.is_none());
+
+    let present = &passes[2];
     assert_eq!(present.label, "tungsten_present_pass");
     assert_eq!(present.color, TargetId::Swapchain);
     assert!(present.color_resolve.is_none());
@@ -62,42 +68,50 @@ fn gpu_depth_with_depth_disabled_drops_the_depth_attachment() {
 }
 
 #[test]
-fn post_stack_zero_is_byte_identical_m25_order() {
+fn text_overlay_follows_scene_when_post_stack_empty() {
     let order = default_pass_order(1, DepthSortMode::CpuStable, true, 0);
     let passes = order.as_slice();
-    assert_eq!(passes.len(), 2);
-    assert_eq!(passes[0].label, "tungsten_scene_pass");
-    assert_eq!(passes[1].label, "tungsten_present_pass");
-    assert_eq!(passes[1].color, TargetId::Swapchain);
-}
-
-#[test]
-fn post_stack_one_splices_a_post_ping_pass_before_present() {
-    let order = default_pass_order(1, DepthSortMode::CpuStable, true, 1);
-    let passes = order.as_slice();
     assert_eq!(passes.len(), 3);
-    assert_eq!(passes[0].color, TargetId::SceneColor);
-    assert_eq!(passes[1].label, "tungsten_post_pass_0");
-    assert_eq!(passes[1].color, TargetId::PostPing);
-    assert!(passes[1].clear.is_none());
+    assert_eq!(passes[0].label, "tungsten_scene_pass");
+    assert_eq!(passes[1].label, "tungsten_text_overlay_pass");
+    assert_eq!(passes[1].color, TargetId::SceneColor);
     assert_eq!(passes[2].label, "tungsten_present_pass");
     assert_eq!(passes[2].color, TargetId::Swapchain);
 }
 
 #[test]
-fn post_stack_two_alternates_ping_and_pong() {
-    let order = default_pass_order(1, DepthSortMode::CpuStable, true, 2);
+fn post_stack_one_splices_post_then_text_overlay_on_ping() {
+    let order = default_pass_order(1, DepthSortMode::CpuStable, true, 1);
     let passes = order.as_slice();
     assert_eq!(passes.len(), 4);
+    assert_eq!(passes[0].color, TargetId::SceneColor);
+    assert_eq!(passes[1].label, "tungsten_post_pass_0");
+    assert_eq!(passes[1].color, TargetId::PostPing);
+    assert!(passes[1].clear.is_none());
+    assert_eq!(passes[2].label, "tungsten_text_overlay_pass");
+    assert_eq!(passes[2].color, TargetId::PostPing);
+    assert!(passes[2].clear.is_none());
+    assert_eq!(passes[3].label, "tungsten_present_pass");
+    assert_eq!(passes[3].color, TargetId::Swapchain);
+}
+
+#[test]
+fn post_stack_two_alternates_and_overlay_lands_on_pong() {
+    let order = default_pass_order(1, DepthSortMode::CpuStable, true, 2);
+    let passes = order.as_slice();
+    assert_eq!(passes.len(), 5);
     assert_eq!(passes[1].color, TargetId::PostPing);
     assert_eq!(passes[2].color, TargetId::PostPong);
+    assert_eq!(passes[3].label, "tungsten_text_overlay_pass");
+    assert_eq!(passes[3].color, TargetId::PostPong);
 }
 
 #[test]
 fn post_stack_seventeen_ends_on_ping_pattern() {
     let order = default_pass_order(1, DepthSortMode::CpuStable, true, 17);
     let passes = order.as_slice();
-    assert_eq!(passes.len(), 19);
+    // scene + 17 post + overlay + present
+    assert_eq!(passes.len(), 20);
     for i in 0..17 {
         let expected = if i % 2 == 0 {
             TargetId::PostPing
@@ -106,5 +120,7 @@ fn post_stack_seventeen_ends_on_ping_pattern() {
         };
         assert_eq!(passes[1 + i].color, expected, "pass {i}");
     }
-    assert_eq!(passes[18].color, TargetId::Swapchain);
+    assert_eq!(passes[18].label, "tungsten_text_overlay_pass");
+    assert_eq!(passes[18].color, TargetId::PostPing);
+    assert_eq!(passes[19].color, TargetId::Swapchain);
 }

@@ -73,14 +73,15 @@ fn post_pass_label(i: usize) -> &'static str {
 /// - `msaa > 1` routes the scene through `SceneColorMsaa` with resolve to `SceneColor`.
 /// - `depth_sort == GpuDepth && depth_enabled` attaches `SceneDepth` and clears to 1.0.
 /// - For `post_stack_len > 0`, `post_stack_len` passes are appended between
-///   the scene pass and the present pass, ping-ponging `PostPing`/`PostPong`
+///   the scene pass and the text-overlay pass, ping-ponging `PostPing`/`PostPong`
 ///   (even index = Ping, odd = Pong). These passes never clear — they write
 ///   fullscreen fragments.
+/// - A `tungsten_text_overlay_pass` runs after the post stack (or immediately
+///   after the scene pass when the stack is empty). It loads the present-blit
+///   source and composites screen-space text on top, so text is never sampled
+///   by post shaders.
 /// - The final `present` pass is always a fullscreen blit into the swapchain;
 ///   it never clears.
-///
-/// When `post_stack_len == 0` the output is byte-identical to the pre-M26
-/// pass order — the M25 baseline gate depends on this.
 #[must_use]
 pub fn default_pass_order(
     msaa: u32,
@@ -103,16 +104,36 @@ pub fn default_pass_order(
         scene = scene.with_depth(TargetId::SceneDepth, 1.0);
     }
 
-    let mut passes = Vec::with_capacity(2 + post_stack_len);
+    let mut passes = Vec::with_capacity(3 + post_stack_len);
     passes.push(scene);
 
     for i in 0..post_stack_len {
         passes.push(PassDesc::new(post_pass_label(i), post_target_for_index(i)));
     }
 
+    let overlay_target = text_overlay_target(post_stack_len);
+    passes.push(PassDesc::new(
+        "tungsten_text_overlay_pass",
+        overlay_target,
+    ));
+
     passes.push(PassDesc::new("tungsten_present_pass", TargetId::Swapchain));
 
     PassOrder(passes)
+}
+
+/// Target the text-overlay pass writes into: whichever texture the present
+/// blit will sample from. Mirrors `PostStackRenderer::final_target` but
+/// collapses the empty-stack case to `SceneColor`.
+#[must_use]
+pub fn text_overlay_target(post_stack_len: usize) -> TargetId {
+    if post_stack_len == 0 {
+        TargetId::SceneColor
+    } else if (post_stack_len - 1).is_multiple_of(2) {
+        TargetId::PostPing
+    } else {
+        TargetId::PostPong
+    }
 }
 
 #[cfg(test)]
