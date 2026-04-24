@@ -6,7 +6,7 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-Phase 3 complete. Phase 4 scope is under planning.
+Phase 3 complete. Phase 4 scope is tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md).
 
 ## [0.21.0] - 2026-04-23
 

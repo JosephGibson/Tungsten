@@ -1,23 +1,23 @@
 ---
 status: draft
-goal: Phase 4 ships 8 milestones (M25–M32) covering render foundation, materials, stock post-effects, bloom, 2D lighting, parallax + game-feel, instanced mesh particles + transitions, MSDF text, and a collaborative showcase example.
+goal: "Phase 4 ships 8 milestones (M25–M32) covering render foundation, materials, stock post-effects, bloom, 2D lighting, parallax + game-feel, instanced mesh particles + transitions, MSDF text, and a collaborative showcase example."
 non-goals:
-  - No 3D, scripting, networking, WASM, editor (DESIGN.md §Non-Commitments).
-  - No capture tooling (GIF/video/screenshot automation); manual acceptance artifacts are still expected.
-  - No deferred lighting, shadow casters, occluder polygons, volumetric lights, GI (Phase 5).
-  - No asset-preprocessing pipeline (MSDF bakes at startup, not ahead of time).
-  - No cleanup-only milestone; each feature milestone slices the monoliths it touches.
+  - "No 3D, scripting, networking, WASM, editor (DESIGN.md §Non-Commitments)."
+  - "No capture tooling (GIF/video/screenshot automation); manual acceptance artifacts are still expected."
+  - "No deferred lighting, shadow casters, occluder polygons, volumetric lights, GI (Phase 5)."
+  - "No asset-preprocessing pipeline (MSDF bakes at startup, not ahead of time)."
+  - "No cleanup-only milestone; each feature milestone slices the monoliths it touches."
 files to touch:
-  - `docs/plans/phase4-ideas.md` (this index)
-  - `docs/plans/phase4-milestone-25-*.md` through `docs/plans/phase4-milestone-32-*.md`
+  - "docs/plans/phase4.md"
+  - "docs/plans/phase4-milestone-25-*.md through docs/plans/phase4-milestone-32-*.md"
 ordered steps:
-  1. Promote each milestone below to its own `phase4-milestone-NN-*.md` plan file.
-  2. Execute M25 → M26 → M27 → M28 in order. M29 ↔ M30 order is free. M31 before M32. M32 last.
-  3. Each milestone: write plan, implement, produce acceptance artifact, flip status to done.
+  - "Promote each milestone below to its own phase4-milestone-NN-*.md plan file."
+  - "Execute M25 → M26 → M27 → M28 in order. M29 ↔ M30 order is free. M31 before M32. M32 last."
+  - "For each milestone, write the plan, implement it, produce an acceptance artifact, and flip status to done."
 done-when:
-  - All 8 milestones landed on the active integration branch (`0.21` today; `main` if the repo flips before Phase 4 starts), each with `status: done` in its plan file.
-  - `DESIGN.md § Status`, `CHANGELOG.md`, and `docs/DECISION_INDEX.md` are updated where milestone decisions change canonical project guidance.
-  - This file flipped to `status: done`, and any milestone that changes the shader/text/hot-reload rules updates `AGENTS.md` in the same change.
+  - "All 8 milestones landed on the active integration branch (`0.21` today; `main` if the repo flips before Phase 4 starts), each with `status: done` in its plan file."
+  - "DESIGN.md Status, CHANGELOG.md, and docs/DECISION_INDEX.md are updated where milestone decisions change canonical project guidance."
+  - "This file is flipped to `status: done`, and any milestone that changes the shader/text/hot-reload rules updates AGENTS.md in the same change."
 ---
 
 ## Current Renderer Baseline
