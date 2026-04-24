@@ -3,7 +3,7 @@ status: draft
 goal: Phase 4 ships 8 milestones (M25–M32) covering render foundation, materials, stock post-effects, bloom, 2D lighting, parallax + game-feel, instanced mesh particles + transitions, MSDF text, and a collaborative showcase example.
 non-goals:
   - No 3D, scripting, networking, WASM, editor (DESIGN.md §Non-Commitments).
-  - No capture tooling (GIF/video/screenshot automation).
+  - No capture tooling (GIF/video/screenshot automation); manual acceptance artifacts are still expected.
   - No deferred lighting, shadow casters, occluder polygons, volumetric lights, GI (Phase 5).
   - No asset-preprocessing pipeline (MSDF bakes at startup, not ahead of time).
   - No cleanup-only milestone; each feature milestone slices the monoliths it touches.
@@ -15,8 +15,9 @@ ordered steps:
   2. Execute M25 → M26 → M27 → M28 in order. M29 ↔ M30 order is free. M31 before M32. M32 last.
   3. Each milestone: write plan, implement, produce acceptance artifact, flip status to done.
 done-when:
-  - All 8 milestones landed on `main`, each with `status: done` in its plan file.
-  - `DESIGN.md § Status` updated. `CHANGELOG.md` entry added. This file flipped to `status: done`.
+  - All 8 milestones landed on the active integration branch (`0.21` today; `main` if the repo flips before Phase 4 starts), each with `status: done` in its plan file.
+  - `DESIGN.md § Status`, `CHANGELOG.md`, and `docs/DECISION_INDEX.md` are updated where milestone decisions change canonical project guidance.
+  - This file flipped to `status: done`, and any milestone that changes the shader/text/hot-reload rules updates `AGENTS.md` in the same change.
 ---
 
 ## Current Renderer Baseline
@@ -28,6 +29,16 @@ done-when:
 - [renderer.rs](crates/tungsten-render/src/renderer.rs) entrypoints: `render_frame`, `render_frame_with_quads`, `render_frame_full`, `render_frame_full_timed`.
 
 Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user materials, post-stack, bloom, normal-mapped lighting, parallax, screen-shake, squash/stretch, instanced mesh particles, screen transitions, MSDF text, capstone example.
+
+---
+
+## Seam Constraints
+
+- Manifest additions stay keyed JSON objects (`id -> entry`), matching the current `RawManifest` shape and merge behavior.
+- `Tween` remains one component per entity ([D-055](DECISIONS.md)); Phase 4 extends entity-local `TweenChannel`/override data instead of introducing a cross-entity tween target model.
+- Screen transitions stay umbrella-owned while `StateStack` queues concrete `GameState` values; do not move state-request abstractions into `tungsten-core` in Phase 4.
+- `CameraState` stays render output only; shake/trauma lives in `CameraController` or a sibling camera-control resource.
+- M31 stays within the current thread policy: no general worker pool or async runtime.
 
 ---
 
@@ -54,15 +65,16 @@ Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user mate
 **Touches:**
 - [renderer.rs](crates/tungsten-render/src/renderer.rs) — extract surface/config/timing into sibling modules; `render_frame_full` routes through new pass list.
 - [asset_loader.rs](crates/tungsten/src/asset_loader.rs) — new shader load path; `reload_shader` handler.
-- [manifest.rs](crates/tungsten-core/src/assets/manifest.rs) — `shaders: Vec<ShaderEntry>` section.
+- [manifest.rs](crates/tungsten-core/src/assets/manifest.rs) — keyed `shaders` section (`id -> ShaderEntry`), matching the existing manifest object shape.
 - [hot_reload.rs](crates/tungsten/src/hot_reload.rs) — route `.wgsl` edits.
+- [docs/DECISION_INDEX.md](docs/DECISION_INDEX.md), [AGENTS.md](AGENTS.md), [DESIGN.md](DESIGN.md) — same-change sync for the new shader hot-reload policy and support matrix.
 
 **Optional depth-test path:**
 - `Sprite` gains no field. Existing `z_order` CPU-sort stays default.
 - `RenderConfig { depth_sort: DepthSortMode::CpuStable | DepthSortMode::GpuDepth }` switches behavior.
 - GPU path writes `z_order as f32 / i32::MAX as f32` to `gl_Position.z`; sprite fragment enables depth write.
 
-**Acceptance:** `cargo run -p example-02-sprite-stress` renders through the offscreen pipeline; saving `sprite.wgsl` updates visuals without rebuild; smoke script passes; test layer 2 passes with `TUNGSTEN_SMOKE_FRAMES=3`.
+**Acceptance:** `cargo run -p example-02-sprite-stress` renders through the offscreen pipeline; saving `sprite.wgsl` updates visuals without rebuild; `cargo test --workspace` passes after the manifest schema grows `shaders`; `./scripts/smoke-examples.sh` passes.
 
 ---
 
@@ -89,13 +101,13 @@ Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user mate
 - `Sprite.material_id: Option<MaterialAssetId>` — `None` uses built-in `sprite.wgsl`.
 
 **Adds (manifest):**
-- `materials: Vec<MaterialEntry { id, shader_asset_id, uniform_defaults }>` section.
+- keyed `materials` section (`id -> MaterialEntry { shader_asset_id, uniform_defaults }`).
 - LUT images go under `sprites` section as regular assets.
 
-**Adds (tween bridge — tungsten-core/src/tween.rs):**
-- `TweenTarget::Material { entity, uniform_slot: MaterialSlot }`.
-- `enum MaterialSlot { Vec4(u8), Scalar(u8), Int(u8) }` — index into the fixed UBO layout.
-- `tween_tick_system` writes the resolved value into the entity's `Sprite.material_id`'s per-entity uniform override (new `MaterialUniformOverride` component).
+**Adds (entity-local uniform bridge — `tungsten-core/src/tween.rs` + `components.rs`):**
+- `UniformOverrideBlock` (name TBD) — fixed-layout per-entity override data for 4 `vec4`, 4 scalar, and 4 int slots; sprite materials are the first consumer and M31 reuses the same block for MSDF outline/glow.
+- `TweenChannel` grows uniform-slot variants keyed by slot / lane; no new `TweenTarget`, and the one-`Tween`-per-entity rule from [D-055](DECISIONS.md) stays intact.
+- `tween_tick_system` writes into the entity-local override block; the renderer falls back to manifest defaults when no override is present.
 
 **Stock roster (final — 17 effects in M26):**
 
@@ -181,20 +193,20 @@ Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user mate
 - `enum SquashTrigger { OnLand, OnHit, OnPickup, Manual }`.
 
 **Adds (crates/tungsten-core/src/camera.rs):**
-- `CameraState.shake_offset: Vec2`, `CameraState.shake_trauma: f32`.
-- Trauma model: `offset = max_offset * trauma^2 * noise()`, decay `trauma -= trauma_decay * dt`.
+- `CameraController` gains trauma-model shake state/config (`shake_trauma`, `shake_decay`, `shake_max_offset`, `shake_noise_seed`; exact names TBD).
+- `CameraState` stays output-only; the trauma offset is applied inside `camera_update_system` using the existing controller/output bookkeeping.
 
 **Adds (crates/tungsten-core/src/ecs/event_queue.rs usage):**
-- `ShakeEvent { trauma_add: f32 }` — event-driven shake triggers.
+- `ShakeEvent { trauma_add: f32 }` — event-driven shake triggers, registered through the existing `App::register_event` path.
 
 **Adds (systems, registered in umbrella crate):**
-- `parallax_extract_system` — groups sprite extract by `depth_bucket`, emits one view_proj per bucket (base `CameraState.position * scroll_factor`).
-- `shake_tick_system` — reads `EventQueue<ShakeEvent>`, advances trauma decay, updates `shake_offset`.
+- `shake_tick_system` — reads `EventQueue<ShakeEvent>`, advances trauma decay, and updates the controller-owned shake state.
 - `squash_stretch_trigger_system` — on matching event, inserts a one-shot `Tween` (M24) writing `Transform.scale`.
 
 **Touches:**
-- [sprite_extract.rs](crates/tungsten/src/sprite_extract.rs) — bucket-aware grouping.
+- [sprite_extract.rs](crates/tungsten/src/sprite_extract.rs) plus the extracted sprite payload passed into render — bucket-aware grouping that carries one camera matrix per `depth_bucket` through the existing `ExtractSpritesFn` seam.
 - [camera.rs](crates/tungsten/src/camera.rs) — shake offset applied before view matrix build.
+- [app.rs](crates/tungsten/src/app.rs) — register `ShakeEvent`.
 
 **Acceptance:** platformer gif — 3-layer parallax (sky / mid-hills / near-trees) scrolling horizontally, character lands with visible squash, on-hit screen shake + damage-flash material uniform fires.
 
@@ -206,20 +218,20 @@ Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user mate
 
 **Adds (crates/tungsten-render/src/):**
 - `mesh_particle.rs` — `MeshParticlePipeline`, `ParticleMesh { vertices: Vec<Vec2>, indices: Vec<u16> }` uploaded once, instanced per live particle.
-- `transition.rs` — `TransitionState { phase: Out | Swap | In, easing, elapsed }`.
 
 **Adds (crates/tungsten-core/src/assets/particle.rs):**
 - `ParticleConfig.render: ParticleRender` — `enum ParticleRender { Quad, Mesh { mesh_id: ParticleMeshAssetId } }`.
 - `ParticleMeshAssetId(u32)` + `ParticleMeshRegistry` resource.
 
 **Adds (crates/tungsten-core/src/assets/manifest.rs):**
-- `particle_meshes: Vec<ParticleMeshEntry { id, vertices, indices }>` — inline JSON or separate `.mesh.json`.
+- keyed `particle_meshes` section (`id -> ParticleMeshEntry { vertices, indices }`) — inline JSON or separate `.mesh.json`.
 
-**Adds (crates/tungsten-core/src/):**
-- `transitions.rs` — `Transition { out_effect: PostPass, in_effect: PostPass, duration: f32 }`, `RequestTransition { target: StateRequest, transition: Transition }` resource/event.
+**Adds (crates/tungsten/src/):**
+- `transition.rs` — `Transition { out_effect: PostPass, in_effect: PostPass, duration: f32 }`, `TransitionState { phase: Out | Swap | In, easing, elapsed }`.
+- [state.rs](crates/tungsten/src/state.rs) — transition-aware queueing (`request_push_transition`, `request_pop_transition`, `request_replace_transition`, or equivalent) that carries the concrete umbrella-owned `StateCommand` already used by `StateStack`.
 
 **State-system integration:**
-- [state.rs](crates/tungsten/src/state.rs) — `state_dispatcher_system` checks `RequestTransition`; runs `out_effect` via `PostStack` with driven progress uniform, swaps state at phase boundary, runs `in_effect` on the new state, clears transition.
+- [state.rs](crates/tungsten/src/state.rs) — `state_dispatcher_system` advances the queued transition, runs `out_effect` via `PostStack` with driven progress uniform, executes the stored state command at the phase boundary, runs `in_effect` on the new state, and clears transition.
 
 **Acceptance:**
 - Bullet-trail spawn in `examples/04_shader_playground/` using a triangle mesh (instanced).
@@ -229,7 +241,7 @@ Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user mate
 
 ## M31 — MSDF Text
 
-**Depends on:** M25 (shader assets), M26 (material-uniform patterns for outline/glow controls).
+**Depends on:** M25 (shader assets), M26 (shared entity-local uniform override for outline/glow controls).
 
 **Adds (new dep):**
 - `msdfgen` crate + `ttf_parser` crate. Both satisfy [D-015](DECISIONS.md) rule 2 (well-specified format). Add `DECISIONS.md` entry narrowing [D-026](DECISIONS.md): `cosmic-text` retained for layout; rasterizer path split — `glyphon` remains default, MSDF is opt-in.
@@ -239,21 +251,24 @@ Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user mate
 - `shaders/msdf_text.wgsl` — median-of-RGB threshold, optional outline + glow uniforms.
 
 **Adds (crates/tungsten-core/src/):**
-- `MsdfText { text: String, font_id: AssetId, px: f32, color: [u8;4], outline: Option<OutlineParams>, glow: Option<GlowParams> }` component.
+- `MsdfText { text: String, font_id: AssetId, px: f32, color: [u8;4], outline: Option<OutlineParams>, glow: Option<GlowParams> }` component; when present, the M26 `UniformOverrideBlock` drives outline/glow thresholds without adding a second tween bridge.
 - `MsdfFontRegistry` — parallel to `FontRegistry`, keyed by font ID.
 
+**Adds (manifest — existing `fonts` section):**
+- `fonts.<id>.msdf: bool | MsdfOptions` opt-in on the current keyed font entries; no parallel font-manifest format.
+
 **Bake pipeline:**
-- At startup, for each manifest font with `msdf: true`, `msdfgen` + `ttf_parser` generate a 512×512 atlas (ASCII + Latin-1 Supplement + user-declared extra ranges) on a background thread pool (reuse asset-load path).
+- At startup, for each manifest font with `msdf: true`, `msdfgen` + `ttf_parser` generate a 512×512 atlas synchronously in the existing asset-load path (ASCII + Latin-1 Supplement + user-declared extra ranges). No general worker pool in M31.
 - Atlas cached in memory only (no disk cache in M31).
 
 **Extract:**
-- `extract_msdf_text(&World)` — queries `(Transform, MsdfText, Visibility)`, resolves via `MsdfFontRegistry`, uses `cosmic-text` `Buffer` for layout, emits per-glyph quad instances referencing atlas UVs.
+- `extract_msdf_text(&World)` — queries `(Transform, MsdfText, Visibility)` plus the optional M26 uniform override block, resolves via `MsdfFontRegistry`, uses `cosmic-text` `Buffer` for layout, emits per-glyph quad instances referencing atlas UVs.
 
 **Touches:**
 - [text.rs](crates/tungsten-render/src/text.rs) — unchanged (`glyphon` path stays); MSDF runs as a sibling pipeline.
 - [asset_loader.rs](crates/tungsten/src/asset_loader.rs) — `asset_loader/msdf.rs` split.
 
-**Acceptance:** side-by-side gif — same string at 3 zoom levels rendered via `glyphon` vs `MsdfText`; outline + glow animated via tween→material-uniform bridge.
+**Acceptance:** side-by-side gif — same string at 3 zoom levels rendered via `glyphon` vs `MsdfText`; outline + glow animated via the shared entity-local uniform override introduced in M26.
 
 ---
 
@@ -294,6 +309,12 @@ M29 and M30 may swap. M31 must precede M32.
 - LYGIA WGSL snippets vendored under `crates/tungsten-render/src/shaders/stock/lygia/` with header attribution. No crate dependency.
 - MSDF narrows [D-026](DECISIONS.md) (does not reverse). `cosmic-text` retained for layout.
 - [D-023](DECISIONS.md) narrowed by M25 decision entry. Shader hot reload for body edits only; signature changes require rebuild.
+- New manifest sections follow the existing keyed object shape (`id -> entry`), not `Vec`-only formats.
+- Material/MSDF animation stays entity-local by extending `TweenChannel` plus shared override data; no cross-entity `TweenTarget` in Phase 4.
+- Screen transitions stay in `tungsten` alongside `StateStack`; no core `StateRequest` in Phase 4.
+- M29 shake extends `CameraController`, not `CameraState`.
+- M31 MSDF bake stays synchronous in the existing startup load path; parallel baking is Phase 5 work if startup cost justifies it.
+- Every new `D-0xx` added in Phase 4 updates [docs/DECISION_INDEX.md](docs/DECISION_INDEX.md) in the same change; M25/M31 also sync [AGENTS.md](AGENTS.md) and [DESIGN.md](DESIGN.md) when canonical shader/text guidance changes.
 - M26 `04_shader_playground` stays minimal. Heavy example authoring only in M32.
 - Depth-test sprite path ships in M25 as opt-in; `z_order` CPU-sort remains default.
 
