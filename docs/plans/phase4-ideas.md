@@ -1,307 +1,309 @@
 ---
 status: draft
-goal: Scope Phase 4 as a renderer-focused phase (8 milestones) that opens the engine up to user-authored shaders, 2D lighting, parallax, instanced mesh particles, crisp MSDF text, and a polished collaborative showcase example — with every milestone producing a gif-able demo.
+goal: Phase 4 ships 8 milestones (M25–M32) covering render foundation, materials, stock post-effects, bloom, 2D lighting, parallax + game-feel, instanced mesh particles + transitions, MSDF text, and a collaborative showcase example.
 non-goals:
-  - Not scoping everything at once; each milestone becomes its own `phase4-milestone-NN-*.md` plan.
-  - No 3D. No scripting. No networking. No WASM. No editor. (Per `DESIGN.md § Non-Commitments`.)
-  - No dedicated cleanup milestone — each feature milestone slices any monolith it touches.
-  - Deferred lighting / shadow-casting occluders explicitly out of Phase 4.
-  - Capture tooling (GIF/video/screenshot automation) dropped from Phase 4.
+  - No 3D, scripting, networking, WASM, editor (DESIGN.md §Non-Commitments).
+  - No capture tooling (GIF/video/screenshot automation).
+  - No deferred lighting, shadow casters, occluder polygons, volumetric lights, GI (Phase 5).
+  - No asset-preprocessing pipeline (MSDF bakes at startup, not ahead of time).
+  - No cleanup-only milestone; each feature milestone slices the monoliths it touches.
 files to touch:
-  - `docs/plans/phase4-ideas.md` (this file — planning only, no code)
-  - downstream per-milestone plans in `docs/plans/phase4-milestone-NN-*.md`
+  - `docs/plans/phase4-ideas.md` (this index)
+  - `docs/plans/phase4-milestone-25-*.md` through `docs/plans/phase4-milestone-32-*.md`
 ordered steps:
-  1. Align on the final milestone list + ordering (open questions at bottom).
-  2. Decide stock-effect roster for M26 (which ★-items ship, which become user-authored examples).
-  3. Confirm consolidation: 6 milestones (recommended) vs 8 milestones (one-concept-per-milestone).
-  4. Promote agreed milestones to individual `phase4-milestone-NN-*.md` plan files.
-  5. Kick off M25 implementation.
+  1. Promote each milestone below to its own `phase4-milestone-NN-*.md` plan file.
+  2. Execute M25 → M26 → M27 → M28 in order. M29 ↔ M30 order is free. M31 before M32. M32 last.
+  3. Each milestone: write plan, implement, produce acceptance artifact, flip status to done.
 done-when:
-  - The user has signed off on the final milestone list + ordering.
-  - Each selected milestone has a dedicated plan file with `status: draft`.
-  - Stock-effect roster for M26 is locked (prevents M26 scope-creep).
+  - All 8 milestones landed on `main`, each with `status: done` in its plan file.
+  - `DESIGN.md § Status` updated. `CHANGELOG.md` entry added. This file flipped to `status: done`.
 ---
 
-## Guiding Principle (carried from the archived draft)
+## Current Renderer Baseline
 
-**A Phase 4 milestone only counts if it produces a gif-able demo or a benchmark number.** The trap is "one more feature then I'll make the demo." Every milestone below names its acceptance artifact so we don't slide into infinite plumbing.
+- Single pass direct to swapchain, no depth, no MSAA.
+- Pipelines: [sprite](crates/tungsten-render/src/sprite.rs), [quad](crates/tungsten-render/src/quad.rs), [debug_line](crates/tungsten-render/src/debug_line.rs), [text](crates/tungsten-render/src/text.rs).
+- Text via `glyphon` + `cosmic-text` ([D-026](DECISIONS.md)).
+- WGSL embedded via `include_str!`, no hot reload ([D-023](DECISIONS.md)).
+- [renderer.rs](crates/tungsten-render/src/renderer.rs) entrypoints: `render_frame`, `render_frame_with_quads`, `render_frame_full`, `render_frame_full_timed`.
 
-## Context Digest
+Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user materials, post-stack, bloom, normal-mapped lighting, parallax, screen-shake, squash/stretch, instanced mesh particles, screen transitions, MSDF text, capstone example.
 
-Tungsten is at workspace `v0.21.0`, branch `0.21`, with Phase 3 closed (`M12`–`M24`). The renderer currently supports:
+---
 
-- One pass, direct-to-swapchain, no depth buffer, no MSAA
-- Three pipelines: [sprite](crates/tungsten-render/src/sprite.rs), [quad](crates/tungsten-render/src/quad.rs), [debug_line](crates/tungsten-render/src/debug_line.rs)
-- Screen-space text via `glyphon` + `cosmic-text` ([D-026](DECISIONS.md))
-- Sprite rotation + per-sprite tint + UV subrect (atlas-ready from M22)
-- Screenshot capture via offscreen `RENDER_ATTACHMENT | COPY_SRC` texture
-- Shaders are `include_str!`'d WGSL, NOT hot-reloadable ([D-023](DECISIONS.md))
+## M25 — Render Foundation
 
-Nothing today models materials, render targets, post-processing, lighting, normal maps, depth, MSAA, per-layer camera scroll, instanced non-quad geometry, user-authored shaders, or scalable text.
+**Depends on:** none.
 
-## Proposed Shape — 8 Milestones
+**Adds (crates/tungsten-render/src/):**
+- `targets.rs` — `RenderTargetPool`, `SceneTarget { color, depth, msaa? }`.
+- `passes/` — `PassDesc`, `PassRecorder`, `PassOrder`. Named targets + ordered pass list (no DAG).
+- `shader_hot_reload.rs` — `notify`-backed WGSL watcher, `naga` validation, `ShaderModuleCache` keyed by `ShaderAssetId`.
 
-User called 7 in the last round, but separately granted bloom its own milestone AND starred 20 stock effects. Three-way conflict: bloom-standalone + full starred roster + other six concepts = 8 minimum. This draft settles on 8. If we want 7, the honest cut is either (a) drop bloom back into M26, or (b) demote ~8 starred effects to "user-authored examples after Phase 4."
+**Adds (data types):**
+- `enum TargetId { SceneColor, SceneDepth, PostPing, PostPong, Swapchain }`.
+- `struct ShaderAssetId(u32)`, `struct ShaderRegistry` (resource in `tungsten-core` via opaque ID; WGSL text + compiled `wgpu::ShaderModule` stored render-side, per [D-016](DECISIONS.md) pattern).
 
-### M25 — Render Foundation (offscreen target + depth + shader hot reload)
+**Adds (config — `tungsten.json` `render.*`):**
+- `msaa: u32` (1, 2, 4, 8; default 1).
+- `depth_enabled: bool` (default true).
 
-**Why first:** everything else needs a separate scene render target AND fast shader iteration. Depth buffer folded in since M27 lighting wants it for correct overlap, and it's cheap to add while we're already rewiring the main pass.
+**Adds (DECISIONS.md):**
+- New entry narrowing [D-023](DECISIONS.md): shaders become manifest-tracked `.wgsl` assets with `notify` + `naga` validation; rebuild still required for signature changes; hot reload on body edits only. Cite `D-053` hot-reload matrix and extend it with `shader` row.
 
-Scope sketch:
+**Touches:**
+- [renderer.rs](crates/tungsten-render/src/renderer.rs) — extract surface/config/timing into sibling modules; `render_frame_full` routes through new pass list.
+- [asset_loader.rs](crates/tungsten/src/asset_loader.rs) — new shader load path; `reload_shader` handler.
+- [manifest.rs](crates/tungsten-core/src/assets/manifest.rs) — `shaders: Vec<ShaderEntry>` section.
+- [hot_reload.rs](crates/tungsten/src/hot_reload.rs) — route `.wgsl` edits.
 
-- Minimal "named render targets + ordered passes" abstraction (NOT a DAG render graph).
-- Depth buffer on the scene target; **optional depth-testing path** for sprites so overlap can be depth-resolved instead of CPU-sorted. Keep `z_order` CPU-sort as the default to avoid regressing existing examples.
-- Optional MSAA (configurable via `tungsten.json`, off by default).
-- Shaders become manifest-tracked assets; `notify` watcher re-validates via `naga` on change; on failure keep the previous module and log `error`. New `DECISIONS.md` entry reverses / narrows [D-023](DECISIONS.md).
-- Cracks `renderer.rs` (~31KB) into `passes/`, `targets.rs`, `surface.rs`, `timing.rs`.
+**Optional depth-test path:**
+- `Sprite` gains no field. Existing `z_order` CPU-sort stays default.
+- `RenderConfig { depth_sort: DepthSortMode::CpuStable | DepthSortMode::GpuDepth }` switches behavior.
+- GPU path writes `z_order as f32 / i32::MAX as f32` to `gl_Position.z`; sprite fragment enables depth write.
 
-**Acceptance artifact:** gif of `cargo run -p example-02-sprite-stress` going through the offscreen pipeline; editing `sprite.wgsl` and seeing the visual update without a rebuild.
+**Acceptance:** `cargo run -p example-02-sprite-stress` renders through the offscreen pipeline; saving `sprite.wgsl` updates visuals without rebuild; smoke script passes; test layer 2 passes with `TUNGSTEN_SMOKE_FRAMES=3`.
 
-### M26 — Materials + Post-Processing Stack + Tween→Material Bridge
+---
 
-**Why second:** M25 gives us the target + hot reload. Now the user gets to author shaders and drive their uniforms from tweens for damage flashes, charge-up glows, etc.
+## M26 — Materials + Post-Stack + Tween→Material Bridge
 
-Scope sketch:
+**Depends on:** M25.
 
-- `Material` asset type: manifest entry references a `.wgsl` + fixed uniform schema (no reflection — uniform struct is declared Rust-side, mirrored in WGSL).
-- Sprite render path can opt into a non-default material; default stays built-in `sprite.wgsl`.
-- Screen-space post stack: ordered list of full-screen passes reading `scene_color` → intermediate → swapchain.
-- **Tween→Material uniform bridge**: a `TweenChannel` variant that writes into a named material uniform slot. Unlocks damage flashes, pickup pulses, charge effects. Tiny surface-area addition to M24.
-- **Tungsten Stock Effects library** — all starred non-bloom effects in §Stock Effect Roster (~19 effects including the lit add-ons that ship later behind M28). Bloom is carved out to M27 as its own milestone.
+**Adds (crates/tungsten-render/src/):**
+- `material.rs` — `MaterialPipeline`, `MaterialUniforms` (fixed 256-byte UBO; 4 `Vec4` + 4 `f32` + 4 `i32` slots by name).
+- `post/` — `PostStack` resource, `PostPass` enum variants (one per stock effect), ping-pong target swap in `passes/`.
+- `shaders/stock/` — vendored WGSL:
+  - `shaders/stock/lygia/` — cherry-picked LYGIA helpers (noise, hash, srgb, luma) with MIT attribution header.
+  - `shaders/stock/tonemap.wgsl`, `vignette.wgsl`, `lut.wgsl`, `chromatic_aberration.wgsl`, `color_adjust.wgsl` (hue/sat/contrast), `tone_mono.wgsl` (sepia/mono/duotone).
+  - `shaders/stock/crt.wgsl`, `film_grain.wgsl`, `dither.wgsl`, `pixel_outline.wgsl`.
+  - `shaders/stock/fade.wgsl`, `wipe_radial.wgsl`, `dissolve.wgsl`, `glitch.wgsl`, `pixelate.wgsl`.
+  - `shaders/stock/fog.wgsl`, `god_rays.wgsl`.
 
-**Note:** `04_shader_playground` for this milestone is deliberately **minimal** — bouncing sprite + effect toggle overlay, not a game scene. Heavy example work is reserved for M32 capstone.
+**Adds (data types in tungsten-core):**
+- `struct MaterialAssetId(u32)` + `MaterialRegistry` resource.
+- `enum PostPass { Tonemap(TonemapParams), Vignette(VignetteParams), Lut(LutParams), ChromaticAberration(f32), ColorAdjust { hue, sat, contrast }, ToneMono(ToneMonoParams), Crt(CrtParams), FilmGrain(f32), Dither(DitherParams), PixelOutline(PixelOutlineParams), Fade(f32), WipeRadial(f32), Dissolve(f32), Glitch(GlitchParams), Pixelate(f32), Fog(FogParams), GodRays(GodRaysParams) }`.
+- `struct PostStack(Vec<PostPass>)` resource.
 
-**Acceptance artifact:** minimal `04_shader_playground` cycling through stock effects; separate clip showing a tween-driven damage flash on the platformer character.
+**Adds (Sprite extension):**
+- `Sprite.material_id: Option<MaterialAssetId>` — `None` uses built-in `sprite.wgsl`.
 
-### M27 — Bloom
+**Adds (manifest):**
+- `materials: Vec<MaterialEntry { id, shader_asset_id, uniform_defaults }>` section.
+- LUT images go under `sprites` section as regular assets.
 
-**Why third (between materials and lighting):** bloom is a multi-pass downsample-blur-composite operation significantly heavier than anything in the M26 stock roster. Breaking it out keeps M26 tight and gives bloom the attention it needs (mip chain allocation, Karis average, threshold + knee, final additive composite).
+**Adds (tween bridge — tungsten-core/src/tween.rs):**
+- `TweenTarget::Material { entity, uniform_slot: MaterialSlot }`.
+- `enum MaterialSlot { Vec4(u8), Scalar(u8), Int(u8) }` — index into the fixed UBO layout.
+- `tween_tick_system` writes the resolved value into the entity's `Sprite.material_id`'s per-entity uniform override (new `MaterialUniformOverride` component).
 
-Scope sketch:
+**Stock roster (final — 17 effects in M26):**
 
-- Mip-chained scene_color (~6 levels) allocated in M25's target system.
-- Threshold extract pass → progressive downsample with soft knee → upsample/blur with tent filter → additive composite into final post-stack slot.
-- Exposed as a single `Bloom { threshold, intensity, radius }` post-stack entry.
-- Hot reload of the bloom shaders works through M25's pipeline.
+| Bucket | Effects |
+| --- | --- |
+| Color | Tonemap, Vignette, LUT, ChromaticAberration, ColorAdjust, ToneMono |
+| Retro | CRT, FilmGrain, Dither, PixelOutline |
+| Transition | Fade, WipeRadial, Dissolve, Glitch, Pixelate |
+| Environmental | Fog, GodRays |
 
-**Acceptance artifact:** gif of a scene with emissive sprites (placeholder — real lit scene lands in M28) toggling bloom on/off.
+**Touches:**
+- [asset_loader.rs](crates/tungsten/src/asset_loader.rs) — `asset_loader/material.rs` split; `reload_material` handler.
+- [sprite.rs](crates/tungsten-render/src/sprite.rs) — per-batch material selection.
+- [tweens.rs](crates/tungsten/src/tweens.rs) — material-uniform channel path.
 
-### M28 — 2D Lighting (Forward, Normal-Mapped)
+**Acceptance:**
+- `examples/04_shader_playground/` — bouncing sprite + on-screen key list that toggles each of the 17 effects individually and cycles a preset stack.
+- Gif showing damage-flash uniform driven by a one-shot tween in [examples/01_platformer/](examples/01_platformer/).
 
-**Why fourth:** depends on M26 materials (the lit sprite path IS a material) and M25 target. M27 bloom pairs beautifully with emissive-mask lighting but isn't a hard dependency either direction.
+---
 
-Scope sketch:
+## M27 — Bloom
 
-- Sprite manifest gains optional `normal_map: AssetId` field.
-- `Light` components: `Point { radius, falloff }`, `Directional { angle }`, shared `color`/`intensity`.
-- Extract builds `LightUBO` (cap N=16 visible lights/frame; cull by view AABB).
-- Lit fragment shader samples normal, does N-dot-L per light, accumulates, multiplies albedo × tint × lighting.
-- `AmbientLight` resource (defaults to `Vec3::ONE` so unlit scenes don't change).
-- Ships the three **lit-sprite add-ons** from the roster: ★ emissive mask, ★ rim lighting. (Specular highlight remains unstarred / deferred.)
+**Depends on:** M25, M26.
 
-Explicit non-goals: deferred rendering, shadow casters, occluder polygons, volumetric lights, GI. Those are Phase 5.
+**Adds (crates/tungsten-render/src/):**
+- `post/bloom.rs` — `BloomPipeline { threshold, downsample, upsample, composite }`, mip chain allocator.
+- `shaders/stock/bloom_threshold.wgsl`, `bloom_downsample.wgsl`, `bloom_upsample.wgsl`, `bloom_composite.wgsl`.
 
-**Acceptance artifact:** platformer gets a normal-mapped character + two colored point lights + one directional; gif shows lighting response as the player moves, plus emissive eyes that bloom (integrates with M27).
+**Algorithm:**
+- Threshold extract from `SceneColor` with soft knee `(brightness, knee)` into mip 0 of `BloomPyramid`.
+- 6-level downsample with 13-tap Karis-averaged filter.
+- Progressive upsample with 9-tap tent filter, accumulate into mip 0.
+- Additive composite into `PostPing` as final `PostPass::Bloom { threshold, knee, intensity, radius }`.
 
-### M29 — Parallax Layers + Game-Feel Polish (shake + squash/stretch)
+**Adds to PostPass enum (M26):**
+- `Bloom(BloomParams)` variant appended; `PostStack` accepts it.
 
-**Why fifth:** cheapest, most decoupled, big visual bang-per-buck. Bundles the small game-feel wins because they're all "camera/transform helpers" and none alone justifies its own milestone.
+**Config:**
+- `render.bloom_max_mips: u32` (default 6, clamped by viewport size).
 
-Scope sketch:
+**Touches:**
+- [targets.rs](crates/tungsten-render/src/) from M25 — `BloomPyramid { mips: Vec<TextureView> }` allocator, resized on surface resize.
 
-- `ParallaxLayer { scroll_factor: Vec2, depth_bucket: i32 }` component, independent of `Sprite.z_order`.
-- Extract groups sprites by `depth_bucket`; each bucket gets its own view_proj derived from `CameraState.position * scroll_factor`.
-- **Camera screen-shake**: trauma-model shake on `CameraState` with decay, driven by an event or tween.
-- **Sprite squash/stretch helper**: a `SpriteSquashStretch` component + tiny system that tweens non-uniform `Transform.scale` on trigger (land, hit, pickup). Sits atop M24 tweens; no new tween surface.
+**Acceptance:** gif of `examples/04_shader_playground/` with an emissive sprite (flat bright quad as placeholder) toggling `Bloom` on/off via HUD; second gif with threshold/intensity/radius slid via keys.
 
-**Acceptance artifact:** platformer scrolls with 3-layer parallax; character lands with a visible squash; on hit, screen shakes + damage-flash material uniform fires.
+---
 
-### M30 — Instanced Mesh Particles + Screen Transitions
+## M28 — 2D Lighting (Forward, Normal-Mapped)
 
-**Why sixth:** bundles "new draw paths that use M26's material system." Instanced meshes unlock trails/beams/ribbons; transitions are a materials-post-stack use case. Both decoupled from lighting, both small, both motivate the material system further.
+**Depends on:** M25, M26. M27 recommended (bloom + emissive).
 
-Scope sketch:
+**Adds (crates/tungsten-core/src/):**
+- `components.rs` — `Light { kind: LightKind, color: Vec3, intensity: f32 }`, `enum LightKind { Point { radius: f32, falloff: f32 }, Directional { angle: f32 } }`.
+- Resource `AmbientLight(Vec3)` — default `Vec3::ONE`.
 
-- **Instanced mesh particles**: a second particle render path alongside the single-quad default. User supplies a small mesh (line segment, triangle, custom); emitter picks the path. Could eventually replace `debug_line`, but that's not a Phase 4 goal.
-- **Screen transitions**: `Transition` resource lets scene code request "push state `X` with `RadialWipe { duration: 0.6 }`" — engine runs out-shader on source, swaps state, runs in-shader on target. Reuses M26 post-stack and the fade/wipe/dissolve stock effects.
+**Adds (crates/tungsten-render/src/):**
+- `lighting.rs` — `LightUbo { lights: [GpuLight; 16], count: u32, ambient: Vec3 }`, `GpuLight { position, color, params }` as 32-byte POD.
+- `shaders/lit_sprite.wgsl` — samples albedo, normal, emissive; N-dot-L accumulation across lights; additive rim term; emissive mask add.
+- `shaders/stock/emissive_mask.wgsl`, `rim_light.wgsl` as composable helpers (callable from lit_sprite and from user materials).
 
-**Acceptance artifact:** trails behind a bullet-hell-style spawn pattern (instanced meshes); `03_scene_state` transitioning with each built-in wipe.
+**Adds (manifest — sprite entry):**
+- `normal_map: Option<AssetId>`.
+- `emissive_mask: Option<AssetId>` (single-channel mask, or alpha of normal_map if set and emissive_mask is None).
 
-### M31 — MSDF Text Rendering (final graphics-track milestone before capstone)
+**Adds (extract):**
+- `extract_lights(&World) -> LightUbo` — queries `(Transform, Light)`, culls by `CameraState::visible_world_aabb()`, caps at 16, writes to UBO.
+- Lit sprite batch path: if sprite has `normal_map`, routed through `lit_sprite.wgsl` pipeline instead of `sprite.wgsl`.
 
-**Why seventh (positioned deliberately before M32 capstone):** user wants text polished right before the showcase example so title cards, HUD, and world labels are pixel-perfect in the capstone. No other milestone depends on MSDF, and the [D-026](DECISIONS.md) narrow-vs-replace conversation is cleaner with everything else shipped.
+**Light cull:** distance-to-camera-AABB sort, keep nearest 16.
 
-Scope sketch:
+**Acceptance:** [examples/01_platformer/](examples/01_platformer/) gets normal-mapped character + 2 colored point lights + 1 directional; gif shows lighting response during movement; emissive eyes trigger M27 bloom.
 
-- Offline bake: `msdfgen` Rust crate + `ttf_parser` build a per-font `.msdf.png` + `.msdf.json` (glyph UV/metrics) at startup. Session-cached; not a manifest-pipeline step yet.
-- New text pipeline `msdf_text.wgsl` — ~20-line fragment shader doing median-of-RGB distance thresholding.
-- `cosmic-text` stays for layout (shaping, BiDi, line breaking); only the rasterizer swaps. [D-026](DECISIONS.md) gets narrowed via a new decision entry, not reversed.
-- New `MsdfText` component coexisting with existing glyphon-backed `TextSection`. Opt-in per call-site; default stays glyphon.
-- Free outlines/glows/shadows as shader-threshold operations — huge ergonomic win.
+---
 
-**Acceptance artifact:** side-by-side gif — same text at 3 zoom levels using glyphon vs MSDF. Bonus: a shader toggle that animates an outline + glow on MSDF text.
+## M29 — Parallax + Screen-Shake + Squash/Stretch
 
-### M32 — Collaborative Showcase Example (Phase 4 capstone — SPECULATIVE STUB)
+**Depends on:** M25 (extract changes share seam).
 
-**Status for now:** **stub only**. User has explicitly deferred design until after all shader/graphics systems ship. Do not pre-commit scope here beyond the stub.
+**Adds (crates/tungsten-core/src/components.rs):**
+- `ParallaxLayer { scroll_factor: Vec2, depth_bucket: i32 }`.
+- `SpriteSquashStretch { on: SquashTrigger, amount: Vec2, duration: f32 }`.
+- `enum SquashTrigger { OnLand, OnHit, OnPickup, Manual }`.
 
-**Why last:** every prior Phase 4 milestone has been infrastructure plus isolated demos. M32 is where the user and assistant sit down together and build ONE complex example that exercises materials, bloom, lighting, parallax, particles, transitions, and MSDF text.
+**Adds (crates/tungsten-core/src/camera.rs):**
+- `CameraState.shake_offset: Vec2`, `CameraState.shake_trauma: f32`.
+- Trauma model: `offset = max_offset * trauma^2 * noise()`, decay `trauma -= trauma_decay * dt`.
 
-Speculative scope (do not lock until kickoff):
+**Adds (crates/tungsten-core/src/ecs/event_queue.rs usage):**
+- `ShakeEvent { trauma_add: f32 }` — event-driven shake triggers.
 
-- Shape picked at M32 kickoff, NOT now. Candidate seeds carried forward from the archived draft purely for reference: bullet-hell shmup, top-down ARPG vertical slice, atmospheric exploration scene, procedural audio-reactive visualizer.
-- Must exercise: M26 materials + stock effects, M27 bloom, M28 lighting (normal-mapped + emissive), M29 parallax + shake + squash, M30 instanced particles + at least one transition, M31 MSDF title card.
-- Target lives in `examples/05_showcase/` (name TBD) with its own `assets/` manifest.
-- Acceptance by demo: a ~30-second clip that would be convincing as a "this is what Tungsten can do" showreel.
+**Adds (systems, registered in umbrella crate):**
+- `parallax_extract_system` — groups sprite extract by `depth_bucket`, emits one view_proj per bucket (base `CameraState.position * scroll_factor`).
+- `shake_tick_system` — reads `EventQueue<ShakeEvent>`, advances trauma decay, updates `shake_offset`.
+- `squash_stretch_trigger_system` — on matching event, inserts a one-shot `Tween` (M24) writing `Transform.scale`.
 
-**Acceptance artifact:** the clip itself + PNG stills committed under `docs/showcase/`.
+**Touches:**
+- [sprite_extract.rs](crates/tungsten/src/sprite_extract.rs) — bucket-aware grouping.
+- [camera.rs](crates/tungsten/src/camera.rs) — shake offset applied before view matrix build.
 
-**Explicit rule:** do not open `examples/05_showcase/` or start asset production during M25–M31. Use the minimal `04_shader_playground` scene inside each milestone for verification.
+**Acceptance:** platformer gif — 3-layer parallax (sky / mid-hills / near-trees) scrolling horizontally, character lands with visible squash, on-hit screen shake + damage-flash material uniform fires.
 
-## On MSDF — What It Is, Why We're Keeping It
+---
 
-**What it is:** MSDF = Multi-channel Signed Distance Field. Each glyph bakes ONCE into a texture where pixels encode distance to the nearest edge in R/G/B separately. A ~20-line fragment shader reconstructs crisp edges at any zoom via RGB-median threshold.
+## M30 — Instanced Mesh Particles + Screen Transitions
 
-**Why it looks better than `glyphon`'s per-size raster:**
+**Depends on:** M23 (particles), M26 (materials/post-stack).
 
-- Crisp at any zoom — 32px atlas glyph renders sharp at 12px or 512px with no re-rasterization.
-- Free outlines, glows, shadows, bevel effects — threshold operations in shader.
-- Tiny memory — one 512×512 atlas per font covers all sizes; glyphon keeps cached rasters per-size.
+**Adds (crates/tungsten-render/src/):**
+- `mesh_particle.rs` — `MeshParticlePipeline`, `ParticleMesh { vertices: Vec<Vec2>, indices: Vec<u16> }` uploaded once, instanced per live particle.
+- `transition.rs` — `TransitionState { phase: Out | Swap | In, easing, elapsed }`.
 
-**What we're committing to for M30:** narrow [D-026](DECISIONS.md) (don't reverse) — keep `cosmic-text` for layout (shaping, BiDi), swap only the rasterizer for opted-in text. Bake at startup via `msdfgen` crate; no asset-preprocessing pipeline step yet. Coexists with glyphon; glyphon stays the default.
+**Adds (crates/tungsten-core/src/assets/particle.rs):**
+- `ParticleConfig.render: ParticleRender` — `enum ParticleRender { Quad, Mesh { mesh_id: ParticleMeshAssetId } }`.
+- `ParticleMeshAssetId(u32)` + `ParticleMeshRegistry` resource.
 
-## External Shader Sources — Dev Time Reality Check
+**Adds (crates/tungsten-core/src/assets/manifest.rs):**
+- `particle_meshes: Vec<ParticleMeshEntry { id, vertices, indices }>` — inline JSON or separate `.mesh.json`.
 
-You asked about LYGIA dev-time overhead vs alternatives. Concrete answer:
+**Adds (crates/tungsten-core/src/):**
+- `transitions.rs` — `Transition { out_effect: PostPass, in_effect: PostPass, duration: f32 }`, `RequestTransition { target: StateRequest, transition: Transition }` resource/event.
 
-**[LYGIA](https://lygia.xyz/) cherry-pick + vendor** (my recommendation):
+**State-system integration:**
+- [state.rs](crates/tungsten/src/state.rs) — `state_dispatcher_system` checks `RequestTransition`; runs `out_effect` via `PostStack` with driven progress uniform, swaps state at phase boundary, runs `in_effect` on the new state, clears transition.
 
-- **What it gives us:** noise, hashes, color-space conversions, easing curves, distance functions, common math primitives. The fiddly parts of writing effects from scratch.
-- **What it does NOT give us:** complete effects. LYGIA is a function library, not an effect library. Each stock effect we ship is still a ~30–80 line hand-authored composition using LYGIA primitives.
-- **WGSL maturity:** LYGIA's WGSL branch covers a good portion of their primitives but not 100%. Some files we want may still be GLSL-only and need manual translation (30 min – 2 h per primitive).
-- **Dev-time savings vs pure from-scratch:** roughly 20–30% — we save on "scratch math" but most authoring time is effect composition, tuning, and visual iteration.
-- **Runtime cost:** zero. We vendor MIT-licensed text files into `tungsten-render/shaders/stock/lygia/` with a header attribution. No crate dependency, no [D-015](DECISIONS.md) conversation.
-- **Licensing:** LYGIA is MIT-compatible.
+**Acceptance:**
+- Bullet-trail spawn in `examples/04_shader_playground/` using a triangle mesh (instanced).
+- [examples/03_scene_state/](examples/03_scene_state/) transitions between states using each of fade, radial wipe, dissolve, pixelate-out.
 
-**Alternatives ranked by dev-time cost:**
+---
 
-1. **LYGIA cherry-pick (recommended):** ~same or slightly faster than from-scratch; lowest risk.
-2. **Pure from-scratch:** tailored exactly to our needs; +10–20% authoring time; no external dependency or attribution.
-3. **Port Godot shaders (GLSL):** high translation cost; excellent design inspiration; use as reference only.
-4. **Port Open-Shaders (GLSL/HLSL):** same story as Godot.
+## M31 — MSDF Text
 
-**Honest assessment:** LYGIA helps, but don't expect a drop-in. Treat it as "save time on boring math helpers; still hand-author the effects."
+**Depends on:** M25 (shader assets), M26 (material-uniform patterns for outline/glow controls).
 
-## Stock Effect Roster (for M26)
+**Adds (new dep):**
+- `msdfgen` crate + `ttf_parser` crate. Both satisfy [D-015](DECISIONS.md) rule 2 (well-specified format). Add `DECISIONS.md` entry narrowing [D-026](DECISIONS.md): `cosmic-text` retained for layout; rasterizer path split — `glyphon` remains default, MSDF is opt-in.
 
-**Priority key:** ★ = picked for M26 initial roster, open for promotion/demotion per your input.
+**Adds (crates/tungsten-render/src/):**
+- `msdf_text.rs` — `MsdfTextPipeline`, `MsdfAtlas { texture, glyph_metrics: HashMap<GlyphId, GlyphMetrics> }`, per-frame vertex buffer.
+- `shaders/msdf_text.wgsl` — median-of-RGB threshold, optional outline + glow uniforms.
 
-**Color / Tone:**
+**Adds (crates/tungsten-core/src/):**
+- `MsdfText { text: String, font_id: AssetId, px: f32, color: [u8;4], outline: Option<OutlineParams>, glow: Option<GlowParams> }` component.
+- `MsdfFontRegistry` — parallel to `FontRegistry`, keyed by font ID.
 
-- ★ Tonemap (Reinhard or ACES-approximation)
-- ★ Vignette
-- ★ Color grading via 3D LUT (`.cube` or baked PNG LUT strip)
-- ★ Chromatic aberration
-- ★ Hue shift / saturation / contrast
-- ★ Sepia, monochrome, duotone
+**Bake pipeline:**
+- At startup, for each manifest font with `msdf: true`, `msdfgen` + `ttf_parser` generate a 512×512 atlas (ASCII + Latin-1 Supplement + user-declared extra ranges) on a background thread pool (reuse asset-load path).
+- Atlas cached in memory only (no disk cache in M31).
 
-**Retro / Stylized:**
+**Extract:**
+- `extract_msdf_text(&World)` — queries `(Transform, MsdfText, Visibility)`, resolves via `MsdfFontRegistry`, uses `cosmic-text` `Buffer` for layout, emits per-glyph quad instances referencing atlas UVs.
 
-- ★ CRT (barrel distortion + scanlines + phosphor)
-- ★ Film grain (animated noise)
-- ★ Dithering (Bayer / Floyd-Steinberg approx)
-- Palette quantize / palette swap
-- 1-bit / low-bit posterize
-- ★ Pixel-art outline (8-directional threshold)
+**Touches:**
+- [text.rs](crates/tungsten-render/src/text.rs) — unchanged (`glyphon` path stays); MSDF runs as a sibling pipeline.
+- [asset_loader.rs](crates/tungsten/src/asset_loader.rs) — `asset_loader/msdf.rs` split.
 
-**Motion / Transition (used by M30):**
+**Acceptance:** side-by-side gif — same string at 3 zoom levels rendered via `glyphon` vs `MsdfText`; outline + glow animated via tween→material-uniform bridge.
 
-- ★ Fade (plain alpha crossfade)
-- ★ Radial wipe
-- ★ Dissolve (threshold against noise)
-- Directional motion blur
-- ★ Glitch (RGB-split + slice displacement)
-- ★ Pixelate-out
+---
 
-**Environmental:**
+## M32 — Showcase Example (scope-locked at kickoff, not now)
 
-- Water ripple (animated sine displacement + edge foam)
-- Heat distortion (2D normal sample → UV offset)
-- ★ Fog / vignette fog
-- ★ Screen-space god rays (radial blur from light position)
-- ★ Bloom (downsample + blur + additive) — **carved out to M27 as its own milestone**
+**Depends on:** M25–M31 all done.
 
-**Lit-sprite add-ons (ship with M28 lighting):**
+**Hard rule:** no `examples/05_showcase/` directory, no asset production, no scope lock until M31 is flipped to `status: done`.
 
-- ★ Emissive mask
-- ★ Rim lighting
-- Specular highlight on normal-mapped sprites
+**Locked requirements (only these):**
+- Lives in `examples/05_showcase/` with local `assets/manifest.json`.
+- Must exercise: materials + ≥5 stock effects (M26), bloom (M27), ≥2 point lights + 1 directional + normal maps (M28), ≥3 parallax layers + shake + squash (M29), ≥1 mesh-instanced particle system + ≥1 screen transition (M30), MSDF title card (M31).
+- Acceptance: ~30-second clip + 3 PNG stills committed under `docs/showcase/`.
 
-## Other Graphics Ideas — Status
+Shape (game or non-game), assets, and systems are designed in the M32 plan file, not here.
 
-From my earlier side-ideas list:
-
-1. ✅ **Tween→Material uniform bridge** — folded into M26.
-2. ✅ **Sprite squash/stretch** — folded into M29.
-3. ✅ **Camera screen-shake** — folded into M29 alongside squash/stretch ("wherever makes sense" per user).
-4. ✅ **Depth-buffer sprite sorting** — folded into M25 (optional; CPU `z_order` stays default).
-5. ✅ **Instanced particle-mesh path** — folded into M30.
-6. ⏸️ **Async texture upload / streaming** — not folded in; flagged for Phase 5.
-
-## Structural Weak Spots (Flagged, Not Scoped as Milestones)
-
-Each feature milestone slices the monolith it touches:
-
-- **`app.rs` (~48KB)** — M25 touches render parts of the frame path; natural crack point.
-- **`asset_loader.rs` (~34KB)** — M26 adds `Material`, M28 adds normal-map channel, M31 adds MSDF atlas. All good opportunities to split `asset_loader/` into per-type modules.
-- **`renderer.rs` (~31KB)** — M25 mandates cracking this open.
-- **Physics semi-fixed timestep** — [D-033](DECISIONS.md) flags this as preferred upgrade. Phase 5 candidate unless we trip on it.
+---
 
 ## Final Ordering
 
-1. **M25** — Render foundation (offscreen + depth + shader hot reload)
-2. **M26** — Materials + post stack + tween→material bridge + non-bloom stock effects (~19 effects)
-3. **M27** — Bloom (mip-chain, threshold, knee, additive composite)
-4. **M28** — 2D lighting (forward, normal-mapped) + emissive mask + rim lighting
-5. **M29** — Parallax + game-feel polish (screen-shake + squash/stretch)
-6. **M30** — Instanced mesh particles + screen transitions
-7. **M31** — MSDF text (positioned just before capstone at user's request)
-8. **M32** — Collaborative showcase example (SPECULATIVE STUB until M31 closes)
+| # | ID | Title | Hard Deps |
+| --- | --- | --- | --- |
+| 1 | M25 | Render foundation | — |
+| 2 | M26 | Materials + post-stack + tween→material | M25 |
+| 3 | M27 | Bloom | M25, M26 |
+| 4 | M28 | 2D lighting + emissive + rim | M25, M26 |
+| 5 | M29 | Parallax + shake + squash | M25 |
+| 6 | M30 | Mesh particles + transitions | M23, M26 |
+| 7 | M31 | MSDF text | M25, M26 |
+| 8 | M32 | Showcase | M25–M31 |
 
-Hard dependencies: M25 → M26 → M27 → M28. M29, M30 can swap. M31 must precede M32. M32 must not start until M31 lands.
+M29 and M30 may swap. M31 must precede M32.
 
-## Resolved Decisions From Planning
+## Resolved Decisions
 
-- **Milestone count:** 8 (locked, with note that the "7" answer collided with bloom-as-own-milestone + 20 starred effects).
-- **Stock effect roster:** all starred effects in §Stock Effect Roster ship across M26 (non-bloom), M27 (bloom), M28 (emissive + rim). ~22 effects total in Phase 4.
-- **Bloom:** own milestone (M27).
-- **Camera screen-shake:** folded into M29 with squash/stretch.
-- **M32 showcase:** speculative stub; not designed until M31 closes. No asset production or scope lock before then.
-- **Ordering:** MSDF at M31 right before capstone per user preference.
-- **M26 playground:** minimal scene only (bouncing sprite + effect toggle), no game-scene authoring until M32.
-- **Shader source strategy:** vendor LYGIA WGSL snippets with attribution into `tungsten-render/shaders/stock/lygia/`; hand-author the effect compositions on top.
-
-## Open Items for Per-Milestone Planning
-
-These get resolved in each milestone's dedicated plan file, not here:
-
-- Exact material uniform schema (M26).
-- Bloom parameters surface and mip-count tuning (M27).
-- `LightUBO` layout + packing + light-cull algorithm (M28).
-- `ParallaxLayer` interaction with existing tilemap and particle extracts (M29).
-- Instanced mesh format (M30).
-- MSDF atlas bake location and asset caching (M31).
+- 8 milestones. Locked.
+- 17 stock effects in M26; bloom in M27; emissive + rim in M28 lit path. Total Phase 4 effect count: 20.
+- LYGIA WGSL snippets vendored under `crates/tungsten-render/src/shaders/stock/lygia/` with header attribution. No crate dependency.
+- MSDF narrows [D-026](DECISIONS.md) (does not reverse). `cosmic-text` retained for layout.
+- [D-023](DECISIONS.md) narrowed by M25 decision entry. Shader hot reload for body edits only; signature changes require rebuild.
+- M26 `04_shader_playground` stays minimal. Heavy example authoring only in M32.
+- Depth-test sprite path ships in M25 as opt-in; `z_order` CPU-sort remains default.
 
 ## Sources
 
-- [Chlumsky/msdfgen — MSDF generator](https://github.com/Chlumsky/msdfgen)
-- [Blatko1/awesome-msdf](https://github.com/Blatko1/awesome-msdf)
-- [Signed Distance Field Fonts — redblobgames](https://www.redblobgames.com/blog/2024-03-21-sdf-fonts/)
+- [msdfgen — C++ reference implementation](https://github.com/Chlumsky/msdfgen)
 - [msdfgen Rust crate](https://docs.rs/msdfgen)
-- [LYGIA Shader Library](https://lygia.xyz/)
-- [Open-Shaders collection](https://github.com/repalash/Open-Shaders)
-- [Godot Shaders community library](https://godotshaders.com/)
-- [gdquest-demos/godot-shaders (2D shader collection)](https://github.com/gdquest-demos/godot-shaders)
+- [awesome-msdf — shader collection](https://github.com/Blatko1/awesome-msdf)
+- [SDF Fonts — redblobgames](https://www.redblobgames.com/blog/2024-03-21-sdf-fonts/)
+- [LYGIA shader library](https://lygia.xyz/)
 - [Godot CanvasItem shader reference](https://docs.godotengine.org/en/stable/tutorials/shaders/shader_reference/canvas_item_shader.html)
-- [LearnOpenGL — 2D Post-Processing](https://learnopengl.com/In-Practice/2D-Game/Postprocessing)
-- [fontdue — pure-Rust font rasterizer](https://github.com/mooman219/fontdue)
+- [gdquest-demos/godot-shaders — 2D reference](https://github.com/gdquest-demos/godot-shaders)
+- [LearnOpenGL — 2D post-processing](https://learnopengl.com/In-Practice/2D-Game/Postprocessing)
