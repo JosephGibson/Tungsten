@@ -4,7 +4,7 @@ Records all notable project changes.
 
 Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.25.0] - 2026-04-25
 
 ### Added
 
@@ -14,6 +14,11 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Workspace version bumped to `0.25.0`.
 - `README.md`, `AGENTS.md`, `DESIGN.md`, `CLAUDE.md`, and `docs/plans/phase4.md` now reflect branch `0.25` with M25, M26, M27, and M28 shipped.
+
+### Fixed
+
+- **M28 release-polish QA pass:** top-level status docs now consistently include M28 as shipped, `scripts/smoke-examples.sh` reports the M27/M28 fixture denominators correctly, and the 0.25 changelog entry is cut as `[0.25.0] - 2026-04-25`.
+- Release QA pass completed locally: `cargo fmt --all -- --check`, `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, `bash scripts/test-perf-capture.sh`, `bash -n scripts/smoke-examples.sh scripts/perf-capture.sh scripts/test-perf-capture.sh`, `WGPU_BACKEND=vulkan ./scripts/perf-capture.sh ecs-high-load 300 --telemetry-only`, and `WGPU_BACKEND=vulkan ./scripts/smoke-examples.sh` all passed.
 
 ## [0.24.0] - 2026-04-25
 

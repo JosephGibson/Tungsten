@@ -25,4 +25,4 @@ Pointer file for [Claude Code](https://claude.ai/code).
 
 ## Status
 
-Workspace `v0.25.0` on branch `0.25`. Phase 3 is complete; all milestones `M12`–`M24` shipped and the rollout plan is archived at [`docs/plans/archive/phase3.md`](docs/plans/archive/phase3.md). Phase 4 is underway with M25, M26, and M27 shipped; remaining scope is tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md).
+Workspace `v0.25.0` on branch `0.25`. Phase 3 is complete; all milestones `M12`–`M24` shipped and the rollout plan is archived at [`docs/plans/archive/phase3.md`](docs/plans/archive/phase3.md). Phase 4 is underway with M25, M26, M27, and M28 shipped; remaining scope is tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md).

@@ -173,7 +173,7 @@ for aa in smaa_high; do
   fi
 done
 
-echo "Post-AA passed: ${#post_aa_pass[@]}/${#post_aa_pass[@]}"
+echo "Post-AA passed: ${#post_aa_pass[@]}/1"
 if [ ${#post_aa_fail[@]} -gt 0 ]; then
   echo "Post-AA failures:"
   for row in "${post_aa_fail[@]}"; do
@@ -211,7 +211,7 @@ for label_bloom in "post_stack=bloom_only bloom_fixture=on"; do
   fi
 done
 
-echo "Bloom passed: ${#bloom_pass[@]}/${#bloom_pass[@]}"
+echo "Bloom passed: ${#bloom_pass[@]}/1"
 if [ ${#bloom_fail[@]} -gt 0 ]; then
   echo "Bloom failures:"
   for row in "${bloom_fail[@]}"; do
