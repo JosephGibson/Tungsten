@@ -46,7 +46,7 @@ fn round_trip(pass: PostPass) {
 }
 
 #[test]
-fn all_seventeen_variants_round_trip_through_json() {
+fn all_eighteen_variants_round_trip_through_json() {
     round_trip(PostPass::Tonemap(TonemapParams::default()));
     round_trip(PostPass::Vignette(VignetteParams::default()));
     round_trip(PostPass::Lut(LutParams::default()));
@@ -64,6 +64,35 @@ fn all_seventeen_variants_round_trip_through_json() {
     round_trip(PostPass::Pixelate(2.0));
     round_trip(PostPass::Fog(FogParams::default()));
     round_trip(PostPass::GodRays(GodRaysParams::default()));
+    round_trip(PostPass::Bloom(BloomParams::default()));
+}
+
+#[test]
+fn bloom_serde_round_trip_with_non_default_params() {
+    let pass = PostPass::Bloom(BloomParams {
+        threshold: 1.2,
+        knee: 0.4,
+        intensity: 0.6,
+        radius: 0.85,
+    });
+    let json = serde_json::to_string(&pass).unwrap();
+    let back: PostPass = serde_json::from_str(&json).unwrap();
+    assert_eq!(pass, back);
+    assert!(json.contains("\"kind\":\"bloom\""));
+}
+
+#[test]
+fn bloom_kind_name() {
+    assert_eq!(PostPass::Bloom(BloomParams::default()).kind_name(), "bloom");
+}
+
+#[test]
+fn bloom_default_matches_reference() {
+    let p = BloomParams::default();
+    assert_eq!(p.threshold, 1.0);
+    assert_eq!(p.knee, 0.5);
+    assert_eq!(p.intensity, 0.7);
+    assert_eq!(p.radius, 1.0);
 }
 
 #[test]

@@ -9,8 +9,10 @@ use tungsten_core::post::PostPass;
 use tungsten_core::tween::UniformOverrideBlock;
 
 use crate::passes::TargetId;
+use crate::shader_hot_reload::ShaderModuleCache;
 use crate::targets::RenderTargetPool;
 
+pub mod bloom;
 pub mod chromatic_aberration;
 pub mod color_adjust;
 pub mod crt;
@@ -31,6 +33,8 @@ pub mod tone_mono;
 pub mod tonemap;
 pub mod vignette;
 pub mod wipe_radial;
+
+use bloom::{BloomPipeline, BloomShaderIds};
 
 /// Shared resources every stock effect samples against: layouts, a linear
 /// sampler for post passes, and a reusable source-bind-group factory.
@@ -106,11 +110,19 @@ pub struct PostStackRenderer {
     pub(crate) pixelate: StockPipeline,
     pub(crate) fog: StockPipeline,
     pub(crate) god_rays: StockPipeline,
+    /// M28 bloom pipeline. Records its own multi-subpass slot at the encoder
+    /// level instead of the per-slot single-render-pass path; see `D-060`.
+    pub(crate) bloom: BloomPipeline,
 }
 
 impl PostStackRenderer {
     #[must_use]
-    pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
+    pub fn new(
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+        shader_cache: &ShaderModuleCache,
+        bloom_shader_ids: BloomShaderIds,
+    ) -> Self {
         let resources = StockResources::new(device);
         Self {
             tonemap: tonemap::build(device, &resources, format),
@@ -130,6 +142,7 @@ impl PostStackRenderer {
             pixelate: pixelate::build(device, &resources, format),
             fog: fog::build(device, &resources, format),
             god_rays: god_rays::build(device, &resources, format),
+            bloom: BloomPipeline::new(device, format, shader_cache, bloom_shader_ids),
             resources,
         }
     }
@@ -153,6 +166,9 @@ impl PostStackRenderer {
             PostPass::Pixelate(_) => &self.pixelate,
             PostPass::Fog(_) => &self.fog,
             PostPass::GodRays(_) => &self.god_rays,
+            PostPass::Bloom(_) => {
+                unreachable!("PostPass::Bloom is recorded by record_bloom_slot, not record_pass")
+            }
         }
     }
 
@@ -257,6 +273,9 @@ impl PostStackRenderer {
                 block.f32s[2] = p.weight;
                 block.f32s[3] = p.samples as f32;
             }
+            // Bloom is multi-subpass; UBO packing happens per sub-pass inside
+            // `BloomPipeline::record_pass` via `bloom::pack_params`.
+            PostPass::Bloom(_) => {}
         }
         block
     }
@@ -332,6 +351,25 @@ impl PostStackRenderer {
         render_pass.set_bind_group(0, &source_bg, &[]);
         render_pass.set_bind_group(1, &pipeline.params_bg, &[]);
         render_pass.draw(0..3, 0..1);
+    }
+
+    /// Record a `PostPass::Bloom` slot at encoder level. Unlike `record_pass`,
+    /// this opens its own per-subpass `RenderPass`es (threshold, downsample
+    /// chain, additive upsample chain, composite); the renderer's outer slot
+    /// `PassDesc` is treated as a debug-only label.
+    #[allow(clippy::too_many_arguments)]
+    pub fn record_bloom_slot(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        pool: &RenderTargetPool,
+        params: &tungsten_core::post::BloomParams,
+        src: TargetId,
+        dst: TargetId,
+    ) {
+        self.bloom
+            .record_pass(device, queue, encoder, pool, params, src, dst);
     }
 }
 

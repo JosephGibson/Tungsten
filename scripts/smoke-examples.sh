@@ -173,10 +173,48 @@ for aa in smaa_high; do
   fi
 done
 
-echo "Post-AA passed: ${#post_aa_pass[@]}/${#post_aa_pass[@]}"
+echo "Post-AA passed: ${#post_aa_pass[@]}/1"
 if [ ${#post_aa_fail[@]} -gt 0 ]; then
   echo "Post-AA failures:"
   for row in "${post_aa_fail[@]}"; do
+    echo "  - $row"
+  done
+  exit 1
+fi
+
+# M28: bloom fixture row. Locks the post stack to bloom-only and turns the
+# bloom env hint on so the playground spawns the emissive quad and pushes the
+# demo-tuned BloomParams. Verifies the multi-subpass slot path runs cleanly.
+echo
+echo "M28 bloom fixture matrix (pkg: $post_pkg)"
+bloom_pass=()
+bloom_fail=()
+for label_bloom in "post_stack=bloom_only bloom_fixture=on"; do
+  label="$label_bloom"
+  printf "  %-28s ... " "$label"
+  log_file="$log_dir/${post_pkg}-bloom.log"
+  if TUNGSTEN_SMOKE_FRAMES="$SMOKE_FRAMES" \
+     TUNGSTEN_POST_STACK_FIXTURE="bloom_only" \
+     TUNGSTEN_BLOOM_FIXTURE="on" \
+     timeout --preserve-status "$TIMEOUT_SECS" \
+     cargo run -p "$post_pkg" --quiet >"$log_file" 2>&1; then
+    echo "OK"
+    bloom_pass+=("$label")
+  else
+    code=$?
+    if [ "$code" -eq 124 ]; then
+      echo "TIMEOUT (${TIMEOUT_SECS}s)"
+    else
+      echo "FAIL (exit $code)"
+    fi
+    bloom_fail+=("$label ($log_file)")
+  fi
+done
+
+echo "Bloom passed: ${#bloom_pass[@]}/1"
+if [ ${#bloom_fail[@]} -gt 0 ]; then
+  echo "Bloom failures:"
+  for row in "${bloom_fail[@]}"; do
     echo "  - $row"
   done
   exit 1

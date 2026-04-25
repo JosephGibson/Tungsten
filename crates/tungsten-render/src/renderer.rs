@@ -6,6 +6,10 @@ use std::time::Instant;
 use crate::debug_line::{DebugLineInstance, DebugLinePipeline};
 use crate::material::{build_material_pipeline, MaterialPipeline};
 use crate::passes::{default_pass_order, text_overlay_target, PassRecorder, TargetId};
+use crate::post::bloom::{
+    BloomShaderIds, BLOOM_COMPOSITE_SHADER_NAME, BLOOM_DOWNSAMPLE_SHADER_NAME,
+    BLOOM_THRESHOLD_SHADER_NAME, BLOOM_UPSAMPLE_SHADER_NAME,
+};
 use crate::post::smaa::{
     SmaaPipeline, SmaaShaderIds, SMAA_BLEND_WEIGHTS_SHADER_NAME, SMAA_EDGE_SHADER_NAME,
     SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME,
@@ -26,7 +30,7 @@ use tungsten_core::assets::{
 use tungsten_core::config::{
     is_supported_msaa, DepthSortMode, PostAaMode, PresentModeConfig, RenderConfig,
 };
-use tungsten_core::post::PostStack;
+use tungsten_core::post::{PostPass, PostStack};
 use winit::window::Window;
 
 #[derive(Debug, Error)]
@@ -79,6 +83,9 @@ pub struct Renderer {
     /// SMAA presentation pipeline. Allocated on demand when `post_aa != Off`.
     smaa: Option<SmaaPipeline>,
     smaa_shader_ids: SmaaShaderIds,
+    #[allow(dead_code)] // mirror of post_stack.bloom.shader_ids; future debug HUD will read it.
+    bloom_shader_ids: BloomShaderIds,
+    bloom_max_mips: u32,
     #[allow(dead_code)] // kept for symmetry with shader_ids map; future work wires to debug HUD.
     sprite_shader_id: ShaderAssetId,
     /// M26 material pipelines keyed by id.
@@ -223,6 +230,16 @@ impl Renderer {
         let text_pipeline = TextPipeline::new(&device, &queue, format, 1, false);
 
         let post_aa = config.post_aa;
+        let bloom_max_mips =
+            if tungsten_core::config::is_supported_bloom_max_mips(config.bloom_max_mips) {
+                config.bloom_max_mips
+            } else {
+                log::warn!(
+                    "unsupported bloom_max_mips {} in RenderConfig; falling back to 6",
+                    config.bloom_max_mips
+                );
+                6
+            };
         let target_pool = RenderTargetPool::new(
             &device,
             (surface_config.width, surface_config.height),
@@ -230,6 +247,7 @@ impl Renderer {
             sample_count,
             depth_enabled,
             post_aa,
+            bloom_max_mips,
         );
         let present_blit = PresentBlitPipeline::new(&device, format);
 
@@ -276,7 +294,50 @@ impl Renderer {
             )
             .expect("compile-time smaa_neighborhood_blend shader must validate");
 
-        let post_stack = PostStackRenderer::new(&device, format);
+        let bloom_shader_ids = BloomShaderIds {
+            threshold: ShaderAssetId(4),
+            downsample: ShaderAssetId(5),
+            upsample: ShaderAssetId(6),
+            composite: ShaderAssetId(7),
+        };
+        let bloom_threshold_src = include_str!("shaders/stock/bloom_threshold.wgsl").to_string();
+        let bloom_downsample_src = include_str!("shaders/stock/bloom_downsample.wgsl").to_string();
+        let bloom_upsample_src = include_str!("shaders/stock/bloom_upsample.wgsl").to_string();
+        let bloom_composite_src = include_str!("shaders/stock/bloom_composite.wgsl").to_string();
+        shader_cache
+            .upload(
+                &device,
+                bloom_shader_ids.threshold,
+                BLOOM_THRESHOLD_SHADER_NAME,
+                bloom_threshold_src,
+            )
+            .expect("compile-time bloom_threshold shader must validate");
+        shader_cache
+            .upload(
+                &device,
+                bloom_shader_ids.downsample,
+                BLOOM_DOWNSAMPLE_SHADER_NAME,
+                bloom_downsample_src,
+            )
+            .expect("compile-time bloom_downsample shader must validate");
+        shader_cache
+            .upload(
+                &device,
+                bloom_shader_ids.upsample,
+                BLOOM_UPSAMPLE_SHADER_NAME,
+                bloom_upsample_src,
+            )
+            .expect("compile-time bloom_upsample shader must validate");
+        shader_cache
+            .upload(
+                &device,
+                bloom_shader_ids.composite,
+                BLOOM_COMPOSITE_SHADER_NAME,
+                bloom_composite_src,
+            )
+            .expect("compile-time bloom_composite shader must validate");
+
+        let post_stack = PostStackRenderer::new(&device, format, &shader_cache, bloom_shader_ids);
 
         let smaa = if post_aa.is_smaa() {
             Some(build_smaa_pipeline(
@@ -303,6 +364,22 @@ impl Renderer {
             SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME.to_string(),
             smaa_shader_ids.neighborhood_blend,
         );
+        shader_ids.insert(
+            BLOOM_THRESHOLD_SHADER_NAME.to_string(),
+            bloom_shader_ids.threshold,
+        );
+        shader_ids.insert(
+            BLOOM_DOWNSAMPLE_SHADER_NAME.to_string(),
+            bloom_shader_ids.downsample,
+        );
+        shader_ids.insert(
+            BLOOM_UPSAMPLE_SHADER_NAME.to_string(),
+            bloom_shader_ids.upsample,
+        );
+        shader_ids.insert(
+            BLOOM_COMPOSITE_SHADER_NAME.to_string(),
+            bloom_shader_ids.composite,
+        );
 
         Ok(Self {
             instance,
@@ -326,10 +403,12 @@ impl Renderer {
             post_aa,
             smaa,
             smaa_shader_ids,
+            bloom_shader_ids,
+            bloom_max_mips,
             sprite_shader_id,
             materials: HashMap::new(),
             shader_ids,
-            next_shader_id: 4,
+            next_shader_id: 8,
             timestamp_support,
             gpu_timings,
             cpu_timings: CpuFrameTimings::default(),
@@ -446,6 +525,20 @@ impl Renderer {
                 smaa.rebuild_stage_with_module(&self.device, id, &module);
             }
         }
+        if matches!(
+            name,
+            BLOOM_THRESHOLD_SHADER_NAME
+                | BLOOM_DOWNSAMPLE_SHADER_NAME
+                | BLOOM_UPSAMPLE_SHADER_NAME
+                | BLOOM_COMPOSITE_SHADER_NAME
+        ) {
+            self.post_stack.bloom.rebuild_stage_with_module(
+                &self.device,
+                self.surface_config.format,
+                id,
+                &module,
+            );
+        }
         self.shader_cache.commit(id, wgsl, module);
         // Any material bound to this shader needs a rebuild against the new module.
         if name != SPRITE_SHADER_NAME
@@ -454,6 +547,10 @@ impl Renderer {
                 SMAA_EDGE_SHADER_NAME
                     | SMAA_BLEND_WEIGHTS_SHADER_NAME
                     | SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME
+                    | BLOOM_THRESHOLD_SHADER_NAME
+                    | BLOOM_DOWNSAMPLE_SHADER_NAME
+                    | BLOOM_UPSAMPLE_SHADER_NAME
+                    | BLOOM_COMPOSITE_SHADER_NAME
             )
         {
             self.rebuild_materials_for_shader(name);
@@ -497,6 +594,20 @@ impl Renderer {
                 smaa.rebuild_stage_with_module(&self.device, id, &module);
             }
         }
+        if matches!(
+            name,
+            BLOOM_THRESHOLD_SHADER_NAME
+                | BLOOM_DOWNSAMPLE_SHADER_NAME
+                | BLOOM_UPSAMPLE_SHADER_NAME
+                | BLOOM_COMPOSITE_SHADER_NAME
+        ) {
+            self.post_stack.bloom.rebuild_stage_with_module(
+                &self.device,
+                self.surface_config.format,
+                id,
+                &module,
+            );
+        }
         self.shader_cache.commit(id, wgsl, module);
         if name != SPRITE_SHADER_NAME
             && !matches!(
@@ -504,6 +615,10 @@ impl Renderer {
                 SMAA_EDGE_SHADER_NAME
                     | SMAA_BLEND_WEIGHTS_SHADER_NAME
                     | SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME
+                    | BLOOM_THRESHOLD_SHADER_NAME
+                    | BLOOM_DOWNSAMPLE_SHADER_NAME
+                    | BLOOM_UPSAMPLE_SHADER_NAME
+                    | BLOOM_COMPOSITE_SHADER_NAME
             )
         {
             self.rebuild_materials_for_shader(name);
@@ -620,6 +735,7 @@ impl Renderer {
                 self.sample_count,
                 self.depth_enabled,
                 self.post_aa,
+                self.bloom_max_mips,
             );
             if let Some(smaa) = self.smaa.as_ref() {
                 smaa.update_preset(&self.queue, self.post_aa, (width, height));
@@ -649,6 +765,7 @@ impl Renderer {
             self.sample_count,
             self.depth_enabled,
             self.post_aa,
+            self.bloom_max_mips,
         );
         match (self.post_aa.is_smaa(), self.smaa.is_some()) {
             (true, false) => {
@@ -946,6 +1063,27 @@ impl Renderer {
             } else {
                 None
             };
+
+            // Bloom is the only post variant that does not record a single
+            // fullscreen draw into the slot's auto-opened render pass; it
+            // opens its own per-subpass passes through the encoder. Detect it
+            // before `PassRecorder::begin` and skip the auto-open path.
+            if let Some(pi) = post_index {
+                if let (Some(PostPass::Bloom(params)), Some(&(src, dst))) =
+                    (post_stack.0.get(pi), post_plan.get(pi))
+                {
+                    self.post_stack.record_bloom_slot(
+                        &self.device,
+                        &self.queue,
+                        &mut encoder,
+                        &self.target_pool,
+                        params,
+                        src,
+                        dst,
+                    );
+                    continue;
+                }
+            }
 
             let clear_override = if is_scene {
                 Some(self.clear_color)

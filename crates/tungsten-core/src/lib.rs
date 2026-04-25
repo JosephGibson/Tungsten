@@ -48,10 +48,10 @@ pub use physics::{
     CollisionEvent, Contact, PhysicsConfig, Position, RigidBody, Shape, SpatialGrid, Velocity,
 };
 pub use post::{
-    ColorAdjustParams, CrtParams, DissolveParams, DitherMode, DitherParams, FadeParams,
-    FilmGrainParams, FogParams, GlitchParams, GodRaysParams, LutParams, PixelOutlineParams,
-    PostPass, PostStack, ToneMonoMode, ToneMonoParams, TonemapMode, TonemapParams, VignetteParams,
-    WipeRadialParams,
+    BloomParams, ColorAdjustParams, CrtParams, DissolveParams, DitherMode, DitherParams,
+    FadeParams, FilmGrainParams, FogParams, GlitchParams, GodRaysParams, LutParams,
+    PixelOutlineParams, PostPass, PostStack, ToneMonoMode, ToneMonoParams, TonemapMode,
+    TonemapParams, VignetteParams, WipeRadialParams,
 };
 pub use rng::{splitmix64, Pcg32};
 pub use time::DeltaTime;

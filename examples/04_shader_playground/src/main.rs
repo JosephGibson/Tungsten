@@ -25,14 +25,27 @@ use tungsten::particles::spawn_particle_via;
 use tungsten::{render::TextSection, request_post_aa, App, PostAaState};
 use tungsten_core::config::PostAaMode;
 use tungsten_core::post::{
-    ColorAdjustParams, CrtParams, DissolveParams, DitherParams, FadeParams, FilmGrainParams,
-    FogParams, GodRaysParams, LutParams, PixelOutlineParams, PostPass, PostStack, ToneMonoParams,
-    TonemapParams, VignetteParams, WipeRadialParams,
+    BloomParams, ColorAdjustParams, CrtParams, DissolveParams, DitherParams, FadeParams,
+    FilmGrainParams, FogParams, GodRaysParams, LutParams, PixelOutlineParams, PostPass, PostStack,
+    ToneMonoParams, TonemapParams, VignetteParams, WipeRadialParams,
 };
 
 const ROOT_MANIFEST: &str = "assets/manifest.json";
 const LOCAL_MANIFEST: &str = "examples/04_shader_playground/assets/manifest.json";
 const QUAD_ID: &str = "ex04_quad";
+const EMISSIVE_QUAD_ID: &str = "ex04_emissive_quad";
+
+/// Demo-tuned bloom params for the LDR fixture: threshold drops below 1.0 so a
+/// pure-white sprite blooms visibly even without HDR scene values, intensity
+/// stays below 1.5 to keep the halo readable next to the rest of the stack.
+fn demo_bloom_params() -> BloomParams {
+    BloomParams {
+        threshold: 0.85,
+        knee: 0.35,
+        intensity: 1.0,
+        radius: 1.0,
+    }
+}
 /// Source quad is 16x16 (see `assets/quad.png`); logical size = `QUAD_TEXELS * scale`.
 const QUAD_TEXELS: f32 = 16.0;
 const WINDOW_W: f32 = 1280.0;
@@ -79,7 +92,7 @@ fn main() -> anyhow::Result<()> {
     env_logger::init();
 
     let mut config = Config::load("tungsten.json")?;
-    config.window.title = "Shader Playground — M26".to_string();
+    config.window.title = "Shader Playground — M26 / M27 / M28".to_string();
 
     // M27: optional `TUNGSTEN_POST_AA_FIXTURE` env override before `App::new`
     // so the renderer wakes up with the requested SMAA preset already active.
@@ -112,8 +125,10 @@ fn main() -> anyhow::Result<()> {
 
     app.on_startup(|world, _renderer| {
         spawn_bouncers(world);
+        spawn_emissive_quad(world);
 
         let fixture = std::env::var("TUNGSTEN_POST_STACK_FIXTURE").unwrap_or_default();
+        let bloom_fixture = std::env::var("TUNGSTEN_BLOOM_FIXTURE").unwrap_or_default() == "on";
         if !fixture.is_empty() && fixture != "empty" {
             if let Some(stack) = world.get_resource_mut::<PostStack>() {
                 match fixture.as_str() {
@@ -121,11 +136,19 @@ fn main() -> anyhow::Result<()> {
                     "retro_arcade" => push_retro_arcade(stack),
                     "dreamy" => push_dreamy(stack),
                     "glitch_boss" => push_glitch_boss(stack),
+                    "bloom_only" => stack.push(PostPass::Bloom(demo_bloom_params())),
                     _ => {}
                 }
             }
             if let Some(cursor) = world.get_resource_mut::<CycleCursor>() {
                 cursor.fixture_lock = true;
+            }
+        } else if bloom_fixture {
+            // Bloom-only env shortcut: when no post-stack fixture is set, a
+            // standalone TUNGSTEN_BLOOM_FIXTURE=on enables bloom for the
+            // capture path without locking the cycle.
+            if let Some(stack) = world.get_resource_mut::<PostStack>() {
+                stack.push(PostPass::Bloom(demo_bloom_params()));
             }
         }
     });
@@ -134,9 +157,30 @@ fn main() -> anyhow::Result<()> {
     app.add_system_named("playground_collisions", pair_collision_system);
     app.add_system_named("playground_cycle_input", cycle_input_system);
     app.add_system_named("playground_post_aa_input", post_aa_input_system);
+    app.add_system_named("playground_bloom_input", bloom_input_system);
     app.set_extract_text(playground_text);
 
     app.run()
+}
+
+/// Spawn one bright emissive quad in the upper-right of the playground arena.
+/// Acts as the visible bloom source for the LDR demo fixture: it is just a
+/// fully-white sprite (R/G/B = 1.0 after sRGB decode), so the playground
+/// fixture lowers the threshold below 1.0 to make it clip into the bright pass.
+fn spawn_emissive_quad(world: &mut World) {
+    let entity = world.spawn();
+    world.insert(
+        entity,
+        Transform {
+            position: Vec2::new(WINDOW_W * 0.78, WINDOW_H * 0.32),
+            rotation: 0.0,
+            scale: Vec2::splat(2.5),
+        },
+    );
+    let mut sprite = Sprite::new(EMISSIVE_QUAD_ID);
+    sprite.color = [255, 255, 255, 255];
+    world.insert(entity, sprite);
+    world.insert(entity, Visibility::default());
 }
 
 const POST_AA_CYCLE: &[PostAaMode] = &[
@@ -652,6 +696,79 @@ fn cycle_input_system(world: &mut World) {
     }
 }
 
+/// Toggles bloom on KeyL and lets Y/H/U/J/I/K nudge threshold/intensity/radius
+/// in 0.05 steps. The toggle adds a `PostPass::Bloom` slot to the live stack
+/// when none exists yet, or removes the most recent bloom slot when one is
+/// already live. While bloom is in the stack the live-tune actions mutate the
+/// last bloom slot's params so the user sees immediate halo updates.
+fn bloom_input_system(world: &mut World) {
+    let (toggle, thr_inc, thr_dec, int_inc, int_dec, rad_inc, rad_dec) = {
+        let Some(input) = world.get_resource::<InputState>() else {
+            return;
+        };
+        let Some(actions) = world.get_resource::<ActionMap>() else {
+            return;
+        };
+        (
+            actions.just_pressed(input, "playground_toggle_bloom"),
+            actions.just_pressed(input, "playground_bloom_threshold_inc"),
+            actions.just_pressed(input, "playground_bloom_threshold_dec"),
+            actions.just_pressed(input, "playground_bloom_intensity_inc"),
+            actions.just_pressed(input, "playground_bloom_intensity_dec"),
+            actions.just_pressed(input, "playground_bloom_radius_inc"),
+            actions.just_pressed(input, "playground_bloom_radius_dec"),
+        )
+    };
+
+    let Some(stack) = world.get_resource_mut::<PostStack>() else {
+        return;
+    };
+
+    if toggle {
+        let bloom_idx = stack
+            .as_slice()
+            .iter()
+            .rposition(|p| matches!(p, PostPass::Bloom(_)));
+        match bloom_idx {
+            Some(i) => {
+                stack.0.remove(i);
+            }
+            None => stack.push(PostPass::Bloom(demo_bloom_params())),
+        }
+        return;
+    }
+
+    let Some(slot) = stack
+        .as_slice_mut()
+        .iter_mut()
+        .rev()
+        .find(|p| matches!(p, PostPass::Bloom(_)))
+    else {
+        return;
+    };
+    if let PostPass::Bloom(params) = slot {
+        const STEP: f32 = 0.05;
+        if thr_inc {
+            params.threshold = (params.threshold + STEP).max(0.0);
+        }
+        if thr_dec {
+            params.threshold = (params.threshold - STEP).max(0.0);
+        }
+        if int_inc {
+            params.intensity = (params.intensity + STEP).max(0.0);
+        }
+        if int_dec {
+            params.intensity = (params.intensity - STEP).max(0.0);
+        }
+        if rad_inc {
+            params.radius = (params.radius + STEP).clamp(0.0, 1.0);
+        }
+        if rad_dec {
+            params.radius = (params.radius - STEP).clamp(0.0, 1.0);
+        }
+    }
+}
+
 fn playground_text(world: &World) -> Vec<TextSection> {
     let cursor = world
         .get_resource::<CycleCursor>()
@@ -674,9 +791,26 @@ fn playground_text(world: &World) -> Vec<TextSection> {
     let post_aa_label = world
         .get_resource::<PostAaState>()
         .map_or("off", |s| s.mode.as_str());
+    let bloom_label = world
+        .get_resource::<PostStack>()
+        .and_then(|s| {
+            s.as_slice().iter().rev().find_map(|p| match p {
+                PostPass::Bloom(b) => Some(*b),
+                _ => None,
+            })
+        })
+        .map_or_else(
+            || "bloom: off".to_string(),
+            |b| {
+                format!(
+                    "bloom: on  thr={:.2} int={:.2} rad={:.2}  (L toggle Y/H U/J I/K)",
+                    b.threshold, b.intensity, b.radius
+                )
+            },
+        );
     vec![TextSection {
         content: format!(
-            "Shader Playground · active: {active_name}\npost_aa: {post_aa_label}   (Tab cycle  0/5/6/7/8 set)\n{hint}"
+            "Shader Playground · active: {active_name}\npost_aa: {post_aa_label}   (Tab cycle  0/5/6/7/8 set)\n{bloom_label}\n{hint}"
         ),
         font_id: "mono".into(),
         font_size: 20.0,
@@ -706,6 +840,7 @@ fn effect_label(i: usize) -> &'static str {
         "pixelate",
         "fog",
         "god_rays",
+        "bloom",
     ][i]
 }
 
@@ -756,6 +891,7 @@ const EFFECT_ROSTER: &[fn() -> PostPass] = &[
     || PostPass::Pixelate(4.0),
     || PostPass::Fog(FogParams::default()),
     || PostPass::GodRays(GodRaysParams::default()),
+    || PostPass::Bloom(demo_bloom_params()),
 ];
 
 fn push_every_effect(stack: &mut PostStack) {

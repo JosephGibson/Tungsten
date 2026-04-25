@@ -32,6 +32,48 @@ pub enum TargetId {
     Swapchain,
 }
 
+/// M28 bloom pyramid format. `Rgba16Float` avoids 8-bit sRGB quantization
+/// during downsample/upsample even though the source scene stays LDR.
+pub const BLOOM_PYRAMID_FORMAT: TextureFormat = TextureFormat::Rgba16Float;
+
+/// Allocated bloom mip-chain: one 2D texture with N mip levels plus per-level
+/// views. Mip 0 is half resolution, each successive mip halves again.
+#[derive(Debug)]
+pub struct BloomPyramid {
+    #[allow(dead_code)]
+    texture: wgpu::Texture,
+    mip_views: Vec<wgpu::TextureView>,
+    mip_extents: Vec<(u32, u32)>,
+}
+
+impl BloomPyramid {
+    #[must_use]
+    pub fn mip_count(&self) -> u32 {
+        self.mip_extents.len() as u32
+    }
+
+    #[must_use]
+    pub fn mip_view(&self, level: u32) -> Option<&wgpu::TextureView> {
+        self.mip_views.get(level as usize)
+    }
+
+    #[must_use]
+    pub fn mip_extent(&self, level: u32) -> Option<(u32, u32)> {
+        self.mip_extents.get(level as usize).copied()
+    }
+}
+
+/// Compute the mip count for a viewport-sized bloom pyramid. Mip 0 sits at
+/// half resolution, so the natural ceiling is `floor(log2(min(w, h))) - 1`.
+/// Returns at least 1 so the pyramid texture always has a mip 0.
+#[must_use]
+pub fn bloom_mip_count_for_size(width: u32, height: u32, max_mips: u32) -> u32 {
+    let smallest = width.min(height).max(1);
+    let log2 = u32::BITS - smallest.leading_zeros() - 1;
+    let size_limit = log2.saturating_sub(1).max(1);
+    max_mips.max(1).min(size_limit)
+}
+
 /// Allocated SMAA-only working set + non-sRGB read views.
 #[derive(Debug)]
 pub struct SmaaTargets {
@@ -59,11 +101,16 @@ pub struct SceneTarget {
     pub post_pong: (wgpu::Texture, wgpu::TextureView),
     /// M27 SMAA working set + non-sRGB read views. `None` when `post_aa == Off`.
     pub smaa: Option<SmaaTargets>,
+    /// M28 bloom pyramid. Always allocated; bloom_max_mips is config-validated
+    /// to `1..=8` so an Option is unnecessary. Slots that do not include
+    /// `PostPass::Bloom` simply never sample or write into it.
+    pub bloom_pyramid: BloomPyramid,
     pub size: (u32, u32),
     pub sample_count: u32,
     pub format: TextureFormat,
     pub depth_enabled: bool,
     pub post_aa: PostAaMode,
+    pub bloom_max_mips: u32,
 }
 
 /// Depth format for `SceneDepth`; portable across wgpu backends.
@@ -94,6 +141,7 @@ impl SceneTarget {
         sample_count: u32,
         depth_enabled: bool,
         post_aa: PostAaMode,
+        bloom_max_mips: u32,
     ) -> Self {
         let (w, h) = (size.0.max(1), size.1.max(1));
         let smaa_active = post_aa.is_smaa();
@@ -158,6 +206,8 @@ impl SceneTarget {
             None
         };
 
+        let bloom_pyramid = create_bloom_pyramid(device, w, h, bloom_max_mips);
+
         Self {
             color,
             depth,
@@ -165,11 +215,13 @@ impl SceneTarget {
             post_ping,
             post_pong,
             smaa,
+            bloom_pyramid,
             size: (w, h),
             sample_count,
             format,
             depth_enabled,
             post_aa,
+            bloom_max_mips,
         }
     }
 
@@ -249,6 +301,21 @@ impl SceneTarget {
     pub fn post_pong_smaa_read_view(&self) -> Option<&wgpu::TextureView> {
         self.smaa.as_ref().map(|s| &s.post_pong_linear_view)
     }
+
+    #[must_use]
+    pub fn bloom_mip_view(&self, level: u32) -> Option<&wgpu::TextureView> {
+        self.bloom_pyramid.mip_view(level)
+    }
+
+    #[must_use]
+    pub fn bloom_mip_count(&self) -> u32 {
+        self.bloom_pyramid.mip_count()
+    }
+
+    #[must_use]
+    pub fn bloom_mip_extent(&self, level: u32) -> Option<(u32, u32)> {
+        self.bloom_pyramid.mip_extent(level)
+    }
 }
 
 /// Owns the scene-target allocation; reallocates on resize or config change.
@@ -266,13 +333,23 @@ impl RenderTargetPool {
         sample_count: u32,
         depth_enabled: bool,
         post_aa: PostAaMode,
+        bloom_max_mips: u32,
     ) -> Self {
         Self {
-            scene: SceneTarget::new(device, size, format, sample_count, depth_enabled, post_aa),
+            scene: SceneTarget::new(
+                device,
+                size,
+                format,
+                sample_count,
+                depth_enabled,
+                post_aa,
+                bloom_max_mips,
+            ),
         }
     }
 
     /// Re-allocate when size or config changes. No-op when already matching.
+    #[allow(clippy::too_many_arguments)]
     pub fn resize(
         &mut self,
         device: &wgpu::Device,
@@ -281,13 +358,15 @@ impl RenderTargetPool {
         sample_count: u32,
         depth_enabled: bool,
         post_aa: PostAaMode,
+        bloom_max_mips: u32,
     ) {
         let new_size = (size.0.max(1), size.1.max(1));
         let shape_changed = self.scene.size != new_size
             || self.scene.format != format
             || self.scene.sample_count != sample_count
             || self.scene.depth_enabled != depth_enabled
-            || self.scene.post_aa != post_aa;
+            || self.scene.post_aa != post_aa
+            || self.scene.bloom_max_mips != bloom_max_mips;
         if !shape_changed {
             return;
         }
@@ -298,6 +377,7 @@ impl RenderTargetPool {
             sample_count,
             depth_enabled,
             post_aa,
+            bloom_max_mips,
         );
     }
 }
@@ -497,6 +577,55 @@ fn create_present_source(
     (tex, view)
 }
 
+fn create_bloom_pyramid(
+    device: &wgpu::Device,
+    width: u32,
+    height: u32,
+    max_mips: u32,
+) -> BloomPyramid {
+    // Mip 0 sits at half resolution (the COD/Frostbite "downsample by 2 then
+    // start the chain" convention). Pyramid extents shrink by 2 per level.
+    let half_w = (width / 2).max(1);
+    let half_h = (height / 2).max(1);
+    let mip_count = bloom_mip_count_for_size(width, height, max_mips);
+
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("tungsten_bloom_pyramid"),
+        size: Extent3d {
+            width: half_w,
+            height: half_h,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: mip_count,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: BLOOM_PYRAMID_FORMAT,
+        usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+        view_formats: &[],
+    });
+
+    let mut mip_views = Vec::with_capacity(mip_count as usize);
+    let mut mip_extents = Vec::with_capacity(mip_count as usize);
+    for level in 0..mip_count {
+        let view = texture.create_view(&wgpu::TextureViewDescriptor {
+            label: Some("tungsten_bloom_mip_view"),
+            base_mip_level: level,
+            mip_level_count: Some(1),
+            ..Default::default()
+        });
+        mip_views.push(view);
+        let w = (half_w >> level).max(1);
+        let h = (half_h >> level).max(1);
+        mip_extents.push((w, h));
+    }
+
+    BloomPyramid {
+        texture,
+        mip_views,
+        mip_extents,
+    }
+}
+
 fn make_linear_view(
     tex: &wgpu::Texture,
     twin: Option<TextureFormat>,
@@ -536,5 +665,20 @@ mod tests {
     fn non_srgb_twin_returns_none_for_linear_input() {
         assert_eq!(non_srgb_twin(TextureFormat::Rgba8Unorm), None);
         assert_eq!(non_srgb_twin(TextureFormat::Bgra8Unorm), None);
+    }
+
+    #[test]
+    fn bloom_mip_count_clamps_to_viewport_size() {
+        // 1080p tall enough for the requested 6 mips at half-res start.
+        assert_eq!(bloom_mip_count_for_size(1920, 1080, 6), 6);
+        // 64x64 viewport: floor(log2(64)) = 6, minus 1 = 5 mip ceiling.
+        assert_eq!(bloom_mip_count_for_size(64, 64, 6), 5);
+        // Tiny viewport: floor must not underflow.
+        assert_eq!(bloom_mip_count_for_size(2, 2, 6), 1);
+        assert_eq!(bloom_mip_count_for_size(1, 1, 6), 1);
+        // max_mips = 0 still yields at least 1.
+        assert_eq!(bloom_mip_count_for_size(1024, 1024, 0), 1);
+        // Larger pyramids respect the viewport ceiling.
+        assert_eq!(bloom_mip_count_for_size(1024, 1024, 8), 8);
     }
 }

@@ -16,6 +16,7 @@ fn defaults_are_sane() {
     assert!(config.render.depth_enabled);
     assert_eq!(config.render.depth_sort, DepthSortMode::CpuStable);
     assert_eq!(config.render.post_aa, PostAaMode::Off);
+    assert_eq!(config.render.bloom_max_mips, 6);
 }
 
 #[test]
@@ -25,6 +26,7 @@ fn render_config_defaults_from_empty_json() {
     assert!(parsed.depth_enabled);
     assert_eq!(parsed.depth_sort, DepthSortMode::CpuStable);
     assert_eq!(parsed.post_aa, PostAaMode::Off);
+    assert_eq!(parsed.bloom_max_mips, 6);
 }
 
 #[test]
@@ -340,4 +342,54 @@ fn display_frame_rate_cap_override_allows_uncapped_zero() {
 fn missing_file_returns_defaults() {
     let config = Config::load("/nonexistent/path/tungsten.json").unwrap();
     assert_eq!(config.window.title, "Tungsten");
+}
+
+#[test]
+fn bloom_max_mips_default_is_six() {
+    let parsed: RenderConfig = serde_json::from_str("{}").unwrap();
+    assert_eq!(parsed.bloom_max_mips, 6);
+}
+
+#[test]
+fn bloom_max_mips_parses_in_range() {
+    for n in 1u32..=8 {
+        let json = format!(r#"{{ "bloom_max_mips": {n} }}"#);
+        let parsed: RenderConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.bloom_max_mips, n);
+    }
+}
+
+#[test]
+fn bloom_max_mips_env_override() {
+    let mut config = Config::default();
+    config.apply_bloom_max_mips_override("3").unwrap();
+    assert_eq!(config.render.bloom_max_mips, 3);
+}
+
+#[test]
+fn bloom_max_mips_rejects_zero_and_nine() {
+    let mut config = Config::default();
+    for bad in ["0", "9", "junk"] {
+        let err = config.apply_bloom_max_mips_override(bad).unwrap_err();
+        match err {
+            ConfigError::InvalidEnvOverride {
+                var,
+                value,
+                expected,
+            } => {
+                assert_eq!(var, RENDER_BLOOM_MAX_MIPS_ENV);
+                assert_eq!(value, bad);
+                assert_eq!(expected, BLOOM_MAX_MIPS_EXPECTED);
+            }
+            other => panic!("unexpected error: {other}"),
+        }
+    }
+}
+
+#[test]
+fn is_supported_bloom_max_mips_matches_expected_range() {
+    assert!(!is_supported_bloom_max_mips(0));
+    assert!(is_supported_bloom_max_mips(1));
+    assert!(is_supported_bloom_max_mips(8));
+    assert!(!is_supported_bloom_max_mips(9));
 }
