@@ -6,6 +6,11 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Workspace version bumped to `0.25.0`.
+- `README.md`, `AGENTS.md`, `DESIGN.md`, `CLAUDE.md`, and `docs/plans/phase4.md` now reflect branch `0.25` with M25, M26, and M27 shipped.
+
 ## [0.24.0] - 2026-04-25
 
 Summary: Phase 4 Milestone 27 - SMAA 1x presentation AA (runtime post-AA modes, renderer-owned SMAA tail passes, manifest-tracked stage shaders, internal lookup textures, and shader-playground controls). Phase 4 scope is tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md).
