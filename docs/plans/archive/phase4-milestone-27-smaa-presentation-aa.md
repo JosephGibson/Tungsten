@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 goal: "Ship SMAA 1x presentation AA (Low/Medium/High/Ultra) as a renderer-owned fixed tail between the reorderable M26 PostStack and the screen-space text overlay, driven by startup `render.post_aa` / `TUNGSTEN_RENDER_POST_AA` plus a runtime world-resource request path, with `Off` byte-identical to the M26 baseline."
 non-goals:
   - "No T2x, 4x, or SMAA with temporal history -- presets are SMAA 1x only."

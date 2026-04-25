@@ -144,3 +144,40 @@ if [ ${#post_fail[@]} -gt 0 ]; then
   done
   exit 1
 fi
+
+# M27: post-AA fixture row. Pins TUNGSTEN_POST_STACK_FIXTURE=empty so the SMAA
+# tail is the only added work, then runs once with the High preset.
+echo
+echo "M27 post-AA fixture matrix (pkg: $post_pkg)"
+post_aa_pass=()
+post_aa_fail=()
+for aa in smaa_high; do
+  label="post_stack=empty post_aa=${aa}"
+  printf "  %-28s ... " "$label"
+  log_file="$log_dir/${post_pkg}-post-aa-${aa}.log"
+  if TUNGSTEN_SMOKE_FRAMES="$SMOKE_FRAMES" \
+     TUNGSTEN_POST_STACK_FIXTURE="empty" \
+     TUNGSTEN_POST_AA_FIXTURE="$aa" \
+     timeout --preserve-status "$TIMEOUT_SECS" \
+     cargo run -p "$post_pkg" --quiet >"$log_file" 2>&1; then
+    echo "OK"
+    post_aa_pass+=("$label")
+  else
+    code=$?
+    if [ "$code" -eq 124 ]; then
+      echo "TIMEOUT (${TIMEOUT_SECS}s)"
+    else
+      echo "FAIL (exit $code)"
+    fi
+    post_aa_fail+=("$label ($log_file)")
+  fi
+done
+
+echo "Post-AA passed: ${#post_aa_pass[@]}/${#post_aa_pass[@]}"
+if [ ${#post_aa_fail[@]} -gt 0 ]; then
+  echo "Post-AA failures:"
+  for row in "${post_aa_fail[@]}"; do
+    echo "  - $row"
+  done
+  exit 1
+fi

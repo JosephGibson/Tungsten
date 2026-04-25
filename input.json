@@ -21,6 +21,12 @@
     "engine_exit": [{ "kind": "key", "code": "Escape" }],
     "post_next":  [{ "kind": "key", "code": "BracketRight" }, { "kind": "key", "code": "KeyN" }],
     "post_prev":  [{ "kind": "key", "code": "BracketLeft" },  { "kind": "key", "code": "KeyB" }],
-    "post_clear": [{ "kind": "key", "code": "Backspace" }, { "kind": "key", "code": "KeyC" }]
+    "post_clear": [{ "kind": "key", "code": "Backspace" }, { "kind": "key", "code": "KeyC" }],
+    "playground_cycle_post_aa": [{ "kind": "key", "code": "Tab" }],
+    "playground_post_aa_off":    [{ "kind": "key", "code": "Digit0" }],
+    "playground_post_aa_low":    [{ "kind": "key", "code": "Digit5" }],
+    "playground_post_aa_medium": [{ "kind": "key", "code": "Digit6" }],
+    "playground_post_aa_high":   [{ "kind": "key", "code": "Digit7" }],
+    "playground_post_aa_ultra":  [{ "kind": "key", "code": "Digit8" }]
   }
 }

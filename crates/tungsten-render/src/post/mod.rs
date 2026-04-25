@@ -25,6 +25,8 @@ pub mod god_rays;
 pub mod lut;
 pub mod pixel_outline;
 pub mod pixelate;
+pub mod smaa;
+pub mod smaa_luts;
 pub mod tone_mono;
 pub mod tonemap;
 pub mod vignette;

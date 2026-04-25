@@ -6,6 +6,10 @@ use std::time::Instant;
 use crate::debug_line::{DebugLineInstance, DebugLinePipeline};
 use crate::material::{build_material_pipeline, MaterialPipeline};
 use crate::passes::{default_pass_order, text_overlay_target, PassRecorder, TargetId};
+use crate::post::smaa::{
+    SmaaPipeline, SmaaShaderIds, SMAA_BLEND_WEIGHTS_SHADER_NAME, SMAA_EDGE_SHADER_NAME,
+    SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME,
+};
 use crate::post::PostStackRenderer;
 use crate::quad::{QuadInstance, QuadPipeline};
 use crate::screenshot::{aligned_bytes_per_row, strip_row_padding};
@@ -19,7 +23,9 @@ use thiserror::Error;
 use tungsten_core::assets::{
     FilterMode, MaterialAssetId, MaterialUniformDefaults, ShaderAssetId, TextureHandle,
 };
-use tungsten_core::config::{is_supported_msaa, DepthSortMode, PresentModeConfig, RenderConfig};
+use tungsten_core::config::{
+    is_supported_msaa, DepthSortMode, PostAaMode, PresentModeConfig, RenderConfig,
+};
 use tungsten_core::post::PostStack;
 use winit::window::Window;
 
@@ -69,6 +75,10 @@ pub struct Renderer {
     sample_count: u32,
     depth_enabled: bool,
     depth_sort: DepthSortMode,
+    post_aa: PostAaMode,
+    /// SMAA presentation pipeline. Allocated on demand when `post_aa != Off`.
+    smaa: Option<SmaaPipeline>,
+    smaa_shader_ids: SmaaShaderIds,
     #[allow(dead_code)] // kept for symmetry with shader_ids map; future work wires to debug HUD.
     sprite_shader_id: ShaderAssetId,
     /// M26 material pipelines keyed by id.
@@ -212,18 +222,20 @@ impl Renderer {
         // regardless of scene MSAA / depth config.
         let text_pipeline = TextPipeline::new(&device, &queue, format, 1, false);
 
+        let post_aa = config.post_aa;
         let target_pool = RenderTargetPool::new(
             &device,
             (surface_config.width, surface_config.height),
             format,
             sample_count,
             depth_enabled,
+            post_aa,
         );
         let present_blit = PresentBlitPipeline::new(&device, format);
 
         // Seed the shader cache with the compile-time sprite WGSL so the
         // first `asset_loader::load_shaders` call is a no-op when the
-        // on-disk bytes match.
+        // on-disk bytes match. Same for the three SMAA stage shaders.
         let mut shader_cache = ShaderModuleCache::new();
         let sprite_shader_id = ShaderAssetId(0);
         let sprite_src = include_str!("../../../assets/shaders/sprite.wgsl").to_string();
@@ -231,10 +243,66 @@ impl Renderer {
             .upload(&device, sprite_shader_id, SPRITE_SHADER_NAME, sprite_src)
             .expect("compile-time sprite shader must validate");
 
+        let smaa_shader_ids = SmaaShaderIds {
+            edge: ShaderAssetId(1),
+            blend_weights: ShaderAssetId(2),
+            neighborhood_blend: ShaderAssetId(3),
+        };
+        let edge_src = include_str!("shaders/stock/smaa_edge.wgsl").to_string();
+        let blend_src = include_str!("shaders/stock/smaa_blend_weights.wgsl").to_string();
+        let nbh_src = include_str!("shaders/stock/smaa_neighborhood_blend.wgsl").to_string();
+        shader_cache
+            .upload(
+                &device,
+                smaa_shader_ids.edge,
+                SMAA_EDGE_SHADER_NAME,
+                edge_src,
+            )
+            .expect("compile-time smaa_edge shader must validate");
+        shader_cache
+            .upload(
+                &device,
+                smaa_shader_ids.blend_weights,
+                SMAA_BLEND_WEIGHTS_SHADER_NAME,
+                blend_src,
+            )
+            .expect("compile-time smaa_blend_weights shader must validate");
+        shader_cache
+            .upload(
+                &device,
+                smaa_shader_ids.neighborhood_blend,
+                SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME,
+                nbh_src,
+            )
+            .expect("compile-time smaa_neighborhood_blend shader must validate");
+
         let post_stack = PostStackRenderer::new(&device, format);
+
+        let smaa = if post_aa.is_smaa() {
+            Some(build_smaa_pipeline(
+                &device,
+                &queue,
+                format,
+                &shader_cache,
+                smaa_shader_ids,
+                post_aa,
+                (surface_config.width, surface_config.height),
+            ))
+        } else {
+            None
+        };
 
         let mut shader_ids = HashMap::new();
         shader_ids.insert(SPRITE_SHADER_NAME.to_string(), sprite_shader_id);
+        shader_ids.insert(SMAA_EDGE_SHADER_NAME.to_string(), smaa_shader_ids.edge);
+        shader_ids.insert(
+            SMAA_BLEND_WEIGHTS_SHADER_NAME.to_string(),
+            smaa_shader_ids.blend_weights,
+        );
+        shader_ids.insert(
+            SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME.to_string(),
+            smaa_shader_ids.neighborhood_blend,
+        );
 
         Ok(Self {
             instance,
@@ -255,10 +323,13 @@ impl Renderer {
             sample_count,
             depth_enabled,
             depth_sort,
+            post_aa,
+            smaa,
+            smaa_shader_ids,
             sprite_shader_id,
             materials: HashMap::new(),
             shader_ids,
-            next_shader_id: 1,
+            next_shader_id: 4,
             timestamp_support,
             gpu_timings,
             cpu_timings: CpuFrameTimings::default(),
@@ -365,9 +436,26 @@ impl Renderer {
                 matches!(self.depth_sort, DepthSortMode::GpuDepth),
             );
         }
+        if matches!(
+            name,
+            SMAA_EDGE_SHADER_NAME
+                | SMAA_BLEND_WEIGHTS_SHADER_NAME
+                | SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME
+        ) {
+            if let Some(smaa) = self.smaa.as_mut() {
+                smaa.rebuild_stage_with_module(&self.device, id, &module);
+            }
+        }
         self.shader_cache.commit(id, wgsl, module);
         // Any material bound to this shader needs a rebuild against the new module.
-        if name != SPRITE_SHADER_NAME {
+        if name != SPRITE_SHADER_NAME
+            && !matches!(
+                name,
+                SMAA_EDGE_SHADER_NAME
+                    | SMAA_BLEND_WEIGHTS_SHADER_NAME
+                    | SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME
+            )
+        {
             self.rebuild_materials_for_shader(name);
         }
         Ok(id)
@@ -399,8 +487,25 @@ impl Renderer {
                 matches!(self.depth_sort, DepthSortMode::GpuDepth),
             );
         }
+        if matches!(
+            name,
+            SMAA_EDGE_SHADER_NAME
+                | SMAA_BLEND_WEIGHTS_SHADER_NAME
+                | SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME
+        ) {
+            if let Some(smaa) = self.smaa.as_mut() {
+                smaa.rebuild_stage_with_module(&self.device, id, &module);
+            }
+        }
         self.shader_cache.commit(id, wgsl, module);
-        if name != SPRITE_SHADER_NAME {
+        if name != SPRITE_SHADER_NAME
+            && !matches!(
+                name,
+                SMAA_EDGE_SHADER_NAME
+                    | SMAA_BLEND_WEIGHTS_SHADER_NAME
+                    | SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME
+            )
+        {
             self.rebuild_materials_for_shader(name);
         }
         log::info!("shader '{name}' reloaded");
@@ -514,7 +619,57 @@ impl Renderer {
                 self.surface_config.format,
                 self.sample_count,
                 self.depth_enabled,
+                self.post_aa,
             );
+            if let Some(smaa) = self.smaa.as_ref() {
+                smaa.update_preset(&self.queue, self.post_aa, (width, height));
+            }
+        }
+    }
+
+    /// Current post-AA mode.
+    #[must_use]
+    pub fn post_aa(&self) -> PostAaMode {
+        self.post_aa
+    }
+
+    /// Switch presentation AA at a frame boundary. Allocates / drops SMAA
+    /// intermediates as needed without relaunch. Must not be called from
+    /// within `render_frame_internal`.
+    pub fn set_post_aa(&mut self, mode: PostAaMode) {
+        if mode == self.post_aa {
+            return;
+        }
+        self.post_aa = mode;
+        let size = (self.surface_config.width, self.surface_config.height);
+        self.target_pool.resize(
+            &self.device,
+            size,
+            self.surface_config.format,
+            self.sample_count,
+            self.depth_enabled,
+            self.post_aa,
+        );
+        match (self.post_aa.is_smaa(), self.smaa.is_some()) {
+            (true, false) => {
+                self.smaa = Some(build_smaa_pipeline(
+                    &self.device,
+                    &self.queue,
+                    self.surface_config.format,
+                    &self.shader_cache,
+                    self.smaa_shader_ids,
+                    self.post_aa,
+                    size,
+                ));
+            }
+            (true, true) => {
+                if let Some(smaa) = self.smaa.as_ref() {
+                    smaa.update_preset(&self.queue, self.post_aa, size);
+                }
+            }
+            (false, _) => {
+                self.smaa = None;
+            }
         }
     }
 
@@ -697,13 +852,20 @@ impl Renderer {
             });
 
         let post_stack_len = post_stack.len();
+        let smaa_active = self.post_aa.is_smaa() && self.smaa.is_some();
         // After M26/text-overlay split: the present-blit and screenshot
         // source both sample the text-overlay target, which is whichever
-        // of SceneColor/PostPing/PostPong holds the composited frame.
-        let final_source_target = text_overlay_target(post_stack_len);
+        // of SceneColor/PostPing/PostPong/PresentSource holds the composited
+        // frame.
+        let final_source_target = text_overlay_target(post_stack_len, self.post_aa);
         let final_source_view = match final_source_target {
             TargetId::PostPing => self.target_pool.scene.post_ping_view(),
             TargetId::PostPong => self.target_pool.scene.post_pong_view(),
+            TargetId::PresentSource => self
+                .target_pool
+                .scene
+                .present_source_view()
+                .expect("PresentSource view must exist while post_aa != Off"),
             _ => self.target_pool.scene.color_view(),
         };
         // Rebuild the present-blit bind group every frame against the live
@@ -717,19 +879,69 @@ impl Renderer {
             self.depth_sort,
             self.depth_enabled,
             post_stack_len,
+            self.post_aa,
         );
         let post_plan = PostStackRenderer::plan_targets(post_stack_len);
-        // Text overlay sits between the last post pass (or the scene pass) and
-        // the present pass. `post_stack_len + 1` accounts for the leading
-        // scene pass.
-        let text_overlay_idx = post_stack_len + 1;
+        // Text overlay sits between the last post pass / SMAA tail and the
+        // present pass. `post_stack_len + 1` accounts for the leading scene
+        // pass; SMAA inserts three more before the overlay.
+        let smaa_edge_idx = post_stack_len + 1;
+        let smaa_blend_idx = smaa_edge_idx + 1;
+        let smaa_nbh_idx = smaa_blend_idx + 1;
+        let text_overlay_idx = if smaa_active {
+            smaa_nbh_idx + 1
+        } else {
+            post_stack_len + 1
+        };
+        // SMAA edge / neighborhood read whatever target the post stack ended
+        // on (or `SceneColor` when the stack is empty). When the swapchain
+        // format has a non-sRGB twin, sample through it so edge detection
+        // sees gamma-encoded values; otherwise fall back to the primary view.
+        let smaa_source_target = if post_stack_len == 0 {
+            TargetId::SceneColor
+        } else if (post_stack_len - 1).is_multiple_of(2) {
+            TargetId::PostPing
+        } else {
+            TargetId::PostPong
+        };
+        let smaa_source_view: &wgpu::TextureView = if smaa_active {
+            match smaa_source_target {
+                TargetId::SceneColor => self
+                    .target_pool
+                    .scene
+                    .scene_color_smaa_read_view()
+                    .unwrap_or_else(|| self.target_pool.scene.color_view()),
+                TargetId::PostPing => self
+                    .target_pool
+                    .scene
+                    .post_ping_smaa_read_view()
+                    .unwrap_or_else(|| self.target_pool.scene.post_ping_view()),
+                TargetId::PostPong => self
+                    .target_pool
+                    .scene
+                    .post_pong_smaa_read_view()
+                    .unwrap_or_else(|| self.target_pool.scene.post_pong_view()),
+                _ => self.target_pool.scene.color_view(),
+            }
+        } else {
+            self.target_pool.scene.color_view()
+        };
 
         encoder.push_debug_group("tungsten_frame");
         for (idx, pass_desc) in order.as_slice().iter().enumerate() {
             let is_scene = idx == 0;
             let is_present = pass_desc.color == TargetId::Swapchain;
             let is_text_overlay = !is_scene && !is_present && idx == text_overlay_idx;
-            let post_index = if !is_scene && !is_present && !is_text_overlay {
+            let is_smaa_edge = smaa_active && idx == smaa_edge_idx;
+            let is_smaa_blend = smaa_active && idx == smaa_blend_idx;
+            let is_smaa_nbh = smaa_active && idx == smaa_nbh_idx;
+            let post_index = if !is_scene
+                && !is_present
+                && !is_text_overlay
+                && !is_smaa_edge
+                && !is_smaa_blend
+                && !is_smaa_nbh
+            {
                 Some(idx - 1)
             } else {
                 None
@@ -774,6 +986,23 @@ impl Renderer {
                     debug_lines,
                     &self.materials,
                 );
+            } else if is_smaa_edge {
+                if let Some(smaa) = self.smaa.as_ref() {
+                    smaa.record_edge_pass(&self.device, &mut pass, smaa_source_view);
+                }
+            } else if is_smaa_blend {
+                if let Some(smaa) = self.smaa.as_ref() {
+                    smaa.record_blend_weights_pass(&self.device, &mut pass, &self.target_pool);
+                }
+            } else if is_smaa_nbh {
+                if let Some(smaa) = self.smaa.as_ref() {
+                    smaa.record_neighborhood_pass(
+                        &self.device,
+                        &mut pass,
+                        &self.target_pool,
+                        smaa_source_view,
+                    );
+                }
             } else if is_text_overlay {
                 pass.push_debug_group("text");
                 self.text_pipeline.render(&mut pass);
@@ -809,6 +1038,11 @@ impl Renderer {
             let capture_src_texture = match final_source_target {
                 TargetId::PostPing => self.target_pool.scene.post_ping_texture(),
                 TargetId::PostPong => self.target_pool.scene.post_pong_texture(),
+                TargetId::PresentSource => self
+                    .target_pool
+                    .scene
+                    .present_source_texture()
+                    .expect("PresentSource texture must exist while post_aa != Off"),
                 _ => self.target_pool.scene.color_texture(),
             };
             encoder.copy_texture_to_buffer(
@@ -952,6 +1186,18 @@ fn begin_scene_pass_with_timestamps<'a>(
             .expect("SceneColorMsaa requested but sample_count == 1"),
         TargetId::PostPing => pool.scene.post_ping_view(),
         TargetId::PostPong => pool.scene.post_pong_view(),
+        TargetId::SmaaEdges => pool
+            .scene
+            .smaa_edges_view()
+            .expect("SmaaEdges requested but post_aa == Off"),
+        TargetId::SmaaBlend => pool
+            .scene
+            .smaa_blend_view()
+            .expect("SmaaBlend requested but post_aa == Off"),
+        TargetId::PresentSource => pool
+            .scene
+            .present_source_view()
+            .expect("PresentSource requested but post_aa == Off"),
         TargetId::Swapchain => swap_view,
         TargetId::SceneDepth => unreachable!("depth is not a valid color target"),
     };
@@ -1171,6 +1417,37 @@ pub(crate) fn finalize_capture(
     }
     image::save_buffer(path, &rgba, width, height, image::ColorType::Rgba8)?;
     Ok(())
+}
+
+fn build_smaa_pipeline(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    format: wgpu::TextureFormat,
+    cache: &ShaderModuleCache,
+    ids: SmaaShaderIds,
+    mode: PostAaMode,
+    size: (u32, u32),
+) -> SmaaPipeline {
+    let edge_module = cache
+        .get(ids.edge)
+        .expect("smaa_edge module must be in cache");
+    let blend_module = cache
+        .get(ids.blend_weights)
+        .expect("smaa_blend_weights module must be in cache");
+    let nbh_module = cache
+        .get(ids.neighborhood_blend)
+        .expect("smaa_neighborhood_blend module must be in cache");
+    let pipeline = SmaaPipeline::new(
+        device,
+        queue,
+        format,
+        edge_module,
+        blend_module,
+        nbh_module,
+        ids,
+    );
+    pipeline.update_preset(queue, mode, size);
+    pipeline
 }
 
 #[cfg(test)]

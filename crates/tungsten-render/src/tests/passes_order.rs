@@ -1,8 +1,9 @@
 use super::*;
+use tungsten_core::config::PostAaMode;
 
 #[test]
 fn default_order_msaa1_cpu_stable_is_scene_overlay_then_present() {
-    let order = default_pass_order(1, DepthSortMode::CpuStable, true, 0);
+    let order = default_pass_order(1, DepthSortMode::CpuStable, true, 0, PostAaMode::Off);
     let passes = order.as_slice();
     assert_eq!(passes.len(), 3);
 
@@ -30,7 +31,7 @@ fn default_order_msaa1_cpu_stable_is_scene_overlay_then_present() {
 
 #[test]
 fn default_order_msaa4_cpu_stable_resolves_to_scene_color() {
-    let order = default_pass_order(4, DepthSortMode::CpuStable, true, 0);
+    let order = default_pass_order(4, DepthSortMode::CpuStable, true, 0, PostAaMode::Off);
     let scene = &order.as_slice()[0];
     assert_eq!(scene.color, TargetId::SceneColorMsaa);
     assert_eq!(scene.color_resolve, Some(TargetId::SceneColor));
@@ -39,7 +40,7 @@ fn default_order_msaa4_cpu_stable_resolves_to_scene_color() {
 
 #[test]
 fn default_order_msaa4_gpu_depth_attaches_depth_and_resolve() {
-    let order = default_pass_order(4, DepthSortMode::GpuDepth, true, 0);
+    let order = default_pass_order(4, DepthSortMode::GpuDepth, true, 0, PostAaMode::Off);
     let scene = &order.as_slice()[0];
     assert_eq!(scene.color, TargetId::SceneColorMsaa);
     assert_eq!(scene.color_resolve, Some(TargetId::SceneColor));
@@ -49,7 +50,7 @@ fn default_order_msaa4_gpu_depth_attaches_depth_and_resolve() {
 
 #[test]
 fn default_order_msaa1_gpu_depth_attaches_depth_no_resolve() {
-    let order = default_pass_order(1, DepthSortMode::GpuDepth, true, 0);
+    let order = default_pass_order(1, DepthSortMode::GpuDepth, true, 0, PostAaMode::Off);
     let scene = &order.as_slice()[0];
     assert_eq!(scene.color, TargetId::SceneColor);
     assert!(scene.color_resolve.is_none());
@@ -61,7 +62,7 @@ fn gpu_depth_with_depth_disabled_drops_the_depth_attachment() {
     // `depth_sort = GpuDepth` + `depth_enabled = false` would otherwise
     // reference a `SceneDepth` view that `SceneTarget::new` never allocated
     // under the same flag, and the recorder would panic.
-    let order = default_pass_order(1, DepthSortMode::GpuDepth, false, 0);
+    let order = default_pass_order(1, DepthSortMode::GpuDepth, false, 0, PostAaMode::Off);
     let scene = &order.as_slice()[0];
     assert!(scene.depth.is_none());
     assert!(scene.depth_clear.is_none());
@@ -69,7 +70,7 @@ fn gpu_depth_with_depth_disabled_drops_the_depth_attachment() {
 
 #[test]
 fn text_overlay_follows_scene_when_post_stack_empty() {
-    let order = default_pass_order(1, DepthSortMode::CpuStable, true, 0);
+    let order = default_pass_order(1, DepthSortMode::CpuStable, true, 0, PostAaMode::Off);
     let passes = order.as_slice();
     assert_eq!(passes.len(), 3);
     assert_eq!(passes[0].label, "tungsten_scene_pass");
@@ -81,7 +82,7 @@ fn text_overlay_follows_scene_when_post_stack_empty() {
 
 #[test]
 fn post_stack_one_splices_post_then_text_overlay_on_ping() {
-    let order = default_pass_order(1, DepthSortMode::CpuStable, true, 1);
+    let order = default_pass_order(1, DepthSortMode::CpuStable, true, 1, PostAaMode::Off);
     let passes = order.as_slice();
     assert_eq!(passes.len(), 4);
     assert_eq!(passes[0].color, TargetId::SceneColor);
@@ -97,7 +98,7 @@ fn post_stack_one_splices_post_then_text_overlay_on_ping() {
 
 #[test]
 fn post_stack_two_alternates_and_overlay_lands_on_pong() {
-    let order = default_pass_order(1, DepthSortMode::CpuStable, true, 2);
+    let order = default_pass_order(1, DepthSortMode::CpuStable, true, 2, PostAaMode::Off);
     let passes = order.as_slice();
     assert_eq!(passes.len(), 5);
     assert_eq!(passes[1].color, TargetId::PostPing);
@@ -108,7 +109,7 @@ fn post_stack_two_alternates_and_overlay_lands_on_pong() {
 
 #[test]
 fn post_stack_seventeen_ends_on_ping_pattern() {
-    let order = default_pass_order(1, DepthSortMode::CpuStable, true, 17);
+    let order = default_pass_order(1, DepthSortMode::CpuStable, true, 17, PostAaMode::Off);
     let passes = order.as_slice();
     // scene + 17 post + overlay + present
     assert_eq!(passes.len(), 20);
@@ -123,4 +124,67 @@ fn post_stack_seventeen_ends_on_ping_pattern() {
     assert_eq!(passes[18].label, "tungsten_text_overlay_pass");
     assert_eq!(passes[18].color, TargetId::PostPing);
     assert_eq!(passes[19].color, TargetId::Swapchain);
+}
+
+#[test]
+fn post_aa_off_matches_m26_baseline_across_matrix() {
+    // Step-9 invariant: with `post_aa = Off`, the pass list must match the
+    // M26 baseline byte-for-byte across the msaa x depth_sort x stack-length
+    // matrix. The new signature is purely additive.
+    for msaa in [1u32, 4] {
+        for depth_sort in [DepthSortMode::CpuStable, DepthSortMode::GpuDepth] {
+            for stack in [0usize, 1, 3] {
+                let order = default_pass_order(msaa, depth_sort, true, stack, PostAaMode::Off);
+                let baseline_len = 3 + stack;
+                assert_eq!(
+                    order.as_slice().len(),
+                    baseline_len,
+                    "msaa={msaa} sort={depth_sort:?} stack={stack}"
+                );
+                let last = order.as_slice().last().unwrap();
+                assert_eq!(last.color, TargetId::Swapchain);
+            }
+        }
+    }
+}
+
+#[test]
+fn post_aa_smaa_inserts_three_passes_and_present_source_overlay() {
+    let order = default_pass_order(1, DepthSortMode::CpuStable, true, 2, PostAaMode::SmaaHigh);
+    let passes = order.as_slice();
+    // scene + 2 post + 3 smaa + overlay + present
+    assert_eq!(passes.len(), 8);
+    assert_eq!(passes[3].label, "tungsten_smaa_edge_pass");
+    assert_eq!(passes[3].color, TargetId::SmaaEdges);
+    assert!(passes[3].clear.is_some());
+    assert_eq!(passes[4].label, "tungsten_smaa_blend_weights_pass");
+    assert_eq!(passes[4].color, TargetId::SmaaBlend);
+    assert!(passes[4].clear.is_some());
+    assert_eq!(passes[5].label, "tungsten_smaa_neighborhood_pass");
+    assert_eq!(passes[5].color, TargetId::PresentSource);
+    assert_eq!(passes[6].label, "tungsten_text_overlay_pass");
+    assert_eq!(passes[6].color, TargetId::PresentSource);
+    assert_eq!(passes[7].color, TargetId::Swapchain);
+}
+
+#[test]
+fn text_overlay_target_with_smaa_is_present_source() {
+    assert_eq!(
+        text_overlay_target(0, PostAaMode::SmaaLow),
+        TargetId::PresentSource
+    );
+    assert_eq!(
+        text_overlay_target(3, PostAaMode::SmaaUltra),
+        TargetId::PresentSource
+    );
+}
+
+#[test]
+fn text_overlay_target_off_matches_m26_baseline() {
+    assert_eq!(
+        text_overlay_target(0, PostAaMode::Off),
+        TargetId::SceneColor
+    );
+    assert_eq!(text_overlay_target(1, PostAaMode::Off), TargetId::PostPing);
+    assert_eq!(text_overlay_target(2, PostAaMode::Off), TargetId::PostPong);
 }

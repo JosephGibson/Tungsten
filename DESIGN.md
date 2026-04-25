@@ -206,6 +206,7 @@ Stack: `glyphon` + `cosmic-text` + `swash`. Responsibilities: font parsing, shap
 | Sound (decoded PCM) | **not supported** — mixer owns cloned PCM; session-static | **not supported** — no manifest-add path | n/a |
 | Shader (`.wgsl`) | yes (body-edit only) — `reload_shader` re-validates through `wgpu::naga` and rebuilds the sprite pipeline **or** every material pipeline bound to that shader; signature / bind-group-layout changes still need a rebuild (`D-057`, narrowing `D-023`) | M26: new stock / user shaders register on next manifest reload | warn-only; stale entry kept |
 | Material (`materials` section, `D-058`) | yes (body-only) — `reload_material` re-uploads the 256-byte UBO against the shader's live module and swaps the `MaterialPipeline` entry; validation failure keeps the prior pipeline | yes — manifest reload allocates a new `MaterialAssetId` and calls `upload_material` | warn-only; stale entry kept |
+| SMAA stage shaders (M27, `D-059`) | yes (body-only) — `smaa_edge`, `smaa_blend_weights`, `smaa_neighborhood_blend` follow the M25 shader path; `Renderer::reload_shader` re-validates and rebuilds only the affected `SmaaPipeline` stage. SMAA `area` / `search` LUT binaries are explicitly out-of-matrix (engine-internal `include_bytes!`) | n/a (engine-internal stage shaders, fixed set of three) | n/a |
 | `input.json` | yes — `reload_action_map` merges with defaults and swaps `ActionMap` | n/a | n/a |
 | `manifest.json` | yes — `reload_manifest` walks every class above | n/a | n/a |
 
@@ -253,6 +254,20 @@ Scene-owned entities carry a `SceneEntity { state_id }` marker. On state exit th
 `tungsten_core::tween` adds a component-driven animation surface: `Tween` holds one timing model plus a `Vec<TweenChannel>` so position, rotation, scale, and sprite color can animate together on one entity. Easings are a closed `enum` (`Easing`) with a pure `apply(t)` implementation; repeat modes are `Once`, `Loop`, `PingPong`, and `Times(n)`.
 
 `tungsten::tweens::tween_tick_system` advances every live tween from `DeltaTime`, writes `Transform` / `Sprite` fields in place, emits `TweenComplete` through `EventQueue<TweenComplete>`, and defers terminal `Tween` removal through `CommandBuffer` so archetypes never mutate mid-iteration. The frame slot is `particles -> tweens -> flush commands -> flush events`, which keeps tween writes visible to extract/render in the same frame while preserving the fixed frame-boundary mutation/event rules. Scene JSON can author tweens directly, making state-transition fades and simple data-driven motion possible without bespoke example systems. Decisions: `D-054`, `D-055`, `D-056`.
+
+### Presentation AA / SMAA — M27
+
+`RenderConfig.post_aa` (`PostAaMode::{Off, SmaaLow, SmaaMedium, SmaaHigh, SmaaUltra}`, `#[non_exhaustive]`) selects an optional SMAA 1x presentation tail. `Off` is the default and produces the byte-identical M26 frame. The render path is:
+
+```
+Scene → PostStack → [optional SMAA tail → PresentSource] → Text Overlay → Present Blit → Swapchain
+```
+
+When `post_aa != Off` the renderer allocates `SmaaEdges` (`Rg8Unorm`), `SmaaBlend` (`Rgba8Unorm`), and `PresentSource` (matching the swapchain format, `RENDER_ATTACHMENT | TEXTURE_BINDING | COPY_SRC`). `SceneColor`, `PostPing`, and `PostPong` are recreated with a non-sRGB twin in `view_formats` so the SMAA edge/blend/neighborhood passes sample gamma-encoded values; the rest of the frame keeps using the primary view. The text overlay always runs after the SMAA tail, so screen-space text is never sampled by SMAA. The present blit and screenshot path source `PresentSource` when `post_aa != Off` and `SceneColor` / the post-stack final target otherwise.
+
+Stage shaders (`smaa_edge`, `smaa_blend_weights`, `smaa_neighborhood_blend`) are manifest-tracked, follow the stock-shader pattern (compile-time `include_str!` mirror under `crates/tungsten-render/src/shaders/stock/` + byte-equal mirror under `assets/shaders/stock/`), and hot-reload through `Renderer::reload_shader` with `naga` validation; failure leaves the live pipelines untouched. The `area` and `search` lookup textures are `include_bytes!`-embedded engine content under `crates/tungsten-render/src/assets/smaa/` and explicitly **not** manifest-tracked. Preset knobs (threshold, max search steps, max diag steps, corner rounding) ride a single 256-byte UBO matching `UniformOverrideBlock`; switching presets only rewrites the UBO. Switching `post_aa` itself re-creates SMAA intermediate targets and the `SmaaPipeline` at a frame boundary — no relaunch (unlike `msaa`).
+
+`tungsten.json` carries `render.post_aa`; the env override is `TUNGSTEN_RENDER_POST_AA`; runtime mutation goes through `tungsten::request_post_aa(world, mode)`, applied by `App::apply_pending_post_aa_request` between hot-reload and extract. Decision: `D-059`.
 
 ### Performance Baseline + Profiling Harness — Phase 3 M12
 

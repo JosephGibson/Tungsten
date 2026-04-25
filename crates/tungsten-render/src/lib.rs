@@ -19,6 +19,10 @@ pub use debug_line::{DebugLineInstance, DebugLinePipeline};
 pub use image_diff::{compare_png, DiffReport, ImageDiffError};
 pub use material::{MaterialBuildError, MaterialPipeline};
 pub use passes::{default_pass_order, PassDesc, PassOrder, PassRecorder, TargetId};
+pub use post::smaa::{
+    SmaaPipeline, SmaaPreset, SmaaPresetUbo, SmaaShaderIds, SMAA_BLEND_WEIGHTS_SHADER_NAME,
+    SMAA_EDGE_SHADER_NAME, SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME,
+};
 pub use post::PostStackRenderer;
 pub use quad::QuadInstance;
 pub use renderer::{CpuFrameTimings, GpuFrameTimings, Renderer};

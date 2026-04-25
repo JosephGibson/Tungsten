@@ -141,7 +141,7 @@ Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user mate
 
 ## M27 — SMAA Presentation AA
 
-**Status:** draft — detailed plan at [`phase4-milestone-27-smaa-presentation-aa.md`](phase4-milestone-27-smaa-presentation-aa.md).
+**Status:** done — shipped in `0.24` (plan archived at [`docs/plans/archive/phase4-milestone-27-smaa-presentation-aa.md`](archive/phase4-milestone-27-smaa-presentation-aa.md)).
 
 **Depends on:** M25, M26.
 

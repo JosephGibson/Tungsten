@@ -15,7 +15,8 @@
     "present_mode": "auto",
     "msaa": 1,
     "depth_enabled": true,
-    "depth_sort": "cpu_stable"
+    "depth_sort": "cpu_stable",
+    "post_aa": "off"
   },
   "logging": { "level": "info" }
 }

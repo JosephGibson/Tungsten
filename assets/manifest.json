@@ -114,6 +114,15 @@
     },
     "god_rays": {
       "path": "shaders/stock/god_rays.wgsl"
+    },
+    "smaa_edge": {
+      "path": "shaders/stock/smaa_edge.wgsl"
+    },
+    "smaa_blend_weights": {
+      "path": "shaders/stock/smaa_blend_weights.wgsl"
+    },
+    "smaa_neighborhood_blend": {
+      "path": "shaders/stock/smaa_neighborhood_blend.wgsl"
     }
   },
   "materials": {

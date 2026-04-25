@@ -19,6 +19,7 @@ use crate::inspector::{
 use crate::physics_debug::{
     physics_debug_emit_system, physics_debug_toggle_system, PhysicsDebugOverlay,
 };
+use crate::post_aa::{sync_post_aa_state, take_pending_post_aa, PendingPostAa, PostAaState};
 use crate::state::{state_dispatcher_system, StateStack};
 use crate::systems_overlay::{
     compose_systems_overlay_text_section, systems_overlay_toggle_system, SystemTimingOverlay,
@@ -169,6 +170,11 @@ impl App {
         world.insert_resource(InspectorState::new_with_defaults());
         // M26: empty post stack by default — byte-identical to M25 baseline.
         world.insert_resource(tungsten_core::post::PostStack::new());
+        // M27: track post-AA state from startup config; pending request seam.
+        world.insert_resource(PostAaState {
+            mode: config.render.post_aa,
+        });
+        world.insert_resource(PendingPostAa::default());
         let mut event_flushers: Vec<EventFlusher> = Vec::new();
         let mut registered_event_types = HashSet::new();
         Self::register_event_inner::<CollisionEvent>(
@@ -587,6 +593,19 @@ impl App {
         }
 
         sync_display_state_and_telemetry(&mut self.world, effective, actual_present_mode);
+    }
+
+    /// M27: apply any post-AA mode change requested via `request_post_aa`.
+    /// Called between hot-reload and extract so SMAA reallocation never
+    /// happens mid-frame.
+    fn apply_pending_post_aa_request(&mut self) {
+        let Some(requested) = take_pending_post_aa(&mut self.world) else {
+            return;
+        };
+        if let Some(renderer) = self.renderer.as_mut() {
+            renderer.set_post_aa(requested);
+        }
+        sync_post_aa_state(&mut self.world, requested);
     }
 }
 
@@ -1337,6 +1356,7 @@ impl ApplicationHandler for App {
                 let flush_ms = self.stage_flush_commands();
                 self.stage_flush_events();
                 let hot_reload_ms = self.stage_hot_reload();
+                self.apply_pending_post_aa_request();
 
                 let extract_out = self.stage_extract(prev_total_ms);
                 let extract_ms = extract_out.extract_ms;

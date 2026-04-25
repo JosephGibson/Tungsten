@@ -6,6 +6,11 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- M27 SMAA 1x presentation AA (`D-059`). New `RenderConfig.post_aa` (`Off / SmaaLow / SmaaMedium / SmaaHigh / SmaaUltra`, `#[non_exhaustive]`) and matching `TUNGSTEN_RENDER_POST_AA` env override; renderer-owned three-pass tail (edge → blend weights → neighborhood blend) splices between the M26 `PostStack` and the screen-space text overlay, writing into a new `PresentSource` target that the present blit + screenshot path source. Three new manifest-tracked stage shaders (`smaa_edge`, `smaa_blend_weights`, `smaa_neighborhood_blend`) live under `crates/tungsten-render/src/shaders/stock/` with byte-equal mirrors under `assets/shaders/stock/`; the `area` and `search` lookup textures ship as `include_bytes!` engine-internal content under `crates/tungsten-render/src/assets/smaa/` with MIT attribution. Preset knobs ride a 256-byte UBO so switching presets neither rebuilds nor recompiles a pipeline. `SceneColor` and the post ping/pong targets carry a non-sRGB twin in `view_formats` while SMAA is active so edge detection sees gamma-encoded values. Runtime changes go through new `tungsten::request_post_aa(world, mode)` and apply at a frame boundary — no relaunch (unlike `msaa`). `post_aa = Off` is byte-identical to the M26 frame across the full msaa × depth_sort × post-stack-length matrix. `example-04-shader-playground` gains Tab-cycle and 0/5/6/7/8 quick-set bindings plus a new HUD row showing the applied mode; `TUNGSTEN_POST_AA_FIXTURE` pins a preset for smoke runs.
+- `scripts/smoke-examples.sh` appends a `TUNGSTEN_POST_AA_FIXTURE=smaa_high` row over `example-04-shader-playground` with `TUNGSTEN_POST_STACK_FIXTURE=empty`.
+
 ### Changed
 
 - Workspace version bumped to `0.24.0`.

@@ -11,6 +11,7 @@ mod input_bridge;
 pub mod inspector;
 pub mod particles;
 pub mod physics_debug;
+pub mod post_aa;
 pub mod sprite_extract;
 pub mod state;
 pub mod systems_overlay;
@@ -29,6 +30,7 @@ pub use particles::{
     ParticleBurstEmitted, ParticleSystemDrained,
 };
 pub use physics_debug::PhysicsDebugOverlay;
+pub use post_aa::{request_post_aa, PostAaState};
 pub use sprite_extract::extract_sprites_default;
 pub use state::{
     despawn_scene_entities, state_dispatcher_system, GameState, SceneEntity, StateContext, StateId,
