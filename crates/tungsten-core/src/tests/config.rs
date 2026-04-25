@@ -15,6 +15,7 @@ fn defaults_are_sane() {
     assert_eq!(config.render.msaa, 1);
     assert!(config.render.depth_enabled);
     assert_eq!(config.render.depth_sort, DepthSortMode::CpuStable);
+    assert_eq!(config.render.post_aa, PostAaMode::Off);
 }
 
 #[test]
@@ -23,6 +24,83 @@ fn render_config_defaults_from_empty_json() {
     assert_eq!(parsed.msaa, 1);
     assert!(parsed.depth_enabled);
     assert_eq!(parsed.depth_sort, DepthSortMode::CpuStable);
+    assert_eq!(parsed.post_aa, PostAaMode::Off);
+}
+
+#[test]
+fn post_aa_mode_default_is_off() {
+    assert_eq!(PostAaMode::default(), PostAaMode::Off);
+}
+
+#[test]
+fn post_aa_mode_from_str_parses_all_modes() {
+    assert_eq!(PostAaMode::from_str("off").unwrap(), PostAaMode::Off);
+    assert_eq!(
+        PostAaMode::from_str("smaa_low").unwrap(),
+        PostAaMode::SmaaLow
+    );
+    assert_eq!(
+        PostAaMode::from_str("smaa_medium").unwrap(),
+        PostAaMode::SmaaMedium
+    );
+    assert_eq!(
+        PostAaMode::from_str("smaa_high").unwrap(),
+        PostAaMode::SmaaHigh
+    );
+    assert_eq!(
+        PostAaMode::from_str("smaa_ultra").unwrap(),
+        PostAaMode::SmaaUltra
+    );
+}
+
+#[test]
+fn post_aa_mode_is_smaa_helper() {
+    assert!(!PostAaMode::Off.is_smaa());
+    assert!(PostAaMode::SmaaLow.is_smaa());
+    assert!(PostAaMode::SmaaMedium.is_smaa());
+    assert!(PostAaMode::SmaaHigh.is_smaa());
+    assert!(PostAaMode::SmaaUltra.is_smaa());
+}
+
+#[test]
+fn render_config_parses_post_aa_smaa_high() {
+    let json = r#"{ "post_aa": "smaa_high" }"#;
+    let parsed: RenderConfig = serde_json::from_str(json).unwrap();
+    assert_eq!(parsed.post_aa, PostAaMode::SmaaHigh);
+}
+
+#[test]
+fn render_config_rejects_unknown_post_aa() {
+    let json = r#"{ "post_aa": "junk" }"#;
+    let err = serde_json::from_str::<RenderConfig>(json).unwrap_err();
+    assert!(err.is_data());
+}
+
+#[test]
+fn post_aa_override_accepts_all_modes() {
+    for value in ["off", "smaa_low", "smaa_medium", "smaa_high", "smaa_ultra"] {
+        let mut config = Config::default();
+        config.apply_post_aa_override(value).unwrap();
+        assert_eq!(config.render.post_aa, PostAaMode::from_str(value).unwrap());
+    }
+}
+
+#[test]
+fn post_aa_override_rejects_unknown() {
+    let mut config = Config::default();
+    let err = config.apply_post_aa_override("junk").unwrap_err();
+    match err {
+        ConfigError::InvalidEnvOverride {
+            var,
+            value,
+            expected,
+        } => {
+            assert_eq!(var, RENDER_POST_AA_ENV);
+            assert_eq!(value, "junk");
+            assert_eq!(expected, POST_AA_EXPECTED);
+        }
+        other => panic!("unexpected error: {other}"),
+    }
 }
 
 #[test]

@@ -6,6 +6,26 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-04-25
+
+Summary: Phase 4 Milestone 27 - SMAA 1x presentation AA (runtime post-AA modes, renderer-owned SMAA tail passes, manifest-tracked stage shaders, internal lookup textures, and shader-playground controls). Phase 4 scope is tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md).
+
+### Added
+
+- M27 SMAA 1x presentation AA (`D-059`). New `RenderConfig.post_aa` (`Off / SmaaLow / SmaaMedium / SmaaHigh / SmaaUltra`, `#[non_exhaustive]`) and matching `TUNGSTEN_RENDER_POST_AA` env override; renderer-owned three-pass tail (edge → blend weights → neighborhood blend) splices between the M26 `PostStack` and the screen-space text overlay, writing into a new `PresentSource` target that the present blit + screenshot path source. Three new manifest-tracked stage shaders (`smaa_edge`, `smaa_blend_weights`, `smaa_neighborhood_blend`) live under `crates/tungsten-render/src/shaders/stock/` with byte-equal mirrors under `assets/shaders/stock/`; the `area` and `search` lookup textures ship as `include_bytes!` engine-internal content under `crates/tungsten-render/src/assets/smaa/` with MIT attribution. Preset knobs ride a 256-byte UBO so switching presets neither rebuilds nor recompiles a pipeline. `SceneColor` and the post ping/pong targets carry a non-sRGB twin in `view_formats` while SMAA is active so edge detection sees gamma-encoded values. Runtime changes go through new `tungsten::request_post_aa(world, mode)` and apply at a frame boundary — no relaunch (unlike `msaa`). `post_aa = Off` is byte-identical to the M26 frame across the full msaa × depth_sort × post-stack-length matrix. `example-04-shader-playground` gains Tab-cycle and 0/5/6/7/8 quick-set bindings plus a new HUD row showing the applied mode; `TUNGSTEN_POST_AA_FIXTURE` pins a preset for smoke runs.
+- `scripts/smoke-examples.sh` appends a `TUNGSTEN_POST_AA_FIXTURE=smaa_high` row over `example-04-shader-playground` with `TUNGSTEN_POST_STACK_FIXTURE=empty`.
+
+### Changed
+
+- Workspace version bumped to `0.24.0`.
+- `README.md`, `AGENTS.md`, `DESIGN.md`, `CLAUDE.md`, and `docs/plans/phase4.md` now reflect branch `0.24` with M25, M26, and M27 shipped.
+
+### Fixed
+
+- **M27 release-polish QA pass:** SMAA rustdoc now avoids overindented list items, SMAA pass/LUT builders are marked `#[must_use]`, the intentional GPU-layout / bind-layout naming in `SmaaPresetUbo` and `SmaaLayouts` is locally documented for clippy, and shader-playground fixture parsing uses inlined format args. This keeps `cargo clippy --workspace --all-targets -- -D warnings` green without changing runtime behavior.
+- **Checked-in input map startup fix:** canonical key serde and the winit bridge now cover the M27 shader-playground bindings (`Tab`, `Digit0`, `Digit5`-`Digit8`), and a core test parses the workspace `input.json` so future key-name drift fails in `cargo test` before example startup.
+- Release QA pass completed locally: `cargo fmt --all --check`, `cargo build --workspace`, `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, `bash scripts/test-perf-capture.sh`, `WGPU_BACKEND=vulkan ./scripts/perf-capture.sh ecs-high-load 300 --telemetry-only`, and `WGPU_BACKEND=vulkan ./scripts/smoke-examples.sh` all passed.
+
 ## [0.23.0] - 2026-04-24
 
 Summary: Phase 4 Milestone 26 — materials + post-stack + tween→material bridge (manifest-tracked materials, a reorderable 17-effect post stack, entity-local uniform overrides shared with tween channels, and a new shader-playground example). Phase 4 scope is tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md).

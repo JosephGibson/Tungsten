@@ -13,6 +13,7 @@ const RENDER_MAX_FRAME_LATENCY_ENV: &str = "TUNGSTEN_RENDER_MAX_FRAME_LATENCY";
 const RENDER_MSAA_ENV: &str = "TUNGSTEN_RENDER_MSAA";
 const RENDER_DEPTH_ENABLED_ENV: &str = "TUNGSTEN_RENDER_DEPTH_ENABLED";
 const RENDER_DEPTH_SORT_ENV: &str = "TUNGSTEN_RENDER_DEPTH_SORT";
+const RENDER_POST_AA_ENV: &str = "TUNGSTEN_RENDER_POST_AA";
 const DISPLAY_MODE_EXPECTED: &str = "one of: windowed, borderless_fullscreen, exclusive_fullscreen";
 const DISPLAY_RESOLUTION_EXPECTED: &str = "WIDTHxHEIGHT with integers >= 1";
 const DISPLAY_FRAME_RATE_CAP_EXPECTED: &str = "an integer >= 0";
@@ -22,6 +23,7 @@ const MAX_FRAME_LATENCY_EXPECTED: &str = "an integer >= 1";
 const MSAA_EXPECTED: &str = "one of: 1, 2, 4, 8";
 const DEPTH_ENABLED_EXPECTED: &str = "one of: true, false, 1, 0";
 const DEPTH_SORT_EXPECTED: &str = "one of: cpu_stable, gpu_depth";
+const POST_AA_EXPECTED: &str = "one of: off, smaa_low, smaa_medium, smaa_high, smaa_ultra";
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
@@ -158,6 +160,58 @@ impl FromStr for DepthSortMode {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum PostAaMode {
+    #[default]
+    Off,
+    SmaaLow,
+    SmaaMedium,
+    SmaaHigh,
+    SmaaUltra,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[error("expected {POST_AA_EXPECTED}")]
+pub struct ParsePostAaModeError;
+
+impl PostAaMode {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::SmaaLow => "smaa_low",
+            Self::SmaaMedium => "smaa_medium",
+            Self::SmaaHigh => "smaa_high",
+            Self::SmaaUltra => "smaa_ultra",
+        }
+    }
+
+    #[must_use]
+    pub const fn is_smaa(self) -> bool {
+        matches!(
+            self,
+            Self::SmaaLow | Self::SmaaMedium | Self::SmaaHigh | Self::SmaaUltra
+        )
+    }
+}
+
+impl FromStr for PostAaMode {
+    type Err = ParsePostAaModeError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "off" => Ok(Self::Off),
+            "smaa_low" => Ok(Self::SmaaLow),
+            "smaa_medium" => Ok(Self::SmaaMedium),
+            "smaa_high" => Ok(Self::SmaaHigh),
+            "smaa_ultra" => Ok(Self::SmaaUltra),
+            _ => Err(ParsePostAaModeError),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct RenderConfig {
     #[serde(default = "default_clear_color")]
@@ -170,6 +224,8 @@ pub struct RenderConfig {
     pub depth_enabled: bool,
     #[serde(default)]
     pub depth_sort: DepthSortMode,
+    #[serde(default)]
+    pub post_aa: PostAaMode,
 }
 
 impl Default for RenderConfig {
@@ -181,6 +237,7 @@ impl Default for RenderConfig {
             msaa: default_msaa(),
             depth_enabled: default_depth_enabled(),
             depth_sort: DepthSortMode::default(),
+            post_aa: PostAaMode::default(),
         }
     }
 }
@@ -298,6 +355,9 @@ impl Config {
         if let Ok(value) = std::env::var(RENDER_DEPTH_SORT_ENV) {
             self.apply_depth_sort_override(&value)?;
         }
+        if let Ok(value) = std::env::var(RENDER_POST_AA_ENV) {
+            self.apply_post_aa_override(&value)?;
+        }
         Ok(())
     }
 
@@ -339,6 +399,16 @@ impl Config {
                 expected: DEPTH_SORT_EXPECTED,
             })?;
         self.render.depth_sort = parsed;
+        Ok(())
+    }
+
+    fn apply_post_aa_override(&mut self, value: &str) -> Result<(), ConfigError> {
+        let parsed = PostAaMode::from_str(value).map_err(|_| ConfigError::InvalidEnvOverride {
+            var: RENDER_POST_AA_ENV,
+            value: value.to_string(),
+            expected: POST_AA_EXPECTED,
+        })?;
+        self.render.post_aa = parsed;
         Ok(())
     }
 

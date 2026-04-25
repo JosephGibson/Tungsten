@@ -1,7 +1,7 @@
 //! Ordered pass list for the default M25 frame.
 
 use super::desc::{PassDesc, TargetId};
-use tungsten_core::config::DepthSortMode;
+use tungsten_core::config::{DepthSortMode, PostAaMode};
 
 /// `Vec<PassDesc>` describing the frame in draw order.
 #[derive(Debug, Clone)]
@@ -76,10 +76,12 @@ fn post_pass_label(i: usize) -> &'static str {
 ///   the scene pass and the text-overlay pass, ping-ponging `PostPing`/`PostPong`
 ///   (even index = Ping, odd = Pong). These passes never clear — they write
 ///   fullscreen fragments.
-/// - A `tungsten_text_overlay_pass` runs after the post stack (or immediately
-///   after the scene pass when the stack is empty). It loads the present-blit
-///   source and composites screen-space text on top, so text is never sampled
-///   by post shaders.
+/// - When `post_aa != Off` (M27), three SMAA passes (edge, blend weights,
+///   neighborhood blend) splice in between the post stack and the text overlay
+///   pass; the overlay then writes into `PresentSource`.
+/// - A `tungsten_text_overlay_pass` runs after the post stack / SMAA tail. It
+///   loads the present-blit source and composites screen-space text on top,
+///   so text is never sampled by post shaders.
 /// - The final `present` pass is always a fullscreen blit into the swapchain;
 ///   it never clears.
 #[must_use]
@@ -88,6 +90,7 @@ pub fn default_pass_order(
     depth_sort: DepthSortMode,
     depth_enabled: bool,
     post_stack_len: usize,
+    post_aa: PostAaMode,
 ) -> PassOrder {
     let (color, resolve) = if msaa > 1 {
         (TargetId::SceneColorMsaa, Some(TargetId::SceneColor))
@@ -104,14 +107,31 @@ pub fn default_pass_order(
         scene = scene.with_depth(TargetId::SceneDepth, 1.0);
     }
 
-    let mut passes = Vec::with_capacity(3 + post_stack_len);
+    let smaa_active = post_aa.is_smaa();
+    let extra = if smaa_active { 3 } else { 0 };
+    let mut passes = Vec::with_capacity(3 + post_stack_len + extra);
     passes.push(scene);
 
     for i in 0..post_stack_len {
         passes.push(PassDesc::new(post_pass_label(i), post_target_for_index(i)));
     }
 
-    let overlay_target = text_overlay_target(post_stack_len);
+    if smaa_active {
+        passes.push(
+            PassDesc::new("tungsten_smaa_edge_pass", TargetId::SmaaEdges)
+                .with_clear(wgpu::Color::TRANSPARENT),
+        );
+        passes.push(
+            PassDesc::new("tungsten_smaa_blend_weights_pass", TargetId::SmaaBlend)
+                .with_clear(wgpu::Color::TRANSPARENT),
+        );
+        passes.push(
+            PassDesc::new("tungsten_smaa_neighborhood_pass", TargetId::PresentSource)
+                .with_clear(wgpu::Color::TRANSPARENT),
+        );
+    }
+
+    let overlay_target = text_overlay_target(post_stack_len, post_aa);
     passes.push(PassDesc::new("tungsten_text_overlay_pass", overlay_target));
 
     passes.push(PassDesc::new("tungsten_present_pass", TargetId::Swapchain));
@@ -120,10 +140,14 @@ pub fn default_pass_order(
 }
 
 /// Target the text-overlay pass writes into: whichever texture the present
-/// blit will sample from. Mirrors `PostStackRenderer::final_target` but
-/// collapses the empty-stack case to `SceneColor`.
+/// blit will sample from. When `post_aa != Off` the SMAA tail has already
+/// composited into `PresentSource`, so the overlay lands there. Otherwise it
+/// follows the M26 post-stack ping-pong rule.
 #[must_use]
-pub fn text_overlay_target(post_stack_len: usize) -> TargetId {
+pub fn text_overlay_target(post_stack_len: usize, post_aa: PostAaMode) -> TargetId {
+    if post_aa.is_smaa() {
+        return TargetId::PresentSource;
+    }
     if post_stack_len == 0 {
         TargetId::SceneColor
     } else if (post_stack_len - 1).is_multiple_of(2) {

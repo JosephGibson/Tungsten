@@ -83,6 +83,18 @@ fn resolve_view<'a>(
             .expect("SceneDepth requested but depth_enabled = false"),
         TargetId::PostPing => pool.scene.post_ping_view(),
         TargetId::PostPong => pool.scene.post_pong_view(),
+        TargetId::SmaaEdges => pool
+            .scene
+            .smaa_edges_view()
+            .expect("SmaaEdges requested but post_aa == Off"),
+        TargetId::SmaaBlend => pool
+            .scene
+            .smaa_blend_view()
+            .expect("SmaaBlend requested but post_aa == Off"),
+        TargetId::PresentSource => pool
+            .scene
+            .present_source_view()
+            .expect("PresentSource requested but post_aa == Off"),
         TargetId::Swapchain => swap_view,
     }
 }

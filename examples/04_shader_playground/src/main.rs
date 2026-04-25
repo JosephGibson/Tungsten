@@ -13,6 +13,7 @@
 //! the smoke matrix, not interactive inspection.
 
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use glam::Vec2;
@@ -21,7 +22,8 @@ use tungsten::core::{
     InputState, ParticleConfig, Pcg32, Range, Sprite, Transform, Visibility, World,
 };
 use tungsten::particles::spawn_particle_via;
-use tungsten::{render::TextSection, App};
+use tungsten::{render::TextSection, request_post_aa, App, PostAaState};
+use tungsten_core::config::PostAaMode;
 use tungsten_core::post::{
     ColorAdjustParams, CrtParams, DissolveParams, DitherParams, FadeParams, FilmGrainParams,
     FogParams, GodRaysParams, LutParams, PixelOutlineParams, PostPass, PostStack, ToneMonoParams,
@@ -79,6 +81,19 @@ fn main() -> anyhow::Result<()> {
     let mut config = Config::load("tungsten.json")?;
     config.window.title = "Shader Playground — M26".to_string();
 
+    // M27: optional `TUNGSTEN_POST_AA_FIXTURE` env override before `App::new`
+    // so the renderer wakes up with the requested SMAA preset already active.
+    if let Ok(fixture) = std::env::var("TUNGSTEN_POST_AA_FIXTURE") {
+        match PostAaMode::from_str(&fixture) {
+            Ok(mode) => config.render.post_aa = mode,
+            Err(_) => {
+                anyhow::bail!(
+                    "invalid TUNGSTEN_POST_AA_FIXTURE='{fixture}': expected one of off, smaa_low, smaa_medium, smaa_high, smaa_ultra"
+                );
+            }
+        }
+    }
+
     let mut app = App::new(config)?;
     app.set_manifest_roots(vec![
         PathBuf::from(ROOT_MANIFEST),
@@ -118,9 +133,70 @@ fn main() -> anyhow::Result<()> {
     app.add_system_named("playground_bounce", bounce_system);
     app.add_system_named("playground_collisions", pair_collision_system);
     app.add_system_named("playground_cycle_input", cycle_input_system);
+    app.add_system_named("playground_post_aa_input", post_aa_input_system);
     app.set_extract_text(playground_text);
 
     app.run()
+}
+
+const POST_AA_CYCLE: &[PostAaMode] = &[
+    PostAaMode::Off,
+    PostAaMode::SmaaLow,
+    PostAaMode::SmaaMedium,
+    PostAaMode::SmaaHigh,
+    PostAaMode::SmaaUltra,
+];
+
+fn next_post_aa(current: PostAaMode) -> PostAaMode {
+    let idx = POST_AA_CYCLE
+        .iter()
+        .position(|&m| m == current)
+        .unwrap_or(0);
+    POST_AA_CYCLE[(idx + 1) % POST_AA_CYCLE.len()]
+}
+
+fn post_aa_input_system(world: &mut World) {
+    let (cycle, off, low, medium, high, ultra) = {
+        let Some(input) = world.get_resource::<InputState>() else {
+            return;
+        };
+        let Some(actions) = world.get_resource::<ActionMap>() else {
+            return;
+        };
+        (
+            actions.just_pressed(input, "playground_cycle_post_aa"),
+            actions.just_pressed(input, "playground_post_aa_off"),
+            actions.just_pressed(input, "playground_post_aa_low"),
+            actions.just_pressed(input, "playground_post_aa_medium"),
+            actions.just_pressed(input, "playground_post_aa_high"),
+            actions.just_pressed(input, "playground_post_aa_ultra"),
+        )
+    };
+    let current = world
+        .get_resource::<PostAaState>()
+        .map_or(PostAaMode::Off, |s| s.mode);
+
+    let target = if cycle {
+        Some(next_post_aa(current))
+    } else if off {
+        Some(PostAaMode::Off)
+    } else if low {
+        Some(PostAaMode::SmaaLow)
+    } else if medium {
+        Some(PostAaMode::SmaaMedium)
+    } else if high {
+        Some(PostAaMode::SmaaHigh)
+    } else if ultra {
+        Some(PostAaMode::SmaaUltra)
+    } else {
+        None
+    };
+
+    if let Some(mode) = target {
+        if mode != current {
+            request_post_aa(world, mode);
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -595,8 +671,13 @@ fn playground_text(world: &World) -> Vec<TextSection> {
     } else {
         "N/] next   B/[ prev   C/Backspace clear".to_string()
     };
+    let post_aa_label = world
+        .get_resource::<PostAaState>()
+        .map_or("off", |s| s.mode.as_str());
     vec![TextSection {
-        content: format!("Shader Playground · active: {active_name}\n{hint}"),
+        content: format!(
+            "Shader Playground · active: {active_name}\npost_aa: {post_aa_label}   (Tab cycle  0/5/6/7/8 set)\n{hint}"
+        ),
         font_id: "mono".into(),
         font_size: 20.0,
         line_height: 24.0,
