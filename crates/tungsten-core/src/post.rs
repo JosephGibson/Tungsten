@@ -317,7 +317,27 @@ impl Default for GodRaysParams {
     }
 }
 
-/// Closed enum of the 17 stock post-processing passes shipped with M26.
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
+#[serde(default)]
+pub struct BloomParams {
+    pub threshold: f32,
+    pub knee: f32,
+    pub intensity: f32,
+    pub radius: f32,
+}
+
+impl Default for BloomParams {
+    fn default() -> Self {
+        Self {
+            threshold: 1.0,
+            knee: 0.5,
+            intensity: 0.7,
+            radius: 1.0,
+        }
+    }
+}
+
+/// Closed enum of the 18 stock post-processing passes shipped with M26 + M28.
 /// Adding a new effect is a four-point change (variant + pipeline + stock
 /// WGSL + roster table in the milestone plan). See `D-054` for the closed-enum
 /// reasoning that also applies here.
@@ -341,6 +361,7 @@ pub enum PostPass {
     Pixelate(f32),
     Fog(FogParams),
     GodRays(GodRaysParams),
+    Bloom(BloomParams),
 }
 
 impl PostPass {
@@ -365,6 +386,7 @@ impl PostPass {
             Self::Pixelate(_) => "pixelate",
             Self::Fog(_) => "fog",
             Self::GodRays(_) => "god_rays",
+            Self::Bloom(_) => "bloom",
         }
     }
 }

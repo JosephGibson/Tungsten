@@ -16,7 +16,8 @@
     "msaa": 1,
     "depth_enabled": true,
     "depth_sort": "cpu_stable",
-    "post_aa": "off"
+    "post_aa": "off",
+    "bloom_max_mips": 6
   },
   "logging": { "level": "info" }
 }

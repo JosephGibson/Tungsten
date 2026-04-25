@@ -123,6 +123,18 @@
     },
     "smaa_neighborhood_blend": {
       "path": "shaders/stock/smaa_neighborhood_blend.wgsl"
+    },
+    "bloom_threshold": {
+      "path": "shaders/stock/bloom_threshold.wgsl"
+    },
+    "bloom_downsample": {
+      "path": "shaders/stock/bloom_downsample.wgsl"
+    },
+    "bloom_upsample": {
+      "path": "shaders/stock/bloom_upsample.wgsl"
+    },
+    "bloom_composite": {
+      "path": "shaders/stock/bloom_composite.wgsl"
     }
   },
   "materials": {

@@ -14,6 +14,7 @@ const RENDER_MSAA_ENV: &str = "TUNGSTEN_RENDER_MSAA";
 const RENDER_DEPTH_ENABLED_ENV: &str = "TUNGSTEN_RENDER_DEPTH_ENABLED";
 const RENDER_DEPTH_SORT_ENV: &str = "TUNGSTEN_RENDER_DEPTH_SORT";
 const RENDER_POST_AA_ENV: &str = "TUNGSTEN_RENDER_POST_AA";
+const RENDER_BLOOM_MAX_MIPS_ENV: &str = "TUNGSTEN_RENDER_BLOOM_MAX_MIPS";
 const DISPLAY_MODE_EXPECTED: &str = "one of: windowed, borderless_fullscreen, exclusive_fullscreen";
 const DISPLAY_RESOLUTION_EXPECTED: &str = "WIDTHxHEIGHT with integers >= 1";
 const DISPLAY_FRAME_RATE_CAP_EXPECTED: &str = "an integer >= 0";
@@ -24,6 +25,7 @@ const MSAA_EXPECTED: &str = "one of: 1, 2, 4, 8";
 const DEPTH_ENABLED_EXPECTED: &str = "one of: true, false, 1, 0";
 const DEPTH_SORT_EXPECTED: &str = "one of: cpu_stable, gpu_depth";
 const POST_AA_EXPECTED: &str = "one of: off, smaa_low, smaa_medium, smaa_high, smaa_ultra";
+const BLOOM_MAX_MIPS_EXPECTED: &str = "an integer in 1..=8";
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
@@ -226,6 +228,8 @@ pub struct RenderConfig {
     pub depth_sort: DepthSortMode,
     #[serde(default)]
     pub post_aa: PostAaMode,
+    #[serde(default = "default_bloom_max_mips")]
+    pub bloom_max_mips: u32,
 }
 
 impl Default for RenderConfig {
@@ -238,6 +242,7 @@ impl Default for RenderConfig {
             depth_enabled: default_depth_enabled(),
             depth_sort: DepthSortMode::default(),
             post_aa: PostAaMode::default(),
+            bloom_max_mips: default_bloom_max_mips(),
         }
     }
 }
@@ -254,9 +259,18 @@ fn default_depth_enabled() -> bool {
     true
 }
 
+fn default_bloom_max_mips() -> u32 {
+    6
+}
+
 #[must_use]
 pub const fn is_supported_msaa(sample_count: u32) -> bool {
     matches!(sample_count, 1 | 2 | 4 | 8)
+}
+
+#[must_use]
+pub const fn is_supported_bloom_max_mips(n: u32) -> bool {
+    n >= 1 && n <= 8
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -314,6 +328,13 @@ impl Config {
                         expected: MSAA_EXPECTED,
                     });
                 }
+                if !is_supported_bloom_max_mips(parsed.render.bloom_max_mips) {
+                    return Err(ConfigError::InvalidEnvOverride {
+                        var: "render.bloom_max_mips",
+                        value: parsed.render.bloom_max_mips.to_string(),
+                        expected: BLOOM_MAX_MIPS_EXPECTED,
+                    });
+                }
                 parsed
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -357,6 +378,9 @@ impl Config {
         }
         if let Ok(value) = std::env::var(RENDER_POST_AA_ENV) {
             self.apply_post_aa_override(&value)?;
+        }
+        if let Ok(value) = std::env::var(RENDER_BLOOM_MAX_MIPS_ENV) {
+            self.apply_bloom_max_mips_override(&value)?;
         }
         Ok(())
     }
@@ -409,6 +433,20 @@ impl Config {
             expected: POST_AA_EXPECTED,
         })?;
         self.render.post_aa = parsed;
+        Ok(())
+    }
+
+    fn apply_bloom_max_mips_override(&mut self, value: &str) -> Result<(), ConfigError> {
+        let parsed = value
+            .parse::<u32>()
+            .ok()
+            .filter(|v| is_supported_bloom_max_mips(*v))
+            .ok_or_else(|| ConfigError::InvalidEnvOverride {
+                var: RENDER_BLOOM_MAX_MIPS_ENV,
+                value: value.to_string(),
+                expected: BLOOM_MAX_MIPS_EXPECTED,
+            })?;
+        self.render.bloom_max_mips = parsed;
         Ok(())
     }
 

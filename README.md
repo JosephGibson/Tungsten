@@ -4,7 +4,7 @@ From-scratch Rust 2D game engine. Stack: `winit` + `wgpu` + `glam` + hand-rolled
 
 ## Status
 
-Workspace `v0.25.0` on branch `0.25`. Phase 3 is complete; all milestones `M12`–`M24` shipped. The rollout plan is archived at [`docs/plans/archive/phase3.md`](docs/plans/archive/phase3.md). Phase 4 is underway: M25 (render foundation), M26 (materials + post-stack + tween→material bridge), and M27 (SMAA 1x presentation AA) are live; remaining milestones are tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md).
+Workspace `v0.25.0` on branch `0.25`. Phase 3 is complete; all milestones `M12`–`M24` shipped. The rollout plan is archived at [`docs/plans/archive/phase3.md`](docs/plans/archive/phase3.md). Phase 4 is underway: M25 (render foundation), M26 (materials + post-stack + tween→material bridge), M27 (SMAA 1x presentation AA), and M28 (bloom) are live; remaining milestones are tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md).
 
 ## Stack
 
@@ -32,7 +32,7 @@ cargo test --workspace
 cargo run -p example-01-platformer      # comprehensive engine demo
 cargo run -p example-02-sprite-stress   # canonical perf stress scene
 cargo run -p example-03-scene-state     # scene/state + tween transition demo
-cargo run -p example-04-shader-playground  # materials + 17-effect post-stack demo
+cargo run -p example-04-shader-playground  # materials + 18-effect post-stack demo (incl. bloom)
 ```
 
 Reproducible Linux perf capture:

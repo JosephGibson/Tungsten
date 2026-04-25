@@ -6,10 +6,14 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- M28 bloom (`D-060`). New `PostPass::Bloom(BloomParams { threshold, knee, intensity, radius })` ships as the 18th `PostPass` variant on the existing reorderable `PostStack`. Each bloom slot runs a multi-subpass program against a new `Rgba16Float` `BloomPyramid` allocated on `SceneTarget`: bright-pass extract into mip 0, an `N-1` 13-tap Karis-weighted downsample chain, an `N-1` 9-tap tent additive upsample chain, and a replace-blend composite that writes `mix(src, src + bloom * intensity, radius)` into the slot's `dst`. Pyramid mip count is sized by `bloom_mip_count_for_size(width, height, render.bloom_max_mips)` with mip 0 starting at half resolution; `bloom_max_mips` is config-validated to `1..=8` (default 6) and overridable via the new `TUNGSTEN_RENDER_BLOOM_MAX_MIPS` env var. Bloom is the first `PostPass` recorded at encoder level — the renderer detects the variant before `PassRecorder::begin` and dispatches `BloomPipeline::record_pass`, which opens its own per-subpass `RenderPass`es. Four new manifest-tracked stage shaders (`bloom_threshold`, `bloom_downsample`, `bloom_upsample`, `bloom_composite`) live under `crates/tungsten-render/src/shaders/stock/` with byte-equal mirrors under `assets/shaders/stock/`; body-edit hot-reload routes through `Renderer::reload_shader` → `BloomPipeline::rebuild_stage_with_module` with `naga` validation and last-known-good fallback. `SceneColor` stays sRGB — only the pyramid is HDR. With `PostStack` empty the captured frame remains byte-identical to the M27 baseline. `example-04-shader-playground` gains a `KeyL` bloom toggle, `Y/H U/J I/K` live-tune bindings, an HUD row for the active bloom params, an emissive-quad sprite for the LDR demo fixture, and the new `TUNGSTEN_BLOOM_FIXTURE=on|off` and `TUNGSTEN_POST_STACK_FIXTURE=bloom_only` env pins. `scripts/smoke-examples.sh` gains a bloom row over the playground.
+
 ### Changed
 
 - Workspace version bumped to `0.25.0`.
-- `README.md`, `AGENTS.md`, `DESIGN.md`, `CLAUDE.md`, and `docs/plans/phase4.md` now reflect branch `0.25` with M25, M26, and M27 shipped.
+- `README.md`, `AGENTS.md`, `DESIGN.md`, `CLAUDE.md`, and `docs/plans/phase4.md` now reflect branch `0.25` with M25, M26, M27, and M28 shipped.
 
 ## [0.24.0] - 2026-04-25
 

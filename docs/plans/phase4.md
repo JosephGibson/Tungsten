@@ -177,6 +177,8 @@ Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user mate
 
 ## M28 — Bloom
 
+**Status:** done — shipped in `0.25` (plan archived at [`docs/plans/archive/phase4-milestone-28-bloom.md`](archive/phase4-milestone-28-bloom.md)).
+
 **Depends on:** M25, M26.
 
 **Adds (crates/tungsten-render/src/):**
@@ -184,21 +186,21 @@ Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user mate
 - `shaders/stock/bloom_threshold.wgsl`, `bloom_downsample.wgsl`, `bloom_upsample.wgsl`, `bloom_composite.wgsl`.
 
 **Algorithm:**
-- Threshold extract from `SceneColor` with soft knee `(brightness, knee)` into mip 0 of `BloomPyramid`.
-- 6-level downsample with 13-tap Karis-averaged filter.
-- Progressive upsample with 9-tap tent filter, accumulate into mip 0.
-- Additive composite into `PostPing` as final `PostPass::Bloom { threshold, knee, intensity, radius }`.
+- Threshold extract from the slot source with COD soft-knee `(threshold, knee)` into mip 0 of `BloomPyramid`.
+- N-1 downsample with 13-tap Karis-weighted average.
+- N-1 9-tap tent additive upsample, accumulating back into mip 0.
+- Replace-blend composite into the slot's `dst` (`PostPing`/`PostPong`) as `PostPass::Bloom { threshold, knee, intensity, radius }`.
 
 **Adds to PostPass enum (M26):**
-- `Bloom(BloomParams)` variant appended; `PostStack` accepts it.
+- `Bloom(BloomParams)` variant appended; `PostStack` accepts it as the 18th variant.
 
 **Config:**
-- `render.bloom_max_mips: u32` (default 6, clamped by viewport size).
+- `render.bloom_max_mips: u32` (default 6, range `1..=8`, clamped by viewport size, env override `TUNGSTEN_RENDER_BLOOM_MAX_MIPS`).
 
 **Touches:**
-- [targets.rs](../../crates/tungsten-render/src/) from M25 — `BloomPyramid { mips: Vec<TextureView> }` allocator, resized on surface resize.
+- [targets.rs](../../crates/tungsten-render/src/) from M25 — `BloomPyramid { texture, mip_views, mip_extents }` allocator, sized by `bloom_mip_count_for_size`, reallocated on surface resize.
 
-**Acceptance:** gif of `examples/04_shader_playground/` with an emissive sprite (flat bright quad as placeholder) toggling `Bloom` on/off via HUD; second gif with threshold/intensity/radius slid via keys.
+**Acceptance:** `example-04-shader-playground` toggles bloom with `KeyL`, exposes threshold/intensity/radius live-tune (`Y/H U/J I/K`), and ships a `TUNGSTEN_BLOOM_FIXTURE=on TUNGSTEN_POST_STACK_FIXTURE=bloom_only` smoke row.
 
 ---
 

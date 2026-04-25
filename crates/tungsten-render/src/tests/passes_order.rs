@@ -188,3 +188,21 @@ fn text_overlay_target_off_matches_m26_baseline() {
     assert_eq!(text_overlay_target(1, PostAaMode::Off), TargetId::PostPing);
     assert_eq!(text_overlay_target(2, PostAaMode::Off), TargetId::PostPong);
 }
+
+#[test]
+fn bloom_only_stack_emits_one_post_pass_writing_to_ping() {
+    // M28 invariant: although bloom is recorded as multiple sub-passes through
+    // the encoder, the outer pass list still allocates exactly one slot for
+    // the bloom variant, writing to PostPing. This keeps text_overlay_idx and
+    // present-source indexing stable across `PostPass::Bloom` insertion.
+    let order = default_pass_order(1, DepthSortMode::CpuStable, true, 1, PostAaMode::Off);
+    let passes = order.as_slice();
+    assert_eq!(passes.len(), 4);
+    assert_eq!(passes[0].label, "tungsten_scene_pass");
+    assert_eq!(passes[1].label, "tungsten_post_pass_0");
+    assert_eq!(passes[1].color, TargetId::PostPing);
+    assert!(passes[1].clear.is_none());
+    assert_eq!(passes[2].label, "tungsten_text_overlay_pass");
+    assert_eq!(passes[2].color, TargetId::PostPing);
+    assert_eq!(passes[3].label, "tungsten_present_pass");
+}
