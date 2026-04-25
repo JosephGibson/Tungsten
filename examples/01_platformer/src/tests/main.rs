@@ -106,6 +106,7 @@ fn runtime_system_order_matches_expected_pipeline() {
             "black_hole_lifetime_system",
             "despawn_out_of_bounds",
             "sync_position_to_transform",
+            "orbit_lights_system",
             "platformer_camera_base_zoom",
             "camera_update_system",
         ]

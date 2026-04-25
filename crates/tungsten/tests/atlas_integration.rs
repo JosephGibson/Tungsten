@@ -25,6 +25,9 @@ fn register(world: &mut World, id: &str, filter: FilterMode, atlas: TextureHandl
         PathBuf::from(format!("test/{id}.png")),
         atlas,
         uv,
+        None,
+        None,
+        None,
     );
 }
 

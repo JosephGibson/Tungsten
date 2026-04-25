@@ -616,6 +616,9 @@ struct FrameExtract {
     text: Vec<TextSection>,
     debug_quads: Vec<QuadInstance>,
     debug_lines: Vec<DebugLineInstance>,
+    /// M29 per-frame lighting payload; uploaded to the GPU once per render
+    /// stage. With no lights this carries `count = 0` + ambient default.
+    light_ubo: tungsten_render::LightUbo,
     extract_ms: f32,
 }
 
@@ -790,6 +793,16 @@ impl App {
             text.extend(sections);
         }
 
+        // M29: pull lights into a UBO every frame regardless of presence so
+        // the lit pipeline (when active) reads coherent ambient + count = 0.
+        let camera = self
+            .world
+            .get_resource::<CameraState>()
+            .copied()
+            .unwrap_or_default();
+        let (vw, vh) = (viewport.0 as f32, viewport.1 as f32);
+        let light_ubo = crate::light_extract::extract_lights(&self.world, &camera, vw, vh);
+
         let extract_ms = extract_start.elapsed().as_secs_f64() as f32 * 1000.0;
         FrameExtract {
             quads,
@@ -797,6 +810,7 @@ impl App {
             text,
             debug_quads,
             debug_lines,
+            light_ubo,
             extract_ms,
         }
     }
@@ -832,6 +846,9 @@ impl App {
                 .get_resource::<tungsten_core::post::PostStack>()
                 .cloned()
                 .unwrap_or_default();
+
+            // M29: upload the per-frame light UBO before any draw records it.
+            renderer.update_lights(&extract.light_ubo);
 
             let result = if self.gpu_timing_enabled {
                 renderer.render_frame_full_timed(

@@ -48,6 +48,14 @@ struct Decoded {
     width: u32,
     height: u32,
     rgba: Vec<u8>,
+    /// M29 optional sibling normal-map path (for hot-reload + load-side decode).
+    normal_path: Option<PathBuf>,
+    /// M29 optional sibling emissive-mask path.
+    emissive_path: Option<PathBuf>,
+    /// M29 decoded sibling normal-map RGBA, dimensions == albedo.
+    normal_rgba: Option<Vec<u8>>,
+    /// M29 decoded sibling emissive RGB-promoted to RGBA, dimensions == albedo.
+    emissive_rgba: Option<Vec<u8>>,
 }
 
 /// Build one filter-class atlas; half-texel UV inset assumes no mipmaps.
@@ -80,6 +88,33 @@ fn build_atlas_for_filter(
         .iter()
         .map(|p| vec![0u8; (p.width as usize) * (p.height as usize) * 4])
         .collect();
+    let any_lit = decoded.iter().any(|d| d.normal_rgba.is_some());
+    // Flat-normal default: tangent-space (0.5, 0.5, 1.0) encoded per byte.
+    let mut normal_canvases: Vec<Vec<u8>> = if any_lit {
+        pack.pages
+            .iter()
+            .map(|p| {
+                let mut v = vec![0u8; (p.width as usize) * (p.height as usize) * 4];
+                for px in v.chunks_exact_mut(4) {
+                    px[0] = 128;
+                    px[1] = 128;
+                    px[2] = 255;
+                    px[3] = 255;
+                }
+                v
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let mut emissive_canvases: Vec<Vec<u8>> = if any_lit {
+        pack.pages
+            .iter()
+            .map(|p| vec![0u8; (p.width as usize) * (p.height as usize) * 4])
+            .collect()
+    } else {
+        Vec::new()
+    };
 
     for packed in &pack.sprites {
         let src = by_id[packed.id.as_str()];
@@ -95,12 +130,47 @@ fn build_atlas_for_filter(
             let src_end = src_start + sprite_stride;
             canvas[dst_start..dst_end].copy_from_slice(&src.rgba[src_start..src_end]);
         }
+        if any_lit {
+            if let Some(n) = &src.normal_rgba {
+                let canvas = &mut normal_canvases[packed.page as usize];
+                for row in 0..(packed.height as usize) {
+                    let dst_y = (packed.y as usize) + row;
+                    let dst_start = dst_y * page_stride + (packed.x as usize) * 4;
+                    let dst_end = dst_start + sprite_stride;
+                    let src_start = row * sprite_stride;
+                    let src_end = src_start + sprite_stride;
+                    canvas[dst_start..dst_end].copy_from_slice(&n[src_start..src_end]);
+                }
+            }
+            if let Some(e) = &src.emissive_rgba {
+                let canvas = &mut emissive_canvases[packed.page as usize];
+                for row in 0..(packed.height as usize) {
+                    let dst_y = (packed.y as usize) + row;
+                    let dst_start = dst_y * page_stride + (packed.x as usize) * 4;
+                    let dst_end = dst_start + sprite_stride;
+                    let src_start = row * sprite_stride;
+                    let src_end = src_start + sprite_stride;
+                    canvas[dst_start..dst_end].copy_from_slice(&e[src_start..src_end]);
+                }
+            }
+        }
     }
 
     let mut page_handles: Vec<TextureHandle> = Vec::with_capacity(pack.pages.len());
     for (page_idx, page) in pack.pages.iter().enumerate() {
         let handle = renderer.allocate_texture_handle();
         renderer.upload_texture(handle, &canvases[page_idx], page.width, page.height, filter);
+        if any_lit {
+            renderer.upload_lit_texture(
+                handle,
+                &canvases[page_idx],
+                &normal_canvases[page_idx],
+                &emissive_canvases[page_idx],
+                page.width,
+                page.height,
+                filter,
+            );
+        }
         page_handles.push(handle);
     }
 
@@ -117,6 +187,11 @@ fn build_atlas_for_filter(
             ],
         };
         let atlas = page_handles[packed.page as usize];
+        let lit_atlas = if src.normal_path.is_some() {
+            Some(atlas)
+        } else {
+            None
+        };
         registry.register_sprite(
             src.id.clone(),
             filter,
@@ -125,6 +200,9 @@ fn build_atlas_for_filter(
             src.path.clone(),
             atlas,
             uv,
+            src.normal_path.clone(),
+            src.emissive_path.clone(),
+            lit_atlas,
         );
         atlas_registry.packed.insert(src.id.clone(), packed.clone());
     }
@@ -148,12 +226,81 @@ pub fn load_sprites(
             .map_err(|e| anyhow::anyhow!("Failed to decode '{}': {}", sprite.path.display(), e))?
             .to_rgba8();
         let (width, height) = img.dimensions();
+        let mut normal_rgba: Option<Vec<u8>> = None;
+        if let Some(np) = &sprite.normal_path {
+            match image::open(np) {
+                Ok(n_img) => {
+                    let n = n_img.to_rgba8();
+                    if n.dimensions() == (width, height) {
+                        normal_rgba = Some(n.into_raw());
+                    } else {
+                        log::error!(
+                            "sprite '{}' normal_map dimensions {:?} != albedo {:?}; sprite stays unlit",
+                            id, n.dimensions(), (width, height),
+                        );
+                    }
+                }
+                Err(e) => log::error!(
+                    "sprite '{}' normal_map decode failed at '{}': {}; sprite stays unlit",
+                    id,
+                    np.display(),
+                    e,
+                ),
+            }
+        }
+        let mut emissive_rgba: Option<Vec<u8>> = None;
+        if let Some(ep) = &sprite.emissive_path {
+            match image::open(ep) {
+                Ok(e_img) => {
+                    let e = e_img.to_rgba8();
+                    if e.dimensions() == (width, height) {
+                        let raw = e.into_raw();
+                        let mut rgb = Vec::with_capacity(raw.len());
+                        for px in raw.chunks_exact(4) {
+                            let a = px[3] as f32 / 255.0;
+                            let r = (px[0] as f32 * a) as u8;
+                            let g = (px[1] as f32 * a) as u8;
+                            let b = (px[2] as f32 * a) as u8;
+                            rgb.extend_from_slice(&[r, g, b, 255]);
+                        }
+                        emissive_rgba = Some(rgb);
+                    } else {
+                        log::error!(
+                            "sprite '{}' emissive_mask dimensions {:?} != albedo {:?}; sprite stays unlit",
+                            id, e.dimensions(), (width, height),
+                        );
+                    }
+                }
+                Err(e) => log::error!(
+                    "sprite '{}' emissive_mask decode failed at '{}': {}; sprite stays unlit",
+                    id,
+                    ep.display(),
+                    e,
+                ),
+            }
+        }
+        // M29: emissive without normal stays unlit; lit-path requires a normal.
+        if normal_rgba.is_none() {
+            emissive_rgba = None;
+        }
         let entry = Decoded {
             id: id.clone(),
             path: sprite.path.clone(),
             width,
             height,
             rgba: img.into_raw(),
+            normal_path: if normal_rgba.is_some() {
+                sprite.normal_path.clone()
+            } else {
+                None
+            },
+            emissive_path: if normal_rgba.is_some() {
+                sprite.emissive_path.clone()
+            } else {
+                None
+            },
+            normal_rgba,
+            emissive_rgba,
         };
         match sprite.filter {
             FilterMode::Nearest => decoded_nearest.push(entry),
@@ -593,6 +740,12 @@ pub fn spawn_scene(world: &mut World, data: &SceneData, state_id: StateId) {
 }
 
 /// Hot-reload sprite; D-031 requires between-frame drain before handle drops.
+///
+/// `path` may point to the albedo PNG, the M29 normal-map sibling, or the
+/// emissive-mask sibling. The reverse `path_to_sprite_id` maps any of the
+/// three paths back to `id`; this routine consults the registered asset
+/// metadata to decode all three siblings on every reload so the lit bundle
+/// stays consistent.
 pub fn reload_sprite(
     id: &str,
     path: &Path,
@@ -600,21 +753,17 @@ pub fn reload_sprite(
     world: &mut World,
     renderer: &mut Renderer,
 ) -> anyhow::Result<()> {
-    let img = match image::open(path) {
-        Ok(i) => i.to_rgba8(),
-        Err(e) => {
-            log::error!(
-                "Hot reload sprite '{id}': failed to decode '{}': {e}",
-                path.display()
-            );
-            return Ok(());
-        }
-    };
-    let (new_w, new_h) = img.dimensions();
-    let rgba = img.into_raw();
-
-    // Generated sprites may lack atlas packed rects.
-    let (atlas_handle, uv, old_w, old_h, packed_xywh) = {
+    let (
+        atlas_handle,
+        uv,
+        old_w,
+        old_h,
+        packed_xywh,
+        albedo_path,
+        normal_path,
+        emissive_path,
+        had_lit,
+    ) = {
         let asset_reg = world
             .get_resource::<AssetRegistry>()
             .expect("AssetRegistry resource missing");
@@ -626,8 +775,97 @@ pub fn reload_sprite(
             .get_resource::<AtlasRegistry>()
             .and_then(|ar| ar.packed.get(id))
             .map(|p| (p.x, p.y, p.width, p.height));
-        (asset.atlas, asset.uv, asset.width, asset.height, packed)
+        (
+            asset.atlas,
+            asset.uv,
+            asset.width,
+            asset.height,
+            packed,
+            asset.path.clone(),
+            asset.normal_path.clone(),
+            asset.emissive_path.clone(),
+            asset.lit_atlas.is_some(),
+        )
     };
+
+    let img = match image::open(&albedo_path) {
+        Ok(i) => i.to_rgba8(),
+        Err(e) => {
+            log::error!(
+                "Hot reload sprite '{id}': failed to decode '{}': {e}",
+                albedo_path.display()
+            );
+            return Ok(());
+        }
+    };
+    let (new_w, new_h) = img.dimensions();
+    let rgba = img.into_raw();
+
+    // M29 sibling decode: required when the sprite carried lit data; failures
+    // log and leave the previous lit bundle byte-identical.
+    let (normal_rgba_opt, emissive_rgba_opt) = if had_lit {
+        let n = match &normal_path {
+            Some(np) => match image::open(np) {
+                Ok(n_img) => {
+                    let n = n_img.to_rgba8();
+                    if n.dimensions() == (new_w, new_h) {
+                        Some(n.into_raw())
+                    } else {
+                        log::error!(
+                            "Hot reload sprite '{id}': normal_map dimensions {:?} != albedo {:?}",
+                            n.dimensions(),
+                            (new_w, new_h)
+                        );
+                        None
+                    }
+                }
+                Err(e) => {
+                    log::error!("Hot reload sprite '{id}': normal_map decode failed: {e}");
+                    None
+                }
+            },
+            None => None,
+        };
+        let e = match &emissive_path {
+            Some(ep) => match image::open(ep) {
+                Ok(e_img) => {
+                    let e = e_img.to_rgba8();
+                    if e.dimensions() == (new_w, new_h) {
+                        let raw = e.into_raw();
+                        let mut rgb = Vec::with_capacity(raw.len());
+                        for px in raw.chunks_exact(4) {
+                            let a = px[3] as f32 / 255.0;
+                            let r = (px[0] as f32 * a) as u8;
+                            let g = (px[1] as f32 * a) as u8;
+                            let b = (px[2] as f32 * a) as u8;
+                            rgb.extend_from_slice(&[r, g, b, 255]);
+                        }
+                        Some(rgb)
+                    } else {
+                        log::error!(
+                            "Hot reload sprite '{id}': emissive_mask dimensions {:?} != albedo {:?}",
+                            e.dimensions(),
+                            (new_w, new_h)
+                        );
+                        None
+                    }
+                }
+                Err(e) => {
+                    log::error!("Hot reload sprite '{id}': emissive_mask decode failed: {e}");
+                    None
+                }
+            },
+            None => None,
+        };
+        (n, e)
+    } else {
+        (None, None)
+    };
+    log::trace!(
+        "reload_sprite '{id}' triggered by '{}' (albedo='{}')",
+        path.display(),
+        albedo_path.display()
+    );
 
     let Some((px, py, pw, ph)) = packed_xywh else {
         log::error!("Hot reload sprite '{id}': no atlas-registry entry; keeping previous state");
@@ -638,8 +876,8 @@ pub fn reload_sprite(
         // In-place shrink: UV still covers full packed rect; transparent tail.
         let cell_w = pw as usize;
         let cell_h = ph as usize;
-        let mut canvas = vec![0u8; cell_w * cell_h * 4];
         let nw = new_w as usize;
+        let mut canvas = vec![0u8; cell_w * cell_h * 4];
         for row in 0..(new_h as usize) {
             let dst_start = row * cell_w * 4;
             let dst_end = dst_start + nw * 4;
@@ -648,6 +886,47 @@ pub fn reload_sprite(
             canvas[dst_start..dst_end].copy_from_slice(&rgba[src_start..src_end]);
         }
         renderer.write_subtexture(atlas_handle, &canvas, px, py, pw, ph);
+
+        if had_lit {
+            // Build flat-default normal + zero emissive cell-sized canvases,
+            // then overlay the new sibling pixels if decoded successfully.
+            let mut normal_cell = vec![0u8; cell_w * cell_h * 4];
+            for px2 in normal_cell.chunks_exact_mut(4) {
+                px2[0] = 128;
+                px2[1] = 128;
+                px2[2] = 255;
+                px2[3] = 255;
+            }
+            let mut emissive_cell = vec![0u8; cell_w * cell_h * 4];
+            if let Some(nrgba) = &normal_rgba_opt {
+                for row in 0..(new_h as usize) {
+                    let dst_start = row * cell_w * 4;
+                    let dst_end = dst_start + nw * 4;
+                    let src_start = row * nw * 4;
+                    let src_end = src_start + nw * 4;
+                    normal_cell[dst_start..dst_end].copy_from_slice(&nrgba[src_start..src_end]);
+                }
+            }
+            if let Some(ergba) = &emissive_rgba_opt {
+                for row in 0..(new_h as usize) {
+                    let dst_start = row * cell_w * 4;
+                    let dst_end = dst_start + nw * 4;
+                    let src_start = row * nw * 4;
+                    let src_end = src_start + nw * 4;
+                    emissive_cell[dst_start..dst_end].copy_from_slice(&ergba[src_start..src_end]);
+                }
+            }
+            renderer.write_subtexture_lit(
+                atlas_handle,
+                &canvas,
+                &normal_cell,
+                &emissive_cell,
+                px,
+                py,
+                pw,
+                ph,
+            );
+        }
 
         world
             .get_resource_mut::<AssetRegistry>()
@@ -670,7 +949,7 @@ pub fn rebuild_atlas_for_filter(
     world: &mut World,
     renderer: &mut Renderer,
 ) -> anyhow::Result<()> {
-    let entries: Vec<(String, PathBuf)> = {
+    let entries: Vec<(String, PathBuf, Option<PathBuf>, Option<PathBuf>)> = {
         let registry = world
             .get_resource::<AssetRegistry>()
             .expect("AssetRegistry resource missing");
@@ -679,7 +958,12 @@ pub fn rebuild_atlas_for_filter(
             .filter_map(|id| {
                 let asset = registry.get_sprite(id)?;
                 if asset.filter == filter {
-                    Some((id.to_string(), asset.path.clone()))
+                    Some((
+                        id.to_string(),
+                        asset.path.clone(),
+                        asset.normal_path.clone(),
+                        asset.emissive_path.clone(),
+                    ))
                 } else {
                     None
                 }
@@ -699,7 +983,7 @@ pub fn rebuild_atlas_for_filter(
     }
 
     let mut decoded: Vec<Decoded> = Vec::with_capacity(entries.len());
-    for (id, path) in entries {
+    for (id, path, normal_path, emissive_path) in entries {
         let img = match image::open(&path) {
             Ok(i) => i.to_rgba8(),
             Err(e) => {
@@ -713,12 +997,71 @@ pub fn rebuild_atlas_for_filter(
             }
         };
         let (w, h) = img.dimensions();
+        let mut normal_rgba: Option<Vec<u8>> = None;
+        if let Some(np) = &normal_path {
+            match image::open(np) {
+                Ok(n_img) => {
+                    let n = n_img.to_rgba8();
+                    if n.dimensions() == (w, h) {
+                        normal_rgba = Some(n.into_raw());
+                    } else {
+                        log::error!(
+                            "Rebuild {:?} atlas: sprite '{}' normal_map dimensions {:?} != albedo {:?}; sprite stays unlit",
+                            filter, id, n.dimensions(), (w, h)
+                        );
+                    }
+                }
+                Err(e) => log::error!(
+                    "Rebuild {:?} atlas: sprite '{}' normal_map decode failed: {e}; sprite stays unlit",
+                    filter, id
+                ),
+            }
+        }
+        let mut emissive_rgba: Option<Vec<u8>> = None;
+        if let Some(ep) = &emissive_path {
+            match image::open(ep) {
+                Ok(e_img) => {
+                    let e = e_img.to_rgba8();
+                    if e.dimensions() == (w, h) {
+                        let raw = e.into_raw();
+                        let mut rgb = Vec::with_capacity(raw.len());
+                        for px in raw.chunks_exact(4) {
+                            let a = px[3] as f32 / 255.0;
+                            let r = (px[0] as f32 * a) as u8;
+                            let g = (px[1] as f32 * a) as u8;
+                            let b = (px[2] as f32 * a) as u8;
+                            rgb.extend_from_slice(&[r, g, b, 255]);
+                        }
+                        emissive_rgba = Some(rgb);
+                    }
+                }
+                Err(e) => log::error!(
+                    "Rebuild {:?} atlas: sprite '{}' emissive_mask decode failed: {e}; sprite stays unlit",
+                    filter, id
+                ),
+            }
+        }
+        if normal_rgba.is_none() {
+            emissive_rgba = None;
+        }
         decoded.push(Decoded {
             id,
             path,
             width: w,
             height: h,
             rgba: img.into_raw(),
+            normal_path: if normal_rgba.is_some() {
+                normal_path
+            } else {
+                None
+            },
+            emissive_path: if normal_rgba.is_some() {
+                emissive_path
+            } else {
+                None
+            },
+            normal_rgba,
+            emissive_rgba,
         });
     }
 
@@ -758,6 +1101,32 @@ pub fn rebuild_atlas_for_filter(
         .iter()
         .map(|p| vec![0u8; (p.width as usize) * (p.height as usize) * 4])
         .collect();
+    let any_lit = decoded.iter().any(|d| d.normal_rgba.is_some());
+    let mut normal_canvases: Vec<Vec<u8>> = if any_lit {
+        pack.pages
+            .iter()
+            .map(|p| {
+                let mut v = vec![0u8; (p.width as usize) * (p.height as usize) * 4];
+                for px in v.chunks_exact_mut(4) {
+                    px[0] = 128;
+                    px[1] = 128;
+                    px[2] = 255;
+                    px[3] = 255;
+                }
+                v
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let mut emissive_canvases: Vec<Vec<u8>> = if any_lit {
+        pack.pages
+            .iter()
+            .map(|p| vec![0u8; (p.width as usize) * (p.height as usize) * 4])
+            .collect()
+    } else {
+        Vec::new()
+    };
     for packed in &pack.sprites {
         let src = by_id[packed.id.as_str()];
         let page = &pack.pages[packed.page as usize];
@@ -772,6 +1141,30 @@ pub fn rebuild_atlas_for_filter(
             let src_end = src_start + sprite_stride;
             canvas[dst_start..dst_end].copy_from_slice(&src.rgba[src_start..src_end]);
         }
+        if any_lit {
+            if let Some(n) = &src.normal_rgba {
+                let canvas = &mut normal_canvases[packed.page as usize];
+                for row in 0..(packed.height as usize) {
+                    let dst_y = (packed.y as usize) + row;
+                    let dst_start = dst_y * page_stride + (packed.x as usize) * 4;
+                    let dst_end = dst_start + sprite_stride;
+                    let src_start = row * sprite_stride;
+                    let src_end = src_start + sprite_stride;
+                    canvas[dst_start..dst_end].copy_from_slice(&n[src_start..src_end]);
+                }
+            }
+            if let Some(e) = &src.emissive_rgba {
+                let canvas = &mut emissive_canvases[packed.page as usize];
+                for row in 0..(packed.height as usize) {
+                    let dst_y = (packed.y as usize) + row;
+                    let dst_start = dst_y * page_stride + (packed.x as usize) * 4;
+                    let dst_end = dst_start + sprite_stride;
+                    let src_start = row * sprite_stride;
+                    let src_end = src_start + sprite_stride;
+                    canvas[dst_start..dst_end].copy_from_slice(&e[src_start..src_end]);
+                }
+            }
+        }
     }
 
     for (page_idx, page) in pack.pages.iter().enumerate() {
@@ -782,6 +1175,17 @@ pub fn rebuild_atlas_for_filter(
             page.height,
             filter,
         );
+        if any_lit {
+            renderer.upload_lit_texture(
+                new_handles[page_idx],
+                &canvases[page_idx],
+                &normal_canvases[page_idx],
+                &emissive_canvases[page_idx],
+                page.width,
+                page.height,
+                filter,
+            );
+        }
     }
 
     {
@@ -807,6 +1211,13 @@ pub fn rebuild_atlas_for_filter(
                 src.width,
                 src.height,
             );
+            // Rebuild lit-atlas marker after a repack.
+            let lit_atlas = if src.normal_rgba.is_some() {
+                Some(new_handles[packed.page as usize])
+            } else {
+                None
+            };
+            registry.update_sprite_lit_atlas(&src.id, lit_atlas);
         }
     }
 
@@ -995,6 +1406,27 @@ pub fn reload_manifest(
                 log::warn!("Manifest reload: sprite '{id}' removed — keeping stale");
             }
         }
+        // M29: warn when an existing sprite drops its normal/emissive
+        // sibling. Aux pages stay last-known-good until the next full repack.
+        {
+            let registry = world
+                .get_resource::<AssetRegistry>()
+                .expect("AssetRegistry resource missing");
+            for (id, entry) in &new_manifest.sprites {
+                if let Some(asset) = registry.get_sprite(id) {
+                    if asset.normal_path.is_some() && entry.normal_path.is_none() {
+                        log::warn!(
+                            "Manifest reload: sprite '{id}' normal_map removed — keeping stale lit page"
+                        );
+                    }
+                    if asset.emissive_path.is_some() && entry.emissive_path.is_none() {
+                        log::warn!(
+                            "Manifest reload: sprite '{id}' emissive_mask removed — keeping stale lit page"
+                        );
+                    }
+                }
+            }
+        }
 
         // Added sprite stages placeholder, then filter-class rebuild overwrites it.
         let mut gained_nearest = false;
@@ -1015,6 +1447,9 @@ pub fn reload_manifest(
                     entry.path.clone(),
                     TextureHandle(0),
                     UvRect::FULL,
+                    entry.normal_path.clone(),
+                    entry.emissive_path.clone(),
+                    None,
                 );
                 match entry.filter {
                     FilterMode::Nearest => gained_nearest = true,

@@ -15,7 +15,7 @@ ordered steps:
   - "Execute M25 → M26 → M27 → M28 → M29 in order. M30 ↔ M31 order is free. M32 before M33. M33 last."
   - "For each milestone, write the plan, implement it, produce an acceptance artifact, and flip status to done."
 done-when:
-  - "All 9 milestones landed on the active integration branch (`0.25` today; `main` if the repo flips before Phase 4 starts), each with `status: done` in its plan file."
+  - "All 9 milestones landed on the active integration branch (`0.26` today; `main` if the repo flips before Phase 4 starts), each with `status: done` in its plan file."
   - "DESIGN.md Status, CHANGELOG.md, and docs/DECISION_INDEX.md are updated where milestone decisions change canonical project guidance."
   - "This file is flipped to `status: done`, and any milestone that changes the shader/text/hot-reload rules updates AGENTS.md in the same change."
 ---
@@ -87,7 +87,7 @@ Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user mate
 
 ## M26 — Materials + Post-Stack + Tween→Material Bridge
 
-**Status:** done — shipped in `0.23` (current integration continues on `0.25`; plan archived at [`docs/plans/archive/phase4-milestone-26-materials-post-stack.md`](archive/phase4-milestone-26-materials-post-stack.md)).
+**Status:** done — shipped in `0.23` (current integration continues on `0.26`; plan archived at [`docs/plans/archive/phase4-milestone-26-materials-post-stack.md`](archive/phase4-milestone-26-materials-post-stack.md)).
 
 **Depends on:** M25.
 
@@ -206,6 +206,8 @@ Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user mate
 
 ## M29 — 2D Lighting (Forward, Normal-Mapped)
 
+**Status:** done — shipped in `0.27` (plan archived at [`docs/plans/archive/phase4-milestone-29-2d-lighting.md`](archive/phase4-milestone-29-2d-lighting.md)).
+
 **Depends on:** M25, M26. M28 recommended (bloom + emissive).
 
 **Adds (crates/tungsten-core/src/):**
@@ -213,17 +215,17 @@ Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user mate
 - Resource `AmbientLight(Vec3)` — default `Vec3::ONE`.
 
 **Adds (crates/tungsten-render/src/):**
-- `lighting.rs` — `LightUbo { lights: [GpuLight; 16], count: u32, ambient: Vec3 }`, `GpuLight { position, color, params }` as 32-byte POD.
-- `shaders/lit_sprite.wgsl` — samples albedo, normal, emissive; N-dot-L accumulation across lights; additive rim term; emissive mask add.
+- `lighting.rs` — 544-byte `LightUbo { lights: [GpuLight; 16], count_pad: [u32; 4], ambient: [f32; 4] }`, `GpuLight` as 32-byte POD.
+- `assets/shaders/lit_sprite.wgsl` — samples albedo, normal, emissive; N-dot-L accumulation across lights; additive rim term; emissive mask add.
 - `shaders/stock/emissive_mask.wgsl`, `rim_light.wgsl` as composable helpers (callable from lit_sprite and from user materials).
 
 **Adds (manifest — sprite entry):**
-- `normal_map: Option<AssetId>`.
-- `emissive_mask: Option<AssetId>` (single-channel mask, or alpha of normal_map if set and emissive_mask is None).
+- `normal_map: Option<String>` sibling path relative to the manifest.
+- `emissive_mask: Option<String>` sibling path relative to the manifest; single-channel/alpha masks are expanded into emissive RGB during atlas upload.
 
 **Adds (extract):**
 - `extract_lights(&World) -> LightUbo` — queries `(Transform, Light)`, culls by `CameraState::visible_world_aabb()`, caps at 16, writes to UBO.
-- Lit sprite batch path: if sprite has `normal_map`, routed through `lit_sprite.wgsl` pipeline instead of `sprite.wgsl`.
+- Lit sprite batch path: if a resolved `SpriteAsset` has `lit_atlas`, route that batch through `lit_sprite.wgsl` instead of `sprite.wgsl` while preserving extracted batch order.
 
 **Light cull:** distance-to-camera-AABB sort, keep nearest 16.
 

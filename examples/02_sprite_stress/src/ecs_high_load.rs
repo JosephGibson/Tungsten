@@ -202,6 +202,9 @@ fn register_high_load_sprite(world: &mut World, renderer: &mut Renderer) {
             PathBuf::from(HIGH_LOAD_SPRITE_PATH),
             handle,
             tungsten::core::assets::UvRect::FULL,
+            None,
+            None,
+            None,
         );
     }
     renderer.upload_texture(

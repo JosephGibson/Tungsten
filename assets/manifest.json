@@ -14,19 +14,27 @@
     },
     "walk_0": {
       "path": "sprites/walk_0.png",
-      "filter": "nearest"
+      "filter": "nearest",
+      "normal_map": "sprites/walk_0_n.png",
+      "emissive_mask": "sprites/walk_0_e.png"
     },
     "walk_1": {
       "path": "sprites/walk_1.png",
-      "filter": "nearest"
+      "filter": "nearest",
+      "normal_map": "sprites/walk_1_n.png",
+      "emissive_mask": "sprites/walk_1_e.png"
     },
     "walk_2": {
       "path": "sprites/walk_2.png",
-      "filter": "nearest"
+      "filter": "nearest",
+      "normal_map": "sprites/walk_2_n.png",
+      "emissive_mask": "sprites/walk_2_e.png"
     },
     "walk_3": {
       "path": "sprites/walk_3.png",
-      "filter": "nearest"
+      "filter": "nearest",
+      "normal_map": "sprites/walk_3_n.png",
+      "emissive_mask": "sprites/walk_3_e.png"
     }
   },
   "animations": {
@@ -135,6 +143,15 @@
     },
     "bloom_composite": {
       "path": "shaders/stock/bloom_composite.wgsl"
+    },
+    "lit_sprite": {
+      "path": "shaders/lit_sprite.wgsl"
+    },
+    "emissive_mask": {
+      "path": "shaders/stock/emissive_mask.wgsl"
+    },
+    "rim_light": {
+      "path": "shaders/stock/rim_light.wgsl"
     }
   },
   "materials": {

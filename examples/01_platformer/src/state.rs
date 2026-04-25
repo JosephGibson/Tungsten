@@ -100,3 +100,27 @@ pub(crate) struct CurrentSprite(pub(crate) String);
 pub(crate) struct PlayerMaterial {
     pub(crate) material_id: tungsten::core::MaterialAssetId,
 }
+
+/// M29 lighting fixture mode parsed from `TUNGSTEN_LIGHTING_FIXTURE`.
+/// `On`: spawn warm + cool point lights and a directional, low ambient,
+/// route the player through the lit pipeline. `Off`: keep the M28 baseline
+/// (white ambient, custom material/unlit player path).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum LightingFixtureMode {
+    On,
+    #[default]
+    Off,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct LightingFixture {
+    pub(crate) mode: LightingFixtureMode,
+}
+
+/// Marker on entities created by the lighting fixture (so cleanup is easy).
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct OrbitLight {
+    pub(crate) phase: f32,
+    pub(crate) speed: f32,
+    pub(crate) radius: f32,
+}

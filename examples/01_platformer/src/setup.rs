@@ -1,9 +1,10 @@
 use std::path::PathBuf;
 
-use glam::Vec2;
+use glam::{Vec2, Vec3};
 use tungsten::core::{
-    sync_position_to_transform, AssetRegistry, AudioCommands, CameraBounds, CameraController,
-    CameraMode, Entity, SoundRegistry, Tag, TilemapInstance, TilemapRegistry, Transform, World,
+    sync_position_to_transform, AmbientLight, AssetRegistry, AudioCommands, CameraBounds,
+    CameraController, CameraMode, Entity, Light, SoundRegistry, Tag, TilemapInstance,
+    TilemapRegistry, Transform, World,
 };
 use tungsten::physics::{
     physics_step, BodyKind, Collider, PhysicsConfig, Position, RigidBody, Velocity,
@@ -12,15 +13,16 @@ use tungsten::{camera_update_system, App};
 
 use crate::extract::{extract_sprites, extract_text};
 use crate::state::{
-    ActiveBlackHole, AudioState, Ball, BallSpawnState, CurrentSprite, Player, TextDisplayState,
-    ASSETS_LOCAL, ASSETS_ROOT, BALL_RADIUS, BALL_RESTITUTION, GRAVITY_Y, MANIFEST_LOCAL,
-    MANIFEST_ROOT, MAP_COLS, MAP_ROWS, PLAYER_HALF, PLAYER_SPAWN, TILE,
+    ActiveBlackHole, AudioState, Ball, BallSpawnState, CurrentSprite, LightingFixture,
+    LightingFixtureMode, OrbitLight, Player, TextDisplayState, ASSETS_LOCAL, ASSETS_ROOT,
+    BALL_RADIUS, BALL_RESTITUTION, GRAVITY_Y, MANIFEST_LOCAL, MANIFEST_ROOT, MAP_COLS, MAP_ROWS,
+    PLAYER_HALF, PLAYER_SPAWN, TILE,
 };
 use crate::systems::{
     animation_system, audio_input_system, black_hole_force_system, black_hole_lifetime_system,
     camera_zoom_input_system, damage_flash_on_ball_hit, despawn_out_of_bounds, ground_detection,
-    platformer_camera_base_zoom, player_input, spawn_ball_system, spawn_black_hole_system,
-    update_text_display,
+    orbit_lights_system, platformer_camera_base_zoom, player_input, spawn_ball_system,
+    spawn_black_hole_system, update_text_display,
 };
 
 type ExampleSystem = fn(&mut World);
@@ -40,9 +42,20 @@ pub(crate) const RUNTIME_SYSTEM_ORDER: &[(&str, ExampleSystem)] = &[
     ("black_hole_lifetime_system", black_hole_lifetime_system),
     ("despawn_out_of_bounds", despawn_out_of_bounds),
     ("sync_position_to_transform", sync_position_to_transform),
+    ("orbit_lights_system", orbit_lights_system),
     ("platformer_camera_base_zoom", platformer_camera_base_zoom),
     ("camera_update_system", camera_update_system),
 ];
+
+fn lighting_fixture_from_env() -> LightingFixtureMode {
+    match std::env::var("TUNGSTEN_LIGHTING_FIXTURE")
+        .ok()
+        .map(|s| s.to_ascii_lowercase())
+    {
+        Some(v) if v == "on" => LightingFixtureMode::On,
+        _ => LightingFixtureMode::Off,
+    }
+}
 
 pub(crate) fn configure_app(app: &mut App) {
     enable_hot_reload(app);
@@ -72,6 +85,50 @@ fn seed_world(world: &mut World) {
     world.insert_resource(TextDisplayState::default());
     world.insert_resource(BallSpawnState::default());
     world.insert_resource(ActiveBlackHole::default());
+
+    // M29 lighting fixture: parsed once at startup; switching modes requires
+    // a relaunch (matches existing `TUNGSTEN_*_FIXTURE` examples).
+    let fixture_mode = lighting_fixture_from_env();
+    world.insert_resource(LightingFixture { mode: fixture_mode });
+    match fixture_mode {
+        LightingFixtureMode::On => {
+            world.insert_resource(AmbientLight(Vec3::splat(0.35)));
+            // Warm point light orbiting near the player spawn.
+            let warm = world.spawn();
+            world.insert(warm, Transform::from_position(PLAYER_SPAWN));
+            world.insert(warm, Light::point(Vec3::new(1.0, 0.85, 0.6), 8.0 * TILE));
+            world.insert(
+                warm,
+                OrbitLight {
+                    phase: 0.0,
+                    speed: 1.5,
+                    radius: 4.0 * TILE,
+                },
+            );
+            // Cool point light, opposite phase.
+            let cool = world.spawn();
+            world.insert(cool, Transform::from_position(PLAYER_SPAWN));
+            world.insert(cool, Light::point(Vec3::new(0.5, 0.7, 1.0), 8.0 * TILE));
+            world.insert(
+                cool,
+                OrbitLight {
+                    phase: std::f32::consts::PI,
+                    speed: 1.5,
+                    radius: 4.0 * TILE,
+                },
+            );
+            // Directional light from upper-right.
+            let dir = world.spawn();
+            world.insert(dir, Transform::from_position(Vec2::ZERO));
+            world.insert(
+                dir,
+                Light::directional(Vec3::splat(0.9), -std::f32::consts::FRAC_PI_4),
+            );
+        }
+        LightingFixtureMode::Off => {
+            world.insert_resource(AmbientLight(Vec3::ONE));
+        }
+    }
 
     let map = world.spawn();
     world.insert(map, TilemapInstance::new("ex10_level", Vec2::ZERO));

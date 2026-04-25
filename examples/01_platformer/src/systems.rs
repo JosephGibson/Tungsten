@@ -8,11 +8,11 @@ use tungsten::physics::{BodyKind, Collider, CollisionEvent, Position, RigidBody,
 use tungsten::WindowSize;
 
 use crate::state::{
-    ActiveBlackHole, AudioState, Ball, BallSpawnState, BlackHole, CurrentSprite, Player,
-    TextDisplayState, BALL_RADIUS, BALL_RESTITUTION, BALL_SPAWN_INTERVAL, BALL_SPAWN_JITTER,
-    BLACK_HOLE_FORCE, BLACK_HOLE_LIFETIME, BLACK_HOLE_RADIUS, MAP_ROWS, PLAYER_JUMP_IMPULSE,
-    PLAYER_MOVE_SPEED, PLAYER_SPAWN, TEXT_UPDATE_INTERVAL, TILE, WORLD_BOUNDS_MAX,
-    WORLD_BOUNDS_MIN,
+    ActiveBlackHole, AudioState, Ball, BallSpawnState, BlackHole, CurrentSprite, OrbitLight,
+    Player, TextDisplayState, BALL_RADIUS, BALL_RESTITUTION, BALL_SPAWN_INTERVAL,
+    BALL_SPAWN_JITTER, BLACK_HOLE_FORCE, BLACK_HOLE_LIFETIME, BLACK_HOLE_RADIUS, MAP_ROWS,
+    PLAYER_JUMP_IMPULSE, PLAYER_MOVE_SPEED, PLAYER_SPAWN, TEXT_UPDATE_INTERVAL, TILE,
+    WORLD_BOUNDS_MAX, WORLD_BOUNDS_MIN,
 };
 
 /// Player input before physics; jump SFX only on grounded launch.
@@ -579,6 +579,40 @@ fn is_out_of_bounds(pos: Vec2) -> bool {
         || pos.x > WORLD_BOUNDS_MAX.x
         || pos.y < WORLD_BOUNDS_MIN.y
         || pos.y > WORLD_BOUNDS_MAX.y
+}
+
+/// M29 lighting fixture: orbit warm + cool point lights around the camera
+/// target along sine/cosine arcs at `OrbitLight::speed`. Uses the resource
+/// `DeltaTime`, advances each light's `phase`, and writes the new world
+/// position into its `Transform`.
+pub(crate) fn orbit_lights_system(world: &mut World) {
+    let dt = world
+        .get_resource::<DeltaTime>()
+        .map(|d| d.dt)
+        .unwrap_or_default();
+    let center = world
+        .get_resource::<CameraState>()
+        .map(|c| c.position)
+        .unwrap_or(PLAYER_SPAWN);
+    let updates: Vec<(Entity, Vec2, f32)> = world
+        .query::<OrbitLight>()
+        .map(|(e, ol)| {
+            let new_phase = ol.phase + ol.speed * dt;
+            let pos = Vec2::new(
+                center.x + new_phase.cos() * ol.radius,
+                center.y + new_phase.sin() * ol.radius * 0.5,
+            );
+            (e, pos, new_phase)
+        })
+        .collect();
+    for (e, pos, phase) in updates {
+        if let Some(t) = world.get_mut::<Transform>(e) {
+            t.position = pos;
+        }
+        if let Some(ol) = world.get_mut::<OrbitLight>(e) {
+            ol.phase = phase;
+        }
+    }
 }
 
 /// Base zoom from window height before shared camera update.

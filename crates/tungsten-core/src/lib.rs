@@ -10,6 +10,7 @@ pub mod display;
 pub mod ecs;
 pub mod input;
 pub mod inspect;
+pub mod lighting;
 pub mod physics;
 pub mod post;
 pub mod rng;
@@ -30,8 +31,8 @@ pub use assets::{
 pub use audio::{AudioCommand, AudioCommands};
 pub use camera::{CameraBounds, CameraController, CameraMode, CameraState};
 pub use components::{
-    sync_position_to_transform, Particle, ParticleEmitter, ParticleEmitterState, Sprite, Tag,
-    Transform, Visibility,
+    sync_position_to_transform, Light, LightKind, Particle, ParticleEmitter, ParticleEmitterState,
+    Sprite, Tag, Transform, Visibility,
 };
 pub use config::{Config, ConfigError, DepthSortMode, PostAaMode, RenderConfig};
 pub use debug_draw::{DebugCommand, DebugDraw, DebugShape, DEFAULT_CIRCLE_SEGMENTS};
@@ -43,6 +44,7 @@ pub use input::{
     ActionMap, ActionMapError, Binding, InputState, KeyCode, MouseButton, ScrollDirection,
 };
 pub use inspect::Inspectable;
+pub use lighting::{AmbientLight, LIGHT_CAP};
 pub use physics::{
     aabb_vs_aabb, aabb_vs_circle, circle_vs_circle, physics_step, Aabb, BodyKind, Collider,
     CollisionEvent, Contact, PhysicsConfig, Position, RigidBody, Shape, SpatialGrid, Velocity,

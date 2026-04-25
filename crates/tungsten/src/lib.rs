@@ -9,6 +9,7 @@ mod display;
 pub mod hot_reload;
 mod input_bridge;
 pub mod inspector;
+pub mod light_extract;
 pub mod particles;
 pub mod physics_debug;
 pub mod post_aa;
@@ -25,6 +26,7 @@ pub use debug_hud::{hud_toggle_system, DebugHud, HudActiveState, HudCorner, HudR
 pub use display::request_display_settings;
 pub use hot_reload::HotReloadWatcher;
 pub use inspector::InspectorState;
+pub use light_extract::extract_lights;
 pub use particles::{
     particle_count_refresh_system, particle_emit_system, particle_tick_system,
     ParticleBurstEmitted, ParticleSystemDrained,

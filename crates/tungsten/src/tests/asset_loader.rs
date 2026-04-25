@@ -44,6 +44,9 @@ fn seed_sprite(world: &mut World, id: &str) {
             PathBuf::from(format!("__test__/{id}.png")),
             TextureHandle(0),
             UvRect::FULL,
+            None,
+            None,
+            None,
         );
 }
 

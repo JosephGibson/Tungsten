@@ -4,6 +4,19 @@ Records all notable project changes.
 
 Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.27.0] - 2026-04-25
+
+### Added
+
+- M29 — 2D forward normal-mapped lighting. New `Light { kind, color, intensity }` component and closed `LightKind::{Point, Directional}` enum live in `tungsten-core::components`; `AmbientLight(Vec3)` is a world resource defaulting to `Vec3::ONE`. Render-side `LightingResources` owns a 544-byte `LightUbo` (cap 16) bound at group 2 of a sibling `LitSpritePipeline` reusing the sprite vertex/instance layout. Manifest-tracked `normal_map` and `emissive_mask` sibling fields on `sprites.<id>` pack into parallel atlas pages keyed by the existing albedo `TextureHandle`. `extract_sprites_default` flips `SpriteBatch.lit` on `SpriteAsset.lit_atlas.is_some()`; lit + material warns and lit wins. `extract_lights` culls by camera-AABB squared-distance, retains directionals first, caps at `LIGHT_CAP = 16`. Empty light list + no aux atlases keeps the captured frame byte-identical to the M28 baseline. New shader id triple (`lit_sprite`, `emissive_mask`, `rim_light`) extends the `D-053` body-edit hot-reload table; helpers are validated-only. The platformer example gains four `walk_*_n.png` and four `walk_*_e.png` sibling assets, an `orbit_lights_system`, and a `TUNGSTEN_LIGHTING_FIXTURE=on|off` env switch wired into the smoke matrix and showcase capture. See `D-061`. No new runtime dependency.
+
+## [0.26.0] - 2026-04-25
+
+### Changed
+
+- Workspace version bumped to `0.26.0`.
+- `README.md`, `AGENTS.md`, `DESIGN.md`, `CLAUDE.md`, and `docs/plans/phase4.md` now reflect branch `0.26` with M25, M26, M27, and M28 shipped.
+
 ## [0.25.0] - 2026-04-25
 
 ### Added

@@ -2,6 +2,8 @@
 
 pub mod debug_line;
 pub mod image_diff;
+pub mod lighting;
+pub mod lit_sprite;
 pub mod material;
 pub mod passes;
 pub mod post;
@@ -17,6 +19,14 @@ pub mod timing;
 
 pub use debug_line::{DebugLineInstance, DebugLinePipeline};
 pub use image_diff::{compare_png, DiffReport, ImageDiffError};
+pub use lighting::{
+    cull_to_cap, distance_to_aabb_sq, pack_lights, pack_one_light, GpuLight, LightUbo,
+    LightingResources, LIT_LIGHT_CAP,
+};
+pub use lit_sprite::{
+    LitSpritePipeline, EMISSIVE_MASK_SHADER_NAME, LIT_SPRITE_SHADER_NAME, LIT_SPRITE_SHADER_SOURCE,
+    RIM_LIGHT_SHADER_NAME,
+};
 pub use material::{MaterialBuildError, MaterialPipeline};
 pub use passes::{default_pass_order, PassDesc, PassOrder, PassRecorder, TargetId};
 pub use post::smaa::{

@@ -16,6 +16,9 @@ fn register_sprite(world: &mut World, id: &str, filter: FilterMode) {
         PathBuf::from(format!("test/{id}.png")),
         TextureHandle(0),
         UvRect::FULL,
+        None,
+        None,
+        None,
     );
 }
 
@@ -257,4 +260,56 @@ fn z_norm_decreases_along_painter_order_for_less_equal_depth_test() {
     // gets clipped by wgpu's [0, 1] NDC-z range.
     assert!(zs[0] < 1.0);
     assert!(zs[0] > 0.0);
+}
+
+fn register_lit_sprite(world: &mut World, id: &str) {
+    let registry = world
+        .get_resource_mut::<AssetRegistry>()
+        .expect("AssetRegistry resource missing");
+    registry.register_sprite(
+        id.to_string(),
+        FilterMode::Nearest,
+        16,
+        16,
+        PathBuf::from(format!("test/{id}.png")),
+        TextureHandle(7),
+        UvRect::FULL,
+        Some(PathBuf::from(format!("test/{id}_n.png"))),
+        Some(PathBuf::from(format!("test/{id}_e.png"))),
+        Some(TextureHandle(7)),
+    );
+}
+
+#[test]
+fn lit_batch_routed_when_lit_atlas_present() {
+    let mut world = world_with_registry();
+    register_lit_sprite(&mut world, "lit_quad");
+
+    let e = world.spawn();
+    world.insert(e, Transform::default());
+    world.insert(e, Sprite::new("lit_quad"));
+    world.insert(e, Visibility::default());
+
+    let batches = extract_sprites_default(&world);
+    assert_eq!(batches.len(), 1);
+    assert!(batches[0].lit, "lit batch must opt into lit pipeline");
+    assert!(
+        batches[0].material_id.is_none(),
+        "lit batch must not carry a material id"
+    );
+}
+
+#[test]
+fn unlit_path_byte_identical_with_no_aux() {
+    let mut world = world_with_registry();
+    register_sprite(&mut world, "quad", FilterMode::Nearest);
+
+    let e = world.spawn();
+    world.insert(e, Transform::default());
+    world.insert(e, Sprite::new("quad"));
+    world.insert(e, Visibility::default());
+
+    let batches = extract_sprites_default(&world);
+    assert_eq!(batches.len(), 1);
+    assert!(!batches[0].lit, "unlit sprite must keep lit = false");
 }

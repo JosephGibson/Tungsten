@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use glam::Vec2;
+use glam::{Vec2, Vec3};
 
 use crate::assets::{AssetId, MaterialAssetId, ParticleConfig};
 use crate::ecs::{Entity, World};
@@ -79,6 +79,47 @@ pub struct Visibility {
 impl Default for Visibility {
     fn default() -> Self {
         Self { visible: true }
+    }
+}
+
+/// 2D forward light source (M29). Closed-enum kind per `D-054`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Light {
+    pub kind: LightKind,
+    pub color: Vec3,
+    pub intensity: f32,
+}
+
+/// Light shape (M29). `Point` carries world-space radius driving attenuation;
+/// `Directional` carries a 2D angle (radians from +x axis).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LightKind {
+    Point { radius: f32, falloff: f32 },
+    Directional { angle: f32 },
+}
+
+impl Light {
+    /// Point light at unit intensity with the given world-space radius.
+    #[must_use]
+    pub fn point(color: Vec3, radius: f32) -> Self {
+        Self {
+            kind: LightKind::Point {
+                radius,
+                falloff: 1.0,
+            },
+            color,
+            intensity: 1.0,
+        }
+    }
+
+    /// Directional light from `angle` radians (CCW from +x) at unit intensity.
+    #[must_use]
+    pub fn directional(color: Vec3, angle: f32) -> Self {
+        Self {
+            kind: LightKind::Directional { angle },
+            color,
+            intensity: 1.0,
+        }
     }
 }
 

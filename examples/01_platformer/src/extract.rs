@@ -10,8 +10,8 @@ use tungsten::physics::Position;
 use tungsten::render::{SpriteBatch, SpriteInstance, TextSection};
 
 use crate::state::{
-    Ball, BlackHole, CurrentSprite, PlayerMaterial, BALL_RADIUS, BLACK_HOLE_VISUAL_DIAMETER,
-    PLAYER_HALF,
+    Ball, BlackHole, CurrentSprite, LightingFixture, LightingFixtureMode, PlayerMaterial,
+    BALL_RADIUS, BLACK_HOLE_VISUAL_DIAMETER, PLAYER_HALF,
 };
 use crate::systems::cursor_to_world;
 
@@ -83,6 +83,10 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     }
 
     // Player sprite bottom-aligned to physics AABB.
+    let lighting_on = world
+        .get_resource::<LightingFixture>()
+        .map(|f| f.mode == LightingFixtureMode::On)
+        .unwrap_or(false);
     let mut player_batches: HashMap<String, SpriteBatch> = HashMap::new();
     for (entity, cs) in world.query::<CurrentSprite>() {
         let Some(pos) = world.get::<Position>(entity).copied() else {
@@ -98,14 +102,27 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
             asset.uv.max[0] - asset.uv.min[0],
             asset.uv.max[1] - asset.uv.min[1],
         ];
-        let material_id = world.get::<PlayerMaterial>(entity).map(|m| m.material_id);
-        let override_block = world
-            .get::<tungsten::core::UniformOverrideBlock>(entity)
-            .copied();
+        // M29: when the lighting fixture is on, route the player batch to the
+        // lit pipeline. Lit wins over the damage-flash material in the M29
+        // platformer fixture; the engine warns once per collision elsewhere.
+        let lit = lighting_on && asset.lit_atlas.is_some();
+        let material_id = if lit {
+            None
+        } else {
+            world.get::<PlayerMaterial>(entity).map(|m| m.material_id)
+        };
+        let override_block = if lit {
+            None
+        } else {
+            world
+                .get::<tungsten::core::UniformOverrideBlock>(entity)
+                .copied()
+        };
         let batch = player_batches.entry(cs.0.clone()).or_insert_with(|| {
             let mut b = SpriteBatch::new(asset.atlas, asset.filter);
             b.material_id = material_id;
             b.uniform_overrides = override_block;
+            b.lit = lit;
             b
         });
         batch.instances.push(SpriteInstance {
