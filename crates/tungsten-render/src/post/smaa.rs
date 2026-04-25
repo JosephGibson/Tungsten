@@ -11,12 +11,15 @@
 //! `reload_shader`, which call `rebuild_stage_with_module` here.
 //!
 //! The bind-group layouts mirror the WGSL stage modules:
-//!   - edge:               group(0): src_tex + src_sampler;
-//!                         group(1) binding 0: preset UBO
-//!   - blend weights:      group(0): edges_tex + edges_sampler;
-//!                         group(1): area_tex, search_tex, lut_sampler, preset UBO
-//!   - neighborhood blend: group(0): src_tex + src_sampler;
-//!                         group(1): blend_tex, blend_sampler, preset UBO
+//!
+//! ```text
+//! edge:               group(0): src_tex + src_sampler;
+//!                     group(1) binding 0: preset UBO
+//! blend weights:      group(0): edges_tex + edges_sampler;
+//!                     group(1): area_tex, search_tex, lut_sampler, preset UBO
+//! neighborhood blend: group(0): src_tex + src_sampler;
+//!                     group(1): blend_tex, blend_sampler, preset UBO
+//! ```
 
 use bytemuck::{Pod, Zeroable};
 use tungsten_core::assets::ShaderAssetId;
@@ -58,7 +61,6 @@ impl SmaaPreset {
     #[must_use]
     pub fn from_mode(mode: PostAaMode) -> Option<Self> {
         match mode {
-            PostAaMode::Off => None,
             PostAaMode::SmaaLow => Some(Self {
                 threshold: 0.15,
                 max_search_steps: 4,
@@ -93,6 +95,7 @@ impl SmaaPreset {
 /// the engine-wide post UBO contract.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
+#[allow(clippy::pub_underscore_fields)]
 pub struct SmaaPresetUbo {
     pub threshold: f32,
     pub max_search_steps: f32,
@@ -120,6 +123,7 @@ impl SmaaPresetUbo {
 
 const _: () = assert!(std::mem::size_of::<SmaaPresetUbo>() == 256);
 
+#[allow(clippy::struct_field_names)]
 struct SmaaLayouts {
     edge_source_bgl: wgpu::BindGroupLayout,
     edge_params_bgl: wgpu::BindGroupLayout,
@@ -223,6 +227,7 @@ impl SmaaPipeline {
     /// Build all three pipelines + LUTs. Stage shader modules come from the
     /// shared `ShaderModuleCache`; the renderer pre-seeds them with the
     /// compile-time `include_str!` WGSL.
+    #[must_use]
     pub fn new(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -601,16 +606,19 @@ fn build_nbh_pipeline(
 /// Free fn `PassDesc` builders consumed by the pass-order splice. Edge + blend
 /// clear to transparent so unwritten regions stay zero. Neighborhood loads
 /// (covers the full screen via fullscreen triangle).
+#[must_use]
 pub fn edge_pass_desc() -> crate::passes::PassDesc {
     crate::passes::PassDesc::new("tungsten_smaa_edge_pass", TargetId::SmaaEdges)
         .with_clear(wgpu::Color::TRANSPARENT)
 }
 
+#[must_use]
 pub fn blend_weights_pass_desc() -> crate::passes::PassDesc {
     crate::passes::PassDesc::new("tungsten_smaa_blend_weights_pass", TargetId::SmaaBlend)
         .with_clear(wgpu::Color::TRANSPARENT)
 }
 
+#[must_use]
 pub fn neighborhood_pass_desc() -> crate::passes::PassDesc {
     crate::passes::PassDesc::new("tungsten_smaa_neighborhood_pass", TargetId::PresentSource)
         .with_clear(wgpu::Color::TRANSPARENT)

@@ -9,6 +9,9 @@ const SAMPLE_JSON: &str = r#"{
     }
 }"#;
 
+const CHECKED_IN_INPUT_JSON: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../input.json"));
+
 #[test]
 fn default_map_has_platformer_and_engine_actions() {
     let map = ActionMap::default_map();
@@ -117,6 +120,27 @@ fn load_parses_sample_input_json() {
         map.bindings("zoom_in"),
         &[Binding::Scroll {
             direction: ScrollDirection::Up
+        }]
+    );
+}
+
+#[test]
+fn checked_in_input_json_loads() {
+    let map = ActionMap::from_json(CHECKED_IN_INPUT_JSON, Path::new("input.json")).unwrap();
+    assert_eq!(
+        map.bindings("playground_cycle_post_aa"),
+        &[Binding::Key { code: KeyCode::Tab }]
+    );
+    assert_eq!(
+        map.bindings("playground_post_aa_off"),
+        &[Binding::Key {
+            code: KeyCode::Digit0
+        }]
+    );
+    assert_eq!(
+        map.bindings("playground_post_aa_ultra"),
+        &[Binding::Key {
+            code: KeyCode::Digit8
         }]
     );
 }

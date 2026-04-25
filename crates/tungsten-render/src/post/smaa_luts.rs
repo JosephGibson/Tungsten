@@ -32,6 +32,7 @@ pub fn search_bytes() -> &'static [u8] {
 }
 
 /// Upload the SMAA `area` LUT (`Rg8Unorm`, 160 x 560).
+#[must_use]
 pub fn upload_area(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
@@ -79,6 +80,7 @@ pub fn upload_area(
 }
 
 /// Upload the SMAA `search` LUT (`R8Unorm`, 64 x 16).
+#[must_use]
 pub fn upload_search(
     device: &wgpu::Device,
     queue: &wgpu::Queue,

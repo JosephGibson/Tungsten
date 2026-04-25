@@ -88,8 +88,7 @@ fn main() -> anyhow::Result<()> {
             Ok(mode) => config.render.post_aa = mode,
             Err(_) => {
                 anyhow::bail!(
-                    "invalid TUNGSTEN_POST_AA_FIXTURE='{}': expected one of off, smaa_low, smaa_medium, smaa_high, smaa_ultra",
-                    fixture
+                    "invalid TUNGSTEN_POST_AA_FIXTURE='{fixture}': expected one of off, smaa_low, smaa_medium, smaa_high, smaa_ultra"
                 );
             }
         }
