@@ -2,8 +2,8 @@ use std::path::PathBuf;
 
 use glam::{Vec2, Vec3};
 use tungsten::core::{
-    sync_position_to_transform, AmbientLight, AssetRegistry, AudioCommands, CameraBounds,
-    CameraController, CameraMode, Entity, Light, SoundRegistry, Tag, TilemapInstance,
+    sync_position_to_transform, AmbientLight, AnimationRegistry, AssetRegistry, AudioCommands,
+    CameraBounds, CameraController, CameraMode, Entity, Light, SoundRegistry, Tag, TilemapInstance,
     TilemapRegistry, Transform, World,
 };
 use tungsten::physics::{
@@ -13,16 +13,17 @@ use tungsten::{camera_update_system, App};
 
 use crate::extract::{extract_sprites, extract_text};
 use crate::state::{
-    ActiveBlackHole, AudioState, Ball, BallSpawnState, CurrentSprite, LightingFixture,
-    LightingFixtureMode, OrbitLight, Player, TextDisplayState, ASSETS_LOCAL, ASSETS_ROOT,
-    BALL_RADIUS, BALL_RESTITUTION, GRAVITY_Y, MANIFEST_LOCAL, MANIFEST_ROOT, MAP_COLS, MAP_ROWS,
-    PLAYER_HALF, PLAYER_SPAWN, TILE,
+    ActiveBlackHole, AudioState, Ball, BallHue, BallSpawnState, CurrentSprite, CycleMode,
+    LightingFixture, LightingFixtureMode, OrbitLight, Player, TextDisplayState, ASSETS_LOCAL,
+    ASSETS_ROOT, BALL_ANIMATION_ID, BALL_RADIUS, BALL_RESTITUTION, BALL_START_SPRITE_ID, GRAVITY_Y,
+    MANIFEST_LOCAL, MANIFEST_ROOT, MAP_COLS, MAP_ROWS, PLAYER_ANIMATION_ID, PLAYER_HALF,
+    PLAYER_SPAWN, PLAYER_START_SPRITE_ID, TILE,
 };
 use crate::systems::{
     animation_system, audio_input_system, black_hole_force_system, black_hole_lifetime_system,
     camera_zoom_input_system, damage_flash_on_ball_hit, despawn_out_of_bounds, ground_detection,
-    orbit_lights_system, platformer_camera_base_zoom, player_input, spawn_ball_system,
-    spawn_black_hole_system, update_text_display,
+    orbit_lights_system, platformer_camera_base_zoom, player_input, rainbow_ball_hue_system,
+    spawn_ball_system, spawn_black_hole_system, update_text_display,
 };
 
 type ExampleSystem = fn(&mut World);
@@ -36,6 +37,7 @@ pub(crate) const RUNTIME_SYSTEM_ORDER: &[(&str, ExampleSystem)] = &[
     ("audio_input_system", audio_input_system),
     ("camera_zoom_input_system", camera_zoom_input_system),
     ("animation_system", animation_system),
+    ("rainbow_ball_hue_system", rainbow_ball_hue_system),
     ("physics_step", physics_step),
     ("ground_detection", ground_detection),
     ("damage_flash_on_ball_hit", damage_flash_on_ball_hit),
@@ -80,7 +82,7 @@ fn seed_world(world: &mut World) {
     if let Some(cfg) = world.get_resource_mut::<PhysicsConfig>() {
         cfg.gravity = Vec2::new(0.0, GRAVITY_Y);
         // One-tile cells cap dense-pile pair candidates.
-        cfg.broadphase_cell_size = 16.0;
+        cfg.broadphase_cell_size = TILE;
     }
     world.insert_resource(TextDisplayState::default());
     world.insert_resource(BallSpawnState::default());
@@ -92,38 +94,54 @@ fn seed_world(world: &mut World) {
     world.insert_resource(LightingFixture { mode: fixture_mode });
     match fixture_mode {
         LightingFixtureMode::On => {
-            world.insert_resource(AmbientLight(Vec3::splat(0.35)));
-            // Warm point light orbiting near the player spawn.
-            let warm = world.spawn();
-            world.insert(warm, Transform::from_position(PLAYER_SPAWN));
-            world.insert(warm, Light::point(Vec3::new(1.0, 0.85, 0.6), 8.0 * TILE));
+            // Dim ambient so warm/cool tints read clearly on the lit sprite.
+            world.insert_resource(AmbientLight(Vec3::splat(0.15)));
+
+            // Warm point light orbits one side of the player; intensity pulses
+            // sin-style so the glow breathes without drifting in hue.
+            let warm_color = Vec3::new(1.0, 0.62, 0.35);
+            let mut warm = Light::point(warm_color, 5.5 * TILE);
+            warm.intensity = 1.0;
+            let warm_e = world.spawn();
+            world.insert(warm_e, Transform::from_position(PLAYER_SPAWN));
+            world.insert(warm_e, warm);
             world.insert(
-                warm,
+                warm_e,
                 OrbitLight {
                     phase: 0.0,
-                    speed: 1.5,
-                    radius: 4.0 * TILE,
+                    speed: 1.4,
+                    radius: 1.6 * TILE,
+                    cycle: CycleMode::Pulse,
+                    base_color: warm_color,
                 },
             );
-            // Cool point light, opposite phase.
-            let cool = world.spawn();
-            world.insert(cool, Transform::from_position(PLAYER_SPAWN));
-            world.insert(cool, Light::point(Vec3::new(0.5, 0.7, 1.0), 8.0 * TILE));
+
+            // Cool point light orbits the opposite side and rotates hue, so
+            // the player gets a slow rainbow rim while the warm light pulses.
+            let cool_seed = Vec3::new(0.4, 0.65, 1.0);
+            let mut cool = Light::point(cool_seed, 5.5 * TILE);
+            cool.intensity = 0.9;
+            let cool_e = world.spawn();
+            world.insert(cool_e, Transform::from_position(PLAYER_SPAWN));
+            world.insert(cool_e, cool);
             world.insert(
-                cool,
+                cool_e,
                 OrbitLight {
                     phase: std::f32::consts::PI,
-                    speed: 1.5,
-                    radius: 4.0 * TILE,
+                    speed: 1.4,
+                    radius: 1.6 * TILE,
+                    cycle: CycleMode::Hue,
+                    base_color: cool_seed,
                 },
             );
-            // Directional light from upper-right.
+
+            // Soft directional fill from upper-right keeps shadows from
+            // crushing to black while the point lights swing.
+            let mut sun = Light::directional(Vec3::splat(0.7), -std::f32::consts::FRAC_PI_4);
+            sun.intensity = 0.3;
             let dir = world.spawn();
             world.insert(dir, Transform::from_position(Vec2::ZERO));
-            world.insert(
-                dir,
-                Light::directional(Vec3::splat(0.9), -std::f32::consts::FRAC_PI_4),
-            );
+            world.insert(dir, sun);
         }
         LightingFixtureMode::Off => {
             world.insert_resource(AmbientLight(Vec3::ONE));
@@ -141,8 +159,11 @@ fn seed_world(world: &mut World) {
     world.insert(player, Velocity(Vec2::ZERO));
     world.insert(player, Collider::aabb(PLAYER_HALF));
     world.insert(player, RigidBody::dynamic().with_restitution(0.0));
-    world.insert(player, tungsten::core::AnimationState::new("walk"));
-    world.insert(player, CurrentSprite("walk_0".into()));
+    world.insert(
+        player,
+        tungsten::core::AnimationState::new(PLAYER_ANIMATION_ID),
+    );
+    world.insert(player, CurrentSprite(PLAYER_START_SPRITE_ID.into()));
     world.insert(player, Tag::new("player"));
     // M26 damage-flash: attach an empty override block and the `damage_flash`
     // material id (if registered). Default zero overlay leaves the frame
@@ -158,19 +179,20 @@ fn seed_world(world: &mut World) {
     configure_platformer_camera(world, player);
 
     let ball_spawns: &[(f32, f32, f32)] = &[
-        (6.0, 17.0, 70.0),
-        (10.0, 19.0, -50.0),
-        (18.0, 17.0, 90.0),
-        (26.0, 19.0, -80.0),
-        (34.0, 17.0, 55.0),
-        (44.0, 19.0, -65.0),
-        (56.0, 17.0, 75.0),
-        (68.0, 19.0, -45.0),
-        (76.0, 17.0, 60.0),
+        (6.0, 17.0, 140.0),
+        (10.0, 19.0, -100.0),
+        (18.0, 17.0, 180.0),
+        (26.0, 19.0, -160.0),
+        (34.0, 17.0, 110.0),
+        (44.0, 19.0, -130.0),
+        (56.0, 17.0, 150.0),
+        (68.0, 19.0, -90.0),
+        (76.0, 17.0, 120.0),
     ];
-    for &(col, row, vx) in ball_spawns {
+    for (i, &(col, row, vx)) in ball_spawns.iter().enumerate() {
         let ball = world.spawn();
         world.insert(ball, Ball);
+        world.insert(ball, BallHue::from_seed(i as u32));
         world.insert(ball, Position(Vec2::new(col * TILE, row * TILE)));
         world.insert(ball, Velocity(Vec2::new(vx, 0.0)));
         world.insert(ball, Collider::circle(BALL_RADIUS));
@@ -182,6 +204,8 @@ fn seed_world(world: &mut World) {
                 restitution: BALL_RESTITUTION,
             },
         );
+        world.insert(ball, tungsten::core::AnimationState::new(BALL_ANIMATION_ID));
+        world.insert(ball, CurrentSprite(BALL_START_SPRITE_ID.into()));
     }
 }
 
@@ -208,14 +232,36 @@ fn install_startup(app: &mut App) {
         let registry = world.get_resource::<AssetRegistry>().unwrap();
         for id in [
             "ex10_ground",
+            "ex10_ground_1",
+            "ex10_ground_2",
+            "ex10_ground_3",
             "ex10_platform",
+            "ex10_platform_1",
+            "ex10_platform_2",
+            "ex10_stone_wall",
+            "ex10_stone_platform",
             "ex10_sky",
-            "ex10_ball",
+            "ex10_sky_1",
+            "ex10_sky_2",
+            "ex10_cloud_0",
+            "ex10_cloud_1",
+            "ex10_mountain_0",
+            "ex10_mountain_1",
+            "ex10_lantern",
+            "ex10_vines",
+            BALL_START_SPRITE_ID,
+            "ex10_ball_1",
+            "ex10_ball_2",
+            "ex10_ball_3",
             "ex10_cursor",
             "ex10_spark",
-            "walk_0",
+            PLAYER_START_SPRITE_ID,
         ] {
             assert!(registry.get_sprite(id).is_some(), "missing sprite '{id}'");
+        }
+        let animations = world.get_resource::<AnimationRegistry>().unwrap();
+        for id in [PLAYER_ANIMATION_ID, BALL_ANIMATION_ID] {
+            assert!(animations.get(id).is_some(), "missing animation '{id}'");
         }
         let tilemaps = world.get_resource::<TilemapRegistry>().unwrap();
         assert!(
@@ -223,18 +269,37 @@ fn install_startup(app: &mut App) {
             "missing tilemap 'ex10_level'"
         );
 
-        let (sfx_handle, music_handle, sfx_volume, music_volume) = {
+        let (
+            sfx_handle,
+            black_hole_sfx_handle,
+            music_handle,
+            sfx_volume,
+            black_hole_sfx_volume,
+            music_volume,
+        ) = {
             let reg = world
                 .get_resource::<SoundRegistry>()
                 .expect("SoundRegistry missing");
             let sfx = reg.get_by_id("sfx_blip").expect("sfx_blip not found");
+            let black_hole_sfx = reg
+                .get_by_id("ex10_black_hole_sfx")
+                .expect("ex10_black_hole_sfx not found");
             let music = reg.get_by_id("music_main").expect("music_main not found");
-            (sfx, music, reg.get_volume(sfx), reg.get_volume(music))
+            (
+                sfx,
+                black_hole_sfx,
+                music,
+                reg.get_volume(sfx),
+                reg.get_volume(black_hole_sfx),
+                reg.get_volume(music),
+            )
         };
         world.insert_resource(AudioState {
             sfx_handle,
+            black_hole_sfx_handle,
             music_handle,
             sfx_volume,
+            black_hole_sfx_volume,
             music_volume,
             music_playing: false,
             master_volume: 0.5,

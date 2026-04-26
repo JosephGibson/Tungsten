@@ -1,18 +1,19 @@
 use glam::Vec2;
 use tungsten::core::{
     ActionMap, AnimationRegistry, AnimationState, AudioCommands, CameraController, CameraState,
-    CommandBuffer, DeltaTime, Entity, EventQueue, InputState, ParticleConfigRegistry,
+    CommandBuffer, DeltaTime, Entity, EventQueue, InputState, Light, ParticleConfigRegistry,
     ParticleEmitter, ParticleEmitterState, Transform, World,
 };
-use tungsten::physics::{BodyKind, Collider, CollisionEvent, Position, RigidBody, Velocity};
+use tungsten::physics::{BodyKind, Collider, CollisionEvent, Position, RigidBody, Shape, Velocity};
 use tungsten::WindowSize;
 
 use crate::state::{
-    ActiveBlackHole, AudioState, Ball, BallSpawnState, BlackHole, CurrentSprite, OrbitLight,
-    Player, TextDisplayState, BALL_RADIUS, BALL_RESTITUTION, BALL_SPAWN_INTERVAL,
-    BALL_SPAWN_JITTER, BLACK_HOLE_FORCE, BLACK_HOLE_LIFETIME, BLACK_HOLE_RADIUS, MAP_ROWS,
-    PLAYER_JUMP_IMPULSE, PLAYER_MOVE_SPEED, PLAYER_SPAWN, TEXT_UPDATE_INTERVAL, TILE,
-    WORLD_BOUNDS_MAX, WORLD_BOUNDS_MIN,
+    ActiveBlackHole, AudioState, Ball, BallHue, BallSpawnState, BlackHole, CurrentSprite,
+    CycleMode, OrbitLight, Player, TextDisplayState, BALL_ANIMATION_ID, BALL_RADIUS,
+    BALL_RESTITUTION, BALL_SPAWN_INTERVAL, BALL_SPAWN_JITTER, BALL_START_SPRITE_ID,
+    BLACK_HOLE_FORCE, BLACK_HOLE_LIFETIME, BLACK_HOLE_RADIUS, MAP_ROWS, PLAYER_JUMP_IMPULSE,
+    PLAYER_MOVE_SPEED, PLAYER_SPAWN, TEXT_UPDATE_INTERVAL, TILE, WORLD_BOUNDS_MAX,
+    WORLD_BOUNDS_MIN,
 };
 
 /// Player input before physics; jump SFX only on grounded launch.
@@ -180,6 +181,23 @@ pub(crate) fn animation_system(world: &mut World) {
     }
 }
 
+pub(crate) fn rainbow_ball_hue_system(world: &mut World) {
+    let dt = world
+        .get_resource::<DeltaTime>()
+        .map_or(0.0, DeltaTime::seconds);
+    if dt <= 0.0 {
+        return;
+    }
+
+    let entities = world.query_entities::<BallHue>();
+    for entity in entities {
+        let Some(hue) = world.get_mut::<BallHue>(entity) else {
+            continue;
+        };
+        hue.hue = (hue.hue + hue.speed * dt).rem_euclid(1.0);
+    }
+}
+
 pub(crate) fn ground_detection(world: &mut World) {
     let events: Vec<CollisionEvent> = match world.get_resource::<EventQueue<CollisionEvent>>() {
         Some(queue) => queue.iter().copied().collect(),
@@ -187,11 +205,24 @@ pub(crate) fn ground_detection(world: &mut World) {
     };
     let player_entities: Vec<_> = world.query::<Player>().map(|(e, _)| e).collect();
     for entity in player_entities {
-        if events.iter().any(|ev| ev.a == entity && ev.normal.y < -0.5) {
+        if events
+            .iter()
+            .any(|event| player_is_grounded_by_event(entity, event))
+        {
             if let Some(player) = world.get_mut::<Player>(entity) {
                 player.grounded = true;
             }
         }
+    }
+}
+
+fn player_is_grounded_by_event(player: Entity, event: &CollisionEvent) -> bool {
+    if event.a == player {
+        event.normal.y < -0.5
+    } else if event.b == Some(player) {
+        event.normal.y > 0.5
+    } else {
+        false
     }
 }
 
@@ -381,6 +412,9 @@ pub(crate) fn spawn_ball_system(world: &mut World) {
                     restitution: BALL_RESTITUTION,
                 },
             );
+            cmds.insert_pending(ball, AnimationState::new(BALL_ANIMATION_ID));
+            cmds.insert_pending(ball, CurrentSprite(BALL_START_SPRITE_ID.into()));
+            cmds.insert_pending(ball, BallHue::from_seed(phase));
         }
     }
 }
@@ -446,6 +480,14 @@ pub(crate) fn spawn_black_hole_system(world: &mut World) {
         }
         if let Some(active) = world.get_resource_mut::<ActiveBlackHole>() {
             active.0 = Some(entity);
+        }
+        let handle_and_vol = world
+            .get_resource::<AudioState>()
+            .map(|s| (s.black_hole_sfx_handle, s.black_hole_sfx_volume));
+        if let Some((handle, vol)) = handle_and_vol {
+            if let Some(cmds) = world.get_resource_mut::<AudioCommands>() {
+                cmds.play_with(handle, vol, false);
+            }
         }
         return;
     }
@@ -530,6 +572,15 @@ pub(crate) fn black_hole_lifetime_system(world: &mut World) {
         }
     }
     if !to_despawn.is_empty() {
+        let active_expired = world
+            .get_resource::<ActiveBlackHole>()
+            .and_then(|active| active.0)
+            .is_some_and(|active| to_despawn.contains(&active));
+        if active_expired {
+            if let Some(active) = world.get_resource_mut::<ActiveBlackHole>() {
+                active.0 = None;
+            }
+        }
         if let Some(cmds) = world.get_resource_mut::<CommandBuffer>() {
             for entity in to_despawn {
                 cmds.despawn(entity);
@@ -544,7 +595,8 @@ pub(crate) fn despawn_out_of_bounds(world: &mut World) {
         .query::<Ball>()
         .filter_map(|(entity, _)| {
             let pos = world.get::<Position>(entity)?.0;
-            is_out_of_bounds(pos).then_some(entity)
+            let collider = world.get::<Collider>(entity).copied();
+            is_body_out_of_bounds(pos, collider).then_some(entity)
         })
         .collect();
 
@@ -560,7 +612,8 @@ pub(crate) fn despawn_out_of_bounds(world: &mut World) {
         .query::<Player>()
         .filter_map(|(entity, _)| {
             let pos = world.get::<Position>(entity)?.0;
-            is_out_of_bounds(pos).then_some(entity)
+            let collider = world.get::<Collider>(entity).copied();
+            is_body_out_of_bounds(pos, collider).then_some(entity)
         })
         .collect();
 
@@ -574,17 +627,34 @@ pub(crate) fn despawn_out_of_bounds(world: &mut World) {
     }
 }
 
-fn is_out_of_bounds(pos: Vec2) -> bool {
-    pos.x < WORLD_BOUNDS_MIN.x
-        || pos.x > WORLD_BOUNDS_MAX.x
-        || pos.y < WORLD_BOUNDS_MIN.y
-        || pos.y > WORLD_BOUNDS_MAX.y
+fn is_body_out_of_bounds(pos: Vec2, collider: Option<Collider>) -> bool {
+    let (min, max) = body_bounds(pos, collider);
+    max.x < WORLD_BOUNDS_MIN.x
+        || min.x > WORLD_BOUNDS_MAX.x
+        || max.y < WORLD_BOUNDS_MIN.y
+        || min.y > WORLD_BOUNDS_MAX.y
+}
+
+fn body_bounds(pos: Vec2, collider: Option<Collider>) -> (Vec2, Vec2) {
+    let Some(collider) = collider else {
+        return (pos, pos);
+    };
+    let center = pos + collider.offset;
+    let half = match collider.shape {
+        Shape::Aabb { half_extents } => half_extents,
+        Shape::Circle { radius } => Vec2::splat(radius),
+    };
+    (center - half, center + half)
 }
 
 /// M29 lighting fixture: orbit warm + cool point lights around the camera
-/// target along sine/cosine arcs at `OrbitLight::speed`. Uses the resource
-/// `DeltaTime`, advances each light's `phase`, and writes the new world
-/// position into its `Transform`.
+/// target, advance each light's phase, and (per `CycleMode`) drive its
+/// `Light.color` and `Light.intensity` so the lighting visibly cycles.
+///
+/// `CycleMode::Pulse` modulates intensity sin-style around 1.0 while holding
+/// the authored `base_color`. `CycleMode::Hue` rotates the color around the
+/// HSV wheel using `phase` as the angle while holding intensity. `None`
+/// only orbits the position.
 pub(crate) fn orbit_lights_system(world: &mut World) {
     let dt = world
         .get_resource::<DeltaTime>()
@@ -592,9 +662,15 @@ pub(crate) fn orbit_lights_system(world: &mut World) {
         .unwrap_or_default();
     let center = world
         .get_resource::<CameraState>()
-        .map(|c| c.position)
-        .unwrap_or(PLAYER_SPAWN);
-    let updates: Vec<(Entity, Vec2, f32)> = world
+        .map_or(PLAYER_SPAWN, |camera| camera.position);
+    struct Update {
+        entity: Entity,
+        pos: Vec2,
+        phase: f32,
+        color: Option<Vec2X3>,
+        intensity: Option<f32>,
+    }
+    let updates: Vec<Update> = world
         .query::<OrbitLight>()
         .map(|(e, ol)| {
             let new_phase = ol.phase + ol.speed * dt;
@@ -602,16 +678,65 @@ pub(crate) fn orbit_lights_system(world: &mut World) {
                 center.x + new_phase.cos() * ol.radius,
                 center.y + new_phase.sin() * ol.radius * 0.5,
             );
-            (e, pos, new_phase)
+            let (color, intensity) = match ol.cycle {
+                CycleMode::None => (None, None),
+                CycleMode::Pulse => {
+                    // Sin-pulse intensity in [0.45, 1.45] so the orbit reads
+                    // even at the dim end. Color held at base_color.
+                    let i = 0.95 + 0.5 * (new_phase * 1.7).sin();
+                    (Some(Vec2X3(ol.base_color)), Some(i))
+                }
+                CycleMode::Hue => {
+                    // Slow hue rotation; full revolution every ~10 sec.
+                    let hue = (new_phase * 0.1).rem_euclid(1.0);
+                    (Some(Vec2X3(hsv_to_rgb(hue, 0.8, 1.0))), None)
+                }
+            };
+            Update {
+                entity: e,
+                pos,
+                phase: new_phase,
+                color,
+                intensity,
+            }
         })
         .collect();
-    for (e, pos, phase) in updates {
-        if let Some(t) = world.get_mut::<Transform>(e) {
-            t.position = pos;
+    for u in updates {
+        if let Some(t) = world.get_mut::<Transform>(u.entity) {
+            t.position = u.pos;
         }
-        if let Some(ol) = world.get_mut::<OrbitLight>(e) {
-            ol.phase = phase;
+        if let Some(ol) = world.get_mut::<OrbitLight>(u.entity) {
+            ol.phase = u.phase;
         }
+        if let Some(l) = world.get_mut::<Light>(u.entity) {
+            if let Some(c) = u.color {
+                l.color = c.0;
+            }
+            if let Some(i) = u.intensity {
+                l.intensity = i;
+            }
+        }
+    }
+}
+
+/// Tiny wrapper to keep glam::Vec3 out of the local Update struct's signature
+/// without dragging the import here. Pure ergonomics, not behavior.
+struct Vec2X3(glam::Vec3);
+
+fn hsv_to_rgb(hue: f32, saturation: f32, value: f32) -> glam::Vec3 {
+    let hue_sector = hue.rem_euclid(1.0) * 6.0;
+    let sector_index = hue_sector.floor();
+    let fraction = hue_sector - sector_index;
+    let base = value * (1.0 - saturation);
+    let falling = value * (1.0 - saturation * fraction);
+    let rising = value * (1.0 - saturation * (1.0 - fraction));
+    match sector_index as i32 % 6 {
+        0 => glam::Vec3::new(value, rising, base),
+        1 => glam::Vec3::new(falling, value, base),
+        2 => glam::Vec3::new(base, value, rising),
+        3 => glam::Vec3::new(base, falling, value),
+        4 => glam::Vec3::new(rising, base, value),
+        _ => glam::Vec3::new(value, base, falling),
     }
 }
 

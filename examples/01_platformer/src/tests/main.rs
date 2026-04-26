@@ -1,9 +1,10 @@
 use glam::Vec2;
 use tungsten::core::assets::{LayerKind, TilemapData, TilemapLayer};
 use tungsten::core::{
-    sync_position_to_transform, ActionMap, AnimationState, Binding, CameraController, CameraMode,
-    CameraState, CommandBuffer, Config, DeltaTime, EventQueue, InputState, KeyCode, MouseButton,
-    TilemapInstance, TilemapRegistry, Transform, World,
+    sync_position_to_transform, ActionMap, AnimationState, AudioCommand, AudioCommands,
+    AudioHandle, Binding, CameraController, CameraMode, CameraState, CommandBuffer, Config,
+    DeltaTime, EventQueue, InputState, KeyCode, MouseButton, TilemapInstance, TilemapRegistry,
+    Transform, World,
 };
 use tungsten::physics::{
     physics_step, Collider, CollisionEvent, PhysicsConfig, Position, RigidBody, Velocity,
@@ -12,14 +13,15 @@ use tungsten::{camera_update_system, App, WindowSize};
 
 use crate::setup::{configure_platformer_camera, RUNTIME_SYSTEM_ORDER};
 use crate::state::{
-    ActiveBlackHole, Ball, BallSpawnState, BlackHole, CurrentSprite, Player, TextDisplayState,
-    BALL_SPAWN_JITTER, BLACK_HOLE_LIFETIME, BLACK_HOLE_RADIUS, GRAVITY_Y, MAP_COLS, MAP_ROWS,
-    PLAYER_HALF, PLAYER_SPAWN, TILE, WORLD_BOUNDS_MAX, WORLD_BOUNDS_MIN,
+    ActiveBlackHole, AudioState, Ball, BallHue, BallSpawnState, BlackHole, CurrentSprite, Player,
+    TextDisplayState, BALL_RADIUS, BALL_SPAWN_JITTER, BLACK_HOLE_LIFETIME, BLACK_HOLE_RADIUS,
+    GRAVITY_Y, MAP_COLS, MAP_ROWS, PLAYER_HALF, PLAYER_SPAWN, TEXT_UPDATE_INTERVAL, TILE,
+    WORLD_BOUNDS_MAX, WORLD_BOUNDS_MIN,
 };
 use crate::systems::{
     black_hole_force_system, black_hole_lifetime_system, cursor_to_world, despawn_out_of_bounds,
-    ground_detection, platformer_camera_base_zoom, player_input, spawn_ball_system,
-    spawn_black_hole_system,
+    ground_detection, platformer_camera_base_zoom, player_input, rainbow_ball_hue_system,
+    spawn_ball_system, spawn_black_hole_system, update_text_display,
 };
 
 fn seed_world() -> World {
@@ -48,8 +50,8 @@ fn solid_floor(width: u32) -> TilemapData {
         tiles[width as usize + x] = 0;
     }
     TilemapData {
-        tile_width: 16,
-        tile_height: 16,
+        tile_width: TILE as u32,
+        tile_height: TILE as u32,
         width,
         height: 2,
         tileset: vec!["ex10_ground".into()],
@@ -69,12 +71,13 @@ fn configure_app_seeds_expected_bootstrap_state() {
     let world = app.world_mut();
     let physics = world.get_resource::<PhysicsConfig>().unwrap();
     assert_eq!(physics.gravity, Vec2::new(0.0, GRAVITY_Y));
-    assert_eq!(physics.broadphase_cell_size, 16.0);
+    assert_eq!(physics.broadphase_cell_size, TILE);
     assert!(world.get_resource::<TextDisplayState>().is_some());
 
     let player_entities: Vec<_> = world.query::<Player>().map(|(e, _)| e).collect();
     assert_eq!(player_entities.len(), 1);
     assert_eq!(world.query::<Ball>().count(), 9);
+    assert_eq!(world.query::<BallHue>().count(), 9);
     assert_eq!(world.query::<TilemapInstance>().count(), 1);
 
     let player = player_entities[0];
@@ -100,6 +103,7 @@ fn runtime_system_order_matches_expected_pipeline() {
             "audio_input_system",
             "camera_zoom_input_system",
             "animation_system",
+            "rainbow_ball_hue_system",
             "physics_step",
             "ground_detection",
             "damage_flash_on_ball_hit",
@@ -110,6 +114,44 @@ fn runtime_system_order_matches_expected_pipeline() {
             "platformer_camera_base_zoom",
             "camera_update_system",
         ]
+    );
+}
+
+#[test]
+fn extract_text_includes_debug_state_row() {
+    let mut world = seed_world();
+    world.insert_resource(TextDisplayState {
+        fps: 60,
+        contacts: 7,
+        grounded: true,
+        music_on: true,
+        vol_pct: 50,
+        zoom_pct: 125,
+        ..TextDisplayState::default()
+    });
+
+    let sections = crate::extract::extract_text(&world);
+
+    assert!(
+        sections
+            .iter()
+            .any(|section| section.content.contains("FPS 60  Contacts 7  Grounded yes")),
+        "debug state row should be visible in the example overlay"
+    );
+}
+
+#[test]
+fn update_text_display_refreshes_default_state_on_first_tick() {
+    let mut world = seed_world();
+    world.insert_resource(TextDisplayState::default());
+
+    update_text_display(&mut world);
+
+    let display = world.get_resource::<TextDisplayState>().unwrap();
+    assert_eq!(display.fps, 60);
+    assert!(
+        display.timer < TEXT_UPDATE_INTERVAL,
+        "first refresh should consume the primed display timer"
     );
 }
 
@@ -167,6 +209,33 @@ fn player_becomes_grounded_after_falling_onto_tilemap() {
 }
 
 #[test]
+fn player_becomes_grounded_when_collision_event_lists_player_as_b() {
+    let mut world = seed_world();
+
+    let support = world.spawn();
+    let player = world.spawn();
+    world.insert(player, Player::default());
+
+    world
+        .get_resource_mut::<EventQueue<CollisionEvent>>()
+        .unwrap()
+        .send(CollisionEvent {
+            a: support,
+            b: Some(player),
+            normal: Vec2::Y,
+            penetration: 1.0,
+        });
+
+    ground_detection(&mut world);
+
+    let player_state = world.get::<Player>(player).unwrap();
+    assert!(
+        player_state.grounded,
+        "player should ground when the opposite event normal points upward for it"
+    );
+}
+
+#[test]
 fn jump_impulse_only_applies_when_grounded() {
     let mut world = seed_world();
     world
@@ -203,8 +272,8 @@ fn shared_camera_tracks_player() {
     let player = world.spawn();
     world.insert(player, Player::default());
     // Past half-viewport so follow camera unclamps from origin.
-    world.insert(player, Position(Vec2::new(800.0, 100.0)));
-    world.insert(player, Transform::from_position(Vec2::new(800.0, 100.0)));
+    world.insert(player, Position(Vec2::new(1200.0, 100.0)));
+    world.insert(player, Transform::from_position(Vec2::new(1200.0, 100.0)));
     world.insert(player, Velocity(Vec2::ZERO));
     world.insert(player, Collider::aabb(PLAYER_HALF));
     world.insert(player, RigidBody::dynamic());
@@ -299,6 +368,7 @@ fn spawn_ball_system_spawns_at_fixed_rate_while_held() {
     world.insert_resource(CommandBuffer::new());
 
     assert_eq!(world.query::<Ball>().count(), 5);
+    assert_eq!(world.query::<BallHue>().count(), 5);
     let center = Vec2::new(240.0, 144.0);
     let positions: Vec<Vec2> = world
         .query::<Ball>()
@@ -321,6 +391,26 @@ fn spawn_ball_system_spawns_at_fixed_rate_while_held() {
             );
         }
     }
+}
+
+#[test]
+fn rainbow_ball_hue_system_advances_each_ball_hue() {
+    let mut world = seed_world();
+    let ball = world.spawn();
+    world.insert(ball, Ball);
+    world.insert(
+        ball,
+        BallHue {
+            hue: 0.95,
+            speed: 0.2,
+        },
+    );
+    world.get_resource_mut::<DeltaTime>().unwrap().dt = 0.5;
+
+    rainbow_ball_hue_system(&mut world);
+
+    let hue = world.get::<BallHue>(ball).unwrap();
+    assert!((hue.hue - 0.05).abs() < 1.0e-6);
 }
 
 #[test]
@@ -362,6 +452,17 @@ fn spawn_ball_system_resets_accumulator_on_release() {
 fn spawn_black_hole_system_creates_attractor_at_cursor_on_right_click() {
     let mut world = seed_world();
     world.insert_resource(ActiveBlackHole::default());
+    world.insert_resource(AudioCommands::new());
+    world.insert_resource(AudioState {
+        sfx_handle: AudioHandle(1),
+        black_hole_sfx_handle: AudioHandle(3),
+        music_handle: AudioHandle(2),
+        sfx_volume: 0.8,
+        black_hole_sfx_volume: 0.65,
+        music_volume: 0.4,
+        music_playing: false,
+        master_volume: 0.5,
+    });
     world
         .get_resource_mut::<ActionMap>()
         .unwrap()
@@ -395,6 +496,18 @@ fn spawn_black_hole_system_creates_attractor_at_cursor_on_right_click() {
         world.get_resource::<ActiveBlackHole>().unwrap().0,
         Some(hole_entity),
         "press must record the dragged entity"
+    );
+    let commands = world.get_resource_mut::<AudioCommands>().unwrap().drain();
+    assert!(
+        matches!(
+            commands.as_slice(),
+            [AudioCommand::Play {
+                handle,
+                volume,
+                looping
+            }] if *handle == AudioHandle(3) && (*volume - 0.65).abs() < f32::EPSILON && !*looping
+        ),
+        "press should play the black-hole spawn sound once"
     );
 }
 
@@ -487,7 +600,7 @@ fn black_hole_force_system_pulls_dynamic_body_toward_hole() {
     world.insert(ball, Ball);
     world.insert(ball, Position(Vec2::new(BLACK_HOLE_RADIUS * 0.5, 0.0)));
     world.insert(ball, Velocity(Vec2::ZERO));
-    world.insert(ball, Collider::circle(6.0));
+    world.insert(ball, Collider::circle(BALL_RADIUS));
     world.insert(ball, RigidBody::dynamic());
 
     black_hole_force_system(&mut world);
@@ -518,7 +631,7 @@ fn black_hole_force_system_ignores_bodies_outside_radius() {
     world.insert(ball, Ball);
     world.insert(ball, Position(Vec2::new(BLACK_HOLE_RADIUS + 10.0, 0.0)));
     world.insert(ball, Velocity(Vec2::ZERO));
-    world.insert(ball, Collider::circle(6.0));
+    world.insert(ball, Collider::circle(BALL_RADIUS));
     world.insert(ball, RigidBody::dynamic());
 
     black_hole_force_system(&mut world);
@@ -539,8 +652,14 @@ fn black_hole_lifetime_system_despawns_expired_hole() {
         },
     );
     world.insert(hole, Position(Vec2::ZERO));
+    world.insert_resource(ActiveBlackHole(Some(hole)));
 
     black_hole_lifetime_system(&mut world);
+    assert_eq!(
+        world.get_resource::<ActiveBlackHole>().unwrap().0,
+        None,
+        "expired active holes must clear their drag slot"
+    );
     let buffer = world.remove_resource::<CommandBuffer>().unwrap();
     world.flush(buffer);
 
@@ -561,15 +680,25 @@ fn despawn_out_of_bounds_culls_escaped_balls_and_keeps_in_bounds_balls() {
             MAP_ROWS as f32 * TILE * 0.5,
         )),
     );
+    world.insert(inside, Collider::circle(BALL_RADIUS));
+
+    let partly_inside = world.spawn();
+    world.insert(partly_inside, Ball);
+    world.insert(
+        partly_inside,
+        Position(Vec2::new(100.0, WORLD_BOUNDS_MAX.y + BALL_RADIUS - 1.0)),
+    );
+    world.insert(partly_inside, Collider::circle(BALL_RADIUS));
 
     let outside = world.spawn();
     world.insert(outside, Ball);
     world.insert(
         outside,
-        Position(Vec2::new(100.0, WORLD_BOUNDS_MAX.y + 1.0)),
+        Position(Vec2::new(100.0, WORLD_BOUNDS_MAX.y + BALL_RADIUS + 1.0)),
     );
+    world.insert(outside, Collider::circle(BALL_RADIUS));
 
-    assert_eq!(world.query::<Ball>().count(), 2);
+    assert_eq!(world.query::<Ball>().count(), 3);
 
     despawn_out_of_bounds(&mut world);
     let buffer = world.remove_resource::<CommandBuffer>().unwrap();
@@ -581,7 +710,7 @@ fn despawn_out_of_bounds_culls_escaped_balls_and_keeps_in_bounds_balls() {
     world.flush(buffer);
 
     let remaining: Vec<_> = world.query::<Ball>().map(|(e, _)| e).collect();
-    assert_eq!(remaining, vec![inside]);
+    assert_eq!(remaining, vec![inside, partly_inside]);
 }
 
 #[test]
@@ -593,8 +722,9 @@ fn despawn_out_of_bounds_resets_escaped_player_to_spawn() {
     world.insert(player, Player::default());
     world.insert(
         player,
-        Position(Vec2::new(100.0, WORLD_BOUNDS_MAX.y + 50.0)),
+        Position(Vec2::new(100.0, WORLD_BOUNDS_MAX.y + PLAYER_HALF.y + 50.0)),
     );
+    world.insert(player, Collider::aabb(PLAYER_HALF));
     world.insert(player, Velocity(Vec2::new(25.0, 900.0)));
 
     despawn_out_of_bounds(&mut world);
@@ -603,6 +733,30 @@ fn despawn_out_of_bounds_resets_escaped_player_to_spawn() {
     let vel = world.get::<Velocity>(player).unwrap().0;
     assert_eq!(pos, PLAYER_SPAWN, "player not reset to spawn");
     assert_eq!(vel, Vec2::ZERO, "player velocity not cleared on reset");
+}
+
+#[test]
+fn despawn_out_of_bounds_keeps_player_while_collider_overlaps_bounds() {
+    let mut world = seed_world();
+    world.insert_resource(CommandBuffer::new());
+
+    let player = world.spawn();
+    world.insert(player, Player::default());
+    let start = Vec2::new(100.0, WORLD_BOUNDS_MAX.y + PLAYER_HALF.y - 1.0);
+    world.insert(player, Position(start));
+    world.insert(player, Collider::aabb(PLAYER_HALF));
+    world.insert(player, Velocity(Vec2::new(25.0, 900.0)));
+
+    despawn_out_of_bounds(&mut world);
+
+    let pos = world.get::<Position>(player).unwrap().0;
+    let vel = world.get::<Velocity>(player).unwrap().0;
+    assert_eq!(pos, start, "overlapping player should not reset yet");
+    assert_eq!(
+        vel,
+        Vec2::new(25.0, 900.0),
+        "overlapping player velocity must not change"
+    );
 }
 
 #[test]

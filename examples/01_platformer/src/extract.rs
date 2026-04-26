@@ -10,10 +10,42 @@ use tungsten::physics::Position;
 use tungsten::render::{SpriteBatch, SpriteInstance, TextSection};
 
 use crate::state::{
-    Ball, BlackHole, CurrentSprite, LightingFixture, LightingFixtureMode, PlayerMaterial,
-    BALL_RADIUS, BLACK_HOLE_VISUAL_DIAMETER, PLAYER_HALF,
+    Ball, BallHue, BlackHole, CurrentSprite, LightingFixture, LightingFixtureMode, Player,
+    PlayerMaterial, TextDisplayState, BALL_START_SPRITE_ID, BALL_VISUAL_DIAMETER,
+    BLACK_HOLE_VISUAL_DIAMETER, PLAYER_HALF,
 };
 use crate::systems::cursor_to_world;
+
+fn rainbow_rgba(hue: f32) -> [u8; 4] {
+    let h = hue.rem_euclid(1.0) * 6.0;
+    let c = 1.0;
+    let x = c * (1.0 - (h % 2.0 - 1.0).abs());
+    let (r, g, b) = match h as u32 {
+        0 => (c, x, 0.0),
+        1 => (x, c, 0.0),
+        2 => (0.0, c, x),
+        3 => (0.0, x, c),
+        4 => (x, 0.0, c),
+        _ => (c, 0.0, x),
+    };
+    let saturated = |v: f32| -> u8 {
+        let lifted = v.powf(0.55);
+        (lifted * 255.0).round().clamp(0.0, 255.0) as u8
+    };
+    [saturated(r), saturated(g), saturated(b), 255]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::rainbow_rgba;
+
+    #[test]
+    fn rainbow_rgba_keeps_primary_hues_fully_saturated() {
+        assert_eq!(rainbow_rgba(0.0), [255, 0, 0, 255]);
+        assert_eq!(rainbow_rgba(1.0 / 3.0), [0, 255, 0, 255]);
+        assert_eq!(rainbow_rgba(2.0 / 3.0), [0, 0, 255, 255]);
+    }
+}
 
 pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     let mut batches = extract_tilemaps(world);
@@ -37,11 +69,12 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
         ];
         let width_world = asset.width as f32 * t.scale.x;
         let height_world = asset.height as f32 * t.scale.y;
+        let top_left = t.position - Vec2::new(width_world * 0.5, height_world * 0.5);
         let batch = particle_batches
             .entry((asset.atlas.0, asset.filter))
             .or_insert_with(|| SpriteBatch::new(asset.atlas, asset.filter));
         batch.instances.push(SpriteInstance {
-            position: [t.position.x, t.position.y],
+            position: [top_left.x, top_left.y],
             size: [width_world, height_world],
             rotation: t.rotation,
             color: s.color,
@@ -55,29 +88,57 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
 
     // Black hole after tilemap, before player/balls.
     if let Some(hole_asset) = assets.get_sprite("ex10_ball") {
+        const BLACK_HOLE_GLOW_DIAMETER: f32 = BLACK_HOLE_VISUAL_DIAMETER * 1.75;
+        const BLACK_HOLE_GLOW_COLOR: [u8; 4] = [170, 48, 255, 72];
+        const BLACK_HOLE_CORE_COLOR: [u8; 4] = [178, 42, 255, 245];
+
         let half = BLACK_HOLE_VISUAL_DIAMETER * 0.5;
+        let glow_half = BLACK_HOLE_GLOW_DIAMETER * 0.5;
         let uv_min = hole_asset.uv.min;
         let uv_size = [
             hole_asset.uv.max[0] - hole_asset.uv.min[0],
             hole_asset.uv.max[1] - hole_asset.uv.min[1],
         ];
-        let instances: Vec<SpriteInstance> = world
+        let hole_positions: Vec<_> = world
             .query::<BlackHole>()
             .filter_map(|(e, _)| world.get::<Position>(e).copied())
+            .collect();
+
+        let glow_instances: Vec<SpriteInstance> = hole_positions
+            .iter()
             .map(|p| SpriteInstance {
-                position: [p.0.x - half, p.0.y - half],
-                size: [BLACK_HOLE_VISUAL_DIAMETER, BLACK_HOLE_VISUAL_DIAMETER],
+                position: [p.0.x - glow_half, p.0.y - glow_half],
+                size: [BLACK_HOLE_GLOW_DIAMETER, BLACK_HOLE_GLOW_DIAMETER],
                 rotation: 0.0,
-                color: [115, 20, 191, 230],
+                color: BLACK_HOLE_GLOW_COLOR,
                 uv_min,
                 uv_size,
                 z_norm: 0.0,
                 _pad: 0.0,
             })
             .collect();
-        if !instances.is_empty() {
+        if !glow_instances.is_empty() {
             let mut batch = SpriteBatch::new(hole_asset.atlas, hole_asset.filter);
-            batch.instances = instances;
+            batch.instances = glow_instances;
+            batches.push(batch);
+        }
+
+        let core_instances: Vec<SpriteInstance> = hole_positions
+            .iter()
+            .map(|p| SpriteInstance {
+                position: [p.0.x - half, p.0.y - half],
+                size: [BLACK_HOLE_VISUAL_DIAMETER, BLACK_HOLE_VISUAL_DIAMETER],
+                rotation: 0.0,
+                color: BLACK_HOLE_CORE_COLOR,
+                uv_min,
+                uv_size,
+                z_norm: 0.0,
+                _pad: 0.0,
+            })
+            .collect();
+        if !core_instances.is_empty() {
+            let mut batch = SpriteBatch::new(hole_asset.atlas, hole_asset.filter);
+            batch.instances = core_instances;
             batches.push(batch);
         }
     }
@@ -85,10 +146,12 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     // Player sprite bottom-aligned to physics AABB.
     let lighting_on = world
         .get_resource::<LightingFixture>()
-        .map(|f| f.mode == LightingFixtureMode::On)
-        .unwrap_or(false);
+        .is_some_and(|fixture| fixture.mode == LightingFixtureMode::On);
     let mut player_batches: HashMap<String, SpriteBatch> = HashMap::new();
     for (entity, cs) in world.query::<CurrentSprite>() {
+        if world.get::<Player>(entity).is_none() {
+            continue;
+        }
         let Some(pos) = world.get::<Position>(entity).copied() else {
             continue;
         };
@@ -138,32 +201,50 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     }
     batches.extend(player_batches.into_values());
 
-    if let Some(ball_asset) = assets.get_sprite("ex10_ball") {
-        let uv_min = ball_asset.uv.min;
+    let mut ball_batches: HashMap<(u32, FilterMode, bool), SpriteBatch> = HashMap::new();
+    for (entity, _) in world.query::<Ball>() {
+        let Some(pos) = world.get::<Position>(entity).copied() else {
+            continue;
+        };
+        let sprite_id = world
+            .get::<CurrentSprite>(entity)
+            .map_or(BALL_START_SPRITE_ID, |cs| cs.0.as_str());
+        let Some(asset) = assets
+            .get_sprite(sprite_id)
+            .or_else(|| assets.get_sprite(BALL_START_SPRITE_ID))
+        else {
+            continue;
+        };
+        let sprite_w = asset.width as f32;
+        let sprite_h = asset.height as f32;
+        let uv_min = asset.uv.min;
         let uv_size = [
-            ball_asset.uv.max[0] - ball_asset.uv.min[0],
-            ball_asset.uv.max[1] - ball_asset.uv.min[1],
+            asset.uv.max[0] - asset.uv.min[0],
+            asset.uv.max[1] - asset.uv.min[1],
         ];
-        let instances: Vec<SpriteInstance> = world
-            .query::<Ball>()
-            .filter_map(|(e, _)| world.get::<Position>(e).copied())
-            .map(|p| SpriteInstance {
-                position: [p.0.x - BALL_RADIUS, p.0.y - BALL_RADIUS],
-                size: [BALL_RADIUS * 2.0, BALL_RADIUS * 2.0],
-                rotation: 0.0,
-                color: [255; 4],
-                uv_min,
-                uv_size,
-                z_norm: 0.0,
-                _pad: 0.0,
-            })
-            .collect();
-        if !instances.is_empty() {
-            let mut batch = SpriteBatch::new(ball_asset.atlas, ball_asset.filter);
-            batch.instances = instances;
-            batches.push(batch);
-        }
+        let lit = lighting_on && asset.lit_atlas.is_some();
+        let batch = ball_batches
+            .entry((asset.atlas.0, asset.filter, lit))
+            .or_insert_with(|| {
+                let mut b = SpriteBatch::new(asset.atlas, asset.filter);
+                b.lit = lit;
+                b
+            });
+        let color = world
+            .get::<BallHue>(entity)
+            .map_or([255, 0, 255, 255], |hue| rainbow_rgba(hue.hue));
+        batch.instances.push(SpriteInstance {
+            position: [pos.0.x - sprite_w * 0.5, pos.0.y - sprite_h * 0.5],
+            size: [BALL_VISUAL_DIAMETER, BALL_VISUAL_DIAMETER],
+            rotation: 0.0,
+            color,
+            uv_min,
+            uv_size,
+            z_norm: 0.0,
+            _pad: 0.0,
+        });
     }
+    batches.extend(ball_batches.into_values());
 
     // Cursor sprite last; world point matches click-spawn mapping.
     if let Some(cursor_asset) = assets.get_sprite("ex10_cursor") {
@@ -232,8 +313,7 @@ fn text_outlined(section: TextSection) -> impl Iterator<Item = TextSection> {
     shadows.into_iter().chain(std::iter::once(section))
 }
 
-pub(crate) fn extract_text(_world: &World) -> Vec<TextSection> {
-    // Controls only; telemetry lives in HUD/inspector.
+pub(crate) fn extract_text(world: &World) -> Vec<TextSection> {
     let mut sections = Vec::new();
     sections.extend(text_outlined(TextSection {
         content: "A/D or ←/→ move  Space jump  LMB hold spawn ball  RMB black hole  M music  S/MMB stop  1/2/3 volume\n\
@@ -246,5 +326,24 @@ pub(crate) fn extract_text(_world: &World) -> Vec<TextSection> {
         position: [16.0, 14.0],
         bounds: None,
     }));
+    if let Some(state) = world.get_resource::<TextDisplayState>() {
+        sections.extend(text_outlined(TextSection {
+            content: format!(
+                "FPS {}  Contacts {}  Grounded {}  Music {}  Vol {}%  Zoom {}%",
+                state.fps,
+                state.contacts,
+                if state.grounded { "yes" } else { "no" },
+                if state.music_on { "on" } else { "off" },
+                state.vol_pct,
+                state.zoom_pct
+            ),
+            font_id: "mono".into(),
+            font_size: 20.0,
+            line_height: 26.0,
+            color: [190, 255, 210, 220],
+            position: [16.0, 84.0],
+            bounds: None,
+        }));
+    }
     sections
 }

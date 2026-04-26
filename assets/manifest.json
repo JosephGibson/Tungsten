@@ -35,6 +35,12 @@
       "filter": "nearest",
       "normal_map": "sprites/walk_3_n.png",
       "emissive_mask": "sprites/walk_3_e.png"
+    },
+    "walk_4": {
+      "path": "sprites/walk_4.png",
+      "filter": "nearest",
+      "normal_map": "sprites/walk_4_n.png",
+      "emissive_mask": "sprites/walk_4_e.png"
     }
   },
   "animations": {
