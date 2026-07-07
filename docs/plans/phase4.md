@@ -206,7 +206,7 @@ Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user mate
 
 ## M29 — 2D Lighting (Forward, Normal-Mapped)
 
-**Status:** done — shipped in `0.27` (plan archived at [`docs/plans/archive/phase4-milestone-29-2d-lighting.md`](archive/phase4-milestone-29-2d-lighting.md)).
+**Status:** done — shipped in `0.26` (plan archived at [`docs/plans/archive/phase4-milestone-29-2d-lighting.md`](archive/phase4-milestone-29-2d-lighting.md)).
 
 **Depends on:** M25, M26. M28 recommended (bloom + emissive).
 
