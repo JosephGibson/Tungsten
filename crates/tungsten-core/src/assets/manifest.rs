@@ -19,6 +19,10 @@ pub enum ManifestError {
     },
     #[error("sprite '{id}' references missing file: {path}")]
     MissingFile { id: String, path: String },
+    #[error("sprite '{id}' references missing normal_map file: {path}")]
+    MissingNormalMapFile { id: String, path: String },
+    #[error("sprite '{id}' references missing emissive_mask file: {path}")]
+    MissingEmissiveMaskFile { id: String, path: String },
     #[error("animation '{id}' references missing file: {path}")]
     MissingAnimationFile { id: String, path: String },
     #[error("font '{id}' references missing file: {path}")]
@@ -63,6 +67,12 @@ pub struct SpriteEntry {
     pub path: String,
     #[serde(default = "default_filter")]
     pub filter: FilterMode,
+    /// M29 sibling tangent-space normal map; same dimensions as `path`.
+    #[serde(default)]
+    pub normal_map: Option<String>,
+    /// M29 sibling emissive mask; alpha or luma authored, decoded into RGB.
+    #[serde(default)]
+    pub emissive_mask: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
@@ -160,6 +170,8 @@ pub struct ResolvedManifest {
 pub struct ResolvedSprite {
     pub path: PathBuf,
     pub filter: FilterMode,
+    pub normal_path: Option<PathBuf>,
+    pub emissive_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -235,11 +247,39 @@ impl ResolvedManifest {
                 });
             }
             let full_path = full_path.canonicalize().unwrap_or(full_path);
+            let normal_path = match entry.normal_map {
+                Some(rel) => {
+                    let p = base_dir.join(&rel);
+                    if !p.exists() {
+                        return Err(ManifestError::MissingNormalMapFile {
+                            id,
+                            path: p.display().to_string(),
+                        });
+                    }
+                    Some(p.canonicalize().unwrap_or(p))
+                }
+                None => None,
+            };
+            let emissive_path = match entry.emissive_mask {
+                Some(rel) => {
+                    let p = base_dir.join(&rel);
+                    if !p.exists() {
+                        return Err(ManifestError::MissingEmissiveMaskFile {
+                            id,
+                            path: p.display().to_string(),
+                        });
+                    }
+                    Some(p.canonicalize().unwrap_or(p))
+                }
+                None => None,
+            };
             result.sprites.insert(
                 id,
                 ResolvedSprite {
                     path: full_path,
                     filter: entry.filter,
+                    normal_path,
+                    emissive_path,
                 },
             );
         }

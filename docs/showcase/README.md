@@ -63,3 +63,36 @@ WGPU_BACKEND=vulkan \
 ```
 
 Then compose the side-by-side image (e.g. `convert _bloom_off.png _bloom_on.png +append bloom_off_vs_on.png` from ImageMagick) and remove the two intermediate `_bloom_*.png` files. Commit `bloom_off_vs_on.png` only.
+
+## M29 — 2D forward lighting (`lighting_off_vs_on.png`)
+
+A 2-up PNG composed offline from two screenshots taken under
+`example-01-platformer`. Both halves capture the same player + ball state; the
+lighting fixture toggles whether the player batch routes through the lit
+pipeline and whether warm + cool point lights and a directional are present.
+- Left half: `TUNGSTEN_LIGHTING_FIXTURE=off`, M28 baseline player path
+  (custom-extract material/unlit).
+- Right half: `TUNGSTEN_LIGHTING_FIXTURE=on`, normal-mapped player + 2 point +
+  1 directional lights, low ambient.
+
+Regenerate (Linux):
+
+```bash
+WGPU_BACKEND=vulkan \
+  TUNGSTEN_SMOKE_FRAMES=8 \
+  TUNGSTEN_CAPTURE_FRAME=6 \
+  TUNGSTEN_CAPTURE_PATH=docs/showcase/_lighting_off.png \
+  TUNGSTEN_CAPTURE_RESOLUTION=1280x720 \
+  TUNGSTEN_LIGHTING_FIXTURE=off \
+  cargo run -p example-01-platformer --quiet
+
+WGPU_BACKEND=vulkan \
+  TUNGSTEN_SMOKE_FRAMES=8 \
+  TUNGSTEN_CAPTURE_FRAME=6 \
+  TUNGSTEN_CAPTURE_PATH=docs/showcase/_lighting_on.png \
+  TUNGSTEN_CAPTURE_RESOLUTION=1280x720 \
+  TUNGSTEN_LIGHTING_FIXTURE=on \
+  cargo run -p example-01-platformer --quiet
+```
+
+Then compose with `convert _lighting_off.png _lighting_on.png +append lighting_off_vs_on.png` and remove the two intermediate `_lighting_*.png` files. Commit `lighting_off_vs_on.png` only.

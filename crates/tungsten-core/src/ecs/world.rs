@@ -1,6 +1,7 @@
 use std::any::TypeId;
+use std::collections::HashMap;
 
-use super::archetype::TypedVec;
+use super::archetype::{AnyColumn, Archetype, TypedVec};
 use super::command_buffer::{Command, CommandBuffer, CommandTarget};
 use super::entity::Entity;
 use super::resource::ResourceMap;
@@ -155,6 +156,84 @@ impl World {
             })
     }
 
+    /// Iterate `(Entity, &mut T)` in archetype/row order.
+    pub fn query_mut<T: 'static>(&mut self) -> impl Iterator<Item = (Entity, &mut T)> {
+        let t_id = TypeId::of::<T>();
+        self.archetypes
+            .archetypes_with_mut::<T>()
+            .flat_map(move |arch| {
+                let Archetype {
+                    columns, entities, ..
+                } = arch;
+                let col = columns
+                    .get_mut(&t_id)
+                    .unwrap()
+                    .as_any_mut()
+                    .downcast_mut::<TypedVec<T>>()
+                    .unwrap();
+                entities.iter().zip(col.0.iter_mut()).map(|(&e, v)| (e, v))
+            })
+    }
+
+    /// Mutable two-component query; per-archetype split column borrows (D-036).
+    ///
+    /// Both refs are mutable; distinct `TypeId`s guarantee disjoint columns.
+    ///
+    /// # Panics
+    /// Panics if `A` and `B` are the same type.
+    pub fn query2_mut<A: 'static, B: 'static>(
+        &mut self,
+    ) -> impl Iterator<Item = (Entity, &mut A, &mut B)> {
+        let a_id = TypeId::of::<A>();
+        let b_id = TypeId::of::<B>();
+        assert_ne!(a_id, b_id, "query2_mut: component types must be distinct");
+        self.archetypes
+            .archetypes_with_two_mut(a_id, b_id)
+            .flat_map(move |arch| {
+                let Archetype {
+                    columns, entities, ..
+                } = arch;
+                let (col_a, col_b) = split2_columns_mut::<A, B>(columns, a_id, b_id);
+                entities
+                    .iter()
+                    .zip(col_a.0.iter_mut())
+                    .zip(col_b.0.iter_mut())
+                    .map(|((&e, a), b)| (e, a, b))
+            })
+    }
+
+    /// Mutable three-component query; per-archetype split column borrows (D-036).
+    ///
+    /// All refs are mutable; distinct `TypeId`s guarantee disjoint columns.
+    ///
+    /// # Panics
+    /// Panics if any two of `A`, `B`, `C` are the same type.
+    pub fn query3_mut<A: 'static, B: 'static, C: 'static>(
+        &mut self,
+    ) -> impl Iterator<Item = (Entity, &mut A, &mut B, &mut C)> {
+        let a_id = TypeId::of::<A>();
+        let b_id = TypeId::of::<B>();
+        let c_id = TypeId::of::<C>();
+        assert_ne!(a_id, b_id, "query3_mut: component types must be distinct");
+        assert_ne!(a_id, c_id, "query3_mut: component types must be distinct");
+        assert_ne!(b_id, c_id, "query3_mut: component types must be distinct");
+        self.archetypes
+            .archetypes_with_three_mut(a_id, b_id, c_id)
+            .flat_map(move |arch| {
+                let Archetype {
+                    columns, entities, ..
+                } = arch;
+                let (col_a, col_b, col_c) =
+                    split3_columns_mut::<A, B, C>(columns, a_id, b_id, c_id);
+                entities
+                    .iter()
+                    .zip(col_a.0.iter_mut())
+                    .zip(col_b.0.iter_mut())
+                    .zip(col_c.0.iter_mut())
+                    .map(|(((&e, a), b), c)| (e, a, b, c))
+            })
+    }
+
     /// Collect entities with `A`, `B`, and `C`; use before mutable access.
     #[must_use]
     pub fn query3_entities<A: 'static, B: 'static, C: 'static>(&self) -> Vec<Entity> {
@@ -233,6 +312,53 @@ impl Default for World {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Disjoint mutable borrows of two typed columns; ids must differ.
+fn split2_columns_mut<A: 'static, B: 'static>(
+    columns: &mut HashMap<TypeId, Box<dyn AnyColumn>>,
+    a_id: TypeId,
+    b_id: TypeId,
+) -> (&mut TypedVec<A>, &mut TypedVec<B>) {
+    let mut col_a = None;
+    let mut col_b = None;
+    for (&tid, col) in columns.iter_mut() {
+        if tid == a_id {
+            col_a = col.as_any_mut().downcast_mut::<TypedVec<A>>();
+        } else if tid == b_id {
+            col_b = col.as_any_mut().downcast_mut::<TypedVec<B>>();
+        }
+    }
+    (
+        col_a.expect("split2_columns_mut: column A missing"),
+        col_b.expect("split2_columns_mut: column B missing"),
+    )
+}
+
+/// Disjoint mutable borrows of three typed columns; ids must differ.
+fn split3_columns_mut<A: 'static, B: 'static, C: 'static>(
+    columns: &mut HashMap<TypeId, Box<dyn AnyColumn>>,
+    a_id: TypeId,
+    b_id: TypeId,
+    c_id: TypeId,
+) -> (&mut TypedVec<A>, &mut TypedVec<B>, &mut TypedVec<C>) {
+    let mut col_a = None;
+    let mut col_b = None;
+    let mut col_c = None;
+    for (&tid, col) in columns.iter_mut() {
+        if tid == a_id {
+            col_a = col.as_any_mut().downcast_mut::<TypedVec<A>>();
+        } else if tid == b_id {
+            col_b = col.as_any_mut().downcast_mut::<TypedVec<B>>();
+        } else if tid == c_id {
+            col_c = col.as_any_mut().downcast_mut::<TypedVec<C>>();
+        }
+    }
+    (
+        col_a.expect("split3_columns_mut: column A missing"),
+        col_b.expect("split3_columns_mut: column B missing"),
+        col_c.expect("split3_columns_mut: column C missing"),
+    )
 }
 
 #[cfg(test)]

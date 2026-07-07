@@ -9,6 +9,9 @@ fn register(reg: &mut AssetRegistry, id: &str, filter: FilterMode, w: u32, h: u3
         PathBuf::from(path),
         TextureHandle(0),
         UvRect::FULL,
+        None,
+        None,
+        None,
     );
 }
 

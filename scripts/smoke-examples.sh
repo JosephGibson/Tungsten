@@ -219,3 +219,42 @@ if [ ${#bloom_fail[@]} -gt 0 ]; then
   done
   exit 1
 fi
+
+# M29: lighting fixture row over example-01-platformer. Pins lighting_fixture=on
+# so the platformer spawns warm + cool point lights and a directional, routes the
+# walk_* sprites through the lit pipeline, and exercises the LightUbo upload
+# path on the lit batch keying.
+lighting_pkg="example-01-platformer"
+echo
+echo "M29 lighting fixture matrix (pkg: $lighting_pkg)"
+lighting_pass=()
+lighting_fail=()
+for label_light in "lighting_fixture=on"; do
+  label="$label_light"
+  printf "  %-28s ... " "$label"
+  log_file="$log_dir/${lighting_pkg}-lighting.log"
+  if TUNGSTEN_SMOKE_FRAMES="$SMOKE_FRAMES" \
+     TUNGSTEN_LIGHTING_FIXTURE="on" \
+     timeout --preserve-status "$TIMEOUT_SECS" \
+     cargo run -p "$lighting_pkg" --quiet >"$log_file" 2>&1; then
+    echo "OK"
+    lighting_pass+=("$label")
+  else
+    code=$?
+    if [ "$code" -eq 124 ]; then
+      echo "TIMEOUT (${TIMEOUT_SECS}s)"
+    else
+      echo "FAIL (exit $code)"
+    fi
+    lighting_fail+=("$label ($log_file)")
+  fi
+done
+
+echo "Lighting passed: ${#lighting_pass[@]}/1"
+if [ ${#lighting_fail[@]} -gt 0 ]; then
+  echo "Lighting failures:"
+  for row in "${lighting_fail[@]}"; do
+    echo "  - $row"
+  done
+  exit 1
+fi

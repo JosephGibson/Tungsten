@@ -76,6 +76,30 @@ fn sync_position_to_transform_skips_entities_missing_either() {
 }
 
 #[test]
+fn light_point_constructor_intensity_one() {
+    let l = Light::point(Vec3::new(1.0, 0.5, 0.25), 4.0);
+    assert_eq!(l.color, Vec3::new(1.0, 0.5, 0.25));
+    assert_eq!(l.intensity, 1.0);
+    match l.kind {
+        LightKind::Point { radius, falloff } => {
+            assert_eq!(radius, 4.0);
+            assert_eq!(falloff, 1.0);
+        }
+        LightKind::Directional { .. } => panic!("expected Point"),
+    }
+}
+
+#[test]
+fn light_directional_constructor_angle() {
+    let l = Light::directional(Vec3::ONE, std::f32::consts::FRAC_PI_4);
+    assert_eq!(l.intensity, 1.0);
+    match l.kind {
+        LightKind::Directional { angle } => assert_eq!(angle, std::f32::consts::FRAC_PI_4),
+        LightKind::Point { .. } => panic!("expected Directional"),
+    }
+}
+
+#[test]
 fn sync_position_to_transform_does_not_touch_position() {
     let mut world = World::new();
     let e = world.spawn();

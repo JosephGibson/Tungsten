@@ -287,6 +287,35 @@ impl Archetypes {
             .iter()
             .filter(move |arch| arch.has(a) && arch.has(b) && arch.has(c))
     }
+
+    /// Mutable archetypes containing component `T`.
+    pub fn archetypes_with_mut<T: 'static>(&mut self) -> impl Iterator<Item = &mut Archetype> {
+        let t_id = TypeId::of::<T>();
+        self.archetypes.iter_mut().filter(move |a| a.has(t_id))
+    }
+
+    /// Mutable archetypes containing `a` and `b`.
+    pub fn archetypes_with_two_mut(
+        &mut self,
+        a: TypeId,
+        b: TypeId,
+    ) -> impl Iterator<Item = &mut Archetype> {
+        self.archetypes
+            .iter_mut()
+            .filter(move |arch| arch.has(a) && arch.has(b))
+    }
+
+    /// Mutable archetypes containing `a`, `b`, and `c`.
+    pub fn archetypes_with_three_mut(
+        &mut self,
+        a: TypeId,
+        b: TypeId,
+        c: TypeId,
+    ) -> impl Iterator<Item = &mut Archetype> {
+        self.archetypes
+            .iter_mut()
+            .filter(move |arch| arch.has(a) && arch.has(b) && arch.has(c))
+    }
 }
 
 /// Mutable refs to two distinct archetypes.

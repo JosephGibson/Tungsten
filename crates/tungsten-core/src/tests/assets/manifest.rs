@@ -79,6 +79,8 @@ fn merge_success() {
         ResolvedSprite {
             path: "hero.png".into(),
             filter: FilterMode::Nearest,
+            normal_path: None,
+            emissive_path: None,
         },
     );
 
@@ -88,6 +90,8 @@ fn merge_success() {
         ResolvedSprite {
             path: "enemy.png".into(),
             filter: FilterMode::Linear,
+            normal_path: None,
+            emissive_path: None,
         },
     );
 
@@ -104,6 +108,8 @@ fn merge_duplicate_sprite_is_error() {
         ResolvedSprite {
             path: "hero.png".into(),
             filter: FilterMode::Nearest,
+            normal_path: None,
+            emissive_path: None,
         },
     );
 
@@ -113,6 +119,8 @@ fn merge_duplicate_sprite_is_error() {
         ResolvedSprite {
             path: "hero2.png".into(),
             filter: FilterMode::Nearest,
+            normal_path: None,
+            emissive_path: None,
         },
     );
 

@@ -20,6 +20,7 @@ Usage: perf-capture.sh [scene] [frames] [--present-mode <mode>] [--max-frame-lat
 Scenes:
   ecs-high-load (default)
   sprite-stress
+  physics-stress
 
 Flags:
   --present-mode <mode>       Override the resolved present mode for child capture runs
@@ -156,7 +157,7 @@ capture_mode_label() {
 resolve_scene_package() {
   local scene="$1"
   case "$scene" in
-    sprite-stress|ecs-high-load)
+    sprite-stress|ecs-high-load|physics-stress)
       printf '%s' "example-02-sprite-stress"
       ;;
     *)
@@ -173,6 +174,9 @@ scene_env_overrides() {
       ;;
     ecs-high-load)
       printf '%s\n' "STRESS_SCENE=ecs-high-load"
+      ;;
+    physics-stress)
+      printf '%s\n' "STRESS_SCENE=physics-stress"
       ;;
     *)
       return 1
@@ -252,7 +256,7 @@ main() {
 
   local pkg
   if ! pkg="$(resolve_scene_package "$scene")"; then
-    echo "Unknown scene '$scene'. Expected: ecs-high-load or sprite-stress."
+    echo "Unknown scene '$scene'. Expected: ecs-high-load, sprite-stress, or physics-stress."
     exit 1
   fi
   local -a scene_env=()

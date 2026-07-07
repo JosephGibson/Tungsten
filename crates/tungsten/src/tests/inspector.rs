@@ -28,6 +28,9 @@ fn spawn_sprite(world: &mut World, id: &str, pos: Vec2, size: u32) -> Entity {
             PathBuf::from(format!("test/{id}.png")),
             TextureHandle(0),
             UvRect::FULL,
+            None,
+            None,
+            None,
         );
     let e = world.spawn();
     world.insert(e, Transform::from_position(pos));

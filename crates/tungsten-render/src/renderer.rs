@@ -4,6 +4,11 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::debug_line::{DebugLineInstance, DebugLinePipeline};
+use crate::lighting::{LightUbo, LightingResources};
+use crate::lit_sprite::{
+    LitSpritePipeline, EMISSIVE_MASK_SHADER_NAME, LIT_SPRITE_SHADER_NAME, LIT_SPRITE_SHADER_SOURCE,
+    RIM_LIGHT_SHADER_NAME,
+};
 use crate::material::{build_material_pipeline, MaterialPipeline};
 use crate::passes::{default_pass_order, text_overlay_target, PassRecorder, TargetId};
 use crate::post::bloom::{
@@ -88,6 +93,14 @@ pub struct Renderer {
     bloom_max_mips: u32,
     #[allow(dead_code)] // kept for symmetry with shader_ids map; future work wires to debug HUD.
     sprite_shader_id: ShaderAssetId,
+    /// M29 lit sprite pipeline; rebuilt on `lit_sprite` shader hot-reload.
+    lit_sprite_pipeline: LitSpritePipeline,
+    /// M29 per-frame lighting UBO + bind group bound at group 2 of the lit
+    /// pipeline. Resize does not invalidate this; the buffer + bind group
+    /// stay live across surface reconfigures.
+    lighting: LightingResources,
+    #[allow(dead_code)]
+    lit_sprite_shader_id: ShaderAssetId,
     /// M26 material pipelines keyed by id.
     materials: HashMap<MaterialAssetId, MaterialPipeline>,
     /// M26 known manifest-tracked shader ids (name → id). The built-in
@@ -339,6 +352,50 @@ impl Renderer {
 
         let post_stack = PostStackRenderer::new(&device, format, &shader_cache, bloom_shader_ids);
 
+        // M29: pre-seed lit_sprite (8) + emissive_mask (9) + rim_light (10).
+        let lit_sprite_shader_id = ShaderAssetId(8);
+        let emissive_mask_shader_id = ShaderAssetId(9);
+        let rim_light_shader_id = ShaderAssetId(10);
+        shader_cache
+            .upload(
+                &device,
+                lit_sprite_shader_id,
+                LIT_SPRITE_SHADER_NAME,
+                LIT_SPRITE_SHADER_SOURCE.to_string(),
+            )
+            .expect("compile-time lit_sprite shader must validate");
+        shader_cache
+            .upload(
+                &device,
+                emissive_mask_shader_id,
+                EMISSIVE_MASK_SHADER_NAME,
+                include_str!("shaders/stock/emissive_mask.wgsl").to_string(),
+            )
+            .expect("compile-time emissive_mask shader must validate");
+        shader_cache
+            .upload(
+                &device,
+                rim_light_shader_id,
+                RIM_LIGHT_SHADER_NAME,
+                include_str!("shaders/stock/rim_light.wgsl").to_string(),
+            )
+            .expect("compile-time rim_light shader must validate");
+
+        let lighting = LightingResources::new(&device);
+        let lit_module = shader_cache
+            .get(lit_sprite_shader_id)
+            .expect("lit_sprite module pre-seeded above");
+        let lit_sprite_pipeline = LitSpritePipeline::new(
+            &device,
+            lit_module,
+            sprite_pipeline.camera_bind_group_layout(),
+            sprite_pipeline.lit_texture_bind_group_layout(),
+            &lighting.bind_group_layout,
+            format,
+            sample_count,
+            depth_attached,
+        );
+
         let smaa = if post_aa.is_smaa() {
             Some(build_smaa_pipeline(
                 &device,
@@ -380,6 +437,12 @@ impl Renderer {
             BLOOM_COMPOSITE_SHADER_NAME.to_string(),
             bloom_shader_ids.composite,
         );
+        shader_ids.insert(LIT_SPRITE_SHADER_NAME.to_string(), lit_sprite_shader_id);
+        shader_ids.insert(
+            EMISSIVE_MASK_SHADER_NAME.to_string(),
+            emissive_mask_shader_id,
+        );
+        shader_ids.insert(RIM_LIGHT_SHADER_NAME.to_string(), rim_light_shader_id);
 
         Ok(Self {
             instance,
@@ -406,9 +469,12 @@ impl Renderer {
             bloom_shader_ids,
             bloom_max_mips,
             sprite_shader_id,
+            lit_sprite_pipeline,
+            lighting,
+            lit_sprite_shader_id,
             materials: HashMap::new(),
             shader_ids,
-            next_shader_id: 8,
+            next_shader_id: 11,
             timestamp_support,
             gpu_timings,
             cpu_timings: CpuFrameTimings::default(),
@@ -457,9 +523,69 @@ impl Renderer {
         self.sprite_pipeline.allocate_texture_handle()
     }
 
-    /// Drop texture pool entry and bind group.
+    /// Drop texture pool entry and bind group. Also drops the matching M29
+    /// lit-bundle entry if present, keeping the two pools in lockstep.
     pub fn drop_texture(&mut self, handle: TextureHandle) {
         self.sprite_pipeline.drop_texture(handle);
+        self.sprite_pipeline.drop_lit_texture(handle);
+    }
+
+    /// M29 upload albedo + normal + emissive RGBA pages keyed by the same
+    /// page handle as the regular albedo upload.
+    #[allow(clippy::too_many_arguments)]
+    pub fn upload_lit_texture(
+        &mut self,
+        handle: TextureHandle,
+        albedo: &[u8],
+        normal: &[u8],
+        emissive: &[u8],
+        width: u32,
+        height: u32,
+        filter: FilterMode,
+    ) {
+        self.sprite_pipeline.upload_lit_texture(
+            &self.device,
+            &self.queue,
+            handle,
+            albedo,
+            normal,
+            emissive,
+            width,
+            height,
+            filter,
+        );
+    }
+
+    /// M29 copy a packed cell into the lit texture bundle.
+    #[allow(clippy::too_many_arguments)]
+    pub fn write_subtexture_lit(
+        &self,
+        handle: TextureHandle,
+        albedo: &[u8],
+        normal: &[u8],
+        emissive: &[u8],
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+    ) {
+        self.sprite_pipeline.write_subtexture_lit(
+            &self.queue,
+            handle,
+            albedo,
+            normal,
+            emissive,
+            x,
+            y,
+            width,
+            height,
+        );
+    }
+
+    /// M29 upload one frame of the lighting UBO. The bind group built at
+    /// startup stays valid; resize does not invalidate it.
+    pub fn update_lights(&self, ubo: &LightUbo) {
+        self.lighting.write(&self.queue, ubo);
     }
 
     /// Portable atlas page dimension cap.
@@ -539,6 +665,15 @@ impl Renderer {
                 &module,
             );
         }
+        if name == LIT_SPRITE_SHADER_NAME {
+            self.lit_sprite_pipeline.rebuild_with_shader(
+                &self.device,
+                &module,
+                self.surface_config.format,
+                self.sample_count,
+                matches!(self.depth_sort, DepthSortMode::GpuDepth),
+            );
+        }
         self.shader_cache.commit(id, wgsl, module);
         // Any material bound to this shader needs a rebuild against the new module.
         if name != SPRITE_SHADER_NAME
@@ -551,6 +686,9 @@ impl Renderer {
                     | BLOOM_DOWNSAMPLE_SHADER_NAME
                     | BLOOM_UPSAMPLE_SHADER_NAME
                     | BLOOM_COMPOSITE_SHADER_NAME
+                    | LIT_SPRITE_SHADER_NAME
+                    | EMISSIVE_MASK_SHADER_NAME
+                    | RIM_LIGHT_SHADER_NAME
             )
         {
             self.rebuild_materials_for_shader(name);
@@ -608,6 +746,15 @@ impl Renderer {
                 &module,
             );
         }
+        if name == LIT_SPRITE_SHADER_NAME {
+            self.lit_sprite_pipeline.rebuild_with_shader(
+                &self.device,
+                &module,
+                self.surface_config.format,
+                self.sample_count,
+                matches!(self.depth_sort, DepthSortMode::GpuDepth),
+            );
+        }
         self.shader_cache.commit(id, wgsl, module);
         if name != SPRITE_SHADER_NAME
             && !matches!(
@@ -619,6 +766,9 @@ impl Renderer {
                     | BLOOM_DOWNSAMPLE_SHADER_NAME
                     | BLOOM_UPSAMPLE_SHADER_NAME
                     | BLOOM_COMPOSITE_SHADER_NAME
+                    | LIT_SPRITE_SHADER_NAME
+                    | EMISSIVE_MASK_SHADER_NAME
+                    | RIM_LIGHT_SHADER_NAME
             )
         {
             self.rebuild_materials_for_shader(name);
@@ -1123,6 +1273,8 @@ impl Renderer {
                     debug_quads,
                     debug_lines,
                     &self.materials,
+                    &self.lit_sprite_pipeline,
+                    &self.lighting,
                 );
             } else if is_smaa_edge {
                 if let Some(smaa) = self.smaa.as_ref() {
@@ -1279,13 +1431,23 @@ fn record_main_draws<'a>(
     debug_quads: &[QuadInstance],
     debug_lines: &[DebugLineInstance],
     materials: &'a HashMap<MaterialAssetId, MaterialPipeline>,
+    lit_sprite_pipeline: &'a LitSpritePipeline,
+    lighting: &'a LightingResources,
 ) {
     render_pass.push_debug_group("quads");
     quad_pipeline.draw(device, render_pass, quads);
     render_pass.pop_debug_group();
 
     render_pass.push_debug_group("sprites");
-    sprite_pipeline.draw(device, queue, render_pass, sprite_batches, materials);
+    sprite_pipeline.draw(
+        device,
+        queue,
+        render_pass,
+        sprite_batches,
+        materials,
+        Some(&lit_sprite_pipeline.pipeline),
+        Some(&lighting.bind_group),
+    );
     render_pass.pop_debug_group();
 
     render_pass.push_debug_group("debug_quads");

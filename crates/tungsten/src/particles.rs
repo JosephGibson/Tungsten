@@ -27,22 +27,22 @@ pub struct ParticleSystemDrained {
 
 /// Rebuild active counts before emission budget clipping.
 pub fn particle_count_refresh_system(world: &mut World) {
-    let emitter_entities = world.query2_entities::<ParticleEmitter, ParticleEmitterState>();
-    for e in &emitter_entities {
-        if let Some(state) = world.get_mut::<ParticleEmitterState>(*e) {
-            state.active_count = 0;
-        }
+    for (_e, state, _emitter) in world.query2_mut::<ParticleEmitterState, ParticleEmitter>() {
+        state.active_count = 0;
     }
 
-    let particle_entities = world.query_entities::<Particle>();
+    // Owner writes are random-access; gather owners columnar first.
     let mut total: u32 = 0;
-    for p_ent in &particle_entities {
-        let emitter_owner = world.get::<Particle>(*p_ent).and_then(|p| p.emitter);
+    let mut owners: Vec<Entity> = Vec::new();
+    for (_p_ent, particle) in world.query::<Particle>() {
         total = total.saturating_add(1);
-        if let Some(owner) = emitter_owner {
-            if let Some(state) = world.get_mut::<ParticleEmitterState>(owner) {
-                state.active_count = state.active_count.saturating_add(1);
-            }
+        if let Some(owner) = particle.emitter {
+            owners.push(owner);
+        }
+    }
+    for owner in owners {
+        if let Some(state) = world.get_mut::<ParticleEmitterState>(owner) {
+            state.active_count = state.active_count.saturating_add(1);
         }
     }
 
@@ -185,73 +185,51 @@ pub fn particle_tick_system(world: &mut World) {
         return;
     };
 
-    let particle_entities = world.query3_entities::<Particle, Transform, Sprite>();
-    for entity in particle_entities {
-        // Snapshot before writeback to keep borrows disjoint.
-        let (config, age_new, lifetime) = {
-            let Some(p) = world.get::<Particle>(entity) else {
-                continue;
-            };
-            (p.config.clone(), p.age + dt, p.lifetime)
-        };
-
-        if age_new >= lifetime {
+    for (entity, p, t, s) in world.query3_mut::<Particle, Transform, Sprite>() {
+        let age_new = p.age + dt;
+        if age_new >= p.lifetime {
             buf.despawn(entity);
             continue;
         }
 
-        let u = (age_new / lifetime).clamp(0.0, 1.0);
+        let u = (age_new / p.lifetime).clamp(0.0, 1.0);
 
-        let drag_factor = (-config.drag_per_sec * dt).exp();
-        let gravity = Vec2::new(config.gravity[0], config.gravity[1]);
-        let (new_vel, new_ang_vel, start_scale, base_rgba) = {
-            let p = world.get::<Particle>(entity).unwrap();
-            (
-                (p.velocity + gravity * dt) * drag_factor,
-                p.angular_velocity,
-                p.start_scale,
-                p.base_rgba,
-            )
-        };
+        let drag_factor = (-p.config.drag_per_sec * dt).exp();
+        let gravity = Vec2::new(p.config.gravity[0], p.config.gravity[1]);
+        let new_vel = (p.velocity + gravity * dt) * drag_factor;
 
-        if let Some(p) = world.get_mut::<Particle>(entity) {
-            p.age = age_new;
-            p.velocity = new_vel;
-        }
+        p.age = age_new;
+        p.velocity = new_vel;
 
-        if let Some(t) = world.get_mut::<Transform>(entity) {
-            t.position += new_vel * dt;
-            t.rotation += new_ang_vel * dt;
-            let scale = start_scale * sample_or_one(config.scale_over_life.as_ref(), u);
-            t.scale = Vec2::splat(scale);
-        }
+        t.position += new_vel * dt;
+        t.rotation += p.angular_velocity * dt;
+        let scale = p.start_scale * sample_or_one(p.config.scale_over_life.as_ref(), u);
+        t.scale = Vec2::splat(scale);
 
-        let mut rgba = match config.color_over_life.as_ref() {
+        let mut rgba = match p.config.color_over_life.as_ref() {
             Some(c) => c.sample(u),
             None => [1.0, 1.0, 1.0, 1.0],
         };
-        if let Some(alpha_curve) = config.alpha_over_life.as_ref() {
+        if let Some(alpha_curve) = p.config.alpha_over_life.as_ref() {
             rgba[3] *= alpha_curve.sample(u);
         }
-        if matches!(config.blend, BlendMode::Premultiplied) {
+        if matches!(p.config.blend, BlendMode::Premultiplied) {
             rgba[0] *= rgba[3];
             rgba[1] *= rgba[3];
             rgba[2] *= rgba[3];
         }
         let final_rgba = [
-            (rgba[0] * base_rgba[0]).clamp(0.0, 1.0),
-            (rgba[1] * base_rgba[1]).clamp(0.0, 1.0),
-            (rgba[2] * base_rgba[2]).clamp(0.0, 1.0),
-            (rgba[3] * base_rgba[3]).clamp(0.0, 1.0),
+            (rgba[0] * p.base_rgba[0]).clamp(0.0, 1.0),
+            (rgba[1] * p.base_rgba[1]).clamp(0.0, 1.0),
+            (rgba[2] * p.base_rgba[2]).clamp(0.0, 1.0),
+            (rgba[3] * p.base_rgba[3]).clamp(0.0, 1.0),
         ];
-        if let Some(s) = world.get_mut::<Sprite>(entity) {
-            s.color = [
-                (final_rgba[0] * 255.0) as u8,
-                (final_rgba[1] * 255.0) as u8,
-                (final_rgba[2] * 255.0) as u8,
-                (final_rgba[3] * 255.0) as u8,
-            ];
-        }
+        s.color = [
+            (final_rgba[0] * 255.0) as u8,
+            (final_rgba[1] * 255.0) as u8,
+            (final_rgba[2] * 255.0) as u8,
+            (final_rgba[3] * 255.0) as u8,
+        ];
     }
 
     world.insert_resource(buf);

@@ -1,0 +1,29 @@
+{
+  "looping": true,
+  "frames": [
+    {
+      "sprite": "ex10_player_walk_0",
+      "duration_ms": 90
+    },
+    {
+      "sprite": "ex10_player_walk_1",
+      "duration_ms": 90
+    },
+    {
+      "sprite": "ex10_player_walk_2",
+      "duration_ms": 90
+    },
+    {
+      "sprite": "ex10_player_walk_3",
+      "duration_ms": 90
+    },
+    {
+      "sprite": "ex10_player_walk_4",
+      "duration_ms": 90
+    },
+    {
+      "sprite": "ex10_player_walk_5",
+      "duration_ms": 110
+    }
+  ]
+}

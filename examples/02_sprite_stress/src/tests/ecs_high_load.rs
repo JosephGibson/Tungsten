@@ -28,6 +28,9 @@ fn register_test_high_load_sprite(world: &mut World) {
         PathBuf::from(HIGH_LOAD_SPRITE_PATH),
         TextureHandle(0),
         tungsten::core::assets::UvRect::FULL,
+        None,
+        None,
+        None,
     );
 }
 

@@ -202,6 +202,9 @@ fn register_high_load_sprite(world: &mut World, renderer: &mut Renderer) {
             PathBuf::from(HIGH_LOAD_SPRITE_PATH),
             handle,
             tungsten::core::assets::UvRect::FULL,
+            None,
+            None,
+            None,
         );
     }
     renderer.upload_texture(
@@ -239,11 +242,6 @@ fn steer_agents_system(world: &mut World) {
         telemetry.frame_count = telemetry.frame_count.saturating_add(1);
     }
 
-    let entities = world.query3_entities::<StressAgent, Position, Velocity>();
-    if entities.is_empty() {
-        return;
-    }
-
     let dt = world
         .get_resource::<DeltaTime>()
         .map(tungsten_core::DeltaTime::seconds)
@@ -252,29 +250,23 @@ fn steer_agents_system(world: &mut World) {
     let frame = telemetry_frame(world) as f32;
     let half_size = Vec2::splat(HIGH_LOAD_HALF_SIZE);
 
-    let mut positions = Vec::with_capacity(entities.len());
-    let mut velocities = Vec::with_capacity(entities.len());
-    let mut agents = Vec::with_capacity(entities.len());
+    let capacity = world.entity_count() as usize;
+    let mut positions = Vec::with_capacity(capacity);
+    let mut velocities = Vec::with_capacity(capacity);
+    let mut agents = Vec::with_capacity(capacity);
 
-    for entity in &entities {
-        let position = world
-            .get::<Position>(*entity)
-            .copied()
-            .map_or(Vec2::ZERO, |p| p.0);
-        let velocity = world
-            .get::<Velocity>(*entity)
-            .copied()
-            .map_or(Vec2::ZERO, |v| v.0);
-        let agent = *world.get::<StressAgent>(*entity).unwrap();
-        let center = position + Vec2::splat(HIGH_LOAD_HALF_SIZE);
+    for (_entity, agent, position, velocity) in world.query3::<StressAgent, Position, Velocity>() {
+        positions.push(position.0 + Vec2::splat(HIGH_LOAD_HALF_SIZE));
+        velocities.push(velocity.0);
+        agents.push(*agent);
+    }
 
-        positions.push(center);
-        velocities.push(velocity);
-        agents.push(agent);
+    if positions.is_empty() {
+        return;
     }
 
     let world_center = Vec2::new(HIGH_LOAD_WORLD_WIDTH * 0.5, HIGH_LOAD_WORLD_HEIGHT * 0.5);
-    let mut next_velocities = Vec::with_capacity(entities.len());
+    let mut next_velocities = Vec::with_capacity(positions.len());
 
     {
         let Some(scratch) = world.get_resource_mut::<HighLoadSteeringScratch>() else {
@@ -288,7 +280,7 @@ fn steer_agents_system(world: &mut World) {
         }
 
         let mut candidates = Vec::new();
-        for index in 0..entities.len() {
+        for index in 0..positions.len() {
             let position = positions[index];
             let velocity = velocities[index];
             let agent = agents[index];
@@ -345,73 +337,52 @@ fn steer_agents_system(world: &mut World) {
         }
     }
 
-    for (entity, next_velocity) in entities.iter().zip(next_velocities) {
-        if let Some(vel) = world.get_mut::<Velocity>(*entity) {
-            vel.0 = next_velocity;
-        }
+    // Same archetype/row order as the query3 gather above; zip is index-aligned.
+    for ((_entity, vel, _agent, _pos), next_velocity) in world
+        .query3_mut::<Velocity, StressAgent, Position>()
+        .zip(next_velocities)
+    {
+        vel.0 = next_velocity;
     }
 }
 
 fn confine_agents_system(world: &mut World) {
-    let entities = world.query2_entities::<Position, Velocity>();
-    for entity in entities {
-        let Some(position) = world.get::<Position>(entity).copied().map(|p| p.0) else {
-            continue;
-        };
-        let Some(velocity) = world.get::<Velocity>(entity).copied().map(|v| v.0) else {
-            continue;
-        };
+    let max_x = HIGH_LOAD_WORLD_WIDTH - HIGH_LOAD_SPRITE_SIZE;
+    let max_y = HIGH_LOAD_WORLD_HEIGHT - HIGH_LOAD_SPRITE_SIZE;
 
-        let mut next_position = position;
-        let mut next_velocity = velocity;
-        let max_x = HIGH_LOAD_WORLD_WIDTH - HIGH_LOAD_SPRITE_SIZE;
-        let max_y = HIGH_LOAD_WORLD_HEIGHT - HIGH_LOAD_SPRITE_SIZE;
-
-        if next_position.x <= 0.0 {
-            next_position.x = 0.0;
-            if next_velocity.x < 0.0 {
-                next_velocity.x = next_velocity.x.abs();
+    for (_entity, position, velocity) in world.query2_mut::<Position, Velocity>() {
+        if position.0.x <= 0.0 {
+            position.0.x = 0.0;
+            if velocity.0.x < 0.0 {
+                velocity.0.x = velocity.0.x.abs();
             }
-        } else if next_position.x >= max_x {
-            next_position.x = max_x;
-            if next_velocity.x > 0.0 {
-                next_velocity.x = -next_velocity.x.abs();
+        } else if position.0.x >= max_x {
+            position.0.x = max_x;
+            if velocity.0.x > 0.0 {
+                velocity.0.x = -velocity.0.x.abs();
             }
         }
 
-        if next_position.y <= 0.0 {
-            next_position.y = 0.0;
-            if next_velocity.y < 0.0 {
-                next_velocity.y = next_velocity.y.abs();
+        if position.0.y <= 0.0 {
+            position.0.y = 0.0;
+            if velocity.0.y < 0.0 {
+                velocity.0.y = velocity.0.y.abs();
             }
-        } else if next_position.y >= max_y {
-            next_position.y = max_y;
-            if next_velocity.y > 0.0 {
-                next_velocity.y = -next_velocity.y.abs();
+        } else if position.0.y >= max_y {
+            position.0.y = max_y;
+            if velocity.0.y > 0.0 {
+                velocity.0.y = -velocity.0.y.abs();
             }
-        }
-
-        if let Some(pos) = world.get_mut::<Position>(entity) {
-            pos.0 = next_position;
-        }
-        if let Some(vel) = world.get_mut::<Velocity>(entity) {
-            vel.0 = next_velocity;
         }
     }
 }
 
 fn orient_agents_system(world: &mut World) {
-    let entities = world.query2_entities::<Velocity, Transform>();
-    for entity in entities {
-        let Some(velocity) = world.get::<Velocity>(entity).copied().map(|v| v.0) else {
-            continue;
-        };
-        if velocity.length_squared() <= 0.0001 {
+    for (_entity, transform, velocity) in world.query2_mut::<Transform, Velocity>() {
+        if velocity.0.length_squared() <= 0.0001 {
             continue;
         }
-        if let Some(transform) = world.get_mut::<Transform>(entity) {
-            transform.rotation = velocity.y.atan2(velocity.x);
-        }
+        transform.rotation = velocity.0.y.atan2(velocity.0.x);
     }
 }
 
@@ -426,15 +397,8 @@ fn tint_agents_system(world: &mut World) {
         state.elapsed += dt;
         state.elapsed
     };
-    let entities = world.query2_entities::<StressAgent, Sprite>();
-    for entity in entities {
-        let Some(tint_seed) = world.get::<StressAgent>(entity).map(|a| a.tint_seed) else {
-            continue;
-        };
-        let color = rgb_wheel_color(elapsed, tint_seed * std::f32::consts::TAU);
-        if let Some(sprite) = world.get_mut::<Sprite>(entity) {
-            sprite.color = color;
-        }
+    for (_entity, sprite, agent) in world.query2_mut::<Sprite, StressAgent>() {
+        sprite.color = rgb_wheel_color(elapsed, agent.tint_seed * std::f32::consts::TAU);
     }
 }
 

@@ -103,6 +103,30 @@ fn bench_query2_homogeneous(c: &mut Criterion) {
     });
 }
 
+fn bench_query2_mut(c: &mut Criterion) {
+    let mut world = World::new();
+    for i in 0..N {
+        let e = world.spawn();
+        world.insert(
+            e,
+            Position {
+                x: i as f32,
+                y: 0.0,
+            },
+        );
+        world.insert(e, Velocity { dx: 1.0, dy: 0.0 });
+    }
+
+    c.bench_function("query2_mut_10k", |b| {
+        b.iter(|| {
+            for (_, p, v) in world.query2_mut::<Position, Velocity>() {
+                p.x += v.dx;
+            }
+            black_box(&world);
+        });
+    });
+}
+
 fn bench_query2_fragmented(c: &mut Criterion) {
     let mut world = World::new();
     let chunk = N / 5;
@@ -528,6 +552,7 @@ criterion_group!(
     bench_spawn_insert,
     bench_query_single,
     bench_query2_homogeneous,
+    bench_query2_mut,
     bench_query2_fragmented,
     bench_query2_10k_5archetypes_pv,
     bench_spawn_despawn_1k,

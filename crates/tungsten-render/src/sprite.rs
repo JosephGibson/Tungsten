@@ -136,6 +136,20 @@ struct GpuTexture {
     filter: FilterMode,
 }
 
+/// M29 lit-texture pool entry: parallel albedo / normal / emissive views all
+/// keyed by the same atlas page handle, sharing one filter and one sampler.
+#[allow(dead_code)]
+struct GpuLitTextures {
+    albedo: wgpu::Texture,
+    normal: wgpu::Texture,
+    emissive: wgpu::Texture,
+    albedo_view: wgpu::TextureView,
+    normal_view: wgpu::TextureView,
+    emissive_view: wgpu::TextureView,
+    bind_group: wgpu::BindGroup,
+    filter: FilterMode,
+}
+
 /// Sprite batch sharing one texture handle.
 ///
 /// M26: adding `material_id` + `uniform_overrides` stays additive — leaving
@@ -152,6 +166,12 @@ pub struct SpriteBatch {
     /// Per-entity animation override payload. `None` means the batch uses
     /// the material's authored defaults. Ignored when `material_id` is `None`.
     pub uniform_overrides: Option<UniformOverrideBlock>,
+    /// M29 lit-pipeline opt-in. When `true`, the renderer binds the lit
+    /// texture bundle (group 1) and `LightingResources` (group 2) for this
+    /// batch and runs the `LitSpritePipeline` instead of the built-in /
+    /// material pipelines. `lit` wins over `material_id` (lit + material is
+    /// out-of-scope in M29; see plan non-goals).
+    pub lit: bool,
 }
 
 impl SpriteBatch {
@@ -164,6 +184,7 @@ impl SpriteBatch {
             instances: Vec::new(),
             material_id: None,
             uniform_overrides: None,
+            lit: false,
         }
     }
 }
@@ -180,9 +201,15 @@ pub struct SpritePipeline {
     camera_bind_group: wgpu::BindGroup,
     camera_bind_group_layout: wgpu::BindGroupLayout,
     texture_bind_group_layout: wgpu::BindGroupLayout,
+    /// M29 lit bind-group layout used by `LitSpritePipeline` and the lit
+    /// texture pool. Three texture views + one sampler.
+    lit_texture_bind_group_layout: wgpu::BindGroupLayout,
     sampler_nearest: wgpu::Sampler,
     sampler_linear: wgpu::Sampler,
     textures: HashMap<TextureHandle, GpuTexture>,
+    /// M29 parallel pool: keyed by the albedo page handle, holds three views
+    /// + one bind group. Lit batches bind from this pool at group 1.
+    lit_textures: HashMap<TextureHandle, GpuLitTextures>,
     next_handle: u32,
 }
 
@@ -255,6 +282,49 @@ impl SpritePipeline {
                 ],
             });
 
+        let lit_texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("sprite_lit_texture_bgl"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("sprite_pipeline_layout"),
             bind_group_layouts: &[
@@ -311,9 +381,11 @@ impl SpritePipeline {
             camera_bind_group,
             camera_bind_group_layout,
             texture_bind_group_layout,
+            lit_texture_bind_group_layout,
             sampler_nearest,
             sampler_linear,
             textures: HashMap::new(),
+            lit_textures: HashMap::new(),
             next_handle: 0,
         }
     }
@@ -329,6 +401,13 @@ impl SpritePipeline {
     #[must_use]
     pub fn texture_bind_group_layout(&self) -> &wgpu::BindGroupLayout {
         &self.texture_bind_group_layout
+    }
+
+    /// M29 lit-texture bind-group layout (group 1) used by `LitSpritePipeline`.
+    /// Three texture views (albedo, normal, emissive) + one filtering sampler.
+    #[must_use]
+    pub fn lit_texture_bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+        &self.lit_texture_bind_group_layout
     }
 
     /// Camera bind group (group 0) the sprite draw binds every frame.
@@ -518,6 +597,207 @@ impl SpritePipeline {
         );
     }
 
+    /// M29 upload albedo + normal + emissive RGBA pages under one
+    /// `TextureHandle`. The lit texture pool reuses the same handle as the
+    /// regular `upload_texture` call so atlas-shared sprites keep one packed
+    /// rect and the renderer can pick the lit pipeline by batch flag.
+    ///
+    /// Albedo is `Rgba8UnormSrgb`, normal/emissive are `Rgba8Unorm` (linear)
+    /// so normal vectors and mask intensities are not gamma-decoded.
+    ///
+    /// # Panics
+    /// Panics on zero dimensions or RGBA length mismatch.
+    #[allow(clippy::too_many_arguments)]
+    pub fn upload_lit_texture(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        handle: TextureHandle,
+        albedo_rgba: &[u8],
+        normal_rgba: &[u8],
+        emissive_rgba: &[u8],
+        width: u32,
+        height: u32,
+        filter: FilterMode,
+    ) {
+        assert!(
+            width > 0 && height > 0,
+            "lit texture dimensions must be non-zero"
+        );
+        let expected = (width as usize) * (height as usize) * 4;
+        assert_eq!(albedo_rgba.len(), expected, "albedo length mismatch");
+        assert_eq!(normal_rgba.len(), expected, "normal length mismatch");
+        assert_eq!(emissive_rgba.len(), expected, "emissive length mismatch");
+
+        let size = wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        };
+
+        let albedo = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(&format!("lit_albedo_{}", handle.0)),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let normal = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(&format!("lit_normal_{}", handle.0)),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let emissive = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(&format!("lit_emissive_{}", handle.0)),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        for (tex, src) in [
+            (&albedo, albedo_rgba),
+            (&normal, normal_rgba),
+            (&emissive, emissive_rgba),
+        ] {
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: tex,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                src,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(4 * width),
+                    rows_per_image: Some(height),
+                },
+                size,
+            );
+        }
+        let albedo_view = albedo.create_view(&wgpu::TextureViewDescriptor::default());
+        let normal_view = normal.create_view(&wgpu::TextureViewDescriptor::default());
+        let emissive_view = emissive.create_view(&wgpu::TextureViewDescriptor::default());
+        let sampler = match filter {
+            FilterMode::Nearest => &self.sampler_nearest,
+            FilterMode::Linear => &self.sampler_linear,
+        };
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(&format!("lit_bg_{}", handle.0)),
+            layout: &self.lit_texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&albedo_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&normal_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&emissive_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Sampler(sampler),
+                },
+            ],
+        });
+        self.lit_textures.insert(
+            handle,
+            GpuLitTextures {
+                albedo,
+                normal,
+                emissive,
+                albedo_view,
+                normal_view,
+                emissive_view,
+                bind_group,
+                filter,
+            },
+        );
+    }
+
+    /// M29 copy a packed cell into the lit texture bundle (albedo + normal +
+    /// emissive). Mirrors `write_subtexture` for hot-reload + in-place
+    /// updates of a single sprite cell on a shared atlas page.
+    ///
+    /// # Panics
+    /// Panics on missing handle, escaped rect, or length mismatch.
+    #[allow(clippy::too_many_arguments)]
+    pub fn write_subtexture_lit(
+        &self,
+        queue: &wgpu::Queue,
+        handle: TextureHandle,
+        albedo_rgba: &[u8],
+        normal_rgba: &[u8],
+        emissive_rgba: &[u8],
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+    ) {
+        let lit = self
+            .lit_textures
+            .get(&handle)
+            .expect("write_subtexture_lit: handle not in lit pool");
+        let expected = (width as usize) * (height as usize) * 4;
+        assert_eq!(albedo_rgba.len(), expected, "albedo length mismatch");
+        assert_eq!(normal_rgba.len(), expected, "normal length mismatch");
+        assert_eq!(emissive_rgba.len(), expected, "emissive length mismatch");
+        let tex_size = lit.albedo.size();
+        assert!(
+            x + width <= tex_size.width && y + height <= tex_size.height,
+            "write_subtexture_lit: rect ({x},{y},{width},{height}) escapes texture {}x{}",
+            tex_size.width,
+            tex_size.height
+        );
+        for (tex, src) in [
+            (&lit.albedo, albedo_rgba),
+            (&lit.normal, normal_rgba),
+            (&lit.emissive, emissive_rgba),
+        ] {
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: tex,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d { x, y, z: 0 },
+                    aspect: wgpu::TextureAspect::All,
+                },
+                src,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(4 * width),
+                    rows_per_image: Some(height),
+                },
+                wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
+    }
+
+    /// Drop the matching lit-texture bundle for `handle`. No-op when the pool
+    /// has no entry; called by `Renderer::drop_texture` to keep the pools in
+    /// lockstep.
+    pub fn drop_lit_texture(&mut self, handle: TextureHandle) {
+        self.lit_textures.remove(&handle);
+    }
+
     /// Upload caller-owned camera view-projection matrix.
     pub fn update_camera(&self, queue: &wgpu::Queue, view_proj: &glam::Mat4) {
         let matrix_ref: &[f32; 16] = view_proj.as_ref();
@@ -542,6 +822,12 @@ impl SpritePipeline {
     /// registry of user-authored material pipelines; a batch with
     /// `material_id = Some(_)` re-binds the matching pipeline and its
     /// material UBO (group 2), otherwise the built-in sprite pipeline runs.
+    ///
+    /// M29: when `batch.lit` is set, the renderer pulls the lit texture
+    /// bundle from `self.lit_textures` (group 1, three views + sampler) and
+    /// uses `lit_sprite_pipeline` + `lighting_bind_group` (group 2). `lit`
+    /// wins over `material_id` when both are present.
+    #[allow(clippy::too_many_arguments)]
     pub fn draw(
         &mut self,
         device: &wgpu::Device,
@@ -549,6 +835,8 @@ impl SpritePipeline {
         render_pass: &mut wgpu::RenderPass<'_>,
         batches: &[SpriteBatch],
         material_pipelines: &HashMap<MaterialAssetId, MaterialPipeline>,
+        lit_sprite_pipeline: Option<&wgpu::RenderPipeline>,
+        lighting_bind_group: Option<&wgpu::BindGroup>,
     ) {
         let total_instances: usize = batches.iter().map(|batch| batch.instances.len()).sum();
         if total_instances == 0 {
@@ -571,11 +859,19 @@ impl SpritePipeline {
         render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
 
-        // Track the last-bound pipeline so adjacent same-material batches
-        // don't rebind unnecessarily. `None` key = built-in sprite pipeline.
+        // Pipeline-key tracking covers built-in / material / lit, in that
+        // order of precedence. `None` = built-in sprite pipeline; lit batches
+        // collapse onto a synthetic sentinel id so adjacent lit batches don't
+        // rebind. Material precedence remains; lit wins over material.
+        #[derive(PartialEq, Clone, Copy)]
+        enum PipelineKey {
+            BuiltIn,
+            Material(MaterialAssetId),
+            Lit,
+        }
         let instance_stride = std::mem::size_of::<SpriteInstance>() as wgpu::BufferAddress;
         let mut base_instance = 0usize;
-        let mut last_pipeline_key: Option<Option<MaterialAssetId>> = None;
+        let mut last_pipeline_key: Option<PipelineKey> = None;
 
         for batch in batches {
             if batch.instances.is_empty() {
@@ -584,44 +880,93 @@ impl SpritePipeline {
 
             let start = (base_instance as wgpu::BufferAddress) * instance_stride;
             let end = start + (batch.instances.len() as wgpu::BufferAddress) * instance_stride;
-            // Advance before possible skip; upload slices stay aligned.
             base_instance += batch.instances.len();
 
-            let Some(gpu_tex) = self.textures.get(&batch.texture) else {
-                log::warn!("Missing GPU texture for handle {:?}", batch.texture);
-                continue;
+            // Decide pipeline up-front.
+            let lit_resources = if batch.lit {
+                match (
+                    self.lit_textures.get(&batch.texture),
+                    lit_sprite_pipeline,
+                    lighting_bind_group,
+                ) {
+                    (Some(lit), Some(pipeline), Some(bg)) => Some((lit, pipeline, bg)),
+                    _ => None,
+                }
+            } else {
+                None
             };
 
-            if batch.filter != gpu_tex.filter {
+            if batch.lit && lit_resources.is_none() {
                 log::warn!(
-                    "sprite batch filter {:?} != pool filter {:?} for handle {:?}",
-                    batch.filter,
-                    gpu_tex.filter,
+                    "lit sprite batch missing lit-pool entry or lit pipeline for handle {:?}; skipping",
                     batch.texture
                 );
                 continue;
             }
 
-            let material_pipeline = batch.material_id.and_then(|id| material_pipelines.get(&id));
-            let pipeline_key = material_pipeline.map(|_| batch.material_id.unwrap());
-            let pipeline_key_slot = Some(pipeline_key);
-            if last_pipeline_key != pipeline_key_slot {
-                if let Some(mp) = material_pipeline {
-                    render_pass.set_pipeline(&mp.pipeline);
-                } else {
-                    render_pass.set_pipeline(&self.pipeline);
+            let material_pipeline = if !batch.lit {
+                batch.material_id.and_then(|id| material_pipelines.get(&id))
+            } else {
+                None
+            };
+
+            let pipeline_key = if batch.lit {
+                PipelineKey::Lit
+            } else if let Some(_mp) = material_pipeline {
+                PipelineKey::Material(batch.material_id.unwrap())
+            } else {
+                PipelineKey::BuiltIn
+            };
+
+            if last_pipeline_key != Some(pipeline_key) {
+                match pipeline_key {
+                    PipelineKey::BuiltIn => render_pass.set_pipeline(&self.pipeline),
+                    PipelineKey::Material(_) => {
+                        render_pass.set_pipeline(&material_pipeline.unwrap().pipeline);
+                    }
+                    PipelineKey::Lit => {
+                        render_pass.set_pipeline(lit_resources.unwrap().1);
+                    }
                 }
-                last_pipeline_key = pipeline_key_slot;
+                last_pipeline_key = Some(pipeline_key);
             }
 
-            render_pass.set_bind_group(1, &gpu_tex.bind_group, &[]);
-            if let Some(mp) = material_pipeline {
-                let payload = batch
-                    .uniform_overrides
-                    .unwrap_or_else(|| mp.defaults.to_override_block());
-                queue.write_buffer(&mp.ubo, 0, &payload.to_bytes());
-                render_pass.set_bind_group(2, &mp.bind_group, &[]);
+            if let Some((lit, _pipeline, lighting_bg)) = lit_resources {
+                if batch.filter != lit.filter {
+                    log::warn!(
+                        "lit sprite batch filter {:?} != lit pool filter {:?} for handle {:?}",
+                        batch.filter,
+                        lit.filter,
+                        batch.texture
+                    );
+                    continue;
+                }
+                render_pass.set_bind_group(1, &lit.bind_group, &[]);
+                render_pass.set_bind_group(2, lighting_bg, &[]);
+            } else {
+                let Some(gpu_tex) = self.textures.get(&batch.texture) else {
+                    log::warn!("Missing GPU texture for handle {:?}", batch.texture);
+                    continue;
+                };
+                if batch.filter != gpu_tex.filter {
+                    log::warn!(
+                        "sprite batch filter {:?} != pool filter {:?} for handle {:?}",
+                        batch.filter,
+                        gpu_tex.filter,
+                        batch.texture
+                    );
+                    continue;
+                }
+                render_pass.set_bind_group(1, &gpu_tex.bind_group, &[]);
+                if let Some(mp) = material_pipeline {
+                    let payload = batch
+                        .uniform_overrides
+                        .unwrap_or_else(|| mp.defaults.to_override_block());
+                    queue.write_buffer(&mp.ubo, 0, &payload.to_bytes());
+                    render_pass.set_bind_group(2, &mp.bind_group, &[]);
+                }
             }
+
             render_pass.set_vertex_buffer(1, self.instance_buffer.slice(start..end));
             render_pass.draw(0..6, 0..batch.instances.len() as u32);
         }

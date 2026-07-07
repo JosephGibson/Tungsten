@@ -29,7 +29,7 @@ fn override_key(block: &UniformOverrideBlock) -> u64 {
     hasher.finish()
 }
 
-type BatchKey = (u32, FilterMode, Option<MaterialAssetId>, Option<u64>);
+type BatchKey = (u32, FilterMode, Option<MaterialAssetId>, Option<u64>, bool);
 
 /// Default sprite extract.
 #[must_use]
@@ -69,15 +69,34 @@ pub fn extract_sprites_default(world: &World) -> Vec<SpriteBatch> {
         }
         let override_block = world.get::<UniformOverrideBlock>(*entity);
         let override_hash = override_block.map(override_key);
-        let key: BatchKey = (asset.atlas.0, asset.filter, s.material_id, override_hash);
+        // M29: lit wins over material when both are present. The collision
+        // is intentionally a non-goal in M29 (see plan); warn so debug logs
+        // surface the conflict rather than silently dropping the material.
+        let lit = asset.lit_atlas.is_some();
+        let effective_material = if lit { None } else { s.material_id };
+        if lit && s.material_id.is_some() {
+            log::warn!(
+                "lit sprite '{}' carries material_id {:?}; lit wins (material UBO not bound)",
+                s.asset_id,
+                s.material_id
+            );
+        }
+        let key: BatchKey = (
+            asset.atlas.0,
+            asset.filter,
+            effective_material,
+            override_hash,
+            lit,
+        );
         let batch_idx = if let Some(&i) = per_key.get(&key) {
             i
         } else {
             let i = out.len();
             per_key.insert(key, i);
             let mut batch = SpriteBatch::new(asset.atlas, asset.filter);
-            batch.material_id = s.material_id;
-            batch.uniform_overrides = override_block.copied();
+            batch.material_id = effective_material;
+            batch.uniform_overrides = if lit { None } else { override_block.copied() };
+            batch.lit = lit;
             out.push(batch);
             i
         };
