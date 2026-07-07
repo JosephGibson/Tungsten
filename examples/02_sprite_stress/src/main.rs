@@ -1,10 +1,12 @@
 //! Example 02: sprite stress.
 //!
-//! Modes: `baseline` default, `ecs-high-load`. Env: `STRESS_SCENE`, `STRESS_COUNT`.
+//! Modes: `baseline` default, `ecs-high-load`, `physics-stress`. Env:
+//! `STRESS_SCENE`, `STRESS_COUNT`.
 //! Perf capture: release, Vulkan, 1920x1080, 300 frames after 60-frame warm-up.
 
 mod baseline;
 mod ecs_high_load;
+mod physics_stress;
 mod shared;
 
 use tungsten::core::Config;
@@ -12,11 +14,13 @@ use tungsten::{App, InspectorState, PhysicsDebugOverlay, SystemTimingOverlay};
 
 use crate::baseline::{configure_baseline_scene, DEFAULT_SPRITE_COUNT};
 use crate::ecs_high_load::{configure_high_load_scene, DEFAULT_HIGH_LOAD_COUNT};
+use crate::physics_stress::{configure_physics_stress_scene, DEFAULT_PHYSICS_STRESS_COUNT};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StressScene {
     Baseline,
     EcsHighLoad,
+    PhysicsStress,
 }
 
 impl StressScene {
@@ -24,8 +28,9 @@ impl StressScene {
         match raw.unwrap_or("baseline") {
             "baseline" => Ok(Self::Baseline),
             "ecs-high-load" => Ok(Self::EcsHighLoad),
+            "physics-stress" => Ok(Self::PhysicsStress),
             other => Err(anyhow::anyhow!(
-                "Unknown STRESS_SCENE '{other}'. Expected 'baseline' or 'ecs-high-load'"
+                "Unknown STRESS_SCENE '{other}'. Expected 'baseline', 'ecs-high-load', or 'physics-stress'"
             )),
         }
     }
@@ -34,6 +39,7 @@ impl StressScene {
         match self {
             Self::Baseline => DEFAULT_SPRITE_COUNT,
             Self::EcsHighLoad => DEFAULT_HIGH_LOAD_COUNT,
+            Self::PhysicsStress => DEFAULT_PHYSICS_STRESS_COUNT,
         }
     }
 }
@@ -72,6 +78,9 @@ fn main() -> anyhow::Result<()> {
         StressScene::EcsHighLoad => {
             format!("Sprite Stress ECS High Load ({} entities)", options.count)
         }
+        StressScene::PhysicsStress => {
+            format!("Physics Stress ({} bodies)", options.count)
+        }
     };
     config.display.resolution = Some(tungsten::core::Resolution {
         width: 1920,
@@ -84,6 +93,7 @@ fn main() -> anyhow::Result<()> {
     match options.scene {
         StressScene::Baseline => configure_baseline_scene(&mut app, options.count),
         StressScene::EcsHighLoad => configure_high_load_scene(&mut app, options.count),
+        StressScene::PhysicsStress => configure_physics_stress_scene(&mut app, options.count),
     }
 
     apply_overlay_env(&mut app);

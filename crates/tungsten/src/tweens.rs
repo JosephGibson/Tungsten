@@ -20,105 +20,80 @@ pub fn tween_tick_system(world: &mut World) {
         return;
     }
 
-    let entities = world.query_entities::<Tween>();
     let mut completed: Vec<TweenComplete> = Vec::new();
     let mut to_remove: Vec<Entity> = Vec::new();
+    // Channel writes touch other components; buffered so the Tween pass stays columnar.
+    let mut channel_work: Vec<(Entity, Vec<TweenChannel>, f32)> = Vec::new();
 
-    for entity in entities {
-        let Some((
-            duration,
-            elapsed,
-            easing,
-            direction,
-            repeat,
-            completed_cycles,
-            channels,
-            tag,
-            pending,
-        )) = world.get::<Tween>(entity).map(|t| {
-            (
-                t.duration,
-                t.elapsed,
-                t.easing,
-                t.direction,
-                t.repeat,
-                t.completed_cycles,
-                t.channels.clone(),
-                t.on_complete_tag.clone(),
-                t.pending_remove,
-            )
-        })
-        else {
-            continue;
-        };
-
+    for (entity, t) in world.query_mut::<Tween>() {
         // Waiting for command-buffer flush to drop the component.
-        if pending {
+        if t.pending_remove {
             continue;
         }
 
+        let direction = t.direction;
         let signed_dt = if direction == TweenDirection::Backward {
             -dt
         } else {
             dt
         };
-        let new_elapsed = (elapsed + signed_dt).clamp(0.0, duration);
-        let u = (new_elapsed / duration).clamp(0.0, 1.0);
-        let k = easing.apply(u);
+        let new_elapsed = (t.elapsed + signed_dt).clamp(0.0, t.duration);
+        let u = (new_elapsed / t.duration).clamp(0.0, 1.0);
+        let k = t.easing.apply(u);
 
-        apply_channels(world, entity, &channels, k);
+        channel_work.push((entity, t.channels.clone(), k));
 
-        if let Some(t) = world.get_mut::<Tween>(entity) {
-            t.elapsed = new_elapsed;
-        }
+        t.elapsed = new_elapsed;
 
-        let forward_done = direction == TweenDirection::Forward && new_elapsed >= duration;
+        let forward_done = direction == TweenDirection::Forward && new_elapsed >= t.duration;
         let backward_done = direction == TweenDirection::Backward && new_elapsed <= 0.0;
         if !(forward_done || backward_done) {
             continue;
         }
 
-        match repeat {
+        match t.repeat {
             TweenRepeat::Once => {
-                completed.push(TweenComplete { entity, tag });
+                completed.push(TweenComplete {
+                    entity,
+                    tag: t.on_complete_tag.clone(),
+                });
                 to_remove.push(entity);
-                if let Some(t) = world.get_mut::<Tween>(entity) {
-                    t.pending_remove = true;
-                }
+                t.pending_remove = true;
             }
             TweenRepeat::Times(n) => {
-                let next_cycles = completed_cycles.saturating_add(1);
+                let next_cycles = t.completed_cycles.saturating_add(1);
                 if next_cycles >= n {
-                    completed.push(TweenComplete { entity, tag });
+                    completed.push(TweenComplete {
+                        entity,
+                        tag: t.on_complete_tag.clone(),
+                    });
                     to_remove.push(entity);
-                    if let Some(t) = world.get_mut::<Tween>(entity) {
-                        t.pending_remove = true;
-                    }
-                } else if let Some(t) = world.get_mut::<Tween>(entity) {
+                    t.pending_remove = true;
+                } else {
                     t.completed_cycles = next_cycles;
                     t.elapsed = 0.0;
                 }
             }
             TweenRepeat::Loop => {
-                if let Some(t) = world.get_mut::<Tween>(entity) {
-                    t.elapsed = 0.0;
-                }
+                t.elapsed = 0.0;
             }
             TweenRepeat::PingPong => {
-                if let Some(t) = world.get_mut::<Tween>(entity) {
-                    t.direction = if direction == TweenDirection::Forward {
-                        TweenDirection::Backward
-                    } else {
-                        TweenDirection::Forward
-                    };
-                    t.elapsed = if direction == TweenDirection::Forward {
-                        duration
-                    } else {
-                        0.0
-                    };
-                }
+                t.direction = if direction == TweenDirection::Forward {
+                    TweenDirection::Backward
+                } else {
+                    TweenDirection::Forward
+                };
+                t.elapsed = if direction == TweenDirection::Forward {
+                    t.duration
+                } else {
+                    0.0
+                };
             }
         }
+    }
+
+    for (entity, channels, k) in channel_work {
+        apply_channels(world, entity, &channels, k);
     }
 
     if !completed.is_empty() {

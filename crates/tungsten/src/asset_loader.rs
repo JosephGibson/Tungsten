@@ -214,6 +214,7 @@ fn build_atlas_for_filter(
 }
 
 /// Load sprites into filter-class atlases and update `AtlasRegistry`.
+#[allow(clippy::many_single_char_names)] // r/g/b/a bindings in the M29 emissive premultiply loop
 pub fn load_sprites(
     manifest: &ResolvedManifest,
     world: &mut World,
@@ -746,6 +747,7 @@ pub fn spawn_scene(world: &mut World, data: &SceneData, state_id: StateId) {
 /// three paths back to `id`; this routine consults the registered asset
 /// metadata to decode all three siblings on every reload so the lit bundle
 /// stays consistent.
+#[allow(clippy::many_single_char_names)] // r/g/b/a bindings in the M29 emissive premultiply loop
 pub fn reload_sprite(
     id: &str,
     path: &Path,
@@ -944,6 +946,7 @@ pub fn reload_sprite(
 }
 
 /// Repack one filter class; decode failure keeps last-known-good atlas.
+#[allow(clippy::many_single_char_names)] // r/g/b/a bindings in the M29 emissive premultiply loop
 pub fn rebuild_atlas_for_filter(
     filter: FilterMode,
     world: &mut World,
@@ -1012,8 +1015,7 @@ pub fn rebuild_atlas_for_filter(
                     }
                 }
                 Err(e) => log::error!(
-                    "Rebuild {:?} atlas: sprite '{}' normal_map decode failed: {e}; sprite stays unlit",
-                    filter, id
+                    "Rebuild {filter:?} atlas: sprite '{id}' normal_map decode failed: {e}; sprite stays unlit",
                 ),
             }
         }
@@ -1036,8 +1038,7 @@ pub fn rebuild_atlas_for_filter(
                     }
                 }
                 Err(e) => log::error!(
-                    "Rebuild {:?} atlas: sprite '{}' emissive_mask decode failed: {e}; sprite stays unlit",
-                    filter, id
+                    "Rebuild {filter:?} atlas: sprite '{id}' emissive_mask decode failed: {e}; sprite stays unlit",
                 ),
             }
         }

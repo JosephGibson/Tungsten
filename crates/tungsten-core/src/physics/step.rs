@@ -70,8 +70,6 @@ pub struct PhysicsBuffers {
     events: Vec<CollisionEvent>,
     candidates: Vec<ProxyId>,
     grid: SpatialGrid,
-    collider_entities: Vec<Entity>,
-    dynamic_entities: Vec<Entity>,
 }
 
 /// Run one physics tick with velocity-derived substeps.
@@ -97,7 +95,7 @@ pub fn physics_step(world: &mut World) {
         .unwrap_or_default();
 
     for _ in 0..substeps {
-        apply_gravity_and_integrate(world, sub_dt, config.gravity, &mut buffers);
+        apply_gravity_and_integrate(world, sub_dt, config.gravity);
         resolve_collisions(world, &config, sub_dt, &mut buffers);
     }
 
@@ -107,20 +105,10 @@ pub fn physics_step(world: &mut World) {
 /// Substeps cap per-step travel by smallest dynamic half-extent.
 fn compute_substeps(world: &World, dt: f32, config: &PhysicsConfig) -> u32 {
     let mut worst_ratio = 0.0f32;
-    for (entity, _vel) in world.query::<Velocity>() {
-        let is_dynamic = matches!(
-            world.get::<RigidBody>(entity).map(|b| b.kind),
-            Some(BodyKind::Dynamic)
-        );
-        if !is_dynamic {
+    for (_entity, velocity, body, collider) in world.query3::<Velocity, RigidBody, Collider>() {
+        if body.kind != BodyKind::Dynamic {
             continue;
         }
-        let Some(velocity) = world.get::<Velocity>(entity) else {
-            continue;
-        };
-        let Some(collider) = world.get::<Collider>(entity) else {
-            continue;
-        };
         let min_extent = collider.shape.min_half_extent().max(0.5);
         let travel = velocity.0.length() * dt;
         let ratio = travel / min_extent;
@@ -132,32 +120,13 @@ fn compute_substeps(world: &World, dt: f32, config: &PhysicsConfig) -> u32 {
     needed.min(config.max_substeps.max(1))
 }
 
-fn apply_gravity_and_integrate(
-    world: &mut World,
-    sub_dt: f32,
-    gravity: Vec2,
-    buffers: &mut PhysicsBuffers,
-) {
-    buffers.dynamic_entities.clear();
-    for e in world.query_entities::<RigidBody>() {
-        if matches!(
-            world.get::<RigidBody>(e).map(|b| b.kind),
-            Some(BodyKind::Dynamic)
-        ) {
-            buffers.dynamic_entities.push(e);
+fn apply_gravity_and_integrate(world: &mut World, sub_dt: f32, gravity: Vec2) {
+    for (_entity, vel, pos, body) in world.query3_mut::<Velocity, Position, RigidBody>() {
+        if body.kind != BodyKind::Dynamic {
+            continue;
         }
-    }
-
-    for &entity in &buffers.dynamic_entities {
-        if let Some(vel) = world.get_mut::<Velocity>(entity) {
-            vel.0 += gravity * sub_dt;
-        }
-        let step = world
-            .get::<Velocity>(entity)
-            .map_or(Vec2::ZERO, |v| v.0 * sub_dt);
-        if let Some(pos) = world.get_mut::<Position>(entity) {
-            pos.0 += step;
-        }
+        vel.0 += gravity * sub_dt;
+        pos.0 += vel.0 * sub_dt;
     }
 }
 
@@ -173,14 +142,11 @@ fn resolve_collisions(
         events,
         candidates,
         grid,
-        collider_entities,
-        ..
     } = buffers;
     proxies.clear();
     pairs.clear();
     events.clear();
     candidates.clear();
-    collider_entities.clear();
 
     // Preserve grid allocations unless cell size changes.
     if (grid.cell_size() - config.broadphase_cell_size).abs() > f32::EPSILON {
@@ -189,18 +155,11 @@ fn resolve_collisions(
         grid.clear();
     }
 
-    for e in world.query_entities::<Collider>() {
-        if world.get::<Position>(e).is_some() {
-            collider_entities.push(e);
-        }
-    }
-
-    for entity in collider_entities.iter() {
-        let position = world.get::<Position>(*entity).copied().unwrap().0;
-        let collider = *world.get::<Collider>(*entity).unwrap();
-        let body = world.get::<RigidBody>(*entity).copied();
+    // Columnar gather; RigidBody/Velocity stay optional per-entity lookups.
+    for (entity, collider, position) in world.query2::<Collider, Position>() {
+        let body = world.get::<RigidBody>(entity).copied();
         let velocity = world
-            .get::<Velocity>(*entity)
+            .get::<Velocity>(entity)
             .copied()
             .map_or(Vec2::ZERO, |v| v.0);
         let (is_dynamic, inv_mass, restitution) = match body {
@@ -215,7 +174,7 @@ fn resolve_collisions(
             ),
             None => (false, 0.0, 0.0),
         };
-        let center = position + collider.offset;
+        let center = position.0 + collider.offset;
         // Recover pre-integration center after `velocity * sub_dt` move.
         let prev_center = if is_dynamic {
             center - velocity * sub_dt
@@ -223,7 +182,7 @@ fn resolve_collisions(
             center
         };
         proxies.push(Proxy {
-            entity: Some(*entity),
+            entity: Some(entity),
             center,
             prev_center,
             velocity,

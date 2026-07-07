@@ -4,6 +4,31 @@ Records all notable project changes.
 
 Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.28.0] - 2026-07-06
+
+Summary: performance pass — engine-wide performance-overhead audit, mutable multi-component ECS queries (audit follow-up item #1), migration of every hot engine/example call site off the naive `query_entities` + per-entity `get`/`get_mut` pattern, and a new `physics-stress` canonical capture scene.
+
+### Added
+
+- **Mutable multi-component ECS queries (`tungsten_core::ecs`):** `World::query_mut<T>`, `World::query2_mut<A, B>`, and `World::query3_mut<A, B, C>` yield `(Entity, &mut …)` tuples via per-archetype split column borrows; all yielded refs are mutable (the migrated call sites need double-mut shapes), and distinct `TypeId`s are asserted per call — duplicate component types panic. Backed by new `Archetypes::archetypes_with_mut` / `_two_mut` / `_three_mut` iterators. Extends `D-036`; no new decision entry. Six new unit tests cover in-place mutation, superset archetypes, order-equivalence with the immutable queries, and the duplicate-type panics.
+- **`query2_mut_10k` criterion bench (`crates/tungsten-core/benches/ecs_bench.rs`):** 3.44 µs median beside `query2_homogeneous_10k` at 6.69 µs — ~172× under the 591 µs `naive_query2_via_entities_10k` pattern the engine hot loops previously used.
+- **`physics-stress` capture scene (`example-02-sprite-stress`):** 3,000 dynamic circle bodies with `Collider`s piling under gravity in a static box, driven through the engine-default extract — the first canonical scene exercising the narrow phase and solver (`ecs-high-load` spawns bodies without colliders). Registered in `scripts/perf-capture.sh` and `docs/perf/profiling-workflow.md`.
+- **Performance-overhead audit report (`docs/plans/perf-overhead-audit.md`):** 16 verified findings across rendering, physics, and engine logic with capture artifacts under `perf-runs/20260703T*`, plus a 12-item follow-up backlog ordered by measured impact. Item #1 (this release's ECS work) is marked implemented with measured deltas; items #2/#8 remeasure against the new baselines.
+
+### Changed
+
+- **Engine hot paths migrated to columnar iteration:** physics step (`compute_substeps`, `apply_gravity_and_integrate`, collider gather — `PhysicsBuffers` dropped its per-substep `collider_entities` / `dynamic_entities` scratch lists), `sync_position_to_transform`, `tween_tick_system` (single columnar `Tween` pass with buffered channel application), `particle_count_refresh_system` / `particle_tick_system`, and the four `ecs-high-load` example systems (steer/confine/orient/tint).
+- **Measured impact (AMD Ryzen 5 6600H + Radeon 660M, Vulkan, `--release`):** ecs-high-load avg total 80.46 → 63.08 ms (update 76.8 → 62.04 ms); physics-stress avg total 4.88 → 4.41 ms (update 4.36–4.51 → 4.02 ms). sprite-stress and platformer p50 unchanged (0.88 / 1.07 ms). Captures: `perf-runs/20260706T*`.
+- Behavioral note: `apply_gravity_and_integrate` now requires `Position` in addition to `Velocity` + dynamic `RigidBody`; a dynamic body carrying `Velocity` but no `Position` (none exist in-tree) no longer accumulates gravity. Recorded in the audit doc's item #1 implementation record.
+- Workspace version bumped to `0.28.0`.
+- `README.md`, `AGENTS.md`, `DESIGN.md`, and `CLAUDE.md` status lines now agree on workspace `0.28.0`, branch `0.26`, with M25–M29 shipped (M29 had shipped in `0.27.0` without the status-doc alignment).
+- `docs/perf/profiling-workflow.md` registers `physics-stress` in the canonical capture rules and quick-start examples; `docs/LLM_INDEX.md` sprite-stress row lists the scene modules.
+
+### Fixed
+
+- **0.26 release-polish QA pass:** clippy debt from the M29 ship (which skipped the `-D warnings` gate) is cleared — `LitSpritePipeline::new` and the three M29 emissive-decode functions in `asset_loader.rs` carry documented `#[allow]`s matching the repo's stable-surface convention, two `Rebuild … atlas` log lines use inlined format args, and the platformer's `extract.rs` moves its test module below the items it tests plus documents the HSV-math single-char bindings.
+- Release QA pass completed locally: `cargo fmt --all -- --check`, `cargo test --workspace` (599 passed), `cargo clippy --workspace --all-targets -- -D warnings`, `bash scripts/test-perf-capture.sh`, and `WGPU_BACKEND=vulkan ./scripts/smoke-examples.sh` (4/4 examples, all fixture matrices) all passed. Full perf verification for the ECS work ran against the audit baselines: `cargo bench -p tungsten-core --bench ecs_bench`, `WGPU_BACKEND=vulkan ./scripts/perf-capture.sh ecs-high-load 300`, and `WGPU_BACKEND=vulkan ./scripts/perf-capture.sh physics-stress 300`.
+
 ## [0.27.0] - 2026-04-25
 
 ### Added

@@ -20,3 +20,19 @@ fn high_load_mode_defaults_to_configured_count() {
         DEFAULT_HIGH_LOAD_COUNT
     );
 }
+
+#[test]
+fn stress_scene_parses_physics_stress_mode() {
+    assert_eq!(
+        StressScene::parse(Some("physics-stress")).unwrap(),
+        StressScene::PhysicsStress
+    );
+}
+
+#[test]
+fn physics_stress_mode_defaults_to_configured_count() {
+    assert_eq!(
+        resolve_count(StressScene::PhysicsStress, None),
+        DEFAULT_PHYSICS_STRESS_COUNT
+    );
+}

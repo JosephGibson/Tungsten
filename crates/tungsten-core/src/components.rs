@@ -207,15 +207,8 @@ pub struct Particle {
 
 /// D-033 one-way sync: physics `Position` -> visual `Transform.position`.
 pub fn sync_position_to_transform(world: &mut World) {
-    let entities = world.query2_entities::<Position, Transform>();
-    for entity in entities {
-        let position = match world.get::<Position>(entity) {
-            Some(p) => p.0,
-            None => continue,
-        };
-        if let Some(transform) = world.get_mut::<Transform>(entity) {
-            transform.position = position;
-        }
+    for (_entity, transform, position) in world.query2_mut::<Transform, Position>() {
+        transform.position = position.0;
     }
 }
 

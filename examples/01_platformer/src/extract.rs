@@ -16,6 +16,7 @@ use crate::state::{
 };
 use crate::systems::cursor_to_world;
 
+#[allow(clippy::many_single_char_names)] // h/c/x/r/g/b bindings in HSV-to-RGB math
 fn rainbow_rgba(hue: f32) -> [u8; 4] {
     let h = hue.rem_euclid(1.0) * 6.0;
     let c = 1.0;
@@ -33,18 +34,6 @@ fn rainbow_rgba(hue: f32) -> [u8; 4] {
         (lifted * 255.0).round().clamp(0.0, 255.0) as u8
     };
     [saturated(r), saturated(g), saturated(b), 255]
-}
-
-#[cfg(test)]
-mod tests {
-    use super::rainbow_rgba;
-
-    #[test]
-    fn rainbow_rgba_keeps_primary_hues_fully_saturated() {
-        assert_eq!(rainbow_rgba(0.0), [255, 0, 0, 255]);
-        assert_eq!(rainbow_rgba(1.0 / 3.0), [0, 255, 0, 255]);
-        assert_eq!(rainbow_rgba(2.0 / 3.0), [0, 0, 255, 255]);
-    }
 }
 
 pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
@@ -346,4 +335,16 @@ pub(crate) fn extract_text(world: &World) -> Vec<TextSection> {
         }));
     }
     sections
+}
+
+#[cfg(test)]
+mod tests {
+    use super::rainbow_rgba;
+
+    #[test]
+    fn rainbow_rgba_keeps_primary_hues_fully_saturated() {
+        assert_eq!(rainbow_rgba(0.0), [255, 0, 0, 255]);
+        assert_eq!(rainbow_rgba(1.0 / 3.0), [0, 255, 0, 255]);
+        assert_eq!(rainbow_rgba(2.0 / 3.0), [0, 0, 255, 255]);
+    }
 }

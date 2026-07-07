@@ -27,6 +27,7 @@ pub struct LitSpritePipeline {
 
 impl LitSpritePipeline {
     #[must_use]
+    #[allow(clippy::too_many_arguments)] // mirrors SpritePipeline's stable constructor surface; see D-061
     pub fn new(
         device: &wgpu::Device,
         module: &wgpu::ShaderModule,

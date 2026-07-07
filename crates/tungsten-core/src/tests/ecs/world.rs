@@ -196,6 +196,111 @@ fn query2_entities_then_mutate() {
 }
 
 #[test]
+fn query_mut_mutates_in_place() {
+    let mut world = World::new();
+    let e1 = world.spawn();
+    let e2 = world.spawn();
+    world.insert(e1, Position { x: 1.0, y: 0.0 });
+    world.insert(e2, Position { x: 2.0, y: 0.0 });
+    world.insert(e2, Velocity { dx: 0.0, dy: 0.0 });
+
+    for (_, pos) in world.query_mut::<Position>() {
+        pos.x += 10.0;
+    }
+
+    assert_eq!(world.get::<Position>(e1).unwrap().x, 11.0);
+    assert_eq!(world.get::<Position>(e2).unwrap().x, 12.0);
+}
+
+#[test]
+fn query2_mut_integrates_velocity_into_position() {
+    let mut world = World::new();
+    let e1 = world.spawn();
+    let e2 = world.spawn();
+    let e3 = world.spawn();
+    world.insert(e1, Position { x: 0.0, y: 0.0 });
+    world.insert(e1, Velocity { dx: 1.0, dy: 2.0 });
+    world.insert(e2, Position { x: 5.0, y: 5.0 });
+    world.insert(e2, Velocity { dx: -1.0, dy: 0.0 });
+    world.insert(e2, Name("superset".into()));
+    world.insert(e3, Position { x: 9.0, y: 9.0 });
+
+    for (_, pos, vel) in world.query2_mut::<Position, Velocity>() {
+        pos.x += vel.dx;
+        pos.y += vel.dy;
+        vel.dx = 0.0;
+    }
+
+    assert_eq!(world.get::<Position>(e1).unwrap().x, 1.0);
+    assert_eq!(world.get::<Position>(e1).unwrap().y, 2.0);
+    assert_eq!(world.get::<Position>(e2).unwrap().x, 4.0);
+    assert_eq!(world.get::<Velocity>(e2).unwrap().dx, 0.0);
+    // e3 lacks Velocity: untouched.
+    assert_eq!(world.get::<Position>(e3).unwrap().x, 9.0);
+}
+
+#[test]
+fn query3_mut_yields_only_full_matches() {
+    let mut world = World::new();
+    let e1 = world.spawn();
+    let e2 = world.spawn();
+    world.insert(e1, Position { x: 1.0, y: 0.0 });
+    world.insert(e1, Velocity { dx: 1.0, dy: 0.0 });
+    world.insert(e1, Name("full".into()));
+    world.insert(e2, Position { x: 2.0, y: 0.0 });
+    world.insert(e2, Velocity { dx: 2.0, dy: 0.0 });
+
+    let mut count = 0;
+    for (entity, pos, vel, name) in world.query3_mut::<Position, Velocity, Name>() {
+        assert_eq!(entity, e1);
+        pos.x += vel.dx;
+        name.0.push('!');
+        count += 1;
+    }
+
+    assert_eq!(count, 1);
+    assert_eq!(world.get::<Position>(e1).unwrap().x, 2.0);
+    assert_eq!(world.get::<Name>(e1).unwrap().0, "full!");
+    assert_eq!(world.get::<Position>(e2).unwrap().x, 2.0);
+}
+
+#[test]
+fn query_mut_matches_query_order() {
+    let mut world = World::new();
+    for i in 0..4 {
+        let e = world.spawn();
+        world.insert(
+            e,
+            Position {
+                x: i as f32,
+                y: 0.0,
+            },
+        );
+        if i % 2 == 0 {
+            world.insert(e, Velocity { dx: 0.0, dy: 0.0 });
+        }
+    }
+
+    let immutable: Vec<_> = world.query::<Position>().map(|(e, _)| e).collect();
+    let mutable: Vec<_> = world.query_mut::<Position>().map(|(e, _)| e).collect();
+    assert_eq!(immutable, mutable);
+}
+
+#[test]
+#[should_panic(expected = "query2_mut: component types must be distinct")]
+fn query2_mut_same_type_panics() {
+    let mut world = World::new();
+    let _ = world.query2_mut::<Position, Position>();
+}
+
+#[test]
+#[should_panic(expected = "query3_mut: component types must be distinct")]
+fn query3_mut_duplicate_type_panics() {
+    let mut world = World::new();
+    let _ = world.query3_mut::<Position, Velocity, Velocity>();
+}
+
+#[test]
 fn query3_returns_three_component_entities() {
     let mut world = World::new();
     let e1 = world.spawn();

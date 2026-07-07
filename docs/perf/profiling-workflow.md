@@ -9,6 +9,7 @@ Establishes the reproducible CPU/GPU baseline that anchored Phase 3 perf gates a
 | Build mode | `--release` |
 | Primary scene | `example-02-sprite-stress` with `STRESS_SCENE=ecs-high-load` (full-system stress: ECS, physics, steering, camera, render) |
 | Secondary scene | `example-02-sprite-stress` with `STRESS_SCENE=baseline` (render-hot-path baseline, preserves M17/M18 history) |
+| Physics scene | `example-02-sprite-stress` with `STRESS_SCENE=physics-stress` (narrow phase + solver: 3,000 dynamic circle colliders piling under gravity in a static box, engine-default extract) |
 | Linux backend | `WGPU_BACKEND=vulkan` |
 | Resolution | `1920x1080` for sprite stress |
 | Present mode | `display.present_mode = "auto"` |
@@ -23,14 +24,15 @@ Establishes the reproducible CPU/GPU baseline that anchored Phase 3 perf gates a
 Run the capture script from the repo root:
 
 ```bash
-WGPU_BACKEND=vulkan ./scripts/perf-capture.sh                    # defaults to ecs-high-load 300
-WGPU_BACKEND=vulkan ./scripts/perf-capture.sh ecs-high-load 300  # explicit primary scene
-WGPU_BACKEND=vulkan ./scripts/perf-capture.sh sprite-stress 300  # render-hot-path baseline
+WGPU_BACKEND=vulkan ./scripts/perf-capture.sh                     # defaults to ecs-high-load 300
+WGPU_BACKEND=vulkan ./scripts/perf-capture.sh ecs-high-load 300   # explicit primary scene
+WGPU_BACKEND=vulkan ./scripts/perf-capture.sh sprite-stress 300   # render-hot-path baseline
+WGPU_BACKEND=vulkan ./scripts/perf-capture.sh physics-stress 300  # contacts + solver scene
 ```
 
 Each run writes a timestamped directory under `perf-runs/` with telemetry logs, optional GPU timing logs, optional `perf` artifacts, and a per-run `README.md`. The script runs `60 + requested_frames` total frames, parses renderer metadata into separate README rows, and computes post-warm-up averages plus `p50` / `p95` / `p99` for `total` and `render_acquire`.
 
-Both scenes launch `example-02-sprite-stress`; the capture script injects `STRESS_SCENE=ecs-high-load` or `STRESS_SCENE=baseline` for the child process and resets any inherited `STRESS_SCENE` / `STRESS_COUNT` so canonical runs stay reproducible.
+All three scenes launch `example-02-sprite-stress`; the capture script injects `STRESS_SCENE=ecs-high-load`, `STRESS_SCENE=baseline`, or `STRESS_SCENE=physics-stress` for the child process and resets any inherited `STRESS_SCENE` / `STRESS_COUNT` so canonical runs stay reproducible. `physics-stress` was added by the 2026-07 performance audit ([`docs/plans/perf-overhead-audit.md`](../plans/perf-overhead-audit.md)) because no prior scene exercised the narrow phase and solver — `ecs-high-load` spawns dynamic bodies without colliders.
 
 For Vulkan frame-pacing sweeps, keep the default rows as full captures and use telemetry-only override rows for alternate configs:
 
