@@ -48,6 +48,16 @@ WGPU_BACKEND=vulkan ./scripts/perf-capture.sh sprite-stress 300 --present-mode m
 
 `--present-mode` and `--max-frame-latency` inject child-only `TUNGSTEN_RENDER_PRESENT_MODE` / `TUNGSTEN_RENDER_MAX_FRAME_LATENCY` compatibility overrides, so the checked-in `tungsten.json` stays unchanged while the runtime display resolver still lands on the requested pacing values.
 
+`--stress-count <n>` injects a child-only `STRESS_COUNT` override and suffixes the output directory with `count<n>`. Canonical runs stay at each scene's default count (no flag); use override rows for scale sweeps, e.g. the physics 20k-body target:
+
+```bash
+WGPU_BACKEND=vulkan ./scripts/perf-capture.sh physics-stress 300                              # canonical 3k baseline
+WGPU_BACKEND=vulkan ./scripts/perf-capture.sh physics-stress 300 --stress-count 10000 --telemetry-only
+WGPU_BACKEND=vulkan ./scripts/perf-capture.sh physics-stress 300 --stress-count 20000 --telemetry-only
+```
+
+The per-run README also reports `update` stage averages/percentiles alongside `total` and `render_acquire`; for physics scenes `update` is the primary signal because `physics_step` runs inside the update stage.
+
 Parser-only verification:
 
 ```bash

@@ -81,41 +81,94 @@ pub fn aabb_vs_aabb(a: &Aabb, b: &Aabb) -> Option<Contact> {
 /// AABB vs AABB with `b` internal faces suppressed.
 #[must_use]
 pub fn aabb_vs_aabb_masked(a: &Aabb, b: &Aabb, b_face_mask: u8) -> Option<Contact> {
+    aabb_vs_aabb_speculative(a, b, b_face_mask, 0.0)
+}
+
+/// Signed-distance AABB vs AABB (D-064): admits separated pairs with a gap
+/// under `margin` as contacts with **negative** `penetration` (= -gap).
+/// Corner-region gaps produce a diagonal normal; when one axis of the corner
+/// points at an internal `b` face, the normal clamps to the exposed axis
+/// (tile-seam ghost-collision mitigation). `margin = 0` reproduces
+/// [`aabb_vs_aabb_masked`] exactly.
+#[must_use]
+pub fn aabb_vs_aabb_speculative(
+    a: &Aabb,
+    b: &Aabb,
+    b_face_mask: u8,
+    margin: f32,
+) -> Option<Contact> {
     let delta = b.center - a.center;
-    let overlap_x = (a.half_extents.x + b.half_extents.x) - delta.x.abs();
-    let overlap_y = (a.half_extents.y + b.half_extents.y) - delta.y.abs();
+    // Signed per-axis separation; positive = gap on that axis.
+    let sep_x = delta.x.abs() - (a.half_extents.x + b.half_extents.x);
+    let sep_y = delta.y.abs() - (a.half_extents.y + b.half_extents.y);
 
-    if overlap_x <= 0.0 || overlap_y <= 0.0 {
-        return None;
-    }
-
-    // Map MTV axis to `b` face bit.
+    // Map each axis to the `b` face bit it would contact.
     let x_face = if delta.x < 0.0 { FACE_RIGHT } else { FACE_LEFT };
     let y_face = if delta.y < 0.0 { FACE_BOTTOM } else { FACE_TOP };
     let x_ok = b_face_mask & x_face != 0;
     let y_ok = b_face_mask & y_face != 0;
+    let x_normal = Vec2::new(if delta.x < 0.0 { 1.0 } else { -1.0 }, 0.0);
+    let y_normal = Vec2::new(0.0, if delta.y < 0.0 { 1.0 } else { -1.0 });
 
-    // Prefer smallest exposed overlap; drop fully internal contacts.
-    let use_x = match (x_ok, y_ok) {
-        (false, false) => return None,
-        (true, false) => true,
-        (false, true) => false,
-        (true, true) => overlap_x < overlap_y,
+    let contact = if sep_x <= 0.0 && sep_y <= 0.0 {
+        // Overlapping: smallest exposed overlap wins; fully internal drops.
+        let use_x = match (x_ok, y_ok) {
+            (false, false) => return None,
+            (true, false) => true,
+            (false, true) => false,
+            (true, true) => sep_x > sep_y,
+        };
+        if use_x {
+            Contact {
+                normal: x_normal,
+                penetration: -sep_x,
+            }
+        } else {
+            Contact {
+                normal: y_normal,
+                penetration: -sep_y,
+            }
+        }
+    } else if sep_x > 0.0 && sep_y > 0.0 {
+        // Corner region: diagonal normal, clamped against internal faces.
+        match (x_ok, y_ok) {
+            (false, false) => return None,
+            (true, false) => Contact {
+                normal: x_normal,
+                penetration: -sep_x,
+            },
+            (false, true) => Contact {
+                normal: y_normal,
+                penetration: -sep_y,
+            },
+            (true, true) => {
+                let gap = Vec2::new(sep_x, sep_y).length();
+                Contact {
+                    normal: (x_normal * sep_x + y_normal * sep_y) / gap,
+                    penetration: -gap,
+                }
+            }
+        }
+    } else if sep_x > 0.0 {
+        // Face gap along x; internal face never generates a gap contact.
+        if !x_ok {
+            return None;
+        }
+        Contact {
+            normal: x_normal,
+            penetration: -sep_x,
+        }
+    } else {
+        if !y_ok {
+            return None;
+        }
+        Contact {
+            normal: y_normal,
+            penetration: -sep_y,
+        }
     };
 
-    if use_x {
-        let sign = if delta.x < 0.0 { 1.0 } else { -1.0 };
-        Some(Contact {
-            normal: Vec2::new(sign, 0.0),
-            penetration: overlap_x,
-        })
-    } else {
-        let sign = if delta.y < 0.0 { 1.0 } else { -1.0 };
-        Some(Contact {
-            normal: Vec2::new(0.0, sign),
-            penetration: overlap_y,
-        })
-    }
+    (contact.penetration > -margin).then_some(contact)
 }
 
 /// Circle vs circle; concentric pairs get deterministic nonzero normal.
@@ -126,10 +179,25 @@ pub fn circle_vs_circle(
     center_b: Vec2,
     radius_b: f32,
 ) -> Option<Contact> {
+    circle_vs_circle_speculative(center_a, radius_a, center_b, radius_b, 0.0)
+}
+
+/// Signed-distance circle vs circle (D-064): admits separated pairs with a
+/// gap under `margin` as contacts with negative `penetration` (= -gap).
+/// `margin = 0` reproduces [`circle_vs_circle`] exactly.
+#[must_use]
+pub fn circle_vs_circle_speculative(
+    center_a: Vec2,
+    radius_a: f32,
+    center_b: Vec2,
+    radius_b: f32,
+    margin: f32,
+) -> Option<Contact> {
     let delta = center_b - center_a;
     let dist_sq = delta.length_squared();
     let r_sum = radius_a + radius_b;
-    if dist_sq >= r_sum * r_sum {
+    let reach = r_sum + margin;
+    if dist_sq >= reach * reach {
         return None;
     }
     let dist = dist_sq.sqrt();
@@ -246,38 +314,115 @@ pub fn aabb_vs_circle_masked(
             penetration: radius - dist,
         })
     } else {
-        let dx_left = circle_center.x - min.x;
-        let dx_right = max.x - circle_center.x;
-        let dy_top = circle_center.y - min.y;
-        let dy_bot = max.y - circle_center.y;
-
-        let mut best_dist = f32::INFINITY;
-        let mut best_normal = Vec2::ZERO;
-        // Tie-break: x-axis before y-axis.
-        if face_mask & FACE_LEFT != 0 && dx_left < best_dist {
-            best_dist = dx_left;
-            best_normal = Vec2::new(1.0, 0.0);
-        }
-        if face_mask & FACE_RIGHT != 0 && dx_right < best_dist {
-            best_dist = dx_right;
-            best_normal = Vec2::new(-1.0, 0.0);
-        }
-        if face_mask & FACE_TOP != 0 && dy_top < best_dist {
-            best_dist = dy_top;
-            best_normal = Vec2::new(0.0, 1.0);
-        }
-        if face_mask & FACE_BOTTOM != 0 && dy_bot < best_dist {
-            best_dist = dy_bot;
-            best_normal = Vec2::new(0.0, -1.0);
-        }
-        if best_normal == Vec2::ZERO {
-            return None;
-        }
-        Some(Contact {
-            normal: best_normal,
-            penetration: best_dist + radius,
-        })
+        aabb_circle_deep_center(aabb, circle_center, radius, face_mask)
     }
+}
+
+/// Signed-distance AABB vs circle (D-064): admits a separated circle with a
+/// gap under `margin` as a contact with negative `penetration` (= -gap).
+/// Vertex-region contacts whose corner touches an internal face clamp the
+/// normal to the exposed axis (tile-seam ghost-collision mitigation) instead
+/// of dropping, so speculative CCD never loses a seam contact; a pure face
+/// contact on an internal face still drops.
+#[must_use]
+pub fn aabb_vs_circle_speculative(
+    aabb: &Aabb,
+    circle_center: Vec2,
+    radius: f32,
+    face_mask: u8,
+    margin: f32,
+) -> Option<Contact> {
+    let min = aabb.min();
+    let max = aabb.max();
+    let closest = Vec2::new(
+        circle_center.x.clamp(min.x, max.x),
+        circle_center.y.clamp(min.y, max.y),
+    );
+    let delta = circle_center - closest;
+    let dist_sq = delta.length_squared();
+
+    if dist_sq <= f32::EPSILON {
+        // Circle center inside the box: always deeply penetrating.
+        return aabb_circle_deep_center(aabb, circle_center, radius, face_mask);
+    }
+
+    let mut involved: u8 = 0;
+    if circle_center.x < min.x {
+        involved |= FACE_LEFT;
+    } else if circle_center.x > max.x {
+        involved |= FACE_RIGHT;
+    }
+    if circle_center.y < min.y {
+        involved |= FACE_TOP;
+    } else if circle_center.y > max.y {
+        involved |= FACE_BOTTOM;
+    }
+
+    let contact = if involved & !face_mask == 0 {
+        let dist = dist_sq.sqrt();
+        Contact {
+            normal: -delta / dist,
+            penetration: radius - dist,
+        }
+    } else {
+        // Clamp to the single exposed axis of a vertex contact; per-axis
+        // distance from the circle center to that face plane is the gap base.
+        let (normal, axial) = match involved & face_mask {
+            FACE_LEFT => (Vec2::new(1.0, 0.0), min.x - circle_center.x),
+            FACE_RIGHT => (Vec2::new(-1.0, 0.0), circle_center.x - max.x),
+            FACE_TOP => (Vec2::new(0.0, 1.0), min.y - circle_center.y),
+            FACE_BOTTOM => (Vec2::new(0.0, -1.0), circle_center.y - max.y),
+            _ => return None,
+        };
+        Contact {
+            normal,
+            penetration: radius - axial,
+        }
+    };
+
+    (contact.penetration > -margin).then_some(contact)
+}
+
+/// Nearest exposed face for a circle whose center lies inside the AABB.
+fn aabb_circle_deep_center(
+    aabb: &Aabb,
+    circle_center: Vec2,
+    radius: f32,
+    face_mask: u8,
+) -> Option<Contact> {
+    let min = aabb.min();
+    let max = aabb.max();
+    let dx_left = circle_center.x - min.x;
+    let dx_right = max.x - circle_center.x;
+    let dy_top = circle_center.y - min.y;
+    let dy_bot = max.y - circle_center.y;
+
+    let mut best_dist = f32::INFINITY;
+    let mut best_normal = Vec2::ZERO;
+    // Tie-break: x-axis before y-axis.
+    if face_mask & FACE_LEFT != 0 && dx_left < best_dist {
+        best_dist = dx_left;
+        best_normal = Vec2::new(1.0, 0.0);
+    }
+    if face_mask & FACE_RIGHT != 0 && dx_right < best_dist {
+        best_dist = dx_right;
+        best_normal = Vec2::new(-1.0, 0.0);
+    }
+    if face_mask & FACE_TOP != 0 && dy_top < best_dist {
+        best_dist = dy_top;
+        best_normal = Vec2::new(0.0, 1.0);
+    }
+    if face_mask & FACE_BOTTOM != 0 && dy_bot < best_dist {
+        best_dist = dy_bot;
+        best_normal = Vec2::new(0.0, -1.0);
+    }
+    if best_normal == Vec2::ZERO {
+        return None;
+    }
+    Some(Contact {
+        normal: best_normal,
+        penetration: best_dist + radius,
+    })
 }
 
 #[cfg(test)]

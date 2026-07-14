@@ -47,7 +47,8 @@ pub use inspect::Inspectable;
 pub use lighting::{AmbientLight, LIGHT_CAP};
 pub use physics::{
     aabb_vs_aabb, aabb_vs_circle, circle_vs_circle, physics_step, Aabb, BodyKind, Collider,
-    CollisionEvent, Contact, PhysicsConfig, Position, RigidBody, Shape, SpatialGrid, Velocity,
+    CollisionEvent, Contact, PhysicsBuffers, PhysicsConfig, Position, RigidBody, Shape,
+    SpatialGrid, Velocity,
 };
 pub use post::{
     BloomParams, ColorAdjustParams, CrtParams, DissolveParams, DitherMode, DitherParams,

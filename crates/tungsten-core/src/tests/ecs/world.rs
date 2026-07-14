@@ -502,3 +502,112 @@ fn flush_multiple_pending_entities() {
     markers.sort_unstable();
     assert_eq!(markers, vec![0, 1, 2]);
 }
+
+#[test]
+fn query2_opt2_yields_options_per_archetype() {
+    let mut world = World::new();
+
+    // Full match: all four components.
+    let full = world.spawn();
+    world.insert(full, Position { x: 1.0, y: 0.0 });
+    world.insert(full, Velocity { dx: 2.0, dy: 0.0 });
+    world.insert(full, Name("full".into()));
+
+    // Required only.
+    let bare = world.spawn();
+    world.insert(bare, Position { x: 3.0, y: 0.0 });
+    world.insert(bare, Velocity { dx: 4.0, dy: 0.0 });
+
+    // Missing a required component: excluded entirely.
+    let excluded = world.spawn();
+    world.insert(excluded, Position { x: 5.0, y: 0.0 });
+    world.insert(excluded, Name("excluded".into()));
+
+    let rows: Vec<_> = world
+        .query2_opt2::<Position, Velocity, Name, u32>()
+        .map(|(e, p, v, n, extra)| (e, p.x, v.dx, n.map(|n| n.0.clone()), extra.copied()))
+        .collect();
+
+    assert_eq!(rows.len(), 2);
+    let full_row = rows.iter().find(|(e, ..)| *e == full).unwrap();
+    assert_eq!(
+        (full_row.1, full_row.2, full_row.3.as_deref(), full_row.4),
+        (1.0, 2.0, Some("full"), None)
+    );
+    let bare_row = rows.iter().find(|(e, ..)| *e == bare).unwrap();
+    assert_eq!(
+        (bare_row.1, bare_row.2, &bare_row.3, bare_row.4),
+        (3.0, 4.0, &None, None)
+    );
+}
+
+#[test]
+fn query2_opt2_matches_query2_order() {
+    // The writeback zip in physics relies on query2_opt2 / query2_opt2_mut
+    // iterating the exact archetype/row order of query2 over the same
+    // required pair.
+    let mut world = World::new();
+    for i in 0..6u32 {
+        let e = world.spawn();
+        world.insert(
+            e,
+            Position {
+                x: i as f32,
+                y: 0.0,
+            },
+        );
+        world.insert(e, Velocity { dx: 0.0, dy: 0.0 });
+        if i % 2 == 0 {
+            world.insert(e, Name(format!("{i}")));
+        }
+    }
+
+    let base: Vec<_> = world
+        .query2::<Position, Velocity>()
+        .map(|(e, ..)| e)
+        .collect();
+    let opt: Vec<_> = world
+        .query2_opt2::<Position, Velocity, Name, u32>()
+        .map(|(e, ..)| e)
+        .collect();
+    let opt_mut: Vec<_> = world
+        .query2_opt2_mut::<Position, Velocity, Name, u32>()
+        .map(|(e, ..)| e)
+        .collect();
+    assert_eq!(base, opt);
+    assert_eq!(base, opt_mut);
+}
+
+#[test]
+fn query2_opt2_mut_writes_required_and_optional() {
+    let mut world = World::new();
+
+    let with_name = world.spawn();
+    world.insert(with_name, Position { x: 0.0, y: 0.0 });
+    world.insert(with_name, Velocity { dx: 1.0, dy: 0.0 });
+    world.insert(with_name, Name("old".into()));
+
+    let without_name = world.spawn();
+    world.insert(without_name, Position { x: 0.0, y: 0.0 });
+    world.insert(without_name, Velocity { dx: 2.0, dy: 0.0 });
+
+    for (_e, vel, pos, _extra, name) in world.query2_opt2_mut::<Velocity, Position, u32, Name>() {
+        pos.x += vel.dx;
+        if let Some(name) = name {
+            name.0 = "new".into();
+        }
+    }
+
+    assert_eq!(world.get::<Position>(with_name).unwrap().x, 1.0);
+    assert_eq!(world.get::<Position>(without_name).unwrap().x, 2.0);
+    assert_eq!(world.get::<Name>(with_name).unwrap().0, "new");
+}
+
+#[test]
+#[should_panic(expected = "component types must be distinct")]
+fn query2_opt2_mut_duplicate_type_panics() {
+    let mut world = World::new();
+    let _ = world
+        .query2_opt2_mut::<Position, Velocity, Position, Name>()
+        .count();
+}

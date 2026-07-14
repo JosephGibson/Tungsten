@@ -15,7 +15,7 @@ METADATA_TIMESTAMP_QUERY="unknown"
 
 usage() {
   cat <<'EOF'
-Usage: perf-capture.sh [scene] [frames] [--present-mode <mode>] [--max-frame-latency <n>] [--telemetry-only]
+Usage: perf-capture.sh [scene] [frames] [--present-mode <mode>] [--max-frame-latency <n>] [--stress-count <n>] [--telemetry-only]
 
 Scenes:
   ecs-high-load (default)
@@ -25,6 +25,7 @@ Scenes:
 Flags:
   --present-mode <mode>       Override the resolved present mode for child capture runs
   --max-frame-latency <n>     Override the requested max-frame-latency hint for child capture runs
+  --stress-count <n>          Override the scene entity/body count for child capture runs
   --telemetry-only            Skip flamegraph/perf artifact capture; still writes telemetry logs and README
 EOF
 }
@@ -119,6 +120,7 @@ parse_backend_metadata() {
 capture_config_suffix() {
   local present_mode_override="${1:-}"
   local max_frame_latency_override="${2:-}"
+  local stress_count_override="${3:-}"
   local -a parts=()
 
   if [ -n "$present_mode_override" ]; then
@@ -126,6 +128,9 @@ capture_config_suffix() {
   fi
   if [ -n "$max_frame_latency_override" ]; then
     parts+=("lat${max_frame_latency_override}")
+  fi
+  if [ -n "$stress_count_override" ]; then
+    parts+=("count${stress_count_override}")
   fi
 
   if [ "${#parts[@]}" -eq 0 ]; then
@@ -191,6 +196,7 @@ main() {
   local frames=""
   local requested_present_mode=""
   local requested_max_frame_latency=""
+  local requested_stress_count=""
   local telemetry_only=0
 
   while [ "$#" -gt 0 ]; do
@@ -211,6 +217,20 @@ main() {
           exit 1
         fi
         requested_max_frame_latency="$2"
+        shift 2
+        ;;
+      --stress-count)
+        if [ "$#" -lt 2 ]; then
+          echo "Missing value for --stress-count"
+          usage
+          exit 1
+        fi
+        if ! [[ "$2" =~ ^[0-9]+$ ]] || [ "$2" -eq 0 ]; then
+          echo "--stress-count expects a positive integer, got '$2'"
+          usage
+          exit 1
+        fi
+        requested_stress_count="$2"
         shift 2
         ;;
       --telemetry-only)
@@ -247,7 +267,7 @@ main() {
   local timestamp
   timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
   local config_suffix
-  config_suffix="$(capture_config_suffix "$requested_present_mode" "$requested_max_frame_latency")"
+  config_suffix="$(capture_config_suffix "$requested_present_mode" "$requested_max_frame_latency" "$requested_stress_count")"
   local out_dir="perf-runs/${timestamp}-${scene}"
   if [ -n "$config_suffix" ]; then
     out_dir="${out_dir}-${config_suffix}"
@@ -300,6 +320,9 @@ main() {
   fi
   if [ -n "$requested_max_frame_latency" ]; then
     env_base+=("TUNGSTEN_RENDER_MAX_FRAME_LATENCY=$requested_max_frame_latency")
+  fi
+  if [ -n "$requested_stress_count" ]; then
+    env_base+=("STRESS_COUNT=$requested_stress_count")
   fi
 
   local -a telemetry_env=(
@@ -384,6 +407,15 @@ main() {
   local p99_render_acquire_ms
   p99_render_acquire_ms="$(percentile_metric "$engine_log" "render_acquire" 99)"
 
+  local avg_update_ms
+  avg_update_ms="$(avg_metric "$engine_log" "update")"
+  local p50_update_ms
+  p50_update_ms="$(percentile_metric "$engine_log" "update" 50)"
+  local p95_update_ms
+  p95_update_ms="$(percentile_metric "$engine_log" "update" 95)"
+  local p99_update_ms
+  p99_update_ms="$(percentile_metric "$engine_log" "update" 99)"
+
   local avg_render_encode_ms
   avg_render_encode_ms="$(avg_metric "$engine_log" "render_encode")"
   local avg_render_submit_ms
@@ -401,6 +433,8 @@ main() {
   requested_present_mode_label="$(requested_value_or_none "$requested_present_mode")"
   local requested_max_frame_latency_label
   requested_max_frame_latency_label="$(requested_value_or_none "$requested_max_frame_latency")"
+  local requested_stress_count_label
+  requested_stress_count_label="$(requested_value_or_none "$requested_stress_count")"
   local flamegraph_note
   local perf_stat_note
   local perf_record_note
@@ -449,6 +483,7 @@ main() {
 | Capture mode | ${capture_mode} |
 | Requested present mode override | ${requested_present_mode_label} |
 | Requested max frame latency override | ${requested_max_frame_latency_label} |
+| Requested stress count override | ${requested_stress_count_label} |
 | Renderer backend | ${METADATA_BACKEND} |
 | Renderer adapter | ${METADATA_ADAPTER} |
 | Present mode | ${METADATA_PRESENT_MODE} |
@@ -477,6 +512,10 @@ main() {
 | p50 render acquire ms | $p50_render_acquire_ms |
 | p95 render acquire ms | $p95_render_acquire_ms |
 | p99 render acquire ms | $p99_render_acquire_ms |
+| Average update ms | $avg_update_ms |
+| p50 update ms | $p50_update_ms |
+| p95 update ms | $p95_update_ms |
+| p99 update ms | $p99_update_ms |
 | Average render encode ms | $avg_render_encode_ms |
 | Average render submit/present ms | $avg_render_submit_ms |
 | Average GPU frame ms | $avg_gpu_ms |
