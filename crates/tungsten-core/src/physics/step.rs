@@ -63,14 +63,15 @@
 //! narrow phase + contact build), so threading the solver cannot move the
 //! number and the coloring/sort machinery alone cost the serial path ~18%.
 
+use super::PhysicsConfig;
 use super::broadphase::{ProxyId, SpatialGrid};
 use super::collision::{
+    Aabb, Contact, FACE_ALL, FACE_BOTTOM, FACE_LEFT, FACE_RIGHT, FACE_TOP,
     aabb_vs_aabb_speculative, aabb_vs_circle_speculative, circle_vs_circle_speculative,
-    sweep_aabb_vs_aabb, Aabb, Contact, FACE_ALL, FACE_BOTTOM, FACE_LEFT, FACE_RIGHT, FACE_TOP,
+    sweep_aabb_vs_aabb,
 };
 use super::components::{BodyKind, Collider, Position, RigidBody, Shape, Velocity};
 use super::events::CollisionEvent;
-use super::PhysicsConfig;
 use crate::assets::{LayerKind, TilemapInstance, TilemapRegistry};
 use crate::ecs::{Entity, EventQueue, World};
 use crate::time::DeltaTime;
@@ -346,7 +347,7 @@ impl SleepMap {
         self.keys
             .iter()
             .zip(self.values.iter())
-            .filter(|(&k, _)| k != EMPTY_SLEEP)
+            .filter(|&(&k, _)| k != EMPTY_SLEEP)
             .map(|(&k, v)| (k, v))
     }
 
@@ -975,15 +976,15 @@ fn substep(
         {
             uf_union(island_parent, a_u, b_u);
         }
-        if contact.penetration > 0.0 {
-            if let Some(a_entity) = proxies[a_idx].entity {
-                events.push(CollisionEvent {
-                    a: a_entity,
-                    b: proxies[b_idx].entity,
-                    normal: contact.normal,
-                    penetration: contact.penetration,
-                });
-            }
+        if contact.penetration > 0.0
+            && let Some(a_entity) = proxies[a_idx].entity
+        {
+            events.push(CollisionEvent {
+                a: a_entity,
+                b: proxies[b_idx].entity,
+                normal: contact.normal,
+                penetration: contact.penetration,
+            });
         }
     }
 

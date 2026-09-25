@@ -1,0 +1,57 @@
+# cargo-deny policy, run as `just deps` (`cargo deny --locked check`).
+# Built from the locked dependency graph on 2026-09-25. Exceptions below say
+# why they exist and when they go away.
+
+[graph]
+# Check every target platform: the engine is native on Linux, macOS and
+# Windows even though only Linux/Vulkan is verified locally.
+all-features = false
+
+[advisories]
+# RustSec advisories, unmaintained and unsound notices. A temporary ignore must
+# name the advisory ID and the plan step or upgrade that removes it.
+ignore = [
+    # Standing exception (2026-09-25): "unmaintained" notice with no fixed release.
+    # Still pulled in by glyphon 0.12 -> cosmic-text 0.19 -> fontdb 0.23 after the
+    # S9 upgrade; it only parses the project's own bundled fonts. Remove it when
+    # cosmic-text/fontdb drop ttf-parser (e.g. for skrifa).
+    { id = "RUSTSEC-2026-0192", reason = "ttf-parser unmaintained, no fixed release; via glyphon 0.12 -> cosmic-text 0.19 -> fontdb 0.23, parsing bundled fonts only" },
+]
+
+[licenses]
+# Permissive licenses found in the graph, plus two with file-level terms that
+# the project accepts: MPL-2.0 (symphonia, D-028) and CC0-1.0 (notify, D-031;
+# hexf-parse via naga). GPL-2.0-only and LGPL-2.1-or-later appear only as
+# alternatives in OR expressions (self_cell, r-efi) and are not allowed here;
+# those crates are used under their permissive options.
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "CC0-1.0",
+    "ISC",
+    "MIT",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+confidence-threshold = 0.93
+
+[licenses.private]
+# The examples are `publish = false` and carry no license field.
+ignore = true
+
+[bans]
+# Duplicate versions come from the wgpu/winit/windows ecosystems; they are
+# reported, not fatal. Don't force them away with incompatible pins.
+multiple-versions = "warn"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+# No git sources are allowed; glyphon moved to crates.io 0.12.0 in S9.
+allow-git = []

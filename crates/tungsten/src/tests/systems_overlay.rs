@@ -56,7 +56,7 @@ fn stale_system_name_is_dropped() {
 
 #[test]
 fn overlay_y_is_pushed_below_hud_when_hud_is_left_anchored() {
-    use crate::debug_hud::{compose_hud_text_sections, DebugHud};
+    use crate::debug_hud::{DebugHud, compose_hud_text_sections};
 
     let mut world = world_with_timings(&[("alpha", 1.0)]);
     let mut hud = DebugHud::new();

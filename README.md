@@ -17,8 +17,9 @@ Hand-rolled ECS with archetypal storage, deferred command buffers, and typed eve
 | [`DESIGN.md`](DESIGN.md) | Architecture, stack, subsystem detail |
 | [`AGENTS.md`](AGENTS.md) | Repo rules, commands, test layers, task workflow |
 | [`DECISIONS.md`](DECISIONS.md) | Non-obvious decisions and rationale (`D-NNN`) |
-| [`CLAUDE.md`](CLAUDE.md) | Claude Code pointer file |
-| [`docs/LLM_INDEX.md`](docs/LLM_INDEX.md) | Subsystem → source-path map for coding agents |
+| [`CLAUDE.md`](CLAUDE.md) | Imports `AGENTS.md` for Claude Code |
+| [`docs/LLM_INDEX.md`](docs/LLM_INDEX.md) | On-demand task → source-path map for coding agents |
+| [`docs/agent-setup.md`](docs/agent-setup.md) | How Claude Code and Codex load instructions, skills and search filters |
 | [`docs/plans/README.md`](docs/plans/README.md) | Session-plan storage rules and milestone plan naming convention |
 | [`docs/plans/phase4.md`](docs/plans/phase4.md) | Active Phase 4 plan and milestone index |
 | [`docs/perf/profiling-workflow.md`](docs/perf/profiling-workflow.md) | Canonical profiling workflow, capture rules, perf budgets |
@@ -26,9 +27,13 @@ Hand-rolled ECS with archetypal storage, deferred command buffers, and typed eve
 
 ## Quick Start
 
+Rust 1.98.1 is pinned in `rust-toolchain.toml`; rustup installs it on first use. The shared checks use [`just`](https://just.systems), `cargo-deny` and ShellCheck:
+
 ```bash
+cargo install --locked just@1.58.0 cargo-deny@0.20.2   # ShellCheck 0.11.0: see .github/workflows/ci.yml
+just check                              # fmt check, clippy -D warnings, tests
+cargo test --workspace                  # raw equivalent of the test step
 cargo build --workspace
-cargo test --workspace
 cargo run -p example-01-platformer      # comprehensive engine demo
 cargo run -p example-02-sprite-stress   # canonical perf stress scene
 cargo run -p example-03-scene-state     # scene/state + tween transition demo
@@ -46,7 +51,7 @@ bash scripts/test-perf-capture.sh
 ## Read Order
 
 - Human: `README.md` → `DESIGN.md` → `DECISIONS.md` → `AGENTS.md`
-- AI agent: `AGENTS.md` → `docs/LLM_INDEX.md` → touched files only; use `DESIGN.md` for architecture and `DECISIONS.md` for rationale when needed
+- AI agent: `AGENTS.md` (plus the scoped `AGENTS.md` of any directory being edited) → touched files only; `docs/LLM_INDEX.md` on demand, `DESIGN.md` for architecture and `DECISIONS.md` for rationale when needed
 
 ## License
 

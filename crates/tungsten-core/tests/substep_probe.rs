@@ -12,8 +12,8 @@
 
 use glam::Vec2;
 use tungsten_core::{
-    physics_step, Collider, DeltaTime, Entity, Pcg32, PhysicsBuffers, PhysicsConfig, Position,
-    RigidBody, Velocity, World,
+    Collider, DeltaTime, Entity, Pcg32, PhysicsBuffers, PhysicsConfig, Position, RigidBody,
+    Velocity, World, physics_step,
 };
 
 const DT: f32 = 1.0 / 60.0;
@@ -37,7 +37,7 @@ fn base_world(gravity: Vec2) -> World {
 fn spawn_static_box(world: &mut World, width: f32, top_y: f32) {
     const WALL_HALF: f32 = 1_000.0;
     let mid_x = width * 0.5;
-    let mid_y = (top_y + FLOOR_Y) * 0.5;
+    let mid_y = f32::midpoint(top_y, FLOOR_Y);
     let half_h = (FLOOR_Y - top_y) * 0.5;
     let walls = [
         (
@@ -98,10 +98,10 @@ fn spawn_pile(world: &mut World, count: usize, rng: &mut Pcg32) -> Vec<Entity> {
 
 fn probe_pile(count: usize, sleep_threshold: Option<f32>, steps: usize, label: &str) {
     let mut world = base_world(Vec2::new(0.0, GRAVITY_Y));
-    if let Some(threshold) = sleep_threshold {
-        if let Some(cfg) = world.get_resource_mut::<PhysicsConfig>() {
-            cfg.sleep_threshold = threshold;
-        }
+    if let Some(threshold) = sleep_threshold
+        && let Some(cfg) = world.get_resource_mut::<PhysicsConfig>()
+    {
+        cfg.sleep_threshold = threshold;
     }
     let mut rng = Pcg32::seeded(0x7C0F_FEE5);
     let rows = count.div_ceil(((PILE_WIDTH - 28.0) / SPAWN_SPACING) as usize);

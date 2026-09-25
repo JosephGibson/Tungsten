@@ -1,7 +1,8 @@
 [package]
 name = "example-01-platformer"
 version.workspace = true
-edition = "2021"
+edition.workspace = true
+rust-version.workspace = true
 publish = false
 
 [dependencies]

@@ -8,8 +8,8 @@
 
 use tungsten_core::tween::UniformOverrideBlock;
 use tungsten_core::{
-    lerp_f32, lerp_u8, CommandBuffer, DeltaTime, Entity, EventQueue, Sprite, Transform, Tween,
-    TweenChannel, TweenComplete, TweenDirection, TweenRepeat, World,
+    CommandBuffer, DeltaTime, Entity, EventQueue, Sprite, Transform, Tween, TweenChannel,
+    TweenComplete, TweenDirection, TweenRepeat, World, lerp_f32, lerp_u8,
 };
 
 pub fn tween_tick_system(world: &mut World) {
@@ -96,19 +96,19 @@ pub fn tween_tick_system(world: &mut World) {
         apply_channels(world, entity, &channels, k);
     }
 
-    if !completed.is_empty() {
-        if let Some(q) = world.get_resource_mut::<EventQueue<TweenComplete>>() {
-            for ev in completed {
-                q.send(ev);
-            }
+    if !completed.is_empty()
+        && let Some(q) = world.get_resource_mut::<EventQueue<TweenComplete>>()
+    {
+        for ev in completed {
+            q.send(ev);
         }
     }
 
-    if !to_remove.is_empty() {
-        if let Some(buf) = world.get_resource_mut::<CommandBuffer>() {
-            for entity in to_remove {
-                buf.remove_component::<Tween>(entity);
-            }
+    if !to_remove.is_empty()
+        && let Some(buf) = world.get_resource_mut::<CommandBuffer>()
+    {
+        for entity in to_remove {
+            buf.remove_component::<Tween>(entity);
         }
     }
 }

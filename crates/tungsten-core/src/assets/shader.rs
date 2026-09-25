@@ -30,10 +30,10 @@ impl ShaderRegistry {
     /// the same id refresh the reverse-path lookup to the latest canonical path.
     pub fn allocate(&mut self, id: &str, path: PathBuf) -> ShaderAssetId {
         if let Some(&existing) = self.ids.get(id) {
-            if let Some(old) = self.paths.insert(existing, path.clone()) {
-                if old != path {
-                    self.reverse.remove(&old);
-                }
+            if let Some(old) = self.paths.insert(existing, path.clone())
+                && old != path
+            {
+                self.reverse.remove(&old);
             }
             self.reverse.insert(path, existing);
             return existing;

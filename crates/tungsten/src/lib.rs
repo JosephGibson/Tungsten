@@ -22,21 +22,21 @@ pub mod tweens;
 
 pub use app::{App, WindowSize};
 pub use camera::camera_update_system;
-pub use debug_hud::{hud_toggle_system, DebugHud, HudActiveState, HudCorner, HudRow};
+pub use debug_hud::{DebugHud, HudActiveState, HudCorner, HudRow, hud_toggle_system};
 pub use display::request_display_settings;
 pub use hot_reload::HotReloadWatcher;
 pub use inspector::InspectorState;
 pub use light_extract::extract_lights;
 pub use particles::{
-    particle_count_refresh_system, particle_emit_system, particle_tick_system,
-    ParticleBurstEmitted, ParticleSystemDrained,
+    ParticleBurstEmitted, ParticleSystemDrained, particle_count_refresh_system,
+    particle_emit_system, particle_tick_system,
 };
 pub use physics_debug::PhysicsDebugOverlay;
-pub use post_aa::{request_post_aa, PostAaState};
+pub use post_aa::{PostAaState, request_post_aa};
 pub use sprite_extract::extract_sprites_default;
 pub use state::{
-    despawn_scene_entities, state_dispatcher_system, GameState, SceneEntity, StateContext, StateId,
-    StateStack,
+    GameState, SceneEntity, StateContext, StateId, StateStack, despawn_scene_entities,
+    state_dispatcher_system,
 };
 pub use systems_overlay::SystemTimingOverlay;
 pub use telemetry::{DisplayTelemetry, FrameTimings, RenderCounts};

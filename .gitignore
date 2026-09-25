@@ -42,7 +42,13 @@ perf.data
 perf.data.old
 flamegraph.svg
 
-# LLM tooling local state
+# LLM tooling local state. Only shared project settings and the two project
+# skills under .claude/ are tracked; personal settings, hooks and state stay local.
 .aider*
 .cursor/
-.claude/
+/.claude/*
+!/.claude/settings.json
+!/.claude/skills/
+/.claude/skills/*
+!/.claude/skills/tungsten-wgpu/
+!/.claude/skills/tungsten-perf/

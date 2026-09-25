@@ -2,11 +2,11 @@
 
 use std::collections::BTreeMap;
 
-use tungsten_core::input::{ActionMap, InputState};
 use tungsten_core::World;
+use tungsten_core::input::{ActionMap, InputState};
 use tungsten_render::TextSection;
 
-use crate::debug_hud::{anchor_text_block, DebugHud, HudCorner};
+use crate::debug_hud::{DebugHud, HudCorner, anchor_text_block};
 use crate::telemetry::FrameTimings;
 
 #[derive(Debug)]
@@ -74,10 +74,8 @@ pub(crate) fn systems_overlay_toggle_system(world: &mut World) {
         };
         actions.just_pressed(input, "engine_toggle_systems_overlay")
     };
-    if pressed {
-        if let Some(overlay) = world.get_resource_mut::<SystemTimingOverlay>() {
-            overlay.toggle();
-        }
+    if pressed && let Some(overlay) = world.get_resource_mut::<SystemTimingOverlay>() {
+        overlay.toggle();
     }
 }
 
@@ -141,12 +139,12 @@ pub(crate) fn compose_systems_overlay_text_section(
         viewport,
     );
     // Top anchors stack below current HUD block.
-    if matches!(overlay.corner, HudCorner::TopLeft | HudCorner::TopRight) {
-        if let Some(hud) = world.get_resource::<DebugHud>() {
-            let hud_bottom = hud.rendered_height_px();
-            if hud_bottom > 0.0 {
-                y = y.max(hud_bottom + overlay.padding_px);
-            }
+    if matches!(overlay.corner, HudCorner::TopLeft | HudCorner::TopRight)
+        && let Some(hud) = world.get_resource::<DebugHud>()
+    {
+        let hud_bottom = hud.rendered_height_px();
+        if hud_bottom > 0.0 {
+            y = y.max(hud_bottom + overlay.padding_px);
         }
     }
 

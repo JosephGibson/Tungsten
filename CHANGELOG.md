@@ -4,6 +4,33 @@ Records all notable project changes.
 
 Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+Summary: agent/tooling restructure and dependency refresh (plan `docs/plans/agentic-restructure.md`). No engine features; runtime behavior changes are limited to what the upgrades required.
+
+### Added
+
+- **Shared commands:** `justfile` (`check`, `lint`, `test`, `bench-build`, `smoke`, `visual`, `perf`, `deps`, `ctx`, `script-test`, …) wrapping the raw cargo commands; `just check` runs format check, `clippy -D warnings` and all tests.
+- **Dependency policy:** `deny.toml` for `cargo-deny` (advisories, licenses, bans, sources; no git sources). One reasoned advisory exception remains (RUSTSEC-2026-0192, unmaintained `ttf-parser` via cosmic-text).
+- **CPU-only CI:** `.github/workflows/ci.yml` (PRs, manual dispatch, pushes to `main`/`0.*`), SHA-pinned actions, read-only token, informational only (`D-070`).
+- **Checks and tests:** `tests/shader_coverage.rs` (Naga-validates all 67 WGSL files and the 31 mirror pairs), `tests/audio_decode.rs` with synthetic WAV/Ogg/MP3/AAC fixtures, surface-acquire transition tests, `scripts/test-smoke-examples.sh` (stubbed-cargo smoke regressions), `scripts/check-agent-context.py` (instruction budgets, links, skill symlinks).
+- **Visual baseline:** `examples/02_sprite_stress/tests/fixtures/baseline-sprite-stress.png` with reference-machine provenance.
+- **Agent setup:** scoped `crates/tungsten-render/AGENTS.md`, tracked `.claude/skills/` shared with Codex via `.agents/skills/` symlinks, `.claude/settings.json`, `.ignore`, `docs/agent-setup.md` (`D-068`).
+
+### Changed
+
+- **Toolchain:** Rust pinned to 1.98.1 with `rust-version = "1.98.1"`; workspace on edition 2024 / resolver 3 (`D-069`); `rustfmt.toml` sets `style_edition = "2024"`.
+- **Dependencies:** wgpu 30.0.1 with glyphon 0.12.0 from crates.io (was a git pin) and cosmic-text 0.19; symphonia 0.6.1; cpal 0.18.2; notify 8.2.0; glam 0.33.10; pollster 1.0.1; criterion 0.8.2; rtrb 0.3.5; compatible refresh of the rest.
+- **Rendering:** surface acquire now reconfigures after suboptimal frames (once per window size), retries once on outdated surfaces at the window's current size, recreates lost surfaces and fails clearly if that doesn't recover; `SurfaceColorSpace::Auto` keeps SDR output. Pixels match the pre-upgrade baseline.
+- **Audio:** decoding keeps a truncated file's decoded prefix but now reports real I/O errors; MP3/Ogg gapless trimming removes codec padding; cpal opens the default device at its native rate (48 kHz on the reference machine) and the mixer resamples.
+- **Instructions:** `AGENTS.md` condensed (≈6 KB), `CLAUDE.md` imports it, `docs/LLM_INDEX.md` and `docs/DECISION_INDEX.md` condensed, plan conventions moved to `docs/plans/README.md`; both project skills corrected (shader hot reload, canonical perf scene).
+- **Scripts:** smoke discovery fails on metadata errors or zero examples, and timeouts are reported as timeouts; perf captures record compiler and build flags (`TUNGSTEN_PERF_RUSTFLAGS`) and keep all profiler output in the capture directory.
+- `DECISIONS.md` adds `D-068`–`D-070`.
+
+### Removed
+
+- `.claudeignore` (not honored by Claude Code; replaced by `.ignore` and a Glob setting).
+
 ## [0.26.0] - 2026-07-06
 
 Summary: the branch-`0.26` release — M29 2D forward normal-mapped lighting plus a performance pass: engine-wide performance-overhead audit, mutable multi-component ECS queries (audit follow-up item #1), migration of every hot engine/example call site off the naive `query_entities` + per-entity `get`/`get_mut` pattern, and a new `physics-stress` canonical capture scene.

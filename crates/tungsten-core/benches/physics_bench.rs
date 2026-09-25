@@ -9,11 +9,12 @@
 
 use std::time::Duration;
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use glam::Vec2;
+use std::hint::black_box;
 use tungsten_core::{
-    physics_step, Aabb, Collider, DeltaTime, Pcg32, PhysicsConfig, Position, RigidBody,
-    SpatialGrid, Velocity, World,
+    Aabb, Collider, DeltaTime, Pcg32, PhysicsConfig, Position, RigidBody, SpatialGrid, Velocity,
+    World, physics_step,
 };
 
 const DT: f32 = 1.0 / 60.0;
@@ -24,6 +25,9 @@ const FLOOR_Y: f32 = 1_080.0;
 const GRAVITY_Y: f32 = 900.0;
 /// Settle window: tight spawn grid reaches steady contact state well within this.
 const SETTLE_STEPS: usize = 120;
+
+/// Benchmark scenario: name, world builder, body counts.
+type Scenario = (&'static str, fn(usize) -> World, &'static [usize]);
 
 fn base_world(gravity: Vec2) -> World {
     let mut world = World::new();
@@ -44,7 +48,7 @@ fn base_world(gravity: Vec2) -> World {
 fn spawn_static_box(world: &mut World, width: f32, top_y: f32) {
     const WALL_HALF: f32 = 1_000.0;
     let mid_x = width * 0.5;
-    let mid_y = (top_y + FLOOR_Y) * 0.5;
+    let mid_y = f32::midpoint(top_y, FLOOR_Y);
     let half_h = (FLOOR_Y - top_y) * 0.5;
     let walls = [
         // (center, half extents)
@@ -213,7 +217,7 @@ fn bench_physics_step_scenarios(c: &mut Criterion) {
     group.measurement_time(Duration::from_secs(12));
     group.warm_up_time(Duration::from_secs(2));
 
-    let scenarios: &[(&str, fn(usize) -> World, &[usize])] = &[
+    let scenarios: &[Scenario] = &[
         ("dense_pile", build_dense_pile, &[3_000, 10_000, 25_000]),
         (
             "projectile_stream",
@@ -229,7 +233,7 @@ fn bench_physics_step_scenarios(c: &mut Criterion) {
     ];
 
     for (name, build, counts) in scenarios {
-        for &count in counts.iter() {
+        for &count in *counts {
             let mut world = build(count);
             group.bench_with_input(BenchmarkId::new(*name, count), &count, |b, _| {
                 b.iter(|| {

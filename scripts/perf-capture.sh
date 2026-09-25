@@ -7,6 +7,13 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 : "${WARMUP_FRAMES:=60}"
 
+# Build flags for every capture binary. Setting RUSTFLAGS replaces the
+# target flags in .cargo/config.toml (target-cpu=native), so perf builds are
+# generic x86-64 with frame pointers unless TUNGSTEN_PERF_RUSTFLAGS says
+# otherwise. Historical captures used exactly this default; only compare
+# captures whose README records the same "Build RUSTFLAGS".
+DEFAULT_PERF_RUSTFLAGS="-C force-frame-pointers=yes"
+
 METADATA_BACKEND="unknown"
 METADATA_ADAPTER="unknown"
 METADATA_PRESENT_MODE="unknown"
@@ -27,6 +34,9 @@ Flags:
   --max-frame-latency <n>     Override the requested max-frame-latency hint for child capture runs
   --stress-count <n>          Override the scene entity/body count for child capture runs
   --telemetry-only            Skip flamegraph/perf artifact capture; still writes telemetry logs and README
+
+Env:
+  TUNGSTEN_PERF_RUSTFLAGS     Build flags for the capture binary (default: -C force-frame-pointers=yes)
 EOF
 }
 
@@ -189,8 +199,12 @@ scene_env_overrides() {
   esac
 }
 
+perf_rustflags() {
+  printf '%s' "${TUNGSTEN_PERF_RUSTFLAGS:-$DEFAULT_PERF_RUSTFLAGS}"
+}
+
 main() {
-  cd "$REPO_ROOT"
+  cd "$REPO_ROOT" || exit 1
 
   local scene=""
   local frames=""
@@ -282,8 +296,12 @@ main() {
   local -a scene_env=()
   mapfile -t scene_env < <(scene_env_overrides "$scene")
 
-  echo "Building $pkg with frame pointers..."
-  if ! RUSTFLAGS="-C force-frame-pointers=yes" cargo build --release -p "$pkg"; then
+  local build_rustflags
+  build_rustflags="$(perf_rustflags)"
+  local rustc_version
+  rustc_version="$(rustc --version 2>/dev/null || echo unknown)"
+  echo "Building $pkg with RUSTFLAGS=\"$build_rustflags\"..."
+  if ! RUSTFLAGS="$build_rustflags" cargo build --release -p "$pkg"; then
     echo "Build failed."
     exit 1
   fi
@@ -360,20 +378,11 @@ main() {
   fi
 
   if [ "$telemetry_only" -eq 0 ]; then
-    if cargo flamegraph --help >/dev/null 2>&1; then
-      echo "Capturing flamegraph..."
-      "${profile_env[@]}" \
-      cargo flamegraph \
-        --package "$pkg" \
-        --bin "$pkg" \
-        --release \
-        --output "$flamegraph_out" \
-        -- \
-        >/dev/null 2>&1 || true
-    else
-      echo "cargo-flamegraph not installed; skipping flamegraph capture."
-    fi
-
+    # Profilers run the binary built above from the repo root (config and
+    # manifests resolve from the CWD) and write only into $out_dir. The
+    # flamegraph is folded from this run's perf record data rather than via
+    # `cargo flamegraph`, which would rebuild with different flags and leave
+    # perf.data in the repo root. Optional failures are recorded in README.
     if command -v perf >/dev/null 2>&1; then
       echo "Capturing perf stat..."
       "${profile_env[@]}" perf stat -d -o "$perf_stat_out" "$binary" >/dev/null 2>&1 || true
@@ -382,6 +391,13 @@ main() {
       "${profile_env[@]}" perf record --call-graph dwarf -o "$perf_record_out" "$binary" >/dev/null 2>&1 || true
     else
       echo "perf not installed; skipping perf captures."
+    fi
+
+    if [ -f "$perf_record_out" ] && command -v flamegraph >/dev/null 2>&1; then
+      echo "Rendering flamegraph from perf record data..."
+      flamegraph --perfdata "$perf_record_out" --output "$flamegraph_out" >/dev/null 2>&1 || true
+    elif ! command -v flamegraph >/dev/null 2>&1; then
+      echo "flamegraph not installed (cargo install flamegraph); skipping flamegraph."
     fi
   else
     echo "Telemetry-only mode: skipping flamegraph and perf captures."
@@ -445,11 +461,13 @@ main() {
     perf_record_note="Skipped (--telemetry-only)"
   else
     if [ -f "$flamegraph_out" ]; then
-      flamegraph_note="Captured"
-    elif cargo flamegraph --help >/dev/null 2>&1; then
-      flamegraph_note="Skipped (capture failed)"
+      flamegraph_note="Captured (folded from perf-record.data)"
+    elif ! command -v flamegraph >/dev/null 2>&1; then
+      flamegraph_note="Skipped (flamegraph not installed)"
+    elif [ ! -f "$perf_record_out" ]; then
+      flamegraph_note="Skipped (no perf record data)"
     else
-      flamegraph_note="Skipped (cargo-flamegraph not installed)"
+      flamegraph_note="Skipped (capture failed)"
     fi
 
     if [ -f "$perf_stat_out" ]; then
@@ -479,6 +497,8 @@ main() {
 | Kernel | ${host_kernel:-unknown} |
 | CPU | ${cpu_model:-unknown} |
 | Binary | $binary |
+| Compiler | ${rustc_version} |
+| Build RUSTFLAGS | \`${build_rustflags}\` |
 | Backend env | ${WGPU_BACKEND:-auto} |
 | Capture mode | ${capture_mode} |
 | Requested present mode override | ${requested_present_mode_label} |
@@ -537,7 +557,7 @@ main() {
 - Render overrides are injected only into child capture processes; the parent shell environment is left unchanged.
 - Scene selection is also injected only into child capture processes so shell-local \`STRESS_SCENE\` / \`STRESS_COUNT\` values cannot skew canonical runs.
 - Flamegraph and perf captures intentionally run without \`TUNGSTEN_GPU_TIMING\` to avoid the blocking timestamp readback stall.
-- Compare like-for-like runs only: same scene, resolution, backend, release build, present mode, and max frame latency.
+- Compare like-for-like runs only: same scene, resolution, backend, release build, build RUSTFLAGS, present mode, and max frame latency.
 EOF
 
   echo "Capture complete."

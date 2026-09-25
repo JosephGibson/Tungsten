@@ -111,27 +111,31 @@ fn sweep_hits_static_aabb_in_path() {
 
 #[test]
 fn sweep_misses_when_offset_from_target() {
-    assert!(sweep_aabb_vs_aabb(
-        Vec2::new(0.0, 10.0),
-        Vec2::new(6.0, 10.0),
-        Vec2::new(0.5, 0.5),
-        Vec2::new(5.0, 0.0),
-        Vec2::new(1.0, 1.0),
-    )
-    .is_none());
+    assert!(
+        sweep_aabb_vs_aabb(
+            Vec2::new(0.0, 10.0),
+            Vec2::new(6.0, 10.0),
+            Vec2::new(0.5, 0.5),
+            Vec2::new(5.0, 0.0),
+            Vec2::new(1.0, 1.0),
+        )
+        .is_none()
+    );
 }
 
 #[test]
 fn sweep_already_overlapping_returns_none() {
     // Already-penetrating pairs are handled by iteration resolver.
-    assert!(sweep_aabb_vs_aabb(
-        Vec2::new(0.0, 0.0),
-        Vec2::new(1.0, 0.0),
-        Vec2::new(0.5, 0.5),
-        Vec2::new(0.0, 0.0),
-        Vec2::new(1.0, 1.0),
-    )
-    .is_none());
+    assert!(
+        sweep_aabb_vs_aabb(
+            Vec2::new(0.0, 0.0),
+            Vec2::new(1.0, 0.0),
+            Vec2::new(0.5, 0.5),
+            Vec2::new(0.0, 0.0),
+            Vec2::new(1.0, 1.0),
+        )
+        .is_none()
+    );
 }
 
 #[test]

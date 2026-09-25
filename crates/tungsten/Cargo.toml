@@ -2,6 +2,7 @@
 name = "tungsten"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 description = "Umbrella crate and winit application loop for the Tungsten 2D engine"
 
@@ -21,7 +22,7 @@ notify = { workspace = true }
 rtrb = { workspace = true }
 
 [dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.8", features = ["html_reports"] }
 
 [[bench]]
 name = "particle_tick"

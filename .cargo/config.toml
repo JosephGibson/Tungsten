@@ -1,12 +1,17 @@
-# Arch Linux's system Rust package (rust 1:1.94.1) already routes linking through
-# lld via x86_64-linux-gnu-gcc's built-in spec — no explicit linker flag needed here.
+# Linker: since Rust 1.90, x86_64-unknown-linux-gnu links with the bundled LLD
+# by default, so no linker flag is needed. No repo-specific gain from mold or
+# another linker has been measured; keep the default.
 #
-# If mold is later installed (pacman -S mold), replace the comment below with:
-#   rustflags = ["-C", "link-arg=-fuse-ld=mold", "-C", "target-cpu=native"]
+# target-cpu=native enables the build machine's full instruction set (AVX2,
+# FMA, ...). The binaries aren't portable; don't distribute them. Benchmark
+# baselines in DECISIONS.md are keyed to this flag.
 #
-# target-cpu=native enables the full native instruction set (AVX2, FMA, etc.)
-# on this machine. Non-portable binary — do not distribute to other hardware.
-# Affects benchmark magnitudes; baselines in DECISIONS.md are keyed to this flag.
+# Precedence: a set RUSTFLAGS environment variable (even an empty one)
+# replaces this table rather than adding to it. CI and portable builds rely
+# on that, e.g. `RUSTFLAGS="-C target-cpu=x86-64"` (or `RUSTFLAGS=""`) for the
+# generic x86-64 baseline. It also means
+# scripts/perf-capture.sh's RUSTFLAGS build drops target-cpu=native unless it
+# passes the flag itself, so only compare captures built with identical flags.
 [target.x86_64-unknown-linux-gnu]
 rustflags = [
     "-C", "target-cpu=native",

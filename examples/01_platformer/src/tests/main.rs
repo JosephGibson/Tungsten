@@ -1,22 +1,21 @@
 use glam::Vec2;
 use tungsten::core::assets::{LayerKind, TilemapData, TilemapLayer};
 use tungsten::core::{
-    sync_position_to_transform, ActionMap, AnimationState, AudioCommand, AudioCommands,
-    AudioHandle, Binding, CameraController, CameraMode, CameraState, CommandBuffer, Config,
-    DeltaTime, EventQueue, InputState, KeyCode, MouseButton, TilemapInstance, TilemapRegistry,
-    Transform, World,
+    ActionMap, AnimationState, AudioCommand, AudioCommands, AudioHandle, Binding, CameraController,
+    CameraMode, CameraState, CommandBuffer, Config, DeltaTime, EventQueue, InputState, KeyCode,
+    MouseButton, TilemapInstance, TilemapRegistry, Transform, World, sync_position_to_transform,
 };
 use tungsten::physics::{
-    physics_step, Collider, CollisionEvent, PhysicsConfig, Position, RigidBody, Velocity,
+    Collider, CollisionEvent, PhysicsConfig, Position, RigidBody, Velocity, physics_step,
 };
-use tungsten::{camera_update_system, App, WindowSize};
+use tungsten::{App, WindowSize, camera_update_system};
 
-use crate::setup::{configure_platformer_camera, RUNTIME_SYSTEM_ORDER};
+use crate::setup::{RUNTIME_SYSTEM_ORDER, configure_platformer_camera};
 use crate::state::{
-    ActiveBlackHole, AudioState, Ball, BallHue, BallSpawnState, BlackHole, CurrentSprite, Player,
-    TextDisplayState, BALL_RADIUS, BALL_SPAWN_JITTER, BLACK_HOLE_LIFETIME, BLACK_HOLE_RADIUS,
-    GRAVITY_Y, MAP_COLS, MAP_ROWS, PLAYER_HALF, PLAYER_SPAWN, TEXT_UPDATE_INTERVAL, TILE,
-    WORLD_BOUNDS_MAX, WORLD_BOUNDS_MIN,
+    ActiveBlackHole, AudioState, BALL_RADIUS, BALL_SPAWN_JITTER, BLACK_HOLE_LIFETIME,
+    BLACK_HOLE_RADIUS, Ball, BallHue, BallSpawnState, BlackHole, CurrentSprite, GRAVITY_Y,
+    MAP_COLS, MAP_ROWS, PLAYER_HALF, PLAYER_SPAWN, Player, TEXT_UPDATE_INTERVAL, TILE,
+    TextDisplayState, WORLD_BOUNDS_MAX, WORLD_BOUNDS_MIN,
 };
 use crate::systems::{
     black_hole_force_system, black_hole_lifetime_system, cursor_to_world, despawn_out_of_bounds,
@@ -767,8 +766,8 @@ fn despawn_out_of_bounds_is_noop_for_in_bounds_player() {
     let player = world.spawn();
     world.insert(player, Player::default());
     let start = Vec2::new(
-        (WORLD_BOUNDS_MIN.x + WORLD_BOUNDS_MAX.x) * 0.5,
-        (WORLD_BOUNDS_MIN.y + WORLD_BOUNDS_MAX.y) * 0.5,
+        f32::midpoint(WORLD_BOUNDS_MIN.x, WORLD_BOUNDS_MAX.x),
+        f32::midpoint(WORLD_BOUNDS_MIN.y, WORLD_BOUNDS_MAX.y),
     );
     world.insert(player, Position(start));
     world.insert(player, Velocity(Vec2::new(42.0, -17.0)));

@@ -66,10 +66,10 @@ impl MaterialRegistry {
         if let Some(&existing) = self.ids.get(id) {
             self.shader_names.insert(existing, shader_name);
             self.defaults.insert(existing, defaults);
-            if let Some(old) = self.paths.insert(existing, path.clone()) {
-                if old != path {
-                    self.reverse.remove(&old);
-                }
+            if let Some(old) = self.paths.insert(existing, path.clone())
+                && old != path
+            {
+                self.reverse.remove(&old);
             }
             self.reverse.insert(path, existing);
             return existing;

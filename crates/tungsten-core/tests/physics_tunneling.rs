@@ -15,8 +15,8 @@
 
 use glam::Vec2;
 use tungsten_core::{
-    physics_step, BodyKind, Collider, DeltaTime, PhysicsConfig, Position, RigidBody, Velocity,
-    World,
+    BodyKind, Collider, DeltaTime, PhysicsConfig, Position, RigidBody, Velocity, World,
+    physics_step,
 };
 
 const DT: f32 = 1.0 / 60.0;

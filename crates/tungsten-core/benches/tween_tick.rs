@@ -1,11 +1,12 @@
 //! Tween tick: 5k entities × two channels. Inlined to keep `tungsten-core` bench self-contained.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use glam::Vec2;
+use std::hint::black_box;
 
 use tungsten_core::{
-    lerp_f32, lerp_u8, Easing, Sprite, Transform, Tween, TweenChannel, TweenDirection, TweenRepeat,
-    Visibility, World,
+    Easing, Sprite, Transform, Tween, TweenChannel, TweenDirection, TweenRepeat, Visibility, World,
+    lerp_f32, lerp_u8,
 };
 
 fn build_world(n: usize) -> (World, Vec<tungsten_core::Entity>) {

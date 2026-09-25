@@ -2,8 +2,9 @@
 
 use std::sync::Arc;
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use glam::Vec2;
+use std::hint::black_box;
 
 use tungsten::particles::particle_tick_system;
 use tungsten_core::assets::{

@@ -14,8 +14,8 @@
 
 use glam::Vec2;
 use tungsten_core::{
-    physics_step, Collider, DeltaTime, Entity, Pcg32, PhysicsConfig, Position, RigidBody, Velocity,
-    World,
+    Collider, DeltaTime, Entity, Pcg32, PhysicsConfig, Position, RigidBody, Velocity, World,
+    physics_step,
 };
 
 const DT: f32 = 1.0 / 60.0;
@@ -30,7 +30,7 @@ const STEPS: usize = 240;
 fn spawn_static_box(world: &mut World, width: f32, top_y: f32) {
     const WALL_HALF: f32 = 1_000.0;
     let mid_x = width * 0.5;
-    let mid_y = (top_y + FLOOR_Y) * 0.5;
+    let mid_y = f32::midpoint(top_y, FLOOR_Y);
     let half_h = (FLOOR_Y - top_y) * 0.5;
     let walls = [
         (

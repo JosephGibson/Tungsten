@@ -10,14 +10,14 @@
 use std::path::PathBuf;
 
 use glam::Vec2;
+use tungsten::App;
 use tungsten::core::{
-    sync_position_to_transform, AssetRegistry, CameraState, Collider, FilterMode, PhysicsConfig,
-    Position, RigidBody, Sprite, Transform, Velocity, Visibility, World,
+    AssetRegistry, CameraState, Collider, FilterMode, PhysicsConfig, Position, RigidBody, Sprite,
+    Transform, Velocity, Visibility, World, sync_position_to_transform,
 };
 use tungsten::render::Renderer;
-use tungsten::App;
 
-use crate::shared::{log_telemetry, TelemetryState};
+use crate::shared::{TelemetryState, log_telemetry};
 
 pub(crate) const DEFAULT_PHYSICS_STRESS_COUNT: usize = 3_000;
 

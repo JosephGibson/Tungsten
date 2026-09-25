@@ -159,13 +159,12 @@ pub fn particle_emit_system(world: &mut World) {
             active.count = global_active;
         }
 
-        if is_discrete {
-            if let Some(q) = world.get_resource_mut::<EventQueue<ParticleBurstEmitted>>() {
-                q.send(ParticleBurstEmitted {
-                    emitter: emitter_ent,
-                    count: n_eff,
-                });
-            }
+        if is_discrete && let Some(q) = world.get_resource_mut::<EventQueue<ParticleBurstEmitted>>()
+        {
+            q.send(ParticleBurstEmitted {
+                emitter: emitter_ent,
+                count: n_eff,
+            });
         }
 
         maybe_emit_drained(world, emitter_ent);
@@ -280,10 +279,10 @@ fn plan_emission(
             }
             state.pulse_timer -= interval_sec;
             state.pulses_fired = state.pulses_fired.saturating_add(1);
-            if let Some(total) = total_pulses {
-                if state.pulses_fired >= total {
-                    state.drained = true;
-                }
+            if let Some(total) = total_pulses
+                && state.pulses_fired >= total
+            {
+                state.drained = true;
             }
             (count_per_pulse, true)
         }

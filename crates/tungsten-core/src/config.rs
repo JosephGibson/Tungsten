@@ -408,7 +408,7 @@ impl Config {
                     var: RENDER_DEPTH_ENABLED_ENV,
                     value: value.to_string(),
                     expected: DEPTH_ENABLED_EXPECTED,
-                })
+                });
             }
         };
         self.render.depth_enabled = parsed;
@@ -529,59 +529,49 @@ fn warn_display_conflicts(raw: &Value) {
     let window = raw.get("window").and_then(Value::as_object);
     let render = raw.get("render").and_then(Value::as_object);
 
-    if let Some(display_resolution) = display.get("resolution").and_then(parse_raw_resolution) {
-        if let Some(window) = window {
-            let width = window.get("width").and_then(raw_u32);
-            let height = window.get("height").and_then(raw_u32);
-            if width.is_some_and(|legacy| legacy != display_resolution.width)
-                || height.is_some_and(|legacy| legacy != display_resolution.height)
-            {
-                log::warn!("Config display.resolution overrides legacy window.width/window.height");
-            }
+    if let Some(display_resolution) = display.get("resolution").and_then(parse_raw_resolution)
+        && let Some(window) = window
+    {
+        let width = window.get("width").and_then(raw_u32);
+        let height = window.get("height").and_then(raw_u32);
+        if width.is_some_and(|legacy| legacy != display_resolution.width)
+            || height.is_some_and(|legacy| legacy != display_resolution.height)
+        {
+            log::warn!("Config display.resolution overrides legacy window.width/window.height");
         }
     }
 
-    if let Some(display_vsync) = display.get("vsync").and_then(Value::as_bool) {
-        if let Some(legacy_vsync) = window
+    if let Some(display_vsync) = display.get("vsync").and_then(Value::as_bool)
+        && let Some(legacy_vsync) = window
             .and_then(|window| window.get("vsync"))
             .and_then(Value::as_bool)
-        {
-            if legacy_vsync != display_vsync {
-                log::warn!("Config display.vsync overrides legacy window.vsync");
-            }
-        }
+        && legacy_vsync != display_vsync
+    {
+        log::warn!("Config display.vsync overrides legacy window.vsync");
     }
 
     if let Some(display_present_mode) = display
         .get("present_mode")
         .and_then(Value::as_str)
         .filter(|value| PresentModeConfig::from_str(value).is_ok())
-    {
-        if let Some(legacy_present_mode) = render
+        && let Some(legacy_present_mode) = render
             .and_then(|render| render.get("present_mode"))
             .and_then(Value::as_str)
-        {
-            if legacy_present_mode != display_present_mode {
-                log::warn!("Config display.present_mode overrides legacy render.present_mode");
-            }
-        }
+        && legacy_present_mode != display_present_mode
+    {
+        log::warn!("Config display.present_mode overrides legacy render.present_mode");
     }
 
     if let Some(display_latency) = display
         .get("max_frame_latency")
         .and_then(raw_u32)
         .filter(|value| *value >= 1)
-    {
-        if let Some(legacy_latency) = render
+        && let Some(legacy_latency) = render
             .and_then(|render| render.get("max_frame_latency"))
             .and_then(raw_u32)
-        {
-            if legacy_latency != display_latency {
-                log::warn!(
-                    "Config display.max_frame_latency overrides legacy render.max_frame_latency"
-                );
-            }
-        }
+        && legacy_latency != display_latency
+    {
+        log::warn!("Config display.max_frame_latency overrides legacy render.max_frame_latency");
     }
 }
 

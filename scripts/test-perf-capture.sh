@@ -3,6 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source-path=SCRIPTDIR source=perf-capture.sh
 source "$SCRIPT_DIR/perf-capture.sh"
 
 assert_eq() {
@@ -45,6 +46,8 @@ assert_eq "telemetry-only" "$(capture_mode_label 1)" "telemetry-only capture mod
 assert_eq "mailbox" "$(requested_value_or_none "mailbox")" "requested value passthrough"
 assert_eq "none" "$(requested_value_or_none "")" "requested value empty label"
 assert_eq "example-02-sprite-stress" "$(resolve_scene_package "ecs-high-load")" "ecs-high-load package"
+assert_eq "-C force-frame-pointers=yes" "$(unset TUNGSTEN_PERF_RUSTFLAGS; perf_rustflags)" "default perf RUSTFLAGS"
+assert_eq "-C target-cpu=native" "$(TUNGSTEN_PERF_RUSTFLAGS="-C target-cpu=native" perf_rustflags)" "perf RUSTFLAGS override"
 
 mapfile -t ecs_scene_env < <(scene_env_overrides "ecs-high-load")
 assert_eq "1" "${#ecs_scene_env[@]}" "ecs-high-load env count"

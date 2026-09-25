@@ -1,7 +1,7 @@
 use std::any::TypeId;
 use std::collections::HashMap;
 
-use super::archetype::{Archetype, ArchetypeId, TypedVec, EMPTY_ARCHETYPE};
+use super::archetype::{Archetype, ArchetypeId, EMPTY_ARCHETYPE, TypedVec};
 use super::entity::{Entities, Entity, EntityLocation};
 
 /// Entity/component storage and archetype registry.

@@ -79,9 +79,11 @@ fn merged_with_defaults_preserves_user_overrides() {
         ]
     );
 
-    assert!(merged
-        .bindings("engine_toggle_hud")
-        .contains(&Binding::Key { code: KeyCode::F4 }));
+    assert!(
+        merged
+            .bindings("engine_toggle_hud")
+            .contains(&Binding::Key { code: KeyCode::F4 })
+    );
 
     assert_eq!(
         merged.bindings("fire"),

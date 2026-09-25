@@ -13,7 +13,7 @@ use tungsten::core::{
     CommandBuffer, EventQueue, Sprite, Tag, Transform, Tween, TweenChannel, TweenComplete,
     Visibility,
 };
-use tungsten::{asset_loader, GameState, SceneEntity, StateContext, StateId, StateStack};
+use tungsten::{GameState, SceneEntity, StateContext, StateId, StateStack, asset_loader};
 
 use crate::{QUAD_ID, SPRITE_HALF, VIEW_CENTER};
 
@@ -53,10 +53,10 @@ impl GameState for MainMenuState {
     fn on_exit(&mut self, _ctx: &mut StateContext) {}
 
     fn update(&mut self, world: &mut World) {
-        if action_just_pressed(world, "state_start") {
-            if let Some(stack) = world.get_resource_mut::<StateStack>() {
-                stack.request_replace(GameplayState::new(SCENE_PATH));
-            }
+        if action_just_pressed(world, "state_start")
+            && let Some(stack) = world.get_resource_mut::<StateStack>()
+        {
+            stack.request_replace(GameplayState::new(SCENE_PATH));
         }
     }
 }
@@ -136,10 +136,10 @@ impl GameState for PauseState {
             if let Some(stack) = world.get_resource_mut::<StateStack>() {
                 stack.request_pop();
             }
-        } else if action_just_pressed(world, "state_back") {
-            if let Some(stack) = world.get_resource_mut::<StateStack>() {
-                stack.request_replace(MainMenuState);
-            }
+        } else if action_just_pressed(world, "state_back")
+            && let Some(stack) = world.get_resource_mut::<StateStack>()
+        {
+            stack.request_replace(MainMenuState);
         }
     }
 }

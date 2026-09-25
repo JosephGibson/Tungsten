@@ -22,7 +22,7 @@ use tungsten::core::{
     InputState, ParticleConfig, Pcg32, Range, Sprite, Transform, Visibility, World,
 };
 use tungsten::particles::spawn_particle_via;
-use tungsten::{render::TextSection, request_post_aa, App, PostAaState};
+use tungsten::{App, PostAaState, render::TextSection, request_post_aa};
 use tungsten_core::config::PostAaMode;
 use tungsten_core::post::{
     BloomParams, ColorAdjustParams, CrtParams, DissolveParams, DitherParams, FadeParams,
@@ -236,10 +236,10 @@ fn post_aa_input_system(world: &mut World) {
         None
     };
 
-    if let Some(mode) = target {
-        if mode != current {
-            request_post_aa(world, mode);
-        }
+    if let Some(mode) = target
+        && mode != current
+    {
+        request_post_aa(world, mode);
     }
 }
 
@@ -449,7 +449,7 @@ fn pair_collision_system(world: &mut World) {
                     snapshots[j].3 = vb_new;
                 }
                 let contact_x = pa.x + sign * ha;
-                let contact_y = 0.5 * (pa.y + pb.y);
+                let contact_y = f32::midpoint(pa.y, pb.y);
                 contacts.push(Vec2::new(contact_x, contact_y));
             } else {
                 let sign = if delta.y >= 0.0 { 1.0 } else { -1.0 };
@@ -463,7 +463,7 @@ fn pair_collision_system(world: &mut World) {
                     snapshots[i].3 = va_new;
                     snapshots[j].3 = vb_new;
                 }
-                let contact_x = 0.5 * (pa.x + pb.x);
+                let contact_x = f32::midpoint(pa.x, pb.x);
                 let contact_y = pa.y + sign * ha;
                 contacts.push(Vec2::new(contact_x, contact_y));
             }

@@ -357,10 +357,10 @@ impl ActionMap {
 
     fn render_for_save(&self) -> Result<String, ActionMapError> {
         let actions_object = canonical_actions_object(&self.actions)?;
-        if let Some(existing) = &self.source_text {
-            if let Some(patched) = replace_top_level_actions_object(existing, &actions_object) {
-                return Ok(patched);
-            }
+        if let Some(existing) = &self.source_text
+            && let Some(patched) = replace_top_level_actions_object(existing, &actions_object)
+        {
+            return Ok(patched);
         }
         canonical_document(&self.actions)
     }

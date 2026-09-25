@@ -6,23 +6,23 @@ use std::time::{Duration, Instant};
 
 use crate::asset_loader;
 use crate::audio::AudioSystem;
-use crate::debug_hud::{compose_hud_text_sections, hud_toggle_system, DebugHud, HudActiveState};
+use crate::debug_hud::{DebugHud, HudActiveState, compose_hud_text_sections, hud_toggle_system};
 use crate::display::{
-    engine_display_input_system, frame_budget_for, sync_display_state_and_telemetry,
-    sync_window_resolution, take_pending_display, DisplayDelta, PendingDisplay,
+    DisplayDelta, PendingDisplay, engine_display_input_system, frame_budget_for,
+    sync_display_state_and_telemetry, sync_window_resolution, take_pending_display,
 };
 use crate::hot_reload::HotReloadWatcher;
 use crate::input_bridge;
 use crate::inspector::{
-    compose_inspector_text_section, inspector_pick_system, inspector_toggle_system, InspectorState,
+    InspectorState, compose_inspector_text_section, inspector_pick_system, inspector_toggle_system,
 };
 use crate::physics_debug::{
-    physics_debug_emit_system, physics_debug_toggle_system, PhysicsDebugOverlay,
+    PhysicsDebugOverlay, physics_debug_emit_system, physics_debug_toggle_system,
 };
-use crate::post_aa::{sync_post_aa_state, take_pending_post_aa, PendingPostAa, PostAaState};
-use crate::state::{state_dispatcher_system, StateStack};
+use crate::post_aa::{PendingPostAa, PostAaState, sync_post_aa_state, take_pending_post_aa};
+use crate::state::{StateStack, state_dispatcher_system};
 use crate::systems_overlay::{
-    compose_systems_overlay_text_section, systems_overlay_toggle_system, SystemTimingOverlay,
+    SystemTimingOverlay, compose_systems_overlay_text_section, systems_overlay_toggle_system,
 };
 use crate::telemetry::{DisplayTelemetry, FrameTimings, RenderCounts};
 use tungsten_core::assets::{
@@ -552,25 +552,25 @@ impl App {
             }
         }
 
-        if delta.surface_pacing_changed {
-            if let Some(renderer) = self.renderer.as_mut() {
-                match renderer.reconfigure_surface_pacing(
-                    requested.present_mode,
-                    requested.vsync,
-                    requested.max_frame_latency,
-                ) {
-                    Ok(()) => {
-                        effective.vsync = requested.vsync;
-                        effective.present_mode = requested.present_mode;
-                        effective.max_frame_latency = requested.max_frame_latency;
-                        actual_present_mode.clone_from(&renderer.gpu_timings.present_mode);
-                        if let Some(gpu) = self.world.get_resource_mut::<GpuFrameTimings>() {
-                            *gpu = renderer.gpu_timings.clone();
-                        }
+        if delta.surface_pacing_changed
+            && let Some(renderer) = self.renderer.as_mut()
+        {
+            match renderer.reconfigure_surface_pacing(
+                requested.present_mode,
+                requested.vsync,
+                requested.max_frame_latency,
+            ) {
+                Ok(()) => {
+                    effective.vsync = requested.vsync;
+                    effective.present_mode = requested.present_mode;
+                    effective.max_frame_latency = requested.max_frame_latency;
+                    actual_present_mode.clone_from(&renderer.gpu_timings.present_mode);
+                    if let Some(gpu) = self.world.get_resource_mut::<GpuFrameTimings>() {
+                        *gpu = renderer.gpu_timings.clone();
                     }
-                    Err(err) => {
-                        log::error!("Failed to apply display pacing change: {err}");
-                    }
+                }
+                Err(err) => {
+                    log::error!("Failed to apply display pacing change: {err}");
                 }
             }
         }
@@ -832,12 +832,12 @@ impl App {
                 .view_projection(vw, vh);
 
             // Arm before target render; mark captured after successful submit.
-            if let Some(cfg) = self.capture_config.as_mut() {
-                if !cfg.captured && self.frames_rendered + 1 == cfg.target_frame {
-                    if let Err(e) = renderer.capture_frame(&cfg.path) {
-                        log::warn!("capture_frame({}) failed to arm: {e}", cfg.path.display());
-                    }
-                }
+            if let Some(cfg) = self.capture_config.as_mut()
+                && !cfg.captured
+                && self.frames_rendered + 1 == cfg.target_frame
+                && let Err(e) = renderer.capture_frame(&cfg.path)
+            {
+                log::warn!("capture_frame({}) failed to arm: {e}", cfg.path.display());
             }
 
             // M26: PostStack is a world resource; default is empty.
@@ -875,15 +875,16 @@ impl App {
                 log::error!("Render error: {e}");
             } else {
                 self.frames_rendered = self.frames_rendered.saturating_add(1);
-                if let Some(cfg) = self.capture_config.as_mut() {
-                    if !cfg.captured && self.frames_rendered == cfg.target_frame {
-                        cfg.captured = true;
-                        log::info!(
-                            "captured frame {} -> {}",
-                            cfg.target_frame,
-                            cfg.path.display()
-                        );
-                    }
+                if let Some(cfg) = self.capture_config.as_mut()
+                    && !cfg.captured
+                    && self.frames_rendered == cfg.target_frame
+                {
+                    cfg.captured = true;
+                    log::info!(
+                        "captured frame {} -> {}",
+                        cfg.target_frame,
+                        cfg.path.display()
+                    );
                 }
             }
             out.render_acquire_ms = renderer.cpu_timings.acquire_ms;
@@ -1213,11 +1214,7 @@ impl ApplicationHandler for App {
                 if std::env::var("TUNGSTEN_PERF_LOG").is_ok() {
                     log::debug!(
                         "backend: {} adapter: {} present_mode: {} max_frame_latency: {} timestamp_query: {}",
-                        renderer
-                            .gpu_timings
-                            .backend
-                            .as_deref()
-                            .unwrap_or("unknown"),
+                        renderer.gpu_timings.backend.as_deref().unwrap_or("unknown"),
                         renderer
                             .gpu_timings
                             .adapter_name
@@ -1258,22 +1255,20 @@ impl ApplicationHandler for App {
         self.window = Some(window);
 
         // D-052: merge manifests before user startup; duplicate IDs halt boot.
-        if !self.manifest_roots.is_empty() {
-            if let Some(renderer) = &mut self.renderer {
-                if let Err(e) =
-                    asset_loader::load_all_merged(&self.manifest_roots, &mut self.world, renderer)
-                {
-                    log::error!("Manifest composition failed: {e}");
-                    event_loop.exit();
-                    return;
-                }
-            }
+        if !self.manifest_roots.is_empty()
+            && let Some(renderer) = &mut self.renderer
+            && let Err(e) =
+                asset_loader::load_all_merged(&self.manifest_roots, &mut self.world, renderer)
+        {
+            log::error!("Manifest composition failed: {e}");
+            event_loop.exit();
+            return;
         }
 
-        if let Some(startup) = self.startup.take() {
-            if let Some(renderer) = &mut self.renderer {
-                startup(&mut self.world, renderer);
-            }
+        if let Some(startup) = self.startup.take()
+            && let Some(renderer) = &mut self.renderer
+        {
+            startup(&mut self.world, renderer);
         }
 
         // Startup time excluded from first-frame dt; prevents first-substep tunneling.

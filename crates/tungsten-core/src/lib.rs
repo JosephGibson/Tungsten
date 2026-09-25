@@ -19,23 +19,23 @@ pub mod tween;
 
 pub use assets::{
     AnimationData, AnimationRegistry, AnimationState, AssetId, AssetRegistry, AudioHandle,
-    BlendMode, Curve, EmissionKind, FilterMode, FontEntry, FontRegistry, InitialVelocity,
-    LayerKind, Lerp, LoadedManifest, ManifestError, MaterialAssetId, MaterialRegistry,
-    MaterialUniformDefaults, ParticleActive, ParticleBudget, ParticleConfig, ParticleConfigError,
-    ParticleConfigRegistry, ParticleEntry, Range, ResolvedFont, ResolvedManifest, ResolvedMaterial,
-    ResolvedParticle, ResolvedSound, SceneData, SceneEntry, SceneError, SceneSprite,
-    SceneTransform, SceneTween, SceneTweenChannel, SceneTweenRepeat, SoundData, SoundEntry,
-    SoundRegistry, SpriteAsset, TextureHandle, TileIndex, TilemapData, TilemapInstance,
-    TilemapLayer, TilemapRegistry, WorldRngSeed, EMPTY_TILE,
+    BlendMode, Curve, EMPTY_TILE, EmissionKind, FilterMode, FontEntry, FontRegistry,
+    InitialVelocity, LayerKind, Lerp, LoadedManifest, ManifestError, MaterialAssetId,
+    MaterialRegistry, MaterialUniformDefaults, ParticleActive, ParticleBudget, ParticleConfig,
+    ParticleConfigError, ParticleConfigRegistry, ParticleEntry, Range, ResolvedFont,
+    ResolvedManifest, ResolvedMaterial, ResolvedParticle, ResolvedSound, SceneData, SceneEntry,
+    SceneError, SceneSprite, SceneTransform, SceneTween, SceneTweenChannel, SceneTweenRepeat,
+    SoundData, SoundEntry, SoundRegistry, SpriteAsset, TextureHandle, TileIndex, TilemapData,
+    TilemapInstance, TilemapLayer, TilemapRegistry, WorldRngSeed,
 };
 pub use audio::{AudioCommand, AudioCommands};
 pub use camera::{CameraBounds, CameraController, CameraMode, CameraState};
 pub use components::{
-    sync_position_to_transform, Light, LightKind, Particle, ParticleEmitter, ParticleEmitterState,
-    Sprite, Tag, Transform, Visibility,
+    Light, LightKind, Particle, ParticleEmitter, ParticleEmitterState, Sprite, Tag, Transform,
+    Visibility, sync_position_to_transform,
 };
 pub use config::{Config, ConfigError, DepthSortMode, PostAaMode, RenderConfig};
-pub use debug_draw::{DebugCommand, DebugDraw, DebugShape, DEFAULT_CIRCLE_SEGMENTS};
+pub use debug_draw::{DEFAULT_CIRCLE_SEGMENTS, DebugCommand, DebugDraw, DebugShape};
 pub use display::{
     DisplayConfig, DisplayMode, DisplayState, DisplayValidationError, Resolution, ScaleMode,
 };
@@ -46,9 +46,9 @@ pub use input::{
 pub use inspect::Inspectable;
 pub use lighting::{AmbientLight, LIGHT_CAP};
 pub use physics::{
-    aabb_vs_aabb, aabb_vs_circle, circle_vs_circle, physics_step, Aabb, BodyKind, Collider,
-    CollisionEvent, Contact, PhysicsBuffers, PhysicsConfig, Position, RigidBody, Shape,
-    SpatialGrid, Velocity,
+    Aabb, BodyKind, Collider, CollisionEvent, Contact, PhysicsBuffers, PhysicsConfig, Position,
+    RigidBody, Shape, SpatialGrid, Velocity, aabb_vs_aabb, aabb_vs_circle, circle_vs_circle,
+    physics_step,
 };
 pub use post::{
     BloomParams, ColorAdjustParams, CrtParams, DissolveParams, DitherMode, DitherParams,
@@ -56,9 +56,9 @@ pub use post::{
     PixelOutlineParams, PostPass, PostStack, ToneMonoMode, ToneMonoParams, TonemapMode,
     TonemapParams, VignetteParams, WipeRadialParams,
 };
-pub use rng::{splitmix64, Pcg32};
+pub use rng::{Pcg32, splitmix64};
 pub use time::DeltaTime;
 pub use tween::{
-    lerp_f32, lerp_u8, Easing, IntSlot, ScalarSlot, Tween, TweenChannel, TweenComplete,
-    TweenDirection, TweenRepeat, UniformOverrideBlock, Vec4Slot,
+    Easing, IntSlot, ScalarSlot, Tween, TweenChannel, TweenComplete, TweenDirection, TweenRepeat,
+    UniformOverrideBlock, Vec4Slot, lerp_f32, lerp_u8,
 };

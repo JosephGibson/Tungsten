@@ -12,9 +12,9 @@ mod shared;
 use tungsten::core::Config;
 use tungsten::{App, InspectorState, PhysicsDebugOverlay, SystemTimingOverlay};
 
-use crate::baseline::{configure_baseline_scene, DEFAULT_SPRITE_COUNT};
-use crate::ecs_high_load::{configure_high_load_scene, DEFAULT_HIGH_LOAD_COUNT};
-use crate::physics_stress::{configure_physics_stress_scene, DEFAULT_PHYSICS_STRESS_COUNT};
+use crate::baseline::{DEFAULT_SPRITE_COUNT, configure_baseline_scene};
+use crate::ecs_high_load::{DEFAULT_HIGH_LOAD_COUNT, configure_high_load_scene};
+use crate::physics_stress::{DEFAULT_PHYSICS_STRESS_COUNT, configure_physics_stress_scene};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StressScene {

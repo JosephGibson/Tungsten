@@ -40,10 +40,8 @@ pub(crate) fn physics_debug_toggle_system(world: &mut World) {
         };
         actions.just_pressed(input, "engine_toggle_physics_debug")
     };
-    if pressed {
-        if let Some(overlay) = world.get_resource_mut::<PhysicsDebugOverlay>() {
-            overlay.toggle();
-        }
+    if pressed && let Some(overlay) = world.get_resource_mut::<PhysicsDebugOverlay>() {
+        overlay.toggle();
     }
 }
 

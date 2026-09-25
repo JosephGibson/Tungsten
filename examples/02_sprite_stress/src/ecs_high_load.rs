@@ -6,15 +6,15 @@ use std::path::PathBuf;
 
 use glam::Vec2;
 use tungsten::core::{
-    sync_position_to_transform, Aabb, AssetRegistry, CameraBounds, CameraController, CameraMode,
-    CameraState, DeltaTime, FilterMode, PhysicsConfig, Position, ResolvedManifest, RigidBody,
-    Sprite, Transform, Velocity, Visibility, World,
+    Aabb, AssetRegistry, CameraBounds, CameraController, CameraMode, CameraState, DeltaTime,
+    FilterMode, PhysicsConfig, Position, ResolvedManifest, RigidBody, Sprite, Transform, Velocity,
+    Visibility, World, sync_position_to_transform,
 };
 use tungsten::render::{Renderer, SpriteBatch, SpriteInstance, TextSection};
-use tungsten::{asset_loader, camera_update_system, App, FrameTimings, WindowSize};
+use tungsten::{App, FrameTimings, WindowSize, asset_loader, camera_update_system};
 use tungsten_core::physics::SpatialGrid;
 
-use crate::shared::{log_telemetry, rgb_wheel_color, telemetry_frame, TelemetryState};
+use crate::shared::{TelemetryState, log_telemetry, rgb_wheel_color, telemetry_frame};
 
 pub(crate) const DEFAULT_HIGH_LOAD_COUNT: usize = 50_000;
 

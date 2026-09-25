@@ -7,7 +7,7 @@ use tungsten_core::assets::{
     LayerKind, TilemapData, TilemapInstance, TilemapLayer, TilemapRegistry,
 };
 use tungsten_core::physics::{
-    physics_step, Collider, PhysicsConfig, Position, RigidBody, Velocity,
+    Collider, PhysicsConfig, Position, RigidBody, Velocity, physics_step,
 };
 use tungsten_core::{CommandBuffer, DeltaTime, World};
 
@@ -94,8 +94,8 @@ fn physics_step_timing_probe_1000_balls() {
 
 #[test]
 fn full_frame_timing_probe_1000_balls() {
-    use tungsten_core::sync_position_to_transform;
     use tungsten_core::Transform;
+    use tungsten_core::sync_position_to_transform;
 
     let mut world = build_world();
 

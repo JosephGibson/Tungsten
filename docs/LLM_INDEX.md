@@ -1,78 +1,67 @@
 # LLM Navigation Index
 
-Use this as the first repo map. Keep scope tight and prefer opening one task row over broad repo search.
+Task → file map. Open it on demand before a broad search, not by default. Prefixes: `core/` = `crates/tungsten-core/src/`, `render/` = `crates/tungsten-render/src/`, `tungsten/` = `crates/tungsten/src/`; other paths start at the repo root. `tungsten/app.rs` is the frame-loop hub and touches most runtime rows. `D-0NN` IDs resolve through [`DECISION_INDEX.md`](DECISION_INDEX.md).
 
-## Cheap Reads
+## Runtime and ECS
 
-- Rules and commands: [`AGENTS.md`](../AGENTS.md)
-- Quick rationale lookup: [`docs/DECISION_INDEX.md`](DECISION_INDEX.md)
-- Architecture only when needed: [`DESIGN.md`](../DESIGN.md)
-- Full rationale only when needed: [`DECISIONS.md`](../DECISIONS.md)
-
-## Subsystem Map
-
-| Area | Start Here |
+| Task | Open |
 | --- | --- |
-| ECS (`World`, entities, components, resources) | [`crates/tungsten-core/src/ecs/`](../crates/tungsten-core/src/ecs/), [`crates/tungsten-core/src/lib.rs`](../crates/tungsten-core/src/lib.rs) |
-| Event queue (`EventQueue<T>`, frame flush) | [`crates/tungsten-core/src/ecs/event_queue.rs`](../crates/tungsten-core/src/ecs/event_queue.rs) |
-| Render components (`Transform`, `Sprite`, `Visibility`, `Tag`) + default sprite extract | [`crates/tungsten-core/src/components.rs`](../crates/tungsten-core/src/components.rs), [`crates/tungsten/src/sprite_extract.rs`](../crates/tungsten/src/sprite_extract.rs) |
-| Sprite atlases (M22) | [`crates/tungsten-core/src/assets/atlas.rs`](../crates/tungsten-core/src/assets/atlas.rs), [`crates/tungsten/src/asset_loader.rs`](../crates/tungsten/src/asset_loader.rs) |
-| Particles (M23) | [`crates/tungsten-core/src/assets/particle.rs`](../crates/tungsten-core/src/assets/particle.rs), [`crates/tungsten-core/src/rng.rs`](../crates/tungsten-core/src/rng.rs), [`crates/tungsten-core/src/components.rs`](../crates/tungsten-core/src/components.rs), [`crates/tungsten/src/particles.rs`](../crates/tungsten/src/particles.rs), [`crates/tungsten/src/asset_loader.rs`](../crates/tungsten/src/asset_loader.rs) |
-| Tweens (M24) | [`crates/tungsten-core/src/tween.rs`](../crates/tungsten-core/src/tween.rs), [`crates/tungsten/src/tweens.rs`](../crates/tungsten/src/tweens.rs), [`crates/tungsten-core/src/assets/scene.rs`](../crates/tungsten-core/src/assets/scene.rs) |
-| Materials + Post-Stack (M26) | [`crates/tungsten-core/src/assets/material.rs`](../crates/tungsten-core/src/assets/material.rs), [`crates/tungsten-core/src/post.rs`](../crates/tungsten-core/src/post.rs), [`crates/tungsten-render/src/material.rs`](../crates/tungsten-render/src/material.rs), [`crates/tungsten-render/src/post/`](../crates/tungsten-render/src/post/), [`crates/tungsten-render/src/shaders/stock/`](../crates/tungsten-render/src/shaders/stock/) |
-| Post-AA / SMAA (M27) | [`crates/tungsten-core/src/config.rs`](../crates/tungsten-core/src/config.rs), [`crates/tungsten/src/post_aa.rs`](../crates/tungsten/src/post_aa.rs), [`crates/tungsten-render/src/post/smaa.rs`](../crates/tungsten-render/src/post/smaa.rs), [`crates/tungsten-render/src/post/smaa_luts.rs`](../crates/tungsten-render/src/post/smaa_luts.rs), [`crates/tungsten-render/src/targets.rs`](../crates/tungsten-render/src/targets.rs), [`crates/tungsten-render/src/passes/order.rs`](../crates/tungsten-render/src/passes/order.rs) |
-| Bloom (M28) | [`crates/tungsten-core/src/post.rs`](../crates/tungsten-core/src/post.rs), [`crates/tungsten-core/src/config.rs`](../crates/tungsten-core/src/config.rs), [`crates/tungsten-render/src/post/bloom.rs`](../crates/tungsten-render/src/post/bloom.rs), [`crates/tungsten-render/src/targets.rs`](../crates/tungsten-render/src/targets.rs), [`crates/tungsten-render/src/shaders/stock/`](../crates/tungsten-render/src/shaders/stock/) (`bloom_threshold` / `bloom_downsample` / `bloom_upsample` / `bloom_composite`) |
-| Lighting (M29) | [`crates/tungsten-core/src/components.rs`](../crates/tungsten-core/src/components.rs) (`Light` / `LightKind`), [`crates/tungsten-core/src/lighting.rs`](../crates/tungsten-core/src/lighting.rs) (`AmbientLight` / `LIGHT_CAP`), [`crates/tungsten-render/src/lighting.rs`](../crates/tungsten-render/src/lighting.rs) (`LightUbo` / `LightingResources`), [`crates/tungsten-render/src/lit_sprite.rs`](../crates/tungsten-render/src/lit_sprite.rs), [`assets/shaders/lit_sprite.wgsl`](../assets/shaders/lit_sprite.wgsl), [`crates/tungsten/src/light_extract.rs`](../crates/tungsten/src/light_extract.rs) |
-| Camera module | [`crates/tungsten-core/src/camera.rs`](../crates/tungsten-core/src/camera.rs), [`crates/tungsten/src/camera.rs`](../crates/tungsten/src/camera.rs) |
-| Display state/config + runtime apply boundary | [`crates/tungsten-core/src/display.rs`](../crates/tungsten-core/src/display.rs), [`crates/tungsten-core/src/config.rs`](../crates/tungsten-core/src/config.rs), [`crates/tungsten/src/display.rs`](../crates/tungsten/src/display.rs), [`tungsten.json`](../tungsten.json) |
-| Asset manifest, registry, IDs, composition (`LoadedManifest`, `load_all_merged`) | [`crates/tungsten-core/src/assets/manifest.rs`](../crates/tungsten-core/src/assets/manifest.rs), [`crates/tungsten-core/src/assets/registry.rs`](../crates/tungsten-core/src/assets/registry.rs), [`crates/tungsten-core/src/assets/mod.rs`](../crates/tungsten-core/src/assets/mod.rs), [`crates/tungsten/src/asset_loader.rs`](../crates/tungsten/src/asset_loader.rs) |
-| App / `winit` loop, smoke frames | [`crates/tungsten/src/app.rs`](../crates/tungsten/src/app.rs), [`crates/tungsten/src/lib.rs`](../crates/tungsten/src/lib.rs) |
-| Runtime telemetry | [`crates/tungsten/src/telemetry.rs`](../crates/tungsten/src/telemetry.rs), [`crates/tungsten/src/app.rs`](../crates/tungsten/src/app.rs) |
-| Runtime HUD (M18) | [`crates/tungsten/src/debug_hud.rs`](../crates/tungsten/src/debug_hud.rs), [`crates/tungsten/src/telemetry.rs`](../crates/tungsten/src/telemetry.rs), [`crates/tungsten/src/app.rs`](../crates/tungsten/src/app.rs) |
-| Load path, GPU upload bridge | [`crates/tungsten/src/asset_loader.rs`](../crates/tungsten/src/asset_loader.rs) |
-| Hot reload | [`crates/tungsten/src/hot_reload.rs`](../crates/tungsten/src/hot_reload.rs) |
-| Input action map (M19) | [`crates/tungsten-core/src/input/`](../crates/tungsten-core/src/input/), [`crates/tungsten/src/asset_loader.rs`](../crates/tungsten/src/asset_loader.rs), [`input.json`](../input.json) |
-| Scene/state stack (M20) | [`crates/tungsten/src/state.rs`](../crates/tungsten/src/state.rs), [`crates/tungsten-core/src/assets/scene.rs`](../crates/tungsten-core/src/assets/scene.rs), [`crates/tungsten/src/asset_loader.rs`](../crates/tungsten/src/asset_loader.rs), [`examples/03_scene_state/`](../examples/03_scene_state/) |
-| Debug tooling (M21) | [`crates/tungsten-core/src/debug_draw.rs`](../crates/tungsten-core/src/debug_draw.rs), [`crates/tungsten-core/src/inspect.rs`](../crates/tungsten-core/src/inspect.rs), [`crates/tungsten-render/src/debug_line.rs`](../crates/tungsten-render/src/debug_line.rs), [`crates/tungsten-render/src/screenshot.rs`](../crates/tungsten-render/src/screenshot.rs), [`crates/tungsten-render/src/image_diff.rs`](../crates/tungsten-render/src/image_diff.rs), [`crates/tungsten/src/physics_debug.rs`](../crates/tungsten/src/physics_debug.rs), [`crates/tungsten/src/systems_overlay.rs`](../crates/tungsten/src/systems_overlay.rs), [`crates/tungsten/src/inspector.rs`](../crates/tungsten/src/inspector.rs), [`crates/tungsten/src/app.rs`](../crates/tungsten/src/app.rs) |
-| `wgpu` renderer, pools, draw, GPU timings | [`crates/tungsten-render/src/lib.rs`](../crates/tungsten-render/src/lib.rs), [`crates/tungsten-render/src/renderer.rs`](../crates/tungsten-render/src/renderer.rs) |
-| Tilemaps (core data + umbrella extract) | [`crates/tungsten-core/src/assets/tilemap.rs`](../crates/tungsten-core/src/assets/tilemap.rs), [`crates/tungsten/src/tilemap_extract.rs`](../crates/tungsten/src/tilemap_extract.rs) |
-| 2D physics (M11) | [`crates/tungsten-core/src/physics/`](../crates/tungsten-core/src/physics/) |
-| Examples (by feature) | [`examples/`](../examples/) — `cargo run -p example-NN-name` |
-| Perf workflow | [`docs/perf/profiling-workflow.md`](../docs/perf/profiling-workflow.md), [`scripts/perf-capture.sh`](../scripts/perf-capture.sh), [`scripts/test-perf-capture.sh`](../scripts/test-perf-capture.sh) |
+| ECS storage/query bug | `core/ecs/world.rs`, `core/ecs/storage.rs`, `core/ecs/archetype.rs`, `core/lib.rs` |
+| Deferred spawn/despawn (`D-039`) | `core/ecs/command_buffer.rs` |
+| Event lifetime/flush (`D-040`) | `core/ecs/event_queue.rs` |
+| Frame order, smoke-frame exit, winit loop (`D-018`, `D-043`) | `tungsten/app.rs`, `tungsten/lib.rs` |
+| Config parsing, env overrides | `core/config.rs`, `core/display.rs`, `tungsten.json` |
+| Display apply, fullscreen, vsync, frame cap (`D-043`) | `tungsten/display.rs`, `core/display.rs` |
+| Input actions, `input.json`, rebind reload (`D-045`) | `core/input/action_map.rs`, `core/input/key_serde.rs`, `tungsten/asset_loader.rs`, `tungsten/debug_hud.rs`, `tungsten/display.rs`, `input.json` |
+| Camera follow/zoom/bounds | `core/camera.rs`, `tungsten/camera.rs`, `examples/01_platformer/src/setup.rs`, `examples/01_platformer/src/systems.rs` |
+| State stack, scene spawn, `SceneEntity` cleanup (`D-046`) | `tungsten/state.rs`, `core/assets/scene.rs`, `tungsten/asset_loader.rs`, `examples/03_scene_state/src/states.rs` |
+| Tweens (`D-054`–`D-056`) | `core/tween.rs`, `tungsten/tweens.rs`, `core/assets/scene.rs` |
+| Particles (`D-049`–`D-051`) | `core/assets/particle.rs`, `core/rng.rs`, `core/components.rs`, `tungsten/particles.rs`, `examples/01_platformer/assets/particles/` |
+| Audio mixer, decode (`D-027`, `D-028`, `D-034`) | `tungsten/audio.rs`, `core/assets/audio.rs`, `crates/tungsten-core/tests/audio_decode.rs` |
+| Telemetry, perf logging (`D-038`, `D-041`) | `tungsten/telemetry.rs`, `docs/perf/profiling-workflow.md`, `scripts/perf-capture.sh`, `scripts/test-perf-capture.sh` |
+| HUD rows/toggle (`D-044`) | `tungsten/debug_hud.rs`, `tungsten/telemetry.rs` |
 
-## Task Map
+## Assets
 
-| If you need to… | Open these first |
+| Task | Open |
 | --- | --- |
-| Fix an ECS storage/query bug | [`crates/tungsten-core/src/ecs/world.rs`](../crates/tungsten-core/src/ecs/world.rs), [`crates/tungsten-core/src/ecs/storage.rs`](../crates/tungsten-core/src/ecs/storage.rs), [`crates/tungsten-core/src/ecs/archetype.rs`](../crates/tungsten-core/src/ecs/archetype.rs) |
-| Change deferred spawn/despawn behavior | [`crates/tungsten-core/src/ecs/command_buffer.rs`](../crates/tungsten-core/src/ecs/command_buffer.rs), [`crates/tungsten/src/app.rs`](../crates/tungsten/src/app.rs), [`docs/DECISION_INDEX.md`](DECISION_INDEX.md) for `D-039` |
-| Change event lifetime or flush behavior | [`crates/tungsten-core/src/ecs/event_queue.rs`](../crates/tungsten-core/src/ecs/event_queue.rs), [`crates/tungsten/src/app.rs`](../crates/tungsten/src/app.rs), [`docs/DECISION_INDEX.md`](DECISION_INDEX.md) for `D-040` |
-| Fix frame order, smoke-frame exit, or `winit` loop behavior | [`crates/tungsten/src/app.rs`](../crates/tungsten/src/app.rs), [`crates/tungsten/src/lib.rs`](../crates/tungsten/src/lib.rs), [`docs/DECISION_INDEX.md`](DECISION_INDEX.md) for `D-018`, `D-040`, `D-043` |
-| Fix config parsing or env overrides | [`crates/tungsten-core/src/config.rs`](../crates/tungsten-core/src/config.rs), [`crates/tungsten-core/src/display.rs`](../crates/tungsten-core/src/display.rs), [`tungsten.json`](../tungsten.json) |
-| Fix runtime display apply, fullscreen, vsync, or frame cap | [`crates/tungsten/src/display.rs`](../crates/tungsten/src/display.rs), [`crates/tungsten/src/app.rs`](../crates/tungsten/src/app.rs), [`crates/tungsten-core/src/display.rs`](../crates/tungsten-core/src/display.rs), [`docs/DECISION_INDEX.md`](DECISION_INDEX.md) for `D-043` |
-| Fix manifest loading, registry lookup, or asset ID rules | [`crates/tungsten-core/src/assets/manifest.rs`](../crates/tungsten-core/src/assets/manifest.rs), [`crates/tungsten-core/src/assets/registry.rs`](../crates/tungsten-core/src/assets/registry.rs), [`docs/DECISION_INDEX.md`](DECISION_INDEX.md) for `D-009`, `D-017`, `D-035` |
-| Fix hot reload or file-watch behavior | [`crates/tungsten/src/hot_reload.rs`](../crates/tungsten/src/hot_reload.rs), [`crates/tungsten/src/asset_loader.rs`](../crates/tungsten/src/asset_loader.rs), [`crates/tungsten/src/app.rs`](../crates/tungsten/src/app.rs), [`docs/DECISION_INDEX.md`](DECISION_INDEX.md) for `D-031` |
-| Fix action lookups, mouse/scroll dispatch, input.json persistence, or rebind hot reload | [`crates/tungsten-core/src/input/action_map.rs`](../crates/tungsten-core/src/input/action_map.rs), [`crates/tungsten-core/src/input/key_serde.rs`](../crates/tungsten-core/src/input/key_serde.rs), [`crates/tungsten/src/asset_loader.rs`](../crates/tungsten/src/asset_loader.rs), [`crates/tungsten/src/app.rs`](../crates/tungsten/src/app.rs), [`crates/tungsten/src/debug_hud.rs`](../crates/tungsten/src/debug_hud.rs), [`crates/tungsten/src/display.rs`](../crates/tungsten/src/display.rs), [`input.json`](../input.json), [`docs/DECISION_INDEX.md`](DECISION_INDEX.md) for `D-045` |
-| Fix camera follow, zoom, or bounds behavior | [`crates/tungsten-core/src/camera.rs`](../crates/tungsten-core/src/camera.rs), [`crates/tungsten/src/camera.rs`](../crates/tungsten/src/camera.rs), [`examples/01_platformer/src/setup.rs`](../examples/01_platformer/src/setup.rs), [`examples/01_platformer/src/systems.rs`](../examples/01_platformer/src/systems.rs) |
-| Fix default sprite extraction or gameplay-side sprite components | [`crates/tungsten-core/src/components.rs`](../crates/tungsten-core/src/components.rs), [`crates/tungsten/src/sprite_extract.rs`](../crates/tungsten/src/sprite_extract.rs), [`docs/DECISION_INDEX.md`](DECISION_INDEX.md) for `D-042` |
-| Fix tilemap extraction or tilemap collision | [`crates/tungsten-core/src/assets/tilemap.rs`](../crates/tungsten-core/src/assets/tilemap.rs), [`crates/tungsten/src/tilemap_extract.rs`](../crates/tungsten/src/tilemap_extract.rs), [`crates/tungsten-core/src/physics/step.rs`](../crates/tungsten-core/src/physics/step.rs), [`docs/DECISION_INDEX.md`](DECISION_INDEX.md) for `D-032`, `D-033` |
-| Fix physics contacts, collision resolution, broad-phase behavior, or sleeping/wake | [`crates/tungsten-core/src/physics/step.rs`](../crates/tungsten-core/src/physics/step.rs), [`crates/tungsten-core/src/physics/collision.rs`](../crates/tungsten-core/src/physics/collision.rs), [`crates/tungsten-core/src/physics/broadphase.rs`](../crates/tungsten-core/src/physics/broadphase.rs), [`docs/DECISION_INDEX.md`](DECISION_INDEX.md) for `D-033`, `D-062`, `D-063`, `D-064`, `D-065`, `D-066`, `D-067` |
-| Benchmark physics, check tunneling miss rate, or verify step determinism | [`crates/tungsten-core/benches/physics_bench.rs`](../crates/tungsten-core/benches/physics_bench.rs), [`crates/tungsten-core/tests/physics_tunneling.rs`](../crates/tungsten-core/tests/physics_tunneling.rs), [`crates/tungsten-core/tests/physics_containment.rs`](../crates/tungsten-core/tests/physics_containment.rs), [`crates/tungsten-core/tests/physics_determinism.rs`](../crates/tungsten-core/tests/physics_determinism.rs), [`docs/perf/profiling-workflow.md`](perf/profiling-workflow.md) |
-| Fix telemetry or perf logging output | [`crates/tungsten/src/telemetry.rs`](../crates/tungsten/src/telemetry.rs), [`crates/tungsten/src/app.rs`](../crates/tungsten/src/app.rs), [`docs/perf/profiling-workflow.md`](../docs/perf/profiling-workflow.md), [`docs/DECISION_INDEX.md`](DECISION_INDEX.md) for `D-038`, `D-041` |
-| Fix HUD rows, toggle, or composition | [`crates/tungsten/src/debug_hud.rs`](../crates/tungsten/src/debug_hud.rs), [`crates/tungsten/src/telemetry.rs`](../crates/tungsten/src/telemetry.rs), [`crates/tungsten/src/app.rs`](../crates/tungsten/src/app.rs), [`docs/DECISION_INDEX.md`](DECISION_INDEX.md) for `D-044` |
-| Fix a debug overlay or screenshot check | [`crates/tungsten-core/src/debug_draw.rs`](../crates/tungsten-core/src/debug_draw.rs), [`crates/tungsten-core/src/inspect.rs`](../crates/tungsten-core/src/inspect.rs), [`crates/tungsten-render/src/debug_line.rs`](../crates/tungsten-render/src/debug_line.rs), [`crates/tungsten-render/src/screenshot.rs`](../crates/tungsten-render/src/screenshot.rs), [`crates/tungsten-render/src/image_diff.rs`](../crates/tungsten-render/src/image_diff.rs), [`crates/tungsten/src/physics_debug.rs`](../crates/tungsten/src/physics_debug.rs), [`crates/tungsten/src/systems_overlay.rs`](../crates/tungsten/src/systems_overlay.rs), [`crates/tungsten/src/inspector.rs`](../crates/tungsten/src/inspector.rs), [`crates/tungsten/src/app.rs`](../crates/tungsten/src/app.rs), [`docs/DECISION_INDEX.md`](DECISION_INDEX.md) for `D-047` |
-| Work inside the platformer example | [`examples/01_platformer/src/main.rs`](../examples/01_platformer/src/main.rs), [`examples/01_platformer/src/setup.rs`](../examples/01_platformer/src/setup.rs), [`examples/01_platformer/src/systems.rs`](../examples/01_platformer/src/systems.rs), [`examples/01_platformer/src/extract.rs`](../examples/01_platformer/src/extract.rs), [`examples/01_platformer/src/state.rs`](../examples/01_platformer/src/state.rs) |
-| Tune or add particle effects | [`crates/tungsten/src/particles.rs`](../crates/tungsten/src/particles.rs), [`crates/tungsten-core/src/assets/particle.rs`](../crates/tungsten-core/src/assets/particle.rs), [`examples/01_platformer/assets/particles/`](../examples/01_platformer/assets/particles/) |
-| Change tween easing/channel behavior or scene-tween authoring | [`crates/tungsten-core/src/tween.rs`](../crates/tungsten-core/src/tween.rs), [`crates/tungsten/src/tweens.rs`](../crates/tungsten/src/tweens.rs), [`crates/tungsten-core/src/assets/scene.rs`](../crates/tungsten-core/src/assets/scene.rs), [`examples/03_scene_state/src/states.rs`](../examples/03_scene_state/src/states.rs) |
-| Work inside the sprite stress example | [`examples/02_sprite_stress/src/main.rs`](../examples/02_sprite_stress/src/main.rs), [`examples/02_sprite_stress/src/ecs_high_load.rs`](../examples/02_sprite_stress/src/ecs_high_load.rs), [`examples/02_sprite_stress/src/physics_stress.rs`](../examples/02_sprite_stress/src/physics_stress.rs), [`crates/tungsten/src/telemetry.rs`](../crates/tungsten/src/telemetry.rs) |
-| Change state transitions, scene spawn, or SceneEntity cleanup | [`crates/tungsten/src/state.rs`](../crates/tungsten/src/state.rs), [`crates/tungsten/src/asset_loader.rs`](../crates/tungsten/src/asset_loader.rs), [`crates/tungsten-core/src/assets/scene.rs`](../crates/tungsten-core/src/assets/scene.rs), [`examples/03_scene_state/src/states.rs`](../examples/03_scene_state/src/states.rs), [`docs/DECISION_INDEX.md`](DECISION_INDEX.md) for `D-046` |
-| Decide whether a new dependency or design change fits project rules | [`docs/DECISION_INDEX.md`](DECISION_INDEX.md), then [`DECISIONS.md`](../DECISIONS.md) via `D-0xx` lookup |
+| Manifest load, registry, IDs, composition (`D-009`, `D-017`, `D-035`, `D-052`) | `core/assets/manifest.rs`, `core/assets/registry.rs`, `core/assets/mod.rs`, `tungsten/asset_loader.rs` |
+| Load path, GPU upload bridge | `tungsten/asset_loader.rs` |
+| Hot reload, file watch (`D-031`, `D-053`) | `tungsten/hot_reload.rs`, `tungsten/asset_loader.rs` |
+| Sprite atlases (`D-048`) | `core/assets/atlas.rs`, `tungsten/asset_loader.rs` |
+| Tilemaps, tile collision (`D-032`, `D-033`) | `core/assets/tilemap.rs`, `tungsten/tilemap_extract.rs`, `core/physics/step.rs` |
 
-## Usually Skip Unless Needed
+## Physics
 
-- `docs/plans/archive/` — completed or abandoned plans
-- `CHANGELOG.md` — release history, not day-to-day behavior
-- binary assets under `assets/` and `examples/*/assets/`
-- large example-local tilemaps unless the bug is tilemap-specific
+| Task | Open |
+| --- | --- |
+| Contacts, resolution, broadphase, sleeping (`D-033`, `D-062`–`D-067`) | `core/physics/step.rs`, `core/physics/collision.rs`, `core/physics/broadphase.rs` |
+| Benchmarks, tunneling, determinism | `crates/tungsten-core/benches/physics_bench.rs`, `crates/tungsten-core/tests/physics_tunneling.rs`, `crates/tungsten-core/tests/physics_containment.rs`, `crates/tungsten-core/tests/physics_determinism.rs` |
 
-Core/render seam and frame-order invariants: see [`docs/DECISION_INDEX.md`](DECISION_INDEX.md) and then `DECISIONS.md` (`D-007`, `D-016`, `D-018`, `D-039`, `D-040`, `D-043`).
+## Rendering
+
+Read `crates/tungsten-render/AGENTS.md` before editing the render crate.
+
+| Task | Open |
+| --- | --- |
+| Renderer, pools, draw, GPU timings, surface acquire | `render/lib.rs`, `render/renderer.rs`, `render/surface_acquire.rs` |
+| Render components, default sprite extract (`D-042`) | `core/components.rs`, `tungsten/sprite_extract.rs` |
+| Materials, post-stack (`D-058`) | `core/assets/material.rs`, `core/post.rs`, `render/material.rs`, `render/post/`, `render/shaders/stock/` |
+| SMAA (`D-059`) | `tungsten/post_aa.rs`, `render/post/smaa.rs`, `render/post/smaa_luts.rs`, `render/targets.rs`, `render/passes/order.rs` |
+| Bloom (`D-060`) | `core/post.rs`, `render/post/bloom.rs`, `render/targets.rs` |
+| Lighting (`D-061`) | `core/components.rs`, `core/lighting.rs`, `render/lighting.rs`, `render/lit_sprite.rs`, `assets/shaders/lit_sprite.wgsl`, `tungsten/light_extract.rs` |
+| Debug overlays, screenshots (`D-047`) | `core/debug_draw.rs`, `core/inspect.rs`, `render/debug_line.rs`, `render/screenshot.rs`, `render/image_diff.rs`, `tungsten/physics_debug.rs`, `tungsten/systems_overlay.rs`, `tungsten/inspector.rs` |
+
+## Examples
+
+Run with `cargo run -p example-NN-name`.
+
+| Task | Open |
+| --- | --- |
+| Platformer | `examples/01_platformer/src/main.rs`, `examples/01_platformer/src/setup.rs`, `examples/01_platformer/src/systems.rs`, `examples/01_platformer/src/extract.rs`, `examples/01_platformer/src/state.rs` |
+| Sprite stress, perf scenes | `examples/02_sprite_stress/src/main.rs`, `examples/02_sprite_stress/src/ecs_high_load.rs`, `examples/02_sprite_stress/src/physics_stress.rs` |
+| New dependency or design change | `docs/DECISION_INDEX.md`, then `DECISIONS.md` by ID |
+
+## Usually skip
+
+`CHANGELOG.md` unless releasing; binary assets; large example tilemaps unless the bug is tilemap-specific. Never open `docs/plans/archive/`.

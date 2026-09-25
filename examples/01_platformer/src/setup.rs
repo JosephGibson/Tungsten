@@ -2,22 +2,22 @@ use std::path::PathBuf;
 
 use glam::{Vec2, Vec3};
 use tungsten::core::{
-    sync_position_to_transform, AmbientLight, AnimationRegistry, AssetRegistry, AudioCommands,
-    CameraBounds, CameraController, CameraMode, Entity, Light, SoundRegistry, Tag, TilemapInstance,
-    TilemapRegistry, Transform, World,
+    AmbientLight, AnimationRegistry, AssetRegistry, AudioCommands, CameraBounds, CameraController,
+    CameraMode, Entity, Light, SoundRegistry, Tag, TilemapInstance, TilemapRegistry, Transform,
+    World, sync_position_to_transform,
 };
 use tungsten::physics::{
-    physics_step, BodyKind, Collider, PhysicsConfig, Position, RigidBody, Velocity,
+    BodyKind, Collider, PhysicsConfig, Position, RigidBody, Velocity, physics_step,
 };
-use tungsten::{camera_update_system, App};
+use tungsten::{App, camera_update_system};
 
 use crate::extract::{extract_sprites, extract_text};
 use crate::state::{
-    ActiveBlackHole, AudioState, Ball, BallHue, BallSpawnState, CurrentSprite, CycleMode,
-    LightingFixture, LightingFixtureMode, OrbitLight, Player, TextDisplayState, ASSETS_LOCAL,
-    ASSETS_ROOT, BALL_ANIMATION_ID, BALL_RADIUS, BALL_RESTITUTION, BALL_START_SPRITE_ID, GRAVITY_Y,
-    MANIFEST_LOCAL, MANIFEST_ROOT, MAP_COLS, MAP_ROWS, PLAYER_ANIMATION_ID, PLAYER_HALF,
-    PLAYER_SPAWN, PLAYER_START_SPRITE_ID, TILE,
+    ASSETS_LOCAL, ASSETS_ROOT, ActiveBlackHole, AudioState, BALL_ANIMATION_ID, BALL_RADIUS,
+    BALL_RESTITUTION, BALL_START_SPRITE_ID, Ball, BallHue, BallSpawnState, CurrentSprite,
+    CycleMode, GRAVITY_Y, LightingFixture, LightingFixtureMode, MANIFEST_LOCAL, MANIFEST_ROOT,
+    MAP_COLS, MAP_ROWS, OrbitLight, PLAYER_ANIMATION_ID, PLAYER_HALF, PLAYER_SPAWN,
+    PLAYER_START_SPRITE_ID, Player, TILE, TextDisplayState,
 };
 use crate::systems::{
     animation_system, audio_input_system, black_hole_force_system, black_hole_lifetime_system,

@@ -192,15 +192,9 @@ impl TextPipeline {
                 continue;
             }
 
-            buffer.set_size(&mut self.font_system, buf_w, buf_h);
+            buffer.set_size(buf_w, buf_h);
             let attrs = make_attrs(&self.font_attrs, &section.font_id);
-            buffer.set_text(
-                &mut self.font_system,
-                &section.content,
-                &attrs,
-                Shaping::Advanced,
-                None,
-            );
+            buffer.set_text(&section.content, &attrs, Shaping::Advanced, None);
             buffer.shape_until_scroll(&mut self.font_system, false);
             self.buffer_cache.insert(
                 key,

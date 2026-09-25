@@ -1,0 +1,12 @@
+# Search hygiene for ripgrep-based tools (rg, fd, Claude Code Grep/Glob, Codex).
+# Not an access boundary: never bypass it with `rg -uu` to reach docs/plans/archive/.
+# .gitignore already hides target/ and perf-runs/ where tools honour it; they are
+# repeated here for tools run with --no-ignore-vcs.
+docs/plans/archive/
+target/
+perf-runs/
+flamegraph.svg
+perf.data
+perf.data.old
+*.profraw
+*.profdata

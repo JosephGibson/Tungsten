@@ -32,6 +32,8 @@ WGPU_BACKEND=vulkan ./scripts/perf-capture.sh physics-stress 300  # contacts + s
 
 Each run writes a timestamped directory under `perf-runs/` with telemetry logs, optional GPU timing logs, optional `perf` artifacts, and a per-run `README.md`. The script runs `60 + requested_frames` total frames, parses renderer metadata into separate README rows, and computes post-warm-up averages plus `p50` / `p95` / `p99` for `total` and `render_acquire`.
 
+`just perf <args>` wraps the script. Full runs (without `--telemetry-only`) also write `perf-stat.txt`, `perf-record.data` and a `flamegraph.svg` folded from that recording (`flamegraph --perfdata`) into the same directory. The game still runs from the repo root so config and manifests resolve, but nothing is written there. The capture binary is built once with `RUSTFLAGS="-C force-frame-pointers=yes"` (override with `TUNGSTEN_PERF_RUSTFLAGS`). That setting replaces `.cargo/config.toml`'s `target-cpu=native`, so perf captures are generic x86-64 builds, as all historical captures were. Each README records the compiler and build flags; compare only captures whose flags match.
+
 All three scenes launch `example-02-sprite-stress`; the capture script injects `STRESS_SCENE=ecs-high-load`, `STRESS_SCENE=baseline`, or `STRESS_SCENE=physics-stress` for the child process and resets any inherited `STRESS_SCENE` / `STRESS_COUNT` so canonical runs stay reproducible. `physics-stress` was added by the 2026-07 performance audit ([`docs/plans/perf-overhead-audit.md`](../plans/perf-overhead-audit.md)) because no prior scene exercised the narrow phase and solver — `ecs-high-load` spawns dynamic bodies without colliders.
 
 For Vulkan frame-pacing sweeps, keep the default rows as full captures and use telemetry-only override rows for alternate configs:
@@ -131,6 +133,8 @@ Reference GPU spot-check from April 16, 2026 on the same Vulkan setup:
 - conclusion: these captures are dominated by presentation pacing, not shader or draw throughput
 
 ## Manual CPU Profiling
+
+Prefer the capture script above. Manual `cargo flamegraph` and bare `perf record` write `perf.data` into the current directory, which must be the repo root; pass `perf record -o <dir>/perf.data` to keep it out. `cargo flamegraph` with different `RUSTFLAGS` also rebuilds `target/release`.
 
 ### Flamegraph
 

@@ -42,11 +42,11 @@ the agreed fallback (`pixels_above_tolerance < 16`).
 
 ## Reference machine
 
-_Fill in when the baseline is generated._
-
-- OS: _e.g. Arch Linux, kernel 6.19_
-- GPU: _e.g. AMD Radeon RX 7800 XT_
-- Driver: _e.g. Mesa 24.x RADV_
-- wgpu backend: _Vulkan_
-- Date: _YYYY-MM-DD_
-- Commit: _short SHA of the commit at which the baseline was captured_
+- OS: Arch Linux, kernel 7.2.6-arch2-1, X11 session
+- GPU: AMD Radeon 660M (integrated, Ryzen 5 6600H)
+- Driver: Mesa 26.2.3 RADV (`RADV REMBRANDT`), Vulkan API 1.4.354
+- wgpu backend: Vulkan (`WGPU_BACKEND=vulkan`), wgpu 29.0.1
+- Toolchain: rustc 1.95.0, `dev` profile
+- Date: 2026-09-25
+- Commit: `6f80bb0` (captured before the Rust 1.98.1 / dependency migrations)
+- SHA-256: `acd3c434ef7854bcc99f59d4cb4053f550e7679b5fd4ad515fda0ea961355f00`

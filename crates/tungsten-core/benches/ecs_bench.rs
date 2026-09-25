@@ -1,9 +1,10 @@
 /// ECS benches: archetypal storage vs naive `HashMap` baseline.
 ///
 /// D-036 result set.
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
+use std::hint::black_box;
 use tungsten_core::{CommandBuffer, EventQueue, World};
 
 #[allow(dead_code)]

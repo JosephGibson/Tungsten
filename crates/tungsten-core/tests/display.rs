@@ -40,6 +40,11 @@ fn clear_display_env() {
         RENDER_PRESENT_MODE_ENV,
         RENDER_MAX_FRAME_LATENCY_ENV,
     ] {
+        // SAFETY: env mutation is unsafe because a concurrent non-Rust reader
+        // (e.g. libc `getenv`) could race it. Every environment access in this
+        // test binary goes through `std::env`, which serializes on std's own
+        // lock, and the only test that reads these variables holds `ENV_LOCK`.
+        // Any new env-dependent test here must hold `ENV_LOCK` too.
         unsafe {
             std::env::remove_var(var);
         }
@@ -167,6 +172,7 @@ fn env_overrides_apply_on_top_of_file_config() {
     let _guard = ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
     clear_display_env();
 
+    // SAFETY: see `clear_display_env`; `ENV_LOCK` is held for the whole test.
     unsafe {
         std::env::set_var(DISPLAY_MODE_ENV, "borderless_fullscreen");
         std::env::set_var(DISPLAY_RESOLUTION_ENV, "1440x900");

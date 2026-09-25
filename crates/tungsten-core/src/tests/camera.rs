@@ -14,7 +14,8 @@ fn default_matches_pre_m10_ortho() {
     // Pre-M10 default ortho compatibility.
     let cam = CameraState::new();
     let got = cam.view_projection(1280.0, 720.0);
-    let expected = Mat4::orthographic_rh(0.0, 1280.0, 720.0, 0.0, -1.0, 1.0);
+    let expected =
+        glam::camera::rh::proj::directx::orthographic(0.0, 1280.0, 720.0, 0.0, -1.0, 1.0);
     assert_eq!(got, expected);
 }
 
