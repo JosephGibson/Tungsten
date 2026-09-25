@@ -1,6 +1,6 @@
 # Repository review and open follow-ups — 2026-09-25
 
-Branch `0.27`, workspace `0.26.0`; initially clean. Changes remain uncommitted. No dependency versions changed. This is the live follow-up record for the review; completed execution plans and historical audits are archived.
+Reviewed on branch `0.27` at workspace `0.26.0`; the fixes shipped in `0.27.0`. The review itself changed no dependency versions. This is the live follow-up record for the review; completed execution plans and historical audits are archived.
 
 ## Coverage and fixes
 
@@ -40,6 +40,31 @@ Priorities: P2 = functional follow-up; P3 = limitation, rare edge case or contra
 | P3 — `tungsten/audio.rs` | Output assumes f32 and PCM conversion supports mono/stereo; a device with more channels is not fully mapped. `Play` can allocate in the callback, and full command rings drop commands. | Device-format/channel support and voice capacity/backpressure need an explicit audio policy (D-034). No audio-feature expansion here; hardware routing/listening is an owner check. |
 | P3 — `core/physics/{step,broadphase}.rs` | Previous audit's remaining edges: sleep-tag adoption sees only touching final-substep contacts; extreme/non-finite externally written coordinates can overflow or cause enormous grid walks; entity generation is truncated to 31 bits; overlapping tile centers share warm-start identity. | Sleeping case remains unforced; input-domain and identity changes need explicit bounds/semantics. Generation/hash cases are theoretical or degenerate content. Preserve these findings without presenting them as freshly reproduced failures. |
 
+## Carried forward
+
+From the archived agentic-restructure plan and the release-pipeline QA (`D-071`), as of `0.27.0`.
+
+Platform checks with no host available:
+
+- Metal (macOS) and DX12 (Windows) rendering on wgpu 30; Vulkan success isn't certification.
+- macOS CoreAudio and Windows WASAPI audio on cpal 0.18.
+- `.agents/skills` symlinks on a Windows clone (Developer Mode and `core.symlinks=true`, documented in `docs/agent-setup.md`).
+- The first tag-triggered release: the Windows MSVC link and launching the published archives on real hardware. Linux archives were built, packaged and smoke-run locally; the Windows build was only type-checked.
+
+Follow-ups:
+
+- Enable Symphonia's `pcm` feature so PCM WAV decodes; `tests/audio_decode.rs` pins today's "unsupported codec" error.
+- Truncated Ogg files fail at probe; decide whether to decode the available prefix, as MP3 does.
+- Evaluate rtrb 0.4.0 against 0.3.5, and adopt winit 0.31 once it leaves prerelease.
+- Drop the RUSTSEC-2026-0192 exception when cosmic-text/fontdb stop using `ttf-parser`.
+- Re-verify instruction loading once Claude Code reads `AGENTS.md` natively (2.1.277+); the `CLAUDE.md` import could then load it twice.
+- `perf-capture.sh` creates its output directory before validating the scene name.
+- Only `example-01-platformer` enables hot reload; the shader playground could too.
+- Add `actionlint` to `just script-test` now that `release.yml` exists (it passed `actionlint` 1.7.12 and `zizmor` 1.30.1 when run by hand).
+- Release archives don't bundle third-party license notices for statically linked crates.
+- Both workflows install `libudev-dev`, but no locked crate links udev.
+- `just --list` shows only the last line of the `quick` recipe's two-line comment.
+
 ## Documentation, archive and cleanup
 
 - `AGENTS.md`: corrected handle allocation ownership (D-048), asset coverage enforcement, the D-046 scene exception, the complete `just check` definition, and the audit rule's explicit user-requested-fixes exception. Context budgets still pass.
@@ -59,7 +84,7 @@ Archived, retaining basenames:
 - `docs/plans/physics-debug-audit.md` → `docs/plans/archive/physics-debug-audit.md`: completed findings/probe report mislabeled draft; marked done with lifecycle headers first. Its open correctness findings are retained above.
 - `docs/plans/repo-review-tooling.md` → `docs/plans/archive/repo-review-tooling.md`: this review's completed execution plan.
 
-`agentic-restructure.md` stays active for owner CI and other-platform checks; `phase4.md` stays active for M30–M33. Historical inventory prose in the setup plan is retained as dated evidence, not rewritten as a current inventory. No archive contents were read, searched or globbed.
+`agentic-restructure.md` was archived at the `0.27.0` release after CI passed; its outstanding platform checks and follow-ups are under "Carried forward" below. `phase4.md` stays active for M30–M33. Historical inventory prose in the setup plan is retained as dated evidence, not rewritten as a current inventory. No archive contents were read, searched or globbed.
 
 Removed only the ignored, untracked editor backup `assets/sprites/walk_3.png~`. `input.json` and `tungsten.json` are tracked runtime inputs and remain. The existing `perf-runs/` entries were listed; none were deleted. Build caches remain. No tracked file was deleted outright; the two tracked audit removals are moves.
 

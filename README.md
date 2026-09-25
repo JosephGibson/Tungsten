@@ -4,11 +4,11 @@ From-scratch Rust 2D game engine. Stack: `winit` + `wgpu` + `glam` + hand-rolled
 
 ## Status
 
-Workspace `v0.26.0`; current development branch `0.27`. Phase 3 is complete; all milestones `M12`–`M24` shipped. The rollout plan is archived at [`docs/plans/archive/phase3.md`](docs/plans/archive/phase3.md). Phase 4 is underway: M25 (render foundation), M26 (materials + post-stack + tween→material bridge), M27 (SMAA 1x presentation AA), M28 (bloom), and M29 (2D forward normal-mapped lighting) are live; remaining milestones are tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md).
+Workspace `v0.27.0` on branch `0.27`, which adds the physics scale and CCD pass, the tooling restructure and the release pipeline but no Phase 4 milestone. Phase 3 is complete; all milestones `M12`–`M24` shipped. The rollout plan is archived at [`docs/plans/archive/phase3.md`](docs/plans/archive/phase3.md). Phase 4 is underway: M25 (render foundation), M26 (materials + post-stack + tween→material bridge), M27 (SMAA 1x presentation AA), M28 (bloom), and M29 (2D forward normal-mapped lighting) are live; remaining milestones are tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md).
 
 ## Stack
 
-Hand-rolled ECS with archetypal storage, deferred command buffers, and typed event queues; `wgpu` rendering; manifest-driven assets; `glyphon` text; `cpal` + `symphonia` + hand-rolled audio mixer; `notify` hot reload; `.tmj` / Tiled-compatible tilemaps; 2D AABB + circle physics with a uniform-grid broad-phase; frame telemetry, Criterion benches, and a perf capture workflow.
+Hand-rolled ECS with archetypal storage, deferred command buffers, and typed event queues; `wgpu` rendering; manifest-driven assets; `glyphon` text; `cpal` + `symphonia` + hand-rolled audio mixer; `notify` hot reload; `.tmj` / Tiled-compatible tilemaps; 2D AABB + circle physics with a spatial-hash broad-phase, speculative CCD, warm-started soft contacts and island sleeping; frame telemetry, Criterion benches, and a perf capture workflow.
 
 ## Documents
 

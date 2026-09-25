@@ -6,12 +6,16 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-Summary: agent/tooling restructure and dependency refresh (plan `docs/plans/agentic-restructure.md`). No engine features; includes repository review and targeted correctness fixes.
+## [0.27.0] - 2026-09-25
+
+Summary: the branch-`0.27` release — a physics scale and CCD pass (plan `docs/plans/archive/physics-scale-and-ccd.md`, `D-062`–`D-067`), the agent/tooling restructure and dependency refresh (plan `docs/plans/archive/agentic-restructure.md`, `D-068`–`D-070`), a repository review with targeted correctness fixes, and a tag-triggered release pipeline (`D-071`). No rendering or gameplay features; physics behavior and `PhysicsConfig` change (see Changed and Removed).
 
 ### Added
 
+- **Physics island sleeping (`D-065`):** an island of touching dynamic bodies sleeps once every member stays below `PhysicsConfig::sleep_threshold` (20 px/s; `<= 0` disables) for `time_to_sleep` (0.5 s). It wakes on a fast contact, an external `Position`/`Velocity` write, member removal or `physics::wake(world, entity)`; `PhysicsBuffers::{wake, is_sleeping, sleeping_count}` expose the state. A sleeping island emits no `CollisionEvent`s.
+- **Columnar optional-component queries (`D-066`):** `World::query2_opt2` / `query2_opt2_mut` (two required plus two optional components, column presence resolved per archetype) back the once-per-frame physics gather and writeback.
+- **Physics regression suite:** `crates/tungsten-core/tests/physics_tunneling.rs`, `physics_containment.rs`, `physics_determinism.rs` (identical state hashes across runs) and `substep_probe.rs`; `physics_bench.rs` gains `dense_pile` (3k/10k/25k) and `pile_plus_bullet` scenarios; `scripts/perf-capture.sh --stress-count <n>` scales a scene's body count and reports `update` percentiles.
 - **Repository QA:** `just repo-check` checks asset coverage, active-plan lifecycle, documentation links/decision references and agent configuration; `just quick` adds a shorter edit-loop check tier. Synthetic checker tests join `just script-test`, and CPU CI runs repository QA.
-
 - **Shared commands:** `justfile` (`check`, `lint`, `test`, `bench-build`, `smoke`, `visual`, `perf`, `deps`, `ctx`, `script-test`, …) wrapping the raw cargo commands; `just check` runs format check, `clippy -D warnings` and all tests.
 - **Dependency policy:** `deny.toml` for `cargo-deny` (advisories, licenses, bans, sources; no git sources). One reasoned advisory exception remains (RUSTSEC-2026-0192, unmaintained `ttf-parser` via cosmic-text).
 - **CPU-only CI:** `.github/workflows/ci.yml` (PRs, manual dispatch, pushes to `main`/`0.*`), SHA-pinned actions, read-only token, informational only (`D-070`).
@@ -22,20 +26,28 @@ Summary: agent/tooling restructure and dependency refresh (plan `docs/plans/agen
 
 ### Changed
 
+- **Physics broadphase (`D-062`):** the `HashMap` grid becomes a flat prefix-sum spatial hash, staged once per frame and restaged only when accumulated travel exceeds the half-cell margin; candidate pairs pass an AABB-overlap prefilter.
+- **Physics solver (`D-063`):** the narrow phase runs once per substep into a contact buffer, and warm-started, clamped accumulated impulses with a soft-constraint bias replace per-iteration MTV projection. New `PhysicsConfig` fields: `contact_hertz`, `contact_damping_ratio`, `linear_slop`, `max_push_speed`, `restitution_threshold`. Bodies rest at about `linear_slop` penetration, and deep overlaps recover over several frames instead of in one push.
+- **Physics CCD and substeps (`D-064`):** speculative signed-distance contacts are the primary CCD. A fixed `PhysicsConfig::substeps` (4) with `solver_iterations = 1` replaces the velocity-derived substep count. Collision events fire only on real penetration, so a first touch can be reported one substep later (one frame at a frame boundary).
+- **Physics staging (`D-066`, `D-067`):** body state is gathered and written back once per frame instead of every substep. The step stays single-threaded: a color-parallel solver was built, measured and dropped.
+- **Physics measurements (Ryzen 5 6600H):** 10k settled-pile jitter 114 → 11.5 px/s; `dense_pile/3000` under its 4 ms budget; 25k awake churn 124.9 ms, still above the ≤ ~16 ms goal.
 - **Toolchain:** Rust pinned to 1.98.1 with `rust-version = "1.98.1"`; workspace on edition 2024 / resolver 3 (`D-069`); `rustfmt.toml` sets `style_edition = "2024"`.
 - **Dependencies:** wgpu 30.0.1 with glyphon 0.12.0 from crates.io (was a git pin) and cosmic-text 0.19; symphonia 0.6.1; cpal 0.18.2; notify 8.2.0; glam 0.33.10; pollster 1.0.1; criterion 0.8.2; rtrb 0.3.5; compatible refresh of the rest.
 - **Rendering:** surface acquire now reconfigures after suboptimal frames (once per window size), retries once on outdated surfaces at the window's current size, recreates lost surfaces and fails clearly if that doesn't recover; `SurfaceColorSpace::Auto` keeps SDR output. Pixels match the pre-upgrade baseline.
 - **Audio:** decoding keeps a truncated file's decoded prefix but now reports real I/O errors; MP3/Ogg gapless trimming removes codec padding; cpal opens the default device at its native rate (48 kHz on the reference machine) and the mixer resamples.
 - **Instructions:** `AGENTS.md` condensed (≈6 KB), `CLAUDE.md` imports it, `docs/LLM_INDEX.md` and `docs/DECISION_INDEX.md` condensed, plan conventions moved to `docs/plans/README.md`; both project skills corrected (shader hot reload, canonical perf scene).
 - **Scripts:** smoke discovery fails on metadata errors or zero examples, and timeouts are reported as timeouts; perf captures record compiler and build flags (`TUNGSTEN_PERF_RUSTFLAGS`) and keep all profiler output in the capture directory.
-- `DECISIONS.md` adds `D-068`–`D-071`.
+- **Status docs:** `README.md` and `DESIGN.md` name workspace `0.27.0` on branch `0.27`; the `DESIGN.md` physics section and the README stack line describe the `D-062`–`D-067` pipeline instead of the per-substep uniform grid. `docs/plans/agentic-restructure.md` is done and archived; its platform checks and follow-ups moved to `docs/repo-review-2026-09-25.md`.
+- `DECISIONS.md` adds `D-062`–`D-071`.
 
 ### Removed
 
+- `PhysicsConfig::max_substeps`, replaced by the fixed `substeps` count (`D-064`).
 - `.claudeignore` (not honored by Claude Code; replaced by `.ignore` and a Glob setting).
 
 ### Fixed
 
+- Piles under pressure no longer push bodies through thin walls (a 3k pile in 80 px walls leaked 7 bodies in ~400 steps; now 0 over 2,400, `D-063`), and fast bodies no longer tunnel through circles, dynamic walls or each other up to 15,360 px/s (`D-064`).
 - Input-map persistence uses exclusive temporary files without a global counter, preserves stale temporary files and cleans up failed writes.
 - Animation playback survives shortened hot-reloaded clips; Tiled loading resolves sparse tile IDs and rejects invalid GIDs without underflow.
 - Stopped/empty audio voices retire without another mixed callback; commands drain when no audio device is available.
