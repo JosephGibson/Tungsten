@@ -12,6 +12,7 @@
       "Bash(just check)",
       "Bash(just quick)",
       "Bash(just repo-check)",
+      "Bash(just release-check)",
       "Bash(just fmt)",
       "Bash(just fmt-check)",
       "Bash(just lint)",

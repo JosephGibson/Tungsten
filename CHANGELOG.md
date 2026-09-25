@@ -17,6 +17,7 @@ Summary: agent/tooling restructure and dependency refresh (plan `docs/plans/agen
 - **CPU-only CI:** `.github/workflows/ci.yml` (PRs, manual dispatch, pushes to `main`/`0.*`), SHA-pinned actions, read-only token, informational only (`D-070`).
 - **Checks and tests:** `tests/shader_coverage.rs` (Naga-validates all 67 WGSL files and the 31 mirror pairs), `tests/audio_decode.rs` with synthetic WAV/Ogg/MP3/AAC fixtures, surface-acquire transition tests, `scripts/test-smoke-examples.sh` (stubbed-cargo smoke regressions), `scripts/check-agent-context.py` (instruction budgets, links, skill symlinks).
 - **Visual baseline:** `examples/02_sprite_stress/tests/fixtures/baseline-sprite-stress.png` with reference-machine provenance.
+- **Release pipeline:** `.github/workflows/release.yml` builds the examples for Linux and Windows x86-64 on pushed `v*` tags and publishes one archive per platform (binaries plus the runtime files they read), `SHA256SUMS` and the tag's changelog section as a GitHub Release; build only; pre-release tags without their own section (such as `v0.0.0-test`) rehearse as GitHub pre-releases (`D-071`). `scripts/release.py` with `just release-check` (tag/version/changelog/status-line agreement, also in `just repo-check` and as the first CPU CI step) and `just release-cut X.Y.Z` (moves `[Unreleased]`, bumps the workspace version, status lines and `Cargo.lock`); tests join `just script-test`. The `tungsten-finalize` skill is the pre-finalize docs pass; README "Releases" documents tagging, verification and rehearsal tags.
 - **Agent setup:** scoped `crates/tungsten-render/AGENTS.md`, tracked `.claude/skills/` shared with Codex via `.agents/skills/` symlinks, `.claude/settings.json`, `.ignore`, `docs/agent-setup.md` (`D-068`).
 
 ### Changed
@@ -27,7 +28,7 @@ Summary: agent/tooling restructure and dependency refresh (plan `docs/plans/agen
 - **Audio:** decoding keeps a truncated file's decoded prefix but now reports real I/O errors; MP3/Ogg gapless trimming removes codec padding; cpal opens the default device at its native rate (48 kHz on the reference machine) and the mixer resamples.
 - **Instructions:** `AGENTS.md` condensed (≈6 KB), `CLAUDE.md` imports it, `docs/LLM_INDEX.md` and `docs/DECISION_INDEX.md` condensed, plan conventions moved to `docs/plans/README.md`; both project skills corrected (shader hot reload, canonical perf scene).
 - **Scripts:** smoke discovery fails on metadata errors or zero examples, and timeouts are reported as timeouts; perf captures record compiler and build flags (`TUNGSTEN_PERF_RUSTFLAGS`) and keep all profiler output in the capture directory.
-- `DECISIONS.md` adds `D-068`–`D-070`.
+- `DECISIONS.md` adds `D-068`–`D-071`.
 
 ### Removed
 

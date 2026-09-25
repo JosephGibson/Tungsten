@@ -14,7 +14,7 @@ How Claude Code and Codex pick up this repo's instructions, skills and search fi
 
 ## Skills
 
-- Canonical copies: `.claude/skills/tungsten-wgpu/` and `.claude/skills/tungsten-perf/` (tracked). Codex finds them through the symlinks `.agents/skills/<name> -> ../../.claude/skills/<name>`. Relative links inside `SKILL.md` resolve through both paths.
+- Canonical copies (tracked): `.claude/skills/tungsten-wgpu/`, `.claude/skills/tungsten-perf/` and `.claude/skills/tungsten-finalize/`, the pre-finalize docs pass run before a merge or tag. Codex finds them through the symlinks `.agents/skills/<name> -> ../../.claude/skills/<name>`. Relative links inside `SKILL.md` resolve through both paths.
 - Frontmatter holds only `name` and a description of 300 characters or fewer; bodies stay under 8 KiB. Claude's `paths` field isn't a Codex activation contract, so don't rely on it.
 - **Windows:** symlinks need Developer Mode (or an elevated shell) and `core.symlinks=true` before cloning (`git clone -c core.symlinks=true …`). Without them Git writes plain text files and Codex won't see the skills; Claude is unaffected.
 
@@ -49,9 +49,9 @@ Run from the repository root with Rust, just, Python 3.9+, Bash and ShellCheck i
 
 | Command | Repeated work it replaces |
 | --- | --- |
-| `just repo-check` | Asset-directory/manifest coverage comparisons, required active-plan headers/status, local links and decision references in the eight maintained docs, agent configuration checks; then existing Rust manifest and decision-index tests |
+| `just repo-check` | Asset-directory/manifest coverage comparisons, required active-plan headers/status, local links and decision references in the eight maintained docs, agent configuration checks, workspace version/`CHANGELOG.md`/status-line agreement (`scripts/release.py check`, `D-071`); then existing Rust manifest and decision-index tests |
 | `just quick` | The edit-loop sequence: format check, context budgets/links, repository QA and `cargo check --workspace --all-targets --locked` |
-| `just script-test` | Perf/smoke script regressions, ShellCheck, and synthetic repository-checker tests |
+| `just script-test` | Perf/smoke script regressions, ShellCheck, and synthetic repository-checker and release-script tests |
 
 `quick` does not replace final `just check` or GPU smoke. `scripts/check-repo.py` is read-only and uses the Python standard library; it never traverses the plan archive, follows directory symlinks, guesses asset IDs or edits manifests. External URLs and link fragments require manual checking. It reports in-progress plans for review; age alone cannot identify abandonment.
 

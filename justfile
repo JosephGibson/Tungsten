@@ -49,11 +49,12 @@ perf *args:
 perf-test:
     bash scripts/test-perf-capture.sh
 
-# Shell lint plus the stubbed smoke-script and perf-helper tests (no GPU).
+# Shell lint plus smoke-script, perf-helper, repo-checker and release-script tests (no GPU).
 script-test: perf-test
     shellcheck scripts/*.sh
     bash scripts/test-smoke-examples.sh
     python3 -B scripts/test-check-repo.py
+    python3 -B scripts/test-release.py
 
 # Dependency policy: advisories, licenses, bans, sources.
 deps:
@@ -64,10 +65,20 @@ ctx:
     python3 scripts/check-agent-context.py
     python3 scripts/check-agent-context.py --self-test
 
-# File coverage, docs, active plans, and existing Rust manifest/index validation.
+# File coverage, docs, active plans, version/changelog agreement, manifest/index tests.
 repo-check:
     python3 -B scripts/check-repo.py
+    python3 -B scripts/release.py check
     cargo test -p tungsten-core --test manifests --test decision_index --locked -q
+
+# Version/changelog agreement (D-071); a tag argument (v0.27.0) is checked too.
+release-check *args:
+    python3 -B scripts/release.py check "$@"
+
+# Cut VERSION: [Unreleased] becomes [VERSION] - today (--date to override); version, status lines, Cargo.lock follow.
+release-cut version *args:
+    python3 -B scripts/release.py cut "$@"
+    cargo update --workspace --offline || { echo "Cargo.lock not refreshed; run: cargo update --workspace" >&2; exit 1; }
 
 # Fast iteration: formatting, agent/repo QA, then type-check every target.
 # Full clippy and workspace tests still run in `just check` before finishing.

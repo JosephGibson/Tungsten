@@ -60,7 +60,8 @@ One-line takeaways for every decision heading in [`DECISIONS.md`](../DECISIONS.m
 | `D-041` | Release/profile tuning is part of the current baseline; perf comparisons should assume those settings. |
 | `D-068` | `AGENTS.md` is the one instruction body (`CLAUDE.md` imports it); scoped render rules, on-demand index, skills shared via `.agents/skills` symlinks, budgets checked by `just ctx`. |
 | `D-069` | Rust 1.98.1 pinned and declared as `rust-version`; edition 2024 / resolver 3; `just check` (strict clippy) and `cargo-deny` are the shared gates. |
-| `D-070` | CPU-only CI reports on PRs/pushes without blocking; GPU/audio/perf stay local. Narrows `D-002`. |
+| `D-070` | CPU-only CI reports on PRs/pushes without blocking; GPU/audio/perf stay local. Narrows `D-002`; release builds in `D-071`. |
+| `D-071` | `v*` tags build Linux/Windows x86-64 example archives plus `SHA256SUMS` into a GitHub Release with CHANGELOG notes; build only, write token in the publish job only; pre-release tags without a CHANGELOG section rehearse. Workspace version = newest CHANGELOG release, bumped only by `just release-cut`; `repo-check` and CI enforce it. |
 
 ## ECS / Runtime Flow
 

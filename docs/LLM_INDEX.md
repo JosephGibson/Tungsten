@@ -64,6 +64,7 @@ Run with `cargo run -p example-NN-name`.
 | Shader/material/post fixtures | `examples/04_shader_playground/src/main.rs` |
 | Review findings and follow-ups | `docs/repo-review-2026-09-25.md` |
 | Repository QA and quick checks | `scripts/check-repo.py`, `scripts/test-check-repo.py`, `justfile`, `docs/agent-setup.md` |
+| Release pipeline, version cut, changelog notes (`D-071`) | `.github/workflows/release.yml`, `scripts/release.py`, `scripts/test-release.py`, `.claude/skills/tungsten-finalize/SKILL.md`, `README.md` |
 | New dependency or design change | `docs/DECISION_INDEX.md`, then `DECISIONS.md` by ID |
 
 ## Usually skip
