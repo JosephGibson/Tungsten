@@ -4,7 +4,7 @@ From-scratch Rust 2D game engine. Stack: `winit` + `wgpu` + `glam` + hand-rolled
 
 ## Status
 
-Workspace `v0.26.0` on branch `0.26`. Phase 3 is complete; all milestones `M12`–`M24` shipped. The rollout plan is archived at [`docs/plans/archive/phase3.md`](docs/plans/archive/phase3.md). Phase 4 is underway: M25 (render foundation), M26 (materials + post-stack + tween→material bridge), M27 (SMAA 1x presentation AA), M28 (bloom), and M29 (2D forward normal-mapped lighting) are live; remaining milestones are tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md).
+Workspace `v0.26.0`; current development branch `0.27`. Phase 3 is complete; all milestones `M12`–`M24` shipped. The rollout plan is archived at [`docs/plans/archive/phase3.md`](docs/plans/archive/phase3.md). Phase 4 is underway: M25 (render foundation), M26 (materials + post-stack + tween→material bridge), M27 (SMAA 1x presentation AA), M28 (bloom), and M29 (2D forward normal-mapped lighting) are live; remaining milestones are tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md).
 
 ## Stack
 
@@ -27,15 +27,17 @@ Hand-rolled ECS with archetypal storage, deferred command buffers, and typed eve
 
 ## Quick Start
 
-Rust 1.98.1 is pinned in `rust-toolchain.toml`; rustup installs it on first use. The shared checks use [`just`](https://just.systems), `cargo-deny` and ShellCheck:
+Rust 1.98.1 is pinned in `rust-toolchain.toml`; rustup installs it on first use. The shared checks use [`just`](https://just.systems), `cargo-deny`, Python 3.9+, Bash and ShellCheck (perf capture also needs `jq` and GNU `timeout`):
 
 ```bash
 cargo install --locked just@1.58.0 cargo-deny@0.20.2   # ShellCheck 0.11.0: see .github/workflows/ci.yml
+just quick                              # fmt, context, repository QA, cargo check
 just check                              # fmt check, clippy -D warnings, tests
+just script-test                        # script regressions and ShellCheck
 cargo test --workspace                  # raw equivalent of the test step
 cargo build --workspace
 cargo run -p example-01-platformer      # comprehensive engine demo
-cargo run -p example-02-sprite-stress   # canonical perf stress scene
+cargo run -p example-02-sprite-stress   # baseline scene; use perf command below for ecs-high-load
 cargo run -p example-03-scene-state     # scene/state + tween transition demo
 cargo run -p example-04-shader-playground  # materials + 18-effect post-stack demo (incl. bloom)
 ```

@@ -114,3 +114,23 @@ fn zero_duration_does_not_infinite_loop() {
     let mut state = AnimationState::new("zeros");
     let _ = state.advance(100.0, &registry);
 }
+
+#[test]
+fn playback_survives_a_shorter_hot_reloaded_clip() {
+    for looping in [false, true] {
+        let mut registry = AnimationRegistry::new();
+        registry.insert("walk".into(), test_anim());
+        let mut state = AnimationState::new("walk");
+        state.advance(350.0, &registry);
+        assert_eq!(state.frame_index, 3);
+
+        let mut replacement = test_anim();
+        replacement.looping = looping;
+        replacement.frames.truncate(2);
+        registry.insert("walk".into(), replacement);
+        assert_eq!(state.advance(0.0, &registry), Some("walk_1".into()));
+        state.advance(100.0, &registry);
+        assert_eq!(state.finished, !looping);
+        assert!(state.current_sprite(&registry).is_some());
+    }
+}

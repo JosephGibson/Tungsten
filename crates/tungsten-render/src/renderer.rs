@@ -98,19 +98,13 @@ pub struct Renderer {
     /// SMAA presentation pipeline. Allocated on demand when `post_aa != Off`.
     smaa: Option<SmaaPipeline>,
     smaa_shader_ids: SmaaShaderIds,
-    #[allow(dead_code)] // mirror of post_stack.bloom.shader_ids; future debug HUD will read it.
-    bloom_shader_ids: BloomShaderIds,
     bloom_max_mips: u32,
-    #[allow(dead_code)] // kept for symmetry with shader_ids map; future work wires to debug HUD.
-    sprite_shader_id: ShaderAssetId,
     /// M29 lit sprite pipeline; rebuilt on `lit_sprite` shader hot-reload.
     lit_sprite_pipeline: LitSpritePipeline,
     /// M29 per-frame lighting UBO + bind group bound at group 2 of the lit
     /// pipeline. Resize does not invalidate this; the buffer + bind group
     /// stay live across surface reconfigures.
     lighting: LightingResources,
-    #[allow(dead_code)]
-    lit_sprite_shader_id: ShaderAssetId,
     /// M26 material pipelines keyed by id.
     materials: HashMap<MaterialAssetId, MaterialPipeline>,
     /// M26 known manifest-tracked shader ids (name → id). The built-in
@@ -139,13 +133,13 @@ impl Renderer {
         vsync: bool,
     ) -> Result<Self, RenderError> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
+            backends: wgpu::Backends::all().with_env(),
             ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
 
         let surface = instance
             .create_surface(window.clone())
-            .expect("failed to create surface");
+            .map_err(|e| RenderError::Surface(e.to_string()))?;
 
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::default(),
@@ -482,12 +476,9 @@ impl Renderer {
             post_aa,
             smaa,
             smaa_shader_ids,
-            bloom_shader_ids,
             bloom_max_mips,
-            sprite_shader_id,
             lit_sprite_pipeline,
             lighting,
-            lit_sprite_shader_id,
             materials: HashMap::new(),
             shader_ids,
             next_shader_id: 11,

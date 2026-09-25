@@ -27,7 +27,7 @@ just ctx                    # instruction budgets and links
 cargo run -p example-NN-name
 ```
 
-Finish substantial work with `just check` (raw: `cargo fmt --all && cargo test --workspace`). Wrong backend: `WGPU_BACKEND=vulkan|metal|dx12`.
+Finish substantial work with `just check` (format check, strict clippy, workspace tests). Wrong backend: `WGPU_BACKEND=vulkan|metal|dx12`.
 
 ## Tests
 
@@ -49,11 +49,11 @@ Finish substantial work with `just check` (raw: `cargo fmt --all && cargo test -
 - App/event loop, input, time, load bridge → `tungsten`
 - Demo-specific components/systems → `examples/`, never library crates
 
-Seam (`D-007`, `D-016`, `D-018`): core owns `TextureHandle(u32)`, has no `wgpu` types and never calls render. The umbrella bridges: `AssetRegistry::register_sprite` allocates a handle, then `renderer.upload_texture(handle, …)` stores the texture under it. Extract runs on the main thread with `&World` and passes POD slices to render; render needs no mutable `World`.
+Seam (`D-007`, `D-016`, `D-018`): core defines `TextureHandle(u32)`, has no `wgpu` types and never calls render. Render allocates handles (`D-048`); the umbrella registers core metadata and uploads pixels under the same handle. Extract runs on the main thread with `&World` and passes render data; render needs no mutable `World`.
 
 ## Assets
 
-Every file under `assets/` is in `assets/manifest.json`, every entry points at a real file, and the loader checks both at startup. Exception: `assets/fonts/<Family>/` may hold a whole family; only used weights need entries.
+`just repo-check` checks asset-file coverage; loaders validate referenced content. Whole font families, shader helper fragments/licenses and explicitly loaded scenes (`D-046`) are exceptions; see `docs/agent-setup.md`.
 
 | Type | Location | Section | Required |
 | --- | --- | --- | --- |
@@ -65,7 +65,7 @@ Every file under `assets/` is in `assets/manifest.json`, every entry points at a
 | Material | manifest only | `materials` | `shader` ID, `uniform_defaults` (`D-058`) |
 
 - Example-local assets: `examples/NN_name/assets/` with its own `manifest.json`. IDs are unique across loaded manifests; duplicates are fatal.
-- Game code never uses file paths, only registry IDs; hot reload depends on it.
+- Game code uses registry IDs; explicit scene loading follows `D-046`.
 
 ## Hard rules
 
@@ -73,7 +73,7 @@ Every file under `assets/` is in `assets/manifest.json`, every entry points at a
 - No async runtime (`tokio`, `async-std`). Only two background threads: the `cpal` callback (commands via `rtrb`, `D-034`) and the `notify` watcher (events via `std::sync::mpsc`).
 - No global mutable state (`static mut`, `lazy_static`); state lives in `World` or is passed explicitly.
 - No new third-party runtime dependency without a `DECISIONS.md` entry citing its `D-015` rule.
-- No hardcoded asset paths in game code.
+- No hardcoded asset paths in game code except explicit scene loading (`D-046`).
 - No scope creep: finish the task, open a new one for the rest.
 
 ## Conventions
@@ -86,7 +86,7 @@ Every file under `assets/` is in `assets/manifest.json`, every entry points at a
 ## Sessions
 
 - **Feature:** plan first (files, API shape, tests).
-- **Audit:** read the full crate surface, report findings only, fix in a later session. Check decisions before calling a choice wrong.
+- **Audit:** read the full crate surface, report findings only unless the user requests fixes. Check decisions before calling a choice wrong.
 - **Docs:** read the whole doc before editing. Decisions are immutable: a reversal adds an entry and marks the old one `Superseded by D-NNN`. New decisions add their `docs/DECISION_INDEX.md` row in the same change (test-enforced). Update `CHANGELOG.md`/`README.md` when a milestone ships.
 - Don't change code you haven't read. Stuck: re-read scope, check decisions, or leave `// TODO: ask about X`.
 

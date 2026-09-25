@@ -27,7 +27,7 @@ How Claude Code and Codex pick up this repo's instructions, skills and search fi
 
 ## Permissions, sandbox and trust
 
-- `.claude/settings.json` grants nothing. It sets the Glob option and the archive deny. Personal allows, hooks and model choices belong in `.claude/settings.local.json` (ignored) or user settings, and managed settings override both. Check effective rules with `/permissions` in an interactive session.
+- `.claude/settings.json` allows exact shared `just` commands, workspace build/test/check commands, the four example launch commands, and bounded discovery probes (`rg --files crates examples scripts`, `fd --type f . crates examples scripts`, `ast-grep --version`). No execution prefixes or wildcard arguments are granted. Other searches, parameterized perf captures and install commands use normal interactive approval or personal rules. Hooks and model choices belong in `.claude/settings.local.json` (ignored) or user settings; managed settings override both. Check effective rules with `/permissions` in an interactive session.
 - Don't add blanket `cargo`/`just` allows: recipes, build scripts and tests execute repo code.
 - Codex suggestion for interactive work: `codex --sandbox workspace-write --ask-for-approval on-request`. First builds download crates and may need approval, and so may writes under `.agents/` or `.codex/`. Project `.codex/` config and non-managed hooks only apply once the project is trusted. Exec-policy rules govern commands outside the sandbox and aren't a push ban.
 - Deferred: hooks, custom subagents, blanket execution allows and LSP plugins. Explicit commands (`just` recipes and the raw `cargo` commands they wrap) are the shared workflow.
@@ -41,4 +41,20 @@ claude -p 'Without tools, list the instruction files loaded into your context.'
 codex exec --sandbox read-only 'Without tools, list the AGENTS.md files you were given.'
 ```
 
-Model self-reports can be wrong about duplication. For a firm answer, compare `claude -p --output-format json` usage across directories that contain canary files. Status on 2026-09-25: Claude Code 2.1.110 verified as above. Codex CLI 0.157.0 verified: root launch loads the root file once, a render launch adds the render file once, and both skills are found through `.agents/skills/`. Codex 0.120.0 can no longer reach current models.
+Model self-reports can be wrong about duplication. For a firm answer, compare `claude -p --output-format json` usage across directories that contain canary files. Earlier setup testing recorded Claude Code 2.1.110 behavior above. During the 2026-09-25 repository review, Claude was absent from the shell, so effective permissions and its discovery commands could not be rerun. Codex CLI 0.155.0-alpha.16.3 passed ephemeral read-only discovery from both directories: root rules at the root, root plus render rules from the renderer, and both skill symlinks resolved. These are model self-reports, not proof against duplicate context injection. Recheck after client upgrades; no blanket claim about older clients' model access is made.
+
+## Local check tiers
+
+Run from the repository root with Rust, just, Python 3.9+, Bash and ShellCheck installed.
+
+| Command | Repeated work it replaces |
+| --- | --- |
+| `just repo-check` | Asset-directory/manifest coverage comparisons, required active-plan headers/status, local links and decision references in the eight maintained docs, agent configuration checks; then existing Rust manifest and decision-index tests |
+| `just quick` | The edit-loop sequence: format check, context budgets/links, repository QA and `cargo check --workspace --all-targets --locked` |
+| `just script-test` | Perf/smoke script regressions, ShellCheck, and synthetic repository-checker tests |
+
+`quick` does not replace final `just check` or GPU smoke. `scripts/check-repo.py` is read-only and uses the Python standard library; it never traverses the plan archive, follows directory symlinks, guesses asset IDs or edits manifests. External URLs and link fragments require manual checking. It reports in-progress plans for review; age alone cannot identify abandonment.
+
+Asset coverage exceptions are explicit: complete font families and their inventory README; four vendored LYGIA helper fragments and their license; and example 03's explicitly loaded `scene.json` (D-046). The tracked legacy `examples/01_platformer/assets/sprites/player.png` is reported as a deletion candidate, not silently removed. A new exception needs review in the checker, not a broad ignored extension.
+
+The exact-command permission syntax follows [Claude's permission rules](https://code.claude.com/docs/en/permissions); Codex instruction discovery follows [AGENTS.md guidance](https://developers.openai.com/codex/guides/agents-md/). These controls do not make repository code trusted: review recipe changes before executing them.

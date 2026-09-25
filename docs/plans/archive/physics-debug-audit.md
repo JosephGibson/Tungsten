@@ -1,8 +1,11 @@
 # Physics Scale + CCD Debug Audit (D-062–D-067)
 
-- **status:** draft
+- **status:** done
 - **goal:** find and record correctness bugs in the uncommitted physics scale/CCD work on branch `0.27` (plan steps 1–7, archived at `docs/plans/archive/physics-scale-and-ccd.md`). Findings only — fixes are a separate session.
 - **non-goals:** perf work, captures, bench tuning, code changes.
+- **files to touch:** This findings-only audit report.
+- **ordered steps:** Read the change surface, run adversarial probes, record findings and verification.
+- **done-when:** Audit and probe results recorded; completed 2026-07-13. Unresolved findings are follow-up work, summarized in `docs/repo-review-2026-09-25.md`.
 - **scope audited:** working-tree diff of `crates/tungsten-core/src/physics/{broadphase,collision,step,mod}.rs`, `src/ecs/world.rs`, `src/lib.rs`, `src/tests/**`, `benches/physics_bench.rs`, plus untracked `tests/{physics_containment,physics_determinism,physics_tunneling,substep_probe}.rs`.
 - **method:** full read of the change surface, line-level analysis against the hunt list, and 10 adversarial probe tests (throwaway harness, preserved at scratchpad `zz_audit_probes.rs`, removed from the repo after the session).
 - **verification runs (2026-07-13):** `cargo test --workspace` green (626 passed, baseline intact); `cargo test --release -p tungsten-core --test physics_tunneling --test physics_containment --test physics_determinism -- --nocapture` — 4 passed, 0 misses in all four tunneling scenarios; ignored `substep_probe` tests run serially in release (results in the probe log section below).

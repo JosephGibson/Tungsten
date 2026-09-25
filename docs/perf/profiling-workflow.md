@@ -32,9 +32,9 @@ WGPU_BACKEND=vulkan ./scripts/perf-capture.sh physics-stress 300  # contacts + s
 
 Each run writes a timestamped directory under `perf-runs/` with telemetry logs, optional GPU timing logs, optional `perf` artifacts, and a per-run `README.md`. The script runs `60 + requested_frames` total frames, parses renderer metadata into separate README rows, and computes post-warm-up averages plus `p50` / `p95` / `p99` for `total` and `render_acquire`.
 
-`just perf <args>` wraps the script. Full runs (without `--telemetry-only`) also write `perf-stat.txt`, `perf-record.data` and a `flamegraph.svg` folded from that recording (`flamegraph --perfdata`) into the same directory. The game still runs from the repo root so config and manifests resolve, but nothing is written there. The capture binary is built once with `RUSTFLAGS="-C force-frame-pointers=yes"` (override with `TUNGSTEN_PERF_RUSTFLAGS`). That setting replaces `.cargo/config.toml`'s `target-cpu=native`, so perf captures are generic x86-64 builds, as all historical captures were. Each README records the compiler and build flags; compare only captures whose flags match.
+`just perf <args>` wraps the script. Full runs (without `--telemetry-only`) also write `perf-stat.txt`, `perf-record.data` and a `flamegraph.svg` folded from that recording (`flamegraph --perfdata`) into the same directory. The game still runs from the repo root so config and manifests resolve, but nothing is written there. The capture binary is built once with `RUSTFLAGS="-C force-frame-pointers=yes"` (override with `TUNGSTEN_PERF_RUSTFLAGS`). That setting replaces `.cargo/config.toml`'s `target-cpu=native`, so default script captures are generic x86-64 builds. Historical captures used different flags; use their recorded provenance. Each README records the compiler and build flags; compare only captures whose flags match.
 
-All three scenes launch `example-02-sprite-stress`; the capture script injects `STRESS_SCENE=ecs-high-load`, `STRESS_SCENE=baseline`, or `STRESS_SCENE=physics-stress` for the child process and resets any inherited `STRESS_SCENE` / `STRESS_COUNT` so canonical runs stay reproducible. `physics-stress` was added by the 2026-07 performance audit ([`docs/plans/perf-overhead-audit.md`](../plans/perf-overhead-audit.md)) because no prior scene exercised the narrow phase and solver — `ecs-high-load` spawns dynamic bodies without colliders.
+All three scenes launch `example-02-sprite-stress`; the capture script injects `STRESS_SCENE=ecs-high-load`, `STRESS_SCENE=baseline`, or `STRESS_SCENE=physics-stress` for the child process and resets any inherited `STRESS_SCENE` / `STRESS_COUNT` so canonical runs stay reproducible. `physics-stress` was added by the 2026-07 performance audit ([`docs/plans/archive/perf-overhead-audit.md`](../plans/archive/perf-overhead-audit.md)) because no prior scene exercised the narrow phase and solver — `ecs-high-load` spawns dynamic bodies without colliders.
 
 For Vulkan frame-pacing sweeps, keep the default rows as full captures and use telemetry-only override rows for alternate configs:
 
@@ -151,24 +151,18 @@ TUNGSTEN_SMOKE_FRAMES=360 STRESS_SCENE=ecs-high-load \
   --release
 ```
 
-### `perf stat`
+### Manual `perf stat` / `perf record`
+
+Build once, then profile the binary directly so compilation and Cargo are not counted. Prefer the capture script for canonical flags, metadata and output naming.
 
 ```bash
-TUNGSTEN_SMOKE_FRAMES=360 perf stat -d -- cargo run --release -p example-02-sprite-stress
-
-TUNGSTEN_SMOKE_FRAMES=360 STRESS_SCENE=ecs-high-load \
-  perf stat -d -- cargo run --release -p example-02-sprite-stress
-```
-
-### `perf record`
-
-```bash
-TUNGSTEN_SMOKE_FRAMES=360 perf record --call-graph dwarf -- cargo run --release -p example-02-sprite-stress
-perf report
-
-TUNGSTEN_SMOKE_FRAMES=360 STRESS_SCENE=ecs-high-load \
-  perf record --call-graph dwarf -- cargo run --release -p example-02-sprite-stress
-perf report
+RUSTFLAGS="-C force-frame-pointers=yes" cargo build --release -p example-02-sprite-stress
+mkdir -p perf-runs/manual
+TUNGSTEN_SMOKE_FRAMES=360 STRESS_SCENE=baseline WGPU_BACKEND=vulkan \
+  perf stat -d -- target/release/example-02-sprite-stress
+TUNGSTEN_SMOKE_FRAMES=360 STRESS_SCENE=ecs-high-load WGPU_BACKEND=vulkan \
+  perf record -o perf-runs/manual/perf.data --call-graph dwarf -- target/release/example-02-sprite-stress
+perf report -i perf-runs/manual/perf.data
 ```
 
 ## Backend Override Reference
@@ -181,7 +175,7 @@ perf report
 | `gl` | fallback | may be unavailable or noisy |
 | `auto` | any | convenient, but less reproducible |
 
-`GpuFrameTimings::frame_gpu_ms` is expected to be `None` when the active backend or adapter does not expose timestamp queries. Backend, adapter, chosen present mode, and requested max-frame-latency hint are emitted once at renderer startup when `TUNGSTEN_PERF_LOG=1` is set.
+`GpuFrameTimings::frame_gpu_ms` measures the scene pass only, excluding post-processing, SMAA, overlay text and presentation. It is expected to be `None` when the active backend or adapter does not expose timestamp queries. Backend, adapter, chosen present mode, and requested max-frame-latency hint are emitted once at renderer startup when `TUNGSTEN_PERF_LOG=1` is set.
 
 ## RenderDoc Workflow
 

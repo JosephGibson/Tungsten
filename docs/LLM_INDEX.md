@@ -60,6 +60,10 @@ Run with `cargo run -p example-NN-name`.
 | --- | --- |
 | Platformer | `examples/01_platformer/src/main.rs`, `examples/01_platformer/src/setup.rs`, `examples/01_platformer/src/systems.rs`, `examples/01_platformer/src/extract.rs`, `examples/01_platformer/src/state.rs` |
 | Sprite stress, perf scenes | `examples/02_sprite_stress/src/main.rs`, `examples/02_sprite_stress/src/ecs_high_load.rs`, `examples/02_sprite_stress/src/physics_stress.rs` |
+| Scene/state lifecycle | `examples/03_scene_state/src/main.rs`, `examples/03_scene_state/src/states.rs` |
+| Shader/material/post fixtures | `examples/04_shader_playground/src/main.rs` |
+| Review findings and follow-ups | `docs/repo-review-2026-09-25.md` |
+| Repository QA and quick checks | `scripts/check-repo.py`, `scripts/test-check-repo.py`, `justfile`, `docs/agent-setup.md` |
 | New dependency or design change | `docs/DECISION_INDEX.md`, then `DECISIONS.md` by ID |
 
 ## Usually skip

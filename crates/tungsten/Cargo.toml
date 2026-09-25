@@ -14,9 +14,7 @@ wgpu = { workspace = true }
 glam = { workspace = true }
 image = { workspace = true }
 log = { workspace = true }
-thiserror = { workspace = true }
 anyhow = { workspace = true }
-pollster = { workspace = true }
 cpal = { workspace = true }
 notify = { workspace = true }
 rtrb = { workspace = true }

@@ -53,6 +53,7 @@ perf-test:
 script-test: perf-test
     shellcheck scripts/*.sh
     bash scripts/test-smoke-examples.sh
+    python3 -B scripts/test-check-repo.py
 
 # Dependency policy: advisories, licenses, bans, sources.
 deps:
@@ -62,3 +63,13 @@ deps:
 ctx:
     python3 scripts/check-agent-context.py
     python3 scripts/check-agent-context.py --self-test
+
+# File coverage, docs, active plans, and existing Rust manifest/index validation.
+repo-check:
+    python3 -B scripts/check-repo.py
+    cargo test -p tungsten-core --test manifests --test decision_index --locked -q
+
+# Fast iteration: formatting, agent/repo QA, then type-check every target.
+# Full clippy and workspace tests still run in `just check` before finishing.
+quick: fmt-check ctx repo-check
+    cargo check --workspace --all-targets --locked

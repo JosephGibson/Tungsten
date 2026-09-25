@@ -122,6 +122,9 @@ impl AnimationState {
 
         self.accumulated_ms += dt_ms;
         let old_frame = self.frame_index;
+        // A hot reload may replace the clip with fewer frames while playback
+        // still points into the old clip. Preserve progress up to its new end.
+        self.frame_index = self.frame_index.min(anim.frames.len() - 1);
 
         // Bound zero-duration frame loops.
         let max_steps = anim.frames.len() * 2;

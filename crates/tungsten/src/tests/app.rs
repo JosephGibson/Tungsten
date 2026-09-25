@@ -85,3 +85,20 @@ fn runtime_display_mode_downgrades_exclusive_fullscreen() {
         DisplayMode::Windowed
     );
 }
+
+#[test]
+fn audio_commands_are_discarded_without_an_output_device() {
+    let mut app = App::new(Config::default()).unwrap();
+    app.world
+        .get_resource_mut::<tungsten_core::AudioCommands>()
+        .unwrap()
+        .stop_all();
+    app.stage_audio();
+    assert!(
+        app.world
+            .get_resource_mut::<tungsten_core::AudioCommands>()
+            .unwrap()
+            .drain()
+            .is_empty()
+    );
+}

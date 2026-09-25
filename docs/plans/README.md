@@ -9,7 +9,7 @@ Short-lived multi-step plans saved as `*.md`. A plan is the handoff artifact for
 
 ## Contents
 
-- Required header fields: `status` (`draft` / `in progress` / `done`), goal, non-goals, files to touch, ordered steps, done-when checks.
+- Required header fields: `status` (`draft` / `in progress` / `done` / `abandoned` / `superseded`), goal, non-goals, files to touch, ordered steps, done-when checks.
 - Put a short context digest (under ~500 tokens) near the top instead of a separate context file.
 - Settled rationale belongs in `DECISIONS.md`; plans are time-bounded execution documents.
 
@@ -17,4 +17,6 @@ Short-lived multi-step plans saved as `*.md`. A plan is the handoff artifact for
 
 - Update `status` when work finishes; don't leave a finished plan `in progress`.
 - Keep one active plan per thread of work: archive or rename obsolete ones.
-- Completed or abandoned plans move to `docs/plans/archive/` with the same basename. Agents never read that directory.
+- Completed, abandoned or superseded plans move to `docs/plans/archive/` with the same basename. Agents never read that directory.
+
+`just repo-check` validates active headers and flags completed plans left here. An old date alone does not make an in-progress plan stale: review its remaining checks against code and owner/platform dependencies before archiving. An audit can be complete with unresolved findings; carry those into the current review report before moving it.

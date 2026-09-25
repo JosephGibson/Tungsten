@@ -105,6 +105,7 @@ impl TilemapData {
         sorted_tiles.sort_by_key(|t| t.id);
 
         let mut tileset: Vec<String> = Vec::with_capacity(sorted_tiles.len());
+        let mut tile_indices = HashMap::new();
         for tile in &sorted_tiles {
             let sprite_id = tile
                 .properties
@@ -118,6 +119,15 @@ impl TilemapData {
                         tile.id
                     )
                 })?;
+            let index = TileIndex::try_from(tileset.len())
+                .map_err(|_| anyhow::anyhow!("Tilemap '{}': too many tiles", path.display()))?;
+            if tile_indices.insert(tile.id, index).is_some() {
+                return Err(anyhow::anyhow!(
+                    "Tilemap '{}': duplicate tile id={}",
+                    path.display(),
+                    tile.id
+                ));
+            }
             tileset.push(sprite_id.to_owned());
         }
 
@@ -148,12 +158,17 @@ impl TilemapData {
                 .iter()
                 .map(|&gid| {
                     if gid == 0 {
-                        EMPTY_TILE
+                        Ok(EMPTY_TILE)
                     } else {
-                        (gid - firstgid) as TileIndex
+                        gid.checked_sub(firstgid)
+                            .and_then(|id| tile_indices.get(&id).copied())
+                            .ok_or_else(|| anyhow::anyhow!(
+                                "Tilemap '{}': layer '{}' references unsupported or unknown gid={gid}",
+                                path.display(), tl.name
+                            ))
                     }
                 })
-                .collect();
+                .collect::<anyhow::Result<_>>()?;
 
             layers.push(TilemapLayer {
                 name: tl.name.clone(),
@@ -230,8 +245,8 @@ impl TilemapData {
     #[must_use]
     pub fn pixel_size(&self) -> Vec2 {
         Vec2::new(
-            (self.width * self.tile_width) as f32,
-            (self.height * self.tile_height) as f32,
+            self.width as f32 * self.tile_width as f32,
+            self.height as f32 * self.tile_height as f32,
         )
     }
 }

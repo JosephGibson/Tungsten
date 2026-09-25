@@ -92,7 +92,9 @@ One-line takeaways for every decision heading in [`DECISIONS.md`](../DECISIONS.m
 | `D-066` | Physics SoA staging: gather and write back once per frame through `query2_opt2`; substeps touch only dense arrays; events drain once per frame. |
 | `D-067` | Physics step stays serial: a colour-parallel solver was deterministic but gained ~2.5% and cost the serial path ~18%, so it was dropped. Threading policy unchanged. |
 
-## When To Open Full `DECISIONS.md`
+## When To Open a Decision
+
+Find the relevant heading with `rg -n 'D-0NN' DECISIONS.md`, then read that section only.
 
 - You are considering a new dependency.
 - A change would alter the core/render seam, asset-ID model, or frame-order invariants.

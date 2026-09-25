@@ -31,7 +31,7 @@ WGPU_BACKEND=vulkan \
   cargo run -p example-04-shader-playground --quiet
 ```
 
-Then compose the side-by-side image (e.g. `convert _smaa_off.png _smaa_high.png +append smaa_off_vs_high.png` from ImageMagick) and remove the two intermediate `_smaa_*.png` files. Commit `smaa_off_vs_high.png` only.
+Then compose the side-by-side image (e.g. `convert docs/showcase/_smaa_off.png docs/showcase/_smaa_high.png +append docs/showcase/smaa_off_vs_high.png` from ImageMagick) and remove the two intermediate `_smaa_*.png` files. Commit `smaa_off_vs_high.png` only.
 
 ## M28 — Bloom (`bloom_off_vs_on.png`)
 
@@ -62,7 +62,7 @@ WGPU_BACKEND=vulkan \
   cargo run -p example-04-shader-playground --quiet
 ```
 
-Then compose the side-by-side image (e.g. `convert _bloom_off.png _bloom_on.png +append bloom_off_vs_on.png` from ImageMagick) and remove the two intermediate `_bloom_*.png` files. Commit `bloom_off_vs_on.png` only.
+Then compose the side-by-side image (e.g. `convert docs/showcase/_bloom_off.png docs/showcase/_bloom_on.png +append docs/showcase/bloom_off_vs_on.png` from ImageMagick) and remove the two intermediate `_bloom_*.png` files. Commit `bloom_off_vs_on.png` only.
 
 ## M29 — 2D forward lighting (`lighting_off_vs_on.png`)
 
@@ -95,4 +95,4 @@ WGPU_BACKEND=vulkan \
   cargo run -p example-01-platformer --quiet
 ```
 
-Then compose with `convert _lighting_off.png _lighting_on.png +append lighting_off_vs_on.png` and remove the two intermediate `_lighting_*.png` files. Commit `lighting_off_vs_on.png` only.
+Then compose with `convert docs/showcase/_lighting_off.png docs/showcase/_lighting_on.png +append docs/showcase/lighting_off_vs_on.png` and remove the two intermediate `_lighting_*.png` files. Commit `lighting_off_vs_on.png` only.

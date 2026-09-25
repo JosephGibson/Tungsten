@@ -1,10 +1,9 @@
 //! Core-owned action map; pure data over read-only `InputState` queries.
 
 use std::collections::{BTreeMap, HashMap};
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU32, Ordering};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -542,38 +541,42 @@ fn atomic_write(path: &Path, contents: &str) -> Result<(), ActionMapError> {
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or("input.json");
-    let temp_path = next_temp_path(parent, file_name);
-
-    let mut file = File::create(&temp_path).map_err(|source| ActionMapError::Write {
-        path: path.display().to_string(),
-        source,
-    })?;
-    file.write_all(contents.as_bytes())
-        .map_err(|source| ActionMapError::Write {
+    let (temp_path, mut file) =
+        create_temp_file(parent, file_name).map_err(|source| ActionMapError::Write {
             path: path.display().to_string(),
             source,
         })?;
-    file.sync_all().map_err(|source| ActionMapError::Write {
-        path: path.display().to_string(),
-        source,
-    })?;
-    drop(file);
-
-    if let Err(source) = std::fs::rename(&temp_path, path) {
+    let result = (|| {
+        file.write_all(contents.as_bytes())?;
+        file.sync_all()?;
+        drop(file);
+        std::fs::rename(&temp_path, path)
+    })();
+    if let Err(source) = result {
         let _ = std::fs::remove_file(&temp_path);
         return Err(ActionMapError::Write {
             path: path.display().to_string(),
             source,
         });
     }
-
     Ok(())
 }
 
-fn next_temp_path(parent: &Path, file_name: &str) -> PathBuf {
-    static COUNTER: AtomicU32 = AtomicU32::new(0);
-    let nonce = COUNTER.fetch_add(1, Ordering::Relaxed);
-    parent.join(format!(".{file_name}.{}.{}.tmp", std::process::id(), nonce))
+fn create_temp_file(parent: &Path, file_name: &str) -> std::io::Result<(PathBuf, File)> {
+    // Exclusive creation handles stale files and concurrent saves without a
+    // global nonce or truncating another writer's temporary file.
+    for nonce in 0..1024 {
+        let path = parent.join(format!(".{file_name}.{}.{nonce}.tmp", std::process::id()));
+        match OpenOptions::new().write(true).create_new(true).open(&path) {
+            Ok(file) => return Ok((path, file)),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::AlreadyExists,
+        "no unused action-map temporary filename",
+    ))
 }
 
 /// Resolve path for logging.

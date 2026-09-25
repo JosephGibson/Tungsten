@@ -103,6 +103,7 @@ pub struct App {
     frame_budget: Option<Duration>,
     capture_config: Option<CaptureConfig>,
     frames_rendered: u64,
+    fatal_error: Option<anyhow::Error>,
 }
 
 #[derive(Debug, Clone)]
@@ -227,6 +228,7 @@ impl App {
             frame_budget: frame_budget_for(resolved_display.frame_rate_cap),
             capture_config: parse_capture_config(),
             frames_rendered: 0,
+            fatal_error: None,
         };
 
         // Engine input consumers precede user systems; overlay toggles precede HUD.
@@ -333,6 +335,9 @@ impl App {
         self.install_default_extracts();
         let event_loop = EventLoop::new()?;
         event_loop.run_app(&mut self)?;
+        if let Some(error) = self.fatal_error {
+            return Err(error);
+        }
         Ok(())
     }
 
@@ -902,12 +907,11 @@ impl App {
     #[inline(always)]
     fn stage_audio(&mut self) -> f32 {
         let audio_start = Instant::now();
-        if let (Some(audio), Some(cmds)) = (
-            &mut self.audio,
-            self.world.get_resource_mut::<AudioCommands>(),
-        ) {
+        if let Some(cmds) = self.world.get_resource_mut::<AudioCommands>() {
             for cmd in cmds.drain() {
-                audio.send(cmd);
+                if let Some(audio) = &mut self.audio {
+                    audio.send(cmd);
+                }
             }
         }
         audio_start.elapsed().as_secs_f64() as f32 * 1000.0
@@ -1185,6 +1189,7 @@ impl ApplicationHandler for App {
             Ok(w) => Arc::new(w),
             Err(e) => {
                 log::error!("Failed to create window: {e}");
+                self.fatal_error = Some(anyhow::anyhow!("Failed to create window: {e}"));
                 event_loop.exit();
                 return;
             }
@@ -1247,6 +1252,7 @@ impl ApplicationHandler for App {
             }
             Err(e) => {
                 log::error!("Failed to initialize renderer: {e}");
+                self.fatal_error = Some(anyhow::anyhow!("Failed to initialize renderer: {e}"));
                 event_loop.exit();
                 return;
             }
@@ -1261,6 +1267,7 @@ impl ApplicationHandler for App {
                 asset_loader::load_all_merged(&self.manifest_roots, &mut self.world, renderer)
         {
             log::error!("Manifest composition failed: {e}");
+            self.fatal_error = Some(e.context("Manifest composition failed"));
             event_loop.exit();
             return;
         }

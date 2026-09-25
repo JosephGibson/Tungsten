@@ -75,5 +75,8 @@ jobs:
       - name: Agent instruction checks
         run: just ctx
 
+      - name: Repository metadata checks
+        run: just repo-check
+
       - name: Script lint and regression tests
         run: just script-test

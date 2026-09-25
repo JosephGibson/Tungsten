@@ -796,10 +796,7 @@ dependencies = [
  "anyhow",
  "env_logger",
  "glam",
- "log",
  "tungsten",
- "tungsten-core",
- "tungsten-render",
 ]
 
 [[package]]
@@ -822,10 +819,7 @@ dependencies = [
  "anyhow",
  "env_logger",
  "glam",
- "log",
  "tungsten",
- "tungsten-core",
- "tungsten-render",
 ]
 
 [[package]]
@@ -835,10 +829,8 @@ dependencies = [
  "anyhow",
  "env_logger",
  "glam",
- "log",
  "tungsten",
  "tungsten-core",
- "tungsten-render",
 ]
 
 [[package]]
@@ -2966,9 +2958,7 @@ dependencies = [
  "image",
  "log",
  "notify",
- "pollster",
  "rtrb",
- "thiserror 2.0.21",
  "tungsten-core",
  "tungsten-render",
  "wgpu",

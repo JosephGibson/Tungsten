@@ -66,7 +66,7 @@ impl AudioSystem {
             .build_output_stream(
                 config.into(),
                 move |output: &mut [f32], _info| {
-                    // D-034: wait-free, allocation-free callback command drain.
+                    // D-034: wait-free command transport; Play may grow `playing`.
                     while let Ok(cmd) = consumer.pop() {
                         process_command(&cmd, &mut playing, &mut master_volume);
                     }
@@ -78,6 +78,8 @@ impl AudioSystem {
                     for ps in &mut playing {
                         if let Some(src) = captured_sounds.get(&ps.handle) {
                             mix_sound(ps, src, output, master_volume, device_channels);
+                        } else {
+                            ps.finished = true;
                         }
                     }
 
@@ -196,6 +198,10 @@ fn mix_sound(
     master_volume: f32,
     channels: usize,
 ) {
+    if ps.finished || src.is_empty() {
+        ps.finished = true;
+        return;
+    }
     let gain = ps.volume * master_volume;
     let step = channels;
 

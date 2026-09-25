@@ -867,6 +867,11 @@ pub fn reload_sprite(
     } else {
         (None, None)
     };
+    if had_lit
+        && (normal_rgba_opt.is_none() || (emissive_path.is_some() && emissive_rgba_opt.is_none()))
+    {
+        anyhow::bail!("Hot reload sprite '{id}': invalid lit sibling; keeping previous bundle");
+    }
     log::trace!(
         "reload_sprite '{id}' triggered by '{}' (albedo='{}')",
         path.display(),
@@ -1013,7 +1018,7 @@ pub fn rebuild_atlas_for_filter(
                         normal_rgba = Some(n.into_raw());
                     } else {
                         log::error!(
-                            "Rebuild {:?} atlas: sprite '{}' normal_map dimensions {:?} != albedo {:?}; sprite stays unlit",
+                            "Rebuild {:?} atlas: sprite '{}' normal_map dimensions {:?} != albedo {:?}; keeping previous atlas",
                             filter,
                             id,
                             n.dimensions(),
@@ -1022,7 +1027,7 @@ pub fn rebuild_atlas_for_filter(
                     }
                 }
                 Err(e) => log::error!(
-                    "Rebuild {filter:?} atlas: sprite '{id}' normal_map decode failed: {e}; sprite stays unlit",
+                    "Rebuild {filter:?} atlas: sprite '{id}' normal_map decode failed: {e}; keeping previous atlas",
                 ),
             }
         }
@@ -1045,9 +1050,16 @@ pub fn rebuild_atlas_for_filter(
                     }
                 }
                 Err(e) => log::error!(
-                    "Rebuild {filter:?} atlas: sprite '{id}' emissive_mask decode failed: {e}; sprite stays unlit",
+                    "Rebuild {filter:?} atlas: sprite '{id}' emissive_mask decode failed: {e}; keeping previous atlas",
                 ),
             }
+        }
+        if (normal_path.is_some() && normal_rgba.is_none())
+            || (emissive_path.is_some() && emissive_rgba.is_none())
+        {
+            anyhow::bail!(
+                "Rebuild {filter:?} atlas: sprite '{id}' has an invalid lit sibling; keeping previous atlas"
+            );
         }
         if normal_rgba.is_none() {
             emissive_rgba = None;

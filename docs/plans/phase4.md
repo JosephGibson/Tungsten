@@ -1,5 +1,5 @@
 ---
-status: draft
+status: in progress
 goal: "Phase 4 ships 9 milestones (M25–M33) covering render foundation, materials, stock post-effects, SMAA presentation AA, bloom, 2D lighting, parallax + game-feel, instanced mesh particles + transitions, MSDF text, and a collaborative showcase example."
 non-goals:
   - "No 3D, scripting, networking, WASM, editor (DESIGN.md §Non-Commitments)."
@@ -15,7 +15,7 @@ ordered steps:
   - "Execute M25 → M26 → M27 → M28 → M29 in order. M30 ↔ M31 order is free. M32 before M33. M33 last."
   - "For each milestone, write the plan, implement it, produce an acceptance artifact, and flip status to done."
 done-when:
-  - "All 9 milestones landed on the active integration branch (`0.26` today; `main` if the repo flips before Phase 4 starts), each with `status: done` in its plan file."
+  - "All 9 milestones landed on the active integration branch, each with `status: done` in its plan file."
   - "DESIGN.md Status, CHANGELOG.md, and docs/DECISION_INDEX.md are updated where milestone decisions change canonical project guidance."
   - "This file is flipped to `status: done`, and any milestone that changes the shader/text/hot-reload rules updates AGENTS.md in the same change."
 ---
@@ -23,6 +23,8 @@ done-when:
 ## Milestone Plan Filenames
 
 Phase 4 milestone plans use `phase4-milestone-NN-short-topic.md`, where `NN` is the zero-padded milestone number and `short-topic` is a concise kebab-case slug. Example: `phase4-milestone-25-render-foundation.md`.
+
+M25–M29 are shipped; their sections preserve milestone scope rather than exact current API definitions. Use `docs/LLM_INDEX.md` and source for current APIs. M30–M33 remain active scope.
 
 ## Pre-Phase-4 Renderer Baseline
 
@@ -87,7 +89,7 @@ Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user mate
 
 ## M26 — Materials + Post-Stack + Tween→Material Bridge
 
-**Status:** done — shipped in `0.23` (current integration continues on `0.26`; plan archived at [`docs/plans/archive/phase4-milestone-26-materials-post-stack.md`](archive/phase4-milestone-26-materials-post-stack.md)).
+**Status:** done — shipped in `0.23` (current integration continues on `0.27`; plan archived at [`docs/plans/archive/phase4-milestone-26-materials-post-stack.md`](archive/phase4-milestone-26-materials-post-stack.md)).
 
 **Depends on:** M25.
 
@@ -129,7 +131,7 @@ Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user mate
 | Environmental | Fog, GodRays |
 
 **Touches:**
-- [asset_loader.rs](../../crates/tungsten/src/asset_loader.rs) — `asset_loader/material.rs` split; `reload_material` handler.
+- [asset_loader.rs](../../crates/tungsten/src/asset_loader.rs) — material loading and `reload_material` handler (still in the flat module).
 - [sprite.rs](../../crates/tungsten-render/src/sprite.rs) — per-batch material selection.
 - [tweens.rs](../../crates/tungsten/src/tweens.rs) — material-uniform channel path.
 

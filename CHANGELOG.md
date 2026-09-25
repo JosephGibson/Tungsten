@@ -1,14 +1,16 @@
 # Changelog
 
-Records all notable project changes.
+Records all notable project changes. Versioned entries preserve historical filenames and commands; use [the source index](docs/LLM_INDEX.md) for current locations. Earlier `docs/plans/Phase3.md` references now correspond to the [archived Phase 3 plan](docs/plans/archive/phase3.md).
 
 Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-Summary: agent/tooling restructure and dependency refresh (plan `docs/plans/agentic-restructure.md`). No engine features; runtime behavior changes are limited to what the upgrades required.
+Summary: agent/tooling restructure and dependency refresh (plan `docs/plans/agentic-restructure.md`). No engine features; includes repository review and targeted correctness fixes.
 
 ### Added
+
+- **Repository QA:** `just repo-check` checks asset coverage, active-plan lifecycle, documentation links/decision references and agent configuration; `just quick` adds a shorter edit-loop check tier. Synthetic checker tests join `just script-test`, and CPU CI runs repository QA.
 
 - **Shared commands:** `justfile` (`check`, `lint`, `test`, `bench-build`, `smoke`, `visual`, `perf`, `deps`, `ctx`, `script-test`, …) wrapping the raw cargo commands; `just check` runs format check, `clippy -D warnings` and all tests.
 - **Dependency policy:** `deny.toml` for `cargo-deny` (advisories, licenses, bans, sources; no git sources). One reasoned advisory exception remains (RUSTSEC-2026-0192, unmaintained `ttf-parser` via cosmic-text).
@@ -31,6 +33,16 @@ Summary: agent/tooling restructure and dependency refresh (plan `docs/plans/agen
 
 - `.claudeignore` (not honored by Claude Code; replaced by `.ignore` and a Glob setting).
 
+### Fixed
+
+- Input-map persistence uses exclusive temporary files without a global counter, preserves stale temporary files and cleans up failed writes.
+- Animation playback survives shortened hot-reloaded clips; Tiled loading resolves sparse tile IDs and rejects invalid GIDs without underflow.
+- Stopped/empty audio voices retire without another mixed callback; commands drain when no audio device is available.
+- Sprite/atlas hot reload keeps the previous lit bundle when declared normal/emissive siblings fail validation.
+- App initialization failures reach the process result; surface creation returns a typed error; renderer honors `WGPU_BACKEND`.
+- Returning from pause to the scene demo menu removes the underlying gameplay state and entities.
+- Removed three unread renderer fields and ten unused direct dependency declarations without upgrading packages; corrected documentation and archived completed audits.
+
 ## [0.26.0] - 2026-07-06
 
 Summary: the branch-`0.26` release — M29 2D forward normal-mapped lighting plus a performance pass: engine-wide performance-overhead audit, mutable multi-component ECS queries (audit follow-up item #1), migration of every hot engine/example call site off the naive `query_entities` + per-entity `get`/`get_mut` pattern, and a new `physics-stress` canonical capture scene.
@@ -41,7 +53,7 @@ Summary: the branch-`0.26` release — M29 2D forward normal-mapped lighting plu
 - **Mutable multi-component ECS queries (`tungsten_core::ecs`):** `World::query_mut<T>`, `World::query2_mut<A, B>`, and `World::query3_mut<A, B, C>` yield `(Entity, &mut …)` tuples via per-archetype split column borrows; all yielded refs are mutable (the migrated call sites need double-mut shapes), and distinct `TypeId`s are asserted per call — duplicate component types panic. Backed by new `Archetypes::archetypes_with_mut` / `_two_mut` / `_three_mut` iterators. Extends `D-036`; no new decision entry. Six new unit tests cover in-place mutation, superset archetypes, order-equivalence with the immutable queries, and the duplicate-type panics.
 - **`query2_mut_10k` criterion bench (`crates/tungsten-core/benches/ecs_bench.rs`):** 3.44 µs median beside `query2_homogeneous_10k` at 6.69 µs — ~172× under the 591 µs `naive_query2_via_entities_10k` pattern the engine hot loops previously used.
 - **`physics-stress` capture scene (`example-02-sprite-stress`):** 3,000 dynamic circle bodies with `Collider`s piling under gravity in a static box, driven through the engine-default extract — the first canonical scene exercising the narrow phase and solver (`ecs-high-load` spawns bodies without colliders). Registered in `scripts/perf-capture.sh` and `docs/perf/profiling-workflow.md`.
-- **Performance-overhead audit report (`docs/plans/perf-overhead-audit.md`):** 16 verified findings across rendering, physics, and engine logic with capture artifacts under `perf-runs/20260703T*`, plus a 12-item follow-up backlog ordered by measured impact. Item #1 (this release's ECS work) is marked implemented with measured deltas; items #2/#8 remeasure against the new baselines.
+- **Performance-overhead audit report (`docs/plans/archive/perf-overhead-audit.md`):** 16 verified findings across rendering, physics, and engine logic with capture artifacts under `perf-runs/20260703T*`, plus a 12-item follow-up backlog ordered by measured impact. Item #1 (this release's ECS work) is marked implemented with measured deltas; items #2/#8 remeasure against the new baselines.
 
 ### Changed
 
