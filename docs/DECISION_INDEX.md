@@ -42,6 +42,7 @@ One-line takeaways for every decision heading in [`DECISIONS.md`](../DECISIONS.m
 | `D-059` | M27 SMAA 1x tail between `PostStack` and text: `render.post_aa` presets, `include_bytes!` LUTs (not manifest-tracked), manifest-tracked stage shaders, runtime switch at a frame boundary; `Off` is byte-identical. |
 | `D-060` | M28 bloom is the 18th `PostPass`: `Rgba16Float` pyramid on `SceneTarget` (`bloom_max_mips` 1..=8, startup-only), encoder-level passes, manifest-tracked stages; `SceneColor` stays sRGB. |
 | `D-061` | M29 forward lighting: core `Light`/`LightKind`/`AmbientLight`, `LitSpritePipeline` with a 544-byte `LightUbo` (`LIGHT_CAP = 16`), normal/emissive sibling atlases, per-frame culled `extract_lights`; lit wins over material. |
+| `D-073` | M30 game feel: parallax is a CPU position remap at extract (`ParallaxLayer.scroll_factor`), not per-`depth_bucket` camera matrices — `crates/tungsten-render/` unchanged and `z_order` stays the only ordering authority; camera shake is a trauma envelope over the existing sine carrier (`shake_trauma`/`shake_decay`/`shake_max_offset`, inert at zero); squash/stretch is its own component pair driven by `game_feel.rs`, not a `Tween`. Narrows `D-018`, `D-042`, `D-055`. |
 
 ## Dependencies / Tooling
 

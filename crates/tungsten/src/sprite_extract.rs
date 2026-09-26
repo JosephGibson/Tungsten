@@ -8,13 +8,20 @@
 //! per-entity material animations never alias through one UBO upload. Same-
 //! material same-override batches still collapse; the M25 default bytes are
 //! byte-identical when no sprite carries `material_id`.
+//!
+//! M30 (`D-073`): a `ParallaxLayer` entity's instance position is remapped
+//! against `CameraState.position` at extract time, so one view-projection still
+//! draws every layer. The remap touches positions only — `BatchKey` and `z_norm`
+//! are unchanged, and a sprite without `ParallaxLayer` extracts byte-identically
+//! to pre-M30.
 
 use std::collections::HashMap;
 
+use glam::Vec2;
 use tungsten_core::tween::UniformOverrideBlock;
 use tungsten_core::{
-    AssetRegistry, Entity, FilterMode, MaterialAssetId, Sprite, SpriteAsset, Transform, Visibility,
-    World,
+    AssetRegistry, CameraState, Entity, FilterMode, MaterialAssetId, ParallaxLayer, Sprite,
+    SpriteAsset, Transform, Visibility, World, parallax_world_position,
 };
 use tungsten_render::{SpriteBatch, SpriteInstance};
 
@@ -37,6 +44,9 @@ pub fn extract_sprites_default(world: &World) -> Vec<SpriteBatch> {
     let Some(assets) = world.get_resource::<AssetRegistry>() else {
         return Vec::new();
     };
+    let camera_position = world
+        .get_resource::<CameraState>()
+        .map_or(Vec2::ZERO, |camera| camera.position);
 
     // Collect visible sprites with resolved assets; stable sort by
     // `(z_order, entity_id)` so same-`z_order` ties are deterministic.
@@ -117,8 +127,14 @@ pub fn extract_sprites_default(world: &World) -> Vec<SpriteBatch> {
         } else {
             0.0
         };
+        let position = match world.get::<ParallaxLayer>(*entity) {
+            Some(layer) => {
+                parallax_world_position(t.position, layer.scroll_factor, camera_position)
+            }
+            None => t.position,
+        };
         out[batch_idx].instances.push(SpriteInstance {
-            position: [t.position.x, t.position.y],
+            position: [position.x, position.y],
             size: [width_world, height_world],
             rotation: t.rotation,
             color: s.color,

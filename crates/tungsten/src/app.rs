@@ -198,6 +198,16 @@ impl App {
             &mut event_flushers,
             &mut registered_event_types,
         );
+        Self::register_event_inner::<tungsten_core::ShakeEvent>(
+            &mut world,
+            &mut event_flushers,
+            &mut registered_event_types,
+        );
+        Self::register_event_inner::<tungsten_core::SquashEvent>(
+            &mut world,
+            &mut event_flushers,
+            &mut registered_event_types,
+        );
 
         let mut app = Self {
             config,

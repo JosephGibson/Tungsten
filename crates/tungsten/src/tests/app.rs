@@ -1,5 +1,7 @@
 use super::{App, resolve_startup_display, runtime_display_mode};
-use tungsten_core::{CollisionEvent, Config, DisplayMode, DisplayState, EventQueue};
+use tungsten_core::{
+    CollisionEvent, Config, DisplayMode, DisplayState, EventQueue, ShakeEvent, SquashEvent,
+};
 
 #[derive(Debug, Clone, Copy)]
 struct ExampleEvent;
@@ -30,6 +32,17 @@ fn collision_event_is_pre_registered() {
     app.register_event::<CollisionEvent>();
 
     assert_eq!(app.event_flushers.len(), initial_flushers);
+}
+
+#[test]
+fn m30_game_feel_events_are_pre_registered() {
+    let app = App::new(Config::default()).expect("App::new failed");
+    assert!(app.world.get_resource::<EventQueue<ShakeEvent>>().is_some());
+    assert!(
+        app.world
+            .get_resource::<EventQueue<SquashEvent>>()
+            .is_some()
+    );
 }
 
 #[test]

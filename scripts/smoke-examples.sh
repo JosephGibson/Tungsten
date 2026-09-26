@@ -163,3 +163,14 @@ begin_section "M29 lighting fixture matrix (pkg: $lighting_pkg)"
 row "lighting_fixture=on" "$log_dir/${lighting_pkg}-lighting.log" "$lighting_pkg" \
   TUNGSTEN_LIGHTING_FIXTURE=on
 end_section "Lighting passed" "Lighting failures" 1
+
+# M30: game-feel rows. The playground row pins the fixture env so trauma and
+# every squash envelope are armed at startup — a three-frame run would not
+# otherwise reach a collision. The platformer row runs plain: the parallax
+# backdrop and the landing squash are wired unconditionally there.
+feel_pkg="example-04-shader-playground"
+begin_section "M30 game-feel fixture matrix (pkgs: $feel_pkg, $lighting_pkg)"
+row "game_feel_fixture=on" "$log_dir/${feel_pkg}-game-feel.log" "$feel_pkg" \
+  TUNGSTEN_GAME_FEEL_FIXTURE=on
+row "parallax backdrop" "$log_dir/${lighting_pkg}-game-feel.log" "$lighting_pkg"
+end_section "Game-feel passed" "Game-feel failures" 2

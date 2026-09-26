@@ -13,9 +13,10 @@ Task → file map. Open it on demand before a broad search, not by default. Pref
 | Config parsing, env overrides | `core/config.rs`, `core/display.rs`, `tungsten.json` |
 | Display apply, fullscreen, vsync, frame cap (`D-043`) | `tungsten/display.rs`, `core/display.rs` |
 | Input actions, `input.json`, rebind reload (`D-045`) | `core/input/action_map.rs`, `core/input/key_serde.rs`, `tungsten/asset_loader.rs`, `tungsten/debug_hud.rs`, `tungsten/display.rs`, `input.json` |
-| Camera follow/zoom/bounds | `core/camera.rs`, `tungsten/camera.rs`, `examples/01_platformer/src/setup.rs`, `examples/01_platformer/src/systems.rs` |
+| Camera follow/zoom/bounds/shake (`D-073`) | `core/camera.rs`, `tungsten/camera.rs`, `examples/01_platformer/src/setup.rs`, `examples/01_platformer/src/systems.rs` |
 | State stack, scene spawn, `SceneEntity` cleanup (`D-046`) | `tungsten/state.rs`, `core/assets/scene.rs`, `tungsten/asset_loader.rs`, `examples/03_scene_state/src/states.rs` |
 | Tweens (`D-054`–`D-056`) | `core/tween.rs`, `tungsten/tweens.rs`, `core/assets/scene.rs` |
+| Parallax, camera shake trauma, squash/stretch (`D-073`) | `core/components.rs`, `core/camera.rs`, `tungsten/game_feel.rs`, `tungsten/sprite_extract.rs` |
 | Particles (`D-049`–`D-051`) | `core/assets/particle.rs`, `core/rng.rs`, `core/components.rs`, `tungsten/particles.rs`, `examples/01_platformer/assets/particles/` |
 | Audio mixer, decode (`D-027`, `D-028`, `D-034`) | `tungsten/audio.rs`, `core/assets/audio.rs`, `crates/tungsten-core/tests/audio_decode.rs` |
 | Telemetry, perf logging (`D-038`, `D-041`) | `tungsten/telemetry.rs`, `docs/perf/profiling-workflow.md`, `scripts/perf-capture.sh`, `scripts/test-perf-capture.sh` |

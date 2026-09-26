@@ -85,7 +85,7 @@ Archived, retaining basenames:
 - `docs/plans/physics-debug-audit.md` → `docs/plans/archive/physics-debug-audit.md`: completed findings/probe report mislabeled draft; marked done with lifecycle headers first. Its open correctness findings are retained above.
 - `docs/plans/repo-review-tooling.md` → `docs/plans/archive/repo-review-tooling.md`: this review's completed execution plan.
 
-`agentic-restructure.md` was archived at the `0.27.0` release after CI passed; its outstanding platform checks and follow-ups are under "Carried forward" below. `phase4.md` stays active for M30–M33. Historical inventory prose in the setup plan is retained as dated evidence, not rewritten as a current inventory. No archive contents were read, searched or globbed.
+`agentic-restructure.md` was archived at the `0.27.0` release after CI passed; its outstanding platform checks and follow-ups are under "Carried forward" below. `phase4.md` stays active for M31–M33 (M30 shipped in `0.28.0`). Historical inventory prose in the setup plan is retained as dated evidence, not rewritten as a current inventory. No archive contents were read, searched or globbed.
 
 Removed only the ignored, untracked editor backup `assets/sprites/walk_3.png~`. `input.json` and `tungsten.json` are tracked runtime inputs and remain. The existing `perf-runs/` entries were listed; none were deleted. Build caches remain. No tracked file was deleted outright; the two tracked audit removals are moves.
 

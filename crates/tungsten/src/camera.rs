@@ -1,6 +1,6 @@
 //! Shared camera update system; gameplay owns resources and frame placement.
 
-use std::f32::consts::{FRAC_PI_2, TAU};
+use std::f32::consts::TAU;
 
 use glam::Vec2;
 use tungsten_core::{CameraController, CameraMode, CameraState, DeltaTime, Transform, World};
@@ -91,10 +91,7 @@ pub fn camera_update_system(world: &mut World) {
         );
     }
 
-    let shake = Vec2::new(
-        controller.shake_amplitude.x * controller.shake_phase.sin(),
-        controller.shake_amplitude.y * (controller.shake_phase + FRAC_PI_2).sin(),
-    );
+    let shake = controller.shake_offset();
     camera.position = next_position + shake;
     camera.zoom = effective_zoom;
 
@@ -111,3 +108,7 @@ pub fn camera_update_system(world: &mut World) {
         *camera_controller = controller;
     }
 }
+
+#[cfg(test)]
+#[path = "tests/camera.rs"]
+mod tests;

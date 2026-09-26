@@ -8,6 +8,7 @@ use crate::assets::{AssetId, MaterialAssetId, ParticleConfig};
 use crate::ecs::{Entity, World};
 use crate::physics::Position;
 use crate::rng::Pcg32;
+use crate::tween::Easing;
 
 /// Visual transform; rotation is radians CCW around quad center.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -203,6 +204,89 @@ pub struct Particle {
     pub angular_velocity: f32,
     pub start_scale: f32,
     pub base_rgba: [f32; 4],
+}
+
+/// Parallax scroll factor per axis (M30, `D-073`). `1.0` = world-locked,
+/// `0.0` = screen-locked. Applied at extract time; never mutates `Transform`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ParallaxLayer {
+    pub scroll_factor: Vec2,
+}
+
+impl ParallaxLayer {
+    #[must_use]
+    pub fn new(scroll_factor: Vec2) -> Self {
+        Self { scroll_factor }
+    }
+
+    /// Uniform factor on both axes.
+    #[must_use]
+    pub fn uniform(factor: f32) -> Self {
+        Self {
+            scroll_factor: Vec2::splat(factor),
+        }
+    }
+}
+
+/// Parallax position remap (M30, `D-073`): a CPU-side offset applied at extract
+/// time, so one view-projection still draws every layer correctly and
+/// `crates/tungsten-render/` needs no per-layer camera.
+///
+/// `scroll_factor == 1.0` returns `authored` unchanged (world-locked);
+/// `0.0` pins the layer to the camera (screen-locked).
+#[inline]
+#[must_use]
+pub fn parallax_world_position(authored: Vec2, scroll_factor: Vec2, camera_position: Vec2) -> Vec2 {
+    authored + camera_position * (Vec2::ONE - scroll_factor)
+}
+
+/// Which gameplay trigger arms this entity's squash (M30). Closed enum, `D-054` style.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SquashTrigger {
+    OnLand,
+    OnHit,
+    OnPickup,
+    Manual,
+}
+
+/// Squash/stretch config (M30). `amount` is the peak scale multiplier
+/// (e.g. `(1.3, 0.7)` = widen and flatten).
+///
+/// `D-073`: deliberately not a `Tween` — `TweenRepeat` has no out-and-back
+/// one-shot, and `D-055`'s single slot per entity is already spent on the M26
+/// damage flash for the entity that must both squash and flash.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SpriteSquashStretch {
+    pub on: SquashTrigger,
+    pub amount: Vec2,
+    pub duration: f32,
+    pub easing: Easing,
+}
+
+impl SpriteSquashStretch {
+    /// Symmetric envelope sample: `sin(easing(t) * PI)` scales `amount`'s
+    /// deviation from `1.0`, so the peak is `amount` and both endpoints return
+    /// `base_scale` exactly — no separate cleanup write is needed.
+    ///
+    /// A non-positive `duration` is inert rather than a divide by zero.
+    #[must_use]
+    pub fn scale_at(&self, base_scale: Vec2, elapsed: f32) -> Vec2 {
+        if self.duration <= 0.0 || elapsed <= 0.0 || elapsed >= self.duration {
+            return base_scale;
+        }
+        let env = (self.easing.apply(elapsed / self.duration) * std::f32::consts::PI).sin();
+        base_scale * (Vec2::ONE + (self.amount - Vec2::ONE) * env)
+    }
+}
+
+/// Squash/stretch runtime envelope state (M30), inserted by
+/// `squash_stretch_trigger_system`. `base_scale` is captured at trigger time so
+/// the envelope restores the authored scale and a re-trigger mid-flight cannot
+/// compound.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SquashStretchState {
+    pub elapsed: f32,
+    pub base_scale: Vec2,
 }
 
 /// D-033 one-way sync: physics `Position` -> visual `Transform.position`.

@@ -24,7 +24,7 @@ done-when:
 
 Phase 4 milestone plans use `phase4-milestone-NN-short-topic.md`, where `NN` is the zero-padded milestone number and `short-topic` is a concise kebab-case slug. Example: `phase4-milestone-25-render-foundation.md`.
 
-M25–M29 are shipped; their sections preserve milestone scope rather than exact current API definitions. Use `docs/LLM_INDEX.md` and source for current APIs. M30–M33 remain active scope.
+M25–M30 are shipped; their sections preserve milestone scope rather than exact current API definitions. Use `docs/LLM_INDEX.md` and source for current APIs. M31–M33 remain active scope.
 
 ## Pre-Phase-4 Renderer Baseline
 
@@ -89,7 +89,7 @@ Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user mate
 
 ## M26 — Materials + Post-Stack + Tween→Material Bridge
 
-**Status:** done — shipped in `0.23` (current integration continues on `0.27`; plan archived at [`docs/plans/archive/phase4-milestone-26-materials-post-stack.md`](archive/phase4-milestone-26-materials-post-stack.md)).
+**Status:** done — shipped in `0.23` (plan archived at [`docs/plans/archive/phase4-milestone-26-materials-post-stack.md`](archive/phase4-milestone-26-materials-post-stack.md)).
 
 **Depends on:** M25.
 
@@ -236,6 +236,8 @@ Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user mate
 ---
 
 ## M30 — Parallax + Screen-Shake + Squash/Stretch
+
+**Status:** done — shipped in `0.28` (plan archived at [`docs/plans/archive/phase4-milestone-30-parallax-shake-squash.md`](archive/phase4-milestone-30-parallax-shake-squash.md)). The shipped design deviates from this section in four ways, recorded in `D-073`: parallax is a CPU position remap at extract time rather than one camera matrix per `depth_bucket`, `depth_bucket` is dropped (`Sprite.z_order` stays the only ordering authority), squash/stretch is its own component pair rather than a `Tween`, and `shake_noise_seed` is dropped in favour of a trauma envelope over the existing sine carrier. Read `D-073` before this section.
 
 **Depends on:** M25 (extract changes share seam).
 

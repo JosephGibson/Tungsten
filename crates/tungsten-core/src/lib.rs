@@ -31,15 +31,16 @@ pub use assets::{
 pub use audio::{AudioCommand, AudioCommands};
 pub use camera::{CameraBounds, CameraController, CameraMode, CameraState};
 pub use components::{
-    Light, LightKind, Particle, ParticleEmitter, ParticleEmitterState, Sprite, Tag, Transform,
-    Visibility, sync_position_to_transform,
+    Light, LightKind, ParallaxLayer, Particle, ParticleEmitter, ParticleEmitterState, Sprite,
+    SpriteSquashStretch, SquashStretchState, SquashTrigger, Tag, Transform, Visibility,
+    parallax_world_position, sync_position_to_transform,
 };
 pub use config::{Config, ConfigError, DepthSortMode, PostAaMode, RenderConfig};
 pub use debug_draw::{DEFAULT_CIRCLE_SEGMENTS, DebugCommand, DebugDraw, DebugShape};
 pub use display::{
     DisplayConfig, DisplayMode, DisplayState, DisplayValidationError, Resolution, ScaleMode,
 };
-pub use ecs::{CommandBuffer, Entity, EventQueue, PendingEntity, World};
+pub use ecs::{CommandBuffer, Entity, EventQueue, PendingEntity, ShakeEvent, SquashEvent, World};
 pub use input::{
     ActionMap, ActionMapError, Binding, InputState, KeyCode, MouseButton, ScrollDirection,
 };
