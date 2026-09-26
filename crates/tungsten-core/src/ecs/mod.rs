@@ -8,5 +8,5 @@ mod world;
 
 pub use command_buffer::{CommandBuffer, PendingEntity};
 pub use entity::Entity;
-pub use event_queue::EventQueue;
+pub use event_queue::{EventQueue, ShakeEvent, SquashEvent};
 pub use world::World;

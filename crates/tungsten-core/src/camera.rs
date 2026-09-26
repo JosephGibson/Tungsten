@@ -2,6 +2,8 @@
 //!
 //! Text pipeline is screen-space and ignores this camera.
 
+use std::f32::consts::FRAC_PI_2;
+
 use glam::camera::rh::proj::directx::orthographic;
 use glam::{Mat4, Vec2, Vec3};
 
@@ -84,6 +86,14 @@ pub struct CameraController {
     pub shake_frequency_hz: f32,
     /// Deterministic shake phase.
     pub shake_phase: f32,
+    /// M30 trauma level, `0.0..=1.0`. Clamped on write by `add_trauma`;
+    /// `shake_tick_system` decays it. `0.0` leaves `shake_offset` at the
+    /// pre-M30 sine output.
+    pub shake_trauma: f32,
+    /// Trauma units shed per second.
+    pub shake_decay: f32,
+    /// Peak trauma contribution in pixels, reached at `shake_trauma == 1.0`.
+    pub shake_max_offset: Vec2,
     last_output_zoom: Option<f32>,
     last_base_zoom: Option<f32>,
     last_output_position: Option<Vec2>,
@@ -101,6 +111,9 @@ impl Default for CameraController {
             shake_amplitude: Vec2::ZERO,
             shake_frequency_hz: 0.0,
             shake_phase: 0.0,
+            shake_trauma: 0.0,
+            shake_decay: 1.0,
+            shake_max_offset: Vec2::ZERO,
             last_output_zoom: None,
             last_base_zoom: None,
             last_output_position: None,
@@ -141,6 +154,28 @@ impl CameraController {
     pub fn record_output_position(&mut self, position: Vec2, shake_offset: Vec2) {
         self.last_output_position = Some(position);
         self.last_shake_offset = shake_offset;
+    }
+
+    /// Additive trauma request (M30), saturating at `1.0` rather than wrapping.
+    /// Negative amounts are floored at `0.0`.
+    pub fn add_trauma(&mut self, amount: f32) {
+        self.shake_trauma = (self.shake_trauma + amount).clamp(0.0, 1.0);
+    }
+
+    /// Shake offset for the current phase: sine carrier, trauma-squared
+    /// envelope (M30, `D-073`).
+    ///
+    /// Trauma adds to `shake_amplitude` rather than replacing it, so a
+    /// controller with `shake_trauma == 0.0` reproduces the pre-M30 offset
+    /// exactly.
+    #[must_use]
+    pub fn shake_offset(&self) -> Vec2 {
+        let trauma = self.shake_trauma.clamp(0.0, 1.0);
+        let effective = self.shake_amplitude + self.shake_max_offset * trauma * trauma;
+        Vec2::new(
+            effective.x * self.shake_phase.sin(),
+            effective.y * (self.shake_phase + FRAC_PI_2).sin(),
+        )
     }
 }
 

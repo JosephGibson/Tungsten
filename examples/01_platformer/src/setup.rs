@@ -3,13 +3,17 @@ use std::path::PathBuf;
 use glam::{Vec2, Vec3};
 use tungsten::core::{
     AmbientLight, AnimationRegistry, AssetRegistry, AudioCommands, CameraBounds, CameraController,
-    CameraMode, Entity, Light, SoundRegistry, Tag, TilemapInstance, TilemapRegistry, Transform,
-    World, sync_position_to_transform,
+    CameraMode, Easing, Entity, Light, ParallaxLayer, SoundRegistry, Sprite, SpriteSquashStretch,
+    SquashTrigger, Tag, TilemapInstance, TilemapRegistry, Transform, Visibility, World,
+    sync_position_to_transform,
 };
 use tungsten::physics::{
     BodyKind, Collider, PhysicsConfig, Position, RigidBody, Velocity, physics_step,
 };
-use tungsten::{App, camera_update_system};
+use tungsten::{
+    App, camera_update_system, shake_tick_system, squash_stretch_tick_system,
+    squash_stretch_trigger_system,
+};
 
 use crate::extract::{extract_sprites, extract_text};
 use crate::state::{
@@ -45,7 +49,15 @@ pub(crate) const RUNTIME_SYSTEM_ORDER: &[(&str, ExampleSystem)] = &[
     ("despawn_out_of_bounds", despawn_out_of_bounds),
     ("sync_position_to_transform", sync_position_to_transform),
     ("orbit_lights_system", orbit_lights_system),
+    // M30: the trigger reads the current event window, so it must follow
+    // `ground_detection`; `shake_tick_system` must precede the camera update.
+    (
+        "squash_stretch_trigger_system",
+        squash_stretch_trigger_system,
+    ),
+    ("squash_stretch_tick_system", squash_stretch_tick_system),
     ("platformer_camera_base_zoom", platformer_camera_base_zoom),
+    ("shake_tick_system", shake_tick_system),
     ("camera_update_system", camera_update_system),
 ];
 
@@ -148,6 +160,8 @@ fn seed_world(world: &mut World) {
         }
     }
 
+    spawn_parallax_backdrop(world);
+
     let map = world.spawn();
     world.insert(map, TilemapInstance::new("ex10_level", Vec2::ZERO));
 
@@ -165,6 +179,18 @@ fn seed_world(world: &mut World) {
     );
     world.insert(player, CurrentSprite(PLAYER_START_SPRITE_ID.into()));
     world.insert(player, Tag::new("player"));
+    // M30 squash on landing. Not a `Tween` (`D-073`): the player's single
+    // `D-055` tween slot stays with the M26 damage flash below, so both fire
+    // together on a ball hit.
+    world.insert(
+        player,
+        SpriteSquashStretch {
+            on: SquashTrigger::OnLand,
+            amount: Vec2::new(1.25, 0.75),
+            duration: 0.18,
+            easing: Easing::QuadOut,
+        },
+    );
     // M26 damage-flash: attach an empty override block and the `damage_flash`
     // material id (if registered). Default zero overlay leaves the frame
     // byte-identical to the pre-M26 baseline — the tween in `systems.rs` is
@@ -209,6 +235,148 @@ fn seed_world(world: &mut World) {
     }
 }
 
+/// One backdrop quad on a parallax layer. `scale` is in sprite-size units, so a
+/// 32x32 sky tile stretches to a full column at `scale.y == 36`.
+fn spawn_backdrop_tile(
+    world: &mut World,
+    asset_id: &str,
+    position: Vec2,
+    scale: Vec2,
+    z_order: i32,
+    scroll_factor: f32,
+) {
+    let entity = world.spawn();
+    world.insert(
+        entity,
+        Transform {
+            position,
+            rotation: 0.0,
+            scale,
+        },
+    );
+    let mut sprite = Sprite::new(asset_id);
+    sprite.z_order = z_order;
+    world.insert(entity, sprite);
+    world.insert(entity, Visibility::default());
+    world.insert(entity, ParallaxLayer::uniform(scroll_factor));
+}
+
+/// Backdrop cluster assembled from a `<prefix>_<row>_<col>` tile grid, the same
+/// naming the tileset uses for its big decorations.
+fn spawn_backdrop_grid(
+    world: &mut World,
+    prefix: &str,
+    rows: u32,
+    cols: u32,
+    top_left: Vec2,
+    z_order: i32,
+    scroll_factor: f32,
+) {
+    for row in 0..rows {
+        for col in 0..cols {
+            spawn_backdrop_tile(
+                world,
+                &format!("{prefix}_{row}_{col}"),
+                top_left + Vec2::new(col as f32 * TILE, row as f32 * TILE),
+                Vec2::ONE,
+                z_order,
+                scroll_factor,
+            );
+        }
+    }
+}
+
+/// M30 parallax backdrop (`D-073`): three layers drawn before the tilemap by the
+/// example's custom extract. `level.tmj`'s `background` layer is empty, so the
+/// sky layer supplies the sky.
+///
+/// Positions here are authored world-locked geometry;
+/// `parallax_world_position` remaps them against the camera at extract time.
+/// Every layer overhangs the map so a trauma shake at a clamped camera edge
+/// cannot reveal clear color.
+fn spawn_parallax_backdrop(world: &mut World) {
+    const OVERHANG: f32 = 2.0 * TILE;
+    const MAP_W: f32 = MAP_COLS as f32 * TILE;
+    const MAP_H: f32 = MAP_ROWS as f32 * TILE;
+
+    const SKY_Z: i32 = -300;
+    const SKY_SCROLL: f32 = 0.05;
+    const HILLS_Z: i32 = -200;
+    const HILLS_SCROLL: f32 = 0.35;
+    const HILLS_SPACING: f32 = 8.0 * TILE;
+    /// Ridge line, above the tilemap's own world-locked mountains (row 15).
+    const HILLS_BASE_Y: f32 = 12.5 * TILE;
+    const HILLS_ROWS: u32 = 4;
+    const HILLS_COLS: u32 = 4;
+    const TREES_Z: i32 = -100;
+    const TREES_SCROLL: f32 = 0.6;
+    const TREES_SPACING: f32 = 10.0 * TILE;
+    const TREES_BASE_Y: f32 = 14.5 * TILE;
+    const TREES_ROWS: u32 = 3;
+    const TREES_COLS: u32 = 2;
+
+    // Sky: full-height bands cycling the three sky sprites the zeroed
+    // `background` layer used. They sit 1-2 values apart, so wide bands read as
+    // a faint drift; per-tile columns would read as vertical banding.
+    const SKY_IDS: [&str; 3] = ["ex10_sky", "ex10_sky_1", "ex10_sky_2"];
+    const SKY_BAND_W: f32 = 8.0 * TILE;
+    let sky_scale = Vec2::new(SKY_BAND_W / TILE, (MAP_H + 2.0 * OVERHANG) / TILE);
+    let mut band = 0;
+    let mut x = -OVERHANG;
+    while x < MAP_W + OVERHANG {
+        spawn_backdrop_tile(
+            world,
+            SKY_IDS[band % SKY_IDS.len()],
+            Vec2::new(x, -OVERHANG),
+            sky_scale,
+            SKY_Z,
+            SKY_SCROLL,
+        );
+        x += SKY_BAND_W;
+        band += 1;
+    }
+
+    // Mid hills: every other peak drops a tile so the ridge is not a comb.
+    let hills_height = HILLS_ROWS as f32 * TILE;
+    let mut peak = 0;
+    let mut x = -HILLS_SPACING * 0.5;
+    while x < MAP_W + OVERHANG {
+        let base_y = if peak % 2 == 0 {
+            HILLS_BASE_Y
+        } else {
+            HILLS_BASE_Y - TILE
+        };
+        spawn_backdrop_grid(
+            world,
+            "ex10_mountain_big",
+            HILLS_ROWS,
+            HILLS_COLS,
+            Vec2::new(x, base_y - hills_height),
+            HILLS_Z,
+            HILLS_SCROLL,
+        );
+        x += HILLS_SPACING;
+        peak += 1;
+    }
+
+    // Near foliage: a band sitting just above the tilemap ridge, so it crosses
+    // in front of the hills at a visibly faster rate.
+    let trees_height = TREES_ROWS as f32 * TILE;
+    let mut x = -OVERHANG;
+    while x < MAP_W + OVERHANG {
+        spawn_backdrop_grid(
+            world,
+            "ex10_vines_big",
+            TREES_ROWS,
+            TREES_COLS,
+            Vec2::new(x, TREES_BASE_Y - trees_height),
+            TREES_Z,
+            TREES_SCROLL,
+        );
+        x += TREES_SPACING;
+    }
+}
+
 pub(crate) fn configure_platformer_camera(world: &mut World, player: Entity) {
     let map_bounds = CameraBounds {
         min: Vec2::ZERO,
@@ -221,8 +389,16 @@ pub(crate) fn configure_platformer_camera(world: &mut World, player: Entity) {
         controller.bounds = Some(map_bounds);
         controller.zoom_multiplier = 1.0;
         controller.shake_amplitude = Vec2::ZERO;
-        controller.shake_frequency_hz = 0.0;
+        // M30: idle shake stays off (`shake_amplitude` zero). Trauma from a ball
+        // hit rides this carrier and decays to nothing in under half a second.
+        controller.shake_frequency_hz = 18.0;
         controller.shake_phase = 0.0;
+        controller.shake_trauma = 0.0;
+        controller.shake_decay = 2.2;
+        // Horizontal only: `camera_update_system` adds shake after the bounds
+        // clamp, and this map is exactly as tall as the view, so any vertical
+        // offset would expose untiled space under the ground row.
+        controller.shake_max_offset = Vec2::new(14.0, 0.0);
     }
 }
 
@@ -258,6 +434,15 @@ fn install_startup(app: &mut App) {
             PLAYER_START_SPRITE_ID,
         ] {
             assert!(registry.get_sprite(id).is_some(), "missing sprite '{id}'");
+        }
+        // M30 backdrop grids; previously reached only through the tileset.
+        for (prefix, rows, cols) in [("ex10_mountain_big", 4, 4), ("ex10_vines_big", 3, 2)] {
+            for row in 0..rows {
+                for col in 0..cols {
+                    let id = format!("{prefix}_{row}_{col}");
+                    assert!(registry.get_sprite(&id).is_some(), "missing sprite '{id}'");
+                }
+            }
         }
         let animations = world.get_resource::<AnimationRegistry>().unwrap();
         for id in [PLAYER_ANIMATION_ID, BALL_ANIMATION_ID] {

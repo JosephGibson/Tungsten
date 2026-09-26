@@ -11,6 +11,11 @@
 //! Env `TUNGSTEN_POST_STACK_FIXTURE={all|retro_arcade|dreamy|glitch_boss|empty}`
 //! preloads a fixed stack and **disables** the cycle — the fixtures are for
 //! the smoke matrix, not interactive inspection.
+//!
+//! M30 adds a three-layer parallax backdrop under a camera that follows one
+//! bouncer, plus trauma shake and squash/stretch on every impact. All of it is
+//! always on; `TUNGSTEN_GAME_FEEL_FIXTURE=on` additionally arms both at startup
+//! so a three-frame smoke capture exercises them without waiting for a hit.
 
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -18,11 +23,16 @@ use std::sync::Arc;
 
 use glam::Vec2;
 use tungsten::core::{
-    ActionMap, BlendMode, CommandBuffer, Config, Curve, DeltaTime, EmissionKind, InitialVelocity,
-    InputState, ParticleConfig, Pcg32, Range, Sprite, Transform, Visibility, World,
+    ActionMap, BlendMode, CameraController, CameraMode, CommandBuffer, Config, Curve, DeltaTime,
+    Easing, EmissionKind, Entity, EventQueue, InitialVelocity, InputState, ParallaxLayer,
+    ParticleConfig, Pcg32, Range, ShakeEvent, Sprite, SpriteSquashStretch, SquashEvent,
+    SquashTrigger, Transform, Visibility, World,
 };
 use tungsten::particles::spawn_particle_via;
-use tungsten::{App, PostAaState, render::TextSection, request_post_aa};
+use tungsten::{
+    App, PostAaState, camera_update_system, render::TextSection, request_post_aa,
+    shake_tick_system, squash_stretch_tick_system, squash_stretch_trigger_system,
+};
 use tungsten_core::config::PostAaMode;
 use tungsten_core::post::{
     BloomParams, ColorAdjustParams, CrtParams, DissolveParams, DitherParams, FadeParams,
@@ -58,6 +68,10 @@ const ARENA_H: f32 = WINDOW_H * ARENA_SCALE;
 /// Wall/pair burst counts — tuned for visible pop without blowing the cap.
 const WALL_BURST_COUNT: u32 = 14;
 const PAIR_BURST_COUNT: u32 = 22;
+/// M30 trauma per impact. `add_trauma` saturates at 1.0, so several hits in one
+/// tick stack into a single hard kick rather than a longer one.
+const WALL_TRAUMA: f32 = 0.18;
+const PAIR_TRAUMA: f32 = 0.3;
 
 /// Per-entity bounce state. Lives alongside `Transform` so each sprite moves,
 /// spins, and reflects off window edges independently.
@@ -124,8 +138,21 @@ fn main() -> anyhow::Result<()> {
     }
 
     app.on_startup(|world, _renderer| {
-        spawn_bouncers(world);
+        // M30: backdrop first so the layers sit behind everything by z_order.
+        spawn_parallax_layers(world);
+        let bouncers = spawn_bouncers(world);
         spawn_emissive_quad(world);
+        if let Some(&target) = bouncers.first() {
+            configure_playground_camera(world, target);
+        }
+
+        // M30 capture gate, same shape as TUNGSTEN_BLOOM_FIXTURE below: arm
+        // trauma and every squash envelope up front so the smoke row renders
+        // them instead of waiting for a collision.
+        if std::env::var("TUNGSTEN_GAME_FEEL_FIXTURE").unwrap_or_default() == "on" {
+            send_shake(world, 1.0);
+            send_squash(world, &bouncers);
+        }
 
         let fixture = std::env::var("TUNGSTEN_POST_STACK_FIXTURE").unwrap_or_default();
         let bloom_fixture = std::env::var("TUNGSTEN_BLOOM_FIXTURE").unwrap_or_default() == "on";
@@ -158,6 +185,15 @@ fn main() -> anyhow::Result<()> {
     app.add_system_named("playground_cycle_input", cycle_input_system);
     app.add_system_named("playground_post_aa_input", post_aa_input_system);
     app.add_system_named("playground_bloom_input", bloom_input_system);
+    // M30: the triggers read the current event window, so they follow the
+    // systems that send; `shake_tick_system` precedes the camera update.
+    app.add_system_named(
+        "squash_stretch_trigger_system",
+        squash_stretch_trigger_system,
+    );
+    app.add_system_named("squash_stretch_tick_system", squash_stretch_tick_system);
+    app.add_system_named("shake_tick_system", shake_tick_system);
+    app.add_system_named("camera_update_system", camera_update_system);
     app.set_extract_text(playground_text);
 
     app.run()
@@ -167,6 +203,10 @@ fn main() -> anyhow::Result<()> {
 /// Acts as the visible bloom source for the LDR demo fixture: it is just a
 /// fully-white sprite (R/G/B = 1.0 after sRGB decode), so the playground
 /// fixture lowers the threshold below 1.0 to make it clip into the bright pass.
+///
+/// M30 screen-locks it (`ParallaxLayer::uniform(0.0)`): the camera now follows
+/// a bouncer around the arena, and a bloom source that wanders out of frame
+/// would make the M28 fixture useless to look at.
 fn spawn_emissive_quad(world: &mut World) {
     let entity = world.spawn();
     world.insert(
@@ -181,6 +221,7 @@ fn spawn_emissive_quad(world: &mut World) {
     sprite.color = [255, 255, 255, 255];
     world.insert(entity, sprite);
     world.insert(entity, Visibility::default());
+    world.insert(entity, ParallaxLayer::uniform(0.0));
 }
 
 const POST_AA_CYCLE: &[PostAaMode] = &[
@@ -253,7 +294,7 @@ struct BouncerSpec {
     color: [u8; 4],
 }
 
-fn spawn_bouncers(world: &mut World) {
+fn spawn_bouncers(world: &mut World) -> Vec<Entity> {
     let specs: &[BouncerSpec] = &[
         BouncerSpec {
             position: Vec2::new(200.0, 160.0),
@@ -304,6 +345,7 @@ fn spawn_bouncers(world: &mut World) {
             color: [255, 140, 220, 255],
         },
     ];
+    let mut spawned = Vec::with_capacity(specs.len());
     for &BouncerSpec {
         position,
         velocity,
@@ -334,6 +376,131 @@ fn spawn_bouncers(world: &mut World) {
                 size: QUAD_TEXELS * scale_mul,
             },
         );
+        // M30: `amount` is a multiplier on the authored scale, so one config
+        // fits every bouncer size. `Bouncer.size` is untouched — the squash is
+        // visual only and never feeds the collision box.
+        world.insert(
+            entity,
+            SpriteSquashStretch {
+                on: SquashTrigger::OnHit,
+                amount: Vec2::new(1.35, 0.7),
+                duration: 0.22,
+                easing: Easing::QuadOut,
+            },
+        );
+        spawned.push(entity);
+    }
+    spawned
+}
+
+/// M30 parallax backdrop (`D-073`). Three tinted `ex04_quad` grids at distinct
+/// scroll factors; `extract_sprites_default` remaps their positions against the
+/// camera, so the layers separate as the camera pans after its bouncer.
+///
+/// No new art: tint, `Transform.scale` and `z_order` carry all three layers.
+fn spawn_parallax_layers(world: &mut World) {
+    struct LayerSpec {
+        scroll: f32,
+        z_order: i32,
+        color: [u8; 4],
+        scale: f32,
+        spacing: f32,
+    }
+    // Authored over a margin around the arena: at scroll `s` the visible
+    // authored window is `[camera * s, camera * s + viewport]`, and the camera
+    // is unbounded here, so the slowest layer needs the least coverage.
+    const MARGIN: f32 = 700.0;
+    // Tints are linear, so these land just above the 0.05 clear color once
+    // encoded. Far is smallest and dimmest, near is largest and boldest.
+    const LAYERS: &[LayerSpec] = &[
+        LayerSpec {
+            scroll: 0.2,
+            z_order: -300,
+            color: [24, 26, 44, 255],
+            scale: 1.5,
+            spacing: 300.0,
+        },
+        LayerSpec {
+            scroll: 0.5,
+            z_order: -200,
+            color: [40, 48, 76, 255],
+            scale: 2.5,
+            spacing: 360.0,
+        },
+        LayerSpec {
+            scroll: 0.8,
+            z_order: -100,
+            color: [64, 56, 100, 255],
+            scale: 4.0,
+            spacing: 460.0,
+        },
+    ];
+
+    for layer in LAYERS {
+        let mut index = 0u32;
+        let mut y = -MARGIN;
+        while y < ARENA_H + MARGIN {
+            let mut x = -MARGIN;
+            while x < ARENA_W + MARGIN {
+                // Deterministic stagger so the grid does not read as a lattice.
+                let jitter = Vec2::new(
+                    ((index % 7) as f32 - 3.0) * layer.spacing * 0.08,
+                    ((index % 5) as f32 - 2.0) * layer.spacing * 0.1,
+                );
+                let entity = world.spawn();
+                world.insert(
+                    entity,
+                    Transform {
+                        position: Vec2::new(x, y) + jitter,
+                        rotation: 0.0,
+                        scale: Vec2::splat(layer.scale),
+                    },
+                );
+                let mut sprite = Sprite::new(QUAD_ID);
+                sprite.color = layer.color;
+                sprite.z_order = layer.z_order;
+                world.insert(entity, sprite);
+                world.insert(entity, Visibility::default());
+                world.insert(entity, ParallaxLayer::uniform(layer.scroll));
+                index += 1;
+                x += layer.spacing;
+            }
+            y += layer.spacing;
+        }
+    }
+}
+
+/// M30 camera: lazily follows one bouncer so the parallax layers separate.
+/// `shake_amplitude` stays zero — only trauma from impacts moves the camera.
+fn configure_playground_camera(world: &mut World, target: Entity) {
+    if let Some(controller) = world.get_resource_mut::<CameraController>() {
+        controller.mode = CameraMode::Follow(target);
+        controller.dead_zone_size = Vec2::new(360.0, 240.0);
+        controller.smoothing_factor = 0.12;
+        controller.shake_amplitude = Vec2::ZERO;
+        controller.shake_frequency_hz = 22.0;
+        controller.shake_trauma = 0.0;
+        controller.shake_decay = 2.5;
+        controller.shake_max_offset = Vec2::new(10.0, 10.0);
+    }
+}
+
+/// Queue trauma on the camera. Wall hits are lighter than pair hits.
+fn send_shake(world: &mut World, trauma_add: f32) {
+    if let Some(queue) = world.get_resource_mut::<EventQueue<ShakeEvent>>() {
+        queue.send(ShakeEvent { trauma_add });
+    }
+}
+
+/// Arm the squash envelope on every entity in `entities`.
+fn send_squash(world: &mut World, entities: &[Entity]) {
+    if let Some(queue) = world.get_resource_mut::<EventQueue<SquashEvent>>() {
+        for &entity in entities {
+            queue.send(SquashEvent {
+                entity,
+                trigger: SquashTrigger::OnHit,
+            });
+        }
     }
 }
 
@@ -345,6 +512,8 @@ fn bounce_system(world: &mut World) {
     // Outward normals for each axis the entity crossed this tick. Collected
     // first so the burst spawn pass runs after every world.get_mut release.
     let mut contacts: Vec<(Vec2, Vec2)> = Vec::new();
+    // M30: which bouncers hit a wall this tick, for the squash envelope.
+    let mut wall_hits: Vec<Entity> = Vec::new();
 
     for entity in world.query2_entities::<Transform, Bouncer>() {
         let (mut velocity, angular_velocity, size) = {
@@ -352,6 +521,7 @@ fn bounce_system(world: &mut World) {
             (b.velocity, b.angular_velocity, b.size)
         };
 
+        let contacts_before = contacts.len();
         if let Some(t) = world.get_mut::<Transform>(entity) {
             t.position += velocity * dt;
             t.rotation += angular_velocity * dt;
@@ -377,6 +547,10 @@ fn bounce_system(world: &mut World) {
             }
         }
 
+        if contacts.len() > contacts_before {
+            wall_hits.push(entity);
+        }
+
         if let Some(b) = world.get_mut::<Bouncer>(entity) {
             b.velocity = velocity;
         }
@@ -385,6 +559,11 @@ fn bounce_system(world: &mut World) {
     if contacts.is_empty() {
         return;
     }
+
+    // M30: a wall is the lighter of the two impacts.
+    send_shake(world, WALL_TRAUMA * wall_hits.len() as f32);
+    send_squash(world, &wall_hits);
+
     let Some(recipe) = world.get_resource::<SparkRecipes>().map(|r| r.wall.clone()) else {
         return;
     };
@@ -421,6 +600,8 @@ fn pair_collision_system(world: &mut World) {
         .collect();
 
     let mut contacts: Vec<Vec2> = Vec::new();
+    // M30: every bouncer in a pair contact this tick, deduped by snapshot index.
+    let mut pair_hits: Vec<usize> = Vec::new();
     for i in 0..snapshots.len() {
         for j in (i + 1)..snapshots.len() {
             let (_, pa, sa, va) = snapshots[i];
@@ -432,6 +613,11 @@ fn pair_collision_system(world: &mut World) {
             let overlap_y = (ha + hb) - delta.y.abs();
             if overlap_x <= 0.0 || overlap_y <= 0.0 {
                 continue;
+            }
+            for index in [i, j] {
+                if !pair_hits.contains(&index) {
+                    pair_hits.push(index);
+                }
             }
 
             // Shallowest axis wins — that is the pushout direction.
@@ -484,6 +670,17 @@ fn pair_collision_system(world: &mut World) {
     if contacts.is_empty() {
         return;
     }
+
+    // M30: a bouncer-on-bouncer hit kicks harder than a wall.
+    // `snapshots[i].0` is the index into `entities`; the two spaces coincide
+    // today only because `query2_entities` guarantees both components.
+    let hit_entities: Vec<Entity> = pair_hits
+        .iter()
+        .map(|&i| entities[snapshots[i].0])
+        .collect();
+    send_shake(world, PAIR_TRAUMA * contacts.len() as f32);
+    send_squash(world, &hit_entities);
+
     let Some(recipe) = world.get_resource::<SparkRecipes>().map(|r| r.pair.clone()) else {
         return;
     };

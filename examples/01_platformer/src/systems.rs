@@ -3,7 +3,8 @@ use tungsten::WindowSize;
 use tungsten::core::{
     ActionMap, AnimationRegistry, AnimationState, AudioCommands, CameraController, CameraState,
     CommandBuffer, DeltaTime, Entity, EventQueue, InputState, Light, ParticleConfigRegistry,
-    ParticleEmitter, ParticleEmitterState, Transform, World,
+    ParticleEmitter, ParticleEmitterState, ShakeEvent, SquashEvent, SquashTrigger, Transform,
+    World,
 };
 use tungsten::physics::{BodyKind, Collider, CollisionEvent, Position, RigidBody, Shape, Velocity};
 
@@ -204,13 +205,33 @@ pub(crate) fn ground_detection(world: &mut World) {
         None => return,
     };
     let player_entities: Vec<_> = world.query::<Player>().map(|(e, _)| e).collect();
+    let mut landed: Vec<Entity> = Vec::new();
     for entity in player_entities {
-        if events
+        let grounded = events
             .iter()
-            .any(|event| player_is_grounded_by_event(entity, event))
-            && let Some(player) = world.get_mut::<Player>(entity)
-        {
-            player.grounded = true;
+            .any(|event| player_is_grounded_by_event(entity, event));
+        if let Some(player) = world.get_mut::<Player>(entity) {
+            if grounded {
+                player.grounded = true;
+            }
+            // M30: rising edge only. `player.grounded` is cleared every frame in
+            // `player_input`, so `was_grounded` is what distinguishes a landing
+            // from standing still.
+            if grounded && !player.was_grounded {
+                landed.push(entity);
+            }
+            player.was_grounded = grounded;
+        }
+    }
+
+    if !landed.is_empty()
+        && let Some(queue) = world.get_resource_mut::<EventQueue<SquashEvent>>()
+    {
+        for entity in landed {
+            queue.send(SquashEvent {
+                entity,
+                trigger: SquashTrigger::OnLand,
+            });
         }
     }
 }
@@ -274,6 +295,12 @@ pub(crate) fn damage_flash_on_ball_hit(world: &mut World) {
             block.f32s[ScalarSlot::F0.index()] = 0.8;
         }
         world.insert(player, tween);
+        // M30: the same hit kicks the camera. The flash keeps the entity's one
+        // `D-055` tween slot; trauma lives on the camera controller, so both
+        // read on screen at once.
+        if let Some(queue) = world.get_resource_mut::<EventQueue<ShakeEvent>>() {
+            queue.send(ShakeEvent { trauma_add: 0.5 });
+        }
     }
 }
 

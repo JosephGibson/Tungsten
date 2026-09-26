@@ -313,3 +313,115 @@ fn unlit_path_byte_identical_with_no_aux() {
     assert_eq!(batches.len(), 1);
     assert!(!batches[0].lit, "unlit sprite must keep lit = false");
 }
+
+fn spawn_visible(world: &mut World, id: &str, position: Vec2, z_order: i32) -> Entity {
+    let e = world.spawn();
+    world.insert(e, Transform::from_position(position));
+    let mut sprite = Sprite::new(id);
+    sprite.z_order = z_order;
+    world.insert(e, sprite);
+    world.insert(e, Visibility::default());
+    e
+}
+
+fn instance_positions(batches: &[tungsten_render::SpriteBatch]) -> Vec<[f32; 2]> {
+    batches
+        .iter()
+        .flat_map(|b| b.instances.iter().map(|i| i.position))
+        .collect()
+}
+
+#[test]
+fn parallax_layer_remaps_instance_position() {
+    let mut world = world_with_registry();
+    register_sprite(&mut world, "quad", FilterMode::Nearest);
+    let mut camera = CameraState::new();
+    camera.position = Vec2::new(400.0, 200.0);
+    world.insert_resource(camera);
+
+    let e = spawn_visible(&mut world, "quad", Vec2::new(10.0, 20.0), 0);
+    world.insert(e, ParallaxLayer::uniform(0.25));
+
+    let batches = extract_sprites_default(&world);
+    assert_eq!(
+        instance_positions(&batches),
+        vec![[10.0 + 400.0 * 0.75, 20.0 + 200.0 * 0.75]]
+    );
+}
+
+#[test]
+fn parallax_world_locked_factor_leaves_position_untouched() {
+    let mut world = world_with_registry();
+    register_sprite(&mut world, "quad", FilterMode::Nearest);
+    let mut camera = CameraState::new();
+    camera.position = Vec2::new(900.0, -300.0);
+    world.insert_resource(camera);
+
+    let e = spawn_visible(&mut world, "quad", Vec2::new(64.0, 32.0), 0);
+    world.insert(e, ParallaxLayer::new(Vec2::ONE));
+
+    let batches = extract_sprites_default(&world);
+    assert_eq!(instance_positions(&batches), vec![[64.0, 32.0]]);
+}
+
+#[test]
+fn sprite_without_parallax_is_unchanged_under_camera_motion() {
+    // Every instance field, at full `f32` debug precision: a sprite with no
+    // `ParallaxLayer` must extract exactly as it did pre-M30 regardless of
+    // where the camera sits.
+    let build = |camera_position: Vec2| {
+        let mut world = world_with_registry();
+        register_sprite(&mut world, "quad", FilterMode::Nearest);
+        let mut camera = CameraState::new();
+        camera.position = camera_position;
+        world.insert_resource(camera);
+        spawn_visible(&mut world, "quad", Vec2::new(12.0, 34.0), 0);
+        let batches = extract_sprites_default(&world);
+        batches
+            .iter()
+            .map(|b| format!("{:?}{:?}{:?}", b.texture, b.filter, b.instances))
+            .collect::<Vec<String>>()
+    };
+
+    assert_eq!(build(Vec2::ZERO), build(Vec2::new(750.0, -120.0)));
+}
+
+#[test]
+fn parallax_does_not_change_batch_grouping_or_z_norm() {
+    let mut world = world_with_registry();
+    register_sprite(&mut world, "quad", FilterMode::Nearest);
+    let mut camera = CameraState::new();
+    camera.position = Vec2::new(500.0, 500.0);
+    world.insert_resource(camera);
+
+    let far = spawn_visible(&mut world, "quad", Vec2::new(0.0, 0.0), -100);
+    world.insert(far, ParallaxLayer::uniform(0.1));
+    let near = spawn_visible(&mut world, "quad", Vec2::new(0.0, 0.0), -100);
+    world.insert(near, ParallaxLayer::uniform(0.9));
+    spawn_visible(&mut world, "quad", Vec2::new(0.0, 0.0), 10);
+
+    let batches = extract_sprites_default(&world);
+    // Same atlas, filter, material and z-run: the two parallax layers still
+    // collapse into one batch, and the z_order 10 sprite opens the next.
+    assert_eq!(batches.len(), 2);
+    assert_eq!(batches[0].instances.len(), 2);
+    assert_eq!(batches[1].instances.len(), 1);
+
+    let z_norms: Vec<f32> = batches
+        .iter()
+        .flat_map(|b| b.instances.iter().map(|i| i.z_norm))
+        .collect();
+    assert_eq!(z_norms, vec![2.0 / 3.0, 1.0 / 3.0, 0.0]);
+}
+
+#[test]
+fn parallax_without_camera_resource_is_identity() {
+    let mut world = world_with_registry();
+    register_sprite(&mut world, "quad", FilterMode::Nearest);
+
+    let e = spawn_visible(&mut world, "quad", Vec2::new(7.0, 9.0), 0);
+    world.insert(e, ParallaxLayer::uniform(0.0));
+
+    let batches = extract_sprites_default(&world);
+    assert_eq!(instance_positions(&batches), vec![[7.0, 9.0]]);
+}

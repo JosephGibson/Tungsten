@@ -6,6 +6,26 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-09-26
+
+Summary: M30 game feel — per-layer parallax scroll, trauma-enveloped camera shake and one-shot squash/stretch (plan `docs/plans/archive/phase4-milestone-30-parallax-shake-squash.md`, `D-073`), demoed in `examples/01_platformer/` and `examples/04_shader_playground/`. No render-crate change; a sprite without `ParallaxLayer` and a `CameraController::default()` reproduce the pre-M30 output exactly.
+
+### Added
+
+- **Parallax (`D-073`):** `ParallaxLayer { scroll_factor: Vec2 }` and `parallax_world_position` in `core/components.rs`. `tungsten/sprite_extract.rs` remaps a layer entity's instance position against `CameraState.position` at extract time (`1.0` = world-locked, `0.0` = screen-locked); `BatchKey`, `z_norm` and `crates/tungsten-render/` are untouched, and `Sprite.z_order` stays the only ordering authority.
+- **Camera shake trauma (`D-073`):** `CameraController` gains `shake_trauma`, `shake_decay` and `shake_max_offset` plus `add_trauma` and `shake_offset()` in `core/camera.rs` — a trauma-squared envelope over the existing sine carrier, additive with `shake_amplitude` and inert at zero. `tungsten/camera.rs` calls `shake_offset()` in place of its inline sine block.
+- **Squash/stretch (`D-073`):** `SpriteSquashStretch`, `SquashTrigger` and `SquashStretchState` in `core/components.rs`, driven by the symmetric `sin(easing(t) * π)` envelope over `Transform.scale`. Not a `Tween`: `TweenRepeat` has no out-and-back one-shot and `D-055`'s one slot per entity is spent on the M26 damage flash.
+- **`tungsten/game_feel.rs`:** `shake_tick_system`, `squash_stretch_trigger_system` and `squash_stretch_tick_system`, exported from `tungsten/lib.rs` and registered by examples like `camera_update_system`. All three read the current event window, so an example registers them after the systems that send, the trigger before the tick, and `shake_tick_system` before `camera_update_system`. Structural work routes through `CommandBuffer` (`D-039`); a re-trigger restarts an in-flight envelope in place.
+- **Events:** `ShakeEvent { trauma_add }` and `SquashEvent { entity, trigger }` in `core/ecs/event_queue.rs`, registered in `App::new` alongside `CollisionEvent`.
+- **Tests:** parallax remap and squash-envelope cases in `core/tests/components.rs`, trauma cases in `core/tests/camera.rs`, the three systems in `tungsten/tests/game_feel.rs`, parallax extract cases in `tungsten/tests/sprite_extract.rs`, and a new `tungsten/tests/camera.rs` covering follow, dead zone, bounds and shake not accumulating into the base position.
+- **Smoke:** an M30 section in `scripts/smoke-examples.sh` — the playground under `TUNGSTEN_GAME_FEEL_FIXTURE=on` (arms trauma and every squash at startup, so a three-frame run reaches both paths) and the platformer's parallax backdrop.
+
+### Changed
+
+- **Platformer:** three parallax backdrop layers (sky `0.05`, mid-hills `0.35`, near foliage `0.6`) spawn in `setup.rs` from existing sprite IDs and are emitted first by the custom extract; `level.tmj`'s fully-filled `background` tile layer is emptied so the sky layer supplies it. The player squashes on the rising edge of `grounded` (new `Player.was_grounded`) and a ball hit now sends `ShakeEvent` alongside the M26 damage flash, so shake and flash fire together. The player quad reads `Transform.scale` and stays bottom-centered on its physics AABB.
+- **Shader playground:** three tinted `ex04_quad` parallax layers under a camera that lazily follows one bouncer, with trauma shake and squash on wall and pair impacts. No new assets in either example.
+- `DECISIONS.md` adds `D-073`.
+
 ## [0.27.0] - 2026-09-25
 
 Summary: the branch-`0.27` release — a physics scale and CCD pass (plan `docs/plans/archive/physics-scale-and-ccd.md`, `D-062`–`D-067`), the agent/tooling restructure and dependency refresh (plan `docs/plans/archive/agentic-restructure.md`, `D-068`–`D-070`), a repository review with targeted correctness fixes, and a tag-triggered release pipeline (`D-071`). No rendering or gameplay features; physics behavior and `PhysicsConfig` change (see Changed and Removed).

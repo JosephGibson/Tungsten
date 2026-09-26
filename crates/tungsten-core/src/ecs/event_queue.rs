@@ -2,6 +2,9 @@
 //!
 //! App flushes once per frame after systems and command flush, before hot reload/extract/render.
 
+use crate::components::SquashTrigger;
+use crate::ecs::Entity;
+
 /// Typed two-window event buffer resource.
 pub struct EventQueue<T> {
     current: Vec<T>,
@@ -55,6 +58,21 @@ impl<T> Default for EventQueue<T> {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Additive camera trauma request (M30). Drained by `shake_tick_system`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ShakeEvent {
+    pub trauma_add: f32,
+}
+
+/// Arms an entity's squash envelope (M30). Sent by gameplay, never by core:
+/// `SquashTrigger::OnLand` is not detectable without gameplay knowledge, so the
+/// sender names the trigger and `SpriteSquashStretch.on` filters it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SquashEvent {
+    pub entity: Entity,
+    pub trigger: SquashTrigger,
 }
 
 #[cfg(test)]

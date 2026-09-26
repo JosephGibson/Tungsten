@@ -80,6 +80,10 @@ impl Default for TextDisplayState {
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct Player {
     pub(crate) grounded: bool,
+    /// M30: previous frame's grounded state, kept across the per-frame reset in
+    /// `player_input` so `ground_detection` can fire the squash on the rising
+    /// edge only — a resting player would otherwise re-trigger every frame.
+    pub(crate) was_grounded: bool,
 }
 
 #[derive(Debug, Clone, Copy)]

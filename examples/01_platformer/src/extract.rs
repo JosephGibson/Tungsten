@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use glam::Vec2;
 use tungsten::core::{
-    AssetRegistry, CameraState, FilterMode, InputState, Particle, Sprite, Transform, Visibility,
-    World,
+    AssetRegistry, CameraState, Entity, FilterMode, InputState, ParallaxLayer, Particle, Sprite,
+    Transform, Visibility, World, parallax_world_position,
 };
 use tungsten::extract_tilemaps;
 use tungsten::physics::Position;
@@ -36,11 +36,68 @@ fn rainbow_rgba(hue: f32) -> [u8; 4] {
     [saturated(r), saturated(g), saturated(b), 255]
 }
 
+/// M30 parallax backdrop (`D-073`). Emitted before the tilemap, so the layers
+/// read sky -> hills -> foliage -> tilemap under `DepthSortMode::CpuStable`
+/// batch order. Positions are remapped against the camera here; `Transform` is
+/// never mutated.
+fn extract_parallax(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
+    let camera_position = world
+        .get_resource::<CameraState>()
+        .map_or(Vec2::ZERO, |camera| camera.position);
+
+    let mut entries: Vec<(Entity, &Transform, &Sprite, &ParallaxLayer)> = world
+        .query3::<Transform, Sprite, ParallaxLayer>()
+        .filter(|(entity, _, _, _)| world.get::<Visibility>(*entity).is_some_and(|v| v.visible))
+        .collect();
+    entries.sort_by(|a, b| {
+        a.2.z_order
+            .cmp(&b.2.z_order)
+            .then_with(|| a.0.id().cmp(&b.0.id()))
+    });
+
+    // One batch per `(z_order, atlas, filter)` run: the backdrop layers overlap,
+    // so their relative order has to survive batching.
+    let mut batches: Vec<SpriteBatch> = Vec::new();
+    let mut current: Option<(i32, u32, FilterMode)> = None;
+    for (_entity, transform, sprite, layer) in entries {
+        let Some(asset) = assets.get_sprite(&sprite.asset_id) else {
+            continue;
+        };
+        let key = (sprite.z_order, asset.atlas.0, asset.filter);
+        if current != Some(key) {
+            batches.push(SpriteBatch::new(asset.atlas, asset.filter));
+            current = Some(key);
+        }
+        let position =
+            parallax_world_position(transform.position, layer.scroll_factor, camera_position);
+        let batch = batches.last_mut().expect("batch pushed above");
+        batch.instances.push(SpriteInstance {
+            position: [position.x, position.y],
+            size: [
+                asset.width as f32 * transform.scale.x,
+                asset.height as f32 * transform.scale.y,
+            ],
+            rotation: transform.rotation,
+            color: sprite.color,
+            uv_min: asset.uv.min,
+            uv_size: [
+                asset.uv.max[0] - asset.uv.min[0],
+                asset.uv.max[1] - asset.uv.min[1],
+            ],
+            z_norm: 0.0,
+            _pad: 0.0,
+        });
+    }
+    batches
+}
+
 pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
-    let mut batches = extract_tilemaps(world);
     let Some(assets) = world.get_resource::<AssetRegistry>() else {
-        return batches;
+        return extract_tilemaps(world);
     };
+    // M30: backdrop first, then the tilemap draws the world over it.
+    let mut batches = extract_parallax(world, assets);
+    batches.extend(extract_tilemaps(world));
 
     // Particles before black-hole core; custom extract must include them explicitly.
     let mut particle_batches: HashMap<(u32, FilterMode), SpriteBatch> = HashMap::new();
@@ -147,8 +204,14 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
         let Some(asset) = assets.get_sprite(&cs.0) else {
             continue;
         };
-        let sprite_w = asset.width as f32;
-        let sprite_h = asset.height as f32;
+        // M30: `squash_stretch_tick_system` drives `Transform.scale`, so the
+        // player quad reads it and stays bottom-centered on the physics AABB —
+        // a squash flattens onto the ground instead of sinking through it.
+        let scale = world
+            .get::<Transform>(entity)
+            .map_or(Vec2::ONE, |transform| transform.scale);
+        let sprite_w = asset.width as f32 * scale.x;
+        let sprite_h = asset.height as f32 * scale.y;
         let uv_min = asset.uv.min;
         let uv_size = [
             asset.uv.max[0] - asset.uv.min[0],

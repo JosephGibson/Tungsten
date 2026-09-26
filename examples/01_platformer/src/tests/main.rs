@@ -110,7 +110,10 @@ fn runtime_system_order_matches_expected_pipeline() {
             "despawn_out_of_bounds",
             "sync_position_to_transform",
             "orbit_lights_system",
+            "squash_stretch_trigger_system",
+            "squash_stretch_tick_system",
             "platformer_camera_base_zoom",
+            "shake_tick_system",
             "camera_update_system",
         ]
     );
@@ -245,7 +248,7 @@ fn jump_impulse_only_applies_when_grounded() {
     world.insert(map, TilemapInstance::new("ex10_level", Vec2::ZERO));
 
     let player = world.spawn();
-    world.insert(player, Player { grounded: false });
+    world.insert(player, Player::default());
     world.insert(player, Position(Vec2::new(40.0, 40.0)));
     world.insert(player, Transform::from_position(Vec2::new(40.0, 40.0)));
     world.insert(player, Velocity(Vec2::ZERO));
