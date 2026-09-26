@@ -5,6 +5,7 @@ import contextlib
 import datetime
 import importlib.util
 import io
+import re
 import tarfile
 import tempfile
 import unittest
@@ -228,41 +229,72 @@ class Release(unittest.TestCase):
         self.write("examples/README.md", "not a package")
         self.assertEqual([d for _, d in rel.examples(self.root)], ["examples/01_demo", "examples/02_bare"])
 
-    def bins(self, target, suffix):
-        directory = self.root / "target" / target / "release"
-        for name in ("example-01-demo", "example-02-bare"):
-            self.write(f"target/{target}/release/{name}{suffix}", "binary").chmod(0o644)
-        self.write(f"target/{target}/release/example-01-demo.d", "dep-info")
-        return directory
+    def bins(self, target, suffix, levels=("x86-64-v3", "x86-64")):
+        for level in levels:
+            release = f"target/{level}/{target}/release"
+            for name in ("example-01-demo", "example-02-bare", "tungsten-launcher"):
+                self.write(f"{release}/{name}{suffix}", f"{level} {name}").chmod(0o644)
+            self.write(f"{release}/example-01-demo.d", "dep-info")
 
     def test_package_linux_archive_layout(self):
-        self.bins("x86_64-unknown-linux-gnu", "")
-        archive = rel.package(self.root, "v0.26.0", "x86_64-unknown-linux-gnu", self.root / "dist")
-        self.assertEqual(archive.name, "tungsten-examples-v0.26.0-x86_64-unknown-linux-gnu.tar.gz")
+        linux = "x86_64-unknown-linux-gnu"
+        self.bins(linux, "")
+        archive = rel.package(self.root, "v0.26.0", linux, self.root / "dist")
+        top = f"tungsten-examples-v0.26.0-{linux}"
+        self.assertEqual(archive.name, f"{top}.tar.gz")
         with tarfile.open(archive) as tar:
             members = {m.name.split("/", 1)[1]: m for m in tar.getmembers() if "/" in m.name}
-        for path in ("example-01-demo", "example-02-bare", "tungsten.json", "input.json", "LICENSE",
-                     "README.txt", "assets/manifest.json", "assets/sprites/a.png",
-                     "examples/01_demo/assets/manifest.json"):
+            launcher = tar.extractfile(f"{top}/example-01-demo").read()
+            fast = tar.extractfile(f"{top}/bin/x86-64-v3/example-01-demo").read()
+            readme = tar.extractfile(f"{top}/README.txt").read().decode()
+        for path in ("example-01-demo", "example-02-bare", "bin/x86-64-v3/example-01-demo",
+                     "bin/x86-64/example-02-bare", "tungsten.json", "input.json", "LICENSE", "README.txt",
+                     "assets/manifest.json", "assets/sprites/a.png", "examples/01_demo/assets/manifest.json"):
             self.assertIn(path, members)
-        self.assertEqual(members["example-01-demo"].mode & 0o111, 0o111)
-        self.assertNotIn("example-01-demo.d", members)
-        self.assertNotIn("examples/02_bare/assets", members)
+        # Launcher copies come from the portable build; each level keeps its own binaries.
+        self.assertEqual(launcher, b"x86-64 tungsten-launcher")
+        self.assertEqual(fast, b"x86-64-v3 example-01-demo")
+        for path in ("example-01-demo", "bin/x86-64-v3/example-01-demo", "bin/x86-64/example-02-bare"):
+            self.assertEqual(members[path].mode & 0o111, 0o111, path)
+        for path in ("example-01-demo.d", "bin/x86-64/example-01-demo.d", "tungsten-launcher",
+                     "bin/x86-64/tungsten-launcher", "examples/02_bare/assets"):
+            self.assertNotIn(path, members)
+        self.assertIn("(x86-64-v3, x86-64)", readme)
+        self.assertIn("  ./example-01-demo", readme)
 
     def test_package_windows_zip_and_missing_binary(self):
-        self.bins("x86_64-pc-windows-msvc", ".exe")
-        archive = rel.package(self.root, "v0.0.0-test", "x86_64-pc-windows-msvc", self.root / "dist")
+        windows = "x86_64-pc-windows-msvc"
+        self.bins(windows, ".exe")
+        archive = rel.package(self.root, "v0.0.0-test", windows, self.root / "dist")
+        top = f"tungsten-examples-v0.0.0-test-{windows}"
         self.assertEqual(archive.suffix, ".zip")
         with zipfile.ZipFile(archive) as zipped:
             names = set(zipped.namelist())
-            readme = zipped.read("tungsten-examples-v0.0.0-test-x86_64-pc-windows-msvc/README.txt").decode()
-        self.assertIn("tungsten-examples-v0.0.0-test-x86_64-pc-windows-msvc/example-02-bare.exe", names)
+            readme = zipped.read(f"{top}/README.txt").decode()
+        self.assertIn(f"{top}/example-02-bare.exe", names)
+        self.assertIn(f"{top}/bin/x86-64-v3/example-02-bare.exe", names)
         self.assertIn("  .\\example-01-demo.exe", readme)
         with self.assertRaisesRegex(ValueError, "not a target triple"):
             rel.package(self.root, "v0.0.0-test", "../escape", self.root / "dist")
-        (self.root / "target/x86_64-pc-windows-msvc/release/example-02-bare.exe").unlink()
-        with self.assertRaisesRegex(ValueError, "missing example-02-bare.exe"):
-            rel.package(self.root, "v0.0.0-test", "x86_64-pc-windows-msvc", self.root / "dist")
+        (self.root / f"target/x86-64-v3/{windows}/release/example-02-bare.exe").unlink()
+        with self.assertRaisesRegex(ValueError, "missing x86-64-v3/example-02-bare.exe"):
+            rel.package(self.root, "v0.0.0-test", windows, self.root / "dist")
+
+    def test_package_needs_the_portable_baseline_and_launcher(self):
+        linux = "x86_64-unknown-linux-gnu"
+        self.bins(linux, "", levels=("x86-64-v3",))
+        with self.assertRaisesRegex(ValueError, "no x86-64/x86_64-unknown-linux-gnu/release build"):
+            rel.package(self.root, "v0.26.0", linux, self.root / "dist")
+        self.bins(linux, "", levels=("x86-64",))
+        (self.root / f"target/x86-64/{linux}/release/tungsten-launcher").unlink()
+        with self.assertRaisesRegex(ValueError, "missing x86-64/tungsten-launcher"):
+            rel.package(self.root, "v0.26.0", linux, self.root / "dist")
+
+    def test_levels_match_the_launcher(self):
+        source = (Path(__file__).resolve().parent.parent / "tools/launcher/src/main.rs").read_text()
+        levels = re.search(r"const LEVELS: \[&str; \d+\] = \[([^\]]*)\]", source)
+        self.assertEqual(tuple(re.findall(r'"([^"]+)"', levels[1])), rel.LEVELS)
+        self.assertEqual(rel.LEVELS[-1], rel.BASELINE)
 
     def test_cli_exit_codes(self):
         def run(*argv):

@@ -2982,6 +2982,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "tungsten-launcher"
+version = "0.27.0"
+
+[[package]]
 name = "tungsten-render"
 version = "0.27.0"
 dependencies = [

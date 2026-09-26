@@ -1,8 +1,8 @@
-# Tag-triggered release (D-071). Pushing vX.Y.Z checks the tag against
-# Cargo.toml and CHANGELOG.md, builds the examples for Linux and Windows x86-64,
-# and publishes one archive per platform (binaries plus the files they read
-# relative to the working directory), SHA256SUMS and the matching changelog
-# section as notes. A vX.Y.Z-<pre> tag without its own changelog section is a
+# Tag-triggered release (D-071, D-072). Pushing vX.Y.Z checks the tag against
+# Cargo.toml and CHANGELOG.md, builds the examples for Linux and Windows at two
+# x86-64 CPU levels, and publishes one archive per platform (both builds, a
+# launcher per example that runs the fastest one the CPU supports, and the files
+# the examples read), SHA256SUMS and the matching changelog section as notes. A vX.Y.Z-<pre> tag without its own changelog section is a
 # rehearsal, published as a pre-release.
 # Build only: hosted runners have no GPU, so nothing is launched (D-070).
 # Release steps: README.md "Releases".
@@ -37,23 +37,24 @@ jobs:
     name: Build (${{ matrix.target }})
     needs: verify
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
+    timeout-minutes: 120
     strategy:
       matrix:
         include:
           # Pinned image: its glibc (2.39) caps what the Linux binaries require.
           - os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
-            rustflags: "-C target-cpu=x86-64"
+            extra_rustflags: ""
           # Static CRT: players don't need the Visual C++ redistributable.
           - os: windows-2025
             target: x86_64-pc-windows-msvc
-            rustflags: "-C target-cpu=x86-64 -C target-feature=+crt-static"
+            extra_rustflags: "-C target-feature=+crt-static"
     env:
       TARGET: ${{ matrix.target }}
-      # A set RUSTFLAGS replaces target-cpu=native from .cargo/config.toml, so
-      # the binaries run on any x86-64 CPU.
-      RUSTFLAGS: ${{ matrix.rustflags }}
+      # Fastest first; each level builds into target/<level>. x86-64 is the
+      # portable fallback and supplies the launcher. Measured in D-072.
+      CPU_LEVELS: x86-64-v3 x86-64
+      EXTRA_RUSTFLAGS: ${{ matrix.extra_rustflags }}
       # Same codegen as the tuned release profile (D-041); only the line tables
       # kept there for local profiling are dropped.
       CARGO_PROFILE_RELEASE_STRIP: debuginfo
@@ -81,16 +82,22 @@ jobs:
           build-warnings: ""
           cache: false
 
-      # Only the examples have binary targets; libraries build as dependencies.
-      - name: Build release binaries
-        run: cargo build --release --locked --workspace --bins --target "$TARGET"
+      # Binary targets are the examples and the launcher. A set RUSTFLAGS
+      # replaces target-cpu=native from .cargo/config.toml.
+      - name: Build release binaries per CPU level
+        run: |
+          for level in $CPU_LEVELS; do
+            RUSTFLAGS="-C target-cpu=$level $EXTRA_RUSTFLAGS" cargo build --release --locked \
+              --workspace --bins --target "$TARGET" --target-dir "target/$level"
+          done
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: bin-${{ matrix.target }}
           path: |
-            target/${{ matrix.target }}/release/example-*
-            !target/${{ matrix.target }}/release/*.d
+            target/*/${{ matrix.target }}/release/example-*
+            target/x86-64/${{ matrix.target }}/release/tungsten-launcher*
+            !target/*/${{ matrix.target }}/release/*.d
           if-no-files-found: error
           retention-days: 7
 

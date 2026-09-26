@@ -14,10 +14,12 @@
                       lines. `just release-cut` also refreshes Cargo.lock.
   notes TAG           Prints the tag's CHANGELOG section ([Unreleased] for a
                       rehearsal tag), optionally with absolute repository links.
-  package TAG TARGET  Archives the example binaries with the files they read relative
+  package TAG TARGET  Archives each CPU level's example builds (BIN_DIR/<level>/TARGET/
+                      release, one cargo target dir per level) under bin/<level>/, one
+                      launcher per example, and the files the examples read relative
                       to the working directory: OUT/tungsten-examples-TAG-TARGET.*
 
-Rationale: D-071. Release steps: README.md "Releases".
+Rationale: D-071, D-072. Release steps: README.md "Releases".
 """
 
 import argparse
@@ -52,6 +54,11 @@ RELATIVE_LINK_RE = re.compile(r"\]\((?![A-Za-z][A-Za-z0-9+.-]*:|#|/)([^)\s]+)\)"
 # What every example reads relative to the working directory, plus the license.
 SHARED_RUNTIME = ("tungsten.json", "input.json", "assets", "LICENSE")
 ARCHIVE_PREFIX = "tungsten-examples"
+# CPU levels release archives may carry, fastest first; must match `LEVELS` in
+# tools/launcher/src/main.rs. The portable baseline is mandatory (D-072).
+LEVELS = ("x86-64-v4", "x86-64-v3", "x86-64-v2", "x86-64")
+BASELINE = "x86-64"
+LAUNCHER = "tungsten-launcher"
 
 Release = namedtuple("Release", "version date body")
 State = namedtuple("State", "errors version releases unreleased")
@@ -263,13 +270,13 @@ def examples(root):
     return result
 
 
-def readme(tag, target, members, suffix):
+def readme(tag, target, members, suffix, levels):
     prefix = ".\\" if suffix else "./"  # PowerShell also needs .\ for the current folder
     run = "\n".join(f"  {prefix}{name}{suffix}" for name, _ in members)
     platform = (
-        "Double-clicking an .exe in Explorer also works: Windows starts it in its own\n"
-        "folder. Needs a GPU with current DX12 or Vulkan drivers; WGPU_BACKEND=dx12 or\n"
-        "WGPU_BACKEND=vulkan overrides the automatic choice."
+        "Double-clicking an .exe in Explorer also works. Needs a GPU with current DX12\n"
+        "or Vulkan drivers; WGPU_BACKEND=dx12 or WGPU_BACKEND=vulkan overrides the\n"
+        "automatic choice."
         if suffix else
         "Needs a GPU with a current Vulkan driver, ALSA (libasound2), libxkbcommon and\n"
         "X11 or Wayland libraries. Built on Ubuntu 24.04; much older distributions may\n"
@@ -277,12 +284,21 @@ def readme(tag, target, members, suffix):
     )
     return (
         f"Tungsten {tag} examples for {target}\n\n"
-        "Start an example from this directory. It reads tungsten.json, input.json,\n"
-        "assets/ and examples/*/assets/ relative to the working directory.\n\n"
+        "Run an example from any folder:\n\n"
         f"{run}\n\n"
+        "Each is a small launcher. It picks the fastest build in bin/ that this CPU\n"
+        f"supports ({', '.join(levels)}), names it on the console, and runs it from\n"
+        "this folder, where the examples read tungsten.json, input.json and assets/.\n"
+        f"TUNGSTEN_CPU_LEVEL={BASELINE} forces the portable build.\n\n"
         f"{platform}\n\n"
         "MIT license: LICENSE.\n"
     )
+
+
+def place(src, dest):
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(src, dest)
+    dest.chmod(0o755)  # artifact transfers drop the executable bit
 
 
 def package(root, tag, target, out, bin_dir=None):
@@ -291,9 +307,20 @@ def package(root, tag, target, out, bin_dir=None):
     if not TARGET_RE.match(target):
         raise ValueError(f"target {target!r} is not a target triple")
     suffix = ".exe" if "windows" in target else ""
-    bin_dir = bin_dir or root / "target" / target / "release"
+    bin_dir = bin_dir or root / "target"
+
+    def release_dir(level):
+        return bin_dir / level / target / "release"
+
+    def built(level, binary):
+        return release_dir(level) / (binary + suffix)
+
+    levels = [level for level in LEVELS if release_dir(level).is_dir()]
+    if BASELINE not in levels:
+        raise ValueError(f"{bin_dir}: no {BASELINE}/{target}/release build; the launcher needs the portable fallback")
     members = examples(root)
-    missing = [name + suffix for name, _ in members if not (bin_dir / (name + suffix)).is_file()]
+    needed = [(level, binary) for level in levels for binary, _ in members] + [(BASELINE, LAUNCHER)]
+    missing = [f"{level}/{binary}{suffix}" for level, binary in needed if not built(level, binary).is_file()]
     if missing:
         raise ValueError(f"{bin_dir}: missing {', '.join(missing)}")
     runtime = list(SHARED_RUNTIME) + [f"{d}/assets" for _, d in members if (root / d / "assets").is_dir()]
@@ -303,9 +330,9 @@ def package(root, tag, target, out, bin_dir=None):
         stage = Path(tmp) / name
         stage.mkdir()
         for binary, _ in members:
-            dest = stage / (binary + suffix)
-            shutil.copyfile(bin_dir / (binary + suffix), dest)
-            dest.chmod(0o755)  # artifact transfers drop the executable bit
+            place(built(BASELINE, LAUNCHER), stage / (binary + suffix))
+            for level in levels:
+                place(built(level, binary), stage / "bin" / level / (binary + suffix))
         for rel in runtime:
             src, dest = root / rel, stage / rel
             if src.is_dir():
@@ -313,7 +340,7 @@ def package(root, tag, target, out, bin_dir=None):
             else:
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(src, dest)
-        (stage / "README.txt").write_text(readme(tag, target, members, suffix), encoding="utf-8")
+        (stage / "README.txt").write_text(readme(tag, target, members, suffix, levels), encoding="utf-8")
         archive = shutil.make_archive(str(out / name), "zip" if suffix else "gztar", root_dir=tmp, base_dir=name)
     return Path(archive)
 
@@ -333,7 +360,7 @@ def main(argv=None):
     command = commands.add_parser("package", help="archive example binaries with runtime files")
     command.add_argument("tag")
     command.add_argument("target")
-    command.add_argument("--bin-dir", type=Path, help="default: target/TARGET/release")
+    command.add_argument("--bin-dir", type=Path, help="per-level cargo target dirs (default: target)")
     command.add_argument("--out", type=Path, default=Path("dist"))
     args = parser.parse_args(argv)
     root = args.root.absolute()

@@ -22,6 +22,7 @@ Summary: the branch-`0.27` release — a physics scale and CCD pass (plan `docs/
 - **Checks and tests:** `tests/shader_coverage.rs` (Naga-validates all 67 WGSL files and the 31 mirror pairs), `tests/audio_decode.rs` with synthetic WAV/Ogg/MP3/AAC fixtures, surface-acquire transition tests, `scripts/test-smoke-examples.sh` (stubbed-cargo smoke regressions), `scripts/check-agent-context.py` (instruction budgets, links, skill symlinks).
 - **Visual baseline:** `examples/02_sprite_stress/tests/fixtures/baseline-sprite-stress.png` with reference-machine provenance.
 - **Release pipeline:** `.github/workflows/release.yml` builds the examples for Linux and Windows x86-64 on pushed `v*` tags and publishes one archive per platform (binaries plus the runtime files they read), `SHA256SUMS` and the tag's changelog section as a GitHub Release; build only; pre-release tags without their own section (such as `v0.0.0-test`) rehearse as GitHub pre-releases (`D-071`). `scripts/release.py` with `just release-check` (tag/version/changelog/status-line agreement, also in `just repo-check` and as the first CPU CI step) and `just release-cut X.Y.Z` (moves `[Unreleased]`, bumps the workspace version, status lines and `Cargo.lock`); tests join `just script-test`. The `tungsten-finalize` skill is the pre-finalize docs pass; README "Releases" documents tagging, verification and rehearsal tags.
+- **Fastest build per CPU (`D-072`):** release archives carry `x86-64-v3` and portable builds of every example. Each example at the archive root is a copy of the new standard-library-only `tools/launcher`, which runs the fastest build the CPU supports with the archive folder as working directory, so examples start from anywhere (`TUNGSTEN_CPU_LEVEL` overrides). Measured on the reference machine: physics-bound frames about 5% faster, ECS-bound frames within 1%; `native` and fat LTO were no faster.
 - **Agent setup:** scoped `crates/tungsten-render/AGENTS.md`, tracked `.claude/skills/` shared with Codex via `.agents/skills/` symlinks, `.claude/settings.json`, `.ignore`, `docs/agent-setup.md` (`D-068`).
 
 ### Changed
@@ -38,7 +39,7 @@ Summary: the branch-`0.27` release — a physics scale and CCD pass (plan `docs/
 - **Instructions:** `AGENTS.md` condensed (≈6 KB), `CLAUDE.md` imports it, `docs/LLM_INDEX.md` and `docs/DECISION_INDEX.md` condensed, plan conventions moved to `docs/plans/README.md`; both project skills corrected (shader hot reload, canonical perf scene).
 - **Scripts:** smoke discovery fails on metadata errors or zero examples, and timeouts are reported as timeouts; perf captures record compiler and build flags (`TUNGSTEN_PERF_RUSTFLAGS`) and keep all profiler output in the capture directory.
 - **Status docs:** `README.md` and `DESIGN.md` name workspace `0.27.0` on branch `0.27`; the `DESIGN.md` physics section and the README stack line describe the `D-062`–`D-067` pipeline instead of the per-substep uniform grid. `docs/plans/agentic-restructure.md` is done and archived; its platform checks and follow-ups moved to `docs/repo-review-2026-09-25.md`.
-- `DECISIONS.md` adds `D-062`–`D-071`.
+- `DECISIONS.md` adds `D-062`–`D-072`.
 
 ### Removed
 

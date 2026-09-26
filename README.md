@@ -52,11 +52,11 @@ bash scripts/test-perf-capture.sh
 
 ## Releases
 
-Pushing a `vX.Y.Z` tag runs [`release.yml`](.github/workflows/release.yml) (`D-071`). It first checks that the tag, the `Cargo.toml` workspace version and the newest `CHANGELOG.md` heading agree. It then builds the four examples for Linux and Windows x86-64 and publishes a GitHub Release: one archive per platform, `SHA256SUMS`, and that changelog section as notes. Hosted runners have no GPU, so the pipeline only builds. Start each example from the root of the unpacked archive.
+Pushing a `vX.Y.Z` tag runs [`release.yml`](.github/workflows/release.yml) (`D-071`). It first checks that the tag, the `Cargo.toml` workspace version and the newest `CHANGELOG.md` heading agree. It then builds the four examples for Linux and Windows at two x86-64 CPU levels and publishes a GitHub Release: one archive per platform, `SHA256SUMS`, and that changelog section as notes. In each archive, every example is a small launcher that runs the fastest build the player's CPU supports (`x86-64-v3` or portable, `D-072`) from the archive folder, so it starts from anywhere. Hosted runners have no GPU, so the pipeline only builds.
 
 1. **Finalize the branch** with the `tungsten-finalize` skill. It updates the docs, runs `just release-cut X.Y.Z` (moves `[Unreleased]`, bumps the version, status lines and `Cargo.lock`) and ends with `just ctx` and `just repo-check`. Commit and merge.
 2. **Tag the commit to release, then push the tag:** `git tag -a v0.27.0 -m "Tungsten 0.27.0"`, then `git push origin v0.27.0`.
-3. **Verify:** watch the run with `gh run watch`, then inspect the release with `gh release view v0.27.0`. Download an archive, check it with `sha256sum -c SHA256SUMS --ignore-missing`, and launch an example on a machine with a GPU.
+3. **Verify:** watch the run with `gh run watch`, then inspect the release with `gh release view v0.27.0`. Download an archive, check it with `sha256sum -c SHA256SUMS --ignore-missing`, and launch an example on a machine with a GPU; its first line names the build the launcher chose.
 
 To rehearse, push a pre-release tag with no changelog section of its own, such as `v0.0.0-test`. The tree must still pass `just release-check`, but the tag isn't compared with the version. The notes come from `[Unreleased]`, and the release is marked as a pre-release. The workflow runs from the tagged commit, so an unmerged branch works. Clean up with `gh release delete v0.0.0-test --cleanup-tag --yes`. If publishing fails after the release was created, delete the release but keep the tag (omit `--cleanup-tag`), then re-run the failed jobs.
 

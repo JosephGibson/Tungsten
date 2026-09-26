@@ -49,7 +49,8 @@ Platform checks with no host available:
 - Metal (macOS) and DX12 (Windows) rendering on wgpu 30; Vulkan success isn't certification.
 - macOS CoreAudio and Windows WASAPI audio on cpal 0.18.
 - `.agents/skills` symlinks on a Windows clone (Developer Mode and `core.symlinks=true`, documented in `docs/agent-setup.md`).
-- The first tag-triggered release: the Windows MSVC link and launching the published archives on real hardware. Linux archives were built, packaged and smoke-run locally; the Windows build was only type-checked.
+- Launching the published archives on real Windows hardware. The `v0.0.0-test` rehearsal proved the Windows build, link and publish on GitHub; Linux archives were packaged and smoke-run locally through the launcher (`D-072`).
+- `D-072`'s `x86-64-v3` gains on CPUs other than the reference Ryzen 5 6600H, and the launcher's automatic fallback on a real CPU without AVX2 (unit tests and a missing-level run cover it).
 
 Follow-ups:
 
