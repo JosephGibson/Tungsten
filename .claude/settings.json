@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "env": {
+    "CLAUDE_CODE_GLOB_NO_IGNORE": "false"
+  },
+  "permissions": {
+    "deny": [
+      "Read(./docs/plans/archive/**)"
+    ],
+    "allow": [
+      "Bash(just --list)",
+      "Bash(just check)",
+      "Bash(just quick)",
+      "Bash(just repo-check)",
+      "Bash(just release-check)",
+      "Bash(just fmt)",
+      "Bash(just fmt-check)",
+      "Bash(just lint)",
+      "Bash(just test)",
+      "Bash(just deps)",
+      "Bash(just ctx)",
+      "Bash(just smoke)",
+      "Bash(just visual)",
+      "Bash(just perf-test)",
+      "Bash(just script-test)",
+      "Bash(just bench-build)",
+      "Bash(cargo test --workspace)",
+      "Bash(cargo build --workspace)",
+      "Bash(cargo check --workspace --all-targets --locked)",
+      "Bash(cargo run -p example-01-platformer)",
+      "Bash(cargo run -p example-02-sprite-stress)",
+      "Bash(cargo run -p example-03-scene-state)",
+      "Bash(cargo run -p example-04-shader-playground)",
+      "Bash(rg --files crates examples scripts)",
+      "Bash(fd --type f . crates examples scripts)",
+      "Bash(ast-grep --version)"
+    ]
+  }
+}

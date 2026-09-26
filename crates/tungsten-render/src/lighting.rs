@@ -24,7 +24,7 @@ use std::cmp::Ordering;
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Vec2, Vec3};
-use tungsten_core::{Light, LightKind, LIGHT_CAP};
+use tungsten_core::{LIGHT_CAP, Light, LightKind};
 
 /// Mirrors `tungsten_core::LIGHT_CAP` for render-side static asserts.
 pub const LIT_LIGHT_CAP: usize = LIGHT_CAP;

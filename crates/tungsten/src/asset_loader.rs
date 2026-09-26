@@ -3,10 +3,10 @@ use std::path::{Path, PathBuf};
 
 use glam::Vec2;
 use tungsten_core::assets::{
-    pack_shelf, AnimationData, AnimationRegistry, FilterMode, FontRegistry, LoadedManifest,
-    MaterialRegistry, PackInput, PackedSprite, ParticleConfig, ParticleConfigRegistry,
-    ResolvedManifest, SceneData, ShaderRegistry, SoundData, SoundRegistry, TextureHandle,
-    TilemapData, TilemapRegistry, UvRect,
+    AnimationData, AnimationRegistry, FilterMode, FontRegistry, LoadedManifest, MaterialRegistry,
+    PackInput, PackedSprite, ParticleConfig, ParticleConfigRegistry, ResolvedManifest, SceneData,
+    ShaderRegistry, SoundData, SoundRegistry, TextureHandle, TilemapData, TilemapRegistry, UvRect,
+    pack_shelf,
 };
 use tungsten_core::{
     ActionMap, ActionMapError, AssetRegistry, CommandBuffer, Sprite, Tag, Transform, Visibility,
@@ -95,7 +95,7 @@ fn build_atlas_for_filter(
             .iter()
             .map(|p| {
                 let mut v = vec![0u8; (p.width as usize) * (p.height as usize) * 4];
-                for px in v.chunks_exact_mut(4) {
+                for px in v.as_chunks_mut::<4>().0 {
                     px[0] = 128;
                     px[1] = 128;
                     px[2] = 255;
@@ -237,7 +237,9 @@ pub fn load_sprites(
                     } else {
                         log::error!(
                             "sprite '{}' normal_map dimensions {:?} != albedo {:?}; sprite stays unlit",
-                            id, n.dimensions(), (width, height),
+                            id,
+                            n.dimensions(),
+                            (width, height),
                         );
                     }
                 }
@@ -257,7 +259,7 @@ pub fn load_sprites(
                     if e.dimensions() == (width, height) {
                         let raw = e.into_raw();
                         let mut rgb = Vec::with_capacity(raw.len());
-                        for px in raw.chunks_exact(4) {
+                        for px in raw.as_chunks::<4>().0 {
                             let a = px[3] as f32 / 255.0;
                             let r = (px[0] as f32 * a) as u8;
                             let g = (px[1] as f32 * a) as u8;
@@ -268,7 +270,9 @@ pub fn load_sprites(
                     } else {
                         log::error!(
                             "sprite '{}' emissive_mask dimensions {:?} != albedo {:?}; sprite stays unlit",
-                            id, e.dimensions(), (width, height),
+                            id,
+                            e.dimensions(),
+                            (width, height),
                         );
                     }
                 }
@@ -835,7 +839,7 @@ pub fn reload_sprite(
                     if e.dimensions() == (new_w, new_h) {
                         let raw = e.into_raw();
                         let mut rgb = Vec::with_capacity(raw.len());
-                        for px in raw.chunks_exact(4) {
+                        for px in raw.as_chunks::<4>().0 {
                             let a = px[3] as f32 / 255.0;
                             let r = (px[0] as f32 * a) as u8;
                             let g = (px[1] as f32 * a) as u8;
@@ -863,6 +867,11 @@ pub fn reload_sprite(
     } else {
         (None, None)
     };
+    if had_lit
+        && (normal_rgba_opt.is_none() || (emissive_path.is_some() && emissive_rgba_opt.is_none()))
+    {
+        anyhow::bail!("Hot reload sprite '{id}': invalid lit sibling; keeping previous bundle");
+    }
     log::trace!(
         "reload_sprite '{id}' triggered by '{}' (albedo='{}')",
         path.display(),
@@ -893,7 +902,7 @@ pub fn reload_sprite(
             // Build flat-default normal + zero emissive cell-sized canvases,
             // then overlay the new sibling pixels if decoded successfully.
             let mut normal_cell = vec![0u8; cell_w * cell_h * 4];
-            for px2 in normal_cell.chunks_exact_mut(4) {
+            for px2 in normal_cell.as_chunks_mut::<4>().0 {
                 px2[0] = 128;
                 px2[1] = 128;
                 px2[2] = 255;
@@ -1009,13 +1018,16 @@ pub fn rebuild_atlas_for_filter(
                         normal_rgba = Some(n.into_raw());
                     } else {
                         log::error!(
-                            "Rebuild {:?} atlas: sprite '{}' normal_map dimensions {:?} != albedo {:?}; sprite stays unlit",
-                            filter, id, n.dimensions(), (w, h)
+                            "Rebuild {:?} atlas: sprite '{}' normal_map dimensions {:?} != albedo {:?}; keeping previous atlas",
+                            filter,
+                            id,
+                            n.dimensions(),
+                            (w, h)
                         );
                     }
                 }
                 Err(e) => log::error!(
-                    "Rebuild {filter:?} atlas: sprite '{id}' normal_map decode failed: {e}; sprite stays unlit",
+                    "Rebuild {filter:?} atlas: sprite '{id}' normal_map decode failed: {e}; keeping previous atlas",
                 ),
             }
         }
@@ -1027,7 +1039,7 @@ pub fn rebuild_atlas_for_filter(
                     if e.dimensions() == (w, h) {
                         let raw = e.into_raw();
                         let mut rgb = Vec::with_capacity(raw.len());
-                        for px in raw.chunks_exact(4) {
+                        for px in raw.as_chunks::<4>().0 {
                             let a = px[3] as f32 / 255.0;
                             let r = (px[0] as f32 * a) as u8;
                             let g = (px[1] as f32 * a) as u8;
@@ -1038,9 +1050,16 @@ pub fn rebuild_atlas_for_filter(
                     }
                 }
                 Err(e) => log::error!(
-                    "Rebuild {filter:?} atlas: sprite '{id}' emissive_mask decode failed: {e}; sprite stays unlit",
+                    "Rebuild {filter:?} atlas: sprite '{id}' emissive_mask decode failed: {e}; keeping previous atlas",
                 ),
             }
+        }
+        if (normal_path.is_some() && normal_rgba.is_none())
+            || (emissive_path.is_some() && emissive_rgba.is_none())
+        {
+            anyhow::bail!(
+                "Rebuild {filter:?} atlas: sprite '{id}' has an invalid lit sibling; keeping previous atlas"
+            );
         }
         if normal_rgba.is_none() {
             emissive_rgba = None;
@@ -1108,7 +1127,7 @@ pub fn rebuild_atlas_for_filter(
             .iter()
             .map(|p| {
                 let mut v = vec![0u8; (p.width as usize) * (p.height as usize) * 4];
-                for px in v.chunks_exact_mut(4) {
+                for px in v.as_chunks_mut::<4>().0 {
                     px[0] = 128;
                     px[1] = 128;
                     px[2] = 255;
@@ -1459,15 +1478,15 @@ pub fn reload_manifest(
                 log::info!("Manifest reload: staging new sprite '{id}'");
             }
         }
-        if gained_nearest {
-            if let Err(e) = rebuild_atlas_for_filter(FilterMode::Nearest, world, renderer) {
-                log::error!("Manifest reload: nearest atlas rebuild failed: {e}");
-            }
+        if gained_nearest
+            && let Err(e) = rebuild_atlas_for_filter(FilterMode::Nearest, world, renderer)
+        {
+            log::error!("Manifest reload: nearest atlas rebuild failed: {e}");
         }
-        if gained_linear {
-            if let Err(e) = rebuild_atlas_for_filter(FilterMode::Linear, world, renderer) {
-                log::error!("Manifest reload: linear atlas rebuild failed: {e}");
-            }
+        if gained_linear
+            && let Err(e) = rebuild_atlas_for_filter(FilterMode::Linear, world, renderer)
+        {
+            log::error!("Manifest reload: linear atlas rebuild failed: {e}");
         }
     }
 
@@ -1682,10 +1701,10 @@ pub fn reload_manifest(
         .map(|mr| mr.iter().map(|(name, _)| name.to_string()).collect())
         .unwrap_or_default();
     for id in existing_ids {
-        if new_manifest.materials.contains_key(&id) {
-            if let Err(e) = reload_material(&id, world, renderer) {
-                log::error!("Manifest reload: material '{id}' refresh failed: {e}");
-            }
+        if new_manifest.materials.contains_key(&id)
+            && let Err(e) = reload_material(&id, world, renderer)
+        {
+            log::error!("Manifest reload: material '{id}' refresh failed: {e}");
         }
     }
 

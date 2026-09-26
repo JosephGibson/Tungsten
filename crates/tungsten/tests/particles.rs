@@ -6,8 +6,8 @@ use std::sync::Arc;
 use glam::Vec2;
 
 use tungsten::particles::{
-    particle_count_refresh_system, particle_emit_system, particle_tick_system,
-    ParticleBurstEmitted, ParticleSystemDrained,
+    ParticleBurstEmitted, ParticleSystemDrained, particle_count_refresh_system,
+    particle_emit_system, particle_tick_system,
 };
 use tungsten_core::assets::{
     BlendMode, EmissionKind, InitialVelocity, ParticleConfig, ParticleConfigRegistry, Range,

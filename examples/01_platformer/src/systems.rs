@@ -1,18 +1,18 @@
 use glam::Vec2;
+use tungsten::WindowSize;
 use tungsten::core::{
     ActionMap, AnimationRegistry, AnimationState, AudioCommands, CameraController, CameraState,
     CommandBuffer, DeltaTime, Entity, EventQueue, InputState, Light, ParticleConfigRegistry,
     ParticleEmitter, ParticleEmitterState, Transform, World,
 };
 use tungsten::physics::{BodyKind, Collider, CollisionEvent, Position, RigidBody, Shape, Velocity};
-use tungsten::WindowSize;
 
 use crate::state::{
-    ActiveBlackHole, AudioState, Ball, BallHue, BallSpawnState, BlackHole, CurrentSprite,
-    CycleMode, OrbitLight, Player, TextDisplayState, BALL_ANIMATION_ID, BALL_RADIUS,
-    BALL_RESTITUTION, BALL_SPAWN_INTERVAL, BALL_SPAWN_JITTER, BALL_START_SPRITE_ID,
-    BLACK_HOLE_FORCE, BLACK_HOLE_LIFETIME, BLACK_HOLE_RADIUS, MAP_ROWS, PLAYER_JUMP_IMPULSE,
-    PLAYER_MOVE_SPEED, PLAYER_SPAWN, TEXT_UPDATE_INTERVAL, TILE, WORLD_BOUNDS_MAX,
+    ActiveBlackHole, AudioState, BALL_ANIMATION_ID, BALL_RADIUS, BALL_RESTITUTION,
+    BALL_SPAWN_INTERVAL, BALL_SPAWN_JITTER, BALL_START_SPRITE_ID, BLACK_HOLE_FORCE,
+    BLACK_HOLE_LIFETIME, BLACK_HOLE_RADIUS, Ball, BallHue, BallSpawnState, BlackHole,
+    CurrentSprite, CycleMode, MAP_ROWS, OrbitLight, PLAYER_JUMP_IMPULSE, PLAYER_MOVE_SPEED,
+    PLAYER_SPAWN, Player, TEXT_UPDATE_INTERVAL, TILE, TextDisplayState, WORLD_BOUNDS_MAX,
     WORLD_BOUNDS_MIN,
 };
 
@@ -64,10 +64,10 @@ pub(crate) fn player_input(world: &mut World) {
         let handle_and_vol = world
             .get_resource::<AudioState>()
             .map(|s| (s.sfx_handle, s.sfx_volume));
-        if let Some((handle, vol)) = handle_and_vol {
-            if let Some(cmds) = world.get_resource_mut::<AudioCommands>() {
-                cmds.play_with(handle, vol, false);
-            }
+        if let Some((handle, vol)) = handle_and_vol
+            && let Some(cmds) = world.get_resource_mut::<AudioCommands>()
+        {
+            cmds.play_with(handle, vol, false);
         }
     }
 }
@@ -173,10 +173,10 @@ pub(crate) fn animation_system(world: &mut World) {
         let mut state = world.get::<AnimationState>(entity).unwrap().clone();
         let new_sprite = state.advance(dt_ms, &anim_registry);
         *world.get_mut::<AnimationState>(entity).unwrap() = state;
-        if let Some(sprite_id) = new_sprite {
-            if let Some(cs) = world.get_mut::<CurrentSprite>(entity) {
-                cs.0 = sprite_id;
-            }
+        if let Some(sprite_id) = new_sprite
+            && let Some(cs) = world.get_mut::<CurrentSprite>(entity)
+        {
+            cs.0 = sprite_id;
         }
     }
 }
@@ -208,10 +208,9 @@ pub(crate) fn ground_detection(world: &mut World) {
         if events
             .iter()
             .any(|event| player_is_grounded_by_event(entity, event))
+            && let Some(player) = world.get_mut::<Player>(entity)
         {
-            if let Some(player) = world.get_mut::<Player>(entity) {
-                player.grounded = true;
-            }
+            player.grounded = true;
         }
     }
 }
@@ -484,10 +483,10 @@ pub(crate) fn spawn_black_hole_system(world: &mut World) {
         let handle_and_vol = world
             .get_resource::<AudioState>()
             .map(|s| (s.black_hole_sfx_handle, s.black_hole_sfx_volume));
-        if let Some((handle, vol)) = handle_and_vol {
-            if let Some(cmds) = world.get_resource_mut::<AudioCommands>() {
-                cmds.play_with(handle, vol, false);
-            }
+        if let Some((handle, vol)) = handle_and_vol
+            && let Some(cmds) = world.get_resource_mut::<AudioCommands>()
+        {
+            cmds.play_with(handle, vol, false);
         }
         return;
     }
@@ -576,10 +575,8 @@ pub(crate) fn black_hole_lifetime_system(world: &mut World) {
             .get_resource::<ActiveBlackHole>()
             .and_then(|active| active.0)
             .is_some_and(|active| to_despawn.contains(&active));
-        if active_expired {
-            if let Some(active) = world.get_resource_mut::<ActiveBlackHole>() {
-                active.0 = None;
-            }
+        if active_expired && let Some(active) = world.get_resource_mut::<ActiveBlackHole>() {
+            active.0 = None;
         }
         if let Some(cmds) = world.get_resource_mut::<CommandBuffer>() {
             for entity in to_despawn {
@@ -600,11 +597,11 @@ pub(crate) fn despawn_out_of_bounds(world: &mut World) {
         })
         .collect();
 
-    if !escaped_balls.is_empty() {
-        if let Some(cmds) = world.get_resource_mut::<CommandBuffer>() {
-            for entity in escaped_balls {
-                cmds.despawn(entity);
-            }
+    if !escaped_balls.is_empty()
+        && let Some(cmds) = world.get_resource_mut::<CommandBuffer>()
+    {
+        for entity in escaped_balls {
+            cmds.despawn(entity);
         }
     }
 

@@ -2,6 +2,7 @@
 //!
 //! Text pipeline is screen-space and ignores this camera.
 
+use glam::camera::rh::proj::directx::orthographic;
 use glam::{Mat4, Vec2, Vec3};
 
 use crate::ecs::Entity;
@@ -113,10 +114,10 @@ impl CameraController {
     #[must_use]
     pub fn resolve_base_zoom(&self, current_zoom: f32) -> f32 {
         let current_zoom = current_zoom.max(f32::EPSILON);
-        if self.last_output_zoom == Some(current_zoom) {
-            if let Some(base) = self.last_base_zoom {
-                return base.max(f32::EPSILON);
-            }
+        if self.last_output_zoom == Some(current_zoom)
+            && let Some(base) = self.last_base_zoom
+        {
+            return base.max(f32::EPSILON);
         }
         current_zoom
     }
@@ -175,10 +176,12 @@ impl CameraState {
             let right = self.position.x + half_w;
             let top = self.position.y;
             let bottom = self.position.y + half_h;
-            return Mat4::orthographic_rh(left, right, bottom, top, -1.0, 1.0);
+            // WebGPU NDC (right-handed, Z in [0, 1], Y-up): the same matrix the
+            // deprecated `Mat4::orthographic_rh` produced.
+            return orthographic(left, right, bottom, top, -1.0, 1.0);
         }
 
-        let ortho = Mat4::orthographic_rh(0.0, viewport_w, viewport_h, 0.0, -1.0, 1.0);
+        let ortho = orthographic(0.0, viewport_w, viewport_h, 0.0, -1.0, 1.0);
         let scale = Mat4::from_scale(Vec3::new(zoom, zoom, 1.0));
         let rotate = Mat4::from_rotation_z(-self.rotation);
         let translate = Mat4::from_translation(Vec3::new(-self.position.x, -self.position.y, 0.0));

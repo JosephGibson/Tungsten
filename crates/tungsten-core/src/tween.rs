@@ -123,6 +123,10 @@ impl Easing {
                 let u = t - 1.0;
                 1.0 + c3 * u * u * u + c1 * u * u
             }
+            #[expect(
+                clippy::manual_midpoint,
+                reason = "keeps the symmetric easing formula readable"
+            )]
             Self::BackInOut => {
                 let c1 = 1.701_58_f32;
                 let c2 = c1 * 1.525;
@@ -137,6 +141,10 @@ impl Easing {
 
             Self::BounceIn => 1.0 - bounce_out(1.0 - t),
             Self::BounceOut => bounce_out(t),
+            #[expect(
+                clippy::manual_midpoint,
+                reason = "keeps the symmetric easing formula readable"
+            )]
             Self::BounceInOut => {
                 if t < 0.5 {
                     (1.0 - bounce_out(1.0 - 2.0 * t)) * 0.5

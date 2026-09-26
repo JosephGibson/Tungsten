@@ -1,0 +1,3 @@
+# Match `cargo fmt` (which takes the style edition from Cargo.toml) when an
+# editor or tool invokes rustfmt directly on a single file.
+style_edition = "2024"

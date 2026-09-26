@@ -51,11 +51,11 @@ impl ShaderModuleCache {
         name: &str,
         wgsl: String,
     ) -> Result<(), ShaderError> {
-        if let Some(entry) = self.modules.get(&id) {
-            if entry.text == wgsl {
-                self.unchanged_count = self.unchanged_count.saturating_add(1);
-                return Ok(());
-            }
+        if let Some(entry) = self.modules.get(&id)
+            && entry.text == wgsl
+        {
+            self.unchanged_count = self.unchanged_count.saturating_add(1);
+            return Ok(());
         }
         let module = compile_and_validate(device, name, &wgsl)?;
         self.modules.insert(id, Entry { text: wgsl, module });

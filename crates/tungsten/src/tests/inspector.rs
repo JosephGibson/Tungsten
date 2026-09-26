@@ -190,11 +190,13 @@ fn pick_ignores_hover_without_mouse3_edge() {
 
     inspector_pick_system(&mut world);
 
-    assert!(world
-        .get_resource::<InspectorState>()
-        .unwrap()
-        .selected
-        .is_none());
+    assert!(
+        world
+            .get_resource::<InspectorState>()
+            .unwrap()
+            .selected
+            .is_none()
+    );
 }
 
 #[test]
@@ -205,11 +207,13 @@ fn pick_noop_when_disabled() {
 
     inspector_pick_system(&mut world);
 
-    assert!(world
-        .get_resource::<InspectorState>()
-        .unwrap()
-        .selected
-        .is_none());
+    assert!(
+        world
+            .get_resource::<InspectorState>()
+            .unwrap()
+            .selected
+            .is_none()
+    );
 }
 
 #[test]
@@ -225,11 +229,13 @@ fn pick_skips_when_cursor_is_outside_window() {
 
     inspector_pick_system(&mut world);
 
-    assert!(world
-        .get_resource::<InspectorState>()
-        .unwrap()
-        .selected
-        .is_none());
+    assert!(
+        world
+            .get_resource::<InspectorState>()
+            .unwrap()
+            .selected
+            .is_none()
+    );
 }
 
 #[test]
@@ -247,11 +253,13 @@ fn stale_selection_is_cleared_before_picking() {
 
     inspector_pick_system(&mut world);
 
-    assert!(world
-        .get_resource::<InspectorState>()
-        .unwrap()
-        .selected
-        .is_none());
+    assert!(
+        world
+            .get_resource::<InspectorState>()
+            .unwrap()
+            .selected
+            .is_none()
+    );
 }
 
 #[test]
@@ -261,9 +269,11 @@ fn compose_renders_hint_message_when_enabled() {
     let world = World::new();
     let sections = compose_inspector_text_section(&mut state, &world, (800, 600), 16.0);
     assert!(!sections.is_empty());
-    assert!(sections
-        .iter()
-        .any(|s| s.content.contains("mouse 3 to pick")));
+    assert!(
+        sections
+            .iter()
+            .any(|s| s.content.contains("mouse 3 to pick"))
+    );
 }
 
 #[test]

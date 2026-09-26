@@ -1,8 +1,8 @@
 //! Runtime developer HUD; toggled by `engine_toggle_hud`.
 
+use tungsten_core::World;
 use tungsten_core::camera::{CameraController, CameraMode, CameraState};
 use tungsten_core::input::{ActionMap, InputState};
-use tungsten_core::World;
 use tungsten_render::{GpuFrameTimings, TextSection};
 
 use crate::telemetry::{DisplayTelemetry, FrameTimings, RenderCounts};
@@ -359,10 +359,8 @@ pub fn hud_toggle_system(world: &mut World) {
         };
         actions.just_pressed(input, "engine_toggle_hud")
     };
-    if pressed {
-        if let Some(hud) = world.get_resource_mut::<DebugHud>() {
-            hud.toggle();
-        }
+    if pressed && let Some(hud) = world.get_resource_mut::<DebugHud>() {
+        hud.toggle();
     }
 }
 

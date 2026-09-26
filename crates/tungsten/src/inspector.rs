@@ -11,7 +11,7 @@ use tungsten_core::{AssetRegistry, CameraState, Entity, Inspectable, World};
 use tungsten_render::TextSection;
 
 use crate::app::WindowSize;
-use crate::debug_hud::{anchor_text_block, HudCorner};
+use crate::debug_hud::{HudCorner, anchor_text_block};
 
 pub type InspectFn = Box<dyn Fn(&World, Entity) -> Vec<(&'static str, String)>>;
 
@@ -110,10 +110,8 @@ pub(crate) fn inspector_toggle_system(world: &mut World) {
         };
         actions.just_pressed(input, "engine_toggle_inspector")
     };
-    if pressed {
-        if let Some(state) = world.get_resource_mut::<InspectorState>() {
-            state.toggle();
-        }
+    if pressed && let Some(state) = world.get_resource_mut::<InspectorState>() {
+        state.toggle();
     }
 }
 
@@ -128,12 +126,10 @@ pub(crate) fn inspector_pick_system(world: &mut World) {
     if let Some(selected) = world
         .get_resource::<InspectorState>()
         .and_then(|s| s.selected)
+        && !world.is_alive(selected)
+        && let Some(state) = world.get_resource_mut::<InspectorState>()
     {
-        if !world.is_alive(selected) {
-            if let Some(state) = world.get_resource_mut::<InspectorState>() {
-                state.selected = None;
-            }
-        }
+        state.selected = None;
     }
 
     // Pick edge sticks selection until next pick or despawn.

@@ -1,4 +1,4 @@
-use super::{resolve_startup_display, runtime_display_mode, App};
+use super::{App, resolve_startup_display, runtime_display_mode};
 use tungsten_core::{CollisionEvent, Config, DisplayMode, DisplayState, EventQueue};
 
 #[derive(Debug, Clone, Copy)]
@@ -15,10 +15,11 @@ fn register_event_is_idempotent_per_type() {
 
     assert_eq!(after_first, initial_flushers + 1);
     assert_eq!(app.event_flushers.len(), after_first);
-    assert!(app
-        .world
-        .get_resource::<EventQueue<ExampleEvent>>()
-        .is_some());
+    assert!(
+        app.world
+            .get_resource::<EventQueue<ExampleEvent>>()
+            .is_some()
+    );
 }
 
 #[test]
@@ -82,5 +83,22 @@ fn runtime_display_mode_downgrades_exclusive_fullscreen() {
     assert_eq!(
         runtime_display_mode(DisplayMode::Windowed),
         DisplayMode::Windowed
+    );
+}
+
+#[test]
+fn audio_commands_are_discarded_without_an_output_device() {
+    let mut app = App::new(Config::default()).unwrap();
+    app.world
+        .get_resource_mut::<tungsten_core::AudioCommands>()
+        .unwrap()
+        .stop_all();
+    app.stage_audio();
+    assert!(
+        app.world
+            .get_resource_mut::<tungsten_core::AudioCommands>()
+            .unwrap()
+            .drain()
+            .is_empty()
     );
 }

@@ -6,7 +6,7 @@ use tungsten::render::{SpriteBatch, SpriteInstance};
 use tungsten::{App, WindowSize};
 use tungsten_core::assets::TextureHandle;
 
-use crate::shared::{log_telemetry, rgb_wheel_color, TelemetryState};
+use crate::shared::{TelemetryState, log_telemetry, rgb_wheel_color};
 
 pub(crate) const DEFAULT_SPRITE_COUNT: usize = 2_000;
 

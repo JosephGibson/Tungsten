@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use super::{accept_path, canonical_or_clone, DEBOUNCE_MS};
+use super::{DEBOUNCE_MS, accept_path, canonical_or_clone};
 
 static COUNTER: AtomicU32 = AtomicU32::new(0);
 

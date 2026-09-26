@@ -12,7 +12,7 @@ use tungsten::core::{Config, DeltaTime, Tag, Transform, World};
 use tungsten::render::TextSection;
 use tungsten::{App, DebugHud, StateStack};
 
-use crate::states::{handle_tween_complete_system, MainMenuState};
+use crate::states::{MainMenuState, handle_tween_complete_system};
 
 const ROOT_MANIFEST: &str = "assets/manifest.json";
 const LOCAL_MANIFEST: &str = "examples/03_scene_state/assets/manifest.json";

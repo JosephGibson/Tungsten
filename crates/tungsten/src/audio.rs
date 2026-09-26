@@ -39,13 +39,15 @@ impl AudioSystem {
 
         log::info!(
             "Audio device: '{}', format: {:?}, sample rate: {}, channels: {}",
-            device.name().unwrap_or_else(|_| "unknown".into()),
+            device
+                .description()
+                .map_or_else(|_| "unknown".to_string(), |d| d.name().to_string()),
             config.sample_format(),
-            config.sample_rate().0,
+            config.sample_rate(),
             config.channels(),
         );
 
-        let device_sample_rate = config.sample_rate().0;
+        let device_sample_rate = config.sample_rate();
         let device_channels = config.channels() as usize;
 
         // Callback owns cloned/resampled PCM.
@@ -62,9 +64,9 @@ impl AudioSystem {
 
         let stream = device
             .build_output_stream(
-                &config.into(),
+                config.into(),
                 move |output: &mut [f32], _info| {
-                    // D-034: wait-free, allocation-free callback command drain.
+                    // D-034: wait-free command transport; Play may grow `playing`.
                     while let Ok(cmd) = consumer.pop() {
                         process_command(&cmd, &mut playing, &mut master_volume);
                     }
@@ -76,6 +78,8 @@ impl AudioSystem {
                     for ps in &mut playing {
                         if let Some(src) = captured_sounds.get(&ps.handle) {
                             mix_sound(ps, src, output, master_volume, device_channels);
+                        } else {
+                            ps.finished = true;
                         }
                     }
 
@@ -118,7 +122,10 @@ fn prepare_pcm(data: &SoundData, target_rate: u32, target_channels: usize) -> Ve
     let src_frames = stereo.len() / 2;
     if src_rate == target_rate {
         if target_channels == 1 {
-            stereo.chunks(2).map(|c| (c[0] + c[1]) * 0.5).collect()
+            stereo
+                .chunks(2)
+                .map(|c| f32::midpoint(c[0], c[1]))
+                .collect()
         } else {
             stereo
         }
@@ -137,7 +144,7 @@ fn prepare_pcm(data: &SoundData, target_rate: u32, target_channels: usize) -> Ve
             let r = lerp(stereo[idx0 * 2 + 1], stereo[idx1 * 2 + 1], frac as f32);
 
             if target_channels == 1 {
-                out.push((l + r) * 0.5);
+                out.push(f32::midpoint(l, r));
             } else {
                 out.push(l);
                 out.push(r);
@@ -191,6 +198,10 @@ fn mix_sound(
     master_volume: f32,
     channels: usize,
 ) {
+    if ps.finished || src.is_empty() {
+        ps.finished = true;
+        return;
+    }
     let gain = ps.volume * master_volume;
     let step = channels;
 

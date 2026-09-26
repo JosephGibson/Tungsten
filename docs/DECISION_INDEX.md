@@ -1,17 +1,13 @@
 # Decision Index
 
-Use this as the cheap rationale lookup before opening [`DECISIONS.md`](../DECISIONS.md).
-
-This file intentionally references every current `D-xxx` heading in [`DECISIONS.md`](../DECISIONS.md). The workspace test suite checks that coverage, so any new decision should add a matching short takeaway here in the same change.
-
-If you need deeper context, grep the specific `D-0xx` entry in the full log instead of reading it serially.
+One-line takeaways for every decision heading in [`DECISIONS.md`](../DECISIONS.md). `crates/tungsten-core/tests/decision_index.rs` fails if a heading is missing here or an unknown ID appears, so a new decision adds its row in the same change. For detail, grep the one entry: `rg -n -A 12 '^## D-0NN' DECISIONS.md`.
 
 ## Foundations
 
 | Decision | Takeaway |
 | --- | --- |
 | `D-001` | Project name is Tungsten; crate prefix stays `tungsten-`. |
-| `D-002` | Local judgment over formal process; no CI-first workflow. |
+| `D-002` | Local judgment over formal process; no CI-first workflow. Narrowed by `D-070`: CPU-only CI reports but doesn't block. |
 | `D-003` | Native only. No WASM target or WASM-driven design compromises. |
 | `D-004` | `wgpu` is the renderer. |
 | `D-005` | No external ECS crate. ECS work stays in-project by design. |
@@ -32,20 +28,20 @@ If you need deeper context, grep the specific `D-0xx` entry in the full log inst
 | `D-016` | Core owns opaque asset handles only; no `wgpu` types in `tungsten-core`. |
 | `D-017` | Multiple manifests compose by extension only; duplicate IDs are fatal. |
 | `D-018` | Extract plain render data before drawing; renderer should not need long-lived mutable `World` access. |
-| `D-023` | WGSL shaders are embedded with `include_str!`; shader edits require rebuilds. |
+| `D-023` | WGSL shaders are embedded with `include_str!`; shader edits require rebuilds. Narrowed by `D-057`: shader bodies now hot-reload; signature changes still rebuild. |
 | `D-026` | Text rendering uses `glyphon` / `cosmic-text`. |
 | `D-032` | Tilemaps use Tiled-compatible `.tmj` data and reuse the sprite render path instead of a separate tile pipeline. |
 | `D-042` | `Transform`, `Sprite`, `Visibility`, and `Tag` are engine-level components; default sprite extraction is explicit and opt-in through those components. |
-| `D-048` | M22 sprite atlases: shelf-next-fit packer in `tungsten-core` with a mandatory deterministic tie-break, per-filter page lists, 1 px transparent padding + half-texel UV inset, renderer mints `TextureHandle`s, rebuild-on-growth with in-place shrink, and manifest hot-reload additions routed through `rebuild_atlas_for_filter`. |
-| `D-054` | M24 tween easings are a closed `enum` with a pure `fn apply(t) -> f32`; no trait object, no dependency (curve math is ~60 lines of closed-form). |
-| `D-055` | M24 single `Tween` component per entity, multi-property via `Vec<TweenChannel>` sharing the easing + duration; more than one tween per scene entry logs `ERROR` and keeps the first. |
-| `D-052` | Asset composition is owned by the umbrella: `App::set_manifest_roots` + `asset_loader::load_all_merged` merge manifests via `ResolvedManifest::load_and_merge_many` and run `load_all` once on the result, with the merged graph stored as a `LoadedManifest` world resource; per-type loaders stay public but must not be used to compose. |
-| `D-053` | Hot-reload support matrix is one published table in `DESIGN.md §Hot Reload — M9`: sprites/animations/fonts/tilemaps/particles support single-file and manifest-add reloads with warn-only removal; sounds are session-static (mixer owns cloned PCM). Particle manifest-add mirrors the tilemap-add validation path; `LoadedManifest` is refreshed on every successful manifest reload. |
-| `D-057` | M25 shaders are manifest-tracked `.wgsl` assets bridged through `ShaderRegistry` + `ShaderModuleCache`; body edits hot-reload through the existing umbrella watcher after `wgpu::naga` validation, signature changes still need a rebuild, `SceneColor` format equals the swapchain sRGB format, and MSAA sample-count swaps require a relaunch. Narrows `D-023`, extends `D-053`. |
-| `D-058` | M26 materials + post-stack + tween→material bridge: manifest-tracked `materials` section (shader id + 256-byte `MaterialUniformDefaults`), closed-enum `PostPass` (17 stock effects) reorderable via `PostStack` resource, entity-local `UniformOverrideBlock` as the shared animation surface, new `TweenChannel::Uniform*` variants. `PostStack::default()` is empty → byte-identical to the M25 baseline. Narrows `D-023` (material body hot reload) and `D-055` (uniform-slot tween variants without a second `Tween` per entity). SMAA stays out of `PostPass` and ships later in M27. |
-| `D-059` | M27 SMAA 1x presentation AA: `RenderConfig.post_aa` (`Off / SmaaLow / SmaaMedium / SmaaHigh / SmaaUltra`, `#[non_exhaustive]`) + `TUNGSTEN_RENDER_POST_AA`; renderer-owned three-pass tail (edge → blend → neighborhood) between `PostStack` and the text overlay; `area` / `search` LUTs ship as `include_bytes!` engine content (not manifest-tracked) with MIT attribution; the three SMAA stage shaders are manifest-tracked and follow `D-057`'s body-edit reload path; preset knobs ride a 256-byte UBO (no recompile on switch); `SceneColor` + post ping/pong carry non-sRGB `view_formats` twin while SMAA is active so edge detection sees gamma-encoded pixels; `post_aa = Off` is byte-identical to the M26 frame; runtime changes go through `tungsten::request_post_aa` and apply at a frame boundary — no relaunch. Narrows `D-058`, extends `D-053`, narrows `D-023` like `D-057`. No new runtime dependency. |
-| `D-060` | M28 bloom: `BloomParams { threshold, knee, intensity, radius }` ships as the 18th `PostPass` variant on the reorderable `PostStack`; an `Rgba16Float` `BloomPyramid` lives on `SceneTarget` sized by `bloom_mip_count_for_size(width, height, render.bloom_max_mips)` (default `6`, range `1..=8`, env `TUNGSTEN_RENDER_BLOOM_MAX_MIPS`); the bloom slot is the first `PostPass` recorded at encoder level — threshold + N-1 13-tap Karis-weighted downsamples + N-1 9-tap tent additive upsamples + replace-blend composite, each opening its own `RenderPass` through `BloomPipeline::record_pass`; four manifest-tracked stage shaders follow `D-057`'s body-edit reload path; the 256-byte UBO contract from `D-058`/`D-059` is reused. `SceneColor` stays sRGB — only the pyramid is HDR. With `PostStack` empty the M27 baseline frame stays byte-identical. `bloom_max_mips` is startup-only like `msaa`. No new runtime dependency. Narrows neither `D-058` nor `D-059`; extends `D-053`. |
-| `D-061` | M29 2D forward lighting: `Light { kind, color, intensity }` + closed `LightKind::{Point, Directional}` in core; `AmbientLight(Vec3)` resource (default `Vec3::ONE`). Render-side `LightingResources` owns one 544-byte `LightUbo` (16 lights + count_pad + ambient) bound at group 2 of a sibling `LitSpritePipeline` reusing the sprite vertex/instance layout. Manifest-tracked `normal_map` / `emissive_mask` siblings on a sprite pack into parallel atlas pages keyed by the same packed rect (no second packer call). `extract_sprites_default` flips `SpriteBatch.lit` on `SpriteAsset.lit_atlas.is_some()`; lit + material warns and lit wins. `extract_lights` runs every frame, culls by camera-AABB squared-distance, retains directionals first, caps at `LIGHT_CAP = 16`. New shader id triple (`lit_sprite`, `emissive_mask`, `rim_light`) extends `D-053`'s body-edit hot-reload table. Empty light list + no aux atlases stays byte-identical to the M28 baseline. No new runtime dependency. Narrows neither `D-058` nor `D-060`. |
+| `D-048` | M22 atlases: deterministic shelf packer in core, per-filter pages, 1 px padding + half-texel inset, renderer-minted handles, rebuild on growth (hot-reload adds via `rebuild_atlas_for_filter`). |
+| `D-054` | M24 easings are a closed `enum` with pure `apply(t)`; no trait object or dependency. |
+| `D-055` | M24: one `Tween` per entity with `Vec<TweenChannel>` sharing easing/duration; extra tweens in a scene entry log `ERROR`, first wins. |
+| `D-052` | The umbrella owns asset composition: `App::set_manifest_roots` + `load_all_merged` merge manifests once into a `LoadedManifest` resource; don't compose with per-type loaders. |
+| `D-053` | Hot-reload support matrix lives in `DESIGN.md §Hot Reload — M9`: sprites/animations/fonts/tilemaps/particles reload (removal warns); sounds are session-static. |
+| `D-057` | M25 shaders are manifest-tracked `.wgsl` (`ShaderRegistry` + `ShaderModuleCache`); body edits hot-reload after Naga validation, signature changes rebuild; `SceneColor` matches swapchain sRGB; MSAA changes relaunch. Narrows `D-023`. |
+| `D-058` | M26 manifest `materials` (shader ID + 256-byte defaults), closed-enum `PostPass` on a reorderable `PostStack` (empty = byte-identical), `UniformOverrideBlock` + `TweenChannel::Uniform*`. Narrows `D-023`, `D-055`. |
+| `D-059` | M27 SMAA 1x tail between `PostStack` and text: `render.post_aa` presets, `include_bytes!` LUTs (not manifest-tracked), manifest-tracked stage shaders, runtime switch at a frame boundary; `Off` is byte-identical. |
+| `D-060` | M28 bloom is the 18th `PostPass`: `Rgba16Float` pyramid on `SceneTarget` (`bloom_max_mips` 1..=8, startup-only), encoder-level passes, manifest-tracked stages; `SceneColor` stays sRGB. |
+| `D-061` | M29 forward lighting: core `Light`/`LightKind`/`AmbientLight`, `LitSpritePipeline` with a 544-byte `LightUbo` (`LIGHT_CAP = 16`), normal/emissive sibling atlases, per-frame culled `extract_lights`; lit wins over material. |
 
 ## Dependencies / Tooling
 
@@ -62,6 +58,11 @@ If you need deeper context, grep the specific `D-0xx` entry in the full log inst
 | `D-037` | `criterion` is used for render-side micro-benchmarks. |
 | `D-038` | Frame timing uses inline `Instant` instrumentation in `app.rs`; no extra profiling crate for core telemetry. |
 | `D-041` | Release/profile tuning is part of the current baseline; perf comparisons should assume those settings. |
+| `D-068` | `AGENTS.md` is the one instruction body (`CLAUDE.md` imports it); scoped render rules, on-demand index, skills shared via `.agents/skills` symlinks, budgets checked by `just ctx`. |
+| `D-069` | Rust 1.98.1 pinned and declared as `rust-version`; edition 2024 / resolver 3; `just check` (strict clippy) and `cargo-deny` are the shared gates. |
+| `D-070` | CPU-only CI reports on PRs/pushes without blocking; GPU/audio/perf stay local. Narrows `D-002`; release builds in `D-071`. |
+| `D-071` | `v*` tags build Linux/Windows x86-64 example archives plus `SHA256SUMS` into a GitHub Release with CHANGELOG notes; build only, write token in the publish job only; pre-release tags without a CHANGELOG section rehearse. Workspace version = newest CHANGELOG release, bumped only by `just release-cut`; `repo-check` and CI enforce it. CPU levels: `D-072`. |
+| `D-072` | Release archives ship `x86-64-v3` and portable builds; a per-example std-only launcher runs the fastest one the CPU supports from the archive root (`TUNGSTEN_CPU_LEVEL` overrides). Measured: physics frames ~5% faster, ECS frames within 1%; native and fat LTO no better. Supersedes `D-071`'s single generic build. |
 
 ## ECS / Runtime Flow
 
@@ -86,8 +87,16 @@ If you need deeper context, grep the specific `D-0xx` entry in the full log inst
 | `D-050` | M23 particle configs live behind `Arc<ParticleConfig>`; emitters snapshot on first tick and live particles keep their original `Arc` across hot-reload, so in-flight curves never reinterpret mid-life. |
 | `D-051` | M23 uses one ECS entity per live particle (no pool); despawns route through the standard `CommandBuffer` flush, and `max_alive` + global `ParticleBudget` bound the archetype. |
 | `D-056` | M24 `TweenComplete` routes through `EventQueue<TweenComplete>` and terminal `Tween` removal routes through `CommandBuffer::remove_component`; a `pending_remove` latch prevents re-fire between tick and frame-end flush. |
+| `D-062` | Physics broadphase: flat prefix-sum spatial hash reused across substeps under a drift budget, with AABB prefilter; supersedes `D-033`'s per-substep rebuild. |
+| `D-063` | Physics solver: warm-started soft step (Box2D v3 style) with clamped accumulated impulses, soft bias and one relax pass; bodies rest at ~slop. |
+| `D-064` | Physics CCD: speculative contacts close tunneling up to 15,360 px/s; fixed 4 substeps; seam normals clamped by `face_mask`; events only at positive penetration. Supersedes that clause of `D-033`. |
+| `D-065` | Physics island sleeping via deterministic union-find; sleepers are bit-frozen, wake on contact/external write/despawn/`physics::wake`, and emit no collision events. |
+| `D-066` | Physics SoA staging: gather and write back once per frame through `query2_opt2`; substeps touch only dense arrays; events drain once per frame. |
+| `D-067` | Physics step stays serial: a colour-parallel solver was deterministic but gained ~2.5% and cost the serial path ~18%, so it was dropped. Threading policy unchanged. |
 
-## When To Open Full `DECISIONS.md`
+## When To Open a Decision
+
+Find the relevant heading with `rg -n 'D-0NN' DECISIONS.md`, then read that section only.
 
 - You are considering a new dependency.
 - A change would alter the core/render seam, asset-ID model, or frame-order invariants.

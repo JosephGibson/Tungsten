@@ -7,6 +7,13 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 : "${WARMUP_FRAMES:=60}"
 
+# Build flags for every capture binary. Setting RUSTFLAGS replaces the
+# target flags in .cargo/config.toml (target-cpu=native), so perf builds are
+# generic x86-64 with frame pointers unless TUNGSTEN_PERF_RUSTFLAGS says
+# otherwise. Historical captures used exactly this default; only compare
+# captures whose README records the same "Build RUSTFLAGS".
+DEFAULT_PERF_RUSTFLAGS="-C force-frame-pointers=yes"
+
 METADATA_BACKEND="unknown"
 METADATA_ADAPTER="unknown"
 METADATA_PRESENT_MODE="unknown"
@@ -15,7 +22,7 @@ METADATA_TIMESTAMP_QUERY="unknown"
 
 usage() {
   cat <<'EOF'
-Usage: perf-capture.sh [scene] [frames] [--present-mode <mode>] [--max-frame-latency <n>] [--telemetry-only]
+Usage: perf-capture.sh [scene] [frames] [--present-mode <mode>] [--max-frame-latency <n>] [--stress-count <n>] [--telemetry-only]
 
 Scenes:
   ecs-high-load (default)
@@ -25,7 +32,11 @@ Scenes:
 Flags:
   --present-mode <mode>       Override the resolved present mode for child capture runs
   --max-frame-latency <n>     Override the requested max-frame-latency hint for child capture runs
+  --stress-count <n>          Override the scene entity/body count for child capture runs
   --telemetry-only            Skip flamegraph/perf artifact capture; still writes telemetry logs and README
+
+Env:
+  TUNGSTEN_PERF_RUSTFLAGS     Build flags for the capture binary (default: -C force-frame-pointers=yes)
 EOF
 }
 
@@ -119,6 +130,7 @@ parse_backend_metadata() {
 capture_config_suffix() {
   local present_mode_override="${1:-}"
   local max_frame_latency_override="${2:-}"
+  local stress_count_override="${3:-}"
   local -a parts=()
 
   if [ -n "$present_mode_override" ]; then
@@ -126,6 +138,9 @@ capture_config_suffix() {
   fi
   if [ -n "$max_frame_latency_override" ]; then
     parts+=("lat${max_frame_latency_override}")
+  fi
+  if [ -n "$stress_count_override" ]; then
+    parts+=("count${stress_count_override}")
   fi
 
   if [ "${#parts[@]}" -eq 0 ]; then
@@ -184,13 +199,18 @@ scene_env_overrides() {
   esac
 }
 
+perf_rustflags() {
+  printf '%s' "${TUNGSTEN_PERF_RUSTFLAGS:-$DEFAULT_PERF_RUSTFLAGS}"
+}
+
 main() {
-  cd "$REPO_ROOT"
+  cd "$REPO_ROOT" || exit 1
 
   local scene=""
   local frames=""
   local requested_present_mode=""
   local requested_max_frame_latency=""
+  local requested_stress_count=""
   local telemetry_only=0
 
   while [ "$#" -gt 0 ]; do
@@ -211,6 +231,20 @@ main() {
           exit 1
         fi
         requested_max_frame_latency="$2"
+        shift 2
+        ;;
+      --stress-count)
+        if [ "$#" -lt 2 ]; then
+          echo "Missing value for --stress-count"
+          usage
+          exit 1
+        fi
+        if ! [[ "$2" =~ ^[0-9]+$ ]] || [ "$2" -eq 0 ]; then
+          echo "--stress-count expects a positive integer, got '$2'"
+          usage
+          exit 1
+        fi
+        requested_stress_count="$2"
         shift 2
         ;;
       --telemetry-only)
@@ -247,7 +281,7 @@ main() {
   local timestamp
   timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
   local config_suffix
-  config_suffix="$(capture_config_suffix "$requested_present_mode" "$requested_max_frame_latency")"
+  config_suffix="$(capture_config_suffix "$requested_present_mode" "$requested_max_frame_latency" "$requested_stress_count")"
   local out_dir="perf-runs/${timestamp}-${scene}"
   if [ -n "$config_suffix" ]; then
     out_dir="${out_dir}-${config_suffix}"
@@ -262,8 +296,12 @@ main() {
   local -a scene_env=()
   mapfile -t scene_env < <(scene_env_overrides "$scene")
 
-  echo "Building $pkg with frame pointers..."
-  if ! RUSTFLAGS="-C force-frame-pointers=yes" cargo build --release -p "$pkg"; then
+  local build_rustflags
+  build_rustflags="$(perf_rustflags)"
+  local rustc_version
+  rustc_version="$(rustc --version 2>/dev/null || echo unknown)"
+  echo "Building $pkg with RUSTFLAGS=\"$build_rustflags\"..."
+  if ! RUSTFLAGS="$build_rustflags" cargo build --release -p "$pkg"; then
     echo "Build failed."
     exit 1
   fi
@@ -301,6 +339,9 @@ main() {
   if [ -n "$requested_max_frame_latency" ]; then
     env_base+=("TUNGSTEN_RENDER_MAX_FRAME_LATENCY=$requested_max_frame_latency")
   fi
+  if [ -n "$requested_stress_count" ]; then
+    env_base+=("STRESS_COUNT=$requested_stress_count")
+  fi
 
   local -a telemetry_env=(
     "${env_base[@]}"
@@ -337,20 +378,11 @@ main() {
   fi
 
   if [ "$telemetry_only" -eq 0 ]; then
-    if cargo flamegraph --help >/dev/null 2>&1; then
-      echo "Capturing flamegraph..."
-      "${profile_env[@]}" \
-      cargo flamegraph \
-        --package "$pkg" \
-        --bin "$pkg" \
-        --release \
-        --output "$flamegraph_out" \
-        -- \
-        >/dev/null 2>&1 || true
-    else
-      echo "cargo-flamegraph not installed; skipping flamegraph capture."
-    fi
-
+    # Profilers run the binary built above from the repo root (config and
+    # manifests resolve from the CWD) and write only into $out_dir. The
+    # flamegraph is folded from this run's perf record data rather than via
+    # `cargo flamegraph`, which would rebuild with different flags and leave
+    # perf.data in the repo root. Optional failures are recorded in README.
     if command -v perf >/dev/null 2>&1; then
       echo "Capturing perf stat..."
       "${profile_env[@]}" perf stat -d -o "$perf_stat_out" "$binary" >/dev/null 2>&1 || true
@@ -359,6 +391,13 @@ main() {
       "${profile_env[@]}" perf record --call-graph dwarf -o "$perf_record_out" "$binary" >/dev/null 2>&1 || true
     else
       echo "perf not installed; skipping perf captures."
+    fi
+
+    if [ -f "$perf_record_out" ] && command -v flamegraph >/dev/null 2>&1; then
+      echo "Rendering flamegraph from perf record data..."
+      flamegraph --perfdata "$perf_record_out" --output "$flamegraph_out" >/dev/null 2>&1 || true
+    elif ! command -v flamegraph >/dev/null 2>&1; then
+      echo "flamegraph not installed (cargo install flamegraph); skipping flamegraph."
     fi
   else
     echo "Telemetry-only mode: skipping flamegraph and perf captures."
@@ -384,6 +423,15 @@ main() {
   local p99_render_acquire_ms
   p99_render_acquire_ms="$(percentile_metric "$engine_log" "render_acquire" 99)"
 
+  local avg_update_ms
+  avg_update_ms="$(avg_metric "$engine_log" "update")"
+  local p50_update_ms
+  p50_update_ms="$(percentile_metric "$engine_log" "update" 50)"
+  local p95_update_ms
+  p95_update_ms="$(percentile_metric "$engine_log" "update" 95)"
+  local p99_update_ms
+  p99_update_ms="$(percentile_metric "$engine_log" "update" 99)"
+
   local avg_render_encode_ms
   avg_render_encode_ms="$(avg_metric "$engine_log" "render_encode")"
   local avg_render_submit_ms
@@ -401,6 +449,8 @@ main() {
   requested_present_mode_label="$(requested_value_or_none "$requested_present_mode")"
   local requested_max_frame_latency_label
   requested_max_frame_latency_label="$(requested_value_or_none "$requested_max_frame_latency")"
+  local requested_stress_count_label
+  requested_stress_count_label="$(requested_value_or_none "$requested_stress_count")"
   local flamegraph_note
   local perf_stat_note
   local perf_record_note
@@ -411,11 +461,13 @@ main() {
     perf_record_note="Skipped (--telemetry-only)"
   else
     if [ -f "$flamegraph_out" ]; then
-      flamegraph_note="Captured"
-    elif cargo flamegraph --help >/dev/null 2>&1; then
-      flamegraph_note="Skipped (capture failed)"
+      flamegraph_note="Captured (folded from perf-record.data)"
+    elif ! command -v flamegraph >/dev/null 2>&1; then
+      flamegraph_note="Skipped (flamegraph not installed)"
+    elif [ ! -f "$perf_record_out" ]; then
+      flamegraph_note="Skipped (no perf record data)"
     else
-      flamegraph_note="Skipped (cargo-flamegraph not installed)"
+      flamegraph_note="Skipped (capture failed)"
     fi
 
     if [ -f "$perf_stat_out" ]; then
@@ -445,10 +497,13 @@ main() {
 | Kernel | ${host_kernel:-unknown} |
 | CPU | ${cpu_model:-unknown} |
 | Binary | $binary |
+| Compiler | ${rustc_version} |
+| Build RUSTFLAGS | \`${build_rustflags}\` |
 | Backend env | ${WGPU_BACKEND:-auto} |
 | Capture mode | ${capture_mode} |
 | Requested present mode override | ${requested_present_mode_label} |
 | Requested max frame latency override | ${requested_max_frame_latency_label} |
+| Requested stress count override | ${requested_stress_count_label} |
 | Renderer backend | ${METADATA_BACKEND} |
 | Renderer adapter | ${METADATA_ADAPTER} |
 | Present mode | ${METADATA_PRESENT_MODE} |
@@ -477,6 +532,10 @@ main() {
 | p50 render acquire ms | $p50_render_acquire_ms |
 | p95 render acquire ms | $p95_render_acquire_ms |
 | p99 render acquire ms | $p99_render_acquire_ms |
+| Average update ms | $avg_update_ms |
+| p50 update ms | $p50_update_ms |
+| p95 update ms | $p95_update_ms |
+| p99 update ms | $p99_update_ms |
 | Average render encode ms | $avg_render_encode_ms |
 | Average render submit/present ms | $avg_render_submit_ms |
 | Average GPU frame ms | $avg_gpu_ms |
@@ -498,7 +557,7 @@ main() {
 - Render overrides are injected only into child capture processes; the parent shell environment is left unchanged.
 - Scene selection is also injected only into child capture processes so shell-local \`STRESS_SCENE\` / \`STRESS_COUNT\` values cannot skew canonical runs.
 - Flamegraph and perf captures intentionally run without \`TUNGSTEN_GPU_TIMING\` to avoid the blocking timestamp readback stall.
-- Compare like-for-like runs only: same scene, resolution, backend, release build, present mode, and max frame latency.
+- Compare like-for-like runs only: same scene, resolution, backend, release build, build RUSTFLAGS, present mode, and max frame latency.
 EOF
 
   echo "Capture complete."

@@ -16,13 +16,18 @@ pub struct SoundData {
 
 impl SoundData {
     /// Decode audio file to raw PCM via symphonia.
+    ///
+    /// End of stream ends decoding. A stream that ends mid-packet (truncated
+    /// file) keeps the audio decoded so far and logs a warning; any other I/O
+    /// failure is an error. Corrupt packets are skipped with a warning.
     pub fn decode(path: &Path) -> anyhow::Result<SoundData> {
-        use symphonia::core::audio::SampleBuffer;
-        use symphonia::core::codecs::DecoderOptions;
+        use std::io::ErrorKind;
+        use symphonia::core::codecs::audio::{AudioDecoderOptions, CODEC_ID_NULL_AUDIO};
+        use symphonia::core::errors::Error;
         use symphonia::core::formats::FormatOptions;
+        use symphonia::core::formats::probe::Hint;
         use symphonia::core::io::{MediaSourceStream, MediaSourceStreamOptions};
         use symphonia::core::meta::MetadataOptions;
-        use symphonia::core::probe::Hint;
 
         let file = std::fs::File::open(path)
             .map_err(|e| anyhow::anyhow!("Failed to open '{}': {}", path.display(), e))?;
@@ -34,61 +39,73 @@ impl SoundData {
             hint.with_extension(ext);
         }
 
-        let probed = symphonia::default::get_probe()
-            .format(
+        let mut format = symphonia::default::get_probe()
+            .probe(
                 &hint,
                 mss,
-                &FormatOptions::default(),
-                &MetadataOptions::default(),
+                FormatOptions::default(),
+                MetadataOptions::default(),
             )
             .map_err(|e| anyhow::anyhow!("Failed to probe '{}': {}", path.display(), e))?;
 
-        let mut format = probed.format;
-
-        let track = format
+        let (track_id, params) = format
             .tracks()
             .iter()
-            .find(|t| t.codec_params.codec != symphonia::core::codecs::CODEC_TYPE_NULL)
+            .find_map(|t| {
+                let audio = t.codec_params.as_ref()?.audio()?;
+                (audio.codec != CODEC_ID_NULL_AUDIO).then(|| (t.id, audio.clone()))
+            })
             .ok_or_else(|| anyhow::anyhow!("No audio track in '{}'", path.display()))?;
 
-        let track_id = track.id;
-        let sample_rate = track
-            .codec_params
+        let sample_rate = params
             .sample_rate
             .ok_or_else(|| anyhow::anyhow!("Unknown sample rate in '{}'", path.display()))?;
-        let channels = track.codec_params.channels.map_or(2, |c| c.count() as u16);
+        let channels = params.channels.as_ref().map_or(2, |c| c.count() as u16);
 
         let mut decoder = symphonia::default::get_codecs()
-            .make(&track.codec_params, &DecoderOptions::default())
+            .make_audio_decoder(&params, &AudioDecoderOptions::default())
             .map_err(|e| anyhow::anyhow!("Failed to create decoder: {e}"))?;
 
         let mut all_samples: Vec<f32> = Vec::new();
+        // Reused per packet; each copy resizes it to that packet's samples.
+        let mut packet_samples: Vec<f32> = Vec::new();
 
         loop {
             let packet = match format.next_packet() {
-                Ok(p) => p,
-                Err(symphonia::core::errors::Error::IoError(_)) => break,
-                Err(symphonia::core::errors::Error::ResetRequired) => {
+                Ok(Some(p)) => p,
+                Ok(None) => break,
+                Err(Error::IoError(e)) if e.kind() == ErrorKind::UnexpectedEof => {
+                    log::warn!(
+                        "'{}' is truncated; keeping the audio decoded so far",
+                        path.display()
+                    );
+                    break;
+                }
+                Err(Error::ResetRequired) => {
                     decoder.reset();
                     continue;
                 }
                 Err(e) => return Err(anyhow::anyhow!("Decode error: {e}")),
             };
 
-            if packet.track_id() != track_id {
+            if packet.track_id != track_id {
                 continue;
             }
 
             match decoder.decode(&packet) {
                 Ok(decoded) => {
-                    let spec = *decoded.spec();
-                    let duration = decoded.capacity() as u64;
-                    let mut sample_buf = SampleBuffer::<f32>::new(duration, spec);
-                    sample_buf.copy_interleaved_ref(decoded);
-                    all_samples.extend_from_slice(sample_buf.samples());
+                    decoded.copy_to_vec_interleaved(&mut packet_samples);
+                    all_samples.extend_from_slice(&packet_samples);
                 }
-                Err(symphonia::core::errors::Error::IoError(_)) => break,
-                Err(symphonia::core::errors::Error::DecodeError(e)) => {
+                Err(Error::IoError(e)) if e.kind() == ErrorKind::UnexpectedEof => {
+                    log::warn!(
+                        "'{}' is truncated; keeping the audio decoded so far",
+                        path.display()
+                    );
+                    break;
+                }
+                // Policy: a corrupt packet is skipped, not fatal.
+                Err(Error::DecodeError(e)) => {
                     log::warn!("Decode warning in '{}': {}", path.display(), e);
                 }
                 Err(e) => return Err(anyhow::anyhow!("Decode error: {e}")),

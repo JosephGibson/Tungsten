@@ -87,3 +87,31 @@ fn prepare_pcm_no_resample_passthrough() {
     let out = prepare_pcm(&data, 44100, 2);
     assert_eq!(out.len(), 4);
 }
+
+#[test]
+fn stopped_sounds_do_not_mix_an_extra_callback() {
+    for stop in [
+        AudioCommand::Stop {
+            handle: AudioHandle(0),
+        },
+        AudioCommand::StopAll,
+    ] {
+        let mut playing = vec![make_playing(AudioHandle(0))];
+        let mut master = 1.0;
+        process_command(&stop, &mut playing, &mut master);
+        let mut output = [0.0; 4];
+        mix_sound(&mut playing[0], &[1.0; 4], &mut output, master, 2);
+        assert_eq!(output, [0.0; 4]);
+        assert_eq!(playing[0].cursor, 0);
+    }
+}
+
+#[test]
+fn empty_looping_sound_finishes() {
+    let mut playing = make_playing(AudioHandle(0));
+    playing.looping = true;
+    let mut output = [0.0; 4];
+    mix_sound(&mut playing, &[], &mut output, 1.0, 2);
+    assert!(playing.finished);
+    assert_eq!(output, [0.0; 4]);
+}

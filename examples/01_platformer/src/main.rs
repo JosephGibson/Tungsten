@@ -11,8 +11,8 @@ mod systems;
 #[path = "tests/main.rs"]
 mod tests;
 
-use tungsten::core::{Config, DisplayMode, Resolution};
 use tungsten::App;
+use tungsten::core::{Config, DisplayMode, Resolution};
 
 const STARTUP_WINDOW_WIDTH: u32 = 1920;
 const STARTUP_WINDOW_HEIGHT: u32 = 1080;

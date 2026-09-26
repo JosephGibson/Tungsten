@@ -1,8 +1,8 @@
 //! Shared telemetry and color helpers; perf stdout format stays centralized.
 
+use tungsten::FrameTimings;
 use tungsten::core::World;
 use tungsten::render::GpuFrameTimings;
-use tungsten::FrameTimings;
 
 pub(crate) const LOG_INTERVAL: u32 = 60;
 
@@ -37,25 +37,26 @@ pub(crate) fn log_telemetry(world: &mut World) {
         }
     }
 
-    if sample_frame > 0 && sample_frame % LOG_INTERVAL == 0 {
-        if let Some(ft) = world.get_resource::<FrameTimings>() {
-            let gpu_ms = world
-                .get_resource::<GpuFrameTimings>()
-                .and_then(|gpu| gpu.frame_gpu_ms)
-                .map_or_else(|| "n/a".to_string(), |ms| format!("{ms:.2}ms"));
-            println!(
-                "[frame {:>5}] total={:.2}ms update={:.2}ms extract={:.2}ms render={:.2}ms acquire={:.2}ms encode={:.2}ms submit={:.2}ms gpu={}",
-                sample_frame,
-                ft.total_ms,
-                ft.update_ms,
-                ft.extract_ms,
-                ft.render_ms,
-                ft.render_acquire_ms,
-                ft.render_encode_ms,
-                ft.render_submit_present_ms,
-                gpu_ms
-            );
-        }
+    if sample_frame > 0
+        && sample_frame % LOG_INTERVAL == 0
+        && let Some(ft) = world.get_resource::<FrameTimings>()
+    {
+        let gpu_ms = world
+            .get_resource::<GpuFrameTimings>()
+            .and_then(|gpu| gpu.frame_gpu_ms)
+            .map_or_else(|| "n/a".to_string(), |ms| format!("{ms:.2}ms"));
+        println!(
+            "[frame {:>5}] total={:.2}ms update={:.2}ms extract={:.2}ms render={:.2}ms acquire={:.2}ms encode={:.2}ms submit={:.2}ms gpu={}",
+            sample_frame,
+            ft.total_ms,
+            ft.update_ms,
+            ft.extract_ms,
+            ft.render_ms,
+            ft.render_acquire_ms,
+            ft.render_encode_ms,
+            ft.render_submit_present_ms,
+            gpu_ms
+        );
     }
 }
 

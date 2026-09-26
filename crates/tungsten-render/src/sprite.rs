@@ -975,8 +975,8 @@ impl SpritePipeline {
     /// Vertex layout used by both the built-in sprite pipeline and any
     /// `MaterialPipeline` rendering sprites.
     #[must_use]
-    pub fn vertex_layouts() -> [wgpu::VertexBufferLayout<'static>; 2] {
-        [SpriteVertex::desc(), SpriteInstance::desc()]
+    pub fn vertex_layouts() -> [Option<wgpu::VertexBufferLayout<'static>>; 2] {
+        [Some(SpriteVertex::desc()), Some(SpriteInstance::desc())]
     }
 }
 
@@ -994,7 +994,7 @@ fn build_sprite_pipeline(
         vertex: wgpu::VertexState {
             module: shader,
             entry_point: Some("vs_main"),
-            buffers: &[SpriteVertex::desc(), SpriteInstance::desc()],
+            buffers: &[Some(SpriteVertex::desc()), Some(SpriteInstance::desc())],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         },
         fragment: Some(wgpu::FragmentState {

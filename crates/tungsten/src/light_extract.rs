@@ -6,7 +6,7 @@
 //! (defaults to `Vec3::ONE` per `D-061`).
 
 use tungsten_core::{AmbientLight, CameraState, Light, Transform, World};
-use tungsten_render::{cull_to_cap, pack_lights, LightUbo};
+use tungsten_render::{LightUbo, cull_to_cap, pack_lights};
 
 /// Build the per-frame `LightUbo` from world state.
 #[must_use]

@@ -10,7 +10,7 @@ pub mod shader;
 pub mod tilemap;
 
 pub use animation::{AnimationData, AnimationFrame, AnimationRegistry, AnimationState};
-pub use atlas::{pack_shelf, AtlasPage, PackInput, PackResult, PackedSprite, UvRect};
+pub use atlas::{AtlasPage, PackInput, PackResult, PackedSprite, UvRect, pack_shelf};
 pub use audio::{AudioHandle, SoundData, SoundRegistry};
 pub use manifest::{
     FilterMode, FontEntry, LoadedManifest, ManifestError, MaterialEntry, ParticleEntry,
@@ -29,5 +29,5 @@ pub use scene::{
 };
 pub use shader::{ShaderAssetId, ShaderRegistry};
 pub use tilemap::{
-    LayerKind, TileIndex, TilemapData, TilemapInstance, TilemapLayer, TilemapRegistry, EMPTY_TILE,
+    EMPTY_TILE, LayerKind, TileIndex, TilemapData, TilemapInstance, TilemapLayer, TilemapRegistry,
 };

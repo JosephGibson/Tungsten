@@ -6,20 +6,20 @@ use std::time::Instant;
 use crate::debug_line::{DebugLineInstance, DebugLinePipeline};
 use crate::lighting::{LightUbo, LightingResources};
 use crate::lit_sprite::{
-    LitSpritePipeline, EMISSIVE_MASK_SHADER_NAME, LIT_SPRITE_SHADER_NAME, LIT_SPRITE_SHADER_SOURCE,
+    EMISSIVE_MASK_SHADER_NAME, LIT_SPRITE_SHADER_NAME, LIT_SPRITE_SHADER_SOURCE, LitSpritePipeline,
     RIM_LIGHT_SHADER_NAME,
 };
-use crate::material::{build_material_pipeline, MaterialPipeline};
-use crate::passes::{default_pass_order, text_overlay_target, PassRecorder, TargetId};
+use crate::material::{MaterialPipeline, build_material_pipeline};
+use crate::passes::{PassRecorder, TargetId, default_pass_order, text_overlay_target};
+use crate::post::PostStackRenderer;
 use crate::post::bloom::{
-    BloomShaderIds, BLOOM_COMPOSITE_SHADER_NAME, BLOOM_DOWNSAMPLE_SHADER_NAME,
-    BLOOM_THRESHOLD_SHADER_NAME, BLOOM_UPSAMPLE_SHADER_NAME,
+    BLOOM_COMPOSITE_SHADER_NAME, BLOOM_DOWNSAMPLE_SHADER_NAME, BLOOM_THRESHOLD_SHADER_NAME,
+    BLOOM_UPSAMPLE_SHADER_NAME, BloomShaderIds,
 };
 use crate::post::smaa::{
-    SmaaPipeline, SmaaShaderIds, SMAA_BLEND_WEIGHTS_SHADER_NAME, SMAA_EDGE_SHADER_NAME,
-    SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME,
+    SMAA_BLEND_WEIGHTS_SHADER_NAME, SMAA_EDGE_SHADER_NAME, SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME,
+    SmaaPipeline, SmaaShaderIds,
 };
-use crate::post::PostStackRenderer;
 use crate::quad::{QuadInstance, QuadPipeline};
 use crate::screenshot::{aligned_bytes_per_row, strip_row_padding};
 use crate::shader_hot_reload::{ShaderError, ShaderModuleCache};
@@ -33,10 +33,14 @@ use tungsten_core::assets::{
     FilterMode, MaterialAssetId, MaterialUniformDefaults, ShaderAssetId, TextureHandle,
 };
 use tungsten_core::config::{
-    is_supported_msaa, DepthSortMode, PostAaMode, PresentModeConfig, RenderConfig,
+    DepthSortMode, PostAaMode, PresentModeConfig, RenderConfig, is_supported_msaa,
 };
 use tungsten_core::post::{PostPass, PostStack};
 use winit::window::Window;
+
+use crate::surface_acquire::{
+    AcquireAction, AcquireStatus, MAX_ACQUIRE_ATTEMPTS, acquire_action, reconfigure_for_suboptimal,
+};
 
 #[derive(Debug, Error)]
 pub enum RenderError {
@@ -72,6 +76,12 @@ pub struct Renderer {
     pub queue: wgpu::Queue,
     pub surface: wgpu::Surface<'static>,
     pub surface_config: wgpu::SurfaceConfiguration,
+    /// Kept to recreate the surface after `CurrentSurfaceTexture::Lost` and to
+    /// read its size when the surface is outdated or suboptimal.
+    window: Arc<Window>,
+    /// Size already reconfigured for a suboptimal frame since the last clean
+    /// acquire; see `surface_acquire::reconfigure_for_suboptimal`.
+    suboptimal_reconfigured: Option<(u32, u32)>,
     pub clear_color: wgpu::Color,
     quad_pipeline: QuadPipeline,
     sprite_pipeline: SpritePipeline,
@@ -88,19 +98,13 @@ pub struct Renderer {
     /// SMAA presentation pipeline. Allocated on demand when `post_aa != Off`.
     smaa: Option<SmaaPipeline>,
     smaa_shader_ids: SmaaShaderIds,
-    #[allow(dead_code)] // mirror of post_stack.bloom.shader_ids; future debug HUD will read it.
-    bloom_shader_ids: BloomShaderIds,
     bloom_max_mips: u32,
-    #[allow(dead_code)] // kept for symmetry with shader_ids map; future work wires to debug HUD.
-    sprite_shader_id: ShaderAssetId,
     /// M29 lit sprite pipeline; rebuilt on `lit_sprite` shader hot-reload.
     lit_sprite_pipeline: LitSpritePipeline,
     /// M29 per-frame lighting UBO + bind group bound at group 2 of the lit
     /// pipeline. Resize does not invalidate this; the buffer + bind group
     /// stay live across surface reconfigures.
     lighting: LightingResources,
-    #[allow(dead_code)]
-    lit_sprite_shader_id: ShaderAssetId,
     /// M26 material pipelines keyed by id.
     materials: HashMap<MaterialAssetId, MaterialPipeline>,
     /// M26 known manifest-tracked shader ids (name → id). The built-in
@@ -129,18 +133,20 @@ impl Renderer {
         vsync: bool,
     ) -> Result<Self, RenderError> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
+            backends: wgpu::Backends::all().with_env(),
             ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
 
         let surface = instance
             .create_surface(window.clone())
-            .expect("failed to create surface");
+            .map_err(|e| RenderError::Surface(e.to_string()))?;
 
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::default(),
             compatible_surface: Some(&surface),
             force_fallback_adapter: false,
+            // Limit bucketing only matters when untrusted content can query the adapter.
+            apply_limit_buckets: false,
         }))?;
 
         // Optional feature only; device creation must not depend on timestamps.
@@ -181,6 +187,8 @@ impl Renderer {
             alpha_mode: surface_caps.alpha_modes[0],
             view_formats: vec![],
             desired_maximum_frame_latency,
+            // HDR output is deferred; Auto keeps the SDR behavior wgpu 29 had.
+            color_space: wgpu::SurfaceColorSpace::Auto,
         };
         surface.configure(&device, &surface_config);
 
@@ -451,6 +459,8 @@ impl Renderer {
             queue,
             surface,
             surface_config,
+            window,
+            suboptimal_reconfigured: None,
             clear_color,
             quad_pipeline,
             sprite_pipeline,
@@ -466,12 +476,9 @@ impl Renderer {
             post_aa,
             smaa,
             smaa_shader_ids,
-            bloom_shader_ids,
             bloom_max_mips,
-            sprite_shader_id,
             lit_sprite_pipeline,
             lighting,
-            lit_sprite_shader_id,
             materials: HashMap::new(),
             shader_ids,
             next_shader_id: 11,
@@ -646,10 +653,9 @@ impl Renderer {
             SMAA_EDGE_SHADER_NAME
                 | SMAA_BLEND_WEIGHTS_SHADER_NAME
                 | SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME
-        ) {
-            if let Some(smaa) = self.smaa.as_mut() {
-                smaa.rebuild_stage_with_module(&self.device, id, &module);
-            }
+        ) && let Some(smaa) = self.smaa.as_mut()
+        {
+            smaa.rebuild_stage_with_module(&self.device, id, &module);
         }
         if matches!(
             name,
@@ -727,10 +733,9 @@ impl Renderer {
             SMAA_EDGE_SHADER_NAME
                 | SMAA_BLEND_WEIGHTS_SHADER_NAME
                 | SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME
-        ) {
-            if let Some(smaa) = self.smaa.as_mut() {
-                smaa.rebuild_stage_with_module(&self.device, id, &module);
-            }
+        ) && let Some(smaa) = self.smaa.as_mut()
+        {
+            smaa.rebuild_stage_with_module(&self.device, id, &module);
         }
         if matches!(
             name,
@@ -961,20 +966,80 @@ impl Renderer {
         Ok(())
     }
 
-    fn acquire_texture(&self) -> Result<Option<wgpu::SurfaceTexture>, RenderError> {
-        match self.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(tex)
-            | wgpu::CurrentSurfaceTexture::Suboptimal(tex) => Ok(Some(tex)),
-            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
-                Ok(None)
+    /// Acquire the frame's surface texture following `surface_acquire`'s
+    /// policy. `Ok(None)` skips the frame; the `bool` asks for a reconfigure
+    /// after the texture is presented (suboptimal surface).
+    fn acquire_texture(&mut self) -> Result<Option<(wgpu::SurfaceTexture, bool)>, RenderError> {
+        for attempt in 0..MAX_ACQUIRE_ATTEMPTS {
+            let result = self.surface.get_current_texture();
+            let status = AcquireStatus::of(&result);
+            match acquire_action(status, attempt) {
+                AcquireAction::Render { reconfigure_after } => {
+                    if status == AcquireStatus::Success {
+                        self.suboptimal_reconfigured = None;
+                    }
+                    return Ok(match result {
+                        wgpu::CurrentSurfaceTexture::Success(tex)
+                        | wgpu::CurrentSurfaceTexture::Suboptimal(tex) => {
+                            Some((tex, reconfigure_after))
+                        }
+                        _ => None,
+                    });
+                }
+                AcquireAction::Skip => return Ok(None),
+                // Outdated and Lost carry no texture, so nothing is held while
+                // the surface is reconfigured or replaced.
+                AcquireAction::ReconfigureAndRetry => self.sync_surface_to_window(),
+                AcquireAction::RecreateAndRetry => self.recreate_surface()?,
+                AcquireAction::Fail => {
+                    return Err(RenderError::Surface(format!(
+                        "surface acquire failed ({status:?}); device recovery is not supported"
+                    )));
+                }
             }
-            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
-                self.surface.configure(&self.device, &self.surface_config);
-                Ok(None)
-            }
-            wgpu::CurrentSurfaceTexture::Validation => {
-                Err(RenderError::Surface("validation error".into()))
-            }
+        }
+        Ok(None)
+    }
+
+    /// Replace a lost surface with a new one for the same window.
+    fn recreate_surface(&mut self) -> Result<(), RenderError> {
+        log::warn!("Surface lost; recreating it");
+        // Assigning drops the old surface and its swapchain before the new
+        // surface is configured, so the window never has two swapchains.
+        self.surface = self
+            .instance
+            .create_surface(self.window.clone())
+            .map_err(|e| RenderError::Surface(format!("surface recreation failed: {e}")))?;
+        self.surface.configure(&self.device, &self.surface_config);
+        Ok(())
+    }
+
+    /// Reconfigure the surface, first picking up a window size change whose
+    /// resize event hasn't arrived yet (a zero size means minimized: keep the
+    /// current size).
+    fn sync_surface_to_window(&mut self) {
+        let size = self.window.inner_size();
+        let current = (self.surface_config.width, self.surface_config.height);
+        if size.width > 0 && size.height > 0 && (size.width, size.height) != current {
+            self.resize(size.width, size.height);
+        } else {
+            self.surface.configure(&self.device, &self.surface_config);
+        }
+    }
+
+    /// Refresh the surface after presenting a suboptimal frame, at most once
+    /// per unchanged size.
+    fn reconfigure_after_suboptimal(&mut self) {
+        let size = self.window.inner_size();
+        let configured = (self.surface_config.width, self.surface_config.height);
+        if reconfigure_for_suboptimal(
+            (size.width, size.height),
+            configured,
+            self.suboptimal_reconfigured,
+        ) {
+            self.sync_surface_to_window();
+            self.suboptimal_reconfigured =
+                Some((self.surface_config.width, self.surface_config.height));
         }
     }
 
@@ -987,7 +1052,8 @@ impl Renderer {
     pub fn render_frame_with_quads(&mut self, quads: &[QuadInstance]) -> Result<(), RenderError> {
         let w = self.surface_config.width as f32;
         let h = self.surface_config.height as f32;
-        let default_view_proj = glam::Mat4::orthographic_rh(0.0, w, h, 0.0, -1.0, 1.0);
+        let default_view_proj =
+            glam::camera::rh::proj::directx::orthographic(0.0, w, h, 0.0, -1.0, 1.0);
         let empty_stack = PostStack::default();
         self.render_frame_full(&default_view_proj, quads, &[], &[], &[], &[], &empty_stack)
     }
@@ -1095,7 +1161,7 @@ impl Renderer {
         }
 
         let acquire_start = Instant::now();
-        let Some(output) = self.acquire_texture()? else {
+        let Some((output, reconfigure_after)) = self.acquire_texture()? else {
             return Ok(());
         };
         self.cpu_timings.acquire_ms = acquire_start.elapsed().as_secs_f64() as f32 * 1000.0;
@@ -1218,21 +1284,20 @@ impl Renderer {
             // fullscreen draw into the slot's auto-opened render pass; it
             // opens its own per-subpass passes through the encoder. Detect it
             // before `PassRecorder::begin` and skip the auto-open path.
-            if let Some(pi) = post_index {
-                if let (Some(PostPass::Bloom(params)), Some(&(src, dst))) =
+            if let Some(pi) = post_index
+                && let (Some(PostPass::Bloom(params)), Some(&(src, dst))) =
                     (post_stack.0.get(pi), post_plan.get(pi))
-                {
-                    self.post_stack.record_bloom_slot(
-                        &self.device,
-                        &self.queue,
-                        &mut encoder,
-                        &self.target_pool,
-                        params,
-                        src,
-                        dst,
-                    );
-                    continue;
-                }
+            {
+                self.post_stack.record_bloom_slot(
+                    &self.device,
+                    &self.queue,
+                    &mut encoder,
+                    &self.target_pool,
+                    params,
+                    src,
+                    dst,
+                );
+                continue;
             }
 
             let clear_override = if is_scene {
@@ -1301,19 +1366,18 @@ impl Renderer {
                 pass.set_pipeline(&self.present_blit.pipeline);
                 pass.set_bind_group(0, &blit_bind_group, &[]);
                 pass.draw(0..3, 0..1);
-            } else if let Some(pi) = post_index {
-                if let (Some(post_pass), Some(&(src, _dst))) =
+            } else if let Some(pi) = post_index
+                && let (Some(post_pass), Some(&(src, _dst))) =
                     (post_stack.0.get(pi), post_plan.get(pi))
-                {
-                    self.post_stack.record_pass(
-                        &self.device,
-                        &self.queue,
-                        &mut pass,
-                        &self.target_pool,
-                        post_pass,
-                        src,
-                    );
-                }
+            {
+                self.post_stack.record_pass(
+                    &self.device,
+                    &self.queue,
+                    &mut pass,
+                    &self.target_pool,
+                    post_pass,
+                    src,
+                );
             }
         }
 
@@ -1370,19 +1434,19 @@ impl Renderer {
 
         let submit_present_start = Instant::now();
         self.queue.submit(std::iter::once(finished));
-        output.present();
+        self.queue.present(output);
 
-        if let (Some(path), Some(target)) = (capture_path, capture_target) {
-            if let Err(e) = finalize_capture(
+        if let (Some(path), Some(target)) = (capture_path, capture_target)
+            && let Err(e) = finalize_capture(
                 &self.device,
                 &target,
                 self.surface_config.format,
                 w,
                 h,
                 &path,
-            ) {
-                log::warn!("screenshot capture failed: {e}");
-            }
+            )
+        {
+            log::warn!("screenshot capture failed: {e}");
         }
 
         self.text_pipeline.post_frame();
@@ -1393,6 +1457,11 @@ impl Renderer {
 
         self.cpu_timings.submit_present_ms =
             submit_present_start.elapsed().as_secs_f64() as f32 * 1000.0;
+
+        // The presented texture is released, so the surface can be reconfigured.
+        if reconfigure_after {
+            self.reconfigure_after_suboptimal();
+        }
 
         Ok(())
     }
@@ -1405,15 +1474,21 @@ impl Renderer {
         });
         let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
         if receiver.recv().ok().and_then(Result::ok).is_some() {
-            let data = slice.get_mapped_range();
-            let ts0 = u64::from_le_bytes(data[0..8].try_into().unwrap_or([0u8; 8]));
-            let ts1 = u64::from_le_bytes(data[8..16].try_into().unwrap_or([0u8; 8]));
-            drop(data);
+            let stamps = slice.get_mapped_range().map(|data| {
+                let ts0 = u64::from_le_bytes(data[0..8].try_into().unwrap_or([0u8; 8]));
+                let ts1 = u64::from_le_bytes(data[8..16].try_into().unwrap_or([0u8; 8]));
+                (ts0, ts1)
+            });
+            // The map succeeded, so unmap even if the range view failed.
             readback_buf.unmap();
-
-            let period = self.queue.get_timestamp_period();
-            let delta_ns = ts1.wrapping_sub(ts0) as f64 * f64::from(period);
-            self.gpu_timings.frame_gpu_ms = Some((delta_ns / 1_000_000.0) as f32);
+            match stamps {
+                Ok((ts0, ts1)) => {
+                    let period = self.queue.get_timestamp_period();
+                    let delta_ns = ts1.wrapping_sub(ts0) as f64 * f64::from(period);
+                    self.gpu_timings.frame_gpu_ms = Some((delta_ns / 1_000_000.0) as f32);
+                }
+                Err(e) => log::warn!("GPU timing readback failed: {e:?}"),
+            }
         }
     }
 }
@@ -1684,7 +1759,9 @@ pub(crate) fn finalize_capture(
         Ok(Err(_)) | Err(_) => return Err(ScreenshotError::MapFailed),
     }
 
-    let mapped = slice.get_mapped_range();
+    let mapped = slice
+        .get_mapped_range()
+        .map_err(|_| ScreenshotError::MapFailed)?;
     let rgba_surface = strip_row_padding(&mapped, width, height, target.padded_bytes_per_row);
     drop(mapped);
     target.readback.unmap();
@@ -1702,18 +1779,18 @@ pub(crate) fn finalize_capture(
     );
     let mut rgba = rgba_surface;
     if is_bgra {
-        for chunk in rgba.chunks_exact_mut(4) {
+        for chunk in rgba.as_chunks_mut::<4>().0 {
             chunk.swap(0, 2);
         }
     }
 
-    if let Some(parent) = path.parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent).map_err(|source| ScreenshotError::Io {
-                path: path.to_path_buf(),
-                source,
-            })?;
-        }
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent).map_err(|source| ScreenshotError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
     }
     image::save_buffer(path, &rgba, width, height, image::ColorType::Rgba8)?;
     Ok(())

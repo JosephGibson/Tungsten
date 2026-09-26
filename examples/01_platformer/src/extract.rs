@@ -10,9 +10,9 @@ use tungsten::physics::Position;
 use tungsten::render::{SpriteBatch, SpriteInstance, TextSection};
 
 use crate::state::{
-    Ball, BallHue, BlackHole, CurrentSprite, LightingFixture, LightingFixtureMode, Player,
-    PlayerMaterial, TextDisplayState, BALL_START_SPRITE_ID, BALL_VISUAL_DIAMETER,
-    BLACK_HOLE_VISUAL_DIAMETER, PLAYER_HALF,
+    BALL_START_SPRITE_ID, BALL_VISUAL_DIAMETER, BLACK_HOLE_VISUAL_DIAMETER, Ball, BallHue,
+    BlackHole, CurrentSprite, LightingFixture, LightingFixtureMode, PLAYER_HALF, Player,
+    PlayerMaterial, TextDisplayState,
 };
 use crate::systems::cursor_to_world;
 
@@ -236,8 +236,8 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     batches.extend(ball_batches.into_values());
 
     // Cursor sprite last; world point matches click-spawn mapping.
-    if let Some(cursor_asset) = assets.get_sprite("ex10_cursor") {
-        if let Some(world_pos) = world
+    if let Some(cursor_asset) = assets.get_sprite("ex10_cursor")
+        && let Some(world_pos) = world
             .get_resource::<InputState>()
             .and_then(InputState::cursor_position)
             .map(|(x, y)| Vec2::new(x, y))
@@ -246,27 +246,26 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
                     .get_resource::<CameraState>()
                     .and_then(|cam| cursor_to_world(cursor, cam))
             })
-        {
-            let sprite_w = cursor_asset.width as f32;
-            let sprite_h = cursor_asset.height as f32;
-            let uv_min = cursor_asset.uv.min;
-            let uv_size = [
-                cursor_asset.uv.max[0] - cursor_asset.uv.min[0],
-                cursor_asset.uv.max[1] - cursor_asset.uv.min[1],
-            ];
-            let mut batch = SpriteBatch::new(cursor_asset.atlas, cursor_asset.filter);
-            batch.instances = vec![SpriteInstance {
-                position: [world_pos.x - sprite_w * 0.5, world_pos.y - sprite_h * 0.5],
-                size: [sprite_w, sprite_h],
-                rotation: 0.0,
-                color: [255; 4],
-                uv_min,
-                uv_size,
-                z_norm: 0.0,
-                _pad: 0.0,
-            }];
-            batches.push(batch);
-        }
+    {
+        let sprite_w = cursor_asset.width as f32;
+        let sprite_h = cursor_asset.height as f32;
+        let uv_min = cursor_asset.uv.min;
+        let uv_size = [
+            cursor_asset.uv.max[0] - cursor_asset.uv.min[0],
+            cursor_asset.uv.max[1] - cursor_asset.uv.min[1],
+        ];
+        let mut batch = SpriteBatch::new(cursor_asset.atlas, cursor_asset.filter);
+        batch.instances = vec![SpriteInstance {
+            position: [world_pos.x - sprite_w * 0.5, world_pos.y - sprite_h * 0.5],
+            size: [sprite_w, sprite_h],
+            rotation: 0.0,
+            color: [255; 4],
+            uv_min,
+            uv_size,
+            z_norm: 0.0,
+            _pad: 0.0,
+        }];
+        batches.push(batch);
     }
 
     batches

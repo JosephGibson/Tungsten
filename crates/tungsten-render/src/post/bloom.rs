@@ -14,7 +14,7 @@ use wgpu::util::DeviceExt;
 
 use crate::passes::TargetId;
 use crate::shader_hot_reload::ShaderModuleCache;
-use crate::targets::{RenderTargetPool, BLOOM_PYRAMID_FORMAT};
+use crate::targets::{BLOOM_PYRAMID_FORMAT, RenderTargetPool};
 
 /// Stage shader manifest names. Must match `assets/manifest.json` keys and the
 /// pre-seeded ids in `Renderer::new`.

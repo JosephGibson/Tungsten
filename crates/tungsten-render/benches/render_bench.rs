@@ -1,7 +1,8 @@
 //! CPU-only render micro-benches; no wgpu device or display.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use tungsten_core::assets::{pack_shelf, FilterMode, PackInput, TextureHandle};
+use criterion::{Criterion, criterion_group, criterion_main};
+use std::hint::black_box;
+use tungsten_core::assets::{FilterMode, PackInput, TextureHandle, pack_shelf};
 use tungsten_render::{SpriteBatch, SpriteInstance};
 
 fn bench_sprite_extract_batch_build_2k(c: &mut Criterion) {

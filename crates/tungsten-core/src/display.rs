@@ -1,6 +1,6 @@
 use crate::config::{PresentModeConfig, RenderConfig, WindowConfig};
-use serde::de::Deserializer;
 use serde::Deserialize;
+use serde::de::Deserializer;
 use serde_json::{Map, Value};
 use thiserror::Error;
 

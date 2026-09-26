@@ -1,4 +1,5 @@
 use super::*;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 const SAMPLE_JSON: &str = r#"{
     "actions": {
@@ -79,9 +80,11 @@ fn merged_with_defaults_preserves_user_overrides() {
         ]
     );
 
-    assert!(merged
-        .bindings("engine_toggle_hud")
-        .contains(&Binding::Key { code: KeyCode::F4 }));
+    assert!(
+        merged
+            .bindings("engine_toggle_hud")
+            .contains(&Binding::Key { code: KeyCode::F4 })
+    );
 
     assert_eq!(
         merged.bindings("fire"),
@@ -318,4 +321,22 @@ fn tempdir() -> PathBuf {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
+}
+
+#[test]
+fn persist_preserves_existing_temporary_files_and_cleans_failed_writes() {
+    let dir = tempdir();
+    let stale = dir.join(format!(".input.json.{}.0.tmp", std::process::id()));
+    std::fs::write(&stale, "another writer").unwrap();
+    let path = dir.join("input.json");
+    ActionMap::default_map().persist_to(&path).unwrap();
+    assert_eq!(std::fs::read_to_string(&stale).unwrap(), "another writer");
+    assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 2);
+
+    // A directory cannot be replaced by a file; our temporary file is removed.
+    let destination = dir.join("directory");
+    std::fs::create_dir(&destination).unwrap();
+    assert!(ActionMap::default_map().persist_to(&destination).is_err());
+    assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 3);
+    std::fs::remove_dir_all(dir).unwrap();
 }

@@ -111,27 +111,31 @@ fn sweep_hits_static_aabb_in_path() {
 
 #[test]
 fn sweep_misses_when_offset_from_target() {
-    assert!(sweep_aabb_vs_aabb(
-        Vec2::new(0.0, 10.0),
-        Vec2::new(6.0, 10.0),
-        Vec2::new(0.5, 0.5),
-        Vec2::new(5.0, 0.0),
-        Vec2::new(1.0, 1.0),
-    )
-    .is_none());
+    assert!(
+        sweep_aabb_vs_aabb(
+            Vec2::new(0.0, 10.0),
+            Vec2::new(6.0, 10.0),
+            Vec2::new(0.5, 0.5),
+            Vec2::new(5.0, 0.0),
+            Vec2::new(1.0, 1.0),
+        )
+        .is_none()
+    );
 }
 
 #[test]
 fn sweep_already_overlapping_returns_none() {
     // Already-penetrating pairs are handled by iteration resolver.
-    assert!(sweep_aabb_vs_aabb(
-        Vec2::new(0.0, 0.0),
-        Vec2::new(1.0, 0.0),
-        Vec2::new(0.5, 0.5),
-        Vec2::new(0.0, 0.0),
-        Vec2::new(1.0, 1.0),
-    )
-    .is_none());
+    assert!(
+        sweep_aabb_vs_aabb(
+            Vec2::new(0.0, 0.0),
+            Vec2::new(1.0, 0.0),
+            Vec2::new(0.5, 0.5),
+            Vec2::new(0.0, 0.0),
+            Vec2::new(1.0, 1.0),
+        )
+        .is_none()
+    );
 }
 
 #[test]
@@ -146,6 +150,72 @@ fn sweep_picks_entry_axis_for_normal() {
     )
     .unwrap();
     assert_eq!(hit.1, Vec2::new(0.0, -1.0));
+}
+
+#[test]
+fn speculative_aabb_gap_contact_carries_negative_penetration() {
+    let a = aabb(0.0, 0.0, 1.0, 1.0);
+    let b = aabb(3.5, 0.0, 1.0, 1.0);
+    // Gap 1.5: admitted under margin 2, rejected under margin 1.
+    let c = aabb_vs_aabb_speculative(&a, &b, FACE_ALL, 2.0).unwrap();
+    assert_eq!(c.normal, Vec2::new(-1.0, 0.0));
+    assert!((c.penetration + 1.5).abs() < 1e-5);
+    assert!(aabb_vs_aabb_speculative(&a, &b, FACE_ALL, 1.0).is_none());
+    // Margin 0 reproduces the strict overlap test.
+    assert!(aabb_vs_aabb_speculative(&a, &b, FACE_ALL, 0.0).is_none());
+}
+
+#[test]
+fn speculative_aabb_corner_gap_is_diagonal_and_clamps_to_exposed_face() {
+    let a = aabb(0.0, 0.0, 1.0, 1.0);
+    let b = aabb(3.0, 3.0, 1.0, 1.0);
+    // Corner region: gaps (1, 1), diagonal normal, gap length sqrt(2).
+    let c = aabb_vs_aabb_speculative(&a, &b, FACE_ALL, 2.0).unwrap();
+    assert!(c.normal.x < 0.0 && c.normal.y < 0.0);
+    assert!((c.penetration + std::f32::consts::SQRT_2).abs() < 1e-5);
+    // `b` left face internal: normal clamps to the exposed top-face axis.
+    let c = aabb_vs_aabb_speculative(&a, &b, FACE_ALL & !FACE_LEFT, 2.0).unwrap();
+    assert_eq!(c.normal, Vec2::new(0.0, -1.0));
+    assert!((c.penetration + 1.0).abs() < 1e-5);
+    // Both corner faces internal: no contact.
+    assert!(aabb_vs_aabb_speculative(&a, &b, FACE_ALL & !(FACE_LEFT | FACE_TOP), 2.0).is_none());
+}
+
+#[test]
+fn speculative_face_gap_on_internal_face_drops() {
+    let a = aabb(0.0, 0.0, 1.0, 1.0);
+    let b = aabb(3.5, 0.0, 1.0, 1.0);
+    assert!(aabb_vs_aabb_speculative(&a, &b, FACE_ALL & !FACE_LEFT, 2.0).is_none());
+}
+
+#[test]
+fn speculative_circle_gap_contact() {
+    // Centers 3 apart, radii 1+1: gap 1.
+    let c = circle_vs_circle_speculative(Vec2::ZERO, 1.0, Vec2::new(3.0, 0.0), 1.0, 1.5).unwrap();
+    assert!(c.normal.x < 0.0);
+    assert!((c.penetration + 1.0).abs() < 1e-5);
+    assert!(circle_vs_circle_speculative(Vec2::ZERO, 1.0, Vec2::new(3.0, 0.0), 1.0, 0.5).is_none());
+}
+
+#[test]
+fn speculative_aabb_circle_gap_and_seam_clamp() {
+    let a = aabb(0.0, 0.0, 1.0, 1.0);
+    // Circle right of the box with a 0.5 gap.
+    let c = aabb_vs_circle_speculative(&a, Vec2::new(2.0, 0.0), 0.5, FACE_ALL, 1.0).unwrap();
+    assert!(c.normal.x < -0.9);
+    assert!((c.penetration + 0.5).abs() < 1e-5);
+    // Vertex region above the top-right corner with the right face internal:
+    // clamps to the exposed top face instead of dropping (seam mitigation).
+    let c = aabb_vs_circle_speculative(&a, Vec2::new(1.3, -1.6), 0.5, FACE_ALL & !FACE_RIGHT, 1.0)
+        .unwrap();
+    assert_eq!(c.normal, Vec2::new(0.0, 1.0));
+    // Axial distance to top plane = 0.6, radius 0.5: gap 0.1.
+    assert!((c.penetration + 0.1).abs() < 1e-4);
+    // Pure face gap on an internal face drops.
+    assert!(
+        aabb_vs_circle_speculative(&a, Vec2::new(2.0, 0.0), 0.5, FACE_ALL & !FACE_RIGHT, 1.0)
+            .is_none()
+    );
 }
 
 #[test]

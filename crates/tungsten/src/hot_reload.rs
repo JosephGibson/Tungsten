@@ -28,11 +28,11 @@ impl HotReloadWatcher {
         let (tx, rx) = mpsc::channel::<PathBuf>();
 
         let mut watcher = match notify::recommended_watcher(move |res: notify::Result<Event>| {
-            if let Ok(event) = res {
-                if matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_)) {
-                    for path in event.paths {
-                        let _ = tx.send(path);
-                    }
+            if let Ok(event) = res
+                && matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_))
+            {
+                for path in event.paths {
+                    let _ = tx.send(path);
                 }
             }
         }) {

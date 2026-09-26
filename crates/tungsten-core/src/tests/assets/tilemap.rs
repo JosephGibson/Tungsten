@@ -148,3 +148,30 @@ fn registry_insert_and_lookup() {
     let ids: Vec<&str> = reg.ids().collect();
     assert_eq!(ids, vec!["demo"]);
 }
+
+#[test]
+fn sparse_tiled_ids_resolve_and_invalid_gids_return_errors() {
+    let path = std::env::temp_dir().join(format!(
+        "tungsten-sparse-tiles-{}-{}.tmj",
+        std::process::id(),
+        std::time::UNIX_EPOCH.elapsed().unwrap().as_nanos()
+    ));
+    let mut json = serde_json::json!({
+        "tilewidth": 8, "tileheight": 8, "width": 2, "height": 1,
+        "tilesets": [{"firstgid": 10, "tiles": [
+            {"id": 5, "properties": [{"name": "sprite_id", "value": "b"}]},
+            {"id": 0, "properties": [{"name": "sprite_id", "value": "a"}]}
+        ]}],
+        "layers": [{"type": "tilelayer", "name": "ground", "data": [15, 10]}]
+    });
+    std::fs::write(&path, json.to_string()).unwrap();
+    let map = TilemapData::load(&path).unwrap();
+    assert_eq!(map.tileset, ["a", "b"]);
+    assert_eq!(map.layers[0].tiles, [1, 0]);
+    for gid in [1, 11, u32::MAX] {
+        json["layers"][0]["data"][0] = gid.into();
+        std::fs::write(&path, json.to_string()).unwrap();
+        assert!(TilemapData::load(&path).is_err(), "gid={gid}");
+    }
+    std::fs::remove_file(path).unwrap();
+}

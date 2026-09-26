@@ -1,6 +1,6 @@
 use super::*;
-use tungsten_core::input::{InputState, KeyCode};
 use tungsten_core::ActionMap;
+use tungsten_core::input::{InputState, KeyCode};
 
 #[test]
 fn default_hud_is_disabled_and_empty_world_yields_no_rows() {

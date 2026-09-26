@@ -5,5 +5,5 @@ pub mod order;
 pub mod recorder;
 
 pub use desc::{PassDesc, TargetId};
-pub use order::{default_pass_order, text_overlay_target, PassOrder};
+pub use order::{PassOrder, default_pass_order, text_overlay_target};
 pub use recorder::PassRecorder;

@@ -1,9 +1,9 @@
-use glam::{Mat4, Vec2};
+use glam::Vec2;
+use tungsten::WindowSize;
 use tungsten::camera_update_system;
 use tungsten::core::{
     CameraBounds, CameraController, CameraMode, CameraState, DeltaTime, Transform, World,
 };
-use tungsten::WindowSize;
 
 fn seed_world() -> World {
     let mut world = World::new();
@@ -103,7 +103,8 @@ fn zero_rotation_camera_remains_pre_m10_ortho_through_shared_path() {
 
     let camera = world.get_resource::<CameraState>().unwrap();
     let got = camera.view_projection(1280.0, 720.0);
-    let expected = Mat4::orthographic_rh(0.0, 1280.0, 720.0, 0.0, -1.0, 1.0);
+    let expected =
+        glam::camera::rh::proj::directx::orthographic(0.0, 1280.0, 720.0, 0.0, -1.0, 1.0);
     assert_eq!(got, expected);
 }
 

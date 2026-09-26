@@ -1,0 +1,11 @@
+[package]
+name = "tungsten-launcher"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Release-archive launcher that runs the fastest example build the CPU supports (D-072)"
+publish = false
+
+[lints]
+workspace = true

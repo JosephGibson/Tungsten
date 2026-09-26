@@ -156,6 +156,89 @@ impl World {
             })
     }
 
+    /// Immutable two-required + two-optional component query. Optional
+    /// column presence resolves once per archetype — a columnar pass with no
+    /// per-entity lookups — so rows in archetypes lacking `C` or `D` yield
+    /// `None` at zero cost. Iterates the same archetype set in the same
+    /// order as `query2::<A, B>`.
+    pub fn query2_opt2<A: 'static, B: 'static, C: 'static, D: 'static>(
+        &self,
+    ) -> impl Iterator<Item = (Entity, &A, &B, Option<&C>, Option<&D>)> {
+        let a_id = TypeId::of::<A>();
+        let b_id = TypeId::of::<B>();
+        let c_id = TypeId::of::<C>();
+        let d_id = TypeId::of::<D>();
+        self.archetypes
+            .archetypes_with_two(a_id, b_id)
+            .flat_map(move |arch| {
+                let col_a = arch.columns[&a_id]
+                    .as_any()
+                    .downcast_ref::<TypedVec<A>>()
+                    .unwrap();
+                let col_b = arch.columns[&b_id]
+                    .as_any()
+                    .downcast_ref::<TypedVec<B>>()
+                    .unwrap();
+                let col_c = arch
+                    .columns
+                    .get(&c_id)
+                    .map(|col| col.as_any().downcast_ref::<TypedVec<C>>().unwrap());
+                let col_d = arch
+                    .columns
+                    .get(&d_id)
+                    .map(|col| col.as_any().downcast_ref::<TypedVec<D>>().unwrap());
+                arch.entities
+                    .iter()
+                    .zip(col_a.0.iter())
+                    .zip(col_b.0.iter())
+                    .zip(OptionalColumn(col_c.map(|col| col.0.iter())))
+                    .zip(OptionalColumn(col_d.map(|col| col.0.iter())))
+                    .map(|((((&e, a), b), c), d)| (e, a, b, c, d))
+            })
+    }
+
+    /// Mutable counterpart of [`query2_opt2`](Self::query2_opt2) in the
+    /// read-filter/write-state shape: `A` and optional `C` are shared reads,
+    /// `B` and optional `D` are mutable. Iterates the same archetype set in
+    /// the same order as `query2_opt2::<A, B, C, D>`, which makes zipping the
+    /// two by row sound within a frame without structural changes.
+    ///
+    /// # Panics
+    /// Panics if any two of `A`, `B`, `C`, `D` are the same type.
+    pub fn query2_opt2_mut<A: 'static, B: 'static, C: 'static, D: 'static>(
+        &mut self,
+    ) -> impl Iterator<Item = (Entity, &A, &mut B, Option<&C>, Option<&mut D>)> {
+        let a_id = TypeId::of::<A>();
+        let b_id = TypeId::of::<B>();
+        let c_id = TypeId::of::<C>();
+        let d_id = TypeId::of::<D>();
+        let ids = [a_id, b_id, c_id, d_id];
+        for i in 0..ids.len() {
+            for j in i + 1..ids.len() {
+                assert_ne!(
+                    ids[i], ids[j],
+                    "query2_opt2_mut: component types must be distinct"
+                );
+            }
+        }
+        self.archetypes
+            .archetypes_with_two_mut(a_id, b_id)
+            .flat_map(move |arch| {
+                let Archetype {
+                    columns, entities, ..
+                } = arch;
+                let (col_a, col_b, col_c, col_d) =
+                    split2_opt2_columns_mut::<A, B, C, D>(columns, a_id, b_id, c_id, d_id);
+                entities
+                    .iter()
+                    .zip(col_a.0.iter())
+                    .zip(col_b.0.iter_mut())
+                    .zip(OptionalColumn(col_c.map(|col| col.0.iter())))
+                    .zip(OptionalColumn(col_d.map(|col| col.0.iter_mut())))
+                    .map(|((((&e, a), b), c), d)| (e, a, b, c, d))
+            })
+    }
+
     /// Iterate `(Entity, &mut T)` in archetype/row order.
     pub fn query_mut<T: 'static>(&mut self) -> impl Iterator<Item = (Entity, &mut T)> {
         let t_id = TypeId::of::<T>();
@@ -312,6 +395,63 @@ impl Default for World {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Zip adapter for optional columns: yields `Some(item)` per row when the
+/// column exists and `None` forever when it does not; the required-column
+/// zip bounds the iteration either way.
+struct OptionalColumn<I>(Option<I>);
+
+impl<I: Iterator> Iterator for OptionalColumn<I> {
+    type Item = Option<I::Item>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.0.as_mut() {
+            Some(iter) => iter.next().map(Some),
+            None => Some(None),
+        }
+    }
+}
+
+/// Column borrows returned by `split2_opt2_columns_mut`: shared `A`/`C`,
+/// mutable `B`/`D`, with `C`/`D` optional.
+type SplitOpt2Columns<'c, A, B, C, D> = (
+    &'c TypedVec<A>,
+    &'c mut TypedVec<B>,
+    Option<&'c TypedVec<C>>,
+    Option<&'c mut TypedVec<D>>,
+);
+
+/// Column borrows for `query2_opt2_mut`: shared `A`/`C`, mutable `B`/`D`;
+/// `C`/`D` may be absent from the archetype. Ids must all differ.
+fn split2_opt2_columns_mut<A: 'static, B: 'static, C: 'static, D: 'static>(
+    columns: &mut HashMap<TypeId, Box<dyn AnyColumn>>,
+    a_id: TypeId,
+    b_id: TypeId,
+    c_id: TypeId,
+    d_id: TypeId,
+) -> SplitOpt2Columns<'_, A, B, C, D> {
+    let mut col_a = None;
+    let mut col_b = None;
+    let mut col_c = None;
+    let mut col_d = None;
+    for (&tid, col) in columns.iter_mut() {
+        if tid == a_id {
+            col_a = (**col).as_any().downcast_ref::<TypedVec<A>>();
+        } else if tid == b_id {
+            col_b = col.as_any_mut().downcast_mut::<TypedVec<B>>();
+        } else if tid == c_id {
+            col_c = (**col).as_any().downcast_ref::<TypedVec<C>>();
+        } else if tid == d_id {
+            col_d = col.as_any_mut().downcast_mut::<TypedVec<D>>();
+        }
+    }
+    (
+        col_a.expect("split2_opt2_columns_mut: column A missing"),
+        col_b.expect("split2_opt2_columns_mut: column B missing"),
+        col_c,
+        col_d,
+    )
 }
 
 /// Disjoint mutable borrows of two typed columns; ids must differ.

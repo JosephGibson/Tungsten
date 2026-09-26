@@ -13,7 +13,7 @@ use tungsten::core::{
     CommandBuffer, EventQueue, Sprite, Tag, Transform, Tween, TweenChannel, TweenComplete,
     Visibility,
 };
-use tungsten::{asset_loader, GameState, SceneEntity, StateContext, StateId, StateStack};
+use tungsten::{GameState, SceneEntity, StateContext, StateId, StateStack, asset_loader};
 
 use crate::{QUAD_ID, SPRITE_HALF, VIEW_CENTER};
 
@@ -53,10 +53,10 @@ impl GameState for MainMenuState {
     fn on_exit(&mut self, _ctx: &mut StateContext) {}
 
     fn update(&mut self, world: &mut World) {
-        if action_just_pressed(world, "state_start") {
-            if let Some(stack) = world.get_resource_mut::<StateStack>() {
-                stack.request_replace(GameplayState::new(SCENE_PATH));
-            }
+        if action_just_pressed(world, "state_start")
+            && let Some(stack) = world.get_resource_mut::<StateStack>()
+        {
+            stack.request_replace(GameplayState::new(SCENE_PATH));
         }
     }
 }
@@ -136,10 +136,12 @@ impl GameState for PauseState {
             if let Some(stack) = world.get_resource_mut::<StateStack>() {
                 stack.request_pop();
             }
-        } else if action_just_pressed(world, "state_back") {
-            if let Some(stack) = world.get_resource_mut::<StateStack>() {
-                stack.request_replace(MainMenuState);
-            }
+        } else if action_just_pressed(world, "state_back")
+            && let Some(stack) = world.get_resource_mut::<StateStack>()
+        {
+            // Remove the pause overlay and its underlying gameplay state.
+            stack.request_pop();
+            stack.request_replace(MainMenuState);
         }
     }
 }
@@ -332,4 +334,73 @@ fn action_just_pressed(world: &World, action: &str) -> bool {
         return false;
     };
     actions.just_pressed(input, action)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tungsten::state_dispatcher_system;
+
+    struct TestGameplay;
+    impl GameState for TestGameplay {
+        fn id(&self) -> StateId {
+            "gameplay"
+        }
+        fn on_enter(&mut self, ctx: &mut StateContext) {
+            let entity = ctx.world.spawn();
+            ctx.world.insert(
+                entity,
+                SceneEntity {
+                    state_id: "gameplay",
+                },
+            );
+        }
+        fn on_exit(&mut self, _: &mut StateContext) {}
+        fn update(&mut self, _: &mut World) {}
+    }
+
+    fn flush(world: &mut World) {
+        let commands = world.remove_resource::<CommandBuffer>().unwrap();
+        world.flush(commands);
+        world.insert_resource(CommandBuffer::new());
+    }
+
+    #[test]
+    fn back_from_pause_removes_gameplay_before_entering_menu() {
+        let mut world = World::new();
+        world.insert_resource(CommandBuffer::new());
+        world.insert_resource(StateStack::new());
+        world.insert_resource(ActionMap::default_map());
+        world.insert_resource(InputState::new());
+        world
+            .get_resource_mut::<StateStack>()
+            .unwrap()
+            .request_push(TestGameplay);
+        state_dispatcher_system(&mut world);
+        world
+            .get_resource_mut::<StateStack>()
+            .unwrap()
+            .request_push(PauseState);
+        state_dispatcher_system(&mut world);
+        flush(&mut world);
+        world
+            .get_resource_mut::<InputState>()
+            .unwrap()
+            .key_down(tungsten::core::KeyCode::Backspace);
+        state_dispatcher_system(&mut world);
+        world
+            .get_resource_mut::<InputState>()
+            .unwrap()
+            .begin_frame();
+        state_dispatcher_system(&mut world);
+        flush(&mut world);
+        let stack = world.get_resource::<StateStack>().unwrap();
+        assert_eq!(stack.active_id(), Some("menu"));
+        assert_eq!(stack.depth(), 1);
+        assert!(
+            world
+                .query::<SceneEntity>()
+                .all(|(_, marker)| marker.state_id == "menu")
+        );
+    }
 }
