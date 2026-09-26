@@ -4,8 +4,8 @@
   check [TAG]         Cargo.toml's workspace version is the newest CHANGELOG.md
                       release; `## [Unreleased]` comes first; release headings read
                       `## [X.Y.Z] - YYYY-MM-DD`, newest version and date first; and
-                      the README.md/DESIGN.md "Workspace `vX.Y.Z`" status lines
-                      agree. A tag whose version has a CHANGELOG section must equal
+                      the DESIGN.md "Workspace `vX.Y.Z`" status line agrees.
+                      A tag whose version has a CHANGELOG section must equal
                       the workspace version and have notes; so must every vX.Y.Z tag.
                       A pre-release tag without a section (e.g. v0.0.0-test) is a
                       rehearsal: the tree must still agree, the tag isn't compared.
@@ -19,7 +19,7 @@
                       launcher per example, and the files the examples read relative
                       to the working directory: OUT/tungsten-examples-TAG-TARGET.*
 
-Rationale: D-071, D-072. Release steps: README.md "Releases".
+Rationale: D-071, D-072, D-074. Release steps: docs/releases.md.
 """
 
 import argparse
@@ -34,7 +34,7 @@ from pathlib import Path
 CARGO = "Cargo.toml"
 CHANGELOG = "CHANGELOG.md"
 # Human status lines that name the workspace version; `cut` rewrites them.
-STATUS_FILES = ("README.md", "DESIGN.md")
+STATUS_FILES = ("DESIGN.md",)
 STATUS_RE = re.compile(r"(Workspace `v)([^`]*)(`)")
 UNRELEASED = "## [Unreleased]"
 UNRELEASED_RE = re.compile(r"^## \[Unreleased\][ \t]*$", re.M)
@@ -135,15 +135,17 @@ def changelog_sections(text):
             for start, end in zip(heads, heads[1:] + [len(lines)])]
 
 
-def check_tree(root):
+def check_tree(root, read_file=None):
+    """Check working files, or an explicit reader for a committed Git tree."""
+    read_file = read_file or (lambda rel: read(root, rel))
     errors = []
-    version = cargo_version(read(root, CARGO))
+    version = cargo_version(read_file(CARGO))
     if version is None:
         errors.append(f"{CARGO}: no version in [workspace.package]")
     elif not SEMVER_RE.match(version):
         errors.append(f"{CARGO}: workspace version {version!r} is not SemVer X.Y.Z[-pre]")
 
-    sections = changelog_sections(read(root, CHANGELOG))
+    sections = changelog_sections(read_file(CHANGELOG))
     headings = [heading for heading, _ in sections]
     unreleased = None
     if headings.count(UNRELEASED) != 1 or headings[0] != UNRELEASED:
@@ -176,7 +178,7 @@ def check_tree(root):
                       f"[{releases[0].version}]; bump both with `just release-cut`")
 
     for rel in STATUS_FILES:
-        found = [match[2] for match in STATUS_RE.finditer(read(root, rel))]
+        found = [match[2] for match in STATUS_RE.finditer(read_file(rel))]
         if not found:
             errors.append(f"{rel}: no 'Workspace `vX.Y.Z`' status line")
         for value in found:
@@ -372,7 +374,7 @@ def main(argv=None):
             if not errors:
                 latest = state.releases[0]
                 print(f"Release consistency: workspace {state.version} = {CHANGELOG} [{latest.version}] - "
-                      f"{latest.date}; {' and '.join(STATUS_FILES)} agree; [Unreleased] "
+                      f"{latest.date}; status consistent in {', '.join(STATUS_FILES)}; [Unreleased] "
                       f"{'has entries' if state.unreleased else 'is empty'}.")
                 if args.tag and is_rehearsal(state, args.tag):
                     print(f"Tag {args.tag}: rehearsal (pre-release without a section); version not "

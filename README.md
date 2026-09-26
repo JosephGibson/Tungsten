@@ -2,10 +2,6 @@
 
 From-scratch Rust 2D game engine. Stack: `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Targets: native only (`Linux`, `macOS`, `Windows`). No WASM.
 
-## Status
-
-Workspace `v0.28.0` on branch `0.28`, which ships M30 game feel: per-layer parallax scroll, trauma-enveloped camera shake and one-shot squash/stretch. Phase 3 is complete; all milestones `M12`–`M24` shipped. The rollout plan is archived at [`docs/plans/archive/phase3.md`](docs/plans/archive/phase3.md). Phase 4 is underway: M25 (render foundation), M26 (materials + post-stack + tween→material bridge), M27 (SMAA 1x presentation AA), M28 (bloom), M29 (2D forward normal-mapped lighting) and M30 (parallax + screen-shake + squash/stretch) are live; M31–M33 are tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md).
-
 ## Stack
 
 Hand-rolled ECS with archetypal storage, deferred command buffers, and typed event queues; `wgpu` rendering; manifest-driven assets; `glyphon` text; `cpal` + `symphonia` + hand-rolled audio mixer; `notify` hot reload; `.tmj` / Tiled-compatible tilemaps; 2D AABB + circle physics with a spatial-hash broad-phase, speculative CCD, warm-started soft contacts and island sleeping; frame telemetry, Criterion benches, and a perf capture workflow.
@@ -49,16 +45,6 @@ WGPU_BACKEND=vulkan ./scripts/perf-capture.sh ecs-high-load 300   # primary scen
 WGPU_BACKEND=vulkan ./scripts/perf-capture.sh sprite-stress 300   # render-hot-path baseline
 bash scripts/test-perf-capture.sh
 ```
-
-## Releases
-
-Pushing a `vX.Y.Z` tag runs [`release.yml`](.github/workflows/release.yml) (`D-071`). It first checks that the tag, the `Cargo.toml` workspace version and the newest `CHANGELOG.md` heading agree. It then builds the four examples for Linux and Windows at two x86-64 CPU levels and publishes a GitHub Release: one archive per platform, `SHA256SUMS`, and that changelog section as notes. In each archive, every example is a small launcher that runs the fastest build the player's CPU supports (`x86-64-v3` or portable, `D-072`) from the archive folder, so it starts from anywhere. Hosted runners have no GPU, so the pipeline only builds.
-
-1. **Finalize the branch** with the `tungsten-finalize` skill. It updates the docs, runs `just release-cut X.Y.Z` (moves `[Unreleased]`, bumps the version, status lines and `Cargo.lock`) and ends with `just ctx` and `just repo-check`. Commit and merge.
-2. **Tag the commit to release, then push the tag:** `git tag -a v0.28.0 -m "Tungsten 0.28.0"`, then `git push origin v0.28.0`.
-3. **Verify:** watch the run with `gh run watch`, then inspect the release with `gh release view v0.28.0`. Download an archive, check it with `sha256sum -c SHA256SUMS --ignore-missing`, and launch an example on a machine with a GPU; its first line names the build the launcher chose.
-
-To rehearse, push a pre-release tag with no changelog section of its own, such as `v0.0.0-test`. The tree must still pass `just release-check`, but the tag isn't compared with the version. The notes come from `[Unreleased]`, and the release is marked as a pre-release. The workflow runs from the tagged commit, so an unmerged branch works. Clean up with `gh release delete v0.0.0-test --cleanup-tag --yes`. If publishing fails after the release was created, delete the release but keep the tag (omit `--cleanup-tag`), then re-run the failed jobs.
 
 ## Read Order
 

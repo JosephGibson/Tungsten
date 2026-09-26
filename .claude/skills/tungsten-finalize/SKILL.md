@@ -1,80 +1,50 @@
 ---
 name: tungsten-finalize
-description: Pre-finalize docs pass for a Tungsten milestone branch before merge or tag — CHANGELOG [Unreleased] and the version cut, README/DESIGN status, LLM_INDEX and DECISION_INDEX rows, plan status and archiving. Ends with just ctx and just repo-check.
+description: Prepare Tungsten milestone or patch branch documentation and cut the requested version when needed. Updates changelog, DESIGN status, indexes and active plans, then hands off to tungsten-release for Git publication or verification.
 ---
 
 # tungsten-finalize
 
-Run once per milestone branch, after the last code change and before merging or tagging. Follow the Docs session rules in [AGENTS.md](../../../AGENTS.md):
+Use after the branch's last code change. This skill owns documentation and the version cut; [docs/releases.md](../../../docs/releases.md) owns Git handoff, publishing, verification and recovery. A preparation request ends at that handoff. Honor any broader authorization already given.
 
-- Read a whole doc before editing it. The exceptions are `CHANGELOG.md`, `DECISIONS.md` and `DESIGN.md`: run `rg -n '^#' <file>` and read only the section you edit.
-- Decisions are immutable. A new decision adds its index row in the same change.
-- Never open `docs/plans/archive/`.
+Follow [AGENTS.md](../../../AGENTS.md): read a whole doc before editing, except CHANGELOG, DECISIONS and DESIGN (find headings and read only the relevant section). Decisions are immutable; reversals add an entry and update the index. Never read or list the plan archive.
 
-Work on the branch only. Commits, merges and tags are the owner's call.
+## Establish state
 
-## 1. Inventory the branch
+Identify the requested version and branch base before editing. Refresh the intended remote base as described in the release guide; do not assume local main is current. Inventory commits/diffs against that base and inspect active plans only. If the branch was already squash-merged, compare file trees as well as history so identical changes are not counted twice.
+
+Run `just release-check`. Resolve actual version/status drift without discarding unrelated work. The workspace version changes only at the cut (`D-071`, `D-074`).
+
+- Requested version above the workspace version: prepare `[Unreleased]`, then cut it once.
+- Requested version already current with its changelog section: inspect its notes, Cargo.lock and DESIGN status; skip cutting again. If this is already published, new work belongs in `[Unreleased]` for a later version.
+- Requested version older, unclear, or inconsistent with existing publication: inspect and resolve the intended release before changing versioned notes or cutting.
+
+## Complete branch documentation
+
+- Complete the relevant changelog section from the inventory. Use a `Summary:` naming the plan, applicable Added/Changed/Fixed/Removed groups, bold bullet leads and useful decision/path references. Cite new decisions only when there are any. Do not create a version heading manually.
+- Add every new decision's row to [DECISION_INDEX.md](../../../docs/DECISION_INDEX.md). A reversal marks the old decision `Superseded by D-NNN` and updates both rows.
+- Update [LLM_INDEX.md](../../../docs/LLM_INDEX.md) for new task areas and moved paths; keep it under 8 KiB.
+- For plans completed by this branch, tick acceptance checks and set done/abandoned/superseded status, then move the known file to the archive without inspecting that directory. Repoint links. Keep unfinished plans active; update phase milestone status only when appropriate to the release state.
+
+## Cut when needed
+
+Confirm the intended version from the task: milestone branch `0.NN` normally ships `0.NN.0`; maintenance fixes increment the patch. Then run:
 
 ```bash
-git log --oneline main..HEAD
-git diff --stat main...HEAD
-git diff --unified=0 main...HEAD -- DECISIONS.md | rg '^\+## D-'   # new decisions
-fd -e md --max-depth 1 . docs/plans                                 # active plans
-just release-check                                                  # must pass before editing
+just release-cut X.Y.Z
 ```
 
-If `release-check` fails, fix the drift first. The usual causes are a version bumped at branch start or a hand-edited status line. The workspace version changes only at the cut (`D-071`).
+The command rejects inconsistent files, empty `[Unreleased]`, non-increasing versions and dates before the latest release. `--date YYYY-MM-DD` selects an intentional release date. It updates Cargo.toml, changelog and DESIGN and refreshes Cargo.lock. If lock refresh fails, the cut files are already changed: fix the lockfile and rerun checks, not the cut.
 
-## 2. CHANGELOG `[Unreleased]`
+Review the diff. Update DESIGN's surrounding status prose as needed. README remains version-free; edit its overview, commands or document links only if their substance changed. Preserve historical release prose and do not scan the archive for stale versions.
 
-Complete the section from the inventory, in the file's existing style:
+## Validate and hand off
 
-- Start with a `Summary:` line that names the plan.
-- Group changes under `### Added`, `### Changed`, `### Fixed` and `### Removed`, as bullets with a bold lead-in that cite `D-NNN` IDs and file paths.
-- End with the `DECISIONS.md adds D-NNN–D-NNN` line.
-
-Don't add a version heading; the cut writes it.
-
-## 3. Decisions and indexes
-
-- Every new `## D-NNN` heading needs its row in the right section of [DECISION_INDEX.md](../../../docs/DECISION_INDEX.md); the `decision_index` test fails without it. A reversal adds a new entry, marks the old one `Superseded by D-NNN` and updates both rows.
-- In [LLM_INDEX.md](../../../docs/LLM_INDEX.md), add rows for new task areas and fix paths that moved or were deleted. It must stay under 8 KiB (`just ctx`).
-
-## 4. Plans
-
-- Set `status` on every plan the branch finished (`done`, `abandoned` or `superseded`) and tick its done-when checks. Then `git mv` it to `docs/plans/archive/` under the same basename, without listing or reading that directory. `just repo-check` fails on finished plans left in `docs/plans/`.
-- Update milestone status lines in the phase plan, for example "done — shipped in `0.NN`" in `docs/plans/phase4.md`.
-- Repoint links to a moved plan at `archive/<name>.md`.
-
-## 5. Cut the version
-
-Branch `0.NN` ships as `0.NN.0`; a later fix release on it bumps the patch number.
+Run the checks appropriate to the branch under AGENTS.md (`just check` for code, `just script-test` for scripts, and local hardware checks where required), then finish with:
 
 ```bash
-just release-cut 0.NN.0   # [Unreleased] -> [0.NN.0] - today; Cargo.toml, Cargo.lock, status lines
-```
-
-The cut refuses in these cases:
-
-- the tree is inconsistent;
-- `[Unreleased]` is empty;
-- the version isn't above the current one;
-- the date is earlier than the last release (`--date YYYY-MM-DD` overrides today).
-
-Check the result with `git diff --unified=1`.
-
-## 6. Status prose
-
-- The cut already rewrote the `Workspace vX.Y.Z` text. Update the rest of the status in `README.md` ("Status") and in the status paragraph at the top of `DESIGN.md`: branch name, shipped milestones and the next active plan. Update the README documents table for new or moved docs.
-- Find other version or branch mentions with `rg -n '0\.NN' -g '*.md' --glob '!CHANGELOG.md' --glob '!DECISIONS.md'`. Leave historical statements as written.
-- Edit `AGENTS.md` only when commands or rules changed, since it is at its 6 KiB budget.
-
-## 7. Verify
-
-```bash
-just check        # when code changed on the branch
 just ctx
-just repo-check   # includes the version/changelog check
+just repo-check
 ```
 
-Report the version, the plans you moved and anything left open. Then hand over the release commands from the "Releases" section of [README.md](../../../README.md): `git tag -a v0.NN.0 -m "Tungsten 0.NN.0"` and `git push origin v0.NN.0`.
+Report the requested/current version, whether a cut occurred, plans moved, validation and remaining work. Hand off to [tungsten-release](../tungsten-release/SKILL.md) and the release guide. Publication selects the final integrated commit after any merge; do not hand out a bare tag command that implicitly tags the development HEAD.

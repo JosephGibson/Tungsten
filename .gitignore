@@ -56,3 +56,4 @@ flamegraph.svg
 !/.claude/skills/tungsten-wgpu/
 !/.claude/skills/tungsten-perf/
 !/.claude/skills/tungsten-finalize/
+!/.claude/skills/tungsten-release/

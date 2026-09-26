@@ -6,6 +6,21 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+Summary: internal release workflow ([plan](docs/plans/archive/release-workflow.md)).
+
+### Added
+
+- **Release operations (`D-074`):** `docs/releases.md` and the shared `tungsten-release` skill cover preparation, exact-commit publication/verification, unique rehearsals and recovery by release state. `just release-preflight` checks committed files, live Git refs and GitHub state without changing them; temporary-repository tests cover Git failure and resume cases.
+
+### Changed
+
+- **Finalize handoff:** recognizes already-cut versions and hands off to the internal release guide; future milestone tags select the final merged commit. Release checks/cuts retain DESIGN version validation and leave README untouched.
+
+### Removed
+
+- **README release content:** version/branch/milestone status and release procedure moved out of the project overview.
+- `DECISIONS.md` adds `D-074`.
+
 ## [0.28.0] - 2026-09-26
 
 Summary: M30 game feel — per-layer parallax scroll, trauma-enveloped camera shake and one-shot squash/stretch (plan `docs/plans/archive/phase4-milestone-30-parallax-shake-squash.md`, `D-073`), demoed in `examples/01_platformer/` and `examples/04_shader_playground/`. No render-crate change; a sprite without `ParallaxLayer` and a `CameraController::default()` reproduce the pre-M30 output exactly.
