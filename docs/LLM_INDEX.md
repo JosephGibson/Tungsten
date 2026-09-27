@@ -59,7 +59,8 @@ Run with `cargo run -p example-NN-name`.
 
 | Task | Open |
 | --- | --- |
-| Platformer | `examples/01_platformer/src/main.rs`, `examples/01_platformer/src/setup.rs`, `examples/01_platformer/src/systems.rs`, `examples/01_platformer/src/extract.rs`, `examples/01_platformer/src/state.rs` |
+| Platformer | `examples/01_platformer/src/main.rs`, `examples/01_platformer/src/setup.rs`, `examples/01_platformer/src/systems.rs`, `examples/01_platformer/src/extract.rs`, `examples/01_platformer/src/state.rs`, `examples/01_platformer/src/gameplay.rs` |
+| Platformer art, level and layout regeneration | `examples/01_platformer/tools/README.md`, `examples/01_platformer/tools/generate.py`, `examples/01_platformer/tools/level.json`, `examples/01_platformer/src/level_layout.rs` |
 | Sprite stress, perf scenes | `examples/02_sprite_stress/src/main.rs`, `examples/02_sprite_stress/src/ecs_high_load.rs`, `examples/02_sprite_stress/src/physics_stress.rs` |
 | Scene/state lifecycle | `examples/03_scene_state/src/main.rs`, `examples/03_scene_state/src/states.rs` |
 | Shader/material/post fixtures | `examples/04_shader_playground/src/main.rs` |

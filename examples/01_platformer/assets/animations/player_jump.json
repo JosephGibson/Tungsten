@@ -1,0 +1,13 @@
+{
+  "frames": [
+    {
+      "duration_ms": 90,
+      "sprite": "ex10_player_jump_0"
+    },
+    {
+      "duration_ms": 90,
+      "sprite": "ex10_player_jump_1"
+    }
+  ],
+  "looping": false
+}

@@ -1,0 +1,21 @@
+{
+  "frames": [
+    {
+      "duration_ms": 200,
+      "sprite": "ex10_vines"
+    },
+    {
+      "duration_ms": 200,
+      "sprite": "ex10_vines_1"
+    },
+    {
+      "duration_ms": 200,
+      "sprite": "ex10_vines_2"
+    },
+    {
+      "duration_ms": 200,
+      "sprite": "ex10_vines_3"
+    }
+  ],
+  "looping": true
+}

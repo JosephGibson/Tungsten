@@ -1,0 +1,29 @@
+{
+  "frames": [
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_lantern"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_lantern_1"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_lantern_2"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_lantern_3"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_lantern_4"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_lantern_5"
+    }
+  ],
+  "looping": true
+}

@@ -1,0 +1,92 @@
+{
+  "alpha_over_life": [
+    [
+      0,
+      0
+    ],
+    [
+      0.1,
+      0.8
+    ],
+    [
+      0.65,
+      0.6
+    ],
+    [
+      1,
+      0
+    ]
+  ],
+  "blend": "alpha",
+  "color_over_life": [
+    [
+      0,
+      [
+        1,
+        0.9,
+        0.4,
+        1
+      ]
+    ],
+    [
+      0.4,
+      [
+        1,
+        0.42,
+        0.08,
+        1
+      ]
+    ],
+    [
+      1,
+      [
+        0.35,
+        0.1,
+        0.06,
+        0
+      ]
+    ]
+  ],
+  "drag_per_sec": 0.8,
+  "emission": {
+    "count": 24,
+    "kind": "burst",
+    "once": true
+  },
+  "gravity": [
+    0,
+    180
+  ],
+  "initial_velocity": {
+    "kind": "radial",
+    "speed": {
+      "max": 310,
+      "min": 90
+    }
+  },
+  "lifetime": {
+    "max": 0.55,
+    "min": 0.35750000000000004
+  },
+  "max_alive": 24,
+  "scale_over_life": [
+    [
+      0,
+      0.7
+    ],
+    [
+      0.25,
+      1
+    ],
+    [
+      1,
+      0.2
+    ]
+  ],
+  "seed": 48657,
+  "sprite": "ex10_spark",
+  "start_scale": {
+    "max": 0.24,
+    "min": 0.12
+  }
+}

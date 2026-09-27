@@ -5,7 +5,7 @@ non-goals:
   - "No 3D, scripting, networking, WASM, editor (DESIGN.md §Non-Commitments)."
   - "No capture tooling (GIF/video/screenshot automation); manual acceptance artifacts are still expected."
   - "No deferred lighting, shadow casters, occluder polygons, volumetric lights, GI (Phase 5)."
-  - "No asset-preprocessing pipeline (MSDF bakes at startup, not ahead of time)."
+  - "No engine asset-preprocessing pipeline (MSDF bakes at startup, not ahead of time). The approved archive/platformer-art-revamp.md exception permits an example-local offline authoring generator with checked-in outputs; it never runs at startup, during Cargo builds, or during asset loading."
   - "No cleanup-only milestone; each feature milestone slices the monoliths it touches."
 files to touch:
   - "docs/plans/phase4.md"
@@ -332,6 +332,8 @@ Phase 4 adds: render targets, depth, optional MSAA, shader hot reload, user mate
 
 **Hard rule:** no `examples/05_showcase/` directory, no asset production, no scope lock until M32 is flipped to `status: done`.
 
+**Approved scoped exception:** [Platformer art revamp](archive/platformer-art-revamp.md) may author assets and gameplay presentation solely in `examples/01_platformer/` before M32. This neither completes M32 nor starts M33; the M32→M33 ordering, M33 acceptance requirements, and prohibition on `examples/05_showcase/` remain intact.
+
 **Locked requirements (only these):**
 - Lives in `examples/05_showcase/` with local `assets/manifest.json`.
 - Must exercise: materials + ≥5 stock effects (M26), SMAA (M27), bloom (M28), ≥2 point lights + 1 directional + normal maps (M29), ≥3 parallax layers + shake + squash (M30), ≥1 mesh-instanced particle system + ≥1 screen transition (M31), MSDF title card (M32).
@@ -371,7 +373,7 @@ M30 and M31 may swap. M32 must precede M33.
 - M30 shake extends `CameraController`, not `CameraState`.
 - M32 MSDF bake stays synchronous in the existing startup load path; parallel baking is Phase 5 work if startup cost justifies it.
 - Every new `D-0xx` added in Phase 4 updates [docs/DECISION_INDEX.md](../DECISION_INDEX.md) in the same change; M25/M32 also sync [AGENTS.md](../../AGENTS.md) and [DESIGN.md](../../DESIGN.md) when canonical shader/text guidance changes.
-- M26 `04_shader_playground` stays minimal. Heavy example authoring only in M33.
+- M26 `04_shader_playground` stays minimal. Heavy example authoring only in M33, except the approved [platformer art revamp](archive/platformer-art-revamp.md) scoped solely to `examples/01_platformer/` before M32.
 - Depth-test sprite path ships in M25 as opt-in; `z_order` CPU-sort remains default.
 
 ## Sources
