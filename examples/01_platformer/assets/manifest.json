@@ -1,305 +1,841 @@
 {
-  "sprites": {
-    "ex10_ground": {
-      "path": "sprites/ground.png",
-      "filter": "nearest"
-    },
-    "ex10_ground_1": {
-      "path": "sprites/ground_1.png",
-      "filter": "nearest"
-    },
-    "ex10_ground_2": {
-      "path": "sprites/ground_2.png",
-      "filter": "nearest"
-    },
-    "ex10_ground_3": {
-      "path": "sprites/ground_3.png",
-      "filter": "nearest"
-    },
-    "ex10_platform": {
-      "path": "sprites/platform.png",
-      "filter": "nearest"
-    },
-    "ex10_platform_1": {
-      "path": "sprites/platform_1.png",
-      "filter": "nearest"
-    },
-    "ex10_platform_2": {
-      "path": "sprites/platform_2.png",
-      "filter": "nearest"
-    },
-    "ex10_stone_wall": {
-      "path": "sprites/stone_wall.png",
-      "filter": "nearest"
-    },
-    "ex10_stone_platform": {
-      "path": "sprites/stone_platform.png",
-      "filter": "nearest"
-    },
-    "ex10_sky": {
-      "path": "sprites/sky.png",
-      "filter": "nearest"
-    },
-    "ex10_sky_1": {
-      "path": "sprites/sky_1.png",
-      "filter": "nearest"
-    },
-    "ex10_sky_2": {
-      "path": "sprites/sky_2.png",
-      "filter": "nearest"
-    },
-    "ex10_cloud_0": {
-      "path": "sprites/cloud_0.png",
-      "filter": "nearest"
-    },
-    "ex10_cloud_1": {
-      "path": "sprites/cloud_1.png",
-      "filter": "nearest"
-    },
-    "ex10_mountain_0": {
-      "path": "sprites/mountain_0.png",
-      "filter": "nearest"
-    },
-    "ex10_mountain_1": {
-      "path": "sprites/mountain_1.png",
-      "filter": "nearest"
-    },
-    "ex10_lantern": {
-      "path": "sprites/lantern.png",
-      "filter": "nearest"
-    },
-    "ex10_vines": {
-      "path": "sprites/vines.png",
-      "filter": "nearest"
-    },
-    "ex10_player_walk_0": {
-      "path": "sprites/player_walk_0.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_walk_0_n.png",
-      "emissive_mask": "sprites/player_walk_0_e.png"
-    },
-    "ex10_player_walk_1": {
-      "path": "sprites/player_walk_1.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_walk_1_n.png",
-      "emissive_mask": "sprites/player_walk_1_e.png"
-    },
-    "ex10_player_walk_2": {
-      "path": "sprites/player_walk_2.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_walk_2_n.png",
-      "emissive_mask": "sprites/player_walk_2_e.png"
-    },
-    "ex10_player_walk_3": {
-      "path": "sprites/player_walk_3.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_walk_3_n.png",
-      "emissive_mask": "sprites/player_walk_3_e.png"
-    },
-    "ex10_player_walk_4": {
-      "path": "sprites/player_walk_4.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_walk_4_n.png",
-      "emissive_mask": "sprites/player_walk_4_e.png"
-    },
-    "ex10_player_walk_5": {
-      "path": "sprites/player_walk_5.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_walk_5_n.png",
-      "emissive_mask": "sprites/player_walk_5_e.png"
-    },
-    "ex10_ball": {
-      "path": "sprites/ball.png",
-      "filter": "nearest",
-      "normal_map": "sprites/ball_n.png",
-      "emissive_mask": "sprites/ball_e.png"
-    },
-    "ex10_ball_1": {
-      "path": "sprites/ball_1.png",
-      "filter": "nearest",
-      "normal_map": "sprites/ball_1_n.png",
-      "emissive_mask": "sprites/ball_1_e.png"
-    },
-    "ex10_ball_2": {
-      "path": "sprites/ball_2.png",
-      "filter": "nearest",
-      "normal_map": "sprites/ball_2_n.png",
-      "emissive_mask": "sprites/ball_2_e.png"
-    },
-    "ex10_ball_3": {
-      "path": "sprites/ball_3.png",
-      "filter": "nearest",
-      "normal_map": "sprites/ball_3_n.png",
-      "emissive_mask": "sprites/ball_3_e.png"
-    },
-    "ex10_cursor": {
-      "path": "sprites/cursor.png",
-      "filter": "nearest"
-    },
-    "ex10_spark": {
-      "path": "sprites/spark.png",
-      "filter": "nearest"
-    },
-    "ex10_cloud_big_0_0": {
-      "path": "sprites/cloud_big_0_0.png",
-      "filter": "nearest"
-    },
-    "ex10_cloud_big_0_1": {
-      "path": "sprites/cloud_big_0_1.png",
-      "filter": "nearest"
-    },
-    "ex10_cloud_big_0_2": {
-      "path": "sprites/cloud_big_0_2.png",
-      "filter": "nearest"
-    },
-    "ex10_cloud_big_1_0": {
-      "path": "sprites/cloud_big_1_0.png",
-      "filter": "nearest"
-    },
-    "ex10_cloud_big_1_1": {
-      "path": "sprites/cloud_big_1_1.png",
-      "filter": "nearest"
-    },
-    "ex10_cloud_big_1_2": {
-      "path": "sprites/cloud_big_1_2.png",
-      "filter": "nearest"
-    },
-    "ex10_lantern_big_0_0": {
-      "path": "sprites/lantern_big_0_0.png",
-      "filter": "nearest"
-    },
-    "ex10_lantern_big_0_1": {
-      "path": "sprites/lantern_big_0_1.png",
-      "filter": "nearest"
-    },
-    "ex10_lantern_big_1_0": {
-      "path": "sprites/lantern_big_1_0.png",
-      "filter": "nearest"
-    },
-    "ex10_lantern_big_1_1": {
-      "path": "sprites/lantern_big_1_1.png",
-      "filter": "nearest"
-    },
-    "ex10_lantern_big_2_0": {
-      "path": "sprites/lantern_big_2_0.png",
-      "filter": "nearest"
-    },
-    "ex10_lantern_big_2_1": {
-      "path": "sprites/lantern_big_2_1.png",
-      "filter": "nearest"
-    },
-    "ex10_mountain_big_0_0": {
-      "path": "sprites/mountain_big_0_0.png",
-      "filter": "nearest"
-    },
-    "ex10_mountain_big_0_1": {
-      "path": "sprites/mountain_big_0_1.png",
-      "filter": "nearest"
-    },
-    "ex10_mountain_big_0_2": {
-      "path": "sprites/mountain_big_0_2.png",
-      "filter": "nearest"
-    },
-    "ex10_mountain_big_0_3": {
-      "path": "sprites/mountain_big_0_3.png",
-      "filter": "nearest"
-    },
-    "ex10_mountain_big_1_0": {
-      "path": "sprites/mountain_big_1_0.png",
-      "filter": "nearest"
-    },
-    "ex10_mountain_big_1_1": {
-      "path": "sprites/mountain_big_1_1.png",
-      "filter": "nearest"
-    },
-    "ex10_mountain_big_1_2": {
-      "path": "sprites/mountain_big_1_2.png",
-      "filter": "nearest"
-    },
-    "ex10_mountain_big_1_3": {
-      "path": "sprites/mountain_big_1_3.png",
-      "filter": "nearest"
-    },
-    "ex10_mountain_big_2_0": {
-      "path": "sprites/mountain_big_2_0.png",
-      "filter": "nearest"
-    },
-    "ex10_mountain_big_2_1": {
-      "path": "sprites/mountain_big_2_1.png",
-      "filter": "nearest"
-    },
-    "ex10_mountain_big_2_2": {
-      "path": "sprites/mountain_big_2_2.png",
-      "filter": "nearest"
-    },
-    "ex10_mountain_big_2_3": {
-      "path": "sprites/mountain_big_2_3.png",
-      "filter": "nearest"
-    },
-    "ex10_mountain_big_3_0": {
-      "path": "sprites/mountain_big_3_0.png",
-      "filter": "nearest"
-    },
-    "ex10_mountain_big_3_1": {
-      "path": "sprites/mountain_big_3_1.png",
-      "filter": "nearest"
-    },
-    "ex10_mountain_big_3_2": {
-      "path": "sprites/mountain_big_3_2.png",
-      "filter": "nearest"
-    },
-    "ex10_mountain_big_3_3": {
-      "path": "sprites/mountain_big_3_3.png",
-      "filter": "nearest"
-    },
-    "ex10_vines_big_0_0": {
-      "path": "sprites/vines_big_0_0.png",
-      "filter": "nearest"
-    },
-    "ex10_vines_big_0_1": {
-      "path": "sprites/vines_big_0_1.png",
-      "filter": "nearest"
-    },
-    "ex10_vines_big_1_0": {
-      "path": "sprites/vines_big_1_0.png",
-      "filter": "nearest"
-    },
-    "ex10_vines_big_1_1": {
-      "path": "sprites/vines_big_1_1.png",
-      "filter": "nearest"
-    },
-    "ex10_vines_big_2_0": {
-      "path": "sprites/vines_big_2_0.png",
-      "filter": "nearest"
-    },
-    "ex10_vines_big_2_1": {
-      "path": "sprites/vines_big_2_1.png",
-      "filter": "nearest"
-    }
-  },
   "animations": {
+    "ex10_ball_spin": {
+      "path": "animations/ball_spin.json"
+    },
+    "ex10_fire_dance": {
+      "path": "animations/fire_dance.json"
+    },
+    "ex10_player_fall": {
+      "path": "animations/player_fall.json"
+    },
+    "ex10_player_idle": {
+      "path": "animations/player_idle.json"
+    },
+    "ex10_player_jump": {
+      "path": "animations/player_jump.json"
+    },
+    "ex10_player_land": {
+      "path": "animations/player_land.json"
+    },
     "ex10_player_walk": {
       "path": "animations/player_walk.json"
     },
-    "ex10_ball_spin": {
-      "path": "animations/ball_spin.json"
+    "ex10_torch_flicker": {
+      "path": "animations/torch_flicker.json"
+    },
+    "ex10_vines_sway": {
+      "path": "animations/vines_sway.json"
+    },
+    "ex10_waterfall_flow": {
+      "path": "animations/waterfall_flow.json"
+    }
+  },
+  "particles": {
+    "ex10_ball_explosion": {
+      "path": "particles/ball_explosion.json"
+    },
+    "ex10_black_hole": {
+      "path": "particles/black_hole.json"
+    },
+    "ex10_double_jump": {
+      "path": "particles/double_jump.json"
+    },
+    "ex10_fire_trail": {
+      "path": "particles/fire_trail.json"
+    },
+    "ex10_jump_puff": {
+      "path": "particles/jump_puff.json"
+    },
+    "ex10_landing_dust": {
+      "path": "particles/landing_dust.json"
+    },
+    "ex10_torch_embers": {
+      "path": "particles/torch_embers.json"
+    },
+    "ex10_waterfall_spray": {
+      "path": "particles/waterfall_spray.json"
+    },
+    "ex10_wind_motes": {
+      "path": "particles/wind_motes.json"
+    }
+  },
+  "sounds": {
+    "ex10_black_hole_sfx": {
+      "looping": false,
+      "path": "sounds/black_hole.ogg",
+      "volume": 0.65
+    }
+  },
+  "sprites": {
+    "ex10_arch_big_0_0": {
+      "filter": "nearest",
+      "path": "sprites/arch_big_0_0.png"
+    },
+    "ex10_arch_big_0_1": {
+      "filter": "nearest",
+      "path": "sprites/arch_big_0_1.png"
+    },
+    "ex10_arch_big_0_2": {
+      "filter": "nearest",
+      "path": "sprites/arch_big_0_2.png"
+    },
+    "ex10_arch_big_0_3": {
+      "filter": "nearest",
+      "path": "sprites/arch_big_0_3.png"
+    },
+    "ex10_arch_big_1_0": {
+      "filter": "nearest",
+      "path": "sprites/arch_big_1_0.png"
+    },
+    "ex10_arch_big_1_1": {
+      "filter": "nearest",
+      "path": "sprites/arch_big_1_1.png"
+    },
+    "ex10_arch_big_1_2": {
+      "filter": "nearest",
+      "path": "sprites/arch_big_1_2.png"
+    },
+    "ex10_arch_big_1_3": {
+      "filter": "nearest",
+      "path": "sprites/arch_big_1_3.png"
+    },
+    "ex10_arch_big_2_0": {
+      "filter": "nearest",
+      "path": "sprites/arch_big_2_0.png"
+    },
+    "ex10_arch_big_2_1": {
+      "filter": "nearest",
+      "path": "sprites/arch_big_2_1.png"
+    },
+    "ex10_arch_big_2_2": {
+      "filter": "nearest",
+      "path": "sprites/arch_big_2_2.png"
+    },
+    "ex10_arch_big_2_3": {
+      "filter": "nearest",
+      "path": "sprites/arch_big_2_3.png"
+    },
+    "ex10_ball": {
+      "emissive_mask": "sprites/ball_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/ball_n.png",
+      "path": "sprites/ball.png"
+    },
+    "ex10_ball_1": {
+      "emissive_mask": "sprites/ball_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/ball_1_n.png",
+      "path": "sprites/ball_1.png"
+    },
+    "ex10_ball_2": {
+      "emissive_mask": "sprites/ball_2_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/ball_2_n.png",
+      "path": "sprites/ball_2.png"
+    },
+    "ex10_ball_3": {
+      "emissive_mask": "sprites/ball_3_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/ball_3_n.png",
+      "path": "sprites/ball_3.png"
+    },
+    "ex10_ball_4": {
+      "emissive_mask": "sprites/ball_4_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/ball_4_n.png",
+      "path": "sprites/ball_4.png"
+    },
+    "ex10_ball_5": {
+      "emissive_mask": "sprites/ball_5_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/ball_5_n.png",
+      "path": "sprites/ball_5.png"
+    },
+    "ex10_bridge": {
+      "emissive_mask": "sprites/bridge_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/bridge_n.png",
+      "path": "sprites/bridge.png"
+    },
+    "ex10_bridge_rope": {
+      "emissive_mask": "sprites/bridge_rope_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/bridge_rope_n.png",
+      "path": "sprites/bridge_rope.png"
+    },
+    "ex10_bridge_weathered": {
+      "emissive_mask": "sprites/bridge_weathered_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/bridge_weathered_n.png",
+      "path": "sprites/bridge_weathered.png"
+    },
+    "ex10_cliff_back": {
+      "filter": "nearest",
+      "path": "sprites/cliff_back.png"
+    },
+    "ex10_clouds_far": {
+      "filter": "nearest",
+      "path": "sprites/clouds_far.png"
+    },
+    "ex10_clouds_near": {
+      "filter": "nearest",
+      "path": "sprites/clouds_near.png"
+    },
+    "ex10_corner_concave_left": {
+      "filter": "nearest",
+      "path": "sprites/corner_concave_left.png"
+    },
+    "ex10_corner_concave_right": {
+      "filter": "nearest",
+      "path": "sprites/corner_concave_right.png"
+    },
+    "ex10_corner_convex_left": {
+      "filter": "nearest",
+      "path": "sprites/corner_convex_left.png"
+    },
+    "ex10_corner_convex_right": {
+      "filter": "nearest",
+      "path": "sprites/corner_convex_right.png"
+    },
+    "ex10_crystal": {
+      "filter": "nearest",
+      "path": "sprites/crystal.png"
+    },
+    "ex10_cursor": {
+      "filter": "nearest",
+      "path": "sprites/cursor.png"
+    },
+    "ex10_distant_ridges": {
+      "filter": "nearest",
+      "path": "sprites/distant_ridges.png"
+    },
+    "ex10_droplet": {
+      "filter": "nearest",
+      "path": "sprites/droplet.png"
+    },
+    "ex10_dust": {
+      "filter": "nearest",
+      "path": "sprites/dust.png"
+    },
+    "ex10_fern": {
+      "filter": "nearest",
+      "path": "sprites/fern.png"
+    },
+    "ex10_fill_1": {
+      "filter": "nearest",
+      "path": "sprites/fill_1.png"
+    },
+    "ex10_fill_2": {
+      "filter": "nearest",
+      "path": "sprites/fill_2.png"
+    },
+    "ex10_fire_0": {
+      "emissive_mask": "sprites/fire_0_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/fire_0_n.png",
+      "path": "sprites/fire_0.png"
+    },
+    "ex10_fire_1": {
+      "emissive_mask": "sprites/fire_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/fire_1_n.png",
+      "path": "sprites/fire_1.png"
+    },
+    "ex10_fire_2": {
+      "emissive_mask": "sprites/fire_2_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/fire_2_n.png",
+      "path": "sprites/fire_2.png"
+    },
+    "ex10_fire_3": {
+      "emissive_mask": "sprites/fire_3_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/fire_3_n.png",
+      "path": "sprites/fire_3.png"
+    },
+    "ex10_fire_4": {
+      "emissive_mask": "sprites/fire_4_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/fire_4_n.png",
+      "path": "sprites/fire_4.png"
+    },
+    "ex10_fire_5": {
+      "emissive_mask": "sprites/fire_5_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/fire_5_n.png",
+      "path": "sprites/fire_5.png"
+    },
+    "ex10_fire_6": {
+      "emissive_mask": "sprites/fire_6_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/fire_6_n.png",
+      "path": "sprites/fire_6.png"
+    },
+    "ex10_fire_7": {
+      "emissive_mask": "sprites/fire_7_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/fire_7_n.png",
+      "path": "sprites/fire_7.png"
+    },
+    "ex10_flame_glow": {
+      "filter": "nearest",
+      "path": "sprites/flame_glow.png"
+    },
+    "ex10_flowers": {
+      "filter": "nearest",
+      "path": "sprites/flowers.png"
+    },
+    "ex10_gate_big_0_0": {
+      "filter": "nearest",
+      "path": "sprites/gate_big_0_0.png"
+    },
+    "ex10_gate_big_0_1": {
+      "filter": "nearest",
+      "path": "sprites/gate_big_0_1.png"
+    },
+    "ex10_gate_big_0_2": {
+      "filter": "nearest",
+      "path": "sprites/gate_big_0_2.png"
+    },
+    "ex10_gate_big_1_0": {
+      "filter": "nearest",
+      "path": "sprites/gate_big_1_0.png"
+    },
+    "ex10_gate_big_1_1": {
+      "filter": "nearest",
+      "path": "sprites/gate_big_1_1.png"
+    },
+    "ex10_gate_big_1_2": {
+      "filter": "nearest",
+      "path": "sprites/gate_big_1_2.png"
+    },
+    "ex10_gate_big_2_0": {
+      "filter": "nearest",
+      "path": "sprites/gate_big_2_0.png"
+    },
+    "ex10_gate_big_2_1": {
+      "filter": "nearest",
+      "path": "sprites/gate_big_2_1.png"
+    },
+    "ex10_gate_big_2_2": {
+      "filter": "nearest",
+      "path": "sprites/gate_big_2_2.png"
+    },
+    "ex10_grass": {
+      "filter": "nearest",
+      "path": "sprites/grass.png"
+    },
+    "ex10_ground": {
+      "emissive_mask": "sprites/ground_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/ground_n.png",
+      "path": "sprites/ground.png"
+    },
+    "ex10_ground_1": {
+      "emissive_mask": "sprites/ground_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/ground_1_n.png",
+      "path": "sprites/ground_1.png"
+    },
+    "ex10_ground_2": {
+      "emissive_mask": "sprites/ground_2_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/ground_2_n.png",
+      "path": "sprites/ground_2.png"
+    },
+    "ex10_ground_3": {
+      "emissive_mask": "sprites/ground_3_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/ground_3_n.png",
+      "path": "sprites/ground_3.png"
+    },
+    "ex10_ground_left": {
+      "emissive_mask": "sprites/ground_left_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/ground_left_n.png",
+      "path": "sprites/ground_left.png"
+    },
+    "ex10_ground_right": {
+      "emissive_mask": "sprites/ground_right_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/ground_right_n.png",
+      "path": "sprites/ground_right.png"
+    },
+    "ex10_halo": {
+      "filter": "nearest",
+      "path": "sprites/halo.png"
+    },
+    "ex10_hanging_moss": {
+      "filter": "nearest",
+      "path": "sprites/hanging_moss.png"
+    },
+    "ex10_heart_empty": {
+      "filter": "nearest",
+      "path": "sprites/heart_empty.png"
+    },
+    "ex10_heart_full": {
+      "filter": "nearest",
+      "path": "sprites/heart_full.png"
+    },
+    "ex10_lantern": {
+      "emissive_mask": "sprites/lantern_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/lantern_n.png",
+      "path": "sprites/lantern.png"
+    },
+    "ex10_lantern_1": {
+      "emissive_mask": "sprites/lantern_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/lantern_1_n.png",
+      "path": "sprites/lantern_1.png"
+    },
+    "ex10_lantern_2": {
+      "emissive_mask": "sprites/lantern_2_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/lantern_2_n.png",
+      "path": "sprites/lantern_2.png"
+    },
+    "ex10_lantern_3": {
+      "emissive_mask": "sprites/lantern_3_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/lantern_3_n.png",
+      "path": "sprites/lantern_3.png"
+    },
+    "ex10_lantern_4": {
+      "emissive_mask": "sprites/lantern_4_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/lantern_4_n.png",
+      "path": "sprites/lantern_4.png"
+    },
+    "ex10_lantern_5": {
+      "emissive_mask": "sprites/lantern_5_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/lantern_5_n.png",
+      "path": "sprites/lantern_5.png"
+    },
+    "ex10_ledge": {
+      "filter": "nearest",
+      "path": "sprites/ledge.png"
+    },
+    "ex10_lift_deck": {
+      "filter": "nearest",
+      "path": "sprites/lift_deck.png"
+    },
+    "ex10_marker": {
+      "filter": "nearest",
+      "path": "sprites/marker.png"
+    },
+    "ex10_moon": {
+      "filter": "nearest",
+      "path": "sprites/moon.png"
+    },
+    "ex10_moss_rock_0": {
+      "emissive_mask": "sprites/moss_rock_0_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/moss_rock_0_n.png",
+      "path": "sprites/moss_rock_0.png"
+    },
+    "ex10_moss_rock_1": {
+      "emissive_mask": "sprites/moss_rock_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/moss_rock_1_n.png",
+      "path": "sprites/moss_rock_1.png"
+    },
+    "ex10_moss_rock_2": {
+      "emissive_mask": "sprites/moss_rock_2_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/moss_rock_2_n.png",
+      "path": "sprites/moss_rock_2.png"
+    },
+    "ex10_moss_rock_3": {
+      "emissive_mask": "sprites/moss_rock_3_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/moss_rock_3_n.png",
+      "path": "sprites/moss_rock_3.png"
+    },
+    "ex10_moss_rock_4": {
+      "emissive_mask": "sprites/moss_rock_4_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/moss_rock_4_n.png",
+      "path": "sprites/moss_rock_4.png"
+    },
+    "ex10_moss_rock_5": {
+      "emissive_mask": "sprites/moss_rock_5_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/moss_rock_5_n.png",
+      "path": "sprites/moss_rock_5.png"
+    },
+    "ex10_moss_rock_6": {
+      "emissive_mask": "sprites/moss_rock_6_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/moss_rock_6_n.png",
+      "path": "sprites/moss_rock_6.png"
+    },
+    "ex10_moss_rock_7": {
+      "emissive_mask": "sprites/moss_rock_7_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/moss_rock_7_n.png",
+      "path": "sprites/moss_rock_7.png"
+    },
+    "ex10_mote": {
+      "filter": "nearest",
+      "path": "sprites/mote.png"
+    },
+    "ex10_mushrooms": {
+      "filter": "nearest",
+      "path": "sprites/mushrooms.png"
+    },
+    "ex10_near_woodland": {
+      "filter": "nearest",
+      "path": "sprites/near_woodland.png"
+    },
+    "ex10_oak_big_0_0": {
+      "filter": "nearest",
+      "path": "sprites/oak_big_0_0.png"
+    },
+    "ex10_oak_big_0_1": {
+      "filter": "nearest",
+      "path": "sprites/oak_big_0_1.png"
+    },
+    "ex10_oak_big_0_2": {
+      "filter": "nearest",
+      "path": "sprites/oak_big_0_2.png"
+    },
+    "ex10_oak_big_1_0": {
+      "filter": "nearest",
+      "path": "sprites/oak_big_1_0.png"
+    },
+    "ex10_oak_big_1_1": {
+      "filter": "nearest",
+      "path": "sprites/oak_big_1_1.png"
+    },
+    "ex10_oak_big_1_2": {
+      "filter": "nearest",
+      "path": "sprites/oak_big_1_2.png"
+    },
+    "ex10_oak_big_2_0": {
+      "filter": "nearest",
+      "path": "sprites/oak_big_2_0.png"
+    },
+    "ex10_oak_big_2_1": {
+      "filter": "nearest",
+      "path": "sprites/oak_big_2_1.png"
+    },
+    "ex10_oak_big_2_2": {
+      "filter": "nearest",
+      "path": "sprites/oak_big_2_2.png"
+    },
+    "ex10_platform": {
+      "filter": "nearest",
+      "path": "sprites/platform.png"
+    },
+    "ex10_platform_1": {
+      "filter": "nearest",
+      "path": "sprites/platform_1.png"
+    },
+    "ex10_platform_2": {
+      "filter": "nearest",
+      "path": "sprites/platform_2.png"
+    },
+    "ex10_player": {
+      "emissive_mask": "sprites/player_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_n.png",
+      "path": "sprites/player.png"
+    },
+    "ex10_player_fall_0": {
+      "emissive_mask": "sprites/player_fall_0_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_fall_0_n.png",
+      "path": "sprites/player_fall_0.png"
+    },
+    "ex10_player_fall_1": {
+      "emissive_mask": "sprites/player_fall_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_fall_1_n.png",
+      "path": "sprites/player_fall_1.png"
+    },
+    "ex10_player_idle_1": {
+      "emissive_mask": "sprites/player_idle_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_idle_1_n.png",
+      "path": "sprites/player_idle_1.png"
+    },
+    "ex10_player_idle_2": {
+      "emissive_mask": "sprites/player_idle_2_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_idle_2_n.png",
+      "path": "sprites/player_idle_2.png"
+    },
+    "ex10_player_idle_3": {
+      "emissive_mask": "sprites/player_idle_3_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_idle_3_n.png",
+      "path": "sprites/player_idle_3.png"
+    },
+    "ex10_player_jump_0": {
+      "emissive_mask": "sprites/player_jump_0_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_jump_0_n.png",
+      "path": "sprites/player_jump_0.png"
+    },
+    "ex10_player_jump_1": {
+      "emissive_mask": "sprites/player_jump_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_jump_1_n.png",
+      "path": "sprites/player_jump_1.png"
+    },
+    "ex10_player_land_0": {
+      "emissive_mask": "sprites/player_land_0_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_land_0_n.png",
+      "path": "sprites/player_land_0.png"
+    },
+    "ex10_player_land_1": {
+      "emissive_mask": "sprites/player_land_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_land_1_n.png",
+      "path": "sprites/player_land_1.png"
+    },
+    "ex10_player_land_2": {
+      "emissive_mask": "sprites/player_land_2_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_land_2_n.png",
+      "path": "sprites/player_land_2.png"
+    },
+    "ex10_player_walk_0": {
+      "emissive_mask": "sprites/player_walk_0_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_walk_0_n.png",
+      "path": "sprites/player_walk_0.png"
+    },
+    "ex10_player_walk_1": {
+      "emissive_mask": "sprites/player_walk_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_walk_1_n.png",
+      "path": "sprites/player_walk_1.png"
+    },
+    "ex10_player_walk_10": {
+      "emissive_mask": "sprites/player_walk_10_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_walk_10_n.png",
+      "path": "sprites/player_walk_10.png"
+    },
+    "ex10_player_walk_11": {
+      "emissive_mask": "sprites/player_walk_11_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_walk_11_n.png",
+      "path": "sprites/player_walk_11.png"
+    },
+    "ex10_player_walk_2": {
+      "emissive_mask": "sprites/player_walk_2_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_walk_2_n.png",
+      "path": "sprites/player_walk_2.png"
+    },
+    "ex10_player_walk_3": {
+      "emissive_mask": "sprites/player_walk_3_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_walk_3_n.png",
+      "path": "sprites/player_walk_3.png"
+    },
+    "ex10_player_walk_4": {
+      "emissive_mask": "sprites/player_walk_4_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_walk_4_n.png",
+      "path": "sprites/player_walk_4.png"
+    },
+    "ex10_player_walk_5": {
+      "emissive_mask": "sprites/player_walk_5_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_walk_5_n.png",
+      "path": "sprites/player_walk_5.png"
+    },
+    "ex10_player_walk_6": {
+      "emissive_mask": "sprites/player_walk_6_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_walk_6_n.png",
+      "path": "sprites/player_walk_6.png"
+    },
+    "ex10_player_walk_7": {
+      "emissive_mask": "sprites/player_walk_7_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_walk_7_n.png",
+      "path": "sprites/player_walk_7.png"
+    },
+    "ex10_player_walk_8": {
+      "emissive_mask": "sprites/player_walk_8_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_walk_8_n.png",
+      "path": "sprites/player_walk_8.png"
+    },
+    "ex10_player_walk_9": {
+      "emissive_mask": "sprites/player_walk_9_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_walk_9_n.png",
+      "path": "sprites/player_walk_9.png"
+    },
+    "ex10_rock_0": {
+      "emissive_mask": "sprites/rock_0_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/rock_0_n.png",
+      "path": "sprites/rock_0.png"
+    },
+    "ex10_rock_1": {
+      "emissive_mask": "sprites/rock_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/rock_1_n.png",
+      "path": "sprites/rock_1.png"
+    },
+    "ex10_rock_2": {
+      "emissive_mask": "sprites/rock_2_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/rock_2_n.png",
+      "path": "sprites/rock_2.png"
+    },
+    "ex10_rock_3": {
+      "emissive_mask": "sprites/rock_3_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/rock_3_n.png",
+      "path": "sprites/rock_3.png"
+    },
+    "ex10_rock_4": {
+      "emissive_mask": "sprites/rock_4_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/rock_4_n.png",
+      "path": "sprites/rock_4.png"
+    },
+    "ex10_rock_5": {
+      "emissive_mask": "sprites/rock_5_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/rock_5_n.png",
+      "path": "sprites/rock_5.png"
+    },
+    "ex10_rock_6": {
+      "emissive_mask": "sprites/rock_6_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/rock_6_n.png",
+      "path": "sprites/rock_6.png"
+    },
+    "ex10_rock_7": {
+      "emissive_mask": "sprites/rock_7_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/rock_7_n.png",
+      "path": "sprites/rock_7.png"
+    },
+    "ex10_roots_big_0_0": {
+      "filter": "nearest",
+      "path": "sprites/roots_big_0_0.png"
+    },
+    "ex10_roots_big_0_1": {
+      "filter": "nearest",
+      "path": "sprites/roots_big_0_1.png"
+    },
+    "ex10_roots_big_0_2": {
+      "filter": "nearest",
+      "path": "sprites/roots_big_0_2.png"
+    },
+    "ex10_roots_big_1_0": {
+      "filter": "nearest",
+      "path": "sprites/roots_big_1_0.png"
+    },
+    "ex10_roots_big_1_1": {
+      "filter": "nearest",
+      "path": "sprites/roots_big_1_1.png"
+    },
+    "ex10_roots_big_1_2": {
+      "filter": "nearest",
+      "path": "sprites/roots_big_1_2.png"
+    },
+    "ex10_rubble": {
+      "filter": "nearest",
+      "path": "sprites/rubble.png"
+    },
+    "ex10_shock_ring": {
+      "filter": "nearest",
+      "path": "sprites/shock_ring.png"
+    },
+    "ex10_sky": {
+      "filter": "nearest",
+      "path": "sprites/sky.png"
+    },
+    "ex10_slab_broken": {
+      "emissive_mask": "sprites/slab_broken_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/slab_broken_n.png",
+      "path": "sprites/slab_broken.png"
+    },
+    "ex10_slab_carved": {
+      "emissive_mask": "sprites/slab_carved_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/slab_carved_n.png",
+      "path": "sprites/slab_carved.png"
+    },
+    "ex10_spark": {
+      "filter": "nearest",
+      "path": "sprites/spark.png"
+    },
+    "ex10_spikes": {
+      "filter": "nearest",
+      "path": "sprites/spikes.png"
+    },
+    "ex10_stone_platform": {
+      "filter": "nearest",
+      "path": "sprites/stone_platform.png"
+    },
+    "ex10_stone_wall": {
+      "filter": "nearest",
+      "path": "sprites/stone_wall.png"
+    },
+    "ex10_timber_support": {
+      "filter": "nearest",
+      "path": "sprites/timber_support.png"
+    },
+    "ex10_vines": {
+      "filter": "nearest",
+      "path": "sprites/vines.png"
+    },
+    "ex10_vines_1": {
+      "filter": "nearest",
+      "path": "sprites/vines_1.png"
+    },
+    "ex10_vines_2": {
+      "filter": "nearest",
+      "path": "sprites/vines_2.png"
+    },
+    "ex10_vines_3": {
+      "filter": "nearest",
+      "path": "sprites/vines_3.png"
+    },
+    "ex10_vortex": {
+      "filter": "nearest",
+      "path": "sprites/vortex.png"
+    },
+    "ex10_vortex_core": {
+      "filter": "nearest",
+      "path": "sprites/vortex_core.png"
+    },
+    "ex10_waterfall_flow_0": {
+      "filter": "nearest",
+      "path": "sprites/waterfall_flow_0.png"
+    },
+    "ex10_waterfall_flow_1": {
+      "filter": "nearest",
+      "path": "sprites/waterfall_flow_1.png"
+    },
+    "ex10_waterfall_flow_2": {
+      "filter": "nearest",
+      "path": "sprites/waterfall_flow_2.png"
+    },
+    "ex10_waterfall_flow_3": {
+      "filter": "nearest",
+      "path": "sprites/waterfall_flow_3.png"
     }
   },
   "tilemaps": {
     "ex10_level": {
       "path": "tilemaps/level.tmj"
-    }
-  },
-  "particles": {
-    "ex10_black_hole": {
-      "path": "particles/black_hole.json"
-    }
-  },
-  "sounds": {
-    "ex10_black_hole_sfx": {
-      "path": "sounds/black_hole.ogg",
-      "looping": false,
-      "volume": 0.65
     }
   }
 }

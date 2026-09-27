@@ -6,34 +6,38 @@ pub(crate) const MANIFEST_LOCAL: &str = "examples/01_platformer/assets/manifest.
 pub(crate) const ASSETS_ROOT: &str = "assets";
 pub(crate) const ASSETS_LOCAL: &str = "examples/01_platformer/assets";
 
-pub(crate) const TILE: f32 = 32.0;
-pub(crate) const MAP_COLS: u32 = 84;
-pub(crate) const MAP_ROWS: u32 = 32;
+pub(crate) use crate::level_layout::{MAP_COLS, MAP_ROWS, TILE};
+pub(crate) const CAMERA_ROWS: f32 = 18.0;
+pub(crate) const KILL_Y: f32 = crate::level_layout::KILL_ROW * TILE;
+pub(crate) const TRANSIENT_EMITTER_CAP: usize = 16;
 
 pub(crate) const TEXT_UPDATE_INTERVAL: f32 = 0.25;
 
-pub(crate) const PLAYER_ANIMATION_ID: &str = "ex10_player_walk";
-pub(crate) const PLAYER_START_SPRITE_ID: &str = "ex10_player_walk_0";
+pub(crate) const PLAYER_ANIMATION_ID: &str = "ex10_player_idle";
+pub(crate) const PLAYER_START_SPRITE_ID: &str = "ex10_player";
 pub(crate) const BALL_ANIMATION_ID: &str = "ex10_ball_spin";
 pub(crate) const BALL_START_SPRITE_ID: &str = "ex10_ball";
 
-pub(crate) const PLAYER_HALF: Vec2 = Vec2::new(10.0, 14.0);
-pub(crate) const PLAYER_SPAWN: Vec2 = Vec2::new(20.0 * TILE, 27.0 * TILE);
-pub(crate) const PLAYER_MOVE_SPEED: f32 = 280.0;
-pub(crate) const PLAYER_JUMP_IMPULSE: f32 = 640.0;
-pub(crate) const GRAVITY_Y: f32 = 1800.0;
+pub(crate) const PLAYER_HALF: Vec2 = Vec2::new(20.0, 28.0);
+pub(crate) const PLAYER_SPAWN: Vec2 = Vec2::new(
+    crate::level_layout::SPAWN_COL * TILE,
+    crate::level_layout::SPAWN_ROW * TILE - PLAYER_HALF.y - 0.5,
+);
+pub(crate) const PLAYER_MOVE_SPEED: f32 = 560.0;
+pub(crate) const PLAYER_JUMP_IMPULSE: f32 = 1280.0;
+pub(crate) const GRAVITY_Y: f32 = 3600.0;
 pub(crate) const BALL_RADIUS: f32 = 15.0;
-pub(crate) const BALL_VISUAL_DIAMETER: f32 = TILE;
+pub(crate) const BALL_VISUAL_DIAMETER: f32 = TILE * 0.5;
 pub(crate) const BALL_RESTITUTION: f32 = 0.85;
 
 pub(crate) const BALL_SPAWN_INTERVAL: f32 = 0.032;
 /// Golden-angle spawn jitter prevents coincident-circle degenerate normals.
-pub(crate) const BALL_SPAWN_JITTER: f32 = 2.0;
+pub(crate) const BALL_SPAWN_JITTER: f32 = TILE / 16.0;
 
-pub(crate) const BLACK_HOLE_RADIUS: f32 = 192.0;
-pub(crate) const BLACK_HOLE_FORCE: f32 = 6000.0;
+pub(crate) const BLACK_HOLE_RADIUS: f32 = 6.0 * TILE;
+pub(crate) const BLACK_HOLE_FORCE: f32 = 12000.0;
 pub(crate) const BLACK_HOLE_LIFETIME: f32 = 2.0;
-pub(crate) const BLACK_HOLE_VISUAL_DIAMETER: f32 = 90.0;
+pub(crate) const BLACK_HOLE_VISUAL_DIAMETER: f32 = 2.8125 * TILE;
 
 // Active physics bounds prevent runaway substep cost.
 pub(crate) const WORLD_BOUNDS_MIN: Vec2 = Vec2::new(-TILE * 2.0, -TILE * 8.0);
@@ -80,6 +84,8 @@ impl Default for TextDisplayState {
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct Player {
     pub(crate) grounded: bool,
+    /// One aerial jump; walking off an edge still leaves it available.
+    pub(crate) air_jump_used: bool,
     /// M30: previous frame's grounded state, kept across the per-frame reset in
     /// `player_input` so `ground_detection` can fire the squash on the rising
     /// edge only — a resting player would otherwise re-trigger every frame.
@@ -142,8 +148,8 @@ pub(crate) struct PlayerMaterial {
 
 /// M29 lighting fixture mode parsed from `TUNGSTEN_LIGHTING_FIXTURE`.
 /// `On`: spawn warm + cool point lights and a directional, low ambient,
-/// route the player through the lit pipeline. `Off`: keep the M28 baseline
-/// (white ambient, custom material/unlit player path).
+/// route the player through the lit pipeline. `Off`: midnight ambient and moon
+/// fill, with the custom damage material/unlit player path.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) enum LightingFixtureMode {
     On,
@@ -179,4 +185,49 @@ pub(crate) enum CycleMode {
     Pulse,
     /// Hold intensity, rotate hue around the wheel using `phase` as the angle.
     Hue,
+}
+
+/// Visual state is independent of the collider and the damage-flash tween slot.
+#[derive(Debug, Clone)]
+pub(crate) struct PlayerPresentation {
+    pub(crate) facing_left: bool,
+    pub(crate) clip: &'static str,
+    pub(crate) landing_lock: f32,
+    pub(crate) pending_effect: Option<PlayerEffect>,
+    /// Feet position captured before physics accepts the launch.
+    pub(crate) jump_origin: Vec2,
+    /// Initial placement and respawn settle silently onto the safe apron.
+    pub(crate) suppress_landing: bool,
+}
+
+impl Default for PlayerPresentation {
+    fn default() -> Self {
+        Self {
+            facing_left: false,
+            clip: PLAYER_ANIMATION_ID,
+            landing_lock: 0.0,
+            pending_effect: None,
+            jump_origin: PLAYER_SPAWN + Vec2::new(0.0, PLAYER_HALF.y),
+            suppress_landing: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct AnimatedProp(pub(crate) crate::level_layout::PropDepth);
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct TransientEmitter;
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct AmbientEmitter;
+
+#[derive(Default)]
+pub(crate) struct EffectSequence(pub(crate) u64);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PlayerEffect {
+    Jump,
+    DoubleJump,
+    Land,
 }

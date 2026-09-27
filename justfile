@@ -55,6 +55,7 @@ script-test: perf-test
     bash scripts/test-smoke-examples.sh
     python3 -B scripts/test-check-repo.py
     python3 -B scripts/test-release.py
+    python3 -B scripts/test-release-preflight.py
 
 # Dependency policy: advisories, licenses, bans, sources.
 deps:
@@ -74,6 +75,10 @@ repo-check:
 # Version/changelog agreement (D-071); a tag argument (v0.27.0) is checked too.
 release-check *args:
     python3 -B scripts/release.py check "$@"
+
+# Read-only Git/GitHub inspection; VERSION, --repo and optional --ref/--branch/--remote.
+release-preflight version *args:
+    python3 -B scripts/release-preflight.py "$@"
 
 # Cut VERSION: [Unreleased] becomes [VERSION] - today (--date to override); version, status lines, Cargo.lock follow.
 release-cut version *args:

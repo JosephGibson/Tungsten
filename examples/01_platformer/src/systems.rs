@@ -8,18 +8,20 @@ use tungsten::core::{
 };
 use tungsten::physics::{BodyKind, Collider, CollisionEvent, Position, RigidBody, Shape, Velocity};
 
+use crate::state::PlayerEffect;
 use crate::state::{
     ActiveBlackHole, AudioState, BALL_ANIMATION_ID, BALL_RADIUS, BALL_RESTITUTION,
     BALL_SPAWN_INTERVAL, BALL_SPAWN_JITTER, BALL_START_SPRITE_ID, BLACK_HOLE_FORCE,
-    BLACK_HOLE_LIFETIME, BLACK_HOLE_RADIUS, Ball, BallHue, BallSpawnState, BlackHole,
-    CurrentSprite, CycleMode, MAP_ROWS, OrbitLight, PLAYER_JUMP_IMPULSE, PLAYER_MOVE_SPEED,
-    PLAYER_SPAWN, Player, TEXT_UPDATE_INTERVAL, TILE, TextDisplayState, WORLD_BOUNDS_MAX,
-    WORLD_BOUNDS_MIN,
+    BLACK_HOLE_LIFETIME, BLACK_HOLE_RADIUS, Ball, BallHue, BallSpawnState, BlackHole, CAMERA_ROWS,
+    CurrentSprite, CycleMode, EffectSequence, KILL_Y, OrbitLight, PLAYER_HALF, PLAYER_JUMP_IMPULSE,
+    PLAYER_MOVE_SPEED, PLAYER_SPAWN, PLAYER_START_SPRITE_ID, Player, PlayerPresentation,
+    TEXT_UPDATE_INTERVAL, TILE, TRANSIENT_EMITTER_CAP, TextDisplayState, TransientEmitter,
+    WORLD_BOUNDS_MAX, WORLD_BOUNDS_MIN,
 };
 
-/// Player input before physics; jump SFX only on grounded launch.
+/// Ground jump preserves hold behavior; the aerial jump needs a fresh press.
 pub(crate) fn player_input(world: &mut World) {
-    let (pressed_left, pressed_right, pressed_space);
+    let (pressed_left, pressed_right, pressed_space, jump_pressed);
     {
         let Some(input) = world.get_resource::<InputState>() else {
             return;
@@ -30,6 +32,7 @@ pub(crate) fn player_input(world: &mut World) {
         pressed_left = actions.is_pressed(input, "move_left");
         pressed_right = actions.is_pressed(input, "move_right");
         pressed_space = actions.is_pressed(input, "jump");
+        jump_pressed = actions.just_pressed(input, "jump");
     }
 
     let player_entities: Vec<_> = world.query::<Player>().map(|(e, _)| e).collect();
@@ -45,13 +48,44 @@ pub(crate) fn player_input(world: &mut World) {
         }
 
         let grounded = world.get::<Player>(entity).is_some_and(|p| p.grounded);
-        let want_jump = pressed_space && grounded;
+        let locked = world
+            .get::<crate::gameplay::Health>(entity)
+            .is_some_and(|h| h.control_lock > 0.0);
+        let second_jump = !grounded
+            && jump_pressed
+            && !locked
+            && world
+                .get::<Player>(entity)
+                .is_some_and(|p| !p.air_jump_used);
+        let want_jump = (pressed_space && grounded && !locked) || second_jump;
+        if second_jump {
+            world.get_mut::<Player>(entity).unwrap().air_jump_used = true;
+        }
 
         if let Some(vel) = world.get_mut::<Velocity>(entity) {
-            vel.0.x = dx * PLAYER_MOVE_SPEED;
+            if !locked {
+                vel.0.x = dx * PLAYER_MOVE_SPEED;
+            }
             if want_jump {
                 vel.0.y = -PLAYER_JUMP_IMPULSE;
                 did_jump = true;
+            }
+        }
+
+        let feet = world
+            .get::<Position>(entity)
+            .map(|p| p.0 + Vec2::new(0.0, PLAYER_HALF.y));
+        if let Some(presentation) = world.get_mut::<PlayerPresentation>(entity) {
+            presentation.pending_effect = want_jump.then_some(if second_jump {
+                PlayerEffect::DoubleJump
+            } else {
+                PlayerEffect::Jump
+            });
+            if want_jump && let Some(feet) = feet {
+                presentation.jump_origin = feet;
+            }
+            if dx != 0.0 {
+                presentation.facing_left = dx < 0.0;
             }
         }
 
@@ -155,10 +189,10 @@ pub(crate) fn camera_zoom_input_system(world: &mut World) {
     }
     if let Some(controller) = world.get_resource_mut::<CameraController>() {
         if just_zoom_in {
-            controller.zoom_multiplier = (controller.zoom_multiplier + 0.25).min(2.0);
+            controller.zoom_multiplier = (controller.zoom_multiplier + 0.25).min(3.0);
         }
         if just_zoom_out {
-            controller.zoom_multiplier = (controller.zoom_multiplier - 0.25).max(0.5);
+            controller.zoom_multiplier = (controller.zoom_multiplier - 0.25).max(0.35);
         }
     }
 }
@@ -201,18 +235,35 @@ pub(crate) fn rainbow_ball_hue_system(world: &mut World) {
 
 pub(crate) fn ground_detection(world: &mut World) {
     let events: Vec<CollisionEvent> = match world.get_resource::<EventQueue<CollisionEvent>>() {
-        Some(queue) => queue.iter().copied().collect(),
+        Some(queue) => queue.iter_current().copied().collect(),
         None => return,
     };
     let player_entities: Vec<_> = world.query::<Player>().map(|(e, _)| e).collect();
     let mut landed: Vec<Entity> = Vec::new();
     for entity in player_entities {
-        let grounded = events
-            .iter()
-            .any(|event| player_is_grounded_by_event(entity, event));
+        // Sleeping bodies emit no new contacts. Retain their settled state;
+        // an accepted upward jump ignores the initial separating floor contact.
+        let sleeping = world
+            .get_resource::<tungsten::physics::PhysicsBuffers>()
+            .is_some_and(|buffers| buffers.is_sleeping(entity));
+        let was_grounded = world.get::<Player>(entity).is_some_and(|p| p.was_grounded);
+        let rising = world.get::<Velocity>(entity).is_some_and(|v| v.0.y < -1.0);
+        let launched = world.get::<PlayerPresentation>(entity).is_some_and(|p| {
+            matches!(
+                p.pending_effect,
+                Some(PlayerEffect::Jump | PlayerEffect::DoubleJump)
+            )
+        });
+        let grounded = !rising
+            && !launched
+            && ((sleeping && was_grounded)
+                || events
+                    .iter()
+                    .any(|event| player_is_grounded_by_event(entity, event)));
         if let Some(player) = world.get_mut::<Player>(entity) {
+            player.grounded = grounded;
             if grounded {
-                player.grounded = true;
+                player.air_jump_used = false;
             }
             // M30: rising edge only. `player.grounded` is cleared every frame in
             // `player_input`, so `was_grounded` is what distinguishes a landing
@@ -224,15 +275,161 @@ pub(crate) fn ground_detection(world: &mut World) {
         }
     }
 
-    if !landed.is_empty()
-        && let Some(queue) = world.get_resource_mut::<EventQueue<SquashEvent>>()
-    {
-        for entity in landed {
+    for entity in player_entities_for_landing(world, &landed) {
+        if let Some(queue) = world.get_resource_mut::<EventQueue<SquashEvent>>() {
             queue.send(SquashEvent {
                 entity,
                 trigger: SquashTrigger::OnLand,
             });
         }
+    }
+}
+
+fn player_entities_for_landing(world: &mut World, landed: &[Entity]) -> Vec<Entity> {
+    let mut effects = Vec::new();
+    for entity in world.query_entities::<Player>() {
+        let grounded = world.get::<Player>(entity).is_some_and(|p| p.grounded);
+        if let Some(p) = world.get_mut::<PlayerPresentation>(entity) {
+            if landed.contains(&entity) && !p.suppress_landing {
+                p.pending_effect = Some(PlayerEffect::Land);
+                effects.push(entity);
+            }
+            if grounded {
+                p.suppress_landing = false;
+            }
+        } else if landed.contains(&entity) {
+            effects.push(entity);
+        }
+    }
+    effects
+}
+
+/// Select after ground detection/reset; reset a clip only on a transition.
+pub(crate) fn player_presentation_system(world: &mut World) {
+    let dt = world
+        .get_resource::<DeltaTime>()
+        .map_or(0.0, DeltaTime::seconds);
+    for entity in world.query_entities::<PlayerPresentation>() {
+        let grounded = world.get::<Player>(entity).is_some_and(|p| p.grounded);
+        let velocity = world.get::<Velocity>(entity).map_or(Vec2::ZERO, |v| v.0);
+        let Some(position) = world.get::<Position>(entity).map(|p| p.0) else {
+            continue;
+        };
+        let (clip, changed, jumped, landed) = {
+            let p = world.get_mut::<PlayerPresentation>(entity).unwrap();
+            p.landing_lock = (p.landing_lock - dt).max(0.0);
+            if p.pending_effect == Some(PlayerEffect::Land) {
+                p.landing_lock = 0.18;
+            }
+            if matches!(
+                p.pending_effect,
+                Some(PlayerEffect::Jump | PlayerEffect::DoubleJump)
+            ) || !grounded
+            {
+                p.landing_lock = 0.0;
+            }
+            let clip = if !grounded {
+                if velocity.y < 0.0 {
+                    "ex10_player_jump"
+                } else {
+                    "ex10_player_fall"
+                }
+            } else if p.landing_lock > 0.0 {
+                "ex10_player_land"
+            } else if velocity.x.abs() > 1.0 {
+                "ex10_player_walk"
+            } else {
+                "ex10_player_idle"
+            };
+            let result = (
+                clip,
+                clip != p.clip || p.pending_effect == Some(PlayerEffect::DoubleJump),
+                matches!(
+                    p.pending_effect,
+                    Some(PlayerEffect::Jump | PlayerEffect::DoubleJump)
+                )
+                .then_some((
+                    p.jump_origin,
+                    p.pending_effect == Some(PlayerEffect::DoubleJump),
+                )),
+                p.pending_effect == Some(PlayerEffect::Land),
+            );
+            p.clip = clip;
+            p.pending_effect = None;
+            result
+        };
+        if changed {
+            let state = AnimationState::new(clip);
+            let sprite = world
+                .get_resource::<AnimationRegistry>()
+                .and_then(|registry| state.current_sprite(registry))
+                .map(str::to_owned);
+            world.insert(entity, state);
+            if let Some(sprite) = sprite {
+                world.insert(entity, CurrentSprite(sprite));
+            }
+        }
+        let feet = position + Vec2::new(0.0, PLAYER_HALF.y);
+        if let Some((origin, aerial)) = jumped {
+            spawn_transient_effect(
+                world,
+                if aerial {
+                    "ex10_double_jump"
+                } else {
+                    "ex10_jump_puff"
+                },
+                origin,
+            );
+        }
+        if landed {
+            spawn_transient_effect(world, "ex10_landing_dust", feet);
+        }
+    }
+}
+
+pub(crate) fn spawn_transient_effect(world: &mut World, name: &str, position: Vec2) {
+    if world.query::<TransientEmitter>().count() >= TRANSIENT_EMITTER_CAP {
+        return;
+    }
+    let Some(config) = world
+        .get_resource::<ParticleConfigRegistry>()
+        .and_then(|r| r.id_for_name(name))
+    else {
+        return;
+    };
+    let seed = if let Some(sequence) = world.get_resource_mut::<EffectSequence>() {
+        sequence.0 = sequence.0.wrapping_add(1);
+        0x1a_0000 + sequence.0
+    } else {
+        0x1a_0000
+    };
+    // Direct creation lets the engine's single emit pass see this frame's trigger.
+    let entity = world.spawn();
+    world.insert(entity, TransientEmitter);
+    world.insert(entity, Transform::from_position(position));
+    world.insert(entity, ParticleEmitter::with_seed(config, seed));
+    world.insert(entity, ParticleEmitterState::default());
+}
+
+pub(crate) fn transient_emitter_cleanup(world: &mut World) {
+    let finished: Vec<_> = world
+        .query::<TransientEmitter>()
+        .filter_map(|(entity, _)| {
+            let state = world.get::<ParticleEmitterState>(entity)?;
+            // Counts refresh after user systems. Wait for the engine's drained report,
+            // then verify ownership too; a fresh burst must receive its first tick.
+            (state.first_tick_done
+                && state.drained
+                && state.drain_reported
+                && state.active_count == 0
+                && !world
+                    .query::<tungsten::core::Particle>()
+                    .any(|(_, p)| p.emitter == Some(entity)))
+            .then_some(entity)
+        })
+        .collect();
+    for entity in finished {
+        world.despawn(entity);
     }
 }
 
@@ -246,61 +443,33 @@ fn player_is_grounded_by_event(player: Entity, event: &CollisionEvent) -> bool {
     }
 }
 
-/// M26 damage-flash: when the player collides with a Ball, queue a one-shot
-/// tween that drives the `damage_flash` material uniform block from a lit-up
-/// red overlay back to zero in 250 ms.
-pub(crate) fn damage_flash_on_ball_hit(world: &mut World) {
-    use crate::state::{Ball, PlayerMaterial};
+/// Shared hazard hit flash and camera feedback; balls never call this.
+pub(crate) fn damage_feedback(world: &mut World, player: Entity) {
     use tungsten::core::{Easing, ScalarSlot, Tween, TweenChannel, UniformOverrideBlock, Vec4Slot};
-
-    let events: Vec<CollisionEvent> = match world.get_resource::<EventQueue<CollisionEvent>>() {
-        Some(queue) => queue.iter().copied().collect(),
-        None => return,
-    };
-    if events.is_empty() {
-        return;
-    }
-
-    // Pre-collect players with the damage material; skip work when none exist.
-    let players: Vec<_> = world.query::<PlayerMaterial>().map(|(e, _)| e).collect();
-    if players.is_empty() {
-        return;
-    }
-    let balls: std::collections::HashSet<_> = world.query::<Ball>().map(|(e, _)| e).collect();
-
-    for player in players {
-        let was_hit = events.iter().any(|ev| {
-            (ev.a == player && ev.b.is_some_and(|b| balls.contains(&b)))
-                || (ev.b == Some(player) && balls.contains(&ev.a))
+    // D-055 keeps one Tween per entity — overwrite any active tween.
+    let tween = Tween::new(0.25, Easing::QuadOut)
+        .with_channel(TweenChannel::UniformVec4Lane {
+            slot: Vec4Slot::V0,
+            lane: 0,
+            from: 1.0,
+            to: 0.0,
+        })
+        .with_channel(TweenChannel::UniformScalar {
+            slot: ScalarSlot::F0,
+            from: 0.8,
+            to: 0.0,
         });
-        if !was_hit {
-            continue;
-        }
-        // D-055 keeps one Tween per entity — overwrite any active tween.
-        let tween = Tween::new(0.25, Easing::QuadOut)
-            .with_channel(TweenChannel::UniformVec4Lane {
-                slot: Vec4Slot::V0,
-                lane: 0,
-                from: 1.0,
-                to: 0.0,
-            })
-            .with_channel(TweenChannel::UniformScalar {
-                slot: ScalarSlot::F0,
-                from: 0.8,
-                to: 0.0,
-            });
-        // Seed the override block at its hit-state so the first frame is red.
-        if let Some(block) = world.get_mut::<UniformOverrideBlock>(player) {
-            block.vec4[Vec4Slot::V0.index()] = [1.0, 0.2, 0.1, 1.0];
-            block.f32s[ScalarSlot::F0.index()] = 0.8;
-        }
-        world.insert(player, tween);
-        // M30: the same hit kicks the camera. The flash keeps the entity's one
-        // `D-055` tween slot; trauma lives on the camera controller, so both
-        // read on screen at once.
-        if let Some(queue) = world.get_resource_mut::<EventQueue<ShakeEvent>>() {
-            queue.send(ShakeEvent { trauma_add: 0.5 });
-        }
+    // Seed the override block at its hit-state so the first frame is red.
+    if let Some(block) = world.get_mut::<UniformOverrideBlock>(player) {
+        block.vec4[Vec4Slot::V0.index()] = [1.0, 0.2, 0.1, 1.0];
+        block.f32s[ScalarSlot::F0.index()] = 0.8;
+    }
+    world.insert(player, tween);
+    // M30: the same hit kicks the camera. The flash keeps the entity's one
+    // `D-055` tween slot; trauma lives on the camera controller, so both
+    // read on screen at once.
+    if let Some(queue) = world.get_resource_mut::<EventQueue<ShakeEvent>>() {
+        queue.send(ShakeEvent { trauma_add: 0.5 });
     }
 }
 
@@ -637,18 +806,45 @@ pub(crate) fn despawn_out_of_bounds(world: &mut World) {
         .filter_map(|(entity, _)| {
             let pos = world.get::<Position>(entity)?.0;
             let collider = world.get::<Collider>(entity).copied();
-            is_body_out_of_bounds(pos, collider).then_some(entity)
+            (pos.y > KILL_Y || is_body_out_of_bounds(pos, collider)).then_some(entity)
         })
         .collect();
 
     for entity in escaped_players {
-        if let Some(pos) = world.get_mut::<Position>(entity) {
-            pos.0 = PLAYER_SPAWN;
-        }
-        if let Some(vel) = world.get_mut::<Velocity>(entity) {
-            vel.0 = Vec2::ZERO;
-        }
+        respawn_player(world, entity);
     }
+}
+
+pub(crate) fn respawn_player(world: &mut World, entity: Entity) {
+    world.insert(
+        entity,
+        crate::gameplay::Health {
+            immunity: 1.2,
+            ..Default::default()
+        },
+    );
+    world.insert(entity, crate::gameplay::PreviousPosition(PLAYER_SPAWN));
+    world.remove_component::<tungsten::core::Tween>(entity);
+    world.insert(entity, tungsten::core::UniformOverrideBlock::default());
+    world.insert(entity, Player::default());
+    world.insert(entity, PlayerPresentation::default());
+    world.insert(
+        entity,
+        AnimationState::new(crate::state::PLAYER_ANIMATION_ID),
+    );
+    world.insert(entity, CurrentSprite(PLAYER_START_SPRITE_ID.into()));
+    world.remove_component::<tungsten::core::SquashStretchState>(entity);
+    if let Some(transform) = world.get_mut::<Transform>(entity) {
+        transform.scale = Vec2::ONE;
+    }
+
+    if let Some(pos) = world.get_mut::<Position>(entity) {
+        pos.0 = PLAYER_SPAWN;
+    }
+    if let Some(vel) = world.get_mut::<Velocity>(entity) {
+        vel.0 = Vec2::ZERO;
+    }
+    tungsten::physics::wake(world, entity);
 }
 
 fn is_body_out_of_bounds(pos: Vec2, collider: Option<Collider>) -> bool {
@@ -685,8 +881,10 @@ pub(crate) fn orbit_lights_system(world: &mut World) {
         .map(|d| d.dt)
         .unwrap_or_default();
     let center = world
-        .get_resource::<CameraState>()
-        .map_or(PLAYER_SPAWN, |camera| camera.position);
+        .query::<Player>()
+        .next()
+        .and_then(|(entity, _)| world.get::<Position>(entity))
+        .map_or(PLAYER_SPAWN, |p| p.0);
     struct Update {
         entity: Entity,
         pos: Vec2,
@@ -773,7 +971,7 @@ pub(crate) fn platformer_camera_base_zoom(world: &mut World) {
             width: 1920,
             height: 1080,
         });
-    let map_h = (MAP_ROWS as f32) * TILE;
+    let map_h = CAMERA_ROWS * TILE;
     let base_zoom = (window.height as f32 / map_h).max(f32::EPSILON);
     if let Some(camera) = world.get_resource_mut::<CameraState>() {
         camera.zoom = base_zoom;

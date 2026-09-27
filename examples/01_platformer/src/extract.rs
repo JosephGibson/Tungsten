@@ -1,11 +1,15 @@
 use std::collections::HashMap;
 
+use crate::level_layout::PropDepth;
+use crate::state::{AnimatedProp, PlayerPresentation, TILE};
 use glam::Vec2;
+use tungsten::WindowSize;
+use tungsten::core::assets::LayerKind;
 use tungsten::core::{
     AssetRegistry, CameraState, Entity, FilterMode, InputState, ParallaxLayer, Particle, Sprite,
     Transform, Visibility, World, parallax_world_position,
 };
-use tungsten::extract_tilemaps;
+use tungsten::core::{SpriteAsset, TilemapInstance, TilemapRegistry};
 use tungsten::physics::Position;
 use tungsten::render::{SpriteBatch, SpriteInstance, TextSection};
 
@@ -36,68 +40,240 @@ fn rainbow_rgba(hue: f32) -> [u8; 4] {
     [saturated(r), saturated(g), saturated(b), 255]
 }
 
-/// M30 parallax backdrop (`D-073`). Emitted before the tilemap, so the layers
-/// read sky -> hills -> foliage -> tilemap under `DepthSortMode::CpuStable`
-/// batch order. Positions are remapped against the camera here; `Transform` is
-/// never mutated.
-fn extract_parallax(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
-    let camera_position = world
+fn view_bounds(world: &World) -> (Vec2, Vec2) {
+    let camera = world
         .get_resource::<CameraState>()
-        .map_or(Vec2::ZERO, |camera| camera.position);
+        .copied()
+        .unwrap_or_default();
+    let window = world
+        .get_resource::<WindowSize>()
+        .copied()
+        .unwrap_or(WindowSize {
+            width: 1920,
+            height: 1080,
+        });
+    camera.visible_world_aabb(window.width as f32, window.height as f32)
+}
 
+fn instance(asset: &SpriteAsset, position: Vec2, size: Vec2) -> SpriteInstance {
+    SpriteInstance {
+        position: position.to_array(),
+        size: size.to_array(),
+        rotation: 0.0,
+        color: [255; 4],
+        uv_min: asset.uv.min,
+        uv_size: [
+            asset.uv.max[0] - asset.uv.min[0],
+            asset.uv.max[1] - asset.uv.min[1],
+        ],
+        z_norm: 0.0,
+        _pad: 0.0,
+    }
+}
+
+/// Keep contiguous atlas/filter runs; callers create a fresh list at depth boundaries.
+fn push_instance(batches: &mut Vec<SpriteBatch>, asset: &SpriteAsset, sprite: SpriteInstance) {
+    if batches.last().is_none_or(|b| {
+        b.texture != asset.atlas || b.filter != asset.filter || b.lit != asset.lit_atlas.is_some()
+    }) {
+        let mut batch = SpriteBatch::new(asset.atlas, asset.filter);
+        batch.lit = asset.lit_atlas.is_some();
+        batches.push(batch);
+    }
+    batches.last_mut().unwrap().instances.push(sprite);
+}
+
+fn extract_parallax(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
+    let camera = world
+        .get_resource::<CameraState>()
+        .copied()
+        .unwrap_or_default();
+    let (view_min, view_max) = view_bounds(world);
+    let overhang = Vec2::splat(2.0 * TILE);
     let mut entries: Vec<(Entity, &Transform, &Sprite, &ParallaxLayer)> = world
         .query3::<Transform, Sprite, ParallaxLayer>()
         .filter(|(entity, _, _, _)| world.get::<Visibility>(*entity).is_some_and(|v| v.visible))
         .collect();
-    entries.sort_by(|a, b| {
-        a.2.z_order
-            .cmp(&b.2.z_order)
-            .then_with(|| a.0.id().cmp(&b.0.id()))
-    });
-
-    // One batch per `(z_order, atlas, filter)` run: the backdrop layers overlap,
-    // so their relative order has to survive batching.
-    let mut batches: Vec<SpriteBatch> = Vec::new();
-    let mut current: Option<(i32, u32, FilterMode)> = None;
-    for (_entity, transform, sprite, layer) in entries {
+    entries.sort_by_key(|(e, _, sprite, _)| (sprite.z_order, e.id()));
+    let mut batches = Vec::new();
+    for (_, transform, sprite, layer) in entries {
         let Some(asset) = assets.get_sprite(&sprite.asset_id) else {
             continue;
         };
-        let key = (sprite.z_order, asset.atlas.0, asset.filter);
-        if current != Some(key) {
-            batches.push(SpriteBatch::new(asset.atlas, asset.filter));
-            current = Some(key);
+        let mut batch = SpriteBatch::new(asset.atlas, asset.filter);
+        if sprite.asset_id == "ex10_sky" {
+            // Fill the actual viewport with the authored sky instead of stretching
+            // a tiny portion across the entire level. Overhang absorbs camera shake.
+            batch.instances.push(instance(
+                asset,
+                view_min - overhang,
+                view_max - view_min + overhang * 2.0,
+            ));
+        } else {
+            let size = Vec2::new(asset.width as f32, asset.height as f32) * transform.scale;
+            let cloud = sprite.asset_id.starts_with("ex10_clouds");
+            let time = world
+                .get_resource::<crate::gameplay::SceneTime>()
+                .map_or(0.0, |t| t.0);
+            let drift = if cloud {
+                Vec2::new(time * layer.scroll_factor.x * 28.0, 0.0)
+            } else {
+                Vec2::ZERO
+            };
+            let remapped = parallax_world_position(
+                transform.position + drift,
+                layer.scroll_factor,
+                camera.position,
+            );
+            let start = ((view_min.x - overhang.x - remapped.x) / size.x).floor() as i32;
+            let end = ((view_max.x + overhang.x - remapped.x) / size.x).ceil() as i32;
+            for col in start..end {
+                let position = remapped + Vec2::new(col as f32 * size.x, 0.0);
+                batch.instances.push(instance(asset, position, size));
+                // Extend the opaque strip foot below its art, including vertical
+                // travel and resized views. UV samples the last pixel row only.
+                let bottom = position.y + size.y;
+                if !cloud && bottom < view_max.y + overhang.y {
+                    let mut fill = instance(
+                        asset,
+                        Vec2::new(position.x, bottom),
+                        Vec2::new(size.x, view_max.y + overhang.y - bottom),
+                    );
+                    fill.uv_min[1] = asset.uv.max[1]
+                        - (asset.uv.max[1] - asset.uv.min[1]) / asset.height as f32 * 0.5;
+                    fill.uv_size[1] = 0.0;
+                    batch.instances.push(fill);
+                }
+            }
         }
-        let position =
-            parallax_world_position(transform.position, layer.scroll_factor, camera_position);
-        let batch = batches.last_mut().expect("batch pushed above");
-        batch.instances.push(SpriteInstance {
-            position: [position.x, position.y],
-            size: [
-                asset.width as f32 * transform.scale.x,
-                asset.height as f32 * transform.scale.y,
-            ],
-            rotation: transform.rotation,
-            color: sprite.color,
-            uv_min: asset.uv.min,
-            uv_size: [
-                asset.uv.max[0] - asset.uv.min[0],
-                asset.uv.max[1] - asset.uv.min[1],
-            ],
-            z_norm: 0.0,
-            _pad: 0.0,
-        });
+        batches.push(batch);
+        if sprite.asset_id == "ex10_sky" {
+            let view = view_max - view_min;
+            let center = view_min + view * Vec2::new(0.81, 0.12);
+            // Aspect-independent circular disc; the sky itself may stretch.
+            let diameter = view.y * 0.135;
+            for (id, size, color) in [
+                ("ex10_halo", diameter * 2.6, [230, 215, 160, 150]),
+                ("ex10_flame_glow", diameter * 1.35, [255, 237, 183, 100]),
+                ("ex10_moon", diameter, [255; 4]),
+            ] {
+                if let Some(asset) = assets.get_sprite(id) {
+                    let mut moon =
+                        instance(asset, center - Vec2::splat(size * 0.5), Vec2::splat(size));
+                    moon.color = color;
+                    push_instance(&mut batches, asset, moon);
+                }
+            }
+        }
+    }
+    batches
+}
+
+/// Public tile data is enough for example-local stage selection and culling.
+pub(crate) fn extract_tile_layers(world: &World, names: &[&str]) -> Vec<SpriteBatch> {
+    let (Some(assets), Some(tilemaps)) = (
+        world.get_resource::<AssetRegistry>(),
+        world.get_resource::<TilemapRegistry>(),
+    ) else {
+        return vec![];
+    };
+    let (view_min, view_max) = view_bounds(world);
+    let mut result = Vec::new();
+    let mut maps: Vec<_> = world.query::<TilemapInstance>().collect();
+    maps.sort_by_key(|(entity, _)| entity.id());
+    for (_, map) in maps {
+        let Some(data) = tilemaps.get(&map.id) else {
+            continue;
+        };
+        let tile = Vec2::new(data.tile_width as f32, data.tile_height as f32);
+        let start = ((view_min - map.origin) / tile)
+            .floor()
+            .max(Vec2::ZERO)
+            .as_uvec2();
+        let end = ((view_max - map.origin) / tile)
+            .ceil()
+            .max(Vec2::ZERO)
+            .as_uvec2()
+            .min(glam::UVec2::new(data.width, data.height));
+        for layer in &data.layers {
+            if layer.kind != LayerKind::Render || !names.contains(&layer.name.as_str()) {
+                continue;
+            }
+            let mut runs = Vec::new();
+            for row in start.y..end.y {
+                for col in start.x..end.x {
+                    let index = layer.tiles[(row * data.width + col) as usize];
+                    if index < 0 {
+                        continue;
+                    }
+                    let Some(id) = data.tileset.get(index as usize) else {
+                        continue;
+                    };
+                    let Some(asset) = assets.get_sprite(id) else {
+                        continue;
+                    };
+                    push_instance(
+                        &mut runs,
+                        asset,
+                        instance(
+                            asset,
+                            map.origin + Vec2::new(col as f32, row as f32) * tile,
+                            tile,
+                        ),
+                    );
+                }
+            }
+            result.extend(runs);
+        }
+    }
+    result
+}
+
+fn extract_props(world: &World, assets: &AssetRegistry, depth: PropDepth) -> Vec<SpriteBatch> {
+    let (view_min, view_max) = view_bounds(world);
+    let mut entries: Vec<_> = world
+        .query::<AnimatedProp>()
+        .filter(|(_, p)| p.0 == depth)
+        .collect();
+    entries.sort_by_key(|(e, _)| e.id());
+    let mut batches = Vec::new();
+    for (entity, _) in entries {
+        let (Some(transform), Some(sprite)) = (
+            world.get::<Transform>(entity),
+            world.get::<CurrentSprite>(entity),
+        ) else {
+            continue;
+        };
+        let Some(asset) = assets.get_sprite(&sprite.0) else {
+            continue;
+        };
+        let size = Vec2::new(asset.width as f32, asset.height as f32) * transform.scale;
+        if (transform.position + size).cmplt(view_min).any()
+            || transform.position.cmpgt(view_max).any()
+        {
+            continue;
+        }
+        push_instance(
+            &mut batches,
+            asset,
+            instance(asset, transform.position, size),
+        );
     }
     batches
 }
 
 pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     let Some(assets) = world.get_resource::<AssetRegistry>() else {
-        return extract_tilemaps(world);
+        return vec![];
     };
     // M30: backdrop first, then the tilemap draws the world over it.
     let mut batches = extract_parallax(world, assets);
-    batches.extend(extract_tilemaps(world));
+    batches.extend(extract_tile_layers(world, &["background", "decorations"]));
+    batches.extend(extract_props(world, assets, PropDepth::Back));
+    batches.extend(extract_tile_layers(world, &["terrain"]));
+    batches.extend(extract_props(world, assets, PropDepth::World));
+
+    batches.extend(extract_obstacles(world, assets));
 
     // Particles before black-hole core; custom extract must include them explicitly.
     let mut particle_batches: HashMap<(u32, FilterMode), SpriteBatch> = HashMap::new();
@@ -130,70 +306,17 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
             _pad: 0.0,
         });
     }
-    batches.extend(particle_batches.into_values());
+    let mut particles: Vec<_> = particle_batches.into_values().collect();
+    particles.sort_by_key(|b| b.texture.0);
+    batches.extend(particles);
 
-    // Black hole after tilemap, before player/balls.
-    if let Some(hole_asset) = assets.get_sprite("ex10_ball") {
-        const BLACK_HOLE_GLOW_DIAMETER: f32 = BLACK_HOLE_VISUAL_DIAMETER * 1.75;
-        const BLACK_HOLE_GLOW_COLOR: [u8; 4] = [170, 48, 255, 72];
-        const BLACK_HOLE_CORE_COLOR: [u8; 4] = [178, 42, 255, 245];
-
-        let half = BLACK_HOLE_VISUAL_DIAMETER * 0.5;
-        let glow_half = BLACK_HOLE_GLOW_DIAMETER * 0.5;
-        let uv_min = hole_asset.uv.min;
-        let uv_size = [
-            hole_asset.uv.max[0] - hole_asset.uv.min[0],
-            hole_asset.uv.max[1] - hole_asset.uv.min[1],
-        ];
-        let hole_positions: Vec<_> = world
-            .query::<BlackHole>()
-            .filter_map(|(e, _)| world.get::<Position>(e).copied())
-            .collect();
-
-        let glow_instances: Vec<SpriteInstance> = hole_positions
-            .iter()
-            .map(|p| SpriteInstance {
-                position: [p.0.x - glow_half, p.0.y - glow_half],
-                size: [BLACK_HOLE_GLOW_DIAMETER, BLACK_HOLE_GLOW_DIAMETER],
-                rotation: 0.0,
-                color: BLACK_HOLE_GLOW_COLOR,
-                uv_min,
-                uv_size,
-                z_norm: 0.0,
-                _pad: 0.0,
-            })
-            .collect();
-        if !glow_instances.is_empty() {
-            let mut batch = SpriteBatch::new(hole_asset.atlas, hole_asset.filter);
-            batch.instances = glow_instances;
-            batches.push(batch);
-        }
-
-        let core_instances: Vec<SpriteInstance> = hole_positions
-            .iter()
-            .map(|p| SpriteInstance {
-                position: [p.0.x - half, p.0.y - half],
-                size: [BLACK_HOLE_VISUAL_DIAMETER, BLACK_HOLE_VISUAL_DIAMETER],
-                rotation: 0.0,
-                color: BLACK_HOLE_CORE_COLOR,
-                uv_min,
-                uv_size,
-                z_norm: 0.0,
-                _pad: 0.0,
-            })
-            .collect();
-        if !core_instances.is_empty() {
-            let mut batch = SpriteBatch::new(hole_asset.atlas, hole_asset.filter);
-            batch.instances = core_instances;
-            batches.push(batch);
-        }
-    }
+    batches.extend(extract_vortices(world, assets));
 
     // Player sprite bottom-aligned to physics AABB.
     let lighting_on = world
         .get_resource::<LightingFixture>()
         .is_some_and(|fixture| fixture.mode == LightingFixtureMode::On);
-    let mut player_batches: HashMap<String, SpriteBatch> = HashMap::new();
+    let mut player_batches = Vec::new();
     for (entity, cs) in world.query::<CurrentSprite>() {
         if world.get::<Player>(entity).is_none() {
             continue;
@@ -233,25 +356,46 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
                 .get::<tungsten::core::UniformOverrideBlock>(entity)
                 .copied()
         };
-        let batch = player_batches.entry(cs.0.clone()).or_insert_with(|| {
-            let mut b = SpriteBatch::new(asset.atlas, asset.filter);
-            b.material_id = material_id;
-            b.uniform_overrides = override_block;
-            b.lit = lit;
-            b
-        });
+        let mut batch = SpriteBatch::new(asset.atlas, asset.filter);
+        batch.material_id = material_id;
+        batch.uniform_overrides = override_block;
+        batch.lit = lit;
+        let facing_left = world
+            .get::<PlayerPresentation>(entity)
+            .is_some_and(|p| p.facing_left);
+        let uv_min = if facing_left {
+            [asset.uv.max[0], asset.uv.min[1]]
+        } else {
+            uv_min
+        };
+        let uv_size = if facing_left {
+            [-uv_size[0], uv_size[1]]
+        } else {
+            uv_size
+        };
         batch.instances.push(SpriteInstance {
-            position: [pos.0.x - sprite_w * 0.5, pos.0.y + PLAYER_HALF.y - sprite_h],
+            position: [
+                pos.0.x - sprite_w * 0.5,
+                pos.0.y + PLAYER_HALF.y - 61.0 * scale.y,
+            ],
             size: [sprite_w, sprite_h],
             rotation: 0.0,
-            color: [255; 4],
+            color: if world
+                .get::<crate::gameplay::Health>(entity)
+                .is_some_and(|h| h.immunity > 0.0 && ((h.immunity * 12.0) as u32).is_multiple_of(2))
+            {
+                [255, 190, 180, 130]
+            } else {
+                [255; 4]
+            },
             uv_min,
             uv_size,
             z_norm: 0.0,
             _pad: 0.0,
         });
+        player_batches.push(batch);
     }
-    batches.extend(player_batches.into_values());
+    batches.extend(player_batches);
 
     let mut ball_batches: HashMap<(u32, FilterMode, bool), SpriteBatch> = HashMap::new();
     for (entity, _) in world.query::<Ball>() {
@@ -267,8 +411,7 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
         else {
             continue;
         };
-        let sprite_w = asset.width as f32;
-        let sprite_h = asset.height as f32;
+
         let uv_min = asset.uv.min;
         let uv_size = [
             asset.uv.max[0] - asset.uv.min[0],
@@ -286,7 +429,10 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
             .get::<BallHue>(entity)
             .map_or([255, 0, 255, 255], |hue| rainbow_rgba(hue.hue));
         batch.instances.push(SpriteInstance {
-            position: [pos.0.x - sprite_w * 0.5, pos.0.y - sprite_h * 0.5],
+            position: [
+                pos.0.x - BALL_VISUAL_DIAMETER * 0.5,
+                pos.0.y - BALL_VISUAL_DIAMETER * 0.5,
+            ],
             size: [BALL_VISUAL_DIAMETER, BALL_VISUAL_DIAMETER],
             rotation: 0.0,
             color,
@@ -296,7 +442,12 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
             _pad: 0.0,
         });
     }
-    batches.extend(ball_batches.into_values());
+    let mut balls: Vec<_> = ball_batches.into_values().collect();
+    balls.sort_by_key(|b| b.texture.0);
+    batches.extend(balls);
+    batches.extend(extract_tile_layers(world, &["foreground"]));
+
+    batches.extend(extract_hearts(world, assets));
 
     // Cursor sprite last; world point matches click-spawn mapping.
     if let Some(cursor_asset) = assets.get_sprite("ex10_cursor")
@@ -310,8 +461,12 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
                     .and_then(|cam| cursor_to_world(cursor, cam))
             })
     {
-        let sprite_w = cursor_asset.width as f32;
-        let sprite_h = cursor_asset.height as f32;
+        let zoom = world
+            .get_resource::<CameraState>()
+            .map_or(1.0, |c| c.zoom)
+            .max(f32::EPSILON);
+        let sprite_w = 32.0 / zoom;
+        let sprite_h = 32.0 / zoom;
         let uv_min = cursor_asset.uv.min;
         let uv_size = [
             cursor_asset.uv.max[0] - cursor_asset.uv.min[0],
@@ -331,6 +486,39 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
         batches.push(batch);
     }
 
+    batches
+}
+
+/// Pixel hearts stay at a fixed screen size and read current HP without the
+/// diagnostic text timer. Empty outlines remain visible after damage.
+fn extract_hearts(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
+    let Some((_, health)) = world.query::<crate::gameplay::Health>().next() else {
+        return vec![];
+    };
+    let camera = world
+        .get_resource::<CameraState>()
+        .copied()
+        .unwrap_or_default();
+    let zoom = camera.zoom.max(f32::EPSILON);
+    let mut batches = Vec::new();
+    for index in 0..3 {
+        let id = if index < health.hearts {
+            "ex10_heart_full"
+        } else {
+            "ex10_heart_empty"
+        };
+        let Some(asset) = assets.get_sprite(id) else {
+            continue;
+        };
+        let screen = Vec2::new(16.0 + index as f32 * 40.0, 86.0);
+        if let Some(position) = cursor_to_world(screen, &camera) {
+            push_instance(
+                &mut batches,
+                asset,
+                instance(asset, position, Vec2::splat(40.0 / zoom)),
+            );
+        }
+    }
     batches
 }
 
@@ -367,8 +555,8 @@ fn text_outlined(section: TextSection) -> impl Iterator<Item = TextSection> {
 pub(crate) fn extract_text(world: &World) -> Vec<TextSection> {
     let mut sections = Vec::new();
     sections.extend(text_outlined(TextSection {
-        content: "A/D or ←/→ move  Space jump  LMB hold spawn ball  RMB black hole  M music  S/MMB stop  1/2/3 volume\n\
-                  =/- or wheel zoom  F4 HUD  F9 vsync  F11 fullscreen  Esc exit"
+        content: "A/D or ←/→ move  Space jump / double jump  LMB hold spawn ball  RMB black hole  M music  S/MMB stop  1/2/3 volume\n\
+                  =/- or wheel zoom (35–300%)  L lantern  Avoid spikes and fire  F4 HUD  F9 vsync  F11 fullscreen  Esc exit"
             .into(),
         font_id: "mono".into(),
         font_size: 24.0,
@@ -392,11 +580,189 @@ pub(crate) fn extract_text(world: &World) -> Vec<TextSection> {
             font_size: 20.0,
             line_height: 26.0,
             color: [190, 255, 210, 220],
-            position: [16.0, 84.0],
+            position: [150.0, 94.0],
             bounds: None,
         }));
     }
     sections
+}
+
+fn extract_obstacles(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
+    use crate::gameplay::{Explosion, Glow, Hazard, MovingPlatform, SceneTime};
+    let (min, max) = view_bounds(world);
+    let time = world.get_resource::<SceneTime>().map_or(0.0, |t| t.0);
+    let mut batches = Vec::new();
+    // Soft sprite halos complement native point lights and remain visible on
+    // scenery without normal maps. Keep them behind hazard silhouettes.
+    if let Some(asset) = assets.get_sprite("ex10_halo") {
+        for (e, glow) in world.query::<Glow>() {
+            let Some(center) = crate::gameplay::glow_center(world, e, glow.offset) else {
+                continue;
+            };
+            let radius = glow.radius * (1.0 + 0.04 * (time * 4.0 + e.id() as f32).sin());
+            if (center + Vec2::splat(radius)).cmplt(min).any()
+                || (center - Vec2::splat(radius)).cmpgt(max).any()
+            {
+                continue;
+            }
+            let mut sprite = instance(
+                asset,
+                center - Vec2::splat(radius),
+                Vec2::splat(radius * 2.0),
+            );
+            sprite.color = glow.color;
+            push_instance(&mut batches, asset, sprite);
+            if (world.get::<Hazard>(e).is_some()
+                || world.get::<crate::gameplay::PlayerLantern>(e).is_some())
+                && let Some(inner) = assets.get_sprite("ex10_flame_glow")
+            {
+                let radius = if world.get::<Hazard>(e).is_some() {
+                    62.0
+                } else {
+                    30.0
+                };
+                let mut sprite = instance(
+                    inner,
+                    center - Vec2::splat(radius),
+                    Vec2::splat(radius * 2.0),
+                );
+                sprite.color = glow.color;
+                push_instance(&mut batches, inner, sprite);
+            }
+        }
+    }
+    for (e, hazard) in world.query::<Hazard>() {
+        let (Some(pos), Some(cs)) = (world.get::<Position>(e), world.get::<CurrentSprite>(e))
+        else {
+            continue;
+        };
+        let Some(asset) = assets.get_sprite(&cs.0) else {
+            continue;
+        };
+        if (pos.0 + Vec2::splat(TILE)).cmplt(min).any()
+            || (pos.0 - Vec2::splat(TILE)).cmpgt(max).any()
+        {
+            continue;
+        }
+        let offset = if hazard.fire {
+            Vec2::splat(32.0)
+        } else {
+            Vec2::new(32.0, 48.0)
+        };
+        push_instance(
+            &mut batches,
+            asset,
+            instance(asset, pos.0 - offset, Vec2::splat(TILE)),
+        );
+    }
+    if let Some(asset) = assets.get_sprite("ex10_lift_deck") {
+        for (e, platform) in world.query::<MovingPlatform>() {
+            let Some(pos) = world.get::<Position>(e) else {
+                continue;
+            };
+            let width = platform.half_width * 2.0 / 3.0;
+            for col in 0..3 {
+                push_instance(
+                    &mut batches,
+                    asset,
+                    instance(
+                        asset,
+                        pos.0
+                            + Vec2::new(
+                                -platform.half_width + col as f32 * width,
+                                -crate::level_layout::DECK_DEPTH * 0.5,
+                            ),
+                        Vec2::new(width, TILE),
+                    ),
+                );
+            }
+        }
+    }
+    if let Some(asset) = assets.get_sprite("ex10_shock_ring") {
+        for (e, explosion) in world.query::<Explosion>() {
+            let Some(t) = world.get::<Transform>(e) else {
+                continue;
+            };
+            let progress = explosion.age / 0.45;
+            let size = 32.0 + progress * 108.0;
+            let mut sprite = instance(
+                asset,
+                t.position - Vec2::splat(size / 2.0),
+                Vec2::splat(size),
+            );
+            sprite.color = [255, 210, 140, ((1.0 - progress) * 220.0) as u8];
+            push_instance(&mut batches, asset, sprite);
+        }
+    }
+    batches
+}
+
+fn extract_vortices(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
+    let time = world
+        .get_resource::<crate::gameplay::SceneTime>()
+        .map_or(0.0, |t| t.0);
+    let mut batches = Vec::new();
+    for (e, hole) in world.query::<BlackHole>() {
+        let Some(pos) = world.get::<Position>(e) else {
+            continue;
+        };
+        let fade = (hole.remaining * 4.0).min(1.0);
+        for (id, diameter, rotation, color) in [
+            (
+                "ex10_halo",
+                BLACK_HOLE_VISUAL_DIAMETER * 2.5,
+                0.0,
+                [135, 95, 255, 230],
+            ),
+            (
+                "ex10_vortex",
+                BLACK_HOLE_VISUAL_DIAMETER * 1.8,
+                -time * 2.8,
+                [140, 150, 255, 150],
+            ),
+            (
+                "ex10_vortex",
+                BLACK_HOLE_VISUAL_DIAMETER * 1.2,
+                time * 4.5,
+                [220, 200, 255, 240],
+            ),
+            (
+                "ex10_vortex_core",
+                BLACK_HOLE_VISUAL_DIAMETER * 0.65,
+                -time * 1.3,
+                [255; 4],
+            ),
+        ] {
+            let Some(asset) = assets.get_sprite(id) else {
+                continue;
+            };
+            let size = diameter * (1.0 + 0.045 * (time * 7.0).sin());
+            let mut sprite = instance(asset, pos.0 - Vec2::splat(size / 2.0), Vec2::splat(size));
+            sprite.rotation = rotation;
+            sprite.color = color;
+            sprite.color[3] = (sprite.color[3] as f32 * fade) as u8;
+            push_instance(&mut batches, asset, sprite);
+        }
+        if let Some(asset) = assets.get_sprite("ex10_spark") {
+            for i in 0..32 {
+                let progress = (i as f32 / 32.0 + time * 0.45).fract();
+                let radius = (1.0 - progress) * BLACK_HOLE_VISUAL_DIAMETER;
+                let angle = i as f32 * 2.399_963_2 + time * 3.5 + progress * 5.0;
+                let center = pos.0 + Vec2::new(angle.cos(), angle.sin()) * radius;
+                let size = 6.0 + progress * 7.0;
+                let mut sprite =
+                    instance(asset, center - Vec2::splat(size / 2.0), Vec2::splat(size));
+                sprite.color = [
+                    160,
+                    210,
+                    255,
+                    (220.0 * fade * (std::f32::consts::PI * progress).sin()) as u8,
+                ];
+                push_instance(&mut batches, asset, sprite);
+            }
+        }
+    }
+    batches
 }
 
 #[cfg(test)]

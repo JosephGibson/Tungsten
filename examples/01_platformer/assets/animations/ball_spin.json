@@ -1,21 +1,29 @@
 {
-  "looping": true,
   "frames": [
     {
-      "sprite": "ex10_ball",
-      "duration_ms": 60
+      "duration_ms": 90,
+      "sprite": "ex10_ball"
     },
     {
-      "sprite": "ex10_ball_1",
-      "duration_ms": 60
+      "duration_ms": 90,
+      "sprite": "ex10_ball_1"
     },
     {
-      "sprite": "ex10_ball_2",
-      "duration_ms": 60
+      "duration_ms": 90,
+      "sprite": "ex10_ball_2"
     },
     {
-      "sprite": "ex10_ball_3",
-      "duration_ms": 60
+      "duration_ms": 90,
+      "sprite": "ex10_ball_3"
+    },
+    {
+      "duration_ms": 90,
+      "sprite": "ex10_ball_4"
+    },
+    {
+      "duration_ms": 90,
+      "sprite": "ex10_ball_5"
     }
-  ]
+  ],
+  "looping": true
 }

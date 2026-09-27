@@ -87,7 +87,7 @@ Seam (`D-007`, `D-016`, `D-018`): core defines `TextureHandle(u32)`, has no `wgp
 
 - **Feature:** plan first (files, API shape, tests).
 - **Audit:** read the full crate surface, report findings only unless the user requests fixes. Check decisions before calling a choice wrong.
-- **Docs:** read the whole doc before editing. Decisions are immutable: a reversal adds an entry and marks the old one `Superseded by D-NNN`. New decisions add their `docs/DECISION_INDEX.md` row in the same change (test-enforced). Update `CHANGELOG.md`/`README.md` when a milestone ships.
+- **Docs:** read the whole doc before editing. Decisions are immutable: a reversal adds an entry and marks the old one `Superseded by D-NNN`. New decisions add their `docs/DECISION_INDEX.md` row in the same change (test-enforced). Releases follow [docs/releases.md](docs/releases.md); README stays version-free.
 - Don't change code you haven't read. Stuck: re-read scope, check decisions, or leave `// TODO: ask about X`.
 
 ## Not doing

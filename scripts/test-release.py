@@ -68,7 +68,7 @@ class Release(unittest.TestCase):
         self.root = Path(temp.name)
         self.write("Cargo.toml", CARGO)
         self.write("CHANGELOG.md", CHANGELOG)
-        self.write("README.md", "Workspace `v0.26.0`; current development branch `0.27`.\n")
+        self.write("README.md", "# Engine\n\nBuild and run the examples.\n")
         self.write("DESIGN.md", "Workspace `v0.26.0` on branch `0.26`.\n")
         self.write("examples/01_demo/Cargo.toml", '[package]\nname = "example-01-demo"\nversion.workspace = true\n')
         self.write("examples/01_demo/assets/manifest.json", "{}")
@@ -113,8 +113,16 @@ class Release(unittest.TestCase):
     def test_status_line_drift_and_absence_fail(self):
         self.edit("DESIGN.md", "v0.26.0", "v0.25.0")
         self.assertIn("DESIGN.md: status line says v0.25.0", self.errors())
-        self.write("README.md", "No status here.\n")
-        self.assertIn("README.md: no 'Workspace", self.errors())
+        self.write("DESIGN.md", "No status here.\n")
+        self.assertIn("DESIGN.md: no 'Workspace", self.errors())
+
+    def test_readme_is_not_part_of_release_state(self):
+        self.write("README.md", "Workspace `v9.9.9` is historical prose.\n")
+        before = (self.root / "README.md").read_bytes()
+        self.assertEqual(rel.cut(self.root, "0.27.0", DATE), [])
+        self.assertEqual((self.root / "README.md").read_bytes(), before)
+        (self.root / "README.md").unlink()
+        self.assertEqual(self.errors(), "")
 
     def test_unreleased_must_lead_once(self):
         self.edit("CHANGELOG.md", "## [Unreleased]\n", "")
@@ -183,6 +191,7 @@ class Release(unittest.TestCase):
         self.assertIn("does not match", self.errors("v0.9.0-rc.1"))
 
     def test_cut_moves_unreleased_and_bumps_versions(self):
+        readme = (self.root / "README.md").read_bytes()
         self.assertEqual(rel.cut(self.root, "0.27.0", DATE), [])
         text = (self.root / "CHANGELOG.md").read_text()
         self.assertIn("## [Unreleased]\n\n## [0.27.0] - 2026-10-01\n\n### Added\n\n- Release tooling", text)
@@ -190,7 +199,8 @@ class Release(unittest.TestCase):
         self.assertEqual((state.errors, state.version, state.unreleased), ([], "0.27.0", ""))
         self.assertIn("Release tooling", state.releases[0].body)
         self.assertIn('[workspace.dependencies.decoy]\nversion = "9.9.9"', (self.root / "Cargo.toml").read_text())
-        self.assertIn("`v0.27.0`; current development branch `0.27`", (self.root / "README.md").read_text())
+        self.assertEqual((self.root / "README.md").read_bytes(), readme)
+        self.assertIn("Workspace `v0.27.0`", (self.root / "DESIGN.md").read_text())
         self.assertEqual(self.errors("v0.27.0"), "")
         # A second cut has nothing to release.
         self.assertIn("is empty", " ".join(rel.cut(self.root, "0.28.0", DATE)))

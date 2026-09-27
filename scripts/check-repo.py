@@ -17,7 +17,7 @@ from urllib.parse import unquote, urlsplit
 DOCS = (
     "README.md", "CHANGELOG.md", "docs/LLM_INDEX.md", "docs/DECISION_INDEX.md",
     "docs/agent-setup.md", "docs/perf/profiling-workflow.md",
-    "docs/showcase/README.md", "docs/plans/README.md",
+    "docs/showcase/README.md", "docs/plans/README.md", "docs/releases.md",
 )
 ARCHIVE = "docs/plans/archive"
 # Existing content outside the manifest schema, not a blanket file exemption.

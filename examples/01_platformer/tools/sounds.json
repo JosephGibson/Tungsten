@@ -1,0 +1,7 @@
+{
+  "ex10_black_hole_sfx": {
+    "looping": false,
+    "path": "sounds/black_hole.ogg",
+    "volume": 0.65
+  }
+}
