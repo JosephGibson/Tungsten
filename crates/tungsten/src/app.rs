@@ -29,7 +29,7 @@ use tungsten_core::assets::{
     AnimationRegistry, FontRegistry, ParticleConfigRegistry, ShaderRegistry, SoundRegistry,
     TilemapRegistry,
 };
-use tungsten_core::physics::{CollisionEvent, PhysicsConfig};
+use tungsten_core::physics::{CollisionEvent, PhysicsBuffers, PhysicsConfig};
 use tungsten_core::{
     ActionMap, AssetRegistry, AudioCommands, CameraController, CameraState, CommandBuffer, Config,
     DebugDraw, DebugShape, DeltaTime, DisplayMode, DisplayState, EventQueue, InputState,
@@ -1033,6 +1033,45 @@ fn log_perf_line(
     );
 }
 
+/// Per-system companion to the `frame:` perf line, in registration order.
+/// Whitespace and `=` in names become `_` so `scripts/perf-capture.sh` can
+/// split `name=ms` tokens on whitespace.
+fn format_perf_systems_line(system_timings: &[(String, f32)]) -> String {
+    format_perf_named_timings("systems:", system_timings)
+}
+
+fn format_perf_named_timings(tag: &str, system_timings: &[(String, f32)]) -> String {
+    use std::fmt::Write as _;
+
+    let mut line = String::from(tag);
+    for (name, ms) in system_timings {
+        line.push(' ');
+        line.extend(name.chars().map(|c| {
+            if c.is_whitespace() || c == '=' {
+                '_'
+            } else {
+                c
+            }
+        }));
+        let _ = write!(line, "={ms:.2}ms");
+    }
+    line
+}
+
+/// Physics companion to the `frame:` perf line: last step's proxy, dynamic
+/// and sleeping body counts plus the final substep's pairs and contacts.
+/// `scripts/perf-capture.sh` treats `sleeping < dynamic` as an awake frame.
+fn format_perf_physics_line(buffers: &PhysicsBuffers) -> String {
+    format!(
+        "physics: proxies={} dynamic={} sleeping={} pairs={} contacts={}",
+        buffers.proxy_count(),
+        buffers.dynamic_count(),
+        buffers.sleeping_count(),
+        buffers.pair_count(),
+        buffers.contact_count()
+    )
+}
+
 /// D-008: missing `input.json` uses defaults; parse/IO errors are fatal.
 fn load_action_map_at_startup(path: &Path) -> anyhow::Result<ActionMap> {
     match ActionMap::load(path) {
@@ -1423,6 +1462,29 @@ impl ApplicationHandler for App {
                         audio_ms,
                         hot_reload_ms,
                     );
+                    if log::log_enabled!(log::Level::Debug)
+                        && let Some(ft) = self.world.get_resource::<FrameTimings>()
+                        && !ft.system_timings.is_empty()
+                    {
+                        log::debug!("{}", format_perf_systems_line(&ft.system_timings));
+                    }
+                    if log::log_enabled!(log::Level::Debug)
+                        && let Some(gpu) = self.world.get_resource::<GpuFrameTimings>()
+                    {
+                        // Emit even an empty line on skipped/unsupported frames so
+                        // capture warm-up counts remain aligned with frame logs.
+                        let mut line = format_perf_named_timings("gpu_passes:", &gpu.pass_gpu_ms);
+                        if let Some(span) = gpu.render_gpu_ms {
+                            use std::fmt::Write as _;
+                            let _ = write!(line, " render_span={span:.2}ms");
+                        }
+                        log::debug!("{line}");
+                    }
+                    if log::log_enabled!(log::Level::Debug)
+                        && let Some(buffers) = self.world.get_resource::<PhysicsBuffers>()
+                    {
+                        log::debug!("{}", format_perf_physics_line(buffers));
+                    }
                 }
 
                 if let Some(window) = &self.window {

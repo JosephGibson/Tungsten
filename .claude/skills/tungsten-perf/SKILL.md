@@ -18,14 +18,14 @@ Never compare runs across different scenes, build modes, backends, flags or fram
 - `--release` build, `WGPU_BACKEND=vulkan` on Linux
 - 60 warm-up frames discarded, 300 measured
 - Primary scene: `ecs-high-load` (the script default; `example-02-sprite-stress` with `STRESS_SCENE=ecs-high-load`)
-- Secondary: `sprite-stress` (`STRESS_SCENE=baseline`); physics: `physics-stress`
+- Secondary: `sprite-stress` (`STRESS_SCENE=baseline`, present-bound); physics: `physics-stress`; render throughput: `sprite-stress --stress-count 100000`, judged on extract, encode and GPU (workflow doc, Tracked Rows)
 
 ```bash
 WGPU_BACKEND=vulkan ./scripts/perf-capture.sh ecs-high-load 300
 WGPU_BACKEND=vulkan ./scripts/perf-capture.sh ecs-high-load 300 --telemetry-only   # telemetry only
 ```
 
-Outputs land in `perf-runs/<timestamp>-<scene>/` with a per-run `README.md` listing `p50/p95/p99` for `total` and `render_acquire`. The parser regression check is `bash scripts/test-perf-capture.sh`. Compare checkpoints with at least three sequential captures and the median of their p95 values.
+Outputs land in `perf-runs/<timestamp>-<scene>/` with a per-run `README.md` listing `p50/p95/p99` for `total` and `render_acquire`. The parser regression check is `bash scripts/test-perf-capture.sh`. Compare checkpoints with at least three sequential captures and the median of their p95 values: `--repeat 3` does this and writes `summary.md` with per-metric medians across runs.
 
 ## Telemetry format
 
@@ -35,7 +35,9 @@ Stage logging (`TUNGSTEN_PERF_LOG=1`) emits one line per redraw:
 frame: total=... update=... flush=... extract=... render=... render_acquire=... render_encode=... render_submit_present=... gpu=n/a audio=... hot_reload=...
 ```
 
-Values come from `tungsten::FrameTimings`. `gpu=` is `n/a` unless `TUNGSTEN_GPU_TIMING=1`. See [telemetry.rs](../../../crates/tungsten/src/telemetry.rs) and [app.rs](../../../crates/tungsten/src/app.rs).
+Values come from `tungsten::FrameTimings`. `gpu=` is `n/a` unless `TUNGSTEN_GPU_TIMING=1`. A `systems: name=ms ...` line follows each frame (the per-run README tabulates it per system), then a `physics: proxies=… dynamic=… sleeping=… pairs=… contacts=…` line when physics runs; judge physics-stress on the README's awake-phase rows, not the whole-window average. See [telemetry.rs](../../../crates/tungsten/src/telemetry.rs) and [app.rs](../../../crates/tungsten/src/app.rs).
+
+`render-features` is the mixed-material/lit/post/SMAA attribution scene (4k sprites). Its `gpu_passes:` rows include bloom stages and `render_span`; `gpu=` remains scene-only. ECS workload v2 supports `--ecs-density preserve` for count sweeps; default `fixed` increases density with count.
 
 ## GPU timing is for diagnosis only
 
@@ -52,6 +54,7 @@ Native tooling only:
   ```
   Setting `RUSTFLAGS` replaces the target flags from `.cargo/config.toml`, so compare only against captures built with the same effective flags.
 - **`perf stat`** / **`perf record --call-graph dwarf`**: exact invocations are in the workflow doc.
+- Smaller full captures: `--call-graph fp` uses frame-pointer stacks; `--sample-frequency 499` lowers sample count. Both are opt-in and recorded in provenance. DWARF remains default for attribution; FP requires effective `force-frame-pointers=yes` flags and may truncate in system libraries without them.
 - **samply** works as an interactive alternative to `perf record`; keep capture windows aligned with the 360-frame smoke window.
 - **criterion** for microbenchmarks; pair with `cargo flamegraph --bench` for a specific bench.
 

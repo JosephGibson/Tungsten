@@ -32,12 +32,17 @@ const WALL_THICKNESS: f32 = 80.0;
 const SPRITE_ID: &str = "ex02_physics_stress_body";
 const SPRITE_PATH: &str = "__generated__/ex02_physics_stress_body.png";
 
-pub(crate) fn configure_physics_stress_scene(app: &mut App, body_count: usize) {
+/// `sleep: false` disables island sleeping so every measured frame runs the
+/// awake solve (`STRESS_PHYSICS_SLEEP=0`); the canonical scene keeps it on.
+pub(crate) fn configure_physics_stress_scene(app: &mut App, body_count: usize, sleep: bool) {
     {
         let world = app.world_mut();
         world.insert_resource(TelemetryState::default());
         if let Some(cfg) = world.get_resource_mut::<PhysicsConfig>() {
             cfg.gravity = Vec2::new(0.0, GRAVITY_Y);
+            if !sleep {
+                cfg.sleep_threshold = 0.0;
+            }
         }
         if let Some(cam) = world.get_resource_mut::<CameraState>() {
             cam.zoom = 1.0;

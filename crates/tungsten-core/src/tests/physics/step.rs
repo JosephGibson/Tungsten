@@ -1089,3 +1089,359 @@ impl CollisionEventQueueExt for EventQueue<CollisionEvent> {
         self.iter_current().any(|e| e.b.is_none())
     }
 }
+
+#[test]
+fn diagnostic_counts_track_the_last_step() {
+    let mut world = seed_world();
+    assert_eq!(PhysicsBuffers::default().proxy_count(), 0);
+    let (bottom, top) = spawn_sleeping_stack(&mut world);
+
+    physics_step(&mut world);
+    let buffers = world.get_resource::<PhysicsBuffers>().unwrap();
+    assert_eq!(buffers.proxy_count(), 3, "floor plus two balls");
+    assert_eq!(
+        buffers.dynamic_count(),
+        2,
+        "the static floor is not dynamic"
+    );
+    assert_eq!(buffers.sleeping_count(), 0);
+    assert!(buffers.pair_count() >= 2, "ball-ball and ball-floor pair");
+    assert!(buffers.contact_count() >= 1);
+
+    settle_to_sleep(&mut world, &[bottom, top]);
+    physics_step(&mut world);
+    let buffers = world.get_resource::<PhysicsBuffers>().unwrap();
+    assert_eq!(buffers.dynamic_count(), 2);
+    assert_eq!(buffers.sleeping_count(), 2);
+    assert_eq!(buffers.pair_count(), 0, "sleeping bodies never initiate");
+}
+
+/// Compare the persistent list with fresh per-substep pair finding and an
+/// exhaustive oracle, before any contact wakes mutate the snapshot. The
+/// oracle prevents a bug shared by both broadphases from hiding a missed pair.
+pub(super) fn assert_pair_contacts(config: &PhysicsConfig, sub_dt: f32, buffers: &PhysicsBuffers) {
+    use std::collections::BTreeSet;
+
+    let proxies = &buffers.proxies;
+    let contact_key = |a: usize, b: usize| {
+        let margin = (proxies[a].velocity - proxies[b].velocity).length() * sub_dt
+            + 4.0 * config.linear_slop;
+        narrow_phase(&proxies[a], &proxies[b], margin)
+            .map(|_| pair_key(proxies[a].key, proxies[b].key))
+    };
+    let mut persistent = BTreeSet::new();
+    for &(a, b) in &buffers.pairs {
+        if let Some(key) = contact_key(a as usize, b as usize) {
+            assert!(persistent.insert(key), "duplicate persistent contact");
+        }
+    }
+
+    let mut fresh_grid = SpatialGrid::new(config.broadphase_cell_size);
+    let bounds: Vec<_> = proxies
+        .iter()
+        .enumerate()
+        .map(|(i, proxy)| {
+            let mut aabb = proxy.world_aabb();
+            aabb.half_extents +=
+                Vec2::splat(proxy.velocity.length() * sub_dt + 2.0 * config.linear_slop);
+            fresh_grid.insert(i as u32, &aabb);
+            aabb
+        })
+        .collect();
+    let mut fresh = BTreeSet::new();
+    let mut exhaustive = BTreeSet::new();
+    for (a, proxy) in proxies.iter().enumerate() {
+        if !proxy.is_dynamic || proxy.sleeping {
+            continue;
+        }
+        let eligible =
+            |b: usize| a != b && (!proxies[b].is_dynamic || proxies[b].sleeping || b > a);
+        fresh_grid.for_each_in(&bounds[a], Some(a as u32), |b| {
+            let b = b as usize;
+            if eligible(b)
+                && bounds[a].overlaps(&bounds[b])
+                && let Some(key) = contact_key(a, b)
+            {
+                assert!(fresh.insert(key), "duplicate fresh contact");
+            }
+        });
+        for b in 0..proxies.len() {
+            if eligible(b)
+                && let Some(key) = contact_key(a, b)
+            {
+                exhaustive.insert(key);
+            }
+        }
+    }
+    assert_eq!(fresh, exhaustive, "fresh pair finding missed a contact");
+    assert_eq!(
+        persistent, exhaustive,
+        "persistent pair list missed a contact"
+    );
+}
+
+#[test]
+fn persistent_pairs_match_fresh_contacts_on_randomized_piles_bullets_and_wakes() {
+    use crate::Pcg32;
+
+    let mut checked = 0;
+    for seed in 0..8 {
+        let mut rng = Pcg32::seeded(0xD075 + seed);
+        let mut world = seed_world();
+        let (bottom, top) = spawn_sleeping_stack(&mut world);
+        settle_to_sleep(&mut world, &[bottom, top]);
+        let buffers = world.get_resource_mut::<PhysicsBuffers>().unwrap();
+        buffers.check_pair_contacts = true;
+        buffers.reference_impulses = Some(buffers.impulses.clone());
+        // Cover differing substep counts and cell boundaries, mixed shape
+        // pairs, sleepers and fast bullets in the same evolving snapshot.
+        let config = world.get_resource_mut::<PhysicsConfig>().unwrap();
+        config.substeps = [1, 2, 4, 8][seed as usize % 4];
+        config.broadphase_cell_size = [8.0, 16.0, 32.0][seed as usize % 3];
+        for i in 0..36 {
+            let e = world.spawn();
+            world.insert(
+                e,
+                Position(Vec2::new(
+                    (i % 6) as f32 * 11.0 - 28.0 + rng.next_range(-1.0, 1.0),
+                    65.0 - (i / 6) as f32 * 11.0 + rng.next_range(-1.0, 1.0),
+                )),
+            );
+            world.insert(
+                e,
+                Velocity(rng.next_unit_vec2() * rng.next_range(0.0, 80.0)),
+            );
+            world.insert(
+                e,
+                RigidBody::dynamic().with_restitution(rng.next_range(0.0, 0.5)),
+            );
+            world.insert(
+                e,
+                if i % 3 == 0 {
+                    Collider::aabb(Vec2::splat(5.0))
+                } else {
+                    Collider::circle(5.0)
+                },
+            );
+        }
+        let bullet = world.spawn();
+        world.insert(bullet, Position(Vec2::new(-90.0, 95.0)));
+        world.insert(
+            bullet,
+            Velocity(Vec2::new(rng.next_range(2400.0, 15000.0), 0.0)),
+        );
+        world.insert(bullet, Collider::circle(4.0));
+        world.insert(bullet, RigidBody::dynamic().with_restitution(0.8));
+        for frame in 0..40 {
+            match frame {
+                8 => wake(&mut world, top),
+                16 => world.get_mut::<Velocity>(bottom).unwrap().0 = Vec2::new(0.0, -180.0),
+                24 => {
+                    world.despawn(top);
+                }
+                _ => {}
+            }
+            physics_step(&mut world);
+            world
+                .get_resource_mut::<EventQueue<CollisionEvent>>()
+                .unwrap()
+                .flush();
+        }
+        let buffers = world.get_resource::<PhysicsBuffers>().unwrap();
+        assert!(
+            !buffers.is_sleeping(bottom),
+            "wake cases never disturbed the sleeper"
+        );
+        checked += buffers.checked_substeps;
+    }
+    assert_eq!(
+        checked, 1200,
+        "every substep must run the equivalence oracle"
+    );
+}
+
+#[test]
+fn contact_woken_body_rebuilds_pairs_over_static_floor_in_waking_frame() {
+    let mut world = seed_world();
+    let (bottom, top) = spawn_sleeping_stack(&mut world);
+    settle_to_sleep(&mut world, &[bottom, top]);
+    // Hit the bottom body horizontally, below the top body: the first
+    // build must omit sleeper-floor, then include it immediately after wake.
+    let y = world.get::<Position>(bottom).unwrap().0.y;
+    let bullet = world.spawn();
+    world.insert(bullet, Position(Vec2::new(-20.0, y)));
+    world.insert(bullet, Velocity(Vec2::new(2400.0, 0.0)));
+    world.insert(bullet, Collider::circle(4.0));
+    world.insert(bullet, RigidBody::dynamic());
+    let config = *world.get_resource::<PhysicsConfig>().unwrap();
+    let dt = 1.0 / 60.0;
+    let sub_dt = dt / config.substeps as f32;
+    let mut buffers = world.remove_resource::<PhysicsBuffers>().unwrap();
+    gather_proxies(&world, &mut buffers.proxies);
+    sleep_frame_start(&mut buffers);
+    buffers.island_parent = (0..buffers.proxies.len() as u32).collect();
+    buffers.events.clear();
+    buffers.pairs_invalidated = true;
+    buffers.check_pair_contacts = true;
+    let bottom_idx = buffers
+        .proxies
+        .iter()
+        .position(|p| p.entity == Some(bottom))
+        .unwrap();
+    let floor_idx = buffers.proxies.iter().position(|p| !p.is_dynamic).unwrap();
+    let floor_pair = |pairs: &[(u32, u32)]| {
+        pairs
+            .iter()
+            .any(|&(a, b)| a as usize == bottom_idx && b as usize == floor_idx)
+    };
+    build_pairs(&config, dt, &mut buffers);
+    assert!(!floor_pair(&buffers.pairs), "sleepers must not initiate");
+    substep(&config, sub_dt, dt, &mut buffers, true);
+    assert!(
+        !buffers.proxies[bottom_idx].sleeping,
+        "impact must wake this substep"
+    );
+    assert!(
+        buffers.pairs_invalidated,
+        "wake must invalidate even if travel fits"
+    );
+    let builds = buffers.pair_builds;
+    for step in 1..config.substeps {
+        substep(
+            &config,
+            sub_dt,
+            dt - step as f32 * sub_dt,
+            &mut buffers,
+            true,
+        );
+        assert!(
+            floor_pair(&buffers.pairs),
+            "woken body missing its static floor"
+        );
+        assert!(
+            buffers.proxies[bottom_idx].center.y + 6.0 < 103.0,
+            "woken body fell through its floor"
+        );
+    }
+    assert!(buffers.pair_builds > builds);
+    assert!(
+        buffers
+            .contacts
+            .iter()
+            .any(|c| c.a as usize == bottom_idx && c.b as usize == floor_idx)
+    );
+}
+
+#[test]
+fn fast_body_trips_pair_budget_and_rebuilds_before_narrow_phase() {
+    let mut world = seed_world();
+    let bullet = world.spawn();
+    world.insert(bullet, Position(Vec2::ZERO));
+    world.insert(bullet, Velocity(Vec2::new(240.0, 0.0)));
+    world.insert(bullet, Collider::circle(4.0));
+    world.insert(bullet, RigidBody::dynamic());
+    let wall = world.spawn();
+    world.insert(wall, Position(Vec2::new(48.0, 0.0)));
+    world.insert(wall, Collider::aabb(Vec2::new(2.0, 32.0)));
+    world.insert(wall, RigidBody::r#static());
+    let config = *world.get_resource::<PhysicsConfig>().unwrap();
+    let dt = 1.0 / 60.0;
+    let sub_dt = dt / config.substeps as f32;
+    let mut buffers = PhysicsBuffers::default();
+    gather_proxies(&world, &mut buffers.proxies);
+    buffers.island_parent = (0..buffers.proxies.len() as u32).collect();
+    buffers.check_pair_contacts = true;
+    build_pairs(&config, dt, &mut buffers);
+    assert!(
+        buffers.pairs.is_empty(),
+        "wall should start outside the budget"
+    );
+    let idx = buffers
+        .proxies
+        .iter()
+        .position(|p| p.entity == Some(bullet))
+        .unwrap();
+    substep(&config, sub_dt, dt, &mut buffers, false);
+    assert_eq!(buffers.pair_builds, 1, "unspent budget should reuse pairs");
+    assert!(buffers.pair_budgets[idx].travel > 0.0);
+    // Model an impulse spike after the first build. The next admission must
+    // see the wall even though it wasn't a candidate in the old list.
+    buffers.proxies[idx].velocity = Vec2::new(15000.0, 0.0);
+    assert!(pair_budget_exhausted(&config, sub_dt, &buffers));
+    substep(&config, sub_dt, dt - sub_dt, &mut buffers, false);
+    assert_eq!(buffers.pair_builds, 2);
+    assert!(buffers.contacts.iter().any(|c| c.a as usize == idx));
+    assert!(
+        buffers.proxies[idx].center.x + 4.0 <= 46.5,
+        "budget trip tunneled wall"
+    );
+    assert!(
+        (buffers.pair_budgets[idx].radius - (15000.0 * (dt - sub_dt) + 2.0 * config.linear_slop))
+            .abs()
+            < 1e-4,
+        "rebuild must use the remaining frame time"
+    );
+    // Accumulated travel is independently sufficient to invalidate even
+    // after velocity drops to zero (e.g. a solver/sweep clamp).
+    buffers.proxies[idx].velocity = Vec2::ZERO;
+    buffers.pair_budgets[idx].travel = buffers.pair_budgets[idx].radius;
+    assert!(pair_budget_exhausted(&config, sub_dt, &buffers));
+}
+
+#[test]
+fn warm_start_forgets_disappearing_contacts_and_syncs_empty_final_substep() {
+    let mut world = seed_world();
+    let body = world.spawn();
+    world.insert(body, Position(Vec2::ZERO));
+    world.insert(body, Velocity(Vec2::new(100.0, 0.0)));
+    world.insert(body, Collider::circle(5.0));
+    world.insert(body, RigidBody::dynamic());
+    let wall = world.spawn();
+    world.insert(wall, Position(Vec2::new(8.0, 0.0)));
+    world.insert(wall, Collider::circle(5.0));
+    let config = PhysicsConfig {
+        gravity: Vec2::ZERO,
+        ..PhysicsConfig::default()
+    };
+    let mut buffers = PhysicsBuffers::default();
+    gather_proxies(&world, &mut buffers.proxies);
+    buffers.reference_impulses = Some(ImpulseMap::default());
+    let body_index = buffers
+        .proxies
+        .iter()
+        .position(|p| p.entity == Some(body))
+        .unwrap();
+    let key = pair_key(entity_key(body), entity_key(wall));
+    // A generous real travel budget keeps the candidate present while the
+    // exact contact disappears and returns. The reference map checks the
+    // warm-start value before every solve, not only the final result.
+    build_pairs(&config, 1.0, &mut buffers);
+    substep(&config, 1.0 / 240.0, 1.0, &mut buffers, false);
+    assert!(buffers.contacts.iter().any(|c| c.impulse > 0.0));
+    let builds = buffers.pair_builds;
+    for (x, rebuild) in [
+        (-30.0, false),
+        (0.0, false),
+        (-30.0, true),
+        (0.0, true),
+        (-30.0, false),
+    ] {
+        buffers.proxies[body_index].center = Vec2::new(x, 0.0);
+        buffers.proxies[body_index].velocity = Vec2::ZERO;
+        if rebuild {
+            buffers.pairs_invalidated = true;
+        }
+        substep(&config, 1.0 / 240.0, 1.0, &mut buffers, false);
+        if x < 0.0 {
+            assert!(buffers.contacts.is_empty());
+        }
+    }
+    assert!(
+        buffers.pair_builds > builds,
+        "exercise reordered pair-cache boundary"
+    );
+    sync_impulses(&mut buffers);
+    assert_eq!(buffers.impulses.get(key), 0.0);
+    assert!(buffers.impulses.keys.iter().all(|key| *key == EMPTY_PAIR));
+    assert!(!buffers.impulses_dirty);
+}

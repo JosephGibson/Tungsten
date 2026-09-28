@@ -1,79 +1,128 @@
 # Internal release procedure
 
-Canonical release operations for people and coding agents (`D-071`, `D-072`, `D-074`). Start with the requested outcome: prepare a branch, publish a version, verify an existing release, rehearse, or recover a failure. Preparation does not imply publication or deletion. Follow authorization already given in the session; do not repeatedly ask for it.
+Canonical procedure (`D-071`, `D-072`, `D-074`). **The human pastes the Git commands.** Global `~/.claude/settings.json` denies agent `git add/commit/push/fetch/tag/merge/checkout`; agents prepare files, run checks and supply commands, without bypassing those denies through another command or API.
 
-## Sources and tools
+## Ordinary milestone release
 
-| Concern | Source |
-| --- | --- |
-| Branch documentation and version cut | [tungsten-finalize](../.claude/skills/tungsten-finalize/SKILL.md) |
-| Release orchestration and handoff | [tungsten-release](../.claude/skills/tungsten-release/SKILL.md) |
-| Version, notes and packaging | [release.py](../scripts/release.py), [tests](../scripts/test-release.py) |
-| Git/GitHub preflight | [release-preflight.py](../scripts/release-preflight.py), [tests](../scripts/test-release-preflight.py) |
-| Hosted builds and publication | [release.yml](../.github/workflows/release.yml) |
-| Launcher CPU selection | [launcher](../tools/launcher/src/main.rs) |
+Start at the repo root on the finished milestone branch, with [branch documentation prepared](#branch-preparation) and the intended changes reviewed. Use Git, authenticated `gh`, network access and a GPU/display for smoke tests. Replace `X.Y.Z`, `0.NN`, `MNN short summary` and the run ID; adjust remote/repository if needed. Paste **one numbered block at a time in the same Bash terminal**, stopping on any failure. If already cut, merged or tagged, [resume from that state](#resume-or-use-another-branch).
 
-The workspace version equals the newest versioned changelog heading and the DESIGN status version. `just release-check [TAG]` validates those files, not Git tag objects; it works offline and in shallow CI. `just release-cut VERSION` moves `[Unreleased]` to a dated version section, updates Cargo.toml and DESIGN, and refreshes Cargo.lock. README has no release status and is never rewritten by the cut.
+**Commit messages are one subject line, with no body:** `Update 0.NN: short summary`. For example, `Update 0.28: M30 parallax, screen-shake, squash/stretch (#29)`. Include `(#PR)` once only when there is a PR; PRs are optional. The commands below use a local squash merge.
 
-Git operations require Git; GitHub inspection requires authenticated `gh` and network access. Run from the repository root. Example commands below use Bash and these placeholders; replace the version with the intended release, and use the repository and remote actually being released:
-
-```bash
-release_version=X.Y.Z
-release_tag="v$release_version"
-release_remote=origin
-release_branch=main
-release_repo=JosephGibson/Tungsten
-```
-
-## Prepare and select the commit
-
-1. Finalize the branch using `tungsten-finalize`. Inspect the requested version first: if it is already the current version with notes, verify that cut and skip another cut. New work after publication belongs in `[Unreleased]` for a later version. Do not bump versions when opening branches.
-2. Review and commit the final changes, then integrate them into the intended release branch within the user's authorized scope. Normal milestone releases use the final merged commit on `main`; patch releases can explicitly select a maintenance branch. A squash merge creates a different commit, even when the files are identical. Tag the integrated commit after merging.
-3. Refresh the selected branch without silently merging or rewriting local work:
+1. Set the release details.
 
    ```bash
-   git fetch --no-tags "$release_remote" "refs/heads/$release_branch:refs/remotes/$release_remote/$release_branch"
-   release_sha=$(git rev-parse "refs/remotes/$release_remote/$release_branch^{commit}")
-   just release-preflight "$release_version" --ref "$release_sha" \
-     --remote "$release_remote" --branch "$release_branch" --repo "$release_repo"
+   release_version='X.Y.Z'
+   milestone_branch='0.NN'
+   release_message='Update 0.NN: MNN short summary'
+   release_remote=origin
+   release_repo=JosephGibson/Tungsten
+   release_tag="v$release_version"
    ```
 
-The preflight is read-only: it checks a clean working tree/index, unfinished Git operations, files at the selected commit, the live push destination, the remote-tracking branch, local/remote tag objects, GitHub repository state and runs for that commit. A new tag must name the live branch tip; an existing tag can be inspected at its original commit after the branch advances. Historical published tags outside main remain valid for verification. A prerelease without its own changelog section requires explicit `--rehearsal`.
+2. Cut once, validate and review the changed-file list.
 
-A missing or stale ref calls for a fetch and inspection, not an automatic reset or force push. An existing conflicting tag calls for investigation, not replacement. The preflight prints proposed commands only after its checks pass. State can change after the check: rerun it if the commit, branch, tag or release changes before acting.
+   ```bash
+   test "$(git branch --show-current)" = "$milestone_branch" &&
+   just release-cut "$release_version" &&
+   just check && just ctx && just repo-check &&
+   just script-test && just smoke &&
+   git diff --check && git status --short && git diff --stat
+   ```
 
-## Validate, tag and push
+3. Commit the reviewed changes with one line and push the milestone branch.
 
-Run the checks required by [AGENTS.md](../AGENTS.md) on the contents being released: `just check`, `just ctx`, `just repo-check`, plus `just script-test` for scripts and `just smoke` for GPU wiring/non-trivial changes. Record the tested SHA; if testing a branch before a squash merge, compare its tree with the final commit and report that distinction. CI remains informational (`D-070`); inspect and report results for the selected SHA, not merely the latest green run. A release build does not perform GPU/audio validation.
+   ```bash
+   git add -A &&
+   git commit -m "$release_message" &&
+   git -c push.followTags=false push "$release_remote" \
+     "HEAD:refs/heads/$milestone_branch" &&
+   release_tested_sha=$(git rev-parse HEAD)
+   ```
 
-Use the preflight's exact SHA and tag commands. For a new tag the shape is:
+4. Squash into refreshed `main`; require the tested tree before committing.
 
-```bash
-git tag -a "$release_tag" "$release_sha" -m "Tungsten $release_version"
-git -c push.followTags=false push "$release_remote" "refs/tags/$release_tag:refs/tags/$release_tag"
-```
+   ```bash
+   git fetch --no-tags "$release_remote" \
+     "refs/heads/main:refs/remotes/$release_remote/main" &&
+   git switch main &&
+   git merge --ff-only "refs/remotes/$release_remote/main" &&
+   git merge --squash "$release_tested_sha" &&
+   git diff --cached --check &&
+   test "$(git write-tree)" = "$(git rev-parse "$release_tested_sha^{tree}")" &&
+   git commit -m "$release_message" &&
+   git -c push.followTags=false push "$release_remote" HEAD:refs/heads/main
+   ```
 
-Keep existing published tags fixed. If the same annotated tag already exists locally and remotely, resume verification/recovery; pushing it again does not start another workflow. Tagging alone does not publish; pushing the tag starts the release workflow. Use one explicit tag instead of pushing every local tag.
+5. **RE-READ THE SHA HERE.** The squash commit has a new identity. Fetch it after the push, run the read-only preflight, then tag exactly that SHA.
 
-For an explicitly chosen workflow that publishes a local branch update and its tag together, Git supports an atomic push of those two named refs. It fails without updating either if the server rejects one or lacks atomic support. The ordinary preflight above requires the branch to be published first; do not bypass a failure by switching casually to this variant. It needs separate review of both proposed refs. See [git push](https://git-scm.com/docs/git-push).
+   ```bash
+   git fetch --no-tags "$release_remote" \
+     "refs/heads/main:refs/remotes/$release_remote/main" &&
+   release_sha=$(git rev-parse "refs/remotes/$release_remote/main^{commit}") &&
+   test "$release_sha" = "$(git rev-parse HEAD)" &&
+   just release-preflight "$release_version" --ref "$release_sha" \
+     --remote "$release_remote" --branch main --repo "$release_repo" &&
+   git tag -a "$release_tag" "$release_sha" -m "Tungsten $release_version" &&
+   git -c push.followTags=false push "$release_remote" \
+     "refs/tags/$release_tag:refs/tags/$release_tag"
+   ```
 
-## Watch and verify the exact run
+6. Find the row whose `headBranch` is the tag and `headSha` is `release_sha`. If delivery is pending, repeat this lookup after a short wait.
 
-Rerun preflight after pushing to obtain the matching run ID. If event delivery is still pending, query again after a short wait. For manual inspection:
+   ```bash
+   gh run list --repo "$release_repo" --workflow release.yml \
+     --commit "$release_sha" --event push \
+     --json databaseId,headSha,headBranch,status,conclusion,url
+   ```
 
-```bash
-gh run list --repo "$release_repo" --workflow release.yml --commit "$release_sha" \
-  --event push --json databaseId,headSha,headBranch,status,conclusion,url
-```
+7. Replace the run ID with that row's `databaseId`, wait, and inspect the release and remote tag.
 
-Select the row whose `headBranch` equals the tag and whose `headSha` equals the selected SHA. Use that numeric ID, not an interactive choice of the newest run:
+   ```bash
+   release_run_id='RUN_ID_FROM_STEP_6'
+   gh run watch "$release_run_id" --repo "$release_repo" --exit-status &&
+   gh release view "$release_tag" --repo "$release_repo" &&
+   git ls-remote "$release_remote" \
+     "refs/tags/$release_tag" "refs/tags/$release_tag^{}"
+   ```
 
-```bash
-release_run_id=RUN_ID
-gh run watch "$release_run_id" --repo "$release_repo" --exit-status
-gh release view "$release_tag" --repo "$release_repo"
-git ls-remote "$release_remote" "refs/tags/$release_tag" "refs/tags/$release_tag^{}"
-```
+The remote tag's `^{}` line must equal `release_sha`. Finish with the [archive/asset checks](#archive-and-asset-verification); hosted builds do not test GPU/audio behavior. Keep published tags fixed: never move or force-push them. Always tag the exact preflight-verified SHA, never bare `HEAD`.
+
+## Reference
+
+### Branch preparation
+
+[tungsten-finalize](../.claude/skills/tungsten-finalize/SKILL.md) handles this docs pass and the requested cut; [tungsten-release](../.claude/skills/tungsten-release/SKILL.md) handles the Git handoff and release inspection. This guide owns both procedures. Preparation alone does not authorize publication or deletion; honor the requested scope and existing authorization without asking again.
+
+- Establish the requested version and refreshed branch base; have the human fetch if needed. Inventory commits/diffs and active plans. If already squash-merged, compare trees as well as history to avoid counting the same changes twice.
+- Run `just release-check`. The workspace version must equal the newest versioned changelog heading and DESIGN's status version. It stays unchanged until the cut; milestone `0.NN` normally ships `0.NN.0`, maintenance increments the patch. Resolve drift without discarding unrelated work.
+- Prepare `[Unreleased]` from the inventory: a `Summary:` naming the plan, applicable Added/Changed/Fixed/Removed groups, bold bullet leads and useful decision/path references. Do not create a release heading manually. If the requested version is already current with notes, inspect those notes, Cargo.lock and DESIGN and skip cutting again. After publication, new work goes in `[Unreleased]` for a later version. Resolve older or ambiguous version requests before editing released notes.
+- During future preparation, use ``Workspace `vX.Y.Z`; release summary`` in DESIGN's status line; **omit `on branch …`**. A branch name goes stale and is not part of the version invariant. The cut updates the version token only; review the surrounding prose. README stays version-free; update its substance only when needed.
+- Add any new decision's row to [DECISION_INDEX.md](DECISION_INDEX.md). Reversals add a decision, mark the old one `Superseded by D-NNN`, and update both rows. Update [LLM_INDEX.md](LLM_INDEX.md) for changed task areas/paths; keep it under 8 KiB.
+- **Plan archival stays manual, before the cut.** Review acceptance checks, mark completed/abandoned/superseded plans, fix their relative links for the destination, move each known file to the archive, and repoint incoming links. Never read, search or list the archive. Keep unfinished plans active and update phase status appropriately. The cut cannot infer completion or choose replacement links; `just repo-check` checks active plans and non-archive links, so verify archive destinations by construction.
+
+`just release-cut VERSION [--date YYYY-MM-DD]` moves `[Unreleased]` into a dated section, updates Cargo.toml and DESIGN, and refreshes Cargo.lock. It rejects inconsistent files, empty notes, non-increasing versions and dates before the last release. If lock refresh fails, the cut files are already changed: fix Cargo.lock and rerun checks, not the cut. README is never rewritten.
+
+Step 2 covers ordinary milestone checks under [AGENTS.md](../AGENTS.md); narrow documentation-only work can omit script/GPU checks when those rules allow it. Report `release_tested_sha` and the final SHA separately: the squash must preserve the tested tree. If integration changes the tree, resolve it and test the resulting contents before publication. CI remains informational (`D-070`); report results for the selected SHA and outstanding hardware checks.
+
+### Resume or use another branch
+
+| State | Resume point |
+| --- | --- |
+| Version already cut, not committed | Skip the cut in step 2; review and validate the existing cut. |
+| Cut committed and milestone branch pushed | Validate it, set `release_tested_sha` to its commit SHA, then step 4. |
+| Already squash-merged through GitHub | Skip the local squash. Fetch main, select its final integrated SHA and compare its tree with the tested milestone commit; run step 5's preflight/tag/push using that SHA. No requirement to switch a stale local main. |
+| Tag already exists | Inspect at its original commit using preflight; use only the proposed missing push/watch/view commands. Do not cut or create the tag again. |
+| Maintenance or rehearsal branch | Explicitly select that pushed branch with `--branch`; fetch its tracking ref and select its SHA. Milestone tags use final integrated main. |
+
+`just release-check [TAG]` checks files offline, including shallow CI; it does not inspect Git tag objects. `just release-preflight VERSION --ref SHA --remote REMOTE --branch BRANCH --repo OWNER/REPO` checks committed files, a clean tree/index, unfinished Git operations, the live push destination and tracking ref, tag objects, GitHub repository state and matching release/CI runs. **Preflight stays read-only** and prints proposed commands only on success. It needs the branch already pushed and the final SHA, so it runs near the end.
+
+New tags must name the live branch tip. Existing tags can be verified at their original commit after the branch advances, including historical tags outside main. Fetch/inspect stale refs or divergent local main; never reset automatically. Investigate conflicting tags without replacing them. Rerun preflight if the commit, branch, tag or release changes before acting. An unchanged tag push does not start another workflow; push only the named tag.
+
+An explicitly chosen atomic branch-and-tag push updates both named refs or neither if rejected/unsupported. It needs separate review of both refs; ordinary preflight requires an already-published branch, so this is not a workaround for a failed check. See [git push](https://git-scm.com/docs/git-push).
+
+### Archive and asset verification
+
+Preflight after the tag push can also report the matching run ID. Match both tag and SHA, and watch that numeric ID rather than choosing the newest run interactively.
 
 For an annotated tag, the `^{}` line identifies its commit; the other line identifies the tag object. GitHub release `target_commitish` is not proof of the tagged commit. Confirm the remote tag, run SHA and intended SHA agree.
 
@@ -82,21 +131,21 @@ The workflow builds the four examples for Linux (`x86_64-unknown-linux-gnu`, Ubu
 Expect a Linux `.tar.gz`, a Windows `.zip`, and `SHA256SUMS`. Download into a fresh directory and verify both archives (requires `sha256sum`; use an equivalent SHA-256 tool on Windows):
 
 ```bash
-release_download=$(mktemp -d)
+release_download=$(mktemp -d) &&
 gh release download "$release_tag" --repo "$release_repo" --dir "$release_download" \
-  --pattern 'tungsten-examples-*' --pattern SHA256SUMS
+  --pattern 'tungsten-examples-*' --pattern SHA256SUMS &&
 (cd "$release_download" && sha256sum -c SHA256SUMS)
 ```
 
 Check that both expected platform filenames are present, notes match the tag's changelog section, and prerelease classification matches the tag. Extract the appropriate archive and launch an example on a GPU machine, including from outside the archive directory. Its first console line reports the selected CPU level. `TUNGSTEN_CPU_LEVEL=x86-64` exercises the portable path; never force v3 on an unsupported CPU. Report untested platforms explicitly. Linux needs compatible Vulkan/windowing/audio libraries and may need glibc 2.39.
 
-## Rehearsals and versioned prereleases
+### Rehearsals and versioned prereleases
 
 A prerelease tag with its own changelog section is a versioned release and must match the workspace version. A prerelease tag without that section is a rehearsal: the workspace still passes consistency checks, notes come from `[Unreleased]`, and the tag version need not match. Both publish as GitHub prereleases. A rehearsal may use the tip of a pushed development branch by setting `--branch` explicitly; it does not require a version cut.
 
 Use a unique rehearsal tag per attempt, for example `v0.0.0-test.20260926.gabcdef1`, adding a suffix if needed. Record its SHA and run ID. For such a tag, pass the version without `v` and `--rehearsal` to preflight. Do not reuse a fixed test tag for a different commit. Cleanup is a separate requested action targeting only that rehearsal release/tag; inspect whether it is immutable before attempting deletion.
 
-## Recover according to state
+### Recover according to state
 
 Always inspect the identified run and GitHub release first. Network/authentication errors are not evidence that a release is absent. Reruns use the original commit and ref; editing a workflow on a later commit cannot repair that run. [GitHub rerun behavior](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs)
 
@@ -111,8 +160,18 @@ Always inspect the identified run and GitHub release first. Network/authenticati
 
 Current `gh release create` with assets creates a draft, uploads assets, then publishes. Drafts are mutable; published immutable releases lock their assets and tag. Account for that boundary during recovery. See [GitHub CLI release creation](https://cli.github.com/manual/gh_release_create). Rerun once for an identified transient problem, inspect the result, and stop repeating the same failing action without new evidence.
 
-## Handoff and next branch
+### Handoff and next branch
 
-Report version/tag, commit SHA, release URL, run ID/result, checks performed, archive/checksum verification and outstanding platform/GPU checks. If only preparation was requested, report the cut/version and remaining merge/tag/publication steps instead.
+Report version/tag, commit SHA, release URL, run ID/result, checks performed, archive/checksum verification and outstanding platform/GPU checks. For preparation-only work, report requested/current versions, whether a cut occurred, plans moved, checks and the remaining numbered Git steps.
 
 When starting the next milestone, refresh `origin/main` and create the branch from it, rather than a stale local main or the pre-squash milestone branch. If the next branch already exists, inspect its history and work before integrating main; never reset it automatically. Preserve existing authorization and the repository's optional PR process.
+
+### Tool sources
+
+| Concern | Source |
+| --- | --- |
+| Version, notes and packaging | [release.py](../scripts/release.py), [tests](../scripts/test-release.py) |
+| Read-only Git/GitHub preflight | [release-preflight.py](../scripts/release-preflight.py), [tests](../scripts/test-release-preflight.py) |
+| Recipes | [justfile](../justfile) |
+| Hosted builds and publication | [release.yml](../.github/workflows/release.yml) |
+| Launcher CPU selection | [launcher](../tools/launcher/src/main.rs) |

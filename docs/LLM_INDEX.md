@@ -36,7 +36,7 @@ Task → file map. Open it on demand before a broad search, not by default. Pref
 
 | Task | Open |
 | --- | --- |
-| Contacts, resolution, broadphase, sleeping (`D-033`, `D-062`–`D-067`) | `core/physics/step.rs`, `core/physics/collision.rs`, `core/physics/broadphase.rs` |
+| Contacts, resolution, broadphase, sleeping (`D-033`, `D-062`–`D-067`, `D-075`, `D-076`) | `core/physics/step.rs`, `core/physics/collision.rs`, `core/physics/broadphase.rs` |
 | Benchmarks, tunneling, determinism | `crates/tungsten-core/benches/physics_bench.rs`, `crates/tungsten-core/tests/physics_tunneling.rs`, `crates/tungsten-core/tests/physics_containment.rs`, `crates/tungsten-core/tests/physics_determinism.rs` |
 
 ## Rendering
@@ -45,7 +45,7 @@ Read `crates/tungsten-render/AGENTS.md` before editing the render crate.
 
 | Task | Open |
 | --- | --- |
-| Renderer, pools, draw, GPU timings, surface acquire | `render/lib.rs`, `render/renderer.rs`, `render/surface_acquire.rs` |
+| Renderer, pools, draw, GPU timings, surface acquire | `render/lib.rs`, `render/renderer.rs`, `render/timing.rs`, `render/surface_acquire.rs` |
 | Render components, default sprite extract (`D-042`) | `core/components.rs`, `tungsten/sprite_extract.rs` |
 | Materials, post-stack (`D-058`) | `core/assets/material.rs`, `core/post.rs`, `render/material.rs`, `render/post/`, `render/shaders/stock/` |
 | SMAA (`D-059`) | `tungsten/post_aa.rs`, `render/post/smaa.rs`, `render/post/smaa_luts.rs`, `render/targets.rs`, `render/passes/order.rs` |
@@ -61,7 +61,7 @@ Run with `cargo run -p example-NN-name`.
 | --- | --- |
 | Platformer | `examples/01_platformer/src/main.rs`, `examples/01_platformer/src/setup.rs`, `examples/01_platformer/src/systems.rs`, `examples/01_platformer/src/extract.rs`, `examples/01_platformer/src/state.rs`, `examples/01_platformer/src/gameplay.rs` |
 | Platformer art, level and layout regeneration | `examples/01_platformer/tools/README.md`, `examples/01_platformer/tools/generate.py`, `examples/01_platformer/tools/level.json`, `examples/01_platformer/src/level_layout.rs` |
-| Sprite stress, perf scenes | `examples/02_sprite_stress/src/main.rs`, `examples/02_sprite_stress/src/ecs_high_load.rs`, `examples/02_sprite_stress/src/physics_stress.rs` |
+| Sprite stress, perf scenes | `examples/02_sprite_stress/src/main.rs`, `examples/02_sprite_stress/src/ecs_high_load.rs`, `examples/02_sprite_stress/src/physics_stress.rs`, `examples/02_sprite_stress/src/render_features.rs` |
 | Scene/state lifecycle | `examples/03_scene_state/src/main.rs`, `examples/03_scene_state/src/states.rs` |
 | Shader/material/post fixtures | `examples/04_shader_playground/src/main.rs` |
 | Review findings and follow-ups | `docs/repo-review-2026-09-25.md` |

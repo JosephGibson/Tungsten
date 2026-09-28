@@ -1,12 +1,15 @@
 //! Example 02: sprite stress.
 //!
-//! Modes: `baseline` default, `ecs-high-load`, `physics-stress`. Env:
-//! `STRESS_SCENE`, `STRESS_COUNT`.
+//! Modes: `baseline` default, `ecs-high-load`, `physics-stress`, `render-features`. Env:
+//! `STRESS_SCENE`, `STRESS_COUNT`, `STRESS_PHYSICS_SLEEP` (`0`/`off` disables
+//! island sleeping in `physics-stress` for solver-throughput captures).
+//! `STRESS_ECS_DENSITY=preserve` scales ECS world area with count; default `fixed`.
 //! Perf capture: release, Vulkan, 1920x1080, 300 frames after 60-frame warm-up.
 
 mod baseline;
 mod ecs_high_load;
 mod physics_stress;
+mod render_features;
 mod shared;
 
 use tungsten::core::Config;
@@ -21,6 +24,7 @@ enum StressScene {
     Baseline,
     EcsHighLoad,
     PhysicsStress,
+    RenderFeatures,
 }
 
 impl StressScene {
@@ -29,8 +33,9 @@ impl StressScene {
             "baseline" => Ok(Self::Baseline),
             "ecs-high-load" => Ok(Self::EcsHighLoad),
             "physics-stress" => Ok(Self::PhysicsStress),
+            "render-features" => Ok(Self::RenderFeatures),
             other => Err(anyhow::anyhow!(
-                "Unknown STRESS_SCENE '{other}'. Expected 'baseline', 'ecs-high-load', or 'physics-stress'"
+                "Unknown STRESS_SCENE '{other}'. Expected 'baseline', 'ecs-high-load', 'physics-stress', or 'render-features'"
             )),
         }
     }
@@ -40,6 +45,7 @@ impl StressScene {
             Self::Baseline => DEFAULT_SPRITE_COUNT,
             Self::EcsHighLoad => DEFAULT_HIGH_LOAD_COUNT,
             Self::PhysicsStress => DEFAULT_PHYSICS_STRESS_COUNT,
+            Self::RenderFeatures => render_features::DEFAULT_RENDER_FEATURES_COUNT,
         }
     }
 }
@@ -48,6 +54,8 @@ impl StressScene {
 struct ExampleOptions {
     scene: StressScene,
     count: usize,
+    physics_sleep: bool,
+    preserve_density: bool,
 }
 
 impl ExampleOptions {
@@ -56,7 +64,39 @@ impl ExampleOptions {
         let scene = StressScene::parse(raw_scene.as_deref())?;
         let raw_count = std::env::var("STRESS_COUNT").ok();
         let count = resolve_count(scene, raw_count.as_deref());
-        Ok(Self { scene, count })
+        let raw_sleep = std::env::var("STRESS_PHYSICS_SLEEP").ok();
+        let physics_sleep = parse_physics_sleep(raw_sleep.as_deref())?;
+        let raw_density = std::env::var("STRESS_ECS_DENSITY").ok();
+        let preserve_density = parse_ecs_density(raw_density.as_deref())?;
+        Ok(Self {
+            scene,
+            count,
+            physics_sleep,
+            preserve_density,
+        })
+    }
+}
+
+/// `STRESS_PHYSICS_SLEEP`: unset, `1` or `on` keeps sleeping (the canonical
+/// scene); `0` or `off` disables it.
+fn parse_physics_sleep(raw: Option<&str>) -> anyhow::Result<bool> {
+    match raw.unwrap_or("1") {
+        "1" | "on" => Ok(true),
+        "0" | "off" => Ok(false),
+        other => Err(anyhow::anyhow!(
+            "Unknown STRESS_PHYSICS_SLEEP '{other}'. Expected '1', 'on', '0', or 'off'"
+        )),
+    }
+}
+
+/// Fixed world is the canonical 50k workload; preserve scales world area by count.
+fn parse_ecs_density(raw: Option<&str>) -> anyhow::Result<bool> {
+    match raw.unwrap_or("fixed") {
+        "fixed" => Ok(false),
+        "preserve" => Ok(true),
+        other => Err(anyhow::anyhow!(
+            "Unknown STRESS_ECS_DENSITY '{other}'. Expected 'fixed' or 'preserve'"
+        )),
     }
 }
 
@@ -74,6 +114,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut config = Config::load("tungsten.json")?;
     config.window.title = match options.scene {
+        StressScene::RenderFeatures => format!("Render Features ({} sprites)", options.count),
         StressScene::Baseline => format!("Sprite Stress ({} sprites)", options.count),
         StressScene::EcsHighLoad => {
             format!("Sprite Stress ECS High Load ({} entities)", options.count)
@@ -88,12 +129,22 @@ fn main() -> anyhow::Result<()> {
     });
     config.display.vsync = Some(false);
 
+    if options.scene == StressScene::RenderFeatures {
+        config.render.post_aa = tungsten::core::config::PostAaMode::SmaaHigh;
+    }
     let mut app = App::new(config)?;
 
     match options.scene {
+        StressScene::RenderFeatures => {
+            render_features::configure_render_features_scene(&mut app, options.count);
+        }
         StressScene::Baseline => configure_baseline_scene(&mut app, options.count),
-        StressScene::EcsHighLoad => configure_high_load_scene(&mut app, options.count),
-        StressScene::PhysicsStress => configure_physics_stress_scene(&mut app, options.count),
+        StressScene::EcsHighLoad => {
+            configure_high_load_scene(&mut app, options.count, options.preserve_density);
+        }
+        StressScene::PhysicsStress => {
+            configure_physics_stress_scene(&mut app, options.count, options.physics_sleep);
+        }
     }
 
     apply_overlay_env(&mut app);

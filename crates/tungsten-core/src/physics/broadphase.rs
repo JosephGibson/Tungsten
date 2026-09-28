@@ -39,6 +39,12 @@ pub struct SpatialGrid {
     entry_cells: Vec<IVec2>,
     query_marks: Vec<u32>,
     query_generation: u32,
+    /// True while every staged entry covers one cell under a distinct id; a
+    /// query then meets each id at most once and skips the dedupe marks.
+    single_cell_ids: bool,
+    /// Per-id generation marks for the duplicate-id check at insert.
+    insert_marks: Vec<u32>,
+    insert_generation: u32,
 }
 
 impl Default for SpatialGrid {
@@ -63,6 +69,9 @@ impl SpatialGrid {
             entry_cells: Vec::new(),
             query_marks: Vec::new(),
             query_generation: 1,
+            single_cell_ids: true,
+            insert_marks: Vec::new(),
+            insert_generation: 1,
         }
     }
 
@@ -79,6 +88,13 @@ impl SpatialGrid {
         self.entry_ids.clear();
         self.entry_cells.clear();
         self.dirty = true;
+        self.single_cell_ids = true;
+        if self.insert_generation == u32::MAX {
+            self.insert_marks.fill(0);
+            self.insert_generation = 1;
+        } else {
+            self.insert_generation += 1;
+        }
     }
 
     #[must_use]
@@ -92,6 +108,11 @@ impl SpatialGrid {
         let span =
             ((max_cell.x - min_cell.x + 1) as usize) * ((max_cell.y - min_cell.y + 1) as usize);
         self.cell_refs += span;
+        if self.single_cell_ids {
+            let mark = mark_slot(&mut self.insert_marks, id);
+            self.single_cell_ids = span == 1 && *mark != self.insert_generation;
+            *mark = self.insert_generation;
+        }
         self.staged.push(Staged {
             id,
             min_cell,
@@ -103,13 +124,25 @@ impl SpatialGrid {
     /// Collect unique proxies overlapping `query`; generation marks dedupe cells.
     pub fn query(&mut self, query: &Aabb, exclude: Option<ProxyId>, out: &mut Vec<ProxyId>) {
         out.clear();
+        self.for_each_in(query, exclude, |id| out.push(id));
+    }
+
+    /// Visit each unique proxy overlapping `query` once, in the order `query`
+    /// returns them, without the intermediate `Vec` write and re-read.
+    pub fn for_each_in(
+        &mut self,
+        query: &Aabb,
+        exclude: Option<ProxyId>,
+        mut visit: impl FnMut(ProxyId),
+    ) {
         if self.dirty {
             self.build();
         }
         if self.entry_ids.is_empty() {
             return;
         }
-        let generation = self.begin_query();
+        let dedupe = !self.single_cell_ids;
+        let generation = if dedupe { self.begin_query() } else { 0 };
         let (min_cell, max_cell) = self.cell_range(query);
         let slot_mask = self.slot_mask;
         let slot_starts = &self.slot_starts;
@@ -131,12 +164,14 @@ impl SpatialGrid {
                     if Some(id) == exclude {
                         continue;
                     }
-                    let mark = mark_slot(query_marks, id);
-                    if *mark == generation {
-                        continue;
+                    if dedupe {
+                        let mark = mark_slot(query_marks, id);
+                        if *mark == generation {
+                            continue;
+                        }
+                        *mark = generation;
                     }
-                    *mark = generation;
-                    out.push(id);
+                    visit(id);
                 }
             }
         }

@@ -254,12 +254,28 @@ impl BloomPipeline {
     pub fn record_pass(
         &self,
         device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        pool: &RenderTargetPool,
+        params: &BloomParams,
+        src: TargetId,
+        dst: TargetId,
+    ) {
+        self.record_pass_timed(device, queue, encoder, pool, params, src, dst, None, 0);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn record_pass_timed(
+        &self,
+        device: &wgpu::Device,
         _queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         pool: &RenderTargetPool,
         params: &BloomParams,
         src: TargetId,
         dst: TargetId,
+        mut timing: Option<&mut crate::timing::TimingResources>,
+        slot: usize,
     ) {
         let mip_count = pool.scene.bloom_mip_count();
         if mip_count == 0 {
@@ -302,7 +318,9 @@ impl BloomPipeline {
                     },
                 })],
                 depth_stencil_attachment: None,
-                timestamp_writes: None,
+                timestamp_writes: timing
+                    .as_deref_mut()
+                    .map(|t| t.next(format!("post{slot}_bloom_threshold"))),
                 ..Default::default()
             });
             pass.set_pipeline(&self.threshold);
@@ -356,7 +374,9 @@ impl BloomPipeline {
                     },
                 })],
                 depth_stencil_attachment: None,
-                timestamp_writes: None,
+                timestamp_writes: timing
+                    .as_deref_mut()
+                    .map(|t| t.next(format!("post{slot}_bloom_down{level}"))),
                 ..Default::default()
             });
             pass.set_pipeline(&self.downsample);
@@ -415,7 +435,9 @@ impl BloomPipeline {
                         },
                     })],
                     depth_stencil_attachment: None,
-                    timestamp_writes: None,
+                    timestamp_writes: timing
+                        .as_deref_mut()
+                        .map(|t| t.next(format!("post{slot}_bloom_up{level}"))),
                     ..Default::default()
                 });
                 pass.set_pipeline(&self.upsample);
@@ -470,7 +492,7 @@ impl BloomPipeline {
                     },
                 })],
                 depth_stencil_attachment: None,
-                timestamp_writes: None,
+                timestamp_writes: timing.map(|t| t.next(format!("post{slot}_bloom_composite"))),
                 ..Default::default()
             });
             pass.set_pipeline(&self.composite);

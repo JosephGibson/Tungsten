@@ -371,6 +371,22 @@ impl PostStackRenderer {
         self.bloom
             .record_pass(device, queue, encoder, pool, params, src, dst);
     }
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn record_bloom_slot_timed(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        pool: &RenderTargetPool,
+        params: &tungsten_core::post::BloomParams,
+        src: TargetId,
+        dst: TargetId,
+        timing: Option<&mut crate::timing::TimingResources>,
+        slot: usize,
+    ) {
+        self.bloom
+            .record_pass_timed(device, queue, encoder, pool, params, src, dst, timing, slot);
+    }
 }
 
 #[cfg(test)]

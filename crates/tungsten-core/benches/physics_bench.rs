@@ -120,7 +120,25 @@ fn settle(world: &mut World, steps: usize) {
 
 /// Dense settled pile under gravity: persistent contacts, ~1 substep/step.
 fn build_dense_pile(count: usize) -> World {
+    dense_pile(count, true)
+}
+
+/// `dense_pile` with island sleeping off: settled but awake, so every
+/// iteration runs the full contact solve that the in-app physics-stress
+/// scene spends its pre-sleep frames in (the sleeping `dense_pile` is ~70x
+/// cheaper per step).
+fn build_dense_pile_awake(count: usize) -> World {
+    dense_pile(count, false)
+}
+
+fn dense_pile(count: usize, sleep: bool) -> World {
     let mut world = base_world(Vec2::new(0.0, GRAVITY_Y));
+    if !sleep {
+        world
+            .get_resource_mut::<PhysicsConfig>()
+            .expect("base_world inserts PhysicsConfig")
+            .sleep_threshold = 0.0;
+    }
     let mut rng = Pcg32::seeded(0x7C0F_FEE5);
     let rows = count.div_ceil(((PILE_WIDTH - 28.0) / SPAWN_SPACING) as usize);
     let top_y = FLOOR_Y - SPAWN_SPACING * (rows as f32 + 2.0) - 500.0;
@@ -219,6 +237,7 @@ fn bench_physics_step_scenarios(c: &mut Criterion) {
 
     let scenarios: &[Scenario] = &[
         ("dense_pile", build_dense_pile, &[3_000, 10_000, 25_000]),
+        ("dense_pile_awake", build_dense_pile_awake, &[3_000]),
         (
             "projectile_stream",
             build_projectile_stream,
@@ -258,16 +277,14 @@ fn bench_position_integration_50k(c: &mut Criterion) {
     }
     let dt = 1.0_f32 / 60.0;
 
+    // The collider-less integration shape `physics_step` uses (R3): one
+    // columnar pass, Collider excluded per archetype.
     c.bench_function("position_integration_50k", |b| {
         b.iter(|| {
-            let entities = world.query2_entities::<Position, Velocity>();
-            for entity in &entities {
-                if let (Some(vel), Some(pos)) = (
-                    world.get::<Velocity>(*entity).map(|v| v.0),
-                    world.get_mut::<Position>(*entity),
-                ) {
-                    pos.0 += vel * black_box(dt);
-                }
+            for (_entity, vel, pos, _body) in
+                world.query3_mut_without::<Velocity, Position, RigidBody, Collider>()
+            {
+                pos.0 += vel.0 * black_box(dt);
             }
         });
     });
@@ -297,10 +314,67 @@ fn bench_broadphase_rebuild_5k(c: &mut Criterion) {
     });
 }
 
+/// Dense neighbor search shaped like ecs-high-load: 50k agents uniform in
+/// 3200x1800 (about 8.7 per 32 px cell), a full grid rebuild, then one
+/// neighborhood query per agent plus the caller's 24 px distance filter.
+/// `boxes` is the example's original shape (12 px AABB inserts, 30 px query
+/// half-extent); `points` inserts centers and queries the true radius;
+/// `points_visit` is `points` through the `for_each_in` visitor.
+fn bench_spatial_grid_query_50k_dense(c: &mut Criterion) {
+    const N: usize = 50_000;
+    const RADIUS: f32 = 24.0;
+    const AGENT_HALF: f32 = 6.0;
+
+    let mut rng = Pcg32::seeded(0x0DE5_E0B5);
+    let positions: Vec<Vec2> = (0..N)
+        .map(|_| Vec2::new(rng.next_range(0.0, 3_200.0), rng.next_range(0.0, 1_800.0)))
+        .collect();
+
+    let mut group = c.benchmark_group("spatial_grid_query_50k_dense");
+    group.sample_size(10);
+    group.measurement_time(Duration::from_secs(10));
+    for (shape, insert_half, query_half, visit) in [
+        ("boxes", AGENT_HALF, RADIUS + AGENT_HALF, false),
+        ("points", 0.0, RADIUS, false),
+        ("points_visit", 0.0, RADIUS, true),
+    ] {
+        let mut grid = SpatialGrid::new(32.0);
+        let mut candidates = Vec::new();
+        group.bench_function(shape, |b| {
+            b.iter(|| {
+                grid.clear();
+                for (id, &center) in positions.iter().enumerate() {
+                    grid.insert(id as u32, &Aabb::new(center, Vec2::splat(insert_half)));
+                }
+                let mut neighbors = 0usize;
+                for (id, &center) in positions.iter().enumerate() {
+                    let query = Aabb::new(center, Vec2::splat(query_half));
+                    let mut count = |other: u32| {
+                        if (positions[other as usize] - center).length_squared() < RADIUS * RADIUS {
+                            neighbors += 1;
+                        }
+                    };
+                    if visit {
+                        grid.for_each_in(&query, Some(id as u32), count);
+                    } else {
+                        grid.query(&query, Some(id as u32), &mut candidates);
+                        for &other in &candidates {
+                            count(other);
+                        }
+                    }
+                }
+                black_box(neighbors)
+            });
+        });
+    }
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_position_integration_50k,
     bench_broadphase_rebuild_5k,
+    bench_spatial_grid_query_50k_dense,
     bench_physics_step_scenarios,
 );
 criterion_main!(benches);

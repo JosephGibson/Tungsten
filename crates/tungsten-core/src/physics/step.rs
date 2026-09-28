@@ -13,10 +13,10 @@
 //! velocity changed after admission), conservatively promoting static circles
 //! to their bounding squares.
 //!
-//! The broadphase grid is staged from per-substep-travel-inflated AABBs and
-//! reused across substeps; it is restaged mid-frame only when accumulated max
-//! travel exhausts the half-cell query margin (D-062). Settled scenes build
-//! once per frame; extreme scenes degrade to the old per-substep rebuild.
+//! Broadphase pairs persist across substeps under per-proxy travel budgets
+//! (D-075). Each build stages fresh, symmetrically inflated AABBs for the
+//! remaining frame. Budget exhaustion or a contact wake rebuilds before the
+//! next narrow phase; narrow phase, solve, islands and events stay per substep.
 //!
 //! Body state is gathered into the dense proxy array **once per frame**
 //! through a columnar 4-way ECS query (`query2_opt2`, no per-entity random
@@ -29,8 +29,8 @@
 //!
 //! Contact resolution is a warm-started soft solver (D-063, Box2D-v3 shape).
 //! Per substep: the narrow phase runs once into a contact buffer, accumulated
-//! normal impulses (clamped >= 0) warm-start from a pair-keyed impulse map
-//! that survives across frames, biased velocity iterations recover
+//! normal impulses (clamped >= 0) carry by pair index between substeps, with
+//! a keyed map at frame boundaries and pair rebuilds (D-076). Biased iterations recover
 //! penetration through a soft constraint (contact hertz / damping ratio,
 //! linear slop, max push speed) instead of positional MTV projection,
 //! position integration turns the bias velocity into depenetration, one
@@ -132,17 +132,6 @@ impl Proxy {
         let prev = Aabb::new(self.prev_center, self.half_extents());
         cur.union(&prev)
     }
-
-    /// Union of the current AABB and its predicted position after `sub_dt`;
-    /// pair queries run before integration, so coverage must look ahead.
-    fn travel_aabb(&self, sub_dt: f32) -> Aabb {
-        let cur = self.world_aabb();
-        if !self.is_dynamic || self.velocity == Vec2::ZERO {
-            return cur;
-        }
-        let predicted = Aabb::new(self.center + self.velocity * sub_dt, self.half_extents());
-        cur.union(&predicted)
-    }
 }
 
 /// One narrow-phase contact prepared for the soft solver.
@@ -168,6 +157,8 @@ struct ContactConstraint {
     inv_a: f32,
     inv_b: f32,
     key: u128,
+    /// Index in the current broadphase pair list (D-076).
+    pair_index: usize,
 }
 
 /// Soft-constraint coefficients derived from (hertz, damping ratio, sub_dt).
@@ -203,9 +194,9 @@ fn soft_params(hertz: f32, damping_ratio: f32, h: f32) -> Softness {
 const EMPTY_PAIR: u128 = u128::MAX;
 
 /// Flat open-addressing map from contact pair key to accumulated impulse.
-/// Rebuilt from live contacts each substep (stale pairs age out for free);
+/// Synchronized from live contacts at frame end and before pair rebuilds;
 /// never `std::HashMap` in the physics hot path (D-062 precedent).
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 struct ImpulseMap {
     keys: Vec<u128>,
     values: Vec<f32>,
@@ -421,20 +412,47 @@ fn pair_key(a: u64, b: u64) -> u128 {
     (u128::from(hi) << 64) | u128::from(lo)
 }
 
+/// Conservative displacement allowance since the most recent pair build.
+#[derive(Debug, Clone, Copy)]
+struct PairBudget {
+    radius: f32,
+    travel: f32,
+}
+
 /// Physics scratch buffers reused across substeps/frames.
 #[derive(Debug, Default)]
+// Test-only oracle flags are independent switches, not solver states.
+#[cfg_attr(test, allow(clippy::struct_excessive_bools))]
 pub struct PhysicsBuffers {
     proxies: Vec<Proxy>,
+    /// Build-time AABBs and travel allowances for D-075 pair reuse.
+    pair_aabbs: Vec<Aabb>,
+    pair_budgets: Vec<PairBudget>,
+    /// Set by gather (new proxy set) or a contact wake; consumed before the
+    /// next substep's narrow phase. Proxies never change mid-frame today.
+    pairs_invalidated: bool,
+    #[cfg(test)]
+    pair_builds: usize,
+    #[cfg(test)]
+    check_pair_contacts: bool,
+    #[cfg(test)]
+    checked_substeps: usize,
+    /// D-063 reference model, rebuilt every substep in regression tests only.
+    #[cfg(test)]
+    reference_impulses: Option<ImpulseMap>,
     pairs: Vec<(u32, u32)>,
     events: Vec<CollisionEvent>,
     candidates: Vec<ProxyId>,
     grid: SpatialGrid,
     contacts: Vec<ContactConstraint>,
-    /// Read side of the warm-start map (previous substep or frame).
+    /// Last synchronized contacts, keyed across frames and pair rebuilds.
     impulses: ImpulseMap,
-    /// Write side; swapped with `impulses` after each substep.
-    impulses_next: ImpulseMap,
-    loose_bodies: Vec<Entity>,
+    /// Direct warm starts while D-075 pair indices remain stable.
+    pair_impulses: Vec<f32>,
+    /// First substep after a build seeds contacts from the keyed map.
+    seed_pair_impulses: bool,
+    /// Contacts have changed since the last keyed-map synchronization.
+    impulses_dirty: bool,
     /// Persistent per-body sleep state (D-065), keyed by entity key.
     sleep: SleepMap,
     /// Write side of the frame-start sleep-map rebuild; swapped into `sleep`.
@@ -480,6 +498,35 @@ impl PhysicsBuffers {
     pub fn sleeping_count(&self) -> usize {
         self.sleep.sleeping_count()
     }
+
+    /// Proxies gathered by the last step: entities plus tile colliders
+    /// (diagnostic).
+    #[must_use]
+    pub fn proxy_count(&self) -> usize {
+        self.proxies.len()
+    }
+
+    /// Dynamic entity bodies gathered by the last step, the population
+    /// `sleeping_count` is drawn from (diagnostic).
+    #[must_use]
+    pub fn dynamic_count(&self) -> usize {
+        self.proxies
+            .iter()
+            .filter(|proxy| proxy.is_dynamic && proxy.entity.is_some())
+            .count()
+    }
+
+    /// Broadphase pairs of the last step's final substep (diagnostic).
+    #[must_use]
+    pub fn pair_count(&self) -> usize {
+        self.pairs.len()
+    }
+
+    /// Contact constraints of the last step's final substep (diagnostic).
+    #[must_use]
+    pub fn contact_count(&self) -> usize {
+        self.contacts.len()
+    }
 }
 
 /// Wake `entity`'s sleep island (D-065); no-op when nothing has ever slept.
@@ -511,9 +558,10 @@ pub fn physics_step(world: &mut World) {
         .remove_resource::<PhysicsBuffers>()
         .unwrap_or_default();
 
-    integrate_loose_bodies(world, dt, config.gravity, &mut buffers.loose_bodies);
+    integrate_loose_bodies(world, dt, config.gravity);
 
-    build_broadphase(world, sub_dt, &config, &mut buffers);
+    gather_proxies(world, &mut buffers.proxies);
+    buffers.pairs_invalidated = true;
 
     let sleep_enabled = config.sleep_threshold > 0.0;
     if sleep_enabled {
@@ -528,13 +576,12 @@ pub fn physics_step(world: &mut World) {
         .extend(0..buffers.proxies.len() as u32);
     buffers.events.clear();
 
-    // Accumulated max per-substep travel since the last grid staging; once it
-    // exceeds the half-cell query margin, staged cells may be stale.
-    let mut drift = 0.0f32;
-    for _ in 0..substeps {
-        substep(&config, sub_dt, &mut buffers, &mut drift, sleep_enabled);
+    for step in 0..substeps {
+        let time_left = (dt - step as f32 * sub_dt).max(sub_dt);
+        substep(&config, sub_dt, time_left, &mut buffers, sleep_enabled);
     }
 
+    sync_impulses(&mut buffers);
     write_back(world, &buffers.proxies);
 
     if sleep_enabled {
@@ -738,55 +785,99 @@ fn sleep_frame_end(
 /// Dynamic bodies without a collider never enter the solver; integrate them
 /// once per frame (old behavior integrated them per substep — for pure
 /// ballistic motion the trajectories differ only at O(g·dt²)).
-fn integrate_loose_bodies(world: &mut World, dt: f32, gravity: Vec2, scratch: &mut Vec<Entity>) {
-    scratch.clear();
-    for (entity, _velocity, _position, body) in world.query3::<Velocity, Position, RigidBody>() {
-        if body.kind == BodyKind::Dynamic && world.get::<Collider>(entity).is_none() {
-            scratch.push(entity);
-        }
-    }
-    for &entity in scratch.iter() {
-        let Some(vel) = world.get_mut::<Velocity>(entity) else {
+/// Columnar pass over collider-less archetypes; no per-entity lookups.
+fn integrate_loose_bodies(world: &mut World, dt: f32, gravity: Vec2) {
+    for (_entity, velocity, position, body) in
+        world.query3_mut_without::<Velocity, Position, RigidBody, Collider>()
+    {
+        if body.kind != BodyKind::Dynamic {
             continue;
-        };
-        vel.0 += gravity * dt;
-        let new_vel = vel.0;
-        if let Some(pos) = world.get_mut::<Position>(entity) {
-            pos.0 += new_vel * dt;
         }
+        velocity.0 += gravity * dt;
+        position.0 += velocity.0 * dt;
     }
 }
 
-/// Build the frame's broadphase from pre-integration proxies.
-fn build_broadphase(
-    world: &World,
-    sub_dt: f32,
-    config: &PhysicsConfig,
-    buffers: &mut PhysicsBuffers,
-) {
-    let PhysicsBuffers { proxies, grid, .. } = buffers;
-
-    // Preserve grid allocations unless cell size changes.
+/// Build pairs from fresh per-proxy travel-inflated AABBs (D-075). The
+/// inflation includes the speculative slack on both sides of a pair, so
+/// neither the query nor the overlap prefilter needs a grid-staleness margin.
+fn build_pairs(config: &PhysicsConfig, time_left: f32, buffers: &mut PhysicsBuffers) {
+    // Rebuilds can reorder/reverse pairs or introduce new ones after a wake.
+    // Transfer only the immediately preceding substep's live impulses by key.
+    sync_impulses(buffers);
+    let PhysicsBuffers {
+        proxies,
+        grid,
+        pair_aabbs,
+        pair_budgets,
+        pairs,
+        pairs_invalidated,
+        ..
+    } = buffers;
     if (grid.cell_size() - config.broadphase_cell_size).abs() > f32::EPSILON {
         grid.set_cell_size(config.broadphase_cell_size);
     }
-
-    gather_proxies(world, proxies);
-    stage_grid(proxies, grid, sub_dt);
-}
-
-/// Restage the grid from current proxies. Dynamic AABBs inflate symmetrically
-/// by one substep of travel; the query-side half-cell margin absorbs further
-/// drift until the caller restages.
-fn stage_grid(proxies: &[Proxy], grid: &mut SpatialGrid, sub_dt: f32) {
     grid.clear();
+    pair_aabbs.clear();
+    pair_budgets.clear();
+    pairs.clear();
+    let gravity_travel = 0.5 * config.gravity.length() * time_left * time_left;
     for (id, proxy) in proxies.iter().enumerate() {
+        let radius = 2.0 * config.linear_slop
+            + if proxy.is_dynamic && !proxy.sleeping {
+                proxy.velocity.length() * time_left + gravity_travel
+            } else {
+                0.0
+            };
         let mut aabb = proxy.world_aabb();
-        if proxy.is_dynamic {
-            aabb.half_extents += Vec2::splat(proxy.velocity.length() * sub_dt);
-        }
+        aabb.half_extents += Vec2::splat(radius);
+        pair_aabbs.push(aabb);
+        pair_budgets.push(PairBudget {
+            radius,
+            travel: 0.0,
+        });
         grid.insert(id as ProxyId, &aabb);
     }
+    for (a_idx, proxy) in proxies.iter().enumerate() {
+        if !proxy.is_dynamic || proxy.sleeping {
+            continue;
+        }
+        let aabb = &pair_aabbs[a_idx];
+        grid.for_each_in(aabb, Some(a_idx as ProxyId), |b_id| {
+            let b_idx = b_id as usize;
+            if proxies[b_idx].is_dynamic && !proxies[b_idx].sleeping && b_idx <= a_idx {
+                return;
+            }
+            if aabb.overlaps(&pair_aabbs[b_idx]) {
+                pairs.push((a_idx as u32, b_id));
+            }
+        });
+    }
+    *pairs_invalidated = false;
+    buffers.pair_impulses.clear();
+    buffers.pair_impulses.resize(pairs.len(), 0.0);
+    buffers.seed_pair_impulses = true;
+    #[cfg(test)]
+    {
+        buffers.pair_builds += 1;
+    }
+}
+
+/// Check in proxy order before every narrow phase. Solver impulses and
+/// gravity can change velocity after a build, so predicted travel alone is
+/// insufficient: accumulated actual travel must fit as well.
+fn pair_budget_exhausted(config: &PhysicsConfig, sub_dt: f32, buffers: &PhysicsBuffers) -> bool {
+    buffers.proxies.len() != buffers.pair_budgets.len()
+        || buffers
+            .proxies
+            .iter()
+            .zip(&buffers.pair_budgets)
+            .any(|(proxy, budget)| {
+                proxy.is_dynamic
+                    && !proxy.sleeping
+                    && budget.travel + proxy.velocity.length() * sub_dt + 2.0 * config.linear_slop
+                        > budget.radius
+            })
 }
 
 /// Gather entity + tilemap proxies in deterministic `World` order, once per
@@ -842,62 +933,40 @@ fn gather_proxies(world: &World, proxies: &mut Vec<Proxy>) {
 fn substep(
     config: &PhysicsConfig,
     sub_dt: f32,
+    time_left: f32,
     buffers: &mut PhysicsBuffers,
-    drift: &mut f32,
     sleep_enabled: bool,
 ) {
+    if buffers.pairs_invalidated || pair_budget_exhausted(config, sub_dt, buffers) {
+        build_pairs(config, time_left, buffers);
+    }
+    #[cfg(test)]
+    if buffers.check_pair_contacts {
+        tests::assert_pair_contacts(config, sub_dt, buffers);
+        buffers.checked_substeps += 1;
+    }
     let PhysicsBuffers {
         proxies,
+        pair_budgets,
+        pairs_invalidated,
         pairs,
         events,
         candidates,
         grid,
         contacts,
         impulses,
-        impulses_next,
+        pair_impulses,
+        seed_pair_impulses,
+        impulses_dirty,
+        #[cfg(test)]
+        reference_impulses,
         sleep,
         island_parent,
         ..
     } = buffers;
-    pairs.clear();
     candidates.clear();
     contacts.clear();
-
-    // Staleness budget: previous substeps moved bodies; once accumulated
-    // movement can exceed the query margin, restage the grid from current
-    // positions so staged cells stay conservative.
-    let margin = config.broadphase_cell_size * 0.5;
-    if *drift > margin {
-        stage_grid(proxies, grid, sub_dt);
-        *drift = 0.0;
-    }
-
-    // Pair query: current + predicted AABB + half-cell margin covers this
-    // substep's travel and residual staging drift. Sleeping bodies never
-    // initiate — sleeping-sleeping pairs skip the narrow phase entirely
-    // (D-065); they remain staged in the grid as wake targets.
-    let query_margin = Vec2::splat(config.broadphase_cell_size * 0.5);
-    for a_idx in 0..proxies.len() {
-        if !proxies[a_idx].is_dynamic || proxies[a_idx].sleeping {
-            continue;
-        }
-        let mut a_aabb = proxies[a_idx].travel_aabb(sub_dt);
-        a_aabb.half_extents += query_margin;
-        grid.query(&a_aabb, Some(a_idx as ProxyId), candidates);
-        for &b_id in candidates.iter() {
-            let b_idx = b_id as usize;
-            // Awake dynamic pairs once; static and sleeping targets are
-            // already unique per initiating query.
-            if proxies[b_idx].is_dynamic && !proxies[b_idx].sleeping && b_idx <= a_idx {
-                continue;
-            }
-            // Grid cells are coarse; only actually-overlapping inflated AABBs pair.
-            if !a_aabb.overlaps(&proxies[b_idx].travel_aabb(sub_dt)) {
-                continue;
-            }
-            pairs.push((a_idx as u32, b_idx as u32));
-        }
-    }
+    let seed_impulses = std::mem::take(seed_pair_impulses);
 
     // Narrow phase once per substep; solver iterations reuse these contacts.
     // Speculative admission (D-064): pairs separated by less than one substep
@@ -909,7 +978,10 @@ fn substep(
     // positive-gap contacts stay silent until touch.
     let speculative_slack = 4.0 * config.linear_slop;
     let wake_threshold = config.sleep_threshold.max(0.0);
-    for &(a_u, b_u) in pairs.iter() {
+    for (pair_index, &(a_u, b_u)) in pairs.iter().enumerate() {
+        // Forget a disappearing contact immediately, even if it returns
+        // later without a broadphase rebuild.
+        let cached_impulse = std::mem::replace(&mut pair_impulses[pair_index], 0.0);
         let a_idx = a_u as usize;
         let b_idx = b_u as usize;
         let margin = (proxies[a_idx].velocity - proxies[b_idx].velocity).length() * sub_dt
@@ -933,6 +1005,7 @@ fn substep(
             };
             if wakes {
                 proxies[b_idx].sleeping = false;
+                *pairs_invalidated = true;
                 if let Some(entry) = sleep.get_mut(proxies[b_idx].key) {
                     entry.sleeping = false;
                     entry.timer = 0.0;
@@ -952,6 +1025,19 @@ fn substep(
         }
         let key = pair_key(proxies[a_idx].key, proxies[b_idx].key);
         let approach = (proxies[a_idx].velocity - proxies[b_idx].velocity).dot(contact.normal);
+        let impulse = if seed_impulses {
+            impulses.get(key)
+        } else {
+            cached_impulse
+        };
+        #[cfg(test)]
+        if let Some(reference) = reference_impulses.as_ref() {
+            assert_eq!(
+                impulse.to_bits(),
+                reference.get(key).to_bits(),
+                "warm-start diverged"
+            );
+        }
         contacts.push(ContactConstraint {
             a: a_u,
             b: b_u,
@@ -959,12 +1045,13 @@ fn substep(
             penetration: contact.penetration,
             normal_mass: 1.0 / inv_mass_sum,
             approach,
-            impulse: impulses.get(key),
+            impulse,
             restitution: proxies[a_idx].restitution.max(proxies[b_idx].restitution),
             vs_static: inv_a == 0.0 || inv_b == 0.0,
             inv_a,
             inv_b,
             key,
+            pair_index,
         });
         // Touching contacts between awake dynamic bodies join one island;
         // islands sleep and re-sleep as a unit (D-065).
@@ -1014,7 +1101,6 @@ fn substep(
     }
 
     // Position integration converts the bias velocity into depenetration.
-    let mut max_travel = 0.0f32;
     for proxy in proxies.iter_mut() {
         if !proxy.is_dynamic || proxy.sleeping {
             continue;
@@ -1022,29 +1108,54 @@ fn substep(
         proxy.prev_center = proxy.center;
         let travel = proxy.velocity * sub_dt;
         proxy.center += travel;
-        max_travel = max_travel.max(travel.length());
     }
-    *drift += max_travel;
 
     // One bias-free relax iteration strips the injected bias energy.
     solve_contacts(proxies, contacts, config, soft, soft_static, inv_h, false);
 
     apply_restitution(proxies, contacts, config.restitution_threshold);
 
-    // Persist accumulated impulses for the next substep/frame; rebuilding
-    // from live contacts ages out stale pairs for free.
-    impulses_next.reset(contacts.len());
+    // Direct indexed carry between substeps; synchronize the keyed map only
+    // at frame end or when a pair rebuild invalidates these indices.
     for contact in contacts.iter() {
-        if contact.impulse > 0.0 {
-            impulses_next.insert(contact.key, contact.impulse);
+        pair_impulses[contact.pair_index] = contact.impulse;
+    }
+    *impulses_dirty = true;
+    #[cfg(test)]
+    if let Some(reference) = reference_impulses.as_mut() {
+        reference.reset(contacts.len());
+        for contact in contacts.iter().filter(|c| c.impulse > 0.0) {
+            reference.insert(contact.key, contact.impulse);
         }
     }
-    std::mem::swap(impulses, impulses_next);
 
     // Safety net: clamp extreme dynamics to first static sweep hit (covers
     // solver-injected velocity a speculative pair admission never saw).
     // Events keep accumulating across substeps; the frame drains them once.
     speculative_pass(proxies, grid, candidates, events);
+
+    // Sum displacement between narrow phases, including the sweep's clamp.
+    // This bounds distance from the build center even after direction changes.
+    for (proxy, budget) in proxies.iter().zip(pair_budgets) {
+        if proxy.is_dynamic && !proxy.sleeping {
+            budget.travel += (proxy.center - proxy.prev_center).length();
+        }
+    }
+}
+
+/// Preserve D-063's immediately-previous-contact semantics, including empty
+/// final substeps. The common case pays one map rebuild per frame (D-076).
+fn sync_impulses(buffers: &mut PhysicsBuffers) {
+    if !buffers.impulses_dirty {
+        return;
+    }
+    buffers.impulses.reset(buffers.contacts.len());
+    for contact in &buffers.contacts {
+        if contact.impulse > 0.0 {
+            buffers.impulses.insert(contact.key, contact.impulse);
+        }
+    }
+    buffers.impulses_dirty = false;
 }
 
 /// Apply a contact impulse through the inverse masses captured at contact

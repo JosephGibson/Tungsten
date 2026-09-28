@@ -6,6 +6,27 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-09-28
+
+Summary: a profiling-driven performance pass on the three stress scenes (`ecs-high-load`, `physics-stress`, `sprite-stress`), plan `docs/plans/archive/stress-perf-optimization.md`. No shipped behavior, pacing default or public rendering output changes; the empty-stack frame stays byte-identical.
+
+### Added
+
+- **Persistent broadphase pair lists (`D-075`):** physics pair finding runs once per frame instead of once per substep, with per-proxy travel budgets that force a rebuild on velocity/gravity drift, a contact wake or a proxy-set change; the narrow phase, solver, wake test, island union and collision events stay per substep over that list. `crates/tungsten-core/src/physics/broadphase.rs` gains a single-cell fast path (`for_each_in`) that skips per-query dedupe bookkeeping when every staged entry still covers one cell.
+- **Persistent warm-start impulses (`D-076`):** while a `D-075` pair list is reused, each substep's solved normal impulse carries by pair index in a parallel array instead of a full keyed-map rebuild; the map still synchronizes at frame boundaries and pair rebuilds so a pair absent for even one substep returns to zero.
+- **GPU per-pass timing (`crates/tungsten-render/src/timing.rs`):** `GpuFrameTimings` now reports `render_gpu_ms` (first scene timestamp through the present blit) and `pass_gpu_ms` (per named render pass, including every bloom mip and post-stack slot) alongside the existing scene-only `frame_gpu_ms`, via a timestamp-query pool sized to the active post stack.
+- **Render-attribution stress workload:** `examples/02_sprite_stress/src/render_features.rs` exercises mixed sprite batches, materials, lights, bloom, vignette, SMAA and text together against the root manifest's assets, giving GPU per-pass timing a baseline scene.
+- **Perf-capture tooling gaps closed:** `scripts/perf-capture.sh` adds awake-frame-only filtering (frames where `physics:` reports `sleeping < dynamic`), per-system and per-GPU-pass timing tables, a `--repeat <n>` mode with a median `summary.md` across runs, an `ecs-high-load` density-preserving sweep (`--ecs-density preserve`), a `physics-stress` sleep toggle (`--physics-sleep off`), `--call-graph`/`--sample-frequency` flags, and dirty-tree provenance fingerprinting.
+
+### Changed
+
+- **ECS archetype maps use a pass-through `TypeId` hasher:** `columns`, `add_edges` and `remove_edges` are now `TypeIdMap` (Bevy's `NoOpHash` equivalent), since `TypeId` is already a high-quality hash and re-hashing it through SipHash on every lookup was wasted work.
+- **`World` gains `query3_opt2` and `query3_mut_without`:** columnar three-required-plus-optional and exclude-one-type query shapes that resolve column presence once per archetype, avoiding per-entity `get`/lookup calls in hot systems.
+- **Sprite instance upload writes directly into the mapped GPU buffer** (`SpritePipeline::upload`, via `queue.write_buffer_with`) per batch instead of flattening every batch into an intermediate `Vec` first; the flatten was 21% of samples at 100k sprites.
+- **`crates/tungsten/src/app.rs` perf-line formatting** is split into named helpers (`format_perf_systems_line`, `format_perf_physics_line`) so per-system and physics summary lines share one formatter.
+- `docs/perf/profiling-workflow.md` and `.claude/skills/tungsten-perf/SKILL.md` document the awake-phase filtering, density sweeps and tracked-row conventions above.
+- `DECISIONS.md`: `D-062` and `D-066` are partially superseded by `D-075` (staging/drift-budget/prefilter and event-order clauses only; the flat hash and per-substep narrow phase/solve stand); `D-063` is partially superseded by `D-076` (per-substep impulse-map rebuild only; warm-start values and solver order stand). Adds `D-075`, `D-076`.
+
 ## [0.29.0] - 2026-09-26
 
 Summary: the platformer art and gameplay revamp (plan `docs/plans/archive/platformer-art-revamp.md`) plus the internal release workflow ([plan](docs/plans/archive/release-workflow.md), `D-074`). The revamp is entirely example-local: no engine, renderer, shader-source or dependency change and no new decision. `docs/plans/phase4.md` carries the user-approved scoped exception that allows this authoring before M32.

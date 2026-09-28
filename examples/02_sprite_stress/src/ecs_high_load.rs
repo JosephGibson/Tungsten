@@ -14,7 +14,7 @@ use tungsten::render::{Renderer, SpriteBatch, SpriteInstance, TextSection};
 use tungsten::{App, FrameTimings, WindowSize, asset_loader, camera_update_system};
 use tungsten_core::physics::SpatialGrid;
 
-use crate::shared::{TelemetryState, log_telemetry, rgb_wheel_color, telemetry_frame};
+use crate::shared::{TelemetryState, log_telemetry, telemetry_frame};
 
 pub(crate) const DEFAULT_HIGH_LOAD_COUNT: usize = 50_000;
 
@@ -42,7 +42,43 @@ const HIGH_LOAD_SPRITE_PATH: &str = "__generated__/ex02_high_load_agent.png";
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct StressAgent {
     phase: f32,
-    tint_seed: f32,
+    drift: Vec2,
+    /// sin/cos of each channel's fixed phase; carriers vary once per frame.
+    tint_basis: [Vec2; 3],
+}
+
+impl StressAgent {
+    fn new(phase: f32, tint_seed: f32) -> Self {
+        let tint_phase = tint_seed * std::f32::consts::TAU;
+        Self {
+            phase,
+            drift: Vec2::new(tint_phase.cos(), tint_phase.sin()) * 8.0,
+            tint_basis: [0.0, 2.1, 4.2].map(|offset| {
+                let (sin, cos) = (tint_phase + offset).sin_cos();
+                Vec2::new(sin, cos)
+            }),
+        }
+    }
+}
+
+/// World area scales with count only in the explicit density-preserving mode.
+#[derive(Debug, Clone, Copy)]
+struct HighLoadWorldSize(Vec2);
+
+fn high_load_world_size(count: usize, preserve_density: bool) -> Vec2 {
+    let scale = if preserve_density {
+        (count as f32 / DEFAULT_HIGH_LOAD_COUNT as f32).sqrt()
+    } else {
+        1.0
+    };
+    Vec2::new(HIGH_LOAD_WORLD_WIDTH, HIGH_LOAD_WORLD_HEIGHT) * scale
+}
+
+fn world_size(world: &World) -> Vec2 {
+    world.get_resource::<HighLoadWorldSize>().map_or_else(
+        || high_load_world_size(DEFAULT_HIGH_LOAD_COUNT, false),
+        |size| size.0,
+    )
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -66,10 +102,18 @@ impl Default for HighLoadSteeringScratch {
     }
 }
 
-pub(crate) fn configure_high_load_scene(app: &mut App, entity_count: usize) {
+pub(crate) fn configure_high_load_scene(
+    app: &mut App,
+    entity_count: usize,
+    preserve_density: bool,
+) {
     {
         let world = app.world_mut();
         world.insert_resource(TelemetryState::default());
+        world.insert_resource(HighLoadWorldSize(high_load_world_size(
+            entity_count,
+            preserve_density,
+        )));
         if let Some(cfg) = world.get_resource_mut::<PhysicsConfig>() {
             cfg.gravity = Vec2::ZERO;
             cfg.broadphase_cell_size = HIGH_LOAD_GRID_CELL_SIZE;
@@ -103,12 +147,13 @@ fn seed_high_load_world(world: &mut World, entity_count: usize) {
         return;
     }
 
+    let size = world_size(world);
     let cols = high_load_cols(entity_count);
     let rows = entity_count.div_ceil(cols);
-    let usable_width = (HIGH_LOAD_WORLD_WIDTH - HIGH_LOAD_PADDING * 2.0 - HIGH_LOAD_SPRITE_SIZE)
-        .max(HIGH_LOAD_SPRITE_SIZE);
-    let usable_height = (HIGH_LOAD_WORLD_HEIGHT - HIGH_LOAD_PADDING * 2.0 - HIGH_LOAD_SPRITE_SIZE)
-        .max(HIGH_LOAD_SPRITE_SIZE);
+    let usable_width =
+        (size.x - HIGH_LOAD_PADDING * 2.0 - HIGH_LOAD_SPRITE_SIZE).max(HIGH_LOAD_SPRITE_SIZE);
+    let usable_height =
+        (size.y - HIGH_LOAD_PADDING * 2.0 - HIGH_LOAD_SPRITE_SIZE).max(HIGH_LOAD_SPRITE_SIZE);
     let step_x = if cols > 1 {
         usable_width / (cols - 1) as f32
     } else {
@@ -127,9 +172,9 @@ fn seed_high_load_world(world: &mut World, entity_count: usize) {
         let jitter_x = (hash_unit(index as u32, 0xA123_BC45) - 0.5) * step_x * 0.35;
         let jitter_y = (hash_unit(index as u32, 0xC001_D00D) - 0.5) * step_y * 0.35;
         let x = (HIGH_LOAD_PADDING + col as f32 * step_x + jitter_x)
-            .clamp(0.0, HIGH_LOAD_WORLD_WIDTH - HIGH_LOAD_SPRITE_SIZE);
+            .clamp(0.0, (size.x - HIGH_LOAD_SPRITE_SIZE).max(0.0));
         let y = (HIGH_LOAD_PADDING + row as f32 * step_y + jitter_y)
-            .clamp(0.0, HIGH_LOAD_WORLD_HEIGHT - HIGH_LOAD_SPRITE_SIZE);
+            .clamp(0.0, (size.y - HIGH_LOAD_SPRITE_SIZE).max(0.0));
         let phase = hash_unit(index as u32, 0x1357_2468) * std::f32::consts::TAU;
         let tint_seed = hash_unit(index as u32, 0x2468_1357);
         let direction =
@@ -144,7 +189,7 @@ fn seed_high_load_world(world: &mut World, entity_count: usize) {
 
         let entity = world.spawn();
         leader.get_or_insert(entity);
-        world.insert(entity, StressAgent { phase, tint_seed });
+        world.insert(entity, StressAgent::new(phase, tint_seed));
         world.insert(entity, Position(position));
         world.insert(entity, Velocity(velocity));
         world.insert(entity, RigidBody::dynamic());
@@ -172,13 +217,14 @@ fn seed_high_load_world(world: &mut World, entity_count: usize) {
 }
 
 fn configure_high_load_camera(world: &mut World, leader: tungsten::core::Entity) {
+    let size = world_size(world);
     if let Some(controller) = world.get_resource_mut::<CameraController>() {
         controller.mode = CameraMode::Follow(leader);
         controller.dead_zone_size = HIGH_LOAD_DEAD_ZONE;
         controller.smoothing_factor = HIGH_LOAD_CAMERA_SMOOTHING;
         controller.bounds = Some(CameraBounds {
             min: Vec2::ZERO,
-            max: Vec2::new(HIGH_LOAD_WORLD_WIDTH, HIGH_LOAD_WORLD_HEIGHT),
+            max: size,
         });
         controller.zoom_multiplier = 1.0;
         controller.shake_amplitude = Vec2::new(3.0, 2.0);
@@ -248,7 +294,6 @@ fn steer_agents_system(world: &mut World) {
         .filter(|dt| *dt > 0.0)
         .unwrap_or(1.0 / 60.0);
     let frame = telemetry_frame(world) as f32;
-    let half_size = Vec2::splat(HIGH_LOAD_HALF_SIZE);
 
     let capacity = world.entity_count() as usize;
     let mut positions = Vec::with_capacity(capacity);
@@ -258,65 +303,57 @@ fn steer_agents_system(world: &mut World) {
     for (_entity, agent, position, velocity) in world.query3::<StressAgent, Position, Velocity>() {
         positions.push(position.0 + Vec2::splat(HIGH_LOAD_HALF_SIZE));
         velocities.push(velocity.0);
-        agents.push(*agent);
+        agents.push((agent.phase, agent.drift));
     }
 
     if positions.is_empty() {
         return;
     }
 
-    let world_center = Vec2::new(HIGH_LOAD_WORLD_WIDTH * 0.5, HIGH_LOAD_WORLD_HEIGHT * 0.5);
+    let world_center = world_size(world) * 0.5;
     let mut next_velocities = Vec::with_capacity(positions.len());
 
     {
         let Some(scratch) = world.get_resource_mut::<HighLoadSteeringScratch>() else {
             return;
         };
+        // Centers go in as points, one cell each, and the query box is the
+        // neighbor radius itself: every agent within the radius sits in a
+        // cell the box touches, and no id is staged twice (Müller's dense
+        // spatial hash). The distance test below does the exact filtering.
         scratch.grid.clear();
         for (index, &center) in positions.iter().enumerate() {
             scratch
                 .grid
-                .insert(index as u32, &Aabb::new(center, half_size));
+                .insert(index as u32, &Aabb::new(center, Vec2::ZERO));
         }
 
-        let mut candidates = Vec::new();
         for index in 0..positions.len() {
             let position = positions[index];
             let velocity = velocities[index];
-            let agent = agents[index];
+            let (phase, drift) = agents[index];
 
             let mut repulsion = Vec2::ZERO;
-            let neighborhood = Aabb::new(
-                position,
-                Vec2::splat(HIGH_LOAD_NEIGHBOR_RADIUS + HIGH_LOAD_HALF_SIZE),
-            );
+            let neighborhood = Aabb::new(position, Vec2::splat(HIGH_LOAD_NEIGHBOR_RADIUS));
             scratch
                 .grid
-                .query(&neighborhood, Some(index as u32), &mut candidates);
+                .for_each_in(&neighborhood, Some(index as u32), |candidate| {
+                    let other = positions[candidate as usize];
+                    let delta = position - other;
+                    let dist_sq = delta.length_squared();
+                    if dist_sq <= 0.0001 || dist_sq >= HIGH_LOAD_NEIGHBOR_RADIUS.powi(2) {
+                        return;
+                    }
 
-            for &candidate in &candidates {
-                let other = positions[candidate as usize];
-                let delta = position - other;
-                let dist_sq = delta.length_squared();
-                if dist_sq <= 0.0001 || dist_sq >= HIGH_LOAD_NEIGHBOR_RADIUS.powi(2) {
-                    continue;
-                }
-
-                let distance = dist_sq.sqrt();
-                repulsion += delta / distance
-                    * ((HIGH_LOAD_NEIGHBOR_RADIUS - distance) / HIGH_LOAD_NEIGHBOR_RADIUS);
-            }
+                    repulsion += neighbor_repulsion(delta, dist_sq);
+                });
 
             let to_center = world_center - position;
             let tangent = Vec2::new(-to_center.y, to_center.x).normalize_or_zero();
             let flow = Vec2::new(
-                (position.y * 0.004 + frame * 0.015 + agent.phase).sin(),
-                (position.x * 0.003 - frame * 0.013 + agent.phase * 1.4).cos(),
+                (position.y * 0.004 + frame * 0.015 + phase).sin(),
+                (position.x * 0.003 - frame * 0.013 + phase * 1.4).cos(),
             );
-            let drift = Vec2::new(
-                (agent.tint_seed * std::f32::consts::TAU).cos(),
-                (agent.tint_seed * std::f32::consts::TAU).sin(),
-            ) * 8.0;
             let steering = flow * HIGH_LOAD_FLOW_STRENGTH
                 + repulsion * HIGH_LOAD_REPULSION_STRENGTH
                 + tangent * HIGH_LOAD_TANGENT_STRENGTH
@@ -325,8 +362,7 @@ fn steer_agents_system(world: &mut World) {
             let mut next_velocity = velocity + steering * dt;
             let speed = next_velocity.length();
             if speed <= f32::EPSILON {
-                next_velocity =
-                    Vec2::new(agent.phase.cos(), agent.phase.sin()) * HIGH_LOAD_MIN_SPEED;
+                next_velocity = Vec2::new(phase.cos(), phase.sin()) * HIGH_LOAD_MIN_SPEED;
             } else if speed < HIGH_LOAD_MIN_SPEED {
                 next_velocity = next_velocity / speed * HIGH_LOAD_MIN_SPEED;
             } else if speed > HIGH_LOAD_MAX_SPEED {
@@ -347,8 +383,9 @@ fn steer_agents_system(world: &mut World) {
 }
 
 fn confine_agents_system(world: &mut World) {
-    let max_x = HIGH_LOAD_WORLD_WIDTH - HIGH_LOAD_SPRITE_SIZE;
-    let max_y = HIGH_LOAD_WORLD_HEIGHT - HIGH_LOAD_SPRITE_SIZE;
+    let size = world_size(world);
+    let max_x = (size.x - HIGH_LOAD_SPRITE_SIZE).max(0.0);
+    let max_y = (size.y - HIGH_LOAD_SPRITE_SIZE).max(0.0);
 
     for (_entity, position, velocity) in world.query2_mut::<Position, Velocity>() {
         if position.0.x <= 0.0 {
@@ -397,9 +434,30 @@ fn tint_agents_system(world: &mut World) {
         state.elapsed += dt;
         state.elapsed
     };
+    let carriers = tint_carriers(elapsed);
     for (_entity, sprite, agent) in world.query2_mut::<Sprite, StressAgent>() {
-        sprite.color = rgb_wheel_color(elapsed, agent.tint_seed * std::f32::consts::TAU);
+        sprite.color = cached_tint(agent, &carriers);
     }
+}
+
+// Algebraically equal radial falloff with one reciprocal per neighbor.
+// Float rounding changes: this is scene workload v2, not an engine claim.
+fn neighbor_repulsion(delta: Vec2, dist_sq: f32) -> Vec2 {
+    delta * (dist_sq.sqrt().recip() - HIGH_LOAD_NEIGHBOR_RADIUS.recip())
+}
+
+fn tint_carriers(elapsed: f32) -> [Vec2; 3] {
+    [0.9, 1.1, 1.3].map(|frequency| {
+        let (sin, cos) = (elapsed * frequency).sin_cos();
+        Vec2::new(cos, sin)
+    })
+}
+
+fn cached_tint(agent: &StressAgent, carriers: &[Vec2; 3]) -> [u8; 4] {
+    let rgb = std::array::from_fn::<_, 3, _>(|i| {
+        ((agent.tint_basis[i].dot(carriers[i]) * 0.5 + 0.5) * 255.0) as u8
+    });
+    [rgb[0], rgb[1], rgb[2], 255]
 }
 
 fn high_load_camera_base_system(world: &mut World) {
