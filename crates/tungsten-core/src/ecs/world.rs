@@ -1,7 +1,6 @@
 use std::any::TypeId;
-use std::collections::HashMap;
 
-use super::archetype::{AnyColumn, Archetype, TypedVec};
+use super::archetype::{AnyColumn, Archetype, TypeIdMap, TypedVec};
 use super::command_buffer::{Command, CommandBuffer, CommandTarget};
 use super::entity::Entity;
 use super::resource::ResourceMap;
@@ -197,6 +196,54 @@ impl World {
             })
     }
 
+    /// Immutable three-required + two-optional component query, the
+    /// three-column sibling of [`query2_opt2`](Self::query2_opt2): optional
+    /// column presence resolves once per archetype, so rows need no
+    /// per-entity lookups. Iterates the same archetype set in the same order
+    /// as `query3::<A, B, C>`.
+    #[allow(clippy::type_complexity)]
+    pub fn query3_opt2<A: 'static, B: 'static, C: 'static, D: 'static, E: 'static>(
+        &self,
+    ) -> impl Iterator<Item = (Entity, &A, &B, &C, Option<&D>, Option<&E>)> {
+        let a_id = TypeId::of::<A>();
+        let b_id = TypeId::of::<B>();
+        let c_id = TypeId::of::<C>();
+        let d_id = TypeId::of::<D>();
+        let e_id = TypeId::of::<E>();
+        self.archetypes
+            .archetypes_with_three(a_id, b_id, c_id)
+            .flat_map(move |arch| {
+                let col_a = arch.columns[&a_id]
+                    .as_any()
+                    .downcast_ref::<TypedVec<A>>()
+                    .unwrap();
+                let col_b = arch.columns[&b_id]
+                    .as_any()
+                    .downcast_ref::<TypedVec<B>>()
+                    .unwrap();
+                let col_c = arch.columns[&c_id]
+                    .as_any()
+                    .downcast_ref::<TypedVec<C>>()
+                    .unwrap();
+                let col_d = arch
+                    .columns
+                    .get(&d_id)
+                    .map(|col| col.as_any().downcast_ref::<TypedVec<D>>().unwrap());
+                let col_e = arch
+                    .columns
+                    .get(&e_id)
+                    .map(|col| col.as_any().downcast_ref::<TypedVec<E>>().unwrap());
+                arch.entities
+                    .iter()
+                    .zip(col_a.0.iter())
+                    .zip(col_b.0.iter())
+                    .zip(col_c.0.iter())
+                    .zip(OptionalColumn(col_d.map(|col| col.0.iter())))
+                    .zip(OptionalColumn(col_e.map(|col| col.0.iter())))
+                    .map(|(((((&e, a), b), c), d), opt_e)| (e, a, b, c, d, opt_e))
+            })
+    }
+
     /// Mutable counterpart of [`query2_opt2`](Self::query2_opt2) in the
     /// read-filter/write-state shape: `A` and optional `C` are shared reads,
     /// `B` and optional `D` are mutable. Iterates the same archetype set in
@@ -294,6 +341,33 @@ impl World {
     pub fn query3_mut<A: 'static, B: 'static, C: 'static>(
         &mut self,
     ) -> impl Iterator<Item = (Entity, &mut A, &mut B, &mut C)> {
+        self.query3_mut_excluding::<A, B, C>(None)
+    }
+
+    /// [`query3_mut`](Self::query3_mut) over archetypes that lack `X`. The
+    /// exclusion resolves once per archetype, so rows need no per-entity
+    /// `get::<X>` lookups (the columnar replacement for gather-then-lookup
+    /// loops, like `query2_opt2` in D-066).
+    ///
+    /// # Panics
+    /// Panics if any two of `A`, `B`, `C`, `X` are the same type.
+    pub fn query3_mut_without<A: 'static, B: 'static, C: 'static, X: 'static>(
+        &mut self,
+    ) -> impl Iterator<Item = (Entity, &mut A, &mut B, &mut C)> {
+        let x_id = TypeId::of::<X>();
+        for id in [TypeId::of::<A>(), TypeId::of::<B>(), TypeId::of::<C>()] {
+            assert_ne!(
+                id, x_id,
+                "query3_mut_without: excluded type must differ from queried types"
+            );
+        }
+        self.query3_mut_excluding::<A, B, C>(Some(x_id))
+    }
+
+    fn query3_mut_excluding<A: 'static, B: 'static, C: 'static>(
+        &mut self,
+        exclude: Option<TypeId>,
+    ) -> impl Iterator<Item = (Entity, &mut A, &mut B, &mut C)> {
         let a_id = TypeId::of::<A>();
         let b_id = TypeId::of::<B>();
         let c_id = TypeId::of::<C>();
@@ -302,6 +376,7 @@ impl World {
         assert_ne!(b_id, c_id, "query3_mut: component types must be distinct");
         self.archetypes
             .archetypes_with_three_mut(a_id, b_id, c_id)
+            .filter(move |arch| exclude.is_none_or(|x_id| !arch.has(x_id)))
             .flat_map(move |arch| {
                 let Archetype {
                     columns, entities, ..
@@ -425,7 +500,7 @@ type SplitOpt2Columns<'c, A, B, C, D> = (
 /// Column borrows for `query2_opt2_mut`: shared `A`/`C`, mutable `B`/`D`;
 /// `C`/`D` may be absent from the archetype. Ids must all differ.
 fn split2_opt2_columns_mut<A: 'static, B: 'static, C: 'static, D: 'static>(
-    columns: &mut HashMap<TypeId, Box<dyn AnyColumn>>,
+    columns: &mut TypeIdMap<Box<dyn AnyColumn>>,
     a_id: TypeId,
     b_id: TypeId,
     c_id: TypeId,
@@ -456,7 +531,7 @@ fn split2_opt2_columns_mut<A: 'static, B: 'static, C: 'static, D: 'static>(
 
 /// Disjoint mutable borrows of two typed columns; ids must differ.
 fn split2_columns_mut<A: 'static, B: 'static>(
-    columns: &mut HashMap<TypeId, Box<dyn AnyColumn>>,
+    columns: &mut TypeIdMap<Box<dyn AnyColumn>>,
     a_id: TypeId,
     b_id: TypeId,
 ) -> (&mut TypedVec<A>, &mut TypedVec<B>) {
@@ -477,7 +552,7 @@ fn split2_columns_mut<A: 'static, B: 'static>(
 
 /// Disjoint mutable borrows of three typed columns; ids must differ.
 fn split3_columns_mut<A: 'static, B: 'static, C: 'static>(
-    columns: &mut HashMap<TypeId, Box<dyn AnyColumn>>,
+    columns: &mut TypeIdMap<Box<dyn AnyColumn>>,
     a_id: TypeId,
     b_id: TypeId,
     c_id: TypeId,

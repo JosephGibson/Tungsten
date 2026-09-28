@@ -14,6 +14,11 @@
 //! draws every layer. The remap touches positions only — `BatchKey` and `z_norm`
 //! are unchanged, and a sprite without `ParallaxLayer` extracts byte-identically
 //! to pre-M30.
+//!
+//! Per-sprite cost: optional `UniformOverrideBlock` / `ParallaxLayer` columns
+//! resolve once per archetype (`query3_opt2`), and runs of one asset id or one
+//! batch key skip their map lookups via a last-seen memo. Output bytes are
+//! unchanged.
 
 use std::collections::HashMap;
 
@@ -38,6 +43,15 @@ fn override_key(block: &UniformOverrideBlock) -> u64 {
 
 type BatchKey = (u32, FilterMode, Option<MaterialAssetId>, Option<u64>, bool);
 
+type ExtractEntry<'w> = (
+    Entity,
+    &'w Transform,
+    &'w Sprite,
+    &'w SpriteAsset,
+    Option<&'w UniformOverrideBlock>,
+    Option<&'w ParallaxLayer>,
+);
+
 /// Default sprite extract.
 #[must_use]
 pub fn extract_sprites_default(world: &World) -> Vec<SpriteBatch> {
@@ -50,14 +64,22 @@ pub fn extract_sprites_default(world: &World) -> Vec<SpriteBatch> {
 
     // Collect visible sprites with resolved assets; stable sort by
     // `(z_order, entity_id)` so same-`z_order` ties are deterministic.
-    let mut entries: Vec<(Entity, &Transform, &Sprite, &SpriteAsset)> = world
-        .query3::<Transform, Sprite, Visibility>()
-        .filter_map(|(e, t, s, v)| {
+    let mut last_asset: Option<(&str, &SpriteAsset)> = None;
+    let mut entries: Vec<ExtractEntry<'_>> = world
+        .query3_opt2::<Transform, Sprite, Visibility, UniformOverrideBlock, ParallaxLayer>()
+        .filter_map(|(e, t, s, v, override_block, parallax)| {
             if !v.visible {
                 return None;
             }
-            let asset = assets.get_sprite(&s.asset_id)?;
-            Some((e, t, s, asset))
+            let asset = match last_asset {
+                Some((id, asset)) if id == s.asset_id => asset,
+                _ => {
+                    let asset = assets.get_sprite(&s.asset_id)?;
+                    last_asset = Some((s.asset_id.as_str(), asset));
+                    asset
+                }
+            };
+            Some((e, t, s, asset, override_block, parallax))
         })
         .collect();
     entries.sort_by(|a, b| {
@@ -72,12 +94,15 @@ pub fn extract_sprites_default(world: &World) -> Vec<SpriteBatch> {
     let mut out: Vec<SpriteBatch> = Vec::new();
     let mut current_z: Option<i32> = None;
     let mut per_key: HashMap<BatchKey, usize> = HashMap::new();
-    for (idx_in_order, (entity, t, s, asset)) in entries.iter().enumerate() {
+    let mut last_batch: Option<(BatchKey, usize)> = None;
+    for (idx_in_order, &(_entity, t, s, asset, override_block, parallax)) in
+        entries.iter().enumerate()
+    {
         if current_z != Some(s.z_order) {
             per_key.clear();
+            last_batch = None;
             current_z = Some(s.z_order);
         }
-        let override_block = world.get::<UniformOverrideBlock>(*entity);
         let override_hash = override_block.map(override_key);
         // M29: lit wins over material when both are present. The collision
         // is intentionally a non-goal in M29 (see plan); warn so debug logs
@@ -98,17 +123,24 @@ pub fn extract_sprites_default(world: &World) -> Vec<SpriteBatch> {
             override_hash,
             lit,
         );
-        let batch_idx = if let Some(&i) = per_key.get(&key) {
-            i
-        } else {
-            let i = out.len();
-            per_key.insert(key, i);
-            let mut batch = SpriteBatch::new(asset.atlas, asset.filter);
-            batch.material_id = effective_material;
-            batch.uniform_overrides = if lit { None } else { override_block.copied() };
-            batch.lit = lit;
-            out.push(batch);
-            i
+        let batch_idx = match last_batch {
+            Some((last_key, i)) if last_key == key => i,
+            _ => {
+                let i = if let Some(&i) = per_key.get(&key) {
+                    i
+                } else {
+                    let i = out.len();
+                    per_key.insert(key, i);
+                    let mut batch = SpriteBatch::new(asset.atlas, asset.filter);
+                    batch.material_id = effective_material;
+                    batch.uniform_overrides = if lit { None } else { override_block.copied() };
+                    batch.lit = lit;
+                    out.push(batch);
+                    i
+                };
+                last_batch = Some((key, i));
+                i
+            }
         };
         let width_world = asset.width as f32 * t.scale.x;
         let height_world = asset.height as f32 * t.scale.y;
@@ -127,7 +159,7 @@ pub fn extract_sprites_default(world: &World) -> Vec<SpriteBatch> {
         } else {
             0.0
         };
-        let position = match world.get::<ParallaxLayer>(*entity) {
+        let position = match parallax {
             Some(layer) => {
                 parallax_world_position(t.position, layer.scroll_factor, camera_position)
             }

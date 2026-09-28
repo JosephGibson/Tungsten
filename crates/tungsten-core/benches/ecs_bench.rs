@@ -548,6 +548,57 @@ fn bench_sprite_components_query3_2k(c: &mut Criterion) {
     });
 }
 
+// Scene v2's seven-component archetype, including its cached math payload.
+// This isolates iteration from spatial hashing, neighbor density and allocation.
+fn bench_high_load_iteration_50k(c: &mut Criterion) {
+    use glam::Vec2;
+    use tungsten_core::{Position, RigidBody, Sprite, Transform, Velocity, Visibility};
+    #[derive(Clone, Copy)]
+    struct StressAgent {
+        phase: f32,
+        drift: Vec2,
+        tint_basis: [Vec2; 3],
+    }
+    let mut world = World::new();
+    for i in 0..50_000 {
+        let e = world.spawn();
+        let position = Vec2::new((i % 300) as f32 * 10.0, (i / 300) as f32 * 10.0);
+        world.insert(
+            e,
+            StressAgent {
+                phase: i as f32 * 0.001,
+                drift: Vec2::splat(8.0),
+                tint_basis: [Vec2::ONE; 3],
+            },
+        );
+        world.insert(e, Position(position));
+        world.insert(e, Velocity(Vec2::new(75.0, 40.0)));
+        world.insert(e, RigidBody::dynamic());
+        world.insert(e, Transform::from_position(position));
+        world.insert(e, Sprite::new("ex02_high_load_agent"));
+        world.insert(e, Visibility::default());
+    }
+    c.bench_function("high_load_query3_50k", |b| {
+        b.iter(|| {
+            let sum = world
+                .query3::<StressAgent, Position, Velocity>()
+                .fold(Vec2::ZERO, |acc, (_, a, p, v)| {
+                    acc + p.0 + v.0 + a.drift * a.phase + a.tint_basis[0]
+                });
+            black_box(sum);
+        });
+    });
+    c.bench_function("high_load_query3_mut_50k", |b| {
+        b.iter(|| {
+            // Bounded values keep long Criterion runs in the same numeric regime.
+            for (_, v, a, p) in world.query3_mut::<Velocity, StressAgent, Position>() {
+                v.0 = p.0 * 0.01 + a.drift * a.phase;
+            }
+            black_box(&world);
+        });
+    });
+}
+
 criterion_group!(
     benches,
     bench_spawn_insert,
@@ -562,5 +613,6 @@ criterion_group!(
     bench_naive_query2_via_entities,
     bench_event_queue_flush_10_types,
     bench_sprite_components_query3_2k,
+    bench_high_load_iteration_50k,
 );
 criterion_main!(benches);

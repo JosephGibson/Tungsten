@@ -89,12 +89,14 @@ One-line takeaways for every decision heading in [`DECISIONS.md`](../DECISIONS.m
 | `D-050` | M23 particle configs live behind `Arc<ParticleConfig>`; emitters snapshot on first tick and live particles keep their original `Arc` across hot-reload, so in-flight curves never reinterpret mid-life. |
 | `D-051` | M23 uses one ECS entity per live particle (no pool); despawns route through the standard `CommandBuffer` flush, and `max_alive` + global `ParticleBudget` bound the archetype. |
 | `D-056` | M24 `TweenComplete` routes through `EventQueue<TweenComplete>` and terminal `Tween` removal routes through `CommandBuffer::remove_component`; a `pending_remove` latch prevents re-fire between tick and frame-end flush. |
-| `D-062` | Physics broadphase: flat prefix-sum spatial hash reused across substeps under a drift budget, with AABB prefilter; supersedes `D-033`'s per-substep rebuild. |
-| `D-063` | Physics solver: warm-started soft step (Box2D v3 style) with clamped accumulated impulses, soft bias and one relax pass; bodies rest at ~slop. |
+| `D-062` | Physics broadphase: flat prefix-sum spatial hash reused across substeps under a drift budget, with AABB prefilter; supersedes `D-033`'s per-substep rebuild. Staging, drift budget and prefilter superseded by `D-075`. |
+| `D-063` | Per-substep map rebuild superseded by `D-076`. Physics solver: warm-started soft step (Box2D v3 style) with clamped accumulated impulses, soft bias and one relax pass; bodies rest at ~slop. |
 | `D-064` | Physics CCD: speculative contacts close tunneling up to 15,360 px/s; fixed 4 substeps; seam normals clamped by `face_mask`; events only at positive penetration. Supersedes that clause of `D-033`. |
 | `D-065` | Physics island sleeping via deterministic union-find; sleepers are bit-frozen, wake on contact/external write/despawn/`physics::wake`, and emit no collision events. |
-| `D-066` | Physics SoA staging: gather and write back once per frame through `query2_opt2`; substeps touch only dense arrays; events drain once per frame. |
+| `D-066` | Physics SoA staging: gather and write back once per frame through `query2_opt2`; substeps touch only dense arrays; events drain once per frame. Event-order clause superseded by `D-075`. |
 | `D-067` | Physics step stays serial: a colour-parallel solver was deterministic but gained ~2.5% and cost the serial path ~18%, so it was dropped. Threading policy unchanged. |
+| `D-075` | Physics pairs persist across substeps under per-proxy travel budgets; rebuild on budget exhaustion, contact wake or proxy-set change. Narrow phase/solve stay per substep; supersedes the staging/prefilter clauses of `D-062` and event-order clause of `D-066`. |
+| `D-076` | Warm starts carry by persistent pair index; synchronize the keyed map at frame end and before pair rebuilds, preserving immediate contact aging. Supersedes only the per-substep map rebuild in `D-063`. |
 
 ## When To Open a Decision
 

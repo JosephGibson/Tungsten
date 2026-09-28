@@ -67,48 +67,24 @@ fn steer_agents_system_changes_nearby_velocities_deterministically() {
     let mut world_a = test_world();
     world_a.insert_resource(TelemetryState::default());
     let a = world_a.spawn();
-    world_a.insert(
-        a,
-        StressAgent {
-            phase: 0.3,
-            tint_seed: 0.2,
-        },
-    );
+    world_a.insert(a, StressAgent::new(0.3, 0.2));
     world_a.insert(a, Position(Vec2::new(100.0, 100.0)));
     world_a.insert(a, Velocity(Vec2::new(80.0, 0.0)));
 
     let b = world_a.spawn();
-    world_a.insert(
-        b,
-        StressAgent {
-            phase: 1.1,
-            tint_seed: 0.7,
-        },
-    );
+    world_a.insert(b, StressAgent::new(1.1, 0.7));
     world_a.insert(b, Position(Vec2::new(112.0, 100.0)));
     world_a.insert(b, Velocity(Vec2::new(-80.0, 0.0)));
 
     let mut world_b = test_world();
     world_b.insert_resource(TelemetryState::default());
     let a2 = world_b.spawn();
-    world_b.insert(
-        a2,
-        StressAgent {
-            phase: 0.3,
-            tint_seed: 0.2,
-        },
-    );
+    world_b.insert(a2, StressAgent::new(0.3, 0.2));
     world_b.insert(a2, Position(Vec2::new(100.0, 100.0)));
     world_b.insert(a2, Velocity(Vec2::new(80.0, 0.0)));
 
     let b2 = world_b.spawn();
-    world_b.insert(
-        b2,
-        StressAgent {
-            phase: 1.1,
-            tint_seed: 0.7,
-        },
-    );
+    world_b.insert(b2, StressAgent::new(1.1, 0.7));
     world_b.insert(b2, Position(Vec2::new(112.0, 100.0)));
     world_b.insert(b2, Velocity(Vec2::new(-80.0, 0.0)));
 
@@ -217,4 +193,58 @@ fn high_load_text_hud_shows_fps_and_entity_count() {
     assert_eq!(text.len(), 2);
     assert!(text[1].content.contains("FPS: 50"));
     assert!(text[1].content.contains("Entities: 42"));
+}
+
+#[test]
+fn cached_scene_math_stays_close_to_original_formulas() {
+    for i in 0..100 {
+        let seed = i as f32 / 100.0;
+        let agent = StressAgent::new(0.3, seed);
+        let phase = seed * std::f32::consts::TAU;
+        assert_eq!(agent.drift, Vec2::new(phase.cos(), phase.sin()) * 8.0);
+        for elapsed in [0.0, 1.0 / 60.0, 6.0, 60.0] {
+            let old = crate::shared::rgb_wheel_color(elapsed, phase);
+            let new = cached_tint(&agent, &tint_carriers(elapsed));
+            for channel in 0..4 {
+                assert!(old[channel].abs_diff(new[channel]) <= 1);
+            }
+        }
+        let delta = Vec2::new(0.1 + seed * 15.0, 0.1 + seed * 12.0);
+        let distance = delta.length();
+        let original =
+            delta / distance * ((HIGH_LOAD_NEIGHBOR_RADIUS - distance) / HIGH_LOAD_NEIGHBOR_RADIUS);
+        assert!((neighbor_repulsion(delta, delta.length_squared()) - original).length() < 1e-6);
+    }
+}
+
+#[test]
+fn density_mode_scales_area_and_uses_bounds_for_spawns_and_confinement() {
+    let base = high_load_world_size(50_000, false);
+    assert_eq!(high_load_world_size(50_000, true), base);
+    assert_eq!(high_load_world_size(12_500, true), base * 0.5);
+    assert_eq!(high_load_world_size(12_500, false), base);
+    for count in [1, 32, 12_500] {
+        let size = high_load_world_size(count, true);
+        assert!((size.x * size.y / count as f32 - base.x * base.y / 50_000.0).abs() < 0.001);
+        let mut world = test_world();
+        world.insert_resource(HighLoadWorldSize(size));
+        seed_high_load_world(&mut world, count);
+        confine_agents_system(&mut world);
+        for (_, p) in world.query::<Position>() {
+            assert!(p.0.cmpge(Vec2::ZERO).all());
+            assert!(
+                p.0.cmple((size - Vec2::splat(HIGH_LOAD_SPRITE_SIZE)).max(Vec2::ZERO))
+                    .all()
+            );
+        }
+        assert_eq!(
+            world
+                .get_resource::<CameraController>()
+                .unwrap()
+                .bounds
+                .unwrap()
+                .max,
+            size
+        );
+    }
 }

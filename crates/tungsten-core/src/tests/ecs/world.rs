@@ -611,3 +611,82 @@ fn query2_opt2_mut_duplicate_type_panics() {
         .query2_opt2_mut::<Position, Velocity, Position, Name>()
         .count();
 }
+
+#[test]
+fn query3_mut_without_skips_archetypes_with_the_excluded_type() {
+    #[derive(Debug)]
+    struct Excluded;
+
+    let mut world = World::new();
+    let kept = world.spawn();
+    let skipped = world.spawn();
+    for (entity, x) in [(kept, 1.0), (skipped, 2.0)] {
+        world.insert(entity, Position { x, y: 0.0 });
+        world.insert(entity, Velocity { dx: 1.0, dy: 0.0 });
+        world.insert(entity, Name("agent".into()));
+    }
+    world.insert(skipped, Excluded);
+
+    let mut seen = Vec::new();
+    for (entity, pos, vel, _name) in
+        world.query3_mut_without::<Position, Velocity, Name, Excluded>()
+    {
+        pos.x += vel.dx;
+        seen.push(entity);
+    }
+
+    assert_eq!(seen, vec![kept]);
+    assert_eq!(world.get::<Position>(kept).unwrap().x, 2.0);
+    assert_eq!(world.get::<Position>(skipped).unwrap().x, 2.0);
+}
+
+#[test]
+#[should_panic(expected = "query3_mut_without: excluded type must differ")]
+fn query3_mut_without_rejects_excluding_a_queried_type() {
+    let mut world = World::new();
+    let _ = world.query3_mut_without::<Position, Velocity, Name, Velocity>();
+}
+
+#[test]
+fn query3_opt2_matches_query3_order_with_per_archetype_optionals() {
+    #[derive(Debug, PartialEq)]
+    struct Tag(u8);
+    #[derive(Debug, PartialEq)]
+    struct Extra(u8);
+
+    let mut world = World::new();
+    for i in 0..6u8 {
+        let e = world.spawn();
+        world.insert(
+            e,
+            Position {
+                x: f32::from(i),
+                y: 0.0,
+            },
+        );
+        world.insert(e, Velocity { dx: 0.0, dy: 0.0 });
+        world.insert(e, Name(format!("e{i}")));
+        if i % 2 == 0 {
+            world.insert(e, Tag(i));
+        }
+        if i % 3 == 0 {
+            world.insert(e, Extra(i));
+        }
+    }
+    let unrelated = world.spawn();
+    world.insert(unrelated, Tag(99));
+
+    let plain: Vec<_> = world
+        .query3::<Position, Velocity, Name>()
+        .map(|(e, ..)| e)
+        .collect();
+    let rows: Vec<_> = world
+        .query3_opt2::<Position, Velocity, Name, Tag, Extra>()
+        .map(|(e, pos, _, _, tag, extra)| (e, pos.x as u8, tag.map(|t| t.0), extra.map(|x| x.0)))
+        .collect();
+    assert_eq!(rows.iter().map(|row| row.0).collect::<Vec<_>>(), plain);
+    for (_, i, tag, extra) in rows {
+        assert_eq!(tag, (i % 2 == 0).then_some(i));
+        assert_eq!(extra, (i % 3 == 0).then_some(i));
+    }
+}

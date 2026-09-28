@@ -163,3 +163,56 @@ fn columns_consistent_length_after_multiple_removals() {
     assert_eq!(bool_len, arch.entities.len());
     assert_eq!(u32_len, 3);
 }
+
+#[test]
+fn type_id_map_keys_distinct_types_distinctly() {
+    use std::hash::BuildHasher;
+
+    let build = std::hash::BuildHasherDefault::<TypeIdHasher>::default();
+    let ids = [
+        TypeId::of::<u8>(),
+        TypeId::of::<u32>(),
+        TypeId::of::<f32>(),
+        TypeId::of::<String>(),
+        TypeId::of::<Entity>(),
+    ];
+    let hashes: std::collections::HashSet<u64> = ids.iter().map(|id| build.hash_one(id)).collect();
+    assert_eq!(hashes.len(), ids.len());
+
+    let mut map: TypeIdMap<usize> = TypeIdMap::default();
+    for (i, id) in ids.iter().enumerate() {
+        map.insert(*id, i);
+    }
+    for (i, id) in ids.iter().enumerate() {
+        assert_eq!(map.get(id), Some(&i));
+    }
+}
+
+#[test]
+fn type_id_hashes_through_the_u64_fast_path() {
+    // `TypeIdHasher::write` is only a fallback; if a toolchain starts hashing
+    // `TypeId` through bytes, lookups stay correct but the pass-through is
+    // lost, so this pins the assumption.
+    use std::hash::Hash;
+
+    #[derive(Default)]
+    struct Probe {
+        u64_writes: usize,
+        byte_writes: usize,
+    }
+    impl Hasher for Probe {
+        fn finish(&self) -> u64 {
+            0
+        }
+        fn write(&mut self, _bytes: &[u8]) {
+            self.byte_writes += 1;
+        }
+        fn write_u64(&mut self, _n: u64) {
+            self.u64_writes += 1;
+        }
+    }
+
+    let mut probe = Probe::default();
+    TypeId::of::<u32>().hash(&mut probe);
+    assert_eq!((probe.u64_writes, probe.byte_writes), (1, 0));
+}

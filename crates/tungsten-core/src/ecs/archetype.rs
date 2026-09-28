@@ -1,7 +1,35 @@
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
+use std::hash::{BuildHasherDefault, Hasher};
 
 use super::entity::Entity;
+
+/// Map keyed by `TypeId`, which is already a high-quality hash: the key's
+/// `write_u64` passes straight through instead of being SipHashed again on
+/// every `get`/`get_mut`/`has` (Bevy's `TypeIdMap` + `NoOpHash`).
+pub(crate) type TypeIdMap<V> = HashMap<TypeId, V, BuildHasherDefault<TypeIdHasher>>;
+
+/// Pass-through hasher for [`TypeIdMap`].
+#[derive(Default)]
+pub(crate) struct TypeIdHasher(u64);
+
+impl Hasher for TypeIdHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write_u64(&mut self, n: u64) {
+        self.0 = n;
+    }
+
+    /// Fallback in case a `TypeId` layout hashes through bytes: slower but
+    /// still a full mix of every byte, so lookups stay correct.
+    fn write(&mut self, bytes: &[u8]) {
+        for &byte in bytes {
+            self.0 = self.0.rotate_left(8).wrapping_add(u64::from(byte)) ^ 0x9E37_79B9_7F4A_7C15;
+        }
+    }
+}
 
 /// Type-erased `Vec<T>` column interface.
 ///
@@ -77,13 +105,13 @@ pub(crate) struct Archetype {
     /// Sorted component type key.
     pub component_types: Box<[TypeId]>,
     /// Columns allocated lazily on first transition into archetype.
-    pub columns: HashMap<TypeId, Box<dyn AnyColumn>>,
+    pub columns: TypeIdMap<Box<dyn AnyColumn>>,
     /// Entity per row.
     pub entities: Vec<Entity>,
     /// Lazy add-edge cache.
-    pub add_edges: HashMap<TypeId, ArchetypeId>,
+    pub add_edges: TypeIdMap<ArchetypeId>,
     /// Lazy remove-edge cache.
-    pub remove_edges: HashMap<TypeId, ArchetypeId>,
+    pub remove_edges: TypeIdMap<ArchetypeId>,
 }
 
 impl Archetype {
@@ -91,10 +119,10 @@ impl Archetype {
         Self {
             id,
             component_types,
-            columns: HashMap::new(),
+            columns: TypeIdMap::default(),
             entities: Vec::new(),
-            add_edges: HashMap::new(),
-            remove_edges: HashMap::new(),
+            add_edges: TypeIdMap::default(),
+            remove_edges: TypeIdMap::default(),
         }
     }
 

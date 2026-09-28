@@ -1,4 +1,7 @@
-use super::{App, resolve_startup_display, runtime_display_mode};
+use super::{
+    App, format_perf_physics_line, format_perf_systems_line, resolve_startup_display,
+    runtime_display_mode,
+};
 use tungsten_core::{
     CollisionEvent, Config, DisplayMode, DisplayState, EventQueue, ShakeEvent, SquashEvent,
 };
@@ -113,5 +116,25 @@ fn audio_commands_are_discarded_without_an_output_device() {
             .unwrap()
             .drain()
             .is_empty()
+    );
+}
+
+#[test]
+fn perf_systems_line_keeps_order_and_sanitizes_names() {
+    let timings = vec![
+        ("physics_step".to_string(), 1.234),
+        ("my system=2".to_string(), 0.5),
+    ];
+    assert_eq!(
+        format_perf_systems_line(&timings),
+        "systems: physics_step=1.23ms my_system_2=0.50ms"
+    );
+}
+
+#[test]
+fn perf_physics_line_lists_counts_in_parser_order() {
+    assert_eq!(
+        format_perf_physics_line(&tungsten_core::physics::PhysicsBuffers::default()),
+        "physics: proxies=0 dynamic=0 sleeping=0 pairs=0 contacts=0"
     );
 }

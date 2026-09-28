@@ -29,7 +29,7 @@ case "$1" in
   build) exit 0 ;;
   run)
     pkg="$3"
-    echo "$pkg msaa=${TUNGSTEN_RENDER_MSAA:-} sort=${TUNGSTEN_RENDER_DEPTH_SORT:-} post=${TUNGSTEN_POST_STACK_FIXTURE:-} aa=${TUNGSTEN_POST_AA_FIXTURE:-} bloom=${TUNGSTEN_BLOOM_FIXTURE:-} light=${TUNGSTEN_LIGHTING_FIXTURE:-} feel=${TUNGSTEN_GAME_FEEL_FIXTURE:-} frames=${TUNGSTEN_SMOKE_FRAMES:-}" >>"$STUB_RUNS"
+    echo "$pkg msaa=${TUNGSTEN_RENDER_MSAA:-} sort=${TUNGSTEN_RENDER_DEPTH_SORT:-} post=${TUNGSTEN_POST_STACK_FIXTURE:-} aa=${TUNGSTEN_POST_AA_FIXTURE:-} bloom=${TUNGSTEN_BLOOM_FIXTURE:-} light=${TUNGSTEN_LIGHTING_FIXTURE:-} feel=${TUNGSTEN_GAME_FEEL_FIXTURE:-} frames=${TUNGSTEN_SMOKE_FRAMES:-} scene=${STRESS_SCENE:-} timing=${TUNGSTEN_GPU_TIMING:-}" >>"$STUB_RUNS"
     if [ "$pkg" = "${STUB_HANG_PKG:-}" ]; then exec sleep 30; fi
     if [ "$pkg" = "${STUB_FAIL_PKG:-}" ]; then echo "thread 'main' panicked at stub"; exit 101; fi
     if [ -n "${STUB_FAIL_MSAA:-}" ] && [ "${TUNGSTEN_RENDER_MSAA:-}" = "$STUB_FAIL_MSAA" ]; then exit 3; fi
@@ -71,26 +71,27 @@ expect_output() {
 if run_case "all pass" 0; then
   for line in "Passed: 4/4" "Matrix passed: 4/4" "Post-stack passed: 2/2" \
     "Post-AA passed: 1/1" "Bloom passed: 1/1" "Lighting passed: 1/1" \
-    "Game-feel passed: 2/2"; do
+    "Game-feel passed: 2/2" "Render-features passed: 1/1"; do
     expect_output "all pass" "$line"
   done
   expected_runs="$work/expected-runs.txt"
   cat >"$expected_runs" <<'EOF'
-example-01-platformer msaa= sort= post= aa= bloom= light= feel= frames=3
-example-02-sprite-stress msaa= sort= post= aa= bloom= light= feel= frames=3
-example-03-scene-state msaa= sort= post= aa= bloom= light= feel= frames=3
-example-04-shader-playground msaa= sort= post= aa= bloom= light= feel= frames=3
-example-02-sprite-stress msaa=1 sort=cpu_stable post= aa= bloom= light= feel= frames=3
-example-02-sprite-stress msaa=1 sort=gpu_depth post= aa= bloom= light= feel= frames=3
-example-02-sprite-stress msaa=4 sort=cpu_stable post= aa= bloom= light= feel= frames=3
-example-02-sprite-stress msaa=4 sort=gpu_depth post= aa= bloom= light= feel= frames=3
-example-04-shader-playground msaa= sort= post=empty aa= bloom= light= feel= frames=3
-example-04-shader-playground msaa= sort= post=all aa= bloom= light= feel= frames=3
-example-04-shader-playground msaa= sort= post=empty aa=smaa_high bloom= light= feel= frames=3
-example-04-shader-playground msaa= sort= post=bloom_only aa= bloom=on light= feel= frames=3
-example-01-platformer msaa= sort= post= aa= bloom= light=on feel= frames=3
-example-04-shader-playground msaa= sort= post= aa= bloom= light= feel=on frames=3
-example-01-platformer msaa= sort= post= aa= bloom= light= feel= frames=3
+example-01-platformer msaa= sort= post= aa= bloom= light= feel= frames=3 scene= timing=
+example-02-sprite-stress msaa= sort= post= aa= bloom= light= feel= frames=3 scene= timing=
+example-03-scene-state msaa= sort= post= aa= bloom= light= feel= frames=3 scene= timing=
+example-04-shader-playground msaa= sort= post= aa= bloom= light= feel= frames=3 scene= timing=
+example-02-sprite-stress msaa=1 sort=cpu_stable post= aa= bloom= light= feel= frames=3 scene= timing=
+example-02-sprite-stress msaa=1 sort=gpu_depth post= aa= bloom= light= feel= frames=3 scene= timing=
+example-02-sprite-stress msaa=4 sort=cpu_stable post= aa= bloom= light= feel= frames=3 scene= timing=
+example-02-sprite-stress msaa=4 sort=gpu_depth post= aa= bloom= light= feel= frames=3 scene= timing=
+example-04-shader-playground msaa= sort= post=empty aa= bloom= light= feel= frames=3 scene= timing=
+example-04-shader-playground msaa= sort= post=all aa= bloom= light= feel= frames=3 scene= timing=
+example-04-shader-playground msaa= sort= post=empty aa=smaa_high bloom= light= feel= frames=3 scene= timing=
+example-04-shader-playground msaa= sort= post=bloom_only aa= bloom=on light= feel= frames=3 scene= timing=
+example-01-platformer msaa= sort= post= aa= bloom= light=on feel= frames=3 scene= timing=
+example-04-shader-playground msaa= sort= post= aa= bloom= light= feel=on frames=3 scene= timing=
+example-01-platformer msaa= sort= post= aa= bloom= light= feel= frames=3 scene= timing=
+example-02-sprite-stress msaa= sort= post= aa= bloom= light= feel= frames=3 scene=render-features timing=1
 EOF
   if ! diff -u "$expected_runs" "$work/runs.txt"; then
     echo "FAIL all pass: run matrix changed"

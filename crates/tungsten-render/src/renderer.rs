@@ -27,6 +27,7 @@ use crate::sprite::{SpriteBatch, SpritePipeline};
 use crate::surface::{present_mode_label, resolve_max_frame_latency, resolve_present_mode};
 use crate::targets::RenderTargetPool;
 use crate::text::{TextPipeline, TextSection};
+use crate::timing::TimingResources;
 pub use crate::timing::{CpuFrameTimings, GpuFrameTimings};
 use thiserror::Error;
 use tungsten_core::assets::{
@@ -194,6 +195,8 @@ impl Renderer {
 
         let gpu_timings = GpuFrameTimings {
             frame_gpu_ms: None,
+            render_gpu_ms: None,
+            pass_gpu_ms: Vec::new(),
             backend: Some(format!("{:?}", adapter_info.backend)),
             adapter_name: Some(adapter_info.name.clone()),
             present_mode: Some(present_mode_label(present_mode).to_string()),
@@ -1094,41 +1097,15 @@ impl Renderer {
         text_sections: &[TextSection],
         post_stack: &PostStack,
     ) -> Result<(), RenderError> {
-        if !self.timestamp_support {
-            self.gpu_timings.frame_gpu_ms = None;
-            return self.render_frame_full(
-                view_proj,
-                quads,
-                sprite_batches,
-                debug_quads,
-                debug_lines,
-                text_sections,
+        let timing = if self.timestamp_support {
+            TimingResources::new(
+                &self.device,
                 post_stack,
-            );
-        }
-
-        let query_set = self.device.create_query_set(&wgpu::QuerySetDescriptor {
-            label: Some("frame_ts_qs"),
-            count: 2,
-            ty: wgpu::QueryType::Timestamp,
-        });
-        let resolve_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("ts_resolve"),
-            size: 16,
-            usage: wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC,
-            mapped_at_creation: false,
-        });
-        let readback_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("ts_readback"),
-            size: 16,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let timing = TimingResources {
-            query_set,
-            resolve_buf,
-            readback_buf,
+                self.target_pool.scene.bloom_mip_count(),
+                self.post_aa.is_smaa() && self.smaa.is_some(),
+            )
+        } else {
+            None
         };
 
         self.render_frame_internal(
@@ -1139,7 +1116,7 @@ impl Renderer {
             debug_lines,
             text_sections,
             post_stack,
-            Some(timing),
+            timing,
         )
     }
 
@@ -1153,12 +1130,10 @@ impl Renderer {
         debug_lines: &[DebugLineInstance],
         text_sections: &[TextSection],
         post_stack: &PostStack,
-        timing: Option<TimingResources>,
+        mut timing: Option<TimingResources>,
     ) -> Result<(), RenderError> {
         self.cpu_timings = CpuFrameTimings::default();
-        if timing.is_some() {
-            self.gpu_timings.frame_gpu_ms = None;
-        }
+        self.gpu_timings.clear_durations();
 
         let acquire_start = Instant::now();
         let Some((output, reconfigure_after)) = self.acquire_texture()? else {
@@ -1288,7 +1263,7 @@ impl Renderer {
                 && let (Some(PostPass::Bloom(params)), Some(&(src, dst))) =
                     (post_stack.0.get(pi), post_plan.get(pi))
             {
-                self.post_stack.record_bloom_slot(
+                self.post_stack.record_bloom_slot_timed(
                     &self.device,
                     &self.queue,
                     &mut encoder,
@@ -1296,6 +1271,8 @@ impl Renderer {
                     params,
                     src,
                     dst,
+                    timing.as_mut(),
+                    pi,
                 );
                 continue;
             }
@@ -1305,25 +1282,32 @@ impl Renderer {
             } else {
                 None
             };
-            let mut pass = if is_scene && timing.is_some() {
-                // Attach timestamp queries to the main scene pass.
-                begin_scene_pass_with_timestamps(
-                    &mut encoder,
-                    pass_desc,
-                    &self.target_pool,
-                    &swap_view,
-                    self.clear_color,
-                    timing.as_ref().map(|t| &t.query_set),
-                )
-            } else {
-                PassRecorder::begin(
-                    &mut encoder,
-                    pass_desc,
-                    &self.target_pool,
-                    &swap_view,
-                    clear_override,
-                )
-            };
+            let timestamp_writes = timing.as_mut().map(|t| {
+                let label = if let Some(pi) = post_index {
+                    format!("post{pi}_{}", post_stack.0[pi].kind_name())
+                } else if is_scene {
+                    "scene".into()
+                } else if is_present {
+                    "present".into()
+                } else if is_text_overlay {
+                    "text".into()
+                } else if is_smaa_edge {
+                    "smaa_edges".into()
+                } else if is_smaa_blend {
+                    "smaa_blend_weights".into()
+                } else {
+                    "smaa_neighborhood".into()
+                };
+                t.next(label)
+            });
+            let mut pass = PassRecorder::begin_timed(
+                &mut encoder,
+                pass_desc,
+                &self.target_pool,
+                &swap_view,
+                clear_override,
+                timestamp_writes,
+            );
 
             if is_scene {
                 record_main_draws(
@@ -1423,8 +1407,7 @@ impl Renderer {
         }
 
         if let Some(t) = timing.as_ref() {
-            encoder.resolve_query_set(&t.query_set, 0..2, &t.resolve_buf, 0);
-            encoder.copy_buffer_to_buffer(&t.resolve_buf, 0, &t.readback_buf, 0, 16);
+            t.resolve(&mut encoder);
         }
 
         encoder.pop_debug_group();
@@ -1452,7 +1435,7 @@ impl Renderer {
         self.text_pipeline.post_frame();
 
         if let Some(t) = timing {
-            self.read_gpu_timestamp(&t.readback_buf);
+            t.read(&self.device, &self.queue, &mut self.gpu_timings);
         }
 
         self.cpu_timings.submit_present_ms =
@@ -1464,32 +1447,6 @@ impl Renderer {
         }
 
         Ok(())
-    }
-
-    fn read_gpu_timestamp(&mut self, readback_buf: &wgpu::Buffer) {
-        let slice = readback_buf.slice(..);
-        let (sender, receiver) = std::sync::mpsc::channel();
-        slice.map_async(wgpu::MapMode::Read, move |result| {
-            let _ = sender.send(result);
-        });
-        let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
-        if receiver.recv().ok().and_then(Result::ok).is_some() {
-            let stamps = slice.get_mapped_range().map(|data| {
-                let ts0 = u64::from_le_bytes(data[0..8].try_into().unwrap_or([0u8; 8]));
-                let ts1 = u64::from_le_bytes(data[8..16].try_into().unwrap_or([0u8; 8]));
-                (ts0, ts1)
-            });
-            // The map succeeded, so unmap even if the range view failed.
-            readback_buf.unmap();
-            match stamps {
-                Ok((ts0, ts1)) => {
-                    let period = self.queue.get_timestamp_period();
-                    let delta_ns = ts1.wrapping_sub(ts0) as f64 * f64::from(period);
-                    self.gpu_timings.frame_gpu_ms = Some((delta_ns / 1_000_000.0) as f32);
-                }
-                Err(e) => log::warn!("GPU timing readback failed: {e:?}"),
-            }
-        }
     }
 }
 
@@ -1537,99 +1494,6 @@ fn record_main_draws<'a>(
         debug_lines,
     );
     render_pass.pop_debug_group();
-}
-
-struct TimingResources {
-    query_set: wgpu::QuerySet,
-    resolve_buf: wgpu::Buffer,
-    readback_buf: wgpu::Buffer,
-}
-
-fn begin_scene_pass_with_timestamps<'a>(
-    encoder: &'a mut wgpu::CommandEncoder,
-    desc: &crate::passes::PassDesc,
-    pool: &'a RenderTargetPool,
-    swap_view: &'a wgpu::TextureView,
-    clear: wgpu::Color,
-    query_set: Option<&'a wgpu::QuerySet>,
-) -> wgpu::RenderPass<'a> {
-    let color_view = match desc.color {
-        TargetId::SceneColor => pool.scene.color_view(),
-        TargetId::SceneColorMsaa => pool
-            .scene
-            .color_msaa_view()
-            .expect("SceneColorMsaa requested but sample_count == 1"),
-        TargetId::PostPing => pool.scene.post_ping_view(),
-        TargetId::PostPong => pool.scene.post_pong_view(),
-        TargetId::SmaaEdges => pool
-            .scene
-            .smaa_edges_view()
-            .expect("SmaaEdges requested but post_aa == Off"),
-        TargetId::SmaaBlend => pool
-            .scene
-            .smaa_blend_view()
-            .expect("SmaaBlend requested but post_aa == Off"),
-        TargetId::PresentSource => pool
-            .scene
-            .present_source_view()
-            .expect("PresentSource requested but post_aa == Off"),
-        TargetId::Swapchain => swap_view,
-        TargetId::SceneDepth => unreachable!("depth is not a valid color target"),
-    };
-    let resolve_view_opt = desc.color_resolve.map(|target| match target {
-        TargetId::SceneColor => pool.scene.color_view(),
-        TargetId::PostPing => pool.scene.post_ping_view(),
-        TargetId::PostPong => pool.scene.post_pong_view(),
-        TargetId::Swapchain => swap_view,
-        _ => unreachable!("invalid resolve target"),
-    });
-    let depth_attachment = desc.depth.map(|target| {
-        let view = match target {
-            TargetId::SceneDepth => pool
-                .scene
-                .depth_view()
-                .expect("SceneDepth requested but depth_enabled = false"),
-            _ => unreachable!("invalid depth target"),
-        };
-        let load = desc
-            .depth_clear
-            .map_or(wgpu::LoadOp::Load, wgpu::LoadOp::Clear);
-        wgpu::RenderPassDepthStencilAttachment {
-            view,
-            depth_ops: Some(wgpu::Operations {
-                load,
-                store: wgpu::StoreOp::Store,
-            }),
-            stencil_ops: None,
-        }
-    });
-    let ts_writes = query_set.map(|qs| wgpu::RenderPassTimestampWrites {
-        query_set: qs,
-        beginning_of_pass_write_index: Some(0),
-        end_of_pass_write_index: Some(1),
-    });
-
-    let load = if desc.clear.is_some() {
-        wgpu::LoadOp::Clear(clear)
-    } else {
-        wgpu::LoadOp::Load
-    };
-
-    encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-        label: Some(desc.label),
-        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-            view: color_view,
-            depth_slice: None,
-            resolve_target: resolve_view_opt,
-            ops: wgpu::Operations {
-                load,
-                store: wgpu::StoreOp::Store,
-            },
-        })],
-        depth_stencil_attachment: depth_attachment,
-        timestamp_writes: ts_writes,
-        ..Default::default()
-    })
 }
 
 /// Fullscreen-triangle blit pipeline copying `SceneColor` → swapchain.

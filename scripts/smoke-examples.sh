@@ -174,3 +174,9 @@ row "game_feel_fixture=on" "$log_dir/${feel_pkg}-game-feel.log" "$feel_pkg" \
   TUNGSTEN_GAME_FEEL_FIXTURE=on
 row "parallax backdrop" "$log_dir/${lighting_pkg}-game-feel.log" "$lighting_pkg"
 end_section "Game-feel passed" "Game-feel failures" 2
+
+# Performance render scene: real materials/lit atlases/post/SMAA with per-pass queries.
+begin_section "Render-features GPU timing (pkg: $matrix_pkg)"
+row "render-features timing=on" "$log_dir/${matrix_pkg}-render-features.log" "$matrix_pkg" \
+  STRESS_SCENE=render-features STRESS_COUNT=4000 TUNGSTEN_GPU_TIMING=1
+end_section "Render-features passed" "Render-features failures" 1

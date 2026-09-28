@@ -22,6 +22,17 @@ impl PassRecorder {
         swap_view: &'a wgpu::TextureView,
         clear_override: Option<wgpu::Color>,
     ) -> wgpu::RenderPass<'a> {
+        Self::begin_timed(encoder, desc, pool, swap_view, clear_override, None)
+    }
+
+    pub(crate) fn begin_timed<'a>(
+        encoder: &'a mut wgpu::CommandEncoder,
+        desc: &PassDesc,
+        pool: &'a RenderTargetPool,
+        swap_view: &'a wgpu::TextureView,
+        clear_override: Option<wgpu::Color>,
+        timestamp_writes: Option<wgpu::RenderPassTimestampWrites<'a>>,
+    ) -> wgpu::RenderPass<'a> {
         let color_view = resolve_view(desc.color, pool, swap_view);
         let resolve_view_opt = desc
             .color_resolve
@@ -61,6 +72,7 @@ impl PassRecorder {
                 },
             })],
             depth_stencil_attachment: depth_attachment,
+            timestamp_writes,
             ..Default::default()
         })
     }
