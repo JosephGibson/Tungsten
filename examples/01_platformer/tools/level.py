@@ -27,7 +27,10 @@ def build_level(images):
         p=min((p for p in source['platforms'] if p['left']<=x<p['right'] and p['row']<=y<p['bottom']),key=lambda p:p['style']!='ground')
         above=(x,y-1) in occupied; left=(x-1,y) in occupied; right=(x+1,y) in occupied
         if above:
-            sprite='rock_'+str(rng.randrange(8))
+            # Exposed wall faces get finished edges; the variant is drawn regardless
+            # so the random stream, and every other tile's variant, stays the same.
+            variant=rng.randrange(8)
+            sprite='cliff_left' if not left else 'cliff_right' if not right else f'rock_{variant}'
         elif p['style']!='ground':
             sprite=p['style']
         elif not left:sprite='ground_left'

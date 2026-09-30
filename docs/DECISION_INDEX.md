@@ -53,7 +53,7 @@ One-line takeaways for every decision heading in [`DECISIONS.md`](../DECISIONS.m
 | `D-020` | `bytemuck` handles GPU POD layout. |
 | `D-025` | Project license is MIT. |
 | `D-027` | `cpal` handles audio device access. |
-| `D-028` | `symphonia` handles audio decoding. |
+| `D-028` | `symphonia` handles audio decoding. PCM WAV added by `D-077`. |
 | `D-031` | Hot reload uses `notify` and a simple watcher/event flow, not an async runtime. |
 | `D-034` | Audio command channel uses `rtrb` SPSC ring buffer. |
 | `D-037` | `criterion` is used for render-side micro-benchmarks. |
@@ -65,6 +65,7 @@ One-line takeaways for every decision heading in [`DECISIONS.md`](../DECISIONS.m
 | `D-071` | `v*` tags build Linux/Windows x86-64 example archives plus `SHA256SUMS` into a GitHub Release with CHANGELOG notes; build only, write token in the publish job only; pre-release tags without a CHANGELOG section rehearse. Workspace version = newest CHANGELOG release, bumped only by `just release-cut`; `repo-check` and CI enforce it. CPU levels: `D-072`; README status/handoff superseded by `D-074`. |
 | `D-072` | Release archives ship `x86-64-v3` and portable builds; a per-example std-only launcher runs the fastest one the CPU supports from the archive root (`TUNGSTEN_CPU_LEVEL` overrides). Measured: physics frames ~5% faster, ECS frames within 1%; native and fat LTO no better. Supersedes `D-071`'s single generic build. |
 | `D-074` | Internal release guide and shared release skill; README version-free; committed-file/live-ref Git preflight, final merged commit tags, unique rehearsals and state-based recovery. Supersedes the README status/handoff clauses of `D-071`; CI remains informational. |
+| `D-077` | Symphonia's `pcm` codec is enabled, so PCM WAV decodes (the platformer's synthesized sound effects); extends `D-028`. |
 
 ## ECS / Runtime Flow
 

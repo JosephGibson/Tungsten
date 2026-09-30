@@ -1,10 +1,16 @@
 {
   "animations": {
+    "ex10_ball_small_spin": {
+      "path": "animations/ball_small_spin.json"
+    },
     "ex10_ball_spin": {
       "path": "animations/ball_spin.json"
     },
-    "ex10_fire_dance": {
-      "path": "animations/fire_dance.json"
+    "ex10_fireball": {
+      "path": "animations/fireball.json"
+    },
+    "ex10_player_double_jump": {
+      "path": "animations/player_double_jump.json"
     },
     "ex10_player_fall": {
       "path": "animations/player_fall.json"
@@ -31,24 +37,136 @@
       "path": "animations/waterfall_flow.json"
     }
   },
+  "materials": {
+    "ex10_soft_flame": {
+      "shader": "ex10_soft_glow",
+      "uniform_defaults": {
+        "f32s": [
+          2.2,
+          0.35,
+          1.0,
+          0.6
+        ],
+        "i32s": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "vec4": [
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        ]
+      }
+    },
+    "ex10_soft_halo": {
+      "shader": "ex10_soft_glow",
+      "uniform_defaults": {
+        "f32s": [
+          1.8,
+          0.0,
+          1.0,
+          0.1
+        ],
+        "i32s": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "vec4": [
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        ]
+      }
+    }
+  },
   "particles": {
+    "ex10_ball_burn": {
+      "path": "particles/ball_burn.json"
+    },
+    "ex10_ball_burn_embers": {
+      "path": "particles/ball_burn_embers.json"
+    },
     "ex10_ball_explosion": {
       "path": "particles/ball_explosion.json"
     },
     "ex10_black_hole": {
       "path": "particles/black_hole.json"
     },
+    "ex10_black_hole_dust": {
+      "path": "particles/black_hole_dust.json"
+    },
     "ex10_double_jump": {
       "path": "particles/double_jump.json"
     },
+    "ex10_extinguish": {
+      "path": "particles/extinguish.json"
+    },
     "ex10_fire_trail": {
       "path": "particles/fire_trail.json"
+    },
+    "ex10_fireball_blast": {
+      "path": "particles/fireball_blast.json"
+    },
+    "ex10_fireball_drips": {
+      "path": "particles/fireball_drips.json"
     },
     "ex10_jump_puff": {
       "path": "particles/jump_puff.json"
     },
     "ex10_landing_dust": {
       "path": "particles/landing_dust.json"
+    },
+    "ex10_small_ball_impact": {
+      "path": "particles/small_ball_impact.json"
+    },
+    "ex10_spell_trail": {
+      "path": "particles/spell_trail.json"
     },
     "ex10_torch_embers": {
       "path": "particles/torch_embers.json"
@@ -60,60 +178,108 @@
       "path": "particles/wind_motes.json"
     }
   },
+  "shaders": {
+    "ex10_soft_glow": {
+      "path": "shaders/soft_glow.wgsl"
+    }
+  },
   "sounds": {
     "ex10_black_hole_sfx": {
       "looping": false,
       "path": "sounds/black_hole.ogg",
       "volume": 0.65
+    },
+    "ex10_extinguish_sfx": {
+      "looping": false,
+      "path": "sounds/extinguish.wav",
+      "volume": 0.5
+    },
+    "ex10_fireball_blast_sfx": {
+      "looping": false,
+      "path": "sounds/fireball_blast.wav",
+      "volume": 0.7
+    },
+    "ex10_fireball_cast_sfx": {
+      "looping": false,
+      "path": "sounds/fireball_cast.wav",
+      "volume": 0.45
     }
   },
   "sprites": {
+    "ex10_accretion_disk": {
+      "filter": "linear",
+      "path": "sprites/accretion_disk.png"
+    },
     "ex10_arch_big_0_0": {
+      "emissive_mask": "sprites/arch_big_0_0_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/arch_big_0_0_n.png",
       "path": "sprites/arch_big_0_0.png"
     },
     "ex10_arch_big_0_1": {
+      "emissive_mask": "sprites/arch_big_0_1_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/arch_big_0_1_n.png",
       "path": "sprites/arch_big_0_1.png"
     },
     "ex10_arch_big_0_2": {
+      "emissive_mask": "sprites/arch_big_0_2_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/arch_big_0_2_n.png",
       "path": "sprites/arch_big_0_2.png"
     },
     "ex10_arch_big_0_3": {
+      "emissive_mask": "sprites/arch_big_0_3_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/arch_big_0_3_n.png",
       "path": "sprites/arch_big_0_3.png"
     },
     "ex10_arch_big_1_0": {
+      "emissive_mask": "sprites/arch_big_1_0_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/arch_big_1_0_n.png",
       "path": "sprites/arch_big_1_0.png"
     },
     "ex10_arch_big_1_1": {
+      "emissive_mask": "sprites/arch_big_1_1_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/arch_big_1_1_n.png",
       "path": "sprites/arch_big_1_1.png"
     },
     "ex10_arch_big_1_2": {
+      "emissive_mask": "sprites/arch_big_1_2_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/arch_big_1_2_n.png",
       "path": "sprites/arch_big_1_2.png"
     },
     "ex10_arch_big_1_3": {
+      "emissive_mask": "sprites/arch_big_1_3_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/arch_big_1_3_n.png",
       "path": "sprites/arch_big_1_3.png"
     },
     "ex10_arch_big_2_0": {
+      "emissive_mask": "sprites/arch_big_2_0_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/arch_big_2_0_n.png",
       "path": "sprites/arch_big_2_0.png"
     },
     "ex10_arch_big_2_1": {
+      "emissive_mask": "sprites/arch_big_2_1_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/arch_big_2_1_n.png",
       "path": "sprites/arch_big_2_1.png"
     },
     "ex10_arch_big_2_2": {
+      "emissive_mask": "sprites/arch_big_2_2_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/arch_big_2_2_n.png",
       "path": "sprites/arch_big_2_2.png"
     },
     "ex10_arch_big_2_3": {
+      "emissive_mask": "sprites/arch_big_2_3_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/arch_big_2_3_n.png",
       "path": "sprites/arch_big_2_3.png"
     },
     "ex10_ball": {
@@ -152,6 +318,42 @@
       "normal_map": "sprites/ball_5_n.png",
       "path": "sprites/ball_5.png"
     },
+    "ex10_ball_small": {
+      "emissive_mask": "sprites/ball_small_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/ball_small_n.png",
+      "path": "sprites/ball_small.png"
+    },
+    "ex10_ball_small_1": {
+      "emissive_mask": "sprites/ball_small_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/ball_small_1_n.png",
+      "path": "sprites/ball_small_1.png"
+    },
+    "ex10_ball_small_2": {
+      "emissive_mask": "sprites/ball_small_2_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/ball_small_2_n.png",
+      "path": "sprites/ball_small_2.png"
+    },
+    "ex10_ball_small_3": {
+      "emissive_mask": "sprites/ball_small_3_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/ball_small_3_n.png",
+      "path": "sprites/ball_small_3.png"
+    },
+    "ex10_ball_small_4": {
+      "emissive_mask": "sprites/ball_small_4_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/ball_small_4_n.png",
+      "path": "sprites/ball_small_4.png"
+    },
+    "ex10_ball_small_5": {
+      "emissive_mask": "sprites/ball_small_5_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/ball_small_5_n.png",
+      "path": "sprites/ball_small_5.png"
+    },
     "ex10_bridge": {
       "emissive_mask": "sprites/bridge_e.png",
       "filter": "nearest",
@@ -171,8 +373,28 @@
       "path": "sprites/bridge_weathered.png"
     },
     "ex10_cliff_back": {
+      "emissive_mask": "sprites/cliff_back_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/cliff_back_n.png",
       "path": "sprites/cliff_back.png"
+    },
+    "ex10_cliff_back_top": {
+      "emissive_mask": "sprites/cliff_back_top_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/cliff_back_top_n.png",
+      "path": "sprites/cliff_back_top.png"
+    },
+    "ex10_cliff_left": {
+      "emissive_mask": "sprites/cliff_left_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/cliff_left_n.png",
+      "path": "sprites/cliff_left.png"
+    },
+    "ex10_cliff_right": {
+      "emissive_mask": "sprites/cliff_right_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/cliff_right_n.png",
+      "path": "sprites/cliff_right.png"
     },
     "ex10_clouds_far": {
       "filter": "nearest",
@@ -183,19 +405,27 @@
       "path": "sprites/clouds_near.png"
     },
     "ex10_corner_concave_left": {
+      "emissive_mask": "sprites/corner_concave_left_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/corner_concave_left_n.png",
       "path": "sprites/corner_concave_left.png"
     },
     "ex10_corner_concave_right": {
+      "emissive_mask": "sprites/corner_concave_right_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/corner_concave_right_n.png",
       "path": "sprites/corner_concave_right.png"
     },
     "ex10_corner_convex_left": {
+      "emissive_mask": "sprites/corner_convex_left_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/corner_convex_left_n.png",
       "path": "sprites/corner_convex_left.png"
     },
     "ex10_corner_convex_right": {
+      "emissive_mask": "sprites/corner_convex_right_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/corner_convex_right_n.png",
       "path": "sprites/corner_convex_right.png"
     },
     "ex10_crystal": {
@@ -219,15 +449,21 @@
       "path": "sprites/dust.png"
     },
     "ex10_fern": {
+      "emissive_mask": "sprites/fern_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/fern_n.png",
       "path": "sprites/fern.png"
     },
     "ex10_fill_1": {
+      "emissive_mask": "sprites/fill_1_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/fill_1_n.png",
       "path": "sprites/fill_1.png"
     },
     "ex10_fill_2": {
+      "emissive_mask": "sprites/fill_2_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/fill_2_n.png",
       "path": "sprites/fill_2.png"
     },
     "ex10_fire_0": {
@@ -278,52 +514,114 @@
       "normal_map": "sprites/fire_7_n.png",
       "path": "sprites/fire_7.png"
     },
-    "ex10_flame_glow": {
+    "ex10_fireball_0": {
       "filter": "nearest",
+      "path": "sprites/fireball_0.png"
+    },
+    "ex10_fireball_1": {
+      "filter": "nearest",
+      "path": "sprites/fireball_1.png"
+    },
+    "ex10_fireball_2": {
+      "filter": "nearest",
+      "path": "sprites/fireball_2.png"
+    },
+    "ex10_fireball_3": {
+      "filter": "nearest",
+      "path": "sprites/fireball_3.png"
+    },
+    "ex10_fireball_4": {
+      "filter": "nearest",
+      "path": "sprites/fireball_4.png"
+    },
+    "ex10_fireball_5": {
+      "filter": "nearest",
+      "path": "sprites/fireball_5.png"
+    },
+    "ex10_fireball_6": {
+      "filter": "nearest",
+      "path": "sprites/fireball_6.png"
+    },
+    "ex10_fireball_7": {
+      "filter": "nearest",
+      "path": "sprites/fireball_7.png"
+    },
+    "ex10_fireball_8": {
+      "filter": "nearest",
+      "path": "sprites/fireball_8.png"
+    },
+    "ex10_fireball_9": {
+      "filter": "nearest",
+      "path": "sprites/fireball_9.png"
+    },
+    "ex10_flame_glow": {
+      "filter": "linear",
       "path": "sprites/flame_glow.png"
     },
     "ex10_flowers": {
+      "emissive_mask": "sprites/flowers_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/flowers_n.png",
       "path": "sprites/flowers.png"
     },
     "ex10_gate_big_0_0": {
+      "emissive_mask": "sprites/gate_big_0_0_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/gate_big_0_0_n.png",
       "path": "sprites/gate_big_0_0.png"
     },
     "ex10_gate_big_0_1": {
+      "emissive_mask": "sprites/gate_big_0_1_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/gate_big_0_1_n.png",
       "path": "sprites/gate_big_0_1.png"
     },
     "ex10_gate_big_0_2": {
+      "emissive_mask": "sprites/gate_big_0_2_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/gate_big_0_2_n.png",
       "path": "sprites/gate_big_0_2.png"
     },
     "ex10_gate_big_1_0": {
+      "emissive_mask": "sprites/gate_big_1_0_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/gate_big_1_0_n.png",
       "path": "sprites/gate_big_1_0.png"
     },
     "ex10_gate_big_1_1": {
+      "emissive_mask": "sprites/gate_big_1_1_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/gate_big_1_1_n.png",
       "path": "sprites/gate_big_1_1.png"
     },
     "ex10_gate_big_1_2": {
+      "emissive_mask": "sprites/gate_big_1_2_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/gate_big_1_2_n.png",
       "path": "sprites/gate_big_1_2.png"
     },
     "ex10_gate_big_2_0": {
+      "emissive_mask": "sprites/gate_big_2_0_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/gate_big_2_0_n.png",
       "path": "sprites/gate_big_2_0.png"
     },
     "ex10_gate_big_2_1": {
+      "emissive_mask": "sprites/gate_big_2_1_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/gate_big_2_1_n.png",
       "path": "sprites/gate_big_2_1.png"
     },
     "ex10_gate_big_2_2": {
+      "emissive_mask": "sprites/gate_big_2_2_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/gate_big_2_2_n.png",
       "path": "sprites/gate_big_2_2.png"
     },
     "ex10_grass": {
+      "emissive_mask": "sprites/grass_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/grass_n.png",
       "path": "sprites/grass.png"
     },
     "ex10_ground": {
@@ -363,11 +661,13 @@
       "path": "sprites/ground_right.png"
     },
     "ex10_halo": {
-      "filter": "nearest",
+      "filter": "linear",
       "path": "sprites/halo.png"
     },
     "ex10_hanging_moss": {
+      "emissive_mask": "sprites/hanging_moss_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/hanging_moss_n.png",
       "path": "sprites/hanging_moss.png"
     },
     "ex10_heart_empty": {
@@ -377,6 +677,10 @@
     "ex10_heart_full": {
       "filter": "nearest",
       "path": "sprites/heart_full.png"
+    },
+    "ex10_infall_streak": {
+      "filter": "linear",
+      "path": "sprites/infall_streak.png"
     },
     "ex10_lantern": {
       "emissive_mask": "sprites/lantern_e.png",
@@ -415,15 +719,21 @@
       "path": "sprites/lantern_5.png"
     },
     "ex10_ledge": {
+      "emissive_mask": "sprites/ledge_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/ledge_n.png",
       "path": "sprites/ledge.png"
     },
     "ex10_lift_deck": {
+      "emissive_mask": "sprites/lift_deck_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/lift_deck_n.png",
       "path": "sprites/lift_deck.png"
     },
     "ex10_marker": {
+      "emissive_mask": "sprites/marker_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/marker_n.png",
       "path": "sprites/marker.png"
     },
     "ex10_moon": {
@@ -491,51 +801,79 @@
       "path": "sprites/near_woodland.png"
     },
     "ex10_oak_big_0_0": {
+      "emissive_mask": "sprites/oak_big_0_0_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/oak_big_0_0_n.png",
       "path": "sprites/oak_big_0_0.png"
     },
     "ex10_oak_big_0_1": {
+      "emissive_mask": "sprites/oak_big_0_1_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/oak_big_0_1_n.png",
       "path": "sprites/oak_big_0_1.png"
     },
     "ex10_oak_big_0_2": {
+      "emissive_mask": "sprites/oak_big_0_2_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/oak_big_0_2_n.png",
       "path": "sprites/oak_big_0_2.png"
     },
     "ex10_oak_big_1_0": {
+      "emissive_mask": "sprites/oak_big_1_0_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/oak_big_1_0_n.png",
       "path": "sprites/oak_big_1_0.png"
     },
     "ex10_oak_big_1_1": {
+      "emissive_mask": "sprites/oak_big_1_1_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/oak_big_1_1_n.png",
       "path": "sprites/oak_big_1_1.png"
     },
     "ex10_oak_big_1_2": {
+      "emissive_mask": "sprites/oak_big_1_2_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/oak_big_1_2_n.png",
       "path": "sprites/oak_big_1_2.png"
     },
     "ex10_oak_big_2_0": {
+      "emissive_mask": "sprites/oak_big_2_0_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/oak_big_2_0_n.png",
       "path": "sprites/oak_big_2_0.png"
     },
     "ex10_oak_big_2_1": {
+      "emissive_mask": "sprites/oak_big_2_1_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/oak_big_2_1_n.png",
       "path": "sprites/oak_big_2_1.png"
     },
     "ex10_oak_big_2_2": {
+      "emissive_mask": "sprites/oak_big_2_2_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/oak_big_2_2_n.png",
       "path": "sprites/oak_big_2_2.png"
     },
+    "ex10_photon_ring": {
+      "filter": "linear",
+      "path": "sprites/photon_ring.png"
+    },
     "ex10_platform": {
+      "emissive_mask": "sprites/platform_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/platform_n.png",
       "path": "sprites/platform.png"
     },
     "ex10_platform_1": {
+      "emissive_mask": "sprites/platform_1_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/platform_1_n.png",
       "path": "sprites/platform_1.png"
     },
     "ex10_platform_2": {
+      "emissive_mask": "sprites/platform_2_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/platform_2_n.png",
       "path": "sprites/platform_2.png"
     },
     "ex10_player": {
@@ -543,6 +881,30 @@
       "filter": "nearest",
       "normal_map": "sprites/player_n.png",
       "path": "sprites/player.png"
+    },
+    "ex10_player_double_jump_0": {
+      "emissive_mask": "sprites/player_double_jump_0_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_double_jump_0_n.png",
+      "path": "sprites/player_double_jump_0.png"
+    },
+    "ex10_player_double_jump_1": {
+      "emissive_mask": "sprites/player_double_jump_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_double_jump_1_n.png",
+      "path": "sprites/player_double_jump_1.png"
+    },
+    "ex10_player_double_jump_2": {
+      "emissive_mask": "sprites/player_double_jump_2_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_double_jump_2_n.png",
+      "path": "sprites/player_double_jump_2.png"
+    },
+    "ex10_player_double_jump_3": {
+      "emissive_mask": "sprites/player_double_jump_3_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_double_jump_3_n.png",
+      "path": "sprites/player_double_jump_3.png"
     },
     "ex10_player_fall_0": {
       "emissive_mask": "sprites/player_fall_0_e.png",
@@ -555,6 +917,18 @@
       "filter": "nearest",
       "normal_map": "sprites/player_fall_1_n.png",
       "path": "sprites/player_fall_1.png"
+    },
+    "ex10_player_fall_2": {
+      "emissive_mask": "sprites/player_fall_2_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_fall_2_n.png",
+      "path": "sprites/player_fall_2.png"
+    },
+    "ex10_player_fall_3": {
+      "emissive_mask": "sprites/player_fall_3_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_fall_3_n.png",
+      "path": "sprites/player_fall_3.png"
     },
     "ex10_player_idle_1": {
       "emissive_mask": "sprites/player_idle_1_e.png",
@@ -574,6 +948,30 @@
       "normal_map": "sprites/player_idle_3_n.png",
       "path": "sprites/player_idle_3.png"
     },
+    "ex10_player_idle_4": {
+      "emissive_mask": "sprites/player_idle_4_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_idle_4_n.png",
+      "path": "sprites/player_idle_4.png"
+    },
+    "ex10_player_idle_5": {
+      "emissive_mask": "sprites/player_idle_5_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_idle_5_n.png",
+      "path": "sprites/player_idle_5.png"
+    },
+    "ex10_player_idle_6": {
+      "emissive_mask": "sprites/player_idle_6_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_idle_6_n.png",
+      "path": "sprites/player_idle_6.png"
+    },
+    "ex10_player_idle_7": {
+      "emissive_mask": "sprites/player_idle_7_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_idle_7_n.png",
+      "path": "sprites/player_idle_7.png"
+    },
     "ex10_player_jump_0": {
       "emissive_mask": "sprites/player_jump_0_e.png",
       "filter": "nearest",
@@ -585,6 +983,12 @@
       "filter": "nearest",
       "normal_map": "sprites/player_jump_1_n.png",
       "path": "sprites/player_jump_1.png"
+    },
+    "ex10_player_jump_2": {
+      "emissive_mask": "sprites/player_jump_2_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_jump_2_n.png",
+      "path": "sprites/player_jump_2.png"
     },
     "ex10_player_land_0": {
       "emissive_mask": "sprites/player_land_0_e.png",
@@ -725,31 +1129,45 @@
       "path": "sprites/rock_7.png"
     },
     "ex10_roots_big_0_0": {
+      "emissive_mask": "sprites/roots_big_0_0_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/roots_big_0_0_n.png",
       "path": "sprites/roots_big_0_0.png"
     },
     "ex10_roots_big_0_1": {
+      "emissive_mask": "sprites/roots_big_0_1_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/roots_big_0_1_n.png",
       "path": "sprites/roots_big_0_1.png"
     },
     "ex10_roots_big_0_2": {
+      "emissive_mask": "sprites/roots_big_0_2_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/roots_big_0_2_n.png",
       "path": "sprites/roots_big_0_2.png"
     },
     "ex10_roots_big_1_0": {
+      "emissive_mask": "sprites/roots_big_1_0_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/roots_big_1_0_n.png",
       "path": "sprites/roots_big_1_0.png"
     },
     "ex10_roots_big_1_1": {
+      "emissive_mask": "sprites/roots_big_1_1_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/roots_big_1_1_n.png",
       "path": "sprites/roots_big_1_1.png"
     },
     "ex10_roots_big_1_2": {
+      "emissive_mask": "sprites/roots_big_1_2_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/roots_big_1_2_n.png",
       "path": "sprites/roots_big_1_2.png"
     },
     "ex10_rubble": {
+      "emissive_mask": "sprites/rubble_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/rubble_n.png",
       "path": "sprites/rubble.png"
     },
     "ex10_shock_ring": {
@@ -777,43 +1195,59 @@
       "path": "sprites/spark.png"
     },
     "ex10_spikes": {
+      "emissive_mask": "sprites/spikes_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/spikes_n.png",
       "path": "sprites/spikes.png"
     },
     "ex10_stone_platform": {
+      "emissive_mask": "sprites/stone_platform_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/stone_platform_n.png",
       "path": "sprites/stone_platform.png"
     },
     "ex10_stone_wall": {
+      "emissive_mask": "sprites/stone_wall_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/stone_wall_n.png",
       "path": "sprites/stone_wall.png"
     },
     "ex10_timber_support": {
+      "emissive_mask": "sprites/timber_support_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/timber_support_n.png",
       "path": "sprites/timber_support.png"
     },
     "ex10_vines": {
+      "emissive_mask": "sprites/vines_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/vines_n.png",
       "path": "sprites/vines.png"
     },
     "ex10_vines_1": {
+      "emissive_mask": "sprites/vines_1_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/vines_1_n.png",
       "path": "sprites/vines_1.png"
     },
     "ex10_vines_2": {
+      "emissive_mask": "sprites/vines_2_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/vines_2_n.png",
       "path": "sprites/vines_2.png"
     },
     "ex10_vines_3": {
+      "emissive_mask": "sprites/vines_3_e.png",
       "filter": "nearest",
+      "normal_map": "sprites/vines_3_n.png",
       "path": "sprites/vines_3.png"
     },
     "ex10_vortex": {
-      "filter": "nearest",
+      "filter": "linear",
       "path": "sprites/vortex.png"
     },
     "ex10_vortex_core": {
-      "filter": "nearest",
+      "filter": "linear",
       "path": "sprites/vortex_core.png"
     },
     "ex10_waterfall_flow_0": {

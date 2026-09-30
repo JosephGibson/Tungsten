@@ -60,7 +60,9 @@ def prepare(source, images):
     waterfall=source['waterfall_source']
     for x in range(waterfall['left'],waterfall['right']):
         for row in range(waterfall['row'],source['rows']):
-            source['decorations'].append(dict(sprite='ex10_cliff_back',col=x,row=row,layer='background'))
+            # The column's top tile is a mossy spring where the water breaks out.
+            sprite='ex10_cliff_back_top' if row==waterfall['row'] else 'ex10_cliff_back'
+            source['decorations'].append(dict(sprite=sprite,col=x,row=row,layer='background'))
     # Reposition flame emitters to the grounded lantern's actual flame.
     for emitter in source['emitters']:
         if emitter['config']=='ex10_torch_embers':

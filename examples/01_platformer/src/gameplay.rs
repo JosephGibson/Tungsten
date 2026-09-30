@@ -1,5 +1,9 @@
 //! Example-local hazards and prescribed platforms using public physics components.
 use crate::level_layout::{DECK_DEPTH, LANTERN_ANCHORS, SLAB_COLLIDERS};
+use crate::state::{
+    SMALL_BALL_BURSTS_PER_FRAME, SMALL_BALL_IMPACT_COOLDOWN, SMALL_BALL_IMPACT_SPEED,
+    SMALL_BALL_SCALE, SmallBall,
+};
 use crate::{
     level_layout::{HAZARDS, MOVING_PLATFORMS, MotionPlacement},
     state::{
@@ -34,6 +38,61 @@ pub(crate) struct SceneTime(pub(crate) f32);
 #[derive(Clone, Copy)]
 pub(crate) struct PreviousPosition(pub(crate) Vec2);
 #[derive(Clone, Copy)]
+pub(crate) struct PreviousVelocity(pub(crate) Vec2);
+
+pub(crate) fn ball_radius(world: &World, entity: Entity) -> f32 {
+    BALL_RADIUS
+        * if world.get::<SmallBall>(entity).is_some() {
+            SMALL_BALL_SCALE
+        } else {
+            1.0
+        }
+}
+
+/// Contact normals reject glancing/separating contacts. Sample velocity before
+/// resolution, which may have stopped or reversed the ball by the time we run.
+pub(crate) fn small_ball_impacts(world: &mut World) {
+    use tungsten::core::EventQueue;
+    use tungsten::physics::CollisionEvent;
+    let Some(events) = world.get_resource::<EventQueue<CollisionEvent>>() else {
+        return;
+    };
+    let mut hits = Vec::with_capacity(SMALL_BALL_BURSTS_PER_FRAME);
+    for event in events.iter_current() {
+        let va = world
+            .get::<PreviousVelocity>(event.a)
+            .map_or(Vec2::ZERO, |v| v.0);
+        let vb = event
+            .b
+            .and_then(|b| world.get::<PreviousVelocity>(b))
+            .map_or(Vec2::ZERO, |v| v.0);
+        if -(va - vb).dot(event.normal) <= SMALL_BALL_IMPACT_SPEED {
+            continue;
+        }
+        for entity in [Some(event.a), event.b].into_iter().flatten() {
+            if world
+                .get::<SmallBall>(entity)
+                .is_some_and(|b| b.impact_cooldown <= 0.0)
+                && !hits.contains(&entity)
+                && world.get::<Position>(entity).is_some()
+            {
+                hits.push(entity);
+                if hits.len() == SMALL_BALL_BURSTS_PER_FRAME {
+                    break;
+                }
+            }
+        }
+        if hits.len() == SMALL_BALL_BURSTS_PER_FRAME {
+            break;
+        }
+    }
+    for entity in hits {
+        world.get_mut::<SmallBall>(entity).unwrap().impact_cooldown = SMALL_BALL_IMPACT_COOLDOWN;
+        let position = world.get::<Position>(entity).unwrap().0;
+        crate::systems::spawn_transient_effect(world, "ex10_small_ball_impact", position);
+    }
+}
+#[derive(Clone, Copy)]
 pub(crate) struct Hazard {
     pub(crate) fire: bool,
 }
@@ -59,6 +118,13 @@ pub(crate) struct Glow {
     pub(crate) color: [u8; 4],
 }
 struct LightAnchor(Entity, Vec2);
+/// Keeps a secondary emitter at a fixed offset from a moving parent.
+pub(crate) struct EmitterAnchor {
+    pub(crate) parent: Entity,
+    pub(crate) offset: Vec2,
+}
+/// Molten drips leak from the underside of each fireball.
+pub(crate) const FIREBALL_DRIP_OFFSET: Vec2 = Vec2::new(0.0, 12.0);
 #[derive(Clone, Copy)]
 pub(crate) struct Explosion {
     pub(crate) age: f32,
@@ -129,6 +195,30 @@ fn motion_position(m: MotionPlacement, time: f32) -> Vec2 {
             * (time * std::f32::consts::TAU / m.period + m.phase).sin()
 }
 
+/// Current velocity of a prescribed mover, in pixels per second.
+pub(crate) fn motion_velocity(world: &World, entity: Entity) -> Option<Vec2> {
+    let Motion(m) = *world.get::<Motion>(entity)?;
+    let time = world.get_resource::<SceneTime>().map_or(0.0, |t| t.0);
+    let rate = std::f32::consts::TAU / m.period;
+    Some(Vec2::from_array(m.travel) * TILE * rate * (time * rate + m.phase).cos())
+}
+
+/// Fireballs face their horizontal travel; vertical-only movers watch the player.
+pub(crate) fn fireball_faces_left(world: &World, hazard: Entity) -> bool {
+    if let Some(Motion(m)) = world.get::<Motion>(hazard).copied()
+        && m.travel[0] != 0.0
+    {
+        return motion_velocity(world, hazard).is_some_and(|v| v.x < 0.0);
+    }
+    let own = world.get::<Position>(hazard).map(|p| p.0.x);
+    let player = world
+        .query::<Player>()
+        .next()
+        .and_then(|(e, _)| world.get::<Position>(e))
+        .map(|p| p.0.x);
+    matches!((own, player), (Some(own), Some(player)) if player < own)
+}
+
 pub(crate) fn spawn_obstacles(world: &mut World) {
     world.insert_resource(SceneTime::default());
     for e in world.query_entities::<Player>() {
@@ -151,7 +241,7 @@ pub(crate) fn spawn_obstacles(world: &mut World) {
             e,
             CurrentSprite(
                 if placement.fire {
-                    "ex10_fire_0"
+                    "ex10_fireball_0"
                 } else {
                     "ex10_spikes"
                 }
@@ -159,7 +249,7 @@ pub(crate) fn spawn_obstacles(world: &mut World) {
             ),
         );
         if placement.fire {
-            world.insert(e, AnimationState::new("ex10_fire_dance"));
+            world.insert(e, AnimationState::new("ex10_fireball"));
             add_glow(world, e, Vec2::ZERO, 175.0, [255, 125, 45, 255]);
             if let Some(config) = world
                 .get_resource::<ParticleConfigRegistry>()
@@ -204,6 +294,35 @@ pub(crate) fn spawn_obstacles(world: &mut World) {
     for (e, color) in props {
         add_glow(world, e, Vec2::new(32.0, 36.0), 150.0, color);
     }
+    // Spawned last so every earlier entity keeps its id; ids seed emitters and
+    // phase the glows.
+    let Some(drips) = world
+        .get_resource::<ParticleConfigRegistry>()
+        .and_then(|r| r.id_for_name("ex10_fireball_drips"))
+    else {
+        return;
+    };
+    let fires: Vec<_> = world
+        .query::<Hazard>()
+        .filter(|(_, h)| h.fire)
+        .filter_map(|(e, _)| Some((e, world.get::<Position>(e)?.0)))
+        .collect();
+    for (parent, position) in fires {
+        let e = world.spawn();
+        world.insert(
+            e,
+            EmitterAnchor {
+                parent,
+                offset: FIREBALL_DRIP_OFFSET,
+            },
+        );
+        world.insert(e, Transform::from_position(position + FIREBALL_DRIP_OFFSET));
+        world.insert(
+            e,
+            ParticleEmitter::with_seed(drips, parent.id() as u64 + 900),
+        );
+        world.insert(e, ParticleEmitterState::default());
+    }
 }
 fn add_glow(world: &mut World, parent: Entity, offset: Vec2, radius: f32, color: [u8; 4]) {
     world.insert(
@@ -237,6 +356,14 @@ pub(crate) fn move_obstacles(world: &mut World) {
     } else {
         0.0
     };
+    for e in world.query_entities::<SmallBall>() {
+        let ball = world.get_mut::<SmallBall>(e).unwrap();
+        ball.impact_cooldown = (ball.impact_cooldown - dt).max(0.0);
+    }
+    for e in world.query_entities::<Velocity>() {
+        let velocity = world.get::<Velocity>(e).unwrap().0;
+        world.insert(e, PreviousVelocity(velocity));
+    }
     for e in world.query_entities::<Health>() {
         let h = world.get_mut::<Health>(e).unwrap();
         h.immunity = (h.immunity - dt).max(0.0);
@@ -267,7 +394,7 @@ pub(crate) fn move_obstacles(world: &mut World) {
                     let half = if world.get::<Player>(r).is_some() {
                         PLAYER_HALF
                     } else if world.get::<Ball>(r).is_some() {
-                        Vec2::splat(BALL_RADIUS)
+                        Vec2::splat(ball_radius(world, r))
                     } else {
                         return None;
                     };
@@ -284,6 +411,15 @@ pub(crate) fn move_obstacles(world: &mut World) {
             }
         }
         world.get_mut::<Position>(e).unwrap().0 = next;
+    }
+    let anchored: Vec<_> = world
+        .query::<EmitterAnchor>()
+        .filter_map(|(e, a)| Some((e, world.get::<Position>(a.parent)?.0 + a.offset)))
+        .collect();
+    for (e, position) in anchored {
+        if let Some(transform) = world.get_mut::<Transform>(e) {
+            transform.position = position;
+        }
     }
     for e in world.query_entities::<Explosion>() {
         let explosion = world.get_mut::<Explosion>(e).unwrap();
@@ -328,21 +464,32 @@ fn contact(world: &World, body: Entity, hazard: Entity, half: Vec2) -> Option<f3
 
 pub(crate) fn hazard_contacts(world: &mut World) {
     let hazards: Vec<_> = world.query::<Hazard>().map(|(e, h)| (e, *h)).collect();
-    // One removal/burst per ball, even when two flames overlap.
-    let destroyed: Vec<_> = world
+    // One ignition or destruction per ball, even when two flames overlap.
+    let touched: Vec<_> = world
         .query::<Ball>()
         .filter_map(|(ball, _)| {
             let hit = hazards
                 .iter()
                 .filter(|(_, h)| h.fire)
-                .filter_map(|(e, h)| contact(world, ball, *e, h.half() + Vec2::splat(BALL_RADIUS)))
+                .filter_map(|(e, h)| {
+                    contact(
+                        world,
+                        ball,
+                        *e,
+                        h.half() + Vec2::splat(ball_radius(world, ball)),
+                    )
+                })
                 .min_by(f32::total_cmp)?;
             let end = world.get::<Position>(ball)?.0;
             let start = world.get::<PreviousPosition>(ball).map_or(end, |p| p.0);
             Some((ball, start.lerp(end, hit)))
         })
         .collect();
-    for (ball, position) in destroyed {
+    for (ball, position) in touched {
+        if world.get::<SmallBall>(ball).is_some() {
+            crate::burning::ignite(world, ball);
+            continue;
+        }
         world.despawn(ball);
         crate::systems::spawn_transient_effect(world, "ex10_ball_explosion", position);
         if world.query::<Explosion>().count() < TRANSIENT_EMITTER_CAP {
@@ -428,19 +575,67 @@ pub(crate) fn scene_effects(world: &mut World) {
             strength + 0.13 * (time * 5.0 + e.id() as f32).sin()
         };
     }
-    // Only steer owned vortex particles; the engine still integrates them once.
+    // New particles are visible here on the frame after the engine's deferred
+    // emission. Their age is still zero; initialize once before the first tick.
+    let rainbow = world
+        .get_resource::<ParticleConfigRegistry>()
+        .and_then(|r| r.id_for_name("ex10_small_ball_impact"));
+    let newborn: Vec<_> = world
+        .query::<Particle>()
+        .filter_map(|(e, p)| {
+            let emitter = world.get::<ParticleEmitter>(p.emitter?)?;
+            (p.age == 0.0 && Some(emitter.config) == rainbow).then_some((e, p.velocity))
+        })
+        .collect();
+    for (e, velocity) in newborn {
+        let hue = velocity.y.atan2(velocity.x) / std::f32::consts::TAU;
+        let color = crate::systems::hsv_to_rgb(hue.rem_euclid(1.0), 0.85, 1.0);
+        world.get_mut::<Particle>(e).unwrap().base_rgba = [color.x, color.y, color.z, 1.0];
+    }
+    // Annular births and accelerating tangential motion read as accretion.
+    // Only owned vortex particles are steered; the engine integrates them once.
+    let dt = world
+        .get_resource::<DeltaTime>()
+        .map_or(0.0, DeltaTime::seconds);
     let particles: Vec<_> = world
         .query::<Particle>()
         .filter_map(|(e, p)| {
-            let owner = p.emitter?;
+            // Black-hole dust comes from an emitter anchored to the hole.
+            let emitter = p.emitter?;
+            let owner = world
+                .get::<EmitterAnchor>(emitter)
+                .map_or(emitter, |a| a.parent);
             world.get::<BlackHole>(owner)?;
             let center = world.get::<Position>(owner)?.0;
-            let delta = world.get::<Transform>(e)?.position - center;
+            let position = if p.age == 0.0 {
+                center + p.velocity.normalize_or_zero() * (110.0 + p.velocity.length() * 0.25)
+            } else {
+                world.get::<Transform>(e)?.position
+            };
+            let delta = position - center;
             let radial = delta.normalize_or_zero();
-            Some((e, Vec2::new(-radial.y, radial.x) * 220.0 - radial * 70.0))
+            let tangent_speed = (32_000.0 / delta.length().max(50.0)).clamp(180.0, 640.0);
+            // Aim at the next point on the spiral. Euler tangential velocity
+            // alone drifts outward near the core, especially at low frame rates.
+            let velocity = if dt > 0.0 {
+                let (sin, cos) = (tangent_speed / delta.length().max(14.0) * dt).sin_cos();
+                let next_radial = Vec2::new(
+                    radial.x * cos - radial.y * sin,
+                    radial.x * sin + radial.y * cos,
+                );
+                (next_radial * (delta.length() - 105.0 * dt).max(0.0) - delta) / dt
+            } else {
+                p.velocity
+            };
+            Some((e, position, delta.length() < 14.0, velocity))
         })
         .collect();
-    for (e, velocity) in particles {
-        world.get_mut::<Particle>(e).unwrap().velocity = velocity;
+    for (e, position, absorbed, velocity) in particles {
+        world.get_mut::<Transform>(e).unwrap().position = position;
+        let particle = world.get_mut::<Particle>(e).unwrap();
+        particle.velocity = velocity;
+        if absorbed {
+            particle.age = particle.lifetime;
+        }
     }
 }

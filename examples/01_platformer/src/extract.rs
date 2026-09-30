@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use crate::level_layout::PropDepth;
 use crate::state::{AnimatedProp, PlayerPresentation, TILE};
+use crate::state::{SMALL_BALL_SCALE, SMALL_BALL_START_SPRITE_ID, SmallBall};
 use glam::Vec2;
 use tungsten::WindowSize;
 use tungsten::core::assets::LayerKind;
@@ -9,7 +10,9 @@ use tungsten::core::{
     AssetRegistry, CameraState, Entity, FilterMode, InputState, ParallaxLayer, Particle, Sprite,
     Transform, Visibility, World, parallax_world_position,
 };
-use tungsten::core::{SpriteAsset, TilemapInstance, TilemapRegistry};
+use tungsten::core::{
+    MaterialAssetId, MaterialRegistry, SpriteAsset, TilemapInstance, TilemapRegistry,
+};
 use tungsten::physics::Position;
 use tungsten::render::{SpriteBatch, SpriteInstance, TextSection};
 
@@ -71,13 +74,81 @@ fn instance(asset: &SpriteAsset, position: Vec2, size: Vec2) -> SpriteInstance {
     }
 }
 
+/// Mirror a sprite about its vertical axis without moving its quad.
+fn flip_horizontally(sprite: &mut SpriteInstance) {
+    sprite.uv_min[0] += sprite.uv_size[0];
+    sprite.uv_size[0] = -sprite.uv_size[0];
+}
+
 /// Keep contiguous atlas/filter runs; callers create a fresh list at depth boundaries.
 fn push_instance(batches: &mut Vec<SpriteBatch>, asset: &SpriteAsset, sprite: SpriteInstance) {
+    push_instance_with_lighting(batches, asset, sprite, asset.lit_atlas.is_some());
+}
+
+fn push_instance_with_lighting(
+    batches: &mut Vec<SpriteBatch>,
+    asset: &SpriteAsset,
+    sprite: SpriteInstance,
+    lit: bool,
+) {
+    // Never join a material batch: it would draw this sprite with the glow shader.
     if batches.last().is_none_or(|b| {
-        b.texture != asset.atlas || b.filter != asset.filter || b.lit != asset.lit_atlas.is_some()
+        b.texture != asset.atlas
+            || b.filter != asset.filter
+            || b.lit != lit
+            || b.material_id.is_some()
     }) {
         let mut batch = SpriteBatch::new(asset.atlas, asset.filter);
-        batch.lit = asset.lit_atlas.is_some();
+        batch.lit = lit;
+        batches.push(batch);
+    }
+    batches.last_mut().unwrap().instances.push(sprite);
+}
+
+/// The example's analytic soft-glow materials (`soft_glow.wgsl`), when registered.
+#[derive(Clone, Copy, Default)]
+struct GlowMaterials {
+    halo: Option<MaterialAssetId>,
+    flame: Option<MaterialAssetId>,
+}
+
+impl GlowMaterials {
+    fn from_world(world: &World) -> Self {
+        let registry = world.get_resource::<MaterialRegistry>();
+        let get = |name| registry.and_then(|r| r.get(name));
+        Self {
+            halo: get("ex10_soft_halo"),
+            flame: get("ex10_soft_flame"),
+        }
+    }
+
+    fn for_sprite(self, id: &str) -> Option<MaterialAssetId> {
+        match id {
+            "ex10_halo" => self.halo,
+            "ex10_flame_glow" => self.flame,
+            _ => None,
+        }
+    }
+}
+
+/// Glows draw as smooth analytic falloffs through their material; without one
+/// (headless tests) they fall back to the dithered glow texture.
+fn push_glow(
+    batches: &mut Vec<SpriteBatch>,
+    asset: &SpriteAsset,
+    sprite: SpriteInstance,
+    material: Option<MaterialAssetId>,
+) {
+    let Some(material) = material else {
+        push_instance(batches, asset, sprite);
+        return;
+    };
+    if batches
+        .last()
+        .is_none_or(|b| b.material_id != Some(material) || b.texture != asset.atlas)
+    {
+        let mut batch = SpriteBatch::new(asset.atlas, asset.filter);
+        batch.material_id = Some(material);
         batches.push(batch);
     }
     batches.last_mut().unwrap().instances.push(sprite);
@@ -152,6 +223,7 @@ fn extract_parallax(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
             let center = view_min + view * Vec2::new(0.81, 0.12);
             // Aspect-independent circular disc; the sky itself may stretch.
             let diameter = view.y * 0.135;
+            let glows = GlowMaterials::from_world(world);
             for (id, size, color) in [
                 ("ex10_halo", diameter * 2.6, [230, 215, 160, 150]),
                 ("ex10_flame_glow", diameter * 1.35, [255, 237, 183, 100]),
@@ -161,7 +233,7 @@ fn extract_parallax(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
                     let mut moon =
                         instance(asset, center - Vec2::splat(size * 0.5), Vec2::splat(size));
                     moon.color = color;
-                    push_instance(&mut batches, asset, moon);
+                    push_glow(&mut batches, asset, moon, glows.for_sprite(id));
                 }
             }
         }
@@ -274,6 +346,7 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     batches.extend(extract_props(world, assets, PropDepth::World));
 
     batches.extend(extract_obstacles(world, assets));
+    batches.extend(extract_vortices(world, assets, false));
 
     // Particles before black-hole core; custom extract must include them explicitly.
     let mut particle_batches: HashMap<(u32, FilterMode), SpriteBatch> = HashMap::new();
@@ -310,7 +383,7 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     particles.sort_by_key(|b| b.texture.0);
     batches.extend(particles);
 
-    batches.extend(extract_vortices(world, assets));
+    batches.extend(extract_vortices(world, assets, true));
 
     // Player sprite bottom-aligned to physics AABB.
     let lighting_on = world
@@ -402,12 +475,19 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
         let Some(pos) = world.get::<Position>(entity).copied() else {
             continue;
         };
+        let small = world.get::<SmallBall>(entity).is_some();
+        let diameter = BALL_VISUAL_DIAMETER * if small { SMALL_BALL_SCALE } else { 1.0 };
+        let fallback = if small {
+            SMALL_BALL_START_SPRITE_ID
+        } else {
+            BALL_START_SPRITE_ID
+        };
         let sprite_id = world
             .get::<CurrentSprite>(entity)
-            .map_or(BALL_START_SPRITE_ID, |cs| cs.0.as_str());
+            .map_or(fallback, |cs| cs.0.as_str());
         let Some(asset) = assets
             .get_sprite(sprite_id)
-            .or_else(|| assets.get_sprite(BALL_START_SPRITE_ID))
+            .or_else(|| assets.get_sprite(fallback))
         else {
             continue;
         };
@@ -425,15 +505,16 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
                 b.lit = lit;
                 b
             });
-        let color = world
-            .get::<BallHue>(entity)
-            .map_or([255, 0, 255, 255], |hue| rainbow_rgba(hue.hue));
+        let color = match world.get::<crate::burning::BallBurn>(entity) {
+            Some(burn) if burn.remaining > 0.0 => [255, 150, 55, 255],
+            Some(_) => [55, 48, 45, 255],
+            None => world
+                .get::<BallHue>(entity)
+                .map_or([255; 4], |hue| rainbow_rgba(hue.hue)),
+        };
         batch.instances.push(SpriteInstance {
-            position: [
-                pos.0.x - BALL_VISUAL_DIAMETER * 0.5,
-                pos.0.y - BALL_VISUAL_DIAMETER * 0.5,
-            ],
-            size: [BALL_VISUAL_DIAMETER, BALL_VISUAL_DIAMETER],
+            position: [pos.0.x - diameter * 0.5, pos.0.y - diameter * 0.5],
+            size: [diameter, diameter],
             rotation: 0.0,
             color,
             uv_min,
@@ -445,6 +526,54 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     let mut balls: Vec<_> = ball_batches.into_values().collect();
     balls.sort_by_key(|b| b.texture.0);
     batches.extend(balls);
+    // Animated flame on every burning ball, even when the particle pool is full.
+    let flames: [_; 8] = std::array::from_fn(|i| assets.get_sprite(&format!("ex10_fire_{i}")));
+    for (entity, burn) in world.query::<crate::burning::BallBurn>() {
+        if burn.remaining <= 0.0 {
+            continue;
+        }
+        let Some(pos) = world.get::<Position>(entity) else {
+            continue;
+        };
+        let age = crate::burning::BALL_BURN_SECONDS - burn.remaining;
+        let phase = age * 23.0 + entity.id() as f32 * 2.4;
+        let flicker = phase.sin();
+        let fade = (burn.remaining * 2.0).min(1.0);
+        if let Some(asset) = assets.get_sprite("ex10_flame_glow") {
+            let size = Vec2::splat(48.0 + flicker * 6.0);
+            let mut glow = instance(asset, pos.0 - size * 0.5, size);
+            glow.color = [255, 155, 55, (fade * 180.0) as u8];
+            push_instance_with_lighting(&mut batches, asset, glow, false);
+        }
+        let frame = ((age * 20.0) as usize + entity.id() as usize) % flames.len();
+        // Two independent tongues lick upward; the brighter inner flame stays
+        // anchored to the ball while the outer silhouette stretches and sways.
+        for (index, size, sway, color) in [
+            (
+                frame,
+                Vec2::new(36.0, 54.0 + flicker * 9.0),
+                flicker * 4.0,
+                [255, 175, 95, 235],
+            ),
+            (
+                (frame + 3) % flames.len(),
+                Vec2::new(23.0, 37.0 - flicker * 5.0),
+                -flicker * 2.0,
+                [255, 245, 195, 255],
+            ),
+        ] {
+            if let Some(asset) = flames[index] {
+                let origin = pos.0 + Vec2::new(sway - size.x * 0.5, 8.0 - size.y);
+                let mut flame = instance(asset, origin, size);
+                flame.color = color;
+                flame.color[3] = (fade * color[3] as f32) as u8;
+                // Self-lit flames stay bright and batch with their glow, without
+                // creating a light or alternating lit/unlit draws for each ball.
+                push_instance_with_lighting(&mut batches, asset, flame, false);
+            }
+        }
+    }
+    batches.extend(extract_fireballs(world, assets));
     batches.extend(extract_tile_layers(world, &["foreground"]));
 
     batches.extend(extract_hearts(world, assets));
@@ -555,8 +684,8 @@ fn text_outlined(section: TextSection) -> impl Iterator<Item = TextSection> {
 pub(crate) fn extract_text(world: &World) -> Vec<TextSection> {
     let mut sections = Vec::new();
     sections.extend(text_outlined(TextSection {
-        content: "A/D or ←/→ move  Space jump / double jump  LMB hold spawn ball  RMB black hole  M music  S/MMB stop  1/2/3 volume\n\
-                  =/- or wheel zoom (35–300%)  L lantern  Avoid spikes and fire  F4 HUD  F9 vsync  F11 fullscreen  Esc exit"
+        content: "A/D or ←/→ move  Space jump / double jump  LMB balls  MMB small balls (5x)  RMB black hole  M4 fireball\n\
+                  M music  S stop  1/2/3 volume  =/- or wheel zoom  L lantern  F4 HUD  F9 vsync  F11 fullscreen  Esc exit"
             .into(),
         font_id: "mono".into(),
         font_size: 24.0,
@@ -592,8 +721,9 @@ fn extract_obstacles(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> 
     let (min, max) = view_bounds(world);
     let time = world.get_resource::<SceneTime>().map_or(0.0, |t| t.0);
     let mut batches = Vec::new();
-    // Soft sprite halos complement native point lights and remain visible on
-    // scenery without normal maps. Keep them behind hazard silhouettes.
+    let glows = GlowMaterials::from_world(world);
+    // Soft halos complement native point lights and remain visible on scenery
+    // without normal maps. Keep them behind hazard silhouettes.
     if let Some(asset) = assets.get_sprite("ex10_halo") {
         for (e, glow) in world.query::<Glow>() {
             let Some(center) = crate::gameplay::glow_center(world, e, glow.offset) else {
@@ -611,7 +741,7 @@ fn extract_obstacles(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> 
                 Vec2::splat(radius * 2.0),
             );
             sprite.color = glow.color;
-            push_instance(&mut batches, asset, sprite);
+            push_glow(&mut batches, asset, sprite, glows.halo);
             if (world.get::<Hazard>(e).is_some()
                 || world.get::<crate::gameplay::PlayerLantern>(e).is_some())
                 && let Some(inner) = assets.get_sprite("ex10_flame_glow")
@@ -627,7 +757,7 @@ fn extract_obstacles(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> 
                     Vec2::splat(radius * 2.0),
                 );
                 sprite.color = glow.color;
-                push_instance(&mut batches, inner, sprite);
+                push_glow(&mut batches, inner, sprite, glows.flame);
             }
         }
     }
@@ -644,16 +774,25 @@ fn extract_obstacles(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> 
         {
             continue;
         }
-        let offset = if hazard.fire {
-            Vec2::splat(32.0)
-        } else {
-            Vec2::new(32.0, 48.0)
-        };
-        push_instance(
-            &mut batches,
-            asset,
-            instance(asset, pos.0 - offset, Vec2::splat(TILE)),
-        );
+        if !hazard.fire {
+            let offset = Vec2::new(32.0, 48.0);
+            push_instance(
+                &mut batches,
+                asset,
+                instance(asset, pos.0 - offset, Vec2::splat(TILE)),
+            );
+            continue;
+        }
+        // Fireballs face their travel and stretch a little with speed.
+        let speed = crate::gameplay::motion_velocity(world, e).map_or(0.0, |v| v.x.abs());
+        let stretch = (speed / 110.0).min(1.0) * 0.08;
+        let size = Vec2::new(TILE * (1.0 + stretch), TILE * (1.0 - stretch * 0.5));
+        let mut sprite = instance(asset, pos.0 - size * 0.5, size);
+        if crate::gameplay::fireball_faces_left(world, e) {
+            flip_horizontally(&mut sprite);
+        }
+        // Self-lit: its own point light must not wash out the authored ramp.
+        push_instance_with_lighting(&mut batches, asset, sprite, false);
     }
     if let Some(asset) = assets.get_sprite("ex10_lift_deck") {
         for (e, platform) in world.query::<MovingPlatform>() {
@@ -697,42 +836,74 @@ fn extract_obstacles(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> 
     batches
 }
 
-fn extract_vortices(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
+/// Black holes draw in two passes around the engine particles: the halo, hot
+/// disk and spiral arms beneath them, then infalling streaks, the photon ring
+/// and the horizon above, so sparks visibly vanish into the core.
+fn extract_vortices(
+    world: &World,
+    assets: &AssetRegistry,
+    over_particles: bool,
+) -> Vec<SpriteBatch> {
+    const D: f32 = BLACK_HOLE_VISUAL_DIAMETER;
     let time = world
         .get_resource::<crate::gameplay::SceneTime>()
         .map_or(0.0, |t| t.0);
     let mut batches = Vec::new();
+    let glows = GlowMaterials::from_world(world);
+    let layers: &[(&str, f32, f32, [u8; 4])] = if over_particles {
+        &[
+            (
+                "ex10_photon_ring",
+                D * 0.57,
+                time * 6.0,
+                [255, 235, 215, 255],
+            ),
+            ("ex10_vortex_core", D * 0.47, -time * 1.3, [255; 4]),
+        ]
+    } else {
+        &[
+            ("ex10_halo", D * 2.6, 0.0, [110, 80, 255, 150]),
+            (
+                "ex10_accretion_disk",
+                D * 1.6,
+                time * 0.9,
+                [255, 125, 150, 150],
+            ),
+            ("ex10_vortex", D * 1.8, -time * 2.8, [95, 125, 255, 200]),
+            ("ex10_vortex", D * 1.2, time * 4.5, [190, 170, 255, 225]),
+        ]
+    };
     for (e, hole) in world.query::<BlackHole>() {
         let Some(pos) = world.get::<Position>(e) else {
             continue;
         };
         let fade = (hole.remaining * 4.0).min(1.0);
-        for (id, diameter, rotation, color) in [
-            (
-                "ex10_halo",
-                BLACK_HOLE_VISUAL_DIAMETER * 2.5,
-                0.0,
-                [135, 95, 255, 230],
-            ),
-            (
-                "ex10_vortex",
-                BLACK_HOLE_VISUAL_DIAMETER * 1.8,
-                -time * 2.8,
-                [140, 150, 255, 150],
-            ),
-            (
-                "ex10_vortex",
-                BLACK_HOLE_VISUAL_DIAMETER * 1.2,
-                time * 4.5,
-                [220, 200, 255, 240],
-            ),
-            (
-                "ex10_vortex_core",
-                BLACK_HOLE_VISUAL_DIAMETER * 0.65,
-                -time * 1.3,
-                [255; 4],
-            ),
-        ] {
+        if over_particles && let Some(asset) = assets.get_sprite("ex10_infall_streak") {
+            for i in 0..48 {
+                let progress = (i as f32 / 48.0 + time * 0.45).fract();
+                let radius = (1.0 - progress) * D * 1.05;
+                let angle = i as f32 * 2.399_963_2 + time * 3.5 + progress * 5.0;
+                let (sin, cos) = angle.sin_cos();
+                // Heading along the spiral: orbiting at 5.75 rad/s while falling inward.
+                let heading = Vec2::new(-sin, cos) * radius * 5.75 - Vec2::new(cos, sin) * D * 0.47;
+                let size = Vec2::splat(22.0 + progress * 18.0);
+                let mut sprite = instance(
+                    asset,
+                    pos.0 + Vec2::new(cos, sin) * radius - size / 2.0,
+                    size,
+                );
+                sprite.rotation = heading.y.atan2(heading.x);
+                let warm = progress * progress;
+                sprite.color = [
+                    (150.0 + 105.0 * warm) as u8,
+                    (200.0 - 10.0 * warm) as u8,
+                    (255.0 - 145.0 * warm) as u8,
+                    (230.0 * fade * (std::f32::consts::PI * progress).sin()) as u8,
+                ];
+                push_instance(&mut batches, asset, sprite);
+            }
+        }
+        for &(id, diameter, rotation, color) in layers {
             let Some(asset) = assets.get_sprite(id) else {
                 continue;
             };
@@ -741,26 +912,45 @@ fn extract_vortices(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
             sprite.rotation = rotation;
             sprite.color = color;
             sprite.color[3] = (sprite.color[3] as f32 * fade) as u8;
-            push_instance(&mut batches, asset, sprite);
+            push_glow(&mut batches, asset, sprite, glows.for_sprite(id));
         }
-        if let Some(asset) = assets.get_sprite("ex10_spark") {
-            for i in 0..32 {
-                let progress = (i as f32 / 32.0 + time * 0.45).fract();
-                let radius = (1.0 - progress) * BLACK_HOLE_VISUAL_DIAMETER;
-                let angle = i as f32 * 2.399_963_2 + time * 3.5 + progress * 5.0;
-                let center = pos.0 + Vec2::new(angle.cos(), angle.sin()) * radius;
-                let size = 6.0 + progress * 7.0;
-                let mut sprite =
-                    instance(asset, center - Vec2::splat(size / 2.0), Vec2::splat(size));
-                sprite.color = [
-                    160,
-                    210,
-                    255,
-                    (220.0 * fade * (std::f32::consts::PI * progress).sin()) as u8,
-                ];
-                push_instance(&mut batches, asset, sprite);
-            }
+    }
+    batches
+}
+
+/// Spell missiles: a hot glow, then the fireball frame turned along its velocity.
+fn extract_fireballs(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
+    use crate::fireball::{FIREBALL_VISUAL_SIZE, FireballMissile};
+    let mut batches = Vec::new();
+    let glows = GlowMaterials::from_world(world);
+    for (e, missile) in world.query::<FireballMissile>() {
+        let Some(pos) = world.get::<Position>(e).map(|p| p.0) else {
+            continue;
+        };
+        if let Some(asset) = assets.get_sprite("ex10_flame_glow") {
+            let size = Vec2::splat(FIREBALL_VISUAL_SIZE * 2.4);
+            let mut glow = instance(asset, pos - size * 0.5, size);
+            glow.color = [255, 140, 50, 200];
+            push_glow(&mut batches, asset, glow, glows.flame);
         }
+        let Some(asset) = world
+            .get::<CurrentSprite>(e)
+            .and_then(|cs| assets.get_sprite(&cs.0))
+        else {
+            continue;
+        };
+        let size = Vec2::splat(FIREBALL_VISUAL_SIZE);
+        let mut sprite = instance(asset, pos - size * 0.5, size);
+        // The art faces +x with its drips below; leftward shots mirror so the
+        // drips stay on the underside, then turn the mirrored nose onto the velocity.
+        let v = missile.velocity;
+        sprite.rotation = if v.x < 0.0 {
+            flip_horizontally(&mut sprite);
+            (-v.y).atan2(-v.x)
+        } else {
+            v.y.atan2(v.x)
+        };
+        push_instance_with_lighting(&mut batches, asset, sprite, false);
     }
     batches
 }

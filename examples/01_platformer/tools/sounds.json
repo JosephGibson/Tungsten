@@ -3,5 +3,20 @@
     "looping": false,
     "path": "sounds/black_hole.ogg",
     "volume": 0.65
+  },
+  "ex10_extinguish_sfx": {
+    "looping": false,
+    "path": "sounds/extinguish.wav",
+    "volume": 0.5
+  },
+  "ex10_fireball_blast_sfx": {
+    "looping": false,
+    "path": "sounds/fireball_blast.wav",
+    "volume": 0.7
+  },
+  "ex10_fireball_cast_sfx": {
+    "looping": false,
+    "path": "sounds/fireball_cast.wav",
+    "volume": 0.45
   }
 }

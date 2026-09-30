@@ -20,41 +20,56 @@ use crate::extract::{extract_sprites, extract_text};
 use crate::level_layout::{EMITTERS, PROPS};
 use crate::state::{
     ASSETS_LOCAL, ASSETS_ROOT, ActiveBlackHole, AudioState, BALL_ANIMATION_ID, BALL_RADIUS,
-    BALL_RESTITUTION, BALL_START_SPRITE_ID, Ball, BallHue, BallSpawnState, CurrentSprite,
-    CycleMode, GRAVITY_Y, LightingFixture, LightingFixtureMode, MANIFEST_LOCAL, MANIFEST_ROOT,
+    BALL_RESTITUTION, BALL_START_SPRITE_ID, Ball, BallSpawnState, CurrentSprite, CycleMode,
+    EffectSounds, GRAVITY_Y, LightingFixture, LightingFixtureMode, MANIFEST_LOCAL, MANIFEST_ROOT,
     MAP_COLS, MAP_ROWS, OrbitLight, PLAYER_ANIMATION_ID, PLAYER_HALF, PLAYER_SPAWN,
     PLAYER_START_SPRITE_ID, Player, TILE, TextDisplayState,
 };
 use crate::state::{AmbientEmitter, AnimatedProp, EffectSequence, PlayerPresentation};
 use crate::systems::{
-    animation_system, audio_input_system, black_hole_force_system, black_hole_lifetime_system,
-    camera_zoom_input_system, despawn_out_of_bounds, ground_detection, orbit_lights_system,
-    platformer_camera_base_zoom, player_input, player_presentation_system, rainbow_ball_hue_system,
-    spawn_ball_system, spawn_black_hole_system, transient_emitter_cleanup, update_text_display,
+    animation_system, audio_input_system, black_hole_extinguish_system, black_hole_force_system,
+    black_hole_lifetime_system, camera_zoom_input_system, despawn_out_of_bounds, ground_detection,
+    orbit_lights_system, platformer_camera_base_zoom, player_input, player_presentation_system,
+    rainbow_ball_hue_system, spawn_ball_system, spawn_black_hole_system, transient_emitter_cleanup,
+    update_text_display,
 };
 
 type ExampleSystem = fn(&mut World);
 
 pub(crate) const RUNTIME_SYSTEM_ORDER: &[(&str, ExampleSystem)] = &[
+    ("platformer_bindings", platformer_bindings),
     ("update_text_display", update_text_display),
     ("player_input", player_input),
     ("lantern_input", crate::gameplay::lantern_input),
     ("spawn_ball_system", spawn_ball_system),
     ("spawn_black_hole_system", spawn_black_hole_system),
     ("black_hole_force_system", black_hole_force_system),
+    (
+        "cast_fireball_system",
+        crate::fireball::cast_fireball_system,
+    ),
     ("audio_input_system", audio_input_system),
     ("camera_zoom_input_system", camera_zoom_input_system),
     ("rainbow_ball_hue_system", rainbow_ball_hue_system),
     ("move_obstacles", crate::gameplay::move_obstacles),
+    ("tick_ball_fire", crate::burning::tick_ball_fire),
     ("physics_step", physics_step),
     ("ground_detection", ground_detection),
+    ("small_ball_impacts", crate::gameplay::small_ball_impacts),
     ("hazard_contacts", crate::gameplay::hazard_contacts),
+    (
+        "fireball_flight_system",
+        crate::fireball::fireball_flight_system,
+    ),
+    ("spread_ball_fire", crate::burning::spread_ball_fire),
+    ("black_hole_extinguish_system", black_hole_extinguish_system),
     ("black_hole_lifetime_system", black_hole_lifetime_system),
     ("despawn_out_of_bounds", despawn_out_of_bounds),
     ("player_presentation_system", player_presentation_system),
     ("animation_system", animation_system),
     ("transient_emitter_cleanup", transient_emitter_cleanup),
     ("sync_position_to_transform", sync_position_to_transform),
+    ("ball_fire_particles", crate::burning::ball_fire_particles),
     ("orbit_lights_system", orbit_lights_system),
     // M30: the trigger reads the current event window, so it must follow
     // `ground_detection`; `shake_tick_system` must precede the camera update.
@@ -86,8 +101,42 @@ pub(crate) fn configure_app(app: &mut App) {
         PathBuf::from(MANIFEST_LOCAL),
     ]);
     seed_world(app.world_mut());
+    platformer_bindings(app.world_mut());
     install_startup(app);
     install_runtime(app);
+}
+
+/// Keep these example-local controls across shared input.json hot reloads.
+pub(crate) fn platformer_bindings(world: &mut World) {
+    use tungsten::core::{ActionMap, Binding, KeyCode, MouseButton};
+    let Some(actions) = world.get_resource_mut::<ActionMap>() else {
+        return;
+    };
+    for (name, binding) in [
+        (
+            "spawn_small_ball",
+            Binding::Mouse {
+                button: MouseButton::Middle,
+            },
+        ),
+        (
+            "audio_stop_all",
+            Binding::Key {
+                code: KeyCode::KeyS,
+            },
+        ),
+        // Mouse 4 (winit `Back`).
+        (
+            "cast_fireball",
+            Binding::Mouse {
+                button: MouseButton::Other(4),
+            },
+        ),
+    ] {
+        if actions.bindings(name) != [binding] {
+            actions.replace_bindings(name, vec![binding]);
+        }
+    }
 }
 
 fn enable_hot_reload(app: &mut App) {
@@ -243,10 +292,9 @@ fn seed_world(world: &mut World) {
         (94.0, 15.0, -180.0),
         (119.0, 15.0, 240.0),
     ];
-    for (i, &(col, row, vx)) in ball_spawns.iter().enumerate() {
+    for &(col, row, vx) in ball_spawns {
         let ball = world.spawn();
         world.insert(ball, Ball);
-        world.insert(ball, BallHue::from_seed(i as u32));
         world.insert(ball, Position(Vec2::new(col * TILE, row * TILE)));
         world.insert(ball, Velocity(Vec2::new(vx, 0.0)));
         world.insert(ball, Collider::circle(BALL_RADIUS));
@@ -375,6 +423,8 @@ fn install_startup(app: &mut App) {
             "ex10_player_jump",
             "ex10_player_fall",
             "ex10_player_land",
+            "ex10_player_double_jump",
+            "ex10_fireball",
             "ex10_torch_flicker",
             "ex10_waterfall_flow",
             "ex10_vines_sway",
@@ -434,6 +484,24 @@ fn install_startup(app: &mut App) {
             music_playing: false,
             master_volume: 0.5,
         });
+        let effect_sounds = {
+            let reg = world
+                .get_resource::<SoundRegistry>()
+                .expect("SoundRegistry missing");
+            let sound = |id: &str| {
+                let handle = reg
+                    .get_by_id(id)
+                    .unwrap_or_else(|| panic!("{id} not found"));
+                (handle, reg.get_volume(handle))
+            };
+            EffectSounds {
+                cast: sound("ex10_fireball_cast_sfx"),
+                blast: sound("ex10_fireball_blast_sfx"),
+                extinguish: sound("ex10_extinguish_sfx"),
+                extinguish_cooldown: 0.0,
+            }
+        };
+        world.insert_resource(effect_sounds);
         if let Some(cmds) = world.get_resource_mut::<AudioCommands>() {
             cmds.set_master_volume(0.5);
         }

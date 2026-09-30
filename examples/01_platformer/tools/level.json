@@ -1,5 +1,5 @@
 {
-  "cols": 128,
+  "cols": 184,
   "decorations": [
     {
       "col": 26,
@@ -106,7 +106,7 @@
       "y": 16
     }
   ],
-  "kill_row": 47,
+  "kill_row": 49,
   "landmarks": [
     {
       "columns": [
@@ -464,6 +464,30 @@
       "right": 72,
       "row": 35,
       "bottom": 36,
+      "style": "ground"
+    },
+    {
+      "name": "pit_apron",
+      "left": 128,
+      "right": 132,
+      "row": 18,
+      "bottom": 50,
+      "style": "ground"
+    },
+    {
+      "name": "pit_floor",
+      "left": 132,
+      "right": 180,
+      "row": 46,
+      "bottom": 50,
+      "style": "ground"
+    },
+    {
+      "name": "pit_wall",
+      "left": 180,
+      "right": 184,
+      "row": 12,
+      "bottom": 50,
       "style": "ground"
     }
   ],
@@ -2313,7 +2337,7 @@
       "grotto_step"
     ]
   },
-  "rows": 48,
+  "rows": 50,
   "spawn": {
     "col": 6.5,
     "surface_row": 36

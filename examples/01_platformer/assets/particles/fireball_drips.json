@@ -1,0 +1,118 @@
+{
+  "alpha_over_life": [
+    [
+      0,
+      0
+    ],
+    [
+      0.05,
+      1
+    ],
+    [
+      0.7,
+      0.9
+    ],
+    [
+      1,
+      0
+    ]
+  ],
+  "angular_velocity": {
+    "max": 0,
+    "min": 0
+  },
+  "blend": "alpha",
+  "color_over_life": [
+    [
+      0,
+      [
+        1,
+        0.98,
+        0.86,
+        1
+      ]
+    ],
+    [
+      0.2,
+      [
+        1,
+        0.8,
+        0.32,
+        1
+      ]
+    ],
+    [
+      0.5,
+      [
+        0.98,
+        0.42,
+        0.1,
+        1
+      ]
+    ],
+    [
+      0.8,
+      [
+        0.62,
+        0.11,
+        0.06,
+        1
+      ]
+    ],
+    [
+      1,
+      [
+        0.2,
+        0.04,
+        0.05,
+        0
+      ]
+    ]
+  ],
+  "drag_per_sec": 0.4,
+  "emission": {
+    "kind": "continuous",
+    "rate_hz": 18
+  },
+  "gravity": [
+    0,
+    480
+  ],
+  "initial_velocity": {
+    "direction": [
+      0,
+      1
+    ],
+    "kind": "cone",
+    "speed": {
+      "max": 140,
+      "min": 30
+    },
+    "spread_deg": 150
+  },
+  "lifetime": {
+    "max": 1.0,
+    "min": 0.5
+  },
+  "max_alive": 16,
+  "scale_over_life": [
+    [
+      0,
+      1
+    ],
+    [
+      0.7,
+      0.75
+    ],
+    [
+      1,
+      0.2
+    ]
+  ],
+  "seed": 48657,
+  "sprite": "ex10_flame_glow",
+  "start_scale": {
+    "max": 0.15,
+    "min": 0.07
+  }
+}

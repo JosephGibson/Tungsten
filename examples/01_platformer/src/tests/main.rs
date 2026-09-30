@@ -1,4 +1,7 @@
 use glam::Vec2;
+mod ball_pit;
+mod burning;
+mod spells;
 use tungsten::core::assets::{LayerKind, TilemapData, TilemapLayer};
 use tungsten::core::{
     ActionMap, AnimationState, AudioCommand, AudioCommands, AudioHandle, Binding, CameraController,
@@ -76,7 +79,8 @@ fn configure_app_seeds_expected_bootstrap_state() {
     let player_entities: Vec<_> = world.query::<Player>().map(|(e, _)| e).collect();
     assert_eq!(player_entities.len(), 1);
     assert_eq!(world.query::<Ball>().count(), 9);
-    assert_eq!(world.query::<BallHue>().count(), 9);
+    // Seeded balls are bronze orbs: they keep their authored colours.
+    assert_eq!(world.query::<BallHue>().count(), 0);
     assert_eq!(world.query::<TilemapInstance>().count(), 1);
 
     let player = player_entities[0];
@@ -94,25 +98,33 @@ fn runtime_system_order_matches_expected_pipeline() {
     assert_eq!(
         names,
         vec![
+            "platformer_bindings",
             "update_text_display",
             "player_input",
             "lantern_input",
             "spawn_ball_system",
             "spawn_black_hole_system",
             "black_hole_force_system",
+            "cast_fireball_system",
             "audio_input_system",
             "camera_zoom_input_system",
             "rainbow_ball_hue_system",
             "move_obstacles",
+            "tick_ball_fire",
             "physics_step",
             "ground_detection",
+            "small_ball_impacts",
             "hazard_contacts",
+            "fireball_flight_system",
+            "spread_ball_fire",
+            "black_hole_extinguish_system",
             "black_hole_lifetime_system",
             "despawn_out_of_bounds",
             "player_presentation_system",
             "animation_system",
             "transient_emitter_cleanup",
             "sync_position_to_transform",
+            "ball_fire_particles",
             "orbit_lights_system",
             "squash_stretch_trigger_system",
             "squash_stretch_tick_system",
@@ -381,7 +393,8 @@ fn spawn_ball_system_spawns_at_fixed_rate_while_held() {
     world.insert_resource(CommandBuffer::new());
 
     assert_eq!(world.query::<Ball>().count(), 5);
-    assert_eq!(world.query::<BallHue>().count(), 5);
+    // Left-click orbs carry no hue; only small marbles cycle colour.
+    assert_eq!(world.query::<BallHue>().count(), 0);
     let center = Vec2::new(240.0, 144.0);
     let positions: Vec<Vec2> = world
         .query::<Ball>()
@@ -861,7 +874,7 @@ fn real_map_dimensions_spawn_and_fall_reset() {
         .unwrap();
     assert_eq!(
         (map.width, map.height, map.tile_width, map.tile_height),
-        (128, 48, 64, 64)
+        (184, 50, 64, 64)
     );
     let player = spawn_test_player(&mut world, PLAYER_SPAWN);
     for _ in 0..60 {
@@ -1040,10 +1053,11 @@ fn load_presentation_assets(world: &mut World) {
         "player_fall",
         "player_land",
         "ball_spin",
+        "ball_small_spin",
         "torch_flicker",
         "waterfall_flow",
         "vines_sway",
-        "fire_dance",
+        "fireball",
     ] {
         animations.insert(
             format!("ex10_{name}"),
@@ -1061,7 +1075,10 @@ fn load_presentation_assets(world: &mut World) {
         "wind_motes",
         "black_hole",
         "ball_explosion",
+        "small_ball_impact",
         "fire_trail",
+        "ball_burn",
+        "ball_burn_embers",
     ] {
         let path = asset_path(&format!("particles/{name}.json"));
         let config = ParticleConfig::load(&path).unwrap();
@@ -2159,4 +2176,194 @@ fn midnight_uses_restrained_stock_post_passes_and_round_moon_at_all_aspects() {
         assert_eq!(moon.size[0], moon.size[1]);
         assert_eq!(moon.rotation, 0.0);
     }
+}
+
+#[test]
+fn aerial_jump_plays_the_tuck_clip_until_the_ascent_ends() {
+    use crate::state::{PlayerEffect, PlayerPresentation};
+    use crate::systems::player_presentation_system;
+    let mut world = seed_world();
+    let player = spawn_test_player(&mut world, Vec2::new(100.0, 100.0));
+    let clip = |world: &World| world.get::<PlayerPresentation>(player).unwrap().clip;
+    let launch = |world: &mut World, effect| {
+        world.get_mut::<Velocity>(player).unwrap().0.y = -500.0;
+        world
+            .get_mut::<PlayerPresentation>(player)
+            .unwrap()
+            .pending_effect = Some(effect);
+    };
+    world.get_mut::<Player>(player).unwrap().grounded = false;
+    launch(&mut world, PlayerEffect::DoubleJump);
+    player_presentation_system(&mut world);
+    assert_eq!(clip(&world), "ex10_player_double_jump");
+    player_presentation_system(&mut world);
+    assert_eq!(clip(&world), "ex10_player_double_jump");
+    world.get_mut::<Velocity>(player).unwrap().0.y = 40.0;
+    player_presentation_system(&mut world);
+    assert_eq!(clip(&world), "ex10_player_fall");
+    launch(&mut world, PlayerEffect::Jump);
+    player_presentation_system(&mut world);
+    assert_eq!(clip(&world), "ex10_player_jump");
+}
+
+#[test]
+fn fireballs_face_their_travel_and_drag_anchored_drips() {
+    use crate::gameplay::{
+        EmitterAnchor, FIREBALL_DRIP_OFFSET, Hazard, fireball_faces_left, motion_velocity,
+        move_obstacles, spawn_obstacles,
+    };
+    use tungsten::core::{ParticleConfig, ParticleConfigRegistry, ParticleEmitter};
+    let mut world = seed_world();
+    load_presentation_assets(&mut world);
+    let path = asset_path("particles/fireball_drips.json");
+    let config = ParticleConfig::load(&path).unwrap();
+    world
+        .get_resource_mut::<ParticleConfigRegistry>()
+        .unwrap()
+        .register("ex10_fireball_drips".into(), path, config);
+    spawn_test_player(&mut world, PLAYER_SPAWN);
+    spawn_obstacles(&mut world);
+    let fires: Vec<_> = world
+        .query::<Hazard>()
+        .filter(|(_, h)| h.fire)
+        .map(|(e, _)| e)
+        .collect();
+    let drips: Vec<_> = world
+        .query::<EmitterAnchor>()
+        .map(|(e, a)| (e, a.parent))
+        .collect();
+    assert_eq!(drips.len(), fires.len());
+    assert!(
+        drips
+            .iter()
+            .all(|(e, parent)| fires.contains(parent) && world.get::<ParticleEmitter>(*e).is_some())
+    );
+    let mut seen = vec![[false; 2]; fires.len()];
+    for _ in 0..450 {
+        move_obstacles(&mut world);
+        for (i, fire) in fires.iter().enumerate() {
+            let velocity = motion_velocity(&world, *fire).unwrap();
+            let left = fireball_faces_left(&world, *fire);
+            if velocity.x == 0.0 {
+                // Vertical movers watch the player, who waits to their left.
+                assert!(left);
+            } else {
+                assert_eq!(left, velocity.x < 0.0);
+            }
+            seen[i][usize::from(left)] = true;
+        }
+        for (drip, parent) in &drips {
+            let expected = world.get::<Position>(*parent).unwrap().0 + FIREBALL_DRIP_OFFSET;
+            assert_eq!(world.get::<Transform>(*drip).unwrap().position, expected);
+        }
+    }
+    // Over a full period every horizontal mover turns both ways.
+    for (i, fire) in fires.iter().enumerate() {
+        if motion_velocity(&world, *fire).unwrap().x != 0.0 {
+            assert_eq!(seen[i], [true, true]);
+        }
+    }
+}
+
+#[test]
+fn only_small_marbles_shift_hue_while_orbs_render_untinted() {
+    use crate::state::{BALL_START_SPRITE_ID, SMALL_BALL_START_SPRITE_ID, SmallBall};
+    let mut world = seed_world();
+    world.insert_resource(CommandBuffer::new());
+    world.insert_resource(BallSpawnState::default());
+    crate::setup::platformer_bindings(&mut world);
+    world
+        .get_resource_mut::<ActionMap>()
+        .unwrap()
+        .replace_bindings(
+            "spawn_ball",
+            vec![Binding::Mouse {
+                button: MouseButton::Left,
+            }],
+        );
+    {
+        let input = world.get_resource_mut::<InputState>().unwrap();
+        input.update_cursor_position(240.0, 144.0);
+        input.mouse_down(MouseButton::Left);
+        input.mouse_down(MouseButton::Middle);
+    }
+    world.get_resource_mut::<DeltaTime>().unwrap().dt = 0.1;
+    spawn_ball_system(&mut world);
+    let commands = world.remove_resource::<CommandBuffer>().unwrap();
+    world.flush(commands);
+    let balls: Vec<_> = world.query::<Ball>().map(|(e, _)| e).collect();
+    let (small, orbs): (Vec<_>, Vec<_>) = balls
+        .iter()
+        .partition(|e| world.get::<SmallBall>(**e).is_some());
+    assert!(!small.is_empty() && !orbs.is_empty());
+    assert!(small.iter().all(|e| world.get::<BallHue>(*e).is_some()));
+    assert!(orbs.iter().all(|e| world.get::<BallHue>(*e).is_none()));
+
+    let mut assets = tungsten::core::AssetRegistry::new();
+    mock_sprite(&mut assets, BALL_START_SPRITE_ID, 1, true);
+    mock_sprite(&mut assets, SMALL_BALL_START_SPRITE_ID, 2, true);
+    world.insert_resource(assets);
+    let batches = crate::extract::extract_sprites(&world);
+    let colors = |texture: u32| -> Vec<[u8; 4]> {
+        batches
+            .iter()
+            .filter(|b| b.texture.0 == texture)
+            .flat_map(|b| b.instances.iter().map(|i| i.color))
+            .collect()
+    };
+    assert_eq!(colors(1).len(), orbs.len());
+    assert!(colors(1).iter().all(|c| *c == [255; 4]));
+    assert_eq!(colors(2).len(), small.len());
+    assert!(colors(2).iter().all(|c| *c != [255; 4]));
+}
+
+#[test]
+fn soft_glow_shader_passes_naga_validation() {
+    let source = std::fs::read_to_string(asset_path("shaders/soft_glow.wgsl")).unwrap();
+    tungsten::render::validate_wgsl_source("ex10_soft_glow", &source).unwrap();
+}
+
+#[test]
+fn glows_draw_through_soft_materials_without_absorbing_other_sprites() {
+    use crate::gameplay::Glow;
+    use tungsten::core::{AssetRegistry, MaterialRegistry, MaterialUniformDefaults};
+    let mut world = seed_world();
+    let mut materials = MaterialRegistry::new();
+    let halo = materials.allocate(
+        "ex10_soft_halo",
+        "halo".into(),
+        "ex10_soft_glow".into(),
+        MaterialUniformDefaults::default(),
+    );
+    world.insert_resource(materials);
+    let mut assets = AssetRegistry::new();
+    // Both sprites share one atlas page, as packed sprites do.
+    mock_sprite(&mut assets, "ex10_halo", 7, false);
+    mock_sprite(&mut assets, "ex10_lantern", 7, false);
+    world.insert_resource(assets);
+    for x in [100.0, 180.0] {
+        let lamp = world.spawn();
+        world.insert(lamp, Transform::from_position(Vec2::new(x, 100.0)));
+        world.insert(
+            lamp,
+            Glow {
+                offset: Vec2::ZERO,
+                radius: 40.0,
+                color: [255, 190, 100, 255],
+            },
+        );
+    }
+    let batches = crate::extract::extract_sprites(&world);
+    let glow_batches: Vec<_> = batches
+        .iter()
+        .filter(|b| b.material_id == Some(halo))
+        .collect();
+    assert_eq!(glow_batches.len(), 1);
+    assert_eq!(glow_batches[0].instances.len(), 2);
+    assert!(
+        batches
+            .iter()
+            .filter(|b| b.material_id.is_none() && b.texture.0 == 7)
+            .all(|b| b.instances.iter().all(|i| i.size != [80.0, 80.0]))
+    );
 }

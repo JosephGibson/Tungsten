@@ -1,22 +1,28 @@
 use glam::Vec2;
 use tungsten::WindowSize;
 use tungsten::core::{
-    ActionMap, AnimationRegistry, AnimationState, AudioCommands, CameraController, CameraState,
-    CommandBuffer, DeltaTime, Entity, EventQueue, InputState, Light, ParticleConfigRegistry,
-    ParticleEmitter, ParticleEmitterState, ShakeEvent, SquashEvent, SquashTrigger, Transform,
-    World,
+    ActionMap, AnimationRegistry, AnimationState, AudioCommands, AudioHandle, CameraController,
+    CameraState, CommandBuffer, DeltaTime, Entity, EventQueue, InputState, Light,
+    ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, ShakeEvent, SquashEvent,
+    SquashTrigger, Transform, World,
 };
 use tungsten::physics::{BodyKind, Collider, CollisionEvent, Position, RigidBody, Shape, Velocity};
 
+use crate::burning::BallBurn;
+use crate::gameplay::EmitterAnchor;
 use crate::state::PlayerEffect;
 use crate::state::{
     ActiveBlackHole, AudioState, BALL_ANIMATION_ID, BALL_RADIUS, BALL_RESTITUTION,
     BALL_SPAWN_INTERVAL, BALL_SPAWN_JITTER, BALL_START_SPRITE_ID, BLACK_HOLE_FORCE,
     BLACK_HOLE_LIFETIME, BLACK_HOLE_RADIUS, Ball, BallHue, BallSpawnState, BlackHole, CAMERA_ROWS,
-    CurrentSprite, CycleMode, EffectSequence, KILL_Y, OrbitLight, PLAYER_HALF, PLAYER_JUMP_IMPULSE,
-    PLAYER_MOVE_SPEED, PLAYER_SPAWN, PLAYER_START_SPRITE_ID, Player, PlayerPresentation,
-    TEXT_UPDATE_INTERVAL, TILE, TRANSIENT_EMITTER_CAP, TextDisplayState, TransientEmitter,
-    WORLD_BOUNDS_MAX, WORLD_BOUNDS_MIN,
+    CurrentSprite, CycleMode, EXTINGUISH_BURSTS_PER_FRAME, EXTINGUISH_SFX_INTERVAL, EffectSequence,
+    EffectSounds, KILL_Y, OrbitLight, PLAYER_HALF, PLAYER_JUMP_IMPULSE, PLAYER_MOVE_SPEED,
+    PLAYER_SPAWN, PLAYER_START_SPRITE_ID, Player, PlayerPresentation, TEXT_UPDATE_INTERVAL, TILE,
+    TRANSIENT_EMITTER_CAP, TextDisplayState, TransientEmitter, WORLD_BOUNDS_MAX, WORLD_BOUNDS_MIN,
+};
+use crate::state::{
+    SMALL_BALL_ANIMATION_ID, SMALL_BALL_SCALE, SMALL_BALL_SPAWN_INTERVAL,
+    SMALL_BALL_START_SPRITE_ID, SmallBall,
 };
 
 /// Ground jump preserves hold behavior; the aerial jump needs a fresh press.
@@ -328,8 +334,16 @@ pub(crate) fn player_presentation_system(world: &mut World) {
             {
                 p.landing_lock = 0.0;
             }
+            if p.pending_effect == Some(PlayerEffect::DoubleJump) {
+                p.aerial_tuck = true;
+            }
+            if grounded || velocity.y >= 0.0 {
+                p.aerial_tuck = false;
+            }
             let clip = if !grounded {
-                if velocity.y < 0.0 {
+                if velocity.y < 0.0 && p.aerial_tuck {
+                    "ex10_player_double_jump"
+                } else if velocity.y < 0.0 {
                     "ex10_player_jump"
                 } else {
                     "ex10_player_fall"
@@ -409,6 +423,16 @@ pub(crate) fn spawn_transient_effect(world: &mut World, name: &str, position: Ve
     world.insert(entity, Transform::from_position(position));
     world.insert(entity, ParticleEmitter::with_seed(config, seed));
     world.insert(entity, ParticleEmitterState::default());
+}
+
+/// Play one of the spell/fire sounds when the audio resources exist.
+pub(crate) fn play_effect_sound(world: &mut World, pick: fn(&EffectSounds) -> (AudioHandle, f32)) {
+    let Some((handle, volume)) = world.get_resource::<EffectSounds>().map(pick) else {
+        return;
+    };
+    if let Some(cmds) = world.get_resource_mut::<AudioCommands>() {
+        cmds.play_with(handle, volume, false);
+    }
 }
 
 pub(crate) fn transient_emitter_cleanup(world: &mut World) {
@@ -536,6 +560,11 @@ pub(crate) fn cursor_to_world(cursor: Vec2, camera: &CameraState) -> Option<Vec2
 
 /// Hold-to-spawn balls via fixed accumulator and deferred commands.
 pub(crate) fn spawn_ball_system(world: &mut World) {
+    spawn_balls(world, false);
+    spawn_balls(world, true);
+}
+
+fn spawn_balls(world: &mut World, small: bool) {
     let held = {
         let Some(input) = world.get_resource::<InputState>() else {
             return;
@@ -543,12 +572,23 @@ pub(crate) fn spawn_ball_system(world: &mut World) {
         let Some(actions) = world.get_resource::<ActionMap>() else {
             return;
         };
-        actions.is_pressed(input, "spawn_ball")
+        actions.is_pressed(
+            input,
+            if small {
+                "spawn_small_ball"
+            } else {
+                "spawn_ball"
+            },
+        )
     };
 
     if !held {
         if let Some(state) = world.get_resource_mut::<BallSpawnState>() {
-            state.accumulator = 0.0;
+            if small {
+                state.small_accumulator = 0.0;
+            } else {
+                state.accumulator = 0.0;
+            }
         }
         return;
     }
@@ -560,14 +600,27 @@ pub(crate) fn spawn_ball_system(world: &mut World) {
         let Some(state) = world.get_resource_mut::<BallSpawnState>() else {
             return;
         };
-        state.accumulator += dt;
+        let (accumulator, phase, interval) = if small {
+            (
+                &mut state.small_accumulator,
+                &mut state.small_spawn_phase,
+                SMALL_BALL_SPAWN_INTERVAL,
+            )
+        } else {
+            (
+                &mut state.accumulator,
+                &mut state.spawn_phase,
+                BALL_SPAWN_INTERVAL,
+            )
+        };
+        *accumulator += dt;
         let mut count = 0u32;
-        while state.accumulator >= BALL_SPAWN_INTERVAL {
-            state.accumulator -= BALL_SPAWN_INTERVAL;
+        while *accumulator >= interval {
+            *accumulator -= interval;
             count += 1;
         }
-        let phase_start = state.spawn_phase;
-        state.spawn_phase = state.spawn_phase.wrapping_add(count);
+        let phase_start = *phase;
+        *phase = phase.wrapping_add(count);
         (count, phase_start)
     };
     if spawn_count == 0 {
@@ -596,9 +649,15 @@ pub(crate) fn spawn_ball_system(world: &mut World) {
             let offset = Vec2::new(angle.cos(), angle.sin()) * BALL_SPAWN_JITTER;
             let ball = cmds.spawn();
             cmds.insert_pending(ball, Ball);
+            if small {
+                cmds.insert_pending(ball, SmallBall::default());
+            }
             cmds.insert_pending(ball, Position(world_pos + offset));
             cmds.insert_pending(ball, Velocity(Vec2::ZERO));
-            cmds.insert_pending(ball, Collider::circle(BALL_RADIUS));
+            cmds.insert_pending(
+                ball,
+                Collider::circle(BALL_RADIUS * if small { SMALL_BALL_SCALE } else { 1.0 }),
+            );
             cmds.insert_pending(
                 ball,
                 RigidBody {
@@ -607,9 +666,29 @@ pub(crate) fn spawn_ball_system(world: &mut World) {
                     restitution: BALL_RESTITUTION,
                 },
             );
-            cmds.insert_pending(ball, AnimationState::new(BALL_ANIMATION_ID));
-            cmds.insert_pending(ball, CurrentSprite(BALL_START_SPRITE_ID.into()));
-            cmds.insert_pending(ball, BallHue::from_seed(phase));
+            cmds.insert_pending(
+                ball,
+                AnimationState::new(if small {
+                    SMALL_BALL_ANIMATION_ID
+                } else {
+                    BALL_ANIMATION_ID
+                }),
+            );
+            cmds.insert_pending(
+                ball,
+                CurrentSprite(
+                    if small {
+                        SMALL_BALL_START_SPRITE_ID
+                    } else {
+                        BALL_START_SPRITE_ID
+                    }
+                    .into(),
+                ),
+            );
+            // Only the glass marbles cycle through the rainbow; orbs keep their bronze.
+            if small {
+                cmds.insert_pending(ball, BallHue::from_seed(phase));
+            }
         }
     }
 }
@@ -673,6 +752,23 @@ pub(crate) fn spawn_black_hole_system(world: &mut World) {
             world.insert(entity, ParticleEmitter::new(cfg_id));
             world.insert(entity, ParticleEmitterState::default());
         }
+        // Dark gas needs its own emitter; `scene_effects` steers it with the hole's.
+        if let Some(cfg_id) = world
+            .get_resource::<ParticleConfigRegistry>()
+            .and_then(|r| r.id_for_name("ex10_black_hole_dust"))
+        {
+            let dust = world.spawn();
+            world.insert(
+                dust,
+                EmitterAnchor {
+                    parent: entity,
+                    offset: Vec2::ZERO,
+                },
+            );
+            world.insert(dust, Transform::from_position(world_pos));
+            world.insert(dust, ParticleEmitter::new(cfg_id));
+            world.insert(dust, ParticleEmitterState::default());
+        }
         if let Some(active) = world.get_resource_mut::<ActiveBlackHole>() {
             active.0 = Some(entity);
         }
@@ -710,10 +806,7 @@ pub(crate) fn black_hole_force_system(world: &mut World) {
         return;
     }
 
-    let holes: Vec<Vec2> = world
-        .query::<BlackHole>()
-        .filter_map(|(entity, _)| world.get::<Position>(entity).map(|p| p.0))
-        .collect();
+    let holes = black_hole_positions(world);
     if holes.is_empty() {
         return;
     }
@@ -730,18 +823,7 @@ pub(crate) fn black_hole_force_system(world: &mut World) {
             continue;
         };
 
-        let mut accel = Vec2::ZERO;
-        for &hole_pos in &holes {
-            let delta = hole_pos - pos.0;
-            let dist_sq = delta.length_squared();
-            if !(1.0e-4..BLACK_HOLE_RADIUS * BLACK_HOLE_RADIUS).contains(&dist_sq) {
-                continue;
-            }
-            let dist = dist_sq.sqrt();
-            let falloff = 1.0 - (dist / BLACK_HOLE_RADIUS);
-            let dir = delta / dist;
-            accel += dir * BLACK_HOLE_FORCE * falloff;
-        }
+        let accel = black_hole_acceleration(&holes, pos.0);
         if accel == Vec2::ZERO {
             continue;
         }
@@ -751,10 +833,91 @@ pub(crate) fn black_hole_force_system(world: &mut World) {
     }
 }
 
+pub(crate) fn black_hole_positions(world: &World) -> Vec<Vec2> {
+    world
+        .query::<BlackHole>()
+        .filter_map(|(entity, _)| world.get::<Position>(entity).map(|p| p.0))
+        .collect()
+}
+
+/// Summed pull of every hole on a point, falling linearly to zero at the radius.
+pub(crate) fn black_hole_acceleration(holes: &[Vec2], position: Vec2) -> Vec2 {
+    let mut accel = Vec2::ZERO;
+    for &hole_pos in holes {
+        let delta = hole_pos - position;
+        let dist_sq = delta.length_squared();
+        if !(1.0e-4..BLACK_HOLE_RADIUS * BLACK_HOLE_RADIUS).contains(&dist_sq) {
+            continue;
+        }
+        let dist = dist_sq.sqrt();
+        let falloff = 1.0 - (dist / BLACK_HOLE_RADIUS);
+        let dir = delta / dist;
+        accel += dir * BLACK_HOLE_FORCE * falloff;
+    }
+    accel
+}
+
+/// Holes put out burning small balls inside their radius. The balls stay spent,
+/// as after a normal burnout; a few sampled balls puff steam.
+pub(crate) fn black_hole_extinguish_system(world: &mut World) {
+    let dt = world
+        .get_resource::<DeltaTime>()
+        .map_or(0.0, DeltaTime::seconds);
+    if let Some(sounds) = world.get_resource_mut::<EffectSounds>() {
+        sounds.extinguish_cooldown = (sounds.extinguish_cooldown - dt).max(0.0);
+    }
+    let holes = black_hole_positions(world);
+    if holes.is_empty() {
+        return;
+    }
+    let mut doused: Vec<(Entity, Vec2)> = world
+        .query::<BallBurn>()
+        .filter(|(_, burn)| burn.remaining > 0.0)
+        .filter_map(|(e, _)| world.get::<Position>(e).map(|p| (e, p.0)))
+        .filter(|(_, p)| {
+            holes
+                .iter()
+                .any(|h| h.distance_squared(*p) < BLACK_HOLE_RADIUS * BLACK_HOLE_RADIUS)
+        })
+        .collect();
+    if doused.is_empty() {
+        return;
+    }
+    doused.sort_by_key(|(e, _)| e.id());
+    for &(e, _) in &doused {
+        if let Some(burn) = world.get_mut::<BallBurn>(e) {
+            burn.remaining = 0.0;
+        }
+    }
+    // Spread the puffs evenly over the set so a doused pile steams across its width.
+    let stride = doused.len().div_ceil(EXTINGUISH_BURSTS_PER_FRAME);
+    for &(_, position) in doused.iter().step_by(stride) {
+        spawn_transient_effect(world, "ex10_extinguish", position);
+    }
+    if world
+        .get_resource::<EffectSounds>()
+        .is_some_and(|s| s.extinguish_cooldown <= 0.0)
+    {
+        play_effect_sound(world, |s| s.extinguish);
+        if let Some(sounds) = world.get_resource_mut::<EffectSounds>() {
+            sounds.extinguish_cooldown = EXTINGUISH_SFX_INTERVAL;
+        }
+    }
+}
+
 pub(crate) fn black_hole_lifetime_system(world: &mut World) {
     let dt = world
         .get_resource::<DeltaTime>()
         .map_or(0.0, DeltaTime::seconds);
+    // Anchored emitters leave with their parent (black-hole dust, missile drips).
+    let orphans: Vec<Entity> = world
+        .query::<EmitterAnchor>()
+        .filter(|(_, anchor)| !world.is_alive(anchor.parent))
+        .map(|(e, _)| e)
+        .collect();
+    for entity in orphans {
+        world.despawn(entity);
+    }
 
     let entities = world.query_entities::<BlackHole>();
     let mut to_despawn: Vec<Entity> = Vec::new();
@@ -945,7 +1108,7 @@ pub(crate) fn orbit_lights_system(world: &mut World) {
 /// without dragging the import here. Pure ergonomics, not behavior.
 struct Vec2X3(glam::Vec3);
 
-fn hsv_to_rgb(hue: f32, saturation: f32, value: f32) -> glam::Vec3 {
+pub(crate) fn hsv_to_rgb(hue: f32, saturation: f32, value: f32) -> glam::Vec3 {
     let hue_sector = hue.rem_euclid(1.0) * 6.0;
     let sector_index = hue_sector.floor();
     let fraction = hue_sector - sector_index;

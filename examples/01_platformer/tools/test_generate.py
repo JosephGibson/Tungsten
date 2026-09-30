@@ -102,5 +102,24 @@ class AuthoringTests(unittest.TestCase):
             first=generate(Path(a));second=generate(Path(b));self.assertEqual(first,second)
             for path in first:self.assertEqual((Path(a)/path).read_bytes(),(Path(b)/path).read_bytes(),path)
 
+    def test_small_ball_has_six_distinct_lit_frames(self):
+        frames=self.animations['ball_small_spin']['frames']
+        names=[f['sprite'].removeprefix('ex10_') for f in frames]
+        self.assertEqual(len(set(self.images[n].tobytes() for n in names)),6)
+        for name in names:
+            self.assertIn(name,self.lit)
+            self.assertNotEqual(self.images[name].tobytes(),self.images['ball'].tobytes())
+
+    def test_pit_has_clear_interior_and_four_tile_shell(self):
+        cols=self.source['cols']
+        collision=next(l['data'] for l in self.tiled['layers'] if l['name']=='collision')
+        for y in range(18,46):
+            for x in range(132,180):self.assertEqual(collision[y*cols+x],0)
+            for x in list(range(128,132))+list(range(180,184)):
+                self.assertNotEqual(collision[y*cols+x],0)
+        for y in range(46,50):
+            for x in range(128,184):self.assertNotEqual(collision[y*cols+x],0)
+        self.assertGreater(self.source['kill_row'],46)
+
 
 if __name__=='__main__':unittest.main()

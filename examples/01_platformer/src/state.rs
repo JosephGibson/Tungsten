@@ -17,6 +17,14 @@ pub(crate) const PLAYER_ANIMATION_ID: &str = "ex10_player_idle";
 pub(crate) const PLAYER_START_SPRITE_ID: &str = "ex10_player";
 pub(crate) const BALL_ANIMATION_ID: &str = "ex10_ball_spin";
 pub(crate) const BALL_START_SPRITE_ID: &str = "ex10_ball";
+pub(crate) const SMALL_BALL_ANIMATION_ID: &str = "ex10_ball_small_spin";
+pub(crate) const SMALL_BALL_START_SPRITE_ID: &str = "ex10_ball_small";
+pub(crate) const SMALL_BALL_SCALE: f32 = 0.5;
+pub(crate) const SMALL_BALL_SPAWN_INTERVAL: f32 = BALL_SPAWN_INTERVAL / 5.0;
+/// Minimum pre-physics closing speed along the contact normal, in pixels/second.
+pub(crate) const SMALL_BALL_IMPACT_SPEED: f32 = 420.0;
+pub(crate) const SMALL_BALL_IMPACT_COOLDOWN: f32 = 0.12;
+pub(crate) const SMALL_BALL_BURSTS_PER_FRAME: usize = 4;
 
 pub(crate) const PLAYER_HALF: Vec2 = Vec2::new(20.0, 28.0);
 pub(crate) const PLAYER_SPAWN: Vec2 = Vec2::new(
@@ -38,6 +46,9 @@ pub(crate) const BLACK_HOLE_RADIUS: f32 = 6.0 * TILE;
 pub(crate) const BLACK_HOLE_FORCE: f32 = 12000.0;
 pub(crate) const BLACK_HOLE_LIFETIME: f32 = 2.0;
 pub(crate) const BLACK_HOLE_VISUAL_DIAMETER: f32 = 2.8125 * TILE;
+/// Steam puffs per frame; further balls still go out, just without a puff.
+pub(crate) const EXTINGUISH_BURSTS_PER_FRAME: usize = 4;
+pub(crate) const EXTINGUISH_SFX_INTERVAL: f32 = 0.15;
 
 // Active physics bounds prevent runaway substep cost.
 pub(crate) const WORLD_BOUNDS_MIN: Vec2 = Vec2::new(-TILE * 2.0, -TILE * 8.0);
@@ -55,6 +66,16 @@ pub(crate) struct AudioState {
     pub(crate) music_volume: f32,
     pub(crate) music_playing: bool,
     pub(crate) master_volume: f32,
+}
+
+/// Spell and fire sounds, apart from `AudioState` so its literals stay unchanged.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct EffectSounds {
+    pub(crate) cast: (AudioHandle, f32),
+    pub(crate) blast: (AudioHandle, f32),
+    pub(crate) extinguish: (AudioHandle, f32),
+    /// Seconds until the next sizzle may play.
+    pub(crate) extinguish_cooldown: f32,
 }
 
 pub(crate) struct TextDisplayState {
@@ -95,6 +116,12 @@ pub(crate) struct Player {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Ball;
 
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct SmallBall {
+    pub(crate) impact_cooldown: f32,
+}
+
+/// Rainbow tint for small glass marbles; bronze orbs carry none and render untinted.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct BallHue {
     pub(crate) hue: f32,
@@ -131,6 +158,8 @@ pub(crate) struct BlackHole {
 pub(crate) struct BallSpawnState {
     pub(crate) accumulator: f32,
     pub(crate) spawn_phase: u32,
+    pub(crate) small_accumulator: f32,
+    pub(crate) small_spawn_phase: u32,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -198,6 +227,8 @@ pub(crate) struct PlayerPresentation {
     pub(crate) jump_origin: Vec2,
     /// Initial placement and respawn settle silently onto the safe apron.
     pub(crate) suppress_landing: bool,
+    /// The aerial jump plays its own tuck clip until the ascent ends.
+    pub(crate) aerial_tuck: bool,
 }
 
 impl Default for PlayerPresentation {
@@ -209,6 +240,7 @@ impl Default for PlayerPresentation {
             pending_effect: None,
             jump_origin: PLAYER_SPAWN + Vec2::new(0.0, PLAYER_HALF.y),
             suppress_landing: true,
+            aerial_tuck: false,
         }
     }
 }

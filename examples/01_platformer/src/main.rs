@@ -2,7 +2,9 @@
 //!
 //! Manifests: shared root plus example-local tilemap/sprites. Hot reload: assets + `input.json`.
 
+mod burning;
 mod extract;
+mod fireball;
 mod gameplay;
 mod level_layout;
 mod setup;

@@ -1,12 +1,20 @@
 {
   "frames": [
     {
-      "duration_ms": 140,
+      "duration_ms": 80,
       "sprite": "ex10_player_fall_0"
     },
     {
-      "duration_ms": 140,
+      "duration_ms": 80,
       "sprite": "ex10_player_fall_1"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_player_fall_2"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_player_fall_3"
     }
   ],
   "looping": true

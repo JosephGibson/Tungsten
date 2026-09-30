@@ -1,10 +1,6 @@
-//! Decoder coverage for every enabled Symphonia path (wav, ogg/vorbis, mp3,
+//! Decoder coverage for every enabled Symphonia path (wav/pcm, ogg/vorbis, mp3,
 //! aac) using the synthetic tones in `tests/fixtures/audio/`: format metadata,
 //! interleaving, length, finite PCM, and behavior on corrupt input.
-//!
-//! These pin current behavior, including one known gap: the workspace enables
-//! Symphonia's `wav` demuxer but not its `pcm` codec, so PCM WAV files are
-//! rejected with "unsupported codec".
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -100,17 +96,10 @@ fn check_tone(name: &str, rate: u32, channels: u16, max_extra_frames: usize) -> 
 }
 
 #[test]
-fn wav_pcm_is_rejected_without_the_pcm_codec_feature() {
-    // Known gap (see module docs). If Symphonia's `pcm` feature is enabled,
-    // replace this with `check_tone("tone_44100_stereo.wav", 44_100, 2, 0)`
-    // and an exact 11_025-frame assertion.
-    let err = SoundData::decode(&fixture("tone_44100_stereo.wav"))
-        .err()
-        .expect("PCM WAV decodes only with the pcm codec feature");
-    assert!(
-        err.to_string().contains("unsupported"),
-        "unexpected error: {err}"
-    );
+fn wav_pcm_stereo_decodes() {
+    // PCM is lossless and unpadded: exactly the nominal frame count.
+    let data = check_tone("tone_44100_stereo.wav", 44_100, 2, 0);
+    assert_eq!(frames(&data), 11_025);
 }
 
 #[test]

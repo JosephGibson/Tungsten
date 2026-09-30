@@ -6,6 +6,32 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-09-29
+
+Summary: platformer ball pit, spreading fire, a fireball spell and burning-ball intensity (plans `docs/plans/archive/platformer-ball-pit-effects.md`, `docs/plans/archive/platformer-spreading-fire.md`, `docs/plans/archive/platformer-fireball-spell.md`, `docs/plans/archive/platformer-fire-intensity.md`), plus the owner-directed art passes of `docs/plans/platformer-polish-pass.md` (steps 6–12 and D7; its Rust refactor steps stay open). The engine gains PCM WAV decoding (`D-077`); no library API or rendering output changes.
+
+### Added
+
+- **PCM WAV decoding (`D-077`):** symphonia's `pcm` codec feature joins the existing `wav` demuxer, so ordinary PCM WAV files decode at load time like OGG, MP3 and AAC. `crates/tungsten-core/tests/audio_decode.rs` now checks the stereo PCM fixture's rate, channels and exact 11,025-frame length instead of pinning its rejection.
+- **Platformer ball pit:** middle mouse spawns half-size glass marbles at five times the orb rate with their own spin animation. Small-ball impacts above a 420 px/s closing speed burst rainbow particles under per-frame caps, and black-hole vortex births spiral inward; a regression test fills the level with 2,048 mixed balls. `S` alone stops audio, and `platformer_bindings` (`examples/01_platformer/src/setup.rs`) keeps the example-local bindings across shared `input.json` hot reloads.
+- **Spreading fire (`examples/01_platformer/src/burning.rs`):** fire hazards ignite small balls, including swept crossings, and still destroy normal balls. Burning balls ignite touching small balls through symmetric current-frame contacts, and resting piles spread one contact hop per pass. A burn lasts 10 s without refresh and leaves a charcoal ball that never reignites; black holes douse burning balls inside their radius with a steam puff and a throttled sizzle. Each burning ball shows layered flickering flames, a glow and flying sparks from a rotating, bounded pool of 128 emitters that drains after burnout.
+- **Fireball spell (`examples/01_platformer/src/fireball.rs`):** Mouse 4 (winit `Back`) casts a missile from the player toward the cursor. It falls under low gravity, bends around black holes and explodes on the first solid it touches, igniting nearby small balls.
+- **Synthesized sound effects:** `examples/01_platformer/tools/sfx.py` writes deterministic 44.1 kHz mono 16-bit PCM WAVs for `ex10_fireball_cast_sfx`, `ex10_fireball_blast_sfx` and `ex10_extinguish_sfx`.
+- **Soft-glow material:** example-local `examples/01_platformer/assets/shaders/soft_glow.wgsl`, with `ex10_soft_halo` and `ex10_soft_flame` materials, draws glows as analytic, dithered falloffs. Tests cover its Naga validation and the glow material batch.
+
+### Changed
+
+- **Platformer player redrawn:** a new hooded lantern-courier rig with clips idle ×8, walk ×12, jump ×3, fall ×4 and land ×3, plus a double-jump tuck clip (`ex10_player_double_jump`) that plays while rising after an aerial jump. The jump clip is retimed to 200 ms.
+- **Fire hazard becomes a fireball:** the 10-frame `ex10_fireball` is drawn unlit, flips to face its travel and stretches with speed. `ex10_fire_trail` is retuned for it, and a new `ex10_fireball_drips` emitter hangs under each one (48 particles per fire across both). The `ball_burn*` configs are unchanged.
+- **Scenery, terrain and backdrops redesigned:** new generator modules `actors.py`, `terrain.py`, `backdrops.py`, `scenery.py`, `effects.py` and the shared `pixels.py` under `examples/01_platformer/tools/`. Masonry is periodic and seam-safe, decks stay 23 px, supports form an X-braced trestle, and every backdrop strip wraps. New tiles `cliff_left`, `cliff_right` and `cliff_back_top`; legacy IDs remain as restyled copies. Terrain and big pieces get relief normals and most props are now lit. Gameplay constants, collision and layer occupancy are unchanged; only derived prop and torch-emitter y positions move.
+- **Balls redesigned:** the left-click orb is an untinted bronze sphere with rolling teal runes, and the untinted fallback is white instead of magenta. The middle-click marble is neutral glass with a turning cat's-eye ribbon and is the only ball carrying `BallHue`.
+- **Glow sprites:** `halo` and `flame_glow` use dithered gradients and the `linear` filter; `push_instance` no longer merges into material batches. The moon, `dust`, `droplet` and `mote` (now blinking fireflies) are redrawn.
+- `examples/01_platformer/tools/README.md` documents the new modules, sound synthesis and visual limits; `docs/LLM_INDEX.md` adds `src/fireball.rs` and `src/burning.rs`. `DECISIONS.md`: adds `D-077`, extending `D-028`.
+
+### Removed
+
+- **Platformer grids:** the `fire_dance` animation and every file under `examples/01_platformer/tools/grids/` (six player key poses plus `gate`, `lantern`, `marker`, `orb` and `vines`); the art is now drawn in code. `polish_art.py` keeps only the hearts, burning-ball flames, black-hole and glow sprites.
+
 ## [0.30.0] - 2026-09-28
 
 Summary: a profiling-driven performance pass on the three stress scenes (`ecs-high-load`, `physics-stress`, `sprite-stress`), plan `docs/plans/archive/stress-perf-optimization.md`. No shipped behavior, pacing default or public rendering output changes; the empty-stack frame stays byte-identical.
