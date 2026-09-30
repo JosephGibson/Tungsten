@@ -28,7 +28,7 @@
       "Bash(cargo build --workspace)",
       "Bash(cargo check --workspace --all-targets --locked)",
       "Bash(cargo run -p example-01-platformer)",
-      "Bash(cargo run -p example-02-sprite-stress)",
+      "Bash(cargo run -p example-02-bench)",
       "Bash(cargo run -p example-03-scene-state)",
       "Bash(cargo run -p example-04-shader-playground)",
       "Bash(rg --files crates examples scripts)",

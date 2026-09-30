@@ -18,12 +18,13 @@ Hand-rolled ECS with archetypal storage, deferred command buffers, and typed eve
 | [`docs/agent-setup.md`](docs/agent-setup.md) | How Claude Code and Codex load instructions, skills and search filters |
 | [`docs/plans/README.md`](docs/plans/README.md) | Session-plan storage rules and milestone plan naming convention |
 | [`docs/plans/phase4.md`](docs/plans/phase4.md) | Active Phase 4 plan and milestone index |
-| [`docs/perf/profiling-workflow.md`](docs/perf/profiling-workflow.md) | Canonical profiling workflow, capture rules, perf budgets |
+| [`docs/perf/profiling-workflow.md`](docs/perf/profiling-workflow.md) | Profiling workflow: capture rules, compare verdicts, capacity search |
+| [`docs/perf/benchmarks.md`](docs/perf/benchmarks.md) | The six benchmarks, their knobs, owned metrics and calibrated defaults |
 | [`CHANGELOG.md`](CHANGELOG.md) | Versioned change history |
 
 ## Quick Start
 
-Rust 1.98.1 is pinned in `rust-toolchain.toml`; rustup installs it on first use. The shared checks use [`just`](https://just.systems), `cargo-deny`, Python 3.9+, Bash and ShellCheck (perf capture also needs `jq` and GNU `timeout`):
+Rust 1.98.1 is pinned in `rust-toolchain.toml`; rustup installs it on first use. The shared checks use [`just`](https://just.systems), `cargo-deny`, Python 3.12+, Bash and ShellCheck (the smoke scripts also need `jq` and GNU `timeout`):
 
 ```bash
 cargo install --locked just@1.58.0 cargo-deny@0.20.2   # ShellCheck 0.11.0: see .github/workflows/ci.yml
@@ -33,17 +34,18 @@ just script-test                        # script regressions and ShellCheck
 cargo test --workspace                  # raw equivalent of the test step
 cargo build --workspace
 cargo run -p example-01-platformer      # comprehensive engine demo
-cargo run -p example-02-sprite-stress   # baseline scene; use perf command below for ecs-high-load
+cargo run -p example-02-bench           # benchmark suite; TUNGSTEN_BENCH selects one
 cargo run -p example-03-scene-state     # scene/state + tween transition demo
 cargo run -p example-04-shader-playground  # materials + 18-effect post-stack demo (incl. bloom)
 ```
 
-Reproducible Linux perf capture:
+Reproducible Linux perf capture (`docs/perf/profiling-workflow.md`):
 
 ```bash
-WGPU_BACKEND=vulkan ./scripts/perf-capture.sh ecs-high-load 300   # primary scene (default)
-WGPU_BACKEND=vulkan ./scripts/perf-capture.sh sprite-stress 300   # render-hot-path baseline
-bash scripts/test-perf-capture.sh
+WGPU_BACKEND=vulkan just perf suite --repeat 5               # every tracked benchmark row
+just perf compare <baseline> <candidate>                     # verdicts, compare.md and compare.html
+WGPU_BACKEND=vulkan just perf capacity --all --budget 60hz   # largest scale within a budget
+just perf-test                                               # runner regression tests, no GPU
 ```
 
 ## Read Order

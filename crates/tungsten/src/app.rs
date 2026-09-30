@@ -1034,7 +1034,7 @@ fn log_perf_line(
 }
 
 /// Per-system companion to the `frame:` perf line, in registration order.
-/// Whitespace and `=` in names become `_` so `scripts/perf-capture.sh` can
+/// Whitespace and `=` in names become `_` so `scripts/bench_report.py` can
 /// split `name=ms` tokens on whitespace.
 fn format_perf_systems_line(system_timings: &[(String, f32)]) -> String {
     format_perf_named_timings("systems:", system_timings)
@@ -1060,7 +1060,8 @@ fn format_perf_named_timings(tag: &str, system_timings: &[(String, f32)]) -> Str
 
 /// Physics companion to the `frame:` perf line: last step's proxy, dynamic
 /// and sleeping body counts plus the final substep's pairs and contacts.
-/// `scripts/perf-capture.sh` treats `sleeping < dynamic` as an awake frame.
+/// `scripts/bench_report.py` checks `sleeping` against the physics
+/// benchmark's guard and hashes the line into the determinism digest.
 fn format_perf_physics_line(buffers: &PhysicsBuffers) -> String {
     format!(
         "physics: proxies={} dynamic={} sleeping={} pairs={} contacts={}",

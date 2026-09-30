@@ -1,0 +1,20 @@
+{
+  "shaders": {
+    "bench_heavy": { "path": "shaders/bench_heavy.wgsl" }
+  },
+  "materials": {
+    "bench_heavy": {
+      "shader": "bench_heavy",
+      "uniform_defaults": {
+        "vec4": [
+          [1.0, 0.85, 0.55, 1.0],
+          [0.0, 0.0, 0.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0]
+        ],
+        "f32s": [0.6, 0.0, 0.0, 0.0],
+        "i32s": [32, 0, 0, 0]
+      }
+    }
+  }
+}

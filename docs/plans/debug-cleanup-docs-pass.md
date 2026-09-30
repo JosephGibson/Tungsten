@@ -14,6 +14,7 @@ done-when: `just check`, `just repo-check`, `just ctx`, `just smoke` and `just s
 - Audit coverage: every module in `tungsten-core/ecs`, the umbrella crate's `app`, `asset_loader`, `state`, `particles`, `tweens`, `audio`, `hot_reload`, `sprite_extract`, `camera`, `game_feel`, overlays and extract helpers, the render crate's `renderer.rs` and `sprite.rs` draw path, `post/mod.rs` and its dependency graph, all four examples' entry points and systems, plus a scan of every file's `unwrap`/`expect`/`allow`/TODO. Physics was audited on 2026-09-25; this pass only rechecked its open findings. This is not exhaustive path coverage.
 - All four open P2s and every P3 from the 2026-09-25 review are still present in source. Every carried-forward item still applies. One exception: `player.png` is now registered as `ex10_player`, so it is no longer a deletion candidate.
 - Git mutations are human-only. Moves use plain `mv`, and the owner stages the result.
+- Since planning, 0.32 (benchmark suite v2, `D-078`) retired `example-02-sprite-stress` (the `render-features` scene included) and `scripts/perf-capture.sh`, which closes the review's `perf-capture.sh` follow-up, and rewrote `docs/perf/profiling-workflow.md` and the `tungsten-perf` skill. Step 9 and the findings below reflect that.
 
 ## Decisions for approval
 
@@ -69,7 +70,7 @@ New this session:
 
 | Priority / location | Finding | Why not fixed |
 | --- | --- | --- |
-| P2 — `render/sprite.rs::draw` | Batches of one material with different `UniformOverrideBlock`s all draw with the last batch's uniforms: each batch `write_buffer`s the material's single UBO before the one submit. `render-features` hits this (two `damage_flash` variants). Same root cause as the open post-stack UBO P2. | Needs per-batch uniform ownership (dynamic offsets or a ring), the same design as the post-stack P2. |
+| P2 — `render/sprite.rs::draw` | Batches of one material with different `UniformOverrideBlock`s all draw with the last batch's uniforms: each batch `write_buffer`s the material's single UBO before the one submit. The retired `render-features` scene hit this (two `damage_flash` variants); since 0.32 the `integrated` benchmark's flashing walkers, one override block each, do. Same root cause as the open post-stack UBO P2. | Needs per-batch uniform ownership (dynamic offsets or a ring), the same design as the post-stack P2. |
 | P3 — `core/config.rs`, `core/display.rs` | `logging.level` and `display.scale_mode` are parsed, documented in `DESIGN.md` and mirrored to telemetry, but never applied. The examples call `env_logger::init()` before loading config. | Applying them is a feature; removing them changes the schema. |
 | P3 — `tungsten/asset_loader.rs::reload_manifest` | Shaders added to the manifest are not registered on reload, although `DESIGN.md` says they are. A new material that references a new shader fails until restart. Changing an existing material's `shader` also needs a restart. | New reload behavior; ties to the open composition/reload P2. The docs get corrected. |
 | P3 — `tungsten/sprite_extract.rs` | With `DepthSortMode::GpuDepth`, draw order within one z-run follows entity id. CPU order follows the batch key, so overlapping same-z sprites with interleaved keys can differ between modes. | Ordering-contract choice. The comment gets corrected. |
@@ -94,7 +95,7 @@ Carried over unchanged, and all still present: the four P2s (cross-root manifest
 - Docs:
   - Known issues and archive: new `docs/known-issues.md`; move `docs/repo-review-2026-09-25.md` into `docs/plans/archive/`.
   - Indexes, changelog and design: `docs/LLM_INDEX.md`, `CHANGELOG.md`, `DESIGN.md`, `README.md`.
-  - Other docs: `docs/agent-setup.md`, `docs/perf/profiling-workflow.md`, `docs/showcase/README.md`, `docs/plans/phase4.md`, `assets/fonts/README.md`, `crates/tungsten-core/tests/fixtures/audio/README.md`, `examples/01_platformer/tools/README.md`.
+  - Other docs: `docs/agent-setup.md`, `docs/showcase/README.md`, `docs/plans/phase4.md`, `assets/fonts/README.md`, `crates/tungsten-core/tests/fixtures/audio/README.md`, `examples/01_platformer/tools/README.md`.
   - Skills: `.claude/skills/tungsten-perf/SKILL.md`, `.claude/skills/tungsten-wgpu/SKILL.md`.
 
 ## Steps
@@ -146,9 +147,8 @@ Make the `check-repo.py` and `test-check-repo.py` changes, then run `just script
     - M29: `lit_sprite` has no `src/` mirror;
     - config sample: add `post_aa` and `bloom_max_mips`, drop the "in M17" wording.
   - Replace the perf-baseline section with a pointer to `profiling-workflow.md`.
-- **`profiling-workflow.md`:** drop "M12" from the title, merge the two scene-only `frame_gpu_ms` statements, and fix the M17 wording.
 - **Skills:**
-  - `tungsten-perf`: cut the sections that repeat the workflow doc (telemetry format, hotspots, interpretation, budgets, regression policy) down to links. Keep the rules that are easy to miss.
+  - `tungsten-perf`: cut the sections that still repeat the workflow doc (telemetry format, hotspots, interpretation) down to links. Keep the rules that are easy to miss.
   - `tungsten-wgpu`: cut the shader-mirror and present-mode passages that repeat render `AGENTS.md` and the workflow doc.
 - **`agent-setup.md`:** remove the stale `player.png` sentence. Move the dated client-discovery evidence into a known-issues follow-up; keep a one-line pointer.
 - **`showcase/README.md`:**

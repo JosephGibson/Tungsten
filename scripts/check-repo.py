@@ -16,7 +16,7 @@ from urllib.parse import unquote, urlsplit
 
 DOCS = (
     "README.md", "CHANGELOG.md", "docs/LLM_INDEX.md", "docs/DECISION_INDEX.md",
-    "docs/agent-setup.md", "docs/perf/profiling-workflow.md",
+    "docs/agent-setup.md", "docs/perf/profiling-workflow.md", "docs/perf/benchmarks.md",
     "docs/showcase/README.md", "docs/plans/README.md", "docs/releases.md",
 )
 ARCHIVE = "docs/plans/archive"

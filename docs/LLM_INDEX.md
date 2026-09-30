@@ -19,7 +19,8 @@ Task → file map. Open it on demand before a broad search, not by default. Pref
 | Parallax, camera shake trauma, squash/stretch (`D-073`) | `core/components.rs`, `core/camera.rs`, `tungsten/game_feel.rs`, `tungsten/sprite_extract.rs` |
 | Particles (`D-049`–`D-051`) | `core/assets/particle.rs`, `core/rng.rs`, `core/components.rs`, `tungsten/particles.rs`, `examples/01_platformer/assets/particles/` |
 | Audio mixer, decode (`D-027`, `D-028`, `D-034`) | `tungsten/audio.rs`, `core/assets/audio.rs`, `crates/tungsten-core/tests/audio_decode.rs` |
-| Telemetry, perf logging (`D-038`, `D-041`) | `tungsten/telemetry.rs`, `docs/perf/profiling-workflow.md`, `scripts/perf-capture.sh`, `scripts/test-perf-capture.sh` |
+| Telemetry, perf lines (`D-038`, `D-041`) | `tungsten/telemetry.rs`, `tungsten/app.rs`, `docs/perf/profiling-workflow.md` |
+| Perf runner, capacity search, compare reports (`D-078`) | `scripts/bench.py`, `scripts/bench_report.py`, `scripts/test-bench.py` |
 | HUD rows/toggle (`D-044`) | `tungsten/debug_hud.rs`, `tungsten/telemetry.rs` |
 
 ## Assets
@@ -61,7 +62,8 @@ Run with `cargo run -p example-NN-name`.
 | --- | --- |
 | Platformer | `examples/01_platformer/src/main.rs`, `examples/01_platformer/src/setup.rs`, `examples/01_platformer/src/systems.rs`, `examples/01_platformer/src/extract.rs`, `examples/01_platformer/src/state.rs`, `examples/01_platformer/src/gameplay.rs`, `examples/01_platformer/src/fireball.rs`, `examples/01_platformer/src/burning.rs` |
 | Platformer art, level and layout regeneration | `examples/01_platformer/tools/README.md`, `examples/01_platformer/tools/generate.py`, `examples/01_platformer/tools/level.json`, `examples/01_platformer/src/level_layout.rs` |
-| Sprite stress, perf scenes | `examples/02_sprite_stress/src/main.rs`, `examples/02_sprite_stress/src/ecs_high_load.rs`, `examples/02_sprite_stress/src/physics_stress.rs`, `examples/02_sprite_stress/src/render_features.rs` |
+| Benchmark harness, knobs, presets | `examples/02_bench/src/main.rs`, `examples/02_bench/src/knobs.rs`, `docs/perf/benchmarks.md` |
+| One benchmark's workload | `examples/02_bench/src/<bench>.rs` |
 | Scene/state lifecycle | `examples/03_scene_state/src/main.rs`, `examples/03_scene_state/src/states.rs` |
 | Shader/material/post fixtures | `examples/04_shader_playground/src/main.rs` |
 | Review findings and follow-ups | `docs/repo-review-2026-09-25.md` |

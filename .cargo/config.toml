@@ -9,9 +9,10 @@
 # Precedence: a set RUSTFLAGS environment variable (even an empty one)
 # replaces this table rather than adding to it. CI and portable builds rely
 # on that, e.g. `RUSTFLAGS="-C target-cpu=x86-64"` (or `RUSTFLAGS=""`) for the
-# generic x86-64 baseline. It also means
-# scripts/perf-capture.sh's RUSTFLAGS build drops target-cpu=native unless it
-# passes the flag itself, so only compare captures built with identical flags.
+# generic x86-64 baseline. It also means the RUSTFLAGS build of
+# scripts/bench.py (`just perf`) drops target-cpu=native unless
+# TUNGSTEN_PERF_RUSTFLAGS passes the flag itself, so only compare captures
+# built with identical flags.
 [target.x86_64-unknown-linux-gnu]
 rustflags = [
     "-C", "target-cpu=native",

@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.31.0"
+version = "0.32.0"
 edition = "2024"
 rust-version = "1.98.1"
 license = "MIT"
@@ -11,7 +11,7 @@ members = [
     "crates/tungsten-render",
     "crates/tungsten",
     "examples/01_platformer",
-    "examples/02_sprite_stress",
+    "examples/02_bench",
     "examples/03_scene_state",
     "examples/04_shader_playground",
     "tools/launcher",

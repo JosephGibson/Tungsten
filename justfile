@@ -39,15 +39,15 @@ smoke:
 
 # Pixel comparison against the reference PNG (reference machine only).
 visual:
-    TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p example-02-sprite-stress --test visual_regression --locked -- --nocapture
+    TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p example-02-bench --test visual_regression --locked -- --nocapture
 
-# Perf capture; arguments go to scripts/perf-capture.sh, e.g. `just perf ecs-high-load 300 --telemetry-only`.
+# Benchmark runner; arguments go to scripts/bench.py, e.g. `just perf run physics --repeat 5`.
 perf *args:
-    ./scripts/perf-capture.sh "$@"
+    python3 -B scripts/bench.py "$@"
 
-# Perf-capture parser and helper regression test.
+# Benchmark-runner regression tests.
 perf-test:
-    bash scripts/test-perf-capture.sh
+    python3 -B scripts/test-bench.py
 
 # Shell lint plus smoke-script, perf-helper, repo-checker and release-script tests (no GPU).
 script-test: perf-test

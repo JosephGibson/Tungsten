@@ -21,7 +21,7 @@ From the repo root; examples need a GPU and display. `just` recipes wrap the raw
 just check                  # fmt-check, clippy -D warnings, tests
 just smoke                  # layer 2 (GPU): scripts/smoke-examples.sh
 just visual                 # pixel test, reference machine only
-just perf ecs-high-load 300 # see docs/perf/profiling-workflow.md
+just perf suite --repeat 5  # see docs/perf/profiling-workflow.md
 just deps                   # cargo deny: advisories, licenses, sources
 just ctx                    # instruction budgets and links
 cargo run -p example-NN-name
@@ -33,13 +33,13 @@ Finish substantial work with `just check` (format check, strict clippy, workspac
 
 - **Layer 1:** `crates/tungsten-core/tests/manifests.rs` loads every `manifest.json`; part of `cargo test`.
 - **Layer 2:** smoke runs each example for `TUNGSTEN_SMOKE_FRAMES=3` plus render fixture matrices. GPU, Linux only; elsewhere run examples with that variable.
-- **Visual:** `TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p example-02-sprite-stress --test visual_regression`; without the variable it skips the pixel comparison.
+- **Visual:** `TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p example-02-bench --test visual_regression`; without the variable it skips the pixel comparison.
 
 | Change touches | Run |
 | --- | --- |
 | Manifests, assets, core/render seam | layer 1 |
 | Engine or example wiring | layer 2 |
-| Scripts or perf-capture parsing | `just script-test` |
+| Scripts or perf tooling | `just script-test` |
 | Dependency bump, clean checkout, anything non-trivial | both |
 
 ## Where code goes

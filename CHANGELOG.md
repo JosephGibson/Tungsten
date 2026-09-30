@@ -6,6 +6,31 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-09-30
+
+Summary: benchmark suite v2 (`D-078`), plan `docs/plans/archive/benchmark-suite-redesign.md`. Six scalable, deterministic benchmarks in `example-02-bench` and a standard-library Python runner replace the four `STRESS_SCENE` scenes of `example-02-sprite-stress` and `scripts/perf-capture.sh`. No engine or library-crate behavior changes: two comments in `crates/tungsten/src/app.rs` name the new runner. Perf numbers from the old scenes aren't comparable with the new suite.
+
+### Added
+
+- **Benchmark suite (`examples/02_bench/`, `D-078`):** one binary runs `physics` (pachinko and sparse rows), `ecs`, `churn`, `gpu` (default and throughput rows), `particles` or `integrated`, selected by `TUNGSTEN_BENCH` and configured by `TUNGSTEN_BENCH_PRESET`, `TUNGSTEN_BENCH_SCALE` and `TUNGSTEN_BENCH_SET`; `TUNGSTEN_BENCH_DESCRIBE` prints the knob schema. Each benchmark owns one bottleneck, logs `bench-config:` and per-frame `bench:` counters, declares validity guards and is calibrated to a `total` p95 of 8–16 ms on the reference machine. Textures are generated in code; the only asset files are the `bench_heavy` shader and material.
+- **Benchmark runner (`scripts/bench.py`, `scripts/bench_report.py`):** `just perf describe | run | suite | compare | capacity | baseline`. Captures record provenance, per-run statistics, peak RSS through `os.wait4`, RSS growth, guards and a determinism digest, and exit 3 when invalid. Compare judges owned metrics with per-run Welch intervals and practical thresholds (jitter takes p99's) and writes `compare.md`, a self-contained `compare.html` and `compare.json`, for single captures and whole suites. Capacity search reports each row's largest scale within a 60 Hz or 144 Hz budget and its limiting stage. `scripts/test-bench.py` (23 tests) runs in `just perf-test`.
+- **`docs/perf/benchmarks.md`:** the ownership table; one section per benchmark with its workload, knobs, presets, counters, guards, owned metrics, calibrated defaults and version history; the engine findings the suite exposed; open proposals; a checklist for adding a benchmark.
+- **Smoke and visual coverage:** a Benchmarks section in `scripts/smoke-examples.sh` runs every benchmark at `min` and `default`, plus physics `sparse-min` and `sparse` and gpu `throughput` (15 rows). `examples/02_bench/tests/visual_regression.rs` compares the `gpu` benchmark's `visual` preset with the new fixture `gpu-visual.png`.
+
+### Changed
+
+- **`docs/perf/profiling-workflow.md` rewritten** for the new suite: capture rules (including no remote-desktop encoder during captures), configuration, capture layout, telemetry lines, validity, compare verdicts, capacity search, memory, tracked rows, suites and the `--preset` rule, profiling, hotspots, frame pacing, backends and Criterion. The fixed stage guardrails are dropped; the capacity budgets remain.
+- **Recipes:** `just perf` runs `scripts/bench.py`, `just visual` runs `-p example-02-bench`, and `just perf-test` runs `scripts/test-bench.py`.
+- **Python 3.12 for the shared checks:** `just script-test` runs the runner's tests through `just perf-test`, so `README.md` and `docs/agent-setup.md` now ask for Python 3.12+ instead of 3.9+.
+- **Smoke:** the M25 MSAA × depth-sort matrix runs on `gpu` at `min`, the render-features GPU-timing row folds into the `gpu` default row, and the generic example loop covers four examples.
+- `AGENTS.md`, `README.md`, `DESIGN.md`, `docs/LLM_INDEX.md` and the `tungsten-perf` skill name only the new suite; `scripts/check-repo.py` checks `docs/perf/benchmarks.md`; `.cargo/config.toml`'s flags note names the new runner.
+- `DECISIONS.md`: adds `D-078`, which holds the April 2026 Vulkan pacing matrix and narrows clause 6 of `D-044` (HUD overhead is measured on the new suite).
+
+### Removed
+
+- **`examples/02_sprite_stress/`** (package `example-02-sprite-stress`): the `baseline`, `ecs-high-load`, `physics-stress` and `render-features` scenes, `STRESS_SCENE` and `STRESS_COUNT`, its visual test and `baseline-sprite-stress.png`.
+- **`scripts/perf-capture.sh`** and `scripts/test-perf-capture.sh`.
+
 ## [0.31.0] - 2026-09-29
 
 Summary: platformer ball pit, spreading fire, a fireball spell and burning-ball intensity (plans `docs/plans/archive/platformer-ball-pit-effects.md`, `docs/plans/archive/platformer-spreading-fire.md`, `docs/plans/archive/platformer-fireball-spell.md`, `docs/plans/archive/platformer-fire-intensity.md`), plus the owner-directed art passes of `docs/plans/platformer-polish-pass.md` (steps 6–12 and D7; its Rust refactor steps stay open). The engine gains PCM WAV decoding (`D-077`); no library API or rendering output changes.

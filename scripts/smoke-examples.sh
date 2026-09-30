@@ -117,13 +117,15 @@ end_section() {
   fi
 }
 
-# M25: msaa × depth_sort matrix over example-02-sprite-stress.
-matrix_pkg="example-02-sprite-stress"
-begin_section "M25 MSAA × depth_sort matrix (pkg: $matrix_pkg)"
+# M25: msaa × depth_sort matrix over the gpu benchmark at `min` (lit, material,
+# glow, tile and text batches). TUNGSTEN_RENDER_MSAA wins over the preset's
+# `aa=off`, and the benchmark never sets depth_sort.
+matrix_pkg="example-02-bench"
+begin_section "M25 MSAA × depth_sort matrix (pkg: $matrix_pkg, gpu preset=min)"
 for msaa in 1 4; do
   for sort in cpu_stable gpu_depth; do
     row "msaa=${msaa} depth_sort=${sort}" "$log_dir/${matrix_pkg}-msaa${msaa}-${sort}.log" "$matrix_pkg" \
-      TUNGSTEN_RENDER_MSAA="$msaa" TUNGSTEN_RENDER_DEPTH_SORT="$sort"
+      TUNGSTEN_BENCH=gpu TUNGSTEN_BENCH_PRESET=min TUNGSTEN_RENDER_MSAA="$msaa" TUNGSTEN_RENDER_DEPTH_SORT="$sort"
   done
 done
 end_section "Matrix passed" "Matrix failures" 4
@@ -175,8 +177,22 @@ row "game_feel_fixture=on" "$log_dir/${feel_pkg}-game-feel.log" "$feel_pkg" \
 row "parallax backdrop" "$log_dir/${lighting_pkg}-game-feel.log" "$lighting_pkg"
 end_section "Game-feel passed" "Game-feel failures" 2
 
-# Performance render scene: real materials/lit atlases/post/SMAA with per-pass queries.
-begin_section "Render-features GPU timing (pkg: $matrix_pkg)"
-row "render-features timing=on" "$log_dir/${matrix_pkg}-render-features.log" "$matrix_pkg" \
-  STRESS_SCENE=render-features STRESS_COUNT=4000 TUNGSTEN_GPU_TIMING=1
-end_section "Render-features passed" "Render-features failures" 1
+# Benchmarks: each example-02-bench row at smoke length. Default-scale rows
+# run at dev opt-level 0; the slowest, ecs at default, takes about 12 s. The
+# gpu default row also runs the per-pass timestamp queries (materials, lit
+# atlases, tiles, text, bloom, vignette, SMAA).
+bench_pkg="example-02-bench"
+begin_section "Benchmarks (pkg: $bench_pkg)"
+for bench_row in physics:min physics:default physics:sparse-min physics:sparse \
+  ecs:min ecs:default churn:min churn:default gpu:min gpu:default gpu:throughput \
+  particles:min particles:default integrated:min integrated:default; do
+  bench="${bench_row%%:*}"
+  preset="${bench_row#*:}"
+  timing=()
+  if [ "$bench_row" = gpu:default ]; then
+    timing=(TUNGSTEN_GPU_TIMING=1)
+  fi
+  row "${bench} preset=${preset}${timing:+ timing=on}" "$log_dir/${bench_pkg}-${bench}-${preset}.log" "$bench_pkg" \
+    TUNGSTEN_BENCH="$bench" TUNGSTEN_BENCH_PRESET="$preset" "${timing[@]}"
+done
+end_section "Benchmarks passed" "Benchmark failures" 15

@@ -45,7 +45,7 @@ Model self-reports can be wrong about duplication. For a firm answer, compare `c
 
 ## Local check tiers
 
-Run from the repository root with Rust, just, Python 3.9+, Bash and ShellCheck installed.
+Run from the repository root with Rust, just, Python 3.12+, Bash and ShellCheck installed.
 
 | Command | Repeated work it replaces |
 | --- | --- |
