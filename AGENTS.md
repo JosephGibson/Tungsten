@@ -92,4 +92,4 @@ Seam (`D-007`, `D-016`, `D-018`): core defines `TextureHandle(u32)`, has no `wgp
 
 ## Not doing
 
-CI is CPU-only and informational (`D-070`); GPU, audio and perf checks stay local. No `LEARNINGS.md`, no mandatory review or PR process (solo repo), no asset preprocessing. Add a scoped `AGENTS.md` only where a directory has unique rules.
+CI is CPU-only and informational (`D-070`); GPU, audio and perf checks stay local. No `LEARNINGS.md`, no PR process beyond the release PR (`D-079`), no asset preprocessing. Add a scoped `AGENTS.md` only where a directory has unique rules.

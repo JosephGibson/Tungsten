@@ -39,6 +39,7 @@ class Preflight(unittest.TestCase):
         self.git("remote", "add", "origin", str(self.remote))
         self.git("push", "-u", "origin", "main")
         self.existing = None
+        self.pulls = []
         self.runs = []
         self.ci_runs = []
         self.api_calls = []
@@ -64,15 +65,34 @@ class Preflight(unittest.TestCase):
             return {"object": {"sha": self.git("--git-dir", str(self.remote), "rev-parse", f"refs/tags/{tag}")}}
         if "/releases/tags/" in endpoint:
             return self.existing
+        if "/pulls?" in endpoint:
+            return self.pulls
+        if "/git/commits/" in endpoint:
+            return {"tree": {"sha": self.git("rev-parse", endpoint.split("/commits/")[1] + "^{tree}")}}
         if "/workflows/release.yml/" in endpoint:
             return {"workflow_runs": self.runs}
         if "/workflows/ci.yml/" in endpoint:
             return {"workflow_runs": self.ci_runs}
         self.fail(f"Unexpected API lookup: {endpoint}")
 
-    def check(self, version="1.0.0", ref="HEAD", branch="main", rehearsal=False):
+    def check(self, version="1.0.0", ref="HEAD", branch="main", rehearsal=False, **options):
         with patch.object(pre, "api", side_effect=self.github), patch.object(pre, "github_repository", return_value="owner/repo"):
-            return pre.preflight(self.root, version, ref, "origin", branch, "owner/repo", rehearsal)
+            return pre.preflight(self.root, version, ref, "origin", branch, "owner/repo", rehearsal, **options)
+
+    def milestone(self, commit=True):
+        """Branch 1.1 carrying the 1.1.0 cut, committed or left in the working tree."""
+        self.git("checkout", "-b", "1.1")
+        self.write("Cargo.toml", '[workspace.package]\nversion = "1.1.0"\n')
+        self.write("CHANGELOG.md", "## [Unreleased]\n\n## [1.1.0] - 2026-09-30\n\n- Second.\n\n"
+                   "## [1.0.0] - 2026-09-26\n\n- First.\n")
+        self.write("DESIGN.md", "Workspace `v1.1.0`\n")
+        if commit:
+            self.commit("Update 1.1: second")
+            return self.git("rev-parse", "HEAD")
+
+    def pull(self, sha, merged=None, number=7):
+        return dict(number=number, state="closed" if merged else "open", merged_at="2026-09-30T00:00:00Z" if merged else None,
+                    merge_commit_sha=merged, head={"sha": sha}, html_url=f"https://github.com/owner/repo/pull/{number}")
 
     def tag(self, remote=True):
         self.git("tag", "-a", "v1.0.0", self.sha, "-m", "Release")
@@ -83,16 +103,87 @@ class Preflight(unittest.TestCase):
         return dict(id=id, head_sha=sha or self.sha, head_branch=tag, status=status,
                     conclusion=conclusion, event=event, html_url=f"https://github.com/owner/repo/actions/runs/{id}")
 
-    def test_new_release_prints_exact_commands_without_writing(self):
+    TAG = ["git", "tag", "-a", "v1.0.0", "-m", "Tungsten 1.0.0"]
+    START = ["gh", "workflow", "run", "release.yml", "--repo", "owner/repo", "--ref", "v1.0.0"]
+    PULL = ["gh", "pr", "create", "--repo", "owner/repo", "--base", "main", "--head", "1.1", "--title",
+            "Update 1.1: second", "--body", "Release v1.1.0. Merging this pull request publishes it."]
+
+    def test_release_from_the_base_branch_prints_exact_commands_without_writing(self):
         before = self.git("show-ref"), self.git("status", "--porcelain"), (self.root / "README.md").read_bytes()
         errors, info, commands = self.check()
         self.assertEqual(errors, [])
-        self.assertEqual(commands[0], ["git", "tag", "-a", "v1.0.0", self.sha, "-m", "Tungsten 1.0.0"])
-        self.assertEqual(commands[1][-2:], ["origin", "refs/tags/v1.0.0:refs/tags/v1.0.0"])
-        self.assertIn("push.followTags=false", commands[1])
+        self.assertEqual(commands, [self.TAG, ["git", "push", "origin", "v1.0.0"], self.START])
         after = self.git("show-ref"), self.git("status", "--porcelain"), (self.root / "README.md").read_bytes()
         self.assertEqual(before, after)
         self.assertTrue(any("no run for this commit" in line for line in info))
+
+    def test_handoff_prints_commit_tag_push_and_pull_request_without_writing(self):
+        self.milestone(commit=False)
+        before = self.git("show-ref"), self.git("status", "--porcelain")
+        errors, info, commands = self.check("1.1.0", branch="1.1", message="Update 1.1: second")
+        self.assertEqual(errors, [])
+        self.assertEqual(commands, [["git", "add", "-A"], ["git", "commit", "-m", "Update 1.1: second"],
+                                    ["git", "tag", "-a", "v1.1.0", "-m", "Tungsten 1.1.0"],
+                                    ["git", "push", "origin", "1.1", "v1.1.0"], self.PULL])
+        self.assertEqual(before, (self.git("show-ref"), self.git("status", "--porcelain")))
+        self.assertTrue(any("uncommitted changes on" in line for line in info))
+        self.assertTrue(any("CI (informational): runs once" in line for line in info))
+        self.assertIn("dirty", " ".join(self.check("1.1.0", branch="1.1")[0]))
+        self.assertIn("checked out", " ".join(self.check("1.1.0", branch="main", message="Update")[0]))
+        self.assertIn("does not match", " ".join(self.check("1.2.0", branch="1.1", message="Update")[0]))
+        self.git("tag", "-a", "v1.1.0", "-m", "Early")
+        self.assertIn("different commit", " ".join(self.check("1.1.0", branch="1.1", message="Update")[0]))
+
+    def test_pull_request_states_from_commit_to_merged_run(self):
+        sha = self.milestone()
+        errors, _, commands = self.check("1.1.0", branch="1.1")
+        self.assertEqual(errors, [])
+        self.assertEqual(commands, [["git", "tag", "-a", "v1.1.0", "-m", "Tungsten 1.1.0"],
+                                    ["git", "push", "origin", "1.1", "v1.1.0"], self.PULL])
+        self.git("tag", "-a", "v1.1.0", "-m", "Tungsten 1.1.0")
+        self.git("push", "-u", "origin", "1.1", "v1.1.0")
+        self.assertEqual(self.check("1.1.0", branch="1.1")[2], [self.PULL])
+        self.pulls = [self.pull("f" * 40, merged="f" * 40, number=6), self.pull(sha)]
+        errors, info, commands = self.check("1.1.0", branch="1.1")
+        self.assertEqual((errors, commands), ([], []))
+        self.assertTrue(any("#7: open; approving and merging" in line for line in info))
+        self.git("checkout", "main")
+        self.git("merge", "--squash", "1.1")
+        self.commit("Update 1.1: second (#7)")
+        self.git("push", "origin", "main")
+        squash = self.git("rev-parse", "HEAD")
+        self.git("checkout", "1.1")
+        self.pulls = [self.pull(sha, merged=squash)]
+        errors, info, commands = self.check("1.1.0", branch="1.1")
+        self.assertEqual(errors, [])
+        self.assertTrue(any("tree matches" in line for line in info))
+        self.assertEqual(commands, [["gh", "workflow", "run", "release.yml", "--repo", "owner/repo", "--ref", "v1.1.0"]])
+        self.runs = [self.run_info(tag="1.1", sha=sha, event="pull_request", conclusion="skipped", id=41),
+                     self.run_info(tag="1.1", sha=sha, event="pull_request", status="in_progress", conclusion=None)]
+        self.assertEqual(self.check("1.1.0", branch="1.1")[2],
+                         [["gh", "run", "watch", "42", "--repo", "owner/repo", "--exit-status"]])
+
+    def test_base_ahead_moved_branch_and_changed_merge_tree_fail(self):
+        sha = self.milestone()
+        self.git("push", "-u", "origin", "1.1")
+        self.git("checkout", "main")
+        self.write("README.md", "hotfix")
+        self.commit("hotfix")
+        self.git("push", "origin", "main")
+        hotfix = self.git("rev-parse", "HEAD")
+        self.git("checkout", "1.1")
+        self.assertIn("has commits 1.1 lacks", " ".join(self.check("1.1.0", branch="1.1")[0]))
+        self.pulls = [self.pull(sha, merged=hotfix)]
+        self.assertIn("differs from the tagged commit", " ".join(self.check("1.1.0", branch="1.1")[0]))
+        self.pulls = []
+        self.git("merge", "main")
+        self.git("tag", "-a", "v1.1.0", "-m", "Tungsten 1.1.0")
+        self.git("push", "origin", "1.1", "v1.1.0")
+        tagged = self.git("rev-parse", "HEAD")
+        self.write("README.md", "after the tag")
+        self.commit("late fix")
+        self.git("push", "origin", "1.1")
+        self.assertIn("moved past", " ".join(self.check("1.1.0", ref=tagged, branch="1.1")[0]))
 
     def test_dirty_untracked_and_staged_changes_fail(self):
         self.write("new.txt", "untracked")
@@ -116,44 +207,45 @@ class Preflight(unittest.TestCase):
         self.git("update-ref", "refs/remotes/origin/main", self.sha)
         self.assertIn("stale/missing", " ".join(self.check()[0]))
 
-    def test_unpublished_commit_and_wrong_version_fail(self):
+    def test_unpublished_commit_is_pushed_with_its_tag_unless_diverged(self):
         self.write("README.md", "new")
         self.commit("not pushed")
-        self.assertIn("not the live", " ".join(self.check()[0]))
+        errors, _, commands = self.check()
+        self.assertEqual(errors, [])
+        self.assertEqual(commands[:2], [self.TAG, ["git", "push", "origin", "main", "v1.0.0"]])
         self.assertIn("does not match", " ".join(self.check("2.0.0")[0]))
+        self.git("push", "origin", "main")
+        self.git("reset", "--hard", self.sha)
+        self.write("README.md", "diverged")
+        self.commit("diverged")
+        self.assertIn("has commits the selected commit lacks", " ".join(self.check()[0]))
+        self.assertIn("local main is not the selected commit", " ".join(self.check(ref=self.sha)[0]))
 
     def test_reads_selected_commit_not_clean_working_files(self):
         self.write("DESIGN.md", "Workspace `v9.0.0`\n")
         self.commit("bad working version")
         errors, _, commands = self.check(ref=self.sha)
         self.assertEqual(errors, [])
-        self.assertIn(self.sha, commands[0])
+        self.assertEqual(commands[:2], [["git", "tag", "-a", "v1.0.0", self.sha, "-m", "Tungsten 1.0.0"],
+                                        ["git", "push", "origin", "v1.0.0"]])
         self.git("push", "origin", "main")
         self.assertIn("status line says", " ".join(self.check()[0]))
 
-    def test_squash_equivalent_tree_is_not_the_same_commit(self):
-        self.git("checkout", "-b", "feature")
-        self.write("README.md", "same files")
-        self.commit("feature")
-        feature_sha = self.git("rev-parse", "HEAD")
-        tree = self.git("rev-parse", "HEAD^{tree}")
-        self.git("checkout", "main")
-        self.git("merge", "--squash", "feature")
-        self.commit("squash")
-        self.assertEqual(tree, self.git("rev-parse", "HEAD^{tree}"))
-        self.git("push", "origin", "main")
-        self.assertIn("not the live", " ".join(self.check(ref=feature_sha)[0]))
-        self.assertEqual(self.check()[0], [])
-
-    def test_explicit_maintenance_branch(self):
+    def test_maintenance_branch_without_a_pull_request_starts_the_run_manually(self):
         self.git("checkout", "-b", "maintenance")
         self.git("push", "-u", "origin", "maintenance")
-        self.assertEqual(self.check(branch="maintenance")[0], [])
+        errors, _, commands = self.check(branch="maintenance", no_pr=True)
+        self.assertEqual(errors, [])
+        self.assertEqual(commands, [self.TAG, ["git", "push", "origin", "v1.0.0"], self.START])
+        self.assertEqual(self.check(branch="maintenance")[2][-1][:3], ["gh", "pr", "create"])
 
     def test_rehearsal_requires_explicit_flag_and_own_section_is_not_rehearsal(self):
         version = "0.0.0-test.20260926.gabc123"
         self.assertIn("--rehearsal", " ".join(self.check(version)[0]))
-        self.assertEqual(self.check(version, rehearsal=True)[0], [])
+        errors, _, commands = self.check(version, rehearsal=True)
+        self.assertEqual(errors, [])
+        # A pushed prerelease tag starts its own run.
+        self.assertEqual(commands[-1], ["git", "push", "origin", "v" + version])
         self.assertIn("--rehearsal", " ".join(self.check(rehearsal=True)[0]))
         self.write("Cargo.toml", '[workspace.package]\nversion = "1.1.0-rc.1"\n')
         self.write("DESIGN.md", "Workspace `v1.1.0-rc.1`\n")
@@ -166,8 +258,7 @@ class Preflight(unittest.TestCase):
         self.tag(remote=False)
         errors, _, commands = self.check()
         self.assertEqual(errors, [])
-        self.assertEqual(len(commands), 1)
-        self.assertIn("push", commands[0])
+        self.assertEqual(commands, [["git", "push", "origin", "v1.0.0"], self.START])
 
     def test_published_release_resumes_by_original_sha_after_branch_advance(self):
         self.tag()
@@ -186,7 +277,7 @@ class Preflight(unittest.TestCase):
         self.tag()
         self.existing = {"draft": True, "html_url": "https://github.com/owner/repo/releases/tag/v1.0.0"}
         self.runs = [self.run_info(id=99, tag="v0.0.0-test"), self.run_info(id=98, sha="f" * 40),
-                     self.run_info(id=97, event="workflow_dispatch"),
+                     self.run_info(id=97, event="pull_request"), self.run_info(id=96, conclusion="skipped"),
                      self.run_info(status="in_progress", conclusion=None)]
         self.ci_runs = [self.run_info(tag="main", conclusion="failure"),
                         self.run_info(id=99, event="pull_request", conclusion="success")]
@@ -195,13 +286,15 @@ class Preflight(unittest.TestCase):
         self.assertTrue(any("draft; inspect" in line for line in info))
         self.assertTrue(any("CI (informational)" in line and "failure" in line for line in info))
         self.assertEqual(commands[-1], ["gh", "run", "watch", "42", "--repo", "owner/repo", "--exit-status"])
+        self.runs = [self.run_info(event="workflow_dispatch")]
+        self.assertEqual(self.check()[2][-1], ["gh", "run", "view", "42", "--repo", "owner/repo"])
 
-    def test_remote_tag_without_run_does_not_propose_another_push(self):
+    def test_remote_tag_without_run_starts_one_instead_of_another_push(self):
         self.tag()
         errors, info, commands = self.check()
         self.assertEqual(errors, [])
-        self.assertEqual(commands, [])
-        self.assertTrue(any("No matching release run" in line for line in info))
+        self.assertEqual(commands, [self.START])
+        self.assertTrue(any("No release run found" in line for line in info))
 
     def test_lightweight_and_conflicting_tag_objects_fail(self):
         self.git("tag", "v1.0.0")

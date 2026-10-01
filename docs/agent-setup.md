@@ -14,7 +14,7 @@ How Claude Code and Codex pick up this repo's instructions, skills and search fi
 
 ## Skills
 
-- Canonical copies (tracked): `.claude/skills/tungsten-wgpu/`, `.claude/skills/tungsten-perf/`, `.claude/skills/tungsten-finalize/` (branch documentation and version cut) and `.claude/skills/tungsten-release/` (Git handoff, publication, verification and recovery). The canonical procedure is [releases.md](releases.md). Codex finds them through the symlinks `.agents/skills/<name> -> ../../.claude/skills/<name>`. Relative links inside `SKILL.md` resolve through both paths.
+- Canonical copies (tracked): `.claude/skills/tungsten-wgpu/`, `.claude/skills/tungsten-perf/`, `.claude/skills/tungsten-finalize/` (branch documentation and version cut) and `.claude/skills/tungsten-release/` (release checks, command hand-off, verification and recovery). The canonical procedure is [releases.md](releases.md). Codex finds them through the symlinks `.agents/skills/<name> -> ../../.claude/skills/<name>`. Relative links inside `SKILL.md` resolve through both paths.
 - Frontmatter holds only `name` and a description of 300 characters or fewer; bodies stay under 8 KiB. Claude's `paths` field isn't a Codex activation contract, so don't rely on it.
 - **Windows:** symlinks need Developer Mode (or an elevated shell) and `core.symlinks=true` before cloning (`git clone -c core.symlinks=true …`). Without them Git writes plain text files and Codex won't see the skills; Claude is unaffected.
 
@@ -50,7 +50,7 @@ Run from the repository root with Rust, just, Python 3.12+, Bash and ShellCheck 
 | Command | Repeated work it replaces |
 | --- | --- |
 | `just repo-check` | Asset-directory/manifest coverage comparisons, required active-plan headers/status, local links and decision references in the maintained docs, agent configuration checks, workspace version/`CHANGELOG.md`/DESIGN status agreement (`scripts/release.py check`, `D-071`, `D-074`); then existing Rust manifest and decision-index tests |
-| `just release-preflight VERSION --repo OWNER/REPO` | Read-only committed-file, live branch/tag, GitHub release and exact-commit run inspection; requires Git, authenticated gh and network; see [releases.md](releases.md) |
+| `just release-preflight VERSION --repo OWNER/REPO` | Read-only file, live branch/tag, pull-request, GitHub release and exact-commit run inspection that prints the remaining hand-off commands (`D-079`); requires Git, authenticated gh and network; see [releases.md](releases.md) |
 | `just quick` | The edit-loop sequence: format check, context budgets/links, repository QA and `cargo check --workspace --all-targets --locked` |
 | `just script-test` | Perf/smoke script regressions, ShellCheck, and repository-checker, release-script and temporary-Git-repository preflight tests |
 

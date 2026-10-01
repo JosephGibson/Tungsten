@@ -6,6 +6,16 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+Summary: release procedure rework (`D-079`). The agent runs every check and hands over five plain commands; merging the release pull request in GitHub publishes. No engine, example or asset changes.
+
+### Changed
+
+- **Release procedure (`docs/releases.md`, `D-079`):** one hand-off replaces the seven pasted blocks. The agent cuts, runs every check and ends with `git add`, `git commit`, `git tag`, `git push origin 0.NN vX.Y.Z` and `gh pr create`; the human pastes them and merges the pull request in GitHub. The local squash merge, refspec pushes and post-merge tag are gone; the tag names the tested milestone commit.
+- **`.github/workflows/release.yml`:** runs when a pull request merges into `main`, on pushed prerelease tags and on `gh workflow run release.yml --ref TAG`. A merge publishes when `v<workspace version>` names its head commit and the merge commit has that tree; pushing a final tag publishes nothing by itself.
+- **`just release-preflight`:** prints the remaining commands in every state. `--message` accepts the uncommitted cut as the release commit; it checks that `main` is contained in the branch, reports the pull request and its merged tree, matches pull-request and manual runs, and proposes `gh workflow run` when nothing started one. `--branch` defaults to the checked-out branch; `--base` and `--no-pr` are new.
+- **`scripts/release.py version`** prints the workspace version of a consistent tree.
+- `tungsten-release` and `tungsten-finalize` skills, `AGENTS.md`, `docs/agent-setup.md` and `docs/LLM_INDEX.md` follow the new procedure. `DECISIONS.md` adds `D-079`, superseding the tag-push-only trigger of `D-071` and the post-merge tag and local squash of `D-074`.
+
 ## [0.32.0] - 2026-09-30
 
 Summary: benchmark suite v2 (`D-078`), plan `docs/plans/archive/benchmark-suite-redesign.md`. Six scalable, deterministic benchmarks in `example-02-bench` and a standard-library Python runner replace the four `STRESS_SCENE` scenes of `example-02-sprite-stress` and `scripts/perf-capture.sh`. No engine or library-crate behavior changes: two comments in `crates/tungsten/src/app.rs` name the new runner. Perf numbers from the old scenes aren't comparable with the new suite.

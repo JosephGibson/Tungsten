@@ -1,97 +1,58 @@
 # Internal release procedure
 
-Canonical procedure (`D-071`, `D-072`, `D-074`). **The human pastes the Git commands.** Global `~/.claude/settings.json` denies agent `git add/commit/push/fetch/tag/merge/checkout`; agents prepare files, run checks and supply commands, without bypassing those denies through another command or API.
+Canonical procedure (`D-071`, `D-072`, `D-074`, `D-079`). **The agent runs every check; the human pastes a short block of plain Git commands and approves the pull request in GitHub.** Global `~/.claude/settings.json` denies agent `git add/commit/push/fetch/tag/merge/checkout`; agents prepare files, run checks and supply commands, without bypassing those denies through another command or API. The same holds for `gh` commands that change GitHub (`gh pr create`, `gh workflow run`, reruns, deletions): agents run only the read-only ones.
+
+**Every release task ends with the exact commands the human still has to run**, values filled in, as one block. Keep them basic: commit, tag, push, open the pull request. Nothing is published until the human merges that pull request.
 
 ## Ordinary milestone release
 
-Start at the repo root on the finished milestone branch, with [branch documentation prepared](#branch-preparation) and the intended changes reviewed. Use Git, authenticated `gh`, network access and a GPU/display for smoke tests. Replace `X.Y.Z`, `0.NN`, `MNN short summary` and the run ID; adjust remote/repository if needed. Paste **one numbered block at a time in the same Bash terminal**, stopping on any failure. If already cut, merged or tagged, [resume from that state](#resume-or-use-another-branch).
+Start at the repo root on the finished milestone branch `0.NN`, with [branch documentation prepared](#branch-preparation). Use Git, authenticated `gh`, network access and a GPU/display for smoke tests. Replace `X.Y.Z`, `0.NN` and the summary; adjust remote/repository if needed. If already cut, committed, tagged or merged, [resume from that state](#resume-or-use-another-branch).
 
-**Commit messages are one subject line, with no body:** `Update 0.NN: short summary`. For example, `Update 0.28: M30 parallax, screen-shake, squash/stretch (#29)`. Include `(#PR)` once only when there is a PR; PRs are optional. The commands below use a local squash merge.
+**Commit messages are one subject line, with no body:** `Update 0.NN: short summary`. For example, `Update 0.28: M30 parallax, screen-shake, squash/stretch (#29)`. The pull request takes the same title, and GitHub's squash appends `(#PR)` once.
 
-1. Set the release details.
-
-   ```bash
-   release_version='X.Y.Z'
-   milestone_branch='0.NN'
-   release_message='Update 0.NN: MNN short summary'
-   release_remote=origin
-   release_repo=JosephGibson/Tungsten
-   release_tag="v$release_version"
-   ```
-
-2. Cut once, validate and review the changed-file list.
+1. **Agent: cut once and run every check.** All of it passes before anything is handed over. Review the changed-file list: the commit takes everything `git status --short` shows.
 
    ```bash
-   test "$(git branch --show-current)" = "$milestone_branch" &&
-   just release-cut "$release_version" &&
+   just release-cut X.Y.Z &&
    just check && just ctx && just repo-check &&
    just script-test && just smoke &&
    git diff --check && git status --short && git diff --stat
    ```
 
-3. Commit the reviewed changes with one line and push the milestone branch.
+2. **Agent: run the read-only preflight.** With `--message` it accepts the uncommitted cut as the release commit, checks the files, the tag, the remote branch and that `main` is contained in the branch, and prints step 3's commands.
 
    ```bash
-   git add -A &&
-   git commit -m "$release_message" &&
-   git -c push.followTags=false push "$release_remote" \
-     "HEAD:refs/heads/$milestone_branch" &&
-   release_tested_sha=$(git rev-parse HEAD)
+   just release-preflight X.Y.Z --repo JosephGibson/Tungsten \
+     --message 'Update 0.NN: short summary'
    ```
 
-4. Squash into refreshed `main`; require the tested tree before committing.
+3. **Human: paste the commands the agent ended with**, one block in the repo root.
 
    ```bash
-   git fetch --no-tags "$release_remote" \
-     "refs/heads/main:refs/remotes/$release_remote/main" &&
-   git switch main &&
-   git merge --ff-only "refs/remotes/$release_remote/main" &&
-   git merge --squash "$release_tested_sha" &&
-   git diff --cached --check &&
-   test "$(git write-tree)" = "$(git rev-parse "$release_tested_sha^{tree}")" &&
-   git commit -m "$release_message" &&
-   git -c push.followTags=false push "$release_remote" HEAD:refs/heads/main
+   git add -A
+   git commit -m 'Update 0.NN: short summary'
+   git tag -a vX.Y.Z -m 'Tungsten X.Y.Z'
+   git push origin 0.NN vX.Y.Z
+   gh pr create --repo JosephGibson/Tungsten --base main --head 0.NN \
+     --title 'Update 0.NN: short summary' \
+     --body 'Release vX.Y.Z. Merging this pull request publishes it.'
    ```
 
-5. **RE-READ THE SHA HERE.** The squash commit has a new identity. Fetch it after the push, run the read-only preflight, then tag exactly that SHA.
+4. **Human: approve and merge the pull request in GitHub.** Squash-merge, keep the title as the subject and clear the description. The merge starts [release.yml](../.github/workflows/release.yml), which builds the tagged commit and publishes the GitHub Release. CI reports on the pull request beforehand (informational, `D-070`).
+
+5. **Verify when asked.** Preflight reports the pull request, the run and the release, and prints the matching watch/view command. Finish with the [archive/asset checks](#archive-and-asset-verification); hosted builds do not test GPU/audio behavior.
 
    ```bash
-   git fetch --no-tags "$release_remote" \
-     "refs/heads/main:refs/remotes/$release_remote/main" &&
-   release_sha=$(git rev-parse "refs/remotes/$release_remote/main^{commit}") &&
-   test "$release_sha" = "$(git rev-parse HEAD)" &&
-   just release-preflight "$release_version" --ref "$release_sha" \
-     --remote "$release_remote" --branch main --repo "$release_repo" &&
-   git tag -a "$release_tag" "$release_sha" -m "Tungsten $release_version" &&
-   git -c push.followTags=false push "$release_remote" \
-     "refs/tags/$release_tag:refs/tags/$release_tag"
+   just release-preflight X.Y.Z --repo JosephGibson/Tungsten
    ```
 
-6. Find the row whose `headBranch` is the tag and `headSha` is `release_sha`. If delivery is pending, repeat this lookup after a short wait.
-
-   ```bash
-   gh run list --repo "$release_repo" --workflow release.yml \
-     --commit "$release_sha" --event push \
-     --json databaseId,headSha,headBranch,status,conclusion,url
-   ```
-
-7. Replace the run ID with that row's `databaseId`, wait, and inspect the release and remote tag.
-
-   ```bash
-   release_run_id='RUN_ID_FROM_STEP_6'
-   gh run watch "$release_run_id" --repo "$release_repo" --exit-status &&
-   gh release view "$release_tag" --repo "$release_repo" &&
-   git ls-remote "$release_remote" \
-     "refs/tags/$release_tag" "refs/tags/$release_tag^{}"
-   ```
-
-The remote tag's `^{}` line must equal `release_sha`. Finish with the [archive/asset checks](#archive-and-asset-verification); hosted builds do not test GPU/audio behavior. Keep published tags fixed: never move or force-push them. Always tag the exact preflight-verified SHA, never bare `HEAD`.
+The tag names the tested milestone commit. `main`'s squash commit has the same tree, which the workflow requires, but a different identity. A tag is fixed once its GitHub Release exists: never move or force-push it.
 
 ## Reference
 
 ### Branch preparation
 
-[tungsten-finalize](../.claude/skills/tungsten-finalize/SKILL.md) handles this docs pass and the requested cut; [tungsten-release](../.claude/skills/tungsten-release/SKILL.md) handles the Git handoff and release inspection. This guide owns both procedures. Preparation alone does not authorize publication or deletion; honor the requested scope and existing authorization without asking again.
+[tungsten-finalize](../.claude/skills/tungsten-finalize/SKILL.md) handles this docs pass and the requested cut; [tungsten-release](../.claude/skills/tungsten-release/SKILL.md) handles the checks, the command hand-off and release inspection. This guide owns both procedures. Preparation alone does not authorize publication or deletion; honor the requested scope and existing authorization without asking again.
 
 - Establish the requested version and refreshed branch base; have the human fetch if needed. Inventory commits/diffs and active plans. If already squash-merged, compare trees as well as history to avoid counting the same changes twice.
 - Run `just release-check`. The workspace version must equal the newest versioned changelog heading and DESIGN's status version. It stays unchanged until the cut; milestone `0.NN` normally ships `0.NN.0`, maintenance increments the patch. Resolve drift without discarding unrelated work.
@@ -102,27 +63,45 @@ The remote tag's `^{}` line must equal `release_sha`. Finish with the [archive/a
 
 `just release-cut VERSION [--date YYYY-MM-DD]` moves `[Unreleased]` into a dated section, updates Cargo.toml and DESIGN, and refreshes Cargo.lock. It rejects inconsistent files, empty notes, non-increasing versions and dates before the last release. If lock refresh fails, the cut files are already changed: fix Cargo.lock and rerun checks, not the cut. README is never rewritten.
 
-Step 2 covers ordinary milestone checks under [AGENTS.md](../AGENTS.md); narrow documentation-only work can omit script/GPU checks when those rules allow it. Report `release_tested_sha` and the final SHA separately: the squash must preserve the tested tree. If integration changes the tree, resolve it and test the resulting contents before publication. CI remains informational (`D-070`); report results for the selected SHA and outstanding hardware checks.
+Step 1 covers ordinary milestone checks under [AGENTS.md](../AGENTS.md); narrow documentation-only work can omit script/GPU checks when those rules allow it. The checks run on the working tree that step 3 commits, so change nothing in between. The merge must keep the tagged tree: if `main` gained commits the branch lacks, the human merges `main` into the branch (`git fetch origin`, `git merge origin/main`) and the checks run again before the hand-off. CI remains informational (`D-070`); report its result for the tagged commit and outstanding hardware checks.
 
 ### Resume or use another branch
 
+In any state, `just release-preflight X.Y.Z --repo OWNER/REPO` prints the commands that remain.
+
 | State | Resume point |
 | --- | --- |
-| Version already cut, not committed | Skip the cut in step 2; review and validate the existing cut. |
-| Cut committed and milestone branch pushed | Validate it, set `release_tested_sha` to its commit SHA, then step 4. |
-| Already squash-merged through GitHub | Skip the local squash. Fetch main, select its final integrated SHA and compare its tree with the tested milestone commit; run step 5's preflight/tag/push using that SHA. No requirement to switch a stale local main. |
-| Tag already exists | Inspect at its original commit using preflight; use only the proposed missing push/watch/view commands. Do not cut or create the tag again. |
-| Maintenance or rehearsal branch | Explicitly select that pushed branch with `--branch`; fetch its tracking ref and select its SHA. Milestone tags use final integrated main. |
+| Version already cut, not committed | Skip the cut in step 1; run the checks on the existing cut, then step 2. |
+| Cut committed, not tagged or pushed | Run the checks on that commit; preflight without `--message` prints the tag, push and pull-request commands. |
+| Branch and tag pushed, no pull request | Preflight prints `gh pr create`. |
+| Pull request open | Step 4: the human approves and merges it. |
+| Pull request merged | Step 5. If no run started, see [recovery](#recover-according-to-state). |
+| Release already exists | Inspect it at the tag's original commit (`--ref SHA`); do not cut or tag again. |
+| Maintenance branch, no pull request | `--branch NAME --no-pr`: tag, push, then `gh workflow run release.yml --ref vX.Y.Z` starts the run. |
 
-`just release-check [TAG]` checks files offline, including shallow CI; it does not inspect Git tag objects. `just release-preflight VERSION --ref SHA --remote REMOTE --branch BRANCH --repo OWNER/REPO` checks committed files, a clean tree/index, unfinished Git operations, the live push destination and tracking ref, tag objects, GitHub repository state and matching release/CI runs. **Preflight stays read-only** and prints proposed commands only on success. It needs the branch already pushed and the final SHA, so it runs near the end.
+Release runs start three ways (`D-079`):
 
-New tags must name the live branch tip. Existing tags can be verified at their original commit after the branch advances, including historical tags outside main. Fetch/inspect stale refs or divergent local main; never reset automatically. Investigate conflicting tags without replacing them. Rerun preflight if the commit, branch, tag or release changes before acting. An unchanged tag push does not start another workflow; push only the named tag.
+| Trigger | Publishes |
+| --- | --- |
+| A pull request merges into `main` and `v<workspace version>` names its head commit | That final release, after checking that the merge commit has the tagged tree |
+| A `vX.Y.Z-<pre>` tag is pushed | That prerelease or [rehearsal](#rehearsals-and-versioned-prereleases) |
+| `gh workflow run release.yml --ref TAG` | That tag: maintenance releases and recovery |
 
-An explicitly chosen atomic branch-and-tag push updates both named refs or neither if rejected/unsupported. It needs separate review of both refs; ordinary preflight requires an already-published branch, so this is not a workaround for a failed check. See [git push](https://git-scm.com/docs/git-push).
+Pushing a final `vX.Y.Z` tag publishes nothing by itself. A merged pull request whose version is already released publishes nothing; one whose version is unreleased but whose head the tag does not name fails the run.
+
+`just release-check [TAG]` checks files offline, including shallow CI; it does not inspect Git tag objects. `just release-preflight VERSION --repo OWNER/REPO [--branch B] [--base main] [--ref SHA] [--message TEXT] [--no-pr] [--rehearsal]` checks the files (committed ones, or the working tree with `--message`), a clean tree/index otherwise, unfinished Git operations, the live push destination and tracking ref, tag objects, that the base branch is contained, GitHub repository state, the pull request and matching release/CI runs. `--branch` defaults to the checked-out branch. **Preflight stays read-only** and prints proposed commands only on success.
+
+A new tag is pushed together with its branch, as a fast-forward. Existing tags can be verified at their original commit after the branch advances, including historical tags outside main. Fetch/inspect stale refs or divergent local branches; never reset automatically. Investigate conflicting tags without replacing them. Rerun preflight if the commit, branch, tag, pull request or release changes before acting. Pushing an unchanged tag again never starts a run; push only the named branch and tag.
 
 ### Archive and asset verification
 
-Preflight after the tag push can also report the matching run ID. Match both tag and SHA, and watch that numeric ID rather than choosing the newest run interactively.
+Preflight reports the matching run ID. A merged pull request's run is listed under the milestone branch and the tagged commit; a tag run under the tag. Watch that numeric ID rather than choosing the newest run interactively:
+
+```bash
+gh run watch RUN_ID --repo JosephGibson/Tungsten --exit-status &&
+gh release view vX.Y.Z --repo JosephGibson/Tungsten &&
+git ls-remote origin 'refs/tags/vX.Y.Z*'
+```
 
 For an annotated tag, the `^{}` line identifies its commit; the other line identifies the tag object. GitHub release `target_commitish` is not proof of the tagged commit. Confirm the remote tag, run SHA and intended SHA agree.
 
@@ -132,7 +111,7 @@ Expect a Linux `.tar.gz`, a Windows `.zip`, and `SHA256SUMS`. Download into a fr
 
 ```bash
 release_download=$(mktemp -d) &&
-gh release download "$release_tag" --repo "$release_repo" --dir "$release_download" \
+gh release download vX.Y.Z --repo JosephGibson/Tungsten --dir "$release_download" \
   --pattern 'tungsten-examples-*' --pattern SHA256SUMS &&
 (cd "$release_download" && sha256sum -c SHA256SUMS)
 ```
@@ -141,7 +120,7 @@ Check that both expected platform filenames are present, notes match the tag's c
 
 ### Rehearsals and versioned prereleases
 
-A prerelease tag with its own changelog section is a versioned release and must match the workspace version. A prerelease tag without that section is a rehearsal: the workspace still passes consistency checks, notes come from `[Unreleased]`, and the tag version need not match. Both publish as GitHub prereleases. A rehearsal may use the tip of a pushed development branch by setting `--branch` explicitly; it does not require a version cut.
+A prerelease tag with its own changelog section is a versioned release and must match the workspace version. A prerelease tag without that section is a rehearsal: the workspace still passes consistency checks, notes come from `[Unreleased]`, and the tag version need not match. Both publish as GitHub prereleases as soon as the tag is pushed, without a pull request. A rehearsal may use the tip of a development branch by setting `--branch` explicitly; it does not require a version cut.
 
 Use a unique rehearsal tag per attempt, for example `v0.0.0-test.20260926.gabcdef1`, adding a suffix if needed. Record its SHA and run ID. For such a tag, pass the version without `v` and `--rehearsal` to preflight. Do not reuse a fixed test tag for a different commit. Cleanup is a separate requested action targeting only that rehearsal release/tag; inspect whether it is immutable before attempting deletion.
 
@@ -151,27 +130,29 @@ Always inspect the identified run and GitHub release first. Network/authenticati
 
 | Observed state | Next action |
 | --- | --- |
+| Pull request merged or tag pushed; no matching run | `gh workflow run release.yml --ref vX.Y.Z` starts one (preflight prints it). Pushing the unchanged tag again is not a retry mechanism. |
+| Run failed: the tag does not name the merged head | Commits reached the branch after tagging. Run the checks on the merged head. With no GitHub Release for the tag, the human re-points it (`git tag -d vX.Y.Z`, `git push origin :refs/tags/vX.Y.Z`, `git tag -a vX.Y.Z SHA -m 'Tungsten X.Y.Z'`, `git push origin vX.Y.Z`) and starts the run manually. Do the same before merging when a fix follows the hand-off. |
+| Run failed: the merge commit differs from the tagged tree | `main` held commits the branch lacked. Test `main`'s merge commit locally, then re-point the unreleased tag to it as above and start the run manually, or ship the difference as the next patch version. |
 | Build failed; no release exists | Inspect `gh run view RUN_ID --log-failed`. For a transient failure, rerun that run's failed jobs with `gh run rerun RUN_ID --failed`. A source/workflow fix needs a new commit and a new version/tag, or a unique rehearsal tag. |
-| Tag exists; no matching run | Verify the push event and workflow in the tagged commit. Wait briefly for delivery; an unchanged tag push is not a retry mechanism. |
 | Publish failed; no release exists | Inspect logs, then rerun the failed publish job if its build artifacts still exist. Artifacts have seven-day retention; expired artifacts require rebuilding via a full rerun if GitHub still allows it. |
 | Draft release or partial upload exists | Verify the tag/commit and inspect assets. The workflow uses `gh release create`, so it cannot automatically resume an existing draft. Resume the draft with verified assets from the same run and publish it once complete, or delete only the draft (keep the tag) if that cleanup is authorized, then rerun. Do not blindly clobber uploaded assets. |
 | Release is already published | Verify the tag, notes, expected assets and checksums. A lost response or failed rerun may follow successful publication. Stop if complete. An incomplete published release needs an explicit repair decision after checking immutability; do not delete/recreate it by default. |
-| Local and remote tags disagree | Stop publication and identify which object was published. Do not force-push or move a published tag. |
+| Local and remote tags disagree | Stop publication and identify which object was pushed. Never move a tag whose release exists. |
 
 Current `gh release create` with assets creates a draft, uploads assets, then publishes. Drafts are mutable; published immutable releases lock their assets and tag. Account for that boundary during recovery. See [GitHub CLI release creation](https://cli.github.com/manual/gh_release_create). Rerun once for an identified transient problem, inspect the result, and stop repeating the same failing action without new evidence.
 
 ### Handoff and next branch
 
-Report version/tag, commit SHA, release URL, run ID/result, checks performed, archive/checksum verification and outstanding platform/GPU checks. For preparation-only work, report requested/current versions, whether a cut occurred, plans moved, checks and the remaining numbered Git steps.
+End the task with the remaining command block, after a short report: version/tag, the checks run and their results, anything not checked (platforms, GPU) and what the commands will do. After the merge, report the tagged commit SHA, pull request and release URLs, run ID/result and archive/checksum verification. For preparation-only work, report requested/current versions, whether a cut occurred, plans moved, checks and the remaining steps.
 
-When starting the next milestone, refresh `origin/main` and create the branch from it, rather than a stale local main or the pre-squash milestone branch. If the next branch already exists, inspect its history and work before integrating main; never reset it automatically. Preserve existing authorization and the repository's optional PR process.
+When starting the next milestone, refresh `origin/main` and create the branch from it (`git fetch origin`, `git switch -c 0.NN origin/main`), rather than a stale local main or the pre-squash milestone branch: a branch that lacks `main`'s squash commit fails preflight's containment check at the next release. If the next branch already exists, inspect its history and work before integrating main; never reset it automatically. The release pull request is the only one the procedure needs; preserve existing authorization.
 
 ### Tool sources
 
 | Concern | Source |
 | --- | --- |
 | Version, notes and packaging | [release.py](../scripts/release.py), [tests](../scripts/test-release.py) |
-| Read-only Git/GitHub preflight | [release-preflight.py](../scripts/release-preflight.py), [tests](../scripts/test-release-preflight.py) |
+| Read-only Git/GitHub preflight and command hand-off | [release-preflight.py](../scripts/release-preflight.py), [tests](../scripts/test-release-preflight.py) |
 | Recipes | [justfile](../justfile) |
 | Hosted builds and publication | [release.yml](../.github/workflows/release.yml) |
 | Launcher CPU selection | [launcher](../tools/launcher/src/main.rs) |
