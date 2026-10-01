@@ -20,6 +20,7 @@ use crate::physics_debug::{
     PhysicsDebugOverlay, physics_debug_emit_system, physics_debug_toggle_system,
 };
 use crate::post_aa::{PendingPostAa, PostAaState, sync_post_aa_state, take_pending_post_aa};
+use crate::sprite_extract::ExtractScratch;
 use crate::state::{StateStack, state_dispatcher_system};
 use crate::systems_overlay::{
     SystemTimingOverlay, compose_systems_overlay_text_section, systems_overlay_toggle_system,
@@ -167,6 +168,7 @@ impl App {
         world.insert_resource(StateStack::new());
         world.insert_resource(HudActiveState::default());
         world.insert_resource(RenderCounts::default());
+        world.insert_resource(ExtractScratch::default());
         world.insert_resource(DebugDraw::new());
         world.insert_resource(PhysicsDebugOverlay::default());
         world.insert_resource(SystemTimingOverlay::default());
@@ -918,6 +920,15 @@ impl App {
         out
     }
 
+    /// Hands the drawn frame's sprite batches back to the extract scratch:
+    /// the next frame's batches reuse their instance vectors.
+    #[inline(always)]
+    fn stage_recycle(&mut self, extract: &mut FrameExtract) {
+        if let Some(scratch) = self.world.get_resource::<ExtractScratch>() {
+            scratch.recycle(std::mem::take(&mut extract.sprites));
+        }
+    }
+
     #[inline(always)]
     fn stage_audio(&mut self) -> f32 {
         let audio_start = Instant::now();
@@ -1457,10 +1468,11 @@ impl ApplicationHandler for App {
                 let hot_reload_ms = self.stage_hot_reload();
                 self.apply_pending_post_aa_request();
 
-                let extract_out = self.stage_extract(prev_total_ms);
+                let mut extract_out = self.stage_extract(prev_total_ms);
                 let extract_ms = extract_out.extract_ms;
 
                 let render_out = self.stage_render(&extract_out);
+                self.stage_recycle(&mut extract_out);
 
                 let audio_ms = self.stage_audio();
 
