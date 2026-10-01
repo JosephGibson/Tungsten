@@ -319,9 +319,35 @@ def hard_problems(analysis):
     return [problem for problem in analysis["problems"] if not problem.startswith(GUARD_PREFIX)]
 
 
-def analyze_log(text, warmup, frames, guards, expected_config):
+# Present modes an `auto*` request may resolve to; the benchmarks turn vsync
+# off, so `auto` takes the no-vsync family. A concrete mode is reported as
+# requested.
+PRESENT_FAMILIES = {
+    "auto": ("immediate", "mailbox", "auto_no_vsync"),
+    "auto_no_vsync": ("immediate", "mailbox", "auto_no_vsync"),
+    "auto_vsync": ("fifo", "auto_vsync"),
+}
+
+
+def present_problems(backend, present_mode, max_frame_latency):
+    """Problems when a run's `backend:` line does not confirm the requested
+    present mode or frame latency (None: not requested)."""
+    if present_mode is None and max_frame_latency is None:
+        return []
+    if backend is None:
+        return ["no backend line to confirm the requested present mode and frame latency"]
+    problems = []
+    if present_mode is not None and backend["present_mode"] not in PRESENT_FAMILIES.get(present_mode, (present_mode,)):
+        problems.append(f"present mode is {backend['present_mode']}, requested {present_mode}")
+    if max_frame_latency is not None and backend["max_frame_latency"] != max_frame_latency:
+        problems.append(f"max frame latency is {backend['max_frame_latency']}, requested {max_frame_latency}")
+    return problems
+
+
+def analyze_log(text, warmup, frames, guards, expected_config, present_mode=None, max_frame_latency=None):
     """Stats, guards, digest and validity problems for one run's log;
-    `expected_config` is the resolved config the binary printed up front."""
+    `expected_config` is the resolved config the binary printed up front, and
+    a requested present mode or frame latency must show in the `backend:` line."""
     log = parse_log(text)
     measured = log.frames[warmup : warmup + frames]
     problems = []
@@ -336,6 +362,7 @@ def analyze_log(text, warmup, frames, guards, expected_config):
             logged = None
         if logged != expected_config:
             problems.append("bench-config does not match the request")
+    problems.extend(present_problems(log.backend, present_mode, max_frame_latency))
     guard_results = [evaluate_guard(guard, measured) for guard in guards]
     problems.extend(f"{GUARD_PREFIX}{result['guard']}: {result['detail']}" for result in guard_results if not result["ok"])
     return {

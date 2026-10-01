@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Regression tests for scripts/smoke-examples.sh with a stubbed `cargo` on
-# PATH: example discovery failures, child failure, timeout, and the exact
-# fixture matrix. Needs no GPU; real jq/timeout are used.
+# PATH: example discovery failures, child failure, timeout, the exact fixture
+# matrix, and the frame-cap row's minimum run time. Needs no GPU; real
+# jq/timeout are used.
 
 set -euo pipefail
 
@@ -17,6 +18,8 @@ cat >"$work/bin/cargo" <<'EOF'
 # Stub cargo. STUB_METADATA: ok | fail | badjson | none.
 # STUB_FAIL_PKG / STUB_HANG_PKG pick an example that panics / hangs;
 # STUB_FAIL_MSAA makes matrix rows with that TUNGSTEN_RENDER_MSAA fail.
+# A run with TUNGSTEN_DISPLAY_FRAME_RATE_CAP takes 1 s, as a capped run
+# would, unless STUB_UNCAPPED is set.
 case "$1" in
   metadata)
     case "${STUB_METADATA:-ok}" in
@@ -29,7 +32,8 @@ case "$1" in
   build) exit 0 ;;
   run)
     pkg="$3"
-    echo "$pkg msaa=${TUNGSTEN_RENDER_MSAA:-} sort=${TUNGSTEN_RENDER_DEPTH_SORT:-} post=${TUNGSTEN_POST_STACK_FIXTURE:-} aa=${TUNGSTEN_POST_AA_FIXTURE:-} bloom=${TUNGSTEN_BLOOM_FIXTURE:-} light=${TUNGSTEN_LIGHTING_FIXTURE:-} feel=${TUNGSTEN_GAME_FEEL_FIXTURE:-} frames=${TUNGSTEN_SMOKE_FRAMES:-} timing=${TUNGSTEN_GPU_TIMING:-} bench=${TUNGSTEN_BENCH:-} preset=${TUNGSTEN_BENCH_PRESET:-}" >>"$STUB_RUNS"
+    echo "$pkg msaa=${TUNGSTEN_RENDER_MSAA:-} sort=${TUNGSTEN_RENDER_DEPTH_SORT:-} post=${TUNGSTEN_POST_STACK_FIXTURE:-} aa=${TUNGSTEN_POST_AA_FIXTURE:-} bloom=${TUNGSTEN_BLOOM_FIXTURE:-} light=${TUNGSTEN_LIGHTING_FIXTURE:-} feel=${TUNGSTEN_GAME_FEEL_FIXTURE:-} frames=${TUNGSTEN_SMOKE_FRAMES:-} timing=${TUNGSTEN_GPU_TIMING:-} bench=${TUNGSTEN_BENCH:-} preset=${TUNGSTEN_BENCH_PRESET:-}${TUNGSTEN_DISPLAY_FRAME_RATE_CAP:+ cap=$TUNGSTEN_DISPLAY_FRAME_RATE_CAP}" >>"$STUB_RUNS"
+    if [ -n "${TUNGSTEN_DISPLAY_FRAME_RATE_CAP:-}" ] && [ -z "${STUB_UNCAPPED:-}" ]; then sleep 1; fi
     if [ "$pkg" = "${STUB_HANG_PKG:-}" ]; then exec sleep 30; fi
     if [ "$pkg" = "${STUB_FAIL_PKG:-}" ]; then echo "thread 'main' panicked at stub"; exit 101; fi
     if [ -n "${STUB_FAIL_MSAA:-}" ] && [ "${TUNGSTEN_RENDER_MSAA:-}" = "$STUB_FAIL_MSAA" ]; then exit 3; fi
@@ -71,7 +75,7 @@ expect_output() {
 if run_case "all pass" 0; then
   for line in "Passed: 4/4" "Matrix passed: 4/4" "Post-stack passed: 2/2" \
     "Post-AA passed: 1/1" "Bloom passed: 1/1" "Lighting passed: 1/1" \
-    "Game-feel passed: 2/2" "Benchmarks passed: 15/15"; do
+    "Game-feel passed: 2/2" "Benchmarks passed: 15/15" "Frame cap passed: 1/1"; do
     expect_output "all pass" "$line"
   done
   expected_runs="$work/expected-runs.txt"
@@ -106,6 +110,7 @@ example-02-bench msaa= sort= post= aa= bloom= light= feel= frames=3 timing= benc
 example-02-bench msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench=particles preset=default
 example-02-bench msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench=integrated preset=min
 example-02-bench msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench=integrated preset=default
+example-03-scene-state msaa= sort= post= aa= bloom= light= feel= frames=20 timing= bench= preset= cap=20
 EOF
   if ! diff -u "$expected_runs" "$work/runs.txt"; then
     echo "FAIL all pass: run matrix changed"
@@ -131,6 +136,12 @@ fi
 if run_case "matrix failure" nonzero STUB_FAIL_MSAA=4; then
   expect_output "matrix failure" "Matrix passed: 2/4"
   expect_output "matrix failure" "Matrix failures:"
+fi
+
+if run_case "frame cap ignored" nonzero STUB_UNCAPPED=1; then
+  expect_output "frame cap ignored" "expected at least 900 ms"
+  expect_output "frame cap ignored" "Benchmarks passed: 15/15"
+  expect_output "frame cap ignored" "Frame cap passed: 0/1"
 fi
 
 if [ "$failures" -gt 0 ]; then

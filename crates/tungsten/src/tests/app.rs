@@ -1,7 +1,8 @@
 use super::{
-    App, format_perf_physics_line, format_perf_systems_line, resolve_startup_display,
-    runtime_display_mode,
+    App, RedrawSchedule, format_perf_physics_line, format_perf_systems_line, redraw_schedule,
+    resolve_startup_display, runtime_display_mode,
 };
+use std::time::{Duration, Instant};
 use tungsten_core::{
     CollisionEvent, Config, DisplayMode, DisplayState, EventQueue, ShakeEvent, SquashEvent,
 };
@@ -99,6 +100,24 @@ fn runtime_display_mode_downgrades_exclusive_fullscreen() {
     assert_eq!(
         runtime_display_mode(DisplayMode::Windowed),
         DisplayMode::Windowed
+    );
+}
+
+#[test]
+fn capped_frame_defers_its_redraw_to_the_frame_budget() {
+    let frame_start = Instant::now();
+    let budget = Duration::from_millis(50);
+    assert_eq!(
+        redraw_schedule(Some(budget), frame_start),
+        RedrawSchedule::At(frame_start + budget)
+    );
+}
+
+#[test]
+fn uncapped_frame_redraws_immediately() {
+    assert_eq!(
+        redraw_schedule(None, Instant::now()),
+        RedrawSchedule::Immediate
     );
 }
 

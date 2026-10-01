@@ -11,7 +11,7 @@ Compare two captures only when they measure the same row with the same `workload
 | Build | `--release` with the tuned profile (`D-041`) and `RUSTFLAGS="-C force-frame-pointers=yes"`, the runner's default; `TUNGSTEN_PERF_RUSTFLAGS` overrides it. It replaces `.cargo/config.toml`'s `target-cpu=native`, so captures are generic x86-64 |
 | Backend | `WGPU_BACKEND=vulkan` on Linux |
 | Resolution | 1920×1080 (the `gpu` benchmark's `resolution` knob aside) |
-| Present | `display.present_mode = "auto"` with `display.vsync = false` and `display.max_frame_latency = 1`, the checked-in `tungsten.json`; `immediate` / 1 on the reference machine |
+| Present | `display.present_mode = "auto"` with `display.vsync = false`, `display.max_frame_latency = 1` and no `display.frame_rate_cap`, the checked-in `tungsten.json`; `immediate` / 1 on the reference machine |
 | Frames | the benchmark's warm-up (60–180 frames), then 300 measured frames |
 | Repeats | `--repeat 5` for compare-grade captures and suites |
 | GPU timing | only in the separate GPU diagnostic run (`gpu` and `integrated`), never in a timing run |
@@ -127,6 +127,7 @@ A capture is valid when every run, GPU diagnostic runs included:
 - exits 0;
 - reports the requested number of measured frames after the warm-up;
 - logs a `bench-config:` line equal to the resolved request;
+- reports the present mode and frame latency in its `backend:` line that `--present-mode` and `--max-frame-latency` asked for, when either was given (an `auto`, `auto_vsync` or `auto_no_vsync` request accepts any mode of its family);
 - passes the row's guards (checked on every measured frame; `bench:` guards skip the last frame, which has no line);
 - has the same determinism digest as every other run.
 
@@ -244,7 +245,9 @@ Interpretation:
 
 ## Frame pacing
 
-`display.present_mode` is the final authority when set to a concrete value. The checked-in defaults are `display.present_mode = "auto"`, `display.vsync = false` and `display.max_frame_latency = 1`, which resolve to the engine's auto no-vsync family (`immediate` first). Legacy `window.vsync`, `render.present_mode` and `render.max_frame_latency` fields and their environment overrides remain valid compatibility inputs. `max_frame_latency` is the requested `wgpu` hint, not a backend-confirmed queue depth.
+A concrete `display.present_mode` (`immediate`, `mailbox` or `fifo`) is final; `"auto"` lets `display.vsync` choose the family. The checked-in defaults are `display.present_mode = "auto"`, `display.vsync = false` and `display.max_frame_latency = 1`, which resolve to the engine's auto no-vsync family (`immediate` first). `max_frame_latency` is the requested `wgpu` hint, not a backend-confirmed queue depth.
+
+Legacy `window.vsync`, `render.present_mode` and `render.max_frame_latency` only fill in what `display.*` leaves unset: a display field wins whenever it is set, `"auto"` included (`D-043`). The checked-in `tungsten.json` sets both display pacing fields, so `TUNGSTEN_RENDER_PRESENT_MODE` and `TUNGSTEN_RENDER_MAX_FRAME_LATENCY` change nothing there. `TUNGSTEN_DISPLAY_PRESENT_MODE` and `TUNGSTEN_DISPLAY_MAX_FRAME_LATENCY` override the display fields themselves.
 
 For pacing studies, keep the default captures and add override captures:
 
@@ -253,7 +256,7 @@ just perf run gpu --repeat 5
 just perf run gpu --repeat 5 --present-mode mailbox --max-frame-latency 2
 ```
 
-`--present-mode` and `--max-frame-latency` set child-only `TUNGSTEN_RENDER_PRESENT_MODE` and `TUNGSTEN_RENDER_MAX_FRAME_LATENCY`, so `tungsten.json` stays unchanged, and they suffix the directory with `-<mode>-lat<N>`. Present mode and frame latency are hard compare fields. Acquire and present pacing belong to the environment: they are reported and owned by no row. The April 2026 Vulkan matrix that keeps `Immediate / 1` as the shipped default is recorded in `D-078`; shipped pacing defaults change only by decision.
+`--present-mode` and `--max-frame-latency` set child-only `TUNGSTEN_DISPLAY_PRESENT_MODE` and `TUNGSTEN_DISPLAY_MAX_FRAME_LATENCY`, so `tungsten.json` stays unchanged, and they suffix the directory with `-<mode>-lat<N>`. Each run's `backend:` line must confirm the request, or the capture is invalid (see "Validity and determinism"). Present mode and frame latency are hard compare fields. Acquire and present pacing belong to the environment: they are reported and owned by no row. The April 2026 Vulkan matrix that keeps `Immediate / 1` as the shipped default is recorded in `D-078`; shipped pacing defaults change only by decision.
 
 ## Backends and RenderDoc
 

@@ -338,6 +338,73 @@ fn display_frame_rate_cap_override_allows_uncapped_zero() {
     assert_eq!(config.display.frame_rate_cap, None);
 }
 
+/// The checked-in `tungsten.json` sets both display pacing fields like this.
+const DISPLAY_PACING_JSON: &str =
+    r#"{ "display": { "present_mode": "auto", "max_frame_latency": 1 } }"#;
+
+#[test]
+fn display_pacing_overrides_win_over_display_values_from_the_file() {
+    let mut config: Config = serde_json::from_str(DISPLAY_PACING_JSON).unwrap();
+    config.apply_display_present_mode_override("fifo").unwrap();
+    config
+        .apply_display_max_frame_latency_override("2")
+        .unwrap();
+
+    let resolved = config.display.resolve(&config.window, &config.render);
+    assert_eq!(resolved.present_mode, Some(PresentModeConfig::Fifo));
+    assert_eq!(resolved.max_frame_latency, Some(2));
+}
+
+#[test]
+fn render_pacing_overrides_lose_to_display_values_from_the_file() {
+    let mut config: Config = serde_json::from_str(DISPLAY_PACING_JSON).unwrap();
+    config.apply_present_mode_override("fifo").unwrap();
+    config.apply_max_frame_latency_override("3").unwrap();
+
+    let resolved = config.display.resolve(&config.window, &config.render);
+    assert_eq!(resolved.present_mode, Some(PresentModeConfig::Auto));
+    assert_eq!(resolved.max_frame_latency, Some(1));
+}
+
+#[test]
+fn invalid_display_pacing_overrides_name_var_and_value() {
+    let mut config = Config::default();
+
+    match config
+        .apply_display_present_mode_override("triple-buffer")
+        .unwrap_err()
+    {
+        ConfigError::InvalidEnvOverride {
+            var,
+            value,
+            expected,
+        } => {
+            assert_eq!(var, DISPLAY_PRESENT_MODE_ENV);
+            assert_eq!(value, "triple-buffer");
+            assert_eq!(expected, PRESENT_MODE_EXPECTED);
+        }
+        other => panic!("unexpected error: {other}"),
+    }
+
+    match config
+        .apply_display_max_frame_latency_override("0")
+        .unwrap_err()
+    {
+        ConfigError::InvalidEnvOverride {
+            var,
+            value,
+            expected,
+        } => {
+            assert_eq!(var, DISPLAY_MAX_FRAME_LATENCY_ENV);
+            assert_eq!(value, "0");
+            assert_eq!(expected, MAX_FRAME_LATENCY_EXPECTED);
+        }
+        other => panic!("unexpected error: {other}"),
+    }
+    assert!(config.display.present_mode.is_none());
+    assert!(config.display.max_frame_latency.is_none());
+}
+
 #[test]
 fn missing_file_returns_defaults() {
     let config = Config::load("/nonexistent/path/tungsten.json").unwrap();

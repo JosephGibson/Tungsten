@@ -13,6 +13,8 @@ static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 const DISPLAY_MODE_ENV: &str = "TUNGSTEN_DISPLAY_MODE";
 const DISPLAY_RESOLUTION_ENV: &str = "TUNGSTEN_DISPLAY_RESOLUTION";
 const DISPLAY_FRAME_RATE_CAP_ENV: &str = "TUNGSTEN_DISPLAY_FRAME_RATE_CAP";
+const DISPLAY_PRESENT_MODE_ENV: &str = "TUNGSTEN_DISPLAY_PRESENT_MODE";
+const DISPLAY_MAX_FRAME_LATENCY_ENV: &str = "TUNGSTEN_DISPLAY_MAX_FRAME_LATENCY";
 const RENDER_PRESENT_MODE_ENV: &str = "TUNGSTEN_RENDER_PRESENT_MODE";
 const RENDER_MAX_FRAME_LATENCY_ENV: &str = "TUNGSTEN_RENDER_MAX_FRAME_LATENCY";
 
@@ -37,6 +39,8 @@ fn clear_display_env() {
         DISPLAY_MODE_ENV,
         DISPLAY_RESOLUTION_ENV,
         DISPLAY_FRAME_RATE_CAP_ENV,
+        DISPLAY_PRESENT_MODE_ENV,
+        DISPLAY_MAX_FRAME_LATENCY_ENV,
         RENDER_PRESENT_MODE_ENV,
         RENDER_MAX_FRAME_LATENCY_ENV,
     ] {
@@ -207,6 +211,38 @@ fn env_overrides_apply_on_top_of_file_config() {
     assert_eq!(resolved.frame_rate_cap, Some(165));
     assert_eq!(resolved.present_mode, Some(PresentModeConfig::Fifo));
     assert_eq!(resolved.max_frame_latency, Some(3));
+
+    clear_display_env();
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn display_pacing_env_overrides_win_over_display_values_in_the_file() {
+    let _guard = ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+    clear_display_env();
+
+    // SAFETY: see `clear_display_env`; `ENV_LOCK` is held for the whole test.
+    unsafe {
+        std::env::set_var(DISPLAY_PRESENT_MODE_ENV, "fifo");
+        std::env::set_var(DISPLAY_MAX_FRAME_LATENCY_ENV, "2");
+        std::env::set_var(RENDER_PRESENT_MODE_ENV, "mailbox");
+        std::env::set_var(RENDER_MAX_FRAME_LATENCY_ENV, "3");
+    }
+
+    // Both display pacing fields are set, as in the checked-in `tungsten.json`,
+    // so the `render.*` overrides alone would change nothing.
+    let path = write_temp_config(
+        r#"{
+            "render": { "present_mode": "auto", "max_frame_latency": 1 },
+            "display": { "vsync": false, "present_mode": "auto", "max_frame_latency": 1 }
+        }"#,
+    );
+
+    let config = Config::load(&path).unwrap();
+    let resolved = config.display.resolve(&config.window, &config.render);
+
+    assert_eq!(resolved.present_mode, Some(PresentModeConfig::Fifo));
+    assert_eq!(resolved.max_frame_latency, Some(2));
 
     clear_display_env();
     let _ = fs::remove_file(path);

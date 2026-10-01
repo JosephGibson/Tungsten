@@ -101,6 +101,8 @@ pub struct App {
     event_flushers: Vec<EventFlusher>,
     registered_event_types: HashSet<TypeId>,
     frame_budget: Option<Duration>,
+    // Capped frames: when `about_to_wait` requests the next redraw.
+    redraw_deadline: Option<Instant>,
     capture_config: Option<CaptureConfig>,
     frames_rendered: u64,
     fatal_error: Option<anyhow::Error>,
@@ -236,6 +238,7 @@ impl App {
             event_flushers,
             registered_event_types,
             frame_budget: frame_budget_for(resolved_display.frame_rate_cap),
+            redraw_deadline: None,
             capture_config: parse_capture_config(),
             frames_rendered: 0,
             fatal_error: None,
@@ -946,11 +949,21 @@ impl App {
     }
 
     #[inline(always)]
-    fn stage_pacing(&self, event_loop: &ActiveEventLoop, frame_start: Instant) {
-        if let Some(budget) = self.frame_budget {
-            event_loop.set_control_flow(ControlFlow::WaitUntil(frame_start + budget));
-        } else {
-            event_loop.set_control_flow(ControlFlow::Wait);
+    fn stage_pacing(&mut self, event_loop: &ActiveEventLoop, frame_start: Instant) {
+        match redraw_schedule(self.frame_budget, frame_start) {
+            RedrawSchedule::Immediate => {
+                self.redraw_deadline = None;
+                if let Some(window) = &self.window {
+                    window.request_redraw();
+                }
+                event_loop.set_control_flow(ControlFlow::Wait);
+            }
+            // A redraw requested here would wake the loop at once and the
+            // deadline would never be waited for; `about_to_wait` requests it.
+            RedrawSchedule::At(deadline) => {
+                self.redraw_deadline = Some(deadline);
+                event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));
+            }
         }
     }
 
@@ -963,6 +976,22 @@ impl App {
                 event_loop.exit();
             }
         }
+    }
+}
+
+/// When the frame loop asks for its next redraw once a frame has ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RedrawSchedule {
+    /// Request it at frame end.
+    Immediate,
+    /// Leave it to `about_to_wait`, which requests it once this instant has passed.
+    At(Instant),
+}
+
+fn redraw_schedule(frame_budget: Option<Duration>, frame_start: Instant) -> RedrawSchedule {
+    match frame_budget {
+        Some(budget) => RedrawSchedule::At(frame_start + budget),
+        None => RedrawSchedule::Immediate,
     }
 }
 
@@ -1489,15 +1518,27 @@ impl ApplicationHandler for App {
                     }
                 }
 
-                if let Some(window) = &self.window {
-                    window.request_redraw();
-                }
-
                 self.stage_pacing(event_loop, frame_start);
                 self.stage_smoke_exit(event_loop);
             }
             _ => {}
         }
+    }
+
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        let Some(deadline) = self.redraw_deadline else {
+            return;
+        };
+        // Woken early by another event: `WaitUntil` from `stage_pacing` still stands.
+        if Instant::now() < deadline {
+            return;
+        }
+        self.redraw_deadline = None;
+        if let Some(window) = &self.window {
+            window.request_redraw();
+        }
+        // The pending redraw wakes the loop; the next frame sets its own pacing.
+        event_loop.set_control_flow(ControlFlow::Wait);
     }
 }
 

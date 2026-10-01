@@ -6,6 +6,16 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`TUNGSTEN_DISPLAY_PRESENT_MODE` and `TUNGSTEN_DISPLAY_MAX_FRAME_LATENCY`:** environment overrides for `display.present_mode` and `display.max_frame_latency`. Unlike the `TUNGSTEN_RENDER_*` pair, they win over values the `display` section of `tungsten.json` sets.
+- **Frame-cap smoke row:** `just smoke` ends with 20 frames of `example-03-scene-state` at `display.frame_rate_cap = 20`, which must take at least 0.9 s.
+
+### Fixed
+
+- **`display.frame_rate_cap` limits the frame rate.** Every frame requested its next redraw at frame end, which woke the event loop before `ControlFlow::WaitUntil` could wait, so a cap changed nothing. A capped frame now leaves the request to `App::about_to_wait`, which makes it once `frame_start + 1 / cap` has passed; uncapped frames are unchanged. Measured on `gpu` at `min`, 360 frames: 6.22 s at a cap of 60 and 2.81 s at 144, where both took 1.5–1.6 s before. The rate reached is 59.7 and 142.1 FPS, because each deadline counts from the frame's own start. The HUD `fps` row still shows `1000 / CPU frame time` and overstates the rate under a cap.
+- **`just perf run --present-mode` and `--max-frame-latency` apply.** They set `TUNGSTEN_RENDER_PRESENT_MODE` and `TUNGSTEN_RENDER_MAX_FRAME_LATENCY`, which lose to the `display.*` fields the checked-in `tungsten.json` sets, so every override capture ran `immediate / 1` and still read valid. The runner now sets the two `TUNGSTEN_DISPLAY_*` overrides, and a run whose `backend:` line does not confirm the requested mode and latency makes the capture invalid. `docs/perf/profiling-workflow.md` states the precedence.
+
 ## [0.33.0] - 2026-10-01
 
 Summary: release procedure rework (`D-079`) and physics and ECS performance pass 2 (`D-080`–`D-084`, plan `docs/plans/archive/physics-ecs-perf-pass.md`). For releases, the agent runs every check and hands over five plain commands; merging the release pull request in GitHub publishes. The performance pass, measured on benchmark suite v2, cuts `physics_step` by 58% in both physics rows, `churn` `flush` by 68%, `integrated` `total` by 13% and `ecs` `follow` by 11%. Physics trajectories change (pair order), so the three physics-bearing benchmark digests did; no API is removed. No example or asset changes.

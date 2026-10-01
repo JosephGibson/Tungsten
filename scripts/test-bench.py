@@ -302,6 +302,54 @@ class Guards(unittest.TestCase):
         self.assertIn("FAIL: `physics.sleeping <= 0`", readme)
         self.assertIn("| `system.physics_step` p95 |", readme)
 
+    def test_unconfirmed_present_override_invalidates_the_capture(self):
+        frames = [physics_frame(10.0), physics_frame(11.0), physics_frame(12.0)]
+
+        def problems(backend_line, **present):
+            log = physics_log(frames)
+            if backend_line:
+                log = APP + f"backend: Vulkan adapter: Test GPU {backend_line} timestamp_query: true\n" + log
+            return bench_report.analyze_log(log, 0, 3, GUARDS, CONFIG, **present)["problems"]
+
+        immediate = "present_mode: immediate max_frame_latency: 1"
+        self.assertEqual(problems(immediate), [])
+        self.assertEqual(problems(None), [])
+        self.assertEqual(problems("present_mode: fifo max_frame_latency: 2", present_mode="fifo", max_frame_latency=2), [])
+        self.assertEqual(problems(immediate, present_mode="auto"), [])
+        self.assertEqual(problems("present_mode: fifo max_frame_latency: 2", present_mode="auto_vsync"), [])
+        self.assertEqual(
+            problems(immediate, present_mode="fifo", max_frame_latency=2),
+            ["present mode is immediate, requested fifo", "max frame latency is 1, requested 2"],
+        )
+        self.assertEqual(problems(immediate, present_mode="auto_vsync"), ["present mode is immediate, requested auto_vsync"])
+        self.assertEqual(
+            problems(None, max_frame_latency=2), ["no backend line to confirm the requested present mode and frame latency"]
+        )
+
+        usage = {"peak_rss_kib": 65536, "user_s": 1.0, "sys_s": 0.1, "minflt": 1, "majflt": 0, "nvcsw": 2, "nivcsw": 3}
+        log = APP + f"backend: Vulkan adapter: Test GPU {immediate} timestamp_query: true\n" + physics_log(frames)
+        run = {"index": 1, "exit_code": 0, "rusage": usage, "rss_growth_kib_s": 0.0}
+        run.update(bench_report.analyze_log(log, 0, 3, GUARDS, CONFIG, present_mode="fifo", max_frame_latency=1))
+        self.assertEqual(bench_report.hard_problems(run), ["present mode is immediate, requested fifo"])
+        capture = bench_report.assemble_capture(
+            request={"set": [], "repeat": 1, "gpu_timing": False, "present_mode": "fifo", "max_frame_latency": 1},
+            bench={"name": "physics", "workload_version": 1},
+            row=ROW,
+            config={**CONFIG, "preset": "default", "scale": 1.0},
+            warmup=0,
+            frames=3,
+            build={"rustflags": bench.DEFAULT_RUSTFLAGS},
+            provenance=dict.fromkeys(PROVENANCE_KEYS, "x"),
+            runs=[run],
+            profile=None,
+        )
+        self.assertFalse(capture["valid"])
+        self.assertEqual(capture["invalid_reasons"], ["run 1: present mode is immediate, requested fifo"])
+        readme = bench_report.capture_readme(capture)
+        self.assertIn("| Valid | no |", readme)
+        self.assertIn("| Present mode / latency (requested) | immediate / 1 (fifo / 1) |", readme)
+        self.assertIn("- run 1: present mode is immediate, requested fifo", readme)
+
 
 class Runner(unittest.TestCase):
     def test_child_environment_hygiene(self):
@@ -340,8 +388,9 @@ class Runner(unittest.TestCase):
         )
         gpu = bench.capture_env(parent, bench.bench_vars("physics"), 420, gpu=True, present_mode="mailbox", max_frame_latency=2)
         self.assertEqual(gpu["TUNGSTEN_GPU_TIMING"], "1")
-        self.assertEqual(gpu["TUNGSTEN_RENDER_PRESENT_MODE"], "mailbox")
-        self.assertEqual(gpu["TUNGSTEN_RENDER_MAX_FRAME_LATENCY"], "2")
+        self.assertEqual(gpu["TUNGSTEN_DISPLAY_PRESENT_MODE"], "mailbox")
+        self.assertEqual(gpu["TUNGSTEN_DISPLAY_MAX_FRAME_LATENCY"], "2")
+        self.assertNotIn("TUNGSTEN_RENDER_PRESENT_MODE", gpu)
         self.assertNotIn("TUNGSTEN_RENDER_MSAA", gpu)
         self.assertNotIn("TUNGSTEN_BENCH_SET", gpu)
         profile = bench.capture_env(parent, bench.bench_vars("physics"), 420, profile=True)

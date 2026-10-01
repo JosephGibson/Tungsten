@@ -35,7 +35,7 @@ Never compare across rows, `workload_version`, knobs, frames, warm-up, build fla
 
 ## Validity
 
-A capture is valid when every run exits 0, logs every measured frame, logs a `bench-config` equal to the request, passes the row's guards and matches the other runs' determinism digest. Invalid captures stay on disk with `valid: false`; the runner exits 3 and compare refuses verdicts unless `--force`. Guards: `physics.sleeping <= 0` (both physics rows), `bench.teleports >= 1`, `bench.structural <= 0` and `bench.entities constant` (`ecs`), `bench.population constant` and `bench.spawned == bench.despawned` (`churn`), `bench.live within ±10% of its median` (`particles`), `bench.view_out <= 0` (`integrated`).
+A capture is valid when every run exits 0, logs every measured frame, logs a `bench-config` equal to the request, confirms a requested present mode and latency in its `backend:` line, passes the row's guards and matches the other runs' determinism digest. Invalid captures stay on disk with `valid: false`; the runner exits 3 and compare refuses verdicts unless `--force`. Guards: `physics.sleeping <= 0` (both physics rows), `bench.teleports >= 1`, `bench.structural <= 0` and `bench.entities constant` (`ecs`), `bench.population constant` and `bench.spawned == bench.despawned` (`churn`), `bench.live within ±10% of its median` (`particles`), `bench.view_out <= 0` (`integrated`).
 
 ## Owned metrics and verdicts
 

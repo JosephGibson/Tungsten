@@ -8,6 +8,8 @@ use thiserror::Error;
 const DISPLAY_MODE_ENV: &str = "TUNGSTEN_DISPLAY_MODE";
 const DISPLAY_RESOLUTION_ENV: &str = "TUNGSTEN_DISPLAY_RESOLUTION";
 const DISPLAY_FRAME_RATE_CAP_ENV: &str = "TUNGSTEN_DISPLAY_FRAME_RATE_CAP";
+const DISPLAY_PRESENT_MODE_ENV: &str = "TUNGSTEN_DISPLAY_PRESENT_MODE";
+const DISPLAY_MAX_FRAME_LATENCY_ENV: &str = "TUNGSTEN_DISPLAY_MAX_FRAME_LATENCY";
 const RENDER_PRESENT_MODE_ENV: &str = "TUNGSTEN_RENDER_PRESENT_MODE";
 const RENDER_MAX_FRAME_LATENCY_ENV: &str = "TUNGSTEN_RENDER_MAX_FRAME_LATENCY";
 const RENDER_MSAA_ENV: &str = "TUNGSTEN_RENDER_MSAA";
@@ -361,6 +363,12 @@ impl Config {
         if let Ok(value) = std::env::var(DISPLAY_FRAME_RATE_CAP_ENV) {
             self.apply_display_frame_rate_cap_override(&value)?;
         }
+        if let Ok(value) = std::env::var(DISPLAY_PRESENT_MODE_ENV) {
+            self.apply_display_present_mode_override(&value)?;
+        }
+        if let Ok(value) = std::env::var(DISPLAY_MAX_FRAME_LATENCY_ENV) {
+            self.apply_display_max_frame_latency_override(&value)?;
+        }
         if let Ok(value) = std::env::var(RENDER_PRESENT_MODE_ENV) {
             self.apply_present_mode_override(&value)?;
         }
@@ -482,6 +490,35 @@ impl Config {
                 expected: DISPLAY_FRAME_RATE_CAP_EXPECTED,
             })?;
         self.display.frame_rate_cap = if parsed == 0 { None } else { Some(parsed) };
+        Ok(())
+    }
+
+    /// Unlike the `render.*` override, this one wins over a `display.present_mode`
+    /// set in the config file.
+    fn apply_display_present_mode_override(&mut self, value: &str) -> Result<(), ConfigError> {
+        let parsed =
+            PresentModeConfig::from_str(value).map_err(|_| ConfigError::InvalidEnvOverride {
+                var: DISPLAY_PRESENT_MODE_ENV,
+                value: value.to_string(),
+                expected: PRESENT_MODE_EXPECTED,
+            })?;
+        self.display.present_mode = Some(parsed);
+        Ok(())
+    }
+
+    /// Unlike the `render.*` override, this one wins over a
+    /// `display.max_frame_latency` set in the config file.
+    fn apply_display_max_frame_latency_override(&mut self, value: &str) -> Result<(), ConfigError> {
+        let parsed = value
+            .parse::<u32>()
+            .ok()
+            .filter(|v| *v >= 1)
+            .ok_or_else(|| ConfigError::InvalidEnvOverride {
+                var: DISPLAY_MAX_FRAME_LATENCY_ENV,
+                value: value.to_string(),
+                expected: MAX_FRAME_LATENCY_EXPECTED,
+            })?;
+        self.display.max_frame_latency = Some(parsed);
         Ok(())
     }
 
