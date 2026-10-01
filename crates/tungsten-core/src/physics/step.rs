@@ -11,12 +11,15 @@
 //! AABBs and circles, dynamic-vs-dynamic). The slab sweep survives only as a
 //! safety net for solver-injected velocity spikes vs statics (a pair whose
 //! velocity changed after admission), conservatively promoting static circles
-//! to their bounding squares.
+//! to their bounding squares. Once a frame's sweep queries outnumber the
+//! statics, a statics-only grid answers them (D-080).
 //!
 //! Broadphase pairs persist across substeps under per-proxy travel budgets
 //! (D-075). Each build stages fresh, symmetrically inflated AABBs for the
-//! remaining frame. Budget exhaustion or a contact wake rebuilds before the
-//! next narrow phase; narrow phase, solve, islands and events stay per substep.
+//! remaining frame. A proxy that exhausts its budget has its own pairs
+//! rebuilt before the next narrow phase (D-081); a contact wake, or too many
+//! exhausted budgets at once, rebuilds the whole list. Narrow phase, solve,
+//! islands and events stay per substep.
 //!
 //! Body state is gathered into the dense proxy array **once per frame**
 //! through a columnar 4-way ECS query (`query2_opt2`, no per-entity random
@@ -29,8 +32,9 @@
 //!
 //! Contact resolution is a warm-started soft solver (D-063, Box2D-v3 shape).
 //! Per substep: the narrow phase runs once into a contact buffer, accumulated
-//! normal impulses (clamped >= 0) carry by pair index between substeps, with
-//! a keyed map at frame boundaries and pair rebuilds (D-076). Biased iterations recover
+//! normal impulses (clamped >= 0) carry by pair index between substeps and by
+//! pair key across a repair, with a keyed map at frame boundaries and pair
+//! rebuilds (D-076). Biased iterations recover
 //! penetration through a soft constraint (contact hertz / damping ratio,
 //! linear slop, max push speed) instead of positional MTV projection,
 //! position integration turns the bias velocity into depenetration, one
@@ -270,99 +274,166 @@ struct SleepEntry {
     center: Vec2,
 }
 
-/// Sentinel for empty sleep slots; entity keys always set bit 63
-/// (`entity_key`), so 0 is never a real key.
+/// Key of a proxy without sleep state, and the empty index slot; entity keys
+/// always set bit 63 (`entity_key`), so 0 is never a real key.
 const EMPTY_SLEEP: u64 = 0;
 
-/// Flat open-addressing map from entity key to sleep state; rebuilt from live
-/// proxies each frame (despawned entries age out and wake their island).
-/// Never `std::HashMap` in the physics hot path (D-062 precedent).
+/// Per-body sleep state in arrays parallel to the proxy array (D-082).
+///
+/// While a frame's proxies are last frame's bodies in last frame's order,
+/// every entry already sits at its proxy's index and nothing is rebuilt.
+/// When the sequence differs (a spawn, a despawn, a body or collider change),
+/// entries carry over by entity key and sleepers that did not carry over wake
+/// their island. Never `std::HashMap` in the physics hot path (D-062
+/// precedent).
 #[derive(Debug, Default)]
-struct SleepMap {
+struct SleepTable {
+    /// Entity key of each dynamic entity proxy; `EMPTY_SLEEP` for the rest.
     keys: Vec<u64>,
-    values: Vec<SleepEntry>,
+    entries: Vec<SleepEntry>,
+    /// Open-addressing slots from entity key to index in the arrays above;
+    /// refilled only when the key sequence changes.
+    slot_keys: Vec<u64>,
+    slot_indices: Vec<u32>,
     mask: u64,
+    /// Write side of a rebuild; swapped into `keys` and `entries`.
+    next_keys: Vec<u64>,
+    next_entries: Vec<SleepEntry>,
+    /// Scratch: old entries a rebuild carried over.
+    carried: Vec<bool>,
+    #[cfg(test)]
+    rebuilds: usize,
 }
 
-impl SleepMap {
-    /// Clear and size for `expected` insertions at <= 0.5 load factor.
-    fn reset(&mut self, expected: usize) {
-        let capacity = (expected * 2).next_power_of_two().max(64);
-        self.mask = capacity as u64 - 1;
-        self.keys.clear();
-        self.keys.resize(capacity, EMPTY_SLEEP);
-        self.values.clear();
-        self.values.resize(capacity, SleepEntry::default());
+impl SleepTable {
+    /// The key a proxy's entry lives under: only dynamic entity bodies sleep.
+    fn key_of(proxy: &Proxy) -> u64 {
+        if proxy.is_dynamic && proxy.entity.is_some() {
+            proxy.key
+        } else {
+            EMPTY_SLEEP
+        }
     }
 
-    fn slot(&self, key: u64) -> Option<usize> {
-        if self.keys.is_empty() {
+    fn index_of(&self, key: u64) -> Option<usize> {
+        if self.slot_keys.is_empty() {
             return None;
         }
         let mut i = (hash_key(key) & self.mask) as usize;
         loop {
-            if self.keys[i] == key {
-                return Some(i);
-            }
-            if self.keys[i] == EMPTY_SLEEP {
+            if self.slot_keys[i] == EMPTY_SLEEP {
                 return None;
+            }
+            if self.slot_keys[i] == key {
+                return Some(self.slot_indices[i] as usize);
             }
             i = (i + 1) & self.mask as usize;
         }
     }
 
     fn get(&self, key: u64) -> Option<&SleepEntry> {
-        self.slot(key).map(|i| &self.values[i])
+        self.index_of(key).map(|i| &self.entries[i])
     }
 
-    fn get_mut(&mut self, key: u64) -> Option<&mut SleepEntry> {
-        self.slot(key).map(|i| &mut self.values[i])
-    }
-
-    /// Insert during the frame-start rebuild only; capacity is pre-sized by
-    /// `reset`, so probing always finds a slot.
-    fn insert(&mut self, key: u64, value: SleepEntry) {
-        debug_assert!(key != EMPTY_SLEEP);
-        let mut i = (hash_key(key) & self.mask) as usize;
-        loop {
-            if self.keys[i] == EMPTY_SLEEP || self.keys[i] == key {
-                self.keys[i] = key;
-                self.values[i] = value;
-                return;
-            }
-            i = (i + 1) & self.mask as usize;
+    /// True when `proxies` are last frame's bodies in last frame's order, so
+    /// the entries need no rebuild. Collects the islands of sleepers with an
+    /// external write (a sleeper's `Position`/`Velocity` are frozen by the
+    /// step, so any mismatch at gather time is one).
+    fn same_bodies(&self, proxies: &[Proxy], wake_islands: &mut Vec<u64>) -> bool {
+        if proxies.len() != self.keys.len() {
+            return false;
         }
+        for ((proxy, &key), entry) in proxies.iter().zip(&self.keys).zip(&self.entries) {
+            if Self::key_of(proxy) != key {
+                return false;
+            }
+            if entry.sleeping && (proxy.velocity != Vec2::ZERO || proxy.center != entry.center) {
+                wake_islands.push(entry.island);
+            }
+        }
+        true
     }
 
-    fn iter(&self) -> impl Iterator<Item = (u64, &SleepEntry)> {
-        self.keys
-            .iter()
-            .zip(self.values.iter())
-            .filter(|&(&k, _)| k != EMPTY_SLEEP)
-            .map(|(&k, v)| (k, v))
+    /// Carry entries over by entity key into the order of `proxies`. Sleeping
+    /// entries that do not carry over (despawn or component removal) wake
+    /// their island: bodies above a removed support must fall.
+    fn rebuild(&mut self, proxies: &[Proxy], wake_islands: &mut Vec<u64>) {
+        self.next_keys.clear();
+        self.next_entries.clear();
+        self.carried.clear();
+        self.carried.resize(self.entries.len(), false);
+        let mut members = 0_usize;
+        for proxy in proxies {
+            let key = Self::key_of(proxy);
+            let mut entry = SleepEntry::default();
+            if key != EMPTY_SLEEP {
+                members += 1;
+                if let Some(old) = self.index_of(key) {
+                    self.carried[old] = true;
+                    entry = self.entries[old];
+                    if entry.sleeping
+                        && (proxy.velocity != Vec2::ZERO || proxy.center != entry.center)
+                    {
+                        wake_islands.push(entry.island);
+                    }
+                }
+            }
+            self.next_keys.push(key);
+            self.next_entries.push(entry);
+        }
+        for (entry, &carried) in self.entries.iter().zip(&self.carried) {
+            if entry.sleeping && !carried {
+                wake_islands.push(entry.island);
+            }
+        }
+        std::mem::swap(&mut self.keys, &mut self.next_keys);
+        std::mem::swap(&mut self.entries, &mut self.next_entries);
+
+        // Refill the index at <= 0.5 load factor.
+        let capacity = (members * 2).next_power_of_two().max(64);
+        self.mask = capacity as u64 - 1;
+        self.slot_keys.clear();
+        self.slot_keys.resize(capacity, EMPTY_SLEEP);
+        self.slot_indices.clear();
+        self.slot_indices.resize(capacity, 0);
+        for (index, &key) in self.keys.iter().enumerate() {
+            if key == EMPTY_SLEEP {
+                continue;
+            }
+            let mut i = (hash_key(key) & self.mask) as usize;
+            while self.slot_keys[i] != EMPTY_SLEEP {
+                i = (i + 1) & self.mask as usize;
+            }
+            self.slot_keys[i] = key;
+            self.slot_indices[i] = index as u32;
+        }
+        #[cfg(test)]
+        {
+            self.rebuilds += 1;
+        }
     }
 
     /// Wake every sleeping member of the given island tags.
     fn wake_islands(&mut self, islands: &[u64]) {
-        for (key, value) in self.keys.iter().zip(self.values.iter_mut()) {
-            if *key != EMPTY_SLEEP && value.sleeping && islands.contains(&value.island) {
-                value.sleeping = false;
-                value.timer = 0.0;
+        for entry in &mut self.entries {
+            if entry.sleeping && islands.contains(&entry.island) {
+                entry.sleeping = false;
+                entry.timer = 0.0;
             }
         }
     }
 
     /// Rewrite island tag `from` to `to` (sleeping-island merge).
     fn retag(&mut self, from: u64, to: u64) {
-        for (key, value) in self.keys.iter().zip(self.values.iter_mut()) {
-            if *key != EMPTY_SLEEP && value.sleeping && value.island == from {
-                value.island = to;
+        for entry in &mut self.entries {
+            if entry.sleeping && entry.island == from {
+                entry.island = to;
             }
         }
     }
 
     fn sleeping_count(&self) -> usize {
-        self.iter().filter(|(_, v)| v.sleeping).count()
+        self.entries.iter().filter(|entry| entry.sleeping).count()
     }
 }
 
@@ -412,11 +483,109 @@ fn pair_key(a: u64, b: u64) -> u128 {
     (u128::from(hi) << 64) | u128::from(lo)
 }
 
-/// Conservative displacement allowance since the most recent pair build.
+/// Conservative displacement allowance since the proxy's most recent pair
+/// build or repair.
 #[derive(Debug, Clone, Copy)]
 struct PairBudget {
     radius: f32,
     travel: f32,
+}
+
+/// Margin on every awake body's travel budget, in units of `linear_slop`
+/// (D-081). It absorbs small velocity changes, and the rounding that would
+/// otherwise decide the check for a body moving exactly as predicted.
+const PAIR_MARGIN_SLOPS: f32 = 2.0;
+
+/// A repair is cheaper than a rebuild only for a minority: more than one
+/// tripped proxy in this many awake bodies rebuilds instead (D-081).
+const REBUILD_ONE_IN: usize = 4;
+
+/// `PhysicsBuffers::pair_flags` bit: awake dynamic body at the last build.
+const PAIR_AWAKE: u8 = 1;
+/// `pair_flags` bit: member of the repair in progress.
+const PAIR_TRIPPED: u8 = 1 << 1;
+/// `pair_flags` bit: repaired since the last build, so the pair grid still
+/// holds the cells of its old AABB.
+const PAIR_REPAIRED: u8 = 1 << 2;
+
+/// Travel gravity can add beyond `|v|·time_left` before the frame's last
+/// budget check: `|g|·h²·(n−1)(n+2)/2` with `n = time_left / h` substeps
+/// left (D-081). The integrator adds `g·h` to the velocity before it moves a
+/// body, so the last check sees `n − 1` substeps of travel plus one more of
+/// predicted travel at the speed gravity has built up by then.
+fn gravity_allowance(config: &PhysicsConfig, sub_dt: f32, time_left: f32) -> f32 {
+    0.5 * config.gravity.length() * (time_left - sub_dt).max(0.0) * (time_left + 2.0 * sub_dt)
+}
+
+/// Pair inflation of an awake dynamic body moving at `speed` (D-081).
+fn awake_pair_radius(
+    config: &PhysicsConfig,
+    speed: f32,
+    time_left: f32,
+    gravity_allowance: f32,
+) -> f32 {
+    speed * time_left + gravity_allowance + (PAIR_MARGIN_SLOPS + 2.0) * config.linear_slop
+}
+
+/// Statics-only grid for the safety-net sweep (D-080).
+///
+/// It returns the static candidates a query of the pair grid returns, in the
+/// same order, so which grid answers a sweep query is a matter of cost alone.
+/// Staging one static costs about as much as one query of the pair grid, so
+/// the sweep rents the pair grid until the frame's sweep queries reach the
+/// static count and then stages this grid for the rest of the frame. A tile
+/// map with a few fast bodies never stages it; thousands of fast bodies
+/// between a few walls stage it after a handful of queries.
+#[derive(Debug, Default)]
+struct SweepGrid {
+    grid: SpatialGrid,
+    staged: bool,
+    /// Sweep queries the pair grid answered this frame.
+    pair_queries: usize,
+    /// Static proxies, counted by every pair build.
+    statics: usize,
+}
+
+impl SweepGrid {
+    /// Gather changes the proxy set, so staged ids are stale.
+    fn begin_frame(&mut self) {
+        self.staged = false;
+        self.pair_queries = 0;
+    }
+
+    /// True when this grid answers the next sweep query, staging it first if
+    /// the pair grid has answered as many queries as there are statics.
+    fn answers_query(&mut self, config: &PhysicsConfig, proxies: &[Proxy]) -> bool {
+        if !self.staged {
+            if self.pair_queries < self.statics {
+                self.pair_queries += 1;
+                return false;
+            }
+            self.stage(config, proxies);
+        }
+        true
+    }
+
+    /// Stage every static proxy with the `2·linear_slop` inflation a pair
+    /// build gives it, in proxy order. Statics never move within a frame, so
+    /// one staging serves every substep.
+    fn stage(&mut self, config: &PhysicsConfig, proxies: &[Proxy]) {
+        let grid = &mut self.grid;
+        if (grid.cell_size() - config.broadphase_cell_size).abs() > f32::EPSILON {
+            grid.set_cell_size(config.broadphase_cell_size);
+        }
+        grid.clear();
+        let inflation = Vec2::splat(2.0 * config.linear_slop);
+        for (id, proxy) in proxies.iter().enumerate() {
+            if proxy.is_dynamic {
+                continue;
+            }
+            let mut aabb = proxy.world_aabb();
+            aabb.half_extents += inflation;
+            grid.insert(id as ProxyId, &aabb);
+        }
+        self.staged = true;
+    }
 }
 
 /// Physics scratch buffers reused across substeps/frames.
@@ -425,14 +594,31 @@ struct PairBudget {
 #[cfg_attr(test, allow(clippy::struct_excessive_bools))]
 pub struct PhysicsBuffers {
     proxies: Vec<Proxy>,
-    /// Build-time AABBs and travel allowances for D-075 pair reuse.
+    /// Inflated AABBs and travel allowances for D-075 pair reuse, each set
+    /// at the proxy's last pair build or repair.
     pair_aabbs: Vec<Aabb>,
     pair_budgets: Vec<PairBudget>,
+    /// `PAIR_*` bits per proxy. Pair queries read this byte instead of the
+    /// 80-byte `Proxy` (D-080).
+    pair_flags: Vec<u8>,
+    /// Awake dynamic proxies whose travel budget ran out, in proxy order
+    /// (D-081); refilled before every substep.
+    tripped: Vec<u32>,
+    /// Proxies repaired since the last pair build, in repair order.
+    repaired: Vec<u32>,
+    /// `repaired` staged with their current inflated AABBs.
+    repair_grid: SpatialGrid,
+    /// Nonzero carried impulses of the pairs a repair removes, by pair key.
+    repair_impulses: ImpulseMap,
+    /// Scratch for filling `repair_impulses`.
+    removed_impulses: Vec<(u128, f32)>,
     /// Set by gather (new proxy set) or a contact wake; consumed before the
     /// next substep's narrow phase. Proxies never change mid-frame today.
     pairs_invalidated: bool,
     #[cfg(test)]
     pair_builds: usize,
+    #[cfg(test)]
+    pair_repairs: usize,
     #[cfg(test)]
     check_pair_contacts: bool,
     #[cfg(test)]
@@ -444,6 +630,7 @@ pub struct PhysicsBuffers {
     events: Vec<CollisionEvent>,
     candidates: Vec<ProxyId>,
     grid: SpatialGrid,
+    static_grid: SweepGrid,
     contacts: Vec<ContactConstraint>,
     /// Last synchronized contacts, keyed across frames and pair rebuilds.
     impulses: ImpulseMap,
@@ -453,10 +640,9 @@ pub struct PhysicsBuffers {
     seed_pair_impulses: bool,
     /// Contacts have changed since the last keyed-map synchronization.
     impulses_dirty: bool,
-    /// Persistent per-body sleep state (D-065), keyed by entity key.
-    sleep: SleepMap,
-    /// Write side of the frame-start sleep-map rebuild; swapped into `sleep`.
-    sleep_next: SleepMap,
+    /// Persistent per-body sleep state (D-065), parallel to `proxies` after
+    /// `sleep_frame_start`.
+    sleep: SleepTable,
     /// Union-find parent per proxy index; unions accumulate across substeps.
     island_parent: Vec<u32>,
     /// Scratch: minimum member sleep timer per island root.
@@ -473,10 +659,10 @@ impl PhysicsBuffers {
     /// step also detects such writes on sleeping bodies by itself. Waking an
     /// awake body just resets its sleep timer; unknown entities are a no-op.
     pub fn wake(&mut self, entity: Entity) {
-        let key = entity_key(entity);
-        let Some(entry) = self.sleep.get_mut(key) else {
+        let Some(index) = self.sleep.index_of(entity_key(entity)) else {
             return;
         };
+        let entry = &mut self.sleep.entries[index];
         if entry.sleeping {
             let island = entry.island;
             self.sleep.wake_islands(&[island]);
@@ -562,6 +748,7 @@ pub fn physics_step(world: &mut World) {
 
     gather_proxies(world, &mut buffers.proxies);
     buffers.pairs_invalidated = true;
+    buffers.static_grid.begin_frame();
 
     let sleep_enabled = config.sleep_threshold > 0.0;
     if sleep_enabled {
@@ -627,56 +814,31 @@ fn write_back(world: &mut World, proxies: &[Proxy]) {
     }
 }
 
-/// Frame-start sleep bookkeeping (D-065): rebuild the persistent sleep map
-/// from live proxies, waking islands whose members despawned (or lost their
-/// dynamic body/collider) and islands with an external write — a sleeping
-/// body's `Position`/`Velocity` are frozen by the step, so any mismatch at
-/// gather time is an external write.
+/// Frame-start sleep bookkeeping (D-065): line the persistent sleep state up
+/// with this frame's proxies (D-082), waking islands whose members despawned
+/// (or lost their dynamic body/collider) and islands with an external write.
 fn sleep_frame_start(buffers: &mut PhysicsBuffers) {
     let PhysicsBuffers {
         proxies,
         sleep,
-        sleep_next,
         wake_islands,
         ..
     } = buffers;
 
     wake_islands.clear();
-    sleep_next.reset(proxies.len());
-    for proxy in proxies.iter() {
-        if proxy.entity.is_none() || !proxy.is_dynamic {
-            continue;
-        }
-        let entry = match sleep.get(proxy.key) {
-            Some(&entry) => {
-                if entry.sleeping && (proxy.velocity != Vec2::ZERO || proxy.center != entry.center)
-                {
-                    wake_islands.push(entry.island);
-                }
-                entry
-            }
-            None => SleepEntry::default(),
-        };
-        sleep_next.insert(proxy.key, entry);
+    if !sleep.same_bodies(proxies, wake_islands) {
+        wake_islands.clear();
+        sleep.rebuild(proxies, wake_islands);
     }
-    // Sleeping entries that did not carry over (despawn or component
-    // removal) wake their island: bodies above a removed support must fall.
-    for (key, entry) in sleep.iter() {
-        if entry.sleeping && sleep_next.get(key).is_none() {
-            wake_islands.push(entry.island);
-        }
-    }
-    std::mem::swap(sleep, sleep_next);
     if !wake_islands.is_empty() {
         sleep.wake_islands(wake_islands);
     }
 
     // Proxies persist across the frame's substeps (D-066), so the flag set
-    // here carries through until a contact wake flips it.
-    for proxy in proxies.iter_mut() {
-        proxy.sleeping = proxy.is_dynamic
-            && proxy.entity.is_some()
-            && sleep.get(proxy.key).is_some_and(|entry| entry.sleeping);
+    // here carries through until a contact wake flips it. Statics and tiles
+    // hold a default entry, which never sleeps.
+    for (proxy, entry) in proxies.iter_mut().zip(&sleep.entries) {
+        proxy.sleeping = entry.sleeping;
     }
 }
 
@@ -703,6 +865,11 @@ fn sleep_frame_end(
         ..
     } = buffers;
 
+    debug_assert_eq!(
+        sleep.entries.len(),
+        proxies.len(),
+        "sleep table not lined up"
+    );
     let threshold_sq = config.sleep_threshold * config.sleep_threshold;
     island_min_timer.clear();
     island_min_timer.resize(proxies.len(), f32::INFINITY);
@@ -713,9 +880,7 @@ fn sleep_frame_end(
         if !proxy.is_dynamic || proxy.sleeping || proxy.entity.is_none() {
             continue;
         }
-        let Some(entry) = sleep.get_mut(proxy.key) else {
-            continue;
-        };
+        let entry = &mut sleep.entries[index];
         entry.timer = if proxy.velocity.length_squared() <= threshold_sq {
             entry.timer + dt
         } else {
@@ -738,9 +903,7 @@ fn sleep_frame_end(
         if island_min_timer[root] < config.time_to_sleep {
             continue;
         }
-        let Some(tag) = sleep.get(proxies[b_idx].key).map(|entry| entry.island) else {
-            continue;
-        };
+        let tag = sleep.entries[b_idx].island;
         let current = island_tag[root];
         if current == 0 {
             island_tag[root] = tag;
@@ -769,13 +932,12 @@ fn sleep_frame_end(
         } else {
             proxies[root].key
         };
-        if let Some(entry) = sleep.get_mut(proxy.key) {
-            entry.sleeping = true;
-            entry.island = tag;
-            // Same fp ops the next gather performs on the written-back
-            // Position, so an untouched body compares bit-equal.
-            entry.center = (proxy.center - proxy.offset) + proxy.offset;
-        }
+        let entry = &mut sleep.entries[index];
+        entry.sleeping = true;
+        entry.island = tag;
+        // Same fp ops the next gather performs on the written-back
+        // Position, so an untouched body compares bit-equal.
+        entry.center = (proxy.center - proxy.offset) + proxy.offset;
         if let Some(vel) = world.get_mut::<Velocity>(entity) {
             vel.0 = Vec2::ZERO;
         }
@@ -798,18 +960,46 @@ fn integrate_loose_bodies(world: &mut World, dt: f32, gravity: Vec2) {
     }
 }
 
-/// Build pairs from fresh per-proxy travel-inflated AABBs (D-075). The
-/// inflation includes the speculative slack on both sides of a pair, so
-/// neither the query nor the overlap prefilter needs a grid-staleness margin.
-fn build_pairs(config: &PhysicsConfig, time_left: f32, buffers: &mut PhysicsBuffers) {
+/// Keep the pair list complete for the coming narrow phase (D-081): build it
+/// when it is invalid, reuse it while every budget holds, and otherwise
+/// repair the tripped proxies, or rebuild when too many tripped.
+fn refresh_pairs(
+    config: &PhysicsConfig,
+    sub_dt: f32,
+    time_left: f32,
+    buffers: &mut PhysicsBuffers,
+) {
+    if buffers.pairs_invalidated || buffers.proxies.len() != buffers.pair_budgets.len() {
+        build_pairs(config, sub_dt, time_left, buffers);
+        return;
+    }
+    let awake = collect_tripped(config, sub_dt, buffers);
+    if buffers.tripped.is_empty() {
+        return;
+    }
+    if buffers.tripped.len() * REBUILD_ONE_IN > awake {
+        build_pairs(config, sub_dt, time_left, buffers);
+    } else {
+        repair_pairs(config, sub_dt, time_left, buffers);
+    }
+}
+
+/// Build pairs from fresh per-proxy travel-inflated AABBs (D-075, radius per
+/// D-081). The inflation includes the speculative slack on both sides of a
+/// pair, so neither the query nor the overlap prefilter needs a
+/// grid-staleness margin.
+fn build_pairs(config: &PhysicsConfig, sub_dt: f32, time_left: f32, buffers: &mut PhysicsBuffers) {
     // Rebuilds can reorder/reverse pairs or introduce new ones after a wake.
     // Transfer only the immediately preceding substep's live impulses by key.
     sync_impulses(buffers);
     let PhysicsBuffers {
         proxies,
         grid,
+        static_grid,
         pair_aabbs,
         pair_budgets,
+        pair_flags,
+        repaired,
         pairs,
         pairs_invalidated,
         ..
@@ -820,15 +1010,25 @@ fn build_pairs(config: &PhysicsConfig, time_left: f32, buffers: &mut PhysicsBuff
     grid.clear();
     pair_aabbs.clear();
     pair_budgets.clear();
+    pair_flags.clear();
+    repaired.clear();
     pairs.clear();
-    let gravity_travel = 0.5 * config.gravity.length() * time_left * time_left;
+    static_grid.statics = 0;
+    let static_radius = 2.0 * config.linear_slop;
+    let gravity_allowance = gravity_allowance(config, sub_dt, time_left);
     for (id, proxy) in proxies.iter().enumerate() {
-        let radius = 2.0 * config.linear_slop
-            + if proxy.is_dynamic && !proxy.sleeping {
-                proxy.velocity.length() * time_left + gravity_travel
-            } else {
-                0.0
-            };
+        static_grid.statics += usize::from(!proxy.is_dynamic);
+        let awake = proxy.is_dynamic && !proxy.sleeping;
+        let radius = if awake {
+            awake_pair_radius(
+                config,
+                proxy.velocity.length(),
+                time_left,
+                gravity_allowance,
+            )
+        } else {
+            static_radius
+        };
         let mut aabb = proxy.world_aabb();
         aabb.half_extents += Vec2::splat(radius);
         pair_aabbs.push(aabb);
@@ -836,16 +1036,17 @@ fn build_pairs(config: &PhysicsConfig, time_left: f32, buffers: &mut PhysicsBuff
             radius,
             travel: 0.0,
         });
+        pair_flags.push(if awake { PAIR_AWAKE } else { 0 });
         grid.insert(id as ProxyId, &aabb);
     }
-    for (a_idx, proxy) in proxies.iter().enumerate() {
-        if !proxy.is_dynamic || proxy.sleeping {
+    for (a_idx, aabb) in pair_aabbs.iter().enumerate() {
+        if pair_flags[a_idx] & PAIR_AWAKE == 0 {
             continue;
         }
-        let aabb = &pair_aabbs[a_idx];
         grid.for_each_in(aabb, Some(a_idx as ProxyId), |b_id| {
             let b_idx = b_id as usize;
-            if proxies[b_idx].is_dynamic && !proxies[b_idx].sleeping && b_idx <= a_idx {
+            // An awake candidate at or below this index runs its own query.
+            if pair_flags[b_idx] & PAIR_AWAKE != 0 && b_idx <= a_idx {
                 return;
             }
             if aabb.overlaps(&pair_aabbs[b_idx]) {
@@ -863,21 +1064,157 @@ fn build_pairs(config: &PhysicsConfig, time_left: f32, buffers: &mut PhysicsBuff
     }
 }
 
-/// Check in proxy order before every narrow phase. Solver impulses and
-/// gravity can change velocity after a build, so predicted travel alone is
-/// insufficient: accumulated actual travel must fit as well.
-fn pair_budget_exhausted(config: &PhysicsConfig, sub_dt: f32, buffers: &PhysicsBuffers) -> bool {
-    buffers.proxies.len() != buffers.pair_budgets.len()
-        || buffers
-            .proxies
-            .iter()
-            .zip(&buffers.pair_budgets)
-            .any(|(proxy, budget)| {
-                proxy.is_dynamic
-                    && !proxy.sleeping
-                    && budget.travel + proxy.velocity.length() * sub_dt + 2.0 * config.linear_slop
-                        > budget.radius
-            })
+/// Collect, in proxy order, the awake dynamic proxies whose budget does not
+/// cover the coming substep, and return the awake dynamic count. Solver
+/// impulses and gravity can change velocity after a build, so predicted
+/// travel alone is insufficient: accumulated actual travel must fit as well.
+fn collect_tripped(config: &PhysicsConfig, sub_dt: f32, buffers: &mut PhysicsBuffers) -> usize {
+    let PhysicsBuffers {
+        proxies,
+        pair_budgets,
+        tripped,
+        ..
+    } = buffers;
+    tripped.clear();
+    let slack = 2.0 * config.linear_slop;
+    let mut awake = 0;
+    for (index, (proxy, budget)) in proxies.iter().zip(pair_budgets.iter()).enumerate() {
+        if !proxy.is_dynamic || proxy.sleeping {
+            continue;
+        }
+        awake += 1;
+        if budget.travel + proxy.velocity.length() * sub_dt + slack > budget.radius {
+            tripped.push(index as u32);
+        }
+    }
+    awake
+}
+
+/// Re-pair the tripped proxies in place of a rebuild (D-081). Every other
+/// proxy keeps its pairs, inflated AABB and budget, and the pair grid is not
+/// restaged.
+fn repair_pairs(config: &PhysicsConfig, sub_dt: f32, time_left: f32, buffers: &mut PhysicsBuffers) {
+    let PhysicsBuffers {
+        proxies,
+        grid,
+        repair_grid,
+        pair_aabbs,
+        pair_budgets,
+        pair_flags,
+        tripped,
+        repaired,
+        repair_impulses,
+        removed_impulses,
+        pairs,
+        pair_impulses,
+        ..
+    } = buffers;
+    for &member in tripped.iter() {
+        pair_flags[member as usize] |= PAIR_TRIPPED;
+    }
+
+    // Remove the members' pairs, keeping the order of the rest, and remember
+    // each removed pair's carried impulse under its key.
+    removed_impulses.clear();
+    let mut kept = 0;
+    for index in 0..pairs.len() {
+        let (a, b) = pairs[index];
+        let impulse = pair_impulses[index];
+        if (pair_flags[a as usize] | pair_flags[b as usize]) & PAIR_TRIPPED == 0 {
+            pairs[kept] = (a, b);
+            pair_impulses[kept] = impulse;
+            kept += 1;
+        } else if impulse != 0.0 {
+            let key = pair_key(proxies[a as usize].key, proxies[b as usize].key);
+            removed_impulses.push((key, impulse));
+        }
+    }
+    pairs.truncate(kept);
+    pair_impulses.truncate(kept);
+    repair_impulses.reset(removed_impulses.len());
+    for &(key, impulse) in removed_impulses.iter() {
+        repair_impulses.insert(key, impulse);
+    }
+
+    // A fresh allowance from each member's current state.
+    let gravity_allowance = gravity_allowance(config, sub_dt, time_left);
+    for &member in tripped.iter() {
+        let index = member as usize;
+        let proxy = &proxies[index];
+        let radius = awake_pair_radius(
+            config,
+            proxy.velocity.length(),
+            time_left,
+            gravity_allowance,
+        );
+        let mut aabb = proxy.world_aabb();
+        aabb.half_extents += Vec2::splat(radius);
+        pair_aabbs[index] = aabb;
+        pair_budgets[index] = PairBudget {
+            radius,
+            travel: 0.0,
+        };
+        if pair_flags[index] & PAIR_REPAIRED == 0 {
+            pair_flags[index] |= PAIR_REPAIRED;
+            repaired.push(member);
+        }
+    }
+
+    // The pair grid still holds every repaired proxy under the cells of its
+    // old AABB, so a second grid finds those.
+    if (repair_grid.cell_size() - config.broadphase_cell_size).abs() > f32::EPSILON {
+        repair_grid.set_cell_size(config.broadphase_cell_size);
+    }
+    repair_grid.clear();
+    for &id in repaired.iter() {
+        repair_grid.insert(id, &pair_aabbs[id as usize]);
+    }
+
+    let carried = !removed_impulses.is_empty();
+    for &member in tripped.iter() {
+        let aabb = &pair_aabbs[member as usize];
+        let member_key = proxies[member as usize].key;
+        let mut admit = |a: u32, b: u32, other: u32| {
+            pairs.push((a, b));
+            pair_impulses.push(if carried {
+                repair_impulses.get(pair_key(member_key, proxies[other as usize].key))
+            } else {
+                0.0
+            });
+        };
+        // Only the members query, so this is not the build's initiator rule:
+        // an untripped awake body of lower index must still be paired here.
+        grid.for_each_in(aabb, Some(member), |other| {
+            let flags = pair_flags[other as usize];
+            if flags & PAIR_REPAIRED != 0 || !aabb.overlaps(&pair_aabbs[other as usize]) {
+                return;
+            }
+            if flags & PAIR_AWAKE != 0 && other < member {
+                admit(other, member, other);
+            } else {
+                admit(member, other, other);
+            }
+        });
+        repair_grid.for_each_in(aabb, Some(member), |other| {
+            // A pair between two members is added by the lower one.
+            let member_too = pair_flags[other as usize] & PAIR_TRIPPED != 0;
+            if (member_too && other < member) || !aabb.overlaps(&pair_aabbs[other as usize]) {
+                return;
+            }
+            if other < member {
+                admit(other, member, other);
+            } else {
+                admit(member, other, other);
+            }
+        });
+    }
+    for &member in tripped.iter() {
+        pair_flags[member as usize] &= !PAIR_TRIPPED;
+    }
+    #[cfg(test)]
+    {
+        buffers.pair_repairs += 1;
+    }
 }
 
 /// Gather entity + tilemap proxies in deterministic `World` order, once per
@@ -937,9 +1274,7 @@ fn substep(
     buffers: &mut PhysicsBuffers,
     sleep_enabled: bool,
 ) {
-    if buffers.pairs_invalidated || pair_budget_exhausted(config, sub_dt, buffers) {
-        build_pairs(config, time_left, buffers);
-    }
+    refresh_pairs(config, sub_dt, time_left, buffers);
     #[cfg(test)]
     if buffers.check_pair_contacts {
         tests::assert_pair_contacts(config, sub_dt, buffers);
@@ -953,6 +1288,7 @@ fn substep(
         events,
         candidates,
         grid,
+        static_grid,
         contacts,
         impulses,
         pair_impulses,
@@ -1006,10 +1342,9 @@ fn substep(
             if wakes {
                 proxies[b_idx].sleeping = false;
                 *pairs_invalidated = true;
-                if let Some(entry) = sleep.get_mut(proxies[b_idx].key) {
-                    entry.sleeping = false;
-                    entry.timer = 0.0;
-                }
+                let entry = &mut sleep.entries[b_idx];
+                entry.sleeping = false;
+                entry.timer = 0.0;
             }
         }
         // A sleeping side is frozen at inverse mass 0 for this substep.
@@ -1132,7 +1467,7 @@ fn substep(
     // Safety net: clamp extreme dynamics to first static sweep hit (covers
     // solver-injected velocity a speculative pair admission never saw).
     // Events keep accumulating across substeps; the frame drains them once.
-    speculative_pass(proxies, grid, candidates, events);
+    speculative_pass(config, proxies, grid, static_grid, candidates, events);
 
     // Sum displacement between narrow phases, including the sweep's clamp.
     // This bounds distance from the build center even after direction changes.
@@ -1234,9 +1569,15 @@ fn apply_restitution(proxies: &mut [Proxy], contacts: &mut [ContactConstraint], 
 /// catches trajectories the pair admission never saw — velocity injected by
 /// the solver after contacts were built (impulse chains, deep-recovery bias).
 /// Static circles promote conservatively to their bounding squares.
+///
+/// Only statics can be hit. The pair grid answers the query until the
+/// statics-only grid is worth staging (D-080); both return the same statics
+/// in the same order, so the first hit is the same.
 fn speculative_pass(
+    config: &PhysicsConfig,
     proxies: &mut [Proxy],
     grid: &mut SpatialGrid,
+    static_grid: &mut SweepGrid,
     candidates: &mut Vec<ProxyId>,
     events: &mut Vec<CollisionEvent>,
 ) {
@@ -1258,7 +1599,11 @@ fn speculative_pass(
         }
 
         let swept = proxy.swept_aabb();
-        grid.query(&swept, Some(a_idx as ProxyId), candidates);
+        if static_grid.answers_query(config, proxies) {
+            static_grid.grid.query(&swept, None, candidates);
+        } else {
+            grid.query(&swept, Some(a_idx as ProxyId), candidates);
+        }
 
         let a_prev = proxy.prev_center;
         let a_cur = proxy.center;

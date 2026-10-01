@@ -94,7 +94,7 @@ Two rows. `physics` (pachinko) owns the narrow phase, contact build, solve, coll
 - Sparse at 50,000 bodies gave a `total` p95 of 78 ms; 6,000, 8,000, 10,000 and 12,000 bodies gave 7.8, 10.6, 13.9 and 15.7 ms. A frame-pointer profile at 8,000 splits `physics_step` into pair query (`build_pairs`) 54.5%, `speculative_pass` 29.9% (22% of it `SpatialGrid::query`), grid build 6.2%, narrow phase 1.4% and solver 0.7%: broadphase-bound, as intended.
 - Peak RSS is about 132 MiB (pachinko) and 128 MiB (sparse). Pachinko RSS grows 2–8 KiB/s and sparse RSS not at all, reported only.
 
-**Workload version history:** 1, the initial version (2026-09-30). Digests at the default: `physics` `c972b2818d486617`, `physics-sparse` `c95fadc938a3689e`.
+**Workload version history:** 1, the initial version (2026-09-30). Digests at the default: `physics` `86ffcabcdb15eed1`, `physics-sparse` `5899f9c8a69d79b1`. They changed on 2026-10-01 with `D-081`, an engine change that reorders the pair list and so the solver; before it they were `c972b2818d486617` and `c95fadc938a3689e`.
 
 ## `ecs`
 
@@ -330,7 +330,7 @@ The design defaults gave p95 13.71 ms. A single-run `actors` sweep, in ms:
 - At the 144 Hz budget capacity search finds the row present-bound (✗ against `physics_step`): scale moves the scene counts but not the level or the 1080p post chain, whose GPU span of about 6 ms sets a floor near 6.9 ms.
 - Peak RSS is about 281 MiB and grows about 19.5 MiB/s from the name tags and HUD (see "Engine findings"), so it depends on capture length.
 
-**Workload version history:** 1, the initial version (2026-09-30). Digest at the default: `9b2617e4c1ab23f7`.
+**Workload version history:** 1, the initial version (2026-09-30). Digest at the default: `5f031f4d947964cb`. It changed on 2026-10-01 with `D-081` (pair order); before it the digest was `9b2617e4c1ab23f7`.
 
 ## Engine findings
 

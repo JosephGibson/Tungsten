@@ -329,6 +329,200 @@ fn sweep_net_covers_static_circles_via_bounding_square() {
 }
 
 #[test]
+fn sweep_net_restages_statics_when_the_proxy_set_changes() {
+    // The sweep grid is staged per frame (D-080). After a static despawns and
+    // two spawn, proxy indices shift: the old slab must stop clamping and the
+    // new one must clamp.
+    let mut world = seed_world();
+    world.get_resource_mut::<PhysicsConfig>().unwrap().substeps = 1;
+    // Three stray bullets sweep first every frame, so the statics-only grid
+    // is staged before the target's query.
+    for i in 0..3 {
+        let bullet = world.spawn();
+        world.insert(bullet, Position(Vec2::new(i as f32 * 100.0, -2_000.0)));
+        world.insert(bullet, Velocity(Vec2::new(30_000.0, 0.0)));
+        world.insert(bullet, Collider::circle(4.0));
+        world.insert(bullet, RigidBody::dynamic());
+    }
+    let target = world.spawn();
+    world.insert(target, Position(Vec2::ZERO));
+    world.insert(target, Velocity(Vec2::ZERO));
+    world.insert(target, Collider::circle(4.0));
+    world.insert(target, RigidBody::dynamic());
+    let shover = world.spawn();
+    world.insert(shover, Position(Vec2::ZERO));
+    world.insert(shover, Velocity(Vec2::ZERO));
+    world.insert(shover, Collider::circle(4.0));
+    world.insert(shover, RigidBody::dynamic().with_mass(1_000.0));
+    // Same geometry as `spawn_diagonal_shover_rig`, re-armed every frame.
+    let arm = |world: &mut World| {
+        world.get_mut::<Position>(target).unwrap().0 = Vec2::ZERO;
+        world.get_mut::<Velocity>(target).unwrap().0 = Vec2::ZERO;
+        world.get_mut::<Position>(shover).unwrap().0 = Vec2::new(-6.364, -6.364);
+        world.get_mut::<Velocity>(shover).unwrap().0 = Vec2::new(30_000.0, 0.0);
+    };
+    let spawn_static = |world: &mut World, center: Vec2, half: Vec2| {
+        let e = world.spawn();
+        world.insert(e, Position(center));
+        world.insert(e, Collider::aabb(half));
+        world.insert(e, RigidBody::r#static());
+        e
+    };
+
+    let staged = |world: &World| {
+        let buffers = world.get_resource::<PhysicsBuffers>().unwrap();
+        buffers.static_grid.staged
+    };
+
+    let near = spawn_static(&mut world, Vec2::new(250.0, 56.0), Vec2::new(250.0, 2.0));
+    arm(&mut world);
+    physics_step(&mut world);
+    assert!(staged(&world), "frame 1 never used the statics-only grid");
+    let y = world.get::<Position>(target).unwrap().0.y;
+    assert!(y + 4.0 <= 54.5, "near slab did not clamp: y={y}");
+
+    world.despawn(near);
+    spawn_static(&mut world, Vec2::splat(-5_000.0), Vec2::splat(4.0));
+    spawn_static(&mut world, Vec2::new(250.0, 156.0), Vec2::new(250.0, 2.0));
+    arm(&mut world);
+    physics_step(&mut world);
+    assert!(staged(&world), "frame 2 never used the statics-only grid");
+    let y = world.get::<Position>(target).unwrap().0.y;
+    assert!(y + 4.0 > 60.0, "despawned slab still clamps: y={y}");
+    assert!(y + 4.0 <= 154.5, "new slab did not clamp: y={y}");
+}
+
+#[test]
+fn sweep_rents_the_pair_grid_until_queries_reach_the_static_count() {
+    // D-080's rent-or-buy rule: with three statics, a frame's first three
+    // sweep queries go to the pair grid and the fourth stages the
+    // statics-only grid. A frame with fewer queries never stages it.
+    let mut world = seed_world();
+    world.get_resource_mut::<PhysicsConfig>().unwrap().substeps = 1;
+    for i in 0..3 {
+        let wall = world.spawn();
+        world.insert(wall, Position(Vec2::new(-1_000.0, i as f32 * 100.0)));
+        world.insert(wall, Collider::aabb(Vec2::splat(4.0)));
+        world.insert(wall, RigidBody::r#static());
+    }
+    let spawn_bullet = |world: &mut World, y: f32| {
+        let bullet = world.spawn();
+        world.insert(bullet, Position(Vec2::new(0.0, y)));
+        world.insert(bullet, Velocity(Vec2::new(30_000.0, 0.0)));
+        world.insert(bullet, Collider::circle(4.0));
+        world.insert(bullet, RigidBody::dynamic());
+    };
+    let sweep_state = |world: &World| {
+        let sweep = &world.get_resource::<PhysicsBuffers>().unwrap().static_grid;
+        (sweep.statics, sweep.pair_queries, sweep.staged)
+    };
+
+    spawn_bullet(&mut world, 0.0);
+    spawn_bullet(&mut world, 100.0);
+    physics_step(&mut world);
+    assert_eq!(sweep_state(&world), (3, 2, false));
+
+    spawn_bullet(&mut world, 200.0);
+    spawn_bullet(&mut world, 300.0);
+    physics_step(&mut world);
+    assert_eq!(sweep_state(&world), (3, 3, true));
+}
+
+#[test]
+fn sweep_grid_returns_the_pair_grids_statics_in_order() {
+    // D-080: for any query the statics-only grid returns the static
+    // candidates the pair grid returns, in the same order, so the sweep's
+    // first hit cannot change. Covers tiles, body-less colliders, sleepers
+    // (staged in the pair grid, never a sweep target) and three cell sizes.
+    use crate::Pcg32;
+
+    for (seed, cell) in [8.0, 16.0, 32.0].into_iter().enumerate() {
+        let mut rng = Pcg32::seeded(0xD080 + seed as u64);
+        let mut world = seed_world();
+        world
+            .get_resource_mut::<PhysicsConfig>()
+            .unwrap()
+            .broadphase_cell_size = cell;
+        world.get_resource_mut::<TilemapRegistry>().unwrap().insert(
+            "tiles".into(),
+            TilemapData {
+                tile_width: 16,
+                tile_height: 16,
+                width: 12,
+                height: 2,
+                tileset: vec!["solid".into()],
+                layers: vec![TilemapLayer {
+                    name: "collision".into(),
+                    kind: LayerKind::Collision,
+                    tiles: (0..24).map(|i| if i % 5 == 0 { -1 } else { 0 }).collect(),
+                }],
+            },
+        );
+        let map = world.spawn();
+        world.insert(map, TilemapInstance::new("tiles", Vec2::new(-96.0, 40.0)));
+        for i in 0..60 {
+            let e = world.spawn();
+            world.insert(
+                e,
+                Position(Vec2::new(
+                    rng.next_range(-120.0, 120.0),
+                    rng.next_range(-80.0, 80.0),
+                )),
+            );
+            world.insert(
+                e,
+                if i % 2 == 0 {
+                    Collider::aabb(Vec2::new(
+                        rng.next_range(1.0, 30.0),
+                        rng.next_range(1.0, 30.0),
+                    ))
+                } else {
+                    Collider::circle(rng.next_range(1.0, 20.0))
+                },
+            );
+            match i % 3 {
+                0 => world.insert(e, RigidBody::r#static()),
+                1 => {
+                    world.insert(
+                        e,
+                        Velocity(rng.next_unit_vec2() * rng.next_range(0.0, 400.0)),
+                    );
+                    world.insert(e, RigidBody::dynamic());
+                }
+                _ => {}
+            }
+        }
+        let config = *world.get_resource::<PhysicsConfig>().unwrap();
+        let mut buffers = PhysicsBuffers::default();
+        gather_proxies(&world, &mut buffers.proxies);
+        for proxy in buffers.proxies.iter_mut().step_by(4) {
+            proxy.sleeping = proxy.is_dynamic;
+        }
+        build_pairs(&config, 1.0 / 240.0, 1.0 / 60.0, &mut buffers);
+        buffers.static_grid.stage(&config, &buffers.proxies);
+
+        let mut from_pair_grid = Vec::new();
+        let mut from_static_grid = Vec::new();
+        let mut returned = 0;
+        for _ in 0..200 {
+            let probe = Aabb::new(
+                Vec2::new(rng.next_range(-140.0, 140.0), rng.next_range(-100.0, 100.0)),
+                Vec2::new(rng.next_range(0.0, 40.0), rng.next_range(0.0, 40.0)),
+            );
+            buffers.grid.query(&probe, None, &mut from_pair_grid);
+            from_pair_grid.retain(|&id| !buffers.proxies[id as usize].is_dynamic);
+            buffers
+                .static_grid
+                .grid
+                .query(&probe, None, &mut from_static_grid);
+            assert_eq!(from_static_grid, from_pair_grid, "cell {cell}, {probe:?}");
+            returned += from_static_grid.len();
+        }
+        assert!(returned > 400, "probes met too few statics: {returned}");
+    }
+}
+
+#[test]
 fn speculative_gap_contact_emits_no_event_until_touch() {
     // Event gate (D-064): a positive-gap speculative contact enters the
     // solver but must not emit a CollisionEvent until actually penetrating.
@@ -1023,6 +1217,88 @@ fn late_sleeper_adopts_supporting_island_for_despawn_wake() {
 }
 
 #[test]
+fn sleeper_that_stops_being_a_dynamic_body_wakes_its_island() {
+    // D-065 wake path 3 without a despawn: the entity and its key stay, but
+    // it no longer has a sleep entry, so the rest of its island must wake.
+    let mut world = seed_world();
+    let (bottom, top) = spawn_sleeping_stack(&mut world);
+    settle_to_sleep(&mut world, &[bottom, top]);
+
+    world.insert(bottom, RigidBody::r#static());
+    physics_step(&mut world);
+
+    let buffers = world.get_resource::<PhysicsBuffers>().unwrap();
+    assert!(!buffers.is_sleeping(bottom), "a static body cannot sleep");
+    assert!(!buffers.is_sleeping(top), "island survivor stayed asleep");
+}
+
+#[test]
+fn sleep_table_is_rebuilt_only_when_the_body_sequence_changes() {
+    // D-082: with the same bodies in the same order the entries stay at
+    // their proxies' indices. A spawn or despawn shifts the sequence, and
+    // the rebuild carries sleepers over by entity key.
+    let mut world = seed_world();
+    let (bottom, top) = spawn_sleeping_stack(&mut world);
+    settle_to_sleep(&mut world, &[bottom, top]);
+    let rebuilds = |world: &World| {
+        world
+            .get_resource::<PhysicsBuffers>()
+            .unwrap()
+            .sleep
+            .rebuilds
+    };
+    let index_of = |world: &World, entity: Entity| {
+        let buffers = world.get_resource::<PhysicsBuffers>().unwrap();
+        buffers
+            .proxies
+            .iter()
+            .position(|proxy| proxy.entity == Some(entity))
+    };
+    assert_eq!(
+        rebuilds(&world),
+        1,
+        "only the first frame lines the table up"
+    );
+    let bottom_index = index_of(&world, bottom);
+
+    // A body-less collider gathers before every body and shifts the sleepers'
+    // indices; a new dynamic body gathers after them.
+    let pillar = world.spawn();
+    world.insert(pillar, Position(Vec2::new(500.0, 0.0)));
+    world.insert(pillar, Collider::circle(4.0));
+    let drifter = world.spawn();
+    world.insert(drifter, Position(Vec2::new(-500.0, 0.0)));
+    world.insert(drifter, Velocity(Vec2::new(40.0, 0.0)));
+    world.insert(drifter, Collider::circle(4.0));
+    world.insert(drifter, RigidBody::dynamic());
+    for _ in 0..3 {
+        physics_step(&mut world);
+    }
+    assert_eq!(rebuilds(&world), 2);
+    assert_ne!(
+        index_of(&world, bottom),
+        bottom_index,
+        "sleeper kept its index"
+    );
+    let buffers = world.get_resource::<PhysicsBuffers>().unwrap();
+    assert!(buffers.is_sleeping(bottom) && buffers.is_sleeping(top));
+    assert!(!buffers.is_sleeping(drifter) && !buffers.is_sleeping(pillar));
+    assert_eq!(buffers.sleeping_count(), 2);
+    assert_eq!(buffers.sleep.entries.len(), buffers.proxy_count());
+
+    // `wake` still finds a body after its index moved.
+    wake(&mut world, top);
+    let buffers = world.get_resource::<PhysicsBuffers>().unwrap();
+    assert!(!buffers.is_sleeping(bottom) && !buffers.is_sleeping(top));
+
+    world.despawn(pillar);
+    physics_step(&mut world);
+    assert_eq!(rebuilds(&world), 3);
+    physics_step(&mut world);
+    assert_eq!(rebuilds(&world), 3);
+}
+
+#[test]
 fn contact_wake_stays_local_to_the_disturbance() {
     // D-065 locality: waking spreads through contacts only while motion
     // exceeds the threshold, so a gentle poke on one end of a sleeping row
@@ -1185,6 +1461,7 @@ fn persistent_pairs_match_fresh_contacts_on_randomized_piles_bullets_and_wakes()
     use crate::Pcg32;
 
     let mut checked = 0;
+    let mut repairs = 0;
     for seed in 0..8 {
         let mut rng = Pcg32::seeded(0xD075 + seed);
         let mut world = seed_world();
@@ -1253,11 +1530,13 @@ fn persistent_pairs_match_fresh_contacts_on_randomized_piles_bullets_and_wakes()
             "wake cases never disturbed the sleeper"
         );
         checked += buffers.checked_substeps;
+        repairs += buffers.pair_repairs;
     }
     assert_eq!(
         checked, 1200,
         "every substep must run the equivalence oracle"
     );
+    assert!(repairs > 0, "the oracle never checked a repaired list");
 }
 
 #[test]
@@ -1282,6 +1561,7 @@ fn contact_woken_body_rebuilds_pairs_over_static_floor_in_waking_frame() {
     buffers.island_parent = (0..buffers.proxies.len() as u32).collect();
     buffers.events.clear();
     buffers.pairs_invalidated = true;
+    buffers.static_grid.begin_frame();
     buffers.check_pair_contacts = true;
     let bottom_idx = buffers
         .proxies
@@ -1294,7 +1574,7 @@ fn contact_woken_body_rebuilds_pairs_over_static_floor_in_waking_frame() {
             .iter()
             .any(|&(a, b)| a as usize == bottom_idx && b as usize == floor_idx)
     };
-    build_pairs(&config, dt, &mut buffers);
+    build_pairs(&config, sub_dt, dt, &mut buffers);
     assert!(!floor_pair(&buffers.pairs), "sleepers must not initiate");
     substep(&config, sub_dt, dt, &mut buffers, true);
     assert!(
@@ -1333,7 +1613,7 @@ fn contact_woken_body_rebuilds_pairs_over_static_floor_in_waking_frame() {
 }
 
 #[test]
-fn fast_body_trips_pair_budget_and_rebuilds_before_narrow_phase() {
+fn lone_fast_body_trips_its_budget_and_rebuilds_before_narrow_phase() {
     let mut world = seed_world();
     let bullet = world.spawn();
     world.insert(bullet, Position(Vec2::ZERO));
@@ -1351,7 +1631,7 @@ fn fast_body_trips_pair_budget_and_rebuilds_before_narrow_phase() {
     gather_proxies(&world, &mut buffers.proxies);
     buffers.island_parent = (0..buffers.proxies.len() as u32).collect();
     buffers.check_pair_contacts = true;
-    build_pairs(&config, dt, &mut buffers);
+    build_pairs(&config, sub_dt, dt, &mut buffers);
     assert!(
         buffers.pairs.is_empty(),
         "wall should start outside the budget"
@@ -1362,30 +1642,219 @@ fn fast_body_trips_pair_budget_and_rebuilds_before_narrow_phase() {
         .position(|p| p.entity == Some(bullet))
         .unwrap();
     substep(&config, sub_dt, dt, &mut buffers, false);
-    assert_eq!(buffers.pair_builds, 1, "unspent budget should reuse pairs");
+    assert_eq!(
+        (buffers.pair_builds, buffers.pair_repairs),
+        (1, 0),
+        "unspent budget should reuse pairs"
+    );
     assert!(buffers.pair_budgets[idx].travel > 0.0);
     // Model an impulse spike after the first build. The next admission must
-    // see the wall even though it wasn't a candidate in the old list.
+    // see the wall even though it wasn't a candidate in the old list. The
+    // only awake body tripped, which is more than a quarter of them, so the
+    // list is rebuilt (D-081).
     buffers.proxies[idx].velocity = Vec2::new(15000.0, 0.0);
-    assert!(pair_budget_exhausted(&config, sub_dt, &buffers));
+    assert_eq!(collect_tripped(&config, sub_dt, &mut buffers), 1);
+    assert_eq!(buffers.tripped, [idx as u32]);
     substep(&config, sub_dt, dt - sub_dt, &mut buffers, false);
-    assert_eq!(buffers.pair_builds, 2);
+    assert_eq!((buffers.pair_builds, buffers.pair_repairs), (2, 0));
     assert!(buffers.contacts.iter().any(|c| c.a as usize == idx));
     assert!(
         buffers.proxies[idx].center.x + 4.0 <= 46.5,
         "budget trip tunneled wall"
     );
+    let radius = 15000.0 * (dt - sub_dt) + (PAIR_MARGIN_SLOPS + 2.0) * config.linear_slop;
     assert!(
-        (buffers.pair_budgets[idx].radius - (15000.0 * (dt - sub_dt) + 2.0 * config.linear_slop))
-            .abs()
-            < 1e-4,
+        (buffers.pair_budgets[idx].radius - radius).abs() < 1e-4,
         "rebuild must use the remaining frame time"
     );
-    // Accumulated travel is independently sufficient to invalidate even
-    // after velocity drops to zero (e.g. a solver/sweep clamp).
+    // Accumulated travel is independently sufficient to trip even after
+    // velocity drops to zero (e.g. a solver/sweep clamp).
     buffers.proxies[idx].velocity = Vec2::ZERO;
     buffers.pair_budgets[idx].travel = buffers.pair_budgets[idx].radius;
-    assert!(pair_budget_exhausted(&config, sub_dt, &buffers));
+    collect_tripped(&config, sub_dt, &mut buffers);
+    assert_eq!(buffers.tripped, [idx as u32]);
+}
+
+#[test]
+fn gravity_allowance_is_the_exact_worst_case_of_a_falling_body() {
+    // D-081: replay the integrator (velocity first, then position) for a
+    // body falling along gravity. Before every substep the budget check adds
+    // one substep of travel at the current speed to the travel so far; the
+    // allowance must cover each check and be tight at the frame's last one.
+    let config = PhysicsConfig {
+        gravity: Vec2::new(0.0, 900.0),
+        ..PhysicsConfig::default()
+    };
+    let (speed, dt) = (350.0_f32, 1.0_f32 / 60.0);
+    for substeps in 1..=8 {
+        let h = dt / substeps as f32;
+        let allowance = gravity_allowance(&config, h, dt);
+        let (mut velocity, mut travel, mut worst) = (speed, 0.0_f32, 0.0_f32);
+        for _ in 0..substeps {
+            let needed = travel + velocity * h - speed * dt;
+            assert!(needed <= allowance + 1e-4, "{substeps} substeps: {needed}");
+            worst = needed;
+            velocity += 900.0 * h;
+            travel += velocity * h;
+        }
+        assert!(
+            (worst - allowance).abs() < 1e-4,
+            "{substeps} substeps: last check needs {worst}, allowance {allowance}"
+        );
+        // D-075's `g t^2 / 2` differs by `g h^2 (n - 2) / 2`: one `g h^2`
+        // short at four substeps, which tripped every falling body.
+        let old = 0.5 * 900.0 * dt * dt;
+        let shortfall = 900.0 * h * h * (substeps as f32 - 2.0) / 2.0;
+        assert!((allowance - old - shortfall).abs() < 1e-4, "{substeps}");
+    }
+    // A repair late in the frame predicts only what is left.
+    let h = dt / 4.0;
+    assert_eq!(gravity_allowance(&config, h, h), 0.0);
+    assert!((gravity_allowance(&config, h, 2.0 * h) - 2.0 * 900.0 * h * h).abs() < 1e-6);
+}
+
+/// `cols` by `rows` dynamic circles of radius 5 on a 9.5 px lattice, in
+/// proxy order row by row. Neighbours overlap by 0.5 px, so every contact
+/// carries a small impulse while the bodies creep apart at about 2 px/s, far
+/// below what a budget needs to trip.
+fn spawn_lattice(world: &mut World, cols: usize, rows: usize) {
+    for i in 0..cols * rows {
+        let e = world.spawn();
+        world.insert(
+            e,
+            Position(Vec2::new((i % cols) as f32, (i / cols) as f32) * 9.5),
+        );
+        world.insert(e, Velocity(Vec2::ZERO));
+        world.insert(e, Collider::circle(5.0));
+        world.insert(e, RigidBody::dynamic());
+    }
+}
+
+/// Gathered buffers with both oracles armed, for driving substeps by hand:
+/// the contact set against per-substep pair finding (D-075) and every warm
+/// start against the per-substep keyed map (D-076).
+fn oracle_buffers(world: &World) -> PhysicsBuffers {
+    let mut buffers = PhysicsBuffers::default();
+    gather_proxies(world, &mut buffers.proxies);
+    buffers.island_parent = (0..buffers.proxies.len() as u32).collect();
+    buffers.pairs_invalidated = true;
+    buffers.check_pair_contacts = true;
+    buffers.reference_impulses = Some(ImpulseMap::default());
+    buffers
+}
+
+/// The carried impulse of pair `(a, b)`, which must be in the list once and
+/// in that orientation.
+fn carried_impulse(buffers: &PhysicsBuffers, a: u32, b: u32) -> f32 {
+    let mut found = buffers
+        .pairs
+        .iter()
+        .zip(&buffers.pair_impulses)
+        .filter(|&(&(x, y), _)| (x, y) == (a, b) || (x, y) == (b, a));
+    let (&pair, &impulse) = found.next().expect("pair missing from the list");
+    assert_eq!(pair, (a, b), "pair stored in the wrong orientation");
+    assert!(found.next().is_none(), "pair ({a}, {b}) listed twice");
+    impulse
+}
+
+#[test]
+fn tripped_bodies_are_repaired_without_a_rebuild() {
+    // D-081 on a 5 by 4 lattice (index = row * 5 + column), one frame driven
+    // by hand with both oracles checking every substep.
+    let mut world = seed_world();
+    spawn_lattice(&mut world, 5, 4);
+    let config = *world.get_resource::<PhysicsConfig>().unwrap();
+    let dt = 1.0 / 60.0;
+    let sub_dt = dt / 4.0;
+    let mut buffers = oracle_buffers(&world);
+    substep(&config, sub_dt, dt, &mut buffers, false);
+    assert_eq!((buffers.pair_builds, buffers.pair_repairs), (1, 0));
+    let before = buffers.pairs.clone();
+    let kept_impulse = carried_impulse(&buffers, 7, 8);
+    let left_impulse = carried_impulse(&buffers, 8, 9);
+    let above_impulse = carried_impulse(&buffers, 4, 9);
+    let member_impulse = carried_impulse(&buffers, 9, 14);
+    let below_impulse = carried_impulse(&buffers, 14, 19);
+    for impulse in [kept_impulse, left_impulse, above_impulse, member_impulse] {
+        assert!(impulse > 0.0, "lattice contacts must carry an impulse");
+    }
+
+    // Two neighbours on the right edge speed up and leave. Two of twenty
+    // awake bodies tripped, so their pairs are repaired.
+    buffers.proxies[9].velocity = Vec2::new(300.0, 0.0);
+    buffers.proxies[14].velocity = Vec2::new(300.0, 0.0);
+    refresh_pairs(&config, sub_dt, dt - sub_dt, &mut buffers);
+    assert_eq!((buffers.pair_builds, buffers.pair_repairs), (1, 1));
+    assert_eq!(buffers.tripped, [9, 14]);
+    assert_eq!(buffers.repaired, [9, 14]);
+    // Pairs without a member keep their order at the front of the list.
+    let kept: Vec<_> = before
+        .iter()
+        .copied()
+        .filter(|&(a, b)| ![9, 14].contains(&a) && ![9, 14].contains(&b))
+        .collect();
+    assert_eq!(buffers.pairs[..kept.len()], kept[..]);
+    assert_eq!(carried_impulse(&buffers, 7, 8), kept_impulse);
+    // An untripped awake neighbour of lower index: the build's initiator
+    // rule would drop these two pairs, since only the members query.
+    assert_eq!(carried_impulse(&buffers, 8, 9), left_impulse);
+    assert_eq!(carried_impulse(&buffers, 4, 9), above_impulse);
+    // A pair between two members is added once, by the lower one.
+    assert_eq!(carried_impulse(&buffers, 9, 14), member_impulse);
+    assert_eq!(carried_impulse(&buffers, 14, 19), below_impulse);
+    let radius = 300.0 * (dt - sub_dt) + (PAIR_MARGIN_SLOPS + 2.0) * config.linear_slop;
+    assert!((buffers.pair_budgets[9].radius - radius).abs() < 1e-4);
+    assert_eq!(buffers.pair_budgets[9].travel, 0.0);
+    substep(&config, sub_dt, dt - sub_dt, &mut buffers, false);
+    assert_eq!((buffers.pair_builds, buffers.pair_repairs), (1, 1));
+
+    // A pair between bodies repaired in different substeps: 13 trips now,
+    // and finds 14 and 9 through the repair grid.
+    buffers.proxies[13].velocity = Vec2::new(300.0, 0.0);
+    refresh_pairs(&config, sub_dt, dt - 2.0 * sub_dt, &mut buffers);
+    assert_eq!(buffers.tripped, [13]);
+    assert_eq!(buffers.repaired, [9, 14, 13]);
+    carried_impulse(&buffers, 13, 14);
+    carried_impulse(&buffers, 9, 13);
+    carried_impulse(&buffers, 12, 13);
+    substep(&config, sub_dt, dt - 2.0 * sub_dt, &mut buffers, false);
+
+    // A body repaired twice in one frame stays in the repaired list once.
+    buffers.proxies[9].velocity = Vec2::new(900.0, 0.0);
+    refresh_pairs(&config, sub_dt, dt - 3.0 * sub_dt, &mut buffers);
+    assert_eq!(buffers.tripped, [9]);
+    assert_eq!(buffers.repaired, [9, 14, 13]);
+    substep(&config, sub_dt, dt - 3.0 * sub_dt, &mut buffers, false);
+    assert_eq!((buffers.pair_builds, buffers.pair_repairs), (1, 3));
+    assert_eq!(buffers.checked_substeps, 4);
+}
+
+#[test]
+fn more_than_a_quarter_tripped_rebuilds_instead_of_repairing() {
+    let mut world = seed_world();
+    spawn_lattice(&mut world, 4, 2);
+    let config = *world.get_resource::<PhysicsConfig>().unwrap();
+    let dt = 1.0 / 60.0;
+    let sub_dt = dt / 4.0;
+    let mut buffers = oracle_buffers(&world);
+    substep(&config, sub_dt, dt, &mut buffers, false);
+
+    // Two of eight is a quarter: still a repair.
+    for index in [3, 7] {
+        buffers.proxies[index].velocity = Vec2::new(300.0, 0.0);
+    }
+    substep(&config, sub_dt, dt - sub_dt, &mut buffers, false);
+    assert_eq!((buffers.pair_builds, buffers.pair_repairs), (1, 1));
+
+    // Three of eight is more: the list is rebuilt, and the build forgets
+    // which proxies were repaired.
+    for index in [0, 3, 4] {
+        buffers.proxies[index].velocity = Vec2::new(-900.0, 0.0);
+    }
+    substep(&config, sub_dt, dt - 2.0 * sub_dt, &mut buffers, false);
+    assert_eq!((buffers.pair_builds, buffers.pair_repairs), (2, 1));
+    assert!(buffers.repaired.is_empty());
+    assert!(buffers.pair_flags.iter().all(|&flags| flags == PAIR_AWAKE));
 }
 
 #[test]
@@ -1415,7 +1884,7 @@ fn warm_start_forgets_disappearing_contacts_and_syncs_empty_final_substep() {
     // A generous real travel budget keeps the candidate present while the
     // exact contact disappears and returns. The reference map checks the
     // warm-start value before every solve, not only the final result.
-    build_pairs(&config, 1.0, &mut buffers);
+    build_pairs(&config, 1.0 / 240.0, 1.0, &mut buffers);
     substep(&config, 1.0 / 240.0, 1.0, &mut buffers, false);
     assert!(buffers.contacts.iter().any(|c| c.impulse > 0.0));
     let builds = buffers.pair_builds;

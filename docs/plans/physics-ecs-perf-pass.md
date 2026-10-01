@@ -1,10 +1,10 @@
 # Physics and ECS performance pass 2
 
-status: draft
+status: in progress
 goal: cut the owned metrics of the `physics`, `physics-sparse`, `churn` and `ecs` benchmark rows by removing the hotspots measured on 2026-10-01: the pair list rebuilt every substep, the safety-net sweep that queries the full grid, boxed per-value archetype moves, boxed commands and the slow `World::get` path. Every change is judged by `just perf compare` against the saved baseline `pre-physics-ecs-pass`.
-non-goals: render and GPU work (`gpu`, `gpu-throughput` and the extract cost in `particles` are reported only); any change to a benchmark's work or knobs (no `workload_version` bump); threads in the physics step (`D-067`); an external ECS crate (`D-005`); `unsafe` code or a new dependency; a public bundle-insert API; looser verdict thresholds.
+non-goals: render and GPU work (`gpu`, `gpu-throughput` and the extract cost in `particles` are reported only); any change to a benchmark's work or knobs (no `workload_version` bump); threads in the physics step (`D-067`); an external ECS crate (`D-005`); `unsafe` code or a new dependency; a public bundle-insert API; software prefetch and a dynamic-only pair restage (both under "Not proposed"); looser verdict thresholds.
 files to touch: `crates/tungsten-core/src/physics/step.rs` and `broadphase.rs`; `crates/tungsten-core/src/ecs/archetype.rs`, `storage.rs`, `world.rs` and `command_buffer.rs`; `crates/tungsten/src/app.rs` (`stage_flush_commands`); the matching tests under `crates/tungsten-core/src/tests/physics/` and `src/tests/ecs/`; `crates/tungsten-core/benches/physics_bench.rs` and `ecs_bench.rs`; `DECISIONS.md`, `docs/DECISION_INDEX.md`, `DESIGN.md` (ECS section), `docs/perf/benchmarks.md` (digests, findings) and `CHANGELOG.md`.
-ordered steps: 0 preflight; 1 static sweep grid (P2); 2 grid walk costs (P3); 3 pair repair (P1); 4 unboxed column moves (C1); 5 batched inserts at flush (C3); 6 command buffer without boxes (C2); 7 lean `World::get` (E1); 8 gated prototypes (C4, E2, P4); 9 re-profile, full suite compare, decisions and docs. Details under "Ordered steps".
+ordered steps: 0 preflight; 1 static sweep grid (P2); 2 grid walk costs (P3); 3 pair repair (P1); 4 unboxed column moves (C1); 5 batched inserts at flush (C3); 6 command buffer without boxes (C2); 7 lean `World::get` (E1); 8 gated prototypes (P4, E2); 9 re-profile, full suite compare, decisions and docs. Two sessions: A, physics (0–3, P4) and B, ECS (4–7, E2, 9). Details under "Sessions" and "Ordered steps"; execution state under "Progress".
 done-when: `just perf compare pre-physics-ecs-pass <final suite>` reads `improved` on the owned metrics listed under "Done when" and `regressed` on none; `just check`, `just smoke` and `just repo-check` pass.
 
 ## Context digest
@@ -17,6 +17,52 @@ done-when: `just perf compare pre-physics-ecs-pass <final suite>` reads `improve
 - `ecs`: 48% of `update` is benchmark work the engine can't touch (`heading`'s `atan2f`, `brain`, the digest). `follow` (18%) waits on cache misses in `World::get`. About 1.7 ms is overhead per archetype (setup and cold cache lines) across 488 archetypes.
 - Evidence beyond the captures (exact call counts, the budget replay, profile tables, scripts): `perf-runs/20261001-physics-ecs-pass-evidence/`, with a README.
 - Captures need a quiet machine. Besides `nxcodec.bin`, a second agent session running `cargo` invalidated the first suite of this session (see "Capture hygiene").
+
+## Progress
+
+The executing session fills this in at the end of every step, before it starts the next one. A step is not finished until its row is complete. "Step capture" is the capture directory; the two verdict columns quote the owned metrics from the compare reports.
+
+| Step | State | Step capture | Against previous step | Against baseline | Digests | Kept |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0 preflight (session A) | done | `perf-runs/20261001T014449Z-suite` (`physics`, `physics-sparse`, `ecs`, `churn`) | n/a | 0 regressed, 0 improved, 25 unchanged, 2 noisy (`follow`, `churn_spawn`, as in the A/A). `physics_step` p50 +0.3% in `physics` and +0.2% in sparse. Report: `perf-runs/20261001T014621Z-compare-suite` | The four equal the baseline's | n/a |
+| 1 P2 | done | `perf-runs/20261001T023436Z-suite`; `integrated` rerun `perf-runs/20261001T023713Z-suite` | Against the preflight (`perf-runs/20261001T023829Z-compare-suite`): `physics-sparse` `physics_step` p50 8.07 → 6.57 (−18.7%) and p95 9.83 → 8.37 (−14.8%), both `improved`; `physics` `physics_step` p50, p95 and `update` p95 `unchanged` | `perf-runs/20261001T023630Z-compare-suite`: sparse `physics_step` p50 −18.5% and p95 −14.7%, `improved`; `physics` `unchanged`. `integrated` `total` read `noisy` there (two of its five runs were about 0.4 ms slow in every stage, extract included) and `unchanged` on all four owned metrics in the rerun (`perf-runs/20261001T023821Z-compare-suite`, p50 12.12 → 12.09) | The three equal the baseline's, in both captures | kept |
+| 2 P3 | done | `perf-runs/20261001T025007Z-suite` (all three parts). Parts: floor alone `perf-runs/20261001T024002Z-suite`; plus direct table `perf-runs/20261001T024739Z-suite`; plus flag array, the step capture | Against step 1 (`perf-runs/20261001T025200Z-compare-suite`): `physics` `physics_step` p50 13.28 → 10.04 (−24.5%), p95 −24.2%, `update` p95 −24.1%; sparse p50 6.57 → 4.77 (−27.4%), p95 8.37 → 5.84 (−30.3%); `integrated` `total` p50 12.24 → 10.65 (−13.0%), p95 −12.7%, p99 −13.1%; all `improved`, jitter `unchanged`. By part, `physics_step` p50 of `physics` / sparse: floor −1.1% / −0.8% (`unchanged`), direct table −18.5% / −24.6% (`improved`), flag array −6.2% (`improved`) / −2.9% (`noisy`) | `perf-runs/20261001T025143Z-compare-suite`: `physics` p50 13.25 → 10.04 (−24.2%), p95 −24.4%, `update` p95 −24.3%; sparse p50 8.05 → 4.77 (−40.8%), p95 −40.5%; `integrated` `total` p50 12.12 → 10.65 (−12.1%), p95 −11.2%, p99 −11.1%; all `improved` | The three equal the baseline's, in every capture | kept, all three parts |
+| 3 P1 | done | `perf-runs/20261001T030829Z-suite` (margin 0.5 px) | Against step 2 (`perf-runs/20261001T031002Z-compare-suite`): `physics` `physics_step` p50 10.04 → 5.86 (−41.6%), p95 −41.4%, `update` p95 −41.2%, `improved`; sparse p50 4.77 → 3.67 (−23.0%), p95 5.84 → 3.75 (−35.8%), `improved`; `integrated` `total` p50 10.65 → 10.75, p95, p99 and jitter all `unchanged`, not the expected `improved` (see notes) | `perf-runs/20261001T030953Z-compare-suite`: `physics` p50 13.25 → 5.86 (−55.7%), p95 −55.7%, `update` p95 −55.5%; sparse p50 8.05 → 3.67 (−54.4%), p95 −61.8%; `integrated` `total` p50 12.12 → 10.75 (−11.3%), p95 −9.2%, p99 −8.0%; all `improved`, jitter `unchanged`. Workload drift on `physics.pairs`, as expected | New: `physics` `86ffcabcdb15eed1`, `physics-sparse` `5899f9c8a69d79b1`, `integrated` `5f031f4d947964cb`; each row's five runs agree, and two captures of the state agree | kept |
+| 8 P4 | done | `perf-runs/20261001T031601Z-suite` | Against step 3 (`perf-runs/20261001T031729Z-compare-suite`): `physics` `physics_step` p50 5.86 → 5.60 (−4.6%), p95 −5.6%, `update` p95 −5.6%, `improved`; sparse p50 3.67 → 3.43 (−6.7%), p95 −7.3%, `improved`; `integrated` `total` p50 −2.8% and p95 −3.6% `noisy`, p99 and jitter `unchanged` | `perf-runs/20261001T031723Z-compare-suite`: `physics` p50 13.25 → 5.60 (−57.8%), p95 −58.2%, `update` p95 −58.0%; sparse p50 8.05 → 3.43 (−57.4%), p95 −64.6%; `integrated` `total` p50 12.12 → 10.45 (−13.8%), p95 −12.4%, p99 −11.9%; all `improved` | The three equal step 3's | kept |
+| Session A close-out | done | `perf-runs/20261001T031742Z-suite` (all eight rows, valid). Profiles: `perf-runs/20261001T032837Z-physics`, `perf-runs/20261001T032908Z-physics-sparse` | n/a | `perf-runs/20261001T032255Z-compare-suite`: `physics` `physics_step` p50 13.25 → 5.58 (−57.9%), p95 −58.2%, `update` p95 −58.0%; sparse p50 8.05 → 3.42 (−57.5%), p95 −64.6%; `integrated` `total` p50 12.12 → 10.50 (−13.4%), p95 −12.2%, p99 −12.6%; all `improved`, jitter `unchanged`. `ecs`, `churn`, `gpu-throughput` and `particles`: no `regressed`. `gpu`: `stage.extract` p95 `regressed`, which is machine drift (see notes). Peak RSS `unchanged` in all eight rows | `ecs`, `churn`, `gpu`, `gpu-throughput` and `particles` equal the baseline's; the three physics-bearing ones equal step 3's | n/a |
+| 0 preflight (session B) | not started | | n/a | | | n/a |
+| 4 C1 | not started | | | | | |
+| 5 C3 | not started | | | | | |
+| 6 C2 | not started | | | | | |
+| 7 E1 | not started | | | | | |
+| 8 E2 | not started | | | | | |
+| 9 close-out | not started | | n/a | | | n/a |
+
+Values later steps need:
+
+- Margin chosen in step 3: 0.5 px, written as `PAIR_MARGIN_SLOPS = 2.0` (2·`linear_slop`). Sweep results (sum of the two rows' `physics_step` p50, `physics` + sparse): 0 px 10.46 ms (6.33 + 4.13, `perf-runs/20261001T025724Z-suite`); 0.5 px 9.55 ms (5.93 + 3.62, `perf-runs/20261001T025942Z-suite`); 1 px 9.67 ms (5.99 + 3.68, `perf-runs/20261001T030610Z-suite`). The step capture, a second capture of the 0.5 px build, reads 9.53 ms (5.85 + 3.68).
+- Digests after step 3: `physics` `86ffcabcdb15eed1`, `physics-sparse` `5899f9c8a69d79b1`, `integrated` `5f031f4d947964cb`. P4 leaves them unchanged. Step 4's `integrated` digest check is against `5f031f4d947964cb`.
+- Decision IDs written: `D-080` (broadphase layout: P2 and P3), `D-081` (pair repair: P1), `D-082` (sleep table: P4). Session B's column-storage and command-buffer decisions take `D-083` and `D-084`.
+- Session log folders: `perf-runs/20261001-physics-ecs-pass-session-a/` (session A: `load.log`, `guard.log`, each capture's console output and load check, and `checkpoints/` with the per-step file copies, patches and commit messages).
+- Session A's commits, not yet made: `checkpoints/01-p2.patch`, `02-p3.patch`, `03-p1.patch`, `08-p4.patch` and `09-plan.patch`, each with a `.msg`, apply in that order on `a7cc105`; `checkpoints/commit-series.sh` commits them through the index. The working tree already holds their result, so session B starts from this tree whether or not they are committed.
+
+Notes (reverts and their reason, stops, anything the next session must know):
+
+- Session A started on `HEAD` `a7cc105`, not `7276c8a`: the release-tooling work this plan calls foreign was committed there, `D-079` included. `git diff 7276c8a a7cc105` is empty for `crates/`, `examples/`, `assets/`, `Cargo.*` and `.cargo/`, and `cargo build` with the runner's flags compiled nothing, so the binary is still the baseline's. The only uncommitted file at the start was this plan. `DECISIONS.md`, `docs/DECISION_INDEX.md` and `CHANGELOG.md` carry no foreign changes any more; the next free decision ID is `D-080`.
+- Captures in this session export `WGPU_BACKEND=vulkan`, as the baseline did (`provenance.wgpu_backend_env`).
+- Step 1, first capture (`perf-runs/20261001T015602Z-suite`, compare `perf-runs/20261001T015757Z-compare-suite`): the sweep staged the statics-only grid on a frame's first sweep query. `physics-sparse` `physics_step` p50 8.05 → 6.69 (`improved`, p95 too) and `physics` `unchanged`, digests equal. `integrated` paid for it: `stage.total` p50 +0.30 ms and p95 +0.43 ms (`noisy`), and its `physics_step` p95 6.98 → 7.38 (`regressed`), because a frame with 3.8 sweep queries staged 8,528 tile proxies. Reworked before recapturing: the sweep keeps querying the pair grid until the frame's sweep queries reach the static count, then stages the statics-only grid (both grids return the same statics in the same order, pinned by `sweep_grid_returns_the_pair_grids_statics_in_order`). That first variant is kept in `checkpoints/01-p2-first-capture/`.
+- `tests/physics_determinism.rs` and `physics_containment.rs` are `#[ignore]`d in debug builds, so `just check` does not run them. Run them with `RUSTFLAGS="-C force-frame-pointers=yes" cargo test --release -p tungsten-core --test physics_determinism --test physics_tunneling --test physics_containment` (the runner's flags, so the capture build's dependencies are reused).
+- Step 2, first capture of the direct table (`perf-runs/20261001T024244Z-suite`): sparse and `integrated` improved, but `physics` `physics_step` p50 rose 13.13 → 13.52. A profile (`profiles/02b-physics.perf.data` in the session folder) showed why: the per-entry body shared by the two layouts' loops was a closure, and the compiler emitted it out of line (54.8% self time, one call per grid entry). It is now an `#[inline(always)]` function (`broadphase.rs`, `visit_entry`), and the recapture is the one in the table. The first variant is in `checkpoints/02b-direct-first-capture/`.
+- Step 3, `integrated`: P1 does not move it, because its rebuilds are not budget trips. A count on an instrumented build of the 0.5 px state (`03-p1-rebuild-causes.txt` in the session folder; 400 frames) gives 1,403 builds from `pairs_invalidated`, which is one per frame after gather plus 1,003 after a contact wake (`D-075` rule b), against 37 repairs and no fall-back. The same count reads 1 build and 3.0 repairs per frame in `physics` (456 tripped proxies per frame) and 1 build and 2.1 repairs in sparse (350). The plan kept the rebuild on a wake, so this was left alone. Proposed next move, as its own task: re-pair a woken proxy the way a tripped one is re-paired (it becomes an initiator, so it needs its sleeping and static neighbours), which would remove about 2.5 of `integrated`'s 3.5 builds per frame. `integrated` still reads `improved` against the baseline, from P3.
+- Step 3, sweep captures: a 7 s NoMachine session fell inside the 0 px capture (`integrated` runs 2 and 3) and a 3 s one inside the first 0.5 px capture (`integrated` run 5's GPU diagnostic run only). The `physics` and `physics-sparse` runs the sweep is judged on were clean in all three. The step capture is a second, clean capture of the 0.5 px build with the same three digests.
+- Step 3, `D-075`'s gate (`cargo bench -p tungsten-core --bench physics_bench`, with `CARGO_TARGET_DIR=target/criterion-native` so the capture build is left alone; outputs `03-bench-before.out`, `03-bench-after.out` and `03-bench-after-rerun.out`): `projectile_stream` 1.94 → 1.17 ms at 3,000, 6.67 → 3.01 ms at 10,000 and 21.4 → 11.5 ms at 25,000; `pile_plus_bullet` 0.77 → 0.69 ms at 10,000 (no change detected) and 36.1 → 28.1 ms at 25,000. Nothing slowed.
+- Final suite, `gpu`: `stage.extract` p95 reads `regressed` against the baseline (2.30 → 2.52 ms). The machine drifted, not the code: the untouched tree, captured right after that suite (`perf-runs/20261001T032411Z-suite`), reads `regressed` against the baseline on the same metric (p50 1.95 → 2.05, p95 2.30 → 2.48), and the final suite reads no `regressed` against that capture (`perf-runs/20261001T032707Z-compare-suite`). The physics code does not run in that row. Session B should expect the same when it compares `gpu` with `pre-physics-ecs-pass`, and can judge it against `perf-runs/20261001T032411Z-suite` instead.
+- Close-out checks on the final tree: `just check`, `just smoke` (15/15 benchmark rows, every example and fixture row OK) and `just repo-check` pass, and so do the three release-scale tests named above. Outputs are in the session folder (`09-*.out`).
+- What leads each physics row now (inclusive shares of all samples, `profiles/*.inclusive.txt` in the session folder):
+  - `physics` (`physics_step` 92.4%): the one pair build per frame 37.4% (its grid query 35.1%), narrow phase 13.0%, `solve_contacts` 8.8%, `repair_pairs` 7.4%, `apply_restitution` 2.6%, grid build and insert 4.2%, `ImpulseMap::get` 2.3%, `sleep_frame_end` 1.7%.
+  - `physics-sparse` (`physics_step` 89.4%): the pair build 38.1% (query 34.2%), the safety-net sweep 30.7%, of which `SpatialGrid::query` is 23.7% and `cell_range` 9.8% (four long walls do not fill compact bounds, so the statics-only grid uses the hashed table), `repair_pairs` 4.4%, grid build and insert 7.0%, narrow phase 3.9%, solver 1.7%, `collect_tripped` 1.2%.
+- For session B's pass over `docs/perf/benchmarks.md`: session A changed only the two digest lines. These are stale after the physics changes: the `physics` calibrated-defaults table (13.37 / 13.99 ms and 8.06 / 9.83 ms) and the profile split under it (`build_pairs` 54.5%, `speculative_pass` 29.9%); `integrated`'s stage means (`physics_step` 6.66 ms), its `actors` sweep and `tile_collision=off` numbers, and its counters (6,677 pairs is now 7,034, 6,282 contacts 6,319, 951 sleeping crates 929); the "Tile collision proxies" finding (2.3 ms).
+- A NoMachine client was connected from 02:00:55Z, so no capture could run. The code for steps 2, 3 and P4 was written and unit-tested ahead in that time, one state per folder under `checkpoints/` (`02a-floor`, `02b-direct`, `02c-flags`, `03-p1-margin2`, `08-p4`); `checkpoints/use-state.sh <state>` puts a state into the working tree. Each is still captured and judged in plan order, on its own state.
 
 ## Measured data
 
@@ -165,7 +211,7 @@ Today the four per-substep builds admit 33,551, 26,556, 20,411 and 15,117 pairs 
 - The first suite of this session, `perf-runs/20261001T001042Z-suite/`, is contaminated: another agent session ran `cargo` at 00:15:16Z, and `particles` run 3 shows a `total` p95 of 41.9 ms against about 12.5. `particles` and `integrated` read 3–9% high throughout. Every guard passed and the digests matched. It is not the baseline.
 - From then on a per-second load log ran beside every capture. During the baseline no run saw more than 1.61 busy CPUs in any second (the CPU-bound rows averaged 1.12–1.30), and no encoder ran (`tables/load-baseline-suite.txt`).
 - One sweep overlapped a 5 s NoMachine session and was redone; the overlapped capture is named in the evidence README.
-- For the implementation session: start `scripts/loadlog.sh`, run captures through `scripts/guard.sh`, check them with `scripts/capture_load.py`, and keep other agent sessions idle while a capture runs.
+- For the implementation sessions: the hygiene scripts are in `perf-runs/20261001-physics-ecs-pass-evidence/scripts/`, not in the repository's `scripts/`. `perf-runs/` is gitignored and listed in `.ignore`, so the scripts exist only on this machine and `rg` and `fd` skip them; open them by path. Start `loadlog.sh <log>` before the first capture, run each capture as `guard.sh <log> <command…>`, check it with `capture_load.py <load.log> <capture-or-suite>…`, and keep other agent sessions idle while a capture runs. The commands are under "Ordered steps".
 
 ## Hotspots
 
@@ -310,22 +356,27 @@ Expected gains are for the owned metric of the judging row against the baseline.
 | 5 | C2 | Commands without a box each; reuse the buffer | `churn` `flush` | −5% to −10% |
 | 6 | P3 | Cheaper grid walk: inline floor, direct cell table, compact flags | both physics rows `physics_step` | −6% to −12% before P1 |
 | 7 | E1 | A short, inlinable `World::get` | `ecs` `follow`, `update` | `follow` −10% to −45% |
-| 8 | C4 | Prefetch in `flush` | `churn` `flush` | −10% to −20%, unproven |
-| 9 | E2 | Cheaper archetype setup and a prefetch of the next archetype | `ecs` `update` | −3% to −10%, unproven |
-| 10 | P4 | Sleep table by proxy index | both physics rows | −3% |
+| 8 | E2 | Cheaper archetype setup | `ecs` `update` | −2% to −4%, unproven |
+| 9 | P4 | Sleep table by proxy index | both physics rows | −3% |
+
+C4 (prefetch in `flush`) and the prefetch half of E2 were dropped: they need `unsafe` (see "Not proposed").
 
 ### P1. Repair the pair list instead of rebuilding it
 
 - **Change.** Keep the build at frame start and on `pairs_invalidated`. Replace "one trip rebuilds everything" with:
   1. Budget: `radius = |v|·t_left + |g|·h²·(n−1)(n+2)/2 + margin + 2·linear_slop`, where n is the number of substeps left. Start with a margin of `2·linear_slop` (0.5 px); it also absorbs the rounding case.
   2. Before each substep, collect the tripped proxies E in proxy order. If E is empty, reuse the list.
-  3. If E holds more than a quarter of the awake bodies, rebuild as today.
+  3. If E holds more than a quarter of the awake bodies, rebuild as today. The quarter is a starting value, not a measured one: with the exact gravity term the replay's largest count is 1,256 of 8,000 (`physics`, last substep, no margin), so it should not fire in the owned rows. Tune it only if a capture shows repairs costing more than the rebuild they replace.
   4. Otherwise repair:
      - drop every pair that involves a member of E, compacting `pairs` and `pair_impulses` together, and keep each dropped pair's nonzero carried impulse in a scratch map under its pair key;
      - give each member a fresh radius and inflated AABB from its current state and reset its travel;
      - add E to the list R of proxies repaired since the last build, and restage a second small grid from R;
-     - for each member in index order, query the main grid, skipping candidates in R because their staged cells are stale, and the repair grid; apply the existing initiator rule and overlap test; append each pair with its impulse from the scratch map, or zero.
-  5. A repair leaves the keyed impulse map and `seed_pair_impulses` alone. `pair_impulses` already holds zero for a pair whose contact was absent in the previous substep, so the carry keeps `D-076`'s rule.
+     - for each member e in index order, query the main grid, skipping candidates in R because their staged cells are stale, and then the repair grid. Apply the overlap test and the repair pairing rule in item 5, and append each admitted pair with its impulse from the scratch map, or zero.
+  5. The repair pairing rule is not the build's initiator rule. A build skips an awake dynamic candidate whose index is at or below the querying proxy's (`step.rs:848`), because that candidate runs its own query. In a repair only the members of E query, so the build's rule would lose every pair between a tripped proxy and an untripped awake dynamic body of lower index. For a member e and a candidate c other than e:
+     - c is static or sleeping: admit, stored as (e, c);
+     - c is an awake dynamic body outside E, whether or not it is in R: admit whatever its index, stored as (lower index, higher index), the orientation a build stores, so nothing downstream sees an order a build can't produce;
+     - c is in E: admit only when c > e, so a pair between two members is added once, stored as (e, c).
+  6. A repair leaves the keyed impulse map and `seed_pair_impulses` alone. `pair_impulses` already holds zero for a pair whose contact was absent in the previous substep, so the carry keeps `D-076`'s rule.
 - **Hotspot.** H1 and H3.
 - **Expected gain.**
   - `physics`: `physics_step` p50 13.26 → 6.0–7.3 ms. Arithmetic: remove 9.85 ms of builds; add one build at substep 0, about 3.0 ms (2.47 ms average, scaled for the larger inflation); add repairs, about 470 proxies per frame at an estimated 0.4 µs each; add about 0.45 ms of narrow phase for 36,756 pairs per substep against today's mean of 23,909; remove about 0.45 ms of map probes and syncs.
@@ -338,7 +389,7 @@ Expected gains are for the owned metric of the judging row against the baseline.
   - Pair order differs from a fresh build's, so Gauss–Seidel order and trajectories differ from today's. The digests of `physics`, `physics-sparse` and `integrated` move, and `physics.pairs` roughly doubles, which compare reports as workload drift.
   - The contact set per substep must stay equal to a fresh build's: `assert_pair_contacts` and `persistent_pairs_match_fresh_contacts_on_randomized_piles_bullets_and_wakes` (`src/tests/physics/step.rs:1122`, `:1184`) check that every substep, and the `reference_impulses` oracle checks every warm start bit for bit.
   - `fast_body_trips_pair_budget_and_rebuilds_before_narrow_phase` (`:1336`) asserts a second build and the exact old radius. It needs rewriting for the new formula and for repair.
-  - Add: a pile where a few bodies speed up mid-frame (a repair, with `pair_builds` unchanged); a body repaired twice in one frame; a pair between two bodies repaired in different substeps; the fall-back to a rebuild.
+  - Add: a pile where a few bodies speed up mid-frame (a repair, with `pair_builds` unchanged); a tripped body whose untripped awake neighbour has a lower index (the pair the build's initiator rule would drop); a body repaired twice in one frame; a pair between two bodies repaired in different substeps; the fall-back to a rebuild.
   - `pile_plus_bullet` and `projectile_stream` in `physics_bench.rs` must not regress, as `D-075` required.
 - **Decisions.** A new entry superseding `D-075`'s rule (a) ("any of these rebuilds from current state") and its radius formula, and amending `D-076` (a repair carries impulses by pair key through a scratch map, without a keyed-map sync).
 
@@ -352,14 +403,14 @@ Expected gains are for the owned metric of the judging row against the baseline.
 - **Hotspot.** H8–H12; the allocations inside H7.
 - **Expected gain.** `flush` p50 8.50 → 5.1–6.0 ms. 250,000 of the 293,960 allocations per frame disappear (85% of H8, about 19% of samples), and about half of H9–H12 (about 15%). The cache misses in H7 stay. Immediate-mode structural calls and startup gain too: `spawn_population` is 17.6% of the `ecs` profile run.
 - **Evidence.** The allocation count and its per-site breakdown, the self-time table, and hecs' note that `insert` costs in proportion to the entity's component count [S6].
-- **Risk.** Rows, swap-remove order and archetype creation order must not change, so iteration order and every digest stay the same. `src/tests/ecs/archetype.rs`, `storage.rs` and `world.rs` pin the behavior; `query2_opt2_matches_query2_order` and `query_mut_matches_query_order` pin the order. `docs/plans/debug-cleanup-docs-pass.md` removes `AnyColumn::len`, `AnyColumn::type_id` and `Archetype::id` from the same file; land one before the other.
+- **Risk.** Rows, swap-remove order and archetype creation order must not change, so iteration order and every digest stay the same. `src/tests/ecs/archetype.rs`, `storage.rs` and `world.rs` pin the behavior; `query2_opt2_matches_query2_order` and `query_mut_matches_query_order` pin the order. `docs/plans/debug-cleanup-docs-pass.md` removes `AnyColumn::len`, `AnyColumn::type_id` and `Archetype::id` from the same file; "Checkpoints, reverts and shared files" says how the two plans are ordered.
 - **Decisions.** A new entry amending `D-036`'s storage description (`AnyColumn` over a hashed column map); `DESIGN.md` §ECS follows.
 
 ### P2. A static-only grid for the safety-net sweep
 
 - **Change.** Stage the static proxies once per frame into a second `SpatialGrid`, with the same `2·linear_slop` inflation they get in the pair grid, and let `speculative_pass` query it.
 - **Hotspot.** H6.
-- **Expected gain.** `physics-sparse` p50 8.06 → 6.0–6.3 ms: the sweep is 2.60 ms per frame, 82 ns per query, and a query against four walls should cost 15–20 ns. `physics` has 33 sweep queries per frame and does not move. In `integrated` the same grid later lets pair builds restage 4,516 dynamic proxies instead of 13,044; that follow-up changes pair order and belongs with P1.
+- **Expected gain.** `physics-sparse` p50 8.06 → 6.0–6.3 ms: the sweep is 2.60 ms per frame, 82 ns per query, and a query against four walls should cost 15–20 ns. `physics` has 33 sweep queries per frame and does not move. In `integrated` the same grid could later let pair builds restage 4,516 dynamic proxies instead of 13,044. That follow-up changes pair order and is not part of this pass (see "Not proposed").
 - **Evidence.** The sweep-query count, the profile, and Box2D's separate tree per body type [S1].
 - **Risk.** None to results: the static candidates and their order are the same, so the first hit is the same. The `physics-sparse`, `physics` and `integrated` digests must not change. `sweep_net_catches_solver_injected_velocity_through_static_wall` and `sweep_net_covers_static_circles_via_bounding_square` cover the pass.
 - **Decisions.** A new entry amending `D-062` (one grid) and `D-075`'s note that the sweep keeps querying the pair grid.
@@ -403,23 +454,14 @@ Expected gains are for the owned metric of the judging row against the baseline.
 - **Risk.** None to results. The gain above the floor is a hypothesis; measure before keeping the `#[inline]` attributes.
 - **Decisions.** Covered by C1's entry.
 
-### C4. Prefetch in `flush` (prototype first)
+### E2. Cheaper archetype setup (prototype first)
 
-- **Change.** While command i applies, prefetch the entity metadata of command i + 16 and, once that is cached, the row of each column for command i + 8, with `core::arch::x86_64::_mm_prefetch`, a safe function [S8], behind `cfg(target_arch = "x86_64")`.
-- **Hotspot.** H7 and H13 after C1 and C3.
-- **Expected gain.** Up to half of the latency in H7 and H13: about 1.5 ms of today's `flush`, a larger share of what remains.
-- **Evidence.** The annotated profiles (88% of `swap_remove_erased` and 78% of `flush` wait on one load) and Drepper §6.3.2 [S7].
-- **Risk.** No semantic risk. Keep it only if `flush` p50 reads `improved` against the capture taken after step 6.
-- **Decisions.** Note the first use of a `core::arch` intrinsic in the entry for C2 and C3. It is not `unsafe` and not a dependency.
-
-### E2. Cheaper archetype setup and a prefetch of the next archetype (prototype first)
-
-- **Change.** Resolve a query's columns by index on C1's sorted `Vec` (no walk over a map, no hashing), filter archetypes with a 64-bit type mask before the exact check, and prefetch the first cache lines of the next matching archetype's columns while iterating the current one.
-- **Hotspot.** H17.
-- **Expected gain.** Of the 1.7 ms of per-archetype overhead, setup is about 0.4 ms per frame (4% of `update`) and most of it should go. The cold starts are about 1.3 ms; how much a prefetch recovers depends on whether it also starts the hardware prefetcher, which is unknown.
-- **Evidence.** The `fragmentation` sweep, the annotated `integrate`, and Drepper §6.3.1 [S7].
-- **Risk.** No semantic risk; iteration order must not change. Gate it with `just perf run ecs --sweep fragmentation=1,8,64 --repeat 3` before and after.
-- **Decisions.** Covered by C1's entry; the prefetch note as in C4.
+- **Change.** Resolve a query's columns by index on C1's sorted `Vec` (no walk over a map, no hashing) and filter archetypes with a 64-bit type mask before the exact check.
+- **Hotspot.** The setup part of H17.
+- **Expected gain.** Of the 1.7 ms of per-archetype overhead, setup is about 0.4 ms per frame (4% of `update`) and most of it should go. The cold starts, about 1.3 ms, stay: the prefetch that aimed at them needs `unsafe` (see "Not proposed").
+- **Evidence.** The `fragmentation` sweep and the annotated `integrate`.
+- **Risk.** No semantic risk; iteration order must not change. Gate it with `just perf run ecs --sweep fragmentation=1,8,64 --repeat 3` before and after. At the default (488 archetypes) the whole setup cost is about 0.4 ms against a p50 threshold of 0.32 ms (3% of 10.75), so the default row may read `unchanged`; the gain should show at `fragmentation=64` (3,189 archetypes). Under the keep-or-revert rule an `unchanged` default row means a revert.
+- **Decisions.** Covered by C1's entry.
 
 ### P4. Sleep table by proxy index
 
@@ -438,16 +480,47 @@ Expected gains are for the owned metric of the judging row against the baseline.
 - **A bundle-insert API.** C3 gives the same single move without a change to the benchmark.
 - **A packed byte command queue or `BlobVec`-style columns.** Both need `unsafe`; the crate has none outside tests.
 - **Cached tile proxies.** `gather_tilemap_proxies` is 1.9% of `integrated` and nothing in the owned rows. It stays an engine finding in `docs/perf/benchmarks.md`.
+- **Software prefetch in `flush` and in query iteration (was C4 and half of E2).** `core::arch::x86_64::_mm_prefetch` is declared safe, but it carries `#[target_feature(enable = "sse")]`, and rustc 1.98.1 rejects a call from a function without that attribute (E0133: "the sse target feature being enabled in the build configuration does not remove the requirement"). A wrapper with the attribute only moves the error to its caller. Both were compiled under `#![forbid(unsafe_code)]` on 2026-10-01. So a prefetch needs an `unsafe` block, which is a non-goal. The latency it aimed at is measured: 88% of `swap_remove_erased` and 78% of `flush` wait on one load (about 1.5 ms of today's `flush`), and cold archetype starts cost about 1.3 ms in `ecs`. Reopen it with a decision that allows one `unsafe` block.
+- **Pair builds that restage only dynamic proxies.** With P2's static grid, `integrated` could restage 4,516 proxies per build instead of 13,044. It changes pair order a second time, and trips were not replayed for `integrated`. Open it as its own task after P1, from a fresh profile of `integrated`.
+
+## Sessions
+
+The physics steps and the ECS steps touch different files and are judged by different rows, so the plan runs as two sessions. Each starts from this file and continues from "Progress".
+
+| Session | Steps | Close-out it owns |
+| --- | --- | --- |
+| A, physics | 0, 1, 2, 3, then P4 from step 8 | A profile of `physics` and `physics-sparse` with what now leads each; decisions 1 and 2 (and 5 if P4 is kept) with their index rows; the three physics-bearing digests in `docs/perf/benchmarks.md` |
+| B, ECS | 0 on `ecs` and `churn` only, 4, 5, 6, 7, then E2 from step 8, then step 9 | Decisions 3 and 4; the rest of step 9; `status: done` |
+
+Session A sets `status: in progress` when it starts and leaves it there. It is finished when:
+
+- its rows in "Progress" are complete;
+- a full `just perf suite --repeat 5 --compare pre-physics-ecs-pass` reads the `physics`, `physics-sparse` and `integrated` lines of "Final checks", with no owned metric `regressed` in the other five rows;
+- the `ecs`, `churn`, `gpu`, `gpu-throughput` and `particles` digests equal the baseline's;
+- `just check`, `just smoke` and `just repo-check` pass.
 
 ## Ordered steps
 
-Run every capture through `guard.sh` with `loadlog.sh` running, with no other session building. Captures use `--repeat 5`. "Digest check" means each run's digest equals the stated one:
+Run every capture through `guard.sh` with `loadlog.sh` running, with no other session building. Both scripts are machine-local (see "Capture hygiene"). Each session writes its logs to a new folder and records it in "Progress":
+
+```bash
+EV=perf-runs/20261001-physics-ecs-pass-evidence/scripts
+LOG=perf-runs/<UTC date>-physics-ecs-pass-session-<a|b>
+mkdir -p "$LOG"
+"$EV/loadlog.sh" "$LOG/load.log"      # once per session, in the background; stop it at the end
+"$EV/guard.sh" "$LOG/guard.log" just perf suite --repeat 5 --only <rows> --compare pre-physics-ecs-pass
+python3 "$EV/capture_load.py" "$LOG/load.log" perf-runs/<UTC>-suite
+```
+
+`guard.sh` exits 97 without running when `nxcodec.bin` is present. Redo a capture when `guard.log` shows a sighting inside it or when `capture_load.py` shows a foreign load spike in a run's window. For reference, the baseline's runs peaked at 1.61 busy CPUs and the CPU-bound rows averaged 1.12–1.30.
+
+Captures use `--repeat 5`. "Digest check" means each run's digest equals the stated one:
 
 ```bash
 jq -r '[.row, (.runs | map(.digest) | unique | join(","))] | join(" ")' perf-runs/<UTC>-suite/*/capture.json
 ```
 
-Steps 1 and 2 come before P1 although P1 is worth more: they leave results unchanged, so the digests in `docs/perf/benchmarks.md` verify them, and P1 builds on the static grid. The physics steps (1–3) and the ECS steps (4–7) are independent.
+Steps 1 and 2 come before P1 although P1 is worth more: they leave results unchanged, so the digests in `docs/perf/benchmarks.md` verify them, while P1 changes the three physics-bearing digests. The physics steps (1–3) and the ECS steps (4–7) are independent.
 
 0. **Preflight.**
    - `just perf baseline list` shows `pre-physics-ecs-pass` as valid.
@@ -455,13 +528,13 @@ Steps 1 and 2 come before P1 although P1 is worth more: they leave results uncha
    - If the tree no longer builds the same binary (toolchain, flags, engine sources), capture a new baseline first.
 1. **P2, static sweep grid.** `just check`; capture `physics`, `physics-sparse`, `integrated`; digest check against the baseline's.
 2. **P3, grid walk costs.** The same captures and digest check. Do the floor first and measure it alone.
-3. **P1, pair repair.** Write the new decision text first. Sweep the margin over 0, 0.5 and 1 px with a temporary constant and keep the best `physics_step` p50 across both rows. Capture `physics`, `physics-sparse`, `integrated`; record the three new digests. Run `cargo bench -p tungsten-core --bench physics_bench` before and after: `pile_plus_bullet` and `projectile_stream` must not slow by more than 10% (`D-075`'s gate).
+3. **P1, pair repair.** Write the new decision text first. Sweep the margin over 0, 0.5 and 1 px with a temporary constant and keep the margin with the lowest sum of the two rows' `physics_step` p50; when two sums are within 1%, keep the smaller margin, which holds fewer pairs. Capture `physics`, `physics-sparse`, `integrated`; record the sweep, the chosen margin and the three new digests in "Progress". Run `cargo bench -p tungsten-core --bench physics_bench` before and after: `pile_plus_bullet` and `projectile_stream` must not slow by more than 10% (`D-075`'s gate).
 4. **C1, unboxed moves and sorted columns.** Capture `churn`, `ecs`, `particles`, `integrated`; digest check (after step 3 the `integrated` digest to match is step 3's). `spawn_insert_3_components_10k`, `spawn_despawn_1k` and `command_buffer_flush_1k_spawns` in `ecs_bench` are quick checks for steps 4–6; they build with `target-cpu=native`, so they never compare with captures.
 5. **C3, batched inserts.** Capture `churn`; digest check on `churn`, `particles`, `integrated`.
 6. **C2, command buffer.** Capture `churn`; digest check as in step 5.
 7. **E1, `World::get`.** Capture `ecs`; digest check.
-8. **Gated prototypes: C4, then E2, then P4.** Keep each only on an `improved` step verdict.
-9. **Close out.**
+8. **Gated prototypes.** P4 in session A after step 3, judged on `physics` and `physics-sparse` against step 3's capture, with a digest check on the three physics-bearing rows. E2 in session B after step 7. Keep each only on an `improved` step verdict.
+9. **Close out (session B; session A does its part of this list, see "Sessions").**
    - Profile the four rows again (`just perf run <row> --profile`, plus `--call-graph fp` for `ecs`) and list what now leads each one.
    - `just perf suite --repeat 5 --compare pre-physics-ecs-pass`.
    - Write the decisions and their `docs/DECISION_INDEX.md` rows.
@@ -476,11 +549,29 @@ just perf suite --repeat 5 --only <rows> --compare pre-physics-ecs-pass
 just perf compare perf-runs/<previous suite> perf-runs/<this suite>
 ```
 
-A step whose verdict is `unchanged` or `noisy` after a rerun is reverted, unless it is a prerequisite of a later step; say so in the plan. A `regressed` owned metric in any row needs a fix or a written justification (`docs/perf/profiling-workflow.md`, "Regression policy").
+Keep or revert: a step whose verdict is `unchanged` or `noisy` after one rerun is reverted, unless it is a prerequisite of a later step (C1 is, for E1 and E2). Record the verdict and the outcome in "Progress". A `regressed` owned metric in any row needs a fix or a written justification (`docs/perf/profiling-workflow.md`, "Regression policy").
+
+### Checkpoints, reverts and shared files
+
+- Sessions run no mutating Git command. Before a step, copy every file it will touch to the session's scratch folder. After the step, write it as one patch with a commit message file (`NN-<id>.patch`, `NN-<id>.msg`) next to those copies. A revert restores the copies and touches no other file.
+- On 2026-10-01 the working tree carried 15 uncommitted files from other work (release tooling), among them `DECISIONS.md`, `docs/DECISION_INDEX.md` and `CHANGELOG.md`; `D-079` existed only there. Before editing one of the three, read `git status --short` and `git diff --unified=1` for it. If foreign changes are still there: append after them, take the next free decision ID from the working tree and not from `HEAD`, never renumber or rewrite a foreign entry, and say in the hand-off that this plan's patches for those files apply on top of the foreign changes. If a foreign change edits a decision this plan amends, stop and ask.
+- `docs/plans/debug-cleanup-docs-pass.md` (draft) overlaps in two places. In `physics/step.rs` it only repoints a comment path, which survives either order. In `ecs/archetype.rs` and `storage.rs` it removes `AnyColumn::len`, `AnyColumn::type_id` and `Archetype::id`: check that plan's status before step 4. If it has landed, C1 starts from the reduced trait. If not, C1 lands first and leaves those three items alone unless its own change makes one of them dead; in that case note it in "Progress" for that plan to pick up.
+
+### When to stop
+
+The per-step table under "Done when" lists expectations. The gate for a step is the keep-or-revert rule, and the gate for the plan is "Final checks". Stop, record the state in "Progress" and report the measured verdicts, what the profile shows and one proposed next move when:
+
+- a revert leaves a final check out of reach (E1 for `system.follow`, P1 for `integrated`);
+- a digest that must not change changes, and the cause is not found in one attempt;
+- a determinism, tunnelling or containment test fails and one fix attempt does not clear it;
+- the preflight reads `regressed` or `improved`;
+- a capture stays `noisy` or invalid after one rerun on a quiet machine.
+
+Do not widen a change, take a candidate from "Not proposed", change a threshold or a benchmark knob, or rerun a third time to get a verdict.
 
 ## Done when
 
-Expected verdicts of the step against the previous step's capture:
+Expected verdicts of each step against the previous step's capture. These are expectations, not gates (see "When to stop"):
 
 | Step | Row | Metric | Verdict |
 | --- | --- | --- | --- |
@@ -516,7 +607,7 @@ No `DECISIONS.md` entry is written by this plan. The implementation session adds
 1. Pair repair: supersedes `D-075`'s invalidation rule (a) and its radius formula; amends `D-076` (impulse carry across a repair). Covers P1.
 2. Broadphase layout: amends `D-062` with the static grid and the direct cell table, and `D-075`'s note on the sweep's grid. Covers P2 and P3.
 3. Column storage: amends `D-036` (sorted column `Vec`, unboxed moves, upcast downcasts). Covers C1, E1 and E2's setup part.
-4. Command buffer: amends `D-039` (typed queues, function-pointer removals, a reused buffer, one move per run of inserts; the note on `_mm_prefetch` if C4 or E2 is kept). Covers C2, C3 and C4.
+4. Command buffer: amends `D-039` (typed queues, function-pointer removals, a reused buffer, one move per run of inserts). Covers C2 and C3.
 5. Sleep table: amends `D-065`, only if P4 is kept.
 
 ## Sources
@@ -528,5 +619,5 @@ No `DECISIONS.md` entry is written by this plan. The implementation session adds
 - [S5] Flecs v3.1.0 release notes: "Command batching, which reduces archetype moves for entities when doing deferred operations". https://github.com/SanderMertens/flecs/releases/tag/v3.1.0
 - [S6] hecs, `World::insert` ("Computational cost is proportional to the number of components `entity` has") and `World::exchange` ("the intermediate archetype … is skipped"). https://docs.rs/hecs/latest/hecs/struct.World.html
 - [S7] Drepper (2007), "What every programmer should know about memory", part 5, §6.3.1 (hardware prefetching starts after "two or more cache misses in a certain pattern" and cannot cross page boundaries) and §6.3.2 (software prefetching). https://lwn.net/Articles/255364/
-- [S8] Rust: `core::arch::x86_64::_mm_prefetch` is a safe function ("safe to use even though it takes a raw pointer argument"), https://doc.rust-lang.org/core/arch/x86_64/fn._mm_prefetch.html; trait upcasting to `dyn Any`, stable since 1.86, https://blog.rust-lang.org/2025/04/03/Rust-1.86.0/
+- [S8] Rust: trait upcasting to `dyn Any`, stable since 1.86 and compiled under `#![forbid(unsafe_code)]` on 1.98.1, https://blog.rust-lang.org/2025/04/03/Rust-1.86.0/. `core::arch::x86_64::_mm_prefetch` is declared safe ("safe to use even though it takes a raw pointer argument") but is not callable without `unsafe` from ordinary code, because of its `#[target_feature]` attribute (see "Not proposed"), https://doc.rust-lang.org/core/arch/x86_64/fn._mm_prefetch.html
 - [S9] Ericson (2005), *Real-Time Collision Detection*, chapter 7.1, "Uniform grids" (cell size, dense arrays and hashed storage).
