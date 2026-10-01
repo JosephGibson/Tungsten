@@ -6,6 +6,30 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-10-01
+
+Summary: release procedure rework (`D-079`) and physics and ECS performance pass 2 (`D-080`–`D-084`, plan `docs/plans/archive/physics-ecs-perf-pass.md`). For releases, the agent runs every check and hands over five plain commands; merging the release pull request in GitHub publishes. The performance pass, measured on benchmark suite v2, cuts `physics_step` by 58% in both physics rows, `churn` `flush` by 68%, `integrated` `total` by 13% and `ecs` `follow` by 11%. Physics trajectories change (pair order), so the three physics-bearing benchmark digests did; no API is removed. No example or asset changes.
+
+### Added
+
+- **`World::flush_reusing(&mut CommandBuffer)` (`D-084`):** flushes a buffer and leaves it empty with its storage. `App` keeps one buffer and drains it every frame; `World::flush(CommandBuffer)` is unchanged for one-off buffers.
+- `ecs_bench`: `command_buffer_reused_flush_1k_spawns`.
+
+### Changed
+
+- **Physics broadphase layout (`D-080`):** the safety-net sweep queries a statics-only grid once a frame's sweep queries reach the static count; compact worlds get a direct cell table, with the hashed table as the fall-back; cell coordinates use an inline floor; the pair query reads one flag byte per proxy. Results and candidate order are unchanged.
+- **Physics pair repair (`D-081`):** a proxy that exhausts its travel budget has only its own pairs rebuilt, under a budget with the exact gravity term and a `2·linear_slop` margin. A full rebuild remains for frame start, a contact wake and more than a quarter of the awake bodies tripping. Pair order, and so solver order and trajectories, differ from 0.32; the step stays deterministic.
+- **Physics sleep state (`D-082`):** per-body sleep entries sit in arrays parallel to the proxies and are rebuilt by entity key only when the body sequence changes.
+- **ECS column storage (`D-083`):** an archetype's columns are a `Vec` in sorted type-key order, created with the archetype, and rows move between columns without boxing. `World::get` and `get_mut` find their column through a per-archetype slot table. Iteration order is unchanged.
+- **Command buffer (`D-084`):** recording an insert or a removal no longer boxes a command (typed value queues, function-pointer removals), and a flush applies consecutive inserts on one entity as one archetype move. Flush results equal one-by-one application.
+- **Measured** (`just perf compare`, the baseline `pre-physics-ecs-pass` against the final suite, five runs a side, p50 unless stated): `physics` `physics_step` 13.25 → 5.56 ms; `physics-sparse` `physics_step` 8.05 → 3.42 ms (p95 9.82 → 3.48); `churn` `flush` 8.48 → 2.69 ms, with 208 `malloc` calls per frame where there were 293,960; `ecs` `follow` 1.95 → 1.74 ms and `update` 10.74 → 10.46 ms (`noisy`, just under the 3% threshold); `integrated` `total` 12.12 → 10.55 ms. One owned metric reads `regressed`: `particles` `animate_sprites` p95, 0.35 → 0.38 ms, accepted in `D-084`.
+- **`docs/perf/benchmarks.md`:** the three physics-bearing digests; dated numbers for the six rows the pass moved, with the `churn` mode table and the `integrated` `actors` sweep and `tile_collision` numbers measured again; the two accepted readings; new engine findings (contact wakes still rebuild the pair list, the cost of many archetypes, readings that follow the allocator's state through string sprite IDs); and a "Below the calibration band" note for `physics`, `physics-sparse` and `churn`, whose `total` p95 now sits under 8 ms with unchanged defaults. `DESIGN.md` §ECS follows `D-083` and `D-084`; `docs/perf/profiling-workflow.md`'s hotspot list no longer names boxed commands.
+- **Release procedure (`docs/releases.md`, `D-079`):** one hand-off replaces the seven pasted blocks. The agent cuts, runs every check and ends with `git add`, `git commit`, `git tag`, `git push origin 0.NN vX.Y.Z` and `gh pr create`; the human pastes them and merges the pull request in GitHub. The local squash merge, refspec pushes and post-merge tag are gone; the tag names the tested milestone commit.
+- **`.github/workflows/release.yml`:** runs when a pull request merges into `main`, on pushed prerelease tags and on `gh workflow run release.yml --ref TAG`. A merge publishes when `v<workspace version>` names its head commit and the merge commit has that tree; pushing a final tag publishes nothing by itself.
+- **`just release-preflight`:** prints the remaining commands in every state. `--message` accepts the uncommitted cut as the release commit; it checks that `main` is contained in the branch, reports the pull request and its merged tree, matches pull-request and manual runs, and proposes `gh workflow run` when nothing started one. `--branch` defaults to the checked-out branch; `--base` and `--no-pr` are new.
+- **`scripts/release.py version`** prints the workspace version of a consistent tree.
+- `tungsten-release` and `tungsten-finalize` skills, `AGENTS.md`, `docs/agent-setup.md` and `docs/LLM_INDEX.md` follow the new procedure. `DECISIONS.md` adds `D-079`, superseding the tag-push-only trigger of `D-071` and the post-merge tag and local squash of `D-074`.
+
 ## [0.32.0] - 2026-09-30
 
 Summary: benchmark suite v2 (`D-078`), plan `docs/plans/archive/benchmark-suite-redesign.md`. Six scalable, deterministic benchmarks in `example-02-bench` and a standard-library Python runner replace the four `STRESS_SCENE` scenes of `example-02-sprite-stress` and `scripts/perf-capture.sh`. No engine or library-crate behavior changes: two comments in `crates/tungsten/src/app.rs` name the new runner. Perf numbers from the old scenes aren't comparable with the new suite.

@@ -246,8 +246,14 @@ fn archetypes_with_returns_supersets() {
     store.insert(e, Position { x: 0.0, y: 0.0 });
     store.insert(e, Velocity { dx: 1.0, dy: 0.0 });
     store.insert(e, Name("player".into()));
-    let count = store.archetypes_with::<Position>().count();
-    assert!(count >= 1);
+    // {P}, {P, V} and {P, V, N} hold `Position`, each at its key position.
+    let with_position: Vec<_> = store.archetypes_with::<Position>().collect();
+    assert_eq!(with_position.len(), 3);
+    for (arch, index) in with_position {
+        assert_eq!(arch.component_types[index], TypeId::of::<Position>());
+        assert!(arch.columns[index].typed::<Position>().is_some());
+    }
+    assert_eq!(store.archetypes_with_mut::<Name>().count(), 1);
 
     let two_count = store
         .archetypes_with_two(TypeId::of::<Position>(), TypeId::of::<Velocity>())
@@ -265,4 +271,189 @@ fn archetypes_with_excludes_missing_type() {
         .archetypes_with_two(TypeId::of::<Position>(), TypeId::of::<Velocity>())
         .count();
     assert_eq!(count, 0);
+}
+
+#[test]
+fn archetype_columns_are_created_with_the_archetype_in_key_order() {
+    let mut store = Archetypes::new();
+    let e = store.spawn();
+    store.insert(e, Position { x: 1.0, y: 2.0 });
+    store.insert(e, Velocity { dx: 3.0, dy: 4.0 });
+    store.insert(e, Name("named".into()));
+    store.remove::<Velocity>(e);
+
+    // Empty, P, PV, PVN and PN: every archetype on the path keeps its columns.
+    assert_eq!(store.archetypes.len(), 5);
+    for arch in &store.archetypes {
+        assert!(arch.component_types.is_sorted());
+        assert_eq!(arch.columns.len(), arch.component_types.len());
+        // Each column stores the type its key names, one value per row.
+        for (&type_id, column) in arch.component_types.iter().zip(&arch.columns) {
+            let rows = if type_id == TypeId::of::<Position>() {
+                column.typed::<Position>().map(|column| column.0.len())
+            } else if type_id == TypeId::of::<Velocity>() {
+                column.typed::<Velocity>().map(|column| column.0.len())
+            } else {
+                column.typed::<Name>().map(|column| column.0.len())
+            };
+            assert_eq!(rows, Some(arch.entities.len()));
+        }
+    }
+    assert_eq!(
+        store.get::<Position>(e).unwrap(),
+        &Position { x: 1.0, y: 2.0 }
+    );
+    assert_eq!(store.get::<Name>(e).unwrap(), &Name("named".into()));
+}
+
+#[test]
+fn archetype_ids_follow_first_transition_order() {
+    let mut store = Archetypes::new();
+    let archetype_of =
+        |store: &Archetypes, entity| store.entities.get(entity).unwrap().archetype_id;
+
+    let a = store.spawn();
+    store.insert(a, Position { x: 0.0, y: 0.0 });
+    assert_eq!(archetype_of(&store, a), 1);
+    store.insert(a, Velocity { dx: 0.0, dy: 0.0 });
+    assert_eq!(archetype_of(&store, a), 2);
+
+    // The same component set reached along another edge is the same archetype.
+    let b = store.spawn();
+    store.insert(b, Velocity { dx: 1.0, dy: 0.0 });
+    assert_eq!(archetype_of(&store, b), 3);
+    store.insert(b, Position { x: 1.0, y: 0.0 });
+    assert_eq!(archetype_of(&store, b), 2);
+
+    store.remove::<Position>(a);
+    assert_eq!(archetype_of(&store, a), 3);
+    assert_eq!(store.archetypes.len(), 4);
+}
+
+#[test]
+fn remove_returns_the_value_and_keeps_the_other_components() {
+    let mut store = Archetypes::new();
+    let e0 = store.spawn();
+    let e1 = store.spawn();
+    for (entity, tag) in [(e0, "zero"), (e1, "one")] {
+        store.insert(entity, Position { x: 1.0, y: 2.0 });
+        store.insert(entity, Name(tag.into()));
+        store.insert(entity, Velocity { dx: 3.0, dy: 4.0 });
+    }
+
+    assert_eq!(store.remove::<Name>(e0), Some(Name("zero".into())));
+
+    assert!(!store.has::<Name>(e0));
+    assert_eq!(
+        store.get::<Position>(e0).unwrap(),
+        &Position { x: 1.0, y: 2.0 }
+    );
+    assert_eq!(
+        store.get::<Velocity>(e0).unwrap(),
+        &Velocity { dx: 3.0, dy: 4.0 }
+    );
+    // The displaced row keeps its own values.
+    assert_eq!(store.get::<Name>(e1).unwrap(), &Name("one".into()));
+}
+
+#[test]
+fn get_finds_the_column_and_row_in_every_archetype() {
+    let mut store = Archetypes::new();
+    let mut entities = Vec::new();
+    for i in 0..9u32 {
+        let e = store.spawn();
+        // Three archetypes hold `Position`, at a different column index each.
+        if i % 3 >= 1 {
+            store.insert(
+                e,
+                Velocity {
+                    dx: i as f32,
+                    dy: 0.0,
+                },
+            );
+        }
+        store.insert(
+            e,
+            Position {
+                x: i as f32,
+                y: 0.0,
+            },
+        );
+        if i % 3 == 2 {
+            store.insert(e, Name(format!("{i}")));
+        }
+        entities.push(e);
+    }
+    // Displace a row in each archetype.
+    for &i in &[0usize, 1, 2] {
+        store.despawn(entities[i]);
+    }
+
+    for (i, &e) in entities.iter().enumerate() {
+        if i < 3 {
+            assert!(store.get::<Position>(e).is_none());
+            assert!(store.get_mut::<Position>(e).is_none());
+            continue;
+        }
+        assert_eq!(store.get::<Position>(e).unwrap().x, i as f32);
+        assert_eq!(store.get_mut::<Position>(e).unwrap().x, i as f32);
+        assert_eq!(
+            store.get::<Velocity>(e).map(|velocity| velocity.dx),
+            (i % 3 >= 1).then_some(i as f32)
+        );
+        assert_eq!(
+            store.get::<Name>(e).map(|name| name.0.clone()),
+            (i % 3 == 2).then(|| format!("{i}"))
+        );
+    }
+}
+
+#[test]
+fn get_agrees_with_has_for_every_entity_and_type() {
+    #[derive(Debug, PartialEq)]
+    struct Part<const K: usize>(u32);
+
+    macro_rules! parts {
+        ($callback:ident) => {
+            $callback!(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23);
+        };
+    }
+
+    // Entities over random subsets of 24 types: wide keys in many archetypes.
+    let mut store = Archetypes::new();
+    let mut state = 0x9E37_79B9_7F4A_7C15u64;
+    let mut expected = Vec::new();
+    for entity_index in 0..300u32 {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        let mask = state as u32 & (state >> 32) as u32 | 1 << (entity_index % 24);
+        let e = store.spawn();
+        macro_rules! insert {
+            ($($k:literal)*) => {
+                $(
+                    if mask & (1 << $k) != 0 {
+                        store.insert(e, Part::<$k>(entity_index * 100 + $k));
+                    }
+                )*
+            };
+        }
+        parts!(insert);
+        expected.push((e, entity_index, mask));
+    }
+    assert!(store.archetypes.len() > 100);
+
+    for &(e, entity_index, mask) in &expected {
+        macro_rules! check {
+            ($($k:literal)*) => {
+                $(
+                    let value = (mask & (1 << $k) != 0).then_some(Part::<$k>(entity_index * 100 + $k));
+                    assert_eq!(store.has::<Part<$k>>(e), value.is_some());
+                    assert_eq!(store.get::<Part<$k>>(e), value.as_ref());
+                    assert_eq!(store.get_mut::<Part<$k>>(e).map(|part| part.0), value.map(|part| part.0));
+                )*
+            };
+        }
+        parts!(check);
+    }
 }

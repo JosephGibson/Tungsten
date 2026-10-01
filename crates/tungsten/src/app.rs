@@ -722,12 +722,13 @@ impl App {
         // Frame order: systems -> command flush -> event flush -> hot reload -> extract -> render.
         // Frame-N command mutations: invisible to systems, visible to extract/render.
         let flush_start = Instant::now();
-        let flush_buf = self
+        // The buffer goes back in drained, so its storage serves the next frame.
+        let mut flush_buf = self
             .world
             .remove_resource::<CommandBuffer>()
             .expect("CommandBuffer resource missing -- was it removed by a system?");
-        self.world.flush(flush_buf);
-        self.world.insert_resource(CommandBuffer::new());
+        self.world.flush_reusing(&mut flush_buf);
+        self.world.insert_resource(flush_buf);
         flush_start.elapsed().as_secs_f64() as f32 * 1000.0
     }
 

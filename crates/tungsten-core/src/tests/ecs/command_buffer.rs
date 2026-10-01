@@ -70,6 +70,50 @@ fn insert_pending_queued() {
 }
 
 #[test]
+fn len_counts_one_per_recorded_command() {
+    let mut buffer = CommandBuffer::new();
+    let entity = Entity {
+        index: 0,
+        generation: 0,
+    };
+
+    let pending = buffer.spawn();
+    buffer.insert_pending(pending, Position { x: 1.0, y: 2.0 });
+    buffer.insert_pending(pending, 7u32);
+    buffer.insert(entity, Position { x: 3.0, y: 4.0 });
+    buffer.remove_component::<Position>(entity);
+    buffer.despawn(entity);
+
+    assert_eq!(buffer.len(), 6);
+    assert!(!buffer.is_empty());
+}
+
+#[test]
+fn inserts_share_one_queue_per_component_type() {
+    let mut buffer = CommandBuffer::new();
+    let entity = Entity {
+        index: 0,
+        generation: 0,
+    };
+
+    buffer.insert(entity, Position { x: 1.0, y: 2.0 });
+    buffer.insert(entity, 7u32);
+    buffer.insert(entity, Position { x: 3.0, y: 4.0 });
+
+    let queues: Vec<u32> = buffer
+        .commands
+        .iter()
+        .map(|command| match command {
+            Command::Insert { queue, .. } => *queue,
+            _ => unreachable!(),
+        })
+        .collect();
+    assert_eq!(queues, vec![0, 1, 0]);
+    assert_eq!(buffer.values.component_type(0), TypeId::of::<Position>());
+    assert_eq!(buffer.values.component_type(1), TypeId::of::<u32>());
+}
+
+#[test]
 fn remove_component_queued() {
     let mut buffer = CommandBuffer::new();
     let entity = Entity {

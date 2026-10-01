@@ -316,6 +316,7 @@ class Release(unittest.TestCase):
         code, output = run("check")
         self.assertEqual(code, 0)
         self.assertIn("workspace 0.26.0", output)
+        self.assertEqual(run("version"), (0, "0.26.0\n"))
         self.assertIn("rehearsal", run("check", "v0.0.0-test")[1])
         self.assertEqual(run("check", "v0.25.0")[0], 1)
         self.assertEqual(run("cut", "0.27.0", "--date", "2026-10-01")[0], 0)

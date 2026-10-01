@@ -76,7 +76,7 @@ repo-check:
 release-check *args:
     python3 -B scripts/release.py check "$@"
 
-# Read-only Git/GitHub inspection; VERSION, --repo and optional --ref/--branch/--remote.
+# Read-only Git/GitHub inspection that prints the remaining release commands; VERSION, --repo, optional --message/--branch/--ref/--no-pr.
 release-preflight version *args:
     python3 -B scripts/release-preflight.py "$@"
 

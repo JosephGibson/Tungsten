@@ -1,6 +1,6 @@
 use std::any::TypeId;
 
-use super::archetype::{AnyColumn, Archetype, TypeIdMap, TypedVec};
+use super::archetype::{AnyColumn, Archetype, TypedVec};
 use super::command_buffer::{Command, CommandBuffer, CommandTarget};
 use super::entity::Entity;
 use super::resource::ResourceMap;
@@ -56,10 +56,12 @@ impl World {
     }
 
     #[must_use]
+    #[inline]
     pub fn get<T: 'static>(&self, entity: Entity) -> Option<&T> {
         self.archetypes.get::<T>(entity)
     }
 
+    #[inline]
     pub fn get_mut<T: 'static>(&mut self, entity: Entity) -> Option<&mut T> {
         self.archetypes.get_mut::<T>(entity)
     }
@@ -71,14 +73,14 @@ impl World {
 
     /// Iterate `(Entity, &T)` in archetype/row order.
     pub fn query<T: 'static>(&self) -> impl Iterator<Item = (Entity, &T)> {
-        self.archetypes.archetypes_with::<T>().flat_map(|arch| {
-            let t_id = TypeId::of::<T>();
-            let col = arch.columns[&t_id]
-                .as_any()
-                .downcast_ref::<TypedVec<T>>()
-                .unwrap();
-            arch.entities.iter().zip(col.0.iter()).map(|(&e, v)| (e, v))
-        })
+        self.archetypes
+            .archetypes_with::<T>()
+            .flat_map(|(arch, index)| {
+                let col = arch.columns[index]
+                    .typed::<T>()
+                    .expect("query: column type mismatch");
+                arch.entities.iter().zip(col.0.iter()).map(|(&e, v)| (e, v))
+            })
     }
 
     /// Collect entities with `T`; use before mixed mutable access.
@@ -86,7 +88,7 @@ impl World {
     pub fn query_entities<T: 'static>(&self) -> Vec<Entity> {
         self.archetypes
             .archetypes_with::<T>()
-            .flat_map(|arch| arch.entities.iter().copied())
+            .flat_map(|(arch, _)| arch.entities.iter().copied())
             .collect()
     }
 
@@ -96,15 +98,9 @@ impl World {
         let b_id = TypeId::of::<B>();
         self.archetypes
             .archetypes_with_two(a_id, b_id)
-            .flat_map(move |arch| {
-                let col_a = arch.columns[&a_id]
-                    .as_any()
-                    .downcast_ref::<TypedVec<A>>()
-                    .unwrap();
-                let col_b = arch.columns[&b_id]
-                    .as_any()
-                    .downcast_ref::<TypedVec<B>>()
-                    .unwrap();
+            .flat_map(|arch| {
+                let col_a = arch.typed_column::<A>().unwrap();
+                let col_b = arch.typed_column::<B>().unwrap();
                 arch.entities
                     .iter()
                     .zip(col_a.0.iter())
@@ -133,19 +129,10 @@ impl World {
         let c_id = TypeId::of::<C>();
         self.archetypes
             .archetypes_with_three(a_id, b_id, c_id)
-            .flat_map(move |arch| {
-                let col_a = arch.columns[&a_id]
-                    .as_any()
-                    .downcast_ref::<TypedVec<A>>()
-                    .unwrap();
-                let col_b = arch.columns[&b_id]
-                    .as_any()
-                    .downcast_ref::<TypedVec<B>>()
-                    .unwrap();
-                let col_c = arch.columns[&c_id]
-                    .as_any()
-                    .downcast_ref::<TypedVec<C>>()
-                    .unwrap();
+            .flat_map(|arch| {
+                let col_a = arch.typed_column::<A>().unwrap();
+                let col_b = arch.typed_column::<B>().unwrap();
+                let col_c = arch.typed_column::<C>().unwrap();
                 arch.entities
                     .iter()
                     .zip(col_a.0.iter())
@@ -165,27 +152,13 @@ impl World {
     ) -> impl Iterator<Item = (Entity, &A, &B, Option<&C>, Option<&D>)> {
         let a_id = TypeId::of::<A>();
         let b_id = TypeId::of::<B>();
-        let c_id = TypeId::of::<C>();
-        let d_id = TypeId::of::<D>();
         self.archetypes
             .archetypes_with_two(a_id, b_id)
-            .flat_map(move |arch| {
-                let col_a = arch.columns[&a_id]
-                    .as_any()
-                    .downcast_ref::<TypedVec<A>>()
-                    .unwrap();
-                let col_b = arch.columns[&b_id]
-                    .as_any()
-                    .downcast_ref::<TypedVec<B>>()
-                    .unwrap();
-                let col_c = arch
-                    .columns
-                    .get(&c_id)
-                    .map(|col| col.as_any().downcast_ref::<TypedVec<C>>().unwrap());
-                let col_d = arch
-                    .columns
-                    .get(&d_id)
-                    .map(|col| col.as_any().downcast_ref::<TypedVec<D>>().unwrap());
+            .flat_map(|arch| {
+                let col_a = arch.typed_column::<A>().unwrap();
+                let col_b = arch.typed_column::<B>().unwrap();
+                let col_c = arch.typed_column::<C>();
+                let col_d = arch.typed_column::<D>();
                 arch.entities
                     .iter()
                     .zip(col_a.0.iter())
@@ -208,31 +181,14 @@ impl World {
         let a_id = TypeId::of::<A>();
         let b_id = TypeId::of::<B>();
         let c_id = TypeId::of::<C>();
-        let d_id = TypeId::of::<D>();
-        let e_id = TypeId::of::<E>();
         self.archetypes
             .archetypes_with_three(a_id, b_id, c_id)
-            .flat_map(move |arch| {
-                let col_a = arch.columns[&a_id]
-                    .as_any()
-                    .downcast_ref::<TypedVec<A>>()
-                    .unwrap();
-                let col_b = arch.columns[&b_id]
-                    .as_any()
-                    .downcast_ref::<TypedVec<B>>()
-                    .unwrap();
-                let col_c = arch.columns[&c_id]
-                    .as_any()
-                    .downcast_ref::<TypedVec<C>>()
-                    .unwrap();
-                let col_d = arch
-                    .columns
-                    .get(&d_id)
-                    .map(|col| col.as_any().downcast_ref::<TypedVec<D>>().unwrap());
-                let col_e = arch
-                    .columns
-                    .get(&e_id)
-                    .map(|col| col.as_any().downcast_ref::<TypedVec<E>>().unwrap());
+            .flat_map(|arch| {
+                let col_a = arch.typed_column::<A>().unwrap();
+                let col_b = arch.typed_column::<B>().unwrap();
+                let col_c = arch.typed_column::<C>().unwrap();
+                let col_d = arch.typed_column::<D>();
+                let col_e = arch.typed_column::<E>();
                 arch.entities
                     .iter()
                     .zip(col_a.0.iter())
@@ -272,10 +228,19 @@ impl World {
             .archetypes_with_two_mut(a_id, b_id)
             .flat_map(move |arch| {
                 let Archetype {
-                    columns, entities, ..
+                    component_types,
+                    columns,
+                    entities,
+                    ..
                 } = arch;
-                let (col_a, col_b, col_c, col_d) =
-                    split2_opt2_columns_mut::<A, B, C, D>(columns, a_id, b_id, c_id, d_id);
+                let (col_a, col_b, col_c, col_d) = split2_opt2_columns_mut::<A, B, C, D>(
+                    component_types,
+                    columns,
+                    a_id,
+                    b_id,
+                    c_id,
+                    d_id,
+                );
                 entities
                     .iter()
                     .zip(col_a.0.iter())
@@ -288,19 +253,15 @@ impl World {
 
     /// Iterate `(Entity, &mut T)` in archetype/row order.
     pub fn query_mut<T: 'static>(&mut self) -> impl Iterator<Item = (Entity, &mut T)> {
-        let t_id = TypeId::of::<T>();
         self.archetypes
             .archetypes_with_mut::<T>()
-            .flat_map(move |arch| {
+            .flat_map(|(arch, index)| {
                 let Archetype {
                     columns, entities, ..
                 } = arch;
-                let col = columns
-                    .get_mut(&t_id)
-                    .unwrap()
-                    .as_any_mut()
-                    .downcast_mut::<TypedVec<T>>()
-                    .unwrap();
+                let col = columns[index]
+                    .typed_mut::<T>()
+                    .expect("query_mut: column type mismatch");
                 entities.iter().zip(col.0.iter_mut()).map(|(&e, v)| (e, v))
             })
     }
@@ -321,9 +282,13 @@ impl World {
             .archetypes_with_two_mut(a_id, b_id)
             .flat_map(move |arch| {
                 let Archetype {
-                    columns, entities, ..
+                    component_types,
+                    columns,
+                    entities,
+                    ..
                 } = arch;
-                let (col_a, col_b) = split2_columns_mut::<A, B>(columns, a_id, b_id);
+                let (col_a, col_b) =
+                    split2_columns_mut::<A, B>(component_types, columns, a_id, b_id);
                 entities
                     .iter()
                     .zip(col_a.0.iter_mut())
@@ -379,10 +344,13 @@ impl World {
             .filter(move |arch| exclude.is_none_or(|x_id| !arch.has(x_id)))
             .flat_map(move |arch| {
                 let Archetype {
-                    columns, entities, ..
+                    component_types,
+                    columns,
+                    entities,
+                    ..
                 } = arch;
                 let (col_a, col_b, col_c) =
-                    split3_columns_mut::<A, B, C>(columns, a_id, b_id, c_id);
+                    split3_columns_mut::<A, B, C>(component_types, columns, a_id, b_id, c_id);
                 entities
                     .iter()
                     .zip(col_a.0.iter_mut())
@@ -427,9 +395,25 @@ impl World {
     }
 
     /// Flush queued commands: allocate pending spawns, then replay mutations in order.
-    pub fn flush(&mut self, buffer: CommandBuffer) {
-        let mut pending_entities: Vec<Entity> = Vec::with_capacity(buffer.pending_count as usize);
-        for cmd in &buffer.commands {
+    ///
+    /// Consecutive inserts on one entity apply as one archetype move (D-084).
+    pub fn flush(&mut self, mut buffer: CommandBuffer) {
+        self.flush_reusing(&mut buffer);
+    }
+
+    /// [`flush`](Self::flush) for a buffer the caller keeps: it comes back
+    /// empty with its storage, so recording into it again does not allocate.
+    pub fn flush_reusing(&mut self, buffer: &mut CommandBuffer) {
+        let CommandBuffer {
+            commands,
+            pending_count,
+            values,
+            pending_entities,
+        } = buffer;
+
+        pending_entities.clear();
+        pending_entities.reserve(*pending_count as usize);
+        for cmd in commands.iter() {
             if let Command::Spawn { pending_id } = cmd {
                 debug_assert_eq!(
                     *pending_id as usize,
@@ -440,29 +424,52 @@ impl World {
             }
         }
 
-        for cmd in buffer.commands {
-            match cmd {
-                Command::Spawn { .. } => {}
-                Command::Insert { target, setter } => {
+        let mut index = 0;
+        while index < commands.len() {
+            match commands[index] {
+                Command::Spawn { .. } => index += 1,
+                Command::Insert { target, .. } => {
+                    // The run: this insert and the ones that follow it
+                    // directly on the same target.
+                    let mut end = index + 1;
+                    while commands
+                        .get(end)
+                        .is_some_and(|next| next.inserts_on(target))
+                    {
+                        end += 1;
+                    }
+                    let run = commands[index..end].iter().map(|cmd| match cmd {
+                        Command::Insert { queue, .. } => *queue,
+                        _ => unreachable!("a run holds insert commands only"),
+                    });
+                    index = end;
                     let entity = match target {
                         CommandTarget::Live(entity) => {
                             if !self.is_alive(entity) {
+                                run.for_each(|queue| values.drop_next(queue));
                                 continue;
                             }
                             entity
                         }
                         CommandTarget::Pending(id) => pending_entities[id as usize],
                     };
-                    setter.apply(self, entity);
+                    self.archetypes.insert_run(entity, run, values);
                 }
-                Command::Remove(remove) => remove(self),
+                Command::Remove { entity, remove } => {
+                    remove(self, entity);
+                    index += 1;
+                }
                 Command::Despawn(entity) => {
                     if self.is_alive(entity) {
                         self.despawn(entity);
                     }
+                    index += 1;
                 }
             }
         }
+
+        commands.clear();
+        *pending_count = 0;
     }
 }
 
@@ -499,26 +506,30 @@ type SplitOpt2Columns<'c, A, B, C, D> = (
 
 /// Column borrows for `query2_opt2_mut`: shared `A`/`C`, mutable `B`/`D`;
 /// `C`/`D` may be absent from the archetype. Ids must all differ.
-fn split2_opt2_columns_mut<A: 'static, B: 'static, C: 'static, D: 'static>(
-    columns: &mut TypeIdMap<Box<dyn AnyColumn>>,
+///
+/// `types` is the archetype's sorted type key and `columns` its columns in
+/// the same order, as for every helper below.
+fn split2_opt2_columns_mut<'c, A: 'static, B: 'static, C: 'static, D: 'static>(
+    types: &[TypeId],
+    columns: &'c mut [Box<dyn AnyColumn>],
     a_id: TypeId,
     b_id: TypeId,
     c_id: TypeId,
     d_id: TypeId,
-) -> SplitOpt2Columns<'_, A, B, C, D> {
+) -> SplitOpt2Columns<'c, A, B, C, D> {
     let mut col_a = None;
     let mut col_b = None;
     let mut col_c = None;
     let mut col_d = None;
-    for (&tid, col) in columns.iter_mut() {
+    for (&tid, col) in types.iter().zip(columns.iter_mut()) {
         if tid == a_id {
-            col_a = (**col).as_any().downcast_ref::<TypedVec<A>>();
+            col_a = (**col).typed::<A>();
         } else if tid == b_id {
-            col_b = col.as_any_mut().downcast_mut::<TypedVec<B>>();
+            col_b = col.typed_mut::<B>();
         } else if tid == c_id {
-            col_c = (**col).as_any().downcast_ref::<TypedVec<C>>();
+            col_c = (**col).typed::<C>();
         } else if tid == d_id {
-            col_d = col.as_any_mut().downcast_mut::<TypedVec<D>>();
+            col_d = col.typed_mut::<D>();
         }
     }
     (
@@ -530,18 +541,19 @@ fn split2_opt2_columns_mut<A: 'static, B: 'static, C: 'static, D: 'static>(
 }
 
 /// Disjoint mutable borrows of two typed columns; ids must differ.
-fn split2_columns_mut<A: 'static, B: 'static>(
-    columns: &mut TypeIdMap<Box<dyn AnyColumn>>,
+fn split2_columns_mut<'c, A: 'static, B: 'static>(
+    types: &[TypeId],
+    columns: &'c mut [Box<dyn AnyColumn>],
     a_id: TypeId,
     b_id: TypeId,
-) -> (&mut TypedVec<A>, &mut TypedVec<B>) {
+) -> (&'c mut TypedVec<A>, &'c mut TypedVec<B>) {
     let mut col_a = None;
     let mut col_b = None;
-    for (&tid, col) in columns.iter_mut() {
+    for (&tid, col) in types.iter().zip(columns.iter_mut()) {
         if tid == a_id {
-            col_a = col.as_any_mut().downcast_mut::<TypedVec<A>>();
+            col_a = col.typed_mut::<A>();
         } else if tid == b_id {
-            col_b = col.as_any_mut().downcast_mut::<TypedVec<B>>();
+            col_b = col.typed_mut::<B>();
         }
     }
     (
@@ -551,22 +563,27 @@ fn split2_columns_mut<A: 'static, B: 'static>(
 }
 
 /// Disjoint mutable borrows of three typed columns; ids must differ.
-fn split3_columns_mut<A: 'static, B: 'static, C: 'static>(
-    columns: &mut TypeIdMap<Box<dyn AnyColumn>>,
+fn split3_columns_mut<'c, A: 'static, B: 'static, C: 'static>(
+    types: &[TypeId],
+    columns: &'c mut [Box<dyn AnyColumn>],
     a_id: TypeId,
     b_id: TypeId,
     c_id: TypeId,
-) -> (&mut TypedVec<A>, &mut TypedVec<B>, &mut TypedVec<C>) {
+) -> (
+    &'c mut TypedVec<A>,
+    &'c mut TypedVec<B>,
+    &'c mut TypedVec<C>,
+) {
     let mut col_a = None;
     let mut col_b = None;
     let mut col_c = None;
-    for (&tid, col) in columns.iter_mut() {
+    for (&tid, col) in types.iter().zip(columns.iter_mut()) {
         if tid == a_id {
-            col_a = col.as_any_mut().downcast_mut::<TypedVec<A>>();
+            col_a = col.typed_mut::<A>();
         } else if tid == b_id {
-            col_b = col.as_any_mut().downcast_mut::<TypedVec<B>>();
+            col_b = col.typed_mut::<B>();
         } else if tid == c_id {
-            col_c = col.as_any_mut().downcast_mut::<TypedVec<C>>();
+            col_c = col.typed_mut::<C>();
         }
     }
     (

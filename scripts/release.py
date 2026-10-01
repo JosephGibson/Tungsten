@@ -9,6 +9,7 @@
                       the workspace version and have notes; so must every vX.Y.Z tag.
                       A pre-release tag without a section (e.g. v0.0.0-test) is a
                       rehearsal: the tree must still agree, the tag isn't compared.
+  version             Prints the workspace version of a consistent tree.
   cut VERSION         Moves the [Unreleased] body under `## [VERSION] - DATE`, leaves
                       an empty [Unreleased], and sets the workspace version and status
                       lines. `just release-cut` also refreshes Cargo.lock.
@@ -19,7 +20,7 @@
                       launcher per example, and the files the examples read relative
                       to the working directory: OUT/tungsten-examples-TAG-TARGET.*
 
-Rationale: D-071, D-072, D-074. Release steps: docs/releases.md.
+Rationale: D-071, D-072, D-074, D-079. Release steps: docs/releases.md.
 """
 
 import argparse
@@ -353,6 +354,7 @@ def main(argv=None):
     commands = parser.add_subparsers(dest="command", required=True)
     command = commands.add_parser("check", help="version, changelog and optional tag consistency")
     command.add_argument("tag", nargs="?")
+    commands.add_parser("version", help="print the workspace version of a consistent tree")
     command = commands.add_parser("cut", help="move [Unreleased] to VERSION and bump the version")
     command.add_argument("version")
     command.add_argument("--date", type=datetime.date.fromisoformat, default=datetime.date.today())
@@ -381,12 +383,17 @@ def main(argv=None):
                           "compared, notes from [Unreleased].")
                 elif args.tag:
                     print(f"Tag {args.tag}: release; notes from [{state.version}].")
+        elif args.command == "version":
+            state = check_tree(root)
+            errors = state.errors
+            if not errors:
+                print(state.version)
         elif args.command == "cut":
             errors = cut(root, args.version, args.date)
             if not errors:
                 print(f"Cut [{args.version}] - {args.date}: {CHANGELOG}, {CARGO} and "
                       f"{', '.join(STATUS_FILES)} updated. Next: refresh Cargo.lock "
-                      f"(`just release-cut` does), review status prose, commit, tag v{args.version}.")
+                      f"(`just release-cut` does), review status prose, run the checks, hand off (docs/releases.md).")
         elif args.command == "notes":
             sys.stdout.write(notes(root, args.tag, args.link_base))
             errors = []
