@@ -80,8 +80,8 @@ One-line takeaways for every decision heading in [`DECISIONS.md`](../DECISIONS.m
 | `D-030` | The M12 ECS rewrite required an explicit go/no-go decision. |
 | `D-033` | Physics is hand-rolled in `tungsten-core`; `Position` stays separate from gameplay render components. |
 | `D-035` | Manifest merge order is call-site order, usually shared manifest first then example-local. |
-| `D-036` | Archetypal ECS rewrite is intentional and benchmark-validated. |
-| `D-039` | `CommandBuffer` is a world resource with post-system flush; deferred structural changes are visible to extract/render in the same frame and to systems on the next frame. |
+| `D-036` | Archetypal ECS rewrite is intentional and benchmark-validated. Its storage description is amended by `D-083`. |
+| `D-039` | `CommandBuffer` is a world resource with post-system flush; deferred structural changes are visible to extract/render in the same frame and to systems on the next frame. Command storage and the fresh buffer per frame are amended by `D-084`. |
 | `D-040` | `EventQueue<T>` keeps two windows (`previous`, `current`) and flushes once per frame after systems. |
 | `D-043` | Display settings live in `tungsten.json`, runtime changes go through `request_display_settings`, and actual window/surface mutation happens only at a frame boundary. |
 | `D-044` | Runtime HUD lives in the umbrella crate, reads existing telemetry resources, and ships off-by-default with EWMA-smoothed frame timing; the original M18 `F4` toggle later moved under `D-045`'s action map. Narrowed by `D-078`: HUD overhead is measured on the benchmark suite, not sprite-stress runs. |
@@ -103,6 +103,8 @@ One-line takeaways for every decision heading in [`DECISIONS.md`](../DECISIONS.m
 | `D-080` | Physics broadphase layout: a statics-only grid answers the safety-net sweep once a frame's sweep queries reach the static count; compact worlds get a direct cell table, with the hashed table as fall-back; inline floor; one-byte pair flags. Results, candidate order and digests are unchanged. Amends `D-062` and the sweep note of `D-075`. |
 | `D-081` | Physics pair repair: a proxy that exhausts its travel budget has only its own pairs rebuilt (exact gravity term plus a `2·linear_slop` margin). A full rebuild remains for frame start, a contact wake and more than a quarter of the awake bodies tripping. Supersedes rule (a) and the radius of `D-075`; amends `D-076`. Pair order changes, so the three physics-bearing benchmark digests did. |
 | `D-082` | Physics sleep state sits in arrays parallel to the proxies and is rebuilt by entity key only when the body sequence changes. Amends the keyed map and per-frame rebuild of `D-065`; wake paths and digests are unchanged. |
+| `D-083` | ECS column storage: columns in a `Vec` ordered like the archetype's sorted type key and created with it; rows move between columns unboxed (`move_row_to`, `swap_remove_drop`), downcasts through trait upcasting. Structural changes and query setup find a column by an out-of-line key scan; `World::get` and the flush's run writes use a per-archetype slot table. Iteration order and digests are unchanged. Amends the storage description of `D-036`. Records the accepted `noisy` reading of `ecs` `update` p50 and what many archetypes cost. |
+| `D-084` | Command buffer: one typed value queue per inserted component type and plain-data commands (no box per command), function-pointer removals, `World::flush_reusing` for a buffer the app keeps across frames, and consecutive inserts on one entity applied as one archetype move. Flush results equal one-by-one application. Amends `D-039`. Records the accepted `particles` `animate_sprites` p95 regression. |
 
 ## When To Open a Decision
 

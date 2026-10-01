@@ -229,7 +229,7 @@ Search these first in a flamegraph:
 
 - `App::window_event`, `render_frame_full`, `render_frame_full_timed`
 - `extract_`, `extract_sprites_default` (no culling, a full sort and string-ID lookups every frame)
-- `query2`, `World::flush` (boxed commands and archetype moves)
+- `query2`, `World::flush` (archetype moves; the app's flush shows as `World::flush_reusing`, with `insert_run` and `move_components_to` under it)
 - `physics_step`, `build_pairs`, `gather_tilemap_proxies` (tile proxies rebuilt from a full-map scan every frame)
 - `particle_tick_system`
 - `glyphon` and the text `prepare` (`TextPipeline::prepare`, which reshapes every changed section)

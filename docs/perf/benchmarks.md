@@ -8,7 +8,9 @@ TUNGSTEN_BENCH=gpu TUNGSTEN_BENCH_PRESET=min cargo run -p example-02-bench
 just perf describe gpu                                              # knobs, presets and tracked rows from the binary
 ```
 
-**Reference machine.** Ryzen 5 6600H, Radeon 660M (Mesa RADV `REMBRANDT`), Vulkan, `immediate` present mode with latency 1, Linux 7.2.7, rustc 1.98.1, governor `performance`, generic x86-64 release builds with frame pointers (`just perf`'s default flags). Every number below comes from that machine, measured 2026-09-30, and is informational (`D-070`). Numbers from the retired perf scenes aren't comparable with this suite.
+**Reference machine.** Ryzen 5 6600H, Radeon 660M (Mesa RADV `REMBRANDT`), Vulkan, `immediate` present mode with latency 1, Linux 7.2.7, rustc 1.98.1, governor `performance`, generic x86-64 release builds with frame pointers (`just perf`'s default flags). Every number below comes from that machine and is informational (`D-070`). Numbers from the retired perf scenes aren't comparable with this suite.
+
+**Dates.** The defaults were calibrated on 2026-09-30, and a number without a date is from that day. The physics and ECS performance pass of 2026-10-01 (`D-080`–`D-084`) then moved the `physics`, `physics-sparse`, `ecs`, `churn`, `particles` and `integrated` rows. A number marked 2026-10-01 is from that pass's final suite (5 runs a row, medians of the per-run values) or, for the `churn` mode table and the `integrated` `actors` sweep and `tile_collision` numbers, from knob captures of the same build that day (3 runs each). `just perf compare` works on per-run means, so the decisions and the changelog quote values up to 0.03 ms off the medians here. The `gpu` and `gpu-throughput` sections are unchanged: the pass did not move those rows.
 
 ## Harness
 
@@ -83,7 +85,7 @@ Two rows. `physics` (pachinko) owns the narrow phase, contact build, solve, coll
 - **Guards:** `physics.sleeping <= 0` on both rows; `bench.teleports >= 1` on `physics`. At `min` the flow is about 3 teleports per frame, so single frames can see none and fail the teleport guard.
 - **Owned:** `physics`: `physics_step` p50/p95 and `update` p95. `physics-sparse`: `physics_step` p50/p95. Both declare `physics_step` as the bottleneck; key knobs `balls` and `bodies`.
 
-**Calibrated defaults** (medians of 3 runs):
+**Calibrated defaults** (2026-09-30, medians of 3 runs):
 
 | Row | Default change | World | `physics_step` p50 / p95 | `update` p95 | `total` p95 | Calibration check |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -91,8 +93,22 @@ Two rows. `physics` (pachinko) owns the narrow phase, contact build, solve, coll
 | `physics-sparse` | `bodies` 50,000 → 8,000 | 4,224 × 2,368 px | 8.06 / 9.83 ms | 9.86 ms | 10.11 ms | 0.229 pairs and 0.118 contacts per proxy (≤ 0.5 and ≤ 0.2 ✓) |
 
 - Pachinko at `fill` 0.21 gave 0.64 contacts per ball; 0.25, 0.30, 0.35 and 0.40 gave 0.74, 0.89, 0.99 and 1.11. Whole bins mean 1.0 needs 8 bins, so `fill` ≥ 0.3542. Stall kicks stay near 0.01 per frame and respawns at 0.
-- Sparse at 50,000 bodies gave a `total` p95 of 78 ms; 6,000, 8,000, 10,000 and 12,000 bodies gave 7.8, 10.6, 13.9 and 15.7 ms. A frame-pointer profile at 8,000 splits `physics_step` into pair query (`build_pairs`) 54.5%, `speculative_pass` 29.9% (22% of it `SpatialGrid::query`), grid build 6.2%, narrow phase 1.4% and solver 0.7%: broadphase-bound, as intended.
-- Peak RSS is about 132 MiB (pachinko) and 128 MiB (sparse). Pachinko RSS grows 2–8 KiB/s and sparse RSS not at all, reported only.
+- Sparse at 50,000 bodies gave a `total` p95 of 78 ms; 6,000, 8,000, 10,000 and 12,000 bodies gave 7.8, 10.6, 13.9 and 15.7 ms. A frame-pointer profile at 8,000 split `physics_step` into pair query (`build_pairs`) 54.5%, `speculative_pass` 29.9% (22% of it `SpatialGrid::query`), grid build 6.2%, narrow phase 1.4% and solver 0.7%: broadphase-bound, as intended.
+- Peak RSS was about 132 MiB (pachinko) and 128 MiB (sparse). Pachinko RSS grew 2–8 KiB/s and sparse RSS not at all, reported only.
+
+**The same defaults on 2026-10-01**, after `D-080`–`D-082` (the final suite, medians of 5 runs):
+
+| Row | `physics_step` p50 / p95 | `update` p95 | `total` p95 | `physics.pairs` (before) | Contacts | Peak RSS |
+| --- | --- | --- | --- | --- | --- | --- |
+| `physics` | 5.56 / 5.71 ms | 5.76 ms | 6.07 ms | 36,144 (15,150) | 8,846, 1.11 per ball | 131 MiB |
+| `physics-sparse` | 3.42 / 3.47 ms | 3.51 ms | 3.73 ms | 15,298 (1,831) | 940, 0.117 per proxy | 128 MiB |
+
+- No default changed and `workload_version` stays 1, so both rows now run below the 8–16 ms band they were calibrated to; see "Below the calibration band" under "Open proposals".
+- The contact checks still hold. The pair check of `physics-sparse` no longer describes the list: `D-081` builds the pair list once for the whole frame's travel plus a margin instead of rebuilding it for the remainder at every substep, so the count logged at the last substep rose to 1.91 pairs per proxy with the same contacts. Compare flags `physics.pairs` as workload drift against captures from before `D-081`.
+- What leads each row now (inclusive shares of all samples in a frame-pointer profile):
+  - `physics` (`physics_step` 92.4%): the one pair build per frame 37.4% (its grid query 35.1%), narrow phase 13.0%, `solve_contacts` 8.8%, `repair_pairs` 7.4%, grid build and insert 4.2%, `apply_restitution` 2.6%, `ImpulseMap::get` 2.3%, `sleep_frame_end` 1.7%. A frame is one build plus 3.0 repairs.
+  - `physics-sparse` (`physics_step` 89.4%): the pair build 38.1% (query 34.2%), the safety-net sweep 30.7% (`SpatialGrid::query` 23.7%, `cell_range` 9.8%: four long walls do not fill compact bounds, so the statics-only grid uses the hashed table), grid build and insert 7.0%, `repair_pairs` 4.4%, narrow phase 3.9%, solver 1.7%, `collect_tripped` 1.2%. Still broadphase-bound; a frame is one build plus 2.1 repairs.
+- RSS growth, reported only, reads 0 KiB/s in all five pachinko runs. A sparse run is now about 1.5 s long, so one 1.4 MiB step of RSS inside the fitted half read as 1.2 and 2.6 MiB/s in two of the five runs; the other three read 0–6 KiB/s.
 
 **Workload version history:** 1, the initial version (2026-09-30). Digests at the default: `physics` `86ffcabcdb15eed1`, `physics-sparse` `5899f9c8a69d79b1`. They changed on 2026-10-01 with `D-081`, an engine change that reorders the pair list and so the solver; before it they were `c972b2818d486617` and `c95fadc938a3689e`.
 
@@ -118,7 +134,15 @@ Owns steady-state query iteration. Warm-up 60 frames, no GPU diagnostic run. Mod
 - **Guards:** `bench.structural <= 0` and `bench.entities constant`.
 - **Owned:** `update` p50/p95 plus each of the 14 system rows at p50. The bottleneck is `update` (any system); key knob `entities`.
 
-**Calibrated default:** `entities` stays 250,000. `total` p95 per run 12.29, 12.61 and 12.23 ms; `update` p50 10.84 / p95 11.84 ms; `update` is 95.7% of `total` (≥ 70% ✓). Per-system p50 medians: `heading` 2.59, `brain` 2.22, `follow` 1.90, `buffs` 0.66, `age_phase` 0.48, `cooldowns` 0.45, `tint` 0.41, `integrate` 0.27, `accelerate` 0.26, `bounds_wrap` 0.26, `team_bags` 0.25, `faction_histogram` 0.25, `stats_decay` 0.17 and `regen` 0.09 ms. Peak RSS is about 163 MiB, with no RSS growth.
+**Calibrated default** (2026-09-30, 3 runs): `entities` stays 250,000. `total` p95 per run 12.29, 12.61 and 12.23 ms; `update` p50 10.84 / p95 11.84 ms; `update` is 95.7% of `total` (≥ 70% ✓). Per-system p50 medians: `heading` 2.59, `brain` 2.22, `follow` 1.90, `buffs` 0.66, `age_phase` 0.48, `cooldowns` 0.45, `tint` 0.41, `integrate` 0.27, `accelerate` 0.26, `bounds_wrap` 0.26, `team_bags` 0.25, `faction_histogram` 0.25, `stats_decay` 0.17 and `regen` 0.09 ms. Peak RSS is about 163 MiB, with no RSS growth.
+
+**The same default on 2026-10-01**, after `D-083` (the final suite, medians of 5 runs): `total` p95 11.35 ms (per run 11.32–11.40); `update` p50 10.44 / p95 10.86 ms, 95.7% of `total`. Per-system p50: `heading` 2.53, `brain` 2.25, `follow` 1.77, `buffs` 0.65, `age_phase` 0.46, `cooldowns` 0.44, `tint` 0.39, `bounds_wrap` 0.26, `accelerate` 0.25, `team_bags` 0.25, `faction_histogram` 0.25, `integrate` 0.23, `stats_decay` 0.16 and `regen` 0.08 ms. Peak RSS and RSS growth are unchanged.
+
+- **Accepted reading (`D-083`).** Against the baseline of the pass, `follow` p50 reads `improved` (1.95 → 1.74 ms, per-run means) and `update` p50 reads `noisy`: 10.74 → 10.46 ms, −0.28 with an interval of −0.37 to −0.20 against a threshold of 0.32. The gain is real and sits just under the 3% threshold, where compare can say neither `improved` nor `unchanged`; three clean captures read −0.26, −0.30 and −0.28. The owner accepted the reading on 2026-10-01. Ask a later check on this metric for "not `regressed`".
+- `follow` is one `World::get` per follower behind two cache misses (the entity's metadata, then the leader's `Position`). An iteration is about 160 instructions, too long for a third lookup to overlap, so what the engine can change is the loads between the two misses (`D-083`'s slot table); its per-run p50 still spreads from 1.60 to 1.82 ms.
+- **A per-run mode.** In some runs `stats_decay` reads 0.31–0.32 ms instead of 0.15–0.16, `regen` 0.02 ms more and `follow` about 0.2 ms less, with the same digest. It showed in 5 of the 40 runs of eight `ecs` captures on 2026-10-01, the untouched tree's included (two of the final suite's five runs: `stats_decay` 0.31, 0.32, 0.15, 0.15, 0.16 against `follow` 1.69, 1.60, 1.82, 1.81, 1.77), so it belongs to the run, not to a build. Its cause was not looked for. It widens compare's intervals on those three rows.
+- `brain` read 2.17 to 2.26 ms across the builds of the pass with no change to its code path: the small system rows move by 0.02–0.05 ms with how each row loop compiles around the inlined query setup, so judge a query change on all 14 rows.
+- In the final profile (frame pointers, shares of all samples, `update` 87.2%) `heading` is 19.7% (`atan2` 15.0%) and `brain` 18.5%, both benchmark work the engine can't touch; `follow` is 16.5%, of which the lookup itself is 4.9% and the rest waits on the two loads; the query-setup scan (`Archetype::column_index`) is 1.1%.
 
 **Workload version history:** 1, the initial version (2026-09-30). Digest at the default: `c785506ced04de4c`.
 
@@ -126,7 +150,7 @@ Owns steady-state query iteration. Warm-up 60 frames, no GPU diagnostic run. Mod
 
 Owns structural change: command recording, `World::flush`, archetype moves, and entity allocation and free. Warm-up 60 frames, no GPU diagnostic run. Module: `churn.rs`.
 
-- **Population.** A steady population is replaced FIFO: every entity lives `1/turnover` frames (20 at the default), and the population is pre-aged, so churn is steady from the first frame. Frame f despawns spawn serials `[f·S, (f+1)·S)` and spawns `[P + f·S, P + (f+1)·S)`. Each spawn inserts `components` components one at a time, one archetype move each.
+- **Population.** A steady population is replaced FIFO: every entity lives `1/turnover` frames (20 at the default), and the population is pre-aged, so churn is steady from the first frame. Frame f despawns spawn serials `[f·S, (f+1)·S)` and spawns `[P + f·S, P + (f+1)·S)`. Each spawn inserts `components` components one at a time. In `immediate` mode that is one archetype move each; in `deferred` mode the flush has applied a spawn's inserts as one move since `D-084`. The `components` note in the knob table below ("one archetype move each") is the binary's own text (`churn.rs`), left as it is because the benchmark's sources were out of that pass's scope: it describes `immediate` only.
 - **Status toggles.** Survivors whose serial is f modulo `groups` gain one of `statuses` status components at frame f and lose it at f + 1. Gains skip entities that expire at f + 1, so each frame's losses equal the previous frame's gains. `groups = round(2·(P − 2S) / (toggles·P))`, 36 at the default.
 - **Modes.** `deferred` records everything through the `CommandBuffer` and measures it in `flush`; `immediate` makes the same calls on `World` inside the churn systems. Both find their targets with one scan over the lifetime component, and the systems run as `churn_scan`, `churn_despawn`, `churn_toggle`, `churn_spawn`.
 
@@ -145,19 +169,24 @@ Owns structural change: command recording, `World::flush`, archetype moves, and 
 - **Guards:** `bench.population constant` and `bench.spawned == bench.despawned`.
 - **Owned:** `flush` p50/p95 plus `churn_scan`, `churn_despawn`, `churn_toggle` and `churn_spawn` at p50. The bottleneck is `flush`; key knob `population`.
 
-**Calibrated default:** `population` 100,000 → 125,000. `total` p95 per run 11.37, 11.28 and 10.95 ms; `flush` p50 8.74 / p95 10.01 ms; `flush` plus the churn systems are 96.8% of `total` (≥ 60% ✓). At 100,000 the p95 sat within 1 ms of the band floor; a sweep gave 9.01, 10.99, 14.37 and 16.81 ms at 100,000, 125,000, 150,000 and 175,000. Peak RSS is about 143 MiB.
+**Calibrated default** (2026-09-30, 3 runs): `population` 100,000 → 125,000. `total` p95 per run 11.37, 11.28 and 10.95 ms; `flush` p50 8.74 / p95 10.01 ms; `flush` plus the churn systems are 96.8% of `total` (≥ 60% ✓). At 100,000 the p95 sat within 1 ms of the band floor; a sweep gave 9.01, 10.99, 14.37 and 16.81 ms at 100,000, 125,000, 150,000 and 175,000. Peak RSS is about 143 MiB.
 
-Command-buffer overhead, means in ms from the median run of each mode:
+**The same default on 2026-10-01**, after `D-083` and `D-084` (the final suite, medians of 5 runs): `total` p95 4.06 ms (per run 4.03–4.13); `flush` p50 2.72 / p95 3.07 ms; `churn_scan` 0.38, `churn_spawn` 0.33, `churn_toggle` 0.05 and `churn_despawn` 0.01 ms at p50; `flush` plus the churn systems are 94.1% of `total` (means). Peak RSS is about 142 MiB. No default changed, so the row runs below the 8–16 ms band; see "Below the calibration band" under "Open proposals". The population sweep above was not repeated.
+
+- A frame makes 208 `malloc` calls, where it made 293,960 before the pass (exact counts), and the flush's profile shows none.
+- What leads the row now (frame-pointer profile, shares of all samples): `flush_reusing` 68.9%, of which `insert_run` is 39.8% (the toggles' row moves 24.4%, waiting on the moved row in the first column; the value writes 6.1%; the edge walk 5.9%), the status losses' `Archetypes::remove` 7.4%, and the despawns' `swap_remove_drop` on the first column 6.7% plus `World::despawn` 4.3%. The benchmark's own `churn_scan` and `churn_spawn` are 10.5% and 8.0%.
+
+Command-buffer overhead (2026-10-01, 3 runs a mode), means in ms from the median run of each mode:
 
 | Mode | `flush` | `churn_scan` | `churn_despawn` | `churn_toggle` | `churn_spawn` | Structural total | `total` |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `deferred` | 8.54 | 0.43 | 0.03 | 0.10 | 0.35 | 9.45 | 9.75 |
-| `immediate` | 0 | 0.35 | 1.41 | 2.18 | 2.99 | 6.93 | 7.19 |
+| `deferred` | 2.75 | 0.38 | 0.01 | 0.04 | 0.33 | 3.52 | 3.74 |
+| `immediate` | 0 | 0.34 | 0.63 | 1.09 | 1.22 | 3.29 | 3.51 |
 
-- The `CommandBuffer` costs 2.52 ms per frame, 36% over the direct calls or about 45 ns per command: a boxed command and setter per operation, plus replay. Peak RSS is 4.5 MiB higher deferred.
-- Toggle moves are memory-latency bound. Spawns and despawns alone (`toggles=0`) cost 4.18 ms of `flush` for 50,000 commands, about 0.1 µs per move; the 6,250 toggle moves add 4.36 ms, about 0.70 µs each, because toggled rows are scattered through a large archetype.
+- The `CommandBuffer` costs 0.23 ms per frame, 7% over the direct calls or about 4 ns per command. Before the pass it cost 2.52 ms, 36% or about 45 ns per command (structural totals of 9.45 and 6.93 ms): a boxed command and setter per operation, plus replay. The two modes no longer do the same moves: a deferred spawn moves its row once, an immediate one six times. Peak RSS is about 1 MiB higher deferred (4.5 MiB before).
+- Toggle moves are memory-latency bound. Spawns and despawns alone (`toggles=0`) cost 0.89 ms of `flush` for 50,000 commands, about 0.07 µs for each of the 6,250 spawn moves and 6,250 despawns; the 6,250 toggle moves add 1.86 ms, about 0.30 µs each, because toggled rows are scattered through a large archetype. Before the pass those were 4.18 ms, and 4.36 ms or 0.70 µs per toggle move.
 - Swap-remove scrambles the archetype layout over time, so structural cost depends on access locality as much as on count: a change to which entities a system touches can move `flush` severalfold at the same command count.
-- RSS growth is 0.0 KiB/s in both modes at the default: reported only.
+- RSS growth, reported only, reads 0.0 KiB/s in every `immediate` run and in two of the three `deferred` runs; in the third, one 1.3 MiB step of RSS inside the fitted half of a 1.4 s run read as 1.4 MiB/s.
 
 **Workload version history:** 1, the initial version (2026-09-30). Digest at the default: `86014148b7a94681`.
 
@@ -258,9 +287,15 @@ Owns particle emit, tick and count refresh, and animation playback. Warm-up 180 
 - **Owned:** `unattributed` p50/p95 and `animate_sprites` p50/p95. Bottleneck `unattributed`; key knobs `emitters` and `animated`.
 - **Row note:** Without T1 the particle stage has no timing of its own: `unattributed` holds it (plus event flush), so the row owns `stage.unattributed` and `animate_sprites`.
 
-**Calibrated default:** `emitters` 400 → 280 and `animated` 40,000 → 8,000. `total` p50/p95/p99 per run 11.02/11.64/12.18, 10.98/11.56/12.18 and 10.89/11.54/11.88 ms; `unattributed` p50 2.38 / p95 2.98 ms; `animate_sprites` p50 0.27 / p95 0.32 ms; `live` median 42,288 (largest deviation 1.9%). Peak RSS is about 142 MiB; RSS grows 4–13 KiB/s, reported only.
+**Calibrated default** (2026-09-30, 3 runs): `emitters` 400 → 280 and `animated` 40,000 → 8,000. `total` p50/p95/p99 per run 11.02/11.64/12.18, 10.98/11.56/12.18 and 10.89/11.54/11.88 ms; `unattributed` p50 2.38 / p95 2.98 ms; `animate_sprites` p50 0.27 / p95 0.32 ms; `live` median 42,288 (largest deviation 1.9%). Peak RSS is about 142 MiB; RSS grows 4–13 KiB/s, reported only.
 
-- **The share check fails by construction:** `unattributed` plus `animate_sprites` is 24.8–25.1% of `total` against a target of 50% ✗. At the design defaults `live` reached 60,416, but `total` p95 was 24.0 ms and the default extract took 15.71 of 23.03 ms: about 0.16 µs per string-ID sprite, against 0.06 µs in `gpu-throughput`'s one-texture field. Per frame, one live particle costs about 0.24 µs (0.066 of it unattributed) and one animated sprite about 0.2 µs (0.038 in `animate_sprites`), so no mix reaches 50%.
+**The same default on 2026-10-01**, after `D-083` and `D-084` (the final suite, medians of 5 runs): `total` p50/p95/p99 10.99/11.62/12.03 ms; `unattributed` p50 2.11 / p95 2.66 ms; `animate_sprites` p50 0.30 / p95 0.38 ms; `flush` p50 0.40 ms and the default extract p50 7.68 ms, both reported only; `live` unchanged. Peak RSS is about 145 MiB; RSS grows 6–12 KiB/s. The row's `total` did not move (p95 11.65 → 11.63 ms against the baseline of the pass, `unchanged`): the engine stages got cheaper and the extract dearer by about the same amount.
+
+- **Accepted regression (`D-084`).** Against the baseline of the pass (5 runs a side, per-run means) `animate_sprites` p95 reads `regressed`: 0.35 → 0.38 ms, +0.04 with an interval of +0.01 to +0.06 against a threshold of 0.02; its p50 reads `unchanged` (0.30). In the same compare `unattributed` p50 improved from 2.37 to 2.10 ms and `flush` from 0.70 to 0.40 ms. The mechanism was not found, and the owner accepted the regression on 2026-10-01; `D-084` holds the justification the regression policy asks for.
+- **The extract in this row, reported only:** p50 7.03 → 7.68 ms in that compare (p95 7.71 → 8.39), which reads `regressed` and is judged nowhere, because `gpu` and `gpu-throughput` own the extract and read no `regressed` there. `integrated` shows the same in smaller: extract p50 2.61 → 2.80 ms, also `regressed` and also reported only.
+- When they appeared: this row's two readings came with the insert runs of `D-084` (extract p50 about 7.05 → 7.52 ms) and the extract rose again with its typed queues (→ 7.68); `integrated`'s extract moved with the typed queues only (about 2.60 → 2.85). What was ruled out on this row: its allocation traffic is the same before and after the insert runs (5,398.6 and 5,399.4 `malloc` calls per frame, exact counts); the extract's collect loop is byte-identical and equally aligned in both builds; the sprites' asset-ID strings are equally scattered (0.2% of consecutive rows share a page); writing a run's values in column order changes nothing; disabling transparent huge pages changes nothing. The slower build runs fewer instructions but more cycles, with more L1 data misses (in the extract's sort and the particle tick) and more cycles in `malloc`, `free`, the string compare and the extract's batching loop. Without telemetry logging both builds take the same cycles. So the row's time follows the allocator's state under its own traffic (a `String` clone per animation frame change, a `String` per particle, the extract's per-frame buffers, the telemetry's formatting), and that state shifts when allocations are added or removed anywhere else. See "String sprite IDs" under "Engine findings".
+
+- **The share check fails by construction:** `unattributed` plus `animate_sprites` is 24.8–25.1% of `total` against a target of 50% ✗ (22.5% on 2026-10-01). At the design defaults `live` reached 60,416, but `total` p95 was 24.0 ms and the default extract took 15.71 of 23.03 ms: about 0.16 µs per string-ID sprite, against 0.06 µs in `gpu-throughput`'s one-texture field. Per frame, one live particle costs about 0.24 µs (0.066 of it unattributed) and one animated sprite about 0.2 µs (0.038 in `animate_sprites`), so no mix reaches 50%.
 - At 8,000 animated sprites, 240, 280 and 320 emitters gave live medians of 36,258, 42,288 and 48,351 and p95 values of 9.78, 12.20 and 13.42 ms. The owner accepted 280 emitters (about 70% of the design's 60,000-particle target) and 8,000 animated sprites, mid-band.
 - Capacity search finds the row `extract`-limited (✗ against the declared `unattributed`) at both budgets: the same finding.
 
@@ -274,7 +309,7 @@ Owns the effects that only appear when systems interact, and is the one benchmar
 - **Walkers.** Dynamic 12 × 20 px AABBs with tile collision, drawing a 24 px lit walk clip (6 frames, 4 color variants, one lit atlas page with normal and emissive maps). The AI reads last frame's contacts: a wall turns a walker unless it is a one-tile step, which it hops; a ledge (no ground within two tiles ahead) turns it; a random hop comes every 1.5–4 s where ground 56 px ahead supports the landing. Touching down after 6 or more airborne frames sends a `SquashEvent` (`OnLand`) to the engine's squash systems.
 - **Casters.** Every tenth walker (250 at the default) fires 3 px circle projectiles at 700 px/s, 8–29° above the horizontal, `fire_rate` times per second.
 - **Hits.** A hit despawns the projectile, spawns a spark burst, knocks a struck crate and wakes it with `physics::wake`, adds 0.08 trauma when within 64 px of the view, and flashes a struck walker.
-- **Flash.** The default extract draws a lit sprite without its material (lit wins, `D-061`, with a warning per sprite and frame). A struck walker therefore switches to an unlit copy of its clip (a second atlas page and clip set) drawn with `damage_flash`, an override block (color in `vec4[0]`) and a `UniformScalar` F0 tween from 1 to 0 over 0.3 s, tagged `flash`. `TweenComplete` arrives after the systems, so the next frame reads it in the previous window, restores the lit clip and removes the block. Each flashing walker has its own override hash and so its own batch: 17.5 at a time at the default.
+- **Flash.** The default extract draws a lit sprite without its material (lit wins, `D-061`, with a warning per sprite and frame). A struck walker therefore switches to an unlit copy of its clip (a second atlas page and clip set) drawn with `damage_flash`, an override block (color in `vec4[0]`) and a `UniformScalar` F0 tween from 1 to 0 over 0.3 s, tagged `flash`. `TweenComplete` arrives after the systems, so the next frame reads it in the previous window, restores the lit clip and removes the block. Each flashing walker has its own override hash and so its own batch: about 17 at a time at the default.
 - **Sparks.** Each hit spawns a fresh emitter (`Burst { count: 12, once: true }`) through the `CommandBuffer` and despawns it when its `ParticleSystemDrained` arrives, which sidesteps the burst latch.
 - **Scenery.** Dynamic crates sit in piles of 10 and may sleep; hits wake them. Props are static, lit and unlit. Pickups bob through position tweens.
 - **Torches.** Each carries a point light and a fire emitter. `ParticleBudget` is torches × 32 + 4,096 (13,696 at the default), so it never clips the scaled workload; the 300 fire emitters keep about 6,200 particles live. About 28 point lights reach the view; the extract keeps 16.
@@ -304,31 +339,34 @@ The interaction costs it exposes, each visible through a counter or a stage row:
 - **Presets:** `min` (256 tiles, 50 actors, 50 crates, 100 props, 8 torches, 20 pickups, 4 tags) and `default`.
 - **Counters,** in line order: `actors`, `projectiles` (live), `hits`, `particles` (live), `lights` (point lights reaching the view, before the extract keeps 16), `camera_x`, `view_out`, `flashing`, `landings`, `shots`, `turns` and `events` (collision events).
 - **Guard:** `bench.view_out <= 0`. `view_out` is how far the final view, shake included, leaves the level, rounded up to whole pixels.
-- **Owned:** `total` p50/p95/p99 and jitter (p99 − p50, judged with p99's threshold). No stage is owned. The declared bottleneck is `physics_step`, which calibration found limiting (6.66 of 12.03 ms, means) ahead of the default extract (2.60 ms). Key knobs `actors`, `crates`, `props`, `torches` and `pickups`.
+- **Owned:** `total` p50/p95/p99 and jitter (p99 − p50, judged with p99's threshold). No stage is owned. The declared bottleneck is `physics_step`, which calibration found limiting (6.66 of 12.03 ms, means) ahead of the default extract (2.60 ms); on 2026-10-01 it is 5.08 of 10.43 ms, with the extract at 2.81. Key knobs `actors`, `crates`, `props`, `torches` and `pickups`.
 - **Row note:** Judged on total frame time; `jitter` is p99 - p50 of `total`, judged with p99's threshold. No stage is owned: the declared bottleneck, physics_step, is the stage calibration found limiting (walkers and crates against the tile proxies), ahead of the default extract. Tiles draw at z_norm 0, so the row needs the default cpu_stable depth sort (under gpu_depth they cover every sprite). Without T1, particle and tween time lands in `unattributed`. Changing HUD and name-tag text grows RSS through the text buffer cache (360-frame TTL).
 
-**Calibrated default:** `actors` 3,000 → 2,500; the other counts stay as designed. Target: a `total` p95 of 10–16 ms ✓.
+**Calibrated default:** `actors` 3,000 → 2,500; the other counts stay as designed. Target: a `total` p95 of 10–16 ms ✓, on both dates.
 
-| `total` p50 / p95 / p99 per run (ms) | Jitter per run (ms) |
-| --- | --- |
-| 11.97/12.37/12.52, 12.04/12.47/12.53, 12.40/12.90/13.29 | 0.55, 0.49, 0.89 |
+| Measured | `total` p50 / p95 / p99 per run (ms) | Jitter per run (ms) |
+| --- | --- | --- |
+| 2026-09-30, at calibration | 11.97/12.37/12.52, 12.04/12.47/12.53, 12.40/12.90/13.29 | 0.55, 0.49, 0.89 |
+| 2026-10-01, after `D-080`–`D-084` (the final suite) | 10.53/11.01/11.26, 10.68/11.23/11.61, 10.55/11.02/11.26, 10.51/11.05/11.20, 10.47/11.07/11.32 | 0.73, 0.93, 0.71, 0.69, 0.85 |
 
-The design defaults gave p95 13.71 ms. A single-run `actors` sweep, in ms:
+The design defaults gave p95 13.71 ms at calibration. The `actors` sweep on 2026-10-01 (`--sweep actors=1500,2000,2500,3000,3500 --repeat 3`), medians of 3 runs in ms:
 
 | `actors` | `total` p50 / p95 / p99 | `physics_step` mean | `extract` mean | Turns per walker per s |
 | --- | --- | --- | --- | --- |
-| 1,500 | 9.61 / 9.99 / 10.42 | 4.72 | 2.41 | 1.4 |
-| 2,000 | 10.96 / 11.36 / 11.64 | 5.75 | 2.56 | 1.8 |
-| 2,500 | 12.01 / 12.38 / 12.53 | 6.57 | 2.63 | 2.1 |
-| 3,000 | 13.35 / 13.91 / 14.77 | 7.76 | 2.72 | 2.4 |
-| 3,500 | 14.63 / 15.10 / 15.64 | 8.71 | 2.85 | 2.6 |
+| 1,500 | 8.43 / 9.01 / 9.40 | 3.58 | 2.52 | 1.4 |
+| 2,000 | 9.49 / 10.03 / 10.45 | 4.36 | 2.68 | 1.8 |
+| 2,500 | 10.61 / 11.30 / 11.70 | 5.15 | 2.87 | 2.1 |
+| 3,000 | 11.66 / 12.29 / 12.66 | 5.86 | 2.99 | 2.4 |
+| 3,500 | 12.58 / 13.34 / 13.77 | 6.55 | 3.03 | 2.6 |
 
-- Each 500 walkers add about 1.3 ms of p95, nearly all in `physics_step`. 2,500 leaves 2.4 ms to the band's floor and 3.6 ms to its ceiling and cuts the jitter to about 0.5 ms, against 1.4 ms at 3,000.
-- Stage means at the default: `update` 7.46 (`physics_step` 6.66, `animate_actors` 0.37, `collision_events` 0.16, `actor_ai` 0.11), `extract` 2.60, `render` 1.44 (`render_encode` 0.96, present wait 0.47), `unattributed` 0.37 and `flush` 0.17 ms. The frame is CPU-bound: the GPU diagnostic run puts `render_span` at 6.19 ms p50 (SMAA 2.56, scene 1.30, bloom 1.05 over all its passes, tonemap 0.34, present 0.32, vignette 0.26).
-- Interaction counters, means per frame: 13,044 proxies (8,528 tile proxies plus 4,516 dynamic bodies), 951 sleeping crates, 6,677 pairs, 6,282 contacts and 23,110 collision events; 16 live projectiles, 1.26 shots, 1.23 hits and 17.5 flashing walkers; 6,203 live particles; 27.7 point lights in view (25–30); 23.9 landings and 88.2 turns.
-- `tile_collision=off` spawns 328 merged static boxes (runs along rows, merged downward) in place of the 8,528 tile proxies: `physics_step` drops from 6.57 to 4.27 ms, p95 from 12.38 to 9.66 ms and events from 23,110 to 16,531, while turns stay at 88. The AI reads the level grid in both modes.
-- At the 144 Hz budget capacity search finds the row present-bound (✗ against `physics_step`): scale moves the scene counts but not the level or the 1080p post chain, whose GPU span of about 6 ms sets a floor near 6.9 ms.
-- Peak RSS is about 281 MiB and grows about 19.5 MiB/s from the name tags and HUD (see "Engine findings"), so it depends on capture length.
+- Each 500 walkers add about 1.1 ms of p95, about 0.75 ms of it in `physics_step`. The default sits 1.3 ms above the band's floor in the sweep (1.05 ms in the final suite) and 4.7 ms below its ceiling. Jitter reads about 1 ms at every sweep point and 0.73 ms in the final suite's five runs.
+- At calibration the sweep was a single run per value: p95 9.99, 11.36, 12.38, 13.91 and 15.10 ms with `physics_step` means of 4.72, 5.75, 6.57, 7.76 and 8.71 ms. Each 500 walkers added about 1.3 ms of p95, nearly all in `physics_step`, and 2,500 was chosen because it left 2.4 ms to the band's floor and cut the jitter to about 0.5 ms, against 1.4 ms at 3,000.
+- Stage means at the default (2026-10-01, the final suite): `update` 5.76 (`physics_step` 5.08, `animate_actors` 0.31, `collision_events` 0.16, `actor_ai` 0.10), `extract` 2.81, `render` 1.44 (`render_encode` 0.94, present wait 0.44), `unattributed` 0.32 and `flush` 0.09 ms. The frame is CPU-bound: the GPU diagnostic run puts `render_span` at 6.20 ms p50 (SMAA 2.56, scene 1.32, bloom 1.05 over all its passes, tonemap 0.33, present 0.32, vignette 0.26). At calibration `update` was 7.46 (`physics_step` 6.66), `extract` 2.60 and `flush` 0.17 ms; the extract's rise is the reported-only reading described under `particles`.
+- Interaction counters, means per frame (2026-10-01; `D-081` changed the trajectories, so they differ a little from calibration's): 13,043 proxies (8,528 tile proxies plus 4,515 dynamic bodies), 929 sleeping crates, 7,034 pairs, 6,319 contacts and 23,263 collision events; 15 live projectiles, 1.26 shots, 1.21 hits and 16.8 flashing walkers; 6,204 live particles; 27.7 point lights in view (25–30); 23.7 landings and 88.6 turns.
+- `tile_collision=off` spawns 328 merged static boxes (runs along rows, merged downward) in place of the 8,528 tile proxies. On 2026-10-01 (3 runs each, one sitting with the default): the `physics_step` mean drops from 5.17 to 3.29 ms, `total` p95 from 11.38 to 8.85 ms and events from 23,263 to 16,420, while turns stay at 88. At calibration the same switch read 6.57 to 4.27 ms. The AI reads the level grid in both modes.
+- `physics_step` still rebuilds the pair list about 3.5 times per frame in this row, because most of its rebuilds follow a contact wake and `D-081` repairs only budget trips (1,003 of 1,403 builds in 400 frames). See "Contact wakes rebuild the pair list" under "Engine findings".
+- At the 144 Hz budget capacity search found the row present-bound (✗ against `physics_step`): scale moves the scene counts but not the level or the 1080p post chain, whose GPU span of about 6 ms sets a floor near 6.9 ms. Not searched again after the pass.
+- Peak RSS is about 283 MiB and grows about 24 MiB/s from the name tags and HUD (see "Engine findings"), so it depends on capture length. At calibration it grew 19.5 MiB/s, at a lower frame rate.
 
 **Workload version history:** 1, the initial version (2026-09-30). Digest at the default: `5f031f4d947964cb`. It changed on 2026-10-01 with `D-081` (pair order); before it the digest was `9b2617e4c1ab23f7`.
 
@@ -339,11 +377,13 @@ The suite exposes these engine costs and behaviors on purpose. Each is a finding
 - **Burst latch.** `EmissionKind::Burst` fires once whatever `once` says, because the `continuous_accum` latch in `particle_tick_system` never resets (`crates/tungsten/src/particles.rs`). `particles` re-arms bursts by clearing the latch; `integrated` spawns a fresh emitter per hit.
 - **Tiles at `z_norm` 0.** `extract_tilemaps` writes the nearest depth, so under `TUNGSTEN_RENDER_DEPTH_SORT=gpu_depth` the tilemap covers every sprite: the M25 `gpu_depth` smoke rows render only tiles and text, and `integrated` needs the default `cpu_stable`.
 - **Lit-plus-material warning.** The default extract logs a warning once per sprite and frame when a lit sprite carries a material, so lit plus material costs a log call per sprite. `integrated` swaps a struck walker to an unlit clip to show its flash.
-- **Text-cache RSS.** The text pipeline keeps every changed section's shaped buffer for 360 frames (`BUFFER_CACHE_TTL_FRAMES`, pruned every 120). With text changing every frame, RSS grows until the TTL saturates: about 139 MiB/s in `gpu` (peak near 731 MiB, against 171 MiB with 2 glyphs) and 19.5 MiB/s in `integrated`. Peak RSS on those rows depends on capture length.
+- **Text-cache RSS.** The text pipeline keeps every changed section's shaped buffer for 360 frames (`BUFFER_CACHE_TTL_FRAMES`, pruned every 120). With text changing every frame, RSS grows until the TTL saturates: about 139 MiB/s in `gpu` (peak near 731 MiB, against 171 MiB with 2 glyphs) and 24 MiB/s in `integrated` (19.5 MiB/s before the pass of 2026-10-01 raised its frame rate). Peak RSS on those rows depends on capture length.
 - **Default extract.** It doesn't cull, sorts every sprite every frame and resolves string IDs: about 0.16 µs per sprite in `particles` and 0.06 µs in `gpu-throughput`'s one-texture field. It dominates the sprite-heavy rows.
-- **Tile collision proxies** are rebuilt from a full-map scan every frame (`gather_tilemap_proxies`): 8,528 proxies in `integrated`, which cost about 2.3 ms of `physics_step` against merged boxes.
-- **No bundle insert.** Spawning an entity with k components costs k boxed commands and k archetype moves.
-- **String sprite IDs.** Each animation frame change clones a `String`, and the extract resolves IDs by string.
+- **Tile collision proxies** are rebuilt from a full-map scan every frame (`gather_tilemap_proxies`): 8,528 proxies in `integrated`, which cost about 1.9 ms of `physics_step` against merged boxes (2026-10-01; 2.3 ms before the pass).
+- **Contact wakes rebuild the pair list.** `D-081` repairs the pair list for a proxy that runs out of travel budget, but a contact wake still rebuilds it. `physics` and `physics-sparse` build once per frame; `integrated` builds about 3.5 times, 1,003 of its 1,403 builds in 400 frames following a wake, which is why pair repair left that row `unchanged`. Re-pairing the woken proxy would remove about 2.5 of those builds per frame and needs its own decision, because a woken body becomes an initiator and needs its sleeping and static neighbours.
+- **No bundle insert.** Through the `CommandBuffer` a spawn's k inserts box nothing and move the row once (`D-084`). k direct `World::insert` calls still move it k times and k(k−1)/2 values, which is what `churn`'s `immediate` mode measures; there is no bundle-insert API.
+- **Archetype count.** With the same 250,000 entities and the same work, `ecs` `update` p50 reads 9.14 ms in 64 archetypes, 10.52 in 488 (the default) and 19.15 in 3,189 (`fragmentation` 1, 8 and 64; 3 runs each on 2026-10-01). Per-archetype setup is the small part: a prototype that found a query's columns through the slot table instead of the key scan read 9.13, 10.37 and 18.74 ms, `unchanged` at the default in two captures, and was reverted (`D-083`). The rest is consistent with the first cache lines of every column of every archetype missing, since each column is its own allocation. Nothing reaches that cost yet; a software prefetch is not callable without `unsafe`.
+- **String sprite IDs.** Each animation frame change clones a `String`, each particle carries one, and the extract resolves IDs by string. Besides their direct cost, they tie `particles`' `animate_sprites` and the default extract in `particles` and `integrated` to the allocator's state: a change elsewhere that adds or removes allocations moves those readings with no change to their code (`D-084`, and the `particles` section). Interned IDs would take the strings out of all three stages.
 
 ## Open proposals
 
@@ -358,6 +398,24 @@ Not approved; each benchmark works without them. Approving one is a separate dec
 | T1 | `particles_ms` and `tweens_ms` in `FrameTimings` and the `frame:` line | A timed particle stage for `particles` (instead of `unattributed`) and attribution in `integrated` |
 | T2 | A `startup:` line with window, renderer, manifest, user startup and audio times | Load-time metrics in every capture and compare |
 | M1 | A counting global allocator in `example-02-bench` only, behind a feature | Allocations per frame; it needs a `DECISIONS.md` entry, since its counters are process-global state |
+
+**Below the calibration band.** The pass of 2026-10-01 (`D-080`–`D-084`) changed no default, so three rows now run under the 8–16 ms `total` p95 band their defaults were calibrated to:
+
+| Row | `total` p95 at calibration | On 2026-10-01 | Knob that would bring it back |
+| --- | --- | --- | --- |
+| `physics` | 14.58 ms | 6.07 ms | `balls` |
+| `physics-sparse` | 10.11 ms | 3.73 ms | `bodies` |
+| `churn` | about 11.3 ms | 4.06 ms | `population` |
+
+`ecs` (11.35 ms), `particles` (11.62 ms), `gpu` and `integrated` (11.05 ms against its own 10–16 ms band) are still inside. The three rows stay valid and comparable as they are, and every guard passes. One practical effect: a `physics-sparse` or `churn` run now lasts about 1.5 s, so a single step of RSS inside the fitted half reads as MiB/s of growth (reported only). Recalibrating means new defaults, which is a change to the benchmark's work: a `workload_version` bump, a new baseline, and a history line in the row's section. That is a separate decision and is not approved.
+
+**Left open by the pass of 2026-10-01.** None is approved or started:
+
+- Re-pairing a woken proxy instead of rebuilding the pair list ("Contact wakes rebuild the pair list" above; `D-081`).
+- Interned sprite IDs ("String sprite IDs" above), the lever for the accepted `animate_sprites` regression and the reported-only extract readings.
+- The per-archetype cold start ("Archetype count" above): no candidate without `unsafe`.
+- Recalibrating `physics`, `physics-sparse` and `churn` (the table above).
+- The per-run mode of `ecs` (`stats_decay`, `regen`, `follow`), whose cause was not looked for.
 
 **RSS growth threshold.** A5 defines none, so RSS growth is reported for every row, `churn` included, and judged for none. The open proposal judges it for `churn` only:
 
