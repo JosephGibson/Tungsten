@@ -113,6 +113,9 @@ pub struct App {
 struct CaptureConfig {
     target_frame: u64,
     path: PathBuf,
+    /// `TUNGSTEN_CAPTURE_DIRECT=1`: capture what the direct present path
+    /// draws, not the blit path's source (`D-087`).
+    direct: bool,
     captured: bool,
 }
 
@@ -856,7 +859,11 @@ impl App {
             if let Some(cfg) = self.capture_config.as_mut()
                 && !cfg.captured
                 && self.frames_rendered + 1 == cfg.target_frame
-                && let Err(e) = renderer.capture_frame(&cfg.path)
+                && let Err(e) = if cfg.direct {
+                    renderer.capture_frame_direct(&cfg.path)
+                } else {
+                    renderer.capture_frame(&cfg.path)
+                }
             {
                 log::warn!("capture_frame({}) failed to arm: {e}", cfg.path.display());
             }
@@ -1169,9 +1176,11 @@ fn parse_capture_config() -> Option<CaptureConfig> {
     }
     let path = std::env::var("TUNGSTEN_CAPTURE_PATH")
         .map_or_else(|_| PathBuf::from("actual.png"), PathBuf::from);
+    let direct = std::env::var("TUNGSTEN_CAPTURE_DIRECT").is_ok_and(|value| value == "1");
     Some(CaptureConfig {
         target_frame,
         path,
+        direct,
         captured: false,
     })
 }

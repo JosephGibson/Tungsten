@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -10,7 +9,9 @@ use crate::lit_sprite::{
     RIM_LIGHT_SHADER_NAME,
 };
 use crate::material::{MaterialPipeline, build_material_pipeline};
-use crate::passes::{PassRecorder, TargetId, default_pass_order, text_overlay_target};
+use crate::passes::{
+    PassDesc, PassRecorder, PresentPath, TargetId, default_pass_order, text_overlay_target,
+};
 use crate::post::PostStackRenderer;
 use crate::post::bloom::{
     BLOOM_COMPOSITE_SHADER_NAME, BLOOM_DOWNSAMPLE_SHADER_NAME, BLOOM_THRESHOLD_SHADER_NAME,
@@ -21,7 +22,7 @@ use crate::post::smaa::{
     SmaaPipeline, SmaaShaderIds,
 };
 use crate::quad::{QuadInstance, QuadPipeline};
-use crate::screenshot::{aligned_bytes_per_row, strip_row_padding};
+use crate::screenshot::{PendingCapture, aligned_bytes_per_row, strip_row_padding};
 use crate::shader_hot_reload::{ShaderError, ShaderModuleCache};
 use crate::sprite::{SpriteBatch, SpritePipeline};
 use crate::surface::{present_mode_label, resolve_max_frame_latency, resolve_present_mode};
@@ -121,8 +122,8 @@ pub struct Renderer {
     pub gpu_timings: GpuFrameTimings,
     /// Last CPU render timings.
     pub cpu_timings: CpuFrameTimings,
-    /// One-shot offscreen PNG capture target.
-    pub(crate) pending_capture: Option<PathBuf>,
+    /// One-shot PNG capture armed for the next frame.
+    pub(crate) pending_capture: Option<PendingCapture>,
     /// View-projection bytes last written to the quad and sprite camera
     /// buffers.
     camera_written: Option<[u8; 64]>,
@@ -1127,6 +1128,8 @@ impl Renderer {
                 post_stack,
                 self.target_pool.scene.bloom_mip_count(),
                 self.post_aa.is_smaa() && self.smaa.is_some(),
+                // Only a capture frame records the present blit.
+                self.pending_capture.is_some(),
             )
         } else {
             None
@@ -1191,29 +1194,54 @@ impl Renderer {
 
         let post_stack_len = post_stack.len();
         let smaa_active = self.post_aa.is_smaa() && self.smaa.is_some();
-        // After M26/text-overlay split: the present-blit and screenshot
-        // source both sample the text-overlay target, which is whichever
-        // of SceneColor/PostPing/PostPong/PresentSource holds the composited
-        // frame.
-        let final_source_target = text_overlay_target(post_stack_len, self.post_aa);
-        let final_source_view = match final_source_target {
-            TargetId::PostPing => self.target_pool.scene.post_ping_view(),
-            TargetId::PostPong => self.target_pool.scene.post_pong_view(),
-            TargetId::PresentSource => self
-                .target_pool
-                .scene
-                .present_source_view()
-                .expect("PresentSource view must exist while post_aa != Off"),
-            _ => self.target_pool.scene.color_view(),
+        // A capture frame takes the blit path, whose source the screenshot
+        // reads. Every other frame renders its last full-screen stage into
+        // the swapchain (`D-087`). A direct capture keeps the direct path and
+        // renders it into a stand-in for the swapchain, which is read back
+        // and then blitted to the real one.
+        let capture = self.pending_capture.take();
+        let present_path = match &capture {
+            Some(capture) if !capture.direct => PresentPath::Blit,
+            _ => PresentPath::Direct,
         };
-        // The present-blit bind group is kept until the targets are
-        // reallocated or the source target changes.
-        let blit_bind_group = self.present_blit.bind_group(
-            &self.device,
-            self.target_pool.generation(),
-            final_source_target,
-            final_source_view,
-        );
+        let standin = capture
+            .as_ref()
+            .filter(|capture| capture.direct)
+            .map(|_| create_swapchain_standin(&self.device, self.surface_config.format, w, h));
+        let frame_view = standin.as_ref().map_or(&swap_view, |(_, view)| view);
+
+        // On a blit frame the present blit and the screenshot both read the
+        // text-overlay target, whichever of SceneColor/PostPing/PostPong/
+        // PresentSource holds the composited frame.
+        let final_source_target = text_overlay_target(post_stack_len, self.post_aa);
+        // Only a capture frame blits: from that target, with a bind group
+        // kept until the targets are reallocated or the target changes, or
+        // from the stand-in.
+        let blit_bind_group = match (&capture, &standin) {
+            (None, _) => None,
+            (Some(_), Some((_, standin_view))) => Some(
+                self.present_blit
+                    .bind_group_for_view(&self.device, standin_view),
+            ),
+            (Some(_), None) => {
+                let final_source_view = match final_source_target {
+                    TargetId::PostPing => self.target_pool.scene.post_ping_view(),
+                    TargetId::PostPong => self.target_pool.scene.post_pong_view(),
+                    TargetId::PresentSource => self
+                        .target_pool
+                        .scene
+                        .present_source_view()
+                        .expect("PresentSource view must exist while post_aa != Off"),
+                    _ => self.target_pool.scene.color_view(),
+                };
+                Some(self.present_blit.bind_group(
+                    &self.device,
+                    self.target_pool.generation(),
+                    final_source_target,
+                    final_source_view,
+                ))
+            }
+        };
 
         let order = default_pass_order(
             self.sample_count,
@@ -1221,11 +1249,13 @@ impl Renderer {
             self.depth_enabled,
             post_stack_len,
             self.post_aa,
+            present_path,
         );
         let post_plan = PostStackRenderer::plan_targets(post_stack_len);
-        // Text overlay sits between the last post pass / SMAA tail and the
-        // present pass. `post_stack_len + 1` accounts for the leading scene
-        // pass; SMAA inserts three more before the overlay.
+        // Text overlay follows the last post pass / SMAA tail.
+        // `post_stack_len + 1` accounts for the leading scene pass; SMAA
+        // inserts three more before the overlay. Only the blit order holds a
+        // present pass, after the overlay.
         let smaa_edge_idx = post_stack_len + 1;
         let smaa_blend_idx = smaa_edge_idx + 1;
         let smaa_nbh_idx = smaa_blend_idx + 1;
@@ -1234,6 +1264,7 @@ impl Renderer {
         } else {
             post_stack_len + 1
         };
+        let present_idx = text_overlay_idx + 1;
         // SMAA edge / neighborhood read whatever target the post stack ended
         // on (or `SceneColor` when the stack is empty). When the swapchain
         // format has a non-sRGB twin, sample through it so edge detection
@@ -1271,8 +1302,8 @@ impl Renderer {
         encoder.push_debug_group("tungsten_frame");
         for (idx, pass_desc) in order.as_slice().iter().enumerate() {
             let is_scene = idx == 0;
-            let is_present = pass_desc.color == TargetId::Swapchain;
-            let is_text_overlay = !is_scene && !is_present && idx == text_overlay_idx;
+            let is_present = idx == present_idx;
+            let is_text_overlay = idx == text_overlay_idx;
             let is_smaa_edge = smaa_active && idx == smaa_edge_idx;
             let is_smaa_blend = smaa_active && idx == smaa_blend_idx;
             let is_smaa_nbh = smaa_active && idx == smaa_nbh_idx;
@@ -1293,17 +1324,20 @@ impl Renderer {
             // opens its own per-subpass passes through the encoder. Detect it
             // before `PassRecorder::begin` and skip the auto-open path.
             if let Some(pi) = post_index
-                && let (Some(PostPass::Bloom(params)), Some(&(src, dst))) =
+                && let (Some(PostPass::Bloom(params)), Some(&(src, _))) =
                     (post_stack.0.get(pi), post_plan.get(pi))
             {
+                // The slot's destination is the pass's target: the ladder's,
+                // or the swapchain when bloom ends a direct frame's stack.
                 self.post_stack.record_bloom_slot_timed(
                     &self.device,
                     &self.queue,
                     &mut encoder,
                     &self.target_pool,
+                    frame_view,
                     params,
                     src,
-                    dst,
+                    pass_desc.color,
                     timing.as_mut(),
                     pi,
                 );
@@ -1337,7 +1371,7 @@ impl Renderer {
                 &mut encoder,
                 pass_desc,
                 &self.target_pool,
-                &swap_view,
+                frame_view,
                 clear_override,
                 timestamp_writes,
             );
@@ -1387,9 +1421,11 @@ impl Renderer {
                 self.text_pipeline.render(&mut pass);
                 pass.pop_debug_group();
             } else if is_present {
-                pass.set_pipeline(&self.present_blit.pipeline);
-                pass.set_bind_group(0, &blit_bind_group, &[]);
-                pass.draw(0..3, 0..1);
+                if let Some(bind_group) = &blit_bind_group {
+                    pass.set_pipeline(&self.present_blit.pipeline);
+                    pass.set_bind_group(0, bind_group, &[]);
+                    pass.draw(0..3, 0..1);
+                }
             } else if let Some(pi) = post_index
                 && let (Some(post_pass), Some(&(src, _dst))) =
                     (post_stack.0.get(pi), post_plan.get(pi))
@@ -1405,23 +1441,41 @@ impl Renderer {
             }
         }
 
-        // Screenshot path: readback from the final composed frame source,
-        // which is the text-overlay target (post-target when the stack is
-        // non-empty, else SceneColor).
-        let capture_path = self.pending_capture.take();
-        let capture_target = capture_path
+        // A direct capture's frame is in the stand-in: the same blit puts it
+        // on the real swapchain.
+        if let (Some(_), Some(bind_group)) = (&standin, &blit_bind_group) {
+            let desc = PassDesc::new("tungsten_present_pass", TargetId::Swapchain);
+            let timestamp_writes = timing.as_mut().map(|t| t.next("present".into()));
+            let mut pass = PassRecorder::begin_timed(
+                &mut encoder,
+                &desc,
+                &self.target_pool,
+                &swap_view,
+                None,
+                timestamp_writes,
+            );
+            pass.set_pipeline(&self.present_blit.pipeline);
+            pass.set_bind_group(0, bind_group, &[]);
+            pass.draw(0..3, 0..1);
+        }
+
+        // Screenshot path: readback of the blit's source. That is the
+        // text-overlay target (post-target when the stack is non-empty, else
+        // SceneColor), or the stand-in of a direct capture.
+        let capture_target = capture
             .as_ref()
             .map(|_| create_capture_target(&self.device, self.surface_config.format, w, h));
         if let Some(target) = capture_target.as_ref() {
-            let capture_src_texture = match final_source_target {
-                TargetId::PostPing => self.target_pool.scene.post_ping_texture(),
-                TargetId::PostPong => self.target_pool.scene.post_pong_texture(),
-                TargetId::PresentSource => self
+            let capture_src_texture = match (&standin, final_source_target) {
+                (Some((texture, _)), _) => texture,
+                (None, TargetId::PostPing) => self.target_pool.scene.post_ping_texture(),
+                (None, TargetId::PostPong) => self.target_pool.scene.post_pong_texture(),
+                (None, TargetId::PresentSource) => self
                     .target_pool
                     .scene
                     .present_source_texture()
                     .expect("PresentSource texture must exist while post_aa != Off"),
-                _ => self.target_pool.scene.color_texture(),
+                (None, _) => self.target_pool.scene.color_texture(),
             };
             encoder.copy_texture_to_buffer(
                 wgpu::TexelCopyTextureInfo {
@@ -1459,14 +1513,14 @@ impl Renderer {
         self.queue.submit(std::iter::once(finished));
         self.queue.present(output);
 
-        if let (Some(path), Some(target)) = (capture_path, capture_target)
+        if let (Some(capture), Some(target)) = (capture, capture_target)
             && let Err(e) = finalize_capture(
                 &self.device,
                 &target,
                 self.surface_config.format,
                 w,
                 h,
-                &path,
+                &capture.path,
             )
         {
             log::warn!("screenshot capture failed: {e}");
@@ -1536,7 +1590,8 @@ fn record_main_draws<'a>(
     render_pass.pop_debug_group();
 }
 
-/// Fullscreen-triangle blit pipeline copying `SceneColor` → swapchain.
+/// Fullscreen-triangle blit pipeline copying a composed frame into the
+/// swapchain. Only capture frames use it (`D-087`).
 struct PresentBlitPipeline {
     pipeline: wgpu::RenderPipeline,
     bind_group_layout: wgpu::BindGroupLayout,
@@ -1618,22 +1673,69 @@ impl PresentBlitPipeline {
         let layout = &self.bind_group_layout;
         self.bind_group
             .get_or_build((generation, source), || {
-                device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("present_blit_bg"),
-                    layout,
-                    entries: &[wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(source_view),
-                    }],
-                })
+                Self::build_bind_group(device, layout, source_view)
             })
             .clone()
+    }
+
+    /// A bind group sampling `source_view`, built for one frame: the view is
+    /// not a pool target, so nothing keys a cache.
+    fn bind_group_for_view(
+        &self,
+        device: &wgpu::Device,
+        source_view: &wgpu::TextureView,
+    ) -> wgpu::BindGroup {
+        Self::build_bind_group(device, &self.bind_group_layout, source_view)
+    }
+
+    fn build_bind_group(
+        device: &wgpu::Device,
+        layout: &wgpu::BindGroupLayout,
+        source_view: &wgpu::TextureView,
+    ) -> wgpu::BindGroup {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("present_blit_bg"),
+            layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(source_view),
+            }],
+        })
     }
 
     /// Drops the bind group, and with it its view of a scene target.
     fn release_target_views(&mut self) {
         self.bind_group.clear();
     }
+}
+
+/// The texture a direct capture renders into in place of the swapchain: the
+/// surface's format and size, readable by the screenshot copy and by the
+/// present blit.
+fn create_swapchain_standin(
+    device: &wgpu::Device,
+    format: wgpu::TextureFormat,
+    width: u32,
+    height: u32,
+) -> (wgpu::Texture, wgpu::TextureView) {
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("tungsten_capture_swapchain_standin"),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+            | wgpu::TextureUsages::TEXTURE_BINDING
+            | wgpu::TextureUsages::COPY_SRC,
+        view_formats: &[],
+    });
+    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+    (texture, view)
 }
 
 pub(crate) struct CaptureTarget {

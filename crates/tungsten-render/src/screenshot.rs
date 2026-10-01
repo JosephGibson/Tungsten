@@ -1,6 +1,6 @@
 //! Screenshot capture via offscreen render target plus padded readback buffer.
 //!
-//! Dev-tool path: extra render pass plus poll-wait.
+//! Dev-tool path: the capture frame's present blit plus poll-wait.
 
 use std::path::{Path, PathBuf};
 
@@ -26,10 +26,37 @@ pub enum ScreenshotError {
     SizeMismatch(usize, usize),
 }
 
+/// One-shot PNG capture armed for the next frame.
+#[derive(Debug)]
+pub(crate) struct PendingCapture {
+    pub(crate) path: PathBuf,
+    /// Keep the direct present path and read what it draws; see
+    /// [`Renderer::capture_frame_direct`].
+    pub(crate) direct: bool,
+}
+
 impl Renderer {
-    /// Arm one-shot PNG capture for next full frame.
+    /// Arm one-shot PNG capture for next full frame. That frame takes the
+    /// blit path (`D-087`): every stage renders offscreen, the screenshot
+    /// reads the blit's source and the blit presents it.
     pub fn capture_frame(&mut self, path: &Path) -> Result<(), ScreenshotError> {
-        self.pending_capture = Some(path.to_path_buf());
+        self.pending_capture = Some(PendingCapture {
+            path: path.to_path_buf(),
+            direct: false,
+        });
+        Ok(())
+    }
+
+    /// Arm a one-shot PNG capture of the direct present path, the one every
+    /// frame without a capture takes. The frame renders into an offscreen
+    /// stand-in for the swapchain, which the screenshot reads and a blit then
+    /// presents. A test hook: it lets a pixel test check that both paths draw
+    /// the same image.
+    pub fn capture_frame_direct(&mut self, path: &Path) -> Result<(), ScreenshotError> {
+        self.pending_capture = Some(PendingCapture {
+            path: path.to_path_buf(),
+            direct: true,
+        });
         Ok(())
     }
 

@@ -11,7 +11,9 @@ Scoped rules for this crate, on top of the root `AGENTS.md`. The `tungsten-wgpu`
 
 ## Frame order
 
-`Scene → PostStack → [SMAA tail → PresentSource] → Text Overlay → Present Blit → Swapchain`. Text always draws after presentation AA, so SMAA never samples it.
+`Scene → PostStack → [SMAA tail] → Text Overlay` (`D-087`). The last full-screen stage renders into the swapchain and clears it: SMAA's neighborhood pass; without SMAA the last post pass, or bloom's composite; with neither the scene pass, or its resolve under MSAA. The text overlay then draws on the swapchain. Text always draws after presentation AA, so SMAA never samples it.
+
+A capture frame (`Renderer::capture_frame`, `TUNGSTEN_CAPTURE_FRAME`) keeps the blit tail, `… → [SMAA tail → PresentSource] → Text Overlay → Present Blit → Swapchain`, and the screenshot reads the blit's source. `default_pass_order` takes the `PresentPath`; a new full-screen stage must work on both. `TUNGSTEN_CAPTURE_DIRECT=1` captures the direct path instead, for the pixel test that compares the two.
 
 Surface acquire decisions (reconfigure, recreate, skip, fail) live in the GPU-free `src/surface_acquire.rs` with transition tests; change the policy there, not inline in `renderer.rs`.
 

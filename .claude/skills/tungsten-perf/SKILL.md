@@ -43,7 +43,7 @@ Each row is judged only on what it owns; everything else is context.
 
 - `physics`: `physics_step` p50/p95, `update` p95. `physics-sparse`: `physics_step` p50/p95.
 - `ecs`: `update` p50/p95 and the 14 system rows at p50. `churn`: `flush` p50/p95 and the four churn systems at p50.
-- `gpu`: scene pass and `render_span` p50/p95, the post, SMAA, text and present passes at p50, `extract` and `render_encode` p50/p95 (GPU values from the diagnostic run; n/a without timestamp queries). `gpu-throughput`: `extract`, `render_encode` p50/p95.
+- `gpu`: scene pass and `render_span` p50/p95, the post, SMAA and text passes at p50 (no present pass since `D-087`), `extract` and `render_encode` p50/p95 (GPU values from the diagnostic run; n/a without timestamp queries). `gpu-throughput`: `extract`, `render_encode` p50/p95.
 - `particles`: `unattributed` p50/p95 (the particle stage has no timing of its own) and `animate_sprites` p50/p95.
 - `integrated`: `total` p50/p95/p99 and jitter (p99 − p50).
 

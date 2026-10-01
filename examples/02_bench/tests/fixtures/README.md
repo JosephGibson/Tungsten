@@ -47,6 +47,12 @@ TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p example-02-bench --test visual_regres
 test short-circuits and reports as passing so `cargo test --workspace`
 remains green on machines without a GPU.
 
+The command also runs `direct_and_capture_paths_draw_the_same_image`
+(`D-087`), behind the same gate. It needs no fixture: it captures frame 5 of
+five knob variants of the preset twice, once through the capture path and
+once with `TUNGSTEN_CAPTURE_DIRECT=1`, and asserts that the two images are
+equal with `tolerance = 0`.
+
 The comparison uses `tungsten_render::compare_png` with `tolerance = 2`
 (per-channel delta) and asserts `pixels_above_tolerance == 0`. If the Linux
 Vulkan path jitters at that floor in a future driver update, see `D-047` for

@@ -14,6 +14,18 @@ impl PassOrder {
     }
 }
 
+/// How a frame reaches the swapchain (`D-087`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PresentPath {
+    /// The last full-screen stage renders into the swapchain and the text
+    /// overlay draws there. No present blit.
+    Direct,
+    /// Every stage renders offscreen and a blit copies the result into the
+    /// swapchain. Capture frames take this path: the screenshot reads the
+    /// blit's source.
+    Blit,
+}
+
 /// Preallocated labels for spliced post passes. Static so each `PassDesc`
 /// can keep its `&'static str` label without allocating per frame.
 const POST_PASS_LABELS: [&str; 32] = [
@@ -78,12 +90,23 @@ fn post_pass_label(i: usize) -> &'static str {
 ///   fullscreen fragments.
 /// - When `post_aa != Off` (M27), three SMAA passes (edge, blend weights,
 ///   neighborhood blend) splice in between the post stack and the text overlay
-///   pass; the overlay then writes into `PresentSource`.
-/// - A `tungsten_text_overlay_pass` runs after the post stack / SMAA tail. It
-///   loads the present-blit source and composites screen-space text on top,
-///   so text is never sampled by post shaders.
-/// - The final `present` pass is always a fullscreen blit into the swapchain;
-///   it never clears.
+///   pass.
+/// - A `tungsten_text_overlay_pass` runs after the post stack / SMAA tail and
+///   composites screen-space text on top, so text is never sampled by post
+///   shaders.
+///
+/// `present` picks the tail (`D-087`):
+///
+/// - [`PresentPath::Direct`]: the last full-screen stage writes the swapchain.
+///   That is SMAA's neighborhood pass; without SMAA the last post pass (bloom
+///   writes its composite there); with neither the scene pass, or its resolve
+///   when `msaa > 1`. The text overlay then loads the swapchain, and there is
+///   no present pass. The stage that first writes the swapchain clears it, so
+///   wgpu adds no clear pass of its own for the fresh surface texture.
+/// - [`PresentPath::Blit`]: every stage renders offscreen (the neighborhood
+///   pass into `PresentSource`), the overlay writes [`text_overlay_target`]
+///   and a final `tungsten_present_pass` blits that target into the
+///   swapchain without clearing.
 #[must_use]
 pub fn default_pass_order(
     msaa: u32,
@@ -91,11 +114,17 @@ pub fn default_pass_order(
     depth_enabled: bool,
     post_stack_len: usize,
     post_aa: PostAaMode,
+    present: PresentPath,
 ) -> PassOrder {
-    let (color, resolve) = if msaa > 1 {
-        (TargetId::SceneColorMsaa, Some(TargetId::SceneColor))
-    } else {
-        (TargetId::SceneColor, None)
+    let smaa_active = post_aa.is_smaa();
+    let direct = present == PresentPath::Direct;
+    let scene_is_last = direct && post_stack_len == 0 && !smaa_active;
+
+    let (color, resolve) = match (msaa > 1, scene_is_last) {
+        (true, true) => (TargetId::SceneColorMsaa, Some(TargetId::Swapchain)),
+        (true, false) => (TargetId::SceneColorMsaa, Some(TargetId::SceneColor)),
+        (false, true) => (TargetId::Swapchain, None),
+        (false, false) => (TargetId::SceneColor, None),
     };
 
     let mut scene =
@@ -107,13 +136,19 @@ pub fn default_pass_order(
         scene = scene.with_depth(TargetId::SceneDepth, 1.0);
     }
 
-    let smaa_active = post_aa.is_smaa();
     let extra = if smaa_active { 3 } else { 0 };
     let mut passes = Vec::with_capacity(3 + post_stack_len + extra);
     passes.push(scene);
 
     for i in 0..post_stack_len {
-        passes.push(PassDesc::new(post_pass_label(i), post_target_for_index(i)));
+        if direct && !smaa_active && i + 1 == post_stack_len {
+            passes.push(
+                PassDesc::new(post_pass_label(i), TargetId::Swapchain)
+                    .with_clear(wgpu::Color::TRANSPARENT),
+            );
+        } else {
+            passes.push(PassDesc::new(post_pass_label(i), post_target_for_index(i)));
+        }
     }
 
     if smaa_active {
@@ -125,24 +160,36 @@ pub fn default_pass_order(
             PassDesc::new("tungsten_smaa_blend_weights_pass", TargetId::SmaaBlend)
                 .with_clear(wgpu::Color::TRANSPARENT),
         );
+        let neighborhood_target = if direct {
+            TargetId::Swapchain
+        } else {
+            TargetId::PresentSource
+        };
         passes.push(
-            PassDesc::new("tungsten_smaa_neighborhood_pass", TargetId::PresentSource)
+            PassDesc::new("tungsten_smaa_neighborhood_pass", neighborhood_target)
                 .with_clear(wgpu::Color::TRANSPARENT),
         );
     }
 
-    let overlay_target = text_overlay_target(post_stack_len, post_aa);
+    let overlay_target = if direct {
+        TargetId::Swapchain
+    } else {
+        text_overlay_target(post_stack_len, post_aa)
+    };
     passes.push(PassDesc::new("tungsten_text_overlay_pass", overlay_target));
 
-    passes.push(PassDesc::new("tungsten_present_pass", TargetId::Swapchain));
+    if !direct {
+        passes.push(PassDesc::new("tungsten_present_pass", TargetId::Swapchain));
+    }
 
     PassOrder(passes)
 }
 
-/// Target the text-overlay pass writes into: whichever texture the present
-/// blit will sample from. When `post_aa != Off` the SMAA tail has already
-/// composited into `PresentSource`, so the overlay lands there. Otherwise it
-/// follows the M26 post-stack ping-pong rule.
+/// Target the text-overlay pass writes into on a [`PresentPath::Blit`] frame:
+/// whichever texture the present blit samples and the screenshot reads. When
+/// `post_aa != Off` the SMAA tail has already composited into `PresentSource`,
+/// so the overlay lands there. Otherwise it follows the M26 post-stack
+/// ping-pong rule. On a direct frame the overlay writes the swapchain.
 #[must_use]
 pub fn text_overlay_target(post_stack_len: usize, post_aa: PostAaMode) -> TargetId {
     if post_aa.is_smaa() {

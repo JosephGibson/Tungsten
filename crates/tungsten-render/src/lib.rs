@@ -29,7 +29,7 @@ pub use lit_sprite::{
     RIM_LIGHT_SHADER_NAME,
 };
 pub use material::{MaterialBuildError, MaterialPipeline};
-pub use passes::{PassDesc, PassOrder, PassRecorder, TargetId, default_pass_order};
+pub use passes::{PassDesc, PassOrder, PassRecorder, PresentPath, TargetId, default_pass_order};
 pub use post::PostStackRenderer;
 pub use post::smaa::{
     SMAA_BLEND_WEIGHTS_SHADER_NAME, SMAA_EDGE_SHADER_NAME, SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME,

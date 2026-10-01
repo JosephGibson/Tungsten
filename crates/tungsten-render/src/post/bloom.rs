@@ -318,9 +318,14 @@ impl BloomPipeline {
         dst: TargetId,
         slot: usize,
     ) {
-        self.record_pass_timed(device, queue, encoder, pool, params, src, dst, None, slot);
+        self.record_pass_timed(
+            device, queue, encoder, pool, None, params, src, dst, None, slot,
+        );
     }
 
+    /// `swap_view` is the frame's swapchain view; the composite writes it
+    /// when `dst` is [`TargetId::Swapchain`], which is where a direct frame
+    /// sends a bloom that ends the post stack (`D-087`).
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn record_pass_timed(
         &mut self,
@@ -328,6 +333,7 @@ impl BloomPipeline {
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         pool: &RenderTargetPool,
+        swap_view: Option<&wgpu::TextureView>,
         params: &BloomParams,
         src: TargetId,
         dst: TargetId,
@@ -371,7 +377,10 @@ impl BloomPipeline {
                 .expect("bloom slot holds 2 * mip_count stages")
         };
 
-        let dst_view = resolve_post_view(pool, dst);
+        let dst_view = match (dst, swap_view) {
+            (TargetId::Swapchain, Some(view)) => view,
+            _ => resolve_post_view(pool, dst),
+        };
 
         encoder.push_debug_group("bloom_slot");
 

@@ -413,6 +413,9 @@ impl PostStackRenderer {
         self.bloom
             .record_pass(device, queue, encoder, pool, params, src, dst, slot);
     }
+    /// As [`record_bloom_slot`](Self::record_bloom_slot), with pass timing and
+    /// the frame's swapchain view, which the composite writes when `dst` is
+    /// [`TargetId::Swapchain`].
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn record_bloom_slot_timed(
         &mut self,
@@ -420,14 +423,25 @@ impl PostStackRenderer {
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         pool: &RenderTargetPool,
+        swap_view: &wgpu::TextureView,
         params: &tungsten_core::post::BloomParams,
         src: TargetId,
         dst: TargetId,
         timing: Option<&mut crate::timing::TimingResources>,
         slot: usize,
     ) {
-        self.bloom
-            .record_pass_timed(device, queue, encoder, pool, params, src, dst, timing, slot);
+        self.bloom.record_pass_timed(
+            device,
+            queue,
+            encoder,
+            pool,
+            Some(swap_view),
+            params,
+            src,
+            dst,
+            timing,
+            slot,
+        );
     }
 }
 
