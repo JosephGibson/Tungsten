@@ -6,6 +6,8 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-10-01
+
 Summary: release procedure rework (`D-079`) and physics and ECS performance pass 2 (`D-080`–`D-084`, plan `docs/plans/archive/physics-ecs-perf-pass.md`). For releases, the agent runs every check and hands over five plain commands; merging the release pull request in GitHub publishes. The performance pass, measured on benchmark suite v2, cuts `physics_step` by 58% in both physics rows, `churn` `flush` by 68%, `integrated` `total` by 13% and `ecs` `follow` by 11%. Physics trajectories change (pair order), so the three physics-bearing benchmark digests did; no API is removed. No example or asset changes.
 
 ### Added
