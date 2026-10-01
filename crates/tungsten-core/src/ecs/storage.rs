@@ -1,7 +1,8 @@
 use std::any::TypeId;
 use std::collections::HashMap;
 
-use super::archetype::{Archetype, ArchetypeId, EMPTY_ARCHETYPE, TypedVec};
+use super::archetype::{AnyColumn, Archetype, ArchetypeId, EMPTY_ARCHETYPE, TypedVec};
+use super::command_buffer::InsertQueues;
 use super::entity::{Entities, Entity, EntityLocation};
 
 /// Entity/component storage and archetype registry.
@@ -17,7 +18,7 @@ pub(crate) struct Archetypes {
 
 impl Archetypes {
     pub fn new() -> Self {
-        let empty = Archetype::new(EMPTY_ARCHETYPE, Box::new([]));
+        let empty = Archetype::new(EMPTY_ARCHETYPE, Box::new([]), Vec::new());
         let mut index = HashMap::new();
         index.insert(Box::new([]) as Box<[TypeId]>, EMPTY_ARCHETYPE);
         Self {
@@ -27,15 +28,73 @@ impl Archetypes {
         }
     }
 
-    /// Find or create archetype for sorted `types`.
-    pub fn find_or_create(&mut self, types: &[TypeId]) -> ArchetypeId {
+    /// Find the archetype for sorted `types`, or create it with `columns`:
+    /// one empty column per type, in the same order.
+    fn find_or_create(
+        &mut self,
+        types: &[TypeId],
+        columns: impl FnOnce(&Self) -> Vec<Box<dyn AnyColumn>>,
+    ) -> ArchetypeId {
         if let Some(&id) = self.index.get(types) {
             return id;
         }
         let id = self.archetypes.len() as ArchetypeId;
-        let arch = Archetype::new(id, types.into());
+        let arch = Archetype::new(id, types.into(), columns(self));
         self.archetypes.push(arch);
         self.index.insert(types.into(), id);
+        id
+    }
+
+    /// Archetype `from` plus `t_id`: the cached add edge, or the archetype
+    /// for the extended key, created with `new_column` as `t_id`'s column.
+    fn add_edge(
+        &mut self,
+        from: ArchetypeId,
+        t_id: TypeId,
+        new_column: impl FnOnce() -> Box<dyn AnyColumn>,
+    ) -> ArchetypeId {
+        if let Some(&cached) = self.archetypes[from as usize].add_edges.get(&t_id) {
+            return cached;
+        }
+        let mut new_types: Vec<TypeId> = self.archetypes[from as usize].component_types.to_vec();
+        new_types.push(t_id);
+        new_types.sort();
+        let id = self.find_or_create(&new_types, |store| {
+            let mut columns: Vec<Box<dyn AnyColumn>> = store.archetypes[from as usize]
+                .columns
+                .iter()
+                .map(|column| column.new_empty())
+                .collect();
+            let position = new_types.partition_point(|&tid| tid < t_id);
+            columns.insert(position, new_column());
+            columns
+        });
+        self.archetypes[from as usize].add_edges.insert(t_id, id);
+        id
+    }
+
+    /// Archetype `from` minus `t_id`: the cached remove edge, or the
+    /// archetype for the reduced key.
+    fn remove_edge(&mut self, from: ArchetypeId, t_id: TypeId) -> ArchetypeId {
+        if let Some(&cached) = self.archetypes[from as usize].remove_edges.get(&t_id) {
+            return cached;
+        }
+        let new_types: Vec<TypeId> = self.archetypes[from as usize]
+            .component_types
+            .iter()
+            .copied()
+            .filter(|&tid| tid != t_id)
+            .collect();
+        let id = self.find_or_create(&new_types, |store| {
+            let old = &store.archetypes[from as usize];
+            old.component_types
+                .iter()
+                .zip(&old.columns)
+                .filter(|&(&tid, _)| tid != t_id)
+                .map(|(_, column)| column.new_empty())
+                .collect()
+        });
+        self.archetypes[from as usize].remove_edges.insert(t_id, id);
         id
     }
 
@@ -92,62 +151,99 @@ impl Archetypes {
 
         let t_id = TypeId::of::<T>();
 
-        if self.archetypes[old_arch_id as usize].has(t_id) {
-            *self.archetypes[old_arch_id as usize]
-                .columns
-                .get_mut(&t_id)
-                .unwrap()
-                .get_mut_erased(row)
-                .downcast_mut::<T>()
-                .unwrap() = value;
+        if let Some(column) = self.archetypes[old_arch_id as usize].typed_column_mut::<T>() {
+            column.0[row] = value;
             return;
         }
 
-        let new_arch_id = {
-            if let Some(&cached) = self.archetypes[old_arch_id as usize].add_edges.get(&t_id) {
-                cached
-            } else {
-                let mut new_types: Vec<TypeId> = self.archetypes[old_arch_id as usize]
-                    .component_types
-                    .to_vec();
-                new_types.push(t_id);
-                new_types.sort();
-                let id = self.find_or_create(&new_types);
-                self.archetypes[old_arch_id as usize]
-                    .add_edges
-                    .insert(t_id, id);
-                id
-            }
-        };
+        let new_arch_id = self.add_edge(old_arch_id, t_id, || Box::new(TypedVec::<T>(Vec::new())));
 
         // Borrow split: old/new archetypes must differ because `T` was absent.
         debug_assert_ne!(old_arch_id, new_arch_id);
 
+        self.move_row(entity, old_arch_id, row, new_arch_id);
+        self.archetypes[new_arch_id as usize]
+            .typed_column_mut::<T>()
+            .expect("insert: destination column missing")
+            .0
+            .push(value);
+    }
+
+    /// Apply a run of inserts on one live entity as a single archetype move
+    /// (D-084), with the result of inserting the values one by one.
+    ///
+    /// `run` yields the queue of each insert in command order; the values
+    /// are the oldest ones left in those queues. The add edges are walked in
+    /// that order, so every archetype the one-by-one inserts would pass
+    /// through exists afterwards, created in the same order; the
+    /// intermediate ones get no row. The row then moves once, and each value
+    /// is pushed or, for a type the entity already had or the run names
+    /// twice, overwritten in command order.
+    pub fn insert_run(
+        &mut self,
+        entity: Entity,
+        run: impl Iterator<Item = u32> + Clone,
+        values: &mut InsertQueues,
+    ) {
+        let loc = self
+            .entities
+            .get(entity)
+            .unwrap_or_else(|| panic!("insert on dead entity {entity}"));
+        let old_arch_id = loc.archetype_id;
+
+        let mut new_arch_id = old_arch_id;
+        for queue in run.clone() {
+            let t_id = values.component_type(queue);
+            if !self.archetypes[new_arch_id as usize].has(t_id) {
+                new_arch_id = self.add_edge(new_arch_id, t_id, || values.new_column(queue));
+            }
+        }
+
+        let row = if new_arch_id == old_arch_id {
+            loc.row as usize
+        } else {
+            self.move_row(entity, old_arch_id, loc.row as usize, new_arch_id)
+        };
+
+        // Every type of the run is in the archetype now, so its slot holds
+        // its own column, and the queue downcasts the column before writing.
+        let arch = &mut self.archetypes[new_arch_id as usize];
+        for queue in run {
+            let column = arch
+                .slot_column_erased_mut(values.component_type(queue))
+                .expect("insert_run: destination column missing");
+            values.write_next(queue, column, row);
+        }
+    }
+
+    /// Move `entity`'s row from `old_arch_id` to another archetype and fix
+    /// the locations of the entity and of the row its swap-remove displaced.
+    /// Returns the new row.
+    ///
+    /// Only the components both archetypes hold move. The caller pushes the
+    /// values the destination adds, or takes the ones it drops from `row` of
+    /// their source columns.
+    fn move_row(
+        &mut self,
+        entity: Entity,
+        old_arch_id: ArchetypeId,
+        row: usize,
+        new_arch_id: ArchetypeId,
+    ) -> usize {
         let (old_arch, new_arch) = split_two_mut(&mut self.archetypes, old_arch_id, new_arch_id);
         old_arch.move_components_to(row, new_arch);
 
-        new_arch
-            .columns
-            .entry(t_id)
-            .or_insert_with(|| Box::new(TypedVec::<T>(Vec::new())))
-            .push_erased(Box::new(value));
-
-        let new_row = new_arch.entities.len() as u32;
+        let new_row = new_arch.entities.len();
         new_arch.entities.push(entity);
 
-        let last = self.archetypes[old_arch_id as usize]
-            .entities
-            .len()
-            .saturating_sub(1);
-        self.archetypes[old_arch_id as usize]
-            .entities
-            .swap_remove(row);
+        let last = old_arch.entities.len().saturating_sub(1);
+        old_arch.entities.swap_remove(row);
 
         self.entities.set_location(
             entity,
             EntityLocation {
                 archetype_id: new_arch_id,
-                row: new_row,
+                row: new_row as u32,
             },
         );
 
@@ -161,6 +257,8 @@ impl Archetypes {
                 },
             );
         }
+
+        new_row
     }
 
     /// Remove component and transition to archetype without `T`.
@@ -170,90 +268,34 @@ impl Archetypes {
         let row = loc.row as usize;
 
         let t_id = TypeId::of::<T>();
-        if !self.archetypes[old_arch_id as usize].has(t_id) {
-            return None;
-        }
+        let t_index = self.archetypes[old_arch_id as usize].column_index(t_id)?;
 
-        let new_arch_id = {
-            if let Some(&cached) = self.archetypes[old_arch_id as usize]
-                .remove_edges
-                .get(&t_id)
-            {
-                cached
-            } else {
-                let new_types: Vec<TypeId> = self.archetypes[old_arch_id as usize]
-                    .component_types
-                    .iter()
-                    .copied()
-                    .filter(|&tid| tid != t_id)
-                    .collect();
-                let id = self.find_or_create(&new_types);
-                self.archetypes[old_arch_id as usize]
-                    .remove_edges
-                    .insert(t_id, id);
-                id
-            }
-        };
+        let new_arch_id = self.remove_edge(old_arch_id, t_id);
 
-        let (old_arch, new_arch) = split_two_mut(&mut self.archetypes, old_arch_id, new_arch_id);
-        old_arch.move_components_to(row, new_arch);
-
-        let t_boxed = self.archetypes[old_arch_id as usize]
-            .columns
-            .get_mut(&t_id)
-            .unwrap()
-            .swap_remove_erased(row);
-        let t_value = *t_boxed.downcast::<T>().unwrap();
-
-        let new_row = self.archetypes[new_arch_id as usize].entities.len() as u32;
-        self.archetypes[new_arch_id as usize].entities.push(entity);
-
-        let last = self.archetypes[old_arch_id as usize]
-            .entities
-            .len()
-            .saturating_sub(1);
-        self.archetypes[old_arch_id as usize]
-            .entities
+        self.move_row(entity, old_arch_id, row, new_arch_id);
+        let t_value = self.archetypes[old_arch_id as usize].columns[t_index]
+            .typed_mut::<T>()
+            .expect("remove: column type mismatch")
+            .0
             .swap_remove(row);
-
-        self.entities.set_location(
-            entity,
-            EntityLocation {
-                archetype_id: new_arch_id,
-                row: new_row,
-            },
-        );
-
-        if row < last {
-            let displaced = self.archetypes[old_arch_id as usize].entities[row];
-            self.entities.set_location(
-                displaced,
-                EntityLocation {
-                    archetype_id: old_arch_id,
-                    row: row as u32,
-                },
-            );
-        }
 
         Some(t_value)
     }
 
+    /// Random access: the entity's location, its archetype's slot for `T`,
+    /// one column downcast and the row (D-083).
+    #[inline]
     pub fn get<T: 'static>(&self, entity: Entity) -> Option<&T> {
         let loc = self.entities.get(entity)?;
         let arch = &self.archetypes[loc.archetype_id as usize];
-        arch.columns
-            .get(&TypeId::of::<T>())?
-            .get_erased(loc.row as usize)
-            .downcast_ref::<T>()
+        arch.slot_column::<T>()?.0.get(loc.row as usize)
     }
 
+    #[inline]
     pub fn get_mut<T: 'static>(&mut self, entity: Entity) -> Option<&mut T> {
         let loc = self.entities.get(entity)?;
         let arch = &mut self.archetypes[loc.archetype_id as usize];
-        arch.columns
-            .get_mut(&TypeId::of::<T>())?
-            .get_mut_erased(loc.row as usize)
-            .downcast_mut::<T>()
+        arch.slot_column_mut::<T>()?.0.get_mut(loc.row as usize)
     }
 
     pub fn has<T: 'static>(&self, entity: Entity) -> bool {
@@ -263,10 +305,12 @@ impl Archetypes {
         self.archetypes[loc.archetype_id as usize].has(TypeId::of::<T>())
     }
 
-    /// Archetypes containing component `T`.
-    pub fn archetypes_with<T: 'static>(&self) -> impl Iterator<Item = &Archetype> {
+    /// Archetypes containing component `T`, each with `T`'s column index.
+    pub fn archetypes_with<T: 'static>(&self) -> impl Iterator<Item = (&Archetype, usize)> {
         let t_id = TypeId::of::<T>();
-        self.archetypes.iter().filter(move |a| a.has(t_id))
+        self.archetypes
+            .iter()
+            .filter_map(move |arch| Some((arch, arch.column_index(t_id)?)))
     }
 
     /// Archetypes containing `a` and `b`.
@@ -288,10 +332,16 @@ impl Archetypes {
             .filter(move |arch| arch.has(a) && arch.has(b) && arch.has(c))
     }
 
-    /// Mutable archetypes containing component `T`.
-    pub fn archetypes_with_mut<T: 'static>(&mut self) -> impl Iterator<Item = &mut Archetype> {
+    /// Mutable archetypes containing component `T`, each with `T`'s column
+    /// index.
+    pub fn archetypes_with_mut<T: 'static>(
+        &mut self,
+    ) -> impl Iterator<Item = (&mut Archetype, usize)> {
         let t_id = TypeId::of::<T>();
-        self.archetypes.iter_mut().filter(move |a| a.has(t_id))
+        self.archetypes.iter_mut().filter_map(move |arch| {
+            let index = arch.column_index(t_id)?;
+            Some((arch, index))
+        })
     }
 
     /// Mutable archetypes containing `a` and `b`.

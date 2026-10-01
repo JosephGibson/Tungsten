@@ -690,3 +690,516 @@ fn query3_opt2_matches_query3_order_with_per_archetype_optionals() {
         assert_eq!(extra, (i % 3 == 0).then_some(i));
     }
 }
+
+/// Component family for the insert-run tests: one type per `K`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Part<const K: usize>(u32);
+
+impl<const K: usize> Part<K> {
+    /// Constructor that also works through `with_part!`'s type alias.
+    fn of(value: u32) -> Self {
+        Self(value)
+    }
+}
+
+/// Dispatches a part index to its component type.
+macro_rules! with_part {
+    ($k:expr, $part:ident => $body:expr) => {
+        match $k {
+            0 => {
+                type $part = Part<0>;
+                $body
+            }
+            1 => {
+                type $part = Part<1>;
+                $body
+            }
+            2 => {
+                type $part = Part<2>;
+                $body
+            }
+            3 => {
+                type $part = Part<3>;
+                $body
+            }
+            4 => {
+                type $part = Part<4>;
+                $body
+            }
+            _ => {
+                type $part = Part<5>;
+                $body
+            }
+        }
+    };
+}
+
+const PARTS: usize = 6;
+
+fn part_value(world: &World, entity: Entity, k: usize) -> Option<u32> {
+    match k {
+        0 => world.get::<Part<0>>(entity).map(|part| part.0),
+        1 => world.get::<Part<1>>(entity).map(|part| part.0),
+        2 => world.get::<Part<2>>(entity).map(|part| part.0),
+        3 => world.get::<Part<3>>(entity).map(|part| part.0),
+        4 => world.get::<Part<4>>(entity).map(|part| part.0),
+        _ => world.get::<Part<5>>(entity).map(|part| part.0),
+    }
+}
+
+/// Everything structural a flush can change: each archetype's type key, its
+/// entities in row order and every entity's part values, in archetype order.
+type Snapshot = Vec<(Vec<TypeId>, Vec<(Entity, [Option<u32>; PARTS])>)>;
+
+fn snapshot(world: &World) -> Snapshot {
+    world
+        .archetypes
+        .archetypes
+        .iter()
+        .map(|arch| {
+            let rows = arch
+                .entities
+                .iter()
+                .map(|&entity| {
+                    (
+                        entity,
+                        std::array::from_fn(|k| part_value(world, entity, k)),
+                    )
+                })
+                .collect();
+            (arch.component_types.to_vec(), rows)
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Op {
+    Spawn,
+    InsertPending {
+        pending: usize,
+        part: usize,
+        value: u32,
+    },
+    InsertLive {
+        entity: usize,
+        part: usize,
+        value: u32,
+    },
+    Remove {
+        entity: usize,
+        part: usize,
+    },
+    Despawn {
+        entity: usize,
+    },
+}
+
+/// The same world for both sides of a comparison: entities spread over a
+/// few archetypes, in a fixed order.
+fn seeded_world() -> (World, Vec<Entity>) {
+    let mut world = World::new();
+    let mut entities = Vec::new();
+    for i in 0..12u32 {
+        let entity = world.spawn();
+        for k in 0..PARTS {
+            if (i >> (k % 3)) & 1 == 1 && !(i as usize + k).is_multiple_of(4) {
+                with_part!(k, P => world.insert(entity, P::of(i * 10 + k as u32)));
+            }
+        }
+        entities.push(entity);
+    }
+    (world, entities)
+}
+
+/// What a flush must equal: every spawn first, then each command through the
+/// immediate API, one at a time and in order.
+fn apply_one_by_one(world: &mut World, live: &[Entity], ops: &[Op]) {
+    let pending: Vec<Entity> = ops
+        .iter()
+        .filter(|op| matches!(op, Op::Spawn))
+        .map(|_| world.spawn())
+        .collect();
+    for &op in ops {
+        match op {
+            Op::Spawn => {}
+            Op::InsertPending {
+                pending: index,
+                part,
+                value,
+            } => with_part!(part, P => world.insert(pending[index], P::of(value))),
+            Op::InsertLive {
+                entity,
+                part,
+                value,
+            } => {
+                if world.is_alive(live[entity]) {
+                    with_part!(part, P => world.insert(live[entity], P::of(value)));
+                }
+            }
+            Op::Remove { entity, part } => {
+                with_part!(part, P => { world.remove_component::<P>(live[entity]); });
+            }
+            Op::Despawn { entity } => world.despawn(live[entity]),
+        }
+    }
+}
+
+fn record(buffer: &mut CommandBuffer, live: &[Entity], ops: &[Op]) {
+    let mut pending = Vec::new();
+    for &op in ops {
+        match op {
+            Op::Spawn => pending.push(buffer.spawn()),
+            Op::InsertPending {
+                pending: index,
+                part,
+                value,
+            } => with_part!(part, P => buffer.insert_pending(pending[index], P::of(value))),
+            Op::InsertLive {
+                entity,
+                part,
+                value,
+            } => with_part!(part, P => buffer.insert(live[entity], P::of(value))),
+            Op::Remove { entity, part } => {
+                with_part!(part, P => buffer.remove_component::<P>(live[entity]));
+            }
+            Op::Despawn { entity } => buffer.despawn(live[entity]),
+        }
+    }
+    assert_eq!(buffer.len(), ops.len());
+}
+
+/// Flushes each command list of `frames` through one buffer, as the app does
+/// frame after frame, and compares the world with the one-by-one result.
+fn assert_flush_equals_one_by_one(frames: &[Vec<Op>]) {
+    let (mut expected, live) = seeded_world();
+    let (mut flushed, flushed_live) = seeded_world();
+    assert_eq!(live, flushed_live);
+    let mut buffer = CommandBuffer::new();
+    for ops in frames {
+        apply_one_by_one(&mut expected, &live, ops);
+        record(&mut buffer, &live, ops);
+        flushed.flush_reusing(&mut buffer);
+        assert!(buffer.is_empty());
+
+        assert_eq!(snapshot(&flushed), snapshot(&expected), "ops: {ops:?}");
+        assert_eq!(flushed.entity_count(), expected.entity_count());
+    }
+    // The entity table agrees too: the next spawn reuses the same slot.
+    assert_eq!(flushed.spawn(), expected.spawn());
+}
+
+/// A fixed command list per seed: spawns with insert runs, runs on live
+/// entities, late inserts, removals and despawns.
+fn random_ops(seed: u64, base_value: u32) -> Vec<Op> {
+    // xorshift: a fixed sequence per seed, no dependency.
+    fn next(state: &mut u64) -> usize {
+        *state ^= *state << 13;
+        *state ^= *state >> 7;
+        *state ^= *state << 17;
+        (*state >> 11) as usize
+    }
+
+    let mut state = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
+    let mut ops = Vec::new();
+    let mut spawned = 0;
+    let mut value = base_value;
+    while ops.len() < 60 {
+        match next(&mut state) % 10 {
+            // A spawn followed by a run on it, as game code writes them.
+            0..=2 => {
+                ops.push(Op::Spawn);
+                spawned += 1;
+                for _ in 0..next(&mut state) % 7 {
+                    value += 1;
+                    ops.push(Op::InsertPending {
+                        pending: spawned - 1,
+                        part: next(&mut state) % PARTS,
+                        value,
+                    });
+                }
+            }
+            // A run on a live entity, which may be dead by now and may
+            // already hold some of the parts.
+            3..=6 => {
+                let entity = next(&mut state) % 12;
+                for _ in 0..=next(&mut state) % 5 {
+                    value += 1;
+                    ops.push(Op::InsertLive {
+                        entity,
+                        part: next(&mut state) % PARTS,
+                        value,
+                    });
+                }
+            }
+            // A late insert on an earlier spawn: its own run.
+            7 if spawned > 0 => {
+                value += 1;
+                ops.push(Op::InsertPending {
+                    pending: next(&mut state) % spawned,
+                    part: next(&mut state) % PARTS,
+                    value,
+                });
+            }
+            8 => ops.push(Op::Remove {
+                entity: next(&mut state) % 12,
+                part: next(&mut state) % PARTS,
+            }),
+            _ => ops.push(Op::Despawn {
+                entity: next(&mut state) % 12,
+            }),
+        }
+    }
+    ops
+}
+
+#[test]
+fn flush_insert_runs_equal_one_by_one_inserts_on_random_command_lists() {
+    for seed in 1..=300u64 {
+        assert_flush_equals_one_by_one(&[random_ops(seed, 1_000)]);
+    }
+}
+
+#[test]
+fn flushes_over_several_frames_equal_one_by_one_application() {
+    for seed in 1..=100u64 {
+        let frames: Vec<_> = (0..3)
+            .map(|frame| random_ops(seed * 7 + frame, 1_000 * (frame as u32 + 1)))
+            .collect();
+        assert_flush_equals_one_by_one(&frames);
+    }
+}
+
+#[test]
+fn flush_insert_run_last_write_wins() {
+    let mut world = World::new();
+    let mut buffer = CommandBuffer::new();
+    let pending = buffer.spawn();
+    buffer.insert_pending(pending, Part::<0>(1));
+    buffer.insert_pending(pending, Part::<1>(2));
+    buffer.insert_pending(pending, Part::<0>(3));
+
+    world.flush(buffer);
+
+    let rows: Vec<_> = world.query2::<Part<0>, Part<1>>().collect();
+    assert_eq!(rows.len(), 1);
+    assert_eq!((rows[0].1.0, rows[0].2.0), (3, 2));
+    assert_eq!(world.entity_count(), 1);
+}
+
+#[test]
+fn flush_insert_run_overwrites_components_the_entity_has() {
+    let mut world = World::new();
+    let entity = world.spawn();
+    world.insert(entity, Part::<0>(1));
+    world.insert(entity, Part::<1>(1));
+    let other = world.spawn();
+    world.insert(other, Part::<0>(40));
+    world.insert(other, Part::<1>(41));
+    let mut buffer = CommandBuffer::new();
+
+    buffer.insert(entity, Part::<0>(5));
+    buffer.insert(entity, Part::<2>(7));
+    buffer.insert(entity, Part::<1>(9));
+    world.flush(buffer);
+
+    assert_eq!(world.get::<Part<0>>(entity), Some(&Part(5)));
+    assert_eq!(world.get::<Part<1>>(entity), Some(&Part(9)));
+    assert_eq!(world.get::<Part<2>>(entity), Some(&Part(7)));
+    // The row left behind keeps its own values.
+    assert_eq!(world.get::<Part<0>>(other), Some(&Part(40)));
+    assert_eq!(world.get::<Part<1>>(other), Some(&Part(41)));
+    assert!(!world.has::<Part<2>>(other));
+}
+
+#[test]
+fn flush_insert_run_without_a_new_type_overwrites_in_place() {
+    let mut world = World::new();
+    let entity = world.spawn();
+    world.insert(entity, Part::<0>(1));
+    world.insert(entity, Part::<1>(2));
+    let before = world.archetypes.entities.get(entity);
+    let mut buffer = CommandBuffer::new();
+
+    buffer.insert(entity, Part::<1>(20));
+    buffer.insert(entity, Part::<0>(10));
+    buffer.insert(entity, Part::<1>(21));
+    world.flush(buffer);
+
+    assert_eq!(world.archetypes.entities.get(entity), before);
+    assert_eq!(world.get::<Part<0>>(entity), Some(&Part(10)));
+    assert_eq!(world.get::<Part<1>>(entity), Some(&Part(21)));
+}
+
+#[test]
+fn flush_insert_run_creates_the_archetypes_one_by_one_inserts_would() {
+    let mut world = World::new();
+    let mut buffer = CommandBuffer::new();
+    let pending = buffer.spawn();
+    buffer.insert_pending(pending, Part::<0>(1));
+    buffer.insert_pending(pending, Part::<1>(2));
+    buffer.insert_pending(pending, Part::<2>(3));
+
+    world.flush(buffer);
+
+    // Empty, {0}, {0, 1}, {0, 1, 2}, in the order the inserts name them.
+    let keys: Vec<usize> = world
+        .archetypes
+        .archetypes
+        .iter()
+        .map(|arch| arch.component_types.len())
+        .collect();
+    assert_eq!(keys, vec![0, 1, 2, 3]);
+    assert!(world.archetypes.archetypes[1].has(TypeId::of::<Part<0>>()));
+    assert!(world.archetypes.archetypes[2].has(TypeId::of::<Part<1>>()));
+    // The archetypes the row skipped hold no row, and queries walk them.
+    for arch in &world.archetypes.archetypes[..3] {
+        assert!(arch.entities.is_empty());
+        assert_eq!(arch.columns.len(), arch.component_types.len());
+    }
+    assert_eq!(world.archetypes.archetypes[3].entities.len(), 1);
+    assert_eq!(world.query::<Part<0>>().count(), 1);
+    assert_eq!(world.query2::<Part<0>, Part<1>>().count(), 1);
+    assert_eq!(world.query_mut::<Part<1>>().count(), 1);
+}
+
+#[test]
+fn flush_inserts_on_different_entities_are_not_merged() {
+    let mut world = World::new();
+    let first = world.spawn();
+    let second = world.spawn();
+    let mut buffer = CommandBuffer::new();
+
+    buffer.insert(first, Part::<0>(1));
+    buffer.insert(second, Part::<1>(2));
+    buffer.insert(first, Part::<2>(3));
+    world.flush(buffer);
+
+    // Archetypes appear in command order: {0}, {1}, then {0, 2}.
+    let archetypes = &world.archetypes.archetypes;
+    assert_eq!(archetypes.len(), 4);
+    assert_eq!(&*archetypes[1].component_types, [TypeId::of::<Part<0>>()]);
+    assert_eq!(&*archetypes[2].component_types, [TypeId::of::<Part<1>>()]);
+    assert_eq!(archetypes[3].entities, vec![first]);
+    assert_eq!(world.get::<Part<0>>(first), Some(&Part(1)));
+    assert_eq!(world.get::<Part<2>>(first), Some(&Part(3)));
+    assert_eq!(world.get::<Part<1>>(second), Some(&Part(2)));
+}
+
+#[test]
+fn flush_remove_between_inserts_splits_the_run() {
+    let mut world = World::new();
+    let entity = world.spawn();
+    let mut buffer = CommandBuffer::new();
+
+    buffer.insert(entity, Part::<0>(1));
+    buffer.remove_component::<Part<0>>(entity);
+    buffer.insert(entity, Part::<1>(2));
+    world.flush(buffer);
+
+    assert!(!world.has::<Part<0>>(entity));
+    assert_eq!(world.get::<Part<1>>(entity), Some(&Part(2)));
+}
+
+#[test]
+fn flush_insert_run_on_dead_entity_drops_its_values() {
+    use std::rc::Rc;
+
+    struct Held(#[allow(dead_code)] Rc<()>);
+    struct AlsoHeld(#[allow(dead_code)] Rc<()>);
+
+    let tracker = Rc::new(());
+    let mut world = World::new();
+    let entity = world.spawn();
+    let mut buffer = CommandBuffer::new();
+
+    buffer.despawn(entity);
+    buffer.insert(entity, Held(tracker.clone()));
+    buffer.insert(entity, AlsoHeld(tracker.clone()));
+    assert_eq!(Rc::strong_count(&tracker), 3);
+    world.flush(buffer);
+
+    assert!(!world.is_alive(entity));
+    assert_eq!(Rc::strong_count(&tracker), 1);
+    assert_eq!(world.query::<Held>().count(), 0);
+}
+
+#[test]
+fn flush_reusing_empties_the_buffer_and_keeps_its_storage() {
+    let mut world = World::new();
+    let mut buffer = CommandBuffer::new();
+    let record_frame = |buffer: &mut CommandBuffer, base: u32| {
+        for i in 0..32 {
+            let pending = buffer.spawn();
+            buffer.insert_pending(pending, Part::<0>(base + i));
+            buffer.insert_pending(pending, Part::<1>(base + i));
+        }
+    };
+
+    record_frame(&mut buffer, 0);
+    assert_eq!(buffer.len(), 96);
+    world.flush_reusing(&mut buffer);
+
+    assert!(buffer.is_empty());
+    assert_eq!(buffer.len(), 0);
+    assert_eq!(world.entity_count(), 32);
+    let capacity = buffer.commands.capacity();
+    assert!(capacity >= 96);
+
+    // Pending handles restart, and an equal frame fits the kept storage.
+    record_frame(&mut buffer, 100);
+    assert_eq!(buffer.commands.capacity(), capacity);
+    world.flush_reusing(&mut buffer);
+
+    assert_eq!(world.entity_count(), 64);
+    let mut values: Vec<u32> = world
+        .query2::<Part<0>, Part<1>>()
+        .map(|(_, a, b)| {
+            assert_eq!(a.0, b.0);
+            a.0
+        })
+        .collect();
+    values.sort_unstable();
+    let expected: Vec<u32> = (0..32).chain(100..132).collect();
+    assert_eq!(values, expected);
+}
+
+#[test]
+fn flush_keeps_values_of_one_type_in_step_past_a_dead_target() {
+    let mut world = World::new();
+    let first = world.spawn();
+    let dead = world.spawn();
+    let last = world.spawn();
+    let mut buffer = CommandBuffer::new();
+
+    buffer.insert(first, Part::<0>(1));
+    buffer.despawn(dead);
+    buffer.insert(dead, Part::<0>(2));
+    buffer.insert(dead, Part::<1>(20));
+    buffer.insert(last, Part::<0>(3));
+    buffer.insert(last, Part::<1>(30));
+    world.flush(buffer);
+
+    assert_eq!(world.get::<Part<0>>(first), Some(&Part(1)));
+    assert!(!world.is_alive(dead));
+    assert_eq!(world.get::<Part<0>>(last), Some(&Part(3)));
+    assert_eq!(world.get::<Part<1>>(last), Some(&Part(30)));
+}
+
+#[test]
+fn unflushed_buffer_drops_its_values() {
+    use std::rc::Rc;
+
+    struct Held(#[allow(dead_code)] Rc<()>);
+
+    let tracker = Rc::new(());
+    let mut world = World::new();
+    let entity = world.spawn();
+    let mut buffer = CommandBuffer::new();
+    buffer.insert(entity, Held(tracker.clone()));
+    buffer.insert(entity, Held(tracker.clone()));
+    assert_eq!(Rc::strong_count(&tracker), 3);
+
+    drop(buffer);
+
+    assert_eq!(Rc::strong_count(&tracker), 1);
+}
