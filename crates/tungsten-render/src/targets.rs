@@ -323,6 +323,42 @@ impl SceneTarget {
 #[must_use]
 pub struct RenderTargetPool {
     pub scene: SceneTarget,
+    /// Counts rebuilds of `scene`. Whatever holds a view of a target (a bind
+    /// group, mostly) keys on it and rebuilds when it moves.
+    generation: u64,
+}
+
+/// One value built from the scene targets and the key it was built for. The
+/// key carries [`RenderTargetPool::generation`], so a value never outlives
+/// the views it was made from.
+#[derive(Debug)]
+pub(crate) struct TargetCache<K, V> {
+    entry: Option<(K, V)>,
+}
+
+impl<K, V> Default for TargetCache<K, V> {
+    fn default() -> Self {
+        Self { entry: None }
+    }
+}
+
+impl<K: PartialEq, V> TargetCache<K, V> {
+    /// The value for `key`: the cached one when its key is equal, else a new
+    /// one from `build`, which replaces it.
+    pub(crate) fn get_or_build(&mut self, key: K, build: impl FnOnce() -> V) -> &mut V {
+        if !matches!(&self.entry, Some((cached, _)) if *cached == key) {
+            self.entry = Some((key, build()));
+        }
+        match &mut self.entry {
+            Some((_, value)) => value,
+            None => unreachable!("entry was just filled"),
+        }
+    }
+
+    /// Drops the value, and with it the views it holds.
+    pub(crate) fn clear(&mut self) {
+        self.entry = None;
+    }
 }
 
 impl RenderTargetPool {
@@ -345,10 +381,18 @@ impl RenderTargetPool {
                 post_aa,
                 bloom_max_mips,
             ),
+            generation: 0,
         }
     }
 
+    /// Number of times `scene` has been rebuilt since the pool was created.
+    #[must_use]
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
     /// Re-allocate when size or config changes. No-op when already matching.
+    /// A re-allocation moves [`generation`](Self::generation).
     #[allow(clippy::too_many_arguments)]
     pub fn resize(
         &mut self,
@@ -370,6 +414,7 @@ impl RenderTargetPool {
         if !shape_changed {
             return;
         }
+        self.generation += 1;
         self.scene = SceneTarget::new(
             device,
             new_size,
@@ -665,6 +710,28 @@ mod tests {
     fn non_srgb_twin_returns_none_for_linear_input() {
         assert_eq!(non_srgb_twin(TextureFormat::Rgba8Unorm), None);
         assert_eq!(non_srgb_twin(TextureFormat::Bgra8Unorm), None);
+    }
+
+    #[test]
+    fn target_cache_rebuilds_only_when_its_key_moves() {
+        // Keyed like the renderer's caches: pool generation and source target.
+        let mut cache: TargetCache<(u64, TargetId), u32> = TargetCache::default();
+        let mut builds = 0;
+        let mut get = |cache: &mut TargetCache<(u64, TargetId), u32>, key| {
+            *cache.get_or_build(key, || {
+                builds += 1;
+                builds
+            })
+        };
+        assert_eq!(get(&mut cache, (0, TargetId::SceneColor)), 1);
+        assert_eq!(get(&mut cache, (0, TargetId::SceneColor)), 1);
+        // A resize or a `post_aa` switch rebuilds the targets: new generation.
+        assert_eq!(get(&mut cache, (1, TargetId::SceneColor)), 2);
+        assert_eq!(get(&mut cache, (1, TargetId::SceneColor)), 2);
+        // Another source target in the same generation.
+        assert_eq!(get(&mut cache, (1, TargetId::PostPing)), 3);
+        cache.clear();
+        assert_eq!(get(&mut cache, (1, TargetId::PostPing)), 4);
     }
 
     #[test]

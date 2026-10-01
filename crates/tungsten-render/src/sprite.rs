@@ -210,6 +210,9 @@ pub struct SpritePipeline {
     /// + one bind group. Lit batches bind from this pool at group 1.
     lit_textures: HashMap<TextureHandle, GpuLitTextures>,
     next_handle: u32,
+    /// Bytes last written to each material's UBO: batches that repeat a
+    /// payload upload it once.
+    material_written: HashMap<MaterialAssetId, [u8; 256]>,
 }
 
 impl SpritePipeline {
@@ -385,6 +388,7 @@ impl SpritePipeline {
             textures: HashMap::new(),
             lit_textures: HashMap::new(),
             next_handle: 0,
+            material_written: HashMap::new(),
         }
     }
 
@@ -802,6 +806,13 @@ impl SpritePipeline {
         queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(matrix_ref));
     }
 
+    /// Records bytes written to material `id`'s UBO outside `draw`: the seed
+    /// a new or rebuilt material pipeline gets. `draw` then skips a payload
+    /// equal to it.
+    pub(crate) fn note_material_write(&mut self, id: MaterialAssetId, payload: [u8; 256]) {
+        self.material_written.insert(id, payload);
+    }
+
     fn ensure_instance_capacity(&mut self, device: &wgpu::Device, required_instances: usize) {
         if required_instances <= self.instance_capacity {
             return;
@@ -969,8 +980,14 @@ impl SpritePipeline {
                 if let Some(mp) = material_pipeline {
                     let payload = batch
                         .uniform_overrides
-                        .unwrap_or_else(|| mp.defaults.to_override_block());
-                    queue.write_buffer(&mp.ubo, 0, &payload.to_bytes());
+                        .unwrap_or_else(|| mp.defaults.to_override_block())
+                        .to_bytes();
+                    // Skip bytes the UBO already holds; a different payload
+                    // for the same material is still written, as before.
+                    if self.material_written.get(&mp.material_id) != Some(&payload) {
+                        queue.write_buffer(&mp.ubo, 0, &payload);
+                        self.material_written.insert(mp.material_id, payload);
+                    }
                     render_pass.set_bind_group(2, &mp.bind_group, &[]);
                 }
             }

@@ -25,7 +25,7 @@ use crate::screenshot::{aligned_bytes_per_row, strip_row_padding};
 use crate::shader_hot_reload::{ShaderError, ShaderModuleCache};
 use crate::sprite::{SpriteBatch, SpritePipeline};
 use crate::surface::{present_mode_label, resolve_max_frame_latency, resolve_present_mode};
-use crate::targets::RenderTargetPool;
+use crate::targets::{RenderTargetPool, TargetCache};
 use crate::text::{TextPipeline, TextSection};
 use crate::timing::TimingResources;
 pub use crate::timing::{CpuFrameTimings, GpuFrameTimings};
@@ -123,6 +123,11 @@ pub struct Renderer {
     pub cpu_timings: CpuFrameTimings,
     /// One-shot offscreen PNG capture target.
     pub(crate) pending_capture: Option<PathBuf>,
+    /// View-projection bytes last written to the quad and sprite camera
+    /// buffers.
+    camera_written: Option<[u8; 64]>,
+    /// Payload last written to the lighting UBO.
+    lights_written: Option<LightUbo>,
 }
 
 impl Renderer {
@@ -489,6 +494,8 @@ impl Renderer {
             gpu_timings,
             cpu_timings: CpuFrameTimings::default(),
             pending_capture: None,
+            camera_written: None,
+            lights_written: None,
         })
     }
 
@@ -592,10 +599,18 @@ impl Renderer {
         );
     }
 
-    /// M29 upload one frame of the lighting UBO. The bind group built at
-    /// startup stays valid; resize does not invalidate it.
-    pub fn update_lights(&self, ubo: &LightUbo) {
-        self.lighting.write(&self.queue, ubo);
+    /// M29 upload one frame of the lighting UBO, unless it already holds
+    /// these bytes. The bind group built at startup stays valid; resize does
+    /// not invalidate it.
+    pub fn update_lights(&mut self, ubo: &LightUbo) {
+        let unchanged = self
+            .lights_written
+            .as_ref()
+            .is_some_and(|written| bytemuck::bytes_of(written) == bytemuck::bytes_of(ubo));
+        if !unchanged {
+            self.lighting.write(&self.queue, ubo);
+            self.lights_written = Some(*ubo);
+        }
     }
 
     /// Portable atlas page dimension cap.
@@ -828,8 +843,9 @@ impl Renderer {
             name,
         );
         // Seed defaults so first-frame draws don't read uninitialised memory.
-        self.queue
-            .write_buffer(&ubo, 0, &defaults.to_override_block().to_bytes());
+        let seed = defaults.to_override_block().to_bytes();
+        self.queue.write_buffer(&ubo, 0, &seed);
+        self.sprite_pipeline.note_material_write(id, seed);
 
         self.materials.insert(
             id,
@@ -886,17 +902,33 @@ impl Renderer {
             self.surface_config.width = width;
             self.surface_config.height = height;
             self.surface.configure(&self.device, &self.surface_config);
-            self.target_pool.resize(
-                &self.device,
-                (width, height),
-                self.surface_config.format,
-                self.sample_count,
-                self.depth_enabled,
-                self.post_aa,
-                self.bloom_max_mips,
-            );
+            self.resize_targets((width, height));
             if let Some(smaa) = self.smaa.as_ref() {
                 smaa.update_preset(&self.queue, self.post_aa, (width, height));
+            }
+        }
+    }
+
+    /// Fits the scene targets to `size` and the current config. When that
+    /// reallocates them, every cached bind group over the old ones goes, so
+    /// the old textures are freed now. The caches key on the pool generation
+    /// as well, so none could be drawn with again either way.
+    fn resize_targets(&mut self, size: (u32, u32)) {
+        let generation = self.target_pool.generation();
+        self.target_pool.resize(
+            &self.device,
+            size,
+            self.surface_config.format,
+            self.sample_count,
+            self.depth_enabled,
+            self.post_aa,
+            self.bloom_max_mips,
+        );
+        if self.target_pool.generation() != generation {
+            self.post_stack.release_target_views();
+            self.present_blit.release_target_views();
+            if let Some(smaa) = self.smaa.as_mut() {
+                smaa.release_target_views();
             }
         }
     }
@@ -916,15 +948,7 @@ impl Renderer {
         }
         self.post_aa = mode;
         let size = (self.surface_config.width, self.surface_config.height);
-        self.target_pool.resize(
-            &self.device,
-            size,
-            self.surface_config.format,
-            self.sample_count,
-            self.depth_enabled,
-            self.post_aa,
-            self.bloom_max_mips,
-        );
+        self.resize_targets(size);
         match (self.post_aa.is_smaa(), self.smaa.is_some()) {
             (true, false) => {
                 self.smaa = Some(build_smaa_pipeline(
@@ -1144,8 +1168,14 @@ impl Renderer {
         let encode_start = Instant::now();
         let w = self.surface_config.width;
         let h = self.surface_config.height;
-        self.quad_pipeline.update_camera(&self.queue, view_proj);
-        self.sprite_pipeline.update_camera(&self.queue, view_proj);
+        // Both camera buffers hold the last matrix written; a camera that
+        // stands still uploads nothing.
+        let camera: [u8; 64] = bytemuck::cast(view_proj.to_cols_array());
+        if self.camera_written != Some(camera) {
+            self.quad_pipeline.update_camera(&self.queue, view_proj);
+            self.sprite_pipeline.update_camera(&self.queue, view_proj);
+            self.camera_written = Some(camera);
+        }
         self.text_pipeline
             .prepare(&self.device, &self.queue, text_sections, w, h);
 
@@ -1176,11 +1206,14 @@ impl Renderer {
                 .expect("PresentSource view must exist while post_aa != Off"),
             _ => self.target_pool.scene.color_view(),
         };
-        // Rebuild the present-blit bind group every frame against the live
-        // source view; cheap, avoids stale-view hazards after resize.
-        let blit_bind_group = self
-            .present_blit
-            .make_bind_group(&self.device, final_source_view);
+        // The present-blit bind group is kept until the targets are
+        // reallocated or the source target changes.
+        let blit_bind_group = self.present_blit.bind_group(
+            &self.device,
+            self.target_pool.generation(),
+            final_source_target,
+            final_source_view,
+        );
 
         let order = default_pass_order(
             self.sample_count,
@@ -1326,19 +1359,26 @@ impl Renderer {
                     &self.lighting,
                 );
             } else if is_smaa_edge {
-                if let Some(smaa) = self.smaa.as_ref() {
-                    smaa.record_edge_pass(&self.device, &mut pass, smaa_source_view);
+                if let Some(smaa) = self.smaa.as_mut() {
+                    smaa.record_edge_pass(
+                        &self.device,
+                        &mut pass,
+                        &self.target_pool,
+                        smaa_source_target,
+                        smaa_source_view,
+                    );
                 }
             } else if is_smaa_blend {
-                if let Some(smaa) = self.smaa.as_ref() {
+                if let Some(smaa) = self.smaa.as_mut() {
                     smaa.record_blend_weights_pass(&self.device, &mut pass, &self.target_pool);
                 }
             } else if is_smaa_nbh {
-                if let Some(smaa) = self.smaa.as_ref() {
+                if let Some(smaa) = self.smaa.as_mut() {
                     smaa.record_neighborhood_pass(
                         &self.device,
                         &mut pass,
                         &self.target_pool,
+                        smaa_source_target,
                         smaa_source_view,
                     );
                 }
@@ -1500,6 +1540,9 @@ fn record_main_draws<'a>(
 struct PresentBlitPipeline {
     pipeline: wgpu::RenderPipeline,
     bind_group_layout: wgpu::BindGroupLayout,
+    /// The source bind group, keyed on the pool generation and the target it
+    /// samples.
+    bind_group: TargetCache<(u64, TargetId), wgpu::BindGroup>,
 }
 
 impl PresentBlitPipeline {
@@ -1559,22 +1602,37 @@ impl PresentBlitPipeline {
         Self {
             pipeline,
             bind_group_layout: bgl,
+            bind_group: TargetCache::default(),
         }
     }
 
-    fn make_bind_group(
-        &self,
+    /// The bind group sampling `source_view`, which is the view of target
+    /// `source` in pool generation `generation`.
+    fn bind_group(
+        &mut self,
         device: &wgpu::Device,
+        generation: u64,
+        source: TargetId,
         source_view: &wgpu::TextureView,
     ) -> wgpu::BindGroup {
-        device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("present_blit_bg"),
-            layout: &self.bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(source_view),
-            }],
-        })
+        let layout = &self.bind_group_layout;
+        self.bind_group
+            .get_or_build((generation, source), || {
+                device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("present_blit_bg"),
+                    layout,
+                    entries: &[wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(source_view),
+                    }],
+                })
+            })
+            .clone()
+    }
+
+    /// Drops the bind group, and with it its view of a scene target.
+    fn release_target_views(&mut self) {
+        self.bind_group.clear();
     }
 }
 

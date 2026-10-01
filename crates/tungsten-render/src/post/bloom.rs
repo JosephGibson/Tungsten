@@ -14,7 +14,7 @@ use wgpu::util::DeviceExt;
 
 use crate::passes::TargetId;
 use crate::shader_hot_reload::ShaderModuleCache;
-use crate::targets::{BLOOM_PYRAMID_FORMAT, RenderTargetPool};
+use crate::targets::{BLOOM_PYRAMID_FORMAT, RenderTargetPool, TargetCache};
 
 /// Stage shader manifest names. Must match `assets/manifest.json` keys and the
 /// pre-seeded ids in `Renderer::new`.
@@ -121,7 +121,48 @@ pub fn pack_params(
     block
 }
 
-/// Owns the four bloom pipelines + their shared bind-group layouts + UBO.
+/// What a bloom slot's GPU objects were built for: they hold views of the
+/// slot's source and of the pyramid's mips.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct BloomSlotKey {
+    pub generation: u64,
+    pub src: TargetId,
+    pub dst: TargetId,
+    pub mip_count: u32,
+}
+
+/// One sub-pass of a bloom slot: its params UBO and the two bind groups it
+/// draws with.
+struct BloomStage {
+    ubo: wgpu::Buffer,
+    /// Bytes last written to `ubo`.
+    written: [u8; 256],
+    params_bg: wgpu::BindGroup,
+    source_bg: wgpu::BindGroup,
+}
+
+/// GPU objects of one bloom slot: `2 * mip_count` stages in recording order
+/// (threshold, downsamples, upsamples, composite) and the composite's
+/// pyramid bind group.
+struct BloomSlot {
+    stages: Vec<BloomStage>,
+    composite_bg: wgpu::BindGroup,
+}
+
+/// The cache of post-stack slot `slot`, growing the list to reach it: two
+/// bloom passes in one stack keep separate objects.
+pub(crate) fn slot_cache<V>(
+    slots: &mut Vec<TargetCache<BloomSlotKey, V>>,
+    slot: usize,
+) -> &mut TargetCache<BloomSlotKey, V> {
+    if slots.len() <= slot {
+        slots.resize_with(slot + 1, TargetCache::default);
+    }
+    &mut slots[slot]
+}
+
+/// Owns the four bloom pipelines, their shared bind-group layouts and, per
+/// post-stack slot, the UBOs and bind groups of that slot's sub-passes.
 pub struct BloomPipeline {
     threshold: wgpu::RenderPipeline,
     downsample: wgpu::RenderPipeline,
@@ -131,6 +172,10 @@ pub struct BloomPipeline {
     sampler: wgpu::Sampler,
     target_format: wgpu::TextureFormat,
     pub shader_ids: BloomShaderIds,
+    slots: Vec<TargetCache<BloomSlotKey, BloomSlot>>,
+    /// The slot being recorded: UBO bytes of its sub-passes. Kept for its
+    /// allocation.
+    payloads: Vec<[u8; 256]>,
 }
 
 impl BloomPipeline {
@@ -200,7 +245,15 @@ impl BloomPipeline {
             sampler,
             target_format: format,
             shader_ids: ids,
+            slots: Vec::new(),
+            payloads: Vec::new(),
         }
+    }
+
+    /// Drops every slot's objects, and with them their views of the scene
+    /// targets and the pyramid.
+    pub(crate) fn release_target_views(&mut self) {
+        self.slots.clear();
     }
 
     /// Hot-reload entry: rebuild only the affected stage's pipeline against a
@@ -250,9 +303,12 @@ impl BloomPipeline {
     /// Record one bloom slot: threshold → N-1 downsamples → N-1 additive
     /// upsamples → composite. Each sub-pass opens its own `RenderPass` because
     /// the attachments differ per stage (a different mip view, then dst).
+    /// `slot` is the pass's index in the post stack; its UBOs and bind groups
+    /// are built once and rebuilt when the targets, the slot's source or
+    /// destination or the mip count change.
     #[allow(clippy::too_many_arguments)]
     pub fn record_pass(
-        &self,
+        &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
@@ -260,15 +316,16 @@ impl BloomPipeline {
         params: &BloomParams,
         src: TargetId,
         dst: TargetId,
+        slot: usize,
     ) {
-        self.record_pass_timed(device, queue, encoder, pool, params, src, dst, None, 0);
+        self.record_pass_timed(device, queue, encoder, pool, params, src, dst, None, slot);
     }
 
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn record_pass_timed(
-        &self,
+        &mut self,
         device: &wgpu::Device,
-        _queue: &wgpu::Queue,
+        queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         pool: &RenderTargetPool,
         params: &BloomParams,
@@ -282,25 +339,45 @@ impl BloomPipeline {
             return;
         }
 
-        let src_view = resolve_post_view(pool, src);
+        let payloads = &mut self.payloads;
+        stage_payloads(payloads, params, pool.scene.size, mip_count, |level| {
+            pool.scene
+                .bloom_mip_extent(level)
+                .expect("bloom mip must exist")
+        });
+        let key = BloomSlotKey {
+            generation: pool.generation(),
+            src,
+            dst,
+            mip_count,
+        };
+        let layouts = &self.layouts;
+        let sampler = &self.sampler;
+        let objects = slot_cache(&mut self.slots, slot).get_or_build(key, || {
+            build_slot(device, layouts, sampler, pool, src, payloads)
+        });
+        // A stage's UBO is written only when its bytes change: new params or
+        // new sizes.
+        for (stage, payload) in objects.stages.iter_mut().zip(payloads.iter()) {
+            if stage.written != *payload {
+                queue.write_buffer(&stage.ubo, 0, payload);
+                stage.written = *payload;
+            }
+        }
+        let mut stages = objects.stages.iter();
+        let mut next_stage = || {
+            stages
+                .next()
+                .expect("bloom slot holds 2 * mip_count stages")
+        };
+
         let dst_view = resolve_post_view(pool, dst);
-        let scene_size = pool.scene.size;
-        let inv_scene = inv_size(scene_size);
 
         encoder.push_debug_group("bloom_slot");
 
         // Stage 1 — threshold: sample slot src, write mip 0.
         {
-            let payload = pack_params(params, inv_scene, mip_count, 0, PASS_KIND_THRESHOLD);
-            let ubo = create_params_ubo(device, "bloom_threshold_ubo", &payload);
-            let params_bg = build_params_bg(device, &self.layouts, &ubo, "bloom_threshold");
-            let source_bg = build_source_bg(
-                device,
-                &self.layouts,
-                src_view,
-                &self.sampler,
-                "bloom_threshold",
-            );
+            let stage = next_stage();
             let mip0_view = pool
                 .scene
                 .bloom_mip_view(0)
@@ -324,8 +401,8 @@ impl BloomPipeline {
                 ..Default::default()
             });
             pass.set_pipeline(&self.threshold);
-            pass.set_bind_group(0, &source_bg, &[]);
-            pass.set_bind_group(1, &params_bg, &[]);
+            pass.set_bind_group(0, &stage.source_bg, &[]);
+            pass.set_bind_group(1, &stage.params_bg, &[]);
             pass.draw(0..3, 0..1);
             drop(pass);
             encoder.pop_debug_group();
@@ -333,34 +410,11 @@ impl BloomPipeline {
 
         // Stage 2 — downsample chain: each level reads (level-1) and writes level.
         for level in 1..mip_count {
-            let prev_extent = pool
-                .scene
-                .bloom_mip_extent(level - 1)
-                .expect("prev mip must exist");
-            let payload = pack_params(
-                params,
-                inv_size(prev_extent),
-                mip_count,
-                level,
-                PASS_KIND_DOWNSAMPLE,
-            );
-            let ubo = create_params_ubo(device, "bloom_downsample_ubo", &payload);
-            let params_bg = build_params_bg(device, &self.layouts, &ubo, "bloom_downsample");
-            let prev_view = pool
-                .scene
-                .bloom_mip_view(level - 1)
-                .expect("prev mip view must exist");
+            let stage = next_stage();
             let level_view = pool
                 .scene
                 .bloom_mip_view(level)
                 .expect("level mip view must exist");
-            let source_bg = build_source_bg(
-                device,
-                &self.layouts,
-                prev_view,
-                &self.sampler,
-                "bloom_downsample",
-            );
             encoder.push_debug_group("bloom_downsample");
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("tungsten_bloom_downsample"),
@@ -380,8 +434,8 @@ impl BloomPipeline {
                 ..Default::default()
             });
             pass.set_pipeline(&self.downsample);
-            pass.set_bind_group(0, &source_bg, &[]);
-            pass.set_bind_group(1, &params_bg, &[]);
+            pass.set_bind_group(0, &stage.source_bg, &[]);
+            pass.set_bind_group(1, &stage.params_bg, &[]);
             pass.draw(0..3, 0..1);
             drop(pass);
             encoder.pop_debug_group();
@@ -389,96 +443,44 @@ impl BloomPipeline {
 
         // Stage 3 — upsample chain: each iteration reads (level+1) and adds
         // into level. Pipeline blend state contributes the One+One.
-        if mip_count >= 2 {
-            for level in (0..mip_count - 1).rev() {
-                let next_extent = pool
-                    .scene
-                    .bloom_mip_extent(level + 1)
-                    .expect("next mip must exist");
-                let payload = pack_params(
-                    params,
-                    inv_size(next_extent),
-                    mip_count,
-                    level,
-                    PASS_KIND_UPSAMPLE,
-                );
-                let ubo = create_params_ubo(device, "bloom_upsample_ubo", &payload);
-                let params_bg = build_params_bg(device, &self.layouts, &ubo, "bloom_upsample");
-                let next_view = pool
-                    .scene
-                    .bloom_mip_view(level + 1)
-                    .expect("next mip view must exist");
-                let level_view = pool
-                    .scene
-                    .bloom_mip_view(level)
-                    .expect("level mip view must exist");
-                let source_bg = build_source_bg(
-                    device,
-                    &self.layouts,
-                    next_view,
-                    &self.sampler,
-                    "bloom_upsample",
-                );
-                encoder.push_debug_group("bloom_upsample");
-                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("tungsten_bloom_upsample"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: level_view,
-                        depth_slice: None,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            // Load: pipeline blend additively combines fragment
-                            // with the prior downsample contents. Clearing here
-                            // would discard the downsampled energy.
-                            load: wgpu::LoadOp::Load,
-                            store: wgpu::StoreOp::Store,
-                        },
-                    })],
-                    depth_stencil_attachment: None,
-                    timestamp_writes: timing
-                        .as_deref_mut()
-                        .map(|t| t.next(format!("post{slot}_bloom_up{level}"))),
-                    ..Default::default()
-                });
-                pass.set_pipeline(&self.upsample);
-                pass.set_bind_group(0, &source_bg, &[]);
-                pass.set_bind_group(1, &params_bg, &[]);
-                pass.draw(0..3, 0..1);
-                drop(pass);
-                encoder.pop_debug_group();
-            }
+        for level in (0..mip_count - 1).rev() {
+            let stage = next_stage();
+            let level_view = pool
+                .scene
+                .bloom_mip_view(level)
+                .expect("level mip view must exist");
+            encoder.push_debug_group("bloom_upsample");
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("tungsten_bloom_upsample"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: level_view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        // Load: pipeline blend additively combines fragment
+                        // with the prior downsample contents. Clearing here
+                        // would discard the downsampled energy.
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: timing
+                    .as_deref_mut()
+                    .map(|t| t.next(format!("post{slot}_bloom_up{level}"))),
+                ..Default::default()
+            });
+            pass.set_pipeline(&self.upsample);
+            pass.set_bind_group(0, &stage.source_bg, &[]);
+            pass.set_bind_group(1, &stage.params_bg, &[]);
+            pass.draw(0..3, 0..1);
+            drop(pass);
+            encoder.pop_debug_group();
         }
 
         // Stage 4 — composite: src + bloom * intensity, mixed by radius, into dst.
         {
-            let payload = pack_params(params, inv_scene, mip_count, 0, PASS_KIND_COMPOSITE);
-            let ubo = create_params_ubo(device, "bloom_composite_ubo", &payload);
-            let params_bg = build_params_bg(device, &self.layouts, &ubo, "bloom_composite");
-            let source_bg = build_source_bg(
-                device,
-                &self.layouts,
-                src_view,
-                &self.sampler,
-                "bloom_composite",
-            );
-            let mip0_view = pool
-                .scene
-                .bloom_mip_view(0)
-                .expect("bloom mip 0 must exist");
-            let composite_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("bloom_composite_bg"),
-                layout: &self.layouts.composite_bgl,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(mip0_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&self.sampler),
-                    },
-                ],
-            });
+            let stage = next_stage();
             encoder.push_debug_group("bloom_composite");
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("tungsten_bloom_composite"),
@@ -496,15 +498,102 @@ impl BloomPipeline {
                 ..Default::default()
             });
             pass.set_pipeline(&self.composite);
-            pass.set_bind_group(0, &source_bg, &[]);
-            pass.set_bind_group(1, &params_bg, &[]);
-            pass.set_bind_group(2, &composite_bg, &[]);
+            pass.set_bind_group(0, &stage.source_bg, &[]);
+            pass.set_bind_group(1, &stage.params_bg, &[]);
+            pass.set_bind_group(2, &objects.composite_bg, &[]);
             pass.draw(0..3, 0..1);
             drop(pass);
             encoder.pop_debug_group();
         }
 
         encoder.pop_debug_group();
+    }
+}
+
+/// Fills `payloads` with the UBO bytes of a slot's sub-passes in recording
+/// order: threshold, the downsamples from level 1 up, the upsamples from the
+/// second-smallest level down, composite. `2 * mip_count` entries.
+fn stage_payloads(
+    payloads: &mut Vec<[u8; 256]>,
+    params: &BloomParams,
+    scene_size: (u32, u32),
+    mip_count: u32,
+    mip_extent: impl Fn(u32) -> (u32, u32),
+) {
+    let inv_scene = inv_size(scene_size);
+    payloads.clear();
+    payloads.push(pack_params(params, inv_scene, mip_count, 0, PASS_KIND_THRESHOLD).to_bytes());
+    for level in 1..mip_count {
+        let inv_prev = inv_size(mip_extent(level - 1));
+        payloads
+            .push(pack_params(params, inv_prev, mip_count, level, PASS_KIND_DOWNSAMPLE).to_bytes());
+    }
+    for level in (0..mip_count - 1).rev() {
+        let inv_next = inv_size(mip_extent(level + 1));
+        payloads
+            .push(pack_params(params, inv_next, mip_count, level, PASS_KIND_UPSAMPLE).to_bytes());
+    }
+    payloads.push(pack_params(params, inv_scene, mip_count, 0, PASS_KIND_COMPOSITE).to_bytes());
+}
+
+/// Builds a slot's UBOs, seeded with `payloads`, and its bind groups, in
+/// the order of [`stage_payloads`].
+fn build_slot(
+    device: &wgpu::Device,
+    layouts: &BloomLayouts,
+    sampler: &wgpu::Sampler,
+    pool: &RenderTargetPool,
+    src: TargetId,
+    payloads: &[[u8; 256]],
+) -> BloomSlot {
+    let mip_count = pool.scene.bloom_mip_count();
+    let src_view = resolve_post_view(pool, src);
+    let mip_view = |level: u32| {
+        pool.scene
+            .bloom_mip_view(level)
+            .expect("bloom mip view must exist")
+    };
+    // Each sub-pass's label and the view it samples, in recording order.
+    let mut sources: Vec<(&'static str, &wgpu::TextureView)> = Vec::with_capacity(payloads.len());
+    sources.push(("bloom_threshold", src_view));
+    for level in 1..mip_count {
+        sources.push(("bloom_downsample", mip_view(level - 1)));
+    }
+    for level in (0..mip_count - 1).rev() {
+        sources.push(("bloom_upsample", mip_view(level + 1)));
+    }
+    sources.push(("bloom_composite", src_view));
+
+    let stages = sources
+        .into_iter()
+        .zip(payloads)
+        .map(|((label, view), payload)| {
+            let ubo = create_params_ubo(device, label, payload);
+            BloomStage {
+                params_bg: build_params_bg(device, layouts, &ubo, label),
+                source_bg: build_source_bg(device, layouts, view, sampler, label),
+                ubo,
+                written: *payload,
+            }
+        })
+        .collect();
+    let composite_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("bloom_composite_bg"),
+        layout: &layouts.composite_bgl,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(mip_view(0)),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::Sampler(sampler),
+            },
+        ],
+    });
+    BloomSlot {
+        stages,
+        composite_bg,
     }
 }
 
@@ -523,14 +612,10 @@ fn inv_size(size: (u32, u32)) -> (f32, f32) {
     (1.0 / w, 1.0 / h)
 }
 
-fn create_params_ubo(
-    device: &wgpu::Device,
-    label: &'static str,
-    block: &UniformOverrideBlock,
-) -> wgpu::Buffer {
+fn create_params_ubo(device: &wgpu::Device, label: &str, payload: &[u8; 256]) -> wgpu::Buffer {
     device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some(label),
-        contents: &block.to_bytes(),
+        label: Some(&format!("{label}_ubo")),
+        contents: payload,
         usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
     })
 }

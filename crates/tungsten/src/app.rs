@@ -860,11 +860,11 @@ impl App {
             }
 
             // M26: PostStack is a world resource; default is empty.
+            let empty_stack = tungsten_core::post::PostStack::default();
             let post_stack = self
                 .world
                 .get_resource::<tungsten_core::post::PostStack>()
-                .cloned()
-                .unwrap_or_default();
+                .unwrap_or(&empty_stack);
 
             // M29: upload the per-frame light UBO before any draw records it.
             renderer.update_lights(&extract.light_ubo);
@@ -877,7 +877,7 @@ impl App {
                     &extract.debug_quads,
                     &extract.debug_lines,
                     &extract.text,
-                    &post_stack,
+                    post_stack,
                 )
             } else {
                 renderer.render_frame_full(
@@ -887,7 +887,7 @@ impl App {
                     &extract.debug_quads,
                     &extract.debug_lines,
                     &extract.text,
-                    &post_stack,
+                    post_stack,
                 )
             };
             if let Err(e) = result {

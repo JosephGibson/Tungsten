@@ -153,7 +153,7 @@ An invalid capture stays on disk with `valid: false` and its reasons in `capture
 5. **`compare.md`**, in order: a header with both sides, their commits, the machine and the comparability status; the owned-metric table (baseline, candidate, Δ, Δ%, interval, τ, verdict); the stages; the systems whose |Δ| > τ; the GPU passes from the diagnostic runs; memory and CPU (peak RSS with its verdict, RSS growth, CPU seconds); the workload counters; guards and validity. `compare.json` holds the same report as data.
 6. **`compare.html`** is self-contained: inline CSS and SVG, no scripts, fonts or network requests, light and dark schemes. It shows an ECDF of the pooled `total` frames per side with p50/p95/p99 markers and 16.7 and 6.9 ms budget lines, the run-1 frame-time series, stacked stage bars, per-system bars (p50 with p95 whiskers), GPU-pass bars, peak-RSS bars and the counter table. Verdict badges carry text labels, not color alone.
 7. **Suite compare.** Each row both suites hold gets its own report in `<out>/<row>/`; the suite-level `compare.json`, `compare.md` and `compare.html` add the verdict counts, `total` and peak-RSS bars per row and each row's owned table. Rows held by only one side are listed, not compared.
-8. **A/A check.** Two captures, or two suites, of one build on one quiet machine must yield no `regressed` or `improved` verdict on any owned metric. Run one per machine before trusting verdicts. `noisy` verdicts are expected on the GPU rows, whose scene pass moves about 12% between captures, and on sub-millisecond system rows that sit on the 0.02 ms floor.
+8. **A/A check.** Two captures, or two suites, of one build on one quiet machine must yield no `regressed` or `improved` verdict on any owned metric. Run one per machine before trusting verdicts. `noisy` verdicts are expected on sub-millisecond system rows that sit on the 0.02 ms floor and on the CPU render stages of the two `gpu` rows. Until `D-085` the scene pass also moved about 12% between captures; see the scene-pass note in [`benchmarks.md`](benchmarks.md#gpu).
 9. **Exit codes.** 0 on success; `--fail-on regressed` exits 1 when any owned metric regressed, in a capture or any suite row (local scripting only, `D-070`); 2 on a bad request or environment problem; 3 from `run`, `suite` and `--sweep` when a capture is invalid.
 
 ## Capacity search
@@ -172,7 +172,7 @@ Results are machine-specific and informational: a lower capacity is a finding to
 ## Memory
 
 - **Peak RSS** comes from `ru_maxrss` through `os.wait4`, for every run, with no engine change. The timing run's value is the one reported, because the diagnostic run allocates query buffers. It includes driver-mapped memory, so compare it only on one machine and driver. rusage also gives user and system CPU seconds, faults and context switches.
-- **RSS growth** is the least-squares slope, in KiB/s, of `/proc/<pid>/statm` samples taken every 100 ms, fitted over the second half of the run after dropping samples within 0.2 s of the last one (the child frees memory while it shuts down). It is reported for every row and judged for none: the leak threshold for `churn` is an open proposal ([`benchmarks.md`](benchmarks.md), "Open proposals"). One 4 KiB page over a short run reads as a few KiB/s. Rows that rewrite text every frame (`gpu`, `integrated`) grow by MiB/s until the text cache's 360-frame TTL saturates, so their peak RSS depends on capture length.
+- **RSS growth** is the least-squares slope, in KiB/s, of `/proc/<pid>/statm` samples taken every 100 ms, fitted over the second half of the run after dropping samples within 0.2 s of the last one (the child frees memory while it shuts down). It is reported for every row and judged for none: the leak threshold for `churn` is an open proposal ([`benchmarks.md`](benchmarks.md), "Open proposals"). One 4 KiB page over a short run reads as a few KiB/s. Until `D-085` the rows that rewrite text every frame (`gpu`, `integrated`) grew by MiB/s while the text cache filled, so their peak RSS depended on capture length. The layout cache is bounded now: `gpu` reads no growth and the same peak at 300 and 900 frames.
 - **Allocation counting** isn't measured (gap M1).
 
 ## Tracked rows, suites and regression policy
@@ -198,6 +198,7 @@ Every row also reports peak RSS, with a verdict, and RSS growth.
 **Regression policy.**
 
 - A `regressed` verdict on an owned metric needs a fix, or a justification in `DECISIONS.md` or the plan that accepts it.
+- A `regressed` on a row whose code the change did not touch can be code placement (the `ecs` system rows and `churn`'s `flush`; see [`benchmarks.md`](benchmarks.md#ecs)). It still needs its justification: the same verdict from the baseline tree plus a function that no frame calls, which puts the row's code at the same alignment, with both compares recorded.
 - `improved` on an owned metric is the evidence an optimization claims; quote the compare report.
 - `noisy` needs more repeats or a quieter machine, not a threshold change. The thresholds, the variance floor and the owned metrics change only by decision.
 - Non-owned metrics are context: a regression there belongs to the row that owns the cost.
@@ -233,14 +234,14 @@ Search these first in a flamegraph:
 - `query2`, `World::flush` (archetype moves; the app's flush shows as `World::flush_reusing`, with `insert_run` and `move_components_to` under it)
 - `physics_step`, `build_pairs`, `gather_tilemap_proxies` (tile proxies rebuilt from a full-map scan every frame)
 - `particle_tick_system`
-- `glyphon` and the text `prepare` (`TextPipeline::prepare`, which reshapes every changed section)
+- `glyphon` and the text `prepare` (`TextPipeline::prepare`: `TextLayoutCache::update` reshapes every changed section, and a frame of unchanged text skips glyphon's prepare)
 - `wgpu`
 
 Interpretation:
 
 - Cross-reference a hot flamegraph region with the stage and system rows of the same configuration.
 - A hot render stack with a low `render` stage is sampling noise; a hot stage with a matching telemetry change is real.
-- When `render` is high, classify it: `render_acquire` is swapchain pacing, `render_encode` is CPU command generation, `render_submit_present` is the present or readback wait. In a GPU-bound frame the wait shows as present time.
+- When `render` is high, classify it: `render_acquire` is swapchain pacing, `render_encode` is CPU command generation, `render_submit_present` is the present or readback wait. A GPU-bound frame waits in the acquire, not in the present: `gpu` spends 7.1 of its 11.0 ms in `render_acquire` and 0.3 ms in `render_submit_present`. Capacity search's "present" is the sum of the two.
 - Near-zero baselines make percentages meaningless; compare absolute values, as τ_abs does.
 
 ## Frame pacing

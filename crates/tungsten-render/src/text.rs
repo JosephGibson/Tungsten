@@ -29,7 +29,7 @@ struct StoredFontAttrs {
     face_ids: Vec<glyphon::fontdb::ID>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
 struct TextLayoutKey {
     content: String,
     font_id: String,
@@ -45,19 +45,50 @@ struct CachedTextBuffer {
     last_used_frame: u64,
 }
 
-const BUFFER_CACHE_PRUNE_INTERVAL_FRAMES: u64 = 120;
-const BUFFER_CACHE_TTL_FRAMES: u64 = 360;
+/// A layout no section used for more than this many prepared frames leaves
+/// the cache, so the map holds a few entries per live section.
+const BUFFER_CACHE_MAX_UNUSED_FRAMES: u64 = 2;
+/// Evicted buffers kept for reuse: text that changes every frame shapes into
+/// recycled allocations.
+const SPARE_BUFFER_CAP: usize = 256;
+
+/// One section of the last prepared frame: its layout key and the draw values
+/// glyphon baked into its vertices.
+#[derive(Debug)]
+struct PreparedSection {
+    key: TextLayoutKey,
+    position: [f32; 2],
+    color: [u8; 4],
+    clip: TextBounds,
+}
+
+/// Device-free half of the text pipeline: fonts, shaped buffers and the
+/// signature of the last prepared frame.
+struct TextLayoutCache {
+    font_system: FontSystem,
+    font_attrs: HashMap<String, StoredFontAttrs>,
+    buffers: HashMap<TextLayoutKey, CachedTextBuffer>,
+    /// Evicted entries, at most `SPARE_BUFFER_CAP`; a miss reuses their allocations.
+    spare: Vec<(TextLayoutKey, Buffer)>,
+    /// Counts prepared frames only: a skipped frame ages nothing.
+    frame_counter: u64,
+    /// Sections of the last prepared frame, in order.
+    prepared: Vec<PreparedSection>,
+    /// Viewport of the last prepared frame. `None` while glyphon's vertices
+    /// don't match `prepared`: before the first frame, after a font change
+    /// and after a failed prepare.
+    prepared_viewport: Option<(u32, u32)>,
+}
 
 /// Glyphon text pipeline state.
 pub struct TextPipeline {
-    font_system: FontSystem,
+    layout: TextLayoutCache,
     swash_cache: SwashCache,
     viewport: Viewport,
     atlas: TextAtlas,
     text_renderer: TextRenderer,
-    font_attrs: HashMap<String, StoredFontAttrs>,
-    buffer_cache: HashMap<TextLayoutKey, CachedTextBuffer>,
-    frame_counter: u64,
+    /// Whether this frame's `prepare` reached glyphon; `post_frame` reads it.
+    prepared_this_frame: bool,
 }
 
 impl TextPipeline {
@@ -86,19 +117,90 @@ impl TextPipeline {
         );
 
         Self {
-            font_system,
+            layout: TextLayoutCache::new(font_system),
             swash_cache,
             viewport,
             atlas,
             text_renderer,
-            font_attrs: HashMap::new(),
-            buffer_cache: HashMap::new(),
-            frame_counter: 0,
+            prepared_this_frame: false,
         }
     }
 
     /// Load font bytes under manifest ID.
     pub fn load_font(&mut self, id: &str, data: Vec<u8>) {
+        self.layout.load_font(id, data);
+    }
+
+    /// Hot-reload font bytes and evict dependent caches.
+    pub fn reload_font(&mut self, id: &str, data: Vec<u8>) {
+        self.atlas.trim();
+        self.layout.reload_font(id, data);
+    }
+
+    /// Prepare glyph buffers and atlas for render.
+    pub fn prepare(
+        &mut self,
+        device: &Device,
+        queue: &Queue,
+        sections: &[TextSection],
+        width: u32,
+        height: u32,
+    ) {
+        self.viewport.update(queue, Resolution { width, height });
+
+        // Unchanged since the last prepare: glyphon keeps its vertex buffer
+        // and atlas between prepares, and nothing else writes the atlas.
+        self.prepared_this_frame = self.layout.update(sections, width, height);
+        if !self.prepared_this_frame {
+            return;
+        }
+
+        let areas = text_areas(&self.layout.prepared, &self.layout.buffers);
+        match self.text_renderer.prepare(
+            device,
+            queue,
+            &mut self.layout.font_system,
+            &mut self.atlas,
+            &self.viewport,
+            areas,
+            &mut self.swash_cache,
+        ) {
+            Ok(()) => self.layout.mark_prepared(width, height),
+            Err(e) => log::error!("Text prepare error: {e:?}"),
+        }
+    }
+
+    /// Draw prepared text.
+    pub fn render<'pass>(&'pass self, pass: &mut RenderPass<'pass>) {
+        if let Err(e) = self.text_renderer.render(&self.atlas, &self.viewport, pass) {
+            log::error!("Text render error: {e:?}");
+        }
+    }
+
+    /// Trim unused atlas entries after presenting.
+    pub fn post_frame(&mut self) {
+        // `trim` only clears glyphon's in-use set, which a skipped prepare
+        // never filled.
+        if std::mem::take(&mut self.prepared_this_frame) {
+            self.atlas.trim();
+        }
+    }
+}
+
+impl TextLayoutCache {
+    fn new(font_system: FontSystem) -> Self {
+        Self {
+            font_system,
+            font_attrs: HashMap::new(),
+            buffers: HashMap::new(),
+            spare: Vec::new(),
+            frame_counter: 0,
+            prepared: Vec::new(),
+            prepared_viewport: None,
+        }
+    }
+
+    fn load_font(&mut self, id: &str, data: Vec<u8>) {
         let ids_before: HashSet<_> = self.font_system.db().faces().map(|f| f.id).collect();
         self.font_system.db_mut().load_font_data(data);
 
@@ -143,129 +245,185 @@ impl TextPipeline {
             },
         );
         // Fontdb changes can alter fallback/selection.
-        self.buffer_cache.clear();
+        self.clear_layouts();
     }
 
-    /// Hot-reload font bytes and evict dependent caches.
-    pub fn reload_font(&mut self, id: &str, data: Vec<u8>) {
+    fn reload_font(&mut self, id: &str, data: Vec<u8>) {
         if let Some(old) = self.font_attrs.remove(id) {
             let db = self.font_system.db_mut();
             for face_id in old.face_ids {
                 db.remove_face(face_id);
             }
         }
-        self.atlas.trim();
-        self.buffer_cache.clear();
+        self.clear_layouts();
         self.load_font(id, data);
     }
 
-    /// Prepare glyph buffers and atlas for render.
-    pub fn prepare(
-        &mut self,
-        device: &Device,
-        queue: &Queue,
-        sections: &[TextSection],
-        width: u32,
-        height: u32,
-    ) {
-        self.viewport.update(queue, Resolution { width, height });
-        self.frame_counter = self.frame_counter.wrapping_add(1);
-        let frame_counter = self.frame_counter;
+    /// Drops every shaped buffer and the frame signature, so the next frame
+    /// shapes and prepares from scratch.
+    fn clear_layouts(&mut self) {
+        self.buffers.clear();
+        self.spare.clear();
+        self.prepared.clear();
+        self.prepared_viewport = None;
+    }
 
-        let mut keys: Vec<TextLayoutKey> = Vec::with_capacity(sections.len());
+    /// Brings the cache up to this frame's sections and shapes the ones it
+    /// lacks. Returns `false`, having touched nothing, when the frame equals
+    /// the last prepared one.
+    fn update(&mut self, sections: &[TextSection], width: u32, height: u32) -> bool {
+        if self.prepared_viewport == Some((width, height))
+            && self.prepared.len() == sections.len()
+            && self
+                .prepared
+                .iter()
+                .zip(sections)
+                .all(|(prepared, section)| prepared.matches(section, width, height))
+        {
+            return false;
+        }
+        self.prepared_viewport = None;
+        self.frame_counter += 1;
+        let frame = self.frame_counter;
 
-        for section in sections {
-            let mut buffer = Buffer::new(
-                &mut self.font_system,
-                Metrics::new(section.font_size, section.line_height),
-            );
+        // Age out before inserting: the map then peaks at the sections of
+        // this frame and of the two before it.
+        for (key, cached) in self
+            .buffers
+            .extract_if(|_, cached| frame - cached.last_used_frame > BUFFER_CACHE_MAX_UNUSED_FRAMES)
+        {
+            if self.spare.len() < SPARE_BUFFER_CAP {
+                self.spare.push((key, cached.buffer));
+            }
+        }
 
-            let (buf_w, buf_h) = match section.bounds {
-                Some([w, h]) => (Some(w), Some(h)),
-                None => (Some(width as f32), None),
-            };
-            let key = TextLayoutKey::new(section, buf_w, buf_h);
-            keys.push(key.clone());
+        self.prepared.truncate(sections.len());
+        for (index, section) in sections.iter().enumerate() {
+            let (buf_w, buf_h) = buffer_size(section, width);
+            let clip = clip_bounds_for_section(section, width, height);
+            if let Some(prepared) = self.prepared.get_mut(index) {
+                prepared.key.assign(section, buf_w, buf_h);
+                prepared.position = section.position;
+                prepared.color = section.color;
+                prepared.clip = clip;
+            } else {
+                let mut key = TextLayoutKey::default();
+                key.assign(section, buf_w, buf_h);
+                self.prepared.push(PreparedSection {
+                    key,
+                    position: section.position,
+                    color: section.color,
+                    clip,
+                });
+            }
+            let key = &self.prepared[index].key;
 
-            if let Some(cached) = self.buffer_cache.get_mut(&key) {
-                cached.last_used_frame = frame_counter;
+            if let Some(cached) = self.buffers.get_mut(key) {
+                cached.last_used_frame = frame;
                 continue;
             }
 
+            // Never `Buffer::new`: it shapes an empty line first.
+            let metrics = Metrics::new(section.font_size, section.line_height);
+            let (mut owned_key, mut buffer) = match self.spare.pop() {
+                // `set_metrics` rejects a zero font size; `new_empty` takes one.
+                Some((spare_key, mut spare_buffer)) if metrics.font_size != 0.0 => {
+                    spare_buffer.set_metrics(metrics);
+                    (spare_key, spare_buffer)
+                }
+                _ => (TextLayoutKey::default(), Buffer::new_empty(metrics)),
+            };
             buffer.set_size(buf_w, buf_h);
             let attrs = make_attrs(&self.font_attrs, &section.font_id);
             buffer.set_text(&section.content, &attrs, Shaping::Advanced, None);
             buffer.shape_until_scroll(&mut self.font_system, false);
-            self.buffer_cache.insert(
-                key,
+            owned_key.clone_from(key);
+            self.buffers.insert(
+                owned_key,
                 CachedTextBuffer {
                     buffer,
-                    last_used_frame: frame_counter,
+                    last_used_frame: frame,
                 },
             );
         }
-
-        if frame_counter.is_multiple_of(BUFFER_CACHE_PRUNE_INTERVAL_FRAMES) {
-            self.buffer_cache.retain(|_, v| {
-                frame_counter.saturating_sub(v.last_used_frame) <= BUFFER_CACHE_TTL_FRAMES
-            });
-        }
-
-        let areas: Vec<TextArea<'_>> = sections
-            .iter()
-            .zip(keys.iter())
-            .filter_map(|(section, key)| self.buffer_cache.get(key).map(|cached| (section, cached)))
-            .map(|(section, cached)| {
-                let [r, g, b, a] = section.color;
-                let bounds = clip_bounds_for_section(section, width, height);
-                TextArea {
-                    buffer: &cached.buffer,
-                    left: section.position[0],
-                    top: section.position[1],
-                    scale: 1.0,
-                    bounds,
-                    default_color: Color::rgba(r, g, b, a),
-                    custom_glyphs: &[],
-                }
-            })
-            .collect();
-
-        if let Err(e) = self.text_renderer.prepare(
-            device,
-            queue,
-            &mut self.font_system,
-            &mut self.atlas,
-            &self.viewport,
-            areas,
-            &mut self.swash_cache,
-        ) {
-            log::error!("Text prepare error: {e:?}");
-        }
+        true
     }
 
-    /// Draw prepared text.
-    pub fn render<'pass>(&'pass self, pass: &mut RenderPass<'pass>) {
-        if let Err(e) = self.text_renderer.render(&self.atlas, &self.viewport, pass) {
-            log::error!("Text render error: {e:?}");
-        }
-    }
-
-    /// Trim unused atlas entries after presenting.
-    pub fn post_frame(&mut self) {
-        self.atlas.trim();
+    /// Records that glyphon prepared the sections of the last `update`.
+    fn mark_prepared(&mut self, width: u32, height: u32) {
+        self.prepared_viewport = Some((width, height));
     }
 }
 
 impl TextLayoutKey {
-    fn new(section: &TextSection, buffer_width: Option<f32>, buffer_height: Option<f32>) -> Self {
-        Self {
-            content: section.content.clone(),
-            font_id: section.font_id.clone(),
-            font_size_bits: section.font_size.to_bits(),
-            line_height_bits: section.line_height.to_bits(),
-            buffer_width_bits: buffer_width.map(f32::to_bits),
-            buffer_height_bits: buffer_height.map(f32::to_bits),
-        }
+    /// Overwrites the key in place, keeping its string allocations.
+    fn assign(
+        &mut self,
+        section: &TextSection,
+        buffer_width: Option<f32>,
+        buffer_height: Option<f32>,
+    ) {
+        self.content.clone_from(&section.content);
+        self.font_id.clone_from(&section.font_id);
+        self.font_size_bits = section.font_size.to_bits();
+        self.line_height_bits = section.line_height.to_bits();
+        self.buffer_width_bits = buffer_width.map(f32::to_bits);
+        self.buffer_height_bits = buffer_height.map(f32::to_bits);
+    }
+
+    fn matches(
+        &self,
+        section: &TextSection,
+        buffer_width: Option<f32>,
+        buffer_height: Option<f32>,
+    ) -> bool {
+        self.content == section.content
+            && self.font_id == section.font_id
+            && self.font_size_bits == section.font_size.to_bits()
+            && self.line_height_bits == section.line_height.to_bits()
+            && self.buffer_width_bits == buffer_width.map(f32::to_bits)
+            && self.buffer_height_bits == buffer_height.map(f32::to_bits)
+    }
+}
+
+impl PreparedSection {
+    /// True when `section` lays out and draws exactly as this one did.
+    /// Compares in place: nothing is cloned.
+    fn matches(&self, section: &TextSection, width: u32, height: u32) -> bool {
+        let (buf_w, buf_h) = buffer_size(section, width);
+        self.position.map(f32::to_bits) == section.position.map(f32::to_bits)
+            && self.color == section.color
+            && self.clip == clip_bounds_for_section(section, width, height)
+            && self.key.matches(section, buf_w, buf_h)
+    }
+}
+
+/// Text areas of the prepared sections, in section order.
+fn text_areas<'a>(
+    prepared: &'a [PreparedSection],
+    buffers: &'a HashMap<TextLayoutKey, CachedTextBuffer>,
+) -> impl Iterator<Item = TextArea<'a>> {
+    prepared.iter().filter_map(|section| {
+        let cached = buffers.get(&section.key)?;
+        let [r, g, b, a] = section.color;
+        Some(TextArea {
+            buffer: &cached.buffer,
+            left: section.position[0],
+            top: section.position[1],
+            scale: 1.0,
+            bounds: section.clip,
+            default_color: Color::rgba(r, g, b, a),
+            custom_glyphs: &[],
+        })
+    })
+}
+
+/// Layout size of a section's buffer: its bounds, else the viewport width
+/// with no height limit.
+fn buffer_size(section: &TextSection, width: u32) -> (Option<f32>, Option<f32>) {
+    match section.bounds {
+        Some([w, h]) => (Some(w), Some(h)),
+        None => (Some(width as f32), None),
     }
 }
 
@@ -305,3 +463,7 @@ fn make_attrs<'a>(font_attrs: &'a HashMap<String, StoredFontAttrs>, font_id: &st
         Attrs::new().family(Family::SansSerif)
     }
 }
+
+#[cfg(test)]
+#[path = "tests/text.rs"]
+mod tests;

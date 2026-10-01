@@ -10,7 +10,7 @@ use tungsten_core::tween::UniformOverrideBlock;
 
 use crate::passes::TargetId;
 use crate::shader_hot_reload::ShaderModuleCache;
-use crate::targets::RenderTargetPool;
+use crate::targets::{RenderTargetPool, TargetCache};
 
 pub mod bloom;
 pub mod chromatic_aberration;
@@ -61,13 +61,16 @@ impl StockResources {
     }
 }
 
-/// One stock-effect pipeline + its params UBO + its params bind group.
-/// Source bind group is rebuilt each frame because the source view flips
-/// between `SceneColor`, `PostPing`, `PostPong` across the ping-pong ladder.
+/// One stock-effect pipeline + its params UBO + its params bind group. The
+/// source bind group is not here: the source view flips between `SceneColor`,
+/// `PostPing` and `PostPong` across the ping-pong ladder, and every effect
+/// shares the three that `PostStackRenderer` caches.
 pub(crate) struct StockPipeline {
     pub pipeline: wgpu::RenderPipeline,
     pub params_ubo: wgpu::Buffer,
     pub params_bg: wgpu::BindGroup,
+    /// Bytes last written to `params_ubo`.
+    params_written: Option<[u8; 256]>,
 }
 
 impl StockPipeline {
@@ -86,7 +89,26 @@ impl StockPipeline {
             pipeline,
             params_ubo,
             params_bg,
+            params_written: None,
         }
+    }
+
+    /// Uploads the effect's parameters unless the UBO already holds them.
+    fn write_params(&mut self, queue: &wgpu::Queue, payload: [u8; 256]) {
+        if self.params_written != Some(payload) {
+            queue.write_buffer(&self.params_ubo, 0, &payload);
+            self.params_written = Some(payload);
+        }
+    }
+}
+
+/// Cache slot of a post-stack source target.
+fn source_slot(src: TargetId) -> usize {
+    match src {
+        TargetId::SceneColor => 0,
+        TargetId::PostPing => 1,
+        TargetId::PostPong => 2,
+        _ => unreachable!("invalid post-source target {src:?}"),
     }
 }
 
@@ -113,6 +135,9 @@ pub struct PostStackRenderer {
     /// M28 bloom pipeline. Records its own multi-subpass slot at the encoder
     /// level instead of the per-slot single-render-pass path; see `D-060`.
     pub(crate) bloom: BloomPipeline,
+    /// Source bind groups for `SceneColor`, `PostPing` and `PostPong`, shared
+    /// by every stock effect and keyed on the pool generation.
+    source_bind_groups: [TargetCache<u64, wgpu::BindGroup>; 3],
 }
 
 impl PostStackRenderer {
@@ -144,28 +169,38 @@ impl PostStackRenderer {
             god_rays: god_rays::build(device, &resources, format),
             bloom: BloomPipeline::new(device, format, shader_cache, bloom_shader_ids),
             resources,
+            source_bind_groups: Default::default(),
         }
     }
 
-    fn pipeline_for(&self, pass: &PostPass) -> &StockPipeline {
+    /// Drops every cached object that holds a view of the scene targets, so
+    /// reallocated targets are freed at once and not at their next use.
+    pub(crate) fn release_target_views(&mut self) {
+        for cache in &mut self.source_bind_groups {
+            cache.clear();
+        }
+        self.bloom.release_target_views();
+    }
+
+    fn pipeline_for(&mut self, pass: &PostPass) -> &mut StockPipeline {
         match pass {
-            PostPass::Tonemap(_) => &self.tonemap,
-            PostPass::Vignette(_) => &self.vignette,
-            PostPass::Lut(_) => &self.lut,
-            PostPass::ChromaticAberration(_) => &self.chromatic_aberration,
-            PostPass::ColorAdjust(_) => &self.color_adjust,
-            PostPass::ToneMono(_) => &self.tone_mono,
-            PostPass::Crt(_) => &self.crt,
-            PostPass::FilmGrain(_) => &self.film_grain,
-            PostPass::Dither(_) => &self.dither,
-            PostPass::PixelOutline(_) => &self.pixel_outline,
-            PostPass::Fade(_) => &self.fade,
-            PostPass::WipeRadial(_) => &self.wipe_radial,
-            PostPass::Dissolve(_) => &self.dissolve,
-            PostPass::Glitch(_) => &self.glitch,
-            PostPass::Pixelate(_) => &self.pixelate,
-            PostPass::Fog(_) => &self.fog,
-            PostPass::GodRays(_) => &self.god_rays,
+            PostPass::Tonemap(_) => &mut self.tonemap,
+            PostPass::Vignette(_) => &mut self.vignette,
+            PostPass::Lut(_) => &mut self.lut,
+            PostPass::ChromaticAberration(_) => &mut self.chromatic_aberration,
+            PostPass::ColorAdjust(_) => &mut self.color_adjust,
+            PostPass::ToneMono(_) => &mut self.tone_mono,
+            PostPass::Crt(_) => &mut self.crt,
+            PostPass::FilmGrain(_) => &mut self.film_grain,
+            PostPass::Dither(_) => &mut self.dither,
+            PostPass::PixelOutline(_) => &mut self.pixel_outline,
+            PostPass::Fade(_) => &mut self.fade,
+            PostPass::WipeRadial(_) => &mut self.wipe_radial,
+            PostPass::Dissolve(_) => &mut self.dissolve,
+            PostPass::Glitch(_) => &mut self.glitch,
+            PostPass::Pixelate(_) => &mut self.pixelate,
+            PostPass::Fog(_) => &mut self.fog,
+            PostPass::GodRays(_) => &mut self.god_rays,
             PostPass::Bloom(_) => {
                 unreachable!("PostPass::Bloom is recorded by record_bloom_slot, not record_pass")
             }
@@ -320,10 +355,10 @@ impl PostStackRenderer {
 
     /// Record one post-stack pass into an already-open `render_pass`. The
     /// caller has selected the correct dst view via `PassRecorder::begin`
-    /// with the matching `PassDesc`; we just upload params, bind source,
-    /// set pipeline, and draw.
+    /// with the matching `PassDesc`; we upload params if they changed, bind
+    /// the cached source group, set pipeline, and draw.
     pub fn record_pass(
-        &self,
+        &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         render_pass: &mut wgpu::RenderPass<'_>,
@@ -331,22 +366,27 @@ impl PostStackRenderer {
         pass: &PostPass,
         src: TargetId,
     ) {
-        let pipeline = self.pipeline_for(pass);
-        let payload = Self::pack(pass);
-        queue.write_buffer(&pipeline.params_ubo, 0, &payload.to_bytes());
+        let payload = Self::pack(pass).to_bytes();
         let src_view = match src {
             TargetId::SceneColor => pool.scene.color_view(),
             TargetId::PostPing => pool.scene.post_ping_view(),
             TargetId::PostPong => pool.scene.post_pong_view(),
             _ => unreachable!("invalid post-source target {src:?}"),
         };
-        let source_bg = fullscreen::build_source_bind_group(
-            device,
-            &self.resources.layouts,
-            pass.kind_name(),
-            src_view,
-            &self.resources.sampler,
-        );
+        let resources = &self.resources;
+        let source_bg = self.source_bind_groups[source_slot(src)]
+            .get_or_build(pool.generation(), || {
+                fullscreen::build_source_bind_group(
+                    device,
+                    &resources.layouts,
+                    "post",
+                    src_view,
+                    &resources.sampler,
+                )
+            })
+            .clone();
+        let pipeline = self.pipeline_for(pass);
+        pipeline.write_params(queue, payload);
         render_pass.set_pipeline(&pipeline.pipeline);
         render_pass.set_bind_group(0, &source_bg, &[]);
         render_pass.set_bind_group(1, &pipeline.params_bg, &[]);
@@ -356,10 +396,11 @@ impl PostStackRenderer {
     /// Record a `PostPass::Bloom` slot at encoder level. Unlike `record_pass`,
     /// this opens its own per-subpass `RenderPass`es (threshold, downsample
     /// chain, additive upsample chain, composite); the renderer's outer slot
-    /// `PassDesc` is treated as a debug-only label.
+    /// `PassDesc` is treated as a debug-only label. `slot` is the pass's
+    /// index in the post stack: each slot keeps GPU objects of its own.
     #[allow(clippy::too_many_arguments)]
     pub fn record_bloom_slot(
-        &self,
+        &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
@@ -367,13 +408,14 @@ impl PostStackRenderer {
         params: &tungsten_core::post::BloomParams,
         src: TargetId,
         dst: TargetId,
+        slot: usize,
     ) {
         self.bloom
-            .record_pass(device, queue, encoder, pool, params, src, dst);
+            .record_pass(device, queue, encoder, pool, params, src, dst, slot);
     }
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn record_bloom_slot_timed(
-        &self,
+        &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
