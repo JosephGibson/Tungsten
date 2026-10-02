@@ -6,6 +6,10 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.34.0] - 2026-10-02
+
+Summary: GPU and render-path performance pass (`D-085`–`D-087`, plan `docs/plans/gpu-perf-pass.md`, which stays open for three steps the owner has not approved). The text pipeline keeps a bounded layout cache and the post chain keeps its GPU objects between frames, the default extract and the tilemap extract write one pass into kept buffers, and the last full-screen stage renders into the swapchain. Measured on benchmark suite v2: `gpu-throughput` runs at 68.7 FPS where it ran at 38.6, `particles` at 158.5 against 89.7, `integrated` at 117.7 against 94.9 and the empty frame at 2,074 against 1,101; `gpu` peak RSS falls from 720.9 to 168.9 MiB and no frame of it exceeds 1.5 × the run's p50. `display.frame_rate_cap` and the perf runner's pacing overrides now take effect, and telemetry reports the frame `interval`. Pixels are unchanged. In the render crate, the post-chain recording functions take `&mut self` and `default_pass_order` takes a `PresentPath`.
+
 ### Added
 
 - **`TUNGSTEN_DISPLAY_PRESENT_MODE` and `TUNGSTEN_DISPLAY_MAX_FRAME_LATENCY`:** environment overrides for `display.present_mode` and `display.max_frame_latency`. Unlike the `TUNGSTEN_RENDER_*` pair, they win over values the `display` section of `tungsten.json` sets.

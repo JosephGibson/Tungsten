@@ -47,7 +47,9 @@ Read `crates/tungsten-render/AGENTS.md` before editing the render crate.
 | Task | Open |
 | --- | --- |
 | Renderer, pools, draw, GPU timings, surface acquire | `render/lib.rs`, `render/renderer.rs`, `render/timing.rs`, `render/surface_acquire.rs` |
-| Render components, default sprite extract (`D-042`) | `core/components.rs`, `tungsten/sprite_extract.rs` |
+| Pass order, direct present path (`D-087`) | `render/passes/order.rs`, `render/renderer.rs`, `render/screenshot.rs` |
+| Text pipeline, layout cache (`D-085`) | `render/text.rs` |
+| Render components, default sprite extract (`D-042`, `D-086`) | `core/components.rs`, `tungsten/sprite_extract.rs` |
 | Materials, post-stack (`D-058`) | `core/assets/material.rs`, `core/post.rs`, `render/material.rs`, `render/post/`, `render/shaders/stock/` |
 | SMAA (`D-059`) | `tungsten/post_aa.rs`, `render/post/smaa.rs`, `render/post/smaa_luts.rs`, `render/targets.rs`, `render/passes/order.rs` |
 | Bloom (`D-060`) | `core/post.rs`, `render/post/bloom.rs`, `render/targets.rs` |
