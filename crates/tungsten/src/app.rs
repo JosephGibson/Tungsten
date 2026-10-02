@@ -49,6 +49,13 @@ use winit::window::{Fullscreen, Window, WindowId};
 /// across runs regardless of build profile or host load.
 const SMOKE_MODE_FIXED_DT_SECS: f32 = 1.0 / 60.0;
 
+/// Longest per-frame dt (seconds) a frame hands to the simulation (`D-088`).
+/// A stall (debugger pause, window drag, a blocked acquire) would otherwise
+/// reach `physics_step` whole: one 0.2 s step throws a settled awake pile
+/// about, and a 2 s step drops bodies through the floor. One 0.1 s step
+/// leaves such a pile at about 40 px/s.
+const MAX_DT_SECS: f32 = 0.1;
+
 /// Tick system.
 pub type SystemFn = Box<dyn FnMut(&mut World)>;
 
@@ -681,18 +688,10 @@ impl App {
     fn stage_delta_time(&mut self) {
         let now = Instant::now();
         if let Some(last) = self.last_frame {
-            // Smoke mode (TUNGSTEN_SMOKE_FRAMES set) pins dt to 60 Hz so
-            // physics / particles / tweens / scene animation produce
-            // frame-accurate deterministic output. Wall-clock dt varies
-            // with CPU load and makes visual-regression captures drift
-            // between runs on the same binary. The capture path used by
-            // `visual_regression.rs` (smoke frames + capture frame env
-            // vars) is the canonical consumer.
-            let dt = if self.smoke_frames_remaining.is_some() {
-                SMOKE_MODE_FIXED_DT_SECS
-            } else {
-                now.duration_since(last).as_secs_f32()
-            };
+            let dt = frame_dt_secs(
+                now.duration_since(last),
+                self.smoke_frames_remaining.is_some(),
+            );
             if let Some(delta) = self.world.get_resource_mut::<DeltaTime>() {
                 delta.dt = dt;
             }
@@ -1022,6 +1021,24 @@ fn redraw_schedule(frame_budget: Option<Duration>, frame_start: Instant) -> Redr
 /// `None` on the first frame.
 fn frame_interval_ms(prev_frame_start: Option<Instant>, frame_start: Instant) -> Option<f32> {
     prev_frame_start.map(|prev| frame_start.duration_since(prev).as_secs_f64() as f32 * 1000.0)
+}
+
+/// Simulated seconds for a frame that starts `elapsed` after the previous
+/// one.
+///
+/// Smoke mode (`TUNGSTEN_SMOKE_FRAMES` set) pins dt to 60 Hz so physics,
+/// particles, tweens and scene animation produce frame-accurate deterministic
+/// output. Wall-clock dt varies with CPU load and makes visual-regression
+/// captures drift between runs on the same binary. The capture path used by
+/// `visual_regression.rs` (smoke frames + capture frame env vars) is the
+/// canonical consumer. A normal frame gets the elapsed time, capped at
+/// [`MAX_DT_SECS`].
+fn frame_dt_secs(elapsed: Duration, smoke: bool) -> f32 {
+    if smoke {
+        SMOKE_MODE_FIXED_DT_SECS
+    } else {
+        elapsed.as_secs_f32().min(MAX_DT_SECS)
+    }
 }
 
 #[inline(always)]

@@ -1,6 +1,6 @@
 use super::{
-    App, RedrawSchedule, format_perf_physics_line, format_perf_systems_line, frame_interval_ms,
-    redraw_schedule, resolve_startup_display, runtime_display_mode,
+    App, RedrawSchedule, format_perf_physics_line, format_perf_systems_line, frame_dt_secs,
+    frame_interval_ms, redraw_schedule, resolve_startup_display, runtime_display_mode,
 };
 use std::time::{Duration, Instant};
 use tungsten_core::{
@@ -128,6 +128,29 @@ fn frame_interval_spans_two_frame_starts() {
     assert_eq!(frame_interval_ms(None, first), None);
     let interval = frame_interval_ms(Some(first), second).unwrap();
     assert!((interval - 16.67).abs() < 1e-3, "interval {interval}");
+}
+
+#[test]
+fn frame_dt_caps_a_long_stall() {
+    // 0.1 s is the step `physics_tunneling.rs` pins as safe for an awake pile.
+    assert_eq!(frame_dt_secs(Duration::from_secs(2), false), 0.1);
+}
+
+#[test]
+fn frame_dt_passes_a_normal_frame_through() {
+    let dt = frame_dt_secs(Duration::from_millis(16), false);
+    assert!((dt - 0.016).abs() < 1e-6, "dt {dt}");
+}
+
+#[test]
+fn smoke_frame_dt_is_pinned_whatever_elapsed() {
+    for elapsed in [
+        Duration::ZERO,
+        Duration::from_millis(16),
+        Duration::from_secs(2),
+    ] {
+        assert_eq!(frame_dt_secs(elapsed, true), 1.0 / 60.0);
+    }
 }
 
 #[test]

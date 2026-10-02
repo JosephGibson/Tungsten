@@ -270,3 +270,89 @@ fn moderate_speed_never_tunnels() {
     assert_eq!(misses, 0);
     assert_eq!(total, VOLLEY_SIZE);
 }
+
+const STALL_FLOOR_TOP: f32 = 480.0;
+
+/// Bodies resting on a static floor under gravity, with sleeping off so the
+/// settled pile stays awake.
+fn stall_world(bodies: &[(Vec2, Collider)]) -> (World, Vec<tungsten_core::Entity>) {
+    let mut world = World::new();
+    world.insert_resource(DeltaTime { dt: DT });
+    world.insert_resource(PhysicsConfig {
+        gravity: Vec2::new(0.0, 900.0),
+        sleep_threshold: 0.0,
+        ..PhysicsConfig::default()
+    });
+    let floor = world.spawn();
+    world.insert(floor, Position(Vec2::new(0.0, STALL_FLOOR_TOP + 20.0)));
+    world.insert(floor, RigidBody::r#static());
+    world.insert(floor, Collider::aabb(Vec2::new(4_000.0, 20.0)));
+    let entities = bodies
+        .iter()
+        .map(|&(position, collider)| {
+            let entity = world.spawn();
+            world.insert(entity, Position(position));
+            world.insert(entity, Velocity(Vec2::ZERO));
+            world.insert(entity, RigidBody::dynamic());
+            world.insert(entity, collider);
+            entity
+        })
+        .collect();
+    (world, entities)
+}
+
+/// The frame dt cap (`D-088`): the app hands the simulation at most 0.1 s per
+/// frame (`MAX_DT_SECS` in `tungsten::app`). One step of that length on a
+/// settled, awake pile loses no body and leaves it under 50 px/s. Longer
+/// steps do not hold: 0.2 s leaves over 110 px/s, and 2 s drops bodies
+/// through the floor.
+#[test]
+fn one_capped_stall_step_keeps_a_settled_pile() {
+    const STALL_DT: f32 = 0.1;
+    let stack: Vec<(Vec2, Collider)> = (0..5)
+        .map(|i| {
+            (
+                Vec2::new(0.0, STALL_FLOOR_TOP - 16.0 - 32.0 * i as f32),
+                Collider::aabb(Vec2::splat(16.0)),
+            )
+        })
+        .collect();
+    let pile: Vec<(Vec2, Collider)> = (0..30)
+        .map(|i| {
+            let (col, row) = ((i % 6) as f32, (i / 6) as f32);
+            (
+                Vec2::new(col * 13.0 - 30.0, STALL_FLOOR_TOP - 7.0 - row * 13.0),
+                Collider::circle(6.0),
+            )
+        })
+        .collect();
+
+    for (name, bodies) in [("stack", stack), ("pile", pile)] {
+        let (mut world, entities) = stall_world(&bodies);
+        for _ in 0..240 {
+            physics_step(&mut world);
+        }
+        world.get_resource_mut::<DeltaTime>().unwrap().dt = STALL_DT;
+        physics_step(&mut world);
+        world.get_resource_mut::<DeltaTime>().unwrap().dt = DT;
+
+        let mut max_speed: f32 = 0.0;
+        for _ in 0..120 {
+            physics_step(&mut world);
+            for &entity in &entities {
+                max_speed = max_speed.max(world.get::<Velocity>(entity).unwrap().0.length());
+            }
+        }
+        assert!(
+            max_speed < 50.0,
+            "{name}: {max_speed} px/s after one {STALL_DT} s step"
+        );
+        for &entity in &entities {
+            let y = world.get::<Position>(entity).unwrap().0.y;
+            assert!(
+                (STALL_FLOOR_TOP - 400.0..=STALL_FLOOR_TOP).contains(&y),
+                "{name}: a body ended at y {y} after one {STALL_DT} s step"
+            );
+        }
+    }
+}
