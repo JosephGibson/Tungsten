@@ -1,4 +1,4 @@
-use super::{PostStackRenderer, source_slot};
+use super::{ParamSlots, PostStackRenderer, source_slot};
 use crate::passes::TargetId;
 
 #[test]
@@ -84,4 +84,68 @@ fn every_source_of_the_ladder_has_a_cache_slot_of_its_own() {
         source_slot(TargetId::PostPing),
         source_slot(TargetId::PostPong)
     );
+}
+
+/// Stages `payload` in `slot`, counting builds in `built`: returns the slot's
+/// objects (the build count at the time it was built) and whether a write is
+/// due.
+fn stage(
+    slots: &mut ParamSlots<u32>,
+    built: &mut u32,
+    slot: usize,
+    payload: [u8; 256],
+) -> (u32, bool) {
+    let (objects, stale) = slots.stage(slot, &payload, || {
+        *built += 1;
+        *built
+    });
+    (*objects, stale)
+}
+
+#[test]
+fn two_passes_of_one_effect_keep_params_of_their_own() {
+    // The same effect in slots 0 and 1 with different parameters: each slot
+    // gets objects of its own and takes its own write.
+    let (red, blue) = ([1u8; 256], [2u8; 256]);
+    let mut slots = ParamSlots::default();
+    let mut built = 0;
+
+    assert_eq!(stage(&mut slots, &mut built, 0, red), (1, true));
+    assert_eq!(stage(&mut slots, &mut built, 1, blue), (2, true));
+
+    // The next frame finds both buffers holding their bytes: nothing is built
+    // and nothing is written.
+    assert_eq!(stage(&mut slots, &mut built, 0, red), (1, false));
+    assert_eq!(stage(&mut slots, &mut built, 1, blue), (2, false));
+    assert_eq!(built, 2);
+}
+
+#[test]
+fn swapped_params_are_written_to_both_slots() {
+    let (red, blue) = ([1u8; 256], [2u8; 256]);
+    let mut slots = ParamSlots::default();
+    let mut built = 0;
+    stage(&mut slots, &mut built, 0, red);
+    stage(&mut slots, &mut built, 1, blue);
+
+    // Reordering the stack moves the payloads, not the slots' objects.
+    assert_eq!(stage(&mut slots, &mut built, 0, blue), (1, true));
+    assert_eq!(stage(&mut slots, &mut built, 1, red), (2, true));
+    assert_eq!(stage(&mut slots, &mut built, 0, blue), (1, false));
+    assert_eq!(built, 2);
+}
+
+#[test]
+fn a_far_slot_leaves_the_others_alone() {
+    // A stack whose only stock pass sits at index 5 (bloom slots before it)
+    // builds one entry; an earlier slot used later gets its own.
+    let payload = [7u8; 256];
+    let mut slots = ParamSlots::default();
+    let mut built = 0;
+
+    assert_eq!(stage(&mut slots, &mut built, 5, payload), (1, true));
+    assert_eq!(built, 1);
+    assert_eq!(stage(&mut slots, &mut built, 2, payload), (2, true));
+    assert_eq!(stage(&mut slots, &mut built, 5, payload), (1, false));
+    assert_eq!(built, 2);
 }

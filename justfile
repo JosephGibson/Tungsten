@@ -37,9 +37,10 @@ bench-build:
 smoke:
     ./scripts/smoke-examples.sh
 
-# Pixel comparison against the reference PNG (reference machine only).
+# Pixel tests: the reference PNG (reference machine only), then the post-stack regressions.
 visual:
     TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p example-02-bench --test visual_regression --locked -- --nocapture
+    TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p example-04-shader-playground --test post_regression --locked -- --nocapture
 
 # Benchmark runner; arguments go to scripts/bench.py, e.g. `just perf run physics --repeat 5`.
 perf *args:

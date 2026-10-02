@@ -1437,6 +1437,7 @@ impl Renderer {
                     &self.target_pool,
                     post_pass,
                     src,
+                    pi,
                 );
             }
         }
