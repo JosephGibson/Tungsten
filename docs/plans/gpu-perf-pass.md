@@ -17,6 +17,8 @@ B0 done: 2026-10-02, 00:09Z–00:31Z. Session B started on the owner's decisions
 
 B1 done: 2026-10-02, 00:12Z–00:52Z. The `frame:` line and `FrameTimings` carry `interval`, the time between two frame starts, and the capture README lists each run's largest `total` and spike count. The suite, saved as `gpu-pass-b1`, reads 0 `regressed` and 0 `improved` against `gpu-pass-b0`; the record is under "B1".
 
+B5 done: 2026-10-02, 00:36Z–00:37Z. At a frame cap of 60 on the quiet machine 360 frames take 6.22 s and `interval` reads 16.70–16.72 ms at p50 and 16.99–17.30 ms at p99; the record is under "B5".
+
 ## Context digest
 
 - Planned 2026-10-01 on branch `0.34`, commit `1b869e5`, clean tree. Stack: `wgpu` 30.0.1, `winit` 0.30.13 (lock file), `glyphon` 0.12.0, `cosmic-text` 0.19.0, Vulkan on RADV (Mesa 26.2.3).
@@ -761,6 +763,19 @@ $G python3 $E/scripts/pacing_run.py --label cap60 --bench gpu --preset min --pre
 ```
 
 Done when: each run's wall time is at least 5.9 s for 360 frames, and `interval` p50 is 16.5–16.8 ms with p99 at most 17.7 ms. If p99 is higher, record a follow-up and do not add a dependency here: each deadline counts from the frame's own start, so the loop's wake-up time adds about 0.08 ms per frame (the 0.5–1.3% shortfall above), which a deadline grid kept across frames would remove, and a sleep-then-spin tail (S23) would tighten the rest.
+
+**B5 result (2026-10-02, 00:36Z–00:37Z): done; every check holds.** `perf-runs/20261002T003639Z-hand-cap60/`: `gpu` at `min`, `immediate` / 1, a frame cap of 60, three runs of 60 + 300 frames on the B1 build, no encoder sighting (`SB/logs/b5-cap60.log`, `SB/logs/b5-cap60-frame-stats.txt`).
+
+| Run | Wall time, 360 frames | `interval` p50 | p95 | p99 | max | FPS from `interval` | `total` p50 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 6.215 s | 16.70 ms | 16.79 | 17.06 | 17.41 | 59.8 | 0.79 ms |
+| 2 | 6.215 s | 16.71 ms | 16.80 | 16.99 | 17.26 | 59.8 | 0.79 ms |
+| 3 | 6.215 s | 16.72 ms | 16.99 | 17.30 | 17.64 | 59.7 | 0.80 ms |
+
+- Each run takes at least 5.9 s, `interval` p50 is inside 16.5–16.8 ms and p99 is at most 17.7 ms (the largest reads 17.30). With a remote-desktop client connected the same cap had read 16.75 / 17.78 ms.
+- The mean `interval` is 16.73 ms against a period of 16.67 ms: 0.06 ms per frame, 0.4%, which is the loop's wake-up after each deadline. The check is met, so no follow-up is recorded for it; a deadline grid kept across frames is still what would remove the 0.4%.
+- Only `interval` shows the cap. A capped frame of this row works 0.79 ms (`total` p50) where the uncapped one reads 3.05 ms: uncapped, 2.27 ms of the frame is the wait for the GPU in the acquire (`perf-runs/20261002T004425Z-hand-b7-gpu-min-immediate-lat1/`); capped, the GPU is idle when the frame starts and the acquire takes 0.02 ms. An FPS taken from `total` would read 1,191 here.
+- No file changed but this plan. Patch: `SB/patches/02-b5-frame-cap-check.patch`.
 
 ### B6. Shape-run cache experiment (gated)
 
