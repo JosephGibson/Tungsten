@@ -154,7 +154,7 @@ An invalid capture stays on disk with `valid: false` and its reasons in `capture
 5. **`compare.md`**, in order: a header with both sides, their commits, the machine and the comparability status; the owned-metric table (baseline, candidate, Δ, Δ%, interval, τ, verdict); the stages; the systems whose |Δ| > τ; the GPU passes from the diagnostic runs; memory and CPU (peak RSS with its verdict, RSS growth, CPU seconds); the workload counters; guards and validity. `compare.json` holds the same report as data.
 6. **`compare.html`** is self-contained: inline CSS and SVG, no scripts, fonts or network requests, light and dark schemes. It shows an ECDF of the pooled `total` frames per side with p50/p95/p99 markers and 16.7 and 6.9 ms budget lines, the run-1 frame-time series, stacked stage bars, per-system bars (p50 with p95 whiskers), GPU-pass bars, peak-RSS bars and the counter table. Verdict badges carry text labels, not color alone.
 7. **Suite compare.** Each row both suites hold gets its own report in `<out>/<row>/`; the suite-level `compare.json`, `compare.md` and `compare.html` add the verdict counts, `total` and peak-RSS bars per row and each row's owned table. Rows held by only one side are listed, not compared.
-8. **A/A check.** Two captures, or two suites, of one build on one quiet machine must yield no `regressed` or `improved` verdict on any owned metric. Run one per machine before trusting verdicts. `noisy` verdicts are expected on sub-millisecond system rows that sit on the 0.02 ms floor and on the CPU render stages of the two `gpu` rows. Until `D-085` the scene pass also moved about 12% between captures; see the scene-pass note in [`benchmarks.md`](benchmarks.md#gpu). Two readings can break the rule with nothing changed: `gpu-throughput` `render_encode`, whose p95 takes one of two values per run (an A/A against a suite two hours older read its p50 `regressed`, 1.28 → 1.44 ms, on 2026-10-01), and the `ecs` rows of the per-run mode (`stats_decay`, `regen`, `follow`, `buffs`), where `buffs` read `regressed` in a five-run suite and `unchanged` with 15 runs a side in one sitting (`D-086`).
+8. **A/A check.** Two captures, or two suites, of one build on one quiet machine must yield no `regressed` or `improved` verdict on any owned metric. Run one per machine before trusting verdicts. `noisy` verdicts are expected on sub-millisecond system rows that sit on the 0.02 ms floor and on the CPU render stages of the two `gpu` rows. Until `D-085` the scene pass also moved about 12% between captures; see the scene-pass note in [`benchmarks.md`](benchmarks.md#gpu). Two readings can break the rule with nothing changed: `gpu-throughput` `render_encode`, whose p95 takes one of two values per run (an A/A against a suite two hours older read its p50 `regressed`, 1.28 → 1.44 ms, on 2026-10-01), and the `ecs` rows of the per-run mode (`stats_decay`, `regen`, `follow`, `buffs`, `team_bags`, `accelerate`, `integrate`), where `buffs` read `regressed` in a five-run suite and `unchanged` with 15 runs a side in one sitting (`D-086`). An A/A of 2026-10-02, 73 minutes apart, read two of those rows `regressed` and two `improved` and nothing else: one suite held four mode runs of five and the other none.
 9. **Exit codes.** 0 on success; `--fail-on regressed` exits 1 when any owned metric regressed, in a capture or any suite row (local scripting only, `D-070`); 2 on a bad request or environment problem; 3 from `run`, `suite` and `--sweep` when a capture is invalid.
 
 ## Capacity search
@@ -258,7 +258,23 @@ just perf run gpu --repeat 5
 just perf run gpu --repeat 5 --present-mode mailbox --max-frame-latency 2
 ```
 
-`--present-mode` and `--max-frame-latency` set child-only `TUNGSTEN_DISPLAY_PRESENT_MODE` and `TUNGSTEN_DISPLAY_MAX_FRAME_LATENCY`, so `tungsten.json` stays unchanged, and they suffix the directory with `-<mode>-lat<N>`. Each run's `backend:` line must confirm the request, or the capture is invalid (see "Validity and determinism"). Present mode and frame latency are hard compare fields. Acquire and present pacing belong to the environment: they are reported and owned by no row. Read the frame period from `interval`, not from `total`. A `fifo` frame blocks inside `total`, so both read the refresh period (`gpu` at `min` under `fifo` / 2: 16.63 and 16.67 ms at p50); a wait between two frames shows in `interval` alone. The April 2026 Vulkan matrix that keeps `Immediate / 1` as the shipped default is recorded in `D-078`; shipped pacing defaults change only by decision.
+`--present-mode` and `--max-frame-latency` set child-only `TUNGSTEN_DISPLAY_PRESENT_MODE` and `TUNGSTEN_DISPLAY_MAX_FRAME_LATENCY`, so `tungsten.json` stays unchanged, and they suffix the directory with `-<mode>-lat<N>`. Each run's `backend:` line must confirm the request, or the capture is invalid (see "Validity and determinism"). Present mode and frame latency are hard compare fields. Acquire and present pacing belong to the environment: they are reported and owned by no row. Read the frame period from `interval`, not from `total`. A `fifo` frame blocks inside `total`, so both read the refresh period (`gpu` at `min` under `fifo` / 2: 16.63 and 16.67 ms at p50); a wait between two frames shows in `interval` alone. A frame-rate cap (`display.frame_rate_cap`) is such a wait: at a cap of 60, `gpu` at `min` reads 0.79 ms of `total` and 16.71 ms of `interval` at p50 (p99 17.06 ms, 59.8 FPS), where `total` alone would give 1,191 FPS. The April 2026 Vulkan matrix that keeps `Immediate / 1` as the shipped default is recorded in `D-078`; shipped pacing defaults change only by decision.
+
+The same matrix on the current suite, for the record (2026-10-02, the reference machine at 60 Hz, frame latency 1, three timing runs a cell, medians in ms):
+
+| Row | Mode | `total` p50 / p95 / p99 | `interval` p50 | FPS (1000 / mean `interval`) |
+| --- | --- | --- | --- | --- |
+| `gpu` | `immediate` | 10.80 / 12.23 / 12.70 | 10.86 | 89.4 |
+| `gpu` | `mailbox` | 11.76 / 17.02 / 17.32 | 11.84 | 89.7 |
+| `gpu` | `fifo` | 16.63 / 17.36 / 17.72 | 16.68 | 60.0 |
+| `integrated` | `immediate` | 8.48 / 8.99 / 9.35 | 8.62 | 116.9 |
+| `integrated` | `mailbox` | 8.43 / 9.06 / 9.28 | 8.54 | 117.9 |
+| `integrated` | `fifo` | 16.51 / 17.06 / 17.27 | 16.69 | 60.0 |
+| `gpu` at `min` | `immediate` | 3.04 / 4.69 / 4.77 | 3.08 | 294.2 |
+| `gpu` at `min` | `mailbox` | 2.90 / 4.74 / 5.03 | 2.94 | 321.2 |
+| `gpu` at `min` | `fifo` | 16.62 / 17.13 / 17.46 | 16.66 | 60.0 |
+
+`mailbox` gives the GPU-bound `gpu` row the frame rate of `immediate` with a wider spread (jitter 5.51 ms against 1.89) and gains 9% on `gpu` at `min`; the CPU-bound `integrated` row moves by under 1%.
 
 ## Backends and RenderDoc
 

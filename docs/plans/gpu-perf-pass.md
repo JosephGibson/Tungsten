@@ -19,6 +19,8 @@ B1 done: 2026-10-02, 00:12Z–00:52Z. The `frame:` line and `FrameTimings` carry
 
 B5 done: 2026-10-02, 00:36Z–00:37Z. At a frame cap of 60 on the quiet machine 360 frames take 6.22 s and `interval` reads 16.70–16.72 ms at p50 and 16.99–17.30 ms at p99; the record is under "B5".
 
+Session B closed: 2026-10-02 (B0, B1, B5 and B7; results and the table of targets under "B7"). The final suite reads 0 `regressed` and 0 `improved` owned verdicts against `gpu-pass-b0`. B2, B4 and B6 were not run and stay open, so the status stays `in progress` and the file is not archived.
+
 ## Context digest
 
 - Planned 2026-10-01 on branch `0.34`, commit `1b869e5`, clean tree. Stack: `wgpu` 30.0.1, `winit` 0.30.13 (lock file), `glyphon` 0.12.0, `cosmic-text` 0.19.0, Vulkan on RADV (Mesa 26.2.3).
@@ -790,6 +792,64 @@ Done when: keep it only if `gpu` `stage.render_encode` p50 reads `improved` and 
 ### B7. Close-out of Session B
 
 As A4: results table against `gpu-pass-b0`, the 900-frame run, both capacity searches, the runner's pacing matrix for `gpu`, `integrated` and `gpu` at `min` (`--present-mode immediate`, `mailbox` and `fifo` at `--max-frame-latency 1`) for the record, `just check`, `just smoke`, `just visual`, `just repo-check`, `just script-test`, `just ctx` (the skill and `AGENTS.md` changed), `just deps`. Docs: `docs/perf/benchmarks.md` (rows, ownership table if B3 ran, engine findings), `docs/perf/profiling-workflow.md`, one `DECISIONS.md` entry per approved gated step with index rows, `CHANGELOG.md`. Set `status: done` and move this file to `docs/plans/archive/`.
+
+**B7 result (2026-10-02, 00:38Z–01:10Z): Session B is closed with B2, B4 and B6 not run, so this plan stays `in progress` and is not archived. Every step that ran meets its checks, and the final suite reads no `regressed` owned verdict against `gpu-pass-b0`.**
+
+The session's tree holds one change, B1 (B0, B5 and B7 measure and record), so the final suite is B1's: `gpu-pass-b1` (`perf-runs/20261002T003214Z-suite/`) against `gpu-pass-b0` (`perf-runs/20261002T002521Z-suite/`), report `perf-runs/20261002T003601Z-compare-suite/`: 0 `regressed`, 0 `improved`, 39 `unchanged`, 15 `noisy` owned verdicts. Values are medians of the runs (`SB/logs/b0-suite-frame-stats.txt`, `SB/logs/b1-suite-frame-stats.txt`); verdicts are compare's, on per-run means. FPS is 1000 / mean `total`, as in "Targets", with the rate by `interval` beside it. The "After Session B" targets were set for a session that runs B2 and B4; the rows that depended on one of them say so.
+
+| Row | Metric | Session baseline (`gpu-pass-b0`) | Result (`gpu-pass-b1`) | Verdict | Session B target |
+| --- | --- | --- | --- | --- | --- |
+| `gpu` | FPS | 90.1 | 90.1 (89.7 by `interval`) | `total` `unchanged` | ≥ 90: met |
+| `gpu` | `total` p50 / p95 / p99 | 10.75 / 12.22 / 13.11 | 10.75 / 12.23 / 12.81 | `unchanged` / `unchanged` / `unchanged` | ≤ 10.8 / ≤ 12.3 / ≤ 13.4: met |
+| `gpu` | jitter | 2.37 | 2.07 | not judged | ≤ 2.6: met |
+| `gpu` | spikes per 300 frames; per 900 frames | 0; 0 | 0; 0 | not judged | 0; 0: met |
+| `gpu` | max `total`, 300 and 900 frames | 13.66 (largest of five runs 15.02); 13.90 (largest of three 14.36) | 13.48 (largest of five 13.99); 13.67 (largest of three 13.86) | not judged | ≤ 16.5: met |
+| `gpu` | `render_encode` p50 / p95 | 2.14 / 2.41 | 2.12 / 2.40 | `unchanged` / `unchanged` | not regressed: met |
+| `gpu` | `extract` p50 | 0.66 | 0.65 | `noisy` (Δ −0.02, τ 0.05) | not regressed: met |
+| `gpu` | peak RSS, 300 and 900 frames | 169.3; 169.2 MiB | 169.1; 168.7 MiB | `unchanged` | not regressed: met |
+| `gpu-throughput` | FPS | 68.1 | 67.9 (67.5 by `interval`) | `total` p50 `noisy`, p95 and p99 `unchanged` | not lower: 0.2 lower at the median, inside the runs' spread (65.6–68.3; the low run is the one at `render_encode`'s other value) |
+| `gpu-throughput` | `total` p50 / p95 / p99 | 14.66 / 15.12 / 15.52 | 14.68 / 15.17 / 15.61 | `noisy` (Δ +0.12, τ 0.44) / `unchanged` / `unchanged` | not regressed: met |
+| `gpu-throughput` | jitter; spikes | 0.84; 0 | 0.86; 0 | not judged | not regressed: met |
+| `gpu-throughput` | `extract` p50 / p95 | 13.29 / 13.65 | 13.28 / 13.64 | `unchanged` / `unchanged` | not regressed: met |
+| `gpu-throughput` | kernel time and faults per frame | 0.16 ms; none | 0.23 ms; none | not judged | not regressed: met (Session A's limits were 1.0 ms and 50) |
+| `particles` | FPS | 160.3 | 159.6 (157.8 by `interval`) | `total` `unchanged` | not lower: 0.7 lower at the median (0.4%); `total` reads `unchanged` |
+| `particles` | `total` p50 / p95 / p99 | 6.18 / 7.10 / 7.70 | 6.22 / 7.23 / 7.76 | `unchanged` / `unchanged` / `unchanged` | not regressed: met |
+| `particles` | jitter; `extract` p50 | 1.44; 2.78 | 1.48; 2.78 | not judged; `noisy` (Δ 0.00, τ 0.08) | not regressed: met |
+| `integrated` | FPS | 119.8 | 119.6 (117.8 by `interval`) | `total` `unchanged` | ≥ 106: met |
+| `integrated` | `total` p50 / p95 / p99 | 8.38 / 9.05 / 9.55 | 8.40 / 8.99 / 9.38 | `unchanged` / `unchanged` / `unchanged` | ≤ 9.4 / ≤ 10.0 / ≤ 10.4: met |
+| `integrated` | jitter; spikes | 1.17; 0 (one run holds one) | 0.98; 0 | `unchanged` | ≤ 1.0; 0: met |
+| `integrated` | `extract` p50; `render_encode` p50 | 0.98; 0.91 | 0.98; 0.92 | `noisy` (Δ +0.01, τ 0.05); `unchanged` | ≤ 1.7: met without B2, since A2; not regressed: met |
+| `integrated` | `render_span` p50 | 5.90 | 5.79 | `noisy` (5.89 → 5.84 on per-run means, τ 0.18) | ≤ 5.95: met |
+| floor | `render_span` p50; FPS | 0.15; 2,102.6 (B3's capture) | 0.15; 2,113.6 (1,989.9 by `interval`) | `unchanged`; `total` `unchanged` | ≤ 0.15; ≥ 1,400: met |
+| `gpu` at `min`, hand-run | p95 / p99; spikes per 300; FPS | 5.07 / 5.23; 24; 269.1 (A4's capture) | 4.72 / 4.79; 61; 297.5 (293.9 by `interval`) | not judged (hand-run) | with B4: ≤ 3.8 / ≤ 4.2; ≤ 2; ≥ 288. B4 was not run: the tail and spike limits are not met, the FPS is |
+| controls | `physics`, `physics-sparse`, `ecs`, `churn` owned metrics | `gpu-pass-b0` | `gpu-pass-b1` | `physics` 3 `unchanged`; `physics-sparse` 2 `unchanged`; `ecs` 9 `unchanged`, 7 `noisy`; `churn` 4 `unchanged`, 2 `noisy` | not regressed: met |
+
+- What the targets show. A2 and B3 had already met the row targets that B2 was to deliver (`integrated` `extract` and `total`, `gpu` FPS and `total`, the floor), so the only "After Session B" limits not met are B4's: the p95 / p99 and the spike count of `gpu` at `min`. That row's spikes rose from 24 to 61 per 300 frames with no slower frame in it: B3 took p50 from 3.35 to 3.05 ms, and the frames the compositor stalls, about 4.7 ms and one per display refresh, now lie above 1.5 × p50 (300 frames take 1.0 s, so 60 of them).
+- Captures of this step, all valid, no encoder sighting: 900 frames `perf-runs/20261002T003830Z-gpu/` (`SB/logs/b7-gpu-900-frame-stats.txt`; reference `perf-runs/20261002T002934Z-gpu/`); floor `perf-runs/20261002T004422Z-gpu-setc52067/`, compared with B3's capture (`perf-runs/20261002T004657Z-compare-gpu/`: 0 `regressed`, 0 `improved`, 7 `unchanged`, 2 `noisy`) and with the planning capture (`perf-runs/20261002T004656Z-compare-gpu/`: `render_span` p50 0.41 → 0.15 ms `improved`, the scene pass `regressed` at 0.06 → 0.13 ms, the clear that `D-087` accepted); `gpu` at `min` `perf-runs/20261002T004425Z-hand-b7-gpu-min-immediate-lat1/`; kernel time `SB/logs/b7-rusage-gpu-throughput.txt`; counts `SB/logs/b7-frame-counts-gpu.txt` (18 render passes, 77 draws, 0 bind groups, 5 buffers, 1,843 `malloc` calls per frame without telemetry; the `frame:` line formats one more small string when telemetry is on).
+- Capacity (`perf-runs/20261002T003908Z-capacity-60hz/`, `perf-runs/20261002T004104Z-capacity-144hz/`). At 60 Hz: `gpu` scale 1.61 (3,221 sprites, present-limited ✓; 1.61 at A4), `gpu-throughput` 1.04 (417,708 sprites, `extract`-limited ✓ at 13.82 ms; 0.57 at A4, before A2 landed), `integrated` 1.76 (4,391 actors, `physics_step`-limited ✓; 1.53). At 144 Hz: `gpu` not reachable (p95 8.36 ms with one sprite; 8.69), `gpu-throughput` 0.42 (168,179 sprites; 0.31), `integrated` 0.30 (743 actors), present-limited ✗ (0.085).
+- Pacing matrix, for the record (`SB/pacing-matrix.sh`, `SB/logs/b7-pacing-matrix-frame-stats.txt`): runner captures at frame latency 1, three timing runs each, every `backend:` line confirming the requested mode. Medians in ms; FPS is 1000 / mean `interval`.
+
+  | Row | Mode | `total` p50 / p95 / p99 | Jitter | `interval` p50 | FPS | Capture |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | `gpu` | `immediate` | 10.80 / 12.23 / 12.70 | 1.89 | 10.86 | 89.4 | `perf-runs/20261002T004218Z-gpu-immediate-lat1/` |
+  | `gpu` | `mailbox` | 11.76 / 17.02 / 17.32 | 5.51 | 11.84 | 89.7 | `perf-runs/20261002T004231Z-gpu-mailbox-lat1/` |
+  | `gpu` | `fifo` | 16.63 / 17.36 / 17.72 | 1.10 | 16.68 | 60.0 | `perf-runs/20261002T004244Z-gpu-fifo-lat1/` |
+  | `integrated` | `immediate` | 8.48 / 8.99 / 9.35 | 0.89 | 8.62 | 116.9 | `perf-runs/20261002T004303Z-integrated-immediate-lat1/` |
+  | `integrated` | `mailbox` | 8.43 / 9.06 / 9.28 | 0.85 | 8.54 | 117.9 | `perf-runs/20261002T004314Z-integrated-mailbox-lat1/` |
+  | `integrated` | `fifo` | 16.51 / 17.06 / 17.27 | 0.77 | 16.69 | 60.0 | `perf-runs/20261002T004326Z-integrated-fifo-lat1/` |
+  | `gpu` at `min` | `immediate` | 3.04 / 4.69 / 4.77 | 1.73 | 3.08 | 294.2 | `perf-runs/20261002T004347Z-gpu-min-immediate-lat1/` |
+  | `gpu` at `min` | `mailbox` | 2.90 / 4.74 / 5.03 | 2.14 | 2.94 | 321.2 | `perf-runs/20261002T004352Z-gpu-min-mailbox-lat1/` |
+  | `gpu` at `min` | `fifo` | 16.62 / 17.13 / 17.46 | 0.84 | 16.66 | 60.0 | `perf-runs/20261002T004356Z-gpu-min-fifo-lat1/` |
+
+  `immediate / 1` stays the shipped default, as recorded. Under `fifo` the three rows hold the display's 60.0 FPS; `integrated`'s `total` p50 reads 16.51 ms there while its `interval` reads 16.69 ms, so only `interval` shows the period.
+- Gates on the final tree: `just check`, `just smoke`, `just visual`, `just repo-check`, `just script-test`, `just ctx` and `just deps` pass (`SB/logs/b7-*.log`); the GPU ones ran through the guard with no encoder sighting.
+- Docs: `docs/perf/benchmarks.md` (the dates, an "FPS" note, the seven `ecs` rows of the per-run mode, `churn` `flush` at its new address, the 2026-10-02 numbers and capacities of `gpu`, `gpu-throughput`, `particles` and `integrated`, what this session left open), `docs/perf/profiling-workflow.md` (the frame cap under "Frame pacing", the pacing matrix, the A/A note), `CHANGELOG.md` under `[Unreleased]`. No `DECISIONS.md` entry: no gated step ran, and B1 needs none ("Decisions for approval"). `D-088` stays free.
+- Capture hygiene: 22 guarded commands, 0 encoder sightings and no refusal (`SB/guard.log`). The encoder ran from before the session's start until 00:24:50Z; the first capture started at 00:25:20Z (`SB/load.log`). The load log was stopped at the end.
+- Open after this session:
+  - B2 (extract culling), B4 (the compositor-bypass hint) and B6 (the shape-run cache experiment): each still needs the owner's `yes`. The baseline for whichever runs next is `gpu-pass-b1`; B2's golden-test and startup-hook notes and B4's changed control are in the session brief (`S2/session-b-prompt.md`).
+  - The frame cap's 0.06 ms per frame (B5), and the HUD's `fps` row, which still divides by the CPU frame time where `FrameTimings::interval_ms` now holds the period.
+  - This plan: `status` stays `in progress`, and the file moves to `docs/plans/archive/` only when B2, B4 and B6 are done or moved to "Deferred candidates".
+- Patch: `SB/patches/03-b7-closeout.patch`; the commit script is `SB/patches/commit-series.sh`.
 
 ## Deferred candidates (not scheduled)
 
