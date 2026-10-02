@@ -1914,3 +1914,94 @@ fn warm_start_forgets_disappearing_contacts_and_syncs_empty_final_substep() {
     assert!(buffers.impulses.keys.iter().all(|key| *key == EMPTY_PAIR));
     assert!(!buffers.impulses_dirty);
 }
+
+fn arrival_counts(world: &World) -> (usize, usize) {
+    let buffers = world
+        .get_resource::<PhysicsBuffers>()
+        .expect("physics buffers");
+    (buffers.arrival.listed, buffers.arrival.clamps)
+}
+
+#[test]
+fn settled_stack_never_enters_the_arrival_pass() {
+    // Warm starts and gravity cancel in a resting pile, so no body's velocity
+    // moves by the arrival threshold and the pass lists nobody (D-092).
+    let mut world = seed_world();
+    {
+        let config = world.get_resource_mut::<PhysicsConfig>().unwrap();
+        config.gravity = Vec2::new(0.0, 900.0);
+        config.sleep_threshold = 0.0;
+    }
+    let floor = world.spawn();
+    world.insert(floor, Position(Vec2::new(0.0, 500.0)));
+    world.insert(floor, Collider::aabb(Vec2::new(400.0, 20.0)));
+    world.insert(floor, RigidBody::r#static());
+    for i in 0..5 {
+        let body = world.spawn();
+        world.insert(body, Position(Vec2::new(0.0, 464.0 - 32.0 * i as f32)));
+        world.insert(body, Velocity(Vec2::ZERO));
+        world.insert(body, Collider::aabb(Vec2::splat(16.0)));
+        world.insert(body, RigidBody::dynamic());
+    }
+
+    for _ in 0..240 {
+        physics_step(&mut world);
+    }
+    let settled = arrival_counts(&world);
+    for _ in 0..120 {
+        physics_step(&mut world);
+    }
+    assert_eq!(arrival_counts(&world), settled);
+}
+
+#[test]
+fn pushed_body_arrives_at_a_static_wall_and_stops_its_pusher() {
+    // A heavy pusher drives a light body at a thin static wall. The wall
+    // contact is solved before or after the push depending on spawn order;
+    // either way the body ends against the wall and the pusher behind it.
+    const RADIUS: f32 = 8.0;
+    const WALL_FACE: f32 = 798.0;
+    for wall_first in [false, true] {
+        let mut world = seed_world();
+        let spawn_wall = |world: &mut World| {
+            let wall = world.spawn();
+            world.insert(wall, Position(Vec2::new(WALL_FACE + 2.0, 0.0)));
+            world.insert(wall, Collider::aabb(Vec2::new(2.0, 400.0)));
+            world.insert(wall, RigidBody::r#static());
+        };
+        let spawn_ball = |world: &mut World, x: f32, speed: f32, mass: f32| {
+            let ball = world.spawn();
+            world.insert(ball, Position(Vec2::new(x, 0.0)));
+            world.insert(ball, Velocity(Vec2::new(speed, 0.0)));
+            world.insert(ball, Collider::circle(RADIUS));
+            world.insert(ball, RigidBody::dynamic().with_mass(mass));
+            ball
+        };
+        if wall_first {
+            spawn_wall(&mut world);
+        }
+        let pushed = spawn_ball(&mut world, WALL_FACE - RADIUS - 3.0, 0.0, 1.0);
+        if !wall_first {
+            spawn_wall(&mut world);
+        }
+        let pusher = spawn_ball(&mut world, WALL_FACE - RADIUS - 3.0 - 46.0, 1_920.0, 100.0);
+
+        for _ in 0..60 {
+            physics_step(&mut world);
+        }
+
+        let pushed_x = world.get::<Position>(pushed).unwrap().0.x;
+        let pusher_x = world.get::<Position>(pusher).unwrap().0.x;
+        assert!(
+            pushed_x + RADIUS <= WALL_FACE + 1.0,
+            "wall_first={wall_first}: pushed body sits {} px into the wall",
+            pushed_x + RADIUS - WALL_FACE
+        );
+        assert!(
+            pusher_x + 2.0 * RADIUS <= pushed_x + 1.0,
+            "wall_first={wall_first}: pusher at {pusher_x} overlaps the pushed body at {pushed_x}"
+        );
+        let (listed, clamps) = arrival_counts(&world);
+        assert!(listed > 0 && clamps > 0, "the arrival pass did not run");
+    }
+}
