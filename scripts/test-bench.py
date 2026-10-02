@@ -31,9 +31,12 @@ GUARDS = [
 ]
 
 
-def frame_line(total, update=6.0):
+def frame_line(total, update=6.0, interval=None):
+    """`interval` is the field's text (`16.70ms`, or `n/a` on a first frame);
+    None leaves the field out, as a log from before it does."""
+    field = "" if interval is None else f"interval={interval} "
     return (
-        APP + f"frame: total={total:.2f}ms update={update:.2f}ms flush=0.10ms extract=1.00ms render=2.00ms "
+        APP + f"frame: total={total:.2f}ms {field}update={update:.2f}ms flush=0.10ms extract=1.00ms render=2.00ms "
         "render_acquire=0.10ms render_encode=1.00ms render_submit_present=0.90ms gpu=n/a audio=0.01ms hot_reload=0.00ms"
     )
 
@@ -177,6 +180,43 @@ class Parsing(unittest.TestCase):
         self.assertEqual(systems["physics_step"]["mean"], 1.0)
         self.assertEqual(bench_report.metric_value(stats, "system.a.b(c)+*", "p50"), 3.0)
         self.assertIsNone(bench_report.metric_value(stats, "system.physics", "p50"))
+
+    def test_interval_is_reported_and_is_no_part_of_the_frames_work(self):
+        totals = (10.0, 12.0, 11.0)
+        text = "\n".join(frame_line(total, interval=interval) for total, interval in zip(totals, ("n/a", "10.40ms", "12.30ms")))
+        frames = bench_report.parse_log(text).frames
+        self.assertIsNone(frames[0].stages["interval"])
+        stats = bench_report.run_stats(frames)
+        self.assertEqual(list(stats["stages"])[:2], ["total", "interval"])
+        self.assertEqual(bench_report.STAGE_ORDER[:2], ("total", "interval"))
+        # The first frame has no previous frame start.
+        self.assertEqual((stats["stages"]["interval"]["n"], stats["stages"]["interval"]["max"]), (2, 12.3))
+        # `unattributed`, the stacked bars and the limiting stage read the
+        # frames as they read a log without the field.
+        plain = bench_report.run_stats(bench_report.parse_log("\n".join(frame_line(total) for total in totals)).frames)
+        self.assertNotIn("interval", plain["stages"])
+        self.assertEqual(stats["stages"]["unattributed"], plain["stages"]["unattributed"])
+        self.assertEqual(bench_report.limiting_candidates(stats), bench_report.limiting_candidates(plain))
+
+        def stack(run):
+            return bench_report.stack_segments({name: summary["mean"] for name, summary in run["stages"].items()})
+
+        self.assertEqual(stack(stats), stack(plain))
+
+    def test_spikes_are_frames_above_one_and_a_half_times_the_runs_p50(self):
+        totals = [10.0, 10.0, 15.0, 15.01, 10.0, 22.0]
+        frames = bench_report.parse_log("\n".join(frame_line(total) for total in totals)).frames
+        # p50 is 10 ms (nearest rank), so the limit is 15 ms; 15.00 ms is not above it.
+        self.assertEqual(bench_report.spike_count(frames), 2)
+        self.assertIsNone(bench_report.spike_count([]))
+        with tempfile.TemporaryDirectory() as temp:
+            capture = write_capture(Path(temp) / "capture", [[10.0, 10.0, 10.0, 16.0], [10.0, 10.0, 10.0, 12.0]], BASE_PEAKS[:2])
+        self.assertEqual([run["spikes"] for run in capture["runs"]], [1, 0])
+        readme = bench_report.capture_readme(capture)
+        self.assertIn("## Frame time per run (timing runs)", readme)
+        self.assertIn("| Run | `total` p50 (ms) | `total` max (ms) | Spikes (`total` > 1.5 × p50) |", readme)
+        self.assertIn("| 1 | 10 | 16 | 1 |", readme)
+        self.assertIn("| 2 | 10 | 12 | 0 |", readme)
 
     def test_nearest_rank_percentiles(self):
         values = [float(value) for value in range(1, 301)]

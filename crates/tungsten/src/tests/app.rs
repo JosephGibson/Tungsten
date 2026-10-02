@@ -1,6 +1,6 @@
 use super::{
-    App, RedrawSchedule, format_perf_physics_line, format_perf_systems_line, redraw_schedule,
-    resolve_startup_display, runtime_display_mode,
+    App, RedrawSchedule, format_perf_physics_line, format_perf_systems_line, frame_interval_ms,
+    redraw_schedule, resolve_startup_display, runtime_display_mode,
 };
 use std::time::{Duration, Instant};
 use tungsten_core::{
@@ -119,6 +119,15 @@ fn uncapped_frame_redraws_immediately() {
         redraw_schedule(None, Instant::now()),
         RedrawSchedule::Immediate
     );
+}
+
+#[test]
+fn frame_interval_spans_two_frame_starts() {
+    let first = Instant::now();
+    let second = first + Duration::from_micros(16_670);
+    assert_eq!(frame_interval_ms(None, first), None);
+    let interval = frame_interval_ms(Some(first), second).unwrap();
+    assert!((interval - 16.67).abs() < 1e-3, "interval {interval}");
 }
 
 #[test]

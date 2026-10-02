@@ -31,8 +31,12 @@ BACKEND_RE = re.compile(
 )
 
 # `frame:` stages that partition `total`; the remainder is `unattributed`.
-# `render` already contains acquire, encode and submit/present.
+# `render` already contains acquire, encode and submit/present. `interval`
+# is not work: it spans the previous frame and the wait after it, so it is
+# no part of `total`, of the stacked bars or of the limiting stage.
 TOTAL_PARTS = ("update", "flush", "particles", "tweens", "hot_reload", "extract", "render", "audio")
+# A spike is a measured frame whose `total` exceeds this multiple of the run's p50.
+SPIKE_FACTOR = 1.5
 
 # Metric-name prefix -> per-run stats group.
 GROUPS = {
@@ -148,6 +152,16 @@ def unattributed(stages):
     if total is None:
         return None
     return total - sum(stages.get(part) or 0.0 for part in TOTAL_PARTS)
+
+
+def spike_count(frames):
+    """Frames whose `total` exceeds SPIKE_FACTOR × the p50 of `frames`, or
+    None without a `total`."""
+    totals = sorted(total for frame in frames if (total := frame.stages.get("total")) is not None)
+    if not totals:
+        return None
+    limit = SPIKE_FACTOR * percentile(totals, 50)
+    return sum(1 for total in totals if total > limit)
 
 
 def run_stats(frames):
@@ -370,6 +384,7 @@ def analyze_log(text, warmup, frames, guards, expected_config, present_mode=None
         "frames_measured": len(measured),
         "backend": log.backend,
         "stats": run_stats(measured),
+        "spikes": spike_count(measured),
         "guards": guard_results,
         "digest": digest(measured),
         "problems": problems,
@@ -547,6 +562,12 @@ def capture_readme(capture):
     lines += ["", "## Owned metrics (ms)", ""]
     lines += table(["Metric", "Median", "Per run", "Source"], owned_rows) if owned_rows else ["n/a"]
     lines += ["", "## Stages (ms)", ""] + group_table(runs, "stages")
+    frame_rows = [
+        [run["index"], *(fmt(metric_value(run["stats"], "stage.total", stat)) for stat in ("p50", "max")), fmt(run.get("spikes"))]
+        for run in runs
+    ]
+    lines += ["", "## Frame time per run (timing runs)", ""]
+    lines += table(["Run", "`total` p50 (ms)", "`total` max (ms)", f"Spikes (`total` > {SPIKE_FACTOR:g} × p50)"], frame_rows)
     lines += ["", "## Systems (ms)", ""] + group_table(runs, "systems")
     gpu_runs = [run["gpu_run"] for run in capture["runs"] if run.get("gpu_run") and run["gpu_run"].get("stats")]
     if gpu_runs:
@@ -610,7 +631,7 @@ T_975 = {
 }  # fmt: skip
 VERDICTS = ("regressed", "improved", "unchanged", "noisy")
 STAGE_ORDER = (
-    "total", "update", "flush", "particles", "tweens", "hot_reload", "extract", "render",
+    "total", "interval", "update", "flush", "particles", "tweens", "hot_reload", "extract", "render",
     "render_acquire", "render_encode", "render_submit_present", "audio", "unattributed",
 )  # fmt: skip
 STAGE_STATS = ("p50", "p95", "p99")

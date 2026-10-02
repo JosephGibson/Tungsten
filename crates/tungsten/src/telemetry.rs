@@ -25,6 +25,9 @@ pub struct FrameTimings {
     pub flush_ms: f32,
     /// Total frame wall time.
     pub total_ms: f32,
+    /// Time from the previous frame's start to this frame's start: that
+    /// frame's total plus the wait before this one. `None` on the first frame.
+    pub interval_ms: Option<f32>,
     /// Per-system `(name, duration_ms)` in registration order.
     pub system_timings: Vec<(String, f32)>,
 }

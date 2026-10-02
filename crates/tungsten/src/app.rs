@@ -104,6 +104,8 @@ pub struct App {
     frame_budget: Option<Duration>,
     // Capped frames: when `about_to_wait` requests the next redraw.
     redraw_deadline: Option<Instant>,
+    // Start of the previous redraw; the `interval` telemetry measures from it.
+    prev_frame_start: Option<Instant>,
     capture_config: Option<CaptureConfig>,
     frames_rendered: u64,
     fatal_error: Option<anyhow::Error>,
@@ -244,6 +246,7 @@ impl App {
             registered_event_types,
             frame_budget: frame_budget_for(resolved_display.frame_rate_cap),
             redraw_deadline: None,
+            prev_frame_start: None,
             capture_config: parse_capture_config(),
             frames_rendered: 0,
             fatal_error: None,
@@ -667,6 +670,7 @@ struct FrameStageTimings {
     render_submit_present_ms: f32,
     audio_ms: f32,
     total_ms: f32,
+    interval_ms: Option<f32>,
     system_timings: Vec<(String, f32)>,
 }
 
@@ -962,6 +966,7 @@ impl App {
             ft.hot_reload_ms = t.hot_reload_ms;
             ft.flush_ms = t.flush_ms;
             ft.total_ms = t.total_ms;
+            ft.interval_ms = t.interval_ms;
             ft.system_timings = t.system_timings;
         }
     }
@@ -1013,6 +1018,12 @@ fn redraw_schedule(frame_budget: Option<Duration>, frame_start: Instant) -> Redr
     }
 }
 
+/// Milliseconds from the previous frame's start to this frame's start;
+/// `None` on the first frame.
+fn frame_interval_ms(prev_frame_start: Option<Instant>, frame_start: Instant) -> Option<f32> {
+    prev_frame_start.map(|prev| frame_start.duration_since(prev).as_secs_f64() as f32 * 1000.0)
+}
+
 #[inline(always)]
 fn drain_debug_draw(world: &mut World) -> (Vec<QuadInstance>, Vec<DebugLineInstance>) {
     let mut debug_quads: Vec<QuadInstance> = Vec::new();
@@ -1053,8 +1064,10 @@ fn drain_debug_draw(world: &mut World) -> (Vec<QuadInstance>, Vec<DebugLineInsta
 }
 
 #[inline(always)]
+#[allow(clippy::too_many_arguments)] // One value per field of the line.
 fn log_perf_line(
     total_ms: f32,
+    interval_ms: Option<f32>,
     update_ms: f32,
     flush_ms: f32,
     extract_ms: f32,
@@ -1065,9 +1078,12 @@ fn log_perf_line(
     let gpu_for_log = render_out
         .gpu_frame_ms
         .map_or_else(|| "n/a".to_string(), |ms| format!("{ms:.2}ms"));
+    // The first frame has no previous frame start.
+    let interval_for_log = interval_ms.map_or_else(|| "n/a".to_string(), |ms| format!("{ms:.2}ms"));
     log::debug!(
-        "frame: total={:.2}ms update={:.2}ms flush={:.2}ms extract={:.2}ms render={:.2}ms render_acquire={:.2}ms render_encode={:.2}ms render_submit_present={:.2}ms gpu={} audio={:.2}ms hot_reload={:.2}ms",
+        "frame: total={:.2}ms interval={} update={:.2}ms flush={:.2}ms extract={:.2}ms render={:.2}ms render_acquire={:.2}ms render_encode={:.2}ms render_submit_present={:.2}ms gpu={} audio={:.2}ms hot_reload={:.2}ms",
         total_ms,
+        interval_for_log,
         update_ms,
         flush_ms,
         extract_ms,
@@ -1454,6 +1470,8 @@ impl ApplicationHandler for App {
             }
             WindowEvent::RedrawRequested => {
                 let frame_start = Instant::now();
+                let interval_ms =
+                    frame_interval_ms(self.prev_frame_start.replace(frame_start), frame_start);
                 self.apply_pending_display_request();
 
                 // HUD smoothing uses previous frame; compose still occurs before render.
@@ -1501,12 +1519,14 @@ impl ApplicationHandler for App {
                     render_submit_present_ms: render_out.render_submit_present_ms,
                     audio_ms,
                     total_ms,
+                    interval_ms,
                     system_timings,
                 });
 
                 if std::env::var("TUNGSTEN_PERF_LOG").is_ok() {
                     log_perf_line(
                         total_ms,
+                        interval_ms,
                         update_ms,
                         flush_ms,
                         extract_ms,

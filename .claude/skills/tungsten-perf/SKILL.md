@@ -51,7 +51,7 @@ Verdicts use per-run values and a 95% Welch interval against τ = max(τ_rel × 
 
 ## Telemetry format
 
-`TUNGSTEN_PERF_LOG=1` with `RUST_LOG=tungsten::app=debug,bench=debug` emits per frame `frame:` (stages from `tungsten::FrameTimings`; `gpu=` is the scene pass, `n/a` unless `TUNGSTEN_GPU_TIMING=1`), `systems:`, `gpu_passes:` (with `render_span`), `physics:` when physics runs, and the benchmark's `bench:` counters, plus `backend:` and `bench-config:` once. `unattributed` = `total` − the timed stages. See [telemetry.rs](../../../crates/tungsten/src/telemetry.rs) and [app.rs](../../../crates/tungsten/src/app.rs).
+`TUNGSTEN_PERF_LOG=1` with `RUST_LOG=tungsten::app=debug,bench=debug` emits per frame `frame:` (stages from `tungsten::FrameTimings`; `interval=` is the time between two frame starts, reported and owned by no row; `gpu=` is the scene pass, `n/a` unless `TUNGSTEN_GPU_TIMING=1`), `systems:`, `gpu_passes:` (with `render_span`), `physics:` when physics runs, and the benchmark's `bench:` counters, plus `backend:` and `bench-config:` once. `unattributed` = `total` − the timed stages. See [telemetry.rs](../../../crates/tungsten/src/telemetry.rs) and [app.rs](../../../crates/tungsten/src/app.rs).
 
 ## GPU timing is for diagnosis only
 

@@ -74,7 +74,8 @@ perf-runs/<UTC>-<row>[-<preset>][-s<scale>][-set<hash6>][-<present>][-lat<N>]/
   capture.json        schema 1: row, bench, workload_version, resolved config, request, frames,
                       warm-up, build flags, provenance, renderer, owned metrics, per-run stats,
                       rusage and RSS growth, guards, digests, valid flag and reasons
-  README.md           owned metrics, stages, systems, GPU passes, counters, memory, validity
+  README.md           owned metrics, stages, frame time per run (maximum, spikes), systems,
+                      GPU passes, counters, memory, validity
   run-N/telemetry.log run-N/gpu.log (GPU diagnostic run) run-N/rss.tsv
   profile/            perf-stat.txt, perf-record.data, perf-record.log, flamegraph.svg (--profile)
 perf-runs/<UTC>-<row>…-sweep-<knob>/<knob>-<value>/…   plus sweep.json, sweep.md, sweep.html
@@ -86,7 +87,7 @@ perf-runs/baselines/<name>/                            a copied capture or suite
 
 The directory name carries the preset only when it differs from the row's own preset, and `set<hash6>` is a hash of the overrides. `perf-runs/` is gitignored and machine-local.
 
-- **Per-run statistics.** `runs[].stats.<group>.<name>` holds `n`, `mean`, `min`, `p50`, `p95`, `p99` and `max` for the groups `stages`, `systems`, `gpu_passes` (GPU diagnostic runs only, under `gpu_run`), `physics` and `counters`. Percentiles use the nearest rank.
+- **Per-run statistics.** `runs[].stats.<group>.<name>` holds `n`, `mean`, `min`, `p50`, `p95`, `p99` and `max` for the groups `stages`, `systems`, `gpu_passes` (GPU diagnostic runs only, under `gpu_run`), `physics` and `counters`. Percentiles use the nearest rank. `runs[].spikes` counts the measured frames whose `total` exceeds 1.5 × the run's p50; the README lists it per run beside the run's largest `total`.
 - **Provenance** is read before the build, so it describes the built sources: the commit; the dirty-tree state (`no`, or `yes (diff <12 hex>)`, a SHA-256 over the tracked diff plus the untracked files, so two dirty captures of one tree match); the cpu0 governor, the ACPI platform profile and the AC state (`n/a` where the host lacks them); the kernel, CPU model, memory, hostname and the machine fingerprint built from them; `rustc --version`; and `WGPU_BACKEND`. Attribute a drift between captures only when commit, fingerprint, governor and profile are known.
 - **Suites.** `suite.json` (schema 1, `kind: suite`) records the request (`preset`, `scale`, `only`, `repeat`, frames), the shared build and provenance, and one row per capture: preset, directory, validity and reasons, owned-metric medians, `total` p50/p95/p99 and jitter medians, and the median peak RSS. The suite is valid when every row is. Its README tabulates the rows and states the `--preset` rule when one applied.
 - **Baselines.** `just perf baseline save <capture-or-suite> <name>` copies the directory (without `*.data` profiler recordings) to `perf-runs/baselines/<name>/` and writes `baseline.json`: name, kind (`capture` or `suite`), source, date, machine fingerprint, validity, and the row or rows. `baseline list` and `baseline rm <name>` manage them. A baseline name works wherever a capture or suite directory does. Captures without `capture.json`, such as the retired bash script's, can't be baselines.
@@ -98,7 +99,7 @@ The directory name carries the preset only when it differs from the row's own pr
 ```text
 backend: Vulkan adapter: AMD Radeon 660M (RADV REMBRANDT) present_mode: immediate max_frame_latency: 1 timestamp_query: true
 bench-config: {"bench":"integrated","derived":{…},"knobs":{…},"preset":"default","row":"integrated","scale":1.0,"seed":1,"workload_version":1}
-frame: total=11.81ms update=7.24ms flush=0.16ms extract=2.60ms render=1.44ms render_acquire=0.03ms render_encode=0.96ms render_submit_present=0.43ms gpu=n/a audio=0.00ms hot_reload=0.00ms
+frame: total=11.81ms interval=11.94ms update=7.24ms flush=0.16ms extract=2.60ms render=1.44ms render_acquire=0.03ms render_encode=0.96ms render_submit_present=0.43ms gpu=n/a audio=0.00ms hot_reload=0.00ms
 systems: __hud_toggle=0.00ms bench_counters=0.02ms actor_ai=0.08ms physics_step=6.57ms collision_events=0.15ms …
 gpu_passes:
 physics: proxies=13045 dynamic=4517 sleeping=1016 pairs=6461 contacts=6080
@@ -106,7 +107,7 @@ bench: actors=2500 projectiles=16 hits=1 particles=6249 lights=28 camera_x=1216 
 ```
 
 - **`backend:`** once at renderer startup: backend, adapter, chosen present mode, the requested frame-latency hint and timestamp-query support. Compare reads them as hard fields.
-- **`frame:`** from `tungsten::FrameTimings`, once per redraw. `render` contains acquire, encode and submit/present. `unattributed` is derived: `total` minus `update`, `flush`, `hot_reload`, `extract`, `render` and `audio`. It holds the untimed particle and tween stages and the event flush.
+- **`frame:`** from `tungsten::FrameTimings`, once per redraw. `render` contains acquire, encode and submit/present. `unattributed` is derived: `total` minus `update`, `flush`, `hot_reload`, `extract`, `render` and `audio`. It holds the untimed particle and tween stages and the event flush. `interval` is the time from the previous frame's start to this frame's start, `n/a` on the first frame: the previous frame's `total` plus what follows it, which is the telemetry logging, a frame cap's wait and the event loop's turnaround. It is the period of the frame rate, so FPS is 1000 / mean `interval`; on the reference machine its mean is 0.05–0.13 ms above the mean `total` in the suite's rows, so an FPS taken from `total` reads 0.5% (`gpu`) to 1.5% (`integrated`) too high. It is not work: it is no part of `total`, of `unattributed`, of compare's stacked stage bars or of capacity's limiting stage, and no row owns it.
 - **`systems:`** every registered system's wall time in registration order (`FrameTimings::system_timings`); whitespace and `=` in names become `_`.
 - **`gpu_passes:`** empty unless `TUNGSTEN_GPU_TIMING=1` and the adapter has timestamp queries, so frame counts stay aligned. It lists every render pass in execution order (scene; indexed post slots such as `post0_bloom_threshold`; each bloom mip and the composite; `smaa_edges`, `smaa_blend_weights`, `smaa_neighborhood`; `text`) plus `render_span`, from the first scene timestamp to the end of the text overlay, gaps included. Since `D-087` the last full-screen stage writes the swapchain, so there is no `present` pass. Only a screenshot frame (`TUNGSTEN_CAPTURE_FRAME`) still blits, and the runner's captures have none. `render_span` excludes uploads, query readback and presentation waits and isn't a sum of passes. `frame:`'s `gpu=` keeps its scene-pass-only meaning. A stack that exceeds the adapter's query-set limit renders without timings.
 - **`physics:`** when physics runs: proxies and dynamic bodies gathered by the last step, sleeping bodies, and the final substep's pairs and contacts.
@@ -189,7 +190,7 @@ Results are machine-specific and informational: a lower capacity is a finding to
 | `integrated` | `just perf run integrated --repeat 5` | `total` p50/p95/p99, jitter (p99 − p50) | `bench.view_out <= 0` |
 | capacity | `just perf capacity --all --budget 60hz` and `--budget 144hz` | Maximum scale per row (informational) | — |
 
-Every row also reports peak RSS, with a verdict, and RSS growth.
+Every row also reports peak RSS, with a verdict, and RSS growth. `interval` and, per run, the largest `total` and the spike count (frames above 1.5 × the run's p50) are reported too; no row owns them.
 
 **Suite runs.** `just perf suite [--preset P] [--scale S] [--only ROWS] [--repeat N] [--compare BASELINE]` captures every tracked row `describe` lists, in its order, with the same flags and 300 measured frames each. It resolves every row's configuration before the first run, writes each capture to `perf-runs/<UTC>-suite…/<row>/`, then `suite.json` and the suite README, and exits 3 when any row is invalid. `--only physics,ecs` narrows it. `--repeat 5` takes about 6 minutes on the reference machine.
 
@@ -257,7 +258,7 @@ just perf run gpu --repeat 5
 just perf run gpu --repeat 5 --present-mode mailbox --max-frame-latency 2
 ```
 
-`--present-mode` and `--max-frame-latency` set child-only `TUNGSTEN_DISPLAY_PRESENT_MODE` and `TUNGSTEN_DISPLAY_MAX_FRAME_LATENCY`, so `tungsten.json` stays unchanged, and they suffix the directory with `-<mode>-lat<N>`. Each run's `backend:` line must confirm the request, or the capture is invalid (see "Validity and determinism"). Present mode and frame latency are hard compare fields. Acquire and present pacing belong to the environment: they are reported and owned by no row. The April 2026 Vulkan matrix that keeps `Immediate / 1` as the shipped default is recorded in `D-078`; shipped pacing defaults change only by decision.
+`--present-mode` and `--max-frame-latency` set child-only `TUNGSTEN_DISPLAY_PRESENT_MODE` and `TUNGSTEN_DISPLAY_MAX_FRAME_LATENCY`, so `tungsten.json` stays unchanged, and they suffix the directory with `-<mode>-lat<N>`. Each run's `backend:` line must confirm the request, or the capture is invalid (see "Validity and determinism"). Present mode and frame latency are hard compare fields. Acquire and present pacing belong to the environment: they are reported and owned by no row. Read the frame period from `interval`, not from `total`. A `fifo` frame blocks inside `total`, so both read the refresh period (`gpu` at `min` under `fifo` / 2: 16.63 and 16.67 ms at p50); a wait between two frames shows in `interval` alone. The April 2026 Vulkan matrix that keeps `Immediate / 1` as the shipped default is recorded in `D-078`; shipped pacing defaults change only by decision.
 
 ## Backends and RenderDoc
 

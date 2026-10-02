@@ -15,6 +15,8 @@ B3 done: 2026-10-01, 22:55Z–23:58Z, ahead of the rest of Session B on the owne
 
 B0 done: 2026-10-02, 00:09Z–00:31Z. Session B started on the owner's decisions of that day: B2, B4 and B6 stay at `no` and are not run; B0, B1, B5 and B7 are. The session baseline is `gpu-pass-b0`, an A/A of `gpu-pass-b3` whose only moved verdicts are the per-run mode of `ecs`; the record is under "B0".
 
+B1 done: 2026-10-02, 00:12Z–00:52Z. The `frame:` line and `FrameTimings` carry `interval`, the time between two frame starts, and the capture README lists each run's largest `total` and spike count. The suite, saved as `gpu-pass-b1`, reads 0 `regressed` and 0 `improved` against `gpu-pass-b0`; the record is under "B1".
+
 ## Context digest
 
 - Planned 2026-10-01 on branch `0.34`, commit `1b869e5`, clean tree. Stack: `wgpu` 30.0.1, `winit` 0.30.13 (lock file), `glyphon` 0.12.0, `cosmic-text` 0.19.0, Vulkan on RADV (Mesa 26.2.3).
@@ -590,6 +592,48 @@ $G just perf run gpu --preset min --repeat 3 --gpu-timing off --present-mode mai
 ```
 
 Done when: both override captures are valid and their `backend:` line and README show the requested mode and latency (already so on 2026-10-01, `perf-runs/20261001T173002Z-gpu-min-fifo-lat2/`); the `fifo` capture's `interval` p50 is 16.6–16.7 ms (reference: `total` p50 16.61 ms in `perf-runs/20261001T153112Z-hand-gpu-min-fifo-lat1/`); no owned metric of any row reads `regressed` in the suite.
+
+**B1 result (2026-10-02, 00:12Z–00:52Z): done. The suite reads no `regressed` and no `improved` owned verdict against `gpu-pass-b0`, and `interval` p50 reads 16.67 ms under `fifo`.**
+
+- What was built (`crates/tungsten/src/{app,telemetry}.rs` and their tests):
+  - `App` keeps the start of the previous redraw, and `frame_interval_ms` gives the time from it to this frame's start. `FrameTimings::interval_ms` is an `Option<f32>`: `None` on the first frame, which has no previous start.
+  - The `frame:` line carries the field right after `total=`, as `interval=…ms`, and the first frame logs `interval=n/a`, the way `gpu=` does without GPU timing. The line still opens with `frame: total=`, which `EV/scripts/pacing_run.py` counts frames by.
+  - `interval` on frame N spans frame N − 1: its `total`, the telemetry logging, a frame cap's wait and the event loop's turnaround.
+- The runner (`scripts/bench_report.py`, `scripts/test-bench.py`):
+  - `interval` follows `total` in `STAGE_ORDER`, so compare lists it with the stages, judged for information. No row owns it.
+  - It is counted as work nowhere. `unattributed` subtracts the explicit `TOTAL_PARTS`, compare's stacked bars sum the explicit `STACK` keys and take `other` from `total`, and capacity's limiting stage picks from the explicit `LIMITING` keys; none of the three lists holds `interval`. A test reads one log with the field and one without and requires equal `unattributed`, stack segments and limiting candidates.
+  - `runs[].spikes` in `capture.json` counts the measured frames whose `total` exceeds 1.5 × the run's p50, and the capture README gains "Frame time per run": each run's `total` p50, its largest `total` and its spike count.
+- Tests: 26 runner tests (2 new), `frame_interval_spans_two_frame_starts`, the default `FrameTimings`.
+- Gates: `just perf-test`, `just script-test`, `cargo test -p tungsten` (161 unit tests), `just ctx`, `just check` and `just repo-check` pass (`SB/logs/b1-gates-summary.txt`, `b1-*.log`).
+- Suite `perf-runs/20261002T003214Z-suite/`, saved as `gpu-pass-b1`. Against `gpu-pass-b0` (`perf-runs/20261002T003601Z-compare-suite/`): 0 `regressed`, 0 `improved`, 39 `unchanged`, 15 `noisy` owned verdicts; peak RSS `unchanged` in all eight rows; no encoder sighting. The `noisy` readings:
+  - `ecs`, 7: `stats_decay`, `follow`, `buffs`, `regen`, `team_bags`, `accelerate` and `integrate`, the per-run mode again. Two of this suite's five runs are in it, against four of the baseline's (`stats_decay` p50 0.32, 0.15, 0.15, 0.32, 0.15 ms; mean 0.28 → 0.22). `update`, `brain` (2.15 → 2.15 ms) and `bounds_wrap` (0.32 → 0.31) read `unchanged`.
+  - `churn`, 2: `flush` p50 2.45 → 2.50 ms (+0.05 against τ 0.074; per run 2.45, 2.49, 2.48, 2.40, 2.45 → 2.50, 2.54, 2.53, 2.53, 2.41) and `churn_spawn` 0.35 → 0.36 ms. `flush` p95 reads `unchanged` (2.73 → 2.79 ms).
+  - `gpu`, 2: `extract` p50 0.67 → 0.65 ms and p95 0.97 → 0.89 ms.
+  - `gpu-throughput`, 2: `render_encode` p50 1.13 → 1.36 ms and p95 1.54 → 1.70 ms. One run of the five sits at the row's other value (p50 2.14 ms, p95 2.44; the other four 1.10–1.19 and 1.46–1.60), none of the baseline's.
+  - `particles`, 2: `animate_sprites` p50 0.29 → 0.30 ms and p95 0.41 → 0.42 ms, +0.01 against τ 0.02. `unattributed` reads `unchanged` (p50 2.06 → 2.07 ms, p95 2.74 → 2.76).
+  - `integrated`: `total` p50 / p95 / p99 8.43 / 9.04 / 9.59 → 8.40 / 9.00 / 9.39 ms and jitter 1.17 → 0.98 ms, all `unchanged`.
+- Placement (`SB/logs/nm-b0-tree.txt`, `nm-b1-tree.txt`). No function of the benchmark crate moves: the 14 `ecs` systems, the four `churn` systems and `animate_sprites` keep their addresses. `App::new` grows by 64 bytes and `App::window_event` by 496, so the 241 functions from `App::run` to `window_event` move by 64 bytes and keep their offset within a 64-byte block (`extract_sprites_default`, `particle_tick_system`), and the 4,744 after `window_event` move by 560 bytes: `World::flush_reusing` from 16 bytes past a boundary to 0, `physics_step` from 32 to 16. The physics rows read `unchanged` (`physics_step` p50 5.53 → 5.53 and 3.42 → 3.39 ms). `churn` `flush` is the row that follows `World::flush_reusing`; its reading stays under the threshold, so no placebo sitting was taken.
+- `interval` in the suite (medians of the per-run values, `SB/logs/b1-suite-frame-stats.txt`, from `SB/frame_stats.py`, a copy of `EV`'s script that reads the field):
+
+  | Row | Mean `total` | Mean `interval` | Difference | FPS from `total` | FPS from `interval` |
+  | --- | --- | --- | --- | --- | --- |
+  | `physics` | 5.81 ms | 5.86 ms | 0.05 ms | 172.0 | 170.5 |
+  | `physics-sparse` | 3.60 | 3.64 | 0.05 | 277.8 | 274.4 |
+  | `ecs` | 10.89 | 10.97 | 0.08 | 91.8 | 91.1 |
+  | `churn` | 3.50 | 3.55 | 0.05 | 285.6 | 281.5 |
+  | `gpu` | 11.10 | 11.15 | 0.05 | 90.1 | 89.7 |
+  | `gpu-throughput` | 14.72 | 14.82 | 0.10 | 67.9 | 67.5 |
+  | `particles` | 6.27 | 6.34 | 0.07 | 159.6 | 157.8 |
+  | `integrated` | 8.36 | 8.49 | 0.13 | 119.6 | 117.8 |
+
+  The planning measurement (`EV/tables/interval-check.txt`, acquire to acquire) read 0.07 ms for `gpu` and 0.21 ms for `integrated`. Every FPS in this plan is 1000 / mean `total`, as its "Baseline" column is; the last column is what the row runs at.
+- Override captures, both valid, with the requested mode and latency in the `backend:` line and in the README:
+  - `perf-runs/20261002T003609Z-gpu-min-fifo-lat2/`: `fifo` / 2. `interval` p50 16.67, 16.67 and 16.66 ms in the three runs (p99 17.47–17.76), `total` p50 16.63 ms, 60.0 FPS from `interval` (60.2 from `total`), no spike.
+  - `perf-runs/20261002T003628Z-gpu-min-mailbox-lat3/`: `mailbox` / 3. `interval` p50 2.78 ms (`total` 2.74), 322.1 FPS from `interval` (326.7 from `total`), 81–87 spikes per 300 frames: the compositor's stall, one frame per refresh (P1), now above 1.5 × the row's p50.
+- Pixels: the 19 screenshots are byte-equal to the unmodified build's (`bash SB/shots.sh --cmp head-1 b1`), and the capture path equals the direct path in the 16 configurations (`bash SB/b3-paths.sh b1-paths`).
+- Done-when: all three checks hold.
+- Docs: `docs/perf/profiling-workflow.md` (the capture layout, per-run statistics, the `frame:` line, the tracked rows, a line under "Frame pacing"), `.claude/skills/tungsten-perf/SKILL.md`.
+- Patch: `SB/patches/01-b1-frame-interval.patch`.
 
 ### B2. Extract culling (gated)
 
