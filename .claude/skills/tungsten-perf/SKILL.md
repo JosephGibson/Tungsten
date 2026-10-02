@@ -25,6 +25,8 @@ just perf-test
 - Canonical captures use release builds with the runner's `-C force-frame-pointers=yes`, Vulkan, 1920×1080, auto no-vsync and latency 1, each row's warm-up plus 300 measured frames, and `--repeat 5`. Setting `RUSTFLAGS` replaces `.cargo/config.toml`'s native flags; compare only identical effective flags.
 - Compare requires matching row, workload version, knobs, frame counts, build flags, backend, adapter, pacing and machine. Run a same-build A/A on a quiet machine before trusting verdicts; known placement/mode effects are in the [Compare section](../../../docs/perf/profiling-workflow.md#compare).
 - **No remote-desktop encoder during captures.** Check `pgrep -x nxcodec.bin` before and after, poll during long runs, and recapture any run that overlaps it. Validity guards and digests do not catch that load.
+- **Nothing else runs beside a capture.** No other agent session or `cargo` build in the tree, and none of your own commands: run each sitting as one blocking foreground command. Guards and digests miss this load too; see [capture rules](../../../docs/perf/profiling-workflow.md#comparison-rule-and-capture-rules).
+- **After restoring files, confirm the rebuild.** `cp -p` keeps old mtimes, so cargo skips the rebuild and the binary keeps the removed change; the build must print `Compiling` before a capture. See [Profiling](../../../docs/perf/profiling-workflow.md#profiling).
 - Timing runs are telemetry-only. `TUNGSTEN_GPU_TIMING=1` blocks on readback and belongs only in a separate diagnostic run, never a CPU timing run or profile.
 - Judge only the row's owned metrics. A `regressed` owned metric needs a fix or a recorded justification in a decision or plan. `noisy` needs more repeats or a quieter machine; thresholds and owned metrics change only by decision. RSS growth and capacity are informational.
 - Measure FPS from `interval`, the frame period; `total` measures work and excludes pacing waits. GPU `frame:` timing is scene-only; `gpu_passes:` and `render_span` come from diagnostic runs. See [Telemetry lines](../../../docs/perf/profiling-workflow.md#telemetry-lines).
@@ -37,6 +39,7 @@ just perf-test
 | --- | --- |
 | Capture failures or digests | [Validity and determinism](../../../docs/perf/profiling-workflow.md#validity-and-determinism) |
 | Compare verdicts and drift | [Compare](../../../docs/perf/profiling-workflow.md#compare) |
+| Plan done-when checks | [Writing done-when checks](../../../docs/perf/profiling-workflow.md#writing-done-when-checks) |
 | Scale or frame budgets | [Capacity search](../../../docs/perf/profiling-workflow.md#capacity-search) |
 | RSS or allocation questions | [Memory](../../../docs/perf/profiling-workflow.md#memory) |
 | perf, flamegraph or samply | [Profiling](../../../docs/perf/profiling-workflow.md#profiling), then [Hotspots](../../../docs/perf/profiling-workflow.md#hotspots) |
