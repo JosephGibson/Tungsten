@@ -27,7 +27,7 @@ just ctx                    # instruction budgets and links
 cargo run -p example-NN-name
 ```
 
-Finish substantial work with `just check` (format check, strict clippy, workspace tests). Wrong backend: `WGPU_BACKEND=vulkan|metal|dx12`.
+Finish substantial work with `just check`. Wrong backend: `WGPU_BACKEND=vulkan|metal|dx12`.
 
 ## Tests
 
@@ -63,6 +63,7 @@ Seam (`D-007`, `D-016`, `D-018`): core defines `TextureHandle(u32)`, has no `wgp
 | Sound | `assets/sounds/` | `sounds` | ID; optional `looping`, `volume` |
 | Shader | `assets/shaders/` | `shaders` | ID (`D-057`) |
 | Material | manifest only | `materials` | `shader` ID, `uniform_defaults` (`D-058`) |
+| Particle mesh | manifest only | `particle_meshes` | `vertices`, `indices` |
 
 - Example-local assets: `examples/NN_name/assets/` with its own `manifest.json`. IDs are unique across loaded manifests; duplicates are fatal.
 - Game code uses registry IDs; explicit scene loading follows `D-046`.

@@ -1,6 +1,6 @@
 # Known issues
 
-Open findings and follow-ups that no active plan owns. A fix removes its entry here in the same change. Sources: the repository review of 2026-09-25, whose archived copy keeps its fixed and historical parts, and the P2 correctness pass of 2026-10-02 (`D-088`–`D-092`).
+Open findings and follow-ups that no active plan owns. A fix removes its entry here in the same change. Sources: the repository review of 2026-09-25, whose archived copy keeps its fixed and historical parts, the P2 correctness pass of 2026-10-02 (`D-088`–`D-092`) and M31 (`D-093`).
 
 Priorities: P2 = functional follow-up (none open); P3 = limitation, rare edge case or contract clarification. Unless noted, these are source-path findings, not reproduced GPU or adversarial tests. `core/`, `render/` and `tungsten/` abbreviate the respective crate `src/` directories.
 
@@ -17,6 +17,7 @@ Priorities: P2 = functional follow-up (none open); P3 = limitation, rare edge ca
 ## Recorded limits
 
 - **Two pushed-body cases the arrival pass leaves** (`D-092`), from the probe behind it. A pusher of 1,000 times the body's mass at 120–480 px/s can still crush the body through a 4 px dynamic gate (6 of 320 slow-push cases; 41 before the pass). At 15,360 px/s a pusher spawned after the body can end past the body it pushed (17 of 512). Nothing passes a static gate in either. Closing the first took a wall-last contact order plus static softness for heavy partners in the probe, which changes every pile.
+- **Screen transitions and mesh particles** (`D-093`). A transition's pass does not cover screen-space text, which draws after the post stack; a game fades its own text with `1 − StateStack::transition_cover()`, as example 03 does. Mesh particles draw above every sprite, so `z_order` cannot place them between sprites. At an odd window size the radial wipe leaves the center pixel at half brightness on the fully covered frame. Pixelate never hides the frame: the state changes under the coarsest mosaic. A live manifest edit of a particle mesh has not been exercised: only example 01 enables hot reload and it ships no mesh.
 - **Layer 1 loads each manifest alone** (`D-089`). `crates/tungsten-core/tests/manifests.rs` does not know the root sets, so a shipped material that names a shader of another root would fail there although the engine loads it. No shipped manifest crosses roots.
 
 ## Platform checks with no host available

@@ -32,8 +32,8 @@ use tungsten::core::assets::AnimationFrame;
 use tungsten::core::{
     AnimationData, AnimationRegistry, AnimationState, BlendMode, CameraState, Curve, DeltaTime,
     EmissionKind, FilterMode, InitialVelocity, Particle, ParticleBudget, ParticleConfig,
-    ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, Pcg32, Range, Sprite, Transform,
-    Visibility, World, splitmix64,
+    ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, ParticleRender, Pcg32, Range,
+    Sprite, Transform, Visibility, World, splitmix64,
 };
 use tungsten::render::Renderer;
 use tungsten::{App, extract_sprites_default};
@@ -207,6 +207,7 @@ fn particle_config(index: u32, target: f64) -> (ParticleConfig, Option<f32>) {
     let hue = index as f32 * 0.37;
     let config = ParticleConfig {
         sprite: PARTICLE_SPRITES[(index % 2) as usize].to_string(),
+        render: ParticleRender::Quad,
         max_alive: (target * 4.0).ceil() as u32,
         seed: None,
         blend: if index.is_multiple_of(2) {

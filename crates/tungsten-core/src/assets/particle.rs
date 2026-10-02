@@ -1,6 +1,9 @@
 //! Particle config: JSON-backed, hot-reloadable, `Arc` snapshot semantics.
 //!
 //! Validation: finite values, `max_alive >= 1`, positive lifetime, sorted curves.
+//!
+//! M31 (`D-093`): a config draws each particle as a sprite quad or as an
+//! instanced [`ParticleMesh`] from the manifest `particle_meshes` section.
 
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -228,10 +231,25 @@ impl Lerp for [f32; 4] {
     }
 }
 
+/// How a config's particles draw (M31, `D-093`).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum ParticleRender {
+    /// Sprite quad named by `ParticleConfig::sprite`.
+    #[default]
+    Quad,
+    /// Instanced triangle mesh named by its `particle_meshes` manifest ID.
+    Mesh { mesh: String },
+}
+
 /// Particle-system config.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ParticleConfig {
+    /// Sprite ID; required for `ParticleRender::Quad`, unused by mesh configs.
+    #[serde(default)]
     pub sprite: String,
+    #[serde(default)]
+    pub render: ParticleRender,
     pub max_alive: u32,
     #[serde(default)]
     pub seed: Option<u64>,
@@ -284,6 +302,18 @@ impl ParticleConfig {
 
     /// Validate parsed config.
     pub fn validate(&self) -> Result<(), String> {
+        match &self.render {
+            ParticleRender::Quad => {
+                if self.sprite.is_empty() {
+                    return Err("sprite must be set when render.kind is quad".into());
+                }
+            }
+            ParticleRender::Mesh { mesh } => {
+                if mesh.is_empty() {
+                    return Err("render.mesh must name a particle mesh".into());
+                }
+            }
+        }
         if self.max_alive == 0 {
             return Err("max_alive must be >= 1".into());
         }
@@ -524,6 +554,117 @@ impl ParticleConfigRegistry {
     /// Registered particle names; unstable `HashMap` order.
     pub fn names(&self) -> impl Iterator<Item = &str> {
         self.id_by_name.keys().map(String::as_str)
+    }
+}
+
+/// Triangle-list mesh in mesh-local pixels; the origin is the particle position.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct ParticleMesh {
+    pub vertices: Vec<[f32; 2]>,
+    pub indices: Vec<u16>,
+}
+
+impl ParticleMesh {
+    /// Most vertices a `u16` index can address.
+    pub const MAX_VERTICES: usize = 65_536;
+
+    /// Validate vertex count, index list shape and range, and finite coordinates.
+    pub fn validate(&self) -> Result<(), String> {
+        let vertex_count = self.vertices.len();
+        if vertex_count < 3 {
+            return Err(format!(
+                "vertices must hold at least 3 entries, got {vertex_count}"
+            ));
+        }
+        if vertex_count > Self::MAX_VERTICES {
+            return Err(format!(
+                "vertices must hold at most {} entries, got {vertex_count}",
+                Self::MAX_VERTICES
+            ));
+        }
+        if self.indices.is_empty() {
+            return Err("indices must not be empty".into());
+        }
+        if !self.indices.len().is_multiple_of(3) {
+            return Err(format!(
+                "indices must be a multiple of 3 (triangle list), got {}",
+                self.indices.len()
+            ));
+        }
+        for (i, index) in self.indices.iter().enumerate() {
+            if usize::from(*index) >= vertex_count {
+                return Err(format!(
+                    "indices[{i}] = {index} is out of range for {vertex_count} vertices"
+                ));
+            }
+        }
+        for (i, vertex) in self.vertices.iter().enumerate() {
+            if !vertex[0].is_finite() || !vertex[1].is_finite() {
+                return Err(format!("vertices[{i}] must be finite"));
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Dense particle-mesh handle (M31, `D-093`).
+pub type ParticleMeshAssetId = AssetId<ParticleMesh>;
+
+/// Particle mesh registry: manifest ID to dense handle to geometry.
+#[derive(Debug, Default)]
+pub struct ParticleMeshRegistry {
+    meshes: Vec<ParticleMesh>,
+    names: Vec<String>,
+    id_by_name: HashMap<String, ParticleMeshAssetId>,
+}
+
+impl ParticleMeshRegistry {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Registers `name`, or replaces its mesh and returns the ID it already has.
+    pub fn insert(&mut self, name: &str, mesh: ParticleMesh) -> ParticleMeshAssetId {
+        if let Some(id) = self.id_by_name.get(name).copied() {
+            self.meshes[id.index() as usize] = mesh;
+            return id;
+        }
+        let id = ParticleMeshAssetId::new(self.meshes.len() as u32);
+        self.meshes.push(mesh);
+        self.names.push(name.to_owned());
+        self.id_by_name.insert(name.to_owned(), id);
+        id
+    }
+
+    #[must_use]
+    pub fn id_for_name(&self, name: &str) -> Option<ParticleMeshAssetId> {
+        self.id_by_name.get(name).copied()
+    }
+
+    #[must_use]
+    pub fn name_for_id(&self, id: ParticleMeshAssetId) -> Option<&str> {
+        self.names.get(id.index() as usize).map(String::as_str)
+    }
+
+    #[must_use]
+    pub fn get(&self, id: ParticleMeshAssetId) -> Option<&ParticleMesh> {
+        self.meshes.get(id.index() as usize)
+    }
+
+    /// Registered mesh names in registration order.
+    pub fn names(&self) -> impl Iterator<Item = &str> {
+        self.names.iter().map(String::as_str)
+    }
+
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.meshes.len()
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.meshes.is_empty()
     }
 }
 

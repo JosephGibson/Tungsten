@@ -189,6 +189,21 @@ row "game_feel_fixture=on" "$log_dir/${feel_pkg}-game-feel.log" "$feel_pkg" \
 row "parallax backdrop" "$log_dir/${lighting_pkg}-game-feel.log" "$lighting_pkg"
 end_section "Game-feel passed" "Game-feel failures" 2
 
+# M31: mesh particle and screen transition rows. The playground row draws the
+# bullet trail's mesh pipeline under MSAA with a depth attachment. Each
+# scene-state row requests menu -> gameplay behind one effect at startup; 16
+# frames cross the boundary frame and finish the `In` phase.
+mesh_pkg="example-04-shader-playground"
+transition_pkg="example-03-scene-state"
+begin_section "M31 mesh particle and transition matrix (pkgs: $mesh_pkg, $transition_pkg)"
+row "mesh trail msaa=4 depth_sort=gpu_depth" "$log_dir/${mesh_pkg}-mesh-trail.log" "$mesh_pkg" \
+  TUNGSTEN_RENDER_MSAA=4 TUNGSTEN_RENDER_DEPTH_SORT=gpu_depth
+for effect in fade wipe_radial dissolve pixelate; do
+  row "transition=${effect}" "$log_dir/${transition_pkg}-transition-${effect}.log" "$transition_pkg" \
+    TUNGSTEN_SMOKE_FRAMES=16 TUNGSTEN_TRANSITION_FIXTURE="$effect"
+done
+end_section "Mesh/transition passed" "Mesh/transition failures" 5
+
 # Benchmarks: each example-02-bench row at smoke length. Default-scale rows
 # run at dev opt-level 0; the slowest, ecs at default, takes about 12 s. The
 # gpu default row also runs the per-pass timestamp queries (materials, lit

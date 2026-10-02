@@ -22,8 +22,9 @@ pub use assets::{
     BlendMode, Curve, EMPTY_TILE, EmissionKind, FilterMode, FontEntry, FontRegistry,
     InitialVelocity, LayerKind, Lerp, LoadedManifest, ManifestError, MaterialAssetId,
     MaterialRegistry, MaterialUniformDefaults, ParticleActive, ParticleBudget, ParticleConfig,
-    ParticleConfigError, ParticleConfigRegistry, ParticleEntry, Range, ResolvedFont,
-    ResolvedManifest, ResolvedMaterial, ResolvedParticle, ResolvedSound, SceneData, SceneEntry,
+    ParticleConfigError, ParticleConfigRegistry, ParticleEntry, ParticleMesh, ParticleMeshAssetId,
+    ParticleMeshEntry, ParticleMeshRegistry, ParticleRender, Range, ResolvedFont, ResolvedManifest,
+    ResolvedMaterial, ResolvedParticle, ResolvedParticleMesh, ResolvedSound, SceneData, SceneEntry,
     SceneError, SceneSprite, SceneTransform, SceneTween, SceneTweenChannel, SceneTweenRepeat,
     SoundData, SoundEntry, SoundRegistry, SpriteAsset, TextureHandle, TileIndex, TilemapData,
     TilemapInstance, TilemapLayer, TilemapRegistry, WorldRngSeed,
@@ -31,8 +32,8 @@ pub use assets::{
 pub use audio::{AudioCommand, AudioCommands};
 pub use camera::{CameraBounds, CameraController, CameraMode, CameraState};
 pub use components::{
-    Light, LightKind, ParallaxLayer, Particle, ParticleEmitter, ParticleEmitterState, Sprite,
-    SpriteSquashStretch, SquashStretchState, SquashTrigger, Tag, Transform, Visibility,
+    Light, LightKind, MeshParticle, ParallaxLayer, Particle, ParticleEmitter, ParticleEmitterState,
+    Sprite, SpriteSquashStretch, SquashStretchState, SquashTrigger, Tag, Transform, Visibility,
     parallax_world_position, sync_position_to_transform,
 };
 pub use config::{Config, ConfigError, DepthSortMode, PostAaMode, RenderConfig};

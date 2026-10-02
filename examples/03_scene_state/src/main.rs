@@ -1,6 +1,17 @@
 //! Example 03: scene/state system.
 //!
 //! Flow: menu -> gameplay -> pause -> gameplay. Scene-owned despawn via `SceneEntity`.
+//!
+//! M31 (`D-093`): each state change runs behind a screen transition (fade,
+//! pixelate, radial wipe, dissolve; see `states.rs`). The transition pass does
+//! not cover screen-space text, so `state_driven_text` fades its sections with
+//! `1 - StateStack::transition_cover()`.
+//!
+//! Env `TUNGSTEN_TRANSITION_FIXTURE={none|fade|wipe_radial|dissolve|pixelate}`
+//! is for the smoke matrix and `tests/transition_regression.rs`: any value
+//! turns the debug HUD off (its timing rows differ between runs), and an effect
+//! name also requests menu -> gameplay at startup with that effect, 0.1 s per
+//! phase, linear.
 
 mod states;
 
@@ -10,9 +21,9 @@ use glam::Vec2;
 
 use tungsten::core::{Config, DeltaTime, Tag, Transform, World};
 use tungsten::render::TextSection;
-use tungsten::{App, DebugHud, StateStack};
+use tungsten::{App, DebugHud, StateStack, Transition, TransitionEffect};
 
-use crate::states::{MainMenuState, handle_tween_complete_system};
+use crate::states::{GameplayState, MainMenuState, fixture_effect};
 
 const ROOT_MANIFEST: &str = "assets/manifest.json";
 const LOCAL_MANIFEST: &str = "examples/03_scene_state/assets/manifest.json";
@@ -20,6 +31,35 @@ const LOCAL_MANIFEST: &str = "examples/03_scene_state/assets/manifest.json";
 pub(crate) const QUAD_ID: &str = "ex03_quad";
 pub(crate) const SPRITE_HALF: f32 = 8.0;
 pub(crate) const VIEW_CENTER: Vec2 = Vec2::new(640.0, 360.0);
+
+/// Seconds per phase of the startup transition a fixture requests.
+const FIXTURE_TRANSITION_SECS: f32 = 0.1;
+
+/// `TUNGSTEN_TRANSITION_FIXTURE`, parsed.
+#[derive(Clone, Copy)]
+enum TransitionFixture {
+    /// Not set: interactive run with the debug HUD.
+    Off,
+    /// `none`: no HUD, no startup transition.
+    Still,
+    /// An effect name: no HUD, menu -> gameplay behind that effect at startup.
+    Effect(TransitionEffect),
+}
+
+fn transition_fixture() -> anyhow::Result<TransitionFixture> {
+    let Ok(name) = std::env::var("TUNGSTEN_TRANSITION_FIXTURE") else {
+        return Ok(TransitionFixture::Off);
+    };
+    if name == "none" {
+        return Ok(TransitionFixture::Still);
+    }
+    match fixture_effect(&name) {
+        Some(effect) => Ok(TransitionFixture::Effect(effect)),
+        None => anyhow::bail!(
+            "invalid TUNGSTEN_TRANSITION_FIXTURE='{name}': expected one of none, fade, wipe_radial, dissolve, pixelate"
+        ),
+    }
+}
 
 #[derive(Default)]
 pub(crate) struct GameplayClock(pub f32);
@@ -32,6 +72,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut config = Config::load("tungsten.json")?;
     config.window.title = "Scene / State System — M20".to_string();
+    let fixture = transition_fixture()?;
 
     let mut app = App::new(config)?;
     app.set_manifest_roots(vec![
@@ -45,20 +86,25 @@ fn main() -> anyhow::Result<()> {
         world.insert_resource(MenuClock::default());
     }
 
-    app.on_startup(|world, _renderer| {
+    app.on_startup(move |world, _renderer| {
         if let Some(hud) = world.get_resource_mut::<DebugHud>() {
-            hud.enabled = true;
+            hud.enabled = matches!(fixture, TransitionFixture::Off);
         }
 
-        world
+        let stack = world
             .get_resource_mut::<StateStack>()
-            .expect("StateStack resource missing")
-            .request_push(MainMenuState);
+            .expect("StateStack resource missing");
+        stack.request_push(MainMenuState);
+        if let TransitionFixture::Effect(effect) = fixture {
+            stack.request_replace_transition(
+                GameplayState::default_scene(),
+                Transition::new(effect, FIXTURE_TRANSITION_SECS),
+            );
+        }
     });
 
     app.add_system_named("menu_idle_system", menu_idle_system);
     app.add_system_named("gameplay_orbit_system", gameplay_orbit_system);
-    app.add_system_named("handle_tween_complete", handle_tween_complete_system);
     app.set_extract_text(state_driven_text);
 
     app.run()
@@ -179,12 +225,22 @@ fn state_driven_text(world: &World) -> Vec<TextSection> {
     let Some(stack) = world.get_resource::<StateStack>() else {
         return Vec::new();
     };
-    match stack.active_id() {
+    let mut sections = match stack.active_id() {
         Some("menu") => menu_text(world),
         Some("gameplay") => gameplay_text(world),
         Some("pause") => pause_text(world),
         _ => Vec::new(),
+    };
+
+    // Text draws after the post stack, so the transition pass does not cover
+    // it: fade it by the same amount here.
+    let cover = stack.transition_cover();
+    if cover > 0.0 {
+        for section in &mut sections {
+            section.color[3] = (f32::from(section.color[3]) * (1.0 - cover)) as u8;
+        }
     }
+    sections
 }
 
 fn menu_text(world: &World) -> Vec<TextSection> {

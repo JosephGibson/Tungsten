@@ -1,10 +1,11 @@
 use super::{
-    App, RedrawSchedule, format_perf_physics_line, format_perf_systems_line, frame_dt_secs,
-    frame_interval_ms, is_reload_root, manifest_reload_roots, redraw_schedule,
+    App, RedrawSchedule, compose_post_stack, format_perf_physics_line, format_perf_systems_line,
+    frame_dt_secs, frame_interval_ms, is_reload_root, manifest_reload_roots, redraw_schedule,
     resolve_startup_display, runtime_display_mode,
 };
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
+use tungsten_core::post::{FadeParams, PostPass, PostStack};
 use tungsten_core::{
     CollisionEvent, Config, DisplayMode, DisplayState, EventQueue, ShakeEvent, SquashEvent,
 };
@@ -244,4 +245,52 @@ fn perf_physics_line_lists_counts_in_parser_order() {
         format_perf_physics_line(&tungsten_core::physics::PhysicsBuffers::default()),
         "physics: proxies=0 dynamic=0 sleeping=0 pairs=0 contacts=0"
     );
+}
+
+fn half_fade() -> PostPass {
+    PostPass::Fade(FadeParams {
+        progress: 0.5,
+        color: [0.0, 0.0, 0.0, 1.0],
+    })
+}
+
+#[test]
+fn transition_pass_is_appended_after_user_stack() {
+    let mut user = PostStack::new();
+    user.push(PostPass::Pixelate(4.0));
+    user.push(PostPass::Pixelate(2.0));
+    // Last frame's passes must not survive in the scratch.
+    let mut scratch = PostStack::new();
+    scratch.push(PostPass::Pixelate(99.0));
+
+    let composed = compose_post_stack(&user, Some(half_fade()), &mut scratch);
+    assert_eq!(
+        composed.0,
+        [
+            PostPass::Pixelate(4.0),
+            PostPass::Pixelate(2.0),
+            half_fade()
+        ]
+    );
+    assert_eq!(user.len(), 2, "the user's stack is not edited");
+
+    // An empty user stack draws the transition pass alone.
+    let empty = PostStack::new();
+    let composed = compose_post_stack(&empty, Some(half_fade()), &mut scratch);
+    assert_eq!(composed.0, [half_fade()]);
+}
+
+#[test]
+fn no_transition_leaves_user_stack_untouched() {
+    let mut user = PostStack::new();
+    user.push(PostPass::Pixelate(4.0));
+    let mut scratch = PostStack::new();
+
+    let composed = compose_post_stack(&user, None, &mut scratch);
+    assert!(
+        std::ptr::eq(composed, &raw const user),
+        "the user's stack is drawn as is"
+    );
+    assert_eq!(composed.0, [PostPass::Pixelate(4.0)]);
+    assert!(scratch.is_empty());
 }

@@ -17,6 +17,11 @@
 //! bouncer, plus trauma shake and squash/stretch on every impact. All of it is
 //! always on; `TUNGSTEN_GAME_FEEL_FIXTURE=on` additionally arms both at startup
 //! so a three-frame smoke capture exercises them without waiting for a hit.
+//!
+//! M31 (`D-093`) adds a bullet trail: an emitter that follows the first bouncer
+//! and whose config, `ex04_bullet_trail`, draws each particle as an instanced
+//! triangle mesh instead of a sprite quad. `TUNGSTEN_MESH_TRAIL_FIXTURE=off`
+//! leaves the emitter out, so a capture pair shows what the mesh pipeline drew.
 
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -26,8 +31,9 @@ use glam::Vec2;
 use tungsten::core::{
     ActionMap, BlendMode, CameraController, CameraMode, CommandBuffer, Config, Curve, DeltaTime,
     Easing, EmissionKind, Entity, EventQueue, InitialVelocity, InputState, ParallaxLayer,
-    ParticleConfig, Pcg32, Range, ShakeEvent, Sprite, SpriteSquashStretch, SquashEvent,
-    SquashTrigger, Transform, Visibility, World,
+    ParticleConfig, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, ParticleRender,
+    Pcg32, Range, ShakeEvent, Sprite, SpriteSquashStretch, SquashEvent, SquashTrigger, Transform,
+    Visibility, World,
 };
 use tungsten::particles::spawn_particle_via;
 use tungsten::{
@@ -45,6 +51,8 @@ const ROOT_MANIFEST: &str = "assets/manifest.json";
 const LOCAL_MANIFEST: &str = "examples/04_shader_playground/assets/manifest.json";
 const QUAD_ID: &str = "ex04_quad";
 const EMISSIVE_QUAD_ID: &str = "ex04_emissive_quad";
+/// M31 mesh particle config; its mesh is `ex04_bullet_tri` in the manifest.
+const BULLET_TRAIL_ID: &str = "ex04_bullet_trail";
 
 /// Demo-tuned bloom params for the LDR fixture: threshold drops below 1.0 so a
 /// pure-white sprite blooms visibly even without HDR scene values, intensity
@@ -103,6 +111,13 @@ struct SparkRecipes {
 /// Dedicated RNG for burst jitter so bouncer motion stays deterministic.
 struct SparkRng(Pcg32);
 
+/// M31 bullet trail: the mesh particle emitter and the bouncer it follows.
+#[derive(Debug, Clone, Copy)]
+struct BulletTrail {
+    emitter: Entity,
+    target: Entity,
+}
+
 fn main() -> anyhow::Result<()> {
     env_logger::init();
 
@@ -145,6 +160,9 @@ fn main() -> anyhow::Result<()> {
         spawn_emissive_quad(world);
         if let Some(&target) = bouncers.first() {
             configure_playground_camera(world, target);
+            if std::env::var("TUNGSTEN_MESH_TRAIL_FIXTURE").unwrap_or_default() != "off" {
+                spawn_bullet_trail(world, target);
+            }
         }
 
         // M30 capture gate, same shape as TUNGSTEN_BLOOM_FIXTURE below: arm
@@ -185,6 +203,8 @@ fn main() -> anyhow::Result<()> {
 
     app.add_system_named("playground_bounce", bounce_system);
     app.add_system_named("playground_collisions", pair_collision_system);
+    // M31: after both movers, so the emitter sits on this frame's position.
+    app.add_system_named("playground_bullet_trail", bullet_trail_system);
     app.add_system_named("playground_cycle_input", cycle_input_system);
     app.add_system_named("playground_post_aa_input", post_aa_input_system);
     app.add_system_named("playground_bloom_input", bloom_input_system);
@@ -470,6 +490,46 @@ fn spawn_parallax_layers(world: &mut World) {
             }
             y += layer.spacing;
         }
+    }
+}
+
+/// Center of a bouncer's drawn quad: the sprite spans from `Transform.position`
+/// by its logical size.
+fn bouncer_center(world: &World, bouncer: Entity) -> Option<Vec2> {
+    let position = world.get::<Transform>(bouncer)?.position;
+    let size = world.get::<Bouncer>(bouncer)?.size;
+    Some(position + Vec2::splat(size * 0.5))
+}
+
+/// M31: spawn the mesh particle emitter that trails `target`. The config comes
+/// from the manifest by registry ID; without it the playground runs trail-less.
+fn spawn_bullet_trail(world: &mut World, target: Entity) {
+    let config = world
+        .get_resource::<ParticleConfigRegistry>()
+        .and_then(|registry| registry.id_for_name(BULLET_TRAIL_ID));
+    let Some(config) = config else {
+        eprintln!("particle config '{BULLET_TRAIL_ID}' is not registered; no bullet trail");
+        return;
+    };
+    let origin = bouncer_center(world, target).unwrap_or(Vec2::ZERO);
+
+    let emitter = world.spawn();
+    world.insert(emitter, ParticleEmitter::new(config));
+    world.insert(emitter, ParticleEmitterState::default());
+    world.insert(emitter, Transform::from_position(origin));
+    world.insert_resource(BulletTrail { emitter, target });
+}
+
+/// M31: keep the trail emitter on its bouncer's center.
+fn bullet_trail_system(world: &mut World) {
+    let Some(trail) = world.get_resource::<BulletTrail>().copied() else {
+        return;
+    };
+    let Some(center) = bouncer_center(world, trail.target) else {
+        return;
+    };
+    if let Some(transform) = world.get_mut::<Transform>(trail.emitter) {
+        transform.position = center;
     }
 }
 
@@ -762,6 +822,7 @@ fn emit_cone_burst(
 fn wall_spark_config() -> Arc<ParticleConfig> {
     Arc::new(ParticleConfig {
         sprite: QUAD_ID.into(),
+        render: ParticleRender::Quad,
         max_alive: 1,
         seed: None,
         blend: BlendMode::Alpha,
@@ -805,6 +866,7 @@ fn wall_spark_config() -> Arc<ParticleConfig> {
 fn pair_spark_config() -> Arc<ParticleConfig> {
     Arc::new(ParticleConfig {
         sprite: QUAD_ID.into(),
+        render: ParticleRender::Quad,
         max_alive: 1,
         seed: None,
         blend: BlendMode::Alpha,

@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 use crate::assets::material::MaterialUniformDefaults;
+use crate::assets::particle::ParticleMesh;
 
 #[derive(Debug, Error)]
 pub enum ManifestError {
@@ -37,6 +38,8 @@ pub enum ManifestError {
     MissingShaderFile { id: String, path: String },
     #[error("material '{id}' references unknown shader '{shader}'")]
     MaterialShaderMissing { id: String, shader: String },
+    #[error("particle mesh '{id}' is invalid: {reason}")]
+    InvalidParticleMesh { id: String, reason: String },
     #[error("duplicate asset ID '{id}' across manifests")]
     DuplicateId { id: String },
 }
@@ -60,6 +63,8 @@ pub struct RawManifest {
     pub shaders: HashMap<String, ShaderEntry>,
     #[serde(default)]
     pub materials: HashMap<String, MaterialEntry>,
+    #[serde(default)]
+    pub particle_meshes: HashMap<String, ParticleMeshEntry>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -137,6 +142,10 @@ pub struct MaterialEntry {
     pub uniform_defaults: MaterialUniformDefaults,
 }
 
+/// M31 particle mesh entry (`D-093`): inline geometry, like `materials`; there
+/// is no standalone mesh file.
+pub type ParticleMeshEntry = ParticleMesh;
+
 /// D-052 loaded merged manifest resource.
 #[derive(Debug, Clone, Default)]
 pub struct LoadedManifest(pub ResolvedManifest);
@@ -164,6 +173,7 @@ pub struct ResolvedManifest {
     pub particles: HashMap<String, ResolvedParticle>,
     pub shaders: HashMap<String, ResolvedShader>,
     pub materials: HashMap<String, ResolvedMaterial>,
+    pub particle_meshes: HashMap<String, ResolvedParticleMesh>,
 }
 
 #[derive(Debug, Clone)]
@@ -217,6 +227,14 @@ pub struct ResolvedMaterial {
     /// `ShaderAssetId` by `asset_loader::material::load_materials`.
     pub shader: String,
     pub uniform_defaults: MaterialUniformDefaults,
+}
+
+/// Resolved particle mesh: validated geometry plus the manifest it came from.
+#[derive(Debug, Clone)]
+pub struct ResolvedParticleMesh {
+    /// Manifest path that this entry was parsed from.
+    pub source_manifest: PathBuf,
+    pub mesh: ParticleMesh,
 }
 
 impl ResolvedManifest {
@@ -396,6 +414,23 @@ impl ResolvedManifest {
             );
         }
 
+        // Sorted, so the mesh an error names does not depend on map order.
+        let mut meshes: Vec<(String, ParticleMeshEntry)> =
+            raw.particle_meshes.into_iter().collect();
+        meshes.sort_by(|a, b| a.0.cmp(&b.0));
+        for (id, mesh) in meshes {
+            if let Err(reason) = mesh.validate() {
+                return Err(ManifestError::InvalidParticleMesh { id, reason });
+            }
+            result.particle_meshes.insert(
+                id,
+                ResolvedParticleMesh {
+                    source_manifest: source_manifest.clone(),
+                    mesh,
+                },
+            );
+        }
+
         Ok(result)
     }
 
@@ -501,6 +536,12 @@ impl ResolvedManifest {
                 });
             }
             self.materials.insert(id, material);
+        }
+        for (id, mesh) in other.particle_meshes {
+            if self.particle_meshes.contains_key(&id) {
+                return Err(ManifestError::DuplicateId { id });
+            }
+            self.particle_meshes.insert(id, mesh);
         }
         Ok(())
     }

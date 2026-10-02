@@ -19,6 +19,7 @@ pub mod state;
 pub mod systems_overlay;
 pub mod telemetry;
 mod tilemap_extract;
+pub mod transition;
 pub mod tweens;
 
 pub use app::{App, WindowSize};
@@ -30,8 +31,9 @@ pub use hot_reload::HotReloadWatcher;
 pub use inspector::InspectorState;
 pub use light_extract::extract_lights;
 pub use particles::{
-    ParticleBurstEmitted, ParticleSystemDrained, particle_count_refresh_system,
-    particle_emit_system, particle_tick_system,
+    ParticleBurstEmitted, ParticleSystemDrained, extract_mesh_particles,
+    particle_count_refresh_system, particle_emit_system, particle_tick_system,
+    spawn_mesh_particle_via,
 };
 pub use physics_debug::PhysicsDebugOverlay;
 pub use post_aa::{PostAaState, request_post_aa};
@@ -43,6 +45,7 @@ pub use state::{
 pub use systems_overlay::SystemTimingOverlay;
 pub use telemetry::{DisplayTelemetry, FrameTimings, RenderCounts};
 pub use tilemap_extract::extract_tilemaps;
+pub use transition::{Transition, TransitionEffect, TransitionPhase, TransitionState};
 pub use tungsten_core as core;
 pub use tungsten_core::physics;
 pub use tungsten_core::{ActionMap, ActionMapError, Binding, DebugDraw, DebugShape, Inspectable};

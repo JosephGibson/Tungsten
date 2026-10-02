@@ -468,6 +468,46 @@ fn merge_duplicate_material_is_error() {
 }
 
 #[test]
+fn particle_meshes_section_parses_inline_mesh() {
+    let tmp = tempdir();
+    let path = write_manifest(
+        &tmp,
+        r#"{"particle_meshes": {"tri": {"vertices": [[0.0, -7.0], [6.0, 7.0], [-6.0, 7.0]], "indices": [0, 1, 2]}}}"#,
+    );
+    let m = ResolvedManifest::load(&path).unwrap();
+    let resolved = m.particle_meshes.get("tri").expect("mesh present");
+    assert_eq!(
+        resolved.mesh.vertices,
+        vec![[0.0, -7.0], [6.0, 7.0], [-6.0, 7.0]]
+    );
+    assert_eq!(resolved.mesh.indices, vec![0, 1, 2]);
+    assert_eq!(resolved.source_manifest, path.canonicalize().unwrap());
+}
+
+#[test]
+fn invalid_particle_mesh_is_rejected() {
+    let tmp = tempdir();
+    let path = write_manifest(
+        &tmp,
+        r#"{"particle_meshes": {"tri": {"vertices": [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]], "indices": [0, 1, 5]}}}"#,
+    );
+    let err = ResolvedManifest::load(&path).unwrap_err();
+    assert!(
+        matches!(&err, ManifestError::InvalidParticleMesh { id, reason } if id == "tri" && reason.contains("out of range")),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn duplicate_particle_mesh_id_across_manifests_is_fatal() {
+    let content = r#"{"particle_meshes": {"tri": {"vertices": [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]], "indices": [0, 1, 2]}}}"#;
+    let a = write_manifest(&tempdir(), content);
+    let b = write_manifest(&tempdir(), content);
+    let err = ResolvedManifest::load_and_merge_many(&[a, b]).unwrap_err();
+    assert!(matches!(err, ManifestError::DuplicateId { id } if id == "tri"));
+}
+
+#[test]
 fn default_filter_is_nearest() {
     let tmp = tempdir();
     write_file(&tmp, "hero.png");

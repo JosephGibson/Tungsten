@@ -8,13 +8,14 @@ use std::hint::black_box;
 
 use tungsten::particles::particle_tick_system;
 use tungsten_core::assets::{
-    BlendMode, Curve, EmissionKind, InitialVelocity, ParticleConfig, Range,
+    BlendMode, Curve, EmissionKind, InitialVelocity, ParticleConfig, ParticleRender, Range,
 };
 use tungsten_core::{CommandBuffer, DeltaTime, Particle, Sprite, Transform, Visibility, World};
 
 fn make_config() -> Arc<ParticleConfig> {
     Arc::new(ParticleConfig {
         sprite: "spark".into(),
+        render: ParticleRender::Quad,
         max_alive: 8_192,
         seed: Some(1),
         blend: BlendMode::Premultiplied,

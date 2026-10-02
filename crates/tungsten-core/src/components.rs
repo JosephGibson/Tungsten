@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use glam::{Vec2, Vec3};
 
-use crate::assets::{AssetId, MaterialAssetId, ParticleConfig};
+use crate::assets::{AssetId, MaterialAssetId, ParticleConfig, ParticleMeshAssetId};
 use crate::ecs::{Entity, World};
 use crate::physics::Position;
 use crate::rng::Pcg32;
@@ -204,6 +204,13 @@ pub struct Particle {
     pub angular_velocity: f32,
     pub start_scale: f32,
     pub base_rgba: [f32; 4],
+}
+
+/// Mesh-drawn particle (M31, `D-093`); takes the place of `Sprite` on a particle entity.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MeshParticle {
+    pub mesh: ParticleMeshAssetId,
+    pub color: [u8; 4],
 }
 
 /// Parallax scroll factor per axis (M30, `D-073`). `1.0` = world-locked,

@@ -14,13 +14,15 @@ pub use atlas::{AtlasPage, PackInput, PackResult, PackedSprite, UvRect, pack_she
 pub use audio::{AudioHandle, SoundData, SoundRegistry};
 pub use manifest::{
     FilterMode, FontEntry, LoadedManifest, ManifestError, MaterialEntry, ParticleEntry,
-    ResolvedFont, ResolvedManifest, ResolvedMaterial, ResolvedParticle, ResolvedShader,
-    ResolvedSound, ResolvedTilemap, ShaderEntry, SoundEntry, TilemapEntry,
+    ParticleMeshEntry, ResolvedFont, ResolvedManifest, ResolvedMaterial, ResolvedParticle,
+    ResolvedParticleMesh, ResolvedShader, ResolvedSound, ResolvedTilemap, ShaderEntry, SoundEntry,
+    TilemapEntry,
 };
 pub use material::{MaterialAssetId, MaterialRegistry, MaterialUniformDefaults};
 pub use particle::{
     AssetId, BlendMode, Curve, EmissionKind, InitialVelocity, Lerp, ParticleActive, ParticleBudget,
-    ParticleConfig, ParticleConfigError, ParticleConfigRegistry, Range, WorldRngSeed,
+    ParticleConfig, ParticleConfigError, ParticleConfigRegistry, ParticleMesh, ParticleMeshAssetId,
+    ParticleMeshRegistry, ParticleRender, Range, WorldRngSeed,
 };
 pub use registry::{AssetRegistry, FontRegistry, SpriteAsset, TextureHandle};
 pub use scene::{

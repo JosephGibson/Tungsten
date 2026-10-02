@@ -9,6 +9,7 @@ use crate::lit_sprite::{
     RIM_LIGHT_SHADER_NAME,
 };
 use crate::material::{MaterialPipeline, build_material_pipeline};
+use crate::mesh_particle::{MeshParticleBatch, MeshParticlePipeline};
 use crate::passes::{
     PassDesc, PassRecorder, PresentPath, TargetId, default_pass_order, text_overlay_target,
 };
@@ -32,7 +33,8 @@ use crate::timing::TimingResources;
 pub use crate::timing::{CpuFrameTimings, GpuFrameTimings};
 use thiserror::Error;
 use tungsten_core::assets::{
-    FilterMode, MaterialAssetId, MaterialUniformDefaults, ShaderAssetId, TextureHandle,
+    FilterMode, MaterialAssetId, MaterialUniformDefaults, ParticleMeshAssetId, ShaderAssetId,
+    TextureHandle,
 };
 use tungsten_core::config::{
     DepthSortMode, PostAaMode, PresentModeConfig, RenderConfig, is_supported_msaa,
@@ -93,6 +95,7 @@ pub struct Renderer {
     quad_pipeline: QuadPipeline,
     sprite_pipeline: SpritePipeline,
     debug_line_pipeline: DebugLinePipeline,
+    mesh_particle_pipeline: MeshParticlePipeline,
     text_pipeline: TextPipeline,
     present_blit: PresentBlitPipeline,
     post_stack: PostStackRenderer,
@@ -252,6 +255,13 @@ impl Renderer {
         let quad_pipeline = QuadPipeline::new(&device, format, sample_count, depth_attached);
         let sprite_pipeline = SpritePipeline::new(&device, format, sample_count, depth_attached);
         let debug_line_pipeline = DebugLinePipeline::new(
+            &device,
+            format,
+            quad_pipeline.camera_bind_group_layout(),
+            sample_count,
+            depth_attached,
+        );
+        let mesh_particle_pipeline = MeshParticlePipeline::new(
             &device,
             format,
             quad_pipeline.camera_bind_group_layout(),
@@ -499,6 +509,7 @@ impl Renderer {
             quad_pipeline,
             sprite_pipeline,
             debug_line_pipeline,
+            mesh_particle_pipeline,
             text_pipeline,
             present_blit,
             post_stack,
@@ -637,6 +648,24 @@ impl Renderer {
             self.lighting.write(&self.queue, ubo);
             self.lights_written = Some(*ubo);
         }
+    }
+
+    /// M31 upload or replace the geometry of one particle mesh (`D-093`).
+    pub fn upload_particle_mesh(
+        &mut self,
+        id: ParticleMeshAssetId,
+        vertices: &[[f32; 2]],
+        indices: &[u16],
+    ) {
+        self.mesh_particle_pipeline
+            .upload_mesh(&self.device, id, vertices, indices);
+    }
+
+    /// M31 instances for the next frame; they hold until the next call, so the
+    /// app calls it every frame.
+    pub fn update_mesh_particles(&mut self, batches: &[MeshParticleBatch]) {
+        self.mesh_particle_pipeline
+            .prepare(&self.device, &self.queue, batches);
     }
 
     /// Portable atlas page dimension cap.
@@ -1373,6 +1402,7 @@ impl Renderer {
                     &self.quad_pipeline,
                     &mut self.sprite_pipeline,
                     &self.debug_line_pipeline,
+                    &self.mesh_particle_pipeline,
                     quads,
                     sprite_batches,
                     debug_quads,
@@ -1542,6 +1572,7 @@ fn record_main_draws<'a>(
     quad_pipeline: &'a QuadPipeline,
     sprite_pipeline: &'a mut SpritePipeline,
     debug_line_pipeline: &'a DebugLinePipeline,
+    mesh_particle_pipeline: &'a MeshParticlePipeline,
     quads: &[QuadInstance],
     sprite_batches: &[SpriteBatch],
     debug_quads: &[QuadInstance],
@@ -1564,6 +1595,10 @@ fn record_main_draws<'a>(
         Some(&lit_sprite_pipeline.pipeline),
         Some(&lighting.bind_group),
     );
+    render_pass.pop_debug_group();
+
+    render_pass.push_debug_group("mesh_particles");
+    mesh_particle_pipeline.draw(render_pass, quad_pipeline.camera_bind_group());
     render_pass.pop_debug_group();
 
     render_pass.push_debug_group("debug_quads");

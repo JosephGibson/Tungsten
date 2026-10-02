@@ -1,16 +1,22 @@
 //! Particle lifecycle: count refresh -> emit -> tick -> command flush -> event flush.
 //!
 //! Spawn/despawn visibility waits for command flush; burst/drain events flush after it.
+//!
+//! M31 (`D-093`): a config with `render.kind = "mesh"` spawns `MeshParticle`
+//! in place of `Sprite`; `extract_mesh_particles` batches those entities per
+//! mesh for the renderer's instanced draw.
 
 use std::sync::Arc;
 
 use glam::Vec2;
 
 use tungsten_core::{
-    BlendMode, CommandBuffer, Curve, EmissionKind, Entity, EventQueue, InitialVelocity, Particle,
-    ParticleActive, ParticleBudget, ParticleConfig, ParticleConfigRegistry, ParticleEmitter,
-    ParticleEmitterState, Range, Sprite, Transform, Visibility, World, WorldRngSeed,
+    BlendMode, CommandBuffer, Curve, EmissionKind, Entity, EventQueue, InitialVelocity,
+    MeshParticle, Particle, ParticleActive, ParticleBudget, ParticleConfig, ParticleConfigRegistry,
+    ParticleEmitter, ParticleEmitterState, ParticleMeshAssetId, ParticleMeshRegistry,
+    ParticleRender, Range, Sprite, Transform, Visibility, World, WorldRngSeed,
 };
+use tungsten_render::{MeshParticleBatch, MeshParticleInstance};
 
 /// Discrete emission event; `count` is post-budget clipping.
 #[derive(Debug, Clone, Copy)]
@@ -51,7 +57,23 @@ pub fn particle_count_refresh_system(world: &mut World) {
     }
 }
 
+/// A config's `render`, resolved for one emitter's spawns this frame.
+#[derive(Clone, Copy)]
+enum SpawnRender {
+    Quad,
+    Mesh(ParticleMeshAssetId),
+}
+
+/// The draw component a new particle carries.
+enum ParticleDraw {
+    Sprite(Sprite),
+    Mesh(MeshParticle),
+}
+
 /// Emit particles via command buffer; discrete emissions enqueue burst events.
+///
+/// A mesh config's mesh name is resolved once per emitting emitter per frame.
+/// An unknown name logs a warning and that emitter emits nothing this frame.
 pub fn particle_emit_system(world: &mut World) {
     let dt = world
         .get_resource::<tungsten_core::DeltaTime>()
@@ -134,18 +156,38 @@ pub fn particle_emit_system(world: &mut World) {
             continue;
         }
 
+        let render = match &snapshot.render {
+            ParticleRender::Quad => SpawnRender::Quad,
+            ParticleRender::Mesh { mesh } => {
+                let id = world
+                    .get_resource::<ParticleMeshRegistry>()
+                    .and_then(|registry| registry.id_for_name(mesh));
+                let Some(id) = id else {
+                    log::warn!(
+                        "particle emitter {emitter_ent:?}: particle mesh '{mesh}' is not registered; nothing emitted"
+                    );
+                    maybe_emit_drained(world, emitter_ent);
+                    continue;
+                };
+                SpawnRender::Mesh(id)
+            }
+        };
+
         // Batch spawn without holding a `&mut World` resource borrow.
         let Some(mut buf) = world.remove_resource::<CommandBuffer>() else {
             continue;
         };
 
         for _ in 0..n_eff {
-            let (particle, transform, sprite) =
-                build_particle(world, emitter_ent, &snapshot, origin);
+            let (particle, transform, draw) =
+                build_particle(world, emitter_ent, &snapshot, origin, render);
             let pending = buf.spawn();
             buf.insert_pending(pending, particle);
             buf.insert_pending(pending, transform);
-            buf.insert_pending(pending, sprite);
+            match draw {
+                ParticleDraw::Sprite(sprite) => buf.insert_pending(pending, sprite),
+                ParticleDraw::Mesh(mesh) => buf.insert_pending(pending, mesh),
+            }
             buf.insert_pending(pending, Visibility { visible: true });
         }
         world.insert_resource(buf);
@@ -185,53 +227,71 @@ pub fn particle_tick_system(world: &mut World) {
     };
 
     for (entity, p, t, s) in world.query3_mut::<Particle, Transform, Sprite>() {
-        let age_new = p.age + dt;
-        if age_new >= p.lifetime {
-            buf.despawn(entity);
-            continue;
+        match integrate_particle(p, t, dt) {
+            Some(color) => s.color = color,
+            None => buf.despawn(entity),
         }
+    }
 
-        let u = (age_new / p.lifetime).clamp(0.0, 1.0);
-
-        let drag_factor = (-p.config.drag_per_sec * dt).exp();
-        let gravity = Vec2::new(p.config.gravity[0], p.config.gravity[1]);
-        let new_vel = (p.velocity + gravity * dt) * drag_factor;
-
-        p.age = age_new;
-        p.velocity = new_vel;
-
-        t.position += new_vel * dt;
-        t.rotation += p.angular_velocity * dt;
-        let scale = p.start_scale * sample_or_one(p.config.scale_over_life.as_ref(), u);
-        t.scale = Vec2::splat(scale);
-
-        let mut rgba = match p.config.color_over_life.as_ref() {
-            Some(c) => c.sample(u),
-            None => [1.0, 1.0, 1.0, 1.0],
-        };
-        if let Some(alpha_curve) = p.config.alpha_over_life.as_ref() {
-            rgba[3] *= alpha_curve.sample(u);
+    for (entity, p, t, m) in world.query3_mut::<Particle, Transform, MeshParticle>() {
+        match integrate_particle(p, t, dt) {
+            Some(color) => m.color = color,
+            None => buf.despawn(entity),
         }
-        if matches!(p.config.blend, BlendMode::Premultiplied) {
-            rgba[0] *= rgba[3];
-            rgba[1] *= rgba[3];
-            rgba[2] *= rgba[3];
-        }
-        let final_rgba = [
-            (rgba[0] * p.base_rgba[0]).clamp(0.0, 1.0),
-            (rgba[1] * p.base_rgba[1]).clamp(0.0, 1.0),
-            (rgba[2] * p.base_rgba[2]).clamp(0.0, 1.0),
-            (rgba[3] * p.base_rgba[3]).clamp(0.0, 1.0),
-        ];
-        s.color = [
-            (final_rgba[0] * 255.0) as u8,
-            (final_rgba[1] * 255.0) as u8,
-            (final_rgba[2] * 255.0) as u8,
-            (final_rgba[3] * 255.0) as u8,
-        ];
     }
 
     world.insert_resource(buf);
+}
+
+/// Ages and integrates one particle. Returns its new color, or `None` when it
+/// aged out and nothing was written. Inlined into both loops of
+/// `particle_tick_system`: an outlined copy costs the sprite loop a call per
+/// particle.
+#[inline(always)]
+fn integrate_particle(p: &mut Particle, t: &mut Transform, dt: f32) -> Option<[u8; 4]> {
+    let age_new = p.age + dt;
+    if age_new >= p.lifetime {
+        return None;
+    }
+
+    let u = (age_new / p.lifetime).clamp(0.0, 1.0);
+
+    let drag_factor = (-p.config.drag_per_sec * dt).exp();
+    let gravity = Vec2::new(p.config.gravity[0], p.config.gravity[1]);
+    let new_vel = (p.velocity + gravity * dt) * drag_factor;
+
+    p.age = age_new;
+    p.velocity = new_vel;
+
+    t.position += new_vel * dt;
+    t.rotation += p.angular_velocity * dt;
+    let scale = p.start_scale * sample_or_one(p.config.scale_over_life.as_ref(), u);
+    t.scale = Vec2::splat(scale);
+
+    let mut rgba = match p.config.color_over_life.as_ref() {
+        Some(c) => c.sample(u),
+        None => [1.0, 1.0, 1.0, 1.0],
+    };
+    if let Some(alpha_curve) = p.config.alpha_over_life.as_ref() {
+        rgba[3] *= alpha_curve.sample(u);
+    }
+    if matches!(p.config.blend, BlendMode::Premultiplied) {
+        rgba[0] *= rgba[3];
+        rgba[1] *= rgba[3];
+        rgba[2] *= rgba[3];
+    }
+    let final_rgba = [
+        (rgba[0] * p.base_rgba[0]).clamp(0.0, 1.0),
+        (rgba[1] * p.base_rgba[1]).clamp(0.0, 1.0),
+        (rgba[2] * p.base_rgba[2]).clamp(0.0, 1.0),
+        (rgba[3] * p.base_rgba[3]).clamp(0.0, 1.0),
+    ];
+    Some([
+        (final_rgba[0] * 255.0) as u8,
+        (final_rgba[1] * 255.0) as u8,
+        (final_rgba[2] * 255.0) as u8,
+        (final_rgba[3] * 255.0) as u8,
+    ])
 }
 
 fn plan_emission(
@@ -312,7 +372,8 @@ fn build_particle(
     emitter_ent: Entity,
     cfg: &Arc<ParticleConfig>,
     origin: Vec2,
-) -> (Particle, Transform, Sprite) {
+    render: SpawnRender,
+) -> (Particle, Transform, ParticleDraw) {
     let state = world.get_mut::<ParticleEmitterState>(emitter_ent).unwrap();
     let lifetime = sample_range(&mut state.rng, cfg.lifetime).max(1.0e-4);
     let start_scale = sample_range(&mut state.rng, cfg.start_scale).max(0.0);
@@ -354,13 +415,19 @@ fn build_particle(
         rotation: 0.0,
         scale: Vec2::splat(start_scale),
     };
-    let sprite = Sprite {
-        asset_id: cfg.sprite.clone(),
-        color: initial_color,
-        z_order: 0,
-        material_id: None,
+    let draw = match render {
+        SpawnRender::Quad => ParticleDraw::Sprite(Sprite {
+            asset_id: cfg.sprite.clone(),
+            color: initial_color,
+            z_order: 0,
+            material_id: None,
+        }),
+        SpawnRender::Mesh(mesh) => ParticleDraw::Mesh(MeshParticle {
+            mesh,
+            color: initial_color,
+        }),
     };
-    (particle, transform, sprite)
+    (particle, transform, draw)
 }
 
 fn sample_range(rng: &mut tungsten_core::Pcg32, r: Range) -> f32 {
@@ -398,6 +465,9 @@ fn sample_or_one(curve: Option<&Curve<f32>>, t: f32) -> f32 {
 }
 
 /// Spawn a fully formed particle without the emit system.
+///
+/// Always spawns a `Sprite`, whatever the config's `render` says; a mesh
+/// config spawns through [`spawn_mesh_particle_via`].
 pub fn spawn_particle_via(
     cmd: &mut CommandBuffer,
     emitter_ent: Option<Entity>,
@@ -439,4 +509,83 @@ pub fn spawn_particle_via(
         },
     );
     cmd.insert_pending(pending, Visibility { visible: true });
+}
+
+/// `spawn_particle_via` for a mesh config: `MeshParticle` in place of `Sprite`.
+#[allow(clippy::too_many_arguments)]
+pub fn spawn_mesh_particle_via(
+    cmd: &mut CommandBuffer,
+    emitter_ent: Option<Entity>,
+    config: Arc<ParticleConfig>,
+    mesh: ParticleMeshAssetId,
+    position: Vec2,
+    velocity: Vec2,
+    lifetime: f32,
+    start_scale: f32,
+) {
+    let base = config.tint;
+    let particle = Particle {
+        config,
+        emitter: emitter_ent,
+        age: 0.0,
+        lifetime,
+        velocity,
+        angular_velocity: 0.0,
+        start_scale,
+        base_rgba: base,
+    };
+    let pending = cmd.spawn();
+    cmd.insert_pending(pending, particle);
+    cmd.insert_pending(
+        pending,
+        Transform {
+            position,
+            rotation: 0.0,
+            scale: Vec2::splat(start_scale),
+        },
+    );
+    cmd.insert_pending(
+        pending,
+        MeshParticle {
+            mesh,
+            color: [255, 255, 255, 255],
+        },
+    );
+    cmd.insert_pending(pending, Visibility { visible: true });
+}
+
+/// Visible mesh particles, one batch per mesh in first-seen order.
+///
+/// Allocates nothing when the world holds no mesh particle.
+#[must_use]
+pub fn extract_mesh_particles(world: &World) -> Vec<MeshParticleBatch> {
+    let mut batches: Vec<MeshParticleBatch> = Vec::new();
+    // Entities of one archetype usually share a mesh: try the last batch first.
+    let mut last = 0usize;
+    for (_entity, transform, particle, visibility) in
+        world.query3::<Transform, MeshParticle, Visibility>()
+    {
+        if !visibility.visible {
+            continue;
+        }
+        let instance = MeshParticleInstance {
+            position: [transform.position.x, transform.position.y],
+            scale: [transform.scale.x, transform.scale.y],
+            rotation: transform.rotation,
+            color: particle.color,
+        };
+        if batches.get(last).is_none_or(|b| b.mesh != particle.mesh) {
+            last = if let Some(index) = batches.iter().position(|b| b.mesh == particle.mesh) {
+                index
+            } else {
+                batches.push(MeshParticleBatch {
+                    mesh: particle.mesh,
+                    instances: Vec::new(),
+                });
+                batches.len() - 1
+            };
+        }
+        batches[last].instances.push(instance);
+    }
+    batches
 }
