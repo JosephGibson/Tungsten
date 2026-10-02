@@ -35,7 +35,7 @@ Never compare across rows, `workload_version`, knobs, frames, warm-up, build fla
 
 ## Validity
 
-A capture is valid when every run exits 0, logs every measured frame, logs a `bench-config` equal to the request, passes the row's guards and matches the other runs' determinism digest. Invalid captures stay on disk with `valid: false`; the runner exits 3 and compare refuses verdicts unless `--force`. Guards: `physics.sleeping <= 0` (both physics rows), `bench.teleports >= 1`, `bench.structural <= 0` and `bench.entities constant` (`ecs`), `bench.population constant` and `bench.spawned == bench.despawned` (`churn`), `bench.live within ±10% of its median` (`particles`), `bench.view_out <= 0` (`integrated`).
+A capture is valid when every run exits 0, logs every measured frame, logs a `bench-config` equal to the request, confirms a requested present mode and latency in its `backend:` line, passes the row's guards and matches the other runs' determinism digest. Invalid captures stay on disk with `valid: false`; the runner exits 3 and compare refuses verdicts unless `--force`. Guards: `physics.sleeping <= 0` (both physics rows), `bench.teleports >= 1`, `bench.structural <= 0` and `bench.entities constant` (`ecs`), `bench.population constant` and `bench.spawned == bench.despawned` (`churn`), `bench.live within ±10% of its median` (`particles`), `bench.view_out <= 0` (`integrated`).
 
 ## Owned metrics and verdicts
 
@@ -43,7 +43,7 @@ Each row is judged only on what it owns; everything else is context.
 
 - `physics`: `physics_step` p50/p95, `update` p95. `physics-sparse`: `physics_step` p50/p95.
 - `ecs`: `update` p50/p95 and the 14 system rows at p50. `churn`: `flush` p50/p95 and the four churn systems at p50.
-- `gpu`: scene pass and `render_span` p50/p95, the post, SMAA, text and present passes at p50, `extract` and `render_encode` p50/p95 (GPU values from the diagnostic run; n/a without timestamp queries). `gpu-throughput`: `extract`, `render_encode` p50/p95.
+- `gpu`: scene pass and `render_span` p50/p95, the post, SMAA and text passes at p50 (no present pass since `D-087`), `extract` and `render_encode` p50/p95 (GPU values from the diagnostic run; n/a without timestamp queries). `gpu-throughput`: `extract`, `render_encode` p50/p95.
 - `particles`: `unattributed` p50/p95 (the particle stage has no timing of its own) and `animate_sprites` p50/p95.
 - `integrated`: `total` p50/p95/p99 and jitter (p99 − p50).
 
@@ -51,7 +51,7 @@ Verdicts use per-run values and a 95% Welch interval against τ = max(τ_rel × 
 
 ## Telemetry format
 
-`TUNGSTEN_PERF_LOG=1` with `RUST_LOG=tungsten::app=debug,bench=debug` emits per frame `frame:` (stages from `tungsten::FrameTimings`; `gpu=` is the scene pass, `n/a` unless `TUNGSTEN_GPU_TIMING=1`), `systems:`, `gpu_passes:` (with `render_span`), `physics:` when physics runs, and the benchmark's `bench:` counters, plus `backend:` and `bench-config:` once. `unattributed` = `total` − the timed stages. See [telemetry.rs](../../../crates/tungsten/src/telemetry.rs) and [app.rs](../../../crates/tungsten/src/app.rs).
+`TUNGSTEN_PERF_LOG=1` with `RUST_LOG=tungsten::app=debug,bench=debug` emits per frame `frame:` (stages from `tungsten::FrameTimings`; `interval=` is the time between two frame starts, reported and owned by no row; `gpu=` is the scene pass, `n/a` unless `TUNGSTEN_GPU_TIMING=1`), `systems:`, `gpu_passes:` (with `render_span`), `physics:` when physics runs, and the benchmark's `bench:` counters, plus `backend:` and `bench-config:` once. `unattributed` = `total` − the timed stages. See [telemetry.rs](../../../crates/tungsten/src/telemetry.rs) and [app.rs](../../../crates/tungsten/src/app.rs).
 
 ## GPU timing is for diagnosis only
 

@@ -31,8 +31,12 @@ BACKEND_RE = re.compile(
 )
 
 # `frame:` stages that partition `total`; the remainder is `unattributed`.
-# `render` already contains acquire, encode and submit/present.
+# `render` already contains acquire, encode and submit/present. `interval`
+# is not work: it spans the previous frame and the wait after it, so it is
+# no part of `total`, of the stacked bars or of the limiting stage.
 TOTAL_PARTS = ("update", "flush", "particles", "tweens", "hot_reload", "extract", "render", "audio")
+# A spike is a measured frame whose `total` exceeds this multiple of the run's p50.
+SPIKE_FACTOR = 1.5
 
 # Metric-name prefix -> per-run stats group.
 GROUPS = {
@@ -148,6 +152,16 @@ def unattributed(stages):
     if total is None:
         return None
     return total - sum(stages.get(part) or 0.0 for part in TOTAL_PARTS)
+
+
+def spike_count(frames):
+    """Frames whose `total` exceeds SPIKE_FACTOR × the p50 of `frames`, or
+    None without a `total`."""
+    totals = sorted(total for frame in frames if (total := frame.stages.get("total")) is not None)
+    if not totals:
+        return None
+    limit = SPIKE_FACTOR * percentile(totals, 50)
+    return sum(1 for total in totals if total > limit)
 
 
 def run_stats(frames):
@@ -319,9 +333,35 @@ def hard_problems(analysis):
     return [problem for problem in analysis["problems"] if not problem.startswith(GUARD_PREFIX)]
 
 
-def analyze_log(text, warmup, frames, guards, expected_config):
+# Present modes an `auto*` request may resolve to; the benchmarks turn vsync
+# off, so `auto` takes the no-vsync family. A concrete mode is reported as
+# requested.
+PRESENT_FAMILIES = {
+    "auto": ("immediate", "mailbox", "auto_no_vsync"),
+    "auto_no_vsync": ("immediate", "mailbox", "auto_no_vsync"),
+    "auto_vsync": ("fifo", "auto_vsync"),
+}
+
+
+def present_problems(backend, present_mode, max_frame_latency):
+    """Problems when a run's `backend:` line does not confirm the requested
+    present mode or frame latency (None: not requested)."""
+    if present_mode is None and max_frame_latency is None:
+        return []
+    if backend is None:
+        return ["no backend line to confirm the requested present mode and frame latency"]
+    problems = []
+    if present_mode is not None and backend["present_mode"] not in PRESENT_FAMILIES.get(present_mode, (present_mode,)):
+        problems.append(f"present mode is {backend['present_mode']}, requested {present_mode}")
+    if max_frame_latency is not None and backend["max_frame_latency"] != max_frame_latency:
+        problems.append(f"max frame latency is {backend['max_frame_latency']}, requested {max_frame_latency}")
+    return problems
+
+
+def analyze_log(text, warmup, frames, guards, expected_config, present_mode=None, max_frame_latency=None):
     """Stats, guards, digest and validity problems for one run's log;
-    `expected_config` is the resolved config the binary printed up front."""
+    `expected_config` is the resolved config the binary printed up front, and
+    a requested present mode or frame latency must show in the `backend:` line."""
     log = parse_log(text)
     measured = log.frames[warmup : warmup + frames]
     problems = []
@@ -336,6 +376,7 @@ def analyze_log(text, warmup, frames, guards, expected_config):
             logged = None
         if logged != expected_config:
             problems.append("bench-config does not match the request")
+    problems.extend(present_problems(log.backend, present_mode, max_frame_latency))
     guard_results = [evaluate_guard(guard, measured) for guard in guards]
     problems.extend(f"{GUARD_PREFIX}{result['guard']}: {result['detail']}" for result in guard_results if not result["ok"])
     return {
@@ -343,6 +384,7 @@ def analyze_log(text, warmup, frames, guards, expected_config):
         "frames_measured": len(measured),
         "backend": log.backend,
         "stats": run_stats(measured),
+        "spikes": spike_count(measured),
         "guards": guard_results,
         "digest": digest(measured),
         "problems": problems,
@@ -520,6 +562,12 @@ def capture_readme(capture):
     lines += ["", "## Owned metrics (ms)", ""]
     lines += table(["Metric", "Median", "Per run", "Source"], owned_rows) if owned_rows else ["n/a"]
     lines += ["", "## Stages (ms)", ""] + group_table(runs, "stages")
+    frame_rows = [
+        [run["index"], *(fmt(metric_value(run["stats"], "stage.total", stat)) for stat in ("p50", "max")), fmt(run.get("spikes"))]
+        for run in runs
+    ]
+    lines += ["", "## Frame time per run (timing runs)", ""]
+    lines += table(["Run", "`total` p50 (ms)", "`total` max (ms)", f"Spikes (`total` > {SPIKE_FACTOR:g} × p50)"], frame_rows)
     lines += ["", "## Systems (ms)", ""] + group_table(runs, "systems")
     gpu_runs = [run["gpu_run"] for run in capture["runs"] if run.get("gpu_run") and run["gpu_run"].get("stats")]
     if gpu_runs:
@@ -583,7 +631,7 @@ T_975 = {
 }  # fmt: skip
 VERDICTS = ("regressed", "improved", "unchanged", "noisy")
 STAGE_ORDER = (
-    "total", "update", "flush", "particles", "tweens", "hot_reload", "extract", "render",
+    "total", "interval", "update", "flush", "particles", "tweens", "hot_reload", "extract", "render",
     "render_acquire", "render_encode", "render_submit_present", "audio", "unattributed",
 )  # fmt: skip
 STAGE_STATS = ("p50", "p95", "p99")

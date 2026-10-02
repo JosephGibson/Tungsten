@@ -166,7 +166,6 @@ const ROWS: &[Row] = &[
             ("gpu.smaa_blend_weights", P50),
             ("gpu.smaa_neighborhood", P50),
             ("gpu.text", P50),
-            ("gpu.present", P50),
             ("stage.extract", P50_P95),
             ("stage.render_encode", P50_P95),
         ],

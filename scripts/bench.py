@@ -211,7 +211,8 @@ def bench_vars(bench, preset=None, scale=None, sets=()):
 def capture_env(parent, bench_env, total_frames, *, gpu=False, profile=False, present_mode=None, max_frame_latency=None):
     """Environment of a timing run (perf lines on), a GPU diagnostic run
     (`gpu`) or a profiler run (`profile`: errors only). Present overrides
-    reach only the child."""
+    reach only the child, as `display.*` overrides: the `render.*` ones lose
+    to the `display.*` fields `tungsten.json` sets."""
     env = child_env(parent, bench_env)
     env["TUNGSTEN_SMOKE_FRAMES"] = str(total_frames)
     if profile:
@@ -222,9 +223,9 @@ def capture_env(parent, bench_env, total_frames, *, gpu=False, profile=False, pr
     if gpu:
         env["TUNGSTEN_GPU_TIMING"] = "1"
     if present_mode is not None:
-        env["TUNGSTEN_RENDER_PRESENT_MODE"] = present_mode
+        env["TUNGSTEN_DISPLAY_PRESENT_MODE"] = present_mode
     if max_frame_latency is not None:
-        env["TUNGSTEN_RENDER_MAX_FRAME_LATENCY"] = str(max_frame_latency)
+        env["TUNGSTEN_DISPLAY_MAX_FRAME_LATENCY"] = str(max_frame_latency)
     return env
 
 
@@ -468,7 +469,7 @@ def capture_to(out_dir, *, binary, root, bench, config, request_env, request, pr
         env = capture_env(os.environ, request_env, total_frames, **present)
         timing = run_child([str(binary)], env, root, run_dir / "telemetry.log", run_dir / "rss.tsv")
         analysis = bench_report.analyze_log(
-            (run_dir / "telemetry.log").read_text(errors="replace"), warmup, frames, row["guards"], config
+            (run_dir / "telemetry.log").read_text(errors="replace"), warmup, frames, row["guards"], config, **present
         )
         samples = timing.pop("rss_samples")
         run = {"index": index, **timing, "rss_samples": len(samples), "rss_growth_kib_s": bench_report.rss_growth(samples)}
@@ -480,7 +481,7 @@ def capture_to(out_dir, *, binary, root, bench, config, request_env, request, pr
             gpu.pop("rss_samples")
             gpu.update(
                 bench_report.analyze_log(
-                    (run_dir / "gpu.log").read_text(errors="replace"), warmup, frames, row["guards"], config
+                    (run_dir / "gpu.log").read_text(errors="replace"), warmup, frames, row["guards"], config, **present
                 )
             )
             run["gpu_run"] = gpu

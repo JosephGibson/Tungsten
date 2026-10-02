@@ -31,9 +31,12 @@ GUARDS = [
 ]
 
 
-def frame_line(total, update=6.0):
+def frame_line(total, update=6.0, interval=None):
+    """`interval` is the field's text (`16.70ms`, or `n/a` on a first frame);
+    None leaves the field out, as a log from before it does."""
+    field = "" if interval is None else f"interval={interval} "
     return (
-        APP + f"frame: total={total:.2f}ms update={update:.2f}ms flush=0.10ms extract=1.00ms render=2.00ms "
+        APP + f"frame: total={total:.2f}ms {field}update={update:.2f}ms flush=0.10ms extract=1.00ms render=2.00ms "
         "render_acquire=0.10ms render_encode=1.00ms render_submit_present=0.90ms gpu=n/a audio=0.01ms hot_reload=0.00ms"
     )
 
@@ -178,6 +181,43 @@ class Parsing(unittest.TestCase):
         self.assertEqual(bench_report.metric_value(stats, "system.a.b(c)+*", "p50"), 3.0)
         self.assertIsNone(bench_report.metric_value(stats, "system.physics", "p50"))
 
+    def test_interval_is_reported_and_is_no_part_of_the_frames_work(self):
+        totals = (10.0, 12.0, 11.0)
+        text = "\n".join(frame_line(total, interval=interval) for total, interval in zip(totals, ("n/a", "10.40ms", "12.30ms")))
+        frames = bench_report.parse_log(text).frames
+        self.assertIsNone(frames[0].stages["interval"])
+        stats = bench_report.run_stats(frames)
+        self.assertEqual(list(stats["stages"])[:2], ["total", "interval"])
+        self.assertEqual(bench_report.STAGE_ORDER[:2], ("total", "interval"))
+        # The first frame has no previous frame start.
+        self.assertEqual((stats["stages"]["interval"]["n"], stats["stages"]["interval"]["max"]), (2, 12.3))
+        # `unattributed`, the stacked bars and the limiting stage read the
+        # frames as they read a log without the field.
+        plain = bench_report.run_stats(bench_report.parse_log("\n".join(frame_line(total) for total in totals)).frames)
+        self.assertNotIn("interval", plain["stages"])
+        self.assertEqual(stats["stages"]["unattributed"], plain["stages"]["unattributed"])
+        self.assertEqual(bench_report.limiting_candidates(stats), bench_report.limiting_candidates(plain))
+
+        def stack(run):
+            return bench_report.stack_segments({name: summary["mean"] for name, summary in run["stages"].items()})
+
+        self.assertEqual(stack(stats), stack(plain))
+
+    def test_spikes_are_frames_above_one_and_a_half_times_the_runs_p50(self):
+        totals = [10.0, 10.0, 15.0, 15.01, 10.0, 22.0]
+        frames = bench_report.parse_log("\n".join(frame_line(total) for total in totals)).frames
+        # p50 is 10 ms (nearest rank), so the limit is 15 ms; 15.00 ms is not above it.
+        self.assertEqual(bench_report.spike_count(frames), 2)
+        self.assertIsNone(bench_report.spike_count([]))
+        with tempfile.TemporaryDirectory() as temp:
+            capture = write_capture(Path(temp) / "capture", [[10.0, 10.0, 10.0, 16.0], [10.0, 10.0, 10.0, 12.0]], BASE_PEAKS[:2])
+        self.assertEqual([run["spikes"] for run in capture["runs"]], [1, 0])
+        readme = bench_report.capture_readme(capture)
+        self.assertIn("## Frame time per run (timing runs)", readme)
+        self.assertIn("| Run | `total` p50 (ms) | `total` max (ms) | Spikes (`total` > 1.5 × p50) |", readme)
+        self.assertIn("| 1 | 10 | 16 | 1 |", readme)
+        self.assertIn("| 2 | 10 | 12 | 0 |", readme)
+
     def test_nearest_rank_percentiles(self):
         values = [float(value) for value in range(1, 301)]
         self.assertEqual(bench_report.percentile(values, 50), 150.0)
@@ -302,6 +342,54 @@ class Guards(unittest.TestCase):
         self.assertIn("FAIL: `physics.sleeping <= 0`", readme)
         self.assertIn("| `system.physics_step` p95 |", readme)
 
+    def test_unconfirmed_present_override_invalidates_the_capture(self):
+        frames = [physics_frame(10.0), physics_frame(11.0), physics_frame(12.0)]
+
+        def problems(backend_line, **present):
+            log = physics_log(frames)
+            if backend_line:
+                log = APP + f"backend: Vulkan adapter: Test GPU {backend_line} timestamp_query: true\n" + log
+            return bench_report.analyze_log(log, 0, 3, GUARDS, CONFIG, **present)["problems"]
+
+        immediate = "present_mode: immediate max_frame_latency: 1"
+        self.assertEqual(problems(immediate), [])
+        self.assertEqual(problems(None), [])
+        self.assertEqual(problems("present_mode: fifo max_frame_latency: 2", present_mode="fifo", max_frame_latency=2), [])
+        self.assertEqual(problems(immediate, present_mode="auto"), [])
+        self.assertEqual(problems("present_mode: fifo max_frame_latency: 2", present_mode="auto_vsync"), [])
+        self.assertEqual(
+            problems(immediate, present_mode="fifo", max_frame_latency=2),
+            ["present mode is immediate, requested fifo", "max frame latency is 1, requested 2"],
+        )
+        self.assertEqual(problems(immediate, present_mode="auto_vsync"), ["present mode is immediate, requested auto_vsync"])
+        self.assertEqual(
+            problems(None, max_frame_latency=2), ["no backend line to confirm the requested present mode and frame latency"]
+        )
+
+        usage = {"peak_rss_kib": 65536, "user_s": 1.0, "sys_s": 0.1, "minflt": 1, "majflt": 0, "nvcsw": 2, "nivcsw": 3}
+        log = APP + f"backend: Vulkan adapter: Test GPU {immediate} timestamp_query: true\n" + physics_log(frames)
+        run = {"index": 1, "exit_code": 0, "rusage": usage, "rss_growth_kib_s": 0.0}
+        run.update(bench_report.analyze_log(log, 0, 3, GUARDS, CONFIG, present_mode="fifo", max_frame_latency=1))
+        self.assertEqual(bench_report.hard_problems(run), ["present mode is immediate, requested fifo"])
+        capture = bench_report.assemble_capture(
+            request={"set": [], "repeat": 1, "gpu_timing": False, "present_mode": "fifo", "max_frame_latency": 1},
+            bench={"name": "physics", "workload_version": 1},
+            row=ROW,
+            config={**CONFIG, "preset": "default", "scale": 1.0},
+            warmup=0,
+            frames=3,
+            build={"rustflags": bench.DEFAULT_RUSTFLAGS},
+            provenance=dict.fromkeys(PROVENANCE_KEYS, "x"),
+            runs=[run],
+            profile=None,
+        )
+        self.assertFalse(capture["valid"])
+        self.assertEqual(capture["invalid_reasons"], ["run 1: present mode is immediate, requested fifo"])
+        readme = bench_report.capture_readme(capture)
+        self.assertIn("| Valid | no |", readme)
+        self.assertIn("| Present mode / latency (requested) | immediate / 1 (fifo / 1) |", readme)
+        self.assertIn("- run 1: present mode is immediate, requested fifo", readme)
+
 
 class Runner(unittest.TestCase):
     def test_child_environment_hygiene(self):
@@ -340,8 +428,9 @@ class Runner(unittest.TestCase):
         )
         gpu = bench.capture_env(parent, bench.bench_vars("physics"), 420, gpu=True, present_mode="mailbox", max_frame_latency=2)
         self.assertEqual(gpu["TUNGSTEN_GPU_TIMING"], "1")
-        self.assertEqual(gpu["TUNGSTEN_RENDER_PRESENT_MODE"], "mailbox")
-        self.assertEqual(gpu["TUNGSTEN_RENDER_MAX_FRAME_LATENCY"], "2")
+        self.assertEqual(gpu["TUNGSTEN_DISPLAY_PRESENT_MODE"], "mailbox")
+        self.assertEqual(gpu["TUNGSTEN_DISPLAY_MAX_FRAME_LATENCY"], "2")
+        self.assertNotIn("TUNGSTEN_RENDER_PRESENT_MODE", gpu)
         self.assertNotIn("TUNGSTEN_RENDER_MSAA", gpu)
         self.assertNotIn("TUNGSTEN_BENCH_SET", gpu)
         profile = bench.capture_env(parent, bench.bench_vars("physics"), 420, profile=True)

@@ -8,7 +8,8 @@ pub struct GpuFrameTimings {
     /// Scene-pass GPU duration (the historical `gpu=` metric), not the whole frame.
     /// `None` when timing is disabled, unsupported, skipped or readback fails.
     pub frame_gpu_ms: Option<f32>,
-    /// First scene timestamp through the end of the present blit, including gaps.
+    /// First scene timestamp through the end of the frame's last pass, including
+    /// gaps: the text overlay, or the present blit on a capture frame (`D-087`).
     /// Excludes queued uploads, query resolve/readback and presentation waits.
     pub render_gpu_ms: Option<f32>,
     /// Render passes in execution order; post slot and bloom mip labels are unique.
@@ -52,9 +53,11 @@ impl GpuFrameTimings {
     }
 }
 
-/// Two queries per real render pass, including every bloom stage.
-fn query_count(stack: &PostStack, bloom_mips: u32, smaa: bool) -> Option<u32> {
-    let mut passes: u32 = if smaa { 6 } else { 3 }; // scene, text, present, SMAA tail
+/// Two queries per real render pass, including every bloom stage. `blit` adds
+/// the present blit, which only a capture frame records (`D-087`).
+fn query_count(stack: &PostStack, bloom_mips: u32, smaa: bool, blit: bool) -> Option<u32> {
+    // Scene and text, the SMAA tail, the present blit.
+    let mut passes: u32 = 2 + if smaa { 3 } else { 0 } + u32::from(blit);
     for pass in &stack.0 {
         passes = passes.checked_add(if matches!(pass, PostPass::Bloom(_)) {
             bloom_mips.checked_mul(2)?
@@ -80,8 +83,9 @@ impl TimingResources {
         stack: &PostStack,
         bloom_mips: u32,
         smaa: bool,
+        blit: bool,
     ) -> Option<Self> {
-        let Some(count) = query_count(stack, bloom_mips, smaa) else {
+        let Some(count) = query_count(stack, bloom_mips, smaa, blit) else {
             log::warn!(
                 "GPU pass timing exceeds the timestamp query limit; rendering without timings"
             );
@@ -187,18 +191,22 @@ mod tests {
 
     #[test]
     fn counts_real_passes_and_rejects_query_overflow() {
-        assert_eq!(query_count(&PostStack::default(), 6, false), Some(6));
+        // Scene and text; a capture frame adds its present blit.
+        assert_eq!(query_count(&PostStack::default(), 6, false, false), Some(4));
+        assert_eq!(query_count(&PostStack::default(), 6, false, true), Some(6));
         let stack = PostStack(vec![
             PostPass::Bloom(BloomParams::default()),
             PostPass::Vignette(VignetteParams::default()),
             PostPass::Bloom(BloomParams::default()),
         ]);
-        assert_eq!(query_count(&stack, 6, true), Some(62));
-        assert_eq!(query_count(&stack, 1, false), Some(16));
-        assert_eq!(query_count(&stack, 0, false), Some(8));
-        assert_eq!(query_count(&stack, u32::MAX, false), None);
-        let huge = PostStack(vec![PostPass::Vignette(VignetteParams::default()); 2046]);
-        assert_eq!(query_count(&huge, 6, false), None);
+        assert_eq!(query_count(&stack, 6, true, false), Some(60));
+        assert_eq!(query_count(&stack, 6, true, true), Some(62));
+        assert_eq!(query_count(&stack, 1, false, true), Some(16));
+        assert_eq!(query_count(&stack, 0, false, true), Some(8));
+        assert_eq!(query_count(&stack, 0, false, false), Some(6));
+        assert_eq!(query_count(&stack, u32::MAX, false, false), None);
+        let huge = PostStack(vec![PostPass::Vignette(VignetteParams::default()); 2047]);
+        assert_eq!(query_count(&huge, 6, false, false), None);
     }
 
     #[test]

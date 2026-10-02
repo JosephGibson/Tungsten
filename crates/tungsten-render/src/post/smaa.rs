@@ -28,7 +28,7 @@ use wgpu::util::DeviceExt;
 
 use crate::passes::TargetId;
 use crate::post::smaa_luts;
-use crate::targets::{RenderTargetPool, SMAA_BLEND_FORMAT, SMAA_EDGES_FORMAT};
+use crate::targets::{RenderTargetPool, SMAA_BLEND_FORMAT, SMAA_EDGES_FORMAT, TargetCache};
 
 /// Stage shader manifest names. Must match `assets/manifest.json` keys and the
 /// pre-seeded ids in `Renderer::new`.
@@ -221,6 +221,13 @@ pub struct SmaaPipeline {
     linear_sampler: wgpu::Sampler,
     target_format: wgpu::TextureFormat,
     pub shader_ids: SmaaShaderIds,
+    /// Bind groups over the scene targets, keyed on the pool generation and,
+    /// for the two that sample the post stack's output, on which target that
+    /// is.
+    edge_source_bg: TargetCache<(u64, TargetId), wgpu::BindGroup>,
+    blend_input_bg: TargetCache<u64, wgpu::BindGroup>,
+    nbh_input_bg: TargetCache<(u64, TargetId), wgpu::BindGroup>,
+    nbh_params_bg: TargetCache<u64, wgpu::BindGroup>,
 }
 
 impl SmaaPipeline {
@@ -312,7 +319,19 @@ impl SmaaPipeline {
             linear_sampler,
             target_format: format,
             shader_ids,
+            edge_source_bg: TargetCache::default(),
+            blend_input_bg: TargetCache::default(),
+            nbh_input_bg: TargetCache::default(),
+            nbh_params_bg: TargetCache::default(),
         }
+    }
+
+    /// Drops the bind groups that hold views of the scene targets.
+    pub(crate) fn release_target_views(&mut self) {
+        self.edge_source_bg.clear();
+        self.blend_input_bg.clear();
+        self.nbh_input_bg.clear();
+        self.nbh_params_bg.clear();
     }
 
     /// Repack `SmaaPresetUbo` from the active preset + viewport. Called at
@@ -324,100 +343,124 @@ impl SmaaPipeline {
         }
     }
 
-    /// Record the edge-detection pass into an open render pass.
+    /// Record the edge-detection pass into an open render pass. `source` names
+    /// the target `source_view` reads, for the bind-group cache.
     pub fn record_edge_pass(
-        &self,
+        &mut self,
         device: &wgpu::Device,
         render_pass: &mut wgpu::RenderPass<'_>,
+        pool: &RenderTargetPool,
+        source: TargetId,
         source_view: &wgpu::TextureView,
     ) {
-        let source_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("smaa_edge_source_bg"),
-            layout: &self.layouts.edge_source_bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(source_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&self.linear_sampler),
-                },
-            ],
-        });
+        let layouts = &self.layouts;
+        let sampler = &self.linear_sampler;
+        let source_bg = self
+            .edge_source_bg
+            .get_or_build((pool.generation(), source), || {
+                device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("smaa_edge_source_bg"),
+                    layout: &layouts.edge_source_bgl,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(source_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::Sampler(sampler),
+                        },
+                    ],
+                })
+            });
         render_pass.set_pipeline(&self.edge_pipeline);
-        render_pass.set_bind_group(0, &source_bg, &[]);
+        render_pass.set_bind_group(0, &*source_bg, &[]);
         render_pass.set_bind_group(1, &self.edge_params_bg, &[]);
         render_pass.draw(0..3, 0..1);
     }
 
     /// Record the blend-weights pass.
     pub fn record_blend_weights_pass(
-        &self,
+        &mut self,
         device: &wgpu::Device,
         render_pass: &mut wgpu::RenderPass<'_>,
         pool: &RenderTargetPool,
     ) {
-        let edges_view = pool
-            .scene
-            .smaa_edges_view()
-            .expect("blend_weights requires SmaaEdges target");
-        let input_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("smaa_blend_input_bg"),
-            layout: &self.layouts.blend_input_bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(edges_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&self.linear_sampler),
-                },
-            ],
+        let layouts = &self.layouts;
+        let sampler = &self.linear_sampler;
+        let input_bg = self.blend_input_bg.get_or_build(pool.generation(), || {
+            let edges_view = pool
+                .scene
+                .smaa_edges_view()
+                .expect("blend_weights requires SmaaEdges target");
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("smaa_blend_input_bg"),
+                layout: &layouts.blend_input_bgl,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(edges_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(sampler),
+                    },
+                ],
+            })
         });
         render_pass.set_pipeline(&self.blend_pipeline);
-        render_pass.set_bind_group(0, &input_bg, &[]);
+        render_pass.set_bind_group(0, &*input_bg, &[]);
         render_pass.set_bind_group(1, &self.blend_lut_bg, &[]);
         render_pass.draw(0..3, 0..1);
     }
 
-    /// Record the neighborhood-blend pass.
+    /// Record the neighborhood-blend pass. `source` names the target
+    /// `source_view` reads, for the bind-group cache.
     pub fn record_neighborhood_pass(
-        &self,
+        &mut self,
         device: &wgpu::Device,
         render_pass: &mut wgpu::RenderPass<'_>,
         pool: &RenderTargetPool,
+        source: TargetId,
         source_view: &wgpu::TextureView,
     ) {
-        let blend_view = pool
-            .scene
-            .smaa_blend_view()
-            .expect("neighborhood requires SmaaBlend target");
-        let input_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("smaa_nbh_input_bg"),
-            layout: &self.layouts.nbh_input_bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(source_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&self.linear_sampler),
-                },
-            ],
+        let layouts = &self.layouts;
+        let sampler = &self.linear_sampler;
+        let preset_ubo = &self.preset_ubo;
+        let input_bg = self
+            .nbh_input_bg
+            .get_or_build((pool.generation(), source), || {
+                device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("smaa_nbh_input_bg"),
+                    layout: &layouts.nbh_input_bgl,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(source_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::Sampler(sampler),
+                        },
+                    ],
+                })
+            });
+        let params_bg = self.nbh_params_bg.get_or_build(pool.generation(), || {
+            let blend_view = pool
+                .scene
+                .smaa_blend_view()
+                .expect("neighborhood requires SmaaBlend target");
+            build_nbh_params_bg(
+                device,
+                &layouts.nbh_params_bgl,
+                blend_view,
+                sampler,
+                preset_ubo,
+            )
         });
-        let params_bg = build_nbh_params_bg(
-            device,
-            &self.layouts.nbh_params_bgl,
-            blend_view,
-            &self.linear_sampler,
-            &self.preset_ubo,
-        );
         render_pass.set_pipeline(&self.nbh_pipeline);
-        render_pass.set_bind_group(0, &input_bg, &[]);
-        render_pass.set_bind_group(1, &params_bg, &[]);
+        render_pass.set_bind_group(0, &*input_bg, &[]);
+        render_pass.set_bind_group(1, &*params_bg, &[]);
         render_pass.draw(0..3, 0..1);
     }
 

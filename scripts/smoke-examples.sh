@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Runs every example in smoke-test mode (renders a few frames, then exits),
-# then the render fixture matrices, and reports panics, failures and timeouts.
+# then the render fixture matrices, the benchmark rows and a frame-cap timing
+# row, and reports panics, failures and timeouts.
 #
 # Requires a real GPU and display — not for CI. Use as a pre-commit check
 # when touching engine code, asset manifests, or example wiring. Regression
@@ -44,18 +45,29 @@ log_dir="$(mktemp -d)"
 echo "Per-example logs: $log_dir"
 echo
 
+# Shortest wall time in milliseconds a passing run may take; 0 means no
+# minimum. Set around a row whose run must not finish early.
+min_run_ms=0
+
 # run_row <label> <log file> <package> [VAR=value ...]
 # Runs one example under the timeout, prints OK / TIMEOUT / FAIL and returns
 # the run's exit status. Without --preserve-status, `timeout` reports 124 when
-# the limit is hit (137 if the SIGKILL grace period also expired).
+# the limit is hit (137 if the SIGKILL grace period also expired). A run that
+# exits 0 in less than min_run_ms fails with status 1.
 run_row() {
   local label="$1" log_file="$2" pkg="$3"
   shift 3
   printf "  %-28s ... " "$label"
-  local code=0
+  local code=0 start_ms elapsed_ms
+  start_ms="$(date +%s%3N)"
   env TUNGSTEN_SMOKE_FRAMES="$SMOKE_FRAMES" "$@" \
     timeout --kill-after="$KILL_AFTER_SECS" "$TIMEOUT_SECS" \
     cargo run -p "$pkg" --quiet >"$log_file" 2>&1 || code=$?
+  elapsed_ms=$(($(date +%s%3N) - start_ms))
+  if [ "$code" -eq 0 ] && [ "$elapsed_ms" -lt "$min_run_ms" ]; then
+    echo "FAIL (${elapsed_ms} ms, expected at least ${min_run_ms} ms)"
+    return 1
+  fi
   case "$code" in
     0) echo "OK" ;;
     124) echo "TIMEOUT (${TIMEOUT_SECS}s)" ;;
@@ -196,3 +208,17 @@ for bench_row in physics:min physics:default physics:sparse-min physics:sparse \
     TUNGSTEN_BENCH="$bench" TUNGSTEN_BENCH_PRESET="$preset" "${timing[@]}"
 done
 end_section "Benchmarks passed" "Benchmark failures" 15
+
+# Frame cap: 20 frames at display.frame_rate_cap = 20 must take at least 90%
+# of frames / cap (0.9 s). Uncapped, the same run takes about 0.5 s, so a cap
+# that stops limiting the frame rate fails the row. Last, so a slow machine
+# cannot hide the rows above.
+cap_pkg="example-03-scene-state"
+cap_frames=20
+cap_fps=20
+begin_section "Frame-cap row (pkg: $cap_pkg)"
+min_run_ms=$((cap_frames * 900 / cap_fps))
+row "frames=${cap_frames} frame_rate_cap=${cap_fps}" "$log_dir/${cap_pkg}-frame-cap.log" "$cap_pkg" \
+  TUNGSTEN_SMOKE_FRAMES="$cap_frames" TUNGSTEN_DISPLAY_FRAME_RATE_CAP="$cap_fps"
+min_run_ms=0
+end_section "Frame cap passed" "Frame-cap failures" 1

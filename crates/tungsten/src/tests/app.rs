@@ -1,7 +1,8 @@
 use super::{
-    App, format_perf_physics_line, format_perf_systems_line, resolve_startup_display,
-    runtime_display_mode,
+    App, RedrawSchedule, format_perf_physics_line, format_perf_systems_line, frame_interval_ms,
+    redraw_schedule, resolve_startup_display, runtime_display_mode,
 };
+use std::time::{Duration, Instant};
 use tungsten_core::{
     CollisionEvent, Config, DisplayMode, DisplayState, EventQueue, ShakeEvent, SquashEvent,
 };
@@ -100,6 +101,33 @@ fn runtime_display_mode_downgrades_exclusive_fullscreen() {
         runtime_display_mode(DisplayMode::Windowed),
         DisplayMode::Windowed
     );
+}
+
+#[test]
+fn capped_frame_defers_its_redraw_to_the_frame_budget() {
+    let frame_start = Instant::now();
+    let budget = Duration::from_millis(50);
+    assert_eq!(
+        redraw_schedule(Some(budget), frame_start),
+        RedrawSchedule::At(frame_start + budget)
+    );
+}
+
+#[test]
+fn uncapped_frame_redraws_immediately() {
+    assert_eq!(
+        redraw_schedule(None, Instant::now()),
+        RedrawSchedule::Immediate
+    );
+}
+
+#[test]
+fn frame_interval_spans_two_frame_starts() {
+    let first = Instant::now();
+    let second = first + Duration::from_micros(16_670);
+    assert_eq!(frame_interval_ms(None, first), None);
+    let interval = frame_interval_ms(Some(first), second).unwrap();
+    assert!((interval - 16.67).abs() < 1e-3, "interval {interval}");
 }
 
 #[test]

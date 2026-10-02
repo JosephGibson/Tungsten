@@ -4,7 +4,7 @@ status: draft
 goal: fix confirmed bugs with regression tests, make behavior-preserving cleanups across all crates and examples, move open review findings into a live `docs/known-issues.md`, archive finished plans and the 2026-09-25 review, and cut redundant or stale documentation.
 non-goals: new features; fixes for design-level findings (the four open P2s, plus the new material-UBO P2 below); public API changes beyond what a bug fix needs; new `D-NNN` entries; edits to existing `DECISIONS.md` entries or released `CHANGELOG.md` sections (one exception, decision D1); Git commits (the owner handles Git).
 files to touch: see "Files to touch" below.
-ordered steps: 0 baseline (done); 1 frame-cap fix; 2 playground cycle fix; 3 core cleanups; 4 render cleanups; 5 umbrella cleanups; 6 example cleanups; 7 script cleanups; 8 known-issues and archive moves; 9 doc trims; 10 final checks and report.
+ordered steps: 0 baseline (done); 1 frame-cap fix (done 2026-10-01); 2 playground cycle fix; 3 core cleanups; 4 render cleanups; 5 umbrella cleanups; 6 example cleanups; 7 script cleanups; 8 known-issues and archive moves; 9 doc trims; 10 final checks and report.
 done-when: `just check`, `just repo-check`, `just ctx`, `just smoke` and `just script-test` pass; no `done`/`abandoned`/`superseded` plan remains in `docs/plans/` outside `archive/`; `rg -n 'repo-review-2026-09-25' --glob '!docs/plans/archive/**'` shows only links to `docs/plans/archive/repo-review-2026-09-25.md`.
 
 ## Context digest
@@ -15,6 +15,7 @@ done-when: `just check`, `just repo-check`, `just ctx`, `just smoke` and `just s
 - All four open P2s and every P3 from the 2026-09-25 review are still present in source. Every carried-forward item still applies. One exception: `player.png` is now registered as `ex10_player`, so it is no longer a deletion candidate.
 - Git mutations are human-only. Moves use plain `mv`, and the owner stages the result.
 - Since planning, 0.32 (benchmark suite v2, `D-078`) retired `example-02-sprite-stress` (the `render-features` scene included) and `scripts/perf-capture.sh`, which closes the review's `perf-capture.sh` follow-up, and rewrote `docs/perf/profiling-workflow.md` and the `tungsten-perf` skill. Step 9 and the findings below reflect that.
+- Step 1 (bug B1 with the D5 smoke row) was done on 2026-10-01 on branch `0.34`, ahead of the rest of this plan, and is recorded in `CHANGELOG.md` under `[Unreleased]`. Start at step 2.
 
 ## Decisions for approval
 
@@ -24,7 +25,7 @@ Defaults apply unless you say otherwise.
 - **D2: platformer Rust cleanup.** `platformer-polish-pass.md` steps 14–18 already cover splitting `extract`/`systems`/`gameplay`/`setup` and its unwrap and dead-code pass (`Vec2X3`, `CycleMode::None`, the stale `OrbitLight` doc, the post-query `get_mut().unwrap()`s). Those steps still await your approval, and these modules are still changing. Default: leave `examples/01_platformer/src/**` to that plan, except `burning.rs`, which the polish plan excludes. No confirmed bug was found there.
 - **D3: `examples/01_platformer/tools/README.md`.** Polish step 19 owns its restructure. Default: correct only claims that no longer match code, with no reorganization.
 - **D4: `docs/plans/phase4.md`.** M25–M30 are shipped. Their sections (about 230 lines) repeat the archived milestone plans and `D-057`–`D-073`. Default: collapse them into one table (milestone, release, archived plan, decisions). Keep M31–M33, the seam constraints, and the resolved decisions and sources that still govern M31–M33. Header and done-when stay unchanged.
-- **D5: frame-cap regression row.** Default: add a `just smoke` row. The capped run of `example-03-scene-state` must take at least 90% of `frames / cap` (20 frames at 20 fps adds about 1 s). This is the only GPU-level before/after proof for bug B1.
+- **D5: frame-cap regression row.** Default: add a `just smoke` row. The capped run of `example-03-scene-state` must take at least 90% of `frames / cap` (20 frames at 20 fps adds about 1 s). This is the only GPU-level before/after proof for bug B1. Applied with step 1 on 2026-10-01 (the default; no objection was recorded).
 
 ## Findings
 
@@ -32,7 +33,7 @@ Defaults apply unless you say otherwise.
 
 | ID | Location | Defect and evidence | Regression test (written first, seen failing) |
 | --- | --- | --- | --- |
-| B1 | `crates/tungsten/src/app.rs` (`RedrawRequested`, `stage_pacing`) | `display.frame_rate_cap` never limits the frame rate. Every frame calls `window.request_redraw()` before setting `ControlFlow::WaitUntil`, and the pending redraw wakes the loop immediately. Measured: 120 smoke frames of example 03 take about 0.30 s whether the cap is 0, 30 or 10 (a cap of 10 needs at least 12 s). | CPU: extract the redraw schedule into a pure helper. A unit test asserts that a capped frame defers its redraw to `frame_start + budget` and an uncapped frame redraws immediately; it fails against the helper extracted unchanged, then the fix follows (`about_to_wait` requests the deferred redraw). GPU: the D5 smoke row, run against the pre-fix binary to record the failure. |
+| B1 | `crates/tungsten/src/app.rs` (`RedrawRequested`, `stage_pacing`) | **Fixed 2026-10-01 (step 1).** `display.frame_rate_cap` never limits the frame rate. Every frame calls `window.request_redraw()` before setting `ControlFlow::WaitUntil`, and the pending redraw wakes the loop immediately. Measured: 120 smoke frames of example 03 take about 0.30 s whether the cap is 0, 30 or 10 (a cap of 10 needs at least 12 s). | CPU: extract the redraw schedule into a pure helper. A unit test asserts that a capped frame defers its redraw to `frame_start + budget` and an uncapped frame redraws immediately; it fails against the helper extracted unchanged, then the fix follows (`about_to_wait` requests the deferred redraw). GPU: the D5 smoke row, run against the pre-fix binary to record the failure. |
 | B2 | `examples/04_shader_playground/src/main.rs` `cycle_input_system` | Starting from the empty stack (`CycleCursor::index == None`), `post_next` computes `(0 + 1) % len`. The first press (and the first press after a clear) skips roster entry 0 (Tonemap) and shows "vignette (2/17)". | New `examples/04_shader_playground/src/tests/main.rs`: a world with `post_next` bound and `KeyN` pressed runs the real system and asserts the stack holds Tonemap at index 0. It fails before the fix; `prev` from empty keeps selecting the last entry. |
 
 ### Cleanups (behavior-preserving)
@@ -90,7 +91,7 @@ Carried over unchanged, and all still present: the four P2s (cross-root manifest
 
 ## Files to touch
 
-- Bugs: `crates/tungsten/src/app.rs`, `crates/tungsten/src/tests/app.rs`, `scripts/smoke-examples.sh` (plus `scripts/test-smoke-examples.sh` if it asserts the row list), `examples/04_shader_playground/src/main.rs`, new `examples/04_shader_playground/src/tests/main.rs`.
+- Bugs: `examples/04_shader_playground/src/main.rs`, new `examples/04_shader_playground/src/tests/main.rs`. Done with step 1: `crates/tungsten/src/app.rs`, `crates/tungsten/src/tests/app.rs`, `scripts/smoke-examples.sh`, `scripts/test-smoke-examples.sh`.
 - Cleanups: `crates/tungsten-core/src/ecs/{archetype,storage}.rs`, `crates/tungsten-core/src/tests/ecs/archetype.rs`, the five physics comment files, `crates/tungsten-render/src/{renderer,sprite}.rs`, `crates/tungsten/Cargo.toml`, `Cargo.lock`, `crates/tungsten/src/{asset_loader,debug_hud,systems_overlay,inspector,sprite_extract}.rs`, `examples/01_platformer/src/burning.rs`, `scripts/check-repo.py`, `scripts/test-check-repo.py`.
 - Docs:
   - Known issues and archive: new `docs/known-issues.md`; move `docs/repo-review-2026-09-25.md` into `docs/plans/archive/`.
@@ -103,13 +104,19 @@ Carried over unchanged, and all still present: the four P2s (cross-root manifest
 ### 0. Baseline (done during planning)
 Results are in the digest. Logs are under the session scratchpad (`baseline-{check,repo,ctx,smoke}.log`).
 
-### 1. B1 frame cap
+### 1. B1 frame cap (done 2026-10-01)
 Extract the pacing decision unchanged and add the unit test; record it failing. Then apply the fix:
 - capped frames stop calling `request_redraw` at frame end;
 - `about_to_wait` requests the redraw once the deadline passes, and otherwise keeps `WaitUntil`;
 - uncapped behavior is unchanged.
 
 Add the D5 smoke row and run it once against the pre-fix build to record the failure. Checks: `cargo test -p tungsten`, the smoke row, and a manual timing rerun at caps 0, 30 and 10.
+
+Result (logs in `perf-runs/20261001-gpu-pass-evidence/fault-fixes/`, machine-local):
+- `redraw_schedule` in `crates/tungsten/src/app.rs`; `capped_frame_defers_its_redraw_to_the_frame_budget` failed against the helper extracted unchanged (`Immediate` where `At(frame_start + budget)` was expected) and passes after the fix.
+- Smoke row `frames=20 frame_rate_cap=20`, the last section of `scripts/smoke-examples.sh`: 503 ms before the fix (fails the 900 ms minimum), passes after it; `scripts/test-smoke-examples.sh` covers a run that ignores the cap.
+- 120 frames of example 03 (debug build): 0.56 s uncapped, 4.26 s at a cap of 30, 12.18 s at 10.
+- Left open: the rate reached is 0.5–1.3% under the cap (59.7 FPS at 60, 142.1 at 144), because each deadline counts from the frame's own start; and the HUD `fps` row (the P3 below) now overstates the rate under a cap. Both go to `docs/known-issues.md` in step 8.
 
 ### 2. B2 playground cycle
 Add the test and record it failing, then fix the stepping: next from `None` goes to 0 and prev from `None` goes to `len - 1`. Check: `cargo test -p example-04-shader-playground`.
@@ -129,7 +136,7 @@ Make the `check-repo.py` and `test-check-repo.py` changes, then run `just script
 3. Move the review to the archive. It has no Markdown links to rebase.
 4. Update `LLM_INDEX.md`: replace the review row with `docs/known-issues.md`, and keep the file under 8 KiB.
 5. Apply D1 to `CHANGELOG.md`.
-6. Record the session under `[Unreleased]`: Fixed B1 and B2; Changed for the cleanups, docs and the known-issues move.
+6. Record the session under `[Unreleased]`: Fixed B2 (B1 is already there); Changed for the cleanups, docs and the known-issues move.
 
 `phase4.md` stays active: M31–M33 are open. `platformer-polish-pass.md` stays active: its done-when needs the step-0 snapshot, and steps 13–20 still await your approval.
 

@@ -1,4 +1,4 @@
-use super::PostStackRenderer;
+use super::{PostStackRenderer, source_slot};
 use crate::passes::TargetId;
 
 #[test]
@@ -67,5 +67,21 @@ fn plan_seventeen_passes_stays_valid_all_the_way() {
     assert_eq!(
         PostStackRenderer::final_target(17),
         Some(TargetId::PostPing)
+    );
+}
+
+#[test]
+fn every_source_of_the_ladder_has_a_cache_slot_of_its_own() {
+    // The three targets a stock pass can sample, as `plan_targets` names them.
+    let mut slots: Vec<usize> = PostStackRenderer::plan_targets(17)
+        .iter()
+        .map(|&(src, _)| source_slot(src))
+        .collect();
+    slots.sort_unstable();
+    slots.dedup();
+    assert_eq!(slots, vec![0, 1, 2]);
+    assert_ne!(
+        source_slot(TargetId::PostPing),
+        source_slot(TargetId::PostPong)
     );
 }

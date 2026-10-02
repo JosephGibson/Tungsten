@@ -20,6 +20,7 @@ use crate::physics_debug::{
     PhysicsDebugOverlay, physics_debug_emit_system, physics_debug_toggle_system,
 };
 use crate::post_aa::{PendingPostAa, PostAaState, sync_post_aa_state, take_pending_post_aa};
+use crate::sprite_extract::ExtractScratch;
 use crate::state::{StateStack, state_dispatcher_system};
 use crate::systems_overlay::{
     SystemTimingOverlay, compose_systems_overlay_text_section, systems_overlay_toggle_system,
@@ -101,6 +102,10 @@ pub struct App {
     event_flushers: Vec<EventFlusher>,
     registered_event_types: HashSet<TypeId>,
     frame_budget: Option<Duration>,
+    // Capped frames: when `about_to_wait` requests the next redraw.
+    redraw_deadline: Option<Instant>,
+    // Start of the previous redraw; the `interval` telemetry measures from it.
+    prev_frame_start: Option<Instant>,
     capture_config: Option<CaptureConfig>,
     frames_rendered: u64,
     fatal_error: Option<anyhow::Error>,
@@ -110,6 +115,9 @@ pub struct App {
 struct CaptureConfig {
     target_frame: u64,
     path: PathBuf,
+    /// `TUNGSTEN_CAPTURE_DIRECT=1`: capture what the direct present path
+    /// draws, not the blit path's source (`D-087`).
+    direct: bool,
     captured: bool,
 }
 
@@ -165,6 +173,7 @@ impl App {
         world.insert_resource(StateStack::new());
         world.insert_resource(HudActiveState::default());
         world.insert_resource(RenderCounts::default());
+        world.insert_resource(ExtractScratch::default());
         world.insert_resource(DebugDraw::new());
         world.insert_resource(PhysicsDebugOverlay::default());
         world.insert_resource(SystemTimingOverlay::default());
@@ -236,6 +245,8 @@ impl App {
             event_flushers,
             registered_event_types,
             frame_budget: frame_budget_for(resolved_display.frame_rate_cap),
+            redraw_deadline: None,
+            prev_frame_start: None,
             capture_config: parse_capture_config(),
             frames_rendered: 0,
             fatal_error: None,
@@ -659,6 +670,7 @@ struct FrameStageTimings {
     render_submit_present_ms: f32,
     audio_ms: f32,
     total_ms: f32,
+    interval_ms: Option<f32>,
     system_timings: Vec<(String, f32)>,
 }
 
@@ -851,17 +863,21 @@ impl App {
             if let Some(cfg) = self.capture_config.as_mut()
                 && !cfg.captured
                 && self.frames_rendered + 1 == cfg.target_frame
-                && let Err(e) = renderer.capture_frame(&cfg.path)
+                && let Err(e) = if cfg.direct {
+                    renderer.capture_frame_direct(&cfg.path)
+                } else {
+                    renderer.capture_frame(&cfg.path)
+                }
             {
                 log::warn!("capture_frame({}) failed to arm: {e}", cfg.path.display());
             }
 
             // M26: PostStack is a world resource; default is empty.
+            let empty_stack = tungsten_core::post::PostStack::default();
             let post_stack = self
                 .world
                 .get_resource::<tungsten_core::post::PostStack>()
-                .cloned()
-                .unwrap_or_default();
+                .unwrap_or(&empty_stack);
 
             // M29: upload the per-frame light UBO before any draw records it.
             renderer.update_lights(&extract.light_ubo);
@@ -874,7 +890,7 @@ impl App {
                     &extract.debug_quads,
                     &extract.debug_lines,
                     &extract.text,
-                    &post_stack,
+                    post_stack,
                 )
             } else {
                 renderer.render_frame_full(
@@ -884,7 +900,7 @@ impl App {
                     &extract.debug_quads,
                     &extract.debug_lines,
                     &extract.text,
-                    &post_stack,
+                    post_stack,
                 )
             };
             if let Err(e) = result {
@@ -915,6 +931,15 @@ impl App {
         out
     }
 
+    /// Hands the drawn frame's sprite batches back to the extract scratch:
+    /// the next frame's batches reuse their instance vectors.
+    #[inline(always)]
+    fn stage_recycle(&mut self, extract: &mut FrameExtract) {
+        if let Some(scratch) = self.world.get_resource::<ExtractScratch>() {
+            scratch.recycle(std::mem::take(&mut extract.sprites));
+        }
+    }
+
     #[inline(always)]
     fn stage_audio(&mut self) -> f32 {
         let audio_start = Instant::now();
@@ -941,16 +966,27 @@ impl App {
             ft.hot_reload_ms = t.hot_reload_ms;
             ft.flush_ms = t.flush_ms;
             ft.total_ms = t.total_ms;
+            ft.interval_ms = t.interval_ms;
             ft.system_timings = t.system_timings;
         }
     }
 
     #[inline(always)]
-    fn stage_pacing(&self, event_loop: &ActiveEventLoop, frame_start: Instant) {
-        if let Some(budget) = self.frame_budget {
-            event_loop.set_control_flow(ControlFlow::WaitUntil(frame_start + budget));
-        } else {
-            event_loop.set_control_flow(ControlFlow::Wait);
+    fn stage_pacing(&mut self, event_loop: &ActiveEventLoop, frame_start: Instant) {
+        match redraw_schedule(self.frame_budget, frame_start) {
+            RedrawSchedule::Immediate => {
+                self.redraw_deadline = None;
+                if let Some(window) = &self.window {
+                    window.request_redraw();
+                }
+                event_loop.set_control_flow(ControlFlow::Wait);
+            }
+            // A redraw requested here would wake the loop at once and the
+            // deadline would never be waited for; `about_to_wait` requests it.
+            RedrawSchedule::At(deadline) => {
+                self.redraw_deadline = Some(deadline);
+                event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));
+            }
         }
     }
 
@@ -964,6 +1000,28 @@ impl App {
             }
         }
     }
+}
+
+/// When the frame loop asks for its next redraw once a frame has ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RedrawSchedule {
+    /// Request it at frame end.
+    Immediate,
+    /// Leave it to `about_to_wait`, which requests it once this instant has passed.
+    At(Instant),
+}
+
+fn redraw_schedule(frame_budget: Option<Duration>, frame_start: Instant) -> RedrawSchedule {
+    match frame_budget {
+        Some(budget) => RedrawSchedule::At(frame_start + budget),
+        None => RedrawSchedule::Immediate,
+    }
+}
+
+/// Milliseconds from the previous frame's start to this frame's start;
+/// `None` on the first frame.
+fn frame_interval_ms(prev_frame_start: Option<Instant>, frame_start: Instant) -> Option<f32> {
+    prev_frame_start.map(|prev| frame_start.duration_since(prev).as_secs_f64() as f32 * 1000.0)
 }
 
 #[inline(always)]
@@ -1006,8 +1064,10 @@ fn drain_debug_draw(world: &mut World) -> (Vec<QuadInstance>, Vec<DebugLineInsta
 }
 
 #[inline(always)]
+#[allow(clippy::too_many_arguments)] // One value per field of the line.
 fn log_perf_line(
     total_ms: f32,
+    interval_ms: Option<f32>,
     update_ms: f32,
     flush_ms: f32,
     extract_ms: f32,
@@ -1018,9 +1078,12 @@ fn log_perf_line(
     let gpu_for_log = render_out
         .gpu_frame_ms
         .map_or_else(|| "n/a".to_string(), |ms| format!("{ms:.2}ms"));
+    // The first frame has no previous frame start.
+    let interval_for_log = interval_ms.map_or_else(|| "n/a".to_string(), |ms| format!("{ms:.2}ms"));
     log::debug!(
-        "frame: total={:.2}ms update={:.2}ms flush={:.2}ms extract={:.2}ms render={:.2}ms render_acquire={:.2}ms render_encode={:.2}ms render_submit_present={:.2}ms gpu={} audio={:.2}ms hot_reload={:.2}ms",
+        "frame: total={:.2}ms interval={} update={:.2}ms flush={:.2}ms extract={:.2}ms render={:.2}ms render_acquire={:.2}ms render_encode={:.2}ms render_submit_present={:.2}ms gpu={} audio={:.2}ms hot_reload={:.2}ms",
         total_ms,
+        interval_for_log,
         update_ms,
         flush_ms,
         extract_ms,
@@ -1129,9 +1192,11 @@ fn parse_capture_config() -> Option<CaptureConfig> {
     }
     let path = std::env::var("TUNGSTEN_CAPTURE_PATH")
         .map_or_else(|_| PathBuf::from("actual.png"), PathBuf::from);
+    let direct = std::env::var("TUNGSTEN_CAPTURE_DIRECT").is_ok_and(|value| value == "1");
     Some(CaptureConfig {
         target_frame,
         path,
+        direct,
         captured: false,
     })
 }
@@ -1405,6 +1470,8 @@ impl ApplicationHandler for App {
             }
             WindowEvent::RedrawRequested => {
                 let frame_start = Instant::now();
+                let interval_ms =
+                    frame_interval_ms(self.prev_frame_start.replace(frame_start), frame_start);
                 self.apply_pending_display_request();
 
                 // HUD smoothing uses previous frame; compose still occurs before render.
@@ -1428,10 +1495,11 @@ impl ApplicationHandler for App {
                 let hot_reload_ms = self.stage_hot_reload();
                 self.apply_pending_post_aa_request();
 
-                let extract_out = self.stage_extract(prev_total_ms);
+                let mut extract_out = self.stage_extract(prev_total_ms);
                 let extract_ms = extract_out.extract_ms;
 
                 let render_out = self.stage_render(&extract_out);
+                self.stage_recycle(&mut extract_out);
 
                 let audio_ms = self.stage_audio();
 
@@ -1451,12 +1519,14 @@ impl ApplicationHandler for App {
                     render_submit_present_ms: render_out.render_submit_present_ms,
                     audio_ms,
                     total_ms,
+                    interval_ms,
                     system_timings,
                 });
 
                 if std::env::var("TUNGSTEN_PERF_LOG").is_ok() {
                     log_perf_line(
                         total_ms,
+                        interval_ms,
                         update_ms,
                         flush_ms,
                         extract_ms,
@@ -1489,15 +1559,27 @@ impl ApplicationHandler for App {
                     }
                 }
 
-                if let Some(window) = &self.window {
-                    window.request_redraw();
-                }
-
                 self.stage_pacing(event_loop, frame_start);
                 self.stage_smoke_exit(event_loop);
             }
             _ => {}
         }
+    }
+
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        let Some(deadline) = self.redraw_deadline else {
+            return;
+        };
+        // Woken early by another event: `WaitUntil` from `stage_pacing` still stands.
+        if Instant::now() < deadline {
+            return;
+        }
+        self.redraw_deadline = None;
+        if let Some(window) = &self.window {
+            window.request_redraw();
+        }
+        // The pending redraw wakes the loop; the next frame sets its own pacing.
+        event_loop.set_control_flow(ControlFlow::Wait);
     }
 }
 
