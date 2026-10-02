@@ -2,7 +2,7 @@
 
 ## Status
 
-Workspace `v0.34.0`; GPU and render-path performance pass (`D-085`–`D-087`): bounded text layouts, reused GPU/extract buffers, and direct presentation with the blit retained for screenshots. The execution plan is archived at `docs/plans/archive/gpu-perf-pass.md`; unapproved experiments remain proposals in [benchmarks.md](docs/perf/benchmarks.md#open-proposals).
+Workspace `v0.35.0`; a physics and manifest correctness pass (`D-088`–`D-092`, plan archived at `docs/plans/archive/p2-correctness-pass.md`): the frame dt is capped at 0.1 s, manifest roots validate and reload as one merged graph, stock post effects keep per-slot parameters and hot-reload their shaders, and a physics arrival pass stops a pushed body at the gate behind it, costing the two physics benchmark rows 5–9% of `physics_step`. It sits on 0.34's GPU and render-path performance pass (`D-085`–`D-087`): bounded text layouts, reused GPU/extract buffers, and direct presentation with the blit retained for screenshots (plan archived at `docs/plans/archive/gpu-perf-pass.md`); unapproved experiments remain proposals in [benchmarks.md](docs/perf/benchmarks.md#open-proposals).
 
 Phase 3 is complete. Phase 4 M25–M30 shipped; [the roadmap](docs/plans/phase4.md) retains M31 (mesh particles and screen transitions) as its final milestone. This document describes current architecture. Use [CHANGELOG.md](CHANGELOG.md) for dated release history, [DECISION_INDEX.md](docs/DECISION_INDEX.md) for rationale, and [LLM_INDEX.md](docs/LLM_INDEX.md) for source paths.
 
