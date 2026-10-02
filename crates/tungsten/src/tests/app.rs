@@ -1,7 +1,9 @@
 use super::{
     App, RedrawSchedule, format_perf_physics_line, format_perf_systems_line, frame_dt_secs,
-    frame_interval_ms, redraw_schedule, resolve_startup_display, runtime_display_mode,
+    frame_interval_ms, is_reload_root, manifest_reload_roots, redraw_schedule,
+    resolve_startup_display, runtime_display_mode,
 };
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use tungsten_core::{
     CollisionEvent, Config, DisplayMode, DisplayState, EventQueue, ShakeEvent, SquashEvent,
@@ -151,6 +153,60 @@ fn smoke_frame_dt_is_pinned_whatever_elapsed() {
     ] {
         assert_eq!(frame_dt_secs(elapsed, true), 1.0 / 60.0);
     }
+}
+
+#[test]
+fn reload_roots_are_the_manifest_roots_when_the_app_declares_any() {
+    let roots = vec![
+        PathBuf::from("assets/manifest.json"),
+        PathBuf::from("examples/01_platformer/assets/manifest.json"),
+    ];
+    // The path given to `enable_hot_reload` does not narrow the set.
+    assert_eq!(manifest_reload_roots(&roots, Some(&roots[1])), roots);
+    assert_eq!(manifest_reload_roots(&roots, None), roots);
+}
+
+#[test]
+fn reload_roots_fall_back_to_the_hot_reload_manifest() {
+    let manifest = Path::new("assets/manifest.json");
+    assert_eq!(
+        manifest_reload_roots(&[], Some(manifest)),
+        vec![manifest.to_path_buf()]
+    );
+    assert!(manifest_reload_roots(&[], None).is_empty());
+}
+
+#[test]
+fn an_edit_to_any_root_manifest_routes_to_the_manifest_reload() {
+    let dir = std::env::temp_dir().join(format!("tungsten_reload_roots_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    for sub in ["shared", "local"] {
+        std::fs::create_dir_all(dir.join(sub)).unwrap();
+        std::fs::write(dir.join(sub).join("manifest.json"), "{}").unwrap();
+    }
+    std::fs::write(dir.join("local").join("walk.json"), "{}").unwrap();
+
+    // Roots as an app writes them: not canonical.
+    let roots = vec![
+        dir.join("shared").join("manifest.json"),
+        dir.join("local")
+            .join("..")
+            .join("local")
+            .join("manifest.json"),
+    ];
+    let canonical = |path: PathBuf| path.canonicalize().unwrap();
+
+    for sub in ["shared", "local"] {
+        assert!(
+            is_reload_root(&canonical(dir.join(sub).join("manifest.json")), &roots),
+            "an edit to the {sub} root must reload the manifest"
+        );
+    }
+    assert!(!is_reload_root(
+        &canonical(dir.join("local").join("walk.json")),
+        &roots
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]

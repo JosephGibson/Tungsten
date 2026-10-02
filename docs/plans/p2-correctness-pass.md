@@ -9,7 +9,7 @@ non-goals:
   - "Public API changes beyond what a fix needs."
   - "A release cut."
 files to touch:
-  - "crates/tungsten/src/app.rs, crates/tungsten/src/tests/app.rs, crates/tungsten/src/asset_loader.rs"
+  - "crates/tungsten/src/app.rs, crates/tungsten/src/tests/app.rs, crates/tungsten/src/asset_loader.rs, crates/tungsten/src/hot_reload.rs, crates/tungsten/src/tests/hot_reload.rs"
   - "crates/tungsten-core/src/assets/manifest.rs, crates/tungsten-core/tests/composition.rs"
   - "crates/tungsten-core/src/physics/step.rs, crates/tungsten-core/src/tests/physics/step.rs, crates/tungsten-core/tests/physics_tunneling.rs"
   - "crates/tungsten-render/src/post/ (mod.rs, fullscreen.rs, the 17 effect files), crates/tungsten-render/src/renderer.rs, crates/tungsten-render/src/tests/post.rs"
@@ -139,6 +139,7 @@ Sleeping piles are unaffected at every stall.
 - Umbrella: `reload_manifest(roots: &[PathBuf], …)` rebuilds the merged graph with `load_and_merge_many`, diffs that against the registries and stores it as `LoadedManifest`. A failure logs and keeps the last good state, as a parse failure does today.
 - `App`: a free function gives the reload set, `manifest_roots` when non-empty, else the path given to `enable_hot_reload`. A second one tells whether a changed path is in that set. `process_hot_reload` reloads at most once per drained batch.
 - `App::enable_hot_reload` records its arguments; `App::run` builds the watcher with the input map and every root manifest as extra files.
+- `HotReloadWatcher::new` skips an extra file that a recursive root already covers, so a root manifest inside a watched asset directory gets no second watch on its parent. Added during implementation.
 
 **Tests.**
 

@@ -63,6 +63,11 @@ impl HotReloadWatcher {
         let mut allowed_extra_files = HashSet::new();
         let mut watched_parents: HashSet<PathBuf> = HashSet::new();
         for file in extra_files {
+            // A recursive root already delivers this file. A second watch on
+            // its parent would register that directory again, non-recursive.
+            if under_recursive_root(&canonical_or_clone(file), &recursive_roots) {
+                continue;
+            }
             let parent = match file.parent() {
                 Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
                 _ => PathBuf::from("."),
@@ -158,6 +163,11 @@ fn accept_path(
     if allowed_extra_files.contains(&canon) {
         return true;
     }
+    under_recursive_root(&canon, recursive_roots)
+}
+
+/// True when the canonical path `canon` lies under one of the recursive roots.
+fn under_recursive_root(canon: &Path, recursive_roots: &[PathBuf]) -> bool {
     recursive_roots.iter().any(|root| canon.starts_with(root))
 }
 

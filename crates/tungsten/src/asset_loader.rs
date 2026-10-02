@@ -1397,18 +1397,24 @@ pub fn reload_action_map(path: &Path, world: &mut World) -> Result<(), ActionMap
 }
 
 /// Hot-reload manifest additions; removals stay stale and last-known-good wins.
+///
+/// `roots` is the whole composition (`D-052`), whichever root changed: the
+/// registries hold the merged graph, so the reload rebuilds and diffs the
+/// merged graph too (`D-089`).
 pub fn reload_manifest(
-    manifest_path: &Path,
+    roots: &[PathBuf],
     world: &mut World,
     renderer: &mut Renderer,
 ) -> anyhow::Result<()> {
-    let new_manifest = match ResolvedManifest::load(manifest_path) {
+    let root_list = roots
+        .iter()
+        .map(|root| format!("'{}'", root.display()))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let new_manifest = match ResolvedManifest::load_and_merge_many(roots) {
         Ok(m) => m,
         Err(e) => {
-            log::error!(
-                "Hot reload manifest: failed to parse '{}': {e}",
-                manifest_path.display()
-            );
+            log::error!("Hot reload manifest: failed to load {root_list}: {e}");
             return Ok(());
         }
     };
@@ -1708,7 +1714,7 @@ pub fn reload_manifest(
         }
     }
 
-    log::info!("Manifest reloaded from '{}'", manifest_path.display());
+    log::info!("Manifest reloaded from {root_list}");
     Ok(())
 }
 
