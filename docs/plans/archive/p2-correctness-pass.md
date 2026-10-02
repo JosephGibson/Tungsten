@@ -1,5 +1,5 @@
 ---
-status: in progress
+status: done
 goal: "Close the four open P2 findings of docs/repo-review-2026-09-25.md and cap the frame dt, each with a regression test that fails before its fix, then move the remaining findings to a maintained document."
 non-goals:
   - "The P3 findings of the review and its carried-forward items (they move to docs/known-issues.md unchanged)."
@@ -331,7 +331,7 @@ Recorded 2026-10-02. The pass is in `step.rs` as designed, with three changes fo
 - **`narrow_phase` is `#[inline(always)]`.** With the pass as a second caller, the compiler turned the pair loop's narrow phase into a call. That alone cost `physics` about 5.6% of `physics_step`.
 - **A bounding-box reject** in the pass's candidate loop: a candidate farther away than the pair's margin is dropped before the square root and the narrow phase.
 
-**The capture reads `regressed` for both physics rows, so the pass is held.** An owned regression is the owner's to accept (`D-084`, `D-085`, `D-087`). Until then the pass stays out of the tree: the working tree and patches 01 to 05 are without it, patch 06 carries it and patch 07 its documents. Suite `perf-runs/20261002T053205Z-suite` against the step-4 suite `perf-runs/20261002T044109Z-suite`, encoder absent, 0 sightings:
+**The capture reads `regressed` for both physics rows.** An owned regression is the owner's to accept (`D-084`, `D-085`, `D-087`), so the pass was held out of the tree as patches 06 and 07 until the owner accepted its cost. `D-092` records the acceptance and the justification below. Suite `perf-runs/20261002T053205Z-suite` against the step-4 suite `perf-runs/20261002T044109Z-suite`, encoder absent, 0 sightings:
 
 | Row | Owned metric | Step 4 | Step 5 | Change | Verdict |
 | --- | --- | --- | --- | --- | --- |
@@ -345,18 +345,18 @@ Recorded 2026-10-02. The pass is in `step.rs` as designed, with three changes fo
 | `ecs` | `system.bounds_wrap` p50 | 0.26 ms | 0.31 ms | +20.9% | regressed, placement |
 | `churn`, `gpu`, `gpu-throughput`, `particles` | | | | | 0 regressed, 0 improved |
 
-Justification, for the owner to accept or reject:
+Justification:
 
 - **The cost is the pass's own work, not the bookkeeping.** The placebo, this tree with the threshold set to infinity, has the candidate's layout and never runs the pass. Against the step-4 suite it reads `physics` −0.7% and `physics-sparse` −0.9%, both `unchanged`.
 - **Both rows are collision storms.** In a 420-frame run of `physics` (8,000 balls) the pass lists about 195 bodies per substep, 2.4% of them, with about 22 grid candidates and 2.7 pairs each. `physics-sparse` lists about 255 per substep with 6 candidates each. `integrated` lists about 5. A settled pile lists none.
 - **Profile** (`perf record`, frame pointers, against the baseline build): the pass is about 7.5% of the samples in `physics` and 6% in `physics-sparse`, roughly two thirds of it in the grid queries and the candidate loop.
 - **Captures on the way.** As first implemented: +12.5% and +9.6%. With the flag in the integration loop: +14.6% and +8.7%, which showed the scan was not the cost. With the narrow phase inlined again: the table above.
 
-Options not taken, each the owner's call:
+The owner had three options and took the first:
 
 1. Accept the cost. Patches 06 and 07 implement this: the pass, then `D-092` with the cost as its recorded justification, the residuals of S5.d, the new digests and this plan's archival.
 2. Take a listed body's pairs from the substep's contacts and query the grid only for a body that gained speed. Estimated from the profile at about +6% and +2%, so `physics` would still read `regressed`. It narrows the completeness argument for a body that did not gain speed to static and sleeping neighbours, and needs the matrix re-run and a new sign-off.
-3. Leave the P2 open. Nothing more to do: patches 01 to 05 are that state, and `docs/known-issues.md` carries the finding.
+3. Leave the P2 open: patches 01 to 05 alone, with the finding carried in `docs/known-issues.md`.
 
 The `ecs` rows are placement: `nm -C --defined-only` shows `systems::brain` and `systems::bounds_wrap` at other addresses than in the baseline build (mod 64: 48 to 16 and 0 to 32). The placebo has the candidate's addresses and reads the same two verdicts, +3.9% and +20.9%.
 
@@ -387,9 +387,9 @@ Patches with their messages and the commit script are in the session's scratchpa
 
 | Patch | Content | State |
 | --- | --- | --- |
-| `01-dt-cap` to `04-stock-shader-reload` | Steps 1 to 4 | Ready |
-| `05-docs-closeout` | Step 6 for steps 1 to 4 | Ready |
-| `06-arrival-pass` | Step 5: `step.rs`, its unit tests, the tunnelling tests | Held for the owner's decision |
+| `01-dt-cap` to `04-stock-shader-reload` | Steps 1 to 4 | Committed first |
+| `05-docs-closeout` | Step 6 for steps 1 to 4 | Committed first |
+| `06-arrival-pass` | Step 5: `step.rs`, its unit tests, the tunnelling tests | Held until the owner accepted the cost |
 | `07-arrival-pass-docs` | Step 6 for step 5, and this plan's archival | Held with 06 |
 
 `commit-p2.sh` commits 01 to 05 by default, from the index only. `commit-p2.sh 06 07` applies the held pair to the index and the working tree and commits it. This file is untracked: patch 01 carries it. The closing report lists per step: the test seen failing, the gates run with their counts, capture verdicts with paths, digests, the two manual checks, and anything skipped.
@@ -405,10 +405,9 @@ Recorded 2026-10-02 on tree `6288601`. Patches and logs are in the session scrat
 | 2 | Done, patch 02 | Both composition tests failed before the change. `just check` 860 passed, `just smoke` unchanged. Live check, scripted: an edit to `assets/manifest.json` under example 01 logged one "Manifest reloaded from" line naming both roots and no "keeping stale" line |
 | 3 | Done, patch 03 | The capture test failed before the change: 0 of 921,600 pixels differ. Reference screenshots byte-equal. `just check` 864 passed; `just smoke`, `just visual` and `just script-test` pass |
 | 4 | Done, patch 04 | The staged capture test failed before the change: 0 of 921,600 pixels differ. Reference screenshots byte-equal. `just check` 866 passed; `just smoke` and `just visual` pass. Live check, scripted: an edit to `assets/shaders/stock/vignette.wgsl` logged "shader 'vignette' reloaded" and frame 470 differed from two byte-equal control runs; the file and its mirror were restored byte-equal. Capture against the baseline: 0 regressed, 0 improved, every digest unchanged |
-| 5 | Implemented and verified, held as patch 06 for its `regressed` capture | `pushed_body_never_crosses_a_gate` failed in 246 of 1,536 cases before and `slow_push_never_crosses_a_static_wall` in 9 of 320; both read 0 after. `just check` 871 passed, 4 ignored; `just smoke` unchanged. Release: containment 0 of 3,000 escaped, determinism bit-identical, hash `0x088ec07a73c1b168`. Capture: see "Outcome" under step 5 |
-| 6 | Done for steps 1 to 4, patch 05. The rest is patch 07, held with the pass | `D-088` to `D-091` with their index rows and marker lines; `DESIGN.md`, `CHANGELOG.md`; `docs/known-issues.md` with its rows in `docs/README.md` and `docs/LLM_INDEX.md`; the review without its P2 rows, moved to the archive. `just ctx`, `just repo-check` and `git diff --check` pass. Each carried-forward item was checked against the tree: the PCM WAV and `perf-capture.sh` items are resolved and dropped; `player.png` is no longer a deletion candidate, because the platformer manifest registers it as `ex10_player`, and the stale checker entry is listed as a follow-up instead. Patch 07 holds `D-092`, the physics paragraph of `DESIGN.md`, the digests in `docs/perf/benchmarks.md`, the residuals of S5.d in place of the open finding, and this plan's `status: done` and move |
+| 5 | Done, patch 06, with a `regressed` capture the owner accepted | `pushed_body_never_crosses_a_gate` failed in 246 of 1,536 cases before and `slow_push_never_crosses_a_static_wall` in 9 of 320; both read 0 after. `just check` 871 passed, 4 ignored; `just smoke` unchanged. Release: containment 0 of 3,000 escaped, determinism bit-identical, hash `0x088ec07a73c1b168`. Capture: see "Outcome" under step 5 |
+| 6 | Done, patches 05 and 07 | `D-088` to `D-091` with their index rows and marker lines; `DESIGN.md`, `CHANGELOG.md`; `docs/known-issues.md` with its rows in `docs/README.md` and `docs/LLM_INDEX.md`; the review without its P2 rows, moved to the archive. `just ctx`, `just repo-check` and `git diff --check` pass. Each carried-forward item was checked against the tree: the PCM WAV and `perf-capture.sh` items are resolved and dropped; `player.png` is no longer a deletion candidate, because the platformer manifest registers it as `ex10_player`, and the stale checker entry is listed as a follow-up instead. Patch 07 adds `D-092`, the physics paragraph of `DESIGN.md`, the digests in `docs/perf/benchmarks.md`, the residuals of S5.d in place of the open finding, and this plan's `status: done` and move |
 
 Open items:
 
-- **The arrival pass** waits for the owner: accept its cost (commit patches 06 and 07), ask for the cheaper variant, or leave the finding open. See "Outcome" under step 5. This plan stays `in progress` until then; patch 07 sets it `done` and archives it.
 - **A second plan**, `docs/plans/ui-text-suite-draft.md`, appeared in the tree during step 2. It is not part of this pass and is in no patch.

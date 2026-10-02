@@ -37,7 +37,7 @@ Task → file map. Open it before a broad search; read only the matching row's f
 
 | Task | Open |
 | --- | --- |
-| Contacts, resolution, broadphase, pair repair, sleeping (`D-033`, `D-062`–`D-067`, `D-075`, `D-076`, `D-080`–`D-082`) | `core/physics/step.rs`, `core/physics/collision.rs`, `core/physics/broadphase.rs` |
+| Contacts, resolution, broadphase, pair repair, sleeping, arrival pass (`D-033`, `D-062`–`D-067`, `D-075`, `D-076`, `D-080`–`D-082`, `D-092`) | `core/physics/step.rs`, `core/physics/collision.rs`, `core/physics/broadphase.rs` |
 | Benchmarks, tunneling, determinism | `crates/tungsten-core/benches/physics_bench.rs`, `crates/tungsten-core/tests/physics_tunneling.rs`, `crates/tungsten-core/tests/physics_containment.rs`, `crates/tungsten-core/tests/physics_determinism.rs` |
 
 ## Rendering

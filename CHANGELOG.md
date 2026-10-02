@@ -6,7 +6,7 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-Summary: four correctness fixes (`D-088`–`D-091`): the frame dt is capped, manifest roots validate and reload as one merged graph, a stock post effect can repeat with different parameters, and stock post shaders hot-reload. Documentation cleanup and plan retirement.
+Summary: five correctness fixes (`D-088`–`D-092`, plan `docs/plans/archive/p2-correctness-pass.md`): the frame dt is capped, manifest roots validate and reload as one merged graph, a stock post effect can repeat with different parameters, stock post shaders hot-reload, and a physics arrival pass stops a pushed body at the gate behind it. The pass costs the two physics benchmark rows 5–9% of `physics_step`. Documentation cleanup and plan retirement.
 
 ### Changed
 
@@ -20,6 +20,7 @@ Summary: four correctness fixes (`D-088`–`D-091`): the frame dt is capped, man
 - **Manifest roots (`D-089`):** a material in one manifest root can name a shader in another, in either root order. An edit to any root manifest reloads the merged graph, where a reload used to load one root over it and report the other roots' sprites as removed. The watcher is built when the app runs, so the order of `enable_hot_reload` and `set_manifest_roots` no longer matters.
 - **Repeated stock post effects (`D-090`):** each post-stack slot owns its params buffer, so two passes of one effect draw with their own parameters. Both used to draw with the parameters written last.
 - **Stock post shader reload (`D-091`):** a body edit to one of the 17 stock post shaders rebuilds that effect's pipeline. The edit used to be validated, cached and logged as reloaded while the frame did not change.
+- **Pushed bodies (`D-092`):** a body the solver accelerates is checked against every neighbour its new velocity reaches, clamped and moved again within the substep. A resting body hit by a pusher of up to 1,000 times its mass no longer ends beyond the gate behind it (246 of 1,536 cases before, in three spawn orders), and a slow push no longer crosses a thin static wall (9 of 320). Simulation results change: the determinism hash and the `physics`, `physics-sparse` and `integrated` digests are new. Accepted with it: `physics_step` p50 reads `regressed` in `physics` (5.61 → 6.08 ms) and `physics-sparse` (3.45 → 3.63 ms), the pass's own work in two collision-heavy scenes; `integrated` reads `unchanged`. Two cases stay open in `docs/known-issues.md`.
 
 ## [0.34.0] - 2026-10-02
 
