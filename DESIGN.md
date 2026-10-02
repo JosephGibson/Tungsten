@@ -4,7 +4,7 @@
 
 Workspace `v0.34.0`; GPU and render-path performance pass (`D-085`–`D-087`): bounded text layouts, reused GPU/extract buffers, and direct presentation with the blit retained for screenshots. The execution plan is archived at `docs/plans/archive/gpu-perf-pass.md`; unapproved experiments remain proposals in [benchmarks.md](docs/perf/benchmarks.md#open-proposals).
 
-Phase 3 is complete. Phase 4 M25–M30 shipped; [the roadmap](docs/plans/phase4.md) retains M31–M33. This document describes current architecture. Use [CHANGELOG.md](CHANGELOG.md) for dated release history, [DECISION_INDEX.md](docs/DECISION_INDEX.md) for rationale, and [LLM_INDEX.md](docs/LLM_INDEX.md) for source paths.
+Phase 3 is complete. Phase 4 M25–M30 shipped; [the roadmap](docs/plans/phase4.md) retains M31 (mesh particles and screen transitions) as its final milestone. This document describes current architecture. Use [CHANGELOG.md](CHANGELOG.md) for dated release history, [DECISION_INDEX.md](docs/DECISION_INDEX.md) for rationale, and [LLM_INDEX.md](docs/LLM_INDEX.md) for source paths.
 
 ## What It Is
 
