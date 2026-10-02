@@ -10,8 +10,8 @@ use std::path::{Path, PathBuf};
 use tungsten::render::compare_png;
 
 /// Runs the playground in `root` with `post_stack` preloaded and captures
-/// frame 5 into a file named after `name`.
-fn capture(name: &str, post_stack: &str, root: &Path) -> PathBuf {
+/// frame 5 into a file named after `name`. `extra_env` is set last.
+fn capture(name: &str, post_stack: &str, root: &Path, extra_env: &[(&str, &str)]) -> PathBuf {
     let actual = std::env::temp_dir().join(format!("tungsten-post-regression-{name}.png"));
     if actual.exists() {
         let _ = std::fs::remove_file(&actual);
@@ -24,10 +24,12 @@ fn capture(name: &str, post_stack: &str, root: &Path) -> PathBuf {
         .env_remove("TUNGSTEN_BLOOM_FIXTURE")
         .env_remove("TUNGSTEN_GAME_FEEL_FIXTURE")
         .env_remove("TUNGSTEN_CAPTURE_DIRECT")
+        .env_remove("TUNGSTEN_MESH_TRAIL_FIXTURE")
         .env("TUNGSTEN_SMOKE_FRAMES", "8")
         .env("TUNGSTEN_CAPTURE_FRAME", "5")
         .env("TUNGSTEN_CAPTURE_RESOLUTION", "1280x720")
         .env("TUNGSTEN_CAPTURE_PATH", &actual)
+        .envs(extra_env.iter().copied())
         .status()
         .expect("run example-04-shader-playground");
     assert!(
@@ -123,8 +125,8 @@ fn repeated_effect_keeps_its_own_params() {
     }
 
     let root = workspace_root();
-    let pair = capture("fade-pair", "fade_pair", &root);
-    let twice = capture("fade-twice", "fade_twice", &root);
+    let pair = capture("fade-pair", "fade_pair", &root, &[]);
+    let twice = capture("fade-twice", "fade_twice", &root, &[]);
     let (apart, total) = pixels_apart(&pair, &twice);
     assert!(
         apart * 2 > total,
@@ -143,7 +145,7 @@ fn stock_shader_body_edit_changes_the_frame() {
         return;
     }
 
-    let shipped = capture("fade-shipped", "fade_twice", &workspace_root());
+    let shipped = capture("fade-shipped", "fade_twice", &workspace_root(), &[]);
     let stage = stage_with_edited_stock_shader("fade", |source| {
         assert!(
             source.contains("params.v0.rgb"),
@@ -151,12 +153,37 @@ fn stock_shader_body_edit_changes_the_frame() {
         );
         source.replace("params.v0.rgb", "params.v0.bgr")
     });
-    let edited = capture("fade-edited", "fade_twice", &stage);
+    let edited = capture("fade-edited", "fade_twice", &stage, &[]);
     let _ = std::fs::remove_dir_all(&stage);
 
     let (apart, total) = pixels_apart(&shipped, &edited);
     assert!(
         apart * 2 > total,
         "the edited fade.wgsl did not reach its pipeline: {apart} of {total} pixels differ"
+    );
+}
+
+/// The bullet trail's mesh particles reach the frame (M31, `D-093`). With no
+/// post pass, the frame with the trail must differ from the frame without it
+/// by more than a stray pixel: the trail draws instanced triangles over the
+/// first bouncer.
+#[test]
+fn mesh_trail_draws_instanced_triangles() {
+    if std::env::var("TUNGSTEN_VISUAL_REGRESSION").is_err() {
+        return;
+    }
+
+    let root = workspace_root();
+    let with_trail = capture("mesh-trail-on", "empty", &root, &[]);
+    let without_trail = capture(
+        "mesh-trail-off",
+        "empty",
+        &root,
+        &[("TUNGSTEN_MESH_TRAIL_FIXTURE", "off")],
+    );
+    let (apart, total) = pixels_apart(&with_trail, &without_trail);
+    assert!(
+        apart > 100,
+        "the mesh trail did not draw: {apart} of {total} pixels differ"
     );
 }

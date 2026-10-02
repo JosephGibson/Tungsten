@@ -5,6 +5,7 @@ pub mod image_diff;
 pub mod lighting;
 pub mod lit_sprite;
 pub mod material;
+pub mod mesh_particle;
 pub mod passes;
 pub mod post;
 pub mod quad;
@@ -29,6 +30,7 @@ pub use lit_sprite::{
     RIM_LIGHT_SHADER_NAME,
 };
 pub use material::{MaterialBuildError, MaterialPipeline};
+pub use mesh_particle::{MeshParticleBatch, MeshParticleInstance, MeshParticlePipeline};
 pub use passes::{PassDesc, PassOrder, PassRecorder, PresentPath, TargetId, default_pass_order};
 pub use post::PostStackRenderer;
 pub use post::smaa::{

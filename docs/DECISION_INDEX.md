@@ -49,6 +49,7 @@ One-line takeaways for every decision heading in [`DECISIONS.md`](../DECISIONS.m
 | `D-089` | Manifest roots: material → shader references validate once on the merged graph, so they may cross roots; a manifest reload rebuilds the merged graph of every root, every root manifest is watched, and `App::run` builds the watcher. Amends `D-017`, `D-052`, `D-053`. |
 | `D-090` | Stock post-effect params (UBO, bind group, held bytes) belong to the post-stack slot, so two passes of one effect keep parameters of their own. Pixels of existing stacks unchanged. Amends `D-058`, `D-085`. |
 | `D-091` | The 17 stock post pipelines build from the seeded shader cache (render-side IDs 11–27) and rebuild on a body edit through the shared `apply_shader_module` path. Amends `D-057`, `D-058`. |
+| `D-093` | M31: a particle config may draw an inline manifest mesh (`particle_meshes`, `ParticleConfig.render`) as instanced triangles through `MeshParticlePipeline`; a `StateStack` request can run behind a `Transition` (fade, radial wipe, dissolve, pixelate) whose pass is appended to a copy of the post stack. One transition at a time; text is not covered. Amends `D-051`. Records the accepted `particles` `unattributed` p50 regression and the accepted `churn` `flush` p50 reading. |
 
 ## Dependencies / Tooling
 
@@ -96,7 +97,7 @@ One-line takeaways for every decision heading in [`DECISIONS.md`](../DECISIONS.m
 | `D-047` | Debug tooling: `DebugDraw` is core POD drained into `QuadInstance` (AABB edges) + `DebugLineInstance` (lines/circles); overlays are independent action-toggled resources (`F1`/`F2`/`F3`), not HUD rows; screenshots render to an offscreen `RENDER_ATTACHMENT \| COPY_SRC` texture and read back via row-padded `MAP_READ` buffer; GPU debug groups + explicit wgpu labels are always-on. |
 | `D-049` | M23 ships a hand-rolled PCG32 + SplitMix64 PRNG in `tungsten-core`; no `rand` / `getrandom` dependency. |
 | `D-050` | M23 particle configs live behind `Arc<ParticleConfig>`; emitters snapshot on first tick and live particles keep their original `Arc` across hot-reload, so in-flight curves never reinterpret mid-life. |
-| `D-051` | M23 uses one ECS entity per live particle (no pool); despawns route through the standard `CommandBuffer` flush, and `max_alive` + global `ParticleBudget` bound the archetype. |
+| `D-051` | M23 uses one ECS entity per live particle (no pool); despawns route through the standard `CommandBuffer` flush, and `max_alive` + global `ParticleBudget` bound the archetype. Amended by `D-093`: a mesh particle carries `MeshParticle` in place of `Sprite`. |
 | `D-056` | M24 `TweenComplete` routes through `EventQueue<TweenComplete>` and terminal `Tween` removal routes through `CommandBuffer::remove_component`; a `pending_remove` latch prevents re-fire between tick and frame-end flush. |
 | `D-062` | Physics broadphase: flat prefix-sum spatial hash reused across substeps under a drift budget, with AABB prefilter; supersedes `D-033`'s per-substep rebuild. Staging, drift budget and prefilter superseded by `D-075`; the hashed table is the fall-back layout since `D-080`. |
 | `D-063` | Per-substep map rebuild superseded by `D-076`. Physics solver: warm-started soft step (Box2D v3 style) with clamped accumulated impulses, soft bias and one relax pass; bodies rest at ~slop. Substep order amended by `D-092`. |

@@ -9,7 +9,6 @@ Start with the document that owns the fact you need. Code and executable checks 
 | Task → source paths | [LLM index](LLM_INDEX.md) |
 | Current architecture and reload support | [Design](../DESIGN.md) |
 | Design rationale | [Decision index](DECISION_INDEX.md), then one `D-NNN` section of [DECISIONS](../DECISIONS.md) |
-| Remaining Phase 4 scope | [Phase 4 roadmap](plans/phase4.md) |
 | Open findings, recorded limits and follow-ups | [Known issues](known-issues.md) |
 | Plan headers, lifecycle and archival | [Plan rules](plans/README.md) |
 | Agent discovery, skills and filters | [Agent setup](agent-setup.md) |

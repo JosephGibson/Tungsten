@@ -23,4 +23,4 @@ Short-lived multi-step plans saved as `*.md`. A plan is the handoff artifact for
 
 Move only known filenames, fix relative Markdown destinations for the new depth, and update incoming links in maintained docs. Never inspect the archive to discover files or confirm a move. Owner-directed retirement can preserve an unfinished plan as a historical snapshot; archived proposals do not authorize new work. Leave immutable decision text and dated release evidence intact, with historical-path guidance in the indexes.
 
-The [Phase 4 roadmap](phase4.md) remains active for M31. It summarizes M25–M30 without repeating their execution plans.
+Phase 4 is complete; its roadmap is archived as `docs/plans/archive/phase4.md`.

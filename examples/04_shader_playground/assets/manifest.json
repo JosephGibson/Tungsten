@@ -2,5 +2,14 @@
   "sprites": {
     "ex04_quad": { "path": "quad.png", "filter": "nearest" },
     "ex04_emissive_quad": { "path": "emissive_quad.png", "filter": "linear" }
+  },
+  "particle_meshes": {
+    "ex04_bullet_tri": {
+      "vertices": [[0.0, -7.0], [6.0, 7.0], [-6.0, 7.0]],
+      "indices": [0, 1, 2]
+    }
+  },
+  "particles": {
+    "ex04_bullet_trail": { "path": "particles/bullet_trail.json" }
   }
 }

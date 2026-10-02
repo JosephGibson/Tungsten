@@ -6,6 +6,22 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-10-02
+
+Summary: M31, the last Phase 4 milestone (`D-093`, plan `docs/plans/archive/phase4-milestone-31-mesh-particles-transitions.md`): a particle config can draw an instanced triangle mesh instead of a sprite quad, and a state change can run behind a screen transition (fade, radial wipe, dissolve, pixelate). Accepted with it: `particles` `stage.unattributed` p50 reads `regressed` at the threshold after the mesh particle work (2.07 → 2.14 ms; `noisy` at 2.10 ms in the final suite), and `churn` `stage.flush` p50 reads `regressed` in the final suite (2.41 → 2.54 ms; `noisy` in two recaptures), which no M31 change touches.
+
+### Added
+
+- **Mesh particles (`D-093`):** the manifest section `particle_meshes` holds inline triangle meshes (`vertices`, `u16` `indices`), and `ParticleConfig.render` selects `{"kind": "quad"}` (default) or `{"kind": "mesh", "mesh": "<id>"}`. A mesh particle is still one entity and carries `MeshParticle` in place of `Sprite`. New in core: `ParticleMesh`, `ParticleMeshAssetId`, `ParticleMeshRegistry`, `ParticleRender`, `MeshParticle`, `ManifestError::InvalidParticleMesh`. New in render: `MeshParticlePipeline`, `MeshParticleBatch`, `MeshParticleInstance`, `Renderer::upload_particle_mesh` and `Renderer::update_mesh_particles`. New in the umbrella crate: `asset_loader::load_particle_meshes`, `extract_mesh_particles` and `spawn_mesh_particle_via`. A manifest reload registers new meshes and re-uploads changed ones under the same ID.
+- **Screen transitions (`D-093`):** `Transition`, `TransitionEffect` (`Fade`, `WipeRadial`, `Dissolve`, `Pixelate`), `TransitionPhase` and `TransitionState`, with `StateStack::request_push_transition`, `request_pop_transition` and `request_replace_transition` (each returns `false` when a transition is already queued or active) and `is_transitioning`, `transition_state`, `transition_cover` and `transition_pass`. The command applies on the frame the cover completes; the pass draws as the last post-stack slot.
+- **Fixtures and checks:** example 04 trails its first bouncer with mesh particles (`TUNGSTEN_MESH_TRAIL_FIXTURE=off` leaves the trail out); example 03 takes `TUNGSTEN_TRANSITION_FIXTURE={none|fade|wipe_radial|dissolve|pixelate}`. `just smoke` gains a five-row M31 section, and `just visual` also runs `mesh_trail_draws_instanced_triangles` and example 03's `each_transition_effect_changes_the_frame`.
+
+### Changed
+
+- **`ParticleConfig.sprite`** is optional for a mesh config and still required for a quad config. Code that builds a `ParticleConfig` literal adds `render: ParticleRender::Quad`.
+- **Example 03** changes state through engine transitions (fade, pixelate, radial wipe, dissolve) and fades its text with the cover; its tweened overlay sprite and `TweenComplete`-driven replace are gone.
+- **Recorded limits** in `docs/known-issues.md`: a transition does not cover screen-space text, mesh particles draw above every sprite, the radial wipe's center pixel at an odd window size, and pixelate never hides the frame.
+
 ## [0.35.0] - 2026-10-02
 
 Summary: five correctness fixes (`D-088`–`D-092`, plan `docs/plans/archive/p2-correctness-pass.md`): the frame dt is capped, manifest roots validate and reload as one merged graph, a stock post effect can repeat with different parameters, stock post shaders hot-reload, and a physics arrival pass stops a pushed body at the gate behind it. The pass costs the two physics benchmark rows 5–9% of `physics_step`. Documentation cleanup and plan retirement.
@@ -295,7 +311,7 @@ Summary: the branch-`0.26` release — M29 2D forward normal-mapped lighting plu
 
 ## [0.24.0] - 2026-04-25
 
-Summary: Phase 4 Milestone 27 - SMAA 1x presentation AA (runtime post-AA modes, renderer-owned SMAA tail passes, manifest-tracked stage shaders, internal lookup textures, and shader-playground controls). Phase 4 scope is tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md).
+Summary: Phase 4 Milestone 27 - SMAA 1x presentation AA (runtime post-AA modes, renderer-owned SMAA tail passes, manifest-tracked stage shaders, internal lookup textures, and shader-playground controls). Phase 4 scope is tracked in [`docs/plans/phase4.md`](docs/plans/archive/phase4.md).
 
 ### Added
 
@@ -315,7 +331,7 @@ Summary: Phase 4 Milestone 27 - SMAA 1x presentation AA (runtime post-AA modes, 
 
 ## [0.23.0] - 2026-04-24
 
-Summary: Phase 4 Milestone 26 — materials + post-stack + tween→material bridge (manifest-tracked materials, a reorderable 17-effect post stack, entity-local uniform overrides shared with tween channels, and a new shader-playground example). Phase 4 scope is tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md).
+Summary: Phase 4 Milestone 26 — materials + post-stack + tween→material bridge (manifest-tracked materials, a reorderable 17-effect post stack, entity-local uniform overrides shared with tween channels, and a new shader-playground example). Phase 4 scope is tracked in [`docs/plans/phase4.md`](docs/plans/archive/phase4.md).
 
 ### Added
 
@@ -336,7 +352,7 @@ Summary: Phase 4 Milestone 26 — materials + post-stack + tween→material brid
 
 ## [0.22.0] - 2026-04-24
 
-Summary: Phase 4 Milestone 25 — render foundation (offscreen `SceneTarget` with optional depth + MSAA, named/ordered pass list with an engine-internal present blit, manifest-tracked WGSL with body-edit hot reload, and opt-in GPU depth-test sprite path). Phase 4 scope is tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md).
+Summary: Phase 4 Milestone 25 — render foundation (offscreen `SceneTarget` with optional depth + MSAA, named/ordered pass list with an engine-internal present blit, manifest-tracked WGSL with body-edit hot reload, and opt-in GPU depth-test sprite path). Phase 4 scope is tracked in [`docs/plans/phase4.md`](docs/plans/archive/phase4.md).
 
 ### Added
 

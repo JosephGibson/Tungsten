@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use tungsten_core::assets::{
     AnimationData, AnimationRegistry, FilterMode, ParticleConfig, ParticleConfigRegistry,
+    ParticleMesh, ParticleMeshRegistry, ParticleRender, ResolvedManifest, ResolvedParticleMesh,
     TilemapData, TilemapLayer, TilemapRegistry, UvRect,
 };
 use tungsten_core::ecs::World;
@@ -257,6 +258,134 @@ fn reload_particle_preserves_previous_on_unknown_sprite() {
         "ex10_spark",
         "unknown-sprite reload must be rejected and leave last-known-good"
     );
+}
+
+fn build_minimal_mesh_particle_json(mesh_id: &str) -> String {
+    format!(
+        r#"{{
+            "render": {{"kind": "mesh", "mesh": "{mesh_id}"}},
+            "max_alive": 100,
+            "emission": {{"kind": "continuous", "rate_hz": 10.0}},
+            "lifetime": {{"min": 0.5, "max": 1.0}},
+            "initial_velocity": {{
+                "kind": "radial",
+                "speed": {{"min": 10.0, "max": 20.0}}
+            }}
+        }}"#
+    )
+}
+
+fn triangle(width: f32) -> ParticleMesh {
+    ParticleMesh {
+        vertices: vec![[0.0, -7.0], [width, 7.0], [-width, 7.0]],
+        indices: vec![0, 1, 2],
+    }
+}
+
+fn manifest_with_meshes(meshes: &[(&str, ParticleMesh)]) -> ResolvedManifest {
+    let mut manifest = ResolvedManifest::default();
+    for (id, mesh) in meshes {
+        manifest.particle_meshes.insert(
+            (*id).to_string(),
+            ResolvedParticleMesh {
+                source_manifest: PathBuf::from("manifest.json"),
+                mesh: mesh.clone(),
+            },
+        );
+    }
+    manifest
+}
+
+#[test]
+fn diff_particle_meshes_reports_added_changed_removed() {
+    let mut registry = ParticleMeshRegistry::new();
+    registry.insert("keep", triangle(6.0));
+    registry.insert("edit", triangle(6.0));
+    registry.insert("gone_b", triangle(6.0));
+    registry.insert("gone_a", triangle(6.0));
+
+    let manifest = manifest_with_meshes(&[
+        ("keep", triangle(6.0)),
+        ("edit", triangle(9.0)),
+        ("new_b", triangle(6.0)),
+        ("new_a", triangle(6.0)),
+    ]);
+    let diff = diff_particle_meshes(&registry, &manifest);
+    assert_eq!(diff.added, ["new_a", "new_b"]);
+    assert_eq!(diff.changed, ["edit"]);
+    assert_eq!(diff.removed, ["gone_a", "gone_b"]);
+
+    let same = manifest_with_meshes(&[
+        ("keep", triangle(6.0)),
+        ("edit", triangle(6.0)),
+        ("gone_a", triangle(6.0)),
+        ("gone_b", triangle(6.0)),
+    ]);
+    assert_eq!(
+        diff_particle_meshes(&registry, &same),
+        ParticleMeshDiff::default()
+    );
+}
+
+#[test]
+fn reload_particle_accepts_registered_mesh() {
+    let dir = tempdir();
+    let cfg_path = dir.join("trail.json");
+    write(&cfg_path, &build_minimal_particle_json("ex10_spark"));
+
+    let mut world = seed_world();
+    seed_sprite(&mut world, "ex10_spark");
+    let mut meshes = ParticleMeshRegistry::new();
+    meshes.insert("tri", triangle(6.0));
+    world.insert_resource(meshes);
+
+    let initial = ParticleConfig::load(&cfg_path).unwrap();
+    let initial_id = world
+        .get_resource_mut::<ParticleConfigRegistry>()
+        .unwrap()
+        .register("trail".into(), cfg_path.clone(), initial);
+
+    write(&cfg_path, &build_minimal_mesh_particle_json("tri"));
+    reload_particle("trail", &cfg_path, &mut world).unwrap();
+
+    let reg = world.get_resource::<ParticleConfigRegistry>().unwrap();
+    assert_eq!(reg.id_for_name("trail"), Some(initial_id));
+    assert_eq!(
+        reg.get(initial_id).unwrap().render,
+        ParticleRender::Mesh { mesh: "tri".into() },
+        "a mesh config naming a registered mesh must swap in"
+    );
+}
+
+#[test]
+fn reload_particle_preserves_previous_on_unknown_mesh() {
+    let dir = tempdir();
+    let cfg_path = dir.join("trail.json");
+    write(&cfg_path, &build_minimal_particle_json("ex10_spark"));
+
+    let mut world = seed_world();
+    seed_sprite(&mut world, "ex10_spark");
+    let mut meshes = ParticleMeshRegistry::new();
+    meshes.insert("tri", triangle(6.0));
+    world.insert_resource(meshes);
+
+    let initial = ParticleConfig::load(&cfg_path).unwrap();
+    let id = world
+        .get_resource_mut::<ParticleConfigRegistry>()
+        .unwrap()
+        .register("trail".into(), cfg_path.clone(), initial);
+
+    write(&cfg_path, &build_minimal_mesh_particle_json("ghost_mesh"));
+    reload_particle("trail", &cfg_path, &mut world).unwrap();
+
+    let reg = world.get_resource::<ParticleConfigRegistry>().unwrap();
+    let cfg = reg.get(id).unwrap();
+    assert_eq!(
+        cfg.render,
+        ParticleRender::Quad,
+        "unknown-mesh reload must be rejected and leave last-known-good"
+    );
+    assert_eq!(cfg.sprite, "ex10_spark");
 }
 
 #[test]

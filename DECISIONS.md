@@ -355,6 +355,7 @@ Plan number conflict note: the M15 plan originally reserved `D-041`, but that ID
 **Consequences:** Emitters that need to re-snapshot against the new config mid-life must explicitly clear `ParticleEmitterState.first_tick_done`; this is a future-proofing hook — nothing in-tree uses it yet. The Arc-per-particle pattern generalises to any future asset that benefits from late-binding against live gameplay code (e.g. AI behaviour trees) so the indirection cost is a pattern investment, not a one-off.
 
 ## D-051 — M23 entity-per-particle (no pool)
+**Amended by D-093:** a mesh particle carries `MeshParticle` in place of `Sprite`; entity-per-particle, the budget and the despawn path stand.
 **Date:** 2026-04-20
 **Decision:** Each live particle is a distinct ECS entity with `Particle + Transform + Sprite + Visibility`, despawned through `CommandBuffer` on age-out. No fixed-size ring pool, no packed `Vec<Particle>` storage alongside the archetype.
 **Why:** `D-039` guarantees `CommandBuffer` flush at the single frame boundary between user systems and the render extract; particle despawns land on the same flush as every other structural edit, so the frame-order story is already solved. Pooling would require either (a) a custom pool resource plus a sprite-extract fast path that reads from it — a second sprite source of truth, which breaks the `D-042` "`Sprite` is the one authority on GPU-visible 2D" invariant — or (b) an ECS reservation pool with sentinel "dead" flags, which costs the same archetype walks as real despawns while making debug tooling lie. The `particle_tick_5k` bench clears at ~657 µs per frame which is well under the M12 16.6 ms envelope at 60 Hz, and `max_alive` + `ParticleBudget.global_cap` keep the archetype bounded at an explicit ceiling the game owner controls.
@@ -987,3 +988,61 @@ The forward sweep alone turns "the body through the gate" into "the pusher insid
 - **Not taken:** pairs from the substep's contacts with a grid query only for a body that gained speed. Estimated from the profile at about +6% and +2%, it narrows the completeness argument and leaves `physics` regressed.
 - Tests: `pushed_body_never_crosses_a_gate` (1,536 cases in three spawn orders; 246 failed before), `slow_push_never_crosses_a_static_wall` (320 cases; 9 failed before) and the guard `free_train_keeps_its_order_and_momentum` in `crates/tungsten-core/tests/physics_tunneling.rs`; `settled_stack_never_enters_the_arrival_pass` and `pushed_body_arrives_at_a_static_wall_and_stops_its_pusher` in `crates/tungsten-core/src/tests/physics/step.rs`. The pair-contact and warm-start oracles hold with the pass running.
 - No `unsafe`, no new dependency, no API change. `D-033`, `D-065`, `D-066` and `D-067` stand as written.
+
+## D-093 — M31 instanced mesh particles and screen transitions
+**Date:** 2026-10-02
+**Decision:** Phase 4 closes with two features.
+
+**Mesh particles.** A particle config may draw each particle as an instanced triangle mesh instead of a sprite quad.
+
+- **Mesh asset.** The manifest section `particle_meshes` holds meshes inline: `vertices` (`[x, y]` in mesh-local pixels, the origin at the particle position) and `u16` `indices` (triangle list). There is no mesh file type. A mesh is validated when its manifest loads: 3 to 65,536 vertices, indices non-empty, a multiple of 3 and in range, every coordinate finite. An invalid mesh is `ManifestError::InvalidParticleMesh`; a duplicate ID across roots is fatal (`D-017`).
+- **IDs.** `ParticleMeshAssetId` is `AssetId<ParticleMesh>`. `ParticleMeshRegistry`, a `World` resource, maps name, ID and geometry, and a name keeps its ID when its mesh is replaced.
+- **Config.** `ParticleConfig.render` is `{"kind": "quad"}` (the default) or `{"kind": "mesh", "mesh": "<id>"}`. `sprite` is required for a quad config and optional for a mesh config. The loader checks the config → mesh reference where it checks config → sprite.
+- **Entity.** A mesh particle is `Particle + Transform + MeshParticle + Visibility`. It has no `Sprite`, so the sprite extract never draws it as a quad. The emit system resolves the mesh name once per emitting emitter per frame; an unknown name logs a warning and that emitter emits nothing. `spawn_mesh_particle_via` is the direct-spawn counterpart of `spawn_particle_via`.
+- **Draw.** `extract_mesh_particles` (engine-owned, no setter) yields one `MeshParticleBatch` per mesh. `Renderer::update_mesh_particles`, called beside `update_lights`, writes every instance into one kept instance buffer that grows by doubling. `MeshParticlePipeline` issues one `draw_indexed` per batch inside the scene pass, after the sprites and before the debug quads, with the quad camera bind group. An instance is 24 bytes: position, scale, rotation and an `Unorm8x4` color. `mesh_particle.wgsl` is internal, like `quad` and `debug_line`.
+
+**Screen transitions.** A state change can run behind a full-screen effect.
+
+- **Types** (`tungsten::transition`). `Transition` holds an `out_effect`, an `in_effect`, a duration per phase and an `Easing`. `TransitionEffect` is a closed enum: `Fade`, `WipeRadial`, `Dissolve`, `Pixelate`. `TransitionPhase` is `Out` or `In`; the roadmap's `Swap` is the boundary frame between them.
+- **Requests.** `StateStack::request_push_transition`, `request_pop_transition` and `request_replace_transition` return `bool`. One transition runs at a time: a request made while one is queued or active returns `false` and its state is dropped. `is_transitioning`, `transition_state`, `transition_cover` and `transition_pass` read the state.
+- **Dispatcher order per frame.** (1) Plain `request_*` commands apply at once, even during a transition. (2) A queued transition activates when none is active. (3) The active transition advances by `DeltaTime`; on the frame `Out` completes, its command runs through the same code as a plain request, so hooks, scene despawn and order follow `D-046`, and leftover time is dropped so that frame draws fully covered. (4) The top state updates: the old state during `Out`, the new one during `In`.
+- **Cover.** A cover of 0 leaves the frame untouched and 1 hides it as far as the effect can. The four stock shaders share no progress convention, so each effect maps its cover:
+
+  | Effect | Mapping |
+  | --- | --- |
+  | `Fade` | `progress = cover` |
+  | `WipeRadial` | `progress = (1 − cover) · min(1, (far + softness) / 1.5)` and `softness · (1 − cover)`, with `far` the largest distance from the center to a UV corner. The shader is inverted (1 shows the frame); scaling by `far` starts the wipe at the farthest corner, and the shrinking softness closes the soft dot the shader would leave at the center |
+  | `Dissolve` | `progress = cover` |
+  | `Pixelate` | block size `1 + (max(max_block_px, 1) − 1) · cover`; it never hides the frame |
+
+- **Frame composition.** `App::stage_render` appends the transition's pass to a copy of the user's `PostStack` and draws with the copy. The pass is the last post-stack slot, so it runs before the SMAA tail and the text overlay.
+
+**Why:**
+- A triangle is three vertices. `materials` is already inline (`D-058`), so the manifest watcher, the merge and the duplicate-ID check cover a mesh; a file type would need a loader, a watcher route and a coverage rule in `scripts/check-repo.py`.
+- `D-051` rejected a pool because it would be a second source of truth beside the entities. The entities stay: a mesh particle is spawned and despawned through `CommandBuffer`, counted by `particle_count_refresh_system` and bounded by `max_alive` and `ParticleBudget`. Instancing is draw-side only.
+- `MeshParticle` in place of `Sprite` leaves the sprite extract untouched. A `Renderer` method keeps the seven-argument `render_frame_full` signature. An internal shader has no author-facing parameters and needs no seeded render-side ID (`D-091` fixed 0–27).
+- A closed `TransitionEffect` instead of a raw `PostPass`: the four effects need the mapping above and the other 14 variants have no notion of progress.
+- The transition lives in `StateStack` because the dispatcher already owns that resource, and the seam keeps it in the umbrella crate. The pass is injected in `stage_render` because a state's `on_enter` may clear or rebuild `PostStack`; the pass must survive that and needs no cleanup.
+
+**Consequences:**
+- **Amends `D-051`** as its marker line says: the component set only. `D-046` stands: transitions extend the dispatcher without changing its hook matrix.
+- **Hot reload:**
+
+  | Edit | Result |
+  | --- | --- |
+  | Manifest adds a mesh | Registered and uploaded; configs loaded afterwards may name it |
+  | Manifest changes a mesh's vertices or indices | Re-uploaded under the same ID; live particles draw the new geometry on the next frame (geometry is not snapshotted, unlike the config `Arc` of `D-050`) |
+  | Manifest removes a mesh | Warning; the stale mesh stays |
+  | Manifest holds an invalid mesh | The reload fails in `load_and_merge_many`, is logged, and the last good graph stays |
+  | A config file changes `render` | `reload_particle` validates and swaps the `Arc`; live emitters keep their snapshot |
+  | `mesh_particle.wgsl` | Internal shader; rebuild |
+
+- **Recorded limits,** also in `docs/known-issues.md`: a transition does not cover screen-space text, which draws after the post stack (a game fades its own text with `1 − transition_cover()`, as example 03 does); mesh particles draw above every sprite, so `z_order` cannot place them between sprites; at an odd window size the radial wipe leaves the center pixel at half brightness on the fully covered frame; pixelate never hides the frame.
+- **Example 03** drops its tweened overlay sprite and `TweenComplete`-driven replace: menu → gameplay fades, gameplay → pause pixelates, pause → gameplay wipes, gameplay → menu dissolves, and pause → menu stays a hard cut.
+- **Accepted regression, `particles` `stage.unattributed` p50.** Against the tree before, five runs a side (`D-078`): 2.07 → 2.14 ms (+3.1%) and `regressed` in the suite taken after the mesh particle work; +0.05 to +0.07 ms and `noisy` in three more pairs of one sitting; 2.07 → 2.10 ms and `noisy` in the final suite. The effect sits at the threshold. The digest and the counters are unchanged. The cost is in `particle_tick_system` (+7.4% of its samples): the shared, inlined integration helper returns the color as `Option<[u8; 4]>`, and the sprite loop now stores it through vector shuffles. Nothing was outlined. A helper that writes the color through `&mut [u8; 4]` read +0.02 and −0.02 ms in a scratch build; the owner accepted the cost as it stands. `integrated` reads `unchanged`.
+- **Accepted reading, `churn` `stage.flush` p50.** The final suite reads 2.41 → 2.54 ms (+5.5%), `regressed`; two recaptures of the row on the same binary read +0.08 and +0.10 ms, `noisy`. Most runs sit at 2.44–2.50 ms and 4 of 15 at 2.61–2.65 ms; no run of the tree before, or of the suite after the mesh particle work, reads above 2.45 ms. No M31 change touches the flush: `World::flush_reusing` has the same size in both binaries (3,665 bytes) and moved from 16 to 32 bytes past a 64-byte boundary. The row's load windows show no foreign load. This looks like the placement behavior the regression policy describes for `churn`'s `flush`, but the proof that policy asks for (a padded build of the tree before with the same verdict) was not made; the owner accepted the reading without it.
+- **Recorded reading, `ecs` `bounds_wrap` p50.** `improved`, 0.31 → 0.25 ms, in both suites with no ECS change: code placement, as `D-085` and `D-092` record for that row. It is not a gain.
+- Tests, without a device: the mesh, config, registry and manifest tests in `crates/tungsten-core/src/tests/assets/{particle,manifest}.rs` (`particle_mesh_validate_*`, `render_mesh_parses_from_json`, `quad_config_requires_sprite`, `mesh_registry_insert_keeps_id_on_replace`, `invalid_particle_mesh_is_rejected`, `duplicate_particle_mesh_id_across_manifests_is_fatal`); `mesh_particle_instance_layout_is_stable` and the `plan_*` draw-range tests in `crates/tungsten-render/src/tests/mesh_particle.rs`; `mesh_config_spawns_mesh_particle_without_sprite`, `mesh_particles_count_against_budget_and_max_alive`, `extract_groups_instances_by_mesh` and their siblings in `crates/tungsten/tests/particles.rs`; `diff_particle_meshes_reports_added_changed_removed` and the two `reload_particle_*_mesh` tests in `crates/tungsten/src/tests/asset_loader.rs`; the eleven mapping and timing tests in `crates/tungsten/src/tests/transition.rs`; the ten dispatcher tests in `crates/tungsten/src/tests/state.rs` (`transition_defers_command_until_out_completes`, `second_transition_request_is_rejected`, `plain_request_applies_during_transition`, …) and the two composition tests in `crates/tungsten/src/tests/app.rs`.
+- Tests on the GPU, behind `TUNGSTEN_VISUAL_REGRESSION` and run by `just visual`: `mesh_trail_draws_instanced_triangles` (example 04, the trail against `TUNGSTEN_MESH_TRAIL_FIXTURE=off`, more than 100 pixels) and `each_transition_effect_changes_the_frame` (example 03, each `TUNGSTEN_TRANSITION_FIXTURE` effect against `none`, more than 1,000 pixels). `just smoke` gains five rows: the mesh pipeline under MSAA 4 with a depth attachment, and a 16-frame run of each effect across the boundary frame.
+- Not verified: a live manifest edit of a mesh. Only example 01 enables hot reload and it ships no mesh; the diff and the config reload are covered by the tests above.
+- No `unsafe`, no new dependency. `ParticleConfig` gains a field, so code that builds one as a literal adds `render: ParticleRender::Quad`.

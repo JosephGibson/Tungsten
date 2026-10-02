@@ -124,6 +124,7 @@ fn particle_budget_default_is_10k() {
 fn registry_register_and_replace_preserves_id() {
     let cfg_a = Arc::new(ParticleConfig {
         sprite: "s".into(),
+        render: ParticleRender::Quad,
         max_alive: 4,
         seed: None,
         blend: BlendMode::Alpha,
@@ -173,4 +174,142 @@ fn config_rejects_nonfinite_field() {
     }"#;
     let cfg: ParticleConfig = serde_json::from_str(src).unwrap();
     assert!(cfg.validate().is_err());
+}
+
+fn triangle() -> ParticleMesh {
+    ParticleMesh {
+        vertices: vec![[0.0, -7.0], [6.0, 7.0], [-6.0, 7.0]],
+        indices: vec![0, 1, 2],
+    }
+}
+
+const MESH_CONFIG_JSON: &str = r#"{
+    "render": { "kind": "mesh", "mesh": "tri" },
+    "max_alive": 4,
+    "emission": { "kind": "burst", "count": 1 },
+    "lifetime": { "min": 0.5, "max": 1.0 },
+    "initial_velocity": { "kind": "radial", "speed": { "min": 10.0, "max": 10.0 } }
+}"#;
+
+#[test]
+fn particle_mesh_validate_accepts_triangle() {
+    triangle().validate().unwrap();
+}
+
+#[test]
+fn particle_mesh_validate_rejects_bad_index() {
+    let mut mesh = triangle();
+    mesh.indices = vec![0, 1, 3];
+    let err = mesh.validate().unwrap_err();
+    assert!(err.contains("out of range"), "got: {err}");
+}
+
+#[test]
+fn particle_mesh_validate_rejects_non_triangle_index_count() {
+    let mut mesh = triangle();
+    mesh.indices = vec![0, 1];
+    let err = mesh.validate().unwrap_err();
+    assert!(err.contains("multiple of 3"), "got: {err}");
+
+    mesh.indices.clear();
+    let err = mesh.validate().unwrap_err();
+    assert!(err.contains("must not be empty"), "got: {err}");
+}
+
+#[test]
+fn particle_mesh_validate_rejects_non_finite_vertex() {
+    let mut mesh = triangle();
+    mesh.vertices[1] = [f32::NAN, 0.0];
+    let err = mesh.validate().unwrap_err();
+    assert!(err.contains("vertices[1]"), "got: {err}");
+
+    mesh.vertices[1] = [0.0, f32::INFINITY];
+    assert!(mesh.validate().is_err());
+}
+
+#[test]
+fn particle_mesh_validate_rejects_too_few_vertices() {
+    let mesh = ParticleMesh {
+        vertices: vec![[0.0, 0.0], [1.0, 0.0]],
+        indices: vec![0, 1, 0],
+    };
+    let err = mesh.validate().unwrap_err();
+    assert!(err.contains("at least 3"), "got: {err}");
+}
+
+#[test]
+fn render_defaults_to_quad() {
+    let src = r#"{
+        "sprite": "spark",
+        "max_alive": 4,
+        "emission": { "kind": "burst", "count": 1 },
+        "lifetime": { "min": 0.5, "max": 1.0 },
+        "initial_velocity": { "kind": "radial", "speed": { "min": 10.0, "max": 10.0 } }
+    }"#;
+    let cfg: ParticleConfig = serde_json::from_str(src).unwrap();
+    assert_eq!(cfg.render, ParticleRender::Quad);
+    assert_eq!(ParticleRender::default(), ParticleRender::Quad);
+}
+
+#[test]
+fn render_mesh_parses_from_json() {
+    let cfg: ParticleConfig = serde_json::from_str(MESH_CONFIG_JSON).unwrap();
+    assert_eq!(cfg.render, ParticleRender::Mesh { mesh: "tri".into() });
+
+    let quad: ParticleRender = serde_json::from_str(r#"{ "kind": "quad" }"#).unwrap();
+    assert_eq!(quad, ParticleRender::Quad);
+}
+
+#[test]
+fn quad_config_requires_sprite() {
+    let src = r#"{
+        "max_alive": 4,
+        "emission": { "kind": "burst", "count": 1 },
+        "lifetime": { "min": 0.5, "max": 1.0 },
+        "initial_velocity": { "kind": "radial", "speed": { "min": 10.0, "max": 10.0 } }
+    }"#;
+    let cfg: ParticleConfig = serde_json::from_str(src).unwrap();
+    let err = cfg.validate().unwrap_err();
+    assert!(err.contains("sprite"), "got: {err}");
+}
+
+#[test]
+fn mesh_config_needs_no_sprite() {
+    let cfg: ParticleConfig = serde_json::from_str(MESH_CONFIG_JSON).unwrap();
+    assert!(cfg.sprite.is_empty());
+    cfg.validate().unwrap();
+
+    let mut unnamed = cfg;
+    unnamed.render = ParticleRender::Mesh {
+        mesh: String::new(),
+    };
+    let err = unnamed.validate().unwrap_err();
+    assert!(err.contains("render.mesh"), "got: {err}");
+}
+
+#[test]
+fn mesh_registry_insert_keeps_id_on_replace() {
+    let mut reg = ParticleMeshRegistry::new();
+    assert!(reg.is_empty());
+    let tri = reg.insert("tri", triangle());
+    let quad = reg.insert(
+        "quad",
+        ParticleMesh {
+            vertices: vec![[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]],
+            indices: vec![0, 1, 2, 0, 2, 3],
+        },
+    );
+    assert_ne!(tri, quad);
+    assert_eq!(reg.len(), 2);
+
+    let mut wider = triangle();
+    wider.vertices[1] = [12.0, 7.0];
+    let again = reg.insert("tri", wider.clone());
+    assert_eq!(again, tri);
+    assert_eq!(reg.len(), 2);
+    assert_eq!(reg.get(tri), Some(&wider));
+    assert_eq!(reg.id_for_name("tri"), Some(tri));
+    assert_eq!(reg.name_for_id(quad), Some("quad"));
+    assert_eq!(reg.names().collect::<Vec<_>>(), ["tri", "quad"]);
+    assert_eq!(reg.id_for_name("absent"), None);
 }

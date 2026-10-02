@@ -10,8 +10,8 @@ use glam::Vec2;
 use tungsten::core::assets::AnimationFrame;
 use tungsten::core::{
     AnimationData, AnimationRegistry, AssetId, BlendMode, Curve, EmissionKind, FilterMode,
-    InitialVelocity, LayerKind, ParticleConfig, ParticleConfigRegistry, Range, TilemapData,
-    TilemapInstance, TilemapLayer, TilemapRegistry, World,
+    InitialVelocity, LayerKind, ParticleConfig, ParticleConfigRegistry, ParticleRender, Range,
+    TilemapData, TilemapInstance, TilemapLayer, TilemapRegistry, World,
 };
 use tungsten::render::Renderer;
 
@@ -207,6 +207,7 @@ pub(super) fn register_particles(
 ) -> (AssetId<ParticleConfig>, AssetId<ParticleConfig>) {
     let fire = ParticleConfig {
         sprite: FIRE.to_string(),
+        render: ParticleRender::Quad,
         max_alive: FIRE_MAX_ALIVE,
         seed: None,
         blend: BlendMode::Premultiplied,
@@ -241,6 +242,7 @@ pub(super) fn register_particles(
     };
     let spark = ParticleConfig {
         sprite: SPARK.to_string(),
+        render: ParticleRender::Quad,
         max_alive: 12,
         seed: None,
         blend: BlendMode::Alpha,

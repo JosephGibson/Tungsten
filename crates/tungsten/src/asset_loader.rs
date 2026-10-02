@@ -4,9 +4,9 @@ use std::path::{Path, PathBuf};
 use glam::Vec2;
 use tungsten_core::assets::{
     AnimationData, AnimationRegistry, FilterMode, FontRegistry, LoadedManifest, MaterialRegistry,
-    PackInput, PackedSprite, ParticleConfig, ParticleConfigRegistry, ResolvedManifest, SceneData,
-    ShaderRegistry, SoundData, SoundRegistry, TextureHandle, TilemapData, TilemapRegistry, UvRect,
-    pack_shelf,
+    PackInput, PackedSprite, ParticleConfig, ParticleConfigRegistry, ParticleMeshRegistry,
+    ParticleRender, ResolvedManifest, SceneData, ShaderRegistry, SoundData, SoundRegistry,
+    TextureHandle, TilemapData, TilemapRegistry, UvRect, pack_shelf,
 };
 use tungsten_core::{
     ActionMap, ActionMapError, AssetRegistry, CommandBuffer, Sprite, Tag, Transform, Visibility,
@@ -589,24 +589,124 @@ pub fn reload_material(id: &str, world: &mut World, renderer: &mut Renderer) -> 
     Ok(())
 }
 
-/// Load particle configs; sprite-ID validation happens after sprite load.
+/// Register manifest `particle_meshes` (M31, `D-093`) and upload their
+/// geometry. The registry is kept across calls, so a mesh keeps its ID when it
+/// loads again.
+pub fn load_particle_meshes(
+    manifest: &ResolvedManifest,
+    world: &mut World,
+    renderer: &mut Renderer,
+) -> anyhow::Result<()> {
+    let mut registry = world
+        .remove_resource::<ParticleMeshRegistry>()
+        .unwrap_or_default();
+
+    // Sorted, so the IDs do not depend on map order.
+    let mut ids: Vec<&String> = manifest.particle_meshes.keys().collect();
+    ids.sort();
+    for id in ids {
+        let mesh = &manifest.particle_meshes[id].mesh;
+        let asset_id = registry.insert(id, mesh.clone());
+        renderer.upload_particle_mesh(asset_id, &mesh.vertices, &mesh.indices);
+        log::info!(
+            "Loaded particle mesh '{id}' ({} vertices, {} indices)",
+            mesh.vertices.len(),
+            mesh.indices.len(),
+        );
+    }
+
+    world.insert_resource(registry);
+    Ok(())
+}
+
+/// Changes a manifest makes to the registered particle meshes; each list is
+/// sorted.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct ParticleMeshDiff {
+    pub added: Vec<String>,
+    pub changed: Vec<String>,
+    pub removed: Vec<String>,
+}
+
+/// Compare the registry with a manifest's `particle_meshes` section.
+pub(crate) fn diff_particle_meshes(
+    registry: &ParticleMeshRegistry,
+    manifest: &ResolvedManifest,
+) -> ParticleMeshDiff {
+    let mut diff = ParticleMeshDiff::default();
+    for (id, entry) in &manifest.particle_meshes {
+        match registry
+            .id_for_name(id)
+            .and_then(|asset_id| registry.get(asset_id))
+        {
+            None => diff.added.push(id.clone()),
+            Some(mesh) if *mesh != entry.mesh => diff.changed.push(id.clone()),
+            Some(_) => {}
+        }
+    }
+    for name in registry.names() {
+        if !manifest.particle_meshes.contains_key(name) {
+            diff.removed.push(name.to_string());
+        }
+    }
+    diff.added.sort();
+    diff.changed.sort();
+    diff.removed.sort();
+    diff
+}
+
+/// The asset a particle config draws with, when it is not registered: the
+/// sprite of a quad config or the mesh of a mesh config, as `(kind, id)`.
+fn missing_particle_render_ref<'a>(
+    cfg: &'a ParticleConfig,
+    world: &World,
+) -> Option<(&'static str, &'a str)> {
+    match &cfg.render {
+        ParticleRender::Quad => {
+            let registry = world
+                .get_resource::<AssetRegistry>()
+                .expect("AssetRegistry resource missing");
+            registry
+                .get_sprite(&cfg.sprite)
+                .is_none()
+                .then_some(("sprite", cfg.sprite.as_str()))
+        }
+        ParticleRender::Mesh { mesh } => {
+            let registered = world
+                .get_resource::<ParticleMeshRegistry>()
+                .is_some_and(|registry| registry.id_for_name(mesh).is_some());
+            (!registered).then_some(("particle mesh", mesh.as_str()))
+        }
+    }
+}
+
+/// Load particle configs; sprite and mesh references are validated after
+/// both have loaded.
 pub fn load_particles(manifest: &ResolvedManifest, world: &mut World) -> anyhow::Result<()> {
     let mut registry = ParticleConfigRegistry::new();
     for (id, entry) in &manifest.particles {
         let cfg = ParticleConfig::load(&entry.path).map_err(|e| anyhow::anyhow!("{e}"))?;
-        log::info!(
-            "Loaded particle config '{}' -> sprite '{}' ({} max)",
-            id,
-            cfg.sprite,
-            cfg.max_alive,
-        );
+        match &cfg.render {
+            ParticleRender::Quad => log::info!(
+                "Loaded particle config '{}' -> sprite '{}' ({} max)",
+                id,
+                cfg.sprite,
+                cfg.max_alive,
+            ),
+            ParticleRender::Mesh { mesh } => log::info!(
+                "Loaded particle config '{}' -> mesh '{}' ({} max)",
+                id,
+                mesh,
+                cfg.max_alive,
+            ),
+        }
         registry.register(id.clone(), entry.path.clone(), cfg);
     }
     world.insert_resource(registry);
     Ok(())
 }
 
-/// Load all assets and validate sprite cross-references (D-009).
+/// Load all assets and validate sprite and particle-mesh cross-references (D-009).
 pub fn load_all(
     manifest: &ResolvedManifest,
     world: &mut World,
@@ -619,6 +719,7 @@ pub fn load_all(
     load_materials(manifest, world, renderer)?;
     load_sounds(manifest, world)?;
     load_tilemaps(manifest, world)?;
+    load_particle_meshes(manifest, world, renderer)?;
     load_particles(manifest, world)?;
 
     let registry = world
@@ -665,11 +766,9 @@ pub fn load_all(
         let cfg = particle_registry
             .get(asset_id)
             .expect("registered asset id lost its config");
-        if registry.get_sprite(&cfg.sprite).is_none() {
+        if let Some((kind, name)) = missing_particle_render_ref(cfg, world) {
             return Err(anyhow::anyhow!(
-                "Particle config '{}' references unknown sprite ID '{}'",
-                id,
-                cfg.sprite,
+                "Particle config '{id}' references unknown {kind} ID '{name}'",
             ));
         }
     }
@@ -1315,17 +1414,9 @@ pub fn reload_particle(id: &str, path: &Path, world: &mut World) -> anyhow::Resu
         }
     };
 
-    {
-        let registry = world
-            .get_resource::<AssetRegistry>()
-            .expect("AssetRegistry resource missing");
-        if registry.get_sprite(&cfg.sprite).is_none() {
-            log::error!(
-                "Hot reload particle '{id}': sprite '{}' not registered — keeping stale",
-                cfg.sprite
-            );
-            return Ok(());
-        }
+    if let Some((kind, name)) = missing_particle_render_ref(&cfg, world) {
+        log::error!("Hot reload particle '{id}': {kind} '{name}' not registered — keeping stale");
+        return Ok(());
     }
 
     let particle_registry = world
@@ -1595,6 +1686,29 @@ pub fn reload_manifest(
         }
     }
 
+    // M31 particle meshes: register and upload new ones, re-upload changed
+    // ones under the same ID. Before the particle block, so a config added by
+    // the same edit may name a mesh added with it.
+    {
+        let mut registry = world
+            .remove_resource::<ParticleMeshRegistry>()
+            .unwrap_or_default();
+        let diff = diff_particle_meshes(&registry, &new_manifest);
+
+        for id in &diff.removed {
+            log::warn!("Manifest reload: particle mesh '{id}' removed — keeping stale");
+        }
+        let added = diff.added.iter().map(|id| (id, "loaded new"));
+        let changed = diff.changed.iter().map(|id| (id, "reloaded"));
+        for (id, verb) in added.chain(changed) {
+            let mesh = &new_manifest.particle_meshes[id].mesh;
+            let asset_id = registry.insert(id, mesh.clone());
+            renderer.upload_particle_mesh(asset_id, &mesh.vertices, &mesh.indices);
+            log::info!("Manifest reload: {verb} particle mesh '{id}'");
+        }
+        world.insert_resource(registry);
+    }
+
     {
         let existing: Vec<String> = world
             .get_resource::<ParticleConfigRegistry>()
@@ -1613,16 +1727,9 @@ pub fn reload_manifest(
             }
             match ParticleConfig::load(&entry.path) {
                 Ok(cfg) => {
-                    let sprite_ok = {
-                        let registry = world
-                            .get_resource::<AssetRegistry>()
-                            .expect("AssetRegistry resource missing");
-                        registry.get_sprite(&cfg.sprite).is_some()
-                    };
-                    if !sprite_ok {
+                    if let Some((kind, name)) = missing_particle_render_ref(&cfg, world) {
                         log::error!(
-                            "Manifest reload: new particle '{id}' references unknown sprite '{}' — skipping",
-                            cfg.sprite
+                            "Manifest reload: new particle '{id}' references unknown {kind} '{name}' — skipping"
                         );
                         continue;
                     }

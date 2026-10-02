@@ -27,17 +27,19 @@ use crate::systems_overlay::{
 };
 use crate::telemetry::{DisplayTelemetry, FrameTimings, RenderCounts};
 use tungsten_core::assets::{
-    AnimationRegistry, FontRegistry, ParticleConfigRegistry, ShaderRegistry, SoundRegistry,
-    TilemapRegistry,
+    AnimationRegistry, FontRegistry, ParticleConfigRegistry, ParticleMeshRegistry, ShaderRegistry,
+    SoundRegistry, TilemapRegistry,
 };
 use tungsten_core::physics::{CollisionEvent, PhysicsBuffers, PhysicsConfig};
+use tungsten_core::post::{PostPass, PostStack};
 use tungsten_core::{
     ActionMap, AssetRegistry, AudioCommands, CameraController, CameraState, CommandBuffer, Config,
     DebugDraw, DebugShape, DeltaTime, DisplayMode, DisplayState, EventQueue, InputState,
     Inspectable, ParticleActive, ParticleBudget, World, WorldRngSeed,
 };
 use tungsten_render::{
-    DebugLineInstance, GpuFrameTimings, QuadInstance, Renderer, SpriteBatch, TextSection,
+    DebugLineInstance, GpuFrameTimings, MeshParticleBatch, QuadInstance, Renderer, SpriteBatch,
+    TextSection,
 };
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseScrollDelta, WindowEvent};
@@ -118,6 +120,9 @@ pub struct App {
     capture_config: Option<CaptureConfig>,
     frames_rendered: u64,
     fatal_error: Option<anyhow::Error>,
+    // M31: the user's post stack plus the transition pass, rebuilt on each
+    // frame a screen transition draws; kept to reuse its allocation.
+    transition_post_stack: PostStack,
 }
 
 #[derive(Debug, Clone)]
@@ -165,6 +170,7 @@ impl App {
         world.insert_resource(AudioCommands::new());
         world.insert_resource(TilemapRegistry::new());
         world.insert_resource(ParticleConfigRegistry::new());
+        world.insert_resource(ParticleMeshRegistry::new());
         world.insert_resource(ShaderRegistry::new());
         world.insert_resource(ParticleBudget::default());
         world.insert_resource(ParticleActive::default());
@@ -260,6 +266,7 @@ impl App {
             capture_config: parse_capture_config(),
             frames_rendered: 0,
             fatal_error: None,
+            transition_post_stack: PostStack::new(),
         };
 
         // Engine input consumers precede user systems; overlay toggles precede HUD.
@@ -671,6 +678,22 @@ impl App {
     }
 }
 
+/// The post stack a frame draws with: the user's stack, or `scratch` holding
+/// its passes with the screen transition's pass last (M31, `D-093`).
+fn compose_post_stack<'a>(
+    user: &'a PostStack,
+    transition_pass: Option<PostPass>,
+    scratch: &'a mut PostStack,
+) -> &'a PostStack {
+    let Some(pass) = transition_pass else {
+        return user;
+    };
+    scratch.0.clear();
+    scratch.0.extend_from_slice(&user.0);
+    scratch.0.push(pass);
+    scratch
+}
+
 // Extract output kept in umbrella crate; renderer stays World-free.
 struct FrameExtract {
     quads: Vec<QuadInstance>,
@@ -681,6 +704,9 @@ struct FrameExtract {
     /// M29 per-frame lighting payload; uploaded to the GPU once per render
     /// stage. With no lights this carries `count = 0` + ambient default.
     light_ubo: tungsten_render::LightUbo,
+    /// M31 mesh particles, one batch per mesh. Engine-owned extract: there is
+    /// no setter.
+    mesh_particles: Vec<MeshParticleBatch>,
     extract_ms: f32,
 }
 
@@ -859,6 +885,8 @@ impl App {
         let (vw, vh) = (viewport.0 as f32, viewport.1 as f32);
         let light_ubo = crate::light_extract::extract_lights(&self.world, &camera, vw, vh);
 
+        let mesh_particles = crate::particles::extract_mesh_particles(&self.world);
+
         let extract_ms = extract_start.elapsed().as_secs_f64() as f32 * 1000.0;
         FrameExtract {
             quads,
@@ -867,6 +895,7 @@ impl App {
             debug_quads,
             debug_lines,
             light_ubo,
+            mesh_particles,
             extract_ms,
         }
     }
@@ -901,14 +930,26 @@ impl App {
             }
 
             // M26: PostStack is a world resource; default is empty.
-            let empty_stack = tungsten_core::post::PostStack::default();
+            let empty_stack = PostStack::default();
             let post_stack = self
                 .world
-                .get_resource::<tungsten_core::post::PostStack>()
+                .get_resource::<PostStack>()
                 .unwrap_or(&empty_stack);
+            // M31: a screen transition draws as the last post-stack slot, on
+            // a copy of the user's stack, so a state's `on_enter` may clear
+            // or rebuild `PostStack` without losing or leaking the pass.
+            let transition_pass = self
+                .world
+                .get_resource::<StateStack>()
+                .and_then(StateStack::transition_pass);
+            let post_stack =
+                compose_post_stack(post_stack, transition_pass, &mut self.transition_post_stack);
 
             // M29: upload the per-frame light UBO before any draw records it.
             renderer.update_lights(&extract.light_ubo);
+            // M31: this frame's mesh particle instances; an empty list clears
+            // the previous frame's draws.
+            renderer.update_mesh_particles(&extract.mesh_particles);
 
             let result = if self.gpu_timing_enabled {
                 renderer.render_frame_full_timed(

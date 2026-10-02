@@ -19,7 +19,6 @@ Hand-rolled ECS with archetypal storage, deferred command buffers, and typed eve
 | [`docs/LLM_INDEX.md`](docs/LLM_INDEX.md) | On-demand task → source-path map for coding agents |
 | [`docs/agent-setup.md`](docs/agent-setup.md) | How Claude Code and Codex load instructions, skills and search filters |
 | [`docs/plans/README.md`](docs/plans/README.md) | Session-plan storage rules and milestone plan naming convention |
-| [`docs/plans/phase4.md`](docs/plans/phase4.md) | Active Phase 4 plan and milestone index |
 | [`docs/perf/profiling-workflow.md`](docs/perf/profiling-workflow.md) | Profiling workflow: capture rules, compare verdicts, capacity search |
 | [`docs/perf/benchmarks.md`](docs/perf/benchmarks.md) | The six benchmarks, their knobs, owned metrics and calibrated defaults |
 | [`docs/releases.md`](docs/releases.md) | Internal release preparation, checks, Git handoff and recovery |
@@ -39,7 +38,7 @@ cargo test --workspace                  # raw equivalent of the test step
 cargo build --workspace
 cargo run -p example-01-platformer      # comprehensive engine demo
 cargo run -p example-02-bench           # benchmark suite; TUNGSTEN_BENCH selects one
-cargo run -p example-03-scene-state     # scene/state + tween transition demo
+cargo run -p example-03-scene-state     # scene/state + screen transition demo
 cargo run -p example-04-shader-playground  # materials + 18-effect post-stack demo (incl. bloom)
 ```
 
