@@ -6,6 +6,16 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.38.0] - 2026-10-02
+
+Summary: example 01's ball extract is about three times faster (plan `docs/plans/archive/ball-pit-extract.md`). No engine, physics or render code changes, no decision and no determinism or benchmark digest change; it is an example-level rework of one extract loop, plus a revised discussion draft.
+
+### Changed
+
+- **Example 01 ball extract** (`extract_balls` in `examples/01_platformer/src/extract.rs`): two zipped `query2_opt2::<Ball, Position, _, _>` queries read all six columns with no per-ball component lookup; a last-batch memo and a 32-slot direct-mapped sprite cache replace a `HashMap` entry and a registry lookup per ball; balls outside the camera view are skipped; the flame sprite IDs are a `const` array instead of eight formatted strings a frame. Indicative timing, taken with a video encoder running and a clean rerun owed: about 0.10 µs per ball before and 0.03 µs after (1.2 ms to 0.35 ms at 12,000 balls in view). Two batches on one texture now come out in first-seen order instead of `HashMap` iteration order.
+- **`rainbow_rgba`** takes one `powf` instead of three, since at full saturation and value only one channel ramps; the output is bit-identical.
+- **`docs/plans/ui-text-suite-draft.md`** revised: constraints checked against the text, window and input code and the locked crate sources, a proposal summary, a text-engine seam sketch and a milestone ladder. It stays a draft: no decision, no code and no dependency change.
+
 ## [0.37.0] - 2026-10-02
 
 Summary: a slow frame no longer collapses a dense awake pile (`D-094`, plan `docs/plans/archive/physics-dense-pile-collapse.md`). One physics step advances at most 1/30 s, so below 30 FPS physics runs slow instead of softening its contacts; example 01 caps its balls at 12,000. Nothing changes at a 1/60 s step: the determinism hash and all eight benchmark digests are unchanged, and no owned metric reads `regressed`.

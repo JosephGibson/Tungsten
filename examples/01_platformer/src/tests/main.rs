@@ -1488,6 +1488,9 @@ fn all_player_orb_frames_keep_lighting_material_facing_and_bottom_anchor() {
         assert!(batches[0].lit);
         assert_eq!(batches[0].instances[0].position, [184.0, 184.0]);
     }
+    // A ball outside the view is not extracted.
+    world.get_resource_mut::<CameraState>().unwrap().position = Vec2::splat(1000.0);
+    assert!(crate::extract::extract_sprites(&world).is_empty());
 }
 
 #[test]

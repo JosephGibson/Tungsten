@@ -23,24 +23,23 @@ use crate::state::{
 };
 use crate::systems::cursor_to_world;
 
-#[allow(clippy::many_single_char_names)] // h/c/x/r/g/b bindings in HSV-to-RGB math
+#[allow(clippy::many_single_char_names)] // h/x/r/g/b bindings in HSV-to-RGB math
 fn rainbow_rgba(hue: f32) -> [u8; 4] {
     let h = hue.rem_euclid(1.0) * 6.0;
-    let c = 1.0;
-    let x = c * (1.0 - (h % 2.0 - 1.0).abs());
+    let x = 1.0 - (h % 2.0 - 1.0).abs();
+    // At full saturation and value one channel is 1, one is 0 and `x` ramps
+    // between them. The 0.55 lift maps 0 and 1 to themselves, so only `x`
+    // needs the `powf`.
+    let x = (x.powf(0.55) * 255.0).round().clamp(0.0, 255.0) as u8;
     let (r, g, b) = match h as u32 {
-        0 => (c, x, 0.0),
-        1 => (x, c, 0.0),
-        2 => (0.0, c, x),
-        3 => (0.0, x, c),
-        4 => (x, 0.0, c),
-        _ => (c, 0.0, x),
+        0 => (255, x, 0),
+        1 => (x, 255, 0),
+        2 => (0, 255, x),
+        3 => (0, x, 255),
+        4 => (x, 0, 255),
+        _ => (255, 0, x),
     };
-    let saturated = |v: f32| -> u8 {
-        let lifted = v.powf(0.55);
-        (lifted * 255.0).round().clamp(0.0, 255.0) as u8
-    };
-    [saturated(r), saturated(g), saturated(b), 255]
+    [r, g, b, 255]
 }
 
 fn view_bounds(world: &World) -> (Vec2, Vec2) {
@@ -334,6 +333,18 @@ fn extract_props(world: &World, assets: &AssetRegistry, depth: PropDepth) -> Vec
     batches
 }
 
+/// Frames of the burning-ball flame, in animation order.
+const FLAME_SPRITE_IDS: [&str; 8] = [
+    "ex10_fire_0",
+    "ex10_fire_1",
+    "ex10_fire_2",
+    "ex10_fire_3",
+    "ex10_fire_4",
+    "ex10_fire_5",
+    "ex10_fire_6",
+    "ex10_fire_7",
+];
+
 pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     let Some(assets) = world.get_resource::<AssetRegistry>() else {
         return vec![];
@@ -470,64 +481,9 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     }
     batches.extend(player_batches);
 
-    let mut ball_batches: HashMap<(u32, FilterMode, bool), SpriteBatch> = HashMap::new();
-    for (entity, _) in world.query::<Ball>() {
-        let Some(pos) = world.get::<Position>(entity).copied() else {
-            continue;
-        };
-        let small = world.get::<SmallBall>(entity).is_some();
-        let diameter = BALL_VISUAL_DIAMETER * if small { SMALL_BALL_SCALE } else { 1.0 };
-        let fallback = if small {
-            SMALL_BALL_START_SPRITE_ID
-        } else {
-            BALL_START_SPRITE_ID
-        };
-        let sprite_id = world
-            .get::<CurrentSprite>(entity)
-            .map_or(fallback, |cs| cs.0.as_str());
-        let Some(asset) = assets
-            .get_sprite(sprite_id)
-            .or_else(|| assets.get_sprite(fallback))
-        else {
-            continue;
-        };
-
-        let uv_min = asset.uv.min;
-        let uv_size = [
-            asset.uv.max[0] - asset.uv.min[0],
-            asset.uv.max[1] - asset.uv.min[1],
-        ];
-        let lit = lighting_on && asset.lit_atlas.is_some();
-        let batch = ball_batches
-            .entry((asset.atlas.0, asset.filter, lit))
-            .or_insert_with(|| {
-                let mut b = SpriteBatch::new(asset.atlas, asset.filter);
-                b.lit = lit;
-                b
-            });
-        let color = match world.get::<crate::burning::BallBurn>(entity) {
-            Some(burn) if burn.remaining > 0.0 => [255, 150, 55, 255],
-            Some(_) => [55, 48, 45, 255],
-            None => world
-                .get::<BallHue>(entity)
-                .map_or([255; 4], |hue| rainbow_rgba(hue.hue)),
-        };
-        batch.instances.push(SpriteInstance {
-            position: [pos.0.x - diameter * 0.5, pos.0.y - diameter * 0.5],
-            size: [diameter, diameter],
-            rotation: 0.0,
-            color,
-            uv_min,
-            uv_size,
-            z_norm: 0.0,
-            _pad: 0.0,
-        });
-    }
-    let mut balls: Vec<_> = ball_batches.into_values().collect();
-    balls.sort_by_key(|b| b.texture.0);
-    batches.extend(balls);
+    batches.extend(extract_balls(world, assets, lighting_on));
     // Animated flame on every burning ball, even when the particle pool is full.
-    let flames: [_; 8] = std::array::from_fn(|i| assets.get_sprite(&format!("ex10_fire_{i}")));
+    let flames = FLAME_SPRITE_IDS.map(|id| assets.get_sprite(id));
     for (entity, burn) in world.query::<crate::burning::BallBurn>() {
         if burn.remaining <= 0.0 {
             continue;
@@ -616,6 +572,105 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     }
 
     batches
+}
+
+const BALL_SPRITE_SLOTS: usize = 32;
+
+/// Sprite lookups of one ball extract. Balls share a dozen spin-frame IDs, so
+/// a slot picked from the ID's length and last byte, checked by comparing the
+/// ID, answers nearly every ball without hashing the string. A collision only
+/// costs a registry lookup.
+struct BallSprites<'w> {
+    assets: &'w AssetRegistry,
+    slots: [Option<(&'w str, Option<&'w SpriteAsset>)>; BALL_SPRITE_SLOTS],
+}
+
+impl<'w> BallSprites<'w> {
+    fn get(&mut self, id: &'w str) -> Option<&'w SpriteAsset> {
+        let last = id.as_bytes().last().copied().unwrap_or(0);
+        let slot = &mut self.slots[(id.len() + usize::from(last)) % BALL_SPRITE_SLOTS];
+        match *slot {
+            Some((cached, asset)) if cached == id => asset,
+            _ => {
+                let asset = self.assets.get_sprite(id);
+                *slot = Some((id, asset));
+                asset
+            }
+        }
+    }
+}
+
+/// On-screen balls in query order: one batch per atlas/filter/lit key,
+/// batches ordered by texture.
+fn extract_balls(world: &World, assets: &AssetRegistry, lighting_on: bool) -> Vec<SpriteBatch> {
+    let mut sprites_by_id = BallSprites {
+        assets,
+        slots: [None; BALL_SPRITE_SLOTS],
+    };
+    let mut ball_batches: Vec<SpriteBatch> = Vec::new();
+    // Batch of the previous ball: a pit has one or two keys.
+    let mut current = 0;
+    // The camera shows part of the pit at most.
+    let (view_min, view_max) = view_bounds(world);
+    // Both queries walk the same archetypes in the same order, so the zip
+    // reads all six columns with no per-ball lookup.
+    let sprites = world.query2_opt2::<Ball, Position, SmallBall, CurrentSprite>();
+    let tints = world.query2_opt2::<Ball, Position, crate::burning::BallBurn, BallHue>();
+    for ((_, _, pos, small, sprite), (_, _, _, burn, hue)) in sprites.zip(tints) {
+        let small = small.is_some();
+        let diameter = BALL_VISUAL_DIAMETER * if small { SMALL_BALL_SCALE } else { 1.0 };
+        let top_left = pos.0 - diameter * 0.5;
+        if (top_left + diameter).cmplt(view_min).any() || top_left.cmpgt(view_max).any() {
+            continue;
+        }
+        let fallback = if small {
+            SMALL_BALL_START_SPRITE_ID
+        } else {
+            BALL_START_SPRITE_ID
+        };
+        let sprite_id = sprite.map_or(fallback, |cs| cs.0.as_str());
+        let Some(asset) = sprites_by_id
+            .get(sprite_id)
+            .or_else(|| sprites_by_id.get(fallback))
+        else {
+            continue;
+        };
+
+        let uv_min = asset.uv.min;
+        let uv_size = [
+            asset.uv.max[0] - asset.uv.min[0],
+            asset.uv.max[1] - asset.uv.min[1],
+        ];
+        let lit = lighting_on && asset.lit_atlas.is_some();
+        let same_key =
+            |b: &SpriteBatch| b.texture == asset.atlas && b.filter == asset.filter && b.lit == lit;
+        if !ball_batches.get(current).is_some_and(same_key) {
+            current = ball_batches.iter().position(same_key).unwrap_or_else(|| {
+                let mut batch = SpriteBatch::new(asset.atlas, asset.filter);
+                batch.lit = lit;
+                ball_batches.push(batch);
+                ball_batches.len() - 1
+            });
+        }
+        let color = match burn {
+            Some(burn) if burn.remaining > 0.0 => [255, 150, 55, 255],
+            Some(_) => [55, 48, 45, 255],
+            None => hue.map_or([255; 4], |hue| rainbow_rgba(hue.hue)),
+        };
+        ball_batches[current].instances.push(SpriteInstance {
+            position: top_left.to_array(),
+            size: [diameter, diameter],
+            rotation: 0.0,
+            color,
+            uv_min,
+            uv_size,
+            z_norm: 0.0,
+            _pad: 0.0,
+        });
+    }
+    // Stable: batches sharing a texture keep the order their keys first appeared in.
+    ball_batches.sort_by_key(|b| b.texture.0);
+    ball_batches
 }
 
 /// Pixel hearts stay at a fixed screen size and read current HP without the
