@@ -13,6 +13,8 @@ A2 landed: 2026-10-01, 22:07Z–22:55Z, on the owner's acceptance (`D-086`). The
 
 B3 done: 2026-10-01, 22:55Z–23:58Z, ahead of the rest of Session B on the owner's approval (`D-087`). The last full-screen stage renders into the swapchain; the suite is saved as `gpu-pass-b3`. The owner accepted two owned readings that the step leaves `regressed` (`gpu` `smaa_neighborhood` p50, `particles` `unattributed` p95); the record is under "B3". The Session A leftovers are closed under "A4".
 
+B0 done: 2026-10-02, 00:09Z–00:31Z. Session B started on the owner's decisions of that day: B2, B4 and B6 stay at `no` and are not run; B0, B1, B5 and B7 are. The session baseline is `gpu-pass-b0`, an A/A of `gpu-pass-b3` whose only moved verdicts are the per-run mode of `ecs`; the record is under "B0".
+
 ## Context digest
 
 - Planned 2026-10-01 on branch `0.34`, commit `1b869e5`, clean tree. Stack: `wgpu` 30.0.1, `winit` 0.30.13 (lock file), `glyphon` 0.12.0, `cosmic-text` 0.19.0, Vulkan on RADV (Mesa 26.2.3).
@@ -241,10 +243,10 @@ B1 is not gated: it adds a reported telemetry field that no row owns, and `D-038
 
 | Step | Decision needed | Checked against | Recommendation | Approved |
 | --- | --- | --- | --- | --- |
-| B2 | New entry: the default extract no longer emits sprites outside the camera view. Amends `D-042`; the parallax remap of `D-073` runs before the test. | `D-018`, `D-042`, `D-073` | Do it | no |
+| B2 | New entry: the default extract no longer emits sprites outside the camera view. Amends `D-042`; the parallax remap of `D-073` runs before the test. | `D-018`, `D-042`, `D-073` | Do it | no (confirmed 2026-10-02 for Session B: not run, open) |
 | B3 | New entry: the last full-screen stage renders into the swapchain and text draws there; the present blit and `PresentSource` remain only on capture frames. Amends the tail description of `D-059` and the frame order in `crates/tungsten-render/AGENTS.md`. The `gpu` row stops owning `gpu.present`, which changes a row's owned metrics. | `D-047`, `D-057`, `D-058`, `D-059`, `D-078` | Do it | yes (2026-10-01; done, `D-087`) |
-| B4 | New entry: a direct `x11rb` dependency (`D-015` rule 1, platform API; already in `Cargo.lock` through winit) and a `display.bypass_compositor` setting with its default. Sets `_NET_WM_BYPASS_COMPOSITOR` (S10) as SDL does by default (S11). User-visible: desktop compositing is suspended while the window exists. | `D-015`, `D-043` | Do it, default on for borderless fullscreen and off for windowed | no |
-| B6 | New entry if kept: a direct `cosmic-text` dependency to enable its `shape-run-cache` feature (`D-015` rule 2; already in the tree through glyphon, `D-026`). | `D-015`, `D-026` | Run the experiment; keep only on an `improved` verdict | no |
+| B4 | New entry: a direct `x11rb` dependency (`D-015` rule 1, platform API; already in `Cargo.lock` through winit) and a `display.bypass_compositor` setting with its default. Sets `_NET_WM_BYPASS_COMPOSITOR` (S10) as SDL does by default (S11). User-visible: desktop compositing is suspended while the window exists. | `D-015`, `D-043` | Do it, default on for borderless fullscreen and off for windowed | no (confirmed 2026-10-02 for Session B: not run, open) |
+| B6 | New entry if kept: a direct `cosmic-text` dependency to enable its `shape-run-cache` feature (`D-015` rule 2; already in the tree through glyphon, `D-026`). | `D-015`, `D-026` | Run the experiment; keep only on an `improved` verdict | no (confirmed 2026-10-02 for Session B: not run, open) |
 
 Nothing here reverses a decision. `D-078`'s pacing evidence is from the retired scene; the new matrix confirms its conclusion.
 
@@ -546,6 +548,25 @@ Final suite `gpu-pass-a3` (`perf-runs/20261001T202900Z-suite/`) against `gpu-pas
 ### B0. Preflight
 
 As A0, with baseline name `gpu-pass-b0`, compared against `gpu-pass-a3` if that baseline exists. Read the "Decisions for approval" table: skip every step whose row is not approved and say so in the report.
+
+**B0 result (2026-10-02, 00:09Z–00:31Z): done.** The session folder is `perf-runs/20261002-gpu-pass-session-b/` (`SB` below): `env.sh`, guard and load logs, `logs/`, `patches/`, `snap/` with one full tree per step boundary, `refbuild/`, `shots/` and copies of `S2`'s tools bound to it. Use that literal path for the rest of Session B. The tree was clean at `2b55f4e` (B3) on branch `0.34`, and the session's patches are cut against that commit.
+
+- Not run in this session, by the owner's decisions of 2026-10-02: B2, B4 and B6. Each stays at `no` in "Decisions for approval" and stays open. B3 was done before the session (`D-087`).
+- Baseline `gpu-pass-b0` is `perf-runs/20261002T002521Z-suite/`: commit `2b55f4e`, `dirty=no`, valid, no encoder sighting. It was compared with `gpu-pass-b3`, not with `gpu-pass-a3` as written above: `gpu-pass-b3` is this tree captured 73 minutes earlier, so the compare is an A/A across two sittings (`perf-runs/20261002T002906Z-compare-suite/`). It reads 2 `regressed`, 2 `improved`, 38 `unchanged` and 12 `noisy` owned verdicts.
+- All four moved verdicts are `ecs`, and all four are the row's per-run mode (`docs/perf/benchmarks.md`, `ecs`), not drift: `stats_decay` p50 0.15 → 0.28 ms and `buffs` 0.63 → 0.65 ms `regressed`, `follow` 1.82 → 1.63 ms and `team_bags` 0.25 → 0.22 ms `improved`. Four of this suite's five runs are in the mode and none of `gpu-pass-b3`'s:
+
+  | Suite | `stats_decay` p50 per run | `follow` | `buffs` | `team_bags` |
+  | --- | --- | --- | --- | --- |
+  | `gpu-pass-b3` | 0.15, 0.15, 0.16, 0.15, 0.15 | 1.82, 1.81, 1.80, 1.83, 1.83 | 0.62, 0.62, 0.65, 0.63, 0.62 | 0.25, 0.25, 0.24, 0.25, 0.25 |
+  | `gpu-pass-b0` | 0.31, 0.15, 0.32, 0.32, 0.32 | 1.60, 1.81, 1.57, 1.58, 1.58 | 0.66, 0.62, 0.66, 0.66, 0.66 | 0.22, 0.24, 0.22, 0.22, 0.22 |
+
+  `team_bags` was not listed with the mode before. It reads 0.22–0.23 ms in a mode run and 0.24–0.25 otherwise, in `gpu-pass-a2-landed` too (0.23, 0.24, 0.23, 0.25, 0.22 against `stats_decay` 0.31, 0.30, 0.32, 0.15, 0.32). The row's `update` reads `unchanged` (p50 10.45 → 10.31 ms), as do `brain` (2.16 → 2.15) and `bounds_wrap` (0.31 → 0.32).
+- No verdict of a `gpu` row moved, so nothing was recaptured: `gpu` reads 13 `unchanged` and 2 `noisy`, `gpu-throughput` 2 and 2 (`render_encode`, whose p95 takes one of two values per run). Peak RSS reads `unchanged` in seven rows and `noisy` in `integrated` (169.6 → 169.2 MiB): no shift between these two sittings.
+- Medians of the baseline (`SB/logs/b0-suite-frame-stats.txt`): `gpu` `total` p50 / p95 / p99 10.75 / 12.22 / 13.11 ms, 90.1 FPS, jitter 2.37 ms, no spike; `gpu-throughput` 14.66 / 15.12 / 15.52 ms, 68.1 FPS; `particles` 6.18 / 7.10 / 7.70 ms, 160.3 FPS, jitter 1.44 ms; `integrated` 8.38 / 9.05 / 9.55 ms, 119.8 FPS, jitter 1.17 ms, one spike in one run (12.86 ms at frame 240); `render_span` p50 10.38 ms (`gpu`) and 5.90 ms (`integrated`).
+- 900-frame reference `perf-runs/20261002T002934Z-gpu/` (`SB/logs/b0-gpu-900-frame-stats.txt`): `total` p50 / p95 / p99 10.73 / 12.21 / 12.65 ms, max 13.90 ms (largest of three runs 14.36), jitter 1.92 ms, 90.3 FPS, no spike, peak RSS 169.2 MiB.
+- Counts (`SB/logs/b0-frame-counts-gpu.txt`, raw files `EV/counts/b0-gpu-*`): 18 render passes, 77 draws, 0 bind groups, 5 buffers and 1,843 `malloc` calls per frame, as B3 left them. `gpu-throughput` (`SB/logs/b0-rusage-gpu-throughput.txt`): 0.16 ms of kernel and 14.95 ms of user time per frame, and no page faults that grow with the frame count (the 300-frame run took 778 fewer than the 100-frame one).
+- Reference build for same-sitting A/Bs: `SB/refbuild/st-b0/`, a `git archive HEAD` export built with the runner's flags. Every symbol sits at the address it has in the working tree's build (`SB/logs/nm-b0-tree.txt`, `nm-b0-ref.txt`).
+- Patch: `SB/patches/00-b0-preflight.patch` (this file only).
 
 ### B1. A frame-interval metric, spike count and maximum
 
