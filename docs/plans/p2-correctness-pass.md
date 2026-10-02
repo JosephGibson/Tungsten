@@ -300,10 +300,12 @@ Properties:
 Written first; the three in `physics_tunneling.rs` fail on the current tree.
 
 - `crates/tungsten-core/tests/physics_tunneling.rs`:
-  - The matrix above in all three spawn orders, 1,536 cases, about 3 s in debug. Neither A nor B may end beyond the gate. Fails today in 266 cases for B.
-  - Slow pushes against a thin static wall in both spawn orders, 160 cases. Fails today in 9.
-  - Free trains: order and momentum kept. A guard; it passes today.
+  - `pushed_body_never_crosses_a_gate`: the matrix above in all three spawn orders, 1,536 cases. Neither A nor B may end beyond the gate. Fails today in 246 cases: 69, 93 and 84 per order.
+  - `slow_push_never_crosses_a_static_wall`: both pusher orders, wall spawned before or after the bodies, 320 cases. Fails today in 9, all with the wall first and the pusher last.
+  - `free_train_keeps_its_order_and_momentum`: a guard; it passes today.
   - The header's guarantee names pushed bodies, both spawn orders and the asleep variant, and states the two residuals.
+  - The counts differ from the probe's (67, 104, 95). A static gate has no `Velocity`, so it sits in another archetype, and its place in proxy order follows which archetype was created first. The probe always created it first; the test spawns the gate first or last, which covers both.
+  - The whole file runs in under 3 s in debug.
 - `crates/tungsten-core/src/tests/physics/step.rs`, with `cfg(test)` counters beside `pair_builds`: a settled stack never enters the pass; a body pushed onto a static wall arrives at it in either spawn order and its pusher stops behind it; the pair-contact and warm-start oracles still hold with the pass running.
 
 **Stop here** and show the owner the failing output with this section before any change to `step.rs`.
@@ -320,6 +322,47 @@ Written first; the three in `physics_tunneling.rs` fail on the current tree.
 **Done when.** The three tunnelling tests fail before and pass after; `just check`, the release physics tests and `just smoke` pass; the capture reads no `regressed` owned metric or carries its justification; digests are reported.
 
 **Docs (step 6).** `D-092`, amending `D-064` (solver-injected velocity is checked before integration, against every neighbour) and the step order of `D-063`. `D-075`, `D-080` and `D-081` stand; the pass relies on their grids and budgets. `DESIGN.md`'s physics section names the pass. `docs/perf/benchmarks.md:117` and `:443` take the new digests.
+
+### Outcome
+
+Recorded 2026-10-02. The pass is in `step.rs` as designed, with three changes found while cutting its cost. None changes a result: the determinism hash is `0x088ec07a73c1b168` before and after them.
+
+- **The flag moved into the position-integration loop, and the pass runs after it.** The loop lists each body it flags; the pass runs only when it listed one, reads every body where the substep began (`prev_center`) and redoes the move of each body whose velocity it changed. The separate scan of step 2 is gone.
+- **`narrow_phase` is `#[inline(always)]`.** With the pass as a second caller, the compiler turned the pair loop's narrow phase into a call. That alone cost `physics` about 5.6% of `physics_step`.
+- **A bounding-box reject** in the pass's candidate loop: a candidate farther away than the pair's margin is dropped before the square root and the narrow phase.
+
+**The capture reads `regressed` for both physics rows, so the pass is held.** An owned regression is the owner's to accept (`D-084`, `D-085`, `D-087`). Until then the pass stays out of the tree: the working tree and patches 01 to 05 are without it, patch 06 carries it and patch 07 its documents. Suite `perf-runs/20261002T053205Z-suite` against the step-4 suite `perf-runs/20261002T044109Z-suite`, encoder absent, 0 sightings:
+
+| Row | Owned metric | Step 4 | Step 5 | Change | Verdict |
+| --- | --- | --- | --- | --- | --- |
+| `physics` | `system.physics_step` p50 | 5.61 ms | 6.08 ms | +8.3% | regressed |
+| `physics` | `system.physics_step` p95 | 5.73 ms | 6.26 ms | +9.2% | regressed |
+| `physics` | `stage.update` p95 | 5.79 ms | 6.31 ms | +9.1% | regressed |
+| `physics-sparse` | `system.physics_step` p50 | 3.45 ms | 3.63 ms | +5.4% | regressed |
+| `physics-sparse` | `system.physics_step` p95 | 3.50 ms | 3.69 ms | +5.5% | regressed |
+| `integrated` | all four | | | | unchanged |
+| `ecs` | `system.brain` p50 | 2.16 ms | 2.24 ms | +3.9% | regressed, placement |
+| `ecs` | `system.bounds_wrap` p50 | 0.26 ms | 0.31 ms | +20.9% | regressed, placement |
+| `churn`, `gpu`, `gpu-throughput`, `particles` | | | | | 0 regressed, 0 improved |
+
+Justification, for the owner to accept or reject:
+
+- **The cost is the pass's own work, not the bookkeeping.** The placebo, this tree with the threshold set to infinity, has the candidate's layout and never runs the pass. Against the step-4 suite it reads `physics` −0.7% and `physics-sparse` −0.9%, both `unchanged`.
+- **Both rows are collision storms.** In a 420-frame run of `physics` (8,000 balls) the pass lists about 195 bodies per substep, 2.4% of them, with about 22 grid candidates and 2.7 pairs each. `physics-sparse` lists about 255 per substep with 6 candidates each. `integrated` lists about 5. A settled pile lists none.
+- **Profile** (`perf record`, frame pointers, against the baseline build): the pass is about 7.5% of the samples in `physics` and 6% in `physics-sparse`, roughly two thirds of it in the grid queries and the candidate loop.
+- **Captures on the way.** As first implemented: +12.5% and +9.6%. With the flag in the integration loop: +14.6% and +8.7%, which showed the scan was not the cost. With the narrow phase inlined again: the table above.
+
+Options not taken, each the owner's call:
+
+1. Accept the cost. Patches 06 and 07 implement this: the pass, then `D-092` with the cost as its recorded justification, the residuals of S5.d, the new digests and this plan's archival.
+2. Take a listed body's pairs from the substep's contacts and query the grid only for a body that gained speed. Estimated from the profile at about +6% and +2%, so `physics` would still read `regressed`. It narrows the completeness argument for a body that did not gain speed to static and sleeping neighbours, and needs the matrix re-run and a new sign-off.
+3. Leave the P2 open. Nothing more to do: patches 01 to 05 are that state, and `docs/known-issues.md` carries the finding.
+
+The `ecs` rows are placement: `nm -C --defined-only` shows `systems::brain` and `systems::bounds_wrap` at other addresses than in the baseline build (mod 64: 48 to 16 and 0 to 32). The placebo has the candidate's addresses and reads the same two verdicts, +3.9% and +20.9%.
+
+Digests: `physics` `86ffcabcdb15eed1` to `c10885dddd6115a4`, `physics-sparse` `5899f9c8a69d79b1` to `9df5ade5305646dc`, `integrated` `5f031f4d947964cb` to `334b519e18b543d7`. The other five rows keep theirs. Clamps applied in 420 frames of each world, counted in a probe build: 263,241, 72,468 and 6,790.
+
+Comparison reports are in `perf-runs/20261002-p2-pass/`: `compare-aa`, `compare-step4`, `compare-step5`, `compare-placebo`, and the two earlier step-5 attempts in `compare-step5-v1` and `compare-step5-v2`.
 
 ## Step 6 — Docs close-out
 
@@ -340,4 +383,32 @@ One patch, after step 5.
 
 ## Hand-off
 
-Patches `01-dt-cap` to `06-docs-closeout`, each with its message, and the commit script, in the session's scratchpad. This file is untracked: commit it once approved, or let patch 01 carry it. The closing report lists per step: the test seen failing, the gates run with their counts, capture verdicts with paths, digests, the two manual checks, and anything skipped.
+Patches with their messages and the commit script are in the session's scratchpad under `p2/`, with a copy in `perf-runs/20261002-p2-pass/handoff/` (machine-local, gitignored).
+
+| Patch | Content | State |
+| --- | --- | --- |
+| `01-dt-cap` to `04-stock-shader-reload` | Steps 1 to 4 | Ready |
+| `05-docs-closeout` | Step 6 for steps 1 to 4 | Ready |
+| `06-arrival-pass` | Step 5: `step.rs`, its unit tests, the tunnelling tests | Held for the owner's decision |
+| `07-arrival-pass-docs` | Step 6 for step 5, and this plan's archival | Held with 06 |
+
+`commit-p2.sh` commits 01 to 05 by default, from the index only. `commit-p2.sh 06 07` applies the held pair to the index and the working tree and commits it. This file is untracked: patch 01 carries it. The closing report lists per step: the test seen failing, the gates run with their counts, capture verdicts with paths, digests, the two manual checks, and anything skipped.
+
+## Progress
+
+Recorded 2026-10-02 on tree `6288601`. Patches and logs are in the session scratchpad under `p2/`.
+
+| Step | State | Record |
+| --- | --- | --- |
+| 0 | Done | `just check` 850 passed, 4 ignored. `just script-test`, `just repo-check`, `just ctx` pass. `just smoke`: 4 examples, then 4, 2, 1, 1, 1, 2, 15 and 1 rows. `just visual` 2 of 2. Release physics tests pass, determinism hash `0x0b8e2a27f2961571`. Three reference screenshots captured twice, byte-equal. Captures: two suites of an export of `6288601`, the first saved as baseline `p2-base`. The A/A reads `regressed` or `improved` only on `ecs` system rows (`buffs`, `stats_decay`, `follow`): the per-run mode `docs/perf/benchmarks.md` records for an untouched tree |
+| 1 | Done, patch 01 | The 2 s case failed before the cap (2.0 against 0.1). `just check` 854 passed |
+| 2 | Done, patch 02 | Both composition tests failed before the change. `just check` 860 passed, `just smoke` unchanged. Live check, scripted: an edit to `assets/manifest.json` under example 01 logged one "Manifest reloaded from" line naming both roots and no "keeping stale" line |
+| 3 | Done, patch 03 | The capture test failed before the change: 0 of 921,600 pixels differ. Reference screenshots byte-equal. `just check` 864 passed; `just smoke`, `just visual` and `just script-test` pass |
+| 4 | Done, patch 04 | The staged capture test failed before the change: 0 of 921,600 pixels differ. Reference screenshots byte-equal. `just check` 866 passed; `just smoke` and `just visual` pass. Live check, scripted: an edit to `assets/shaders/stock/vignette.wgsl` logged "shader 'vignette' reloaded" and frame 470 differed from two byte-equal control runs; the file and its mirror were restored byte-equal. Capture against the baseline: 0 regressed, 0 improved, every digest unchanged |
+| 5 | Implemented and verified, held as patch 06 for its `regressed` capture | `pushed_body_never_crosses_a_gate` failed in 246 of 1,536 cases before and `slow_push_never_crosses_a_static_wall` in 9 of 320; both read 0 after. `just check` 871 passed, 4 ignored; `just smoke` unchanged. Release: containment 0 of 3,000 escaped, determinism bit-identical, hash `0x088ec07a73c1b168`. Capture: see "Outcome" under step 5 |
+| 6 | Done for steps 1 to 4, patch 05. The rest is patch 07, held with the pass | `D-088` to `D-091` with their index rows and marker lines; `DESIGN.md`, `CHANGELOG.md`; `docs/known-issues.md` with its rows in `docs/README.md` and `docs/LLM_INDEX.md`; the review without its P2 rows, moved to the archive. `just ctx`, `just repo-check` and `git diff --check` pass. Each carried-forward item was checked against the tree: the PCM WAV and `perf-capture.sh` items are resolved and dropped; `player.png` is no longer a deletion candidate, because the platformer manifest registers it as `ex10_player`, and the stale checker entry is listed as a follow-up instead. Patch 07 holds `D-092`, the physics paragraph of `DESIGN.md`, the digests in `docs/perf/benchmarks.md`, the residuals of S5.d in place of the open finding, and this plan's `status: done` and move |
+
+Open items:
+
+- **The arrival pass** waits for the owner: accept its cost (commit patches 06 and 07), ask for the cheaper variant, or leave the finding open. See "Outcome" under step 5. This plan stays `in progress` until then; patch 07 sets it `done` and archives it.
+- **A second plan**, `docs/plans/ui-text-suite-draft.md`, appeared in the tree during step 2. It is not part of this pass and is in no patch.

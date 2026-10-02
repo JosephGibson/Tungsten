@@ -69,6 +69,7 @@ Run with `cargo run -p example-NN-name`.
 | Scene/state lifecycle | `examples/03_scene_state/src/main.rs`, `examples/03_scene_state/src/states.rs` |
 | Shader/material/post fixtures | `examples/04_shader_playground/src/main.rs` |
 | Documentation maintenance and remaining milestones | `docs/README.md`, `docs/plans/README.md`, `docs/plans/phase4.md` |
+| Open findings, unchecked platforms and follow-ups | `docs/known-issues.md` |
 | Repository QA and quick checks | `scripts/check-repo.py`, `scripts/test-check-repo.py`, `justfile`, `docs/agent-setup.md` |
 | Release preparation, checks and command hand-off, publication/recovery (`D-071`, `D-074`, `D-079`) | `.github/workflows/release.yml`, `scripts/release.py`, `scripts/test-release.py`, `tools/launcher/src/main.rs`, `.claude/skills/tungsten-finalize/SKILL.md`, `.claude/skills/tungsten-release/SKILL.md`, `docs/releases.md`, `scripts/release-preflight.py`, `scripts/test-release-preflight.py` |
 | New dependency or design change | `docs/DECISION_INDEX.md`, then `DECISIONS.md` by ID |

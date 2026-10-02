@@ -6,11 +6,20 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-Summary: documentation cleanup and plan retirement.
+Summary: four correctness fixes (`D-088`–`D-091`): the frame dt is capped, manifest roots validate and reload as one merged graph, a stock post effect can repeat with different parameters, and stock post shaders hot-reload. Documentation cleanup and plan retirement.
 
 ### Changed
 
 - **Documentation cleanup:** archive the GPU performance, platformer polish and debug/docs cleanup plans; shorten the current design status and shipped Phase 4 scope; correct architecture, reload support, font IDs, capture availability and stale references; route local skills to canonical guides.
+- **`docs/known-issues.md`:** the live home of open findings, recorded limits, unchecked platforms and follow-ups, with rows in `docs/README.md` and `docs/LLM_INDEX.md`. The repository review of 2026-09-25 moves to `docs/plans/archive/repo-review-2026-09-25.md` without its four P2 rows.
+- **`asset_loader::reload_manifest`** takes the list of manifest roots where it took one path (`D-089`). `just visual` also runs example 04's `post_regression` test.
+
+### Fixed
+
+- **Frame dt cap (`D-088`):** `DeltaTime.dt` is the elapsed time capped at 0.1 s. A stall no longer reaches the systems and the physics step as one long step: a 2 s step put 1 of 5 stacked boxes and 6 of 30 piled circles through the floor. Smoke runs keep 1/60 s.
+- **Manifest roots (`D-089`):** a material in one manifest root can name a shader in another, in either root order. An edit to any root manifest reloads the merged graph, where a reload used to load one root over it and report the other roots' sprites as removed. The watcher is built when the app runs, so the order of `enable_hot_reload` and `set_manifest_roots` no longer matters.
+- **Repeated stock post effects (`D-090`):** each post-stack slot owns its params buffer, so two passes of one effect draw with their own parameters. Both used to draw with the parameters written last.
+- **Stock post shader reload (`D-091`):** a body edit to one of the 17 stock post shaders rebuilds that effect's pipeline. The edit used to be validated, cached and logged as reloaded while the frame did not change.
 
 ## [0.34.0] - 2026-10-02
 

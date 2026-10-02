@@ -69,7 +69,7 @@ redraw:     apply pending display settings → update DeltaTime
             → clear input edges → record telemetry → schedule next redraw
 ```
 
-Systems run in registration order; there is no scheduler or dependency graph. A smoke run pins `DeltaTime.dt` to 1/60 s. Normal play uses elapsed time; a frame cap delays the next redraw. Telemetry's `total` measures frame work, while `interval` measures the time between frame starts, including pacing waits.
+Systems run in registration order; there is no scheduler or dependency graph. A smoke run pins `DeltaTime.dt` to 1/60 s. Normal play uses elapsed time, capped at 0.1 s per frame (`D-088`); a frame cap delays the next redraw. Telemetry's `total` measures frame work, while `interval` measures the time between frame starts, including pacing waits.
 
 ### ECS
 
@@ -194,7 +194,7 @@ Stack: `glyphon` + `cosmic-text` + `swash`. Responsibilities: font parsing, shap
 
 `notify` (`D-031`; version pinned by Cargo.lock) runs on a dedicated background thread. File events cross to the main thread through `std::sync::mpsc`. A `50ms` debounce collapses editor double-writes. At the next frame boundary the main thread resolves file paths → asset IDs, decodes new data, uploads to GPU, and updates registry metadata and GPU resources. M25 (`D-057`) brings shaders into the same path: `.wgsl` edits validate through `wgpu::naga` and only commit to the live `ShaderModule` after the dependent pipeline rebuilds. Signature / bind-group-layout changes still require a binary rebuild, narrowing `D-023`. Invariant: do not break the registry-by-ID model; game code must not hold direct GPU handles.
 
-**Supported reload matrix (`D-053`):** applies when the app enables hot reload. The watcher currently routes one manifest path; merged multi-root reload is incomplete. Startup composition validates references per root, so cross-root material→shader references are also limited. Check `asset_loader.rs` and `app.rs` before extending this contract.
+**Supported reload matrix (`D-053`):** applies when the app enables hot reload. The watcher routes every manifest root, and an edit to any of them reloads the merged graph. Material→shader references are validated on the merged graph, so they may cross roots (`D-089`).
 
 | Asset class | Single-file edit | Manifest-add | Manifest-remove |
 | --- | --- | --- | --- |
@@ -208,12 +208,11 @@ Stack: `glyphon` + `cosmic-text` + `swash`. Responsibilities: font parsing, shap
 | Material (`materials` section, `D-058`) | yes — existing `uniform_defaults` reload; changing the shader binding requires restart | yes — manifest reload allocates a new `MaterialAssetId` and calls `upload_material` | warn-only; stale entry kept |
 | SMAA stage shaders (M27, `D-059`) | yes (body-only) — `smaa_edge`, `smaa_blend_weights`, `smaa_neighborhood_blend` follow the M25 shader path; `Renderer::reload_shader` re-validates and rebuilds only the affected `SmaaPipeline` stage. SMAA `area` / `search` LUT binaries are explicitly out-of-matrix (engine-internal `include_bytes!`) | n/a (engine-internal stage shaders, fixed set of three) | n/a |
 | Bloom stage shaders (M28, `D-060`) | yes (body-only) — `bloom_threshold`, `bloom_downsample`, `bloom_upsample`, `bloom_composite` follow the M25 shader path; `Renderer::reload_shader` re-validates and rebuilds only the affected `BloomPipeline` stage via `rebuild_stage_with_module`. The `BloomPyramid` texture is engine-internal and explicitly out-of-matrix; signature changes still need a rebuild | n/a (engine-internal stage shaders, fixed set of four) | n/a |
+| Stock post-effect shaders (M26, `D-058`, `D-091`) | yes (body-only) — the 17 stock effects follow the M25 shader path; `Renderer::reload_shader` re-validates and rebuilds only the affected stock pipeline via `rebuild_stock_with_module`; signature changes still need a rebuild | n/a (engine-internal, fixed set of 17) | n/a |
 | Lit sprite shader + helpers (M29, `D-061`) | yes (body-only) — `lit_sprite` rebuilds the `LitSpritePipeline` via `Renderer::reload_shader` → `LitSpritePipeline::rebuild_with_shader`; `emissive_mask` and `rim_light` are validated and cached but bound to no pipeline directly (helpers for material composition) | **not supported** — restart to register new shader IDs | not applied; existing entries kept |
 | Sprite normal_map / emissive_mask siblings (M29, `D-061`) | yes — sibling PNG edits route through `reload_sprite` (mapped via reverse path lookup); `write_subtexture_lit` updates the matching cell in the lit atlas pool, full repack on grow | yes for new sprite entries; adding sibling fields to an existing sprite requires restart | warn-only; stale lit page kept |
 | `input.json` | yes — `reload_action_map` merges with defaults and swaps `ActionMap` | n/a | n/a |
-| `manifest.json` | yes — `reload_manifest` walks every class above | n/a | n/a |
-
-The 17 ordinary stock post-effect shaders are manifest-tracked and validated, but editing their cached modules currently does not rebuild their embedded post pipelines. Sprite, material, SMAA, bloom and lit-sprite rebuild paths are connected; cache success alone does not establish a visible stock-effect reload.
+| `manifest.json` | yes — `reload_manifest` rebuilds the merged graph of every root and walks every class above (`D-089`) | n/a | n/a |
 
 Audio is session-static by design: `AudioSystem::init` reads every decoded `SoundData::samples` into a callback-owned `HashMap<AudioHandle, Vec<f32>>` (`D-027` / `D-029` / `D-034`), and the mixer closure captures that map at startup. Adding a runtime PCM-swap command is a future milestone; until then, "sound hot reload" is explicitly out of scope and the watcher logs at `debug` when a `.ogg`/`.wav`/`.mp3` under the asset tree changes.
 
@@ -229,7 +228,7 @@ Each frame gathers bodies and collision tiles once into dense proxy arrays and w
 
 Signed-distance AABB/AABB, circle/circle and AABB/circle contacts support speculative CCD (`D-064`). The solver uses warm-started soft constraints, restitution and a configured fixed substep count (default 4; `D-063`, `D-076`), plus deterministic island sleeping (`D-065`, `D-082`). The step remains serial (`D-067`). Collision tile layers become static AABB proxies, gathered by a full-map scan each frame.
 
-Variable frame time is split across the configured substeps; there is no fixed-step accumulator. Current workload limits and measured costs belong in [benchmarks.md](docs/perf/benchmarks.md), rather than an old stress-scene timing here.
+Variable frame time, capped at 0.1 s per frame (`D-088`), is split across the configured substeps; there is no fixed-step accumulator. Current workload limits and measured costs belong in [benchmarks.md](docs/perf/benchmarks.md), rather than an old stress-scene timing here.
 
 ### Archetypal ECS — M12
 
@@ -266,7 +265,7 @@ Scene-owned entities carry a `SceneEntity { state_id }` marker. On state exit th
 
 Manifest `materials` bind a shader ID to a 256-byte `MaterialUniformDefaults` block (`D-058`). `Sprite.material_id` selects a material pipeline; `None` uses the built-in sprite pipeline. `UniformOverrideBlock` and `TweenChannel::Uniform*` provide entity-local animated overrides alongside authored defaults, preserving the one-`Tween`-per-entity rule.
 
-Core owns the reorderable `PostStack`/`PostPass` data. Render records 17 ordinary stock effects plus bloom, using pooled ping-pong targets as needed; an empty stack applies no effects. SMAA is a fixed tail, outside the reorderable stack. Since `D-087`, the last full-screen stage writes the swapchain directly, except on screenshot frames. GPU objects are cached by target generation (`D-085`). Repeated stock effects and distinct material override batches currently share uniform storage; per-slot/per-batch parameter independence needs a renderer fix.
+Core owns the reorderable `PostStack`/`PostPass` data. Render records 17 ordinary stock effects plus bloom, using pooled ping-pong targets as needed; an empty stack applies no effects. SMAA is a fixed tail, outside the reorderable stack. Since `D-087`, the last full-screen stage writes the swapchain directly, except on screenshot frames. GPU objects are cached by target generation (`D-085`). Each post-stack slot owns its stock-effect parameters, so one effect can repeat with different values (`D-090`). Distinct material override batches currently share uniform storage; per-batch parameter independence needs a renderer fix.
 
 ### Game Feel — M30
 
