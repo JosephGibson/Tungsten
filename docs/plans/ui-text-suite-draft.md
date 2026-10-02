@@ -1,21 +1,33 @@
 # UI, interface and text suite — exploratory draft
 
 - **status:** draft
-- **goal:** Explore an ergonomic, efficient UI foundation for game interfaces and engine debug views, including a measured comparison of current text rendering and MSDF.
+- **goal:** Explore an ergonomic, efficient UI foundation for game interfaces and engine debug views, including a measured comparison of current text rendering and MSDF, and the text-engine, DPI and input changes that foundation needs.
 - **non-goals:** Implementation, dependency changes, settled design decisions, release work, or changes to existing examples. Editable fields, docking and native multi-window UI are outside the first slice.
 - **files to touch:** This draft only. Future implementation locations below are proposals, not a change list for this session.
 - **ordered steps:** Review the relevant engine seams; research primary sources; collect owner preferences; draft alternatives and a recommendation; identify open questions and future acceptance checks.
-- **done-when:** The draft records confirmed preferences, source-backed research, proposed ownership/render/input contracts, performance evaluation, and a migration outline, with unresolved choices clearly identified.
+- **done-when:** The draft records confirmed preferences, source-backed research, code-verified constraints, proposed ownership/render/input contracts, performance evaluation, a milestone ladder and a migration outline, with unresolved choices clearly identified and a recommendation beside each.
 
-Date: 2026-10-02. All API names, feature stages and numerical targets below are provisional. This is a discussion document; implementation planning follows design finalization.
+Date: 2026-10-02, revised the same day after checking the text, input and window paths against the code and the locked crate sources (§2). All API names, feature stages and numerical targets below are provisional. This is a discussion document; implementation planning follows design finalization.
 
 ## Context and confirmed preferences
 
 Tungsten has a hand-written ECS, a synchronous frame loop, manifest assets, and cached screen-space text, but no general widget/layout/focus system. Preserve its three-crate architecture and extract/draw seam. Make game UI and debug tools equally important consumers of one foundation. Start with display text and buttons; editable fields follow. Windows initially mean in-game panels/dialogs and movable debug windows; docking can wait. Evaluate MSDF alongside the current renderer using quality and performance evidence. The authoring API is still undecided. Existing examples remain unchanged throughout exploration and implementation until the design and foundation are finalized.
 
+## Proposal at a glance
+
+Provisional. Each line is argued in the section named and none is a decision.
+
+- **Model:** one retained `UiTree` with generational `WidgetId`s in `tungsten-core`, GPU-free. Builders, handles and `UiEvent`s first; a keyed immediate facade for debug windows only if the pause-menu and inspector comparison asks for it (§5).
+- **Layout:** Tungsten-owned style types over Taffy's low-level traits implemented on `UiTree`, so there is no second tree to keep in sync (§3).
+- **Text:** split `render/text.rs` into a device-free text engine (fonts, shaping, measurement, caret geometry) and a GPU half, so layout measures and the renderer draws from the same retained buffers (§4). This is the first milestone and changes no pixels (§11).
+- **Paint:** one ordered paint list in the final overlay, batched by pipeline, texture and clip; text interleaves with panels through several glyph batches (§6).
+- **Input:** an ordered raw event stream routed before systems, UI navigation on engine-owned `ui_*` actions, and a filtered gameplay view (§7).
+- **Glyphs:** glyphon stays the default while MSDF and an owned glyph renderer are scored on capability as well as cost; they are one experiment, not two (§9).
+- **Facts that shape the rest:** any changed text section re-prepares every section; fallback fonts come from the host machine; the engine has no DPI, modifier, focus or IME events (§2).
+
 ## 1. What the project already provides
 
-This is a focused architectural review, not a full project correctness audit. Example source was inspected read-only to identify migration consumers. Existing unrelated working-tree changes are outside this draft.
+This is a focused architectural review, not a full project correctness audit. Example source was inspected read-only to identify migration consumers. The findings in §2 were checked against the code and the locked crate sources on 2026-10-02.
 
 | Existing surface | Implication for UI |
 | --- | --- |
@@ -26,12 +38,41 @@ This is a focused architectural review, not a full project correctness audit. Ex
 | [`input bridge`](../../crates/tungsten/src/input_bridge.rs) and [`InputState`](../../crates/tungsten-core/src/input.rs) | Current bridge handles physical keys, pointer and scroll state. It does not forward text, IME or an ordered UI input stream; gamepad support is absent. |
 | [`DebugHud`](../../crates/tungsten/src/debug_hud.rs), [`SystemTimingOverlay`](../../crates/tungsten/src/systems_overlay.rs), [`InspectorState`](../../crates/tungsten/src/inspector.rs) | Existing resource/provider models should survive migration. Their text refresh is throttled; outlines repeat text draws, and anchoring uses a monospace-width heuristic. |
 | [`StateStack`](../../crates/tungsten/src/state.rs) and [`DebugDraw`](../../crates/tungsten-core/src/debug_draw.rs) | UI roots need state cleanup and pause/resume behavior. Physics lines and collider geometry remain world-space diagnostics. |
+| `App::window_event` in [`app.rs`](../../crates/tungsten/src/app.rs) | Handles close, resize, key, mouse button, cursor, wheel and redraw only. No scale-factor, modifier, focus, cursor-leave, IME or touch events. |
+| `gpu` and `integrated` rows in the [benchmarks](../perf/benchmarks.md) | The current text path already has workloads: 100 sections of 40 characters with a `text_change` knob, and HUD lines plus name tags. They are the baseline for any text comparison. |
+| [Known issues](../known-issues.md) | Screen-space text draws after transitions (`D-093`), and capture completion is not reliable (P3). Both reach UI. |
 
-Locked dependencies at review: wgpu 30.0.1, glyphon 0.12.0, cosmic-text 0.19.0, winit 0.30.13. `Cargo.toml` permits winit starting at 0.30.12; the lockfile establishes the version reviewed.
+Locked dependencies at review: wgpu 30.0.1, glyphon 0.12.0, cosmic-text 0.19.0, winit 0.30.13. `Cargo.toml` permits winit starting at 0.30.12; the lockfile establishes the version reviewed. Candidates checked on crates.io, not locked: taffy 0.14.0, accesskit_winit 0.34.1.
 
-Relevant decisions: D-006 (three crates), D-015 (dependencies), D-016/D-018 (handles/extract), D-026 (text), D-039/D-040 (commands/events), D-044/D-047 (independent debug tools), D-045 (input), D-085 (text caching), D-087 (direct/capture presentation). See the [decision index](../DECISION_INDEX.md); this draft adds no decisions.
+Relevant decisions: D-006 (three crates), D-015 (dependencies), D-016/D-018 (handles/extract), D-026 (text), D-039/D-040 (commands/events), D-044/D-047 (independent debug tools), D-045 (input), D-078 (benchmarks), D-085 (text caching), D-087 (direct/capture presentation), D-093 (transitions). See the [decision index](../DECISION_INDEX.md); this draft adds no decisions.
 
-## 2. Research: patterns worth borrowing
+## 2. Constraints in today's text, window and input paths
+
+Verified on 2026-10-02 against [`text.rs`](../../crates/tungsten-render/src/text.rs), [`app.rs`](../../crates/tungsten/src/app.rs), [`input_bridge.rs`](../../crates/tungsten/src/input_bridge.rs) and the glyphon 0.12.0 and cosmic-text 0.19.0 sources. These are facts about the code, not preferences; the plan below is shaped around them.
+
+**Text path**
+
+| Finding | Consequence |
+| --- | --- |
+| One prepared frame, one draw. `TextLayoutCache::update` reports "unchanged" only when every section matches; any change re-prepares all sections through a single glyphon `TextRenderer`, which owns one vertex buffer and draws it in one call. | A HUD of 99 static labels and one live counter still rebuilds every glyph vertex each frame. Shaping is cached; the glyph walk is not. "Update only changed labels" is true of layout, not of glyph preparation. Interleaving text with panels needs more than this wrapper (§6). |
+| The layout cache key is content, font, size, line height and buffer width and height bits. | Every width a layout pass probes (min-content, max-content, final) becomes its own shaped buffer. cosmic-text caches shaping and line layout separately (`shape_opt`, `layout_opt`), and `Buffer::set_size` only marks a relayout, so UI text should keep one retained `Buffer` per text node and resize it. Keep `D-085`'s bounded age and spare-buffer reuse for content-keyed HUD strings. |
+| `FontSystem::new()` loads system fonts and the platform fallback list; the unit tests build an empty database instead. | Fallback glyphs (CJK, emoji, symbols) come from whatever the host has, so layouts, visual tests and replays can differ between machines, and startup pays a font scan that cosmic-text documents as up to about a second in release. A UI that declares language coverage needs a packaged-fonts-only mode (`new_with_locale_and_db_and_fallback` with an explicit database) or a deliberate opt-in to system fallback. |
+| `TextSection` carries font, size, line height, colour, position and bounds. The calls use `Shaping::Advanced`, `set_text(.., None)` (no alignment), `TextArea.scale = 1.0`, the default wrap and no ellipsis or spans. | cosmic-text 0.19 already offers `Align`, `Wrap::{None, Glyph, Word, WordOrGlyph}`, `Ellipsize`, `Hinting`, `set_rich_text`, `Buffer::hit` and `layout_runs` (caret and selection geometry). None is reachable from Tungsten. They belong in the text-engine API from the start, and most join the cache key. |
+| A section without bounds wraps at the viewport width (`buffer_size`). | "Unbounded" in a UI label must mean no wrap, stated explicitly. Measurement always receives an explicit maximum width. |
+| `Hinting::Enabled` snaps glyph advances during layout and, per its documentation, only looks right with physical-pixel layout and no later scaling. `Disabled` (today's behavior) uses subpixel positions. | The DPI policy is a real fork: (a) layout in logical units with a draw-time scale, so cached layouts survive a scale change but small text is slightly softer, or (b) layout in physical pixels with hinting, so HUD text is crisper but a scale change relayouts everything. Prototype both before fixing §6's scale rule (the claim in (a) that glyphon's `TextArea.scale` rasterizes at physical size is unproven here). |
+| The atlas is safe today only because the frame signature covers every section. `update` skips `prepare` when nothing changed, so glyphon's vertices persist and their atlas slots must stay put (`prepare` skips on the premise that nothing else writes the atlas). When the packer is full, glyphon evicts any least-recently-used glyph that is not in `glyphs_in_use`, and `trim` clears that set after each prepared frame. | Retaining text batches across frames while another batch prepares is unsafe: a new glyph in batch B can evict and overwrite a slot that batch A's retained vertices still sample. `grow` also replaces the atlas texture (retention across a growth is unverified). Several batches on one atlas (T1, §6) must re-prepare together whenever any of them changes. |
+
+**Window, input and surrounding behavior**
+
+| Finding | Consequence |
+| --- | --- |
+| The engine has no DPI model: the window is requested in `PhysicalSize`, `Resized` is the only display event, `ScaleFactorChanged` is unhandled, the cursor is stored in physical pixels and text positions are physical. | On a 2× display, text sized in pixels appears half as large as on a 1× display. A logical-unit UI needs the scale factor in a core resource first; that small change also benefits existing text. |
+| The bridge forwards `KeyCode`, mouse buttons, cursor and wheel. It drops modifiers, focus, cursor-leave, IME, produced text, the repeat flag and the logical key. `translate_key` maps a fixed whitelist, and anything else becomes `KeyCode::Other(<winit enum discriminant>)`, including Home, End, Delete, PageUp, PageDown and every modifier. | Shift+Tab, Ctrl+C/V/A, caret movement and text entry cannot be built on it. A winit discriminant is not a stable identifier across winit versions, so UI-visible keys need real variants. Nothing handles window focus loss, so keys held across an alt-tab are never released; capture and cancel rules must cover it. |
+| `StateStack::transition_cover()` exists, but a transition draws before the overlay, so it does not cover screen-space text; example 03 fades its own text (`known-issues.md`, `D-093`). | A UI root opacity multiplier that a state can drive from the cover value belongs in the foundation. Otherwise every game screen reimplements it. |
+| Capture success is unreliable: a skipped acquisition can report success and readback errors only warn (P3). | UI screenshot checks that compare direct and capture paths (§6) need an explicit capture-completion contract, or a compensating check, first. |
+| The current text path has baselines and history. `D-087`'s capture reads the `text` pass at p50 0.06 ms; `D-085` replaced a cache that produced a 41–43 ms frame every 120 frames and a 731 MiB peak RSS. | Comparisons start from the `gpu` and `integrated` rows, not from nothing. Any UI text cache keeps `D-085`'s bounded behavior. |
+
+## 3. Research: patterns worth borrowing
 
 The observations below come from primary documentation. The Tungsten recommendations are our interpretation, not claims that another engine's design or performance transfers automatically.
 
@@ -41,9 +82,9 @@ The observations below come from primary documentation. The Tungsten recommendat
 | [Godot Control](https://docs.godotengine.org/en/4.6/classes/class_control.html) and [focus navigation](https://docs.godotengine.org/en/stable/tutorials/ui/gui_navigation.html) | Controls provide pointer filtering and explicit focus neighbors; mapped actions drive navigation. | Treat input consumption, initial focus, focus restoration and navigation as foundational contracts. |
 | [Unity UI Toolkit event handling](https://docs.unity3d.com/6000.3/Documentation/Manual/UIE-Events-Handling.html) | Hierarchical events have a target and propagation through ancestors. | Distinguish internal widget event routing from application actions; a modal consumes input before gameplay receives it. |
 | [egui](https://github.com/emilk/egui#why-immediate-mode) | Per-frame functions return button responses; stable identities preserve interaction/window state. Its documentation discusses layout and large scrolling-content tradeoffs. | Study its concise API and debug widgets. Immediate authoring still needs stable identity and retained internal state. Benchmark either model rather than declaring one universally faster. |
-| [Taffy 0.14 layout APIs](https://docs.rs/taffy/0.14.0/taffy/) | A layout solver, with text/image measurement hooks and a low-level API for an existing tree. | Strong candidate for layout only. Tungsten still owns widgets, input, themes and painting. Evaluate a small enabled feature set. |
+| [Taffy 0.14 layout APIs](https://docs.rs/taffy/0.14.0/taffy/) | A layout solver with text/image measurement hooks. Its low-level API (`TraversePartialTree`, `LayoutPartialTree`, `CacheTree`, `compute_root_layout`, flexbox/block/grid computes, all present in the 0.14.0 source) runs over a caller-owned tree. Features are gated individually; the default set also enables `grid`, `float_layout` and `calc`. | Strong candidate for layout only. Tungsten still owns widgets, input, themes and painting. Implement the low-level traits on `UiTree` instead of mirroring into `TaffyTree`: no second tree and no sync pass, and `CacheTree` is where dirty-root relayout plugs in. Start with `flexbox` and `block_layout`; add `grid` only when a screen needs it. |
 | [cosmic-text shaping](https://docs.rs/cosmic-text/0.19.0/cosmic_text/enum.Shaping.html), [glyph output](https://docs.rs/cosmic-text/0.19.0/cosmic_text/struct.LayoutGlyph.html), [editing](https://docs.rs/cosmic-text/0.19.0/cosmic_text/trait.Edit.html) | Advanced shaping supplies font fallback and glyph/cluster information; editing has separate APIs. | Use shaped metrics for measurement and drawing. Future editing needs clusters, selection and caret geometry, independent of rasterization. |
-| [AccessKit](https://accesskit.dev/) | A platform accessibility bridge for custom-rendered toolkits, including a winit adapter. | Keep semantic roles, labels, values and stable widget IDs in the design; evaluate platform integration separately. |
+| [AccessKit](https://accesskit.dev/) | A platform accessibility bridge for custom-rendered toolkits, including a winit adapter. On Linux the adapter is built on an async executor (`async-io` by default, or `tokio`), which likely runs on its own thread. | Keep semantic roles, labels, values and stable widget IDs in the design; evaluate platform integration separately. The Linux adapter collides with the no-async-runtime and two-thread rules, so integration is either Windows/macOS first or a deliberate rule amendment. |
 
 ### Build versus adopt
 
@@ -51,7 +92,19 @@ Recommend a Tungsten-owned UI model and renderer integration, with focused exist
 
 Using egui directly is a serious alternative: it would supply many debug controls and editing features sooner. Tradeoffs to evaluate are asset/theme integration, control of text rasterization, persistent game-screen APIs, and the dependency policy. A complete toolkit needs a clear D-015 justification or a new policy decision. It is not prohibited merely because it is external; no exemption is assumed either. Using separate gameplay and debug toolkits would duplicate focus, input, style and text behavior, so a shared foundation is the current preference.
 
-## 3. Proposed ownership inside the engine
+Dependency exposure, by `D-015` rule (1 platform API, 2 data format, 3 solved primitive):
+
+| Candidate | Rule | Conflict to resolve before adoption |
+| --- | --- | --- |
+| Taffy | 3 | None seen: CPU only, no threads. Confirm the feature set and compile-time cost in a spike. |
+| AccessKit and its winit adapter | 1 | Linux adapter needs an async executor (above). |
+| A clipboard crate | 1 | Check whether its Linux backend keeps a helper thread. |
+| An MSDF generator (msdfgen / msdf-atlas-gen, or a Rust port) | 3 | The repository's "no asset preprocessing" rule for offline generation; the two-thread limit for runtime generation. |
+| egui as the toolkit | none cleanly | A whole toolkit needs its own decision. |
+
+Every new crate also passes `just deps`. The `RUSTSEC-2026-0192` exception for the cosmic-text/fontdb stack's `ttf-parser` is tracked in `known-issues.md` and stays in view while the font stack grows.
+
+## 4. Proposed ownership inside the engine
 
 Keep the existing three crates initially. D-006 already allows a later split when justified by size; a fourth `tungsten-ui` crate brings little benefit at this exploratory stage.
 
@@ -67,7 +120,38 @@ Use one authoritative tree and explicit mutation methods that mark layout/paint 
 
 Text ownership needs particular care: **measurement and rendering must share the same font selection, shaping and wrapping results**. The lowest-change starting point is to expose the GPU-free portion of the current render text cache through a neutral measurement interface used by the app coordinator. Layout calls it before extract; core does not import glyphon. The renderer later receives resolved geometry/layout handles and never queries or mutates `World`. If that placement becomes awkward, a CPU text service can move to the umbrella in a later design decision. Do not create a second font database/cache just for measurement.
 
-## 4. Authoring API: compare before committing
+**Text engine seam (pseudocode, not compile-checked).** The device-free half of `render/text.rs` becomes its own module, with the glyphon atlas and draw code in a GPU module beside it. The umbrella owns the instance and lends it to layout.
+
+```rust
+// tungsten-core::ui: neutral types, no glyphon, no wgpu
+pub struct StyledText { spans: Vec<TextSpan> }          // one span by default
+pub struct TextStyle {
+    font: FontId, size: f32, line_height: f32, color: Rgba8,
+    align: TextAlign, wrap: TextWrap, overflow: TextOverflow,
+}
+pub struct TextMetrics { size: Vec2, baseline: f32, line_count: u32 }
+pub trait TextMeasure {
+    /// `max_width: None` means no wrap. A probe: relayouts the node's retained
+    /// buffer, reshapes only when the text, style or font epoch changed, and may
+    /// leave the buffer at a width other than the final one.
+    fn measure(&mut self, node: TextNodeId, max_width: Option<f32>) -> TextMetrics;
+}
+
+// render text engine (device-free); implements TextMeasure
+fn set_text(&mut self, node: TextNodeId, text: &StyledText, style: &TextStyle);
+fn commit_layout(&mut self, node: TextNodeId, size: Vec2); // final width; draw reads only committed layouts
+fn glyphs(&self, node: TextNodeId) -> impl Iterator<Item = PositionedGlyph>; // face, glyph id, pos, size, colour
+fn hit(&self, node: TextNodeId, point: Vec2) -> Option<TextCursor>;          // carets and selection later
+fn font_epoch(&self) -> FontEpoch;                                           // bumps on font load or reload
+```
+
+Core defines the trait and the umbrella injects the engine, so core never calls render (`D-007`). `FontEpoch` replaces today's blanket `clear_layouts()`: retained UI buffers compare epochs and reshape lazily, and nodes whose measured size changed mark layout dirty. Content-keyed HUD strings keep using the bounded cache through the same engine.
+
+Measure and draw agree by construction under T1: glyphon draws from the engine's own retained `Buffer`s (today's `text_areas` hands it `&Buffer`), so there is one shaping result, not two. Two rules keep it true. (1) Probes leave a buffer at the last probed width, and Taffy's final pass need not measure last, so layout ends with `commit_layout` per node, which re-applies the committed width; extraction reads only committed layouts and a debug assertion checks the buffer's size against the committed box. (2) Font load and reload happen only at the asset-sync stage before layout (§7). `commit_layout` records the `FontEpoch` and the paint list carries it; a mismatch at draw is a bug that asserts in debug and skips the run with a log in release, and the next frame relayouts. Under T2 the commit snapshots a POD `PositionedGlyph` list, so both rules hold trivially.
+
+Placement follows the glyph path. Under T1 the glyphon renderer needs the engine's `Buffer`s, so engine and GPU half stay together in `tungsten-render`. The umbrella already depends on render and reaches it through `Renderer` the way `load_font` does today, so layout calling the engine adds no crate edge. The frame is serial, so the borrows never overlap: layout takes `&mut` engine after systems and before extract, extract reads `&World` only, and draw takes `&` engine. Under T2 the GPU half consumes `PositionedGlyph` data, so the engine can move to the umbrella, or to a fourth crate if `D-006`'s size test is met, with no change to core. Layout unit tests never touch the renderer: core tests use the fixed-advance `TextMeasure` double, and engine tests are GPU-free (the existing text tests already build an empty font database). `PositionedGlyph` is the rasterizer-independent interface that §9 compares paths through. `TextSection` stays the extract type for existing consumers (`D-018`); the UI paint list is a new POD type through the same seam.
+
+## 5. Authoring API: compare before committing
 
 Two illustrative sketches follow. They are pseudocode, not implemented or compile-checked APIs.
 
@@ -106,25 +190,61 @@ Concise for changing debug views. It needs stable keys, reconciliation or repeat
 
 Proposed first choice: builders plus handles/events, a few convenience functions, and explicit game data binding in ordinary systems. No callback capturing `&mut World`, implicit observer graph, mandatory macros, custom markup language or editor in the first slice. Theme assets/data-defined screens remain future authoring options after the runtime model is understood.
 
-## 5. Rendering contract
+Whichever model wins, label content is a `StyledText` from the first slice (one span by default), so rich spans, inline icons and localization keys later do not change any signature.
 
-Proposed ordinary frame: **Scene → PostStack → optional SMAA → UI overlay → Present**. Game UI, debug windows, text, carets and borders share the overlay. It uses screen coordinates, alpha compositing and no world-depth testing. Post effects, lighting and camera shake do not affect it by default. Local analytic/geometry anti-aliasing handles UI edges because scene SMAA precedes the overlay.
+How to decide, using one pause menu and one live inspector written both ways:
+
+- Lines of game code per screen, and how much cleanup code the retained version needs.
+- Allocations and tree mutations per frame while the inspector's values change.
+- Whether focus, scroll position and hover survive a rebuild without caller effort.
+- Whether the screen can be exercised headlessly by widget ID and replayed input.
+
+A plausible outcome is a hybrid: the retained tree is the only storage, and a keyed rebuild facade (sketch B) serves debug windows whose contents change every frame. That keeps one focus, input and paint path. Decide after the comparison, not before.
+
+## 6. Rendering contract
+
+Proposed ordinary frame: **Scene → PostStack → optional SMAA → UI overlay → Present**. Game UI, debug windows, text, carets and borders share the overlay. It uses screen coordinates, alpha compositing and no world-depth testing. Post effects, lighting and camera shake do not affect it by default. Local analytic/geometry anti-aliasing handles UI edges because scene SMAA precedes the overlay. One instanced SDF primitive pipeline (rectangle, corner radius, border width, fill and border colours, clip index) can draw panels, buttons, focus rings and scrollbar thumbs with shader-side edge anti-aliasing.
 
 The overlay should extend the existing final pass, preserving D-087's direct presentation: load the already-rendered swapchain and composite there. Capture frames instead composite into the existing screenshot source before the present blit. Future screenshot tests must compare both paths with UI visible. An empty UI should add no new render target or full-screen pass.
 
 Use a single **ordered paint list** containing rectangles, borders, images/nine-slices and text runs. A rear window's text must be painted before a front window's background. Drawing all panels, then all images, then all text would violate this. Hit testing walks the corresponding visual order from front to back and obeys ancestor clips.
 
-Batch adjacent compatible commands by pipeline, texture/atlas and clip; preserve order across overlaps. Reuse buffers and grow capacity only when needed. First clipping primitive is nested rectangular scissor intersection, with empty regions skipped. Text wrapping constraints and ancestor paint clips are independent; scrolling a clipped label must not silently change its line wrapping. Rounded visual corners do not imply rounded child clipping; stencil/mask clipping is a separate later feature. Define one color/alpha convention and match it across primitive and glyph pipelines.
+Batch adjacent compatible commands by pipeline, texture/atlas and clip; preserve order across overlaps. Reuse buffers and grow capacity only when needed. First clipping primitive is nested rectangular scissor intersection, with empty regions skipped. Text wrapping constraints and ancestor paint clips are independent; scrolling a clipped label must not silently change its line wrapping. Rounded visual corners do not imply rounded child clipping; stencil/mask clipping is a separate later feature. The first slice has exactly one clip model: integer physical-pixel rectangles. Primitives use the scissor; text uses glyphon's `TextBounds`, which `prepare` applies by trimming each text area's quads on the CPU. One function turns a layout clip into that integer rectangle (the rounding rule is defined once, at extraction) and feeds both, so primitive and glyph edges cannot disagree. Scissor changes end a batch, and that cost is accepted. Shader-side per-instance clipping is deferred until its quality and cost are measured; under T1 it could never cover text anyway, since glyphon clips on the CPU, so it only unifies batches if the glyph path is owned (T2). A paint command carries a clip index rather than a rectangle so that later change stays local.
 
-The current glyphon wrapper prepares and renders a whole text collection. Interleaving text with panels/images needs a supported way to draw prepared text ranges, multiple retained batches, or a deeper text integration. This is a design/prototype question: repeatedly preparing one renderer inside the paint loop would overwrite state and undermine batching. Do not promise the current wrapper is already sufficient.
+Define one color/alpha convention and match it across primitive and glyph pipelines. glyphon's pipeline blends with `BlendState::ALPHA_BLENDING` (straight alpha), so a UI primitive pipeline that shares a frame with it matches that; premultiplied alpha is an option only if the glyph path is owned. Its atlas is created in `ColorMode::Accurate` (`TextAtlas::new`); `ColorMode::Web` reproduces browser blending and is documented as producing the results of most UI toolkits. Judge small light-on-dark text under both modes before fixing the choice.
 
-Layer order is explicit: game HUD/screens, game popups/modals, then enabled developer views and their popups. Blocking follows input policy, not opacity: decorative HUD text is pointer-transparent; a modal intentionally blocks its lower layers; a debug window blocks only its own region unless explicitly modal. Define whether a game modal should still allow developer hotkeys.
+The current glyphon wrapper prepares and renders a whole text collection (§2). Interleaving text with panels/images needs one of these:
 
-Coordinates use logical UI units with top-left origin. Convert physical pointer coordinates into those units before hit testing, and convert layout/clips into physical pixels once at extraction. Track DPI changes separately from window size. OS scale and user UI scale multiply; a reference-resolution scale policy and pixel snapping can be opt-in. World-attached labels can later project anchors into a screen root; actual world-space text is a separate rendering mode and is outside the first slice.
+| Option | What it is | Fits | Cost and risk |
+| --- | --- | --- | --- |
+| **T1** several `TextRenderer`s on one `TextAtlas` | Each glyphon renderer owns its vertex buffer and draws only what it prepared; atlas and viewport are shared (`TextRenderer::new` and `prepare` take the atlas in the 0.12 API; a prototype must confirm eviction behaves with several renderers per frame). Batches follow the partition rule below. | Few overlap levels (windows, popups): the common UI case. Keeps `D-026` intact and is reversible. | Every batch re-prepares whenever any batch changes (§2: retained batches are unsafe across atlas eviction), so T1 keeps today's frame-level skip and gains no per-window dirty tracking; that needs T2's own atlas with a generation counter. Call the atlas `trim` once per frame after all batches. No per-glyph effects. |
+| **T2** owned glyph renderer | cosmic-text shaping and swash rasterization with an owned atlas (`etagere`, glyphon's own packer, is already locked) and a WGSL instance pipeline. Text becomes ordinary paint-list instances. | Per-widget dirty batches, per-glyph effects (typewriter, wave), an MSDF slot, one blend and colour convention. | Re-implements atlas growth and eviction, subpixel bins and colour glyphs. Needs a decision entry amending `D-026`. The largest first-slice risk. |
+| **T3** one collection drawn last | Today's wrapper. | The engine debug HUD only. | Breaks paint order for windows. Not for UI. |
 
-## 6. Input, events and the frame loop
+Batch partition rule. Walk the ordered paint list once. A text batch is open while text commands arrive; keep the union rectangle `U` of the non-text commands seen since it opened. A later text command joins the open batch only if its rectangle misses `U`; otherwise the batch closes and a new one opens. The test is conservative, so it can over-split but never reorders paint, and it costs one pass with no pairwise overlap checks. Batches per frame are bounded by the alternations between overlapping layers (window, popup, tooltip), and the fixture reports that count against a stated cap.
+
+Recommendation: build T1 first, behind a paint-list text command that names a text run rather than a glyphon type, so T2 can replace it without touching widgets. T1 must pass a prototype before the gate (§9): N overlapping windows with interleaved text and panels, batches prepared and drawn in arbitrary order, one `trim` at the end, and a check that no eviction changes an earlier batch's pixels. The §9 capability criteria decide when T2 is worth its cost. Repeatedly preparing one renderer inside the paint loop would overwrite state and undermine batching; do not promise the current wrapper is already sufficient.
+
+Layer order is explicit: game HUD/screens, game popups/modals, then enabled developer views and their popups. Blocking follows input policy, not opacity: decorative HUD text is pointer-transparent; a modal intentionally blocks its lower layers; a debug window blocks only its own region unless explicitly modal. Define whether a game modal should still allow developer hotkeys. Each root also carries an opacity multiplier that a state can drive from `StateStack::transition_cover()`, because transitions draw before the overlay (§2).
+
+Coordinates use logical UI units with top-left origin. Convert physical pointer coordinates into those units before hit testing, and convert layout/clips into physical pixels once at extraction. Track DPI changes separately from window size, which first needs the scale factor in a core resource (§2). OS scale and user UI scale multiply; a reference-resolution scale policy and pixel snapping can be opt-in. The logical-versus-physical text layout fork in §2 (draw-time scale versus hinting) must be settled by prototype before this rule is fixed. World-attached labels can later project anchors into a screen root; actual world-space text is a separate rendering mode and is outside the first slice.
+
+## 7. Input, events and the frame loop
 
 An ordered input stream is needed in addition to the current held/edge snapshot. Preserve event order so a press and release received between redraws is still one valid click. Core receives engine-owned event types; the umbrella translates winit data.
+
+Event inventory the bridge must add (§2 lists what it drops today), as an engine-owned core type:
+
+```text
+RawInput = Key { code, logical, text, state, repeat, mods }
+         | PointerMoved | PointerButton | Wheel | PointerLeft
+         | Modifiers | Focus(bool) | ScaleFactor(f64) | Resized
+         | Ime(Preedit | Commit | Enabled | Disabled)      // with the editable-field milestone
+```
+
+Add real `KeyCode` variants for the keys UI needs (Home, End, Delete, PageUp, PageDown, and both sides of Shift, Control, Alt, Super) instead of widening `Other(<winit discriminant>)`. Window focus loss and pointer leave cancel hover, press and capture, and release held UI keys. Touch and pen are outside the first slice.
+
+UI navigation reads engine-owned actions in the existing action map (`D-045`): for example `ui_accept`, `ui_cancel`, `ui_next`, `ui_prev`, `ui_up`, `ui_down`, `ui_left`, `ui_right`, with Enter, Space, Escape, Tab and arrows as defaults. Rebinding then works like every other control, and a later gamepad backend adds bindings without any widget change. Text-editing keys are not actions.
 
 Proposed stage placement:
 
@@ -141,6 +261,14 @@ redraw → apply display changes / update time
 
 Input normally targets the last committed layout. Resolve viewport/DPI changes before routing so clicks match displayed geometry. A newly opened screen becomes interactive at the next routing boundary; never send the same pointer event into a screen created by its own handler. Avoid unbounded layout/event feedback loops. Startup must produce initial geometry before the first interaction.
 
+Event timing, checked against the loop in `app.rs`: `window_event` runs as events arrive, and every frame ends with a redraw already scheduled, either immediately or at the frame-cap deadline (`stage_pacing`, `about_to_wait`). Routing at the stage above therefore adds at most one frame, or one cap interval, of latency, and nothing is coalesced because the stream is ordered. Three rules make that explicit:
+
+- Pointer and key events queue in arrival order, each with a sequence ID. Only adjacent pointer moves may coalesce, so a press and a release between redraws stay one click and a move before a press still positions it.
+- Events that carry state rather than intent (`Resized`, `ScaleFactor`, `Focus`, `Modifiers`) update their core resources at event time, as `Resized` does today. Focus loss releases held keys then; the routing stage later cancels hover, press and capture.
+- Routing is not done at event time. UI events publish into `EventQueue<UiEvent>` under `D-040`'s per-frame rotation and must precede systems deterministically. A future mode in which the loop idles without a redraw (power saving, occlusion) must wake the loop on input; today no such mode exists.
+
+Font load and reload, like every other asset change, run only in the hot-reload and asset-sync stage before layout (§4).
+
 Generate semantic events such as `Activated`, `CloseRequested` and later `ValueChanged` into `EventQueue<UiEvent>` **before systems**. Existing D-040 queues expose previous and current windows; a button action read with `iter()` every frame could execute twice. The convenience reader for UI actions must read the current window or track event sequence IDs. Preserve the existing global event rotation rather than inventing a second flush.
 
 Keep raw physical input truthful for diagnostics and intentional global controls. Provide an explicit routed gameplay view/action-query path that filters consumed events, with held-key and release ownership to prevent stuck keys. A `wants_keyboard` boolean alone does not filter gameplay. Existing direct raw-input callers need migration before capture can be guaranteed for them.
@@ -149,7 +277,7 @@ Foundation behaviors: hover/pressed/disabled/focused states; pointer capture for
 
 For future fields, physical keys are not text. Winit exposes [produced text and repeat information](https://docs.rs/winit/0.30.13/winit/event/struct.KeyEvent.html) and [IME preedit/commit events](https://docs.rs/winit/latest/winit/event/enum.Ime.html). The bridge will need those, modifier/shortcut handling, candidate-window caret positioning, clipboard and composition cancellation. Editing must respect graphemes, shaped clusters and bidirectional caret movement; byte slicing or one-glyph-per-character logic is insufficient.
 
-## 7. Feature scope and likely omissions
+## 8. Feature scope and likely omissions
 
 These are proposed stages, not an approved implementation schedule. Both gameplay and debug views get acceptance scenarios in each shared stage.
 
@@ -169,8 +297,17 @@ Important details to preserve in the shape of the foundation:
 - Semantic roles/labels, visible keyboard focus and readable disabled states from the start. Platform screen-reader support can follow without replacing widget identities.
 - Deterministic input replay and widget lookup for tests; UI diagnostics for measured size, clip rectangles, dirty causes, focus/capture and paint batches.
 - Animated opacity/position should invalidate paint or transforms appropriately. Layout animation is more expensive; avoid recomputing text just because a label moved or changed color. Reuse engine timing/tween concepts where their ownership fits.
+- Transform policy for the first slice: translation, uniform scale and opacity. Rotation applies to images only; clipping under rotation is unsupported. Text under animated scale needs a stated rule (re-rasterize, or scale cached quads and accept softness), which depends on the §9 outcome.
+- Game-text effects: typewriter reveal, per-glyph colour, shake or wave, and in-shader outline or shadow. A single glyphon batch cannot do per-glyph effects cheaply, so decide before building dialogue widgets whether they are first-slice (§9 criteria).
+- Rich text and inline icons: spans live in `StyledText`; icons can be glyphon `CustomGlyph`s (rasterized into the atlas, with a `scale`) or sprites in the paint list. Define baseline alignment for both.
+- Localization: text arrives as string keys resolved at bind time. Layout values use logical `start`/`end` rather than `left`/`right`, so RTL mirroring needs no style rewrite. Test with a pseudo-locale that expands strings by 30–40%.
+- UI audio stays with the game: focus, hover and activate sounds are systems that read `UiEvent` and send `AudioCommands`. The engine owns no UI sound set.
+- Anchors and safe areas resolve against the viewport; define the ultrawide and letterbox rule together with the reference-resolution scale policy (§6).
+- Pixel-art skins need an integer-scale option and nearest filtering for images and nine-slices, alongside smooth panels.
 
-## 8. MSDF evaluation, independent of widget architecture
+## 9. Glyph rendering evaluation: raster, MSDF or an owned path
+
+This stays independent of the widget architecture, but not of the render path. MSDF is one rasterizer choice; the larger fork is who owns the glyph draw call (T1 or T2 in §6). glyphon cannot draw MSDF, so an MSDF experiment is also a prototype of T2, and the two are judged together.
 
 MSDF stores distance information in three channels to preserve sharp corners when glyphs scale. [MSDFgen](https://github.com/Chlumsky/msdfgen#using-a-multi-channel-distance-field) describes median reconstruction and linear sampling. [MSDF atlas generator](https://github.com/Chlumsky/msdf-atlas-gen#atlas-types) documents MSDF/MTSDF, metadata and glyph-index export. MTSDF adds a true distance channel useful for some soft effects.
 
@@ -184,7 +321,11 @@ Text + font + constraints
   → the same ordered UI compositor
 ```
 
-Choose using evidence. Scalable titles, animated sizes and outlined labels are promising MSDF cases; tiny text, pixel fonts, complex outlines and color emoji need quality tests and a fallback policy. There is no performance result for Tungsten yet. Atlas memory, generation time, upload costs and cold-frame latency may outweigh fewer scale-specific raster entries. Outlines/shadows could reduce today's repeated text sections, but that gain needs measurement too. Compare both paths at small HUD and large title sizes, fractional DPI/scale, rapid size changes, outlines, Latin ligatures, combining marks, RTL text, CJK and color emoji using fonts that actually cover each sample.
+The `PositionedGlyph` list from §4 (face, glyph ID, position, size, colour) is the interface between the text engine and every rasterizer; define it before either path is built.
+
+Score every path on capability as well as cost. Capabilities: per-glyph transforms and colour (typewriter, wave); in-shader outline, shadow and glow; animated size without re-rasterizing; crisp 8–14 px text under hinting; colour emoji and colour glyphs; variable fonts; one blend and colour convention with the primitive pipeline. Costs: atlas bytes, cold-frame latency, code and dependency footprint, hot-reload invalidation.
+
+Choose using evidence. Scalable titles, animated sizes and outlined labels are promising MSDF cases; tiny text, pixel fonts, complex outlines and color emoji need quality tests and a fallback policy. There is no MSDF performance result for Tungsten yet; the current path's baselines are in §2 and §10. Atlas memory, generation time, upload costs and cold-frame latency may outweigh fewer scale-specific raster entries. Outlines/shadows could reduce today's repeated text sections, but that gain needs measurement too. Compare both paths at small HUD and large title sizes, fractional DPI/scale, rapid size changes, outlines, Latin ligatures, combining marks, RTL text, CJK and color emoji using fonts that actually cover each sample.
 
 An experiment must settle:
 
@@ -196,7 +337,9 @@ An experiment must settle:
 
 Provisional default: keep the current renderer while evaluating MSDF as an additional backend. Choose a default, per-font option or limited specialty path after comparing quality, frame tails, memory and complexity. Avoid a new broad renderer abstraction before the second path establishes a concrete need.
 
-## 9. Performance goals and evaluation
+Gate: settle T1 versus T2 before the paint list (M2 in §11) is built, because the shape of its text command depends on it. T1 enters the gate only with its prototype result (§6), since sharing one atlas across batches is load-bearing for paint order. If the answer is "T1 now, revisit later", the run-reference command from §6 keeps that cheap to reverse.
+
+## 10. Performance goals and evaluation
 
 Design for bounded incremental CPU work, while recognizing that visible UI still draws into every presented game frame. Layout/shape/paint caching saves preparation; it does not eliminate GPU compositing. Start with dirty-root updates and profile before building fine-grained dependency machinery.
 
@@ -206,16 +349,19 @@ Design for bounded incremental CPU work, while recognizing that visible UI still
 | Static menu/HUD | No reshaping or relayout after warm-up until an actual dependency changes; geometry/GPU resources reused; per-frame allocation count examined. |
 | Hover/press/drag/color change | Touch the affected interaction/paint state; unchanged text layout stays cached. |
 | Changing diagnostic values | Update only changed labels at the existing refresh rate; caches plateau under continuous unique text. |
+| Static HUD plus one live label | Sections prepared and glyph vertices rebuilt per frame, against today's all-or-nothing prepare (§2). Baseline: the `gpu` row's `text_change` knob set to one section per frame. |
+| Layout measurement | Shape count per layout pass: each text node shapes once per text, style or font-epoch change, and width probes only relayout. |
+| Cold start | Font-database scan and first-glyph raster time, reported apart from frame metrics. |
 | Large inspector/log/list | Measure visible content and input latency; eventual virtualization bounds work by visible rows. |
 | Font/theme/DPI changes | Correct full invalidation when needed, with resize and cold-glyph p95/p99 spikes reported separately. |
 
 Discuss initial targets of **≤0.25 ms additional CPU p95** for a warmed 100-widget menu and **≤0.5 ms** for a warmed 500-widget debug view on the reference machine at 1080p. These are proposed budgets, not measured outcomes or finalized acceptance limits. GPU budgets should account for filled screen area/transparency and be chosen after a simple prototype. Define widget counts precisely: include internal label/background nodes, not just top-level controls.
 
-Track input, layout, shaping, paint/extract, GPU preparation/draw separately, plus draw batches, glyph misses/uploads, atlas/cache bytes and worst cold frames. Debug UI reads existing telemetry and publishes its own costs without creating a parallel timing system.
+Track input, layout, shaping, paint/extract, GPU preparation/draw separately, plus draw batches, prepared sections and rebuilt vertices, shape counts, glyph misses/uploads, atlas/cache bytes and worst cold frames. Debug UI reads existing telemetry and publishes its own costs without creating a parallel timing system.
 
 Future captures follow the canonical [profiling workflow](../perf/profiling-workflow.md#comparison-rule-and-capture-rules): matching workloads/builds/machine, quiet A/A, five repeats, and separate blocking GPU diagnostics. A new UI workload should live in a dedicated fixture/harness after design finalization; existing examples and benchmark workloads stay untouched beforehand. If a later benchmark migration changes work, bump its workload version and start a fresh baseline; do not present it as an engine-only speedup.
 
-## 10. Migration outline — after finalization
+## 11. Migration outline and milestone ladder — after finalization
 
 Keep current consumers functioning while the foundation is built and checked in an isolated UI fixture. A temporary adapter for existing `TextSection` output may ease transition, but define its layer/units explicitly and set an eventual removal milestone. Migration is a later task; this session changes none of these consumers.
 
@@ -230,11 +376,45 @@ Keep current consumers functioning while the foundation is built and checked in 
 | Example 03 | Menu/gameplay/pause screens; bind buttons and root lifetime to existing state actions. Preserve keyboard paths and animation intent. |
 | Example 04 | Shader/post-AA/bloom readouts and controls, preserving fixture-lock behavior and post-independent text. |
 
-Suggested future sequence: finalize the architecture/API/acceptance criteria; build and validate an isolated text/button/panel fixture with both a gameplay screen and debug window; evaluate layout dependencies and MSDF in bounded experiments; validate engine integrations; migrate engine views; then migrate examples explicitly. No example rewrites before the finalized foundation passes its checks.
+Suggested future sequence: finalize the architecture/API/acceptance criteria; build and validate an isolated text/button/panel fixture with both a gameplay screen and debug window; evaluate layout dependencies and MSDF in bounded experiments; validate engine integrations; migrate engine views; then migrate examples explicitly. No example rewrites before the finalized foundation passes its checks. As a ladder, each step becoming its own `phaseN-milestone-NN` plan once this draft is finalized:
+
+| Step | Contents | Visible change | Done-when (sketch) |
+| --- | --- | --- | --- |
+| **M0** text engine split | Device-free text engine and GPU half; retained buffers, `measure`, `FontEpoch`; alignment, wrap, ellipsis and hinting reachable; font-fallback policy applied; scale factor in a core resource. | None | Text unit tests; `just visual` unchanged; `just smoke`; the `gpu` row not regressed after an A/A of the untouched tree. |
+| **M1** core UI model | `UiTree`, IDs, style, a Taffy spike behind Tungsten style types, hit testing, focus, roles and labels in node data, a fixed-advance `TextMeasure` test double, layout snapshot tests. | None; nothing draws | Headless layout, focus and invalidation tests; `just check`. Spike verdict recorded: Taffy or a hand-rolled stack/anchor layout. |
+| **Gate** | T1 versus T2 (§9), the T1 prototype from §6 including its eviction check, and the DPI/hinting prototype result. | None | Recorded as decision entries. |
+| **M2** overlay and paint list | UI overlay in the final pass; SDF primitive pipeline; images; text batches; clip index; an isolated fixture. | Fixture only | `just smoke`; direct and capture frames equal with UI visible (needs P3 resolved); an empty UI adds no pass or target; shader coverage test. |
+| **M3** input routing | Raw event stream; modifier, focus and scale events; `ui_*` actions; `UiEvent` before systems; routed gameplay view; capture and focus rules. | None until a root exists | Event-order, release-outside, focus-loss and single-activation tests; raw `InputState` behavior for existing examples unchanged. |
+| **M4** gameplay screen fixture | Pause menu and HUD with state-owned roots, transition opacity and keyboard navigation. | Fixture | §10 budgets for a warmed 100-widget menu. |
+| **M5** engine debug views | HUD, timing overlay and inspector as read-only views; movable windows; world picking blocked behind windows. | Debug overlays | Perf suite telemetry rows not regressed; HUD toggles and defaults preserved. |
+| **M6** examples | One example at a time, per the table above. | Examples | Per-example smoke; workload versions bumped where benchmark work changes. |
+| Later | Scrolling and virtualization, editable fields and IME, controller, accessibility, docking, data-defined themes. | | Their own plans. |
+
+Decisions this work will likely need (IDs unassigned; each adds its `DECISION_INDEX.md` row in the same change):
+
+- UI dependency admission under `D-015` (Taffy first; AccessKit and a clipboard crate later).
+- The text engine split and the font-fallback policy (packaged fonts only, or system fallback).
+- The glyph path: T1 now, or T2, which amends `D-026`.
+- The DPI and hinting model, including the scale-factor resource.
+- UI input routing: the raw event stream, `ui_*` actions, the routed gameplay API and whether it becomes the default.
+- Thread-rule scope if accessibility ships on Linux; the asset-preprocessing rule if MSDF atlases are generated offline.
 
 Future meaningful tests include CPU layout/measurement/invalidation; event order and single activation per press/release; focus/modal/capture cleanup; state-root lifecycle; multilingual wrapping/fallback; DPI/scissor rounding; overlapping mixed primitives/text; direct/capture equality; cache saturation and continuous text churn. Renderer changes require the renderer's shader/layout, smoke and reference visual checks; substantial implementation finishes with `just check`. These are future checks, not tests added by this draft.
 
-## 11. Choices for the next discussion
+## 12. Risks and unknowns
+
+| Risk | Why it matters | Early signal or mitigation |
+| --- | --- | --- |
+| T1 re-prepares every batch on any change | Atlas eviction forbids retaining batches (§2), so many windows plus a large inspector could cost more than today's single pass, and a wrong retention shows as corrupted glyphs only when the atlas fills. | The T1 prototype reports batch count and prepare time against a stated cap and runs an atlas-pressure case; the T1/T2 gate (§9). |
+| Measurement thrashes the text cache | Min-content, max-content and final width probes per label multiply shaping. | Retained buffer per node and the shape-count counter (§10), from M1. |
+| Taffy fits wrapped text or hidden/collapsed semantics poorly | A solver mismatch surfaces late, after widgets depend on it. | M1 spike: a wrapped label in a row inside a column, hidden versus collapsed, min/max constraints. Fall back to a narrow hand-rolled layout. |
+| Routed input breaks existing examples | Consumers read raw `InputState` directly. | Raw state stays truthful and unchanged; the routed view is additive; migrate per consumer (§11). |
+| Fallback fonts differ per machine | Layout, visual tests and replays diverge without warning. | A packaged-fonts-only default and coverage tests per declared language. |
+| Scope creep into editor, markup or docking | The non-goals are easy to erode while the foundation is interesting. | The milestone ladder, each step's done-when and the "Later" row. |
+| Accessibility becomes a rewrite | Omitting roles, labels and stable IDs now makes platform support expensive later. | Keep them in node data from M1 even though nothing consumes them yet. |
+| A UI move reads as an engine speedup or regression | Moving a benchmark's HUD to UI changes its workload, not engine speed. | Bump the workload version and start a fresh baseline (§10). |
+
+## 13. Choices for the next discussion
 
 | Choice still open | Provisional recommendation |
 | --- | --- |
@@ -247,5 +427,11 @@ Future meaningful tests include CPU layout/measurement/invalidation; event order
 | MSDF atlas policy | Keep acquisition and coverage open; resolve the preprocessing/thread constraints before selecting a generator. |
 | Performance acceptance | Agree workloads, widget counts and reference-machine CPU/GPU/cold-start/memory budgets before implementation. |
 | Text/languages and future input | Declare packaged-font coverage; decide whether IME-complete single-line editing is the first editing milestone. |
+| Font-fallback policy | Packaged fonts only by default, system fallback as an explicit opt-in. Changes today's behavior on machines that rely on system fonts. |
+| DPI and text layout model | Prototype logical layout with a draw-time scale against physical layout with hinting (§2). Default to logical; allow physical for debug text if it reads better. |
+| Glyph path | T1 behind a run-reference paint command; revisit at the §9 gate using the capability criteria. |
+| UI navigation input | Engine-owned `ui_*` actions in the action map; a gamepad backend stays a later, additive step. |
+| Accessibility and the thread rule | Roles and labels in node data now; platform integration waits for a decision on the Linux adapter's executor thread. |
+| Transitions and UI | A root opacity multiplier that states drive from `transition_cover()`. |
 
-The next useful artifact is a tightened spec for the first text/button/panel/window slice, with one chosen API and an explicit input contract. Leave broader widget lists and MSDF selection open until those smaller decisions are clear.
+The next useful artifact is a tightened spec for the first text/button/panel/window slice, with one chosen API and an explicit input contract. Leave broader widget lists and MSDF selection open until those smaller decisions are clear. The smallest decision set that unblocks M0 (§11) is the font-fallback policy, the text engine's API surface (§4) and the scale-factor resource; the rest can follow it.
