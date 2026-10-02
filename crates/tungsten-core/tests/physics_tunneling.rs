@@ -283,13 +283,15 @@ fn moderate_speed_never_tunnels() {
 const STALL_FLOOR_TOP: f32 = 480.0;
 
 /// Bodies resting on a static floor under gravity, with sleeping off so the
-/// settled pile stays awake.
+/// settled pile stays awake and the step bound off (`D-094`) so the step
+/// takes the whole dt it is handed.
 fn stall_world(bodies: &[(Vec2, Collider)]) -> (World, Vec<tungsten_core::Entity>) {
     let mut world = World::new();
     world.insert_resource(DeltaTime { dt: DT });
     world.insert_resource(PhysicsConfig {
         gravity: Vec2::new(0.0, 900.0),
         sleep_threshold: 0.0,
+        max_step_dt: 0.0,
         ..PhysicsConfig::default()
     });
     let floor = world.spawn();
@@ -315,6 +317,11 @@ fn stall_world(bodies: &[(Vec2, Collider)]) -> (World, Vec<tungsten_core::Entity
 /// settled, awake pile loses no body and leaves it under 50 px/s. Longer
 /// steps do not hold: 0.2 s leaves over 110 px/s, and 2 s drops bodies
 /// through the floor.
+///
+/// Since `D-094` a default `physics_step` advances at most 1/30 s of that
+/// dt, which would pass here without taking a 0.1 s step. The scene runs
+/// with `max_step_dt: 0.0` so it keeps pinning what a real 0.1 s step does
+/// to these two piles.
 #[test]
 fn one_capped_stall_step_keeps_a_settled_pile() {
     const STALL_DT: f32 = 0.1;
@@ -363,6 +370,71 @@ fn one_capped_stall_step_keeps_a_settled_pile() {
                 "{name}: a body ended at y {y} after one {STALL_DT} s step"
             );
         }
+    }
+}
+
+const COLUMN_FLOOR_TOP: f32 = 2_000.0;
+const COLUMN_RADIUS: f32 = 7.5;
+
+/// The step bound (`D-094`): one call advances at most
+/// `PhysicsConfig::max_step_dt`, so frames at the 0.1 s cap of `D-088` do not
+/// soften the contacts. Twenty balls stacked on a floor at gravity 3,600
+/// (the platformer's, four times this file's other scenes) keep their order
+/// through 8 s of such frames. Unbounded, a 0.1 s step runs ball-ball
+/// contacts at 10 Hz instead of 30 and the lowest ball ends under the floor
+/// top.
+#[test]
+fn stacked_column_survives_slow_frames() {
+    const SLOW_DT: f32 = 0.1;
+    let mut world = World::new();
+    world.insert_resource(DeltaTime { dt: DT });
+    world.insert_resource(PhysicsConfig {
+        gravity: Vec2::new(0.0, 3_600.0),
+        broadphase_cell_size: 64.0,
+        sleep_threshold: 0.0,
+        ..PhysicsConfig::default()
+    });
+    let floor = world.spawn();
+    world.insert(floor, Position(Vec2::new(0.0, COLUMN_FLOOR_TOP + 200.0)));
+    world.insert(floor, RigidBody::r#static());
+    world.insert(floor, Collider::aabb(Vec2::new(400.0, 200.0)));
+    let balls: Vec<Entity> = (0..20)
+        .map(|i| {
+            let y = COLUMN_FLOOR_TOP - COLUMN_RADIUS - 2.0 * COLUMN_RADIUS * i as f32;
+            let entity = world.spawn();
+            world.insert(entity, Position(Vec2::new(0.0, y)));
+            world.insert(entity, Velocity(Vec2::ZERO));
+            world.insert(entity, Collider::circle(COLUMN_RADIUS));
+            world.insert(entity, RigidBody::dynamic());
+            entity
+        })
+        .collect();
+
+    for _ in 0..240 {
+        physics_step(&mut world);
+    }
+    world.get_resource_mut::<DeltaTime>().unwrap().dt = SLOW_DT;
+    for _ in 0..80 {
+        physics_step(&mut world);
+    }
+
+    let ys: Vec<f32> = balls
+        .iter()
+        .map(|&entity| world.get::<Position>(entity).unwrap().0.y)
+        .collect();
+    for (i, y) in ys.iter().enumerate() {
+        assert!(
+            *y < COLUMN_FLOOR_TOP,
+            "ball {i} centre is below the floor top: y={y}"
+        );
+    }
+    for (i, pair) in ys.windows(2).enumerate() {
+        let gap = pair[0] - pair[1];
+        assert!(
+            gap > COLUMN_RADIUS,
+            "balls {i} and {} overlap by more than half a diameter: gap={gap}",
+            i + 1
+        );
     }
 }
 

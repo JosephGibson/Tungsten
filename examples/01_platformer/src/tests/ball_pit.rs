@@ -1,7 +1,7 @@
 use super::*;
 use crate::gameplay::{move_obstacles, small_ball_impacts};
 use crate::state::{
-    BALL_ANIMATION_ID, BALL_RESTITUTION, BALL_START_SPRITE_ID, BALL_VISUAL_DIAMETER,
+    BALL_ANIMATION_ID, BALL_CAP, BALL_RESTITUTION, BALL_START_SPRITE_ID, BALL_VISUAL_DIAMETER,
     SMALL_BALL_ANIMATION_ID, SMALL_BALL_BURSTS_PER_FRAME, SMALL_BALL_IMPACT_SPEED,
     SMALL_BALL_SCALE, SMALL_BALL_START_SPRITE_ID, SmallBall, TRANSIENT_EMITTER_CAP,
     TransientEmitter,
@@ -122,6 +122,40 @@ fn middle_mouse_has_five_times_the_rate_half_size_and_dedicated_animation() {
             0.0
         );
         assert_eq!(world.query::<SmallBall>().count(), small);
+    }
+}
+
+#[test]
+fn spawning_stops_at_the_ball_cap() {
+    let mut world = seed_world();
+    crate::setup::platformer_bindings(&mut world);
+    world.insert_resource(BallSpawnState::default());
+    world.insert_resource(CommandBuffer::new());
+    world
+        .get_resource_mut::<ActionMap>()
+        .unwrap()
+        .replace_bindings(
+            "spawn_ball",
+            vec![Binding::Mouse {
+                button: MouseButton::Left,
+            }],
+        );
+    for _ in 0..BALL_CAP - 1 {
+        let ball = world.spawn();
+        world.insert(ball, Ball);
+    }
+    // One frame long enough for 5 large and 25 small balls.
+    world.get_resource_mut::<DeltaTime>().unwrap().dt = 0.161;
+    let input = world.get_resource_mut::<InputState>().unwrap();
+    input.update_cursor_position(240.0, 144.0);
+    input.mouse_down(MouseButton::Left);
+    input.mouse_down(MouseButton::Middle);
+
+    // The one ball left in the budget goes out, then nothing.
+    for _ in 0..2 {
+        spawn_ball_system(&mut world);
+        flush_commands(&mut world);
+        assert_eq!(world.query::<Ball>().count(), BALL_CAP);
     }
 }
 

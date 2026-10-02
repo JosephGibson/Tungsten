@@ -2005,3 +2005,145 @@ fn pushed_body_arrives_at_a_static_wall_and_stops_its_pusher() {
         assert!(listed > 0 && clamps > 0, "the arrival pass did not run");
     }
 }
+
+/// Two bodies in free fall with nothing in reach, one per integration path:
+/// a collider body (substeps) and a collider-less one (`integrate_loose_bodies`).
+fn spawn_free_fallers(world: &mut World, x: f32) -> [Entity; 2] {
+    let ball = world.spawn();
+    world.insert(ball, Position(Vec2::new(x, 0.0)));
+    world.insert(ball, Velocity(Vec2::new(60.0, 0.0)));
+    world.insert(ball, Collider::circle(7.5));
+    world.insert(ball, RigidBody::dynamic());
+    let loose = world.spawn();
+    world.insert(loose, Position(Vec2::new(x + 200.0, 0.0)));
+    world.insert(loose, Velocity(Vec2::new(60.0, 0.0)));
+    world.insert(loose, RigidBody::dynamic());
+    [ball, loose]
+}
+
+fn body_bits(world: &World, bodies: &[Entity]) -> Vec<u32> {
+    bodies
+        .iter()
+        .flat_map(|&body| {
+            let position = world.get::<Position>(body).unwrap().0;
+            let velocity = world.get::<Velocity>(body).unwrap().0;
+            [position.x, position.y, velocity.x, velocity.y].map(f32::to_bits)
+        })
+        .collect()
+}
+
+/// Step-bound scene (D-094): a five-ball column on a static floor under
+/// gravity, still awake when the measured steps begin, with the two free
+/// fallers beside it. Ten steps at 1/60 s, then 20 of `dt`; returns every
+/// body's position and velocity bits.
+fn step_bound_scene(max_step_dt: f32, dt: f32) -> Vec<u32> {
+    const RADIUS: f32 = 7.5;
+    let mut world = seed_world();
+    {
+        let config = world.get_resource_mut::<PhysicsConfig>().unwrap();
+        config.gravity = Vec2::new(0.0, 900.0);
+        config.max_step_dt = max_step_dt;
+    }
+    let floor = world.spawn();
+    world.insert(floor, Position(Vec2::new(0.0, 520.0)));
+    world.insert(floor, Collider::aabb(Vec2::new(100.0, 20.0)));
+    world.insert(floor, RigidBody::r#static());
+    let mut bodies: Vec<Entity> = (0..5)
+        .map(|i| {
+            let body = world.spawn();
+            let y = 500.0 - RADIUS - 2.0 * RADIUS * i as f32;
+            world.insert(body, Position(Vec2::new(0.0, y)));
+            world.insert(body, Velocity(Vec2::ZERO));
+            world.insert(body, Collider::circle(RADIUS));
+            world.insert(body, RigidBody::dynamic());
+            body
+        })
+        .collect();
+    bodies.extend(spawn_free_fallers(&mut world, 300.0));
+
+    for _ in 0..10 {
+        physics_step(&mut world);
+    }
+    world.get_resource_mut::<DeltaTime>().unwrap().dt = dt;
+    for _ in 0..20 {
+        physics_step(&mut world);
+    }
+    body_bits(&world, &bodies)
+}
+
+#[test]
+fn slow_frame_advances_only_the_step_bound() {
+    // D-094: handed the 0.1 s dt cap of D-088, each call advances
+    // `max_step_dt` and drops the rest, on both integration paths.
+    const STEPS: usize = 3;
+    let bound = PhysicsConfig::default().max_step_dt;
+    let run = |dt: f32| {
+        let mut world = seed_world();
+        world.get_resource_mut::<PhysicsConfig>().unwrap().gravity = Vec2::new(0.0, 900.0);
+        let fallers = spawn_free_fallers(&mut world, 0.0);
+        world.get_resource_mut::<DeltaTime>().unwrap().dt = dt;
+        for _ in 0..STEPS {
+            physics_step(&mut world);
+        }
+        let state = fallers.map(|body| {
+            (
+                world.get::<Position>(body).unwrap().0,
+                world.get::<Velocity>(body).unwrap().0,
+            )
+        });
+        (state, body_bits(&world, &fallers))
+    };
+
+    let (slow, slow_bits) = run(0.1);
+    let (_, bound_bits) = run(bound);
+    assert_eq!(slow_bits, bound_bits, "a 0.1 s dt is not a {bound} s step");
+
+    let elapsed = STEPS as f32 * bound;
+    for (start_x, (position, velocity)) in [0.0, 200.0].into_iter().zip(slow) {
+        assert!(
+            (position.x - start_x - 60.0 * elapsed).abs() < 1.0e-3,
+            "advanced {} px in x, not {elapsed} s of 60 px/s",
+            position.x - start_x
+        );
+        assert!(
+            (velocity.y - 900.0 * elapsed).abs() < 1.0e-2,
+            "fell to {} px/s, not {elapsed} s of gravity",
+            velocity.y
+        );
+    }
+}
+
+#[test]
+fn step_bound_off_takes_the_whole_dt_as_before() {
+    // `max_step_dt <= 0` is unbounded. The hash (FNV-1a over the scene's
+    // position and velocity bits) is from the tree before the bound existed.
+    const BEFORE_D094: u64 = 0x070b_6b82_ad91_b1fb;
+    let hash = |bits: &[u32]| {
+        bits.iter().fold(0xcbf2_9ce4_8422_2325_u64, |hash, &bits| {
+            (hash ^ u64::from(bits)).wrapping_mul(0x0000_0100_0000_01b3)
+        })
+    };
+    for off in [0.0, -1.0] {
+        let unbounded = hash(&step_bound_scene(off, 0.1));
+        assert_eq!(
+            unbounded, BEFORE_D094,
+            "max_step_dt = {off}: {unbounded:#018x}"
+        );
+    }
+    let bounded = hash(&step_bound_scene(PhysicsConfig::default().max_step_dt, 0.1));
+    assert_ne!(
+        bounded, BEFORE_D094,
+        "the default bound left a 0.1 s step alone"
+    );
+}
+
+#[test]
+fn step_bound_is_invisible_at_a_sixtieth() {
+    // The pinned 1/60 s step of benchmarks, smoke runs and the pixel test
+    // (D-088) must not see the bound: default and off agree bit for bit.
+    let bound = PhysicsConfig::default().max_step_dt;
+    assert_eq!(
+        step_bound_scene(bound, 1.0 / 60.0),
+        step_bound_scene(0.0, 1.0 / 60.0)
+    );
+}

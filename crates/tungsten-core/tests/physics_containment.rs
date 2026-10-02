@@ -5,14 +5,20 @@
 //! far side; the soft solver's clamped impulses + max push speed remove that
 //! failure class.
 //!
+//! Slow frames (`D-094`): an awake 1,500-ball pile at gravity 3,600 keeps its
+//! bodies, its height and the size of its pair list through frames at the
+//! 0.1 s cap of `D-088`, because one step advances at most
+//! `PhysicsConfig::max_step_dt`. A guard pins the same pile's end state at the
+//! 1/60 s step, where the bound must change nothing.
+//!
 //! Release-only by cost (2,400 steps at 3k bodies); auto-ignored in debug.
 //! Run with:
 //! `cargo test --release -p tungsten-core --test physics_containment -- --nocapture`
 
 use glam::Vec2;
 use tungsten_core::{
-    Collider, DeltaTime, Entity, Pcg32, PhysicsConfig, Position, RigidBody, Velocity, World,
-    physics_step,
+    Collider, DeltaTime, Entity, Pcg32, PhysicsBuffers, PhysicsConfig, Position, RigidBody,
+    Velocity, World, physics_step,
 };
 
 const DT: f32 = 1.0 / 60.0;
@@ -131,5 +137,184 @@ fn dense_pile_never_escapes_thin_walls() {
     assert_eq!(
         escaped, 0,
         "{escaped} bodies escaped the 80 px walls over {STEPS} steps"
+    );
+}
+
+/// The platformer's gravity, four times `GRAVITY_Y`: contact sag per unit of
+/// load scales with it.
+const SLOW_GRAVITY_Y: f32 = 3_600.0;
+/// The frame dt cap of `D-088`.
+const SLOW_DT: f32 = 0.1;
+const SLOW_FLOOR_TOP: f32 = 2_000.0;
+const SLOW_RADIUS: f32 = 10.0;
+const SLOW_WIDTH: f32 = 1_600.0;
+const SLOW_BODY_COUNT: usize = 1_500;
+
+struct SlowPile {
+    world: World,
+    balls: Vec<Entity>,
+}
+
+fn spawn_slab(world: &mut World, center: Vec2, half_extents: Vec2) {
+    let entity = world.spawn();
+    world.insert(entity, Position(center));
+    world.insert(entity, RigidBody::r#static());
+    world.insert(entity, Collider::aabb(half_extents));
+}
+
+fn step_frames(world: &mut World, dt: f32, frames: usize) {
+    world.get_resource_mut::<DeltaTime>().unwrap().dt = dt;
+    for _ in 0..frames {
+        physics_step(world);
+    }
+}
+
+/// 1,500 balls of radius 10 in an open box 1,600 px wide, settled for 240
+/// steps at 1/60 s. Rows are offset by half a pitch so the pile packs.
+fn settled_slow_pile() -> SlowPile {
+    const PER_ROW: usize = 75;
+    const PITCH: f32 = 21.0;
+    let mut world = World::new();
+    world.insert_resource(DeltaTime { dt: DT });
+    world.insert_resource(PhysicsConfig {
+        gravity: Vec2::new(0.0, SLOW_GRAVITY_Y),
+        broadphase_cell_size: 64.0,
+        ..PhysicsConfig::default()
+    });
+    spawn_slab(
+        &mut world,
+        Vec2::new(SLOW_WIDTH * 0.5, SLOW_FLOOR_TOP + 128.0),
+        Vec2::new(SLOW_WIDTH * 0.5 + 256.0, 128.0),
+    );
+    for wall_x in [-128.0, SLOW_WIDTH + 128.0] {
+        spawn_slab(
+            &mut world,
+            Vec2::new(wall_x, SLOW_FLOOR_TOP - 1_000.0),
+            Vec2::new(128.0, 1_256.0),
+        );
+    }
+    let balls = (0..SLOW_BODY_COUNT)
+        .map(|index| {
+            let (col, row) = (index % PER_ROW, index / PER_ROW);
+            let offset = if row % 2 == 0 { 0.0 } else { PITCH * 0.5 };
+            let x = PITCH + col as f32 * PITCH + offset;
+            let y = SLOW_FLOOR_TOP - SLOW_RADIUS - 1.0 - row as f32 * PITCH;
+            let entity = world.spawn();
+            world.insert(entity, Position(Vec2::new(x, y)));
+            world.insert(entity, Velocity(Vec2::ZERO));
+            world.insert(entity, Collider::circle(SLOW_RADIUS));
+            world.insert(entity, RigidBody::dynamic());
+            entity
+        })
+        .collect();
+    let mut pile = SlowPile { world, balls };
+    step_frames(&mut pile.world, DT, 240);
+    pile
+}
+
+/// Sleeping off keeps the pile awake; a sleeping pile is frozen and safe at
+/// any dt (`D-088`).
+fn keep_awake(pile: &mut SlowPile) {
+    pile.world
+        .get_resource_mut::<PhysicsConfig>()
+        .unwrap()
+        .sleep_threshold = 0.0;
+}
+
+fn below_floor(pile: &SlowPile) -> usize {
+    pile.balls
+        .iter()
+        .filter(|&&entity| pile.world.get::<Position>(entity).unwrap().0.y > SLOW_FLOOR_TOP)
+        .count()
+}
+
+/// Height of the pile: the floor minus the 2nd percentile of ball y.
+fn pile_height(pile: &SlowPile) -> f32 {
+    let mut ys: Vec<f32> = pile
+        .balls
+        .iter()
+        .map(|&entity| pile.world.get::<Position>(entity).unwrap().0.y)
+        .collect();
+    ys.sort_by(f32::total_cmp);
+    SLOW_FLOOR_TOP - ys[ys.len() / 50]
+}
+
+fn pair_count(pile: &SlowPile) -> usize {
+    pile.world
+        .get_resource::<PhysicsBuffers>()
+        .unwrap()
+        .pair_count()
+}
+
+/// An awake pile keeps its bodies and its height through 10 s of 0.1 s
+/// frames. Unbounded, the softened contacts drop 91 of the 1,500 through the
+/// floor.
+#[test]
+#[cfg_attr(
+    debug_assertions,
+    ignore = "release-scale step test; run with --release"
+)]
+fn awake_pile_keeps_its_bodies_and_height_through_slow_frames() {
+    let mut pile = settled_slow_pile();
+    let before = pile_height(&pile);
+    assert_eq!(below_floor(&pile), 0);
+    keep_awake(&mut pile);
+    step_frames(&mut pile.world, SLOW_DT, 100);
+    let after = pile_height(&pile);
+    println!(
+        "slow frames: height {before} -> {after}, {} below the floor",
+        below_floor(&pile)
+    );
+    assert_eq!(below_floor(&pile), 0, "bodies went through the floor");
+    assert!(
+        after > 0.85 * before,
+        "the pile crunched down: height {before} -> {after}"
+    );
+}
+
+/// A slow frame must not multiply the frame's work: the pair list of the
+/// awake pile at 0.1 s frames stays within 3 times the 1/60 s list.
+/// Unbounded, it grows from 4,392 to 59,185 pairs.
+#[test]
+#[cfg_attr(
+    debug_assertions,
+    ignore = "release-scale step test; run with --release"
+)]
+fn slow_frames_do_not_multiply_the_pair_list() {
+    let mut pile = settled_slow_pile();
+    keep_awake(&mut pile);
+    step_frames(&mut pile.world, DT, 30);
+    let pairs_fast = pair_count(&pile);
+    step_frames(&mut pile.world, SLOW_DT, 30);
+    let pairs_slow = pair_count(&pile);
+    println!("slow frames: pair list {pairs_fast} -> {pairs_slow}");
+    assert!(
+        pairs_slow <= 3 * pairs_fast,
+        "pair list grew from {pairs_fast} to {pairs_slow} on slow frames"
+    );
+}
+
+/// Guard: at the pinned 1/60 s step the bound changes nothing. FNV-1a over
+/// the settled pile's position bits in spawn order; the value is from the
+/// tree before `max_step_dt` existed.
+#[test]
+#[cfg_attr(
+    debug_assertions,
+    ignore = "release-scale step test; run with --release"
+)]
+fn pinned_step_state_is_unchanged() {
+    const EXPECTED: u64 = 0xaee2_72e0_1ffc_4e4c;
+    let pile = settled_slow_pile();
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    for &entity in &pile.balls {
+        let position = pile.world.get::<Position>(entity).unwrap().0;
+        for bits in [position.x.to_bits(), position.y.to_bits()] {
+            hash = (hash ^ u64::from(bits)).wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    }
+    println!("pinned step: pile state hash {hash:#018x}");
+    assert_eq!(
+        hash, EXPECTED,
+        "the settled pile's state moved at a 1/60 s step: {hash:#018x}"
     );
 }

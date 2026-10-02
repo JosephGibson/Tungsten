@@ -85,7 +85,7 @@ One-line takeaways for every decision heading in [`DECISIONS.md`](../DECISIONS.m
 | `D-024` | Phase 1 close-out observations were recorded to guide Phase 2. |
 | `D-029` | Audio mixer stays hand-rolled; no `kira`. |
 | `D-030` | The M12 ECS rewrite required an explicit go/no-go decision. |
-| `D-033` | Physics is hand-rolled in `tungsten-core`; `Position` stays separate from gameplay render components. Variable-dt limit amended by `D-088`. |
+| `D-033` | Physics is hand-rolled in `tungsten-core`; `Position` stays separate from gameplay render components. Variable-dt limit amended by `D-088` and `D-094`. |
 | `D-035` | Manifest merge order is call-site order, usually shared manifest first then example-local. |
 | `D-036` | Archetypal ECS rewrite is intentional and benchmark-validated. Its storage description is amended by `D-083`. |
 | `D-039` | `CommandBuffer` is a world resource with post-system flush; deferred structural changes are visible to extract/render in the same frame and to systems on the next frame. Command storage and the fresh buffer per frame are amended by `D-084`. |
@@ -112,8 +112,9 @@ One-line takeaways for every decision heading in [`DECISIONS.md`](../DECISIONS.m
 | `D-082` | Physics sleep state sits in arrays parallel to the proxies and is rebuilt by entity key only when the body sequence changes. Amends the keyed map and per-frame rebuild of `D-065`; wake paths and digests are unchanged. |
 | `D-083` | ECS column storage: columns in a `Vec` ordered like the archetype's sorted type key and created with it; rows move between columns unboxed (`move_row_to`, `swap_remove_drop`), downcasts through trait upcasting. Structural changes and query setup find a column by an out-of-line key scan; `World::get` and the flush's run writes use a per-archetype slot table. Iteration order and digests are unchanged. Amends the storage description of `D-036`. Records the accepted `noisy` reading of `ecs` `update` p50 and what many archetypes cost. |
 | `D-084` | Command buffer: one typed value queue per inserted component type and plain-data commands (no box per command), function-pointer removals, `World::flush_reusing` for a buffer the app keeps across frames, and consecutive inserts on one entity applied as one archetype move. Flush results equal one-by-one application. Amends `D-039`. Records the accepted `particles` `animate_sprites` p95 regression. |
-| `D-088` | Frame dt is elapsed time capped at 0.1 s (`MAX_DT_SECS`); smoke runs keep 1/60 s. Still variable dt across fixed substeps; a fixed-step accumulator is left to the 1.0 criteria plan. Amends `D-033`. |
+| `D-088` | Frame dt is elapsed time capped at 0.1 s (`MAX_DT_SECS`); smoke runs keep 1/60 s. Still variable dt across fixed substeps; a fixed-step accumulator is left to the 1.0 criteria plan. Amends `D-033`. Amended by `D-094`: the physics step advances at most 1/30 s of it. |
 | `D-092` | Physics arrival pass: after position integration, a body whose velocity the solve changed by more than `2·linear_slop` of travel is paired with every neighbour it reaches, clamped (pushers first, walls last; a pressed chain as one body) and moved again, so a pushed body stops at a gate. Amends `D-063`, `D-064`. The determinism hash and three benchmark digests changed. Records the accepted `physics` and `physics-sparse` `physics_step` regression and two residual cases. |
+| `D-094` | Physics step bound: one `physics_step` call advances at most `PhysicsConfig::max_step_dt` (default 1/30 s; `<= 0` is unbounded), so a slow frame cannot soften contacts through the contact-hertz cap and spiral a dense awake pile into collapse. Below 30 FPS physics runs slow while other systems see the frame dt. Amends `D-088`, `D-033`. Nothing changes at a 1/60 s step. Records the options not taken (substep bound, `contact_hertz` 60, fixed-step accumulator). |
 
 ## When To Open a Decision
 

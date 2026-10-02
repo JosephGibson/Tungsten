@@ -151,6 +151,7 @@ Decision log for non-obvious Tungsten choices. Use [the decision index](docs/DEC
 
 ## D-033 — M11 physics shape
 **Amended by D-088:** the "Variable-dt with substep cap" known limit only; the frame's dt stays variable and is capped at 0.1 s (the substep cap went with `D-064`), and the accumulator is left to the 1.0 criteria plan.
+**Amended by D-094:** the same known limit only; one `physics_step` call advances at most `PhysicsConfig::max_step_dt` (1/30 s by default) of the frame's dt, so a substep is never longer than 1/120 s at the default count. Below the bound the dt stays variable.
 **Date:** 2026-04-14  
 **Decision:** Four coupled choices: (1) no external physics crate — hand-rolled in `tungsten-core::physics`; (2) uniform spatial grid broad-phase rebuilt per substep, no persistent state; (3) `Position`/`Velocity` live at library level, not migrated into existing examples; (4) tilemap colliders are transient — one static AABB per tile per substep, no baked registry.  
 **Known limits:** Variable-dt with substep cap — preferred upgrade is semi-fixed accumulator. Tilemap collider budget: ≤128×128 tiles; larger maps should pre-bake a static spatial index.
@@ -873,6 +874,7 @@ The full suite, five runs a side, reads 3 `regressed`, 6 `improved`, 31 `unchang
 - No `unsafe`, no new dependency. `D-047`, `D-057`, `D-058` and `D-078` stand as written; `D-059` and `D-085` are not edited.
 
 ## D-088 — Frame dt is capped at 0.1 s
+**Amended by D-094:** the physics step no longer takes the whole capped dt; one `physics_step` call advances at most `PhysicsConfig::max_step_dt` (1/30 s by default). The table below holds for the scenes it lists (gravity 900, a 5-box stack and a 30-circle pile), not for deep piles or gravity 3,600. The cap, its constant and the smoke pin stand, and every other system still sees the capped dt.
 **Date:** 2026-10-02
 **Decision:** `DeltaTime.dt` is the time since the previous frame, capped at `MAX_DT_SECS = 0.1` (`crates/tungsten/src/app.rs`, `frame_dt_secs`). A smoke run keeps its pinned 1/60 s. The cap is a constant beside `SMOKE_MODE_FIXED_DT_SECS`, not a `tungsten.json` field.
 
@@ -1046,3 +1048,50 @@ The forward sweep alone turns "the body through the gate" into "the pusher insid
 - Tests on the GPU, behind `TUNGSTEN_VISUAL_REGRESSION` and run by `just visual`: `mesh_trail_draws_instanced_triangles` (example 04, the trail against `TUNGSTEN_MESH_TRAIL_FIXTURE=off`, more than 100 pixels) and `each_transition_effect_changes_the_frame` (example 03, each `TUNGSTEN_TRANSITION_FIXTURE` effect against `none`, more than 1,000 pixels). `just smoke` gains five rows: the mesh pipeline under MSAA 4 with a depth attachment, and a 16-frame run of each effect across the boundary frame.
 - Not verified: a live manifest edit of a mesh. Only example 01 enables hot reload and it ships no mesh; the diff and the config reload are covered by the tests above.
 - No `unsafe`, no new dependency. `ParticleConfig` gains a field, so code that builds one as a literal adds `render: ParticleRender::Quad`.
+
+## D-094 — Physics step bound: one call advances at most 1/30 s
+**Date:** 2026-10-02
+**Decision:** `PhysicsConfig::max_step_dt` (default 1/30 s) bounds the simulated time of one `physics_step` call. The step clamps the frame's dt once, after reading the config, and uses the clamped value wherever it used the dt: the substep length, the pair budgets' time left, collider-less bodies and the sleep timers. The substep count stays fixed (`D-064`), so at the defaults a substep is never longer than 1/120 s. `<= 0` turns the bound off. `MAX_DT_SECS` stays 0.1 s (`D-088`), and every other system still sees that dt.
+
+**Why:** A dense awake pile collapsed into an overlapped clump once frames got slow. In `examples/01_platformer` a pit of 10,000+ balls went above 200 ms of physics a frame, lost balls through the floor and never recovered. The cause is a feedback loop through the frame time, not a broken pass (investigation of 2026-10-02, `docs/plans/archive/physics-dense-pile-collapse.md`):
+
+1. **Stiffness follows the substep.** `soft_params` caps the contact frequency at a quarter of the substep rate, which with 4 substeps is `1 / dt`: ball-ball contacts run at `min(30, 1/dt)` Hz and static contacts at `min(60, 1/dt)` Hz. Past 1/30 s a ball-ball contact softens with dt squared, 9 times at the 0.1 s cap. Sag per ball weight at gravity 3,600: 0.20 px up to 33 ms, 0.46 px at 50 ms, 1.82 px at 100 ms.
+2. **A softer pile costs more.** It sinks into itself, and two terms that scale with dt grow with it: the pair budget's gravity term of `D-081` (0.56 px at 1/60 s, 20.25 px at 0.1 s) and the arrival flag of `D-092`, whose threshold falls from 120 to 20 px/s while one substep of gravity adds 90. On an 11,502-ball pile, per substep: contacts 37 to 90–97 thousand, pairs 55 thousand to 1.3–3.2 million, arrival listings 77 to 5,300–11,200. The step goes from 13 ms to 206–287 ms; 89% of it is the pair loop and the pair build, 3.6% the solver.
+3. **The cap is the loop's fixed point.** The step costs more than 0.1 s, so the dt stays at the cap and the contacts stay soft. The state is not absorbing in itself: stepped at 1/60 s again, the same pile is back to normal within a second, minus the bodies already under the floor.
+
+The 11,502-ball pile built in the platformer's pit at 1/60 s, then 15 s at a slower fixed step (`stacking` is summed body area over covered area, 1 = no overlap):
+
+| Frame dt | Stacking | Height px | Below the floor | In the walls | End state |
+| --- | --- | --- | --- | --- | --- |
+| 16.7 ms | 1.32 | 716 | 0 | 0 | asleep |
+| 25 ms | 1.32 | 716 | 0 | 0 | asleep |
+| 33.3 ms | 1.31 | 718 | 0 | 0 | asleep |
+| 41.7 ms | 1.48 | 627 | 4 | 0 | asleep, compressed |
+| 50 ms | 1.64 | 552 | 171 | 5 | asleep, compressed |
+| 66.7 ms | 1.93 | 449 | 315 | 18 | awake |
+| 100 ms | 2.29 | 347 | 938 | 46 | awake, step 206–287 ms |
+
+Nothing changes up to 1/30 s and everything does past it, which is where the formula puts the threshold. With the frame dt fed from the measured step time, the loop closes within 30 frames of the dt passing about 35 ms. Three stalled frames of 0.1 s are enough to capture the awake pile (1,072 bodies below the floor 30 s later). It is not the pit or the balls: a plain box, AABB bodies, one ball size, rain spawning, the other spawn order and gravity 900 collapse the same way, down to a 1,500-ball pile 284 px deep. `D-088`'s table did not reach that load.
+
+With the bound, the same pile keeps every body through 15 s of 0.1 s frames (0 below the floor, stacking 1.31, 717 px) and sleeps when the frames recover. With the frame dt fed from the measured step time plus 8 ms, the pit fills to 18,002 balls with the frame dt at 33.5–39.9 ms and the step at 25–31 ms past 16,000 balls. At most 2 centres sit under the floor top while spawning and 3 in the first second after input ends, pressed there by the load with the largest speed at 240 px/s; none is left when the pile sleeps 8 s later. Unbounded, that run ends at a 448–536 ms step with 1,287–1,699 balls below the floor.
+
+The bound belongs to the step, not to the app loop: `physics_step` is public and runs headless with whatever dt its caller holds, so "a substep is never longer than 1/120 s" is the step's invariant. Lowering `MAX_DT_SECS` instead would reverse `D-088`'s reason for 0.1 s and slow every system of every game under 30 FPS for a problem only physics has.
+
+**Consequences:**
+- **Below 30 FPS physics runs slow instead of soft.** A frame longer than `max_step_dt` advances the simulation by `max_step_dt` and the rest of its time is dropped, not made up later. Game systems still see the frame's dt, so a force a system applies as `vel += a · dt` (the platformer's black hole) is stronger relative to the motion it causes.
+- **Amends `D-088` and the variable-dt limit of `D-033`** as their marker lines say. `D-063`'s soft contacts, `D-064`'s fixed count, `D-081` and `D-092` stand.
+- **Nothing changes at a 1/60 s step,** which benchmarks, smoke runs and the pixel test pin. The determinism hash stays `0x088ec07a73c1b168`, containment stays at 0 of 3,000, and all eight benchmark digests are unchanged.
+- **Benchmarks.** Against the tree before, five runs a side in one sitting (`D-078`): no owned metric reads `regressed` or `improved` (43 `unchanged`, 11 `noisy`; the same-build A/A of that sitting read 40 and 14). `physics_step` p50 reads 6.07 → 6.14 ms in `physics` and 3.61 → 3.66 ms in `physics-sparse`, `unchanged`. The change moves every engine function by 48 bytes modulo 64 (`App::new` shrinks by 16 bytes, `physics_step` grows by 64); a build of the tree before, padded so the benchmark's and the engine's functions sit at the same offsets, reads no `regressed` or `improved` either, so no placement reading is recorded here.
+- **Recorded limit, not closed,** in `docs/known-issues.md`: at any frame rate a soft contact sags in proportion to its load and stops answering near 65 ball weights at gravity 3,600, so a deep pile is compressed while stable. That is `D-063` by design, and separate from the loop.
+- **Not taken:**
+
+  | Option | Measured | Why not |
+  | --- | --- | --- |
+  | Substep bound on top of this one (`max_substep_dt` 1/240 s, up to 8 substeps) | No body below the floor to 18,000 bodies; full static stiffness too | Up to twice the physics cost between 60 and 30 FPS, where games run: 22 → 33 ms a frame at 12,000 bodies. Amends `D-064`'s fixed count. A substep that does not depend on the frame is what a fixed-step accumulator delivers |
+  | `contact_hertz = 60` in the platformer | At a fixed 1/60 s: stacking 1.32 → 1.06 | Moves the softening threshold to a 1/60 s frame. With this bound alone and a frame time of 17–21 ms the pile is still awake after 25 s, where the default pile sleeps after 9 s |
+  | Real time down to 10 FPS (substep bound 1/120 s, up to 12 substeps, no step bound) | Pile intact | The pair budget still scales with the whole frame: 4,392 → 29,694 pairs on the 1,500-ball pile, a 117 ms step at 18,000 bodies |
+  | Fixed-step accumulator with render interpolation | Not prototyped | Changes the core/render seam; left to the 1.0 criteria plan by `D-088`. This bound is what the accumulator would do for stability and is compatible with it |
+
+- **Example 01 caps its balls at `BALL_CAP = 12_000`,** a count: spawning stops there, and a spawner at the cap drops its accumulated time. It is a presentation guard, not the fix. With the bound the pit holds at 18,000 balls, but awake they cost a 28–33 ms step, and the load limit above makes a deep pile look crushed at 60 FPS. 12,000 is where the reference machine's awake step is 14.5 ms and the overlap still moderate (stacking 1.34). A count is deterministic and testable (`spawning_stops_at_the_ball_cap` in the example's `tests/ball_pit.rs`); a gate on the frame dt is neither.
+- Tests: `stacked_column_survives_slow_frames` in `crates/tungsten-core/tests/physics_tunneling.rs` (ball 0 under the floor top before); `awake_pile_keeps_its_bodies_and_height_through_slow_frames` (91 of 1,500 through the floor before), `slow_frames_do_not_multiply_the_pair_list` (4,392 → 59,185 pairs before, 4,979 now) and the guard `pinned_step_state_is_unchanged` in `crates/tungsten-core/tests/physics_containment.rs`, release only; `slow_frame_advances_only_the_step_bound`, `step_bound_off_takes_the_whole_dt_as_before` and `step_bound_is_invisible_at_a_sixtieth` in `crates/tungsten-core/src/tests/physics/step.rs`. `one_capped_stall_step_keeps_a_settled_pile` runs with the bound off so it still takes `D-088`'s 0.1 s step.
+- No `unsafe`, no new dependency. `PhysicsConfig` gains a field, so code that builds one as a full literal adds `max_step_dt`.

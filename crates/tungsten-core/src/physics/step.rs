@@ -840,7 +840,8 @@ pub fn wake(world: &mut World, entity: Entity) {
     }
 }
 
-/// Run one physics tick with fixed substeps (D-064).
+/// Run one physics tick with fixed substeps (D-064), advancing at most
+/// `PhysicsConfig::max_step_dt` of the frame's dt (D-094).
 pub fn physics_step(world: &mut World) {
     let dt = world
         .get_resource::<DeltaTime>()
@@ -853,6 +854,15 @@ pub fn physics_step(world: &mut World) {
         .get_resource::<PhysicsConfig>()
         .copied()
         .unwrap_or_default();
+
+    // Step bound (D-094): a longer substep would lower the contact-hertz cap
+    // in `soft_params` and soften every contact, so the rest of a slow
+    // frame's time is dropped instead of simulated.
+    let dt = if config.max_step_dt > 0.0 {
+        dt.min(config.max_step_dt)
+    } else {
+        dt
+    };
 
     let substeps = config.substeps.max(1);
     let sub_dt = dt / substeps as f32;

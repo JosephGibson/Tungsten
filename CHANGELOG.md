@@ -6,6 +6,23 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-10-02
+
+Summary: a slow frame no longer collapses a dense awake pile (`D-094`, plan `docs/plans/archive/physics-dense-pile-collapse.md`). One physics step advances at most 1/30 s, so below 30 FPS physics runs slow instead of softening its contacts; example 01 caps its balls at 12,000. Nothing changes at a 1/60 s step: the determinism hash and all eight benchmark digests are unchanged, and no owned metric reads `regressed`.
+
+### Added
+
+- **`PhysicsConfig::max_step_dt` (`D-094`):** the longest simulated time one `physics_step` call advances, 1/30 s by default; `<= 0` is unbounded. Code that builds a `PhysicsConfig` as a full literal adds the field.
+
+### Changed
+
+- **Example 01** stops spawning at `BALL_CAP = 12_000` live balls, and a spawner at the cap drops its accumulated time. The cap is a presentation guard, not the fix.
+- **Recorded limit** in `docs/known-issues.md`: a soft contact carries a bounded load (about 65 ball weights at gravity 3,600), so a deep pile is compressed at any frame rate. `contact_hertz` is the lever and needs a constant substep first.
+
+### Fixed
+
+- **Dense pile collapse on slow frames (`D-094`):** contact stiffness is capped at a quarter of the substep rate and the substep was the frame dt over 4, so a frame longer than 1/30 s softened every contact, the softer pile cost more, and the dt ended pinned at the 0.1 s cap of `D-088`. In example 01 a pit of 10,000+ balls went above 200 ms of physics a frame, lost balls through the floor and never recovered; three stalled frames were enough, in any container and with any body shape. The step now clamps the dt it advances. An 11,502-ball pile keeps every body through 15 s of 0.1 s frames (938 below the floor before), and with the frame dt fed from the step time the pit fills to 18,000 balls at a 25–31 ms step (448–536 ms before). Below 30 FPS simulated time falls behind frame time, and other systems still see the frame dt.
+
 ## [0.36.0] - 2026-10-02
 
 Summary: M31, the last Phase 4 milestone (`D-093`, plan `docs/plans/archive/phase4-milestone-31-mesh-particles-transitions.md`): a particle config can draw an instanced triangle mesh instead of a sprite quad, and a state change can run behind a screen transition (fade, radial wipe, dissolve, pixelate). Accepted with it: `particles` `stage.unattributed` p50 reads `regressed` at the threshold after the mesh particle work (2.07 → 2.14 ms; `noisy` at 2.10 ms in the final suite), and `churn` `stage.flush` p50 reads `regressed` in the final suite (2.41 → 2.54 ms; `noisy` in two recaptures), which no M31 change touches.
