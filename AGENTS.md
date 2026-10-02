@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Canonical rules for Tungsten, shared by every coding agent (`CLAUDE.md` only imports this file). **Before editing under `crates/tungsten-render/`, read `crates/tungsten-render/AGENTS.md`.**
+Shared Tungsten rules (`CLAUDE.md` imports this file). **Before editing under `crates/tungsten-render/`, read `crates/tungsten-render/AGENTS.md`.**
 
 ## Project
 
@@ -11,7 +11,7 @@ Native Rust 2D game engine: `winit` + `wgpu` + `glam` + hand-rolled ECS + manife
 - Start here, then open only the files the task touches. [`docs/LLM_INDEX.md`](docs/LLM_INDEX.md) maps tasks to files; open it before a broad search.
 - Rationale: [`docs/DECISION_INDEX.md`](docs/DECISION_INDEX.md), then `rg -n 'D-0NN' DECISIONS.md`. Never read `DECISIONS.md`, `DESIGN.md` or `CHANGELOG.md` whole: `rg -n '^#' <file>`, then read one section.
 - **Never read, search or glob `docs/plans/archive/`** (completed or abandoned plans). `.ignore` filters it; never bypass that with `rg -uu`.
-- Plan files follow [`docs/plans/README.md`](docs/plans/README.md); client setup (skills, filters, permissions) is in [`docs/agent-setup.md`](docs/agent-setup.md).
+- [Doc map](docs/README.md): canonical sources. Plans follow [`docs/plans/README.md`](docs/plans/README.md); client setup is in [`docs/agent-setup.md`](docs/agent-setup.md).
 
 ## Commands
 

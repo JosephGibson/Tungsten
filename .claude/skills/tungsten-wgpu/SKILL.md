@@ -5,37 +5,31 @@ description: Tungsten renderer, WGSL shader and GPU-resource work in native wgpu
 
 # tungsten-wgpu
 
-Read `crates/tungsten-render/AGENTS.md` first; it holds the crate's shader, frame-order and feature rules. This skill adds working guidance.
+Read [renderer AGENTS.md](../../../crates/tungsten-render/AGENTS.md) first; it owns shader mirrors, frame order, feature contracts and GPU checks. [DESIGN.md](../../../DESIGN.md#hot-reload--m9) owns the current reload support matrix. This skill adds seam and resource guidance.
 
 ## Stack
 
 - Native `wgpu` plus hand-written WGSL. No Three.js, TSL, GLSL or HLSL.
 - Entry points: [renderer.rs](../../../crates/tungsten-render/src/renderer.rs) and [lib.rs](../../../crates/tungsten-render/src/lib.rs). Pipelines live in `sprite.rs`, `lit_sprite.rs`, `quad.rs`, `text.rs`, `material.rs`, `debug_line.rs` and `post/`.
 
-## Shaders (D-057 to D-061)
-
-- Manifest-tracked shaders live under `assets/shaders/` and hot-reload on body edits after `wgpu::naga` validation (`validate_wgsl_source`). Signature or bind-group layout changes still need a rebuild. `D-023`'s "every shader edit rebuilds" rule is narrowed, not current.
-- Stock effects are `include_str!`ed from `crates/tungsten-render/src/shaders/stock/` and mirrored byte-equal in `assets/shaders/stock/`; `src/sprite.wgsl` mirrors `assets/shaders/sprite.wgsl`. Edit both copies of a pair together.
-- Internal-only shaders (`quad.wgsl`, `debug_line.wgsl`, `shaders/present_blit.wgsl`) aren't manifest-tracked and still need a rebuild.
-- Validate new or changed WGSL with `cargo test -p tungsten-render`. Naga success doesn't prove pixels; run the smoke and visual checks on a GPU.
-
 ## Core/render seam (D-007, D-016, D-018)
 
 - `TextureHandle(u32)` is defined in `tungsten-core`. **No `wgpu` types in `tungsten-core`.** Render may depend on core, never the reverse.
-- The umbrella mediates: `AssetRegistry::register_sprite` allocates a handle and stores metadata in core, then `renderer.upload_texture(handle, rgba, …)` stores the GPU texture under the same key.
-- Extract → draw: systems mutate `World`; extract functions produce POD slices (`QuadInstance`, `SpriteInstance`, `TextSection`) for render. The renderer never takes mutable `World` at draw time.
+- The umbrella mediates: `Renderer::allocate_texture_handle` mints handles (`D-048`); the loader uploads pixels and passes the same handle, atlas UVs and metadata to `AssetRegistry::register_sprite`. Several sprites can share one atlas handle.
+- Extract → draw: systems mutate `World`; extract functions produce plain render data (`QuadInstance`, `SpriteInstance`, `TextSection`) for render. The renderer never takes mutable `World` at draw time.
 
-If a change needs the renderer to mutate `World` or handle string IDs at draw time, stop: the seam is breaking.
+Resolve asset IDs during extract and pass resolved render data across the seam. A change that needs mutable `World` access at draw time must first reconcile `D-018`.
 
 ## Layout and resources
 
 - Bind group layouts are hand-written in Rust; no codegen. Every GPU-uploaded struct is `bytemuck::Pod + Zeroable` (D-020).
 - Materials, SMAA and bloom share the 256-byte UBO contract; lighting's `LightUbo` is 544 bytes. Keep Rust and WGSL layouts in lockstep and cover them with a layout test.
 
-## Present mode and GPU timing
+## Pacing, timing and checks
 
-- `display.present_mode` in `tungsten.json` wins when set (it falls back to `render.present_mode`); defaults are `"auto"` with `max_frame_latency = 1`. The Vulkan pacing matrix is in [profiling-workflow.md](../../../docs/perf/profiling-workflow.md). Don't change shipped defaults to win a benchmark; record `--telemetry-only` override rows.
-- `TUNGSTEN_GPU_TIMING=1` enables timestamp queries (`GpuFrameTimings::frame_gpu_ms`, `None` without adapter support). The readback blocks, so never enable it during CPU profiling.
+[The profiling workflow](../../../docs/perf/profiling-workflow.md#frame-pacing) owns display/render precedence, child-only pacing overrides and capture defaults. Override studies use `just perf run … --present-mode … --max-frame-latency …`; `--gpu-timing off` disables the diagnostic run.
+
+`TUNGSTEN_GPU_TIMING=1` blocks on readback; keep it out of CPU profiles. Renderer changes require the shader/layout tests and GPU checks in renderer AGENTS. Cache validation alone does not establish correct pixels or visible hot reload; use the current support matrix and connected pipeline rebuild path.
 
 ## Reference material
 

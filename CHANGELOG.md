@@ -1,14 +1,20 @@
 # Changelog
 
-Records all notable project changes. Versioned entries preserve historical filenames and commands; use [the source index](docs/LLM_INDEX.md) for current locations. Earlier `docs/plans/Phase3.md` references now correspond to the [archived Phase 3 plan](docs/plans/archive/phase3.md).
+Records all notable project changes. Versioned entries preserve historical filenames and commands; use [the source index](docs/LLM_INDEX.md) for current locations. Plan status statements describe their release-time scope; later retirement does not imply every proposed step shipped. Earlier `docs/plans/Phase3.md` references now correspond to the [archived Phase 3 plan](docs/plans/archive/phase3.md).
 
 Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+Summary: documentation cleanup and plan retirement.
+
+### Changed
+
+- **Documentation cleanup:** archive the GPU performance, platformer polish and debug/docs cleanup plans; shorten the current design status and shipped Phase 4 scope; correct architecture, reload support, font IDs, capture availability and stale references; route local skills to canonical guides.
+
 ## [0.34.0] - 2026-10-02
 
-Summary: GPU and render-path performance pass (`D-085`–`D-087`, plan `docs/plans/gpu-perf-pass.md`, which stays open for three steps the owner has not approved). The text pipeline keeps a bounded layout cache and the post chain keeps its GPU objects between frames, the default extract and the tilemap extract write one pass into kept buffers, and the last full-screen stage renders into the swapchain. Measured on benchmark suite v2: `gpu-throughput` runs at 68.7 FPS where it ran at 38.6, `particles` at 158.5 against 89.7, `integrated` at 117.7 against 94.9 and the empty frame at 2,074 against 1,101; `gpu` peak RSS falls from 720.9 to 168.9 MiB and no frame of it exceeds 1.5 × the run's p50. `display.frame_rate_cap` and the perf runner's pacing overrides now take effect, and telemetry reports the frame `interval`. Pixels are unchanged. In the render crate, the post-chain recording functions take `&mut self` and `default_pass_order` takes a `PresentPath`.
+Summary: GPU and render-path performance pass (`D-085`–`D-087`, plan `docs/plans/archive/gpu-perf-pass.md`, with three experiments left unapproved). The text pipeline keeps a bounded layout cache and the post chain keeps its GPU objects between frames, the default extract and the tilemap extract write one pass into kept buffers, and the last full-screen stage renders into the swapchain. Measured on benchmark suite v2: `gpu-throughput` runs at 68.7 FPS where it ran at 38.6, `particles` at 158.5 against 89.7, `integrated` at 117.7 against 94.9 and the empty frame at 2,074 against 1,101; `gpu` peak RSS falls from 720.9 to 168.9 MiB and no frame of it exceeds 1.5 × the run's p50. `display.frame_rate_cap` and the perf runner's pacing overrides now take effect, and telemetry reports the frame `interval`. Pixels are unchanged. In the render crate, the post-chain recording functions take `&mut self` and `default_pass_order` takes a `PresentPath`.
 
 ### Added
 
@@ -86,7 +92,7 @@ Summary: benchmark suite v2 (`D-078`), plan `docs/plans/archive/benchmark-suite-
 
 ## [0.31.0] - 2026-09-29
 
-Summary: platformer ball pit, spreading fire, a fireball spell and burning-ball intensity (plans `docs/plans/archive/platformer-ball-pit-effects.md`, `docs/plans/archive/platformer-spreading-fire.md`, `docs/plans/archive/platformer-fireball-spell.md`, `docs/plans/archive/platformer-fire-intensity.md`), plus the owner-directed art passes of `docs/plans/platformer-polish-pass.md` (steps 6–12 and D7; its Rust refactor steps stay open). The engine gains PCM WAV decoding (`D-077`); no library API or rendering output changes.
+Summary: platformer ball pit, spreading fire, a fireball spell and burning-ball intensity (plans `docs/plans/archive/platformer-ball-pit-effects.md`, `docs/plans/archive/platformer-spreading-fire.md`, `docs/plans/archive/platformer-fireball-spell.md`, `docs/plans/archive/platformer-fire-intensity.md`), plus the owner-directed art passes of `docs/plans/archive/platformer-polish-pass.md` (steps 6–12 and D7; its Rust refactor steps were deferred). The engine gains PCM WAV decoding (`D-077`); no library API or rendering output changes.
 
 ### Added
 
@@ -214,7 +220,7 @@ Summary: the branch-`0.27` release — a physics scale and CCD pass (plan `docs/
 - **Audio:** decoding keeps a truncated file's decoded prefix but now reports real I/O errors; MP3/Ogg gapless trimming removes codec padding; cpal opens the default device at its native rate (48 kHz on the reference machine) and the mixer resamples.
 - **Instructions:** `AGENTS.md` condensed (≈6 KB), `CLAUDE.md` imports it, `docs/LLM_INDEX.md` and `docs/DECISION_INDEX.md` condensed, plan conventions moved to `docs/plans/README.md`; both project skills corrected (shader hot reload, canonical perf scene).
 - **Scripts:** smoke discovery fails on metadata errors or zero examples, and timeouts are reported as timeouts; perf captures record compiler and build flags (`TUNGSTEN_PERF_RUSTFLAGS`) and keep all profiler output in the capture directory.
-- **Status docs:** `README.md` and `DESIGN.md` name workspace `0.27.0` on branch `0.27`; the `DESIGN.md` physics section and the README stack line describe the `D-062`–`D-067` pipeline instead of the per-substep uniform grid. `docs/plans/agentic-restructure.md` is done and archived; its platform checks and follow-ups moved to `docs/repo-review-2026-09-25.md`.
+- **Status docs:** `README.md` and `DESIGN.md` name workspace `0.27.0` on branch `0.27`; the `DESIGN.md` physics section and the README stack line describe the `D-062`–`D-067` pipeline instead of the per-substep uniform grid. `docs/plans/agentic-restructure.md` is done and archived; its platform checks and follow-ups moved to `docs/plans/archive/repo-review-2026-09-25.md`.
 - `DECISIONS.md` adds `D-062`–`D-072`.
 
 ### Removed

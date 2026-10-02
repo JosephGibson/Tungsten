@@ -14,6 +14,8 @@ just perf describe gpu                                              # knobs, pre
 
 **FPS.** An FPS in this file is 1000 / mean `total`. Since 2026-10-02 the `frame:` line also carries `interval`, the time between two frame starts ([`profiling-workflow.md`](profiling-workflow.md#telemetry-lines)), which is the frame's real period. Its mean is 0.05–0.13 ms above the mean `total` in the eight rows, so a row runs 0.5% (`gpu`: 89.7 FPS against 90.1) to 1.5% (`integrated`: 117.8 against 119.6) below the figure quoted here, and the empty `gpu` frame runs at 1,990 FPS where `total` gives 2,114.
 
+For a specific workload, open its section: [`physics`](#physics), [`ecs`](#ecs), [`churn`](#churn), [`gpu`](#gpu), [`particles`](#particles), [`integrated`](#integrated). [Ownership](#ownership) and [open proposals](#open-proposals) apply across rows. Dated measurements below remain historical evidence; use a fresh comparable capture to assess the current tree.
+
 ## Harness
 
 - **One binary.** `main.rs` resolves the configuration (`knobs.rs`: preset, then scale, then overrides, then validation) and calls the benchmark's `configure`. Without `TUNGSTEN_BENCH` it runs `physics` at `default`. `TUNGSTEN_BENCH_DESCRIBE=1` prints every benchmark's schema as JSON and `=config` the resolved configuration, both before a window opens. `TUNGSTEN_OVERLAYS_ON=physics,systems,inspector` enables overlays for interactive use.
@@ -153,7 +155,7 @@ Owns steady-state query iteration. Warm-up 60 frames, no GPU diagnostic run. Mod
 
 Owns structural change: command recording, `World::flush`, archetype moves, and entity allocation and free. Warm-up 60 frames, no GPU diagnostic run. Module: `churn.rs`.
 
-- **Population.** A steady population is replaced FIFO: every entity lives `1/turnover` frames (20 at the default), and the population is pre-aged, so churn is steady from the first frame. Frame f despawns spawn serials `[f·S, (f+1)·S)` and spawns `[P + f·S, P + (f+1)·S)`. Each spawn inserts `components` components one at a time. In `immediate` mode that is one archetype move each; in `deferred` mode the flush has applied a spawn's inserts as one move since `D-084`. The `components` note in the knob table below ("one archetype move each") is the binary's own text (`churn.rs`), left as it is because the benchmark's sources were out of that pass's scope: it describes `immediate` only.
+- **Population.** A steady population is replaced FIFO: every entity lives `1/turnover` frames (20 at the default), and the population is pre-aged, so churn is steady from the first frame. Frame f despawns spawn serials `[f·S, (f+1)·S)` and spawns `[P + f·S, P + (f+1)·S)`. Each spawn inserts `components` components one at a time. In `immediate` mode that is one archetype move each; in `deferred` mode the flush has applied a spawn's inserts as one move since `D-084`. The binary's schema note still says "one archetype move each"; that describes `immediate` only.
 - **Status toggles.** Survivors whose serial is f modulo `groups` gain one of `statuses` status components at frame f and lose it at f + 1. Gains skip entities that expire at f + 1, so each frame's losses equal the previous frame's gains. `groups = round(2·(P − 2S) / (toggles·P))`, 36 at the default.
 - **Modes.** `deferred` records everything through the `CommandBuffer` and measures it in `flush`; `immediate` makes the same calls on `World` inside the churn systems. Both find their targets with one scan over the lifetime component, and the systems run as `churn_scan`, `churn_despawn`, `churn_toggle`, `churn_spawn`.
 
@@ -162,7 +164,7 @@ Owns structural change: command recording, `World::flush`, archetype moves, and 
 | `population` | 125,000 | 1,000–2,000,000 | yes | |
 | `turnover` | 0.05 | 0–0.5 | | Share replaced per frame, FIFO |
 | `toggles` | 0.05 | 0–0.5 | | Share gaining or losing a status per frame; a status lasts one frame |
-| `components` | 6 | 2–12 | | Components per spawn, one archetype move each |
+| `components` | 6 | 2–12 | | Components per spawn; deferred inserts move once per spawn, direct inserts move once each |
 | `statuses` | 3 | 1–8 | | Distinct status components |
 | `mode` | `deferred` | `deferred`, `immediate` | | |
 | `view` | 0 | 0–16,384 | | Rendered sample |
@@ -496,7 +498,7 @@ Not approved; each benchmark works without them. Approving one is a separate dec
 - The surface clear ("Surface clear and present blit" above): since `D-087` the pass that first writes the swapchain carries it. `LoadOp::DontCare` would remove it and would be the engine's first `unsafe` outside a test.
 - The `integrated` row note in the binary, which still names the old text cache.
 
-**Left open by Session B of the render-path pass (2026-10-02).** None is approved; the first three are gated steps of `docs/plans/gpu-perf-pass.md` that the owner left at `no`:
+**Left open by Session B of the render-path pass (2026-10-02).** None is approved; the first three were gated steps of the now-archived `docs/plans/archive/gpu-perf-pass.md` that the owner left at `no`. Retirement of that execution plan does not approve these experiments:
 
 - Extract culling: the default extract still emits every sprite, in view or not.
 - A compositor-bypass hint on X11: the compositor's stall is what sets the tail of `gpu` at `min` (the frames near 4.7 ms above).
@@ -504,7 +506,7 @@ Not approved; each benchmark works without them. Approving one is a separate dec
 - The frame cap overshoots its period by 0.06 ms per frame (16.73 ms mean `interval` at a cap of 60, 59.8 FPS), because each deadline counts from the frame's own start; a deadline grid kept across frames would remove it.
 - The HUD's `fps` row still divides by the CPU frame time; `FrameTimings::interval_ms` now holds the period it would need.
 
-**RSS growth threshold.** A5 defines none, so RSS growth is reported for every row, `churn` included, and judged for none. The open proposal judges it for `churn` only:
+**RSS growth threshold.** The current capture contract defines none, so RSS growth is reported for every row, `churn` included, and judged for none. The open proposal judges it for `churn` only:
 
 - a capture reads `leaking` when the median of its per-run slopes exceeds 32 KiB/s and every run exceeds 16 KiB/s;
 - compare marks growth `regressed` when the candidate's median exceeds the baseline's by more than 32 KiB/s under the same all-runs rule;

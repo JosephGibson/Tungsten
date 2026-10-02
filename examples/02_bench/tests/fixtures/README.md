@@ -17,13 +17,14 @@ repository root, because the benchmark loads `assets/manifest.json` and
 (via `CARGO_BIN_EXE_...`), and matching profiles removes one drift source.
 
 ```bash
+WGPU_BACKEND=vulkan \
 TUNGSTEN_BENCH=gpu \
 TUNGSTEN_BENCH_PRESET=visual \
 TUNGSTEN_SMOKE_FRAMES=8 \
 TUNGSTEN_CAPTURE_FRAME=5 \
 TUNGSTEN_CAPTURE_RESOLUTION=1280x720 \
 TUNGSTEN_CAPTURE_PATH=examples/02_bench/tests/fixtures/gpu-visual.png \
-cargo run -p example-02-bench
+cargo run -p example-02-bench --locked
 ```
 
 Determinism: under `TUNGSTEN_SMOKE_FRAMES`, `App::stage_delta_time` pins the
@@ -40,7 +41,7 @@ below so future drift can be diagnosed against a known driver.
 ## Running the regression test
 
 ```bash
-TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p example-02-bench --test visual_regression -- --nocapture
+TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p example-02-bench --test visual_regression --locked -- --nocapture
 ```
 
 `just visual` runs the same command. Without `TUNGSTEN_VISUAL_REGRESSION` the

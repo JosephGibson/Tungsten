@@ -4,15 +4,17 @@ From-scratch Rust 2D game engine. Stack: `winit` + `wgpu` + `glam` + hand-rolled
 
 ## Stack
 
-Hand-rolled ECS with archetypal storage, deferred command buffers, and typed event queues; `wgpu` rendering; manifest-driven assets; `glyphon` text; `cpal` + `symphonia` + hand-rolled audio mixer; `notify` hot reload; `.tmj` / Tiled-compatible tilemaps; 2D AABB + circle physics with a spatial-hash broad-phase, speculative CCD, warm-started soft contacts and island sleeping; frame telemetry, Criterion benches, and a perf capture workflow.
+Hand-rolled ECS with archetypal storage, deferred command buffers, and typed event queues; `wgpu` rendering; manifest-driven assets; `glyphon` text; `cpal` + `symphonia` + hand-rolled audio mixer; `notify` hot reload; `.tmj` / Tiled-compatible tilemaps; 2D AABB + circle physics with a spatial-grid broadphase, speculative CCD, warm-started soft contacts and island sleeping; frame telemetry, Criterion benches, and a perf capture workflow.
 
 ## Documents
 
 | File | Use |
 | --- | --- |
+| [`docs/README.md`](docs/README.md) | Documentation map, canonical sources and targeted reading |
 | [`DESIGN.md`](DESIGN.md) | Architecture, stack, subsystem detail |
 | [`AGENTS.md`](AGENTS.md) | Repo rules, commands, test layers, task workflow |
 | [`DECISIONS.md`](DECISIONS.md) | Non-obvious decisions and rationale (`D-NNN`) |
+| [`docs/DECISION_INDEX.md`](docs/DECISION_INDEX.md) | One-line decision summaries; find the relevant rationale without loading the full log |
 | [`CLAUDE.md`](CLAUDE.md) | Imports `AGENTS.md` for Claude Code |
 | [`docs/LLM_INDEX.md`](docs/LLM_INDEX.md) | On-demand task → source-path map for coding agents |
 | [`docs/agent-setup.md`](docs/agent-setup.md) | How Claude Code and Codex load instructions, skills and search filters |
@@ -20,6 +22,8 @@ Hand-rolled ECS with archetypal storage, deferred command buffers, and typed eve
 | [`docs/plans/phase4.md`](docs/plans/phase4.md) | Active Phase 4 plan and milestone index |
 | [`docs/perf/profiling-workflow.md`](docs/perf/profiling-workflow.md) | Profiling workflow: capture rules, compare verdicts, capacity search |
 | [`docs/perf/benchmarks.md`](docs/perf/benchmarks.md) | The six benchmarks, their knobs, owned metrics and calibrated defaults |
+| [`docs/releases.md`](docs/releases.md) | Internal release preparation, checks, Git handoff and recovery |
+| [`docs/showcase/README.md`](docs/showcase/README.md) | Visual acceptance artifacts, availability and regeneration commands |
 | [`CHANGELOG.md`](CHANGELOG.md) | Versioned change history |
 
 ## Quick Start

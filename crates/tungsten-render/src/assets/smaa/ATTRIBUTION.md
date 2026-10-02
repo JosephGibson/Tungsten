@@ -19,7 +19,7 @@ headers, written out without re-encoding:
 - `search.bin`: bytes from `Textures/SearchTex.h`'s `searchTexBytes`. Format
   `R8Unorm`, 64 × 16, 1 024 bytes.
 
-These files are loaded at runtime via `include_bytes!` and uploaded to GPU
+These files are embedded at compile time via `include_bytes!` and uploaded at runtime to GPU
 textures by `crates/tungsten-render/src/post/smaa_luts.rs`. They are
 intentionally kept out of `assets/manifest.json`: they are engine-internal
 content, not user-tweakable assets.

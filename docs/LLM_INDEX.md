@@ -1,6 +1,6 @@
 # LLM Navigation Index
 
-Task → file map. Open it on demand before a broad search, not by default. Prefixes: `core/` = `crates/tungsten-core/src/`, `render/` = `crates/tungsten-render/src/`, `tungsten/` = `crates/tungsten/src/`; other paths start at the repo root. `tungsten/app.rs` is the frame-loop hub and touches most runtime rows. `D-0NN` IDs resolve through [`DECISION_INDEX.md`](DECISION_INDEX.md).
+Task → file map. Open it before a broad search; read only the matching row's files. Prefixes: `core/` = `crates/tungsten-core/src/`, `render/` = `crates/tungsten-render/src/`, `tungsten/` = `crates/tungsten/src/`; other paths start at the repo root. `tungsten/app.rs` is the frame-loop hub. `D-NNN` IDs resolve through [DECISION_INDEX.md](DECISION_INDEX.md); [the documentation map](README.md) identifies canonical guides. Unit tests usually live in `crates/<crate>/src/tests/`; check the module's `#[path]` declaration.
 
 ## Runtime and ECS
 
@@ -37,7 +37,7 @@ Task → file map. Open it on demand before a broad search, not by default. Pref
 
 | Task | Open |
 | --- | --- |
-| Contacts, resolution, broadphase, sleeping (`D-033`, `D-062`–`D-067`, `D-075`, `D-076`) | `core/physics/step.rs`, `core/physics/collision.rs`, `core/physics/broadphase.rs` |
+| Contacts, resolution, broadphase, pair repair, sleeping (`D-033`, `D-062`–`D-067`, `D-075`, `D-076`, `D-080`–`D-082`) | `core/physics/step.rs`, `core/physics/collision.rs`, `core/physics/broadphase.rs` |
 | Benchmarks, tunneling, determinism | `crates/tungsten-core/benches/physics_bench.rs`, `crates/tungsten-core/tests/physics_tunneling.rs`, `crates/tungsten-core/tests/physics_containment.rs`, `crates/tungsten-core/tests/physics_determinism.rs` |
 
 ## Rendering
@@ -68,7 +68,7 @@ Run with `cargo run -p example-NN-name`.
 | One benchmark's workload | `examples/02_bench/src/<bench>.rs` |
 | Scene/state lifecycle | `examples/03_scene_state/src/main.rs`, `examples/03_scene_state/src/states.rs` |
 | Shader/material/post fixtures | `examples/04_shader_playground/src/main.rs` |
-| Review findings and follow-ups | `docs/repo-review-2026-09-25.md` |
+| Documentation maintenance and remaining milestones | `docs/README.md`, `docs/plans/README.md`, `docs/plans/phase4.md` |
 | Repository QA and quick checks | `scripts/check-repo.py`, `scripts/test-check-repo.py`, `justfile`, `docs/agent-setup.md` |
 | Release preparation, checks and command hand-off, publication/recovery (`D-071`, `D-074`, `D-079`) | `.github/workflows/release.yml`, `scripts/release.py`, `scripts/test-release.py`, `tools/launcher/src/main.rs`, `.claude/skills/tungsten-finalize/SKILL.md`, `.claude/skills/tungsten-release/SKILL.md`, `docs/releases.md`, `scripts/release-preflight.py`, `scripts/test-release-preflight.py` |
 | New dependency or design change | `docs/DECISION_INDEX.md`, then `DECISIONS.md` by ID |

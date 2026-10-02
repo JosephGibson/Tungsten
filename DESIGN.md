@@ -2,7 +2,9 @@
 
 ## Status
 
-Workspace `v0.34.0`; 0.34 is the GPU and render-path performance pass, measured on benchmark suite v2 (plan [`docs/plans/gpu-perf-pass.md`](docs/plans/gpu-perf-pass.md), which stays open for three steps the owner has not approved): the text pipeline keeps about three frames of layouts and skips unchanged frames, and the post chain's GPU objects are built once per target allocation (`D-085`); the default extract and the tilemap extract write one pass into buffers the app keeps between frames (`D-086`); and the last full-screen stage renders into the swapchain, with the present blit left for capture frames (`D-087`). Pixels are unchanged. `display.frame_rate_cap` now limits the frame rate, the `TUNGSTEN_DISPLAY_*` overrides win over `tungsten.json`'s `display` section, and the `frame:` telemetry line carries the frame `interval`. It sits on 0.33, physics and ECS performance pass 2 (plan archived as `docs/plans/archive/physics-ecs-perf-pass.md`): the physics broadphase gains a statics-only sweep grid and a direct cell table for compact worlds (`D-080`), a proxy that exhausts its travel budget has only its own pairs rebuilt (`D-081`), sleep state sits in arrays parallel to the proxies (`D-082`), archetype columns are a `Vec` in sorted type-key order with unboxed row moves and a slot table behind `World::get` (`D-083`), and the command buffer records without boxing and is reused through `World::flush_reusing` (`D-084`). Physics trajectories differ from 0.32 (pair order) and stay deterministic; no API is removed. The release procedure moves to agent-run checks, one plain command hand-off and publication by merging the release pull request (`D-079`, [`docs/releases.md`](docs/releases.md)). 0.33 sits on 0.32, which replaces the four `STRESS_SCENE` perf scenes of `example-02-sprite-stress` and `scripts/perf-capture.sh` with benchmark suite v2 (`D-078`): six seeded, scalable benchmarks in `example-02-bench`, each owning one bottleneck with validity guards and a determinism digest, and a standard-library Python runner (`just perf`) for captures, Welch compare verdicts, suites and capacity search ([`docs/perf/benchmarks.md`](docs/perf/benchmarks.md), [`docs/perf/profiling-workflow.md`](docs/perf/profiling-workflow.md); plan archived as `docs/plans/archive/benchmark-suite-redesign.md`), with no engine or library-crate behavior change. Beneath it, 0.31 grows `examples/01_platformer/` with a ball pit, spreading fire, a Mouse 4 fireball spell and redrawn player, fireball hazard, balls, scenery and backdrops, all example-local behind existing engine APIs (plans archived as `docs/plans/archive/platformer-{ball-pit-effects,spreading-fire,fireball-spell,fire-intensity}.md`; [`docs/plans/platformer-polish-pass.md`](docs/plans/platformer-polish-pass.md) stays open for its Rust refactor), and enables symphonia's `pcm` codec so PCM WAV decodes (`D-077`). It sits on 0.30's profiling-driven performance pass on the `ecs-high-load`, `physics-stress` and `sprite-stress` scenes, with no shipped behavior, pacing default or public rendering output change (plan [`docs/plans/archive/stress-perf-optimization.md`](docs/plans/archive/stress-perf-optimization.md)): physics broadphase pair lists persist across substeps under per-proxy travel budgets, rebuilding only on drift, a contact wake or a proxy-set change (`D-075`); warm-start normal impulses carry by persistent pair index between substeps instead of a full keyed-map rebuild (`D-076`). ECS archetype maps use a pass-through `TypeId` hasher and `World` gains `query3_opt2` / `query3_mut_without` columnar query shapes; `SpritePipeline::upload` writes directly into the mapped instance buffer per batch instead of flattening through an intermediate `Vec`; and `crates/tungsten-render/src/timing.rs` adds per-render-pass GPU timestamps (`render_gpu_ms`, `pass_gpu_ms`) alongside the existing scene-only `frame_gpu_ms`. Beneath that is 0.29's platformer art revamp — `examples/01_platformer/` regenerated at 64×64 with a 128×48 level and example-local gameplay presentation, all behind existing engine APIs and with no new decision (plan [`docs/plans/archive/platformer-art-revamp.md`](docs/plans/archive/platformer-art-revamp.md)) — on top of 0.28's M30 game feel (`D-073`), 0.27's physics scale and CCD pass (`D-062`–`D-067`, `D-075`, `D-076`, see Physics below) and its tooling restructure and release pipeline (`D-068`–`D-072`). Phase 3 is complete; all milestones `M12`–`M24` shipped and the rollout plan is archived at [`docs/plans/archive/phase3.md`](docs/plans/archive/phase3.md). Phase 4 scope is tracked in [`docs/plans/phase4.md`](docs/plans/phase4.md). M25 (`D-057`) is live: offscreen `SceneTarget` + ordered named-pass list (`scene` → `present`), optional MSAA (1/2/4/8) and opt-in GPU depth-test sprite path, WGSL shaders are manifest-tracked with body-edit hot reload via `wgpu::naga` validation. M26 (`D-058`) is live: manifest-tracked materials (WGSL pipeline + 256-byte UBO) selectable per `SpriteBatch`, a reorderable `PostStack` of 17 stock effects ping-ponging between `PostPing` / `PostPong` offscreen targets before the present blit, and `UniformOverrideBlock` + `TweenChannel::Uniform*` wiring a single entity-local animation surface shared with the future M32 MSDF outline/glow. M27 (`D-059`) is live: `render.post_aa` selects optional SMAA 1x presentation AA, fixed tail passes run after the post stack and before text overlay, and `post_aa = Off` keeps the default frame byte-identical to M26. M28 (`D-060`) is live: `PostPass::Bloom(BloomParams { threshold, knee, intensity, radius })` is the 18th `PostPass` variant, runs as a multi-subpass slot against an `Rgba16Float` `BloomPyramid` sized by `render.bloom_max_mips` (default 6), and keeps the empty-stack frame byte-identical to M27. M29 (`D-061`) is live: `Light` / `LightKind` components and an `AmbientLight(Vec3)` resource feed a 544-byte `LightUbo` (cap 16) bound at group 2 of a sibling `LitSpritePipeline`; sprites with manifest-tracked `normal_map` / `emissive_mask` siblings pack into parallel atlas pages keyed by the existing albedo `TextureHandle`, and an empty light list + no lit sprites keeps the captured frame byte-identical to the M28 baseline. M30 (`D-073`) is live: `ParallaxLayer { scroll_factor }` remaps a sprite's instance position against `CameraState.position` at extract time, so one view-projection still draws every layer and `crates/tungsten-render/` is unchanged; `CameraController` carries a `shake_trauma` / `shake_decay` / `shake_max_offset` envelope over its existing sine shake carrier; and `SpriteSquashStretch` + `SquashStretchState` drive a symmetric one-shot `Transform.scale` envelope from `crates/tungsten/src/game_feel.rs` rather than a `Tween`. A sprite without `ParallaxLayer` and a `CameraController::default()` reproduce the M29 output exactly. Companion docs: [`AGENTS.md`](AGENTS.md) for operational rules, [`DECISIONS.md`](DECISIONS.md) for rationale by `D-NNN`.
+Workspace `v0.34.0`; GPU and render-path performance pass (`D-085`–`D-087`): bounded text layouts, reused GPU/extract buffers, and direct presentation with the blit retained for screenshots. The execution plan is archived at `docs/plans/archive/gpu-perf-pass.md`; unapproved experiments remain proposals in [benchmarks.md](docs/perf/benchmarks.md#open-proposals).
+
+Phase 3 is complete. Phase 4 M25–M30 shipped; [the roadmap](docs/plans/phase4.md) retains M31–M33. This document describes current architecture. Use [CHANGELOG.md](CHANGELOG.md) for dated release history, [DECISION_INDEX.md](docs/DECISION_INDEX.md) for rationale, and [LLM_INDEX.md](docs/LLM_INDEX.md) for source paths.
 
 ## What It Is
 
@@ -52,33 +54,22 @@ Reject crates that would hand over work this project is supposed to build. Examp
 
 ### Frame Loop
 
-Single-threaded, fixed-order, synchronous. Only the `cpal` audio callback and `notify` watcher are background threads.
+The app runs synchronously on the main thread; the audio callback and file watcher provide the two engine background paths. `crates/tungsten/src/app.rs` owns the order:
 
 ```text
-init:
-    parse tungsten.json → EngineConfig
-    open window (winit)
-    init wgpu (instance, adapter, device, queue, surface)
-    build renderer (pipelines, samplers, GPU resource pools)
-    load assets/manifest.json → validate → decode assets → upload to GPU
-    build World; insert Resources: DeltaTime, InputState, Assets, WindowSize
+setup:      parse config → construct App/World and resources
+startup:    open window → initialize renderer → load merged manifests
+            → user startup hook → initialize audio
 
-loop:
-    poll events     → drain winit events into InputState resource
-    tick            → update DeltaTime; run systems in declared order
-    flush           → apply CommandBuffer, then rotate EventQueue resources
-    hot reload      → apply ready asset/manifest changes at the frame boundary
-    telemetry       → record update/extract/render/audio/hot-reload timings
-    render          → extract renderables from World; record + submit draw calls
-    present         → swap buffers
-
-shutdown:
-    drop World (drops asset registry and opaque handles)
-    drop renderer (releases GPU resources)
-    tear down wgpu; close window
+redraw:     apply pending display settings → update DeltaTime
+            → registered systems → particles → tweens
+            → flush commands → rotate event queues → hot reload
+            → apply pending post-AA request → extract → render/present
+            → recycle extract buffers → forward audio commands
+            → clear input edges → record telemetry → schedule next redraw
 ```
 
-Execution order is registration order. There is no scheduler, label system, or dependency graph.
+Systems run in registration order; there is no scheduler or dependency graph. A smoke run pins `DeltaTime.dt` to 1/60 s. Normal play uses elapsed time; a frame cap delays the next redraw. Telemetry's `total` measures frame work, while `interval` measures the time between frame starts, including pacing waits.
 
 ### ECS
 
@@ -100,26 +91,26 @@ Execution order is registration order. There is no scheduler, label system, or d
 
 **ECS error strategy (D-022):** panic on programmer errors such as insert on dead entity or wrong downcast; return `Option` / `Result` on runtime conditions such as entity not found or component absent.
 
-**Render path (D-018):** systems mutate the `World` during `tick`. Extract functions receive `&World`, resolve string IDs → `TextureHandle` via `AssetRegistry`, and produce POD slices such as `SpriteBatch`, `QuadInstance`, and `TextSection` for `render_frame_full`. The renderer may read the asset registry for ID resolution but does not need long-lived mutable `World` access at draw time.
+**Render path (D-018):** systems mutate the `World` during `tick`. Extract functions receive `&World`, resolve string IDs → `TextureHandle` via `AssetRegistry`, and produce plain render data such as `SpriteBatch`, `QuadInstance`, and `TextSection` for `render_frame_full`. ID resolution happens during extract; the renderer draws resolved batches without mutable `World` access.
 
-**Core/render seam:** `TextureHandle(u32)` lives in `tungsten-core`; no `wgpu` types appear in core. `tungsten` mediates the bridge: `AssetRegistry::register_sprite` allocates the handle in core, and `renderer.upload_texture(handle, rgba, …)` stores the GPU resource in render under the same key. Core never calls into render. `tungsten-render` may depend on `tungsten-core` types (`D-007`).
+**Core/render seam:** `TextureHandle(u32)` lives in `tungsten-core`; no `wgpu` types appear in core. `tungsten` mediates the bridge: `Renderer::allocate_texture_handle` mints the handle (`D-048`); the loader uploads pixels under that key and passes it, atlas UVs and metadata to `AssetRegistry::register_sprite`. Many sprites can share one atlas handle. Core never calls into render. `tungsten-render` may depend on `tungsten-core` types (`D-007`).
 
 **Render components (M15, `D-042`):** four engine-level component types live in `tungsten_core::components`:
 
 - `Transform { position: Vec2, rotation: f32, scale: Vec2 }` — world-space pose. Rotation is in radians, CCW positive, applied around the quad centre by the sprite shader; scale multiplies the sprite's intrinsic pixel size per-axis.
-- `Sprite { asset_id: String, color: [u8; 4], z_order: i32 }` — asset lookup + tint + stable ascending sort key.
+- `Sprite { asset_id: String, color: [u8; 4], z_order: i32, material_id: Option<MaterialAssetId> }` — asset lookup + tint + stable ascending sort key.
 - `Visibility { visible: bool }` — explicit render gate.
 - `Tag { name: String }` — debug-friendly entity label for find-by-name lookups.
 
 Physics `Position` stays separate (`D-033`). A free-fn `sync_position_to_transform(&mut World)` copies `Position.0` into `Transform.position` one-way; callers register it after `physics_step` when they want the post-physics position to reach the extract stage.
 
-`SpriteInstance` carries the rotation and tint across the core/render seam as a 24-byte GPU-facing POD (`position`, `size`, `rotation` as `f32`, `color` as `Unorm8x4`). The WGSL pipeline multiplies the sampled texel by the tint and rotates around the quad centre. Every sprite path — component-driven, tilemap, and custom extracts alike — uses the same layout.
+`SpriteInstance` carries the rotation and tint across the core/render seam as a 48-byte GPU-facing POD: position, size, rotation, `Unorm8x4` color, atlas `uv_min`/`uv_size`, normalized depth and padding. The WGSL pipeline multiplies the sampled texel by the tint and rotates around the quad centre. Every sprite path — component-driven, tilemap, and custom extracts alike — uses the same layout.
 
-**Default sprite extract:** if the user does not call `App::set_extract_sprites`, the engine installs `tungsten::extract_sprites_default` at the start of `App::run`. It iterates `query3::<Transform, Sprite, Visibility>`, resolves each sprite through `AssetRegistry`, filters out entities where `visible == false`, sorts entries stably by `z_order` ascending, and batches by `(texture, filter)` within each z-order run so painter ordering is preserved. `Visibility` is required: entities with `Transform + Sprite` but no `Visibility` are never emitted. There is no implicit fallback.
+**Default sprite extract (`D-086`):** `App::run` installs `extract_sprites_default` when no custom sprite extract was set. It requires `Transform + Sprite + Visibility`, skips hidden or unresolved sprites, applies parallax and scale, resolves asset IDs through a small cache, and writes instances plus compact sort keys into reusable `ExtractScratch` buffers. It sorts by `(z_order, entity.id)` only when the query is not already in that order, then groups compatible atlas/filter/material/override/lit keys within each z-order run. Batches follow first-seen key order within the run; this can reorder overlapping sprites with different keys at the same z. It does not cull off-screen sprites. Tilemap extraction culls separately. Custom extracts retain the same render-data seam.
 
 ### Data-Driven Config
 
-Config model: single `tungsten.json` at workspace root, loaded once at startup. Missing file → defaults with warning. Invalid file → fatal error naming the bad field.
+Config model: single `tungsten.json` at workspace root, loaded once at startup, then environment overrides. Missing file → defaults with warning. Invalid file → fatal error naming the bad field. Runtime display changes use `request_display_settings`; config-file edits require a restart.
 
 ```json
 {
@@ -139,13 +130,17 @@ Config model: single `tungsten.json` at workspace root, loaded once at startup. 
     "present_mode": "auto",
     "msaa": 1,
     "depth_enabled": true,
-    "depth_sort": "cpu_stable"
+    "depth_sort": "cpu_stable",
+    "post_aa": "off",
+    "bloom_max_mips": 6
   },
   "logging": { "level": "info" }
 }
 ```
 
-Display config semantics: checked-in display settings live under `display.*`. `display.present_mode` is authoritative when set to a concrete mode such as `"immediate"` or `"mailbox"`. When absent or `"auto"`, `display.vsync` selects between the auto-vsync and auto-no-vsync families. `display.max_frame_latency` is the requested frames-in-flight hint passed into `wgpu::SurfaceConfiguration`; backends may clamp it, so treat runtime telemetry as the configured hint unless the backend exposes stronger confirmation. Legacy `window.width`, `window.height`, `window.vsync`, `render.present_mode`, and `render.max_frame_latency` remain valid compatibility inputs in M17, but `display.*` wins whenever both specify the same concern.
+Display config semantics: checked-in display settings live under `display.*`. `display.present_mode` is authoritative when set to a concrete mode such as `"immediate"` or `"mailbox"`. When absent or `"auto"`, `display.vsync` selects between the auto-vsync and auto-no-vsync families. `display.max_frame_latency` is the requested frames-in-flight hint passed into `wgpu::SurfaceConfiguration`; backends may clamp it, so treat runtime telemetry as the configured hint unless the backend exposes stronger confirmation. Legacy `window.width`, `window.height`, `window.vsync`, `render.present_mode`, and `render.max_frame_latency` remain valid compatibility inputs, but `display.*` wins whenever both specify the same concern.
+
+Parsed `logging.level` and `display.scale_mode` currently have no runtime application; examples initialize `env_logger` themselves. Pacing precedence and overrides are documented in [the profiling workflow](docs/perf/profiling-workflow.md#frame-pacing).
 
 ### Asset System
 
@@ -175,10 +170,13 @@ assets/
 ├── sprites/
 ├── animations/
 ├── fonts/
-└── sounds/
+├── sounds/
+├── tilemaps/
+├── particles/
+└── shaders/
 ```
 
-Examples ship `examples/NN_name/assets/` with a local manifest. The loader takes a manifest path. Multiple manifests compose.
+Examples ship `examples/NN_name/assets/` with a local manifest. `App::set_manifest_roots` declares the load order; `load_all_merged` loads the composed result before user startup (`D-052`). Explicit scene files are the path-based exception (`D-046`). Materials are inline manifest entries.
 
 **Opaque handles (D-016):** `tungsten-core` stores opaque `TextureHandle(u32)` IDs. `tungsten-render` owns GPU textures, samplers, and pipelines in internal pools keyed by those handles. The registry is the one game-facing lookup path.
 
@@ -190,30 +188,32 @@ Stack: `glyphon` + `cosmic-text` + `swash`. Responsibilities: font parsing, shap
 
 ### Audio — M8
 
-`cpal` (`D-027`) opens the audio device. `symphonia` (`D-028`) decodes `OGG` / `WAV` (PCM since `D-077`) / `MP3` at load time into `Vec<f32>` PCM, and no decoder types appear at runtime. A hand-rolled mixer (~150 lines, `D-029`) runs in the `cpal` callback thread. Game systems write `AudioCommand` values each tick. The callback drains commands through an `rtrb` wait-free SPSC ring (`D-034`, capacity `64`). Audio assets are not hot-reloadable; PCM buffers decoded at startup stay fixed for the session.
+`cpal` (`D-027`) opens the audio device. `symphonia` (`D-028`) decodes `OGG` / `WAV` (PCM since `D-077`) / `MP3` / `AAC` at load time into `Vec<f32>` PCM, and no decoder types appear at runtime. A hand-rolled mixer (`D-029`) runs in the `cpal` callback thread. Game systems write `AudioCommand` values each tick. The callback drains commands through an `rtrb` wait-free SPSC ring (`D-034`, capacity `64`). Audio assets are not hot-reloadable; PCM buffers decoded at startup stay fixed for the session.
 
 ### Hot Reload — M9
 
-`notify` v6 (`D-031`) runs on a dedicated background thread. File events cross to the main thread through `std::sync::mpsc`. A `50ms` debounce collapses editor double-writes. At the next frame boundary the main thread resolves file paths → asset IDs, decodes new data, uploads to GPU, and swaps handles in the registry. M25 (`D-057`) brings shaders into the same path: `.wgsl` edits validate through `wgpu::naga` and only commit to the live `ShaderModule` after the dependent pipeline rebuilds. Signature / bind-group-layout changes still require a binary rebuild, narrowing `D-023`. Invariant: do not break the registry-by-ID model; game code must not hold direct GPU handles.
+`notify` (`D-031`; version pinned by Cargo.lock) runs on a dedicated background thread. File events cross to the main thread through `std::sync::mpsc`. A `50ms` debounce collapses editor double-writes. At the next frame boundary the main thread resolves file paths → asset IDs, decodes new data, uploads to GPU, and updates registry metadata and GPU resources. M25 (`D-057`) brings shaders into the same path: `.wgsl` edits validate through `wgpu::naga` and only commit to the live `ShaderModule` after the dependent pipeline rebuilds. Signature / bind-group-layout changes still require a binary rebuild, narrowing `D-023`. Invariant: do not break the registry-by-ID model; game code must not hold direct GPU handles.
 
-**Supported reload matrix (`D-053`):**
+**Supported reload matrix (`D-053`):** applies when the app enables hot reload. The watcher currently routes one manifest path; merged multi-root reload is incomplete. Startup composition validates references per root, so cross-root material→shader references are also limited. Check `asset_loader.rs` and `app.rs` before extending this contract.
 
 | Asset class | Single-file edit | Manifest-add | Manifest-remove |
 | --- | --- | --- | --- |
 | Sprite (`.png`/`.jpg`/`.jpeg`) | yes — `reload_sprite` with in-place overwrite for shrink/equal, `rebuild_atlas_for_filter` for growth | yes — registered with placeholder then atlas class rebuilt | warn-only; stale entry kept |
 | Animation (`.json`) | yes — `reload_animation` replaces entry in `AnimationRegistry` | yes — inserted into `AnimationRegistry` | warn-only; stale entry kept |
 | Tilemap (`.tmj`) | yes — `reload_tilemap` replaces entry, rejects unknown tileset sprite IDs | yes — inserted after tileset validation | warn-only; stale entry kept |
-| Font (`.ttf`/`.otf`) | yes — `reload_font` swaps face data in `TextPipeline` | yes — added through `renderer.load_font` + `FontRegistry::register` | warn-only; stale entry kept |
+| Font (`.ttf`/`.otf`) | yes — `reload_font` swaps face data in `TextPipeline` | yes — added through `renderer.load_font` + `FontRegistry::register` | not applied; existing entries kept |
 | Particle (`.json`) | yes — `reload_particle` swaps the `Arc<ParticleConfig>` under the same `AssetId` (`D-050`) | yes — inserted into `ParticleConfigRegistry` after sprite validation | warn-only; stale entry kept |
 | Sound (decoded PCM) | **not supported** — mixer owns cloned PCM; session-static | **not supported** — no manifest-add path | n/a |
-| Shader (`.wgsl`) | yes (body-edit only) — `reload_shader` re-validates through `wgpu::naga` and rebuilds the sprite pipeline **or** every material pipeline bound to that shader; signature / bind-group-layout changes still need a rebuild (`D-057`, narrowing `D-023`) | M26: new stock / user shaders register on next manifest reload | warn-only; stale entry kept |
-| Material (`materials` section, `D-058`) | yes (body-only) — `reload_material` re-uploads the 256-byte UBO against the shader's live module and swaps the `MaterialPipeline` entry; validation failure keeps the prior pipeline | yes — manifest reload allocates a new `MaterialAssetId` and calls `upload_material` | warn-only; stale entry kept |
+| Shader (`.wgsl`) | yes (body-edit only) — `reload_shader` re-validates through `wgpu::naga` and rebuilds the sprite pipeline **or** every material pipeline bound to that shader; signature / bind-group-layout changes still need a rebuild (`D-057`, narrowing `D-023`) | **not supported** — restart to register new shader IDs | not applied; existing entries kept |
+| Material (`materials` section, `D-058`) | yes — existing `uniform_defaults` reload; changing the shader binding requires restart | yes — manifest reload allocates a new `MaterialAssetId` and calls `upload_material` | warn-only; stale entry kept |
 | SMAA stage shaders (M27, `D-059`) | yes (body-only) — `smaa_edge`, `smaa_blend_weights`, `smaa_neighborhood_blend` follow the M25 shader path; `Renderer::reload_shader` re-validates and rebuilds only the affected `SmaaPipeline` stage. SMAA `area` / `search` LUT binaries are explicitly out-of-matrix (engine-internal `include_bytes!`) | n/a (engine-internal stage shaders, fixed set of three) | n/a |
 | Bloom stage shaders (M28, `D-060`) | yes (body-only) — `bloom_threshold`, `bloom_downsample`, `bloom_upsample`, `bloom_composite` follow the M25 shader path; `Renderer::reload_shader` re-validates and rebuilds only the affected `BloomPipeline` stage via `rebuild_stage_with_module`. The `BloomPyramid` texture is engine-internal and explicitly out-of-matrix; signature changes still need a rebuild | n/a (engine-internal stage shaders, fixed set of four) | n/a |
-| Lit sprite shader + helpers (M29, `D-061`) | yes (body-only) — `lit_sprite` rebuilds the `LitSpritePipeline` via `Renderer::reload_shader` → `LitSpritePipeline::rebuild_with_shader`; `emissive_mask` and `rim_light` are validated and cached but bound to no pipeline directly (helpers for material composition) | M29: new lit-shader / helper ids register on next manifest reload | warn-only; stale entry kept |
-| Sprite normal_map / emissive_mask siblings (M29, `D-061`) | yes — sibling PNG edits route through `reload_sprite` (mapped via reverse path lookup); `write_subtexture_lit` updates the matching cell in the lit atlas pool, full repack on grow | yes — manifest reload picks up new sibling fields and rebuilds the affected filter-class atlas | warn-only; stale lit page kept |
+| Lit sprite shader + helpers (M29, `D-061`) | yes (body-only) — `lit_sprite` rebuilds the `LitSpritePipeline` via `Renderer::reload_shader` → `LitSpritePipeline::rebuild_with_shader`; `emissive_mask` and `rim_light` are validated and cached but bound to no pipeline directly (helpers for material composition) | **not supported** — restart to register new shader IDs | not applied; existing entries kept |
+| Sprite normal_map / emissive_mask siblings (M29, `D-061`) | yes — sibling PNG edits route through `reload_sprite` (mapped via reverse path lookup); `write_subtexture_lit` updates the matching cell in the lit atlas pool, full repack on grow | yes for new sprite entries; adding sibling fields to an existing sprite requires restart | warn-only; stale lit page kept |
 | `input.json` | yes — `reload_action_map` merges with defaults and swaps `ActionMap` | n/a | n/a |
 | `manifest.json` | yes — `reload_manifest` walks every class above | n/a | n/a |
+
+The 17 ordinary stock post-effect shaders are manifest-tracked and validated, but editing their cached modules currently does not rebuild their embedded post pipelines. Sprite, material, SMAA, bloom and lit-sprite rebuild paths are connected; cache success alone does not establish a visible stock-effect reload.
 
 Audio is session-static by design: `AudioSystem::init` reads every decoded `SoundData::samples` into a callback-owned `HashMap<AudioHandle, Vec<f32>>` (`D-027` / `D-029` / `D-034`), and the mixer closure captures that map at startup. Adding a runtime PCM-swap command is a future milestone; until then, "sound hot reload" is explicitly out of scope and the watcher logs at `debug` when a `.ogg`/`.wav`/`.mp3` under the asset tree changes.
 
@@ -223,15 +223,17 @@ Extension: `.tmj`. Schema: Tiled-compatible (`D-032`). Core data types `TilemapD
 
 ### Physics — M11
 
-Module: `tungsten-core::physics` (`D-033`, `D-062`–`D-067`). Components: `Position`, `Velocity`, `Collider` (AABB or circle, with offset), `RigidBody` (static or dynamic). Resources: `PhysicsConfig`, `EventQueue<CollisionEvent>`. Each frame gathers body and tilemap proxies once through `World::query2_opt2` and writes back once after the last substep (`D-066`). Broad-phase: flat prefix-sum spatial hash (default cell size `32.0`), staged per frame and restaged only when accumulated travel exceeds the half-cell margin (`D-062`). Narrow-phase: signed-distance `AABB/AABB`, `circle/circle` and `AABB/circle`, whose speculative contacts are the CCD (`D-064`). Response: warm-started soft contact constraints with restitution above `restitution_threshold` (`D-063`), a fixed `substeps` count (default 4) and island sleeping (`D-065`). The step is serial and deterministic (`D-067`). Tilemap collision layers become static AABB proxies.
+Components: `Position`, `Velocity`, `Collider` (AABB or circle, with offset) and `RigidBody` (static or dynamic). Resources: `PhysicsConfig` and `EventQueue<CollisionEvent>`. Register `physics_step` as a system; default gravity is `Vec2::ZERO`.
 
-Known limits: a variable frame `dt` is split into the fixed substep count (`D-064`), with a semi-fixed accumulator as the preferred upgrade; tilemap collider budget `<= 128×128` tiles; 25k awake bodies still cost about 125 ms per step (`D-067`).
+Each frame gathers bodies and collision tiles once into dense proxy arrays and writes bodies back after the last substep (`D-066`). The spatial grid uses a direct cell table for compact bounds and a prefix-sum hashed table otherwise (`D-080`; default cell size 32 px). Broadphase pairs persist across substeps under travel budgets (`D-075`); exhausted proxies repair their own pairs, while contact wakes or many simultaneous budget trips rebuild the list (`D-081`). A statics-only sweep grid handles the safety-net path (`D-080`).
 
-`physics_step` is a plain system. User registration path: `app.add_system(physics_step)`. `PhysicsConfig::gravity` defaults to `Vec2::ZERO`, so top-down games pay no gravity overhead by default.
+Signed-distance AABB/AABB, circle/circle and AABB/circle contacts support speculative CCD (`D-064`). The solver uses warm-started soft constraints, restitution and a configured fixed substep count (default 4; `D-063`, `D-076`), plus deterministic island sleeping (`D-065`, `D-082`). The step remains serial (`D-067`). Collision tile layers become static AABB proxies, gathered by a full-map scan each frame.
+
+Variable frame time is split across the configured substeps; there is no fixed-step accumulator. Current workload limits and measured costs belong in [benchmarks.md](docs/perf/benchmarks.md), rather than an old stress-scene timing here.
 
 ### Archetypal ECS — M12
 
-Storage design is described in [§ECS](#ecs). Decision to proceed: `D-036` (cites `D-030`).
+Storage design is described in [§ECS](#ecs). The table is the historical M12 comparison, not a current benchmark-suite baseline. Decision to proceed: `D-036` (cites `D-030`).
 
 | Benchmark | Archetypal | Naive | Ratio |
 | --- | --- | --- | --- |
@@ -240,13 +242,13 @@ Storage design is described in [§ECS](#ecs). Decision to proceed: `D-036` (cite
 | `query2::<Position, Velocity>` — 10k, 5 archetypes | `7.5 µs` | `1 424 µs` | `~190×` |
 | spawn + 3 inserts × 10k | `4.4 ms` | `—` | `—` |
 
-Deferred work: parallel system scheduling, change detection, command buffers, reactive queries, `BlobVec` raw-byte columns.
+Command buffers shipped in M13 and were optimized by `D-084`. Parallel scheduling, change detection, reactive queries and raw-byte columns have no current implementation commitment.
 
 ### Input Mapping — M19
 
 `tungsten-core::input::action_map::ActionMap` is a `World` resource that maps named actions to one or more `Binding`s (`Key`, `Mouse`, `Scroll`). It loads from `input.json` at the workspace root, merges with `default_map()` so missing actions still resolve, and exposes `is_pressed`, `just_pressed`, and `just_released` against the live `InputState`. `InputState` was extended with cursor position/delta and per-frame line and pixel scroll deltas; scroll edges auto-release on `begin_frame` so `just_pressed("…wheel_up")` fires once per notch.
 
-Engine-owned actions (`engine_toggle_hud`, `engine_toggle_vsync`, `engine_toggle_fullscreen`, `engine_exit`) live in defaults so a missing or partial `input.json` still ships HUD/display/exit controls. Hot reload watches `input.json` through `HotReloadWatcher::extra_files`; on a ready event `asset_loader::reload_action_map` swaps the resource at the frame boundary. `ActionMap::persist` writes the file back through a temp-file + rename, patching only the changed lines so user-authored ordering and comments survive. Decision: `D-045`.
+Engine-owned actions (`engine_toggle_hud`, `engine_toggle_vsync`, `engine_toggle_fullscreen`, `engine_exit`) live in defaults so a missing or partial `input.json` still ships HUD/display/exit controls. Hot reload watches `input.json` through `HotReloadWatcher::extra_files`; on a ready event `asset_loader::reload_action_map` swaps the resource at the frame boundary. `ActionMap::persist` writes the file back through a temp-file + rename, replacing the `actions` JSON object while retaining surrounding source text where possible. Action entries are serialized in sorted order; JSON comments are not supported. Decision: `D-045`.
 
 ### Scene / State System — M20
 
@@ -259,6 +261,18 @@ Scene-owned entities carry a `SceneEntity { state_id }` marker. On state exit th
 `tungsten_core::tween` adds a component-driven animation surface: `Tween` holds one timing model plus a `Vec<TweenChannel>` so position, rotation, scale, and sprite color can animate together on one entity. Easings are a closed `enum` (`Easing`) with a pure `apply(t)` implementation; repeat modes are `Once`, `Loop`, `PingPong`, and `Times(n)`.
 
 `tungsten::tweens::tween_tick_system` advances every live tween from `DeltaTime`, writes `Transform` / `Sprite` fields in place, emits `TweenComplete` through `EventQueue<TweenComplete>`, and defers terminal `Tween` removal through `CommandBuffer` so archetypes never mutate mid-iteration. The frame slot is `particles -> tweens -> flush commands -> flush events`, which keeps tween writes visible to extract/render in the same frame while preserving the fixed frame-boundary mutation/event rules. Scene JSON can author tweens directly, making state-transition fades and simple data-driven motion possible without bespoke example systems. Decisions: `D-054`, `D-055`, `D-056`.
+
+### Materials and Post-Stack — M26
+
+Manifest `materials` bind a shader ID to a 256-byte `MaterialUniformDefaults` block (`D-058`). `Sprite.material_id` selects a material pipeline; `None` uses the built-in sprite pipeline. `UniformOverrideBlock` and `TweenChannel::Uniform*` provide entity-local animated overrides alongside authored defaults, preserving the one-`Tween`-per-entity rule.
+
+Core owns the reorderable `PostStack`/`PostPass` data. Render records 17 ordinary stock effects plus bloom, using pooled ping-pong targets as needed; an empty stack applies no effects. SMAA is a fixed tail, outside the reorderable stack. Since `D-087`, the last full-screen stage writes the swapchain directly, except on screenshot frames. GPU objects are cached by target generation (`D-085`). Repeated stock effects and distinct material override batches currently share uniform storage; per-slot/per-batch parameter independence needs a renderer fix.
+
+### Game Feel — M30
+
+`ParallaxLayer.scroll_factor` remaps sprite positions during extract against `CameraState.position`, keeping one camera matrix and `Sprite.z_order` as the ordering authority (`D-073`). Tilemaps do not use this remap. `CameraController` stores the trauma envelope (`shake_trauma`, `shake_decay`, `shake_max_offset`) over the existing sine carrier; `CameraState` remains output.
+
+`SpriteSquashStretch` plus `SquashStretchState` apply a symmetric one-shot scale envelope through `game_feel.rs`, independent of `Tween`. Register the trigger system before the squash tick, and `shake_tick_system` before `camera_update_system`. Examples opt into these systems. Both event types are registered by `App::new`.
 
 ### Presentation AA / SMAA — M27
 
@@ -294,7 +308,7 @@ src slot ─► threshold (write mip 0) ─► N-1 13-tap Karis-weighted downsam
 
 The `BloomPyramid` lives on `SceneTarget` as a single `Rgba16Float` texture with N mip levels and per-level views; mip 0 starts at half resolution to halve bandwidth and match the COD/Frostbite convention. `bloom_mip_count_for_size(width, height, render.bloom_max_mips)` clamps the chain by `floor(log2(min(width, height))) - 1`, with `bloom_max_mips` configured in `tungsten.json` (default 6, range 1..=8) and overridable via `TUNGSTEN_RENDER_BLOOM_MAX_MIPS`. The pyramid is allocated unconditionally because the validated range never collapses to zero; bloom-not-in-stack frames still pay the bounded pyramid memory but skip every sub-pass. `bloom_max_mips` is startup-only — runtime mutation has no request/apply seam in M28, the same constraint as `msaa`.
 
-The four stage shaders (`bloom_threshold`, `bloom_downsample`, `bloom_upsample`, `bloom_composite`) follow the M25 stock-shader pattern: compile-time `include_str!` mirror under `crates/tungsten-render/src/shaders/stock/`, byte-equal mirror under `assets/shaders/stock/`, manifest-tracked at stable shader ids `4..=7` (after sprite + SMAA `0..=3`), body-edit hot-reload through `Renderer::reload_shader` → `BloomPipeline::rebuild_stage_with_module` with `naga` validation and last-known-good pipeline retention on failure. The per-subpass UBO reuses the engine-wide 256-byte `UniformOverrideBlock` layout: `vec4[0]` carries `inv_src_size` (per-mip), `vec4[1]` is the reserved `composite_tint`, the `f32s` block carries `[threshold, knee, intensity, radius]`, and the `i32s` block carries `[mip_count, dst_level, pass_kind, _]`. `SceneColor` stays sRGB — only the pyramid is HDR. With `PostStack` empty and `post_aa = Off` the pyramid exists but is never written to or sampled, so the captured frame matches the M27 baseline. Decision: `D-060`.
+The four stage shaders (`bloom_threshold`, `bloom_downsample`, `bloom_upsample`, `bloom_composite`) follow the M25 stock-shader pattern: compile-time `include_str!` mirror under `crates/tungsten-render/src/shaders/stock/`, byte-equal mirror under `assets/shaders/stock/`, manifest-tracked by the four stage names (renderer-local IDs are not a cross-crate contract), body-edit hot-reload through `Renderer::reload_shader` → `BloomPipeline::rebuild_stage_with_module` with `naga` validation and last-known-good pipeline retention on failure. The per-subpass UBO reuses the engine-wide 256-byte `UniformOverrideBlock` layout: `vec4[0]` carries `inv_src_size` (per-mip), `vec4[1]` is the reserved `composite_tint`, the `f32s` block carries `[threshold, knee, intensity, radius]`, and the `i32s` block carries `[mip_count, dst_level, pass_kind, _]`. `SceneColor` stays sRGB — only the pyramid is HDR. With `PostStack` empty and `post_aa = Off` the pyramid exists but is never written to or sampled, so the captured frame matches the M27 baseline. Decision: `D-060`.
 
 ### 2D Forward Lighting — M29
 
@@ -302,16 +316,13 @@ The four stage shaders (`bloom_threshold`, `bloom_downsample`, `bloom_upsample`,
 
 Sprites with optional `normal_map` / `emissive_mask` sibling files in the manifest pack into parallel atlas canvases keyed by the same `PackedSprite` placement output: the asset loader runs `pack_shelf` once over the albedo inputs, then fills albedo, flat-normal-default, and emissive canvases page-by-page. Albedo uploads as `Rgba8UnormSrgb`; normal and emissive upload as `Rgba8Unorm` so tangent-space vectors and mask intensities are not gamma-decoded. The `SpriteAsset.lit_atlas: Option<TextureHandle>` marker tags only sprites with a valid normal sibling, and `extract_sprites_default` flips `SpriteBatch.lit` on that axis. Lit + material is intentionally out-of-scope in M29: a sprite carrying both warns and uses lit. `extract_lights` runs every frame, queries `(Transform, Light)`, packs each into `GpuLight`, sorts directional-first then nearest-to-AABB-squared-distance, truncates to `LIGHT_CAP`, and packs the result + ambient into the per-frame `LightUbo`. With no lit sprites and an empty light list the captured frame stays byte-identical to the M28 baseline — the unlit pipeline is unchanged and the lit pipeline never runs.
 
-The lit shader (`assets/shaders/lit_sprite.wgsl`) and helpers (`assets/shaders/stock/emissive_mask.wgsl`, `assets/shaders/stock/rim_light.wgsl`) follow the M25 stock-shader pattern: compile-time `include_str!` mirror under `crates/tungsten-render/src/shaders/` and `crates/tungsten-render/src/shaders/stock/`, byte-equal mirror under `assets/shaders/`, manifest-tracked at stable shader ids `8..=10` (after bloom `4..=7`), body-edit hot-reload through `Renderer::reload_shader` → `LitSpritePipeline::rebuild_with_shader` with `naga` validation and last-known-good pipeline retention on failure. The helpers are validated only — no pipeline behind them — so material authors and future milestones can fold `emissive_contribution` and `rim_term` into their own WGSL. Decision: `D-061`.
+The lit shader (`assets/shaders/lit_sprite.wgsl`) and helpers (`assets/shaders/stock/emissive_mask.wgsl`, `assets/shaders/stock/rim_light.wgsl`) are manifest-tracked by name, with renderer-local shader IDs. The lit shader is compiled directly from `assets/shaders/lit_sprite.wgsl` with no `src/` mirror; the helpers have byte-equal mirrors in `crates/tungsten-render/src/shaders/stock/`. Lit body edits hot-reload through `Renderer::reload_shader` → `LitSpritePipeline::rebuild_with_shader` with `naga` validation and last-known-good pipeline retention on failure. The helpers are validated only — no pipeline behind them — so material authors and future milestones can fold `emissive_contribution` and `rim_term` into their own WGSL. Decision: `D-061`.
 
-### Performance Baseline + Profiling Harness — Phase 3 M12
+### Performance and Profiling
 
-M12 defines the baseline for later Phase 3 work.
+`FrameTimings` records CPU stages, per-system wall time and the frame interval. Renderer GPU timestamps are opt-in diagnostics and block on readback; they must stay out of CPU timing captures. Criterion measures isolated primitives.
 
-- CPU telemetry: `App` instruments update, extract, render, audio, hot reload, and total frame time. Render is split into surface acquire, CPU encode, and submit/present timing. Per-system timings live in `FrameTimings::system_timings`, plus `slowest_system()`.
-- GPU telemetry: `Renderer::render_frame_full_timed()` uses `wgpu` timestamp queries when `TIMESTAMP_QUERY` is available on the active adapter. The path is opt-in via `TUNGSTEN_GPU_TIMING`, blocks on GPU completion to read timestamps back, and exposes backend, adapter, present mode, and max-frame-latency metadata through `GpuFrameTimings`.
-- Bench coverage: Criterion suites cover ECS, physics, and CPU-only render-data construction. They are regression detectors, not exhaustive throughput claims.
-- Benchmark suite (`D-078`): `example-02-bench` runs six scalable benchmarks, each owning one bottleneck, and `scripts/bench.py` (`just perf`) captures, compares and capacity-searches them. `docs/perf/benchmarks.md` describes the benchmarks; `docs/perf/profiling-workflow.md` holds the capture rules, compare verdicts and capacity search.
+[profiling-workflow.md](docs/perf/profiling-workflow.md) owns capture configuration, telemetry semantics, comparability, verdicts, capacity search and profiling commands. [benchmarks.md](docs/perf/benchmarks.md) owns the six workloads, knobs, guards, dated measurements and open performance proposals (`D-078`).
 
 ## Non-Commitments
 

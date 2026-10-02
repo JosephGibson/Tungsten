@@ -2,6 +2,8 @@
 
 The capture contract for Tungsten performance work: how to run the benchmark suite, what a valid capture is, and how two captures are compared (`D-078`). [`benchmarks.md`](benchmarks.md) describes the six benchmarks, their knobs, guards, owned metrics and calibrated defaults. `just perf <subcommand>` runs `scripts/bench.py`, a standard-library Python 3.12 runner; `scripts/bench_report.py` holds the parsing, statistics and reports, and `just perf-test` runs `scripts/test-bench.py`.
 
+Read [capture rules](#comparison-rule-and-capture-rules) before measuring, then only the needed procedure: [quick start](#quick-start), [compare](#compare), [capacity](#capacity-search), [profiling](#profiling), [pacing](#frame-pacing), or [telemetry format](#telemetry-lines). Dated matrices describe the recorded build and machine.
+
 ## Comparison rule and capture rules
 
 Compare two captures only when they measure the same row with the same `workload_version`, resolved knobs, frames, warm-up, build flags, backend, adapter, present mode, frame latency and machine. Compare checks every one of these and suppresses verdicts on a mismatch. Judge on the runs, not on single frames: compare-grade captures use `--repeat 5`, and a verdict needs at least 3 runs per side.

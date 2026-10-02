@@ -1,6 +1,6 @@
 # DECISIONS.md
 
-Decision log for non-obvious Tungsten choices.
+Decision log for non-obvious Tungsten choices. Use [the decision index](docs/DECISION_INDEX.md) to select one section. Historical `docs/plans/<name>.md` paths may now resolve to `docs/plans/archive/<name>.md` after retirement; agents never inspect that directory.
 
 - IDs are sequential
 - Settled entries are immutable
