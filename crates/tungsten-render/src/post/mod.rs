@@ -5,6 +5,7 @@
 //! ping-pong ladder described in the M26 plan's "Scene → Post → Present
 //! Target Flow" table.
 
+use tungsten_core::assets::ShaderAssetId;
 use tungsten_core::post::PostPass;
 use tungsten_core::tween::UniformOverrideBlock;
 
@@ -35,6 +36,54 @@ pub mod vignette;
 pub mod wipe_radial;
 
 use bloom::{BloomPipeline, BloomShaderIds};
+
+/// The stock effects in `PostPass` order: the manifest ID of each one's shader
+/// and its compiled-in source. `Renderer::new` seeds the shader cache from
+/// this table, and a reload finds an effect's pipeline by its ID (`D-091`).
+pub(crate) const STOCK_SHADERS: [(&str, &str); 17] = [
+    (tonemap::NAME, tonemap::WGSL),
+    (vignette::NAME, vignette::WGSL),
+    (lut::NAME, lut::WGSL),
+    (chromatic_aberration::NAME, chromatic_aberration::WGSL),
+    (color_adjust::NAME, color_adjust::WGSL),
+    (tone_mono::NAME, tone_mono::WGSL),
+    (crt::NAME, crt::WGSL),
+    (film_grain::NAME, film_grain::WGSL),
+    (dither::NAME, dither::WGSL),
+    (pixel_outline::NAME, pixel_outline::WGSL),
+    (fade::NAME, fade::WGSL),
+    (wipe_radial::NAME, wipe_radial::WGSL),
+    (dissolve::NAME, dissolve::WGSL),
+    (glitch::NAME, glitch::WGSL),
+    (pixelate::NAME, pixelate::WGSL),
+    (fog::NAME, fog::WGSL),
+    (god_rays::NAME, god_rays::WGSL),
+];
+
+/// Row of `STOCK_SHADERS` that draws `pass`. Bloom has none: it owns four
+/// stage shaders and records its own passes.
+fn stock_index(pass: &PostPass) -> Option<usize> {
+    Some(match pass {
+        PostPass::Tonemap(_) => 0,
+        PostPass::Vignette(_) => 1,
+        PostPass::Lut(_) => 2,
+        PostPass::ChromaticAberration(_) => 3,
+        PostPass::ColorAdjust(_) => 4,
+        PostPass::ToneMono(_) => 5,
+        PostPass::Crt(_) => 6,
+        PostPass::FilmGrain(_) => 7,
+        PostPass::Dither(_) => 8,
+        PostPass::PixelOutline(_) => 9,
+        PostPass::Fade(_) => 10,
+        PostPass::WipeRadial(_) => 11,
+        PostPass::Dissolve(_) => 12,
+        PostPass::Glitch(_) => 13,
+        PostPass::Pixelate(_) => 14,
+        PostPass::Fog(_) => 15,
+        PostPass::GodRays(_) => 16,
+        PostPass::Bloom(_) => return None,
+    })
+}
 
 /// Shared resources every stock effect samples against: layouts, a linear
 /// sampler for post passes, and a reusable source-bind-group factory.
@@ -75,12 +124,31 @@ impl StockPipeline {
         device: &wgpu::Device,
         resources: &StockResources,
         label: &str,
-        wgsl: &str,
+        module: &wgpu::ShaderModule,
         format: wgpu::TextureFormat,
     ) -> Self {
         Self {
-            pipeline: fullscreen::build_pipeline(device, &resources.layouts, label, wgsl, format),
+            pipeline: fullscreen::build_pipeline_with_module(
+                device,
+                &resources.layouts,
+                label,
+                module,
+                format,
+            ),
         }
+    }
+
+    /// Hot-reload entry: swap in a pipeline built on a freshly validated
+    /// module. The old pipeline stays until the new one exists.
+    fn rebuild_with_module(
+        &mut self,
+        device: &wgpu::Device,
+        resources: &StockResources,
+        label: &str,
+        module: &wgpu::ShaderModule,
+        format: wgpu::TextureFormat,
+    ) {
+        *self = Self::new(device, resources, label, module, format);
     }
 }
 
@@ -153,23 +221,8 @@ fn source_slot(src: TargetId) -> usize {
 /// Owns one live pipeline per stock effect variant.
 pub struct PostStackRenderer {
     pub(crate) resources: StockResources,
-    pub(crate) tonemap: StockPipeline,
-    pub(crate) vignette: StockPipeline,
-    pub(crate) lut: StockPipeline,
-    pub(crate) chromatic_aberration: StockPipeline,
-    pub(crate) color_adjust: StockPipeline,
-    pub(crate) tone_mono: StockPipeline,
-    pub(crate) crt: StockPipeline,
-    pub(crate) film_grain: StockPipeline,
-    pub(crate) dither: StockPipeline,
-    pub(crate) pixel_outline: StockPipeline,
-    pub(crate) fade: StockPipeline,
-    pub(crate) wipe_radial: StockPipeline,
-    pub(crate) dissolve: StockPipeline,
-    pub(crate) glitch: StockPipeline,
-    pub(crate) pixelate: StockPipeline,
-    pub(crate) fog: StockPipeline,
-    pub(crate) god_rays: StockPipeline,
+    /// One pipeline per row of `STOCK_SHADERS`.
+    stock: [StockPipeline; 17],
     /// M28 bloom pipeline. Records its own multi-subpass slot at the encoder
     /// level instead of the per-slot single-render-pass path; see `D-060`.
     pub(crate) bloom: BloomPipeline,
@@ -181,32 +234,26 @@ pub struct PostStackRenderer {
 }
 
 impl PostStackRenderer {
+    /// Build every pipeline from the shared `ShaderModuleCache`, which the
+    /// renderer pre-seeds with the compile-time `include_str!` WGSL.
+    /// `stock_shader_ids` are the cache IDs of the `STOCK_SHADERS` rows.
     #[must_use]
     pub fn new(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
         shader_cache: &ShaderModuleCache,
         bloom_shader_ids: BloomShaderIds,
+        stock_shader_ids: &[ShaderAssetId; 17],
     ) -> Self {
         let resources = StockResources::new(device);
+        let stock = std::array::from_fn(|index| {
+            let module = shader_cache
+                .get(stock_shader_ids[index])
+                .expect("stock post shader module must be pre-seeded");
+            StockPipeline::new(device, &resources, STOCK_SHADERS[index].0, module, format)
+        });
         Self {
-            tonemap: tonemap::build(device, &resources, format),
-            vignette: vignette::build(device, &resources, format),
-            lut: lut::build(device, &resources, format),
-            chromatic_aberration: chromatic_aberration::build(device, &resources, format),
-            color_adjust: color_adjust::build(device, &resources, format),
-            tone_mono: tone_mono::build(device, &resources, format),
-            crt: crt::build(device, &resources, format),
-            film_grain: film_grain::build(device, &resources, format),
-            dither: dither::build(device, &resources, format),
-            pixel_outline: pixel_outline::build(device, &resources, format),
-            fade: fade::build(device, &resources, format),
-            wipe_radial: wipe_radial::build(device, &resources, format),
-            dissolve: dissolve::build(device, &resources, format),
-            glitch: glitch::build(device, &resources, format),
-            pixelate: pixelate::build(device, &resources, format),
-            fog: fog::build(device, &resources, format),
-            god_rays: god_rays::build(device, &resources, format),
+            stock,
             bloom: BloomPipeline::new(device, format, shader_cache, bloom_shader_ids),
             resources,
             source_bind_groups: Default::default(),
@@ -224,27 +271,25 @@ impl PostStackRenderer {
     }
 
     fn pipeline_for(&self, pass: &PostPass) -> &StockPipeline {
-        match pass {
-            PostPass::Tonemap(_) => &self.tonemap,
-            PostPass::Vignette(_) => &self.vignette,
-            PostPass::Lut(_) => &self.lut,
-            PostPass::ChromaticAberration(_) => &self.chromatic_aberration,
-            PostPass::ColorAdjust(_) => &self.color_adjust,
-            PostPass::ToneMono(_) => &self.tone_mono,
-            PostPass::Crt(_) => &self.crt,
-            PostPass::FilmGrain(_) => &self.film_grain,
-            PostPass::Dither(_) => &self.dither,
-            PostPass::PixelOutline(_) => &self.pixel_outline,
-            PostPass::Fade(_) => &self.fade,
-            PostPass::WipeRadial(_) => &self.wipe_radial,
-            PostPass::Dissolve(_) => &self.dissolve,
-            PostPass::Glitch(_) => &self.glitch,
-            PostPass::Pixelate(_) => &self.pixelate,
-            PostPass::Fog(_) => &self.fog,
-            PostPass::GodRays(_) => &self.god_rays,
-            PostPass::Bloom(_) => {
-                unreachable!("PostPass::Bloom is recorded by record_bloom_slot, not record_pass")
-            }
+        let Some(index) = stock_index(pass) else {
+            unreachable!("PostPass::Bloom is recorded by record_bloom_slot, not record_pass")
+        };
+        &self.stock[index]
+    }
+
+    /// Hot-reload entry: when `name` is a stock effect's shader, rebuild that
+    /// effect's pipeline against a freshly validated module. Params buffers
+    /// and bind groups stay. The caller commits the module to the cache after
+    /// this returns.
+    pub(crate) fn rebuild_stock_with_module(
+        &mut self,
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+        name: &str,
+        module: &wgpu::ShaderModule,
+    ) {
+        if let Some(index) = STOCK_SHADERS.iter().position(|(stock, _)| *stock == name) {
+            self.stock[index].rebuild_with_module(device, &self.resources, name, module, format);
         }
     }
 

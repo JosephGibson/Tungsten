@@ -12,7 +12,6 @@ use crate::material::{MaterialPipeline, build_material_pipeline};
 use crate::passes::{
     PassDesc, PassRecorder, PresentPath, TargetId, default_pass_order, text_overlay_target,
 };
-use crate::post::PostStackRenderer;
 use crate::post::bloom::{
     BLOOM_COMPOSITE_SHADER_NAME, BLOOM_DOWNSAMPLE_SHADER_NAME, BLOOM_THRESHOLD_SHADER_NAME,
     BLOOM_UPSAMPLE_SHADER_NAME, BloomShaderIds,
@@ -21,6 +20,7 @@ use crate::post::smaa::{
     SMAA_BLEND_WEIGHTS_SHADER_NAME, SMAA_EDGE_SHADER_NAME, SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME,
     SmaaPipeline, SmaaShaderIds,
 };
+use crate::post::{PostStackRenderer, STOCK_SHADERS};
 use crate::quad::{QuadInstance, QuadPipeline};
 use crate::screenshot::{PendingCapture, aligned_bytes_per_row, strip_row_padding};
 use crate::shader_hot_reload::{ShaderError, ShaderModuleCache};
@@ -69,6 +69,11 @@ pub enum RenderError {
 /// Stable well-known id for the engine-internal sprite shader. Matches the
 /// manifest entry under `shaders.sprite`.
 pub const SPRITE_SHADER_NAME: &str = "sprite";
+
+/// Cache id of the first stock post shader. Ids 0-10 belong to the sprite,
+/// SMAA, bloom and lit-sprite shaders that `Renderer::new` seeds by number;
+/// the rows of `STOCK_SHADERS` follow, then the shaders a manifest adds.
+const STOCK_SHADER_ID_BASE: u32 = 11;
 
 /// WGPU renderer state.
 pub struct Renderer {
@@ -367,7 +372,24 @@ impl Renderer {
             )
             .expect("compile-time bloom_composite shader must validate");
 
-        let post_stack = PostStackRenderer::new(&device, format, &shader_cache, bloom_shader_ids);
+        // The 17 stock post shaders (`D-091`): seeded like the ones above, so
+        // their pipelines build from the cache, `load_shaders` is a no-op
+        // while the on-disk bytes match, and a reload can rebuild them.
+        let stock_shader_ids: [ShaderAssetId; 17] =
+            std::array::from_fn(|index| ShaderAssetId(STOCK_SHADER_ID_BASE + index as u32));
+        for (&(name, source), &id) in STOCK_SHADERS.iter().zip(&stock_shader_ids) {
+            shader_cache
+                .upload(&device, id, name, source.to_string())
+                .expect("compile-time stock post shader must validate");
+        }
+
+        let post_stack = PostStackRenderer::new(
+            &device,
+            format,
+            &shader_cache,
+            bloom_shader_ids,
+            &stock_shader_ids,
+        );
 
         // M29: pre-seed lit_sprite (8) + emissive_mask (9) + rim_light (10).
         let lit_sprite_shader_id = ShaderAssetId(8);
@@ -460,6 +482,9 @@ impl Renderer {
             emissive_mask_shader_id,
         );
         shader_ids.insert(RIM_LIGHT_SHADER_NAME.to_string(), rim_light_shader_id);
+        for (&(name, _), &id) in STOCK_SHADERS.iter().zip(&stock_shader_ids) {
+            shader_ids.insert(name.to_string(), id);
+        }
 
         Ok(Self {
             instance,
@@ -490,7 +515,7 @@ impl Renderer {
             lighting,
             materials: HashMap::new(),
             shader_ids,
-            next_shader_id: 11,
+            next_shader_id: STOCK_SHADER_ID_BASE + STOCK_SHADERS.len() as u32,
             timestamp_support,
             gpu_timings,
             cpu_timings: CpuFrameTimings::default(),
@@ -643,9 +668,10 @@ impl Renderer {
         self.text_pipeline.reload_font(id, data);
     }
 
-    /// Register a manifest-tracked shader. `"sprite"` rebuilds the built-in
-    /// sprite pipeline. Other ids are cached for later use by material or
-    /// post pipelines. Byte-equal short-circuits skip validation.
+    /// Register a manifest-tracked shader. A shader the engine compiles into
+    /// a pipeline of its own (sprite, SMAA, bloom, lit sprite, the stock post
+    /// effects) rebuilds that pipeline; other ids are cached for the
+    /// materials bound to them. Byte-equal short-circuits skip validation.
     pub fn upload_shader(
         &mut self,
         name: &str,
@@ -658,66 +684,7 @@ impl Renderer {
         }
 
         let module = self.shader_cache.validate(&self.device, name, &wgsl)?;
-        if name == SPRITE_SHADER_NAME {
-            self.sprite_pipeline.rebuild_with_shader(
-                &self.device,
-                &module,
-                self.surface_config.format,
-                self.sample_count,
-                matches!(self.depth_sort, DepthSortMode::GpuDepth),
-            );
-        }
-        if matches!(
-            name,
-            SMAA_EDGE_SHADER_NAME
-                | SMAA_BLEND_WEIGHTS_SHADER_NAME
-                | SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME
-        ) && let Some(smaa) = self.smaa.as_mut()
-        {
-            smaa.rebuild_stage_with_module(&self.device, id, &module);
-        }
-        if matches!(
-            name,
-            BLOOM_THRESHOLD_SHADER_NAME
-                | BLOOM_DOWNSAMPLE_SHADER_NAME
-                | BLOOM_UPSAMPLE_SHADER_NAME
-                | BLOOM_COMPOSITE_SHADER_NAME
-        ) {
-            self.post_stack.bloom.rebuild_stage_with_module(
-                &self.device,
-                self.surface_config.format,
-                id,
-                &module,
-            );
-        }
-        if name == LIT_SPRITE_SHADER_NAME {
-            self.lit_sprite_pipeline.rebuild_with_shader(
-                &self.device,
-                &module,
-                self.surface_config.format,
-                self.sample_count,
-                matches!(self.depth_sort, DepthSortMode::GpuDepth),
-            );
-        }
-        self.shader_cache.commit(id, wgsl, module);
-        // Any material bound to this shader needs a rebuild against the new module.
-        if name != SPRITE_SHADER_NAME
-            && !matches!(
-                name,
-                SMAA_EDGE_SHADER_NAME
-                    | SMAA_BLEND_WEIGHTS_SHADER_NAME
-                    | SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME
-                    | BLOOM_THRESHOLD_SHADER_NAME
-                    | BLOOM_DOWNSAMPLE_SHADER_NAME
-                    | BLOOM_UPSAMPLE_SHADER_NAME
-                    | BLOOM_COMPOSITE_SHADER_NAME
-                    | LIT_SPRITE_SHADER_NAME
-                    | EMISSIVE_MASK_SHADER_NAME
-                    | RIM_LIGHT_SHADER_NAME
-            )
-        {
-            self.rebuild_materials_for_shader(name);
-        }
+        self.apply_shader_module(name, id, wgsl, module);
         Ok(id)
     }
 
@@ -738,6 +705,22 @@ impl Renderer {
                 return Ok(());
             }
         };
+        self.apply_shader_module(name, id, wgsl, module);
+        log::info!("shader '{name}' reloaded");
+        Ok(())
+    }
+
+    /// Switch shader `name` to a freshly validated `module`: rebuild the
+    /// pipeline the engine compiles it into, commit the module to the cache,
+    /// then rebuild the materials bound to it. The load path and the reload
+    /// path share it, so a pipeline connected here reloads on both.
+    fn apply_shader_module(
+        &mut self,
+        name: &str,
+        id: ShaderAssetId,
+        wgsl: String,
+        module: wgpu::ShaderModule,
+    ) {
         if name == SPRITE_SHADER_NAME {
             self.sprite_pipeline.rebuild_with_shader(
                 &self.device,
@@ -779,7 +762,15 @@ impl Renderer {
                 matches!(self.depth_sort, DepthSortMode::GpuDepth),
             );
         }
+        // A stock post effect's pipeline; a no-op for any other name.
+        self.post_stack.rebuild_stock_with_module(
+            &self.device,
+            self.surface_config.format,
+            name,
+            &module,
+        );
         self.shader_cache.commit(id, wgsl, module);
+        // Any material bound to this shader needs a rebuild against the new module.
         if name != SPRITE_SHADER_NAME
             && !matches!(
                 name,
@@ -797,8 +788,6 @@ impl Renderer {
         {
             self.rebuild_materials_for_shader(name);
         }
-        log::info!("shader '{name}' reloaded");
-        Ok(())
     }
 
     fn resolve_or_allocate_shader_id(&mut self, name: &str) -> ShaderAssetId {

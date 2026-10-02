@@ -1,15 +1,4 @@
-use super::{StockPipeline, StockResources};
-
-pub(crate) fn build(
-    device: &wgpu::Device,
-    resources: &StockResources,
-    format: wgpu::TextureFormat,
-) -> StockPipeline {
-    StockPipeline::new(
-        device,
-        resources,
-        "tonemap",
-        include_str!("../shaders/stock/tonemap.wgsl"),
-        format,
-    )
-}
+/// Manifest ID of the effect's shader.
+pub(crate) const NAME: &str = "tonemap";
+/// Its compiled-in source; `assets/shaders/stock/tonemap.wgsl` mirrors it.
+pub(crate) const WGSL: &str = include_str!("../shaders/stock/tonemap.wgsl");

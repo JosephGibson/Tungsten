@@ -47,6 +47,66 @@ fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
+/// Creates `to` and links every entry of `from` into it, except `skip`.
+#[cfg(unix)]
+fn mirror(from: &Path, to: &Path, skip: &str) {
+    std::fs::create_dir_all(to).expect("create the staged directory");
+    for entry in std::fs::read_dir(from).expect("read the workspace directory") {
+        let entry = entry.expect("read a directory entry");
+        if entry.file_name() != skip {
+            std::os::unix::fs::symlink(entry.path(), to.join(entry.file_name()))
+                .expect("link a workspace entry into the stage");
+        }
+    }
+}
+
+/// A directory the playground can run in: everything it reads is a link into
+/// the workspace, except the stock shader `name`, whose source went through
+/// `edit`.
+#[cfg(unix)]
+fn stage_with_edited_stock_shader(name: &str, edit: impl Fn(&str) -> String) -> PathBuf {
+    use std::os::unix::fs::symlink;
+
+    let root = workspace_root()
+        .canonicalize()
+        .expect("canonical workspace root");
+    let stage = std::env::temp_dir().join(format!(
+        "tungsten-post-regression-stage-{name}-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&stage);
+
+    let example_assets = Path::new("examples/04_shader_playground/assets");
+    std::fs::create_dir_all(stage.join(example_assets).parent().unwrap())
+        .expect("create the staged example directory");
+    symlink(root.join(example_assets), stage.join(example_assets))
+        .expect("link the example assets");
+    for config in ["tungsten.json", "input.json"] {
+        symlink(root.join(config), stage.join(config)).expect("link a config file");
+    }
+
+    let file = format!("{name}.wgsl");
+    mirror(&root.join("assets"), &stage.join("assets"), "shaders");
+    mirror(
+        &root.join("assets/shaders"),
+        &stage.join("assets/shaders"),
+        "stock",
+    );
+    mirror(
+        &root.join("assets/shaders/stock"),
+        &stage.join("assets/shaders/stock"),
+        &file,
+    );
+    let source = std::fs::read_to_string(root.join("assets/shaders/stock").join(&file))
+        .expect("read the stock shader");
+    std::fs::write(
+        stage.join("assets/shaders/stock").join(&file),
+        edit(&source),
+    )
+    .expect("write the edited stock shader");
+    stage
+}
+
 /// Pixels of `lhs` and `rhs` further apart than 8, and the frame's pixel count.
 fn pixels_apart(lhs: &Path, rhs: &Path) -> (u32, u32) {
     let report = compare_png(lhs, rhs, 8).expect("compare the two captures");
@@ -69,5 +129,34 @@ fn repeated_effect_keeps_its_own_params() {
     assert!(
         apart * 2 > total,
         "the first fade's color is lost: {apart} of {total} pixels differ"
+    );
+}
+
+/// A body edit of a stock post shader reaches its pipeline (`D-091`). The
+/// playground started on a tree whose `fade.wgsl` swaps red and blue must not
+/// draw what the shipped shader draws; a pipeline left on its compiled-in
+/// source does.
+#[cfg(unix)]
+#[test]
+fn stock_shader_body_edit_changes_the_frame() {
+    if std::env::var("TUNGSTEN_VISUAL_REGRESSION").is_err() {
+        return;
+    }
+
+    let shipped = capture("fade-shipped", "fade_twice", &workspace_root());
+    let stage = stage_with_edited_stock_shader("fade", |source| {
+        assert!(
+            source.contains("params.v0.rgb"),
+            "fade.wgsl no longer reads params.v0.rgb; pick another edit"
+        );
+        source.replace("params.v0.rgb", "params.v0.bgr")
+    });
+    let edited = capture("fade-edited", "fade_twice", &stage);
+    let _ = std::fs::remove_dir_all(&stage);
+
+    let (apart, total) = pixels_apart(&shipped, &edited);
+    assert!(
+        apart * 2 > total,
+        "the edited fade.wgsl did not reach its pipeline: {apart} of {total} pixels differ"
     );
 }
