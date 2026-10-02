@@ -12,7 +12,7 @@ use crate::burning::BallBurn;
 use crate::gameplay::EmitterAnchor;
 use crate::state::PlayerEffect;
 use crate::state::{
-    ActiveBlackHole, AudioState, BALL_ANIMATION_ID, BALL_RADIUS, BALL_RESTITUTION,
+    ActiveBlackHole, AudioState, BALL_ANIMATION_ID, BALL_CAP, BALL_RADIUS, BALL_RESTITUTION,
     BALL_SPAWN_INTERVAL, BALL_SPAWN_JITTER, BALL_START_SPRITE_ID, BLACK_HOLE_FORCE,
     BLACK_HOLE_LIFETIME, BLACK_HOLE_RADIUS, Ball, BallHue, BallSpawnState, BlackHole, CAMERA_ROWS,
     CurrentSprite, CycleMode, EXTINGUISH_BURSTS_PER_FRAME, EXTINGUISH_SFX_INTERVAL, EffectSequence,
@@ -558,19 +558,25 @@ pub(crate) fn cursor_to_world(cursor: Vec2, camera: &CameraState) -> Option<Vec2
     ))
 }
 
-/// Hold-to-spawn balls via fixed accumulator and deferred commands.
+/// Hold-to-spawn balls via fixed accumulator and deferred commands, up to
+/// `BALL_CAP` live balls.
 pub(crate) fn spawn_ball_system(world: &mut World) {
-    spawn_balls(world, false);
-    spawn_balls(world, true);
+    // Counted once: both spawners draw on one budget, so a frame never
+    // overshoots the cap.
+    let live = world.query::<Ball>().count();
+    let budget = u32::try_from(BALL_CAP.saturating_sub(live)).unwrap_or(u32::MAX);
+    let spawned = spawn_balls(world, false, budget);
+    spawn_balls(world, true, budget - spawned);
 }
 
-fn spawn_balls(world: &mut World, small: bool) {
+/// Spawns at most `budget` balls and returns how many it queued.
+fn spawn_balls(world: &mut World, small: bool, budget: u32) -> u32 {
     let held = {
         let Some(input) = world.get_resource::<InputState>() else {
-            return;
+            return 0;
         };
         let Some(actions) = world.get_resource::<ActionMap>() else {
-            return;
+            return 0;
         };
         actions.is_pressed(
             input,
@@ -582,7 +588,9 @@ fn spawn_balls(world: &mut World, small: bool) {
         )
     };
 
-    if !held {
+    // At the cap the accumulated time is dropped, as on release, so balls do
+    // not burst out when the count falls again.
+    if !held || budget == 0 {
         if let Some(state) = world.get_resource_mut::<BallSpawnState>() {
             if small {
                 state.small_accumulator = 0.0;
@@ -590,7 +598,7 @@ fn spawn_balls(world: &mut World, small: bool) {
                 state.accumulator = 0.0;
             }
         }
-        return;
+        return 0;
     }
 
     let dt = world
@@ -598,7 +606,7 @@ fn spawn_balls(world: &mut World, small: bool) {
         .map_or(0.0, DeltaTime::seconds);
     let (spawn_count, phase_start) = {
         let Some(state) = world.get_resource_mut::<BallSpawnState>() else {
-            return;
+            return 0;
         };
         let (accumulator, phase, interval) = if small {
             (
@@ -619,26 +627,27 @@ fn spawn_balls(world: &mut World, small: bool) {
             *accumulator -= interval;
             count += 1;
         }
+        let count = count.min(budget);
         let phase_start = *phase;
         *phase = phase.wrapping_add(count);
         (count, phase_start)
     };
     if spawn_count == 0 {
-        return;
+        return 0;
     }
 
     let Some((cursor_x, cursor_y)) = world
         .get_resource::<InputState>()
         .and_then(InputState::cursor_position)
     else {
-        return;
+        return 0;
     };
     let cursor = Vec2::new(cursor_x, cursor_y);
     let Some(camera) = world.get_resource::<CameraState>().copied() else {
-        return;
+        return 0;
     };
     let Some(world_pos) = cursor_to_world(cursor, &camera) else {
-        return;
+        return 0;
     };
     // Golden-angle jitter avoids coincident circle degeneracy.
     const GOLDEN_ANGLE: f32 = 2.399_963_2;
@@ -690,7 +699,9 @@ fn spawn_balls(world: &mut World, small: bool) {
                 cmds.insert_pending(ball, BallHue::from_seed(phase));
             }
         }
+        return spawn_count;
     }
+    0
 }
 
 /// Mouse2 drag-spawns active black hole; release despawns dragged entity.

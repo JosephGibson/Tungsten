@@ -30,6 +30,13 @@ pub struct PhysicsConfig {
     /// substeps buy solver stiffness (the contact-hertz cap scales with the
     /// substep rate), not tunneling safety.
     pub substeps: u32,
+    /// Longest simulated time, in seconds, one `physics_step` call advances
+    /// (D-094); a longer frame dt is clamped to it and the rest of the frame
+    /// is not simulated. Protects the contact-hertz cap: at the default
+    /// 1/30 s over 4 substeps the substep never exceeds 1/120 s, so
+    /// `contact_hertz` keeps its 30 Hz however slow the frame. `<= 0` means
+    /// unbounded.
+    pub max_step_dt: f32,
     /// Biased velocity iterations per substep; one bias-free relax iteration
     /// always follows (D-063). Substeps-over-iterations (D-064): the default
     /// is 1 iteration x 4 substeps, the Box2D-v3 "TGS Soft" shape.
@@ -64,6 +71,7 @@ impl Default for PhysicsConfig {
         Self {
             broadphase_cell_size: 32.0,
             substeps: 4,
+            max_step_dt: 1.0 / 30.0,
             solver_iterations: 1,
             gravity: Vec2::ZERO,
             contact_hertz: 30.0,
