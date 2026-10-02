@@ -29,6 +29,10 @@ test *args:
 check: fmt-check lint
     cargo test --workspace --locked -q
 
+# Release physics tests: determinism and containment (ignored in debug, so not in `check`) plus tunneling, with the perf runner's build flags.
+physics-release *args:
+    RUSTFLAGS="${TUNGSTEN_PERF_RUSTFLAGS--C force-frame-pointers=yes}" cargo test --release -p tungsten-core --locked --test physics_determinism --test physics_tunneling --test physics_containment "$@"
+
 # Compile every benchmark without running it.
 bench-build:
     cargo bench --workspace --no-run --locked
