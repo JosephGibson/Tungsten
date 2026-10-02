@@ -4,6 +4,8 @@ The example runs from checked-in PNGs, JSON and Rust tables. Nothing here runs
 from Cargo, engine startup or asset loading. Python 3, Rust's `rustfmt`, and
 `Pillow==12.3.0` are needed only to edit/regenerate the artwork and layout.
 
+Paths below are relative to this `tools/` directory unless a command starts at the repository root. For art, read [Editing art](#editing-art); for geometry, [Editing the level](#editing-the-level); for presentation, [Runtime and visual checks](#runtime-and-visual-checks); for spells/audio, [Fireball spell](#fireball-spell-extinguishing-and-sound-effects). Current Rust wiring is in `src/{setup,systems,gameplay,extract,fireball,burning}.rs`, relative to the example root.
+
 From the repository root:
 
 ```sh
@@ -161,9 +163,9 @@ falls; jump/landing particles; idle/airborne lit frames; animated props; balls,
 black holes, hazard damage flash/shake and audible controls. Inspect resized windows
 and both zoom limits for uncovered edges, seams, foreground occlusion and clutter.
 Startup smoke alone does not establish these properties. Actual results and
-remaining acceptance items are recorded in the implementation plan.
+remaining visual checks are listed here; archived implementation plans are historical evidence.
 
-## Gameplay and polish follow-up
+## Gameplay and presentation
 
 LMB balls render at 32 pixels with a 15-pixel collider radius and cause no damage.
 Spikes and moving fire use swept relative contact tests after physics. The
@@ -247,8 +249,8 @@ Stock `GodRays` aimed at the moon was evaluated and rejected. Its full-screen
 radial blur turns the moon into a glaring sun and casts a blocky yellow haze,
 which fights the restrained night look; the stack stays Bloom plus Vignette.
 Stock `Fog` fades toward the top of the screen in screen space, which is not
-ground mist. The engine packs at most 16 point lights, choosing those nearest
-the camera. At the widest zoom some off-centre pools can drop out; that
+ground mist. The engine packs at most 16 lights total, keeping directionals first and then
+the point lights nearest the camera view. At the widest zoom some off-centre pools can drop out; that
 selection lives in the engine.
 
 Wind motes are fireflies: a soft dot that blinks yellow-green as it wanders.
@@ -277,7 +279,8 @@ and stored as 2×2 or 4×4 pixel blocks so that nearest sampling stays exact:
 - **MMB marbles** (`ball_small*`, 16 pixels): neutral-grey glass with a thin rim,
   a fixed glint and a turning cat's-eye ribbon. Only these carry `BallHue`, so
   only they cycle through the rainbow; burning and charring tint the same greys. Both buttons have independent spawn timers.
-S alone stops audio; the example reapplies these three local action bindings (with Mouse 4) after
+
+S alone stops audio. The example reapplies its local ball, spell and audio bindings after
 shared input hot reloads without writing the shared input file.
 
 Beyond the gate, walk across the four-tile apron to the open collection pit.

@@ -1,15 +1,4 @@
-use super::{StockPipeline, StockResources};
-
-pub(crate) fn build(
-    device: &wgpu::Device,
-    resources: &StockResources,
-    format: wgpu::TextureFormat,
-) -> StockPipeline {
-    StockPipeline::new(
-        device,
-        resources,
-        "god_rays",
-        include_str!("../shaders/stock/god_rays.wgsl"),
-        format,
-    )
-}
+/// Manifest ID of the effect's shader.
+pub(crate) const NAME: &str = "god_rays";
+/// Its compiled-in source; `assets/shaders/stock/god_rays.wgsl` mirrors it.
+pub(crate) const WGSL: &str = include_str!("../shaders/stock/god_rays.wgsl");

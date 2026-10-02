@@ -8,9 +8,10 @@
 //!   - `B` / `[`  → previous effect
 //!   - `C` / `Backspace` → clear stack (M25-byte-identical output)
 //!
-//! Env `TUNGSTEN_POST_STACK_FIXTURE={all|retro_arcade|dreamy|glitch_boss|empty}`
+//! Env `TUNGSTEN_POST_STACK_FIXTURE={all|retro_arcade|dreamy|glitch_boss|bloom_only|fade_pair|fade_twice|empty}`
 //! preloads a fixed stack and **disables** the cycle — the fixtures are for
-//! the smoke matrix, not interactive inspection.
+//! the smoke matrix, not interactive inspection. `fade_pair` and `fade_twice`
+//! stack the same effect twice for `tests/post_regression.rs`.
 //!
 //! M30 adds a three-layer parallax backdrop under a camera that follows one
 //! bouncer, plus trauma shake and squash/stretch on every impact. All of it is
@@ -164,6 +165,8 @@ fn main() -> anyhow::Result<()> {
                     "dreamy" => push_dreamy(stack),
                     "glitch_boss" => push_glitch_boss(stack),
                     "bloom_only" => stack.push(PostPass::Bloom(demo_bloom_params())),
+                    "fade_pair" => push_fades(stack, FADE_RED, FADE_BLUE),
+                    "fade_twice" => push_fades(stack, FADE_BLUE, FADE_BLUE),
                     _ => {}
                 }
             }
@@ -1107,6 +1110,20 @@ fn push_dreamy(stack: &mut PostStack) {
     stack.push(PostPass::Fade(FadeParams::default()));
     stack.push(PostPass::Vignette(VignetteParams::default()));
     stack.push(PostPass::ToneMono(ToneMonoParams::default()));
+}
+
+const FADE_RED: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
+const FADE_BLUE: [f32; 4] = [0.0, 0.0, 1.0, 1.0];
+
+/// Two half fades in a row. Each pass of a repeated effect must draw with its
+/// own parameters, so `first` shows through whatever `second` is.
+fn push_fades(stack: &mut PostStack, first: [f32; 4], second: [f32; 4]) {
+    for color in [first, second] {
+        stack.push(PostPass::Fade(FadeParams {
+            progress: 0.5,
+            color,
+        }));
+    }
 }
 
 fn push_glitch_boss(stack: &mut PostStack) {

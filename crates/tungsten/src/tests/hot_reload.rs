@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use super::{DEBOUNCE_MS, accept_path, canonical_or_clone};
+use super::{DEBOUNCE_MS, accept_path, canonical_or_clone, under_recursive_root};
 
 static COUNTER: AtomicU32 = AtomicU32::new(0);
 
@@ -92,4 +92,24 @@ fn reject_parent_directory_of_recursive_root() {
         !accept_path(&outside, &roots, &extras),
         "a sibling of the watched root must not match"
     );
+}
+
+#[test]
+fn extra_file_under_a_recursive_root_needs_no_watch_of_its_own() {
+    // A root manifest inside a watched asset directory is delivered by that
+    // watch; one outside it needs its parent watched.
+    let dir = tempdir();
+    let assets = dir.join("assets");
+    let manifest = assets.join("manifest.json");
+    let input_json = dir.join("input.json");
+    touch(&manifest);
+    touch(&input_json);
+
+    let roots = vec![canonical_or_clone(&assets)];
+
+    assert!(under_recursive_root(&canonical_or_clone(&manifest), &roots));
+    assert!(!under_recursive_root(
+        &canonical_or_clone(&input_json),
+        &roots
+    ));
 }

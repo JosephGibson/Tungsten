@@ -116,6 +116,63 @@ fn merge_duplicate_id_across_manifests_is_fatal() {
     );
 }
 
+/// A material may name a shader that another root declares, whichever root
+/// comes first: references are checked once, on the merged graph (`D-089`).
+#[test]
+fn merge_material_resolves_shader_across_roots() {
+    let dir = tempdir();
+
+    write_file(&dir, "shared/shaders/flash.wgsl", b"wgsl stub");
+    let shared = write_manifest(
+        &dir,
+        "shared",
+        r#"{"shaders": {"flash": {"path": "shaders/flash.wgsl"}}}"#,
+    );
+    let local = write_manifest(
+        &dir,
+        "local",
+        r#"{"materials": {"damage_flash": {"shader": "flash"}}}"#,
+    );
+
+    for roots in [[&shared, &local], [&local, &shared]] {
+        let merged = ResolvedManifest::load_and_merge_many(&roots)
+            .expect("a cross-root material -> shader reference must resolve");
+        assert_eq!(merged.materials["damage_flash"].shader, "flash");
+        assert!(merged.shaders.contains_key("flash"));
+    }
+}
+
+/// A shader that no root declares is still fatal, and the error names the
+/// material with the smallest ID.
+#[test]
+fn merge_material_shader_missing_from_every_root_is_fatal() {
+    let dir = tempdir();
+
+    write_file(&dir, "shared/shaders/flash.wgsl", b"wgsl stub");
+    let shared = write_manifest(
+        &dir,
+        "shared",
+        r#"{"shaders": {"flash": {"path": "shaders/flash.wgsl"}}}"#,
+    );
+    let local = write_manifest(
+        &dir,
+        "local",
+        r#"{"materials": {
+            "zeta": {"shader": "absent"},
+            "alpha": {"shader": "absent"},
+            "ok": {"shader": "flash"}
+        }}"#,
+    );
+
+    let err = ResolvedManifest::load_and_merge_many(&[shared, local])
+        .expect_err("a shader missing from every root must be fatal");
+    assert!(
+        matches!(&err, ManifestError::MaterialShaderMissing { id, shader }
+            if id == "alpha" && shader == "absent"),
+        "expected MaterialShaderMissing for 'alpha', got: {err:?}"
+    );
+}
+
 /// Empty roots list leaves composition to user startup.
 #[test]
 fn merge_empty_roots_produces_empty_manifest() {

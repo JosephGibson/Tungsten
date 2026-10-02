@@ -1,15 +1,4 @@
-use super::{StockPipeline, StockResources};
-
-pub(crate) fn build(
-    device: &wgpu::Device,
-    resources: &StockResources,
-    format: wgpu::TextureFormat,
-) -> StockPipeline {
-    StockPipeline::new(
-        device,
-        resources,
-        "tone_mono",
-        include_str!("../shaders/stock/tone_mono.wgsl"),
-        format,
-    )
-}
+/// Manifest ID of the effect's shader.
+pub(crate) const NAME: &str = "tone_mono";
+/// Its compiled-in source; `assets/shaders/stock/tone_mono.wgsl` mirrors it.
+pub(crate) const WGSL: &str = include_str!("../shaders/stock/tone_mono.wgsl");

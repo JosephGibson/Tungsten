@@ -1,14 +1,32 @@
 # Changelog
 
-Records all notable project changes. Versioned entries preserve historical filenames and commands; use [the source index](docs/LLM_INDEX.md) for current locations. Earlier `docs/plans/Phase3.md` references now correspond to the [archived Phase 3 plan](docs/plans/archive/phase3.md).
+Records all notable project changes. Versioned entries preserve historical filenames and commands; use [the source index](docs/LLM_INDEX.md) for current locations. Plan status statements describe their release-time scope; later retirement does not imply every proposed step shipped. Earlier `docs/plans/Phase3.md` references now correspond to the [archived Phase 3 plan](docs/plans/archive/phase3.md).
 
 Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.35.0] - 2026-10-02
+
+Summary: five correctness fixes (`D-088`–`D-092`, plan `docs/plans/archive/p2-correctness-pass.md`): the frame dt is capped, manifest roots validate and reload as one merged graph, a stock post effect can repeat with different parameters, stock post shaders hot-reload, and a physics arrival pass stops a pushed body at the gate behind it. The pass costs the two physics benchmark rows 5–9% of `physics_step`. Documentation cleanup and plan retirement.
+
+### Changed
+
+- **Documentation cleanup:** archive the GPU performance, platformer polish and debug/docs cleanup plans; shorten the current design status and shipped Phase 4 scope; correct architecture, reload support, font IDs, capture availability and stale references; route local skills to canonical guides.
+- **`docs/known-issues.md`:** the live home of open findings, recorded limits, unchecked platforms and follow-ups, with rows in `docs/README.md` and `docs/LLM_INDEX.md`. The repository review of 2026-09-25 moves to `docs/plans/archive/repo-review-2026-09-25.md` without its four P2 rows.
+- **`asset_loader::reload_manifest`** takes the list of manifest roots where it took one path (`D-089`). `just visual` also runs example 04's `post_regression` test.
+
+### Fixed
+
+- **Frame dt cap (`D-088`):** `DeltaTime.dt` is the elapsed time capped at 0.1 s. A stall no longer reaches the systems and the physics step as one long step: a 2 s step put 1 of 5 stacked boxes and 6 of 30 piled circles through the floor. Smoke runs keep 1/60 s.
+- **Manifest roots (`D-089`):** a material in one manifest root can name a shader in another, in either root order. An edit to any root manifest reloads the merged graph, where a reload used to load one root over it and report the other roots' sprites as removed. The watcher is built when the app runs, so the order of `enable_hot_reload` and `set_manifest_roots` no longer matters.
+- **Repeated stock post effects (`D-090`):** each post-stack slot owns its params buffer, so two passes of one effect draw with their own parameters. Both used to draw with the parameters written last.
+- **Stock post shader reload (`D-091`):** a body edit to one of the 17 stock post shaders rebuilds that effect's pipeline. The edit used to be validated, cached and logged as reloaded while the frame did not change.
+- **Pushed bodies (`D-092`):** a body the solver accelerates is checked against every neighbour its new velocity reaches, clamped and moved again within the substep. A resting body hit by a pusher of up to 1,000 times its mass no longer ends beyond the gate behind it (246 of 1,536 cases before, in three spawn orders), and a slow push no longer crosses a thin static wall (9 of 320). Simulation results change: the determinism hash and the `physics`, `physics-sparse` and `integrated` digests are new. Accepted with it: `physics_step` p50 reads `regressed` in `physics` (5.61 → 6.08 ms) and `physics-sparse` (3.45 → 3.63 ms), the pass's own work in two collision-heavy scenes; `integrated` reads `unchanged`. Two cases stay open in `docs/known-issues.md`.
+
 ## [0.34.0] - 2026-10-02
 
-Summary: GPU and render-path performance pass (`D-085`–`D-087`, plan `docs/plans/gpu-perf-pass.md`, which stays open for three steps the owner has not approved). The text pipeline keeps a bounded layout cache and the post chain keeps its GPU objects between frames, the default extract and the tilemap extract write one pass into kept buffers, and the last full-screen stage renders into the swapchain. Measured on benchmark suite v2: `gpu-throughput` runs at 68.7 FPS where it ran at 38.6, `particles` at 158.5 against 89.7, `integrated` at 117.7 against 94.9 and the empty frame at 2,074 against 1,101; `gpu` peak RSS falls from 720.9 to 168.9 MiB and no frame of it exceeds 1.5 × the run's p50. `display.frame_rate_cap` and the perf runner's pacing overrides now take effect, and telemetry reports the frame `interval`. Pixels are unchanged. In the render crate, the post-chain recording functions take `&mut self` and `default_pass_order` takes a `PresentPath`.
+Summary: GPU and render-path performance pass (`D-085`–`D-087`, plan `docs/plans/archive/gpu-perf-pass.md`, with three experiments left unapproved). The text pipeline keeps a bounded layout cache and the post chain keeps its GPU objects between frames, the default extract and the tilemap extract write one pass into kept buffers, and the last full-screen stage renders into the swapchain. Measured on benchmark suite v2: `gpu-throughput` runs at 68.7 FPS where it ran at 38.6, `particles` at 158.5 against 89.7, `integrated` at 117.7 against 94.9 and the empty frame at 2,074 against 1,101; `gpu` peak RSS falls from 720.9 to 168.9 MiB and no frame of it exceeds 1.5 × the run's p50. `display.frame_rate_cap` and the perf runner's pacing overrides now take effect, and telemetry reports the frame `interval`. Pixels are unchanged. In the render crate, the post-chain recording functions take `&mut self` and `default_pass_order` takes a `PresentPath`.
 
 ### Added
 
@@ -86,7 +104,7 @@ Summary: benchmark suite v2 (`D-078`), plan `docs/plans/archive/benchmark-suite-
 
 ## [0.31.0] - 2026-09-29
 
-Summary: platformer ball pit, spreading fire, a fireball spell and burning-ball intensity (plans `docs/plans/archive/platformer-ball-pit-effects.md`, `docs/plans/archive/platformer-spreading-fire.md`, `docs/plans/archive/platformer-fireball-spell.md`, `docs/plans/archive/platformer-fire-intensity.md`), plus the owner-directed art passes of `docs/plans/platformer-polish-pass.md` (steps 6–12 and D7; its Rust refactor steps stay open). The engine gains PCM WAV decoding (`D-077`); no library API or rendering output changes.
+Summary: platformer ball pit, spreading fire, a fireball spell and burning-ball intensity (plans `docs/plans/archive/platformer-ball-pit-effects.md`, `docs/plans/archive/platformer-spreading-fire.md`, `docs/plans/archive/platformer-fireball-spell.md`, `docs/plans/archive/platformer-fire-intensity.md`), plus the owner-directed art passes of `docs/plans/archive/platformer-polish-pass.md` (steps 6–12 and D7; its Rust refactor steps were deferred). The engine gains PCM WAV decoding (`D-077`); no library API or rendering output changes.
 
 ### Added
 
@@ -214,7 +232,7 @@ Summary: the branch-`0.27` release — a physics scale and CCD pass (plan `docs/
 - **Audio:** decoding keeps a truncated file's decoded prefix but now reports real I/O errors; MP3/Ogg gapless trimming removes codec padding; cpal opens the default device at its native rate (48 kHz on the reference machine) and the mixer resamples.
 - **Instructions:** `AGENTS.md` condensed (≈6 KB), `CLAUDE.md` imports it, `docs/LLM_INDEX.md` and `docs/DECISION_INDEX.md` condensed, plan conventions moved to `docs/plans/README.md`; both project skills corrected (shader hot reload, canonical perf scene).
 - **Scripts:** smoke discovery fails on metadata errors or zero examples, and timeouts are reported as timeouts; perf captures record compiler and build flags (`TUNGSTEN_PERF_RUSTFLAGS`) and keep all profiler output in the capture directory.
-- **Status docs:** `README.md` and `DESIGN.md` name workspace `0.27.0` on branch `0.27`; the `DESIGN.md` physics section and the README stack line describe the `D-062`–`D-067` pipeline instead of the per-substep uniform grid. `docs/plans/agentic-restructure.md` is done and archived; its platform checks and follow-ups moved to `docs/repo-review-2026-09-25.md`.
+- **Status docs:** `README.md` and `DESIGN.md` name workspace `0.27.0` on branch `0.27`; the `DESIGN.md` physics section and the README stack line describe the `D-062`–`D-067` pipeline instead of the per-substep uniform grid. `docs/plans/agentic-restructure.md` is done and archived; its platform checks and follow-ups moved to `docs/plans/archive/repo-review-2026-09-25.md`.
 - `DECISIONS.md` adds `D-062`–`D-072`.
 
 ### Removed

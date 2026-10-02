@@ -14,6 +14,8 @@ just perf describe gpu                                              # knobs, pre
 
 **FPS.** An FPS in this file is 1000 / mean `total`. Since 2026-10-02 the `frame:` line also carries `interval`, the time between two frame starts ([`profiling-workflow.md`](profiling-workflow.md#telemetry-lines)), which is the frame's real period. Its mean is 0.05–0.13 ms above the mean `total` in the eight rows, so a row runs 0.5% (`gpu`: 89.7 FPS against 90.1) to 1.5% (`integrated`: 117.8 against 119.6) below the figure quoted here, and the empty `gpu` frame runs at 1,990 FPS where `total` gives 2,114.
 
+For a specific workload, open its section: [`physics`](#physics), [`ecs`](#ecs), [`churn`](#churn), [`gpu`](#gpu), [`particles`](#particles), [`integrated`](#integrated). [Ownership](#ownership) and [open proposals](#open-proposals) apply across rows. Dated measurements below remain historical evidence; use a fresh comparable capture to assess the current tree.
+
 ## Harness
 
 - **One binary.** `main.rs` resolves the configuration (`knobs.rs`: preset, then scale, then overrides, then validation) and calls the benchmark's `configure`. Without `TUNGSTEN_BENCH` it runs `physics` at `default`. `TUNGSTEN_BENCH_DESCRIBE=1` prints every benchmark's schema as JSON and `=config` the resolved configuration, both before a window opens. `TUNGSTEN_OVERLAYS_ON=physics,systems,inspector` enables overlays for interactive use.
@@ -112,7 +114,7 @@ Two rows. `physics` (pachinko) owns the narrow phase, contact build, solve, coll
   - `physics-sparse` (`physics_step` 89.4%): the pair build 38.1% (query 34.2%), the safety-net sweep 30.7% (`SpatialGrid::query` 23.7%, `cell_range` 9.8%: four long walls do not fill compact bounds, so the statics-only grid uses the hashed table), grid build and insert 7.0%, `repair_pairs` 4.4%, narrow phase 3.9%, solver 1.7%, `collect_tripped` 1.2%. Still broadphase-bound; a frame is one build plus 2.1 repairs.
 - RSS growth, reported only, reads 0 KiB/s in all five pachinko runs. A sparse run is now about 1.5 s long, so one 1.4 MiB step of RSS inside the fitted half read as 1.2 and 2.6 MiB/s in two of the five runs; the other three read 0–6 KiB/s.
 
-**Workload version history:** 1, the initial version (2026-09-30). Digests at the default: `physics` `86ffcabcdb15eed1`, `physics-sparse` `5899f9c8a69d79b1`. They changed on 2026-10-01 with `D-081`, an engine change that reorders the pair list and so the solver; before it they were `c972b2818d486617` and `c95fadc938a3689e`.
+**Workload version history:** 1, the initial version (2026-09-30). Digests at the default: `physics` `c10885dddd6115a4`, `physics-sparse` `9df5ade5305646dc`. They changed on 2026-10-02 with `D-092`, the arrival pass, which clamps bodies in both worlds; before it they were `86ffcabcdb15eed1` and `5899f9c8a69d79b1`. Those dated from 2026-10-01 and `D-081`, an engine change that reorders the pair list and so the solver; before it they were `c972b2818d486617` and `c95fadc938a3689e`. `D-092` also costs the rows `physics_step` time, p50 5.61 → 6.08 ms in `physics` and 3.45 → 3.63 ms in `physics-sparse` (five runs a side); the dated numbers above are from before it.
 
 ## `ecs`
 
@@ -153,7 +155,7 @@ Owns steady-state query iteration. Warm-up 60 frames, no GPU diagnostic run. Mod
 
 Owns structural change: command recording, `World::flush`, archetype moves, and entity allocation and free. Warm-up 60 frames, no GPU diagnostic run. Module: `churn.rs`.
 
-- **Population.** A steady population is replaced FIFO: every entity lives `1/turnover` frames (20 at the default), and the population is pre-aged, so churn is steady from the first frame. Frame f despawns spawn serials `[f·S, (f+1)·S)` and spawns `[P + f·S, P + (f+1)·S)`. Each spawn inserts `components` components one at a time. In `immediate` mode that is one archetype move each; in `deferred` mode the flush has applied a spawn's inserts as one move since `D-084`. The `components` note in the knob table below ("one archetype move each") is the binary's own text (`churn.rs`), left as it is because the benchmark's sources were out of that pass's scope: it describes `immediate` only.
+- **Population.** A steady population is replaced FIFO: every entity lives `1/turnover` frames (20 at the default), and the population is pre-aged, so churn is steady from the first frame. Frame f despawns spawn serials `[f·S, (f+1)·S)` and spawns `[P + f·S, P + (f+1)·S)`. Each spawn inserts `components` components one at a time. In `immediate` mode that is one archetype move each; in `deferred` mode the flush has applied a spawn's inserts as one move since `D-084`. The binary's schema note still says "one archetype move each"; that describes `immediate` only.
 - **Status toggles.** Survivors whose serial is f modulo `groups` gain one of `statuses` status components at frame f and lose it at f + 1. Gains skip entities that expire at f + 1, so each frame's losses equal the previous frame's gains. `groups = round(2·(P − 2S) / (toggles·P))`, 36 at the default.
 - **Modes.** `deferred` records everything through the `CommandBuffer` and measures it in `flush`; `immediate` makes the same calls on `World` inside the churn systems. Both find their targets with one scan over the lifetime component, and the systems run as `churn_scan`, `churn_despawn`, `churn_toggle`, `churn_spawn`.
 
@@ -162,7 +164,7 @@ Owns structural change: command recording, `World::flush`, archetype moves, and 
 | `population` | 125,000 | 1,000–2,000,000 | yes | |
 | `turnover` | 0.05 | 0–0.5 | | Share replaced per frame, FIFO |
 | `toggles` | 0.05 | 0–0.5 | | Share gaining or losing a status per frame; a status lasts one frame |
-| `components` | 6 | 2–12 | | Components per spawn, one archetype move each |
+| `components` | 6 | 2–12 | | Components per spawn; deferred inserts move once per spawn, direct inserts move once each |
 | `statuses` | 3 | 1–8 | | Distinct status components |
 | `mode` | `deferred` | `deferred`, `immediate` | | |
 | `view` | 0 | 0–16,384 | | Rendered sample |
@@ -438,7 +440,7 @@ The design defaults gave p95 13.71 ms at calibration. The `actors` sweep on 2026
 - At the 144 Hz budget capacity search found the row present-bound (✗ against `physics_step`): scale moves the scene counts but not the level or the 1080p post chain, whose GPU span of about 6 ms sets a floor near 6.9 ms. Searched again after `D-085`: scale 0.085 (212 actors) at 144 Hz, still present-bound (✗), and 1.53 (3,835 actors) at 60 Hz, `physics_step`-limited (✓); the same morning's build read 0.09 and 1.48. On 2026-10-02, with `D-086` and `D-087` in: 0.30 (743 actors) at 144 Hz, still present-bound (✗), and 1.76 (4,391 actors) at 60 Hz, `physics_step`-limited (✓).
 - Until `D-085` peak RSS was about 283 MiB and grew about 24 MiB/s from the name tags and HUD (see "Engine findings"), so it depended on capture length; at calibration it grew 19.5 MiB/s, at a lower frame rate. Since `D-085` it is about 167 MiB, and RSS growth reads 0–0.3 MiB/s per run (reported only). After `D-086` it is about 170 MiB, because the extract keeps its buffers, and growth reads 0.2–2.3 MiB/s per run: the buffers step to a larger size inside the fitted half of a 3.6 s run. Over 900 frames two of three runs are flat after the first two seconds (0.03–0.04 MiB/s, peaks 172 and 168 MiB) and the third steps from 171 to 175 MiB.
 
-**Workload version history:** 1, the initial version (2026-09-30). Digest at the default: `5f031f4d947964cb`. It changed on 2026-10-01 with `D-081` (pair order); before it the digest was `9b2617e4c1ab23f7`.
+**Workload version history:** 1, the initial version (2026-09-30). Digest at the default: `334b519e18b543d7`. It changed on 2026-10-02 with `D-092` (the arrival pass); before it the digest was `5f031f4d947964cb`, from 2026-10-01 and `D-081` (pair order), and before that `9b2617e4c1ab23f7`.
 
 ## Engine findings
 
@@ -496,7 +498,7 @@ Not approved; each benchmark works without them. Approving one is a separate dec
 - The surface clear ("Surface clear and present blit" above): since `D-087` the pass that first writes the swapchain carries it. `LoadOp::DontCare` would remove it and would be the engine's first `unsafe` outside a test.
 - The `integrated` row note in the binary, which still names the old text cache.
 
-**Left open by Session B of the render-path pass (2026-10-02).** None is approved; the first three are gated steps of `docs/plans/gpu-perf-pass.md` that the owner left at `no`:
+**Left open by Session B of the render-path pass (2026-10-02).** None is approved; the first three were gated steps of the now-archived `docs/plans/archive/gpu-perf-pass.md` that the owner left at `no`. Retirement of that execution plan does not approve these experiments:
 
 - Extract culling: the default extract still emits every sprite, in view or not.
 - A compositor-bypass hint on X11: the compositor's stall is what sets the tail of `gpu` at `min` (the frames near 4.7 ms above).
@@ -504,7 +506,7 @@ Not approved; each benchmark works without them. Approving one is a separate dec
 - The frame cap overshoots its period by 0.06 ms per frame (16.73 ms mean `interval` at a cap of 60, 59.8 FPS), because each deadline counts from the frame's own start; a deadline grid kept across frames would remove it.
 - The HUD's `fps` row still divides by the CPU frame time; `FrameTimings::interval_ms` now holds the period it would need.
 
-**RSS growth threshold.** A5 defines none, so RSS growth is reported for every row, `churn` included, and judged for none. The open proposal judges it for `churn` only:
+**RSS growth threshold.** The current capture contract defines none, so RSS growth is reported for every row, `churn` included, and judged for none. The open proposal judges it for `churn` only:
 
 - a capture reads `leaking` when the median of its per-run slopes exceeds 32 KiB/s and every run exceeds 16 KiB/s;
 - compare marks growth `regressed` when the candidate's median exceeds the baseline's by more than 32 KiB/s under the same all-runs rule;

@@ -12,11 +12,20 @@
 //! positive-gap pairs and the solver clamps approach to arrive at touching,
 //! independent of the fixed substep count; the slab sweep remains as a
 //! statics-only safety net.
+//!
+//! Pushed bodies (asserted, D-092): a resting body hit by a pusher of up to
+//! 1,000 times its mass, at up to 15,360 px/s, never ends beyond a static or
+//! near-immovable dynamic gate behind it, and neither does the pusher. That
+//! holds whichever of the three was spawned first, and with the pushed body
+//! asleep before the impact. A pusher at 60–960 px/s never crosses a thin
+//! static wall either. Two limits remain: a 1,000:1 pusher at 120–480 px/s
+//! can still crush the body through a 4 px *dynamic* gate, and at 15,360 px/s
+//! a pusher spawned last can end past the body it pushed.
 
 use glam::Vec2;
 use tungsten_core::{
-    BodyKind, Collider, DeltaTime, PhysicsConfig, Position, RigidBody, Velocity, World,
-    physics_step,
+    BodyKind, Collider, DeltaTime, Entity, PhysicsBuffers, PhysicsConfig, Position, RigidBody,
+    Velocity, World, physics_step,
 };
 
 const DT: f32 = 1.0 / 60.0;
@@ -269,4 +278,354 @@ fn moderate_speed_never_tunnels() {
     let (misses, total) = run_wall_volley(TargetKind::StaticAabbWall, 480.0);
     assert_eq!(misses, 0);
     assert_eq!(total, VOLLEY_SIZE);
+}
+
+const STALL_FLOOR_TOP: f32 = 480.0;
+
+/// Bodies resting on a static floor under gravity, with sleeping off so the
+/// settled pile stays awake.
+fn stall_world(bodies: &[(Vec2, Collider)]) -> (World, Vec<tungsten_core::Entity>) {
+    let mut world = World::new();
+    world.insert_resource(DeltaTime { dt: DT });
+    world.insert_resource(PhysicsConfig {
+        gravity: Vec2::new(0.0, 900.0),
+        sleep_threshold: 0.0,
+        ..PhysicsConfig::default()
+    });
+    let floor = world.spawn();
+    world.insert(floor, Position(Vec2::new(0.0, STALL_FLOOR_TOP + 20.0)));
+    world.insert(floor, RigidBody::r#static());
+    world.insert(floor, Collider::aabb(Vec2::new(4_000.0, 20.0)));
+    let entities = bodies
+        .iter()
+        .map(|&(position, collider)| {
+            let entity = world.spawn();
+            world.insert(entity, Position(position));
+            world.insert(entity, Velocity(Vec2::ZERO));
+            world.insert(entity, RigidBody::dynamic());
+            world.insert(entity, collider);
+            entity
+        })
+        .collect();
+    (world, entities)
+}
+
+/// The frame dt cap (`D-088`): the app hands the simulation at most 0.1 s per
+/// frame (`MAX_DT_SECS` in `tungsten::app`). One step of that length on a
+/// settled, awake pile loses no body and leaves it under 50 px/s. Longer
+/// steps do not hold: 0.2 s leaves over 110 px/s, and 2 s drops bodies
+/// through the floor.
+#[test]
+fn one_capped_stall_step_keeps_a_settled_pile() {
+    const STALL_DT: f32 = 0.1;
+    let stack: Vec<(Vec2, Collider)> = (0..5)
+        .map(|i| {
+            (
+                Vec2::new(0.0, STALL_FLOOR_TOP - 16.0 - 32.0 * i as f32),
+                Collider::aabb(Vec2::splat(16.0)),
+            )
+        })
+        .collect();
+    let pile: Vec<(Vec2, Collider)> = (0..30)
+        .map(|i| {
+            let (col, row) = ((i % 6) as f32, (i / 6) as f32);
+            (
+                Vec2::new(col * 13.0 - 30.0, STALL_FLOOR_TOP - 7.0 - row * 13.0),
+                Collider::circle(6.0),
+            )
+        })
+        .collect();
+
+    for (name, bodies) in [("stack", stack), ("pile", pile)] {
+        let (mut world, entities) = stall_world(&bodies);
+        for _ in 0..240 {
+            physics_step(&mut world);
+        }
+        world.get_resource_mut::<DeltaTime>().unwrap().dt = STALL_DT;
+        physics_step(&mut world);
+        world.get_resource_mut::<DeltaTime>().unwrap().dt = DT;
+
+        let mut max_speed: f32 = 0.0;
+        for _ in 0..120 {
+            physics_step(&mut world);
+            for &entity in &entities {
+                max_speed = max_speed.max(world.get::<Velocity>(entity).unwrap().0.length());
+            }
+        }
+        assert!(
+            max_speed < 50.0,
+            "{name}: {max_speed} px/s after one {STALL_DT} s step"
+        );
+        for &entity in &entities {
+            let y = world.get::<Position>(entity).unwrap().0.y;
+            assert!(
+                (STALL_FLOOR_TOP - 400.0..=STALL_FLOOR_TOP).contains(&y),
+                "{name}: a body ended at y {y} after one {STALL_DT} s step"
+            );
+        }
+    }
+}
+
+const GATE_X: f32 = 800.0;
+const GATE_HALF_HEIGHT: f32 = 400.0;
+const PUSH_RADIUS: f32 = 8.0;
+const PUSH_MASSES: [f32; 4] = [1.0, 10.0, 100.0, 1_000.0];
+const PUSH_GAPS: [f32; 4] = [0.5, 3.0, 12.0, 60.0];
+
+/// When the pusher is spawned. The solver gives the last word to the contact
+/// that comes later in the pair list, and the list follows spawn order, so a
+/// scene that holds in one order can fail in another.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PusherSpawn {
+    /// Before the pushed body.
+    First,
+    /// After the pushed body and the gate.
+    Last,
+    /// After the pushed body and the gate have fallen asleep.
+    LastOntoSleeper,
+}
+
+/// A pusher moving at `speed` toward a resting body of mass 1 that sits `gap`
+/// short of a gate.
+#[derive(Debug, Clone, Copy)]
+struct PushCase {
+    spawn: PusherSpawn,
+    gate: BodyKind,
+    gate_half_thickness: f32,
+    /// The gate is spawned before the pushed body.
+    gate_first: bool,
+    pusher_mass: f32,
+    speed: f32,
+    gap: f32,
+}
+
+struct PushScene {
+    world: World,
+    pusher: Entity,
+    pushed: Entity,
+    gate: Entity,
+}
+
+impl PushScene {
+    fn x(&self, entity: Entity) -> f32 {
+        self.world.get::<Position>(entity).unwrap().0.x
+    }
+
+    /// Neither body may end beyond the gate's centre.
+    fn held(&self) -> bool {
+        let gate_x = self.x(self.gate);
+        self.x(self.pushed) <= gate_x && self.x(self.pusher) <= gate_x
+    }
+}
+
+fn push_scene(case: PushCase) -> PushScene {
+    let mut world = tunneling_world();
+    let pushed_x = GATE_X - case.gate_half_thickness - PUSH_RADIUS - case.gap;
+    // The pusher starts a little short of the pushed body, so the impact
+    // happens inside the run.
+    let pusher_x = pushed_x - 2.0 * PUSH_RADIUS - 30.0;
+
+    let spawn_gate = |world: &mut World| {
+        let entity = world.spawn();
+        world.insert(entity, Position(Vec2::new(GATE_X, 0.0)));
+        world.insert(
+            entity,
+            Collider::aabb(Vec2::new(case.gate_half_thickness, GATE_HALF_HEIGHT)),
+        );
+        match case.gate {
+            BodyKind::Static => world.insert(entity, RigidBody::r#static()),
+            BodyKind::Dynamic => {
+                // Heavy enough to be effectively immovable over the run.
+                world.insert(entity, RigidBody::dynamic().with_mass(1.0e6));
+                world.insert(entity, Velocity(Vec2::ZERO));
+            }
+        }
+        entity
+    };
+    let spawn_ball = |world: &mut World, x: f32, speed: f32, mass: f32| {
+        let entity = world.spawn();
+        world.insert(entity, Position(Vec2::new(x, 0.0)));
+        world.insert(entity, Velocity(Vec2::new(speed, 0.0)));
+        world.insert(entity, RigidBody::dynamic().with_mass(mass));
+        world.insert(entity, Collider::circle(PUSH_RADIUS));
+        entity
+    };
+
+    let mut gate = None;
+    if case.gate_first {
+        gate = Some(spawn_gate(&mut world));
+    }
+    let mut pusher = None;
+    if case.spawn == PusherSpawn::First {
+        pusher = Some(spawn_ball(
+            &mut world,
+            pusher_x,
+            case.speed,
+            case.pusher_mass,
+        ));
+    }
+    let pushed = spawn_ball(&mut world, pushed_x, 0.0, 1.0);
+    let gate = gate.unwrap_or_else(|| spawn_gate(&mut world));
+    if case.spawn == PusherSpawn::LastOntoSleeper {
+        for _ in 0..60 {
+            physics_step(&mut world);
+        }
+        let asleep = world
+            .get_resource::<PhysicsBuffers>()
+            .is_some_and(|buffers| buffers.is_sleeping(pushed));
+        assert!(asleep, "the pushed body must be asleep before the impact");
+    }
+    let pusher =
+        pusher.unwrap_or_else(|| spawn_ball(&mut world, pusher_x, case.speed, case.pusher_mass));
+
+    PushScene {
+        world,
+        pusher,
+        pushed,
+        gate,
+    }
+}
+
+/// Fails with the number of cases that did not hold and the first few of them.
+fn assert_all_held(what: &str, total: usize, failed: &[PushCase]) {
+    let shown: Vec<String> = failed.iter().take(8).map(|c| format!("{c:?}")).collect();
+    assert!(
+        failed.is_empty(),
+        "{what}: a body ended beyond the gate in {} of {total} cases, first:\n  {}",
+        failed.len(),
+        shown.join("\n  ")
+    );
+}
+
+/// A resting body pushed at a gate stays in front of it, and so does its
+/// pusher (D-092): for a static or near-immovable dynamic gate, 4 or 32 px
+/// thick, every pusher mass and speed, every gap, and every spawn order.
+#[test]
+fn pushed_body_never_crosses_a_gate() {
+    const PUSH_SPEEDS: [f32; 4] = [960.0, 1_920.0, 7_680.0, 15_360.0];
+    let mut total = 0;
+    let mut failed = Vec::new();
+    for spawn in [
+        PusherSpawn::First,
+        PusherSpawn::Last,
+        PusherSpawn::LastOntoSleeper,
+    ] {
+        let mut failed_in_order = 0;
+        for gate in [BodyKind::Static, BodyKind::Dynamic] {
+            for gate_half_thickness in [2.0, 16.0] {
+                for gate_first in [false, true] {
+                    for pusher_mass in PUSH_MASSES {
+                        for speed in PUSH_SPEEDS {
+                            for gap in PUSH_GAPS {
+                                let case = PushCase {
+                                    spawn,
+                                    gate,
+                                    gate_half_thickness,
+                                    gate_first,
+                                    pusher_mass,
+                                    speed,
+                                    gap,
+                                };
+                                let mut scene = push_scene(case);
+                                for _ in 0..60 {
+                                    physics_step(&mut scene.world);
+                                }
+                                total += 1;
+                                if !scene.held() {
+                                    failed_in_order += 1;
+                                    failed.push(case);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        println!("pusher spawned {spawn:?}: {failed_in_order} of 512 cases not held");
+    }
+    assert_all_held("pushed body", total, &failed);
+}
+
+/// A slow push never takes a body through a thin static wall, whichever of
+/// the three was spawned first (D-092). Before the arrival pass, a wall
+/// contact solved ahead of the push let a heavy pusher march the body through:
+/// that is the order with the wall spawned first and the pusher last.
+#[test]
+fn slow_push_never_crosses_a_static_wall() {
+    const SLOW_SPEEDS: [f32; 5] = [60.0, 120.0, 240.0, 480.0, 960.0];
+    let mut total = 0;
+    let mut failed = Vec::new();
+    for spawn in [PusherSpawn::First, PusherSpawn::Last] {
+        for gate_first in [false, true] {
+            for pusher_mass in PUSH_MASSES {
+                for speed in SLOW_SPEEDS {
+                    for gap in PUSH_GAPS {
+                        let case = PushCase {
+                            spawn,
+                            gate: BodyKind::Static,
+                            gate_half_thickness: WALL_HALF_THICKNESS,
+                            gate_first,
+                            pusher_mass,
+                            speed,
+                            gap,
+                        };
+                        let mut scene = push_scene(case);
+                        // A slow pusher needs longer than a second to arrive.
+                        for _ in 0..600 {
+                            physics_step(&mut scene.world);
+                        }
+                        total += 1;
+                        if !scene.held() {
+                            failed.push(case);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert_all_held("slow push", total, &failed);
+}
+
+/// A train with nothing immovable in it keeps its order and its momentum: a
+/// heavy body that hits a light one resting next to a third pushes both along.
+/// Guards the arrival pass (D-092) against stopping a pusher that has
+/// somewhere to go.
+#[test]
+fn free_train_keeps_its_order_and_momentum() {
+    for (pusher_mass, last_mass) in [(100.0, 10.0), (1_000.0, 100.0), (10.0, 100.0), (1.0, 1.0)] {
+        for speed in [960.0_f32, 7_680.0] {
+            let mut world = tunneling_world();
+            let mut spawn = |x: f32, speed: f32, mass: f32| {
+                let entity = world.spawn();
+                world.insert(entity, Position(Vec2::new(x, 0.0)));
+                world.insert(entity, Velocity(Vec2::new(speed, 0.0)));
+                world.insert(entity, RigidBody::dynamic().with_mass(mass));
+                world.insert(entity, Collider::circle(PUSH_RADIUS));
+                entity
+            };
+            let train = [
+                (spawn(0.0, speed, pusher_mass), pusher_mass),
+                (spawn(46.0, 0.0, 1.0), 1.0),
+                (spawn(62.5, 0.0, last_mass), last_mass),
+            ];
+            for _ in 0..30 {
+                physics_step(&mut world);
+            }
+
+            let xs = train.map(|(entity, _)| world.get::<Position>(entity).unwrap().0.x);
+            assert!(
+                xs[0] < xs[1] && xs[1] < xs[2],
+                "masses {pusher_mass}/1/{last_mass} at {speed} px/s: order lost, x = {xs:?}"
+            );
+            let momentum: f32 = train
+                .iter()
+                .map(|&(entity, mass)| mass * world.get::<Velocity>(entity).unwrap().0.x)
+                .sum();
+            let before = pusher_mass * speed;
+            assert!(
+                (momentum - before).abs() <= 0.005 * before,
+                "masses {pusher_mass}/1/{last_mass} at {speed} px/s: momentum {momentum}, was {before}"
+            );
+        }
+    }
 }

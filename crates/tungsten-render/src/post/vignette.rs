@@ -1,15 +1,4 @@
-use super::{StockPipeline, StockResources};
-
-pub(crate) fn build(
-    device: &wgpu::Device,
-    resources: &StockResources,
-    format: wgpu::TextureFormat,
-) -> StockPipeline {
-    StockPipeline::new(
-        device,
-        resources,
-        "vignette",
-        include_str!("../shaders/stock/vignette.wgsl"),
-        format,
-    )
-}
+/// Manifest ID of the effect's shader.
+pub(crate) const NAME: &str = "vignette";
+/// Its compiled-in source; `assets/shaders/stock/vignette.wgsl` mirrors it.
+pub(crate) const WGSL: &str = include_str!("../shaders/stock/vignette.wgsl");

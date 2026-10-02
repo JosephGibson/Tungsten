@@ -6,7 +6,7 @@ Scoped rules for this crate, on top of the root `AGENTS.md`. The `tungsten-wgpu`
 
 - Runtime shaders are manifest-tracked assets under `assets/shaders/`, loaded through `ShaderRegistry` + `ShaderModuleCache`.
 - Mirrors: `src/shaders/stock/**` ↔ `assets/shaders/stock/**` and `src/sprite.wgsl` ↔ `assets/shaders/sprite.wgsl` stay byte-equal; edit both copies together. The loader skips a reload when bytes match the compiled-in source. `lit_sprite.wgsl` exists only in `assets/shaders/`. `quad`, `debug_line` and `present_blit` are internal and not manifest-tracked.
-- Body edits hot-reload through the umbrella watcher after `wgpu::naga` validation (`validate_wgsl_source`, `Renderer::reload_shader`). Signature or bind-group layout changes need a rebuild.
+- Body edits use the umbrella watcher and Naga validation; signature/layout changes rebuild. Pipeline coverage and manifest-add limits are in [the reload matrix](../../DESIGN.md#hot-reload--m9); cache success alone is not a visible reload.
 - LYGIA helpers under `stock/lygia/` keep their MIT headers.
 
 ## Frame order

@@ -1,15 +1,4 @@
-use super::{StockPipeline, StockResources};
-
-pub(crate) fn build(
-    device: &wgpu::Device,
-    resources: &StockResources,
-    format: wgpu::TextureFormat,
-) -> StockPipeline {
-    StockPipeline::new(
-        device,
-        resources,
-        "color_adjust",
-        include_str!("../shaders/stock/color_adjust.wgsl"),
-        format,
-    )
-}
+/// Manifest ID of the effect's shader.
+pub(crate) const NAME: &str = "color_adjust";
+/// Its compiled-in source; `assets/shaders/stock/color_adjust.wgsl` mirrors it.
+pub(crate) const WGSL: &str = include_str!("../shaders/stock/color_adjust.wgsl");

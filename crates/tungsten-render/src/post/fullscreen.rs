@@ -60,9 +60,7 @@ pub struct StockLayouts {
     pub params_bgl: wgpu::BindGroupLayout,
 }
 
-/// Build one stock effect pipeline. Each effect module calls this exactly once
-/// at renderer init. `wgsl_source` is `include_str!`'d; a matching file lives
-/// under `assets/shaders/stock/` so the manifest can hot-reload the body.
+/// Build one stock effect pipeline from WGSL source.
 #[must_use]
 pub fn build_pipeline(
     device: &wgpu::Device,
@@ -75,6 +73,22 @@ pub fn build_pipeline(
         label: Some(&format!("{label}_shader")),
         source: wgpu::ShaderSource::Wgsl(wgsl_source.into()),
     });
+    build_pipeline_with_module(device, layouts, label, &shader, target_format)
+}
+
+/// Build one stock effect pipeline from a validated module. The renderer
+/// seeds the shader cache with each effect's `include_str!` source and builds
+/// from the cached module; a matching file under `assets/shaders/stock/` lets
+/// the manifest hot-reload the body, which rebuilds the pipeline through here
+/// (`D-091`).
+#[must_use]
+pub fn build_pipeline_with_module(
+    device: &wgpu::Device,
+    layouts: &StockLayouts,
+    label: &str,
+    shader: &wgpu::ShaderModule,
+    target_format: wgpu::TextureFormat,
+) -> wgpu::RenderPipeline {
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some(&format!("{label}_layout")),
         bind_group_layouts: &[Some(&layouts.source_bgl), Some(&layouts.params_bgl)],
@@ -84,13 +98,13 @@ pub fn build_pipeline(
         label: Some(&format!("{label}_pipeline")),
         layout: Some(&pipeline_layout),
         vertex: wgpu::VertexState {
-            module: &shader,
+            module: shader,
             entry_point: Some("vs_main"),
             buffers: &[],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         },
         fragment: Some(wgpu::FragmentState {
-            module: &shader,
+            module: shader,
             entry_point: Some("fs_main"),
             targets: &[Some(wgpu::ColorTargetState {
                 format: target_format,

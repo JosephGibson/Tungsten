@@ -1,15 +1,4 @@
-use super::{StockPipeline, StockResources};
-
-pub(crate) fn build(
-    device: &wgpu::Device,
-    resources: &StockResources,
-    format: wgpu::TextureFormat,
-) -> StockPipeline {
-    StockPipeline::new(
-        device,
-        resources,
-        "lut",
-        include_str!("../shaders/stock/lut.wgsl"),
-        format,
-    )
-}
+/// Manifest ID of the effect's shader.
+pub(crate) const NAME: &str = "lut";
+/// Its compiled-in source; `assets/shaders/stock/lut.wgsl` mirrors it.
+pub(crate) const WGSL: &str = include_str!("../shaders/stock/lut.wgsl");

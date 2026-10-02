@@ -1,15 +1,4 @@
-use super::{StockPipeline, StockResources};
-
-pub(crate) fn build(
-    device: &wgpu::Device,
-    resources: &StockResources,
-    format: wgpu::TextureFormat,
-) -> StockPipeline {
-    StockPipeline::new(
-        device,
-        resources,
-        "wipe_radial",
-        include_str!("../shaders/stock/wipe_radial.wgsl"),
-        format,
-    )
-}
+/// Manifest ID of the effect's shader.
+pub(crate) const NAME: &str = "wipe_radial";
+/// Its compiled-in source; `assets/shaders/stock/wipe_radial.wgsl` mirrors it.
+pub(crate) const WGSL: &str = include_str!("../shaders/stock/wipe_radial.wgsl");

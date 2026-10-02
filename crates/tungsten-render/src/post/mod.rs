@@ -5,6 +5,7 @@
 //! ping-pong ladder described in the M26 plan's "Scene → Post → Present
 //! Target Flow" table.
 
+use tungsten_core::assets::ShaderAssetId;
 use tungsten_core::post::PostPass;
 use tungsten_core::tween::UniformOverrideBlock;
 
@@ -36,6 +37,54 @@ pub mod wipe_radial;
 
 use bloom::{BloomPipeline, BloomShaderIds};
 
+/// The stock effects in `PostPass` order: the manifest ID of each one's shader
+/// and its compiled-in source. `Renderer::new` seeds the shader cache from
+/// this table, and a reload finds an effect's pipeline by its ID (`D-091`).
+pub(crate) const STOCK_SHADERS: [(&str, &str); 17] = [
+    (tonemap::NAME, tonemap::WGSL),
+    (vignette::NAME, vignette::WGSL),
+    (lut::NAME, lut::WGSL),
+    (chromatic_aberration::NAME, chromatic_aberration::WGSL),
+    (color_adjust::NAME, color_adjust::WGSL),
+    (tone_mono::NAME, tone_mono::WGSL),
+    (crt::NAME, crt::WGSL),
+    (film_grain::NAME, film_grain::WGSL),
+    (dither::NAME, dither::WGSL),
+    (pixel_outline::NAME, pixel_outline::WGSL),
+    (fade::NAME, fade::WGSL),
+    (wipe_radial::NAME, wipe_radial::WGSL),
+    (dissolve::NAME, dissolve::WGSL),
+    (glitch::NAME, glitch::WGSL),
+    (pixelate::NAME, pixelate::WGSL),
+    (fog::NAME, fog::WGSL),
+    (god_rays::NAME, god_rays::WGSL),
+];
+
+/// Row of `STOCK_SHADERS` that draws `pass`. Bloom has none: it owns four
+/// stage shaders and records its own passes.
+fn stock_index(pass: &PostPass) -> Option<usize> {
+    Some(match pass {
+        PostPass::Tonemap(_) => 0,
+        PostPass::Vignette(_) => 1,
+        PostPass::Lut(_) => 2,
+        PostPass::ChromaticAberration(_) => 3,
+        PostPass::ColorAdjust(_) => 4,
+        PostPass::ToneMono(_) => 5,
+        PostPass::Crt(_) => 6,
+        PostPass::FilmGrain(_) => 7,
+        PostPass::Dither(_) => 8,
+        PostPass::PixelOutline(_) => 9,
+        PostPass::Fade(_) => 10,
+        PostPass::WipeRadial(_) => 11,
+        PostPass::Dissolve(_) => 12,
+        PostPass::Glitch(_) => 13,
+        PostPass::Pixelate(_) => 14,
+        PostPass::Fog(_) => 15,
+        PostPass::GodRays(_) => 16,
+        PostPass::Bloom(_) => return None,
+    })
+}
+
 /// Shared resources every stock effect samples against: layouts, a linear
 /// sampler for post passes, and a reusable source-bind-group factory.
 pub(crate) struct StockResources {
@@ -61,16 +110,13 @@ impl StockResources {
     }
 }
 
-/// One stock-effect pipeline + its params UBO + its params bind group. The
-/// source bind group is not here: the source view flips between `SceneColor`,
-/// `PostPing` and `PostPong` across the ping-pong ladder, and every effect
-/// shares the three that `PostStackRenderer` caches.
+/// One stock-effect pipeline. Its bind groups are not here. The source view
+/// flips between `SceneColor`, `PostPing` and `PostPong` across the ping-pong
+/// ladder, and every effect shares the three source groups that
+/// `PostStackRenderer` caches. The params belong to the post-stack slot, not
+/// to the effect (`ParamSlots`).
 pub(crate) struct StockPipeline {
     pub pipeline: wgpu::RenderPipeline,
-    pub params_ubo: wgpu::Buffer,
-    pub params_bg: wgpu::BindGroup,
-    /// Bytes last written to `params_ubo`.
-    params_written: Option<[u8; 256]>,
 }
 
 impl StockPipeline {
@@ -78,27 +124,87 @@ impl StockPipeline {
         device: &wgpu::Device,
         resources: &StockResources,
         label: &str,
-        wgsl: &str,
+        module: &wgpu::ShaderModule,
         format: wgpu::TextureFormat,
     ) -> Self {
-        let pipeline = fullscreen::build_pipeline(device, &resources.layouts, label, wgsl, format);
-        let params_ubo = fullscreen::build_params_ubo(device, label);
-        let params_bg =
-            fullscreen::build_params_bind_group(device, &resources.layouts, label, &params_ubo);
         Self {
-            pipeline,
-            params_ubo,
-            params_bg,
-            params_written: None,
+            pipeline: fullscreen::build_pipeline_with_module(
+                device,
+                &resources.layouts,
+                label,
+                module,
+                format,
+            ),
         }
     }
 
-    /// Uploads the effect's parameters unless the UBO already holds them.
-    fn write_params(&mut self, queue: &wgpu::Queue, payload: [u8; 256]) {
-        if self.params_written != Some(payload) {
-            queue.write_buffer(&self.params_ubo, 0, &payload);
-            self.params_written = Some(payload);
+    /// Hot-reload entry: swap in a pipeline built on a freshly validated
+    /// module. The old pipeline stays until the new one exists.
+    fn rebuild_with_module(
+        &mut self,
+        device: &wgpu::Device,
+        resources: &StockResources,
+        label: &str,
+        module: &wgpu::ShaderModule,
+        format: wgpu::TextureFormat,
+    ) {
+        *self = Self::new(device, resources, label, module, format);
+    }
+}
+
+/// Params UBO and bind group of one post-stack slot.
+pub(crate) struct StockParams {
+    ubo: wgpu::Buffer,
+    bind_group: wgpu::BindGroup,
+}
+
+/// One slot's GPU objects and the bytes its buffer holds.
+struct ParamSlot<T> {
+    objects: T,
+    written: Option<[u8; 256]>,
+}
+
+/// Params of the stock passes, one entry per post-stack slot (`D-090`).
+///
+/// Two passes of one effect sit in different slots, so each draws with a
+/// buffer of its own: a buffer per effect took both writes before the frame
+/// was submitted and gave both draws the second. Every stock effect shares
+/// the params layout, so an entry serves whichever effect its slot holds.
+/// Entries are built on first use and kept between frames; they hold no view
+/// of the scene targets. `T` is the GPU objects, generic so the rules are
+/// testable without a device.
+pub(crate) struct ParamSlots<T> {
+    slots: Vec<Option<ParamSlot<T>>>,
+}
+
+impl<T> Default for ParamSlots<T> {
+    fn default() -> Self {
+        Self { slots: Vec::new() }
+    }
+}
+
+impl<T> ParamSlots<T> {
+    /// The objects of `slot`, built by `build` on its first use, and whether
+    /// `payload` differs from the bytes its buffer holds. The slot records
+    /// `payload` as held, so the caller must write it when told to.
+    pub(crate) fn stage(
+        &mut self,
+        slot: usize,
+        payload: &[u8; 256],
+        build: impl FnOnce() -> T,
+    ) -> (&T, bool) {
+        if self.slots.len() <= slot {
+            self.slots.resize_with(slot + 1, || None);
         }
+        let entry = self.slots[slot].get_or_insert_with(|| ParamSlot {
+            objects: build(),
+            written: None,
+        });
+        let stale = entry.written.as_ref() != Some(payload);
+        if stale {
+            entry.written = Some(*payload);
+        }
+        (&entry.objects, stale)
     }
 }
 
@@ -115,61 +221,43 @@ fn source_slot(src: TargetId) -> usize {
 /// Owns one live pipeline per stock effect variant.
 pub struct PostStackRenderer {
     pub(crate) resources: StockResources,
-    pub(crate) tonemap: StockPipeline,
-    pub(crate) vignette: StockPipeline,
-    pub(crate) lut: StockPipeline,
-    pub(crate) chromatic_aberration: StockPipeline,
-    pub(crate) color_adjust: StockPipeline,
-    pub(crate) tone_mono: StockPipeline,
-    pub(crate) crt: StockPipeline,
-    pub(crate) film_grain: StockPipeline,
-    pub(crate) dither: StockPipeline,
-    pub(crate) pixel_outline: StockPipeline,
-    pub(crate) fade: StockPipeline,
-    pub(crate) wipe_radial: StockPipeline,
-    pub(crate) dissolve: StockPipeline,
-    pub(crate) glitch: StockPipeline,
-    pub(crate) pixelate: StockPipeline,
-    pub(crate) fog: StockPipeline,
-    pub(crate) god_rays: StockPipeline,
+    /// One pipeline per row of `STOCK_SHADERS`.
+    stock: [StockPipeline; 17],
     /// M28 bloom pipeline. Records its own multi-subpass slot at the encoder
     /// level instead of the per-slot single-render-pass path; see `D-060`.
     pub(crate) bloom: BloomPipeline,
     /// Source bind groups for `SceneColor`, `PostPing` and `PostPong`, shared
     /// by every stock effect and keyed on the pool generation.
     source_bind_groups: [TargetCache<u64, wgpu::BindGroup>; 3],
+    /// Params of the stock passes, per post-stack slot.
+    params: ParamSlots<StockParams>,
 }
 
 impl PostStackRenderer {
+    /// Build every pipeline from the shared `ShaderModuleCache`, which the
+    /// renderer pre-seeds with the compile-time `include_str!` WGSL.
+    /// `stock_shader_ids` are the cache IDs of the `STOCK_SHADERS` rows.
     #[must_use]
     pub fn new(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
         shader_cache: &ShaderModuleCache,
         bloom_shader_ids: BloomShaderIds,
+        stock_shader_ids: &[ShaderAssetId; 17],
     ) -> Self {
         let resources = StockResources::new(device);
+        let stock = std::array::from_fn(|index| {
+            let module = shader_cache
+                .get(stock_shader_ids[index])
+                .expect("stock post shader module must be pre-seeded");
+            StockPipeline::new(device, &resources, STOCK_SHADERS[index].0, module, format)
+        });
         Self {
-            tonemap: tonemap::build(device, &resources, format),
-            vignette: vignette::build(device, &resources, format),
-            lut: lut::build(device, &resources, format),
-            chromatic_aberration: chromatic_aberration::build(device, &resources, format),
-            color_adjust: color_adjust::build(device, &resources, format),
-            tone_mono: tone_mono::build(device, &resources, format),
-            crt: crt::build(device, &resources, format),
-            film_grain: film_grain::build(device, &resources, format),
-            dither: dither::build(device, &resources, format),
-            pixel_outline: pixel_outline::build(device, &resources, format),
-            fade: fade::build(device, &resources, format),
-            wipe_radial: wipe_radial::build(device, &resources, format),
-            dissolve: dissolve::build(device, &resources, format),
-            glitch: glitch::build(device, &resources, format),
-            pixelate: pixelate::build(device, &resources, format),
-            fog: fog::build(device, &resources, format),
-            god_rays: god_rays::build(device, &resources, format),
+            stock,
             bloom: BloomPipeline::new(device, format, shader_cache, bloom_shader_ids),
             resources,
             source_bind_groups: Default::default(),
+            params: ParamSlots::default(),
         }
     }
 
@@ -182,28 +270,26 @@ impl PostStackRenderer {
         self.bloom.release_target_views();
     }
 
-    fn pipeline_for(&mut self, pass: &PostPass) -> &mut StockPipeline {
-        match pass {
-            PostPass::Tonemap(_) => &mut self.tonemap,
-            PostPass::Vignette(_) => &mut self.vignette,
-            PostPass::Lut(_) => &mut self.lut,
-            PostPass::ChromaticAberration(_) => &mut self.chromatic_aberration,
-            PostPass::ColorAdjust(_) => &mut self.color_adjust,
-            PostPass::ToneMono(_) => &mut self.tone_mono,
-            PostPass::Crt(_) => &mut self.crt,
-            PostPass::FilmGrain(_) => &mut self.film_grain,
-            PostPass::Dither(_) => &mut self.dither,
-            PostPass::PixelOutline(_) => &mut self.pixel_outline,
-            PostPass::Fade(_) => &mut self.fade,
-            PostPass::WipeRadial(_) => &mut self.wipe_radial,
-            PostPass::Dissolve(_) => &mut self.dissolve,
-            PostPass::Glitch(_) => &mut self.glitch,
-            PostPass::Pixelate(_) => &mut self.pixelate,
-            PostPass::Fog(_) => &mut self.fog,
-            PostPass::GodRays(_) => &mut self.god_rays,
-            PostPass::Bloom(_) => {
-                unreachable!("PostPass::Bloom is recorded by record_bloom_slot, not record_pass")
-            }
+    fn pipeline_for(&self, pass: &PostPass) -> &StockPipeline {
+        let Some(index) = stock_index(pass) else {
+            unreachable!("PostPass::Bloom is recorded by record_bloom_slot, not record_pass")
+        };
+        &self.stock[index]
+    }
+
+    /// Hot-reload entry: when `name` is a stock effect's shader, rebuild that
+    /// effect's pipeline against a freshly validated module. Params buffers
+    /// and bind groups stay. The caller commits the module to the cache after
+    /// this returns.
+    pub(crate) fn rebuild_stock_with_module(
+        &mut self,
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+        name: &str,
+        module: &wgpu::ShaderModule,
+    ) {
+        if let Some(index) = STOCK_SHADERS.iter().position(|(stock, _)| *stock == name) {
+            self.stock[index].rebuild_with_module(device, &self.resources, name, module, format);
         }
     }
 
@@ -356,7 +442,9 @@ impl PostStackRenderer {
     /// Record one post-stack pass into an already-open `render_pass`. The
     /// caller has selected the correct dst view via `PassRecorder::begin`
     /// with the matching `PassDesc`; we upload params if they changed, bind
-    /// the cached source group, set pipeline, and draw.
+    /// the cached source group, set pipeline, and draw. `slot` is the pass's
+    /// index in the post stack: each slot keeps a params buffer of its own.
+    #[allow(clippy::too_many_arguments)]
     pub fn record_pass(
         &mut self,
         device: &wgpu::Device,
@@ -365,6 +453,7 @@ impl PostStackRenderer {
         pool: &RenderTargetPool,
         pass: &PostPass,
         src: TargetId,
+        slot: usize,
     ) {
         let payload = Self::pack(pass).to_bytes();
         let src_view = match src {
@@ -385,11 +474,21 @@ impl PostStackRenderer {
                 )
             })
             .clone();
-        let pipeline = self.pipeline_for(pass);
-        pipeline.write_params(queue, payload);
-        render_pass.set_pipeline(&pipeline.pipeline);
+        // The write is skipped when the slot's buffer already holds the bytes.
+        let (params, stale) = self.params.stage(slot, &payload, || {
+            let label = format!("post_slot{slot}");
+            let ubo = fullscreen::build_params_ubo(device, &label);
+            let bind_group =
+                fullscreen::build_params_bind_group(device, &resources.layouts, &label, &ubo);
+            StockParams { ubo, bind_group }
+        });
+        if stale {
+            queue.write_buffer(&params.ubo, 0, &payload);
+        }
+        let params_bg = params.bind_group.clone();
+        render_pass.set_pipeline(&self.pipeline_for(pass).pipeline);
         render_pass.set_bind_group(0, &source_bg, &[]);
-        render_pass.set_bind_group(1, &pipeline.params_bg, &[]);
+        render_pass.set_bind_group(1, &params_bg, &[]);
         render_pass.draw(0..3, 0..1);
     }
 

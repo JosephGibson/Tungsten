@@ -49,6 +49,13 @@ use winit::window::{Fullscreen, Window, WindowId};
 /// across runs regardless of build profile or host load.
 const SMOKE_MODE_FIXED_DT_SECS: f32 = 1.0 / 60.0;
 
+/// Longest per-frame dt (seconds) a frame hands to the simulation (`D-088`).
+/// A stall (debugger pause, window drag, a blocked acquire) would otherwise
+/// reach `physics_step` whole: one 0.2 s step throws a settled awake pile
+/// about, and a 2 s step drops bodies through the floor. One 0.1 s step
+/// leaves such a pile at about 40 px/s.
+const MAX_DT_SECS: f32 = 0.1;
+
 /// Tick system.
 pub type SystemFn = Box<dyn FnMut(&mut World)>;
 
@@ -89,6 +96,8 @@ pub struct App {
     exit_on_escape: bool,
     audio: Option<AudioSystem>,
     hot_reload: Option<HotReloadWatcher>,
+    /// Directories given to `enable_hot_reload`; `run` starts the watcher.
+    hot_reload_dirs: Option<Vec<PathBuf>>,
     manifest_path: Option<PathBuf>,
     // D-052: ordered manifest roots merged before user startup.
     manifest_roots: Vec<PathBuf>,
@@ -232,6 +241,7 @@ impl App {
             exit_on_escape: true,
             audio: None,
             hot_reload: None,
+            hot_reload_dirs: None,
             manifest_path: None,
             manifest_roots: Vec::new(),
             input_map_path,
@@ -345,21 +355,40 @@ impl App {
     }
 
     /// Watch asset roots; reload at frame boundary.
+    ///
+    /// The watcher starts in [`App::run`], so this and
+    /// [`App::set_manifest_roots`] may come in either order: an edit to any
+    /// root manifest reloads the merged graph (`D-089`). `manifest_path` is
+    /// the manifest reloaded by an app that declares no roots.
     pub fn enable_hot_reload(&mut self, assets_dirs: &[PathBuf], manifest_path: PathBuf) {
-        let extra_files = [self.input_map_path.clone()];
-        self.hot_reload = HotReloadWatcher::new(assets_dirs, &extra_files);
+        self.hot_reload_dirs = Some(assets_dirs.to_vec());
         self.manifest_path = Some(manifest_path);
     }
 
     /// Run until window close or explicit exit.
     pub fn run(mut self) -> anyhow::Result<()> {
         self.install_default_extracts();
+        self.start_hot_reload();
         let event_loop = EventLoop::new()?;
         event_loop.run_app(&mut self)?;
         if let Some(error) = self.fatal_error {
             return Err(error);
         }
         Ok(())
+    }
+
+    /// Start the watcher `enable_hot_reload` asked for: its directories, plus
+    /// the action map and every reload root as explicit files.
+    fn start_hot_reload(&mut self) {
+        let Some(dirs) = self.hot_reload_dirs.take() else {
+            return;
+        };
+        let mut extra_files = vec![self.input_map_path.clone()];
+        extra_files.extend(manifest_reload_roots(
+            &self.manifest_roots,
+            self.manifest_path.as_deref(),
+        ));
+        self.hot_reload = HotReloadWatcher::new(&dirs, &extra_files);
     }
 
     /// Install default extracts; idempotent.
@@ -397,6 +426,10 @@ impl App {
             return;
         };
 
+        let reload_roots =
+            manifest_reload_roots(&self.manifest_roots, self.manifest_path.as_deref());
+        let mut manifest_reloaded = false;
+
         for path in &ready {
             let canon = path.canonicalize().unwrap_or_else(|_| path.clone());
 
@@ -407,15 +440,18 @@ impl App {
                 continue;
             }
 
-            if let Some(mp) = &self.manifest_path {
-                let canon_mp = mp.canonicalize().unwrap_or_else(|_| mp.clone());
-                if canon == canon_mp {
-                    let mp = mp.clone();
-                    if let Err(e) = asset_loader::reload_manifest(&mp, &mut self.world, renderer) {
+            if is_reload_root(&canon, &reload_roots) {
+                // One reload rebuilds the merged graph, however many roots
+                // changed in this batch.
+                if !manifest_reloaded {
+                    manifest_reloaded = true;
+                    if let Err(e) =
+                        asset_loader::reload_manifest(&reload_roots, &mut self.world, renderer)
+                    {
                         log::error!("Manifest reload error: {e}");
                     }
-                    continue;
                 }
+                continue;
             }
 
             let ext = canon.extension().and_then(|e| e.to_str()).unwrap_or("");
@@ -681,18 +717,10 @@ impl App {
     fn stage_delta_time(&mut self) {
         let now = Instant::now();
         if let Some(last) = self.last_frame {
-            // Smoke mode (TUNGSTEN_SMOKE_FRAMES set) pins dt to 60 Hz so
-            // physics / particles / tweens / scene animation produce
-            // frame-accurate deterministic output. Wall-clock dt varies
-            // with CPU load and makes visual-regression captures drift
-            // between runs on the same binary. The capture path used by
-            // `visual_regression.rs` (smoke frames + capture frame env
-            // vars) is the canonical consumer.
-            let dt = if self.smoke_frames_remaining.is_some() {
-                SMOKE_MODE_FIXED_DT_SECS
-            } else {
-                now.duration_since(last).as_secs_f32()
-            };
+            let dt = frame_dt_secs(
+                now.duration_since(last),
+                self.smoke_frames_remaining.is_some(),
+            );
             if let Some(delta) = self.world.get_resource_mut::<DeltaTime>() {
                 delta.dt = dt;
             }
@@ -1022,6 +1050,42 @@ fn redraw_schedule(frame_budget: Option<Duration>, frame_start: Instant) -> Redr
 /// `None` on the first frame.
 fn frame_interval_ms(prev_frame_start: Option<Instant>, frame_start: Instant) -> Option<f32> {
     prev_frame_start.map(|prev| frame_start.duration_since(prev).as_secs_f64() as f32 * 1000.0)
+}
+
+/// The manifests whose edit reloads the manifest graph: the composition roots
+/// (`D-052`) when the app declared any, else the manifest given to
+/// `enable_hot_reload`.
+fn manifest_reload_roots(roots: &[PathBuf], manifest_path: Option<&Path>) -> Vec<PathBuf> {
+    if roots.is_empty() {
+        manifest_path.map(Path::to_path_buf).into_iter().collect()
+    } else {
+        roots.to_vec()
+    }
+}
+
+/// True when the canonical path `canon` names one of `reload_roots`.
+fn is_reload_root(canon: &Path, reload_roots: &[PathBuf]) -> bool {
+    reload_roots
+        .iter()
+        .any(|root| root.canonicalize().unwrap_or_else(|_| root.clone()) == canon)
+}
+
+/// Simulated seconds for a frame that starts `elapsed` after the previous
+/// one.
+///
+/// Smoke mode (`TUNGSTEN_SMOKE_FRAMES` set) pins dt to 60 Hz so physics,
+/// particles, tweens and scene animation produce frame-accurate deterministic
+/// output. Wall-clock dt varies with CPU load and makes visual-regression
+/// captures drift between runs on the same binary. The capture path used by
+/// `visual_regression.rs` (smoke frames + capture frame env vars) is the
+/// canonical consumer. A normal frame gets the elapsed time, capped at
+/// [`MAX_DT_SECS`].
+fn frame_dt_secs(elapsed: Duration, smoke: bool) -> f32 {
+    if smoke {
+        SMOKE_MODE_FIXED_DT_SECS
+    } else {
+        elapsed.as_secs_f32().min(MAX_DT_SECS)
+    }
 }
 
 #[inline(always)]

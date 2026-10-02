@@ -1,6 +1,6 @@
 # Decision Index
 
-One-line takeaways for every decision heading in [`DECISIONS.md`](../DECISIONS.md). `crates/tungsten-core/tests/decision_index.rs` fails if a heading is missing here or an unknown ID appears, so a new decision adds its row in the same change. For detail, grep the one entry: `rg -n -A 12 '^## D-0NN' DECISIONS.md`.
+One-line takeaways for every decision heading in [`DECISIONS.md`](../DECISIONS.md). `crates/tungsten-core/tests/decision_index.rs` fails if a heading is missing here or an unknown ID appears, so a new decision adds its row in the same change. Find a heading with `rg -n '^## D-NNN\b' DECISIONS.md`, then read that section through the next decision heading. Historical plan paths may now live under `docs/plans/archive/` with the same basename; agents never open the archive.
 
 ## Foundations
 
@@ -26,7 +26,7 @@ One-line takeaways for every decision heading in [`DECISIONS.md`](../DECISIONS.m
 | `D-013` | Shared assets live under workspace `assets/`; examples can have local `examples/NN_name/assets/`. |
 | `D-014` | Asset registry is a `World` resource, not a global singleton. |
 | `D-016` | Core owns opaque asset handles only; no `wgpu` types in `tungsten-core`. |
-| `D-017` | Multiple manifests compose by extension only; duplicate IDs are fatal. |
+| `D-017` | Multiple manifests compose by extension only; duplicate IDs are fatal. Amended by `D-089`: references are checked on the merged set. |
 | `D-018` | Extract plain render data before drawing; renderer should not need long-lived mutable `World` access. |
 | `D-023` | WGSL shaders are embedded with `include_str!`; shader edits require rebuilds. Narrowed by `D-057`: shader bodies now hot-reload; signature changes still rebuild. |
 | `D-026` | Text rendering uses `glyphon` / `cosmic-text`. |
@@ -35,17 +35,20 @@ One-line takeaways for every decision heading in [`DECISIONS.md`](../DECISIONS.m
 | `D-048` | M22 atlases: deterministic shelf packer in core, per-filter pages, 1 px padding + half-texel inset, renderer-minted handles, rebuild on growth (hot-reload adds via `rebuild_atlas_for_filter`). |
 | `D-054` | M24 easings are a closed `enum` with pure `apply(t)`; no trait object or dependency. |
 | `D-055` | M24: one `Tween` per entity with `Vec<TweenChannel>` sharing easing/duration; extra tweens in a scene entry log `ERROR`, first wins. |
-| `D-052` | The umbrella owns asset composition: `App::set_manifest_roots` + `load_all_merged` merge manifests once into a `LoadedManifest` resource; don't compose with per-type loaders. |
-| `D-053` | Hot-reload support matrix lives in `DESIGN.md §Hot Reload — M9`: sprites/animations/fonts/tilemaps/particles reload (removal warns); sounds are session-static. |
-| `D-057` | M25 shaders are manifest-tracked `.wgsl` (`ShaderRegistry` + `ShaderModuleCache`); body edits hot-reload after Naga validation, signature changes rebuild; `SceneColor` matches swapchain sRGB; MSAA changes relaunch. Narrows `D-023`. |
-| `D-058` | M26 manifest `materials` (shader ID + 256-byte defaults), closed-enum `PostPass` on a reorderable `PostStack` (empty = byte-identical), `UniformOverrideBlock` + `TweenChannel::Uniform*`. Narrows `D-023`, `D-055`. |
+| `D-052` | The umbrella owns asset composition: `App::set_manifest_roots` + `load_all_merged` merge manifests once into a `LoadedManifest` resource; don't compose with per-type loaders. Validation after the merge and merged reload amended by `D-089`. |
+| `D-053` | Hot-reload support matrix lives in `DESIGN.md §Hot Reload — M9`: sprites/animations/fonts/tilemaps/particles reload (removal warns); sounds are session-static. Amended by `D-089`: a manifest reload rebuilds every root. |
+| `D-057` | M25 shaders are manifest-tracked `.wgsl` (`ShaderRegistry` + `ShaderModuleCache`); body edits hot-reload after Naga validation, signature changes rebuild; `SceneColor` matches swapchain sRGB; MSAA changes relaunch. Narrows `D-023`. Amended by `D-091`: stock post shaders are seeded and rebuild too. |
+| `D-058` | M26 manifest `materials` (shader ID + 256-byte defaults), closed-enum `PostPass` on a reorderable `PostStack` (empty = byte-identical), `UniformOverrideBlock` + `TweenChannel::Uniform*`. Narrows `D-023`, `D-055`. Amended by `D-090` (stock params per slot) and `D-091` (stock pipelines reload). |
 | `D-059` | M27 SMAA 1x tail between `PostStack` and text: `render.post_aa` presets, `include_bytes!` LUTs (not manifest-tracked), manifest-tracked stage shaders, runtime switch at a frame boundary; `Off` is byte-identical. Tail amended by `D-087`: `PresentSource` and the present blit on capture frames only. |
 | `D-060` | M28 bloom is the 18th `PostPass`: `Rgba16Float` pyramid on `SceneTarget` (`bloom_max_mips` 1..=8, startup-only), encoder-level passes, manifest-tracked stages; `SceneColor` stays sRGB. |
 | `D-061` | M29 forward lighting: core `Light`/`LightKind`/`AmbientLight`, `LitSpritePipeline` with a 544-byte `LightUbo` (`LIGHT_CAP = 16`), normal/emissive sibling atlases, per-frame culled `extract_lights`; lit wins over material. |
-| `D-073` | M30 game feel: parallax is a CPU position remap at extract (`ParallaxLayer.scroll_factor`), not per-`depth_bucket` camera matrices — `crates/tungsten-render/` unchanged and `z_order` stays the only ordering authority; camera shake is a trauma envelope over the existing sine carrier (`shake_trauma`/`shake_decay`/`shake_max_offset`, inert at zero); squash/stretch is its own component pair driven by `game_feel.rs`, not a `Tween`. Narrows `D-018`, `D-042`, `D-055`. |
-| `D-085` | Render path: the text pipeline keeps about three frames of layouts, recycles buffers and skips unchanged frames; bloom, stock-effect, SMAA and blit GPU objects are built once per `RenderTargetPool::generation`, and uniform writes that repeat the buffer's bytes are skipped. Pixels unchanged. Records one placement reading (`ecs` `brain`), the present-pass clear that was not adopted and the extract rewrite it left out (merged by `D-086`). |
-| `D-086` | Default extract and tilemap extract: one pass into buffers the app keeps between frames (`ExtractScratch`), a sort of 16-byte keys that is skipped in painter order, a small asset cache, tileset entries resolved once per map. Same batches and pixels. Merges the rewrite `D-085` left out; the owner accepts `particles` `animate_sprites` p95 `regressed` (as in `D-084`), a peak-RSS rise of 2–5 MiB in `particles` and `integrated`, and both rows running below their calibration bands. |
-| `D-087` | The last full-screen stage (SMAA's neighborhood pass, else the last post pass or bloom's composite, else the scene pass or its MSAA resolve) renders into the swapchain and text draws there; that first write clears, so wgpu adds no clear pass. The present blit and `PresentSource` are used only on capture frames, whose screenshots do not change. `gpu` no longer owns `gpu.present`. Amends `D-059`'s tail. The owner accepts `gpu` `smaa_neighborhood` p50 and `particles` `unattributed` p95 `regressed`. |
+| `D-073` | M30: parallax remaps CPU positions during extract; `z_order` alone controls ordering. Shake adds a trauma envelope to the sine carrier; squash/stretch uses dedicated components, separate from `Tween`. Narrows `D-018`, `D-042`, `D-055`. |
+| `D-085` | Bounded, reusable text layouts skip unchanged frames; post-chain GPU objects cache by target generation and repeated uniform writes are skipped. Pixels unchanged. Records accepted placement readings; extract rewrite follows in `D-086`. Stock-effect uniform writes amended by `D-090`. |
+| `D-086` | Default/tilemap extract reuse buffers, compact sort keys and asset/tileset caches, preserving batches and pixels. Records accepted animation p95 regression, bounded RSS growth and below-band workloads; details in the decision and benchmark docs. |
+| `D-087` | The last full-screen stage clears and writes the swapchain; text draws afterward. Present blit/`PresentSource` remain for capture frames. Removes normal-frame `gpu.present` ownership and records accepted SMAA/particle readings. Amends `D-059`. |
+| `D-089` | Manifest roots: material → shader references validate once on the merged graph, so they may cross roots; a manifest reload rebuilds the merged graph of every root, every root manifest is watched, and `App::run` builds the watcher. Amends `D-017`, `D-052`, `D-053`. |
+| `D-090` | Stock post-effect params (UBO, bind group, held bytes) belong to the post-stack slot, so two passes of one effect keep parameters of their own. Pixels of existing stacks unchanged. Amends `D-058`, `D-085`. |
+| `D-091` | The 17 stock post pipelines build from the seeded shader cache (render-side IDs 11–27) and rebuild on a body edit through the shared `apply_shader_module` path. Amends `D-057`, `D-058`. |
 
 ## Dependencies / Tooling
 
@@ -81,7 +84,7 @@ One-line takeaways for every decision heading in [`DECISIONS.md`](../DECISIONS.m
 | `D-024` | Phase 1 close-out observations were recorded to guide Phase 2. |
 | `D-029` | Audio mixer stays hand-rolled; no `kira`. |
 | `D-030` | The M12 ECS rewrite required an explicit go/no-go decision. |
-| `D-033` | Physics is hand-rolled in `tungsten-core`; `Position` stays separate from gameplay render components. |
+| `D-033` | Physics is hand-rolled in `tungsten-core`; `Position` stays separate from gameplay render components. Variable-dt limit amended by `D-088`. |
 | `D-035` | Manifest merge order is call-site order, usually shared manifest first then example-local. |
 | `D-036` | Archetypal ECS rewrite is intentional and benchmark-validated. Its storage description is amended by `D-083`. |
 | `D-039` | `CommandBuffer` is a world resource with post-system flush; deferred structural changes are visible to extract/render in the same frame and to systems on the next frame. Command storage and the fresh buffer per frame are amended by `D-084`. |
@@ -96,8 +99,8 @@ One-line takeaways for every decision heading in [`DECISIONS.md`](../DECISIONS.m
 | `D-051` | M23 uses one ECS entity per live particle (no pool); despawns route through the standard `CommandBuffer` flush, and `max_alive` + global `ParticleBudget` bound the archetype. |
 | `D-056` | M24 `TweenComplete` routes through `EventQueue<TweenComplete>` and terminal `Tween` removal routes through `CommandBuffer::remove_component`; a `pending_remove` latch prevents re-fire between tick and frame-end flush. |
 | `D-062` | Physics broadphase: flat prefix-sum spatial hash reused across substeps under a drift budget, with AABB prefilter; supersedes `D-033`'s per-substep rebuild. Staging, drift budget and prefilter superseded by `D-075`; the hashed table is the fall-back layout since `D-080`. |
-| `D-063` | Per-substep map rebuild superseded by `D-076`. Physics solver: warm-started soft step (Box2D v3 style) with clamped accumulated impulses, soft bias and one relax pass; bodies rest at ~slop. |
-| `D-064` | Physics CCD: speculative contacts close tunneling up to 15,360 px/s; fixed 4 substeps; seam normals clamped by `face_mask`; events only at positive penetration. Supersedes that clause of `D-033`. |
+| `D-063` | Per-substep map rebuild superseded by `D-076`. Physics solver: warm-started soft step (Box2D v3 style) with clamped accumulated impulses, soft bias and one relax pass; bodies rest at ~slop. Substep order amended by `D-092`. |
+| `D-064` | Physics CCD: speculative contacts close tunneling up to 15,360 px/s; fixed 4 substeps; seam normals clamped by `face_mask`; events only at positive penetration. Supersedes that clause of `D-033`. Amended by `D-092`: solver-injected velocity is checked against every neighbour. |
 | `D-065` | Physics island sleeping via deterministic union-find; sleepers are bit-frozen, wake on contact/external write/despawn/`physics::wake`, and emit no collision events. The keyed sleep map and its per-frame rebuild are amended by `D-082`. |
 | `D-066` | Physics SoA staging: gather and write back once per frame through `query2_opt2`; substeps touch only dense arrays; events drain once per frame. Event-order clause superseded by `D-075`. |
 | `D-067` | Physics step stays serial: a colour-parallel solver was deterministic but gained ~2.5% and cost the serial path ~18%, so it was dropped. Threading policy unchanged. |
@@ -108,6 +111,8 @@ One-line takeaways for every decision heading in [`DECISIONS.md`](../DECISIONS.m
 | `D-082` | Physics sleep state sits in arrays parallel to the proxies and is rebuilt by entity key only when the body sequence changes. Amends the keyed map and per-frame rebuild of `D-065`; wake paths and digests are unchanged. |
 | `D-083` | ECS column storage: columns in a `Vec` ordered like the archetype's sorted type key and created with it; rows move between columns unboxed (`move_row_to`, `swap_remove_drop`), downcasts through trait upcasting. Structural changes and query setup find a column by an out-of-line key scan; `World::get` and the flush's run writes use a per-archetype slot table. Iteration order and digests are unchanged. Amends the storage description of `D-036`. Records the accepted `noisy` reading of `ecs` `update` p50 and what many archetypes cost. |
 | `D-084` | Command buffer: one typed value queue per inserted component type and plain-data commands (no box per command), function-pointer removals, `World::flush_reusing` for a buffer the app keeps across frames, and consecutive inserts on one entity applied as one archetype move. Flush results equal one-by-one application. Amends `D-039`. Records the accepted `particles` `animate_sprites` p95 regression. |
+| `D-088` | Frame dt is elapsed time capped at 0.1 s (`MAX_DT_SECS`); smoke runs keep 1/60 s. Still variable dt across fixed substeps; a fixed-step accumulator is left to the 1.0 criteria plan. Amends `D-033`. |
+| `D-092` | Physics arrival pass: after position integration, a body whose velocity the solve changed by more than `2·linear_slop` of travel is paired with every neighbour it reaches, clamped (pushers first, walls last; a pressed chain as one body) and moved again, so a pushed body stops at a gate. Amends `D-063`, `D-064`. The determinism hash and three benchmark digests changed. Records the accepted `physics` and `physics-sparse` `physics_step` regression and two residual cases. |
 
 ## When To Open a Decision
 

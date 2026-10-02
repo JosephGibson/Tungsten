@@ -220,9 +220,18 @@ pub struct ResolvedMaterial {
 }
 
 impl ResolvedManifest {
-    /// Load manifest and resolve paths relative to its parent.
+    /// Load one manifest, resolve paths relative to its parent and check that
+    /// every material's shader is declared in the same file. Roots that refer
+    /// to each other load through [`Self::load_and_merge_many`].
     pub fn load(manifest_path: impl AsRef<Path>) -> Result<Self, ManifestError> {
-        let manifest_path = manifest_path.as_ref();
+        let result = Self::load_unvalidated(manifest_path.as_ref())?;
+        result.validate_cross_refs()?;
+        Ok(result)
+    }
+
+    /// Parse one manifest and resolve its paths, leaving references between
+    /// entries unchecked.
+    fn load_unvalidated(manifest_path: &Path) -> Result<Self, ManifestError> {
         let contents = std::fs::read_to_string(manifest_path).map_err(|e| ManifestError::Io {
             path: manifest_path.display().to_string(),
             source: e,
@@ -371,18 +380,12 @@ impl ResolvedManifest {
                 .insert(id, ResolvedShader { path: full_path });
         }
 
-        // Materials are cross-ref-validated against the local shader set;
-        // merged manifests re-validate on merge so cross-file references work.
+        // The material -> shader reference is checked by the caller, on this
+        // file alone (`load`) or on the merged graph (`load_and_merge_many`).
         let source_manifest = manifest_path
             .canonicalize()
             .unwrap_or_else(|_| manifest_path.to_path_buf());
         for (id, entry) in raw.materials {
-            if !result.shaders.contains_key(&entry.shader) {
-                return Err(ManifestError::MaterialShaderMissing {
-                    id,
-                    shader: entry.shader,
-                });
-            }
             result.materials.insert(
                 id,
                 ResolvedMaterial {
@@ -397,19 +400,52 @@ impl ResolvedManifest {
     }
 
     /// Load ordered roots into one graph; duplicate IDs are fatal (D-017).
+    /// References between entries are checked once, on the merged graph, so a
+    /// material may name a shader that another root declares, whatever the
+    /// order of the roots (D-089).
     pub fn load_and_merge_many(
         roots: &[impl AsRef<Path>],
     ) -> Result<ResolvedManifest, ManifestError> {
         let mut merged = ResolvedManifest::default();
         for root in roots {
-            let next = ResolvedManifest::load(root)?;
-            merged.merge(next)?;
+            let next = ResolvedManifest::load_unvalidated(root.as_ref())?;
+            merged.merge_entries(next, false)?;
         }
+        merged.validate_cross_refs()?;
         Ok(merged)
     }
 
-    /// Merge another manifest; duplicate IDs are fatal (D-017).
+    /// Every material's shader must be declared in this graph. Of several
+    /// materials without one, the smallest ID is reported, so the error does
+    /// not depend on map order.
+    fn validate_cross_refs(&self) -> Result<(), ManifestError> {
+        let missing = self
+            .materials
+            .iter()
+            .filter(|(_, material)| !self.shaders.contains_key(&material.shader))
+            .min_by(|a, b| a.0.cmp(b.0));
+        match missing {
+            Some((id, material)) => Err(ManifestError::MaterialShaderMissing {
+                id: id.clone(),
+                shader: material.shader.clone(),
+            }),
+            None => Ok(()),
+        }
+    }
+
+    /// Merge another manifest; duplicate IDs are fatal (D-017). A merged
+    /// material's shader must already be in the graph or arrive with it.
     pub fn merge(&mut self, other: ResolvedManifest) -> Result<(), ManifestError> {
+        self.merge_entries(other, true)
+    }
+
+    /// `merge`, with the material -> shader check optional: a caller that
+    /// merges several roots checks it once at the end instead.
+    fn merge_entries(
+        &mut self,
+        other: ResolvedManifest,
+        check_material_shaders: bool,
+    ) -> Result<(), ManifestError> {
         for (id, sprite) in other.sprites {
             if self.sprites.contains_key(&id) {
                 return Err(ManifestError::DuplicateId { id });
@@ -458,7 +494,7 @@ impl ResolvedManifest {
             }
             // Re-validate cross-ref: when a material merges in from a sibling
             // manifest, the shader may live in the merged graph we just built.
-            if !self.shaders.contains_key(&material.shader) {
+            if check_material_shaders && !self.shaders.contains_key(&material.shader) {
                 return Err(ManifestError::MaterialShaderMissing {
                     id,
                     shader: material.shader,
