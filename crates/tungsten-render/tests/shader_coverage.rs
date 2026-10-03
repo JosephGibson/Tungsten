@@ -1,6 +1,7 @@
 //! Workspace-wide WGSL coverage: every shader under the render crate's
-//! sources and `assets/shaders/` passes Naga validation, and every compiled-in
-//! shader with a manifest-tracked mirror matches it byte for byte (`D-057`).
+//! sources, `assets/shaders/` and each example's `assets/shaders/` passes Naga
+//! validation, and every compiled-in shader with a manifest-tracked mirror
+//! matches it byte for byte (`D-057`).
 //!
 //! Naga success is not GPU or pixel correctness; the smoke and visual checks
 //! cover that.
@@ -13,6 +14,8 @@ use tungsten_render::validate_wgsl_source;
 
 const RENDER_SRC: &str = "crates/tungsten-render/src";
 const ASSET_SHADERS: &str = "assets/shaders";
+/// Example-local shaders live in `examples/<name>/assets/shaders`, when present.
+const EXAMPLES: &str = "examples";
 
 /// `(under RENDER_SRC, under ASSET_SHADERS)` subtrees or files kept byte-equal.
 const MIRRORS: &[(&str, &str)] = &[("shaders/stock", "stock"), ("sprite.wgsl", "sprite.wgsl")];
@@ -60,6 +63,14 @@ fn check(repo: &Path) -> Result<Inventory, Vec<String>> {
         wgsl_under(repo, &repo.join(tree), &mut files);
         if files.len() == before {
             errors.push(format!("no .wgsl files found under {tree}"));
+        }
+    }
+    if let Ok(entries) = fs::read_dir(repo.join(EXAMPLES)) {
+        for entry in entries {
+            let shaders = entry.expect("read dir entry").path().join(ASSET_SHADERS);
+            if shaders.is_dir() {
+                wgsl_under(repo, &shaders, &mut files);
+            }
         }
     }
     files.sort();
@@ -186,6 +197,17 @@ fn checker_rejects_malformed_wgsl() {
     let mut files = baseline();
     files.push(("assets/shaders/broken.wgsl", "fn broken( {"));
     expect_error("malformed", &files, "broken.wgsl");
+}
+
+#[test]
+fn checker_validates_example_shaders() {
+    let mut files = baseline();
+    files.push(("examples/demo/assets/shaders/broken.wgsl", "fn broken( {"));
+    expect_error(
+        "example",
+        &files,
+        "examples/demo/assets/shaders/broken.wgsl",
+    );
 }
 
 #[test]

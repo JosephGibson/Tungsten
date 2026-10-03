@@ -14,6 +14,7 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - **Faster debug physics for the gate** (`D-096`, 0.40 QA step 3): dev and test builds compile `tungsten-core` at opt-level 1 (`[profile.dev.package.tungsten-core]` in the workspace `Cargo.toml`), which takes the platformer's `authored_routes_and_recovery_shelves_traverse_with_real_physics` from 81.0 s to 8.9 s and a warm `just check` from 89.7 s to 11.1 s with the same 928 tests passing. Release, bench and perf-runner builds are unchanged: no hash, digest or reference image moved.
+- **Shader test coverage** (0.40 QA step 5): `crates/tungsten-render/tests/shader_coverage.rs` also Naga-validates each example's `assets/shaders/` (70 paths, 39 distinct contents and 31 mirror pairs, up from 68 and 37), which puts `examples/02_bench/assets/shaders/bench_heavy.wgsl` under a test for the first time. The ten tests it already covered are gone: the bloom and SMAA per-shader Naga and mirror tests in `crates/tungsten-render/src/tests/{bloom,smaa}.rs` and the platformer's `soft_glow_shader_passes_naga_validation`. Tests only: no hash, digest or image moved.
 
 ### Removed
 
