@@ -19,6 +19,7 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Removed
 
 - **Physics probe tests** (0.40 QA step 4): `crates/tungsten-core/tests/physics_timing.rs` (two debug-build timing probes that asserted nothing) and `substep_probe.rs` (two ignored dense-pile diagnostics of a finished plan) are gone; the `physics` and `integrated` benchmark rows, `benches/physics_bench.rs`, `physics_containment.rs` and the sleep tests in `src/tests/physics/step.rs` cover what they printed. `physics_determinism.rs` and `physics_containment.rs` now share `spawn_pile` and a `spawn_static_box` that takes the wall thickness from `tests/common/mod.rs`. Tests only: both physics hashes and the digests are unchanged.
+- **Unused dependencies** (0.40 QA step 6): `image` from `tungsten-core`, `wgpu` from `tungsten`, `tungsten-core` and `tungsten-render` from `example-02-bench` (its pixel test imports `tungsten::render::compare_png`) and `tungsten-core` from `example-04-shader-playground` (which reaches it as `tungsten::core`); `Cargo.lock` loses only those edges. No behavior change: both physics hashes and the reference image are unchanged. Symbol hashes change with the dependency set, so the step 29 suite judges code placement.
 
 ### Fixed
 

@@ -28,6 +28,12 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use glam::Vec2;
+use tungsten::core::config::PostAaMode;
+use tungsten::core::post::{
+    BloomParams, ColorAdjustParams, CrtParams, DissolveParams, DitherParams, FadeParams,
+    FilmGrainParams, FogParams, GodRaysParams, LutParams, PixelOutlineParams, PostPass, PostStack,
+    ToneMonoParams, TonemapParams, VignetteParams, WipeRadialParams,
+};
 use tungsten::core::{
     ActionMap, BlendMode, CameraController, CameraMode, CommandBuffer, Config, Curve, DeltaTime,
     Easing, EmissionKind, Entity, EventQueue, InitialVelocity, InputState, ParallaxLayer,
@@ -39,12 +45,6 @@ use tungsten::particles::spawn_particle_via;
 use tungsten::{
     App, PostAaState, camera_update_system, render::TextSection, request_post_aa,
     shake_tick_system, squash_stretch_tick_system, squash_stretch_trigger_system,
-};
-use tungsten_core::config::PostAaMode;
-use tungsten_core::post::{
-    BloomParams, ColorAdjustParams, CrtParams, DissolveParams, DitherParams, FadeParams,
-    FilmGrainParams, FogParams, GodRaysParams, LutParams, PixelOutlineParams, PostPass, PostStack,
-    ToneMonoParams, TonemapParams, VignetteParams, WipeRadialParams,
 };
 
 const ROOT_MANIFEST: &str = "assets/manifest.json";
@@ -1149,7 +1149,7 @@ const EFFECT_ROSTER: &[fn() -> PostPass] = &[
             ..DissolveParams::default()
         })
     },
-    || PostPass::Glitch(tungsten_core::post::GlitchParams::default()),
+    || PostPass::Glitch(tungsten::core::post::GlitchParams::default()),
     || PostPass::Pixelate(4.0),
     || PostPass::Fog(FogParams::default()),
     || PostPass::GodRays(GodRaysParams::default()),
@@ -1190,7 +1190,7 @@ fn push_fades(stack: &mut PostStack, first: [f32; 4], second: [f32; 4]) {
 
 fn push_glitch_boss(stack: &mut PostStack) {
     stack.push(PostPass::Glitch(
-        tungsten_core::post::GlitchParams::default(),
+        tungsten::core::post::GlitchParams::default(),
     ));
     stack.push(PostPass::ChromaticAberration(2.0));
     stack.push(PostPass::Dither(DitherParams::default()));

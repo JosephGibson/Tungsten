@@ -809,8 +809,6 @@ dependencies = [
  "log",
  "serde_json",
  "tungsten",
- "tungsten-core",
- "tungsten-render",
 ]
 
 [[package]]
@@ -831,7 +829,6 @@ dependencies = [
  "env_logger",
  "glam",
  "tungsten",
- "tungsten-core",
 ]
 
 [[package]]
@@ -2973,7 +2970,6 @@ dependencies = [
  "rtrb",
  "tungsten-core",
  "tungsten-render",
- "wgpu",
  "winit",
 ]
 
@@ -2985,7 +2981,6 @@ dependencies = [
  "bytemuck",
  "criterion",
  "glam",
- "image",
  "log",
  "serde",
  "serde_json",

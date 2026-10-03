@@ -54,7 +54,7 @@ five knob variants of the preset twice, once through the capture path and
 once with `TUNGSTEN_CAPTURE_DIRECT=1`, and asserts that the two images are
 equal with `tolerance = 0`.
 
-The comparison uses `tungsten_render::compare_png` with `tolerance = 2`
+The comparison uses `tungsten::render::compare_png` with `tolerance = 2`
 (per-channel delta) and asserts `pixels_above_tolerance == 0`. If the Linux
 Vulkan path jitters at that floor in a future driver update, see `D-047` for
 the agreed fallback (`pixels_above_tolerance < 16`).
