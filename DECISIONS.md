@@ -1109,3 +1109,14 @@ The bound belongs to the step, not to the app loop: `physics_step` is public and
 - A scan reads `/proc/<pid>/stat` for every process, 4.2 ms for 344 processes on the reference machine, once a second in the runner's process beside the benchmark.
 - Captures from before this decision have no `background` record and no notes; compare treats them as clean, so existing baselines stay usable.
 - Tests in `scripts/test-bench.py` (`just perf-test`): `BackgroundLoad` covers the own-tree rule, `/proc` parsing, the scan schedule, and clean, encoder, tree-changed and allowed captures, through `capture_to` with an injected process lister, tree reader and stand-in binary; digest-equal and digest-different compares for captures and suites; `run --compare` on a suite baseline.
+
+## D-096 — Dev builds compile `tungsten-core` at opt-level 1
+**Date:** 2026-10-03
+**Decision:** The dev profile, and the test profile that inherits it, builds `tungsten-core` at `opt-level = 1` through `[profile.dev.package.tungsten-core]` in the workspace `Cargo.toml`. The other project crates stay at opt-level 0 and external dependencies at 2. The release and bench profiles and the perf runner's flags are unchanged.
+
+**Why:** `just check` waited on one test. `example-01-platformer`'s `authored_routes_and_recovery_shelves_traverse_with_real_physics` rebuilds the 184×50 map world for every attempt and steps physics in an opt-level-0 `tungsten-core`: 81.0 s of an 89.7 s `just check` on the reference machine (0.40 QA step 0). At opt-level 1 the test takes 8.9 s with the same result, and a warm `just check` takes 11.1 s with the same 928 tests passing (0.40 QA step 3). Rebuilding core and its dependents after `cargo clean -p tungsten-core` went from 5.0 s to 6.8 s in the audit's scratch measurement. Optimization keeps IEEE float semantics, since rustc emits no fast-math or contraction flags at any opt-level, and `debug_assertions` and overflow checks stay on in dev.
+
+**Consequences:**
+- Amends `D-041`'s dev-profile clause ("project crates remain at opt-level 0"): `tungsten-core` is the exception. The index row records the amendment; the rest of `D-041` stands.
+- A debugger in a dev build steps optimized `tungsten-core` code, where locals can read as optimized out. A debugging session can pass `--config profile.dev.package.tungsten-core.opt-level=0`.
+- Release builds, perf captures, the determinism and pinned containment hashes and the benchmark digests are unaffected. `just visual` and `just smoke` build the dev profile and pass unchanged.

@@ -65,7 +65,7 @@ One-line takeaways for every decision heading in [`DECISIONS.md`](../DECISIONS.m
 | `D-034` | Audio command channel uses `rtrb` SPSC ring buffer. |
 | `D-037` | `criterion` is used for render-side micro-benchmarks. |
 | `D-038` | Frame timing uses inline `Instant` instrumentation in `app.rs`; no extra profiling crate for core telemetry. |
-| `D-041` | Release/profile tuning is part of the current baseline; perf comparisons should assume those settings. |
+| `D-041` | Release/profile tuning is part of the current baseline; perf comparisons should assume those settings. Dev-profile clause amended by `D-096`: `tungsten-core` builds at opt-level 1. |
 | `D-068` | `AGENTS.md` is the one instruction body (`CLAUDE.md` imports it); scoped render rules, on-demand index, skills shared via `.agents/skills` symlinks, budgets checked by `just ctx`. |
 | `D-069` | Rust 1.98.1 pinned and declared as `rust-version`; edition 2024 / resolver 3; `just check` (strict clippy) and `cargo-deny` are the shared gates. |
 | `D-070` | CPU-only CI reports on PRs/pushes without blocking; GPU/audio/perf stay local. Narrows `D-002`; release builds in `D-071`. |
@@ -76,6 +76,7 @@ One-line takeaways for every decision heading in [`DECISIONS.md`](../DECISIONS.m
 | `D-077` | Symphonia's `pcm` codec is enabled, so PCM WAV decodes (the platformer's synthesized sound effects); extends `D-028`. |
 | `D-078` | Benchmark suite v2: six seeded, scalable benchmarks in `example-02-bench` (environment-variable knobs), each owning one bottleneck with validity guards and digests; a stdlib Python runner (`just perf`) with telemetry-only captures, `--repeat 5`, per-run Welch verdicts (jitter takes p99's τ), suites (`--preset` replaces only `default` rows), informational capacity search and peak RSS via `wait4`. Replaces `perf-capture.sh`; holds the April 2026 pacing matrix; narrows `D-044`. Validity list amended by `D-095`: background load invalidates a run. |
 | `D-095` | Perf runner: a measured run that overlaps `nxcodec.bin`, a `cargo`/`rustc` outside the runner's process tree or a tree edit (commit or dirty hash changed after it) is invalid unless `--allow-background` makes it a note; the record is soft provenance. Compare reports whether first-run digests match (information only), suite compare lists the rows that differ, and `run --compare` takes a suite's row. Amends `D-078`. |
+| `D-096` | Dev and test builds compile `tungsten-core` at opt-level 1 (`[profile.dev.package.tungsten-core]`): the platformer's route test went from 81 s to 9 s and `just check` from 90 s to 11 s; release, bench and perf-runner builds are unchanged. Amends `D-041`. |
 
 ## ECS / Runtime Flow
 
