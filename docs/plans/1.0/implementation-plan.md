@@ -17,7 +17,7 @@ Drafted 2026-10-03 at `afbc330`; revisions are listed at the end.
 - Candidate IDs: `W11a`, `W11b` and so on per workstream. W1 keeps its ladder names (M0a … M6), W2 its options (R0 … R5) and W10 its phases (C1 … C3).
 - Gates have names, not numbers: G1–G3 already name physics and lighting proposals in [benchmarks.md](../../perf/benchmarks.md#open-proposals).
 - The agent commits a milestone's work locally, once per plan or phase, and the owner pushes, tags and merges (`D-097`, `D-098`). Milestones that touch performance follow the [profiling workflow](../../perf/profiling-workflow.md).
-- Phase 5 starts after 0.40 releases. On 2026-10-03 the 0.40 QA plan was mid-run in an unattended session. It edits `scripts/check-repo.py`, which Step 0 edits too, and its follow-ups feed W8, W11 and W12 (§3).
+- Phase 5 starts after 0.40 releases. The 0.40 QA plan finished on 2026-10-03 (archived at `docs/plans/archive/qa-cleanup-0.40.md`); its follow-ups feed W8, W11 and W12 (§3).
 - The longest chain is W1's ladder (§6). With one tree, milestones run one after another, so the order sets when risk is found, not when 1.0 lands.
 
 ## 1. Shape
@@ -47,7 +47,7 @@ The glyph gate (W1's T1, T1b or T2, [w01](w01-ui-text-suite.md) §9) is W1's own
 
 ## 3. Phase 5: Foundations
 
-**Before Phase 5.** 0.40 releases first. Its QA plan leaves follow-ups that move to [known issues](../../known-issues.md) at its last step; each already has a 1.0 home:
+**Before Phase 5.** 0.40 releases first. Its QA plan left follow-ups in [known issues](../../known-issues.md); each already has a 1.0 home:
 
 | 0.40 follow-up | Goes to |
 | --- | --- |
@@ -61,7 +61,6 @@ The glyph gate (W1's T1, T1b or T2, [w01](w01-ui-text-suite.md) §9) is W1's own
 | A per-frame `TUNGSTEN_PERF_LOG` lookup, tween channel lists cloned per frame, tile proxies rebuilt from a full-map scan | C1 rows or C2 candidates; W8b if a fix is small |
 | The stock shaders exist twice | W12a's shader ownership (amendment 14) |
 | `D-095`'s background-load scan covers `run`, `suite` and `--sweep` only | Track B, before any spike uses capacity probes |
-| Step 9's dead core API, skipped when its capture read `regressed` before the placement procedure ran | The Phase 5 QA pass |
 
 **Step 0, planning tooling.** `check_plans` in `scripts/check-repo.py` also reads `docs/plans/*/*.md`, skipping the archive, with a case in `scripts/test-check-repo.py`. It lands after the 0.40 QA plan, which edits both files. No milestone plan is written in this folder before it. Workflow §8 proposes three items beside it: headroom for `AGENTS.md` and the index, a milestone skill, and an API snapshot recipe.
 
@@ -291,3 +290,4 @@ None yet.
 - 2026-10-03 at `afbc330`: first draft, from criteria.md as revised that day and the UI draft's milestone ladder ([w01](w01-ui-text-suite.md) §11).
 - 2026-10-03 on `941b63e`: [workflow.md](workflow.md) added beside this plan; inputs from 0.40, Step 0's proposed items, Track A's order and constraints, W1 M1 and W2 R2 moved into Track A, the worker-thread capture rules in Track B, QA passes closing Phases 5 and 6, cards for Phase 5, W1 BC, versioned prereleases for release candidates, the queue (§6), the definition gate agenda (§9), the register (§10), gate records (§11) and amendments 14–19; amendment 12's two moves applied in criteria.md.
 - 2026-10-03 on `75a7360`: local commits replace the patch hand-off (`D-097`, `D-098`) in the context digest and §6.
+- 2026-10-03 on `4ee92aa`: the 0.40 QA plan finished; the context digest and §3 say so, and §3 drops step 9's row, which shipped in the close-out.
