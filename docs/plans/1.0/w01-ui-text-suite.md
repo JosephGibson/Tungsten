@@ -32,24 +32,24 @@ This is a focused architectural review, not a full project correctness audit. Ex
 
 | Existing surface | Implication for UI |
 | --- | --- |
-| [`tungsten-core`](../../crates/tungsten-core/src/lib.rs): `World`, resources, `CommandBuffer`, `EventQueue<T>`, `ActionMap`, opaque asset handles | UI state and interactions can participate in ordinary game systems without GPU dependencies. |
-| [`App`](../../crates/tungsten/src/app.rs): serial systems, command flush, event rotation, reload, extract, render | Input routing needs an explicit position before game systems. Layout/extraction should see their final mutations. |
-| [`TextPipeline`](../../crates/tungsten-render/src/text.rs): glyphon/cosmic-text, advanced shaping, registered fonts, wrap/clip bounds, bounded layout cache | Reuse shaping and caching. Expose measurement before UI layout; currently shaping is private to the rendering pipeline. |
-| [`pass order`](../../crates/tungsten-render/src/passes/order.rs): scene → post → optional SMAA → text overlay | Expand the final overlay to include all screen UI primitives. Keep game UI out of scene post effects by default. |
-| [`input bridge`](../../crates/tungsten/src/input_bridge.rs) and [`InputState`](../../crates/tungsten-core/src/input.rs) | Current bridge handles physical keys, pointer and scroll state. It does not forward text, IME or an ordered UI input stream; gamepad support is absent. |
-| [`DebugHud`](../../crates/tungsten/src/debug_hud.rs), [`SystemTimingOverlay`](../../crates/tungsten/src/systems_overlay.rs), [`InspectorState`](../../crates/tungsten/src/inspector.rs) | Existing resource/provider models should survive migration. Their text refresh is throttled; outlines repeat text draws, and anchoring uses a monospace-width heuristic. |
-| [`StateStack`](../../crates/tungsten/src/state.rs) and [`DebugDraw`](../../crates/tungsten-core/src/debug_draw.rs) | UI roots need state cleanup and pause/resume behavior. Physics lines and collider geometry remain world-space diagnostics. |
-| `App::window_event` in [`app.rs`](../../crates/tungsten/src/app.rs) | Handles close, resize, key, mouse button, cursor, wheel and redraw only. No scale-factor, modifier, focus, cursor-leave, IME or touch events. |
-| `gpu` and `integrated` rows in the [benchmarks](../perf/benchmarks.md) | The current text path already has workloads: 100 sections of 40 characters with a `text_change` knob, and HUD lines plus name tags. They are the baseline for any text comparison. |
-| [Known issues](../known-issues.md) | Screen-space text draws after transitions (`D-093`), and capture completion is not reliable (P3). Both reach UI. |
+| [`tungsten-core`](../../../crates/tungsten-core/src/lib.rs): `World`, resources, `CommandBuffer`, `EventQueue<T>`, `ActionMap`, opaque asset handles | UI state and interactions can participate in ordinary game systems without GPU dependencies. |
+| [`App`](../../../crates/tungsten/src/app.rs): serial systems, command flush, event rotation, reload, extract, render | Input routing needs an explicit position before game systems. Layout/extraction should see their final mutations. |
+| [`TextPipeline`](../../../crates/tungsten-render/src/text.rs): glyphon/cosmic-text, advanced shaping, registered fonts, wrap/clip bounds, bounded layout cache | Reuse shaping and caching. Expose measurement before UI layout; currently shaping is private to the rendering pipeline. |
+| [`pass order`](../../../crates/tungsten-render/src/passes/order.rs): scene → post → optional SMAA → text overlay | Expand the final overlay to include all screen UI primitives. Keep game UI out of scene post effects by default. |
+| [`input bridge`](../../../crates/tungsten/src/input_bridge.rs) and [`InputState`](../../../crates/tungsten-core/src/input.rs) | Current bridge handles physical keys, pointer and scroll state. It does not forward text, IME or an ordered UI input stream; gamepad support is absent. |
+| [`DebugHud`](../../../crates/tungsten/src/debug_hud.rs), [`SystemTimingOverlay`](../../../crates/tungsten/src/systems_overlay.rs), [`InspectorState`](../../../crates/tungsten/src/inspector.rs) | Existing resource/provider models should survive migration. Their text refresh is throttled; outlines repeat text draws, and anchoring uses a monospace-width heuristic. |
+| [`StateStack`](../../../crates/tungsten/src/state.rs) and [`DebugDraw`](../../../crates/tungsten-core/src/debug_draw.rs) | UI roots need state cleanup and pause/resume behavior. Physics lines and collider geometry remain world-space diagnostics. |
+| `App::window_event` in [`app.rs`](../../../crates/tungsten/src/app.rs) | Handles close, resize, key, mouse button, cursor, wheel and redraw only. No scale-factor, modifier, focus, cursor-leave, IME or touch events. |
+| `gpu` and `integrated` rows in the [benchmarks](../../perf/benchmarks.md) | The current text path already has workloads: 100 sections of 40 characters with a `text_change` knob, and HUD lines plus name tags. They are the baseline for any text comparison. |
+| [Known issues](../../known-issues.md) | Screen-space text draws after transitions (`D-093`), and capture completion is not reliable (P3). Both reach UI. |
 
 Locked dependencies at review: wgpu 30.0.1, glyphon 0.12.0, cosmic-text 0.19.0, winit 0.30.13. `Cargo.toml` permits winit starting at 0.30.12; the lockfile establishes the version reviewed. Candidates checked on crates.io, not locked: taffy 0.14.0, accesskit_winit 0.34.1.
 
-Relevant decisions: D-006 (three crates), D-015 (dependencies), D-016/D-018 (handles/extract), D-026 (text), D-039/D-040 (commands/events), D-044/D-047 (independent debug tools), D-045 (input), D-078 (benchmarks), D-085 (text caching), D-087 (direct/capture presentation), D-093 (transitions). See the [decision index](../DECISION_INDEX.md); this draft adds no decisions.
+Relevant decisions: D-006 (three crates), D-015 (dependencies), D-016/D-018 (handles/extract), D-026 (text), D-039/D-040 (commands/events), D-044/D-047 (independent debug tools), D-045 (input), D-078 (benchmarks), D-085 (text caching), D-087 (direct/capture presentation), D-093 (transitions). See the [decision index](../../DECISION_INDEX.md); this draft adds no decisions.
 
 ## 2. Constraints in today's text, window and input paths
 
-Verified on 2026-10-02 against [`text.rs`](../../crates/tungsten-render/src/text.rs), [`app.rs`](../../crates/tungsten/src/app.rs), [`input_bridge.rs`](../../crates/tungsten/src/input_bridge.rs) and the glyphon 0.12.0 and cosmic-text 0.19.0 sources. These are facts about the code, not preferences; the plan below is shaped around them.
+Verified on 2026-10-02 against [`text.rs`](../../../crates/tungsten-render/src/text.rs), [`app.rs`](../../../crates/tungsten/src/app.rs), [`input_bridge.rs`](../../../crates/tungsten/src/input_bridge.rs) and the glyphon 0.12.0 and cosmic-text 0.19.0 sources. These are facts about the code, not preferences; the plan below is shaped around them.
 
 **Text path**
 
@@ -378,7 +378,7 @@ Discuss initial targets of **≤0.25 ms additional CPU p95** for a warmed 100-wi
 
 Track input, layout, shaping, paint/extract, GPU preparation/draw separately, plus draw batches, prepared sections and rebuilt vertices, shape counts, glyph misses/uploads, atlas/cache bytes and worst cold frames. Debug UI reads existing telemetry and publishes its own costs without creating a parallel timing system.
 
-Future captures follow the canonical [profiling workflow](../perf/profiling-workflow.md#comparison-rule-and-capture-rules): matching workloads/builds/machine, quiet A/A, five repeats, and separate blocking GPU diagnostics. A new UI workload should live in a dedicated fixture/harness after design finalization; existing examples and benchmark workloads stay untouched beforehand. If a later benchmark migration changes work, bump its workload version and start a fresh baseline; do not present it as an engine-only speedup. The shape-run cache experiment that [`benchmarks.md`](../perf/benchmarks.md) leaves open targets the same shaping cost as M0a; run it against the split engine rather than the cache M0a replaces.
+Future captures follow the canonical [profiling workflow](../../perf/profiling-workflow.md#comparison-rule-and-capture-rules): matching workloads/builds/machine, quiet A/A, five repeats, and separate blocking GPU diagnostics. A new UI workload should live in a dedicated fixture/harness after design finalization; existing examples and benchmark workloads stay untouched beforehand. If a later benchmark migration changes work, bump its workload version and start a fresh baseline; do not present it as an engine-only speedup. The shape-run cache experiment that [`benchmarks.md`](../../perf/benchmarks.md) leaves open targets the same shaping cost as M0a; run it against the split engine rather than the cache M0a replaces.
 
 ## 11. Migration outline and milestone ladder — after finalization
 

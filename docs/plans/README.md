@@ -6,6 +6,7 @@ Short-lived multi-step plans saved as `*.md`. A plan is the handoff artifact for
 
 - Milestone implementation plans: `phaseN-milestone-NN-short-topic.md`. `N` is the phase number, `NN` the zero-padded milestone number, `short-topic` a concise kebab-case slug for the deliverable. Example: `phase4-milestone-26-materials-post-stack.md`.
 - Other handoff plans: `descriptive-topic.md`.
+- Program folders: plans that serve one goal may share `docs/plans/<program>/`, with a README that maps its files, as [`1.0/`](1.0/README.md) does. Header rules apply to every file there except the README. `just repo-check` reads only this folder's top level so far.
 
 ## Contents
 
@@ -27,7 +28,7 @@ Short-lived multi-step plans saved as `*.md`. A plan is the handoff artifact for
 
 - Update `status` when work finishes; don't leave a finished plan `in progress`.
 - Keep one active plan per thread of work: archive or rename obsolete ones.
-- Completed, abandoned or superseded plans move to `docs/plans/archive/` with the same basename. Agents never read that directory.
+- Completed, abandoned or superseded plans move to `docs/plans/archive/` with the same basename; a program folder's files move to `docs/plans/archive/<program>/`. Agents never read that directory.
 
 `just repo-check` validates active headers and flags completed plans left here. An old date alone does not make an in-progress plan stale: review its remaining checks against code and owner/platform dependencies before archiving. An audit can be complete with unresolved findings; retain still-relevant findings in a maintained follow-up document before moving it.
 
