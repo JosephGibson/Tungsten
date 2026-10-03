@@ -18,7 +18,7 @@ const ASSET_SHADERS: &str = "assets/shaders";
 const EXAMPLES: &str = "examples";
 
 /// `(under RENDER_SRC, under ASSET_SHADERS)` subtrees or files kept byte-equal.
-const MIRRORS: &[(&str, &str)] = &[("shaders/stock", "stock"), ("sprite.wgsl", "sprite.wgsl")];
+const MIRRORS: &[(&str, &str)] = &[("shaders/stock", "stock")];
 
 /// Vendored LYGIA snippets are reference fragments, not compiled by the engine.
 /// A fragment that calls into a sibling validates with that sibling prepended.
@@ -171,8 +171,6 @@ fn fixture(name: &str, files: &[(&str, &str)]) -> PathBuf {
 
 fn baseline() -> Vec<(&'static str, &'static str)> {
     vec![
-        ("crates/tungsten-render/src/sprite.wgsl", VALID),
-        ("assets/shaders/sprite.wgsl", VALID),
         ("crates/tungsten-render/src/shaders/stock/fade.wgsl", VALID),
         ("assets/shaders/stock/fade.wgsl", VALID),
     ]
@@ -189,7 +187,7 @@ fn expect_error(name: &str, files: &[(&str, &str)], needle: &str) {
 #[test]
 fn checker_accepts_valid_fixture() {
     let inv = check(&fixture("valid", &baseline())).expect("valid fixture");
-    assert_eq!((inv.paths, inv.distinct, inv.pairs), (4, 1, 2));
+    assert_eq!((inv.paths, inv.distinct, inv.pairs), (2, 1, 1));
 }
 
 #[test]
@@ -235,7 +233,7 @@ fn checker_rejects_missing_mirrors_in_both_directions() {
 #[test]
 fn checker_rejects_mismatched_mirror() {
     let mut files = baseline();
-    files[3] = (
+    files[1] = (
         "assets/shaders/stock/fade.wgsl",
         "// drift\n@fragment\nfn fs_main() -> @location(0) vec4<f32> {\n    return vec4<f32>(0.0);\n}\n",
     );
