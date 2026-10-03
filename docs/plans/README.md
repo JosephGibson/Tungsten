@@ -21,7 +21,8 @@ Short-lived multi-step plans saved as `*.md`. A plan is the handoff artifact for
 - Run the step's done-when checks and quote the results. Report a failed check with its output instead of working around it, and a check that did not run as not run.
 - Where the plan defers a choice, use its stated default; otherwise check [`docs/DECISION_INDEX.md`](../DECISION_INDEX.md), then ask. The "Stuck" rule in [AGENTS.md](../../AGENTS.md) applies.
 - Keep `status` current: set `in progress` when work starts and `done` when the last done-when check passes, then archive per Lifecycle (`just repo-check` flags a finished plan left here).
-- When Git mutations are human-only, hand over one patch and commit message per step. Use the [tungsten-patch-handoff](../../.claude/skills/tungsten-patch-handoff/SKILL.md) skill.
+- Commit on the milestone branch once the checks pass (`D-097`): stage only the paths the work touched (`git add <paths>`, never `-A`) and commit once per plan, or once per phase of a long plan, without attribution lines. Push, tags and merges stay with the human. Where Git is still denied to you, hand over that one `git add <paths> && git commit` command instead. The [tungsten-patch-handoff](../../.claude/skills/tungsten-patch-handoff/SKILL.md) skill is only for a task that asks for per-step patches.
+- Keep the evidence log terse: one row per step with its verdict, key numbers and capture or log paths. A plan adds one `CHANGELOG.md` `[Unreleased]` line, not one per step.
 - For perf plans, write the done-when checks per the profiling workflow's [Writing done-when checks](../perf/profiling-workflow.md#writing-done-when-checks).
 
 ## Lifecycle

@@ -1120,3 +1120,14 @@ The bound belongs to the step, not to the app loop: `physics_step` is public and
 - Amends `D-041`'s dev-profile clause ("project crates remain at opt-level 0"): `tungsten-core` is the exception. The index row records the amendment; the rest of `D-041` stands.
 - A debugger in a dev build steps optimized `tungsten-core` code, where locals can read as optimized out. A debugging session can pass `--config profile.dev.package.tungsten-core.opt-level=0`.
 - Release builds, perf captures, the determinism and pinned containment hashes and the benchmark digests are unaffected. `just visual` and `just smoke` build the dev profile and pass unchanged.
+
+## D-097 — Agents commit plan work locally; humans publish
+**Date:** 2026-10-03
+**Decision:** On a milestone branch the agent commits plan work itself: once the checks pass it stages only the paths the work touched (`git add <paths>`, never `-A`) and commits, once per plan or per phase of a long plan, with no attribution lines. The human keeps `git push`, tags, merges and every history rewrite, and release pull requests stay squash-merged (`D-079`), so `main` keeps one commit per release. A plan's evidence rows are one line each (verdict, key numbers, capture or log paths), and a plan adds one `CHANGELOG.md` `[Unreleased]` line instead of one per step. The `tungsten-patch-handoff` skill and `scripts/patch-series.py` are opt-in: they run only when a task asks for per-step patches to review.
+
+**Why:** The squash merge discards per-step commits on `main`, so their cost buys only review checkpoints on the milestone branch. With Git human-only, the 0.40 QA run emulated them with a full tree copy per step (280 MB for eleven steps), a verify and script stage, and a `commit.sh` pinned to one HEAD that refused to run once an unrelated commit landed. Per-step evidence rows and changelog lines grew its plan to about 70 KB, which every agent that opens it pays for. Local commits stay reviewable and reversible until a push, and the squash hides them anyway.
+
+**Consequences:**
+- Committing needs a personal allow for `git add` and `git commit`: the project allowlist grants exact commands only, and user settings denied both when this was decided. Until they are allowed, the agent leaves the work uncommitted and hands over one `git add <paths> && git commit` command per plan.
+- Hand-off blocks the human pastes use `git --no-pager` for `log`, `show` and `diff`: in the same run a pager took the rest of a pasted block as keystrokes.
+- Restates `D-079`'s squash merge and amends no decision. The active `docs/plans/qa-cleanup-0.40.md` follows this from step 15; its per-step rows and changelog lines so far stay.

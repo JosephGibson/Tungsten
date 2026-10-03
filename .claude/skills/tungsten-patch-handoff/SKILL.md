@@ -1,11 +1,11 @@
 ---
 name: tungsten-patch-handoff
-description: Hand per-step work to the human as a verified patch series plus a commit script they run. Use when Git is human-only and a task wants per-step commits or patches. Wraps scripts/patch-series.py; not for the release hand-off.
+description: Hand work to the human as a verified per-step patch series plus a commit script. Opt-in: only when a task explicitly asks for per-step patches to review; plan work is otherwise committed locally (D-097). Wraps scripts/patch-series.py; not for the release hand-off.
 ---
 
 # tungsten-patch-handoff
 
-Commands, layout and limits: `python3 -B scripts/patch-series.py --help` ([script](../../../scripts/patch-series.py)). Use it when Git mutations are denied to you and the task asks for per-step commits or patches.
+Commands, layout and limits: `python3 -B scripts/patch-series.py --help` ([script](../../../scripts/patch-series.py)). Opt-in: use it only when the task explicitly asks for per-step patches or commits to review. Plan work is otherwise committed once per plan or phase ([plans README](../../../docs/plans/README.md), `D-097`).
 
 ## Order
 
@@ -21,3 +21,4 @@ Each commit must pass `just ctx` and `just repo-check` on its own; the tool does
 
 - Messages carry no Co-Authored-By or "Generated with Claude Code" lines.
 - Never run `commit.sh` yourself and never work around the Git deny (plumbing, scratch repositories, other tools). The human runs it.
+- `commit.sh` refuses once HEAD moves; run `init` and the cuts again on the new HEAD.
