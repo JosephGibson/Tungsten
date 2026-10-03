@@ -131,11 +131,19 @@ fn run_pile() -> u64 {
     ignore = "release-scale step test; run with --release"
 )]
 fn physics_step_is_bit_identical_across_runs() {
+    // From `just physics-release` (the perf runner's flags, generic x86-64)
+    // on the 0.40 tree at `afbc330`. A bug fix that moves it updates this
+    // value and records the old and new hash in its `CHANGELOG.md` line.
+    const EXPECTED: u64 = 0x088e_c07a_73c1_b168;
     let first = run_pile();
     let second = run_pile();
     println!("state hashes — first: {first:#018x}, second: {second:#018x}");
     assert_eq!(
         first, second,
         "physics_step diverged between identical runs"
+    );
+    assert_eq!(
+        first, EXPECTED,
+        "the pile's state hash moved: {first:#018x}"
     );
 }

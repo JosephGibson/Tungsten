@@ -9,6 +9,7 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - **Perf runner background-load guard and digest comparison** (`D-095`, 0.40 QA step 1): `scripts/bench.py` scans `/proc` before, once a second during and once after each measured run for `nxcodec.bin` and for `cargo`/`rustc` outside its own process tree, rechecks the commit and dirty-tree hash after each run, records both in the capture's provenance and marks the run invalid (`background load: <name>`, `background load: tree changed`) unless `--allow-background` makes it a note. Compare prints whether the first-run digests match, suite compare lists the rows whose digests differ, and `run --compare` takes a suite's row of the same name. Runner and docs only: no engine change, hash or digest moved.
+- **Pinned determinism hash** (0.40 QA step 2): `physics_step_is_bit_identical_across_runs` (`crates/tungsten-core/tests/physics_determinism.rs`) now also asserts the run hash equals `0x088ec07a73c1b168`, the value `just physics-release` printed on the 0.40 tree at `afbc330`, so a physics change that moves it fails instead of only printing. Test only: the hash and digests are unchanged.
 
 ## [0.39.0] - 2026-10-02
 
