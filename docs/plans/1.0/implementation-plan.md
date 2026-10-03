@@ -16,7 +16,7 @@ Drafted 2026-10-03 at `afbc330`; revisions are listed at the end.
 - Milestones continue at M32. A candidate gets its number when its plan is written, so numbers follow the order in which work lands. The register (§10) maps candidates to milestones and releases.
 - Candidate IDs: `W11a`, `W11b` and so on per workstream. W1 keeps its ladder names (M0a … M6), W2 its options (R0 … R5) and W10 its phases (C1 … C3).
 - Gates have names, not numbers: G1–G3 already name physics and lighting proposals in [benchmarks.md](../../perf/benchmarks.md#open-proposals).
-- Git is human-only: each milestone ends in a [patch hand-off](../../../.claude/skills/tungsten-patch-handoff/SKILL.md). Milestones that touch performance follow the [profiling workflow](../../perf/profiling-workflow.md).
+- The agent commits a milestone's work locally, once per plan or phase, and the owner pushes, tags and merges (`D-097`, `D-098`). Milestones that touch performance follow the [profiling workflow](../../perf/profiling-workflow.md).
 - Phase 5 starts after 0.40 releases. On 2026-10-03 the 0.40 QA plan was mid-run in an unattended session. It edits `scripts/check-repo.py`, which Step 0 edits too, and its follow-ups feed W8, W11 and W12 (§3).
 - The longest chain is W1's ladder (§6). With one tree, milestones run one after another, so the order sets when risk is found, not when 1.0 lands.
 
@@ -177,7 +177,7 @@ W1's ladder is the longest chain: M0a → M1 → glyph gate → M2 → M3 → M4
 
 After that, M2 waits on W8a and the glyph gate, M3 on W15a, and M4 on W11b and, if Q8 says so, W1 BC. Each of those starts in an earlier track, so none should hold the ladder up.
 
-**The queue.** One tree takes one patch series at a time (workflow §6), so milestones run one after another. The critical path then orders risk rather than setting a finish date: the glyph gate and the frame-loop gate are where a wrong guess costs most, and the queue reaches both early. Proposed Phase 5 queue, with owner-present work and capture work kept apart:
+**The queue.** One tree takes one committing session at a time (workflow §6), so milestones run one after another. The critical path then orders risk rather than setting a finish date: the glyph gate and the frame-loop gate are where a wrong guess costs most, and the queue reaches both early. Proposed Phase 5 queue, with owner-present work and capture work kept apart:
 
 1. Step 0, then Track A in the table's order: W14a and R0 first because every later test and the R1 spike stand on them, then the head of W1's ladder, then the shipping basics and the template.
 2. Track B in unattended sittings as each becomes possible: the R1 spike once R0 has landed; the tuple-query spike and the frame-loop design at any time.
@@ -185,7 +185,7 @@ After that, M2 waits on W8a and the glyph gate, M3 on W15a, and M4 on W11b and, 
 4. The glyph gate and the frame-loop gate, in one owner session if both are ready.
 5. Track C, then the Phase 5 QA pass; W1 M2 and M3 as their inputs land.
 
-A second clone running W1's ladder beside the rest is the one place where parallel sessions shorten the road. It pays only if the owner can review two streams of patches.
+A second clone running W1's ladder beside the rest is the one place where parallel sessions shorten the road. It pays only if the owner can review two streams of commits.
 
 ## 7. Questions by when
 
@@ -227,7 +227,7 @@ From reviews of criteria.md and the UI draft on 2026-10-03: 1–13 in the first 
 14. **Shader ownership depends on Q2.** §8.3 moves `sprite.wgsl` and `lit_sprite.wgsl` into `tungsten-render`, with copies in `assets/shaders/` for hot reload. A git dependency checks out the whole repository, so `include_str!` from `../../../assets/shaders/` already works for a game in its own repository (§2.2 says so); only a crates.io package (Q2) needs the files inside the crate. 0.40 went the other way: QA step 7 deleted the dead in-crate `sprite.wgsl`, and a QA follow-up proposes compiling in the asset copies of the stock shaders too. Make the move conditional on Q2, and settle the stock shaders' two copies in the same decision.
 15. **Q8 adds a milestone.** §4's proposed cut is M0–M6, and none of those steps holds sliders or checkboxes, which the settings screen in M4 needs. If Q8 says yes, add W1 BC before M4 (§4 above); if no, settings leave the acceptance game.
 16. **A template for agent-built games.** This engine is built in Claude Code sessions, and games made from the template will be too. `templates/basic` gains an `AGENTS.md` (and a `CLAUDE.md` that imports it) with a game repository's rules: the public API and the kit only, registry IDs not paths, actions not keys, systems by stage, a harness test per system, `tungsten check` before a commit, where the engine's documentation lives. The acceptance game starts from it, so its sessions test it, and C3 gains a check (RC-A9): a fresh session in a copy of the template adds a scripted feature using only the template, the guide and rustdoc. Amends §8.3's layout and §8.8's C3.
-17. **Choose the API snapshot tool at the definition gate.** §8.8 leaves it as a `D-015` question for C3, so new public surface is found all at once at the freeze. Chosen with W4a, a tracked snapshot can be updated by each milestone (workflow §5, §8), and its diff shows in each patch the owner reviews. The choice includes how the tool runs on the pinned stable toolchain (`D-069`).
+17. **Choose the API snapshot tool at the definition gate.** §8.8 leaves it as a `D-015` question for C3, so new public surface is found all at once at the freeze. Chosen with W4a, a tracked snapshot can be updated by each milestone (workflow §5, §8), and its diff shows in each commit the owner reviews. The choice includes how the tool runs on the pinned stable toolchain (`D-069`).
 18. **QA passes close Phases 5 and 6.** §8.1 proposes one W8 pass. Phase 5 reworks the frame loop, the schedule, queries and the extract, and Phase 6 builds features on them; the 0.40 audit found eight bugs after Phase 4. Run a pass in the 0.40 shape at the end of each phase, with W8b inside the second.
 19. **Perf lines through the engine logger.** §8.2 keeps stderr in debug builds only, but perf lines are `log::debug!` records that the runner reads from a release build's stderr (§3 above). Keep stderr while `RUST_LOG` is set, or have the runner read the log file, and test it in W11a.
 
@@ -290,3 +290,4 @@ None yet.
 
 - 2026-10-03 at `afbc330`: first draft, from criteria.md as revised that day and the UI draft's milestone ladder ([w01](w01-ui-text-suite.md) §11).
 - 2026-10-03 on `941b63e`: [workflow.md](workflow.md) added beside this plan; inputs from 0.40, Step 0's proposed items, Track A's order and constraints, W1 M1 and W2 R2 moved into Track A, the worker-thread capture rules in Track B, QA passes closing Phases 5 and 6, cards for Phase 5, W1 BC, versioned prereleases for release candidates, the queue (§6), the definition gate agenda (§9), the register (§10), gate records (§11) and amendments 14–19; amendment 12's two moves applied in criteria.md.
+- 2026-10-03 on `75a7360`: local commits replace the patch hand-off (`D-097`, `D-098`) in the context digest and §6.

@@ -1122,6 +1122,7 @@ The bound belongs to the step, not to the app loop: `physics_step` is public and
 - Release builds, perf captures, the determinism and pinned containment hashes and the benchmark digests are unaffected. `just visual` and `just smoke` build the dev profile and pass unchanged.
 
 ## D-097 — Agents commit plan work locally; humans publish
+**Superseded by D-098:** the opt-in patch-series clause only; the `tungsten-patch-handoff` skill and `scripts/patch-series.py` are removed; the rest stands.
 **Date:** 2026-10-03
 **Decision:** On a milestone branch the agent commits plan work itself: once the checks pass it stages only the paths the work touched (`git add <paths>`, never `-A`) and commits, once per plan or per phase of a long plan, with no attribution lines. The human keeps `git push`, tags, merges and every history rewrite, and release pull requests stay squash-merged (`D-079`), so `main` keeps one commit per release. A plan's evidence rows are one line each (verdict, key numbers, capture or log paths), and a plan adds one `CHANGELOG.md` `[Unreleased]` line instead of one per step. The `tungsten-patch-handoff` skill and `scripts/patch-series.py` are opt-in: they run only when a task asks for per-step patches to review.
 
@@ -1131,3 +1132,14 @@ The bound belongs to the step, not to the app loop: `physics_step` is public and
 - Committing needs a personal allow for `git add` and `git commit`: the project allowlist grants exact commands only, and user settings denied both when this was decided. Until they are allowed, the agent leaves the work uncommitted and hands over one `git add <paths> && git commit` command per plan.
 - Hand-off blocks the human pastes use `git --no-pager` for `log`, `show` and `diff`: in the same run a pager took the rest of a pasted block as keystrokes.
 - Restates `D-079`'s squash merge and amends no decision. The active `docs/plans/qa-cleanup-0.40.md` follows this from step 15; its per-step rows and changelog lines so far stay.
+
+## D-098 — The per-step patch hand-off is removed
+**Date:** 2026-10-03
+**Decision:** The `tungsten-patch-handoff` skill, its `.agents/skills/` symlink and `.gitignore` entry, `scripts/patch-series.py` and its tests in `just script-test` are removed. A task that asks for per-step history gets one local commit per step. While Git is denied to the agent, the work stays uncommitted and the agent hands over the commit commands instead: one per plan, or one per step, in order, when per-step history was asked for.
+
+**Why:** With local commits (`D-097`), per-step history costs one `git commit` per step. The series tool existed only to emulate that while Git was denied, at the cost of a full tree copy per step and a commit script pinned to one HEAD, which refused to run after an unrelated commit landed in the 0.40 QA run. Keeping it opt-in kept a skill, 1,014 lines of script and tests, a `script-test` slot and the docs that route to them, for a path the workflow no longer takes. The last tree that holds it is `75a7360`.
+
+**Consequences:**
+- Supersedes `D-097`'s opt-in clause as its marker line says.
+- The 1.0 workflow and implementation plan drop the series: steps end in local commits, and "one series per tree" becomes "one committing session per tree".
+- Released `CHANGELOG.md` sections, the 0.40 QA plan's evidence rows and `DESIGN.md`'s 0.39 status line keep their mentions as history.
