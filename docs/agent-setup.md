@@ -49,7 +49,7 @@ Run from the repository root with Rust, just, Python 3.12+, Bash and ShellCheck 
 
 | Command | Repeated work it replaces |
 | --- | --- |
-| `just repo-check` | Asset-directory/manifest coverage comparisons, required active-plan headers/status, local links and decision references in the maintained docs, agent configuration checks, workspace version/`CHANGELOG.md`/DESIGN status agreement (`scripts/release.py check`, `D-071`, `D-074`); then existing Rust manifest and decision-index tests |
+| `just repo-check` | Asset-directory/manifest coverage comparisons, required active-plan headers/status, local links and decision references in the maintained docs, `docs/plans/<name>.md` citations in tracked code, scripts and docs (a missing plan fails, an archived one is a note; `CHANGELOG.md`, `DECISIONS.md` and the script tests' fixtures are exempt), agent configuration checks, workspace version/`CHANGELOG.md`/DESIGN status agreement (`scripts/release.py check`, `D-071`, `D-074`); then existing Rust manifest and decision-index tests |
 | `just release-preflight VERSION --repo OWNER/REPO` | Read-only file, live branch/tag, pull-request, GitHub release and exact-commit run inspection that prints the remaining hand-off commands (`D-079`); requires Git, authenticated gh and network; see [releases.md](releases.md) |
 | `just quick` | The edit-loop sequence: format check, context budgets/links, repository QA and `cargo check --workspace --all-targets --locked` |
 | `just script-test` | Perf/smoke script regressions, ShellCheck, and repository-checker, release-script and temporary-Git-repository preflight and patch-series (`scripts/patch-series.py`) tests |
