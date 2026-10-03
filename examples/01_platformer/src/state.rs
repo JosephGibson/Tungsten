@@ -211,10 +211,7 @@ pub(crate) struct OrbitLight {
 
 /// M29 fixture-side cycle mode for an orbiting light.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)] // `None` is the obvious default for future fixture variants.
 pub(crate) enum CycleMode {
-    /// Hold the authored color and intensity. Light only orbits.
-    None,
     /// Hold the authored color, sin-pulse intensity around 1.0.
     Pulse,
     /// Hold intensity, rotate hue around the wheel using `phase` as the angle.
