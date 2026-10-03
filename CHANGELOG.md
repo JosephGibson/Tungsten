@@ -15,6 +15,10 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **Faster debug physics for the gate** (`D-096`, 0.40 QA step 3): dev and test builds compile `tungsten-core` at opt-level 1 (`[profile.dev.package.tungsten-core]` in the workspace `Cargo.toml`), which takes the platformer's `authored_routes_and_recovery_shelves_traverse_with_real_physics` from 81.0 s to 8.9 s and a warm `just check` from 89.7 s to 11.1 s with the same 928 tests passing. Release, bench and perf-runner builds are unchanged: no hash, digest or reference image moved.
 
+### Removed
+
+- **Physics probe tests** (0.40 QA step 4): `crates/tungsten-core/tests/physics_timing.rs` (two debug-build timing probes that asserted nothing) and `substep_probe.rs` (two ignored dense-pile diagnostics of a finished plan) are gone; the `physics` and `integrated` benchmark rows, `benches/physics_bench.rs`, `physics_containment.rs` and the sleep tests in `src/tests/physics/step.rs` cover what they printed. `physics_determinism.rs` and `physics_containment.rs` now share `spawn_pile` and a `spawn_static_box` that takes the wall thickness from `tests/common/mod.rs`. Tests only: both physics hashes and the digests are unchanged.
+
 ### Fixed
 
 - **Release guide** (`docs/releases.md`): a new milestone branch is created with `git switch -c 0.NN --no-track origin/main` and published with `git push -u origin 0.NN`. Created the old way, 0.40 tracked `main`, and an editor sync pushed its work to `main`, which was then restored to the 0.39 release commit.
