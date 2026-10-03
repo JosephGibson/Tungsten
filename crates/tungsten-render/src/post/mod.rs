@@ -13,50 +13,49 @@ use crate::shader_hot_reload::ShaderModuleCache;
 use crate::targets::{RenderTargetPool, TargetCache};
 
 pub mod bloom;
-pub mod chromatic_aberration;
-pub mod color_adjust;
-pub mod crt;
-pub mod dissolve;
-pub mod dither;
-pub mod fade;
-pub mod film_grain;
-pub mod fog;
 pub mod fullscreen;
-pub mod glitch;
-pub mod god_rays;
-pub mod lut;
-pub mod pixel_outline;
-pub mod pixelate;
 pub mod smaa;
 pub mod smaa_luts;
-pub mod tone_mono;
-pub mod tonemap;
-pub mod vignette;
-pub mod wipe_radial;
 
 use bloom::{BloomPipeline, BloomShaderIds};
 
 /// The stock effects in `PostPass` order: the manifest ID of each one's shader
-/// and its compiled-in source. `Renderer::new` seeds the shader cache from
-/// this table, and a reload finds an effect's pipeline by its ID (`D-091`).
+/// and its compiled-in source, which `assets/shaders/stock/<id>.wgsl` mirrors.
+/// `Renderer::new` seeds the shader cache from this table, and a reload finds
+/// an effect's pipeline by its ID (`D-091`).
 pub(crate) const STOCK_SHADERS: [(&str, &str); 17] = [
-    (tonemap::NAME, tonemap::WGSL),
-    (vignette::NAME, vignette::WGSL),
-    (lut::NAME, lut::WGSL),
-    (chromatic_aberration::NAME, chromatic_aberration::WGSL),
-    (color_adjust::NAME, color_adjust::WGSL),
-    (tone_mono::NAME, tone_mono::WGSL),
-    (crt::NAME, crt::WGSL),
-    (film_grain::NAME, film_grain::WGSL),
-    (dither::NAME, dither::WGSL),
-    (pixel_outline::NAME, pixel_outline::WGSL),
-    (fade::NAME, fade::WGSL),
-    (wipe_radial::NAME, wipe_radial::WGSL),
-    (dissolve::NAME, dissolve::WGSL),
-    (glitch::NAME, glitch::WGSL),
-    (pixelate::NAME, pixelate::WGSL),
-    (fog::NAME, fog::WGSL),
-    (god_rays::NAME, god_rays::WGSL),
+    ("tonemap", include_str!("../shaders/stock/tonemap.wgsl")),
+    ("vignette", include_str!("../shaders/stock/vignette.wgsl")),
+    ("lut", include_str!("../shaders/stock/lut.wgsl")),
+    (
+        "chromatic_aberration",
+        include_str!("../shaders/stock/chromatic_aberration.wgsl"),
+    ),
+    (
+        "color_adjust",
+        include_str!("../shaders/stock/color_adjust.wgsl"),
+    ),
+    ("tone_mono", include_str!("../shaders/stock/tone_mono.wgsl")),
+    ("crt", include_str!("../shaders/stock/crt.wgsl")),
+    (
+        "film_grain",
+        include_str!("../shaders/stock/film_grain.wgsl"),
+    ),
+    ("dither", include_str!("../shaders/stock/dither.wgsl")),
+    (
+        "pixel_outline",
+        include_str!("../shaders/stock/pixel_outline.wgsl"),
+    ),
+    ("fade", include_str!("../shaders/stock/fade.wgsl")),
+    (
+        "wipe_radial",
+        include_str!("../shaders/stock/wipe_radial.wgsl"),
+    ),
+    ("dissolve", include_str!("../shaders/stock/dissolve.wgsl")),
+    ("glitch", include_str!("../shaders/stock/glitch.wgsl")),
+    ("pixelate", include_str!("../shaders/stock/pixelate.wgsl")),
+    ("fog", include_str!("../shaders/stock/fog.wgsl")),
+    ("god_rays", include_str!("../shaders/stock/god_rays.wgsl")),
 ];
 
 /// Row of `STOCK_SHADERS` that draws `pass`. Bloom has none: it owns four
