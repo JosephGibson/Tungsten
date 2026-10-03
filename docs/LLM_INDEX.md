@@ -38,7 +38,7 @@ Task → file map. Open it before a broad search; read only the matching row's f
 | Task | Open |
 | --- | --- |
 | Contacts, resolution, broadphase, pair repair, sleeping, arrival pass, step bound (`D-033`, `D-062`–`D-067`, `D-075`, `D-076`, `D-080`–`D-082`, `D-092`, `D-094`) | `core/physics/step.rs`, `core/physics/collision.rs`, `core/physics/broadphase.rs` |
-| Benchmarks, tunneling, determinism | `crates/tungsten-core/benches/physics_bench.rs`, `crates/tungsten-core/tests/physics_tunneling.rs`, `crates/tungsten-core/tests/physics_containment.rs`, `crates/tungsten-core/tests/physics_determinism.rs` |
+| Benchmarks, tunneling, determinism | `crates/tungsten-core/benches/physics_bench.rs`, `crates/tungsten-core/tests/physics_tunneling.rs`, `crates/tungsten-core/tests/physics_containment.rs`, `crates/tungsten-core/tests/physics_determinism.rs`; after `core/physics/step.rs`, `core/physics/collision.rs` or `core/physics/broadphase.rs` changes run `just physics-release` (determinism and containment are ignored in debug, so `just check` skips them) |
 
 ## Rendering
 
@@ -72,7 +72,8 @@ Run with `cargo run -p example-NN-name`.
 | Open findings, unchecked platforms and follow-ups | `docs/known-issues.md` |
 | Repository QA and quick checks | `scripts/check-repo.py`, `scripts/test-check-repo.py`, `justfile`, `docs/agent-setup.md` |
 | Release preparation, checks and command hand-off, publication/recovery (`D-071`, `D-074`, `D-079`) | `.github/workflows/release.yml`, `scripts/release.py`, `scripts/test-release.py`, `tools/launcher/src/main.rs`, `.claude/skills/tungsten-finalize/SKILL.md`, `.claude/skills/tungsten-release/SKILL.md`, `docs/releases.md`, `scripts/release-preflight.py`, `scripts/test-release-preflight.py` |
-| New dependency or design change | `docs/DECISION_INDEX.md`, then `DECISIONS.md` by ID |
+| New dependency or design change | `docs/DECISION_INDEX.md`, then `DECISIONS.md` by ID; to write an entry, `.claude/skills/tungsten-decision/SKILL.md` |
+| Per-step commits while Git is human-only: patch series, commit script | `.claude/skills/tungsten-patch-handoff/SKILL.md`, `scripts/patch-series.py`, `scripts/test-patch-series.py` |
 
 ## Usually skip
 

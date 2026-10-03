@@ -29,6 +29,10 @@ test *args:
 check: fmt-check lint
     cargo test --workspace --locked -q
 
+# Release physics tests: determinism and containment (ignored in debug, so not in `check`) plus tunneling, with the perf runner's build flags.
+physics-release *args:
+    RUSTFLAGS="${TUNGSTEN_PERF_RUSTFLAGS--C force-frame-pointers=yes}" cargo test --release -p tungsten-core --locked --test physics_determinism --test physics_tunneling --test physics_containment "$@"
+
 # Compile every benchmark without running it.
 bench-build:
     cargo bench --workspace --no-run --locked
@@ -51,13 +55,14 @@ perf *args:
 perf-test:
     python3 -B scripts/test-bench.py
 
-# Shell lint plus smoke-script, perf-helper, repo-checker and release-script tests (no GPU).
+# Shell lint plus smoke-script, perf-helper, repo-checker, release-script and patch-series tests (no GPU).
 script-test: perf-test
     shellcheck scripts/*.sh
     bash scripts/test-smoke-examples.sh
     python3 -B scripts/test-check-repo.py
     python3 -B scripts/test-release.py
     python3 -B scripts/test-release-preflight.py
+    python3 -B scripts/test-patch-series.py
 
 # Dependency policy: advisories, licenses, bans, sources.
 deps:

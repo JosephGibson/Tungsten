@@ -13,6 +13,16 @@ Short-lived multi-step plans saved as `*.md`. A plan is the handoff artifact for
 - Put a short context digest (under ~500 tokens) near the top instead of a separate context file.
 - Settled rationale belongs in `DECISIONS.md`; plans are time-bounded execution documents.
 
+## Executing a plan
+
+- Read the whole plan first and treat it as the map; don't re-explore. Open only the files the step touches ([`docs/LLM_INDEX.md`](../LLM_INDEX.md) routes by task).
+- Do exactly the requested step or steps. Record out-of-scope findings as follow-ups in the plan or in [`docs/known-issues.md`](../known-issues.md); don't fix them.
+- Run the step's done-when checks and quote the results. Report a failed check with its output instead of working around it, and a check that did not run as not run.
+- Where the plan defers a choice, use its stated default; otherwise check [`docs/DECISION_INDEX.md`](../DECISION_INDEX.md), then ask. The "Stuck" rule in [AGENTS.md](../../AGENTS.md) applies.
+- Keep `status` current: set `in progress` when work starts and `done` when the last done-when check passes, then archive per Lifecycle (`just repo-check` flags a finished plan left here).
+- When Git mutations are human-only, hand over one patch and commit message per step. Use the [tungsten-patch-handoff](../../.claude/skills/tungsten-patch-handoff/SKILL.md) skill.
+- For perf plans, write the done-when checks per the profiling workflow's [Writing done-when checks](../perf/profiling-workflow.md#writing-done-when-checks).
+
 ## Lifecycle
 
 - Update `status` when work finishes; don't leave a finished plan `in progress`.

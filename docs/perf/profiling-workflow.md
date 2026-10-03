@@ -2,7 +2,7 @@
 
 The capture contract for Tungsten performance work: how to run the benchmark suite, what a valid capture is, and how two captures are compared (`D-078`). [`benchmarks.md`](benchmarks.md) describes the six benchmarks, their knobs, guards, owned metrics and calibrated defaults. `just perf <subcommand>` runs `scripts/bench.py`, a standard-library Python 3.12 runner; `scripts/bench_report.py` holds the parsing, statistics and reports, and `just perf-test` runs `scripts/test-bench.py`.
 
-Read [capture rules](#comparison-rule-and-capture-rules) before measuring, then only the needed procedure: [quick start](#quick-start), [compare](#compare), [capacity](#capacity-search), [profiling](#profiling), [pacing](#frame-pacing), or [telemetry format](#telemetry-lines). Dated matrices describe the recorded build and machine.
+Read [capture rules](#comparison-rule-and-capture-rules) before measuring, then only the needed procedure: [quick start](#quick-start), [compare](#compare), [capacity](#capacity-search), [done-when checks](#writing-done-when-checks), [profiling](#profiling), [pacing](#frame-pacing), or [telemetry format](#telemetry-lines). Dated matrices describe the recorded build and machine.
 
 ## Comparison rule and capture rules
 
@@ -17,7 +17,7 @@ Compare two captures only when they measure the same row with the same `workload
 | Frames | the benchmark's warm-up (60–180 frames), then 300 measured frames |
 | Repeats | `--repeat 5` for compare-grade captures and suites |
 | GPU timing | only in the separate GPU diagnostic run (`gpu` and `integrated`), never in a timing run |
-| Machine | governor `performance`; nothing else using the GPU or the screen |
+| Machine | governor `performance`; nothing else using the CPU, the GPU or the screen |
 
 **No remote-desktop encoder may run during a capture.** A connected NoMachine client runs `nxcodec.bin`, which encodes the screen and competes for memory bandwidth with the integrated GPU. On the reference machine it slowed every third frame of `ecs`, moving `total` p95 from 11.5 to 18.2 ms, while every guard passed and the digests matched. The runner records no background-load provenance, so check before and after every capture, probe, smoke timing or visual run, and poll during long ones:
 
@@ -26,6 +26,11 @@ pgrep -x nxcodec.bin && echo "disconnect the remote-desktop client first"
 ```
 
 A capture that overlapped such a session is invalid: exclude it and capture again.
+
+**Nothing else may load the machine during a sitting either.** Guards and digests pass under this load too:
+
+- **No other agent session or build.** Another session's `cargo` run in the same tree landed inside a suite: one `particles` run read `total` p95 41.9 ms against about 12.5, and `particles` and `integrated` read 3–9% high for the whole window. Before a sitting, check that no other Claude or Codex session is working in the tree (`pwdx $(pgrep -x 'claude|codex')` shows where each runs) and that `pgrep -x 'cargo|rustc'` finds nothing; once the runner's build is done, poll for them as for the encoder.
+- **None of your own commands.** Searches and edits beside a capture took `churn` `flush` p95 from 3.07–3.12 to 3.14–3.46 ms and `integrated` jitter from 0.7–1.4 to 0.8–2.6 ms, with p50 unmoved. Run each sitting as one blocking foreground command. Check a capture that ran beside other work against a clean capture's p95 and jitter, and capture it again if they are fatter.
 
 ## Quick start
 
@@ -174,7 +179,7 @@ Results are machine-specific and informational: a lower capacity is a finding to
 
 ## Memory
 
-- **Peak RSS** comes from `ru_maxrss` through `os.wait4`, for every run, with no engine change. The timing run's value is the one reported, because the diagnostic run allocates query buffers. It includes driver-mapped memory, so compare it only on one machine and driver. rusage also gives user and system CPU seconds, faults and context switches.
+- **Peak RSS** comes from `ru_maxrss` through `os.wait4`, for every run, with no engine change. The timing run's value is the one reported, because the diagnostic run allocates query buffers. It includes driver-mapped memory, so compare it only on one machine and driver, and within one sitting: with transparent huge pages set to `always`, one build read 62 MiB more in every row an hour later, and compare called it `regressed`. Against an older baseline, capture the untouched tree first. rusage also gives user and system CPU seconds, faults and context switches.
 - **RSS growth** is the least-squares slope, in KiB/s, of `/proc/<pid>/statm` samples taken every 100 ms, fitted over the second half of the run after dropping samples within 0.2 s of the last one (the child frees memory while it shuts down). It is reported for every row and judged for none: the leak threshold for `churn` is an open proposal ([`benchmarks.md`](benchmarks.md), "Open proposals"). One 4 KiB page over a short run reads as a few KiB/s. Until `D-085` the rows that rewrite text every frame (`gpu`, `integrated`) grew by MiB/s while the text cache filled, so their peak RSS depended on capture length. The layout cache is bounded now: `gpu` reads no growth and the same peak at 300 and 900 frames.
 - **Allocation counting** isn't measured (gap M1).
 
@@ -209,6 +214,13 @@ Every row also reports peak RSS, with a verdict, and RSS growth. `interval` and,
 
 **Budgets.** The capacity budgets, 60 Hz (16.7 ms) and 144 Hz (6.9 ms) p95 of `total`, are the only budgets. Benchmarks load their owned stage on purpose, so no stage has a fixed limit.
 
+## Writing done-when checks
+
+- **Ask for "not `regressed`".** An effect just under τ can't read `improved` and seldom `unchanged`: `ecs` `update` p50 read −0.26, −0.30 and −0.28 ms against τ 0.32, `noisy` each time (`D-083`). Ask for `improved` only for moves well past τ; in the dead zone, report the deltas and intervals.
+- **Capture every CPU row a shared change can move.** An ECS step captured on `ecs` alone hid `churn` `flush` 2.68 → 3.1 ms until the final suite. For ECS storage, queries or the frame loop, capture the suite at each step, or `--only` every row the code runs in.
+- **Estimate cost on the judged rows.** The arrival pass was noise on a settling pile and +8.3% `physics_step` in `physics`, which lists about 195 bodies per substep (`D-092`). Count the new work's triggers per frame in those rows and price them against τ before writing the check.
+- **Judge relocated work on frame time.** Work moved between passes moves the pass verdicts and `render_span`: `smaa_neighborhood` read `regressed` while `gpu` `total` fell (`D-087`). Name the pass that absorbs the cost, and judge `total` and GPU engine time per frame (`drm-engine-*` in `/proc/<pid>/fdinfo/`).
+
 ## Profiling
 
 - **`--profile`.** `just perf run <bench> --profile [--call-graph dwarf|fp] [--sample-frequency HZ]` runs the binary twice more after the timing runs, with the same configuration and only error logging: once under `perf stat -d` and once under `perf record` (DWARF stacks by default), then folds a flamegraph from that recording (`flamegraph --perfdata`), all into `profile/`. A missing `perf` or `flamegraph` is noted in `capture.json`. Profiler runs never feed the statistics.
@@ -227,6 +239,10 @@ Every row also reports peak RSS, with a verdict, and RSS growth. `interval` and,
 
   `samply record` is an interactive alternative to `perf record` with the same environment; keep the window at the benchmark's warm-up plus 300 frames.
 - **GPU timing is diagnosis only.** `TUNGSTEN_GPU_TIMING=1` forces a blocking `device.poll(wait_indefinitely())` readback every frame, which inflates CPU-side timings. That is why GPU metrics come from the separate diagnostic run. Never enable it for a timing run or a profile.
+- **Confirm the rebuild after restoring files.** Cargo judges freshness by mtime, so files restored with `cp -p` (or `tar -x`, `rsync -t`) look older than the last build and the binary keeps the change they removed. Restore with plain `cp` or `touch` the files; the build must print `Compiling` for each restored crate before a capture.
+- **Predict code placement.** A row the change never touches can move with its functions' addresses (see the [regression policy](#tracked-rows-suites-and-regression-policy)). Before capturing a step, diff `nm -C --defined-only` of its release build (the runner's flags, in a scratch copy with its own `target/`) against the baseline build: a hot function whose address changes modulo 64 can move its row. When everything after an edit moves and no single pad reproduces the layout, the placebo is the candidate built with its change switched off, its addresses checked with `nm` (`D-087`, `D-092`): baseline → placebo is placement, placebo → candidate is the change.
+- **A second caller can de-inline a hot function.** A second call site made rustc outline `narrow_phase` from the pair loop, about 5.6% of `physics_step` until `#[inline(always)]` (`D-092`). Profile the baseline build too and compare per-symbol sample counts (`perf report --no-children -g none --sort symbol -n`), not shares.
+- **A helper's return type can change a hot loop.** An inlined helper returning `Option<[u8; 4]>` made the particle sprite loop store through vector shuffles, +7.4% of `particle_tick_system` samples (`D-093` accepted it); writing through `&mut [u8; 4]` read within noise. Have such helpers write in place and return a flag, and compare `perf annotate` of the hot symbol on both builds.
 
 ## Hotspots
 
@@ -299,4 +315,4 @@ RenderDoc on Linux with Vulkan:
 
 ## Criterion micro-benchmarks
 
-Criterion (`D-037`) covers isolated primitives: `ecs_bench`, `physics_bench`, `action_map_bench` and `tween_tick` in `tungsten-core`, `render_bench` in `tungsten-render` and `particle_tick` in `tungsten`. They are regression detectors, not throughput claims. `just bench-build` compiles every bench without running it; run one with `cargo bench -p tungsten-core --bench physics_bench`. Benches build with `.cargo/config.toml`'s `target-cpu=native` flags, so their numbers never compare with capture numbers.
+Criterion (`D-037`) covers isolated primitives: `ecs_bench`, `physics_bench`, `action_map_bench` and `tween_tick` in `tungsten-core`, `render_bench` in `tungsten-render` and `particle_tick` in `tungsten`. They are regression detectors, not throughput claims. `just bench-build` compiles every bench without running it; run one with `cargo bench -p tungsten-core --bench physics_bench`. Benches build with `.cargo/config.toml`'s `target-cpu=native` flags, so their numbers never compare with capture numbers. They need a machine as quiet as a capture does (see [capture rules](#comparison-rule-and-capture-rules)); compare before and after a change with `-- --save-baseline before`, then `-- --baseline before`.
