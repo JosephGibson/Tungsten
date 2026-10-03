@@ -1,4 +1,8 @@
+use super::pairs::{
+    EMPTY_PAIR, PAIR_AWAKE, PAIR_MARGIN_SLOPS, build_pairs, collect_tripped, gravity_allowance,
+};
 use super::*;
+use crate::assets::{LayerKind, TilemapInstance};
 use crate::assets::{TilemapData, TilemapLayer, TilemapRegistry};
 use crate::ecs::World;
 

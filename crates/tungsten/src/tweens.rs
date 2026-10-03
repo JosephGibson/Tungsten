@@ -108,8 +108,19 @@ pub fn tween_tick_system(world: &mut World) {
         && let Some(buf) = world.get_resource_mut::<CommandBuffer>()
     {
         for entity in to_remove {
-            buf.remove_component::<Tween>(entity);
+            buf.call(entity, remove_finished_tween);
         }
+    }
+}
+
+/// Flush-time removal of a completed tween. A replacement inserted earlier in
+/// the same flush overwrote it and is not `pending_remove`, so it stays (B4).
+fn remove_finished_tween(world: &mut World, entity: Entity) {
+    if world
+        .get::<Tween>(entity)
+        .is_some_and(|tween| tween.pending_remove)
+    {
+        world.remove_component::<Tween>(entity);
     }
 }
 

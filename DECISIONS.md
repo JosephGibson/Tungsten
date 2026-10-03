@@ -1143,3 +1143,37 @@ The bound belongs to the step, not to the app loop: `physics_step` is public and
 - Supersedes `D-097`'s opt-in clause as its marker line says.
 - The 1.0 workflow and implementation plan drop the series: steps end in local commits, and "one series per tree" becomes "one committing session per tree".
 - Released `CHANGELOG.md` sections, the 0.40 QA plan's evidence rows and `DESIGN.md`'s 0.39 status line keep their mentions as history.
+
+## D-099 — A completed tween's removal spares a same-frame replacement
+**Date:** 2026-10-03
+**Decision:** `tween_tick_system` queues a completed tween's removal as `CommandBuffer::call(entity, remove_finished_tween)`, which at flush removes the entity's `Tween` only while it is still marked `pending_remove`. `CommandBuffer::call(entity, fn(&mut World, Entity))` is the public way to queue a plain function that runs at flush in queue order; it reuses `D-084`'s function-pointer command (renamed `Command::Call`), and `remove_component::<T>` records through it.
+
+**Why:** Systems run before the tween stage, so a replacement `Tween` queued through the `CommandBuffer` in the frame the old one completes is applied first at flush and overwrites the old one in place; the unconditional `remove_component::<Tween>` queued after it then deleted the replacement (B4 in the 0.40 QA plan; `game_feel.rs` already works around the same hazard for squash). A replacement is a fresh `Tween` with `pending_remove` false, so checking the latch at flush tells the two apart without a generation counter, and a function pointer keeps the command unboxed. Measured on the tree before the fix, back to back: `ecs` and `churn` read 0 regressed (15 owned metrics unchanged, 7 noisy) and `integrated` reads 4 of 4 unchanged against step 0's baseline, with every digest unchanged.
+
+**Consequences:**
+- Amends `D-056`'s removal clause only: the removal now waits for the latch at flush; the event routing and the `pending_remove` latch stand. Per the 0.40 QA plan's Q1, `D-056` carries no marker line; the index rows record the amendment.
+- `replacement_tween_queued_before_completion_survives_flush` (`crates/tungsten/src/tests/tweens.rs`) pins it; `tween_once_completes_and_removes_component` still passes.
+- `remove_component::<Tween>` queued by user code stays unconditional.
+
+## D-100 — Camera smoothing is a rate per 1/60 s, not a fraction per frame
+**Date:** 2026-10-03
+**Decision:** `camera_update_system` blends the camera toward its desired position by `1 - (1 - s)^(dt·60)` each frame, where `s` is `CameraController::smoothing_factor`: the fraction of the remaining distance covered per 1/60 s, so the camera converges at the same rate at any frame rate. `s` keeps its meaning at 60 Hz, and 0 (never moves) and 1 (snaps) hold whatever `dt` is.
+
+**Why:** A lerp by `s` once per frame made convergence depend on the frame rate (B5 in the 0.40 QA plan): one second toward a target at (−100, −150) with smoothing 0.05 ended at (−95.39, −143.09) at 60 Hz and (−99.79, −149.68) at 120 Hz. The per-time form is the frame-rate-independent version of the same exponential decay. 0 and 1 are special-cased because `0^0` would leave a snapping camera still on a frame with `dt` 0.
+
+**Consequences:**
+- The platformer and the integrated bench use 1, so they still snap: `integrated` reads 4 of 4 owned metrics unchanged with its digest unchanged. The playground's 0.12 now follows at the same speed at any frame rate, as it did at 60 Hz.
+- `smoothing_converges_the_same_at_60_and_120_hz` (`crates/tungsten/tests/camera.rs`) pins it at smoothing 0.05, which leaves about 5% of the distance after a second; at 0.5 both rates reach f32 precision within the second and could not show the bug.
+- Amends no decision.
+
+## D-101 — Each batch of a material draws with a uniform buffer of its own
+**Date:** 2026-10-03
+**Decision:** A material's 256-byte uniform buffer belongs to the batch, not to the material: the k-th batch of a material in a frame draws with UBO slot k, kept per material on the sprite pipeline in the `ParamSlots` pattern of `D-090`, built on first use against the material's group-2 layout and written only when its bytes change. `MaterialPipeline` keeps the pipeline and that layout; a material rebuild drops its slots.
+
+**Why:** Every `queue.write_buffer` lands before the frame's command buffer runs, so with one UBO per material every batch of the material drew the frame's last payload (B1 in the 0.40 QA plan): two `damage_flash` quads flashed red and blue drew a frame identical to two blue ones, 0 of 921,600 pixels apart, and the `integrated` row's struck walkers drew whichever fade was written last. The extract already splits batches by override hash for this reason; the buffers did not follow. Measured against step 0's baseline, `gpu`, `gpu-throughput` and `integrated` read 0 owned metrics `regressed` (19 unchanged; `extract` p50 0.64 → 0.66 ms and `render_encode` p50 2.10 → 2.14 ms in `gpu`), with every digest unchanged.
+
+**Consequences:**
+- Amends `D-058`'s single-UBO clause only: each batch of a material has its own buffer; the rest stands. Per the 0.40 QA plan's Q1, `D-058` carries no marker line; the index rows record the amendment.
+- `material_batches_keep_their_own_uniforms` (`examples/04_shader_playground/tests/post_regression.rs`, in `just visual`) pins it with the playground's `TUNGSTEN_MATERIAL_PAIR_FIXTURE`: the red-and-blue pair now differs from the blue pair over the first quad's 4,096 pixels.
+- A material keeps as many slots as its most batches in one frame; they are kept between frames.
+- `gpu-visual.png` is unchanged (the visual preset's `bench_heavy` batches share default bytes). The `integrated` row now draws each walker's own flash; its digest hashes counters, not pixels, and is unchanged.

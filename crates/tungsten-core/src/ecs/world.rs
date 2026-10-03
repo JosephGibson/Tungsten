@@ -455,8 +455,8 @@ impl World {
                     };
                     self.archetypes.insert_run(entity, run, values);
                 }
-                Command::Remove { entity, remove } => {
-                    remove(self, entity);
+                Command::Call { entity, call } => {
+                    call(self, entity);
                     index += 1;
                 }
                 Command::Despawn(entity) => {

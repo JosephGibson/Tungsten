@@ -18,7 +18,7 @@ pub(crate) struct Archetypes {
 
 impl Archetypes {
     pub fn new() -> Self {
-        let empty = Archetype::new(EMPTY_ARCHETYPE, Box::new([]), Vec::new());
+        let empty = Archetype::new(Box::new([]), Vec::new());
         let mut index = HashMap::new();
         index.insert(Box::new([]) as Box<[TypeId]>, EMPTY_ARCHETYPE);
         Self {
@@ -39,7 +39,7 @@ impl Archetypes {
             return id;
         }
         let id = self.archetypes.len() as ArchetypeId;
-        let arch = Archetype::new(id, types.into(), columns(self));
+        let arch = Archetype::new(types.into(), columns(self));
         self.archetypes.push(arch);
         self.index.insert(types.into(), id);
         id

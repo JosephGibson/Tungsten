@@ -21,6 +21,8 @@
       "Bash(just ctx)",
       "Bash(just smoke)",
       "Bash(just visual)",
+      "Bash(just physics-release)",
+      "Bash(just physics-release -- --nocapture)",
       "Bash(just perf-test)",
       "Bash(just script-test)",
       "Bash(just bench-build)",

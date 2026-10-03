@@ -5,7 +5,9 @@ use tungsten_core::assets::{FilterMode, MaterialAssetId, TextureHandle};
 use tungsten_core::tween::UniformOverrideBlock;
 use wgpu::util::DeviceExt;
 
-use crate::material::MaterialPipeline;
+use crate::material::{MaterialPipeline, MaterialSlot};
+use crate::post::ParamSlots;
+use crate::shader_hot_reload::build_validated;
 
 /// GPU sprite instance; POD layout.
 ///
@@ -204,9 +206,11 @@ pub struct SpritePipeline {
     /// + one bind group. Lit batches bind from this pool at group 1.
     lit_textures: HashMap<TextureHandle, GpuLitTextures>,
     next_handle: u32,
-    /// Bytes last written to each material's UBO: batches that repeat a
-    /// payload upload it once.
-    material_written: HashMap<MaterialAssetId, [u8; 256]>,
+    /// Each material's UBO slots, one per batch of the material in a frame,
+    /// with the bytes each holds (`D-101`).
+    material_slots: HashMap<MaterialAssetId, ParamSlots<MaterialSlot>>,
+    /// Batches of each material drawn so far this frame.
+    material_batches: HashMap<MaterialAssetId, usize>,
 }
 
 impl SpritePipeline {
@@ -382,7 +386,8 @@ impl SpritePipeline {
             textures: HashMap::new(),
             lit_textures: HashMap::new(),
             next_handle: 0,
-            material_written: HashMap::new(),
+            material_slots: HashMap::new(),
+            material_batches: HashMap::new(),
         }
     }
 
@@ -415,7 +420,9 @@ impl SpritePipeline {
     /// Hot-reload entry point: swap the live pipeline to one built against
     /// `new_module`. Leaves texture bind groups, samplers, and buffers intact.
     /// `depth_write = true` produces the GpuDepth variant (LessEqual + write);
-    /// `false` produces the CpuStable variant (no depth_stencil state).
+    /// `false` produces the CpuStable variant (no depth_stencil state). A
+    /// pipeline that fails validation is not swapped in: `Err` carries the
+    /// report and the live pipeline stays.
     pub fn rebuild_with_shader(
         &mut self,
         device: &wgpu::Device,
@@ -423,15 +430,18 @@ impl SpritePipeline {
         surface_format: wgpu::TextureFormat,
         sample_count: u32,
         depth_write: bool,
-    ) {
-        self.pipeline = build_sprite_pipeline(
-            device,
-            new_module,
-            &self.pipeline_layout,
-            surface_format,
-            sample_count,
-            depth_write,
-        );
+    ) -> Result<(), String> {
+        self.pipeline = build_validated(device, || {
+            build_sprite_pipeline(
+                device,
+                new_module,
+                &self.pipeline_layout,
+                surface_format,
+                sample_count,
+                depth_write,
+            )
+        })?;
+        Ok(())
     }
 
     /// Mint renderer-owned texture handle.
@@ -796,11 +806,10 @@ impl SpritePipeline {
         queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(matrix_ref));
     }
 
-    /// Records bytes written to material `id`'s UBO outside `draw`: the seed
-    /// a new or rebuilt material pipeline gets. `draw` then skips a payload
-    /// equal to it.
-    pub(crate) fn note_material_write(&mut self, id: MaterialAssetId, payload: [u8; 256]) {
-        self.material_written.insert(id, payload);
+    /// Drops material `id`'s UBO slots: a new or rebuilt material pipeline has
+    /// a new uniform layout, and `draw` builds and writes fresh slots on use.
+    pub(crate) fn reset_material_slots(&mut self, id: MaterialAssetId) {
+        self.material_slots.remove(&id);
     }
 
     fn ensure_instance_capacity(&mut self, device: &wgpu::Device, required_instances: usize) {
@@ -843,6 +852,7 @@ impl SpritePipeline {
         }
 
         self.ensure_instance_capacity(device, total_instances);
+        self.material_batches.clear();
         let instance_stride = std::mem::size_of::<SpriteInstance>() as wgpu::BufferAddress;
         // Each batch lands in the staging view as one slice copy, in batch
         // order, so draw ranges below index it the same way. No intermediate
@@ -972,13 +982,24 @@ impl SpritePipeline {
                         .uniform_overrides
                         .unwrap_or_else(|| mp.defaults.to_override_block())
                         .to_bytes();
-                    // Skip bytes the UBO already holds; a different payload
-                    // for the same material is still written, as before.
-                    if self.material_written.get(&mp.material_id) != Some(&payload) {
-                        queue.write_buffer(&mp.ubo, 0, &payload);
-                        self.material_written.insert(mp.material_id, payload);
+                    // The k-th batch of a material this frame draws with
+                    // slot k: every write lands before the frame runs, so
+                    // batches sharing one buffer all drew the last payload
+                    // (`D-101`). A slot is written only when its bytes change.
+                    let count = self.material_batches.entry(mp.material_id).or_insert(0);
+                    let index = *count;
+                    *count += 1;
+                    let (slot, stale) = self
+                        .material_slots
+                        .entry(mp.material_id)
+                        .or_default()
+                        .stage(index, &payload, || {
+                            MaterialSlot::new(device, &mp.bind_group_layout, &mp.name)
+                        });
+                    if stale {
+                        queue.write_buffer(&slot.ubo, 0, &payload);
                     }
-                    render_pass.set_bind_group(2, &mp.bind_group, &[]);
+                    render_pass.set_bind_group(2, &slot.bind_group, &[]);
                 }
             }
 

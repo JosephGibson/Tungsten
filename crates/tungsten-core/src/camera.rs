@@ -79,6 +79,8 @@ impl CameraBounds {
 pub struct CameraController {
     pub mode: CameraMode,
     pub dead_zone_size: Vec2,
+    /// Fraction of the remaining distance to the desired position covered per
+    /// 1/60 s, at any frame rate: 0 never moves, 1 snaps (`D-100`).
     pub smoothing_factor: f32,
     pub bounds: Option<CameraBounds>,
     pub zoom_multiplier: f32,

@@ -92,15 +92,12 @@ impl ColumnSlots {
 ///
 /// Query cost: one downcast per archetype/type, then contiguous `Vec<T>` access.
 /// Rows move between columns and drop in place, so no value is boxed (D-083).
-#[allow(dead_code)]
 pub(crate) trait AnyColumn: Any {
     /// Swap-remove `row` and push its value onto `dest`, a column of the same
     /// component type.
     fn move_row_to(&mut self, row: usize, dest: &mut dyn AnyColumn);
     /// Swap-remove `row` and drop its value.
     fn swap_remove_drop(&mut self, row: usize);
-    fn len(&self) -> usize;
-    fn type_id(&self) -> TypeId;
     /// Empty column of same concrete type.
     fn new_empty(&self) -> Box<dyn AnyColumn>;
 }
@@ -144,14 +141,6 @@ impl<T: 'static> AnyColumn for TypedVec<T> {
         self.0.swap_remove(row);
     }
 
-    fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    fn type_id(&self) -> TypeId {
-        TypeId::of::<T>()
-    }
-
     fn new_empty(&self) -> Box<dyn AnyColumn> {
         Box::new(TypedVec::<T>(Vec::new()))
     }
@@ -167,8 +156,6 @@ pub(crate) const EMPTY_ARCHETYPE: ArchetypeId = 0;
 ///
 /// Invariant: every column and `entities` have equal length; rows compact via swap-remove.
 pub(crate) struct Archetype {
-    #[allow(dead_code)]
-    pub id: ArchetypeId,
     /// Sorted component type key.
     pub component_types: Box<[TypeId]>,
     /// One column per component type, in `component_types` order, created
@@ -187,15 +174,10 @@ pub(crate) struct Archetype {
 impl Archetype {
     /// `columns` holds one empty column per entry of `component_types`, in
     /// the same order.
-    pub fn new(
-        id: ArchetypeId,
-        component_types: Box<[TypeId]>,
-        columns: Vec<Box<dyn AnyColumn>>,
-    ) -> Self {
+    pub fn new(component_types: Box<[TypeId]>, columns: Vec<Box<dyn AnyColumn>>) -> Self {
         debug_assert_eq!(component_types.len(), columns.len());
         let hashes: Vec<u64> = component_types.iter().map(|&tid| type_hash(tid)).collect();
         Self {
-            id,
             component_types,
             columns,
             column_slots: ColumnSlots::new(&hashes),
@@ -284,11 +266,6 @@ impl Archetype {
     pub fn typed_column_mut<T: 'static>(&mut self) -> Option<&mut TypedVec<T>> {
         self.column_mut(TypeId::of::<T>())
             .map(|column| column.typed_mut().expect("column type matches its key"))
-    }
-
-    #[allow(dead_code)]
-    pub fn row_count(&self) -> usize {
-        self.entities.len()
     }
 
     /// Swap-remove row from every column; caller updates displaced location.

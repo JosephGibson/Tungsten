@@ -95,7 +95,7 @@ pub struct Light {
 /// `Directional` carries a 2D angle (radians from +x axis).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LightKind {
-    Point { radius: f32, falloff: f32 },
+    Point { radius: f32 },
     Directional { angle: f32 },
 }
 
@@ -104,10 +104,7 @@ impl Light {
     #[must_use]
     pub fn point(color: Vec3, radius: f32) -> Self {
         Self {
-            kind: LightKind::Point {
-                radius,
-                falloff: 1.0,
-            },
+            kind: LightKind::Point { radius },
             color,
             intensity: 1.0,
         }

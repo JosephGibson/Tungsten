@@ -2977,7 +2977,6 @@ dependencies = [
 name = "tungsten-core"
 version = "0.39.0"
 dependencies = [
- "anyhow",
  "bytemuck",
  "criterion",
  "glam",

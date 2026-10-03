@@ -13,7 +13,7 @@ use tungsten_core::tween::UniformOverrideBlock;
 use wgpu::util::DeviceExt;
 
 use crate::passes::TargetId;
-use crate::shader_hot_reload::ShaderModuleCache;
+use crate::shader_hot_reload::{ShaderModuleCache, build_validated};
 use crate::targets::{BLOOM_PYRAMID_FORMAT, RenderTargetPool, TargetCache};
 
 /// Stage shader manifest names. Must match `assets/manifest.json` keys and the
@@ -257,42 +257,34 @@ impl BloomPipeline {
     }
 
     /// Hot-reload entry: rebuild only the affected stage's pipeline against a
-    /// freshly validated module. Caller commits the module to the cache after
-    /// this returns.
+    /// freshly validated module. A pipeline that fails validation is not
+    /// swapped in (`Err`). Caller commits the module to the cache after this
+    /// returns `Ok`.
     pub fn rebuild_stage_with_module(
         &mut self,
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
         shader_id: ShaderAssetId,
         module: &wgpu::ShaderModule,
-    ) {
+    ) -> Result<(), String> {
+        let layouts = &self.layouts;
+        let pyramid = |label, blend| {
+            build_validated(device, || {
+                build_pyramid_pipeline(device, layouts, module, label, blend)
+            })
+        };
         if shader_id == self.shader_ids.threshold {
-            self.threshold = build_pyramid_pipeline(
-                device,
-                &self.layouts,
-                module,
-                "bloom_threshold",
-                BlendKind::Replace,
-            );
+            self.threshold = pyramid("bloom_threshold", BlendKind::Replace)?;
         } else if shader_id == self.shader_ids.downsample {
-            self.downsample = build_pyramid_pipeline(
-                device,
-                &self.layouts,
-                module,
-                "bloom_downsample",
-                BlendKind::Replace,
-            );
+            self.downsample = pyramid("bloom_downsample", BlendKind::Replace)?;
         } else if shader_id == self.shader_ids.upsample {
-            self.upsample = build_pyramid_pipeline(
-                device,
-                &self.layouts,
-                module,
-                "bloom_upsample",
-                BlendKind::Additive,
-            );
+            self.upsample = pyramid("bloom_upsample", BlendKind::Additive)?;
         } else if shader_id == self.shader_ids.composite {
-            self.composite = build_composite_pipeline(device, &self.layouts, module, format);
+            self.composite = build_validated(device, || {
+                build_composite_pipeline(device, layouts, module, format)
+            })?;
         }
+        Ok(())
     }
 
     #[must_use]

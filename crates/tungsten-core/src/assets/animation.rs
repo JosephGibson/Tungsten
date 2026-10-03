@@ -1,6 +1,7 @@
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use thiserror::Error;
 
 /// Animation frame.
 #[derive(Debug, Clone, Deserialize)]
@@ -16,19 +17,29 @@ pub struct AnimationData {
     pub frames: Vec<AnimationFrame>,
 }
 
+/// Error loading an animation file.
+#[derive(Debug, Error)]
+pub enum AnimationError {
+    #[error("Failed to read animation '{path}': {error}")]
+    Read { path: String, error: std::io::Error },
+    #[error("Invalid animation '{path}': {error}")]
+    Parse {
+        path: String,
+        error: serde_json::Error,
+    },
+}
+
 impl AnimationData {
-    pub fn load(path: impl AsRef<Path>) -> Result<Self, anyhow::Error> {
-        let contents = std::fs::read_to_string(path.as_ref()).map_err(|e| {
-            anyhow::anyhow!(
-                "Failed to read animation '{}': {}",
-                path.as_ref().display(),
-                e
-            )
+    pub fn load(path: impl AsRef<Path>) -> Result<Self, AnimationError> {
+        let path = path.as_ref();
+        let contents = std::fs::read_to_string(path).map_err(|error| AnimationError::Read {
+            path: path.display().to_string(),
+            error,
         })?;
-        let data: AnimationData = serde_json::from_str(&contents).map_err(|e| {
-            anyhow::anyhow!("Invalid animation '{}': {}", path.as_ref().display(), e)
-        })?;
-        Ok(data)
+        serde_json::from_str(&contents).map_err(|error| AnimationError::Parse {
+            path: path.display().to_string(),
+            error,
+        })
     }
 
     #[must_use]

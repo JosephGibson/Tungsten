@@ -168,3 +168,34 @@ fn shake_is_deterministic_for_identical_worlds() {
     assert_eq!(positions_a, positions_b);
     assert_ne!(positions_a[0], Vec2::new(120.0, 75.0));
 }
+
+#[test]
+fn smoothing_converges_the_same_at_60_and_120_hz() {
+    // B5: one second of smoothing toward a fixed target ends at the same place
+    // at 60 and 120 Hz. At 0.05 about 5% of the distance is left after a
+    // second at 60 Hz; at 0.5 both rates reach f32 precision within the
+    // second and cannot show a difference.
+    let run = |frames: usize, dt: f32| {
+        let mut world = seed_world();
+        world.insert_resource(DeltaTime { dt });
+        let target = world.spawn();
+        world.insert(target, Transform::from_position(Vec2::new(300.0, 150.0)));
+        {
+            let controller = world.get_resource_mut::<CameraController>().unwrap();
+            controller.mode = CameraMode::Follow(target);
+            controller.dead_zone_size = Vec2::ZERO;
+            controller.smoothing_factor = 0.05;
+        }
+        for _ in 0..frames {
+            camera_update_system(&mut world);
+        }
+        world.get_resource::<CameraState>().unwrap().position
+    };
+    let at_60 = run(60, 1.0 / 60.0);
+    let at_120 = run(120, 1.0 / 120.0);
+    let delta = (at_60 - at_120).abs();
+    assert!(
+        delta.x <= 1e-2 && delta.y <= 1e-2,
+        "60 Hz ended at {at_60:?}, 120 Hz at {at_120:?}"
+    );
+}

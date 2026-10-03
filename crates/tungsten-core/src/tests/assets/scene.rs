@@ -175,3 +175,26 @@ fn load_rejects_empty_channels() {
     let err = SceneData::load(&path).expect_err("must reject empty channels");
     assert!(matches!(err, SceneError::Validation { .. }));
 }
+
+#[test]
+fn scene_rejects_vec4_lane_out_of_range() {
+    // B6: a vec4 lane above 3 must fail validation instead of silently
+    // driving lane 3 through the runtime clamp.
+    use std::io::Write as _;
+    let dir = std::env::temp_dir().join("tungsten-scene-vec4-lane");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("scene.json");
+    let bad = r#"{ "entities": [ {
+        "transform": { "position": [0.0, 0.0] },
+        "tweens": [ {
+            "duration": 0.5,
+            "channels": [ { "kind": "uniform_vec4_lane", "slot": "v0", "lane": 4, "from": 0.0, "to": 1.0 } ]
+        } ]
+    } ] }"#;
+    {
+        let mut f = std::fs::File::create(&path).unwrap();
+        f.write_all(bad.as_bytes()).unwrap();
+    }
+    let err = SceneData::load(&path).expect_err("must reject lane 4");
+    assert!(matches!(err, SceneError::Validation { .. }), "{err}");
+}

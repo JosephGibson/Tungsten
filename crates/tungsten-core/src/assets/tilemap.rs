@@ -6,6 +6,37 @@ use glam::Vec2;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use thiserror::Error;
+
+/// Error loading a Tiled `.tmj` tilemap.
+#[derive(Debug, Error)]
+pub enum TilemapError {
+    #[error("Failed to read tilemap '{path}': {error}")]
+    Read { path: String, error: std::io::Error },
+    #[error("Invalid Tiled .tmj '{path}': {error}")]
+    Parse {
+        path: String,
+        error: serde_json::Error,
+    },
+    #[error("Tilemap '{path}': no tilesets defined")]
+    NoTileset { path: String },
+    #[error("Tilemap '{path}': tile id={tile} has no 'sprite_id' property")]
+    MissingSpriteId { path: String, tile: u32 },
+    #[error("Tilemap '{path}': too many tiles")]
+    TooManyTiles { path: String },
+    #[error("Tilemap '{path}': duplicate tile id={tile}")]
+    DuplicateTile { path: String, tile: u32 },
+    #[error("Tilemap '{path}': tilelayer '{layer}' has no data array")]
+    MissingLayerData { path: String, layer: String },
+    #[error("Tilemap '{path}': layer '{layer}' references unsupported or unknown gid={gid}")]
+    UnknownGid {
+        path: String,
+        layer: String,
+        gid: u32,
+    },
+    #[error("Tilemap '{path}': {message}")]
+    Invalid { path: String, message: String },
+}
 
 #[derive(Deserialize)]
 struct TiledMap {
@@ -86,19 +117,25 @@ pub struct TilemapData {
 
 impl TilemapData {
     /// Load and validate Tiled `.tmj`; sprite existence checked by asset loader.
-    pub fn load(path: impl AsRef<Path>) -> Result<Self, anyhow::Error> {
-        let path = path.as_ref();
-        let contents = std::fs::read_to_string(path)
-            .map_err(|e| anyhow::anyhow!("Failed to read tilemap '{}': {}", path.display(), e))?;
+    pub fn load(path: impl AsRef<Path>) -> Result<Self, TilemapError> {
+        let file = path.as_ref();
+        let path = file.display().to_string();
+        let contents = std::fs::read_to_string(file).map_err(|error| TilemapError::Read {
+            path: path.clone(),
+            error,
+        })?;
 
-        let tiled: TiledMap = serde_json::from_str(&contents)
-            .map_err(|e| anyhow::anyhow!("Invalid Tiled .tmj '{}': {}", path.display(), e))?;
+        let tiled: TiledMap =
+            serde_json::from_str(&contents).map_err(|error| TilemapError::Parse {
+                path: path.clone(),
+                error,
+            })?;
 
         // Single embedded tileset; sprite IDs come from tile properties.
         let ts = tiled
             .tilesets
             .first()
-            .ok_or_else(|| anyhow::anyhow!("Tilemap '{}': no tilesets defined", path.display()))?;
+            .ok_or_else(|| TilemapError::NoTileset { path: path.clone() })?;
         let firstgid = ts.firstgid;
 
         let mut sorted_tiles = ts.tiles.clone();
@@ -112,21 +149,17 @@ impl TilemapData {
                 .iter()
                 .find(|p| p.name == "sprite_id")
                 .and_then(|p| p.value.as_str())
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "Tilemap '{}': tile id={} has no 'sprite_id' property",
-                        path.display(),
-                        tile.id
-                    )
+                .ok_or_else(|| TilemapError::MissingSpriteId {
+                    path: path.clone(),
+                    tile: tile.id,
                 })?;
             let index = TileIndex::try_from(tileset.len())
-                .map_err(|_| anyhow::anyhow!("Tilemap '{}': too many tiles", path.display()))?;
+                .map_err(|_| TilemapError::TooManyTiles { path: path.clone() })?;
             if tile_indices.insert(tile.id, index).is_some() {
-                return Err(anyhow::anyhow!(
-                    "Tilemap '{}': duplicate tile id={}",
-                    path.display(),
-                    tile.id
-                ));
+                return Err(TilemapError::DuplicateTile {
+                    path,
+                    tile: tile.id,
+                });
             }
             tileset.push(sprite_id.to_owned());
         }
@@ -136,13 +169,13 @@ impl TilemapData {
             if tl.layer_type != "tilelayer" {
                 continue;
             }
-            let data = tl.data.as_ref().ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Tilemap '{}': tilelayer '{}' has no data array",
-                    path.display(),
-                    tl.name
-                )
-            })?;
+            let data = tl
+                .data
+                .as_ref()
+                .ok_or_else(|| TilemapError::MissingLayerData {
+                    path: path.clone(),
+                    layer: tl.name.clone(),
+                })?;
 
             let kind = tl
                 .properties
@@ -162,13 +195,14 @@ impl TilemapData {
                     } else {
                         gid.checked_sub(firstgid)
                             .and_then(|id| tile_indices.get(&id).copied())
-                            .ok_or_else(|| anyhow::anyhow!(
-                                "Tilemap '{}': layer '{}' references unsupported or unknown gid={gid}",
-                                path.display(), tl.name
-                            ))
+                            .ok_or_else(|| TilemapError::UnknownGid {
+                                path: path.clone(),
+                                layer: tl.name.clone(),
+                                gid,
+                            })
                     }
                 })
-                .collect::<anyhow::Result<_>>()?;
+                .collect::<Result<_, TilemapError>>()?;
 
             layers.push(TilemapLayer {
                 name: tl.name.clone(),
@@ -187,7 +221,7 @@ impl TilemapData {
         };
 
         data.validate()
-            .map_err(|e| anyhow::anyhow!("Tilemap '{}': {}", path.display(), e))?;
+            .map_err(|message| TilemapError::Invalid { path, message })?;
         Ok(data)
     }
 

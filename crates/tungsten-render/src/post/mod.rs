@@ -137,7 +137,8 @@ impl StockPipeline {
     }
 
     /// Hot-reload entry: swap in a pipeline built on a freshly validated
-    /// module. The old pipeline stays until the new one exists.
+    /// module. The old pipeline stays until the new one exists, and stays for
+    /// good when the new one fails validation (`Err`).
     fn rebuild_with_module(
         &mut self,
         device: &wgpu::Device,
@@ -145,8 +146,11 @@ impl StockPipeline {
         label: &str,
         module: &wgpu::ShaderModule,
         format: wgpu::TextureFormat,
-    ) {
-        *self = Self::new(device, resources, label, module, format);
+    ) -> Result<(), String> {
+        *self = crate::shader_hot_reload::build_validated(device, || {
+            Self::new(device, resources, label, module, format)
+        })?;
+        Ok(())
     }
 }
 
@@ -170,7 +174,8 @@ struct ParamSlot<T> {
 /// the params layout, so an entry serves whichever effect its slot holds.
 /// Entries are built on first use and kept between frames; they hold no view
 /// of the scene targets. `T` is the GPU objects, generic so the rules are
-/// testable without a device.
+/// testable without a device. Material batches use the same slots, one set
+/// per material (`D-101`).
 pub(crate) struct ParamSlots<T> {
     slots: Vec<Option<ParamSlot<T>>>,
 }
@@ -277,18 +282,20 @@ impl PostStackRenderer {
 
     /// Hot-reload entry: when `name` is a stock effect's shader, rebuild that
     /// effect's pipeline against a freshly validated module. Params buffers
-    /// and bind groups stay. The caller commits the module to the cache after
-    /// this returns.
+    /// and bind groups stay; a pipeline that fails validation is not swapped
+    /// in (`Err`). The caller commits the module to the cache after this
+    /// returns `Ok`.
     pub(crate) fn rebuild_stock_with_module(
         &mut self,
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
         name: &str,
         module: &wgpu::ShaderModule,
-    ) {
+    ) -> Result<(), String> {
         if let Some(index) = STOCK_SHADERS.iter().position(|(stock, _)| *stock == name) {
-            self.stock[index].rebuild_with_module(device, &self.resources, name, module, format);
+            self.stock[index].rebuild_with_module(device, &self.resources, name, module, format)?;
         }
+        Ok(())
     }
 
     /// Pack a `PostPass` into the shared 256-byte UBO layout. Slot

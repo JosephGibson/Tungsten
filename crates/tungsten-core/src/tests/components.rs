@@ -81,10 +81,7 @@ fn light_point_constructor_intensity_one() {
     assert_eq!(l.color, Vec3::new(1.0, 0.5, 0.25));
     assert_eq!(l.intensity, 1.0);
     match l.kind {
-        LightKind::Point { radius, falloff } => {
-            assert_eq!(radius, 4.0);
-            assert_eq!(falloff, 1.0);
-        }
+        LightKind::Point { radius } => assert_eq!(radius, 4.0),
         LightKind::Directional { .. } => panic!("expected Point"),
     }
 }

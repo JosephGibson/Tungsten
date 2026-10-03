@@ -211,3 +211,31 @@ fn scene_tween_spawns_component_through_command_buffer() {
     assert_eq!(tween.on_complete_tag.as_deref(), Some("scene_fade_in"));
     assert_eq!(world.query2_entities::<Transform, Tween>().len(), 1);
 }
+
+#[test]
+fn replacement_tween_queued_before_completion_survives_flush() {
+    // B4: a system queues a replacement through the `CommandBuffer` before the
+    // tween stage completes the old tween; the old tween's deferred removal
+    // must not delete the replacement at flush.
+    let dt = 0.05;
+    let mut world = make_world(dt);
+    let entity = spawn_fading_sprite(
+        &mut world,
+        Tween::new(dt, Easing::Linear).with_channel(TweenChannel::ColorA { from: 0, to: 255 }),
+    );
+    let replacement =
+        Tween::new(1.0, Easing::Linear).with_channel(TweenChannel::ColorA { from: 255, to: 0 });
+    world
+        .get_resource_mut::<CommandBuffer>()
+        .unwrap()
+        .insert(entity, replacement);
+
+    tween_tick_system(&mut world);
+    flush(&mut world);
+
+    let tween = world
+        .get::<Tween>(entity)
+        .expect("the replacement survives the flush");
+    assert_eq!(tween.duration, 1.0);
+    assert!(!tween.pending_remove);
+}

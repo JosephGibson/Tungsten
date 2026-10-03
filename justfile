@@ -55,9 +55,10 @@ perf *args:
 perf-test:
     python3 -B scripts/test-bench.py
 
-# Shell lint plus smoke-script, perf-helper, repo-checker and release-script tests (no GPU).
+# Shell and workflow lint plus smoke-script, perf-helper, repo-checker and release-script tests (no GPU).
 script-test: perf-test
     shellcheck scripts/*.sh
+    actionlint
     bash scripts/test-smoke-examples.sh
     python3 -B scripts/test-check-repo.py
     python3 -B scripts/test-release.py
@@ -66,6 +67,10 @@ script-test: perf-test
 # Dependency policy: advisories, licenses, bans, sources.
 deps:
     cargo deny --locked check
+
+# Unused dependencies (cargo-shear; `cargo install --locked cargo-shear`). Not in CI.
+udeps:
+    cargo shear --locked
 
 # Agent instruction budgets, links, skill symlinks and repo-byte totals.
 ctx:
@@ -94,3 +99,6 @@ release-cut version *args:
 # Fast iteration: format check, agent/repo QA, type-check; `just check` still runs clippy and tests.
 quick: fmt-check ctx repo-check
     cargo check --workspace --all-targets --locked
+
+# The six recipes CI runs, in one local command (`D-070`); GPU smoke, `just visual` and perf stay separate.
+ci: check bench-build deps ctx repo-check script-test

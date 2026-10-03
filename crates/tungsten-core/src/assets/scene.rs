@@ -190,6 +190,13 @@ impl SceneTween {
         if self.channels.is_empty() {
             return Err("tween requires at least one channel".to_string());
         }
+        for channel in &self.channels {
+            if let SceneTweenChannel::UniformVec4Lane { lane, .. } = channel
+                && *lane > 3
+            {
+                return Err(format!("uniform_vec4_lane lane must be 0..=3 (got {lane})"));
+            }
+        }
         Ok(())
     }
 }

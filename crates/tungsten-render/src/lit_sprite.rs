@@ -57,7 +57,8 @@ impl LitSpritePipeline {
         }
     }
 
-    /// Rebuild only the pipeline against `module`, preserving the layout.
+    /// Rebuild only the pipeline against `module`, preserving the layout. A
+    /// pipeline that fails validation is not swapped in (`Err`).
     pub fn rebuild_with_shader(
         &mut self,
         device: &wgpu::Device,
@@ -65,15 +66,18 @@ impl LitSpritePipeline {
         surface_format: wgpu::TextureFormat,
         sample_count: u32,
         depth_write: bool,
-    ) {
-        self.pipeline = build_lit_sprite_pipeline(
-            device,
-            module,
-            &self.pipeline_layout,
-            surface_format,
-            sample_count,
-            depth_write,
-        );
+    ) -> Result<(), String> {
+        self.pipeline = crate::shader_hot_reload::build_validated(device, || {
+            build_lit_sprite_pipeline(
+                device,
+                module,
+                &self.pipeline_layout,
+                surface_format,
+                sample_count,
+                depth_write,
+            )
+        })?;
+        Ok(())
     }
 }
 
