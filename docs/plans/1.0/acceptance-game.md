@@ -4,7 +4,7 @@
 - **goal:** Specify the small, complete game that tests definition A early enough for its feature map to cut the tiers of W5, W6 and W13, then log the gaps it finds while it is built.
 - **non-goals:** The game's code, which lives in its own repository; features beyond what tests 1.0; engine patches made for it.
 - **files to touch:** This file.
-- **ordered steps:** (1) The owner picks the genre and writes the pitch (Q1). (2) List screens and mechanics. (3) Map each feature to an engine need and a workstream, and re-tier W5, W6 and W13 from the map at the definition gate. (4) Start the repository from `templates/basic` when W15a lands. (5) Log every gap below until the feature gate.
+- **ordered steps:** (1) The owner picks the genre and writes the pitch (Q1). (2) List screens and mechanics. (3) Map each feature to an engine need and a workstream, and re-tier W5, W6 and W13 from the map at the definition gate. (4) Start the repository from `templates/basic` when W15a lands; its sessions follow [workflow.md](workflow.md) §7. (5) Log every gap below until the feature gate.
 - **done-when:** The feature map is agreed at the definition gate. At the feature gate, the game plays start to finish from its `tungsten package` archive, and every gap row is closed or moved to the [backlog](backlog-1.x.md).
 
 ## Constraints
@@ -18,7 +18,7 @@ From [criteria](criteria.md) §1 and the owner's answers of 2026-10-03:
 
 ## Pitch
 
-*Open (Q1): genre, length, and a paragraph on the game.*
+*Open (Q1): genre, length, and a paragraph on the game. The definition gate agenda proposes a small top-down action game, which gives the kit's top-down mover a user ([implementation plan](implementation-plan.md) §9, item 3).*
 
 ## Screens
 
@@ -46,6 +46,8 @@ From [criteria](criteria.md) §1 and the owner's answers of 2026-10-03:
 | *One row per mechanic* | | W6, W13 | Decides W6b, W6c and kit items |
 
 ## Gap log
+
+Rows come from the game repository's `GAPS.md`, copied here when an engine session next plans or releases ([workflow](workflow.md) §7).
 
 | Date | Gap | Filed as | Status |
 | --- | --- | --- | --- |

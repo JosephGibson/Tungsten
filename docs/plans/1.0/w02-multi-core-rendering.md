@@ -12,9 +12,9 @@ Skeleton. The scoping text stays in [criteria](criteria.md) §5 until this works
 ## Placement
 
 - **Proposed tier:** Must.
-- **Candidates:** R0 (Phase 5, Track A); the R1 spike (Track B); R1 and R2 (Track C); R4 only if approved (Phase 6; proposed for 1.x); R3 after W1's glyph gate; R5 only if startup metrics ask.
+- **Candidates:** R0 and R2's late-acquire split (Phase 5, Track A); the R1 spike (Track B); R1 (Track C); R4 only if approved (Phase 6; proposed for 1.x); R3 after W1's glyph gate; R5 only if startup metrics ask.
 - **Needs first:** The definition gate, because R0's interned IDs break `Sprite.asset_id`; capture rules extended for worker threads (§12) before the R1 spike; W15b's column slices for R1.
-- **Feeds:** W1's glyph gate (the R4 answer); W4's break ledger (interned IDs, the column-slice query); C1 and C2 on `gpu-throughput`, `particles` and `integrated`.
+- **Feeds:** W1's glyph gate (the R4 answer); W1 M2, which builds on R2's split final pass; W4's break ledger (interned IDs, the column-slice query); C1 and C2 on `gpu-throughput`, `particles` and `integrated`.
 - **Owner questions:** Q4, Q5, Q6.
 - **Decisions:** Threading rule, replacing the two-thread limit in `AGENTS.md`; worker mechanism; `Send`/`Sync` policy; interned asset IDs; R4, if approved.
 

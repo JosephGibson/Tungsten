@@ -7,7 +7,7 @@
 - **ordered steps:** Agree the list at the definition gate; revise it at the feature and freeze gates; run it in C3.
 - **done-when:** The owner has agreed every row, and every conditional row is kept or struck by the freeze gate.
 
-Rows marked *if Qn* wait on an open question in [criteria](criteria.md) §10. Sources are criteria sections unless another file is named. IDs carry `RC-` so they do not clash with the question numbers, the UI's glyph paths (T1, T2) or the physics proposals (G1, G2).
+Rows marked *if Qn* wait on an open question in [criteria](criteria.md) §10, and rows marked *if amendment N* on the owner's answer to that amendment in the [implementation plan](implementation-plan.md) §8. Sources are criteria sections unless another file is named. IDs carry `RC-` so they do not clash with the question numbers, the UI's glyph paths (T1, T2) or the physics proposals (G1, G2).
 
 ## A. Complete for making games (definition A)
 
@@ -21,6 +21,7 @@ Rows marked *if Qn* wait on an open question in [criteria](criteria.md) §10. So
 | RC-A6 | A save slot is written, loaded, and loaded again after a schema bump *(if Q16)* | Owner playthrough | §8.8 C3 |
 | RC-A7 | The output of `tungsten new` passes `tungsten check`, then builds, tests and packages outside the workspace | Automated | §8.5 |
 | RC-A8 | Followed word for word on a clean machine, the getting-started guide ends with a running game | Owner | §8.8 C3 |
+| RC-A9 | A fresh Claude Code session in a copy of the template, given only its `AGENTS.md`, the getting-started guide and rustdoc, adds a scripted feature with no engine patches *(if amendment 16)* | Owner | Implementation plan, amendment 16 |
 
 ## B. Stable library (definition B)
 
@@ -75,4 +76,4 @@ Rows marked *if Qn* wait on an open question in [criteria](criteria.md) §10. So
 
 ## QA record
 
-C3 writes one dated table per release candidate here: tag and commit, and for each row whether it passed, was accepted (with the owner's note) or failed (with the fix and the next candidate).
+C3 writes one dated table per release candidate here: tag and commit, and for each row whether it passed, was accepted (with the owner's note) or failed (with the fix and the next candidate). A candidate is a versioned prerelease, `v1.0.0-rc.N` with its own changelog section ([releases](../../releases.md#rehearsals-and-versioned-prereleases)).

@@ -7,7 +7,7 @@
 - **ordered steps:** Settle the 1.0 definition and the `wgpu`/`winit` API policy (§1, §7); tier the candidate workstreams (§3), including the developer-workflow ones (§2.2, §8.3–§8.7); run the multi-core spike and agree the frame-loop design with the game-facing stages (§5, §6, §8.6) before the UI text engine fixes ownership; collect API breaks for the freeze (§7); fix the closing phases and the release-candidate checks (§8.8, §9).
 - **done-when:** The owner has confirmed the 1.0 definition, a must/should/later tier and a done-when sketch for every workstream and closing phase, the order of the coupled workstreams (§9), and an answer or an owner for every question in §10.
 
-Date: 2026-10-02, at 0.38.0 (`95e1947`). Revised the same day with three systems the owner picked from a list of missing ones: a game clock with timers (W3, §6), and logs, crash reports, settings and save slots (W11, §8.2). Ultra rough: every name, tier, number and order below is a proposal for discussion. Statements about the code were checked against the tree on that date; benchmark figures are the dated readings in [benchmarks.md](../../perf/benchmarks.md). Revised 2026-10-03 at `afbc330` after an external critique: R1's real prerequisites (§5.1, §5.3), the extract's determinism invariant (§5.5), the API policy moved to the first step (§7, §9), atomic writes on Windows and a tested symbol path for crash files (§8.2). Revised again on 2026-10-03 with a developer-workflow review (§2.2) and the owner's answers to it: a game lives in its own repository on a git dependency; an in-repo template (W12), a `tungsten-kit` crate (W13), a headless test harness and a project CLI (W14), plugins with named stages, tuple queries and bundles (W15), prefabs with registered components (W16), and three closing phases: benchmark improvement, performance improvement and a final QA pass (W10, §8.8). Revised a third time on 2026-10-03 after a second external critique: where the `Sync` bound of R1's slices sits (§5.4); the order of logger and panic-hook installation, module maps, symbol matching and a CI symbolization check for crash files (§8.2); stage-local ordering constraints for plugins (§8.6). The critique also said `rename` does not replace a file on Windows. The std documentation says it does, so that text stands, and a folder `fsync` on Unix was added.
+Date: 2026-10-02, at 0.38.0 (`95e1947`); the revisions since are listed under [Revisions](#revisions) at the end. Ultra rough: every name, tier, number and order below is a proposal for discussion. Statements about the code were checked against the tree on the date of the revision that made them; benchmark figures are the dated readings in [benchmarks.md](../../perf/benchmarks.md). The [implementation plan](implementation-plan.md) turns this into phases, gates and candidates, and proposes amendments to it (its §8).
 
 ## Context digest
 
@@ -63,7 +63,7 @@ Reviewed on 2026-10-03 at `afbc330` by reading how the four examples are wired a
 | Silent mistakes | A sprite whose `asset_id` is not registered draws nothing and logs nothing; an unknown font logs a warning and falls back to sans-serif | `sprite_extract.rs` pass 1, `render/text.rs` `make_attrs` |
 | Data-driven entities | A scene entry holds transform, sprite, visibility, tag and tweens: no physics, light, emitter or game component. Levels are code; the platformer's `level_layout.rs` is 2,336 generated lines | `core/assets/scene.rs`, `examples/01_platformer/tools/` |
 | Testing a game | Tests copy the frame loop by hand (systems, then a manual event flush) and skip particles, tweens, the command flush and event rotation. No headless `App` steps frames | `examples/01_platformer/src/tests/main.rs` |
-| Iteration | Not a pain point: a touched example rebuilds in 1.1 s and a touched core file in 2.5 s (dev profile, dependencies at `opt-level = 2`). Asset hot reload works, but only the platformer turns it on; config does not reload (DESIGN non-commitment) | Local timing, 2026-10-03; known-issues follow-ups |
+| Iteration | Not a pain point: a touched example rebuilds in 1.1 s and a touched core file in 2.5 s (dev profile, dependencies at `opt-level = 2`), measured before `D-096` built `tungsten-core` at opt-level 1 in dev, which took a clean rebuild of core and its dependents from 5.0 to 6.8 s. Asset hot reload works, but only the platformer turns it on; config does not reload (DESIGN non-commitment) | Local timing, 2026-10-03; known-issues follow-ups |
 
 ## 3. Candidate workstreams and proposed tiers
 
@@ -300,6 +300,8 @@ Owner-added on 2026-10-03: three phases end the road to 1.0, and performance is 
 
 ## 9. Order (sketch)
 
+The [implementation plan](implementation-plan.md) refines this sketch into phases, gates and candidates. Once the owner agrees that plan, this section shrinks to a link to it (the plan's done-when).
+
 ```text
 §1 definition, acceptance game and the wgpu/winit API policy (§7)
  ├─ W8 capture contract and small bug fixes           (unblocks UI M2's check)
@@ -324,7 +326,7 @@ Possible phase labels: Phase 5 foundations (first W8 items, W11 logs and crash r
 
 ## 10. Questions for the owner
 
-Answered on 2026-10-03: a game lives in its own repository on a git dependency, so crates.io is not needed for 1.0 (whether to publish anyway stays question 2); the template is the in-repo `templates/basic`; the kit is a new crate with all four groups; 1.0 tooling is the headless harness and the project CLI; plugins with named stages; tuple queries and bundles; prefabs with registered components; examples 01, 03 and 04 move to the template, the bench does not; the acceptance game starts from the template (part of question 1; its genre is still open); performance is budget-gated; the final QA is an owner playthrough with Linux certified and the other platforms on stated tiers (part of question 3; a macOS release build is still open). The kit's controllers and trigger zones make G1, G2 and shape queries must (part of question 10).
+Open questions keep their numbers; answered ones are under [Answered](#answered) below. The [implementation plan](implementation-plan.md) §7 says by when each is needed.
 
 1. Which definition of 1.0 (§1)? Is an acceptance game the test, and what game is it?
 2. Publish the library crates on crates.io for 1.0?
@@ -342,14 +344,25 @@ Answered on 2026-10-03: a game lives in its own repository on a git dependency, 
 14. Logs and crash reports: on by default in `App`, or one opt-in call?
 15. Which settings does the engine persist itself, and does a corrupt user file reset to defaults (proposed) or stop the game as an invalid `tungsten.json` does?
 16. Save slots in 1.0, or settings only?
-17. Kit dependency direction (§8.4). *Answered 2026-10-03: `Schedule` and `Plugin` in core; the umbrella re-exports the kit.*
-18. Where do examples run from (§8.3)? *Answered 2026-10-03: their own folders, like a copied template.*
-19. Engine-owned text. *Answered 2026-10-03: embed JetBrains Mono; every game carries its OFL notice.*
+
+Questions 17 to 19 are [answered](#answered).
+
 20. CLI: `check` and `package` must and `new` should (proposed)? Argument parsing and archive writing by hand or by crate (§8.5)?
 21. Hierarchy: physics bodies on root entities only for 1.0 (proposed)?
 22. Controllers: anything beyond ground check, coyote time, jump buffer and variable jump, such as slopes, one-way platforms or ladders?
-23. Closing order (§8.8). *Answered 2026-10-03: C1 runs before the freeze, so fixes that need API changes still land.*
+
+Question 23 is [answered](#answered).
+
 24. Kit stability: inside the 1.0 promise, or a tier of its own (§8.4)?
+
+### Answered
+
+Answered on 2026-10-03: a game lives in its own repository on a git dependency, so crates.io is not needed for 1.0 (whether to publish anyway stays question 2); the template is the in-repo `templates/basic`; the kit is a new crate with all four groups; 1.0 tooling is the headless harness and the project CLI; plugins with named stages; tuple queries and bundles; prefabs with registered components; examples 01, 03 and 04 move to the template, the bench does not; the acceptance game starts from the template (part of question 1; its genre is still open); performance is budget-gated; the final QA is an owner playthrough with Linux certified and the other platforms on stated tiers (part of question 3; a macOS release build is still open). The kit's controllers and trigger zones make G1, G2 and shape queries must (part of question 10).
+
+- **17.** Kit dependency direction (§8.4). *Answered 2026-10-03: `Schedule` and `Plugin` in core; the umbrella re-exports the kit.*
+- **18.** Where do examples run from (§8.3)? *Answered 2026-10-03: their own folders, like a copied template.*
+- **19.** Engine-owned text. *Answered 2026-10-03: embed JetBrains Mono; every game carries its OFL notice.*
+- **23.** Closing order (§8.8). *Answered 2026-10-03: C1 runs before the freeze, so fixes that need API changes still land.*
 
 ## 11. Decisions this will likely need
 
@@ -400,3 +413,12 @@ IDs unassigned; each adds its `DECISION_INDEX.md` row in the same change.
 | Tuple queries slow the hot path or need `unsafe` | A spike on `get_disjoint_mut`; `ecs` and `churn` not regressed |
 | C2 finds a fix that needs an API change | C1 runs before the freeze (§8.8) |
 | Standalone builds fill the disk | The outside-copy check shares the workspace's target folder; check free space before it runs |
+
+## Revisions
+
+- 2026-10-02 at 0.38.0 (`95e1947`): first draft.
+- 2026-10-02: three systems the owner picked from a list of missing ones: a game clock with timers (W3, §6), and logs, crash reports, settings and save slots (W11, §8.2).
+- 2026-10-03 at `afbc330`, after an external critique: R1's real prerequisites (§5.1, §5.3), the extract's determinism invariant (§5.5), the API policy moved to the first step (§7, §9), atomic writes on Windows and a tested symbol path for crash files (§8.2).
+- 2026-10-03, with a developer-workflow review (§2.2) and the owner's answers to it: a game lives in its own repository on a git dependency; an in-repo template (W12), a `tungsten-kit` crate (W13), a headless test harness and a project CLI (W14), plugins with named stages, tuple queries and bundles (W15), prefabs with registered components (W16), and three closing phases: benchmark improvement, performance improvement and a final QA pass (W10, §8.8).
+- 2026-10-03, after a second external critique: where the `Sync` bound of R1's slices sits (§5.4); the order of logger and panic-hook installation, module maps, symbol matching and a CI symbolization check for crash files (§8.2); stage-local ordering constraints for plugins (§8.6). The critique also said `rename` does not replace a file on Windows. The std documentation says it does, so that text stands, and a folder `fsync` on Unix was added.
+- 2026-10-03: moved to this folder (`d15d74d`). Then, on `941b63e`, this list and the answered questions moved out of the header and §10's open list with their text unchanged (implementation plan amendment 12); §9 points to the implementation plan; §2.2's iteration row notes `D-096`.
