@@ -1342,6 +1342,15 @@ impl Renderer {
         } else {
             self.target_pool.scene.color_view()
         };
+        // The neighborhood pass writes the sRGB swapchain, which encodes on
+        // store. It must read the primary sRGB view (decoded to linear on
+        // sample); the non-sRGB twin above would encode the frame twice and
+        // wash it out.
+        let smaa_nbh_source_view: &wgpu::TextureView = match smaa_source_target {
+            TargetId::PostPing => self.target_pool.scene.post_ping_view(),
+            TargetId::PostPong => self.target_pool.scene.post_pong_view(),
+            _ => self.target_pool.scene.color_view(),
+        };
 
         encoder.push_debug_group("tungsten_frame");
         for (idx, pass_desc) in order.as_slice().iter().enumerate() {
@@ -1458,7 +1467,7 @@ impl Renderer {
                         &mut pass,
                         &self.target_pool,
                         smaa_source_target,
-                        smaa_source_view,
+                        smaa_nbh_source_view,
                     );
                 }
             } else if is_text_overlay {
