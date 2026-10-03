@@ -393,11 +393,17 @@ def analyze_log(text, warmup, frames, guards, expected_config, present_mode=None
 
 def assemble_capture(*, request, bench, row, config, warmup, frames, build, provenance, runs, profile):
     """`capture.json` (schema 1). A capture is valid when every run exits 0,
-    reports every measured frame, matches the requested config and passes the
-    guards, and every run (GPU diagnostic runs included) has one digest."""
-    reasons = []
+    reports every measured frame, matches the requested config, passes the
+    guards and saw no background load, and every run (GPU diagnostic runs
+    included) has one digest. Background load is an offender a scan saw
+    (`background`) or a commit or dirty-tree state after the run (`tree`)
+    other than the provenance's; `allow_background` makes it a note (`D-095`)."""
+    reasons, notes = [], []
     if len(runs) < request["repeat"]:
         reasons.append(f"{len(runs)} of {request['repeat']} runs completed")
+    allowed = bool(request.get("allow_background"))
+    built = {"commit": provenance.get("commit"), "dirty": provenance.get("dirty")}
+    offenders, tree_changes = set(), []
     digests = []
     for run in runs:
         for label, part in ((f"run {run['index']}", run), (f"run {run['index']} GPU diagnostic", run.get("gpu_run"))):
@@ -406,6 +412,12 @@ def assemble_capture(*, request, bench, row, config, warmup, frames, build, prov
             if part["exit_code"] != 0:
                 reasons.append(f"{label}: exited with {part['exit_code']}")
             reasons.extend(f"{label}: {problem}" for problem in part["problems"])
+            load = [f"background load: {name}" for name in part.get("background", [])]
+            offenders.update(part.get("background", []))
+            if part.get("tree", built) != built:
+                load.append("background load: tree changed")
+                tree_changes.append({"run": label, **part["tree"]})
+            (notes if allowed else reasons).extend(f"{label}: {problem}" for problem in load)
             digests.append(part["digest"])
     match = len(set(digests)) == 1
     if not match:
@@ -427,7 +439,7 @@ def assemble_capture(*, request, bench, row, config, warmup, frames, build, prov
         "frames": frames,
         "warmup": warmup,
         "build": build,
-        "provenance": provenance,
+        "provenance": {**provenance, "background": {"allowed": allowed, "offenders": sorted(offenders), "tree_changes": tree_changes}},
         "renderer": renderer,
         "owned": row["owned"],
         "runs": runs,
@@ -436,7 +448,20 @@ def assemble_capture(*, request, bench, row, config, warmup, frames, build, prov
         "profile": profile,
         "valid": not reasons,
         "invalid_reasons": reasons,
+        "notes": notes,
     }
+
+
+def background_text(provenance):
+    """The background load a capture's runs saw, as text, or None when they saw
+    none or the capture predates the record (`D-095`)."""
+    record = provenance.get("background") or {}
+    parts = list(record.get("offenders", []))
+    if record.get("tree_changes"):
+        parts.append("tree changed")
+    if not parts:
+        return None
+    return ", ".join(parts) + (" (allowed)" if record.get("allowed") else "")
 
 
 def fmt(value, digits=2):
@@ -536,6 +561,7 @@ def capture_readme(capture):
                 f"{provenance['governor']} / {provenance['platform_profile']} / {provenance['ac_power']}",
             ],
             ["Machine", provenance["machine"]],
+            ["Background load", background_text(provenance) or "none"],
         ],
     )
     lines += ["", "## Validity", ""]
@@ -543,6 +569,7 @@ def capture_readme(capture):
         lines += [f"- {reason}" for reason in capture["invalid_reasons"]]
     else:
         lines.append("- Every run exited 0, reported every measured frame and matched the requested config.")
+    lines += [f"- Allowed by `--allow-background`: {note}" for note in capture["notes"]]
     for result in capture["guards"]:
         lines.append(f"- {'ok' if result['ok'] else 'FAIL'}: `{result['guard']}` ({result['detail']})")
     determinism = capture["determinism"]
@@ -767,6 +794,10 @@ def comparability(base, cand):
     for field in SOFT_PROVENANCE:
         differ(field, base["provenance"].get(field), cand["provenance"].get(field), soft)
     differ("GPU diagnostic run", base["request"].get("gpu_timing"), cand["request"].get("gpu_timing"), soft)
+    for side, capture in (("baseline", base), ("candidate", cand)):
+        load = background_text(capture["provenance"])
+        if load:
+            soft.append(f"{side} background load: {load}")
     return hard, soft
 
 
@@ -831,7 +862,26 @@ def side_info(capture, label, path):
         "frames": f"{capture['frames']} after {capture['warmup']} warm-up",
         "guards": capture["guards"],
         "determinism": capture["determinism"]["match"],
+        "notes": capture.get("notes", []),
     }
+
+
+def first_digest(capture):
+    """Run 1's determinism digest, or None without runs."""
+    digests = capture["determinism"]["digests"]
+    return digests[0] if digests else None
+
+
+def digest_text(digests):
+    """Whether two sides' first-run digests match; information only, never a verdict."""
+    if digests["match"] is None:
+        return "First-run digests: n/a (a side has no runs)."
+    if digests["match"]:
+        return f"First-run digests match: `{digests['baseline']}`."
+    return (
+        f"First-run digests differ: `{digests['baseline']}` → `{digests['candidate']}`. Information only: "
+        "an engine change moves them legitimately, a change that must keep behavior must not."
+    )
 
 
 def compare(base, cand, *, base_side, cand_side, force=False):
@@ -871,6 +921,8 @@ def compare(base, cand, *, base_side, cand_side, force=False):
     summary = dict.fromkeys((*VERDICTS, "none"), 0)
     for result in owned:
         summary[result["verdict"] or "none"] += 1
+    digests = {"baseline": first_digest(base), "candidate": first_digest(cand)}
+    digests["match"] = None if None in digests.values() else digests["baseline"] == digests["candidate"]
     return {
         "schema": SCHEMA,
         "baseline": side_info(base, *base_side),
@@ -881,6 +933,7 @@ def compare(base, cand, *, base_side, cand_side, force=False):
         "invalid": invalid,
         "forced": bool(force and invalid and not hard),
         "blocked": blocked,
+        "digests": digests,
         "drift": [row["metric"] for row in counters if row["drift"]],
         "owned_summary": summary,
         "owned": owned,
@@ -983,9 +1036,10 @@ def compare_markdown(report):
             ["Frames", base["frames"], cand["frames"]],
             ["CPU / adapter", f"{base['cpu']} / {base['adapter']}", f"{cand['cpu']} / {cand['adapter']}"],
             ["Present mode / latency", base["present"], cand["present"]],
+            ["First-run digest", *(f"`{report['digests'][side]}`" if report["digests"][side] else "n/a" for side in ("baseline", "candidate"))],
         ],
     )
-    lines += [""] + comparability_lines(report)
+    lines += [""] + comparability_lines(report) + [digest_text(report["digests"])]
     lines += ["", "## Owned metrics (ms)", "", f"Verdicts: {summary_text(report['owned_summary'])}.", ""]
     lines += table(JUDGED_HEADER, judged_rows(report["owned"]))
     lines += ["", "## Stages (ms)", ""] + table(JUDGED_HEADER, judged_rows(report["stages"]))
@@ -1035,6 +1089,7 @@ def compare_markdown(report):
         lines.append(f"- {name} ({state}, digests {'match' if side['determinism'] else 'DIFFER'}):")
         lines += [f"  - {'ok' if guard['ok'] else 'FAIL'}: `{guard['guard']}` ({guard['detail']})" for guard in side["guards"]]
         lines += [f"  - {reason}" for reason in side["invalid_reasons"]]
+        lines += [f"  - allowed by `--allow-background`: {note}" for note in side["notes"]]
     lines += [
         "",
         f"Rule (A5): runs are the unit; Δ is the difference of per-run means with a 95% Welch interval, each side's "
@@ -1479,7 +1534,7 @@ def compare_html(report, captures, frames):
     body = [f"<h1>Compare: {esc(cand['row'])}</h1>"]
     body.append(f'<p class="muted">Baseline <code>{esc(base["label"])}</code> ({esc(base["commit"])}) against candidate <code>{esc(cand["label"])}</code> ({esc(cand["commit"])}).</p>')
     body.append("<section><h2>Comparability</h2>")
-    for line in comparability_lines(report):
+    for line in comparability_lines(report) + [digest_text(report["digests"])]:
         text = esc(line.lstrip("- ").replace("**", "").replace("`", ""))
         body.append(f"<p>{text}</p>")
     body.append(
@@ -1570,6 +1625,7 @@ def compare_html(report, captures, frames):
         body.append(f"<h3>{name} ({state})</h3><ul>")
         body += [f"<li>{'ok' if guard['ok'] else 'FAIL'}: <code>{esc(guard['guard'])}</code> ({esc(guard['detail'])})</li>" for guard in side["guards"]]
         body += [f"<li>{esc(reason)}</li>" for reason in side["invalid_reasons"]]
+        body += [f"<li>allowed by --allow-background: {esc(note)}</li>" for note in side["notes"]]
         body.append("</ul>")
     body.append("</section>")
     return page(f"Compare {cand['row']}", "\n".join(body))
@@ -1905,6 +1961,7 @@ def suite_row(capture, directory):
         "dir": directory,
         "valid": capture["valid"],
         "invalid_reasons": capture["invalid_reasons"],
+        "notes": capture["notes"],
         "runs": len(runs),
         "owned": [
             {"metric": entry["metric"], "stat": stat, "median": median_of(owned_per_run(capture, entry["metric"], stat))}
@@ -1977,6 +2034,12 @@ def suite_readme(suite):
         for row in invalid:
             lines.append(f"- `{row['row']}`:")
             lines += [f"  - {reason}" for reason in row["invalid_reasons"]]
+    noted = [row for row in suite["rows"] if row.get("notes")]
+    if noted:
+        lines += ["", "## Background load allowed by `--allow-background`", ""]
+        for row in noted:
+            lines.append(f"- `{row['row']}`:")
+            lines += [f"  - {note}" for note in row["notes"]]
     lines.append("")
     return "\n".join(lines)
 
@@ -2000,6 +2063,7 @@ def suite_compare(base_suite, cand_suite, row_reports, *, base_side, cand_side):
                 "hard": report["hard"],
                 "invalid": report["invalid"],
                 "drift": report["drift"],
+                "digests": report["digests"],
                 "owned_summary": report["owned_summary"],
                 "owned": report["owned"],
                 "total": {"baseline": base_rows[name]["total"], "candidate": cand_rows[name]["total"]},
@@ -2028,6 +2092,7 @@ def suite_compare(base_suite, cand_suite, row_reports, *, base_side, cand_side):
         "only_baseline": [name for name in base_rows if name not in cand_rows],
         "only_candidate": [name for name in cand_rows if name not in base_rows],
         "owned_summary": summary,
+        "digests_differ": [row["row"] for row in rows if row["digests"]["match"] is False],
     }
 
 
@@ -2039,7 +2104,18 @@ def suite_row_notes(row):
         notes.append("verdicts suppressed: " + "; ".join(row["invalid"]))
     if row["drift"]:
         notes.append("workload drift: " + ", ".join(row["drift"]))
+    if row["digests"]["match"] is False:
+        notes.append(f"first-run digests differ: {row['digests']['baseline']} → {row['digests']['candidate']}")
     return notes
+
+
+def suite_digest_text(report):
+    """How many compared rows keep their first-run digest, and which differ."""
+    matched = sum(1 for row in report["rows"] if row["digests"]["match"])
+    text = f"First-run digests match in {matched} of {len(report['rows'])} rows"
+    if report["digests_differ"]:
+        text += "; they differ in " + ", ".join(f"`{name}`" for name in report["digests_differ"])
+    return text + " (information only)."
 
 
 def peak_rss_text(peak):
@@ -2059,7 +2135,7 @@ def suite_compare_markdown(report):
             ["Rows", len(base["rows"]), len(cand["rows"])],
         ],
     )
-    lines += ["", f"Owned verdicts over {len(report['rows'])} rows: {summary_text(report['owned_summary'])}."]
+    lines += ["", f"Owned verdicts over {len(report['rows'])} rows: {summary_text(report['owned_summary'])}.", suite_digest_text(report)]
     for label, names in (("Only in the baseline", report["only_baseline"]), ("Only in the candidate", report["only_candidate"])):
         if names:
             lines.append(f"{label}, not compared: {', '.join(f'`{name}`' for name in names)}.")
@@ -2088,6 +2164,7 @@ def suite_compare_html(report):
     body = ["<h1>Compare suites</h1>"]
     body.append(f'<p class="muted">Baseline <code>{esc(base["label"])}</code> ({esc(base["commit"])}) against candidate <code>{esc(cand["label"])}</code> ({esc(cand["commit"])}).</p>')
     body.append(f"<section><h2>Summary</h2><p>Owned verdicts over {len(report['rows'])} rows: {esc(summary_text(report['owned_summary']))}.</p>")
+    body.append(f"<p>{esc(suite_digest_text(report).replace('`', ''))}</p>")
     for label, names in (("Only in the baseline", report["only_baseline"]), ("Only in the candidate", report["only_candidate"])):
         if names:
             body.append(f"<p>{label}, not compared: {esc(', '.join(names))}.</p>")

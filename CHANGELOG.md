@@ -6,6 +6,10 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Perf runner background-load guard and digest comparison** (`D-095`, 0.40 QA step 1): `scripts/bench.py` scans `/proc` before, once a second during and once after each measured run for `nxcodec.bin` and for `cargo`/`rustc` outside its own process tree, rechecks the commit and dirty-tree hash after each run, records both in the capture's provenance and marks the run invalid (`background load: <name>`, `background load: tree changed`) unless `--allow-background` makes it a note. Compare prints whether the first-run digests match, suite compare lists the rows whose digests differ, and `run --compare` takes a suite's row of the same name. Runner and docs only: no engine change, hash or digest moved.
+
 ## [0.39.0] - 2026-10-02
 
 Summary: agent tooling and documentation only, with no plan executed. No engine, example, asset or dependency change, no decision and no determinism or benchmark digest change. Two skills and a patch-series tool cover work while Git is human-only, the profiling workflow records the capture rules the recent perf passes learned, and a new discussion draft, `docs/plans/1.0-criteria-draft.md`, scopes what 1.0 means; it and `docs/plans/ui-text-suite-draft.md` stay drafts.
