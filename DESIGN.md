@@ -301,7 +301,7 @@ Stage shaders (`smaa_edge`, `smaa_blend_weights`, `smaa_neighborhood_blend`) are
 
 ### Bloom — M28
 
-`PostPass::Bloom(BloomParams { threshold, knee, intensity, radius })` is the 18th `PostPass` variant. Bloom is a normal reorderable post slot — placement before vs after tone-mapping is the user's choice — but it is the first slot that records multiple sub-passes through the encoder rather than a single fullscreen draw into the slot's auto-opened render pass. The renderer detects the variant before `PassRecorder::begin` and calls `BloomPipeline::record_pass`, which opens its own per-subpass passes:
+`PostPass::Bloom(BloomParams { threshold, knee, intensity, radius })` is the 18th `PostPass` variant. Bloom is a normal reorderable post slot — placement before vs after tone-mapping is the user's choice — but it is the first slot that records multiple sub-passes through the encoder rather than a single fullscreen draw into the slot's auto-opened render pass. The renderer detects the variant before `PassRecorder::begin` and calls `BloomPipeline::record_pass_timed`, which opens its own per-subpass passes:
 
 ```
 src slot ─► threshold (write mip 0) ─► N-1 13-tap Karis-weighted downsamples

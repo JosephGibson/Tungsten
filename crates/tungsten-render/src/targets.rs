@@ -40,8 +40,7 @@ pub const BLOOM_PYRAMID_FORMAT: TextureFormat = TextureFormat::Rgba16Float;
 /// views. Mip 0 is half resolution, each successive mip halves again.
 #[derive(Debug)]
 pub struct BloomPyramid {
-    #[allow(dead_code)]
-    texture: wgpu::Texture,
+    /// One view per mip; the views keep the pyramid texture alive.
     mip_views: Vec<wgpu::TextureView>,
     mip_extents: Vec<(u32, u32)>,
 }
@@ -665,7 +664,6 @@ fn create_bloom_pyramid(
     }
 
     BloomPyramid {
-        texture,
         mip_views,
         mip_extents,
     }

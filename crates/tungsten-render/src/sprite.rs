@@ -128,24 +128,18 @@ const SPRITE_VERTICES: &[SpriteVertex] = &[
 ];
 
 /// Texture pool entry; sampler filter baked into bind group.
-#[allow(dead_code)]
 struct GpuTexture {
     texture: wgpu::Texture,
-    view: wgpu::TextureView,
     bind_group: wgpu::BindGroup,
     filter: FilterMode,
 }
 
 /// M29 lit-texture pool entry: parallel albedo / normal / emissive views all
 /// keyed by the same atlas page handle, sharing one filter and one sampler.
-#[allow(dead_code)]
 struct GpuLitTextures {
     albedo: wgpu::Texture,
     normal: wgpu::Texture,
     emissive: wgpu::Texture,
-    albedo_view: wgpu::TextureView,
-    normal_view: wgpu::TextureView,
-    emissive_view: wgpu::TextureView,
     bind_group: wgpu::BindGroup,
     filter: FilterMode,
 }
@@ -540,7 +534,6 @@ impl SpritePipeline {
             handle,
             GpuTexture {
                 texture,
-                view,
                 bind_group,
                 filter,
             },
@@ -723,9 +716,6 @@ impl SpritePipeline {
                 albedo,
                 normal,
                 emissive,
-                albedo_view,
-                normal_view,
-                emissive_view,
                 bind_group,
                 filter,
             },

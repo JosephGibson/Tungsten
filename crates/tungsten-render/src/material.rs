@@ -8,16 +8,12 @@
 //! drawn through either pipeline without repacking its instance buffer.
 
 use tungsten_core::assets::{MaterialAssetId, MaterialUniformDefaults};
-use tungsten_core::tween::UniformOverrideBlock;
-
-use crate::shader_hot_reload::ShaderError;
 
 /// Per-material GPU resources: pipeline, 256-byte UBO, and bind group.
 pub struct MaterialPipeline {
     pub pipeline: wgpu::RenderPipeline,
     pub ubo: wgpu::Buffer,
     pub bind_group: wgpu::BindGroup,
-    pub material_bind_group_layout: wgpu::BindGroupLayout,
     pub defaults: MaterialUniformDefaults,
     pub name: String,
     pub shader_id_name: String,
@@ -37,12 +33,7 @@ pub fn build_material_pipeline(
     sample_count: u32,
     depth_write: bool,
     name: &str,
-) -> (
-    wgpu::RenderPipeline,
-    wgpu::BindGroupLayout,
-    wgpu::Buffer,
-    wgpu::BindGroup,
-) {
+) -> (wgpu::RenderPipeline, wgpu::Buffer, wgpu::BindGroup) {
     let material_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some(&format!("material_{name}_bgl")),
         entries: &[wgpu::BindGroupLayoutEntry {
@@ -126,19 +117,8 @@ pub fn build_material_pipeline(
         multiview_mask: None,
         cache: None,
     });
-    (pipeline, material_bgl, ubo, bind_group)
+    (pipeline, ubo, bind_group)
 }
-
-impl MaterialPipeline {
-    /// Upload `payload` into the material UBO.
-    pub fn write_uniforms(&self, queue: &wgpu::Queue, payload: &UniformOverrideBlock) {
-        queue.write_buffer(&self.ubo, 0, &payload.to_bytes());
-    }
-}
-
-/// Re-exported under `crate::MaterialBuildError` so callers get a single
-/// material-related error type.
-pub type MaterialBuildError = ShaderError;
 
 #[cfg(test)]
 #[path = "tests/material.rs"]

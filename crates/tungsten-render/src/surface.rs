@@ -15,10 +15,6 @@ pub(crate) fn present_mode_label(mode: wgpu::PresentMode) -> &'static str {
     }
 }
 
-pub(crate) fn requested_present_mode_label(mode: PresentModeConfig) -> &'static str {
-    mode.as_str()
-}
-
 fn choose_auto_vsync_present_mode(supported: &[wgpu::PresentMode]) -> wgpu::PresentMode {
     if supported.contains(&wgpu::PresentMode::Fifo) {
         wgpu::PresentMode::Fifo
@@ -71,7 +67,7 @@ pub(crate) fn resolve_present_mode(
                 Ok(wgpu::PresentMode::Immediate)
             } else {
                 Err(RenderError::UnsupportedPresentMode {
-                    requested: requested_present_mode_label(requested).to_string(),
+                    requested: requested.as_str().to_string(),
                     available: available_present_mode_labels(supported),
                 })
             }
@@ -81,7 +77,7 @@ pub(crate) fn resolve_present_mode(
                 Ok(wgpu::PresentMode::Mailbox)
             } else {
                 Err(RenderError::UnsupportedPresentMode {
-                    requested: requested_present_mode_label(requested).to_string(),
+                    requested: requested.as_str().to_string(),
                     available: available_present_mode_labels(supported),
                 })
             }
@@ -91,7 +87,7 @@ pub(crate) fn resolve_present_mode(
                 Ok(wgpu::PresentMode::Fifo)
             } else {
                 Err(RenderError::UnsupportedPresentMode {
-                    requested: requested_present_mode_label(requested).to_string(),
+                    requested: requested.as_str().to_string(),
                     available: available_present_mode_labels(supported),
                 })
             }

@@ -272,7 +272,7 @@ impl PostStackRenderer {
 
     fn pipeline_for(&self, pass: &PostPass) -> &StockPipeline {
         let Some(index) = stock_index(pass) else {
-            unreachable!("PostPass::Bloom is recorded by record_bloom_slot, not record_pass")
+            unreachable!("PostPass::Bloom is recorded by record_bloom_slot_timed, not record_pass")
         };
         &self.stock[index]
     }
@@ -395,7 +395,7 @@ impl PostStackRenderer {
                 block.f32s[3] = p.samples as f32;
             }
             // Bloom is multi-subpass; UBO packing happens per sub-pass inside
-            // `BloomPipeline::record_pass` via `bloom::pack_params`.
+            // `BloomPipeline::record_pass_timed` via `bloom::pack_params`.
             PostPass::Bloom(_) => {}
         }
         block
@@ -423,20 +423,6 @@ impl PostStackRenderer {
             out.push((src, dst));
         }
         out
-    }
-
-    /// Returns the final post-target id (i.e. the one the present blit
-    /// samples from) when the stack is non-empty. `None` if empty.
-    #[must_use]
-    pub fn final_target(len: usize) -> Option<TargetId> {
-        if len == 0 {
-            return None;
-        }
-        Some(if (len - 1).is_multiple_of(2) {
-            TargetId::PostPing
-        } else {
-            TargetId::PostPong
-        })
     }
 
     /// Record one post-stack pass into an already-open `render_pass`. The
@@ -496,25 +482,9 @@ impl PostStackRenderer {
     /// this opens its own per-subpass `RenderPass`es (threshold, downsample
     /// chain, additive upsample chain, composite); the renderer's outer slot
     /// `PassDesc` is treated as a debug-only label. `slot` is the pass's
-    /// index in the post stack: each slot keeps GPU objects of its own.
-    #[allow(clippy::too_many_arguments)]
-    pub fn record_bloom_slot(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        encoder: &mut wgpu::CommandEncoder,
-        pool: &RenderTargetPool,
-        params: &tungsten_core::post::BloomParams,
-        src: TargetId,
-        dst: TargetId,
-        slot: usize,
-    ) {
-        self.bloom
-            .record_pass(device, queue, encoder, pool, params, src, dst, slot);
-    }
-    /// As [`record_bloom_slot`](Self::record_bloom_slot), with pass timing and
-    /// the frame's swapchain view, which the composite writes when `dst` is
-    /// [`TargetId::Swapchain`].
+    /// index in the post stack: each slot keeps GPU objects of its own. The
+    /// composite writes the frame's swapchain view when `dst` is
+    /// [`TargetId::Swapchain`]; `timing` records the sub-passes.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn record_bloom_slot_timed(
         &mut self,

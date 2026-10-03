@@ -305,25 +305,8 @@ impl BloomPipeline {
     /// the attachments differ per stage (a different mip view, then dst).
     /// `slot` is the pass's index in the post stack; its UBOs and bind groups
     /// are built once and rebuilt when the targets, the slot's source or
-    /// destination or the mip count change.
-    #[allow(clippy::too_many_arguments)]
-    pub fn record_pass(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        encoder: &mut wgpu::CommandEncoder,
-        pool: &RenderTargetPool,
-        params: &BloomParams,
-        src: TargetId,
-        dst: TargetId,
-        slot: usize,
-    ) {
-        self.record_pass_timed(
-            device, queue, encoder, pool, None, params, src, dst, None, slot,
-        );
-    }
-
-    /// `swap_view` is the frame's swapchain view; the composite writes it
+    /// destination or the mip count change. `swap_view` is the frame's
+    /// swapchain view; the composite writes it
     /// when `dst` is [`TargetId::Swapchain`], which is where a direct frame
     /// sends a bloom that ends the post stack (`D-087`).
     #[allow(clippy::too_many_arguments)]

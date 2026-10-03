@@ -268,11 +268,7 @@ impl Renderer {
             sample_count,
             depth_attached,
         );
-        // Text renders in its own overlay pass after the post stack, which
-        // always targets a single-sample color texture with no depth. Baking
-        // those attachment bits here keeps text pixels out of the post stack
-        // regardless of scene MSAA / depth config.
-        let text_pipeline = TextPipeline::new(&device, &queue, format, 1, false);
+        let text_pipeline = TextPipeline::new(&device, &queue, format);
 
         let post_aa = config.post_aa;
         let bloom_max_mips =
@@ -851,7 +847,7 @@ impl Renderer {
             }));
         };
 
-        let (pipeline, material_bgl, ubo, bind_group) = build_material_pipeline(
+        let (pipeline, ubo, bind_group) = build_material_pipeline(
             &self.device,
             module,
             self.sprite_pipeline.camera_bind_group_layout(),
@@ -872,7 +868,6 @@ impl Renderer {
                 pipeline,
                 ubo,
                 bind_group,
-                material_bind_group_layout: material_bgl,
                 defaults,
                 name: name.to_string(),
                 shader_id_name: shader_name.to_string(),
@@ -1484,7 +1479,7 @@ impl Renderer {
         // SceneColor), or the stand-in of a direct capture.
         let capture_target = capture
             .as_ref()
-            .map(|_| create_capture_target(&self.device, self.surface_config.format, w, h));
+            .map(|_| create_capture_target(&self.device, w, h));
         if let Some(target) = capture_target.as_ref() {
             let capture_src_texture = match (&standin, final_source_target) {
                 (Some((texture, _)), _) => texture,
@@ -1770,7 +1765,6 @@ pub(crate) struct CaptureTarget {
 
 pub(crate) fn create_capture_target(
     device: &wgpu::Device,
-    _format: wgpu::TextureFormat,
     width: u32,
     height: u32,
 ) -> CaptureTarget {

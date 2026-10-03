@@ -10,14 +10,12 @@ use tungsten_core::post::{
 fn plan_empty_stack_produces_no_entries() {
     let plan = PostStackRenderer::plan_targets(0);
     assert!(plan.is_empty());
-    assert_eq!(PostStackRenderer::final_target(0), None);
 }
 
 #[test]
 fn plan_single_pass_reads_scene_writes_ping() {
     let plan = PostStackRenderer::plan_targets(1);
     assert_eq!(plan, vec![(TargetId::SceneColor, TargetId::PostPing)]);
-    assert_eq!(PostStackRenderer::final_target(1), Some(TargetId::PostPing));
 }
 
 #[test]
@@ -30,7 +28,6 @@ fn plan_two_passes_chains_ping_then_pong() {
             (TargetId::PostPing, TargetId::PostPong),
         ]
     );
-    assert_eq!(PostStackRenderer::final_target(2), Some(TargetId::PostPong));
 }
 
 #[test]
@@ -44,7 +41,6 @@ fn plan_three_passes_returns_to_ping() {
             (TargetId::PostPong, TargetId::PostPing),
         ]
     );
-    assert_eq!(PostStackRenderer::final_target(3), Some(TargetId::PostPing));
 }
 
 #[test]
@@ -69,10 +65,6 @@ fn plan_seventeen_passes_stays_valid_all_the_way() {
             assert_eq!(src, prev_dst, "pass {i} src follows previous dst");
         }
     }
-    assert_eq!(
-        PostStackRenderer::final_target(17),
-        Some(TargetId::PostPing)
-    );
 }
 
 #[test]
