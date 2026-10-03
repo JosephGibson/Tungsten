@@ -48,7 +48,7 @@ jobs:
       - name: Install Linux build prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends pkg-config libasound2-dev libudev-dev
+          sudo apt-get install -y --no-install-recommends pkg-config libasound2-dev
 
       # Reads rust-toolchain.toml (Rust 1.98.1 + rustfmt, clippy) and caches
       # with keys covering the compiler, Cargo.lock and RUST* env vars.

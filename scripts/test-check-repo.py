@@ -69,15 +69,6 @@ class RepoChecks(unittest.TestCase):
         (self.root / "assets/loop").symlink_to(self.root / "assets", target_is_directory=True)
         self.assertEqual(self.assets()[0], [])
 
-    def test_tracked_deletion_candidate_is_reported_and_kept(self):
-        candidate = next(iter(qa.DELETION_CANDIDATES))
-        path = self.write(candidate, "pixels")
-        self.write(str(Path(candidate).parent.parent / "manifest.json"), '{}')
-        errors, notes = self.assets()
-        self.assertEqual(errors, [])
-        self.assertTrue(any("deletion candidate" in n for n in notes))
-        self.assertTrue(path.is_file())
-
     def test_active_and_yaml_headers(self):
         errors, notes = [], []
         qa.check_plans(self.root, errors, notes)

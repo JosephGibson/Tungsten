@@ -57,6 +57,6 @@ Run from the repository root with Rust, just, Python 3.12+, Bash and ShellCheck 
 
 `quick` does not replace final `just check` or GPU smoke. `scripts/check-repo.py` is read-only and uses the Python standard library; it never traverses the plan archive, follows directory symlinks, guesses asset IDs or edits manifests. The checker covers its maintained `DOCS` list; other Markdown files, external URLs and link fragments need separate checking. It reports in-progress plans for review; age alone cannot identify abandonment.
 
-Asset coverage exceptions are explicit: complete font families and their inventory README; four vendored LYGIA helper fragments and their license; and example 03's explicitly loaded `scene.json` (D-046). The platformer's `player.png` is now registered as `ex10_player`; it is covered by its manifest. A new exception needs review in the checker, not a broad ignored extension.
+Asset coverage exceptions are explicit: complete font families and their inventory README; four vendored LYGIA helper fragments and their license; and example 03's explicitly loaded `scene.json` (D-046). A new exception needs review in the checker, not a broad ignored extension.
 
 The exact-command permission syntax follows [Claude's permission rules](https://code.claude.com/docs/en/permissions); Codex instruction discovery follows [AGENTS.md guidance](https://developers.openai.com/codex/guides/agents-md/). These controls do not make repository code trusted: review recipe changes before executing them.

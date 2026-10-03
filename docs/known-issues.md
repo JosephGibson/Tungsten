@@ -42,6 +42,3 @@ Each was checked against the tree on 2026-10-02.
 - Only `example-01-platformer` enables hot reload; the shader playground could too.
 - Add `actionlint` to `just script-test` now that `release.yml` exists (it passed `actionlint` 1.7.12 and `zizmor` 1.30.1 when run by hand).
 - Release archives don't bundle third-party license notices for statically linked crates.
-- Both workflows install `libudev-dev`, but no locked crate links udev.
-- `just --list` shows only the last line of the `quick` recipe's two-line comment.
-- `scripts/check-repo.py` still names `examples/01_platformer/assets/sprites/player.png` as a deletion candidate. The platformer manifest registers it as `ex10_player`, so the entry no longer applies and can go.

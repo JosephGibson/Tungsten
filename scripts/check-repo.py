@@ -29,9 +29,6 @@ ASSET_EXCEPTIONS = {
     **{f"assets/shaders/stock/lygia/{name}.wgsl": "compiled shader helper fragment"
        for name in ("hash", "luma", "noise", "srgb")},
 }
-DELETION_CANDIDATES = {
-    "examples/01_platformer/assets/sprites/player.png": "unregistered legacy player image; tracked, retain for owner",
-}
 FIELDS = ("status", "goal", "non-goals", "files to touch", "ordered steps", "done-when")
 CITING_SUFFIXES = (".rs", ".py", ".sh", ".md", ".toml", ".yml")
 # History keeps the plan names of its time; the scripts' tests cite fixture plans.
@@ -90,8 +87,6 @@ def check_assets(root, errors, notes):
                 continue
             if rel in ASSET_EXCEPTIONS:
                 notes.append(f"asset exception: {rel}: {ASSET_EXCEPTIONS[rel]}")
-            elif rel in DELETION_CANDIDATES:
-                notes.append(f"deletion candidate: {rel}: {DELETION_CANDIDATES[rel]}")
             else:
                 errors.append(f"unlisted asset: {rel}")
 

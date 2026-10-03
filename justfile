@@ -70,8 +70,8 @@ deps:
 
 # Agent instruction budgets, links, skill symlinks and repo-byte totals.
 ctx:
-    python3 scripts/check-agent-context.py
-    python3 scripts/check-agent-context.py --self-test
+    python3 -B scripts/check-agent-context.py
+    python3 -B scripts/check-agent-context.py --self-test
 
 # File coverage, docs, active plans, version/changelog agreement, manifest/index tests.
 repo-check:
@@ -92,7 +92,6 @@ release-cut version *args:
     python3 -B scripts/release.py cut "$@"
     cargo update --workspace --offline || { echo "Cargo.lock not refreshed; run: cargo update --workspace" >&2; exit 1; }
 
-# Fast iteration: formatting, agent/repo QA, then type-check every target.
-# Full clippy and workspace tests still run in `just check` before finishing.
+# Fast iteration: format check, agent/repo QA, type-check; `just check` still runs clippy and tests.
 quick: fmt-check ctx repo-check
     cargo check --workspace --all-targets --locked
