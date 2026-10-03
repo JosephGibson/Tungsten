@@ -6,6 +6,24 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.39.0] - 2026-10-02
+
+Summary: agent tooling and documentation only, with no plan executed. No engine, example, asset or dependency change, no decision and no determinism or benchmark digest change. Two skills and a patch-series tool cover work while Git is human-only, the profiling workflow records the capture rules the recent perf passes learned, and a new discussion draft, `docs/plans/1.0-criteria-draft.md`, scopes what 1.0 means; it and `docs/plans/ui-text-suite-draft.md` stay drafts.
+
+### Added
+
+- **`tungsten-decision` skill** (`.claude/skills/tungsten-decision/SKILL.md`): adds, amends or supersedes a `DECISIONS.md` entry, with the next `D-NNN` ID, the entry shape, the `Superseded by` marker and the `docs/DECISION_INDEX.md` row the same change needs.
+- **`tungsten-patch-handoff` skill and `scripts/patch-series.py`:** when Git mutations are human-only, `init`, `cut`, `verify` and `script` export HEAD, cut one patch and commit message per step, replay the series on a fresh export and compare it byte for byte, and write a `commit.sh` the human runs (`git apply --cached` and `git commit -F` per step). The tool is read-only toward the repository; `scripts/test-patch-series.py` runs under `just script-test`.
+- **`just physics-release`:** runs `physics_determinism`, `physics_tunneling` and `physics_containment` in release with the perf runner's flags. Determinism and containment are ignored in debug, so `just check` does not cover them; `docs/LLM_INDEX.md` points physics changes at the recipe.
+- **`docs/plans/1.0-criteria-draft.md`:** a rough draft of the 1.0 definition, eleven candidate workstreams with proposed tiers (among them the UI and text suite, a multi-core rendering pass, a frame loop with a game clock and timers, an API freeze, and logs, crash reports, settings and save slots), an order sketch and questions for the owner. No decision, code or dependency change.
+- **Plan execution rules** in `docs/plans/README.md`: treat the plan as the map, do only the requested steps, quote done-when results, keep `status` current, and hand over per-step patches when Git is human-only.
+
+### Changed
+
+- **Profiling workflow** (`docs/perf/profiling-workflow.md`): nothing else may load the machine during a sitting, including other agent sessions, `cargo` builds and the agent's own commands; peak RSS compares only within one sitting (transparent huge pages moved one build 62 MiB). A new "Writing done-when checks" section asks for "not `regressed`" in τ's dead zone, a capture of every CPU row a shared change can move, a cost estimate on the judged rows, and frame-time judgment for relocated work. A/B-build rules cover confirming the rebuild after restoring files, predicting code placement with `nm`, de-inlining by a second caller and a helper's return type changing a hot loop. Criterion benches need a quiet machine and compare through saved baselines. The `tungsten-perf` skill points at these rules.
+- **`docs/plans/ui-text-suite-draft.md`** revised again: glyphon's atlas growth and AccessKit's Linux thread checked against their sources, the measurement contract corrected, the first milestone split, and a section on adjacent systems the foundation must not preclude. It stays a draft.
+- **`docs/agent-setup.md` and `docs/LLM_INDEX.md`** list the new skills, the recipe and the patch-series tests.
+
 ## [0.38.0] - 2026-10-02
 
 Summary: example 01's ball extract is about three times faster (plan `docs/plans/archive/ball-pit-extract.md`). No engine, physics or render code changes, no decision and no determinism or benchmark digest change; it is an example-level rework of one extract loop, plus a revised discussion draft.
