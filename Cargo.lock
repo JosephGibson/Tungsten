@@ -791,7 +791,7 @@ dependencies = [
 
 [[package]]
 name = "example-01-platformer"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "anyhow",
  "env_logger",
@@ -801,7 +801,7 @@ dependencies = [
 
 [[package]]
 name = "example-02-bench"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "anyhow",
  "env_logger",
@@ -809,13 +809,11 @@ dependencies = [
  "log",
  "serde_json",
  "tungsten",
- "tungsten-core",
- "tungsten-render",
 ]
 
 [[package]]
 name = "example-03-scene-state"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "anyhow",
  "env_logger",
@@ -825,13 +823,12 @@ dependencies = [
 
 [[package]]
 name = "example-04-shader-playground"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "anyhow",
  "env_logger",
  "glam",
  "tungsten",
- "tungsten-core",
 ]
 
 [[package]]
@@ -2961,7 +2958,7 @@ dependencies = [
 
 [[package]]
 name = "tungsten"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "anyhow",
  "cpal",
@@ -2973,19 +2970,16 @@ dependencies = [
  "rtrb",
  "tungsten-core",
  "tungsten-render",
- "wgpu",
  "winit",
 ]
 
 [[package]]
 name = "tungsten-core"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
- "anyhow",
  "bytemuck",
  "criterion",
  "glam",
- "image",
  "log",
  "serde",
  "serde_json",
@@ -2995,11 +2989,11 @@ dependencies = [
 
 [[package]]
 name = "tungsten-launcher"
-version = "0.39.0"
+version = "0.40.0"
 
 [[package]]
 name = "tungsten-render"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "bytemuck",
  "criterion",

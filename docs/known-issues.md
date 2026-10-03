@@ -1,6 +1,6 @@
 # Known issues
 
-Open findings and follow-ups that no active plan owns. A fix removes its entry here in the same change. Sources: the repository review of 2026-09-25, whose archived copy keeps its fixed and historical parts, the P2 correctness pass of 2026-10-02 (`D-088`–`D-092`), M31 (`D-093`) and the dense-pile investigation of 2026-10-02 (`D-094`).
+Open findings and follow-ups that no active plan owns. A fix removes its entry here in the same change. Sources: the repository review of 2026-09-25, whose archived copy keeps its fixed and historical parts, the P2 correctness pass of 2026-10-02 (`D-088`–`D-092`), M31 (`D-093`), the dense-pile investigation of 2026-10-02 (`D-094`) and the 0.40 QA pass of 2026-10-03 (`D-095`–`D-101`).
 
 Priorities: P2 = functional follow-up (none open); P3 = limitation, rare edge case or contract clarification. Unless noted, these are source-path findings, not reproduced GPU or adversarial tests. `core/`, `render/` and `tungsten/` abbreviate the respective crate `src/` directories.
 
@@ -8,11 +8,11 @@ Priorities: P2 = functional follow-up (none open); P3 = limitation, rare edge ca
 
 | Priority / location | Trigger and impact | Why deferred / next work |
 | --- | --- | --- |
-| P3 — `core/assets/shader.rs`, `tungsten/asset_loader.rs::load_shaders` | Core allocates shader IDs in manifest iteration order; render independently seeds/allocates them. Numeric IDs need not match despite the core module's same-ID comment. Current bridge uses names. | Establish one allocator or distinct ID types before exposing cross-crate numeric lookup; do not silently change public handle semantics (D-016/D-057). |
+| P3 — `core/assets/shader.rs`, `tungsten/asset_loader/mod.rs::load_shaders` | Core allocates shader IDs in manifest iteration order; render independently seeds/allocates them. Numeric IDs need not match despite the core module's same-ID comment. Current bridge uses names. | Establish one allocator or distinct ID types before exposing cross-crate numeric lookup; do not silently change public handle semantics (D-016/D-057). |
 | P3 — `tungsten/app.rs::stage_render`, `render/renderer.rs` | Recoverably skipped acquisition can return `Ok`, increment frame/capture accounting and claim capture success; readback errors only warn. Runtime render errors also remain logged rather than returned through `App::run`. | Needs a presented/skipped/failed result contract and explicit capture completion, while preserving D-029 surface recovery. Initialization failure propagation is fixed separately. |
 | P3 — `tungsten/state.rs` | Multiple queued transitions can exit a state before its pending command-buffer spawns become live; automatic cleanup only sees live entities. Multiple stack instances sharing a `StateId` also share cleanup ownership. | Choose transition coalescing/flush semantics or per-instance ownership; preserve D-039/D-046 frame order. The demonstrated pause/menu leak is fixed without changing that API. |
 | P3 — `tungsten/audio.rs` | Output assumes f32 and PCM conversion supports mono/stereo; a device with more channels is not fully mapped. `Play` can allocate in the callback, and full command rings drop commands. | Device-format/channel support and voice capacity/backpressure need an explicit audio policy (D-034). No audio-feature expansion here; hardware routing/listening is an owner check. |
-| P3 — `core/physics/{step,broadphase}.rs` | Previous audit's remaining edges: sleep-tag adoption sees only touching final-substep contacts; extreme/non-finite externally written coordinates can overflow or cause enormous grid walks; entity generation is truncated to 31 bits; overlapping tile centers share warm-start identity. | Sleeping case remains unforced; input-domain and identity changes need explicit bounds/semantics. Generation/hash cases are theoretical or degenerate content. Preserve these findings without presenting them as freshly reproduced failures. |
+| P3 — `core/physics/step/`, `core/physics/broadphase.rs` | Previous audit's remaining edges: sleep-tag adoption sees only touching final-substep contacts; extreme/non-finite externally written coordinates can overflow or cause enormous grid walks; entity generation is truncated to 31 bits; overlapping tile centers share warm-start identity. | Sleeping case remains unforced; input-domain and identity changes need explicit bounds/semantics. Generation/hash cases are theoretical or degenerate content. Preserve these findings without presenting them as freshly reproduced failures. |
 
 ## Recorded limits
 
@@ -33,15 +33,21 @@ Carried from the review, as of `0.27.0`.
 
 ## Follow-ups
 
-Each was checked against the tree on 2026-10-02.
+Each was checked against the tree on 2026-10-02, except the last ten, which the 0.40 QA pass recorded on 2026-10-03.
 
 - Truncated Ogg files fail at probe; decide whether to decode the available prefix, as MP3 does. `tests/audio_decode.rs` pins the error.
 - Evaluate rtrb 0.4.0 against the locked 0.3.5, and adopt winit 0.31 once it leaves prerelease (0.30.13 is locked).
 - Drop the RUSTSEC-2026-0192 exception in `deny.toml` when cosmic-text/fontdb stop using `ttf-parser`.
 - Re-verify instruction loading once Claude Code reads `AGENTS.md` natively (2.1.277+); the `CLAUDE.md` import could then load it twice.
 - Only `example-01-platformer` enables hot reload; the shader playground could too.
-- Add `actionlint` to `just script-test` now that `release.yml` exists (it passed `actionlint` 1.7.12 and `zizmor` 1.30.1 when run by hand).
 - Release archives don't bundle third-party license notices for statically linked crates.
-- Both workflows install `libudev-dev`, but no locked crate links udev.
-- `just --list` shows only the last line of the `quick` recipe's two-line comment.
-- `scripts/check-repo.py` still names `examples/01_platformer/assets/sprites/player.png` as a deletion candidate. The platformer manifest registers it as `ex10_player`, so the entry no longer applies and can go.
+- The stock shaders exist twice (`crates/tungsten-render/src/shaders/stock/**` and `assets/shaders/stock/**`, `D-059`); including the asset copies as `sprite.wgsl` and `lit_sprite.wgsl` already do would halve every stock-shader edit but needs a decision.
+- `Renderer::new` spends about 390 lines seeding shader IDs (`renderer.rs:145-537`); `examples/01_platformer/src/tests/main.rs` is 2,372 lines.
+- `logging.level` and `display.scale_mode` are parsed and unused (`DESIGN.md:143`, `core/config.rs:278-294`): wire or remove, owner's call.
+- Particle `Burst { once: false }` only suppresses `ParticleSystemDrained` and `Pulse { total_pulses: Some(0) }` fires one pulse (`tungsten/src/particles.rs:313-347`): define the semantics.
+- `render.max_frame_latency = 0` in the file passes `Config::load` and fails at renderer start (`render/surface.rs:118`), while `display.max_frame_latency = 0` warns and falls back (`core/display.rs:292-297`).
+- Any file named `input.json` under a watched directory reloads as the action map (`tungsten/src/app.rs:443`).
+- Perf: `env::var("TUNGSTEN_PERF_LOG")` every frame (`app.rs:1631`), the tween system cloning channel lists every frame (`tweens.rs:43`), tile proxies rebuilt from a full-map scan every frame.
+- The perf runner's background-load scan (`D-095`) covers the measured runs of `run`, `suite` and `--sweep` only: capacity probes, `just smoke` timings and `just visual` still rely on the manual `pgrep` checks.
+- `scripts/bench.py` run from a tree export under `target/` (a parent or reference build) records the enclosing repository's commit and dirty-tree hash as the capture's provenance, not the export's; label such captures by hand, as the 0.40 QA evidence folders under `perf-runs/` do.
+- `cargo shear` (`just udeps`) reports every `src/tests/` module included through `#[path = "../tests/…"]` from a file in a subdirectory as unlinked; an `ignored-paths` entry under `[workspace.metadata.cargo-shear]` would silence the false positives.

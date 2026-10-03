@@ -33,6 +33,20 @@ fn solve_follow_position(
     next
 }
 
+/// This frame's blend toward the desired position for smoothing `s`, the
+/// fraction of the distance covered per 1/60 s: `1 - (1 - s)^(dt·60)`, so the
+/// camera converges at the same rate at any frame rate. 0 never moves and 1
+/// snaps, whatever `dt` (B5, `D-100`).
+fn smoothing_blend(s: f32, dt: f32) -> f32 {
+    if s >= 1.0 {
+        1.0
+    } else if s <= 0.0 {
+        0.0
+    } else {
+        1.0 - (1.0 - s).powf(dt * 60.0)
+    }
+}
+
 /// Update authoritative camera state for the frame.
 pub fn camera_update_system(world: &mut World) {
     let Some(mut camera) = world.get_resource::<CameraState>().copied() else {
@@ -78,8 +92,8 @@ pub fn camera_update_system(world: &mut World) {
         CameraMode::Free | CameraMode::Scripted => base_position,
     };
 
-    let smoothing = controller.smoothing_factor.clamp(0.0, 1.0);
-    let mut next_position = base_position.lerp(desired_position, smoothing);
+    let blend = smoothing_blend(controller.smoothing_factor.clamp(0.0, 1.0), dt);
+    let mut next_position = base_position.lerp(desired_position, blend);
 
     if let Some(bounds) = controller.bounds {
         next_position = bounds.clamp_position(

@@ -422,5 +422,41 @@ fn load_all_merged_populates_loaded_manifest_resource() {
     assert!(resource.as_resolved().sprites.is_empty());
 }
 
+#[test]
+fn in_place_shrink_uv_spans_the_new_size() {
+    // B3: a 64x64 cell reloaded in place with a 32x32 image keeps the image at
+    // the cell's top-left. The entry's UV must span that image, (new_w - 1,
+    // new_h - 1) texels inside the half-texel inset, as a fresh pack produces;
+    // the UV of the whole cell draws it squeezed into the smaller quad.
+    let page = tungsten_core::assets::AtlasPage {
+        width: 512,
+        height: 256,
+    };
+    let cell = tungsten_core::assets::PackedSprite {
+        id: "s".to_string(),
+        page: 0,
+        x: 128,
+        y: 64,
+        width: 64,
+        height: 64,
+    };
+    let (uv, width, height) = super::atlas::shrink_entry(&cell, page, 32, 32);
+    assert_eq!((width, height), (32, 32));
+    let texels = |a: f32, b: f32, size: u32| (b - a) * size as f32;
+    let span = [
+        texels(uv.min[0], uv.max[0], page.width),
+        texels(uv.min[1], uv.max[1], page.height),
+    ];
+    assert!(
+        (span[0] - 31.0).abs() < 1e-3 && (span[1] - 31.0).abs() < 1e-3,
+        "UV spans {span:?} texels; a fresh 32x32 pack spans [31.0, 31.0]"
+    );
+    let origin = [uv.min[0] * 512.0, uv.min[1] * 256.0];
+    assert!(
+        (origin[0] - 128.5).abs() < 1e-3 && (origin[1] - 64.5).abs() < 1e-3,
+        "UV starts at texel {origin:?}, not the cell's inset corner"
+    );
+}
+
 #[allow(dead_code)]
 fn _touch_imports(_layer: TilemapLayer) {}

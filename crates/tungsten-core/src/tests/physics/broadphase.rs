@@ -209,7 +209,7 @@ fn point_grid_returns_each_covered_point_once() {
 }
 
 #[test]
-fn floor_to_i32_equals_floor_then_cast_for_every_class_of_value() {
+fn floor_and_ceil_to_i32_equal_the_std_cast_for_every_class_of_value() {
     let edges = [
         0.0,
         -0.0,
@@ -247,16 +247,45 @@ fn floor_to_i32_equals_floor_then_cast_for_every_class_of_value() {
     ];
     for x in edges {
         assert_eq!(floor_to_i32(x), x.floor() as i32, "{x:?}");
+        assert_eq!(ceil_to_i32(x), x.ceil() as i32, "{x:?}");
     }
     // Every 4,099th bit pattern: each exponent, both signs, NaN payloads.
     let mut bits = 0u32;
     loop {
         let x = f32::from_bits(bits);
         assert_eq!(floor_to_i32(x), x.floor() as i32, "bits {bits:#010x}");
+        assert_eq!(ceil_to_i32(x), x.ceil() as i32, "bits {bits:#010x}");
         match bits.checked_add(4_099) {
             Some(next) => bits = next,
             None => break,
         }
+    }
+}
+
+#[test]
+fn boundary_edge_far_from_origin_does_not_claim_next_cell() {
+    // B8: `max - f32::EPSILON` is below one ULP from 4.0 up, so a max edge
+    // exactly on a cell boundary four or more cells out claimed the next
+    // cell. The edge rule holds at any distance from the origin.
+    let grid = SpatialGrid::new(32.0);
+    let range = |cx, cy, hx, hy| grid.cell_range(&aabb(cx, cy, hx, hy));
+    let cell = |x, y| (IVec2::new(x, y), IVec2::new(x, y));
+    assert_eq!(range(16.0, 16.0, 16.0, 16.0), cell(0, 0));
+    assert_eq!(range(-16.0, -16.0, 16.0, 16.0), cell(-1, -1));
+    assert_eq!(range(48.0, 48.0, 16.0, 16.0), cell(1, 1));
+    assert_eq!(range(336.0, 336.0, 16.0, 16.0), cell(10, 10));
+    assert_eq!(range(-336.0, 32_016.0, 16.0, 16.0), cell(-11, 1000));
+    // The probe: a body over x 32..64 never reached a query over x 65..95,
+    // and one over x 320..352 reached a query over x 353..383.
+    for (body_x, query_x) in [(48.0, 80.0), (336.0, 368.0)] {
+        let mut grid = SpatialGrid::new(32.0);
+        grid.insert(0, &aabb(body_x, 16.0, 16.0, 8.0));
+        let mut out = Vec::new();
+        grid.query(&aabb(query_x, 16.0, 15.0, 8.0), None, &mut out);
+        assert!(
+            out.is_empty(),
+            "a body at x {body_x} reached the query at x {query_x}"
+        );
     }
 }
 

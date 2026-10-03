@@ -304,7 +304,7 @@ fn extract_into(
 
             let override_hash = override_block.map(override_key);
             // M29: lit wins over material when both are present. The collision
-            // is intentionally a non-goal in M29 (see plan); warn so debug logs
+            // is intentionally a non-goal in M29 (`D-061`); warn so debug logs
             // surface the conflict rather than silently dropping the material.
             let lit = asset.lit_atlas.is_some();
             let effective_material = if lit { None } else { s.material_id };

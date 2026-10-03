@@ -216,8 +216,7 @@ fn print_report(rows: &[ReportRow]) {
 }
 
 /// Miss-rate matrix across target kinds and speeds. Asserts zero misses for
-/// **all four scenarios at all speeds** (D-064, step 3 of
-/// docs/plans/physics-scale-and-ccd.md).
+/// **all four scenarios at all speeds** (D-064).
 #[test]
 fn tunneling_miss_rate_report() {
     let mut rows = Vec::new();

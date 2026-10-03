@@ -79,6 +79,8 @@ impl CameraBounds {
 pub struct CameraController {
     pub mode: CameraMode,
     pub dead_zone_size: Vec2,
+    /// Fraction of the remaining distance to the desired position covered per
+    /// 1/60 s, at any frame rate: 0 never moves, 1 snaps (`D-100`).
     pub smoothing_factor: f32,
     pub bounds: Option<CameraBounds>,
     pub zoom_multiplier: f32,
@@ -205,12 +207,12 @@ impl CameraState {
     pub fn view_projection(&self, viewport_w: f32, viewport_h: f32) -> Mat4 {
         let zoom = self.zoom.max(f32::EPSILON);
         if self.rotation == 0.0 {
-            let half_w = viewport_w / zoom;
-            let half_h = viewport_h / zoom;
+            let view_w = viewport_w / zoom;
+            let view_h = viewport_h / zoom;
             let left = self.position.x;
-            let right = self.position.x + half_w;
+            let right = self.position.x + view_w;
             let top = self.position.y;
-            let bottom = self.position.y + half_h;
+            let bottom = self.position.y + view_h;
             // WebGPU NDC (right-handed, Z in [0, 1], Y-up): the same matrix the
             // deprecated `Mat4::orthographic_rh` produced.
             return orthographic(left, right, bottom, top, -1.0, 1.0);

@@ -47,6 +47,14 @@ pub enum ConfigError {
         value: String,
         expected: &'static str,
     },
+    /// A value read from the config file that the engine does not support.
+    #[error("invalid {field}='{value}' in '{path}': expected {expected}")]
+    InvalidValue {
+        path: String,
+        field: &'static str,
+        value: String,
+        expected: &'static str,
+    },
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -324,15 +332,17 @@ impl Config {
                         source: e,
                     })?;
                 if !is_supported_msaa(parsed.render.msaa) {
-                    return Err(ConfigError::InvalidEnvOverride {
-                        var: "render.msaa",
+                    return Err(ConfigError::InvalidValue {
+                        path: path.display().to_string(),
+                        field: "render.msaa",
                         value: parsed.render.msaa.to_string(),
                         expected: MSAA_EXPECTED,
                     });
                 }
                 if !is_supported_bloom_max_mips(parsed.render.bloom_max_mips) {
-                    return Err(ConfigError::InvalidEnvOverride {
-                        var: "render.bloom_max_mips",
+                    return Err(ConfigError::InvalidValue {
+                        path: path.display().to_string(),
+                        field: "render.bloom_max_mips",
                         value: parsed.render.bloom_max_mips.to_string(),
                         expected: BLOOM_MAX_MIPS_EXPECTED,
                     });

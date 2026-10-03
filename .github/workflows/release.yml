@@ -129,7 +129,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends pkg-config libasound2-dev libudev-dev
+          sudo apt-get install -y --no-install-recommends pkg-config libasound2-dev
 
       # Reads rust-toolchain.toml. No cache: a cache saved on a tag ref is
       # rarely restored, and release builds start clean.

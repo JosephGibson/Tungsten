@@ -33,17 +33,6 @@ pub enum Shape {
     Circle { radius: f32 },
 }
 
-impl Shape {
-    /// Smallest bounding half-extent for substep tunneling guard.
-    #[must_use]
-    pub fn min_half_extent(&self) -> f32 {
-        match *self {
-            Shape::Aabb { half_extents } => half_extents.x.min(half_extents.y).max(0.0),
-            Shape::Circle { radius } => radius.max(0.0),
-        }
-    }
-}
-
 /// Collider shape plus local offset from `Position`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Collider {

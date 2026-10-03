@@ -118,9 +118,10 @@ pub(super) enum Command {
         target: CommandTarget,
         queue: u32,
     },
-    Remove {
+    /// A plain function run at flush, in queue order ([`CommandBuffer::call`]).
+    Call {
         entity: Entity,
-        remove: fn(&mut World, Entity),
+        call: fn(&mut World, Entity),
     },
     Despawn(Entity),
 }
@@ -194,10 +195,14 @@ impl CommandBuffer {
 
     /// Queue component removal; dead/missing component is no-op at flush.
     pub fn remove_component<T: 'static>(&mut self, entity: Entity) {
-        self.commands.push(Command::Remove {
-            entity,
-            remove: remove_component::<T>,
-        });
+        self.call(entity, remove_component::<T>);
+    }
+
+    /// Queue `call(world, entity)` at flush, in queue order, so it sees what
+    /// the commands before it did; for a change that depends on the state at
+    /// flush. A plain function, so recording it boxes nothing (D-084).
+    pub fn call(&mut self, entity: Entity, call: fn(&mut World, Entity)) {
+        self.commands.push(Command::Call { entity, call });
     }
 
     /// Queue despawn; dead entity is no-op at flush.

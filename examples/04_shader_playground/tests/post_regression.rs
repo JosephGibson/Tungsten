@@ -25,6 +25,7 @@ fn capture(name: &str, post_stack: &str, root: &Path, extra_env: &[(&str, &str)]
         .env_remove("TUNGSTEN_GAME_FEEL_FIXTURE")
         .env_remove("TUNGSTEN_CAPTURE_DIRECT")
         .env_remove("TUNGSTEN_MESH_TRAIL_FIXTURE")
+        .env_remove("TUNGSTEN_MATERIAL_PAIR_FIXTURE")
         .env("TUNGSTEN_SMOKE_FRAMES", "8")
         .env("TUNGSTEN_CAPTURE_FRAME", "5")
         .env("TUNGSTEN_CAPTURE_RESOLUTION", "1280x720")
@@ -72,9 +73,13 @@ fn stage_with_edited_stock_shader(name: &str, edit: impl Fn(&str) -> String) -> 
     let root = workspace_root()
         .canonicalize()
         .expect("canonical workspace root");
+    // Tests run in parallel and two may stage the same shader: one directory
+    // per call.
+    static STAGES: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
     let stage = std::env::temp_dir().join(format!(
-        "tungsten-post-regression-stage-{name}-{}",
-        std::process::id()
+        "tungsten-post-regression-stage-{name}-{}-{}",
+        std::process::id(),
+        STAGES.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
     let _ = std::fs::remove_dir_all(&stage);
 
@@ -160,6 +165,73 @@ fn stock_shader_body_edit_changes_the_frame() {
     assert!(
         apart * 2 > total,
         "the edited fade.wgsl did not reach its pipeline: {apart} of {total} pixels differ"
+    );
+}
+
+/// A stock shader edit that passes Naga but not pipeline validation keeps the
+/// shipped pipeline (B2, `D-057`). The playground started on a tree whose
+/// `fade.wgsl` also reads a `@group(2)` uniform, which the post pipeline layout
+/// does not have, must exit cleanly and draw what the shipped shader draws;
+/// without an error scope the default handler panicked.
+#[cfg(unix)]
+#[test]
+fn incompatible_stock_shader_edit_keeps_the_shipped_pipeline() {
+    if std::env::var("TUNGSTEN_VISUAL_REGRESSION").is_err() {
+        return;
+    }
+
+    let shipped = capture("fade-shipped-b2", "fade_twice", &workspace_root(), &[]);
+    let stage = stage_with_edited_stock_shader("fade", |source| {
+        let params = "@group(1) @binding(0) var<uniform> params: Params;";
+        let read = "let p = clamp(params.f.x, 0.0, 1.0);";
+        assert!(
+            source.contains(params) && source.contains(read),
+            "fade.wgsl changed; pick another incompatible edit"
+        );
+        source
+            .replace(
+                params,
+                &format!("{params}\n@group(2) @binding(0) var<uniform> extra: vec4<f32>;"),
+            )
+            .replace(read, "let p = clamp(params.f.x + extra.x * 0.0, 0.0, 1.0);")
+    });
+    let edited = capture("fade-incompatible", "fade_twice", &stage, &[]);
+    let _ = std::fs::remove_dir_all(&stage);
+
+    let (apart, total) = pixels_apart(&shipped, &edited);
+    assert_eq!(
+        apart, 0,
+        "the incompatible fade.wgsl replaced the shipped pipeline: {apart} of {total} pixels differ"
+    );
+}
+
+/// Two batches of one material each draw with their own uniforms (B1). A red
+/// and a blue `damage_flash` quad must not look like two blue ones, which a
+/// single UBO per material drew: every batch's write landed before the frame
+/// ran. Each quad covers 64x64 pixels of the capture.
+#[test]
+fn material_batches_keep_their_own_uniforms() {
+    if std::env::var("TUNGSTEN_VISUAL_REGRESSION").is_err() {
+        return;
+    }
+
+    let root = workspace_root();
+    let pair = capture(
+        "material-pair",
+        "empty",
+        &root,
+        &[("TUNGSTEN_MATERIAL_PAIR_FIXTURE", "pair")],
+    );
+    let same = capture(
+        "material-same",
+        "empty",
+        &root,
+        &[("TUNGSTEN_MATERIAL_PAIR_FIXTURE", "same")],
+    );
+    let (apart, total) = pixels_apart(&pair, &same);
+    assert!(
+        apart > 64 * 64 / 2,
+        "the first quad's red is lost: {apart} of {total} pixels differ"
     );
 }
 

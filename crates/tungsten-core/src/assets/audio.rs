@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::path::Path;
 
+use thiserror::Error;
+
 /// Registered sound handle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AudioHandle(pub u32);
@@ -14,13 +16,37 @@ pub struct SoundData {
     pub channels: u16,
 }
 
+/// Error decoding an audio file.
+#[derive(Debug, Error)]
+pub enum AudioDecodeError {
+    #[error("Failed to open '{path}': {error}")]
+    Open { path: String, error: std::io::Error },
+    #[error("Failed to probe '{path}': {error}")]
+    Probe {
+        path: String,
+        error: symphonia::core::errors::Error,
+    },
+    #[error("No audio track in '{path}'")]
+    NoTrack { path: String },
+    #[error("Unknown sample rate in '{path}'")]
+    UnknownSampleRate { path: String },
+    #[error("Failed to create decoder: {error}")]
+    Decoder {
+        error: symphonia::core::errors::Error,
+    },
+    #[error("Decode error: {error}")]
+    Decode {
+        error: symphonia::core::errors::Error,
+    },
+}
+
 impl SoundData {
     /// Decode audio file to raw PCM via symphonia.
     ///
     /// End of stream ends decoding. A stream that ends mid-packet (truncated
     /// file) keeps the audio decoded so far and logs a warning; any other I/O
     /// failure is an error. Corrupt packets are skipped with a warning.
-    pub fn decode(path: &Path) -> anyhow::Result<SoundData> {
+    pub fn decode(path: &Path) -> Result<SoundData, AudioDecodeError> {
         use std::io::ErrorKind;
         use symphonia::core::codecs::audio::{AudioDecoderOptions, CODEC_ID_NULL_AUDIO};
         use symphonia::core::errors::Error;
@@ -29,8 +55,11 @@ impl SoundData {
         use symphonia::core::io::{MediaSourceStream, MediaSourceStreamOptions};
         use symphonia::core::meta::MetadataOptions;
 
-        let file = std::fs::File::open(path)
-            .map_err(|e| anyhow::anyhow!("Failed to open '{}': {}", path.display(), e))?;
+        let display = || path.display().to_string();
+        let file = std::fs::File::open(path).map_err(|error| AudioDecodeError::Open {
+            path: display(),
+            error,
+        })?;
 
         let mss = MediaSourceStream::new(Box::new(file), MediaSourceStreamOptions::default());
 
@@ -46,7 +75,10 @@ impl SoundData {
                 FormatOptions::default(),
                 MetadataOptions::default(),
             )
-            .map_err(|e| anyhow::anyhow!("Failed to probe '{}': {}", path.display(), e))?;
+            .map_err(|error| AudioDecodeError::Probe {
+                path: display(),
+                error,
+            })?;
 
         let (track_id, params) = format
             .tracks()
@@ -55,16 +87,16 @@ impl SoundData {
                 let audio = t.codec_params.as_ref()?.audio()?;
                 (audio.codec != CODEC_ID_NULL_AUDIO).then(|| (t.id, audio.clone()))
             })
-            .ok_or_else(|| anyhow::anyhow!("No audio track in '{}'", path.display()))?;
+            .ok_or_else(|| AudioDecodeError::NoTrack { path: display() })?;
 
         let sample_rate = params
             .sample_rate
-            .ok_or_else(|| anyhow::anyhow!("Unknown sample rate in '{}'", path.display()))?;
+            .ok_or_else(|| AudioDecodeError::UnknownSampleRate { path: display() })?;
         let channels = params.channels.as_ref().map_or(2, |c| c.count() as u16);
 
         let mut decoder = symphonia::default::get_codecs()
             .make_audio_decoder(&params, &AudioDecoderOptions::default())
-            .map_err(|e| anyhow::anyhow!("Failed to create decoder: {e}"))?;
+            .map_err(|error| AudioDecodeError::Decoder { error })?;
 
         let mut all_samples: Vec<f32> = Vec::new();
         // Reused per packet; each copy resizes it to that packet's samples.
@@ -85,7 +117,7 @@ impl SoundData {
                     decoder.reset();
                     continue;
                 }
-                Err(e) => return Err(anyhow::anyhow!("Decode error: {e}")),
+                Err(error) => return Err(AudioDecodeError::Decode { error }),
             };
 
             if packet.track_id != track_id {
@@ -108,7 +140,7 @@ impl SoundData {
                 Err(Error::DecodeError(e)) => {
                     log::warn!("Decode warning in '{}': {}", path.display(), e);
                 }
-                Err(e) => return Err(anyhow::anyhow!("Decode error: {e}")),
+                Err(error) => return Err(AudioDecodeError::Decode { error }),
             }
         }
 

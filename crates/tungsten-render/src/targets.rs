@@ -1,7 +1,8 @@
 //! M25 offscreen scene targets: color + optional depth + optional MSAA.
 //!
-//! `SceneColor` always matches the swapchain sRGB format so the default path
-//! can blit back onto the swapchain byte-identically to the 0.21 baseline.
+//! `SceneColor` always matches the swapchain sRGB format, so a capture
+//! frame's present blit copies it onto the swapchain byte-identically
+//! (`D-057`). Other frames write the swapchain directly (`D-087`).
 //! `SceneDepth` uses `Depth32Float` (portable) and is allocated only when
 //! `RenderConfig::depth_enabled` is true. `SceneColorMsaa` is allocated only
 //! when `sample_count > 1` and resolves into `SceneColor`.
@@ -40,8 +41,7 @@ pub const BLOOM_PYRAMID_FORMAT: TextureFormat = TextureFormat::Rgba16Float;
 /// views. Mip 0 is half resolution, each successive mip halves again.
 #[derive(Debug)]
 pub struct BloomPyramid {
-    #[allow(dead_code)]
-    texture: wgpu::Texture,
+    /// One view per mip; the views keep the pyramid texture alive.
     mip_views: Vec<wgpu::TextureView>,
     mip_extents: Vec<(u32, u32)>,
 }
@@ -665,7 +665,6 @@ fn create_bloom_pyramid(
     }
 
     BloomPyramid {
-        texture,
         mip_views,
         mip_extents,
     }
@@ -687,65 +686,5 @@ fn make_linear_view(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn non_srgb_twin_maps_rgba8_unorm_srgb() {
-        assert_eq!(
-            non_srgb_twin(TextureFormat::Rgba8UnormSrgb),
-            Some(TextureFormat::Rgba8Unorm)
-        );
-    }
-
-    #[test]
-    fn non_srgb_twin_maps_bgra8_unorm_srgb() {
-        assert_eq!(
-            non_srgb_twin(TextureFormat::Bgra8UnormSrgb),
-            Some(TextureFormat::Bgra8Unorm)
-        );
-    }
-
-    #[test]
-    fn non_srgb_twin_returns_none_for_linear_input() {
-        assert_eq!(non_srgb_twin(TextureFormat::Rgba8Unorm), None);
-        assert_eq!(non_srgb_twin(TextureFormat::Bgra8Unorm), None);
-    }
-
-    #[test]
-    fn target_cache_rebuilds_only_when_its_key_moves() {
-        // Keyed like the renderer's caches: pool generation and source target.
-        let mut cache: TargetCache<(u64, TargetId), u32> = TargetCache::default();
-        let mut builds = 0;
-        let mut get = |cache: &mut TargetCache<(u64, TargetId), u32>, key| {
-            *cache.get_or_build(key, || {
-                builds += 1;
-                builds
-            })
-        };
-        assert_eq!(get(&mut cache, (0, TargetId::SceneColor)), 1);
-        assert_eq!(get(&mut cache, (0, TargetId::SceneColor)), 1);
-        // A resize or a `post_aa` switch rebuilds the targets: new generation.
-        assert_eq!(get(&mut cache, (1, TargetId::SceneColor)), 2);
-        assert_eq!(get(&mut cache, (1, TargetId::SceneColor)), 2);
-        // Another source target in the same generation.
-        assert_eq!(get(&mut cache, (1, TargetId::PostPing)), 3);
-        cache.clear();
-        assert_eq!(get(&mut cache, (1, TargetId::PostPing)), 4);
-    }
-
-    #[test]
-    fn bloom_mip_count_clamps_to_viewport_size() {
-        // 1080p tall enough for the requested 6 mips at half-res start.
-        assert_eq!(bloom_mip_count_for_size(1920, 1080, 6), 6);
-        // 64x64 viewport: floor(log2(64)) = 6, minus 1 = 5 mip ceiling.
-        assert_eq!(bloom_mip_count_for_size(64, 64, 6), 5);
-        // Tiny viewport: floor must not underflow.
-        assert_eq!(bloom_mip_count_for_size(2, 2, 6), 1);
-        assert_eq!(bloom_mip_count_for_size(1, 1, 6), 1);
-        // max_mips = 0 still yields at least 1.
-        assert_eq!(bloom_mip_count_for_size(1024, 1024, 0), 1);
-        // Larger pyramids respect the viewport ceiling.
-        assert_eq!(bloom_mip_count_for_size(1024, 1024, 8), 8);
-    }
-}
+#[path = "tests/targets.rs"]
+mod tests;

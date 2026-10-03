@@ -20,8 +20,6 @@ pub enum ScreenshotError {
     Encode(#[from] image::ImageError),
     #[error("buffer map failed")]
     MapFailed,
-    #[error("device lost while capturing screenshot")]
-    DeviceLost,
     #[error("capture buffer size {0} does not match width*height*4 = {1}")]
     SizeMismatch(usize, usize),
 }
@@ -58,11 +56,6 @@ impl Renderer {
             direct: true,
         });
         Ok(())
-    }
-
-    /// Capture armed.
-    pub fn capture_armed(&self) -> bool {
-        self.pending_capture.is_some()
     }
 }
 

@@ -29,7 +29,7 @@ pub use lit_sprite::{
     EMISSIVE_MASK_SHADER_NAME, LIT_SPRITE_SHADER_NAME, LIT_SPRITE_SHADER_SOURCE, LitSpritePipeline,
     RIM_LIGHT_SHADER_NAME,
 };
-pub use material::{MaterialBuildError, MaterialPipeline};
+pub use material::MaterialPipeline;
 pub use mesh_particle::{MeshParticleBatch, MeshParticleInstance, MeshParticlePipeline};
 pub use passes::{PassDesc, PassOrder, PassRecorder, PresentPath, TargetId, default_pass_order};
 pub use post::PostStackRenderer;

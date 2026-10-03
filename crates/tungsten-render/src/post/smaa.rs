@@ -28,6 +28,7 @@ use wgpu::util::DeviceExt;
 
 use crate::passes::TargetId;
 use crate::post::smaa_luts;
+use crate::shader_hot_reload::build_validated;
 use crate::targets::{RenderTargetPool, SMAA_BLEND_FORMAT, SMAA_EDGES_FORMAT, TargetCache};
 
 /// Stage shader manifest names. Must match `assets/manifest.json` keys and the
@@ -465,22 +466,29 @@ impl SmaaPipeline {
     }
 
     /// Hot-reload entry: rebuild only the affected stage's pipeline against a
-    /// freshly validated module. Caller (Renderer) commits the module to the
-    /// `ShaderModuleCache` after this returns.
+    /// freshly validated module. A pipeline that fails validation is not
+    /// swapped in (`Err`). Caller (Renderer) commits the module to the
+    /// `ShaderModuleCache` after this returns `Ok`.
     pub fn rebuild_stage_with_module(
         &mut self,
         device: &wgpu::Device,
         shader_id: ShaderAssetId,
         module: &wgpu::ShaderModule,
-    ) {
+    ) -> Result<(), String> {
+        let layouts = &self.layouts;
         if shader_id == self.shader_ids.edge {
-            self.edge_pipeline = build_edge_pipeline(device, &self.layouts, module);
+            self.edge_pipeline =
+                build_validated(device, || build_edge_pipeline(device, layouts, module))?;
         } else if shader_id == self.shader_ids.blend_weights {
-            self.blend_pipeline = build_blend_pipeline(device, &self.layouts, module);
+            self.blend_pipeline =
+                build_validated(device, || build_blend_pipeline(device, layouts, module))?;
         } else if shader_id == self.shader_ids.neighborhood_blend {
-            self.nbh_pipeline =
-                build_nbh_pipeline(device, &self.layouts, module, self.target_format);
+            let format = self.target_format;
+            self.nbh_pipeline = build_validated(device, || {
+                build_nbh_pipeline(device, layouts, module, format)
+            })?;
         }
+        Ok(())
     }
 
     #[must_use]

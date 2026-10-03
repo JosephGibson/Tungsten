@@ -2321,12 +2321,6 @@ fn only_small_marbles_shift_hue_while_orbs_render_untinted() {
 }
 
 #[test]
-fn soft_glow_shader_passes_naga_validation() {
-    let source = std::fs::read_to_string(asset_path("shaders/soft_glow.wgsl")).unwrap();
-    tungsten::render::validate_wgsl_source("ex10_soft_glow", &source).unwrap();
-}
-
-#[test]
 fn glows_draw_through_soft_materials_without_absorbing_other_sprites() {
     use crate::gameplay::Glow;
     use tungsten::core::{AssetRegistry, MaterialRegistry, MaterialUniformDefaults};

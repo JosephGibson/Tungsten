@@ -1095,3 +1095,85 @@ The bound belongs to the step, not to the app loop: `physics_step` is public and
 - **Example 01 caps its balls at `BALL_CAP = 12_000`,** a count: spawning stops there, and a spawner at the cap drops its accumulated time. It is a presentation guard, not the fix. With the bound the pit holds at 18,000 balls, but awake they cost a 28–33 ms step, and the load limit above makes a deep pile look crushed at 60 FPS. 12,000 is where the reference machine's awake step is 14.5 ms and the overlap still moderate (stacking 1.34). A count is deterministic and testable (`spawning_stops_at_the_ball_cap` in the example's `tests/ball_pit.rs`); a gate on the frame dt is neither.
 - Tests: `stacked_column_survives_slow_frames` in `crates/tungsten-core/tests/physics_tunneling.rs` (ball 0 under the floor top before); `awake_pile_keeps_its_bodies_and_height_through_slow_frames` (91 of 1,500 through the floor before), `slow_frames_do_not_multiply_the_pair_list` (4,392 → 59,185 pairs before, 4,979 now) and the guard `pinned_step_state_is_unchanged` in `crates/tungsten-core/tests/physics_containment.rs`, release only; `slow_frame_advances_only_the_step_bound`, `step_bound_off_takes_the_whole_dt_as_before` and `step_bound_is_invisible_at_a_sixtieth` in `crates/tungsten-core/src/tests/physics/step.rs`. `one_capped_stall_step_keeps_a_settled_pile` runs with the bound off so it still takes `D-088`'s 0.1 s step.
 - No `unsafe`, no new dependency. `PhysicsConfig` gains a field, so code that builds one as a full literal adds `max_step_dt`.
+
+## D-095 — Perf runner flags background load and reports digest matches
+**Date:** 2026-10-03
+**Decision:** `scripts/bench.py` checks every measured run, timing and GPU diagnostic alike, for background load. It scans `/proc` before the run, once a second during it and once after it exits, for `nxcodec.bin` anywhere and for `cargo` or `rustc` outside the runner's own process tree; after the run it recomputes the commit and the dirty-tree hash and compares them with the provenance read before the build. An offender makes the run invalid with `background load: <name>`, a changed tree with `background load: tree changed`; `--allow-background` (`run`, `suite`) turns both into capture notes. The capture's provenance gains a soft `background` record: the offenders seen, the runs after which the tree differed with the values seen, and whether they were allowed. Compare reports whether the two sides' first-run digests match, for information only; suite compare lists the rows whose digests differ; `run --compare` given a suite compares against its row of the same name.
+
+**Why:** Guards and digests pass under background load, so the capture rules made the agent check by hand, before and during every sitting, for a remote-desktop encoder, for other builds and for another session editing the tree. The profiling workflow records three captures spoiled that way while every guard passed: the encoder moved `ecs` `total` p95 from 11.5 to 18.2 ms, another session's `cargo` run put one `particles` run at 41.9 ms against about 12.5, and the agent's own commands fattened `churn` `flush` p95. The 0.40 QA plan's first A/A pair was a fourth: a documentation session wrote to `docs/plans/` without building while both suites ran, the busy-CPU log stayed flat, both suites read valid, and the second read four owned metrics `improved` against a clean suite. The tree check would have invalidated both. Cleanup steps must also prove their digests unchanged, and compare never showed them.
+
+**Consequences:**
+- Amends `D-078`'s validity list: a valid capture also saw no background load in any measured run; the index row records the amendment. Thresholds, owned metrics and the hard comparability fields stand. The `background` record is a soft field: compare notes a side whose runs saw load that `--allow-background` let pass.
+- Not detected: a session that only reads files, the agent's own commands beside a sitting and load from any other process. Capacity probes, smoke timings and visual runs are not scanned. The capture rules keep the manual checks for those and before every sitting.
+- Once the tree changes, every later run of the sitting reads `tree changed`: the comparison is with the provenance, which no longer describes the tree.
+- A scan reads `/proc/<pid>/stat` for every process, 4.2 ms for 344 processes on the reference machine, once a second in the runner's process beside the benchmark.
+- Captures from before this decision have no `background` record and no notes; compare treats them as clean, so existing baselines stay usable.
+- Tests in `scripts/test-bench.py` (`just perf-test`): `BackgroundLoad` covers the own-tree rule, `/proc` parsing, the scan schedule, and clean, encoder, tree-changed and allowed captures, through `capture_to` with an injected process lister, tree reader and stand-in binary; digest-equal and digest-different compares for captures and suites; `run --compare` on a suite baseline.
+
+## D-096 — Dev builds compile `tungsten-core` at opt-level 1
+**Date:** 2026-10-03
+**Decision:** The dev profile, and the test profile that inherits it, builds `tungsten-core` at `opt-level = 1` through `[profile.dev.package.tungsten-core]` in the workspace `Cargo.toml`. The other project crates stay at opt-level 0 and external dependencies at 2. The release and bench profiles and the perf runner's flags are unchanged.
+
+**Why:** `just check` waited on one test. `example-01-platformer`'s `authored_routes_and_recovery_shelves_traverse_with_real_physics` rebuilds the 184×50 map world for every attempt and steps physics in an opt-level-0 `tungsten-core`: 81.0 s of an 89.7 s `just check` on the reference machine (0.40 QA step 0). At opt-level 1 the test takes 8.9 s with the same result, and a warm `just check` takes 11.1 s with the same 928 tests passing (0.40 QA step 3). Rebuilding core and its dependents after `cargo clean -p tungsten-core` went from 5.0 s to 6.8 s in the audit's scratch measurement. Optimization keeps IEEE float semantics, since rustc emits no fast-math or contraction flags at any opt-level, and `debug_assertions` and overflow checks stay on in dev.
+
+**Consequences:**
+- Amends `D-041`'s dev-profile clause ("project crates remain at opt-level 0"): `tungsten-core` is the exception. The index row records the amendment; the rest of `D-041` stands.
+- A debugger in a dev build steps optimized `tungsten-core` code, where locals can read as optimized out. A debugging session can pass `--config profile.dev.package.tungsten-core.opt-level=0`.
+- Release builds, perf captures, the determinism and pinned containment hashes and the benchmark digests are unaffected. `just visual` and `just smoke` build the dev profile and pass unchanged.
+
+## D-097 — Agents commit plan work locally; humans publish
+**Superseded by D-098:** the opt-in patch-series clause only; the `tungsten-patch-handoff` skill and `scripts/patch-series.py` are removed; the rest stands.
+**Date:** 2026-10-03
+**Decision:** On a milestone branch the agent commits plan work itself: once the checks pass it stages only the paths the work touched (`git add <paths>`, never `-A`) and commits, once per plan or per phase of a long plan, with no attribution lines. The human keeps `git push`, tags, merges and every history rewrite, and release pull requests stay squash-merged (`D-079`), so `main` keeps one commit per release. A plan's evidence rows are one line each (verdict, key numbers, capture or log paths), and a plan adds one `CHANGELOG.md` `[Unreleased]` line instead of one per step. The `tungsten-patch-handoff` skill and `scripts/patch-series.py` are opt-in: they run only when a task asks for per-step patches to review.
+
+**Why:** The squash merge discards per-step commits on `main`, so their cost buys only review checkpoints on the milestone branch. With Git human-only, the 0.40 QA run emulated them with a full tree copy per step (280 MB for eleven steps), a verify and script stage, and a `commit.sh` pinned to one HEAD that refused to run once an unrelated commit landed. Per-step evidence rows and changelog lines grew its plan to about 70 KB, which every agent that opens it pays for. Local commits stay reviewable and reversible until a push, and the squash hides them anyway.
+
+**Consequences:**
+- Committing needs a personal allow for `git add` and `git commit`: the project allowlist grants exact commands only, and user settings denied both when this was decided. Until they are allowed, the agent leaves the work uncommitted and hands over one `git add <paths> && git commit` command per plan.
+- Hand-off blocks the human pastes use `git --no-pager` for `log`, `show` and `diff`: in the same run a pager took the rest of a pasted block as keystrokes.
+- Restates `D-079`'s squash merge and amends no decision. The active `docs/plans/qa-cleanup-0.40.md` follows this from step 15; its per-step rows and changelog lines so far stay.
+
+## D-098 — The per-step patch hand-off is removed
+**Date:** 2026-10-03
+**Decision:** The `tungsten-patch-handoff` skill, its `.agents/skills/` symlink and `.gitignore` entry, `scripts/patch-series.py` and its tests in `just script-test` are removed. A task that asks for per-step history gets one local commit per step. While Git is denied to the agent, the work stays uncommitted and the agent hands over the commit commands instead: one per plan, or one per step, in order, when per-step history was asked for.
+
+**Why:** With local commits (`D-097`), per-step history costs one `git commit` per step. The series tool existed only to emulate that while Git was denied, at the cost of a full tree copy per step and a commit script pinned to one HEAD, which refused to run after an unrelated commit landed in the 0.40 QA run. Keeping it opt-in kept a skill, 1,014 lines of script and tests, a `script-test` slot and the docs that route to them, for a path the workflow no longer takes. The last tree that holds it is `75a7360`.
+
+**Consequences:**
+- Supersedes `D-097`'s opt-in clause as its marker line says.
+- The 1.0 workflow and implementation plan drop the series: steps end in local commits, and "one series per tree" becomes "one committing session per tree".
+- Released `CHANGELOG.md` sections, the 0.40 QA plan's evidence rows and `DESIGN.md`'s 0.39 status line keep their mentions as history.
+
+## D-099 — A completed tween's removal spares a same-frame replacement
+**Date:** 2026-10-03
+**Decision:** `tween_tick_system` queues a completed tween's removal as `CommandBuffer::call(entity, remove_finished_tween)`, which at flush removes the entity's `Tween` only while it is still marked `pending_remove`. `CommandBuffer::call(entity, fn(&mut World, Entity))` is the public way to queue a plain function that runs at flush in queue order; it reuses `D-084`'s function-pointer command (renamed `Command::Call`), and `remove_component::<T>` records through it.
+
+**Why:** Systems run before the tween stage, so a replacement `Tween` queued through the `CommandBuffer` in the frame the old one completes is applied first at flush and overwrites the old one in place; the unconditional `remove_component::<Tween>` queued after it then deleted the replacement (B4 in the 0.40 QA plan; `game_feel.rs` already works around the same hazard for squash). A replacement is a fresh `Tween` with `pending_remove` false, so checking the latch at flush tells the two apart without a generation counter, and a function pointer keeps the command unboxed. Measured on the tree before the fix, back to back: `ecs` and `churn` read 0 regressed (15 owned metrics unchanged, 7 noisy) and `integrated` reads 4 of 4 unchanged against step 0's baseline, with every digest unchanged.
+
+**Consequences:**
+- Amends `D-056`'s removal clause only: the removal now waits for the latch at flush; the event routing and the `pending_remove` latch stand. Per the 0.40 QA plan's Q1, `D-056` carries no marker line; the index rows record the amendment.
+- `replacement_tween_queued_before_completion_survives_flush` (`crates/tungsten/src/tests/tweens.rs`) pins it; `tween_once_completes_and_removes_component` still passes.
+- `remove_component::<Tween>` queued by user code stays unconditional.
+
+## D-100 — Camera smoothing is a rate per 1/60 s, not a fraction per frame
+**Date:** 2026-10-03
+**Decision:** `camera_update_system` blends the camera toward its desired position by `1 - (1 - s)^(dt·60)` each frame, where `s` is `CameraController::smoothing_factor`: the fraction of the remaining distance covered per 1/60 s, so the camera converges at the same rate at any frame rate. `s` keeps its meaning at 60 Hz, and 0 (never moves) and 1 (snaps) hold whatever `dt` is.
+
+**Why:** A lerp by `s` once per frame made convergence depend on the frame rate (B5 in the 0.40 QA plan): one second toward a target at (−100, −150) with smoothing 0.05 ended at (−95.39, −143.09) at 60 Hz and (−99.79, −149.68) at 120 Hz. The per-time form is the frame-rate-independent version of the same exponential decay. 0 and 1 are special-cased because `0^0` would leave a snapping camera still on a frame with `dt` 0.
+
+**Consequences:**
+- The platformer and the integrated bench use 1, so they still snap: `integrated` reads 4 of 4 owned metrics unchanged with its digest unchanged. The playground's 0.12 now follows at the same speed at any frame rate, as it did at 60 Hz.
+- `smoothing_converges_the_same_at_60_and_120_hz` (`crates/tungsten/tests/camera.rs`) pins it at smoothing 0.05, which leaves about 5% of the distance after a second; at 0.5 both rates reach f32 precision within the second and could not show the bug.
+- Amends no decision.
+
+## D-101 — Each batch of a material draws with a uniform buffer of its own
+**Date:** 2026-10-03
+**Decision:** A material's 256-byte uniform buffer belongs to the batch, not to the material: the k-th batch of a material in a frame draws with UBO slot k, kept per material on the sprite pipeline in the `ParamSlots` pattern of `D-090`, built on first use against the material's group-2 layout and written only when its bytes change. `MaterialPipeline` keeps the pipeline and that layout; a material rebuild drops its slots.
+
+**Why:** Every `queue.write_buffer` lands before the frame's command buffer runs, so with one UBO per material every batch of the material drew the frame's last payload (B1 in the 0.40 QA plan): two `damage_flash` quads flashed red and blue drew a frame identical to two blue ones, 0 of 921,600 pixels apart, and the `integrated` row's struck walkers drew whichever fade was written last. The extract already splits batches by override hash for this reason; the buffers did not follow. Measured against step 0's baseline, `gpu`, `gpu-throughput` and `integrated` read 0 owned metrics `regressed` (19 unchanged; `extract` p50 0.64 → 0.66 ms and `render_encode` p50 2.10 → 2.14 ms in `gpu`), with every digest unchanged.
+
+**Consequences:**
+- Amends `D-058`'s single-UBO clause only: each batch of a material has its own buffer; the rest stands. Per the 0.40 QA plan's Q1, `D-058` carries no marker line; the index rows record the amendment.
+- `material_batches_keep_their_own_uniforms` (`examples/04_shader_playground/tests/post_regression.rs`, in `just visual`) pins it with the playground's `TUNGSTEN_MATERIAL_PAIR_FIXTURE`: the red-and-blue pair now differs from the blue pair over the first quad's 4,096 pixels.
+- A material keeps as many slots as its most batches in one frame; they are kept between frames.
+- `gpu-visual.png` is unchanged (the visual preset's `bench_heavy` batches share default bytes). The `integrated` row now draws each walker's own flash; its digest hashes counters, not pixels, and is unchanged.

@@ -92,14 +92,11 @@ pub struct TextPipeline {
 }
 
 impl TextPipeline {
+    /// Text renders in its own overlay pass after the post stack, which always
+    /// targets a single-sample color texture with no depth, so the pipeline
+    /// bakes those attachment bits whatever the scene's MSAA and depth config.
     #[must_use]
-    pub fn new(
-        device: &Device,
-        queue: &Queue,
-        format: TextureFormat,
-        sample_count: u32,
-        depth_attached: bool,
-    ) -> Self {
+    pub fn new(device: &Device, queue: &Queue, format: TextureFormat) -> Self {
         let font_system = FontSystem::new();
         let swash_cache = SwashCache::new();
         let cache = Cache::new(device);
@@ -109,11 +106,11 @@ impl TextPipeline {
             &mut atlas,
             device,
             MultisampleState {
-                count: sample_count,
+                count: 1,
                 mask: !0,
                 alpha_to_coverage_enabled: false,
             },
-            crate::quad::passthrough_depth_stencil(depth_attached),
+            crate::quad::passthrough_depth_stencil(false),
         );
 
         Self {

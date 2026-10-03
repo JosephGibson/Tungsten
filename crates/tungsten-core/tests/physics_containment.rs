@@ -1,4 +1,4 @@
-//! Step-2 containment harness (docs/plans/physics-scale-and-ccd.md): a dense
+//! Containment harness (D-063): a dense
 //! 3k pile inside 80 px-thick static walls must never leak a body. Under the
 //! pre-D-063 solver, Gauss-Seidel in-place MTV corrections shoved bodies past
 //! the floor centerline within ~400 steps and the MTV ejected them out the
@@ -15,6 +15,9 @@
 //! Run with:
 //! `cargo test --release -p tungsten-core --test physics_containment -- --nocapture`
 
+mod common;
+
+use common::{BODY_RADIUS, FLOOR_Y, PILE_WIDTH, SPAWN_SPACING, spawn_pile, spawn_static_box};
 use glam::Vec2;
 use tungsten_core::{
     Collider, DeltaTime, Entity, Pcg32, PhysicsBuffers, PhysicsConfig, Position, RigidBody,
@@ -22,79 +25,12 @@ use tungsten_core::{
 };
 
 const DT: f32 = 1.0 / 60.0;
-const BODY_RADIUS: f32 = 6.0;
-const SPAWN_SPACING: f32 = 14.0;
-const PILE_WIDTH: f32 = 1_920.0;
-const FLOOR_Y: f32 = 1_080.0;
 const GRAVITY_Y: f32 = 900.0;
 /// Thin walls by design: thick enough to be a real level boundary, thin
 /// enough that a body pushed past the centerline would visibly escape.
 const WALL_HALF: f32 = 40.0;
 const BODY_COUNT: usize = 3_000;
 const STEPS: usize = 2_400;
-
-/// Fully closed box (floor, roof, side walls) spanning `top_y..FLOOR_Y`,
-/// 80 px thick; mirrors the bench geometry with thin walls.
-fn spawn_static_box(world: &mut World, width: f32, top_y: f32) {
-    let mid_x = width * 0.5;
-    let mid_y = f32::midpoint(top_y, FLOOR_Y);
-    let half_h = (FLOOR_Y - top_y) * 0.5;
-    let walls = [
-        (
-            Vec2::new(mid_x, FLOOR_Y + WALL_HALF),
-            Vec2::new(mid_x + WALL_HALF * 2.0, WALL_HALF),
-        ),
-        (
-            Vec2::new(mid_x, top_y - WALL_HALF),
-            Vec2::new(mid_x + WALL_HALF * 2.0, WALL_HALF),
-        ),
-        (
-            Vec2::new(-WALL_HALF, mid_y),
-            Vec2::new(WALL_HALF, half_h + WALL_HALF * 2.0),
-        ),
-        (
-            Vec2::new(width + WALL_HALF, mid_y),
-            Vec2::new(WALL_HALF, half_h + WALL_HALF * 2.0),
-        ),
-    ];
-    for (center, half_extents) in walls {
-        let entity = world.spawn();
-        world.insert(entity, Position(center - half_extents));
-        world.insert(entity, RigidBody::r#static());
-        world.insert(
-            entity,
-            Collider::aabb(half_extents).with_offset(half_extents),
-        );
-    }
-}
-
-fn spawn_pile(world: &mut World, count: usize, rng: &mut Pcg32) -> Vec<Entity> {
-    let usable_width = PILE_WIDTH - SPAWN_SPACING * 2.0;
-    let cols = ((usable_width / SPAWN_SPACING).floor() as usize).max(1);
-    let rows = count.div_ceil(cols);
-    let start_y = FLOOR_Y - SPAWN_SPACING - rows as f32 * SPAWN_SPACING;
-
-    let mut bodies = Vec::with_capacity(count);
-    for index in 0..count {
-        let col = index % cols;
-        let row = index / cols;
-        let jitter_x = rng.next_range(-0.2, 0.2) * SPAWN_SPACING;
-        let jitter_y = rng.next_range(-0.2, 0.2) * SPAWN_SPACING;
-        let x = (SPAWN_SPACING + col as f32 * SPAWN_SPACING + jitter_x)
-            .clamp(0.0, PILE_WIDTH - BODY_RADIUS * 2.0);
-        let y = start_y + row as f32 * SPAWN_SPACING + jitter_y;
-        let entity = world.spawn();
-        world.insert(entity, Position(Vec2::new(x, y)));
-        world.insert(entity, Velocity(Vec2::ZERO));
-        world.insert(entity, RigidBody::dynamic().with_restitution(0.1));
-        world.insert(
-            entity,
-            Collider::circle(BODY_RADIUS).with_offset(Vec2::splat(BODY_RADIUS)),
-        );
-        bodies.push(entity);
-    }
-    bodies
-}
 
 #[test]
 #[cfg_attr(
@@ -112,7 +48,7 @@ fn dense_pile_never_escapes_thin_walls() {
     let mut rng = Pcg32::seeded(0x7C0F_FEE5);
     let rows = BODY_COUNT.div_ceil(((PILE_WIDTH - 28.0) / SPAWN_SPACING) as usize);
     let top_y = FLOOR_Y - SPAWN_SPACING * (rows as f32 + 2.0) - 500.0;
-    spawn_static_box(&mut world, PILE_WIDTH, top_y);
+    spawn_static_box(&mut world, PILE_WIDTH, top_y, WALL_HALF);
     let bodies = spawn_pile(&mut world, BODY_COUNT, &mut rng);
 
     for _ in 0..STEPS {

@@ -460,3 +460,30 @@ fn is_supported_bloom_max_mips_matches_expected_range() {
     assert!(is_supported_bloom_max_mips(8));
     assert!(!is_supported_bloom_max_mips(9));
 }
+
+#[test]
+fn file_msaa_error_is_not_an_env_override() {
+    // B7: an unsupported `render.msaa` read from the file names the file and
+    // the field, not an env override nobody set.
+    let path = std::env::temp_dir().join(format!("tungsten-b7-{}.json", std::process::id()));
+    std::fs::write(&path, r#"{"render": {"msaa": 3}}"#).unwrap();
+    let err = Config::load(&path).unwrap_err();
+    let _ = std::fs::remove_file(&path);
+    let message = err.to_string();
+    match err {
+        ConfigError::InvalidValue {
+            path: file,
+            field,
+            value,
+            expected,
+        } => {
+            assert_eq!(file, path.display().to_string());
+            assert_eq!(field, "render.msaa");
+            assert_eq!(value, "3");
+            assert_eq!(expected, MSAA_EXPECTED);
+        }
+        other => panic!("unexpected error: {other}"),
+    }
+    assert!(message.contains(&path.display().to_string()), "{message}");
+    assert!(!message.contains("env override"), "{message}");
+}

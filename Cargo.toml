@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.39.0"
+version = "0.40.0"
 edition = "2024"
 rust-version = "1.98.1"
 license = "MIT"
@@ -60,11 +60,18 @@ rtrb = "0.3.5"
 # Profiles
 # ---------------------------------------------------------------------------
 
-# Dev: project crates at opt-level 0 (fast incremental); all external deps at
-# opt-level 2 so wgpu / winit / glam / cpal run at acceptable speed in debug mode.
-# Deps rarely change, so the one-time compile cost does not hurt iteration speed.
+# Dev: project crates at opt-level 0 (fast incremental), except tungsten-core at
+# opt-level 1; all external deps at opt-level 2 so wgpu / winit / glam / cpal run
+# at acceptable speed in debug mode. Deps rarely change, so the one-time compile
+# cost does not hurt iteration speed. tungsten-core runs the physics and ECS of
+# every simulation test: opt-level 1 took `just check` from 90 s to 11 s for
+# about 2 s more per core rebuild; floats keep IEEE semantics and debug
+# assertions stay on (D-096).
 [profile.dev.package."*"]
 opt-level = 2
+
+[profile.dev.package.tungsten-core]
+opt-level = 1
 
 # Release: maximize binary performance.
 #   lto = "thin"      — parallel cross-crate inlining via ThinLTO

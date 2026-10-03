@@ -5,7 +5,7 @@ Scoped rules for this crate, on top of the root `AGENTS.md`. The `tungsten-wgpu`
 ## Shaders (`D-057`, narrows `D-023`)
 
 - Runtime shaders are manifest-tracked assets under `assets/shaders/`, loaded through `ShaderRegistry` + `ShaderModuleCache`.
-- Mirrors: `src/shaders/stock/**` ↔ `assets/shaders/stock/**` and `src/sprite.wgsl` ↔ `assets/shaders/sprite.wgsl` stay byte-equal; edit both copies together. The loader skips a reload when bytes match the compiled-in source. `lit_sprite.wgsl` exists only in `assets/shaders/`. `quad`, `debug_line`, `mesh_particle` and `present_blit` are internal and not manifest-tracked.
+- Mirrors: `src/shaders/stock/**` ↔ `assets/shaders/stock/**` stay byte-equal; edit both copies together. The loader skips a reload when bytes match the compiled-in source. `sprite.wgsl` and `lit_sprite.wgsl` exist only in `assets/shaders/`, which the renderer compiles in. `quad`, `debug_line`, `mesh_particle` and `present_blit` are internal and not manifest-tracked.
 - Body edits use the umbrella watcher and Naga validation; signature/layout changes rebuild. Pipeline coverage and manifest-add limits are in [the reload matrix](../../DESIGN.md#hot-reload--m9); cache success alone is not a visible reload.
 - LYGIA helpers under `stock/lygia/` keep their MIT headers.
 
@@ -19,7 +19,7 @@ Surface acquire decisions (reconfigure, recreate, skip, fail) live in the GPU-fr
 
 ## Features
 
-- **Materials** (`D-058`): manifest `materials` entries get a `MaterialAssetId` and a 256-byte UBO matching `UniformOverrideBlock`. `MaterialPipeline` reuses the sprite layout (groups 0/1) and adds group 2. No per-material files; `uniform_defaults` reload with the manifest. `PostStack::default()` is empty and byte-identical to the pre-M26 frame.
+- **Materials** (`D-058`): manifest `materials` entries get a `MaterialAssetId`; each batch in a frame gets a 256-byte UBO slot matching `UniformOverrideBlock` (`D-101`). `MaterialPipeline` reuses the sprite layout (groups 0/1) and adds group 2. No per-material files; `uniform_defaults` reload with the manifest. `PostStack::default()` is empty and byte-identical to the pre-M26 frame.
 - **SMAA** (`D-059`): three manifest-tracked stage shaders. `area`/`search` LUTs are `include_bytes!` engine content in `src/assets/smaa/` (MIT, not manifest-tracked). `render.post_aa` / `TUNGSTEN_RENDER_POST_AA`; runtime switches go through `tungsten::request_post_aa` at a frame boundary. Changing `msaa` still needs a relaunch.
 - **Bloom** (`D-060`): the 18th `PostPass` variant. It records its own threshold, downsample, upsample and composite passes instead of `PassRecorder::begin`. The `Rgba16Float` pyramid lives on `SceneTarget`, sized by `bloom_mip_count_for_size` (`render.bloom_max_mips`, default 6, 1..=8, startup-only). `SceneColor` stays sRGB.
 - **Lighting** (`D-061`): `LitSpritePipeline` runs inside the scene pass; `LightingResources` owns a 544-byte `LightUbo` at group 2 (`LIGHT_CAP = 16`). Normal/emissive siblings pack into parallel atlas pages keyed by the albedo `TextureHandle`. `emissive_mask` and `rim_light` are validated helpers with no pipeline.

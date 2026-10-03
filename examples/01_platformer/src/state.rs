@@ -42,9 +42,8 @@ pub(crate) const BALL_SPAWN_INTERVAL: f32 = 0.032;
 /// Golden-angle spawn jitter prevents coincident-circle degenerate normals.
 pub(crate) const BALL_SPAWN_JITTER: f32 = TILE / 16.0;
 /// Most live balls; spawning stops at the count. A presentation guard, not
-/// the slow-frame collapse fix (`D-094`): 12,000 awake balls cost the
-/// reference machine a 14.5 ms step, and a deeper pile looks crushed at any
-/// frame rate because a soft contact sags with its load.
+/// the slow-frame collapse fix; `D-094` records why 12,000. A deeper pile
+/// looks crushed at any frame rate because a soft contact sags with its load.
 pub(crate) const BALL_CAP: usize = 12_000;
 
 pub(crate) const BLACK_HOLE_RADIUS: f32 = 6.0 * TILE;
@@ -211,10 +210,7 @@ pub(crate) struct OrbitLight {
 
 /// M29 fixture-side cycle mode for an orbiting light.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)] // `None` is the obvious default for future fixture variants.
 pub(crate) enum CycleMode {
-    /// Hold the authored color and intensity. Light only orbits.
-    None,
     /// Hold the authored color, sin-pulse intensity around 1.0.
     Pulse,
     /// Hold intensity, rotate hue around the wheel using `phase` as the angle.

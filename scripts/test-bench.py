@@ -15,6 +15,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -71,12 +72,13 @@ PROVENANCE_KEYS = ("commit", "dirty", "rustc", "cpu", "kernel", "governor", "pla
 SUITE_REQUEST = {"preset": None, "scale": None, "only": None, "repeat": 3, "frames": 3}
 
 
-def write_capture(directory, run_totals, peaks_kib, row=ROW):
+def write_capture(directory, run_totals, peaks_kib, row=ROW, teleports=3):
     """A capture directory with one telemetry log per run, built from each
-    run's per-frame totals, plus its capture.json."""
+    run's per-frame totals, plus its capture.json. `teleports` changes the
+    `bench:` text, so it moves the digest."""
     runs = []
     for index, (totals, peak) in enumerate(zip(run_totals, peaks_kib), start=1):
-        text = physics_log([physics_frame(total) for total in totals])
+        text = physics_log([physics_frame(total, teleports=teleports) for total in totals])
         (directory / f"run-{index}").mkdir(parents=True)
         (directory / f"run-{index}" / "telemetry.log").write_text(text)
         usage = {"peak_rss_kib": peak, "user_s": 1.0, "sys_s": 0.1, "minflt": 1, "majflt": 0, "nvcsw": 2, "nivcsw": 3}
@@ -121,6 +123,31 @@ def write_suite(directory, run_totals, peaks_kib, rows=("physics", "integrated")
 
 BASE_TOTALS = [[10.0, 11.0, 12.0], [10.2, 11.1, 12.1], [9.9, 10.9, 11.8]]
 BASE_PEAKS = [100_000, 100_100, 99_900]
+BUILT_TREE = {"commit": "abc1234", "dirty": "no"}
+FAKE_CONFIG = {**CONFIG, "preset": "default", "scale": 1.0}
+
+
+def fake_bench(directory, sleep):
+    """An executable standing in for example-02-bench: it counts its runs in
+    `runs`, holds `alive` (its run number) for `sleep` seconds, then prints a
+    valid three-frame physics log."""
+    config_line = "[2026-09-30T00:00:00Z INFO  bench] bench-config: " + json.dumps(FAKE_CONFIG)
+    log = "\n".join([config_line, *(line for total in (10.0, 11.0, 12.0) for line in physics_frame(total))]) + "\n"
+    script = directory / "fake-bench"
+    script.write_text(
+        f"#!{sys.executable}\n"
+        "import pathlib, sys, time\n"
+        f"state = pathlib.Path({str(directory)!r})\n"
+        "count = state / 'runs'\n"
+        "run = int(count.read_text()) + 1 if count.exists() else 1\n"
+        "count.write_text(str(run))\n"
+        "(state / 'alive').write_text(str(run))\n"
+        f"time.sleep({sleep})\n"
+        f"sys.stdout.write({log!r})\n"
+        "(state / 'alive').unlink()\n"
+    )
+    script.chmod(0o755)
+    return script
 
 
 class Parsing(unittest.TestCase):
@@ -527,6 +554,138 @@ class Runner(unittest.TestCase):
         self.assertGreaterEqual(max(rss for _, rss in result["rss_samples"]), 64 * 1024)
 
 
+class BackgroundLoad(unittest.TestCase):
+    """`D-095`: background load during a measured run invalidates it unless allowed."""
+
+    ENCODER = [(4242, 1, "nxcodec.bin")]
+
+    def capture(self, directory, *, lister, trees=(BUILT_TREE, BUILT_TREE), allow=False, sleep=0.0):
+        """Two timing runs of the fake binary through `capture_to`, with an
+        injected process lister and tree-state reader (one state per run)."""
+        out = directory / "capture"
+        out.mkdir()
+        states = iter(trees)
+        request = {"bench": "physics", "preset": None, "scale": None, "set": [], "frames": 3, "warmup": 0, "repeat": 2, "gpu_timing": False}
+        request.update(present_mode=None, max_frame_latency=None, profile=False, allow_background=allow)
+        with mock.patch.object(bench, "BACKGROUND_SCAN_SECONDS", 0.05), contextlib.redirect_stdout(io.StringIO()):
+            capture = bench.capture_to(
+                out,
+                binary=fake_bench(directory, sleep),
+                root=directory,
+                bench={"name": "physics", "workload_version": 1, "warmup": 0, "rows": [ROW]},
+                config=FAKE_CONFIG,
+                request_env={},
+                request=request,
+                provenance={**dict.fromkeys(PROVENANCE_KEYS, "x"), **BUILT_TREE},
+                rustflags=bench.DEFAULT_RUSTFLAGS,
+                lister=lister,
+                tree_reader=lambda root: next(states),
+            )
+        return capture, (out / "README.md").read_text()
+
+    def encoder_in_run_2(self, directory):
+        """A process lister that shows the encoder only while run 2's child runs."""
+
+        def lister():
+            try:
+                running = (directory / "alive").read_text()
+            except OSError:
+                return []
+            return self.ENCODER if running == "2" else []
+
+        return lister
+
+    def test_offenders_skip_the_runners_own_tree(self):
+        processes = [
+            (1, 0, "systemd"),
+            (100, 1, "python3"),  # the runner
+            (101, 100, "cargo"),  # its build
+            (102, 101, "rustc"),
+            (200, 1, "claude"),  # an idle agent session
+            (300, 1, "rust-analyzer"),
+        ]
+        self.assertEqual(bench.background_offenders(processes, 100), [])
+        others = [(201, 200, "cargo"), (202, 201, "rustc"), (400, 1, "nxcodec.bin")]
+        self.assertEqual(bench.background_offenders(processes + others, 100), ["cargo", "nxcodec.bin", "rustc"])
+        # The encoder counts inside the tree too, and a parent loop ends the walk.
+        self.assertEqual(bench.background_offenders([(5, 100, "nxcodec.bin"), (7, 8, "cargo"), (8, 7, "sh")], 100), ["cargo", "nxcodec.bin"])
+
+    def test_process_list_parses_names_and_parents(self):
+        with tempfile.TemporaryDirectory() as temp:
+            proc = Path(temp)
+            for pid, stat in (("42", "42 (nxcodec.bin) S 1 42 42 0 -1"), ("43", "43 (a (b) c) R 42 43 43 0 -1")):
+                (proc / pid).mkdir()
+                (proc / pid / "stat").write_text(stat + "\n")
+            (proc / "44").mkdir()  # exited before its stat was read
+            (proc / "self").mkdir()
+            self.assertEqual(sorted(bench.list_processes(proc)), [(42, 1, "nxcodec.bin"), (43, 42, "a (b) c")])
+        self.assertEqual(bench.list_processes(Path(temp) / "gone"), [])
+        if Path("/proc/self/stat").is_file():
+            parents = {pid: ppid for pid, ppid, _ in bench.list_processes()}
+            self.assertEqual(parents[os.getpid()], os.getppid())
+
+    def test_run_child_scans_before_during_and_after_the_child(self):
+        with tempfile.TemporaryDirectory() as temp:
+            started = Path(temp) / "started"
+            code = f"import pathlib, time\npathlib.Path({str(started)!r}).write_text('1')\ntime.sleep(0.4)\n"
+            seen = []
+            with mock.patch.object(bench, "BACKGROUND_SCAN_SECONDS", 0.1):
+                bench.run_child(
+                    [sys.executable, "-c", code], dict(os.environ), temp, Path(temp) / "child.log", watch=lambda: seen.append(started.exists())
+                )
+        self.assertFalse(seen[0], "the first scan runs before the child starts")
+        self.assertTrue(seen[-1], "the last scan runs after it exits")
+        self.assertGreaterEqual(seen.count(True), 3, seen)
+
+    def test_clean_runs_stay_valid(self):
+        # The runner's own build and an idle agent session are not load.
+        own = [(os.getpid(), 1, "python3"), (900_001, os.getpid(), "cargo"), (900_002, 900_001, "rustc"), (900_003, 1, "claude")]
+        with tempfile.TemporaryDirectory() as temp:
+            capture, readme = self.capture(Path(temp), lister=lambda: own, sleep=0.1)
+        self.assertTrue(capture["valid"], capture["invalid_reasons"])
+        self.assertEqual(capture["notes"], [])
+        self.assertEqual(capture["provenance"]["background"], {"allowed": False, "offenders": [], "tree_changes": []})
+        self.assertEqual([(run["background"], run["tree"]) for run in capture["runs"]], [([], BUILT_TREE)] * 2)
+        self.assertIn("| Background load | none |", readme)
+
+    def test_encoder_during_a_run_invalidates_it(self):
+        with tempfile.TemporaryDirectory() as temp:
+            capture, readme = self.capture(Path(temp), lister=self.encoder_in_run_2(Path(temp)), sleep=0.3)
+        self.assertFalse(capture["valid"])
+        self.assertEqual(capture["invalid_reasons"], ["run 2: background load: nxcodec.bin"])
+        self.assertEqual([run["background"] for run in capture["runs"]], [[], ["nxcodec.bin"]])
+        self.assertEqual(capture["provenance"]["background"]["offenders"], ["nxcodec.bin"])
+        self.assertIn("| Background load | nxcodec.bin |", readme)
+        self.assertIn("- run 2: background load: nxcodec.bin", readme)
+
+    def test_tree_changed_after_a_run_invalidates_it(self):
+        edited = {**BUILT_TREE, "dirty": "yes (diff 0123456789ab)"}
+        with tempfile.TemporaryDirectory() as temp:
+            capture, readme = self.capture(Path(temp), lister=list, trees=(BUILT_TREE, edited))
+        self.assertFalse(capture["valid"])
+        self.assertEqual(capture["invalid_reasons"], ["run 2: background load: tree changed"])
+        self.assertEqual(capture["provenance"]["background"]["tree_changes"], [{"run": "run 2", **edited}])
+        self.assertIn("| Background load | tree changed |", readme)
+
+    def test_allow_background_keeps_the_capture_valid_with_notes(self):
+        edited = {**BUILT_TREE, "commit": "def5678"}
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            capture, readme = self.capture(directory, lister=self.encoder_in_run_2(directory), trees=(BUILT_TREE, edited), allow=True, sleep=0.3)
+        self.assertTrue(capture["valid"], capture["invalid_reasons"])
+        self.assertEqual(capture["notes"], ["run 2: background load: nxcodec.bin", "run 2: background load: tree changed"])
+        self.assertTrue(capture["provenance"]["background"]["allowed"])
+        self.assertIn("| Background load | nxcodec.bin, tree changed (allowed) |", readme)
+        self.assertIn("- Allowed by `--allow-background`: run 2: background load: tree changed", readme)
+        # Compare keeps its verdicts and notes the allowed load as a soft difference.
+        clean = copy.deepcopy(capture)
+        clean["provenance"]["background"] = {"allowed": False, "offenders": [], "tree_changes": []}
+        self.assertEqual(bench_report.comparability(clean, capture), ([], ["candidate background load: nxcodec.bin, tree changed (allowed)"]))
+        self.assertTrue(bench.parser().parse_args(["run", "physics", "--allow-background"]).allow_background)
+        self.assertTrue(bench.parser().parse_args(["suite", "--allow-background"]).allow_background)
+        self.assertFalse(bench.parser().parse_args(["suite"]).allow_background)
+
+
 class Verdicts(unittest.TestCase):
     def test_labels_and_too_few_runs(self):
         judge = bench_report.judge
@@ -635,6 +794,33 @@ class Compare(unittest.TestCase):
         self.assertIn("| Peak RSS (MiB, mean of runs) | 97.7 | 101.6 |", markdown)
         # The ECDF pools the re-parsed telemetry frames: 9 per side.
         self.assertIn("baseline p95: 12.10 ms", page)
+
+    def test_compare_reports_whether_first_run_digests_match(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            base = write_capture(root / "base", BASE_TOTALS, BASE_PEAKS)
+            write_capture(root / "same", BASE_TOTALS, BASE_PEAKS)
+            moved = write_capture(root / "moved", BASE_TOTALS, BASE_PEAKS, teleports=4)
+            printed = {}
+            for name in ("same", "moved"):
+                with contextlib.redirect_stdout(io.StringIO()) as out:
+                    bench.write_compare(root / "base", root / name, root=root, out=root / f"out-{name}")
+                printed[name] = out.getvalue()
+            reports = {name: json.loads((root / f"out-{name}" / "compare.json").read_text()) for name in printed}
+            markdown = (root / "out-moved" / "compare.md").read_text()
+            page = (root / "out-moved" / "compare.html").read_text()
+        digest, other = bench_report.first_digest(base), bench_report.first_digest(moved)
+        self.assertNotEqual(digest, other)
+        self.assertEqual(reports["same"]["digests"], {"baseline": digest, "candidate": digest, "match": True})
+        self.assertEqual(reports["moved"]["digests"], {"baseline": digest, "candidate": other, "match": False})
+        self.assertIn(f"First-run digests match: {digest}.", printed["same"])
+        self.assertIn(f"First-run digests differ: {digest} → {other}.", printed["moved"])
+        self.assertIn(f"| First-run digest | `{digest}` | `{other}` |", markdown)
+        self.assertIn(f"First-run digests differ: `{digest}` → `{other}`.", markdown)
+        self.assertIn(f"First-run digests differ: {digest} → {other}.", page)
+        # Information only: equal frame times read unchanged whether or not the digests match.
+        for report in reports.values():
+            self.assertEqual(report["owned_summary"], {"regressed": 0, "improved": 0, "unchanged": 2, "noisy": 0, "none": 0})
 
     def test_jitter_is_derived_per_run_and_judged_on_p99s_threshold(self):
         self.assertEqual(bench_report.metric_value({"stages": {"total": {"p50": 10.0, "p99": 13.5}}}, "stage.total", "jitter"), 3.5)
@@ -765,11 +951,13 @@ class Suites(unittest.TestCase):
         self.assertNotIn("Invalid rows", readme)
         broken = copy.deepcopy(suite)
         broken["rows"][0].update(valid=False, invalid_reasons=["run 2: exited with 101"])
+        broken["rows"][1]["notes"] = ["run 1: background load: cargo"]
         broken["valid"] = False
         broken["request"]["preset"] = "min"
         readme = bench_report.suite_readme(broken)
         self.assertIn("| Valid | no |", readme)
         self.assertIn("- `physics`:\n  - run 2: exited with 101", readme)
+        self.assertIn("## Background load allowed by `--allow-background`\n\n- `integrated`:\n  - run 1: background load: cargo", readme)
         self.assertIn("`--preset min` replaced the preset of the rows whose own preset is `default`", readme)
         self.assertFalse(bench_report.assemble_suite(request=SUITE_REQUEST, build={}, provenance={}, entries=[])["valid"])
 
@@ -788,6 +976,10 @@ class Suites(unittest.TestCase):
             with contextlib.redirect_stdout(io.StringIO()):
                 bench.cmd_baseline(argparse.Namespace(action="save", capture=str(root / "base"), name="suite-a"), root=root)
             self.assertEqual(bench.resolve_ref("suite-a", root), ((root / "perf-runs" / "baselines" / "suite-a").resolve(), "suite"))
+            # `run --compare` takes the suite's capture of its row.
+            self.assertEqual(bench.resolve_capture("suite-a", root, "physics"), (root / "perf-runs" / "baselines" / "suite-a").resolve() / "physics")
+            with self.assertRaisesRegex(bench.BenchError, "suite 'suite-a' has no row 'gpu'; rows: physics, integrated"):
+                bench.resolve_capture("suite-a", root, "gpu")
             meta = json.loads((root / "perf-runs" / "baselines" / "suite-a" / "baseline.json").read_text())
             args = argparse.Namespace(baseline="suite-a", candidate=str(root / "cand"), out=str(root / "out2"), force=False, fail_on="regressed")
             with contextlib.redirect_stdout(io.StringIO()):
@@ -811,6 +1003,7 @@ class Suites(unittest.TestCase):
             self.assertIn("jitter", text)
         self.assertIn("| `physics` | yes | 2 regressed, 0 improved, 0 unchanged, 0 noisy | 12 → 13.20 | 97.7 → 101.6 | regressed | `physics/compare.md` |", markdown)
         self.assertIn("Only in the candidate, not compared: `extra`.", markdown)
+        self.assertIn("First-run digests match in 2 of 2 rows (information only).", markdown)
         lowered = page.lower()
         for needle in ("<script", "<link", "<img", "<iframe", "@import", "url(", "http:", "https:", "src=", "href=", "//"):
             self.assertNotIn(needle, lowered)
@@ -819,6 +1012,25 @@ class Suites(unittest.TestCase):
         checker.close()
         self.assertEqual((checker.errors, checker.stack), ([], []))
         self.assertIn("svg", checker.seen)
+
+    def test_suite_compare_lists_rows_whose_digests_differ(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_suite(root / "base", BASE_TOTALS, BASE_PEAKS)
+            write_suite(root / "cand", BASE_TOTALS, BASE_PEAKS)
+            shutil.rmtree(root / "cand" / "physics")
+            moved = write_capture(root / "cand" / "physics", BASE_TOTALS, BASE_PEAKS, teleports=4)
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                report = bench.write_suite_compare(root / "base", root / "cand", root=root, out=root / "out")
+            markdown = (root / "out" / "compare.md").read_text()
+            page = (root / "out" / "compare.html").read_text()
+        self.assertEqual(report["digests_differ"], ["physics"])
+        self.assertEqual([row["digests"]["match"] for row in report["rows"]], [False, True])
+        self.assertIn("First-run digests match in 1 of 2 rows; they differ in `physics` (information only).", markdown)
+        self.assertIn("First-run digests match in 1 of 2 rows; they differ in physics (information only).", out.getvalue())
+        self.assertIn(f"first-run digests differ: {report['rows'][0]['digests']['baseline']} → {bench_report.first_digest(moved)}", markdown)
+        self.assertIn("they differ in physics", page)
+        self.assertEqual(report["owned_summary"]["regressed"] + report["owned_summary"]["improved"], 0)
 
 
 class TagBalance(html.parser.HTMLParser):

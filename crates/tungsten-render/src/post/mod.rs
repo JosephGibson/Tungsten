@@ -2,8 +2,7 @@
 //!
 //! Holds one pipeline per stock effect, allocated once at `Renderer::new`.
 //! `record` walks the `PostStack` and dispatches each pass against the
-//! ping-pong ladder described in the M26 plan's "Scene → Post → Present
-//! Target Flow" table.
+//! ping-pong ladder of `PostStackRenderer::plan_targets` (`D-058`).
 
 use tungsten_core::assets::ShaderAssetId;
 use tungsten_core::post::PostPass;
@@ -14,50 +13,49 @@ use crate::shader_hot_reload::ShaderModuleCache;
 use crate::targets::{RenderTargetPool, TargetCache};
 
 pub mod bloom;
-pub mod chromatic_aberration;
-pub mod color_adjust;
-pub mod crt;
-pub mod dissolve;
-pub mod dither;
-pub mod fade;
-pub mod film_grain;
-pub mod fog;
 pub mod fullscreen;
-pub mod glitch;
-pub mod god_rays;
-pub mod lut;
-pub mod pixel_outline;
-pub mod pixelate;
 pub mod smaa;
 pub mod smaa_luts;
-pub mod tone_mono;
-pub mod tonemap;
-pub mod vignette;
-pub mod wipe_radial;
 
 use bloom::{BloomPipeline, BloomShaderIds};
 
 /// The stock effects in `PostPass` order: the manifest ID of each one's shader
-/// and its compiled-in source. `Renderer::new` seeds the shader cache from
-/// this table, and a reload finds an effect's pipeline by its ID (`D-091`).
+/// and its compiled-in source, which `assets/shaders/stock/<id>.wgsl` mirrors.
+/// `Renderer::new` seeds the shader cache from this table, and a reload finds
+/// an effect's pipeline by its ID (`D-091`).
 pub(crate) const STOCK_SHADERS: [(&str, &str); 17] = [
-    (tonemap::NAME, tonemap::WGSL),
-    (vignette::NAME, vignette::WGSL),
-    (lut::NAME, lut::WGSL),
-    (chromatic_aberration::NAME, chromatic_aberration::WGSL),
-    (color_adjust::NAME, color_adjust::WGSL),
-    (tone_mono::NAME, tone_mono::WGSL),
-    (crt::NAME, crt::WGSL),
-    (film_grain::NAME, film_grain::WGSL),
-    (dither::NAME, dither::WGSL),
-    (pixel_outline::NAME, pixel_outline::WGSL),
-    (fade::NAME, fade::WGSL),
-    (wipe_radial::NAME, wipe_radial::WGSL),
-    (dissolve::NAME, dissolve::WGSL),
-    (glitch::NAME, glitch::WGSL),
-    (pixelate::NAME, pixelate::WGSL),
-    (fog::NAME, fog::WGSL),
-    (god_rays::NAME, god_rays::WGSL),
+    ("tonemap", include_str!("../shaders/stock/tonemap.wgsl")),
+    ("vignette", include_str!("../shaders/stock/vignette.wgsl")),
+    ("lut", include_str!("../shaders/stock/lut.wgsl")),
+    (
+        "chromatic_aberration",
+        include_str!("../shaders/stock/chromatic_aberration.wgsl"),
+    ),
+    (
+        "color_adjust",
+        include_str!("../shaders/stock/color_adjust.wgsl"),
+    ),
+    ("tone_mono", include_str!("../shaders/stock/tone_mono.wgsl")),
+    ("crt", include_str!("../shaders/stock/crt.wgsl")),
+    (
+        "film_grain",
+        include_str!("../shaders/stock/film_grain.wgsl"),
+    ),
+    ("dither", include_str!("../shaders/stock/dither.wgsl")),
+    (
+        "pixel_outline",
+        include_str!("../shaders/stock/pixel_outline.wgsl"),
+    ),
+    ("fade", include_str!("../shaders/stock/fade.wgsl")),
+    (
+        "wipe_radial",
+        include_str!("../shaders/stock/wipe_radial.wgsl"),
+    ),
+    ("dissolve", include_str!("../shaders/stock/dissolve.wgsl")),
+    ("glitch", include_str!("../shaders/stock/glitch.wgsl")),
+    ("pixelate", include_str!("../shaders/stock/pixelate.wgsl")),
+    ("fog", include_str!("../shaders/stock/fog.wgsl")),
+    ("god_rays", include_str!("../shaders/stock/god_rays.wgsl")),
 ];
 
 /// Row of `STOCK_SHADERS` that draws `pass`. Bloom has none: it owns four
@@ -139,7 +137,8 @@ impl StockPipeline {
     }
 
     /// Hot-reload entry: swap in a pipeline built on a freshly validated
-    /// module. The old pipeline stays until the new one exists.
+    /// module. The old pipeline stays until the new one exists, and stays for
+    /// good when the new one fails validation (`Err`).
     fn rebuild_with_module(
         &mut self,
         device: &wgpu::Device,
@@ -147,8 +146,11 @@ impl StockPipeline {
         label: &str,
         module: &wgpu::ShaderModule,
         format: wgpu::TextureFormat,
-    ) {
-        *self = Self::new(device, resources, label, module, format);
+    ) -> Result<(), String> {
+        *self = crate::shader_hot_reload::build_validated(device, || {
+            Self::new(device, resources, label, module, format)
+        })?;
+        Ok(())
     }
 }
 
@@ -172,7 +174,8 @@ struct ParamSlot<T> {
 /// the params layout, so an entry serves whichever effect its slot holds.
 /// Entries are built on first use and kept between frames; they hold no view
 /// of the scene targets. `T` is the GPU objects, generic so the rules are
-/// testable without a device.
+/// testable without a device. Material batches use the same slots, one set
+/// per material (`D-101`).
 pub(crate) struct ParamSlots<T> {
     slots: Vec<Option<ParamSlot<T>>>,
 }
@@ -272,25 +275,27 @@ impl PostStackRenderer {
 
     fn pipeline_for(&self, pass: &PostPass) -> &StockPipeline {
         let Some(index) = stock_index(pass) else {
-            unreachable!("PostPass::Bloom is recorded by record_bloom_slot, not record_pass")
+            unreachable!("PostPass::Bloom is recorded by record_bloom_slot_timed, not record_pass")
         };
         &self.stock[index]
     }
 
     /// Hot-reload entry: when `name` is a stock effect's shader, rebuild that
     /// effect's pipeline against a freshly validated module. Params buffers
-    /// and bind groups stay. The caller commits the module to the cache after
-    /// this returns.
+    /// and bind groups stay; a pipeline that fails validation is not swapped
+    /// in (`Err`). The caller commits the module to the cache after this
+    /// returns `Ok`.
     pub(crate) fn rebuild_stock_with_module(
         &mut self,
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
         name: &str,
         module: &wgpu::ShaderModule,
-    ) {
+    ) -> Result<(), String> {
         if let Some(index) = STOCK_SHADERS.iter().position(|(stock, _)| *stock == name) {
-            self.stock[index].rebuild_with_module(device, &self.resources, name, module, format);
+            self.stock[index].rebuild_with_module(device, &self.resources, name, module, format)?;
         }
+        Ok(())
     }
 
     /// Pack a `PostPass` into the shared 256-byte UBO layout. Slot
@@ -395,7 +400,7 @@ impl PostStackRenderer {
                 block.f32s[3] = p.samples as f32;
             }
             // Bloom is multi-subpass; UBO packing happens per sub-pass inside
-            // `BloomPipeline::record_pass` via `bloom::pack_params`.
+            // `BloomPipeline::record_pass_timed` via `bloom::pack_params`.
             PostPass::Bloom(_) => {}
         }
         block
@@ -423,20 +428,6 @@ impl PostStackRenderer {
             out.push((src, dst));
         }
         out
-    }
-
-    /// Returns the final post-target id (i.e. the one the present blit
-    /// samples from) when the stack is non-empty. `None` if empty.
-    #[must_use]
-    pub fn final_target(len: usize) -> Option<TargetId> {
-        if len == 0 {
-            return None;
-        }
-        Some(if (len - 1).is_multiple_of(2) {
-            TargetId::PostPing
-        } else {
-            TargetId::PostPong
-        })
     }
 
     /// Record one post-stack pass into an already-open `render_pass`. The
@@ -496,25 +487,9 @@ impl PostStackRenderer {
     /// this opens its own per-subpass `RenderPass`es (threshold, downsample
     /// chain, additive upsample chain, composite); the renderer's outer slot
     /// `PassDesc` is treated as a debug-only label. `slot` is the pass's
-    /// index in the post stack: each slot keeps GPU objects of its own.
-    #[allow(clippy::too_many_arguments)]
-    pub fn record_bloom_slot(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        encoder: &mut wgpu::CommandEncoder,
-        pool: &RenderTargetPool,
-        params: &tungsten_core::post::BloomParams,
-        src: TargetId,
-        dst: TargetId,
-        slot: usize,
-    ) {
-        self.bloom
-            .record_pass(device, queue, encoder, pool, params, src, dst, slot);
-    }
-    /// As [`record_bloom_slot`](Self::record_bloom_slot), with pass timing and
-    /// the frame's swapchain view, which the composite writes when `dst` is
-    /// [`TargetId::Swapchain`].
+    /// index in the post stack: each slot keeps GPU objects of its own. The
+    /// composite writes the frame's swapchain view when `dst` is
+    /// [`TargetId::Swapchain`]; `timing` records the sub-passes.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn record_bloom_slot_timed(
         &mut self,

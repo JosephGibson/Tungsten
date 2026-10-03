@@ -1075,7 +1075,6 @@ pub(crate) fn orbit_lights_system(world: &mut World) {
                 center.y + new_phase.sin() * ol.radius * 0.5,
             );
             let (color, intensity) = match ol.cycle {
-                CycleMode::None => (None, None),
                 CycleMode::Pulse => {
                     // Sin-pulse intensity in [0.45, 1.45] so the orbit reads
                     // even at the dim end. Color held at base_color.

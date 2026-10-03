@@ -24,7 +24,7 @@ use crate::post::smaa::{
 use crate::post::{PostStackRenderer, STOCK_SHADERS};
 use crate::quad::{QuadInstance, QuadPipeline};
 use crate::screenshot::{PendingCapture, aligned_bytes_per_row, strip_row_padding};
-use crate::shader_hot_reload::{ShaderError, ShaderModuleCache};
+use crate::shader_hot_reload::{ShaderError, ShaderModuleCache, build_validated};
 use crate::sprite::{SpriteBatch, SpritePipeline};
 use crate::surface::{present_mode_label, resolve_max_frame_latency, resolve_present_mode};
 use crate::targets::{RenderTargetPool, TargetCache};
@@ -268,11 +268,7 @@ impl Renderer {
             sample_count,
             depth_attached,
         );
-        // Text renders in its own overlay pass after the post stack, which
-        // always targets a single-sample color texture with no depth. Baking
-        // those attachment bits here keeps text pixels out of the post stack
-        // regardless of scene MSAA / depth config.
-        let text_pipeline = TextPipeline::new(&device, &queue, format, 1, false);
+        let text_pipeline = TextPipeline::new(&device, &queue, format);
 
         let post_aa = config.post_aa;
         let bloom_max_mips =
@@ -713,7 +709,7 @@ impl Renderer {
         }
 
         let module = self.shader_cache.validate(&self.device, name, &wgsl)?;
-        self.apply_shader_module(name, id, wgsl, module);
+        self.apply_shader_module(name, id, wgsl, module)?;
         Ok(id)
     }
 
@@ -734,7 +730,10 @@ impl Renderer {
                 return Ok(());
             }
         };
-        self.apply_shader_module(name, id, wgsl, module);
+        if let Err(e) = self.apply_shader_module(name, id, wgsl, module) {
+            log::error!("{e}; keeping the live pipeline");
+            return Ok(());
+        }
         log::info!("shader '{name}' reloaded");
         Ok(())
     }
@@ -742,62 +741,21 @@ impl Renderer {
     /// Switch shader `name` to a freshly validated `module`: rebuild the
     /// pipeline the engine compiles it into, commit the module to the cache,
     /// then rebuild the materials bound to it. The load path and the reload
-    /// path share it, so a pipeline connected here reloads on both.
+    /// path share it, so a pipeline connected here reloads on both. A rebuilt
+    /// pipeline that fails wgpu validation is not swapped in and the module is
+    /// not committed: `Err`, and the live pipeline and module stay (`D-057`).
     fn apply_shader_module(
         &mut self,
         name: &str,
         id: ShaderAssetId,
         wgsl: String,
         module: wgpu::ShaderModule,
-    ) {
-        if name == SPRITE_SHADER_NAME {
-            self.sprite_pipeline.rebuild_with_shader(
-                &self.device,
-                &module,
-                self.surface_config.format,
-                self.sample_count,
-                matches!(self.depth_sort, DepthSortMode::GpuDepth),
-            );
-        }
-        if matches!(
-            name,
-            SMAA_EDGE_SHADER_NAME
-                | SMAA_BLEND_WEIGHTS_SHADER_NAME
-                | SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME
-        ) && let Some(smaa) = self.smaa.as_mut()
-        {
-            smaa.rebuild_stage_with_module(&self.device, id, &module);
-        }
-        if matches!(
-            name,
-            BLOOM_THRESHOLD_SHADER_NAME
-                | BLOOM_DOWNSAMPLE_SHADER_NAME
-                | BLOOM_UPSAMPLE_SHADER_NAME
-                | BLOOM_COMPOSITE_SHADER_NAME
-        ) {
-            self.post_stack.bloom.rebuild_stage_with_module(
-                &self.device,
-                self.surface_config.format,
-                id,
-                &module,
-            );
-        }
-        if name == LIT_SPRITE_SHADER_NAME {
-            self.lit_sprite_pipeline.rebuild_with_shader(
-                &self.device,
-                &module,
-                self.surface_config.format,
-                self.sample_count,
-                matches!(self.depth_sort, DepthSortMode::GpuDepth),
-            );
-        }
-        // A stock post effect's pipeline; a no-op for any other name.
-        self.post_stack.rebuild_stock_with_module(
-            &self.device,
-            self.surface_config.format,
-            name,
-            &module,
-        );
+    ) -> Result<(), ShaderError> {
+        self.rebuild_shader_pipelines(name, id, &module)
+            .map_err(|report| ShaderError::Pipeline {
+                name: name.to_string(),
+                report,
+            })?;
         self.shader_cache.commit(id, wgsl, module);
         // Any material bound to this shader needs a rebuild against the new module.
         if name != SPRITE_SHADER_NAME
@@ -817,6 +775,67 @@ impl Renderer {
         {
             self.rebuild_materials_for_shader(name);
         }
+        Ok(())
+    }
+
+    /// Rebuild the engine pipeline that compiles shader `name`, if any (a
+    /// name feeds at most one); `Err` when the candidate fails validation,
+    /// with the live pipeline kept.
+    fn rebuild_shader_pipelines(
+        &mut self,
+        name: &str,
+        id: ShaderAssetId,
+        module: &wgpu::ShaderModule,
+    ) -> Result<(), String> {
+        let depth_write = matches!(self.depth_sort, DepthSortMode::GpuDepth);
+        if name == SPRITE_SHADER_NAME {
+            self.sprite_pipeline.rebuild_with_shader(
+                &self.device,
+                module,
+                self.surface_config.format,
+                self.sample_count,
+                depth_write,
+            )?;
+        }
+        if matches!(
+            name,
+            SMAA_EDGE_SHADER_NAME
+                | SMAA_BLEND_WEIGHTS_SHADER_NAME
+                | SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME
+        ) && let Some(smaa) = self.smaa.as_mut()
+        {
+            smaa.rebuild_stage_with_module(&self.device, id, module)?;
+        }
+        if matches!(
+            name,
+            BLOOM_THRESHOLD_SHADER_NAME
+                | BLOOM_DOWNSAMPLE_SHADER_NAME
+                | BLOOM_UPSAMPLE_SHADER_NAME
+                | BLOOM_COMPOSITE_SHADER_NAME
+        ) {
+            self.post_stack.bloom.rebuild_stage_with_module(
+                &self.device,
+                self.surface_config.format,
+                id,
+                module,
+            )?;
+        }
+        if name == LIT_SPRITE_SHADER_NAME {
+            self.lit_sprite_pipeline.rebuild_with_shader(
+                &self.device,
+                module,
+                self.surface_config.format,
+                self.sample_count,
+                depth_write,
+            )?;
+        }
+        // A stock post effect's pipeline; a no-op for any other name.
+        self.post_stack.rebuild_stock_with_module(
+            &self.device,
+            self.surface_config.format,
+            name,
+            module,
+        )
     }
 
     fn resolve_or_allocate_shader_id(&mut self, name: &str) -> ShaderAssetId {
@@ -851,28 +870,35 @@ impl Renderer {
             }));
         };
 
-        let (pipeline, material_bgl, ubo, bind_group) = build_material_pipeline(
-            &self.device,
-            module,
-            self.sprite_pipeline.camera_bind_group_layout(),
-            self.sprite_pipeline.texture_bind_group_layout(),
-            self.surface_config.format,
-            self.sample_count,
-            matches!(self.depth_sort, DepthSortMode::GpuDepth),
-            name,
-        );
-        // Seed defaults so first-frame draws don't read uninitialised memory.
-        let seed = defaults.to_override_block().to_bytes();
-        self.queue.write_buffer(&ubo, 0, &seed);
-        self.sprite_pipeline.note_material_write(id, seed);
+        // A build that fails validation keeps the last good material, or
+        // none on first load (B2, `D-057`).
+        let (pipeline, bind_group_layout) = build_validated(&self.device, || {
+            build_material_pipeline(
+                &self.device,
+                module,
+                self.sprite_pipeline.camera_bind_group_layout(),
+                self.sprite_pipeline.texture_bind_group_layout(),
+                self.surface_config.format,
+                self.sample_count,
+                matches!(self.depth_sort, DepthSortMode::GpuDepth),
+                name,
+            )
+        })
+        .map_err(|report| {
+            RenderError::Shader(ShaderError::Pipeline {
+                name: shader_name.to_string(),
+                report,
+            })
+        })?;
+        // UBO slots bind the uniform layout of the pipeline they were built
+        // for; the next draw builds and writes fresh ones before use.
+        self.sprite_pipeline.reset_material_slots(id);
 
         self.materials.insert(
             id,
             MaterialPipeline {
                 pipeline,
-                ubo,
-                bind_group,
-                material_bind_group_layout: material_bgl,
+                bind_group_layout,
                 defaults,
                 name: name.to_string(),
                 shader_id_name: shader_name.to_string(),
@@ -1484,7 +1510,7 @@ impl Renderer {
         // SceneColor), or the stand-in of a direct capture.
         let capture_target = capture
             .as_ref()
-            .map(|_| create_capture_target(&self.device, self.surface_config.format, w, h));
+            .map(|_| create_capture_target(&self.device, w, h));
         if let Some(target) = capture_target.as_ref() {
             let capture_src_texture = match (&standin, final_source_target) {
                 (Some((texture, _)), _) => texture,
@@ -1770,7 +1796,6 @@ pub(crate) struct CaptureTarget {
 
 pub(crate) fn create_capture_target(
     device: &wgpu::Device,
-    _format: wgpu::TextureFormat,
     width: u32,
     height: u32,
 ) -> CaptureTarget {

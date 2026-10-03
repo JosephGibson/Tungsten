@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CPU-only asset coverage, documentation and active-plan checks (stdlib only).
+"""CPU-only asset coverage, documentation, active-plan and plan-citation checks (stdlib only).
 
 Never traverses docs/plans/archive, follows directory symlinks, edits manifests,
 or deletes files. Rust's manifests/decision_index tests remain authoritative for
@@ -11,6 +11,7 @@ import importlib.util
 import json
 import os
 import re
+import subprocess
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
@@ -28,10 +29,11 @@ ASSET_EXCEPTIONS = {
     **{f"assets/shaders/stock/lygia/{name}.wgsl": "compiled shader helper fragment"
        for name in ("hash", "luma", "noise", "srgb")},
 }
-DELETION_CANDIDATES = {
-    "examples/01_platformer/assets/sprites/player.png": "unregistered legacy player image; tracked, retain for owner",
-}
 FIELDS = ("status", "goal", "non-goals", "files to touch", "ordered steps", "done-when")
+CITING_SUFFIXES = (".rs", ".py", ".sh", ".md", ".toml", ".yml")
+# History keeps the plan names of its time; the scripts' tests cite fixture plans.
+CITATION_EXEMPT = ("CHANGELOG.md", "DECISIONS.md")
+PLAN_CITATION = re.compile(r"docs/plans/[\w./-]+?\.md")
 
 
 def archive_path(path):
@@ -85,8 +87,6 @@ def check_assets(root, errors, notes):
                 continue
             if rel in ASSET_EXCEPTIONS:
                 notes.append(f"asset exception: {rel}: {ASSET_EXCEPTIONS[rel]}")
-            elif rel in DELETION_CANDIDATES:
-                notes.append(f"deletion candidate: {rel}: {DELETION_CANDIDATES[rel]}")
             else:
                 errors.append(f"unlisted asset: {rel}")
 
@@ -153,6 +153,45 @@ def check_docs(root, errors, notes):
     errors.extend(context.check(root))
 
 
+def tracked_files(root):
+    """Paths Git tracks under a work-tree root; elsewhere every file outside
+    `.git`, `target` and `docs/plans`."""
+    if (root / ".git").exists():
+        try:
+            listed = subprocess.run(
+                ["git", "-C", str(root), "ls-files", "-z"], capture_output=True, check=True,
+                env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"},
+            ).stdout.decode()
+            return [rel for rel in listed.split("\0") if rel]
+        except (OSError, subprocess.CalledProcessError):
+            pass
+    files = []
+    for base, dirs, names in os.walk(root, followlinks=False):
+        rel_base = Path(base).relative_to(root)
+        dirs[:] = sorted(d for d in dirs if d not in (".git", "target")
+                         and (rel_base / d).as_posix() != "docs/plans"
+                         and not (Path(base) / d).is_symlink())
+        files.extend((rel_base / name).as_posix() for name in names)
+    return sorted(files)
+
+
+def check_plan_citations(root, errors, notes):
+    # A cited plan that moved to the archive or was deleted leaves agents a dead
+    # route. Archive citations stay notes: archived plans are never opened.
+    for rel in tracked_files(root):
+        if (not rel.endswith(CITING_SUFFIXES) or rel.startswith("docs/plans/")
+                or rel in CITATION_EXEMPT or re.fullmatch(r"scripts/test-[^/]+\.py", rel)):
+            continue
+        path = root / rel
+        if not path.is_file():  # deleted in the work tree, still in the index
+            continue
+        for cited in sorted(set(PLAN_CITATION.findall(path.read_text(errors="replace")))):
+            if archive_path(cited):
+                notes.append(f"archive citation left unread: {rel}: {cited}")
+            elif not (root / cited).is_file():
+                errors.append(f"{rel}: cites missing plan {cited}")
+
+
 def check_agent_config(root, errors):
     settings = json.loads((root / ".claude/settings.json").read_text())
     if settings.get("env", {}).get("CLAUDE_CODE_GLOB_NO_IGNORE") != "false":
@@ -172,7 +211,7 @@ def main():
     args = parser.parse_args()
     errors, notes = [], []
     root = args.root.absolute()
-    for check in (check_assets, check_plans, check_docs):
+    for check in (check_assets, check_plans, check_docs, check_plan_citations):
         try:
             check(root, errors, notes)
         except (OSError, ValueError) as exc:

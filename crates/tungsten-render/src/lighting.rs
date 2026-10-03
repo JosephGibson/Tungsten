@@ -80,7 +80,7 @@ pub fn pack_lights(lights: &[GpuLight], ambient: Vec3) -> LightUbo {
 #[must_use]
 pub fn pack_one_light(position: Vec2, light: &Light) -> GpuLight {
     match light.kind {
-        LightKind::Point { radius, .. } => GpuLight {
+        LightKind::Point { radius } => GpuLight {
             position_radius: [position.x, position.y, radius, 0.0],
             color_intensity: [
                 light.color.x * light.intensity,

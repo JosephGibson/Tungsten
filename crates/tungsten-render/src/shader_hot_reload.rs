@@ -19,6 +19,25 @@ pub enum ShaderError {
     Parse { name: String, report: String },
     #[error("shader '{name}' naga validation failed: {report}")]
     Validation { name: String, report: String },
+    /// Naga accepted the module but wgpu rejected a pipeline built on it.
+    #[error("shader '{name}' pipeline failed validation: {report}")]
+    Pipeline { name: String, report: String },
+}
+
+/// Builds GPU objects inside a validation error scope. `Err` carries wgpu's
+/// report and the caller keeps its live objects: a module that passes Naga
+/// but not pipeline validation never reaches the default error handler,
+/// which panics (B2, `D-057`).
+pub(crate) fn build_validated<T>(
+    device: &wgpu::Device,
+    build: impl FnOnce() -> T,
+) -> Result<T, String> {
+    let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
+    let built = build();
+    match pollster::block_on(scope.pop()) {
+        None => Ok(built),
+        Some(error) => Err(error.to_string()),
+    }
 }
 
 #[derive(Debug)]

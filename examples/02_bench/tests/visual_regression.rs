@@ -10,7 +10,7 @@
 
 use std::path::{Path, PathBuf};
 
-use tungsten_render::compare_png;
+use tungsten::render::compare_png;
 
 /// Runs the `visual` preset with `sets` on top and captures frame 5 into a
 /// file named after `name`. `direct` captures what the direct present path

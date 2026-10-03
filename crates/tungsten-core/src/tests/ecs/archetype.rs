@@ -6,10 +6,10 @@ fn column<T: 'static>(values: Vec<T>) -> (TypeId, Box<dyn AnyColumn>) {
 }
 
 /// Archetype over `columns`, sorted into type-key order as storage creates them.
-fn make_arch(id: ArchetypeId, mut columns: Vec<(TypeId, Box<dyn AnyColumn>)>) -> Archetype {
+fn make_arch(mut columns: Vec<(TypeId, Box<dyn AnyColumn>)>) -> Archetype {
     columns.sort_by_key(|&(type_id, _)| type_id);
     let (types, columns): (Vec<_>, Vec<_>) = columns.into_iter().unzip();
-    Archetype::new(id, types.into_boxed_slice(), columns)
+    Archetype::new(types.into_boxed_slice(), columns)
 }
 
 fn push_row<A: 'static, B: 'static>(arch: &mut Archetype, entity: Entity, a: A, b: B) {
@@ -31,7 +31,7 @@ fn make_entity(index: u32) -> Entity {
 
 #[test]
 fn push_and_get() {
-    let mut arch = make_arch(1, vec![column::<u32>(vec![]), column::<f32>(vec![])]);
+    let mut arch = make_arch(vec![column::<u32>(vec![]), column::<f32>(vec![])]);
     push_row::<u32, f32>(&mut arch, make_entity(0), 42u32, 1.5f32);
 
     assert_eq!(values::<u32>(&arch), vec![42u32]);
@@ -40,14 +40,11 @@ fn push_and_get() {
 
 #[test]
 fn columns_follow_the_sorted_type_key() {
-    let arch = make_arch(
-        1,
-        vec![
-            column::<u32>(vec![]),
-            column::<f32>(vec![]),
-            column::<bool>(vec![]),
-        ],
-    );
+    let arch = make_arch(vec![
+        column::<u32>(vec![]),
+        column::<f32>(vec![]),
+        column::<bool>(vec![]),
+    ]);
 
     assert!(arch.component_types.is_sorted());
     for (index, &type_id) in arch.component_types.iter().enumerate() {
@@ -73,7 +70,7 @@ fn wide_arch(mask: u64) -> Archetype {
         };
     }
     widths!(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32);
-    make_arch(1, columns)
+    make_arch(columns)
 }
 
 /// What `slot_column::<[u8; K]>` holds for every `K`, as a bit mask.
@@ -188,7 +185,7 @@ fn typed_rejects_another_component_type() {
 
 #[test]
 fn swap_remove_row_middle() {
-    let mut arch = make_arch(1, vec![column::<u32>(vec![]), column::<f32>(vec![])]);
+    let mut arch = make_arch(vec![column::<u32>(vec![]), column::<f32>(vec![])]);
 
     let e0 = make_entity(0);
     let e1 = make_entity(1);
@@ -200,7 +197,7 @@ fn swap_remove_row_middle() {
 
     let displaced = arch.swap_remove_row(1);
     assert_eq!(displaced, Some(e2));
-    assert_eq!(arch.row_count(), 2);
+    assert_eq!(arch.entities.len(), 2);
     assert_eq!(arch.entities[1], e2);
 
     assert_eq!(values::<u32>(&arch), vec![0u32, 2u32]);
@@ -209,28 +206,25 @@ fn swap_remove_row_middle() {
 
 #[test]
 fn swap_remove_last_row_returns_none() {
-    let mut arch = make_arch(1, vec![column::<u32>(vec![99u32])]);
+    let mut arch = make_arch(vec![column::<u32>(vec![99u32])]);
     arch.entities = vec![make_entity(0)];
 
     let displaced = arch.swap_remove_row(0);
     assert_eq!(displaced, None);
-    assert_eq!(arch.row_count(), 0);
+    assert_eq!(arch.entities.len(), 0);
     assert!(values::<u32>(&arch).is_empty());
 }
 
 #[test]
 fn move_components_to_transfers_matching_types() {
-    let mut src = make_arch(
-        1,
-        vec![
-            column::<u32>(vec![10u32, 20u32]),
-            column::<f32>(vec![1.0f32, 2.0f32]),
-            column::<i32>(vec![-1i32, -2i32]),
-        ],
-    );
+    let mut src = make_arch(vec![
+        column::<u32>(vec![10u32, 20u32]),
+        column::<f32>(vec![1.0f32, 2.0f32]),
+        column::<i32>(vec![-1i32, -2i32]),
+    ]);
     src.entities = vec![make_entity(0), make_entity(1)];
 
-    let mut dst = make_arch(2, vec![column::<u32>(vec![]), column::<f32>(vec![])]);
+    let mut dst = make_arch(vec![column::<u32>(vec![]), column::<f32>(vec![])]);
     src.move_components_to(0, &mut dst);
 
     assert_eq!(values::<u32>(&dst), vec![10u32]);
@@ -250,21 +244,15 @@ fn move_components_to_transfers_matching_types() {
 fn move_components_to_superset_leaves_the_new_column_to_the_caller() {
     // The insert direction: every source column moves, and the type only the
     // destination has gets no row.
-    let mut src = make_arch(
-        1,
-        vec![
-            column::<u32>(vec![1u32, 2u32]),
-            column::<i32>(vec![-1i32, -2i32]),
-        ],
-    );
-    let mut dst = make_arch(
-        2,
-        vec![
-            column::<u32>(vec![9u32]),
-            column::<f32>(vec![9.0f32]),
-            column::<i32>(vec![-9i32]),
-        ],
-    );
+    let mut src = make_arch(vec![
+        column::<u32>(vec![1u32, 2u32]),
+        column::<i32>(vec![-1i32, -2i32]),
+    ]);
+    let mut dst = make_arch(vec![
+        column::<u32>(vec![9u32]),
+        column::<f32>(vec![9.0f32]),
+        column::<i32>(vec![-9i32]),
+    ]);
 
     src.move_components_to(1, &mut dst);
 
@@ -279,7 +267,7 @@ fn move_components_to_superset_leaves_the_new_column_to_the_caller() {
 fn move_components_to_pairs_columns_whatever_the_type_order() {
     // The merge walk depends on how the two keys interleave; `TypeId` order
     // is not ours to pick, so cover every subset of four types both ways.
-    fn build(id: ArchetypeId, mask: u32, rows: u8) -> Archetype {
+    fn build(mask: u32, rows: u8) -> Archetype {
         let fill = |scale: u8| (0..rows).map(|row| row * 4 + scale).collect::<Vec<u8>>();
         let mut columns = Vec::new();
         if mask & 1 != 0 {
@@ -300,7 +288,7 @@ fn move_components_to_pairs_columns_whatever_the_type_order() {
                 fill(3).into_iter().map(|v| [v; 3]).collect(),
             ));
         }
-        make_arch(id, columns)
+        make_arch(columns)
     }
     fn len_of(arch: &Archetype, bit: u32) -> Option<usize> {
         match bit {
@@ -313,8 +301,8 @@ fn move_components_to_pairs_columns_whatever_the_type_order() {
 
     for src_mask in 0..16u32 {
         for dst_mask in 0..16u32 {
-            let mut src = build(1, src_mask, 2);
-            let mut dst = build(2, dst_mask, 1);
+            let mut src = build(src_mask, 2);
+            let mut dst = build(dst_mask, 1);
             src.move_components_to(0, &mut dst);
             for bit in [1, 2, 4, 8] {
                 let shared = src_mask & dst_mask & bit != 0;
@@ -349,12 +337,12 @@ fn moved_and_removed_rows_drop_exactly_once() {
     use std::rc::Rc;
 
     let tracker = Rc::new(());
-    let mut src = make_arch(
-        1,
-        vec![column::<Rc<()>>(vec![tracker.clone(), tracker.clone()])],
-    );
+    let mut src = make_arch(vec![column::<Rc<()>>(vec![
+        tracker.clone(),
+        tracker.clone(),
+    ])]);
     src.entities = vec![make_entity(0), make_entity(1)];
-    let mut dst = make_arch(2, vec![column::<Rc<()>>(vec![])]);
+    let mut dst = make_arch(vec![column::<Rc<()>>(vec![])]);
     assert_eq!(Rc::strong_count(&tracker), 3);
 
     // A move neither drops nor duplicates the value.
@@ -381,7 +369,7 @@ fn move_row_to_rejects_another_column_type() {
 
 #[test]
 fn columns_consistent_length_after_multiple_removals() {
-    let mut arch = make_arch(1, vec![column::<u32>(vec![]), column::<bool>(vec![])]);
+    let mut arch = make_arch(vec![column::<u32>(vec![]), column::<bool>(vec![])]);
 
     for i in 0u32..5 {
         push_row::<u32, bool>(&mut arch, make_entity(i), i, i % 2 == 0);
@@ -390,8 +378,8 @@ fn columns_consistent_length_after_multiple_removals() {
     arch.swap_remove_row(2);
     arch.swap_remove_row(0);
 
-    let u32_len = arch.column(TypeId::of::<u32>()).unwrap().len();
-    let bool_len = arch.column(TypeId::of::<bool>()).unwrap().len();
+    let u32_len = arch.typed_column::<u32>().unwrap().0.len();
+    let bool_len = arch.typed_column::<bool>().unwrap().0.len();
     assert_eq!(u32_len, arch.entities.len());
     assert_eq!(bool_len, arch.entities.len());
     assert_eq!(u32_len, 3);

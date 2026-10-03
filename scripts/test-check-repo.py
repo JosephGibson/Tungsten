@@ -69,15 +69,6 @@ class RepoChecks(unittest.TestCase):
         (self.root / "assets/loop").symlink_to(self.root / "assets", target_is_directory=True)
         self.assertEqual(self.assets()[0], [])
 
-    def test_tracked_deletion_candidate_is_reported_and_kept(self):
-        candidate = next(iter(qa.DELETION_CANDIDATES))
-        path = self.write(candidate, "pixels")
-        self.write(str(Path(candidate).parent.parent / "manifest.json"), '{}')
-        errors, notes = self.assets()
-        self.assertEqual(errors, [])
-        self.assertTrue(any("deletion candidate" in n for n in notes))
-        self.assertTrue(path.is_file())
-
     def test_active_and_yaml_headers(self):
         errors, notes = [], []
         qa.check_plans(self.root, errors, notes)
@@ -117,6 +108,25 @@ class RepoChecks(unittest.TestCase):
         errors = []
         qa.check_agent_config(self.root, errors)
         self.assertTrue(any("exact commands" in e for e in errors))
+
+    def test_plan_citations_flag_missing_plans_but_not_archive_or_history(self):
+        self.write("docs/plans/live.md", "plan")
+        self.write("crates/demo/src/lib.rs", "// docs/plans/live.md, then docs/plans/gone.md.\n")
+        self.write("DESIGN.md", "Archived at `docs/plans/archive/old.md`.\n")
+        self.write("CHANGELOG.md", "Shipped docs/plans/gone.md.\n")
+        self.write("scripts/test-demo.py", "FIXTURE = 'docs/plans/fixture.md'\n")
+        original = Path.read_text
+
+        def guarded(path, *args, **kwargs):
+            if "archive" in path.parts:
+                raise AssertionError("archive read")
+            return original(path, *args, **kwargs)
+
+        with patch.object(Path, "read_text", guarded):
+            errors, notes = [], []
+            qa.check_plan_citations(self.root, errors, notes)
+        self.assertEqual(errors, ["crates/demo/src/lib.rs: cites missing plan docs/plans/gone.md"])
+        self.assertIn("archive citation left unread: DESIGN.md: docs/plans/archive/old.md", notes)
 
     def test_docs_find_unknown_decisions_and_broken_links_skip_archive(self):
         self.write("DECISIONS.md", "## D-001 — test\n")

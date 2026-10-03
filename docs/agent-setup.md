@@ -14,7 +14,7 @@ How Claude Code and Codex pick up this repo's instructions, skills and search fi
 
 ## Skills
 
-- Canonical copies (tracked): `.claude/skills/tungsten-wgpu/`, `.claude/skills/tungsten-perf/`, `.claude/skills/tungsten-decision/` (writing, amending and superseding `DECISIONS.md` entries), `.claude/skills/tungsten-patch-handoff/` (per-step patch series and commit script when Git is human-only), `.claude/skills/tungsten-finalize/` (branch documentation and version cut) and `.claude/skills/tungsten-release/` (release checks, command hand-off, verification and recovery). The canonical release procedure is [releases.md](releases.md). Codex finds them through the symlinks `.agents/skills/<name> -> ../../.claude/skills/<name>`. Relative links inside `SKILL.md` resolve through both paths.
+- Canonical copies (tracked): `.claude/skills/tungsten-wgpu/`, `.claude/skills/tungsten-perf/`, `.claude/skills/tungsten-decision/` (writing, amending and superseding `DECISIONS.md` entries), `.claude/skills/tungsten-finalize/` (branch documentation and version cut) and `.claude/skills/tungsten-release/` (release checks, command hand-off, verification and recovery). The canonical release procedure is [releases.md](releases.md). Codex finds them through the symlinks `.agents/skills/<name> -> ../../.claude/skills/<name>`. Relative links inside `SKILL.md` resolve through both paths.
 - Frontmatter holds only `name` and a description of 300 characters or fewer; bodies stay under 8 KiB. Claude's `paths` field isn't a Codex activation contract, so don't rely on it.
 - **Windows:** symlinks need Developer Mode (or an elevated shell) and `core.symlinks=true` before cloning (`git clone -c core.symlinks=true …`). Without them Git writes plain text files and Codex won't see the skills; Claude is unaffected.
 
@@ -27,8 +27,9 @@ How Claude Code and Codex pick up this repo's instructions, skills and search fi
 
 ## Permissions, sandbox and trust
 
-- `.claude/settings.json` allows exact shared `just` commands, workspace build/test/check commands, the four example launch commands, and bounded discovery probes (`rg --files crates examples scripts`, `fd --type f . crates examples scripts`, `ast-grep --version`). No execution prefixes or wildcard arguments are granted. Other searches, parameterized perf captures and install commands use normal interactive approval or personal rules. Hooks and model choices belong in `.claude/settings.local.json` (ignored) or user settings; managed settings override both. Check effective rules with `/permissions` in an interactive session.
+- `.claude/settings.json` allows exact shared `just` commands (`just physics-release` bare and with `-- --nocapture`, the form physics gates run), workspace build/test/check commands, the four example launch commands, and bounded discovery probes (`rg --files crates examples scripts`, `fd --type f . crates examples scripts`, `ast-grep --version`). No execution prefixes or wildcard arguments are granted. Other searches, parameterized perf captures and install commands use normal interactive approval or personal rules. Hooks and model choices belong in `.claude/settings.local.json` (ignored) or user settings; managed settings override both. Check effective rules with `/permissions` in an interactive session.
 - Don't add blanket `cargo`/`just` allows: recipes, build scripts and tests execute repo code.
+- Committing (`D-097`): agents commit plan work locally with `git add <paths>` and `git commit`, which a personal allow must grant; the project allowlist can't, since it takes exact commands only. `git push`, tags, merges and history rewrites stay with the human.
 - Codex suggestion for interactive work: `codex --sandbox workspace-write --ask-for-approval on-request`. First builds download crates and may need approval, and so may writes under `.agents/` or `.codex/`. Project `.codex/` config and non-managed hooks only apply once the project is trusted. Exec-policy rules govern commands outside the sandbox and aren't a push ban.
 - Deferred: hooks, custom subagents, blanket execution allows and LSP plugins. Explicit commands (`just` recipes and the raw `cargo` commands they wrap) are the shared workflow.
 
@@ -41,22 +42,24 @@ claude -p 'Without tools, list the instruction files loaded into your context.'
 codex exec --sandbox read-only 'Without tools, list the AGENTS.md files you were given.'
 ```
 
-Model self-reports can be wrong about duplication. For a firm answer, compare `claude -p --output-format json` usage across directories that contain canary files. Earlier setup testing recorded Claude Code 2.1.110 behavior above. During the 2026-09-25 repository review, Claude was absent from the shell, so effective permissions and its discovery commands could not be rerun. Codex CLI 0.155.0-alpha.16.3 passed ephemeral read-only discovery from both directories: root rules at the root, root plus render rules from the renderer, and the tested skill symlinks resolved. These are model self-reports, not proof against duplicate context injection. Recheck after client upgrades; no blanket claim about older clients' model access is made.
+Model self-reports can be wrong about duplication. For a firm answer, compare `claude -p --output-format json` usage across directories that contain canary files. Last verified with Claude Code 2.1.110 and Codex CLI 0.155.0-alpha.16.3; rerun both checks after a client upgrade.
 
 ## Local check tiers
 
-Run from the repository root with Rust, just, Python 3.12+, Bash and ShellCheck installed.
+Run from the repository root with Rust, just, Python 3.12+, Bash, ShellCheck and actionlint installed.
 
 | Command | Repeated work it replaces |
 | --- | --- |
-| `just repo-check` | Asset-directory/manifest coverage comparisons, required active-plan headers/status, local links and decision references in the maintained docs, agent configuration checks, workspace version/`CHANGELOG.md`/DESIGN status agreement (`scripts/release.py check`, `D-071`, `D-074`); then existing Rust manifest and decision-index tests |
+| `just repo-check` | Asset-directory/manifest coverage comparisons, required active-plan headers/status, local links and decision references in the maintained docs, `docs/plans/<name>.md` citations in tracked code, scripts and docs (a missing plan fails, an archived one is a note; `CHANGELOG.md`, `DECISIONS.md` and the script tests' fixtures are exempt), agent configuration checks, workspace version/`CHANGELOG.md`/DESIGN status agreement (`scripts/release.py check`, `D-071`, `D-074`); then existing Rust manifest and decision-index tests |
 | `just release-preflight VERSION --repo OWNER/REPO` | Read-only file, live branch/tag, pull-request, GitHub release and exact-commit run inspection that prints the remaining hand-off commands (`D-079`); requires Git, authenticated gh and network; see [releases.md](releases.md) |
 | `just quick` | The edit-loop sequence: format check, context budgets/links, repository QA and `cargo check --workspace --all-targets --locked` |
-| `just script-test` | Perf/smoke script regressions, ShellCheck, and repository-checker, release-script and temporary-Git-repository preflight and patch-series (`scripts/patch-series.py`) tests |
+| `just script-test` | Perf/smoke script regressions, ShellCheck, `actionlint` over `.github/workflows/`, and repository-checker, release-script and temporary-Git-repository preflight tests |
 | `just physics-release` | The release-only physics run: `cargo test --release` over `physics_determinism`, `physics_tunneling` and `physics_containment` in `tungsten-core`, built with the perf runner's flags (`TUNGSTEN_PERF_RUSTFLAGS` overrides, see [profiling-workflow.md](perf/profiling-workflow.md)). The determinism and containment tests are ignored in debug, so `just check` reports them as ignored and does not cover them |
+| `just ci` | The six recipes CI runs, in its order: `check`, `bench-build`, `deps`, `ctx`, `repo-check`, `script-test` (`D-070`); GPU smoke, `just visual` and perf captures stay separate |
+| `just udeps` | Unused-dependency search with `cargo shear` (install `cargo install --locked cargo-shear`); not in CI. Its unlinked-file warnings for `src/tests/` modules included through `#[path]` are false positives |
 
 `quick` does not replace final `just check` or GPU smoke. `scripts/check-repo.py` is read-only and uses the Python standard library; it never traverses the plan archive, follows directory symlinks, guesses asset IDs or edits manifests. The checker covers its maintained `DOCS` list; other Markdown files, external URLs and link fragments need separate checking. It reports in-progress plans for review; age alone cannot identify abandonment.
 
-Asset coverage exceptions are explicit: complete font families and their inventory README; four vendored LYGIA helper fragments and their license; and example 03's explicitly loaded `scene.json` (D-046). The platformer's `player.png` is now registered as `ex10_player`; it is covered by its manifest. A new exception needs review in the checker, not a broad ignored extension.
+Asset coverage exceptions are explicit: complete font families and their inventory README; four vendored LYGIA helper fragments and their license; and example 03's explicitly loaded `scene.json` (D-046). A new exception needs review in the checker, not a broad ignored extension.
 
 The exact-command permission syntax follows [Claude's permission rules](https://code.claude.com/docs/en/permissions); Codex instruction discovery follows [AGENTS.md guidance](https://developers.openai.com/codex/guides/agents-md/). These controls do not make repository code trusted: review recipe changes before executing them.

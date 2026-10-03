@@ -13,7 +13,7 @@ use tungsten_core::tween::UniformOverrideBlock;
 use wgpu::util::DeviceExt;
 
 use crate::passes::TargetId;
-use crate::shader_hot_reload::ShaderModuleCache;
+use crate::shader_hot_reload::{ShaderModuleCache, build_validated};
 use crate::targets::{BLOOM_PYRAMID_FORMAT, RenderTargetPool, TargetCache};
 
 /// Stage shader manifest names. Must match `assets/manifest.json` keys and the
@@ -257,42 +257,34 @@ impl BloomPipeline {
     }
 
     /// Hot-reload entry: rebuild only the affected stage's pipeline against a
-    /// freshly validated module. Caller commits the module to the cache after
-    /// this returns.
+    /// freshly validated module. A pipeline that fails validation is not
+    /// swapped in (`Err`). Caller commits the module to the cache after this
+    /// returns `Ok`.
     pub fn rebuild_stage_with_module(
         &mut self,
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
         shader_id: ShaderAssetId,
         module: &wgpu::ShaderModule,
-    ) {
+    ) -> Result<(), String> {
+        let layouts = &self.layouts;
+        let pyramid = |label, blend| {
+            build_validated(device, || {
+                build_pyramid_pipeline(device, layouts, module, label, blend)
+            })
+        };
         if shader_id == self.shader_ids.threshold {
-            self.threshold = build_pyramid_pipeline(
-                device,
-                &self.layouts,
-                module,
-                "bloom_threshold",
-                BlendKind::Replace,
-            );
+            self.threshold = pyramid("bloom_threshold", BlendKind::Replace)?;
         } else if shader_id == self.shader_ids.downsample {
-            self.downsample = build_pyramid_pipeline(
-                device,
-                &self.layouts,
-                module,
-                "bloom_downsample",
-                BlendKind::Replace,
-            );
+            self.downsample = pyramid("bloom_downsample", BlendKind::Replace)?;
         } else if shader_id == self.shader_ids.upsample {
-            self.upsample = build_pyramid_pipeline(
-                device,
-                &self.layouts,
-                module,
-                "bloom_upsample",
-                BlendKind::Additive,
-            );
+            self.upsample = pyramid("bloom_upsample", BlendKind::Additive)?;
         } else if shader_id == self.shader_ids.composite {
-            self.composite = build_composite_pipeline(device, &self.layouts, module, format);
+            self.composite = build_validated(device, || {
+                build_composite_pipeline(device, layouts, module, format)
+            })?;
         }
+        Ok(())
     }
 
     #[must_use]
@@ -305,25 +297,8 @@ impl BloomPipeline {
     /// the attachments differ per stage (a different mip view, then dst).
     /// `slot` is the pass's index in the post stack; its UBOs and bind groups
     /// are built once and rebuilt when the targets, the slot's source or
-    /// destination or the mip count change.
-    #[allow(clippy::too_many_arguments)]
-    pub fn record_pass(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        encoder: &mut wgpu::CommandEncoder,
-        pool: &RenderTargetPool,
-        params: &BloomParams,
-        src: TargetId,
-        dst: TargetId,
-        slot: usize,
-    ) {
-        self.record_pass_timed(
-            device, queue, encoder, pool, None, params, src, dst, None, slot,
-        );
-    }
-
-    /// `swap_view` is the frame's swapchain view; the composite writes it
+    /// destination or the mip count change. `swap_view` is the frame's
+    /// swapchain view; the composite writes it
     /// when `dst` is [`TargetId::Swapchain`], which is where a direct frame
     /// sends a bloom that ends the post stack (`D-087`).
     #[allow(clippy::too_many_arguments)]

@@ -1,6 +1,6 @@
 //! M26 post-processing stack model (core side).
 //!
-//! `PostPass` is a closed enum of the 17 stock effects — same closed-enum
+//! `PostPass` is a closed enum of the 18 stock effects — same closed-enum
 //! reasoning as `Easing` (`D-054`). Adding an effect is a three-point change:
 //! new variant here, new pipeline in `tungsten-render/src/post/`, new entry in
 //! the stock roster. The umbrella `PostStack(Vec<PostPass>)` resource is what
@@ -338,9 +338,11 @@ impl Default for BloomParams {
 }
 
 /// Closed enum of the 18 stock post-processing passes shipped with M26 + M28.
-/// Adding a new effect is a four-point change (variant + pipeline + stock
-/// WGSL + roster table in the milestone plan). See `D-054` for the closed-enum
-/// reasoning that also applies here.
+/// Adding a new effect touches the variant and `kind_name` here; the
+/// `STOCK_SHADERS` row, `stock_index` arm and uniform packing in
+/// `tungsten-render`'s `post` module; and the stock WGSL with its
+/// `assets/shaders/stock/` mirror. See `D-054` for the closed-enum reasoning
+/// that also applies here.
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "kind", content = "params", rename_all = "snake_case")]
 pub enum PostPass {
@@ -392,8 +394,8 @@ impl PostPass {
 }
 
 /// Per-session reorderable post-processing stack resource. Default is empty,
-/// which keeps the frame byte-identical to the M25 baseline. See M26 plan
-/// "Scene → Post → Present Target Flow" for the ping-pong table.
+/// which keeps the frame byte-identical to the M25 baseline. The renderer's
+/// ping-pong ladder is `PostStackRenderer::plan_targets` (`D-058`).
 #[derive(Debug, Clone, Default)]
 pub struct PostStack(pub Vec<PostPass>);
 

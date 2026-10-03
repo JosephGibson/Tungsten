@@ -43,6 +43,12 @@ RUST_LOG = "tungsten::app=debug,bench=debug"
 CLEARED_PREFIXES = ("TUNGSTEN_BENCH", "TUNGSTEN_RENDER_", "TUNGSTEN_DISPLAY_", "TUNGSTEN_CAPTURE_")
 CLEARED_NAMES = ("TUNGSTEN_GPU_TIMING", "TUNGSTEN_OVERLAYS_ON", "TUNGSTEN_SMOKE_FRAMES", "TUNGSTEN_PERF_LOG", "RUST_LOG")
 RSS_POLL_SECONDS = 0.1
+# Background load (D-095): the remote-desktop encoder anywhere, and builds
+# outside the runner's own process tree, which is how another session's work
+# shows. Scanned before, once a second during and once after a measured run.
+ENCODER = "nxcodec.bin"
+BUILD_NAMES = ("cargo", "rustc")
+BACKGROUND_SCAN_SECONDS = 1.0
 EXIT_INVALID = 3
 EXIT_REGRESSED = 1
 BUDGETS_MS = {"60hz": 16.7, "144hz": 6.9}
@@ -106,6 +112,11 @@ def git_dirty(root):
     return f"yes (diff {sha.hexdigest()[:12]})"
 
 
+def tree_state(root):
+    """The commit and dirty-tree state, as provenance records them."""
+    return {"commit": git_commit(root), "dirty": git_dirty(root)}
+
+
 def cpu_model(cpuinfo_text):
     for line in cpuinfo_text.splitlines():
         key, sep, value = line.partition(":")
@@ -167,8 +178,7 @@ def collect_provenance(root):
     mem_kib = mem_total_kib(read_text("/proc/meminfo"))
     uname = os.uname()
     return {
-        "commit": git_commit(root),
-        "dirty": git_dirty(root),
+        **tree_state(root),
         "governor": file_value_or_na("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"),
         "platform_profile": file_value_or_na("/sys/firmware/acpi/platform_profile"),
         "ac_power": ac_power(),
@@ -180,6 +190,48 @@ def collect_provenance(root):
         "rustc": rustc_version(),
         "wgpu_backend_env": os.environ.get("WGPU_BACKEND", "auto"),
     }
+
+
+# --- Background load -------------------------------------------------------
+
+
+def list_processes(proc="/proc"):
+    """`(pid, ppid, name)` of every process, from `/proc/<pid>/stat`; the name
+    is the kernel's comm field, the one `pgrep -x` matches."""
+    processes = []
+    try:
+        entries = list(os.scandir(proc))
+    except OSError:
+        return processes
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            with open(os.path.join(entry.path, "stat"), encoding="utf-8", errors="replace") as handle:
+                text = handle.read()
+            close = text.rindex(")")
+            processes.append((int(entry.name), int(text[close + 2 :].split()[1]), text[text.index("(") + 1 : close]))
+        except (OSError, ValueError, IndexError):
+            continue  # exited during the scan
+    return processes
+
+
+def background_offenders(processes, own_pid):
+    """Sorted names of the processes that load the machine beside a measured
+    run: the encoder anywhere, and `cargo` or `rustc` outside the process tree
+    rooted at `own_pid`, the runner's (its own build is not load)."""
+    parents = {pid: ppid for pid, ppid, _ in processes}
+
+    def own(pid):
+        seen = set()
+        while pid is not None and pid not in seen:
+            if pid == own_pid:
+                return True
+            seen.add(pid)
+            pid = parents.get(pid)
+        return False
+
+    return sorted({name for pid, _, name in processes if name == ENCODER or (name in BUILD_NAMES and not own(pid))})
 
 
 # --- Child processes -------------------------------------------------------
@@ -237,15 +289,20 @@ def read_rss_kib(pid, page_kib):
         return None
 
 
-def run_child(argv, env, cwd, log_path, rss_path=None):
+def run_child(argv, env, cwd, log_path, rss_path=None, watch=None):
     """Run `argv` with stdout and stderr in `log_path`, reaping it with
     `os.wait4` for its rusage while sampling `/proc/<pid>/statm` every 100 ms.
+    `watch`, the background-load scan, is called before the child starts,
+    once a second while it runs and once after it exits.
     Popen's returncode is set from the wait status, so it never waits again."""
     log_path = Path(log_path)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     page_kib = os.sysconf("SC_PAGE_SIZE") // 1024
     samples = []
+    if watch is not None:
+        watch()
     start = time.monotonic()
+    next_scan = start + BACKGROUND_SCAN_SECONDS
     with open(log_path, "wb") as log:
         proc = subprocess.Popen(argv, env=env, cwd=cwd, stdout=log, stderr=subprocess.STDOUT)
         try:
@@ -256,18 +313,24 @@ def run_child(argv, env, cwd, log_path, rss_path=None):
                 rss = read_rss_kib(proc.pid, page_kib)
                 if rss:
                     samples.append((round(time.monotonic() - start, 3), rss))
+                if watch is not None and time.monotonic() >= next_scan:
+                    watch()
+                    next_scan += BACKGROUND_SCAN_SECONDS
                 time.sleep(RSS_POLL_SECONDS)
         except BaseException:
             proc.kill()
             proc.wait()
             raise
+    wall_s = round(time.monotonic() - start, 3)
     proc.returncode = os.waitstatus_to_exitcode(status)
+    if watch is not None:
+        watch()
     if rss_path is not None:
         lines = ["seconds\trss_kib"] + [f"{seconds}\t{rss}" for seconds, rss in samples]
         Path(rss_path).write_text("\n".join(lines) + "\n")
     return {
         "exit_code": proc.returncode,
-        "wall_s": round(time.monotonic() - start, 3),
+        "wall_s": wall_s,
         "rusage": {
             "peak_rss_kib": usage.ru_maxrss,
             "user_s": round(usage.ru_utime, 3),
@@ -449,12 +512,15 @@ def run_request(args, sets, bench):
         "present_mode": args.present_mode,
         "max_frame_latency": args.max_frame_latency,
         "profile": args.profile,
+        "allow_background": args.allow_background,
     }
 
 
-def capture_to(out_dir, *, binary, root, bench, config, request_env, request, provenance, rustflags, profile_args=None):
+def capture_to(out_dir, *, binary, root, bench, config, request_env, request, provenance, rustflags, profile_args=None,
+               lister=list_processes, tree_reader=tree_state):  # fmt: skip
     """Timing runs (plus GPU diagnostic runs), optional profile, then
-    `capture.json` and `README.md` in `out_dir`. Returns the capture."""
+    `capture.json` and `README.md` in `out_dir`. Returns the capture.
+    `lister` and `tree_reader` feed the background-load checks (`D-095`)."""
     row = find_row(bench, config["row"])
     warmup = bench["warmup"] if request["warmup"] is None else request["warmup"]
     gpu_timing = request["gpu_timing"]
@@ -462,12 +528,23 @@ def capture_to(out_dir, *, binary, root, bench, config, request_env, request, pr
     total_frames = warmup + frames
     repeat = request["repeat"]
     present = {"present_mode": request["present_mode"], "max_frame_latency": request["max_frame_latency"]}
+
+    def measured(env, log_path, rss_path=None):
+        """One measured run: the processes the scans flag around and during
+        it, then the commit and dirty-tree state after it exits."""
+        seen = set()
+        result = run_child(
+            [str(binary)], env, root, log_path, rss_path, watch=lambda: seen.update(background_offenders(lister(), os.getpid()))
+        )
+        result.update(background=sorted(seen), tree=tree_reader(root))
+        return result
+
     runs = []
     for index in range(1, repeat + 1):
         run_dir = out_dir / f"run-{index}"
         print(f"Timing run {index} of {repeat} ({total_frames} frames)...", flush=True)
         env = capture_env(os.environ, request_env, total_frames, **present)
-        timing = run_child([str(binary)], env, root, run_dir / "telemetry.log", run_dir / "rss.tsv")
+        timing = measured(env, run_dir / "telemetry.log", run_dir / "rss.tsv")
         analysis = bench_report.analyze_log(
             (run_dir / "telemetry.log").read_text(errors="replace"), warmup, frames, row["guards"], config, **present
         )
@@ -477,7 +554,7 @@ def capture_to(out_dir, *, binary, root, bench, config, request_env, request, pr
         if gpu_timing:
             print(f"GPU diagnostic run {index} of {repeat}...", flush=True)
             env = capture_env(os.environ, request_env, total_frames, gpu=True, **present)
-            gpu = run_child([str(binary)], env, root, run_dir / "gpu.log")
+            gpu = measured(env, run_dir / "gpu.log")
             gpu.pop("rss_samples")
             gpu.update(
                 bench_report.analyze_log(
@@ -536,7 +613,8 @@ def cmd_run(args):
             raise BenchError("--sweep can't be combined with --compare or --profile")
         if sweep[0] in {entry.partition("=")[0] for entry in args.set}:
             raise BenchError(f"--sweep {sweep[0]} conflicts with --set {sweep[0]}=...")
-    baseline = resolve_capture(args.compare, root) if args.compare else None
+    if args.compare:
+        resolve_ref(args.compare, root)  # a bad reference fails before the build
     rustflags = perf_rustflags()
     if args.profile and args.call_graph == "fp" and not frame_pointers_enabled(rustflags):
         raise BenchError("--call-graph fp needs TUNGSTEN_PERF_RUSTFLAGS with -C force-frame-pointers=yes")
@@ -549,6 +627,7 @@ def cmd_run(args):
     request_env = bench_vars(args.bench, args.preset, args.scale, args.set)
     config = resolve_config(binary, root, request_env)
     row = find_row(bench, config["row"])
+    baseline = resolve_capture(args.compare, root, config["row"]) if args.compare else None
     request = run_request(args, args.set, bench)
 
     name = capture_dir_name(
@@ -642,6 +721,8 @@ def print_summary(capture, out_dir):
         print(f"Capture INVALID: {out_dir}/capture.json")
         for reason in capture["invalid_reasons"]:
             print(f"  - {reason}")
+    for note in capture["notes"]:
+        print(f"  - allowed by --allow-background: {note}")
 
 
 # --- Compare ---------------------------------------------------------------
@@ -674,12 +755,19 @@ def resolve_ref(ref, root=REPO_ROOT):
     raise BenchError(f"'{ref}' is neither a capture or suite directory nor a baseline name (see `baseline list`)")
 
 
-def resolve_capture(ref, root=REPO_ROOT):
-    """`resolve_ref` for a single capture."""
+def resolve_capture(ref, root=REPO_ROOT, row=None):
+    """`resolve_ref` for a single capture. With `row` (`run --compare`), a
+    suite resolves to its capture of that row."""
     path, kind = resolve_ref(ref, root)
-    if kind != "capture":
+    if kind == "capture":
+        return path
+    if row is None:
         raise BenchError(f"'{ref}' is a suite; compare suites with `compare` or `suite --compare`")
-    return path
+    rows = json.loads((path / "suite.json").read_text())["rows"]
+    for entry in rows:
+        if entry["row"] == row:
+            return path / entry["dir"]
+    raise BenchError(f"suite '{ref}' has no row '{row}'; rows: {', '.join(entry['row'] for entry in rows)}")
 
 
 def capture_label(path, root=REPO_ROOT):
@@ -761,6 +849,7 @@ def write_suite_compare(base_dir, cand_dir, *, root=REPO_ROOT, out=None, force=F
         if names:
             print(f"  Rows {label}, not compared: {', '.join(names)}")
     print(f"Owned verdicts, all rows: {bench_report.summary_text(report['owned_summary'])}")
+    print(bench_report.suite_digest_text(report).replace("`", ""))
     print(f"Suite compare report: {capture_label(out_dir, root)}/compare.md and compare.html")
     return report
 
@@ -780,6 +869,7 @@ def print_compare(report):
         pct = bench_report.signed(result["delta_pct"], 1, "%")
         print(f"  {result['metric']} {result['stat']}: {bench_report.fmt(result['base'])} -> {bench_report.fmt(result['cand'])} ms ({delta}, {pct}): {verdict}")
     print(f"Owned verdicts: {bench_report.summary_text(report['owned_summary'])}")
+    print(bench_report.digest_text(report["digests"]).replace("`", ""))
 
 
 def cmd_compare(args, root=REPO_ROOT):
@@ -884,6 +974,7 @@ def cmd_suite(args, root=REPO_ROOT):
             "present_mode": None,
             "max_frame_latency": None,
             "profile": False,
+            "allow_background": args.allow_background,
         }
         capture = capture_to(
             row_dir,
@@ -899,7 +990,14 @@ def cmd_suite(args, root=REPO_ROOT):
         print_summary(capture, row_dir.relative_to(root))
         entries.append((row["name"], capture))
     suite = bench_report.assemble_suite(
-        request={"preset": args.preset, "scale": args.scale, "only": only, "repeat": args.repeat, "frames": SUITE_FRAMES},
+        request={
+            "preset": args.preset,
+            "scale": args.scale,
+            "only": only,
+            "repeat": args.repeat,
+            "frames": SUITE_FRAMES,
+            "allow_background": args.allow_background,
+        },
         build={"package": PACKAGE, "profile": "release", "rustflags": rustflags},
         provenance=provenance,
         entries=entries,
@@ -910,6 +1008,8 @@ def cmd_suite(args, root=REPO_ROOT):
     for row in suite["rows"]:
         total = "/".join(bench_report.fmt(row["total"][stat]) for stat in ("p50", "p95", "p99"))
         state = "valid" if row["valid"] else "INVALID"
+        if row["notes"]:
+            state += ", background load allowed"
         print(
             f"  {row['row']}: {state}; total p50/p95/p99 {total} ms, jitter {bench_report.fmt(row['total']['jitter'])} ms; "
             f"peak RSS {bench_report.fmt(row['peak_rss_mib'], 1)} MiB"
@@ -1336,7 +1436,10 @@ def parser():
     run.add_argument("--call-graph", choices=("dwarf", "fp"), default="dwarf")
     run.add_argument("--sample-frequency", type=positive_int, metavar="HZ")
     run.add_argument("--sweep", metavar="KNOB=V1,V2,...", help="one capture per value plus sweep.md and sweep.html")
-    run.add_argument("--compare", metavar="BASELINE", help="compare the new capture against a baseline name or capture directory")
+    run.add_argument(
+        "--compare", metavar="BASELINE", help="compare the new capture against a baseline name or capture directory; a suite gives its row"
+    )
+    run.add_argument("--allow-background", action="store_true", help="background load during a measured run is a note, not invalid")
 
     suite = commands.add_parser("suite", help="capture every tracked row")
     suite.add_argument("--preset", help="replaces the preset of rows whose own preset is `default`; other rows keep theirs")
@@ -1344,6 +1447,7 @@ def parser():
     suite.add_argument("--only", metavar="ROWS", help="comma-separated row names")
     suite.add_argument("--repeat", type=positive_int, default=1)
     suite.add_argument("--compare", metavar="BASELINE", help="compare the suite against a baseline name or suite directory")
+    suite.add_argument("--allow-background", action="store_true", help="background load during a measured run is a note, not invalid")
 
     compare = commands.add_parser("compare", help="compare two captures or two suites")
     compare.add_argument("baseline", help="baseline name, capture directory or suite directory")

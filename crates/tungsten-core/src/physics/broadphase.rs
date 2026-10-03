@@ -321,11 +321,13 @@ impl SpatialGrid {
         let inv = 1.0 / self.cell_size;
         let min = aabb.min() * inv;
         let max = aabb.max() * inv;
-        // Right/bottom edge exactly on boundary does not claim next cell.
+        // A right/bottom edge exactly on a boundary does not claim the next
+        // cell, at any distance from the origin: the last cell is
+        // `ceil(max) - 1`, never before the first.
         let min_cell = IVec2::new(floor_to_i32(min.x), floor_to_i32(min.y));
         let max_cell = IVec2::new(
-            floor_to_i32(max.x - f32::EPSILON),
-            floor_to_i32(max.y - f32::EPSILON),
+            ceil_to_i32(max.x).saturating_sub(1),
+            ceil_to_i32(max.y).saturating_sub(1),
         );
         let max_cell = IVec2::new(max_cell.x.max(min_cell.x), max_cell.y.max(min_cell.y));
         (min_cell, max_cell)
@@ -339,6 +341,15 @@ impl SpatialGrid {
 fn floor_to_i32(x: f32) -> i32 {
     let truncated = x as i32;
     truncated.saturating_sub(i32::from((truncated as f32) > x))
+}
+
+/// `x.ceil() as i32` for every `f32`, as [`floor_to_i32`] floors: truncate
+/// toward zero, saturating as `as` does (NaN gives 0), then step up for a
+/// positive non-integer.
+#[inline]
+fn ceil_to_i32(x: f32) -> i32 {
+    let truncated = x as i32;
+    truncated.saturating_add(i32::from((truncated as f32) < x))
 }
 
 /// One entry of a query: skip the excluded id and, when cells can repeat an

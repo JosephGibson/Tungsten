@@ -22,29 +22,34 @@
 //! and whose config, `ex04_bullet_trail`, draws each particle as an instanced
 //! triangle mesh instead of a sprite quad. `TUNGSTEN_MESH_TRAIL_FIXTURE=off`
 //! leaves the emitter out, so a capture pair shows what the mesh pipeline drew.
+//!
+//! `TUNGSTEN_MATERIAL_PAIR_FIXTURE={pair|same}` adds two screen-locked sprites
+//! drawn through the root manifest's `damage_flash`, red and blue (`pair`) or
+//! blue twice (`same`), for `tests/post_regression.rs`.
 
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 
 use glam::Vec2;
+use tungsten::core::config::PostAaMode;
+use tungsten::core::post::{
+    BloomParams, ColorAdjustParams, CrtParams, DissolveParams, DitherParams, FadeParams,
+    FilmGrainParams, FogParams, GodRaysParams, LutParams, PixelOutlineParams, PostPass, PostStack,
+    ToneMonoParams, TonemapParams, VignetteParams, WipeRadialParams,
+};
+use tungsten::core::tween::UniformOverrideBlock;
 use tungsten::core::{
     ActionMap, BlendMode, CameraController, CameraMode, CommandBuffer, Config, Curve, DeltaTime,
-    Easing, EmissionKind, Entity, EventQueue, InitialVelocity, InputState, ParallaxLayer,
-    ParticleConfig, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, ParticleRender,
-    Pcg32, Range, ShakeEvent, Sprite, SpriteSquashStretch, SquashEvent, SquashTrigger, Transform,
-    Visibility, World,
+    Easing, EmissionKind, Entity, EventQueue, InitialVelocity, InputState, MaterialRegistry,
+    ParallaxLayer, ParticleConfig, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState,
+    ParticleRender, Pcg32, Range, ShakeEvent, Sprite, SpriteSquashStretch, SquashEvent,
+    SquashTrigger, Transform, Visibility, World,
 };
 use tungsten::particles::spawn_particle_via;
 use tungsten::{
     App, PostAaState, camera_update_system, render::TextSection, request_post_aa,
     shake_tick_system, squash_stretch_tick_system, squash_stretch_trigger_system,
-};
-use tungsten_core::config::PostAaMode;
-use tungsten_core::post::{
-    BloomParams, ColorAdjustParams, CrtParams, DissolveParams, DitherParams, FadeParams,
-    FilmGrainParams, FogParams, GodRaysParams, LutParams, PixelOutlineParams, PostPass, PostStack,
-    ToneMonoParams, TonemapParams, VignetteParams, WipeRadialParams,
 };
 
 const ROOT_MANIFEST: &str = "assets/manifest.json";
@@ -173,6 +178,10 @@ fn main() -> anyhow::Result<()> {
             send_squash(world, &bouncers);
         }
 
+        if let Ok(fixture) = std::env::var("TUNGSTEN_MATERIAL_PAIR_FIXTURE") {
+            spawn_material_pair(world, &fixture);
+        }
+
         let fixture = std::env::var("TUNGSTEN_POST_STACK_FIXTURE").unwrap_or_default();
         let bloom_fixture = std::env::var("TUNGSTEN_BLOOM_FIXTURE").unwrap_or_default() == "on";
         if !fixture.is_empty() && fixture != "empty" {
@@ -245,6 +254,48 @@ fn spawn_emissive_quad(world: &mut World) {
     world.insert(entity, sprite);
     world.insert(entity, Visibility::default());
     world.insert(entity, ParallaxLayer::uniform(0.0));
+}
+
+/// Two screen-locked white quads drawn through the root manifest's
+/// `damage_flash` at amount 1.0, each with an override block of its own, so
+/// each is a batch of its own: `pair` flashes them red and blue, `same` blue
+/// and blue. With one UBO per material both batches drew the last write.
+fn spawn_material_pair(world: &mut World, fixture: &str) {
+    let first = match fixture {
+        "pair" => FADE_RED,
+        "same" => FADE_BLUE,
+        other => {
+            eprintln!("unknown TUNGSTEN_MATERIAL_PAIR_FIXTURE='{other}': expected pair or same");
+            return;
+        }
+    };
+    let Some(material) = world
+        .get_resource::<MaterialRegistry>()
+        .and_then(|registry| registry.get("damage_flash"))
+    else {
+        eprintln!("material pair fixture: no 'damage_flash' material");
+        return;
+    };
+    for (x, color) in [(0.2, first), (0.35, FADE_BLUE)] {
+        let entity = world.spawn();
+        world.insert(
+            entity,
+            Transform {
+                position: Vec2::new(WINDOW_W * x, WINDOW_H * 0.7),
+                rotation: 0.0,
+                scale: Vec2::splat(2.0),
+            },
+        );
+        let mut sprite = Sprite::new(EMISSIVE_QUAD_ID).with_material(material);
+        sprite.z_order = 1_000;
+        world.insert(entity, sprite);
+        world.insert(entity, Visibility::default());
+        world.insert(entity, ParallaxLayer::uniform(0.0));
+        let mut block = UniformOverrideBlock::default();
+        block.vec4[0] = color;
+        block.f32s[0] = 1.0;
+        world.insert(entity, block);
+    }
 }
 
 const POST_AA_CYCLE: &[PostAaMode] = &[
@@ -1106,8 +1157,8 @@ fn effect_label(i: usize) -> &'static str {
     ][i]
 }
 
-/// 17-entry roster of constructors the cycle walks through. Order matches the
-/// stock-effect roster in the M26 plan so `N` moves top-to-bottom of the table.
+/// 17-entry roster of constructors the cycle walks through, in the order of
+/// the M26 stock-effect roster (`D-058`), so `N` moves top to bottom.
 ///
 /// Transition-style effects (`Fade`, `WipeRadial`, `Dissolve`) default to
 /// `progress = 0` on the engine side (the natural starting point for a
@@ -1149,7 +1200,7 @@ const EFFECT_ROSTER: &[fn() -> PostPass] = &[
             ..DissolveParams::default()
         })
     },
-    || PostPass::Glitch(tungsten_core::post::GlitchParams::default()),
+    || PostPass::Glitch(tungsten::core::post::GlitchParams::default()),
     || PostPass::Pixelate(4.0),
     || PostPass::Fog(FogParams::default()),
     || PostPass::GodRays(GodRaysParams::default()),
@@ -1190,7 +1241,7 @@ fn push_fades(stack: &mut PostStack, first: [f32; 4], second: [f32; 4]) {
 
 fn push_glitch_boss(stack: &mut PostStack) {
     stack.push(PostPass::Glitch(
-        tungsten_core::post::GlitchParams::default(),
+        tungsten::core::post::GlitchParams::default(),
     ));
     stack.push(PostPass::ChromaticAberration(2.0));
     stack.push(PostPass::Dither(DitherParams::default()));

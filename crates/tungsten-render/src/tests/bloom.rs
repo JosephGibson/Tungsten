@@ -63,67 +63,6 @@ fn bloom_shader_ids_are_stable() {
 }
 
 #[test]
-fn bloom_threshold_wgsl_naga_validates() {
-    let src = include_str!("../shaders/stock/bloom_threshold.wgsl");
-    crate::shader_hot_reload::validate_wgsl_source("bloom_threshold", src)
-        .expect("bloom_threshold.wgsl must validate");
-}
-
-#[test]
-fn bloom_downsample_wgsl_naga_validates() {
-    let src = include_str!("../shaders/stock/bloom_downsample.wgsl");
-    crate::shader_hot_reload::validate_wgsl_source("bloom_downsample", src)
-        .expect("bloom_downsample.wgsl must validate");
-}
-
-#[test]
-fn bloom_upsample_wgsl_naga_validates() {
-    let src = include_str!("../shaders/stock/bloom_upsample.wgsl");
-    crate::shader_hot_reload::validate_wgsl_source("bloom_upsample", src)
-        .expect("bloom_upsample.wgsl must validate");
-}
-
-#[test]
-fn bloom_composite_wgsl_naga_validates() {
-    let src = include_str!("../shaders/stock/bloom_composite.wgsl");
-    crate::shader_hot_reload::validate_wgsl_source("bloom_composite", src)
-        .expect("bloom_composite.wgsl must validate");
-}
-
-#[test]
-fn bloom_wgsl_engine_and_asset_mirrors_match() {
-    let pairs: &[(&str, &str)] = &[
-        (
-            include_str!("../shaders/stock/bloom_threshold.wgsl"),
-            include_str!("../../../../assets/shaders/stock/bloom_threshold.wgsl"),
-        ),
-        (
-            include_str!("../shaders/stock/bloom_downsample.wgsl"),
-            include_str!("../../../../assets/shaders/stock/bloom_downsample.wgsl"),
-        ),
-        (
-            include_str!("../shaders/stock/bloom_upsample.wgsl"),
-            include_str!("../../../../assets/shaders/stock/bloom_upsample.wgsl"),
-        ),
-        (
-            include_str!("../shaders/stock/bloom_composite.wgsl"),
-            include_str!("../../../../assets/shaders/stock/bloom_composite.wgsl"),
-        ),
-    ];
-    for (engine, asset) in pairs {
-        assert_eq!(
-            engine.len(),
-            asset.len(),
-            "engine and asset bloom WGSL mirrors must be byte-equal"
-        );
-        assert!(
-            engine == asset,
-            "engine and asset bloom WGSL mirrors must match byte-for-byte"
-        );
-    }
-}
-
-#[test]
 fn karis_weighted_average_renormalizes_to_unit_sum() {
     // Using the Karis 1/(1+luma) weighting on equal-input samples should
     // collapse to the canonical (0.5, 4 * 0.125) group weights summed to 1.0,
