@@ -7,13 +7,13 @@
 - **ordered steps:** (1) The owner agrees §1–§7 at the definition gate. (2) Step 0 lands or rejects each item in §8. (3) The first milestone plan cites §4 and §5 instead of copying them, and later plans do the same.
 - **done-when:** The owner has agreed this file; every §8 item has landed or been rejected; the first milestone plan cites it.
 
-Drafted 2026-10-03 on branch `0.40` (`941b63e`), from the plans and evidence logs of 0.34–0.40, the release procedure, and a planning session that shared the tree with the unattended 0.40 QA session (§6). Revised the same day for `D-097` and `D-098`: steps end in local commits, not a patch series.
+Drafted 2026-10-03 on branch `0.40` (`941b63e`), from the plans and evidence logs of 0.34–0.40, the release procedure, and a planning session that shared the tree with the unattended 0.40 QA session (§6). Revised the same day for `D-097` and `D-098`: steps end in local commits, not a patch series. Revised on `9cd5709` (0.40 merged): the index budget re-read, step 9's outcome, the release count (§1) and scratch-copy capture provenance (§2).
 
 ## Context digest
 
 - The road to 1.0 is about 45 candidates in three phases with six gates ([implementation plan](implementation-plan.md)). By default each candidate becomes one milestone plan and one `0.NN` release, as each Phase 4 milestone and each pass since did.
-- Practice this file keeps, from 0.34–0.40: a plan, not the chat, is the hand-off between sessions; the owner approves a plan's open questions, each with a stated default; steps run one per session, or in an unattended multi-step session with stop conditions (0.40 QA steps 3–14 ran that way, and step 9 was skipped on a `regressed` verdict with its files restored); the agent commits locally, once per plan or phase, and the owner pushes, tags and merges (`D-097`); every check is quoted in an evidence log; perf verdicts follow the profiling workflow; decisions go through the [tungsten-decision](../../../.claude/skills/tungsten-decision/SKILL.md) skill; one release pull request per milestone branch.
-- Limits that shape it, on 2026-10-03: the root `AGENTS.md` has 17 B of its 6,144 B budget left and `docs/LLM_INDEX.md` 599 B of 8,192 B (`just ctx`). The reference machine is the only GPU, display and perf host. Captures wait for the remote-desktop encoder to exit, and `D-095` invalidates a capture during which any tracked file changes. The disk filled during 0.40 (step 3 freed 34 GB of stale incremental caches).
+- Practice this file keeps, from 0.34–0.40: a plan, not the chat, is the hand-off between sessions; the owner approves a plan's open questions, each with a stated default; steps run one per session, or in an unattended multi-step session with stop conditions (0.40 QA steps 3–14 ran that way; step 9 was skipped on a `regressed` verdict with its files restored and landed in the close-out, steps 15–29); the agent commits locally, once per plan or phase, and the owner pushes, tags and merges (`D-097`); every check is quoted in an evidence log; perf verdicts follow the profiling workflow; decisions go through the [tungsten-decision](../../../.claude/skills/tungsten-decision/SKILL.md) skill; one release pull request per milestone branch.
+- Limits that shape it, on 2026-10-03: the root `AGENTS.md` has 17 B of its 6,144 B budget left and `docs/LLM_INDEX.md` 195 B of 8,192 B (`just ctx` at `9cd5709`; the index had 599 B before the 0.40 close-out added rows). The reference machine is the only GPU, display and perf host. Captures wait for the remote-desktop encoder to exit, and `D-095` invalidates a capture during which any tracked file changes. The disk filled during 0.40 (step 3 freed 34 GB of stale incremental caches).
 - Committing needs the owner's settings to allow `git add` and `git commit`; until they do, the agent hands over the commit command (`D-098`). A session stages explicit paths only, never another session's changes (§6).
 
 ## 1. Units of work
@@ -28,7 +28,7 @@ Drafted 2026-10-03 on branch `0.40` (`941b63e`), from the plans and evidence log
 | Spike | `perf-runs/<date>-<slug>/`: patch, scripts, captures and a README with the verdict | A spike session | The verdict is in a gate record |
 | Gate | A dated record in the implementation plan (§11 there) | A gate session with the owner | The owner signs the record |
 
-Defaults: one candidate, one milestone, one release. Two small candidates that touch different files may share a milestone (W9a with W7a), and a large one splits into milestones of its own (W1's ladder). A milestone takes its number when its plan is written. Spikes and gates take no number and release nothing.
+Defaults: one candidate, one milestone, one release, which makes the road about 45 releases from 0.41, each with the owner's command block and merge (§9). Two small candidates that touch different files may share a milestone (W11a with W7a), and a large one splits into milestones of its own (W1's ladder); whether Track A's small candidates batch into fewer releases is the definition gate's call (implementation plan §9, item 11). A milestone takes its number when its plan is written. Spikes and gates take no number and release nothing.
 
 ## 2. Session types
 
@@ -47,7 +47,7 @@ Defaults: one candidate, one milestone, one release. Two small candidates that t
 
 **Execution sessions** follow the [plan rules](../README.md#executing-a-plan), one step per session by default. A plan whose candidate is level A or B (§4) may run as an unattended multi-step session, committing once per phase: a failed check or a stop condition restores that step's files (plain `cp` from copies taken before the step, then `cmp`; `git show HEAD:<path>` for a committed file) and records the step as skipped; later steps that do not depend on it continue. State lives in the plan and the commits, so a session can compact with its focus on the remaining steps, or restart, without losing anything.
 
-**Spike sessions** work in a scratch copy of the tree, so the gate can still reverse the idea, and keep the patch, scripts, raw captures and a README with the verdict in `perf-runs/<date>-<slug>/`, as the 2026-10 GPU-pass and physics probes did.
+**Spike sessions** work in a scratch copy of the tree, so the gate can still reverse the idea, and keep the patch, scripts, raw captures and a README with the verdict in `perf-runs/<date>-<slug>/`, as the 2026-10 GPU-pass and physics probes did. A capture taken from a copy under `target/` records the enclosing repository's commit and dirty hash as its provenance (known issues), so the README names each capture's tree by hand.
 
 **QA passes** close Phase 5 and Phase 6 (proposed: implementation plan amendment 18), in the 0.40 shape: audit, findings, approval, steps, close-out compare.
 

@@ -4,7 +4,7 @@ Planning for Tungsten 1.0: what it means, which workstreams reach it, in what or
 
 ## Now
 
-- **Phase:** none started. Phase 5 starts after 0.40 releases; its QA plan finished on 2026-10-03 ([implementation plan](implementation-plan.md) §3).
+- **Phase:** none started. 0.40 released on 2026-10-03 (`v0.40.0`, squash-merged as `9cd5709`); Phase 5 starts after the definition gate and Step 0 ([implementation plan](implementation-plan.md) §3).
 - **Next:** the definition gate, on the agenda in [implementation plan](implementation-plan.md) §9.
 - **Last gate passed:** none.
 

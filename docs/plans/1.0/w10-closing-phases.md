@@ -7,13 +7,13 @@
 - **ordered steps:** Set at graduation. Candidates and their order: [implementation plan](implementation-plan.md) §5.
 - **done-when:** Set at graduation. Sketch: [criteria](criteria.md) §8.8, per phase.
 
-Skeleton. The scoping text stays in [criteria](criteria.md) §8.8 until this workstream graduates ([conventions](README.md#conventions)).
+Skeleton. The scoping text stays in [criteria](criteria.md) §8.8 until this workstream graduates ([conventions](README.md#conventions)). Revised 2026-10-03 at `9cd5709`: Q12's gate.
 
 ## Placement
 
 - **Proposed tier:** Must; C2 is gated by budget.
 - **Candidates:** C1 before the freeze; C2 after it; C3 on each release candidate (all Phase 7).
-- **Needs first:** The feature gate, so that the UI, kit and acceptance-game rows exist; the profiling workflow extended for worker threads.
+- **Needs first:** The feature gate, so that the UI, kit and acceptance-game rows exist, and Q12 answered there (implementation plan §7); the profiling workflow extended for worker threads.
 - **Feeds:** The freeze gate (C1's API fixes); the RC and 1.0 gates.
 - **Owner questions:** Q12.
 - **Decisions:** Per-row 1.0 budgets and C2's freeze-exception rule (extends `D-078`).

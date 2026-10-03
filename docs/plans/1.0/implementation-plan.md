@@ -4,7 +4,7 @@
 - **goal:** Turn [criteria.md](criteria.md) into an ordered, gated path to a 1.0 tag: three phases, six gates, candidates in dependency order with a card each for Phase 5, a register from candidate to milestone and release, and the point by which each owner question needs its answer. [workflow.md](workflow.md) says how each candidate runs as Claude Code sessions.
 - **non-goals:** Dates, time estimates, version numbers before 1.0, decision entries, implementation. Scoping, which criteria.md and the workstream files own. Reopening anything criteria.md records as answered by the owner.
 - **files to touch:** This folder only while it is a draft. Each candidate becomes its own `phaseN-milestone-NN-slug.md` plan here when it is next to start.
-- **ordered steps:** (1) The owner runs the definition gate on the agenda in §9: the questions, the amendments in §8, the candidate order and workflow.md; the accepted amendments go into criteria.md. (2) Once 0.40 has released, Step 0. (3) Phase 5: Tracks A and B, the frame-loop gate, Track C, then the Phase 5 QA pass. (4) Phase 6 to the feature gate, closing with its QA pass. (5) Phase 7: C1, the freeze gate, C2, the RC gate, C3, the 1.0 gate.
+- **ordered steps:** (1) The owner runs the definition gate on the agenda in §9: the questions, the amendments in §8, the candidate order and workflow.md; the accepted amendments go into criteria.md. (2) Step 0, now that 0.40 has released. (3) Phase 5: Tracks A and B, the frame-loop gate, Track C, then the Phase 5 QA pass. (4) Phase 6 to the feature gate, closing with its QA pass. (5) Phase 7: C1, the freeze gate, C2, the RC gate, C3, the 1.0 gate.
 - **done-when:** Planning: the owner has agreed the phase split, each gate's checklist and the candidate order; every Must workstream has at least one placed candidate; criteria.md §9 links here instead of holding an order of its own. Program: every gate has a signed record in §11 and 1.0 is tagged.
 
 Drafted 2026-10-03 at `afbc330`; revisions are listed at the end.
@@ -17,7 +17,7 @@ Drafted 2026-10-03 at `afbc330`; revisions are listed at the end.
 - Candidate IDs: `W11a`, `W11b` and so on per workstream. W1 keeps its ladder names (M0a … M6), W2 its options (R0 … R5) and W10 its phases (C1 … C3).
 - Gates have names, not numbers: G1–G3 already name physics and lighting proposals in [benchmarks.md](../../perf/benchmarks.md#open-proposals).
 - The agent commits a milestone's work locally, once per plan or phase, and the owner pushes, tags and merges (`D-097`, `D-098`). Milestones that touch performance follow the [profiling workflow](../../perf/profiling-workflow.md).
-- Phase 5 starts after 0.40 releases. The 0.40 QA plan finished on 2026-10-03 (archived at `docs/plans/archive/qa-cleanup-0.40.md`); its follow-ups feed W8, W11 and W12 (§3).
+- 0.40 released on 2026-10-03 (`v0.40.0`, squash-merged as `9cd5709`); the drafts' commits `afbc330`–`4ee92aa` are not ancestors of that commit, so later revisions cite `main` commits or tags. Its QA plan finished the same day (archived at `docs/plans/archive/qa-cleanup-0.40.md`); its follow-ups feed W8, W11, W12 and the Track B spikes (§3).
 - The longest chain is W1's ladder (§6). With one tree, milestones run one after another, so the order sets when risk is found, not when 1.0 lands.
 
 ## 1. Shape
@@ -38,8 +38,8 @@ Question numbers are criteria §10's; §7 lists the rest by the candidate that n
 | --- | --- | --- | --- |
 | Definition | Phase 5 | 1.0 definition chosen; [acceptance game](acceptance-game.md) spec with a feature map; tiers confirmed against that map; `wgpu`/`winit` and stability policy agreed for their decision entries (W4a), with the API snapshot tool if amendment 17 is accepted; the amendments in §8 settled; workflow.md agreed; W4 graduated, which seeds the break ledger. Agenda: §9 | Q1, Q11, Q24; Q8, Q9 and Q16, which §1 and C3 already assume; Q4, proposed here (§6) |
 | Frame loop | W15a, W3a, W3b, W2 R1; W1 M0a if Q4 is still open | R1 spike curve written; R4 go or no-go, with a latency measurement if go; one decision set for W3's fixed step and clock, W15's stages and plugins, W1 M3's routing stages and, if R4 goes ahead, its hand-off point; threading rule; `Send`/`Sync` policy; tuple-query spike verdict | Q4 if still open, Q5, Q6, Q7, Q13 |
-| Feature | Phase 7 | The acceptance game plays start to finish from a `tungsten package` archive, on the public API and the kit alone; every Must candidate landed or re-tiered with the owner; the kit's admission rule applied; the Phase 6 QA pass closed; the break ledger holds only what Phase 7 lands | Q3, Q10 |
-| Freeze | C2 | C1 baselines and budgets dated; break ledger empty; arity-named queries removed; `missing_docs` clean; API snapshot taken | Q2, Q12 |
+| Feature | Phase 7 | The acceptance game plays start to finish from a `tungsten package` archive, on the public API and the kit alone; every Must candidate landed or re-tiered with the owner; the kit's admission rule applied; the Phase 6 QA pass closed; the break ledger holds only what Phase 7 lands | Q3, Q10; Q12, since C1 opens Phase 7 (§7) |
+| Freeze | C2 | C1 baselines and budgets dated; break ledger empty; arity-named queries removed; `missing_docs` clean; API snapshot taken | Q2 |
 | RC | C3 | Every budget passes or has an accepted exception; release candidate tagged as a versioned prerelease, `v1.0.0-rc.N` with its own changelog section, which publishes without a pull request ([releases](../../releases.md#rehearsals-and-versioned-prereleases)) | — |
 | 1.0 | The tag | Every row of the [release checklist](release-checklist.md) passed, or accepted by the owner, in a dated QA record | — |
 
@@ -47,7 +47,7 @@ The glyph gate (W1's T1, T1b or T2, [w01](w01-ui-text-suite.md) §9) is W1's own
 
 ## 3. Phase 5: Foundations
 
-**Before Phase 5.** 0.40 releases first. Its QA plan left follow-ups in [known issues](../../known-issues.md); each already has a 1.0 home:
+**Before Phase 5.** 0.40 released on 2026-10-03. Its QA plan left follow-ups in [known issues](../../known-issues.md); each has a 1.0 home:
 
 | 0.40 follow-up | Goes to |
 | --- | --- |
@@ -57,12 +57,14 @@ The glyph gate (W1's T1, T1b or T2, [w01](w01-ui-text-suite.md) §9) is W1's own
 | `render.max_frame_latency = 0` passes `Config::load` and fails at renderer start | W8b |
 | Any `input.json` under a watched folder reloads as the action map | W12a, when each example gets its own folder; W11b moves bindings to the user folder |
 | `Renderer::new` seeds shader IDs in about 390 lines | W8b, with the shader ID allocator |
-| The platformer's test file runs to 2,372 lines | W14a, as its tests move onto the harness |
+| The platformer's test file runs to 2,366 lines (2,372 when the pass recorded it) | W14a, as its tests move onto the harness |
 | A per-frame `TUNGSTEN_PERF_LOG` lookup, tween channel lists cloned per frame, tile proxies rebuilt from a full-map scan | C1 rows or C2 candidates; W8b if a fix is small |
 | The stock shaders exist twice | W12a's shader ownership (amendment 14) |
 | `D-095`'s background-load scan covers `run`, `suite` and `--sweep` only | Track B, before any spike uses capacity probes |
+| `scripts/bench.py` run from a tree export under `target/` records the enclosing repository's commit and dirty hash as the capture's provenance | Track B: spikes capture from scratch copies, so each spike's README names its tree by hand (workflow §2) |
+| `cargo shear` (`just udeps`) reports the `#[path]`-included `src/tests/` modules as unlinked | The Phase 5 QA pass, with the `ignored-paths` entry known issues proposes |
 
-**Step 0, planning tooling.** `check_plans` in `scripts/check-repo.py` also reads `docs/plans/*/*.md`, skipping the archive, with a case in `scripts/test-check-repo.py`. It lands after the 0.40 QA plan, which edits both files. No milestone plan is written in this folder before it. Workflow §8 proposes three items beside it: headroom for `AGENTS.md` and the index, a milestone skill, and an API snapshot recipe.
+**Step 0, planning tooling.** `check_plans` in `scripts/check-repo.py` also reads `docs/plans/*/*.md`, skipping the archive, with a case in `scripts/test-check-repo.py`. The 0.40 QA plan, which edited both files, has landed (its step 11 added a citation check that reads this folder's files only as citation targets), so nothing blocks it. No milestone plan is written in this folder before it. Workflow §8 proposes three items beside it: headroom for `AGENTS.md` and the index, a milestone skill, and an API snapshot recipe.
 
 **Track A**, independent of the frame-loop gate, in this order after the definition gate unless the register says otherwise (§6 gives the reasons). Hard constraints: W14a before W1 M1; W2 R0 before the R1 spike; W11a and W9a before W12a; W1 M0a before M1.
 
@@ -73,7 +75,7 @@ The glyph gate (W1's T1, T1b or T2, [w01](w01-ui-text-suite.md) §9) is W1's own
 | W1 M0a | Text engine split, here only if the definition gate answers Q4 (§6); otherwise after the frame-loop gate | W1 M1 |
 | W11a | User folder, log file, panic hook, release symbols with the CI symbolization probe, no console on Windows; W7a's CPU-only Windows job beside it | W12a, W1 M5, W14b `package` |
 | W9a | Licence notices in archives, the embedded font's OFL notice included | W12a in a release, W14b `package` |
-| W12a | Self-containment, template skeleton, outside-copy check | W14b `new`, the acceptance game, every later template change (workflow §5) |
+| W12a | Self-containment, template skeleton, outside-copy check; the skeleton registers engine systems by hand until W15a (Track C) removes them; the getting-started guide starts here as W9b's first draft | W14b `new`, the acceptance game, every later template change and the guide (workflow §5) |
 | W1 M1 | Core UI model, its layout spike and `UiHarness` ([w01](w01-ui-text-suite.md) §11) | The glyph gate |
 | W8a | Capture-completion contract (a presented, skipped or failed render result); the engine-finding bugs: burst latch, tilemaps at `z_norm` 0 under `gpu_depth`, the lit-sprite material log, a once-per-ID warning for an unknown sprite | W1 M2 |
 | W1 M0b | Input and display groundwork from the UI ladder, which takes over W5's focus loss, modifiers and scale factor. First, winit 0.31 if it has left prerelease, so the bridge is rewritten once (criteria §7) | W1 M3, W5a |
@@ -100,7 +102,7 @@ Then the frame-loop gate.
 | 6 | W15c | Additive extracts, with tilemaps in the default |
 | 7 | Phase 5 QA pass | An audit of what Phase 5 changed, in the 0.40 shape, before Phase 6 builds on it (amendment 18) |
 
-W1's ladder interleaves with both tracks: M0a and M1 in Track A, the glyph gate once M1 has landed, M2 once the gate and W8a have, and M3 once M2 and W15a have.
+W1's ladder interleaves with both tracks: M0a and M1 in Track A, the glyph gate once M1 has landed, M2 once the gate, W8a and W2 R2 have (its overlay extends R2's split final pass), and M3 once M2 and W15a have.
 
 **Cards.** What each Phase 5 candidate costs to run, for ordering and for batching owner-present and unattended work. "Every CPU row" means the suite, or `--only` every row the code runs in ([done-when rules](../../perf/profiling-workflow.md#writing-done-when-checks)). Levels are workflow §4's. Cards for Phases 6 and 7 are written at the frame-loop gate, when Phase 5's shape is known.
 
@@ -117,7 +119,7 @@ W1's ladder interleaves with both tracks: M0a and M1 in Track A, the glyph gate 
 | W1 M0b | Core input types, `input_bridge.rs`, `app.rs` `window_event` | The UI input decision's groundwork; winit 0.31 if it has shipped | Real `KeyCode` variants | Smoke | An alt-tab on the reference machine | B |
 | W2 R2 | `renderer.rs`: scene and post recorded before the acquire | None, or an amendment to `D-087` | — | `gpu` and `integrated` judged on frame time and GPU engine time, since the cost moves between stages; visual on the direct and capture paths | — | B |
 | Track B | Scratch copies; `perf-runs/` | Inputs to the frame-loop decision set | — | Captures with the worker count recorded | Verdicts at the gate | S |
-| W15a | A schedule in core; `app.rs` drives it; every example's registration; `02_bench` from an empty plugin set | From the frame-loop gate | System registration; engine system names | Every CPU row, digests unchanged; smoke; visual; schedule snapshots | API review | C |
+| W15a | A schedule in core; `app.rs` drives it; W14a's harness steps it; every example's registration; `02_bench` from an empty plugin set | From the frame-loop gate | System registration; engine system names | Every CPU row, digests unchanged; smoke; visual; schedule snapshots | API review | C |
 | W3a | `core/time.rs`; every reader of `DeltaTime` | From the gate | `DeltaTime` deprecated, removed at the freeze | Every CPU row, digests unchanged at scale 1; smoke | — | B |
 | W15b | Queries and spawns in `core/ecs`; the command buffer | Tuple queries and bundles | Arity-named queries deprecated | `ecs` and `churn` not regressed, then every CPU row | API review | C |
 | W3b | The accumulator in `app.rs`; the physics stage; interpolation in the extract (the `D-018` seam) | From the gate; amends `D-088` and `D-094` | Step and interpolation settings | `just physics-release` hashes; every row, digests unchanged at 1/60 s; smoke; visual | — | B |
@@ -174,7 +176,7 @@ W1's ladder is the longest chain: M0a → M1 → glyph gate → M2 → M3 → M4
 - **Start M0b in Track A.** It is independent of M0a (w01 §11) and of the frame-loop gate.
 - **Run M1 in Track A.** The core UI model needs M0a's text API and W14a's harness, and nothing from the frame-loop gate, so the glyph gate can come as early as the frame-loop gate does.
 
-After that, M2 waits on W8a and the glyph gate, M3 on W15a, and M4 on W11b and, if Q8 says so, W1 BC. Each of those starts in an earlier track, so none should hold the ladder up.
+After that, M2 waits on W8a, W2 R2 and the glyph gate, M3 on W15a, and M4 on W11b and, if Q8 says so, W1 BC. Each of those starts in an earlier track, so none should hold the ladder up.
 
 **The queue.** One tree takes one committing session at a time (workflow §6), so milestones run one after another. The critical path then orders risk rather than setting a finish date: the glyph gate and the frame-loop gate are where a wrong guess costs most, and the queue reaches both early. Proposed Phase 5 queue, with owner-present work and capture work kept apart:
 
@@ -203,8 +205,8 @@ A second clone running W1's ladder beside the rest is the one place where parall
 | Q22 controller scope | W13c starts |
 | Q20 CLI tiers and dependencies | W14b starts |
 | Q3 platform tiers and a macOS build | Feature gate, since the release-workflow work falls in Phase 7 |
-| Q2 crates.io | Freeze gate: crate names and metadata freeze with the API. W12a's shader ownership depends on it too (amendment 14) |
-| Q12 budgets | C1 |
+| Q2 crates.io | Freeze gate: crate names and metadata freeze with the API. W12a does not wait for it: amendment 14's default leaves the sprite shaders where they are |
+| Q12 budgets | Feature gate, since C1 opens Phase 7 |
 
 ## 8. Amendments proposed to criteria.md
 
@@ -223,7 +225,7 @@ From reviews of criteria.md and the UI draft on 2026-10-03: 1–13 in the first 
 11. **The CLI needs its own package name.** The umbrella package is already `tungsten`. Proposed: `tungsten-cli` in `tools/cli/`, beside `tools/launcher/`, with `[[bin]] name = "tungsten"`. Cargo can report a doc output collision when a library and a binary share a name, so set `doc = false` on the binary before W4 gates rustdoc.
 12. **Size.** At about 25,000 tokens, criteria.md no longer fits in one read: on 2026-10-03 the Read tool cut it off at line 333. Graduation (folder README) shrinks it one workstream at a time. Also move the revision paragraph under the header into a dated list at the end, and move the answered questions (17, 18, 19, 23, and the paragraph above the list) into an "Answered" list, so that §10 holds only open ones. *The two moves were applied on 2026-10-03 with no change to their text; graduation remains.*
 13. **Phases.** Replace §9's five phase labels with the three in §1 above, or record why five are better.
-14. **Shader ownership depends on Q2.** §8.3 moves `sprite.wgsl` and `lit_sprite.wgsl` into `tungsten-render`, with copies in `assets/shaders/` for hot reload. A git dependency checks out the whole repository, so `include_str!` from `../../../assets/shaders/` already works for a game in its own repository (§2.2 says so); only a crates.io package (Q2) needs the files inside the crate. 0.40 went the other way: QA step 7 deleted the dead in-crate `sprite.wgsl`, and a QA follow-up proposes compiling in the asset copies of the stock shaders too. Make the move conditional on Q2, and settle the stock shaders' two copies in the same decision.
+14. **Shader ownership depends on Q2.** §8.3 moves `sprite.wgsl` and `lit_sprite.wgsl` into `tungsten-render`, with copies in `assets/shaders/` for hot reload. A git dependency checks out the whole repository, so `include_str!` from `../../../assets/shaders/` already works for a game in its own repository (§2.2 says so); only a crates.io package (Q2) needs the files inside the crate. 0.40 went the other way: QA step 7 deleted the dead in-crate `sprite.wgsl`, and a QA follow-up proposes compiling in the asset copies of the stock shaders too. Make the move conditional on Q2, and settle the stock shaders' two copies in the same decision. Proposed default: W12a leaves both shaders where they are, since it lands long before Q2 is due (§7); a yes on Q2 moves them in W9c as an internal change.
 15. **Q8 adds a milestone.** §4's proposed cut is M0–M6, and none of those steps holds sliders or checkboxes, which the settings screen in M4 needs. If Q8 says yes, add W1 BC before M4 (§4 above); if no, settings leave the acceptance game.
 16. **A template for agent-built games.** This engine is built in Claude Code sessions, and games made from the template will be too. `templates/basic` gains an `AGENTS.md` (and a `CLAUDE.md` that imports it) with a game repository's rules: the public API and the kit only, registry IDs not paths, actions not keys, systems by stage, a harness test per system, `tungsten check` before a commit, where the engine's documentation lives. The acceptance game starts from it, so its sessions test it, and C3 gains a check (RC-A9): a fresh session in a copy of the template adds a scripted feature using only the template, the guide and rustdoc. Amends §8.3's layout and §8.8's C3.
 17. **Choose the API snapshot tool at the definition gate.** §8.8 leaves it as a `D-015` question for C3, so new public surface is found all at once at the freeze. Chosen with W4a, a tracked snapshot can be updated by each milestone (workflow §5, §8), and its diff shows in each commit the owner reviews. The choice includes how the tool runs on the pinned stable toolchain (`D-069`).
@@ -240,15 +242,16 @@ The first gate session (workflow §2) takes these items in order. Defaults are p
 | 2 | Q1 acceptance game | One game as the test, or none | One game, specified in [acceptance-game.md](acceptance-game.md) | Its feature map cuts W5, W6 and W13 |
 | 3 | Q1 genre | The owner's pick | A small top-down action game: a few rooms, one enemy kind from a spawner, keys and doors, a boss room, and a save slot for progress. It gives the kit's top-down mover a user while the migrated example 01 gives the platformer controller one, so both meet W13's admission rule, and it exercises sensors, prefabs from Tiled object layers, health and damage, two audio buses and gamepad play | The pitch, screens, mechanics and feature map are written |
 | 4 | Q11 `wgpu` and `winit` | Hide them; an advanced tier; accept their majors | Hide them from the promise: a curated umbrella re-export in place of `pub use tungsten_render as render`, engine-owned input and format types, and the `Renderer` methods that take or return `wgpu` types behind a game-facing handle or a `doc(hidden)` tier outside the promise. No example imports either crate (criteria §7) | W4a's decision; every later candidate designs against it |
-| 5 | Q8 UI cut | Broader controls in or out; a text field in or out | Sliders, checkboxes and scroll containers in; text fields and IME out | W1 BC is placed (amendment 15) |
+| 5 | Q8 UI cut | Broader controls in or out; a text field in or out | Sliders and checkboxes in, as W1 BC; scroll containers are in M5 already; text fields and IME out | W1 BC is placed (amendment 15) |
 | 6 | Q9 gamepad | In or out | In: the game plays on a gamepad, and UI navigation needs only bindings | W5 is Must; its crate's Linux backend is checked for threads and `libudev` |
 | 7 | Q16 save slots | In, or settings only | In: the envelope and listing are small, and C3's playthrough uses a slot | W11c is Must |
 | 8 | Q24 kit stability | Inside the promise; a tier of its own | Inside the promise, with `#[non_exhaustive]` on kit settings structs. The umbrella re-exports the kit, so a semver track of its own would also need that re-export kept outside the promise | The freeze's scope |
 | 9 | Q4 multi-core scope | R1 and R2 only; R4 too | R4 to 1.x (§6), back only if C1 shows a game-frame row over budget that R4 would fix | M0a and M1 run in Track A |
 | 10 | Amendments 1–19 (§8) | Accept or reject each | Accept | Folded into criteria.md and the workstream files |
-| 11 | [workflow.md](workflow.md) and Step 0's items | Agree or revise | Agree | Plans cite it; Step 0 starts once 0.40 has released |
+| 11 | [workflow.md](workflow.md) and Step 0's items | Agree or revise; one release per candidate (about 45 from 0.41, workflow §1) or Track A's small candidates batched | Agree, one release per candidate | Plans cite it; Step 0 starts |
 | 12 | Graduation | Which workstreams graduate now | W4, which seeds the break ledger that W2 R0 and W8a write to, and W9, W11, W12 and W14, whose scope the gate settles. W2, W3 and W15 at the frame-loop gate. The rest as their first milestone nears | Those files get their candidates and done-when checks |
 | 13 | [Release checklist](release-checklist.md) | Agree or revise | Agree, with RC-A9 if amendment 16 is accepted | C3's list |
+| 14 | Acceptance game repository | A repository of its own on GitHub; a folder beside this checkout | A GitHub repository of its own, cloned beside this checkout on the reference machine with its target folder budgeted (workflow §6), with the engine as a git dependency on this repository's `v0.NN.0` tags | Workflow §7 and [acceptance game](acceptance-game.md) step 4 name it |
 
 ## 10. Register
 
@@ -256,7 +259,7 @@ One row per candidate, in plan order. A plan session fills in the milestone plan
 
 | Candidate | Milestone plan | Release | Status |
 | --- | --- | --- | --- |
-| Step 0 | — | — | Waits for 0.40 |
+| Step 0 | — | — | Waits for the definition gate (§9, item 11); 0.40 released 2026-10-03 |
 | W14a | — | — | Not started |
 | W2 R0 | — | — | Not started |
 | W1 M0a | — | — | Waits for Q4 |
@@ -291,3 +294,4 @@ None yet.
 - 2026-10-03 on `941b63e`: [workflow.md](workflow.md) added beside this plan; inputs from 0.40, Step 0's proposed items, Track A's order and constraints, W1 M1 and W2 R2 moved into Track A, the worker-thread capture rules in Track B, QA passes closing Phases 5 and 6, cards for Phase 5, W1 BC, versioned prereleases for release candidates, the queue (§6), the definition gate agenda (§9), the register (§10), gate records (§11) and amendments 14–19; amendment 12's two moves applied in criteria.md.
 - 2026-10-03 on `75a7360`: local commits replace the patch hand-off (`D-097`, `D-098`) in the context digest and §6.
 - 2026-10-03 on `4ee92aa`: the 0.40 QA plan finished; the context digest and §3 say so, and §3 drops step 9's row, which shipped in the close-out.
+- 2026-10-03, against the 0.40 tree (`9cd5709`, `v0.40.0` merged; HEAD was `1d9bf8c`, a renderer-only commit): reviewed. Q12 moves from the freeze gate to the feature gate, since C1 opens Phase 7 (§2, §7); W12a no longer waits for Q2 (§7, amendment 14's default); W1 M2 also waits for W2 R2 (§3, §6); W12a's row says the skeleton keeps hand-registered systems until W15a and starts W9b's guide (§3); §3's follow-up table gains the capture-provenance and `cargo shear` rows and the test file's current length; §9 gains the release count under item 11, the scroll-container note under item 5 and item 14, the acceptance game's repository; the register and digest record the release.
