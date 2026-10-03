@@ -42,9 +42,8 @@ pub(crate) const BALL_SPAWN_INTERVAL: f32 = 0.032;
 /// Golden-angle spawn jitter prevents coincident-circle degenerate normals.
 pub(crate) const BALL_SPAWN_JITTER: f32 = TILE / 16.0;
 /// Most live balls; spawning stops at the count. A presentation guard, not
-/// the slow-frame collapse fix (`D-094`): 12,000 awake balls cost the
-/// reference machine a 14.5 ms step, and a deeper pile looks crushed at any
-/// frame rate because a soft contact sags with its load.
+/// the slow-frame collapse fix; `D-094` records why 12,000. A deeper pile
+/// looks crushed at any frame rate because a soft contact sags with its load.
 pub(crate) const BALL_CAP: usize = 12_000;
 
 pub(crate) const BLACK_HOLE_RADIUS: f32 = 6.0 * TILE;

@@ -1,7 +1,8 @@
 //! M25 offscreen scene targets: color + optional depth + optional MSAA.
 //!
-//! `SceneColor` always matches the swapchain sRGB format so the default path
-//! can blit back onto the swapchain byte-identically to the 0.21 baseline.
+//! `SceneColor` always matches the swapchain sRGB format, so a capture
+//! frame's present blit copies it onto the swapchain byte-identically
+//! (`D-057`). Other frames write the swapchain directly (`D-087`).
 //! `SceneDepth` uses `Depth32Float` (portable) and is allocated only when
 //! `RenderConfig::depth_enabled` is true. `SceneColorMsaa` is allocated only
 //! when `sample_count > 1` and resolves into `SceneColor`.

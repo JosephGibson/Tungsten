@@ -338,9 +338,11 @@ impl Default for BloomParams {
 }
 
 /// Closed enum of the 18 stock post-processing passes shipped with M26 + M28.
-/// Adding a new effect is a four-point change (variant + pipeline + stock
-/// WGSL + roster table in the milestone plan). See `D-054` for the closed-enum
-/// reasoning that also applies here.
+/// Adding a new effect touches the variant and `kind_name` here; the
+/// `STOCK_SHADERS` row, `stock_index` arm and uniform packing in
+/// `tungsten-render`'s `post` module; and the stock WGSL with its
+/// `assets/shaders/stock/` mirror. See `D-054` for the closed-enum reasoning
+/// that also applies here.
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "kind", content = "params", rename_all = "snake_case")]
 pub enum PostPass {

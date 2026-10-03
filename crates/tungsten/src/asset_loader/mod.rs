@@ -129,7 +129,7 @@ pub fn load_tilemaps(manifest: &ResolvedManifest, world: &mut World) -> anyhow::
 /// Upload is byte-equal short-circuited by `Renderer::upload_shader`: when
 /// the on-disk WGSL matches the compile-time default already seeded at
 /// `Renderer::new`, no pipeline rebuild happens. This keeps the default
-/// config byte-identical to the 0.21 baseline and avoids a first-frame stall.
+/// config on the seeded pipelines and avoids a first-frame stall.
 pub fn load_shaders(
     manifest: &ResolvedManifest,
     world: &mut World,
