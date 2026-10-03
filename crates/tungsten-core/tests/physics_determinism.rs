@@ -1,4 +1,4 @@
-//! Step-6 determinism gate (docs/plans/physics-scale-and-ccd.md, D-067):
+//! Determinism gate (D-067):
 //! `physics_step` must produce bit-identical world state across full runs on
 //! identical inputs. The step is serial end to end (D-067 dropped the
 //! parallel solver), so this pins the property future work must preserve:

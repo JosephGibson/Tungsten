@@ -73,7 +73,8 @@ impl Entities {
         }
     }
 
-    /// Free live entity; D-022 double-free panics.
+    /// Free a live entity. Callers check liveness first (`despawn` panics on a
+    /// dead handle, `D-022`); the stale-handle check here is debug-only.
     pub fn free(&mut self, entity: Entity) {
         let meta = &mut self.meta[entity.index as usize];
         debug_assert_eq!(

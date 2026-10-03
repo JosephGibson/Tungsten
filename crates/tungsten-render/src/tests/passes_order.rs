@@ -194,7 +194,7 @@ fn post_stack_seventeen_ends_on_ping_pattern() {
 
 #[test]
 fn post_aa_off_matches_m26_baseline_across_matrix() {
-    // Step-9 invariant: with `post_aa = Off`, the blit pass list must match
+    // `D-059` invariant: with `post_aa = Off`, the blit pass list must match
     // the M26 baseline byte-for-byte across the msaa x depth_sort x
     // stack-length matrix.
     for msaa in [1u32, 4] {

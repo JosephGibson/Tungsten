@@ -164,7 +164,7 @@ pub struct SpriteBatch {
     /// texture bundle (group 1) and `LightingResources` (group 2) for this
     /// batch and runs the `LitSpritePipeline` instead of the built-in /
     /// material pipelines. `lit` wins over `material_id` (lit + material is
-    /// out-of-scope in M29; see plan non-goals).
+    /// out of scope in M29, `D-061`).
     pub lit: bool,
 }
 

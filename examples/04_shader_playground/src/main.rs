@@ -1106,8 +1106,8 @@ fn effect_label(i: usize) -> &'static str {
     ][i]
 }
 
-/// 17-entry roster of constructors the cycle walks through. Order matches the
-/// stock-effect roster in the M26 plan so `N` moves top-to-bottom of the table.
+/// 17-entry roster of constructors the cycle walks through, in the order of
+/// the M26 stock-effect roster (`D-058`), so `N` moves top to bottom.
 ///
 /// Transition-style effects (`Fade`, `WipeRadial`, `Dissolve`) default to
 /// `progress = 0` on the engine side (the natural starting point for a

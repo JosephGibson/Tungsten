@@ -789,10 +789,10 @@ fn pile_of_balls_does_not_escape_bottom_right_corner() {
 
 #[test]
 fn settled_bodies_calm_below_jitter_floor() {
-    // Step 2 (D-063): warm-started accumulated impulses + soft bias + the
-    // inelastic restitution threshold must collapse the old solver's jitter
-    // floor (~97 px/s at pile scale) to near-zero rest speeds — the
-    // prerequisite for step 4's sleep criterion.
+    // D-063: warm-started accumulated impulses + soft bias + the inelastic
+    // restitution threshold must collapse the old solver's jitter floor
+    // (~97 px/s at pile scale) to near-zero rest speeds — the prerequisite
+    // for the sleep criterion (D-065).
     let mut world = seed_world();
     if let Some(cfg) = world.get_resource_mut::<PhysicsConfig>() {
         cfg.gravity = Vec2::new(0.0, 900.0);

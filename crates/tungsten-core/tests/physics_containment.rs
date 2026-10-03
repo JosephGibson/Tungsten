@@ -1,4 +1,4 @@
-//! Step-2 containment harness (docs/plans/physics-scale-and-ccd.md): a dense
+//! Containment harness (D-063): a dense
 //! 3k pile inside 80 px-thick static walls must never leak a body. Under the
 //! pre-D-063 solver, Gauss-Seidel in-place MTV corrections shoved bodies past
 //! the floor centerline within ~400 steps and the MTV ejected them out the

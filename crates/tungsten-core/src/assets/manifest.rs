@@ -224,7 +224,7 @@ pub struct ResolvedMaterial {
     /// hot-reload routing to locate the source manifest after an edit.
     pub source_manifest: PathBuf,
     /// Name of the shader entry this material targets; resolved to a
-    /// `ShaderAssetId` by `asset_loader::material::load_materials`.
+    /// `ShaderAssetId` by `tungsten::asset_loader::load_materials`.
     pub shader: String,
     pub uniform_defaults: MaterialUniformDefaults,
 }

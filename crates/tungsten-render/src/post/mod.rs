@@ -2,8 +2,7 @@
 //!
 //! Holds one pipeline per stock effect, allocated once at `Renderer::new`.
 //! `record` walks the `PostStack` and dispatches each pass against the
-//! ping-pong ladder described in the M26 plan's "Scene → Post → Present
-//! Target Flow" table.
+//! ping-pong ladder of `PostStackRenderer::plan_targets` (`D-058`).
 
 use tungsten_core::assets::ShaderAssetId;
 use tungsten_core::post::PostPass;

@@ -67,11 +67,11 @@
 //! islands emit no `CollisionEvent`s; waking resumes emission.
 //!
 //! The whole step is serial and deterministic by design (D-067): a
-//! color-parallel contact solver was built and measured for step 6 of
-//! `docs/plans/physics-scale-and-ccd.md` and dropped — at 25k awake bodies
-//! the contact-solve passes are ~2% of the frame (the cost is pair query +
-//! narrow phase + contact build), so threading the solver cannot move the
-//! number and the coloring/sort machinery alone cost the serial path ~18%.
+//! color-parallel contact solver was built, measured and dropped — at 25k
+//! awake bodies the contact-solve passes are ~2% of the frame (the cost is
+//! pair query + narrow phase + contact build), so threading the solver cannot
+//! move the number and the coloring/sort machinery alone cost the serial path
+//! ~18%.
 
 use super::PhysicsConfig;
 use super::broadphase::{ProxyId, SpatialGrid};
@@ -2062,7 +2062,8 @@ fn speculative_pass(
             continue;
         }
         let travel_sq = (proxy.center - proxy.prev_center).length_squared();
-        // Same threshold as substep picker, squared.
+        // Travel beyond the smallest half-extent can skip a thin wall
+        // (`D-064`); compared squared.
         if travel_sq <= min_extent * min_extent {
             continue;
         }
