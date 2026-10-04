@@ -6,6 +6,19 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.41.0] - 2026-10-03
+
+Summary: the 1.0 definition gate (`D-102`–`D-104`, recorded in `docs/plans/1.0/implementation-plan.md` §11, awaiting the owner's sign-off), a review of the 1.0 drafts in `docs/plans/1.0/` against the 0.40 tree, and an SMAA fix. No dependency, asset or manifest change.
+
+### Changed
+
+- **1.0 definition gate** (`D-102`, `D-103`, `D-104`): 1.0 means definitions A and B of `docs/plans/1.0/criteria.md` §1, a complete engine for making games and a stable library, tested by one acceptance game, a top-down survivors-like auto-shooter in its own GitHub repository on this repository's git tags, using the public API and the kit only (`D-102`). Sliders and checkboxes (W1 BC), gamepad play and save slots are in; text fields, IME and the pipelined render thread (R4) move to `docs/plans/1.0/backlog-1.x.md`. From 1.0, semver covers the `tungsten` crate's API with the kit re-export, the game file formats and the CLI; direct core/render/kit dependencies and `wgpu`/`winit` types are outside, MSRV rises only in a 1.x minor and deprecated items stay until 2.0 (`D-103`, amends `D-069`). `cargo-public-api` will snapshot each library crate's public surface per milestone (`D-104`). Criteria questions Q1, Q4, Q8, Q9, Q11, Q16 and Q24 are answered; the implementation plan, workflow and release checklist move from draft to in progress; `acceptance-game.md` gains the genre, a proposed pitch, screens and mechanics. Decisions and plans only: no code change.
+- **1.0 drafts reviewed against the 0.40 tree** (`docs/plans/1.0/`): Q12 moves to the feature gate, W12a no longer waits for Q2, W1 M2 also waits for W2 R2, the follow-up table gains capture provenance and `cargo shear`, the definition gate agenda gains the release count and the acceptance game's repository, `validate_wgsl_source` leaves criteria §7, the release checklist gains RC-A10 (display and present modes), and the register records the 0.40 release. Plans only.
+
+### Fixed
+
+- **SMAA washed out the frame** (`crates/tungsten-render/src/renderer.rs`): the neighborhood-blending pass, which writes the sRGB swapchain, sampled the non-sRGB view of its source and so encoded the frame to sRGB twice. It now samples the source's sRGB view, decoded to linear on read; edge detection keeps the non-sRGB view.
+
 ## [0.40.0] - 2026-10-03
 
 Summary: the 0.40 QA and cleanup pass (plan archived at `docs/plans/archive/qa-cleanup-0.40.md`) and the 1.0 planning drafts in `docs/plans/1.0/`. The pass fixes eight bugs (B1–B8, `D-099`–`D-101`), removes dead API, unused dependencies, a duplicate shader and probe tests, splits `physics/step.rs` and `tungsten::asset_loader` into modules, builds `tungsten-core` at opt-level 1 in dev (`D-096`) and guards perf captures against background load (`D-095`). Agents now commit plan work locally (`D-097`, `D-098`). Both physics hashes, every benchmark digest and `gpu-visual.png` are unchanged.
