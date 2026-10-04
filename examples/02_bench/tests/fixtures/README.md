@@ -61,12 +61,12 @@ the agreed fallback (`pixels_above_tolerance < 16`).
 
 ## Reference machine
 
-- OS: Arch Linux, kernel 7.2.7-arch1-1, X11 session
+- OS: Arch Linux, kernel 7.2.8-arch1-2, X11 session
 - GPU: AMD Radeon 660M (integrated, Ryzen 5 6600H)
-- Driver: Mesa 26.2.3 RADV (`RADV REMBRANDT`), Vulkan API 1.4.354
+- Driver: Mesa 26.2.4 RADV (`RADV REMBRANDT`), Vulkan API 1.4.354
 - wgpu backend: Vulkan (`WGPU_BACKEND=vulkan`), wgpu 30.0.1
 - Toolchain: rustc 1.98.1, `dev` profile
-- Date: 2026-09-30
-- Commit: `d85a3dc` plus the benchmark suite v2 changes of `D-078`
-- SHA-256: `0521a2a0c32c9774c9f4f26926eb2f85f3349cc1bedbb86dc4ea0a58c377d42b`
-- Accepted after two consecutive `just visual` passes (2026-09-30, 16:51:19Z and 16:51:20Z)
+- Date: 2026-10-04
+- Commit: `6a61cc2` plus M34 (`D-116`): text draws with the packaged JetBrains Mono 2.211. The previous fixture (`0521a2a0…`) drew the HUD with JetBrains Mono 2.304 installed on this machine, which shadowed the packaged face while system fonts loaded; only the two HUD lines differ (2155 pixels).
+- SHA-256: `969bdf53653edb27761701085236b0b36399ceb782c0ee4427e812d11c453f06`
+- Accepted after two consecutive `just visual` passes (2026-10-04, 22:58:08Z and 22:58:15Z)

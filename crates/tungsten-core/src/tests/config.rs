@@ -412,6 +412,15 @@ fn missing_file_returns_defaults() {
 }
 
 #[test]
+fn system_fonts_default_off_and_parse_on() {
+    assert!(!RenderConfig::default().system_fonts);
+    let parsed: RenderConfig = serde_json::from_str("{}").unwrap();
+    assert!(!parsed.system_fonts);
+    let parsed: RenderConfig = serde_json::from_str(r#"{ "system_fonts": true }"#).unwrap();
+    assert!(parsed.system_fonts);
+}
+
+#[test]
 fn bloom_max_mips_default_is_six() {
     let parsed: RenderConfig = serde_json::from_str("{}").unwrap();
     assert_eq!(parsed.bloom_max_mips, 6);

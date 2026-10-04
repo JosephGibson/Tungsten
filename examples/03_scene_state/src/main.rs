@@ -256,6 +256,7 @@ fn menu_text(world: &World) -> Vec<TextSection> {
             color: [240, 244, 255, 255],
             position: [430.0, 150.0],
             bounds: None,
+            ..Default::default()
         },
         TextSection {
             content: "Scene / State System · Milestone 20".into(),
@@ -265,6 +266,7 @@ fn menu_text(world: &World) -> Vec<TextSection> {
             color: [180, 210, 255, 240],
             position: [430.0, 260.0],
             bounds: None,
+            ..Default::default()
         },
         TextSection {
             content: "Press Enter to launch Gameplay".into(),
@@ -274,6 +276,7 @@ fn menu_text(world: &World) -> Vec<TextSection> {
             color: [255, 255, 255, prompt_alpha],
             position: [430.0, 520.0],
             bounds: None,
+            ..Default::default()
         },
         TextSection {
             content: "F4 toggles HUD   ·   Esc exits".into(),
@@ -283,6 +286,7 @@ fn menu_text(world: &World) -> Vec<TextSection> {
             color: [160, 170, 200, 200],
             position: [490.0, 568.0],
             bounds: None,
+            ..Default::default()
         },
     ]
 }
@@ -299,6 +303,7 @@ fn gameplay_text(world: &World) -> Vec<TextSection> {
             color: [230, 240, 255, 240],
             position: [16.0, 14.0],
             bounds: None,
+            ..Default::default()
         },
         TextSection {
             content: format!("t = {elapsed:6.2}s   ·   P pauses   ·   Backspace returns to menu"),
@@ -308,6 +313,7 @@ fn gameplay_text(world: &World) -> Vec<TextSection> {
             color: [180, 200, 230, 220],
             position: [16.0, 44.0],
             bounds: None,
+            ..Default::default()
         },
     ]
 }
@@ -322,6 +328,7 @@ fn pause_text(_world: &World) -> Vec<TextSection> {
             color: [255, 255, 255, 255],
             position: [450.0, 308.0],
             bounds: None,
+            ..Default::default()
         },
         TextSection {
             content: "Press P to resume   ·   Backspace returns to menu".into(),
@@ -331,6 +338,7 @@ fn pause_text(_world: &World) -> Vec<TextSection> {
             color: [220, 225, 240, 240],
             position: [370.0, 430.0],
             bounds: None,
+            ..Default::default()
         },
     ]
 }

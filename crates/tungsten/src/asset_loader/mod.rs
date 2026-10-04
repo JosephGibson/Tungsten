@@ -46,7 +46,8 @@ pub fn load_animations(manifest: &ResolvedManifest, world: &mut World) -> anyhow
     Ok(())
 }
 
-/// Load fonts into renderer and path registry.
+/// Load fonts into renderer and path registry, in sorted ID order, then set
+/// the font families and the fallback chain (`D-115`, `D-116`).
 pub fn load_fonts(
     manifest: &ResolvedManifest,
     world: &mut World,
@@ -54,7 +55,8 @@ pub fn load_fonts(
 ) -> anyhow::Result<()> {
     let mut font_registry = FontRegistry::new();
 
-    for (id, font_entry) in &manifest.fonts {
+    for id in font_load_order(manifest) {
+        let font_entry = &manifest.fonts[id];
         let data = std::fs::read(&font_entry.path).map_err(|e| {
             anyhow::anyhow!(
                 "Failed to read font '{}' at '{}': {}",
@@ -72,9 +74,18 @@ pub fn load_fonts(
         renderer.load_font(id, data);
         font_registry.register(id.clone(), font_entry.path.clone());
     }
+    renderer.set_font_families(&manifest.font_families, &manifest.font_fallback);
 
     world.insert_resource(font_registry);
     Ok(())
+}
+
+/// Font IDs in the order they load: sorted, so fontdb IDs, and with them the
+/// fallback's ties, repeat from a fresh start (`D-116`).
+pub(crate) fn font_load_order(manifest: &ResolvedManifest) -> Vec<&String> {
+    let mut ids: Vec<&String> = manifest.fonts.keys().collect();
+    ids.sort();
+    ids
 }
 
 /// Decode sounds into `SoundRegistry`.

@@ -240,6 +240,10 @@ pub struct RenderConfig {
     pub post_aa: PostAaMode,
     #[serde(default = "default_bloom_max_mips")]
     pub bloom_max_mips: u32,
+    /// Let text fall back to the system's fonts after the manifest's
+    /// (`D-116`). Off by default: text draws only with packaged faces.
+    #[serde(default)]
+    pub system_fonts: bool,
 }
 
 impl Default for RenderConfig {
@@ -253,6 +257,7 @@ impl Default for RenderConfig {
             depth_sort: DepthSortMode::default(),
             post_aa: PostAaMode::default(),
             bloom_max_mips: default_bloom_max_mips(),
+            system_fonts: false,
         }
     }
 }

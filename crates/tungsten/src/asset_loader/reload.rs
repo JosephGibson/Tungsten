@@ -389,7 +389,8 @@ pub fn reload_manifest(
     }
 
     {
-        for (id, entry) in &new_manifest.fonts {
+        for id in super::font_load_order(&new_manifest) {
+            let entry = &new_manifest.fonts[id];
             let already_loaded = world
                 .get_resource::<FontRegistry>()
                 .is_some_and(|fr| fr.contains_id(id));
@@ -410,6 +411,8 @@ pub fn reload_manifest(
                 }
             }
         }
+        // A new epoch only when the families or the chain changed.
+        renderer.set_font_families(&new_manifest.font_families, &new_manifest.font_fallback);
     }
 
     // M31 particle meshes: register and upload new ones, re-upload changed

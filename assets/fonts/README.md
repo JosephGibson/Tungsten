@@ -38,6 +38,17 @@ The shared [manifest](../manifest.json) currently loads these static faces:
 
 Use those IDs in `TextSection.font_id`; other inventory files are not loaded automatically. Add a unique font entry to the appropriate manifest before using another face. Complete family directories, including unused weights and licenses, are permitted asset-coverage exceptions.
 
+## Families and the fallback chain
+
+The shared manifest groups the faces into families (`font_families`, `D-115`) and orders the families into the fallback chain (`font_fallback`):
+
+| Family ID | Faces | Chain position |
+| --- | --- | --- |
+| `sans` | `sans` (400), `sans_bold` (700) | 1 |
+| `mono` | `mono` (400) | 2 |
+
+A text style names a family and a weight; the family resolves the weight to one of its faces. A glyph that the style's family lacks is taken from the chain's families in order. Add a face to a family by listing its `fonts` ID under `faces`.
+
 The inventory includes upright/italic variable masters and static Regular (400), Medium (500), SemiBold (600) and Bold (700) faces. Inter and Source Serif 4 static optical size was pinned to 14 during authoring. Tungsten's current text API chooses the stored face's family, weight and style; it exposes no arbitrary variation-axis controls.
 
 ## Sources

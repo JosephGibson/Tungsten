@@ -161,6 +161,7 @@ fn draw_holds_what_the_frame_would_draw() {
             color: [255; 4],
             position: [10.0, 20.0],
             bounds: None,
+            ..Default::default()
         }]
     });
 

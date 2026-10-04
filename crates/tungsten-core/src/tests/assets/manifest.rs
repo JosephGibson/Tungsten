@@ -507,6 +507,117 @@ fn duplicate_particle_mesh_id_across_manifests_is_fatal() {
     assert!(matches!(err, ManifestError::DuplicateId { id } if id == "tri"));
 }
 
+/// A manifest in a fresh directory declaring `faces` as fonts, with `rest`
+/// appended to its top-level object.
+fn font_manifest(faces: &[&str], rest: &str) -> PathBuf {
+    let tmp = tempdir();
+    let fonts: Vec<String> = faces
+        .iter()
+        .map(|face| {
+            write_file(&tmp, &format!("{face}.ttf"));
+            format!(r#""{face}": {{"path": "{face}.ttf"}}"#)
+        })
+        .collect();
+    let separator = if rest.is_empty() { "" } else { ", " };
+    write_manifest(
+        &tmp,
+        &format!(r#"{{"fonts": {{{}}}{separator}{rest}}}"#, fonts.join(", ")),
+    )
+}
+
+#[test]
+fn font_families_and_chain_load() {
+    let path = font_manifest(
+        &["sans", "sans_bold", "mono"],
+        r#""font_families": {"sans": {"faces": ["sans", "sans_bold"]}, "mono": {"faces": ["mono"]}},
+           "font_fallback": ["sans", "mono"]"#,
+    );
+    let m = ResolvedManifest::load(&path).unwrap();
+    assert_eq!(
+        m.font_families["sans"],
+        ResolvedFontFamily::new(vec!["sans".into(), "sans_bold".into()])
+    );
+    assert_eq!(m.font_fallback, ["sans", "mono"]);
+}
+
+#[test]
+fn font_family_with_missing_face_is_error() {
+    let path = font_manifest(
+        &["sans"],
+        r#""font_families": {"sans": {"faces": ["sans", "sans_bold"]}, "a_first": {"faces": ["zz"]}}"#,
+    );
+    let err = ResolvedManifest::load(&path).unwrap_err();
+    assert!(
+        matches!(&err, ManifestError::FontFamilyFaceMissing { family, face } if family == "a_first" && face == "zz"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn unknown_fallback_family_is_error() {
+    let path = font_manifest(
+        &["sans"],
+        r#""font_families": {"sans": {"faces": ["sans"]}}, "font_fallback": ["sans", "serif", "mono"]"#,
+    );
+    let err = ResolvedManifest::load(&path).unwrap_err();
+    assert!(
+        matches!(&err, ManifestError::UnknownFallbackFamily { family } if family == "mono"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn duplicate_font_family_across_roots_is_fatal() {
+    let a = font_manifest(&["a"], r#""font_families": {"sans": {"faces": ["a"]}}"#);
+    let b = font_manifest(&["b"], r#""font_families": {"sans": {"faces": ["b"]}}"#);
+    let err = ResolvedManifest::load_and_merge_many(&[a, b]).unwrap_err();
+    assert!(matches!(err, ManifestError::DuplicateId { id } if id == "sans"));
+}
+
+#[test]
+fn font_family_faces_may_come_from_another_root() {
+    // The family's root loads first; its faces arrive with the second root.
+    let families = write_manifest(
+        &tempdir(),
+        r#"{"font_families": {"sans": {"faces": ["sans", "sans_bold"]}}, "font_fallback": ["sans"]}"#,
+    );
+    let faces = font_manifest(&["sans", "sans_bold"], "");
+    let merged = ResolvedManifest::load_and_merge_many(&[families.clone(), faces]).unwrap();
+    assert_eq!(merged.font_families["sans"].faces, ["sans", "sans_bold"]);
+    // Alone, the family's root names faces nobody declares.
+    let err = ResolvedManifest::load_and_merge_many(&[families]).unwrap_err();
+    assert!(matches!(err, ManifestError::FontFamilyFaceMissing { .. }));
+}
+
+#[test]
+fn fallback_chains_concatenate_in_root_order() {
+    let a = font_manifest(
+        &["a"],
+        r#""font_families": {"a": {"faces": ["a"]}}, "font_fallback": ["a"]"#,
+    );
+    let b = font_manifest(
+        &["b"],
+        r#""font_families": {"b": {"faces": ["b"]}}, "font_fallback": ["b", "a"]"#,
+    );
+    let merged = ResolvedManifest::load_and_merge_many(&[a.clone(), b.clone()]).unwrap();
+    assert_eq!(merged.font_fallback, ["a", "b"]);
+    let merged = ResolvedManifest::load_and_merge_many(&[b, a]).unwrap();
+    assert_eq!(merged.font_fallback, ["b", "a"]);
+}
+
+#[test]
+fn merge_checks_font_family_faces() {
+    let mut graph = ResolvedManifest::default();
+    let mut other = ResolvedManifest::default();
+    other
+        .font_families
+        .insert("sans".into(), ResolvedFontFamily::new(vec!["sans".into()]));
+    let err = graph.merge(other).unwrap_err();
+    assert!(
+        matches!(err, ManifestError::FontFamilyFaceMissing { family, face } if family == "sans" && face == "sans")
+    );
+}
+
 #[test]
 fn default_filter_is_nearest() {
     let tmp = tempdir();

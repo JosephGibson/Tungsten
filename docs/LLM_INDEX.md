@@ -50,7 +50,8 @@ Read `crates/tungsten-render/AGENTS.md` before editing the render crate.
 | --- | --- |
 | Renderer, pools, draw, GPU timings, surface acquire | `render/lib.rs`, `render/renderer.rs`, `render/timing.rs`, `render/surface_acquire.rs` |
 | Pass order, direct present path (`D-087`) | `render/passes/order.rs`, `render/renderer.rs`, `render/screenshot.rs` |
-| Text pipeline, layout cache (`D-085`) | `render/text.rs` |
+| Text engine and GPU halves, layout cache, retained nodes, font families and fallback (`D-085`, `D-115`–`D-117`) | `render/text.rs`, `render/text/engine.rs`, `render/text/nodes.rs`, `render/text/fonts.rs`, `render/text/gpu.rs`, `tungsten/asset_loader/mod.rs` |
+| Neutral text types, `TextMeasure` (`D-117`) | `core/text.rs` |
 | Render components, default sprite extract (`D-042`, `D-086`, `D-113`, `D-114`) | `core/components.rs`, `tungsten/sprite_extract.rs` |
 | Materials, post-stack (`D-058`) | `core/assets/material.rs`, `core/post.rs`, `render/material.rs`, `render/post/`, `render/shaders/stock/` |
 | SMAA (`D-059`) | `tungsten/post_aa.rs`, `render/post/smaa.rs`, `render/post/smaa_luts.rs`, `render/targets.rs`, `render/passes/order.rs` |

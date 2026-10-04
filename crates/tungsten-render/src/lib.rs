@@ -43,4 +43,4 @@ pub use screenshot::ScreenshotError;
 pub use shader_hot_reload::{ShaderError, ShaderModuleCache, validate_wgsl_source};
 pub use sprite::{SpriteBatch, SpriteInstance, SpritePipeline};
 pub use targets::{RenderTargetPool, SceneTarget};
-pub use text::{TextPipeline, TextSection};
+pub use text::{TextEngine, TextPipeline, TextSection};

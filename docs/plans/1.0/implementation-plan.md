@@ -269,8 +269,8 @@ One row per candidate, or per pair that shares a plan and a release (§6, `D-108
 | --- | --- | --- | --- |
 | Step 0 | — | 0.42 | Released 2026-10-04 in `v0.42.0`, squash-merged as `28abcce` (0a–0d; `D-106`, `D-107`) |
 | W14a | [M32](../archive/1.0/phase5-milestone-32-headless-harness.md) | 0.43 | Released 2026-10-04 in `v0.43.0`, squash-merged as `9f10746` (`D-110`); run 2026-10-04: steps 2–6 done, step 1 skipped (its A/A failed); a release session cut it |
-| W2 R0 | [M33](../archive/1.0/phase5-milestone-33-interned-asset-ids.md) | 0.45 | Cut 2026-10-04 as `v0.45.0`, awaiting the owner's tag and merge (`D-113`, `D-114`); run 2026-10-04: steps 1–5 done, with the owner's acceptance of step 1's A/A reading, `particles` `unattributed` p50 and culling's `gpu` `extract` cost, and one test file outside the plan's list (`examples/01_platformer/src/tests/camera.rs`) |
-| W1 M0a | — | — | Not started; Q4 answered at the definition gate |
+| W2 R0 | [M33](../archive/1.0/phase5-milestone-33-interned-asset-ids.md) | 0.45 | Released 2026-10-04 (`v0.45.0`), squash-merged as `6a61cc2` (`D-113`, `D-114`); run 2026-10-04: steps 1–5 done, with the owner's acceptance of step 1's A/A reading, `particles` `unattributed` p50 and culling's `gpu` `extract` cost, and one test file outside the plan's list (`examples/01_platformer/src/tests/camera.rs`) |
+| W1 M0a | [M34](../archive/1.0/phase5-milestone-34-text-engine-split.md) | 0.46 | Cut 2026-10-04 as `v0.46.0`, awaiting the owner's tag and merge (`D-115`–`D-117`); run 2026-10-04: steps 1–10 done, with the owner's answers to Q11 (`unicode-script` as a direct dependency, `D-116`) and Q12 (`gpu-visual.png` regenerated: the old fixture showed the machine's installed JetBrains Mono), and one file outside step 7's list (`text/gpu.rs`) |
 | W11a with W7a | — | — | Not started |
 | W9a with W12a | — | — | Not started; paired 2026-10-04 (`D-108`), W9a's steps first |
 | W1 M1 | — | — | Not started |
@@ -347,3 +347,5 @@ Sign-off: Signed 2026-10-03.
 - 2026-10-04 on `28abcce`, uncommitted: W14a's milestone plan written as [M32](../archive/1.0/phase5-milestone-32-headless-harness.md), critiqued and approved with its defaults; the register's W14a row points at it.
 - 2026-10-04 on `28abcce`, uncommitted: M32's run did steps 2–6 and stopped before the release under its §7, since step 1's A/A check failed; the register's W14a row says so.
 - 2026-10-04 on `28abcce`, uncommitted: the 0.43 release session closed M32 (`status: done`, archived) and cut `v0.43.0`; the register's W14a row says so.
+- 2026-10-04 on `6a61cc2`, uncommitted: 0.45 released (squash-merged as `6a61cc2`); W1 M0a's milestone plan written as [M34](../archive/1.0/phase5-milestone-34-text-engine-split.md) and critiqued in two rounds, then approved with its defaults; the register's W2 R0 and W1 M0a rows follow.
+- 2026-10-04 on `6a61cc2`, uncommitted: M34's run did steps 1–10, stopping twice for the owner (Q11, Q12), closed M34 (`status: done`, archived) and cut `v0.46.0`; the register's W1 M0a row says so.

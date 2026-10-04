@@ -72,6 +72,9 @@ def check_assets(root, errors, notes):
             data = json.loads(manifest.read_text(), object_pairs_hook=unique_object)
             refs = set()
             for section, entries in data.items():
+                # A list section such as `font_fallback` names IDs, not files.
+                if not isinstance(entries, dict):
+                    continue
                 for name, entry in entries.items():
                     for field in ("path", "normal_map", "emissive_mask"):
                         if entry.get(field) is None:
