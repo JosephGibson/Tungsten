@@ -338,7 +338,7 @@ fn all_player_orb_frames_keep_lighting_material_facing_and_bottom_anchor() {
     use tungsten::core::{AnimationRegistry, AssetRegistry, MaterialAssetId, UniformOverrideBlock};
     let mut world = seed_world();
     load_presentation_assets(&mut world);
-    let mut assets = AssetRegistry::new();
+    let mut assets = world.remove_resource::<AssetRegistry>().unwrap();
     let manifest =
         tungsten::core::assets::manifest::ResolvedManifest::load(asset_path("manifest.json"))
             .unwrap();
@@ -347,8 +347,9 @@ fn all_player_orb_frames_keep_lighting_material_facing_and_bottom_anchor() {
         .unwrap()
         .iter()
         .filter(|(name, _)| name.starts_with("ex10_player") || *name == "ex10_ball_spin")
-        .flat_map(|(_, clip)| clip.frames.iter().map(|f| f.sprite.clone()))
-        .collect();
+        .flat_map(|(_, clip)| clip.frames.iter().map(|f| f.sprite))
+        .map(|id| assets.sprite_name(id).unwrap().to_owned())
+        .collect::<Vec<_>>();
     for (i, name) in frames.iter().enumerate() {
         let sprite = manifest.sprites.get(name).unwrap();
         assert!(
@@ -618,7 +619,8 @@ fn midnight_uses_restrained_stock_post_passes_and_round_moon_at_all_aspects() {
     let mut world = seed_world();
     load_presentation_assets(&mut world);
     crate::setup::spawn_level_presentation(&mut world);
-    let mut assets = AssetRegistry::new();
+    // The backdrop interned its names in the world's registry; mock them there.
+    let mut assets = world.remove_resource::<AssetRegistry>().unwrap();
     mock_sprite(&mut assets, "ex10_sky", 700, false);
     mock_sprite(&mut assets, "ex10_moon", 701, false);
     world.insert_resource(assets);

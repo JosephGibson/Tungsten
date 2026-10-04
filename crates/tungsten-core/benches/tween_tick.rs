@@ -5,8 +5,8 @@ use glam::Vec2;
 use std::hint::black_box;
 
 use tungsten_core::{
-    Easing, Sprite, Transform, Tween, TweenChannel, TweenDirection, TweenRepeat, Visibility, World,
-    lerp_f32, lerp_u8,
+    Easing, Sprite, SpriteAssetId, Transform, Tween, TweenChannel, TweenDirection, TweenRepeat,
+    Visibility, World, lerp_f32, lerp_u8,
 };
 
 fn build_world(n: usize) -> (World, Vec<tungsten_core::Entity>) {
@@ -18,7 +18,7 @@ fn build_world(n: usize) -> (World, Vec<tungsten_core::Entity>) {
             e,
             Transform::from_position(Vec2::new((i % 100) as f32, (i / 100) as f32)),
         );
-        world.insert(e, Sprite::new("spark"));
+        world.insert(e, Sprite::new(SpriteAssetId::new(0)));
         world.insert(e, Visibility::default());
         let duration = 1.0 + ((i % 64) as f32) * (1.0 / 64.0);
         let tween = Tween {

@@ -11,9 +11,9 @@ use tungsten::core::post::{
     TonemapParams, VignetteParams,
 };
 use tungsten::core::{
-    CameraState, EMPTY_TILE, FilterMode, LayerKind, Light, MaterialAssetId, MaterialRegistry,
-    ParallaxLayer, Pcg32, Sprite, TilemapData, TilemapInstance, TilemapLayer, TilemapRegistry,
-    Transform, Visibility, World, splitmix64,
+    AssetRegistry, CameraState, EMPTY_TILE, FilterMode, LayerKind, Light, MaterialAssetId,
+    MaterialRegistry, ParallaxLayer, Pcg32, Sprite, SpriteAssetId, TilemapData, TilemapInstance,
+    TilemapLayer, TilemapRegistry, Transform, Visibility, World, splitmix64,
 };
 use tungsten::extract_sprites_default;
 use tungsten::render::{Renderer, TextSection};
@@ -141,6 +141,14 @@ fn heavy_material(world: &mut World, renderer: &mut Renderer, iterations: i32) -
     id
 }
 
+/// The world registry's ID for sprite `name`.
+fn sprite_id(world: &mut World, name: &str) -> SpriteAssetId {
+    world
+        .get_resource_mut::<AssetRegistry>()
+        .expect("AssetRegistry resource missing")
+        .intern_sprite(name)
+}
+
 /// Spawns the sprite field (z layers `0..z_layers`) and the glow layer
 /// above it, both screen-locked through `ParallaxLayer` factor 0.
 fn spawn_field(world: &mut World, params: &Params, heavy: MaterialAssetId) {
@@ -167,16 +175,17 @@ fn spawn_field(world: &mut World, params: &Params, heavy: MaterialAssetId) {
             Kind::Crate => (CRATE.to_string(), [255; 4], None),
             Kind::Heavy => (unlit_id(0), [255; 4], Some(heavy)),
         };
-        let mut sprite = Sprite::new(asset);
+        let mut sprite = Sprite::new(sprite_id(world, &asset));
         sprite.color = color;
         sprite.z_order = (index % params.z_layers) as i32;
         sprite.material_id = material;
         spawn_screen_locked(world, position, sprite_scale, sprite);
     }
     let glow_scale = Vec2::splat(params.glow_px / GLOW_TEXTURE_PX as f32);
+    let glow = sprite_id(world, GLOW);
     for _ in 0..params.glow {
         let position = place(&mut rng, params.glow_px);
-        let mut sprite = Sprite::new(GLOW);
+        let mut sprite = Sprite::new(glow);
         let green = 150 + (rng.next_u32() % 90) as u8;
         sprite.color = [255, green, 110, 56];
         sprite.z_order = params.z_layers as i32;

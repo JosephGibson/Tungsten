@@ -26,7 +26,7 @@ pub use particle::{
     ParticleConfig, ParticleConfigError, ParticleConfigRegistry, ParticleMesh, ParticleMeshAssetId,
     ParticleMeshRegistry, ParticleRender, Range, WorldRngSeed,
 };
-pub use registry::{AssetRegistry, FontRegistry, SpriteAsset, TextureHandle};
+pub use registry::{AssetRegistry, FontRegistry, SpriteAsset, SpriteAssetId, TextureHandle};
 pub use scene::{
     SceneData, SceneEntry, SceneError, SceneSprite, SceneTransform, SceneTween, SceneTweenChannel,
     SceneTweenRepeat,

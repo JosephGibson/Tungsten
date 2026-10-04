@@ -7,8 +7,8 @@ use glam::{Vec2, Vec3};
 use tungsten::core::{
     AnimationState, AssetId, AssetRegistry, Collider, Easing, Light, MaterialRegistry,
     ParallaxLayer, ParticleConfig, ParticleEmitter, ParticleEmitterState, Pcg32, Position,
-    RigidBody, Sprite, SpriteSquashStretch, SquashTrigger, Transform, Tween, TweenChannel,
-    TweenRepeat, Velocity, Visibility, World, splitmix64,
+    RigidBody, Sprite, SpriteAssetId, SpriteSquashStretch, SquashTrigger, Transform, Tween,
+    TweenChannel, TweenRepeat, Velocity, Visibility, World, splitmix64,
 };
 use tungsten::render::Renderer;
 
@@ -110,6 +110,14 @@ pub(super) fn startup(
     world.insert_resource(runtime);
 }
 
+/// The world registry's ID for sprite `name`.
+fn sprite_id(world: &mut World, name: &str) -> SpriteAssetId {
+    world
+        .get_resource_mut::<AssetRegistry>()
+        .expect("AssetRegistry resource missing")
+        .intern_sprite(name)
+}
+
 fn spawn_sprite(
     world: &mut World,
     position: Vec2,
@@ -140,7 +148,7 @@ fn spawn_parallax(world: &mut World, camera: &CameraPath) {
         let y = top + factor * camera.y;
         let x0 = factor * camera.x0 - strip.x * 0.5;
         for index in 0..count {
-            let mut sprite = Sprite::new(ridge_id(layer));
+            let mut sprite = Sprite::new(sprite_id(world, &ridge_id(layer)));
             sprite.z_order = RIDGE_Z + layer as i32;
             sprite.color = RIDGE_TINTS[layer];
             let entity = spawn_sprite(
@@ -180,7 +188,7 @@ fn spawn_props(world: &mut World, level: &Level, count: u32, rng: &mut Pcg32) {
         };
         let scale = rng.next_range(0.45, 0.9);
         let size = SPRITE_PX as f32 * scale;
-        let mut sprite = Sprite::new(id);
+        let mut sprite = Sprite::new(sprite_id(world, id));
         sprite.z_order = if index % 4 == 0 {
             PROP_FRONT_Z
         } else {
@@ -205,7 +213,7 @@ fn spawn_torches(
         .into_iter()
         .enumerate()
     {
-        let mut pole = Sprite::new(POLE);
+        let mut pole = Sprite::new(sprite_id(world, POLE));
         pole.z_order = TORCH_Z;
         pole.color = [150, 110, 80, 255];
         let pole_scale = Vec2::new(10.0, 30.0) / SPRITE_PX as f32;
@@ -247,7 +255,7 @@ fn spawn_pickups(world: &mut World, level: &Level, count: u32, rng: &mut Pcg32) 
     let size = SPRITE_PX as f32 * PICKUP_SCALE;
     for (at, layer) in level::spread(&slots, count as usize) {
         let y = at.y - PICKUP_FLOAT - size - layer as f32 * 20.0;
-        let mut sprite = Sprite::new(GEM);
+        let mut sprite = Sprite::new(sprite_id(world, GEM));
         sprite.z_order = PICKUP_Z;
         sprite.color = [255, 230, 120, 255];
         let entity = spawn_sprite(
@@ -292,7 +300,7 @@ fn spawn_crates(world: &mut World, runtime: &mut Runtime, count: u32) -> Vec<Vec
                     site.x + (col as f32 - (across - 1) as f32 * 0.5) * side,
                     site.y - CRATE_HALF - 0.25 - row as f32 * side - lift,
                 );
-                let mut sprite = Sprite::new(CRATE);
+                let mut sprite = Sprite::new(sprite_id(world, CRATE));
                 sprite.z_order = CRATE_Z;
                 let entity = spawn_sprite(world, top_left(center, body, scale), scale, sprite);
                 world.insert(entity, Position(center));
@@ -345,7 +353,7 @@ fn spawn_actors(
         let mut state = AnimationState::new(walk_clip(variant, false));
         state.frame_index = frame;
         state.accumulated_ms = rng.next_f32_unit() * WALK_FRAME_MS as f32;
-        let mut sprite = Sprite::new(walk_frame(variant, frame, false));
+        let mut sprite = Sprite::new(sprite_id(world, &walk_frame(variant, frame, false)));
         sprite.z_order = ACTOR_Z;
         if caster {
             sprite.color = CASTER_TINT;

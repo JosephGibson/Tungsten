@@ -228,6 +228,8 @@ Decision log for non-obvious Tungsten choices. Use [the decision index](docs/DEC
 The prior D-036 comparison ratios (~6× and ~200× archetypal vs. naive) still hold directionally; the absolute numbers for both sides improved proportionally under the new profile. The archetypal advantage is unchanged.
 
 ## D-042 — M15 Transform + render components
+**Amended by D-113:** the `Sprite` shape only; `Sprite.asset_id` is a `SpriteAssetId` interned in `AssetRegistry`, not a `String`, and `Sprite` is `Copy`; the other components and choices 2–4 stand.
+**Amended by D-114:** choice 4's output only; the default extract writes no instance for a stock-pipeline sprite wholly outside the view render projects with. `Visibility` stays required, and the rest stands.
 **Date:** 2026-04-16  
 **Decision:** Four coupled choices:
 
@@ -802,6 +804,8 @@ Every value in the table reads `improved`. `gpu` waits on the GPU, so its `total
 - No `unsafe`, no new dependency. `D-026`, `D-058`, `D-059` and `D-060` stand as written.
 
 ## D-086 — Default extract and tilemap extract: one pass into kept buffers, a key sort, an asset cache
+**Amended by D-113:** the default extract's asset lookup only; a sprite's `SpriteAssetId` indexes the registry, and the last-seen memo, the 64-slot cache and their test are gone. The tilemap extract's per-map tileset resolution and the rest stand.
+**Amended by D-114:** the default extract's two passes only; pass 1 keys a culled sprite without writing its instance, and pass 2 copies only kept instances and drops the batches that leaves empty. Output for a frame that culls nothing is unchanged, and the rest stands.
 **Date:** 2026-10-01
 **Decision:** The default sprite extract and the tilemap extract write into buffers the app keeps between frames and return the batches, instances and pixels they returned before. This merges the rewrite that `D-085` measured and left out ("Not merged"). The owner accepted the three readings that come with it on 2026-10-01.
 
@@ -1314,3 +1318,55 @@ The bound belongs to the step, not to the app loop: `physics_step` is public and
 - Amends `D-070` as its marker line says.
 - CI no longer builds anything with LTO, so a failure only the bench profile shows, such as an LTO link error, surfaces locally when a bench runs or `just bench-build` is run, or in the tag-triggered release build (`D-071`), which builds the examples in the release profile.
 - The CI saving is unconfirmed until a push after this change runs; the plan lists it as a follow-up.
+
+## D-113 — Sprites name their asset by an interned `SpriteAssetId`
+**Date:** 2026-10-04
+**Decision:** `Sprite.asset_id` is a `SpriteAssetId`, an alias of the dense handle `AssetId<SpriteAsset>`, in place of a `String`, and `Sprite` derives `Copy`. `AssetRegistry` mints the IDs by interning names: `intern_sprite(name)` gives one name one ID whether the sprite is registered or not, `intern_sprites` interns a set of names in sorted order, `register_sprite` fills the slot its name is interned to and returns the ID, `sprite(id)` is a bounds-checked index that reads `None` for an ID past the end or one not yet registered, and `sprite_id(name)` and `sprite_name(id)` translate without interning. Interning is append-only, and an ID means something only in the registry that minted it, the one `AssetRegistry` of an `App`'s world, which no loader replaces. `load_sprites` interns the manifest's names in sorted order before it packs, and a manifest reload interns its added names the same way, so a manifest gives the same IDs in every run. Animation frames hold IDs: `AnimationFrame.sprite` is a `SpriteAssetId`, `AnimationData::load(path, &mut AssetRegistry)` interns the file's names through a private file struct, so `AnimationData` and `AnimationFrame` no longer implement `Deserialize`, and `AnimationState::current_sprite` and `advance` return the ID. Every file keeps names: the manifest, scenes (`SceneSprite.asset_id`), animation files and particle configs (`ParticleConfig.sprite`). `spawn_scene` interns each entry's name before it takes the `CommandBuffer`; the particle emit system interns a quad config's sprite once per emitting emitter per frame; the public `spawn_particle_via` takes the caller's `SpriteAssetId`. `sprite_ids()` and `sprite_id_for_path`, which return names, are renamed `sprite_names()` and `sprite_name_for_path`. Keeps `D-009`: names in files, never paths; the dense ID exists only at run time, as for materials, shaders, particle configs and meshes.
+
+**Why:** After `D-086` the string compare of sprite IDs was the largest cost left in `gpu-throughput`'s extract, and every animation frame change and every particle spawn cloned a `String`, which tied `particles`' `animate_sprites` and the extract to the allocator's state (`docs/perf/benchmarks.md`, "String sprite IDs"). Interning rather than registration mints the IDs so that `D-046`'s unresolved-at-spawn behaviour holds: a scene or particle config may name a sprite that a later manifest reload registers, and the entity draws from then on.
+
+The suite of this change against the tree before it (`just perf compare r0-pre r0-ids`, five runs a side, M33 step 2): 0 `regressed`, 8 `improved`, 33 `unchanged`, 13 `noisy` owned verdicts, first-run digests equal on all eight rows.
+
+| Row | Owned | Reported |
+| --- | --- | --- |
+| `gpu-throughput` | `extract` p50 13.25 → 11.85 ms, p95 13.56 → 12.29, `improved` | `total` p50 14.88 → 13.48 ms; peak RSS 169.8 → 144.0 MiB |
+| `particles` | `animate_sprites` p50 0.31 → 0.25 ms, p95 0.45 → 0.31, `unattributed` p95 2.91 → 2.48, `improved` | `total` p50 6.50 → 4.32 ms; `extract` p50 2.96 → 1.28 ms; `flush` p50 0.42 → 0.20 ms |
+| `integrated` | `total` p50 8.59 → 8.19 ms `improved`; p95 `noisy` | `extract` p50 0.96 → 0.61 ms |
+| `gpu` | `extract` p50 0.65 → 0.59 ms `improved` | |
+
+**Consequences:**
+- Amends `D-042` and `D-086` as their marker lines say. `D-009`, `D-016`, `D-018` and `D-046` stand: core holds opaque handles, the extract reads `&World` and returns plain data, and scene names stay unresolved at spawn.
+- A public API break, W4's first ledger row: `Sprite::new` takes a `SpriteAssetId`; `AnimationData::load` takes the registry; `current_sprite` and `advance` return IDs; the two renames; `spawn_particle_via`'s new parameter; the dropped `Deserialize` impls of `AnimationData` and `AnimationFrame`. Game code interns once at spawn: `world.get_resource_mut::<AssetRegistry>()…intern_sprite("hero")`.
+- An ID from another registry is not detected: it reads that registry's slot at its index, or `None` past its end, as `MaterialAssetId` and particle-config IDs do. A test that swaps the world's registry for a fresh one after spawning must mock into the existing registry instead (example 01's camera and presentation tests).
+- Core's `Inspectable for Sprite` prints `#<index>`; the umbrella's inspector registers `Sprite` with a reader that prints the name. The lit-plus-material warning prints the name.
+- A world without an `AssetRegistry` (a bare test world) gets an empty one from the particle emit system, so quad particles still spawn, age and despawn; they draw nothing, as before.
+- `AnimationState.animation_id` stays a `String` looked up per entity per advance; interning it is an open proposal in `docs/perf/benchmarks.md`. Tileset entries keep names, resolved once per map and call (`D-086`).
+- `ecs` `bounds_wrap` p50 also reads `improved` (0.31 → 0.26 ms) on a row that does not run the changed code: the placement effect of `docs/perf/benchmarks.md`, `ecs`.
+- **Accepted regression, `particles` `unattributed` p50.** With 15 runs a side in one sitting it reads 2.09 → 2.21 ms against the tree before the change, `regressed` (+0.12, interval +0.09 to +0.14, τ 0.063), and 2.09 → 2.20 in a second sitting. In the same compares its p95 falls 2.67 → 2.49 ms and `animate_sprites` p50/p95 fall 14% and 30%. The five-run suite read it `noisy` (2.15 → 2.20). It is this change and not culling (`D-114`): the tree with culling reads 2.21 → 2.17, `unchanged`, against this one. It is not the per-emitter interning either: a build that spawns with a constant ID still reads 2.06 → 2.20. The sampled CPU work of the stage does not grow: in a profile of each build `particle_tick_system` holds 1,967 → 1,915 samples, `particle_count_refresh_system` 495 → 490 and `particle_emit_system` 59 → 56, and the allocator's samples fall by about 1,200. The mechanism was not established. The owner accepted the regression on 2026-10-04; captures, profiles and scripts are in `perf-runs/20261004-m33-unattributed/` (machine-local).
+- Tests: interning (one name, one ID, registered or not; lookups never intern; sorted, order-independent batch interning; registration fills the interned slot; a duplicate still panics; `None` past the end); an animation file loads to the registry's IDs and a hot reload of it resolves to the same IDs; a scene entry naming a sprite not yet registered draws once `register_sprite` adds it; the inspector prints the name. The pinned extract output (69 batches, 420 instances, `0x7cec8f233d8bfd57`) holds unedited; the cache test went with the cache.
+
+## D-114 — The default extract culls stock-pipeline sprites outside the view render projects with
+**Date:** 2026-10-04
+**Decision:** `extract_sprites_default` writes no instance for a sprite drawn by the stock sprite or lit pipeline whose bound lies wholly outside the camera's view. The view is `CameraState::visible_world_aabb` at the size render projects with. Before the extracts run, the app writes the renderer's surface size into `ExtractScratch`; without a renderer (the headless harness, a bare `World`) the extract uses `WindowSize`; without a `CameraState`, or without either size, it culls nothing. The bound is taken after the parallax remap. Unrotated, it is the box from the instance's top-left to top-left plus its size, of either sign. Rotated, it is the square of half-side `(|w| + |h|) / 2` about the quad's centre, which covers every angle; both bounds are computed and one is selected, with no branch on the angle. A sprite that touches the view is kept. A sprite with an effective material is never culled, because its shader's own vertex stage places the quad. A culled sprite keeps its batch class and sort key and writes no instance. Batches therefore open where they did, and `z_norm` counts the culled sprite, so every kept instance, and the order of every non-empty batch, equal the extract's without culling, under `cpu_stable` and `gpu_depth` alike. Batches that culling leaves empty are dropped, and a batch takes its instance vector at its first kept sprite.
+
+**Why:** The extract emitted every sprite, in view or not. In `integrated` the level is 24,576 px wide against a 1,920 px view, and about 16,000 of its 17,700 sprites are off-screen. Culling saves each such sprite's instance write, its pass-2 copy, its upload and its vertex work. The key, class and sort costs stay: keeping the keys keeps draw order independent of the camera, where dropping them could swap overlapping same-z sprites of different classes as the camera moves (a batch opens at its class's first sprite in the z-run).
+
+The suite with culling against the suite with interned IDs only (`D-113`), and against the tree before both (five runs a side, M33 step 3):
+
+| Row | `r0-ids` → `r0-cull` | `r0-pre` → `r0-cull` |
+| --- | --- | --- |
+| `integrated` | `total` p50 8.19 → 7.93 ms `improved`, p95 8.66 → 8.39 `unchanged`; `extract` p50 0.61 → 0.54, `render_encode` p50 0.92 → 0.86 | `total` p50 8.59 → 7.93 ms, p95 9.09 → 8.39, both `improved` |
+| `gpu-throughput` | `extract` p50 11.85 → 12.16 ms `noisy` (τ 0.36), p95 12.29 → 12.58 `unchanged` | `extract` p50 13.25 → 12.16, p95 13.56 → 12.58, both `improved`; `total` p50 14.88 → 13.72 |
+| `gpu` | `extract` p50 0.59 → 0.64 ms `regressed` (accepted, below) | `extract` p50 0.65 → 0.64 `unchanged` |
+| `particles` | owned `unchanged` or `noisy`; `extract` p50 1.28 → 1.41 ms, reported | `total` p50 6.50 → 4.44 ms |
+
+`r0-ids` → `r0-cull` reads 1 `regressed`, 2 `improved`, 38 `unchanged` and 13 `noisy` owned verdicts; `r0-pre` → `r0-cull` reads 0, 9, 32 and 13. First-run digests are equal on all eight rows in both.
+
+**Consequences:**
+- Amends `D-042` and `D-086` as their marker lines say. `D-073` stands: the remap comes before the test. `D-018` stands: the app passes a size through a crate-private field, and the extract still reads `&World`.
+- **Accepted cost, `gpu` `extract` p50.** Every sprite in that row is in view, so the bound test is pure cost: 0.59 → 0.64 ms, `regressed` (+0.06, interval +0.04 to +0.07, τ 0.05). The first culling build read +0.04 ms, `unchanged`. Against the tree before `D-113` it reads 0.65 → 0.64 ms. The owner accepted it on 2026-10-04, applying the rule the M33 plan set for `gpu-throughput`: keep culling while the tree before reads the metric no worse and `integrated` `total` improves. The rows with nothing off-screen pay too, reported only: `gpu-throughput` `extract` +0.31 ms and `particles` `extract` +0.12 ms (+0.21 ms with 15 runs a side).
+- The branchless bound replaced a first build that branched on the angle; every row read within noise of it.
+- `RenderCounts.sprite_instances` drops in views with off-screen sprites.
+- The tilemap and light extracts still cull against `WindowSize`, so a pending windowed resize culls tiles and lights the old surface still shows (`docs/known-issues.md`).
+- Custom sprite extracts, mesh particles and lights do not pass through this culling. A bound contract for material shaders would be a decision of its own.
+- Tests, each against the extract without culling on the same world: seeded worlds with culled sprites before, between and after kept ones, on both sort paths; kept buffers as the camera moves; the critique's case (same z: off-screen class A, visible class B, visible class A keeps batch A first); each edge, one pixel in, touching, and a negative scale; a rotated sprite whose corner reaches the view; a parallax sprite at its remapped position; camera zoom and rotation; an off-screen material sprite kept and a lit one with a material culled; the single-batch path as its count changes, and an all-culled frame; a passed 1,920 px viewport against a pending 1,280 px `WindowSize`; no viewport and no camera. The pinned output (69 batches, 420 instances, `0x7cec8f233d8bfd57`) holds unedited.

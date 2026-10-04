@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use super::atlas::UvRect;
 use super::manifest::FilterMode;
+use super::particle::AssetId;
 
 /// GPU texture handle; core never sees `wgpu` types (D-016).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -28,11 +29,23 @@ pub struct SpriteAsset {
     pub lit_atlas: Option<TextureHandle>,
 }
 
+/// Dense sprite handle, minted by [`AssetRegistry`]; stable for the registry's life.
+///
+/// An ID means something only in the registry that minted it: another registry
+/// reads its own slot at that index, or `None` past its end.
+pub type SpriteAssetId = AssetId<SpriteAsset>;
+
 /// D-014 runtime asset registry resource.
+///
+/// Sprite names are interned to dense [`SpriteAssetId`]s. Interning is
+/// append-only, and an interned name reads `None` until it is registered.
 #[derive(Debug, Default)]
 pub struct AssetRegistry {
-    sprites: HashMap<String, SpriteAsset>,
-    path_to_sprite_id: HashMap<PathBuf, String>,
+    /// Indexed by `SpriteAssetId::index`; `None` until registered.
+    sprites: Vec<Option<SpriteAsset>>,
+    sprite_names: Vec<String>,
+    sprite_id_by_name: HashMap<String, SpriteAssetId>,
+    path_to_sprite_id: HashMap<PathBuf, SpriteAssetId>,
 }
 
 impl AssetRegistry {
@@ -41,7 +54,59 @@ impl AssetRegistry {
         Self::default()
     }
 
-    /// Register sprite with renderer-owned atlas handle and UV rect.
+    /// Interns `name`: the same name gets the same ID, registered or not.
+    ///
+    /// An interned name draws nothing until [`Self::register_sprite`] fills its slot.
+    pub fn intern_sprite(&mut self, name: &str) -> SpriteAssetId {
+        match self.sprite_id(name) {
+            Some(id) => id,
+            None => self.intern_new_sprite(name.to_owned()),
+        }
+    }
+
+    fn intern_new_sprite(&mut self, name: String) -> SpriteAssetId {
+        let id = SpriteAssetId::new(self.sprites.len() as u32);
+        self.sprites.push(None);
+        self.sprite_names.push(name.clone());
+        self.sprite_id_by_name.insert(name, id);
+        id
+    }
+
+    /// Interns `names` in sorted order, so a name set gets the same IDs every run.
+    ///
+    /// Names already interned keep their IDs; duplicates in `names` are ignored.
+    pub fn intern_sprites<'a>(&mut self, names: impl IntoIterator<Item = &'a str>) {
+        let mut names: Vec<&str> = names.into_iter().collect();
+        names.sort_unstable();
+        names.dedup();
+        for name in names {
+            self.intern_sprite(name);
+        }
+    }
+
+    /// ID of an interned name; never interns.
+    #[must_use]
+    pub fn sprite_id(&self, name: &str) -> Option<SpriteAssetId> {
+        self.sprite_id_by_name.get(name).copied()
+    }
+
+    /// Registered sprite for `id`, by index. `None` for an ID past the end or
+    /// one interned and not yet registered. `id` must come from this registry.
+    #[must_use]
+    pub fn sprite(&self, id: SpriteAssetId) -> Option<&SpriteAsset> {
+        self.sprites.get(id.index() as usize)?.as_ref()
+    }
+
+    /// Name interned as `id`; `None` for an ID past the end.
+    #[must_use]
+    pub fn sprite_name(&self, id: SpriteAssetId) -> Option<&str> {
+        self.sprite_names
+            .get(id.index() as usize)
+            .map(String::as_str)
+    }
+
+    /// Register sprite with renderer-owned atlas handle and UV rect, filling the
+    /// slot `id` is interned to (interning it if needed), and return its ID.
     ///
     /// # Panics
     /// Panics on duplicate sprite ID (D-017).
@@ -58,47 +123,59 @@ impl AssetRegistry {
         normal_path: Option<PathBuf>,
         emissive_path: Option<PathBuf>,
         lit_atlas: Option<TextureHandle>,
-    ) {
+    ) -> SpriteAssetId {
         assert!(
-            !self.sprites.contains_key(&id),
+            self.get_sprite(&id).is_none(),
             "duplicate sprite ID '{id}' — each sprite must be registered exactly once"
         );
-        self.path_to_sprite_id.insert(path.clone(), id.clone());
+        let sprite_id = match self.sprite_id(&id) {
+            Some(sprite_id) => sprite_id,
+            None => self.intern_new_sprite(id),
+        };
+        self.path_to_sprite_id.insert(path.clone(), sprite_id);
         if let Some(np) = &normal_path {
-            self.path_to_sprite_id.insert(np.clone(), id.clone());
+            self.path_to_sprite_id.insert(np.clone(), sprite_id);
         }
         if let Some(ep) = &emissive_path {
-            self.path_to_sprite_id.insert(ep.clone(), id.clone());
+            self.path_to_sprite_id.insert(ep.clone(), sprite_id);
         }
-        self.sprites.insert(
-            id,
-            SpriteAsset {
-                atlas,
-                uv,
-                filter,
-                width,
-                height,
-                path,
-                normal_path,
-                emissive_path,
-                lit_atlas,
-            },
-        );
+        self.sprites[sprite_id.index() as usize] = Some(SpriteAsset {
+            atlas,
+            uv,
+            filter,
+            width,
+            height,
+            path,
+            normal_path,
+            emissive_path,
+            lit_atlas,
+        });
+        sprite_id
     }
 
     #[must_use]
     pub fn get_sprite(&self, id: &str) -> Option<&SpriteAsset> {
-        self.sprites.get(id)
+        self.sprite(self.sprite_id(id)?)
     }
 
-    pub fn sprite_ids(&self) -> impl Iterator<Item = &str> {
-        self.sprites.keys().map(String::as_str)
+    fn get_sprite_mut(&mut self, id: &str) -> Option<&mut SpriteAsset> {
+        let index = self.sprite_id(id)?.index() as usize;
+        self.sprites[index].as_mut()
     }
 
-    /// Sprite ID for source path.
+    /// Names of the registered sprites, in ID order; interned-only names are left out.
+    pub fn sprite_names(&self) -> impl Iterator<Item = &str> {
+        self.sprite_names
+            .iter()
+            .zip(&self.sprites)
+            .filter(|(_, asset)| asset.is_some())
+            .map(|(name, _)| name.as_str())
+    }
+
+    /// Sprite name for a source path (albedo, normal or emissive).
     #[must_use]
-    pub fn sprite_id_for_path(&self, path: &Path) -> Option<&str> {
-        self.path_to_sprite_id.get(path).map(String::as_str)
+    pub fn sprite_name_for_path(&self, path: &Path) -> Option<&str> {
+        self.sprite_name(*self.path_to_sprite_id.get(path)?)
     }
 
     /// Update atlas/UV/dimensions after hot reload.
@@ -110,7 +187,7 @@ impl AssetRegistry {
         width: u32,
         height: u32,
     ) {
-        if let Some(asset) = self.sprites.get_mut(id) {
+        if let Some(asset) = self.get_sprite_mut(id) {
             asset.atlas = atlas;
             asset.uv = uv;
             asset.width = width;
@@ -120,7 +197,7 @@ impl AssetRegistry {
 
     /// Update the M29 lit atlas marker after an atlas (re)build.
     pub fn update_sprite_lit_atlas(&mut self, id: &str, lit_atlas: Option<TextureHandle>) {
-        if let Some(asset) = self.sprites.get_mut(id) {
+        if let Some(asset) = self.get_sprite_mut(id) {
             asset.lit_atlas = lit_atlas;
         }
     }

@@ -24,7 +24,7 @@ Every public-API break bound for 1.0, with its source and where it landed. Seede
 
 | Break | From | Status | Landed in |
 | --- | --- | --- | --- |
-| Interned asset IDs in place of `Sprite.asset_id: String` | Scope (R0) | Planned: W2 R0 | — |
+| Interned asset IDs in place of `Sprite.asset_id: String` | Scope (R0) | Landed (`D-113`): `Sprite.asset_id` and `Sprite::new` take a `SpriteAssetId`; `AnimationFrame.sprite` is an ID; `AnimationData::load` takes `&mut AssetRegistry`; `AnimationState::current_sprite` and `advance` return IDs; `sprite_ids()` and `sprite_id_for_path` are renamed `sprite_names()` and `sprite_name_for_path`; `spawn_particle_via` takes a `SpriteAssetId`; `AnimationData` and `AnimationFrame` no longer implement `Deserialize`; `register_sprite` returns the ID | 0.45 (M33) |
 | Real `KeyCode` variants in place of `KeyCode::Other(<winit discriminant>)` | Scope (UI M3) | Planned: W1 M0b, where [w01](w01-ui-text-suite.md) §11 puts it | — |
 | A presented, skipped or failed render result; `App::run` returns runtime errors | Scope (P3) | Planned: W8a | — |
 | `#[non_exhaustive]` where public enums and config structs may grow | Scope | Planned: W4b's sweep; a new type takes it when it lands | — |

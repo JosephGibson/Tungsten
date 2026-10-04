@@ -1,4 +1,5 @@
 use super::*;
+use crate::assets::SpriteAssetId;
 use glam::Vec2;
 
 #[test]
@@ -35,11 +36,11 @@ fn visibility_emits_single_row() {
 
 #[test]
 fn sprite_emits_three_rows() {
-    let s = Sprite::new("player");
+    let s = Sprite::new(SpriteAssetId::new(7));
     let rows = s.inspect_rows();
     assert_eq!(rows.len(), 3);
     assert_eq!(rows[0].0, "asset");
-    assert_eq!(rows[0].1, "player");
+    assert_eq!(rows[0].1, "#7");
     assert_eq!(rows[1].0, "tint");
     assert_eq!(rows[2].0, "z");
 }

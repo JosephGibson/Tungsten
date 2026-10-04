@@ -72,7 +72,7 @@ impl InspectorState {
         state.register::<Tag>("Tag");
         state.register::<Transform>("Transform");
         state.register::<Visibility>("Visibility");
-        state.register::<Sprite>("Sprite");
+        state.registered.push(("Sprite", Box::new(sprite_rows)));
         state.register::<Position>("Position");
         state.register::<Velocity>("Velocity");
         state
@@ -162,6 +162,21 @@ pub(crate) fn inspector_pick_system(world: &mut World) {
     }
 }
 
+/// `Sprite` rows with the asset's name, which core's `Inspectable` has no registry to read.
+fn sprite_rows(world: &World, entity: Entity) -> Vec<(&'static str, String)> {
+    let Some(sprite) = world.get::<Sprite>(entity) else {
+        return Vec::new();
+    };
+    let mut rows = sprite.inspect_rows();
+    let name = world
+        .get_resource::<AssetRegistry>()
+        .and_then(|registry| registry.sprite_name(sprite.asset_id));
+    if let (Some(name), Some(row)) = (name, rows.iter_mut().find(|(key, _)| *key == "asset")) {
+        row.1 = name.to_string();
+    }
+    rows
+}
+
 /// Pick smallest sprite/collider AABB containing `world_cursor`.
 fn pick_entity_under_cursor(world: &World, world_cursor: Vec2) -> Option<Entity> {
     let mut best: Option<(Entity, f32)> = None;
@@ -172,7 +187,7 @@ fn pick_entity_under_cursor(world: &World, world_cursor: Vec2) -> Option<Entity>
             if !visible {
                 continue;
             }
-            let Some(asset) = registry.get_sprite(&sprite.asset_id) else {
+            let Some(asset) = registry.sprite(sprite.asset_id) else {
                 continue;
             };
             let size = Vec2::new(

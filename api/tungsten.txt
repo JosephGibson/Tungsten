@@ -273,7 +273,7 @@ pub fn tungsten::particles::particle_count_refresh_system(&mut tungsten_core::ec
 pub fn tungsten::particles::particle_emit_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::particles::particle_tick_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::particles::spawn_mesh_particle_via(&mut tungsten_core::ecs::command_buffer::CommandBuffer, core::option::Option<tungsten_core::ecs::entity::Entity>, alloc::sync::Arc<tungsten_core::assets::particle::ParticleConfig>, tungsten_core::assets::particle::ParticleMeshAssetId, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, f32, f32)
-pub fn tungsten::particles::spawn_particle_via(&mut tungsten_core::ecs::command_buffer::CommandBuffer, core::option::Option<tungsten_core::ecs::entity::Entity>, alloc::sync::Arc<tungsten_core::assets::particle::ParticleConfig>, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, f32, f32)
+pub fn tungsten::particles::spawn_particle_via(&mut tungsten_core::ecs::command_buffer::CommandBuffer, core::option::Option<tungsten_core::ecs::entity::Entity>, alloc::sync::Arc<tungsten_core::assets::particle::ParticleConfig>, tungsten_core::assets::registry::SpriteAssetId, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, f32, f32)
 pub mod tungsten::physics_debug
 pub struct tungsten::physics_debug::PhysicsDebugOverlay
 pub tungsten::physics_debug::PhysicsDebugOverlay::color_aabb: [f32; 4]

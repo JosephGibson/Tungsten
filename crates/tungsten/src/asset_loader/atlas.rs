@@ -384,6 +384,9 @@ pub fn load_sprites(
         let registry = world
             .get_resource_mut::<AssetRegistry>()
             .expect("AssetRegistry resource missing");
+        // Sorted-name interning gives a manifest the same sprite IDs every run;
+        // the packer registers in `HashMap` order.
+        registry.intern_sprites(manifest.sprites.keys().map(String::as_str));
         let n = build_atlas_for_filter(
             FilterMode::Nearest,
             &decoded_nearest,
@@ -556,7 +559,7 @@ pub fn rebuild_atlas_for_filter(
             .get_resource::<AssetRegistry>()
             .expect("AssetRegistry resource missing");
         registry
-            .sprite_ids()
+            .sprite_names()
             .filter_map(|id| {
                 let asset = registry.get_sprite(id)?;
                 if asset.filter == filter {

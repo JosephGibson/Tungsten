@@ -5,8 +5,9 @@
 use glam::Vec2;
 use tungsten::core::tween::UniformOverrideBlock;
 use tungsten::core::{
-    AnimationState, AssetId, CommandBuffer, Easing, Entity, MaterialAssetId, ParticleConfig, Pcg32,
-    ScalarSlot, Sprite, TextureHandle, Tween, TweenChannel, World, splitmix64,
+    AnimationRegistry, AnimationState, AssetId, CommandBuffer, Easing, Entity, MaterialAssetId,
+    ParticleConfig, Pcg32, ScalarSlot, Sprite, TextureHandle, Tween, TweenChannel, World,
+    splitmix64,
 };
 use tungsten::render::TextSection;
 
@@ -278,11 +279,19 @@ pub(super) fn swap_clip(
     let frame = world
         .get::<AnimationState>(entity)
         .map_or(0, |state| state.frame_index);
+    let clip = assets::walk_clip(variant, flat);
+    // `register_clips` interned the frames at startup.
+    let frame_sprite = world
+        .get_resource::<AnimationRegistry>()
+        .and_then(|registry| registry.get(&clip)?.frames.get(frame))
+        .map(|f| f.sprite);
     if let Some(state) = world.get_mut::<AnimationState>(entity) {
-        state.animation_id = assets::walk_clip(variant, flat);
+        state.animation_id = clip;
     }
     if let Some(sprite) = world.get_mut::<Sprite>(entity) {
-        sprite.asset_id = assets::walk_frame(variant, frame, flat);
+        if let Some(frame_sprite) = frame_sprite {
+            sprite.asset_id = frame_sprite;
+        }
         sprite.material_id = material;
     }
 }

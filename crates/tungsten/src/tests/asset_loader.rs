@@ -109,7 +109,8 @@ fn reload_animation_replaces_registry_entry() {
     );
 
     let mut world = seed_world();
-    let initial = AnimationData::load(&anim_path).expect("initial animation parse should succeed");
+    let initial = AnimationData::load(&anim_path, world.get_resource_mut().unwrap())
+        .expect("initial animation parse should succeed");
     world
         .get_resource_mut::<AnimationRegistry>()
         .unwrap()
@@ -138,7 +139,7 @@ fn reload_animation_preserves_previous_on_parse_error() {
     );
 
     let mut world = seed_world();
-    let initial = AnimationData::load(&anim_path).unwrap();
+    let initial = AnimationData::load(&anim_path, world.get_resource_mut().unwrap()).unwrap();
     world
         .get_resource_mut::<AnimationRegistry>()
         .unwrap()
@@ -150,6 +151,117 @@ fn reload_animation_preserves_previous_on_parse_error() {
     let reg = world.get_resource::<AnimationRegistry>().unwrap();
     let data = reg.get("walk").expect("last-known-good must be preserved");
     assert_eq!(data.frames[0].duration_ms, 100);
+}
+
+#[test]
+fn reload_animation_resolves_frames_to_the_registry_ids() {
+    let dir = tempdir();
+    let anim_path = dir.join("run.json");
+    write(
+        &anim_path,
+        r#"{"looping": true, "frames": [
+            {"sprite": "run_0", "duration_ms": 100},
+            {"sprite": "run_1", "duration_ms": 100}
+        ]}"#,
+    );
+
+    let mut world = seed_world();
+    let (run_0, run_1) = {
+        let sprites = world.get_resource_mut::<AssetRegistry>().unwrap();
+        (
+            sprites.intern_sprite("run_0"),
+            sprites.intern_sprite("run_1"),
+        )
+    };
+    let initial = AnimationData::load(&anim_path, world.get_resource_mut().unwrap()).unwrap();
+    let ids = |data: &AnimationData| data.frames.iter().map(|f| f.sprite).collect::<Vec<_>>();
+    assert_eq!(ids(&initial), [run_0, run_1]);
+    world
+        .get_resource_mut::<AnimationRegistry>()
+        .unwrap()
+        .insert_with_path("run".into(), initial, anim_path.clone());
+
+    write(
+        &anim_path,
+        r#"{"looping": true, "frames": [
+            {"sprite": "run_1", "duration_ms": 80},
+            {"sprite": "run_0", "duration_ms": 80},
+            {"sprite": "run_1", "duration_ms": 80}
+        ]}"#,
+    );
+    reload_animation("run", &anim_path, &mut world).unwrap();
+
+    let reg = world.get_resource::<AnimationRegistry>().unwrap();
+    assert_eq!(ids(reg.get("run").unwrap()), [run_1, run_0, run_1]);
+    assert_eq!(
+        world
+            .get_resource::<AssetRegistry>()
+            .unwrap()
+            .sprite_id("run_1"),
+        Some(run_1),
+        "reload interned no second ID"
+    );
+}
+
+#[test]
+fn scene_sprite_named_before_registration_draws_once_registered() {
+    use tungsten_core::assets::{SceneData, SceneEntry, SceneSprite, SceneTransform};
+    use tungsten_core::{CommandBuffer, Sprite};
+
+    let mut world = seed_world();
+    world.insert_resource(CommandBuffer::new());
+    let data = SceneData {
+        entities: vec![SceneEntry {
+            transform: SceneTransform {
+                position: [4.0, 8.0],
+                rotation: 0.0,
+                scale: [1.0, 1.0],
+            },
+            sprite: Some(SceneSprite {
+                asset_id: "late".into(),
+                color: [255; 4],
+                z_order: 0,
+            }),
+            visible: true,
+            tag: None,
+            tweens: Vec::new(),
+        }],
+    };
+    spawn_scene(&mut world, &data, "gameplay");
+    let buf = world.remove_resource::<CommandBuffer>().unwrap();
+    world.flush(buf);
+
+    let late = world
+        .get_resource::<AssetRegistry>()
+        .unwrap()
+        .sprite_id("late");
+    assert!(late.is_some(), "spawn interned the scene's name");
+    let spawned: Vec<_> = world.query::<Sprite>().map(|(_, s)| s.asset_id).collect();
+    assert_eq!(spawned, [late.unwrap()]);
+    assert!(crate::sprite_extract::extract_sprites_default(&world).is_empty());
+
+    let registered = world
+        .get_resource_mut::<AssetRegistry>()
+        .unwrap()
+        .register_sprite(
+            "late".into(),
+            FilterMode::Nearest,
+            16,
+            16,
+            PathBuf::from("test/late.png"),
+            TextureHandle(0),
+            UvRect::FULL,
+            None,
+            None,
+            None,
+        );
+    assert_eq!(Some(registered), late);
+    let batches = crate::sprite_extract::extract_sprites_default(&world);
+    let positions: Vec<[f32; 2]> = batches
+        .iter()
+        .flat_map(|b| b.instances.iter().map(|i| i.position))
+        .collect();
+    assert_eq!(positions, [[4.0, 8.0]]);
 }
 
 #[test]

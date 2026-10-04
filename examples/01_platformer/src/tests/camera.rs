@@ -79,7 +79,7 @@ fn parallax_covers_camera_extremes_resizes_zoom_and_shake() {
     let mut world = seed_world();
     load_presentation_assets(&mut world);
     crate::setup::spawn_level_presentation(&mut world);
-    let mut assets = AssetRegistry::new();
+    let mut assets = world.remove_resource::<AssetRegistry>().unwrap();
     for (id, name) in ["ex10_sky", "ex10_distant_ridges", "ex10_near_woodland"]
         .iter()
         .enumerate()

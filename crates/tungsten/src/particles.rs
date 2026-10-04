@@ -11,10 +11,11 @@ use std::sync::Arc;
 use glam::Vec2;
 
 use tungsten_core::{
-    BlendMode, CommandBuffer, Curve, EmissionKind, Entity, EventQueue, InitialVelocity,
-    MeshParticle, Particle, ParticleActive, ParticleBudget, ParticleConfig, ParticleConfigRegistry,
-    ParticleEmitter, ParticleEmitterState, ParticleMeshAssetId, ParticleMeshRegistry,
-    ParticleRender, Range, Sprite, Transform, Visibility, World, WorldRngSeed,
+    AssetRegistry, BlendMode, CommandBuffer, Curve, EmissionKind, Entity, EventQueue,
+    InitialVelocity, MeshParticle, Particle, ParticleActive, ParticleBudget, ParticleConfig,
+    ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, ParticleMeshAssetId,
+    ParticleMeshRegistry, ParticleRender, Range, Sprite, SpriteAssetId, Transform, Visibility,
+    World, WorldRngSeed,
 };
 use tungsten_render::{MeshParticleBatch, MeshParticleInstance};
 
@@ -60,7 +61,7 @@ pub fn particle_count_refresh_system(world: &mut World) {
 /// A config's `render`, resolved for one emitter's spawns this frame.
 #[derive(Clone, Copy)]
 enum SpawnRender {
-    Quad,
+    Quad(SpriteAssetId),
     Mesh(ParticleMeshAssetId),
 }
 
@@ -72,8 +73,9 @@ enum ParticleDraw {
 
 /// Emit particles via command buffer; discrete emissions enqueue burst events.
 ///
-/// A mesh config's mesh name is resolved once per emitting emitter per frame.
-/// An unknown name logs a warning and that emitter emits nothing this frame.
+/// A config's sprite or mesh name is resolved once per emitting emitter per frame.
+/// A sprite name is interned, so one a later reload registers draws from then on;
+/// an unknown mesh name logs a warning and that emitter emits nothing this frame.
 pub fn particle_emit_system(world: &mut World) {
     let dt = world
         .get_resource::<tungsten_core::DeltaTime>()
@@ -157,7 +159,9 @@ pub fn particle_emit_system(world: &mut World) {
         }
 
         let render = match &snapshot.render {
-            ParticleRender::Quad => SpawnRender::Quad,
+            ParticleRender::Quad => {
+                SpawnRender::Quad(sprite_registry(world).intern_sprite(&snapshot.sprite))
+            }
             ParticleRender::Mesh { mesh } => {
                 let id = world
                     .get_resource::<ParticleMeshRegistry>()
@@ -367,6 +371,17 @@ fn maybe_emit_drained(world: &mut World, emitter_ent: Entity) {
     }
 }
 
+/// The world's sprite registry. A world without one (a bare test world) gets an
+/// empty one, so quad particles still spawn, age and despawn; they draw nothing.
+fn sprite_registry(world: &mut World) -> &mut AssetRegistry {
+    if world.get_resource::<AssetRegistry>().is_none() {
+        world.insert_resource(AssetRegistry::new());
+    }
+    world
+        .get_resource_mut::<AssetRegistry>()
+        .expect("AssetRegistry inserted above")
+}
+
 fn build_particle(
     world: &mut World,
     emitter_ent: Entity,
@@ -416,8 +431,8 @@ fn build_particle(
         scale: Vec2::splat(start_scale),
     };
     let draw = match render {
-        SpawnRender::Quad => ParticleDraw::Sprite(Sprite {
-            asset_id: cfg.sprite.clone(),
+        SpawnRender::Quad(asset_id) => ParticleDraw::Sprite(Sprite {
+            asset_id,
             color: initial_color,
             z_order: 0,
             material_id: None,
@@ -467,17 +482,20 @@ fn sample_or_one(curve: Option<&Curve<f32>>, t: f32) -> f32 {
 /// Spawn a fully formed particle without the emit system.
 ///
 /// Always spawns a `Sprite`, whatever the config's `render` says; a mesh
-/// config spawns through [`spawn_mesh_particle_via`].
+/// config spawns through [`spawn_mesh_particle_via`]. `sprite` is the config's
+/// sprite name interned by the caller (`AssetRegistry::intern_sprite`), resolved
+/// once rather than per particle.
+#[allow(clippy::too_many_arguments)]
 pub fn spawn_particle_via(
     cmd: &mut CommandBuffer,
     emitter_ent: Option<Entity>,
     config: Arc<ParticleConfig>,
+    sprite: SpriteAssetId,
     position: Vec2,
     velocity: Vec2,
     lifetime: f32,
     start_scale: f32,
 ) {
-    let sprite_id = config.sprite.clone();
     let base = config.tint;
     let particle = Particle {
         config,
@@ -502,7 +520,7 @@ pub fn spawn_particle_via(
     cmd.insert_pending(
         pending,
         Sprite {
-            asset_id: sprite_id,
+            asset_id: sprite,
             color: [255, 255, 255, 255],
             z_order: 0,
             material_id: None,

@@ -9,9 +9,9 @@ use std::sync::Arc;
 use glam::Vec2;
 use tungsten::core::assets::AnimationFrame;
 use tungsten::core::{
-    AnimationData, AnimationRegistry, AssetId, BlendMode, Curve, EmissionKind, FilterMode,
-    InitialVelocity, LayerKind, ParticleConfig, ParticleConfigRegistry, ParticleRender, Range,
-    TilemapData, TilemapInstance, TilemapLayer, TilemapRegistry, World,
+    AnimationData, AnimationRegistry, AssetId, AssetRegistry, BlendMode, Curve, EmissionKind,
+    FilterMode, InitialVelocity, LayerKind, ParticleConfig, ParticleConfigRegistry, ParticleRender,
+    Range, TilemapData, TilemapInstance, TilemapLayer, TilemapRegistry, World,
 };
 use tungsten::render::Renderer;
 
@@ -175,11 +175,14 @@ pub(super) fn register_clips(world: &mut World) {
     let mut registry = world
         .remove_resource::<AnimationRegistry>()
         .unwrap_or_default();
+    let sprites = world
+        .get_resource_mut::<AssetRegistry>()
+        .expect("AssetRegistry resource missing");
     for variant in 0..VARIANTS {
         for flat in [false, true] {
             let frames = (0..WALK_FRAMES as usize)
                 .map(|frame| AnimationFrame {
-                    sprite: walk_frame(variant, frame, flat),
+                    sprite: sprites.intern_sprite(&walk_frame(variant, frame, flat)),
                     duration_ms: WALK_FRAME_MS,
                 })
                 .collect();

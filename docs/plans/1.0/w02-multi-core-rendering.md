@@ -15,6 +15,7 @@ Skeleton. The scoping text stays in [criteria](criteria.md) §5 until this works
 - **Candidates:** R0 and R2's late-acquire split (Phase 5, Track A); the R1 spike (Track B); R1 (Track C); R4 in 1.x, back only if C1 shows a game-frame row over budget that it would fix (Q4, `D-102`); R3 after W1's glyph gate; R5 only if startup metrics ask.
 - **Needs first:** The definition gate, because R0's interned IDs break `Sprite.asset_id`; capture rules extended for worker threads (§12) before the R1 spike; W15b's column slices for R1.
 - **Feeds:** W1 M0a and M1, which run in Track A now that R4 is 1.x (implementation plan amendment 7); W1 M2, which builds on R2's split final pass; W4's break ledger (interned IDs, the column-slice query); C1 and C2 on `gpu-throughput`, `particles` and `integrated`.
+- **Landed:** R0 in 0.45 (M33): interned sprite IDs (`D-113`) and extract culling (`D-114`). The R1 spike measures on that tree.
 - **Owner questions:** Q5, Q6. Q4 answered at the definition gate: R1 and R2 only (`D-102`).
 - **Decisions:** Threading rule, replacing the two-thread limit in `AGENTS.md`; worker mechanism; `Send`/`Sync` policy; interned asset IDs; R4, if it comes back from 1.x.
 
