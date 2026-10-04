@@ -2,6 +2,8 @@
 # Writes each library crate's public API to api/<crate>.txt (D-104, D-107):
 # rustdoc JSON from the pinned toolchain in rust-toolchain.toml, with
 # RUSTC_BOOTSTRAP=1 for that one rustdoc call, listed by cargo-public-api.
+# The umbrella's call enables its `testing` feature, so the headless harness
+# is listed too (D-110).
 # --check writes to target/public-api/check/ instead and fails when a tracked
 # file differs, so the release checks catch a stale snapshot.
 #
@@ -44,8 +46,12 @@ mkdir -p "$out"
 stale=0
 for crate in "${CRATES[@]}"; do
   json="$TARGET/doc/${crate//-/_}.json"
+  features=()
+  if [[ "$crate" == tungsten ]]; then
+    features=(--features testing)
+  fi
   RUSTC_BOOTSTRAP=1 CARGO_TARGET_DIR="$TARGET" cargo +"$toolchain" rustdoc -q --locked \
-    -p "$crate" --lib -- -Z unstable-options --output-format json
+    -p "$crate" "${features[@]}" --lib -- -Z unstable-options --output-format json
   format="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["format_version"])' "$json")"
   if [[ "$format" != "$FORMAT_VERSION" ]]; then
     echo "$crate: rustdoc JSON format $format, expected $FORMAT_VERSION (see this script's header)" >&2

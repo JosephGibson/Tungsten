@@ -33,9 +33,9 @@ use tungsten_core::assets::{
 use tungsten_core::physics::{CollisionEvent, PhysicsBuffers, PhysicsConfig};
 use tungsten_core::post::{PostPass, PostStack};
 use tungsten_core::{
-    ActionMap, AssetRegistry, AudioCommands, CameraController, CameraState, CommandBuffer, Config,
-    DebugDraw, DebugShape, DeltaTime, DisplayMode, DisplayState, EventQueue, InputState,
-    Inspectable, ParticleActive, ParticleBudget, World, WorldRngSeed,
+    ActionMap, AssetRegistry, AudioCommand, AudioCommands, CameraController, CameraState,
+    CommandBuffer, Config, DebugDraw, DebugShape, DeltaTime, DisplayMode, DisplayState, EventQueue,
+    InputState, Inspectable, ParticleActive, ParticleBudget, World, WorldRngSeed,
 };
 use tungsten_render::{
     DebugLineInstance, GpuFrameTimings, MeshParticleBatch, QuadInstance, Renderer, SpriteBatch,
@@ -118,6 +118,10 @@ pub struct App {
     // Start of the previous redraw; the `interval` telemetry measures from it.
     prev_frame_start: Option<Instant>,
     capture_config: Option<CaptureConfig>,
+    /// With no audio device, the audio stage appends a frame's commands here
+    /// when set, instead of dropping them: the commands that frame would have
+    /// played. Only a headless caller sets it.
+    pub(crate) audio_capture: Option<Vec<AudioCommand>>,
     frames_rendered: u64,
     fatal_error: Option<anyhow::Error>,
     // M31: the user's post stack plus the transition pass, rebuilt on each
@@ -264,6 +268,7 @@ impl App {
             redraw_deadline: None,
             prev_frame_start: None,
             capture_config: parse_capture_config(),
+            audio_capture: None,
             frames_rendered: 0,
             fatal_error: None,
             transition_post_stack: PostStack::new(),
@@ -302,6 +307,12 @@ impl App {
     /// Mutable world access for setup.
     pub fn world_mut(&mut self) -> &mut World {
         &mut self.world
+    }
+
+    /// World access for the headless harness.
+    #[cfg(any(test, feature = "testing"))]
+    pub(crate) fn world(&self) -> &World {
+        &self.world
     }
 
     /// Mutable renderer access after window creation.
@@ -399,7 +410,7 @@ impl App {
     }
 
     /// Install default extracts; idempotent.
-    fn install_default_extracts(&mut self) {
+    pub(crate) fn install_default_extracts(&mut self) {
         if self.extract_sprites.is_none() {
             self.extract_sprites = Some(Box::new(crate::sprite_extract::extract_sprites_default));
         }
@@ -694,19 +705,39 @@ fn compose_post_stack<'a>(
     scratch
 }
 
+/// Where a frame's dt comes from.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum FrameClock {
+    /// Elapsed wall time since the previous frame, capped at [`MAX_DT_SECS`]
+    /// (or pinned to 60 Hz under `TUNGSTEN_SMOKE_FRAMES`): the window loop.
+    Wall,
+    /// This dt, written as given: a headless caller.
+    #[cfg_attr(not(any(test, feature = "testing")), allow(dead_code))]
+    Pinned(f32),
+}
+
+/// How a frame ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FrameEnd {
+    /// Every stage ran.
+    Completed,
+    /// `engine_exit` was just pressed; the stages after update did not run.
+    ExitRequested,
+}
+
 // Extract output kept in umbrella crate; renderer stays World-free.
-struct FrameExtract {
-    quads: Vec<QuadInstance>,
-    sprites: Vec<SpriteBatch>,
-    text: Vec<TextSection>,
-    debug_quads: Vec<QuadInstance>,
-    debug_lines: Vec<DebugLineInstance>,
+pub(crate) struct FrameExtract {
+    pub(crate) quads: Vec<QuadInstance>,
+    pub(crate) sprites: Vec<SpriteBatch>,
+    pub(crate) text: Vec<TextSection>,
+    pub(crate) debug_quads: Vec<QuadInstance>,
+    pub(crate) debug_lines: Vec<DebugLineInstance>,
     /// M29 per-frame lighting payload; uploaded to the GPU once per render
     /// stage. With no lights this carries `count = 0` + ambient default.
-    light_ubo: tungsten_render::LightUbo,
+    pub(crate) light_ubo: tungsten_render::LightUbo,
     /// M31 mesh particles, one batch per mesh. Engine-owned extract: there is
     /// no setter.
-    mesh_particles: Vec<MeshParticleBatch>,
+    pub(crate) mesh_particles: Vec<MeshParticleBatch>,
     extract_ms: f32,
 }
 
@@ -740,7 +771,13 @@ impl App {
     // Debug perf: flatten single-call frame stages to avoid stack/memcpy overhead.
 
     #[inline(always)]
-    fn stage_delta_time(&mut self) {
+    fn stage_delta_time(&mut self, clock: FrameClock) {
+        if let FrameClock::Pinned(dt) = clock {
+            if let Some(delta) = self.world.get_resource_mut::<DeltaTime>() {
+                delta.dt = dt;
+            }
+            return;
+        }
         let now = Instant::now();
         if let Some(last) = self.last_frame {
             let dt = frame_dt_secs(
@@ -1016,6 +1053,8 @@ impl App {
             for cmd in cmds.drain() {
                 if let Some(audio) = &mut self.audio {
                     audio.send(cmd);
+                } else if let Some(capture) = &mut self.audio_capture {
+                    capture.push(cmd);
                 }
             }
         }
@@ -1038,6 +1077,110 @@ impl App {
             ft.interval_ms = t.interval_ms;
             ft.system_timings = t.system_timings;
         }
+    }
+
+    /// One frame, from the interval measurement through the perf log, in the
+    /// order `DESIGN.md`'s frame loop lists. The window loop runs it on each
+    /// redraw with [`FrameClock::Wall`], then paces; a headless caller runs it
+    /// with a pinned dt. `inspect` sees the frame's extract between render and
+    /// recycle.
+    #[inline(always)]
+    pub(crate) fn run_frame(
+        &mut self,
+        frame_start: Instant,
+        clock: FrameClock,
+        inspect: impl FnOnce(&FrameExtract),
+    ) -> FrameEnd {
+        let interval_ms =
+            frame_interval_ms(self.prev_frame_start.replace(frame_start), frame_start);
+        self.apply_pending_display_request();
+
+        // HUD smoothing uses previous frame; compose still occurs before render.
+        let prev_total_ms = self
+            .world
+            .get_resource::<FrameTimings>()
+            .map_or(0.0, |ft| ft.total_ms);
+
+        self.stage_delta_time(clock);
+        let (update_ms, system_timings) = self.stage_update();
+
+        if self.engine_exit_requested() {
+            return FrameEnd::ExitRequested;
+        }
+
+        self.stage_particles();
+        self.stage_tweens();
+        let flush_ms = self.stage_flush_commands();
+        self.stage_flush_events();
+        let hot_reload_ms = self.stage_hot_reload();
+        self.apply_pending_post_aa_request();
+
+        let mut extract_out = self.stage_extract(prev_total_ms);
+        let extract_ms = extract_out.extract_ms;
+
+        let render_out = self.stage_render(&extract_out);
+        inspect(&extract_out);
+        self.stage_recycle(&mut extract_out);
+
+        let audio_ms = self.stage_audio();
+
+        if let Some(input) = self.world.get_resource_mut::<InputState>() {
+            input.begin_frame();
+        }
+
+        let total_ms = frame_start.elapsed().as_secs_f64() as f32 * 1000.0;
+        self.stage_telemetry(FrameStageTimings {
+            update_ms,
+            flush_ms,
+            hot_reload_ms,
+            extract_ms,
+            render_ms: render_out.render_ms,
+            render_acquire_ms: render_out.render_acquire_ms,
+            render_encode_ms: render_out.render_encode_ms,
+            render_submit_present_ms: render_out.render_submit_present_ms,
+            audio_ms,
+            total_ms,
+            interval_ms,
+            system_timings,
+        });
+
+        if std::env::var("TUNGSTEN_PERF_LOG").is_ok() {
+            log_perf_line(
+                total_ms,
+                interval_ms,
+                update_ms,
+                flush_ms,
+                extract_ms,
+                &render_out,
+                audio_ms,
+                hot_reload_ms,
+            );
+            if log::log_enabled!(log::Level::Debug)
+                && let Some(ft) = self.world.get_resource::<FrameTimings>()
+                && !ft.system_timings.is_empty()
+            {
+                log::debug!("{}", format_perf_systems_line(&ft.system_timings));
+            }
+            if log::log_enabled!(log::Level::Debug)
+                && let Some(gpu) = self.world.get_resource::<GpuFrameTimings>()
+            {
+                // Emit even an empty line on skipped/unsupported frames so
+                // capture warm-up counts remain aligned with frame logs.
+                let mut line = format_perf_named_timings("gpu_passes:", &gpu.pass_gpu_ms);
+                if let Some(span) = gpu.render_gpu_ms {
+                    use std::fmt::Write as _;
+                    let _ = write!(line, " render_span={span:.2}ms");
+                }
+                log::debug!("{line}");
+            }
+            if log::log_enabled!(log::Level::Debug)
+                && let Some(buffers) = self.world.get_resource::<PhysicsBuffers>()
+            {
+                log::debug!("{}", format_perf_physics_line(buffers));
+            }
+        }
+
+        FrameEnd::Completed
     }
 
     #[inline(always)]
@@ -1575,93 +1718,10 @@ impl ApplicationHandler for App {
             }
             WindowEvent::RedrawRequested => {
                 let frame_start = Instant::now();
-                let interval_ms =
-                    frame_interval_ms(self.prev_frame_start.replace(frame_start), frame_start);
-                self.apply_pending_display_request();
-
-                // HUD smoothing uses previous frame; compose still occurs before render.
-                let prev_total_ms = self
-                    .world
-                    .get_resource::<FrameTimings>()
-                    .map_or(0.0, |ft| ft.total_ms);
-
-                self.stage_delta_time();
-                let (update_ms, system_timings) = self.stage_update();
-
-                if self.engine_exit_requested() {
+                if self.run_frame(frame_start, FrameClock::Wall, |_| {}) == FrameEnd::ExitRequested
+                {
                     event_loop.exit();
                     return;
-                }
-
-                self.stage_particles();
-                self.stage_tweens();
-                let flush_ms = self.stage_flush_commands();
-                self.stage_flush_events();
-                let hot_reload_ms = self.stage_hot_reload();
-                self.apply_pending_post_aa_request();
-
-                let mut extract_out = self.stage_extract(prev_total_ms);
-                let extract_ms = extract_out.extract_ms;
-
-                let render_out = self.stage_render(&extract_out);
-                self.stage_recycle(&mut extract_out);
-
-                let audio_ms = self.stage_audio();
-
-                if let Some(input) = self.world.get_resource_mut::<InputState>() {
-                    input.begin_frame();
-                }
-
-                let total_ms = frame_start.elapsed().as_secs_f64() as f32 * 1000.0;
-                self.stage_telemetry(FrameStageTimings {
-                    update_ms,
-                    flush_ms,
-                    hot_reload_ms,
-                    extract_ms,
-                    render_ms: render_out.render_ms,
-                    render_acquire_ms: render_out.render_acquire_ms,
-                    render_encode_ms: render_out.render_encode_ms,
-                    render_submit_present_ms: render_out.render_submit_present_ms,
-                    audio_ms,
-                    total_ms,
-                    interval_ms,
-                    system_timings,
-                });
-
-                if std::env::var("TUNGSTEN_PERF_LOG").is_ok() {
-                    log_perf_line(
-                        total_ms,
-                        interval_ms,
-                        update_ms,
-                        flush_ms,
-                        extract_ms,
-                        &render_out,
-                        audio_ms,
-                        hot_reload_ms,
-                    );
-                    if log::log_enabled!(log::Level::Debug)
-                        && let Some(ft) = self.world.get_resource::<FrameTimings>()
-                        && !ft.system_timings.is_empty()
-                    {
-                        log::debug!("{}", format_perf_systems_line(&ft.system_timings));
-                    }
-                    if log::log_enabled!(log::Level::Debug)
-                        && let Some(gpu) = self.world.get_resource::<GpuFrameTimings>()
-                    {
-                        // Emit even an empty line on skipped/unsupported frames so
-                        // capture warm-up counts remain aligned with frame logs.
-                        let mut line = format_perf_named_timings("gpu_passes:", &gpu.pass_gpu_ms);
-                        if let Some(span) = gpu.render_gpu_ms {
-                            use std::fmt::Write as _;
-                            let _ = write!(line, " render_span={span:.2}ms");
-                        }
-                        log::debug!("{line}");
-                    }
-                    if log::log_enabled!(log::Level::Debug)
-                        && let Some(buffers) = self.world.get_resource::<PhysicsBuffers>()
-                    {
-                        log::debug!("{}", format_perf_physics_line(buffers));
-                    }
                 }
 
                 self.stage_pacing(event_loop, frame_start);

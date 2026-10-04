@@ -9,12 +9,6 @@ use crate::state::{
 use tungsten::core::{AssetRegistry, Particle, ParticleEmitter};
 use tungsten::physics::Shape;
 
-fn flush_commands(world: &mut World) {
-    let commands = world.remove_resource::<CommandBuffer>().unwrap();
-    world.flush(commands);
-    world.insert_resource(CommandBuffer::new());
-}
-
 #[test]
 fn middle_mouse_has_five_times_the_rate_half_size_and_dedicated_animation() {
     for (dt, frames, expected_normal, expected_small) in [
@@ -23,9 +17,10 @@ fn middle_mouse_has_five_times_the_rate_half_size_and_dedicated_animation() {
         (1.0 / 30.0, 10, 10, 52),
         (0.161, 1, 5, 25),
     ] {
-        let mut world = seed_world();
-        load_presentation_assets(&mut world);
-        crate::setup::platformer_bindings(&mut world);
+        let mut harness = platformer_harness(&[("spawn_ball_system", spawn_ball_system)]);
+        let world = harness.world_mut();
+        load_presentation_assets(world);
+        crate::setup::platformer_bindings(world);
         world.insert_resource(BallSpawnState::default());
         world
             .get_resource_mut::<ActionMap>()
@@ -36,16 +31,14 @@ fn middle_mouse_has_five_times_the_rate_half_size_and_dedicated_animation() {
                     button: MouseButton::Left,
                 }],
             );
-        world.get_resource_mut::<DeltaTime>().unwrap().dt = dt;
-        let input = world.get_resource_mut::<InputState>().unwrap();
+        harness.set_dt(dt);
+        let input = input_mut(&mut harness);
         input.update_cursor_position(240.0, 144.0);
         input.mouse_down(MouseButton::Left);
         input.mouse_down(MouseButton::Middle);
         // Independent timers preserve the rate at high and low frame rates.
-        for _ in 0..frames {
-            spawn_ball_system(&mut world);
-            flush_commands(&mut world);
-        }
+        harness.step(frames);
+        let world = harness.world_mut();
         let small = world.query::<SmallBall>().count();
         let normal = world.query::<Ball>().count() - small;
         assert_eq!(normal, expected_normal);
@@ -91,7 +84,7 @@ fn middle_mouse_has_five_times_the_rate_half_size_and_dedicated_animation() {
                 expected.current_sprite(registry)
             );
         }
-        let batches = crate::extract::extract_sprites(&world);
+        let batches = crate::extract::extract_sprites(world);
         for (texture, count) in [(901, normal), (902, small)] {
             assert_eq!(
                 batches
@@ -113,7 +106,7 @@ fn middle_mouse_has_five_times_the_rate_half_size_and_dedicated_animation() {
             .get_resource_mut::<InputState>()
             .unwrap()
             .mouse_up(MouseButton::Middle);
-        spawn_ball_system(&mut world);
+        spawn_ball_system(world);
         assert_eq!(
             world
                 .get_resource::<BallSpawnState>()
@@ -127,10 +120,10 @@ fn middle_mouse_has_five_times_the_rate_half_size_and_dedicated_animation() {
 
 #[test]
 fn spawning_stops_at_the_ball_cap() {
-    let mut world = seed_world();
-    crate::setup::platformer_bindings(&mut world);
+    let mut harness = platformer_harness(&[("spawn_ball_system", spawn_ball_system)]);
+    let world = harness.world_mut();
+    crate::setup::platformer_bindings(world);
     world.insert_resource(BallSpawnState::default());
-    world.insert_resource(CommandBuffer::new());
     world
         .get_resource_mut::<ActionMap>()
         .unwrap()
@@ -145,17 +138,16 @@ fn spawning_stops_at_the_ball_cap() {
         world.insert(ball, Ball);
     }
     // One frame long enough for 5 large and 25 small balls.
-    world.get_resource_mut::<DeltaTime>().unwrap().dt = 0.161;
-    let input = world.get_resource_mut::<InputState>().unwrap();
+    harness.set_dt(0.161);
+    let input = input_mut(&mut harness);
     input.update_cursor_position(240.0, 144.0);
     input.mouse_down(MouseButton::Left);
     input.mouse_down(MouseButton::Middle);
 
     // The one ball left in the budget goes out, then nothing.
     for _ in 0..2 {
-        spawn_ball_system(&mut world);
-        flush_commands(&mut world);
-        assert_eq!(world.query::<Ball>().count(), BALL_CAP);
+        harness.step(1);
+        assert_eq!(harness.world().query::<Ball>().count(), BALL_CAP);
     }
 }
 
@@ -265,11 +257,15 @@ fn impacts_require_small_ball_and_closing_speed_strictly_above_threshold() {
 
 #[test]
 fn relative_body_impacts_work_on_b_side_and_dense_contacts_remain_bounded() {
-    let mut world = seed_world();
-    load_presentation_assets(&mut world);
-    let a = impact_ball(&mut world, Vec2::X * 300.0, false);
-    let b = impact_ball(&mut world, -Vec2::X * 300.0, true);
-    move_obstacles(&mut world);
+    let mut harness = platformer_harness(&[(
+        "transient_emitter_cleanup",
+        crate::systems::transient_emitter_cleanup,
+    )]);
+    let world = harness.world_mut();
+    load_presentation_assets(world);
+    let a = impact_ball(world, Vec2::X * 300.0, false);
+    let b = impact_ball(world, -Vec2::X * 300.0, true);
+    move_obstacles(world);
     world
         .get_resource_mut::<EventQueue<CollisionEvent>>()
         .unwrap()
@@ -279,45 +275,49 @@ fn relative_body_impacts_work_on_b_side_and_dense_contacts_remain_bounded() {
             normal: -Vec2::X,
             penetration: 0.1,
         });
-    small_ball_impacts(&mut world);
+    small_ball_impacts(world);
     assert_eq!(world.query::<TransientEmitter>().count(), 1);
     for e in world.query_entities::<TransientEmitter>() {
         world.despawn(e);
     }
     for _ in 0..200 {
-        let e = impact_ball(&mut world, Vec2::Y * 1000.0, true);
+        let e = impact_ball(world, Vec2::Y * 1000.0, true);
         // Duplicate substep contacts must not consume extra burst slots.
         for _ in 0..8 {
-            floor_contact(&mut world, e);
+            floor_contact(world, e);
         }
     }
-    move_obstacles(&mut world);
-    small_ball_impacts(&mut world);
+    move_obstacles(world);
+    small_ball_impacts(world);
     assert_eq!(
         world.query::<TransientEmitter>().count(),
         SMALL_BALL_BURSTS_PER_FRAME
     );
     for _ in 0..20 {
-        small_ball_impacts(&mut world);
+        small_ball_impacts(world);
     }
     assert_eq!(
         world.query::<TransientEmitter>().count(),
         TRANSIENT_EMITTER_CAP
     );
-    for _ in 0..50 {
-        particle_frame(&mut world);
-    }
-    crate::systems::transient_emitter_cleanup(&mut world);
+    harness.step(50);
+    let world = harness.world_mut();
+    crate::systems::transient_emitter_cleanup(world);
     assert_eq!(world.query::<TransientEmitter>().count(), 0);
 }
 
 #[test]
 fn impact_particles_span_rainbow_and_vortex_births_spiral_inward() {
-    let mut world = seed_world();
-    load_presentation_assets(&mut world);
-    crate::systems::spawn_transient_effect(&mut world, "ex10_small_ball_impact", Vec2::ZERO);
-    particle_frame(&mut world);
-    crate::gameplay::scene_effects(&mut world);
+    let mut harness = platformer_harness(&[(
+        "transient_emitter_cleanup",
+        crate::systems::transient_emitter_cleanup,
+    )]);
+    let world = harness.world_mut();
+    load_presentation_assets(world);
+    crate::systems::spawn_transient_effect(world, "ex10_small_ball_impact", Vec2::ZERO);
+    harness.step(1);
+    let world = harness.world_mut();
+    crate::gameplay::scene_effects(world);
     let colors: Vec<_> = world
         .query::<Particle>()
         .map(|(_, p)| p.base_rgba)
@@ -337,8 +337,9 @@ fn impact_particles_span_rainbow_and_vortex_births_spiral_inward() {
         .unwrap();
     world.insert(hole, ParticleEmitter::new(config));
     world.insert(hole, tungsten::core::ParticleEmitterState::default());
-    particle_frame(&mut world);
-    crate::gameplay::scene_effects(&mut world);
+    harness.step(1);
+    let world = harness.world_mut();
+    crate::gameplay::scene_effects(world);
     let mut checked = 0;
     for (e, p) in world
         .query::<Particle>()
@@ -360,26 +361,34 @@ fn impact_particles_span_rainbow_and_vortex_births_spiral_inward() {
     world.get_mut::<Particle>(tracked).unwrap().age = 0.1;
     world.get_mut::<Particle>(tracked).unwrap().lifetime = 2.0;
     for dt in [1.0 / 30.0, 1.0 / 60.0, 1.0 / 144.0] {
-        world.get_resource_mut::<DeltaTime>().unwrap().dt = dt;
+        set_dt(&mut harness, dt);
+        let world = harness.world_mut();
         world.get_mut::<Transform>(tracked).unwrap().position = Vec2::new(30.0, 0.0);
-        crate::gameplay::scene_effects(&mut world);
-        particle_frame(&mut world);
-        let radius = world.get::<Transform>(tracked).unwrap().position.length();
+        crate::gameplay::scene_effects(world);
+        harness.step(1);
+        let radius = harness
+            .world()
+            .get::<Transform>(tracked)
+            .unwrap()
+            .position
+            .length();
         assert!((radius - (30.0 - 105.0 * dt)).abs() < 0.001);
     }
 }
 
 #[test]
 fn pit_contains_two_thousand_mixed_balls_and_fast_wall_impacts() {
-    let mut world = real_level_world();
+    let mut harness = platformer_harness(&PHYSICS_SYSTEMS);
+    let world = harness.world_mut();
+    seed_level(world);
     world
         .get_resource_mut::<tungsten::physics::PhysicsConfig>()
         .unwrap()
         .broadphase_cell_size = TILE;
     for i in 0..2048 {
         let small = i % 2 == 0;
-        let e = impact_ball(&mut world, Vec2::ZERO, small);
-        let radius = crate::gameplay::ball_radius(&world, e);
+        let e = impact_ball(world, Vec2::ZERO, small);
+        let radius = crate::gameplay::ball_radius(world, e);
         world.insert(e, Collider::circle(radius));
         world.insert(e, RigidBody::dynamic().with_restitution(BALL_RESTITUTION));
         world.get_mut::<Position>(e).unwrap().0 = Vec2::new(
@@ -391,7 +400,8 @@ fn pit_contains_two_thousand_mixed_balls_and_fast_wall_impacts() {
         }
     }
     for _ in 0..180 {
-        physics_frame(&mut world);
+        harness.step(1);
+        let world = harness.world();
         for (e, _) in world.query::<Ball>() {
             let p = world.get::<Position>(e).unwrap().0;
             // Check containment, allowing the solver’s shallow contact penetration.
@@ -405,5 +415,5 @@ fn pit_contains_two_thousand_mixed_balls_and_fast_wall_impacts() {
             );
         }
     }
-    assert_eq!(world.query::<Ball>().count(), 2048);
+    assert_eq!(harness.world().query::<Ball>().count(), 2048);
 }

@@ -6,6 +6,11 @@ rust-version.workspace = true
 license.workspace = true
 description = "Umbrella crate and winit application loop for the Tungsten 2D engine"
 
+[features]
+# The headless test harness, `tungsten::testing` (`D-110`); games enable it as
+# a dev-dependency feature.
+testing = []
+
 [dependencies]
 tungsten-core = { workspace = true }
 tungsten-render = { workspace = true }

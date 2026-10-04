@@ -63,24 +63,26 @@ fn fire_ignites_small_balls_including_swept_crossings_and_still_destroys_normal_
 #[test]
 fn contact_spread_is_symmetric_and_only_uses_current_events() {
     for reverse in [false, true] {
-        let mut world = seed_world();
-        let source = ball(&mut world, Vec2::ZERO, true);
-        let target = ball(&mut world, Vec2::new(100.0, 0.0), true);
-        let stale = ball(&mut world, Vec2::new(200.0, 0.0), true);
-        let normal = ball(&mut world, Vec2::ZERO, false);
-        ignite(&mut world, source);
-        contact(&mut world, source, stale);
-        world
-            .get_resource_mut::<EventQueue<CollisionEvent>>()
-            .unwrap()
-            .flush();
-        contact(&mut world, normal, source);
+        let mut harness = platformer_harness(&[("spread_ball_fire", spread_ball_fire)]);
+        let world = harness.world_mut();
+        let source = ball(world, Vec2::ZERO, true);
+        let target = ball(world, Vec2::new(100.0, 0.0), true);
+        let stale = ball(world, Vec2::new(200.0, 0.0), true);
+        let normal = ball(world, Vec2::ZERO, false);
+        contact(world, source, stale);
+        // Nothing burns yet, so this frame's spread returns early; its event
+        // flush leaves the contact a frame old.
+        harness.step(1);
+        let world = harness.world_mut();
+        ignite(world, source);
+        contact(world, normal, source);
         if reverse {
-            contact(&mut world, target, source);
+            contact(world, target, source);
         } else {
-            contact(&mut world, source, target);
+            contact(world, source, target);
         }
-        spread_ball_fire(&mut world);
+        harness.step(1);
+        let world = harness.world();
         assert_eq!(
             world.get::<BallBurn>(target).unwrap().remaining,
             BALL_BURN_SECONDS
@@ -143,29 +145,35 @@ fn burns_last_ten_seconds_without_refresh_and_spent_balls_never_reignite() {
 
 #[test]
 fn burning_particles_use_a_rotating_bounded_pool_and_drain_after_burnout() {
-    let mut world = seed_world();
-    load_presentation_assets(&mut world);
-    let first_ball = ball(&mut world, Vec2::new(0.0, 10.0), true);
-    ignite(&mut world, first_ball);
-    world.get_resource_mut::<DeltaTime>().unwrap().dt = 0.25;
-    ball_fire_particles(&mut world);
-    particle_frame(&mut world);
+    let mut harness = platformer_harness(&[(
+        "transient_emitter_cleanup",
+        crate::systems::transient_emitter_cleanup,
+    )]);
+    let world = harness.world_mut();
+    load_presentation_assets(world);
+    let first_ball = ball(world, Vec2::new(0.0, 10.0), true);
+    ignite(world, first_ball);
+    set_dt(&mut harness, 0.25);
+    ball_fire_particles(harness.world_mut());
+    harness.step(1);
     // Six times the old 12/sec output, split into plumes and faster sparks.
     for (sprite, expected) in [("ex10_flame_glow", 12), ("ex10_spark", 6)] {
         assert_eq!(
-            world
+            harness
+                .world()
                 .query::<Particle>()
                 .filter(|(_, p)| p.config.sprite == sprite)
                 .count(),
             expected
         );
     }
-    world.get_resource_mut::<DeltaTime>().unwrap().dt = 1.0 / 60.0;
+    set_dt(&mut harness, 1.0 / 60.0);
+    let world = harness.world_mut();
     for i in 1..2048 {
-        let e = ball(&mut world, Vec2::new(i as f32 * 20.0, 10.0), true);
-        ignite(&mut world, e);
+        let e = ball(world, Vec2::new(i as f32 * 20.0, 10.0), true);
+        ignite(world, e);
     }
-    ball_fire_particles(&mut world);
+    ball_fire_particles(world);
     assert_eq!(
         world.query::<BallFireEmitter>().count(),
         BALL_FIRE_EMITTER_CAP
@@ -173,7 +181,7 @@ fn burning_particles_use_a_rotating_bounded_pool_and_drain_after_burnout() {
     let first = world.query::<BallFireEmitter>().next().unwrap().0;
     let old_position = world.get::<Transform>(first).unwrap().position;
     world.insert_resource(crate::gameplay::SceneTime(0.125));
-    ball_fire_particles(&mut world);
+    ball_fire_particles(world);
     assert_ne!(
         world.get::<Transform>(first).unwrap().position,
         old_position
@@ -181,27 +189,27 @@ fn burning_particles_use_a_rotating_bounded_pool_and_drain_after_burnout() {
     // Run the real emitter lifecycle with a deliberately tight shared budget.
     world.insert_resource(ParticleBudget { global_cap: 32 });
     for _ in 0..60 {
-        ball_fire_particles(&mut world);
-        particle_frame(&mut world);
-        assert!(world.query::<Particle>().count() <= 32);
+        ball_fire_particles(harness.world_mut());
+        harness.step(1);
+        assert!(harness.world().query::<Particle>().count() <= 32);
     }
-    assert!(world.query::<Particle>().count() > 0);
-    world.get_resource_mut::<DeltaTime>().unwrap().dt = 10.0;
-    tick_ball_fire(&mut world);
-    ball_fire_particles(&mut world);
+    assert!(harness.world().query::<Particle>().count() > 0);
+    set_dt(&mut harness, 10.0);
+    let world = harness.world_mut();
+    tick_ball_fire(world);
+    ball_fire_particles(world);
     assert_eq!(world.query::<BallFireEmitter>().count(), 0);
-    world.get_resource_mut::<DeltaTime>().unwrap().dt = 1.0 / 60.0;
-    for _ in 0..90 {
-        particle_frame(&mut world);
-    }
+    set_dt(&mut harness, 1.0 / 60.0);
+    harness.step(90);
+    let world = harness.world_mut();
     assert_eq!(world.query::<Particle>().count(), 0);
     assert_eq!(world.query::<Ball>().count(), 2048);
-    let fresh = ball(&mut world, Vec2::ZERO, true);
-    ignite(&mut world, fresh);
-    ball_fire_particles(&mut world);
+    let fresh = ball(world, Vec2::ZERO, true);
+    ignite(world, fresh);
+    ball_fire_particles(world);
     assert_eq!(world.query::<BallFireEmitter>().count(), 2);
     world.despawn(fresh);
-    ball_fire_particles(&mut world);
+    ball_fire_particles(world);
     assert_eq!(world.query::<BallFireEmitter>().count(), 0);
 }
 

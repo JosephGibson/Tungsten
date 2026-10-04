@@ -11,5 +11,9 @@ glam = { workspace = true }
 anyhow = { workspace = true }
 env_logger = { workspace = true }
 
+[dev-dependencies]
+# The headless test harness, `tungsten::testing` (D-110).
+tungsten = { workspace = true, features = ["testing"] }
+
 [lints]
 workspace = true

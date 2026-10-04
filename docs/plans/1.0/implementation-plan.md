@@ -64,7 +64,7 @@ The glyph gate (W1's T1, T1b or T2, [w01](w01-ui-text-suite.md) §9) is W1's own
 | `scripts/bench.py` run from a tree export under `target/` records the enclosing repository's commit and dirty hash as the capture's provenance | Track B: spikes capture from scratch copies, so each spike's README names its tree by hand (workflow §2) |
 | `cargo shear` (`just udeps`) reports the `#[path]`-included `src/tests/` modules as unlinked | The Phase 5 QA pass, with the `ignored-paths` entry known issues proposes |
 
-**Step 0, planning tooling.** `check_plans` in `scripts/check-repo.py` also reads `docs/plans/*/*.md`, skipping the archive, with a case in `scripts/test-check-repo.py`. The 0.40 QA plan, which edited both files, has landed (its step 11 added a citation check that reads this folder's files only as citation targets), so nothing blocks it. No milestone plan is written in this folder before it. Workflow §8 proposes three items beside it: headroom for `AGENTS.md` and the index, a milestone skill, and an API snapshot recipe. *Landed 2026-10-04, uncommitted for 0.42 (`D-105`): 0a, 0b (`D-106`), 0c (the `tungsten-milestone` skill) and 0d (`D-107`, `just api`); workflow §8 records each.*
+**Step 0, planning tooling.** `check_plans` in `scripts/check-repo.py` also reads `docs/plans/*/*.md`, skipping the archive, with a case in `scripts/test-check-repo.py`. The 0.40 QA plan, which edited both files, has landed (its step 11 added a citation check that reads this folder's files only as citation targets), so nothing blocks it. No milestone plan is written in this folder before it. Workflow §8 proposes three items beside it: headroom for `AGENTS.md` and the index, a milestone skill, and an API snapshot recipe. *Landed 2026-10-04 and released in `v0.42.0`, squash-merged as `28abcce`: 0a, 0b (`D-106`), 0c (the `tungsten-milestone` skill) and 0d (`D-107`, `just api`); workflow §8 records each.*
 
 **Track A**, independent of the frame-loop gate, in this order after the definition gate unless the register says otherwise (§6 gives the reasons). Hard constraints: W14a before W1 M1; W2 R0 before the R1 spike; W11a and W9a before W12a; W1 M0a before M1.
 
@@ -267,8 +267,8 @@ One row per candidate, or per pair that shares a plan and a release (§6, `D-108
 
 | Candidate | Milestone plan | Release | Status |
 | --- | --- | --- | --- |
-| Step 0 | — | 0.42 | Landed 2026-10-04 (0a–0d; `D-106`, `D-107`); ships in `v0.42.0`, cut 2026-10-04 |
-| W14a | — | — | Next: its milestone plan |
+| Step 0 | — | 0.42 | Released 2026-10-04 in `v0.42.0`, squash-merged as `28abcce` (0a–0d; `D-106`, `D-107`) |
+| W14a | [M32](../archive/1.0/phase5-milestone-32-headless-harness.md) | 0.43 | Plan approved 2026-10-04; run 2026-10-04: steps 2–6 done, step 1 skipped (its A/A failed); release session 2026-10-04: plan archived, `v0.43.0` cut 2026-10-04 (`D-110`) |
 | W2 R0 | — | — | Not started |
 | W1 M0a | — | — | Not started; Q4 answered at the definition gate |
 | W11a with W7a | — | — | Not started |
@@ -343,3 +343,7 @@ Sign-off: Signed 2026-10-03.
 - 2026-10-04 on `db1177c`, uncommitted: Step 0 landed (0a–0d, `D-106`, `D-107`); §3's Step 0 paragraph says so and the register's Step 0 and W14a rows follow.
 - 2026-10-04 on `db1177c`, uncommitted: the 0.42 release session cut `v0.42.0`; the register's Step 0 row says so.
 - 2026-10-04 on `db1177c`, uncommitted: a milestone's release becomes its plan's last step ([workflow](workflow.md) §1), so §10's header names the release step; two small adjacent candidates may share one plan and one release (`D-108`, revising the definition gate's one release per candidate), which §6 states with Phase 5's pairs: W9a with W12a and W1 M0b with W2 R2, one register row each in §10.
+- 2026-10-04 on `28abcce`, uncommitted: 0.42 released (`v0.42.0`, squash-merged as `28abcce`); the register's Step 0 row and §3's Step 0 note say so.
+- 2026-10-04 on `28abcce`, uncommitted: W14a's milestone plan written as [M32](../archive/1.0/phase5-milestone-32-headless-harness.md), critiqued and approved with its defaults; the register's W14a row points at it.
+- 2026-10-04 on `28abcce`, uncommitted: M32's run did steps 2–6 and stopped before the release under its §7, since step 1's A/A check failed; the register's W14a row says so.
+- 2026-10-04 on `28abcce`, uncommitted: the 0.43 release session closed M32 (`status: done`, archived) and cut `v0.43.0`; the register's W14a row says so.

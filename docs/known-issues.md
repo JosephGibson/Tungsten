@@ -42,12 +42,13 @@ Each was checked against the tree on 2026-10-02, except the last ten, which the 
 - Only `example-01-platformer` enables hot reload; the shader playground could too.
 - Release archives don't bundle third-party license notices for statically linked crates.
 - The stock shaders exist twice (`crates/tungsten-render/src/shaders/stock/**` and `assets/shaders/stock/**`, `D-059`); including the asset copies as `sprite.wgsl` and `lit_sprite.wgsl` already do would halve every stock-shader edit but needs a decision.
-- `Renderer::new` spends about 390 lines seeding shader IDs (`renderer.rs:145-537`); `examples/01_platformer/src/tests/main.rs` is 2,372 lines.
+- `Renderer::new` spends about 390 lines seeding shader IDs (`renderer.rs:145-537`).
 - `logging.level` and `display.scale_mode` are parsed and unused (`DESIGN.md:143`, `core/config.rs:278-294`): wire or remove, owner's call.
 - Particle `Burst { once: false }` only suppresses `ParticleSystemDrained` and `Pulse { total_pulses: Some(0) }` fires one pulse (`tungsten/src/particles.rs:313-347`): define the semantics.
 - `render.max_frame_latency = 0` in the file passes `Config::load` and fails at renderer start (`render/surface.rs:118`), while `display.max_frame_latency = 0` warns and falls back (`core/display.rs:292-297`).
-- Any file named `input.json` under a watched directory reloads as the action map (`tungsten/src/app.rs:443`).
-- Perf: `env::var("TUNGSTEN_PERF_LOG")` every frame (`app.rs:1631`), the tween system cloning channel lists every frame (`tweens.rs:43`), tile proxies rebuilt from a full-map scan every frame.
+- Any file named `input.json` under a watched directory reloads as the action map (`tungsten/src/app.rs:454`).
+- Perf: `env::var("TUNGSTEN_PERF_LOG")` every frame (`app.rs:1147`), the tween system cloning channel lists every frame (`tweens.rs:43`), tile proxies rebuilt from a full-map scan every frame.
 - The perf runner's background-load scan (`D-095`) covers the measured runs of `run`, `suite` and `--sweep` only: capacity probes, `just smoke` timings and `just visual` still rely on the manual `pgrep` checks.
+- Hand-written frame loops outside example 01 still run stages by hand that the headless harness (`D-110`) runs in order: `crates/tungsten/tests/particles.rs`, `crates/tungsten/src/tests/tweens.rs`, `state.rs` and `game_feel.rs`, and `examples/03_scene_state/src/states.rs`. Home: W15a, which steps the harness, or the Phase 5 QA pass.
 - `scripts/bench.py` run from a tree export under `target/` (a parent or reference build) records the enclosing repository's commit and dirty-tree hash as the capture's provenance, not the export's; label such captures by hand, as the 0.40 QA evidence folders under `perf-runs/` do.
 - `cargo shear` (`just udeps`) reports every `src/tests/` module included through `#[path = "../tests/…"]` from a file in a subdirectory as unlinked; an `ignored-paths` entry under `[workspace.metadata.cargo-shear]` would silence the false positives.
