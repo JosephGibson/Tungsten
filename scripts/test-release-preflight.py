@@ -107,10 +107,12 @@ class Preflight(unittest.TestCase):
     START = ["gh", "workflow", "run", "release.yml", "--repo", "owner/repo", "--ref", "v1.0.0"]
     PULL = ["gh", "pr", "create", "--repo", "owner/repo", "--base", "main", "--head", "1.1", "--title",
             "Update 1.1: second", "--body", "Release v1.1.0. Merging this pull request publishes it."]
+    NEXT = [["git", "fetch", "origin"], ["git", "switch", "-c", "1.2", "--no-track", "origin/main"],
+            ["git", "push", "-u", "origin", "1.2"]]
 
     def test_release_from_the_base_branch_prints_exact_commands_without_writing(self):
         before = self.git("show-ref"), self.git("status", "--porcelain"), (self.root / "README.md").read_bytes()
-        errors, info, commands = self.check()
+        errors, info, commands, _ = self.check()
         self.assertEqual(errors, [])
         self.assertEqual(commands, [self.TAG, ["git", "push", "origin", "v1.0.0"], self.START])
         after = self.git("show-ref"), self.git("status", "--porcelain"), (self.root / "README.md").read_bytes()
@@ -120,7 +122,7 @@ class Preflight(unittest.TestCase):
     def test_handoff_prints_commit_tag_push_and_pull_request_without_writing(self):
         self.milestone(commit=False)
         before = self.git("show-ref"), self.git("status", "--porcelain")
-        errors, info, commands = self.check("1.1.0", branch="1.1", message="Update 1.1: second")
+        errors, info, commands, _ = self.check("1.1.0", branch="1.1", message="Update 1.1: second")
         self.assertEqual(errors, [])
         self.assertEqual(commands, [["git", "add", "-A"], ["git", "commit", "-m", "Update 1.1: second"],
                                     ["git", "tag", "-a", "v1.1.0", "-m", "Tungsten 1.1.0"],
@@ -134,9 +136,29 @@ class Preflight(unittest.TestCase):
         self.git("tag", "-a", "v1.1.0", "-m", "Early")
         self.assertIn("different commit", " ".join(self.check("1.1.0", branch="1.1", message="Update")[0]))
 
+    def test_post_merge_block_starts_the_next_branch_until_the_merge(self):
+        self.assertEqual(self.check()[3], [])
+        self.milestone(commit=False)
+        self.assertEqual(self.check("1.1.0", branch="1.1", message="Update 1.1: second")[3], self.NEXT)
+        self.commit("Update 1.1: second")
+        sha = self.git("rev-parse", "HEAD")
+        self.git("tag", "-a", "v1.1.0", "-m", "Tungsten 1.1.0")
+        self.git("push", "-u", "origin", "1.1", "v1.1.0")
+        self.pulls = [self.pull(sha)]
+        self.assertEqual(self.check("1.1.0", branch="1.1")[2:], ([], self.NEXT))
+        out = io.StringIO()
+        with patch.object(pre, "api", side_effect=self.github), patch.object(pre, "github_repository", return_value="owner/repo"), contextlib.redirect_stdout(out):
+            self.assertEqual(pre.main(["1.1.0", "--root", str(self.root), "--repo", "owner/repo"]), 0)
+        self.assertIn("After the pull request merges, start the next milestone branch:\ngit fetch origin\n"
+                      "git switch -c 1.2 --no-track origin/main\ngit push -u origin 1.2\n", out.getvalue())
+        self.git("branch", "1.2", "main")
+        errors, info, _, after = self.check("1.1.0", branch="1.1")
+        self.assertEqual((errors, after), ([], []))
+        self.assertTrue(any("1.2 already exists" in line for line in info))
+
     def test_pull_request_states_from_commit_to_merged_run(self):
         sha = self.milestone()
-        errors, _, commands = self.check("1.1.0", branch="1.1")
+        errors, _, commands, _ = self.check("1.1.0", branch="1.1")
         self.assertEqual(errors, [])
         self.assertEqual(commands, [["git", "tag", "-a", "v1.1.0", "-m", "Tungsten 1.1.0"],
                                     ["git", "push", "origin", "1.1", "v1.1.0"], self.PULL])
@@ -144,7 +166,7 @@ class Preflight(unittest.TestCase):
         self.git("push", "-u", "origin", "1.1", "v1.1.0")
         self.assertEqual(self.check("1.1.0", branch="1.1")[2], [self.PULL])
         self.pulls = [self.pull("f" * 40, merged="f" * 40, number=6), self.pull(sha)]
-        errors, info, commands = self.check("1.1.0", branch="1.1")
+        errors, info, commands, _ = self.check("1.1.0", branch="1.1")
         self.assertEqual((errors, commands), ([], []))
         self.assertTrue(any("#7: open; approving and merging" in line for line in info))
         self.git("checkout", "main")
@@ -154,8 +176,8 @@ class Preflight(unittest.TestCase):
         squash = self.git("rev-parse", "HEAD")
         self.git("checkout", "1.1")
         self.pulls = [self.pull(sha, merged=squash)]
-        errors, info, commands = self.check("1.1.0", branch="1.1")
-        self.assertEqual(errors, [])
+        errors, info, commands, after = self.check("1.1.0", branch="1.1")
+        self.assertEqual((errors, after), ([], []))
         self.assertTrue(any("tree matches" in line for line in info))
         self.assertEqual(commands, [["gh", "workflow", "run", "release.yml", "--repo", "owner/repo", "--ref", "v1.1.0"]])
         self.runs = [self.run_info(tag="1.1", sha=sha, event="pull_request", conclusion="skipped", id=41),
@@ -210,7 +232,7 @@ class Preflight(unittest.TestCase):
     def test_unpublished_commit_is_pushed_with_its_tag_unless_diverged(self):
         self.write("README.md", "new")
         self.commit("not pushed")
-        errors, _, commands = self.check()
+        errors, _, commands, _ = self.check()
         self.assertEqual(errors, [])
         self.assertEqual(commands[:2], [self.TAG, ["git", "push", "origin", "main", "v1.0.0"]])
         self.assertIn("does not match", " ".join(self.check("2.0.0")[0]))
@@ -224,7 +246,7 @@ class Preflight(unittest.TestCase):
     def test_reads_selected_commit_not_clean_working_files(self):
         self.write("DESIGN.md", "Workspace `v9.0.0`\n")
         self.commit("bad working version")
-        errors, _, commands = self.check(ref=self.sha)
+        errors, _, commands, _ = self.check(ref=self.sha)
         self.assertEqual(errors, [])
         self.assertEqual(commands[:2], [["git", "tag", "-a", "v1.0.0", self.sha, "-m", "Tungsten 1.0.0"],
                                         ["git", "push", "origin", "v1.0.0"]])
@@ -234,7 +256,7 @@ class Preflight(unittest.TestCase):
     def test_maintenance_branch_without_a_pull_request_starts_the_run_manually(self):
         self.git("checkout", "-b", "maintenance")
         self.git("push", "-u", "origin", "maintenance")
-        errors, _, commands = self.check(branch="maintenance", no_pr=True)
+        errors, _, commands, _ = self.check(branch="maintenance", no_pr=True)
         self.assertEqual(errors, [])
         self.assertEqual(commands, [self.TAG, ["git", "push", "origin", "v1.0.0"], self.START])
         self.assertEqual(self.check(branch="maintenance")[2][-1][:3], ["gh", "pr", "create"])
@@ -242,7 +264,7 @@ class Preflight(unittest.TestCase):
     def test_rehearsal_requires_explicit_flag_and_own_section_is_not_rehearsal(self):
         version = "0.0.0-test.20260926.gabc123"
         self.assertIn("--rehearsal", " ".join(self.check(version)[0]))
-        errors, _, commands = self.check(version, rehearsal=True)
+        errors, _, commands, _ = self.check(version, rehearsal=True)
         self.assertEqual(errors, [])
         # A pushed prerelease tag starts its own run.
         self.assertEqual(commands[-1], ["git", "push", "origin", "v" + version])
@@ -256,7 +278,7 @@ class Preflight(unittest.TestCase):
 
     def test_matching_local_tag_is_not_recreated(self):
         self.tag(remote=False)
-        errors, _, commands = self.check()
+        errors, _, commands, _ = self.check()
         self.assertEqual(errors, [])
         self.assertEqual(commands, [["git", "push", "origin", "v1.0.0"], self.START])
 
@@ -267,7 +289,7 @@ class Preflight(unittest.TestCase):
         self.git("push", "origin", "main")
         self.existing = {"draft": False, "html_url": "https://github.com/owner/repo/releases/tag/v1.0.0"}
         self.runs = [self.run_info()]
-        errors, info, commands = self.check(ref=self.sha)
+        errors, info, commands, _ = self.check(ref=self.sha)
         self.assertEqual(errors, [])
         self.assertTrue(any("published; verify" in line for line in info))
         self.assertTrue(all(c[0] == "gh" for c in commands))
@@ -281,7 +303,7 @@ class Preflight(unittest.TestCase):
                      self.run_info(status="in_progress", conclusion=None)]
         self.ci_runs = [self.run_info(tag="main", conclusion="failure"),
                         self.run_info(id=99, event="pull_request", conclusion="success")]
-        errors, info, commands = self.check()
+        errors, info, commands, _ = self.check()
         self.assertEqual(errors, [])
         self.assertTrue(any("draft; inspect" in line for line in info))
         self.assertTrue(any("CI (informational)" in line and "failure" in line for line in info))
@@ -291,7 +313,7 @@ class Preflight(unittest.TestCase):
 
     def test_remote_tag_without_run_starts_one_instead_of_another_push(self):
         self.tag()
-        errors, info, commands = self.check()
+        errors, info, commands, _ = self.check()
         self.assertEqual(errors, [])
         self.assertEqual(commands, [self.START])
         self.assertTrue(any("No release run found" in line for line in info))
@@ -306,7 +328,7 @@ class Preflight(unittest.TestCase):
 
     def test_github_repository_mismatch_stops_commands(self):
         with patch.object(pre, "api", return_value={"object": {"sha": "f" * 40}}), patch.object(pre, "github_repository", return_value="owner/repo"):
-            errors, _, commands = pre.preflight(self.root, "1.0.0", "HEAD", "origin", "main", "owner/repo")
+            errors, _, commands, _ = pre.preflight(self.root, "1.0.0", "HEAD", "origin", "main", "owner/repo")
         self.assertIn("GitHub branch differs", " ".join(errors))
         self.assertEqual(commands, [])
 

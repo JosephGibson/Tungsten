@@ -7,12 +7,12 @@
 - **ordered steps:** Set at graduation. Candidates and their order: [implementation plan](implementation-plan.md) §5.
 - **done-when:** Set at graduation. Sketch: [criteria](criteria.md) §8.8, per phase.
 
-Skeleton. The scoping text stays in [criteria](criteria.md) §8.8 until this workstream graduates ([conventions](README.md#conventions)). Revised 2026-10-03 at `9cd5709`: Q12's gate.
+Skeleton. The scoping text stays in [criteria](criteria.md) §8.8 until this workstream graduates ([conventions](README.md#conventions)). Revised 2026-10-03 at `9cd5709`: Q12's gate. Revised 2026-10-03 on `db1177c`: C3's agent check and snapshot tool (amendments 16, 17).
 
 ## Placement
 
 - **Proposed tier:** Must; C2 is gated by budget.
-- **Candidates:** C1 before the freeze; C2 after it; C3 on each release candidate (all Phase 7).
+- **Candidates:** C1 before the freeze; C2 after it; C3 on each release candidate (all Phase 7). C3 includes RC-A9's agent-built feature (implementation plan amendment 16) and diffs the API against `D-104`'s snapshot (amendment 17).
 - **Needs first:** The feature gate, so that the UI, kit and acceptance-game rows exist, and Q12 answered there (implementation plan §7); the profiling workflow extended for worker threads.
 - **Feeds:** The freeze gate (C1's API fixes); the RC and 1.0 gates.
 - **Owner questions:** Q12.

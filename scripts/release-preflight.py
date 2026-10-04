@@ -76,7 +76,7 @@ def preflight(root, version, ref, remote, branch, repo, rehearsal=False, base="m
         raise ValueError("--remote must name a configured Git remote")
     git(root, "check-ref-format", f"refs/heads/{branch}")
     git(root, "check-ref-format", f"refs/heads/{base}")
-    errors, info, commands = [], [], []
+    errors, info, commands, after = [], [], [], []
     # Hand-off: uncommitted changes plus a message become the release commit.
     dirty = bool(git(root, "status", "--porcelain", "--untracked-files=normal"))
     handoff = dirty and message is not None
@@ -97,6 +97,8 @@ def preflight(root, version, ref, remote, branch, repo, rehearsal=False, base="m
     tag_ref = f"refs/tags/{tag}"
     branch_ref = f"refs/heads/{branch}"
     base_ref = f"refs/heads/{base}"
+    major, minor = release.SEMVER_RE.fullmatch(version).group(1, 2)
+    following = f"{major}.{int(minor) + 1}"
     committed = None if handoff else lambda path: run(root, "git", "show", f"{sha}:{path}").stdout
     state = release.check_tree(root, committed)
     errors.extend(state.errors)
@@ -112,7 +114,7 @@ def preflight(root, version, ref, remote, branch, repo, rehearsal=False, base="m
     # Read the push destination, not a potentially different fetch destination.
     refs = dict((name, oid) for oid, name in
                 (line.split() for line in git(root, "ls-remote", "--", urls[0], branch_ref, base_ref,
-                                             tag_ref, tag_ref + "^{}").splitlines()))
+                                             tag_ref, tag_ref + "^{}", f"refs/heads/{following}").splitlines()))
     tip = refs.get(branch_ref)
     tracking = resolve(root, f"refs/remotes/{remote}/{branch}^{{commit}}", optional=True)
     if tip and tracking != tip:
@@ -149,20 +151,20 @@ def preflight(root, version, ref, remote, branch, repo, rehearsal=False, base="m
                  f"Commit: {'uncommitted changes on ' if handoff else ''}{sha}; tag: {tag}; "
                  f"mode: {'rehearsal' if is_rehearsal else 'release'}"))
     if errors:
-        return errors, info, commands
+        return errors, info, commands, after
 
     # Bind the explicit GitHub repository to the observed Git destination.
     bound = branch if tip else base
     github_branch = api(root, f"repos/{repo}/git/ref/heads/{quote(bound, safe='')}")
     if github_branch["object"]["sha"] != refs[f"refs/heads/{bound}"]:
-        return ["GitHub branch differs from the Git remote; check --repo and rerun"], info, commands
+        return ["GitHub branch differs from the Git remote; check --repo and rerun"], info, commands, after
     if remote_tag:
         github_tag = api(root, f"repos/{repo}/git/ref/tags/{tag}")
         if github_tag["object"]["sha"] != remote_tag:
-            return ["GitHub tag differs from the Git remote; check --repo and rerun"], info, commands
+            return ["GitHub tag differs from the Git remote; check --repo and rerun"], info, commands, after
     existing = api(root, f"repos/{repo}/releases/tags/{tag}", missing=True)
     if existing and not remote_tag:
-        return ["GitHub release exists without the observed remote tag; inspect before continuing"], info, commands
+        return ["GitHub release exists without the observed remote tag; inspect before continuing"], info, commands, after
     pull = None
     if wants_pr and (tip or remote_tag):
         pulls = api(root, f"repos/{repo}/pulls?state=all&base={quote(base, safe='')}"
@@ -175,14 +177,14 @@ def preflight(root, version, ref, remote, branch, repo, rehearsal=False, base="m
         merge_tree = api(root, f"repos/{repo}/git/commits/{pull['merge_commit_sha']}")["tree"]["sha"]
         if merge_tree != git(root, "rev-parse", f"{sha}^{{tree}}"):
             return [f"pull request #{pull['number']} merged as a tree that differs from the tagged commit; "
-                    "release.yml refuses to publish it"], info, commands
+                    "release.yml refuses to publish it"], info, commands, after
     elif wants_pr and not existing:
         # release.yml publishes only when the merge keeps the tagged tree and head.
         if not is_ancestor(root, refs[base_ref], sha):
             return [f"{remote}/{base} has commits {branch} lacks (or isn't fetched); merge {base} into "
-                    f"{branch} and rerun the checks before tagging"], info, commands
+                    f"{branch} and rerun the checks before tagging"], info, commands, after
         if remote_tag and tip and tip != sha:
-            return [f"{remote}/{branch} moved past the commit {tag} names; merging it publishes nothing"], info, commands
+            return [f"{remote}/{branch} moved past the commit {tag} names; merging it publishes nothing"], info, commands, after
     if pull:
         info.append(f"Pull request #{pull['number']}: "
                     + ("merged; its tree matches the tagged commit" if merged
@@ -230,7 +232,15 @@ def preflight(root, version, ref, remote, branch, repo, rehearsal=False, base="m
         if remote_tag:
             info.append("No release run found for this tag; the last command starts one.")
         commands.append(["gh", "workflow", "run", "release.yml", "--repo", repo, "--ref", tag])
-    return errors, info, commands
+    # After the merge: the next milestone branch, from the base without tracking it (docs/releases.md).
+    if wants_pr and not merged and not existing:
+        if resolve(root, f"refs/heads/{following}", optional=True) or f"refs/heads/{following}" in refs:
+            info.append(f"Next branch: {following} already exists; inspect it before integrating {base}")
+        else:
+            after.extend((["git", "fetch", remote],
+                          ["git", "switch", "-c", following, "--no-track", f"{remote}/{base}"],
+                          ["git", "push", "-u", remote, following]))
+    return errors, info, commands, after
 
 
 def main(argv=None):
@@ -252,8 +262,8 @@ def main(argv=None):
         branch = args.branch or git(root, "branch", "--show-current")
         if not branch:
             raise ValueError("--branch is required on a detached HEAD")
-        errors, info, commands = preflight(root, args.version, args.ref, args.remote, branch, args.repo,
-                                           args.rehearsal, args.base, args.message, args.no_pr)
+        errors, info, commands, after = preflight(root, args.version, args.ref, args.remote, branch, args.repo,
+                                                  args.rehearsal, args.base, args.message, args.no_pr)
         for line in info:
             print(line)
         for error in errors:
@@ -262,6 +272,10 @@ def main(argv=None):
             print("Preflight passed at the observed refs. Commands below are proposals, not executed:")
             for command in commands:
                 print(shlex.join(command))
+            if after:
+                print("After the pull request merges, start the next milestone branch:")
+                for command in after:
+                    print(shlex.join(command))
         return int(bool(errors))
     except (OSError, ValueError, KeyError, subprocess.TimeoutExpired) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

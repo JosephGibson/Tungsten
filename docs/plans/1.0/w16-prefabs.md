@@ -16,7 +16,7 @@ Skeleton. The scoping text stays in [criteria](criteria.md) §8.7 until this wor
 - **Needs first:** W15a, for registration.
 - **Feeds:** W13's spawner and registered kit components; W14b `check`; the template's player and enemy.
 - **Owner questions:** None open.
-- **Decisions:** Component registry and prefabs: a `prefabs` manifest section and a row in `AGENTS.md`'s assets table (extends `D-046`).
+- **Decisions:** Component registry and prefabs: a `prefabs` manifest section and a row in the [assets](../../assets.md) table (extends `D-046`; `D-106` moved the table out of `AGENTS.md`).
 
 ## Context digest
 

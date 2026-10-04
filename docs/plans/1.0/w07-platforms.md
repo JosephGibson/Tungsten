@@ -12,7 +12,7 @@ Skeleton. The scoping text stays in [criteria](criteria.md) §8.1 until this wor
 ## Placement
 
 - **Proposed tier:** Must, tiers at least.
-- **Candidates:** W7a, a CPU-only Windows test job on the `windows-2025` image, informational under `D-070` (Phase 5, beside W11a); W7b, tiers in the README and a macOS build if Q3 says so (Phase 7).
+- **Candidates:** W7a, a CPU-only Windows test job on the `windows-2025` image, informational under `D-070` (Phase 5, beside W11a; implementation plan amendment 9); W7b, tiers in the README and a macOS build if Q3 says so (Phase 7).
 - **Needs first:** W11a, for what W7a tests.
 - **Feeds:** RC-D1, RC-D4, RC-S1, RC-S2.
 - **Owner questions:** Q3.

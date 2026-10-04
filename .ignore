@@ -3,6 +3,8 @@
 # .gitignore already hides target/ and perf-runs/ where tools honour it; they are
 # repeated here for tools run with --no-ignore-vcs.
 docs/plans/archive/
+# Public API snapshots (D-107): every pub item would match twice; open api/<crate>.txt by name.
+api/
 target/
 perf-runs/
 flamegraph.svg

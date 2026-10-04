@@ -7,7 +7,7 @@
 - **ordered steps:** Review the relevant engine seams; research primary sources; collect owner preferences; draft alternatives and a recommendation; identify open questions and future acceptance checks.
 - **done-when:** The draft records confirmed preferences, source-backed research, code-verified constraints, proposed ownership/render/input contracts, performance evaluation, a milestone ladder, a migration outline and the adjacent systems the foundation must not preclude, each placed on the ladder, with unresolved choices clearly identified and a recommendation beside each.
 
-Date: 2026-10-02, revised the same day after checking the text, input and window paths against the code and the locked crate sources (§2). A review pass the same day verified glyphon's atlas growth and AccessKit's Linux thread against their sources, corrected the measurement contract (§4), split the first milestone (§11) and added the systems the first pass had not covered (§14). All API names, feature stages and numerical targets below are provisional. This is a discussion document; implementation planning follows design finalization.
+Date: 2026-10-02, revised the same day after checking the text, input and window paths against the code and the locked crate sources (§2). A review pass the same day verified glyphon's atlas growth and AccessKit's Linux thread against their sources, corrected the measurement contract (§4), split the first milestone (§11) and added the systems the first pass had not covered (§14). Revised 2026-10-03 on `db1177c` with the definition gate's answers to questions 8 and 9 and implementation plan amendments 4, 5, 6 and 15: the 1.0 cut below §8's stages, BC on the ladder, and the harness, logger and example-migration couplings (§11, §13, §14). All API names, feature stages and numerical targets below are provisional. This is a discussion document; implementation planning follows design finalization.
 
 ## Context and confirmed preferences
 
@@ -304,7 +304,9 @@ These are proposed stages, not an approved implementation schedule. Both gamepla
 | Foundation / first useful slice | Roots/layers, persistent IDs, row/column/anchor layout, padding/gaps/alignment, fixed/content/fill sizing, min/max constraints; panels, labels with wrap/alignment, images, buttons; disabled/hover/focus styles; rectangular clips; pointer routing and keyboard focus; dialogs and movable debug windows; a small theme. |
 | Broader controls | Scroll containers and scrollbars, checkboxes, sliders/progress bars, collapsible sections, tooltip/popups, window resizing; virtualized lists when telemetry/inspector views require them. |
 | Editable fields | Single-line first: selection, caret, clipboard, undo/redo, validation/commit/cancel, IME and grapheme-aware editing. Multiline/rich editing is a separate expansion. |
-| Later product choices | Controller navigation, richer text spans/icons/localization interfaces, data-defined screens/themes, docking, drag/drop inventories, world-space UI, native multi-window UI, platform accessibility integration. |
+| Later product choices | Richer text spans/icons/localization interfaces, data-defined screens/themes, docking, drag/drop inventories, world-space UI, native multi-window UI, platform accessibility integration. |
+
+The 1.0 cut, from the definition gate (questions 8 and 9, `D-102`; implementation plan amendment 15): checkboxes and sliders from Broader controls join as **BC** before M4, whose settings screen needs them, and scroll containers are in M5 (§11); Editable fields, IME included, stay after 1.0. Controller navigation, listed under Later product choices until the gate, is in 1.0 as gamepad bindings for the `ui_*` actions (W5a, §7).
 
 Important details to preserve in the shape of the foundation:
 
@@ -401,14 +403,15 @@ Suggested future sequence: finalize the architecture/API/acceptance criteria; bu
 | --- | --- | --- | --- |
 | **M0a** text engine split | Device-free text engine and GPU half; retained buffers, `measure` with its three width modes, `FontEpoch`; alignment, wrap, ellipsis, hinting, letter spacing and font features reachable; font families (§14); font-fallback policy applied. | None | Text unit tests, including min-content per wrap mode; `just visual` unchanged; `just smoke`; the `gpu` row not regressed after an A/A of the untouched tree. |
 | **M0b** input and display groundwork | Scale factor in a core resource with `ScaleFactorChanged` handled; window focus loss releases held keys; modifiers; pointer leave; real `KeyCode` variants for Home, End, Delete, PageUp, PageDown and both sides of each modifier; the ordered raw event stream recorded but not yet routed. Independent of M0a. | None, except that keys no longer stick after an alt-tab | Bridge and `InputState` unit tests (focus loss releases, event order kept, unknown keys still `Other`); existing examples' input unchanged; `just smoke`. |
-| **M1** core UI model | `UiTree`, IDs, style model and theme tokens (§14), a Taffy spike behind Tungsten style types, hit testing, focus, roles and labels in node data, a fixed-advance `TextMeasure` test double, the headless `UiHarness` and layout snapshot tests (§14). | None; nothing draws | Headless layout, focus and invalidation tests; `just check`. Spike verdict recorded: Taffy or a hand-rolled stack/anchor layout. |
+| **M1** core UI model | `UiTree`, IDs, style model and theme tokens (§14), a Taffy spike behind Tungsten style types, hit testing, focus, roles and labels in node data, a fixed-advance `TextMeasure` test double, the headless `UiHarness` on W14a's headless `App` harness (implementation plan amendment 5) and layout snapshot tests (§14). | None; nothing draws | Headless layout, focus and invalidation tests; `just check`. Spike verdict recorded: Taffy or a hand-rolled stack/anchor layout. |
 | **Gate** | T1, T1b or T2 (§9); the prototype from §6 with its eviction and growth checks; the DPI/hinting prototype result; the capability criteria §14 adds (typewriter reveal, bitmap fonts). | None | Recorded as decision entries. |
 | **M2** overlay and paint list | UI overlay in the final pass; SDF primitive pipeline with shadow and gradient fields reserved; images and nine-slices; text batches; decorations; clip index; a hot-reloaded theme asset; a layout-bounds overlay and a hide-UI action; the fixture as a new example (§14). | Fixture only | `just smoke`; paint-list snapshot tests; direct and capture frames equal with UI visible, which needs P3's capture-completion contract, so schedule that fix before M2; an empty UI adds no pass or target; shader coverage test. |
 | **M3** input routing | Routing of the M0b stream; `ui_*` actions with navigation repeat; `UiEvent` before systems; routed gameplay view; capture and focus rules; directional focus, focus visibility and hover cursors (§14). | None until a root exists | Event-order, release-outside, focus-loss, single-activation and directional-focus tests; raw `InputState` behavior for existing examples unchanged. |
+| **BC** broader controls | Checkboxes and sliders (§8), which M4's settings screen needs; question 8 put them in 1.0 (`D-102`; implementation plan amendment 15). | Fixture | Harness tests for value changes by pointer, keyboard and `ui_*` actions; paint-list snapshots; `just smoke`. |
 | **M4** gameplay screen fixture | Pause menu and HUD with state-owned roots, transition opacity and keyboard navigation; UI animation tracks, binding-aware prompts and prewarm; a settings screen (display mode, UI and text scale, volume, one rebind) as the second scenario (§14). | Fixture | §10 budgets for a warmed 100-widget menu; no cold-glyph spike on the first open after a prewarm. |
-| **M5** engine debug views | HUD, timing overlay and inspector as read-only views; scroll containers, which the inspector and log need; movable windows with persisted placement; world picking blocked behind windows; log console on an engine-owned logger; frame-time graph; picked-widget panel (§14). | Debug overlays | Perf suite telemetry rows not regressed; HUD toggles and defaults preserved. |
-| **M6** examples | One example at a time, per the table above. | Examples | Per-example smoke; workload versions bumped where benchmark work changes. |
-| Later | Virtualization, editable fields and IME, controller, accessibility, docking, data-defined screens, string tables and localization, world-anchored text, bitmap fonts, an editable inspector and a command console (§14). | | Their own plans. |
+| **M5** engine debug views | HUD, timing overlay and inspector as read-only views; scroll containers, which the inspector and log need; movable windows with persisted placement; world picking blocked behind windows; log console on W11a's engine logger (implementation plan amendment 4); frame-time graph; picked-widget panel (§14). | Debug overlays | Perf suite telemetry rows not regressed; HUD toggles and defaults preserved. |
+| **M6** examples | One example at a time, per the table above; examples 01, 03 and 04 in one pass each with W12b's move onto the template layout (implementation plan amendment 6). | Examples | Per-example smoke; workload versions bumped where benchmark work changes. |
+| Later | Virtualization, editable fields and IME, accessibility, docking, data-defined screens, string tables and localization, world-anchored text, bitmap fonts, an editable inspector and a command console (§14). | | Their own plans. |
 
 Decisions this work will likely need (IDs unassigned; each adds its `DECISION_INDEX.md` row in the same change):
 
@@ -418,7 +421,7 @@ Decisions this work will likely need (IDs unassigned; each adds its `DECISION_IN
 - The glyph path: T1, T1b or T2; T2 amends `D-026`.
 - The DPI and hinting model, including the scale-factor resource, and what `display.scale_mode` means for scene and UI.
 - The style model and theme asset: per-kind defaults, per-node overrides, inheritance limited to text properties.
-- An engine-owned logger that applies `logging.level`, which the log console needs.
+- An engine-owned logger that applies `logging.level`, which the log console needs: W11a's logger, recorded in one decision with W11's log file (implementation plan amendment 4).
 - UI input routing: the raw event stream, `ui_*` actions, the routed gameplay API and whether it becomes the default.
 - Thread-rule scope if accessibility ships on Linux; the asset-preprocessing rule if MSDF atlases are generated offline.
 
@@ -456,7 +459,7 @@ Future meaningful tests include CPU layout/measurement/invalidation, with min-co
 | Font-fallback policy | Packaged fonts only by default, system fallback as an explicit opt-in. Changes today's behavior on machines that rely on system fonts. |
 | DPI and text layout model | Prototype logical layout with a draw-time scale against physical layout with hinting (§2). Default to logical; allow physical for debug text if it reads better. |
 | Glyph path | T1 behind a run-reference paint command, with T1b measured in the same prototype; revisit at the §9 gate using the capability criteria. |
-| UI navigation input | Engine-owned `ui_*` actions in the action map; a gamepad backend stays a later, additive step. |
+| UI navigation input | Engine-owned `ui_*` actions in the action map; a gamepad backend is an additive step, W5a in 1.0 (question 9, `D-102`). |
 | Accessibility and the thread rule | Roles and labels in node data now; platform integration waits for a decision on the Linux adapter's executor thread. |
 | Transitions and UI | A root opacity multiplier that states drive from `transition_cover()`. |
 | Style model | A theme asset with per-widget-kind defaults and state variants, per-node overrides and inheritance of text properties only; hot-reloaded. |
@@ -465,7 +468,7 @@ Future meaningful tests include CPU layout/measurement/invalidation, with min-co
 | UI animation | UI-owned tracks reusing `Easing`, `TweenRepeat` and `TweenDirection`, with completion as a `UiEvent`; paint-only properties first. |
 | Typewriter reveal and bitmap fonts | Gate criteria (§9): T1 can only reshape per step or clip one line; T2 reveals by glyph count and can draw sprite-sheet glyphs. |
 | Strings and localization | Per-locale string-table assets with `{name}` arguments, hand-rolled; Fluent only if plural rules outgrow it. |
-| Logger ownership | An engine-owned logger that applies `logging.level` and feeds a bounded console buffer; examples drop `env_logger::init()` as they migrate. |
+| Logger ownership | An engine-owned logger that applies `logging.level` and feeds a bounded console buffer; W11a installs it and W12a drops `env_logger::init()` from the examples (implementation plan amendment 4, [w11](w11-shipping-basics.md)). |
 | UI fixture location | A new example (`examples/05_ui_lab`, name provisional), so smoke covers it and existing examples stay untouched. |
 
 The next useful artifact is a tightened spec for the first text/button/panel/window slice, with one chosen API and an explicit input contract. Leave broader widget lists and MSDF selection open until those smaller decisions are clear. The smallest decision set that unblocks M0a (§11) is the font-fallback policy and the text engine's API surface (§4), including its measurement modes and font families. M0b needs only agreement that the scale factor and focus handling land before any UI; the rest can follow.
@@ -524,7 +527,7 @@ Added by the review pass of 2026-10-02. Each item states the gap, a proposal and
 
 **Debug tooling on the foundation**
 
-- **Log console.** The engine never owns the logger (§2). Proposal: an engine logger setup that applies `logging.level` and tees records into a bounded buffer that a console resource also holds by `Arc`. The logger runs on whichever thread logs, so its push never blocks: `try_send` on a bounded `std::sync::mpsc` channel, drained on the main thread, counting drops. It needs scroll containers and, at volume, virtualization. Examples drop `env_logger::init()` as they migrate. (M5)
+- **Log console.** The engine never owns the logger (§2). Proposal: an engine logger setup that applies `logging.level` and tees records into a bounded buffer that a console resource also holds by `Arc`. The logger runs on whichever thread logs, so its push never blocks: `try_send` on a bounded `std::sync::mpsc` channel, drained on the main thread, counting drops. It needs scroll containers and, at volume, virtualization. W11a installs this logger with the log file, one design for both, and W12a drops `env_logger::init()` from the examples (implementation plan amendment 4). (M5)
 - **Frame-time graph.** A sparkline of `FrameTimings::interval_ms` beside the HUD numbers, on the mesh paint command. (M5)
 - **UI self-inspection.** A layout-bounds overlay, a picked-widget panel (rectangle, resolved style, dirty cause, paint batch) and an event log. Cheap once the paint list exists, and the main tool for debugging the suite itself. (Overlay at M2; panel at M5)
 - **Window persistence.** Debug window position, size and open state saved to a workspace-local file, following `ActionMap::persist`. (M5)
@@ -542,5 +545,5 @@ The screen-reader bridge waits (§3), but these settings must stay possible: a t
 
 **Testing**
 
-- **Harness.** `UiHarness` is a headless tree with the fixed-advance `TextMeasure`, scripted raw input and a step function, querying widgets by ID or label. Layout and paint-list snapshots are plain-text dumps (rectangles, command kinds, batch boundaries) compared in ordinary unit tests, with no snapshot dependency, so paint order and the batch partition (§6) become GPU-free tests. (M1; paint lists from M2)
+- **Harness.** `UiHarness` builds on W14a's headless `App` harness (implementation plan amendment 5): a headless tree with the fixed-advance `TextMeasure`, scripted raw input and a step function, querying widgets by ID or label. Layout and paint-list snapshots are plain-text dumps (rectangles, command kinds, batch boundaries) compared in ordinary unit tests, with no snapshot dependency, so paint order and the batch partition (§6) become GPU-free tests. (M1; paint lists from M2)
 - **Fixture.** The isolated fixture (§11) is a new example (`examples/05_ui_lab`, name provisional), so `just smoke` covers it and the existing examples stay untouched. It holds the pause menu, the HUD, the settings screen and a debug window. (M2)

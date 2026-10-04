@@ -17,6 +17,7 @@ Start with the document that owns the fact you need. Code and executable checks 
 | Release preparation, checks, handoff and recovery | [Release procedure](releases.md) |
 | Visual acceptance artifacts and capture recipes | [Showcase](showcase/README.md) |
 | Platformer asset/layout authoring | [Authoring guide](../examples/01_platformer/tools/README.md) |
+| Asset types, manifest sections and coverage exceptions | [Assets](assets.md) |
 | Font inventory and registered IDs | [Fonts](../assets/fonts/README.md) |
 | Test fixture provenance | [GPU fixtures](../examples/02_bench/tests/fixtures/README.md), [audio fixtures](../crates/tungsten-core/tests/fixtures/audio/README.md) |
 | Dated releases and historical paths | [Changelog](../CHANGELOG.md) |

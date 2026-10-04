@@ -7,7 +7,7 @@
 - **ordered steps:** Set at graduation. Candidates and their order: [implementation plan](implementation-plan.md) §3.
 - **done-when:** Set at graduation. Sketch: [criteria](criteria.md) §8.6.
 
-Skeleton. The scoping text stays in [criteria](criteria.md) §8.6 until this workstream graduates ([conventions](README.md#conventions)).
+Skeleton. The scoping text stays in [criteria](criteria.md) §8.6 until this workstream graduates ([conventions](README.md#conventions)), at the frame-loop gate (definition gate, agenda item 12).
 
 ## Placement
 

@@ -471,6 +471,7 @@ Plan number conflict note: the M15 plan originally reserved `D-041`, but that ID
 **Consequences:** `AGENTS.md`'s threading policy is unchanged — the only background threads remain the `cpal` audio callback and the `notify` watcher; the physics step spawns no threads. `PhysicsConfig` gains no `solver_threads` field. Determinism stays trivially guaranteed and is now pinned by `tests/physics_determinism.rs` (any future parallelism must keep that test green bit-for-bit). The plan-level "25k awake churn ≤ ~16 ms" done-when stays unmet at 124.9 ms (`D-066` numbers stand); reaching it is future work along the levers above, not part of this plan's close-out. `D-033`/`D-062`–`D-066` stand.
 
 ## D-068 — Agent instructions: one shared body, scoped files, shared skills
+**Amended by D-106:** the index budget only; `docs/LLM_INDEX.md` may hold 12 KiB; the other budgets and the rest stand.
 **Date:** 2026-09-25
 **Decision:** `AGENTS.md` is the single instruction body for every coding agent; `CLAUDE.md` contains only `@AGENTS.md`. Scoped rules sit beside the code they govern (`crates/tungsten-render/AGENTS.md` with its own one-line `CLAUDE.md`). `docs/LLM_INDEX.md` is on-demand navigation rather than a mandatory startup read, and plan conventions live in `docs/plans/README.md`. The two project skills are tracked under `.claude/skills/` and exposed to Codex through `.agents/skills/<name>` symlinks. `.ignore` carries search hygiene; `.claudeignore` is retired because Claude Code 2.1.110 did not honor it. `scripts/check-agent-context.py` (`just ctx`) enforces the budgets (root `AGENTS.md` ≤ 6 KiB and under 200 lines, render file ≤ 4 KiB, index ≤ 8 KiB, skill description ≤ 300 characters, skill body ≤ 8 KiB) and checks links and symlinks.
 **Why:** Claude Code and Codex now read the same text once (verified per client in `docs/agent-setup.md`), mandatory startup instruction files shrank from about 34.7 KB to about 6 KB of repo bytes, and renderer rules load only where they apply. The budgets are project limits that keep startup reads small, not client limits.
@@ -1124,6 +1125,7 @@ The bound belongs to the step, not to the app loop: `physics_step` is public and
 
 ## D-097 — Agents commit plan work locally; humans publish
 **Superseded by D-098:** the opt-in patch-series clause only; the `tungsten-patch-handoff` skill and `scripts/patch-series.py` are removed; the rest stands.
+**Superseded by D-105:** the commit clause only; from 0.42 the agent doesn't commit, and the release session's command block makes the release's only commit. The handed-over `git add <paths> && git commit` command and the personal allow go with it; publishing by the human, the squash merge, one-line evidence rows, one changelog line per plan and `git --no-pager` stand.
 **Date:** 2026-10-03
 **Decision:** On a milestone branch the agent commits plan work itself: once the checks pass it stages only the paths the work touched (`git add <paths>`, never `-A`) and commits, once per plan or per phase of a long plan, with no attribution lines. The human keeps `git push`, tags, merges and every history rewrite, and release pull requests stay squash-merged (`D-079`), so `main` keeps one commit per release. A plan's evidence rows are one line each (verdict, key numbers, capture or log paths), and a plan adds one `CHANGELOG.md` `[Unreleased]` line instead of one per step. The `tungsten-patch-handoff` skill and `scripts/patch-series.py` are opt-in: they run only when a task asks for per-step patches to review.
 
@@ -1135,6 +1137,7 @@ The bound belongs to the step, not to the app loop: `physics_step` is public and
 - Restates `D-079`'s squash merge and amends no decision. The active `docs/plans/qa-cleanup-0.40.md` follows this from step 15; its per-step rows and changelog lines so far stay.
 
 ## D-098 — The per-step patch hand-off is removed
+**Superseded by D-105:** the per-step commit and handed-over commit-command clauses only; from 0.42 no session commits before the release commit. The removal of the skill, the script and their tests stands.
 **Date:** 2026-10-03
 **Decision:** The `tungsten-patch-handoff` skill, its `.agents/skills/` symlink and `.gitignore` entry, `scripts/patch-series.py` and its tests in `just script-test` are removed. A task that asks for per-step history gets one local commit per step. While Git is denied to the agent, the work stays uncommitted and the agent hands over the commit commands instead: one per plan, or one per step, in order, when per-step history was asked for.
 
@@ -1203,6 +1206,8 @@ The bound belongs to the step, not to the app loop: `physics_step` is public and
 - `D-104`'s snapshot records the promised Rust surface.
 
 ## D-104 — `cargo-public-api` snapshots the public surface at every milestone
+**Amended by D-105:** "updates the files in the same commit" only; a milestone that changes public surface regenerates the files before its release, so the release commit carries them and the owner reviews them in its diff; the rest stands.
+**Amended by D-107:** the toolchain and file clause only; rustdoc JSON comes from the pinned toolchain with `RUSTC_BOOTSTRAP=1`, the files are `api/<crate>.txt`, and `just api-check` gates the release; the rest stands.
 **Date:** 2026-10-03
 **Decision:** The public Rust API is recorded with `cargo-public-api` as sorted text, one tracked file per library crate, regenerated by a `just` recipe. A milestone that changes public surface updates the files in the same commit, so the change shows in the diff the owner reviews. The umbrella's file is the promised surface of `D-103`, and the freeze gate's snapshot is the baseline release checklist row RC-B2 diffs against. It is a developer tool like `cargo-deny` (`D-069`), not a dependency of any package, so no `D-015` rule applies.
 
@@ -1211,3 +1216,61 @@ The bound belongs to the step, not to the app loop: `physics_step` is public and
 **Consequences:**
 - `cargo-public-api` reads rustdoc's JSON output, which is unstable. Step 0d (`docs/plans/1.0/workflow.md` §8) lands the recipe, the file paths and the toolchain that produces that output beside the pinned 1.98.1, and the files are regenerated whenever that toolchain or the tool's version moves. If no route works on the reference machine, a later entry supersedes this one.
 - Amends no decision.
+
+## D-105 — Sessions leave work uncommitted until the release commit
+**Date:** 2026-10-03
+**Decision:** From 0.42, sessions don't commit. Plan, execution, gate, graduation and Step 0 work stays uncommitted on the milestone branch, and the release session's command block (`git add -A` and a one-line `git commit`, `docs/releases.md`) makes the release's only commit. A session ends with the list of files it changed. Pushes, tags, merges and history rewrites stay with the owner, and release pull requests stay squash-merged (`D-079`).
+
+**Why:** The squash merge discards every commit before the release commit: 0.41's branch carried three (`1d9bf8c`, `56f08ca`, `9193988`) before `b831de5`, and `main` keeps only `db1177c`. Per-plan commits therefore bought checkpoints on a branch nobody else reads, at the cost of a personal allow for `git add` and `git commit` that the owner's settings deny, and a handed-over command for the owner to paste whenever they did. The release block already stages with `git add -A`, so it takes the whole tree in one commit either way.
+
+**Consequences:**
+- Supersedes `D-097`'s commit clause and `D-098`'s per-step commit clause as their marker lines say; per-step commits go with them. `D-097`'s publishing, evidence-row, changelog-line and `git --no-pager` rules and `D-098`'s removal of the patch series stand.
+- Amends `D-104` as its marker line says: the public-surface files are regenerated before the release, so the release commit carries them.
+- The release commit takes everything in the tree, so sessions keep scratch files in their scratchpad or the ignored `perf-runs/`. A step that fails is restored from copies taken before it: `HEAD` holds the previous release, not the milestone's earlier steps.
+- `docs/plans/README.md`, `docs/plans/1.0/workflow.md` and `docs/plans/1.0/implementation-plan.md` follow in the same change. Dated records keep their wording: the definition gate record, revision lists, released `CHANGELOG.md` sections and archived plans.
+
+## D-106 — Instruction headroom for 1.0: a 12 KiB index, asset rules behind a link
+**Date:** 2026-10-03
+**Decision:** The on-demand `docs/LLM_INDEX.md` budget rises from 8 KiB to 12 KiB. The root `AGENTS.md` keeps its 6 KiB and 200-line budget: its asset table and example-local manifest rules, with the coverage exceptions from `docs/agent-setup.md`, move to `docs/assets.md`, which a two-line Assets section in `AGENTS.md` links. A new asset type adds its row there, W16's `prefabs` section first. `scripts/check-agent-context.py` (`just ctx`) enforces the new index budget.
+
+**Why:** Step 0b (`docs/plans/1.0/workflow.md` §8), answered by the owner on 2026-10-03. Before it, `AGENTS.md` had 17 B of 6,144 B left and the index 195 B of 8,192 B. Phase 5 alone needs about a dozen index rows (the clock, the schedule, logs and user files, the harness, UI, the kit, the CLI, the template, prefabs) at a mean of 122 B, about 1.5 KB; 12 KiB leaves room for about 35. `AGENTS.md` is read at the start of every session and the index and asset doc only on demand, so 1.0's rules (the kit's row, the threading rule, the game layout) are paid for by moving the task-specific Assets section (1,055 B), not by growing every startup read.
+
+**Consequences:**
+- Amends `D-068` as its marker line says.
+- `AGENTS.md` fell from 6,127 B to 5,332 B, leaving 812 B for 1.0's rules. A rule that still does not fit moves other task-specific text behind a link the same way, or proposes a budget change in its own entry.
+- `scripts/check-repo.py` checks `docs/assets.md`'s links and decision IDs with its other maintained docs; the context checker's self-test gains an oversize-index case; the doc map lists the new file.
+
+## D-107 — Public-API snapshots from the pinned toolchain, in `api/`, checked at release
+**Date:** 2026-10-04
+**Decision:** `scripts/public-api.sh` (`just api`) builds each library crate's rustdoc JSON with the toolchain pinned in `rust-toolchain.toml`, setting `RUSTC_BOOTSTRAP=1` for that one `cargo rustdoc` call in its own `target/public-api` dir. It lists the JSON with `cargo-public-api` 0.52.0 (`cargo install --locked cargo-public-api@0.52.0`) through `--rustdoc-json`, with `-s` (blanket impls omitted; auto-trait and derived impls kept), into `api/tungsten-core.txt`, `api/tungsten-render.txt` and `api/tungsten.txt`. `just api-check` writes to `target/public-api/check/` and fails when a tracked file differs; the release procedure's checks run it. `.ignore` hides `api/` from searches.
+
+**Why:** Step 0d (`docs/plans/1.0/workflow.md` §8), answered by the owner on 2026-10-04 to settle `D-104`'s toolchain. `cargo-public-api` builds with `+nightly` whenever the active toolchain is stable, and a dated nightly would have to be a 1.99 one, since cargo refuses a 1.98.0 nightly under `rust-version = "1.98.1"`: a second compiler, untested and pinned apart from `D-069`. The bootstrap route keeps one compiler, so the snapshots move only when `D-069`'s pin moves. Tested on 2026-10-04: 1.98.1 emits rustdoc JSON format 60 and 0.52.0 is built against format 57 (`rustdoc-types` 0.57), yet all three crates list, `#[non_exhaustive]` and `#[repr]` show, and two runs are byte-identical. `-s` keeps `Send`/`Sync` and derived impls because losing one is a semver break that Q6's policy and RC-B2 need to see; it costs 1.02 MB against 0.39 MB for `-sss`.
+
+**Consequences:**
+- Amends `D-104` as its marker line says.
+- The format is tolerated rather than supported, so the script stops when the JSON's `format_version` is not 60. A pin bump that changes it re-lists the crates, confirms the output, and raises the constant in an entry of its own; a tool upgrade does the same.
+- The bootstrap flag reaches only the rustdoc call in `target/public-api` (about 550 MB), never the debug, release or perf builds.
+- Not in CI (`D-070`): the tool is installed on the reference machine only, like `cargo-shear`.
+
+## D-108 — Two small adjacent candidates may share one milestone plan and one release
+**Date:** 2026-10-04
+**Decision:** On the road to 1.0, two small candidates may share one milestone plan and one `0.NN` release when both are level A or B (`docs/plans/1.0/workflow.md` §4), touch different files and sit next to each other in the queue, as W11a with W7a already does. A pair takes one milestone number, one plan, one approval, one `CHANGELOG.md` line and one release; its steps run one candidate after the other, and its plan splits in two if a shared file or a level C turns up. The register (`docs/plans/1.0/implementation-plan.md` §10) holds a pair as one row, "<first> with <second>", and the roadmap page shows the second stop shipping with the first. Every other candidate keeps a plan and a release of its own.
+
+**Why:** Revises the definition gate's "one release per candidate" (implementation plan §11, agenda item 11), at the owner's request on 2026-10-04 to cut the owner's prompts per candidate. Each release costs the owner a plan approval, a diff review, a command block, a merge and a post-merge block; with the release folded into the run session a level B candidate still takes about five touchpoints, and a pair shares them. Level C stays alone because its API review after step 1 is the point of the level. A shared file would mix two candidates' changes in the hunks the owner reviews and in the copies a failed step restores from. Pairing only neighbours keeps the queue's order (implementation plan §6).
+
+**Consequences:**
+- Amends no decision. The definition gate record keeps its wording; `docs/plans/1.0/workflow.md` §1, the implementation plan's §6 and §10 and the roadmap page follow in the same change.
+- A pair whose second candidate is judged on perf captures takes its baseline after the first candidate's steps, so the comparison measures the second alone.
+- Pairs settled by the owner on 2026-10-04 (implementation plan §6): W9a with W12a, W9a's steps first, although W12a is larger than "small"; W1 M0b with W2 R2, split if winit 0.31 has left prerelease when the plan is written, since that upgrade reaches `renderer.rs`.
+
+## D-109 — A checked catalog for the road to 1.0, one prompt home, and a roadmap page fed from its database
+**Date:** 2026-10-04
+**Decision:** `docs/plans/1.0/roadmap.json` catalogs the road to 1.0: each stop's id, register row, group, kind, level, title, summary, sources and ratings, and the owner questions with their states and answers. `just repo-check` (`check_roadmap` in `scripts/check-repo.py`, sharing `scripts/roadmap.py`'s register parser) fails when the catalog's ordered rows differ from the register's Candidate cells, a level disagrees with its §3 card, a source path is missing or a question id is in neither implementation plan §7 nor criteria §10. Gate and graduation sessions update the catalog in the same change as the register. `.claude/skills/tungsten-next/prompts.md` is the one home of the session prompts, their keys and each kind of stop's flow; `docs/plans/1.0/workflow.md` §3 links it. The [roadmap artifact](https://claude.ai/artifact/EyM2iTgnnActfbMBZKcav9) is a viewer whose source, `.claude/skills/tungsten-next/page.html`, holds no stop, question or prompt: `/tungsten-next` writes `meta/catalog` (when the catalog's hash changes), `meta/now` and `stops/<id>` statuses derived from the tree into its `db`, and the page is republished only when `page.html` changes.
+
+**Why:** The roadmap rework (`docs/plans/roadmap-artifact-rework.md` §1–§3), approved by the owner on 2026-10-04 with its defaults. Road facts were hand-kept in six places (the page's script, the skill's `roadmap.md` and `prompts.md`, workflow §3, the register and a memory note) with nothing comparing them, and three had already drifted: the frame-loop gate's questions, the Plan prompt's wording and Track B's place in the order. The page was one 198.8 KB file that existed only in the artifact, so every gate meant hand edits and a republish. The page cannot read the repo: the `files` capability needs a claude.ai cloud project and reads the pushed tree, not the uncommitted one that `D-105` makes the truth, so the data travels through the `db`. The new page is 29.4 KB.
+
+**Consequences:**
+- Amends no decision. A `D-108` pair is one catalog stop, as it is one register row.
+- A change that splits a register row (a pair that splits, a placeholder that gains rows at a gate) fails `just repo-check`, which the release checks run, until the catalog splits the stop in the same change.
+- Statuses come only from tree evidence through `scripts/roadmap.py status`. The page writes nothing but the owner's ticks; the `questions` collection was deleted once the catalog carried its answers.
+- A release needs no page work, and a skipped sync leaves the page showing its synced-at commit until the next one. The first rows wait for the `db`, and a per-viewer cache renders repeat visits at once; if live loads prove slow, the fallback bakes the catalog into the page at publish time, which adds a republish per gate.

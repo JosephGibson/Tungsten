@@ -7,7 +7,7 @@
 - **ordered steps:** Agree the list at the definition gate; revise it at the feature and freeze gates; run it in C3.
 - **done-when:** The owner has agreed every row, and every conditional row is kept or struck by the freeze gate.
 
-Rows marked *if Qn* wait on an open question in [criteria](criteria.md) §10, and rows marked *if amendment N* on the owner's answer to that amendment in the [implementation plan](implementation-plan.md) §8. Sources are criteria sections unless another file is named. IDs carry `RC-` so they do not clash with the question numbers, the UI's glyph paths (T1, T2) or the physics proposals (G1, G2). Revised 2026-10-03 at `9cd5709`: RC-A10 added from C3's playthrough list. Agreed at the definition gate on 2026-10-03 (implementation plan §11): Q9, Q16 and amendment 16 were accepted, so RC-A5, RC-A6 and RC-A9 lost their conditions.
+Rows marked *if Qn* wait on an open question in [criteria](criteria.md) §10, and rows marked *if amendment N* on the owner's answer to that amendment in the [implementation plan](implementation-plan.md) §8. Sources are criteria sections unless another file is named. IDs carry `RC-` so they do not clash with the question numbers, the UI's glyph paths (T1, T2) or the physics proposals (G1, G2). Revised 2026-10-03 at `9cd5709`: RC-A10 added from C3's playthrough list. Agreed at the definition gate on 2026-10-03 (implementation plan §11): Q9, Q16 and amendment 16 were accepted, so RC-A5, RC-A6 and RC-A9 lost their conditions. Amendment 17's tool, `cargo-public-api` (`D-104`), runs RC-B2.
 
 ## A. Complete for making games (definition A)
 
@@ -16,10 +16,10 @@ Rows marked *if Qn* wait on an open question in [criteria](criteria.md) §10, an
 | RC-A1 | The [acceptance game](acceptance-game.md) builds in its own repository on a git dependency, using only the public API and `tungsten-kit`, with no engine patches | Owner | §1 |
 | RC-A2 | Its release archive, made by `tungsten package`, plays start to finish on the Linux reference machine | Owner playthrough | §1, §8.8 C3 |
 | RC-A3 | Title menu, pause and transitions work; settings for volume, rebinding and display are kept across a restart | Owner playthrough | §1 |
-| RC-A4 | A corrupt settings file falls back to defaults and keeps the bad file beside them | Owner playthrough; W11 tests | §8.2 |
+| RC-A4 | A corrupt settings file falls back to defaults and keeps the bad file beside them | Owner playthrough; W11 tests | [w11](w11-shipping-basics.md) |
 | RC-A5 | Gamepad play | Owner playthrough | §1 |
 | RC-A6 | A save slot is written, loaded, and loaded again after a schema bump | Owner playthrough | §8.8 C3 |
-| RC-A7 | The output of `tungsten new` passes `tungsten check`, then builds, tests and packages outside the workspace | Automated | §8.5 |
+| RC-A7 | The output of `tungsten new` passes `tungsten check`, then builds, tests and packages outside the workspace | Automated | [w14](w14-tooling.md) |
 | RC-A8 | Followed word for word on a clean machine, the getting-started guide ends with a running game | Owner | §8.8 C3 |
 | RC-A9 | A fresh Claude Code session in a copy of the template, given only its `AGENTS.md`, the getting-started guide and rustdoc, adds a scripted feature with no engine patches | Owner | Implementation plan, amendment 16 |
 | RC-A10 | Each display mode and present mode works in the playthrough | Owner playthrough | §8.8 C3 |
@@ -28,10 +28,10 @@ Rows marked *if Qn* wait on an open question in [criteria](criteria.md) §10, an
 
 | ID | Check | Run by | Source |
 | --- | --- | --- | --- |
-| RC-B1 | The stability policy is published: semver scope, MSRV rule, deprecation, and where `wgpu` and `winit` types sit | Decision entry and README | §7 |
-| RC-B2 | The public surface, diffed against the freeze snapshot, shows no change | Tool chosen under `D-015` | §8.8 C3 |
-| RC-B3 | Rustdoc is clean under `missing_docs`, with examples where a public item needs one | Automated | §7 |
-| RC-B4 | No item remains that the policy says the freeze removes, such as the arity-named queries | Automated | §7 |
+| RC-B1 | The stability policy is published: semver scope, MSRV rule, deprecation, and where `wgpu` and `winit` types sit | Decision entry and README | [w04](w04-api-freeze.md) |
+| RC-B2 | The public surface, diffed against the freeze snapshot, shows no change | `cargo-public-api` (`D-104`) | §8.8 C3 |
+| RC-B3 | Rustdoc is clean under `missing_docs`, with examples where a public item needs one | Automated | [w04](w04-api-freeze.md) |
+| RC-B4 | No item remains that the policy says the freeze removes, such as the arity-named queries | Automated | [w04](w04-api-freeze.md) |
 
 ## T. Tests and tooling
 
@@ -54,9 +54,9 @@ Rows marked *if Qn* wait on an open question in [criteria](criteria.md) §10, an
 
 | ID | Check | Run by | Source |
 | --- | --- | --- | --- |
-| RC-S1 | A deliberate panic in a binary from the release workflow leaves a crash file whose frames resolve to file and line (Linux; Windows as hosts allow) | CI probe and owner | §8.2 |
-| RC-S2 | A Windows release opens no console | Owner, as hosts allow | §8.2 |
-| RC-S3 | Smoke runs, benchmarks and the pixel test read no user files | Automated | §8.2 |
+| RC-S1 | A deliberate panic in a binary from the release workflow leaves a crash file whose frames resolve to file and line (Linux; Windows as hosts allow) | CI probe and owner | [w11](w11-shipping-basics.md) |
+| RC-S2 | A Windows release opens no console | Owner, as hosts allow | [w11](w11-shipping-basics.md) |
+| RC-S3 | Smoke runs, benchmarks and the pixel test read no user files | Automated | [w11](w11-shipping-basics.md) |
 
 ## K. Known issues
 
@@ -70,7 +70,7 @@ Rows marked *if Qn* wait on an open question in [criteria](criteria.md) §10, an
 | ID | Check | Run by | Source |
 | --- | --- | --- | --- |
 | RC-D1 | The README states support tiers; Linux is certified; Windows and macOS results are recorded in known issues | Owner | §8.1 W7, Q3 |
-| RC-D2 | Archives carry third-party licence notices, embedded fonts included | Automated check in packaging | §8.1 W9 |
+| RC-D2 | Archives carry third-party licence notices, embedded fonts included | Automated check in packaging | [w09](w09-distribution.md) |
 | RC-D3 | The README and DESIGN describe 1.0 | Owner | §8.8 C3 |
 | RC-D4 | A macOS archive *(if Q3)* | Release workflow | Q3 |
 | RC-D5 | The library crates are published on crates.io *(if Q2)* | Owner | §1, Q2 |
