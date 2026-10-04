@@ -7,6 +7,20 @@ fn lit_sprite_shader_name_constant() {
     assert_eq!(LIT_SPRITE_SHADER_NAME, "lit_sprite");
     assert_eq!(EMISSIVE_MASK_SHADER_NAME, "emissive_mask");
     assert_eq!(RIM_LIGHT_SHADER_NAME, "rim_light");
+    let manifest = tungsten_core::assets::ResolvedManifest::load(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/manifest.json"),
+    )
+    .unwrap();
+    for name in [
+        LIT_SPRITE_SHADER_NAME,
+        EMISSIVE_MASK_SHADER_NAME,
+        RIM_LIGHT_SHADER_NAME,
+    ] {
+        assert!(
+            manifest.shaders.contains_key(name),
+            "{name} is not a shader key in assets/manifest.json"
+        );
+    }
 }
 
 #[test]

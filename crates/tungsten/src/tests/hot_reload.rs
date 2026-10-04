@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use super::{DEBOUNCE_MS, accept_path, canonical_or_clone, under_recursive_root};
+use super::{accept_path, canonical_or_clone, under_recursive_root};
 
 static COUNTER: AtomicU32 = AtomicU32::new(0);
 
@@ -20,11 +20,6 @@ fn touch(path: &Path) {
         fs::create_dir_all(parent).unwrap();
     }
     fs::File::create(path).unwrap();
-}
-
-#[test]
-fn debounce_constant_is_50ms() {
-    assert_eq!(DEBOUNCE_MS, 50);
 }
 
 #[test]

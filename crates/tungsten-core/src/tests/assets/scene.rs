@@ -140,8 +140,7 @@ fn scene_tween_times_repeat_parses() {
 #[test]
 fn load_rejects_non_finite_duration() {
     use std::io::Write as _;
-    let dir = std::env::temp_dir().join("tungsten-scene-bad-duration");
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = tempdir();
     let path = dir.join("scene.json");
     let bad = r#"{ "entities": [ {
         "transform": { "position": [0.0, 0.0] },
@@ -161,8 +160,7 @@ fn load_rejects_non_finite_duration() {
 #[test]
 fn load_rejects_empty_channels() {
     use std::io::Write as _;
-    let dir = std::env::temp_dir().join("tungsten-scene-empty-channels");
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = tempdir();
     let path = dir.join("scene.json");
     let bad = r#"{ "entities": [ {
         "transform": { "position": [0.0, 0.0] },
@@ -181,8 +179,7 @@ fn scene_rejects_vec4_lane_out_of_range() {
     // B6: a vec4 lane above 3 must fail validation instead of silently
     // driving lane 3 through the runtime clamp.
     use std::io::Write as _;
-    let dir = std::env::temp_dir().join("tungsten-scene-vec4-lane");
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = tempdir();
     let path = dir.join("scene.json");
     let bad = r#"{ "entities": [ {
         "transform": { "position": [0.0, 0.0] },
@@ -197,4 +194,15 @@ fn scene_rejects_vec4_lane_out_of_range() {
     }
     let err = SceneData::load(&path).expect_err("must reject lane 4");
     assert!(matches!(err, SceneError::Validation { .. }), "{err}");
+}
+
+use std::sync::atomic::{AtomicU32, Ordering};
+static COUNTER: AtomicU32 = AtomicU32::new(0);
+
+fn tempdir() -> std::path::PathBuf {
+    let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+    let dir = std::env::temp_dir().join(format!("tungsten_scene_{}_{n}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
 }

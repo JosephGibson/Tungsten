@@ -258,6 +258,8 @@ pub struct UniformOverrideBlock {
     _reserved: [[u32; 4]; 10],
 }
 
+const _: () = assert!(std::mem::size_of::<UniformOverrideBlock>() == 256);
+
 impl Default for UniformOverrideBlock {
     fn default() -> Self {
         Self {

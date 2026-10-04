@@ -131,7 +131,16 @@ fn real_level_world() -> World {
 
 /// The authored level's map and platform colliders.
 fn seed_level(world: &mut World) {
-    let map = TilemapData::load(asset_path("tilemaps/level.tmj")).unwrap();
+    seed_level_map(world, level_map());
+}
+
+/// The authored level's map, parsed from `level.tmj`.
+fn level_map() -> TilemapData {
+    TilemapData::load(asset_path("tilemaps/level.tmj")).unwrap()
+}
+
+/// `seed_level` with a map the caller has already parsed.
+fn seed_level_map(world: &mut World, map: TilemapData) {
     world
         .get_resource_mut::<TilemapRegistry>()
         .unwrap()

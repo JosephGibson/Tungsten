@@ -81,6 +81,11 @@ api-check:
 udeps:
     cargo shear --locked
 
+# Platformer generator: `--check` and its unittests (examples/01_platformer/tools/README.md). They need Pillow, so not in CI or the standard-library-only recipes.
+level-check:
+    python3 -B examples/01_platformer/tools/generate.py --check
+    python3 -B -m unittest discover -s examples/01_platformer/tools -p 'test_*.py'
+
 # Agent instruction budgets, links, skill symlinks and repo-byte totals.
 ctx:
     python3 -B scripts/check-agent-context.py
@@ -109,5 +114,6 @@ release-cut version *args:
 quick: fmt-check ctx repo-check
     cargo check --workspace --all-targets --locked
 
-# The six recipes CI runs, in one local command (`D-070`); GPU smoke, `just visual` and perf stay separate.
-ci: check bench-build deps ctx repo-check script-test
+# What CI runs, in its order, in one local command (`D-070`): `check`, the dev-profile bench build (`D-112`), then the recipes after `&&`; GPU smoke, `just visual` and perf stay separate.
+ci: check && deps ctx repo-check script-test
+    cargo bench --workspace --no-run --profile dev --locked

@@ -1,6 +1,6 @@
 # Known issues
 
-Open findings and follow-ups that no active plan owns. A fix removes its entry here in the same change. Sources: the repository review of 2026-09-25, whose archived copy keeps its fixed and historical parts, the P2 correctness pass of 2026-10-02 (`D-088`–`D-092`), M31 (`D-093`), the dense-pile investigation of 2026-10-02 (`D-094`) and the 0.40 QA pass of 2026-10-03 (`D-095`–`D-101`).
+Open findings and follow-ups that no active plan owns. A fix removes its entry here in the same change. Sources: the repository review of 2026-09-25, whose archived copy keeps its fixed and historical parts, the P2 correctness pass of 2026-10-02 (`D-088`–`D-092`), M31 (`D-093`), the dense-pile investigation of 2026-10-02 (`D-094`), the 0.40 QA pass of 2026-10-03 (`D-095`–`D-101`) and the 0.44 test-suite overhead pass of 2026-10-04 (`D-111`, `D-112`; plan archived at `docs/plans/archive/test-suite-overhead.md`).
 
 Priorities: P2 = functional follow-up (none open); P3 = limitation, rare edge case or contract clarification. Unless noted, these are source-path findings, not reproduced GPU or adversarial tests. `core/`, `render/` and `tungsten/` abbreviate the respective crate `src/` directories.
 
@@ -33,7 +33,7 @@ Carried from the review, as of `0.27.0`.
 
 ## Follow-ups
 
-Each was checked against the tree on 2026-10-02, except the last ten, which the 0.40 QA pass recorded on 2026-10-03.
+Each was checked against the tree on 2026-10-02, except the last eighteen: ten from the 0.40 QA pass (2026-10-03), one from M32 (`D-110`) and the last seven from the 0.44 test-suite overhead pass (2026-10-04).
 
 - Truncated Ogg files fail at probe; decide whether to decode the available prefix, as MP3 does. `tests/audio_decode.rs` pins the error.
 - Evaluate rtrb 0.4.0 against the locked 0.3.5, and adopt winit 0.31 once it leaves prerelease (0.30.13 is locked).
@@ -52,3 +52,10 @@ Each was checked against the tree on 2026-10-02, except the last ten, which the 
 - Hand-written frame loops outside example 01 still run stages by hand that the headless harness (`D-110`) runs in order: `crates/tungsten/tests/particles.rs`, `crates/tungsten/src/tests/tweens.rs`, `state.rs` and `game_feel.rs`, and `examples/03_scene_state/src/states.rs`. Home: W15a, which steps the harness, or the Phase 5 QA pass.
 - `scripts/bench.py` run from a tree export under `target/` (a parent or reference build) records the enclosing repository's commit and dirty-tree hash as the capture's provenance, not the export's; label such captures by hand, as the 0.40 QA evidence folders under `perf-runs/` do.
 - `cargo shear` (`just udeps`) reports every `src/tests/` module included through `#[path = "../tests/…"]` from a file in a subdirectory as unlinked; an `ignored-paths` entry under `[workspace.metadata.cargo-shear]` would silence the false positives.
+- Measure CI's wall time on the 0.44 release pull request: building the benchmarks in the bench profile took 148–193 s of a run of about 5 min before `D-112` moved it to the dev profile.
+- A `LAUNCHES` row in example 01's route test (`examples/01_platformer/src/tests/level.rs`) for a pair no route uses is dead data that nothing flags; flagging it would be a new assertion.
+- `just level-check` (the platformer generator's `--check` and its unittests) is not listed in `docs/agent-setup.md`'s check tiers.
+- Test temp directories pile up in `/tmp`: the scene tests (`core/tests/assets/scene.rs`) and the manifest tests' helper (`core/tests/assets/manifest.rs`) never remove theirs; each test could remove its directory at its end.
+- `LightUbo::byte_size()` (`render/lighting.rs:66`) has had no caller since 0.44 removed its test; it is public API, so removing it needs a break-ledger row.
+- Bloom's shader ids 4..=7 must follow sprite (0) and SMAA (1..=3) or `Renderer::reload_shader` routing breaks; only a bloom test 0.44 deleted said so. Put the note beside the seeding at `render/renderer.rs:338`.
+- `D-041` lacks an `**Amended by D-096:**` marker line above `D-111`'s.

@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.43.0"
+version = "0.44.0"
 edition = "2024"
 rust-version = "1.98.1"
 license = "MIT"
@@ -66,7 +66,13 @@ rtrb = "0.3.5"
 # cost does not hurt iteration speed. tungsten-core runs the physics and ECS of
 # every simulation test: opt-level 1 took `just check` from 90 s to 11 s for
 # about 2 s more per core rebuild; floats keep IEEE semantics and debug
-# assertions stay on (D-096).
+# assertions stay on (D-096). Debuginfo stays in .dwo files beside the objects:
+# linking it into every 378-455 MB test binary made a core-edit test build take
+# 18 s instead of 5 s, and backtraces still show file:line. Cargo omits the flag
+# on targets without unpacked support, such as x86_64-pc-windows-msvc (D-111).
+[profile.dev]
+split-debuginfo = "unpacked"
+
 [profile.dev.package."*"]
 opt-level = 2
 
