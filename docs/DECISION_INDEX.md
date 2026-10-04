@@ -14,6 +14,8 @@ One-line takeaways for every decision heading in [`DECISIONS.md`](../DECISIONS.m
 | `D-006` | Three-crate workspace split is intentional: `tungsten-core`, `tungsten-render`, `tungsten`. |
 | `D-007` | `tungsten-render` may depend on `tungsten-core`; strict isolation is not the goal. |
 | `D-008` | One workspace-root `tungsten.json`, loaded at startup. Missing file falls back to defaults; invalid JSON is fatal. |
+| `D-102` | 1.0 means definitions A and B: complete for making games and a stable library; crates.io stays open (Q2). Tested by one acceptance game, a top-down survivors-like auto-shooter in its own GitHub repository on git tags, public API and kit only. In: sliders and checkboxes (W1 BC), gamepad, save slots. Out: text fields and IME, the pipelined render thread (R4, back only if C1 needs it). |
+| `D-103` | 1.0 stability policy: semver covers the `tungsten` crate's API (kit re-export included, its settings structs `#[non_exhaustive]`), game file formats (1.x adds fields only) and CLI commands; direct core/render/kit dependencies and `wgpu`/`winit` types are outside. MSRV rises only in a 1.x minor with the toolchain pin; deprecated items stay until 2.0. Amends `D-069`. |
 
 ## Assets / Rendering
 
@@ -68,7 +70,7 @@ One-line takeaways for every decision heading in [`DECISIONS.md`](../DECISIONS.m
 | `D-038` | Frame timing uses inline `Instant` instrumentation in `app.rs`; no extra profiling crate for core telemetry. |
 | `D-041` | Release/profile tuning is part of the current baseline; perf comparisons should assume those settings. Dev-profile clause amended by `D-096`: `tungsten-core` builds at opt-level 1. |
 | `D-068` | `AGENTS.md` is the one instruction body (`CLAUDE.md` imports it); scoped render rules, on-demand index, skills shared via `.agents/skills` symlinks, budgets checked by `just ctx`. |
-| `D-069` | Rust 1.98.1 pinned and declared as `rust-version`; edition 2024 / resolver 3; `just check` (strict clippy) and `cargo-deny` are the shared gates. |
+| `D-069` | Rust 1.98.1 pinned and declared as `rust-version`; edition 2024 / resolver 3; `just check` (strict clippy) and `cargo-deny` are the shared gates. Amended by `D-103`: from 1.0, a bump that raises `rust-version` lands only in a minor release. |
 | `D-070` | CPU-only CI reports on PRs/pushes without blocking; GPU/audio/perf stay local. Narrows `D-002`; release builds in `D-071`. |
 | `D-071` | `v*` tags build Linux/Windows x86-64 example archives plus `SHA256SUMS` into a GitHub Release with CHANGELOG notes; build only, write token in the publish job only; pre-release tags without a CHANGELOG section rehearse. Workspace version = newest CHANGELOG release, bumped only by `just release-cut`; `repo-check` and CI enforce it. CPU levels: `D-072`; README status/handoff superseded by `D-074`, tag-push-only trigger by `D-079`. |
 | `D-072` | Release archives ship `x86-64-v3` and portable builds; a per-example std-only launcher runs the fastest one the CPU supports from the archive root (`TUNGSTEN_CPU_LEVEL` overrides). Measured: physics frames ~5% faster, ECS frames within 1%; native and fat LTO no better. Supersedes `D-071`'s single generic build. |
@@ -80,6 +82,7 @@ One-line takeaways for every decision heading in [`DECISIONS.md`](../DECISIONS.m
 | `D-096` | Dev and test builds compile `tungsten-core` at opt-level 1 (`[profile.dev.package.tungsten-core]`): the platformer's route test went from 81 s to 9 s and `just check` from 90 s to 11 s; release, bench and perf-runner builds are unchanged. Amends `D-041`. |
 | `D-097` | Agents commit plan work locally on the milestone branch (explicit paths, once per plan or phase); humans push, tag, merge and rewrite history; release PRs stay squash-merged. One-line evidence rows, one changelog line per plan. Patch-series clause superseded by `D-098`: the hand-off is removed. |
 | `D-098` | The per-step patch hand-off is removed (`tungsten-patch-handoff`, `scripts/patch-series.py`); per-step history is one local commit per step, or handed-over commands while Git is denied. Supersedes `D-097`'s patch-series clause. |
+| `D-104` | `cargo-public-api` writes each library crate's public surface to a tracked text file, updated in every milestone commit that changes it; the freeze snapshot is RC-B2's baseline. Step 0d settles the toolchain for its rustdoc JSON. |
 
 ## ECS / Runtime Flow
 

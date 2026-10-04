@@ -7,7 +7,7 @@
 - **ordered steps:** Set at graduation. Candidates and their order: [implementation plan](implementation-plan.md) §4.
 - **done-when:** Set at graduation. None yet; `just physics-release` stays green, with determinism and containment hashes unchanged for existing scenes.
 
-Skeleton. The scoping text stays in [criteria](criteria.md) §3 and §8.1 until this workstream graduates ([conventions](README.md#conventions)).
+Skeleton. The scoping text stays in [criteria](criteria.md) §3 and §8.1 until this workstream graduates ([conventions](README.md#conventions)). Revised 2026-10-03 at `9cd5709`: the decisions line.
 
 ## Placement
 
@@ -16,7 +16,7 @@ Skeleton. The scoping text stays in [criteria](criteria.md) §3 and §8.1 until 
 - **Needs first:** W3b, so that kinematic motion is written once against the fixed step; W15a, for physics as a plugin.
 - **Feeds:** W13c controllers; W13d trigger zones and path follower; W11b volume per bus; the acceptance game.
 - **Owner questions:** Q10.
-- **Decisions:** None listed in criteria §11 yet.
+- **Decisions:** W6's bullet in criteria §11 (added 2026-10-03): kinematic bodies, sensors and shape queries amend `D-033`'s body model and touch `D-064` and `D-065`; audio voices and buses set the audio policy for `D-034`'s command ring.
 
 ## Context digest
 

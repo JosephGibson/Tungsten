@@ -1,12 +1,12 @@
 # Road to 1.0
 
-Planning for Tungsten 1.0: what it means, which workstreams reach it, in what order, how the work runs as Claude Code sessions, and how the release is checked. Every file here is a draft (2026-10-03). General plan rules: [plans README](../README.md).
+Planning for Tungsten 1.0: what it means, which workstreams reach it, in what order, how the work runs as Claude Code sessions, and how the release is checked. Every file here started as a draft on 2026-10-03; the definition gate moved the implementation plan, the workflow and the release checklist to in progress. General plan rules: [plans README](../README.md).
 
 ## Now
 
-- **Phase:** none started. Phase 5 starts after 0.40 releases; its QA plan finished on 2026-10-03 ([implementation plan](implementation-plan.md) §3).
-- **Next:** the definition gate, on the agenda in [implementation plan](implementation-plan.md) §9.
-- **Last gate passed:** none.
+- **Phase:** none started. 0.40 released on 2026-10-03 (`v0.40.0`, squash-merged as `9cd5709`); Phase 5 starts after Step 0 ([implementation plan](implementation-plan.md) §3).
+- **Next:** graduating W4, W9, W11, W12 and W14 with the accepted amendments folded in, then the remaining folds, then Step 0 ([implementation plan](implementation-plan.md) §11).
+- **Last gate passed:** definition, 2026-10-03 ([record](implementation-plan.md#11-gate-records), `D-102`–`D-104`), awaiting the owner's sign-off.
 
 A session that changes any of these lines updates them in the same patch ([workflow](workflow.md) §5).
 
