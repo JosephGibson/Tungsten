@@ -10,7 +10,9 @@ use tungsten::particles::particle_tick_system;
 use tungsten_core::assets::{
     BlendMode, Curve, EmissionKind, InitialVelocity, ParticleConfig, ParticleRender, Range,
 };
-use tungsten_core::{CommandBuffer, DeltaTime, Particle, Sprite, Transform, Visibility, World};
+use tungsten_core::{
+    CommandBuffer, DeltaTime, Particle, Sprite, SpriteAssetId, Transform, Visibility, World,
+};
 
 fn make_config() -> Arc<ParticleConfig> {
     Arc::new(ParticleConfig {
@@ -74,7 +76,7 @@ fn build_world(n: usize, cfg: &Arc<ParticleConfig>) -> (World, Vec<tungsten_core
             e,
             Transform::from_position(Vec2::new((i % 100) as f32, (i / 100) as f32)),
         );
-        world.insert(e, Sprite::new("spark"));
+        world.insert(e, Sprite::new(SpriteAssetId::new(0)));
         world.insert(e, Visibility::default());
         entities.push(e);
     }

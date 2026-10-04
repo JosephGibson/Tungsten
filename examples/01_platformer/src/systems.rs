@@ -1,8 +1,8 @@
 use glam::Vec2;
 use tungsten::WindowSize;
 use tungsten::core::{
-    ActionMap, AnimationRegistry, AnimationState, AudioCommands, AudioHandle, CameraController,
-    CameraState, CommandBuffer, DeltaTime, Entity, EventQueue, InputState, Light,
+    ActionMap, AnimationRegistry, AnimationState, AssetRegistry, AudioCommands, AudioHandle,
+    CameraController, CameraState, CommandBuffer, DeltaTime, Entity, EventQueue, InputState, Light,
     ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, ShakeEvent, SquashEvent,
     SquashTrigger, Transform, World,
 };
@@ -214,10 +214,17 @@ pub(crate) fn animation_system(world: &mut World) {
         let mut state = world.get::<AnimationState>(entity).unwrap().clone();
         let new_sprite = state.advance(dt_ms, &anim_registry);
         *world.get_mut::<AnimationState>(entity).unwrap() = state;
-        if let Some(sprite_id) = new_sprite
+        // `CurrentSprite` keeps the name; the custom extract resolves it.
+        let name = new_sprite.and_then(|id| {
+            world
+                .get_resource::<AssetRegistry>()?
+                .sprite_name(id)
+                .map(str::to_owned)
+        });
+        if let Some(name) = name
             && let Some(cs) = world.get_mut::<CurrentSprite>(entity)
         {
-            cs.0 = sprite_id;
+            cs.0 = name;
         }
     }
 }
@@ -377,6 +384,7 @@ pub(crate) fn player_presentation_system(world: &mut World) {
             let sprite = world
                 .get_resource::<AnimationRegistry>()
                 .and_then(|registry| state.current_sprite(registry))
+                .and_then(|id| world.get_resource::<AssetRegistry>()?.sprite_name(id))
                 .map(str::to_owned);
             world.insert(entity, state);
             if let Some(sprite) = sprite {

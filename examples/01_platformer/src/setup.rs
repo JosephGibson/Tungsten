@@ -333,7 +333,14 @@ fn spawn_parallax_backdrop(world: &mut World) {
                 rotation: 0.0,
             },
         );
-        let mut sprite = Sprite::new(id);
+        if world.get_resource::<AssetRegistry>().is_none() {
+            world.insert_resource(AssetRegistry::new());
+        }
+        let asset_id = world
+            .get_resource_mut::<AssetRegistry>()
+            .expect("AssetRegistry inserted above")
+            .intern_sprite(id);
+        let mut sprite = Sprite::new(asset_id);
         sprite.z_order = z;
         world.insert(entity, sprite);
         world.insert(entity, Visibility::default());

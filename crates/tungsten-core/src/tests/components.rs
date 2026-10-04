@@ -23,8 +23,8 @@ fn visibility_default_is_visible() {
 
 #[test]
 fn sprite_new_defaults_color_and_z_order() {
-    let s = Sprite::new("player");
-    assert_eq!(s.asset_id, "player");
+    let s = Sprite::new(SpriteAssetId::new(7));
+    assert_eq!(s.asset_id, SpriteAssetId::new(7));
     assert_eq!(s.color, [255; 4]);
     assert_eq!(s.z_order, 0);
 }

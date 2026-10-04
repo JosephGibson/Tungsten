@@ -522,7 +522,7 @@ fn bench_event_queue_flush_10_types(c: &mut Criterion) {
 // D-042 gate: query3 sprite path across matching and excluded archetypes.
 fn bench_sprite_components_query3_2k(c: &mut Criterion) {
     use glam::Vec2;
-    use tungsten_core::{Sprite, Tag, Transform, Visibility, World};
+    use tungsten_core::{Sprite, SpriteAssetId, Tag, Transform, Visibility, World};
 
     const CHUNK: usize = 2_000 / 2;
 
@@ -531,14 +531,14 @@ fn bench_sprite_components_query3_2k(c: &mut Criterion) {
     for i in 0..CHUNK {
         let e = world.spawn();
         world.insert(e, Transform::from_position(Vec2::new(i as f32, 0.0)));
-        world.insert(e, Sprite::new("a"));
+        world.insert(e, Sprite::new(SpriteAssetId::new(0)));
         world.insert(e, Visibility::default());
     }
 
     for i in 0..CHUNK {
         let e = world.spawn();
         world.insert(e, Transform::from_position(Vec2::new(i as f32, 1.0)));
-        world.insert(e, Sprite::new("b"));
+        world.insert(e, Sprite::new(SpriteAssetId::new(1)));
         world.insert(e, Visibility::default());
         world.insert(e, Tag::new("b"));
     }
@@ -546,7 +546,7 @@ fn bench_sprite_components_query3_2k(c: &mut Criterion) {
     for i in 0..CHUNK {
         let e = world.spawn();
         world.insert(e, Transform::from_position(Vec2::new(i as f32, 2.0)));
-        world.insert(e, Sprite::new("c"));
+        world.insert(e, Sprite::new(SpriteAssetId::new(2)));
     }
 
     for i in 0..CHUNK {
@@ -557,7 +557,7 @@ fn bench_sprite_components_query3_2k(c: &mut Criterion) {
 
     for _ in 0..CHUNK {
         let e = world.spawn();
-        world.insert(e, Sprite::new("e"));
+        world.insert(e, Sprite::new(SpriteAssetId::new(3)));
         world.insert(e, Visibility::default());
     }
 
@@ -576,7 +576,9 @@ fn bench_sprite_components_query3_2k(c: &mut Criterion) {
 // This isolates iteration from spatial hashing, neighbor density and allocation.
 fn bench_high_load_iteration_50k(c: &mut Criterion) {
     use glam::Vec2;
-    use tungsten_core::{Position, RigidBody, Sprite, Transform, Velocity, Visibility};
+    use tungsten_core::{
+        Position, RigidBody, Sprite, SpriteAssetId, Transform, Velocity, Visibility,
+    };
     #[derive(Clone, Copy)]
     struct StressAgent {
         phase: f32,
@@ -599,7 +601,7 @@ fn bench_high_load_iteration_50k(c: &mut Criterion) {
         world.insert(e, Velocity(Vec2::new(75.0, 40.0)));
         world.insert(e, RigidBody::dynamic());
         world.insert(e, Transform::from_position(position));
-        world.insert(e, Sprite::new("ex02_high_load_agent"));
+        world.insert(e, Sprite::new(SpriteAssetId::new(0)));
         world.insert(e, Visibility::default());
     }
     c.bench_function("high_load_query3_50k", |b| {

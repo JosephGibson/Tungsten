@@ -30,8 +30,8 @@ use glam::Vec2;
 use serde_json::{Value as Json, json};
 use tungsten::core::assets::AnimationFrame;
 use tungsten::core::{
-    AnimationData, AnimationRegistry, AnimationState, BlendMode, CameraState, Curve, DeltaTime,
-    EmissionKind, FilterMode, InitialVelocity, Particle, ParticleBudget, ParticleConfig,
+    AnimationData, AnimationRegistry, AnimationState, AssetRegistry, BlendMode, CameraState, Curve,
+    DeltaTime, EmissionKind, FilterMode, InitialVelocity, Particle, ParticleBudget, ParticleConfig,
     ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, ParticleRender, Pcg32, Range,
     Sprite, Transform, Visibility, World, splitmix64,
 };
@@ -356,14 +356,25 @@ fn configure(app: &mut App, cfg: &BenchConfig) {
 
         let mut animations = AnimationRegistry::new();
         let duration_ms = frame_ms(cfg);
+        let sprites = world
+            .get_resource_mut::<AssetRegistry>()
+            .expect("AssetRegistry resource missing");
+        let frame_ids: Vec<Vec<_>> = (0..clips)
+            .map(|clip| {
+                (0..FRAMES_PER_CLIP)
+                    .map(|frame| sprites.intern_sprite(&frame_id(clip, frame)))
+                    .collect()
+            })
+            .collect();
         for clip in 0..clips {
             animations.insert(
                 clip_id(clip),
                 AnimationData {
                     looping: clip.is_multiple_of(2),
-                    frames: (0..FRAMES_PER_CLIP)
-                        .map(|frame| AnimationFrame {
-                            sprite: frame_id(clip, frame),
+                    frames: frame_ids[clip as usize]
+                        .iter()
+                        .map(|&sprite| AnimationFrame {
+                            sprite,
                             duration_ms,
                         })
                         .collect(),
@@ -379,7 +390,7 @@ fn configure(app: &mut App, cfg: &BenchConfig) {
             let mut state = AnimationState::new(clip_id(clip));
             state.frame_index = frame as usize;
             state.accumulated_ms = rng.next_f32_unit() * duration_ms as f32;
-            let mut sprite = Sprite::new(frame_id(clip, frame));
+            let mut sprite = Sprite::new(frame_ids[clip as usize][frame as usize]);
             sprite.z_order = -1;
             let entity = world.spawn();
             world.insert(
@@ -484,7 +495,7 @@ fn animate_sprites(world: &mut World) {
             state.accumulated_ms = 0.0;
             state.finished = false;
             if let Some(first) = state.current_sprite(&registry) {
-                sprite.asset_id = first.to_string();
+                sprite.asset_id = first;
                 changes += 1;
             }
         } else if let Some(next) = state.advance(dt_ms, &registry) {

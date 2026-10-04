@@ -5,7 +5,9 @@ use std::path::Path;
 
 use glam::Vec2;
 use tungsten_core::assets::SceneData;
-use tungsten_core::{CommandBuffer, Sprite, Tag, Transform, Visibility, World};
+use tungsten_core::{
+    AssetRegistry, CommandBuffer, Sprite, SpriteAssetId, Tag, Transform, Visibility, World,
+};
 
 use crate::state::{SceneEntity, StateId};
 
@@ -15,13 +17,26 @@ pub fn load_scene(path: &Path) -> anyhow::Result<SceneData> {
         .map_err(|source| anyhow::anyhow!("Failed to load scene '{}': {source}", path.display()))
 }
 
-/// Spawn scene entities through `CommandBuffer`; D-046 leaves sprite IDs unresolved.
+/// Spawn scene entities through `CommandBuffer`; D-046 leaves sprite names unresolved:
+/// each is interned, so a sprite a later manifest reload registers draws from then on.
 /// D-055 one `Tween` per entity — additional tween entries log `ERROR` and are dropped.
 pub fn spawn_scene(world: &mut World, data: &SceneData, state_id: StateId) {
+    let mut registry = world.get_resource_mut::<AssetRegistry>();
+    let sprite_ids: Vec<Option<SpriteAssetId>> = data
+        .entities
+        .iter()
+        .map(|entry| {
+            let sprite = entry.sprite.as_ref()?;
+            let registry = registry
+                .as_deref_mut()
+                .expect("AssetRegistry resource missing");
+            Some(registry.intern_sprite(&sprite.asset_id))
+        })
+        .collect();
     let buf = world
         .get_resource_mut::<CommandBuffer>()
         .expect("CommandBuffer resource missing");
-    for entry in &data.entities {
+    for (entry, sprite_id) in data.entities.iter().zip(sprite_ids) {
         let pending = buf.spawn();
         buf.insert_pending(
             pending,
@@ -31,11 +46,11 @@ pub fn spawn_scene(world: &mut World, data: &SceneData, state_id: StateId) {
                 scale: Vec2::from(entry.transform.scale),
             },
         );
-        if let Some(sprite) = &entry.sprite {
+        if let (Some(sprite), Some(asset_id)) = (&entry.sprite, sprite_id) {
             buf.insert_pending(
                 pending,
                 Sprite {
-                    asset_id: sprite.asset_id.clone(),
+                    asset_id,
                     color: sprite.color,
                     z_order: sprite.z_order,
                     material_id: None,

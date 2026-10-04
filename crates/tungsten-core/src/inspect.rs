@@ -39,7 +39,8 @@ impl Inspectable for Visibility {
 impl Inspectable for Sprite {
     fn inspect_rows(&self) -> Vec<(&'static str, String)> {
         vec![
-            ("asset", self.asset_id.clone()),
+            // Core has no registry here; the umbrella inspector prints the name.
+            ("asset", format!("#{}", self.asset_id.index())),
             (
                 "tint",
                 format!(

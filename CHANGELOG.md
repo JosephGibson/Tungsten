@@ -6,6 +6,14 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.45.0] - 2026-10-04
+
+Summary: Phase 5's second milestone, M33 (W2 R0, plan archived at `docs/plans/archive/1.0/phase5-milestone-33-interned-asset-ids.md`). Sprites name their asset by an interned `SpriteAssetId` (`D-113`, a public API break and W4's first ledger row), and the default extract culls stock-pipeline sprites outside the view (`D-114`). No dependency, asset or manifest change; the row digests, the pinned extract output, the pixel tests and the physics hashes are unchanged.
+
+### Changed
+
+- **Interned sprite IDs and extract culling** (`D-113`, `D-114`, M33). `Sprite.asset_id` is a `SpriteAssetId`, `Copy`, that `AssetRegistry::intern_sprite` mints: one ID per name, registered or not, append-only, sorted at manifest load. Animation frames hold IDs (`AnimationData::load` takes the registry, and `AnimationData` and `AnimationFrame` drop `Deserialize`). `current_sprite` and `advance` return IDs, `spawn_particle_via` takes one, and `sprite_ids()` and `sprite_id_for_path` become `sprite_names()` and `sprite_name_for_path`. Files keep names. The default extract indexes the registry by ID, and it now skips a stock-pipeline sprite wholly outside the view render projects with (the surface size the app passes, else `WindowSize`). A culled sprite keeps its sort key, so batch order and `z_norm` do not change, and material sprites are never culled. `particles` `total` p50 6.50 → 4.44 ms, `gpu-throughput` `extract` p50 13.25 → 12.16 ms, `integrated` `total` p50 8.59 → 7.93 ms. Accepted: `particles` `unattributed` p50 +0.12 ms (15 runs a side) and `gpu` `extract` p50 +0.06 ms from culling.
+
 ## [0.44.0] - 2026-10-04
 
 Summary: a test-suite overhead pass (plan archived at `docs/plans/archive/test-suite-overhead.md`): example 01's route test replays known launches, redundant unit tests go, dev and test builds keep debuginfo out of the test binaries (`D-111`) and CI builds the benchmarks in the dev profile (`D-112`), taking `cargo test --workspace` from 10.9 s to 1.9 s. No runtime code, dependency, asset or manifest change.

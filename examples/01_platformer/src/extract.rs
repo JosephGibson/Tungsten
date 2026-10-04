@@ -167,11 +167,12 @@ fn extract_parallax(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
     entries.sort_by_key(|(e, _, sprite, _)| (sprite.z_order, e.id()));
     let mut batches = Vec::new();
     for (_, transform, sprite, layer) in entries {
-        let Some(asset) = assets.get_sprite(&sprite.asset_id) else {
+        let Some(asset) = assets.sprite(sprite.asset_id) else {
             continue;
         };
+        let name = assets.sprite_name(sprite.asset_id).unwrap_or_default();
         let mut batch = SpriteBatch::new(asset.atlas, asset.filter);
-        if sprite.asset_id == "ex10_sky" {
+        if name == "ex10_sky" {
             // Fill the actual viewport with the authored sky instead of stretching
             // a tiny portion across the entire level. Overhang absorbs camera shake.
             batch.instances.push(instance(
@@ -181,7 +182,7 @@ fn extract_parallax(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
             ));
         } else {
             let size = Vec2::new(asset.width as f32, asset.height as f32) * transform.scale;
-            let cloud = sprite.asset_id.starts_with("ex10_clouds");
+            let cloud = name.starts_with("ex10_clouds");
             let time = world
                 .get_resource::<crate::gameplay::SceneTime>()
                 .map_or(0.0, |t| t.0);
@@ -217,7 +218,7 @@ fn extract_parallax(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
             }
         }
         batches.push(batch);
-        if sprite.asset_id == "ex10_sky" {
+        if name == "ex10_sky" {
             let view = view_max - view_min;
             let center = view_min + view * Vec2::new(0.81, 0.12);
             // Aspect-independent circular disc; the sky itself may stretch.
@@ -366,7 +367,7 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
         if !visible {
             continue;
         }
-        let Some(asset) = assets.get_sprite(&s.asset_id) else {
+        let Some(asset) = assets.sprite(s.asset_id) else {
             continue;
         };
         let uv_size = [

@@ -18,7 +18,7 @@ use std::path::Path;
 
 use glam::Vec2;
 
-use tungsten::core::{ActionMap, InputState, SceneData, World};
+use tungsten::core::{ActionMap, AssetRegistry, InputState, SceneData, SpriteAssetId, World};
 use tungsten::core::{CommandBuffer, Sprite, Tag, Transform, Visibility};
 use tungsten::{
     GameState, SceneEntity, StateContext, StateId, StateStack, Transition, TransitionEffect,
@@ -165,7 +165,16 @@ impl GameState for PauseState {
     }
 }
 
+/// The quad sprite's ID, interned before a spawn takes the `CommandBuffer`.
+fn quad_id(world: &mut World) -> SpriteAssetId {
+    world
+        .get_resource_mut::<AssetRegistry>()
+        .expect("AssetRegistry resource missing")
+        .intern_sprite(QUAD_ID)
+}
+
 fn spawn_menu_decorations(world: &mut World) {
+    let quad = quad_id(world);
     let buf = world
         .get_resource_mut::<CommandBuffer>()
         .expect("CommandBuffer resource missing");
@@ -190,7 +199,7 @@ fn spawn_menu_decorations(world: &mut World) {
         buf.insert_pending(
             entity,
             Sprite {
-                asset_id: QUAD_ID.into(),
+                asset_id: quad,
                 color,
                 z_order: 2,
                 material_id: None,
@@ -203,6 +212,7 @@ fn spawn_menu_decorations(world: &mut World) {
 }
 
 fn spawn_pause_overlay(world: &mut World) {
+    let quad = quad_id(world);
     let buf = world
         .get_resource_mut::<CommandBuffer>()
         .expect("CommandBuffer resource missing");
@@ -219,7 +229,7 @@ fn spawn_pause_overlay(world: &mut World) {
     buf.insert_pending(
         dim,
         Sprite {
-            asset_id: QUAD_ID.into(),
+            asset_id: quad,
             color: [6, 10, 20, 170],
             z_order: 500,
             material_id: None,
@@ -242,7 +252,7 @@ fn spawn_pause_overlay(world: &mut World) {
     buf.insert_pending(
         banner,
         Sprite {
-            asset_id: QUAD_ID.into(),
+            asset_id: quad,
             color: [28, 36, 60, 220],
             z_order: 510,
             material_id: None,
@@ -303,6 +313,7 @@ mod tests {
     #[test]
     fn back_from_pause_removes_gameplay_before_entering_menu() {
         let mut world = World::new();
+        world.insert_resource(AssetRegistry::new());
         world.insert_resource(CommandBuffer::new());
         world.insert_resource(StateStack::new());
         world.insert_resource(ActionMap::default_map());

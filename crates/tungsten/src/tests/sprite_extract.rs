@@ -2,7 +2,9 @@ use super::*;
 use glam::Vec2;
 use std::path::PathBuf;
 use tungsten_core::assets::{TextureHandle, UvRect};
-use tungsten_core::{AssetRegistry, Entity, Pcg32, Sprite, Transform, Visibility, World};
+use tungsten_core::{
+    AssetRegistry, Entity, Pcg32, Sprite, SpriteAssetId, Transform, Visibility, World,
+};
 
 fn register_sprite(world: &mut World, id: &str, filter: FilterMode) {
     let registry = world
@@ -28,6 +30,14 @@ fn world_with_registry() -> World {
     world
 }
 
+/// The world registry's ID for `name`, interned if new.
+fn intern(world: &mut World, name: &str) -> SpriteAssetId {
+    world
+        .get_resource_mut::<AssetRegistry>()
+        .expect("AssetRegistry resource missing")
+        .intern_sprite(name)
+}
+
 #[test]
 fn missing_visibility_emits_nothing() {
     let mut world = world_with_registry();
@@ -35,7 +45,8 @@ fn missing_visibility_emits_nothing() {
 
     let e = world.spawn();
     world.insert(e, Transform::default());
-    world.insert(e, Sprite::new("quad"));
+    let sprite = Sprite::new(intern(&mut world, "quad"));
+    world.insert(e, sprite);
 
     let batches = extract_sprites_default(&world);
     let total: usize = batches.iter().map(|b| b.instances.len()).sum();
@@ -49,7 +60,8 @@ fn invisible_entity_emits_nothing() {
 
     let e = world.spawn();
     world.insert(e, Transform::default());
-    world.insert(e, Sprite::new("quad"));
+    let sprite = Sprite::new(intern(&mut world, "quad"));
+    world.insert(e, sprite);
     world.insert(e, Visibility { visible: false });
 
     let batches = extract_sprites_default(&world);
@@ -63,7 +75,8 @@ fn missing_asset_id_emits_nothing() {
 
     let e = world.spawn();
     world.insert(e, Transform::default());
-    world.insert(e, Sprite::new("ghost"));
+    let sprite = Sprite::new(intern(&mut world, "ghost"));
+    world.insert(e, sprite);
     world.insert(e, Visibility::default());
 
     let batches = extract_sprites_default(&world);
@@ -85,7 +98,8 @@ fn transform_scale_applies_to_instance_size() {
             scale: Vec2::new(2.0, 3.0),
         },
     );
-    world.insert(e, Sprite::new("quad"));
+    let sprite = Sprite::new(intern(&mut world, "quad"));
+    world.insert(e, sprite);
     world.insert(e, Visibility::default());
 
     let batches = extract_sprites_default(&world);
@@ -104,13 +118,14 @@ fn transform_scale_applies_to_instance_size() {
 fn sprite_color_reaches_instance() {
     let mut world = world_with_registry();
     register_sprite(&mut world, "quad", FilterMode::Nearest);
+    let quad = intern(&mut world, "quad");
 
     let e = world.spawn();
     world.insert(e, Transform::default());
     world.insert(
         e,
         Sprite {
-            asset_id: "quad".into(),
+            asset_id: quad,
             color: [10, 20, 30, 255],
             z_order: 0,
             material_id: None,
@@ -126,6 +141,7 @@ fn sprite_color_reaches_instance() {
 fn z_order_groups_do_not_merge_across_a_lower_z_entry() {
     let mut world = world_with_registry();
     register_sprite(&mut world, "quad", FilterMode::Nearest);
+    let quad = intern(&mut world, "quad");
 
     // Batch map resets between z-order runs.
     for z in [-1, 0, 1] {
@@ -134,7 +150,7 @@ fn z_order_groups_do_not_merge_across_a_lower_z_entry() {
         world.insert(
             e,
             Sprite {
-                asset_id: "quad".into(),
+                asset_id: quad,
                 color: [255; 4],
                 z_order: z,
                 material_id: None,
@@ -156,7 +172,8 @@ fn same_z_same_texture_collapses_to_one_batch() {
     for _ in 0..4 {
         let e = world.spawn();
         world.insert(e, Transform::default());
-        world.insert(e, Sprite::new("quad"));
+        let sprite = Sprite::new(intern(&mut world, "quad"));
+        world.insert(e, sprite);
         world.insert(e, Visibility::default());
     }
 
@@ -180,13 +197,14 @@ fn same_z_order_breaks_ties_by_entity_id() {
     let mut world = world_with_registry();
     register_sprite(&mut world, "a", FilterMode::Nearest);
     register_sprite(&mut world, "b", FilterMode::Nearest);
+    let (a, b) = (intern(&mut world, "a"), intern(&mut world, "b"));
 
     let e0 = world.spawn();
     world.insert(e0, Transform::default());
     world.insert(
         e0,
         Sprite {
-            asset_id: "a".into(),
+            asset_id: a,
             color: [1, 0, 0, 255],
             z_order: 0,
             material_id: None,
@@ -199,7 +217,7 @@ fn same_z_order_breaks_ties_by_entity_id() {
     world.insert(
         e1,
         Sprite {
-            asset_id: "b".into(),
+            asset_id: b,
             color: [0, 2, 0, 255],
             z_order: 0,
             material_id: None,
@@ -226,6 +244,7 @@ fn z_norm_decreases_along_painter_order_for_less_equal_depth_test() {
     // and the last drawn instance reaches 0.0.
     let mut world = world_with_registry();
     register_sprite(&mut world, "quad", FilterMode::Nearest);
+    let quad = intern(&mut world, "quad");
 
     // Spawn three sprites at z = 2, 0, 1 -- order after sort: 0, 1, 2.
     for z in [2, 0, 1] {
@@ -234,7 +253,7 @@ fn z_norm_decreases_along_painter_order_for_less_equal_depth_test() {
         world.insert(
             e,
             Sprite {
-                asset_id: "quad".into(),
+                asset_id: quad,
                 color: [255; 4],
                 z_order: z,
                 material_id: None,
@@ -287,7 +306,8 @@ fn lit_batch_routed_when_lit_atlas_present() {
 
     let e = world.spawn();
     world.insert(e, Transform::default());
-    world.insert(e, Sprite::new("lit_quad"));
+    let sprite = Sprite::new(intern(&mut world, "lit_quad"));
+    world.insert(e, sprite);
     world.insert(e, Visibility::default());
 
     let batches = extract_sprites_default(&world);
@@ -306,7 +326,8 @@ fn unlit_path_byte_identical_with_no_aux() {
 
     let e = world.spawn();
     world.insert(e, Transform::default());
-    world.insert(e, Sprite::new("quad"));
+    let sprite = Sprite::new(intern(&mut world, "quad"));
+    world.insert(e, sprite);
     world.insert(e, Visibility::default());
 
     let batches = extract_sprites_default(&world);
@@ -317,7 +338,7 @@ fn unlit_path_byte_identical_with_no_aux() {
 fn spawn_visible(world: &mut World, id: &str, position: Vec2, z_order: i32) -> Entity {
     let e = world.spawn();
     world.insert(e, Transform::from_position(position));
-    let mut sprite = Sprite::new(id);
+    let mut sprite = Sprite::new(intern(world, id));
     sprite.z_order = z_order;
     world.insert(e, sprite);
     world.insert(e, Visibility::default());
@@ -455,7 +476,7 @@ fn reference_extract(world: &World) -> Vec<SpriteBatch> {
             if !v.visible {
                 return None;
             }
-            let asset = assets.get_sprite(&s.asset_id)?;
+            let asset = assets.sprite(s.asset_id)?;
             Some((e, t, s, asset, override_block, parallax))
         })
         .collect();
@@ -634,6 +655,8 @@ fn golden_world(seed: u64, spawns: u32) -> World {
     camera.position = Vec2::new(321.5, -77.25);
     world.insert_resource(camera);
 
+    let golden_ids = GOLDEN_IDS.map(|name| intern(&mut world, name));
+
     let mut rng = Pcg32::seeded(seed);
     let mut live: Vec<Entity> = Vec::new();
     for index in 0..spawns {
@@ -648,14 +671,14 @@ fn golden_world(seed: u64, spawns: u32) -> World {
         );
         let roll = rng.next_u32();
         let id = if roll.is_multiple_of(40) {
-            GOLDEN_IDS[6]
+            golden_ids[6]
         } else {
-            GOLDEN_IDS[(roll % 6) as usize]
+            golden_ids[(roll % 6) as usize]
         };
         world.insert(
             e,
             Sprite {
-                asset_id: id.to_string(),
+                asset_id: id,
                 color: rng.next_u32().to_le_bytes(),
                 z_order: [-1, 0, 7][(rng.next_u32() % 3) as usize],
                 material_id: match rng.next_u32() % 10 {
@@ -826,37 +849,6 @@ fn painter_order_sorts_like_z_order_then_entity_id() {
             );
         }
     }
-}
-
-#[test]
-fn more_asset_ids_than_cache_slots_match_reference() {
-    // Three times the direct-mapped cache's slots, drawn in random order, so
-    // IDs share slots and evict each other.
-    let mut world = world_with_registry();
-    let ids: Vec<String> = (0..3 * ASSET_CACHE_SLOTS)
-        .map(|index| format!("sprite_{index:03}"))
-        .collect();
-    for (index, id) in ids.iter().enumerate() {
-        register_on_page(
-            &mut world,
-            id,
-            FilterMode::Nearest,
-            (index % 3) as u32,
-            (8 + index as u32, 16),
-            UvRect::FULL,
-            false,
-        );
-    }
-    let mut rng = Pcg32::seeded(9);
-    for _ in 0..2_000 {
-        let id = &ids[rng.next_u32() as usize % ids.len()];
-        spawn_visible(&mut world, id, Vec2::ZERO, (rng.next_u32() % 3) as i32);
-    }
-    assert_same_batches(
-        &extract_sprites_default(&world),
-        &reference_extract(&world),
-        "many ids",
-    );
 }
 
 /// Data pointers of the batches' instance vectors, sorted.
@@ -1139,4 +1131,305 @@ fn single_class_out_of_painter_order_still_sorts() {
     let batches = extract_sprites_default(&world);
     assert_eq!(batches.len(), 2);
     assert_same_batches(&batches, &reference_extract(&world), "two z-runs");
+}
+
+// `D-114`: culling against the view render projects with.
+
+/// A 100 × 100 view at the origin (camera and `WindowSize`) and a 16 × 16
+/// quad on page 0.
+fn view_world() -> World {
+    let mut world = world_with_registry();
+    register_sprite(&mut world, "quad", FilterMode::Nearest);
+    world.insert_resource(CameraState::new());
+    world.insert_resource(WindowSize {
+        width: 100,
+        height: 100,
+    });
+    world
+}
+
+fn extract_at(world: &World, view: Option<(Vec2, Vec2)>) -> Vec<SpriteBatch> {
+    let assets = world.get_resource::<AssetRegistry>().unwrap();
+    extract_into(world, assets, view, &mut ExtractBuffers::default())
+}
+
+/// The uncull extract's batches less the instances culling drops, and less
+/// the batches that leaves empty.
+fn uncull_less_culled(world: &World, view: (Vec2, Vec2)) -> Vec<SpriteBatch> {
+    let mut batches = extract_at(world, None);
+    for batch in &mut batches {
+        if batch.material_id.is_none() {
+            batch.instances.retain(|i| {
+                !outside_view(Vec2::from(i.position), Vec2::from(i.size), i.rotation, view)
+            });
+        }
+    }
+    batches.retain(|batch| !batch.instances.is_empty());
+    batches
+}
+
+fn instance_count(batches: &[SpriteBatch]) -> usize {
+    batches.iter().map(|b| b.instances.len()).sum()
+}
+
+#[test]
+fn culling_keeps_the_uncull_extracts_instances_and_batch_order() {
+    // Seeded worlds put culled sprites before, between and after kept ones in
+    // every z-run, with lit, material, override and parallax sprites; the
+    // larger worlds pass `RADIX_SORT_MIN` keys.
+    for seed in 1..=12 {
+        let mut world = golden_world(seed, 200 * seed as u32);
+        world.insert_resource(WindowSize {
+            width: 400,
+            height: 300,
+        });
+        if seed == 12 {
+            assert!(world.query::<Sprite>().count() > RADIX_SORT_MIN);
+        }
+        let view = view_bounds(&world).unwrap();
+        let culled = extract_sprites_default(&world);
+        let kept = instance_count(&culled);
+        assert!(
+            kept > 0 && kept < instance_count(&extract_at(&world, None)),
+            "seed {seed}: {kept} kept"
+        );
+        assert_same_batches(
+            &culled,
+            &uncull_less_culled(&world, view),
+            &format!("seed {seed}"),
+        );
+    }
+}
+
+#[test]
+fn culling_with_kept_buffers_matches_as_the_camera_moves() {
+    let mut world = golden_world(4, 800);
+    world.insert_resource(WindowSize {
+        width: 400,
+        height: 300,
+    });
+    world.insert_resource(ExtractScratch::default());
+    for frame in 0..4 {
+        let view = view_bounds(&world).unwrap();
+        let batches = extract_sprites_default(&world);
+        assert_same_batches(
+            &batches,
+            &uncull_less_culled(&world, view),
+            &format!("frame {frame}"),
+        );
+        world
+            .get_resource::<ExtractScratch>()
+            .unwrap()
+            .recycle(batches);
+        world.get_resource_mut::<CameraState>().unwrap().position.x -= 150.0;
+    }
+}
+
+#[test]
+fn a_culled_class_opener_keeps_its_batch_ahead() {
+    // Same z, in entity order: class A off-screen, class B visible, class A
+    // visible. A's batch opened at the culled sprite stays first.
+    let mut world = view_world();
+    register_on_page(
+        &mut world,
+        "b",
+        FilterMode::Nearest,
+        1,
+        (16, 16),
+        UvRect::FULL,
+        false,
+    );
+    spawn_visible(&mut world, "quad", Vec2::new(-500.0, 10.0), 0);
+    spawn_visible(&mut world, "b", Vec2::new(10.0, 10.0), 0);
+    spawn_visible(&mut world, "quad", Vec2::new(40.0, 10.0), 0);
+    let batches = extract_sprites_default(&world);
+    let textures: Vec<u32> = batches.iter().map(|b| b.texture.0).collect();
+    assert_eq!(textures, [0, 1], "batch A before batch B");
+    assert_eq!(instance_positions(&batches), [[40.0, 10.0], [10.0, 10.0]]);
+    let view = view_bounds(&world).unwrap();
+    assert_same_batches(&batches, &uncull_less_culled(&world, view), "A, B, A");
+}
+
+#[test]
+fn a_sprite_wholly_past_an_edge_is_dropped_and_one_reaching_in_is_kept() {
+    // The view is (0, 0)–(100, 100); the quad is 16 × 16.
+    let cases = [
+        (Vec2::new(-16.5, 50.0), false),
+        (Vec2::new(-15.0, 50.0), true),
+        (Vec2::new(-16.0, 50.0), true),
+        (Vec2::new(100.5, 50.0), false),
+        (Vec2::new(99.0, 50.0), true),
+        (Vec2::new(50.0, -16.5), false),
+        (Vec2::new(50.0, -15.0), true),
+        (Vec2::new(50.0, 100.5), false),
+        (Vec2::new(50.0, 99.0), true),
+    ];
+    for (position, kept) in cases {
+        let mut world = view_world();
+        spawn_visible(&mut world, "quad", position, 0);
+        assert_eq!(
+            instance_count(&extract_sprites_default(&world)),
+            usize::from(kept),
+            "{position}"
+        );
+    }
+    // A negative scale spans the quad leftward from its position.
+    for (x, kept) in [(-1.0, false), (15.0, true)] {
+        let mut world = view_world();
+        let e = spawn_visible(&mut world, "quad", Vec2::new(x, 50.0), 0);
+        world.get_mut::<Transform>(e).unwrap().scale = Vec2::new(-1.0, 1.0);
+        assert_eq!(
+            instance_count(&extract_sprites_default(&world)),
+            usize::from(kept),
+            "flipped at {x}"
+        );
+    }
+}
+
+#[test]
+fn a_rotated_sprite_whose_corner_reaches_the_view_is_kept() {
+    // Turned 45° about its centre (-10, 50), the quad's corner reaches
+    // x = 1.3; its unturned box ends at x = -2.
+    let mut world = view_world();
+    let e = spawn_visible(&mut world, "quad", Vec2::new(-18.0, 42.0), 0);
+    world.get_mut::<Transform>(e).unwrap().rotation = std::f32::consts::FRAC_PI_4;
+    assert_eq!(instance_count(&extract_sprites_default(&world)), 1);
+    // Further out no angle reaches in.
+    world.get_mut::<Transform>(e).unwrap().position = Vec2::new(-40.0, 42.0);
+    assert_eq!(instance_count(&extract_sprites_default(&world)), 0);
+}
+
+#[test]
+fn a_parallax_sprite_is_judged_at_its_remapped_position() {
+    let mut world = view_world();
+    world.get_resource_mut::<CameraState>().unwrap().position = Vec2::new(5_000.0, 0.0);
+    let locked = spawn_visible(&mut world, "quad", Vec2::new(10.0, 10.0), 0);
+    world.insert(locked, ParallaxLayer::uniform(0.0));
+    spawn_visible(&mut world, "quad", Vec2::new(10.0, 10.0), 0);
+    let batches = extract_sprites_default(&world);
+    assert_eq!(instance_positions(&batches), [[5_010.0, 10.0]]);
+}
+
+#[test]
+fn camera_zoom_and_rotation_shape_the_culling_view() {
+    // Zoom 2 shows (0, 0)–(50, 50).
+    let mut world = view_world();
+    spawn_visible(&mut world, "quad", Vec2::new(60.0, 10.0), 0);
+    assert_eq!(instance_count(&extract_sprites_default(&world)), 1);
+    world.get_resource_mut::<CameraState>().unwrap().zoom = 2.0;
+    assert_eq!(instance_count(&extract_sprites_default(&world)), 0);
+
+    // A turned camera sees past its unturned box; culling uses the camera's
+    // conservative box.
+    let mut world = view_world();
+    let camera = {
+        let camera = world.get_resource_mut::<CameraState>().unwrap();
+        camera.rotation = 0.5;
+        *camera
+    };
+    let (min, max) = camera.visible_world_aabb(100.0, 100.0);
+    let probe = if min.x < -32.0 {
+        Vec2::new(min.x + 1.0, f32::midpoint(min.y, max.y))
+    } else {
+        Vec2::new(f32::midpoint(min.x, max.x), min.y + 1.0)
+    };
+    assert!(probe.x + 16.0 < 0.0 || probe.y + 16.0 < 0.0);
+    spawn_visible(&mut world, "quad", probe, 0);
+    spawn_visible(&mut world, "quad", max + Vec2::ONE, 0);
+    assert_eq!(
+        instance_positions(&extract_sprites_default(&world)),
+        [[probe.x, probe.y]]
+    );
+}
+
+#[test]
+fn an_off_screen_material_sprite_is_kept() {
+    let mut world = view_world();
+    register_lit_sprite(&mut world, "lit_quad");
+    let material = spawn_visible(&mut world, "quad", Vec2::new(-500.0, 10.0), 0);
+    world.get_mut::<Sprite>(material).unwrap().material_id = Some(MaterialAssetId(0));
+    // Lit wins over a material (`D-061`): this one draws stock and is culled.
+    let lit = spawn_visible(&mut world, "lit_quad", Vec2::new(-500.0, 10.0), 0);
+    world.get_mut::<Sprite>(lit).unwrap().material_id = Some(MaterialAssetId(0));
+    let batches = extract_sprites_default(&world);
+    assert_eq!(batches.len(), 1);
+    assert_eq!(batches[0].material_id, Some(MaterialAssetId(0)));
+    assert_eq!(instance_positions(&batches), [[-500.0, 10.0]]);
+}
+
+#[test]
+fn single_batch_frames_cull_and_keep_z_norm_as_the_count_changes() {
+    // One class on one z in painter order: the single-batch path.
+    let mut world = view_world();
+    world.insert_resource(ExtractScratch::default());
+    let mut last = None;
+    for index in 0..60 {
+        last = Some(spawn_visible(
+            &mut world,
+            "quad",
+            Vec2::new(index as f32 * 4.0 - 100.0, 10.0),
+            0,
+        ));
+    }
+    let view = view_bounds(&world).unwrap();
+    for frame in 0..4 {
+        let batches = extract_sprites_default(&world);
+        assert_eq!(batches.len(), 1, "frame {frame}");
+        assert_same_batches(
+            &batches,
+            &uncull_less_culled(&world, view),
+            &format!("frame {frame}"),
+        );
+        world
+            .get_resource::<ExtractScratch>()
+            .unwrap()
+            .recycle(batches);
+        if frame == 1 {
+            world.despawn(last.take().unwrap());
+        }
+    }
+    // Every sprite off-screen: no batch at all.
+    world.get_resource_mut::<CameraState>().unwrap().position = Vec2::new(10_000.0, 0.0);
+    assert!(extract_sprites_default(&world).is_empty());
+}
+
+#[test]
+fn the_passed_viewport_wins_over_a_pending_window_size() {
+    // A windowed resize writes `WindowSize` at once; the surface, and the
+    // projection, follow on `Resized`.
+    let mut world = view_world();
+    world.insert_resource(WindowSize {
+        width: 1_280,
+        height: 720,
+    });
+    spawn_visible(&mut world, "quad", Vec2::new(1_500.0, 10.0), 0);
+    assert_eq!(instance_count(&extract_sprites_default(&world)), 0);
+    world.insert_resource(ExtractScratch::default());
+    world
+        .get_resource::<ExtractScratch>()
+        .unwrap()
+        .set_viewport(1_920, 1_080);
+    assert_eq!(instance_count(&extract_sprites_default(&world)), 1);
+}
+
+#[test]
+fn without_a_viewport_or_a_camera_nothing_is_culled() {
+    let mut world = view_world();
+    spawn_visible(&mut world, "quad", Vec2::new(-500.0, 10.0), 0);
+    world.remove_resource::<WindowSize>();
+    assert_eq!(
+        instance_count(&extract_sprites_default(&world)),
+        1,
+        "no viewport"
+    );
+    world.insert_resource(WindowSize {
+        width: 100,
+        height: 100,
+    });
+    world.remove_resource::<CameraState>();
+    assert_eq!(
+        instance_count(&extract_sprites_default(&world)),
+        1,
+        "no camera"
+    );
 }

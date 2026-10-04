@@ -73,9 +73,13 @@ fn frames_run_particles_tweens_the_command_flush_and_event_rotation() {
     world.insert(emitter, ParticleEmitter::new(config));
     world.insert(emitter, ParticleEmitterState::default());
     world.insert(emitter, Transform::from_position(Vec2::ZERO));
+    let test_sprite = world
+        .get_resource_mut::<AssetRegistry>()
+        .unwrap()
+        .intern_sprite("test");
     let faded = world.spawn();
     world.insert(faded, Transform::default());
-    world.insert(faded, Sprite::new("test"));
+    world.insert(faded, Sprite::new(test_sprite));
     world.insert(faded, Visibility::default());
     world.insert(
         faded,
@@ -115,7 +119,7 @@ fn frames_run_particles_tweens_the_command_flush_and_event_rotation() {
 fn draw_holds_what_the_frame_would_draw() {
     let mut app = app();
     let world = app.world_mut();
-    world
+    let quad = world
         .get_resource_mut::<AssetRegistry>()
         .unwrap()
         .register_sprite(
@@ -139,7 +143,7 @@ fn draw_holds_what_the_frame_would_draw() {
             scale: Vec2::new(2.0, 3.0),
         },
     );
-    world.insert(sprite, Sprite::new("quad"));
+    world.insert(sprite, Sprite::new(quad));
     world.insert(sprite, Visibility::default());
     app.set_extract_quads(|_| {
         vec![QuadInstance {

@@ -7,10 +7,10 @@ use glam::Vec2;
 use tungsten::ParticleSystemDrained;
 use tungsten::core::tween::UniformOverrideBlock;
 use tungsten::core::{
-    AnimationRegistry, AnimationState, CameraState, Collider, CollisionEvent, CommandBuffer,
-    DeltaTime, Entity, EventQueue, Light, Particle, ParticleEmitter, ParticleEmitterState,
-    Position, RigidBody, ShakeEvent, Sprite, SquashEvent, SquashTrigger, Transform, TweenComplete,
-    Velocity, Visibility, World, splitmix64,
+    AnimationRegistry, AnimationState, AssetRegistry, CameraState, Collider, CollisionEvent,
+    CommandBuffer, DeltaTime, Entity, EventQueue, Light, Particle, ParticleEmitter,
+    ParticleEmitterState, Position, RigidBody, ShakeEvent, Sprite, SquashEvent, SquashTrigger,
+    Transform, TweenComplete, Velocity, Visibility, World, splitmix64,
 };
 use tungsten::render::TextSection;
 
@@ -126,6 +126,10 @@ pub(super) fn actor_ai(world: &mut World) {
     runtime.totals.shots += shots.len() as u64;
     runtime.totals.turns += u64::from(turns);
     world.insert_resource(runtime);
+    let bolt = world
+        .get_resource_mut::<AssetRegistry>()
+        .expect("AssetRegistry resource missing")
+        .intern_sprite(BOLT);
     if let Some(buf) = world.get_resource_mut::<CommandBuffer>() {
         for &(center, velocity) in &shots {
             let body = Body {
@@ -133,7 +137,7 @@ pub(super) fn actor_ai(world: &mut World) {
                 size: Vec2::splat(PARTICLE_PX as f32),
             };
             let scale = Vec2::splat(BOLT_SCALE);
-            let mut sprite = Sprite::new(BOLT);
+            let mut sprite = Sprite::new(bolt);
             sprite.color = BOLT_TINT;
             sprite.z_order = BOLT_Z;
             let pending = buf.spawn();

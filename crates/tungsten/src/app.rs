@@ -481,7 +481,7 @@ impl App {
                             .world
                             .get_resource::<AssetRegistry>()
                             .expect("AssetRegistry resource missing");
-                        reg.sprite_id_for_path(&canon)
+                        reg.sprite_name_for_path(&canon)
                             .and_then(|id| reg.get_sprite(id).map(|a| (id.to_string(), a.filter)))
                     };
                     if let Some((id, filter)) = id_filter {
@@ -852,6 +852,14 @@ impl App {
     #[inline(always)]
     fn stage_extract(&mut self, prev_total_ms: f32) -> FrameExtract {
         let extract_start = Instant::now();
+        // The sprite extract culls at the size render projects with
+        // (`D-114`); a pending resize leaves `WindowSize` ahead of the surface.
+        if let (Some(renderer), Some(scratch)) =
+            (&self.renderer, self.world.get_resource::<ExtractScratch>())
+        {
+            let cfg = &renderer.surface_config;
+            scratch.set_viewport(cfg.width, cfg.height);
+        }
         let quads = self
             .extract_quads
             .as_ref()

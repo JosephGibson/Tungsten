@@ -1,23 +1,28 @@
 use super::*;
 
+/// Stand-in sprite ID for frame `walk_<frame>`.
+fn walk(frame: u32) -> SpriteAssetId {
+    SpriteAssetId::new(frame)
+}
+
 fn test_anim() -> AnimationData {
     AnimationData {
         looping: true,
         frames: vec![
             AnimationFrame {
-                sprite: "walk_0".into(),
+                sprite: walk(0),
                 duration_ms: 100,
             },
             AnimationFrame {
-                sprite: "walk_1".into(),
+                sprite: walk(1),
                 duration_ms: 100,
             },
             AnimationFrame {
-                sprite: "walk_2".into(),
+                sprite: walk(2),
                 duration_ms: 100,
             },
             AnimationFrame {
-                sprite: "walk_3".into(),
+                sprite: walk(3),
                 duration_ms: 100,
             },
         ],
@@ -30,10 +35,10 @@ fn animation_advances_frames() {
     registry.insert("walk".into(), test_anim());
 
     let mut state = AnimationState::new("walk");
-    assert_eq!(state.current_sprite(&registry), Some("walk_0"));
+    assert_eq!(state.current_sprite(&registry), Some(walk(0)));
 
     let new = state.advance(150.0, &registry);
-    assert_eq!(new, Some("walk_1".into()));
+    assert_eq!(new, Some(walk(1)));
     assert_eq!(state.frame_index, 1);
 }
 
@@ -58,7 +63,7 @@ fn looping_animation_wraps() {
     state.accumulated_ms = 0.0;
 
     let new = state.advance(150.0, &registry);
-    assert_eq!(new, Some("walk_0".into()));
+    assert_eq!(new, Some(walk(0)));
     assert_eq!(state.frame_index, 0);
     assert!(!state.finished);
 }
@@ -87,7 +92,7 @@ fn skip_multiple_frames() {
 
     let mut state = AnimationState::new("walk");
     let new = state.advance(250.0, &registry);
-    assert_eq!(new, Some("walk_2".into()));
+    assert_eq!(new, Some(walk(2)));
     assert_eq!(state.frame_index, 2);
 }
 
@@ -100,11 +105,11 @@ fn zero_duration_does_not_infinite_loop() {
             looping: true,
             frames: vec![
                 AnimationFrame {
-                    sprite: "a".into(),
+                    sprite: SpriteAssetId::new(0),
                     duration_ms: 0,
                 },
                 AnimationFrame {
-                    sprite: "b".into(),
+                    sprite: SpriteAssetId::new(1),
                     duration_ms: 0,
                 },
             ],
@@ -128,9 +133,36 @@ fn playback_survives_a_shorter_hot_reloaded_clip() {
         replacement.looping = looping;
         replacement.frames.truncate(2);
         registry.insert("walk".into(), replacement);
-        assert_eq!(state.advance(0.0, &registry), Some("walk_1".into()));
+        assert_eq!(state.advance(0.0, &registry), Some(walk(1)));
         state.advance(100.0, &registry);
         assert_eq!(state.finished, !looping);
         assert!(state.current_sprite(&registry).is_some());
     }
+}
+
+#[test]
+fn load_interns_frame_names_in_the_sprite_registry() {
+    let path = std::env::temp_dir().join(format!("tungsten_anim_{}.json", std::process::id()));
+    std::fs::write(
+        &path,
+        r#"{"looping": true, "frames": [
+            {"sprite": "walk_1", "duration_ms": 80},
+            {"sprite": "walk_0", "duration_ms": 90},
+            {"sprite": "walk_1", "duration_ms": 100}
+        ]}"#,
+    )
+    .unwrap();
+    let mut sprites = AssetRegistry::new();
+    let walk_0 = sprites.intern_sprite("walk_0");
+    let anim = AnimationData::load(&path, &mut sprites).unwrap();
+    std::fs::remove_file(&path).ok();
+
+    let walk_1 = sprites.sprite_id("walk_1").expect("load interns new names");
+    let frames: Vec<_> = anim
+        .frames
+        .iter()
+        .map(|f| (f.sprite, f.duration_ms))
+        .collect();
+    assert_eq!(frames, [(walk_1, 80), (walk_0, 90), (walk_1, 100)]);
+    assert!(anim.looping);
 }

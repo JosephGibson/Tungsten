@@ -32,6 +32,10 @@ fn register(world: &mut World, id: &str, filter: FilterMode, atlas: TextureHandl
 }
 
 fn spawn(world: &mut World, id: &str, position: Vec2) {
+    let asset_id = world
+        .get_resource_mut::<AssetRegistry>()
+        .expect("AssetRegistry resource missing")
+        .intern_sprite(id);
     let e = world.spawn();
     world.insert(
         e,
@@ -44,7 +48,7 @@ fn spawn(world: &mut World, id: &str, position: Vec2) {
     world.insert(
         e,
         Sprite {
-            asset_id: id.to_string(),
+            asset_id,
             color: [255; 4],
             z_order: 0,
             material_id: None,

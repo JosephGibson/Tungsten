@@ -29,7 +29,7 @@ Task → file map. Open it before a broad search; read only the matching row's f
 
 | Task | Open |
 | --- | --- |
-| Manifest load, registry, IDs, composition (`D-009`, `D-017`, `D-035`, `D-052`) | `core/assets/manifest.rs`, `core/assets/registry.rs`, `core/assets/mod.rs`, `tungsten/asset_loader/mod.rs` |
+| Manifest load, registry, IDs, composition (`D-009`, `D-017`, `D-035`, `D-052`, `D-113`) | `core/assets/manifest.rs`, `core/assets/registry.rs`, `core/assets/mod.rs`, `tungsten/asset_loader/mod.rs` |
 | Load path, GPU upload bridge | `tungsten/asset_loader/` |
 | Hot reload, file watch (`D-031`, `D-053`) | `tungsten/hot_reload.rs`, `tungsten/asset_loader/reload.rs` |
 | Sprite atlases (`D-048`) | `core/assets/atlas.rs`, `tungsten/asset_loader/atlas.rs` |
@@ -51,7 +51,7 @@ Read `crates/tungsten-render/AGENTS.md` before editing the render crate.
 | Renderer, pools, draw, GPU timings, surface acquire | `render/lib.rs`, `render/renderer.rs`, `render/timing.rs`, `render/surface_acquire.rs` |
 | Pass order, direct present path (`D-087`) | `render/passes/order.rs`, `render/renderer.rs`, `render/screenshot.rs` |
 | Text pipeline, layout cache (`D-085`) | `render/text.rs` |
-| Render components, default sprite extract (`D-042`, `D-086`) | `core/components.rs`, `tungsten/sprite_extract.rs` |
+| Render components, default sprite extract (`D-042`, `D-086`, `D-113`, `D-114`) | `core/components.rs`, `tungsten/sprite_extract.rs` |
 | Materials, post-stack (`D-058`) | `core/assets/material.rs`, `core/post.rs`, `render/material.rs`, `render/post/`, `render/shaders/stock/` |
 | SMAA (`D-059`) | `tungsten/post_aa.rs`, `render/post/smaa.rs`, `render/post/smaa_luts.rs`, `render/targets.rs`, `render/passes/order.rs` |
 | Bloom (`D-060`) | `core/post.rs`, `render/post/bloom.rs`, `render/targets.rs` |

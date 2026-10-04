@@ -26,9 +26,12 @@ pub use scene::{load_scene, spawn_scene};
 /// Load animation data from manifest.
 pub fn load_animations(manifest: &ResolvedManifest, world: &mut World) -> anyhow::Result<()> {
     let mut anim_registry = AnimationRegistry::new();
+    let sprites = world
+        .get_resource_mut::<AssetRegistry>()
+        .expect("AssetRegistry resource missing");
 
     for (id, anim_entry) in &manifest.animations {
-        let data = AnimationData::load(&anim_entry.path)?;
+        let data = AnimationData::load(&anim_entry.path, sprites)?;
         log::info!(
             "Loaded animation '{}' ({} frames, {}ms total, looping={})",
             id,
@@ -341,12 +344,12 @@ pub fn load_all(
 
     for (anim_id, anim_data) in anim_registry.iter() {
         for (i, frame) in anim_data.frames.iter().enumerate() {
-            if registry.get_sprite(&frame.sprite).is_none() {
+            if registry.sprite(frame.sprite).is_none() {
                 return Err(anyhow::anyhow!(
                     "Animation '{}' frame {} references unknown sprite ID '{}'",
                     anim_id,
                     i,
-                    frame.sprite,
+                    registry.sprite_name(frame.sprite).unwrap_or("?"),
                 ));
             }
         }

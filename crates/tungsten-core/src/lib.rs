@@ -26,8 +26,8 @@ pub use assets::{
     ParticleMeshEntry, ParticleMeshRegistry, ParticleRender, Range, ResolvedFont, ResolvedManifest,
     ResolvedMaterial, ResolvedParticle, ResolvedParticleMesh, ResolvedSound, SceneData, SceneEntry,
     SceneError, SceneSprite, SceneTransform, SceneTween, SceneTweenChannel, SceneTweenRepeat,
-    SoundData, SoundEntry, SoundRegistry, SpriteAsset, TextureHandle, TileIndex, TilemapData,
-    TilemapInstance, TilemapLayer, TilemapRegistry, WorldRngSeed,
+    SoundData, SoundEntry, SoundRegistry, SpriteAsset, SpriteAssetId, TextureHandle, TileIndex,
+    TilemapData, TilemapInstance, TilemapLayer, TilemapRegistry, WorldRngSeed,
 };
 pub use audio::{AudioCommand, AudioCommands};
 pub use camera::{CameraBounds, CameraController, CameraMode, CameraState};

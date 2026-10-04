@@ -24,14 +24,12 @@ pub struct tungsten_core::assets::animation::AnimationData
 pub tungsten_core::assets::animation::AnimationData::frames: alloc::vec::Vec<tungsten_core::assets::animation::AnimationFrame>
 pub tungsten_core::assets::animation::AnimationData::looping: bool
 impl tungsten_core::assets::animation::AnimationData
-pub fn tungsten_core::assets::animation::AnimationData::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::assets::animation::AnimationError>
+pub fn tungsten_core::assets::animation::AnimationData::load(impl core::convert::AsRef<std::path::Path>, &mut tungsten_core::assets::registry::AssetRegistry) -> core::result::Result<Self, tungsten_core::assets::animation::AnimationError>
 pub fn tungsten_core::assets::animation::AnimationData::total_duration_ms(&self) -> u32
 impl core::clone::Clone for tungsten_core::assets::animation::AnimationData
 pub fn tungsten_core::assets::animation::AnimationData::clone(&self) -> tungsten_core::assets::animation::AnimationData
 impl core::fmt::Debug for tungsten_core::assets::animation::AnimationData
 pub fn tungsten_core::assets::animation::AnimationData::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::animation::AnimationData
-pub fn tungsten_core::assets::animation::AnimationData::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tungsten_core::assets::animation::AnimationData
 impl core::marker::Send for tungsten_core::assets::animation::AnimationData
 impl core::marker::Sync for tungsten_core::assets::animation::AnimationData
@@ -41,13 +39,11 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::animatio
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::animation::AnimationData
 pub struct tungsten_core::assets::animation::AnimationFrame
 pub tungsten_core::assets::animation::AnimationFrame::duration_ms: u32
-pub tungsten_core::assets::animation::AnimationFrame::sprite: alloc::string::String
+pub tungsten_core::assets::animation::AnimationFrame::sprite: tungsten_core::assets::registry::SpriteAssetId
 impl core::clone::Clone for tungsten_core::assets::animation::AnimationFrame
 pub fn tungsten_core::assets::animation::AnimationFrame::clone(&self) -> tungsten_core::assets::animation::AnimationFrame
 impl core::fmt::Debug for tungsten_core::assets::animation::AnimationFrame
 pub fn tungsten_core::assets::animation::AnimationFrame::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::animation::AnimationFrame
-pub fn tungsten_core::assets::animation::AnimationFrame::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tungsten_core::assets::animation::AnimationFrame
 impl core::marker::Send for tungsten_core::assets::animation::AnimationFrame
 impl core::marker::Sync for tungsten_core::assets::animation::AnimationFrame
@@ -84,8 +80,8 @@ pub tungsten_core::assets::animation::AnimationState::finished: bool
 pub tungsten_core::assets::animation::AnimationState::frame_index: usize
 pub tungsten_core::assets::animation::AnimationState::playing: bool
 impl tungsten_core::assets::animation::AnimationState
-pub fn tungsten_core::assets::animation::AnimationState::advance(&mut self, f32, &tungsten_core::assets::animation::AnimationRegistry) -> core::option::Option<alloc::string::String>
-pub fn tungsten_core::assets::animation::AnimationState::current_sprite<'a>(&self, &'a tungsten_core::assets::animation::AnimationRegistry) -> core::option::Option<&'a str>
+pub fn tungsten_core::assets::animation::AnimationState::advance(&mut self, f32, &tungsten_core::assets::animation::AnimationRegistry) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
+pub fn tungsten_core::assets::animation::AnimationState::current_sprite(&self, &tungsten_core::assets::animation::AnimationRegistry) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
 pub fn tungsten_core::assets::animation::AnimationState::new(impl core::convert::Into<alloc::string::String>) -> Self
 impl core::clone::Clone for tungsten_core::assets::animation::AnimationState
 pub fn tungsten_core::assets::animation::AnimationState::clone(&self) -> tungsten_core::assets::animation::AnimationState
@@ -1073,10 +1069,15 @@ pub mod tungsten_core::assets::registry
 pub struct tungsten_core::assets::registry::AssetRegistry
 impl tungsten_core::assets::registry::AssetRegistry
 pub fn tungsten_core::assets::registry::AssetRegistry::get_sprite(&self, &str) -> core::option::Option<&tungsten_core::assets::registry::SpriteAsset>
+pub fn tungsten_core::assets::registry::AssetRegistry::intern_sprite(&mut self, &str) -> tungsten_core::assets::registry::SpriteAssetId
+pub fn tungsten_core::assets::registry::AssetRegistry::intern_sprites<'a>(&mut self, impl core::iter::traits::collect::IntoIterator<Item = &'a str>)
 pub fn tungsten_core::assets::registry::AssetRegistry::new() -> Self
-pub fn tungsten_core::assets::registry::AssetRegistry::register_sprite(&mut self, alloc::string::String, tungsten_core::assets::manifest::FilterMode, u32, u32, std::path::PathBuf, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, core::option::Option<std::path::PathBuf>, core::option::Option<std::path::PathBuf>, core::option::Option<tungsten_core::assets::registry::TextureHandle>)
-pub fn tungsten_core::assets::registry::AssetRegistry::sprite_id_for_path(&self, &std::path::Path) -> core::option::Option<&str>
-pub fn tungsten_core::assets::registry::AssetRegistry::sprite_ids(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
+pub fn tungsten_core::assets::registry::AssetRegistry::register_sprite(&mut self, alloc::string::String, tungsten_core::assets::manifest::FilterMode, u32, u32, std::path::PathBuf, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, core::option::Option<std::path::PathBuf>, core::option::Option<std::path::PathBuf>, core::option::Option<tungsten_core::assets::registry::TextureHandle>) -> tungsten_core::assets::registry::SpriteAssetId
+pub fn tungsten_core::assets::registry::AssetRegistry::sprite(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<&tungsten_core::assets::registry::SpriteAsset>
+pub fn tungsten_core::assets::registry::AssetRegistry::sprite_id(&self, &str) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
+pub fn tungsten_core::assets::registry::AssetRegistry::sprite_name(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<&str>
+pub fn tungsten_core::assets::registry::AssetRegistry::sprite_name_for_path(&self, &std::path::Path) -> core::option::Option<&str>
+pub fn tungsten_core::assets::registry::AssetRegistry::sprite_names(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
 pub fn tungsten_core::assets::registry::AssetRegistry::update_sprite_entry(&mut self, &str, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, u32, u32)
 pub fn tungsten_core::assets::registry::AssetRegistry::update_sprite_lit_atlas(&mut self, &str, core::option::Option<tungsten_core::assets::registry::TextureHandle>)
 impl core::default::Default for tungsten_core::assets::registry::AssetRegistry
@@ -1147,6 +1148,7 @@ impl core::marker::Unpin for tungsten_core::assets::registry::TextureHandle
 impl core::marker::UnsafeUnpin for tungsten_core::assets::registry::TextureHandle
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::registry::TextureHandle
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::registry::TextureHandle
+pub type tungsten_core::assets::registry::SpriteAssetId = tungsten_core::assets::particle::AssetId<tungsten_core::assets::registry::SpriteAsset>
 pub mod tungsten_core::assets::scene
 pub enum tungsten_core::assets::scene::SceneError
 pub tungsten_core::assets::scene::SceneError::Io
@@ -1956,14 +1958,12 @@ pub struct tungsten_core::assets::AnimationData
 pub tungsten_core::assets::AnimationData::frames: alloc::vec::Vec<tungsten_core::assets::animation::AnimationFrame>
 pub tungsten_core::assets::AnimationData::looping: bool
 impl tungsten_core::assets::animation::AnimationData
-pub fn tungsten_core::assets::animation::AnimationData::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::assets::animation::AnimationError>
+pub fn tungsten_core::assets::animation::AnimationData::load(impl core::convert::AsRef<std::path::Path>, &mut tungsten_core::assets::registry::AssetRegistry) -> core::result::Result<Self, tungsten_core::assets::animation::AnimationError>
 pub fn tungsten_core::assets::animation::AnimationData::total_duration_ms(&self) -> u32
 impl core::clone::Clone for tungsten_core::assets::animation::AnimationData
 pub fn tungsten_core::assets::animation::AnimationData::clone(&self) -> tungsten_core::assets::animation::AnimationData
 impl core::fmt::Debug for tungsten_core::assets::animation::AnimationData
 pub fn tungsten_core::assets::animation::AnimationData::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::animation::AnimationData
-pub fn tungsten_core::assets::animation::AnimationData::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tungsten_core::assets::animation::AnimationData
 impl core::marker::Send for tungsten_core::assets::animation::AnimationData
 impl core::marker::Sync for tungsten_core::assets::animation::AnimationData
@@ -1973,13 +1973,11 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::animatio
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::animation::AnimationData
 pub struct tungsten_core::assets::AnimationFrame
 pub tungsten_core::assets::AnimationFrame::duration_ms: u32
-pub tungsten_core::assets::AnimationFrame::sprite: alloc::string::String
+pub tungsten_core::assets::AnimationFrame::sprite: tungsten_core::assets::registry::SpriteAssetId
 impl core::clone::Clone for tungsten_core::assets::animation::AnimationFrame
 pub fn tungsten_core::assets::animation::AnimationFrame::clone(&self) -> tungsten_core::assets::animation::AnimationFrame
 impl core::fmt::Debug for tungsten_core::assets::animation::AnimationFrame
 pub fn tungsten_core::assets::animation::AnimationFrame::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::animation::AnimationFrame
-pub fn tungsten_core::assets::animation::AnimationFrame::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tungsten_core::assets::animation::AnimationFrame
 impl core::marker::Send for tungsten_core::assets::animation::AnimationFrame
 impl core::marker::Sync for tungsten_core::assets::animation::AnimationFrame
@@ -2016,8 +2014,8 @@ pub tungsten_core::assets::AnimationState::finished: bool
 pub tungsten_core::assets::AnimationState::frame_index: usize
 pub tungsten_core::assets::AnimationState::playing: bool
 impl tungsten_core::assets::animation::AnimationState
-pub fn tungsten_core::assets::animation::AnimationState::advance(&mut self, f32, &tungsten_core::assets::animation::AnimationRegistry) -> core::option::Option<alloc::string::String>
-pub fn tungsten_core::assets::animation::AnimationState::current_sprite<'a>(&self, &'a tungsten_core::assets::animation::AnimationRegistry) -> core::option::Option<&'a str>
+pub fn tungsten_core::assets::animation::AnimationState::advance(&mut self, f32, &tungsten_core::assets::animation::AnimationRegistry) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
+pub fn tungsten_core::assets::animation::AnimationState::current_sprite(&self, &tungsten_core::assets::animation::AnimationRegistry) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
 pub fn tungsten_core::assets::animation::AnimationState::new(impl core::convert::Into<alloc::string::String>) -> Self
 impl core::clone::Clone for tungsten_core::assets::animation::AnimationState
 pub fn tungsten_core::assets::animation::AnimationState::clone(&self) -> tungsten_core::assets::animation::AnimationState
@@ -2054,10 +2052,15 @@ impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::particle
 pub struct tungsten_core::assets::AssetRegistry
 impl tungsten_core::assets::registry::AssetRegistry
 pub fn tungsten_core::assets::registry::AssetRegistry::get_sprite(&self, &str) -> core::option::Option<&tungsten_core::assets::registry::SpriteAsset>
+pub fn tungsten_core::assets::registry::AssetRegistry::intern_sprite(&mut self, &str) -> tungsten_core::assets::registry::SpriteAssetId
+pub fn tungsten_core::assets::registry::AssetRegistry::intern_sprites<'a>(&mut self, impl core::iter::traits::collect::IntoIterator<Item = &'a str>)
 pub fn tungsten_core::assets::registry::AssetRegistry::new() -> Self
-pub fn tungsten_core::assets::registry::AssetRegistry::register_sprite(&mut self, alloc::string::String, tungsten_core::assets::manifest::FilterMode, u32, u32, std::path::PathBuf, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, core::option::Option<std::path::PathBuf>, core::option::Option<std::path::PathBuf>, core::option::Option<tungsten_core::assets::registry::TextureHandle>)
-pub fn tungsten_core::assets::registry::AssetRegistry::sprite_id_for_path(&self, &std::path::Path) -> core::option::Option<&str>
-pub fn tungsten_core::assets::registry::AssetRegistry::sprite_ids(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
+pub fn tungsten_core::assets::registry::AssetRegistry::register_sprite(&mut self, alloc::string::String, tungsten_core::assets::manifest::FilterMode, u32, u32, std::path::PathBuf, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, core::option::Option<std::path::PathBuf>, core::option::Option<std::path::PathBuf>, core::option::Option<tungsten_core::assets::registry::TextureHandle>) -> tungsten_core::assets::registry::SpriteAssetId
+pub fn tungsten_core::assets::registry::AssetRegistry::sprite(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<&tungsten_core::assets::registry::SpriteAsset>
+pub fn tungsten_core::assets::registry::AssetRegistry::sprite_id(&self, &str) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
+pub fn tungsten_core::assets::registry::AssetRegistry::sprite_name(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<&str>
+pub fn tungsten_core::assets::registry::AssetRegistry::sprite_name_for_path(&self, &std::path::Path) -> core::option::Option<&str>
+pub fn tungsten_core::assets::registry::AssetRegistry::sprite_names(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
 pub fn tungsten_core::assets::registry::AssetRegistry::update_sprite_entry(&mut self, &str, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, u32, u32)
 pub fn tungsten_core::assets::registry::AssetRegistry::update_sprite_lit_atlas(&mut self, &str, core::option::Option<tungsten_core::assets::registry::TextureHandle>)
 impl core::default::Default for tungsten_core::assets::registry::AssetRegistry
@@ -2994,6 +2997,7 @@ pub fn f32::lerp(Self, Self, f32) -> Self
 pub fn tungsten_core::assets::pack_shelf(&[tungsten_core::assets::atlas::PackInput<'_>], u32, u32) -> tungsten_core::assets::atlas::PackResult
 pub type tungsten_core::assets::ParticleMeshAssetId = tungsten_core::assets::particle::AssetId<tungsten_core::assets::particle::ParticleMesh>
 pub type tungsten_core::assets::ParticleMeshEntry = tungsten_core::assets::particle::ParticleMesh
+pub type tungsten_core::assets::SpriteAssetId = tungsten_core::assets::particle::AssetId<tungsten_core::assets::registry::SpriteAsset>
 pub type tungsten_core::assets::TileIndex = i32
 pub mod tungsten_core::audio
 pub enum tungsten_core::audio::AudioCommand
@@ -3296,17 +3300,18 @@ impl core::marker::UnsafeUnpin for tungsten_core::components::ParticleEmitterSta
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::components::ParticleEmitterState
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::components::ParticleEmitterState
 pub struct tungsten_core::components::Sprite
-pub tungsten_core::components::Sprite::asset_id: alloc::string::String
+pub tungsten_core::components::Sprite::asset_id: tungsten_core::assets::registry::SpriteAssetId
 pub tungsten_core::components::Sprite::color: [u8; 4]
 pub tungsten_core::components::Sprite::material_id: core::option::Option<tungsten_core::assets::material::MaterialAssetId>
 pub tungsten_core::components::Sprite::z_order: i32
 impl tungsten_core::components::Sprite
-pub fn tungsten_core::components::Sprite::new(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_core::components::Sprite::new(tungsten_core::assets::registry::SpriteAssetId) -> Self
 pub fn tungsten_core::components::Sprite::with_material(self, tungsten_core::assets::material::MaterialAssetId) -> Self
 impl core::clone::Clone for tungsten_core::components::Sprite
 pub fn tungsten_core::components::Sprite::clone(&self) -> tungsten_core::components::Sprite
 impl core::fmt::Debug for tungsten_core::components::Sprite
 pub fn tungsten_core::components::Sprite::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::components::Sprite
 impl tungsten_core::inspect::Inspectable for tungsten_core::components::Sprite
 pub fn tungsten_core::components::Sprite::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
 impl core::marker::Freeze for tungsten_core::components::Sprite
@@ -7099,14 +7104,12 @@ pub struct tungsten_core::AnimationData
 pub tungsten_core::AnimationData::frames: alloc::vec::Vec<tungsten_core::assets::animation::AnimationFrame>
 pub tungsten_core::AnimationData::looping: bool
 impl tungsten_core::assets::animation::AnimationData
-pub fn tungsten_core::assets::animation::AnimationData::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::assets::animation::AnimationError>
+pub fn tungsten_core::assets::animation::AnimationData::load(impl core::convert::AsRef<std::path::Path>, &mut tungsten_core::assets::registry::AssetRegistry) -> core::result::Result<Self, tungsten_core::assets::animation::AnimationError>
 pub fn tungsten_core::assets::animation::AnimationData::total_duration_ms(&self) -> u32
 impl core::clone::Clone for tungsten_core::assets::animation::AnimationData
 pub fn tungsten_core::assets::animation::AnimationData::clone(&self) -> tungsten_core::assets::animation::AnimationData
 impl core::fmt::Debug for tungsten_core::assets::animation::AnimationData
 pub fn tungsten_core::assets::animation::AnimationData::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::animation::AnimationData
-pub fn tungsten_core::assets::animation::AnimationData::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tungsten_core::assets::animation::AnimationData
 impl core::marker::Send for tungsten_core::assets::animation::AnimationData
 impl core::marker::Sync for tungsten_core::assets::animation::AnimationData
@@ -7143,8 +7146,8 @@ pub tungsten_core::AnimationState::finished: bool
 pub tungsten_core::AnimationState::frame_index: usize
 pub tungsten_core::AnimationState::playing: bool
 impl tungsten_core::assets::animation::AnimationState
-pub fn tungsten_core::assets::animation::AnimationState::advance(&mut self, f32, &tungsten_core::assets::animation::AnimationRegistry) -> core::option::Option<alloc::string::String>
-pub fn tungsten_core::assets::animation::AnimationState::current_sprite<'a>(&self, &'a tungsten_core::assets::animation::AnimationRegistry) -> core::option::Option<&'a str>
+pub fn tungsten_core::assets::animation::AnimationState::advance(&mut self, f32, &tungsten_core::assets::animation::AnimationRegistry) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
+pub fn tungsten_core::assets::animation::AnimationState::current_sprite(&self, &tungsten_core::assets::animation::AnimationRegistry) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
 pub fn tungsten_core::assets::animation::AnimationState::new(impl core::convert::Into<alloc::string::String>) -> Self
 impl core::clone::Clone for tungsten_core::assets::animation::AnimationState
 pub fn tungsten_core::assets::animation::AnimationState::clone(&self) -> tungsten_core::assets::animation::AnimationState
@@ -7181,10 +7184,15 @@ impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::particle
 pub struct tungsten_core::AssetRegistry
 impl tungsten_core::assets::registry::AssetRegistry
 pub fn tungsten_core::assets::registry::AssetRegistry::get_sprite(&self, &str) -> core::option::Option<&tungsten_core::assets::registry::SpriteAsset>
+pub fn tungsten_core::assets::registry::AssetRegistry::intern_sprite(&mut self, &str) -> tungsten_core::assets::registry::SpriteAssetId
+pub fn tungsten_core::assets::registry::AssetRegistry::intern_sprites<'a>(&mut self, impl core::iter::traits::collect::IntoIterator<Item = &'a str>)
 pub fn tungsten_core::assets::registry::AssetRegistry::new() -> Self
-pub fn tungsten_core::assets::registry::AssetRegistry::register_sprite(&mut self, alloc::string::String, tungsten_core::assets::manifest::FilterMode, u32, u32, std::path::PathBuf, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, core::option::Option<std::path::PathBuf>, core::option::Option<std::path::PathBuf>, core::option::Option<tungsten_core::assets::registry::TextureHandle>)
-pub fn tungsten_core::assets::registry::AssetRegistry::sprite_id_for_path(&self, &std::path::Path) -> core::option::Option<&str>
-pub fn tungsten_core::assets::registry::AssetRegistry::sprite_ids(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
+pub fn tungsten_core::assets::registry::AssetRegistry::register_sprite(&mut self, alloc::string::String, tungsten_core::assets::manifest::FilterMode, u32, u32, std::path::PathBuf, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, core::option::Option<std::path::PathBuf>, core::option::Option<std::path::PathBuf>, core::option::Option<tungsten_core::assets::registry::TextureHandle>) -> tungsten_core::assets::registry::SpriteAssetId
+pub fn tungsten_core::assets::registry::AssetRegistry::sprite(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<&tungsten_core::assets::registry::SpriteAsset>
+pub fn tungsten_core::assets::registry::AssetRegistry::sprite_id(&self, &str) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
+pub fn tungsten_core::assets::registry::AssetRegistry::sprite_name(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<&str>
+pub fn tungsten_core::assets::registry::AssetRegistry::sprite_name_for_path(&self, &std::path::Path) -> core::option::Option<&str>
+pub fn tungsten_core::assets::registry::AssetRegistry::sprite_names(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
 pub fn tungsten_core::assets::registry::AssetRegistry::update_sprite_entry(&mut self, &str, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, u32, u32)
 pub fn tungsten_core::assets::registry::AssetRegistry::update_sprite_lit_atlas(&mut self, &str, core::option::Option<tungsten_core::assets::registry::TextureHandle>)
 impl core::default::Default for tungsten_core::assets::registry::AssetRegistry
@@ -8821,17 +8829,18 @@ impl core::marker::UnsafeUnpin for tungsten_core::physics::broadphase::SpatialGr
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::broadphase::SpatialGrid
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::broadphase::SpatialGrid
 pub struct tungsten_core::Sprite
-pub tungsten_core::Sprite::asset_id: alloc::string::String
+pub tungsten_core::Sprite::asset_id: tungsten_core::assets::registry::SpriteAssetId
 pub tungsten_core::Sprite::color: [u8; 4]
 pub tungsten_core::Sprite::material_id: core::option::Option<tungsten_core::assets::material::MaterialAssetId>
 pub tungsten_core::Sprite::z_order: i32
 impl tungsten_core::components::Sprite
-pub fn tungsten_core::components::Sprite::new(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_core::components::Sprite::new(tungsten_core::assets::registry::SpriteAssetId) -> Self
 pub fn tungsten_core::components::Sprite::with_material(self, tungsten_core::assets::material::MaterialAssetId) -> Self
 impl core::clone::Clone for tungsten_core::components::Sprite
 pub fn tungsten_core::components::Sprite::clone(&self) -> tungsten_core::components::Sprite
 impl core::fmt::Debug for tungsten_core::components::Sprite
 pub fn tungsten_core::components::Sprite::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::components::Sprite
 impl tungsten_core::inspect::Inspectable for tungsten_core::components::Sprite
 pub fn tungsten_core::components::Sprite::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
 impl core::marker::Freeze for tungsten_core::components::Sprite
@@ -9365,4 +9374,5 @@ pub fn tungsten_core::splitmix64(u64) -> u64
 pub fn tungsten_core::sync_position_to_transform(&mut tungsten_core::World)
 pub type tungsten_core::ParticleMeshAssetId = tungsten_core::assets::particle::AssetId<tungsten_core::assets::particle::ParticleMesh>
 pub type tungsten_core::ParticleMeshEntry = tungsten_core::assets::particle::ParticleMesh
+pub type tungsten_core::SpriteAssetId = tungsten_core::assets::particle::AssetId<tungsten_core::assets::registry::SpriteAsset>
 pub type tungsten_core::TileIndex = i32

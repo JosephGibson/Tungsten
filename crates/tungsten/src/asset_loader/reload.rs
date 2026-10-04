@@ -71,7 +71,10 @@ pub fn reload_material(id: &str, world: &mut World, renderer: &mut Renderer) -> 
 
 /// Hot-reload animation JSON.
 pub fn reload_animation(id: &str, path: &Path, world: &mut World) -> anyhow::Result<()> {
-    let data = match AnimationData::load(path) {
+    let sprites = world
+        .get_resource_mut::<AssetRegistry>()
+        .expect("AssetRegistry resource missing");
+    let data = match AnimationData::load(path, sprites) {
         Ok(d) => d,
         Err(e) => {
             log::error!("Hot reload animation '{id}': {e}");
@@ -232,7 +235,7 @@ pub fn reload_manifest(
         let existing: Vec<String> = world
             .get_resource::<AssetRegistry>()
             .expect("AssetRegistry resource missing")
-            .sprite_ids()
+            .sprite_names()
             .map(ToString::to_string)
             .collect();
 
@@ -270,6 +273,8 @@ pub fn reload_manifest(
             let registry = world
                 .get_resource_mut::<AssetRegistry>()
                 .expect("AssetRegistry resource missing");
+            // Added names take IDs in sorted order, as at load; interned names keep theirs.
+            registry.intern_sprites(new_manifest.sprites.keys().map(String::as_str));
             for (id, entry) in &new_manifest.sprites {
                 if existing.iter().any(|e| e == id) {
                     continue;
@@ -325,7 +330,10 @@ pub fn reload_manifest(
         }
         if !additions.animations.is_empty() {
             for (id, entry) in additions.animations {
-                match AnimationData::load(&entry.path) {
+                let sprites = world
+                    .get_resource_mut::<AssetRegistry>()
+                    .expect("AssetRegistry resource missing");
+                match AnimationData::load(&entry.path, sprites) {
                     Ok(data) => {
                         if let Some(ar) = world.get_resource_mut::<AnimationRegistry>() {
                             ar.insert_with_path(id.clone(), data, entry.path.clone());

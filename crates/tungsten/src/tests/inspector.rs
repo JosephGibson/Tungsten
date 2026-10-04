@@ -17,7 +17,7 @@ fn make_world() -> World {
 
 /// Register square sprite and spawn at top-left position.
 fn spawn_sprite(world: &mut World, id: &str, pos: Vec2, size: u32) -> Entity {
-    world
+    let asset_id = world
         .get_resource_mut::<AssetRegistry>()
         .expect("AssetRegistry missing")
         .register_sprite(
@@ -34,7 +34,7 @@ fn spawn_sprite(world: &mut World, id: &str, pos: Vec2, size: u32) -> Entity {
         );
     let e = world.spawn();
     world.insert(e, Transform::from_position(pos));
-    world.insert(e, Sprite::new(id));
+    world.insert(e, Sprite::new(asset_id));
     world.insert(e, Visibility::default());
     e
 }
@@ -354,4 +354,19 @@ fn compose_rebuilds_immediately_when_selection_changes() {
     let second = compose_inspector_text_section(&mut state, &world, (800, 600), 16.0);
     assert!(second.last().unwrap().content.contains("villain"));
     assert!(!second.last().unwrap().content.contains("hero"));
+}
+
+#[test]
+fn sprite_rows_print_the_asset_name() {
+    let mut world = make_world();
+    let e = spawn_sprite(&mut world, "hero", Vec2::ZERO, 16);
+    let state = InspectorState::new_with_defaults();
+    let (_, read) = state
+        .registered
+        .iter()
+        .find(|(label, _)| *label == "Sprite")
+        .expect("Sprite is registered by default");
+    let rows = read(&world, e);
+    assert_eq!(rows[0], ("asset", "hero".to_string()));
+    assert_eq!(rows.len(), 3);
 }

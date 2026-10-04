@@ -1,6 +1,6 @@
 use tungsten_core::{
-    CommandBuffer, DeltaTime, Easing, EventQueue, Sprite, Transform, Tween, TweenChannel,
-    TweenComplete, TweenDirection, TweenRepeat, Visibility, World,
+    CommandBuffer, DeltaTime, Easing, EventQueue, Sprite, SpriteAssetId, Transform, Tween,
+    TweenChannel, TweenComplete, TweenDirection, TweenRepeat, Visibility, World,
 };
 
 use crate::tweens::tween_tick_system;
@@ -24,7 +24,7 @@ fn flush(world: &mut World) {
 fn spawn_fading_sprite(world: &mut World, tween: Tween) -> tungsten_core::Entity {
     let entity = world.spawn();
     world.insert(entity, Transform::default());
-    world.insert(entity, Sprite::new("test"));
+    world.insert(entity, Sprite::new(SpriteAssetId::new(0)));
     world.insert(entity, Visibility::default());
     world.insert(entity, tween);
     entity

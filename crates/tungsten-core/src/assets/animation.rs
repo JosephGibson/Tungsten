@@ -3,18 +3,33 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-/// Animation frame.
-#[derive(Debug, Clone, Deserialize)]
+use super::registry::{AssetRegistry, SpriteAssetId};
+
+/// Animation frame. The file names its sprite; [`AnimationData::load`] interns it.
+#[derive(Debug, Clone)]
 pub struct AnimationFrame {
-    pub sprite: String,
+    pub sprite: SpriteAssetId,
     pub duration_ms: u32,
 }
 
 /// D-010 animation data.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct AnimationData {
     pub looping: bool,
     pub frames: Vec<AnimationFrame>,
+}
+
+/// On-disk animation: frames name their sprites.
+#[derive(Deserialize)]
+struct AnimationFile {
+    looping: bool,
+    frames: Vec<AnimationFileFrame>,
+}
+
+#[derive(Deserialize)]
+struct AnimationFileFrame {
+    sprite: String,
+    duration_ms: u32,
 }
 
 /// Error loading an animation file.
@@ -30,15 +45,31 @@ pub enum AnimationError {
 }
 
 impl AnimationData {
-    pub fn load(path: impl AsRef<Path>) -> Result<Self, AnimationError> {
+    /// Loads an animation file, interning each frame's sprite name in `sprites`.
+    pub fn load(
+        path: impl AsRef<Path>,
+        sprites: &mut AssetRegistry,
+    ) -> Result<Self, AnimationError> {
         let path = path.as_ref();
         let contents = std::fs::read_to_string(path).map_err(|error| AnimationError::Read {
             path: path.display().to_string(),
             error,
         })?;
-        serde_json::from_str(&contents).map_err(|error| AnimationError::Parse {
-            path: path.display().to_string(),
-            error,
+        let file: AnimationFile =
+            serde_json::from_str(&contents).map_err(|error| AnimationError::Parse {
+                path: path.display().to_string(),
+                error,
+            })?;
+        Ok(Self {
+            looping: file.looping,
+            frames: file
+                .frames
+                .into_iter()
+                .map(|frame| AnimationFrame {
+                    sprite: sprites.intern_sprite(&frame.sprite),
+                    duration_ms: frame.duration_ms,
+                })
+                .collect(),
         })
     }
 
@@ -112,16 +143,16 @@ impl AnimationState {
         }
     }
 
-    /// Current sprite ID.
+    /// Current frame's sprite ID.
     #[must_use]
-    pub fn current_sprite<'a>(&self, registry: &'a AnimationRegistry) -> Option<&'a str> {
+    pub fn current_sprite(&self, registry: &AnimationRegistry) -> Option<SpriteAssetId> {
         let anim = registry.get(&self.animation_id)?;
         let frame = anim.frames.get(self.frame_index)?;
-        Some(&frame.sprite)
+        Some(frame.sprite)
     }
 
-    /// Advance by milliseconds; returns sprite ID on frame change.
-    pub fn advance(&mut self, dt_ms: f32, registry: &AnimationRegistry) -> Option<String> {
+    /// Advance by milliseconds; returns the new frame's sprite ID on a frame change.
+    pub fn advance(&mut self, dt_ms: f32, registry: &AnimationRegistry) -> Option<SpriteAssetId> {
         if !self.playing || self.finished {
             return None;
         }
@@ -161,7 +192,7 @@ impl AnimationState {
         }
 
         if self.frame_index != old_frame {
-            Some(anim.frames[self.frame_index].sprite.clone())
+            Some(anim.frames[self.frame_index].sprite)
         } else {
             None
         }

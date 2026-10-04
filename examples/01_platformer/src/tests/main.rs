@@ -172,9 +172,10 @@ fn spawn_test_player(world: &mut World, position: Vec2) -> tungsten::core::Entit
 
 fn load_presentation_assets(world: &mut World) {
     use tungsten::core::{
-        AnimationData, AnimationRegistry, ParticleActive, ParticleBudget, ParticleConfig,
-        ParticleConfigRegistry,
+        AnimationData, AnimationRegistry, AssetRegistry, ParticleActive, ParticleBudget,
+        ParticleConfig, ParticleConfigRegistry,
     };
+    let mut sprites = world.remove_resource::<AssetRegistry>().unwrap_or_default();
     let mut animations = AnimationRegistry::new();
     for name in [
         "player_idle",
@@ -191,9 +192,11 @@ fn load_presentation_assets(world: &mut World) {
     ] {
         animations.insert(
             format!("ex10_{name}"),
-            AnimationData::load(asset_path(&format!("animations/{name}.json"))).unwrap(),
+            AnimationData::load(asset_path(&format!("animations/{name}.json")), &mut sprites)
+                .unwrap(),
         );
     }
+    world.insert_resource(sprites);
     world.insert_resource(animations);
     let mut particles = ParticleConfigRegistry::new();
     for name in [

@@ -40,11 +40,11 @@ use tungsten::core::post::{
 };
 use tungsten::core::tween::UniformOverrideBlock;
 use tungsten::core::{
-    ActionMap, BlendMode, CameraController, CameraMode, CommandBuffer, Config, Curve, DeltaTime,
-    Easing, EmissionKind, Entity, EventQueue, InitialVelocity, InputState, MaterialRegistry,
-    ParallaxLayer, ParticleConfig, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState,
-    ParticleRender, Pcg32, Range, ShakeEvent, Sprite, SpriteSquashStretch, SquashEvent,
-    SquashTrigger, Transform, Visibility, World,
+    ActionMap, AssetRegistry, BlendMode, CameraController, CameraMode, CommandBuffer, Config,
+    Curve, DeltaTime, Easing, EmissionKind, Entity, EventQueue, InitialVelocity, InputState,
+    MaterialRegistry, ParallaxLayer, ParticleConfig, ParticleConfigRegistry, ParticleEmitter,
+    ParticleEmitterState, ParticleRender, Pcg32, Range, ShakeEvent, Sprite, SpriteAssetId,
+    SpriteSquashStretch, SquashEvent, SquashTrigger, Transform, Visibility, World,
 };
 use tungsten::particles::spawn_particle_via;
 use tungsten::{
@@ -111,6 +111,8 @@ struct CycleCursor {
 struct SparkRecipes {
     wall: Arc<ParticleConfig>,
     pair: Arc<ParticleConfig>,
+    /// Both configs' sprite, interned once.
+    sprite: SpriteAssetId,
 }
 
 /// Dedicated RNG for burst jitter so bouncer motion stays deterministic.
@@ -151,9 +153,11 @@ fn main() -> anyhow::Result<()> {
     {
         let world = app.world_mut();
         world.insert_resource(CycleCursor::default());
+        let sprite = sprite_id(world, QUAD_ID);
         world.insert_resource(SparkRecipes {
             wall: wall_spark_config(),
             pair: pair_spark_config(),
+            sprite,
         });
         world.insert_resource(SparkRng(Pcg32::seeded(0xEF04_5A9C_A2D1_7B03)));
     }
@@ -239,6 +243,14 @@ fn main() -> anyhow::Result<()> {
 /// M30 screen-locks it (`ParallaxLayer::uniform(0.0)`): the camera now follows
 /// a bouncer around the arena, and a bloom source that wanders out of frame
 /// would make the M28 fixture useless to look at.
+/// The world registry's ID for sprite `name`.
+fn sprite_id(world: &mut World, name: &str) -> SpriteAssetId {
+    world
+        .get_resource_mut::<AssetRegistry>()
+        .expect("AssetRegistry resource missing")
+        .intern_sprite(name)
+}
+
 fn spawn_emissive_quad(world: &mut World) {
     let entity = world.spawn();
     world.insert(
@@ -249,7 +261,7 @@ fn spawn_emissive_quad(world: &mut World) {
             scale: Vec2::splat(2.5),
         },
     );
-    let mut sprite = Sprite::new(EMISSIVE_QUAD_ID);
+    let mut sprite = Sprite::new(sprite_id(world, EMISSIVE_QUAD_ID));
     sprite.color = [255, 255, 255, 255];
     world.insert(entity, sprite);
     world.insert(entity, Visibility::default());
@@ -286,7 +298,7 @@ fn spawn_material_pair(world: &mut World, fixture: &str) {
                 scale: Vec2::splat(2.0),
             },
         );
-        let mut sprite = Sprite::new(EMISSIVE_QUAD_ID).with_material(material);
+        let mut sprite = Sprite::new(sprite_id(world, EMISSIVE_QUAD_ID)).with_material(material);
         sprite.z_order = 1_000;
         world.insert(entity, sprite);
         world.insert(entity, Visibility::default());
@@ -438,7 +450,7 @@ fn spawn_bouncers(world: &mut World) -> Vec<Entity> {
                 scale: Vec2::splat(scale_mul),
             },
         );
-        let mut sprite = Sprite::new(QUAD_ID);
+        let mut sprite = Sprite::new(sprite_id(world, QUAD_ID));
         sprite.color = color;
         world.insert(entity, sprite);
         world.insert(entity, Visibility::default());
@@ -530,7 +542,7 @@ fn spawn_parallax_layers(world: &mut World) {
                         scale: Vec2::splat(layer.scale),
                     },
                 );
-                let mut sprite = Sprite::new(QUAD_ID);
+                let mut sprite = Sprite::new(sprite_id(world, QUAD_ID));
                 sprite.color = layer.color;
                 sprite.z_order = layer.z_order;
                 world.insert(entity, sprite);
@@ -678,7 +690,10 @@ fn bounce_system(world: &mut World) {
     send_shake(world, WALL_TRAUMA * wall_hits.len() as f32);
     send_squash(world, &wall_hits);
 
-    let Some(recipe) = world.get_resource::<SparkRecipes>().map(|r| r.wall.clone()) else {
+    let Some((recipe, sprite)) = world
+        .get_resource::<SparkRecipes>()
+        .map(|r| (r.wall.clone(), r.sprite))
+    else {
         return;
     };
     with_spawn_ctx(world, |buf, rng| {
@@ -687,6 +702,7 @@ fn bounce_system(world: &mut World) {
                 buf,
                 rng,
                 &recipe,
+                sprite,
                 point,
                 normal,
                 WALL_BURST_COUNT,
@@ -795,7 +811,10 @@ fn pair_collision_system(world: &mut World) {
     send_shake(world, PAIR_TRAUMA * contacts.len() as f32);
     send_squash(world, &hit_entities);
 
-    let Some(recipe) = world.get_resource::<SparkRecipes>().map(|r| r.pair.clone()) else {
+    let Some((recipe, sprite)) = world
+        .get_resource::<SparkRecipes>()
+        .map(|r| (r.pair.clone(), r.sprite))
+    else {
         return;
     };
     with_spawn_ctx(world, |buf, rng| {
@@ -804,6 +823,7 @@ fn pair_collision_system(world: &mut World) {
                 buf,
                 rng,
                 &recipe,
+                sprite,
                 point,
                 Vec2::ZERO,
                 PAIR_BURST_COUNT,
@@ -837,6 +857,7 @@ fn emit_cone_burst(
     buf: &mut CommandBuffer,
     rng: &mut Pcg32,
     config: &Arc<ParticleConfig>,
+    sprite: SpriteAssetId,
     origin: Vec2,
     direction: Vec2,
     count: u32,
@@ -863,7 +884,16 @@ fn emit_cone_burst(
         let v = dir * rng.next_range(speed.0, speed.1);
         let lifetime = rng.next_range(life.0, life.1);
         let start_scale = rng.next_range(scale.0, scale.1);
-        spawn_particle_via(buf, None, config.clone(), origin, v, lifetime, start_scale);
+        spawn_particle_via(
+            buf,
+            None,
+            config.clone(),
+            sprite,
+            origin,
+            v,
+            lifetime,
+            start_scale,
+        );
     }
 }
 
