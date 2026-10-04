@@ -21,6 +21,11 @@ pub const SEARCH_TEX_WIDTH: u32 = 64;
 pub const SEARCH_TEX_HEIGHT: u32 = 16;
 pub const SEARCH_TEX_LEN: usize = (SEARCH_TEX_WIDTH as usize) * (SEARCH_TEX_HEIGHT as usize);
 
+const _: () = assert!(AREA_TEX_BYTES.len() == AREA_TEX_LEN);
+const _: () = assert!(AREA_TEX_LEN == 160 * 560 * 2);
+const _: () = assert!(SEARCH_TEX_BYTES.len() == SEARCH_TEX_LEN);
+const _: () = assert!(SEARCH_TEX_LEN == 64 * 16);
+
 #[must_use]
 pub fn area_bytes() -> &'static [u8] {
     AREA_TEX_BYTES
@@ -126,7 +131,3 @@ pub fn upload_search(
     let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
     (tex, view)
 }
-
-#[cfg(test)]
-#[path = "../tests/smaa_luts.rs"]
-mod tests;

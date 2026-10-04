@@ -389,25 +389,6 @@ fn reload_particle_preserves_previous_on_unknown_mesh() {
 }
 
 #[test]
-fn shader_registry_allocate_reverse_lookup_roundtrips() {
-    // The device-touching path is smoke-tested by the msaa × depth_sort
-    // matrix; here we lock down the core-side path the umbrella crate uses
-    // to bridge `.wgsl` hot-reload events back to a renderer id.
-    use std::path::PathBuf;
-    use tungsten_core::assets::ShaderRegistry;
-
-    let mut world = seed_world();
-    let path = PathBuf::from("/tmp/tungsten_reload_shader_test/sprite.wgsl");
-    {
-        let reg = world.get_resource_mut::<ShaderRegistry>().unwrap();
-        let id = reg.allocate("sprite", path.clone());
-        assert_eq!(reg.get("sprite"), Some(id));
-        assert_eq!(reg.id_for_path(&path), Some(id));
-        assert_eq!(reg.name_for_id(id), Some("sprite"));
-    }
-}
-
-#[test]
 fn load_all_merged_populates_loaded_manifest_resource() {
     // Merge step is renderer-free; end-to-end composition lives in core tests.
     let empty: &[PathBuf] = &[];

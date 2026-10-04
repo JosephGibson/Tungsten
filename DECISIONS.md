@@ -190,6 +190,7 @@ Decision log for non-obvious Tungsten choices. Use [the decision index](docs/DEC
 **Decision:** Add `EventQueue<T>` as the canonical event-passing primitive. Each queue stores two windows (`previous`, `current`) so readers always see at least the most recent frame's events regardless of system registration order. `send()` appends to `current`; `iter()` yields `previous` then `current`; `iter_current()` is the opt-in same-frame-only view. `flush()` rotates at the same frame boundary as `CommandBuffer` flush — after systems, before hot reload, extract, and render. `App::register_event::<T>()` is a startup-only API that inserts the resource and stores a type-erased per-frame flush closure. Re-registering the same type is a no-op so duplicate startup calls cannot accidentally double-flush a queue. `flush()` remains `pub` so the umbrella crate can invoke it across crate boundaries, with docs warning that game systems should not call it directly. `CollisionEvents` is removed with no compatibility shim; all call sites migrate to `EventQueue<CollisionEvent>`. Bench: `event_queue_flush_10_types` measured ~= 2.44 us on the 2026-04-16 final local verification run (Criterion range: 2.4234-2.4597 us for 10 queue types with 100 events each).
 
 ## D-041 — Cargo profile optimization: release LTO + codegen-units + panic=abort + target-cpu=native
+**Amended by D-111:** the dev-profile clause only; dev and test builds also keep debuginfo in unpacked `.dwo` files (`split-debuginfo = "unpacked"`); the rest stands, with `D-096`'s opt-level 1 for `tungsten-core`.
 **Date:** 2026-04-16  
 **Decision:** Apply these compilation flags across the workspace:
 
@@ -485,6 +486,7 @@ Plan number conflict note: the M15 plan originally reserved `D-041`, but that ID
 **Consequences:** A compiler bump edits both pins and reruns the CPU and GPU gates plus a perf comparison. New lints are fixed, or narrowly `#[expect]`ed with a reason, never allowed workspace-wide. Each advisory exception in `deny.toml` names its ID and reason. Perf captures build with `TUNGSTEN_PERF_RUSTFLAGS` (default: frame pointers, generic CPU), and each capture records its compiler and flags.
 
 ## D-070 — CPU-only CI that reports, not blocks
+**Amended by D-112:** the `just bench-build` step only; CI builds the benchmarks with `cargo bench --workspace --no-run --profile dev --locked`; the rest stands.
 **Date:** 2026-09-25
 **Decision:** `.github/workflows/ci.yml` runs the shared CPU gates on pull requests, manual dispatch and pushes to `main` and `0.*`: `just check`, `just bench-build`, `just deps`, `just ctx` and `just script-test`. Actions are pinned to reviewed commit SHAs and tools to checked releases (ShellCheck by SHA-256). The token is read-only, superseded runs are cancelled, and builds use generic `RUSTFLAGS="-C target-cpu=x86-64"`. GPU, audio, visual and perf checks stay local on the reference machine. No branch protection, required status checks or PR process is added.
 **Why:** These checks are deterministic and cheap, and a clean checkout catches toolchain and dependency drift that a warm local tree hides. Hardware checks can't run on shared runners, and timings from them aren't comparable.
@@ -1289,3 +1291,26 @@ The bound belongs to the step, not to the app loop: `physics_step` is public and
 - The startup hook and manifest roots do not run headless, since the hook's type takes `&mut Renderer` and manifest loading uploads through it; tests seed resources through `world_mut()`. A headless asset path is left to W15a's plugins or W12a.
 - Tests: `run_frame` on a windowless app in `crates/tungsten/src/tests/app.rs`, the harness in `crates/tungsten/src/tests/testing.rs`; example 01's frame tests run on the harness.
 - The names (`Harness`, `FrameDraw` and the methods) may change in W4b's review before the freeze.
+
+## D-111 — Dev builds keep debuginfo in unpacked `.dwo` files
+**Date:** 2026-10-04
+**Decision:** `[profile.dev]` in the workspace `Cargo.toml` sets `split-debuginfo = "unpacked"`, so the dev profile, and the test profile that inherits it, leaves each crate's DWARF in `.dwo` files beside its objects instead of linking it into every binary. Full debuginfo, opt-levels (`D-096`), the release and bench profiles and the perf runner's flags are unchanged. Cargo passes the flag only to targets whose `rustc --print split-debuginfo` lists `unpacked` (Linux; macOS already defaulted to it) and omits it elsewhere: for `x86_64-pc-windows-msvc`, which lists only `packed`, a scratch crate with this profile built with `-C debuginfo=2` and no `-C split-debuginfo`.
+
+**Why:** Test binaries that link the umbrella crate were 378–455 MB, nearly all dependency DWARF, and a core edit relinks the 23 test binaries that depend on core. On scratch copies of the 0.44 tree (`docs/plans/test-suite-overhead.md` step 4), five interleaved core-edit test builds per option, min/median/max: the old profile 13.7/18.1/31.2 s; `split-debuginfo = "unpacked"` 4.5/4.8/6.0 s; dependencies at `debug = false` 5.2/5.2/6.5 s; dependencies at `debug = "line-tables-only"` 5.8/6.1/9.4 s. Target size after a cold `just check`: 10.6, 5.2, 4.4 and 6.2 GB; the umbrella's lib test binary 391, 86, 78 and 156 MB. A `RUST_BACKTRACE=1` panic through core and the umbrella showed file:line for every workspace frame under all four. The plan takes the fastest option that passes that probe; it is also the only one that keeps dependency debuginfo.
+
+**Consequences:**
+- Amends `D-041` as its marker line says; `D-096` stands.
+- A test binary moved out of the target directory loses its debuginfo, since the `.dwo` files stay beside the objects.
+- The first build after this change rebuilds every crate once. An existing target directory keeps the old artifacts until `cargo clean`.
+- Measured on Linux only.
+
+## D-112 — CI builds the benchmarks in the dev profile
+**Date:** 2026-10-04
+**Decision:** CI's "Build benchmarks" step and `just ci` run `cargo bench --workspace --no-run --profile dev --locked` in place of `just bench-build`, right after `just check`. `just bench-build` keeps building the benchmarks in their own bench profile for local runs. The other CI steps, their order and the rest of `D-070` are unchanged.
+
+**Why:** `just bench-build` took 148–193 s of a CI run of about 5 min (the owner's measurement, 2026-10-04): the bench profile inherits release's thin LTO and single codegen unit, so CI compiled every dependency a second time, fully optimized, only to show that the benchmarks build. `just lint` already type-checks every bench target (`--all-targets`), and no library code depends on `debug_assertions` (it appears only in two physics test files' ignore attributes), so the dev build compiles the same code. On a scratch copy of the 0.44 tree after a warm test build, the dev-profile bench build took 4.3 s and `just bench-build` 129.1 s with its release dependencies cold (`docs/plans/test-suite-overhead.md` step 1); both listed the six benches.
+
+**Consequences:**
+- Amends `D-070` as its marker line says.
+- CI no longer builds anything with LTO, so a failure only the bench profile shows, such as an LTO link error, surfaces locally when a bench runs or `just bench-build` is run, or in the tag-triggered release build (`D-071`), which builds the examples in the release profile.
+- The CI saving is unconfirmed until a push after this change runs; the plan lists it as a follow-up.

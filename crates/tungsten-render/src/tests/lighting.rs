@@ -3,12 +3,6 @@ use glam::{Vec2, Vec3};
 use tungsten_core::Light;
 
 #[test]
-fn light_ubo_byte_size_is_544() {
-    assert_eq!(LightUbo::byte_size(), 544);
-    assert_eq!(std::mem::size_of::<GpuLight>(), 32);
-}
-
-#[test]
 fn pack_lights_zeros_unused_tail() {
     let one = pack_one_light(Vec2::new(1.0, 2.0), &Light::point(Vec3::ONE, 4.0));
     let ubo = pack_lights(&[one], Vec3::splat(0.5));

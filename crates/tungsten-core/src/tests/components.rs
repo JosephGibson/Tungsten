@@ -30,12 +30,6 @@ fn sprite_new_defaults_color_and_z_order() {
 }
 
 #[test]
-fn tag_new_stores_name() {
-    let t = Tag::new("hero");
-    assert_eq!(t.name, "hero");
-}
-
-#[test]
 fn sync_position_to_transform_copies_position() {
     let mut world = World::new();
     let e = world.spawn();

@@ -48,6 +48,9 @@ pub struct LightUbo {
     pub ambient: [f32; 4],
 }
 
+const _: () = assert!(std::mem::size_of::<GpuLight>() == 32);
+const _: () = assert!(std::mem::size_of::<LightUbo>() == 544);
+
 impl Default for LightUbo {
     fn default() -> Self {
         Self {

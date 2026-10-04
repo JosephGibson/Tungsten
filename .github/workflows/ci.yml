@@ -85,8 +85,11 @@ jobs:
       - name: Format, strict clippy, tests (incl. doctests)
         run: just check
 
+      # In the dev profile `just check` just built: the bench profile's thin LTO
+      # and single codegen unit took 148-193 s here, and `just lint` already
+      # type-checks the benches (D-112).
       - name: Build benchmarks
-        run: just bench-build
+        run: cargo bench --workspace --no-run --profile dev --locked
 
       - name: Dependency policy
         run: just deps

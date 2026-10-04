@@ -1,15 +1,7 @@
 use super::*;
-use tungsten_core::assets::ShaderAssetId;
 use tungsten_core::post::BloomParams;
-use tungsten_core::tween::UniformOverrideBlock;
 
 use crate::targets::{TargetCache, bloom_mip_count_for_size};
-
-#[test]
-fn uniform_override_block_payload_is_256_bytes() {
-    let block = UniformOverrideBlock::default();
-    assert_eq!(block.to_bytes().len(), 256);
-}
 
 #[test]
 fn bloom_pack_writes_expected_slots() {
@@ -43,23 +35,6 @@ fn bloom_pyramid_clamps_max_mips_by_viewport() {
     assert_eq!(bloom_mip_count_for_size(1, 1, 6), 1);
     // Plenty of headroom: mip count caps at max_mips, not at the viewport.
     assert_eq!(bloom_mip_count_for_size(1024, 1024, 6), 6);
-}
-
-#[test]
-fn bloom_shader_ids_are_stable() {
-    // The renderer pre-seeds bloom shader ids 4..=7 immediately after sprite
-    // (0) and SMAA (1..=3). Dropping or reordering would break manifest reload
-    // routing in `Renderer::reload_shader`.
-    let ids = BloomShaderIds {
-        threshold: ShaderAssetId(4),
-        downsample: ShaderAssetId(5),
-        upsample: ShaderAssetId(6),
-        composite: ShaderAssetId(7),
-    };
-    assert_eq!(ids.threshold.0, 4);
-    assert_eq!(ids.downsample.0, 5);
-    assert_eq!(ids.upsample.0, 6);
-    assert_eq!(ids.composite.0, 7);
 }
 
 #[test]

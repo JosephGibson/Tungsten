@@ -6,6 +6,14 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.44.0] - 2026-10-04
+
+Summary: a test-suite overhead pass (plan archived at `docs/plans/archive/test-suite-overhead.md`): example 01's route test replays known launches, redundant unit tests go, dev and test builds keep debuginfo out of the test binaries (`D-111`) and CI builds the benchmarks in the dev profile (`D-112`), taking `cargo test --workspace` from 10.9 s to 1.9 s. No runtime code, dependency, asset or manifest change.
+
+### Changed
+
+- **Test-suite overhead** (`D-111`, `D-112`; plan archived at `docs/plans/archive/test-suite-overhead.md`): example 01's route test replays a table of the 45 known launches and searches only for a stale or missing row (9.7 s → 0.5 s); 14 redundant unit tests go, five of them as compile-time checks (one already existed), and two lighting tests now also check the lit shader's light array and the manifest's shader keys (941 → 927 tests); dev and test builds keep debuginfo in unpacked `.dwo` files instead of linking it into every test binary, taking a core-edit test build from 18.1 s to 4.8 s and a cold target directory from 10.6 GB to 5.2 GB (medians); CI builds the benchmarks in the dev profile instead of the thin-LTO bench profile; `just level-check` runs the platformer generator's `--check` and unittests locally. Together, by median: `cargo test --workspace` 10.9 s → 1.9 s and a core-edit `just check` 19.8 s → 8.2 s. No runtime behavior, asset or hash changes; gating the GPU pixel tests behind a feature saved under 1 s per core edit and was not adopted.
+
 ## [0.43.0] - 2026-10-04
 
 Summary: Phase 5's first milestone, M32 (W14a, plan archived at `docs/plans/archive/1.0/phase5-milestone-32-headless-harness.md`): a headless test harness that runs the window loop's own frame body (`D-110`), with example 01's frame tests moved onto it. No dependency, asset or manifest change; the row digests, pixel tests and physics hashes are unchanged.

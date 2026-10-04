@@ -13,6 +13,7 @@ python3 -m pip install -r examples/01_platformer/tools/requirements.txt
 python3 examples/01_platformer/tools/generate.py
 python3 examples/01_platformer/tools/generate.py --check
 python3 -B -m unittest discover -s examples/01_platformer/tools -p 'test_*.py'
+just level-check
 cargo test -p example-01-platformer
 cargo test -p tungsten-core --test manifests
 just check
@@ -22,7 +23,9 @@ cargo run -p example-01-platformer
 TUNGSTEN_LIGHTING_FIXTURE=on cargo run -p example-01-platformer
 ```
 
-The local Python tests are separate from `just script-test`. `--check` regenerates
+The local Python tests are separate from `just script-test`. `just level-check` runs
+`--check` and them together; it needs Pillow, so CI and the standard-library-only
+recipes leave it out. `--check` regenerates
 into a temporary directory, compares every owned byte, and fails on missing,
 stale or uncovered output. It does not rewrite the working tree. PNG compression
 is fixed with no timestamps; JSON is sorted; Rust output goes through `rustfmt`.

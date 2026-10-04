@@ -1,59 +1,6 @@
 use super::*;
 
 #[test]
-fn shared_camera_tracks_player() {
-    let mut world = seed_world();
-    let player = world.spawn();
-    world.insert(player, Player::default());
-    // Past half-viewport so follow camera unclamps from origin.
-    world.insert(player, Position(Vec2::new(1200.0, 100.0)));
-    world.insert(player, Transform::from_position(Vec2::new(1200.0, 100.0)));
-    world.insert(player, Velocity(Vec2::ZERO));
-    world.insert(player, Collider::aabb(PLAYER_HALF));
-    world.insert(player, RigidBody::dynamic());
-    configure_platformer_camera(&mut world, player);
-
-    sync_position_to_transform(&mut world);
-    platformer_camera_base_zoom(&mut world);
-    camera_update_system(&mut world);
-
-    let cam = world.get_resource::<CameraState>().unwrap();
-    assert!(
-        cam.position.x > 0.0,
-        "camera did not follow player: {:?}",
-        cam.position
-    );
-}
-
-#[test]
-fn camera_clamped_at_right_boundary() {
-    let mut world = seed_world();
-    let player = world.spawn();
-    world.insert(player, Player::default());
-    world.insert(player, Position(Vec2::new(9999.0, 100.0)));
-    world.insert(player, Transform::from_position(Vec2::new(9999.0, 100.0)));
-    world.insert(player, Velocity(Vec2::ZERO));
-    world.insert(player, Collider::aabb(PLAYER_HALF));
-    world.insert(player, RigidBody::dynamic());
-    configure_platformer_camera(&mut world, player);
-
-    sync_position_to_transform(&mut world);
-    platformer_camera_base_zoom(&mut world);
-    camera_update_system(&mut world);
-
-    let cam = world.get_resource::<CameraState>().unwrap();
-    // Seeded zoom=1.0, viewport_w=480.
-    let zoom = 288.0 / (crate::state::CAMERA_ROWS * TILE);
-    let max_x = (MAP_COLS as f32 * TILE - 480.0 / zoom).max(0.0);
-    assert!(
-        cam.position.x <= max_x,
-        "camera not clamped: {} > {}",
-        cam.position.x,
-        max_x
-    );
-}
-
-#[test]
 fn cursor_to_world_inverts_camera_translation_and_zoom() {
     let mut camera = CameraState::new();
     camera.position = Vec2::new(100.0, 50.0);
