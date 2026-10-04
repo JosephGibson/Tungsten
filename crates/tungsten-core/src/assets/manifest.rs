@@ -42,6 +42,10 @@ pub enum ManifestError {
     InvalidParticleMesh { id: String, reason: String },
     #[error("duplicate asset ID '{id}' across manifests")]
     DuplicateId { id: String },
+    #[error("font family '{family}' references unknown font '{face}'")]
+    FontFamilyFaceMissing { family: String, face: String },
+    #[error("font_fallback names unknown font family '{family}'")]
+    UnknownFallbackFamily { family: String },
 }
 
 /// Raw manifest JSON.
@@ -65,6 +69,12 @@ pub struct RawManifest {
     pub materials: HashMap<String, MaterialEntry>,
     #[serde(default)]
     pub particle_meshes: HashMap<String, ParticleMeshEntry>,
+    /// Font families: a family ID and the `fonts` face IDs it groups (`D-115`).
+    #[serde(default)]
+    pub font_families: HashMap<String, FontFamilyEntry>,
+    /// Family IDs in order of preference for glyphs a style's family lacks.
+    #[serde(default)]
+    pub font_fallback: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -99,6 +109,15 @@ pub struct AnimationEntry {
 #[derive(Debug, Clone, Deserialize)]
 pub struct FontEntry {
     pub path: String,
+}
+
+/// A font family entry: the `fonts` IDs of its faces (`D-115`).
+#[non_exhaustive]
+#[derive(Debug, Clone, Deserialize)]
+pub struct FontFamilyEntry {
+    /// Face IDs from the `fonts` section; a style picks one by weight and
+    /// italic.
+    pub faces: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -174,6 +193,10 @@ pub struct ResolvedManifest {
     pub shaders: HashMap<String, ResolvedShader>,
     pub materials: HashMap<String, ResolvedMaterial>,
     pub particle_meshes: HashMap<String, ResolvedParticleMesh>,
+    /// Font families by family ID (`D-115`).
+    pub font_families: HashMap<String, ResolvedFontFamily>,
+    /// The fallback chain: family IDs in order of preference, each once.
+    pub font_fallback: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -192,6 +215,22 @@ pub struct ResolvedAnimation {
 #[derive(Debug, Clone)]
 pub struct ResolvedFont {
     pub path: PathBuf,
+}
+
+/// A font family: the `fonts` IDs of its faces, as the manifest lists them.
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedFontFamily {
+    /// Face IDs from the `fonts` section.
+    pub faces: Vec<String>,
+}
+
+impl ResolvedFontFamily {
+    /// A family of these face IDs.
+    #[must_use]
+    pub fn new(faces: Vec<String>) -> Self {
+        Self { faces }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -337,6 +376,14 @@ impl ResolvedManifest {
             result.fonts.insert(id, ResolvedFont { path: full_path });
         }
 
+        // Faces are checked against the merged graph, as material shaders are.
+        for (id, entry) in raw.font_families {
+            result
+                .font_families
+                .insert(id, ResolvedFontFamily { faces: entry.faces });
+        }
+        append_fallback(&mut result.font_fallback, raw.font_fallback);
+
         for (id, entry) in raw.sounds {
             let full_path = base_dir.join(&entry.path);
             if !full_path.exists() {
@@ -450,36 +497,66 @@ impl ResolvedManifest {
         Ok(merged)
     }
 
-    /// Every material's shader must be declared in this graph. Of several
-    /// materials without one, the smallest ID is reported, so the error does
-    /// not depend on map order.
+    /// Every material's shader must be declared in this graph, and so must
+    /// every font family's faces and every family in the fallback chain. Of
+    /// several failures of one kind, the smallest ID is reported, so the error
+    /// does not depend on map order.
     fn validate_cross_refs(&self) -> Result<(), ManifestError> {
         let missing = self
             .materials
             .iter()
             .filter(|(_, material)| !self.shaders.contains_key(&material.shader))
             .min_by(|a, b| a.0.cmp(b.0));
-        match missing {
-            Some((id, material)) => Err(ManifestError::MaterialShaderMissing {
+        if let Some((id, material)) = missing {
+            return Err(ManifestError::MaterialShaderMissing {
                 id: id.clone(),
                 shader: material.shader.clone(),
+            });
+        }
+        self.validate_font_refs()
+    }
+
+    /// Every family face names a `fonts` entry and every chain entry a family
+    /// (`D-115`); the smallest family ID, then face ID, is reported first.
+    fn validate_font_refs(&self) -> Result<(), ManifestError> {
+        let missing_face = self
+            .font_families
+            .iter()
+            .flat_map(|(family, entry)| entry.faces.iter().map(move |face| (family, face)))
+            .filter(|(_, face)| !self.fonts.contains_key(*face))
+            .min();
+        if let Some((family, face)) = missing_face {
+            return Err(ManifestError::FontFamilyFaceMissing {
+                family: family.clone(),
+                face: face.clone(),
+            });
+        }
+        let unknown = self
+            .font_fallback
+            .iter()
+            .filter(|family| !self.font_families.contains_key(*family))
+            .min();
+        match unknown {
+            Some(family) => Err(ManifestError::UnknownFallbackFamily {
+                family: family.clone(),
             }),
             None => Ok(()),
         }
     }
 
     /// Merge another manifest; duplicate IDs are fatal (D-017). A merged
-    /// material's shader must already be in the graph or arrive with it.
+    /// material's shader must already be in the graph or arrive with it, and
+    /// so must a family's faces and a chain entry's family (`D-115`).
     pub fn merge(&mut self, other: ResolvedManifest) -> Result<(), ManifestError> {
         self.merge_entries(other, true)
     }
 
-    /// `merge`, with the material -> shader check optional: a caller that
-    /// merges several roots checks it once at the end instead.
+    /// `merge`, with the reference checks optional: a caller that merges
+    /// several roots checks them once at the end instead.
     fn merge_entries(
         &mut self,
         other: ResolvedManifest,
-        check_material_shaders: bool,
+        check_refs: bool,
     ) -> Result<(), ManifestError> {
         for (id, sprite) in other.sprites {
             if self.sprites.contains_key(&id) {
@@ -529,7 +606,7 @@ impl ResolvedManifest {
             }
             // Re-validate cross-ref: when a material merges in from a sibling
             // manifest, the shader may live in the merged graph we just built.
-            if check_material_shaders && !self.shaders.contains_key(&material.shader) {
+            if check_refs && !self.shaders.contains_key(&material.shader) {
                 return Err(ManifestError::MaterialShaderMissing {
                     id,
                     shader: material.shader,
@@ -543,7 +620,27 @@ impl ResolvedManifest {
             }
             self.particle_meshes.insert(id, mesh);
         }
+        for (id, family) in other.font_families {
+            if self.font_families.contains_key(&id) {
+                return Err(ManifestError::DuplicateId { id });
+            }
+            self.font_families.insert(id, family);
+        }
+        append_fallback(&mut self.font_fallback, other.font_fallback);
+        if check_refs {
+            self.validate_font_refs()?;
+        }
         Ok(())
+    }
+}
+
+/// Appends `more` to the chain in order, skipping families already in it, so
+/// each keeps its first position (`D-115`).
+fn append_fallback(chain: &mut Vec<String>, more: Vec<String>) {
+    for family in more {
+        if !chain.contains(&family) {
+            chain.push(family);
+        }
     }
 }
 

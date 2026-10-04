@@ -28,13 +28,13 @@ use crate::shader_hot_reload::{ShaderError, ShaderModuleCache, build_validated};
 use crate::sprite::{SpriteBatch, SpritePipeline};
 use crate::surface::{present_mode_label, resolve_max_frame_latency, resolve_present_mode};
 use crate::targets::{RenderTargetPool, TargetCache};
-use crate::text::{TextPipeline, TextSection};
+use crate::text::{FontSource, TextEngine, TextNodes, TextPipeline, TextSection};
 use crate::timing::TimingResources;
 pub use crate::timing::{CpuFrameTimings, GpuFrameTimings};
 use thiserror::Error;
 use tungsten_core::assets::{
-    FilterMode, MaterialAssetId, MaterialUniformDefaults, ParticleMeshAssetId, ShaderAssetId,
-    TextureHandle,
+    FilterMode, MaterialAssetId, MaterialUniformDefaults, ParticleMeshAssetId, ResolvedFontFamily,
+    ShaderAssetId, TextureHandle,
 };
 use tungsten_core::config::{
     DepthSortMode, PostAaMode, PresentModeConfig, RenderConfig, is_supported_msaa,
@@ -268,7 +268,12 @@ impl Renderer {
             sample_count,
             depth_attached,
         );
-        let text_pipeline = TextPipeline::new(&device, &queue, format);
+        let font_source = if config.system_fonts {
+            FontSource::PackagedThenSystem
+        } else {
+            FontSource::Packaged
+        };
+        let text_pipeline = TextPipeline::with_font_source(&device, &queue, format, font_source);
 
         let post_aa = config.post_aa;
         let bloom_max_mips =
@@ -691,6 +696,29 @@ impl Renderer {
     /// Hot-reload font bytes.
     pub fn reload_font(&mut self, id: &str, data: Vec<u8>) {
         self.text_pipeline.reload_font(id, data);
+    }
+
+    /// The text engine, read-only: its font epoch and committed node layouts
+    /// (`D-117`).
+    #[must_use]
+    pub fn text_engine(&self) -> &TextEngine {
+        self.text_pipeline.engine()
+    }
+
+    /// The text node methods, for layout to measure and commit with
+    /// (`D-117`).
+    pub fn text_nodes(&mut self) -> TextNodes<'_> {
+        TextNodes::new(self.text_pipeline.engine_mut())
+    }
+
+    /// Set the manifest's font families and fallback chain (`D-115`). Equal
+    /// input changes nothing.
+    pub fn set_font_families(
+        &mut self,
+        families: &HashMap<String, ResolvedFontFamily>,
+        fallback: &[String],
+    ) {
+        self.text_pipeline.set_font_families(families, fallback);
     }
 
     /// Register a manifest-tracked shader. A shader the engine compiles into

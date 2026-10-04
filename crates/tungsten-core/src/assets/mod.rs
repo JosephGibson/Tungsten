@@ -15,10 +15,10 @@ pub use animation::{
 pub use atlas::{AtlasPage, PackInput, PackResult, PackedSprite, UvRect, pack_shelf};
 pub use audio::{AudioDecodeError, AudioHandle, SoundData, SoundRegistry};
 pub use manifest::{
-    FilterMode, FontEntry, LoadedManifest, ManifestError, MaterialEntry, ParticleEntry,
-    ParticleMeshEntry, ResolvedFont, ResolvedManifest, ResolvedMaterial, ResolvedParticle,
-    ResolvedParticleMesh, ResolvedShader, ResolvedSound, ResolvedTilemap, ShaderEntry, SoundEntry,
-    TilemapEntry,
+    FilterMode, FontEntry, FontFamilyEntry, LoadedManifest, ManifestError, MaterialEntry,
+    ParticleEntry, ParticleMeshEntry, ResolvedFont, ResolvedFontFamily, ResolvedManifest,
+    ResolvedMaterial, ResolvedParticle, ResolvedParticleMesh, ResolvedShader, ResolvedSound,
+    ResolvedTilemap, ShaderEntry, SoundEntry, TilemapEntry,
 };
 pub use material::{MaterialAssetId, MaterialRegistry, MaterialUniformDefaults};
 pub use particle::{

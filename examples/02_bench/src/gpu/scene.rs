@@ -376,6 +376,7 @@ pub(super) fn text_section(params: &Params, section: u32, frame: u32) -> TextSec
         color: [230, 236, 255, 255],
         position: [x as f32, y as f32],
         bounds: None,
+        ..Default::default()
     }
 }
 

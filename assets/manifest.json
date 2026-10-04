@@ -59,6 +59,15 @@
       "path": "fonts/JetBrainsMono/static/JetBrainsMono-Regular.ttf"
     }
   },
+  "font_families": {
+    "sans": {
+      "faces": ["sans", "sans_bold"]
+    },
+    "mono": {
+      "faces": ["mono"]
+    }
+  },
+  "font_fallback": ["sans", "mono"],
   "sounds": {
     "sfx_blip": {
       "path": "sounds/sfx_blip.ogg",

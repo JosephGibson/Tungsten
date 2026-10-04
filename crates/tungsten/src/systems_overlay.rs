@@ -156,6 +156,7 @@ pub(crate) fn compose_systems_overlay_text_section(
         color: overlay.color,
         position: [x, y],
         bounds: None,
+        ..Default::default()
     };
 
     let sections = if overlay.outline_px > 0.0 {
@@ -170,6 +171,7 @@ pub(crate) fn compose_systems_overlay_text_section(
                 color: overlay.outline_color,
                 position: [x + dx, y + dy],
                 bounds: None,
+                ..Default::default()
             });
         }
         out.push(main);

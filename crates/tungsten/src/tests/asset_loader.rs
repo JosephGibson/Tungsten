@@ -553,3 +553,24 @@ fn in_place_shrink_uv_spans_the_new_size() {
 
 #[allow(dead_code)]
 fn _touch_imports(_layer: TilemapLayer) {}
+
+#[test]
+fn fonts_load_in_sorted_id_order() {
+    let mut manifest = ResolvedManifest::default();
+    let ids = ["sans_bold", "mono", "zeta", "sans", "alpha", "mono_bold"];
+    for id in ids {
+        manifest.fonts.insert(
+            id.to_string(),
+            tungsten_core::assets::ResolvedFont {
+                path: PathBuf::from(format!("{id}.ttf")),
+            },
+        );
+    }
+    let mut sorted = ids;
+    sorted.sort_unstable();
+    let order: Vec<&str> = font_load_order(&manifest)
+        .into_iter()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(order, sorted);
+}

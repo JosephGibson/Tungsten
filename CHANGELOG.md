@@ -6,6 +6,14 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.46.0] - 2026-10-04
+
+Summary: Phase 5's third milestone, M34 (W1 M0a, plan archived at `docs/plans/archive/1.0/phase5-milestone-34-text-engine-split.md`). Text splits into a device-free engine and a GPU half, with neutral text types in core and retained nodes that layout measures (`D-117`); font families and a fallback chain join the manifest (`D-115`); text draws with packaged fonts only unless a game sets `render.system_fonts` (`D-116`). One new direct dependency, `unicode-script` 0.5.8, which cosmic-text already locked. `gpu-visual.png` moves on purpose, since the old fixture showed a system font; the row digests, the post and transition regressions and the physics hashes are unchanged.
+
+### Changed
+
+- **Text engine split, font families, packaged-only fonts** (`D-115`–`D-117`, M34). `tungsten_render::text` splits into `TextEngine` (device-free: fonts, families, the fallback chain, `FontEpoch`, the section cache, retained nodes) and `TextPipeline` (the GPU half, its methods unchanged, plus `with_font_source`); `tungsten_core::text` adds `TextStyle`, `TextLayout`, `StyledText`, `TextMetrics`, `TextNodeId`, `FontEpoch` and the `TextMeasure` trait. Nodes measure min-content, max-content and definite widths on one shaped buffer and commit a final box, and `Renderer::text_nodes` lends them to layout. `TextSection` gains `layout` (alignment, wrap, ellipsis, hinting, letter spacing in em, OpenType features) and `Default`, so literals need `..Default::default()`. The manifest gains `font_families` and `font_fallback` (`ManifestError` gains two variants); the shared manifest groups `sans` with `sans_bold`, and `mono`. The font database holds only packaged faces, loaded in sorted ID order with the chain as fallback, and `render.system_fonts` (`RenderConfig::system_fonts`) adds the system's after them, so startup no longer scans system fonts. `gpu-visual.png` is regenerated: the old fixture showed JetBrains Mono 2.304 installed on the reference machine instead of the packaged 2.211 (2155 HUD pixels). `gpu` and `integrated` read 0 regressed against both A/A captures.
+
 ## [0.45.0] - 2026-10-04
 
 Summary: Phase 5's second milestone, M33 (W2 R0, plan archived at `docs/plans/archive/1.0/phase5-milestone-33-interned-asset-ids.md`). Sprites name their asset by an interned `SpriteAssetId` (`D-113`, a public API break and W4's first ledger row), and the default extract culls stock-pipeline sprites outside the view (`D-114`). No dependency, asset or manifest change; the row digests, the pinned extract output, the pixel tests and the physics hashes are unchanged.

@@ -49,6 +49,11 @@ class RepoChecks(unittest.TestCase):
         self.write("assets/fonts/README.md", "font inventory")
         self.assertEqual(self.assets()[0], [])
 
+    def test_list_section_names_no_files(self):
+        self.write("assets/manifest.json", '{"sprites":{"hero":{"path":"sprites/hero.png","normal_map":"sprites/normal.png"}},'
+                   '"font_families":{"sans":{"faces":["sans"]}},"font_fallback":["sans"]}')
+        self.assertEqual(self.assets()[0], [])
+
     def test_duplicate_json_key_is_not_silently_overwritten(self):
         self.write("assets/manifest.json", '{"sprites":{},"sprites":{}}')
         self.assertIn("duplicate JSON key", " ".join(self.assets()[0]))

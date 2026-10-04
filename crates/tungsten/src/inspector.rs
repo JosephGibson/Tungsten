@@ -289,6 +289,7 @@ pub(crate) fn compose_inspector_text_section(
         color: state.color,
         position: [x, y],
         bounds: None,
+        ..Default::default()
     };
 
     let sections = if state.outline_px > 0.0 {
@@ -303,6 +304,7 @@ pub(crate) fn compose_inspector_text_section(
                 color: state.outline_color,
                 position: [x + dx, y + dy],
                 bounds: None,
+                ..Default::default()
             });
         }
         out.push(main);

@@ -14,20 +14,22 @@ pub mod lighting;
 pub mod physics;
 pub mod post;
 pub mod rng;
+pub mod text;
 pub mod time;
 pub mod tween;
 
 pub use assets::{
     AnimationData, AnimationRegistry, AnimationState, AssetId, AssetRegistry, AudioHandle,
-    BlendMode, Curve, EMPTY_TILE, EmissionKind, FilterMode, FontEntry, FontRegistry,
-    InitialVelocity, LayerKind, Lerp, LoadedManifest, ManifestError, MaterialAssetId,
+    BlendMode, Curve, EMPTY_TILE, EmissionKind, FilterMode, FontEntry, FontFamilyEntry,
+    FontRegistry, InitialVelocity, LayerKind, Lerp, LoadedManifest, ManifestError, MaterialAssetId,
     MaterialRegistry, MaterialUniformDefaults, ParticleActive, ParticleBudget, ParticleConfig,
     ParticleConfigError, ParticleConfigRegistry, ParticleEntry, ParticleMesh, ParticleMeshAssetId,
-    ParticleMeshEntry, ParticleMeshRegistry, ParticleRender, Range, ResolvedFont, ResolvedManifest,
-    ResolvedMaterial, ResolvedParticle, ResolvedParticleMesh, ResolvedSound, SceneData, SceneEntry,
-    SceneError, SceneSprite, SceneTransform, SceneTween, SceneTweenChannel, SceneTweenRepeat,
-    SoundData, SoundEntry, SoundRegistry, SpriteAsset, SpriteAssetId, TextureHandle, TileIndex,
-    TilemapData, TilemapInstance, TilemapLayer, TilemapRegistry, WorldRngSeed,
+    ParticleMeshEntry, ParticleMeshRegistry, ParticleRender, Range, ResolvedFont,
+    ResolvedFontFamily, ResolvedManifest, ResolvedMaterial, ResolvedParticle, ResolvedParticleMesh,
+    ResolvedSound, SceneData, SceneEntry, SceneError, SceneSprite, SceneTransform, SceneTween,
+    SceneTweenChannel, SceneTweenRepeat, SoundData, SoundEntry, SoundRegistry, SpriteAsset,
+    SpriteAssetId, TextureHandle, TileIndex, TilemapData, TilemapInstance, TilemapLayer,
+    TilemapRegistry, WorldRngSeed,
 };
 pub use audio::{AudioCommand, AudioCommands};
 pub use camera::{CameraBounds, CameraController, CameraMode, CameraState};
@@ -59,6 +61,11 @@ pub use post::{
     TonemapParams, VignetteParams, WipeRadialParams,
 };
 pub use rng::{Pcg32, splitmix64};
+pub use text::{
+    EllipsisAt, FontEpoch, FontFeature, FontFeatures, MeasureWidth, StyledText, TextAlign,
+    TextHinting, TextLayout, TextMeasure, TextMetrics, TextNodeId, TextOverflow, TextSpan,
+    TextStyle, TextWrap,
+};
 pub use time::DeltaTime;
 pub use tween::{
     Easing, IntSlot, ScalarSlot, Tween, TweenChannel, TweenComplete, TweenDirection, TweenRepeat,

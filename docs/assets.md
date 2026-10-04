@@ -9,12 +9,15 @@ Every asset file is listed in a `manifest.json` and named in game code by its re
 | Sprite | `assets/sprites/` | `sprites` | ID, filter `nearest`/`linear`; optional `normal_map`, `emissive_mask` |
 | Animation | `assets/animations/` | `animations` | ID; sprite IDs must exist |
 | Font | `assets/fonts/<Fam>/` | `fonts` | ID |
+| Font family | manifest only | `font_families` | family ID, `faces` (`fonts` IDs) (`D-115`) |
+| Fallback chain | manifest only | `font_fallback` | a list of family IDs, not a map (`D-115`) |
 | Sound | `assets/sounds/` | `sounds` | ID; optional `looping`, `volume` |
 | Shader | `assets/shaders/` | `shaders` | ID (`D-057`) |
 | Material | manifest only | `materials` | `shader` ID, `uniform_defaults` (`D-058`) |
 | Particle mesh | manifest only | `particle_meshes` | `vertices`, `indices` |
 
 - Example-local assets: `examples/NN_name/assets/` with its own `manifest.json`. IDs are unique across loaded manifests; duplicates are fatal.
+- `font_fallback` chains concatenate in root order, each family keeping its first position. A family's faces and a chain's families may come from another root: references are checked on the merged graph (`D-089`).
 - Game code uses registry IDs; explicit scene loading follows `D-046`.
 
 ## Coverage exceptions

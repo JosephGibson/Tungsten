@@ -439,6 +439,7 @@ fn section(content: String, size: f32, color: [u8; 4], at: Vec2) -> TextSection 
         color,
         position: [at.x, at.y],
         bounds: None,
+        ..Default::default()
     }
 }
 

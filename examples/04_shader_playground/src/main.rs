@@ -1161,6 +1161,7 @@ fn playground_text(world: &World) -> Vec<TextSection> {
         color: [220, 230, 255, 240],
         position: [16.0, 14.0],
         bounds: None,
+        ..Default::default()
     }]
 }
 

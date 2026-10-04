@@ -732,6 +732,7 @@ fn text_outlined(section: TextSection) -> impl Iterator<Item = TextSection> {
             color: OUTLINE,
             position: [section.position[0] + dx, section.position[1] + dy],
             bounds: section.bounds,
+            ..Default::default()
         })
         .collect();
     shadows.into_iter().chain(std::iter::once(section))
@@ -749,6 +750,7 @@ pub(crate) fn extract_text(world: &World) -> Vec<TextSection> {
         color: [200, 220, 255, 210],
         position: [16.0, 14.0],
         bounds: None,
+        ..Default::default()
     }));
     if let Some(state) = world.get_resource::<TextDisplayState>() {
         sections.extend(text_outlined(TextSection {
@@ -767,6 +769,7 @@ pub(crate) fn extract_text(world: &World) -> Vec<TextSection> {
             color: [190, 255, 210, 220],
             position: [150.0, 94.0],
             bounds: None,
+            ..Default::default()
         }));
     }
     sections

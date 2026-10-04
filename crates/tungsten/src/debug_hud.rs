@@ -298,6 +298,7 @@ pub(crate) fn compose_hud_text_sections(
         color: hud.color,
         position: [x, y],
         bounds: None,
+        ..Default::default()
     };
 
     let sections = if hud.outline_px > 0.0 {
@@ -312,6 +313,7 @@ pub(crate) fn compose_hud_text_sections(
                 color: hud.outline_color,
                 position: [x + dx, y + dy],
                 bounds: None,
+                ..Default::default()
             });
         }
         out.push(main);

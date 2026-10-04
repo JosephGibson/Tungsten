@@ -293,6 +293,9 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::F
 pub enum tungsten_core::assets::manifest::ManifestError
 pub tungsten_core::assets::manifest::ManifestError::DuplicateId
 pub tungsten_core::assets::manifest::ManifestError::DuplicateId::id: alloc::string::String
+pub tungsten_core::assets::manifest::ManifestError::FontFamilyFaceMissing
+pub tungsten_core::assets::manifest::ManifestError::FontFamilyFaceMissing::face: alloc::string::String
+pub tungsten_core::assets::manifest::ManifestError::FontFamilyFaceMissing::family: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::InvalidParticleMesh
 pub tungsten_core::assets::manifest::ManifestError::InvalidParticleMesh::id: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::InvalidParticleMesh::reason: alloc::string::String
@@ -332,6 +335,8 @@ pub tungsten_core::assets::manifest::ManifestError::MissingTilemapFile::path: al
 pub tungsten_core::assets::manifest::ManifestError::Parse
 pub tungsten_core::assets::manifest::ManifestError::Parse::path: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::Parse::source: serde_json::error::Error
+pub tungsten_core::assets::manifest::ManifestError::UnknownFallbackFamily
+pub tungsten_core::assets::manifest::ManifestError::UnknownFallbackFamily::family: alloc::string::String
 impl core::error::Error for tungsten_core::assets::manifest::ManifestError
 pub fn tungsten_core::assets::manifest::ManifestError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tungsten_core::assets::manifest::ManifestError
@@ -375,6 +380,21 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::FontEntry
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::FontEntry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::FontEntry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::FontEntry
+#[non_exhaustive] pub struct tungsten_core::assets::manifest::FontFamilyEntry
+pub tungsten_core::assets::manifest::FontFamilyEntry::faces: alloc::vec::Vec<alloc::string::String>
+impl core::clone::Clone for tungsten_core::assets::manifest::FontFamilyEntry
+pub fn tungsten_core::assets::manifest::FontFamilyEntry::clone(&self) -> tungsten_core::assets::manifest::FontFamilyEntry
+impl core::fmt::Debug for tungsten_core::assets::manifest::FontFamilyEntry
+pub fn tungsten_core::assets::manifest::FontFamilyEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::manifest::FontFamilyEntry
+pub fn tungsten_core::assets::manifest::FontFamilyEntry::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::manifest::FontFamilyEntry
+impl core::marker::Send for tungsten_core::assets::manifest::FontFamilyEntry
+impl core::marker::Sync for tungsten_core::assets::manifest::FontFamilyEntry
+impl core::marker::Unpin for tungsten_core::assets::manifest::FontFamilyEntry
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::FontFamilyEntry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::FontFamilyEntry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::FontFamilyEntry
 pub struct tungsten_core::assets::manifest::LoadedManifest(pub tungsten_core::assets::manifest::ResolvedManifest)
 impl tungsten_core::assets::manifest::LoadedManifest
 pub fn tungsten_core::assets::manifest::LoadedManifest::as_resolved(&self) -> &tungsten_core::assets::manifest::ResolvedManifest
@@ -425,6 +445,8 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ParticleEntry
 pub struct tungsten_core::assets::manifest::RawManifest
 pub tungsten_core::assets::manifest::RawManifest::animations: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::AnimationEntry>
+pub tungsten_core::assets::manifest::RawManifest::font_fallback: alloc::vec::Vec<alloc::string::String>
+pub tungsten_core::assets::manifest::RawManifest::font_families: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::FontFamilyEntry>
 pub tungsten_core::assets::manifest::RawManifest::fonts: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::FontEntry>
 pub tungsten_core::assets::manifest::RawManifest::materials: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::MaterialEntry>
 pub tungsten_core::assets::manifest::RawManifest::particle_meshes: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ParticleMeshEntry>
@@ -474,8 +496,29 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedFont
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedFont
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedFont
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedFont
+#[non_exhaustive] pub struct tungsten_core::assets::manifest::ResolvedFontFamily
+pub tungsten_core::assets::manifest::ResolvedFontFamily::faces: alloc::vec::Vec<alloc::string::String>
+impl tungsten_core::assets::manifest::ResolvedFontFamily
+pub fn tungsten_core::assets::manifest::ResolvedFontFamily::new(alloc::vec::Vec<alloc::string::String>) -> Self
+impl core::clone::Clone for tungsten_core::assets::manifest::ResolvedFontFamily
+pub fn tungsten_core::assets::manifest::ResolvedFontFamily::clone(&self) -> tungsten_core::assets::manifest::ResolvedFontFamily
+impl core::cmp::Eq for tungsten_core::assets::manifest::ResolvedFontFamily
+impl core::cmp::PartialEq for tungsten_core::assets::manifest::ResolvedFontFamily
+pub fn tungsten_core::assets::manifest::ResolvedFontFamily::eq(&self, &tungsten_core::assets::manifest::ResolvedFontFamily) -> bool
+impl core::fmt::Debug for tungsten_core::assets::manifest::ResolvedFontFamily
+pub fn tungsten_core::assets::manifest::ResolvedFontFamily::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::manifest::ResolvedFontFamily
+impl core::marker::Freeze for tungsten_core::assets::manifest::ResolvedFontFamily
+impl core::marker::Send for tungsten_core::assets::manifest::ResolvedFontFamily
+impl core::marker::Sync for tungsten_core::assets::manifest::ResolvedFontFamily
+impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedFontFamily
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedFontFamily
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedFontFamily
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedFontFamily
 pub struct tungsten_core::assets::manifest::ResolvedManifest
 pub tungsten_core::assets::manifest::ResolvedManifest::animations: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedAnimation>
+pub tungsten_core::assets::manifest::ResolvedManifest::font_fallback: alloc::vec::Vec<alloc::string::String>
+pub tungsten_core::assets::manifest::ResolvedManifest::font_families: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedFontFamily>
 pub tungsten_core::assets::manifest::ResolvedManifest::fonts: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedFont>
 pub tungsten_core::assets::manifest::ResolvedManifest::materials: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedMaterial>
 pub tungsten_core::assets::manifest::ResolvedManifest::particle_meshes: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedParticleMesh>
@@ -1710,6 +1753,9 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::La
 pub enum tungsten_core::assets::ManifestError
 pub tungsten_core::assets::ManifestError::DuplicateId
 pub tungsten_core::assets::ManifestError::DuplicateId::id: alloc::string::String
+pub tungsten_core::assets::ManifestError::FontFamilyFaceMissing
+pub tungsten_core::assets::ManifestError::FontFamilyFaceMissing::face: alloc::string::String
+pub tungsten_core::assets::ManifestError::FontFamilyFaceMissing::family: alloc::string::String
 pub tungsten_core::assets::ManifestError::InvalidParticleMesh
 pub tungsten_core::assets::ManifestError::InvalidParticleMesh::id: alloc::string::String
 pub tungsten_core::assets::ManifestError::InvalidParticleMesh::reason: alloc::string::String
@@ -1749,6 +1795,8 @@ pub tungsten_core::assets::ManifestError::MissingTilemapFile::path: alloc::strin
 pub tungsten_core::assets::ManifestError::Parse
 pub tungsten_core::assets::ManifestError::Parse::path: alloc::string::String
 pub tungsten_core::assets::ManifestError::Parse::source: serde_json::error::Error
+pub tungsten_core::assets::ManifestError::UnknownFallbackFamily
+pub tungsten_core::assets::ManifestError::UnknownFallbackFamily::family: alloc::string::String
 impl core::error::Error for tungsten_core::assets::manifest::ManifestError
 pub fn tungsten_core::assets::manifest::ManifestError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tungsten_core::assets::manifest::ManifestError
@@ -2143,6 +2191,21 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::FontEntry
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::FontEntry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::FontEntry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::FontEntry
+#[non_exhaustive] pub struct tungsten_core::assets::FontFamilyEntry
+pub tungsten_core::assets::FontFamilyEntry::faces: alloc::vec::Vec<alloc::string::String>
+impl core::clone::Clone for tungsten_core::assets::manifest::FontFamilyEntry
+pub fn tungsten_core::assets::manifest::FontFamilyEntry::clone(&self) -> tungsten_core::assets::manifest::FontFamilyEntry
+impl core::fmt::Debug for tungsten_core::assets::manifest::FontFamilyEntry
+pub fn tungsten_core::assets::manifest::FontFamilyEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::manifest::FontFamilyEntry
+pub fn tungsten_core::assets::manifest::FontFamilyEntry::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::manifest::FontFamilyEntry
+impl core::marker::Send for tungsten_core::assets::manifest::FontFamilyEntry
+impl core::marker::Sync for tungsten_core::assets::manifest::FontFamilyEntry
+impl core::marker::Unpin for tungsten_core::assets::manifest::FontFamilyEntry
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::FontFamilyEntry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::FontFamilyEntry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::FontFamilyEntry
 pub struct tungsten_core::assets::FontRegistry
 impl tungsten_core::assets::registry::FontRegistry
 pub fn tungsten_core::assets::registry::FontRegistry::contains_id(&self, &str) -> bool
@@ -2495,8 +2558,29 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedFont
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedFont
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedFont
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedFont
+#[non_exhaustive] pub struct tungsten_core::assets::ResolvedFontFamily
+pub tungsten_core::assets::ResolvedFontFamily::faces: alloc::vec::Vec<alloc::string::String>
+impl tungsten_core::assets::manifest::ResolvedFontFamily
+pub fn tungsten_core::assets::manifest::ResolvedFontFamily::new(alloc::vec::Vec<alloc::string::String>) -> Self
+impl core::clone::Clone for tungsten_core::assets::manifest::ResolvedFontFamily
+pub fn tungsten_core::assets::manifest::ResolvedFontFamily::clone(&self) -> tungsten_core::assets::manifest::ResolvedFontFamily
+impl core::cmp::Eq for tungsten_core::assets::manifest::ResolvedFontFamily
+impl core::cmp::PartialEq for tungsten_core::assets::manifest::ResolvedFontFamily
+pub fn tungsten_core::assets::manifest::ResolvedFontFamily::eq(&self, &tungsten_core::assets::manifest::ResolvedFontFamily) -> bool
+impl core::fmt::Debug for tungsten_core::assets::manifest::ResolvedFontFamily
+pub fn tungsten_core::assets::manifest::ResolvedFontFamily::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::manifest::ResolvedFontFamily
+impl core::marker::Freeze for tungsten_core::assets::manifest::ResolvedFontFamily
+impl core::marker::Send for tungsten_core::assets::manifest::ResolvedFontFamily
+impl core::marker::Sync for tungsten_core::assets::manifest::ResolvedFontFamily
+impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedFontFamily
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedFontFamily
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedFontFamily
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedFontFamily
 pub struct tungsten_core::assets::ResolvedManifest
 pub tungsten_core::assets::ResolvedManifest::animations: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedAnimation>
+pub tungsten_core::assets::ResolvedManifest::font_fallback: alloc::vec::Vec<alloc::string::String>
+pub tungsten_core::assets::ResolvedManifest::font_families: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedFontFamily>
 pub tungsten_core::assets::ResolvedManifest::fonts: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedFont>
 pub tungsten_core::assets::ResolvedManifest::materials: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedMaterial>
 pub tungsten_core::assets::ResolvedManifest::particle_meshes: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedParticleMesh>
@@ -3654,6 +3738,7 @@ pub tungsten_core::config::RenderConfig::max_frame_latency: core::option::Option
 pub tungsten_core::config::RenderConfig::msaa: u32
 pub tungsten_core::config::RenderConfig::post_aa: tungsten_core::config::PostAaMode
 pub tungsten_core::config::RenderConfig::present_mode: core::option::Option<tungsten_core::config::PresentModeConfig>
+pub tungsten_core::config::RenderConfig::system_fonts: bool
 impl core::clone::Clone for tungsten_core::config::RenderConfig
 pub fn tungsten_core::config::RenderConfig::clone(&self) -> tungsten_core::config::RenderConfig
 impl core::default::Default for tungsten_core::config::RenderConfig
@@ -5540,6 +5625,379 @@ impl core::marker::UnsafeUnpin for tungsten_core::rng::Pcg32
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::rng::Pcg32
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::rng::Pcg32
 pub fn tungsten_core::rng::splitmix64(u64) -> u64
+pub mod tungsten_core::text
+#[non_exhaustive] pub enum tungsten_core::text::EllipsisAt
+pub tungsten_core::text::EllipsisAt::End
+pub tungsten_core::text::EllipsisAt::Middle
+pub tungsten_core::text::EllipsisAt::Start
+impl core::clone::Clone for tungsten_core::text::EllipsisAt
+pub fn tungsten_core::text::EllipsisAt::clone(&self) -> tungsten_core::text::EllipsisAt
+impl core::cmp::Eq for tungsten_core::text::EllipsisAt
+impl core::cmp::PartialEq for tungsten_core::text::EllipsisAt
+pub fn tungsten_core::text::EllipsisAt::eq(&self, &tungsten_core::text::EllipsisAt) -> bool
+impl core::fmt::Debug for tungsten_core::text::EllipsisAt
+pub fn tungsten_core::text::EllipsisAt::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::text::EllipsisAt
+pub fn tungsten_core::text::EllipsisAt::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::text::EllipsisAt
+impl core::marker::StructuralPartialEq for tungsten_core::text::EllipsisAt
+impl core::marker::Freeze for tungsten_core::text::EllipsisAt
+impl core::marker::Send for tungsten_core::text::EllipsisAt
+impl core::marker::Sync for tungsten_core::text::EllipsisAt
+impl core::marker::Unpin for tungsten_core::text::EllipsisAt
+impl core::marker::UnsafeUnpin for tungsten_core::text::EllipsisAt
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::EllipsisAt
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::EllipsisAt
+#[non_exhaustive] pub enum tungsten_core::text::MeasureWidth
+pub tungsten_core::text::MeasureWidth::Definite(f32)
+pub tungsten_core::text::MeasureWidth::MaxContent
+pub tungsten_core::text::MeasureWidth::MinContent
+impl core::clone::Clone for tungsten_core::text::MeasureWidth
+pub fn tungsten_core::text::MeasureWidth::clone(&self) -> tungsten_core::text::MeasureWidth
+impl core::cmp::PartialEq for tungsten_core::text::MeasureWidth
+pub fn tungsten_core::text::MeasureWidth::eq(&self, &tungsten_core::text::MeasureWidth) -> bool
+impl core::fmt::Debug for tungsten_core::text::MeasureWidth
+pub fn tungsten_core::text::MeasureWidth::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::text::MeasureWidth
+impl core::marker::StructuralPartialEq for tungsten_core::text::MeasureWidth
+impl core::marker::Freeze for tungsten_core::text::MeasureWidth
+impl core::marker::Send for tungsten_core::text::MeasureWidth
+impl core::marker::Sync for tungsten_core::text::MeasureWidth
+impl core::marker::Unpin for tungsten_core::text::MeasureWidth
+impl core::marker::UnsafeUnpin for tungsten_core::text::MeasureWidth
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::MeasureWidth
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::MeasureWidth
+#[non_exhaustive] pub enum tungsten_core::text::TextAlign
+pub tungsten_core::text::TextAlign::Center
+pub tungsten_core::text::TextAlign::End
+pub tungsten_core::text::TextAlign::Justified
+pub tungsten_core::text::TextAlign::Start
+impl core::clone::Clone for tungsten_core::text::TextAlign
+pub fn tungsten_core::text::TextAlign::clone(&self) -> tungsten_core::text::TextAlign
+impl core::cmp::Eq for tungsten_core::text::TextAlign
+impl core::cmp::PartialEq for tungsten_core::text::TextAlign
+pub fn tungsten_core::text::TextAlign::eq(&self, &tungsten_core::text::TextAlign) -> bool
+impl core::default::Default for tungsten_core::text::TextAlign
+pub fn tungsten_core::text::TextAlign::default() -> tungsten_core::text::TextAlign
+impl core::fmt::Debug for tungsten_core::text::TextAlign
+pub fn tungsten_core::text::TextAlign::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::text::TextAlign
+pub fn tungsten_core::text::TextAlign::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::text::TextAlign
+impl core::marker::StructuralPartialEq for tungsten_core::text::TextAlign
+impl core::marker::Freeze for tungsten_core::text::TextAlign
+impl core::marker::Send for tungsten_core::text::TextAlign
+impl core::marker::Sync for tungsten_core::text::TextAlign
+impl core::marker::Unpin for tungsten_core::text::TextAlign
+impl core::marker::UnsafeUnpin for tungsten_core::text::TextAlign
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::TextAlign
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::TextAlign
+#[non_exhaustive] pub enum tungsten_core::text::TextHinting
+pub tungsten_core::text::TextHinting::Disabled
+pub tungsten_core::text::TextHinting::Enabled
+impl core::clone::Clone for tungsten_core::text::TextHinting
+pub fn tungsten_core::text::TextHinting::clone(&self) -> tungsten_core::text::TextHinting
+impl core::cmp::Eq for tungsten_core::text::TextHinting
+impl core::cmp::PartialEq for tungsten_core::text::TextHinting
+pub fn tungsten_core::text::TextHinting::eq(&self, &tungsten_core::text::TextHinting) -> bool
+impl core::default::Default for tungsten_core::text::TextHinting
+pub fn tungsten_core::text::TextHinting::default() -> tungsten_core::text::TextHinting
+impl core::fmt::Debug for tungsten_core::text::TextHinting
+pub fn tungsten_core::text::TextHinting::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::text::TextHinting
+pub fn tungsten_core::text::TextHinting::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::text::TextHinting
+impl core::marker::StructuralPartialEq for tungsten_core::text::TextHinting
+impl core::marker::Freeze for tungsten_core::text::TextHinting
+impl core::marker::Send for tungsten_core::text::TextHinting
+impl core::marker::Sync for tungsten_core::text::TextHinting
+impl core::marker::Unpin for tungsten_core::text::TextHinting
+impl core::marker::UnsafeUnpin for tungsten_core::text::TextHinting
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::TextHinting
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::TextHinting
+#[non_exhaustive] pub enum tungsten_core::text::TextOverflow
+pub tungsten_core::text::TextOverflow::Clip
+pub tungsten_core::text::TextOverflow::Ellipsis
+pub tungsten_core::text::TextOverflow::Ellipsis::at: tungsten_core::text::EllipsisAt
+pub tungsten_core::text::TextOverflow::Ellipsis::lines: core::option::Option<u32>
+impl core::clone::Clone for tungsten_core::text::TextOverflow
+pub fn tungsten_core::text::TextOverflow::clone(&self) -> tungsten_core::text::TextOverflow
+impl core::cmp::Eq for tungsten_core::text::TextOverflow
+impl core::cmp::PartialEq for tungsten_core::text::TextOverflow
+pub fn tungsten_core::text::TextOverflow::eq(&self, &tungsten_core::text::TextOverflow) -> bool
+impl core::default::Default for tungsten_core::text::TextOverflow
+pub fn tungsten_core::text::TextOverflow::default() -> tungsten_core::text::TextOverflow
+impl core::fmt::Debug for tungsten_core::text::TextOverflow
+pub fn tungsten_core::text::TextOverflow::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::text::TextOverflow
+pub fn tungsten_core::text::TextOverflow::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::text::TextOverflow
+impl core::marker::StructuralPartialEq for tungsten_core::text::TextOverflow
+impl core::marker::Freeze for tungsten_core::text::TextOverflow
+impl core::marker::Send for tungsten_core::text::TextOverflow
+impl core::marker::Sync for tungsten_core::text::TextOverflow
+impl core::marker::Unpin for tungsten_core::text::TextOverflow
+impl core::marker::UnsafeUnpin for tungsten_core::text::TextOverflow
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::TextOverflow
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::TextOverflow
+#[non_exhaustive] pub enum tungsten_core::text::TextWrap
+pub tungsten_core::text::TextWrap::Glyph
+pub tungsten_core::text::TextWrap::None
+pub tungsten_core::text::TextWrap::Word
+pub tungsten_core::text::TextWrap::WordOrGlyph
+impl core::clone::Clone for tungsten_core::text::TextWrap
+pub fn tungsten_core::text::TextWrap::clone(&self) -> tungsten_core::text::TextWrap
+impl core::cmp::Eq for tungsten_core::text::TextWrap
+impl core::cmp::PartialEq for tungsten_core::text::TextWrap
+pub fn tungsten_core::text::TextWrap::eq(&self, &tungsten_core::text::TextWrap) -> bool
+impl core::default::Default for tungsten_core::text::TextWrap
+pub fn tungsten_core::text::TextWrap::default() -> tungsten_core::text::TextWrap
+impl core::fmt::Debug for tungsten_core::text::TextWrap
+pub fn tungsten_core::text::TextWrap::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::text::TextWrap
+pub fn tungsten_core::text::TextWrap::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::text::TextWrap
+impl core::marker::StructuralPartialEq for tungsten_core::text::TextWrap
+impl core::marker::Freeze for tungsten_core::text::TextWrap
+impl core::marker::Send for tungsten_core::text::TextWrap
+impl core::marker::Sync for tungsten_core::text::TextWrap
+impl core::marker::Unpin for tungsten_core::text::TextWrap
+impl core::marker::UnsafeUnpin for tungsten_core::text::TextWrap
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::TextWrap
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::TextWrap
+pub struct tungsten_core::text::FontEpoch(_)
+impl tungsten_core::text::FontEpoch
+pub const fn tungsten_core::text::FontEpoch::get(self) -> u64
+pub const fn tungsten_core::text::FontEpoch::new(u64) -> Self
+pub const fn tungsten_core::text::FontEpoch::next(self) -> Self
+impl core::clone::Clone for tungsten_core::text::FontEpoch
+pub fn tungsten_core::text::FontEpoch::clone(&self) -> tungsten_core::text::FontEpoch
+impl core::cmp::Eq for tungsten_core::text::FontEpoch
+impl core::cmp::Ord for tungsten_core::text::FontEpoch
+pub fn tungsten_core::text::FontEpoch::cmp(&self, &tungsten_core::text::FontEpoch) -> core::cmp::Ordering
+impl core::cmp::PartialEq for tungsten_core::text::FontEpoch
+pub fn tungsten_core::text::FontEpoch::eq(&self, &tungsten_core::text::FontEpoch) -> bool
+impl core::cmp::PartialOrd for tungsten_core::text::FontEpoch
+pub fn tungsten_core::text::FontEpoch::partial_cmp(&self, &tungsten_core::text::FontEpoch) -> core::option::Option<core::cmp::Ordering>
+impl core::default::Default for tungsten_core::text::FontEpoch
+pub fn tungsten_core::text::FontEpoch::default() -> tungsten_core::text::FontEpoch
+impl core::fmt::Debug for tungsten_core::text::FontEpoch
+pub fn tungsten_core::text::FontEpoch::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::text::FontEpoch
+pub fn tungsten_core::text::FontEpoch::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::text::FontEpoch
+impl core::marker::StructuralPartialEq for tungsten_core::text::FontEpoch
+impl core::marker::Freeze for tungsten_core::text::FontEpoch
+impl core::marker::Send for tungsten_core::text::FontEpoch
+impl core::marker::Sync for tungsten_core::text::FontEpoch
+impl core::marker::Unpin for tungsten_core::text::FontEpoch
+impl core::marker::UnsafeUnpin for tungsten_core::text::FontEpoch
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::FontEpoch
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::FontEpoch
+pub struct tungsten_core::text::FontFeature
+pub tungsten_core::text::FontFeature::tag: [u8; 4]
+pub tungsten_core::text::FontFeature::value: u16
+impl core::clone::Clone for tungsten_core::text::FontFeature
+pub fn tungsten_core::text::FontFeature::clone(&self) -> tungsten_core::text::FontFeature
+impl core::cmp::Eq for tungsten_core::text::FontFeature
+impl core::cmp::PartialEq for tungsten_core::text::FontFeature
+pub fn tungsten_core::text::FontFeature::eq(&self, &tungsten_core::text::FontFeature) -> bool
+impl core::fmt::Debug for tungsten_core::text::FontFeature
+pub fn tungsten_core::text::FontFeature::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::text::FontFeature
+pub fn tungsten_core::text::FontFeature::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::text::FontFeature
+impl core::marker::StructuralPartialEq for tungsten_core::text::FontFeature
+impl core::marker::Freeze for tungsten_core::text::FontFeature
+impl core::marker::Send for tungsten_core::text::FontFeature
+impl core::marker::Sync for tungsten_core::text::FontFeature
+impl core::marker::Unpin for tungsten_core::text::FontFeature
+impl core::marker::UnsafeUnpin for tungsten_core::text::FontFeature
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::FontFeature
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::FontFeature
+pub struct tungsten_core::text::FontFeatures(_)
+impl tungsten_core::text::FontFeatures
+pub fn tungsten_core::text::FontFeatures::as_slice(&self) -> &[tungsten_core::text::FontFeature]
+pub fn tungsten_core::text::FontFeatures::is_empty(&self) -> bool
+pub const fn tungsten_core::text::FontFeatures::new() -> Self
+pub fn tungsten_core::text::FontFeatures::set(&mut self, [u8; 4], u16)
+pub fn tungsten_core::text::FontFeatures::tabular_figures() -> Self
+pub fn tungsten_core::text::FontFeatures::with(self, [u8; 4], u16) -> Self
+impl core::clone::Clone for tungsten_core::text::FontFeatures
+pub fn tungsten_core::text::FontFeatures::clone(&self) -> tungsten_core::text::FontFeatures
+impl core::cmp::Eq for tungsten_core::text::FontFeatures
+impl core::cmp::PartialEq for tungsten_core::text::FontFeatures
+pub fn tungsten_core::text::FontFeatures::eq(&self, &tungsten_core::text::FontFeatures) -> bool
+impl core::default::Default for tungsten_core::text::FontFeatures
+pub fn tungsten_core::text::FontFeatures::default() -> tungsten_core::text::FontFeatures
+impl core::fmt::Debug for tungsten_core::text::FontFeatures
+pub fn tungsten_core::text::FontFeatures::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::text::FontFeatures
+pub fn tungsten_core::text::FontFeatures::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::StructuralPartialEq for tungsten_core::text::FontFeatures
+impl core::marker::Freeze for tungsten_core::text::FontFeatures
+impl core::marker::Send for tungsten_core::text::FontFeatures
+impl core::marker::Sync for tungsten_core::text::FontFeatures
+impl core::marker::Unpin for tungsten_core::text::FontFeatures
+impl core::marker::UnsafeUnpin for tungsten_core::text::FontFeatures
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::FontFeatures
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::FontFeatures
+pub struct tungsten_core::text::StyledText
+pub tungsten_core::text::StyledText::spans: alloc::vec::Vec<tungsten_core::text::TextSpan>
+impl core::clone::Clone for tungsten_core::text::StyledText
+pub fn tungsten_core::text::StyledText::clone(&self) -> tungsten_core::text::StyledText
+impl core::cmp::Eq for tungsten_core::text::StyledText
+impl core::cmp::PartialEq for tungsten_core::text::StyledText
+pub fn tungsten_core::text::StyledText::eq(&self, &tungsten_core::text::StyledText) -> bool
+impl core::convert::From<&str> for tungsten_core::text::StyledText
+pub fn tungsten_core::text::StyledText::from(&str) -> Self
+impl core::convert::From<alloc::string::String> for tungsten_core::text::StyledText
+pub fn tungsten_core::text::StyledText::from(alloc::string::String) -> Self
+impl core::default::Default for tungsten_core::text::StyledText
+pub fn tungsten_core::text::StyledText::default() -> tungsten_core::text::StyledText
+impl core::fmt::Debug for tungsten_core::text::StyledText
+pub fn tungsten_core::text::StyledText::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::text::StyledText
+impl core::marker::Freeze for tungsten_core::text::StyledText
+impl core::marker::Send for tungsten_core::text::StyledText
+impl core::marker::Sync for tungsten_core::text::StyledText
+impl core::marker::Unpin for tungsten_core::text::StyledText
+impl core::marker::UnsafeUnpin for tungsten_core::text::StyledText
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::StyledText
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::StyledText
+#[non_exhaustive] pub struct tungsten_core::text::TextLayout
+pub tungsten_core::text::TextLayout::align: tungsten_core::text::TextAlign
+pub tungsten_core::text::TextLayout::features: tungsten_core::text::FontFeatures
+pub tungsten_core::text::TextLayout::hinting: tungsten_core::text::TextHinting
+pub tungsten_core::text::TextLayout::letter_spacing: f32
+pub tungsten_core::text::TextLayout::overflow: tungsten_core::text::TextOverflow
+pub tungsten_core::text::TextLayout::wrap: tungsten_core::text::TextWrap
+impl tungsten_core::text::TextLayout
+pub fn tungsten_core::text::TextLayout::with_align(self, tungsten_core::text::TextAlign) -> Self
+pub fn tungsten_core::text::TextLayout::with_features(self, tungsten_core::text::FontFeatures) -> Self
+pub fn tungsten_core::text::TextLayout::with_hinting(self, tungsten_core::text::TextHinting) -> Self
+pub fn tungsten_core::text::TextLayout::with_letter_spacing(self, f32) -> Self
+pub fn tungsten_core::text::TextLayout::with_overflow(self, tungsten_core::text::TextOverflow) -> Self
+pub fn tungsten_core::text::TextLayout::with_wrap(self, tungsten_core::text::TextWrap) -> Self
+impl core::clone::Clone for tungsten_core::text::TextLayout
+pub fn tungsten_core::text::TextLayout::clone(&self) -> tungsten_core::text::TextLayout
+impl core::cmp::PartialEq for tungsten_core::text::TextLayout
+pub fn tungsten_core::text::TextLayout::eq(&self, &tungsten_core::text::TextLayout) -> bool
+impl core::default::Default for tungsten_core::text::TextLayout
+pub fn tungsten_core::text::TextLayout::default() -> tungsten_core::text::TextLayout
+impl core::fmt::Debug for tungsten_core::text::TextLayout
+pub fn tungsten_core::text::TextLayout::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::text::TextLayout
+impl core::marker::Freeze for tungsten_core::text::TextLayout
+impl core::marker::Send for tungsten_core::text::TextLayout
+impl core::marker::Sync for tungsten_core::text::TextLayout
+impl core::marker::Unpin for tungsten_core::text::TextLayout
+impl core::marker::UnsafeUnpin for tungsten_core::text::TextLayout
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::TextLayout
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::TextLayout
+#[non_exhaustive] pub struct tungsten_core::text::TextMetrics
+pub tungsten_core::text::TextMetrics::first_baseline: f32
+pub tungsten_core::text::TextMetrics::line_count: u32
+pub tungsten_core::text::TextMetrics::size: glam::f32::vec2::Vec2
+impl tungsten_core::text::TextMetrics
+pub const fn tungsten_core::text::TextMetrics::new(glam::f32::vec2::Vec2, f32, u32) -> Self
+impl core::clone::Clone for tungsten_core::text::TextMetrics
+pub fn tungsten_core::text::TextMetrics::clone(&self) -> tungsten_core::text::TextMetrics
+impl core::cmp::PartialEq for tungsten_core::text::TextMetrics
+pub fn tungsten_core::text::TextMetrics::eq(&self, &tungsten_core::text::TextMetrics) -> bool
+impl core::default::Default for tungsten_core::text::TextMetrics
+pub fn tungsten_core::text::TextMetrics::default() -> tungsten_core::text::TextMetrics
+impl core::fmt::Debug for tungsten_core::text::TextMetrics
+pub fn tungsten_core::text::TextMetrics::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::text::TextMetrics
+impl core::marker::StructuralPartialEq for tungsten_core::text::TextMetrics
+impl core::marker::Freeze for tungsten_core::text::TextMetrics
+impl core::marker::Send for tungsten_core::text::TextMetrics
+impl core::marker::Sync for tungsten_core::text::TextMetrics
+impl core::marker::Unpin for tungsten_core::text::TextMetrics
+impl core::marker::UnsafeUnpin for tungsten_core::text::TextMetrics
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::TextMetrics
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::TextMetrics
+pub struct tungsten_core::text::TextNodeId
+impl tungsten_core::text::TextNodeId
+pub const fn tungsten_core::text::TextNodeId::generation(self) -> u32
+pub const fn tungsten_core::text::TextNodeId::index(self) -> u32
+pub const fn tungsten_core::text::TextNodeId::new(u32, u32) -> Self
+impl core::clone::Clone for tungsten_core::text::TextNodeId
+pub fn tungsten_core::text::TextNodeId::clone(&self) -> tungsten_core::text::TextNodeId
+impl core::cmp::Eq for tungsten_core::text::TextNodeId
+impl core::cmp::PartialEq for tungsten_core::text::TextNodeId
+pub fn tungsten_core::text::TextNodeId::eq(&self, &tungsten_core::text::TextNodeId) -> bool
+impl core::fmt::Debug for tungsten_core::text::TextNodeId
+pub fn tungsten_core::text::TextNodeId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::text::TextNodeId
+pub fn tungsten_core::text::TextNodeId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::text::TextNodeId
+impl core::marker::StructuralPartialEq for tungsten_core::text::TextNodeId
+impl core::marker::Freeze for tungsten_core::text::TextNodeId
+impl core::marker::Send for tungsten_core::text::TextNodeId
+impl core::marker::Sync for tungsten_core::text::TextNodeId
+impl core::marker::Unpin for tungsten_core::text::TextNodeId
+impl core::marker::UnsafeUnpin for tungsten_core::text::TextNodeId
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::TextNodeId
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::TextNodeId
+#[non_exhaustive] pub struct tungsten_core::text::TextSpan
+pub tungsten_core::text::TextSpan::color: core::option::Option<[u8; 4]>
+pub tungsten_core::text::TextSpan::italic: core::option::Option<bool>
+pub tungsten_core::text::TextSpan::text: alloc::string::String
+pub tungsten_core::text::TextSpan::weight: core::option::Option<u16>
+impl tungsten_core::text::TextSpan
+pub fn tungsten_core::text::TextSpan::new(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_core::text::TextSpan::with_color(self, [u8; 4]) -> Self
+pub fn tungsten_core::text::TextSpan::with_italic(self, bool) -> Self
+pub fn tungsten_core::text::TextSpan::with_weight(self, u16) -> Self
+impl core::clone::Clone for tungsten_core::text::TextSpan
+pub fn tungsten_core::text::TextSpan::clone(&self) -> tungsten_core::text::TextSpan
+impl core::cmp::Eq for tungsten_core::text::TextSpan
+impl core::cmp::PartialEq for tungsten_core::text::TextSpan
+pub fn tungsten_core::text::TextSpan::eq(&self, &tungsten_core::text::TextSpan) -> bool
+impl core::default::Default for tungsten_core::text::TextSpan
+pub fn tungsten_core::text::TextSpan::default() -> tungsten_core::text::TextSpan
+impl core::fmt::Debug for tungsten_core::text::TextSpan
+pub fn tungsten_core::text::TextSpan::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::text::TextSpan
+impl core::marker::Freeze for tungsten_core::text::TextSpan
+impl core::marker::Send for tungsten_core::text::TextSpan
+impl core::marker::Sync for tungsten_core::text::TextSpan
+impl core::marker::Unpin for tungsten_core::text::TextSpan
+impl core::marker::UnsafeUnpin for tungsten_core::text::TextSpan
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::TextSpan
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::TextSpan
+#[non_exhaustive] pub struct tungsten_core::text::TextStyle
+pub tungsten_core::text::TextStyle::color: [u8; 4]
+pub tungsten_core::text::TextStyle::family: alloc::string::String
+pub tungsten_core::text::TextStyle::italic: bool
+pub tungsten_core::text::TextStyle::layout: tungsten_core::text::TextLayout
+pub tungsten_core::text::TextStyle::line_height: f32
+pub tungsten_core::text::TextStyle::size: f32
+pub tungsten_core::text::TextStyle::weight: u16
+impl tungsten_core::text::TextStyle
+pub fn tungsten_core::text::TextStyle::new(impl core::convert::Into<alloc::string::String>, f32, f32) -> Self
+pub fn tungsten_core::text::TextStyle::with_color(self, [u8; 4]) -> Self
+pub fn tungsten_core::text::TextStyle::with_italic(self, bool) -> Self
+pub fn tungsten_core::text::TextStyle::with_layout(self, tungsten_core::text::TextLayout) -> Self
+pub fn tungsten_core::text::TextStyle::with_weight(self, u16) -> Self
+impl core::clone::Clone for tungsten_core::text::TextStyle
+pub fn tungsten_core::text::TextStyle::clone(&self) -> tungsten_core::text::TextStyle
+impl core::cmp::PartialEq for tungsten_core::text::TextStyle
+pub fn tungsten_core::text::TextStyle::eq(&self, &tungsten_core::text::TextStyle) -> bool
+impl core::fmt::Debug for tungsten_core::text::TextStyle
+pub fn tungsten_core::text::TextStyle::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::text::TextStyle
+impl core::marker::Freeze for tungsten_core::text::TextStyle
+impl core::marker::Send for tungsten_core::text::TextStyle
+impl core::marker::Sync for tungsten_core::text::TextStyle
+impl core::marker::Unpin for tungsten_core::text::TextStyle
+impl core::marker::UnsafeUnpin for tungsten_core::text::TextStyle
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::TextStyle
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::TextStyle
+pub trait tungsten_core::text::TextMeasure
+pub fn tungsten_core::text::TextMeasure::measure(&mut self, tungsten_core::text::TextNodeId, core::option::Option<f32>, tungsten_core::text::MeasureWidth) -> tungsten_core::text::TextMetrics
 pub mod tungsten_core::time
 pub struct tungsten_core::time::DeltaTime
 pub tungsten_core::time::DeltaTime::dt: f32
@@ -6205,6 +6663,28 @@ impl core::marker::Unpin for tungsten_core::tween::Easing
 impl core::marker::UnsafeUnpin for tungsten_core::tween::Easing
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::tween::Easing
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::tween::Easing
+#[non_exhaustive] pub enum tungsten_core::EllipsisAt
+pub tungsten_core::EllipsisAt::End
+pub tungsten_core::EllipsisAt::Middle
+pub tungsten_core::EllipsisAt::Start
+impl core::clone::Clone for tungsten_core::text::EllipsisAt
+pub fn tungsten_core::text::EllipsisAt::clone(&self) -> tungsten_core::text::EllipsisAt
+impl core::cmp::Eq for tungsten_core::text::EllipsisAt
+impl core::cmp::PartialEq for tungsten_core::text::EllipsisAt
+pub fn tungsten_core::text::EllipsisAt::eq(&self, &tungsten_core::text::EllipsisAt) -> bool
+impl core::fmt::Debug for tungsten_core::text::EllipsisAt
+pub fn tungsten_core::text::EllipsisAt::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::text::EllipsisAt
+pub fn tungsten_core::text::EllipsisAt::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::text::EllipsisAt
+impl core::marker::StructuralPartialEq for tungsten_core::text::EllipsisAt
+impl core::marker::Freeze for tungsten_core::text::EllipsisAt
+impl core::marker::Send for tungsten_core::text::EllipsisAt
+impl core::marker::Sync for tungsten_core::text::EllipsisAt
+impl core::marker::Unpin for tungsten_core::text::EllipsisAt
+impl core::marker::UnsafeUnpin for tungsten_core::text::EllipsisAt
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::EllipsisAt
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::EllipsisAt
 pub enum tungsten_core::EmissionKind
 pub tungsten_core::EmissionKind::Burst
 pub tungsten_core::EmissionKind::Burst::count: u32
@@ -6417,6 +6897,9 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::components::LightKi
 pub enum tungsten_core::ManifestError
 pub tungsten_core::ManifestError::DuplicateId
 pub tungsten_core::ManifestError::DuplicateId::id: alloc::string::String
+pub tungsten_core::ManifestError::FontFamilyFaceMissing
+pub tungsten_core::ManifestError::FontFamilyFaceMissing::face: alloc::string::String
+pub tungsten_core::ManifestError::FontFamilyFaceMissing::family: alloc::string::String
 pub tungsten_core::ManifestError::InvalidParticleMesh
 pub tungsten_core::ManifestError::InvalidParticleMesh::id: alloc::string::String
 pub tungsten_core::ManifestError::InvalidParticleMesh::reason: alloc::string::String
@@ -6456,6 +6939,8 @@ pub tungsten_core::ManifestError::MissingTilemapFile::path: alloc::string::Strin
 pub tungsten_core::ManifestError::Parse
 pub tungsten_core::ManifestError::Parse::path: alloc::string::String
 pub tungsten_core::ManifestError::Parse::source: serde_json::error::Error
+pub tungsten_core::ManifestError::UnknownFallbackFamily
+pub tungsten_core::ManifestError::UnknownFallbackFamily::family: alloc::string::String
 impl core::error::Error for tungsten_core::assets::manifest::ManifestError
 pub fn tungsten_core::assets::manifest::ManifestError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tungsten_core::assets::manifest::ManifestError
@@ -6469,6 +6954,25 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::ManifestError
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ManifestError
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ManifestError
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ManifestError
+#[non_exhaustive] pub enum tungsten_core::MeasureWidth
+pub tungsten_core::MeasureWidth::Definite(f32)
+pub tungsten_core::MeasureWidth::MaxContent
+pub tungsten_core::MeasureWidth::MinContent
+impl core::clone::Clone for tungsten_core::text::MeasureWidth
+pub fn tungsten_core::text::MeasureWidth::clone(&self) -> tungsten_core::text::MeasureWidth
+impl core::cmp::PartialEq for tungsten_core::text::MeasureWidth
+pub fn tungsten_core::text::MeasureWidth::eq(&self, &tungsten_core::text::MeasureWidth) -> bool
+impl core::fmt::Debug for tungsten_core::text::MeasureWidth
+pub fn tungsten_core::text::MeasureWidth::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::text::MeasureWidth
+impl core::marker::StructuralPartialEq for tungsten_core::text::MeasureWidth
+impl core::marker::Freeze for tungsten_core::text::MeasureWidth
+impl core::marker::Send for tungsten_core::text::MeasureWidth
+impl core::marker::Sync for tungsten_core::text::MeasureWidth
+impl core::marker::Unpin for tungsten_core::text::MeasureWidth
+impl core::marker::UnsafeUnpin for tungsten_core::text::MeasureWidth
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::MeasureWidth
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::MeasureWidth
 pub enum tungsten_core::MouseButton
 pub tungsten_core::MouseButton::Left
 pub tungsten_core::MouseButton::Middle
@@ -6838,6 +7342,104 @@ impl core::marker::Unpin for tungsten_core::components::SquashTrigger
 impl core::marker::UnsafeUnpin for tungsten_core::components::SquashTrigger
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::components::SquashTrigger
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::components::SquashTrigger
+#[non_exhaustive] pub enum tungsten_core::TextAlign
+pub tungsten_core::TextAlign::Center
+pub tungsten_core::TextAlign::End
+pub tungsten_core::TextAlign::Justified
+pub tungsten_core::TextAlign::Start
+impl core::clone::Clone for tungsten_core::text::TextAlign
+pub fn tungsten_core::text::TextAlign::clone(&self) -> tungsten_core::text::TextAlign
+impl core::cmp::Eq for tungsten_core::text::TextAlign
+impl core::cmp::PartialEq for tungsten_core::text::TextAlign
+pub fn tungsten_core::text::TextAlign::eq(&self, &tungsten_core::text::TextAlign) -> bool
+impl core::default::Default for tungsten_core::text::TextAlign
+pub fn tungsten_core::text::TextAlign::default() -> tungsten_core::text::TextAlign
+impl core::fmt::Debug for tungsten_core::text::TextAlign
+pub fn tungsten_core::text::TextAlign::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::text::TextAlign
+pub fn tungsten_core::text::TextAlign::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::text::TextAlign
+impl core::marker::StructuralPartialEq for tungsten_core::text::TextAlign
+impl core::marker::Freeze for tungsten_core::text::TextAlign
+impl core::marker::Send for tungsten_core::text::TextAlign
+impl core::marker::Sync for tungsten_core::text::TextAlign
+impl core::marker::Unpin for tungsten_core::text::TextAlign
+impl core::marker::UnsafeUnpin for tungsten_core::text::TextAlign
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::TextAlign
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::TextAlign
+#[non_exhaustive] pub enum tungsten_core::TextHinting
+pub tungsten_core::TextHinting::Disabled
+pub tungsten_core::TextHinting::Enabled
+impl core::clone::Clone for tungsten_core::text::TextHinting
+pub fn tungsten_core::text::TextHinting::clone(&self) -> tungsten_core::text::TextHinting
+impl core::cmp::Eq for tungsten_core::text::TextHinting
+impl core::cmp::PartialEq for tungsten_core::text::TextHinting
+pub fn tungsten_core::text::TextHinting::eq(&self, &tungsten_core::text::TextHinting) -> bool
+impl core::default::Default for tungsten_core::text::TextHinting
+pub fn tungsten_core::text::TextHinting::default() -> tungsten_core::text::TextHinting
+impl core::fmt::Debug for tungsten_core::text::TextHinting
+pub fn tungsten_core::text::TextHinting::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::text::TextHinting
+pub fn tungsten_core::text::TextHinting::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::text::TextHinting
+impl core::marker::StructuralPartialEq for tungsten_core::text::TextHinting
+impl core::marker::Freeze for tungsten_core::text::TextHinting
+impl core::marker::Send for tungsten_core::text::TextHinting
+impl core::marker::Sync for tungsten_core::text::TextHinting
+impl core::marker::Unpin for tungsten_core::text::TextHinting
+impl core::marker::UnsafeUnpin for tungsten_core::text::TextHinting
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::TextHinting
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::TextHinting
+#[non_exhaustive] pub enum tungsten_core::TextOverflow
+pub tungsten_core::TextOverflow::Clip
+pub tungsten_core::TextOverflow::Ellipsis
+pub tungsten_core::TextOverflow::Ellipsis::at: tungsten_core::text::EllipsisAt
+pub tungsten_core::TextOverflow::Ellipsis::lines: core::option::Option<u32>
+impl core::clone::Clone for tungsten_core::text::TextOverflow
+pub fn tungsten_core::text::TextOverflow::clone(&self) -> tungsten_core::text::TextOverflow
+impl core::cmp::Eq for tungsten_core::text::TextOverflow
+impl core::cmp::PartialEq for tungsten_core::text::TextOverflow
+pub fn tungsten_core::text::TextOverflow::eq(&self, &tungsten_core::text::TextOverflow) -> bool
+impl core::default::Default for tungsten_core::text::TextOverflow
+pub fn tungsten_core::text::TextOverflow::default() -> tungsten_core::text::TextOverflow
+impl core::fmt::Debug for tungsten_core::text::TextOverflow
+pub fn tungsten_core::text::TextOverflow::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::text::TextOverflow
+pub fn tungsten_core::text::TextOverflow::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::text::TextOverflow
+impl core::marker::StructuralPartialEq for tungsten_core::text::TextOverflow
+impl core::marker::Freeze for tungsten_core::text::TextOverflow
+impl core::marker::Send for tungsten_core::text::TextOverflow
+impl core::marker::Sync for tungsten_core::text::TextOverflow
+impl core::marker::Unpin for tungsten_core::text::TextOverflow
+impl core::marker::UnsafeUnpin for tungsten_core::text::TextOverflow
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::TextOverflow
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::TextOverflow
+#[non_exhaustive] pub enum tungsten_core::TextWrap
+pub tungsten_core::TextWrap::Glyph
+pub tungsten_core::TextWrap::None
+pub tungsten_core::TextWrap::Word
+pub tungsten_core::TextWrap::WordOrGlyph
+impl core::clone::Clone for tungsten_core::text::TextWrap
+pub fn tungsten_core::text::TextWrap::clone(&self) -> tungsten_core::text::TextWrap
+impl core::cmp::Eq for tungsten_core::text::TextWrap
+impl core::cmp::PartialEq for tungsten_core::text::TextWrap
+pub fn tungsten_core::text::TextWrap::eq(&self, &tungsten_core::text::TextWrap) -> bool
+impl core::default::Default for tungsten_core::text::TextWrap
+pub fn tungsten_core::text::TextWrap::default() -> tungsten_core::text::TextWrap
+impl core::fmt::Debug for tungsten_core::text::TextWrap
+pub fn tungsten_core::text::TextWrap::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::text::TextWrap
+pub fn tungsten_core::text::TextWrap::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::text::TextWrap
+impl core::marker::StructuralPartialEq for tungsten_core::text::TextWrap
+impl core::marker::Freeze for tungsten_core::text::TextWrap
+impl core::marker::Send for tungsten_core::text::TextWrap
+impl core::marker::Sync for tungsten_core::text::TextWrap
+impl core::marker::Unpin for tungsten_core::text::TextWrap
+impl core::marker::UnsafeUnpin for tungsten_core::text::TextWrap
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::TextWrap
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::TextWrap
 pub enum tungsten_core::ToneMonoMode
 pub tungsten_core::ToneMonoMode::Duotone
 pub tungsten_core::ToneMonoMode::Mono
@@ -7809,6 +8411,98 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::FontEntry
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::FontEntry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::FontEntry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::FontEntry
+pub struct tungsten_core::FontEpoch(_)
+impl tungsten_core::text::FontEpoch
+pub const fn tungsten_core::text::FontEpoch::get(self) -> u64
+pub const fn tungsten_core::text::FontEpoch::new(u64) -> Self
+pub const fn tungsten_core::text::FontEpoch::next(self) -> Self
+impl core::clone::Clone for tungsten_core::text::FontEpoch
+pub fn tungsten_core::text::FontEpoch::clone(&self) -> tungsten_core::text::FontEpoch
+impl core::cmp::Eq for tungsten_core::text::FontEpoch
+impl core::cmp::Ord for tungsten_core::text::FontEpoch
+pub fn tungsten_core::text::FontEpoch::cmp(&self, &tungsten_core::text::FontEpoch) -> core::cmp::Ordering
+impl core::cmp::PartialEq for tungsten_core::text::FontEpoch
+pub fn tungsten_core::text::FontEpoch::eq(&self, &tungsten_core::text::FontEpoch) -> bool
+impl core::cmp::PartialOrd for tungsten_core::text::FontEpoch
+pub fn tungsten_core::text::FontEpoch::partial_cmp(&self, &tungsten_core::text::FontEpoch) -> core::option::Option<core::cmp::Ordering>
+impl core::default::Default for tungsten_core::text::FontEpoch
+pub fn tungsten_core::text::FontEpoch::default() -> tungsten_core::text::FontEpoch
+impl core::fmt::Debug for tungsten_core::text::FontEpoch
+pub fn tungsten_core::text::FontEpoch::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::text::FontEpoch
+pub fn tungsten_core::text::FontEpoch::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::text::FontEpoch
+impl core::marker::StructuralPartialEq for tungsten_core::text::FontEpoch
+impl core::marker::Freeze for tungsten_core::text::FontEpoch
+impl core::marker::Send for tungsten_core::text::FontEpoch
+impl core::marker::Sync for tungsten_core::text::FontEpoch
+impl core::marker::Unpin for tungsten_core::text::FontEpoch
+impl core::marker::UnsafeUnpin for tungsten_core::text::FontEpoch
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::FontEpoch
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::FontEpoch
+#[non_exhaustive] pub struct tungsten_core::FontFamilyEntry
+pub tungsten_core::FontFamilyEntry::faces: alloc::vec::Vec<alloc::string::String>
+impl core::clone::Clone for tungsten_core::assets::manifest::FontFamilyEntry
+pub fn tungsten_core::assets::manifest::FontFamilyEntry::clone(&self) -> tungsten_core::assets::manifest::FontFamilyEntry
+impl core::fmt::Debug for tungsten_core::assets::manifest::FontFamilyEntry
+pub fn tungsten_core::assets::manifest::FontFamilyEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::manifest::FontFamilyEntry
+pub fn tungsten_core::assets::manifest::FontFamilyEntry::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::manifest::FontFamilyEntry
+impl core::marker::Send for tungsten_core::assets::manifest::FontFamilyEntry
+impl core::marker::Sync for tungsten_core::assets::manifest::FontFamilyEntry
+impl core::marker::Unpin for tungsten_core::assets::manifest::FontFamilyEntry
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::FontFamilyEntry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::FontFamilyEntry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::FontFamilyEntry
+pub struct tungsten_core::FontFeature
+pub tungsten_core::FontFeature::tag: [u8; 4]
+pub tungsten_core::FontFeature::value: u16
+impl core::clone::Clone for tungsten_core::text::FontFeature
+pub fn tungsten_core::text::FontFeature::clone(&self) -> tungsten_core::text::FontFeature
+impl core::cmp::Eq for tungsten_core::text::FontFeature
+impl core::cmp::PartialEq for tungsten_core::text::FontFeature
+pub fn tungsten_core::text::FontFeature::eq(&self, &tungsten_core::text::FontFeature) -> bool
+impl core::fmt::Debug for tungsten_core::text::FontFeature
+pub fn tungsten_core::text::FontFeature::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::text::FontFeature
+pub fn tungsten_core::text::FontFeature::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::text::FontFeature
+impl core::marker::StructuralPartialEq for tungsten_core::text::FontFeature
+impl core::marker::Freeze for tungsten_core::text::FontFeature
+impl core::marker::Send for tungsten_core::text::FontFeature
+impl core::marker::Sync for tungsten_core::text::FontFeature
+impl core::marker::Unpin for tungsten_core::text::FontFeature
+impl core::marker::UnsafeUnpin for tungsten_core::text::FontFeature
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::FontFeature
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::FontFeature
+pub struct tungsten_core::FontFeatures(_)
+impl tungsten_core::text::FontFeatures
+pub fn tungsten_core::text::FontFeatures::as_slice(&self) -> &[tungsten_core::text::FontFeature]
+pub fn tungsten_core::text::FontFeatures::is_empty(&self) -> bool
+pub const fn tungsten_core::text::FontFeatures::new() -> Self
+pub fn tungsten_core::text::FontFeatures::set(&mut self, [u8; 4], u16)
+pub fn tungsten_core::text::FontFeatures::tabular_figures() -> Self
+pub fn tungsten_core::text::FontFeatures::with(self, [u8; 4], u16) -> Self
+impl core::clone::Clone for tungsten_core::text::FontFeatures
+pub fn tungsten_core::text::FontFeatures::clone(&self) -> tungsten_core::text::FontFeatures
+impl core::cmp::Eq for tungsten_core::text::FontFeatures
+impl core::cmp::PartialEq for tungsten_core::text::FontFeatures
+pub fn tungsten_core::text::FontFeatures::eq(&self, &tungsten_core::text::FontFeatures) -> bool
+impl core::default::Default for tungsten_core::text::FontFeatures
+pub fn tungsten_core::text::FontFeatures::default() -> tungsten_core::text::FontFeatures
+impl core::fmt::Debug for tungsten_core::text::FontFeatures
+pub fn tungsten_core::text::FontFeatures::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::text::FontFeatures
+pub fn tungsten_core::text::FontFeatures::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::StructuralPartialEq for tungsten_core::text::FontFeatures
+impl core::marker::Freeze for tungsten_core::text::FontFeatures
+impl core::marker::Send for tungsten_core::text::FontFeatures
+impl core::marker::Sync for tungsten_core::text::FontFeatures
+impl core::marker::Unpin for tungsten_core::text::FontFeatures
+impl core::marker::UnsafeUnpin for tungsten_core::text::FontFeatures
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::FontFeatures
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::FontFeatures
 pub struct tungsten_core::FontRegistry
 impl tungsten_core::assets::registry::FontRegistry
 pub fn tungsten_core::assets::registry::FontRegistry::contains_id(&self, &str) -> bool
@@ -8479,6 +9173,7 @@ pub tungsten_core::RenderConfig::max_frame_latency: core::option::Option<u32>
 pub tungsten_core::RenderConfig::msaa: u32
 pub tungsten_core::RenderConfig::post_aa: tungsten_core::config::PostAaMode
 pub tungsten_core::RenderConfig::present_mode: core::option::Option<tungsten_core::config::PresentModeConfig>
+pub tungsten_core::RenderConfig::system_fonts: bool
 impl core::clone::Clone for tungsten_core::config::RenderConfig
 pub fn tungsten_core::config::RenderConfig::clone(&self) -> tungsten_core::config::RenderConfig
 impl core::default::Default for tungsten_core::config::RenderConfig
@@ -8528,8 +9223,29 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedFont
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedFont
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedFont
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedFont
+#[non_exhaustive] pub struct tungsten_core::ResolvedFontFamily
+pub tungsten_core::ResolvedFontFamily::faces: alloc::vec::Vec<alloc::string::String>
+impl tungsten_core::assets::manifest::ResolvedFontFamily
+pub fn tungsten_core::assets::manifest::ResolvedFontFamily::new(alloc::vec::Vec<alloc::string::String>) -> Self
+impl core::clone::Clone for tungsten_core::assets::manifest::ResolvedFontFamily
+pub fn tungsten_core::assets::manifest::ResolvedFontFamily::clone(&self) -> tungsten_core::assets::manifest::ResolvedFontFamily
+impl core::cmp::Eq for tungsten_core::assets::manifest::ResolvedFontFamily
+impl core::cmp::PartialEq for tungsten_core::assets::manifest::ResolvedFontFamily
+pub fn tungsten_core::assets::manifest::ResolvedFontFamily::eq(&self, &tungsten_core::assets::manifest::ResolvedFontFamily) -> bool
+impl core::fmt::Debug for tungsten_core::assets::manifest::ResolvedFontFamily
+pub fn tungsten_core::assets::manifest::ResolvedFontFamily::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::manifest::ResolvedFontFamily
+impl core::marker::Freeze for tungsten_core::assets::manifest::ResolvedFontFamily
+impl core::marker::Send for tungsten_core::assets::manifest::ResolvedFontFamily
+impl core::marker::Sync for tungsten_core::assets::manifest::ResolvedFontFamily
+impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedFontFamily
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedFontFamily
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedFontFamily
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedFontFamily
 pub struct tungsten_core::ResolvedManifest
 pub tungsten_core::ResolvedManifest::animations: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedAnimation>
+pub tungsten_core::ResolvedManifest::font_fallback: alloc::vec::Vec<alloc::string::String>
+pub tungsten_core::ResolvedManifest::font_families: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedFontFamily>
 pub tungsten_core::ResolvedManifest::fonts: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedFont>
 pub tungsten_core::ResolvedManifest::materials: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedMaterial>
 pub tungsten_core::ResolvedManifest::particle_meshes: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedParticleMesh>
@@ -8929,6 +9645,29 @@ impl core::marker::Unpin for tungsten_core::components::SquashStretchState
 impl core::marker::UnsafeUnpin for tungsten_core::components::SquashStretchState
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::components::SquashStretchState
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::components::SquashStretchState
+pub struct tungsten_core::StyledText
+pub tungsten_core::StyledText::spans: alloc::vec::Vec<tungsten_core::text::TextSpan>
+impl core::clone::Clone for tungsten_core::text::StyledText
+pub fn tungsten_core::text::StyledText::clone(&self) -> tungsten_core::text::StyledText
+impl core::cmp::Eq for tungsten_core::text::StyledText
+impl core::cmp::PartialEq for tungsten_core::text::StyledText
+pub fn tungsten_core::text::StyledText::eq(&self, &tungsten_core::text::StyledText) -> bool
+impl core::convert::From<&str> for tungsten_core::text::StyledText
+pub fn tungsten_core::text::StyledText::from(&str) -> Self
+impl core::convert::From<alloc::string::String> for tungsten_core::text::StyledText
+pub fn tungsten_core::text::StyledText::from(alloc::string::String) -> Self
+impl core::default::Default for tungsten_core::text::StyledText
+pub fn tungsten_core::text::StyledText::default() -> tungsten_core::text::StyledText
+impl core::fmt::Debug for tungsten_core::text::StyledText
+pub fn tungsten_core::text::StyledText::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::text::StyledText
+impl core::marker::Freeze for tungsten_core::text::StyledText
+impl core::marker::Send for tungsten_core::text::StyledText
+impl core::marker::Sync for tungsten_core::text::StyledText
+impl core::marker::Unpin for tungsten_core::text::StyledText
+impl core::marker::UnsafeUnpin for tungsten_core::text::StyledText
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::StyledText
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::StyledText
 pub struct tungsten_core::Tag
 pub tungsten_core::Tag::name: alloc::string::String
 impl tungsten_core::components::Tag
@@ -8946,6 +9685,137 @@ impl core::marker::Unpin for tungsten_core::components::Tag
 impl core::marker::UnsafeUnpin for tungsten_core::components::Tag
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::components::Tag
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::components::Tag
+#[non_exhaustive] pub struct tungsten_core::TextLayout
+pub tungsten_core::TextLayout::align: tungsten_core::text::TextAlign
+pub tungsten_core::TextLayout::features: tungsten_core::text::FontFeatures
+pub tungsten_core::TextLayout::hinting: tungsten_core::text::TextHinting
+pub tungsten_core::TextLayout::letter_spacing: f32
+pub tungsten_core::TextLayout::overflow: tungsten_core::text::TextOverflow
+pub tungsten_core::TextLayout::wrap: tungsten_core::text::TextWrap
+impl tungsten_core::text::TextLayout
+pub fn tungsten_core::text::TextLayout::with_align(self, tungsten_core::text::TextAlign) -> Self
+pub fn tungsten_core::text::TextLayout::with_features(self, tungsten_core::text::FontFeatures) -> Self
+pub fn tungsten_core::text::TextLayout::with_hinting(self, tungsten_core::text::TextHinting) -> Self
+pub fn tungsten_core::text::TextLayout::with_letter_spacing(self, f32) -> Self
+pub fn tungsten_core::text::TextLayout::with_overflow(self, tungsten_core::text::TextOverflow) -> Self
+pub fn tungsten_core::text::TextLayout::with_wrap(self, tungsten_core::text::TextWrap) -> Self
+impl core::clone::Clone for tungsten_core::text::TextLayout
+pub fn tungsten_core::text::TextLayout::clone(&self) -> tungsten_core::text::TextLayout
+impl core::cmp::PartialEq for tungsten_core::text::TextLayout
+pub fn tungsten_core::text::TextLayout::eq(&self, &tungsten_core::text::TextLayout) -> bool
+impl core::default::Default for tungsten_core::text::TextLayout
+pub fn tungsten_core::text::TextLayout::default() -> tungsten_core::text::TextLayout
+impl core::fmt::Debug for tungsten_core::text::TextLayout
+pub fn tungsten_core::text::TextLayout::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::text::TextLayout
+impl core::marker::Freeze for tungsten_core::text::TextLayout
+impl core::marker::Send for tungsten_core::text::TextLayout
+impl core::marker::Sync for tungsten_core::text::TextLayout
+impl core::marker::Unpin for tungsten_core::text::TextLayout
+impl core::marker::UnsafeUnpin for tungsten_core::text::TextLayout
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::TextLayout
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::TextLayout
+#[non_exhaustive] pub struct tungsten_core::TextMetrics
+pub tungsten_core::TextMetrics::first_baseline: f32
+pub tungsten_core::TextMetrics::line_count: u32
+pub tungsten_core::TextMetrics::size: glam::f32::vec2::Vec2
+impl tungsten_core::text::TextMetrics
+pub const fn tungsten_core::text::TextMetrics::new(glam::f32::vec2::Vec2, f32, u32) -> Self
+impl core::clone::Clone for tungsten_core::text::TextMetrics
+pub fn tungsten_core::text::TextMetrics::clone(&self) -> tungsten_core::text::TextMetrics
+impl core::cmp::PartialEq for tungsten_core::text::TextMetrics
+pub fn tungsten_core::text::TextMetrics::eq(&self, &tungsten_core::text::TextMetrics) -> bool
+impl core::default::Default for tungsten_core::text::TextMetrics
+pub fn tungsten_core::text::TextMetrics::default() -> tungsten_core::text::TextMetrics
+impl core::fmt::Debug for tungsten_core::text::TextMetrics
+pub fn tungsten_core::text::TextMetrics::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::text::TextMetrics
+impl core::marker::StructuralPartialEq for tungsten_core::text::TextMetrics
+impl core::marker::Freeze for tungsten_core::text::TextMetrics
+impl core::marker::Send for tungsten_core::text::TextMetrics
+impl core::marker::Sync for tungsten_core::text::TextMetrics
+impl core::marker::Unpin for tungsten_core::text::TextMetrics
+impl core::marker::UnsafeUnpin for tungsten_core::text::TextMetrics
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::TextMetrics
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::TextMetrics
+pub struct tungsten_core::TextNodeId
+impl tungsten_core::text::TextNodeId
+pub const fn tungsten_core::text::TextNodeId::generation(self) -> u32
+pub const fn tungsten_core::text::TextNodeId::index(self) -> u32
+pub const fn tungsten_core::text::TextNodeId::new(u32, u32) -> Self
+impl core::clone::Clone for tungsten_core::text::TextNodeId
+pub fn tungsten_core::text::TextNodeId::clone(&self) -> tungsten_core::text::TextNodeId
+impl core::cmp::Eq for tungsten_core::text::TextNodeId
+impl core::cmp::PartialEq for tungsten_core::text::TextNodeId
+pub fn tungsten_core::text::TextNodeId::eq(&self, &tungsten_core::text::TextNodeId) -> bool
+impl core::fmt::Debug for tungsten_core::text::TextNodeId
+pub fn tungsten_core::text::TextNodeId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::text::TextNodeId
+pub fn tungsten_core::text::TextNodeId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::text::TextNodeId
+impl core::marker::StructuralPartialEq for tungsten_core::text::TextNodeId
+impl core::marker::Freeze for tungsten_core::text::TextNodeId
+impl core::marker::Send for tungsten_core::text::TextNodeId
+impl core::marker::Sync for tungsten_core::text::TextNodeId
+impl core::marker::Unpin for tungsten_core::text::TextNodeId
+impl core::marker::UnsafeUnpin for tungsten_core::text::TextNodeId
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::TextNodeId
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::TextNodeId
+#[non_exhaustive] pub struct tungsten_core::TextSpan
+pub tungsten_core::TextSpan::color: core::option::Option<[u8; 4]>
+pub tungsten_core::TextSpan::italic: core::option::Option<bool>
+pub tungsten_core::TextSpan::text: alloc::string::String
+pub tungsten_core::TextSpan::weight: core::option::Option<u16>
+impl tungsten_core::text::TextSpan
+pub fn tungsten_core::text::TextSpan::new(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_core::text::TextSpan::with_color(self, [u8; 4]) -> Self
+pub fn tungsten_core::text::TextSpan::with_italic(self, bool) -> Self
+pub fn tungsten_core::text::TextSpan::with_weight(self, u16) -> Self
+impl core::clone::Clone for tungsten_core::text::TextSpan
+pub fn tungsten_core::text::TextSpan::clone(&self) -> tungsten_core::text::TextSpan
+impl core::cmp::Eq for tungsten_core::text::TextSpan
+impl core::cmp::PartialEq for tungsten_core::text::TextSpan
+pub fn tungsten_core::text::TextSpan::eq(&self, &tungsten_core::text::TextSpan) -> bool
+impl core::default::Default for tungsten_core::text::TextSpan
+pub fn tungsten_core::text::TextSpan::default() -> tungsten_core::text::TextSpan
+impl core::fmt::Debug for tungsten_core::text::TextSpan
+pub fn tungsten_core::text::TextSpan::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::text::TextSpan
+impl core::marker::Freeze for tungsten_core::text::TextSpan
+impl core::marker::Send for tungsten_core::text::TextSpan
+impl core::marker::Sync for tungsten_core::text::TextSpan
+impl core::marker::Unpin for tungsten_core::text::TextSpan
+impl core::marker::UnsafeUnpin for tungsten_core::text::TextSpan
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::TextSpan
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::TextSpan
+#[non_exhaustive] pub struct tungsten_core::TextStyle
+pub tungsten_core::TextStyle::color: [u8; 4]
+pub tungsten_core::TextStyle::family: alloc::string::String
+pub tungsten_core::TextStyle::italic: bool
+pub tungsten_core::TextStyle::layout: tungsten_core::text::TextLayout
+pub tungsten_core::TextStyle::line_height: f32
+pub tungsten_core::TextStyle::size: f32
+pub tungsten_core::TextStyle::weight: u16
+impl tungsten_core::text::TextStyle
+pub fn tungsten_core::text::TextStyle::new(impl core::convert::Into<alloc::string::String>, f32, f32) -> Self
+pub fn tungsten_core::text::TextStyle::with_color(self, [u8; 4]) -> Self
+pub fn tungsten_core::text::TextStyle::with_italic(self, bool) -> Self
+pub fn tungsten_core::text::TextStyle::with_layout(self, tungsten_core::text::TextLayout) -> Self
+pub fn tungsten_core::text::TextStyle::with_weight(self, u16) -> Self
+impl core::clone::Clone for tungsten_core::text::TextStyle
+pub fn tungsten_core::text::TextStyle::clone(&self) -> tungsten_core::text::TextStyle
+impl core::cmp::PartialEq for tungsten_core::text::TextStyle
+pub fn tungsten_core::text::TextStyle::eq(&self, &tungsten_core::text::TextStyle) -> bool
+impl core::fmt::Debug for tungsten_core::text::TextStyle
+pub fn tungsten_core::text::TextStyle::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::text::TextStyle
+impl core::marker::Freeze for tungsten_core::text::TextStyle
+impl core::marker::Send for tungsten_core::text::TextStyle
+impl core::marker::Sync for tungsten_core::text::TextStyle
+impl core::marker::Unpin for tungsten_core::text::TextStyle
+impl core::marker::UnsafeUnpin for tungsten_core::text::TextStyle
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::TextStyle
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::TextStyle
 pub struct tungsten_core::TextureHandle(pub u32)
 impl core::clone::Clone for tungsten_core::assets::registry::TextureHandle
 pub fn tungsten_core::assets::registry::TextureHandle::clone(&self) -> tungsten_core::assets::registry::TextureHandle
@@ -9363,6 +10233,8 @@ impl tungsten_core::assets::particle::Lerp for [f32; 4]
 pub fn [f32; 4]::lerp(Self, Self, f32) -> Self
 impl tungsten_core::assets::particle::Lerp for f32
 pub fn f32::lerp(Self, Self, f32) -> Self
+pub trait tungsten_core::TextMeasure
+pub fn tungsten_core::TextMeasure::measure(&mut self, tungsten_core::text::TextNodeId, core::option::Option<f32>, tungsten_core::text::MeasureWidth) -> tungsten_core::text::TextMetrics
 pub fn tungsten_core::aabb_vs_aabb(&tungsten_core::physics::collision::Aabb, &tungsten_core::physics::collision::Aabb) -> core::option::Option<tungsten_core::physics::collision::Contact>
 pub fn tungsten_core::aabb_vs_circle(&tungsten_core::physics::collision::Aabb, glam::f32::vec2::Vec2, f32) -> core::option::Option<tungsten_core::physics::collision::Contact>
 pub fn tungsten_core::circle_vs_circle(glam::f32::vec2::Vec2, f32, glam::f32::vec2::Vec2, f32) -> core::option::Option<tungsten_core::physics::collision::Contact>
