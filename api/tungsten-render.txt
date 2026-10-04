@@ -1,0 +1,1844 @@
+pub mod tungsten_render
+pub mod tungsten_render::debug_line
+#[repr(C)] pub struct tungsten_render::debug_line::DebugLineInstance
+pub tungsten_render::debug_line::DebugLineInstance::_pad: f32
+pub tungsten_render::debug_line::DebugLineInstance::a: [f32; 2]
+pub tungsten_render::debug_line::DebugLineInstance::b: [f32; 2]
+pub tungsten_render::debug_line::DebugLineInstance::color: [f32; 4]
+pub tungsten_render::debug_line::DebugLineInstance::thickness: f32
+impl tungsten_render::debug_line::DebugLineInstance
+pub fn tungsten_render::debug_line::DebugLineInstance::desc() -> wgpu::api::render_pipeline::VertexBufferLayout<'static>
+impl bytemuck::pod::Pod for tungsten_render::debug_line::DebugLineInstance
+impl bytemuck::zeroable::Zeroable for tungsten_render::debug_line::DebugLineInstance
+impl core::clone::Clone for tungsten_render::debug_line::DebugLineInstance
+pub fn tungsten_render::debug_line::DebugLineInstance::clone(&self) -> tungsten_render::debug_line::DebugLineInstance
+impl core::fmt::Debug for tungsten_render::debug_line::DebugLineInstance
+pub fn tungsten_render::debug_line::DebugLineInstance::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::debug_line::DebugLineInstance
+impl core::marker::Freeze for tungsten_render::debug_line::DebugLineInstance
+impl core::marker::Send for tungsten_render::debug_line::DebugLineInstance
+impl core::marker::Sync for tungsten_render::debug_line::DebugLineInstance
+impl core::marker::Unpin for tungsten_render::debug_line::DebugLineInstance
+impl core::marker::UnsafeUnpin for tungsten_render::debug_line::DebugLineInstance
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::debug_line::DebugLineInstance
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::debug_line::DebugLineInstance
+pub struct tungsten_render::debug_line::DebugLinePipeline
+impl tungsten_render::debug_line::DebugLinePipeline
+pub fn tungsten_render::debug_line::DebugLinePipeline::draw(&self, &wgpu::api::device::Device, &mut wgpu::api::render_pass::RenderPass<'_>, &wgpu::api::bind_group::BindGroup, &[tungsten_render::debug_line::DebugLineInstance])
+pub fn tungsten_render::debug_line::DebugLinePipeline::new(&wgpu::api::device::Device, wgpu_types::texture::format::TextureFormat, &wgpu::api::bind_group_layout::BindGroupLayout, u32, bool) -> Self
+impl core::marker::Freeze for tungsten_render::debug_line::DebugLinePipeline
+impl core::marker::Send for tungsten_render::debug_line::DebugLinePipeline
+impl core::marker::Sync for tungsten_render::debug_line::DebugLinePipeline
+impl core::marker::Unpin for tungsten_render::debug_line::DebugLinePipeline
+impl core::marker::UnsafeUnpin for tungsten_render::debug_line::DebugLinePipeline
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::debug_line::DebugLinePipeline
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::debug_line::DebugLinePipeline
+pub mod tungsten_render::image_diff
+pub enum tungsten_render::image_diff::ImageDiffError
+pub tungsten_render::image_diff::ImageDiffError::Decode(image::error::ImageError)
+pub tungsten_render::image_diff::ImageDiffError::DimensionMismatch
+pub tungsten_render::image_diff::ImageDiffError::DimensionMismatch::lhs_h: u32
+pub tungsten_render::image_diff::ImageDiffError::DimensionMismatch::lhs_w: u32
+pub tungsten_render::image_diff::ImageDiffError::DimensionMismatch::rhs_h: u32
+pub tungsten_render::image_diff::ImageDiffError::DimensionMismatch::rhs_w: u32
+pub tungsten_render::image_diff::ImageDiffError::Io(core::io::error::Error)
+impl core::convert::From<core::io::error::Error> for tungsten_render::image_diff::ImageDiffError
+pub fn tungsten_render::image_diff::ImageDiffError::from(core::io::error::Error) -> Self
+impl core::convert::From<image::error::ImageError> for tungsten_render::image_diff::ImageDiffError
+pub fn tungsten_render::image_diff::ImageDiffError::from(image::error::ImageError) -> Self
+impl core::error::Error for tungsten_render::image_diff::ImageDiffError
+pub fn tungsten_render::image_diff::ImageDiffError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tungsten_render::image_diff::ImageDiffError
+pub fn tungsten_render::image_diff::ImageDiffError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_render::image_diff::ImageDiffError
+pub fn tungsten_render::image_diff::ImageDiffError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_render::image_diff::ImageDiffError
+impl core::marker::Send for tungsten_render::image_diff::ImageDiffError
+impl core::marker::Sync for tungsten_render::image_diff::ImageDiffError
+impl core::marker::Unpin for tungsten_render::image_diff::ImageDiffError
+impl core::marker::UnsafeUnpin for tungsten_render::image_diff::ImageDiffError
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::image_diff::ImageDiffError
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::image_diff::ImageDiffError
+pub struct tungsten_render::image_diff::DiffReport
+pub tungsten_render::image_diff::DiffReport::height: u32
+pub tungsten_render::image_diff::DiffReport::max_delta: u8
+pub tungsten_render::image_diff::DiffReport::mean_delta: f32
+pub tungsten_render::image_diff::DiffReport::pixels_above_tolerance: u32
+pub tungsten_render::image_diff::DiffReport::width: u32
+impl core::clone::Clone for tungsten_render::image_diff::DiffReport
+pub fn tungsten_render::image_diff::DiffReport::clone(&self) -> tungsten_render::image_diff::DiffReport
+impl core::cmp::PartialEq for tungsten_render::image_diff::DiffReport
+pub fn tungsten_render::image_diff::DiffReport::eq(&self, &tungsten_render::image_diff::DiffReport) -> bool
+impl core::fmt::Debug for tungsten_render::image_diff::DiffReport
+pub fn tungsten_render::image_diff::DiffReport::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::image_diff::DiffReport
+impl core::marker::StructuralPartialEq for tungsten_render::image_diff::DiffReport
+impl core::marker::Freeze for tungsten_render::image_diff::DiffReport
+impl core::marker::Send for tungsten_render::image_diff::DiffReport
+impl core::marker::Sync for tungsten_render::image_diff::DiffReport
+impl core::marker::Unpin for tungsten_render::image_diff::DiffReport
+impl core::marker::UnsafeUnpin for tungsten_render::image_diff::DiffReport
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::image_diff::DiffReport
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::image_diff::DiffReport
+pub fn tungsten_render::image_diff::compare_png(&std::path::Path, &std::path::Path, u8) -> core::result::Result<tungsten_render::image_diff::DiffReport, tungsten_render::image_diff::ImageDiffError>
+pub mod tungsten_render::lighting
+#[repr(C)] pub struct tungsten_render::lighting::GpuLight
+pub tungsten_render::lighting::GpuLight::color_intensity: [f32; 4]
+pub tungsten_render::lighting::GpuLight::position_radius: [f32; 4]
+impl bytemuck::pod::Pod for tungsten_render::lighting::GpuLight
+impl bytemuck::zeroable::Zeroable for tungsten_render::lighting::GpuLight
+impl core::clone::Clone for tungsten_render::lighting::GpuLight
+pub fn tungsten_render::lighting::GpuLight::clone(&self) -> tungsten_render::lighting::GpuLight
+impl core::default::Default for tungsten_render::lighting::GpuLight
+pub fn tungsten_render::lighting::GpuLight::default() -> tungsten_render::lighting::GpuLight
+impl core::fmt::Debug for tungsten_render::lighting::GpuLight
+pub fn tungsten_render::lighting::GpuLight::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::lighting::GpuLight
+impl core::marker::Freeze for tungsten_render::lighting::GpuLight
+impl core::marker::Send for tungsten_render::lighting::GpuLight
+impl core::marker::Sync for tungsten_render::lighting::GpuLight
+impl core::marker::Unpin for tungsten_render::lighting::GpuLight
+impl core::marker::UnsafeUnpin for tungsten_render::lighting::GpuLight
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::lighting::GpuLight
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::lighting::GpuLight
+#[repr(C)] pub struct tungsten_render::lighting::LightUbo
+pub tungsten_render::lighting::LightUbo::ambient: [f32; 4]
+pub tungsten_render::lighting::LightUbo::count_pad: [u32; 4]
+pub tungsten_render::lighting::LightUbo::lights: [tungsten_render::lighting::GpuLight; 16]
+impl tungsten_render::lighting::LightUbo
+pub fn tungsten_render::lighting::LightUbo::byte_size() -> usize
+impl bytemuck::pod::Pod for tungsten_render::lighting::LightUbo
+impl bytemuck::zeroable::Zeroable for tungsten_render::lighting::LightUbo
+impl core::clone::Clone for tungsten_render::lighting::LightUbo
+pub fn tungsten_render::lighting::LightUbo::clone(&self) -> tungsten_render::lighting::LightUbo
+impl core::default::Default for tungsten_render::lighting::LightUbo
+pub fn tungsten_render::lighting::LightUbo::default() -> Self
+impl core::fmt::Debug for tungsten_render::lighting::LightUbo
+pub fn tungsten_render::lighting::LightUbo::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::lighting::LightUbo
+impl core::marker::Freeze for tungsten_render::lighting::LightUbo
+impl core::marker::Send for tungsten_render::lighting::LightUbo
+impl core::marker::Sync for tungsten_render::lighting::LightUbo
+impl core::marker::Unpin for tungsten_render::lighting::LightUbo
+impl core::marker::UnsafeUnpin for tungsten_render::lighting::LightUbo
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::lighting::LightUbo
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::lighting::LightUbo
+pub struct tungsten_render::lighting::LightingResources
+pub tungsten_render::lighting::LightingResources::bind_group: wgpu::api::bind_group::BindGroup
+pub tungsten_render::lighting::LightingResources::bind_group_layout: wgpu::api::bind_group_layout::BindGroupLayout
+pub tungsten_render::lighting::LightingResources::buffer: wgpu::api::buffer::Buffer
+impl tungsten_render::lighting::LightingResources
+pub fn tungsten_render::lighting::LightingResources::new(&wgpu::api::device::Device) -> Self
+pub fn tungsten_render::lighting::LightingResources::write(&self, &wgpu::api::queue::Queue, &tungsten_render::lighting::LightUbo)
+impl core::marker::Freeze for tungsten_render::lighting::LightingResources
+impl core::marker::Send for tungsten_render::lighting::LightingResources
+impl core::marker::Sync for tungsten_render::lighting::LightingResources
+impl core::marker::Unpin for tungsten_render::lighting::LightingResources
+impl core::marker::UnsafeUnpin for tungsten_render::lighting::LightingResources
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::lighting::LightingResources
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::lighting::LightingResources
+pub const tungsten_render::lighting::LIT_LIGHT_CAP: usize
+pub fn tungsten_render::lighting::cull_to_cap((glam::f32::vec2::Vec2, glam::f32::vec2::Vec2), &[(glam::f32::vec2::Vec2, tungsten_core::components::Light)]) -> alloc::vec::Vec<tungsten_render::lighting::GpuLight>
+pub fn tungsten_render::lighting::distance_to_aabb_sq(glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2) -> f32
+pub fn tungsten_render::lighting::pack_lights(&[tungsten_render::lighting::GpuLight], glam::f32::vec3::Vec3) -> tungsten_render::lighting::LightUbo
+pub fn tungsten_render::lighting::pack_one_light(glam::f32::vec2::Vec2, &tungsten_core::components::Light) -> tungsten_render::lighting::GpuLight
+pub mod tungsten_render::lit_sprite
+pub struct tungsten_render::lit_sprite::LitSpritePipeline
+pub tungsten_render::lit_sprite::LitSpritePipeline::pipeline: wgpu::api::render_pipeline::RenderPipeline
+pub tungsten_render::lit_sprite::LitSpritePipeline::pipeline_layout: wgpu::api::pipeline_layout::PipelineLayout
+impl tungsten_render::lit_sprite::LitSpritePipeline
+pub fn tungsten_render::lit_sprite::LitSpritePipeline::new(&wgpu::api::device::Device, &wgpu::api::shader_module::ShaderModule, &wgpu::api::bind_group_layout::BindGroupLayout, &wgpu::api::bind_group_layout::BindGroupLayout, &wgpu::api::bind_group_layout::BindGroupLayout, wgpu_types::texture::format::TextureFormat, u32, bool) -> Self
+pub fn tungsten_render::lit_sprite::LitSpritePipeline::rebuild_with_shader(&mut self, &wgpu::api::device::Device, &wgpu::api::shader_module::ShaderModule, wgpu_types::texture::format::TextureFormat, u32, bool) -> core::result::Result<(), alloc::string::String>
+impl core::marker::Freeze for tungsten_render::lit_sprite::LitSpritePipeline
+impl core::marker::Send for tungsten_render::lit_sprite::LitSpritePipeline
+impl core::marker::Sync for tungsten_render::lit_sprite::LitSpritePipeline
+impl core::marker::Unpin for tungsten_render::lit_sprite::LitSpritePipeline
+impl core::marker::UnsafeUnpin for tungsten_render::lit_sprite::LitSpritePipeline
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::lit_sprite::LitSpritePipeline
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::lit_sprite::LitSpritePipeline
+pub const tungsten_render::lit_sprite::EMISSIVE_MASK_SHADER_NAME: &str
+pub const tungsten_render::lit_sprite::LIT_SPRITE_SHADER_NAME: &str
+pub const tungsten_render::lit_sprite::LIT_SPRITE_SHADER_SOURCE: &str
+pub const tungsten_render::lit_sprite::RIM_LIGHT_SHADER_NAME: &str
+pub mod tungsten_render::material
+pub struct tungsten_render::material::MaterialPipeline
+pub tungsten_render::material::MaterialPipeline::bind_group_layout: wgpu::api::bind_group_layout::BindGroupLayout
+pub tungsten_render::material::MaterialPipeline::defaults: tungsten_core::assets::material::MaterialUniformDefaults
+pub tungsten_render::material::MaterialPipeline::material_id: tungsten_core::assets::material::MaterialAssetId
+pub tungsten_render::material::MaterialPipeline::name: alloc::string::String
+pub tungsten_render::material::MaterialPipeline::pipeline: wgpu::api::render_pipeline::RenderPipeline
+pub tungsten_render::material::MaterialPipeline::shader_id_name: alloc::string::String
+impl core::marker::Freeze for tungsten_render::material::MaterialPipeline
+impl core::marker::Send for tungsten_render::material::MaterialPipeline
+impl core::marker::Sync for tungsten_render::material::MaterialPipeline
+impl core::marker::Unpin for tungsten_render::material::MaterialPipeline
+impl core::marker::UnsafeUnpin for tungsten_render::material::MaterialPipeline
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::material::MaterialPipeline
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::material::MaterialPipeline
+pub fn tungsten_render::material::build_material_pipeline(&wgpu::api::device::Device, &wgpu::api::shader_module::ShaderModule, &wgpu::api::bind_group_layout::BindGroupLayout, &wgpu::api::bind_group_layout::BindGroupLayout, wgpu_types::texture::format::TextureFormat, u32, bool, &str) -> (wgpu::api::render_pipeline::RenderPipeline, wgpu::api::bind_group_layout::BindGroupLayout)
+pub mod tungsten_render::mesh_particle
+pub struct tungsten_render::mesh_particle::MeshParticleBatch
+pub tungsten_render::mesh_particle::MeshParticleBatch::instances: alloc::vec::Vec<tungsten_render::mesh_particle::MeshParticleInstance>
+pub tungsten_render::mesh_particle::MeshParticleBatch::mesh: tungsten_core::assets::particle::ParticleMeshAssetId
+impl core::clone::Clone for tungsten_render::mesh_particle::MeshParticleBatch
+pub fn tungsten_render::mesh_particle::MeshParticleBatch::clone(&self) -> tungsten_render::mesh_particle::MeshParticleBatch
+impl core::fmt::Debug for tungsten_render::mesh_particle::MeshParticleBatch
+pub fn tungsten_render::mesh_particle::MeshParticleBatch::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_render::mesh_particle::MeshParticleBatch
+impl core::marker::Send for tungsten_render::mesh_particle::MeshParticleBatch
+impl core::marker::Sync for tungsten_render::mesh_particle::MeshParticleBatch
+impl core::marker::Unpin for tungsten_render::mesh_particle::MeshParticleBatch
+impl core::marker::UnsafeUnpin for tungsten_render::mesh_particle::MeshParticleBatch
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::mesh_particle::MeshParticleBatch
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::mesh_particle::MeshParticleBatch
+#[repr(C)] pub struct tungsten_render::mesh_particle::MeshParticleInstance
+pub tungsten_render::mesh_particle::MeshParticleInstance::color: [u8; 4]
+pub tungsten_render::mesh_particle::MeshParticleInstance::position: [f32; 2]
+pub tungsten_render::mesh_particle::MeshParticleInstance::rotation: f32
+pub tungsten_render::mesh_particle::MeshParticleInstance::scale: [f32; 2]
+impl tungsten_render::mesh_particle::MeshParticleInstance
+pub fn tungsten_render::mesh_particle::MeshParticleInstance::desc() -> wgpu::api::render_pipeline::VertexBufferLayout<'static>
+impl bytemuck::pod::Pod for tungsten_render::mesh_particle::MeshParticleInstance
+impl bytemuck::zeroable::Zeroable for tungsten_render::mesh_particle::MeshParticleInstance
+impl core::clone::Clone for tungsten_render::mesh_particle::MeshParticleInstance
+pub fn tungsten_render::mesh_particle::MeshParticleInstance::clone(&self) -> tungsten_render::mesh_particle::MeshParticleInstance
+impl core::cmp::PartialEq for tungsten_render::mesh_particle::MeshParticleInstance
+pub fn tungsten_render::mesh_particle::MeshParticleInstance::eq(&self, &tungsten_render::mesh_particle::MeshParticleInstance) -> bool
+impl core::fmt::Debug for tungsten_render::mesh_particle::MeshParticleInstance
+pub fn tungsten_render::mesh_particle::MeshParticleInstance::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::mesh_particle::MeshParticleInstance
+impl core::marker::StructuralPartialEq for tungsten_render::mesh_particle::MeshParticleInstance
+impl core::marker::Freeze for tungsten_render::mesh_particle::MeshParticleInstance
+impl core::marker::Send for tungsten_render::mesh_particle::MeshParticleInstance
+impl core::marker::Sync for tungsten_render::mesh_particle::MeshParticleInstance
+impl core::marker::Unpin for tungsten_render::mesh_particle::MeshParticleInstance
+impl core::marker::UnsafeUnpin for tungsten_render::mesh_particle::MeshParticleInstance
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::mesh_particle::MeshParticleInstance
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::mesh_particle::MeshParticleInstance
+pub struct tungsten_render::mesh_particle::MeshParticlePipeline
+impl tungsten_render::mesh_particle::MeshParticlePipeline
+pub fn tungsten_render::mesh_particle::MeshParticlePipeline::draw(&self, &mut wgpu::api::render_pass::RenderPass<'_>, &wgpu::api::bind_group::BindGroup)
+pub fn tungsten_render::mesh_particle::MeshParticlePipeline::new(&wgpu::api::device::Device, wgpu_types::texture::format::TextureFormat, &wgpu::api::bind_group_layout::BindGroupLayout, u32, bool) -> Self
+pub fn tungsten_render::mesh_particle::MeshParticlePipeline::prepare(&mut self, &wgpu::api::device::Device, &wgpu::api::queue::Queue, &[tungsten_render::mesh_particle::MeshParticleBatch])
+pub fn tungsten_render::mesh_particle::MeshParticlePipeline::upload_mesh(&mut self, &wgpu::api::device::Device, tungsten_core::assets::particle::ParticleMeshAssetId, &[[f32; 2]], &[u16])
+impl core::marker::Freeze for tungsten_render::mesh_particle::MeshParticlePipeline
+impl core::marker::Send for tungsten_render::mesh_particle::MeshParticlePipeline
+impl core::marker::Sync for tungsten_render::mesh_particle::MeshParticlePipeline
+impl core::marker::Unpin for tungsten_render::mesh_particle::MeshParticlePipeline
+impl core::marker::UnsafeUnpin for tungsten_render::mesh_particle::MeshParticlePipeline
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::mesh_particle::MeshParticlePipeline
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::mesh_particle::MeshParticlePipeline
+pub mod tungsten_render::passes
+pub mod tungsten_render::passes::desc
+pub enum tungsten_render::passes::desc::TargetId
+pub tungsten_render::passes::desc::TargetId::PostPing
+pub tungsten_render::passes::desc::TargetId::PostPong
+pub tungsten_render::passes::desc::TargetId::PresentSource
+pub tungsten_render::passes::desc::TargetId::SceneColor
+pub tungsten_render::passes::desc::TargetId::SceneColorMsaa
+pub tungsten_render::passes::desc::TargetId::SceneDepth
+pub tungsten_render::passes::desc::TargetId::SmaaBlend
+pub tungsten_render::passes::desc::TargetId::SmaaEdges
+pub tungsten_render::passes::desc::TargetId::Swapchain
+impl core::clone::Clone for tungsten_render::targets::TargetId
+pub fn tungsten_render::targets::TargetId::clone(&self) -> tungsten_render::targets::TargetId
+impl core::cmp::Eq for tungsten_render::targets::TargetId
+impl core::cmp::PartialEq for tungsten_render::targets::TargetId
+pub fn tungsten_render::targets::TargetId::eq(&self, &tungsten_render::targets::TargetId) -> bool
+impl core::fmt::Debug for tungsten_render::targets::TargetId
+pub fn tungsten_render::targets::TargetId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_render::targets::TargetId
+pub fn tungsten_render::targets::TargetId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_render::targets::TargetId
+impl core::marker::StructuralPartialEq for tungsten_render::targets::TargetId
+impl core::marker::Freeze for tungsten_render::targets::TargetId
+impl core::marker::Send for tungsten_render::targets::TargetId
+impl core::marker::Sync for tungsten_render::targets::TargetId
+impl core::marker::Unpin for tungsten_render::targets::TargetId
+impl core::marker::UnsafeUnpin for tungsten_render::targets::TargetId
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::targets::TargetId
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::targets::TargetId
+pub struct tungsten_render::passes::desc::PassDesc
+pub tungsten_render::passes::desc::PassDesc::clear: core::option::Option<wgpu_types::Color>
+pub tungsten_render::passes::desc::PassDesc::color: tungsten_render::targets::TargetId
+pub tungsten_render::passes::desc::PassDesc::color_resolve: core::option::Option<tungsten_render::targets::TargetId>
+pub tungsten_render::passes::desc::PassDesc::depth: core::option::Option<tungsten_render::targets::TargetId>
+pub tungsten_render::passes::desc::PassDesc::depth_clear: core::option::Option<f32>
+pub tungsten_render::passes::desc::PassDesc::label: &'static str
+impl tungsten_render::passes::desc::PassDesc
+pub const fn tungsten_render::passes::desc::PassDesc::new(&'static str, tungsten_render::targets::TargetId) -> Self
+pub const fn tungsten_render::passes::desc::PassDesc::with_clear(self, wgpu_types::Color) -> Self
+pub const fn tungsten_render::passes::desc::PassDesc::with_depth(self, tungsten_render::targets::TargetId, f32) -> Self
+pub const fn tungsten_render::passes::desc::PassDesc::with_resolve(self, tungsten_render::targets::TargetId) -> Self
+impl core::clone::Clone for tungsten_render::passes::desc::PassDesc
+pub fn tungsten_render::passes::desc::PassDesc::clone(&self) -> tungsten_render::passes::desc::PassDesc
+impl core::fmt::Debug for tungsten_render::passes::desc::PassDesc
+pub fn tungsten_render::passes::desc::PassDesc::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::passes::desc::PassDesc
+impl core::marker::Freeze for tungsten_render::passes::desc::PassDesc
+impl core::marker::Send for tungsten_render::passes::desc::PassDesc
+impl core::marker::Sync for tungsten_render::passes::desc::PassDesc
+impl core::marker::Unpin for tungsten_render::passes::desc::PassDesc
+impl core::marker::UnsafeUnpin for tungsten_render::passes::desc::PassDesc
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::passes::desc::PassDesc
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::passes::desc::PassDesc
+pub mod tungsten_render::passes::order
+pub enum tungsten_render::passes::order::PresentPath
+pub tungsten_render::passes::order::PresentPath::Blit
+pub tungsten_render::passes::order::PresentPath::Direct
+impl core::clone::Clone for tungsten_render::passes::order::PresentPath
+pub fn tungsten_render::passes::order::PresentPath::clone(&self) -> tungsten_render::passes::order::PresentPath
+impl core::cmp::Eq for tungsten_render::passes::order::PresentPath
+impl core::cmp::PartialEq for tungsten_render::passes::order::PresentPath
+pub fn tungsten_render::passes::order::PresentPath::eq(&self, &tungsten_render::passes::order::PresentPath) -> bool
+impl core::fmt::Debug for tungsten_render::passes::order::PresentPath
+pub fn tungsten_render::passes::order::PresentPath::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::passes::order::PresentPath
+impl core::marker::StructuralPartialEq for tungsten_render::passes::order::PresentPath
+impl core::marker::Freeze for tungsten_render::passes::order::PresentPath
+impl core::marker::Send for tungsten_render::passes::order::PresentPath
+impl core::marker::Sync for tungsten_render::passes::order::PresentPath
+impl core::marker::Unpin for tungsten_render::passes::order::PresentPath
+impl core::marker::UnsafeUnpin for tungsten_render::passes::order::PresentPath
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::passes::order::PresentPath
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::passes::order::PresentPath
+pub struct tungsten_render::passes::order::PassOrder(pub alloc::vec::Vec<tungsten_render::passes::desc::PassDesc>)
+impl tungsten_render::passes::order::PassOrder
+pub fn tungsten_render::passes::order::PassOrder::as_slice(&self) -> &[tungsten_render::passes::desc::PassDesc]
+impl core::clone::Clone for tungsten_render::passes::order::PassOrder
+pub fn tungsten_render::passes::order::PassOrder::clone(&self) -> tungsten_render::passes::order::PassOrder
+impl core::fmt::Debug for tungsten_render::passes::order::PassOrder
+pub fn tungsten_render::passes::order::PassOrder::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_render::passes::order::PassOrder
+impl core::marker::Send for tungsten_render::passes::order::PassOrder
+impl core::marker::Sync for tungsten_render::passes::order::PassOrder
+impl core::marker::Unpin for tungsten_render::passes::order::PassOrder
+impl core::marker::UnsafeUnpin for tungsten_render::passes::order::PassOrder
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::passes::order::PassOrder
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::passes::order::PassOrder
+pub fn tungsten_render::passes::order::default_pass_order(u32, tungsten_core::config::DepthSortMode, bool, usize, tungsten_core::config::PostAaMode, tungsten_render::passes::order::PresentPath) -> tungsten_render::passes::order::PassOrder
+pub fn tungsten_render::passes::order::text_overlay_target(usize, tungsten_core::config::PostAaMode) -> tungsten_render::targets::TargetId
+pub mod tungsten_render::passes::recorder
+pub struct tungsten_render::passes::recorder::PassRecorder
+impl tungsten_render::passes::recorder::PassRecorder
+pub fn tungsten_render::passes::recorder::PassRecorder::begin<'a>(&'a mut wgpu::api::command_encoder::CommandEncoder, &tungsten_render::passes::desc::PassDesc, &'a tungsten_render::targets::RenderTargetPool, &'a wgpu::api::texture_view::TextureView, core::option::Option<wgpu_types::Color>) -> wgpu::api::render_pass::RenderPass<'a>
+impl core::marker::Freeze for tungsten_render::passes::recorder::PassRecorder
+impl core::marker::Send for tungsten_render::passes::recorder::PassRecorder
+impl core::marker::Sync for tungsten_render::passes::recorder::PassRecorder
+impl core::marker::Unpin for tungsten_render::passes::recorder::PassRecorder
+impl core::marker::UnsafeUnpin for tungsten_render::passes::recorder::PassRecorder
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::passes::recorder::PassRecorder
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::passes::recorder::PassRecorder
+pub enum tungsten_render::passes::PresentPath
+pub tungsten_render::passes::PresentPath::Blit
+pub tungsten_render::passes::PresentPath::Direct
+impl core::clone::Clone for tungsten_render::passes::order::PresentPath
+pub fn tungsten_render::passes::order::PresentPath::clone(&self) -> tungsten_render::passes::order::PresentPath
+impl core::cmp::Eq for tungsten_render::passes::order::PresentPath
+impl core::cmp::PartialEq for tungsten_render::passes::order::PresentPath
+pub fn tungsten_render::passes::order::PresentPath::eq(&self, &tungsten_render::passes::order::PresentPath) -> bool
+impl core::fmt::Debug for tungsten_render::passes::order::PresentPath
+pub fn tungsten_render::passes::order::PresentPath::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::passes::order::PresentPath
+impl core::marker::StructuralPartialEq for tungsten_render::passes::order::PresentPath
+impl core::marker::Freeze for tungsten_render::passes::order::PresentPath
+impl core::marker::Send for tungsten_render::passes::order::PresentPath
+impl core::marker::Sync for tungsten_render::passes::order::PresentPath
+impl core::marker::Unpin for tungsten_render::passes::order::PresentPath
+impl core::marker::UnsafeUnpin for tungsten_render::passes::order::PresentPath
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::passes::order::PresentPath
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::passes::order::PresentPath
+pub enum tungsten_render::passes::TargetId
+pub tungsten_render::passes::TargetId::PostPing
+pub tungsten_render::passes::TargetId::PostPong
+pub tungsten_render::passes::TargetId::PresentSource
+pub tungsten_render::passes::TargetId::SceneColor
+pub tungsten_render::passes::TargetId::SceneColorMsaa
+pub tungsten_render::passes::TargetId::SceneDepth
+pub tungsten_render::passes::TargetId::SmaaBlend
+pub tungsten_render::passes::TargetId::SmaaEdges
+pub tungsten_render::passes::TargetId::Swapchain
+impl core::clone::Clone for tungsten_render::targets::TargetId
+pub fn tungsten_render::targets::TargetId::clone(&self) -> tungsten_render::targets::TargetId
+impl core::cmp::Eq for tungsten_render::targets::TargetId
+impl core::cmp::PartialEq for tungsten_render::targets::TargetId
+pub fn tungsten_render::targets::TargetId::eq(&self, &tungsten_render::targets::TargetId) -> bool
+impl core::fmt::Debug for tungsten_render::targets::TargetId
+pub fn tungsten_render::targets::TargetId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_render::targets::TargetId
+pub fn tungsten_render::targets::TargetId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_render::targets::TargetId
+impl core::marker::StructuralPartialEq for tungsten_render::targets::TargetId
+impl core::marker::Freeze for tungsten_render::targets::TargetId
+impl core::marker::Send for tungsten_render::targets::TargetId
+impl core::marker::Sync for tungsten_render::targets::TargetId
+impl core::marker::Unpin for tungsten_render::targets::TargetId
+impl core::marker::UnsafeUnpin for tungsten_render::targets::TargetId
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::targets::TargetId
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::targets::TargetId
+pub struct tungsten_render::passes::PassDesc
+pub tungsten_render::passes::PassDesc::clear: core::option::Option<wgpu_types::Color>
+pub tungsten_render::passes::PassDesc::color: tungsten_render::targets::TargetId
+pub tungsten_render::passes::PassDesc::color_resolve: core::option::Option<tungsten_render::targets::TargetId>
+pub tungsten_render::passes::PassDesc::depth: core::option::Option<tungsten_render::targets::TargetId>
+pub tungsten_render::passes::PassDesc::depth_clear: core::option::Option<f32>
+pub tungsten_render::passes::PassDesc::label: &'static str
+impl tungsten_render::passes::desc::PassDesc
+pub const fn tungsten_render::passes::desc::PassDesc::new(&'static str, tungsten_render::targets::TargetId) -> Self
+pub const fn tungsten_render::passes::desc::PassDesc::with_clear(self, wgpu_types::Color) -> Self
+pub const fn tungsten_render::passes::desc::PassDesc::with_depth(self, tungsten_render::targets::TargetId, f32) -> Self
+pub const fn tungsten_render::passes::desc::PassDesc::with_resolve(self, tungsten_render::targets::TargetId) -> Self
+impl core::clone::Clone for tungsten_render::passes::desc::PassDesc
+pub fn tungsten_render::passes::desc::PassDesc::clone(&self) -> tungsten_render::passes::desc::PassDesc
+impl core::fmt::Debug for tungsten_render::passes::desc::PassDesc
+pub fn tungsten_render::passes::desc::PassDesc::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::passes::desc::PassDesc
+impl core::marker::Freeze for tungsten_render::passes::desc::PassDesc
+impl core::marker::Send for tungsten_render::passes::desc::PassDesc
+impl core::marker::Sync for tungsten_render::passes::desc::PassDesc
+impl core::marker::Unpin for tungsten_render::passes::desc::PassDesc
+impl core::marker::UnsafeUnpin for tungsten_render::passes::desc::PassDesc
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::passes::desc::PassDesc
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::passes::desc::PassDesc
+pub struct tungsten_render::passes::PassOrder(pub alloc::vec::Vec<tungsten_render::passes::desc::PassDesc>)
+impl tungsten_render::passes::order::PassOrder
+pub fn tungsten_render::passes::order::PassOrder::as_slice(&self) -> &[tungsten_render::passes::desc::PassDesc]
+impl core::clone::Clone for tungsten_render::passes::order::PassOrder
+pub fn tungsten_render::passes::order::PassOrder::clone(&self) -> tungsten_render::passes::order::PassOrder
+impl core::fmt::Debug for tungsten_render::passes::order::PassOrder
+pub fn tungsten_render::passes::order::PassOrder::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_render::passes::order::PassOrder
+impl core::marker::Send for tungsten_render::passes::order::PassOrder
+impl core::marker::Sync for tungsten_render::passes::order::PassOrder
+impl core::marker::Unpin for tungsten_render::passes::order::PassOrder
+impl core::marker::UnsafeUnpin for tungsten_render::passes::order::PassOrder
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::passes::order::PassOrder
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::passes::order::PassOrder
+pub struct tungsten_render::passes::PassRecorder
+impl tungsten_render::passes::recorder::PassRecorder
+pub fn tungsten_render::passes::recorder::PassRecorder::begin<'a>(&'a mut wgpu::api::command_encoder::CommandEncoder, &tungsten_render::passes::desc::PassDesc, &'a tungsten_render::targets::RenderTargetPool, &'a wgpu::api::texture_view::TextureView, core::option::Option<wgpu_types::Color>) -> wgpu::api::render_pass::RenderPass<'a>
+impl core::marker::Freeze for tungsten_render::passes::recorder::PassRecorder
+impl core::marker::Send for tungsten_render::passes::recorder::PassRecorder
+impl core::marker::Sync for tungsten_render::passes::recorder::PassRecorder
+impl core::marker::Unpin for tungsten_render::passes::recorder::PassRecorder
+impl core::marker::UnsafeUnpin for tungsten_render::passes::recorder::PassRecorder
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::passes::recorder::PassRecorder
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::passes::recorder::PassRecorder
+pub fn tungsten_render::passes::default_pass_order(u32, tungsten_core::config::DepthSortMode, bool, usize, tungsten_core::config::PostAaMode, tungsten_render::passes::order::PresentPath) -> tungsten_render::passes::order::PassOrder
+pub fn tungsten_render::passes::text_overlay_target(usize, tungsten_core::config::PostAaMode) -> tungsten_render::targets::TargetId
+pub mod tungsten_render::post
+pub mod tungsten_render::post::bloom
+pub struct tungsten_render::post::bloom::BloomPipeline
+pub tungsten_render::post::bloom::BloomPipeline::shader_ids: tungsten_render::post::bloom::BloomShaderIds
+impl tungsten_render::post::bloom::BloomPipeline
+pub fn tungsten_render::post::bloom::BloomPipeline::new(&wgpu::api::device::Device, wgpu_types::texture::format::TextureFormat, &tungsten_render::shader_hot_reload::ShaderModuleCache, tungsten_render::post::bloom::BloomShaderIds) -> Self
+pub fn tungsten_render::post::bloom::BloomPipeline::rebuild_stage_with_module(&mut self, &wgpu::api::device::Device, wgpu_types::texture::format::TextureFormat, tungsten_core::assets::shader::ShaderAssetId, &wgpu::api::shader_module::ShaderModule) -> core::result::Result<(), alloc::string::String>
+pub fn tungsten_render::post::bloom::BloomPipeline::target_format(&self) -> wgpu_types::texture::format::TextureFormat
+impl core::marker::Freeze for tungsten_render::post::bloom::BloomPipeline
+impl core::marker::Send for tungsten_render::post::bloom::BloomPipeline
+impl core::marker::Sync for tungsten_render::post::bloom::BloomPipeline
+impl core::marker::Unpin for tungsten_render::post::bloom::BloomPipeline
+impl core::marker::UnsafeUnpin for tungsten_render::post::bloom::BloomPipeline
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::post::bloom::BloomPipeline
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::post::bloom::BloomPipeline
+pub struct tungsten_render::post::bloom::BloomShaderIds
+pub tungsten_render::post::bloom::BloomShaderIds::composite: tungsten_core::assets::shader::ShaderAssetId
+pub tungsten_render::post::bloom::BloomShaderIds::downsample: tungsten_core::assets::shader::ShaderAssetId
+pub tungsten_render::post::bloom::BloomShaderIds::threshold: tungsten_core::assets::shader::ShaderAssetId
+pub tungsten_render::post::bloom::BloomShaderIds::upsample: tungsten_core::assets::shader::ShaderAssetId
+impl core::clone::Clone for tungsten_render::post::bloom::BloomShaderIds
+pub fn tungsten_render::post::bloom::BloomShaderIds::clone(&self) -> tungsten_render::post::bloom::BloomShaderIds
+impl core::fmt::Debug for tungsten_render::post::bloom::BloomShaderIds
+pub fn tungsten_render::post::bloom::BloomShaderIds::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::post::bloom::BloomShaderIds
+impl core::marker::Freeze for tungsten_render::post::bloom::BloomShaderIds
+impl core::marker::Send for tungsten_render::post::bloom::BloomShaderIds
+impl core::marker::Sync for tungsten_render::post::bloom::BloomShaderIds
+impl core::marker::Unpin for tungsten_render::post::bloom::BloomShaderIds
+impl core::marker::UnsafeUnpin for tungsten_render::post::bloom::BloomShaderIds
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::post::bloom::BloomShaderIds
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::post::bloom::BloomShaderIds
+pub const tungsten_render::post::bloom::BLOOM_COMPOSITE_SHADER_NAME: &str
+pub const tungsten_render::post::bloom::BLOOM_DOWNSAMPLE_SHADER_NAME: &str
+pub const tungsten_render::post::bloom::BLOOM_THRESHOLD_SHADER_NAME: &str
+pub const tungsten_render::post::bloom::BLOOM_UPSAMPLE_SHADER_NAME: &str
+pub fn tungsten_render::post::bloom::pack_params(&tungsten_core::post::BloomParams, (f32, f32), u32, u32, i32) -> tungsten_core::tween::UniformOverrideBlock
+pub mod tungsten_render::post::fullscreen
+pub struct tungsten_render::post::fullscreen::StockLayouts
+pub tungsten_render::post::fullscreen::StockLayouts::params_bgl: wgpu::api::bind_group_layout::BindGroupLayout
+pub tungsten_render::post::fullscreen::StockLayouts::source_bgl: wgpu::api::bind_group_layout::BindGroupLayout
+impl core::marker::Freeze for tungsten_render::post::fullscreen::StockLayouts
+impl core::marker::Send for tungsten_render::post::fullscreen::StockLayouts
+impl core::marker::Sync for tungsten_render::post::fullscreen::StockLayouts
+impl core::marker::Unpin for tungsten_render::post::fullscreen::StockLayouts
+impl core::marker::UnsafeUnpin for tungsten_render::post::fullscreen::StockLayouts
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::post::fullscreen::StockLayouts
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::post::fullscreen::StockLayouts
+pub fn tungsten_render::post::fullscreen::build_layouts(&wgpu::api::device::Device) -> tungsten_render::post::fullscreen::StockLayouts
+pub fn tungsten_render::post::fullscreen::build_params_bind_group(&wgpu::api::device::Device, &tungsten_render::post::fullscreen::StockLayouts, &str, &wgpu::api::buffer::Buffer) -> wgpu::api::bind_group::BindGroup
+pub fn tungsten_render::post::fullscreen::build_params_ubo(&wgpu::api::device::Device, &str) -> wgpu::api::buffer::Buffer
+pub fn tungsten_render::post::fullscreen::build_pipeline(&wgpu::api::device::Device, &tungsten_render::post::fullscreen::StockLayouts, &str, &str, wgpu_types::texture::format::TextureFormat) -> wgpu::api::render_pipeline::RenderPipeline
+pub fn tungsten_render::post::fullscreen::build_pipeline_with_module(&wgpu::api::device::Device, &tungsten_render::post::fullscreen::StockLayouts, &str, &wgpu::api::shader_module::ShaderModule, wgpu_types::texture::format::TextureFormat) -> wgpu::api::render_pipeline::RenderPipeline
+pub fn tungsten_render::post::fullscreen::build_source_bind_group(&wgpu::api::device::Device, &tungsten_render::post::fullscreen::StockLayouts, &str, &wgpu::api::texture_view::TextureView, &wgpu::api::sampler::Sampler) -> wgpu::api::bind_group::BindGroup
+pub mod tungsten_render::post::smaa
+pub struct tungsten_render::post::smaa::SmaaPipeline
+pub tungsten_render::post::smaa::SmaaPipeline::shader_ids: tungsten_render::post::smaa::SmaaShaderIds
+impl tungsten_render::post::smaa::SmaaPipeline
+pub fn tungsten_render::post::smaa::SmaaPipeline::new(&wgpu::api::device::Device, &wgpu::api::queue::Queue, wgpu_types::texture::format::TextureFormat, &wgpu::api::shader_module::ShaderModule, &wgpu::api::shader_module::ShaderModule, &wgpu::api::shader_module::ShaderModule, tungsten_render::post::smaa::SmaaShaderIds) -> Self
+pub fn tungsten_render::post::smaa::SmaaPipeline::rebuild_stage_with_module(&mut self, &wgpu::api::device::Device, tungsten_core::assets::shader::ShaderAssetId, &wgpu::api::shader_module::ShaderModule) -> core::result::Result<(), alloc::string::String>
+pub fn tungsten_render::post::smaa::SmaaPipeline::record_blend_weights_pass(&mut self, &wgpu::api::device::Device, &mut wgpu::api::render_pass::RenderPass<'_>, &tungsten_render::targets::RenderTargetPool)
+pub fn tungsten_render::post::smaa::SmaaPipeline::record_edge_pass(&mut self, &wgpu::api::device::Device, &mut wgpu::api::render_pass::RenderPass<'_>, &tungsten_render::targets::RenderTargetPool, tungsten_render::targets::TargetId, &wgpu::api::texture_view::TextureView)
+pub fn tungsten_render::post::smaa::SmaaPipeline::record_neighborhood_pass(&mut self, &wgpu::api::device::Device, &mut wgpu::api::render_pass::RenderPass<'_>, &tungsten_render::targets::RenderTargetPool, tungsten_render::targets::TargetId, &wgpu::api::texture_view::TextureView)
+pub fn tungsten_render::post::smaa::SmaaPipeline::target_format(&self) -> wgpu_types::texture::format::TextureFormat
+pub fn tungsten_render::post::smaa::SmaaPipeline::update_preset(&self, &wgpu::api::queue::Queue, tungsten_core::config::PostAaMode, (u32, u32))
+impl core::marker::Freeze for tungsten_render::post::smaa::SmaaPipeline
+impl core::marker::Send for tungsten_render::post::smaa::SmaaPipeline
+impl core::marker::Sync for tungsten_render::post::smaa::SmaaPipeline
+impl core::marker::Unpin for tungsten_render::post::smaa::SmaaPipeline
+impl core::marker::UnsafeUnpin for tungsten_render::post::smaa::SmaaPipeline
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::post::smaa::SmaaPipeline
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::post::smaa::SmaaPipeline
+pub struct tungsten_render::post::smaa::SmaaPreset
+pub tungsten_render::post::smaa::SmaaPreset::corner_rounding: u32
+pub tungsten_render::post::smaa::SmaaPreset::max_search_steps: u32
+pub tungsten_render::post::smaa::SmaaPreset::max_search_steps_diag: u32
+pub tungsten_render::post::smaa::SmaaPreset::threshold: f32
+impl tungsten_render::post::smaa::SmaaPreset
+pub fn tungsten_render::post::smaa::SmaaPreset::from_mode(tungsten_core::config::PostAaMode) -> core::option::Option<Self>
+impl core::clone::Clone for tungsten_render::post::smaa::SmaaPreset
+pub fn tungsten_render::post::smaa::SmaaPreset::clone(&self) -> tungsten_render::post::smaa::SmaaPreset
+impl core::cmp::PartialEq for tungsten_render::post::smaa::SmaaPreset
+pub fn tungsten_render::post::smaa::SmaaPreset::eq(&self, &tungsten_render::post::smaa::SmaaPreset) -> bool
+impl core::fmt::Debug for tungsten_render::post::smaa::SmaaPreset
+pub fn tungsten_render::post::smaa::SmaaPreset::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::post::smaa::SmaaPreset
+impl core::marker::StructuralPartialEq for tungsten_render::post::smaa::SmaaPreset
+impl core::marker::Freeze for tungsten_render::post::smaa::SmaaPreset
+impl core::marker::Send for tungsten_render::post::smaa::SmaaPreset
+impl core::marker::Sync for tungsten_render::post::smaa::SmaaPreset
+impl core::marker::Unpin for tungsten_render::post::smaa::SmaaPreset
+impl core::marker::UnsafeUnpin for tungsten_render::post::smaa::SmaaPreset
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::post::smaa::SmaaPreset
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::post::smaa::SmaaPreset
+#[repr(C)] pub struct tungsten_render::post::smaa::SmaaPresetUbo
+pub tungsten_render::post::smaa::SmaaPresetUbo::_pad: [f32; 56]
+pub tungsten_render::post::smaa::SmaaPresetUbo::corner_rounding: f32
+pub tungsten_render::post::smaa::SmaaPresetUbo::max_search_steps: f32
+pub tungsten_render::post::smaa::SmaaPresetUbo::max_search_steps_diag: f32
+pub tungsten_render::post::smaa::SmaaPresetUbo::rt_metrics: [f32; 4]
+pub tungsten_render::post::smaa::SmaaPresetUbo::threshold: f32
+impl tungsten_render::post::smaa::SmaaPresetUbo
+pub fn tungsten_render::post::smaa::SmaaPresetUbo::from_preset(tungsten_render::post::smaa::SmaaPreset, (u32, u32)) -> Self
+impl bytemuck::pod::Pod for tungsten_render::post::smaa::SmaaPresetUbo
+impl bytemuck::zeroable::Zeroable for tungsten_render::post::smaa::SmaaPresetUbo
+impl core::clone::Clone for tungsten_render::post::smaa::SmaaPresetUbo
+pub fn tungsten_render::post::smaa::SmaaPresetUbo::clone(&self) -> tungsten_render::post::smaa::SmaaPresetUbo
+impl core::fmt::Debug for tungsten_render::post::smaa::SmaaPresetUbo
+pub fn tungsten_render::post::smaa::SmaaPresetUbo::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::post::smaa::SmaaPresetUbo
+impl core::marker::Freeze for tungsten_render::post::smaa::SmaaPresetUbo
+impl core::marker::Send for tungsten_render::post::smaa::SmaaPresetUbo
+impl core::marker::Sync for tungsten_render::post::smaa::SmaaPresetUbo
+impl core::marker::Unpin for tungsten_render::post::smaa::SmaaPresetUbo
+impl core::marker::UnsafeUnpin for tungsten_render::post::smaa::SmaaPresetUbo
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::post::smaa::SmaaPresetUbo
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::post::smaa::SmaaPresetUbo
+pub struct tungsten_render::post::smaa::SmaaShaderIds
+pub tungsten_render::post::smaa::SmaaShaderIds::blend_weights: tungsten_core::assets::shader::ShaderAssetId
+pub tungsten_render::post::smaa::SmaaShaderIds::edge: tungsten_core::assets::shader::ShaderAssetId
+pub tungsten_render::post::smaa::SmaaShaderIds::neighborhood_blend: tungsten_core::assets::shader::ShaderAssetId
+impl core::clone::Clone for tungsten_render::post::smaa::SmaaShaderIds
+pub fn tungsten_render::post::smaa::SmaaShaderIds::clone(&self) -> tungsten_render::post::smaa::SmaaShaderIds
+impl core::fmt::Debug for tungsten_render::post::smaa::SmaaShaderIds
+pub fn tungsten_render::post::smaa::SmaaShaderIds::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::post::smaa::SmaaShaderIds
+impl core::marker::Freeze for tungsten_render::post::smaa::SmaaShaderIds
+impl core::marker::Send for tungsten_render::post::smaa::SmaaShaderIds
+impl core::marker::Sync for tungsten_render::post::smaa::SmaaShaderIds
+impl core::marker::Unpin for tungsten_render::post::smaa::SmaaShaderIds
+impl core::marker::UnsafeUnpin for tungsten_render::post::smaa::SmaaShaderIds
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::post::smaa::SmaaShaderIds
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::post::smaa::SmaaShaderIds
+pub const tungsten_render::post::smaa::SMAA_BLEND_WEIGHTS_SHADER_NAME: &str
+pub const tungsten_render::post::smaa::SMAA_EDGE_SHADER_NAME: &str
+pub const tungsten_render::post::smaa::SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME: &str
+pub fn tungsten_render::post::smaa::blend_weights_pass_desc() -> tungsten_render::passes::desc::PassDesc
+pub fn tungsten_render::post::smaa::edge_pass_desc() -> tungsten_render::passes::desc::PassDesc
+pub fn tungsten_render::post::smaa::neighborhood_pass_desc() -> tungsten_render::passes::desc::PassDesc
+pub mod tungsten_render::post::smaa_luts
+pub const tungsten_render::post::smaa_luts::AREA_TEX_BPP: u32
+pub const tungsten_render::post::smaa_luts::AREA_TEX_HEIGHT: u32
+pub const tungsten_render::post::smaa_luts::AREA_TEX_LEN: usize
+pub const tungsten_render::post::smaa_luts::AREA_TEX_WIDTH: u32
+pub const tungsten_render::post::smaa_luts::SEARCH_TEX_HEIGHT: u32
+pub const tungsten_render::post::smaa_luts::SEARCH_TEX_LEN: usize
+pub const tungsten_render::post::smaa_luts::SEARCH_TEX_WIDTH: u32
+pub fn tungsten_render::post::smaa_luts::area_bytes() -> &'static [u8]
+pub fn tungsten_render::post::smaa_luts::search_bytes() -> &'static [u8]
+pub fn tungsten_render::post::smaa_luts::upload_area(&wgpu::api::device::Device, &wgpu::api::queue::Queue) -> (wgpu::api::texture::Texture, wgpu::api::texture_view::TextureView)
+pub fn tungsten_render::post::smaa_luts::upload_search(&wgpu::api::device::Device, &wgpu::api::queue::Queue) -> (wgpu::api::texture::Texture, wgpu::api::texture_view::TextureView)
+pub struct tungsten_render::post::PostStackRenderer
+impl tungsten_render::post::PostStackRenderer
+pub fn tungsten_render::post::PostStackRenderer::new(&wgpu::api::device::Device, wgpu_types::texture::format::TextureFormat, &tungsten_render::shader_hot_reload::ShaderModuleCache, tungsten_render::post::bloom::BloomShaderIds, &[tungsten_core::assets::shader::ShaderAssetId; 17]) -> Self
+pub fn tungsten_render::post::PostStackRenderer::plan_targets(usize) -> alloc::vec::Vec<(tungsten_render::targets::TargetId, tungsten_render::targets::TargetId)>
+pub fn tungsten_render::post::PostStackRenderer::record_pass(&mut self, &wgpu::api::device::Device, &wgpu::api::queue::Queue, &mut wgpu::api::render_pass::RenderPass<'_>, &tungsten_render::targets::RenderTargetPool, &tungsten_core::post::PostPass, tungsten_render::targets::TargetId, usize)
+impl core::marker::Freeze for tungsten_render::post::PostStackRenderer
+impl core::marker::Send for tungsten_render::post::PostStackRenderer
+impl core::marker::Sync for tungsten_render::post::PostStackRenderer
+impl core::marker::Unpin for tungsten_render::post::PostStackRenderer
+impl core::marker::UnsafeUnpin for tungsten_render::post::PostStackRenderer
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::post::PostStackRenderer
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::post::PostStackRenderer
+pub mod tungsten_render::quad
+#[repr(C)] pub struct tungsten_render::quad::QuadInstance
+pub tungsten_render::quad::QuadInstance::color: [f32; 4]
+pub tungsten_render::quad::QuadInstance::position: [f32; 2]
+pub tungsten_render::quad::QuadInstance::size: [f32; 2]
+impl tungsten_render::quad::QuadInstance
+pub fn tungsten_render::quad::QuadInstance::desc() -> wgpu::api::render_pipeline::VertexBufferLayout<'static>
+impl bytemuck::pod::Pod for tungsten_render::quad::QuadInstance
+impl bytemuck::zeroable::Zeroable for tungsten_render::quad::QuadInstance
+impl core::clone::Clone for tungsten_render::quad::QuadInstance
+pub fn tungsten_render::quad::QuadInstance::clone(&self) -> tungsten_render::quad::QuadInstance
+impl core::fmt::Debug for tungsten_render::quad::QuadInstance
+pub fn tungsten_render::quad::QuadInstance::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::quad::QuadInstance
+impl core::marker::Freeze for tungsten_render::quad::QuadInstance
+impl core::marker::Send for tungsten_render::quad::QuadInstance
+impl core::marker::Sync for tungsten_render::quad::QuadInstance
+impl core::marker::Unpin for tungsten_render::quad::QuadInstance
+impl core::marker::UnsafeUnpin for tungsten_render::quad::QuadInstance
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::quad::QuadInstance
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::quad::QuadInstance
+pub struct tungsten_render::quad::QuadPipeline
+impl tungsten_render::quad::QuadPipeline
+pub fn tungsten_render::quad::QuadPipeline::camera_bind_group(&self) -> &wgpu::api::bind_group::BindGroup
+pub fn tungsten_render::quad::QuadPipeline::camera_bind_group_layout(&self) -> &wgpu::api::bind_group_layout::BindGroupLayout
+pub fn tungsten_render::quad::QuadPipeline::draw(&self, &wgpu::api::device::Device, &mut wgpu::api::render_pass::RenderPass<'_>, &[tungsten_render::quad::QuadInstance])
+pub fn tungsten_render::quad::QuadPipeline::new(&wgpu::api::device::Device, wgpu_types::texture::format::TextureFormat, u32, bool) -> Self
+pub fn tungsten_render::quad::QuadPipeline::update_camera(&self, &wgpu::api::queue::Queue, &glam::f32::sse2::mat4::Mat4)
+impl core::marker::Freeze for tungsten_render::quad::QuadPipeline
+impl core::marker::Send for tungsten_render::quad::QuadPipeline
+impl core::marker::Sync for tungsten_render::quad::QuadPipeline
+impl core::marker::Unpin for tungsten_render::quad::QuadPipeline
+impl core::marker::UnsafeUnpin for tungsten_render::quad::QuadPipeline
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::quad::QuadPipeline
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::quad::QuadPipeline
+pub mod tungsten_render::renderer
+pub enum tungsten_render::renderer::RenderError
+pub tungsten_render::renderer::RenderError::InvalidFrameLatency(u32)
+pub tungsten_render::renderer::RenderError::NoAdapter(wgpu_types::adapter::RequestAdapterError)
+pub tungsten_render::renderer::RenderError::RequestDevice(wgpu::api::device::RequestDeviceError)
+pub tungsten_render::renderer::RenderError::Shader(tungsten_render::shader_hot_reload::ShaderError)
+pub tungsten_render::renderer::RenderError::Surface(alloc::string::String)
+pub tungsten_render::renderer::RenderError::UnsupportedPresentMode
+pub tungsten_render::renderer::RenderError::UnsupportedPresentMode::available: alloc::vec::Vec<alloc::string::String>
+pub tungsten_render::renderer::RenderError::UnsupportedPresentMode::requested: alloc::string::String
+impl core::convert::From<tungsten_render::shader_hot_reload::ShaderError> for tungsten_render::renderer::RenderError
+pub fn tungsten_render::renderer::RenderError::from(tungsten_render::shader_hot_reload::ShaderError) -> Self
+impl core::convert::From<wgpu::api::device::RequestDeviceError> for tungsten_render::renderer::RenderError
+pub fn tungsten_render::renderer::RenderError::from(wgpu::api::device::RequestDeviceError) -> Self
+impl core::convert::From<wgpu_types::adapter::RequestAdapterError> for tungsten_render::renderer::RenderError
+pub fn tungsten_render::renderer::RenderError::from(wgpu_types::adapter::RequestAdapterError) -> Self
+impl core::error::Error for tungsten_render::renderer::RenderError
+pub fn tungsten_render::renderer::RenderError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tungsten_render::renderer::RenderError
+pub fn tungsten_render::renderer::RenderError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_render::renderer::RenderError
+pub fn tungsten_render::renderer::RenderError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_render::renderer::RenderError
+impl core::marker::Send for tungsten_render::renderer::RenderError
+impl core::marker::Sync for tungsten_render::renderer::RenderError
+impl core::marker::Unpin for tungsten_render::renderer::RenderError
+impl core::marker::UnsafeUnpin for tungsten_render::renderer::RenderError
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::renderer::RenderError
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::renderer::RenderError
+pub struct tungsten_render::renderer::CpuFrameTimings
+pub tungsten_render::renderer::CpuFrameTimings::acquire_ms: f32
+pub tungsten_render::renderer::CpuFrameTimings::encode_ms: f32
+pub tungsten_render::renderer::CpuFrameTimings::submit_present_ms: f32
+impl core::clone::Clone for tungsten_render::timing::CpuFrameTimings
+pub fn tungsten_render::timing::CpuFrameTimings::clone(&self) -> tungsten_render::timing::CpuFrameTimings
+impl core::default::Default for tungsten_render::timing::CpuFrameTimings
+pub fn tungsten_render::timing::CpuFrameTimings::default() -> tungsten_render::timing::CpuFrameTimings
+impl core::fmt::Debug for tungsten_render::timing::CpuFrameTimings
+pub fn tungsten_render::timing::CpuFrameTimings::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_render::timing::CpuFrameTimings
+impl core::marker::Send for tungsten_render::timing::CpuFrameTimings
+impl core::marker::Sync for tungsten_render::timing::CpuFrameTimings
+impl core::marker::Unpin for tungsten_render::timing::CpuFrameTimings
+impl core::marker::UnsafeUnpin for tungsten_render::timing::CpuFrameTimings
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::timing::CpuFrameTimings
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::timing::CpuFrameTimings
+pub struct tungsten_render::renderer::GpuFrameTimings
+pub tungsten_render::renderer::GpuFrameTimings::adapter_name: core::option::Option<alloc::string::String>
+pub tungsten_render::renderer::GpuFrameTimings::backend: core::option::Option<alloc::string::String>
+pub tungsten_render::renderer::GpuFrameTimings::frame_gpu_ms: core::option::Option<f32>
+pub tungsten_render::renderer::GpuFrameTimings::max_frame_latency: core::option::Option<u32>
+pub tungsten_render::renderer::GpuFrameTimings::pass_gpu_ms: alloc::vec::Vec<(alloc::string::String, f32)>
+pub tungsten_render::renderer::GpuFrameTimings::present_mode: core::option::Option<alloc::string::String>
+pub tungsten_render::renderer::GpuFrameTimings::render_gpu_ms: core::option::Option<f32>
+impl core::clone::Clone for tungsten_render::timing::GpuFrameTimings
+pub fn tungsten_render::timing::GpuFrameTimings::clone(&self) -> tungsten_render::timing::GpuFrameTimings
+impl core::default::Default for tungsten_render::timing::GpuFrameTimings
+pub fn tungsten_render::timing::GpuFrameTimings::default() -> tungsten_render::timing::GpuFrameTimings
+impl core::fmt::Debug for tungsten_render::timing::GpuFrameTimings
+pub fn tungsten_render::timing::GpuFrameTimings::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_render::timing::GpuFrameTimings
+impl core::marker::Send for tungsten_render::timing::GpuFrameTimings
+impl core::marker::Sync for tungsten_render::timing::GpuFrameTimings
+impl core::marker::Unpin for tungsten_render::timing::GpuFrameTimings
+impl core::marker::UnsafeUnpin for tungsten_render::timing::GpuFrameTimings
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::timing::GpuFrameTimings
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::timing::GpuFrameTimings
+pub struct tungsten_render::renderer::Renderer
+pub tungsten_render::renderer::Renderer::adapter: wgpu::api::adapter::Adapter
+pub tungsten_render::renderer::Renderer::clear_color: wgpu_types::Color
+pub tungsten_render::renderer::Renderer::cpu_timings: tungsten_render::timing::CpuFrameTimings
+pub tungsten_render::renderer::Renderer::device: wgpu::api::device::Device
+pub tungsten_render::renderer::Renderer::gpu_timings: tungsten_render::timing::GpuFrameTimings
+pub tungsten_render::renderer::Renderer::instance: wgpu::api::instance::Instance
+pub tungsten_render::renderer::Renderer::queue: wgpu::api::queue::Queue
+pub tungsten_render::renderer::Renderer::surface: wgpu::api::surface::Surface<'static>
+pub tungsten_render::renderer::Renderer::surface_config: wgpu::api::surface::SurfaceConfiguration
+pub tungsten_render::renderer::Renderer::timestamp_support: bool
+impl tungsten_render::renderer::Renderer
+pub fn tungsten_render::renderer::Renderer::allocate_texture_handle(&mut self) -> tungsten_core::assets::registry::TextureHandle
+pub fn tungsten_render::renderer::Renderer::depth_sort(&self) -> tungsten_core::config::DepthSortMode
+pub fn tungsten_render::renderer::Renderer::drop_texture(&mut self, tungsten_core::assets::registry::TextureHandle)
+pub fn tungsten_render::renderer::Renderer::load_font(&mut self, &str, alloc::vec::Vec<u8>)
+pub fn tungsten_render::renderer::Renderer::max_2d_texture_dimension(&self) -> u32
+pub fn tungsten_render::renderer::Renderer::new(alloc::sync::Arc<winit::window::Window>, &tungsten_core::config::RenderConfig, bool) -> core::result::Result<Self, tungsten_render::renderer::RenderError>
+pub fn tungsten_render::renderer::Renderer::post_aa(&self) -> tungsten_core::config::PostAaMode
+pub fn tungsten_render::renderer::Renderer::reconfigure_surface_pacing(&mut self, core::option::Option<tungsten_core::config::PresentModeConfig>, bool, core::option::Option<u32>) -> core::result::Result<(), tungsten_render::renderer::RenderError>
+pub fn tungsten_render::renderer::Renderer::reload_font(&mut self, &str, alloc::vec::Vec<u8>)
+pub fn tungsten_render::renderer::Renderer::reload_material(&mut self, tungsten_core::assets::material::MaterialAssetId, tungsten_core::assets::material::MaterialUniformDefaults) -> core::result::Result<(), tungsten_render::renderer::RenderError>
+pub fn tungsten_render::renderer::Renderer::reload_shader(&mut self, &str, alloc::string::String) -> core::result::Result<(), tungsten_render::renderer::RenderError>
+pub fn tungsten_render::renderer::Renderer::render_frame(&mut self) -> core::result::Result<(), tungsten_render::renderer::RenderError>
+pub fn tungsten_render::renderer::Renderer::render_frame_full(&mut self, &glam::f32::sse2::mat4::Mat4, &[tungsten_render::quad::QuadInstance], &[tungsten_render::sprite::SpriteBatch], &[tungsten_render::quad::QuadInstance], &[tungsten_render::debug_line::DebugLineInstance], &[tungsten_render::text::TextSection], &tungsten_core::post::PostStack) -> core::result::Result<(), tungsten_render::renderer::RenderError>
+pub fn tungsten_render::renderer::Renderer::render_frame_full_timed(&mut self, &glam::f32::sse2::mat4::Mat4, &[tungsten_render::quad::QuadInstance], &[tungsten_render::sprite::SpriteBatch], &[tungsten_render::quad::QuadInstance], &[tungsten_render::debug_line::DebugLineInstance], &[tungsten_render::text::TextSection], &tungsten_core::post::PostStack) -> core::result::Result<(), tungsten_render::renderer::RenderError>
+pub fn tungsten_render::renderer::Renderer::render_frame_with_quads(&mut self, &[tungsten_render::quad::QuadInstance]) -> core::result::Result<(), tungsten_render::renderer::RenderError>
+pub fn tungsten_render::renderer::Renderer::resize(&mut self, u32, u32)
+pub fn tungsten_render::renderer::Renderer::sample_count(&self) -> u32
+pub fn tungsten_render::renderer::Renderer::set_post_aa(&mut self, tungsten_core::config::PostAaMode)
+pub fn tungsten_render::renderer::Renderer::surface_format(&self) -> wgpu_types::texture::format::TextureFormat
+pub fn tungsten_render::renderer::Renderer::update_lights(&mut self, &tungsten_render::lighting::LightUbo)
+pub fn tungsten_render::renderer::Renderer::update_mesh_particles(&mut self, &[tungsten_render::mesh_particle::MeshParticleBatch])
+pub fn tungsten_render::renderer::Renderer::upload_lit_texture(&mut self, tungsten_core::assets::registry::TextureHandle, &[u8], &[u8], &[u8], u32, u32, tungsten_core::assets::manifest::FilterMode)
+pub fn tungsten_render::renderer::Renderer::upload_material(&mut self, tungsten_core::assets::material::MaterialAssetId, &str, &str, tungsten_core::assets::material::MaterialUniformDefaults) -> core::result::Result<(), tungsten_render::renderer::RenderError>
+pub fn tungsten_render::renderer::Renderer::upload_particle_mesh(&mut self, tungsten_core::assets::particle::ParticleMeshAssetId, &[[f32; 2]], &[u16])
+pub fn tungsten_render::renderer::Renderer::upload_shader(&mut self, &str, alloc::string::String) -> core::result::Result<tungsten_core::assets::shader::ShaderAssetId, tungsten_render::renderer::RenderError>
+pub fn tungsten_render::renderer::Renderer::upload_texture(&mut self, tungsten_core::assets::registry::TextureHandle, &[u8], u32, u32, tungsten_core::assets::manifest::FilterMode)
+pub fn tungsten_render::renderer::Renderer::write_subtexture(&self, tungsten_core::assets::registry::TextureHandle, &[u8], u32, u32, u32, u32)
+pub fn tungsten_render::renderer::Renderer::write_subtexture_lit(&self, tungsten_core::assets::registry::TextureHandle, &[u8], &[u8], &[u8], u32, u32, u32, u32)
+impl tungsten_render::renderer::Renderer
+pub fn tungsten_render::renderer::Renderer::capture_frame(&mut self, &std::path::Path) -> core::result::Result<(), tungsten_render::screenshot::ScreenshotError>
+pub fn tungsten_render::renderer::Renderer::capture_frame_direct(&mut self, &std::path::Path) -> core::result::Result<(), tungsten_render::screenshot::ScreenshotError>
+impl !core::marker::Freeze for tungsten_render::renderer::Renderer
+impl core::marker::Send for tungsten_render::renderer::Renderer
+impl core::marker::Sync for tungsten_render::renderer::Renderer
+impl core::marker::Unpin for tungsten_render::renderer::Renderer
+impl core::marker::UnsafeUnpin for tungsten_render::renderer::Renderer
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::renderer::Renderer
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::renderer::Renderer
+pub const tungsten_render::renderer::SPRITE_SHADER_NAME: &str
+pub mod tungsten_render::screenshot
+pub enum tungsten_render::screenshot::ScreenshotError
+pub tungsten_render::screenshot::ScreenshotError::Encode(image::error::ImageError)
+pub tungsten_render::screenshot::ScreenshotError::Io
+pub tungsten_render::screenshot::ScreenshotError::Io::path: std::path::PathBuf
+pub tungsten_render::screenshot::ScreenshotError::Io::source: core::io::error::Error
+pub tungsten_render::screenshot::ScreenshotError::MapFailed
+pub tungsten_render::screenshot::ScreenshotError::SizeMismatch(usize, usize)
+impl core::convert::From<image::error::ImageError> for tungsten_render::screenshot::ScreenshotError
+pub fn tungsten_render::screenshot::ScreenshotError::from(image::error::ImageError) -> Self
+impl core::error::Error for tungsten_render::screenshot::ScreenshotError
+pub fn tungsten_render::screenshot::ScreenshotError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tungsten_render::screenshot::ScreenshotError
+pub fn tungsten_render::screenshot::ScreenshotError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_render::screenshot::ScreenshotError
+pub fn tungsten_render::screenshot::ScreenshotError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_render::screenshot::ScreenshotError
+impl core::marker::Send for tungsten_render::screenshot::ScreenshotError
+impl core::marker::Sync for tungsten_render::screenshot::ScreenshotError
+impl core::marker::Unpin for tungsten_render::screenshot::ScreenshotError
+impl core::marker::UnsafeUnpin for tungsten_render::screenshot::ScreenshotError
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::screenshot::ScreenshotError
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::screenshot::ScreenshotError
+pub mod tungsten_render::shader_hot_reload
+pub enum tungsten_render::shader_hot_reload::ShaderError
+pub tungsten_render::shader_hot_reload::ShaderError::Parse
+pub tungsten_render::shader_hot_reload::ShaderError::Parse::name: alloc::string::String
+pub tungsten_render::shader_hot_reload::ShaderError::Parse::report: alloc::string::String
+pub tungsten_render::shader_hot_reload::ShaderError::Pipeline
+pub tungsten_render::shader_hot_reload::ShaderError::Pipeline::name: alloc::string::String
+pub tungsten_render::shader_hot_reload::ShaderError::Pipeline::report: alloc::string::String
+pub tungsten_render::shader_hot_reload::ShaderError::Validation
+pub tungsten_render::shader_hot_reload::ShaderError::Validation::name: alloc::string::String
+pub tungsten_render::shader_hot_reload::ShaderError::Validation::report: alloc::string::String
+impl core::convert::From<tungsten_render::shader_hot_reload::ShaderError> for tungsten_render::renderer::RenderError
+pub fn tungsten_render::renderer::RenderError::from(tungsten_render::shader_hot_reload::ShaderError) -> Self
+impl core::error::Error for tungsten_render::shader_hot_reload::ShaderError
+impl core::fmt::Debug for tungsten_render::shader_hot_reload::ShaderError
+pub fn tungsten_render::shader_hot_reload::ShaderError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_render::shader_hot_reload::ShaderError
+pub fn tungsten_render::shader_hot_reload::ShaderError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_render::shader_hot_reload::ShaderError
+impl core::marker::Send for tungsten_render::shader_hot_reload::ShaderError
+impl core::marker::Sync for tungsten_render::shader_hot_reload::ShaderError
+impl core::marker::Unpin for tungsten_render::shader_hot_reload::ShaderError
+impl core::marker::UnsafeUnpin for tungsten_render::shader_hot_reload::ShaderError
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::shader_hot_reload::ShaderError
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::shader_hot_reload::ShaderError
+pub struct tungsten_render::shader_hot_reload::Entry
+pub tungsten_render::shader_hot_reload::Entry::module: wgpu::api::shader_module::ShaderModule
+pub tungsten_render::shader_hot_reload::Entry::text: alloc::string::String
+impl core::fmt::Debug for tungsten_render::shader_hot_reload::Entry
+pub fn tungsten_render::shader_hot_reload::Entry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_render::shader_hot_reload::Entry
+impl core::marker::Send for tungsten_render::shader_hot_reload::Entry
+impl core::marker::Sync for tungsten_render::shader_hot_reload::Entry
+impl core::marker::Unpin for tungsten_render::shader_hot_reload::Entry
+impl core::marker::UnsafeUnpin for tungsten_render::shader_hot_reload::Entry
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::shader_hot_reload::Entry
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::shader_hot_reload::Entry
+pub struct tungsten_render::shader_hot_reload::ShaderModuleCache
+pub tungsten_render::shader_hot_reload::ShaderModuleCache::unchanged_count: u64
+impl tungsten_render::shader_hot_reload::ShaderModuleCache
+pub fn tungsten_render::shader_hot_reload::ShaderModuleCache::bytes_equal(&self, tungsten_core::assets::shader::ShaderAssetId, &str) -> bool
+pub fn tungsten_render::shader_hot_reload::ShaderModuleCache::commit(&mut self, tungsten_core::assets::shader::ShaderAssetId, alloc::string::String, wgpu::api::shader_module::ShaderModule)
+pub fn tungsten_render::shader_hot_reload::ShaderModuleCache::contains(&self, tungsten_core::assets::shader::ShaderAssetId) -> bool
+pub fn tungsten_render::shader_hot_reload::ShaderModuleCache::get(&self, tungsten_core::assets::shader::ShaderAssetId) -> core::option::Option<&wgpu::api::shader_module::ShaderModule>
+pub fn tungsten_render::shader_hot_reload::ShaderModuleCache::new() -> Self
+pub fn tungsten_render::shader_hot_reload::ShaderModuleCache::text(&self, tungsten_core::assets::shader::ShaderAssetId) -> core::option::Option<&str>
+pub fn tungsten_render::shader_hot_reload::ShaderModuleCache::upload(&mut self, &wgpu::api::device::Device, tungsten_core::assets::shader::ShaderAssetId, &str, alloc::string::String) -> core::result::Result<(), tungsten_render::shader_hot_reload::ShaderError>
+pub fn tungsten_render::shader_hot_reload::ShaderModuleCache::validate(&self, &wgpu::api::device::Device, &str, &str) -> core::result::Result<wgpu::api::shader_module::ShaderModule, tungsten_render::shader_hot_reload::ShaderError>
+impl core::default::Default for tungsten_render::shader_hot_reload::ShaderModuleCache
+pub fn tungsten_render::shader_hot_reload::ShaderModuleCache::default() -> tungsten_render::shader_hot_reload::ShaderModuleCache
+impl core::fmt::Debug for tungsten_render::shader_hot_reload::ShaderModuleCache
+pub fn tungsten_render::shader_hot_reload::ShaderModuleCache::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_render::shader_hot_reload::ShaderModuleCache
+impl core::marker::Send for tungsten_render::shader_hot_reload::ShaderModuleCache
+impl core::marker::Sync for tungsten_render::shader_hot_reload::ShaderModuleCache
+impl core::marker::Unpin for tungsten_render::shader_hot_reload::ShaderModuleCache
+impl core::marker::UnsafeUnpin for tungsten_render::shader_hot_reload::ShaderModuleCache
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::shader_hot_reload::ShaderModuleCache
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::shader_hot_reload::ShaderModuleCache
+pub fn tungsten_render::shader_hot_reload::validate_wgsl_source(&str, &str) -> core::result::Result<(), tungsten_render::shader_hot_reload::ShaderError>
+pub mod tungsten_render::sprite
+pub struct tungsten_render::sprite::SpriteBatch
+pub tungsten_render::sprite::SpriteBatch::filter: tungsten_core::assets::manifest::FilterMode
+pub tungsten_render::sprite::SpriteBatch::instances: alloc::vec::Vec<tungsten_render::sprite::SpriteInstance>
+pub tungsten_render::sprite::SpriteBatch::lit: bool
+pub tungsten_render::sprite::SpriteBatch::material_id: core::option::Option<tungsten_core::assets::material::MaterialAssetId>
+pub tungsten_render::sprite::SpriteBatch::texture: tungsten_core::assets::registry::TextureHandle
+pub tungsten_render::sprite::SpriteBatch::uniform_overrides: core::option::Option<tungsten_core::tween::UniformOverrideBlock>
+impl tungsten_render::sprite::SpriteBatch
+pub fn tungsten_render::sprite::SpriteBatch::new(tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::manifest::FilterMode) -> Self
+impl core::marker::Freeze for tungsten_render::sprite::SpriteBatch
+impl core::marker::Send for tungsten_render::sprite::SpriteBatch
+impl core::marker::Sync for tungsten_render::sprite::SpriteBatch
+impl core::marker::Unpin for tungsten_render::sprite::SpriteBatch
+impl core::marker::UnsafeUnpin for tungsten_render::sprite::SpriteBatch
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::sprite::SpriteBatch
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::sprite::SpriteBatch
+#[repr(C)] pub struct tungsten_render::sprite::SpriteInstance
+pub tungsten_render::sprite::SpriteInstance::_pad: f32
+pub tungsten_render::sprite::SpriteInstance::color: [u8; 4]
+pub tungsten_render::sprite::SpriteInstance::position: [f32; 2]
+pub tungsten_render::sprite::SpriteInstance::rotation: f32
+pub tungsten_render::sprite::SpriteInstance::size: [f32; 2]
+pub tungsten_render::sprite::SpriteInstance::uv_min: [f32; 2]
+pub tungsten_render::sprite::SpriteInstance::uv_size: [f32; 2]
+pub tungsten_render::sprite::SpriteInstance::z_norm: f32
+impl tungsten_render::sprite::SpriteInstance
+pub fn tungsten_render::sprite::SpriteInstance::desc() -> wgpu::api::render_pipeline::VertexBufferLayout<'static>
+pub fn tungsten_render::sprite::SpriteInstance::whole([f32; 2], [f32; 2], f32, [u8; 4]) -> Self
+impl bytemuck::pod::Pod for tungsten_render::sprite::SpriteInstance
+impl bytemuck::zeroable::Zeroable for tungsten_render::sprite::SpriteInstance
+impl core::clone::Clone for tungsten_render::sprite::SpriteInstance
+pub fn tungsten_render::sprite::SpriteInstance::clone(&self) -> tungsten_render::sprite::SpriteInstance
+impl core::default::Default for tungsten_render::sprite::SpriteInstance
+pub fn tungsten_render::sprite::SpriteInstance::default() -> Self
+impl core::fmt::Debug for tungsten_render::sprite::SpriteInstance
+pub fn tungsten_render::sprite::SpriteInstance::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::sprite::SpriteInstance
+impl core::marker::Freeze for tungsten_render::sprite::SpriteInstance
+impl core::marker::Send for tungsten_render::sprite::SpriteInstance
+impl core::marker::Sync for tungsten_render::sprite::SpriteInstance
+impl core::marker::Unpin for tungsten_render::sprite::SpriteInstance
+impl core::marker::UnsafeUnpin for tungsten_render::sprite::SpriteInstance
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::sprite::SpriteInstance
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::sprite::SpriteInstance
+pub struct tungsten_render::sprite::SpritePipeline
+impl tungsten_render::sprite::SpritePipeline
+pub fn tungsten_render::sprite::SpritePipeline::allocate_texture_handle(&mut self) -> tungsten_core::assets::registry::TextureHandle
+pub fn tungsten_render::sprite::SpritePipeline::camera_bind_group(&self) -> &wgpu::api::bind_group::BindGroup
+pub fn tungsten_render::sprite::SpritePipeline::camera_bind_group_layout(&self) -> &wgpu::api::bind_group_layout::BindGroupLayout
+pub fn tungsten_render::sprite::SpritePipeline::draw(&mut self, &wgpu::api::device::Device, &wgpu::api::queue::Queue, &mut wgpu::api::render_pass::RenderPass<'_>, &[tungsten_render::sprite::SpriteBatch], &std::collections::hash::map::HashMap<tungsten_core::assets::material::MaterialAssetId, tungsten_render::material::MaterialPipeline>, core::option::Option<&wgpu::api::render_pipeline::RenderPipeline>, core::option::Option<&wgpu::api::bind_group::BindGroup>)
+pub fn tungsten_render::sprite::SpritePipeline::drop_lit_texture(&mut self, tungsten_core::assets::registry::TextureHandle)
+pub fn tungsten_render::sprite::SpritePipeline::drop_texture(&mut self, tungsten_core::assets::registry::TextureHandle)
+pub fn tungsten_render::sprite::SpritePipeline::lit_texture_bind_group_layout(&self) -> &wgpu::api::bind_group_layout::BindGroupLayout
+pub fn tungsten_render::sprite::SpritePipeline::new(&wgpu::api::device::Device, wgpu_types::texture::format::TextureFormat, u32, bool) -> Self
+pub fn tungsten_render::sprite::SpritePipeline::rebuild_with_shader(&mut self, &wgpu::api::device::Device, &wgpu::api::shader_module::ShaderModule, wgpu_types::texture::format::TextureFormat, u32, bool) -> core::result::Result<(), alloc::string::String>
+pub fn tungsten_render::sprite::SpritePipeline::texture_bind_group_layout(&self) -> &wgpu::api::bind_group_layout::BindGroupLayout
+pub fn tungsten_render::sprite::SpritePipeline::update_camera(&self, &wgpu::api::queue::Queue, &glam::f32::sse2::mat4::Mat4)
+pub fn tungsten_render::sprite::SpritePipeline::upload_lit_texture(&mut self, &wgpu::api::device::Device, &wgpu::api::queue::Queue, tungsten_core::assets::registry::TextureHandle, &[u8], &[u8], &[u8], u32, u32, tungsten_core::assets::manifest::FilterMode)
+pub fn tungsten_render::sprite::SpritePipeline::upload_texture(&mut self, &wgpu::api::device::Device, &wgpu::api::queue::Queue, tungsten_core::assets::registry::TextureHandle, &[u8], u32, u32, tungsten_core::assets::manifest::FilterMode)
+pub fn tungsten_render::sprite::SpritePipeline::vertex_layouts() -> [core::option::Option<wgpu::api::render_pipeline::VertexBufferLayout<'static>>; 2]
+pub fn tungsten_render::sprite::SpritePipeline::write_subtexture(&self, &wgpu::api::queue::Queue, tungsten_core::assets::registry::TextureHandle, &[u8], u32, u32, u32, u32)
+pub fn tungsten_render::sprite::SpritePipeline::write_subtexture_lit(&self, &wgpu::api::queue::Queue, tungsten_core::assets::registry::TextureHandle, &[u8], &[u8], &[u8], u32, u32, u32, u32)
+impl core::marker::Freeze for tungsten_render::sprite::SpritePipeline
+impl core::marker::Send for tungsten_render::sprite::SpritePipeline
+impl core::marker::Sync for tungsten_render::sprite::SpritePipeline
+impl core::marker::Unpin for tungsten_render::sprite::SpritePipeline
+impl core::marker::UnsafeUnpin for tungsten_render::sprite::SpritePipeline
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::sprite::SpritePipeline
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::sprite::SpritePipeline
+pub mod tungsten_render::surface
+pub mod tungsten_render::targets
+pub enum tungsten_render::targets::TargetId
+pub tungsten_render::targets::TargetId::PostPing
+pub tungsten_render::targets::TargetId::PostPong
+pub tungsten_render::targets::TargetId::PresentSource
+pub tungsten_render::targets::TargetId::SceneColor
+pub tungsten_render::targets::TargetId::SceneColorMsaa
+pub tungsten_render::targets::TargetId::SceneDepth
+pub tungsten_render::targets::TargetId::SmaaBlend
+pub tungsten_render::targets::TargetId::SmaaEdges
+pub tungsten_render::targets::TargetId::Swapchain
+impl core::clone::Clone for tungsten_render::targets::TargetId
+pub fn tungsten_render::targets::TargetId::clone(&self) -> tungsten_render::targets::TargetId
+impl core::cmp::Eq for tungsten_render::targets::TargetId
+impl core::cmp::PartialEq for tungsten_render::targets::TargetId
+pub fn tungsten_render::targets::TargetId::eq(&self, &tungsten_render::targets::TargetId) -> bool
+impl core::fmt::Debug for tungsten_render::targets::TargetId
+pub fn tungsten_render::targets::TargetId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_render::targets::TargetId
+pub fn tungsten_render::targets::TargetId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_render::targets::TargetId
+impl core::marker::StructuralPartialEq for tungsten_render::targets::TargetId
+impl core::marker::Freeze for tungsten_render::targets::TargetId
+impl core::marker::Send for tungsten_render::targets::TargetId
+impl core::marker::Sync for tungsten_render::targets::TargetId
+impl core::marker::Unpin for tungsten_render::targets::TargetId
+impl core::marker::UnsafeUnpin for tungsten_render::targets::TargetId
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::targets::TargetId
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::targets::TargetId
+pub struct tungsten_render::targets::BloomPyramid
+impl tungsten_render::targets::BloomPyramid
+pub fn tungsten_render::targets::BloomPyramid::mip_count(&self) -> u32
+pub fn tungsten_render::targets::BloomPyramid::mip_extent(&self, u32) -> core::option::Option<(u32, u32)>
+pub fn tungsten_render::targets::BloomPyramid::mip_view(&self, u32) -> core::option::Option<&wgpu::api::texture_view::TextureView>
+impl core::fmt::Debug for tungsten_render::targets::BloomPyramid
+pub fn tungsten_render::targets::BloomPyramid::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_render::targets::BloomPyramid
+impl core::marker::Send for tungsten_render::targets::BloomPyramid
+impl core::marker::Sync for tungsten_render::targets::BloomPyramid
+impl core::marker::Unpin for tungsten_render::targets::BloomPyramid
+impl core::marker::UnsafeUnpin for tungsten_render::targets::BloomPyramid
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::targets::BloomPyramid
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::targets::BloomPyramid
+pub struct tungsten_render::targets::RenderTargetPool
+pub tungsten_render::targets::RenderTargetPool::scene: tungsten_render::targets::SceneTarget
+impl tungsten_render::targets::RenderTargetPool
+pub fn tungsten_render::targets::RenderTargetPool::generation(&self) -> u64
+pub fn tungsten_render::targets::RenderTargetPool::new(&wgpu::api::device::Device, (u32, u32), wgpu_types::texture::format::TextureFormat, u32, bool, tungsten_core::config::PostAaMode, u32) -> Self
+pub fn tungsten_render::targets::RenderTargetPool::resize(&mut self, &wgpu::api::device::Device, (u32, u32), wgpu_types::texture::format::TextureFormat, u32, bool, tungsten_core::config::PostAaMode, u32)
+impl core::fmt::Debug for tungsten_render::targets::RenderTargetPool
+pub fn tungsten_render::targets::RenderTargetPool::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_render::targets::RenderTargetPool
+impl core::marker::Send for tungsten_render::targets::RenderTargetPool
+impl core::marker::Sync for tungsten_render::targets::RenderTargetPool
+impl core::marker::Unpin for tungsten_render::targets::RenderTargetPool
+impl core::marker::UnsafeUnpin for tungsten_render::targets::RenderTargetPool
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::targets::RenderTargetPool
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::targets::RenderTargetPool
+pub struct tungsten_render::targets::SceneTarget
+pub tungsten_render::targets::SceneTarget::bloom_max_mips: u32
+pub tungsten_render::targets::SceneTarget::bloom_pyramid: tungsten_render::targets::BloomPyramid
+pub tungsten_render::targets::SceneTarget::color: (wgpu::api::texture::Texture, wgpu::api::texture_view::TextureView)
+pub tungsten_render::targets::SceneTarget::color_msaa: core::option::Option<(wgpu::api::texture::Texture, wgpu::api::texture_view::TextureView)>
+pub tungsten_render::targets::SceneTarget::depth: core::option::Option<(wgpu::api::texture::Texture, wgpu::api::texture_view::TextureView)>
+pub tungsten_render::targets::SceneTarget::depth_enabled: bool
+pub tungsten_render::targets::SceneTarget::format: wgpu_types::texture::format::TextureFormat
+pub tungsten_render::targets::SceneTarget::post_aa: tungsten_core::config::PostAaMode
+pub tungsten_render::targets::SceneTarget::post_ping: (wgpu::api::texture::Texture, wgpu::api::texture_view::TextureView)
+pub tungsten_render::targets::SceneTarget::post_pong: (wgpu::api::texture::Texture, wgpu::api::texture_view::TextureView)
+pub tungsten_render::targets::SceneTarget::sample_count: u32
+pub tungsten_render::targets::SceneTarget::size: (u32, u32)
+pub tungsten_render::targets::SceneTarget::smaa: core::option::Option<tungsten_render::targets::SmaaTargets>
+impl tungsten_render::targets::SceneTarget
+pub fn tungsten_render::targets::SceneTarget::bloom_mip_count(&self) -> u32
+pub fn tungsten_render::targets::SceneTarget::bloom_mip_extent(&self, u32) -> core::option::Option<(u32, u32)>
+pub fn tungsten_render::targets::SceneTarget::bloom_mip_view(&self, u32) -> core::option::Option<&wgpu::api::texture_view::TextureView>
+pub fn tungsten_render::targets::SceneTarget::color_msaa_view(&self) -> core::option::Option<&wgpu::api::texture_view::TextureView>
+pub fn tungsten_render::targets::SceneTarget::color_texture(&self) -> &wgpu::api::texture::Texture
+pub fn tungsten_render::targets::SceneTarget::color_view(&self) -> &wgpu::api::texture_view::TextureView
+pub fn tungsten_render::targets::SceneTarget::depth_view(&self) -> core::option::Option<&wgpu::api::texture_view::TextureView>
+pub fn tungsten_render::targets::SceneTarget::new(&wgpu::api::device::Device, (u32, u32), wgpu_types::texture::format::TextureFormat, u32, bool, tungsten_core::config::PostAaMode, u32) -> Self
+pub fn tungsten_render::targets::SceneTarget::post_ping_smaa_read_view(&self) -> core::option::Option<&wgpu::api::texture_view::TextureView>
+pub fn tungsten_render::targets::SceneTarget::post_ping_texture(&self) -> &wgpu::api::texture::Texture
+pub fn tungsten_render::targets::SceneTarget::post_ping_view(&self) -> &wgpu::api::texture_view::TextureView
+pub fn tungsten_render::targets::SceneTarget::post_pong_smaa_read_view(&self) -> core::option::Option<&wgpu::api::texture_view::TextureView>
+pub fn tungsten_render::targets::SceneTarget::post_pong_texture(&self) -> &wgpu::api::texture::Texture
+pub fn tungsten_render::targets::SceneTarget::post_pong_view(&self) -> &wgpu::api::texture_view::TextureView
+pub fn tungsten_render::targets::SceneTarget::present_source_texture(&self) -> core::option::Option<&wgpu::api::texture::Texture>
+pub fn tungsten_render::targets::SceneTarget::present_source_view(&self) -> core::option::Option<&wgpu::api::texture_view::TextureView>
+pub fn tungsten_render::targets::SceneTarget::scene_color_smaa_read_view(&self) -> core::option::Option<&wgpu::api::texture_view::TextureView>
+pub fn tungsten_render::targets::SceneTarget::smaa_blend_view(&self) -> core::option::Option<&wgpu::api::texture_view::TextureView>
+pub fn tungsten_render::targets::SceneTarget::smaa_edges_view(&self) -> core::option::Option<&wgpu::api::texture_view::TextureView>
+impl core::fmt::Debug for tungsten_render::targets::SceneTarget
+pub fn tungsten_render::targets::SceneTarget::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_render::targets::SceneTarget
+impl core::marker::Send for tungsten_render::targets::SceneTarget
+impl core::marker::Sync for tungsten_render::targets::SceneTarget
+impl core::marker::Unpin for tungsten_render::targets::SceneTarget
+impl core::marker::UnsafeUnpin for tungsten_render::targets::SceneTarget
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::targets::SceneTarget
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::targets::SceneTarget
+pub struct tungsten_render::targets::SmaaTargets
+pub tungsten_render::targets::SmaaTargets::blend: (wgpu::api::texture::Texture, wgpu::api::texture_view::TextureView)
+pub tungsten_render::targets::SmaaTargets::edges: (wgpu::api::texture::Texture, wgpu::api::texture_view::TextureView)
+pub tungsten_render::targets::SmaaTargets::post_ping_linear_view: wgpu::api::texture_view::TextureView
+pub tungsten_render::targets::SmaaTargets::post_pong_linear_view: wgpu::api::texture_view::TextureView
+pub tungsten_render::targets::SmaaTargets::present: (wgpu::api::texture::Texture, wgpu::api::texture_view::TextureView)
+pub tungsten_render::targets::SmaaTargets::scene_color_linear_view: wgpu::api::texture_view::TextureView
+impl core::fmt::Debug for tungsten_render::targets::SmaaTargets
+pub fn tungsten_render::targets::SmaaTargets::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_render::targets::SmaaTargets
+impl core::marker::Send for tungsten_render::targets::SmaaTargets
+impl core::marker::Sync for tungsten_render::targets::SmaaTargets
+impl core::marker::Unpin for tungsten_render::targets::SmaaTargets
+impl core::marker::UnsafeUnpin for tungsten_render::targets::SmaaTargets
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::targets::SmaaTargets
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::targets::SmaaTargets
+pub const tungsten_render::targets::BLOOM_PYRAMID_FORMAT: wgpu_types::texture::format::TextureFormat
+pub const tungsten_render::targets::DEPTH_FORMAT: wgpu_types::texture::format::TextureFormat
+pub const tungsten_render::targets::SMAA_BLEND_FORMAT: wgpu_types::texture::format::TextureFormat
+pub const tungsten_render::targets::SMAA_EDGES_FORMAT: wgpu_types::texture::format::TextureFormat
+pub fn tungsten_render::targets::bloom_mip_count_for_size(u32, u32, u32) -> u32
+pub fn tungsten_render::targets::non_srgb_twin(wgpu_types::texture::format::TextureFormat) -> core::option::Option<wgpu_types::texture::format::TextureFormat>
+pub mod tungsten_render::text
+pub struct tungsten_render::text::TextPipeline
+impl tungsten_render::text::TextPipeline
+pub fn tungsten_render::text::TextPipeline::load_font(&mut self, &str, alloc::vec::Vec<u8>)
+pub fn tungsten_render::text::TextPipeline::new(&wgpu::api::device::Device, &wgpu::api::queue::Queue, wgpu_types::texture::format::TextureFormat) -> Self
+pub fn tungsten_render::text::TextPipeline::post_frame(&mut self)
+pub fn tungsten_render::text::TextPipeline::prepare(&mut self, &wgpu::api::device::Device, &wgpu::api::queue::Queue, &[tungsten_render::text::TextSection], u32, u32)
+pub fn tungsten_render::text::TextPipeline::reload_font(&mut self, &str, alloc::vec::Vec<u8>)
+pub fn tungsten_render::text::TextPipeline::render<'pass>(&'pass self, &mut wgpu::api::render_pass::RenderPass<'pass>)
+impl !core::marker::Freeze for tungsten_render::text::TextPipeline
+impl core::marker::Send for tungsten_render::text::TextPipeline
+impl core::marker::Sync for tungsten_render::text::TextPipeline
+impl core::marker::Unpin for tungsten_render::text::TextPipeline
+impl core::marker::UnsafeUnpin for tungsten_render::text::TextPipeline
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::text::TextPipeline
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::text::TextPipeline
+pub struct tungsten_render::text::TextSection
+pub tungsten_render::text::TextSection::bounds: core::option::Option<[f32; 2]>
+pub tungsten_render::text::TextSection::color: [u8; 4]
+pub tungsten_render::text::TextSection::content: alloc::string::String
+pub tungsten_render::text::TextSection::font_id: alloc::string::String
+pub tungsten_render::text::TextSection::font_size: f32
+pub tungsten_render::text::TextSection::line_height: f32
+pub tungsten_render::text::TextSection::position: [f32; 2]
+impl core::clone::Clone for tungsten_render::text::TextSection
+pub fn tungsten_render::text::TextSection::clone(&self) -> tungsten_render::text::TextSection
+impl core::fmt::Debug for tungsten_render::text::TextSection
+pub fn tungsten_render::text::TextSection::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_render::text::TextSection
+impl core::marker::Send for tungsten_render::text::TextSection
+impl core::marker::Sync for tungsten_render::text::TextSection
+impl core::marker::Unpin for tungsten_render::text::TextSection
+impl core::marker::UnsafeUnpin for tungsten_render::text::TextSection
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::text::TextSection
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::text::TextSection
+pub mod tungsten_render::timing
+pub struct tungsten_render::timing::CpuFrameTimings
+pub tungsten_render::timing::CpuFrameTimings::acquire_ms: f32
+pub tungsten_render::timing::CpuFrameTimings::encode_ms: f32
+pub tungsten_render::timing::CpuFrameTimings::submit_present_ms: f32
+impl core::clone::Clone for tungsten_render::timing::CpuFrameTimings
+pub fn tungsten_render::timing::CpuFrameTimings::clone(&self) -> tungsten_render::timing::CpuFrameTimings
+impl core::default::Default for tungsten_render::timing::CpuFrameTimings
+pub fn tungsten_render::timing::CpuFrameTimings::default() -> tungsten_render::timing::CpuFrameTimings
+impl core::fmt::Debug for tungsten_render::timing::CpuFrameTimings
+pub fn tungsten_render::timing::CpuFrameTimings::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_render::timing::CpuFrameTimings
+impl core::marker::Send for tungsten_render::timing::CpuFrameTimings
+impl core::marker::Sync for tungsten_render::timing::CpuFrameTimings
+impl core::marker::Unpin for tungsten_render::timing::CpuFrameTimings
+impl core::marker::UnsafeUnpin for tungsten_render::timing::CpuFrameTimings
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::timing::CpuFrameTimings
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::timing::CpuFrameTimings
+pub struct tungsten_render::timing::GpuFrameTimings
+pub tungsten_render::timing::GpuFrameTimings::adapter_name: core::option::Option<alloc::string::String>
+pub tungsten_render::timing::GpuFrameTimings::backend: core::option::Option<alloc::string::String>
+pub tungsten_render::timing::GpuFrameTimings::frame_gpu_ms: core::option::Option<f32>
+pub tungsten_render::timing::GpuFrameTimings::max_frame_latency: core::option::Option<u32>
+pub tungsten_render::timing::GpuFrameTimings::pass_gpu_ms: alloc::vec::Vec<(alloc::string::String, f32)>
+pub tungsten_render::timing::GpuFrameTimings::present_mode: core::option::Option<alloc::string::String>
+pub tungsten_render::timing::GpuFrameTimings::render_gpu_ms: core::option::Option<f32>
+impl core::clone::Clone for tungsten_render::timing::GpuFrameTimings
+pub fn tungsten_render::timing::GpuFrameTimings::clone(&self) -> tungsten_render::timing::GpuFrameTimings
+impl core::default::Default for tungsten_render::timing::GpuFrameTimings
+pub fn tungsten_render::timing::GpuFrameTimings::default() -> tungsten_render::timing::GpuFrameTimings
+impl core::fmt::Debug for tungsten_render::timing::GpuFrameTimings
+pub fn tungsten_render::timing::GpuFrameTimings::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_render::timing::GpuFrameTimings
+impl core::marker::Send for tungsten_render::timing::GpuFrameTimings
+impl core::marker::Sync for tungsten_render::timing::GpuFrameTimings
+impl core::marker::Unpin for tungsten_render::timing::GpuFrameTimings
+impl core::marker::UnsafeUnpin for tungsten_render::timing::GpuFrameTimings
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::timing::GpuFrameTimings
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::timing::GpuFrameTimings
+pub enum tungsten_render::ImageDiffError
+pub tungsten_render::ImageDiffError::Decode(image::error::ImageError)
+pub tungsten_render::ImageDiffError::DimensionMismatch
+pub tungsten_render::ImageDiffError::DimensionMismatch::lhs_h: u32
+pub tungsten_render::ImageDiffError::DimensionMismatch::lhs_w: u32
+pub tungsten_render::ImageDiffError::DimensionMismatch::rhs_h: u32
+pub tungsten_render::ImageDiffError::DimensionMismatch::rhs_w: u32
+pub tungsten_render::ImageDiffError::Io(core::io::error::Error)
+impl core::convert::From<core::io::error::Error> for tungsten_render::image_diff::ImageDiffError
+pub fn tungsten_render::image_diff::ImageDiffError::from(core::io::error::Error) -> Self
+impl core::convert::From<image::error::ImageError> for tungsten_render::image_diff::ImageDiffError
+pub fn tungsten_render::image_diff::ImageDiffError::from(image::error::ImageError) -> Self
+impl core::error::Error for tungsten_render::image_diff::ImageDiffError
+pub fn tungsten_render::image_diff::ImageDiffError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tungsten_render::image_diff::ImageDiffError
+pub fn tungsten_render::image_diff::ImageDiffError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_render::image_diff::ImageDiffError
+pub fn tungsten_render::image_diff::ImageDiffError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_render::image_diff::ImageDiffError
+impl core::marker::Send for tungsten_render::image_diff::ImageDiffError
+impl core::marker::Sync for tungsten_render::image_diff::ImageDiffError
+impl core::marker::Unpin for tungsten_render::image_diff::ImageDiffError
+impl core::marker::UnsafeUnpin for tungsten_render::image_diff::ImageDiffError
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::image_diff::ImageDiffError
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::image_diff::ImageDiffError
+pub enum tungsten_render::PresentPath
+pub tungsten_render::PresentPath::Blit
+pub tungsten_render::PresentPath::Direct
+impl core::clone::Clone for tungsten_render::passes::order::PresentPath
+pub fn tungsten_render::passes::order::PresentPath::clone(&self) -> tungsten_render::passes::order::PresentPath
+impl core::cmp::Eq for tungsten_render::passes::order::PresentPath
+impl core::cmp::PartialEq for tungsten_render::passes::order::PresentPath
+pub fn tungsten_render::passes::order::PresentPath::eq(&self, &tungsten_render::passes::order::PresentPath) -> bool
+impl core::fmt::Debug for tungsten_render::passes::order::PresentPath
+pub fn tungsten_render::passes::order::PresentPath::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::passes::order::PresentPath
+impl core::marker::StructuralPartialEq for tungsten_render::passes::order::PresentPath
+impl core::marker::Freeze for tungsten_render::passes::order::PresentPath
+impl core::marker::Send for tungsten_render::passes::order::PresentPath
+impl core::marker::Sync for tungsten_render::passes::order::PresentPath
+impl core::marker::Unpin for tungsten_render::passes::order::PresentPath
+impl core::marker::UnsafeUnpin for tungsten_render::passes::order::PresentPath
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::passes::order::PresentPath
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::passes::order::PresentPath
+pub enum tungsten_render::ScreenshotError
+pub tungsten_render::ScreenshotError::Encode(image::error::ImageError)
+pub tungsten_render::ScreenshotError::Io
+pub tungsten_render::ScreenshotError::Io::path: std::path::PathBuf
+pub tungsten_render::ScreenshotError::Io::source: core::io::error::Error
+pub tungsten_render::ScreenshotError::MapFailed
+pub tungsten_render::ScreenshotError::SizeMismatch(usize, usize)
+impl core::convert::From<image::error::ImageError> for tungsten_render::screenshot::ScreenshotError
+pub fn tungsten_render::screenshot::ScreenshotError::from(image::error::ImageError) -> Self
+impl core::error::Error for tungsten_render::screenshot::ScreenshotError
+pub fn tungsten_render::screenshot::ScreenshotError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tungsten_render::screenshot::ScreenshotError
+pub fn tungsten_render::screenshot::ScreenshotError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_render::screenshot::ScreenshotError
+pub fn tungsten_render::screenshot::ScreenshotError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_render::screenshot::ScreenshotError
+impl core::marker::Send for tungsten_render::screenshot::ScreenshotError
+impl core::marker::Sync for tungsten_render::screenshot::ScreenshotError
+impl core::marker::Unpin for tungsten_render::screenshot::ScreenshotError
+impl core::marker::UnsafeUnpin for tungsten_render::screenshot::ScreenshotError
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::screenshot::ScreenshotError
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::screenshot::ScreenshotError
+pub enum tungsten_render::ShaderError
+pub tungsten_render::ShaderError::Parse
+pub tungsten_render::ShaderError::Parse::name: alloc::string::String
+pub tungsten_render::ShaderError::Parse::report: alloc::string::String
+pub tungsten_render::ShaderError::Pipeline
+pub tungsten_render::ShaderError::Pipeline::name: alloc::string::String
+pub tungsten_render::ShaderError::Pipeline::report: alloc::string::String
+pub tungsten_render::ShaderError::Validation
+pub tungsten_render::ShaderError::Validation::name: alloc::string::String
+pub tungsten_render::ShaderError::Validation::report: alloc::string::String
+impl core::convert::From<tungsten_render::shader_hot_reload::ShaderError> for tungsten_render::renderer::RenderError
+pub fn tungsten_render::renderer::RenderError::from(tungsten_render::shader_hot_reload::ShaderError) -> Self
+impl core::error::Error for tungsten_render::shader_hot_reload::ShaderError
+impl core::fmt::Debug for tungsten_render::shader_hot_reload::ShaderError
+pub fn tungsten_render::shader_hot_reload::ShaderError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_render::shader_hot_reload::ShaderError
+pub fn tungsten_render::shader_hot_reload::ShaderError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_render::shader_hot_reload::ShaderError
+impl core::marker::Send for tungsten_render::shader_hot_reload::ShaderError
+impl core::marker::Sync for tungsten_render::shader_hot_reload::ShaderError
+impl core::marker::Unpin for tungsten_render::shader_hot_reload::ShaderError
+impl core::marker::UnsafeUnpin for tungsten_render::shader_hot_reload::ShaderError
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::shader_hot_reload::ShaderError
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::shader_hot_reload::ShaderError
+pub enum tungsten_render::TargetId
+pub tungsten_render::TargetId::PostPing
+pub tungsten_render::TargetId::PostPong
+pub tungsten_render::TargetId::PresentSource
+pub tungsten_render::TargetId::SceneColor
+pub tungsten_render::TargetId::SceneColorMsaa
+pub tungsten_render::TargetId::SceneDepth
+pub tungsten_render::TargetId::SmaaBlend
+pub tungsten_render::TargetId::SmaaEdges
+pub tungsten_render::TargetId::Swapchain
+impl core::clone::Clone for tungsten_render::targets::TargetId
+pub fn tungsten_render::targets::TargetId::clone(&self) -> tungsten_render::targets::TargetId
+impl core::cmp::Eq for tungsten_render::targets::TargetId
+impl core::cmp::PartialEq for tungsten_render::targets::TargetId
+pub fn tungsten_render::targets::TargetId::eq(&self, &tungsten_render::targets::TargetId) -> bool
+impl core::fmt::Debug for tungsten_render::targets::TargetId
+pub fn tungsten_render::targets::TargetId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_render::targets::TargetId
+pub fn tungsten_render::targets::TargetId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_render::targets::TargetId
+impl core::marker::StructuralPartialEq for tungsten_render::targets::TargetId
+impl core::marker::Freeze for tungsten_render::targets::TargetId
+impl core::marker::Send for tungsten_render::targets::TargetId
+impl core::marker::Sync for tungsten_render::targets::TargetId
+impl core::marker::Unpin for tungsten_render::targets::TargetId
+impl core::marker::UnsafeUnpin for tungsten_render::targets::TargetId
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::targets::TargetId
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::targets::TargetId
+pub struct tungsten_render::CpuFrameTimings
+pub tungsten_render::CpuFrameTimings::acquire_ms: f32
+pub tungsten_render::CpuFrameTimings::encode_ms: f32
+pub tungsten_render::CpuFrameTimings::submit_present_ms: f32
+impl core::clone::Clone for tungsten_render::timing::CpuFrameTimings
+pub fn tungsten_render::timing::CpuFrameTimings::clone(&self) -> tungsten_render::timing::CpuFrameTimings
+impl core::default::Default for tungsten_render::timing::CpuFrameTimings
+pub fn tungsten_render::timing::CpuFrameTimings::default() -> tungsten_render::timing::CpuFrameTimings
+impl core::fmt::Debug for tungsten_render::timing::CpuFrameTimings
+pub fn tungsten_render::timing::CpuFrameTimings::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_render::timing::CpuFrameTimings
+impl core::marker::Send for tungsten_render::timing::CpuFrameTimings
+impl core::marker::Sync for tungsten_render::timing::CpuFrameTimings
+impl core::marker::Unpin for tungsten_render::timing::CpuFrameTimings
+impl core::marker::UnsafeUnpin for tungsten_render::timing::CpuFrameTimings
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::timing::CpuFrameTimings
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::timing::CpuFrameTimings
+#[repr(C)] pub struct tungsten_render::DebugLineInstance
+pub tungsten_render::DebugLineInstance::_pad: f32
+pub tungsten_render::DebugLineInstance::a: [f32; 2]
+pub tungsten_render::DebugLineInstance::b: [f32; 2]
+pub tungsten_render::DebugLineInstance::color: [f32; 4]
+pub tungsten_render::DebugLineInstance::thickness: f32
+impl tungsten_render::debug_line::DebugLineInstance
+pub fn tungsten_render::debug_line::DebugLineInstance::desc() -> wgpu::api::render_pipeline::VertexBufferLayout<'static>
+impl bytemuck::pod::Pod for tungsten_render::debug_line::DebugLineInstance
+impl bytemuck::zeroable::Zeroable for tungsten_render::debug_line::DebugLineInstance
+impl core::clone::Clone for tungsten_render::debug_line::DebugLineInstance
+pub fn tungsten_render::debug_line::DebugLineInstance::clone(&self) -> tungsten_render::debug_line::DebugLineInstance
+impl core::fmt::Debug for tungsten_render::debug_line::DebugLineInstance
+pub fn tungsten_render::debug_line::DebugLineInstance::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::debug_line::DebugLineInstance
+impl core::marker::Freeze for tungsten_render::debug_line::DebugLineInstance
+impl core::marker::Send for tungsten_render::debug_line::DebugLineInstance
+impl core::marker::Sync for tungsten_render::debug_line::DebugLineInstance
+impl core::marker::Unpin for tungsten_render::debug_line::DebugLineInstance
+impl core::marker::UnsafeUnpin for tungsten_render::debug_line::DebugLineInstance
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::debug_line::DebugLineInstance
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::debug_line::DebugLineInstance
+pub struct tungsten_render::DebugLinePipeline
+impl tungsten_render::debug_line::DebugLinePipeline
+pub fn tungsten_render::debug_line::DebugLinePipeline::draw(&self, &wgpu::api::device::Device, &mut wgpu::api::render_pass::RenderPass<'_>, &wgpu::api::bind_group::BindGroup, &[tungsten_render::debug_line::DebugLineInstance])
+pub fn tungsten_render::debug_line::DebugLinePipeline::new(&wgpu::api::device::Device, wgpu_types::texture::format::TextureFormat, &wgpu::api::bind_group_layout::BindGroupLayout, u32, bool) -> Self
+impl core::marker::Freeze for tungsten_render::debug_line::DebugLinePipeline
+impl core::marker::Send for tungsten_render::debug_line::DebugLinePipeline
+impl core::marker::Sync for tungsten_render::debug_line::DebugLinePipeline
+impl core::marker::Unpin for tungsten_render::debug_line::DebugLinePipeline
+impl core::marker::UnsafeUnpin for tungsten_render::debug_line::DebugLinePipeline
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::debug_line::DebugLinePipeline
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::debug_line::DebugLinePipeline
+pub struct tungsten_render::DiffReport
+pub tungsten_render::DiffReport::height: u32
+pub tungsten_render::DiffReport::max_delta: u8
+pub tungsten_render::DiffReport::mean_delta: f32
+pub tungsten_render::DiffReport::pixels_above_tolerance: u32
+pub tungsten_render::DiffReport::width: u32
+impl core::clone::Clone for tungsten_render::image_diff::DiffReport
+pub fn tungsten_render::image_diff::DiffReport::clone(&self) -> tungsten_render::image_diff::DiffReport
+impl core::cmp::PartialEq for tungsten_render::image_diff::DiffReport
+pub fn tungsten_render::image_diff::DiffReport::eq(&self, &tungsten_render::image_diff::DiffReport) -> bool
+impl core::fmt::Debug for tungsten_render::image_diff::DiffReport
+pub fn tungsten_render::image_diff::DiffReport::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::image_diff::DiffReport
+impl core::marker::StructuralPartialEq for tungsten_render::image_diff::DiffReport
+impl core::marker::Freeze for tungsten_render::image_diff::DiffReport
+impl core::marker::Send for tungsten_render::image_diff::DiffReport
+impl core::marker::Sync for tungsten_render::image_diff::DiffReport
+impl core::marker::Unpin for tungsten_render::image_diff::DiffReport
+impl core::marker::UnsafeUnpin for tungsten_render::image_diff::DiffReport
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::image_diff::DiffReport
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::image_diff::DiffReport
+pub struct tungsten_render::GpuFrameTimings
+pub tungsten_render::GpuFrameTimings::adapter_name: core::option::Option<alloc::string::String>
+pub tungsten_render::GpuFrameTimings::backend: core::option::Option<alloc::string::String>
+pub tungsten_render::GpuFrameTimings::frame_gpu_ms: core::option::Option<f32>
+pub tungsten_render::GpuFrameTimings::max_frame_latency: core::option::Option<u32>
+pub tungsten_render::GpuFrameTimings::pass_gpu_ms: alloc::vec::Vec<(alloc::string::String, f32)>
+pub tungsten_render::GpuFrameTimings::present_mode: core::option::Option<alloc::string::String>
+pub tungsten_render::GpuFrameTimings::render_gpu_ms: core::option::Option<f32>
+impl core::clone::Clone for tungsten_render::timing::GpuFrameTimings
+pub fn tungsten_render::timing::GpuFrameTimings::clone(&self) -> tungsten_render::timing::GpuFrameTimings
+impl core::default::Default for tungsten_render::timing::GpuFrameTimings
+pub fn tungsten_render::timing::GpuFrameTimings::default() -> tungsten_render::timing::GpuFrameTimings
+impl core::fmt::Debug for tungsten_render::timing::GpuFrameTimings
+pub fn tungsten_render::timing::GpuFrameTimings::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_render::timing::GpuFrameTimings
+impl core::marker::Send for tungsten_render::timing::GpuFrameTimings
+impl core::marker::Sync for tungsten_render::timing::GpuFrameTimings
+impl core::marker::Unpin for tungsten_render::timing::GpuFrameTimings
+impl core::marker::UnsafeUnpin for tungsten_render::timing::GpuFrameTimings
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::timing::GpuFrameTimings
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::timing::GpuFrameTimings
+#[repr(C)] pub struct tungsten_render::GpuLight
+pub tungsten_render::GpuLight::color_intensity: [f32; 4]
+pub tungsten_render::GpuLight::position_radius: [f32; 4]
+impl bytemuck::pod::Pod for tungsten_render::lighting::GpuLight
+impl bytemuck::zeroable::Zeroable for tungsten_render::lighting::GpuLight
+impl core::clone::Clone for tungsten_render::lighting::GpuLight
+pub fn tungsten_render::lighting::GpuLight::clone(&self) -> tungsten_render::lighting::GpuLight
+impl core::default::Default for tungsten_render::lighting::GpuLight
+pub fn tungsten_render::lighting::GpuLight::default() -> tungsten_render::lighting::GpuLight
+impl core::fmt::Debug for tungsten_render::lighting::GpuLight
+pub fn tungsten_render::lighting::GpuLight::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::lighting::GpuLight
+impl core::marker::Freeze for tungsten_render::lighting::GpuLight
+impl core::marker::Send for tungsten_render::lighting::GpuLight
+impl core::marker::Sync for tungsten_render::lighting::GpuLight
+impl core::marker::Unpin for tungsten_render::lighting::GpuLight
+impl core::marker::UnsafeUnpin for tungsten_render::lighting::GpuLight
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::lighting::GpuLight
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::lighting::GpuLight
+#[repr(C)] pub struct tungsten_render::LightUbo
+pub tungsten_render::LightUbo::ambient: [f32; 4]
+pub tungsten_render::LightUbo::count_pad: [u32; 4]
+pub tungsten_render::LightUbo::lights: [tungsten_render::lighting::GpuLight; 16]
+impl tungsten_render::lighting::LightUbo
+pub fn tungsten_render::lighting::LightUbo::byte_size() -> usize
+impl bytemuck::pod::Pod for tungsten_render::lighting::LightUbo
+impl bytemuck::zeroable::Zeroable for tungsten_render::lighting::LightUbo
+impl core::clone::Clone for tungsten_render::lighting::LightUbo
+pub fn tungsten_render::lighting::LightUbo::clone(&self) -> tungsten_render::lighting::LightUbo
+impl core::default::Default for tungsten_render::lighting::LightUbo
+pub fn tungsten_render::lighting::LightUbo::default() -> Self
+impl core::fmt::Debug for tungsten_render::lighting::LightUbo
+pub fn tungsten_render::lighting::LightUbo::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::lighting::LightUbo
+impl core::marker::Freeze for tungsten_render::lighting::LightUbo
+impl core::marker::Send for tungsten_render::lighting::LightUbo
+impl core::marker::Sync for tungsten_render::lighting::LightUbo
+impl core::marker::Unpin for tungsten_render::lighting::LightUbo
+impl core::marker::UnsafeUnpin for tungsten_render::lighting::LightUbo
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::lighting::LightUbo
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::lighting::LightUbo
+pub struct tungsten_render::LightingResources
+pub tungsten_render::LightingResources::bind_group: wgpu::api::bind_group::BindGroup
+pub tungsten_render::LightingResources::bind_group_layout: wgpu::api::bind_group_layout::BindGroupLayout
+pub tungsten_render::LightingResources::buffer: wgpu::api::buffer::Buffer
+impl tungsten_render::lighting::LightingResources
+pub fn tungsten_render::lighting::LightingResources::new(&wgpu::api::device::Device) -> Self
+pub fn tungsten_render::lighting::LightingResources::write(&self, &wgpu::api::queue::Queue, &tungsten_render::lighting::LightUbo)
+impl core::marker::Freeze for tungsten_render::lighting::LightingResources
+impl core::marker::Send for tungsten_render::lighting::LightingResources
+impl core::marker::Sync for tungsten_render::lighting::LightingResources
+impl core::marker::Unpin for tungsten_render::lighting::LightingResources
+impl core::marker::UnsafeUnpin for tungsten_render::lighting::LightingResources
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::lighting::LightingResources
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::lighting::LightingResources
+pub struct tungsten_render::LitSpritePipeline
+pub tungsten_render::LitSpritePipeline::pipeline: wgpu::api::render_pipeline::RenderPipeline
+pub tungsten_render::LitSpritePipeline::pipeline_layout: wgpu::api::pipeline_layout::PipelineLayout
+impl tungsten_render::lit_sprite::LitSpritePipeline
+pub fn tungsten_render::lit_sprite::LitSpritePipeline::new(&wgpu::api::device::Device, &wgpu::api::shader_module::ShaderModule, &wgpu::api::bind_group_layout::BindGroupLayout, &wgpu::api::bind_group_layout::BindGroupLayout, &wgpu::api::bind_group_layout::BindGroupLayout, wgpu_types::texture::format::TextureFormat, u32, bool) -> Self
+pub fn tungsten_render::lit_sprite::LitSpritePipeline::rebuild_with_shader(&mut self, &wgpu::api::device::Device, &wgpu::api::shader_module::ShaderModule, wgpu_types::texture::format::TextureFormat, u32, bool) -> core::result::Result<(), alloc::string::String>
+impl core::marker::Freeze for tungsten_render::lit_sprite::LitSpritePipeline
+impl core::marker::Send for tungsten_render::lit_sprite::LitSpritePipeline
+impl core::marker::Sync for tungsten_render::lit_sprite::LitSpritePipeline
+impl core::marker::Unpin for tungsten_render::lit_sprite::LitSpritePipeline
+impl core::marker::UnsafeUnpin for tungsten_render::lit_sprite::LitSpritePipeline
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::lit_sprite::LitSpritePipeline
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::lit_sprite::LitSpritePipeline
+pub struct tungsten_render::MaterialPipeline
+pub tungsten_render::MaterialPipeline::bind_group_layout: wgpu::api::bind_group_layout::BindGroupLayout
+pub tungsten_render::MaterialPipeline::defaults: tungsten_core::assets::material::MaterialUniformDefaults
+pub tungsten_render::MaterialPipeline::material_id: tungsten_core::assets::material::MaterialAssetId
+pub tungsten_render::MaterialPipeline::name: alloc::string::String
+pub tungsten_render::MaterialPipeline::pipeline: wgpu::api::render_pipeline::RenderPipeline
+pub tungsten_render::MaterialPipeline::shader_id_name: alloc::string::String
+impl core::marker::Freeze for tungsten_render::material::MaterialPipeline
+impl core::marker::Send for tungsten_render::material::MaterialPipeline
+impl core::marker::Sync for tungsten_render::material::MaterialPipeline
+impl core::marker::Unpin for tungsten_render::material::MaterialPipeline
+impl core::marker::UnsafeUnpin for tungsten_render::material::MaterialPipeline
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::material::MaterialPipeline
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::material::MaterialPipeline
+pub struct tungsten_render::MeshParticleBatch
+pub tungsten_render::MeshParticleBatch::instances: alloc::vec::Vec<tungsten_render::mesh_particle::MeshParticleInstance>
+pub tungsten_render::MeshParticleBatch::mesh: tungsten_core::assets::particle::ParticleMeshAssetId
+impl core::clone::Clone for tungsten_render::mesh_particle::MeshParticleBatch
+pub fn tungsten_render::mesh_particle::MeshParticleBatch::clone(&self) -> tungsten_render::mesh_particle::MeshParticleBatch
+impl core::fmt::Debug for tungsten_render::mesh_particle::MeshParticleBatch
+pub fn tungsten_render::mesh_particle::MeshParticleBatch::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_render::mesh_particle::MeshParticleBatch
+impl core::marker::Send for tungsten_render::mesh_particle::MeshParticleBatch
+impl core::marker::Sync for tungsten_render::mesh_particle::MeshParticleBatch
+impl core::marker::Unpin for tungsten_render::mesh_particle::MeshParticleBatch
+impl core::marker::UnsafeUnpin for tungsten_render::mesh_particle::MeshParticleBatch
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::mesh_particle::MeshParticleBatch
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::mesh_particle::MeshParticleBatch
+#[repr(C)] pub struct tungsten_render::MeshParticleInstance
+pub tungsten_render::MeshParticleInstance::color: [u8; 4]
+pub tungsten_render::MeshParticleInstance::position: [f32; 2]
+pub tungsten_render::MeshParticleInstance::rotation: f32
+pub tungsten_render::MeshParticleInstance::scale: [f32; 2]
+impl tungsten_render::mesh_particle::MeshParticleInstance
+pub fn tungsten_render::mesh_particle::MeshParticleInstance::desc() -> wgpu::api::render_pipeline::VertexBufferLayout<'static>
+impl bytemuck::pod::Pod for tungsten_render::mesh_particle::MeshParticleInstance
+impl bytemuck::zeroable::Zeroable for tungsten_render::mesh_particle::MeshParticleInstance
+impl core::clone::Clone for tungsten_render::mesh_particle::MeshParticleInstance
+pub fn tungsten_render::mesh_particle::MeshParticleInstance::clone(&self) -> tungsten_render::mesh_particle::MeshParticleInstance
+impl core::cmp::PartialEq for tungsten_render::mesh_particle::MeshParticleInstance
+pub fn tungsten_render::mesh_particle::MeshParticleInstance::eq(&self, &tungsten_render::mesh_particle::MeshParticleInstance) -> bool
+impl core::fmt::Debug for tungsten_render::mesh_particle::MeshParticleInstance
+pub fn tungsten_render::mesh_particle::MeshParticleInstance::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::mesh_particle::MeshParticleInstance
+impl core::marker::StructuralPartialEq for tungsten_render::mesh_particle::MeshParticleInstance
+impl core::marker::Freeze for tungsten_render::mesh_particle::MeshParticleInstance
+impl core::marker::Send for tungsten_render::mesh_particle::MeshParticleInstance
+impl core::marker::Sync for tungsten_render::mesh_particle::MeshParticleInstance
+impl core::marker::Unpin for tungsten_render::mesh_particle::MeshParticleInstance
+impl core::marker::UnsafeUnpin for tungsten_render::mesh_particle::MeshParticleInstance
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::mesh_particle::MeshParticleInstance
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::mesh_particle::MeshParticleInstance
+pub struct tungsten_render::MeshParticlePipeline
+impl tungsten_render::mesh_particle::MeshParticlePipeline
+pub fn tungsten_render::mesh_particle::MeshParticlePipeline::draw(&self, &mut wgpu::api::render_pass::RenderPass<'_>, &wgpu::api::bind_group::BindGroup)
+pub fn tungsten_render::mesh_particle::MeshParticlePipeline::new(&wgpu::api::device::Device, wgpu_types::texture::format::TextureFormat, &wgpu::api::bind_group_layout::BindGroupLayout, u32, bool) -> Self
+pub fn tungsten_render::mesh_particle::MeshParticlePipeline::prepare(&mut self, &wgpu::api::device::Device, &wgpu::api::queue::Queue, &[tungsten_render::mesh_particle::MeshParticleBatch])
+pub fn tungsten_render::mesh_particle::MeshParticlePipeline::upload_mesh(&mut self, &wgpu::api::device::Device, tungsten_core::assets::particle::ParticleMeshAssetId, &[[f32; 2]], &[u16])
+impl core::marker::Freeze for tungsten_render::mesh_particle::MeshParticlePipeline
+impl core::marker::Send for tungsten_render::mesh_particle::MeshParticlePipeline
+impl core::marker::Sync for tungsten_render::mesh_particle::MeshParticlePipeline
+impl core::marker::Unpin for tungsten_render::mesh_particle::MeshParticlePipeline
+impl core::marker::UnsafeUnpin for tungsten_render::mesh_particle::MeshParticlePipeline
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::mesh_particle::MeshParticlePipeline
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::mesh_particle::MeshParticlePipeline
+pub struct tungsten_render::PassDesc
+pub tungsten_render::PassDesc::clear: core::option::Option<wgpu_types::Color>
+pub tungsten_render::PassDesc::color: tungsten_render::targets::TargetId
+pub tungsten_render::PassDesc::color_resolve: core::option::Option<tungsten_render::targets::TargetId>
+pub tungsten_render::PassDesc::depth: core::option::Option<tungsten_render::targets::TargetId>
+pub tungsten_render::PassDesc::depth_clear: core::option::Option<f32>
+pub tungsten_render::PassDesc::label: &'static str
+impl tungsten_render::passes::desc::PassDesc
+pub const fn tungsten_render::passes::desc::PassDesc::new(&'static str, tungsten_render::targets::TargetId) -> Self
+pub const fn tungsten_render::passes::desc::PassDesc::with_clear(self, wgpu_types::Color) -> Self
+pub const fn tungsten_render::passes::desc::PassDesc::with_depth(self, tungsten_render::targets::TargetId, f32) -> Self
+pub const fn tungsten_render::passes::desc::PassDesc::with_resolve(self, tungsten_render::targets::TargetId) -> Self
+impl core::clone::Clone for tungsten_render::passes::desc::PassDesc
+pub fn tungsten_render::passes::desc::PassDesc::clone(&self) -> tungsten_render::passes::desc::PassDesc
+impl core::fmt::Debug for tungsten_render::passes::desc::PassDesc
+pub fn tungsten_render::passes::desc::PassDesc::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::passes::desc::PassDesc
+impl core::marker::Freeze for tungsten_render::passes::desc::PassDesc
+impl core::marker::Send for tungsten_render::passes::desc::PassDesc
+impl core::marker::Sync for tungsten_render::passes::desc::PassDesc
+impl core::marker::Unpin for tungsten_render::passes::desc::PassDesc
+impl core::marker::UnsafeUnpin for tungsten_render::passes::desc::PassDesc
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::passes::desc::PassDesc
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::passes::desc::PassDesc
+pub struct tungsten_render::PassOrder(pub alloc::vec::Vec<tungsten_render::passes::desc::PassDesc>)
+impl tungsten_render::passes::order::PassOrder
+pub fn tungsten_render::passes::order::PassOrder::as_slice(&self) -> &[tungsten_render::passes::desc::PassDesc]
+impl core::clone::Clone for tungsten_render::passes::order::PassOrder
+pub fn tungsten_render::passes::order::PassOrder::clone(&self) -> tungsten_render::passes::order::PassOrder
+impl core::fmt::Debug for tungsten_render::passes::order::PassOrder
+pub fn tungsten_render::passes::order::PassOrder::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_render::passes::order::PassOrder
+impl core::marker::Send for tungsten_render::passes::order::PassOrder
+impl core::marker::Sync for tungsten_render::passes::order::PassOrder
+impl core::marker::Unpin for tungsten_render::passes::order::PassOrder
+impl core::marker::UnsafeUnpin for tungsten_render::passes::order::PassOrder
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::passes::order::PassOrder
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::passes::order::PassOrder
+pub struct tungsten_render::PassRecorder
+impl tungsten_render::passes::recorder::PassRecorder
+pub fn tungsten_render::passes::recorder::PassRecorder::begin<'a>(&'a mut wgpu::api::command_encoder::CommandEncoder, &tungsten_render::passes::desc::PassDesc, &'a tungsten_render::targets::RenderTargetPool, &'a wgpu::api::texture_view::TextureView, core::option::Option<wgpu_types::Color>) -> wgpu::api::render_pass::RenderPass<'a>
+impl core::marker::Freeze for tungsten_render::passes::recorder::PassRecorder
+impl core::marker::Send for tungsten_render::passes::recorder::PassRecorder
+impl core::marker::Sync for tungsten_render::passes::recorder::PassRecorder
+impl core::marker::Unpin for tungsten_render::passes::recorder::PassRecorder
+impl core::marker::UnsafeUnpin for tungsten_render::passes::recorder::PassRecorder
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::passes::recorder::PassRecorder
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::passes::recorder::PassRecorder
+pub struct tungsten_render::PostStackRenderer
+impl tungsten_render::post::PostStackRenderer
+pub fn tungsten_render::post::PostStackRenderer::new(&wgpu::api::device::Device, wgpu_types::texture::format::TextureFormat, &tungsten_render::shader_hot_reload::ShaderModuleCache, tungsten_render::post::bloom::BloomShaderIds, &[tungsten_core::assets::shader::ShaderAssetId; 17]) -> Self
+pub fn tungsten_render::post::PostStackRenderer::plan_targets(usize) -> alloc::vec::Vec<(tungsten_render::targets::TargetId, tungsten_render::targets::TargetId)>
+pub fn tungsten_render::post::PostStackRenderer::record_pass(&mut self, &wgpu::api::device::Device, &wgpu::api::queue::Queue, &mut wgpu::api::render_pass::RenderPass<'_>, &tungsten_render::targets::RenderTargetPool, &tungsten_core::post::PostPass, tungsten_render::targets::TargetId, usize)
+impl core::marker::Freeze for tungsten_render::post::PostStackRenderer
+impl core::marker::Send for tungsten_render::post::PostStackRenderer
+impl core::marker::Sync for tungsten_render::post::PostStackRenderer
+impl core::marker::Unpin for tungsten_render::post::PostStackRenderer
+impl core::marker::UnsafeUnpin for tungsten_render::post::PostStackRenderer
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::post::PostStackRenderer
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::post::PostStackRenderer
+#[repr(C)] pub struct tungsten_render::QuadInstance
+pub tungsten_render::QuadInstance::color: [f32; 4]
+pub tungsten_render::QuadInstance::position: [f32; 2]
+pub tungsten_render::QuadInstance::size: [f32; 2]
+impl tungsten_render::quad::QuadInstance
+pub fn tungsten_render::quad::QuadInstance::desc() -> wgpu::api::render_pipeline::VertexBufferLayout<'static>
+impl bytemuck::pod::Pod for tungsten_render::quad::QuadInstance
+impl bytemuck::zeroable::Zeroable for tungsten_render::quad::QuadInstance
+impl core::clone::Clone for tungsten_render::quad::QuadInstance
+pub fn tungsten_render::quad::QuadInstance::clone(&self) -> tungsten_render::quad::QuadInstance
+impl core::fmt::Debug for tungsten_render::quad::QuadInstance
+pub fn tungsten_render::quad::QuadInstance::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::quad::QuadInstance
+impl core::marker::Freeze for tungsten_render::quad::QuadInstance
+impl core::marker::Send for tungsten_render::quad::QuadInstance
+impl core::marker::Sync for tungsten_render::quad::QuadInstance
+impl core::marker::Unpin for tungsten_render::quad::QuadInstance
+impl core::marker::UnsafeUnpin for tungsten_render::quad::QuadInstance
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::quad::QuadInstance
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::quad::QuadInstance
+pub struct tungsten_render::RenderTargetPool
+pub tungsten_render::RenderTargetPool::scene: tungsten_render::targets::SceneTarget
+impl tungsten_render::targets::RenderTargetPool
+pub fn tungsten_render::targets::RenderTargetPool::generation(&self) -> u64
+pub fn tungsten_render::targets::RenderTargetPool::new(&wgpu::api::device::Device, (u32, u32), wgpu_types::texture::format::TextureFormat, u32, bool, tungsten_core::config::PostAaMode, u32) -> Self
+pub fn tungsten_render::targets::RenderTargetPool::resize(&mut self, &wgpu::api::device::Device, (u32, u32), wgpu_types::texture::format::TextureFormat, u32, bool, tungsten_core::config::PostAaMode, u32)
+impl core::fmt::Debug for tungsten_render::targets::RenderTargetPool
+pub fn tungsten_render::targets::RenderTargetPool::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_render::targets::RenderTargetPool
+impl core::marker::Send for tungsten_render::targets::RenderTargetPool
+impl core::marker::Sync for tungsten_render::targets::RenderTargetPool
+impl core::marker::Unpin for tungsten_render::targets::RenderTargetPool
+impl core::marker::UnsafeUnpin for tungsten_render::targets::RenderTargetPool
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::targets::RenderTargetPool
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::targets::RenderTargetPool
+pub struct tungsten_render::Renderer
+pub tungsten_render::Renderer::adapter: wgpu::api::adapter::Adapter
+pub tungsten_render::Renderer::clear_color: wgpu_types::Color
+pub tungsten_render::Renderer::cpu_timings: tungsten_render::timing::CpuFrameTimings
+pub tungsten_render::Renderer::device: wgpu::api::device::Device
+pub tungsten_render::Renderer::gpu_timings: tungsten_render::timing::GpuFrameTimings
+pub tungsten_render::Renderer::instance: wgpu::api::instance::Instance
+pub tungsten_render::Renderer::queue: wgpu::api::queue::Queue
+pub tungsten_render::Renderer::surface: wgpu::api::surface::Surface<'static>
+pub tungsten_render::Renderer::surface_config: wgpu::api::surface::SurfaceConfiguration
+pub tungsten_render::Renderer::timestamp_support: bool
+impl tungsten_render::renderer::Renderer
+pub fn tungsten_render::renderer::Renderer::allocate_texture_handle(&mut self) -> tungsten_core::assets::registry::TextureHandle
+pub fn tungsten_render::renderer::Renderer::depth_sort(&self) -> tungsten_core::config::DepthSortMode
+pub fn tungsten_render::renderer::Renderer::drop_texture(&mut self, tungsten_core::assets::registry::TextureHandle)
+pub fn tungsten_render::renderer::Renderer::load_font(&mut self, &str, alloc::vec::Vec<u8>)
+pub fn tungsten_render::renderer::Renderer::max_2d_texture_dimension(&self) -> u32
+pub fn tungsten_render::renderer::Renderer::new(alloc::sync::Arc<winit::window::Window>, &tungsten_core::config::RenderConfig, bool) -> core::result::Result<Self, tungsten_render::renderer::RenderError>
+pub fn tungsten_render::renderer::Renderer::post_aa(&self) -> tungsten_core::config::PostAaMode
+pub fn tungsten_render::renderer::Renderer::reconfigure_surface_pacing(&mut self, core::option::Option<tungsten_core::config::PresentModeConfig>, bool, core::option::Option<u32>) -> core::result::Result<(), tungsten_render::renderer::RenderError>
+pub fn tungsten_render::renderer::Renderer::reload_font(&mut self, &str, alloc::vec::Vec<u8>)
+pub fn tungsten_render::renderer::Renderer::reload_material(&mut self, tungsten_core::assets::material::MaterialAssetId, tungsten_core::assets::material::MaterialUniformDefaults) -> core::result::Result<(), tungsten_render::renderer::RenderError>
+pub fn tungsten_render::renderer::Renderer::reload_shader(&mut self, &str, alloc::string::String) -> core::result::Result<(), tungsten_render::renderer::RenderError>
+pub fn tungsten_render::renderer::Renderer::render_frame(&mut self) -> core::result::Result<(), tungsten_render::renderer::RenderError>
+pub fn tungsten_render::renderer::Renderer::render_frame_full(&mut self, &glam::f32::sse2::mat4::Mat4, &[tungsten_render::quad::QuadInstance], &[tungsten_render::sprite::SpriteBatch], &[tungsten_render::quad::QuadInstance], &[tungsten_render::debug_line::DebugLineInstance], &[tungsten_render::text::TextSection], &tungsten_core::post::PostStack) -> core::result::Result<(), tungsten_render::renderer::RenderError>
+pub fn tungsten_render::renderer::Renderer::render_frame_full_timed(&mut self, &glam::f32::sse2::mat4::Mat4, &[tungsten_render::quad::QuadInstance], &[tungsten_render::sprite::SpriteBatch], &[tungsten_render::quad::QuadInstance], &[tungsten_render::debug_line::DebugLineInstance], &[tungsten_render::text::TextSection], &tungsten_core::post::PostStack) -> core::result::Result<(), tungsten_render::renderer::RenderError>
+pub fn tungsten_render::renderer::Renderer::render_frame_with_quads(&mut self, &[tungsten_render::quad::QuadInstance]) -> core::result::Result<(), tungsten_render::renderer::RenderError>
+pub fn tungsten_render::renderer::Renderer::resize(&mut self, u32, u32)
+pub fn tungsten_render::renderer::Renderer::sample_count(&self) -> u32
+pub fn tungsten_render::renderer::Renderer::set_post_aa(&mut self, tungsten_core::config::PostAaMode)
+pub fn tungsten_render::renderer::Renderer::surface_format(&self) -> wgpu_types::texture::format::TextureFormat
+pub fn tungsten_render::renderer::Renderer::update_lights(&mut self, &tungsten_render::lighting::LightUbo)
+pub fn tungsten_render::renderer::Renderer::update_mesh_particles(&mut self, &[tungsten_render::mesh_particle::MeshParticleBatch])
+pub fn tungsten_render::renderer::Renderer::upload_lit_texture(&mut self, tungsten_core::assets::registry::TextureHandle, &[u8], &[u8], &[u8], u32, u32, tungsten_core::assets::manifest::FilterMode)
+pub fn tungsten_render::renderer::Renderer::upload_material(&mut self, tungsten_core::assets::material::MaterialAssetId, &str, &str, tungsten_core::assets::material::MaterialUniformDefaults) -> core::result::Result<(), tungsten_render::renderer::RenderError>
+pub fn tungsten_render::renderer::Renderer::upload_particle_mesh(&mut self, tungsten_core::assets::particle::ParticleMeshAssetId, &[[f32; 2]], &[u16])
+pub fn tungsten_render::renderer::Renderer::upload_shader(&mut self, &str, alloc::string::String) -> core::result::Result<tungsten_core::assets::shader::ShaderAssetId, tungsten_render::renderer::RenderError>
+pub fn tungsten_render::renderer::Renderer::upload_texture(&mut self, tungsten_core::assets::registry::TextureHandle, &[u8], u32, u32, tungsten_core::assets::manifest::FilterMode)
+pub fn tungsten_render::renderer::Renderer::write_subtexture(&self, tungsten_core::assets::registry::TextureHandle, &[u8], u32, u32, u32, u32)
+pub fn tungsten_render::renderer::Renderer::write_subtexture_lit(&self, tungsten_core::assets::registry::TextureHandle, &[u8], &[u8], &[u8], u32, u32, u32, u32)
+impl tungsten_render::renderer::Renderer
+pub fn tungsten_render::renderer::Renderer::capture_frame(&mut self, &std::path::Path) -> core::result::Result<(), tungsten_render::screenshot::ScreenshotError>
+pub fn tungsten_render::renderer::Renderer::capture_frame_direct(&mut self, &std::path::Path) -> core::result::Result<(), tungsten_render::screenshot::ScreenshotError>
+impl !core::marker::Freeze for tungsten_render::renderer::Renderer
+impl core::marker::Send for tungsten_render::renderer::Renderer
+impl core::marker::Sync for tungsten_render::renderer::Renderer
+impl core::marker::Unpin for tungsten_render::renderer::Renderer
+impl core::marker::UnsafeUnpin for tungsten_render::renderer::Renderer
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::renderer::Renderer
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::renderer::Renderer
+pub struct tungsten_render::SceneTarget
+pub tungsten_render::SceneTarget::bloom_max_mips: u32
+pub tungsten_render::SceneTarget::bloom_pyramid: tungsten_render::targets::BloomPyramid
+pub tungsten_render::SceneTarget::color: (wgpu::api::texture::Texture, wgpu::api::texture_view::TextureView)
+pub tungsten_render::SceneTarget::color_msaa: core::option::Option<(wgpu::api::texture::Texture, wgpu::api::texture_view::TextureView)>
+pub tungsten_render::SceneTarget::depth: core::option::Option<(wgpu::api::texture::Texture, wgpu::api::texture_view::TextureView)>
+pub tungsten_render::SceneTarget::depth_enabled: bool
+pub tungsten_render::SceneTarget::format: wgpu_types::texture::format::TextureFormat
+pub tungsten_render::SceneTarget::post_aa: tungsten_core::config::PostAaMode
+pub tungsten_render::SceneTarget::post_ping: (wgpu::api::texture::Texture, wgpu::api::texture_view::TextureView)
+pub tungsten_render::SceneTarget::post_pong: (wgpu::api::texture::Texture, wgpu::api::texture_view::TextureView)
+pub tungsten_render::SceneTarget::sample_count: u32
+pub tungsten_render::SceneTarget::size: (u32, u32)
+pub tungsten_render::SceneTarget::smaa: core::option::Option<tungsten_render::targets::SmaaTargets>
+impl tungsten_render::targets::SceneTarget
+pub fn tungsten_render::targets::SceneTarget::bloom_mip_count(&self) -> u32
+pub fn tungsten_render::targets::SceneTarget::bloom_mip_extent(&self, u32) -> core::option::Option<(u32, u32)>
+pub fn tungsten_render::targets::SceneTarget::bloom_mip_view(&self, u32) -> core::option::Option<&wgpu::api::texture_view::TextureView>
+pub fn tungsten_render::targets::SceneTarget::color_msaa_view(&self) -> core::option::Option<&wgpu::api::texture_view::TextureView>
+pub fn tungsten_render::targets::SceneTarget::color_texture(&self) -> &wgpu::api::texture::Texture
+pub fn tungsten_render::targets::SceneTarget::color_view(&self) -> &wgpu::api::texture_view::TextureView
+pub fn tungsten_render::targets::SceneTarget::depth_view(&self) -> core::option::Option<&wgpu::api::texture_view::TextureView>
+pub fn tungsten_render::targets::SceneTarget::new(&wgpu::api::device::Device, (u32, u32), wgpu_types::texture::format::TextureFormat, u32, bool, tungsten_core::config::PostAaMode, u32) -> Self
+pub fn tungsten_render::targets::SceneTarget::post_ping_smaa_read_view(&self) -> core::option::Option<&wgpu::api::texture_view::TextureView>
+pub fn tungsten_render::targets::SceneTarget::post_ping_texture(&self) -> &wgpu::api::texture::Texture
+pub fn tungsten_render::targets::SceneTarget::post_ping_view(&self) -> &wgpu::api::texture_view::TextureView
+pub fn tungsten_render::targets::SceneTarget::post_pong_smaa_read_view(&self) -> core::option::Option<&wgpu::api::texture_view::TextureView>
+pub fn tungsten_render::targets::SceneTarget::post_pong_texture(&self) -> &wgpu::api::texture::Texture
+pub fn tungsten_render::targets::SceneTarget::post_pong_view(&self) -> &wgpu::api::texture_view::TextureView
+pub fn tungsten_render::targets::SceneTarget::present_source_texture(&self) -> core::option::Option<&wgpu::api::texture::Texture>
+pub fn tungsten_render::targets::SceneTarget::present_source_view(&self) -> core::option::Option<&wgpu::api::texture_view::TextureView>
+pub fn tungsten_render::targets::SceneTarget::scene_color_smaa_read_view(&self) -> core::option::Option<&wgpu::api::texture_view::TextureView>
+pub fn tungsten_render::targets::SceneTarget::smaa_blend_view(&self) -> core::option::Option<&wgpu::api::texture_view::TextureView>
+pub fn tungsten_render::targets::SceneTarget::smaa_edges_view(&self) -> core::option::Option<&wgpu::api::texture_view::TextureView>
+impl core::fmt::Debug for tungsten_render::targets::SceneTarget
+pub fn tungsten_render::targets::SceneTarget::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_render::targets::SceneTarget
+impl core::marker::Send for tungsten_render::targets::SceneTarget
+impl core::marker::Sync for tungsten_render::targets::SceneTarget
+impl core::marker::Unpin for tungsten_render::targets::SceneTarget
+impl core::marker::UnsafeUnpin for tungsten_render::targets::SceneTarget
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::targets::SceneTarget
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::targets::SceneTarget
+pub struct tungsten_render::ShaderModuleCache
+pub tungsten_render::ShaderModuleCache::unchanged_count: u64
+impl tungsten_render::shader_hot_reload::ShaderModuleCache
+pub fn tungsten_render::shader_hot_reload::ShaderModuleCache::bytes_equal(&self, tungsten_core::assets::shader::ShaderAssetId, &str) -> bool
+pub fn tungsten_render::shader_hot_reload::ShaderModuleCache::commit(&mut self, tungsten_core::assets::shader::ShaderAssetId, alloc::string::String, wgpu::api::shader_module::ShaderModule)
+pub fn tungsten_render::shader_hot_reload::ShaderModuleCache::contains(&self, tungsten_core::assets::shader::ShaderAssetId) -> bool
+pub fn tungsten_render::shader_hot_reload::ShaderModuleCache::get(&self, tungsten_core::assets::shader::ShaderAssetId) -> core::option::Option<&wgpu::api::shader_module::ShaderModule>
+pub fn tungsten_render::shader_hot_reload::ShaderModuleCache::new() -> Self
+pub fn tungsten_render::shader_hot_reload::ShaderModuleCache::text(&self, tungsten_core::assets::shader::ShaderAssetId) -> core::option::Option<&str>
+pub fn tungsten_render::shader_hot_reload::ShaderModuleCache::upload(&mut self, &wgpu::api::device::Device, tungsten_core::assets::shader::ShaderAssetId, &str, alloc::string::String) -> core::result::Result<(), tungsten_render::shader_hot_reload::ShaderError>
+pub fn tungsten_render::shader_hot_reload::ShaderModuleCache::validate(&self, &wgpu::api::device::Device, &str, &str) -> core::result::Result<wgpu::api::shader_module::ShaderModule, tungsten_render::shader_hot_reload::ShaderError>
+impl core::default::Default for tungsten_render::shader_hot_reload::ShaderModuleCache
+pub fn tungsten_render::shader_hot_reload::ShaderModuleCache::default() -> tungsten_render::shader_hot_reload::ShaderModuleCache
+impl core::fmt::Debug for tungsten_render::shader_hot_reload::ShaderModuleCache
+pub fn tungsten_render::shader_hot_reload::ShaderModuleCache::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_render::shader_hot_reload::ShaderModuleCache
+impl core::marker::Send for tungsten_render::shader_hot_reload::ShaderModuleCache
+impl core::marker::Sync for tungsten_render::shader_hot_reload::ShaderModuleCache
+impl core::marker::Unpin for tungsten_render::shader_hot_reload::ShaderModuleCache
+impl core::marker::UnsafeUnpin for tungsten_render::shader_hot_reload::ShaderModuleCache
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::shader_hot_reload::ShaderModuleCache
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::shader_hot_reload::ShaderModuleCache
+pub struct tungsten_render::SmaaPipeline
+pub tungsten_render::SmaaPipeline::shader_ids: tungsten_render::post::smaa::SmaaShaderIds
+impl tungsten_render::post::smaa::SmaaPipeline
+pub fn tungsten_render::post::smaa::SmaaPipeline::new(&wgpu::api::device::Device, &wgpu::api::queue::Queue, wgpu_types::texture::format::TextureFormat, &wgpu::api::shader_module::ShaderModule, &wgpu::api::shader_module::ShaderModule, &wgpu::api::shader_module::ShaderModule, tungsten_render::post::smaa::SmaaShaderIds) -> Self
+pub fn tungsten_render::post::smaa::SmaaPipeline::rebuild_stage_with_module(&mut self, &wgpu::api::device::Device, tungsten_core::assets::shader::ShaderAssetId, &wgpu::api::shader_module::ShaderModule) -> core::result::Result<(), alloc::string::String>
+pub fn tungsten_render::post::smaa::SmaaPipeline::record_blend_weights_pass(&mut self, &wgpu::api::device::Device, &mut wgpu::api::render_pass::RenderPass<'_>, &tungsten_render::targets::RenderTargetPool)
+pub fn tungsten_render::post::smaa::SmaaPipeline::record_edge_pass(&mut self, &wgpu::api::device::Device, &mut wgpu::api::render_pass::RenderPass<'_>, &tungsten_render::targets::RenderTargetPool, tungsten_render::targets::TargetId, &wgpu::api::texture_view::TextureView)
+pub fn tungsten_render::post::smaa::SmaaPipeline::record_neighborhood_pass(&mut self, &wgpu::api::device::Device, &mut wgpu::api::render_pass::RenderPass<'_>, &tungsten_render::targets::RenderTargetPool, tungsten_render::targets::TargetId, &wgpu::api::texture_view::TextureView)
+pub fn tungsten_render::post::smaa::SmaaPipeline::target_format(&self) -> wgpu_types::texture::format::TextureFormat
+pub fn tungsten_render::post::smaa::SmaaPipeline::update_preset(&self, &wgpu::api::queue::Queue, tungsten_core::config::PostAaMode, (u32, u32))
+impl core::marker::Freeze for tungsten_render::post::smaa::SmaaPipeline
+impl core::marker::Send for tungsten_render::post::smaa::SmaaPipeline
+impl core::marker::Sync for tungsten_render::post::smaa::SmaaPipeline
+impl core::marker::Unpin for tungsten_render::post::smaa::SmaaPipeline
+impl core::marker::UnsafeUnpin for tungsten_render::post::smaa::SmaaPipeline
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::post::smaa::SmaaPipeline
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::post::smaa::SmaaPipeline
+pub struct tungsten_render::SmaaPreset
+pub tungsten_render::SmaaPreset::corner_rounding: u32
+pub tungsten_render::SmaaPreset::max_search_steps: u32
+pub tungsten_render::SmaaPreset::max_search_steps_diag: u32
+pub tungsten_render::SmaaPreset::threshold: f32
+impl tungsten_render::post::smaa::SmaaPreset
+pub fn tungsten_render::post::smaa::SmaaPreset::from_mode(tungsten_core::config::PostAaMode) -> core::option::Option<Self>
+impl core::clone::Clone for tungsten_render::post::smaa::SmaaPreset
+pub fn tungsten_render::post::smaa::SmaaPreset::clone(&self) -> tungsten_render::post::smaa::SmaaPreset
+impl core::cmp::PartialEq for tungsten_render::post::smaa::SmaaPreset
+pub fn tungsten_render::post::smaa::SmaaPreset::eq(&self, &tungsten_render::post::smaa::SmaaPreset) -> bool
+impl core::fmt::Debug for tungsten_render::post::smaa::SmaaPreset
+pub fn tungsten_render::post::smaa::SmaaPreset::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::post::smaa::SmaaPreset
+impl core::marker::StructuralPartialEq for tungsten_render::post::smaa::SmaaPreset
+impl core::marker::Freeze for tungsten_render::post::smaa::SmaaPreset
+impl core::marker::Send for tungsten_render::post::smaa::SmaaPreset
+impl core::marker::Sync for tungsten_render::post::smaa::SmaaPreset
+impl core::marker::Unpin for tungsten_render::post::smaa::SmaaPreset
+impl core::marker::UnsafeUnpin for tungsten_render::post::smaa::SmaaPreset
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::post::smaa::SmaaPreset
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::post::smaa::SmaaPreset
+#[repr(C)] pub struct tungsten_render::SmaaPresetUbo
+pub tungsten_render::SmaaPresetUbo::_pad: [f32; 56]
+pub tungsten_render::SmaaPresetUbo::corner_rounding: f32
+pub tungsten_render::SmaaPresetUbo::max_search_steps: f32
+pub tungsten_render::SmaaPresetUbo::max_search_steps_diag: f32
+pub tungsten_render::SmaaPresetUbo::rt_metrics: [f32; 4]
+pub tungsten_render::SmaaPresetUbo::threshold: f32
+impl tungsten_render::post::smaa::SmaaPresetUbo
+pub fn tungsten_render::post::smaa::SmaaPresetUbo::from_preset(tungsten_render::post::smaa::SmaaPreset, (u32, u32)) -> Self
+impl bytemuck::pod::Pod for tungsten_render::post::smaa::SmaaPresetUbo
+impl bytemuck::zeroable::Zeroable for tungsten_render::post::smaa::SmaaPresetUbo
+impl core::clone::Clone for tungsten_render::post::smaa::SmaaPresetUbo
+pub fn tungsten_render::post::smaa::SmaaPresetUbo::clone(&self) -> tungsten_render::post::smaa::SmaaPresetUbo
+impl core::fmt::Debug for tungsten_render::post::smaa::SmaaPresetUbo
+pub fn tungsten_render::post::smaa::SmaaPresetUbo::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::post::smaa::SmaaPresetUbo
+impl core::marker::Freeze for tungsten_render::post::smaa::SmaaPresetUbo
+impl core::marker::Send for tungsten_render::post::smaa::SmaaPresetUbo
+impl core::marker::Sync for tungsten_render::post::smaa::SmaaPresetUbo
+impl core::marker::Unpin for tungsten_render::post::smaa::SmaaPresetUbo
+impl core::marker::UnsafeUnpin for tungsten_render::post::smaa::SmaaPresetUbo
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::post::smaa::SmaaPresetUbo
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::post::smaa::SmaaPresetUbo
+pub struct tungsten_render::SmaaShaderIds
+pub tungsten_render::SmaaShaderIds::blend_weights: tungsten_core::assets::shader::ShaderAssetId
+pub tungsten_render::SmaaShaderIds::edge: tungsten_core::assets::shader::ShaderAssetId
+pub tungsten_render::SmaaShaderIds::neighborhood_blend: tungsten_core::assets::shader::ShaderAssetId
+impl core::clone::Clone for tungsten_render::post::smaa::SmaaShaderIds
+pub fn tungsten_render::post::smaa::SmaaShaderIds::clone(&self) -> tungsten_render::post::smaa::SmaaShaderIds
+impl core::fmt::Debug for tungsten_render::post::smaa::SmaaShaderIds
+pub fn tungsten_render::post::smaa::SmaaShaderIds::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::post::smaa::SmaaShaderIds
+impl core::marker::Freeze for tungsten_render::post::smaa::SmaaShaderIds
+impl core::marker::Send for tungsten_render::post::smaa::SmaaShaderIds
+impl core::marker::Sync for tungsten_render::post::smaa::SmaaShaderIds
+impl core::marker::Unpin for tungsten_render::post::smaa::SmaaShaderIds
+impl core::marker::UnsafeUnpin for tungsten_render::post::smaa::SmaaShaderIds
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::post::smaa::SmaaShaderIds
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::post::smaa::SmaaShaderIds
+pub struct tungsten_render::SpriteBatch
+pub tungsten_render::SpriteBatch::filter: tungsten_core::assets::manifest::FilterMode
+pub tungsten_render::SpriteBatch::instances: alloc::vec::Vec<tungsten_render::sprite::SpriteInstance>
+pub tungsten_render::SpriteBatch::lit: bool
+pub tungsten_render::SpriteBatch::material_id: core::option::Option<tungsten_core::assets::material::MaterialAssetId>
+pub tungsten_render::SpriteBatch::texture: tungsten_core::assets::registry::TextureHandle
+pub tungsten_render::SpriteBatch::uniform_overrides: core::option::Option<tungsten_core::tween::UniformOverrideBlock>
+impl tungsten_render::sprite::SpriteBatch
+pub fn tungsten_render::sprite::SpriteBatch::new(tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::manifest::FilterMode) -> Self
+impl core::marker::Freeze for tungsten_render::sprite::SpriteBatch
+impl core::marker::Send for tungsten_render::sprite::SpriteBatch
+impl core::marker::Sync for tungsten_render::sprite::SpriteBatch
+impl core::marker::Unpin for tungsten_render::sprite::SpriteBatch
+impl core::marker::UnsafeUnpin for tungsten_render::sprite::SpriteBatch
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::sprite::SpriteBatch
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::sprite::SpriteBatch
+#[repr(C)] pub struct tungsten_render::SpriteInstance
+pub tungsten_render::SpriteInstance::_pad: f32
+pub tungsten_render::SpriteInstance::color: [u8; 4]
+pub tungsten_render::SpriteInstance::position: [f32; 2]
+pub tungsten_render::SpriteInstance::rotation: f32
+pub tungsten_render::SpriteInstance::size: [f32; 2]
+pub tungsten_render::SpriteInstance::uv_min: [f32; 2]
+pub tungsten_render::SpriteInstance::uv_size: [f32; 2]
+pub tungsten_render::SpriteInstance::z_norm: f32
+impl tungsten_render::sprite::SpriteInstance
+pub fn tungsten_render::sprite::SpriteInstance::desc() -> wgpu::api::render_pipeline::VertexBufferLayout<'static>
+pub fn tungsten_render::sprite::SpriteInstance::whole([f32; 2], [f32; 2], f32, [u8; 4]) -> Self
+impl bytemuck::pod::Pod for tungsten_render::sprite::SpriteInstance
+impl bytemuck::zeroable::Zeroable for tungsten_render::sprite::SpriteInstance
+impl core::clone::Clone for tungsten_render::sprite::SpriteInstance
+pub fn tungsten_render::sprite::SpriteInstance::clone(&self) -> tungsten_render::sprite::SpriteInstance
+impl core::default::Default for tungsten_render::sprite::SpriteInstance
+pub fn tungsten_render::sprite::SpriteInstance::default() -> Self
+impl core::fmt::Debug for tungsten_render::sprite::SpriteInstance
+pub fn tungsten_render::sprite::SpriteInstance::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::sprite::SpriteInstance
+impl core::marker::Freeze for tungsten_render::sprite::SpriteInstance
+impl core::marker::Send for tungsten_render::sprite::SpriteInstance
+impl core::marker::Sync for tungsten_render::sprite::SpriteInstance
+impl core::marker::Unpin for tungsten_render::sprite::SpriteInstance
+impl core::marker::UnsafeUnpin for tungsten_render::sprite::SpriteInstance
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::sprite::SpriteInstance
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::sprite::SpriteInstance
+pub struct tungsten_render::SpritePipeline
+impl tungsten_render::sprite::SpritePipeline
+pub fn tungsten_render::sprite::SpritePipeline::allocate_texture_handle(&mut self) -> tungsten_core::assets::registry::TextureHandle
+pub fn tungsten_render::sprite::SpritePipeline::camera_bind_group(&self) -> &wgpu::api::bind_group::BindGroup
+pub fn tungsten_render::sprite::SpritePipeline::camera_bind_group_layout(&self) -> &wgpu::api::bind_group_layout::BindGroupLayout
+pub fn tungsten_render::sprite::SpritePipeline::draw(&mut self, &wgpu::api::device::Device, &wgpu::api::queue::Queue, &mut wgpu::api::render_pass::RenderPass<'_>, &[tungsten_render::sprite::SpriteBatch], &std::collections::hash::map::HashMap<tungsten_core::assets::material::MaterialAssetId, tungsten_render::material::MaterialPipeline>, core::option::Option<&wgpu::api::render_pipeline::RenderPipeline>, core::option::Option<&wgpu::api::bind_group::BindGroup>)
+pub fn tungsten_render::sprite::SpritePipeline::drop_lit_texture(&mut self, tungsten_core::assets::registry::TextureHandle)
+pub fn tungsten_render::sprite::SpritePipeline::drop_texture(&mut self, tungsten_core::assets::registry::TextureHandle)
+pub fn tungsten_render::sprite::SpritePipeline::lit_texture_bind_group_layout(&self) -> &wgpu::api::bind_group_layout::BindGroupLayout
+pub fn tungsten_render::sprite::SpritePipeline::new(&wgpu::api::device::Device, wgpu_types::texture::format::TextureFormat, u32, bool) -> Self
+pub fn tungsten_render::sprite::SpritePipeline::rebuild_with_shader(&mut self, &wgpu::api::device::Device, &wgpu::api::shader_module::ShaderModule, wgpu_types::texture::format::TextureFormat, u32, bool) -> core::result::Result<(), alloc::string::String>
+pub fn tungsten_render::sprite::SpritePipeline::texture_bind_group_layout(&self) -> &wgpu::api::bind_group_layout::BindGroupLayout
+pub fn tungsten_render::sprite::SpritePipeline::update_camera(&self, &wgpu::api::queue::Queue, &glam::f32::sse2::mat4::Mat4)
+pub fn tungsten_render::sprite::SpritePipeline::upload_lit_texture(&mut self, &wgpu::api::device::Device, &wgpu::api::queue::Queue, tungsten_core::assets::registry::TextureHandle, &[u8], &[u8], &[u8], u32, u32, tungsten_core::assets::manifest::FilterMode)
+pub fn tungsten_render::sprite::SpritePipeline::upload_texture(&mut self, &wgpu::api::device::Device, &wgpu::api::queue::Queue, tungsten_core::assets::registry::TextureHandle, &[u8], u32, u32, tungsten_core::assets::manifest::FilterMode)
+pub fn tungsten_render::sprite::SpritePipeline::vertex_layouts() -> [core::option::Option<wgpu::api::render_pipeline::VertexBufferLayout<'static>>; 2]
+pub fn tungsten_render::sprite::SpritePipeline::write_subtexture(&self, &wgpu::api::queue::Queue, tungsten_core::assets::registry::TextureHandle, &[u8], u32, u32, u32, u32)
+pub fn tungsten_render::sprite::SpritePipeline::write_subtexture_lit(&self, &wgpu::api::queue::Queue, tungsten_core::assets::registry::TextureHandle, &[u8], &[u8], &[u8], u32, u32, u32, u32)
+impl core::marker::Freeze for tungsten_render::sprite::SpritePipeline
+impl core::marker::Send for tungsten_render::sprite::SpritePipeline
+impl core::marker::Sync for tungsten_render::sprite::SpritePipeline
+impl core::marker::Unpin for tungsten_render::sprite::SpritePipeline
+impl core::marker::UnsafeUnpin for tungsten_render::sprite::SpritePipeline
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::sprite::SpritePipeline
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::sprite::SpritePipeline
+pub struct tungsten_render::TextPipeline
+impl tungsten_render::text::TextPipeline
+pub fn tungsten_render::text::TextPipeline::load_font(&mut self, &str, alloc::vec::Vec<u8>)
+pub fn tungsten_render::text::TextPipeline::new(&wgpu::api::device::Device, &wgpu::api::queue::Queue, wgpu_types::texture::format::TextureFormat) -> Self
+pub fn tungsten_render::text::TextPipeline::post_frame(&mut self)
+pub fn tungsten_render::text::TextPipeline::prepare(&mut self, &wgpu::api::device::Device, &wgpu::api::queue::Queue, &[tungsten_render::text::TextSection], u32, u32)
+pub fn tungsten_render::text::TextPipeline::reload_font(&mut self, &str, alloc::vec::Vec<u8>)
+pub fn tungsten_render::text::TextPipeline::render<'pass>(&'pass self, &mut wgpu::api::render_pass::RenderPass<'pass>)
+impl !core::marker::Freeze for tungsten_render::text::TextPipeline
+impl core::marker::Send for tungsten_render::text::TextPipeline
+impl core::marker::Sync for tungsten_render::text::TextPipeline
+impl core::marker::Unpin for tungsten_render::text::TextPipeline
+impl core::marker::UnsafeUnpin for tungsten_render::text::TextPipeline
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::text::TextPipeline
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::text::TextPipeline
+pub struct tungsten_render::TextSection
+pub tungsten_render::TextSection::bounds: core::option::Option<[f32; 2]>
+pub tungsten_render::TextSection::color: [u8; 4]
+pub tungsten_render::TextSection::content: alloc::string::String
+pub tungsten_render::TextSection::font_id: alloc::string::String
+pub tungsten_render::TextSection::font_size: f32
+pub tungsten_render::TextSection::line_height: f32
+pub tungsten_render::TextSection::position: [f32; 2]
+impl core::clone::Clone for tungsten_render::text::TextSection
+pub fn tungsten_render::text::TextSection::clone(&self) -> tungsten_render::text::TextSection
+impl core::fmt::Debug for tungsten_render::text::TextSection
+pub fn tungsten_render::text::TextSection::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_render::text::TextSection
+impl core::marker::Send for tungsten_render::text::TextSection
+impl core::marker::Sync for tungsten_render::text::TextSection
+impl core::marker::Unpin for tungsten_render::text::TextSection
+impl core::marker::UnsafeUnpin for tungsten_render::text::TextSection
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::text::TextSection
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::text::TextSection
+pub const tungsten_render::EMISSIVE_MASK_SHADER_NAME: &str
+pub const tungsten_render::LIT_LIGHT_CAP: usize
+pub const tungsten_render::LIT_SPRITE_SHADER_NAME: &str
+pub const tungsten_render::LIT_SPRITE_SHADER_SOURCE: &str
+pub const tungsten_render::RIM_LIGHT_SHADER_NAME: &str
+pub const tungsten_render::SMAA_BLEND_WEIGHTS_SHADER_NAME: &str
+pub const tungsten_render::SMAA_EDGE_SHADER_NAME: &str
+pub const tungsten_render::SMAA_NEIGHBORHOOD_BLEND_SHADER_NAME: &str
+pub fn tungsten_render::compare_png(&std::path::Path, &std::path::Path, u8) -> core::result::Result<tungsten_render::image_diff::DiffReport, tungsten_render::image_diff::ImageDiffError>
+pub fn tungsten_render::cull_to_cap((glam::f32::vec2::Vec2, glam::f32::vec2::Vec2), &[(glam::f32::vec2::Vec2, tungsten_core::components::Light)]) -> alloc::vec::Vec<tungsten_render::lighting::GpuLight>
+pub fn tungsten_render::default_pass_order(u32, tungsten_core::config::DepthSortMode, bool, usize, tungsten_core::config::PostAaMode, tungsten_render::passes::order::PresentPath) -> tungsten_render::passes::order::PassOrder
+pub fn tungsten_render::distance_to_aabb_sq(glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2) -> f32
+pub fn tungsten_render::pack_lights(&[tungsten_render::lighting::GpuLight], glam::f32::vec3::Vec3) -> tungsten_render::lighting::LightUbo
+pub fn tungsten_render::pack_one_light(glam::f32::vec2::Vec2, &tungsten_core::components::Light) -> tungsten_render::lighting::GpuLight
+pub fn tungsten_render::validate_wgsl_source(&str, &str) -> core::result::Result<(), tungsten_render::shader_hot_reload::ShaderError>

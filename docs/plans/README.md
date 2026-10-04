@@ -6,7 +6,7 @@ Short-lived multi-step plans saved as `*.md`. A plan is the handoff artifact for
 
 - Milestone implementation plans: `phaseN-milestone-NN-short-topic.md`. `N` is the phase number, `NN` the zero-padded milestone number, `short-topic` a concise kebab-case slug for the deliverable. Example: `phase4-milestone-26-materials-post-stack.md`.
 - Other handoff plans: `descriptive-topic.md`.
-- Program folders: plans that serve one goal may share `docs/plans/<program>/`, with a README that maps its files, as [`1.0/`](1.0/README.md) does. Header rules apply to every file there except the README. `just repo-check` reads only this folder's top level so far.
+- Program folders: plans that serve one goal may share `docs/plans/<program>/`, with a README that maps its files, as [`1.0/`](1.0/README.md) does. Header rules apply to every file there except the README, and `just repo-check` reads them one folder deep.
 
 ## Contents
 
@@ -21,7 +21,7 @@ Short-lived multi-step plans saved as `*.md`. A plan is the handoff artifact for
 - Run the step's done-when checks and quote the results. Report a failed check with its output instead of working around it, and a check that did not run as not run.
 - Where the plan defers a choice, use its stated default; otherwise check [`docs/DECISION_INDEX.md`](../DECISION_INDEX.md), then ask. The "Stuck" rule in [AGENTS.md](../../AGENTS.md) applies.
 - Keep `status` current: set `in progress` when work starts and `done` when the last done-when check passes, then archive per Lifecycle (`just repo-check` flags a finished plan left here).
-- Commit on the milestone branch once the checks pass (`D-097`): stage only the paths the work touched (`git add <paths>`, never `-A`) and commit once per plan, or once per phase of a long plan, without attribution lines. Push, tags and merges stay with the human. Where Git is still denied to you, hand over that one `git add <paths> && git commit` command instead. A task that asks for per-step history gets one commit per step (`D-098`).
+- Don't commit (`D-105`): leave the work uncommitted on the milestone branch and end with the list of files you changed. The release session's command block makes the release's only commit; push, tags and merges stay with the human. Keep scratch files out of the tree, since that commit takes all of it.
 - Keep the evidence log terse: one row per step with its verdict, key numbers and capture or log paths. A plan adds one `CHANGELOG.md` `[Unreleased]` line, not one per step.
 - For perf plans, write the done-when checks per the profiling workflow's [Writing done-when checks](../perf/profiling-workflow.md#writing-done-when-checks).
 

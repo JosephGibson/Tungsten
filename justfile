@@ -55,18 +55,27 @@ perf *args:
 perf-test:
     python3 -B scripts/test-bench.py
 
-# Shell and workflow lint plus smoke-script, perf-helper, repo-checker and release-script tests (no GPU).
+# Shell and workflow lint plus smoke-script, perf-helper, repo-checker, roadmap-helper and release-script tests (no GPU).
 script-test: perf-test
     shellcheck scripts/*.sh
     actionlint
     bash scripts/test-smoke-examples.sh
     python3 -B scripts/test-check-repo.py
+    python3 -B scripts/test-roadmap.py
     python3 -B scripts/test-release.py
     python3 -B scripts/test-release-preflight.py
 
 # Dependency policy: advisories, licenses, bans, sources.
 deps:
     cargo deny --locked check
+
+# Public API snapshots in api/ (D-104, D-107; `cargo install --locked cargo-public-api@0.52.0`). Not in CI.
+api:
+    bash scripts/public-api.sh
+
+# Fails when an api/ snapshot is stale; a release check.
+api-check:
+    bash scripts/public-api.sh --check
 
 # Unused dependencies (cargo-shear; `cargo install --locked cargo-shear`). Not in CI.
 udeps:

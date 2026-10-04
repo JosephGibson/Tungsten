@@ -13,10 +13,10 @@ Sources are [criteria](criteria.md) sections unless another file is named.
 | --- | --- | --- |
 | Editable text fields and IME | §4; [w01](w01-ui-text-suite.md) §11; the definition gate (Q8, `D-102`) | A game needs name entry |
 | Accessibility, docking, virtualization, localization, data-defined screens, world-anchored text, bitmap fonts, an editable inspector, a command console | w01 §11, "Later" | Each gets its own plan |
-| JSON schemas for config files; live editing in the game | §8.5 | W1's widgets have shipped |
+| JSON schemas for config files; live editing in the game | [w14](w14-tooling.md) | W1's widgets have shipped |
 | Nested prefabs; patching live entities on hot reload | §8.7 | A game asks |
-| World snapshots and saves by reflection | §8.2, §8.7 | Component reflection exists |
-| Crash files for signals (segfault, driver abort) | §8.2 | A game ships and needs them |
+| World snapshots and saves by reflection | [w11](w11-shipping-basics.md), §8.7 | Component reflection exists |
+| Crash files for signals (segfault, driver abort) | [w11](w11-shipping-basics.md) | A game ships and needs them |
 | Parallel system scheduler | §5.4 | Q6 has fixed the bounds and a CPU-bound game row needs it |
 | Parallel custom extracts | §5.3, R1 | A custom extract dominates a row |
 | Pipelined render thread (R4) | The definition gate (Q4, `D-102`), as the [implementation plan](implementation-plan.md) §6 proposed | C1 shows a game-frame row over budget that R4 would fix |

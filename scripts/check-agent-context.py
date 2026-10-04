@@ -22,7 +22,7 @@ IMPORT_ONLY = "@AGENTS.md\n"
 BUDGETS = {
     "AGENTS.md": (6144, 200),
     "crates/tungsten-render/AGENTS.md": (4096, 200),
-    "docs/LLM_INDEX.md": (8192, None),
+    "docs/LLM_INDEX.md": (12288, None),
 }
 IMPORT_FILES = ["CLAUDE.md", "crates/tungsten-render/CLAUDE.md"]
 LINK_FILES = [
@@ -201,6 +201,7 @@ def self_test() -> int:
         "valid": lambda r: None,
         "oversize AGENTS.md": lambda r: (r / "AGENTS.md").write_text(ok + "x" * 7000),
         "too many lines": lambda r: (r / "AGENTS.md").write_text(ok + "\n" * 200),
+        "oversize index": lambda r: (r / INDEX).write_text(files[INDEX] + "x" * 12288),
         "broken link": lambda r: (r / "docs/agent-setup.md").write_text("[gone](missing.md)\n"),
         "broken index path": lambda r: (r / INDEX).write_text("`core/nope.rs`\n"),
         "CLAUDE.md with body": lambda r: (r / "CLAUDE.md").write_text(IMPORT_ONLY + "extra\n"),

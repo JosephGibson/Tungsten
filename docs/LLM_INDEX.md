@@ -75,6 +75,9 @@ Run with `cargo run -p example-NN-name`.
 | Open findings, unchecked platforms and follow-ups | `docs/known-issues.md` |
 | Repository QA and quick checks | `scripts/check-repo.py`, `scripts/test-check-repo.py`, `justfile`, `docs/agent-setup.md` |
 | Agent instruction budgets and links (`just ctx`) | `scripts/check-agent-context.py` |
+| Public-API snapshots (`just api`, `D-107`); breaks go in the W4 ledger | `scripts/public-api.sh`, `api/`, `docs/plans/1.0/w04-api-freeze.md` |
+| Writing or running a 1.0 milestone plan | `.claude/skills/tungsten-milestone/SKILL.md`, `docs/plans/1.0/workflow.md` |
+| Road to 1.0 status, next prompt, roadmap page (`D-109`) | `.claude/skills/tungsten-next/SKILL.md`, `docs/plans/1.0/roadmap.json`, `scripts/roadmap.py`, `scripts/test-roadmap.py`, `.claude/skills/tungsten-next/page.html` |
 | Release preparation, checks and command hand-off, publication/recovery (`D-071`, `D-074`, `D-079`) | `.github/workflows/release.yml`, `scripts/release.py`, `scripts/test-release.py`, `tools/launcher/src/main.rs`, `.claude/skills/tungsten-finalize/SKILL.md`, `.claude/skills/tungsten-release/SKILL.md`, `docs/releases.md`, `scripts/release-preflight.py`, `scripts/test-release-preflight.py` |
 | New dependency or design change | `docs/DECISION_INDEX.md`, then `DECISIONS.md` by ID; to write an entry, `.claude/skills/tungsten-decision/SKILL.md` |
 | Committing plan work (`D-097`, `D-098`) | `docs/plans/README.md` |

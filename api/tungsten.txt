@@ -1,0 +1,1073 @@
+pub mod tungsten
+pub use tungsten::ActionMap
+pub use tungsten::ActionMapError
+pub use tungsten::Binding
+pub use tungsten::DebugDraw
+pub use tungsten::DebugShape
+pub use tungsten::Inspectable
+pub use tungsten::core
+pub use tungsten::physics
+pub use tungsten::render
+pub mod tungsten::app
+pub struct tungsten::app::App
+impl tungsten::app::App
+pub fn tungsten::app::App::add_system(&mut self, impl core::ops::function::FnMut(&mut tungsten_core::ecs::world::World) + 'static)
+pub fn tungsten::app::App::add_system_named(&mut self, impl core::convert::Into<alloc::string::String>, impl core::ops::function::FnMut(&mut tungsten_core::ecs::world::World) + 'static)
+pub fn tungsten::app::App::enable_hot_reload(&mut self, &[std::path::PathBuf], std::path::PathBuf)
+pub fn tungsten::app::App::new(tungsten_core::config::Config) -> anyhow::Result<Self>
+pub fn tungsten::app::App::on_startup(&mut self, impl core::ops::function::FnOnce(&mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) + 'static)
+pub fn tungsten::app::App::register_event<T: 'static>(&mut self)
+pub fn tungsten::app::App::register_inspectable<T: 'static + tungsten_core::inspect::Inspectable>(&mut self, &'static str)
+pub fn tungsten::app::App::renderer_mut(&mut self) -> core::option::Option<&mut tungsten_render::renderer::Renderer>
+pub fn tungsten::app::App::run(self) -> anyhow::Result<()>
+pub fn tungsten::app::App::set_exit_on_escape(&mut self, bool)
+pub fn tungsten::app::App::set_extract_quads(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::quad::QuadInstance> + 'static)
+pub fn tungsten::app::App::set_extract_sprites(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch> + 'static)
+pub fn tungsten::app::App::set_extract_text(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::text::TextSection> + 'static)
+pub fn tungsten::app::App::set_manifest_roots(&mut self, alloc::vec::Vec<std::path::PathBuf>)
+pub fn tungsten::app::App::world_mut(&mut self) -> &mut tungsten_core::ecs::world::World
+impl winit::application::ApplicationHandler for tungsten::app::App
+pub fn tungsten::app::App::about_to_wait(&mut self, &winit::event_loop::ActiveEventLoop)
+pub fn tungsten::app::App::resumed(&mut self, &winit::event_loop::ActiveEventLoop)
+pub fn tungsten::app::App::window_event(&mut self, &winit::event_loop::ActiveEventLoop, winit::window::WindowId, winit::event::WindowEvent)
+impl !core::marker::Freeze for tungsten::app::App
+impl !core::marker::Send for tungsten::app::App
+impl !core::marker::Sync for tungsten::app::App
+impl core::marker::Unpin for tungsten::app::App
+impl core::marker::UnsafeUnpin for tungsten::app::App
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten::app::App
+impl !core::panic::unwind_safe::UnwindSafe for tungsten::app::App
+pub struct tungsten::app::WindowSize
+pub tungsten::app::WindowSize::height: u32
+pub tungsten::app::WindowSize::width: u32
+impl core::clone::Clone for tungsten::app::WindowSize
+pub fn tungsten::app::WindowSize::clone(&self) -> tungsten::app::WindowSize
+impl core::fmt::Debug for tungsten::app::WindowSize
+pub fn tungsten::app::WindowSize::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::app::WindowSize
+impl core::marker::Freeze for tungsten::app::WindowSize
+impl core::marker::Send for tungsten::app::WindowSize
+impl core::marker::Sync for tungsten::app::WindowSize
+impl core::marker::Unpin for tungsten::app::WindowSize
+impl core::marker::UnsafeUnpin for tungsten::app::WindowSize
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::app::WindowSize
+impl core::panic::unwind_safe::UnwindSafe for tungsten::app::WindowSize
+pub type tungsten::app::ExtractQuadsFn = alloc::boxed::Box<dyn core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::quad::QuadInstance>>
+pub type tungsten::app::ExtractSpritesFn = alloc::boxed::Box<dyn core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch>>
+pub type tungsten::app::ExtractTextFn = alloc::boxed::Box<dyn core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::text::TextSection>>
+pub type tungsten::app::StartupFn = alloc::boxed::Box<dyn core::ops::function::FnOnce(&mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer)>
+pub type tungsten::app::SystemFn = alloc::boxed::Box<dyn core::ops::function::FnMut(&mut tungsten_core::ecs::world::World)>
+pub mod tungsten::asset_loader
+pub struct tungsten::asset_loader::AtlasRegistry
+pub tungsten::asset_loader::AtlasRegistry::linear_pages: alloc::vec::Vec<tungsten_core::assets::registry::TextureHandle>
+pub tungsten::asset_loader::AtlasRegistry::nearest_pages: alloc::vec::Vec<tungsten_core::assets::registry::TextureHandle>
+pub tungsten::asset_loader::AtlasRegistry::packed: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::atlas::PackedSprite>
+pub tungsten::asset_loader::AtlasRegistry::page_sizes: std::collections::hash::map::HashMap<tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::AtlasPage>
+impl tungsten::asset_loader::AtlasRegistry
+pub fn tungsten::asset_loader::AtlasRegistry::page_handles(&self, tungsten_core::assets::manifest::FilterMode) -> &[tungsten_core::assets::registry::TextureHandle]
+pub fn tungsten::asset_loader::AtlasRegistry::page_handles_mut(&mut self, tungsten_core::assets::manifest::FilterMode) -> &mut alloc::vec::Vec<tungsten_core::assets::registry::TextureHandle>
+impl core::default::Default for tungsten::asset_loader::AtlasRegistry
+pub fn tungsten::asset_loader::AtlasRegistry::default() -> tungsten::asset_loader::AtlasRegistry
+impl core::fmt::Debug for tungsten::asset_loader::AtlasRegistry
+pub fn tungsten::asset_loader::AtlasRegistry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten::asset_loader::AtlasRegistry
+impl core::marker::Send for tungsten::asset_loader::AtlasRegistry
+impl core::marker::Sync for tungsten::asset_loader::AtlasRegistry
+impl core::marker::Unpin for tungsten::asset_loader::AtlasRegistry
+impl core::marker::UnsafeUnpin for tungsten::asset_loader::AtlasRegistry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::asset_loader::AtlasRegistry
+impl core::panic::unwind_safe::UnwindSafe for tungsten::asset_loader::AtlasRegistry
+pub fn tungsten::asset_loader::load_all(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
+pub fn tungsten::asset_loader::load_all_merged(&[impl core::convert::AsRef<std::path::Path>], &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
+pub fn tungsten::asset_loader::load_animations(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
+pub fn tungsten::asset_loader::load_fonts(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
+pub fn tungsten::asset_loader::load_materials(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
+pub fn tungsten::asset_loader::load_particle_meshes(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
+pub fn tungsten::asset_loader::load_particles(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
+pub fn tungsten::asset_loader::load_scene(&std::path::Path) -> anyhow::Result<tungsten_core::assets::scene::SceneData>
+pub fn tungsten::asset_loader::load_shaders(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
+pub fn tungsten::asset_loader::load_sounds(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
+pub fn tungsten::asset_loader::load_sprites(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
+pub fn tungsten::asset_loader::load_tilemaps(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
+pub fn tungsten::asset_loader::rebuild_atlas_for_filter(tungsten_core::assets::manifest::FilterMode, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
+pub fn tungsten::asset_loader::reload_action_map(&std::path::Path, &mut tungsten_core::ecs::world::World) -> core::result::Result<(), tungsten_core::input::action_map::ActionMapError>
+pub fn tungsten::asset_loader::reload_animation(&str, &std::path::Path, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
+pub fn tungsten::asset_loader::reload_font(&str, &std::path::Path, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
+pub fn tungsten::asset_loader::reload_manifest(&[std::path::PathBuf], &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
+pub fn tungsten::asset_loader::reload_material(&str, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
+pub fn tungsten::asset_loader::reload_particle(&str, &std::path::Path, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
+pub fn tungsten::asset_loader::reload_shader(&str, &std::path::Path, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
+pub fn tungsten::asset_loader::reload_sprite(&str, &std::path::Path, tungsten_core::assets::manifest::FilterMode, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
+pub fn tungsten::asset_loader::reload_tilemap(&str, &std::path::Path, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
+pub fn tungsten::asset_loader::spawn_scene(&mut tungsten_core::ecs::world::World, &tungsten_core::assets::scene::SceneData, tungsten::state::StateId)
+pub mod tungsten::audio
+pub struct tungsten::audio::AudioSystem
+impl tungsten::audio::AudioSystem
+pub fn tungsten::audio::AudioSystem::init(&tungsten_core::assets::audio::SoundRegistry) -> anyhow::Result<Self>
+pub fn tungsten::audio::AudioSystem::send(&mut self, tungsten_core::audio::AudioCommand)
+impl !core::marker::Freeze for tungsten::audio::AudioSystem
+impl core::marker::Send for tungsten::audio::AudioSystem
+impl !core::marker::Sync for tungsten::audio::AudioSystem
+impl core::marker::Unpin for tungsten::audio::AudioSystem
+impl core::marker::UnsafeUnpin for tungsten::audio::AudioSystem
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten::audio::AudioSystem
+impl !core::panic::unwind_safe::UnwindSafe for tungsten::audio::AudioSystem
+pub mod tungsten::camera
+pub fn tungsten::camera::camera_update_system(&mut tungsten_core::ecs::world::World)
+pub mod tungsten::debug_hud
+pub enum tungsten::debug_hud::HudCorner
+pub tungsten::debug_hud::HudCorner::BottomLeft
+pub tungsten::debug_hud::HudCorner::BottomRight
+pub tungsten::debug_hud::HudCorner::TopLeft
+pub tungsten::debug_hud::HudCorner::TopRight
+impl core::clone::Clone for tungsten::debug_hud::HudCorner
+pub fn tungsten::debug_hud::HudCorner::clone(&self) -> tungsten::debug_hud::HudCorner
+impl core::cmp::Eq for tungsten::debug_hud::HudCorner
+impl core::cmp::PartialEq for tungsten::debug_hud::HudCorner
+pub fn tungsten::debug_hud::HudCorner::eq(&self, &tungsten::debug_hud::HudCorner) -> bool
+impl core::fmt::Debug for tungsten::debug_hud::HudCorner
+pub fn tungsten::debug_hud::HudCorner::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::debug_hud::HudCorner
+impl core::marker::StructuralPartialEq for tungsten::debug_hud::HudCorner
+impl core::marker::Freeze for tungsten::debug_hud::HudCorner
+impl core::marker::Send for tungsten::debug_hud::HudCorner
+impl core::marker::Sync for tungsten::debug_hud::HudCorner
+impl core::marker::Unpin for tungsten::debug_hud::HudCorner
+impl core::marker::UnsafeUnpin for tungsten::debug_hud::HudCorner
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::debug_hud::HudCorner
+impl core::panic::unwind_safe::UnwindSafe for tungsten::debug_hud::HudCorner
+pub struct tungsten::debug_hud::DebugHud
+pub tungsten::debug_hud::DebugHud::color: [u8; 4]
+pub tungsten::debug_hud::DebugHud::corner: tungsten::debug_hud::HudCorner
+pub tungsten::debug_hud::DebugHud::enabled: bool
+pub tungsten::debug_hud::DebugHud::font_id: alloc::string::String
+pub tungsten::debug_hud::DebugHud::font_size: f32
+pub tungsten::debug_hud::DebugHud::line_height: f32
+pub tungsten::debug_hud::DebugHud::outline_color: [u8; 4]
+pub tungsten::debug_hud::DebugHud::outline_px: f32
+pub tungsten::debug_hud::DebugHud::padding_px: f32
+pub tungsten::debug_hud::DebugHud::refresh_interval_ms: f32
+impl tungsten::debug_hud::DebugHud
+pub fn tungsten::debug_hud::DebugHud::add_row<F>(&mut self, F) where F: core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten::debug_hud::HudRow> + 'static
+pub fn tungsten::debug_hud::DebugHud::new() -> Self
+pub fn tungsten::debug_hud::DebugHud::rendered_height_px(&self) -> f32
+pub fn tungsten::debug_hud::DebugHud::toggle(&mut self)
+impl core::default::Default for tungsten::debug_hud::DebugHud
+pub fn tungsten::debug_hud::DebugHud::default() -> Self
+impl core::marker::Freeze for tungsten::debug_hud::DebugHud
+impl !core::marker::Send for tungsten::debug_hud::DebugHud
+impl !core::marker::Sync for tungsten::debug_hud::DebugHud
+impl core::marker::Unpin for tungsten::debug_hud::DebugHud
+impl core::marker::UnsafeUnpin for tungsten::debug_hud::DebugHud
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten::debug_hud::DebugHud
+impl !core::panic::unwind_safe::UnwindSafe for tungsten::debug_hud::DebugHud
+pub struct tungsten::debug_hud::HudActiveState(pub alloc::string::String)
+impl core::clone::Clone for tungsten::debug_hud::HudActiveState
+pub fn tungsten::debug_hud::HudActiveState::clone(&self) -> tungsten::debug_hud::HudActiveState
+impl core::default::Default for tungsten::debug_hud::HudActiveState
+pub fn tungsten::debug_hud::HudActiveState::default() -> tungsten::debug_hud::HudActiveState
+impl core::fmt::Debug for tungsten::debug_hud::HudActiveState
+pub fn tungsten::debug_hud::HudActiveState::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten::debug_hud::HudActiveState
+impl core::marker::Send for tungsten::debug_hud::HudActiveState
+impl core::marker::Sync for tungsten::debug_hud::HudActiveState
+impl core::marker::Unpin for tungsten::debug_hud::HudActiveState
+impl core::marker::UnsafeUnpin for tungsten::debug_hud::HudActiveState
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::debug_hud::HudActiveState
+impl core::panic::unwind_safe::UnwindSafe for tungsten::debug_hud::HudActiveState
+pub struct tungsten::debug_hud::HudRow
+pub tungsten::debug_hud::HudRow::label: &'static str
+pub tungsten::debug_hud::HudRow::value: alloc::string::String
+impl core::clone::Clone for tungsten::debug_hud::HudRow
+pub fn tungsten::debug_hud::HudRow::clone(&self) -> tungsten::debug_hud::HudRow
+impl core::fmt::Debug for tungsten::debug_hud::HudRow
+pub fn tungsten::debug_hud::HudRow::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten::debug_hud::HudRow
+impl core::marker::Send for tungsten::debug_hud::HudRow
+impl core::marker::Sync for tungsten::debug_hud::HudRow
+impl core::marker::Unpin for tungsten::debug_hud::HudRow
+impl core::marker::UnsafeUnpin for tungsten::debug_hud::HudRow
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::debug_hud::HudRow
+impl core::panic::unwind_safe::UnwindSafe for tungsten::debug_hud::HudRow
+pub fn tungsten::debug_hud::hud_toggle_system(&mut tungsten_core::ecs::world::World)
+pub type tungsten::debug_hud::HudRowProvider = alloc::boxed::Box<(dyn core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten::debug_hud::HudRow> + 'static)>
+pub mod tungsten::game_feel
+pub fn tungsten::game_feel::shake_tick_system(&mut tungsten_core::ecs::world::World)
+pub fn tungsten::game_feel::squash_stretch_tick_system(&mut tungsten_core::ecs::world::World)
+pub fn tungsten::game_feel::squash_stretch_trigger_system(&mut tungsten_core::ecs::world::World)
+pub mod tungsten::hot_reload
+pub struct tungsten::hot_reload::HotReloadWatcher
+impl tungsten::hot_reload::HotReloadWatcher
+pub fn tungsten::hot_reload::HotReloadWatcher::drain_ready(&mut self) -> alloc::vec::Vec<std::path::PathBuf>
+pub fn tungsten::hot_reload::HotReloadWatcher::new(&[std::path::PathBuf], &[std::path::PathBuf]) -> core::option::Option<Self>
+impl core::marker::Freeze for tungsten::hot_reload::HotReloadWatcher
+impl core::marker::Send for tungsten::hot_reload::HotReloadWatcher
+impl !core::marker::Sync for tungsten::hot_reload::HotReloadWatcher
+impl core::marker::Unpin for tungsten::hot_reload::HotReloadWatcher
+impl core::marker::UnsafeUnpin for tungsten::hot_reload::HotReloadWatcher
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::hot_reload::HotReloadWatcher
+impl core::panic::unwind_safe::UnwindSafe for tungsten::hot_reload::HotReloadWatcher
+pub mod tungsten::inspector
+pub struct tungsten::inspector::InspectorState
+pub tungsten::inspector::InspectorState::color: [u8; 4]
+pub tungsten::inspector::InspectorState::corner: tungsten::debug_hud::HudCorner
+pub tungsten::inspector::InspectorState::enabled: bool
+pub tungsten::inspector::InspectorState::font_id: alloc::string::String
+pub tungsten::inspector::InspectorState::font_size: f32
+pub tungsten::inspector::InspectorState::line_height: f32
+pub tungsten::inspector::InspectorState::outline_color: [u8; 4]
+pub tungsten::inspector::InspectorState::outline_px: f32
+pub tungsten::inspector::InspectorState::padding_px: f32
+pub tungsten::inspector::InspectorState::refresh_interval_ms: f32
+pub tungsten::inspector::InspectorState::selected: core::option::Option<tungsten_core::ecs::entity::Entity>
+impl tungsten::inspector::InspectorState
+pub fn tungsten::inspector::InspectorState::new() -> Self
+pub fn tungsten::inspector::InspectorState::new_with_defaults() -> Self
+pub fn tungsten::inspector::InspectorState::register<T: 'static + tungsten_core::inspect::Inspectable>(&mut self, &'static str)
+pub fn tungsten::inspector::InspectorState::registered_len(&self) -> usize
+pub fn tungsten::inspector::InspectorState::toggle(&mut self)
+impl core::default::Default for tungsten::inspector::InspectorState
+pub fn tungsten::inspector::InspectorState::default() -> Self
+impl core::marker::Freeze for tungsten::inspector::InspectorState
+impl !core::marker::Send for tungsten::inspector::InspectorState
+impl !core::marker::Sync for tungsten::inspector::InspectorState
+impl core::marker::Unpin for tungsten::inspector::InspectorState
+impl core::marker::UnsafeUnpin for tungsten::inspector::InspectorState
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten::inspector::InspectorState
+impl !core::panic::unwind_safe::UnwindSafe for tungsten::inspector::InspectorState
+pub type tungsten::inspector::InspectFn = alloc::boxed::Box<dyn core::ops::function::Fn(&tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity) -> alloc::vec::Vec<(&'static str, alloc::string::String)>>
+pub mod tungsten::light_extract
+pub fn tungsten::light_extract::extract_lights(&tungsten_core::ecs::world::World, &tungsten_core::camera::CameraState, f32, f32) -> tungsten_render::lighting::LightUbo
+pub mod tungsten::particles
+pub struct tungsten::particles::ParticleBurstEmitted
+pub tungsten::particles::ParticleBurstEmitted::count: u32
+pub tungsten::particles::ParticleBurstEmitted::emitter: tungsten_core::ecs::entity::Entity
+impl core::clone::Clone for tungsten::particles::ParticleBurstEmitted
+pub fn tungsten::particles::ParticleBurstEmitted::clone(&self) -> tungsten::particles::ParticleBurstEmitted
+impl core::fmt::Debug for tungsten::particles::ParticleBurstEmitted
+pub fn tungsten::particles::ParticleBurstEmitted::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::particles::ParticleBurstEmitted
+impl core::marker::Freeze for tungsten::particles::ParticleBurstEmitted
+impl core::marker::Send for tungsten::particles::ParticleBurstEmitted
+impl core::marker::Sync for tungsten::particles::ParticleBurstEmitted
+impl core::marker::Unpin for tungsten::particles::ParticleBurstEmitted
+impl core::marker::UnsafeUnpin for tungsten::particles::ParticleBurstEmitted
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::particles::ParticleBurstEmitted
+impl core::panic::unwind_safe::UnwindSafe for tungsten::particles::ParticleBurstEmitted
+pub struct tungsten::particles::ParticleSystemDrained
+pub tungsten::particles::ParticleSystemDrained::emitter: tungsten_core::ecs::entity::Entity
+impl core::clone::Clone for tungsten::particles::ParticleSystemDrained
+pub fn tungsten::particles::ParticleSystemDrained::clone(&self) -> tungsten::particles::ParticleSystemDrained
+impl core::fmt::Debug for tungsten::particles::ParticleSystemDrained
+pub fn tungsten::particles::ParticleSystemDrained::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::particles::ParticleSystemDrained
+impl core::marker::Freeze for tungsten::particles::ParticleSystemDrained
+impl core::marker::Send for tungsten::particles::ParticleSystemDrained
+impl core::marker::Sync for tungsten::particles::ParticleSystemDrained
+impl core::marker::Unpin for tungsten::particles::ParticleSystemDrained
+impl core::marker::UnsafeUnpin for tungsten::particles::ParticleSystemDrained
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::particles::ParticleSystemDrained
+impl core::panic::unwind_safe::UnwindSafe for tungsten::particles::ParticleSystemDrained
+pub fn tungsten::particles::extract_mesh_particles(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::mesh_particle::MeshParticleBatch>
+pub fn tungsten::particles::particle_count_refresh_system(&mut tungsten_core::ecs::world::World)
+pub fn tungsten::particles::particle_emit_system(&mut tungsten_core::ecs::world::World)
+pub fn tungsten::particles::particle_tick_system(&mut tungsten_core::ecs::world::World)
+pub fn tungsten::particles::spawn_mesh_particle_via(&mut tungsten_core::ecs::command_buffer::CommandBuffer, core::option::Option<tungsten_core::ecs::entity::Entity>, alloc::sync::Arc<tungsten_core::assets::particle::ParticleConfig>, tungsten_core::assets::particle::ParticleMeshAssetId, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, f32, f32)
+pub fn tungsten::particles::spawn_particle_via(&mut tungsten_core::ecs::command_buffer::CommandBuffer, core::option::Option<tungsten_core::ecs::entity::Entity>, alloc::sync::Arc<tungsten_core::assets::particle::ParticleConfig>, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, f32, f32)
+pub mod tungsten::physics_debug
+pub struct tungsten::physics_debug::PhysicsDebugOverlay
+pub tungsten::physics_debug::PhysicsDebugOverlay::color_aabb: [f32; 4]
+pub tungsten::physics_debug::PhysicsDebugOverlay::color_circle: [f32; 4]
+pub tungsten::physics_debug::PhysicsDebugOverlay::enabled: bool
+pub tungsten::physics_debug::PhysicsDebugOverlay::thickness: f32
+impl tungsten::physics_debug::PhysicsDebugOverlay
+pub fn tungsten::physics_debug::PhysicsDebugOverlay::toggle(&mut self)
+impl core::clone::Clone for tungsten::physics_debug::PhysicsDebugOverlay
+pub fn tungsten::physics_debug::PhysicsDebugOverlay::clone(&self) -> tungsten::physics_debug::PhysicsDebugOverlay
+impl core::cmp::PartialEq for tungsten::physics_debug::PhysicsDebugOverlay
+pub fn tungsten::physics_debug::PhysicsDebugOverlay::eq(&self, &tungsten::physics_debug::PhysicsDebugOverlay) -> bool
+impl core::default::Default for tungsten::physics_debug::PhysicsDebugOverlay
+pub fn tungsten::physics_debug::PhysicsDebugOverlay::default() -> Self
+impl core::fmt::Debug for tungsten::physics_debug::PhysicsDebugOverlay
+pub fn tungsten::physics_debug::PhysicsDebugOverlay::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::physics_debug::PhysicsDebugOverlay
+impl core::marker::StructuralPartialEq for tungsten::physics_debug::PhysicsDebugOverlay
+impl core::marker::Freeze for tungsten::physics_debug::PhysicsDebugOverlay
+impl core::marker::Send for tungsten::physics_debug::PhysicsDebugOverlay
+impl core::marker::Sync for tungsten::physics_debug::PhysicsDebugOverlay
+impl core::marker::Unpin for tungsten::physics_debug::PhysicsDebugOverlay
+impl core::marker::UnsafeUnpin for tungsten::physics_debug::PhysicsDebugOverlay
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::physics_debug::PhysicsDebugOverlay
+impl core::panic::unwind_safe::UnwindSafe for tungsten::physics_debug::PhysicsDebugOverlay
+pub mod tungsten::post_aa
+pub struct tungsten::post_aa::PostAaState
+pub tungsten::post_aa::PostAaState::mode: tungsten_core::config::PostAaMode
+impl core::clone::Clone for tungsten::post_aa::PostAaState
+pub fn tungsten::post_aa::PostAaState::clone(&self) -> tungsten::post_aa::PostAaState
+impl core::cmp::Eq for tungsten::post_aa::PostAaState
+impl core::cmp::PartialEq for tungsten::post_aa::PostAaState
+pub fn tungsten::post_aa::PostAaState::eq(&self, &tungsten::post_aa::PostAaState) -> bool
+impl core::default::Default for tungsten::post_aa::PostAaState
+pub fn tungsten::post_aa::PostAaState::default() -> tungsten::post_aa::PostAaState
+impl core::fmt::Debug for tungsten::post_aa::PostAaState
+pub fn tungsten::post_aa::PostAaState::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::post_aa::PostAaState
+impl core::marker::StructuralPartialEq for tungsten::post_aa::PostAaState
+impl core::marker::Freeze for tungsten::post_aa::PostAaState
+impl core::marker::Send for tungsten::post_aa::PostAaState
+impl core::marker::Sync for tungsten::post_aa::PostAaState
+impl core::marker::Unpin for tungsten::post_aa::PostAaState
+impl core::marker::UnsafeUnpin for tungsten::post_aa::PostAaState
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::post_aa::PostAaState
+impl core::panic::unwind_safe::UnwindSafe for tungsten::post_aa::PostAaState
+pub fn tungsten::post_aa::request_post_aa(&mut tungsten_core::ecs::world::World, tungsten_core::config::PostAaMode)
+pub mod tungsten::sprite_extract
+pub fn tungsten::sprite_extract::extract_sprites_default(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch>
+pub mod tungsten::state
+pub struct tungsten::state::SceneEntity
+pub tungsten::state::SceneEntity::state_id: tungsten::state::StateId
+impl core::clone::Clone for tungsten::state::SceneEntity
+pub fn tungsten::state::SceneEntity::clone(&self) -> tungsten::state::SceneEntity
+impl core::fmt::Debug for tungsten::state::SceneEntity
+pub fn tungsten::state::SceneEntity::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::state::SceneEntity
+impl core::marker::Freeze for tungsten::state::SceneEntity
+impl core::marker::Send for tungsten::state::SceneEntity
+impl core::marker::Sync for tungsten::state::SceneEntity
+impl core::marker::Unpin for tungsten::state::SceneEntity
+impl core::marker::UnsafeUnpin for tungsten::state::SceneEntity
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::state::SceneEntity
+impl core::panic::unwind_safe::UnwindSafe for tungsten::state::SceneEntity
+pub struct tungsten::state::StateContext<'a>
+pub tungsten::state::StateContext::state_id: tungsten::state::StateId
+pub tungsten::state::StateContext::world: &'a mut tungsten_core::ecs::world::World
+impl<'a> core::marker::Freeze for tungsten::state::StateContext<'a>
+impl<'a> !core::marker::Send for tungsten::state::StateContext<'a>
+impl<'a> !core::marker::Sync for tungsten::state::StateContext<'a>
+impl<'a> core::marker::Unpin for tungsten::state::StateContext<'a>
+impl<'a> core::marker::UnsafeUnpin for tungsten::state::StateContext<'a>
+impl<'a> !core::panic::unwind_safe::RefUnwindSafe for tungsten::state::StateContext<'a>
+impl<'a> !core::panic::unwind_safe::UnwindSafe for tungsten::state::StateContext<'a>
+pub struct tungsten::state::StateStack
+impl tungsten::state::StateStack
+pub fn tungsten::state::StateStack::active_id(&self) -> core::option::Option<tungsten::state::StateId>
+pub fn tungsten::state::StateStack::depth(&self) -> usize
+pub fn tungsten::state::StateStack::is_transitioning(&self) -> bool
+pub fn tungsten::state::StateStack::new() -> Self
+pub fn tungsten::state::StateStack::request_pop(&mut self)
+pub fn tungsten::state::StateStack::request_pop_transition(&mut self, tungsten::transition::Transition) -> bool
+pub fn tungsten::state::StateStack::request_push(&mut self, impl tungsten::state::GameState)
+pub fn tungsten::state::StateStack::request_push_transition(&mut self, impl tungsten::state::GameState, tungsten::transition::Transition) -> bool
+pub fn tungsten::state::StateStack::request_replace(&mut self, impl tungsten::state::GameState)
+pub fn tungsten::state::StateStack::request_replace_transition(&mut self, impl tungsten::state::GameState, tungsten::transition::Transition) -> bool
+pub fn tungsten::state::StateStack::transition_cover(&self) -> f32
+pub fn tungsten::state::StateStack::transition_pass(&self) -> core::option::Option<tungsten_core::post::PostPass>
+pub fn tungsten::state::StateStack::transition_state(&self) -> core::option::Option<tungsten::transition::TransitionState>
+impl core::default::Default for tungsten::state::StateStack
+pub fn tungsten::state::StateStack::default() -> Self
+impl core::marker::Freeze for tungsten::state::StateStack
+impl !core::marker::Send for tungsten::state::StateStack
+impl !core::marker::Sync for tungsten::state::StateStack
+impl core::marker::Unpin for tungsten::state::StateStack
+impl core::marker::UnsafeUnpin for tungsten::state::StateStack
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten::state::StateStack
+impl !core::panic::unwind_safe::UnwindSafe for tungsten::state::StateStack
+pub trait tungsten::state::GameState: 'static
+pub fn tungsten::state::GameState::id(&self) -> tungsten::state::StateId
+pub fn tungsten::state::GameState::on_enter(&mut self, &mut tungsten::state::StateContext<'_>)
+pub fn tungsten::state::GameState::on_exit(&mut self, &mut tungsten::state::StateContext<'_>)
+pub fn tungsten::state::GameState::on_pause(&mut self, &mut tungsten::state::StateContext<'_>)
+pub fn tungsten::state::GameState::on_resume(&mut self, &mut tungsten::state::StateContext<'_>)
+pub fn tungsten::state::GameState::update(&mut self, &mut tungsten_core::ecs::world::World)
+pub fn tungsten::state::despawn_scene_entities(&mut tungsten_core::ecs::world::World, tungsten::state::StateId)
+pub fn tungsten::state::state_dispatcher_system(&mut tungsten_core::ecs::world::World)
+pub type tungsten::state::StateId = &'static str
+pub mod tungsten::systems_overlay
+pub struct tungsten::systems_overlay::SystemTimingOverlay
+pub tungsten::systems_overlay::SystemTimingOverlay::alpha: f32
+pub tungsten::systems_overlay::SystemTimingOverlay::color: [u8; 4]
+pub tungsten::systems_overlay::SystemTimingOverlay::corner: tungsten::debug_hud::HudCorner
+pub tungsten::systems_overlay::SystemTimingOverlay::enabled: bool
+pub tungsten::systems_overlay::SystemTimingOverlay::font_id: alloc::string::String
+pub tungsten::systems_overlay::SystemTimingOverlay::font_size: f32
+pub tungsten::systems_overlay::SystemTimingOverlay::line_height: f32
+pub tungsten::systems_overlay::SystemTimingOverlay::outline_color: [u8; 4]
+pub tungsten::systems_overlay::SystemTimingOverlay::outline_px: f32
+pub tungsten::systems_overlay::SystemTimingOverlay::padding_px: f32
+pub tungsten::systems_overlay::SystemTimingOverlay::refresh_interval_ms: f32
+impl tungsten::systems_overlay::SystemTimingOverlay
+pub fn tungsten::systems_overlay::SystemTimingOverlay::toggle(&mut self)
+impl core::default::Default for tungsten::systems_overlay::SystemTimingOverlay
+pub fn tungsten::systems_overlay::SystemTimingOverlay::default() -> Self
+impl core::fmt::Debug for tungsten::systems_overlay::SystemTimingOverlay
+pub fn tungsten::systems_overlay::SystemTimingOverlay::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten::systems_overlay::SystemTimingOverlay
+impl core::marker::Send for tungsten::systems_overlay::SystemTimingOverlay
+impl core::marker::Sync for tungsten::systems_overlay::SystemTimingOverlay
+impl core::marker::Unpin for tungsten::systems_overlay::SystemTimingOverlay
+impl core::marker::UnsafeUnpin for tungsten::systems_overlay::SystemTimingOverlay
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::systems_overlay::SystemTimingOverlay
+impl core::panic::unwind_safe::UnwindSafe for tungsten::systems_overlay::SystemTimingOverlay
+pub mod tungsten::telemetry
+pub struct tungsten::telemetry::DisplayTelemetry
+pub tungsten::telemetry::DisplayTelemetry::actual_present_mode: core::option::Option<alloc::string::String>
+pub tungsten::telemetry::DisplayTelemetry::display_mode: tungsten_core::display::DisplayMode
+pub tungsten::telemetry::DisplayTelemetry::frame_rate_cap: core::option::Option<u32>
+pub tungsten::telemetry::DisplayTelemetry::max_frame_latency: core::option::Option<u32>
+pub tungsten::telemetry::DisplayTelemetry::resolution: (u32, u32)
+pub tungsten::telemetry::DisplayTelemetry::scale_mode: tungsten_core::display::ScaleMode
+pub tungsten::telemetry::DisplayTelemetry::vsync: bool
+impl tungsten::telemetry::DisplayTelemetry
+pub fn tungsten::telemetry::DisplayTelemetry::apply_state(&mut self, &tungsten_core::display::DisplayState, core::option::Option<alloc::string::String>)
+pub fn tungsten::telemetry::DisplayTelemetry::from_state(&tungsten_core::display::DisplayState, core::option::Option<alloc::string::String>) -> Self
+impl core::clone::Clone for tungsten::telemetry::DisplayTelemetry
+pub fn tungsten::telemetry::DisplayTelemetry::clone(&self) -> tungsten::telemetry::DisplayTelemetry
+impl core::cmp::Eq for tungsten::telemetry::DisplayTelemetry
+impl core::cmp::PartialEq for tungsten::telemetry::DisplayTelemetry
+pub fn tungsten::telemetry::DisplayTelemetry::eq(&self, &tungsten::telemetry::DisplayTelemetry) -> bool
+impl core::default::Default for tungsten::telemetry::DisplayTelemetry
+pub fn tungsten::telemetry::DisplayTelemetry::default() -> Self
+impl core::fmt::Debug for tungsten::telemetry::DisplayTelemetry
+pub fn tungsten::telemetry::DisplayTelemetry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten::telemetry::DisplayTelemetry
+impl core::marker::Freeze for tungsten::telemetry::DisplayTelemetry
+impl core::marker::Send for tungsten::telemetry::DisplayTelemetry
+impl core::marker::Sync for tungsten::telemetry::DisplayTelemetry
+impl core::marker::Unpin for tungsten::telemetry::DisplayTelemetry
+impl core::marker::UnsafeUnpin for tungsten::telemetry::DisplayTelemetry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::telemetry::DisplayTelemetry
+impl core::panic::unwind_safe::UnwindSafe for tungsten::telemetry::DisplayTelemetry
+pub struct tungsten::telemetry::FrameTimings
+pub tungsten::telemetry::FrameTimings::audio_ms: f32
+pub tungsten::telemetry::FrameTimings::extract_ms: f32
+pub tungsten::telemetry::FrameTimings::flush_ms: f32
+pub tungsten::telemetry::FrameTimings::hot_reload_ms: f32
+pub tungsten::telemetry::FrameTimings::interval_ms: core::option::Option<f32>
+pub tungsten::telemetry::FrameTimings::render_acquire_ms: f32
+pub tungsten::telemetry::FrameTimings::render_encode_ms: f32
+pub tungsten::telemetry::FrameTimings::render_ms: f32
+pub tungsten::telemetry::FrameTimings::render_submit_present_ms: f32
+pub tungsten::telemetry::FrameTimings::system_timings: alloc::vec::Vec<(alloc::string::String, f32)>
+pub tungsten::telemetry::FrameTimings::total_ms: f32
+pub tungsten::telemetry::FrameTimings::update_ms: f32
+impl tungsten::telemetry::FrameTimings
+pub fn tungsten::telemetry::FrameTimings::new() -> Self
+pub fn tungsten::telemetry::FrameTimings::slowest_system(&self) -> core::option::Option<(&str, f32)>
+impl core::clone::Clone for tungsten::telemetry::FrameTimings
+pub fn tungsten::telemetry::FrameTimings::clone(&self) -> tungsten::telemetry::FrameTimings
+impl core::default::Default for tungsten::telemetry::FrameTimings
+pub fn tungsten::telemetry::FrameTimings::default() -> tungsten::telemetry::FrameTimings
+impl core::fmt::Debug for tungsten::telemetry::FrameTimings
+pub fn tungsten::telemetry::FrameTimings::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten::telemetry::FrameTimings
+impl core::marker::Send for tungsten::telemetry::FrameTimings
+impl core::marker::Sync for tungsten::telemetry::FrameTimings
+impl core::marker::Unpin for tungsten::telemetry::FrameTimings
+impl core::marker::UnsafeUnpin for tungsten::telemetry::FrameTimings
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::telemetry::FrameTimings
+impl core::panic::unwind_safe::UnwindSafe for tungsten::telemetry::FrameTimings
+pub struct tungsten::telemetry::RenderCounts
+pub tungsten::telemetry::RenderCounts::entities: u32
+pub tungsten::telemetry::RenderCounts::sprite_instances: u32
+impl core::clone::Clone for tungsten::telemetry::RenderCounts
+pub fn tungsten::telemetry::RenderCounts::clone(&self) -> tungsten::telemetry::RenderCounts
+impl core::default::Default for tungsten::telemetry::RenderCounts
+pub fn tungsten::telemetry::RenderCounts::default() -> tungsten::telemetry::RenderCounts
+impl core::fmt::Debug for tungsten::telemetry::RenderCounts
+pub fn tungsten::telemetry::RenderCounts::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::telemetry::RenderCounts
+impl core::marker::Freeze for tungsten::telemetry::RenderCounts
+impl core::marker::Send for tungsten::telemetry::RenderCounts
+impl core::marker::Sync for tungsten::telemetry::RenderCounts
+impl core::marker::Unpin for tungsten::telemetry::RenderCounts
+impl core::marker::UnsafeUnpin for tungsten::telemetry::RenderCounts
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::telemetry::RenderCounts
+impl core::panic::unwind_safe::UnwindSafe for tungsten::telemetry::RenderCounts
+pub mod tungsten::transition
+pub enum tungsten::transition::TransitionEffect
+pub tungsten::transition::TransitionEffect::Dissolve
+pub tungsten::transition::TransitionEffect::Dissolve::edge_color: [f32; 4]
+pub tungsten::transition::TransitionEffect::Dissolve::noise_scale: f32
+pub tungsten::transition::TransitionEffect::Fade
+pub tungsten::transition::TransitionEffect::Fade::color: [f32; 4]
+pub tungsten::transition::TransitionEffect::Pixelate
+pub tungsten::transition::TransitionEffect::Pixelate::max_block_px: f32
+pub tungsten::transition::TransitionEffect::WipeRadial
+pub tungsten::transition::TransitionEffect::WipeRadial::center: [f32; 2]
+pub tungsten::transition::TransitionEffect::WipeRadial::softness: f32
+impl tungsten::transition::TransitionEffect
+pub fn tungsten::transition::TransitionEffect::pass_at(self, f32) -> tungsten_core::post::PostPass
+impl core::clone::Clone for tungsten::transition::TransitionEffect
+pub fn tungsten::transition::TransitionEffect::clone(&self) -> tungsten::transition::TransitionEffect
+impl core::cmp::PartialEq for tungsten::transition::TransitionEffect
+pub fn tungsten::transition::TransitionEffect::eq(&self, &tungsten::transition::TransitionEffect) -> bool
+impl core::fmt::Debug for tungsten::transition::TransitionEffect
+pub fn tungsten::transition::TransitionEffect::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::transition::TransitionEffect
+impl core::marker::StructuralPartialEq for tungsten::transition::TransitionEffect
+impl core::marker::Freeze for tungsten::transition::TransitionEffect
+impl core::marker::Send for tungsten::transition::TransitionEffect
+impl core::marker::Sync for tungsten::transition::TransitionEffect
+impl core::marker::Unpin for tungsten::transition::TransitionEffect
+impl core::marker::UnsafeUnpin for tungsten::transition::TransitionEffect
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::transition::TransitionEffect
+impl core::panic::unwind_safe::UnwindSafe for tungsten::transition::TransitionEffect
+pub enum tungsten::transition::TransitionPhase
+pub tungsten::transition::TransitionPhase::In
+pub tungsten::transition::TransitionPhase::Out
+impl core::clone::Clone for tungsten::transition::TransitionPhase
+pub fn tungsten::transition::TransitionPhase::clone(&self) -> tungsten::transition::TransitionPhase
+impl core::cmp::Eq for tungsten::transition::TransitionPhase
+impl core::cmp::PartialEq for tungsten::transition::TransitionPhase
+pub fn tungsten::transition::TransitionPhase::eq(&self, &tungsten::transition::TransitionPhase) -> bool
+impl core::fmt::Debug for tungsten::transition::TransitionPhase
+pub fn tungsten::transition::TransitionPhase::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::transition::TransitionPhase
+impl core::marker::StructuralPartialEq for tungsten::transition::TransitionPhase
+impl core::marker::Freeze for tungsten::transition::TransitionPhase
+impl core::marker::Send for tungsten::transition::TransitionPhase
+impl core::marker::Sync for tungsten::transition::TransitionPhase
+impl core::marker::Unpin for tungsten::transition::TransitionPhase
+impl core::marker::UnsafeUnpin for tungsten::transition::TransitionPhase
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::transition::TransitionPhase
+impl core::panic::unwind_safe::UnwindSafe for tungsten::transition::TransitionPhase
+pub struct tungsten::transition::Transition
+pub tungsten::transition::Transition::easing: tungsten_core::tween::Easing
+pub tungsten::transition::Transition::in_effect: tungsten::transition::TransitionEffect
+pub tungsten::transition::Transition::in_secs: f32
+pub tungsten::transition::Transition::out_effect: tungsten::transition::TransitionEffect
+pub tungsten::transition::Transition::out_secs: f32
+impl tungsten::transition::Transition
+pub fn tungsten::transition::Transition::cover(&self, tungsten::transition::TransitionState) -> f32
+pub fn tungsten::transition::Transition::new(tungsten::transition::TransitionEffect, f32) -> Self
+pub fn tungsten::transition::Transition::pass(&self, tungsten::transition::TransitionState) -> tungsten_core::post::PostPass
+pub fn tungsten::transition::Transition::with_easing(self, tungsten_core::tween::Easing) -> Self
+pub fn tungsten::transition::Transition::with_in_effect(self, tungsten::transition::TransitionEffect) -> Self
+impl core::clone::Clone for tungsten::transition::Transition
+pub fn tungsten::transition::Transition::clone(&self) -> tungsten::transition::Transition
+impl core::cmp::PartialEq for tungsten::transition::Transition
+pub fn tungsten::transition::Transition::eq(&self, &tungsten::transition::Transition) -> bool
+impl core::fmt::Debug for tungsten::transition::Transition
+pub fn tungsten::transition::Transition::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::transition::Transition
+impl core::marker::StructuralPartialEq for tungsten::transition::Transition
+impl core::marker::Freeze for tungsten::transition::Transition
+impl core::marker::Send for tungsten::transition::Transition
+impl core::marker::Sync for tungsten::transition::Transition
+impl core::marker::Unpin for tungsten::transition::Transition
+impl core::marker::UnsafeUnpin for tungsten::transition::Transition
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::transition::Transition
+impl core::panic::unwind_safe::UnwindSafe for tungsten::transition::Transition
+pub struct tungsten::transition::TransitionState
+pub tungsten::transition::TransitionState::elapsed: f32
+pub tungsten::transition::TransitionState::phase: tungsten::transition::TransitionPhase
+impl core::clone::Clone for tungsten::transition::TransitionState
+pub fn tungsten::transition::TransitionState::clone(&self) -> tungsten::transition::TransitionState
+impl core::cmp::PartialEq for tungsten::transition::TransitionState
+pub fn tungsten::transition::TransitionState::eq(&self, &tungsten::transition::TransitionState) -> bool
+impl core::fmt::Debug for tungsten::transition::TransitionState
+pub fn tungsten::transition::TransitionState::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::transition::TransitionState
+impl core::marker::StructuralPartialEq for tungsten::transition::TransitionState
+impl core::marker::Freeze for tungsten::transition::TransitionState
+impl core::marker::Send for tungsten::transition::TransitionState
+impl core::marker::Sync for tungsten::transition::TransitionState
+impl core::marker::Unpin for tungsten::transition::TransitionState
+impl core::marker::UnsafeUnpin for tungsten::transition::TransitionState
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::transition::TransitionState
+impl core::panic::unwind_safe::UnwindSafe for tungsten::transition::TransitionState
+pub mod tungsten::tweens
+pub fn tungsten::tweens::tween_tick_system(&mut tungsten_core::ecs::world::World)
+pub enum tungsten::HudCorner
+pub tungsten::HudCorner::BottomLeft
+pub tungsten::HudCorner::BottomRight
+pub tungsten::HudCorner::TopLeft
+pub tungsten::HudCorner::TopRight
+impl core::clone::Clone for tungsten::debug_hud::HudCorner
+pub fn tungsten::debug_hud::HudCorner::clone(&self) -> tungsten::debug_hud::HudCorner
+impl core::cmp::Eq for tungsten::debug_hud::HudCorner
+impl core::cmp::PartialEq for tungsten::debug_hud::HudCorner
+pub fn tungsten::debug_hud::HudCorner::eq(&self, &tungsten::debug_hud::HudCorner) -> bool
+impl core::fmt::Debug for tungsten::debug_hud::HudCorner
+pub fn tungsten::debug_hud::HudCorner::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::debug_hud::HudCorner
+impl core::marker::StructuralPartialEq for tungsten::debug_hud::HudCorner
+impl core::marker::Freeze for tungsten::debug_hud::HudCorner
+impl core::marker::Send for tungsten::debug_hud::HudCorner
+impl core::marker::Sync for tungsten::debug_hud::HudCorner
+impl core::marker::Unpin for tungsten::debug_hud::HudCorner
+impl core::marker::UnsafeUnpin for tungsten::debug_hud::HudCorner
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::debug_hud::HudCorner
+impl core::panic::unwind_safe::UnwindSafe for tungsten::debug_hud::HudCorner
+pub enum tungsten::TransitionEffect
+pub tungsten::TransitionEffect::Dissolve
+pub tungsten::TransitionEffect::Dissolve::edge_color: [f32; 4]
+pub tungsten::TransitionEffect::Dissolve::noise_scale: f32
+pub tungsten::TransitionEffect::Fade
+pub tungsten::TransitionEffect::Fade::color: [f32; 4]
+pub tungsten::TransitionEffect::Pixelate
+pub tungsten::TransitionEffect::Pixelate::max_block_px: f32
+pub tungsten::TransitionEffect::WipeRadial
+pub tungsten::TransitionEffect::WipeRadial::center: [f32; 2]
+pub tungsten::TransitionEffect::WipeRadial::softness: f32
+impl tungsten::transition::TransitionEffect
+pub fn tungsten::transition::TransitionEffect::pass_at(self, f32) -> tungsten_core::post::PostPass
+impl core::clone::Clone for tungsten::transition::TransitionEffect
+pub fn tungsten::transition::TransitionEffect::clone(&self) -> tungsten::transition::TransitionEffect
+impl core::cmp::PartialEq for tungsten::transition::TransitionEffect
+pub fn tungsten::transition::TransitionEffect::eq(&self, &tungsten::transition::TransitionEffect) -> bool
+impl core::fmt::Debug for tungsten::transition::TransitionEffect
+pub fn tungsten::transition::TransitionEffect::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::transition::TransitionEffect
+impl core::marker::StructuralPartialEq for tungsten::transition::TransitionEffect
+impl core::marker::Freeze for tungsten::transition::TransitionEffect
+impl core::marker::Send for tungsten::transition::TransitionEffect
+impl core::marker::Sync for tungsten::transition::TransitionEffect
+impl core::marker::Unpin for tungsten::transition::TransitionEffect
+impl core::marker::UnsafeUnpin for tungsten::transition::TransitionEffect
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::transition::TransitionEffect
+impl core::panic::unwind_safe::UnwindSafe for tungsten::transition::TransitionEffect
+pub enum tungsten::TransitionPhase
+pub tungsten::TransitionPhase::In
+pub tungsten::TransitionPhase::Out
+impl core::clone::Clone for tungsten::transition::TransitionPhase
+pub fn tungsten::transition::TransitionPhase::clone(&self) -> tungsten::transition::TransitionPhase
+impl core::cmp::Eq for tungsten::transition::TransitionPhase
+impl core::cmp::PartialEq for tungsten::transition::TransitionPhase
+pub fn tungsten::transition::TransitionPhase::eq(&self, &tungsten::transition::TransitionPhase) -> bool
+impl core::fmt::Debug for tungsten::transition::TransitionPhase
+pub fn tungsten::transition::TransitionPhase::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::transition::TransitionPhase
+impl core::marker::StructuralPartialEq for tungsten::transition::TransitionPhase
+impl core::marker::Freeze for tungsten::transition::TransitionPhase
+impl core::marker::Send for tungsten::transition::TransitionPhase
+impl core::marker::Sync for tungsten::transition::TransitionPhase
+impl core::marker::Unpin for tungsten::transition::TransitionPhase
+impl core::marker::UnsafeUnpin for tungsten::transition::TransitionPhase
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::transition::TransitionPhase
+impl core::panic::unwind_safe::UnwindSafe for tungsten::transition::TransitionPhase
+pub struct tungsten::App
+impl tungsten::app::App
+pub fn tungsten::app::App::add_system(&mut self, impl core::ops::function::FnMut(&mut tungsten_core::ecs::world::World) + 'static)
+pub fn tungsten::app::App::add_system_named(&mut self, impl core::convert::Into<alloc::string::String>, impl core::ops::function::FnMut(&mut tungsten_core::ecs::world::World) + 'static)
+pub fn tungsten::app::App::enable_hot_reload(&mut self, &[std::path::PathBuf], std::path::PathBuf)
+pub fn tungsten::app::App::new(tungsten_core::config::Config) -> anyhow::Result<Self>
+pub fn tungsten::app::App::on_startup(&mut self, impl core::ops::function::FnOnce(&mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) + 'static)
+pub fn tungsten::app::App::register_event<T: 'static>(&mut self)
+pub fn tungsten::app::App::register_inspectable<T: 'static + tungsten_core::inspect::Inspectable>(&mut self, &'static str)
+pub fn tungsten::app::App::renderer_mut(&mut self) -> core::option::Option<&mut tungsten_render::renderer::Renderer>
+pub fn tungsten::app::App::run(self) -> anyhow::Result<()>
+pub fn tungsten::app::App::set_exit_on_escape(&mut self, bool)
+pub fn tungsten::app::App::set_extract_quads(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::quad::QuadInstance> + 'static)
+pub fn tungsten::app::App::set_extract_sprites(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch> + 'static)
+pub fn tungsten::app::App::set_extract_text(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::text::TextSection> + 'static)
+pub fn tungsten::app::App::set_manifest_roots(&mut self, alloc::vec::Vec<std::path::PathBuf>)
+pub fn tungsten::app::App::world_mut(&mut self) -> &mut tungsten_core::ecs::world::World
+impl winit::application::ApplicationHandler for tungsten::app::App
+pub fn tungsten::app::App::about_to_wait(&mut self, &winit::event_loop::ActiveEventLoop)
+pub fn tungsten::app::App::resumed(&mut self, &winit::event_loop::ActiveEventLoop)
+pub fn tungsten::app::App::window_event(&mut self, &winit::event_loop::ActiveEventLoop, winit::window::WindowId, winit::event::WindowEvent)
+impl !core::marker::Freeze for tungsten::app::App
+impl !core::marker::Send for tungsten::app::App
+impl !core::marker::Sync for tungsten::app::App
+impl core::marker::Unpin for tungsten::app::App
+impl core::marker::UnsafeUnpin for tungsten::app::App
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten::app::App
+impl !core::panic::unwind_safe::UnwindSafe for tungsten::app::App
+pub struct tungsten::DebugHud
+pub tungsten::DebugHud::color: [u8; 4]
+pub tungsten::DebugHud::corner: tungsten::debug_hud::HudCorner
+pub tungsten::DebugHud::enabled: bool
+pub tungsten::DebugHud::font_id: alloc::string::String
+pub tungsten::DebugHud::font_size: f32
+pub tungsten::DebugHud::line_height: f32
+pub tungsten::DebugHud::outline_color: [u8; 4]
+pub tungsten::DebugHud::outline_px: f32
+pub tungsten::DebugHud::padding_px: f32
+pub tungsten::DebugHud::refresh_interval_ms: f32
+impl tungsten::debug_hud::DebugHud
+pub fn tungsten::debug_hud::DebugHud::add_row<F>(&mut self, F) where F: core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten::debug_hud::HudRow> + 'static
+pub fn tungsten::debug_hud::DebugHud::new() -> Self
+pub fn tungsten::debug_hud::DebugHud::rendered_height_px(&self) -> f32
+pub fn tungsten::debug_hud::DebugHud::toggle(&mut self)
+impl core::default::Default for tungsten::debug_hud::DebugHud
+pub fn tungsten::debug_hud::DebugHud::default() -> Self
+impl core::marker::Freeze for tungsten::debug_hud::DebugHud
+impl !core::marker::Send for tungsten::debug_hud::DebugHud
+impl !core::marker::Sync for tungsten::debug_hud::DebugHud
+impl core::marker::Unpin for tungsten::debug_hud::DebugHud
+impl core::marker::UnsafeUnpin for tungsten::debug_hud::DebugHud
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten::debug_hud::DebugHud
+impl !core::panic::unwind_safe::UnwindSafe for tungsten::debug_hud::DebugHud
+pub struct tungsten::DisplayTelemetry
+pub tungsten::DisplayTelemetry::actual_present_mode: core::option::Option<alloc::string::String>
+pub tungsten::DisplayTelemetry::display_mode: tungsten_core::display::DisplayMode
+pub tungsten::DisplayTelemetry::frame_rate_cap: core::option::Option<u32>
+pub tungsten::DisplayTelemetry::max_frame_latency: core::option::Option<u32>
+pub tungsten::DisplayTelemetry::resolution: (u32, u32)
+pub tungsten::DisplayTelemetry::scale_mode: tungsten_core::display::ScaleMode
+pub tungsten::DisplayTelemetry::vsync: bool
+impl tungsten::telemetry::DisplayTelemetry
+pub fn tungsten::telemetry::DisplayTelemetry::apply_state(&mut self, &tungsten_core::display::DisplayState, core::option::Option<alloc::string::String>)
+pub fn tungsten::telemetry::DisplayTelemetry::from_state(&tungsten_core::display::DisplayState, core::option::Option<alloc::string::String>) -> Self
+impl core::clone::Clone for tungsten::telemetry::DisplayTelemetry
+pub fn tungsten::telemetry::DisplayTelemetry::clone(&self) -> tungsten::telemetry::DisplayTelemetry
+impl core::cmp::Eq for tungsten::telemetry::DisplayTelemetry
+impl core::cmp::PartialEq for tungsten::telemetry::DisplayTelemetry
+pub fn tungsten::telemetry::DisplayTelemetry::eq(&self, &tungsten::telemetry::DisplayTelemetry) -> bool
+impl core::default::Default for tungsten::telemetry::DisplayTelemetry
+pub fn tungsten::telemetry::DisplayTelemetry::default() -> Self
+impl core::fmt::Debug for tungsten::telemetry::DisplayTelemetry
+pub fn tungsten::telemetry::DisplayTelemetry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten::telemetry::DisplayTelemetry
+impl core::marker::Freeze for tungsten::telemetry::DisplayTelemetry
+impl core::marker::Send for tungsten::telemetry::DisplayTelemetry
+impl core::marker::Sync for tungsten::telemetry::DisplayTelemetry
+impl core::marker::Unpin for tungsten::telemetry::DisplayTelemetry
+impl core::marker::UnsafeUnpin for tungsten::telemetry::DisplayTelemetry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::telemetry::DisplayTelemetry
+impl core::panic::unwind_safe::UnwindSafe for tungsten::telemetry::DisplayTelemetry
+pub struct tungsten::FrameTimings
+pub tungsten::FrameTimings::audio_ms: f32
+pub tungsten::FrameTimings::extract_ms: f32
+pub tungsten::FrameTimings::flush_ms: f32
+pub tungsten::FrameTimings::hot_reload_ms: f32
+pub tungsten::FrameTimings::interval_ms: core::option::Option<f32>
+pub tungsten::FrameTimings::render_acquire_ms: f32
+pub tungsten::FrameTimings::render_encode_ms: f32
+pub tungsten::FrameTimings::render_ms: f32
+pub tungsten::FrameTimings::render_submit_present_ms: f32
+pub tungsten::FrameTimings::system_timings: alloc::vec::Vec<(alloc::string::String, f32)>
+pub tungsten::FrameTimings::total_ms: f32
+pub tungsten::FrameTimings::update_ms: f32
+impl tungsten::telemetry::FrameTimings
+pub fn tungsten::telemetry::FrameTimings::new() -> Self
+pub fn tungsten::telemetry::FrameTimings::slowest_system(&self) -> core::option::Option<(&str, f32)>
+impl core::clone::Clone for tungsten::telemetry::FrameTimings
+pub fn tungsten::telemetry::FrameTimings::clone(&self) -> tungsten::telemetry::FrameTimings
+impl core::default::Default for tungsten::telemetry::FrameTimings
+pub fn tungsten::telemetry::FrameTimings::default() -> tungsten::telemetry::FrameTimings
+impl core::fmt::Debug for tungsten::telemetry::FrameTimings
+pub fn tungsten::telemetry::FrameTimings::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten::telemetry::FrameTimings
+impl core::marker::Send for tungsten::telemetry::FrameTimings
+impl core::marker::Sync for tungsten::telemetry::FrameTimings
+impl core::marker::Unpin for tungsten::telemetry::FrameTimings
+impl core::marker::UnsafeUnpin for tungsten::telemetry::FrameTimings
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::telemetry::FrameTimings
+impl core::panic::unwind_safe::UnwindSafe for tungsten::telemetry::FrameTimings
+pub struct tungsten::HotReloadWatcher
+impl tungsten::hot_reload::HotReloadWatcher
+pub fn tungsten::hot_reload::HotReloadWatcher::drain_ready(&mut self) -> alloc::vec::Vec<std::path::PathBuf>
+pub fn tungsten::hot_reload::HotReloadWatcher::new(&[std::path::PathBuf], &[std::path::PathBuf]) -> core::option::Option<Self>
+impl core::marker::Freeze for tungsten::hot_reload::HotReloadWatcher
+impl core::marker::Send for tungsten::hot_reload::HotReloadWatcher
+impl !core::marker::Sync for tungsten::hot_reload::HotReloadWatcher
+impl core::marker::Unpin for tungsten::hot_reload::HotReloadWatcher
+impl core::marker::UnsafeUnpin for tungsten::hot_reload::HotReloadWatcher
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::hot_reload::HotReloadWatcher
+impl core::panic::unwind_safe::UnwindSafe for tungsten::hot_reload::HotReloadWatcher
+pub struct tungsten::HudActiveState(pub alloc::string::String)
+impl core::clone::Clone for tungsten::debug_hud::HudActiveState
+pub fn tungsten::debug_hud::HudActiveState::clone(&self) -> tungsten::debug_hud::HudActiveState
+impl core::default::Default for tungsten::debug_hud::HudActiveState
+pub fn tungsten::debug_hud::HudActiveState::default() -> tungsten::debug_hud::HudActiveState
+impl core::fmt::Debug for tungsten::debug_hud::HudActiveState
+pub fn tungsten::debug_hud::HudActiveState::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten::debug_hud::HudActiveState
+impl core::marker::Send for tungsten::debug_hud::HudActiveState
+impl core::marker::Sync for tungsten::debug_hud::HudActiveState
+impl core::marker::Unpin for tungsten::debug_hud::HudActiveState
+impl core::marker::UnsafeUnpin for tungsten::debug_hud::HudActiveState
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::debug_hud::HudActiveState
+impl core::panic::unwind_safe::UnwindSafe for tungsten::debug_hud::HudActiveState
+pub struct tungsten::HudRow
+pub tungsten::HudRow::label: &'static str
+pub tungsten::HudRow::value: alloc::string::String
+impl core::clone::Clone for tungsten::debug_hud::HudRow
+pub fn tungsten::debug_hud::HudRow::clone(&self) -> tungsten::debug_hud::HudRow
+impl core::fmt::Debug for tungsten::debug_hud::HudRow
+pub fn tungsten::debug_hud::HudRow::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten::debug_hud::HudRow
+impl core::marker::Send for tungsten::debug_hud::HudRow
+impl core::marker::Sync for tungsten::debug_hud::HudRow
+impl core::marker::Unpin for tungsten::debug_hud::HudRow
+impl core::marker::UnsafeUnpin for tungsten::debug_hud::HudRow
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::debug_hud::HudRow
+impl core::panic::unwind_safe::UnwindSafe for tungsten::debug_hud::HudRow
+pub struct tungsten::InspectorState
+pub tungsten::InspectorState::color: [u8; 4]
+pub tungsten::InspectorState::corner: tungsten::debug_hud::HudCorner
+pub tungsten::InspectorState::enabled: bool
+pub tungsten::InspectorState::font_id: alloc::string::String
+pub tungsten::InspectorState::font_size: f32
+pub tungsten::InspectorState::line_height: f32
+pub tungsten::InspectorState::outline_color: [u8; 4]
+pub tungsten::InspectorState::outline_px: f32
+pub tungsten::InspectorState::padding_px: f32
+pub tungsten::InspectorState::refresh_interval_ms: f32
+pub tungsten::InspectorState::selected: core::option::Option<tungsten_core::ecs::entity::Entity>
+impl tungsten::inspector::InspectorState
+pub fn tungsten::inspector::InspectorState::new() -> Self
+pub fn tungsten::inspector::InspectorState::new_with_defaults() -> Self
+pub fn tungsten::inspector::InspectorState::register<T: 'static + tungsten_core::inspect::Inspectable>(&mut self, &'static str)
+pub fn tungsten::inspector::InspectorState::registered_len(&self) -> usize
+pub fn tungsten::inspector::InspectorState::toggle(&mut self)
+impl core::default::Default for tungsten::inspector::InspectorState
+pub fn tungsten::inspector::InspectorState::default() -> Self
+impl core::marker::Freeze for tungsten::inspector::InspectorState
+impl !core::marker::Send for tungsten::inspector::InspectorState
+impl !core::marker::Sync for tungsten::inspector::InspectorState
+impl core::marker::Unpin for tungsten::inspector::InspectorState
+impl core::marker::UnsafeUnpin for tungsten::inspector::InspectorState
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten::inspector::InspectorState
+impl !core::panic::unwind_safe::UnwindSafe for tungsten::inspector::InspectorState
+pub struct tungsten::ParticleBurstEmitted
+pub tungsten::ParticleBurstEmitted::count: u32
+pub tungsten::ParticleBurstEmitted::emitter: tungsten_core::ecs::entity::Entity
+impl core::clone::Clone for tungsten::particles::ParticleBurstEmitted
+pub fn tungsten::particles::ParticleBurstEmitted::clone(&self) -> tungsten::particles::ParticleBurstEmitted
+impl core::fmt::Debug for tungsten::particles::ParticleBurstEmitted
+pub fn tungsten::particles::ParticleBurstEmitted::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::particles::ParticleBurstEmitted
+impl core::marker::Freeze for tungsten::particles::ParticleBurstEmitted
+impl core::marker::Send for tungsten::particles::ParticleBurstEmitted
+impl core::marker::Sync for tungsten::particles::ParticleBurstEmitted
+impl core::marker::Unpin for tungsten::particles::ParticleBurstEmitted
+impl core::marker::UnsafeUnpin for tungsten::particles::ParticleBurstEmitted
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::particles::ParticleBurstEmitted
+impl core::panic::unwind_safe::UnwindSafe for tungsten::particles::ParticleBurstEmitted
+pub struct tungsten::ParticleSystemDrained
+pub tungsten::ParticleSystemDrained::emitter: tungsten_core::ecs::entity::Entity
+impl core::clone::Clone for tungsten::particles::ParticleSystemDrained
+pub fn tungsten::particles::ParticleSystemDrained::clone(&self) -> tungsten::particles::ParticleSystemDrained
+impl core::fmt::Debug for tungsten::particles::ParticleSystemDrained
+pub fn tungsten::particles::ParticleSystemDrained::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::particles::ParticleSystemDrained
+impl core::marker::Freeze for tungsten::particles::ParticleSystemDrained
+impl core::marker::Send for tungsten::particles::ParticleSystemDrained
+impl core::marker::Sync for tungsten::particles::ParticleSystemDrained
+impl core::marker::Unpin for tungsten::particles::ParticleSystemDrained
+impl core::marker::UnsafeUnpin for tungsten::particles::ParticleSystemDrained
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::particles::ParticleSystemDrained
+impl core::panic::unwind_safe::UnwindSafe for tungsten::particles::ParticleSystemDrained
+pub struct tungsten::PhysicsDebugOverlay
+pub tungsten::PhysicsDebugOverlay::color_aabb: [f32; 4]
+pub tungsten::PhysicsDebugOverlay::color_circle: [f32; 4]
+pub tungsten::PhysicsDebugOverlay::enabled: bool
+pub tungsten::PhysicsDebugOverlay::thickness: f32
+impl tungsten::physics_debug::PhysicsDebugOverlay
+pub fn tungsten::physics_debug::PhysicsDebugOverlay::toggle(&mut self)
+impl core::clone::Clone for tungsten::physics_debug::PhysicsDebugOverlay
+pub fn tungsten::physics_debug::PhysicsDebugOverlay::clone(&self) -> tungsten::physics_debug::PhysicsDebugOverlay
+impl core::cmp::PartialEq for tungsten::physics_debug::PhysicsDebugOverlay
+pub fn tungsten::physics_debug::PhysicsDebugOverlay::eq(&self, &tungsten::physics_debug::PhysicsDebugOverlay) -> bool
+impl core::default::Default for tungsten::physics_debug::PhysicsDebugOverlay
+pub fn tungsten::physics_debug::PhysicsDebugOverlay::default() -> Self
+impl core::fmt::Debug for tungsten::physics_debug::PhysicsDebugOverlay
+pub fn tungsten::physics_debug::PhysicsDebugOverlay::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::physics_debug::PhysicsDebugOverlay
+impl core::marker::StructuralPartialEq for tungsten::physics_debug::PhysicsDebugOverlay
+impl core::marker::Freeze for tungsten::physics_debug::PhysicsDebugOverlay
+impl core::marker::Send for tungsten::physics_debug::PhysicsDebugOverlay
+impl core::marker::Sync for tungsten::physics_debug::PhysicsDebugOverlay
+impl core::marker::Unpin for tungsten::physics_debug::PhysicsDebugOverlay
+impl core::marker::UnsafeUnpin for tungsten::physics_debug::PhysicsDebugOverlay
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::physics_debug::PhysicsDebugOverlay
+impl core::panic::unwind_safe::UnwindSafe for tungsten::physics_debug::PhysicsDebugOverlay
+pub struct tungsten::PostAaState
+pub tungsten::PostAaState::mode: tungsten_core::config::PostAaMode
+impl core::clone::Clone for tungsten::post_aa::PostAaState
+pub fn tungsten::post_aa::PostAaState::clone(&self) -> tungsten::post_aa::PostAaState
+impl core::cmp::Eq for tungsten::post_aa::PostAaState
+impl core::cmp::PartialEq for tungsten::post_aa::PostAaState
+pub fn tungsten::post_aa::PostAaState::eq(&self, &tungsten::post_aa::PostAaState) -> bool
+impl core::default::Default for tungsten::post_aa::PostAaState
+pub fn tungsten::post_aa::PostAaState::default() -> tungsten::post_aa::PostAaState
+impl core::fmt::Debug for tungsten::post_aa::PostAaState
+pub fn tungsten::post_aa::PostAaState::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::post_aa::PostAaState
+impl core::marker::StructuralPartialEq for tungsten::post_aa::PostAaState
+impl core::marker::Freeze for tungsten::post_aa::PostAaState
+impl core::marker::Send for tungsten::post_aa::PostAaState
+impl core::marker::Sync for tungsten::post_aa::PostAaState
+impl core::marker::Unpin for tungsten::post_aa::PostAaState
+impl core::marker::UnsafeUnpin for tungsten::post_aa::PostAaState
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::post_aa::PostAaState
+impl core::panic::unwind_safe::UnwindSafe for tungsten::post_aa::PostAaState
+pub struct tungsten::RenderCounts
+pub tungsten::RenderCounts::entities: u32
+pub tungsten::RenderCounts::sprite_instances: u32
+impl core::clone::Clone for tungsten::telemetry::RenderCounts
+pub fn tungsten::telemetry::RenderCounts::clone(&self) -> tungsten::telemetry::RenderCounts
+impl core::default::Default for tungsten::telemetry::RenderCounts
+pub fn tungsten::telemetry::RenderCounts::default() -> tungsten::telemetry::RenderCounts
+impl core::fmt::Debug for tungsten::telemetry::RenderCounts
+pub fn tungsten::telemetry::RenderCounts::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::telemetry::RenderCounts
+impl core::marker::Freeze for tungsten::telemetry::RenderCounts
+impl core::marker::Send for tungsten::telemetry::RenderCounts
+impl core::marker::Sync for tungsten::telemetry::RenderCounts
+impl core::marker::Unpin for tungsten::telemetry::RenderCounts
+impl core::marker::UnsafeUnpin for tungsten::telemetry::RenderCounts
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::telemetry::RenderCounts
+impl core::panic::unwind_safe::UnwindSafe for tungsten::telemetry::RenderCounts
+pub struct tungsten::SceneEntity
+pub tungsten::SceneEntity::state_id: tungsten::state::StateId
+impl core::clone::Clone for tungsten::state::SceneEntity
+pub fn tungsten::state::SceneEntity::clone(&self) -> tungsten::state::SceneEntity
+impl core::fmt::Debug for tungsten::state::SceneEntity
+pub fn tungsten::state::SceneEntity::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::state::SceneEntity
+impl core::marker::Freeze for tungsten::state::SceneEntity
+impl core::marker::Send for tungsten::state::SceneEntity
+impl core::marker::Sync for tungsten::state::SceneEntity
+impl core::marker::Unpin for tungsten::state::SceneEntity
+impl core::marker::UnsafeUnpin for tungsten::state::SceneEntity
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::state::SceneEntity
+impl core::panic::unwind_safe::UnwindSafe for tungsten::state::SceneEntity
+pub struct tungsten::StateContext<'a>
+pub tungsten::StateContext::state_id: tungsten::state::StateId
+pub tungsten::StateContext::world: &'a mut tungsten_core::ecs::world::World
+impl<'a> core::marker::Freeze for tungsten::state::StateContext<'a>
+impl<'a> !core::marker::Send for tungsten::state::StateContext<'a>
+impl<'a> !core::marker::Sync for tungsten::state::StateContext<'a>
+impl<'a> core::marker::Unpin for tungsten::state::StateContext<'a>
+impl<'a> core::marker::UnsafeUnpin for tungsten::state::StateContext<'a>
+impl<'a> !core::panic::unwind_safe::RefUnwindSafe for tungsten::state::StateContext<'a>
+impl<'a> !core::panic::unwind_safe::UnwindSafe for tungsten::state::StateContext<'a>
+pub struct tungsten::StateStack
+impl tungsten::state::StateStack
+pub fn tungsten::state::StateStack::active_id(&self) -> core::option::Option<tungsten::state::StateId>
+pub fn tungsten::state::StateStack::depth(&self) -> usize
+pub fn tungsten::state::StateStack::is_transitioning(&self) -> bool
+pub fn tungsten::state::StateStack::new() -> Self
+pub fn tungsten::state::StateStack::request_pop(&mut self)
+pub fn tungsten::state::StateStack::request_pop_transition(&mut self, tungsten::transition::Transition) -> bool
+pub fn tungsten::state::StateStack::request_push(&mut self, impl tungsten::state::GameState)
+pub fn tungsten::state::StateStack::request_push_transition(&mut self, impl tungsten::state::GameState, tungsten::transition::Transition) -> bool
+pub fn tungsten::state::StateStack::request_replace(&mut self, impl tungsten::state::GameState)
+pub fn tungsten::state::StateStack::request_replace_transition(&mut self, impl tungsten::state::GameState, tungsten::transition::Transition) -> bool
+pub fn tungsten::state::StateStack::transition_cover(&self) -> f32
+pub fn tungsten::state::StateStack::transition_pass(&self) -> core::option::Option<tungsten_core::post::PostPass>
+pub fn tungsten::state::StateStack::transition_state(&self) -> core::option::Option<tungsten::transition::TransitionState>
+impl core::default::Default for tungsten::state::StateStack
+pub fn tungsten::state::StateStack::default() -> Self
+impl core::marker::Freeze for tungsten::state::StateStack
+impl !core::marker::Send for tungsten::state::StateStack
+impl !core::marker::Sync for tungsten::state::StateStack
+impl core::marker::Unpin for tungsten::state::StateStack
+impl core::marker::UnsafeUnpin for tungsten::state::StateStack
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten::state::StateStack
+impl !core::panic::unwind_safe::UnwindSafe for tungsten::state::StateStack
+pub struct tungsten::SystemTimingOverlay
+pub tungsten::SystemTimingOverlay::alpha: f32
+pub tungsten::SystemTimingOverlay::color: [u8; 4]
+pub tungsten::SystemTimingOverlay::corner: tungsten::debug_hud::HudCorner
+pub tungsten::SystemTimingOverlay::enabled: bool
+pub tungsten::SystemTimingOverlay::font_id: alloc::string::String
+pub tungsten::SystemTimingOverlay::font_size: f32
+pub tungsten::SystemTimingOverlay::line_height: f32
+pub tungsten::SystemTimingOverlay::outline_color: [u8; 4]
+pub tungsten::SystemTimingOverlay::outline_px: f32
+pub tungsten::SystemTimingOverlay::padding_px: f32
+pub tungsten::SystemTimingOverlay::refresh_interval_ms: f32
+impl tungsten::systems_overlay::SystemTimingOverlay
+pub fn tungsten::systems_overlay::SystemTimingOverlay::toggle(&mut self)
+impl core::default::Default for tungsten::systems_overlay::SystemTimingOverlay
+pub fn tungsten::systems_overlay::SystemTimingOverlay::default() -> Self
+impl core::fmt::Debug for tungsten::systems_overlay::SystemTimingOverlay
+pub fn tungsten::systems_overlay::SystemTimingOverlay::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten::systems_overlay::SystemTimingOverlay
+impl core::marker::Send for tungsten::systems_overlay::SystemTimingOverlay
+impl core::marker::Sync for tungsten::systems_overlay::SystemTimingOverlay
+impl core::marker::Unpin for tungsten::systems_overlay::SystemTimingOverlay
+impl core::marker::UnsafeUnpin for tungsten::systems_overlay::SystemTimingOverlay
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::systems_overlay::SystemTimingOverlay
+impl core::panic::unwind_safe::UnwindSafe for tungsten::systems_overlay::SystemTimingOverlay
+pub struct tungsten::Transition
+pub tungsten::Transition::easing: tungsten_core::tween::Easing
+pub tungsten::Transition::in_effect: tungsten::transition::TransitionEffect
+pub tungsten::Transition::in_secs: f32
+pub tungsten::Transition::out_effect: tungsten::transition::TransitionEffect
+pub tungsten::Transition::out_secs: f32
+impl tungsten::transition::Transition
+pub fn tungsten::transition::Transition::cover(&self, tungsten::transition::TransitionState) -> f32
+pub fn tungsten::transition::Transition::new(tungsten::transition::TransitionEffect, f32) -> Self
+pub fn tungsten::transition::Transition::pass(&self, tungsten::transition::TransitionState) -> tungsten_core::post::PostPass
+pub fn tungsten::transition::Transition::with_easing(self, tungsten_core::tween::Easing) -> Self
+pub fn tungsten::transition::Transition::with_in_effect(self, tungsten::transition::TransitionEffect) -> Self
+impl core::clone::Clone for tungsten::transition::Transition
+pub fn tungsten::transition::Transition::clone(&self) -> tungsten::transition::Transition
+impl core::cmp::PartialEq for tungsten::transition::Transition
+pub fn tungsten::transition::Transition::eq(&self, &tungsten::transition::Transition) -> bool
+impl core::fmt::Debug for tungsten::transition::Transition
+pub fn tungsten::transition::Transition::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::transition::Transition
+impl core::marker::StructuralPartialEq for tungsten::transition::Transition
+impl core::marker::Freeze for tungsten::transition::Transition
+impl core::marker::Send for tungsten::transition::Transition
+impl core::marker::Sync for tungsten::transition::Transition
+impl core::marker::Unpin for tungsten::transition::Transition
+impl core::marker::UnsafeUnpin for tungsten::transition::Transition
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::transition::Transition
+impl core::panic::unwind_safe::UnwindSafe for tungsten::transition::Transition
+pub struct tungsten::TransitionState
+pub tungsten::TransitionState::elapsed: f32
+pub tungsten::TransitionState::phase: tungsten::transition::TransitionPhase
+impl core::clone::Clone for tungsten::transition::TransitionState
+pub fn tungsten::transition::TransitionState::clone(&self) -> tungsten::transition::TransitionState
+impl core::cmp::PartialEq for tungsten::transition::TransitionState
+pub fn tungsten::transition::TransitionState::eq(&self, &tungsten::transition::TransitionState) -> bool
+impl core::fmt::Debug for tungsten::transition::TransitionState
+pub fn tungsten::transition::TransitionState::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::transition::TransitionState
+impl core::marker::StructuralPartialEq for tungsten::transition::TransitionState
+impl core::marker::Freeze for tungsten::transition::TransitionState
+impl core::marker::Send for tungsten::transition::TransitionState
+impl core::marker::Sync for tungsten::transition::TransitionState
+impl core::marker::Unpin for tungsten::transition::TransitionState
+impl core::marker::UnsafeUnpin for tungsten::transition::TransitionState
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::transition::TransitionState
+impl core::panic::unwind_safe::UnwindSafe for tungsten::transition::TransitionState
+pub struct tungsten::WindowSize
+pub tungsten::WindowSize::height: u32
+pub tungsten::WindowSize::width: u32
+impl core::clone::Clone for tungsten::app::WindowSize
+pub fn tungsten::app::WindowSize::clone(&self) -> tungsten::app::WindowSize
+impl core::fmt::Debug for tungsten::app::WindowSize
+pub fn tungsten::app::WindowSize::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::app::WindowSize
+impl core::marker::Freeze for tungsten::app::WindowSize
+impl core::marker::Send for tungsten::app::WindowSize
+impl core::marker::Sync for tungsten::app::WindowSize
+impl core::marker::Unpin for tungsten::app::WindowSize
+impl core::marker::UnsafeUnpin for tungsten::app::WindowSize
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::app::WindowSize
+impl core::panic::unwind_safe::UnwindSafe for tungsten::app::WindowSize
+pub trait tungsten::GameState: 'static
+pub fn tungsten::GameState::id(&self) -> tungsten::state::StateId
+pub fn tungsten::GameState::on_enter(&mut self, &mut tungsten::state::StateContext<'_>)
+pub fn tungsten::GameState::on_exit(&mut self, &mut tungsten::state::StateContext<'_>)
+pub fn tungsten::GameState::on_pause(&mut self, &mut tungsten::state::StateContext<'_>)
+pub fn tungsten::GameState::on_resume(&mut self, &mut tungsten::state::StateContext<'_>)
+pub fn tungsten::GameState::update(&mut self, &mut tungsten_core::ecs::world::World)
+pub fn tungsten::camera_update_system(&mut tungsten_core::ecs::world::World)
+pub fn tungsten::despawn_scene_entities(&mut tungsten_core::ecs::world::World, tungsten::state::StateId)
+pub fn tungsten::extract_lights(&tungsten_core::ecs::world::World, &tungsten_core::camera::CameraState, f32, f32) -> tungsten_render::lighting::LightUbo
+pub fn tungsten::extract_mesh_particles(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::mesh_particle::MeshParticleBatch>
+pub fn tungsten::extract_sprites_default(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch>
+pub fn tungsten::extract_tilemaps(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch>
+pub fn tungsten::hud_toggle_system(&mut tungsten_core::ecs::world::World)
+pub fn tungsten::particle_count_refresh_system(&mut tungsten_core::ecs::world::World)
+pub fn tungsten::particle_emit_system(&mut tungsten_core::ecs::world::World)
+pub fn tungsten::particle_tick_system(&mut tungsten_core::ecs::world::World)
+pub fn tungsten::request_display_settings(&mut tungsten_core::ecs::world::World, tungsten_core::display::DisplayState) -> core::result::Result<(), tungsten_core::display::DisplayValidationError>
+pub fn tungsten::request_post_aa(&mut tungsten_core::ecs::world::World, tungsten_core::config::PostAaMode)
+pub fn tungsten::shake_tick_system(&mut tungsten_core::ecs::world::World)
+pub fn tungsten::spawn_mesh_particle_via(&mut tungsten_core::ecs::command_buffer::CommandBuffer, core::option::Option<tungsten_core::ecs::entity::Entity>, alloc::sync::Arc<tungsten_core::assets::particle::ParticleConfig>, tungsten_core::assets::particle::ParticleMeshAssetId, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, f32, f32)
+pub fn tungsten::squash_stretch_tick_system(&mut tungsten_core::ecs::world::World)
+pub fn tungsten::squash_stretch_trigger_system(&mut tungsten_core::ecs::world::World)
+pub fn tungsten::state_dispatcher_system(&mut tungsten_core::ecs::world::World)
+pub fn tungsten::tween_tick_system(&mut tungsten_core::ecs::world::World)
+pub type tungsten::StateId = &'static str

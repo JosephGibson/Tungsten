@@ -53,20 +53,7 @@ Seam (`D-007`, `D-016`, `D-018`): core defines `TextureHandle(u32)`, has no `wgp
 
 ## Assets
 
-`just repo-check` checks asset-file coverage; loaders validate referenced content. Whole font families, shader helper fragments/licenses and explicitly loaded scenes (`D-046`) are exceptions; see `docs/agent-setup.md`.
-
-| Type | Location | Section | Required |
-| --- | --- | --- | --- |
-| Sprite | `assets/sprites/` | `sprites` | ID, filter `nearest`/`linear`; optional `normal_map`, `emissive_mask` |
-| Animation | `assets/animations/` | `animations` | ID; sprite IDs must exist |
-| Font | `assets/fonts/<Fam>/` | `fonts` | ID |
-| Sound | `assets/sounds/` | `sounds` | ID; optional `looping`, `volume` |
-| Shader | `assets/shaders/` | `shaders` | ID (`D-057`) |
-| Material | manifest only | `materials` | `shader` ID, `uniform_defaults` (`D-058`) |
-| Particle mesh | manifest only | `particle_meshes` | `vertices`, `indices` |
-
-- Example-local assets: `examples/NN_name/assets/` with its own `manifest.json`. IDs are unique across loaded manifests; duplicates are fatal.
-- Game code uses registry IDs; explicit scene loading follows `D-046`.
+Asset files are listed in a `manifest.json` and named by registry ID. [`docs/assets.md`](docs/assets.md) gives each type's folder, section and required fields, example-local manifests and the coverage exceptions; `just repo-check` checks coverage.
 
 ## Hard rules
 

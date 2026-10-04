@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CPU-only asset coverage, documentation, active-plan and plan-citation checks (stdlib only).
+"""CPU-only asset coverage, documentation, active-plan, plan-citation and roadmap checks (stdlib only).
 
 Never traverses docs/plans/archive, follows directory symlinks, edits manifests,
 or deletes files. Rust's manifests/decision_index tests remain authoritative for
@@ -18,7 +18,7 @@ from urllib.parse import unquote, urlsplit
 DOCS = (
     "README.md", "CHANGELOG.md", "docs/LLM_INDEX.md", "docs/DECISION_INDEX.md",
     "docs/agent-setup.md", "docs/perf/profiling-workflow.md", "docs/perf/benchmarks.md",
-    "docs/showcase/README.md", "docs/plans/README.md", "docs/releases.md",
+    "docs/showcase/README.md", "docs/plans/README.md", "docs/releases.md", "docs/assets.md",
 )
 ARCHIVE = "docs/plans/archive"
 # Existing content outside the manifest schema, not a blanket file exemption.
@@ -34,6 +34,12 @@ CITING_SUFFIXES = (".rs", ".py", ".sh", ".md", ".toml", ".yml")
 # History keeps the plan names of its time; the scripts' tests cite fixture plans.
 CITATION_EXEMPT = ("CHANGELOG.md", "DECISIONS.md")
 PLAN_CITATION = re.compile(r"docs/plans/[\w./-]+?\.md")
+ROADMAP_ID = re.compile(r"[a-z0-9]+")
+
+# The register parser the roadmap sync uses, so both read the register one way.
+_spec = importlib.util.spec_from_file_location("roadmap", Path(__file__).with_name("roadmap.py"))
+roadmap = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(roadmap)
 
 
 def archive_path(path):
@@ -82,7 +88,7 @@ def check_assets(root, errors, notes):
                 continue
             rel = path.relative_to(root).as_posix()
             local = path.relative_to(directory).parts
-            # AGENTS.md permits complete font-family directories, including licenses.
+            # docs/assets.md permits complete font-family directories, including licenses.
             if len(local) >= 3 and local[0] == "fonts":
                 continue
             if rel in ASSET_EXCEPTIONS:
@@ -102,11 +108,20 @@ def plan_fields(text):
     return result
 
 
+def plan_files(root):
+    """Plans at the top level and one program folder deep (`docs/plans/<program>/`)."""
+    plans = root / "docs/plans"
+    # Deliberately one level deep: archive is neither listed nor opened.
+    folders = [plans] + sorted(d for d in plans.iterdir()
+                               if d.is_dir() and not d.is_symlink() and d.name != "archive")
+    for folder in folders:
+        for path in sorted(folder.glob("*.md")):
+            if path.name != "README.md" and not path.is_symlink():
+                yield path
+
+
 def check_plans(root, errors, notes):
-    # Deliberately non-recursive: archive is neither listed nor opened.
-    for path in sorted((root / "docs/plans").glob("*.md")):
-        if path.name == "README.md" or path.is_symlink():
-            continue
+    for path in plan_files(root):
         text = path.read_text()
         fields = plan_fields(text)
         rel = path.relative_to(root)
@@ -115,7 +130,9 @@ def check_plans(root, errors, notes):
                 errors.append(f"{rel}: missing plan header '{field}'")
         status = re.split(r"\s*[(—;]", fields.get("status", ""), maxsplit=1)[0].strip()
         if status in ("done", "abandoned", "superseded"):
-            errors.append(f"{rel}: {status} plan belongs in {ARCHIVE}/")
+            program = path.parent.relative_to(root / "docs/plans").as_posix()
+            target = ARCHIVE if program == "." else f"{ARCHIVE}/{program}"
+            errors.append(f"{rel}: {status} plan belongs in {target}/")
         elif status not in ("draft", "in progress"):
             errors.append(f"{rel}: unknown status {status!r}")
         elif status == "in progress":
@@ -192,6 +209,61 @@ def check_plan_citations(root, errors, notes):
                 errors.append(f"{rel}: cites missing plan {cited}")
 
 
+def check_roadmap(root, errors, notes):
+    """The roadmap catalog against the register, the §3 cards and the question lists."""
+    rel = roadmap.CATALOG
+    if not (root / rel).exists() and not (root / roadmap.PLAN).exists():
+        return
+    try:
+        catalog = roadmap.load_catalog(root)
+        stops, questions = catalog["stops"], catalog["questions"]
+        groups = {group["id"] for group in catalog["groups"]}
+        qids = [question["id"] for question in questions]
+        ids = [stop["id"] for stop in stops] + qids
+        for stop in stops:
+            if stop["group"] not in groups:
+                errors.append(f"{rel}: {stop['id']}: unknown group {stop['group']}")
+            for qid in stop.get("questions", []):
+                if qid not in qids:
+                    errors.append(f"{rel}: {stop['id']}: unknown question {qid}")
+            for entry in stop.get("src", []) + stop.get("reads", []):
+                path = entry.split(" ", 1)[0]
+                target = root / path
+                if not (target.is_dir() if path.endswith("/") else target.is_file()):
+                    errors.append(f"{rel}: {stop['id']}: missing path {path}")
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        errors.append(f"{rel}: {exc!r}")
+        return
+    for duplicate in sorted({i for i in ids if ids.count(i) > 1}):
+        errors.append(f"{rel}: duplicate id {duplicate}")
+    for bad in sorted({i for i in ids if not ROADMAP_ID.fullmatch(str(i))}):
+        errors.append(f"{rel}: id {bad!r} is not lowercase letters and digits")
+
+    # Pairs and placeholders are one register row and one stop, or several stops in a run.
+    rows = []
+    for stop in stops:
+        if stop.get("row") is not None and (not rows or rows[-1] != stop["row"]):
+            rows.append(stop["row"])
+    register = [row["candidate"] for row in roadmap.register(root)]
+    if rows != register:
+        at = next((i for i, (a, b) in enumerate(zip(rows, register)) if a != b), min(len(rows), len(register)))
+        ours = rows[at] if at < len(rows) else "(end)"
+        theirs = register[at] if at < len(register) else "(end)"
+        errors.append(f"{rel}: row {at + 1} is {ours!r}, the register's (implementation plan §10) is {theirs!r}")
+
+    cards = roadmap.card_levels(root)
+    for stop in stops:
+        card = cards.get(stop.get("row"))
+        if card is not None and not (stop.get("level") and card.startswith(stop["level"])):
+            errors.append(f"{rel}: {stop['id']}: level {stop.get('level')!r}, its §3 card says {card!r}")
+
+    numbers = roadmap.question_numbers(root)
+    for qid in qids:
+        match = re.fullmatch(r"q(\d+)", str(qid))
+        if not match or int(match[1]) not in numbers:
+            errors.append(f"{rel}: question {qid} is not in implementation plan §7 or criteria §10")
+
+
 def check_agent_config(root, errors):
     settings = json.loads((root / ".claude/settings.json").read_text())
     if settings.get("env", {}).get("CLAUDE_CODE_GLOB_NO_IGNORE") != "false":
@@ -211,7 +283,7 @@ def main():
     args = parser.parse_args()
     errors, notes = [], []
     root = args.root.absolute()
-    for check in (check_assets, check_plans, check_docs, check_plan_citations):
+    for check in (check_assets, check_plans, check_docs, check_plan_citations, check_roadmap):
         try:
             check(root, errors, notes)
         except (OSError, ValueError) as exc:

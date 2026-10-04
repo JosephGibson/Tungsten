@@ -11,18 +11,18 @@ Drafted 2026-10-03 at `afbc330`; revisions are listed at the end.
 
 ## Context digest
 
-- criteria.md says what 1.0 means and scopes W1–W16 with proposed tiers; its §9 sketches an order. This file refines that order and adds gates. Once agreed, it replaces §9.
+- criteria.md says what 1.0 means and scopes W1–W16 with their tiers. This file refined its order sketch and adds gates; since the definition gate it is the only order, and criteria §9 links here (amendment 13).
 - [workflow.md](workflow.md) says how a candidate runs: session types, autonomy levels A, B, C and S (used on the cards in §3), what every milestone owes before its release, and how sessions share the tree and the reference machine.
 - Milestones continue at M32. A candidate gets its number when its plan is written, so numbers follow the order in which work lands. The register (§10) maps candidates to milestones and releases.
 - Candidate IDs: `W11a`, `W11b` and so on per workstream. W1 keeps its ladder names (M0a … M6), W2 its options (R0 … R5) and W10 its phases (C1 … C3).
 - Gates have names, not numbers: G1–G3 already name physics and lighting proposals in [benchmarks.md](../../perf/benchmarks.md#open-proposals).
-- The agent commits a milestone's work locally, once per plan or phase, and the owner pushes, tags and merges (`D-097`, `D-098`). Milestones that touch performance follow the [profiling workflow](../../perf/profiling-workflow.md).
+- From 0.42 sessions leave a milestone's work uncommitted, the release session's command block makes its only commit, and the owner pushes, tags and merges (`D-105`). Milestones that touch performance follow the [profiling workflow](../../perf/profiling-workflow.md).
 - 0.40 released on 2026-10-03 (`v0.40.0`, squash-merged as `9cd5709`); the drafts' commits `afbc330`–`4ee92aa` are not ancestors of that commit, so later revisions cite `main` commits or tags. Its QA plan finished the same day (archived at `docs/plans/archive/qa-cleanup-0.40.md`); its follow-ups feed W8, W11, W12 and the Track B spikes (§3).
 - The longest chain is W1's ladder (§6). With one tree, milestones run one after another, so the order sets when risk is found, not when 1.0 lands.
 
 ## 1. Shape
 
-Three phases in place of the five in criteria §9. Phases 8 and 9 there hold one workstream each and are gates rather than bodies of work, and fewer phases means fewer milestone renames when the order shifts. Keep five if each closing phase should start its own milestone numbering.
+Three phases in place of the five that criteria §9 sketched. Phases 8 and 9 there held one workstream each and were gates rather than bodies of work, and fewer phases means fewer milestone renames when the order shifts. The definition gate agreed three (amendment 13).
 
 | Phase | Theme | Ends at |
 | --- | --- | --- |
@@ -64,7 +64,7 @@ The glyph gate (W1's T1, T1b or T2, [w01](w01-ui-text-suite.md) §9) is W1's own
 | `scripts/bench.py` run from a tree export under `target/` records the enclosing repository's commit and dirty hash as the capture's provenance | Track B: spikes capture from scratch copies, so each spike's README names its tree by hand (workflow §2) |
 | `cargo shear` (`just udeps`) reports the `#[path]`-included `src/tests/` modules as unlinked | The Phase 5 QA pass, with the `ignored-paths` entry known issues proposes |
 
-**Step 0, planning tooling.** `check_plans` in `scripts/check-repo.py` also reads `docs/plans/*/*.md`, skipping the archive, with a case in `scripts/test-check-repo.py`. The 0.40 QA plan, which edited both files, has landed (its step 11 added a citation check that reads this folder's files only as citation targets), so nothing blocks it. No milestone plan is written in this folder before it. Workflow §8 proposes three items beside it: headroom for `AGENTS.md` and the index, a milestone skill, and an API snapshot recipe.
+**Step 0, planning tooling.** `check_plans` in `scripts/check-repo.py` also reads `docs/plans/*/*.md`, skipping the archive, with a case in `scripts/test-check-repo.py`. The 0.40 QA plan, which edited both files, has landed (its step 11 added a citation check that reads this folder's files only as citation targets), so nothing blocks it. No milestone plan is written in this folder before it. Workflow §8 proposes three items beside it: headroom for `AGENTS.md` and the index, a milestone skill, and an API snapshot recipe. *Landed 2026-10-04, uncommitted for 0.42 (`D-105`): 0a, 0b (`D-106`), 0c (the `tungsten-milestone` skill) and 0d (`D-107`, `just api`); workflow §8 records each.*
 
 **Track A**, independent of the frame-loop gate, in this order after the definition gate unless the register says otherwise (§6 gives the reasons). Hard constraints: W14a before W1 M1; W2 R0 before the R1 spike; W11a and W9a before W12a; W1 M0a before M1.
 
@@ -78,7 +78,7 @@ The glyph gate (W1's T1, T1b or T2, [w01](w01-ui-text-suite.md) §9) is W1's own
 | W12a | Self-containment, template skeleton, outside-copy check; the skeleton registers engine systems by hand until W15a (Track C) removes them; the getting-started guide starts here as W9b's first draft | W14b `new`, the acceptance game, every later template change and the guide (workflow §5) |
 | W1 M1 | Core UI model, its layout spike and `UiHarness` ([w01](w01-ui-text-suite.md) §11) | The glyph gate |
 | W8a | Capture-completion contract (a presented, skipped or failed render result); the engine-finding bugs: burst latch, tilemaps at `z_norm` 0 under `gpu_depth`, the lit-sprite material log, a once-per-ID warning for an unknown sprite | W1 M2 |
-| W1 M0b | Input and display groundwork from the UI ladder, which takes over W5's focus loss, modifiers and scale factor. First, winit 0.31 if it has left prerelease, so the bridge is rewritten once (criteria §7) | W1 M3, W5a |
+| W1 M0b | Input and display groundwork from the UI ladder, which takes over W5's focus loss, modifiers and scale factor. First, winit 0.31 if it has left prerelease, so the bridge is rewritten once ([w04](w04-api-freeze.md)) | W1 M3, W5a |
 | W2 R2 | Late-acquire split: scene and post passes recorded before the acquire. It needs nothing from the frame-loop gate (criteria §5.3), and W1 M2's overlay then builds on the split final pass. Per-worker encoders stay an option after the threading rule | R4, if it comes back; W1 M2 builds on it |
 
 **Track B**, the inputs to the frame-loop gate. These are spikes and designs, with evidence in `perf-runs/` and nothing merged that the gate could reverse (workflow §2):
@@ -128,7 +128,7 @@ W1's ladder interleaves with both tracks: M0a and M1 in Track A, the glyph gate 
 | Phase 5 QA pass | The tree | As its findings need | As its findings need | As 0.40's | Plan approval | A |
 | W1 glyph gate, M2, M3 | [w01](w01-ui-text-suite.md) §6, §9, §11 | The glyph path; UI input routing | M3: routed input | As w01 §11 sketches | The glyph decision; API review | S, then C |
 
-- **W11a.** Perf lines are `log::debug!` records (`tungsten/app.rs:1188`) that `scripts/bench.py` reads from the example's output under `RUST_LOG=tungsten::app=debug,bench=debug`. Criteria §8.2 keeps stderr in debug builds only, so the release builds that the runner measures would lose them (amendment 19).
+- **W11a.** Perf lines are `log::debug!` records (`tungsten/app.rs:1188`) that `scripts/bench.py` reads from the example's output under `RUST_LOG=tungsten::app=debug,bench=debug`. Criteria §8.2 kept stderr in debug builds only, so the release builds that the runner measures would have lost them; [w11](w11-shipping-basics.md) now keeps stderr while `RUST_LOG` is set, or has the runner read the log file (amendment 19).
 - **W2 R0.** Its ID API is what every game writes to name a sprite, hence level C. It lands before the R1 spike so that the spike's serial baseline has no string compares in it.
 
 ## 4. Phase 6: Features
@@ -178,7 +178,7 @@ W1's ladder is the longest chain: M0a → M1 → glyph gate → M2 → M3 → M4
 
 After that, M2 waits on W8a, W2 R2 and the glyph gate, M3 on W15a, and M4 on W11b and, if Q8 says so, W1 BC. Each of those starts in an earlier track, so none should hold the ladder up.
 
-**The queue.** One tree takes one committing session at a time (workflow §6), so milestones run one after another. The critical path then orders risk rather than setting a finish date: the glyph gate and the frame-loop gate are where a wrong guess costs most, and the queue reaches both early. Proposed Phase 5 queue, with owner-present work and capture work kept apart:
+**The queue.** Everything in the tree goes into the next release commit (workflow §6), so milestones run one after another. The critical path then orders risk rather than setting a finish date: the glyph gate and the frame-loop gate are where a wrong guess costs most, and the queue reaches both early. Proposed Phase 5 queue, with owner-present work and capture work kept apart:
 
 1. Step 0, then Track A in the table's order: W14a and R0 first because every later test and the R1 spike stand on them, then the head of W1's ladder, then the shipping basics and the template.
 2. Track B in unattended sittings as each becomes possible: the R1 spike once R0 has landed; the tuple-query spike and the frame-loop design at any time.
@@ -186,7 +186,15 @@ After that, M2 waits on W8a, W2 R2 and the glyph gate, M3 on W15a, and M4 on W11
 4. The glyph gate and the frame-loop gate, in one owner session if both are ready.
 5. Track C, then the Phase 5 QA pass; W1 M2 and M3 as their inputs land.
 
-A second clone running W1's ladder beside the rest is the one place where parallel sessions shorten the road. It pays only if the owner can review two streams of commits.
+A second clone running W1's ladder beside the rest is the one place where parallel sessions shorten the road. It pays only if the owner can review two streams of changes.
+
+**Pairs.** Two small candidates may share one milestone plan and one release when both are level A or B, touch different files and sit next to each other in the queue (`D-108`, which revises the definition gate's one release per candidate, §11 agenda item 11). The register (§10) holds each pair as one row, and a pair's plan splits in two if a shared file or a level C turns up. Phase 5's pairs, settled by the owner on 2026-10-04:
+
+- **W11a with W7a**, as the cards already had it.
+- **W9a with W12a.** W9a's steps run first, so W12a's release carries the licence notices it needs. W12a is larger than the rule's "small" (an outside-copy check, smoke and visual); the owner paired them anyway.
+- **W1 M0b with W2 R2.** M0b changes the core input types, `input_bridge.rs` and `app.rs`; R2 changes `renderer.rs`. If winit 0.31 has left prerelease when the plan is written, M0b upgrades it first and that reaches `renderer.rs`, so the pair splits. R2's perf baseline is taken after M0b's steps.
+
+W8a and W1 M0b do not pair: both change `crates/tungsten/src/app.rs` (`App::run` and `window_event`). Phase 6 and 7 pairs are proposed when the frame-loop and feature gates write those cards.
 
 ## 7. Questions by when
 
@@ -255,22 +263,20 @@ The first gate session (workflow §2) takes these items in order. Defaults are p
 
 ## 10. Register
 
-One row per candidate, in plan order. A plan session fills in the milestone plan, a release session the release and status. Spikes take no milestone or release; their verdicts go in §11 with the gate they feed.
+One row per candidate, or per pair that shares a plan and a release (§6, `D-108`), in plan order. A plan session fills in the milestone plan, and the plan's release step (a release session, for a resume) the release and status. Spikes take no milestone or release; their verdicts go in §11 with the gate they feed.
 
 | Candidate | Milestone plan | Release | Status |
 | --- | --- | --- | --- |
-| Step 0 | — | — | Next, after the definition gate's graduation commits (§11) |
-| W14a | — | — | Not started |
+| Step 0 | — | 0.42 | Landed 2026-10-04 (0a–0d; `D-106`, `D-107`); ships in `v0.42.0`, cut 2026-10-04 |
+| W14a | — | — | Next: its milestone plan |
 | W2 R0 | — | — | Not started |
 | W1 M0a | — | — | Not started; Q4 answered at the definition gate |
 | W11a with W7a | — | — | Not started |
-| W9a | — | — | Not started |
-| W12a | — | — | Not started |
+| W9a with W12a | — | — | Not started; paired 2026-10-04 (`D-108`), W9a's steps first |
 | W1 M1 | — | — | Not started |
 | Track B spikes | — | — | Not started |
 | W8a | — | — | Not started |
-| W1 M0b | — | — | Not started |
-| W2 R2 | — | — | Not started |
+| W1 M0b with W2 R2 | — | — | Not started; paired 2026-10-04 (`D-108`), split if winit 0.31 has left prerelease when the plan is written |
 | W15a | — | — | Waits for the frame-loop gate |
 | W3a | — | — | Waits for the frame-loop gate |
 | W15b | — | — | Waits for the frame-loop gate |
@@ -321,7 +327,7 @@ Run on branch `0.41` at `56f08ca` with the owner answering in the session, on th
 
 Owed before Step 0's first milestone plan: the graduation commits with their amendment folds, then the remaining folds. Owed by the frame-loop gate: the acceptance game's pitch, screens, mechanics and feature-map rows.
 
-Sign-off: *owner to add "Signed <date>" here after reviewing this record.*
+Sign-off: Signed 2026-10-03.
 
 ## Revisions
 
@@ -331,3 +337,9 @@ Sign-off: *owner to add "Signed <date>" here after reviewing this record.*
 - 2026-10-03 on `4ee92aa`: the 0.40 QA plan finished; the context digest and §3 say so, and §3 drops step 9's row, which shipped in the close-out.
 - 2026-10-03, against the 0.40 tree (`9cd5709`, `v0.40.0` merged; HEAD was `1d9bf8c`, a renderer-only commit): reviewed. Q12 moves from the freeze gate to the feature gate, since C1 opens Phase 7 (§2, §7); W12a no longer waits for Q2 (§7, amendment 14's default); W1 M2 also waits for W2 R2 (§3, §6); W12a's row says the skeleton keeps hand-registered systems until W15a and starts W9b's guide (§3); §3's follow-up table gains the capture-provenance and `cargo shear` rows and the test file's current length; §9 gains the release count under item 11, the scroll-container note under item 5 and item 14, the acceptance game's repository; the register and digest record the release.
 - 2026-10-03 at `56f08ca`: the definition gate ran (§11), with `D-102`–`D-104`; status in progress; §2's frame-loop row gains the acceptance game's pitch and mechanics; §9 points at the record; the register's Step 0 and W1 M0a rows follow.
+- 2026-10-03 on `db1177c`: sessions leave work uncommitted until the release commit (`D-105`) in the context digest, §6 and the register.
+- 2026-10-03 on `db1177c`: the owner signed the definition gate record (§11). W4, W9, W11, W12 and W14 graduated into their workstream files with amendments 4, 5, 6, 9, 11, 14, 16, 17 and 19 folded in; §3's W1 M0b row and W11a note point at them, and the register's Step 0 row waits for the remaining folds.
+- 2026-10-03 on `db1177c`: the remaining amendments (1–3, 7, 8, 10, 13, 15–18) and the gate's answers folded into criteria.md, w01 and the skeletons of W2, W3, W5–W8, W10, W13 and W15; criteria §9 now links here, so the context digest and §1 speak of it in the past; the register's Step 0 row waits for the owner's review of the folds.
+- 2026-10-04 on `db1177c`, uncommitted: Step 0 landed (0a–0d, `D-106`, `D-107`); §3's Step 0 paragraph says so and the register's Step 0 and W14a rows follow.
+- 2026-10-04 on `db1177c`, uncommitted: the 0.42 release session cut `v0.42.0`; the register's Step 0 row says so.
+- 2026-10-04 on `db1177c`, uncommitted: a milestone's release becomes its plan's last step ([workflow](workflow.md) §1), so §10's header names the release step; two small adjacent candidates may share one plan and one release (`D-108`, revising the definition gate's one release per candidate), which §6 states with Phase 5's pairs: W9a with W12a and W1 M0b with W2 R2, one register row each in §10.
