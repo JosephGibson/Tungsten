@@ -10,6 +10,7 @@ Task → file map. Open it before a broad search; read only the matching row's f
 | Deferred spawn/despawn (`D-039`) | `core/ecs/command_buffer.rs` |
 | Event lifetime/flush (`D-040`) | `core/ecs/event_queue.rs` |
 | Frame order, smoke-frame exit, winit loop (`D-018`, `D-043`) | `tungsten/app.rs`, `tungsten/lib.rs` |
+| Headless test harness, `Harness`, `FrameDraw` (`D-110`) | `tungsten/testing.rs`, `tungsten/app.rs`, `tungsten/tests/testing.rs` |
 | Config parsing, env overrides | `core/config.rs`, `core/display.rs`, `tungsten.json` |
 | Display apply, fullscreen, vsync, frame cap (`D-043`) | `tungsten/display.rs`, `core/display.rs` |
 | Input actions, `input.json`, rebind reload (`D-045`) | `core/input/action_map.rs`, `core/input/key_serde.rs`, `tungsten/asset_loader/reload.rs`, `tungsten/debug_hud.rs`, `tungsten/display.rs`, `input.json` |

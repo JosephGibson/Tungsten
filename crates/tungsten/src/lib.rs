@@ -18,6 +18,8 @@ pub mod sprite_extract;
 pub mod state;
 pub mod systems_overlay;
 pub mod telemetry;
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;
 mod tilemap_extract;
 pub mod transition;
 pub mod tweens;

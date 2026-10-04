@@ -483,6 +483,44 @@ impl core::marker::Unpin for tungsten::telemetry::RenderCounts
 impl core::marker::UnsafeUnpin for tungsten::telemetry::RenderCounts
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::telemetry::RenderCounts
 impl core::panic::unwind_safe::UnwindSafe for tungsten::telemetry::RenderCounts
+pub mod tungsten::testing
+#[non_exhaustive] pub struct tungsten::testing::FrameDraw
+pub tungsten::testing::FrameDraw::debug_lines: alloc::vec::Vec<tungsten_render::debug_line::DebugLineInstance>
+pub tungsten::testing::FrameDraw::debug_quads: alloc::vec::Vec<tungsten_render::quad::QuadInstance>
+pub tungsten::testing::FrameDraw::light_ubo: tungsten_render::lighting::LightUbo
+pub tungsten::testing::FrameDraw::mesh_particles: alloc::vec::Vec<tungsten_render::mesh_particle::MeshParticleBatch>
+pub tungsten::testing::FrameDraw::quads: alloc::vec::Vec<tungsten_render::quad::QuadInstance>
+pub tungsten::testing::FrameDraw::sprites: alloc::vec::Vec<tungsten_render::sprite::SpriteBatch>
+pub tungsten::testing::FrameDraw::text: alloc::vec::Vec<tungsten_render::text::TextSection>
+impl core::marker::Freeze for tungsten::testing::FrameDraw
+impl core::marker::Send for tungsten::testing::FrameDraw
+impl core::marker::Sync for tungsten::testing::FrameDraw
+impl core::marker::Unpin for tungsten::testing::FrameDraw
+impl core::marker::UnsafeUnpin for tungsten::testing::FrameDraw
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::testing::FrameDraw
+impl core::panic::unwind_safe::UnwindSafe for tungsten::testing::FrameDraw
+pub struct tungsten::testing::Harness
+impl tungsten::testing::Harness
+pub fn tungsten::testing::Harness::audio(&self) -> &[tungsten_core::audio::AudioCommand]
+pub fn tungsten::testing::Harness::draw(&self) -> core::option::Option<&tungsten::testing::FrameDraw>
+pub fn tungsten::testing::Harness::events<T: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = &T>
+pub fn tungsten::testing::Harness::exit_requested(&self) -> bool
+pub fn tungsten::testing::Harness::frame(&self) -> u64
+pub fn tungsten::testing::Harness::new(tungsten::app::App) -> Self
+pub fn tungsten::testing::Harness::press_action(&mut self, &str)
+pub fn tungsten::testing::Harness::release_action(&mut self, &str)
+pub fn tungsten::testing::Harness::set_cursor(&mut self, f32, f32)
+pub fn tungsten::testing::Harness::set_dt(&mut self, f32)
+pub fn tungsten::testing::Harness::step(&mut self, u32) -> u32
+pub fn tungsten::testing::Harness::world(&self) -> &tungsten_core::ecs::world::World
+pub fn tungsten::testing::Harness::world_mut(&mut self) -> &mut tungsten_core::ecs::world::World
+impl !core::marker::Freeze for tungsten::testing::Harness
+impl !core::marker::Send for tungsten::testing::Harness
+impl !core::marker::Sync for tungsten::testing::Harness
+impl core::marker::Unpin for tungsten::testing::Harness
+impl core::marker::UnsafeUnpin for tungsten::testing::Harness
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten::testing::Harness
+impl !core::panic::unwind_safe::UnwindSafe for tungsten::testing::Harness
 pub mod tungsten::transition
 pub enum tungsten::transition::TransitionEffect
 pub tungsten::transition::TransitionEffect::Dissolve

@@ -1,14 +1,16 @@
 use super::{
-    App, RedrawSchedule, compose_post_stack, format_perf_physics_line, format_perf_systems_line,
-    frame_dt_secs, frame_interval_ms, is_reload_root, manifest_reload_roots, redraw_schedule,
-    resolve_startup_display, runtime_display_mode,
+    App, FrameClock, FrameEnd, RedrawSchedule, compose_post_stack, format_perf_physics_line,
+    format_perf_systems_line, frame_dt_secs, frame_interval_ms, is_reload_root,
+    manifest_reload_roots, redraw_schedule, resolve_startup_display, runtime_display_mode,
 };
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use tungsten_core::post::{FadeParams, PostPass, PostStack};
 use tungsten_core::{
-    CollisionEvent, Config, DisplayMode, DisplayState, EventQueue, ShakeEvent, SquashEvent,
+    AudioCommand, AudioCommands, CollisionEvent, CommandBuffer, Config, DeltaTime, DisplayMode,
+    DisplayState, EventQueue, InputState, KeyCode, ShakeEvent, SquashEvent,
 };
+use tungsten_render::QuadInstance;
 
 #[derive(Debug, Clone, Copy)]
 struct ExampleEvent;
@@ -293,4 +295,131 @@ fn no_transition_leaves_user_stack_untouched() {
     );
     assert_eq!(composed.0, [PostPass::Pixelate(4.0)]);
     assert!(scratch.is_empty());
+}
+
+/// One frame on an app with no window, renderer or audio device, at 60 Hz.
+fn headless_frame(app: &mut App) -> FrameEnd {
+    app.run_frame(Instant::now(), FrameClock::Pinned(1.0 / 60.0), |_| {})
+}
+
+/// The dt the last frame's systems read.
+struct SeenDt(f32);
+
+#[test]
+fn a_pinned_dt_reaches_systems_as_given() {
+    let mut app = App::new(Config::default()).unwrap();
+    app.world.insert_resource(SeenDt(0.0));
+    app.add_system(|world| {
+        let dt = world.get_resource::<DeltaTime>().unwrap().dt;
+        world.get_resource_mut::<SeenDt>().unwrap().0 = dt;
+    });
+    let end = app.run_frame(Instant::now(), FrameClock::Pinned(0.25), |_| {});
+    assert_eq!(end, FrameEnd::Completed);
+    assert_eq!(app.world.get_resource::<SeenDt>().unwrap().0, 0.25);
+}
+
+#[test]
+fn a_command_a_system_queues_is_applied_by_the_end_of_its_frame() {
+    struct Marker;
+    let mut app = App::new(Config::default()).unwrap();
+    let mut queued = false;
+    app.add_system(move |world| {
+        if !queued {
+            queued = true;
+            let cmds = world.get_resource_mut::<CommandBuffer>().unwrap();
+            let pending = cmds.spawn();
+            cmds.insert_pending(pending, Marker);
+        }
+    });
+    let before = app.world.entity_count();
+    headless_frame(&mut app);
+    assert_eq!(app.world.entity_count(), before + 1);
+    assert_eq!(app.world.query::<Marker>().count(), 1);
+}
+
+#[test]
+fn a_registered_event_rotates_out_after_the_next_frame() {
+    let mut app = App::new(Config::default()).unwrap();
+    app.register_event::<ExampleEvent>();
+    let mut sent = false;
+    app.add_system(move |world| {
+        if !sent {
+            sent = true;
+            world
+                .get_resource_mut::<EventQueue<ExampleEvent>>()
+                .unwrap()
+                .send(ExampleEvent);
+        }
+    });
+    headless_frame(&mut app);
+    let queue = app
+        .world
+        .get_resource::<EventQueue<ExampleEvent>>()
+        .unwrap();
+    assert_eq!(queue.len(), 1);
+    assert_eq!(queue.iter_current().count(), 0);
+    headless_frame(&mut app);
+    assert!(
+        app.world
+            .get_resource::<EventQueue<ExampleEvent>>()
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn inspect_sees_the_frames_user_quad_extract() {
+    let mut app = App::new(Config::default()).unwrap();
+    app.set_extract_quads(|_| {
+        vec![QuadInstance {
+            position: [1.0, 2.0],
+            size: [3.0, 4.0],
+            color: [1.0, 0.5, 0.25, 1.0],
+        }]
+    });
+    let mut seen = Vec::new();
+    app.run_frame(Instant::now(), FrameClock::Pinned(1.0 / 60.0), |extract| {
+        seen.clone_from(&extract.quads);
+    });
+    assert_eq!(seen.len(), 1);
+    assert_eq!(seen[0].position, [1.0, 2.0]);
+    assert_eq!(seen[0].size, [3.0, 4.0]);
+}
+
+#[test]
+fn audio_a_frame_queues_lands_in_the_capture_list_only_when_one_is_set() {
+    let mut app = App::new(Config::default()).unwrap();
+    app.add_system(|world| {
+        world
+            .get_resource_mut::<AudioCommands>()
+            .unwrap()
+            .stop_all();
+    });
+
+    headless_frame(&mut app);
+    assert!(app.audio_capture.is_none());
+    assert!(
+        app.world
+            .get_resource_mut::<AudioCommands>()
+            .unwrap()
+            .drain()
+            .is_empty()
+    );
+
+    app.audio_capture = Some(Vec::new());
+    headless_frame(&mut app);
+    assert!(matches!(
+        app.audio_capture.as_deref(),
+        Some([AudioCommand::StopAll])
+    ));
+}
+
+#[test]
+fn a_pressed_engine_exit_binding_ends_the_frame_after_update() {
+    let mut app = App::new(Config::default()).unwrap();
+    app.world
+        .get_resource_mut::<InputState>()
+        .unwrap()
+        .key_down(KeyCode::Escape);
+    assert_eq!(headless_frame(&mut app), FrameEnd::ExitRequested);
 }

@@ -80,7 +80,7 @@ Read at `<commit>`.
 
 ## 9. Critique
 
-<Reviewer (the `critique` skill with `--repo`, or `codex:rescue` when the skill was missing) and its model family, the date, the commit it read and the round; or "Not run: <error line>". Each finding is checked against the repo or the docs it cites before it changes anything; none is applied unchecked. A second round's rows are numbered `2.<n>`.>
+<Reviewer (the `critique` skill with `--repo`, or `codex:rescue` when the skill was missing) and its model family, the date, the commit it read, the round, and the model, effort, wall time and tokens from the skill's footer line; or "Not run: <error line>". Each finding is checked against the repo or the docs it cites before it changes anything; none is applied unchecked. A second round's rows are numbered `2.<n>`.>
 
 | # | Finding | Checked against | Verdict | Change or reason |
 | --- | --- | --- | --- | --- |

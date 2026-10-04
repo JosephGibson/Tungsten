@@ -6,6 +6,18 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.43.0] - 2026-10-04
+
+Summary: Phase 5's first milestone, M32 (W14a, plan archived at `docs/plans/archive/1.0/phase5-milestone-32-headless-harness.md`): a headless test harness that runs the window loop's own frame body (`D-110`), with example 01's frame tests moved onto it. No dependency, asset or manifest change; the row digests, pixel tests and physics hashes are unchanged.
+
+### Added
+
+- **Headless test harness** (`D-110`, M32): `App::run_frame` is the frame body that the window loop runs and that `tungsten::testing::Harness` steps with no window, renderer or audio device. The harness sits behind the umbrella's off-by-default `testing` feature and steps at a pinned dt, written as given (amends `D-088`). Tests inject actions and the cursor between steps, then read the world, the frame's events, its extract (`FrameDraw`) and the audio commands it would have played. Example 01's frame tests run on it, its 2,366-line test file is split into topic modules, and the API snapshot lists the feature (amends `D-107`). Row digests, the pixel tests and the physics release tests are unchanged, and the suite reads no regression against the `w14a-pre` baseline.
+
+### Changed
+
+- **Critique rounds record their run** (`tungsten-milestone` skeleton §9): a round's header line also takes the model, effort, wall time and tokens from the user-level `critique` skill's footer line.
+
 ## [0.42.0] - 2026-10-04
 
 Summary: 1.0 Step 0, the planning tooling every milestone plan needs (`D-106`, `D-107`; `docs/plans/1.0/workflow.md` §8), the owner's sign-off of the definition gate with W4, W9, W11, W12 and W14 graduated and the gate's amendments folded into the 1.0 plans, sessions that leave work uncommitted until the release commit (`D-105`), a road with fewer owner prompts: each milestone releases from its own run session, and small neighbours may share a release (`D-108`), and a roadmap page fed from a checked catalog of the road to 1.0 (`D-109`; plan `docs/plans/roadmap-artifact-rework.md`, which closes after the post-merge sync). No engine code, dependency, asset or manifest change.
