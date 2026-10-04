@@ -1,13 +1,13 @@
 # Tungsten 1.0 release checklist — draft
 
-- **status:** draft
+- **status:** in progress
 - **goal:** One list of checks that, once each has passed or been accepted by the owner, tags 1.0. C3 runs it on a release candidate and records the result here.
 - **non-goals:** How each check gets to green, which the workstreams own; dates.
 - **files to touch:** This file; at C3, its QA record section.
 - **ordered steps:** Agree the list at the definition gate; revise it at the feature and freeze gates; run it in C3.
 - **done-when:** The owner has agreed every row, and every conditional row is kept or struck by the freeze gate.
 
-Rows marked *if Qn* wait on an open question in [criteria](criteria.md) §10, and rows marked *if amendment N* on the owner's answer to that amendment in the [implementation plan](implementation-plan.md) §8. Sources are criteria sections unless another file is named. IDs carry `RC-` so they do not clash with the question numbers, the UI's glyph paths (T1, T2) or the physics proposals (G1, G2). Revised 2026-10-03 at `9cd5709`: RC-A10 added from C3's playthrough list.
+Rows marked *if Qn* wait on an open question in [criteria](criteria.md) §10, and rows marked *if amendment N* on the owner's answer to that amendment in the [implementation plan](implementation-plan.md) §8. Sources are criteria sections unless another file is named. IDs carry `RC-` so they do not clash with the question numbers, the UI's glyph paths (T1, T2) or the physics proposals (G1, G2). Revised 2026-10-03 at `9cd5709`: RC-A10 added from C3's playthrough list. Agreed at the definition gate on 2026-10-03 (implementation plan §11): Q9, Q16 and amendment 16 were accepted, so RC-A5, RC-A6 and RC-A9 lost their conditions.
 
 ## A. Complete for making games (definition A)
 
@@ -17,11 +17,11 @@ Rows marked *if Qn* wait on an open question in [criteria](criteria.md) §10, an
 | RC-A2 | Its release archive, made by `tungsten package`, plays start to finish on the Linux reference machine | Owner playthrough | §1, §8.8 C3 |
 | RC-A3 | Title menu, pause and transitions work; settings for volume, rebinding and display are kept across a restart | Owner playthrough | §1 |
 | RC-A4 | A corrupt settings file falls back to defaults and keeps the bad file beside them | Owner playthrough; W11 tests | §8.2 |
-| RC-A5 | Gamepad play *(if Q9)* | Owner playthrough | §1 |
-| RC-A6 | A save slot is written, loaded, and loaded again after a schema bump *(if Q16)* | Owner playthrough | §8.8 C3 |
+| RC-A5 | Gamepad play | Owner playthrough | §1 |
+| RC-A6 | A save slot is written, loaded, and loaded again after a schema bump | Owner playthrough | §8.8 C3 |
 | RC-A7 | The output of `tungsten new` passes `tungsten check`, then builds, tests and packages outside the workspace | Automated | §8.5 |
 | RC-A8 | Followed word for word on a clean machine, the getting-started guide ends with a running game | Owner | §8.8 C3 |
-| RC-A9 | A fresh Claude Code session in a copy of the template, given only its `AGENTS.md`, the getting-started guide and rustdoc, adds a scripted feature with no engine patches *(if amendment 16)* | Owner | Implementation plan, amendment 16 |
+| RC-A9 | A fresh Claude Code session in a copy of the template, given only its `AGENTS.md`, the getting-started guide and rustdoc, adds a scripted feature with no engine patches | Owner | Implementation plan, amendment 16 |
 | RC-A10 | Each display mode and present mode works in the playthrough | Owner playthrough | §8.8 C3 |
 
 ## B. Stable library (definition B)

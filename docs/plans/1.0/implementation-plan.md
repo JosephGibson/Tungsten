@@ -1,6 +1,6 @@
 # Tungsten 1.0 implementation plan — draft
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Turn [criteria.md](criteria.md) into an ordered, gated path to a 1.0 tag: three phases, six gates, candidates in dependency order with a card each for Phase 5, a register from candidate to milestone and release, and the point by which each owner question needs its answer. [workflow.md](workflow.md) says how each candidate runs as Claude Code sessions.
 - **non-goals:** Dates, time estimates, version numbers before 1.0, decision entries, implementation. Scoping, which criteria.md and the workstream files own. Reopening anything criteria.md records as answered by the owner.
 - **files to touch:** This folder only while it is a draft. Each candidate becomes its own `phaseN-milestone-NN-slug.md` plan here when it is next to start.
@@ -37,7 +37,7 @@ Question numbers are criteria §10's; §7 lists the rest by the candidate that n
 | Gate | Before | Passes when | Owner questions |
 | --- | --- | --- | --- |
 | Definition | Phase 5 | 1.0 definition chosen; [acceptance game](acceptance-game.md) spec with a feature map; tiers confirmed against that map; `wgpu`/`winit` and stability policy agreed for their decision entries (W4a), with the API snapshot tool if amendment 17 is accepted; the amendments in §8 settled; workflow.md agreed; W4 graduated, which seeds the break ledger. Agenda: §9 | Q1, Q11, Q24; Q8, Q9 and Q16, which §1 and C3 already assume; Q4, proposed here (§6) |
-| Frame loop | W15a, W3a, W3b, W2 R1; W1 M0a if Q4 is still open | R1 spike curve written; R4 go or no-go, with a latency measurement if go; one decision set for W3's fixed step and clock, W15's stages and plugins, W1 M3's routing stages and, if R4 goes ahead, its hand-off point; threading rule; `Send`/`Sync` policy; tuple-query spike verdict | Q4 if still open, Q5, Q6, Q7, Q13 |
+| Frame loop | W15a, W3a, W3b, W2 R1; W1 M0a if Q4 is still open | The acceptance game's pitch, screens, mechanics and feature-map rows written, and W6 and W13 tiered from them (definition gate record, §11); R1 spike curve written; R4 go or no-go, with a latency measurement if go; one decision set for W3's fixed step and clock, W15's stages and plugins, W1 M3's routing stages and, if R4 goes ahead, its hand-off point; threading rule; `Send`/`Sync` policy; tuple-query spike verdict | First, Q1's remainder: the acceptance game's pitch and mechanics, as the owner asked at the definition gate; then Q5, Q6, Q7, Q13 |
 | Feature | Phase 7 | The acceptance game plays start to finish from a `tungsten package` archive, on the public API and the kit alone; every Must candidate landed or re-tiered with the owner; the kit's admission rule applied; the Phase 6 QA pass closed; the break ledger holds only what Phase 7 lands | Q3, Q10; Q12, since C1 opens Phase 7 (§7) |
 | Freeze | C2 | C1 baselines and budgets dated; break ledger empty; arity-named queries removed; `missing_docs` clean; API snapshot taken | Q2 |
 | RC | C3 | Every budget passes or has an accepted exception; release candidate tagged as a versioned prerelease, `v1.0.0-rc.N` with its own changelog section, which publishes without a pull request ([releases](../../releases.md#rehearsals-and-versioned-prereleases)) | — |
@@ -234,7 +234,7 @@ From reviews of criteria.md and the UI draft on 2026-10-03: 1–13 in the first 
 
 ## 9. Definition gate agenda
 
-The first gate session (workflow §2) takes these items in order. Defaults are proposals; the owner's answer replaces each.
+The first gate session (workflow §2) takes these items in order. Defaults are proposals; the owner's answer replaces each. Ran on 2026-10-03; the answers are in its record (§11).
 
 | # | Item | Options | Default proposed | When settled |
 | --- | --- | --- | --- | --- |
@@ -259,10 +259,10 @@ One row per candidate, in plan order. A plan session fills in the milestone plan
 
 | Candidate | Milestone plan | Release | Status |
 | --- | --- | --- | --- |
-| Step 0 | — | — | Waits for the definition gate (§9, item 11); 0.40 released 2026-10-03 |
+| Step 0 | — | — | Next, after the definition gate's graduation commits (§11) |
 | W14a | — | — | Not started |
 | W2 R0 | — | — | Not started |
-| W1 M0a | — | — | Waits for Q4 |
+| W1 M0a | — | — | Not started; Q4 answered at the definition gate |
 | W11a with W7a | — | — | Not started |
 | W9a | — | — | Not started |
 | W12a | — | — | Not started |
@@ -286,7 +286,42 @@ One row per candidate, in plan order. A plan session fills in the milestone plan
 
 One dated table per gate: the commit, each checklist item passed or accepted with the owner's note, the answers given, the decision IDs written, the workstreams graduated, and the owner's sign-off line. Spike verdicts are recorded under the gate they feed, with their `perf-runs/` paths.
 
-None yet.
+### Definition gate, 2026-10-03
+
+Run on branch `0.41` at `56f08ca` with the owner answering in the session, on the agenda in §9. Decisions written: `D-102` (1.0 definition, acceptance game and scope), `D-103` (stability policy; amends `D-069`), `D-104` (API snapshot tool).
+
+| Passes when (§2) | Result | Owner's note |
+| --- | --- | --- |
+| 1.0 definition chosen | Passed | A and B; crates.io stays with Q2 (`D-102`) |
+| Acceptance game spec with a feature map | Accepted in part | One game. Genre: a top-down, survivors-like auto-shooter, in the owner's words "a top down auto shoot as the example game". The pitch, screens, mechanics and the mechanics rows of the feature map are due at the frame-loop gate (§2), which asks the owner to follow up on the game first; [acceptance-game.md](acceptance-game.md) holds the proposals |
+| Tiers confirmed against that map | Accepted in part | W4 Must (Q1), W5 Must (Q9), W11c Must (Q16), W1 BC placed before M4 (Q8). W6 and W13 are tiered at the frame-loop gate from the mechanics rows |
+| `wgpu`/`winit` and stability policy agreed for their decision entries (W4a) | Passed | Hidden from the promise; semver covers the umbrella's API with the kit inside, the game-facing file formats and the CLI; MSRV rises only in a 1.x minor with the toolchain pin; deprecated items stay until 2.0 (`D-103`) |
+| API snapshot tool, if amendment 17 is accepted | Passed | `cargo-public-api` (`D-104`); Step 0d lands the recipe and settles its toolchain |
+| The amendments in §8 settled | Passed | All 19 accepted. Folding is owed: in the graduation commits for the sections that graduate now (amendments 4, 5, 6, 9, 11, 14, 16, 17 and 19 touch them), then into criteria.md and the other workstream files for the rest, §9 there replaced by a link here (amendment 13) |
+| workflow.md agreed | Passed | Agreed as written, one release per candidate; Step 0 lands items 0a–0d as separate commits |
+| W4 graduated, which seeds the break ledger | Owed | Graduation follows this record in its own commits, before W2 R0's plan writes to the ledger |
+
+| # | Agenda item | Answer |
+| --- | --- | --- |
+| 1 | Q1 definition | A and B, default |
+| 2 | Q1 acceptance game | One game, default |
+| 3 | Q1 genre | Top-down survivors-like auto-shooter: the player only moves, weapons fire at the nearest enemies by themselves, spawner waves grow over a timed run, XP pickups lead to a level-up choice, a boss ends the run, a save slot keeps unlocks and records. First answered "totally undefined right now", with the frame-loop gate as the deadline; the genre followed in the same session |
+| 4 | Q11 `wgpu` and `winit` | Hide them, default |
+| 5 | Q8 UI cut | Sliders and checkboxes in as W1 BC; text fields and IME out, default |
+| 6 | Q9 gamepad | In, default |
+| 7 | Q16 save slots | In, default |
+| 8 | Q24 kit stability | Inside the promise, default |
+| 9 | Q4 multi-core scope | R1 and R2; R4 to 1.x, default. W1 M0a and M1 run in Track A |
+| 10 | Amendments 1–19 | All accepted, default |
+| 11 | workflow.md and Step 0 | Agreed, one release per candidate, default |
+| 12 | Graduation | W4, W9, W11, W12 and W14 now, default, as follow-up commits; W2, W3 and W15 at the frame-loop gate |
+| 13 | Release checklist | Agreed with RC-A9, default; RC-A5, RC-A6 and RC-A9 lose their conditions |
+| 14 | Acceptance game repository | A GitHub repository of its own, cloned beside this checkout, on this repository's `v0.NN.0` tags, default |
+| — | Candidate order (ordered step 1) | Three phases, §2's checklists, §3's Track A order and §6's queue agreed as written |
+
+Owed before Step 0's first milestone plan: the graduation commits with their amendment folds, then the remaining folds. Owed by the frame-loop gate: the acceptance game's pitch, screens, mechanics and feature-map rows.
+
+Sign-off: *owner to add "Signed <date>" here after reviewing this record.*
 
 ## Revisions
 
@@ -295,3 +330,4 @@ None yet.
 - 2026-10-03 on `75a7360`: local commits replace the patch hand-off (`D-097`, `D-098`) in the context digest and §6.
 - 2026-10-03 on `4ee92aa`: the 0.40 QA plan finished; the context digest and §3 say so, and §3 drops step 9's row, which shipped in the close-out.
 - 2026-10-03, against the 0.40 tree (`9cd5709`, `v0.40.0` merged; HEAD was `1d9bf8c`, a renderer-only commit): reviewed. Q12 moves from the freeze gate to the feature gate, since C1 opens Phase 7 (§2, §7); W12a no longer waits for Q2 (§7, amendment 14's default); W1 M2 also waits for W2 R2 (§3, §6); W12a's row says the skeleton keeps hand-registered systems until W15a and starts W9b's guide (§3); §3's follow-up table gains the capture-provenance and `cargo shear` rows and the test file's current length; §9 gains the release count under item 11, the scroll-container note under item 5 and item 14, the acceptance game's repository; the register and digest record the release.
+- 2026-10-03 at `56f08ca`: the definition gate ran (§11), with `D-102`–`D-104`; status in progress; §2's frame-loop row gains the acceptance game's pitch and mechanics; §9 points at the record; the register's Step 0 and W1 M0a rows follow.

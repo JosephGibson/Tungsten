@@ -328,41 +328,35 @@ Possible phase labels: Phase 5 foundations (first W8 items, W11 logs and crash r
 
 Open questions keep their numbers; answered ones are under [Answered](#answered) below. The [implementation plan](implementation-plan.md) §7 says by when each is needed.
 
-1. Which definition of 1.0 (§1)? Is an acceptance game the test, and what game is it?
-2. Publish the library crates on crates.io for 1.0?
-3. Platform tiers: certify Linux only, or find Windows and macOS hosts? Should releases build macOS?
-4. Multi-core scope: fork-join only (R1, R2), or also a pipelined render thread (R4) with its extra frame of latency?
-5. Worker mechanism: `std::thread::scope`, a rayon pool, or an own pool?
-6. Require `Send + Sync` on components and resources before the freeze?
-7. Fixed step: physics only, or a fixed-update schedule? Interpolation by default?
-8. UI cut line: broader controls (sliders, checkboxes, scroll) in 1.0? A single-line text field with IME?
-9. Gamepad in 1.0?
-10. Minimum audio and physics features for 1.0 (W6)?
-11. `wgpu` and `winit` types in the stable API: hide them, tier them, or accept their majors? Needed in the first step, before W1, W2 and W5 add surface (§7).
-12. Which performance budgets gate 1.0?
-13. Game clock: which engine stages keep running on real time while gameplay is paused (§6)?
-14. Logs and crash reports: on by default in `App`, or one opt-in call?
-15. Which settings does the engine persist itself, and does a corrupt user file reset to defaults (proposed) or stop the game as an invalid `tungsten.json` does?
-16. Save slots in 1.0, or settings only?
-
-Questions 17 to 19 are [answered](#answered).
-
-20. CLI: `check` and `package` must and `new` should (proposed)? Argument parsing and archive writing by hand or by crate (§8.5)?
-21. Hierarchy: physics bodies on root entities only for 1.0 (proposed)?
-22. Controllers: anything beyond ground check, coyote time, jump buffer and variable jump, such as slopes, one-way platforms or ladders?
-
-Question 23 is [answered](#answered).
-
-24. Kit stability: inside the 1.0 promise, or a tier of its own (§8.4)?
+- **2.** Publish the library crates on crates.io for 1.0?
+- **3.** Platform tiers: certify Linux only, or find Windows and macOS hosts? Should releases build macOS?
+- **5.** Worker mechanism: `std::thread::scope`, a rayon pool, or an own pool?
+- **6.** Require `Send + Sync` on components and resources before the freeze?
+- **7.** Fixed step: physics only, or a fixed-update schedule? Interpolation by default?
+- **10.** Minimum audio and physics features for 1.0 (W6)?
+- **12.** Which performance budgets gate 1.0?
+- **13.** Game clock: which engine stages keep running on real time while gameplay is paused (§6)?
+- **14.** Logs and crash reports: on by default in `App`, or one opt-in call?
+- **15.** Which settings does the engine persist itself, and does a corrupt user file reset to defaults (proposed) or stop the game as an invalid `tungsten.json` does?
+- **20.** CLI: `check` and `package` must and `new` should (proposed)? Argument parsing and archive writing by hand or by crate (§8.5)?
+- **21.** Hierarchy: physics bodies on root entities only for 1.0 (proposed)?
+- **22.** Controllers: anything beyond ground check, coyote time, jump buffer and variable jump, such as slopes, one-way platforms or ladders?
 
 ### Answered
 
-Answered on 2026-10-03: a game lives in its own repository on a git dependency, so crates.io is not needed for 1.0 (whether to publish anyway stays question 2); the template is the in-repo `templates/basic`; the kit is a new crate with all four groups; 1.0 tooling is the headless harness and the project CLI; plugins with named stages; tuple queries and bundles; prefabs with registered components; examples 01, 03 and 04 move to the template, the bench does not; the acceptance game starts from the template (part of question 1; its genre is still open); performance is budget-gated; the final QA is an owner playthrough with Linux certified and the other platforms on stated tiers (part of question 3; a macOS release build is still open). The kit's controllers and trigger zones make G1, G2 and shape queries must (part of question 10).
+Answered on 2026-10-03: a game lives in its own repository on a git dependency, so crates.io is not needed for 1.0 (whether to publish anyway stays question 2); the template is the in-repo `templates/basic`; the kit is a new crate with all four groups; 1.0 tooling is the headless harness and the project CLI; plugins with named stages; tuple queries and bundles; prefabs with registered components; examples 01, 03 and 04 move to the template, the bench does not; the acceptance game starts from the template (part of question 1, answered in full below); performance is budget-gated; the final QA is an owner playthrough with Linux certified and the other platforms on stated tiers (part of question 3; a macOS release build is still open). The kit's controllers and trigger zones make G1, G2 and shape queries must (part of question 10).
 
+- **1.** Which definition of 1.0 (§1)? Is an acceptance game the test, and what game is it? *Answered 2026-10-03 at the definition gate: A and B, with crates.io left to question 2; one acceptance game, a top-down, survivors-like auto-shooter, whose pitch, screens and mechanics are due at the frame-loop gate (`D-102`).*
+- **4.** Multi-core scope: fork-join only (R1, R2), or also a pipelined render thread (R4) with its extra frame of latency? *Answered 2026-10-03 at the definition gate: fork-join only; R4 moves to 1.x and comes back only if C1 shows a game-frame row over budget that R4 would fix (`D-102`).*
+- **8.** UI cut line: broader controls (sliders, checkboxes, scroll) in 1.0? A single-line text field with IME? *Answered 2026-10-03 at the definition gate: sliders and checkboxes in, as W1 BC before M4; scroll containers are in M5 already; text fields and IME out (`D-102`).*
+- **9.** Gamepad in 1.0? *Answered 2026-10-03 at the definition gate: in; W5 is Must (`D-102`).*
+- **11.** `wgpu` and `winit` types in the stable API: hide them, tier them, or accept their majors? *Answered 2026-10-03 at the definition gate: hide them, behind a curated umbrella re-export, engine-owned input and format types, and a game-facing handle or `doc(hidden)` tier for the `Renderer` methods that use `wgpu` types (`D-103`).*
+- **16.** Save slots in 1.0, or settings only? *Answered 2026-10-03 at the definition gate: in; W11c is Must (`D-102`).*
 - **17.** Kit dependency direction (§8.4). *Answered 2026-10-03: `Schedule` and `Plugin` in core; the umbrella re-exports the kit.*
 - **18.** Where do examples run from (§8.3)? *Answered 2026-10-03: their own folders, like a copied template.*
 - **19.** Engine-owned text. *Answered 2026-10-03: embed JetBrains Mono; every game carries its OFL notice.*
 - **23.** Closing order (§8.8). *Answered 2026-10-03: C1 runs before the freeze, so fixes that need API changes still land.*
+- **24.** Kit stability: inside the 1.0 promise, or a tier of its own (§8.4)? *Answered 2026-10-03 at the definition gate: inside the promise, with `#[non_exhaustive]` on kit settings structs (`D-103`).*
 
 ## 11. Decisions this will likely need
 
@@ -424,3 +418,4 @@ IDs unassigned; each adds its `DECISION_INDEX.md` row in the same change.
 - 2026-10-03, after a second external critique: where the `Sync` bound of R1's slices sits (§5.4); the order of logger and panic-hook installation, module maps, symbol matching and a CI symbolization check for crash files (§8.2); stage-local ordering constraints for plugins (§8.6). The critique also said `rename` does not replace a file on Windows. The std documentation says it does, so that text stands, and a folder `fsync` on Unix was added.
 - 2026-10-03: moved to this folder (`d15d74d`). Then, on `941b63e`, this list and the answered questions moved out of the header and §10's open list with their text unchanged (implementation plan amendment 12); §9 points to the implementation plan; §2.2's iteration row notes `D-096`.
 - 2026-10-03, against the 0.40 tree (`9cd5709`; HEAD was `1d9bf8c`, a renderer-only commit): claims re-checked. §2.2 counts the player's inserts (13); §7 drops `validate_wgsl_source`, which no example has used since 0.40 QA step 5; §8.1's `libudev-dev` note follows 0.40 QA step 12; §8.4 cites `D-016` beside `D-007`; §11 names the decisions standalone games and the engine logger amend, points at amendment 14 and adds W6's.
+- 2026-10-03 at `56f08ca`, the definition gate (implementation plan §11): questions 1, 4, 8, 9, 11, 16 and 24 moved to [Answered](#answered) with their answers (`D-102`, `D-103`); the open list keeps its numbers as bold labels. The accepted amendments (implementation plan §8) are folded in by later commits.

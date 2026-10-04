@@ -1,13 +1,13 @@
 # Tungsten 1.0 workflow — draft
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Say how the road to 1.0 runs as Claude Code sessions in this repository's existing style: the kinds of session, how much each candidate can run without the owner, what every milestone owes before it releases, how sessions share the tree and the reference machine, where the owner is needed, and the tooling that has to exist first.
 - **non-goals:** The order of work and the gates ([implementation plan](implementation-plan.md)); scoping ([criteria](criteria.md) and the workstream files); rules that already have a home ([plan rules](../README.md), [profiling workflow](../../perf/profiling-workflow.md), [release procedure](../../releases.md)), which this file links instead of copying; editing `AGENTS.md`, skills or scripts, which §8 proposes for Step 0.
 - **files to touch:** This file.
 - **ordered steps:** (1) The owner agrees §1–§7 at the definition gate. (2) Step 0 lands or rejects each item in §8. (3) The first milestone plan cites §4 and §5 instead of copying them, and later plans do the same.
 - **done-when:** The owner has agreed this file; every §8 item has landed or been rejected; the first milestone plan cites it.
 
-Drafted 2026-10-03 on branch `0.40` (`941b63e`), from the plans and evidence logs of 0.34–0.40, the release procedure, and a planning session that shared the tree with the unattended 0.40 QA session (§6). Revised the same day for `D-097` and `D-098`: steps end in local commits, not a patch series. Revised on `9cd5709` (0.40 merged): the index budget re-read, step 9's outcome, the release count (§1) and scratch-copy capture provenance (§2).
+Drafted 2026-10-03 on branch `0.40` (`941b63e`), from the plans and evidence logs of 0.34–0.40, the release procedure, and a planning session that shared the tree with the unattended 0.40 QA session (§6). Revised the same day for `D-097` and `D-098`: steps end in local commits, not a patch series. Revised on `9cd5709` (0.40 merged): the index budget re-read, step 9's outcome, the release count (§1) and scratch-copy capture provenance (§2). Agreed at the definition gate on 2026-10-03, with one release per candidate (implementation plan §11).
 
 ## Context digest
 
@@ -28,7 +28,7 @@ Drafted 2026-10-03 on branch `0.40` (`941b63e`), from the plans and evidence log
 | Spike | `perf-runs/<date>-<slug>/`: patch, scripts, captures and a README with the verdict | A spike session | The verdict is in a gate record |
 | Gate | A dated record in the implementation plan (§11 there) | A gate session with the owner | The owner signs the record |
 
-Defaults: one candidate, one milestone, one release, which makes the road about 45 releases from 0.41, each with the owner's command block and merge (§9). Two small candidates that touch different files may share a milestone (W11a with W7a), and a large one splits into milestones of its own (W1's ladder); whether Track A's small candidates batch into fewer releases is the definition gate's call (implementation plan §9, item 11). A milestone takes its number when its plan is written. Spikes and gates take no number and release nothing.
+Defaults: one candidate, one milestone, one release, which makes the road about 45 releases from 0.41, each with the owner's command block and merge (§9). Two small candidates that touch different files may share a milestone (W11a with W7a), and a large one splits into milestones of its own (W1's ladder); the definition gate kept one release per candidate for Track A's small candidates too (implementation plan §11). A milestone takes its number when its plan is written. Spikes and gates take no number and release nothing.
 
 ## 2. Session types
 
