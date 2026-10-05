@@ -6,7 +6,8 @@ use glam::Vec2;
 use glyphon::cosmic_text::Ellipsize;
 use glyphon::{Attrs, Buffer, Color, Family, Metrics, Shaping, Wrap};
 use tungsten_core::text::{
-    FontEpoch, MeasureWidth, StyledText, TextMeasure, TextMetrics, TextNodeId, TextStyle, TextWrap,
+    FontEpoch, MeasureWidth, StyledText, TextMeasure, TextMetrics, TextNodeId, TextNodeStore,
+    TextStyle, TextWrap,
 };
 
 use super::{
@@ -527,6 +528,60 @@ impl TextMeasure for TextNodes<'_> {
         available: MeasureWidth,
     ) -> TextMetrics {
         self.engine.measure(node, known_width, available)
+    }
+}
+
+/// Core's node seam (`D-125`), forwarding to the inherent methods so the UI
+/// tree drives labels through `&mut dyn TextNodeStore`.
+impl TextNodeStore for TextEngine {
+    fn font_epoch(&self) -> FontEpoch {
+        TextEngine::font_epoch(self)
+    }
+
+    fn create_node(&mut self) -> TextNodeId {
+        TextEngine::create_node(self)
+    }
+
+    fn remove_node(&mut self, node: TextNodeId) {
+        TextEngine::remove_node(self, node);
+    }
+
+    fn set_text(&mut self, node: TextNodeId, text: &StyledText, style: &TextStyle) {
+        TextEngine::set_text(self, node, text, style);
+    }
+
+    fn commit_layout(&mut self, node: TextNodeId, size: Vec2) -> TextMetrics {
+        TextEngine::commit_layout(self, node, size)
+    }
+
+    fn committed(&self, node: TextNodeId) -> Option<TextMetrics> {
+        TextEngine::committed(self, node)
+    }
+}
+
+impl TextNodeStore for TextNodes<'_> {
+    fn font_epoch(&self) -> FontEpoch {
+        self.engine.font_epoch()
+    }
+
+    fn create_node(&mut self) -> TextNodeId {
+        self.engine.create_node()
+    }
+
+    fn remove_node(&mut self, node: TextNodeId) {
+        self.engine.remove_node(node);
+    }
+
+    fn set_text(&mut self, node: TextNodeId, text: &StyledText, style: &TextStyle) {
+        self.engine.set_text(node, text, style);
+    }
+
+    fn commit_layout(&mut self, node: TextNodeId, size: Vec2) -> TextMetrics {
+        self.engine.commit_layout(node, size)
+    }
+
+    fn committed(&self, node: TextNodeId) -> Option<TextMetrics> {
+        self.engine.committed(node)
     }
 }
 

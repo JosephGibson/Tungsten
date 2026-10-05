@@ -341,3 +341,51 @@ fn an_ellipsis_without_a_line_limit_measures_every_line_and_commits_to_the_box()
         Some(ellipsis)
     );
 }
+
+#[test]
+fn the_engine_and_the_facade_are_node_stores() {
+    let mut engine = engine();
+    let style = mono();
+
+    // Through the engine itself.
+    let direct = {
+        let store: &mut dyn TextNodeStore = &mut engine;
+        let node = store.create_node();
+        store.set_text(node, &StyledText::from("abc"), &style);
+        let metrics = store.commit_layout(node, Vec2::new(200.0, LINE_HEIGHT));
+        assert_eq!(metrics.line_count, 1);
+        assert_eq!(store.committed(node), Some(metrics));
+        node
+    };
+    assert_eq!(engine.committed(direct).map(|m| m.line_count), Some(1));
+
+    // Through the lent facade: every call reaches the engine.
+    let epoch = engine.font_epoch();
+    let (node, metrics) = {
+        let mut facade = TextNodes::new(&mut engine);
+        let store: &mut dyn TextNodeStore = &mut facade;
+        assert_eq!(store.font_epoch(), epoch);
+        let node = store.create_node();
+        store.set_text(node, &StyledText::from(LONG_LINE), &style);
+        let measured = store.measure(node, None, MeasureWidth::Definite(120.0));
+        assert!(measured.line_count > 1);
+        let metrics = store.commit_layout(node, Vec2::new(120.0, 400.0));
+        assert_eq!(metrics.line_count, measured.line_count);
+        assert_eq!(store.committed(node), Some(metrics));
+        (node, metrics)
+    };
+    assert_eq!(engine.committed(node), Some(metrics));
+    assert_ne!(node, direct);
+
+    {
+        let mut facade = TextNodes::new(&mut engine);
+        let store: &mut dyn TextNodeStore = &mut facade;
+        store.remove_node(node);
+        assert_eq!(store.committed(node), None);
+    }
+    assert_eq!(
+        engine.measure(node, None, MeasureWidth::MaxContent),
+        TextMetrics::default()
+    );
+    assert_eq!(engine.committed(direct).map(|m| m.line_count), Some(1));
+}

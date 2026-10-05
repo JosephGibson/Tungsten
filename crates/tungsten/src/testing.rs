@@ -31,6 +31,10 @@ use tungsten_render::{
 
 use crate::app::{App, FrameClock, FrameEnd, FrameExtract};
 
+mod ui;
+
+pub use ui::UiHarness;
+
 /// The dt each frame gets until [`Harness::set_dt`] changes it: 60 Hz, as
 /// smoke mode pins it.
 const DEFAULT_DT_SECS: f32 = 1.0 / 60.0;

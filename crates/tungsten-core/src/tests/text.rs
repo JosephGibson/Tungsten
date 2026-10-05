@@ -70,3 +70,19 @@ fn font_epoch_counts_up() {
     assert!(epoch.next() > epoch);
     assert_eq!(epoch.next(), FontEpoch::new(1));
 }
+
+#[test]
+fn a_node_store_measures_through_its_supertrait() {
+    let mut store = crate::ui::FixedAdvanceMeasure::new(0.5);
+    let store: &mut dyn TextNodeStore = &mut store;
+    let node = store.create_node();
+    store.set_text(
+        node,
+        &StyledText::from("abcd"),
+        &TextStyle::new("sans", 10.0, 12.0),
+    );
+    let measure: &mut dyn TextMeasure = store;
+    let metrics = measure.measure(node, None, MeasureWidth::MaxContent);
+    assert_eq!(metrics.size, Vec2::new(20.0, 12.0));
+    assert_eq!(metrics.line_count, 1);
+}

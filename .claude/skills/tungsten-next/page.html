@@ -10,8 +10,8 @@
   --session: var(--cyan); --owner: var(--orange); --done: var(--green); --warn: var(--red);
   --gate: var(--purple); --spike: var(--yellow); --api: var(--pink); --idle: var(--comment);
   --bg: #000000; --panel: #121218; --raised: #1c1c25; --hover: #262631; --here-bg: #17171f; --row-hover: #0b0b10; --line: #24242d;
-  --fg: #f8f8f2; --fg-2: #c3c7d8; --fg-3: #959cbd;
-  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --fg: #f8f8f2; --fg-2: #dfe2ee; --fg-3: #a9b0cc; /* three steps of blue-grey white: text, secondary text, labels */
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 html, body { background: var(--bg); color: var(--fg); }
@@ -23,6 +23,8 @@ h1, h2, h3, p, ol, ul, dl, dd { margin: 0; }
 ol, ul { padding: 0; list-style: none; }
 h2 { font-size: 16px; font-weight: 650; text-wrap: balance; }
 h3 { font-size: 14px; font-weight: 650; }
+/* Eyebrows: the small uppercase labels that name a block (group heads, the Next card's parts). Titles stay sentence case. */
+.eb { font: 600 11.5px/1.5 var(--sans); text-transform: uppercase; letter-spacing: .08em; }
 code, pre, .mono { font-family: var(--mono); }
 .mono, .chip, .ph .c, .facts dd, .tree dd { font-variant-numeric: tabular-nums; }
 button { font: 600 13px/1 var(--sans); color: var(--fg); background: var(--raised); border: 1px solid var(--idle); border-radius: 5px; padding: 8px 12px; cursor: pointer; transition: background-color .12s, border-color .12s; }
@@ -40,9 +42,10 @@ summary::-webkit-details-marker { display: none; }
 .warn-t { color: var(--warn); }
 
 .top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 2; max-width: 960px; margin: 0 auto; background: var(--bg); display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline; justify-content: space-between; border-bottom: 1px solid var(--line); padding-block: 14px 12px; }
-.top h1 { font-size: 20px; font-weight: 700; display: flex; flex-wrap: wrap; gap: 0 8px; align-items: baseline; min-width: 0; }
-.top h1 .crumb { font-size: 14px; font-weight: 500; color: var(--fg-2); }
+.top h1 { font-size: 21px; font-weight: 700; letter-spacing: -.01em; display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: baseline; min-width: 0; }
+.top h1 .crumb { font-size: 14px; font-weight: 500; color: var(--fg-2); display: inline-flex; flex-wrap: wrap; gap: 2px 7px; align-items: baseline; }
 .top h1 .crumb b { color: var(--fg); font-weight: 650; }
+.top h1 .tag { font: 600 12px/1.4 var(--mono); color: var(--fg-2); border: 1px solid var(--idle); border-radius: 4px; padding: 0 6px; }
 .sync { font-size: 12px; color: var(--fg-3); }
 .sync .mono { color: var(--fg-2); }
 
@@ -51,22 +54,32 @@ summary::-webkit-details-marker { display: none; }
 .note-box.warn { border-color: var(--warn); }
 .note-box.warn h2 { color: var(--warn); }
 
-.next { border: 1px solid var(--session); border-radius: 8px; background: var(--panel); padding: 16px; display: grid; gap: 14px; min-width: 0; }
-.next.you { border-color: var(--owner); }
-.next-head { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+.next { border: 1px solid var(--session); border-radius: 10px; background: var(--panel); padding: 14px 16px 12px; display: grid; gap: 10px; min-width: 0; box-shadow: 0 0 0 3px color-mix(in srgb, var(--session) 12%, transparent); }
+.next.you { border-color: var(--owner); box-shadow: 0 0 0 3px color-mix(in srgb, var(--owner) 12%, transparent); }
+.next-head { display: flex; flex-wrap: wrap; gap: 4px 7px; align-items: baseline; }
 .next-head h2 { color: var(--session); }
 .next.you .next-head h2 { color: var(--owner); }
-.next-head .jump { margin-left: auto; padding: 6px 10px; font-size: 12px; }
-.where { font-size: 13px; color: var(--session); }
+.next-head .jump { margin-left: auto; padding: 5px 10px; font-size: 12px; }
+.where { color: var(--session); }
 .where.you { color: var(--owner); }
+.where::before { content: "·"; color: var(--fg-3); margin-right: 7px; }
 .rec { font-size: 12px; color: var(--fg-2); }
+.rec b { font-weight: 600; color: var(--fg); }
 .lead { font-size: 13px; color: var(--fg-2); max-width: 80ch; }
-.next-title { font-size: 16px; font-weight: 650; }
-.prompt { display: grid; gap: 8px; min-width: 0; }
-.prompt pre { margin: 0; padding: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; font-size: 13px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--fg); }
-.prompt button { justify-self: start; min-width: 6.5em; }
-.sub { display: grid; gap: 6px; min-width: 0; }
-.sub > h3 { font-size: 13px; color: var(--fg-2); }
+.title-block { display: grid; gap: 2px; margin-top: -4px; }
+.title-row { display: flex; flex-wrap: wrap; gap: 2px 12px; align-items: baseline; }
+.next-title { font-size: 18px; font-weight: 700; letter-spacing: -.01em; line-height: 1.3; }
+.prompt { display: grid; min-width: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--bg); }
+.prompt-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 5px 6px 5px 12px; background: var(--raised); border-bottom: 1px solid var(--line); color: var(--fg-3); }
+.prompt pre { margin: 0; padding: 10px 12px; font-size: 13px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--fg); }
+.prompt pre.clamp { max-height: calc(4.4 * 1.55em + 10px); overflow: hidden; mask-image: linear-gradient(#000 40%, transparent 96%); -webkit-mask-image: linear-gradient(#000 40%, transparent 96%); } /* the first four lines fading out; Show all opens the rest */
+.prompt-head .acts { display: flex; gap: 6px; }
+.prompt button { padding: 3px 10px; font-size: 12px; min-width: 5.5em; background: var(--bg); }
+.prompt button.more { min-width: 0; border-color: transparent; color: var(--fg-2); }
+.prompt button:hover { background: var(--hover); }
+.rec-item { display: grid; gap: 6px; min-width: 0; }
+.sub { display: grid; gap: 4px; min-width: 0; }
+.sub > h3 { color: var(--fg-3); }
 .pg { font-size: 13px; color: var(--fg-2); overflow-wrap: anywhere; }
 .bar { display: block; height: 6px; max-width: 320px; border-radius: 3px; background: var(--line); overflow: hidden; }
 .bar i { display: block; height: 100%; background: var(--done); }
@@ -75,10 +88,11 @@ summary::-webkit-details-marker { display: none; }
 .oq .id { font-family: var(--mono); font-size: 12px; color: var(--owner); padding-top: 1px; }
 .oq .meta { grid-column: 2; color: var(--fg-3); }
 .flow { display: grid; gap: 2px; }
-.flow li { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); }
+.flow li { display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: center; padding: 4px 0; border-top: 1px solid var(--line); }
 .flow li:first-child { border-top: 0; }
 .flow label { display: flex; gap: 10px; align-items: center; cursor: pointer; }
-.flow .t { font-weight: 600; }
+.flow .t { font-weight: 500; color: var(--fg-2); }
+.flow li[aria-current] .t { font-weight: 700; color: var(--fg); }
 .flow .w { font-size: 12px; color: var(--session); }
 .flow .w.you { color: var(--owner); }
 .flow .up { font-size: 12px; font-weight: 650; color: var(--fg); border: 1px solid var(--fg); border-radius: 4px; padding: 1px 6px; }
@@ -90,18 +104,20 @@ input[type=checkbox]::after { content: ""; width: 9px; height: 5px; border: soli
 input[type=checkbox]:checked { background: var(--done); border-color: var(--done); }
 input[type=checkbox]:checked::after { opacity: 1; }
 input[type=checkbox]:disabled { cursor: default; }
-.after ol { display: grid; gap: 2px; font-size: 13px; color: var(--fg-2); list-style: decimal; padding-left: 1.4em; }
-.heads { display: grid; gap: 4px; }
-.heads > h3 { font-size: 13px; color: var(--warn); }
-.heads ul { display: grid; gap: 4px; }
-.heads li { padding-left: 14px; position: relative; color: var(--fg); }
+.after { font-size: 13px; color: var(--fg-2); }
+.after .eb { color: var(--fg-3); margin-right: 8px; }
+.after .ar { color: var(--fg-3); }
+.heads { display: grid; gap: 3px; }
+.heads > h3 { color: var(--warn); }
+.heads ul { display: grid; gap: 3px; }
+.heads li { padding-left: 14px; position: relative; color: var(--fg); font-size: 13px; }
 .heads li::before { content: "!"; position: absolute; left: 0; font-weight: 700; color: var(--warn); }
 .fold > summary { font-size: 13px; font-weight: 600; color: var(--fg-2); }
 .fold > summary::before { content: "▸ "; color: var(--fg-3); }
 .fold[open] > summary::before { content: "▾ "; }
-.fold[open] > summary { margin-bottom: 10px; }
+.fold[open] > summary { margin-bottom: 8px; }
 .recovery { display: grid; gap: 14px; }
-.recovery h3 { font-size: 13px; color: var(--fg-2); display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: baseline; }
+.recovery h3 { font-size: 13px; font-weight: 600; color: var(--fg-2); display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: baseline; }
 .tree { display: grid; grid-template-columns: 11em minmax(0, 1fr); gap: 4px 14px; font-size: 13px; }
 .tree dt { color: var(--fg-3); }
 .tree dd { color: var(--fg-2); overflow-wrap: anywhere; }
@@ -110,9 +126,11 @@ input[type=checkbox]:disabled { cursor: default; }
 .ph { display: grid; grid-template-columns: 9.5em 3.5em minmax(0, 1fr); gap: 6px 12px; align-items: center; font-size: 13px; }
 .ph .n { color: var(--fg-2); font-weight: 600; }
 .ph .c { font-family: var(--mono); font-size: 12px; color: var(--fg-3); }
-.cells { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; }
-.cells a { display: block; width: 10px; height: 10px; border-radius: 2px; background: var(--raised); box-shadow: inset 0 0 0 1px var(--idle); }
+.cells { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.cells a { display: block; width: 11px; height: 11px; border-radius: 2px; background: var(--raised); box-shadow: inset 0 0 0 1px var(--idle); transition: transform .12s; }
+.cells a:hover { transform: scale(1.25); }
 .cells a.gate { width: 9px; height: 9px; transform: rotate(45deg); margin: 0 2px; }
+.cells a.gate:hover { transform: rotate(45deg) scale(1.25); }
 .cells a.s-done { background: var(--done); box-shadow: none; }
 .cells a.s-run { background: var(--session); box-shadow: none; }
 .cells a.s-plan, .cells a.s-ready, .cells a.s-review { background: var(--owner); box-shadow: none; }
@@ -124,48 +142,61 @@ input[type=checkbox]:disabled { cursor: default; }
 }
 
 .phase { display: grid; gap: 4px; }
-.phase-head { display: flex; flex-wrap: wrap; gap: 2px 12px; align-items: baseline; justify-content: space-between; padding-bottom: 6px; border-bottom: 1px solid var(--idle); }
+.phase-head { display: flex; flex-wrap: wrap; gap: 2px 12px; align-items: baseline; justify-content: space-between; padding-bottom: 8px; border-bottom: 1px solid var(--idle); }
+.phase-head h2 { font-size: 18px; font-weight: 700; letter-spacing: -.01em; }
 .phase-head .c { font-size: 13px; color: var(--fg-3); }
-.intro { color: var(--fg-3); font-size: 13px; max-width: 75ch; padding-top: 4px; }
-.grp { padding-top: 14px; display: grid; }
-.grp-head { display: flex; flex-wrap: wrap; gap: 0 10px; align-items: baseline; padding-bottom: 4px; }
+.intro { color: var(--fg-2); font-size: 13px; max-width: 75ch; padding-top: 4px; }
+.grp { padding-top: 22px; display: grid; }
+.grp-head { display: flex; flex-wrap: wrap; gap: 0 10px; align-items: baseline; padding-bottom: 6px; }
+.grp-head h3 { color: var(--fg-2); }
 .grp-head span { font-size: 13px; color: var(--fg-3); }
-.done-fold > summary { padding: 8px 0 8px 22px; font-size: 13px; color: var(--fg-3); border-top: 1px solid var(--line); }
+.done-fold > summary { padding: 8px 0 8px 28px; font-size: 13px; color: var(--fg-3); border-top: 1px solid var(--line); position: relative; }
+.done-fold > summary::before { content: "▶"; content: "▶" / ""; position: absolute; left: 10px; top: 11px; font-size: 9px; color: var(--fg-3); transition: transform .15s; }
+.done-fold[open] > summary::before { transform: rotate(90deg); }
 .done-fold > summary b { color: var(--done); font-weight: 600; }
-.done-fold > summary::after { content: " · Show"; color: var(--fg-2); }
-.done-fold[open] > summary::after { content: " · Hide"; }
+.done-fold > summary::after { content: " · show"; color: var(--fg-2); }
+.done-fold[open] > summary::after { content: " · hide"; }
 
+/* A stop is a row while closed and a card while open: the panel fill and outline mark where its body ends. */
 .stop { border-top: 1px solid var(--line); }
-.stop > summary { display: grid; grid-template-columns: 12px minmax(5.5em, 8.5em) minmax(0, 1fr); gap: 2px 10px; align-items: baseline; padding: 9px 4px 9px 0; transition: background-color .12s; }
+.stop > summary { display: grid; grid-template-columns: 12px minmax(5.5em, 10em) minmax(0, 1fr); gap: 2px 10px; align-items: baseline; padding: 10px 8px 10px 6px; transition: background-color .12s; }
 .stop > summary:hover { background: var(--row-hover); }
-.stop > summary:hover .ti { text-decoration: underline; text-decoration-color: var(--fg-3); text-underline-offset: 3px; }
-.stop.here > summary { background: var(--here-bg); box-shadow: inset 3px 0 0 var(--fg); padding-left: 6px; }
-.dot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--idle); align-self: center; overflow: hidden; text-indent: 20px; white-space: nowrap; color: var(--fg); }
+.stop > summary:hover .chev { color: var(--fg); }
+.stop.here > summary { background: var(--here-bg); box-shadow: inset 3px 0 0 var(--fg); }
+.stop[open] { background: var(--panel); border-radius: 8px; box-shadow: inset 0 0 0 1px var(--line); border-top-color: transparent; margin-block: 6px; }
+.stop[open] > summary { border-radius: 8px 8px 0 0; } /* no overflow clip, so the focus ring stays whole */
+.stop[open] > summary:hover { background: var(--raised); }
+.stop.here[open] { box-shadow: inset 3px 0 0 var(--fg), inset 0 0 0 1px var(--line); }
+.stop.here[open] > summary { box-shadow: none; }
+.chev { margin-left: auto; align-self: center; color: var(--fg-3); font-size: 9px; line-height: 1; transition: transform .15s, color .12s; }
+.chev::before { content: "▶"; content: "▶" / ""; }
+.stop[open] .chev { transform: rotate(90deg); }
+.dot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--idle); align-self: start; margin-top: 5px; overflow: hidden; text-indent: 20px; white-space: nowrap; color: var(--fg); }
 .dot.s-done { background: var(--done); border-color: var(--done); }
 .dot.s-run { background: var(--session); border-color: var(--session); }
 .dot.s-plan, .dot.s-ready, .dot.s-review { background: var(--owner); border-color: var(--owner); }
 .dot.s-skip { border-style: dotted; }
-.dot.k-gate { border-radius: 2px; transform: rotate(45deg); width: 9px; height: 9px; }
+.dot.k-gate { border-radius: 2px; transform: rotate(45deg); width: 9px; height: 9px; margin-top: 6px; }
 .here .dot { box-shadow: 0 0 0 2px var(--fg); }
-.lab { font-family: var(--mono); font-size: 12px; color: var(--fg-2); overflow-wrap: anywhere; }
+.lab { font: 500 12px/1.5 var(--mono); color: var(--fg-2); overflow-wrap: anywhere; }
 .main-col { display: flex; flex-wrap: wrap; gap: 3px 12px; align-items: baseline; min-width: 0; }
-.ti { font-weight: 600; flex: 1 1 18em; min-width: 0; }
-.done .ti, .done .lab { color: var(--fg-3); font-weight: 500; }
+.ti { font-size: 15px; font-weight: 600; flex: 1 1 auto; min-width: 0; }
+.done .ti { color: var(--fg-2); font-weight: 500; }
+.done .lab { color: var(--fg-3); }
 .lab.k-gate { color: var(--gate); }
 .lab.k-spike { color: var(--spike); }
-.chips { display: flex; flex-wrap: wrap; gap: 3px 10px; align-items: center; font-size: 12px; color: var(--fg-3); }
-.chip { white-space: nowrap; }
-.chip.lv, .chip.rel { font-family: var(--mono); color: var(--fg-2); }
-.chip.role { color: var(--owner); }
-.chip.api { color: var(--api); }
-.chip.st { color: var(--owner); }
-.chip.st.s-run { color: var(--session); }
-.chip.st.s-skip { color: var(--fg-3); }
-.cx { color: var(--fg-2); }
-.cx::before { content: "▮▯▯▯"; content: "▮▯▯▯" / ""; margin-right: 5px; letter-spacing: 1px; }
-.cx[data-v="2"]::before { content: "▮▮▯▯"; content: "▮▮▯▯" / ""; }
-.cx[data-v="3"]::before { content: "▮▮▮▯"; content: "▮▮▮▯" / ""; }
-.cx[data-v="4"]::before { content: "▮▮▮▮"; content: "▮▮▮▮" / ""; }
+/* Chips: pills tinted by the page's hue meanings. Orange waits on you (a status, level C, your role), cyan is the
+   session's model, pink a public API or dependency, green a shipped release, yellow an experiment; ratings and checks stay neutral. */
+.chips { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 4px 5px; align-items: center; } /* always its own line, so every row reads title, chips, stages */
+.chip { --c: var(--fg-2); position: relative; display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 500; line-height: 17px; white-space: nowrap;
+  color: var(--c); background: color-mix(in srgb, var(--c) 9%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 24%, transparent); }
+.chip .k { color: color-mix(in srgb, var(--c) 70%, transparent); } /* the chip's label; its value follows */
+.chip .v { font-family: var(--mono); font-weight: 600; }
+.chip .sep { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } /* copied, not seen */
+.t-owner { --c: var(--owner); } .t-session { --c: var(--session); } .t-api { --c: var(--api); } .t-done { --c: var(--done); } .t-spike { --c: var(--spike); } .t-dim { --c: var(--fg-3); }
+.chip.st.s-plan, .chip.st.s-ready, .chip.st.s-review { --c: var(--owner); }
+.chip.st.s-run { --c: var(--session); }
+.chip.st.s-skip { --c: var(--fg-3); }
 .stages { flex-basis: 100%; min-width: 0; font: 12px/1.5 var(--mono); }
 .stages.none { color: var(--fg-3); font-family: var(--sans); }
 .chain { display: flex; flex-wrap: wrap; gap: 2px 6px; align-items: baseline; }
@@ -176,20 +207,25 @@ input[type=checkbox]:disabled { cursor: default; }
 .sg.past { color: var(--fg-3); }
 .sg.past::before { content: "✓"; content: "✓" / ""; color: var(--done); margin-right: 3px; }
 .sg.cur { font-weight: 700; text-decoration: underline solid 2px; text-underline-offset: 3px; }
-.body { padding: 2px 0 14px 22px; display: grid; gap: 8px; max-width: 80ch; }
-.body .sum { color: var(--fg-2); }
+.body { padding: 4px 16px 18px calc(38px + 10em); display: grid; gap: 12px; max-width: 76ch; } /* its left edge is the title column's */
+.body .sum { color: var(--fg); }
 .body .nt { color: var(--fg-3); font-size: 13px; }
-.facts { display: grid; grid-template-columns: 8.5em minmax(0, 1fr); gap: 4px 14px; font-size: 13px; }
+.facts { display: grid; grid-template-columns: 9em minmax(0, 1fr); gap: 7px 14px; font-size: 13px; align-items: baseline; }
 .facts dt { color: var(--fg-3); }
 .facts dd { color: var(--fg-2); overflow-wrap: anywhere; }
+.facts dd b { font-weight: 600; }
 .facts dd .mono { font-size: 12px; }
-.stage-list { display: grid; gap: 3px; }
+.stage-list { display: grid; gap: 5px; }
+.stage-list li { display: grid; grid-template-columns: 7.5em minmax(0, 1fr); gap: 0 10px; align-items: baseline; }
 .stage-list .sg { font: 12px/1.5 var(--mono); }
+.stage-list .rec { font-size: 13px; }
 .stage-list .nt { color: var(--fg-3); font-size: 13px; }
 @media (max-width: 560px) {
   .stop > summary { grid-template-columns: 12px minmax(0, 1fr); }
   .stop > summary .main-col { grid-column: 2; }
-  .facts { grid-template-columns: minmax(0, 1fr); } .facts dd { margin-bottom: 6px; }
+  .body { padding-left: 28px; }
+  .facts { grid-template-columns: minmax(0, 1fr); } .facts dd { margin-bottom: 4px; }
+  .stage-list li { grid-template-columns: minmax(0, 1fr); }
 }
 
 .qs { display: grid; gap: 0; }
@@ -236,8 +272,8 @@ const STATUS = { todo: "not started", plan: "plan in review", run: "running", re
 const WHERE = { new: "new session", same: "same session", you: "you" };
 const MODE = { auto: "auto mode", plan: "plan mode" };
 const LEVEL = { A: "A · unattended", B: "B · approved design", C: "C · owner in the loop", S: "S · experiment" };
-const CX = ["", "Low", "Moderate", "High", "Very high"];
-const ROLE = { decide: "you decide", api: "API review", hands: "hands-on check", play: "you play" };
+const CX = ["", "S", "M", "L", "XL"]; // the catalog rates complexity 1–4; the page shows it on effort's scale
+const ROLE = { decide: "you decide", api: "you review the API", hands: "you check by hand", play: "you play" };
 const FLAG = { api: ["new API", "api"], break: ["API break", "api"], dep: ["new dependency", "api"], perf: ["perf", "chk"], visual: ["visual", "chk"], hash: ["hashes", "chk"], ci: ["CI", "chk"] };
 const TREE = [["upstream", "Upstream"], ["main", "origin/main"], ["fetch", "Last fetch"], ["tag", "Release tag"], ["uncommitted", "Uncommitted"], ["sessions", "Other agent sessions"], ["capture", "Perf capture"], ["decisions", "Decisions not in HEAD"]];
 const LEGEND = [["session", "Cyan", "a Claude session does it"], ["owner", "Orange", "waits on you"], ["done", "Green", "done"], ["warn", "Red", "warning"],
@@ -275,6 +311,7 @@ const tickKey = (status, key) => status + ":" + key;
 const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 const recPlain = r => [MODE[r.mode] || r.mode, r.model, r.effort].filter(Boolean).join(" · ");
 const recText = r => (!r ? "" : (r.keeps ? "keeps " + r.keeps + "'s " : "") + recPlain(r));
+const recNodes = r => (!r ? [] : [(r.keeps ? "keeps " + r.keeps + "'s " : "") + (MODE[r.mode] || r.mode || ""), r.model ? [" · ", h("b", { text: r.model })] : null, r.effort ? " · " + r.effort : null]);
 const ifNew = r => (r && r.if_new ? "In a new session: " + recPlain(r.if_new) : null);
 const stagesOf = s => (s && Array.isArray(s.stages) ? s.stages : null);
 
@@ -302,10 +339,13 @@ async function copy(text, pre, button) {
     say("Copying is blocked here. The text is selected: press Ctrl+C or ⌘C.");
   }
 }
-function promptBlock(text, id) {
-  const pre = h("pre", { id, text });
+function promptBlock(text, id, label) {
+  const long = text.length > 280; // a long prompt opens on its first lines; Copy always takes all of it
+  const pre = h("pre", { id, text, class: long ? "clamp" : null });
   const button = h("button", { type: "button", "aria-live": "polite", onclick: () => copy(text, pre, button) }, "Copy");
-  return h("div", { class: "prompt" }, pre, button);
+  const more = long ? h("button", { type: "button", class: "more", "aria-expanded": "false", "aria-controls": id, onclick: () => {
+    const open = pre.classList.toggle("clamp") === false; more.textContent = open ? "Show less" : "Show all"; more.setAttribute("aria-expanded", String(open)); } }, "Show all") : null;
+  return h("div", { class: "prompt" }, h("div", { class: "prompt-head" }, h("span", { class: "eb", text: label || "Prompt" }), h("span", { class: "acts" }, more, button)), pre);
 }
 function fold(key, label, content, cls) {
   const d = h("details", { class: cls || "fold", ontoggle: () => setOpen(key, d.open) }, h("summary", { text: label }), content);
@@ -324,9 +364,9 @@ function syncLine() {
 
 function header() {
   const n = S.now, stop = n && byId(n.stop), st = stop && statusOf(stop.id);
-  const crumb = n && h("span", { class: "crumb" }, "· " + (n.release || "") + " · ",
-    stop ? h("b", { text: [stop.label, stop.title].filter(Boolean).join(" ") }) : "",
-    stop ? [" · ", h("span", { class: "st-" + st, text: STATUS[st] })] : "");
+  const crumb = n && h("span", { class: "crumb" }, n.release ? h("span", { class: "tag", text: n.release }) : null,
+    stop ? h("b", { text: [stop.label, stop.title].filter(Boolean).join(" ") }) : null,
+    stop ? h("span", { class: "st-" + st, text: "· " + STATUS[st] }) : null);
   head.replaceChildren(h("h1", null, "Tungsten 1.0", crumb), syncLine());
 }
 
@@ -381,14 +421,14 @@ function progress(id) {
   const n = d.plan_steps || 0, e = Math.min(d.evidence || 0, n);
   const fill = h("i");
   fill.style.width = (n ? Math.round(100 * e / n) : 0) + "%";
-  return h("div", { class: "sub" }, h("h3", { text: "Progress" }),
+  return h("div", { class: "sub" }, h("h3", { class: "eb", text: "Progress" }),
     h("p", { class: "pg" }, d.milestone ? d.milestone + " · " : "", h("span", { class: "mono", text: d.plan }), n ? " · " + e + " of " + n + " steps with evidence" : ""),
     n ? h("span", { class: "bar", role: "img", "aria-label": e + " of " + n + " steps with evidence" }, fill) : null);
 }
 function stopQuestions(stop) {
   const qs = ((stop && stop.questions) || []).map(id => S.catalog.questions.find(q => q.id === id)).filter(q => q && q.state === "open");
   if (!qs.length) return null;
-  return h("div", { class: "sub" }, h("h3", { text: qs.length === 1 ? "Open question for this stop" : "Open questions for this stop" }),
+  return h("div", { class: "sub" }, h("h3", { class: "eb", text: qs.length === 1 ? "Open question for this stop" : "Open questions for this stop" }),
     h("ul", { class: "oq" }, qs.map(q => h("li", null, h("span", { class: "id", text: "Q" + q.id.slice(1) }), h("span", { text: q.text }),
       h("span", { class: "meta", text: [q.by ? "needed by " + q.by : "", q.default ? "default: " + q.default : ""].filter(Boolean).join(" · ") })))));
 }
@@ -406,28 +446,28 @@ function nextBlock() {
     return h("li", { class: [x.state, x.on ? "ticked" : ""].filter(Boolean).join(" "), "aria-current": x.state === "cur" ? "step" : null },
       box ? h("label", { for: id }, box, name) : name,
       h("span", { class: "w" + (x.g.where === "you" ? " you" : ""), text: WHERE[x.g.where] || x.g.where || "" }),
-      x.g.rec ? h("span", { class: "rec", title: ifNew(x.g.rec), text: recText(x.g.rec) }) : null,
+      x.g.rec ? h("span", { class: "rec", title: ifNew(x.g.rec) }, recNodes(x.g.rec)) : null,
       x.state === "cur" ? h("span", { class: "up", text: "up next" }) : null);
   });
   const rec = nextRec(n, stop);
-  const after = (n.after || []).length ? h("div", { class: "sub after" }, h("h3", { text: "After that" }), h("ol", null, n.after.map(t => h("li", { text: t })))) : null;
-  const heads = (n.heads_up || []).length ? h("div", { class: "heads" }, h("h3", { text: "Heads-up" }), h("ul", null, n.heads_up.map(t => h("li", { text: t })))) : null;
+  const after = (n.after || []).length ? h("p", { class: "after" }, h("span", { class: "eb", text: "After that" }), n.after.map((s, i) => [i ? h("span", { class: "ar", text: " → " }) : null, s])) : null;
+  const heads = (n.heads_up || []).length ? h("div", { class: "heads" }, h("h3", { class: "eb", text: "Heads-up" }), h("ul", null, n.heads_up.map(t => h("li", { text: t })))) : null;
   const recovery = (n.recovery || []).length ? fold("fold:recovery", "If something went wrong", h("div", { class: "recovery" }, n.recovery.map((r, i) => {
     const rr = recoveryRec(r, stop);
-    return h("div", { class: "prompt" }, h("h3", null, h("span", { text: r.title || r.key }), rr ? h("span", { class: "rec", title: ifNew(rr), text: recText(rr) }) : null), promptBlock(r.text || "", "rec-" + i));
+    return h("div", { class: "rec-item" }, h("h3", null, h("span", { text: r.title || r.key }), rr ? h("span", { class: "rec", title: ifNew(rr) }, recNodes(rr)) : null), promptBlock(r.text || "", "rec-" + i));
   }))) : null;
   const tree = n.tree && typeof n.tree === "object" ? fold("fold:tree", "Tree at sync" + (n.commit ? " · " + n.commit : ""),
     h("dl", { class: "tree" }, TREE.filter(([k]) => n.tree[k]).map(([k, label]) => [h("dt", { text: label }), h("dd", { text: String(n.tree[k]) })]))) : null;
   return h("section", { class: "next" + (you ? " you" : ""), "aria-labelledby": "next-h" },
-    h("div", { class: "next-head" }, h("h2", { id: "next-h", text: "Next" }),
-      h("span", { class: "where" + (you ? " you" : ""), text: WHERE[n.next.where] || n.next.where || "" }),
-      rec ? h("span", { class: "rec", title: ifNew(rec), text: recText(rec) }) : null,
+    h("div", { class: "next-head" }, h("h2", { id: "next-h", class: "eb", text: "Next" }),
+      h("span", { class: "eb where" + (you ? " you" : ""), text: WHERE[n.next.where] || n.next.where || "" }),
       stop ? h("button", { type: "button", class: "jump", onclick: () => jump(stop.id) }, "Show in route") : null),
-    n.headline ? h("p", { class: "lead", text: n.headline }) : null,
-    n.next.title ? h("p", { class: "next-title", text: n.next.title }) : null,
-    n.next.text ? promptBlock(n.next.text, "next-text") : null,
+    h("div", { class: "title-block" },
+      h("div", { class: "title-row" }, n.next.title ? h("p", { class: "next-title", text: n.next.title }) : null, rec ? h("p", { class: "rec", title: ifNew(rec) }, recNodes(rec)) : null),
+      n.headline ? h("p", { class: "lead", text: n.headline }) : null),
+    n.next.text ? promptBlock(n.next.text, "next-text", "Prompt to paste") : null,
     progress(n.stop), stopQuestions(stop),
-    items.length ? h("div", { class: "sub" }, h("h3", { text: "Steps for this stop" }), h("ol", { class: "flow", "aria-label": "Steps for this stop" }, items)) : null,
+    items.length ? h("div", { class: "sub" }, h("h3", { class: "eb", text: "Steps for this stop" }), h("ol", { class: "flow", "aria-label": "Steps for this stop" }, items)) : null,
     after, heads, recovery, tree);
 }
 
@@ -478,29 +518,55 @@ function strip(here) {
 const groupPhase = {};
 function phaseOf(stop) { return groupPhase[stop.group]; }
 
+// The session recommendation the chip shows (D-118): the current stage's when that stage is a session; a finished stop's run stage's.
+function stageRec(s, st) {
+  const list = stagesOf(s);
+  if (!list || !list.length || st === "skip") return null;
+  if (st === "done") { const g = list.find(x => x.rec && (x.key === "run" || x.key === "run-c1")) || list.find(x => x.rec); return g ? g.rec : null; }
+  const cur = stageStates(s.id, list).find(x => x.state === "cur");
+  return cur && cur.g.rec ? cur.g.rec : null;
+}
+
+// Each chip names what it shows ("level C", "complexity high"), and a " · " leads every chip but the first so a copied row still reads.
 function chips(s) {
   const st = statusOf(s.id), doc = S.stops[s.id] || {}, out = [];
-  if (st !== "todo" && st !== "done") out.push(h("span", { class: "chip st s-" + st, text: STATUS[st] }));
-  if (s.level) out.push(h("span", { class: "chip lv", title: LEVEL[s.level] || "", text: s.level }));
-  if (s.complexity) out.push(h("span", { class: "chip cx", "data-v": s.complexity, title: "Complexity, estimated", text: CX[s.complexity] || "" }));
-  const eff = doc.plan_steps ? doc.plan_steps + " steps" : s.effort;
-  if (eff) out.push(h("span", { class: "chip", title: doc.plan_steps ? "Steps in its plan" : "Effort, estimated", text: eff }));
-  for (const r of s.roles || []) out.push(h("span", { class: "chip role", text: ROLE[r] || r }));
-  for (const f of s.flags || []) { const d = FLAG[f] || [f, "chk"]; out.push(h("span", { class: "chip " + d[1], text: d[0] })); }
-  if (doc.release) out.push(h("span", { class: "chip rel", text: doc.release }));
+  const chip = (cls, title, label, ...value) => h("span", { class: "chip " + cls, title }, label ? h("span", { class: "k", text: label + " " }) : null, ...value); // the space is for copies; the gap draws it
+  const v = text => h("span", { class: "v", text });
+  if (st !== "todo" && st !== "done") out.push(chip("st s-" + st, "Status", null, STATUS[st]));
+  if (s.level) out.push(chip("lv " + (s.level === "C" ? "t-owner" : s.level === "S" ? "t-spike" : ""), LEVEL[s.level] || "", "level", v(s.level)));
+  if (s.complexity) out.push(chip("cx", "Complexity, estimated: S, M, L or XL", "complexity", v(CX[s.complexity] || String(s.complexity))));
+  if (doc.plan_steps) out.push(chip("", "Steps in its plan", "plan", v(doc.plan_steps + " steps")));
+  else if (s.effort) out.push(chip("", "Effort, the estimated size of the work: S, M, L or XL", "effort", v(s.effort)));
+  const rec = stageRec(s, st);
+  if (rec) out.push(chip("md t-session", (st === "done" ? "Model and reasoning effort its run session got" : "Model and reasoning effort for the current stage's session") + " (D-118): " + recText(rec),
+    "model", rec.model + " · " + rec.effort + (rec.mode === "plan" ? " · plan mode" : "")));
+  for (const r of s.roles || []) out.push(chip("role t-owner", "Waits on you", null, ROLE[r] || r));
+  const api = [], chk = [];
+  for (const f of s.flags || []) { const d = FLAG[f] || [f, "chk"]; (d[1] === "api" ? api : chk).push(d[0]); }
+  for (const name of api) out.push(chip("api t-api", "Public API or dependency", null, name));
+  if (chk.length) out.push(chip("chk", "Checks its work needs", "checks", chk.join(" · ")));
+  if (doc.release) { // a finished stop leads with its release
+    const rel = st === "done" ? chip("rel t-done", "Shipped in this release", "shipped", v(doc.release)) : chip("rel", "Its release", "release", v(doc.release));
+    if (st === "done") out.unshift(rel); else out.push(rel);
+  }
+  out.forEach((c, i) => { if (i) c.prepend(h("span", { class: "sep", text: " · " })); }); // a copied row still reads as a list
   return h("span", { class: "chips" }, out);
 }
 
 function fillBody(s, box) {
   const doc = S.stops[s.id] || {}, st = statusOf(s.id), facts = [];
-  const add = (k, v) => { if (v != null && v !== "" && !(Array.isArray(v) && !v.length)) facts.push(h("dt", { text: k }), h("dd", null, v)); };
-  add("Status", [STATUS[st], doc.release && " · " + doc.release, doc.milestone && " · " + doc.milestone, doc.plan_steps ? " · " + (doc.evidence || 0) + " of " + doc.plan_steps + " steps with evidence" : ""].filter(Boolean).join(""));
+  const add = (k, v) => { if (v != null && v !== "" && !(Array.isArray(v) && !v.length)) facts.push(h("dt", { class: "eb", text: k }), h("dd", null, v)); };
+  add("Status", [h("b", { class: "st-" + st, text: STATUS[st] }), [doc.release && " · " + doc.release, doc.milestone && " · " + doc.milestone, doc.plan_steps ? " · " + (doc.evidence || 0) + " of " + doc.plan_steps + " steps with evidence" : ""].filter(Boolean).join("")]);
   add("Level", s.level ? LEVEL[s.level] || s.level : s.kind === "release" ? "not set yet: the stages assume level A or B" : null);
+  const ratings = [s.complexity ? "complexity " + (CX[s.complexity] || s.complexity) : "", s.effort ? "effort " + s.effort : ""].filter(Boolean);
+  add("Ratings", ratings.length ? [ratings.join(" · ") + ", estimated", h("span", { class: "nt", text: " · they set its sessions' model and reasoning effort (D-118)" })] : null);
   const steps = stagesOf(s);
   if (steps) add("Stages", steps.length ? h("ol", { class: "stage-list" }, stageStates(s.id, steps).map(x => h("li", { "aria-current": x.state === "cur" ? "step" : null },
-    h("span", { class: stageClass(x), text: x.g.key }), " " + [x.g.title, WHERE[x.g.where] || x.g.where].filter(Boolean).join(" · "),
-    x.g.rec ? h("span", { class: "rec", text: " · " + recText(x.g.rec) + (x.g.rec.if_new ? " (in a new session: " + recPlain(x.g.rec.if_new) + ")" : "") }) : null,
-    x.g.note ? h("span", { class: "nt", text: " · " + x.g.note }) : null))) : "None: prompts.md's Flow table has no row for this kind of stop.");
+    h("span", { class: stageClass(x), text: x.g.key }),
+    h("span", null, [x.g.title, WHERE[x.g.where] || x.g.where].filter(Boolean).join(" · "),
+      x.g.rec ? h("span", { class: "rec" }, " · ", recNodes(x.g.rec)) : null,
+      x.g.rec && x.g.rec.if_new ? h("span", { class: "nt", text: " · in a new session: " + recPlain(x.g.rec.if_new) }) : null,
+      x.g.note ? h("span", { class: "nt", text: " · " + x.g.note }) : null)))) : "None: prompts.md's Flow table has no row for this kind of stop.");
   add("Register row", s.row);
   add("Plan", doc.plan ? h("span", { class: "mono", text: doc.plan }) : null);
   const paths = list => list && list.length ? list.map((p, i) => [i ? h("br") : null, h("span", { class: "mono", text: p })]) : null;
@@ -508,10 +574,10 @@ function fillBody(s, box) {
   add("Gate reads", paths(s.reads));
   const qs = (s.questions || []).map(id => S.catalog.questions.find(q => q.id === id)).filter(Boolean);
   add("Questions", qs.length ? qs.map((q, i) => [i ? h("br") : null, "Q" + q.id.slice(1) + " " + q.text + (q.state === "open" ? "" : " (answered)")]) : null);
-  box.replaceChildren(
+  box.replaceChildren(...[ // replaceChildren would render a null child as the text "null"
     s.summary ? h("p", { class: "sum", text: s.summary }) : null,
     s.note ? h("p", { class: "nt", text: s.note }) : null,
-    facts.length ? h("dl", { class: "facts" }, facts) : null);
+    facts.length ? h("dl", { class: "facts" }, facts) : null].filter(Boolean));
 }
 
 function stopRow(s, here) {
@@ -522,7 +588,7 @@ function stopRow(s, here) {
     h("summary", null,
       h("span", { class: "dot s-" + st + (s.kind === "gate" ? " k-gate" : ""), text: s.id === here ? "here, " + STATUS[st] : STATUS[st] }),
       h("span", { class: "lab k-" + s.kind, text: s.label || s.kind }),
-      h("span", { class: "main-col" }, h("span", { class: "ti", text: s.title }), chips(s), chain(s))),
+      h("span", { class: "main-col" }, h("span", { class: "ti", text: s.title }), h("span", { class: "chev", "aria-hidden": "true" }), chips(s), st === "done" ? null : chain(s))), // a finished stop's chain is all ticks: the body lists its stages
     body);
   if (S.open.has(s.id)) { det.open = true; fillBody(s, body); }
   return det;
@@ -545,7 +611,7 @@ function route(here) {
           h("summary", null, h("b", { text: finished.length + " done" })), finished.map(s => stopRow(s, here))) : null;
         if (doneFold && S.open.has(key)) doneFold.open = true;
         return h("div", { class: "grp" },
-          h("div", { class: "grp-head" }, h("h3", { text: g.name }), g.note ? h("span", { text: g.note }) : null),
+          h("div", { class: "grp-head" }, h("h3", { class: "eb", text: g.name }), g.note ? h("span", { text: g.note }) : null),
           doneFold, rest.map(s => stopRow(s, here)));
       }));
   });
@@ -568,6 +634,7 @@ function footer() {
   return h("footer", null,
     h("ul", { class: "legend", "aria-label": "What each color means" }, LEGEND.map(([k, name, meaning]) =>
       h("li", null, h("i", { class: "sw " + k }), h("span", null, h("b", { class: k === "idle" ? null : "c-" + k, text: name }), " " + meaning)))),
+    h("p", null, "Chips on a stop: its level, complexity and effort from the catalog; the model and reasoning effort its current stage's session runs on (a finished stop's run session got); what waits on you; the checks its work needs; public API flags; its release. Orange chips wait on you, cyan is the session's model, pink a public API or dependency, green a shipped release, yellow an experiment."),
     h("p", null, "Stages: the underlined one is current, ✓ is done, a dotted one has a note (hover it). Each session stage shows its mode, model and effort; a same-session stage keeps its session's."),
     h("p", null, "Data: ", h("span", { class: "mono", text: "docs/plans/1.0/roadmap.json" }), ", the Flow table in ", h("span", { class: "mono", text: "prompts.md" }),
       " and the tree, synced by ", h("span", { class: "mono", text: "/tungsten-next" }),
@@ -657,7 +724,7 @@ setInterval(() => { if (S.now) header(); }, 60000);
 requestAnimationFrame(() => setTimeout(() => {
   const l = document.createElement("link");
   l.rel = "stylesheet";
-  l.href = "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap";
+  l.href = "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap";
   document.head.append(l);
 }, 0));
 })();
