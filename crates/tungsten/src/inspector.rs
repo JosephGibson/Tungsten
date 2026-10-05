@@ -21,6 +21,7 @@ pub struct InspectorState {
     registered: Vec<(&'static str, InspectFn)>,
     pub corner: HudCorner,
     pub padding_px: f32,
+    /// The engine font, [`ENGINE_FONT_ID`](crate::ENGINE_FONT_ID), by default.
     pub font_id: String,
     pub font_size: f32,
     pub line_height: f32,
@@ -44,7 +45,7 @@ impl Default for InspectorState {
             // Avoid HUD TopRight and systems overlay BottomRight.
             corner: HudCorner::BottomLeft,
             padding_px: 12.0,
-            font_id: "mono".to_string(),
+            font_id: crate::ENGINE_FONT_ID.to_string(),
             font_size: 28.0,
             line_height: 32.0,
             color: [240, 240, 240, 240],

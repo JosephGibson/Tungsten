@@ -1083,6 +1083,7 @@ impl core::marker::Unpin for tungsten::app::WindowSize
 impl core::marker::UnsafeUnpin for tungsten::app::WindowSize
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::app::WindowSize
 impl core::panic::unwind_safe::UnwindSafe for tungsten::app::WindowSize
+pub const tungsten::ENGINE_FONT_ID: &str
 pub trait tungsten::GameState: 'static
 pub fn tungsten::GameState::id(&self) -> tungsten::state::StateId
 pub fn tungsten::GameState::on_enter(&mut self, &mut tungsten::state::StateContext<'_>)

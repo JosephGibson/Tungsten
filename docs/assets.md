@@ -17,7 +17,9 @@ Every asset file is listed in a `manifest.json` and named in game code by its re
 | Particle mesh | manifest only | `particle_meshes` | `vertices`, `indices` |
 
 - Example-local assets: `examples/NN_name/assets/` with its own `manifest.json`. IDs are unique across loaded manifests; duplicates are fatal.
+- Template-local assets: `templates/<name>/assets/` with its own `manifest.json`, the only root a game made from the template loads (`D-123`). Layer 1 loads each template manifest on its own, outside the examples' uniqueness merge, and `just repo-check` covers its files as it covers an example's.
 - `font_fallback` chains concatenate in root order, each family keeping its first position. A family's faces and a chain's families may come from another root: references are checked on the merged graph (`D-089`).
+- Font ID `engine_mono` is reserved for the engine font, `tungsten::ENGINE_FONT_ID`, which the HUD, the systems overlay and the inspector draw with (`D-123`). A manifest `fonts` entry under that ID replaces it for engine text; beside another face of the same family, weight and style with other bytes, the earlier face draws and a warning names both. Manifests are not checked against the reservation.
 - Game code uses registry IDs; explicit scene loading follows `D-046`.
 
 ## Coverage exceptions

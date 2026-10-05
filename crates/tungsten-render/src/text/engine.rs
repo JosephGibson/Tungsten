@@ -198,7 +198,9 @@ impl TextEngine {
     }
 
     /// Adds a file's faces to the database under manifest ID `id`; false when
-    /// it holds none.
+    /// it holds none. Once they are in, the faces `id` had before leave the
+    /// database, so a face loaded under a registered ID replaces it
+    /// (`D-123`); data with no face leaves the old registration in place.
     fn register(&mut self, id: &str, data: Vec<u8>) -> bool {
         let ids_before: HashSet<_> = self.font_system.db().faces().map(|f| f.id).collect();
         self.font_system.db_mut().load_font_data(data);
@@ -237,18 +239,12 @@ impl TextEngine {
         if self.source == FontSource::PackagedThenSystem {
             self.replace_system_faces(&face_ids);
         }
-        if let Some(other) = self.font_attrs.iter().find(|(other, stored)| {
-            other.as_str() != id
-                && stored.family == family
-                && stored.weight == weight
-                && stored.style == style
-        }) {
+        if let Some(other) = self.clash(id, face_ids[0]) {
             log::warn!(
-                "Fonts '{id}' and '{}' share family \"{family}\", weight and style; text draws one of them for both",
-                other.0,
+                "Fonts '{id}' and '{other}' share family \"{family}\", weight and style; text draws one of them for both",
             );
         }
-        self.font_attrs.insert(
+        let earlier = self.font_attrs.insert(
             id.to_string(),
             StoredFontAttrs {
                 family,
@@ -257,7 +253,36 @@ impl TextEngine {
                 face_ids,
             },
         );
+        if let Some(earlier) = earlier {
+            let db = self.font_system.db_mut();
+            for face_id in earlier.face_ids {
+                db.remove_face(face_id);
+            }
+        }
         true
+    }
+
+    /// Another registered ID whose face shares `face`'s family, weight and
+    /// style but not its bytes: text draws one of the two for both
+    /// (`D-116`). Byte-identical faces draw the same glyphs, so they don't
+    /// clash (`D-123`).
+    fn clash(&self, id: &str, face: fontdb::ID) -> Option<String> {
+        let db = self.font_system.db();
+        let info = db.face(face)?;
+        let family = info.families.first().map(|(name, _)| name.as_str());
+        self.font_attrs
+            .iter()
+            .find(|(other, stored)| {
+                other.as_str() != id
+                    && Some(stored.family.as_str()) == family
+                    && stored.weight == info.weight
+                    && stored.style == info.style
+                    && stored
+                        .face_ids
+                        .first()
+                        .is_some_and(|&other_face| !same_bytes(db, other_face, face))
+            })
+            .map(|(other, _)| other.clone())
     }
 
     /// Removes the system faces that `packaged` faces stand for: same first
@@ -700,6 +725,16 @@ fn section_attrs<'a>(
         .and_then(|head| family_face(families, font_attrs, head, 400, false))
         .map(|(face, _)| face);
     make_attrs(font_attrs, head.unwrap_or(font_id))
+}
+
+/// Whether two faces come from the same bytes: the same font data and face
+/// index.
+fn same_bytes(db: &fontdb::Database, a: fontdb::ID, b: fontdb::ID) -> bool {
+    db.with_face_data(a, |a_data, a_index| {
+        db.with_face_data(b, |b_data, b_index| a_index == b_index && a_data == b_data)
+    })
+    .flatten()
+    .unwrap_or(false)
 }
 
 /// The registered face of `family` for `weight` and `italic`, and whether the

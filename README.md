@@ -11,6 +11,7 @@ Hand-rolled ECS with archetypal storage, deferred command buffers, and typed eve
 | File | Use |
 | --- | --- |
 | [`docs/README.md`](docs/README.md) | Documentation map, canonical sources and targeted reading |
+| [`docs/getting-started.md`](docs/getting-started.md) | Making a game from the template, `templates/basic`, in a repository of its own |
 | [`DESIGN.md`](DESIGN.md) | Architecture, stack, subsystem detail |
 | [`AGENTS.md`](AGENTS.md) | Repo rules, commands, test layers, task workflow |
 | [`DECISIONS.md`](DECISIONS.md) | Non-obvious decisions and rationale (`D-NNN`) |
@@ -41,6 +42,8 @@ cargo run -p example-02-bench           # benchmark suite; TUNGSTEN_BENCH select
 cargo run -p example-03-scene-state     # scene/state + screen transition demo
 cargo run -p example-04-shader-playground  # materials + 18-effect post-stack demo (incl. bloom)
 ```
+
+To make a game of your own, start from the template: [Getting started](docs/getting-started.md).
 
 Reproducible Linux perf capture (`docs/perf/profiling-workflow.md`):
 

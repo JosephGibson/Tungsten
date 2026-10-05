@@ -12,6 +12,7 @@ import json
 import os
 import re
 import subprocess
+import tomllib
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
@@ -19,6 +20,7 @@ DOCS = (
     "README.md", "CHANGELOG.md", "docs/LLM_INDEX.md", "docs/DECISION_INDEX.md",
     "docs/agent-setup.md", "docs/perf/profiling-workflow.md", "docs/perf/benchmarks.md",
     "docs/showcase/README.md", "docs/plans/README.md", "docs/releases.md", "docs/assets.md",
+    "docs/getting-started.md",
 )
 ARCHIVE = "docs/plans/archive"
 # Existing content outside the manifest schema, not a blanket file exemption.
@@ -64,8 +66,13 @@ def unique_object(pairs):
 
 def check_assets(root, errors, notes):
     roots = [root / "assets"]
-    roots.extend(sorted(p / "assets" for p in (root / "examples").iterdir()
-                        if p.is_dir() and not p.is_symlink() and (p / "assets").is_dir()))
+    # Example- and template-local assets (D-123); a tree may have no templates.
+    parents = [root / "examples"]
+    if (root / "templates").is_dir():
+        parents.append(root / "templates")
+    for parent in parents:
+        roots.extend(sorted(p / "assets" for p in parent.iterdir()
+                            if p.is_dir() and not p.is_symlink() and (p / "assets").is_dir()))
     for directory in roots:
         manifest = directory / "manifest.json"
         try:
@@ -98,6 +105,25 @@ def check_assets(root, errors, notes):
                 notes.append(f"asset exception: {rel}: {ASSET_EXCEPTIONS[rel]}")
             else:
                 errors.append(f"unlisted asset: {rel}")
+
+
+def check_templates(root, errors, notes):
+    """A template pins the root's toolchain and declares the workspace's
+    rust-version, so a copy builds with the compiler the engine is tested on
+    (D-069, D-123)."""
+    folder = root / "templates"
+    if not folder.is_dir():
+        return
+    toolchain = (root / "rust-toolchain.toml").read_bytes()
+    workspace = tomllib.loads((root / "Cargo.toml").read_text())["workspace"]["package"]["rust-version"]
+    for template in sorted(p for p in folder.iterdir() if (p / "Cargo.toml").is_file()):
+        rel = template.relative_to(root).as_posix()
+        pin = template / "rust-toolchain.toml"
+        if not pin.is_file() or pin.read_bytes() != toolchain:
+            errors.append(f"{rel}/rust-toolchain.toml: must equal the root's rust-toolchain.toml")
+        version = tomllib.loads((template / "Cargo.toml").read_text()).get("package", {}).get("rust-version")
+        if version != workspace:
+            errors.append(f"{rel}/Cargo.toml: rust-version {version!r} differs from the workspace's {workspace!r}")
 
 
 def plan_fields(text):
@@ -288,7 +314,7 @@ def main():
     args = parser.parse_args()
     errors, notes = [], []
     root = args.root.absolute()
-    for check in (check_assets, check_plans, check_docs, check_plan_citations, check_roadmap):
+    for check in (check_assets, check_templates, check_plans, check_docs, check_plan_citations, check_roadmap):
         try:
             check(root, errors, notes)
         except (OSError, ValueError) as exc:

@@ -70,6 +70,35 @@ class RepoChecks(unittest.TestCase):
         self.write("assets/manifest.json", '[]')
         self.assertTrue(self.assets()[0])
 
+    def test_template_assets_are_covered(self):
+        self.write("templates/basic/assets/manifest.json", '{"sprites":{"player":{"path":"sprites/player.png"}}}')
+        self.write("templates/basic/assets/sprites/player.png", "pixels")
+        self.write("templates/basic/assets/fonts/Inter/LICENSE.txt", "license")
+        self.assertEqual(self.assets()[0], [])
+        self.write("templates/basic/assets/sprites/stray.png", "pixels")
+        self.assertIn("unlisted asset: templates/basic/assets/sprites/stray.png", self.assets()[0])
+
+    def templates(self):
+        errors, notes = [], []
+        qa.check_templates(self.root, errors, notes)
+        return errors
+
+    def test_template_pins_the_root_toolchain_and_rust_version(self):
+        self.assertEqual(self.templates(), [])  # no templates/ folder
+        pin = '[toolchain]\nchannel = "1.98.1"\n'
+        self.write("rust-toolchain.toml", pin)
+        self.write("Cargo.toml", '[workspace.package]\nrust-version = "1.98.1"\n\n[workspace]\nmembers = []\n')
+        self.write("templates/basic/rust-toolchain.toml", pin)
+        self.write("templates/basic/Cargo.toml", '[package]\nname = "basic"\nrust-version = "1.98.1"\n')
+        self.assertEqual(self.templates(), [])
+        self.write("templates/basic/rust-toolchain.toml", pin.replace("1.98.1", "1.99.0"))
+        self.write("templates/basic/Cargo.toml", '[package]\nname = "basic"\nrust-version = "1.97"\n')
+        self.assertEqual(self.templates(), [
+            "templates/basic/rust-toolchain.toml: must equal the root's rust-toolchain.toml",
+            "templates/basic/Cargo.toml: rust-version '1.97' differs from the workspace's '1.98.1'"])
+        (self.root / "templates/basic/rust-toolchain.toml").unlink()
+        self.assertIn("templates/basic/rust-toolchain.toml: must equal the root's rust-toolchain.toml", self.templates())
+
     def test_directory_symlinks_are_not_walked(self):
         (self.root / "assets/loop").symlink_to(self.root / "assets", target_is_directory=True)
         self.assertEqual(self.assets()[0], [])

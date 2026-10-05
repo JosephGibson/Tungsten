@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Runs every example in smoke-test mode (renders a few frames, then exits),
-# then the render fixture matrices, the benchmark rows and a frame-cap timing
-# row, and reports panics, failures and timeouts.
+# then the template from its own folder, the render fixture matrices, the
+# benchmark rows and a frame-cap timing row, and reports panics, failures and
+# timeouts.
 #
 # Requires a real GPU and display — not for CI. Use as a pre-commit check
 # when touching engine code, asset manifests, or example wiring. Regression
@@ -48,24 +49,33 @@ echo
 # Shortest wall time in milliseconds a passing run may take; 0 means no
 # minimum. Set around a row whose run must not finish early.
 min_run_ms=0
+# The folder a run starts in, and a fixed string a passing run's log must
+# not hold. Set around a row that runs as a game outside the root does.
+run_in=.
+log_forbids=""
 
 # run_row <label> <log file> <package> [VAR=value ...]
-# Runs one example under the timeout, prints OK / TIMEOUT / FAIL and returns
-# the run's exit status. Without --preserve-status, `timeout` reports 124 when
-# the limit is hit (137 if the SIGKILL grace period also expired). A run that
-# exits 0 in less than min_run_ms fails with status 1.
+# Runs one example under the timeout, from run_in, prints OK / TIMEOUT / FAIL
+# and returns the run's exit status. Without --preserve-status, `timeout`
+# reports 124 when the limit is hit (137 if the SIGKILL grace period also
+# expired). A run that exits 0 in less than min_run_ms, or whose log holds
+# log_forbids, fails with status 1.
 run_row() {
   local label="$1" log_file="$2" pkg="$3"
   shift 3
   printf "  %-28s ... " "$label"
   local code=0 start_ms elapsed_ms
   start_ms="$(date +%s%3N)"
-  env TUNGSTEN_SMOKE_FRAMES="$SMOKE_FRAMES" "$@" \
+  (cd "$run_in" && env TUNGSTEN_SMOKE_FRAMES="$SMOKE_FRAMES" "$@" \
     timeout --kill-after="$KILL_AFTER_SECS" "$TIMEOUT_SECS" \
-    cargo run -p "$pkg" --quiet >"$log_file" 2>&1 || code=$?
+    cargo run -p "$pkg" --quiet) >"$log_file" 2>&1 || code=$?
   elapsed_ms=$(($(date +%s%3N) - start_ms))
   if [ "$code" -eq 0 ] && [ "$elapsed_ms" -lt "$min_run_ms" ]; then
     echo "FAIL (${elapsed_ms} ms, expected at least ${min_run_ms} ms)"
+    return 1
+  fi
+  if [ "$code" -eq 0 ] && [ -n "$log_forbids" ] && grep -qF -- "$log_forbids" "$log_file"; then
+    echo "FAIL (log has '$log_forbids')"
     return 1
   fi
   case "$code" in
@@ -128,6 +138,18 @@ end_section() {
     exit 1
   fi
 }
+
+# W12a: the template, run from its own folder as a copied game is, with its
+# own tungsten.json, input.json and assets/ (D-123). Its HUD draws with the
+# engine font and its text with its own, so an unknown font ID fails the row.
+template_pkg="tungsten-template-basic"
+begin_section "Template row (pkg: $template_pkg, from templates/basic)"
+run_in=templates/basic
+log_forbids="Unknown font ID"
+row "templates/basic" "$log_dir/${template_pkg}.log" "$template_pkg"
+run_in=.
+log_forbids=""
+end_section "Template passed" "Template failures" 1
 
 # M25: msaa × depth_sort matrix over the gpu benchmark at `min` (lit, material,
 # glow, tile and text batches). TUNGSTEN_RENDER_MSAA wins over the preset's

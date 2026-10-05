@@ -98,6 +98,17 @@ repo-check:
     python3 -B scripts/release.py check
     cargo test -p tungsten-core --test manifests --test decision_index --locked -q
 
+# The template copied outside the repository, then built, tested and smoke-run there (D-123); a release check. GPU; free-space floor first.
+template-check:
+    bash scripts/template-check.sh
+
+# Third-party license notices for both release targets into target/notices/<target>/ (D-122); a release check. Its cargo fetch may need the network.
+notices:
+    for target in x86_64-unknown-linux-gnu x86_64-pc-windows-msvc; do \
+        python3 -B scripts/release.py licenses "$target" --out "target/notices/$target/licenses.json" && \
+        python3 -B scripts/release.py notices "target/notices/$target/licenses.json" --out "target/notices/$target" || exit 1; \
+    done
+
 # Version/changelog agreement (D-071); a tag argument (v0.27.0) is checked too.
 release-check *args:
     python3 -B scripts/release.py check "$@"

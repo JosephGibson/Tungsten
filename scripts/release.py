@@ -26,8 +26,16 @@
   split-debug BINARY DEBUG
                       The Linux split alone: moves BINARY's debug info to DEBUG, links
                       it, and checks the build-ids and DEBUG's .debug_line.
+  licenses TARGET     Collects the license data of the crates the shipped packages link
+                      for TARGET (cargo tree's normal edges, cargo metadata's details,
+                      the crates' license and notice files) and the toolchain's
+                      standard-library notices into OUT (a build job's licenses.json).
+  notices DATA        Writes THIRD-PARTY-NOTICES.txt and THIRD-PARTY-NOTICES-rust-std.html
+                      from DATA into OUT, as `package` does inside each archive: each
+                      crate's texts for its preferred license alternative, its NOTICE
+                      files, licenses/clarifications.json and the embedded works.
 
-Rationale: D-071, D-072, D-074, D-079, D-120. Release steps: docs/releases.md.
+Rationale: D-071, D-072, D-074, D-079, D-120, D-122. Release steps: docs/releases.md.
 """
 
 import argparse
@@ -39,6 +47,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import textwrap
 from collections import namedtuple
 from pathlib import Path
 
@@ -72,6 +81,52 @@ DEBUG_PREFIX = "tungsten-debug"
 LEVELS = ("x86-64-v4", "x86-64-v3", "x86-64-v2", "x86-64")
 BASELINE = "x86-64"
 LAUNCHER = "tungsten-launcher"
+
+# Third-party license notices (D-122): the build jobs' license data, the files each archive
+# gains, and the repository's clarifications for what crate packages lack or misstate.
+LICENSE_DATA = "licenses.json"
+NOTICES = "THIRD-PARTY-NOTICES.txt"
+STD_NOTICES = "THIRD-PARTY-NOTICES-rust-std.html"
+STD_NOTICES_SOURCE = "share/doc/rust/COPYRIGHT-library.html"  # in the toolchain's sysroot
+CLARIFICATIONS = "licenses/clarifications.json"
+# Third-party works the engine compiles into every binary, each with the file holding its license.
+EMBEDDED_WORKS = (
+    ("SMAA lookup textures and shaders (tungsten-render)", "crates/tungsten-render/src/assets/smaa/ATTRIBUTION.md"),
+    ("JetBrains Mono Regular, the engine font (tungsten, D-123)", "crates/tungsten/assets/fonts/OFL.txt"),
+)
+# Root-level package files that may hold a license text or notices, by name prefix in any case.
+LICENSE_FILE_RE = re.compile(r"^(licen[cs]e|copying|copyright|unlicense|notice)", re.I)
+NOTICE_FILE_RE = re.compile(r"^notice", re.I)
+FONT_SUFFIXES = (".ttf", ".otf", ".ttc", ".woff", ".woff2")
+TREE_LINE_RE = re.compile(r"^(\S+) v(\S+)")
+# An expression's alternatives are tried in this order; the first whose licenses all have a text is used.
+PREFERENCE = ("MIT", "Apache-2.0", "Zlib", "BSD-3-Clause", "BSD-2-Clause", "ISC", "Unlicense", "0BSD",
+              "CC0-1.0", "Unicode-3.0", "MPL-2.0", "Apache-2.0 WITH LLVM-exception")
+_APACHE = ("terms and conditions for use, reproduction, and distribution", "grant of copyright license")
+_BSD = "redistribution and use in source and binary forms, with or without modification, are permitted"
+# Phrases of each license's standard text that a file must hold, and for look-alikes must not,
+# compared in lowercase with whitespace collapsed.
+MARKERS = {
+    "MIT": (("permission is hereby granted, free of charge, to any person obtaining a copy",
+             "the above copyright notice and this permission notice shall be included in all copies"), ()),
+    "Apache-2.0": (_APACHE, ()),
+    "Zlib": (("permission is granted to anyone to use this software for any purpose",
+              "altered source versions must be plainly marked as such"), ()),
+    "BSD-3-Clause": ((_BSD, "neither the name of"), ()),
+    "BSD-2-Clause": ((_BSD, "redistributions in binary form must reproduce the above copyright notice"),
+                     ("endorse or promote products derived from this software",)),
+    "ISC": (("with or without fee is hereby granted, provided that the above copyright notice and this "
+             "permission notice appear in all copies",), ()),
+    "Unlicense": (("this is free and unencumbered software released into the public domain",), ()),
+    "0BSD": (("permission to use, copy, modify, and/or distribute this software for any purpose with or "
+              "without fee is hereby granted.",), ("provided that the above copyright notice",)),
+    "CC0-1.0": (("cc0 1.0 universal", "statement of purpose"), ()),
+    "Unicode-3.0": (("unicode license v3", "permission is hereby granted, free of charge, to any person "
+                     "obtaining a copy of data files"), ()),
+    "MPL-2.0": (("mozilla public license version 2.0", "exhibit a - source code form license notice"), ()),
+    "Apache-2.0 WITH LLVM-exception": (_APACHE + ("llvm exceptions to the apache 2.0 license",), ()),
+}
+RULE = "=" * 78
 
 Release = namedtuple("Release", "version date body")
 State = namedtuple("State", "errors version releases unreleased")
@@ -325,7 +380,8 @@ def readme(tag, target, members, suffix, levels, game=None):
         f"TUNGSTEN_CPU_LEVEL={BASELINE} forces the portable build.\n\n"
         f"{logs}"
         f"{platform}\n\n"
-        "MIT license: LICENSE.\n"
+        f"MIT license: LICENSE. Third-party licenses: {NOTICES}, and\n"
+        f"{STD_NOTICES} for the Rust standard library.\n"
     )
 
 
@@ -388,10 +444,12 @@ def check_split(binary, debug):
         raise ValueError(f"{debug}: no .debug_line section; was {Path(binary).name} built stripped?")
 
 
-def run_tool(command):
-    result = subprocess.run(command, capture_output=True, text=True)
+def run_tool(command, cwd=None):
+    """`command`'s standard output, else ValueError with its standard error."""
+    result = subprocess.run(command, capture_output=True, encoding="utf-8", errors="replace", cwd=cwd)
     if result.returncode != 0:
         raise ValueError(f"{' '.join(command)} failed: {result.stderr.strip()}")
+    return result.stdout
 
 
 # rustc's GDB pretty-printer hint: an allocated section that --strip-debug keeps. Removing it
@@ -492,6 +550,297 @@ def game_id(root):
     return value if isinstance(value, str) else None
 
 
+def read_any(path):
+    """A text file as UTF-8, else Latin-1, with a byte-order mark dropped and line endings as LF."""
+    data = Path(path).read_bytes()
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        text = data.decode("latin-1")
+    return text.removeprefix("﻿").replace("\r\n", "\n").replace("\r", "\n")
+
+
+def write_text(path, text):
+    with Path(path).open("w", encoding="utf-8", newline="\n") as out:
+        out.write(text)
+
+
+def shipped_packages(root):
+    """The packages whose binaries an archive ships: the examples and the launcher."""
+    return [name for name, _ in examples(root)] + [LAUNCHER]
+
+
+def crate_record(package):
+    """A crate's license data: cargo metadata's fields, the text of its root-level license and
+    notice files and of its `license_file`, and the font files anywhere in its package."""
+    label = f"{package['name']} {package['version']}"
+    folder = Path(package["manifest_path"]).parent
+    if not folder.is_dir():
+        raise ValueError(f"{label}: no source at {folder}; run cargo fetch --locked")
+    names = sorted(path.name for path in folder.iterdir() if path.is_file() and LICENSE_FILE_RE.match(path.name))
+    if package.get("license_file"):
+        names.append(Path(package["license_file"]).as_posix())
+    files = {}
+    for name in dict.fromkeys(names):
+        if not (folder / name).is_file():
+            raise ValueError(f"{label}: its license_file {name} is missing from {folder}")
+        files[name] = read_any(folder / name)
+    fonts = sorted(path.relative_to(folder).as_posix() for path in folder.rglob("*")
+                   if path.suffix.lower() in FONT_SUFFIXES and path.is_file())
+    return {"name": package["name"], "version": package["version"], "license": package.get("license"),
+            "license_file": package.get("license_file"), "repository": package.get("repository"),
+            "files": files, "fonts": fonts}
+
+
+def collect_licenses(root, target, run=run_tool):
+    """License data for `target` (D-122): the crates that cargo tree's normal edges reach from the
+    shipped packages, with cargo metadata's details and their files, and the standard library's
+    notices from the toolchain. `run(command, cwd)` returns a command's output; tests fake it."""
+    if not TARGET_RE.match(target):
+        raise ValueError(f"target {target!r} is not a target triple")
+    run(["cargo", "fetch", "--locked", "--target", target], cwd=root)
+    # cargo tree resolves features as the build does; cargo metadata's resolve also keeps edges
+    # that the build never activates, so it supplies package details only.
+    roots = [arg for name in shipped_packages(root) for arg in ("-p", name)]
+    tree = run(["cargo", "tree", "--locked", "-e", "normal", "--target", target, "--prefix", "none",
+                "-f", "{p}", *roots], cwd=root)
+    metadata = json.loads(run(["cargo", "metadata", "--locked", "--format-version", "1",
+                               "--filter-platform", target], cwd=root))
+    members = set(metadata["workspace_members"])
+    packages = {}
+    for package in metadata["packages"]:
+        packages.setdefault((package["name"], package["version"]), []).append(package)
+    crates = {}
+    for line in tree.splitlines():
+        match = TREE_LINE_RE.match(line)
+        if not match or match.groups() in crates:
+            continue
+        found = packages.get(match.groups(), [])
+        if len(found) != 1:
+            raise ValueError(f"cargo metadata lists {len(found)} packages for {match[1]} v{match[2]}")
+        if found[0]["id"] not in members:
+            crates[match.groups()] = crate_record(found[0])
+    std = Path(run(["rustc", "--print", "sysroot"], cwd=root).strip()) / STD_NOTICES_SOURCE
+    if not std.is_file():
+        raise ValueError(f"{std}: missing; the toolchain's rustc component ships the standard library's notices")
+    return {"target": target, "rustc": run(["rustc", "--version"], cwd=root).strip(),
+            "rust_std_notices": std.read_text(encoding="utf-8"),
+            "crates": [crates[key] for key in sorted(crates)]}
+
+
+def alternatives(expression):
+    """An SPDX-style expression's alternatives, each a tuple of licenses: `/` reads as OR, AND binds
+    tighter than OR, and WITH stays with its license."""
+    tokens = re.findall(r"[()/]|[^\s()/]+", expression)
+    at = 0
+
+    def malformed():
+        return ValueError(f"license expression {expression!r} is malformed")
+
+    def peek():
+        return tokens[at].upper() if at < len(tokens) else None
+
+    def take():
+        nonlocal at
+        if at == len(tokens):
+            raise malformed()
+        at += 1
+        return tokens[at - 1]
+
+    def any_of():
+        result = all_of()
+        while peek() in ("OR", "/"):
+            take()
+            result += [alternative for alternative in all_of() if alternative not in result]
+        return result
+
+    def all_of():
+        result = one()
+        while peek() == "AND":
+            take()
+            right = one()
+            result = [tuple(dict.fromkeys(left + other)) for left in result for other in right]
+        return result
+
+    def one():
+        token = take()
+        if token == "(":
+            result = any_of()
+            if take() != ")":
+                raise malformed()
+            return result
+        if token in (")", "/") or token.upper() in ("AND", "OR", "WITH"):
+            raise malformed()
+        if peek() == "WITH":
+            take()
+            token = f"{token} WITH {take()}"
+        return [(token,)]
+
+    result = any_of()
+    if at != len(tokens):
+        raise malformed()
+    return result
+
+
+def matches(license, text):
+    """Whether `text` holds `license`'s marker phrases and none of its look-alikes'."""
+    required, absent = MARKERS[license]
+    flat = " ".join(text.lower().split())
+    return all(phrase in flat for phrase in required) and not any(phrase in flat for phrase in absent)
+
+
+def choose(expression, files):
+    """(alternative, [(license, file name)]): the first of the expression's alternatives, in
+    PREFERENCE order, whose licenses each match one of `files`; None when none does."""
+    known = [alternative for alternative in alternatives(expression) if all(lic in MARKERS for lic in alternative)]
+    for alternative in sorted(known, key=lambda alternative: sorted(PREFERENCE.index(lic) for lic in alternative)):
+        picks = []
+        for lic in alternative:
+            found = [name for name in sorted(files) if not NOTICE_FILE_RE.match(name) and matches(lic, files[name])]
+            if not found:
+                break
+            # The most specific file: the one that matches the fewest licenses, then the shortest name.
+            picks.append((lic, min(found, key=lambda name: (sum(matches(other, files[name]) for other in MARKERS),
+                                                           len(name), name))))
+        else:
+            return alternative, picks
+    return None
+
+
+def clarifications(root):
+    """{crate name: [entries]} from licenses/clarifications.json; none when the file is absent."""
+    path = root / CLARIFICATIONS
+    entries = {}
+    if path.is_file():
+        for entry in json.loads(path.read_text(encoding="utf-8"))["crates"]:
+            entries.setdefault(entry["name"], []).append(entry)
+    return entries
+
+
+def clarified_text(root, item, errors, label):
+    """The text of a clarification's `file` under licenses/, or None after recording why not."""
+    path = (root / CLARIFICATIONS).parent / item["file"]
+    if ".." in Path(item["file"]).parts or not path.is_file():
+        errors.append(f"{label}: {CLARIFICATIONS} names {item['file']}, which licenses/ lacks")
+        return None
+    return read_any(path)
+
+
+def third_party_notices(root, data):
+    """THIRD-PARTY-NOTICES.txt from a build job's license data (D-122). ValueError names every
+    crate without an entry, every stale clarification and unreviewed font, and missing files."""
+    clarified, errors, unmatched, index, texts = clarifications(root), [], [], [], {}
+
+    def cite(text, kind, user):
+        lines = [line.rstrip() for line in text.splitlines()]
+        while lines and not lines[0]:
+            lines.pop(0)
+        while lines and not lines[-1]:
+            lines.pop()
+        entry = texts.setdefault("\n".join(lines), {"number": len(texts) + 1, "kinds": [], "users": []})
+        for key, value in (("kinds", kind), ("users", user)):
+            if value not in entry[key]:
+                entry[key].append(value)
+        return f"[{entry['number']}]"
+
+    for crate in data["crates"]:
+        label, expression, files = f"{crate['name']} {crate['version']}", crate.get("license") or "", crate["files"]
+        entries = clarified.get(crate["name"], [])
+        entry = next((item for item in entries if item.get("version") == crate["version"]), None)
+        if entries and entry is None:
+            checked = ", ".join(sorted(str(item.get("version")) for item in entries))
+            errors.append(f"{label}: {CLARIFICATIONS} checked it at {checked}; check upstream again and update the entry")
+            continue
+        entry = entry or {}
+        lines = [label, f"    License: {expression or 'none declared'}"]
+        if entry.get("texts"):
+            used = tuple(item["license"] for item in entry["texts"])
+            if expression and used not in alternatives(expression):
+                errors.append(f"{label}: {CLARIFICATIONS} names {' AND '.join(used)}, not an alternative of {expression!r}")
+                continue
+            cited = []
+            for item in entry["texts"]:
+                text = clarified_text(root, item, errors, label)
+                if text is not None and item["license"] in MARKERS and not matches(item["license"], text):
+                    errors.append(f"{label}: {item['file']} does not read as {item['license']}")
+                if text is not None:
+                    cited.append(cite(text, item["license"], label))
+            sources = ", ".join(item["source"] for item in entry["texts"])
+            lines.append(f"    Used under: {' AND '.join(used)}: {', '.join(cited)} (from {sources})")
+        else:
+            choice = choose(expression, files) if expression else None
+            if choice is None:
+                unmatched.append(f"{label} ({expression or 'no license field'}; files: {', '.join(sorted(files)) or 'none'})")
+                continue
+            alternative, picks = choice
+            lines.append(f"    Used under: {' AND '.join(alternative)}: "
+                         f"{', '.join(cite(files[name], lic, label) for lic, name in picks)}")
+        notice_files = [name for name in sorted(files) if NOTICE_FILE_RE.match(name)]
+        if notice_files:
+            lines.append(f"    Notices: {', '.join(cite(files[name], 'NOTICE', label) for name in notice_files)}")
+        for work in entry.get("bundled", []):
+            text = clarified_text(root, work, errors, label)
+            if text is not None:
+                lines.append(f"    Bundles {work['work']}, under {work['license']}: "
+                             f"{cite(text, work['license'] + ', ' + work['work'], label)} (from {work['source']})")
+        if crate.get("fonts") and not (entry.get("bundled") or entry.get("fonts_reviewed")):
+            errors.append(f"{label}: carries font files ({', '.join(crate['fonts'])}) with neither a bundled "
+                          f"entry nor a fonts_reviewed note in {CLARIFICATIONS}")
+        lines.append(f"    https://crates.io/crates/{crate['name']}/{crate['version']}")
+        if crate.get("repository"):
+            lines.append(f"    Repository: {crate['repository']}")
+        index.append("\n".join(lines))
+    works = []
+    for title, rel in EMBEDDED_WORKS:
+        if (root / rel).is_file():
+            works.append(f"{title}\n{'-' * 78}\n{read_any(root / rel).strip()}\n")
+        else:
+            errors.append(f"{rel}: missing; EMBEDDED_WORKS in scripts/release.py names it for {title}")
+    if unmatched:
+        errors.insert(0, f"no license text matches an alternative of {len(unmatched)} crate(s); add each to "
+                         f"{CLARIFICATIONS} (docs/releases.md): " + "; ".join(unmatched))
+    if errors:
+        raise ValueError("\n  ".join(["third-party notices:"] + errors))
+
+    def wrapped(text):
+        return textwrap.fill(text, 78, break_on_hyphens=False, break_long_words=False)
+
+    intro = (f"The Tungsten examples' own code is under the MIT license: LICENSE. The fonts under assets/fonts/ "
+             f"have their licenses beside them. Every binary links the Rust standard library, built by "
+             f"{data['rustc']}; its notices are in {STD_NOTICES}. This file lists the third-party works "
+             f"compiled into the engine, then the {len(index)} crates the binaries link, each with the license "
+             f"it is used under and the numbers of its texts, then each text once with the crates that use it.")
+    parts = [f"Third-party notices: Tungsten examples for {data['target']}", RULE, "", wrapped(intro), "",
+             "", "Works compiled into the engine", RULE, "", *works, "", "Crates", RULE, ""]
+    parts += [item + "\n" for item in index]
+    parts += ["", "License texts", RULE, ""]
+    for text, entry in texts.items():
+        # No-break spaces keep each crate's name and version on one line.
+        users = ", ".join(user.replace(" ", " ") for user in entry["users"])
+        parts += [f"[{entry['number']}] {'; '.join(entry['kinds'])}",
+                  wrapped("Used by " + users).replace(" ", " "), "-" * 78, text, ""]
+    return "\n".join(parts)
+
+
+def load_license_data(path, target):
+    """A build job's licenses.json for `target`, else ValueError."""
+    if not Path(path).is_file():
+        raise ValueError(f"{path}: missing; the build job's `release.py licenses` step writes it (D-122)")
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    if target is not None and data.get("target") != target:
+        raise ValueError(f"{path}: license data for {data.get('target')}, not {target}")
+    return data
+
+
+def write_notices(root, data, folder):
+    """Writes both notices files into `folder`; returns the third-party file's path."""
+    text = third_party_notices(root, data)
+    Path(folder).mkdir(parents=True, exist_ok=True)
+    write_text(Path(folder) / NOTICES, text)
+    write_text(Path(folder) / STD_NOTICES, data["rust_std_notices"])
+    return Path(folder) / NOTICES
+
+
 def package(root, tag, target, out, bin_dir=None, splitter=objcopy_split):
     if not TAG_RE.match(tag):
         raise ValueError(f"tag {tag!r} is not v<SemVer>")
@@ -514,6 +863,8 @@ def package(root, tag, target, out, bin_dir=None, splitter=objcopy_split):
     missing = [f"{level}/{binary}{suffix}" for level, binary in needed if not built(level, binary).is_file()]
     if missing:
         raise ValueError(f"{bin_dir}: missing {', '.join(missing)}")
+    licenses = load_license_data(bin_dir / LICENSE_DATA, target)
+    notices = third_party_notices(root, licenses)
     runtime = list(SHARED_RUNTIME) + [f"{d}/assets" for _, d in members if (root / d / "assets").is_dir()]
     name = f"{ARCHIVE_PREFIX}-{tag}-{target}"
     out.mkdir(parents=True, exist_ok=True)
@@ -547,6 +898,8 @@ def package(root, tag, target, out, bin_dir=None, splitter=objcopy_split):
                 shutil.copyfile(src, dest)
         text = readme(tag, target, members, suffix, levels, game_id(root))
         (stage / "README.txt").write_text(text, encoding="utf-8")
+        write_text(stage / NOTICES, notices)
+        write_text(stage / STD_NOTICES, licenses["rust_std_notices"])
         kind = "zip" if suffix else "gztar"
         archive = shutil.make_archive(str(out / name), kind, root_dir=player, base_dir=name)
         debug_archive = shutil.make_archive(str(out / f"{DEBUG_PREFIX}-{tag}-{target}"), kind,
@@ -575,6 +928,12 @@ def main(argv=None):
     command = commands.add_parser("split-debug", help="move a Linux binary's debug info to a linked file")
     command.add_argument("binary", type=Path)
     command.add_argument("debug", type=Path)
+    command = commands.add_parser("licenses", help="collect the shipped crates' license data for TARGET")
+    command.add_argument("target")
+    command.add_argument("--out", type=Path, default=Path("target") / LICENSE_DATA)
+    command = commands.add_parser("notices", help="write both third-party notices files from license data")
+    command.add_argument("data", type=Path)
+    command.add_argument("--out", type=Path, default=Path("target/notices"))
     args = parser.parse_args(argv)
     root = args.root.absolute()
 
@@ -609,6 +968,19 @@ def main(argv=None):
         elif args.command == "split-debug":
             objcopy_split(args.binary, args.debug)
             print(f"{args.binary}: debug info moved to {args.debug}, build-ids equal")
+            errors = []
+        elif args.command == "licenses":
+            data = collect_licenses(root, args.target)
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            write_text(args.out, json.dumps(data, indent=1) + "\n")
+            print(f"{args.target}: license data of {len(data['crates'])} crates and {data['rustc']}'s "
+                  f"standard library in {args.out}")
+            errors = []
+        elif args.command == "notices":
+            data = load_license_data(args.data, None)
+            path = write_notices(root, data, args.out)
+            print(f"{data['target']}: notices of {len(data['crates'])} crates and {len(EMBEDDED_WORKS)} "
+                  f"embedded work(s) in {path}, beside {STD_NOTICES}")
             errors = []
         else:
             for archive in package(root, args.tag, args.target, args.out, args.bin_dir):

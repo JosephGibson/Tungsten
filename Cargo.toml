@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.48.0"
+version = "0.49.0"
 edition = "2024"
 rust-version = "1.98.1"
 license = "MIT"
@@ -14,6 +14,7 @@ members = [
     "examples/02_bench",
     "examples/03_scene_state",
     "examples/04_shader_playground",
+    "templates/basic",
     "tools/crash-probe",
     "tools/launcher",
 ]

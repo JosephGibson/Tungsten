@@ -1,0 +1,86 @@
+{
+  "about": "License data that crate packages lack or misstate, read by scripts/release.py when it writes THIRD-PARTY-NOTICES.txt (D-122, docs/releases.md). Each entry holds for one crate version: when the graph moves the crate to another, check upstream again, refresh the files and update `version`. `texts` replaces the license texts the package lacks, `bundled` lists works the crate compiles in under another license than its own, and `fonts_reviewed` says why the package's font files never reach a binary. Files sit under licenses/, fetched upstream at the commit `source` names.",
+  "crates": [
+    {
+      "name": "dasp_sample",
+      "version": "0.11.0",
+      "why": "The package has no license file.",
+      "texts": [
+        {
+          "license": "MIT",
+          "file": "dasp_sample/LICENSE-MIT",
+          "source": "https://github.com/RustAudio/dasp/blob/97c3bb9b2363c0b46ac1633858bf1054fd02a980/LICENSE-MIT"
+        }
+      ]
+    },
+    {
+      "name": "harfrust",
+      "version": "0.5.2",
+      "why": "The package has no license file.",
+      "texts": [
+        {
+          "license": "MIT",
+          "file": "harfrust/LICENSE",
+          "source": "https://github.com/harfbuzz/harfrust/blob/0.5.2/LICENSE"
+        }
+      ]
+    },
+    {
+      "name": "profiling",
+      "version": "1.0.18",
+      "why": "The package has no license file.",
+      "texts": [
+        {
+          "license": "MIT",
+          "file": "profiling/LICENSE-MIT",
+          "source": "https://github.com/aclysma/profiling/blob/8271551172eb6fa4cba47369aedd93790c623df9/LICENSE-MIT"
+        }
+      ]
+    },
+    {
+      "name": "spirv",
+      "version": "0.4.0+sdk-1.4.341.0",
+      "why": "The package has no license file.",
+      "texts": [
+        {
+          "license": "Apache-2.0",
+          "file": "spirv/LICENSE",
+          "source": "https://github.com/gfx-rs/rspirv/blob/spirv-0.4.0/LICENSE"
+        }
+      ]
+    },
+    {
+      "name": "sctk-adwaita",
+      "version": "0.10.1",
+      "why": "src/title/ab_glyph_renderer.rs compiles in src/title/Cantarell-Regular.ttf through include_bytes!; the font is byte-equal to ttf/Cantarell-Regular.ttf at Cantarell's tag 0.0.5, while the crate's metadata and its LICENSE say MIT. Its COPYING is stored with LF line endings.",
+      "bundled": [
+        {
+          "work": "the Cantarell Regular font",
+          "license": "OFL-1.1",
+          "file": "sctk-adwaita/Cantarell-COPYING",
+          "source": "https://gitlab.gnome.org/GNOME/cantarell-fonts/-/blob/0.0.5/COPYING"
+        }
+      ]
+    },
+    {
+      "name": "cosmic-text",
+      "version": "0.19.0",
+      "fonts_reviewed": "fonts/ serves the crate's tests; src/ includes no font file."
+    },
+    {
+      "name": "fontdb",
+      "version": "0.23.0",
+      "fonts_reviewed": "tests/fonts/Tuffy.ttf serves the crate's tests; src/ includes no font file."
+    },
+    {
+      "name": "glyphon",
+      "version": "0.12.0",
+      "fonts_reviewed": "examples/Inter-Bold.ttf serves the crate's examples; src/ includes only its shader."
+    },
+    {
+      "name": "ttf-parser",
+      "version": "0.25.1",
+      "fonts_reviewed": "tests/fonts/ and examples/wasm/TTC.ttc serve the crate's tests and examples; src/ includes no font file."
+    }
+  ]
+}

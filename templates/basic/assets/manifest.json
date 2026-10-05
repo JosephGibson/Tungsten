@@ -1,0 +1,12 @@
+{
+  "sprites": {
+    "player": { "path": "sprites/player.png", "filter": "nearest" }
+  },
+  "fonts": {
+    "sans": { "path": "fonts/Inter/Inter-Regular.ttf" }
+  },
+  "font_families": {
+    "sans": { "faces": ["sans"] }
+  },
+  "font_fallback": ["sans"]
+}

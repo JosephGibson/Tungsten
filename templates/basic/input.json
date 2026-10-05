@@ -1,0 +1,8 @@
+{
+  "actions": {
+    "move_left":  [{ "kind": "key", "code": "ArrowLeft" },  { "kind": "key", "code": "KeyA" }],
+    "move_right": [{ "kind": "key", "code": "ArrowRight" }, { "kind": "key", "code": "KeyD" }],
+    "move_up":    [{ "kind": "key", "code": "ArrowUp" },    { "kind": "key", "code": "KeyW" }],
+    "move_down":  [{ "kind": "key", "code": "ArrowDown" },  { "kind": "key", "code": "KeyS" }]
+  }
+}

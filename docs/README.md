@@ -5,6 +5,7 @@ Start with the document that owns the fact you need. Code and executable checks 
 | Need | Canonical document |
 | --- | --- |
 | Build, run, project overview | [README](../README.md) |
+| Making a game from the template | [Getting started](getting-started.md) |
 | Repository rules and required checks | [AGENTS](../AGENTS.md); [renderer rules](../crates/tungsten-render/AGENTS.md) when editing that crate |
 | Task → source paths | [LLM index](LLM_INDEX.md) |
 | Current architecture and reload support | [Design](../DESIGN.md) |
