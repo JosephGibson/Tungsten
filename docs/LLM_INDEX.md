@@ -10,7 +10,7 @@ Task → file map. Open it before a broad search; read only the matching row's f
 | Deferred spawn/despawn (`D-039`) | `core/ecs/command_buffer.rs` |
 | Event lifetime/flush (`D-040`) | `core/ecs/event_queue.rs` |
 | Frame order, smoke-frame exit, winit loop (`D-018`, `D-043`) | `tungsten/app.rs`, `tungsten/lib.rs` |
-| Headless test harness, `Harness`, `FrameDraw` (`D-110`) | `tungsten/testing.rs`, `tungsten/app.rs`, `tungsten/tests/testing.rs` |
+| Headless test harness, `Harness`, `FrameDraw`, `UiHarness` (`D-110`, `D-125`) | `tungsten/testing.rs`, `tungsten/testing/ui.rs`, `tungsten/app.rs`, `tungsten/tests/testing.rs` |
 | Config parsing, env overrides | `core/config.rs`, `core/display.rs`, `tungsten.json` |
 | Logs, user folder, crash reports, `TUNGSTEN_USER_DIR`, `TUNGSTEN_TEST_PANIC` (`D-119`) | `tungsten/logging.rs`, `tungsten/user_dir.rs`, `tungsten/crash.rs`, `tungsten/app.rs`, `tools/crash-probe/` |
 | Display apply, fullscreen, vsync, frame cap (`D-043`) | `tungsten/display.rs`, `core/display.rs` |
@@ -52,7 +52,8 @@ Read `crates/tungsten-render/AGENTS.md` before editing the render crate.
 | Renderer, pools, draw, GPU timings, surface acquire | `render/lib.rs`, `render/renderer.rs`, `render/timing.rs`, `render/surface_acquire.rs` |
 | Pass order, direct present path (`D-087`) | `render/passes/order.rs`, `render/renderer.rs`, `render/screenshot.rs` |
 | Text engine and GPU halves, layout cache, retained nodes, font families and fallback (`D-085`, `D-115`–`D-117`, `D-123`) | `render/text.rs`, `render/text/engine.rs`, `render/text/nodes.rs`, `render/text/fonts.rs`, `render/text/gpu.rs`, `tungsten/asset_loader/mod.rs`, `tungsten/engine_font.rs` |
-| Neutral text types, `TextMeasure` (`D-117`) | `core/text.rs` |
+| Neutral text types, `TextMeasure`, `TextNodeStore` (`D-117`, `D-125`) | `core/text.rs` |
+| UI tree, style, layout, focus, hit testing (`D-124`, `D-125`) | `core/ui/`, `core/text.rs`, `tungsten/testing/ui.rs`, `core/tests/ui/` |
 | Render components, default sprite extract (`D-042`, `D-086`, `D-113`, `D-114`) | `core/components.rs`, `tungsten/sprite_extract.rs` |
 | Materials, post-stack (`D-058`) | `core/assets/material.rs`, `core/post.rs`, `render/material.rs`, `render/post/`, `render/shaders/stock/` |
 | SMAA (`D-059`) | `tungsten/post_aa.rs`, `render/post/smaa.rs`, `render/post/smaa_luts.rs`, `render/targets.rs`, `render/passes/order.rs` |

@@ -1056,6 +1056,13 @@ pub fn tungsten_render::TextEngine::font_epoch(&self) -> tungsten_core::text::Fo
 pub fn tungsten_render::TextEngine::new(tungsten_render::text::FontSource) -> Self
 impl tungsten_core::text::TextMeasure for tungsten_render::TextEngine
 pub fn tungsten_render::TextEngine::measure(&mut self, tungsten_core::text::TextNodeId, core::option::Option<f32>, tungsten_core::text::MeasureWidth) -> tungsten_core::text::TextMetrics
+impl tungsten_core::text::TextNodeStore for tungsten_render::TextEngine
+pub fn tungsten_render::TextEngine::commit_layout(&mut self, tungsten_core::text::TextNodeId, glam::f32::vec2::Vec2) -> tungsten_core::text::TextMetrics
+pub fn tungsten_render::TextEngine::committed(&self, tungsten_core::text::TextNodeId) -> core::option::Option<tungsten_core::text::TextMetrics>
+pub fn tungsten_render::TextEngine::create_node(&mut self) -> tungsten_core::text::TextNodeId
+pub fn tungsten_render::TextEngine::font_epoch(&self) -> tungsten_core::text::FontEpoch
+pub fn tungsten_render::TextEngine::remove_node(&mut self, tungsten_core::text::TextNodeId)
+pub fn tungsten_render::TextEngine::set_text(&mut self, tungsten_core::text::TextNodeId, &tungsten_core::text::StyledText, &tungsten_core::text::TextStyle)
 impl !core::marker::Freeze for tungsten_render::TextEngine
 impl core::marker::Send for tungsten_render::TextEngine
 impl core::marker::Sync for tungsten_render::TextEngine
@@ -1073,6 +1080,13 @@ pub fn tungsten_render::text::TextNodes<'a>::remove_node(&mut self, tungsten_cor
 pub fn tungsten_render::text::TextNodes<'a>::set_text(&mut self, tungsten_core::text::TextNodeId, &tungsten_core::text::StyledText, &tungsten_core::text::TextStyle)
 impl tungsten_core::text::TextMeasure for tungsten_render::text::TextNodes<'_>
 pub fn tungsten_render::text::TextNodes<'_>::measure(&mut self, tungsten_core::text::TextNodeId, core::option::Option<f32>, tungsten_core::text::MeasureWidth) -> tungsten_core::text::TextMetrics
+impl tungsten_core::text::TextNodeStore for tungsten_render::text::TextNodes<'_>
+pub fn tungsten_render::text::TextNodes<'_>::commit_layout(&mut self, tungsten_core::text::TextNodeId, glam::f32::vec2::Vec2) -> tungsten_core::text::TextMetrics
+pub fn tungsten_render::text::TextNodes<'_>::committed(&self, tungsten_core::text::TextNodeId) -> core::option::Option<tungsten_core::text::TextMetrics>
+pub fn tungsten_render::text::TextNodes<'_>::create_node(&mut self) -> tungsten_core::text::TextNodeId
+pub fn tungsten_render::text::TextNodes<'_>::font_epoch(&self) -> tungsten_core::text::FontEpoch
+pub fn tungsten_render::text::TextNodes<'_>::remove_node(&mut self, tungsten_core::text::TextNodeId)
+pub fn tungsten_render::text::TextNodes<'_>::set_text(&mut self, tungsten_core::text::TextNodeId, &tungsten_core::text::StyledText, &tungsten_core::text::TextStyle)
 impl<'a> core::marker::Freeze for tungsten_render::text::TextNodes<'a>
 impl<'a> core::marker::Send for tungsten_render::text::TextNodes<'a>
 impl<'a> core::marker::Sync for tungsten_render::text::TextNodes<'a>
@@ -1872,6 +1886,13 @@ pub fn tungsten_render::TextEngine::font_epoch(&self) -> tungsten_core::text::Fo
 pub fn tungsten_render::TextEngine::new(tungsten_render::text::FontSource) -> Self
 impl tungsten_core::text::TextMeasure for tungsten_render::TextEngine
 pub fn tungsten_render::TextEngine::measure(&mut self, tungsten_core::text::TextNodeId, core::option::Option<f32>, tungsten_core::text::MeasureWidth) -> tungsten_core::text::TextMetrics
+impl tungsten_core::text::TextNodeStore for tungsten_render::TextEngine
+pub fn tungsten_render::TextEngine::commit_layout(&mut self, tungsten_core::text::TextNodeId, glam::f32::vec2::Vec2) -> tungsten_core::text::TextMetrics
+pub fn tungsten_render::TextEngine::committed(&self, tungsten_core::text::TextNodeId) -> core::option::Option<tungsten_core::text::TextMetrics>
+pub fn tungsten_render::TextEngine::create_node(&mut self) -> tungsten_core::text::TextNodeId
+pub fn tungsten_render::TextEngine::font_epoch(&self) -> tungsten_core::text::FontEpoch
+pub fn tungsten_render::TextEngine::remove_node(&mut self, tungsten_core::text::TextNodeId)
+pub fn tungsten_render::TextEngine::set_text(&mut self, tungsten_core::text::TextNodeId, &tungsten_core::text::StyledText, &tungsten_core::text::TextStyle)
 impl !core::marker::Freeze for tungsten_render::TextEngine
 impl core::marker::Send for tungsten_render::TextEngine
 impl core::marker::Sync for tungsten_render::TextEngine

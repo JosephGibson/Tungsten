@@ -50,6 +50,18 @@
       ]
     },
     {
+      "name": "taffy",
+      "version": "0.14.0",
+      "why": "The package has no license file.",
+      "texts": [
+        {
+          "license": "MIT",
+          "file": "taffy/LICENSE",
+          "source": "https://github.com/DioxusLabs/taffy/blob/77f385683c1d698c91a23a259f87fdddf26925fb/LICENSE"
+        }
+      ]
+    },
+    {
       "name": "sctk-adwaita",
       "version": "0.10.1",
       "why": "src/title/ab_glyph_renderer.rs compiles in src/title/Cantarell-Regular.ttf through include_bytes!; the font is byte-equal to ttf/Cantarell-Regular.ttf at Cantarell's tag 0.0.5, while the crate's metadata and its LICENSE say MIT. Its COPYING is stored with LF line endings.",

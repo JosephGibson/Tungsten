@@ -791,7 +791,7 @@ dependencies = [
 
 [[package]]
 name = "example-01-platformer"
-version = "0.49.0"
+version = "0.50.0"
 dependencies = [
  "anyhow",
  "glam",
@@ -800,7 +800,7 @@ dependencies = [
 
 [[package]]
 name = "example-02-bench"
-version = "0.49.0"
+version = "0.50.0"
 dependencies = [
  "anyhow",
  "glam",
@@ -811,7 +811,7 @@ dependencies = [
 
 [[package]]
 name = "example-03-scene-state"
-version = "0.49.0"
+version = "0.50.0"
 dependencies = [
  "anyhow",
  "glam",
@@ -820,7 +820,7 @@ dependencies = [
 
 [[package]]
 name = "example-04-shader-playground"
-version = "0.49.0"
+version = "0.50.0"
 dependencies = [
  "anyhow",
  "glam",
@@ -2808,6 +2808,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "taffy"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "639627c87f43b9181c811f40a6296409e093a17bc761214cba3c15df74f86b99"
+dependencies = [
+ "arrayvec",
+ "serde",
+ "slotmap",
+]
+
+[[package]]
 name = "termcolor"
 version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2954,7 +2965,7 @@ dependencies = [
 
 [[package]]
 name = "tungsten"
-version = "0.49.0"
+version = "0.50.0"
 dependencies = [
  "anyhow",
  "cpal",
@@ -2972,7 +2983,7 @@ dependencies = [
 
 [[package]]
 name = "tungsten-core"
-version = "0.49.0"
+version = "0.50.0"
 dependencies = [
  "bytemuck",
  "criterion",
@@ -2981,12 +2992,13 @@ dependencies = [
  "serde",
  "serde_json",
  "symphonia",
+ "taffy",
  "thiserror 2.0.21",
 ]
 
 [[package]]
 name = "tungsten-crash-probe"
-version = "0.49.0"
+version = "0.50.0"
 dependencies = [
  "log",
  "tungsten",
@@ -2994,11 +3006,11 @@ dependencies = [
 
 [[package]]
 name = "tungsten-launcher"
-version = "0.49.0"
+version = "0.50.0"
 
 [[package]]
 name = "tungsten-render"
-version = "0.49.0"
+version = "0.50.0"
 dependencies = [
  "bytemuck",
  "criterion",

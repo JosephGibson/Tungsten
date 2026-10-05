@@ -434,6 +434,36 @@ pub trait TextMeasure {
     ) -> TextMetrics;
 }
 
+/// Retained text nodes for layout (`D-125`): creation, text and style, the
+/// committed box and the font epoch, beside [`TextMeasure`]'s measurement.
+/// The renderer's text engine and the facade it lends implement it; core's
+/// UI tree drives its labels through it and never calls render (`D-007`).
+pub trait TextNodeStore: TextMeasure {
+    /// The current font epoch. A commit made under an older one is stale,
+    /// and [`Self::committed`] no longer returns it.
+    fn font_epoch(&self) -> FontEpoch;
+
+    /// A new node with no text; it measures [`TextMetrics::default()`] until
+    /// [`Self::set_text`].
+    fn create_node(&mut self) -> TextNodeId;
+
+    /// Removes `node`. Its ID never names a node again; a stale ID does
+    /// nothing.
+    fn remove_node(&mut self, node: TextNodeId);
+
+    /// Sets `node`'s text and base style. Equal input does no work; any
+    /// other text or style drops the node's layout and its commit.
+    fn set_text(&mut self, node: TextNodeId, text: &StyledText, style: &TextStyle);
+
+    /// Lays `node` out in its final box, `size.x` wide and `size.y` high,
+    /// and keeps that layout for drawing.
+    fn commit_layout(&mut self, node: TextNodeId, size: Vec2) -> TextMetrics;
+
+    /// The metrics of `node`'s last commit while it still holds, under the
+    /// current font epoch and with no later text or style change.
+    fn committed(&self, node: TextNodeId) -> Option<TextMetrics>;
+}
+
 #[cfg(test)]
 #[path = "tests/text.rs"]
 mod tests;

@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.49.0"
+version = "0.50.0"
 edition = "2024"
 rust-version = "1.98.1"
 license = "MIT"
@@ -39,6 +39,10 @@ symphonia = { version = "0.6", default-features = false, features = ["ogg", "vor
 
 # Math primitives (D-015 rule 3)
 glam = "0.33.10"
+
+# UI layout solver behind core's own `LayoutStyle` types (D-015 rule 3, D-124).
+# No grid, float, calc, content-size or detailed-info features, so no smallvec.
+taffy = { version = "0.14.0", default-features = false, features = ["std", "taffy_tree", "flexbox", "block_layout"] }
 
 # Error handling
 thiserror = "2"

@@ -17,6 +17,7 @@ pub mod rng;
 pub mod text;
 pub mod time;
 pub mod tween;
+pub mod ui;
 
 pub use assets::{
     AnimationData, AnimationRegistry, AnimationState, AssetId, AssetRegistry, AudioHandle,
@@ -63,11 +64,12 @@ pub use post::{
 pub use rng::{Pcg32, splitmix64};
 pub use text::{
     EllipsisAt, FontEpoch, FontFeature, FontFeatures, MeasureWidth, StyledText, TextAlign,
-    TextHinting, TextLayout, TextMeasure, TextMetrics, TextNodeId, TextOverflow, TextSpan,
-    TextStyle, TextWrap,
+    TextHinting, TextLayout, TextMeasure, TextMetrics, TextNodeId, TextNodeStore, TextOverflow,
+    TextSpan, TextStyle, TextWrap,
 };
 pub use time::DeltaTime;
 pub use tween::{
     Easing, IntSlot, ScalarSlot, Tween, TweenChannel, TweenComplete, TweenDirection, TweenRepeat,
     UniformOverrideBlock, Vec4Slot, lerp_f32, lerp_u8,
 };
+pub use ui::{UiTree, WidgetId};

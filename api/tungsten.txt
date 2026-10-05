@@ -521,6 +521,31 @@ impl core::marker::Unpin for tungsten::testing::Harness
 impl core::marker::UnsafeUnpin for tungsten::testing::Harness
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten::testing::Harness
 impl !core::panic::unwind_safe::UnwindSafe for tungsten::testing::Harness
+pub struct tungsten::testing::UiHarness
+impl tungsten::testing::UiHarness
+pub fn tungsten::testing::UiHarness::dump(&self) -> alloc::string::String
+pub fn tungsten::testing::UiHarness::focus(&mut self, tungsten_core::ui::id::WidgetId) -> bool
+pub fn tungsten::testing::UiHarness::focus_next(&mut self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
+pub fn tungsten::testing::UiHarness::focus_prev(&mut self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
+pub fn tungsten::testing::UiHarness::harness(&self) -> &tungsten::testing::Harness
+pub fn tungsten::testing::UiHarness::harness_mut(&mut self) -> &mut tungsten::testing::Harness
+pub fn tungsten::testing::UiHarness::hit(&self, f32, f32) -> core::option::Option<tungsten_core::ui::id::WidgetId>
+pub fn tungsten::testing::UiHarness::layout(&mut self) -> tungsten_core::ui::tree::LayoutStats
+pub fn tungsten::testing::UiHarness::new(tungsten::app::App) -> Self
+pub fn tungsten::testing::UiHarness::rect(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::geometry::Rect>
+pub fn tungsten::testing::UiHarness::step(&mut self, u32) -> u32
+pub fn tungsten::testing::UiHarness::text(&self) -> &tungsten_core::ui::measure::FixedAdvanceMeasure
+pub fn tungsten::testing::UiHarness::tree(&self) -> &tungsten_core::ui::tree::UiTree
+pub fn tungsten::testing::UiHarness::tree_mut(&mut self) -> &mut tungsten_core::ui::tree::UiTree
+pub fn tungsten::testing::UiHarness::world(&self) -> &tungsten_core::ecs::world::World
+pub fn tungsten::testing::UiHarness::world_mut(&mut self) -> &mut tungsten_core::ecs::world::World
+impl !core::marker::Freeze for tungsten::testing::UiHarness
+impl !core::marker::Send for tungsten::testing::UiHarness
+impl !core::marker::Sync for tungsten::testing::UiHarness
+impl core::marker::Unpin for tungsten::testing::UiHarness
+impl core::marker::UnsafeUnpin for tungsten::testing::UiHarness
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten::testing::UiHarness
+impl !core::panic::unwind_safe::UnwindSafe for tungsten::testing::UiHarness
 pub mod tungsten::transition
 pub enum tungsten::transition::TransitionEffect
 pub tungsten::transition::TransitionEffect::Dissolve
