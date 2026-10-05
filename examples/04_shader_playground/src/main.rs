@@ -27,6 +27,8 @@
 //! drawn through the root manifest's `damage_flash`, red and blue (`pair`) or
 //! blue twice (`same`), for `tests/post_regression.rs`.
 
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -126,8 +128,6 @@ struct BulletTrail {
 }
 
 fn main() -> anyhow::Result<()> {
-    env_logger::init();
-
     let mut config = Config::load("tungsten.json")?;
     config.window.title = "Shader Playground — M26 / M27 / M28".to_string();
 

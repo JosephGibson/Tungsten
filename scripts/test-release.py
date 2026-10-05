@@ -3,9 +3,11 @@
 
 import contextlib
 import datetime
+import hashlib
 import importlib.util
 import io
 import re
+import struct
 import tarfile
 import tempfile
 import unittest
@@ -15,6 +17,7 @@ from pathlib import Path
 spec = importlib.util.spec_from_file_location("release", Path(__file__).with_name("release.py"))
 rel = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(rel)
+LAUNCHER = rel.LAUNCHER
 
 CARGO = """\
 [workspace.dependencies.decoy]
@@ -59,6 +62,66 @@ Summary: lighting ([plan](docs/plans/x.md)).
 - First.
 """
 DATE = datetime.date(2026, 10, 1)
+BUILD_ID = bytes(range(20))
+GUID = bytes.fromhex("33221100554477668899aabbccddeeff")
+
+
+def synthetic_elf(build_id=None, sections=()):
+    """A 64-bit little-endian ELF: a GNU build-id note when given, then the named sections."""
+    body = []
+    if build_id is not None:
+        note = struct.pack("<III", 4, len(build_id), 3) + b"GNU\0" + build_id
+        body.append((".note.gnu.build-id", 7, note + b"\0" * (-len(note) % 4), 4))
+    body += [(name, 1, b"\x01" * 16, 1) for name in sections]
+    names, offsets = b"\0", []
+    for name in [entry[0] for entry in body] + [".shstrtab"]:
+        offsets.append(len(names))
+        names += name.encode() + b"\0"
+    body.append((".shstrtab", 3, names, 1))
+    data = bytearray(64)
+    headers = [bytes(64)]
+    for (_, kind, content, align), name in zip(body, offsets):
+        headers.append(struct.pack("<IIQQQQIIQQ", name, kind, 0, 0, len(data), len(content), 0, 0, align, 0))
+        data += content
+    shoff = len(data)
+    data += b"".join(headers)
+    struct.pack_into("<4sBB", data, 0, b"\x7fELF", 2, 1)
+    struct.pack_into("<Q", data, 0x28, shoff)
+    struct.pack_into("<HHH", data, 0x3A, 64, len(headers), len(headers) - 1)
+    return bytes(data)
+
+
+def synthetic_pe(guid, age, pdb_path):
+    """A PE32+ file with one section holding its debug directory and a CodeView record."""
+    pe, optional_size = 0x40, 240
+    optional, sections = pe + 24, pe + 24 + optional_size
+    name = pdb_path.encode() + b"\0"
+    data = bytearray(0x434 + len(name))
+    data[0:2] = b"MZ"
+    struct.pack_into("<I", data, 0x3C, pe)
+    data[pe:pe + 4] = b"PE\0\0"
+    struct.pack_into("<HH", data, pe + 4, 0x8664, 1)
+    struct.pack_into("<H", data, pe + 20, optional_size)
+    struct.pack_into("<H", data, optional, 0x20B)
+    struct.pack_into("<I", data, optional + 108, 16)
+    struct.pack_into("<II", data, optional + 112 + 8 * 6, 0x1000, 28)
+    data[sections:sections + 8] = b".rdata\0\0"
+    struct.pack_into("<IIII", data, sections + 8, 0x200, 0x1000, 0x200, 0x400)
+    struct.pack_into("<IIII", data, 0x400 + 12, 2, 24 + len(name), 0, 0x41C)
+    data[0x41C:0x420] = b"RSDS"
+    data[0x420:0x430] = guid
+    struct.pack_into("<I", data, 0x430, age)
+    data[0x434:] = name
+    return bytes(data)
+
+
+def synthetic_pdb(guid, age, block_size=512):
+    """An MSF 7.0 file: superblock, two free-page maps, the block map, the directory, the info stream."""
+    info = struct.pack("<III", 20000404, 0, age) + guid
+    directory = struct.pack("<IIII", 2, 0, len(info), 5)
+    blocks = [rel.MSF_MAGIC + struct.pack("<6I", block_size, 1, 6, len(directory), 0, 3),
+              b"", b"", struct.pack("<I", 4), directory, info]
+    return b"".join(block.ljust(block_size, b"\0") for block in blocks)
 
 
 class Release(unittest.TestCase):
@@ -79,8 +142,18 @@ class Release(unittest.TestCase):
     def write(self, path, text):
         target = self.root / path
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(text)
+        if isinstance(text, bytes):
+            target.write_bytes(text)
+        else:
+            target.write_text(text)
         return target
+
+    def fake_split(self, binary, debug):
+        """Stands in for objcopy: marks the binary stripped and writes its debug file."""
+        self.splits.append((binary.parent.name, binary.name, debug and debug.name))
+        if debug is not None:
+            debug.write_bytes(b"debug of " + binary.read_bytes())
+        binary.write_bytes(binary.read_bytes() + b" (stripped)")
 
     def edit(self, path, old, new):
         text = (self.root / path).read_text()
@@ -240,18 +313,29 @@ class Release(unittest.TestCase):
         self.assertEqual([d for _, d in rel.examples(self.root)], ["examples/01_demo", "examples/02_bare"])
 
     def bins(self, target, suffix, levels=("x86-64-v3", "x86-64")):
+        """Fake builds per level; on Windows each example is a PE whose PDB sits beside it."""
+        self.splits = []
         for level in levels:
             release = f"target/{level}/{target}/release"
             for name in ("example-01-demo", "example-02-bare", "tungsten-launcher"):
-                self.write(f"{release}/{name}{suffix}", f"{level} {name}").chmod(0o644)
+                content = f"{level} {name}".encode()
+                if suffix and name != LAUNCHER:
+                    guid, pdb = hashlib.md5(content).digest(), name.replace("-", "_") + ".pdb"
+                    self.write(f"{release}/{pdb}", synthetic_pdb(guid, 1))
+                    content = synthetic_pe(guid, 1, f"D:\\a\\{level}\\release\\deps\\{pdb}")
+                self.write(f"{release}/{name}{suffix}", content).chmod(0o644)
             self.write(f"{release}/example-01-demo.d", "dep-info")
+
+    def package(self, tag, target):
+        return rel.package(self.root, tag, target, self.root / "dist", splitter=self.fake_split)
 
     def test_package_linux_archive_layout(self):
         linux = "x86_64-unknown-linux-gnu"
         self.bins(linux, "")
-        archive = rel.package(self.root, "v0.26.0", linux, self.root / "dist")
+        archive, debug = self.package("v0.26.0", linux)
         top = f"tungsten-examples-v0.26.0-{linux}"
         self.assertEqual(archive.name, f"{top}.tar.gz")
+        self.assertEqual(debug.name, f"tungsten-debug-v0.26.0-{linux}.tar.gz")
         with tarfile.open(archive) as tar:
             members = {m.name.split("/", 1)[1]: m for m in tar.getmembers() if "/" in m.name}
             launcher = tar.extractfile(f"{top}/example-01-demo").read()
@@ -262,20 +346,40 @@ class Release(unittest.TestCase):
                      "assets/manifest.json", "assets/sprites/a.png", "examples/01_demo/assets/manifest.json"):
             self.assertIn(path, members)
         # Launcher copies come from the portable build; each level keeps its own binaries.
-        self.assertEqual(launcher, b"x86-64 tungsten-launcher")
-        self.assertEqual(fast, b"x86-64-v3 example-01-demo")
+        # Every copy is stripped; only the examples' debug info is kept.
+        self.assertEqual(launcher, b"x86-64 tungsten-launcher (stripped)")
+        self.assertEqual(fast, b"x86-64-v3 example-01-demo (stripped)")
+        self.assertFalse([path for path in members if path.endswith((".debug", ".pdb"))])
         for path in ("example-01-demo", "bin/x86-64-v3/example-01-demo", "bin/x86-64/example-02-bare"):
             self.assertEqual(members[path].mode & 0o111, 0o111, path)
         for path in ("example-01-demo.d", "bin/x86-64/example-01-demo.d", "tungsten-launcher",
                      "bin/x86-64/tungsten-launcher", "examples/02_bare/assets"):
             self.assertNotIn(path, members)
-        self.assertIn("(x86-64-v3, x86-64)", readme)
+        self.assertIn("(x86-64-v3, x86-64), names it on the console,", readme)
         self.assertIn("  ./example-01-demo", readme)
+
+    def test_package_linux_debug_archive_extracts_over_the_player_archive(self):
+        linux = "x86_64-unknown-linux-gnu"
+        self.bins(linux, "")
+        _, debug = self.package("v0.26.0", linux)
+        top = f"tungsten-examples-v0.26.0-{linux}"
+        with tarfile.open(debug) as tar:
+            files = {m.name: m for m in tar.getmembers() if m.isfile()}
+            content = tar.extractfile(f"{top}/bin/x86-64/example-02-bare.debug").read()
+        self.assertEqual(sorted(files), sorted(f"{top}/bin/{level}/{name}.debug"
+                                               for level in ("x86-64", "x86-64-v3")
+                                               for name in ("example-01-demo", "example-02-bare")))
+        self.assertEqual(content, b"debug of x86-64 example-02-bare")
+        # Each launcher copy is stripped with no debug file; each example build is split.
+        self.assertEqual(sorted(self.splits, key=str), sorted(
+            [(top, name, None) for name in ("example-01-demo", "example-02-bare")]
+            + [(level, name, f"{name}.debug") for level in ("x86-64-v3", "x86-64")
+               for name in ("example-01-demo", "example-02-bare")], key=str))
 
     def test_package_windows_zip_and_missing_binary(self):
         windows = "x86_64-pc-windows-msvc"
         self.bins(windows, ".exe")
-        archive = rel.package(self.root, "v0.0.0-test", windows, self.root / "dist")
+        archive, debug = self.package("v0.0.0-test", windows)
         top = f"tungsten-examples-v0.0.0-test-{windows}"
         self.assertEqual(archive.suffix, ".zip")
         with zipfile.ZipFile(archive) as zipped:
@@ -283,22 +387,106 @@ class Release(unittest.TestCase):
             readme = zipped.read(f"{top}/README.txt").decode()
         self.assertIn(f"{top}/example-02-bare.exe", names)
         self.assertIn(f"{top}/bin/x86-64-v3/example-02-bare.exe", names)
+        self.assertFalse([name for name in names if name.endswith((".debug", ".pdb"))])
         self.assertIn("  .\\example-01-demo.exe", readme)
+        self.assertNotIn("console,", readme)
+        # Nothing is split on Windows: the PDBs already hold the debug info.
+        self.assertEqual(self.splits, [])
+        with zipfile.ZipFile(debug) as zipped:
+            self.assertEqual(debug.name, f"tungsten-debug-v0.0.0-test-{windows}.zip")
+            self.assertEqual(sorted(n for n in zipped.namelist() if not n.endswith("/")),
+                             sorted(f"{top}/bin/{level}/{name}.pdb" for level in ("x86-64", "x86-64-v3")
+                                    for name in ("example_01_demo", "example_02_bare")))
         with self.assertRaisesRegex(ValueError, "not a target triple"):
             rel.package(self.root, "v0.0.0-test", "../escape", self.root / "dist")
         (self.root / f"target/x86-64-v3/{windows}/release/example-02-bare.exe").unlink()
         with self.assertRaisesRegex(ValueError, "missing x86-64-v3/example-02-bare.exe"):
-            rel.package(self.root, "v0.0.0-test", windows, self.root / "dist")
+            self.package("v0.0.0-test", windows)
+
+    def test_package_windows_needs_each_pdb_to_match_its_record(self):
+        windows = "x86_64-pc-windows-msvc"
+        self.bins(windows, ".exe")
+        pdb = self.root / f"target/x86-64/{windows}/release/example_02_bare.pdb"
+        pdb.write_bytes(synthetic_pdb(GUID, 1))
+        with self.assertRaisesRegex(ValueError, "example_02_bare.pdb: GUID and age differ"):
+            self.package("v0.0.0-test", windows)
+        pdb.unlink()
+        with self.assertRaisesRegex(ValueError, "names example_02_bare.pdb, which .* lacks"):
+            self.package("v0.0.0-test", windows)
+
+    def test_readme_names_the_log_folders(self):
+        self.write("tungsten.json", '{ "game": { "id": "my-game" } }')
+        for target, suffix, folder in (("x86_64-unknown-linux-gnu", "", "~/.local/state/my-game/logs"),
+                                       ("x86_64-pc-windows-msvc", ".exe", "%LOCALAPPDATA%\\my-game\\logs")):
+            with self.subTest(target=target):
+                self.bins(target, suffix)
+                archive, _ = self.package("v0.26.0", target)
+                top = f"tungsten-examples-v0.26.0-{target}"
+                if suffix:
+                    with zipfile.ZipFile(archive) as zipped:
+                        readme = zipped.read(f"{top}/README.txt").decode()
+                else:
+                    with tarfile.open(archive) as tar:
+                        readme = tar.extractfile(f"{top}/README.txt").read().decode()
+                self.assertIn(folder, readme)
+                self.assertIn("TUNGSTEN_USER_DIR=<folder> moves them to <folder>/logs.", readme)
+        # Without a game id the README names no folder.
+        self.write("tungsten.json", "{}")
+        self.assertNotIn("logs", rel.readme("v0.26.0", "t", [("example-01-demo", "")], "", ["x86-64"],
+                                            rel.game_id(self.root)))
+
+    def test_elf_build_id_and_split_checks(self):
+        self.assertEqual(rel.elf_build_id(synthetic_elf(BUILD_ID, [".debug_line"])), BUILD_ID)
+        self.assertIsNone(rel.elf_build_id(synthetic_elf(None, [".text"])))
+        self.assertTrue(rel.has_section(synthetic_elf(None, [".debug_line"]), ".debug_line"))
+        self.assertFalse(rel.has_section(synthetic_elf(BUILD_ID), ".debug_line"))
+        binary = self.write("split/game", synthetic_elf(BUILD_ID, [".text"]))
+        debug = self.write("split/game.debug", synthetic_elf(BUILD_ID, [".debug_info", ".debug_line"]))
+        rel.check_split(binary, debug)
+        self.write("split/game.debug", synthetic_elf(bytes(20), [".debug_line"]))
+        with self.assertRaisesRegex(ValueError, r"split/game: build-id 000102.* differs from game\.debug's"):
+            rel.check_split(binary, debug)
+        self.write("split/game.debug", synthetic_elf(BUILD_ID, [".debug_info"]))
+        with self.assertRaisesRegex(ValueError, r"no \.debug_line section; was game built stripped"):
+            rel.check_split(binary, debug)
+        self.write("split/game", synthetic_elf(None, [".text"]))
+        with self.assertRaisesRegex(ValueError, "split/game: no GNU build-id"):
+            rel.check_split(binary, debug)
+        self.write("split/game", "#!/bin/sh\n")
+        with self.assertRaisesRegex(ValueError, "not a 64-bit little-endian ELF"):
+            rel.check_split(binary, debug)
+
+    def test_pdb_identity_readers(self):
+        path = "D:\\a\\x86-64\\release\\deps\\game.pdb"
+        record = rel.codeview(synthetic_pe(GUID, 3, path))
+        self.assertEqual(record, rel.CodeView(GUID, 3, path))
+        self.assertIsNone(rel.codeview(b"MZ" + bytes(62)))
+        self.assertIsNone(rel.codeview(synthetic_elf(BUILD_ID)))
+        self.assertEqual(rel.pdb_info(synthetic_pdb(GUID, 3)), (GUID, 3))
+        self.assertEqual(rel.pdb_info(synthetic_pdb(GUID, 3, block_size=4096)), (GUID, 3))
+        with self.assertRaisesRegex(ValueError, "not an MSF 7.0 PDB"):
+            rel.pdb_info(b"Microsoft C/C++ program database 2.00\r\n")
+        exe = self.write("win/game.exe", synthetic_pe(GUID, 3, path))
+        self.write("win/game.pdb", synthetic_pdb(GUID, 3))
+        self.assertEqual(rel.matching_pdb(exe, self.root / "win"), (self.root / "win/game.pdb", "game.pdb"))
+        for guid, age in ((GUID, 4), (bytes(16), 3)):
+            with self.subTest(guid=guid.hex(), age=age):
+                self.write("win/game.pdb", synthetic_pdb(guid, age))
+                with self.assertRaisesRegex(ValueError, "game.pdb: GUID and age differ"):
+                    rel.matching_pdb(exe, self.root / "win")
+        self.write("win/game.exe", "MZ text")
+        with self.assertRaisesRegex(ValueError, "no CodeView record"):
+            rel.matching_pdb(exe, self.root / "win")
 
     def test_package_needs_the_portable_baseline_and_launcher(self):
         linux = "x86_64-unknown-linux-gnu"
         self.bins(linux, "", levels=("x86-64-v3",))
         with self.assertRaisesRegex(ValueError, "no x86-64/x86_64-unknown-linux-gnu/release build"):
-            rel.package(self.root, "v0.26.0", linux, self.root / "dist")
+            self.package("v0.26.0", linux)
         self.bins(linux, "", levels=("x86-64",))
         (self.root / f"target/x86-64/{linux}/release/tungsten-launcher").unlink()
         with self.assertRaisesRegex(ValueError, "missing x86-64/tungsten-launcher"):
-            rel.package(self.root, "v0.26.0", linux, self.root / "dist")
+            self.package("v0.26.0", linux)
 
     def test_levels_match_the_launcher(self):
         source = (Path(__file__).resolve().parent.parent / "tools/launcher/src/main.rs").read_text()

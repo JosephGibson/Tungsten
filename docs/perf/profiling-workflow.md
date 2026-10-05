@@ -101,7 +101,7 @@ The directory name carries the preset only when it differs from the row's own pr
 
 ## Telemetry lines
 
-`TUNGSTEN_PERF_LOG=1` with `RUST_LOG=tungsten::app=debug,bench=debug` logs one group per frame. The parser strips the `env_logger` prefix and attaches each companion line to the preceding `frame:` line; missing companions are tolerated. System and pass names are literal keys.
+`TUNGSTEN_PERF_LOG=1` with `RUST_LOG=tungsten::app=debug,bench=debug` logs one group per frame. The engine logger writes a release build's records to stderr only while `RUST_LOG` is set, and smoke mode gives a run no user folder, so a capture writes no log file and the runner reads stderr as before (`D-119`). The parser strips the `env_logger` prefix and attaches each companion line to the preceding `frame:` line; missing companions are tolerated. System and pass names are literal keys.
 
 ```text
 backend: Vulkan adapter: AMD Radeon 660M (RADV REMBRANDT) present_mode: immediate max_frame_latency: 1 timestamp_query: true

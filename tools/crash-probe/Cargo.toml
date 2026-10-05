@@ -1,16 +1,15 @@
 [package]
-name = "example-02-bench"
+name = "tungsten-crash-probe"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
+description = "Runs the engine's logger and crash report in one process per mode, for its tests and the release probe (D-119)"
 publish = false
 
 [dependencies]
 tungsten = { workspace = true }
-glam = { workspace = true }
-anyhow = { workspace = true }
 log = { workspace = true }
-serde_json = { workspace = true }
 
 [lints]
 workspace = true

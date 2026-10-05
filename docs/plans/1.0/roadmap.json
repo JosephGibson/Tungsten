@@ -1098,9 +1098,9 @@
       "id": "q14",
       "text": "Logs and crash reports: on by default in App, or one opt-in call?",
       "by": "W11a starts",
-      "default": "Asked in the W11a plan",
-      "state": "open",
-      "answer": ""
+      "default": "On by default: App::new installs the engine logger unless one is set, and the crash hook where a user folder exists",
+      "state": "default",
+      "answer": "On by default; a game opts out by setting its own logger first (D-119)"
     },
     {
       "id": "q15",

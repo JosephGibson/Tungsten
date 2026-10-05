@@ -2,6 +2,8 @@
 //!
 //! Manifests: shared root plus example-local tilemap/sprites. Hot reload: assets + `input.json`.
 
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod burning;
 mod extract;
 mod fireball;
@@ -36,8 +38,6 @@ fn apply_example_window_defaults(config: &mut Config) {
 }
 
 fn main() -> anyhow::Result<()> {
-    env_logger::init();
-
     let mut config = Config::load("tungsten.json")?;
     apply_example_window_defaults(&mut config);
     let mut app = App::new(config)?;

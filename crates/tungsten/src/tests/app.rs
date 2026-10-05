@@ -423,3 +423,23 @@ fn a_pressed_engine_exit_binding_ends_the_frame_after_update() {
         .key_down(KeyCode::Escape);
     assert_eq!(headless_frame(&mut app), FrameEnd::ExitRequested);
 }
+
+#[test]
+fn an_invalid_game_id_set_in_code_is_an_error_naming_the_field() {
+    let mut config = Config::default();
+    config.game.id = Some("../x".to_string());
+    let err = App::new(config)
+        .err()
+        .expect("App::new accepted game.id '../x'");
+    assert!(err.to_string().contains("game.id"), "{err}");
+}
+
+#[test]
+fn an_invalid_logging_level_set_in_code_is_an_error_naming_the_field() {
+    let mut config = Config::default();
+    config.logging.level = "verbose".to_string();
+    let err = App::new(config)
+        .err()
+        .expect("App::new accepted logging.level 'verbose'");
+    assert!(err.to_string().contains("logging.level"), "{err}");
+}

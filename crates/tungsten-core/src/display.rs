@@ -170,38 +170,58 @@ impl DisplayConfig {
         resolved
     }
 
-    fn from_json_value(value: Value) -> Self {
+    /// Parses the display section, pushing a message to `warnings` for each
+    /// value that falls back.
+    pub(crate) fn from_json_value(value: Value, warnings: &mut Vec<String>) -> Self {
         let Value::Object(map) = value else {
-            log::warn!("Config display section must be an object; ignoring invalid value");
+            warnings
+                .push("Config display section must be an object; ignoring invalid value".into());
             return Self::default();
         };
 
-        Self::from_json_object(&map)
+        Self::from_json_object(&map, warnings)
     }
 
-    fn from_json_object(map: &Map<String, Value>) -> Self {
+    fn from_json_object(map: &Map<String, Value>, warnings: &mut Vec<String>) -> Self {
         Self {
-            resolution: map.get("resolution").and_then(parse_resolution),
-            display_mode: map.get("display_mode").and_then(parse_display_mode),
+            resolution: map
+                .get("resolution")
+                .and_then(|value| parse_resolution(value, warnings)),
+            display_mode: map
+                .get("display_mode")
+                .and_then(|value| parse_display_mode(value, warnings)),
             vsync: map
                 .get("vsync")
-                .and_then(|value| parse_bool_field("display.vsync", value)),
-            present_mode: map.get("present_mode").and_then(parse_present_mode),
-            max_frame_latency: map
-                .get("max_frame_latency")
-                .and_then(|value| parse_optional_positive_u32("display.max_frame_latency", value)),
-            scale_mode: map.get("scale_mode").and_then(parse_scale_mode),
-            frame_rate_cap: map.get("frame_rate_cap").and_then(parse_frame_rate_cap),
+                .and_then(|value| parse_bool_field("display.vsync", value, warnings)),
+            present_mode: map
+                .get("present_mode")
+                .and_then(|value| parse_present_mode(value, warnings)),
+            max_frame_latency: map.get("max_frame_latency").and_then(|value| {
+                parse_optional_positive_u32("display.max_frame_latency", value, warnings)
+            }),
+            scale_mode: map
+                .get("scale_mode")
+                .and_then(|value| parse_scale_mode(value, warnings)),
+            frame_rate_cap: map
+                .get("frame_rate_cap")
+                .and_then(|value| parse_frame_rate_cap(value, warnings)),
         }
     }
 }
 
+/// Logs each fallback; `Config::load` parses the section apart and keeps
+/// them for `Config::take_load_warnings` instead (`D-119`).
 impl<'de> Deserialize<'de> for DisplayConfig {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
-        Ok(Self::from_json_value(Value::deserialize(deserializer)?))
+        let mut warnings = Vec::new();
+        let config = Self::from_json_value(Value::deserialize(deserializer)?, &mut warnings);
+        for warning in warnings {
+            log::warn!("{warning}");
+        }
+        Ok(config)
     }
 }
 
@@ -213,30 +233,33 @@ pub enum DisplayValidationError {
     InvalidFrameRateCap(u32),
 }
 
-fn parse_display_mode(value: &Value) -> Option<DisplayMode> {
+fn parse_display_mode(value: &Value, warnings: &mut Vec<String>) -> Option<DisplayMode> {
     parse_named_enum(
         "display.display_mode",
         value,
         DisplayMode::from_str_name,
         DISPLAY_MODE_EXPECTED,
+        warnings,
     )
 }
 
-fn parse_scale_mode(value: &Value) -> Option<ScaleMode> {
+fn parse_scale_mode(value: &Value, warnings: &mut Vec<String>) -> Option<ScaleMode> {
     parse_named_enum(
         "display.scale_mode",
         value,
         ScaleMode::from_str_name,
         SCALE_MODE_EXPECTED,
+        warnings,
     )
 }
 
-fn parse_present_mode(value: &Value) -> Option<PresentModeConfig> {
+fn parse_present_mode(value: &Value, warnings: &mut Vec<String>) -> Option<PresentModeConfig> {
     parse_named_enum(
         "display.present_mode",
         value,
         |raw| raw.parse::<PresentModeConfig>().ok(),
         PRESENT_MODE_EXPECTED,
+        warnings,
     )
 }
 
@@ -245,6 +268,7 @@ fn parse_named_enum<T>(
     value: &Value,
     parser: impl Fn(&str) -> Option<T>,
     expected: &str,
+    warnings: &mut Vec<String>,
 ) -> Option<T> {
     match value {
         Value::Null => None,
@@ -252,140 +276,149 @@ fn parse_named_enum<T>(
             if let Some(parsed) = parser(raw) {
                 Some(parsed)
             } else {
-                log::warn!(
+                warnings.push(format!(
                     "Config {field_name}='{raw}' is invalid; expected {expected}; falling back"
-                );
+                ));
                 None
             }
         }
         other => {
-            log::warn!(
+            warnings.push(format!(
                 "Config {}={} is invalid; expected {}; falling back",
                 field_name,
                 describe_json_value(other),
                 expected
-            );
+            ));
             None
         }
     }
 }
 
-fn parse_bool_field(field_name: &str, value: &Value) -> Option<bool> {
+fn parse_bool_field(field_name: &str, value: &Value, warnings: &mut Vec<String>) -> Option<bool> {
     match value {
         Value::Null => None,
         Value::Bool(parsed) => Some(*parsed),
         other => {
-            log::warn!(
+            warnings.push(format!(
                 "Config {}={} is invalid; expected true or false; falling back",
                 field_name,
                 describe_json_value(other)
-            );
+            ));
             None
         }
     }
 }
 
-fn parse_optional_positive_u32(field_name: &str, value: &Value) -> Option<u32> {
+fn parse_optional_positive_u32(
+    field_name: &str,
+    value: &Value,
+    warnings: &mut Vec<String>,
+) -> Option<u32> {
     match value {
         Value::Null => None,
         Value::Number(number) => match number.as_u64().and_then(|raw| u32::try_from(raw).ok()) {
             Some(0) => {
-                log::warn!(
+                warnings.push(format!(
                     "Config {field_name}=0 is invalid; expected an integer >= 1; falling back"
-                );
+                ));
                 None
             }
             Some(parsed) => Some(parsed),
             None => {
-                log::warn!(
+                warnings.push(format!(
                     "Config {}={} is invalid; expected an integer >= 1; falling back",
                     field_name,
                     describe_json_value(value)
-                );
+                ));
                 None
             }
         },
         other => {
-            log::warn!(
+            warnings.push(format!(
                 "Config {}={} is invalid; expected an integer >= 1; falling back",
                 field_name,
                 describe_json_value(other)
-            );
+            ));
             None
         }
     }
 }
 
-fn parse_frame_rate_cap(value: &Value) -> Option<u32> {
+fn parse_frame_rate_cap(value: &Value, warnings: &mut Vec<String>) -> Option<u32> {
     match value {
         Value::Null => None,
         Value::Number(number) => match number.as_u64().and_then(|raw| u32::try_from(raw).ok()) {
             Some(0) => {
-                log::warn!("Config display.frame_rate_cap=0 means uncapped; using None");
+                warnings.push("Config display.frame_rate_cap=0 means uncapped; using None".into());
                 None
             }
             Some(parsed) => Some(parsed),
             None => {
-                log::warn!(
+                warnings.push(format!(
                     "Config display.frame_rate_cap={} is invalid; expected null or an integer >= 1; falling back",
                     describe_json_value(value)
-                );
+                ));
                 None
             }
         },
         other => {
-            log::warn!(
+            warnings.push(format!(
                 "Config display.frame_rate_cap={} is invalid; expected null or an integer >= 1; falling back",
                 describe_json_value(other)
-            );
+            ));
             None
         }
     }
 }
 
-fn parse_resolution(value: &Value) -> Option<Resolution> {
+fn parse_resolution(value: &Value, warnings: &mut Vec<String>) -> Option<Resolution> {
     let Value::Object(map) = value else {
         if !value.is_null() {
-            log::warn!(
+            warnings.push(format!(
                 "Config display.resolution={} is invalid; expected {{\"width\":<u32>,\"height\":<u32>}} with both >= 1; falling back",
                 describe_json_value(value)
-            );
+            ));
         }
         return None;
     };
 
-    let width = parse_u32_member("display.resolution.width", map.get("width"));
-    let height = parse_u32_member("display.resolution.height", map.get("height"));
+    let width = parse_u32_member("display.resolution.width", map.get("width"), warnings);
+    let height = parse_u32_member("display.resolution.height", map.get("height"), warnings);
 
     match (width, height) {
         (Some(width), Some(height)) if width >= 1 && height >= 1 => {
             Some(Resolution { width, height })
         }
         (Some(width), Some(height)) => {
-            log::warn!(
+            warnings.push(format!(
                 "Config display.resolution={width}x{height} is invalid; expected width >= 1 and height >= 1; falling back"
-            );
+            ));
             None
         }
         _ => {
-            log::warn!(
-                "Config display.resolution is invalid; expected {{\"width\":<u32>,\"height\":<u32>}} with both >= 1; falling back"
+            warnings.push(
+                "Config display.resolution is invalid; expected {\"width\":<u32>,\"height\":<u32>} with both >= 1; falling back"
+                    .into(),
             );
             None
         }
     }
 }
 
-fn parse_u32_member(field_name: &str, value: Option<&Value>) -> Option<u32> {
+fn parse_u32_member(
+    field_name: &str,
+    value: Option<&Value>,
+    warnings: &mut Vec<String>,
+) -> Option<u32> {
     match value {
         Some(Value::Number(number)) => number.as_u64().and_then(|raw| u32::try_from(raw).ok()),
         Some(Value::Null) | None => None,
         Some(other) => {
-            log::warn!(
+            warnings.push(format!(
                 "Config {}={} is invalid; expected an integer >= 0",
                 field_name,
                 describe_json_value(other)
-            );
+            ));
             None
         }
     }

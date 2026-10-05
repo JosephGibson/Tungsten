@@ -9,7 +9,6 @@ publish = false
 tungsten = { workspace = true }
 glam = { workspace = true }
 anyhow = { workspace = true }
-env_logger = { workspace = true }
 
 [lints]
 workspace = true

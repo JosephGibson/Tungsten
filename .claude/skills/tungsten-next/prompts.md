@@ -29,6 +29,18 @@ Fill from the stop's entry in `docs/plans/1.0/roadmap.json`: `<candidate>` is it
 | `rc-fix` | Release candidate failure | New | `Fix the C3 failure in the QA record, then prepare the next v1.0.0-rc prerelease. Don't commit: leave the changes in the tree for the release commit.` |
 | `game-feature` | Acceptance game feature | New, in the game's repository | `Add <feature> using only the public API and tungsten-kit; log each engine gap in GAPS.md with a minimal repro.` |
 
+## NoMachine
+
+Every session prompt in a reply says whether the owner disconnects NoMachine until the session ends. A connected client runs the encoder, `nxcodec.bin`, and timing captures need it gone (workflow §6.3). Decide from the state's plan line, not from the step's name:
+
+| Session | NoMachine line |
+| --- | --- |
+| `run`, `run-c-rest` or `resume` whose plan line lists captures without evidence; `run-c1` only when step 1 is listed | `disconnect after pasting, until it ends · step <N>[, <N>…] capture<s>` |
+| `experiment` | `disconnect after pasting, until it ends · spikes capture`, unless its Track B item names no capture |
+| Anything else: plans, approvals, answers, gates, graduations, the game spec, reviews, releases, release candidates | `stay connected · no captures` |
+
+The plan line's list counts the runner's `run`, `suite` and `capacity` and criterion's `cargo bench`. It leaves out captures with `--allow-background`, which check only digests and tolerate the encoder, and `just smoke` and `just visual`, which need the display, not a quiet machine (workflow §6.4). When unsure, read the listed steps. A session waits for the encoder to exit before each sitting, so disconnecting late costs time; reconnecting during a capture costs that sitting. When the state shows the encoder running while a capture runs or something waits on the encoder, the first Heads-up item is `NoMachine is holding up <the capture or session>: disconnect now`.
+
 ## Flow
 
 The keys each kind of stop runs, in order, with where each runs and the status the stop has while it is next. A step runs once unless its note says otherwise; `resume`, `compact`, `release`, `verify`, `records-lag`, `review-fixes` and `answer` can come at any point. `scripts/roadmap.py` reads this table into each stop's stages on the roadmap page, with a mode, model and effort for each session step (`D-118`), so keep each step as `` `key` (where, status) `` or `` `key` (where, status; note) ``, joined by `→`; a note "the <name> gate only" keeps the step on that gate alone.

@@ -281,7 +281,6 @@ Open questions keep their numbers; answered ones are under [Answered](#answered)
 - **10.** Minimum audio and physics features for 1.0 (W6)?
 - **12.** Which performance budgets gate 1.0?
 - **13.** Game clock: which engine stages keep running on real time while gameplay is paused (§6)?
-- **14.** Logs and crash reports: on by default in `App`, or one opt-in call?
 - **15.** Which settings does the engine persist itself, and does a corrupt user file reset to defaults (proposed) or stop the game as an invalid `tungsten.json` does?
 - **20.** CLI: `check` and `package` must and `new` should (proposed)? Argument parsing and archive writing by hand or by crate (§8.5)?
 - **21.** Hierarchy: physics bodies on root entities only for 1.0 (proposed)?
@@ -296,6 +295,7 @@ Answered on 2026-10-03: a game lives in its own repository on a git dependency, 
 - **8.** UI cut line: broader controls (sliders, checkboxes, scroll) in 1.0? A single-line text field with IME? *Answered 2026-10-03 at the definition gate: sliders and checkboxes in, as W1 BC before M4; scroll containers are in M5 already; text fields and IME out (`D-102`).*
 - **9.** Gamepad in 1.0? *Answered 2026-10-03 at the definition gate: in; W5 is Must (`D-102`).*
 - **11.** `wgpu` and `winit` types in the stable API: hide them, tier them, or accept their majors? *Answered 2026-10-03 at the definition gate: hide them, behind a curated umbrella re-export, engine-owned input and format types, and a game-facing handle or `doc(hidden)` tier for the `Renderer` methods that use `wgpu` types (`D-103`).*
+- **14.** Logs and crash reports: on by default in `App`, or one opt-in call? *Answered 2026-10-05 with M35's approval, its stated default: on by default. `App::new` installs the engine logger unless the game set one and, where the game has a user folder, the crash hook; a game opts out by installing its own logger before `App::new` and its own hook after it (`D-119`).*
 - **16.** Save slots in 1.0, or settings only? *Answered 2026-10-03 at the definition gate: in; W11c is Must (`D-102`).*
 - **17.** Kit dependency direction (§8.4). *Answered 2026-10-03: `Schedule` and `Plugin` in core; the umbrella re-exports the kit.*
 - **18.** Where do examples run from (§8.3)? *Answered 2026-10-03: their own folders, like a copied template.*
@@ -366,3 +366,4 @@ IDs unassigned; each adds its `DECISION_INDEX.md` row in the same change.
 - 2026-10-03 at `56f08ca`, the definition gate (implementation plan §11): questions 1, 4, 8, 9, 11, 16 and 24 moved to [Answered](#answered) with their answers (`D-102`, `D-103`); the open list keeps its numbers as bold labels. The accepted amendments (implementation plan §8) are folded in by later commits.
 - 2026-10-03 on `db1177c`: W4, W9, W11, W12 and W14 graduated. §7, §8.2, §8.3, §8.5 and §8.1's W9 row moved verbatim into [w04](w04-api-freeze.md), [w11](w11-shipping-basics.md), [w12](w12-template.md), [w14](w14-tooling.md) and [w09](w09-distribution.md) respectively, with implementation plan amendments 4, 5, 6, 9, 11, 14, 16, 17 and 19 folded in there; each leaves a placement paragraph here. The other amendments are not yet folded.
 - 2026-10-03 on `db1177c`: the remaining accepted amendments and the definition gate's answers folded in. The header and context digest cite the gate; §1 states the decided definition and the acceptance game (amendments 1, 8); §3's tiers cite `D-102`, with W5 narrowed to the gamepad (amendment 2) and W6 and W13 tiered at the frame-loop gate; §4 holds W1 BC and the couplings (amendments 4–7, 15); §5.3 and §6 move R4 to 1.x and the frame-loop decision set before UI M3 (amendment 7); §8.1's W5–W8 rows (amendments 2, 9, 10, 18); §8.4 and §8.7 split W16 (amendment 3) and settle the kit's stability (`D-103`); §8.8's C3 gains RC-A9 and the snapshot tool (amendments 16, 17); §9 links to the implementation plan (amendment 13); §11 and §12 follow.
+- 2026-10-05, with M35 (W11a with W7a): question 14 moved to [Answered](#answered) with its plan's stated default (`D-119`).

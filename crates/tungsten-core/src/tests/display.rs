@@ -172,3 +172,49 @@ fn partial_display_sections_inherit_unspecified_fields() {
         }
     );
 }
+
+#[test]
+fn parsing_the_section_collects_each_fallback_in_field_order() {
+    let mut warnings = Vec::new();
+    let config = DisplayConfig::from_json_value(
+        serde_json::json!({
+            "resolution": { "width": 0, "height": 720 },
+            "display_mode": "theater_mode",
+            "vsync": "yes",
+            "frame_rate_cap": 0
+        }),
+        &mut warnings,
+    );
+    assert_eq!(config, DisplayConfig::default());
+    assert_eq!(warnings.len(), 4, "{warnings:?}");
+    assert!(warnings[0].starts_with("Config display.resolution=0x720 is invalid"));
+    assert!(warnings[1].starts_with("Config display.display_mode='theater_mode' is invalid"));
+    assert!(warnings[2].starts_with(r#"Config display.vsync="yes" is invalid"#));
+    assert_eq!(
+        warnings[3],
+        "Config display.frame_rate_cap=0 means uncapped; using None"
+    );
+}
+
+#[test]
+fn a_section_that_is_not_an_object_is_one_warning() {
+    let mut warnings = Vec::new();
+    let config = DisplayConfig::from_json_value(serde_json::json!(42), &mut warnings);
+    assert_eq!(config, DisplayConfig::default());
+    assert_eq!(
+        warnings,
+        ["Config display section must be an object; ignoring invalid value"]
+    );
+}
+
+#[test]
+fn a_valid_section_collects_nothing() {
+    let mut warnings = Vec::new();
+    let config = DisplayConfig::from_json_value(
+        serde_json::json!({ "display_mode": "borderless_fullscreen", "frame_rate_cap": 144 }),
+        &mut warnings,
+    );
+    assert_eq!(config.display_mode, Some(DisplayMode::BorderlessFullscreen));
+    assert_eq!(config.frame_rate_cap, Some(144));
+    assert!(warnings.is_empty(), "{warnings:?}");
+}

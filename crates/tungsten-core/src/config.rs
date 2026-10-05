@@ -28,6 +28,9 @@ const DEPTH_ENABLED_EXPECTED: &str = "one of: true, false, 1, 0";
 const DEPTH_SORT_EXPECTED: &str = "one of: cpu_stable, gpu_depth";
 const POST_AA_EXPECTED: &str = "one of: off, smaa_low, smaa_medium, smaa_high, smaa_ultra";
 const BLOOM_MAX_MIPS_EXPECTED: &str = "an integer in 1..=8";
+const GAME_ID_EXPECTED: &str = "1-64 ASCII letters, digits, '.', '_' or '-', starting with a letter or digit, and not a Windows device name";
+const LOGGING_LEVEL_EXPECTED: &str = "one of: off, error, warn, info, debug, trace";
+const GAME_ID_MAX_LEN: usize = 64;
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
@@ -47,14 +50,43 @@ pub enum ConfigError {
         value: String,
         expected: &'static str,
     },
-    /// A value read from the config file that the engine does not support.
-    #[error("invalid {field}='{value}' in '{path}': expected {expected}")]
+    /// A value the engine does not support, read from the config file or,
+    /// with an empty `path`, set in code.
+    #[error("invalid {field}='{value}'{}: expected {expected}", in_file(.path))]
     InvalidValue {
         path: String,
         field: &'static str,
         value: String,
         expected: &'static str,
     },
+}
+
+impl ConfigError {
+    /// Names the file a value came from, for a check that does not know it.
+    fn with_path(self, file: &Path) -> Self {
+        match self {
+            Self::InvalidValue {
+                field,
+                value,
+                expected,
+                ..
+            } => Self::InvalidValue {
+                path: file.display().to_string(),
+                field,
+                value,
+                expected,
+            },
+            other => other,
+        }
+    }
+}
+
+fn in_file(path: &str) -> String {
+    if path.is_empty() {
+        String::new()
+    } else {
+        format!(" in '{path}'")
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -306,9 +338,68 @@ fn default_level() -> String {
     "info".to_string()
 }
 
+/// The game's identity (`D-119`).
+#[derive(Debug, Clone, Default, Deserialize)]
+#[non_exhaustive]
+pub struct GameConfig {
+    /// Names the game's per-user folder, which holds its logs and crash
+    /// files: 1–64 ASCII letters, digits, `.`, `_` or `-`, starting with a
+    /// letter or digit, and not a Windows device name such as `con`. Without
+    /// one the game has no user folder.
+    pub id: Option<String>,
+    /// Free text that crash files print.
+    pub version: Option<String>,
+}
+
+impl GameConfig {
+    /// Checks `id`, which becomes a folder name. `Config::load` and
+    /// `App::new` both call this, since a config built in code skips the
+    /// load.
+    ///
+    /// # Errors
+    ///
+    /// [`ConfigError::InvalidValue`] for field `game.id`, with an empty
+    /// `path`.
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        match &self.id {
+            Some(id) if !is_valid_game_id(id) => Err(ConfigError::InvalidValue {
+                path: String::new(),
+                field: "game.id",
+                value: id.clone(),
+                expected: GAME_ID_EXPECTED,
+            }),
+            _ => Ok(()),
+        }
+    }
+}
+
+fn is_valid_game_id(id: &str) -> bool {
+    let bytes = id.as_bytes();
+    bytes.len() <= GAME_ID_MAX_LEN
+        && bytes.first().is_some_and(u8::is_ascii_alphanumeric)
+        && bytes
+            .iter()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+        && !is_windows_device_name(id)
+}
+
+/// Windows reserves these names in any case and with any extension, so
+/// `con.txt` names the console too.
+fn is_windows_device_name(id: &str) -> bool {
+    let stem = id.split('.').next().unwrap_or(id).to_ascii_lowercase();
+    match stem.as_bytes() {
+        b"con" | b"prn" | b"aux" | b"nul" => true,
+        [b'c', b'o', b'm', digit] | [b'l', b'p', b't', digit] => matches!(digit, b'1'..=b'9'),
+        _ => false,
+    }
+}
+
 /// Top-level engine configuration.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct Config {
+    /// The game's identity and user folder (`D-119`).
+    #[serde(default)]
+    pub game: GameConfig,
     #[serde(default)]
     pub window: WindowConfig,
     #[serde(default)]
@@ -317,25 +408,39 @@ pub struct Config {
     pub render: RenderConfig,
     #[serde(default)]
     pub logging: LoggingConfig,
+    /// What `load` would have logged before any logger exists (`D-119`).
+    #[serde(skip)]
+    load_warnings: Vec<String>,
 }
 
 impl Config {
     /// Load config; missing file falls back to defaults.
+    ///
+    /// Warnings (a missing file, legacy fields that the display section
+    /// overrides, display values that fall back) are kept, not logged:
+    /// [`Config::take_load_warnings`] returns them.
     pub fn load(path: impl AsRef<Path>) -> Result<Self, ConfigError> {
         let path = path.as_ref();
         let mut config = match std::fs::read_to_string(path) {
             Ok(contents) => {
-                let raw: Value =
+                let mut raw: Value =
                     serde_json::from_str(&contents).map_err(|e| ConfigError::Parse {
                         path: path.display().to_string(),
                         source: e,
                     })?;
-                warn_display_conflicts(&raw);
-                let parsed: Config =
+                let mut warnings = Vec::new();
+                display_conflicts(&raw, &mut warnings);
+                // Parsed apart, so its fallbacks are kept rather than logged.
+                let display = raw.as_object_mut().and_then(|map| map.remove("display"));
+                let mut parsed: Config =
                     serde_json::from_value(raw).map_err(|e| ConfigError::Parse {
                         path: path.display().to_string(),
                         source: e,
                     })?;
+                if let Some(display) = display {
+                    parsed.display = DisplayConfig::from_json_value(display, &mut warnings);
+                }
+                parsed.load_warnings = warnings;
                 if !is_supported_msaa(parsed.render.msaa) {
                     return Err(ConfigError::InvalidValue {
                         path: path.display().to_string(),
@@ -352,11 +457,24 @@ impl Config {
                         expected: BLOOM_MAX_MIPS_EXPECTED,
                     });
                 }
+                parsed.game.validate().map_err(|e| e.with_path(path))?;
+                if parsed.logging.level.parse::<log::LevelFilter>().is_err() {
+                    return Err(ConfigError::InvalidValue {
+                        path: path.display().to_string(),
+                        field: "logging.level",
+                        value: parsed.logging.level.clone(),
+                        expected: LOGGING_LEVEL_EXPECTED,
+                    });
+                }
                 parsed
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                log::warn!("Config file '{}' not found, using defaults", path.display());
-                Config::default()
+                let mut config = Config::default();
+                config.load_warnings.push(format!(
+                    "Config file '{}' not found, using defaults",
+                    path.display()
+                ));
+                config
             }
             Err(e) => Err(ConfigError::Io {
                 path: path.display().to_string(),
@@ -366,6 +484,12 @@ impl Config {
 
         config.apply_env_overrides_from_env()?;
         Ok(config)
+    }
+
+    /// Takes the warnings [`Config::load`] kept, for the caller to log once
+    /// a logger is installed; `App::new` logs them. Later calls return none.
+    pub fn take_load_warnings(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.load_warnings)
     }
 
     fn apply_env_overrides_from_env(&mut self) -> Result<(), ConfigError> {
@@ -574,7 +698,7 @@ fn parse_resolution_override(value: &str) -> Option<Resolution> {
     Some(Resolution { width, height })
 }
 
-fn warn_display_conflicts(raw: &Value) {
+fn display_conflicts(raw: &Value, warnings: &mut Vec<String>) {
     let Some(display) = raw.get("display").and_then(Value::as_object) else {
         return;
     };
@@ -589,7 +713,9 @@ fn warn_display_conflicts(raw: &Value) {
         if width.is_some_and(|legacy| legacy != display_resolution.width)
             || height.is_some_and(|legacy| legacy != display_resolution.height)
         {
-            log::warn!("Config display.resolution overrides legacy window.width/window.height");
+            warnings.push(
+                "Config display.resolution overrides legacy window.width/window.height".into(),
+            );
         }
     }
 
@@ -599,7 +725,7 @@ fn warn_display_conflicts(raw: &Value) {
             .and_then(Value::as_bool)
         && legacy_vsync != display_vsync
     {
-        log::warn!("Config display.vsync overrides legacy window.vsync");
+        warnings.push("Config display.vsync overrides legacy window.vsync".into());
     }
 
     if let Some(display_present_mode) = display
@@ -611,7 +737,7 @@ fn warn_display_conflicts(raw: &Value) {
             .and_then(Value::as_str)
         && legacy_present_mode != display_present_mode
     {
-        log::warn!("Config display.present_mode overrides legacy render.present_mode");
+        warnings.push("Config display.present_mode overrides legacy render.present_mode".into());
     }
 
     if let Some(display_latency) = display
@@ -623,7 +749,9 @@ fn warn_display_conflicts(raw: &Value) {
             .and_then(raw_u32)
         && legacy_latency != display_latency
     {
-        log::warn!("Config display.max_frame_latency overrides legacy render.max_frame_latency");
+        warnings.push(
+            "Config display.max_frame_latency overrides legacy render.max_frame_latency".into(),
+        );
     }
 }
 

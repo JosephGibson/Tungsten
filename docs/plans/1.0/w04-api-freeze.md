@@ -40,6 +40,7 @@ Every public-API break bound for 1.0, with its source and where it landed. Seede
 | `RawManifest` and `ResolvedManifest` gain `font_families` and `font_fallback`; `ManifestError` gains two variants | W1 M0a (plan audit A21) | Landed (`D-115`): struct literals of either manifest type need the two fields, and exhaustive matches on `ManifestError` need `FontFamilyFaceMissing` and `UnknownFallbackFamily`; the new `FontFamilyEntry` and `ResolvedFontFamily` are `#[non_exhaustive]` | 0.46 (M34) |
 | `RenderConfig` gains `system_fonts` | W1 M0a (plan audit A21) | Landed (`D-116`): struct literals of `RenderConfig` need the field or `..RenderConfig::default()`; `tungsten.json` files need nothing, since it defaults to `false` | 0.46 (M34) |
 | `TextSection` gains `layout`; struct literals need `..Default::default()` | W1 M0a (plan Q1) | Landed (`D-117`): `TextSection` gains `layout: TextLayout` and derives `Default`; the 22 literals in the workspace gained `..Default::default()` | 0.46 (M34) |
+| `Config` gains `game` and a private field, so code outside `tungsten-core` can no longer build it by literal | W11a (M35 §2.10) | Landed (`D-119`): `Config.game: GameConfig` (new, `#[non_exhaustive]`, with `GameConfig::validate`) and `Config::take_load_warnings` are new; a private `load_warnings` field means games build a `Config` with `Config::default()` or `Config::load` and set its fields; nothing in the workspace built one by literal | 0.48 (M35) |
 
 ## Context digest
 

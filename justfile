@@ -63,6 +63,7 @@ script-test: perf-test
     python3 -B scripts/test-check-repo.py
     python3 -B scripts/test-roadmap.py
     python3 -B scripts/test-release.py
+    python3 -B scripts/test-crash-report.py
     python3 -B scripts/test-release-preflight.py
 
 # Dependency policy: advisories, licenses, bans, sources.

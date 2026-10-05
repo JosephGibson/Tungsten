@@ -9,7 +9,7 @@ Answers "what do I run next, and where?" on the road to 1.0. The repo is the sou
 
 ## 1. Gather, in one round of parallel calls
 
-- Run `bash .claude/skills/tungsten-next/state.sh` from the repo root; don't read the script. It prints git and release state, other agent sessions open in this tree, a running perf capture, uncommitted edits in time-ordered groups, what the release commit's `git add -A` would take or miss, the [1.0 README](../../../docs/plans/1.0/README.md) "Now" lines, the open register rows, decisions not yet in `HEAD`, Step 0's items while its row is unreleased, each plan's status, approval, steps and evidence, and gate sign-offs.
+- Run `bash .claude/skills/tungsten-next/state.sh` from the repo root; don't read the script. It prints git and release state, other agent sessions open in this tree, a running perf capture, the NoMachine encoder and what waits on it, uncommitted edits in time-ordered groups, what the release commit's `git add -A` would take or miss, the [1.0 README](../../../docs/plans/1.0/README.md) "Now" lines, the open register rows, decisions not yet in `HEAD`, Step 0's items while its row is unreleased, each plan's status, approval, steps, evidence and capture steps, and gate sign-offs.
 - Read [prompts.md](prompts.md).
 - Run `python3 -B scripts/roadmap.py status --json <scratch>/status.json` and `python3 -B scripts/roadmap.py catalog <scratch>/catalog.json`, `<scratch>` being the session's scratchpad, never the tree. `status` prints each stop's status with its evidence, the current stop, the next release and milestone.
 - Claude Code: read [roadmap.md](roadmap.md) and list the artifact's `meta` and `stops` collections with `ArtifactData` (load it with ToolSearch `select:ArtifactData` when deferred). Any other client, such as Codex, has no `ArtifactData`: skip both, and §5 says what to print.
@@ -81,6 +81,7 @@ Exactly this shape, no other prose. Leave out sections that would be empty.
 ```text
 <the prompt, filled in>
 ```
+**NoMachine** · <the line from prompts.md's NoMachine table>
 
 **After that**
 1. <step> · <new session | same session | you>
@@ -91,7 +92,7 @@ Exactly this shape, no other prose. Leave out sections that would be empty.
 **Roadmap** · <what changed | already in step | not synced (why)> · https://claude.ai/artifact/EyM2iTgnnActfbMBZKcav9
 ````
 
-- Every prompt goes in its own `text` block under a label line naming where it runs: **New session** (repo root), with the step's `rec` as [roadmap.md](roadmap.md) copies it, or **Same session** (the one that stopped for <what>). Owner shell commands go in one `bash` block under **Your shell**. Never put a prompt or a command in a sentence, a list item or inline code.
+- Every prompt goes in its own `text` block under a label line naming where it runs: **New session** (repo root), with the step's `rec` as [roadmap.md](roadmap.md) copies it, or **Same session** (the one that stopped for <what>). Owner shell commands go in one `bash` block under **Your shell**. Never put a prompt or a command in a sentence, a list item or inline code. Under each prompt's block goes its **NoMachine** line ([prompts.md](prompts.md#nomachine)).
 - Give blocks for Next and, when Next is yours, for the first session after it. List later steps by name only: their prompts depend on what comes first.
 - Heads-up: one line per item, problem then action, most urgent first. Their commands join the **Your shell** block, or get their own after the list when Next has none.
 - When state.sh warns (an upstream, an ignored skill, junk the release would sweep in, `origin/main` not in `HEAD` before tagging), that's a Heads-up item.

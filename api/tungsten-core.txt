@@ -3632,11 +3632,13 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::PresentM
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::PresentModeConfig
 pub struct tungsten_core::config::Config
 pub tungsten_core::config::Config::display: tungsten_core::display::DisplayConfig
+pub tungsten_core::config::Config::game: tungsten_core::config::GameConfig
 pub tungsten_core::config::Config::logging: tungsten_core::config::LoggingConfig
 pub tungsten_core::config::Config::render: tungsten_core::config::RenderConfig
 pub tungsten_core::config::Config::window: tungsten_core::config::WindowConfig
 impl tungsten_core::config::Config
 pub fn tungsten_core::config::Config::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::config::ConfigError>
+pub fn tungsten_core::config::Config::take_load_warnings(&mut self) -> alloc::vec::Vec<alloc::string::String>
 impl core::clone::Clone for tungsten_core::config::Config
 pub fn tungsten_core::config::Config::clone(&self) -> tungsten_core::config::Config
 impl core::default::Default for tungsten_core::config::Config
@@ -3652,6 +3654,26 @@ impl core::marker::Unpin for tungsten_core::config::Config
 impl core::marker::UnsafeUnpin for tungsten_core::config::Config
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::Config
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::Config
+#[non_exhaustive] pub struct tungsten_core::config::GameConfig
+pub tungsten_core::config::GameConfig::id: core::option::Option<alloc::string::String>
+pub tungsten_core::config::GameConfig::version: core::option::Option<alloc::string::String>
+impl tungsten_core::config::GameConfig
+pub fn tungsten_core::config::GameConfig::validate(&self) -> core::result::Result<(), tungsten_core::config::ConfigError>
+impl core::clone::Clone for tungsten_core::config::GameConfig
+pub fn tungsten_core::config::GameConfig::clone(&self) -> tungsten_core::config::GameConfig
+impl core::default::Default for tungsten_core::config::GameConfig
+pub fn tungsten_core::config::GameConfig::default() -> tungsten_core::config::GameConfig
+impl core::fmt::Debug for tungsten_core::config::GameConfig
+pub fn tungsten_core::config::GameConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::config::GameConfig
+pub fn tungsten_core::config::GameConfig::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::config::GameConfig
+impl core::marker::Send for tungsten_core::config::GameConfig
+impl core::marker::Sync for tungsten_core::config::GameConfig
+impl core::marker::Unpin for tungsten_core::config::GameConfig
+impl core::marker::UnsafeUnpin for tungsten_core::config::GameConfig
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::GameConfig
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::GameConfig
 pub struct tungsten_core::config::LoggingConfig
 pub tungsten_core::config::LoggingConfig::level: alloc::string::String
 impl core::clone::Clone for tungsten_core::config::LoggingConfig
@@ -8033,11 +8055,13 @@ impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::CommandBuffer
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::CommandBuffer
 pub struct tungsten_core::Config
 pub tungsten_core::Config::display: tungsten_core::display::DisplayConfig
+pub tungsten_core::Config::game: tungsten_core::config::GameConfig
 pub tungsten_core::Config::logging: tungsten_core::config::LoggingConfig
 pub tungsten_core::Config::render: tungsten_core::config::RenderConfig
 pub tungsten_core::Config::window: tungsten_core::config::WindowConfig
 impl tungsten_core::config::Config
 pub fn tungsten_core::config::Config::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::config::ConfigError>
+pub fn tungsten_core::config::Config::take_load_warnings(&mut self) -> alloc::vec::Vec<alloc::string::String>
 impl core::clone::Clone for tungsten_core::config::Config
 pub fn tungsten_core::config::Config::clone(&self) -> tungsten_core::config::Config
 impl core::default::Default for tungsten_core::config::Config
@@ -8520,6 +8544,26 @@ impl core::marker::Unpin for tungsten_core::assets::registry::FontRegistry
 impl core::marker::UnsafeUnpin for tungsten_core::assets::registry::FontRegistry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::registry::FontRegistry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::registry::FontRegistry
+#[non_exhaustive] pub struct tungsten_core::GameConfig
+pub tungsten_core::GameConfig::id: core::option::Option<alloc::string::String>
+pub tungsten_core::GameConfig::version: core::option::Option<alloc::string::String>
+impl tungsten_core::config::GameConfig
+pub fn tungsten_core::config::GameConfig::validate(&self) -> core::result::Result<(), tungsten_core::config::ConfigError>
+impl core::clone::Clone for tungsten_core::config::GameConfig
+pub fn tungsten_core::config::GameConfig::clone(&self) -> tungsten_core::config::GameConfig
+impl core::default::Default for tungsten_core::config::GameConfig
+pub fn tungsten_core::config::GameConfig::default() -> tungsten_core::config::GameConfig
+impl core::fmt::Debug for tungsten_core::config::GameConfig
+pub fn tungsten_core::config::GameConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::config::GameConfig
+pub fn tungsten_core::config::GameConfig::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::config::GameConfig
+impl core::marker::Send for tungsten_core::config::GameConfig
+impl core::marker::Sync for tungsten_core::config::GameConfig
+impl core::marker::Unpin for tungsten_core::config::GameConfig
+impl core::marker::UnsafeUnpin for tungsten_core::config::GameConfig
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::GameConfig
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::GameConfig
 pub struct tungsten_core::GlitchParams
 pub tungsten_core::GlitchParams::block_strength: f32
 pub tungsten_core::GlitchParams::shift_px: f32

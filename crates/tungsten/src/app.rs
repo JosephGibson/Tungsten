@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 
 use crate::asset_loader;
 use crate::audio::AudioSystem;
+use crate::crash::{self, CrashContext};
 use crate::debug_hud::{DebugHud, HudActiveState, compose_hud_text_sections, hud_toggle_system};
 use crate::display::{
     DisplayDelta, PendingDisplay, engine_display_input_system, frame_budget_for,
@@ -16,6 +17,7 @@ use crate::input_bridge;
 use crate::inspector::{
     InspectorState, compose_inspector_text_section, inspector_pick_system, inspector_toggle_system,
 };
+use crate::logging;
 use crate::physics_debug::{
     PhysicsDebugOverlay, physics_debug_emit_system, physics_debug_toggle_system,
 };
@@ -26,6 +28,8 @@ use crate::systems_overlay::{
     SystemTimingOverlay, compose_systems_overlay_text_section, systems_overlay_toggle_system,
 };
 use crate::telemetry::{DisplayTelemetry, FrameTimings, RenderCounts};
+use crate::user_dir::{self, Platform};
+use log::LevelFilter;
 use tungsten_core::assets::{
     AnimationRegistry, FontRegistry, ParticleConfigRegistry, ParticleMeshRegistry, ShaderRegistry,
     SoundRegistry, TilemapRegistry,
@@ -34,8 +38,9 @@ use tungsten_core::physics::{CollisionEvent, PhysicsBuffers, PhysicsConfig};
 use tungsten_core::post::{PostPass, PostStack};
 use tungsten_core::{
     ActionMap, AssetRegistry, AudioCommand, AudioCommands, CameraController, CameraState,
-    CommandBuffer, Config, DebugDraw, DebugShape, DeltaTime, DisplayMode, DisplayState, EventQueue,
-    InputState, Inspectable, ParticleActive, ParticleBudget, World, WorldRngSeed,
+    CommandBuffer, Config, ConfigError, DebugDraw, DebugShape, DeltaTime, DisplayMode,
+    DisplayState, EventQueue, InputState, Inspectable, ParticleActive, ParticleBudget, World,
+    WorldRngSeed,
 };
 use tungsten_render::{
     DebugLineInstance, GpuFrameTimings, MeshParticleBatch, QuadInstance, Renderer, SpriteBatch,
@@ -157,10 +162,55 @@ impl App {
         }));
     }
 
-    pub fn new(config: Config) -> anyhow::Result<Self> {
+    /// Builds the app. First it installs the engine logger, unless the game
+    /// set one, with a log file in the game's user folder (`D-119`), then
+    /// logs [`Config::take_load_warnings`]. An error it returns is logged
+    /// first, so it reaches the log file too.
+    ///
+    /// # Errors
+    ///
+    /// An invalid `game.id` or `logging.level`, or an `input.json` that
+    /// cannot be read or parsed.
+    pub fn new(mut config: Config) -> anyhow::Result<Self> {
+        let smoke_frames = smoke_frames_from_env();
+        let invalid = config
+            .game
+            .validate()
+            .err()
+            .or_else(|| invalid_logging_level(&config.logging.level));
+        let user_dirs = if invalid.is_none() {
+            user_dir::resolve(
+                &config.game,
+                smoke_frames.is_some(),
+                Platform::current(),
+                |name| std::env::var_os(name),
+            )
+        } else {
+            None
+        };
+        let level = config.logging.level.parse().unwrap_or(LevelFilter::Info);
+        let log_file = logging::install(level, user_dirs.as_ref().map(|dirs| dirs.logs.as_path()));
+        if let Some(err) = invalid {
+            log::error!("{err}");
+            return Err(err.into());
+        }
+        for warning in config.take_load_warnings() {
+            log::warn!(target: "tungsten_core::config", "{warning}");
+        }
+        if user_dirs.is_none()
+            && smoke_frames.is_none()
+            && let Some(id) = &config.game.id
+        {
+            log::warn!("Game '{id}' has no user folder, so no log or crash file is written");
+        }
+        if let Some(dirs) = &user_dirs {
+            crash::install(CrashContext::new(&config.game, dirs.logs.clone(), log_file));
+        }
+
         let resolved_display = resolve_startup_display(&config);
         let input_map_path = PathBuf::from("input.json");
-        let action_map = load_action_map_at_startup(&input_map_path)?;
+        let action_map = load_action_map_at_startup(&input_map_path)
+            .inspect_err(|err| log::error!("{err:#}"))?;
         let mut world = World::new();
         world.insert_resource(DeltaTime::new());
         world.insert_resource(InputState::new());
@@ -255,10 +305,7 @@ impl App {
             manifest_path: None,
             manifest_roots: Vec::new(),
             input_map_path,
-            smoke_frames_remaining: std::env::var("TUNGSTEN_SMOKE_FRAMES")
-                .ok()
-                .and_then(|s| s.parse::<u32>().ok())
-                .filter(|n| *n > 0),
+            smoke_frames_remaining: smoke_frames,
             system_names: Vec::new(),
             system_name_counter: 0,
             gpu_timing_enabled: std::env::var("TUNGSTEN_GPU_TIMING").is_ok(),
@@ -282,6 +329,9 @@ impl App {
         app.add_engine_system("__hud_toggle", hud_toggle_system);
         app.add_engine_system("__display_input", engine_display_input_system);
         app.add_engine_system("__state_dispatcher", state_dispatcher_system);
+        if crash::test_panic_requested(std::env::var_os(crash::TEST_PANIC_ENV).as_deref()) {
+            app.add_engine_system("__test_panic", crash::test_panic_system);
+        }
 
         Ok(app)
     }
@@ -384,11 +434,19 @@ impl App {
     }
 
     /// Run until window close or explicit exit.
+    ///
+    /// # Errors
+    ///
+    /// The event loop's, logged first, or the fatal error that ended the
+    /// run, logged where it arose.
     pub fn run(mut self) -> anyhow::Result<()> {
         self.install_default_extracts();
         self.start_hot_reload();
-        let event_loop = EventLoop::new()?;
-        event_loop.run_app(&mut self)?;
+        let event_loop = EventLoop::new()
+            .inspect_err(|err| log::error!("Failed to create the event loop: {err}"))?;
+        event_loop
+            .run_app(&mut self)
+            .inspect_err(|err| log::error!("Event loop failed: {err}"))?;
         if let Some(error) = self.fatal_error {
             return Err(error);
         }
@@ -1391,6 +1449,28 @@ fn format_perf_physics_line(buffers: &PhysicsBuffers) -> String {
         buffers.pair_count(),
         buffers.contact_count()
     )
+}
+
+/// `TUNGSTEN_SMOKE_FRAMES` as a frame count above zero: smoke mode.
+fn smoke_frames_from_env() -> Option<u32> {
+    std::env::var("TUNGSTEN_SMOKE_FRAMES")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+        .filter(|n| *n > 0)
+}
+
+/// A `logging.level` set in code that names no level; `Config::load`
+/// rejects the same value read from the file (`D-119`).
+fn invalid_logging_level(level: &str) -> Option<ConfigError> {
+    level
+        .parse::<LevelFilter>()
+        .is_err()
+        .then(|| ConfigError::InvalidValue {
+            path: String::new(),
+            field: "logging.level",
+            value: level.to_string(),
+            expected: "one of: off, error, warn, info, debug, trace",
+        })
 }
 
 /// D-008: missing `input.json` uses defaults; parse/IO errors are fatal.
