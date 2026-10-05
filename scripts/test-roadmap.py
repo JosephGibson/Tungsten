@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Fixture-tree tests for scripts/roadmap.py: catalog payload and status derivation (no network)."""
+"""Fixture-tree tests for scripts/roadmap.py: catalog payload, stages, session recommendations and
+status derivation (no network), plus the repository's own catalog."""
 
 import contextlib
 import importlib.util
@@ -51,6 +52,42 @@ MILESTONE = """# W14a
 | 1 | pass |
 | Step 2 | pass |
 """
+PROMPTS = """# prompts
+
+## Session prompts
+
+| Key | Step | Where | Prompt |
+| --- | --- | --- | --- |
+| `gate` | Gate | New | `Run the <gate>.` |
+| `graduate` | Graduation | New | `Graduate <W>.` |
+| `plan` | Plan | New | `Plan <candidate>.` |
+| `qa-plan` | QA plan | New | `Write the QA plan.` |
+| `approve` | Approve a plan | Same | `Approved.` |
+| `run` | Run, levels A and B | New | `Run <plan>.` |
+| `run-c1` | Run, level C, step 1 | New | `Run step 1.` |
+| `run-c-rest` | Run, level C, the rest | Same | `API approved.` |
+| `game-spec` | Game spec | New | `Agree the spec.` |
+| `experiment` | Experiment | New | `Run the spike.` |
+| `rc-checklist` | Release candidate checklist | New | `Run C3.` |
+| `rc-fix` | Release candidate failure | New | `Fix the C3 failure.` |
+
+## Flow
+
+| Stop | Steps: key (where, status) |
+| --- | --- |
+| Release, level A or B | `plan` (new, todo) → `approve` (same, plan) → `run` (new, run) → `ship` (you, ready or review) |
+| Release, level C | `plan` (new, todo) → `approve` (same, plan) → `run-c1` (new, run) → `run-c-rest` (same, run) → `ship` (you, ready or review) |
+| QA pass | `qa-plan` (new, todo) → `approve` (same, plan) → `run` (new, run) → `ship` (you, ready or review) |
+| Gate | `game-spec` (new, todo; the frame-loop gate only, until the pitch is agreed) → `gate` (new, todo) → `graduate` (new, todo; one per workstream the record graduates) |
+| Experiments (Track B) | `experiment` (new, todo; one per spike) |
+| Release candidates (C3) | `rc-checklist` (new, todo) → `playthrough` (you, run) → `rc-fix` (new, run; after a failure, then `rc-checklist` again) |
+
+## Owner steps
+
+**Ship** (`ship`), one sitting after the run session ends.
+
+**Playthrough** (`playthrough`). Play the release candidate.
+"""
 
 
 class Status(unittest.TestCase):
@@ -61,8 +98,9 @@ class Status(unittest.TestCase):
         self.git("init", "-q", "-b", "0.42")
         self.write("Cargo.toml", '[workspace.package]\nversion = "0.42.0"\n')
         self.write_plan()
+        self.write(roadmap.PROMPTS, PROMPTS)
         stop = {"group": "a", "level": "B", "src": [], "questions": []}
-        self.write(roadmap.CATALOG, json.dumps({"schema": 1, "groups": [{"id": "a"}], "questions": [], "stops": [
+        self.write(roadmap.CATALOG, json.dumps({"schema": roadmap.SCHEMA, "groups": [{"id": "a"}], "questions": [], "stops": [
             dict(stop, id="s040", row=None, kind="release", release="0.41"),
             dict(stop, id="gdef", row=None, kind="gate", gate="definition gate"),
             dict(stop, id="s0", row="Step 0", kind="custom"),
@@ -164,12 +202,98 @@ class Status(unittest.TestCase):
             roadmap.main(["--root", str(self.root), "catalog", str(out)])
         payload = json.loads(out.read_text())
         self.assertEqual(sorted(payload), ["catalog", "hash", "schema"])
+        self.assertEqual((payload["schema"], payload["catalog"]["schema"]), (2, 2))
         self.assertRegex(payload["hash"], r"^[0-9a-f]{16}$")
         self.assertEqual(payload["hash"], roadmap.catalog_payload(self.root)["hash"])
         catalog = payload["catalog"]
-        catalog["stops"][0]["title"] = "Changed"
-        self.write(roadmap.CATALOG, json.dumps(catalog))
+        self.assertEqual([s["key"] for s in catalog["stops"][0]["stages"]], ["plan", "approve", "run", "ship"])
+        self.assertEqual(catalog["sessions"], {"release": {"mode": "auto", "model": "Opus 5.5", "effort": "xhigh"},
+                                               "verify": {"mode": "auto", "model": "Opus 5.5", "effort": "high"}})
+        self.write(roadmap.PROMPTS, PROMPTS.replace("`run` (new, run) → `ship`", "`run` (new, run; once) → `ship`"))
         self.assertNotEqual(payload["hash"], roadmap.catalog_payload(self.root)["hash"])
+        self.write(roadmap.PROMPTS, PROMPTS)
+        source = json.loads((self.root / roadmap.CATALOG).read_text())
+        source["stops"][0]["title"] = "Changed"
+        self.write(roadmap.CATALOG, json.dumps(source))
+        self.assertNotEqual(payload["hash"], roadmap.catalog_payload(self.root)["hash"])
+        self.write(roadmap.CATALOG, json.dumps(dict(source, schema=1)))
+        with self.assertRaisesRegex(ValueError, "schema 1"):
+            roadmap.catalog_payload(self.root)
+
+    def test_flow_table_steps(self):
+        flow = roadmap.flows(self.root)
+        self.assertEqual(flow["Release, level A or B"][-1],
+                         {"key": "ship", "title": "Ship", "where": "you", "at": ["ready", "review"]})
+        self.assertEqual(flow["Release candidates (C3)"][1]["title"], "Playthrough")
+        self.assertEqual(flow["Gate"][0]["note"], "the frame-loop gate only, until the pitch is agreed")
+        self.assertEqual(flow["Release candidates (C3)"][2]["note"], "after a failure, then `rc-checklist` again")
+        self.write(roadmap.PROMPTS, PROMPTS.replace("`gate` (new, todo)", "`gate` (later)"))
+        with self.assertRaisesRegex(ValueError, "Flow row 'Gate': can't read"):
+            roadmap.flows(self.root)
+        self.write(roadmap.PROMPTS, PROMPTS.replace("| `qa-plan` | QA plan | New | `Write the QA plan.` |\n", ""))
+        with self.assertRaisesRegex(ValueError, "no Step title for 'qa-plan'"):
+            roadmap.flows(self.root)
+        self.write(roadmap.PROMPTS, PROMPTS.replace("| Experiments (Track B) | `experiment` (new, todo; one per spike) |", "| Experiments (Track B) |"))
+        with self.assertRaisesRegex(ValueError, "fewer than two cells"):
+            roadmap.flows(self.root)
+
+    def test_stages_by_kind_and_level(self):
+        flow = roadmap.flows(self.root)
+        keys = lambda **stop: [s["key"] for s in roadmap.stages(dict({"id": "x"}, **stop), flow)]
+        ab, c = ["plan", "approve", "run", "ship"], ["plan", "approve", "run-c1", "run-c-rest", "ship"]
+        self.assertEqual((keys(kind="release", level="B"), keys(kind="release", level=None)), (ab, ab))
+        self.assertEqual(keys(kind="release", level="C"), c)
+        self.assertEqual(keys(kind="qa", level="A"), ["qa-plan", "approve", "run", "ship"])
+        self.assertEqual(keys(kind="gate", gate="glyph gate and the frame-loop gate"), ["game-spec", "gate", "graduate"])
+        self.assertEqual(keys(kind="gate", gate="definition gate"), ["gate", "graduate"])
+        self.assertEqual(keys(kind="spike"), ["experiment"])
+        self.assertEqual(keys(kind="rc"), ["rc-checklist", "playthrough", "rc-fix"])
+        self.assertEqual(keys(kind="custom"), [])
+        with self.assertRaisesRegex(ValueError, "x: no Flow row for kind 'tour'"):
+            keys(kind="tour")
+        del flow["QA pass"]
+        with self.assertRaisesRegex(ValueError, "has no Flow row 'QA pass'"):
+            keys(kind="qa")
+
+    def test_recommendations(self):
+        tiers = {(4, "S"): ("fable", "xhigh"), (3, "XL"): ("fable", "xhigh"), (3, "L"): ("opus", "max"),
+                 (2, "XL"): ("opus", "max"), (2, "M"): ("opus", "max"), (1, "S"): ("opus", "high"),
+                 (1, "M"): ("opus", "xhigh"), (None, None): ("opus", "xhigh")}
+        for (c, e), want in tiers.items():
+            self.assertEqual(roadmap.tier({"complexity": c, "effort": e}), want, (c, e))
+        stop = {"id": "x", "complexity": 4, "effort": "L"}
+        rec = lambda key: roadmap.recommend(stop, key)
+        self.assertEqual(rec("run"), {"mode": "auto", "model": "Fable 5.1", "effort": "xhigh"})
+        self.assertEqual(rec("gate"), {"mode": "plan", "model": "Fable 5.1", "effort": "xhigh"})
+        self.assertEqual(rec("game-spec"), {"mode": "plan", "model": "Opus 5.5", "effort": "max"})
+        self.assertEqual(rec("graduate"), {"mode": "auto", "model": "Opus 5.5", "effort": "xhigh"})
+        self.assertEqual(rec("rc-checklist"), {"mode": "auto", "model": "Opus 5.5", "effort": "xhigh"})
+        self.assertEqual((rec("ship"), rec("playthrough"), rec("compact")), (None, None, None))
+        with self.assertRaisesRegex(ValueError, "approve has no earlier plan or qa-plan step"):
+            rec("approve")
+
+    def test_same_session_steps_keep_their_session(self):
+        flow = roadmap.flows(self.root)
+        stop = {"id": "x", "kind": "release", "level": "C", "complexity": 3, "effort": "XL"}
+        recs = {s["key"]: s.get("rec") for s in roadmap.stages(stop, flow)}
+        fable = {"mode": "auto", "model": "Fable 5.1", "effort": "xhigh"}
+        self.assertEqual(recs["approve"], {"keeps": "plan", **fable,
+                                           "if_new": {"mode": "auto", "model": "Opus 5.5", "effort": "high"}})
+        self.assertEqual(recs["run-c-rest"], {"keeps": "run-c1", **fable, "if_new": fable})
+        qa = {s["key"]: s.get("rec") for s in roadmap.stages({"id": "q", "kind": "qa", "complexity": 2}, flow)}
+        self.assertEqual(qa["approve"]["keeps"], "qa-plan")
+
+
+class Repository(unittest.TestCase):
+    def test_every_stop_derives_its_stages(self):
+        payload = roadmap.catalog_payload(Path(__file__).resolve().parent.parent)
+        for stop in payload["catalog"]["stops"]:
+            with self.subTest(stop=stop["id"]):
+                self.assertEqual(bool(stop["stages"]), stop["kind"] != "custom")
+                for stage in stop["stages"]:
+                    self.assertEqual("rec" in stage, stage["where"] != "you", stage["key"])
+        size = len(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode())
+        self.assertLess(size, 256 * 1024)  # one db document, roadmap.md
 
 
 if __name__ == "__main__":

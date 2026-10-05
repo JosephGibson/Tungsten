@@ -31,7 +31,7 @@ Fill from the stop's entry in `docs/plans/1.0/roadmap.json`: `<candidate>` is it
 
 ## Flow
 
-The keys each kind of stop runs, in order, with where each runs and the status the stop has while it is next. A step runs once unless its note says otherwise; `resume`, `compact`, `release`, `verify`, `records-lag`, `review-fixes` and `answer` can come at any point.
+The keys each kind of stop runs, in order, with where each runs and the status the stop has while it is next. A step runs once unless its note says otherwise; `resume`, `compact`, `release`, `verify`, `records-lag`, `review-fixes` and `answer` can come at any point. `scripts/roadmap.py` reads this table into each stop's stages on the roadmap page, with a mode, model and effort for each session step (`D-118`), so keep each step as `` `key` (where, status) `` or `` `key` (where, status; note) ``, joined by `→`; a note "the <name> gate only" keeps the step on that gate alone.
 
 | Stop | Steps: key (where, status) |
 | --- | --- |

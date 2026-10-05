@@ -14,7 +14,7 @@ Answers "what do I run next, and where?" on the road to 1.0. The repo is the sou
 - Run `python3 -B scripts/roadmap.py status --json <scratch>/status.json` and `python3 -B scripts/roadmap.py catalog <scratch>/catalog.json`, `<scratch>` being the session's scratchpad, never the tree. `status` prints each stop's status with its evidence, the current stop, the next release and milestone.
 - Claude Code: read [roadmap.md](roadmap.md) and list the artifact's `meta` and `stops` collections with `ArtifactData` (load it with ToolSearch `select:ArtifactData` when deferred). Any other client, such as Codex, has no `ArtifactData`: skip both, and §5 says what to print.
 
-Then read the named stop's catalog entry, which fills its prompts (prompts.md says which field fills which bracket): `jq '.stops[] | select(.id == "<id>")' docs/plans/1.0/roadmap.json`. Read nothing else unless the state leaves the next step unclear; then read one section (a plan's open questions, a gate's agenda).
+Then read the named stop's entry in the payload, which fills its prompts (prompts.md says which field fills which bracket) and holds its stages, each session's with its recommendation: `jq '.catalog.stops[] | select(.id == "<id>")' <scratch>/catalog.json`. Read nothing else unless the state leaves the next step unclear; then read one section (a plan's open questions, a gate's agenda).
 
 ## 2. Check the records against the tree
 
@@ -77,7 +77,7 @@ Exactly this shape, no other prose. Leave out sections that would be empty.
 ```
 
 <The session prompt: for Next when it is a session's, or for the first session after your step.>
-**New session** (repo root) · <one-clause reason>
+**New session** (repo root) · <mode> mode · <model> · <effort> · <one-clause reason>
 ```text
 <the prompt, filled in>
 ```
@@ -91,7 +91,7 @@ Exactly this shape, no other prose. Leave out sections that would be empty.
 **Roadmap** · <what changed | already in step | not synced (why)> · https://claude.ai/artifact/EyM2iTgnnActfbMBZKcav9
 ````
 
-- Every prompt goes in its own `text` block under a label line naming where it runs: **New session** (repo root) or **Same session** (the one that stopped for <what>). Owner shell commands go in one `bash` block under **Your shell**. Never put a prompt or a command in a sentence, a list item or inline code.
+- Every prompt goes in its own `text` block under a label line naming where it runs: **New session** (repo root), with the step's `rec` as [roadmap.md](roadmap.md) copies it, or **Same session** (the one that stopped for <what>). Owner shell commands go in one `bash` block under **Your shell**. Never put a prompt or a command in a sentence, a list item or inline code.
 - Give blocks for Next and, when Next is yours, for the first session after it. List later steps by name only: their prompts depend on what comes first.
 - Heads-up: one line per item, problem then action, most urgent first. Their commands join the **Your shell** block, or get their own after the list when Next has none.
 - When state.sh warns (an upstream, an ignored skill, junk the release would sweep in, `origin/main` not in `HEAD` before tagging), that's a Heads-up item.

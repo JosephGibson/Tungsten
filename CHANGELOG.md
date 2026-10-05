@@ -6,6 +6,14 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.47.0] - 2026-10-04
+
+Summary: the 1.0 roadmap page's stages and session recommendations (`D-118`), outside the 1.0 register and with no plan file: the roadmap catalog gives each stop its stages from `tungsten-next`'s Flow table and each session stage a mode, model and effort, and the page draws them. No engine code, dependency, asset or manifest change.
+
+### Changed
+
+- **Roadmap page: every stop's stages, a session recommendation per stage, Dracula on black** (`D-118`): `scripts/roadmap.py catalog` reads each stop's stages from `prompts.md`'s Flow table by kind and level and gives each session stage a mode, model and effort from the stop's complexity and effort (Fable 5.1 xhigh for architectural stops, Opus 5.5 max at complexity 2–3, plan mode for gates), as catalog schema 2 (a 55.4 KB payload, from 30.3 KB), and `just repo-check` fails when a stop matches no Flow row; the page draws each stop's stages with the current one marked, on OLED black with Dracula accents that each mean one thing; the Next panel adds the headline, the step's recommendation, plan progress, the stop's open questions, "After that" and the tree at sync time (`meta/now` drops `flow`, gains `next.rec`, `recovery[].rec` and `tree`); `/tungsten-next`'s new-session label shows the recommendation; expanded stop bodies no longer print "[object HTMLSpanElement]" for sources and questions. Process and tooling only.
+
 ## [0.46.0] - 2026-10-04
 
 Summary: Phase 5's third milestone, M34 (W1 M0a, plan archived at `docs/plans/archive/1.0/phase5-milestone-34-text-engine-split.md`). Text splits into a device-free engine and a GPU half, with neutral text types in core and retained nodes that layout measures (`D-117`); font families and a fallback chain join the manifest (`D-115`); text draws with packaged fonts only unless a game sets `render.system_fonts` (`D-116`). One new direct dependency, `unicode-script` 0.5.8, which cosmic-text already locked. `gpu-visual.png` moves on purpose, since the old fixture showed a system font; the row digests, the post and transition regressions and the physics hashes are unchanged.
