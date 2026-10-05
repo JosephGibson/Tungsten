@@ -1,16 +1,17 @@
-# Release builds (D-071, D-072, D-079, D-120). A final vX.Y.Z tag publishes when
-# the pull request whose head commit it names merges into main; a pushed
-# pre-release tag (vX.Y.Z-<pre>) publishes at once; a manual run on a tag covers
-# maintenance and recovery. Each run checks the tag against Cargo.toml and
-# CHANGELOG.md, builds the examples for Linux and Windows at two x86-64 CPU
-# levels, and publishes one archive per platform (both builds, a launcher per
-# example that runs the fastest one the CPU supports, and the files the examples
-# read), one debug archive per platform (each build's split .debug file or PDB),
-# SHA256SUMS and the matching changelog section as notes. A vX.Y.Z-<pre> tag
-# without its own changelog section is a rehearsal, published as a pre-release.
-# Hosted runners have no GPU: nothing with a window is launched. The one program
-# run is the crash-report probe, which needs none and reports without failing
-# the run (D-070, D-120). Release steps and recovery: docs/releases.md.
+# Release builds (D-071, D-072, D-079, D-120, D-122). A final vX.Y.Z tag
+# publishes when the pull request whose head commit it names merges into main;
+# a pushed pre-release tag (vX.Y.Z-<pre>) publishes at once; a manual run on a
+# tag covers maintenance and recovery. Each run checks the tag against
+# Cargo.toml and CHANGELOG.md, builds the examples for Linux and Windows at two
+# x86-64 CPU levels, and publishes one archive per platform (both builds, a
+# launcher per example that runs the fastest one the CPU supports, the files
+# the examples read and the third-party license notices), one debug archive per
+# platform (each build's split .debug file or PDB), SHA256SUMS and the matching
+# changelog section as notes. A vX.Y.Z-<pre> tag without its own changelog
+# section is a rehearsal, published as a pre-release. Hosted runners have no
+# GPU: nothing with a window is launched. The one program run is the
+# crash-report probe, which needs none and reports without failing the run
+# (D-070, D-120). Release steps and recovery: docs/releases.md.
 name: Release
 
 on:
@@ -142,15 +143,24 @@ jobs:
           build-warnings: ""
           cache: false
 
-      # Binary targets are the examples and the launcher; the tuned profile's line
-      # tables stay in, for the debug archive (D-120). A set RUSTFLAGS replaces
-      # target-cpu=native from .cargo/config.toml.
+      # Binary targets are the examples and the launcher; the template ships in
+      # no archive, so it is left out. The tuned profile's line tables stay in,
+      # for the debug archive (D-120). A set RUSTFLAGS replaces target-cpu=native
+      # from .cargo/config.toml.
       - name: Build release binaries per CPU level
         run: |
           for level in $CPU_LEVELS; do
             RUSTFLAGS="-C target-cpu=$level $EXTRA_RUSTFLAGS" cargo build --release --locked \
-              --workspace --exclude tungsten-crash-probe --bins --target "$TARGET" --target-dir "target/$level"
+              --workspace --exclude tungsten-crash-probe --exclude tungsten-template-basic --bins \
+              --target "$TARGET" --target-dir "target/$level"
           done
+
+      # The crates the shipped binaries link, with their license files, and the
+      # toolchain's standard-library notices, from which packaging writes each
+      # archive's third-party notices (D-122). It lands at the artifact's root.
+      - name: Collect license data
+        run: |
+          ${{ matrix.python }} -B scripts/release.py licenses "$TARGET" --out target/licenses.json
 
       # Once, at the portable level, into its target dir: only the probe's crate compiles.
       - name: Build the crash-report probe
@@ -173,6 +183,7 @@ jobs:
             target/*/${{ matrix.target }}/release/example-*
             target/*/${{ matrix.target }}/release/example_*.pdb
             target/x86-64/${{ matrix.target }}/release/tungsten-launcher*
+            target/licenses.json
             !target/*/${{ matrix.target }}/release/*.d
           if-no-files-found: error
           retention-days: 7
@@ -199,7 +210,8 @@ jobs:
 
       # A player and a debug archive per built target, then checksums over all of
       # them. Packaging splits each Linux binary with objcopy and checks every
-      # debug file against its binary (D-120).
+      # debug file against its binary (D-120), and writes the notices from the
+      # build job's licenses.json, failing on a crate without a license text (D-122).
       - name: Package archives and checksums
         run: |
           for dir in artifacts/bin-*; do

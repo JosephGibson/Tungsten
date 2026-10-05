@@ -34,9 +34,9 @@ The shared [manifest](../manifest.json) currently loads these static faces:
 | --- | --- | --- |
 | `sans` | `fonts/Inter/static/Inter-Regular.ttf` | Body/UI text |
 | `sans_bold` | `fonts/Inter/static/Inter-Bold.ttf` | Emphasis/headings |
-| `mono` | `fonts/JetBrainsMono/static/JetBrainsMono-Regular.ttf` | Debug text |
+| `mono` | `fonts/JetBrainsMono/static/JetBrainsMono-Regular.ttf` | The examples' monospace text |
 
-Use those IDs in `TextSection.font_id`; other inventory files are not loaded automatically. Add a unique font entry to the appropriate manifest before using another face. Complete family directories, including unused weights and licenses, are permitted asset-coverage exceptions.
+The HUD, the systems overlay and the inspector no longer use `mono`: they draw with the engine font, `engine_mono`, a copy of this JetBrains Mono Regular compiled into the `tungsten` crate with its license (`crates/tungsten/assets/fonts/`, `D-123`). Use those IDs in `TextSection.font_id`; other inventory files are not loaded automatically. Add a unique font entry to the appropriate manifest before using another face. Complete family directories, including unused weights and licenses, are permitted asset-coverage exceptions.
 
 ## Families and the fallback chain
 

@@ -509,7 +509,7 @@ impl App {
         for path in &ready {
             let canon = path.canonicalize().unwrap_or_else(|_| path.clone());
 
-            if canon.file_name().is_some_and(|name| name == "input.json") {
+            if is_action_map(&canon, &self.input_map_path) {
                 if let Err(e) = asset_loader::reload_action_map(&canon, &mut self.world) {
                     log::error!("Action map reload: {e}");
                 }
@@ -1320,6 +1320,15 @@ fn is_reload_root(canon: &Path, reload_roots: &[PathBuf]) -> bool {
         .any(|root| root.canonicalize().unwrap_or_else(|_| root.clone()) == canon)
 }
 
+/// True when the canonical path `canon` names the action map's own file,
+/// not just any file called `input.json` (`D-123`).
+fn is_action_map(canon: &Path, input_map_path: &Path) -> bool {
+    input_map_path
+        .canonicalize()
+        .unwrap_or_else(|_| input_map_path.to_path_buf())
+        == canon
+}
+
 /// Simulated seconds for a frame that starts `elapsed` after the previous
 /// one.
 ///
@@ -1667,7 +1676,11 @@ impl ApplicationHandler for App {
         render_config.max_frame_latency = startup_state.max_frame_latency;
 
         match Renderer::new(window.clone(), &render_config, startup_state.vsync) {
-            Ok(renderer) => {
+            Ok(mut renderer) => {
+                // First, before any manifest font: a manifest face with its
+                // ID replaces it, and every start registers faces in one
+                // order (D-116, D-123).
+                crate::engine_font::register(&mut renderer);
                 if std::env::var("TUNGSTEN_PERF_LOG").is_ok() {
                     log::debug!(
                         "backend: {} adapter: {} present_mode: {} max_frame_latency: {} timestamp_query: {}",

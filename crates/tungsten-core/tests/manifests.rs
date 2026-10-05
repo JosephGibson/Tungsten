@@ -33,6 +33,35 @@ fn collect_manifests(root: &Path) -> Vec<PathBuf> {
     out
 }
 
+/// Each `templates/*/assets/manifest.json`. A game loads its template's
+/// manifest as its only root, so each one loads and resolves on its own,
+/// outside the examples' uniqueness merge (`D-123`).
+fn collect_template_manifests(root: &Path) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = std::fs::read_dir(root.join("templates"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path().join("assets").join("manifest.json"))
+        .filter(|p| p.exists())
+        .collect();
+    out.sort();
+    out
+}
+
+#[test]
+fn each_template_manifest_loads_as_its_own_root() {
+    let manifests = collect_template_manifests(&workspace_root());
+    assert!(
+        !manifests.is_empty(),
+        "no template manifest under templates/ — test is broken"
+    );
+    for manifest in &manifests {
+        if let Err(e) = ResolvedManifest::load_and_merge_many(&[manifest]) {
+            panic!("{}: {e:?}", manifest.display());
+        }
+    }
+}
+
 #[test]
 fn all_manifests_load() {
     let root = workspace_root();

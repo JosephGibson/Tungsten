@@ -1,6 +1,6 @@
 # Internal release procedure
 
-Canonical procedure (`D-071`, `D-072`, `D-074`, `D-079`). **The agent runs every check; the human pastes a short block of plain Git commands and approves the pull request in GitHub.** Global `~/.claude/settings.json` denies agent `git add/commit/push/fetch/tag/merge/checkout`; agents prepare files, run checks and supply commands, without bypassing those denies through another command or API. The same holds for `gh` commands that change GitHub (`gh pr create`, `gh workflow run`, reruns, deletions): agents run only the read-only ones.
+Canonical procedure (`D-071`, `D-072`, `D-074`, `D-079`, `D-122`). **The agent runs every check; the human pastes a short block of plain Git commands and approves the pull request in GitHub.** Global `~/.claude/settings.json` denies agent `git add/commit/push/fetch/tag/merge/checkout`; agents prepare files, run checks and supply commands, without bypassing those denies through another command or API. The same holds for `gh` commands that change GitHub (`gh pr create`, `gh workflow run`, reruns, deletions): agents run only the read-only ones.
 
 **Every release task ends with the exact commands the human still has to run**, values filled in, as one block. Keep them basic: commit, tag, push, open the pull request. A second block follows for after the merge: it starts the next milestone branch. Nothing is published until the human merges that pull request.
 
@@ -15,7 +15,7 @@ Start at the repo root on the finished milestone branch `0.NN`, with [branch doc
    ```bash
    just release-cut X.Y.Z &&
    just check && just ctx && just repo-check && just api-check &&
-   just script-test && just smoke &&
+   just script-test && just smoke && just notices && just template-check &&
    git diff --check && git status --short && git diff --stat
    ```
 
@@ -69,7 +69,7 @@ The tag names the tested milestone commit. `main`'s squash commit has the same t
 
 `just release-cut VERSION [--date YYYY-MM-DD]` moves `[Unreleased]` into a dated section, updates Cargo.toml and DESIGN, and refreshes Cargo.lock. It rejects inconsistent files, empty notes, non-increasing versions and dates before the last release. If lock refresh fails, the cut files are already changed: fix Cargo.lock and rerun checks, not the cut. README is never rewritten.
 
-Step 1 covers ordinary milestone checks under [AGENTS.md](../AGENTS.md); narrow documentation-only work can omit script/GPU checks when those rules allow it. The checks run on the working tree that step 3 commits, so change nothing in between. The merge must keep the tagged tree: if `main` gained commits the branch lacks, the human merges `main` into the branch (`git fetch origin`, `git merge origin/main`) and the checks run again before the hand-off. CI remains informational (`D-070`); report its result for the tagged commit and outstanding hardware checks.
+`just template-check` copies `templates/basic` to a fresh folder outside the repository, after a free-space check on `target/`, and builds, tests and smoke-runs it there against this checkout (`D-123`). Step 1 covers ordinary milestone checks under [AGENTS.md](../AGENTS.md); narrow documentation-only work can omit script/GPU checks when those rules allow it. The checks run on the working tree that step 3 commits, so change nothing in between. The merge must keep the tagged tree: if `main` gained commits the branch lacks, the human merges `main` into the branch (`git fetch origin`, `git merge origin/main`) and the checks run again before the hand-off. CI remains informational (`D-070`); report its result for the tagged commit and outstanding hardware checks.
 
 ### Resume or use another branch
 
@@ -111,7 +111,7 @@ git ls-remote origin 'refs/tags/vX.Y.Z*'
 
 For an annotated tag, the `^{}` line identifies its commit; the other line identifies the tag object. GitHub release `target_commitish` is not proof of the tagged commit. Confirm the remote tag, run SHA and intended SHA agree.
 
-The workflow builds the four examples for Linux (`x86_64-unknown-linux-gnu`, Ubuntu 24.04) and Windows (`x86_64-pc-windows-msvc`, static CRT). Each platform's player archive contains portable x86-64 and x86-64-v3 builds, launchers, runtime assets and README.txt, and no debug files. Its debug archive, `tungsten-debug-vX.Y.Z-<target>`, holds each example build's debug file (Linux `bin/<level>/<example>.debug`, split off by `release.py package`; Windows `bin/<level>/<example>.pdb`) under the same top folder, so it extracts over the player archive (`D-120`). Launchers select the fastest supported CPU level and set the working directory to the archive root. Hosted runners have no GPU, so nothing with a window runs there; each build job's `Crash-report probe` step runs `tools/crash-probe` from an archive-like copy and symbolizes its crash file, informational only (`continue-on-error`, `D-120`).
+The workflow builds the four examples for Linux (`x86_64-unknown-linux-gnu`, Ubuntu 24.04) and Windows (`x86_64-pc-windows-msvc`, static CRT). Each platform's player archive contains portable x86-64 and x86-64-v3 builds, launchers, runtime assets, README.txt and the [license notices](#license-notices) `THIRD-PARTY-NOTICES.txt` and `THIRD-PARTY-NOTICES-rust-std.html`, and no debug files. Its debug archive, `tungsten-debug-vX.Y.Z-<target>`, holds each example build's debug file (Linux `bin/<level>/<example>.debug`, split off by `release.py package`; Windows `bin/<level>/<example>.pdb`) under the same top folder, so it extracts over the player archive (`D-120`). Launchers select the fastest supported CPU level and set the working directory to the archive root. Hosted runners have no GPU, so nothing with a window runs there; each build job's `Crash-report probe` step runs `tools/crash-probe` from an archive-like copy and symbolizes its crash file, informational only (`continue-on-error`, `D-120`).
 
 Expect a Linux `.tar.gz` and a Windows `.zip` of each prefix, `tungsten-examples-*` and `tungsten-debug-*`, and `SHA256SUMS`, which lists all four. Download the player archives into a fresh directory and verify them; `--ignore-missing` skips the debug archives left out and still fails when no listed file is present (requires `sha256sum`; use an equivalent SHA-256 tool on Windows):
 
@@ -130,7 +130,7 @@ gh release download vX.Y.Z --repo JosephGibson/Tungsten --dir "$release_download
 (cd "$release_download" && sha256sum -c SHA256SUMS)
 ```
 
-Check that all four archive names are present, notes match the tag's changelog section, and prerelease classification matches the tag. Extract the appropriate archive and launch an example on a GPU machine, including from outside the archive directory. On Linux its first console line reports the selected CPU level; Windows builds open no console, and each run's log and any crash report go to `%LOCALAPPDATA%\tungsten-examples\logs` (Linux: `~/.local/state/tungsten-examples/logs`, `D-119`). `TUNGSTEN_CPU_LEVEL=x86-64` exercises the portable path; never force v3 on an unsupported CPU. Report untested platforms explicitly. Linux needs compatible Vulkan/windowing/audio libraries and may need glibc 2.39.
+Check that all four archive names are present, notes match the tag's changelog section, and prerelease classification matches the tag. Read each player archive's `THIRD-PARTY-NOTICES.txt`: its first line names the target, its crate count is the one `just notices` printed for that target, and the Linux file lists Cantarell under `sctk-adwaita`. Extract the appropriate archive and launch an example on a GPU machine, including from outside the archive directory. On Linux its first console line reports the selected CPU level; Windows builds open no console, and each run's log and any crash report go to `%LOCALAPPDATA%\tungsten-examples\logs` (Linux: `~/.local/state/tungsten-examples/logs`, `D-119`). `TUNGSTEN_CPU_LEVEL=x86-64` exercises the portable path; never force v3 on an unsupported CPU. Report untested platforms explicitly. Linux needs compatible Vulkan/windowing/audio libraries and may need glibc 2.39.
 
 ### Crash-report check
 
@@ -147,6 +147,19 @@ python3 -B scripts/crash-report.py symbolize "$crash_check"/user/logs/*-crash.tx
 ```
 
 It first checks the crash file's `build_id` against the debug file, then prints `N: function at file:line` per frame, and exits 1 on a mismatch or when no frame resolves in `crates/tungsten/src/`. The run's two `Crash-report probe` steps give the same verdict for the probe on each runner; read them on a rehearsal tag before merging.
+
+### License notices
+
+Each player archive's `THIRD-PARTY-NOTICES.txt` and `THIRD-PARTY-NOTICES-rust-std.html` (`D-122`) come from license data that each build job collects after the build. `release.py licenses <target>` takes the crates that `cargo tree -e normal` reaches from the examples and the launcher, reads each crate's license expression and its root-level `LICENSE*`, `LICENCE*`, `COPYING*`, `COPYRIGHT*`, `UNLICENSE*` and `NOTICE*` files, lists its font files, and copies the toolchain's `COPYRIGHT-library.html`. The publish job's `package` reads that `licenses.json` from the artifact and writes both files; `just notices` runs the same two commands for both targets into `target/notices/<target>/`.
+
+A crate is used under the first alternative of its license expression, in the order MIT, Apache-2.0, Zlib, BSD-3-Clause, BSD-2-Clause, ISC, Unlicense, 0BSD, CC0-1.0, Unicode-3.0, MPL-2.0, Apache-2.0 WITH LLVM-exception, whose licenses each match one of its files. The other alternatives' texts stay out, `NOTICE` files always ship, and the file lists each distinct text once, numbered, under the crates that use it. When `just notices` fails, the error names every crate concerned:
+
+- **No license text matches an alternative** (a new crate, or a version without license files): fetch the upstream license file at the crate's version tag, or at the commit in the package's `.cargo_vcs_info.json`, into `licenses/<crate>/`, and add a `texts` entry to [`licenses/clarifications.json`](../licenses/clarifications.json) with the crate's `version` and the file's `source` URL. Never write a license text from memory.
+- **Checked at another version:** a clarified crate moved to another version. Check upstream again, refresh its files and update `version`.
+- **Font files with neither a bundled entry nor a review:** read whether the crate's sources compile a font in (`include_bytes!`). If one does, add a `bundled` entry with the font's license text, its copyright as the font's name table or upstream gives it, the source and the version, as `sctk-adwaita`'s Cantarell has. If none does, add a `fonts_reviewed` note saying what the fonts serve.
+- **An embedded work's file is missing:** `EMBEDDED_WORKS` in `scripts/release.py` lists the third-party works the engine compiles in, each with its license file (SMAA's lookup textures and shaders). Add a row when engine code embeds another one.
+
+The font guard covers font files only. After a dependency change, check the new or updated crates' sources for other data they compile in under another license than their own (`include_bytes!` or `include_str!` outside tests and doc comments), and add each as a `bundled` entry.
 
 ### Rehearsals and versioned prereleases
 
@@ -181,7 +194,7 @@ The post-merge block starts the next milestone: it refreshes `origin/main`, crea
 
 | Concern | Source |
 | --- | --- |
-| Version, notes and packaging | [release.py](../scripts/release.py), [tests](../scripts/test-release.py) |
+| Version, notes, packaging and license notices | [release.py](../scripts/release.py), [tests](../scripts/test-release.py), [clarifications](../licenses/clarifications.json) |
 | Crash-report symbolization and the release probe | [crash-report.py](../scripts/crash-report.py), [tests](../scripts/test-crash-report.py) |
 | Read-only Git/GitHub preflight and command hand-off | [release-preflight.py](../scripts/release-preflight.py), [tests](../scripts/test-release-preflight.py) |
 | Recipes | [justfile](../justfile) |

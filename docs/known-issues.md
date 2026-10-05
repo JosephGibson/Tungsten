@@ -35,23 +35,22 @@ Carried from the review, as of `0.27.0`.
 - A Windows release build without a console (`windows_subsystem`, `D-119`): starting it from Explorer and from a terminal, and its log and crash files under `%LOCALAPPDATA%\tungsten-examples\logs`.
 - Windows PDB symbolization (`D-120`): `crash-report.py symbolize` on a Windows crash file, against the debug archive's PDB through `llvm-symbolizer`. Only synthetic PDBs test it locally, where `cargo check --all-targets` for `x86_64-pc-windows-msvc` stops at `criterion`'s `alloca` build script, which needs MSVC's `lib.exe`.
 - As of M35's hand-off, unread: the release run's two `Crash-report probe` steps (`D-120`), first run on its rehearsal tag, and CI's `windows-tests` job (`D-121`) on the release pull request's fix commit. Its first run failed only in `crates/tungsten-render/tests/shader_coverage.rs`, whose messages printed Windows paths with `\`; that is fixed, and the doctests, which `cargo test` skipped after the failure, have not run on Windows yet.
+- As of M36's hand-off, unread: the third-party notices in the 0.49 archives (`D-122`), `THIRD-PARTY-NOTICES.txt` and `THIRD-PARTY-NOTICES-rust-std.html` in each player archive, and the first run of the `Collect license data` step on the Windows runner. The owner reads them on a rehearsal tag at the release commit before the merge (M36 Q6).
 
 ## Follow-ups
 
-Each was checked against the tree on 2026-10-02, except the last twenty-two: ten from the 0.40 QA pass (2026-10-03), one from M32 (`D-110`), seven from the 0.44 test-suite overhead pass (2026-10-04), one from M34 (2026-10-04) and the last three from M35 (2026-10-05).
+Each was checked against the tree on 2026-10-02, except the last twenty-five: nine from the 0.40 QA pass (2026-10-03), one from M32 (`D-110`), seven from the 0.44 test-suite overhead pass (2026-10-04), one from M34 (2026-10-04), three from M35 (2026-10-05) and the last four from M36 (2026-10-05).
 
 - Truncated Ogg files fail at probe; decide whether to decode the available prefix, as MP3 does. `tests/audio_decode.rs` pins the error.
 - Evaluate rtrb 0.4.0 against the locked 0.3.5, and adopt winit 0.31 once it leaves prerelease (0.30.13 is locked).
 - Drop the RUSTSEC-2026-0192 exception in `deny.toml` when cosmic-text/fontdb stop using `ttf-parser`.
 - Re-verify instruction loading once Claude Code reads `AGENTS.md` natively (2.1.277+); the `CLAUDE.md` import could then load it twice.
 - Only `example-01-platformer` enables hot reload; the shader playground could too.
-- Release archives don't bundle third-party license notices for statically linked crates.
-- The stock shaders exist twice (`crates/tungsten-render/src/shaders/stock/**` and `assets/shaders/stock/**`, `D-059`); including the asset copies as `sprite.wgsl` and `lit_sprite.wgsl` already do would halve every stock-shader edit but needs a decision.
+- The stock shaders exist twice (`crates/tungsten-render/src/shaders/stock/**` and `assets/shaders/stock/**`, `D-059`); including the asset copies as `sprite.wgsl` and `lit_sprite.wgsl` already do would halve every stock-shader edit. `D-123` keeps both copies until crate publication is settled (Q2, W9c).
 - `Renderer::new` spends about 390 lines seeding shader IDs (`renderer.rs:145-537`).
 - `display.scale_mode` is parsed and unused (`DESIGN.md`'s config section, `core/display.rs`): wire or remove, owner's call.
 - Particle `Burst { once: false }` only suppresses `ParticleSystemDrained` and `Pulse { total_pulses: Some(0) }` fires one pulse (`tungsten/src/particles.rs:313-347`): define the semantics.
 - `render.max_frame_latency = 0` in the file passes `Config::load` and fails at renderer start (`render/surface.rs:118`), while `display.max_frame_latency = 0` warns and falls back (`core/display.rs:292-297`).
-- Any file named `input.json` under a watched directory reloads as the action map (`tungsten/src/app.rs:454`).
 - Perf: `env::var("TUNGSTEN_PERF_LOG")` every frame (`app.rs:1147`), the tween system cloning channel lists every frame (`tweens.rs:43`), tile proxies rebuilt from a full-map scan every frame.
 - The perf runner's background-load scan (`D-095`) covers the measured runs of `run`, `suite` and `--sweep` only: capacity probes, `just smoke` timings and `just visual` still rely on the manual `pgrep` checks.
 - Hand-written frame loops outside example 01 still run stages by hand that the headless harness (`D-110`) runs in order: `crates/tungsten/tests/particles.rs`, `crates/tungsten/src/tests/tweens.rs`, `state.rs` and `game_feel.rs`, and `examples/03_scene_state/src/states.rs`. Home: W15a, which steps the harness, or the Phase 5 QA pass.
@@ -68,3 +67,7 @@ Each was checked against the tree on 2026-10-02, except the last twenty-two: ten
 - The launcher's errors are invisible on Windows now that it opens no console (`tools/launcher/src/main.rs`, `D-119`): a missing level or a failed start needs an error dialog or a log line, with W7b or W14b.
 - A `Config::load` error before `App::new` (an invalid `tungsten.json`) reaches only stderr, which a Windows release build lacks: the examples' `main` returns it before any logger or user folder exists.
 - The bench's `knobs::unless_env` warning, an environment variable overriding a knob (`examples/02_bench/src/knobs.rs`), is logged before `App::new` installs the logger, so it is dropped; before M35 it reached stderr only with `RUST_LOG` set.
+- The template's `AGENTS.md` and `CLAUDE.md` have no `just ctx` budget: `scripts/check-agent-context.py` budgets a fixed list of instruction files. A candidate for W14b, which adds `tungsten check` to them.
+- The Windows release build links the static MSVC runtime (`+crt-static`, `D-071`); its license terms are not covered by the third-party notices (`D-122`). The owner's call, before C3's RC-D2.
+- `just template-check` gives its copy the engine's `Cargo.lock`, so a game's own first resolution, which `docs/getting-started.md` describes, stays untested until W9b's final pass runs the guide's commands.
+- The root `assets/sprites/` squares and circle (`1bec03e`, 2026-04-12) and `assets/sounds/*.ogg` (`90dea43`, 2026-04-13) have no recorded origin or license, and the release archives ship them under Tungsten's MIT `LICENSE`; M36 generated the template's sprite instead. Record their provenance before C3's RC-D2.

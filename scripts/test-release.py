@@ -6,7 +6,9 @@ import datetime
 import hashlib
 import importlib.util
 import io
+import json
 import re
+import shutil
 import struct
 import tarfile
 import tempfile
@@ -64,6 +66,35 @@ Summary: lighting ([plan](docs/plans/x.md)).
 DATE = datetime.date(2026, 10, 1)
 BUILD_ID = bytes(range(20))
 GUID = bytes.fromhex("33221100554477668899aabbccddeeff")
+# Synthetic stand-ins holding each license's marker phrases, not the license texts themselves.
+TEXTS = {
+    "MIT": "Copyright (c) {who}\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\n"
+           "of this software. The above copyright notice and this permission notice shall be included in all\n"
+           "copies or substantial portions of the Software.\n",
+    "Apache-2.0": "Apache License\nTERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION\n"
+                  "2. Grant of Copyright License. ({who})\n",
+    "Zlib": "Copyright {who}\nPermission is granted to anyone to use this software for any purpose.\n"
+            "2. Altered source versions must be plainly marked as such.\n",
+    "Unicode-3.0": "UNICODE LICENSE V3\nPermission is hereby granted, free of charge, to any person obtaining a\n"
+                   "copy of data files ({who})\n",
+    "GPL-2.0-only": "GNU GENERAL PUBLIC LICENSE, Version 2 ({who})\n",
+}
+LINUX, WINDOWS = "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"
+
+
+def text(license, who="the authors"):
+    return TEXTS[license].format(who=who)
+
+
+def crate(name, license, files, version="1.0.0", fonts=()):
+    """One crate's record as `release.py licenses` writes it."""
+    return {"name": name, "version": version, "license": license, "license_file": None,
+            "repository": f"https://example.com/{name}", "files": files, "fonts": list(fonts)}
+
+
+def license_data(target, crates):
+    return {"target": target, "rustc": "rustc 1.0.0 (fake)", "rust_std_notices": "<html>std notices</html>\n",
+            "crates": crates}
 
 
 def synthetic_elf(build_id=None, sections=()):
@@ -138,6 +169,8 @@ class Release(unittest.TestCase):
         self.write("examples/02_bare/Cargo.toml", '[package]\nname = "example-02-bare"\n')
         for path in ("tungsten.json", "input.json", "LICENSE", "assets/manifest.json", "assets/sprites/a.png"):
             self.write(path, path)
+        for title, path in rel.EMBEDDED_WORKS:
+            self.write(path, f"{title}: {text('MIT', 'an embedded work')}")
 
     def write(self, path, text):
         target = self.root / path
@@ -325,6 +358,17 @@ class Release(unittest.TestCase):
                     content = synthetic_pe(guid, 1, f"D:\\a\\{level}\\release\\deps\\{pdb}")
                 self.write(f"{release}/{name}{suffix}", content).chmod(0o644)
             self.write(f"{release}/example-01-demo.d", "dep-info")
+        # The build job's license data lands at the artifact root (D-122).
+        self.licenses(target, [crate("anyhow", "MIT OR Apache-2.0", {"LICENSE-MIT": text("MIT", "anyhow")})])
+
+    def licenses(self, target, crates):
+        self.write(f"target/{rel.LICENSE_DATA}", json.dumps(license_data(target, crates)))
+
+    def notices(self, *crates, target=LINUX):
+        return rel.third_party_notices(self.root, license_data(target, list(crates)))
+
+    def clarify(self, *entries):
+        self.write(rel.CLARIFICATIONS, json.dumps({"crates": list(entries)}))
 
     def package(self, tag, target):
         return rel.package(self.root, tag, target, self.root / "dist", splitter=self.fake_split)
@@ -488,6 +532,226 @@ class Release(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "missing x86-64/tungsten-launcher"):
             self.package("v0.26.0", linux)
 
+    def test_license_expressions(self):
+        for expression, expected in (
+                ("MIT", [("MIT",)]),
+                ("MIT OR Apache-2.0", [("MIT",), ("Apache-2.0",)]),
+                ("MIT/Apache-2.0", [("MIT",), ("Apache-2.0",)]),
+                ("Unlicense / MIT", [("Unlicense",), ("MIT",)]),
+                ("MIT OR Apache-2.0 OR Zlib", [("MIT",), ("Apache-2.0",), ("Zlib",)]),
+                ("(MIT OR Apache-2.0) AND Unicode-3.0", [("MIT", "Unicode-3.0"), ("Apache-2.0", "Unicode-3.0")]),
+                ("Apache-2.0 AND MIT", [("Apache-2.0", "MIT")]),
+                ("Apache-2.0 OR GPL-2.0-only", [("Apache-2.0",), ("GPL-2.0-only",)]),
+                ("Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+                 [("Apache-2.0 WITH LLVM-exception",), ("Apache-2.0",), ("MIT",)]),
+                ("MPL-2.0", [("MPL-2.0",)])):
+            with self.subTest(expression=expression):
+                self.assertEqual(rel.alternatives(expression), expected)
+        for bad in ("", "MIT OR", "(MIT OR Apache-2.0", "MIT)", "AND MIT", "MIT WITH", "MIT Apache-2.0"):
+            with self.subTest(bad=bad), self.assertRaisesRegex(ValueError, "malformed"):
+                rel.alternatives(bad)
+
+    def test_preferred_alternative_with_a_text(self):
+        files = {"LICENSE-APACHE": text("Apache-2.0"), "LICENSE-MIT": text("MIT"), "LICENSE-ZLIB": text("Zlib")}
+        self.assertEqual(rel.choose("Zlib OR Apache-2.0 OR MIT", files), (("MIT",), [("MIT", "LICENSE-MIT")]))
+        del files["LICENSE-MIT"]
+        self.assertEqual(rel.choose("Zlib OR Apache-2.0 OR MIT", files),
+                         (("Apache-2.0",), [("Apache-2.0", "LICENSE-APACHE")]))
+        # Each license of an AND needs a text; of two matching files the more specific one serves.
+        files = {"LICENSE": text("MIT") + text("Apache-2.0"), "LICENSE-MIT": text("MIT"),
+                 "LICENSE-UNICODE": text("Unicode-3.0")}
+        self.assertEqual(rel.choose("(MIT OR Apache-2.0) AND Unicode-3.0", files),
+                         (("MIT", "Unicode-3.0"), [("MIT", "LICENSE-MIT"), ("Unicode-3.0", "LICENSE-UNICODE")]))
+        del files["LICENSE-UNICODE"]
+        self.assertIsNone(rel.choose("(MIT OR Apache-2.0) AND Unicode-3.0", files))
+        # A pointer to a license is not its text, and a license outside the preference is never used.
+        self.assertIsNone(rel.choose("MIT", {"LICENSE": "Licensed under the MIT license."}))
+        self.assertIsNone(rel.choose("GPL-2.0-only", {"COPYING": text("GPL-2.0-only")}))
+
+    def test_notices_leave_out_other_alternatives_and_keep_notice_files(self):
+        apache = text("Apache-2.0")
+        notices = self.notices(
+            crate("self_cell", "Apache-2.0 OR GPL-2.0-only", {"LICENSE-APACHE": apache,
+                                                              "LICENSE-GPLv2": text("GPL-2.0-only")}),
+            crate("lib-a", "MIT OR Apache-2.0", {"LICENSE-APACHE": apache, "NOTICE.md": "Lib A's notice.\n"}),
+            crate("lib-b", "Apache-2.0", {"LICENSE": apache}))
+        self.assertNotIn("GNU GENERAL PUBLIC LICENSE", notices)
+        self.assertIn("self_cell 1.0.0\n    License: Apache-2.0 OR GPL-2.0-only\n    Used under: Apache-2.0: [1]\n",
+                      notices)
+        self.assertIn("lib-a 1.0.0\n    License: MIT OR Apache-2.0\n    Used under: Apache-2.0: [1]\n"
+                      "    Notices: [2]\n", notices)
+        # A text that several crates share appears once, under all of them.
+        self.assertEqual(notices.count("TERMS AND CONDITIONS FOR USE"), 1)
+        self.assertIn("[1] Apache-2.0\nUsed by self_cell 1.0.0, lib-a 1.0.0, lib-b 1.0.0\n", notices)
+        self.assertIn("[2] NOTICE\nUsed by lib-a 1.0.0\n" + "-" * 78 + "\nLib A's notice.\n", notices)
+        self.assertIn("rustc 1.0.0 (fake); its notices are in THIRD-PARTY-NOTICES-rust-std.html", notices.replace("\n", " "))
+
+    def test_embedded_works_exist_in_the_repository(self):
+        repository = Path(__file__).resolve().parent.parent
+        self.assertEqual([path for _, path in rel.EMBEDDED_WORKS if not (repository / path).is_file()], [])
+
+    def test_embedded_works_lead_and_a_missing_one_fails(self):
+        notices = self.notices(crate("anyhow", "MIT", {"LICENSE-MIT": text("MIT")}))
+        title, path = rel.EMBEDDED_WORKS[0]
+        self.assertIn(f"Works compiled into the engine\n{'=' * 78}\n\n{title}\n", notices)
+        self.assertLess(notices.index(title), notices.index("anyhow 1.0.0"))
+        (self.root / path).unlink()
+        with self.assertRaisesRegex(ValueError, f"{re.escape(path)}: missing; EMBEDDED_WORKS"):
+            self.notices(crate("anyhow", "MIT", {"LICENSE-MIT": text("MIT")}))
+
+    def test_clarification_supplies_texts_for_its_version_only(self):
+        self.write("licenses/bare/LICENSE-MIT", text("MIT", "bare upstream"))
+        self.clarify({"name": "bare", "version": "0.11.0", "texts": [
+            {"license": "MIT", "file": "bare/LICENSE-MIT", "source": "https://example.com/bare/v0.11.0/LICENSE-MIT"}]})
+        bare = crate("bare", "MIT OR Apache-2.0", {}, version="0.11.0")
+        notices = self.notices(bare)
+        self.assertIn("    Used under: MIT: [1] (from https://example.com/bare/v0.11.0/LICENSE-MIT)\n", notices)
+        self.assertIn("Copyright (c) bare upstream", notices)
+        with self.assertRaisesRegex(ValueError, r"bare 0\.12\.0: licenses/clarifications\.json checked it at 0\.11\.0"):
+            self.notices(crate("bare", "MIT OR Apache-2.0", {}, version="0.12.0"))
+        self.clarify({"name": "bare", "version": "0.11.0", "texts": [
+            {"license": "Zlib", "file": "bare/LICENSE-MIT", "source": "https://example.com"}]})
+        with self.assertRaisesRegex(ValueError, "names Zlib, not an alternative of 'MIT OR Apache-2.0'"):
+            self.notices(bare)
+        # Without an entry such a crate has no text, and the error names every crate in that state.
+        self.clarify()
+        with self.assertRaisesRegex(ValueError, r"2 crate\(s\).*bare 0\.11\.0 \(MIT OR Apache-2\.0; files: none\); "
+                                                r"other 1\.0\.0 \(MIT; files: LICENSE\)"):
+            self.notices(bare, crate("other", "MIT", {"LICENSE": "See the MIT license."}))
+
+    def test_bundled_work_is_written_under_its_crate(self):
+        self.write("licenses/decorations/COPYING", "Copyright (c) the font's authors\nSIL OPEN FONT LICENSE Version 1.1\n")
+        self.clarify({"name": "decorations", "version": "0.10.1", "bundled": [
+            {"work": "the Title font", "license": "OFL-1.1", "file": "decorations/COPYING",
+             "source": "https://example.com/font/COPYING"}]})
+        decorations = crate("decorations", "MIT", {"LICENSE": text("MIT", "decorations")}, version="0.10.1",
+                            fonts=["src/title/Title.ttf"])
+        notices = self.notices(decorations)
+        self.assertIn("decorations 0.10.1\n    License: MIT\n    Used under: MIT: [1]\n"
+                      "    Bundles the Title font, under OFL-1.1: [2] (from https://example.com/font/COPYING)\n", notices)
+        self.assertIn("[2] OFL-1.1, the Title font\nUsed by decorations 0.10.1\n", notices)
+        self.assertIn("SIL OPEN FONT LICENSE Version 1.1", notices)
+        decorations["version"] = "0.10.2"
+        with self.assertRaisesRegex(ValueError, r"decorations 0\.10\.2: licenses/clarifications\.json checked it at 0\.10\.1"):
+            self.notices(decorations)
+
+    def test_font_files_need_a_bundled_entry_or_a_review(self):
+        fonts = crate("fonts-lib", "MIT", {"LICENSE": text("MIT")}, fonts=["tests/fonts/Test.ttf"])
+        with self.assertRaisesRegex(ValueError, r"fonts-lib 1\.0\.0: carries font files \(tests/fonts/Test\.ttf\) "
+                                                "with neither a bundled entry nor a fonts_reviewed note"):
+            self.notices(fonts)
+        self.clarify({"name": "fonts-lib", "version": "1.0.0", "fonts_reviewed": "tests/fonts/ serves its tests."})
+        self.assertIn("fonts-lib 1.0.0\n", self.notices(fonts))
+
+    def fake_cargo(self, graph, members):
+        """A `run` for collect_licenses over `graph` ({package: [(dependency, kind)]}): cargo tree walks the
+        edge kinds that `-e` names from each `-p` root and prints them as cargo does; cargo metadata lists
+        every package, so the dev-only and build-only ones too."""
+        calls = []
+
+        def run(command, cwd=None):
+            calls.append(command)
+            self.assertEqual(cwd, self.root)
+            if command[:2] == ["cargo", "tree"]:
+                kinds, lines, seen = command[command.index("-e") + 1].split(","), [], set()
+
+                def walk(name):
+                    path = f" ({self.root / 'members' / name})" if name in members else ""
+                    macro = " (proc-macro)" if name.endswith("_derive") else ""
+                    lines.append(f"{name} v1.0.0{path}{macro}{' (*)' if name in seen else ''}")
+                    if name not in seen:
+                        seen.add(name)
+                        for dependency, kind in graph[name]:
+                            if kind in kinds:
+                                walk(dependency)
+
+                for name in [command[i + 1] for i, arg in enumerate(command) if arg == "-p"]:
+                    walk(name)
+                    lines.append("")
+                return "\n".join(lines)
+            if command[:2] == ["cargo", "metadata"]:
+                def package(name):
+                    folder = "members" if name in members else "registry"
+                    return {"id": f"{folder}+{name}#1.0.0", "name": name, "version": "1.0.0", "license": "MIT",
+                            "license_file": None, "repository": f"https://example.com/{name}",
+                            "manifest_path": str(self.root / folder / name / "Cargo.toml")}
+                return json.dumps({"packages": [package(name) for name in graph],
+                                   "workspace_members": [f"members+{name}#1.0.0" for name in members]})
+            outputs = {("cargo", "fetch"): "", ("rustc", "--print"): f"{self.root / 'sysroot'}\n",
+                       ("rustc", "--version"): "rustc 1.0.0 (fake)\n"}
+            return outputs[tuple(command[:2])]
+
+        return run, calls
+
+    def test_collect_follows_normal_edges_from_the_shipped_packages(self):
+        graph = {"example-01-demo": [("tungsten", "normal"), ("criterion", "dev")],
+                 "example-02-bare": [("tungsten", "normal")], "tungsten-launcher": [("libc", "normal")],
+                 "tungsten": [("serde", "normal"), ("cc", "build")], "serde": [("serde_derive", "normal")],
+                 "serde_derive": [], "libc": [], "cc": [], "criterion": [("serde", "normal")]}
+        members = {"example-01-demo", "example-02-bare", "tungsten-launcher", "tungsten"}
+        for name in set(graph) - members:
+            self.write(f"registry/{name}/Cargo.toml", f'[package]\nname = "{name}"\n')
+            self.write(f"registry/{name}/LICENSE-MIT", text("MIT", name))
+        self.write("registry/serde/NOTICE", "serde's notice\n")
+        self.write("registry/serde/README.md", "not a license file\n")
+        self.write("registry/libc/tests/fonts/Test.TTF", b"font")
+        self.write(f"sysroot/{rel.STD_NOTICES_SOURCE}", "<html>standard library notices</html>\n")
+        run, calls = self.fake_cargo(graph, members)
+        data = rel.collect_licenses(self.root, LINUX, run=run)
+        # Build-only (cc), dev-only (criterion) and workspace crates stay out; the launcher is a root.
+        self.assertEqual([c["name"] for c in data["crates"]], ["libc", "serde", "serde_derive"])
+        self.assertEqual(calls[0], ["cargo", "fetch", "--locked", "--target", LINUX])
+        tree = next(command for command in calls if command[:2] == ["cargo", "tree"])
+        self.assertEqual((tree[tree.index("-e") + 1], tree[tree.index("--target") + 1]), ("normal", LINUX))
+        self.assertEqual([tree[i + 1] for i, arg in enumerate(tree) if arg == "-p"],
+                         ["example-01-demo", "example-02-bare", "tungsten-launcher"])
+        libc, serde, _ = data["crates"]
+        self.assertEqual(sorted(serde["files"]), ["LICENSE-MIT", "NOTICE"])
+        self.assertIn("Copyright (c) serde", serde["files"]["LICENSE-MIT"])
+        self.assertEqual((libc["fonts"], serde["fonts"]), (["tests/fonts/Test.TTF"], []))
+        self.assertEqual((data["target"], data["rustc"]), (LINUX, "rustc 1.0.0 (fake)"))
+        self.assertEqual(data["rust_std_notices"], "<html>standard library notices</html>\n")
+        shutil.rmtree(self.root / "registry/serde")
+        with self.assertRaisesRegex(ValueError, "serde 1.0.0: no source at .*; run cargo fetch"):
+            rel.collect_licenses(self.root, LINUX, run=run)
+        self.write("registry/serde/Cargo.toml", "")
+        (self.root / "sysroot" / rel.STD_NOTICES_SOURCE).unlink()
+        with self.assertRaisesRegex(ValueError, "COPYRIGHT-library.html: missing"):
+            rel.collect_licenses(self.root, LINUX, run=run)
+
+    def archive_text(self, archive, name):
+        if archive.suffix == ".zip":
+            with zipfile.ZipFile(archive) as zipped:
+                return zipped.read(name).decode()
+        with tarfile.open(archive) as tar:
+            return tar.extractfile(name).read().decode()
+
+    def test_package_writes_both_notices_files_into_each_archive(self):
+        for target, suffix in ((LINUX, ""), (WINDOWS, ".exe")):
+            with self.subTest(target=target):
+                self.bins(target, suffix)
+                archive, debug = self.package("v0.26.0", target)
+                top = f"tungsten-examples-v0.26.0-{target}"
+                notices = self.archive_text(archive, f"{top}/{rel.NOTICES}")
+                self.assertTrue(notices.startswith(f"Third-party notices: Tungsten examples for {target}\n"))
+                self.assertIn("anyhow 1.0.0\n    License: MIT OR Apache-2.0\n    Used under: MIT: [1]\n", notices)
+                self.assertEqual(self.archive_text(archive, f"{top}/{rel.STD_NOTICES}"), "<html>std notices</html>\n")
+                readme = self.archive_text(archive, f"{top}/README.txt").replace("\n", " ")
+                self.assertIn(f"Third-party licenses: {rel.NOTICES}, and {rel.STD_NOTICES} for the Rust", readme)
+
+    def test_package_fails_without_license_data_or_an_entry(self):
+        self.bins(LINUX, "")
+        self.licenses(LINUX, [crate("bare", "MIT", {}), crate("anyhow", "MIT", {"LICENSE": text("MIT")})])
+        with self.assertRaisesRegex(ValueError, r"1 crate\(s\).*bare 1\.0\.0 \(MIT; files: none\)"):
+            self.package("v0.26.0", LINUX)
+        self.licenses(WINDOWS, [])
+        with self.assertRaisesRegex(ValueError, f"license data for {WINDOWS}, not {LINUX}"):
+            self.package("v0.26.0", LINUX)
+        (self.root / "target" / rel.LICENSE_DATA).unlink()
+        with self.assertRaisesRegex(ValueError, r"licenses\.json: missing; the build job's `release\.py licenses`"):
+            self.package("v0.26.0", LINUX)
+        self.assertFalse((self.root / "dist").exists())
+
     def test_levels_match_the_launcher(self):
         source = (Path(__file__).resolve().parent.parent / "tools/launcher/src/main.rs").read_text()
         levels = re.search(r"const LEVELS: \[&str; \d+\] = \[([^\]]*)\]", source)
@@ -511,6 +775,12 @@ class Release(unittest.TestCase):
         self.assertEqual(run("check", "v0.27.0")[0], 0)
         self.assertEqual(run("notes", "v9.9.9")[0], 1)
         self.assertEqual(run("package", "v0.27.0", "x86_64-unknown-linux-gnu", "--out", str(self.root / "d"))[0], 1)
+        self.assertEqual(run("notices", str(self.root / "none.json"), "--out", str(self.root / "n"))[0], 1)
+        self.write("data.json", json.dumps(license_data(LINUX, [crate("anyhow", "MIT", {"LICENSE": text("MIT")})])))
+        code, output = run("notices", str(self.root / "data.json"), "--out", str(self.root / "n"))
+        self.assertEqual(code, 0, output)
+        self.assertIn(f"{LINUX}: notices of 1 crates", output)
+        self.assertEqual((self.root / "n" / rel.STD_NOTICES).read_text(), "<html>std notices</html>\n")
 
 
 if __name__ == "__main__":

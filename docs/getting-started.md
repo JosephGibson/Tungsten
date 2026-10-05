@@ -1,0 +1,78 @@
+# Getting started
+
+Make a game with Tungsten from its template, `templates/basic`: a title screen, a player that the arrow keys or WASD move, and a pause. The game lives in a repository of its own and depends on the engine through a git tag (`D-123`). This is the guide's first draft; packaging a game for players joins it with `tungsten package`.
+
+## What you need
+
+- Rust through [rustup](https://rustup.rs). The template's `rust-toolchain.toml` pins the toolchain the engine is tested with, and rustup installs it on first use.
+- A GPU with a current driver: Vulkan on Linux, DX12 or Vulkan on Windows. Those two are the tested hosts; Metal on macOS is untested ([known issues](known-issues.md)).
+- On Linux, `pkg-config` and the ALSA headers (`libasound2-dev` on Debian and Ubuntu).
+- Git.
+
+## Start a game from the template
+
+Pick a release tag from the [releases](https://github.com/JosephGibson/Tungsten/releases), here `vX.Y.Z`, and copy the template out of the engine's repository at that tag:
+
+```bash
+git clone --depth 1 --branch vX.Y.Z https://github.com/JosephGibson/Tungsten.git tungsten
+cp -R tungsten/templates/basic my-game
+cd my-game
+```
+
+`my-game` is the game's folder and its working directory: the game reads `tungsten.json`, `input.json` and `assets/` from there.
+
+In `Cargo.toml`, point both engine dependencies at the same tag:
+
+```toml
+[dependencies]
+anyhow = "1"
+log = "0.4"
+tungsten = { git = "https://github.com/JosephGibson/Tungsten", tag = "vX.Y.Z" }
+
+[dev-dependencies]
+tungsten = { git = "https://github.com/JosephGibson/Tungsten", tag = "vX.Y.Z", features = ["testing"] }
+```
+
+Rename the game:
+
+- the package in `Cargo.toml`: `name = "my-game"`;
+- the crate in `src/main.rs` and `tests/game.rs`: `tungsten_template_basic` becomes `my_game`;
+- the game in `tungsten.json`: `"game": { "id": "my-game" }`. The ID names the folder where the game writes its logs and crash reports: up to 64 ASCII letters, digits, `.`, `_` or `-`, starting with a letter or digit, and not a Windows device name such as `con`.
+
+Add a development profile to `Cargo.toml`, so the engine and its dependencies build optimized while your own code builds fast:
+
+```toml
+[profile.dev.package."*"]
+opt-level = 2
+```
+
+## Run and test
+
+From the game's folder:
+
+```bash
+cargo run    # a debug build, with hot reload and the engine's HUD (F4 toggles it)
+cargo test   # the game's tests, on the engine's headless harness
+```
+
+The first build compiles the engine and its dependencies, which takes a few minutes and more than a gigabyte of disk. In the game, Enter starts, the arrow keys or WASD move the player, P pauses, Backspace or P resumes and Escape quits.
+
+## Change it while it runs
+
+A debug build watches `assets/` and `input.json`. With the game running, open `assets/sprites/player.png` in an image editor, change it and save: the player draws with the new image. Change a binding in `input.json`, say `move_up` to `KeyI`, and save: the next press reads the new key.
+
+## How the game is laid out
+
+- `src/main.rs` loads `tungsten.json`, creates the app, names the manifest, turns on hot reload in debug builds, registers the game and runs it.
+- `src/game.rs` registers the game's systems by hand, in the order they run, its text and the setup its first frame needs.
+- `src/states.rs` holds the title, gameplay and pause states on the engine's state stack.
+- `src/components.rs` holds the game's components.
+- `tests/game.rs` steps the game on the headless harness, with no window: a test per system.
+- `assets/manifest.json` names every asset by an ID, and game code uses the IDs, never file paths ([assets](assets.md)).
+- `AGENTS.md` holds the repository's rules for agent sessions, and `CLAUDE.md` imports it.
+
+## Read next
+
+- The engine's API: `cargo doc -p tungsten --open`, from the game's folder.
+- [Assets](assets.md): each asset type's folder, manifest section and fields.
+- [Design](../DESIGN.md): how the engine works, subsystem by subsystem.

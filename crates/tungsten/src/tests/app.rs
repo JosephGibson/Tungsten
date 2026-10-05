@@ -1,6 +1,6 @@
 use super::{
     App, FrameClock, FrameEnd, RedrawSchedule, compose_post_stack, format_perf_physics_line,
-    format_perf_systems_line, frame_dt_secs, frame_interval_ms, is_reload_root,
+    format_perf_systems_line, frame_dt_secs, frame_interval_ms, is_action_map, is_reload_root,
     manifest_reload_roots, redraw_schedule, resolve_startup_display, runtime_display_mode,
 };
 use std::path::{Path, PathBuf};
@@ -208,6 +208,26 @@ fn an_edit_to_any_root_manifest_routes_to_the_manifest_reload() {
     assert!(!is_reload_root(
         &canonical(dir.join("local").join("walk.json")),
         &roots
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn only_the_pinned_input_json_reloads_as_the_action_map() {
+    let dir = std::env::temp_dir().join(format!("tungsten_action_map_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("assets").join("levels")).unwrap();
+    for file in [dir.join("input.json"), dir.join("assets/levels/input.json")] {
+        std::fs::write(file, "{}").unwrap();
+    }
+    let canonical = |path: PathBuf| path.canonicalize().unwrap();
+    // The pinned path as an app holds it: not canonical.
+    let pinned = dir.join("assets").join("..").join("input.json");
+
+    assert!(is_action_map(&canonical(dir.join("input.json")), &pinned));
+    assert!(!is_action_map(
+        &canonical(dir.join("assets/levels/input.json")),
+        &pinned
     ));
     let _ = std::fs::remove_dir_all(&dir);
 }

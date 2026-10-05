@@ -225,6 +225,93 @@ fn shipped_strings_draw_from_their_own_face() {
     }
 }
 
+/// JetBrains Mono Regular with a trailing byte: the same family, weight and
+/// style from other bytes.
+fn mono_variant() -> Vec<u8> {
+    let mut data = font_bytes(MONO);
+    data.push(0);
+    data
+}
+
+#[test]
+fn identical_faces_under_two_ids_do_not_clash_and_other_bytes_do() {
+    let mut engine = TextEngine::new(FontSource::Packaged);
+    engine.load_font("engine_mono", font_bytes(MONO));
+    engine.load_font("mono", font_bytes(MONO));
+    assert_eq!(engine.clash("mono", face_of(&engine, "mono")), None);
+    assert_eq!(
+        engine.clash("engine_mono", face_of(&engine, "engine_mono")),
+        None
+    );
+
+    engine.load_font("mono_variant", mono_variant());
+    assert!(
+        engine
+            .clash("mono_variant", face_of(&engine, "mono_variant"))
+            .is_some_and(|other| other == "mono" || other == "engine_mono")
+    );
+}
+
+#[test]
+fn engine_face_alone_shapes_text() {
+    // As the engine registers it: one face, no families and no chain.
+    let mut engine = TextEngine::new(FontSource::Packaged);
+    engine.load_font("engine_mono", font_bytes(MONO));
+    let face = face_of(&engine, "engine_mono");
+    let glyphs = shaped(&mut engine, "engine_mono", "FPS 60.0 | 16.7 ms");
+    assert!(!glyphs.is_empty());
+    assert!(
+        glyphs
+            .iter()
+            .all(|&(glyph_face, glyph)| glyph_face == face && glyph != 0)
+    );
+}
+
+#[test]
+fn face_loaded_under_a_registered_id_replaces_it() {
+    let mut engine = TextEngine::new(FontSource::Packaged);
+    engine.load_font("engine_mono", font_bytes(MONO));
+    let embedded = face_of(&engine, "engine_mono");
+
+    // A manifest face under the same ID, same family, weight and style.
+    engine.load_font("engine_mono", mono_variant());
+    let replacement = face_of(&engine, "engine_mono");
+    assert_ne!(replacement, embedded);
+    assert!(engine.font_system.db().face(embedded).is_none());
+    assert_eq!(engine.font_system.db().len(), 1);
+    let glyphs = shaped(&mut engine, "engine_mono", "HUD");
+    assert!(
+        glyphs
+            .iter()
+            .all(|&(glyph_face, glyph)| glyph_face == replacement && glyph != 0)
+    );
+
+    // Data with no face keeps the registration.
+    engine.load_font("engine_mono", b"not a font".to_vec());
+    assert_eq!(face_of(&engine, "engine_mono"), replacement);
+    assert!(engine.font_system.db().face(replacement).is_some());
+}
+
+#[test]
+fn override_beside_an_identical_mono_reports_their_clash() {
+    let mut engine = TextEngine::new(FontSource::Packaged);
+    engine.load_font("engine_mono", font_bytes(MONO));
+    engine.load_font("mono", font_bytes(MONO));
+    assert_eq!(engine.clash("mono", face_of(&engine, "mono")), None);
+
+    engine.load_font("engine_mono", mono_variant());
+    assert_eq!(
+        engine
+            .clash("engine_mono", face_of(&engine, "engine_mono"))
+            .as_deref(),
+        Some("mono")
+    );
+    assert_eq!(
+        engine.clash("mono", face_of(&engine, "mono")).as_deref(),
+        Some("engine_mono")
+    );
+}
+
 #[test]
 fn epoch_rises_on_font_and_chain_changes_only() {
     let mut engine = TextEngine::new(FontSource::Packaged);

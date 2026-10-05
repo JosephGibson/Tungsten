@@ -37,6 +37,7 @@ pub struct HudActiveState(pub String);
 pub struct DebugHud {
     pub enabled: bool,
     pub corner: HudCorner,
+    /// The engine font, [`ENGINE_FONT_ID`](crate::ENGINE_FONT_ID), by default.
     pub font_id: String,
     pub font_size: f32,
     pub line_height: f32,
@@ -70,7 +71,7 @@ impl DebugHud {
         Self {
             enabled: false,
             corner: HudCorner::TopRight,
-            font_id: "mono".to_string(),
+            font_id: crate::ENGINE_FONT_ID.to_string(),
             font_size: 26.0,
             line_height: 30.0,
             color: [240, 240, 240, 240],

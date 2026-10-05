@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Regression tests for scripts/smoke-examples.sh with a stubbed `cargo` on
 # PATH: example discovery failures, child failure, timeout, the exact fixture
-# matrix, and the frame-cap row's minimum run time. Needs no GPU; real
-# jq/timeout are used.
+# matrix, the template row's folder and font check, and the frame-cap row's
+# minimum run time. Needs no GPU; real jq/timeout are used.
 
 set -euo pipefail
 
@@ -19,7 +19,8 @@ cat >"$work/bin/cargo" <<'EOF'
 # STUB_FAIL_PKG / STUB_HANG_PKG pick an example that panics / hangs;
 # STUB_FAIL_MSAA makes matrix rows with that TUNGSTEN_RENDER_MSAA fail.
 # A run with TUNGSTEN_DISPLAY_FRAME_RATE_CAP takes 1 s, as a capped run
-# would, unless STUB_UNCAPPED is set.
+# would, unless STUB_UNCAPPED is set. A run from templates/basic is marked
+# with its folder; STUB_UNKNOWN_FONT makes it log an unknown font ID.
 case "$1" in
   metadata)
     case "${STUB_METADATA:-ok}" in
@@ -32,7 +33,10 @@ case "$1" in
   build) exit 0 ;;
   run)
     pkg="$3"
-    echo "$pkg msaa=${TUNGSTEN_RENDER_MSAA:-} sort=${TUNGSTEN_RENDER_DEPTH_SORT:-} post=${TUNGSTEN_POST_STACK_FIXTURE:-} aa=${TUNGSTEN_POST_AA_FIXTURE:-} bloom=${TUNGSTEN_BLOOM_FIXTURE:-} light=${TUNGSTEN_LIGHTING_FIXTURE:-} feel=${TUNGSTEN_GAME_FEEL_FIXTURE:-} frames=${TUNGSTEN_SMOKE_FRAMES:-} timing=${TUNGSTEN_GPU_TIMING:-} bench=${TUNGSTEN_BENCH:-} preset=${TUNGSTEN_BENCH_PRESET:-}${TUNGSTEN_TRANSITION_FIXTURE:+ transition=$TUNGSTEN_TRANSITION_FIXTURE}${TUNGSTEN_DISPLAY_FRAME_RATE_CAP:+ cap=$TUNGSTEN_DISPLAY_FRAME_RATE_CAP}" >>"$STUB_RUNS"
+    where=""
+    case "$PWD" in */templates/basic) where=" dir=templates/basic" ;; esac
+    echo "$pkg msaa=${TUNGSTEN_RENDER_MSAA:-} sort=${TUNGSTEN_RENDER_DEPTH_SORT:-} post=${TUNGSTEN_POST_STACK_FIXTURE:-} aa=${TUNGSTEN_POST_AA_FIXTURE:-} bloom=${TUNGSTEN_BLOOM_FIXTURE:-} light=${TUNGSTEN_LIGHTING_FIXTURE:-} feel=${TUNGSTEN_GAME_FEEL_FIXTURE:-} frames=${TUNGSTEN_SMOKE_FRAMES:-} timing=${TUNGSTEN_GPU_TIMING:-} bench=${TUNGSTEN_BENCH:-} preset=${TUNGSTEN_BENCH_PRESET:-}${TUNGSTEN_TRANSITION_FIXTURE:+ transition=$TUNGSTEN_TRANSITION_FIXTURE}${TUNGSTEN_DISPLAY_FRAME_RATE_CAP:+ cap=$TUNGSTEN_DISPLAY_FRAME_RATE_CAP}$where" >>"$STUB_RUNS"
+    if [ -n "$where" ] && [ -n "${STUB_UNKNOWN_FONT:-}" ]; then echo "WARN Unknown font ID 'mono', falling back"; fi
     if [ -n "${TUNGSTEN_DISPLAY_FRAME_RATE_CAP:-}" ] && [ -z "${STUB_UNCAPPED:-}" ]; then sleep 1; fi
     if [ "$pkg" = "${STUB_HANG_PKG:-}" ]; then exec sleep 30; fi
     if [ "$pkg" = "${STUB_FAIL_PKG:-}" ]; then echo "thread 'main' panicked at stub"; exit 101; fi
@@ -73,7 +77,7 @@ expect_output() {
 }
 
 if run_case "all pass" 0; then
-  for line in "Passed: 4/4" "Matrix passed: 4/4" "Post-stack passed: 2/2" \
+  for line in "Passed: 4/4" "Template passed: 1/1" "Matrix passed: 4/4" "Post-stack passed: 2/2" \
     "Post-AA passed: 1/1" "Bloom passed: 1/1" "Lighting passed: 1/1" \
     "Game-feel passed: 2/2" "Mesh/transition passed: 5/5" "Benchmarks passed: 15/15" \
     "Frame cap passed: 1/1"; do
@@ -85,6 +89,7 @@ example-01-platformer msaa= sort= post= aa= bloom= light= feel= frames=3 timing=
 example-02-bench msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench= preset=
 example-03-scene-state msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench= preset=
 example-04-shader-playground msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench= preset=
+tungsten-template-basic msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench= preset= dir=templates/basic
 example-02-bench msaa=1 sort=cpu_stable post= aa= bloom= light= feel= frames=3 timing= bench=gpu preset=min
 example-02-bench msaa=1 sort=gpu_depth post= aa= bloom= light= feel= frames=3 timing= bench=gpu preset=min
 example-02-bench msaa=4 sort=cpu_stable post= aa= bloom= light= feel= frames=3 timing= bench=gpu preset=min
@@ -137,6 +142,11 @@ fi
 if run_case "timeout" nonzero STUB_HANG_PKG=example-01-platformer; then
   expect_output "timeout" "TIMEOUT (2s)"
   expect_output "timeout" "Passed: 3/4"
+fi
+
+if run_case "template unknown font" nonzero STUB_UNKNOWN_FONT=1; then
+  expect_output "template unknown font" "FAIL (log has 'Unknown font ID')"
+  expect_output "template unknown font" "Template passed: 0/1"
 fi
 
 if run_case "matrix failure" nonzero STUB_FAIL_MSAA=4; then
