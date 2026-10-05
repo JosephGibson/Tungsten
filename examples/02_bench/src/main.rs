@@ -9,6 +9,8 @@
 //! `=config` the resolved configuration, both before a window opens.
 //! `TUNGSTEN_OVERLAYS_ON=physics,systems,inspector` enables overlays.
 
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod churn;
 mod counters;
 mod ecs;
@@ -36,8 +38,6 @@ const BENCHES: &[&Bench] = &[
 ];
 
 fn main() -> anyhow::Result<()> {
-    env_logger::init();
-
     let describe = std::env::var("TUNGSTEN_BENCH_DESCRIBE").ok();
     if describe.as_deref() == Some("1") {
         println!("{}", knobs::describe(BENCHES));

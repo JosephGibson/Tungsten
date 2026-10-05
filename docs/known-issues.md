@@ -1,6 +1,6 @@
 # Known issues
 
-Open findings and follow-ups that no active plan owns. A fix removes its entry here in the same change. Sources: the repository review of 2026-09-25, whose archived copy keeps its fixed and historical parts, the P2 correctness pass of 2026-10-02 (`D-088`–`D-092`), M31 (`D-093`), the dense-pile investigation of 2026-10-02 (`D-094`), the 0.40 QA pass of 2026-10-03 (`D-095`–`D-101`), the 0.44 test-suite overhead pass of 2026-10-04 (`D-111`, `D-112`; plan archived at `docs/plans/archive/test-suite-overhead.md`) and M34 of 2026-10-04 (`D-115`–`D-117`; plan archived at `docs/plans/archive/1.0/phase5-milestone-34-text-engine-split.md`).
+Open findings and follow-ups that no active plan owns. A fix removes its entry here in the same change. Sources: the repository review of 2026-09-25, whose archived copy keeps its fixed and historical parts, the P2 correctness pass of 2026-10-02 (`D-088`–`D-092`), M31 (`D-093`), the dense-pile investigation of 2026-10-02 (`D-094`), the 0.40 QA pass of 2026-10-03 (`D-095`–`D-101`), the 0.44 test-suite overhead pass of 2026-10-04 (`D-111`, `D-112`; plan archived at `docs/plans/archive/test-suite-overhead.md`) M34 of 2026-10-04 (`D-115`–`D-117`; plan archived at `docs/plans/archive/1.0/phase5-milestone-34-text-engine-split.md`) and M35 of 2026-10-05 (`D-119`–`D-121`; plan archived at `docs/plans/archive/1.0/phase5-milestone-35-logs-crash-reports.md`).
 
 Priorities: P2 = functional follow-up (none open); P3 = limitation, rare edge case or contract clarification. Unless noted, these are source-path findings, not reproduced GPU or adversarial tests. `core/`, `render/` and `tungsten/` abbreviate the respective crate `src/` directories.
 
@@ -32,10 +32,13 @@ Carried from the review, as of `0.27.0`.
 - `.agents/skills` symlinks on a Windows clone (Developer Mode and `core.symlinks=true`, documented in `docs/agent-setup.md`).
 - Launching the published archives on real Windows hardware. The `v0.0.0-test` rehearsal proved the Windows build, link and publish on GitHub; Linux archives were packaged and smoke-run locally through the launcher (`D-072`).
 - `D-072`'s `x86-64-v3` gains on CPUs other than the reference Ryzen 5 6600H, and the launcher's automatic fallback on a real CPU without AVX2 (unit tests and a missing-level run cover it).
+- A Windows release build without a console (`windows_subsystem`, `D-119`): starting it from Explorer and from a terminal, and its log and crash files under `%LOCALAPPDATA%\tungsten-examples\logs`.
+- Windows PDB symbolization (`D-120`): `crash-report.py symbolize` on a Windows crash file, against the debug archive's PDB through `llvm-symbolizer`. Only synthetic PDBs test it locally, where `cargo check --all-targets` for `x86_64-pc-windows-msvc` stops at `criterion`'s `alloca` build script, which needs MSVC's `lib.exe`.
+- As of M35's hand-off, unread: the release run's two `Crash-report probe` steps (`D-120`), first run on its rehearsal tag, and CI's `windows-tests` job (`D-121`) on the release pull request's fix commit. Its first run failed only in `crates/tungsten-render/tests/shader_coverage.rs`, whose messages printed Windows paths with `\`; that is fixed, and the doctests, which `cargo test` skipped after the failure, have not run on Windows yet.
 
 ## Follow-ups
 
-Each was checked against the tree on 2026-10-02, except the last nineteen: ten from the 0.40 QA pass (2026-10-03), one from M32 (`D-110`), seven from the 0.44 test-suite overhead pass (2026-10-04) and the last from M34 (2026-10-04).
+Each was checked against the tree on 2026-10-02, except the last twenty-two: ten from the 0.40 QA pass (2026-10-03), one from M32 (`D-110`), seven from the 0.44 test-suite overhead pass (2026-10-04), one from M34 (2026-10-04) and the last three from M35 (2026-10-05).
 
 - Truncated Ogg files fail at probe; decide whether to decode the available prefix, as MP3 does. `tests/audio_decode.rs` pins the error.
 - Evaluate rtrb 0.4.0 against the locked 0.3.5, and adopt winit 0.31 once it leaves prerelease (0.30.13 is locked).
@@ -45,7 +48,7 @@ Each was checked against the tree on 2026-10-02, except the last nineteen: ten f
 - Release archives don't bundle third-party license notices for statically linked crates.
 - The stock shaders exist twice (`crates/tungsten-render/src/shaders/stock/**` and `assets/shaders/stock/**`, `D-059`); including the asset copies as `sprite.wgsl` and `lit_sprite.wgsl` already do would halve every stock-shader edit but needs a decision.
 - `Renderer::new` spends about 390 lines seeding shader IDs (`renderer.rs:145-537`).
-- `logging.level` and `display.scale_mode` are parsed and unused (`DESIGN.md:143`, `core/config.rs:278-294`): wire or remove, owner's call.
+- `display.scale_mode` is parsed and unused (`DESIGN.md`'s config section, `core/display.rs`): wire or remove, owner's call.
 - Particle `Burst { once: false }` only suppresses `ParticleSystemDrained` and `Pulse { total_pulses: Some(0) }` fires one pulse (`tungsten/src/particles.rs:313-347`): define the semantics.
 - `render.max_frame_latency = 0` in the file passes `Config::load` and fails at renderer start (`render/surface.rs:118`), while `display.max_frame_latency = 0` warns and falls back (`core/display.rs:292-297`).
 - Any file named `input.json` under a watched directory reloads as the action map (`tungsten/src/app.rs:454`).
@@ -62,3 +65,6 @@ Each was checked against the tree on 2026-10-02, except the last nineteen: ten f
 - Bloom's shader ids 4..=7 must follow sprite (0) and SMAA (1..=3) or `Renderer::reload_shader` routing breaks; only a bloom test 0.44 deleted said so. Put the note beside the seeding at `render/renderer.rs:338`.
 - `D-041` lacks an `**Amended by D-096:**` marker line above `D-111`'s.
 - An unknown font ID in a `TextSection` warns at every shaping and draws with the fallback chain's head (`render/text/engine.rs` `section_attrs`, `D-116`); a once-per-ID warning belongs with W8a's unknown-sprite warning, and criteria §2's silent-mistakes row still says it falls back to sans-serif.
+- The launcher's errors are invisible on Windows now that it opens no console (`tools/launcher/src/main.rs`, `D-119`): a missing level or a failed start needs an error dialog or a log line, with W7b or W14b.
+- A `Config::load` error before `App::new` (an invalid `tungsten.json`) reaches only stderr, which a Windows release build lacks: the examples' `main` returns it before any logger or user folder exists.
+- The bench's `knobs::unless_env` warning, an environment variable overriding a knob (`examples/02_bench/src/knobs.rs`), is logged before `App::new` installs the logger, so it is dropped; before M35 it reached stderr only with `RUST_LOG` set.

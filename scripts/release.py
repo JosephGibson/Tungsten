@@ -18,15 +18,25 @@
   package TAG TARGET  Archives each CPU level's example builds (BIN_DIR/<level>/TARGET/
                       release, one cargo target dir per level) under bin/<level>/, one
                       launcher per example, and the files the examples read relative
-                      to the working directory: OUT/tungsten-examples-TAG-TARGET.*
+                      to the working directory: OUT/tungsten-examples-TAG-TARGET.*.
+                      Their debug files go to OUT/tungsten-debug-TAG-TARGET.* under the
+                      same top folder: each Linux binary is split with objcopy, its
+                      build-id checked, and each Windows example's PDB is matched to
+                      its CodeView record.
+  split-debug BINARY DEBUG
+                      The Linux split alone: moves BINARY's debug info to DEBUG, links
+                      it, and checks the build-ids and DEBUG's .debug_line.
 
-Rationale: D-071, D-072, D-074, D-079. Release steps: docs/releases.md.
+Rationale: D-071, D-072, D-074, D-079, D-120. Release steps: docs/releases.md.
 """
 
 import argparse
 import datetime
+import json
 import re
 import shutil
+import struct
+import subprocess
 import sys
 import tempfile
 from collections import namedtuple
@@ -55,6 +65,8 @@ RELATIVE_LINK_RE = re.compile(r"\]\((?![A-Za-z][A-Za-z0-9+.-]*:|#|/)([^)\s]+)\)"
 # What every example reads relative to the working directory, plus the license.
 SHARED_RUNTIME = ("tungsten.json", "input.json", "assets", "LICENSE")
 ARCHIVE_PREFIX = "tungsten-examples"
+# The debug files' archive, kept apart so the player archive stays small (D-120).
+DEBUG_PREFIX = "tungsten-debug"
 # CPU levels release archives may carry, fastest first; must match `LEVELS` in
 # tools/launcher/src/main.rs. The portable baseline is mandatory (D-072).
 LEVELS = ("x86-64-v4", "x86-64-v3", "x86-64-v2", "x86-64")
@@ -63,6 +75,13 @@ LAUNCHER = "tungsten-launcher"
 
 Release = namedtuple("Release", "version date body")
 State = namedtuple("State", "errors version releases unreleased")
+# A PE file's CodeView (RSDS) record: the PDB's GUID bytes, its age and the path it names.
+CodeView = namedtuple("CodeView", "guid age name")
+
+SHT_NOTE = 7
+SHT_NOBITS = 8
+NT_GNU_BUILD_ID = 3
+MSF_MAGIC = b"Microsoft C/C++ MSF 7.00\r\n\x1aDS\x00\x00\x00"
 
 
 def read(root, rel):
@@ -273,7 +292,7 @@ def examples(root):
     return result
 
 
-def readme(tag, target, members, suffix, levels):
+def readme(tag, target, members, suffix, levels, game=None):
     prefix = ".\\" if suffix else "./"  # PowerShell also needs .\ for the current folder
     run = "\n".join(f"  {prefix}{name}{suffix}" for name, _ in members)
     platform = (
@@ -285,14 +304,26 @@ def readme(tag, target, members, suffix, levels):
         "X11 or Wayland libraries. Built on Ubuntu 24.04; much older distributions may\n"
         "lack a new enough glibc."
     )
+    # Windows builds open no console (D-119), so only Linux shows the launcher's line.
+    console = "" if suffix else ", names it on the console,"
+    logs = ""
+    if game:
+        logs = (
+            "The examples open no console. Each run writes a log, and a crash a crash\n"
+            f"report, to %LOCALAPPDATA%\\{game}\\logs.\n"
+            if suffix else
+            "Each run writes a log, and a crash a crash report, to\n"
+            f"$XDG_STATE_HOME/{game}/logs, by default ~/.local/state/{game}/logs.\n"
+        ) + "TUNGSTEN_USER_DIR=<folder> moves them to <folder>/logs.\n\n"
     return (
         f"Tungsten {tag} examples for {target}\n\n"
         "Run an example from any folder:\n\n"
         f"{run}\n\n"
         "Each is a small launcher. It picks the fastest build in bin/ that this CPU\n"
-        f"supports ({', '.join(levels)}), names it on the console, and runs it from\n"
+        f"supports ({', '.join(levels)}){console} and runs it from\n"
         "this folder, where the examples read tungsten.json, input.json and assets/.\n"
         f"TUNGSTEN_CPU_LEVEL={BASELINE} forces the portable build.\n\n"
+        f"{logs}"
         f"{platform}\n\n"
         "MIT license: LICENSE.\n"
     )
@@ -304,7 +335,164 @@ def place(src, dest):
     dest.chmod(0o755)  # artifact transfers drop the executable bit
 
 
-def package(root, tag, target, out, bin_dir=None):
+def elf_sections(data):
+    """{name: (type, offset, size, addralign)} from a 64-bit little-endian ELF's section headers."""
+    if data[:4] != b"\x7fELF" or data[4:6] != b"\x02\x01":
+        raise ValueError("not a 64-bit little-endian ELF file")
+    try:
+        (shoff,) = struct.unpack_from("<Q", data, 0x28)
+        shentsize, shnum, shstrndx = struct.unpack_from("<HHH", data, 0x3A)
+        headers = [struct.unpack_from("<IIQQQQIIQQ", data, shoff + i * shentsize) for i in range(shnum)]
+        names = headers[shstrndx][4]
+        sections = {}
+        for name, kind, _flags, _addr, offset, size, _link, _info, align, _entsize in headers:
+            label = data[names + name:data.index(b"\0", names + name)].decode("ascii", "replace")
+            sections[label] = (kind, offset, size, align)
+        return sections
+    except (struct.error, IndexError, ValueError) as exc:
+        raise ValueError(f"malformed ELF section headers: {exc}") from None
+
+
+def elf_build_id(data):
+    """The GNU build-id from an ELF's note sections, or None."""
+    for kind, offset, size, align in elf_sections(data).values():
+        if kind != SHT_NOTE:
+            continue
+        notes, step, at = data[offset:offset + size], 8 if align == 8 else 4, 0
+        while at + 12 <= len(notes):
+            name_size, desc_size, note_type = struct.unpack_from("<III", notes, at)
+            desc = at + 12 + -(-name_size // step) * step
+            if note_type == NT_GNU_BUILD_ID and notes[at + 12:at + 12 + name_size] == b"GNU\0":
+                return notes[desc:desc + desc_size]
+            at = desc + -(-desc_size // step) * step
+    return None
+
+
+def has_section(data, name):
+    """Whether the ELF has section `name` with contents."""
+    section = elf_sections(data).get(name)
+    return section is not None and section[0] != SHT_NOBITS and section[2] > 0
+
+
+def check_split(binary, debug):
+    """`debug` belongs to `binary` (equal GNU build-ids) and holds line tables, else ValueError (D-120)."""
+    binary_id = elf_build_id(Path(binary).read_bytes())
+    if not binary_id:
+        raise ValueError(f"{binary}: no GNU build-id; link with -Wl,--build-id")
+    data = Path(debug).read_bytes()
+    debug_id = elf_build_id(data)
+    if debug_id != binary_id:
+        found = debug_id.hex() if debug_id else "none"
+        raise ValueError(f"{binary}: build-id {binary_id.hex()} differs from {Path(debug).name}'s ({found})")
+    if not has_section(data, ".debug_line"):
+        raise ValueError(f"{debug}: no .debug_line section; was {Path(binary).name} built stripped?")
+
+
+def run_tool(command):
+    result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise ValueError(f"{' '.join(command)} failed: {result.stderr.strip()}")
+
+
+# rustc's GDB pretty-printer hint: an allocated section that --strip-debug keeps. Removing it
+# drops only its header; its bytes stay in the read-only segment, which keeps its layout.
+GDB_SCRIPTS = "--remove-section=.debug_gdb_scripts"
+
+
+def objcopy_split(binary, debug=None):
+    """Moves `binary`'s debug info into `debug`, compressed, and links it; with no `debug`, drops it."""
+    if debug is None:
+        run_tool(["objcopy", "--strip-debug", GDB_SCRIPTS, str(binary)])
+        return
+    run_tool(["objcopy", "--only-keep-debug", "--compress-debug-sections=zlib", str(binary), str(debug)])
+    run_tool(["objcopy", "--strip-debug", GDB_SCRIPTS, f"--add-gnu-debuglink={debug}", str(binary)])
+    check_split(binary, debug)
+
+
+def codeview(data):
+    """The CodeView record that a PE file's debug directory names, or None."""
+    try:
+        if data[:2] != b"MZ":
+            return None
+        (pe,) = struct.unpack_from("<I", data, 0x3C)
+        if data[pe:pe + 4] != b"PE\0\0":
+            return None
+        section_count, optional_size = struct.unpack_from("<H", data, pe + 6)[0], struct.unpack_from("<H", data, pe + 20)[0]
+        optional = pe + 24
+        directories = optional + {0x10B: 96, 0x20B: 112}[struct.unpack_from("<H", data, optional)[0]]
+        if struct.unpack_from("<I", data, directories - 4)[0] <= 6:
+            return None
+        rva, size = struct.unpack_from("<II", data, directories + 8 * 6)
+        table = optional + optional_size
+        for index in range(section_count):
+            virtual_size, address, raw_size, raw_offset = struct.unpack_from("<IIII", data, table + 40 * index + 8)
+            if address <= rva < address + max(virtual_size, raw_size):
+                start = rva - address + raw_offset
+                break
+        else:
+            return None
+        for index in range(size // 28):
+            kind, record_size, _address, pointer = struct.unpack_from("<IIII", data, start + 28 * index + 12)
+            if kind == 2 and data[pointer:pointer + 4] == b"RSDS":
+                (age,) = struct.unpack_from("<I", data, pointer + 20)
+                name = data[pointer + 24:pointer + record_size].split(b"\0", 1)[0].decode("utf-8", "replace")
+                return CodeView(data[pointer + 4:pointer + 20], age, name)
+        return None
+    except (struct.error, KeyError):
+        return None
+
+
+def pdb_info(data):
+    """(GUID bytes, age) from a PDB's info stream, stream 1 of its MSF 7.0 container."""
+    if data[:len(MSF_MAGIC)] != MSF_MAGIC:
+        raise ValueError("not an MSF 7.0 PDB file")
+    try:
+        block_size, _fpm, _blocks, directory_size, _unknown, block_map = struct.unpack_from("<6I", data, 32)
+
+        def stream(blocks, size):
+            return b"".join(data[n * block_size:(n + 1) * block_size] for n in blocks)[:size]
+
+        count = -(-directory_size // block_size)
+        directory = stream(struct.unpack_from(f"<{count}I", data, block_map * block_size), directory_size)
+        (streams,) = struct.unpack_from("<I", directory, 0)
+        sizes = [0 if size == 0xFFFFFFFF else size for size in struct.unpack_from(f"<{streams}I", directory, 4)]
+        at = 4 + 4 * streams
+        for index, size in enumerate(sizes):
+            count = -(-size // block_size)
+            blocks = struct.unpack_from(f"<{count}I", directory, at)
+            at += 4 * count
+            if index == 1:
+                info = stream(blocks, size)
+                return info[12:28], struct.unpack_from("<I", info, 8)[0]
+    except struct.error as exc:
+        raise ValueError(f"malformed PDB file: {exc}") from None
+    raise ValueError("PDB file has no info stream")
+
+
+def matching_pdb(exe, search):
+    """The PDB in `search` that `exe`'s CodeView record names, checked against its GUID and age (D-120)."""
+    record = codeview(Path(exe).read_bytes())
+    if record is None:
+        raise ValueError(f"{exe}: no CodeView record naming a PDB")
+    name = re.split(r"[\\/]", record.name)[-1]
+    pdb = Path(search) / name
+    if not pdb.is_file():
+        raise ValueError(f"{exe}: names {name}, which {search} lacks")
+    if pdb_info(pdb.read_bytes()) != (record.guid, record.age):
+        raise ValueError(f"{pdb}: GUID and age differ from the CodeView record in {exe}")
+    return pdb, name
+
+
+def game_id(root):
+    """`game.id` from the root tungsten.json (D-119), or None."""
+    try:
+        value = json.loads(read(root, "tungsten.json")).get("game", {}).get("id")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return value if isinstance(value, str) else None
+
+
+def package(root, tag, target, out, bin_dir=None, splitter=objcopy_split):
     if not TAG_RE.match(tag):
         raise ValueError(f"tag {tag!r} is not v<SemVer>")
     if not TARGET_RE.match(target):
@@ -330,12 +518,26 @@ def package(root, tag, target, out, bin_dir=None):
     name = f"{ARCHIVE_PREFIX}-{tag}-{target}"
     out.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
-        stage = Path(tmp) / name
-        stage.mkdir()
+        # Both archives share the top folder, so the debug one extracts over the player one.
+        player, debug = Path(tmp) / "player", Path(tmp) / "debug"
+        stage, debug_stage = player / name, debug / name
+        stage.mkdir(parents=True)
         for binary, _ in members:
-            place(built(BASELINE, LAUNCHER), stage / (binary + suffix))
+            launcher = stage / (binary + suffix)
+            place(built(BASELINE, LAUNCHER), launcher)
+            if not suffix:
+                splitter(launcher, None)
             for level in levels:
-                place(built(level, binary), stage / "bin" / level / (binary + suffix))
+                dest = stage / "bin" / level / (binary + suffix)
+                place(built(level, binary), dest)
+                debug_dir = debug_stage / "bin" / level
+                debug_dir.mkdir(parents=True, exist_ok=True)
+                if suffix:
+                    pdb, pdb_name = matching_pdb(built(level, binary), release_dir(level))
+                    shutil.copyfile(pdb, debug_dir / pdb_name)
+                else:
+                    splitter(dest, debug_dir / f"{binary}.debug")
+                    dest.chmod(0o755)
         for rel in runtime:
             src, dest = root / rel, stage / rel
             if src.is_dir():
@@ -343,9 +545,13 @@ def package(root, tag, target, out, bin_dir=None):
             else:
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(src, dest)
-        (stage / "README.txt").write_text(readme(tag, target, members, suffix, levels), encoding="utf-8")
-        archive = shutil.make_archive(str(out / name), "zip" if suffix else "gztar", root_dir=tmp, base_dir=name)
-    return Path(archive)
+        text = readme(tag, target, members, suffix, levels, game_id(root))
+        (stage / "README.txt").write_text(text, encoding="utf-8")
+        kind = "zip" if suffix else "gztar"
+        archive = shutil.make_archive(str(out / name), kind, root_dir=player, base_dir=name)
+        debug_archive = shutil.make_archive(str(out / f"{DEBUG_PREFIX}-{tag}-{target}"), kind,
+                                            root_dir=debug, base_dir=name)
+    return Path(archive), Path(debug_archive)
 
 
 def main(argv=None):
@@ -366,6 +572,9 @@ def main(argv=None):
     command.add_argument("target")
     command.add_argument("--bin-dir", type=Path, help="per-level cargo target dirs (default: target)")
     command.add_argument("--out", type=Path, default=Path("dist"))
+    command = commands.add_parser("split-debug", help="move a Linux binary's debug info to a linked file")
+    command.add_argument("binary", type=Path)
+    command.add_argument("debug", type=Path)
     args = parser.parse_args(argv)
     root = args.root.absolute()
 
@@ -397,8 +606,13 @@ def main(argv=None):
         elif args.command == "notes":
             sys.stdout.write(notes(root, args.tag, args.link_base))
             errors = []
+        elif args.command == "split-debug":
+            objcopy_split(args.binary, args.debug)
+            print(f"{args.binary}: debug info moved to {args.debug}, build-ids equal")
+            errors = []
         else:
-            print(package(root, args.tag, args.target, args.out, args.bin_dir))
+            for archive in package(root, args.tag, args.target, args.out, args.bin_dir):
+                print(archive)
             errors = []
     except (OSError, ValueError) as exc:
         errors = [str(exc)]

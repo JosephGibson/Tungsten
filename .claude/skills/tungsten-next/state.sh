@@ -80,6 +80,17 @@ done
 echo "other agent sessions in this tree:${others:- none}"
 cap=$(pgrep -af 'scripts/bench\.py' | head -1)
 echo "perf capture running: ${cap:-none}"
+# A connected NoMachine client runs the encoder; captures need it gone (workflow §6.3).
+enc=$(pgrep -x nxcodec.bin | head -1)
+[ -n "$enc" ] && enc="nxcodec.bin running (up $(ps -o etime= -p "$enc" | tr -d ' '))"
+echo "remote-desktop encoder: ${enc:-none}"
+waiters=""
+for p in $(pgrep -f nxcodec); do
+  case "$mine" in *" $p "*) continue ;; esac
+  [ "$(cat "/proc/$p/comm" 2>/dev/null)" = nxcodec.bin ] && continue
+  waiters="$waiters pid $p (up $(ps -o etime= -p "$p" | tr -d ' '));"
+done
+echo "waiting on the encoder:${waiters:- none}"
 
 echo "== edits (last write of each changed or untracked file; a pause over $((GAP / 60))m starts a group)"
 if [ -z "$changes" ]; then
@@ -188,7 +199,23 @@ for p in "$plans"/phase*.md; do
   ev=$(awk '/^## Evidence/{f=1;next} /^## /{f=0} f' "$p" | sed -nE 's/^\| *(Step +)?([0-9]+) *\|.*/\2/p' | sort -un | tr '\n' ' ')
   miss=none
   for i in $(seq 1 "$steps"); do case " $ev" in *" $i "*) ;; *) miss=$i; break ;; esac; done
-  echo "$p ($(state "$p"), $(age "$(stat -c %Y "$p")")) | status: ${st:-?} | approved: ${ap:+line $ap}${ap:-no} | steps: $steps | evidence: ${ev:-none}| first without evidence: $miss"
+  # Steps without evidence whose commands (code spans and fenced lines) take a timing
+  # capture: the runner's run, suite or capacity without --allow-background, or criterion.
+  caps=$(awk -v ev=" $ev" '
+    /^### Step [0-9]+/ { s = $3 + 0; next }
+    /^## / { s = 0 }
+    !s { next }
+    /^```/ { fence = !fence; next }
+    { n = split($0, part, "`")
+      for (i = 1; i <= n; i++) {
+        if (!fence && i % 2) continue
+        c = part[i]
+        if (c ~ /--allow-background/) continue
+        if (c ~ /(just perf|bench\.py) +(run|suite|capacity)/ || (c ~ /cargo bench/ && c !~ /--no-run/)) hit[s] = 1
+      } }
+    END { for (k in hit) if (!index(ev, " " k " ")) print k }' "$p" | sort -n | tr '\n' ' ')
+  [ -n "$ap" ] && ap="line $ap"
+  echo "$p ($(state "$p"), $(age "$(stat -c %Y "$p")")) | status: ${st:-?} | approved: ${ap:-no} | steps: $steps | evidence: ${ev:-none}| first without evidence: $miss | captures without evidence: ${caps:-none}"
 done
 [ "$found" = 1 ] || echo "none"
 

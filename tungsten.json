@@ -1,4 +1,5 @@
 {
+  "game": { "id": "tungsten-examples" },
   "window": { "title": "Tungsten", "width": 1280, "height": 720, "vsync": false },
   "display": {
     "resolution": { "width": 1280, "height": 720 },

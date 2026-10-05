@@ -13,6 +13,8 @@
 //! name also requests menu -> gameplay at startup with that effect, 0.1 s per
 //! phase, linear.
 
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod states;
 
 use std::path::PathBuf;
@@ -68,8 +70,6 @@ pub(crate) struct GameplayClock(pub f32);
 pub(crate) struct MenuClock(pub f32);
 
 fn main() -> anyhow::Result<()> {
-    env_logger::init();
-
     let mut config = Config::load("tungsten.json")?;
     config.window.title = "Scene / State System — M20".to_string();
     let fixture = transition_fixture()?;

@@ -1,6 +1,7 @@
-# CPU-only checks shared with local work (see AGENTS.md). GPU, audio and perf
-# checks need real hardware and stay local; this workflow sets no performance
-# thresholds and changes no branch protection.
+# CPU-only checks shared with local work (see AGENTS.md), and the CPU tests on
+# Windows (W7a, D-121). GPU, audio and perf checks need real hardware and stay
+# local; this workflow sets no performance thresholds and changes no branch
+# protection.
 name: CI
 
 on:
@@ -102,3 +103,25 @@ jobs:
 
       - name: Script lint and regression tests
         run: just script-test
+
+  # W7a (D-121): the CPU tests on the image the release build uses, which no
+  # other job tests on. Informational like the rest; no required check.
+  windows-tests:
+    name: CPU tests (Windows)
+    runs-on: windows-2025
+    timeout-minutes: 90
+    steps:
+      # Before checkout: the image's git would give the tree's text files CRLF.
+      - name: Keep committed line endings
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        with:
+          build-warnings: ""
+
+      - name: Tests (dev profile)
+        run: cargo test --workspace --locked

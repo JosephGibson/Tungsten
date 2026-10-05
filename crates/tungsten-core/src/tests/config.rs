@@ -496,3 +496,189 @@ fn file_msaa_error_is_not_an_env_override() {
     assert!(message.contains(&path.display().to_string()), "{message}");
     assert!(!message.contains("env override"), "{message}");
 }
+
+/// Loads `json` from a temp file named after `tag`, then removes the file.
+fn load_json(tag: &str, json: &str) -> (std::path::PathBuf, Result<Config, ConfigError>) {
+    let path = std::env::temp_dir().join(format!("tungsten-{tag}-{}.json", std::process::id()));
+    std::fs::write(&path, json).unwrap();
+    let result = Config::load(&path);
+    let _ = std::fs::remove_file(&path);
+    (path, result)
+}
+
+fn game_with_id(id: &str) -> GameConfig {
+    GameConfig {
+        id: Some(id.to_string()),
+        version: None,
+    }
+}
+
+fn game_id_json(id: &str) -> String {
+    serde_json::json!({ "game": { "id": id } }).to_string()
+}
+
+#[test]
+fn game_section_defaults_to_no_id() {
+    assert!(Config::default().game.id.is_none());
+    let config: Config = serde_json::from_str("{}").unwrap();
+    assert!(config.game.id.is_none());
+    assert!(config.game.version.is_none());
+    assert!(config.game.validate().is_ok());
+    let config: Config =
+        serde_json::from_str(r#"{ "game": { "id": "my-game", "version": "1.2 beta" } }"#).unwrap();
+    assert_eq!(config.game.id.as_deref(), Some("my-game"));
+    assert_eq!(config.game.version.as_deref(), Some("1.2 beta"));
+}
+
+#[test]
+fn game_ids_that_pass_validate_and_load() {
+    for (n, id) in ["my-game", "com.example.game"].into_iter().enumerate() {
+        assert!(game_with_id(id).validate().is_ok(), "{id}");
+        let (_, loaded) = load_json(&format!("game-id-ok-{n}"), &game_id_json(id));
+        assert_eq!(loaded.unwrap().game.id.as_deref(), Some(id));
+    }
+}
+
+#[test]
+fn game_ids_that_fail_name_the_field_through_validate_and_load() {
+    let too_long = "a".repeat(65);
+    let bad = [
+        "",
+        too_long.as_str(),
+        "../x",
+        "/abs",
+        ".x",
+        "a/b",
+        "con.txt",
+    ];
+    for (n, id) in bad.into_iter().enumerate() {
+        match game_with_id(id).validate().unwrap_err() {
+            ConfigError::InvalidValue {
+                path, field, value, ..
+            } => {
+                assert_eq!(field, "game.id", "{id}");
+                assert_eq!(value, id);
+                assert!(path.is_empty(), "{path}");
+            }
+            other => panic!("unexpected error for '{id}': {other}"),
+        }
+        let (file, loaded) = load_json(&format!("game-id-bad-{n}"), &game_id_json(id));
+        match loaded.unwrap_err() {
+            ConfigError::InvalidValue { path, field, .. } => {
+                assert_eq!(field, "game.id", "{id}");
+                assert_eq!(path, file.display().to_string());
+            }
+            other => panic!("unexpected error for '{id}': {other}"),
+        }
+    }
+}
+
+#[test]
+fn game_id_length_limit_is_64() {
+    assert!(game_with_id(&"a".repeat(64)).validate().is_ok());
+    assert!(game_with_id(&"a".repeat(65)).validate().is_err());
+}
+
+#[test]
+fn windows_device_names_fail_in_any_case_and_with_any_extension() {
+    for id in [
+        "CON",
+        "prn",
+        "Aux",
+        "nul.tar.gz",
+        "com1",
+        "COM9.log",
+        "lpt1",
+        "Lpt9",
+    ] {
+        assert!(game_with_id(id).validate().is_err(), "{id}");
+    }
+    for id in ["com0", "lpt10", "console", "nul-game", "auxiliary", "comx"] {
+        assert!(game_with_id(id).validate().is_ok(), "{id}");
+    }
+}
+
+#[test]
+fn game_id_error_set_in_code_names_no_file() {
+    let message = game_with_id("../x").validate().unwrap_err().to_string();
+    assert!(
+        message.starts_with("invalid game.id='../x': expected"),
+        "{message}"
+    );
+}
+
+#[test]
+fn logging_level_must_name_a_level() {
+    let (file, loaded) = load_json("level-bad", r#"{ "logging": { "level": "verbose" } }"#);
+    match loaded.unwrap_err() {
+        ConfigError::InvalidValue {
+            path,
+            field,
+            value,
+            expected,
+        } => {
+            assert_eq!(field, "logging.level");
+            assert_eq!(value, "verbose");
+            assert_eq!(expected, LOGGING_LEVEL_EXPECTED);
+            assert_eq!(path, file.display().to_string());
+        }
+        other => panic!("unexpected error: {other}"),
+    }
+    let (_, loaded) = load_json("level-upper", r#"{ "logging": { "level": "WARN" } }"#);
+    assert_eq!(loaded.unwrap().logging.level, "WARN");
+}
+
+#[test]
+fn a_missing_file_warning_comes_back_from_take_load_warnings() {
+    let mut config = Config::load("/nonexistent/path/tungsten.json").unwrap();
+    let warnings = config.take_load_warnings();
+    assert_eq!(
+        warnings,
+        ["Config file '/nonexistent/path/tungsten.json' not found, using defaults"]
+    );
+    assert!(config.take_load_warnings().is_empty());
+}
+
+#[test]
+fn a_display_fallback_comes_back_from_take_load_warnings() {
+    let json = r#"{ "display": { "display_mode": "theater_mode", "scale_mode": "integer" } }"#;
+    let (_, loaded) = load_json("display-fallback", json);
+    let mut config = loaded.unwrap();
+    assert!(config.display.display_mode.is_none());
+    assert_eq!(
+        config.display.scale_mode,
+        Some(crate::display::ScaleMode::Integer)
+    );
+    let warnings = config.take_load_warnings();
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(
+        warnings[0].starts_with("Config display.display_mode='theater_mode' is invalid"),
+        "{warnings:?}"
+    );
+}
+
+#[test]
+fn a_legacy_conflict_comes_back_from_take_load_warnings_before_fallbacks() {
+    let json = r#"{
+        "window": { "vsync": false },
+        "display": { "vsync": true, "frame_rate_cap": 0 }
+    }"#;
+    let (_, loaded) = load_json("legacy-conflict", json);
+    let mut config = loaded.unwrap();
+    assert_eq!(config.display.vsync, Some(true));
+    assert_eq!(
+        config.take_load_warnings(),
+        [
+            "Config display.vsync overrides legacy window.vsync",
+            "Config display.frame_rate_cap=0 means uncapped; using None",
+        ]
+    );
+}
+
+#[test]
+fn configs_not_from_load_keep_no_warnings() {
+    assert!(Config::default().take_load_warnings().is_empty());
+    let mut parsed: Config =
+        serde_json::from_str(r#"{ "display": { "display_mode": "theater_mode" } }"#).unwrap();
+    assert!(parsed.take_load_warnings().is_empty());
+}

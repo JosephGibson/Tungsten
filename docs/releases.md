@@ -111,18 +111,42 @@ git ls-remote origin 'refs/tags/vX.Y.Z*'
 
 For an annotated tag, the `^{}` line identifies its commit; the other line identifies the tag object. GitHub release `target_commitish` is not proof of the tagged commit. Confirm the remote tag, run SHA and intended SHA agree.
 
-The workflow builds the four examples for Linux (`x86_64-unknown-linux-gnu`, Ubuntu 24.04) and Windows (`x86_64-pc-windows-msvc`, static CRT). Each platform archive contains portable x86-64 and x86-64-v3 builds, launchers, runtime assets and README.txt. Launchers select the fastest supported CPU level and set the working directory to the archive root. Hosted runners only build.
+The workflow builds the four examples for Linux (`x86_64-unknown-linux-gnu`, Ubuntu 24.04) and Windows (`x86_64-pc-windows-msvc`, static CRT). Each platform's player archive contains portable x86-64 and x86-64-v3 builds, launchers, runtime assets and README.txt, and no debug files. Its debug archive, `tungsten-debug-vX.Y.Z-<target>`, holds each example build's debug file (Linux `bin/<level>/<example>.debug`, split off by `release.py package`; Windows `bin/<level>/<example>.pdb`) under the same top folder, so it extracts over the player archive (`D-120`). Launchers select the fastest supported CPU level and set the working directory to the archive root. Hosted runners have no GPU, so nothing with a window runs there; each build job's `Crash-report probe` step runs `tools/crash-probe` from an archive-like copy and symbolizes its crash file, informational only (`continue-on-error`, `D-120`).
 
-Expect a Linux `.tar.gz`, a Windows `.zip`, and `SHA256SUMS`. Download into a fresh directory and verify both archives (requires `sha256sum`; use an equivalent SHA-256 tool on Windows):
+Expect a Linux `.tar.gz` and a Windows `.zip` of each prefix, `tungsten-examples-*` and `tungsten-debug-*`, and `SHA256SUMS`, which lists all four. Download the player archives into a fresh directory and verify them; `--ignore-missing` skips the debug archives left out and still fails when no listed file is present (requires `sha256sum`; use an equivalent SHA-256 tool on Windows):
 
 ```bash
 release_download=$(mktemp -d) &&
 gh release download vX.Y.Z --repo JosephGibson/Tungsten --dir "$release_download" \
   --pattern 'tungsten-examples-*' --pattern SHA256SUMS &&
+(cd "$release_download" && sha256sum -c --ignore-missing SHA256SUMS)
+```
+
+The debug archives are a separate download, for symbolizing a crash report; with them present every listed file is checked:
+
+```bash
+gh release download vX.Y.Z --repo JosephGibson/Tungsten --dir "$release_download" \
+  --pattern 'tungsten-debug-*' &&
 (cd "$release_download" && sha256sum -c SHA256SUMS)
 ```
 
-Check that both expected platform filenames are present, notes match the tag's changelog section, and prerelease classification matches the tag. Extract the appropriate archive and launch an example on a GPU machine, including from outside the archive directory. Its first console line reports the selected CPU level. `TUNGSTEN_CPU_LEVEL=x86-64` exercises the portable path; never force v3 on an unsupported CPU. Report untested platforms explicitly. Linux needs compatible Vulkan/windowing/audio libraries and may need glibc 2.39.
+Check that all four archive names are present, notes match the tag's changelog section, and prerelease classification matches the tag. Extract the appropriate archive and launch an example on a GPU machine, including from outside the archive directory. On Linux its first console line reports the selected CPU level; Windows builds open no console, and each run's log and any crash report go to `%LOCALAPPDATA%\tungsten-examples\logs` (Linux: `~/.local/state/tungsten-examples/logs`, `D-119`). `TUNGSTEN_CPU_LEVEL=x86-64` exercises the portable path; never force v3 on an unsupported CPU. Report untested platforms explicitly. Linux needs compatible Vulkan/windowing/audio libraries and may need glibc 2.39.
+
+### Crash-report check
+
+On a GPU machine, check that a shipped build's crash file symbolizes from its debug archive. Extract the Linux player and debug archives (downloaded above) into one folder, run an example with `TUNGSTEN_TEST_PANIC=1`, which panics in its first frame, then symbolize the crash file against that folder:
+
+```bash
+crash_check=$(mktemp -d) && target=x86_64-unknown-linux-gnu &&
+tar -xzf "$release_download/tungsten-examples-vX.Y.Z-$target.tar.gz" -C "$crash_check" &&
+tar -xzf "$release_download/tungsten-debug-vX.Y.Z-$target.tar.gz" -C "$crash_check" &&
+root="$crash_check/tungsten-examples-vX.Y.Z-$target" &&
+{ TUNGSTEN_USER_DIR="$crash_check/user" TUNGSTEN_TEST_PANIC=1 "$root/example-01-platformer" || true; } &&
+python3 -B scripts/crash-report.py symbolize "$crash_check"/user/logs/*-crash.txt \
+  --root "$root" --expect crates/tungsten/src/
+```
+
+It first checks the crash file's `build_id` against the debug file, then prints `N: function at file:line` per frame, and exits 1 on a mismatch or when no frame resolves in `crates/tungsten/src/`. The run's two `Crash-report probe` steps give the same verdict for the probe on each runner; read them on a rehearsal tag before merging.
 
 ### Rehearsals and versioned prereleases
 
@@ -158,6 +182,7 @@ The post-merge block starts the next milestone: it refreshes `origin/main`, crea
 | Concern | Source |
 | --- | --- |
 | Version, notes and packaging | [release.py](../scripts/release.py), [tests](../scripts/test-release.py) |
+| Crash-report symbolization and the release probe | [crash-report.py](../scripts/crash-report.py), [tests](../scripts/test-crash-report.py) |
 | Read-only Git/GitHub preflight and command hand-off | [release-preflight.py](../scripts/release-preflight.py), [tests](../scripts/test-release-preflight.py) |
 | Recipes | [justfile](../justfile) |
 | Hosted builds and publication | [release.yml](../.github/workflows/release.yml) |

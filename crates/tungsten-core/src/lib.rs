@@ -38,7 +38,7 @@ pub use components::{
     Sprite, SpriteSquashStretch, SquashStretchState, SquashTrigger, Tag, Transform, Visibility,
     parallax_world_position, sync_position_to_transform,
 };
-pub use config::{Config, ConfigError, DepthSortMode, PostAaMode, RenderConfig};
+pub use config::{Config, ConfigError, DepthSortMode, GameConfig, PostAaMode, RenderConfig};
 pub use debug_draw::{DEFAULT_CIRCLE_SEGMENTS, DebugCommand, DebugDraw, DebugShape};
 pub use display::{
     DisplayConfig, DisplayMode, DisplayState, DisplayValidationError, Resolution, ScaleMode,
