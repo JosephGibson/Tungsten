@@ -234,6 +234,8 @@ def check_roadmap(root, errors, notes):
                 target = root / path
                 if not (target.is_dir() if path.endswith("/") else target.is_file()):
                     errors.append(f"{rel}: {stop['id']}: missing path {path}")
+        if (root / roadmap.PROMPTS).exists():  # each stop's stages from prompts.md's Flow table (D-118)
+            roadmap.catalog_payload(root)
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
         errors.append(f"{rel}: {exc!r}")
         return

@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Road-to-1.0 catalog and stop status for the roadmap page (stdlib only, read-only).
 
-`catalog OUT` writes the page's `meta/catalog` document (`{schema, hash, catalog}`) to OUT.
+`catalog OUT` writes the page's `meta/catalog` document (`{schema, hash, catalog}`) to OUT: the
+catalog plus each stop's stages, read from the Flow table in tungsten-next's `prompts.md`, and a mode,
+model and effort for each session stage (`D-118`).
 `status [--json OUT]` derives each stop's status from the tree: the register, plan files,
 approval lines, evidence rows, tags and the local `origin/main` (never fetched), and prints
 the evidence for each with the next release and milestone. `scripts/check-repo.py` imports
@@ -22,8 +24,22 @@ PROGRAM = "docs/plans/1.0"
 CATALOG = f"{PROGRAM}/roadmap.json"
 PLAN = f"{PROGRAM}/implementation-plan.md"
 CRITERIA = f"{PROGRAM}/criteria.md"
+PROMPTS = ".claude/skills/tungsten-next/prompts.md"
+SCHEMA = 2  # the catalog shape `catalog` writes and the page reads
 REGISTER_FIELDS = ("candidate", "plan", "release", "status")
 FIRST_MILESTONE = 32  # docs/plans/1.0/README.md, Conventions
+
+# Session recommendations (D-118). A stop's tier comes from its complexity and effort; the scaled
+# steps take it, the fixed ones never vary, a same-session step keeps the step that opened its session.
+MODELS = {"opus": "Opus 5.5", "fable": "Fable 5.1"}
+SCALED = ("plan", "qa-plan", "gate", "run", "run-c1", "experiment", "rc-fix")
+FIXED = {"game-spec": ("opus", "max"), "graduate": ("opus", "xhigh"), "rc-checklist": ("opus", "xhigh"),
+         "release": ("opus", "xhigh"), "verify": ("opus", "high")}
+PLAN_MODE = ("gate", "game-spec")  # they ask before they write
+KEEPS = {"approve": ("plan", "qa-plan"), "run-c-rest": ("run-c1",)}
+SESSIONS = ("release", "verify")  # session prompts outside every flow
+FLOW_STEP = re.compile(r"`([\w-]+)` \((new|same|you), ([^;)]+?)(?:; ([^)]*))?\)")
+GATE_ONLY = re.compile(r"\bthe ([\w-]+) gate only\b")
 
 
 def unique_object(pairs):
@@ -84,9 +100,116 @@ def question_numbers(root):
     return {int(n) for n in found}
 
 
+def flows(root):
+    """prompts.md's Flow table: row label -> steps `{key, title, where, at, note}`, titled from the
+    Session prompts table and the Owner steps headings."""
+    text = (Path(root) / PROMPTS).read_text()
+    titles, rows = {}, {}
+    for table in tables(text):
+        if table[0][:2] == ["Key", "Step"]:
+            into, quote = titles, "`"
+        elif table[0][:1] == ["Stop"]:
+            into, quote = rows, ""
+        else:
+            continue
+        for row in table[1:]:
+            if len(row) < 2:
+                raise ValueError(f"{PROMPTS}: table row {row!r} has fewer than two cells")
+            into[row[0].strip(quote)] = row[1]
+    owner = text.split("\n## Owner steps", 1)[-1] if "\n## Owner steps" in text else ""
+    titles.update({key: title for title, key in re.findall(r"^\*\*([^*]+)\*\* \(`([\w-]+)`\)", owner, re.M)})
+    result = {}
+    for label, cell in rows.items():
+        steps = []
+        for part in cell.split(" → "):
+            match = FLOW_STEP.fullmatch(part.strip())
+            if not match:
+                raise ValueError(f"{PROMPTS}: Flow row {label!r}: can't read {part.strip()!r}")
+            key, where, at, note = match.groups()
+            if key not in titles:
+                raise ValueError(f"{PROMPTS}: Flow row {label!r}: no Step title for {key!r}")
+            step = {"key": key, "title": titles[key], "where": where, "at": re.split(r"\s+or\s+|\s*,\s*", at.strip())}
+            if note:
+                step["note"] = note.strip()
+            steps.append(step)
+        result[label] = steps
+    return result
+
+
+def flow_row(stop):
+    """The Flow row a stop runs: by kind, and level C apart for releases; None for a custom stop."""
+    kind = stop["kind"]
+    if kind == "release":
+        return "Release, level C" if stop.get("level") == "C" else "Release, level A or B"
+    rows = {"qa": "QA pass", "gate": "Gate", "spike": "Experiments (Track B)", "rc": "Release candidates (C3)"}
+    if kind in rows:
+        return rows[kind]
+    if kind == "custom":
+        return None
+    raise ValueError(f"{stop['id']}: no Flow row for kind {kind!r}")
+
+
+def tier(stop):
+    """(model, effort) from complexity c and effort e: Fable for large architectural stops (c 4, or 3
+    and XL), Opus max for c 2–3, Opus high for very small ones (c 1 and S), else the Opus xhigh default."""
+    c, e = stop.get("complexity"), stop.get("effort")
+    if c == 4 or (c == 3 and e == "XL"):
+        return "fable", "xhigh"
+    if c in (2, 3):
+        return "opus", "max"
+    if c == 1 and e == "S":
+        return "opus", "high"
+    return "opus", "xhigh"
+
+
+def recommend(stop, key, opened=()):
+    """`{mode, model, effort}` for a session step, `opened` holding the stop's earlier stages; a
+    same-session step adds `keeps` and `if_new`. None for owner steps and steps without a rule."""
+    def rec(model, effort):
+        return {"mode": "plan" if key in PLAN_MODE else "auto", "model": MODELS[model], "effort": effort}
+    if key in SCALED:
+        return rec(*tier(stop))
+    if key in FIXED:
+        return rec(*FIXED[key])
+    if key in KEEPS:
+        opener = next((s for s in reversed(opened) if s["key"] in KEEPS[key] and "rec" in s), None)
+        if opener is None:
+            raise ValueError(f"{stop['id']}: {key} has no earlier {' or '.join(KEEPS[key])} step to keep")
+        kept = {k: opener["rec"][k] for k in ("mode", "model", "effort")}
+        return {"keeps": opener["key"], **kept, "if_new": rec("opus", "high") if key == "approve" else dict(kept)}
+    return None
+
+
+def stages(stop, flow):
+    """The stop's steps from its Flow row, each session step with its recommendation."""
+    label = flow_row(stop)
+    if label is None:
+        return []
+    if label not in flow:
+        raise ValueError(f"{stop['id']}: {PROMPTS} has no Flow row {label!r}")
+    result = []
+    for step in flow[label]:
+        only = GATE_ONLY.search(step.get("note", ""))
+        if only and f"{only[1]} gate" not in (stop.get("gate") or ""):
+            continue
+        stage = dict(step)
+        rec = recommend(stop, step["key"], result)
+        if rec:
+            stage["rec"] = rec
+        result.append(stage)
+    return result
+
+
 def catalog_payload(root):
-    """The `meta/catalog` document; the hash covers the catalog's canonical JSON."""
+    """The `meta/catalog` document: the catalog, each stop's stages and the session recommendations
+    outside every flow; the hash covers the whole catalog's canonical JSON, derived fields included."""
     catalog = load_catalog(root)
+    if catalog.get("schema") != SCHEMA:
+        raise ValueError(f"{CATALOG}: schema {catalog.get('schema')!r}, scripts/roadmap.py writes {SCHEMA}")
+    flow = flows(root)
+    for stop in catalog["stops"]:
+        stop["stages"] = stages(stop, flow)
+    catalog["sessions"] = {key: recommend(None, key) for key in SESSIONS}
     canonical = json.dumps(catalog, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return {"schema": catalog["schema"], "hash": hashlib.sha256(canonical.encode()).hexdigest()[:16],
             "catalog": catalog}
