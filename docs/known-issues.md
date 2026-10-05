@@ -34,7 +34,7 @@ Carried from the review, as of `0.27.0`.
 - `D-072`'s `x86-64-v3` gains on CPUs other than the reference Ryzen 5 6600H, and the launcher's automatic fallback on a real CPU without AVX2 (unit tests and a missing-level run cover it).
 - A Windows release build without a console (`windows_subsystem`, `D-119`): starting it from Explorer and from a terminal, and its log and crash files under `%LOCALAPPDATA%\tungsten-examples\logs`.
 - Windows PDB symbolization (`D-120`): `crash-report.py symbolize` on a Windows crash file, against the debug archive's PDB through `llvm-symbolizer`. Only synthetic PDBs test it locally, where `cargo check --all-targets` for `x86_64-pc-windows-msvc` stops at `criterion`'s `alloca` build script, which needs MSVC's `lib.exe`.
-- As of M35's hand-off, unread: the release run's two `Crash-report probe` steps (`D-120`), first run on its rehearsal tag, and CI's `windows-tests` job (`D-121`), first run on its release pull request.
+- As of M35's hand-off, unread: the release run's two `Crash-report probe` steps (`D-120`), first run on its rehearsal tag, and CI's `windows-tests` job (`D-121`) on the release pull request's fix commit. Its first run failed only in `crates/tungsten-render/tests/shader_coverage.rs`, whose messages printed Windows paths with `\`; that is fixed, and the doctests, which `cargo test` skipped after the failure, have not run on Windows yet.
 
 ## Follow-ups
 

@@ -47,6 +47,13 @@ fn wgsl_under(root: &Path, dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
+/// A repo-relative path as the checker's messages show it: `/`-separated on
+/// every platform, where `Path::display` would print the separators Windows
+/// joined with as `\`.
+fn shown(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
 /// Map of path-below-`prefix` → repo-relative path for one side of a mirror.
 fn mirror_side(files: &[PathBuf], prefix: &Path) -> BTreeMap<PathBuf, PathBuf> {
     files
@@ -90,7 +97,7 @@ fn check(repo: &Path) -> Result<Inventory, Vec<String>> {
             }
         }
         source += &text;
-        if let Err(e) = validate_wgsl_source(&rel.display().to_string(), &source) {
+        if let Err(e) = validate_wgsl_source(&shown(rel), &source) {
             errors.push(e.to_string());
         }
         contents.insert(rel.clone(), text);
@@ -106,12 +113,12 @@ fn check(repo: &Path) -> Result<Inventory, Vec<String>> {
         }
         for (key, engine_path) in &engine_side {
             match asset_side.get(key) {
-                None => errors.push(format!("{} has no asset mirror", engine_path.display())),
+                None => errors.push(format!("{} has no asset mirror", shown(engine_path))),
                 Some(asset_path) if contents[engine_path] != contents[asset_path] => {
                     errors.push(format!(
                         "{} and {} differ",
-                        engine_path.display(),
-                        asset_path.display()
+                        shown(engine_path),
+                        shown(asset_path)
                     ));
                 }
                 Some(_) => pairs += 1,
@@ -119,7 +126,7 @@ fn check(repo: &Path) -> Result<Inventory, Vec<String>> {
         }
         for (key, asset_path) in &asset_side {
             if !engine_side.contains_key(key) {
-                errors.push(format!("{} has no engine copy", asset_path.display()));
+                errors.push(format!("{} has no engine copy", shown(asset_path)));
             }
         }
     }
@@ -238,6 +245,18 @@ fn checker_rejects_mismatched_mirror() {
         "// drift\n@fragment\nfn fs_main() -> @location(0) vec4<f32> {\n    return vec4<f32>(0.0);\n}\n",
     );
     expect_error("mismatch", &files, "differ");
+}
+
+#[test]
+fn messages_show_windows_paths_with_forward_slashes() {
+    assert_eq!(
+        shown(Path::new(r"examples\demo\assets/shaders\broken.wgsl")),
+        "examples/demo/assets/shaders/broken.wgsl"
+    );
+    assert_eq!(
+        shown(Path::new("assets/shaders/stock/orphan.wgsl")),
+        "assets/shaders/stock/orphan.wgsl"
+    );
 }
 
 #[test]
