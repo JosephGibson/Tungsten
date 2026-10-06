@@ -11,7 +11,7 @@ use tungsten_core::assets::{
     BlendMode, Curve, EmissionKind, InitialVelocity, ParticleConfig, ParticleRender, Range,
 };
 use tungsten_core::{
-    CommandBuffer, DeltaTime, Particle, Sprite, SpriteAssetId, Transform, Visibility, World,
+    CommandBuffer, Particle, Sprite, SpriteAssetId, Time, Transform, Visibility, World,
 };
 
 fn make_config() -> Arc<ParticleConfig> {
@@ -51,7 +51,7 @@ fn make_config() -> Arc<ParticleConfig> {
 
 fn build_world(n: usize, cfg: &Arc<ParticleConfig>) -> (World, Vec<tungsten_core::Entity>) {
     let mut world = World::new();
-    world.insert_resource(DeltaTime::new());
+    world.insert_resource(Time::new());
     world.insert_resource(CommandBuffer::new());
 
     let mut entities = Vec::with_capacity(n);
@@ -87,8 +87,8 @@ fn bench_particle_tick_5k(c: &mut Criterion) {
     const N: usize = 5_000;
     let cfg = make_config();
     let (mut world, entities) = build_world(N, &cfg);
-    if let Some(d) = world.get_resource_mut::<DeltaTime>() {
-        d.dt = 1.0 / 60.0;
+    if let Some(time) = world.get_resource_mut::<Time>() {
+        time.advance_frame(1.0 / 60.0);
     }
 
     c.bench_function("particle_tick_5k", |b| {

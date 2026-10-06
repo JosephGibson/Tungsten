@@ -5,7 +5,7 @@ use std::path::Path;
 
 use tungsten::App;
 use tungsten::core::assets::manifest::ResolvedManifest;
-use tungsten::core::{ActionMap, Config, Transform};
+use tungsten::core::{ActionMap, Config, Time, Transform};
 use tungsten::testing::Harness;
 use tungsten_template_basic::components::Player;
 use tungsten_template_basic::game::{self, active_state};
@@ -104,6 +104,31 @@ fn player_moves_under_move_right_only_in_gameplay() {
         Some(x),
         "paused, the player stays"
     );
+}
+
+#[test]
+fn clock_half_scale_moves_the_player_half_as_far() {
+    let mut moved = Vec::new();
+    for scale in [1.0, 0.5] {
+        let mut harness = harness();
+        tap(&mut harness, "state_start");
+        // A scale set between frames applies from the next one.
+        harness
+            .world_mut()
+            .get_resource_mut::<Time>()
+            .expect("the app inserts Time")
+            .set_scale(scale);
+        harness.press_action("move_right");
+        harness.step(30);
+        let [x, _] = player(&harness).expect("the player spawned");
+        moved.push(x - PLAYER_START[0]);
+    }
+    let (full, half) = (moved[0], moved[1]);
+    assert!(
+        (full - game::PLAYER_SPEED * 30.0 / 60.0).abs() < 1e-3,
+        "full {full}"
+    );
+    assert!((half - full / 2.0).abs() < 1e-3, "half {half}, full {full}");
 }
 
 #[test]

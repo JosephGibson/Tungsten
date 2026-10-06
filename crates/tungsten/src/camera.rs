@@ -3,7 +3,7 @@
 use std::f32::consts::TAU;
 
 use glam::Vec2;
-use tungsten_core::{CameraController, CameraMode, CameraState, DeltaTime, Transform, World};
+use tungsten_core::{CameraController, CameraMode, CameraState, Time, Transform, World};
 
 use crate::WindowSize;
 
@@ -62,9 +62,7 @@ pub fn camera_update_system(world: &mut World) {
             width: 1280,
             height: 720,
         });
-    let dt = world
-        .get_resource::<DeltaTime>()
-        .map_or(0.0, tungsten_core::DeltaTime::seconds);
+    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
 
     let base_position = controller.resolve_base_position(camera.position);
     let base_zoom = controller.resolve_base_zoom(camera.zoom);

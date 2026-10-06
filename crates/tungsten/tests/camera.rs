@@ -2,14 +2,16 @@ use glam::Vec2;
 use tungsten::WindowSize;
 use tungsten::camera_update_system;
 use tungsten::core::{
-    CameraBounds, CameraController, CameraMode, CameraState, DeltaTime, Transform, World,
+    CameraBounds, CameraController, CameraMode, CameraState, Time, Transform, World,
 };
 
 fn seed_world() -> World {
     let mut world = World::new();
     world.insert_resource(CameraState::new());
     world.insert_resource(CameraController::default());
-    world.insert_resource(DeltaTime { dt: 1.0 / 60.0 });
+    let mut time = Time::new();
+    time.advance_frame(1.0 / 60.0);
+    world.insert_resource(time);
     world.insert_resource(WindowSize {
         width: 800,
         height: 600,
@@ -177,7 +179,9 @@ fn smoothing_converges_the_same_at_60_and_120_hz() {
     // second and cannot show a difference.
     let run = |frames: usize, dt: f32| {
         let mut world = seed_world();
-        world.insert_resource(DeltaTime { dt });
+        let mut time = Time::new();
+        time.advance_frame(dt);
+        world.insert_resource(time);
         let target = world.spawn();
         world.insert(target, Transform::from_position(Vec2::new(300.0, 150.0)));
         {

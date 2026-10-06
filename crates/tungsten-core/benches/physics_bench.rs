@@ -13,8 +13,8 @@ use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use glam::Vec2;
 use std::hint::black_box;
 use tungsten_core::{
-    Aabb, Collider, DeltaTime, Pcg32, PhysicsConfig, Position, RigidBody, SpatialGrid, Velocity,
-    World, physics_step,
+    Aabb, Collider, Pcg32, PhysicsConfig, Position, RigidBody, SpatialGrid, Time, Velocity, World,
+    physics_step,
 };
 
 const DT: f32 = 1.0 / 60.0;
@@ -31,7 +31,9 @@ type Scenario = (&'static str, fn(usize) -> World, &'static [usize]);
 
 fn base_world(gravity: Vec2) -> World {
     let mut world = World::new();
-    world.insert_resource(DeltaTime { dt: DT });
+    let mut time = Time::new();
+    time.advance_frame(DT);
+    world.insert_resource(time);
     world.insert_resource(PhysicsConfig {
         gravity,
         ..PhysicsConfig::default()

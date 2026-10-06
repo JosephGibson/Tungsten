@@ -70,7 +70,9 @@ pub use text::{
     TextHinting, TextLayout, TextMeasure, TextMetrics, TextNodeId, TextNodeStore, TextOverflow,
     TextSpan, TextStyle, TextWrap,
 };
+#[allow(deprecated)]
 pub use time::DeltaTime;
+pub use time::{Time, Timer, TimerMode};
 pub use tween::{
     Easing, IntSlot, ScalarSlot, Tween, TweenChannel, TweenComplete, TweenDirection, TweenRepeat,
     UniformOverrideBlock, Vec4Slot, lerp_f32, lerp_u8,

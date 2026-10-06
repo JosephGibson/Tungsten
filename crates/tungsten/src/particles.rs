@@ -14,8 +14,8 @@ use tungsten_core::{
     AssetRegistry, BlendMode, CommandBuffer, Curve, EmissionKind, Entity, EventQueue,
     InitialVelocity, MeshParticle, Particle, ParticleActive, ParticleBudget, ParticleConfig,
     ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, ParticleMeshAssetId,
-    ParticleMeshRegistry, ParticleRender, Range, Sprite, SpriteAssetId, Transform, Visibility,
-    World, WorldRngSeed,
+    ParticleMeshRegistry, ParticleRender, Range, Sprite, SpriteAssetId, Time, Transform,
+    Visibility, World, WorldRngSeed,
 };
 use tungsten_render::{MeshParticleBatch, MeshParticleInstance};
 
@@ -77,9 +77,7 @@ enum ParticleDraw {
 /// A sprite name is interned, so one a later reload registers draws from then on;
 /// an unknown mesh name logs a warning and that emitter emits nothing this frame.
 pub fn particle_emit_system(world: &mut World) {
-    let dt = world
-        .get_resource::<tungsten_core::DeltaTime>()
-        .map_or(0.0, |d| d.dt);
+    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
 
     let budget = world
         .get_resource::<ParticleBudget>()
@@ -219,9 +217,7 @@ pub fn particle_emit_system(world: &mut World) {
 
 /// Age/integrate particles; despawns deferred to command flush.
 pub fn particle_tick_system(world: &mut World) {
-    let dt = world
-        .get_resource::<tungsten_core::DeltaTime>()
-        .map_or(0.0, |d| d.dt);
+    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
     if dt <= 0.0 {
         return;
     }

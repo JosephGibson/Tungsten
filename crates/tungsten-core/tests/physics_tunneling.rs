@@ -24,8 +24,8 @@
 
 use glam::Vec2;
 use tungsten_core::{
-    BodyKind, Collider, DeltaTime, Entity, PhysicsBuffers, PhysicsConfig, Position, RigidBody,
-    Velocity, World, physics_step,
+    BodyKind, Collider, Entity, PhysicsBuffers, PhysicsConfig, Position, RigidBody, Time, Velocity,
+    World, physics_step,
 };
 
 const DT: f32 = 1.0 / 60.0;
@@ -51,7 +51,9 @@ enum TargetKind {
 
 fn tunneling_world() -> World {
     let mut world = World::new();
-    world.insert_resource(DeltaTime { dt: DT });
+    let mut time = Time::new();
+    time.advance_frame(DT);
+    world.insert_resource(time);
     world.insert_resource(PhysicsConfig {
         gravity: Vec2::ZERO,
         ..PhysicsConfig::default()
@@ -286,7 +288,9 @@ const STALL_FLOOR_TOP: f32 = 480.0;
 /// takes the whole dt it is handed.
 fn stall_world(bodies: &[(Vec2, Collider)]) -> (World, Vec<tungsten_core::Entity>) {
     let mut world = World::new();
-    world.insert_resource(DeltaTime { dt: DT });
+    let mut time = Time::new();
+    time.advance_frame(DT);
+    world.insert_resource(time);
     world.insert_resource(PhysicsConfig {
         gravity: Vec2::new(0.0, 900.0),
         sleep_threshold: 0.0,
@@ -347,9 +351,12 @@ fn one_capped_stall_step_keeps_a_settled_pile() {
         for _ in 0..240 {
             physics_step(&mut world);
         }
-        world.get_resource_mut::<DeltaTime>().unwrap().dt = STALL_DT;
+        world
+            .get_resource_mut::<Time>()
+            .unwrap()
+            .advance_frame(STALL_DT);
         physics_step(&mut world);
-        world.get_resource_mut::<DeltaTime>().unwrap().dt = DT;
+        world.get_resource_mut::<Time>().unwrap().advance_frame(DT);
 
         let mut max_speed: f32 = 0.0;
         for _ in 0..120 {
@@ -386,7 +393,9 @@ const COLUMN_RADIUS: f32 = 7.5;
 fn stacked_column_survives_slow_frames() {
     const SLOW_DT: f32 = 0.1;
     let mut world = World::new();
-    world.insert_resource(DeltaTime { dt: DT });
+    let mut time = Time::new();
+    time.advance_frame(DT);
+    world.insert_resource(time);
     world.insert_resource(PhysicsConfig {
         gravity: Vec2::new(0.0, 3_600.0),
         broadphase_cell_size: 64.0,
@@ -412,7 +421,10 @@ fn stacked_column_survives_slow_frames() {
     for _ in 0..240 {
         physics_step(&mut world);
     }
-    world.get_resource_mut::<DeltaTime>().unwrap().dt = SLOW_DT;
+    world
+        .get_resource_mut::<Time>()
+        .unwrap()
+        .advance_frame(SLOW_DT);
     for _ in 0..80 {
         physics_step(&mut world);
     }

@@ -16,8 +16,8 @@ use glam::Vec2;
 use serde_json::{Value as Json, json};
 use tungsten::App;
 use tungsten::core::{
-    CameraState, Collider, CollisionEvent, DeltaTime, Entity, EventQueue, Pcg32, PhysicsConfig,
-    Position, RigidBody, Shape, Velocity, World,
+    CameraState, Collider, CollisionEvent, Entity, EventQueue, Pcg32, PhysicsConfig, Position,
+    RigidBody, Shape, Time, Velocity, World,
 };
 
 use crate::counters::{BenchCounters, FrameCounters, bench_counters_system};
@@ -799,9 +799,7 @@ fn spawn_pachinko(world: &mut World, cfg: &BenchConfig) -> Pachinko {
 }
 
 fn delta_seconds(world: &World) -> f32 {
-    world
-        .get_resource::<DeltaTime>()
-        .map_or(0.0, DeltaTime::seconds)
+    world.get_resource::<Time>().map_or(0.0, Time::delta)
 }
 
 fn with_counts(world: &mut World, update: impl FnOnce(&mut PhysicsCounts)) {

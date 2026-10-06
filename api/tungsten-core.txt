@@ -6224,6 +6224,25 @@ pub fn tungsten_core::ui::measure::FixedAdvanceMeasure::font_epoch(&self) -> tun
 pub fn tungsten_core::ui::measure::FixedAdvanceMeasure::remove_node(&mut self, tungsten_core::text::TextNodeId)
 pub fn tungsten_core::ui::measure::FixedAdvanceMeasure::set_text(&mut self, tungsten_core::text::TextNodeId, &tungsten_core::text::StyledText, &tungsten_core::text::TextStyle)
 pub mod tungsten_core::time
+pub enum tungsten_core::time::TimerMode
+pub tungsten_core::time::TimerMode::Once
+pub tungsten_core::time::TimerMode::Repeating
+impl core::clone::Clone for tungsten_core::time::TimerMode
+pub fn tungsten_core::time::TimerMode::clone(&self) -> tungsten_core::time::TimerMode
+impl core::cmp::Eq for tungsten_core::time::TimerMode
+impl core::cmp::PartialEq for tungsten_core::time::TimerMode
+pub fn tungsten_core::time::TimerMode::eq(&self, &tungsten_core::time::TimerMode) -> bool
+impl core::fmt::Debug for tungsten_core::time::TimerMode
+pub fn tungsten_core::time::TimerMode::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::time::TimerMode
+impl core::marker::StructuralPartialEq for tungsten_core::time::TimerMode
+impl core::marker::Freeze for tungsten_core::time::TimerMode
+impl core::marker::Send for tungsten_core::time::TimerMode
+impl core::marker::Sync for tungsten_core::time::TimerMode
+impl core::marker::Unpin for tungsten_core::time::TimerMode
+impl core::marker::UnsafeUnpin for tungsten_core::time::TimerMode
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::time::TimerMode
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::time::TimerMode
 pub struct tungsten_core::time::DeltaTime
 pub tungsten_core::time::DeltaTime::dt: f32
 impl tungsten_core::time::DeltaTime
@@ -6243,6 +6262,70 @@ impl core::marker::Unpin for tungsten_core::time::DeltaTime
 impl core::marker::UnsafeUnpin for tungsten_core::time::DeltaTime
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::time::DeltaTime
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::time::DeltaTime
+pub struct tungsten_core::time::Time
+impl tungsten_core::time::Time
+pub fn tungsten_core::time::Time::advance_frame(&mut self, f32)
+pub fn tungsten_core::time::Time::delta(&self) -> f32
+pub fn tungsten_core::time::Time::elapsed(&self) -> f64
+pub fn tungsten_core::time::Time::frame(&self) -> u64
+pub fn tungsten_core::time::Time::game_delta(&self) -> f32
+pub fn tungsten_core::time::Time::is_paused(&self) -> bool
+pub fn tungsten_core::time::Time::new() -> Self
+pub fn tungsten_core::time::Time::pause(&mut self)
+pub fn tungsten_core::time::Time::real_delta(&self) -> f32
+pub fn tungsten_core::time::Time::real_elapsed(&self) -> f64
+pub fn tungsten_core::time::Time::resume(&mut self)
+pub fn tungsten_core::time::Time::scale(&self) -> f32
+pub fn tungsten_core::time::Time::set_paused(&mut self, bool)
+pub fn tungsten_core::time::Time::set_scale(&mut self, f32)
+impl core::clone::Clone for tungsten_core::time::Time
+pub fn tungsten_core::time::Time::clone(&self) -> tungsten_core::time::Time
+impl core::cmp::PartialEq for tungsten_core::time::Time
+pub fn tungsten_core::time::Time::eq(&self, &tungsten_core::time::Time) -> bool
+impl core::default::Default for tungsten_core::time::Time
+pub fn tungsten_core::time::Time::default() -> Self
+impl core::fmt::Debug for tungsten_core::time::Time
+pub fn tungsten_core::time::Time::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::time::Time
+impl core::marker::StructuralPartialEq for tungsten_core::time::Time
+impl core::marker::Freeze for tungsten_core::time::Time
+impl core::marker::Send for tungsten_core::time::Time
+impl core::marker::Sync for tungsten_core::time::Time
+impl core::marker::Unpin for tungsten_core::time::Time
+impl core::marker::UnsafeUnpin for tungsten_core::time::Time
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::time::Time
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::time::Time
+pub struct tungsten_core::time::Timer
+impl tungsten_core::time::Timer
+pub fn tungsten_core::time::Timer::duration(&self) -> f32
+pub fn tungsten_core::time::Timer::elapsed(&self) -> f32
+pub fn tungsten_core::time::Timer::finished(&self) -> bool
+pub fn tungsten_core::time::Timer::fraction(&self) -> f32
+pub fn tungsten_core::time::Timer::just_finished(&self) -> bool
+pub fn tungsten_core::time::Timer::mode(&self) -> tungsten_core::time::TimerMode
+pub fn tungsten_core::time::Timer::new(f32, tungsten_core::time::TimerMode) -> Self
+pub fn tungsten_core::time::Timer::once(f32) -> Self
+pub fn tungsten_core::time::Timer::remaining(&self) -> f32
+pub fn tungsten_core::time::Timer::repeating(f32) -> Self
+pub fn tungsten_core::time::Timer::reset(&mut self)
+pub fn tungsten_core::time::Timer::set_duration(&mut self, f32)
+pub fn tungsten_core::time::Timer::tick(&mut self, f32) -> u32
+pub fn tungsten_core::time::Timer::times_finished_this_tick(&self) -> u32
+impl core::clone::Clone for tungsten_core::time::Timer
+pub fn tungsten_core::time::Timer::clone(&self) -> tungsten_core::time::Timer
+impl core::cmp::PartialEq for tungsten_core::time::Timer
+pub fn tungsten_core::time::Timer::eq(&self, &tungsten_core::time::Timer) -> bool
+impl core::fmt::Debug for tungsten_core::time::Timer
+pub fn tungsten_core::time::Timer::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::time::Timer
+impl core::marker::StructuralPartialEq for tungsten_core::time::Timer
+impl core::marker::Freeze for tungsten_core::time::Timer
+impl core::marker::Send for tungsten_core::time::Timer
+impl core::marker::Sync for tungsten_core::time::Timer
+impl core::marker::Unpin for tungsten_core::time::Timer
+impl core::marker::UnsafeUnpin for tungsten_core::time::Timer
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::time::Timer
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::time::Timer
 pub mod tungsten_core::tween
 pub enum tungsten_core::tween::Easing
 pub tungsten_core::tween::Easing::BackIn
@@ -9454,6 +9537,25 @@ impl core::marker::Unpin for tungsten_core::text::TextWrap
 impl core::marker::UnsafeUnpin for tungsten_core::text::TextWrap
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::TextWrap
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::TextWrap
+pub enum tungsten_core::TimerMode
+pub tungsten_core::TimerMode::Once
+pub tungsten_core::TimerMode::Repeating
+impl core::clone::Clone for tungsten_core::time::TimerMode
+pub fn tungsten_core::time::TimerMode::clone(&self) -> tungsten_core::time::TimerMode
+impl core::cmp::Eq for tungsten_core::time::TimerMode
+impl core::cmp::PartialEq for tungsten_core::time::TimerMode
+pub fn tungsten_core::time::TimerMode::eq(&self, &tungsten_core::time::TimerMode) -> bool
+impl core::fmt::Debug for tungsten_core::time::TimerMode
+pub fn tungsten_core::time::TimerMode::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::time::TimerMode
+impl core::marker::StructuralPartialEq for tungsten_core::time::TimerMode
+impl core::marker::Freeze for tungsten_core::time::TimerMode
+impl core::marker::Send for tungsten_core::time::TimerMode
+impl core::marker::Sync for tungsten_core::time::TimerMode
+impl core::marker::Unpin for tungsten_core::time::TimerMode
+impl core::marker::UnsafeUnpin for tungsten_core::time::TimerMode
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::time::TimerMode
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::time::TimerMode
 pub enum tungsten_core::ToneMonoMode
 pub tungsten_core::ToneMonoMode::Duotone
 pub tungsten_core::ToneMonoMode::Mono
@@ -12041,6 +12143,70 @@ impl core::marker::Unpin for tungsten_core::assets::tilemap::TilemapRegistry
 impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::TilemapRegistry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::TilemapRegistry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::TilemapRegistry
+pub struct tungsten_core::Time
+impl tungsten_core::time::Time
+pub fn tungsten_core::time::Time::advance_frame(&mut self, f32)
+pub fn tungsten_core::time::Time::delta(&self) -> f32
+pub fn tungsten_core::time::Time::elapsed(&self) -> f64
+pub fn tungsten_core::time::Time::frame(&self) -> u64
+pub fn tungsten_core::time::Time::game_delta(&self) -> f32
+pub fn tungsten_core::time::Time::is_paused(&self) -> bool
+pub fn tungsten_core::time::Time::new() -> Self
+pub fn tungsten_core::time::Time::pause(&mut self)
+pub fn tungsten_core::time::Time::real_delta(&self) -> f32
+pub fn tungsten_core::time::Time::real_elapsed(&self) -> f64
+pub fn tungsten_core::time::Time::resume(&mut self)
+pub fn tungsten_core::time::Time::scale(&self) -> f32
+pub fn tungsten_core::time::Time::set_paused(&mut self, bool)
+pub fn tungsten_core::time::Time::set_scale(&mut self, f32)
+impl core::clone::Clone for tungsten_core::time::Time
+pub fn tungsten_core::time::Time::clone(&self) -> tungsten_core::time::Time
+impl core::cmp::PartialEq for tungsten_core::time::Time
+pub fn tungsten_core::time::Time::eq(&self, &tungsten_core::time::Time) -> bool
+impl core::default::Default for tungsten_core::time::Time
+pub fn tungsten_core::time::Time::default() -> Self
+impl core::fmt::Debug for tungsten_core::time::Time
+pub fn tungsten_core::time::Time::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::time::Time
+impl core::marker::StructuralPartialEq for tungsten_core::time::Time
+impl core::marker::Freeze for tungsten_core::time::Time
+impl core::marker::Send for tungsten_core::time::Time
+impl core::marker::Sync for tungsten_core::time::Time
+impl core::marker::Unpin for tungsten_core::time::Time
+impl core::marker::UnsafeUnpin for tungsten_core::time::Time
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::time::Time
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::time::Time
+pub struct tungsten_core::Timer
+impl tungsten_core::time::Timer
+pub fn tungsten_core::time::Timer::duration(&self) -> f32
+pub fn tungsten_core::time::Timer::elapsed(&self) -> f32
+pub fn tungsten_core::time::Timer::finished(&self) -> bool
+pub fn tungsten_core::time::Timer::fraction(&self) -> f32
+pub fn tungsten_core::time::Timer::just_finished(&self) -> bool
+pub fn tungsten_core::time::Timer::mode(&self) -> tungsten_core::time::TimerMode
+pub fn tungsten_core::time::Timer::new(f32, tungsten_core::time::TimerMode) -> Self
+pub fn tungsten_core::time::Timer::once(f32) -> Self
+pub fn tungsten_core::time::Timer::remaining(&self) -> f32
+pub fn tungsten_core::time::Timer::repeating(f32) -> Self
+pub fn tungsten_core::time::Timer::reset(&mut self)
+pub fn tungsten_core::time::Timer::set_duration(&mut self, f32)
+pub fn tungsten_core::time::Timer::tick(&mut self, f32) -> u32
+pub fn tungsten_core::time::Timer::times_finished_this_tick(&self) -> u32
+impl core::clone::Clone for tungsten_core::time::Timer
+pub fn tungsten_core::time::Timer::clone(&self) -> tungsten_core::time::Timer
+impl core::cmp::PartialEq for tungsten_core::time::Timer
+pub fn tungsten_core::time::Timer::eq(&self, &tungsten_core::time::Timer) -> bool
+impl core::fmt::Debug for tungsten_core::time::Timer
+pub fn tungsten_core::time::Timer::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::time::Timer
+impl core::marker::StructuralPartialEq for tungsten_core::time::Timer
+impl core::marker::Freeze for tungsten_core::time::Timer
+impl core::marker::Send for tungsten_core::time::Timer
+impl core::marker::Sync for tungsten_core::time::Timer
+impl core::marker::Unpin for tungsten_core::time::Timer
+impl core::marker::UnsafeUnpin for tungsten_core::time::Timer
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::time::Timer
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::time::Timer
 pub struct tungsten_core::ToneMonoParams
 pub tungsten_core::ToneMonoParams::amount: f32
 pub tungsten_core::ToneMonoParams::mode: tungsten_core::post::ToneMonoMode

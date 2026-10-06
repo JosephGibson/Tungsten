@@ -14,8 +14,8 @@
 
 use glam::Vec2;
 use tungsten_core::{
-    CameraController, CommandBuffer, DeltaTime, Entity, EventQueue, ShakeEvent,
-    SpriteSquashStretch, SquashEvent, SquashStretchState, Transform, World,
+    CameraController, CommandBuffer, Entity, EventQueue, ShakeEvent, SpriteSquashStretch,
+    SquashEvent, SquashStretchState, Time, Transform, World,
 };
 
 /// Drains `EventQueue<ShakeEvent>` into `CameraController::shake_trauma`, then
@@ -25,9 +25,7 @@ use tungsten_core::{
 /// systems that send `ShakeEvent` and before `camera_update_system`, so the
 /// frame's trauma reaches that frame's `CameraState`.
 pub fn shake_tick_system(world: &mut World) {
-    let dt = world
-        .get_resource::<DeltaTime>()
-        .map_or(0.0, DeltaTime::seconds);
+    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
 
     // Only the current window: `iter()` would re-apply the previous frame's
     // trauma every frame.
@@ -108,9 +106,7 @@ pub fn squash_stretch_trigger_system(world: &mut World) {
 /// The envelope is exact at both endpoints, so completion restores
 /// `base_scale` without a separate cleanup write.
 pub fn squash_stretch_tick_system(world: &mut World) {
-    let dt = world
-        .get_resource::<DeltaTime>()
-        .map_or(0.0, DeltaTime::seconds);
+    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
     // A frozen frame freezes the envelope, as in `tween_tick_system`.
     if dt <= 0.0 {
         return;

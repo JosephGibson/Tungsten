@@ -1,6 +1,8 @@
 use super::Harness;
 use crate::App;
 use crate::particles::ParticleBurstEmitted;
+use crate::state::{GameState, StateContext, StateId, StateStack};
+use crate::transition::{Transition, TransitionEffect};
 use glam::Vec2;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -9,9 +11,10 @@ use tungsten_core::assets::{
     ParticleConfigRegistry, ParticleRender, Range, TextureHandle, UvRect,
 };
 use tungsten_core::{
-    ActionMap, AssetRegistry, AudioCommand, AudioCommands, Config, DeltaTime, Easing, InputState,
-    KeyCode, Particle, ParticleEmitter, ParticleEmitterState, Sprite, Transform, Tween,
-    TweenChannel, TweenComplete, Visibility,
+    ActionMap, AssetRegistry, AudioCommand, AudioCommands, CameraController, CameraMode,
+    CameraState, Collider, Config, Easing, Entity, InputState, KeyCode, Particle, ParticleEmitter,
+    ParticleEmitterState, PhysicsConfig, Position, RigidBody, Sprite, Time, Transform, Tween,
+    TweenChannel, TweenComplete, Velocity, Visibility, World,
 };
 use tungsten_render::{QuadInstance, TextSection};
 
@@ -26,7 +29,7 @@ struct SeenDts(Vec<f32>);
 fn record_dts(app: &mut App) {
     app.world_mut().insert_resource(SeenDts::default());
     app.add_system(|world| {
-        let dt = world.get_resource::<DeltaTime>().unwrap().dt;
+        let dt = world.get_resource::<Time>().unwrap().delta();
         world.get_resource_mut::<SeenDts>().unwrap().0.push(dt);
     });
 }
@@ -298,6 +301,162 @@ fn audio_holds_the_last_frames_commands() {
     ));
     harness.step(1);
     assert!(harness.audio().is_empty());
+}
+
+/// A state with empty hooks, for the stack to hold.
+struct Plain(StateId);
+
+impl GameState for Plain {
+    fn id(&self) -> StateId {
+        self.0
+    }
+
+    fn on_enter(&mut self, _ctx: &mut StateContext) {}
+
+    fn on_exit(&mut self, _ctx: &mut StateContext) {}
+
+    fn update(&mut self, _world: &mut World) {}
+}
+
+/// What a paused game clock must hold.
+#[derive(Debug, PartialEq)]
+struct Held {
+    tween_x: f32,
+    particles: Vec<(Entity, Vec2)>,
+    body: Vec2,
+}
+
+fn held(world: &World, tweened: Entity, body: Entity) -> Held {
+    Held {
+        tween_x: world.get::<Transform>(tweened).unwrap().position.x,
+        particles: world
+            .query_entities::<Particle>()
+            .into_iter()
+            .map(|particle| (particle, world.get::<Transform>(particle).unwrap().position))
+            .collect(),
+        body: world.get::<Position>(body).unwrap().0,
+    }
+}
+
+#[test]
+fn clock_a_pause_holds_the_game_while_a_fade_pushes_a_state() {
+    let mut app = app();
+    let world = app.world_mut();
+    world.get_resource_mut::<PhysicsConfig>().unwrap().gravity = Vec2::new(0.0, 900.0);
+    world
+        .get_resource_mut::<StateStack>()
+        .unwrap()
+        .request_push(Plain("first"));
+    let tweened = world.spawn();
+    world.insert(tweened, Transform::default());
+    world.insert(
+        tweened,
+        Tween::new(10.0, Easing::Linear).with_channel(TweenChannel::PositionX {
+            from: 0.0,
+            to: 100.0,
+        }),
+    );
+    let stream = ParticleConfig {
+        emission: EmissionKind::Continuous { rate_hz: 120.0 },
+        lifetime: Range::single(10.0),
+        ..burst_config()
+    };
+    let config = world
+        .get_resource_mut::<ParticleConfigRegistry>()
+        .unwrap()
+        .register(
+            "stream".into(),
+            PathBuf::from("/tmp/stream.json"),
+            Arc::new(stream),
+        );
+    let emitter = world.spawn();
+    world.insert(emitter, ParticleEmitter::new(config));
+    world.insert(emitter, ParticleEmitterState::default());
+    world.insert(emitter, Transform::from_position(Vec2::ZERO));
+    let start = Vec2::new(200.0, 100.0);
+    let body = world.spawn();
+    world.insert(body, Position(start));
+    world.insert(body, Velocity(Vec2::ZERO));
+    world.insert(body, Collider::aabb(Vec2::new(8.0, 8.0)));
+    world.insert(body, RigidBody::dynamic());
+    world.insert(body, Transform::from_position(start));
+    let camera = world.get_resource_mut::<CameraController>().unwrap();
+    camera.mode = CameraMode::Follow(body);
+    camera.smoothing_factor = 1.0;
+    camera.shake_max_offset = Vec2::new(8.0, 8.0);
+    camera.shake_frequency_hz = 7.0;
+    camera.shake_trauma = 1.0;
+    camera.shake_decay = 0.5;
+
+    let mut harness = Harness::new(app);
+    harness.step(10);
+    let running = held(harness.world(), tweened, body);
+    assert!(running.tween_x > 0.0);
+    assert!(!running.particles.is_empty());
+    assert_ne!(running.body, start);
+
+    let world = harness.world_mut();
+    world.get_resource_mut::<Time>().unwrap().pause();
+    let fade = Transition::new(
+        TransitionEffect::Fade {
+            color: [0.0, 0.0, 0.0, 1.0],
+        },
+        0.1,
+    );
+    assert!(
+        world
+            .get_resource_mut::<StateStack>()
+            .unwrap()
+            .request_push_transition(Plain("second"), fade)
+    );
+    // The first paused frame draws the shake phase the last running frame
+    // advanced to; from then on the camera holds too.
+    let mut camera_held = None;
+    for frame in 1..=30 {
+        harness.step(1);
+        assert_eq!(
+            held(harness.world(), tweened, body),
+            running,
+            "paused frame {frame}"
+        );
+        let camera = harness.world().get_resource::<CameraState>().unwrap();
+        let first = *camera_held.get_or_insert(camera.position);
+        assert_eq!(camera.position, first, "paused frame {frame}");
+    }
+    let stack = harness.world().get_resource::<StateStack>().unwrap();
+    assert_eq!(stack.active_id(), Some("second"));
+    assert!(!stack.is_transitioning());
+}
+
+#[test]
+fn clock_half_scale_finishes_a_tween_on_twice_the_frames() {
+    for (scale, finish) in [(1.0, 16), (0.5, 32)] {
+        let mut app = app();
+        let world = app.world_mut();
+        world.get_resource_mut::<Time>().unwrap().set_scale(scale);
+        let tweened = world.spawn();
+        world.insert(tweened, Transform::default());
+        world.insert(
+            tweened,
+            Tween::new(0.25, Easing::Linear)
+                .with_channel(TweenChannel::PositionX { from: 0.0, to: 1.0 }),
+        );
+        let mut harness = Harness::new(app);
+        // 1/64 s and 1/128 s are exact in binary, so the elapsed time reaches
+        // 0.25 s exactly.
+        harness.set_dt(1.0 / 64.0);
+        let mut finished = None;
+        while finished.is_none() && harness.frame() < 40 {
+            harness.step(1);
+            if harness
+                .events::<TweenComplete>()
+                .any(|done| done.entity == tweened)
+            {
+                finished = Some(harness.frame());
+            }
+        }
+        assert_eq!(finished, Some(finish), "scale {scale}");
+    }
 }
 
 #[test]

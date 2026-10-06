@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 
 use glam::Vec2;
 use tungsten::core::{
-    DeltaTime, Entity, EventQueue, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState,
+    Entity, EventQueue, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, Time,
     Transform, World,
 };
 use tungsten::physics::{CollisionEvent, Position};
@@ -36,9 +36,7 @@ pub(crate) fn ignite(world: &mut World, entity: Entity) {
 }
 
 pub(crate) fn tick_ball_fire(world: &mut World) {
-    let dt = world
-        .get_resource::<DeltaTime>()
-        .map_or(0.0, DeltaTime::seconds);
+    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
     for entity in world.query_entities::<BallBurn>() {
         let burn = world.get_mut::<BallBurn>(entity).unwrap();
         burn.remaining = (burn.remaining - dt).max(0.0);

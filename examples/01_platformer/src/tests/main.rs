@@ -11,8 +11,8 @@ mod spells;
 use tungsten::core::assets::{LayerKind, TilemapData, TilemapLayer};
 use tungsten::core::{
     ActionMap, AnimationState, AudioCommand, AudioCommands, AudioHandle, Binding, CameraController,
-    CameraMode, CameraState, CommandBuffer, Config, DeltaTime, EventQueue, InputState, KeyCode,
-    MouseButton, ShakeEvent, SquashEvent, TilemapInstance, TilemapRegistry, Transform, World,
+    CameraMode, CameraState, CommandBuffer, Config, EventQueue, InputState, KeyCode, MouseButton,
+    ShakeEvent, SquashEvent, TilemapInstance, TilemapRegistry, Time, Transform, World,
     sync_position_to_transform,
 };
 use tungsten::physics::{
@@ -46,7 +46,9 @@ fn seed_world() -> World {
 /// The resources every test world starts from: a bare `World` here, the
 /// engine's world in `platformer_harness`.
 fn seed(world: &mut World) {
-    world.insert_resource(DeltaTime { dt: 1.0 / 60.0 });
+    let mut time = Time::new();
+    time.advance_frame(1.0 / 60.0);
+    world.insert_resource(time);
     world.insert_resource(InputState::new());
     world.insert_resource(ActionMap::default_map());
     world.insert_resource(EventQueue::<CollisionEvent>::new());
@@ -101,14 +103,15 @@ fn input_mut(harness: &mut Harness) -> &mut InputState {
         .unwrap()
 }
 
-/// Sets the dt of the next frames and of direct system calls made before them.
+/// Sets the dt of the next frames and, by advancing the clock in the app's
+/// place, of direct system calls made before them.
 fn set_dt(harness: &mut Harness, dt: f32) {
     harness.set_dt(dt);
     harness
         .world_mut()
-        .get_resource_mut::<DeltaTime>()
+        .get_resource_mut::<Time>()
         .unwrap()
-        .dt = dt;
+        .advance_frame(dt);
 }
 
 fn solid_floor(width: u32) -> TilemapData {

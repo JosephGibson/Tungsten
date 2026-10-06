@@ -94,18 +94,18 @@ fn resources() {
     let mut world = World::new();
 
     #[derive(Debug, PartialEq)]
-    struct DeltaTime(f32);
+    struct FrameSeconds(f32);
 
-    world.insert_resource(DeltaTime(0.016));
-    assert_eq!(world.get_resource::<DeltaTime>().unwrap().0, 0.016);
+    world.insert_resource(FrameSeconds(0.016));
+    assert_eq!(world.get_resource::<FrameSeconds>().unwrap().0, 0.016);
 
-    world.get_resource_mut::<DeltaTime>().unwrap().0 = 0.033;
-    assert_eq!(world.get_resource::<DeltaTime>().unwrap().0, 0.033);
+    world.get_resource_mut::<FrameSeconds>().unwrap().0 = 0.033;
+    assert_eq!(world.get_resource::<FrameSeconds>().unwrap().0, 0.033);
 
-    assert!(world.has_resource::<DeltaTime>());
-    let dt = world.remove_resource::<DeltaTime>().unwrap();
+    assert!(world.has_resource::<FrameSeconds>());
+    let dt = world.remove_resource::<FrameSeconds>().unwrap();
     assert_eq!(dt.0, 0.033);
-    assert!(!world.has_resource::<DeltaTime>());
+    assert!(!world.has_resource::<FrameSeconds>());
 }
 
 #[test]

@@ -8,14 +8,12 @@
 
 use tungsten_core::tween::UniformOverrideBlock;
 use tungsten_core::{
-    CommandBuffer, DeltaTime, Entity, EventQueue, Sprite, Transform, Tween, TweenChannel,
-    TweenComplete, TweenDirection, TweenRepeat, World, lerp_f32, lerp_u8,
+    CommandBuffer, Entity, EventQueue, Sprite, Time, Transform, Tween, TweenChannel, TweenComplete,
+    TweenDirection, TweenRepeat, World, lerp_f32, lerp_u8,
 };
 
 pub fn tween_tick_system(world: &mut World) {
-    let dt = world
-        .get_resource::<DeltaTime>()
-        .map_or(0.0, DeltaTime::seconds);
+    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
     if dt <= 0.0 {
         return;
     }

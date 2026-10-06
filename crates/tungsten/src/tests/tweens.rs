@@ -1,15 +1,15 @@
 use tungsten_core::{
-    CommandBuffer, DeltaTime, Easing, EventQueue, Sprite, SpriteAssetId, Transform, Tween,
-    TweenChannel, TweenComplete, TweenDirection, TweenRepeat, Visibility, World,
+    CommandBuffer, Easing, EventQueue, Sprite, SpriteAssetId, Time, Transform, Tween, TweenChannel,
+    TweenComplete, TweenDirection, TweenRepeat, Visibility, World,
 };
 
 use crate::tweens::tween_tick_system;
 
 fn make_world(dt: f32) -> World {
     let mut world = World::new();
-    let mut delta = DeltaTime::new();
-    delta.dt = dt;
-    world.insert_resource(delta);
+    let mut time = Time::new();
+    time.advance_frame(dt);
+    world.insert_resource(time);
     world.insert_resource(CommandBuffer::new());
     world.insert_resource(EventQueue::<TweenComplete>::new());
     world
