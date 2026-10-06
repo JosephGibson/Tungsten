@@ -32,9 +32,9 @@ use serde_json::{Value as Json, json};
 use tungsten::core::assets::AnimationFrame;
 use tungsten::core::{
     AnimationData, AnimationRegistry, AnimationState, AssetRegistry, BlendMode, CameraState, Curve,
-    DeltaTime, EmissionKind, FilterMode, InitialVelocity, Particle, ParticleBudget, ParticleConfig,
+    EmissionKind, FilterMode, InitialVelocity, Particle, ParticleBudget, ParticleConfig,
     ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, ParticleRender, Pcg32, Range,
-    Sprite, Transform, Visibility, World, splitmix64,
+    Sprite, Time, Transform, Visibility, World, splitmix64,
 };
 use tungsten::render::Renderer;
 use tungsten::{App, extract_sprites_default};
@@ -454,7 +454,7 @@ fn register_textures(world: &mut World, renderer: &mut Renderer, clips: u32) {
 }
 
 fn dt_seconds(world: &World) -> f32 {
-    world.get_resource::<DeltaTime>().map_or(0.0, |dt| dt.dt)
+    world.get_resource::<Time>().map_or(0.0, Time::delta)
 }
 
 /// Moves each emitter along its Lissajous path (`motion=on`).

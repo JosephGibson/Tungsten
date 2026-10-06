@@ -1,7 +1,7 @@
 use glam::Vec2;
 use tungsten_core::{
-    CameraController, CommandBuffer, DeltaTime, Easing, Entity, EventQueue, ShakeEvent,
-    SpriteSquashStretch, SquashEvent, SquashStretchState, SquashTrigger, Transform, World,
+    CameraController, CommandBuffer, Easing, Entity, EventQueue, ShakeEvent, SpriteSquashStretch,
+    SquashEvent, SquashStretchState, SquashTrigger, Time, Transform, World,
 };
 
 use crate::game_feel::{
@@ -10,9 +10,9 @@ use crate::game_feel::{
 
 fn make_world(dt: f32) -> World {
     let mut world = World::new();
-    let mut delta = DeltaTime::new();
-    delta.dt = dt;
-    world.insert_resource(delta);
+    let mut time = Time::new();
+    time.advance_frame(dt);
+    world.insert_resource(time);
     world.insert_resource(CommandBuffer::new());
     world.insert_resource(EventQueue::<ShakeEvent>::new());
     world.insert_resource(EventQueue::<SquashEvent>::new());

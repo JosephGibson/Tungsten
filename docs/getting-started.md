@@ -92,6 +92,37 @@ Where a system goes:
 
 A constraint names a system in the same stage. A typo, a duplicate name or a cycle fails at startup with a message naming the systems, and `Harness::new` panics the same way, so a test catches it. `App::new` installs the engine's `DefaultPlugins`; a game that replaces an engine feature builds its app from the set without that plugin, `App::with_plugins(config, DefaultPlugins::set().without::<CameraPlugin>())`, and `app.add_system_to(stage, desc)` registers one system outside a plugin.
 
+## Time and timers
+
+The engine keeps two clocks in the `Time` resource and advances both once a frame, before any stage runs (`D-129`). Real time is the frame's elapsed time, capped at 0.1 s so that a stall cannot throw bodies about. Game time is real time times a scale, 1 unless you set one, and stands still while the game clock is paused. A system that moves or animates something reads the game clock's dt, `delta()`, as the template's `player_movement` does:
+
+```rust
+let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
+```
+
+`real_delta()` is the real clock's dt, for anything that should keep running over a pause, such as a pause menu's own animation; the engine's screen transitions run on it. `elapsed()` and `real_elapsed()` sum each clock's dts, and `frame()` counts frames.
+
+`pause()`, `resume()` and `set_scale(0.5)` take effect from the next frame: `world.get_resource_mut::<Time>().unwrap().pause()`. A paused clock freezes whatever moves by game time: physics, tweens, particles, game feel, the camera's follow and the game's own systems that read `delta()`. Input keeps arriving, so a pause screen still reads its keys. The template's pause state stops movement through the state stack instead, since nothing else in it moves.
+
+A `Timer` counts down a cooldown, a wave or a lifetime by whichever clock's dt you tick it with. `tick` returns how many times it finished during the tick, so a long frame cannot swallow a repeat:
+
+```rust
+/// Starts a wave every two seconds of game time.
+struct WaveTimer(Timer);
+
+fn waves(world: &mut World) {
+    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
+    let due = world
+        .get_resource_mut::<WaveTimer>()
+        .map_or(0, |timer| timer.0.tick(dt));
+    for _ in 0..due {
+        spawn_wave(world);
+    }
+}
+```
+
+`setup` inserts it with `world.insert_resource(WaveTimer(Timer::repeating(2.0)))`; `Timer::once(0.5)` finishes once and stays `finished()` until `reset()`. `fixed_update` still runs once a frame, so `delta()` is the same game dt in every stage; when the fixed-step accumulator lands, it will be the step there.
+
 ## Read next
 
 - The engine's API: `cargo doc -p tungsten --open`, from the game's folder.

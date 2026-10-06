@@ -5,9 +5,11 @@
 //! M31 (`D-093`): a `request_*_transition` call holds its command behind a
 //! screen transition. The dispatcher runs the command on the frame the `Out`
 //! phase completes, with the same hooks and despawns as a plain request.
+//! Transitions advance on the real clock, so a fade finishes over a paused
+//! game (`D-129`).
 
 use tungsten_core::post::PostPass;
-use tungsten_core::{CommandBuffer, DeltaTime, World};
+use tungsten_core::{CommandBuffer, Time, World};
 
 use crate::debug_hud::HudActiveState;
 use crate::transition::{Transition, TransitionState, TransitionStep};
@@ -199,8 +201,9 @@ pub fn despawn_scene_entities(world: &mut World, id: StateId) {
 ///
 /// Order per frame: plain requests apply at once, even during a transition;
 /// a queued transition activates when none is active; the active one advances
-/// by `DeltaTime` and applies its command on the boundary frame; then the top
-/// state updates (the old state during `Out`, the new one during `In`).
+/// by the real dt ([`Time::real_delta`]) and applies its command on the
+/// boundary frame; then the top state updates (the old state during `Out`,
+/// the new one during `In`).
 pub fn state_dispatcher_system(world: &mut World) {
     let pending: Vec<StateCommand> = match world.get_resource_mut::<StateStack>() {
         Some(stack) => std::mem::take(&mut stack.pending),
@@ -234,7 +237,7 @@ pub fn state_dispatcher_system(world: &mut World) {
 /// active one. The stored command runs through `apply_command` on the frame
 /// `Out` completes, so hooks, scene despawn and order follow `D-046`.
 fn advance_transition(world: &mut World) {
-    let dt = world.get_resource::<DeltaTime>().map_or(0.0, |d| d.dt);
+    let dt = world.get_resource::<Time>().map_or(0.0, Time::real_delta);
     let Some(stack) = world.get_resource_mut::<StateStack>() else {
         return;
     };

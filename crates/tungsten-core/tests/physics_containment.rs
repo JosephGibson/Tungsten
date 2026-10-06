@@ -20,8 +20,8 @@ mod common;
 use common::{BODY_RADIUS, FLOOR_Y, PILE_WIDTH, SPAWN_SPACING, spawn_pile, spawn_static_box};
 use glam::Vec2;
 use tungsten_core::{
-    Collider, DeltaTime, Entity, Pcg32, PhysicsBuffers, PhysicsConfig, Position, RigidBody,
-    Velocity, World, physics_step,
+    Collider, Entity, Pcg32, PhysicsBuffers, PhysicsConfig, Position, RigidBody, Time, Velocity,
+    World, physics_step,
 };
 
 const DT: f32 = 1.0 / 60.0;
@@ -39,7 +39,9 @@ const STEPS: usize = 2_400;
 )]
 fn dense_pile_never_escapes_thin_walls() {
     let mut world = World::new();
-    world.insert_resource(DeltaTime { dt: DT });
+    let mut time = Time::new();
+    time.advance_frame(DT);
+    world.insert_resource(time);
     world.insert_resource(PhysicsConfig {
         gravity: Vec2::new(0.0, GRAVITY_Y),
         ..PhysicsConfig::default()
@@ -99,7 +101,7 @@ fn spawn_slab(world: &mut World, center: Vec2, half_extents: Vec2) {
 }
 
 fn step_frames(world: &mut World, dt: f32, frames: usize) {
-    world.get_resource_mut::<DeltaTime>().unwrap().dt = dt;
+    world.get_resource_mut::<Time>().unwrap().advance_frame(dt);
     for _ in 0..frames {
         physics_step(world);
     }
@@ -111,7 +113,9 @@ fn settled_slow_pile() -> SlowPile {
     const PER_ROW: usize = 75;
     const PITCH: f32 = 21.0;
     let mut world = World::new();
-    world.insert_resource(DeltaTime { dt: DT });
+    let mut time = Time::new();
+    time.advance_frame(DT);
+    world.insert_resource(time);
     world.insert_resource(PhysicsConfig {
         gravity: Vec2::new(0.0, SLOW_GRAVITY_Y),
         broadphase_cell_size: 64.0,

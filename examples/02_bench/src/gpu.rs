@@ -22,7 +22,7 @@ use std::fmt::Write as _;
 
 use glam::{Vec2, Vec3};
 use serde_json::{Value as Json, json};
-use tungsten::core::{AmbientLight, CameraState, Config, DeltaTime, PostAaMode, Resolution, World};
+use tungsten::core::{AmbientLight, CameraState, Config, PostAaMode, Resolution, Time, World};
 use tungsten::render::TextSection;
 use tungsten::{App, extract_sprites_default, extract_tilemaps};
 
@@ -464,7 +464,7 @@ struct GpuState {
 
 /// Scripted camera: ping-pongs along the tilemap at `scroll` px/s.
 fn gpu_camera(world: &mut World) {
-    let dt = world.get_resource::<DeltaTime>().map_or(0.0, |dt| dt.dt);
+    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
     let Some(state) = world.get_resource_mut::<GpuState>() else {
         return;
     };

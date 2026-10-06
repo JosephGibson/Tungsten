@@ -21,7 +21,7 @@ use std::path::PathBuf;
 
 use glam::Vec2;
 
-use tungsten::core::{Config, DeltaTime, Tag, Transform, World};
+use tungsten::core::{Config, Tag, Time, Transform, World};
 use tungsten::render::TextSection;
 use tungsten::{App, DebugHud, StateStack, Transition, TransitionEffect};
 
@@ -129,9 +129,7 @@ fn menu_idle_system(world: &mut World) {
         return;
     }
 
-    let dt = world
-        .get_resource::<DeltaTime>()
-        .map_or(1.0 / 60.0, DeltaTime::seconds);
+    let dt = world.get_resource::<Time>().map_or(1.0 / 60.0, Time::delta);
 
     if let Some(clock) = world.get_resource_mut::<MenuClock>() {
         clock.0 += dt;
@@ -171,9 +169,7 @@ fn gameplay_orbit_system(world: &mut World) {
         return;
     }
 
-    let dt = world
-        .get_resource::<DeltaTime>()
-        .map_or(1.0 / 60.0, DeltaTime::seconds);
+    let dt = world.get_resource::<Time>().map_or(1.0 / 60.0, Time::delta);
 
     let elapsed = if let Some(clock) = world.get_resource_mut::<GameplayClock>() {
         clock.0 += dt;

@@ -15,14 +15,14 @@ use tungsten_core::assets::{
     ParticleMesh, ParticleMeshAssetId, ParticleMeshRegistry, ParticleRender, Range,
 };
 use tungsten_core::{
-    CommandBuffer, DeltaTime, Entity, EventQueue, MeshParticle, Particle, ParticleActive,
-    ParticleBudget, ParticleEmitter, ParticleEmitterState, Sprite, Transform, Visibility, World,
+    CommandBuffer, Entity, EventQueue, MeshParticle, Particle, ParticleActive, ParticleBudget,
+    ParticleEmitter, ParticleEmitterState, Sprite, Time, Transform, Visibility, World,
     WorldRngSeed,
 };
 
 fn world_with_resources() -> World {
     let mut w = World::new();
-    w.insert_resource(DeltaTime::new());
+    w.insert_resource(Time::new());
     w.insert_resource(CommandBuffer::new());
     w.insert_resource(ParticleBudget::default());
     w.insert_resource(ParticleActive::default());
@@ -79,8 +79,8 @@ fn spawn_emitter(world: &mut World, config: tungsten_core::AssetId<ParticleConfi
 }
 
 fn tick(world: &mut World, dt: f32) {
-    if let Some(d) = world.get_resource_mut::<DeltaTime>() {
-        d.dt = dt;
+    if let Some(time) = world.get_resource_mut::<Time>() {
+        time.advance_frame(dt);
     }
     particle_count_refresh_system(world);
     particle_emit_system(world);

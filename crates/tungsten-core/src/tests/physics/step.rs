@@ -8,7 +8,9 @@ use crate::ecs::World;
 
 fn seed_world() -> World {
     let mut world = World::new();
-    world.insert_resource(DeltaTime { dt: 1.0 / 60.0 });
+    let mut time = Time::new();
+    time.advance_frame(1.0 / 60.0);
+    world.insert_resource(time);
     world.insert_resource(EventQueue::<CollisionEvent>::new());
     world.insert_resource(PhysicsConfig::default());
     world.insert_resource(TilemapRegistry::new());
@@ -45,16 +47,16 @@ fn dynamic_aabb_resolves_against_static_aabb() {
     world.insert(wall, Collider::aabb(Vec2::new(8.0, 32.0)));
     world.insert(wall, RigidBody::r#static());
 
-    if let Some(dt) = world.get_resource_mut::<DeltaTime>() {
-        dt.dt = 0.1;
+    if let Some(time) = world.get_resource_mut::<Time>() {
+        time.advance_frame(0.1);
     }
     physics_step(&mut world);
 
     // Soft solver (D-063): approach velocity dies immediately; the residual
     // overlap recovers at the bias rate over subsequent steps instead of one
     // MTV push, settling at ~linear_slop.
-    if let Some(dt) = world.get_resource_mut::<DeltaTime>() {
-        dt.dt = 1.0 / 60.0;
+    if let Some(time) = world.get_resource_mut::<Time>() {
+        time.advance_frame(1.0 / 60.0);
     }
     for _ in 0..120 {
         physics_step(&mut world);
@@ -96,8 +98,8 @@ fn tilemap_collision_layer_blocks_dynamic_body() {
     world.insert(player, Collider::aabb(Vec2::new(7.0, 7.0)));
     world.insert(player, RigidBody::dynamic());
 
-    if let Some(dt) = world.get_resource_mut::<DeltaTime>() {
-        dt.dt = 0.05;
+    if let Some(time) = world.get_resource_mut::<Time>() {
+        time.advance_frame(0.05);
     }
     // First step kills the approach; the soft bias then recovers the
     // residual overlap toward linear_slop over subsequent steps (D-063).
@@ -144,8 +146,8 @@ fn fast_body_stops_at_wall_under_fixed_substeps() {
     // fixed substep — well past the 4 px half-extent the old heuristic keyed
     // on. The gap contact clamps arrival at touching (rest ~linear_slop).
     let mut world = seed_world();
-    if let Some(dt) = world.get_resource_mut::<DeltaTime>() {
-        dt.dt = 1.0 / 30.0;
+    if let Some(time) = world.get_resource_mut::<Time>() {
+        time.advance_frame(1.0 / 30.0);
     }
     let dynamic = world.spawn();
     world.insert(dynamic, Position(Vec2::new(0.0, 0.0)));
@@ -200,8 +202,8 @@ fn inflated_broadphase_catches_resolution_slip_into_unpaired_wall() {
     world.insert(ball, Collider::circle(4.0));
     world.insert(ball, RigidBody::dynamic().with_restitution(0.0));
 
-    if let Some(dt) = world.get_resource_mut::<DeltaTime>() {
-        dt.dt = 1.0 / 60.0;
+    if let Some(time) = world.get_resource_mut::<Time>() {
+        time.advance_frame(1.0 / 60.0);
     }
     // The heavy shover squeezes the ball against the wall over many steps.
     // The soft solver tolerates a few px of transient overlap, but the ball
@@ -226,8 +228,8 @@ fn speculative_contact_stops_extreme_bullet_in_one_substep() {
     if let Some(cfg) = world.get_resource_mut::<PhysicsConfig>() {
         cfg.substeps = 1;
     }
-    if let Some(dt) = world.get_resource_mut::<DeltaTime>() {
-        dt.dt = 1.0 / 30.0;
+    if let Some(time) = world.get_resource_mut::<Time>() {
+        time.advance_frame(1.0 / 30.0);
     }
 
     let ball = world.spawn();
@@ -2068,7 +2070,7 @@ fn step_bound_scene(max_step_dt: f32, dt: f32) -> Vec<u32> {
     for _ in 0..10 {
         physics_step(&mut world);
     }
-    world.get_resource_mut::<DeltaTime>().unwrap().dt = dt;
+    world.get_resource_mut::<Time>().unwrap().advance_frame(dt);
     for _ in 0..20 {
         physics_step(&mut world);
     }
@@ -2085,7 +2087,7 @@ fn slow_frame_advances_only_the_step_bound() {
         let mut world = seed_world();
         world.get_resource_mut::<PhysicsConfig>().unwrap().gravity = Vec2::new(0.0, 900.0);
         let fallers = spawn_free_fallers(&mut world, 0.0);
-        world.get_resource_mut::<DeltaTime>().unwrap().dt = dt;
+        world.get_resource_mut::<Time>().unwrap().advance_frame(dt);
         for _ in 0..STEPS {
             physics_step(&mut world);
         }

@@ -27,12 +27,12 @@ TUNGSTEN_CAPTURE_PATH=examples/02_bench/tests/fixtures/gpu-visual.png \
 cargo run -p example-02-bench --locked
 ```
 
-Determinism: under `TUNGSTEN_SMOKE_FRAMES`, `App::stage_delta_time` pins the
-per-frame `DeltaTime.dt` to `1/60 s` (see `SMOKE_MODE_FIXED_DT_SECS` in
-`crates/tungsten/src/app.rs`). The lights move with that pinned time, the
-text is static (`text_change=0`), and every other choice comes from the
-preset's seed, so the capture is reproducible. Regenerating without
-`TUNGSTEN_SMOKE_FRAMES` set would drift.
+Determinism: under `TUNGSTEN_SMOKE_FRAMES`, `App::stage_time` pins the
+real clock's per-frame dt to `1/60 s` (see `SMOKE_MODE_FIXED_DT_SECS` in
+`crates/tungsten/src/app.rs`), and `Time::delta()` reads it at scale 1. The
+lights move with that pinned time, the text is static (`text_change=0`), and
+every other choice comes from the preset's seed, so the capture is
+reproducible. Regenerating without `TUNGSTEN_SMOKE_FRAMES` set would drift.
 
 Accept a new fixture only after `just visual` passes twice in a row, then
 commit the PNG together with an update to the **Reference machine** block

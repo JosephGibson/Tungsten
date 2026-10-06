@@ -3,7 +3,7 @@
 use std::f32::consts::{PI, TAU};
 
 use glam::Vec2;
-use tungsten::core::{CommandBuffer, DeltaTime, Position, World};
+use tungsten::core::{CommandBuffer, Position, Time, World};
 
 use super::{
     Acc, Age, Bag, BenchCounters, Brain, COOLDOWN_PERIODS, Cooldowns, EcsCounts, FACTIONS, Faction,
@@ -30,9 +30,7 @@ const REST: u8 = 2;
 const FLEE: u8 = 3;
 
 fn delta_seconds(world: &World) -> f32 {
-    world
-        .get_resource::<DeltaTime>()
-        .map_or(0.0, DeltaTime::seconds)
+    world.get_resource::<Time>().map_or(0.0, Time::delta)
 }
 
 fn with_counts(world: &mut World, update: impl FnOnce(&mut EcsCounts)) {

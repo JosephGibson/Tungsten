@@ -8,9 +8,9 @@ use tungsten::ParticleSystemDrained;
 use tungsten::core::tween::UniformOverrideBlock;
 use tungsten::core::{
     AnimationRegistry, AnimationState, AssetRegistry, CameraState, Collider, CollisionEvent,
-    CommandBuffer, DeltaTime, Entity, EventQueue, Light, Particle, ParticleEmitter,
-    ParticleEmitterState, Position, RigidBody, ShakeEvent, Sprite, SquashEvent, SquashTrigger,
-    Transform, TweenComplete, Velocity, Visibility, World, splitmix64,
+    CommandBuffer, Entity, EventQueue, Light, Particle, ParticleEmitter, ParticleEmitterState,
+    Position, RigidBody, ShakeEvent, Sprite, SquashEvent, SquashTrigger, Time, Transform,
+    TweenComplete, Velocity, Visibility, World, splitmix64,
 };
 use tungsten::render::TextSection;
 
@@ -46,9 +46,7 @@ const TAG_COLOR: [u8; 4] = [236, 240, 255, 230];
 const HUD_COLOR: [u8; 4] = [255, 244, 214, 255];
 
 fn delta(world: &World) -> f32 {
-    world
-        .get_resource::<DeltaTime>()
-        .map_or(0.0, DeltaTime::seconds)
+    world.get_resource::<Time>().map_or(0.0, Time::delta)
 }
 
 fn count(world: &mut World, update: impl FnOnce(&mut IntegratedCounts)) {

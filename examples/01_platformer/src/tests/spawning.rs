@@ -69,7 +69,7 @@ fn rainbow_ball_hue_system_advances_each_ball_hue() {
             speed: 0.2,
         },
     );
-    world.get_resource_mut::<DeltaTime>().unwrap().dt = 0.5;
+    world.get_resource_mut::<Time>().unwrap().advance_frame(0.5);
 
     rainbow_ball_hue_system(&mut world);
 
@@ -92,7 +92,10 @@ fn spawn_ball_system_resets_accumulator_on_release() {
             }],
         );
 
-    world.get_resource_mut::<DeltaTime>().unwrap().dt = 0.016;
+    world
+        .get_resource_mut::<Time>()
+        .unwrap()
+        .advance_frame(0.016);
     world
         .get_resource_mut::<InputState>()
         .unwrap()
@@ -242,7 +245,10 @@ fn spawn_black_hole_system_drags_active_hole_to_cursor_while_held() {
 #[test]
 fn black_hole_force_system_pulls_dynamic_body_toward_hole() {
     let mut world = seed_world();
-    world.get_resource_mut::<DeltaTime>().unwrap().dt = 1.0 / 60.0;
+    world
+        .get_resource_mut::<Time>()
+        .unwrap()
+        .advance_frame(1.0 / 60.0);
 
     let hole = world.spawn();
     world.insert(
@@ -273,7 +279,10 @@ fn black_hole_force_system_pulls_dynamic_body_toward_hole() {
 #[test]
 fn black_hole_force_system_ignores_bodies_outside_radius() {
     let mut world = seed_world();
-    world.get_resource_mut::<DeltaTime>().unwrap().dt = 1.0 / 60.0;
+    world
+        .get_resource_mut::<Time>()
+        .unwrap()
+        .advance_frame(1.0 / 60.0);
 
     let hole = world.spawn();
     world.insert(

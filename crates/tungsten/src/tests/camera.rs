@@ -1,7 +1,7 @@
 use glam::Vec2;
 use std::f32::consts::FRAC_PI_2;
 use tungsten_core::{
-    CameraBounds, CameraController, CameraMode, CameraState, DeltaTime, Transform, World,
+    CameraBounds, CameraController, CameraMode, CameraState, Time, Transform, World,
 };
 
 use crate::WindowSize;
@@ -9,9 +9,9 @@ use crate::camera::camera_update_system;
 
 fn make_world(dt: f32) -> World {
     let mut world = World::new();
-    let mut delta = DeltaTime::new();
-    delta.dt = dt;
-    world.insert_resource(delta);
+    let mut time = Time::new();
+    time.advance_frame(dt);
+    world.insert_resource(time);
     world.insert_resource(CameraState::new());
     world.insert_resource(WindowSize {
         width: 800,

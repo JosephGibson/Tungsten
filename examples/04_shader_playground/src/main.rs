@@ -43,10 +43,10 @@ use tungsten::core::post::{
 use tungsten::core::tween::UniformOverrideBlock;
 use tungsten::core::{
     ActionMap, AssetRegistry, BlendMode, CameraController, CameraMode, CommandBuffer, Config,
-    Curve, DeltaTime, Easing, EmissionKind, Entity, EventQueue, InitialVelocity, InputState,
-    MaterialRegistry, ParallaxLayer, ParticleConfig, ParticleConfigRegistry, ParticleEmitter,
-    ParticleEmitterState, ParticleRender, Pcg32, Range, ShakeEvent, Sprite, SpriteAssetId,
-    SpriteSquashStretch, SquashEvent, SquashTrigger, Transform, Visibility, World,
+    Curve, Easing, EmissionKind, Entity, EventQueue, InitialVelocity, InputState, MaterialRegistry,
+    ParallaxLayer, ParticleConfig, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState,
+    ParticleRender, Pcg32, Range, ShakeEvent, Sprite, SpriteAssetId, SpriteSquashStretch,
+    SquashEvent, SquashTrigger, Time, Transform, Visibility, World,
 };
 use tungsten::particles::spawn_particle_via;
 use tungsten::{App, PostAaState, render::TextSection, request_post_aa};
@@ -626,9 +626,7 @@ fn send_squash(world: &mut World, entities: &[Entity]) {
 }
 
 fn bounce_system(world: &mut World) {
-    let dt = world
-        .get_resource::<DeltaTime>()
-        .map_or(1.0 / 60.0, DeltaTime::seconds);
+    let dt = world.get_resource::<Time>().map_or(1.0 / 60.0, Time::delta);
 
     // Outward normals for each axis the entity crossed this tick. Collected
     // first so the burst spawn pass runs after every world.get_mut release.

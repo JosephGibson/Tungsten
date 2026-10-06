@@ -2,9 +2,9 @@ use glam::Vec2;
 use tungsten::WindowSize;
 use tungsten::core::{
     ActionMap, AnimationRegistry, AnimationState, AssetRegistry, AudioCommands, AudioHandle,
-    CameraController, CameraState, CommandBuffer, DeltaTime, Entity, EventQueue, InputState, Light,
+    CameraController, CameraState, CommandBuffer, Entity, EventQueue, InputState, Light,
     ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, ShakeEvent, SquashEvent,
-    SquashTrigger, Transform, World,
+    SquashTrigger, Time, Transform, World,
 };
 use tungsten::physics::{BodyKind, Collider, CollisionEvent, Position, RigidBody, Shape, Velocity};
 
@@ -204,7 +204,7 @@ pub(crate) fn camera_zoom_input_system(world: &mut World) {
 }
 
 pub(crate) fn animation_system(world: &mut World) {
-    let dt_ms = world.get_resource::<DeltaTime>().unwrap().seconds() * 1000.0;
+    let dt_ms = world.get_resource::<Time>().unwrap().delta() * 1000.0;
     let anim_registry = match world.get_resource::<AnimationRegistry>() {
         Some(r) => r.clone(),
         None => return,
@@ -230,9 +230,7 @@ pub(crate) fn animation_system(world: &mut World) {
 }
 
 pub(crate) fn rainbow_ball_hue_system(world: &mut World) {
-    let dt = world
-        .get_resource::<DeltaTime>()
-        .map_or(0.0, DeltaTime::seconds);
+    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
     if dt <= 0.0 {
         return;
     }
@@ -319,9 +317,7 @@ fn player_entities_for_landing(world: &mut World, landed: &[Entity]) -> Vec<Enti
 
 /// Select after ground detection/reset; reset a clip only on a transition.
 pub(crate) fn player_presentation_system(world: &mut World) {
-    let dt = world
-        .get_resource::<DeltaTime>()
-        .map_or(0.0, DeltaTime::seconds);
+    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
     for entity in world.query_entities::<PlayerPresentation>() {
         let grounded = world.get::<Player>(entity).is_some_and(|p| p.grounded);
         let velocity = world.get::<Velocity>(entity).map_or(Vec2::ZERO, |v| v.0);
@@ -506,9 +502,7 @@ pub(crate) fn damage_feedback(world: &mut World, player: Entity) {
 }
 
 pub(crate) fn update_text_display(world: &mut World) {
-    let dt = world
-        .get_resource::<DeltaTime>()
-        .map_or(0.0, DeltaTime::seconds);
+    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
 
     let timer = world
         .get_resource::<TextDisplayState>()
@@ -609,9 +603,7 @@ fn spawn_balls(world: &mut World, small: bool, budget: u32) -> u32 {
         return 0;
     }
 
-    let dt = world
-        .get_resource::<DeltaTime>()
-        .map_or(0.0, DeltaTime::seconds);
+    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
     let (spawn_count, phase_start) = {
         let Some(state) = world.get_resource_mut::<BallSpawnState>() else {
             return 0;
@@ -818,9 +810,7 @@ pub(crate) fn spawn_black_hole_system(world: &mut World) {
 
 /// Black-hole acceleration before physics; static tiles excluded by no velocity.
 pub(crate) fn black_hole_force_system(world: &mut World) {
-    let dt = world
-        .get_resource::<DeltaTime>()
-        .map_or(0.0, DeltaTime::seconds);
+    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
     if dt <= 0.0 {
         return;
     }
@@ -879,9 +869,7 @@ pub(crate) fn black_hole_acceleration(holes: &[Vec2], position: Vec2) -> Vec2 {
 /// Holes put out burning small balls inside their radius. The balls stay spent,
 /// as after a normal burnout; a few sampled balls puff steam.
 pub(crate) fn black_hole_extinguish_system(world: &mut World) {
-    let dt = world
-        .get_resource::<DeltaTime>()
-        .map_or(0.0, DeltaTime::seconds);
+    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
     if let Some(sounds) = world.get_resource_mut::<EffectSounds>() {
         sounds.extinguish_cooldown = (sounds.extinguish_cooldown - dt).max(0.0);
     }
@@ -925,9 +913,7 @@ pub(crate) fn black_hole_extinguish_system(world: &mut World) {
 }
 
 pub(crate) fn black_hole_lifetime_system(world: &mut World) {
-    let dt = world
-        .get_resource::<DeltaTime>()
-        .map_or(0.0, DeltaTime::seconds);
+    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
     // Anchored emitters leave with their parent (black-hole dust, missile drips).
     let orphans: Vec<Entity> = world
         .query::<EmitterAnchor>()
@@ -1059,8 +1045,8 @@ fn body_bounds(pos: Vec2, collider: Option<Collider>) -> (Vec2, Vec2) {
 /// only orbits the position.
 pub(crate) fn orbit_lights_system(world: &mut World) {
     let dt = world
-        .get_resource::<DeltaTime>()
-        .map(|d| d.dt)
+        .get_resource::<Time>()
+        .map(Time::delta)
         .unwrap_or_default();
     let center = world
         .query::<Player>()

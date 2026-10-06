@@ -1,7 +1,7 @@
 //! What the game runs: its plugin (the setup its first frame needs and its
 //! systems, by stage) and its text.
 
-use tungsten::core::{ActionMap, DeltaTime, InputState, Transform, World};
+use tungsten::core::{ActionMap, InputState, Time, Transform, World};
 use tungsten::render::TextSection;
 use tungsten::{App, DebugHud, Plugin, Schedule, Stage, StateId, StateStack, system};
 
@@ -71,10 +71,7 @@ pub fn player_movement(world: &mut World) {
         axis("move_left", "move_right"),
         axis("move_up", "move_down"),
     );
-    let step = PLAYER_SPEED
-        * world
-            .get_resource::<DeltaTime>()
-            .map_or(0.0, DeltaTime::seconds);
+    let step = PLAYER_SPEED * world.get_resource::<Time>().map_or(0.0, Time::delta);
     for (_, _, transform) in world.query2_mut::<Player, Transform>() {
         transform.position.x += dx * step;
         transform.position.y += dy * step;

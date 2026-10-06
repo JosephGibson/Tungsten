@@ -85,7 +85,7 @@ fn make_world() -> World {
     world.insert_resource(StateStack::new());
     world.insert_resource(CommandBuffer::new());
     world.insert_resource(HudActiveState::default());
-    world.insert_resource(DeltaTime::new());
+    world.insert_resource(Time::new());
     world
 }
 
@@ -311,9 +311,9 @@ fn fade(secs: f32) -> Transition {
     )
 }
 
-/// One frame: set `dt`, run the dispatcher, flush commands.
+/// One frame: advance the clock by `dt`, run the dispatcher, flush commands.
 fn dispatch(world: &mut World, dt: f32) {
-    world.get_resource_mut::<DeltaTime>().unwrap().dt = dt;
+    world.get_resource_mut::<Time>().unwrap().advance_frame(dt);
     state_dispatcher_system(world);
     flush(world);
 }
@@ -367,6 +367,26 @@ fn transition_defers_command_until_out_completes() {
         stack(&world).transition_state().map(|s| s.phase),
         Some(TransitionPhase::In)
     );
+}
+
+#[test]
+fn clock_a_transition_finishes_over_a_paused_clock() {
+    // Transitions advance on the real clock (`D-129`): a paused game clock
+    // still lets a fade finish.
+    let hooks: Hooks = Rc::new(RefCell::new(Vec::new()));
+    let mut world = world_in_menu(&hooks);
+    world.get_resource_mut::<Time>().unwrap().pause();
+    stack_mut(&mut world)
+        .request_replace_transition(TestState::new("gameplay", hooks.clone(), false), fade(0.25));
+
+    // Out, the boundary, In and two idle frames, all with no game time.
+    for _ in 0..8 {
+        dispatch(&mut world, 0.125);
+        assert_eq!(world.get_resource::<Time>().unwrap().game_delta(), 0.0);
+    }
+    assert!(!stack(&world).is_transitioning());
+    assert_eq!(stack(&world).active_id(), Some("gameplay"));
+    assert_eq!(count(&hooks, "gameplay:on_enter"), 1);
 }
 
 #[test]

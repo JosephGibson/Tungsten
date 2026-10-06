@@ -18,6 +18,11 @@
 //! redraws. The startup hook does not run and no manifest loads, since both
 //! need the renderer; seed resources and assets through
 //! [`Harness::world_mut`].
+//!
+//! The harness's dt is the real clock's: each frame advances
+//! [`Time`](tungsten_core::Time) by it, and systems read it through `Time`,
+//! times the scale and zero while paused. Pause or scale the game clock
+//! through [`Harness::world_mut`], as a game does through its `World`.
 
 #![deny(missing_docs)]
 
@@ -76,9 +81,10 @@ impl Harness {
         }
     }
 
-    /// Sets the dt, in seconds, that each later frame hands its systems.
-    /// It is written as given: the window loop's cap does not apply
-    /// (`D-110`). Zero is allowed.
+    /// Sets the real dt, in seconds, that each later frame advances
+    /// [`Time`](tungsten_core::Time) by; systems read it through `Time`,
+    /// times the scale and zero while paused. It is taken as given: the
+    /// window loop's cap does not apply (`D-110`). Zero is allowed.
     ///
     /// # Panics
     ///

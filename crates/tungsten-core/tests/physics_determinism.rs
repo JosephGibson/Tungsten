@@ -16,9 +16,7 @@ mod common;
 
 use common::{FLOOR_Y, PILE_WIDTH, SPAWN_SPACING, spawn_pile, spawn_static_box};
 use glam::Vec2;
-use tungsten_core::{
-    DeltaTime, Entity, Pcg32, PhysicsConfig, Position, Velocity, World, physics_step,
-};
+use tungsten_core::{Entity, Pcg32, PhysicsConfig, Position, Time, Velocity, World, physics_step};
 
 const DT: f32 = 1.0 / 60.0;
 const GRAVITY_Y: f32 = 900.0;
@@ -47,7 +45,9 @@ fn state_hash(world: &World, bodies: &[Entity]) -> u64 {
 
 fn run_pile() -> u64 {
     let mut world = World::new();
-    world.insert_resource(DeltaTime { dt: DT });
+    let mut time = Time::new();
+    time.advance_frame(DT);
+    world.insert_resource(time);
     world.insert_resource(PhysicsConfig {
         gravity: Vec2::new(0.0, GRAVITY_Y),
         ..PhysicsConfig::default()

@@ -6,9 +6,12 @@ use super::{
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use tungsten_core::post::{FadeParams, PostPass, PostStack};
+// The clock tests pin the app's write to the deprecated `DeltaTime`.
+#[allow(deprecated)]
+use tungsten_core::DeltaTime;
 use tungsten_core::{
-    AudioCommand, AudioCommands, CollisionEvent, CommandBuffer, Config, DeltaTime, DisplayMode,
-    DisplayState, EventQueue, InputState, KeyCode, ShakeEvent, SquashEvent, Stage, World, system,
+    AudioCommand, AudioCommands, CollisionEvent, CommandBuffer, Config, DisplayMode, DisplayState,
+    EventQueue, InputState, KeyCode, ShakeEvent, SquashEvent, Stage, Time, World, system,
 };
 use tungsten_render::QuadInstance;
 
@@ -341,7 +344,7 @@ fn startup_time_is_excluded_from_the_next_frame_dt() {
     assert_eq!(first, FrameEnd::Completed);
     let second = app.run_frame(Instant::now(), FrameClock::Wall, |_| {});
     assert_eq!(second, FrameEnd::Completed);
-    let dt = app.world.get_resource::<DeltaTime>().expect("DeltaTime").dt;
+    let dt = app.world.get_resource::<Time>().expect("Time").real_delta();
     assert!(
         dt < 0.020,
         "the second frame's dt {dt} includes the startup stage"
@@ -353,12 +356,59 @@ fn a_pinned_dt_reaches_systems_as_given() {
     let mut app = App::new(Config::default()).unwrap();
     app.world.insert_resource(SeenDt(0.0));
     app.add_system(|world| {
-        let dt = world.get_resource::<DeltaTime>().unwrap().dt;
+        let dt = world.get_resource::<Time>().unwrap().delta();
         world.get_resource_mut::<SeenDt>().unwrap().0 = dt;
     });
     let end = app.run_frame(Instant::now(), FrameClock::Pinned(0.25), |_| {});
     assert_eq!(end, FrameEnd::Completed);
     assert_eq!(app.world.get_resource::<SeenDt>().unwrap().0, 0.25);
+}
+
+#[test]
+fn clock_a_wall_frame_after_a_stall_reads_the_capped_real_dt() {
+    // `D-088`: a stall reaches the clock capped. The previous frame time is
+    // set a second back instead of sleeping.
+    let mut app = App::new(Config::default()).unwrap();
+    app.smoke_frames_remaining = None;
+    app.last_frame = Some(
+        Instant::now()
+            .checked_sub(Duration::from_secs(1))
+            .expect("the monotonic clock is past one second"),
+    );
+    let end = app.run_frame(Instant::now(), FrameClock::Wall, |_| {});
+    assert_eq!(end, FrameEnd::Completed);
+    let time = app.world.get_resource::<Time>().unwrap();
+    assert_eq!(time.real_delta(), 0.1);
+    assert_eq!(time.game_delta(), 0.1);
+    assert_eq!(time.frame(), 1);
+}
+
+#[test]
+#[allow(deprecated)]
+fn clock_a_pinned_frame_reads_its_dt_on_both_clocks_and_in_delta_time() {
+    // `D-110`: a pinned dt is taken as given, above the window loop's cap.
+    let mut app = App::new(Config::default()).unwrap();
+    let end = app.run_frame(Instant::now(), FrameClock::Pinned(0.25), |_| {});
+    assert_eq!(end, FrameEnd::Completed);
+    let time = app.world.get_resource::<Time>().unwrap();
+    assert_eq!(time.real_delta(), 0.25);
+    assert_eq!(time.game_delta(), 0.25);
+    assert_eq!(time.delta(), 0.25);
+    assert_eq!(app.world.get_resource::<DeltaTime>().unwrap().dt, 0.25);
+}
+
+#[test]
+#[allow(deprecated)]
+fn clock_a_paused_pinned_frame_reads_real_time_and_zero_game_time() {
+    let mut app = App::new(Config::default()).unwrap();
+    app.world.get_resource_mut::<Time>().unwrap().pause();
+    let end = app.run_frame(Instant::now(), FrameClock::Pinned(0.25), |_| {});
+    assert_eq!(end, FrameEnd::Completed);
+    let time = app.world.get_resource::<Time>().unwrap();
+    assert_eq!(time.real_delta(), 0.25);
+    assert_eq!(time.game_delta(), 0.0);
+    assert_eq!(time.delta(), 0.0);
+    assert_eq!(app.world.get_resource::<DeltaTime>().unwrap().dt, 0.0);
 }
 
 #[test]

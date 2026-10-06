@@ -79,7 +79,7 @@ use super::collision::Aabb;
 use super::components::{BodyKind, Collider, Position, RigidBody, Shape, Velocity};
 use super::events::CollisionEvent;
 use crate::ecs::{Entity, EventQueue, World};
-use crate::time::DeltaTime;
+use crate::time::Time;
 use glam::Vec2;
 
 mod arrival;
@@ -316,11 +316,10 @@ pub fn wake(world: &mut World, entity: Entity) {
 }
 
 /// Run one physics tick with fixed substeps (D-064), advancing at most
-/// `PhysicsConfig::max_step_dt` of the frame's dt (D-094).
+/// `PhysicsConfig::max_step_dt` of the frame's game dt, [`Time::delta`]
+/// (D-094); a paused clock leaves every body as it is.
 pub fn physics_step(world: &mut World) {
-    let dt = world
-        .get_resource::<DeltaTime>()
-        .map_or(0.0, super::super::time::DeltaTime::seconds);
+    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
     if dt <= 0.0 {
         return;
     }

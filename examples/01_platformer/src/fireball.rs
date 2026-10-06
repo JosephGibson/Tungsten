@@ -4,8 +4,9 @@
 use glam::Vec2;
 use tungsten::core::assets::LayerKind;
 use tungsten::core::{
-    ActionMap, AnimationState, CameraState, DeltaTime, Entity, InputState, ParticleConfigRegistry,
-    ParticleEmitter, ParticleEmitterState, TilemapInstance, TilemapRegistry, Transform, World,
+    ActionMap, AnimationState, CameraState, Entity, InputState, ParticleConfigRegistry,
+    ParticleEmitter, ParticleEmitterState, TilemapInstance, TilemapRegistry, Time, Transform,
+    World,
 };
 use tungsten::physics::{Collider, Position, Shape};
 
@@ -128,9 +129,7 @@ pub(crate) fn spawn_fireball(world: &mut World, position: Vec2, velocity: Vec2) 
 /// Runs after physics so contacts see this frame's ball positions, and before
 /// fire spreads so a blast's ignitions spread in the same frame.
 pub(crate) fn fireball_flight_system(world: &mut World) {
-    let dt = world
-        .get_resource::<DeltaTime>()
-        .map_or(0.0, DeltaTime::seconds);
+    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
     if dt <= 0.0 {
         return;
     }

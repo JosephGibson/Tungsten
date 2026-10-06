@@ -13,8 +13,8 @@ use crate::{
 };
 use glam::{Vec2, Vec3};
 use tungsten::core::{
-    AnimationState, DeltaTime, Entity, InputState, KeyCode, Light, Particle,
-    ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, Transform, World,
+    AnimationState, Entity, InputState, KeyCode, Light, Particle, ParticleConfigRegistry,
+    ParticleEmitter, ParticleEmitterState, Time, Transform, World,
 };
 use tungsten::physics::{Collider, Position, RigidBody, Velocity, wake};
 
@@ -347,9 +347,7 @@ fn add_glow(world: &mut World, parent: Entity, offset: Vec2, radius: f32, color:
 /// Capture motion before physics so fire catches fast crossings in either direction.
 /// Platforms carry only supported bodies; accepted jumps leave them immediately.
 pub(crate) fn move_obstacles(world: &mut World) {
-    let dt = world
-        .get_resource::<DeltaTime>()
-        .map_or(0.0, DeltaTime::seconds);
+    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
     let time = if let Some(t) = world.get_resource_mut::<SceneTime>() {
         t.0 += dt;
         t.0
@@ -594,9 +592,7 @@ pub(crate) fn scene_effects(world: &mut World) {
     }
     // Annular births and accelerating tangential motion read as accretion.
     // Only owned vortex particles are steered; the engine integrates them once.
-    let dt = world
-        .get_resource::<DeltaTime>()
-        .map_or(0.0, DeltaTime::seconds);
+    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
     let particles: Vec<_> = world
         .query::<Particle>()
         .filter_map(|(e, p)| {

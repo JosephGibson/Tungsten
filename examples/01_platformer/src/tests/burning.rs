@@ -115,7 +115,10 @@ fn burns_last_ten_seconds_without_refresh_and_spent_balls_never_reignite() {
     let mut world = seed_world();
     let spent = ball(&mut world, Vec2::ZERO, true);
     ignite(&mut world, spent);
-    world.get_resource_mut::<DeltaTime>().unwrap().dt = 0.25;
+    world
+        .get_resource_mut::<Time>()
+        .unwrap()
+        .advance_frame(0.25);
     for _ in 0..39 {
         tick_ball_fire(&mut world);
         ignite(&mut world, spent);
@@ -254,7 +257,10 @@ fn extraction_shows_flames_while_burning_and_charcoal_after_burnout() {
             .color,
         [255, 150, 55, 255]
     );
-    world.get_resource_mut::<DeltaTime>().unwrap().dt = 10.0;
+    world
+        .get_resource_mut::<Time>()
+        .unwrap()
+        .advance_frame(10.0);
     tick_ball_fire(&mut world);
     let batches = crate::extract::extract_sprites(&world);
     assert!(batches.iter().all(|b| !matches!(b.texture.0, 951 | 952)));

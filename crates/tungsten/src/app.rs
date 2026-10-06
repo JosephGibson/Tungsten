@@ -29,11 +29,14 @@ use tungsten_core::assets::{
 };
 use tungsten_core::physics::{PhysicsBuffers, PhysicsConfig};
 use tungsten_core::post::{PostPass, PostStack};
+// `App` writes the deprecated `DeltaTime` each frame until W4b removes it.
+#[allow(deprecated)]
+use tungsten_core::DeltaTime;
 use tungsten_core::{
     ActionMap, AssetRegistry, AudioCommand, AudioCommands, CameraController, CameraState,
-    CommandBuffer, Config, ConfigError, DebugDraw, DebugShape, DeltaTime, DisplayMode,
-    DisplayState, InputState, InspectRegistry, Inspectable, ParticleActive, ParticleBudget, Plugin,
-    PluginSet, Schedule, Stage, SystemDesc, World, WorldRngSeed, system,
+    CommandBuffer, Config, ConfigError, DebugDraw, DebugShape, DisplayMode, DisplayState,
+    InputState, InspectRegistry, Inspectable, ParticleActive, ParticleBudget, Plugin, PluginSet,
+    Schedule, Stage, SystemDesc, Time, World, WorldRngSeed, system,
 };
 use tungsten_render::{
     DebugLineInstance, GpuFrameTimings, MeshParticleBatch, QuadInstance, Renderer, SpriteBatch,
@@ -192,6 +195,8 @@ impl App {
         let action_map = load_action_map_at_startup(&input_map_path)
             .inspect_err(|err| log::error!("{err:#}"))?;
         let mut world = World::new();
+        world.insert_resource(Time::new());
+        #[allow(deprecated)]
         world.insert_resource(DeltaTime::new());
         world.insert_resource(InputState::new());
         world.insert_resource(action_map);
@@ -732,13 +737,14 @@ fn compose_post_stack<'a>(
     scratch
 }
 
-/// Where a frame's dt comes from.
+/// Where a frame's real dt comes from: the dt [`Time`]'s real clock advances
+/// by, and its game clock by that times the scale, zero while paused.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum FrameClock {
     /// Elapsed wall time since the previous frame, capped at [`MAX_DT_SECS`]
     /// (or pinned to 60 Hz under `TUNGSTEN_SMOKE_FRAMES`): the window loop.
     Wall,
-    /// This dt, written as given: a headless caller.
+    /// This dt, as given: a headless caller.
     #[cfg_attr(not(any(test, feature = "testing")), allow(dead_code))]
     Pinned(f32),
 }
@@ -797,25 +803,36 @@ struct FrameStageTimings {
 impl App {
     // Debug perf: flatten single-call frame stages to avoid stack/memcpy overhead.
 
+    /// Advances [`Time`] by the frame's real dt: the pinned dt as given, or a
+    /// wall frame's capped elapsed time, zero with no previous frame time.
+    /// `DeltaTime` gets the game dt, or the real dt if a game removed `Time`.
     #[inline(always)]
-    fn stage_delta_time(&mut self, clock: FrameClock) {
-        if let FrameClock::Pinned(dt) = clock {
-            if let Some(delta) = self.world.get_resource_mut::<DeltaTime>() {
-                delta.dt = dt;
+    fn stage_time(&mut self, clock: FrameClock) {
+        let real_dt = match clock {
+            FrameClock::Pinned(dt) => dt,
+            FrameClock::Wall => {
+                let now = Instant::now();
+                let dt = self.last_frame.map_or(0.0, |last| {
+                    frame_dt_secs(
+                        now.duration_since(last),
+                        self.smoke_frames_remaining.is_some(),
+                    )
+                });
+                self.last_frame = Some(now);
+                dt
             }
-            return;
-        }
-        let now = Instant::now();
-        if let Some(last) = self.last_frame {
-            let dt = frame_dt_secs(
-                now.duration_since(last),
-                self.smoke_frames_remaining.is_some(),
-            );
-            if let Some(delta) = self.world.get_resource_mut::<DeltaTime>() {
-                delta.dt = dt;
+        };
+        let game_dt = match self.world.get_resource_mut::<Time>() {
+            Some(time) => {
+                time.advance_frame(real_dt);
+                time.game_delta()
             }
+            None => real_dt,
+        };
+        #[allow(deprecated)]
+        if let Some(delta) = self.world.get_resource_mut::<DeltaTime>() {
+            delta.dt = game_dt;
         }
-        self.last_frame = Some(now);
     }
 
     /// Runs `stage`'s systems, each timed into `system_timings`.
@@ -1148,7 +1165,7 @@ impl App {
             .get_resource::<FrameTimings>()
             .map_or(0.0, |ft| ft.total_ms);
 
-        self.stage_delta_time(clock);
+        self.stage_time(clock);
         let (update_start, mut system_timings, exit) = self.stage_update();
         if exit {
             return FrameEnd::ExitRequested;
