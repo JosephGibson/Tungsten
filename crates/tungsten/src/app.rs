@@ -1,5 +1,3 @@
-use std::any::TypeId;
-use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -7,26 +5,21 @@ use std::time::{Duration, Instant};
 use crate::asset_loader;
 use crate::audio::AudioSystem;
 use crate::crash::{self, CrashContext};
-use crate::debug_hud::{DebugHud, HudActiveState, compose_hud_text_sections, hud_toggle_system};
+use crate::debug_hud::{DebugHud, HudActiveState, compose_hud_text_sections};
 use crate::display::{
-    DisplayDelta, PendingDisplay, engine_display_input_system, frame_budget_for,
-    sync_display_state_and_telemetry, sync_window_resolution, take_pending_display,
+    DisplayDelta, PendingDisplay, frame_budget_for, sync_display_state_and_telemetry,
+    sync_window_resolution, take_pending_display,
 };
 use crate::hot_reload::HotReloadWatcher;
 use crate::input_bridge;
-use crate::inspector::{
-    InspectorState, compose_inspector_text_section, inspector_pick_system, inspector_toggle_system,
-};
+use crate::inspector::{InspectorState, compose_inspector_text_section, default_inspect_registry};
 use crate::logging;
-use crate::physics_debug::{
-    PhysicsDebugOverlay, physics_debug_emit_system, physics_debug_toggle_system,
-};
+use crate::physics_debug::{PhysicsDebugOverlay, physics_debug_emit_system};
+use crate::plugins::DefaultPlugins;
 use crate::post_aa::{PendingPostAa, PostAaState, sync_post_aa_state, take_pending_post_aa};
 use crate::sprite_extract::ExtractScratch;
-use crate::state::{StateStack, state_dispatcher_system};
-use crate::systems_overlay::{
-    SystemTimingOverlay, compose_systems_overlay_text_section, systems_overlay_toggle_system,
-};
+use crate::state::StateStack;
+use crate::systems_overlay::{SystemTimingOverlay, compose_systems_overlay_text_section};
 use crate::telemetry::{DisplayTelemetry, FrameTimings, RenderCounts};
 use crate::user_dir::{self, Platform};
 use log::LevelFilter;
@@ -34,13 +27,13 @@ use tungsten_core::assets::{
     AnimationRegistry, FontRegistry, ParticleConfigRegistry, ParticleMeshRegistry, ShaderRegistry,
     SoundRegistry, TilemapRegistry,
 };
-use tungsten_core::physics::{CollisionEvent, PhysicsBuffers, PhysicsConfig};
+use tungsten_core::physics::{PhysicsBuffers, PhysicsConfig};
 use tungsten_core::post::{PostPass, PostStack};
 use tungsten_core::{
     ActionMap, AssetRegistry, AudioCommand, AudioCommands, CameraController, CameraState,
     CommandBuffer, Config, ConfigError, DebugDraw, DebugShape, DeltaTime, DisplayMode,
-    DisplayState, EventQueue, InputState, Inspectable, ParticleActive, ParticleBudget, World,
-    WorldRngSeed,
+    DisplayState, InputState, InspectRegistry, Inspectable, ParticleActive, ParticleBudget, Plugin,
+    PluginSet, Schedule, Stage, SystemDesc, World, WorldRngSeed, system,
 };
 use tungsten_render::{
     DebugLineInstance, GpuFrameTimings, MeshParticleBatch, QuadInstance, Renderer, SpriteBatch,
@@ -63,8 +56,7 @@ const SMOKE_MODE_FIXED_DT_SECS: f32 = 1.0 / 60.0;
 /// leaves such a pile at about 40 px/s.
 const MAX_DT_SECS: f32 = 0.1;
 
-/// Tick system.
-pub type SystemFn = Box<dyn FnMut(&mut World)>;
+pub use tungsten_core::schedule::SystemFn;
 
 /// World-to-quad extract.
 pub type ExtractQuadsFn = Box<dyn Fn(&World) -> Vec<QuadInstance>>;
@@ -75,17 +67,12 @@ pub type ExtractSpritesFn = Box<dyn Fn(&World) -> Vec<SpriteBatch>>;
 /// World-to-text extract.
 pub type ExtractTextFn = Box<dyn Fn(&World) -> Vec<TextSection>>;
 
-/// Window dimensions in physical pixels.
-#[derive(Debug, Clone, Copy)]
-pub struct WindowSize {
-    pub width: u32,
-    pub height: u32,
-}
+/// The window's size in physical pixels, a core type since M38 (`D-128`);
+/// `tungsten::WindowSize` and this path still name it.
+pub use tungsten_core::WindowSize;
 
 /// Post-renderer startup hook.
 pub type StartupFn = Box<dyn FnOnce(&mut World, &mut Renderer)>;
-
-type EventFlusher = Box<dyn FnMut(&mut World)>;
 
 /// Winit loop, ECS, and renderer owner.
 pub struct App {
@@ -93,8 +80,10 @@ pub struct App {
     window: Option<Arc<Window>>,
     renderer: Option<Renderer>,
     world: World,
-    // Order: registration order; no priorities.
-    systems: Vec<SystemFn>,
+    /// Every system, by stage; `run_frame` drives it (`D-018`'s frame order).
+    schedule: Schedule,
+    /// Whether the `Startup` stage has run.
+    startup_done: bool,
     extract_quads: Option<ExtractQuadsFn>,
     extract_sprites: Option<ExtractSpritesFn>,
     extract_text: Option<ExtractTextFn>,
@@ -110,13 +99,9 @@ pub struct App {
     manifest_roots: Vec<PathBuf>,
     input_map_path: PathBuf,
     smoke_frames_remaining: Option<u32>,
-    system_names: Vec<String>,
     system_name_counter: usize,
     // GPU timing path adds `device.poll` stall.
     gpu_timing_enabled: bool,
-    // Event queue flushers run after command flush.
-    event_flushers: Vec<EventFlusher>,
-    registered_event_types: HashSet<TypeId>,
     frame_budget: Option<Duration>,
     // Capped frames: when `about_to_wait` requests the next redraw.
     redraw_deadline: Option<Instant>,
@@ -145,33 +130,28 @@ struct CaptureConfig {
 }
 
 impl App {
-    fn register_event_inner<T: 'static>(
-        world: &mut World,
-        event_flushers: &mut Vec<EventFlusher>,
-        registered_event_types: &mut HashSet<TypeId>,
-    ) {
-        if !registered_event_types.insert(TypeId::of::<T>()) {
-            return;
-        }
-
-        world.insert_resource(EventQueue::<T>::new());
-        event_flushers.push(Box::new(|world: &mut World| {
-            if let Some(queue) = world.get_resource_mut::<EventQueue<T>>() {
-                queue.flush();
-            }
-        }));
-    }
-
-    /// Builds the app. First it installs the engine logger, unless the game
-    /// set one, with a log file in the game's user folder (`D-119`), then
-    /// logs [`Config::take_load_warnings`]. An error it returns is logged
-    /// first, so it reaches the log file too.
+    /// Builds the app with [`DefaultPlugins`]. First it installs the engine
+    /// logger, unless the game set one, with a log file in the game's user
+    /// folder (`D-119`), then logs [`Config::take_load_warnings`]. An error
+    /// it returns is logged first, so it reaches the log file too.
     ///
     /// # Errors
     ///
     /// An invalid `game.id` or `logging.level`, or an `input.json` that
     /// cannot be read or parsed.
-    pub fn new(mut config: Config) -> anyhow::Result<Self> {
+    pub fn new(config: Config) -> anyhow::Result<Self> {
+        Self::with_plugins(config, DefaultPlugins::set())
+    }
+
+    /// Builds the app with `plugins` in place of [`DefaultPlugins`]: the
+    /// default set without the plugin a game replaces, or an empty set for
+    /// a program that wires every engine system itself, as the benchmarks
+    /// do. The engine's resources are inserted whichever plugins run.
+    ///
+    /// # Errors
+    ///
+    /// As [`App::new`].
+    pub fn with_plugins(mut config: Config, plugins: PluginSet) -> anyhow::Result<Self> {
         let smoke_frames = smoke_frames_from_env();
         let invalid = config
             .game
@@ -246,7 +226,8 @@ impl App {
         world.insert_resource(DebugDraw::new());
         world.insert_resource(PhysicsDebugOverlay::default());
         world.insert_resource(SystemTimingOverlay::default());
-        world.insert_resource(InspectorState::new_with_defaults());
+        world.insert_resource(InspectorState::new());
+        world.insert_resource(default_inspect_registry());
         // M26: empty post stack by default — byte-identical to M25 baseline.
         world.insert_resource(tungsten_core::post::PostStack::new());
         // M27: track post-AA state from startup config; pending request seam.
@@ -254,45 +235,14 @@ impl App {
             mode: config.render.post_aa,
         });
         world.insert_resource(PendingPostAa::default());
-        let mut event_flushers: Vec<EventFlusher> = Vec::new();
-        let mut registered_event_types = HashSet::new();
-        Self::register_event_inner::<CollisionEvent>(
-            &mut world,
-            &mut event_flushers,
-            &mut registered_event_types,
-        );
-        Self::register_event_inner::<crate::particles::ParticleBurstEmitted>(
-            &mut world,
-            &mut event_flushers,
-            &mut registered_event_types,
-        );
-        Self::register_event_inner::<crate::particles::ParticleSystemDrained>(
-            &mut world,
-            &mut event_flushers,
-            &mut registered_event_types,
-        );
-        Self::register_event_inner::<tungsten_core::TweenComplete>(
-            &mut world,
-            &mut event_flushers,
-            &mut registered_event_types,
-        );
-        Self::register_event_inner::<tungsten_core::ShakeEvent>(
-            &mut world,
-            &mut event_flushers,
-            &mut registered_event_types,
-        );
-        Self::register_event_inner::<tungsten_core::SquashEvent>(
-            &mut world,
-            &mut event_flushers,
-            &mut registered_event_types,
-        );
 
         let mut app = Self {
             config,
             window: None,
             renderer: None,
             world,
-            systems: Vec::new(),
+            schedule: Schedule::new(),
+            startup_done: false,
             extract_quads: None,
             extract_sprites: None,
             extract_text: None,
@@ -306,11 +256,8 @@ impl App {
             manifest_roots: Vec::new(),
             input_map_path,
             smoke_frames_remaining: smoke_frames,
-            system_names: Vec::new(),
             system_name_counter: 0,
             gpu_timing_enabled: std::env::var("TUNGSTEN_GPU_TIMING").is_ok(),
-            event_flushers,
-            registered_event_types,
             frame_budget: frame_budget_for(resolved_display.frame_rate_cap),
             redraw_deadline: None,
             prev_frame_start: None,
@@ -321,16 +268,14 @@ impl App {
             transition_post_stack: PostStack::new(),
         };
 
-        // Engine input consumers precede user systems; overlay toggles precede HUD.
-        app.add_engine_system("__physics_debug_toggle", physics_debug_toggle_system);
-        app.add_engine_system("__systems_overlay_toggle", systems_overlay_toggle_system);
-        app.add_engine_system("__inspector_toggle", inspector_toggle_system);
-        app.add_engine_system("__inspector_pick", inspector_pick_system);
-        app.add_engine_system("__hud_toggle", hud_toggle_system);
-        app.add_engine_system("__display_input", engine_display_input_system);
-        app.add_engine_system("__state_dispatcher", state_dispatcher_system);
+        // Engine plugins register first, so their `PreUpdate` systems precede
+        // a game's and a game's `PostUpdate` systems follow theirs.
+        app.add_plugins(plugins);
         if crash::test_panic_requested(std::env::var_os(crash::TEST_PANIC_ENV).as_deref()) {
-            app.add_engine_system("__test_panic", crash::test_panic_system);
+            app.schedule.add(
+                Stage::PreUpdate,
+                system("__test_panic", crash::test_panic_system),
+            );
         }
 
         Ok(app)
@@ -338,15 +283,43 @@ impl App {
 
     /// Register inspectable component rows under `label`.
     pub fn register_inspectable<T: 'static + Inspectable>(&mut self, label: &'static str) {
-        if let Some(state) = self.world.get_resource_mut::<InspectorState>() {
-            state.register::<T>(label);
+        if let Some(registry) = self.world.get_resource_mut::<InspectRegistry>() {
+            registry.register::<T>(label);
         }
     }
 
-    /// Register engine system without touching user-system naming.
-    fn add_engine_system(&mut self, name: &str, system: impl FnMut(&mut World) + 'static) {
-        self.system_names.push(name.to_string());
-        self.systems.push(Box::new(system));
+    /// Builds `plugin` into the schedule and the world now.
+    pub fn add_plugin(&mut self, plugin: impl Plugin) {
+        self.add_plugins(PluginSet::new().with(plugin));
+    }
+
+    /// Builds every plugin of `plugins`, in order.
+    pub fn add_plugins(&mut self, plugins: PluginSet) {
+        plugins.build(&mut self.schedule, &mut self.world);
+    }
+
+    /// The schedule, for a snapshot of its resolved order.
+    #[must_use]
+    pub fn schedule(&self) -> &Schedule {
+        &self.schedule
+    }
+
+    /// Adds `desc` to `stage`: `app.add_system_to(Stage::PostUpdate,
+    /// system("hierarchy", propagate).before(tungsten::plugins::CAMERA_UPDATE))`.
+    pub fn add_system_to(&mut self, stage: Stage, desc: SystemDesc) {
+        self.schedule.add(stage, desc);
+    }
+
+    /// Resolves the schedule, as `run` and the harness do before the first
+    /// frame; an unknown name, a duplicate or a cycle is the error.
+    ///
+    /// # Errors
+    ///
+    /// [`tungsten_core::ScheduleError`], as an `anyhow` error.
+    pub fn resolve_schedule(&mut self) -> anyhow::Result<()> {
+        self.schedule
+            .resolve()
+            .map_err(|err| anyhow::anyhow!("Schedule: {err}"))
     }
 
     /// Enable or disable engine exit action handling.
@@ -370,31 +343,25 @@ impl App {
         self.renderer.as_mut()
     }
 
-    /// Register unnamed tick system.
-    pub fn add_system(&mut self, system: impl FnMut(&mut World) + 'static) {
+    /// Register an unnamed `Update` system, named `system_N`.
+    pub fn add_system(&mut self, run: impl FnMut(&mut World) + 'static) {
         let name = format!("system_{}", self.system_name_counter);
         self.system_name_counter += 1;
-        self.system_names.push(name);
-        self.systems.push(Box::new(system));
+        self.schedule.add(Stage::Update, system(name, run));
     }
 
-    /// Register named tick system for profiling output.
+    /// Register a named `Update` system; the name is its profiling row.
     pub fn add_system_named(
         &mut self,
         name: impl Into<String>,
-        system: impl FnMut(&mut World) + 'static,
+        run: impl FnMut(&mut World) + 'static,
     ) {
-        self.system_names.push(name.into());
-        self.systems.push(Box::new(system));
+        self.schedule.add(Stage::Update, system(name, run));
     }
 
     /// Register `EventQueue<T>`; flushes once per frame after command flush.
     pub fn register_event<T: 'static>(&mut self) {
-        Self::register_event_inner::<T>(
-            &mut self.world,
-            &mut self.event_flushers,
-            &mut self.registered_event_types,
-        );
+        self.world.register_event::<T>();
     }
 
     /// Set quad extract function.
@@ -440,6 +407,8 @@ impl App {
     /// The event loop's, logged first, or the fatal error that ended the
     /// run, logged where it arose.
     pub fn run(mut self) -> anyhow::Result<()> {
+        self.resolve_schedule()
+            .inspect_err(|err| log::error!("{err}"))?;
         self.install_default_extracts();
         self.start_hot_reload();
         let event_loop = EventLoop::new()
@@ -849,33 +818,47 @@ impl App {
         self.last_frame = Some(now);
     }
 
+    /// Runs `stage`'s systems, each timed into `system_timings`.
     #[inline(always)]
-    fn stage_update(&mut self) -> (f32, Vec<(String, f32)>) {
+    fn run_stage(&mut self, stage: Stage, system_timings: &mut Vec<(String, f32)>) {
+        // Input edges: events received before RedrawRequested in same loop turn.
+        self.schedule
+            .run_stage(stage, &mut self.world, |name, elapsed| {
+                system_timings.push((name.to_string(), elapsed.as_secs_f64() as f32 * 1000.0));
+            });
+    }
+
+    /// `Startup` once, then `PreUpdate`, `FixedUpdate` and `Update`; `None`
+    /// when the frame's update asked the engine to exit, else the time so
+    /// far and the per-system timings `stage_post_update` extends.
+    #[inline(always)]
+    fn stage_update(&mut self) -> (Instant, Vec<(String, f32)>, bool) {
         let update_start = Instant::now();
-        let mut system_timings: Vec<(String, f32)> = Vec::with_capacity(self.systems.len());
-        debug_assert_eq!(self.systems.len(), self.system_names.len());
-        for (system, name) in self.systems.iter_mut().zip(self.system_names.iter()) {
-            // Input edges: events received before RedrawRequested in same loop turn.
-            let t0 = Instant::now();
-            system(&mut self.world);
-            system_timings.push((name.clone(), t0.elapsed().as_secs_f64() as f32 * 1000.0));
+        if !self.schedule.is_resolved() {
+            self.resolve_schedule()
+                .expect("the schedule resolves before the first frame");
         }
-        let update_ms = update_start.elapsed().as_secs_f64() as f32 * 1000.0;
-        (update_ms, system_timings)
+        let mut system_timings: Vec<(String, f32)> = Vec::with_capacity(self.schedule.len());
+        if !self.startup_done {
+            self.startup_done = true;
+            self.run_stage(Stage::Startup, &mut system_timings);
+            // The stage's time is excluded from the next frame's dt, as the
+            // startup hook's is: a slow startup system must not inflate it.
+            self.last_frame = Some(Instant::now());
+        }
+        self.run_stage(Stage::PreUpdate, &mut system_timings);
+        self.run_stage(Stage::FixedUpdate, &mut system_timings);
+        self.run_stage(Stage::Update, &mut system_timings);
+        let exit = self.engine_exit_requested();
+        (update_start, system_timings, exit)
     }
 
+    /// `PostUpdate`: physics sync, particles, tweens, game feel, camera and
+    /// a game's own, before the command flush. Tween writes override
+    /// particle writes; `TweenComplete` lands before the event flush rotates.
     #[inline(always)]
-    fn stage_particles(&mut self) {
-        // Order: count refresh -> emit -> tick, after systems and before command flush.
-        crate::particles::particle_count_refresh_system(&mut self.world);
-        crate::particles::particle_emit_system(&mut self.world);
-        crate::particles::particle_tick_system(&mut self.world);
-    }
-
-    #[inline(always)]
-    fn stage_tweens(&mut self) {
-        // Tween writes override particle writes; `TweenComplete` lands before event flush rotates.
-        crate::tweens::tween_tick_system(&mut self.world);
+    fn stage_post_update(&mut self, system_timings: &mut Vec<(String, f32)>) {
+        self.run_stage(Stage::PostUpdate, system_timings);
     }
 
     #[inline(always)]
@@ -895,9 +878,7 @@ impl App {
 
     #[inline(always)]
     fn stage_flush_events(&mut self) {
-        for flusher in &mut self.event_flushers {
-            flusher(&mut self.world);
-        }
+        self.world.flush_events();
     }
 
     #[inline(always)]
@@ -1168,14 +1149,13 @@ impl App {
             .map_or(0.0, |ft| ft.total_ms);
 
         self.stage_delta_time(clock);
-        let (update_ms, system_timings) = self.stage_update();
-
-        if self.engine_exit_requested() {
+        let (update_start, mut system_timings, exit) = self.stage_update();
+        if exit {
             return FrameEnd::ExitRequested;
         }
+        self.stage_post_update(&mut system_timings);
+        let update_ms = update_start.elapsed().as_secs_f64() as f32 * 1000.0;
 
-        self.stage_particles();
-        self.stage_tweens();
         let flush_ms = self.stage_flush_commands();
         self.stage_flush_events();
         let hot_reload_ms = self.stage_hot_reload();

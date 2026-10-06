@@ -64,12 +64,33 @@ A debug build watches `assets/` and `input.json`. With the game running, open `a
 ## How the game is laid out
 
 - `src/main.rs` loads `tungsten.json`, creates the app, names the manifest, turns on hot reload in debug builds, registers the game and runs it.
-- `src/game.rs` registers the game's systems by hand, in the order they run, its text and the setup its first frame needs.
+- `src/game.rs` is the game's plugin: its systems by stage, the setup its first frame needs, and its text.
 - `src/states.rs` holds the title, gameplay and pause states on the engine's state stack.
 - `src/components.rs` holds the game's components.
-- `tests/game.rs` steps the game on the headless harness, with no window: a test per system.
+- `tests/game.rs` steps the game on the headless harness, with no window: a test per system and a snapshot of the resolved schedule.
 - `assets/manifest.json` names every asset by an ID, and game code uses the IDs, never file paths ([assets](assets.md)).
 - `AGENTS.md` holds the repository's rules for agent sessions, and `CLAUDE.md` imports it.
+
+## Systems and stages
+
+A system is a function over the world, `fn(&mut World)`, registered under a name in one of five stages the engine runs in order each frame: `startup` (once, on the first frame), `pre_update` (the engine's hotkeys and its state dispatcher), `fixed_update` (`physics_step`), `update` and `post_update` (the physics sync, particles, tweens, game feel and the camera). The template's `GamePlugin` registers `setup` in `startup` and `player_movement` in `update`:
+
+```rust
+impl Plugin for GamePlugin {
+    fn build(&self, schedule: &mut Schedule, world: &mut World) {
+        schedule.add(Stage::Startup, system("setup", setup));
+        schedule.add(Stage::Update, system("player_movement", player_movement));
+    }
+}
+```
+
+Where a system goes:
+
+- `update` by default. Systems in one stage run in the order they were added.
+- `fixed_update`, before `physics_step`, for a system that drives bodies or reads input for movement, so a press moves the body on the frame of the press: `schedule.add(Stage::FixedUpdate, system("jump", jump).before(PHYSICS_STEP))`, with the name from `tungsten::plugins`. For now the stage runs once a frame; a fixed-step accumulator is coming (`D-129`).
+- `post_update` for a system that reads the physics sync's `Transform` or sets up the camera, ordered against the engine's names in `tungsten::plugins`: `.after(PHYSICS_SYNC).before(PARTICLE_COUNT_REFRESH)` runs before every other engine system there, `.before(CAMERA_UPDATE)` last but for the camera.
+
+A constraint names a system in the same stage. A typo, a duplicate name or a cycle fails at startup with a message naming the systems, and `Harness::new` panics the same way, so a test catches it. `App::new` installs the engine's `DefaultPlugins`; a game that replaces an engine feature builds its app from the set without that plugin, `App::with_plugins(config, DefaultPlugins::set().without::<CameraPlugin>())`, and `app.add_system_to(stage, desc)` registers one system outside a plugin.
 
 ## Read next
 

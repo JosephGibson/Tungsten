@@ -49,10 +49,7 @@ use tungsten::core::{
     SpriteSquashStretch, SquashEvent, SquashTrigger, Transform, Visibility, World,
 };
 use tungsten::particles::spawn_particle_via;
-use tungsten::{
-    App, PostAaState, camera_update_system, render::TextSection, request_post_aa,
-    shake_tick_system, squash_stretch_tick_system, squash_stretch_trigger_system,
-};
+use tungsten::{App, PostAaState, render::TextSection, request_post_aa};
 
 const ROOT_MANIFEST: &str = "assets/manifest.json";
 const LOCAL_MANIFEST: &str = "examples/04_shader_playground/assets/manifest.json";
@@ -214,6 +211,15 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
+    configure(&mut app);
+
+    app.run()
+}
+
+/// The playground's systems, in `update` in this order, and its text. Game
+/// feel and the camera run in `post_update` from `DefaultPlugins`, after
+/// these senders; the test below pins the resolved order.
+fn configure(app: &mut App) {
     app.add_system_named("playground_bounce", bounce_system);
     app.add_system_named("playground_collisions", pair_collision_system);
     // M31: after both movers, so the emitter sits on this frame's position.
@@ -221,18 +227,7 @@ fn main() -> anyhow::Result<()> {
     app.add_system_named("playground_cycle_input", cycle_input_system);
     app.add_system_named("playground_post_aa_input", post_aa_input_system);
     app.add_system_named("playground_bloom_input", bloom_input_system);
-    // M30: the triggers read the current event window, so they follow the
-    // systems that send; `shake_tick_system` precedes the camera update.
-    app.add_system_named(
-        "squash_stretch_trigger_system",
-        squash_stretch_trigger_system,
-    );
-    app.add_system_named("squash_stretch_tick_system", squash_stretch_tick_system);
-    app.add_system_named("shake_tick_system", shake_tick_system);
-    app.add_system_named("camera_update_system", camera_update_system);
     app.set_extract_text(playground_text);
-
-    app.run()
 }
 
 /// Spawn one bright emissive quad in the upper-right of the playground arena.
@@ -1276,4 +1271,26 @@ fn push_glitch_boss(stack: &mut PostStack) {
     ));
     stack.push(PostPass::ChromaticAberration(2.0));
     stack.push(PostPass::Dither(DitherParams::default()));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The resolved schedule of the playground as `main` builds it (M38).
+    const SCHEDULE: &str = "\
+startup: -
+pre_update: physics_debug_toggle, systems_overlay_toggle, inspector_toggle, inspector_pick, hud_toggle, display_input, state_dispatcher
+fixed_update: physics_step
+update: playground_bounce, playground_collisions, playground_bullet_trail, playground_cycle_input, playground_post_aa_input, playground_bloom_input
+post_update: physics_sync, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, camera_update
+";
+
+    #[test]
+    fn the_schedule_matches_the_snapshot() {
+        let mut app = App::new(Config::default()).expect("App::new failed");
+        configure(&mut app);
+        app.resolve_schedule().expect("the schedule resolves");
+        assert_eq!(app.schedule().resolved_text(), SCHEDULE);
+    }
 }

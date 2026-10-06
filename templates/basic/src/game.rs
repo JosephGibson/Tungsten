@@ -1,9 +1,9 @@
-//! What the game runs: its systems, registered by hand in the order they run,
-//! its text, and the setup its first frame needs.
+//! What the game runs: its plugin (the setup its first frame needs and its
+//! systems, by stage) and its text.
 
 use tungsten::core::{ActionMap, DeltaTime, InputState, Transform, World};
 use tungsten::render::TextSection;
-use tungsten::{App, DebugHud, StateId, StateStack};
+use tungsten::{App, DebugHud, Plugin, Schedule, Stage, StateId, StateStack, system};
 
 use crate::components::Player;
 use crate::states::{GAMEPLAY, PAUSE, TITLE, TitleState};
@@ -15,18 +15,29 @@ pub const FONT: &str = "sans";
 /// How far the player moves per second, in pixels.
 pub const PLAYER_SPEED: f32 = 240.0;
 
-/// Registers the game with `app`: its systems in order, its text and, in
-/// debug builds, the engine's HUD.
-pub fn register(app: &mut App) {
-    if let Some(hud) = app.world_mut().get_resource_mut::<DebugHud>() {
-        hud.enabled = cfg!(debug_assertions);
+/// The game as a plugin: `setup` at startup, `player_movement` in `Update`,
+/// and the engine's HUD on in debug builds. It names no engine system; the
+/// engine's own come from `DefaultPlugins`, which `App::new` installs.
+pub struct GamePlugin;
+
+impl Plugin for GamePlugin {
+    fn build(&self, schedule: &mut Schedule, world: &mut World) {
+        if let Some(hud) = world.get_resource_mut::<DebugHud>() {
+            hud.enabled = cfg!(debug_assertions);
+        }
+        schedule.add(Stage::Startup, system("setup", setup));
+        schedule.add(Stage::Update, system("player_movement", player_movement));
     }
-    app.add_system_named("player_movement", player_movement);
+}
+
+/// Registers the game with `app`: its plugin and its text.
+pub fn register(app: &mut App) {
+    app.add_plugin(GamePlugin);
     app.set_extract_text(text);
 }
 
-/// The startup hook's work: the title state first. The headless harness runs
-/// no startup hook, so tests call this themselves.
+/// The startup system: the title state first. The headless harness runs
+/// the `Startup` stage on its first step, so tests need not call this.
 pub fn setup(world: &mut World) {
     if let Some(stack) = world.get_resource_mut::<StateStack>() {
         stack.request_push(TitleState);

@@ -8,8 +8,9 @@ Task → file map. Open it before a broad search; read only the matching row's f
 | --- | --- |
 | ECS storage/query bug | `core/ecs/world.rs`, `core/ecs/storage.rs`, `core/ecs/archetype.rs`, `core/lib.rs` |
 | Deferred spawn/despawn (`D-039`) | `core/ecs/command_buffer.rs` |
-| Event lifetime/flush (`D-040`) | `core/ecs/event_queue.rs` |
+| Event lifetime/flush (`D-040`) | `core/ecs/event_queue.rs`, `core/ecs/world.rs` |
 | Frame order, smoke-frame exit, winit loop (`D-018`, `D-043`) | `tungsten/app.rs`, `tungsten/lib.rs` |
+| Schedule, stages, plugins, `DefaultPlugins`, engine system names (`D-128`, `D-133`) | `core/schedule.rs`, `core/physics/plugin.rs`, `tungsten/plugins.rs`, `tungsten/app.rs`, `tungsten/tests/plugins.rs` |
 | Headless test harness, `Harness`, `FrameDraw`, `UiHarness` (`D-110`, `D-125`) | `tungsten/testing.rs`, `tungsten/testing/ui.rs`, `tungsten/app.rs`, `tungsten/tests/testing.rs` |
 | Config parsing, env overrides | `core/config.rs`, `core/display.rs`, `tungsten.json` |
 | Logs, user folder, crash reports, `TUNGSTEN_USER_DIR`, `TUNGSTEN_TEST_PANIC` (`D-119`) | `tungsten/logging.rs`, `tungsten/user_dir.rs`, `tungsten/crash.rs`, `tungsten/app.rs`, `tools/crash-probe/` |

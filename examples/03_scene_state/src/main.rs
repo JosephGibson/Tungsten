@@ -103,11 +103,18 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
+    configure(&mut app);
+
+    app.run()
+}
+
+/// The example's systems, in `update` after the engine's dispatcher and
+/// physics, and its text. `DefaultPlugins` runs the rest; the test below
+/// pins the resolved order.
+fn configure(app: &mut App) {
     app.add_system_named("menu_idle_system", menu_idle_system);
     app.add_system_named("gameplay_orbit_system", gameplay_orbit_system);
     app.set_extract_text(state_driven_text);
-
-    app.run()
 }
 
 fn active_id_is(world: &World, expected: &str) -> bool {
@@ -341,4 +348,26 @@ fn pause_text(_world: &World) -> Vec<TextSection> {
             ..Default::default()
         },
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The resolved schedule of the example as `main` builds it (M38).
+    const SCHEDULE: &str = "\
+startup: -
+pre_update: physics_debug_toggle, systems_overlay_toggle, inspector_toggle, inspector_pick, hud_toggle, display_input, state_dispatcher
+fixed_update: physics_step
+update: menu_idle_system, gameplay_orbit_system
+post_update: physics_sync, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, camera_update
+";
+
+    #[test]
+    fn the_schedule_matches_the_snapshot() {
+        let mut app = App::new(Config::default()).expect("App::new failed");
+        configure(&mut app);
+        app.resolve_schedule().expect("the schedule resolves");
+        assert_eq!(app.schedule().resolved_text(), SCHEDULE);
+    }
 }

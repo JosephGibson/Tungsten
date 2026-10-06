@@ -5,7 +5,8 @@ use tungsten_core::input::{KeyCode, MouseButton};
 
 fn make_world() -> World {
     let mut world = World::new();
-    world.insert_resource(InspectorState::new_with_defaults());
+    world.insert_resource(InspectorState::new());
+    world.insert_resource(default_inspect_registry());
     world.insert_resource(CameraState::new());
     world.insert_resource(WindowSize {
         width: 800,
@@ -48,9 +49,15 @@ fn press_mouse3_at(world: &mut World, x: f32, y: f32) {
 }
 
 #[test]
+#[allow(deprecated)]
 fn default_registers_canonical_components() {
     let state = InspectorState::new_with_defaults();
     assert_eq!(state.registered_len(), 6);
+}
+
+#[test]
+fn default_inspect_registry_registers_canonical_components() {
+    assert_eq!(default_inspect_registry().len(), 6);
 }
 
 #[test]
@@ -264,7 +271,7 @@ fn stale_selection_is_cleared_before_picking() {
 
 #[test]
 fn compose_renders_hint_message_when_enabled() {
-    let mut state = InspectorState::new_with_defaults();
+    let mut state = InspectorState::new();
     state.enabled = true;
     let world = World::new();
     let sections = compose_inspector_text_section(&mut state, &world, (800, 600), 16.0);
@@ -277,6 +284,7 @@ fn compose_renders_hint_message_when_enabled() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn compose_renders_registered_rows_for_selected_entity() {
     let mut world = World::new();
     let e = world.spawn();
@@ -303,8 +311,32 @@ fn compose_renders_registered_rows_for_selected_entity() {
 }
 
 #[test]
+#[allow(deprecated)]
+fn compose_renders_registry_rows_before_the_states_own() {
+    let mut world = World::new();
+    world.insert_resource(default_inspect_registry());
+    let e = world.spawn();
+    world.insert(e, Tag::new("hero"));
+
+    let mut state = InspectorState::new();
+    state.register::<Tag>("Again");
+    state.enabled = true;
+    state.selected = Some(e);
+
+    let sections = compose_inspector_text_section(&mut state, &world, (800, 600), 16.0);
+    let joined: String = sections
+        .iter()
+        .map(|s| s.content.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let registry_row = joined.find("Tag").expect("the registry's Tag row");
+    let own_row = joined.find("Again").expect("the state's own row");
+    assert!(registry_row < own_row, "{joined}");
+}
+
+#[test]
 fn compose_returns_empty_when_disabled() {
-    let mut state = InspectorState::new_with_defaults();
+    let mut state = InspectorState::new();
     let world = World::new();
     let sections = compose_inspector_text_section(&mut state, &world, (800, 600), 16.0);
     assert!(sections.is_empty());
@@ -313,10 +345,11 @@ fn compose_returns_empty_when_disabled() {
 #[test]
 fn compose_throttles_rebuild_between_intervals() {
     let mut world = World::new();
+    world.insert_resource(default_inspect_registry());
     let e = world.spawn();
     world.insert(e, Tag::new("hero"));
 
-    let mut state = InspectorState::new_with_defaults();
+    let mut state = InspectorState::new();
     state.enabled = true;
     state.selected = Some(e);
     state.refresh_interval_ms = 100.0;
@@ -337,12 +370,13 @@ fn compose_throttles_rebuild_between_intervals() {
 fn compose_rebuilds_immediately_when_selection_changes() {
     // Regression: selection edge bypasses 500 ms throttle.
     let mut world = World::new();
+    world.insert_resource(default_inspect_registry());
     let hero = world.spawn();
     world.insert(hero, Tag::new("hero"));
     let villain = world.spawn();
     world.insert(villain, Tag::new("villain"));
 
-    let mut state = InspectorState::new_with_defaults();
+    let mut state = InspectorState::new();
     state.enabled = true;
     state.selected = Some(hero);
     state.refresh_interval_ms = 500.0;
@@ -360,9 +394,8 @@ fn compose_rebuilds_immediately_when_selection_changes() {
 fn sprite_rows_print_the_asset_name() {
     let mut world = make_world();
     let e = spawn_sprite(&mut world, "hero", Vec2::ZERO, 16);
-    let state = InspectorState::new_with_defaults();
-    let (_, read) = state
-        .registered
+    let registry = default_inspect_registry();
+    let (_, read) = registry
         .iter()
         .find(|(label, _)| *label == "Sprite")
         .expect("Sprite is registered by default");

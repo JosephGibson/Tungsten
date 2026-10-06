@@ -264,6 +264,9 @@ fn configure(app: &mut App, cfg: &BenchConfig) {
         }));
     }
     app.on_startup(r#gen::register_view_textures);
+    // The hand-wired step sends these; without `PhysicsPlugin` the row
+    // registers the queue itself.
+    app.register_event::<tungsten::core::CollisionEvent>();
     app.add_system_named("bench_counters", bench_counters_system::<PhysicsCounts>);
     app.add_system_named("physics_step", tungsten::physics::physics_step);
     if sparse {

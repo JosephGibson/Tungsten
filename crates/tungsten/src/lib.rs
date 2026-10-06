@@ -16,6 +16,7 @@ pub mod light_extract;
 mod logging;
 pub mod particles;
 pub mod physics_debug;
+pub mod plugins;
 pub mod post_aa;
 pub mod sprite_extract;
 pub mod state;
@@ -43,6 +44,10 @@ pub use particles::{
     spawn_mesh_particle_via,
 };
 pub use physics_debug::PhysicsDebugOverlay;
+pub use plugins::{
+    CameraPlugin, DebugPlugin, DefaultPlugins, DisplayPlugin, GameFeelPlugin, ParticlesPlugin,
+    PhysicsPlugin, StatePlugin, TweensPlugin,
+};
 pub use post_aa::{PostAaState, request_post_aa};
 pub use sprite_extract::extract_sprites_default;
 pub use state::{
@@ -55,6 +60,9 @@ pub use tilemap_extract::extract_tilemaps;
 pub use transition::{Transition, TransitionEffect, TransitionPhase, TransitionState};
 pub use tungsten_core as core;
 pub use tungsten_core::physics;
-pub use tungsten_core::{ActionMap, ActionMapError, Binding, DebugDraw, DebugShape, Inspectable};
+pub use tungsten_core::{
+    ActionMap, ActionMapError, Binding, DebugDraw, DebugShape, Inspectable, Plugin, PluginSet,
+    Schedule, ScheduleError, Stage, SystemDesc, system,
+};
 pub use tungsten_render as render;
 pub use tweens::tween_tick_system;

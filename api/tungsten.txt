@@ -5,26 +5,43 @@ pub use tungsten::Binding
 pub use tungsten::DebugDraw
 pub use tungsten::DebugShape
 pub use tungsten::Inspectable
+pub use tungsten::PhysicsPlugin
+pub use tungsten::Plugin
+pub use tungsten::PluginSet
+pub use tungsten::Schedule
+pub use tungsten::ScheduleError
+pub use tungsten::Stage
+pub use tungsten::SystemDesc
+pub use tungsten::WindowSize
 pub use tungsten::core
 pub use tungsten::physics
 pub use tungsten::render
+pub use tungsten::system
 pub mod tungsten::app
+pub use tungsten::app::SystemFn
+pub use tungsten::app::WindowSize
 pub struct tungsten::app::App
 impl tungsten::app::App
+pub fn tungsten::app::App::add_plugin(&mut self, impl tungsten_core::schedule::Plugin)
+pub fn tungsten::app::App::add_plugins(&mut self, tungsten_core::schedule::PluginSet)
 pub fn tungsten::app::App::add_system(&mut self, impl core::ops::function::FnMut(&mut tungsten_core::ecs::world::World) + 'static)
 pub fn tungsten::app::App::add_system_named(&mut self, impl core::convert::Into<alloc::string::String>, impl core::ops::function::FnMut(&mut tungsten_core::ecs::world::World) + 'static)
+pub fn tungsten::app::App::add_system_to(&mut self, tungsten_core::schedule::Stage, tungsten_core::schedule::SystemDesc)
 pub fn tungsten::app::App::enable_hot_reload(&mut self, &[std::path::PathBuf], std::path::PathBuf)
 pub fn tungsten::app::App::new(tungsten_core::config::Config) -> anyhow::Result<Self>
 pub fn tungsten::app::App::on_startup(&mut self, impl core::ops::function::FnOnce(&mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) + 'static)
 pub fn tungsten::app::App::register_event<T: 'static>(&mut self)
 pub fn tungsten::app::App::register_inspectable<T: 'static + tungsten_core::inspect::Inspectable>(&mut self, &'static str)
 pub fn tungsten::app::App::renderer_mut(&mut self) -> core::option::Option<&mut tungsten_render::renderer::Renderer>
+pub fn tungsten::app::App::resolve_schedule(&mut self) -> anyhow::Result<()>
 pub fn tungsten::app::App::run(self) -> anyhow::Result<()>
+pub fn tungsten::app::App::schedule(&self) -> &tungsten_core::schedule::Schedule
 pub fn tungsten::app::App::set_exit_on_escape(&mut self, bool)
 pub fn tungsten::app::App::set_extract_quads(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::quad::QuadInstance> + 'static)
 pub fn tungsten::app::App::set_extract_sprites(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch> + 'static)
 pub fn tungsten::app::App::set_extract_text(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::text::TextSection> + 'static)
 pub fn tungsten::app::App::set_manifest_roots(&mut self, alloc::vec::Vec<std::path::PathBuf>)
+pub fn tungsten::app::App::with_plugins(tungsten_core::config::Config, tungsten_core::schedule::PluginSet) -> anyhow::Result<Self>
 pub fn tungsten::app::App::world_mut(&mut self) -> &mut tungsten_core::ecs::world::World
 impl winit::application::ApplicationHandler for tungsten::app::App
 pub fn tungsten::app::App::about_to_wait(&mut self, &winit::event_loop::ActiveEventLoop)
@@ -37,26 +54,10 @@ impl core::marker::Unpin for tungsten::app::App
 impl core::marker::UnsafeUnpin for tungsten::app::App
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten::app::App
 impl !core::panic::unwind_safe::UnwindSafe for tungsten::app::App
-pub struct tungsten::app::WindowSize
-pub tungsten::app::WindowSize::height: u32
-pub tungsten::app::WindowSize::width: u32
-impl core::clone::Clone for tungsten::app::WindowSize
-pub fn tungsten::app::WindowSize::clone(&self) -> tungsten::app::WindowSize
-impl core::fmt::Debug for tungsten::app::WindowSize
-pub fn tungsten::app::WindowSize::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for tungsten::app::WindowSize
-impl core::marker::Freeze for tungsten::app::WindowSize
-impl core::marker::Send for tungsten::app::WindowSize
-impl core::marker::Sync for tungsten::app::WindowSize
-impl core::marker::Unpin for tungsten::app::WindowSize
-impl core::marker::UnsafeUnpin for tungsten::app::WindowSize
-impl core::panic::unwind_safe::RefUnwindSafe for tungsten::app::WindowSize
-impl core::panic::unwind_safe::UnwindSafe for tungsten::app::WindowSize
 pub type tungsten::app::ExtractQuadsFn = alloc::boxed::Box<dyn core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::quad::QuadInstance>>
 pub type tungsten::app::ExtractSpritesFn = alloc::boxed::Box<dyn core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch>>
 pub type tungsten::app::ExtractTextFn = alloc::boxed::Box<dyn core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::text::TextSection>>
 pub type tungsten::app::StartupFn = alloc::boxed::Box<dyn core::ops::function::FnOnce(&mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer)>
-pub type tungsten::app::SystemFn = alloc::boxed::Box<dyn core::ops::function::FnMut(&mut tungsten_core::ecs::world::World)>
 pub mod tungsten::asset_loader
 pub struct tungsten::asset_loader::AtlasRegistry
 pub tungsten::asset_loader::AtlasRegistry::linear_pages: alloc::vec::Vec<tungsten_core::assets::registry::TextureHandle>
@@ -208,6 +209,7 @@ impl core::marker::UnsafeUnpin for tungsten::hot_reload::HotReloadWatcher
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::hot_reload::HotReloadWatcher
 impl core::panic::unwind_safe::UnwindSafe for tungsten::hot_reload::HotReloadWatcher
 pub mod tungsten::inspector
+pub use tungsten::inspector::InspectFn
 pub struct tungsten::inspector::InspectorState
 pub tungsten::inspector::InspectorState::color: [u8; 4]
 pub tungsten::inspector::InspectorState::corner: tungsten::debug_hud::HudCorner
@@ -235,7 +237,7 @@ impl core::marker::Unpin for tungsten::inspector::InspectorState
 impl core::marker::UnsafeUnpin for tungsten::inspector::InspectorState
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten::inspector::InspectorState
 impl !core::panic::unwind_safe::UnwindSafe for tungsten::inspector::InspectorState
-pub type tungsten::inspector::InspectFn = alloc::boxed::Box<dyn core::ops::function::Fn(&tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity) -> alloc::vec::Vec<(&'static str, alloc::string::String)>>
+pub fn tungsten::inspector::default_inspect_registry() -> tungsten_core::inspect::InspectRegistry
 pub mod tungsten::light_extract
 pub fn tungsten::light_extract::extract_lights(&tungsten_core::ecs::world::World, &tungsten_core::camera::CameraState, f32, f32) -> tungsten_render::lighting::LightUbo
 pub mod tungsten::particles
@@ -299,6 +301,161 @@ impl core::marker::Unpin for tungsten::physics_debug::PhysicsDebugOverlay
 impl core::marker::UnsafeUnpin for tungsten::physics_debug::PhysicsDebugOverlay
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::physics_debug::PhysicsDebugOverlay
 impl core::panic::unwind_safe::UnwindSafe for tungsten::physics_debug::PhysicsDebugOverlay
+pub mod tungsten::plugins
+pub use tungsten::plugins::PHYSICS_STEP
+pub use tungsten::plugins::PHYSICS_SYNC
+pub use tungsten::plugins::PhysicsPlugin
+pub struct tungsten::plugins::CameraPlugin
+impl core::clone::Clone for tungsten::plugins::CameraPlugin
+pub fn tungsten::plugins::CameraPlugin::clone(&self) -> tungsten::plugins::CameraPlugin
+impl core::default::Default for tungsten::plugins::CameraPlugin
+pub fn tungsten::plugins::CameraPlugin::default() -> tungsten::plugins::CameraPlugin
+impl core::fmt::Debug for tungsten::plugins::CameraPlugin
+pub fn tungsten::plugins::CameraPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::plugins::CameraPlugin
+impl tungsten_core::schedule::Plugin for tungsten::plugins::CameraPlugin
+pub fn tungsten::plugins::CameraPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten::plugins::CameraPlugin
+impl core::marker::Send for tungsten::plugins::CameraPlugin
+impl core::marker::Sync for tungsten::plugins::CameraPlugin
+impl core::marker::Unpin for tungsten::plugins::CameraPlugin
+impl core::marker::UnsafeUnpin for tungsten::plugins::CameraPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::plugins::CameraPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten::plugins::CameraPlugin
+pub struct tungsten::plugins::DebugPlugin
+impl core::clone::Clone for tungsten::plugins::DebugPlugin
+pub fn tungsten::plugins::DebugPlugin::clone(&self) -> tungsten::plugins::DebugPlugin
+impl core::default::Default for tungsten::plugins::DebugPlugin
+pub fn tungsten::plugins::DebugPlugin::default() -> tungsten::plugins::DebugPlugin
+impl core::fmt::Debug for tungsten::plugins::DebugPlugin
+pub fn tungsten::plugins::DebugPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::plugins::DebugPlugin
+impl tungsten_core::schedule::Plugin for tungsten::plugins::DebugPlugin
+pub fn tungsten::plugins::DebugPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten::plugins::DebugPlugin
+impl core::marker::Send for tungsten::plugins::DebugPlugin
+impl core::marker::Sync for tungsten::plugins::DebugPlugin
+impl core::marker::Unpin for tungsten::plugins::DebugPlugin
+impl core::marker::UnsafeUnpin for tungsten::plugins::DebugPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::plugins::DebugPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten::plugins::DebugPlugin
+pub struct tungsten::plugins::DefaultPlugins
+impl tungsten::plugins::DefaultPlugins
+pub fn tungsten::plugins::DefaultPlugins::set() -> tungsten_core::schedule::PluginSet
+impl core::clone::Clone for tungsten::plugins::DefaultPlugins
+pub fn tungsten::plugins::DefaultPlugins::clone(&self) -> tungsten::plugins::DefaultPlugins
+impl core::default::Default for tungsten::plugins::DefaultPlugins
+pub fn tungsten::plugins::DefaultPlugins::default() -> tungsten::plugins::DefaultPlugins
+impl core::fmt::Debug for tungsten::plugins::DefaultPlugins
+pub fn tungsten::plugins::DefaultPlugins::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::plugins::DefaultPlugins
+impl core::marker::Freeze for tungsten::plugins::DefaultPlugins
+impl core::marker::Send for tungsten::plugins::DefaultPlugins
+impl core::marker::Sync for tungsten::plugins::DefaultPlugins
+impl core::marker::Unpin for tungsten::plugins::DefaultPlugins
+impl core::marker::UnsafeUnpin for tungsten::plugins::DefaultPlugins
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::plugins::DefaultPlugins
+impl core::panic::unwind_safe::UnwindSafe for tungsten::plugins::DefaultPlugins
+pub struct tungsten::plugins::DisplayPlugin
+impl core::clone::Clone for tungsten::plugins::DisplayPlugin
+pub fn tungsten::plugins::DisplayPlugin::clone(&self) -> tungsten::plugins::DisplayPlugin
+impl core::default::Default for tungsten::plugins::DisplayPlugin
+pub fn tungsten::plugins::DisplayPlugin::default() -> tungsten::plugins::DisplayPlugin
+impl core::fmt::Debug for tungsten::plugins::DisplayPlugin
+pub fn tungsten::plugins::DisplayPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::plugins::DisplayPlugin
+impl tungsten_core::schedule::Plugin for tungsten::plugins::DisplayPlugin
+pub fn tungsten::plugins::DisplayPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten::plugins::DisplayPlugin
+impl core::marker::Send for tungsten::plugins::DisplayPlugin
+impl core::marker::Sync for tungsten::plugins::DisplayPlugin
+impl core::marker::Unpin for tungsten::plugins::DisplayPlugin
+impl core::marker::UnsafeUnpin for tungsten::plugins::DisplayPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::plugins::DisplayPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten::plugins::DisplayPlugin
+pub struct tungsten::plugins::GameFeelPlugin
+impl core::clone::Clone for tungsten::plugins::GameFeelPlugin
+pub fn tungsten::plugins::GameFeelPlugin::clone(&self) -> tungsten::plugins::GameFeelPlugin
+impl core::default::Default for tungsten::plugins::GameFeelPlugin
+pub fn tungsten::plugins::GameFeelPlugin::default() -> tungsten::plugins::GameFeelPlugin
+impl core::fmt::Debug for tungsten::plugins::GameFeelPlugin
+pub fn tungsten::plugins::GameFeelPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::plugins::GameFeelPlugin
+impl tungsten_core::schedule::Plugin for tungsten::plugins::GameFeelPlugin
+pub fn tungsten::plugins::GameFeelPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten::plugins::GameFeelPlugin
+impl core::marker::Send for tungsten::plugins::GameFeelPlugin
+impl core::marker::Sync for tungsten::plugins::GameFeelPlugin
+impl core::marker::Unpin for tungsten::plugins::GameFeelPlugin
+impl core::marker::UnsafeUnpin for tungsten::plugins::GameFeelPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::plugins::GameFeelPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten::plugins::GameFeelPlugin
+pub struct tungsten::plugins::ParticlesPlugin
+impl core::clone::Clone for tungsten::plugins::ParticlesPlugin
+pub fn tungsten::plugins::ParticlesPlugin::clone(&self) -> tungsten::plugins::ParticlesPlugin
+impl core::default::Default for tungsten::plugins::ParticlesPlugin
+pub fn tungsten::plugins::ParticlesPlugin::default() -> tungsten::plugins::ParticlesPlugin
+impl core::fmt::Debug for tungsten::plugins::ParticlesPlugin
+pub fn tungsten::plugins::ParticlesPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::plugins::ParticlesPlugin
+impl tungsten_core::schedule::Plugin for tungsten::plugins::ParticlesPlugin
+pub fn tungsten::plugins::ParticlesPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten::plugins::ParticlesPlugin
+impl core::marker::Send for tungsten::plugins::ParticlesPlugin
+impl core::marker::Sync for tungsten::plugins::ParticlesPlugin
+impl core::marker::Unpin for tungsten::plugins::ParticlesPlugin
+impl core::marker::UnsafeUnpin for tungsten::plugins::ParticlesPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::plugins::ParticlesPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten::plugins::ParticlesPlugin
+pub struct tungsten::plugins::StatePlugin
+impl core::clone::Clone for tungsten::plugins::StatePlugin
+pub fn tungsten::plugins::StatePlugin::clone(&self) -> tungsten::plugins::StatePlugin
+impl core::default::Default for tungsten::plugins::StatePlugin
+pub fn tungsten::plugins::StatePlugin::default() -> tungsten::plugins::StatePlugin
+impl core::fmt::Debug for tungsten::plugins::StatePlugin
+pub fn tungsten::plugins::StatePlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::plugins::StatePlugin
+impl tungsten_core::schedule::Plugin for tungsten::plugins::StatePlugin
+pub fn tungsten::plugins::StatePlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten::plugins::StatePlugin
+impl core::marker::Send for tungsten::plugins::StatePlugin
+impl core::marker::Sync for tungsten::plugins::StatePlugin
+impl core::marker::Unpin for tungsten::plugins::StatePlugin
+impl core::marker::UnsafeUnpin for tungsten::plugins::StatePlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::plugins::StatePlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten::plugins::StatePlugin
+pub struct tungsten::plugins::TweensPlugin
+impl core::clone::Clone for tungsten::plugins::TweensPlugin
+pub fn tungsten::plugins::TweensPlugin::clone(&self) -> tungsten::plugins::TweensPlugin
+impl core::default::Default for tungsten::plugins::TweensPlugin
+pub fn tungsten::plugins::TweensPlugin::default() -> tungsten::plugins::TweensPlugin
+impl core::fmt::Debug for tungsten::plugins::TweensPlugin
+pub fn tungsten::plugins::TweensPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::plugins::TweensPlugin
+impl tungsten_core::schedule::Plugin for tungsten::plugins::TweensPlugin
+pub fn tungsten::plugins::TweensPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten::plugins::TweensPlugin
+impl core::marker::Send for tungsten::plugins::TweensPlugin
+impl core::marker::Sync for tungsten::plugins::TweensPlugin
+impl core::marker::Unpin for tungsten::plugins::TweensPlugin
+impl core::marker::UnsafeUnpin for tungsten::plugins::TweensPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::plugins::TweensPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten::plugins::TweensPlugin
+pub const tungsten::plugins::CAMERA_UPDATE: &str
+pub const tungsten::plugins::DISPLAY_INPUT: &str
+pub const tungsten::plugins::HUD_TOGGLE: &str
+pub const tungsten::plugins::INSPECTOR_PICK: &str
+pub const tungsten::plugins::INSPECTOR_TOGGLE: &str
+pub const tungsten::plugins::PARTICLE_COUNT_REFRESH: &str
+pub const tungsten::plugins::PARTICLE_EMIT: &str
+pub const tungsten::plugins::PARTICLE_TICK: &str
+pub const tungsten::plugins::PHYSICS_DEBUG_TOGGLE: &str
+pub const tungsten::plugins::SHAKE_TICK: &str
+pub const tungsten::plugins::SQUASH_STRETCH_TICK: &str
+pub const tungsten::plugins::SQUASH_STRETCH_TRIGGER: &str
+pub const tungsten::plugins::STATE_DISPATCHER: &str
+pub const tungsten::plugins::SYSTEMS_OVERLAY_TOGGLE: &str
+pub const tungsten::plugins::TWEEN_TICK: &str
 pub mod tungsten::post_aa
 pub struct tungsten::post_aa::PostAaState
 pub tungsten::post_aa::PostAaState::mode: tungsten_core::config::PostAaMode
@@ -711,20 +868,26 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten::transition::Transitio
 impl core::panic::unwind_safe::UnwindSafe for tungsten::transition::TransitionPhase
 pub struct tungsten::App
 impl tungsten::app::App
+pub fn tungsten::app::App::add_plugin(&mut self, impl tungsten_core::schedule::Plugin)
+pub fn tungsten::app::App::add_plugins(&mut self, tungsten_core::schedule::PluginSet)
 pub fn tungsten::app::App::add_system(&mut self, impl core::ops::function::FnMut(&mut tungsten_core::ecs::world::World) + 'static)
 pub fn tungsten::app::App::add_system_named(&mut self, impl core::convert::Into<alloc::string::String>, impl core::ops::function::FnMut(&mut tungsten_core::ecs::world::World) + 'static)
+pub fn tungsten::app::App::add_system_to(&mut self, tungsten_core::schedule::Stage, tungsten_core::schedule::SystemDesc)
 pub fn tungsten::app::App::enable_hot_reload(&mut self, &[std::path::PathBuf], std::path::PathBuf)
 pub fn tungsten::app::App::new(tungsten_core::config::Config) -> anyhow::Result<Self>
 pub fn tungsten::app::App::on_startup(&mut self, impl core::ops::function::FnOnce(&mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) + 'static)
 pub fn tungsten::app::App::register_event<T: 'static>(&mut self)
 pub fn tungsten::app::App::register_inspectable<T: 'static + tungsten_core::inspect::Inspectable>(&mut self, &'static str)
 pub fn tungsten::app::App::renderer_mut(&mut self) -> core::option::Option<&mut tungsten_render::renderer::Renderer>
+pub fn tungsten::app::App::resolve_schedule(&mut self) -> anyhow::Result<()>
 pub fn tungsten::app::App::run(self) -> anyhow::Result<()>
+pub fn tungsten::app::App::schedule(&self) -> &tungsten_core::schedule::Schedule
 pub fn tungsten::app::App::set_exit_on_escape(&mut self, bool)
 pub fn tungsten::app::App::set_extract_quads(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::quad::QuadInstance> + 'static)
 pub fn tungsten::app::App::set_extract_sprites(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch> + 'static)
 pub fn tungsten::app::App::set_extract_text(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::text::TextSection> + 'static)
 pub fn tungsten::app::App::set_manifest_roots(&mut self, alloc::vec::Vec<std::path::PathBuf>)
+pub fn tungsten::app::App::with_plugins(tungsten_core::config::Config, tungsten_core::schedule::PluginSet) -> anyhow::Result<Self>
 pub fn tungsten::app::App::world_mut(&mut self) -> &mut tungsten_core::ecs::world::World
 impl winit::application::ApplicationHandler for tungsten::app::App
 pub fn tungsten::app::App::about_to_wait(&mut self, &winit::event_loop::ActiveEventLoop)
@@ -737,6 +900,23 @@ impl core::marker::Unpin for tungsten::app::App
 impl core::marker::UnsafeUnpin for tungsten::app::App
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten::app::App
 impl !core::panic::unwind_safe::UnwindSafe for tungsten::app::App
+pub struct tungsten::CameraPlugin
+impl core::clone::Clone for tungsten::plugins::CameraPlugin
+pub fn tungsten::plugins::CameraPlugin::clone(&self) -> tungsten::plugins::CameraPlugin
+impl core::default::Default for tungsten::plugins::CameraPlugin
+pub fn tungsten::plugins::CameraPlugin::default() -> tungsten::plugins::CameraPlugin
+impl core::fmt::Debug for tungsten::plugins::CameraPlugin
+pub fn tungsten::plugins::CameraPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::plugins::CameraPlugin
+impl tungsten_core::schedule::Plugin for tungsten::plugins::CameraPlugin
+pub fn tungsten::plugins::CameraPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten::plugins::CameraPlugin
+impl core::marker::Send for tungsten::plugins::CameraPlugin
+impl core::marker::Sync for tungsten::plugins::CameraPlugin
+impl core::marker::Unpin for tungsten::plugins::CameraPlugin
+impl core::marker::UnsafeUnpin for tungsten::plugins::CameraPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::plugins::CameraPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten::plugins::CameraPlugin
 pub struct tungsten::DebugHud
 pub tungsten::DebugHud::color: [u8; 4]
 pub tungsten::DebugHud::corner: tungsten::debug_hud::HudCorner
@@ -762,6 +942,57 @@ impl core::marker::Unpin for tungsten::debug_hud::DebugHud
 impl core::marker::UnsafeUnpin for tungsten::debug_hud::DebugHud
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten::debug_hud::DebugHud
 impl !core::panic::unwind_safe::UnwindSafe for tungsten::debug_hud::DebugHud
+pub struct tungsten::DebugPlugin
+impl core::clone::Clone for tungsten::plugins::DebugPlugin
+pub fn tungsten::plugins::DebugPlugin::clone(&self) -> tungsten::plugins::DebugPlugin
+impl core::default::Default for tungsten::plugins::DebugPlugin
+pub fn tungsten::plugins::DebugPlugin::default() -> tungsten::plugins::DebugPlugin
+impl core::fmt::Debug for tungsten::plugins::DebugPlugin
+pub fn tungsten::plugins::DebugPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::plugins::DebugPlugin
+impl tungsten_core::schedule::Plugin for tungsten::plugins::DebugPlugin
+pub fn tungsten::plugins::DebugPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten::plugins::DebugPlugin
+impl core::marker::Send for tungsten::plugins::DebugPlugin
+impl core::marker::Sync for tungsten::plugins::DebugPlugin
+impl core::marker::Unpin for tungsten::plugins::DebugPlugin
+impl core::marker::UnsafeUnpin for tungsten::plugins::DebugPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::plugins::DebugPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten::plugins::DebugPlugin
+pub struct tungsten::DefaultPlugins
+impl tungsten::plugins::DefaultPlugins
+pub fn tungsten::plugins::DefaultPlugins::set() -> tungsten_core::schedule::PluginSet
+impl core::clone::Clone for tungsten::plugins::DefaultPlugins
+pub fn tungsten::plugins::DefaultPlugins::clone(&self) -> tungsten::plugins::DefaultPlugins
+impl core::default::Default for tungsten::plugins::DefaultPlugins
+pub fn tungsten::plugins::DefaultPlugins::default() -> tungsten::plugins::DefaultPlugins
+impl core::fmt::Debug for tungsten::plugins::DefaultPlugins
+pub fn tungsten::plugins::DefaultPlugins::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::plugins::DefaultPlugins
+impl core::marker::Freeze for tungsten::plugins::DefaultPlugins
+impl core::marker::Send for tungsten::plugins::DefaultPlugins
+impl core::marker::Sync for tungsten::plugins::DefaultPlugins
+impl core::marker::Unpin for tungsten::plugins::DefaultPlugins
+impl core::marker::UnsafeUnpin for tungsten::plugins::DefaultPlugins
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::plugins::DefaultPlugins
+impl core::panic::unwind_safe::UnwindSafe for tungsten::plugins::DefaultPlugins
+pub struct tungsten::DisplayPlugin
+impl core::clone::Clone for tungsten::plugins::DisplayPlugin
+pub fn tungsten::plugins::DisplayPlugin::clone(&self) -> tungsten::plugins::DisplayPlugin
+impl core::default::Default for tungsten::plugins::DisplayPlugin
+pub fn tungsten::plugins::DisplayPlugin::default() -> tungsten::plugins::DisplayPlugin
+impl core::fmt::Debug for tungsten::plugins::DisplayPlugin
+pub fn tungsten::plugins::DisplayPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::plugins::DisplayPlugin
+impl tungsten_core::schedule::Plugin for tungsten::plugins::DisplayPlugin
+pub fn tungsten::plugins::DisplayPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten::plugins::DisplayPlugin
+impl core::marker::Send for tungsten::plugins::DisplayPlugin
+impl core::marker::Sync for tungsten::plugins::DisplayPlugin
+impl core::marker::Unpin for tungsten::plugins::DisplayPlugin
+impl core::marker::UnsafeUnpin for tungsten::plugins::DisplayPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::plugins::DisplayPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten::plugins::DisplayPlugin
 pub struct tungsten::DisplayTelemetry
 pub tungsten::DisplayTelemetry::actual_present_mode: core::option::Option<alloc::string::String>
 pub tungsten::DisplayTelemetry::display_mode: tungsten_core::display::DisplayMode
@@ -819,6 +1050,23 @@ impl core::marker::Unpin for tungsten::telemetry::FrameTimings
 impl core::marker::UnsafeUnpin for tungsten::telemetry::FrameTimings
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::telemetry::FrameTimings
 impl core::panic::unwind_safe::UnwindSafe for tungsten::telemetry::FrameTimings
+pub struct tungsten::GameFeelPlugin
+impl core::clone::Clone for tungsten::plugins::GameFeelPlugin
+pub fn tungsten::plugins::GameFeelPlugin::clone(&self) -> tungsten::plugins::GameFeelPlugin
+impl core::default::Default for tungsten::plugins::GameFeelPlugin
+pub fn tungsten::plugins::GameFeelPlugin::default() -> tungsten::plugins::GameFeelPlugin
+impl core::fmt::Debug for tungsten::plugins::GameFeelPlugin
+pub fn tungsten::plugins::GameFeelPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::plugins::GameFeelPlugin
+impl tungsten_core::schedule::Plugin for tungsten::plugins::GameFeelPlugin
+pub fn tungsten::plugins::GameFeelPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten::plugins::GameFeelPlugin
+impl core::marker::Send for tungsten::plugins::GameFeelPlugin
+impl core::marker::Sync for tungsten::plugins::GameFeelPlugin
+impl core::marker::Unpin for tungsten::plugins::GameFeelPlugin
+impl core::marker::UnsafeUnpin for tungsten::plugins::GameFeelPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::plugins::GameFeelPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten::plugins::GameFeelPlugin
 pub struct tungsten::HotReloadWatcher
 impl tungsten::hot_reload::HotReloadWatcher
 pub fn tungsten::hot_reload::HotReloadWatcher::drain_ready(&mut self) -> alloc::vec::Vec<std::path::PathBuf>
@@ -914,6 +1162,23 @@ impl core::marker::Unpin for tungsten::particles::ParticleSystemDrained
 impl core::marker::UnsafeUnpin for tungsten::particles::ParticleSystemDrained
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::particles::ParticleSystemDrained
 impl core::panic::unwind_safe::UnwindSafe for tungsten::particles::ParticleSystemDrained
+pub struct tungsten::ParticlesPlugin
+impl core::clone::Clone for tungsten::plugins::ParticlesPlugin
+pub fn tungsten::plugins::ParticlesPlugin::clone(&self) -> tungsten::plugins::ParticlesPlugin
+impl core::default::Default for tungsten::plugins::ParticlesPlugin
+pub fn tungsten::plugins::ParticlesPlugin::default() -> tungsten::plugins::ParticlesPlugin
+impl core::fmt::Debug for tungsten::plugins::ParticlesPlugin
+pub fn tungsten::plugins::ParticlesPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::plugins::ParticlesPlugin
+impl tungsten_core::schedule::Plugin for tungsten::plugins::ParticlesPlugin
+pub fn tungsten::plugins::ParticlesPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten::plugins::ParticlesPlugin
+impl core::marker::Send for tungsten::plugins::ParticlesPlugin
+impl core::marker::Sync for tungsten::plugins::ParticlesPlugin
+impl core::marker::Unpin for tungsten::plugins::ParticlesPlugin
+impl core::marker::UnsafeUnpin for tungsten::plugins::ParticlesPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::plugins::ParticlesPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten::plugins::ParticlesPlugin
 pub struct tungsten::PhysicsDebugOverlay
 pub tungsten::PhysicsDebugOverlay::color_aabb: [f32; 4]
 pub tungsten::PhysicsDebugOverlay::color_circle: [f32; 4]
@@ -999,6 +1264,23 @@ impl<'a> core::marker::Unpin for tungsten::state::StateContext<'a>
 impl<'a> core::marker::UnsafeUnpin for tungsten::state::StateContext<'a>
 impl<'a> !core::panic::unwind_safe::RefUnwindSafe for tungsten::state::StateContext<'a>
 impl<'a> !core::panic::unwind_safe::UnwindSafe for tungsten::state::StateContext<'a>
+pub struct tungsten::StatePlugin
+impl core::clone::Clone for tungsten::plugins::StatePlugin
+pub fn tungsten::plugins::StatePlugin::clone(&self) -> tungsten::plugins::StatePlugin
+impl core::default::Default for tungsten::plugins::StatePlugin
+pub fn tungsten::plugins::StatePlugin::default() -> tungsten::plugins::StatePlugin
+impl core::fmt::Debug for tungsten::plugins::StatePlugin
+pub fn tungsten::plugins::StatePlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::plugins::StatePlugin
+impl tungsten_core::schedule::Plugin for tungsten::plugins::StatePlugin
+pub fn tungsten::plugins::StatePlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten::plugins::StatePlugin
+impl core::marker::Send for tungsten::plugins::StatePlugin
+impl core::marker::Sync for tungsten::plugins::StatePlugin
+impl core::marker::Unpin for tungsten::plugins::StatePlugin
+impl core::marker::UnsafeUnpin for tungsten::plugins::StatePlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::plugins::StatePlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten::plugins::StatePlugin
 pub struct tungsten::StateStack
 impl tungsten::state::StateStack
 pub fn tungsten::state::StateStack::active_id(&self) -> core::option::Option<tungsten::state::StateId>
@@ -1093,21 +1375,23 @@ impl core::marker::Unpin for tungsten::transition::TransitionState
 impl core::marker::UnsafeUnpin for tungsten::transition::TransitionState
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::transition::TransitionState
 impl core::panic::unwind_safe::UnwindSafe for tungsten::transition::TransitionState
-pub struct tungsten::WindowSize
-pub tungsten::WindowSize::height: u32
-pub tungsten::WindowSize::width: u32
-impl core::clone::Clone for tungsten::app::WindowSize
-pub fn tungsten::app::WindowSize::clone(&self) -> tungsten::app::WindowSize
-impl core::fmt::Debug for tungsten::app::WindowSize
-pub fn tungsten::app::WindowSize::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for tungsten::app::WindowSize
-impl core::marker::Freeze for tungsten::app::WindowSize
-impl core::marker::Send for tungsten::app::WindowSize
-impl core::marker::Sync for tungsten::app::WindowSize
-impl core::marker::Unpin for tungsten::app::WindowSize
-impl core::marker::UnsafeUnpin for tungsten::app::WindowSize
-impl core::panic::unwind_safe::RefUnwindSafe for tungsten::app::WindowSize
-impl core::panic::unwind_safe::UnwindSafe for tungsten::app::WindowSize
+pub struct tungsten::TweensPlugin
+impl core::clone::Clone for tungsten::plugins::TweensPlugin
+pub fn tungsten::plugins::TweensPlugin::clone(&self) -> tungsten::plugins::TweensPlugin
+impl core::default::Default for tungsten::plugins::TweensPlugin
+pub fn tungsten::plugins::TweensPlugin::default() -> tungsten::plugins::TweensPlugin
+impl core::fmt::Debug for tungsten::plugins::TweensPlugin
+pub fn tungsten::plugins::TweensPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::plugins::TweensPlugin
+impl tungsten_core::schedule::Plugin for tungsten::plugins::TweensPlugin
+pub fn tungsten::plugins::TweensPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten::plugins::TweensPlugin
+impl core::marker::Send for tungsten::plugins::TweensPlugin
+impl core::marker::Sync for tungsten::plugins::TweensPlugin
+impl core::marker::Unpin for tungsten::plugins::TweensPlugin
+impl core::marker::UnsafeUnpin for tungsten::plugins::TweensPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::plugins::TweensPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten::plugins::TweensPlugin
 pub const tungsten::ENGINE_FONT_ID: &str
 pub trait tungsten::GameState: 'static
 pub fn tungsten::GameState::id(&self) -> tungsten::state::StateId

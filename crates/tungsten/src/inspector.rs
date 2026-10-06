@@ -7,17 +7,20 @@ use glam::Vec2;
 use tungsten_core::components::{Sprite, Tag, Transform, Visibility};
 use tungsten_core::input::{ActionMap, InputState};
 use tungsten_core::physics::{Collider, Position, Shape, Velocity};
-use tungsten_core::{AssetRegistry, CameraState, Entity, Inspectable, World};
+use tungsten_core::{AssetRegistry, CameraState, Entity, InspectRegistry, Inspectable, World};
 use tungsten_render::TextSection;
 
 use crate::app::WindowSize;
 use crate::debug_hud::{HudCorner, anchor_text_block};
 
-pub type InspectFn = Box<dyn Fn(&World, Entity) -> Vec<(&'static str, String)>>;
+pub use tungsten_core::inspect::InspectFn;
 
 pub struct InspectorState {
     pub enabled: bool,
     pub selected: Option<Entity>,
+    /// Rows registered on the state itself by the deprecated
+    /// [`InspectorState::register`]; the overlay prints them after the
+    /// [`InspectRegistry`] resource's rows.
     registered: Vec<(&'static str, InspectFn)>,
     pub corner: HudCorner,
     pub padding_px: f32,
@@ -66,34 +69,55 @@ impl InspectorState {
         Self::default()
     }
 
-    /// Register canonical inspectable components.
+    /// The state with the six canonical rows registered on itself, as before
+    /// M38. `App` now inserts those rows in the [`InspectRegistry`] resource,
+    /// so a state built this way beside an `App` prints them twice.
+    #[deprecated(
+        since = "0.52.0",
+        note = "use `InspectorState::new()`; `App` registers the canonical rows in the `InspectRegistry` resource (`default_inspect_registry`), beside which these print twice. Removed at W4b"
+    )]
     #[must_use]
     pub fn new_with_defaults() -> Self {
         let mut state = Self::default();
-        state.register::<Tag>("Tag");
-        state.register::<Transform>("Transform");
-        state.register::<Visibility>("Visibility");
+        state.push_row::<Tag>("Tag");
+        state.push_row::<Transform>("Transform");
+        state.push_row::<Visibility>("Visibility");
         state.registered.push(("Sprite", Box::new(sprite_rows)));
-        state.register::<Position>("Position");
-        state.register::<Velocity>("Velocity");
+        state.push_row::<Position>("Position");
+        state.push_row::<Velocity>("Velocity");
         state
     }
 
+    /// Registers `T`'s rows on the state itself; the overlay prints them
+    /// after the [`InspectRegistry`] resource's rows.
+    #[deprecated(
+        since = "0.52.0",
+        note = "use `App::register_inspectable` or `InspectRegistry::register` on the resource, which the overlay reads first. Removed at W4b"
+    )]
     pub fn register<T: 'static + Inspectable>(&mut self, label: &'static str) {
+        self.push_row::<T>(label);
+    }
+
+    /// How many rows the state itself holds; the registry's are not counted.
+    #[deprecated(
+        since = "0.52.0",
+        note = "use `InspectRegistry::len` on the resource. Removed at W4b"
+    )]
+    #[must_use]
+    pub fn registered_len(&self) -> usize {
+        self.registered.len()
+    }
+
+    fn push_row<T: 'static + Inspectable>(&mut self, label: &'static str) {
         self.registered.push((
             label,
             Box::new(|world: &World, entity: Entity| {
                 world
                     .get::<T>(entity)
-                    .map(tungsten_core::Inspectable::inspect_rows)
+                    .map(Inspectable::inspect_rows)
                     .unwrap_or_default()
             }),
         ));
-    }
-
-    #[must_use]
-    pub fn registered_len(&self) -> usize {
-        self.registered.len()
     }
 
     pub fn toggle(&mut self) {
@@ -317,8 +341,24 @@ pub(crate) fn compose_inspector_text_section(
     sections
 }
 
+/// The canonical engine components' rows: what `App` registers before any
+/// plugin, in the [`InspectRegistry`] resource plugins and games extend.
+#[must_use]
+pub fn default_inspect_registry() -> InspectRegistry {
+    let mut registry = InspectRegistry::new();
+    registry.register::<Tag>("Tag");
+    registry.register::<Transform>("Transform");
+    registry.register::<Visibility>("Visibility");
+    registry.register_with("Sprite", sprite_rows);
+    registry.register::<Position>("Position");
+    registry.register::<Velocity>("Velocity");
+    registry
+}
+
 fn render_inspector_lines(state: &InspectorState, world: &World) -> Vec<String> {
     let mut lines: Vec<String> = Vec::new();
+    let empty = InspectRegistry::new();
+    let registry = world.get_resource::<InspectRegistry>().unwrap_or(&empty);
     let selected = match state.selected {
         Some(e) if world.is_alive(e) => Some(e),
         _ => None,
@@ -331,7 +371,9 @@ fn render_inspector_lines(state: &InspectorState, world: &World) -> Vec<String> 
         Some(entity) => {
             // Size columns from visible component rows only.
             let mut visible: Vec<(&str, Vec<(&'static str, String)>)> = Vec::new();
-            for (section, inspect) in &state.registered {
+            // The registry's rows first, then the state's own (deprecated) list.
+            let own = state.registered.iter().map(|(label, rows)| (*label, rows));
+            for (section, inspect) in registry.iter().chain(own) {
                 let rows = inspect(world, entity);
                 if rows.is_empty() {
                     continue;

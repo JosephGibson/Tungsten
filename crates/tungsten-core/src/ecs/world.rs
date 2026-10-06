@@ -1,8 +1,10 @@
 use std::any::TypeId;
+use std::collections::HashSet;
 
 use super::archetype::{AnyColumn, Archetype, TypedVec};
 use super::command_buffer::{Command, CommandBuffer, CommandTarget};
 use super::entity::Entity;
+use super::event_queue::EventQueue;
 use super::resource::ResourceMap;
 use super::storage::Archetypes;
 
@@ -12,6 +14,16 @@ use super::storage::Archetypes;
 pub struct World {
     archetypes: Archetypes,
     resources: ResourceMap,
+    /// One flusher per event type `register_event` registered, in order;
+    /// `flush_events` runs them once per frame (`D-040`).
+    event_flushers: Vec<fn(&mut World)>,
+    event_types: HashSet<TypeId>,
+}
+
+fn flush_event_queue<T: 'static>(world: &mut World) {
+    if let Some(queue) = world.get_resource_mut::<EventQueue<T>>() {
+        queue.flush();
+    }
 }
 
 impl World {
@@ -20,6 +32,39 @@ impl World {
         Self {
             archetypes: Archetypes::new(),
             resources: ResourceMap::new(),
+            event_flushers: Vec::new(),
+            event_types: HashSet::new(),
+        }
+    }
+
+    /// Registers `EventQueue<T>` as a resource that [`World::flush_events`]
+    /// rotates once per frame. Idempotent; returns whether `T` was new.
+    pub fn register_event<T: 'static>(&mut self) -> bool {
+        if !self.event_types.insert(TypeId::of::<T>()) {
+            return false;
+        }
+        self.insert_resource(EventQueue::<T>::new());
+        self.event_flushers.push(flush_event_queue::<T>);
+        true
+    }
+
+    /// Whether `register_event::<T>` has run.
+    #[must_use]
+    pub fn has_event<T: 'static>(&self) -> bool {
+        self.event_types.contains(&TypeId::of::<T>())
+    }
+
+    /// How many event types are registered.
+    #[must_use]
+    pub fn registered_event_count(&self) -> usize {
+        self.event_flushers.len()
+    }
+
+    /// Rotates every registered event queue: the frame's events become the
+    /// previous window, the previous window is dropped (`D-040`).
+    pub fn flush_events(&mut self) {
+        for i in 0..self.event_flushers.len() {
+            (self.event_flushers[i])(self);
         }
     }
 

@@ -12,15 +12,19 @@ use tungsten::core::assets::{LayerKind, TilemapData, TilemapLayer};
 use tungsten::core::{
     ActionMap, AnimationState, AudioCommand, AudioCommands, AudioHandle, Binding, CameraController,
     CameraMode, CameraState, CommandBuffer, Config, DeltaTime, EventQueue, InputState, KeyCode,
-    MouseButton, TilemapInstance, TilemapRegistry, Transform, World, sync_position_to_transform,
+    MouseButton, ShakeEvent, SquashEvent, TilemapInstance, TilemapRegistry, Transform, World,
+    sync_position_to_transform,
 };
 use tungsten::physics::{
     Collider, CollisionEvent, PhysicsConfig, Position, RigidBody, Velocity, physics_step,
 };
 use tungsten::testing::Harness;
-use tungsten::{App, WindowSize, camera_update_system};
+use tungsten::{
+    App, CameraPlugin, DefaultPlugins, GameFeelPlugin, PhysicsPlugin, WindowSize,
+    camera_update_system,
+};
 
-use crate::setup::{RUNTIME_SYSTEM_ORDER, configure_platformer_camera};
+use crate::setup::configure_platformer_camera;
 use crate::state::{
     ActiveBlackHole, AudioState, BALL_RADIUS, BALL_SPAWN_JITTER, BLACK_HOLE_LIFETIME,
     BLACK_HOLE_RADIUS, Ball, BallHue, BallSpawnState, BlackHole, CurrentSprite, GRAVITY_Y,
@@ -70,9 +74,18 @@ const PHYSICS_SYSTEMS: [System; 3] = [
 ];
 
 /// A windowless app seeded as `seed_world` seeds a world, on the headless
-/// harness: each step runs the engine's frame with `systems` in order.
+/// harness: each step runs the engine's frame with `systems` in order in
+/// `Update`. The tests wire physics, game feel and the camera into that
+/// list themselves, so those plugins are left out and nothing runs twice.
 fn platformer_harness(systems: &[System]) -> Harness {
-    let mut app = App::new(Config::default()).expect("App::new failed");
+    let plugins = DefaultPlugins::set()
+        .without::<PhysicsPlugin>()
+        .without::<GameFeelPlugin>()
+        .without::<CameraPlugin>();
+    let mut app = App::with_plugins(Config::default(), plugins).expect("App::new failed");
+    app.register_event::<CollisionEvent>();
+    app.register_event::<ShakeEvent>();
+    app.register_event::<SquashEvent>();
     seed(app.world_mut());
     for &(name, system) in systems {
         app.add_system_named(name, system);
@@ -267,47 +280,49 @@ fn configure_app_seeds_expected_bootstrap_state() {
     assert!(matches!(controller.mode, CameraMode::Follow(entity) if entity == player));
 }
 
-#[test]
-fn runtime_system_order_matches_expected_pipeline() {
-    let names: Vec<_> = RUNTIME_SYSTEM_ORDER.iter().map(|(name, _)| *name).collect();
+/// The resolved schedule of the game as `main` builds it: `D-128`'s stage
+/// map drawn through the order the systems ran in as one flat list (M38).
+/// A reorder, in the engine or here, shows up as a diff.
+const RUNTIME_SCHEDULE: &str = "\
+startup: -
+pre_update: physics_debug_toggle, systems_overlay_toggle, inspector_toggle, inspector_pick, hud_toggle, display_input, state_dispatcher, platformer_bindings
+fixed_update: update_text_display, player_input, lantern_input, spawn_ball_system, spawn_black_hole_system, black_hole_force_system, cast_fireball_system, audio_input_system, camera_zoom_input_system, rainbow_ball_hue_system, move_obstacles, tick_ball_fire, physics_step, ground_detection, small_ball_impacts, hazard_contacts, fireball_flight_system, spread_ball_fire
+update: black_hole_extinguish_system, black_hole_lifetime_system, despawn_out_of_bounds, player_presentation_system, animation_system, transient_emitter_cleanup
+post_update: physics_sync, ball_fire_particles, orbit_lights_system, scene_effects, platformer_camera_base_zoom, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, camera_update
+";
 
-    assert_eq!(
-        names,
-        vec![
-            "platformer_bindings",
-            "update_text_display",
-            "player_input",
-            "lantern_input",
-            "spawn_ball_system",
-            "spawn_black_hole_system",
-            "black_hole_force_system",
-            "cast_fireball_system",
-            "audio_input_system",
-            "camera_zoom_input_system",
-            "rainbow_ball_hue_system",
-            "move_obstacles",
-            "tick_ball_fire",
-            "physics_step",
-            "ground_detection",
-            "small_ball_impacts",
-            "hazard_contacts",
-            "fireball_flight_system",
-            "spread_ball_fire",
-            "black_hole_extinguish_system",
-            "black_hole_lifetime_system",
-            "despawn_out_of_bounds",
-            "player_presentation_system",
-            "animation_system",
-            "transient_emitter_cleanup",
-            "sync_position_to_transform",
-            "ball_fire_particles",
-            "orbit_lights_system",
-            "squash_stretch_trigger_system",
-            "squash_stretch_tick_system",
-            "scene_effects",
-            "platformer_camera_base_zoom",
-            "shake_tick_system",
-            "camera_update_system",
-        ]
+#[test]
+fn runtime_schedule_matches_expected_pipeline() {
+    let mut app = App::new(Config::default()).expect("App::new failed");
+    crate::setup::configure_app(&mut app);
+    app.resolve_schedule().expect("the schedule resolves");
+    assert_eq!(app.schedule().resolved_text(), RUNTIME_SCHEDULE);
+}
+
+/// `D-128`'s opt-in, on the game as `main` builds it: `player_input` runs
+/// in `fixed_update` before `physics_step`, so a press moves the player's
+/// body on the frame after it, not one frame later.
+#[test]
+fn a_press_moves_the_player_on_the_next_step() {
+    let mut app = App::new(Config::default()).expect("App::new failed");
+    crate::setup::configure_app(&mut app);
+    let mut harness = Harness::new(app);
+    let player_x = |harness: &Harness| {
+        harness
+            .world()
+            .query2::<Player, Position>()
+            .next()
+            .map(|(_, _, position)| position.0.x)
+            .expect("the player is seeded")
+    };
+    // Settle on the floor first, so the step after the press is a plain one.
+    harness.step(30);
+    let before = player_x(&harness);
+    harness.press_action("move_right");
+    harness.step(1);
+    let after = player_x(&harness);
+    assert!(
+        after > before,
+        "x = {after} after the press's frame, was {before}"
     );
 }

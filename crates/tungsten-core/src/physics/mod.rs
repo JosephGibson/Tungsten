@@ -6,6 +6,7 @@ pub mod broadphase;
 pub mod collision;
 pub mod components;
 pub mod events;
+mod plugin;
 pub mod step;
 
 pub use broadphase::{ProxyId, SpatialGrid};
@@ -16,6 +17,7 @@ pub use collision::{
 };
 pub use components::{BodyKind, Collider, Position, RigidBody, Shape, Velocity};
 pub use events::CollisionEvent;
+pub use plugin::{PHYSICS_STEP, PHYSICS_SYNC, PhysicsPlugin};
 pub use step::{PhysicsBuffers, physics_step, wake};
 
 use glam::Vec2;

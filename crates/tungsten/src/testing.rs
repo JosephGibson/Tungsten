@@ -10,7 +10,8 @@
 //! ```
 //!
 //! Each frame [`Harness::step`] runs has every stage of a window frame, in
-//! the same order: systems, particles, tweens, the command flush, event
+//! the same order: the schedule's stages (`Startup` once, `PreUpdate`,
+//! `FixedUpdate`, `Update`, `PostUpdate`), the command flush, event
 //! rotation, extract and audio. Render draws nothing: [`Harness::draw`]
 //! holds what the frame would have drawn and [`Harness::audio`] what it would
 //! have played. Input goes in between steps, as winit events do between
@@ -51,11 +52,19 @@ pub struct Harness {
 }
 
 impl Harness {
-    /// Wraps `app` with the default extracts installed, as [`App::run`]
-    /// installs them. Nothing else from startup happens: no window,
-    /// renderer, audio device, watcher, startup hook or manifest roots.
+    /// Wraps `app` with its schedule resolved and the default extracts
+    /// installed, as [`App::run`] does. Nothing else from startup happens:
+    /// no window, renderer, audio device, watcher, startup hook or manifest
+    /// roots. The `Startup` stage runs on the first step.
+    ///
+    /// # Panics
+    ///
+    /// When the schedule does not resolve: an unknown name, a duplicate or
+    /// a cycle, as `App::run` would fail.
     #[must_use]
     pub fn new(mut app: App) -> Self {
+        app.resolve_schedule()
+            .unwrap_or_else(|err| panic!("Harness::new: {err}"));
         app.install_default_extracts();
         Self {
             app,

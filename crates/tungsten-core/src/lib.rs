@@ -14,6 +14,7 @@ pub mod lighting;
 pub mod physics;
 pub mod post;
 pub mod rng;
+pub mod schedule;
 pub mod text;
 pub mod time;
 pub mod tween;
@@ -43,17 +44,18 @@ pub use config::{Config, ConfigError, DepthSortMode, GameConfig, PostAaMode, Ren
 pub use debug_draw::{DEFAULT_CIRCLE_SEGMENTS, DebugCommand, DebugDraw, DebugShape};
 pub use display::{
     DisplayConfig, DisplayMode, DisplayState, DisplayValidationError, Resolution, ScaleMode,
+    WindowSize,
 };
 pub use ecs::{CommandBuffer, Entity, EventQueue, PendingEntity, ShakeEvent, SquashEvent, World};
 pub use input::{
     ActionMap, ActionMapError, Binding, InputState, KeyCode, MouseButton, ScrollDirection,
 };
-pub use inspect::Inspectable;
+pub use inspect::{InspectRegistry, Inspectable};
 pub use lighting::{AmbientLight, LIGHT_CAP};
 pub use physics::{
-    Aabb, BodyKind, Collider, CollisionEvent, Contact, PhysicsBuffers, PhysicsConfig, Position,
-    RigidBody, Shape, SpatialGrid, Velocity, aabb_vs_aabb, aabb_vs_circle, circle_vs_circle,
-    physics_step,
+    Aabb, BodyKind, Collider, CollisionEvent, Contact, PhysicsBuffers, PhysicsConfig,
+    PhysicsPlugin, Position, RigidBody, Shape, SpatialGrid, Velocity, aabb_vs_aabb, aabb_vs_circle,
+    circle_vs_circle, physics_step,
 };
 pub use post::{
     BloomParams, ColorAdjustParams, CrtParams, DissolveParams, DitherMode, DitherParams,
@@ -62,6 +64,7 @@ pub use post::{
     TonemapParams, VignetteParams, WipeRadialParams,
 };
 pub use rng::{Pcg32, splitmix64};
+pub use schedule::{Plugin, PluginSet, Schedule, ScheduleError, Stage, SystemDesc, system};
 pub use text::{
     EllipsisAt, FontEpoch, FontFeature, FontFeatures, MeasureWidth, StyledText, TextAlign,
     TextHinting, TextLayout, TextMeasure, TextMetrics, TextNodeId, TextNodeStore, TextOverflow,

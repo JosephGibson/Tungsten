@@ -37,7 +37,7 @@ Each benchmark is judged only on the costs it owns. Every other metric is report
 | Proxy gather, broadphase build, pair query | `physics-sparse`: `physics_step` p50/p95 | `physics`, `integrated` |
 | Query iteration, column access, random entity lookup | `ecs`: `update` p50/p95, the 14 system rows at p50 | all |
 | `CommandBuffer` recording and flush, archetype moves, entity allocation and free | `churn`: `flush` p50/p95, the four churn system rows at p50 | `particles`, `integrated` |
-| Particle emit, tick and count refresh; animation playback | `particles`: `unattributed` p50/p95 (the untimed particle stage), `animate_sprites` p50/p95 | `integrated` |
+| Particle emit, tick and count refresh; animation playback | `particles`: `particle_count_refresh`, `particle_emit`, `particle_tick` and `animate_sprites` p50/p95 | `integrated` |
 | Default extract, encode, text shaping, GPU passes | `gpu`: scene pass and `render_span` p50/p95, pass rows at p50, `extract` and `render_encode` p50/p95; `gpu-throughput`: `extract` and `render_encode` p50/p95 | `particles`, `integrated` |
 | Cross-system effects: tile proxies × bodies, event → spawn cascades, batch fragmentation, full-frame composition | `integrated`: `total` p50/p95/p99, jitter (p99 − p50) | — |
 | Acquire and present pacing | Nobody: environment, reported and never judged | all |
@@ -347,8 +347,8 @@ Owns particle emit, tick and count refresh, and animation playback. Warm-up 180 
 - **Presets:** `min` (8 emitters, 500 animated sprites) and `default`.
 - **Counters:** `live`, `emitters`, `animated` and `frame_changes`.
 - **Guard:** `bench.live within ±10% of its median`. It checks that the live count is steady, not its level; the level shows in `live_model` and in compare's workload-drift check.
-- **Owned:** `unattributed` p50/p95 and `animate_sprites` p50/p95. Bottleneck `unattributed`; key knobs `emitters` and `animated`.
-- **Row note:** Without T1 the particle stage has no timing of its own: `unattributed` holds it (plus event flush), so the row owns `stage.unattributed` and `animate_sprites`.
+- **Owned:** `particle_count_refresh`, `particle_emit`, `particle_tick` and `animate_sprites`, each p50/p95 (`D-133`). Bottleneck `particle_tick`; key knobs `emitters` and `animated`.
+- **Row note:** The particle stage is three named `post_update` systems since M38 (`D-133`), so the row owns them and `animate_sprites`; `unattributed` holds only the event flush. Until 0.52 the stage was untimed and the row owned `stage.unattributed` p50/p95 instead, so a compare across that release lists the owned metrics as missing on one side (no verdict) and the row's baseline restarts there.
 
 **Calibrated default** (2026-09-30, 3 runs): `emitters` 400 → 280 and `animated` 40,000 → 8,000. `total` p50/p95/p99 per run 11.02/11.64/12.18, 10.98/11.56/12.18 and 10.89/11.54/11.88 ms; `unattributed` p50 2.38 / p95 2.98 ms; `animate_sprites` p50 0.27 / p95 0.32 ms; `live` median 42,288 (largest deviation 1.9%). Peak RSS is about 142 MiB; RSS grows 4–13 KiB/s, reported only.
 
@@ -373,6 +373,8 @@ Owns particle emit, tick and count refresh, and animation playback. Warm-up 180 
 **After `D-113` and `D-114`** (2026-10-04, M33, medians of 5 runs): `total` p50/p95/p99 4.43/4.92/5.46 ms; `unattributed` p50 2.23 / p95 2.57 ms; `animate_sprites` p50 0.25 / p95 0.28 ms; peak RSS 79.8 MiB. Interned IDs removed the `String` that each particle and each animation frame change carried: `total` p50 6.50 → 4.32 ms, `extract` p50 2.96 → 1.28 ms, `flush` p50 0.42 → 0.20 ms, and `animate_sprites` p95 0.45 → 0.31 ms (`improved`), below where `D-086`'s accepted reading left it. Culling then costs `extract` p50 +0.12 ms (+0.21 with 15 runs a side), reported only.
 
 - **Accepted regression (`D-113`).** With 15 runs a side in one sitting `unattributed` p50 reads `regressed`, 2.09 → 2.21 ms (+0.12, interval +0.09 to +0.14), while its p95 falls 2.67 → 2.49 ms. It comes with the ID change, not with culling, and not from the per-emitter interning. The stage's sampled CPU work does not grow, and the mechanism was not established. The owner accepted it on 2026-10-04.
+
+**After `D-133`** (2026-10-06, M38, medians of 5 runs from the milestone's sitting): `total` p50/p95 4.34/4.90 ms, `unchanged` against the tree before (4.42/4.93; the second direct pair 4.40/4.98 → 4.42/5.00). The particle stage is three timed `post_update` systems: `particle_count_refresh` p50 0.60 / p95 0.81 ms, `particle_emit` 0.10 / 0.13 ms and `particle_tick` 1.46 / 1.53 ms, which sum to the stage's last `unattributed` reading (p50 2.19 / p95 2.42 ms; now 0.00 / 0.01, the event flush); `animate_sprites` p50 0.25 / p95 0.29 ms, `unchanged`. The relocation moved no work: digests matched 8 of 8 in every compare of the sitting. The row's owned metrics change here, so its baseline restarts at 0.52.
 
 **Workload version history:** 1, the initial version (2026-09-30). Digest at the default: `08a3c7c126a0d43a`.
 
@@ -415,7 +417,7 @@ The interaction costs it exposes, each visible through a counter or a stage row:
 - **Counters,** in line order: `actors`, `projectiles` (live), `hits`, `particles` (live), `lights` (point lights reaching the view, before the extract keeps 16), `camera_x`, `view_out`, `flashing`, `landings`, `shots`, `turns` and `events` (collision events).
 - **Guard:** `bench.view_out <= 0`. `view_out` is how far the final view, shake included, leaves the level, rounded up to whole pixels.
 - **Owned:** `total` p50/p95/p99 and jitter (p99 − p50, judged with p99's threshold). No stage is owned. The declared bottleneck is `physics_step`, which calibration found limiting (6.66 of 12.03 ms, means) ahead of the default extract (2.60 ms); on 2026-10-01 it is 5.08 of 10.43 ms, with the extract at 2.81, after `D-085` 5.10 of 9.55 ms, with the extract at 2.13, and after `D-086` 5.14 of 8.52 ms, with the extract at 0.98. Key knobs `actors`, `crates`, `props`, `torches` and `pickups`.
-- **Row note:** Judged on total frame time; `jitter` is p99 - p50 of `total`, judged with p99's threshold. No stage is owned: the declared bottleneck, physics_step, is the stage calibration found limiting (walkers and crates against the tile proxies), ahead of the default extract. Tiles draw at z_norm 0, so the row needs the default cpu_stable depth sort (under gpu_depth they cover every sprite). Without T1, particle and tween time lands in `unattributed`. Changing HUD and name-tag text grows RSS through the text buffer cache (360-frame TTL). That last sentence is the binary's own text (`integrated.rs`) and stopped being true with `D-085`, which left the benchmark's sources alone: RSS no longer grows with the text.
+- **Row note:** Judged on total frame time; `jitter` is p99 - p50 of `total`, judged with p99's threshold. No stage is owned: the declared bottleneck, physics_step, is the stage calibration found limiting (walkers and crates against the tile proxies), ahead of the default extract. Tiles draw at z_norm 0, so the row needs the default cpu_stable depth sort (under gpu_depth they cover every sprite). Particle and tween time is timed under the engine's `post_update` systems since M38 (`D-133`); until 0.52 it landed in `unattributed`. Changing HUD and name-tag text grows RSS through the text buffer cache (360-frame TTL). That last sentence is the binary's own text (`integrated.rs`) and stopped being true with `D-085`, which left the benchmark's sources alone: RSS no longer grows with the text.
 
 **Calibrated default:** `actors` 3,000 → 2,500; the other counts stay as designed. Target: a `total` p95 of 10–16 ms ✓, each time it was measured until `D-086`. After `D-085` the median sat 0.14 ms above the band's floor; after `D-086` it is 9.24 ms, 0.76 ms below it, which the owner accepted (`D-086`; "Below the calibration band" under "Open proposals").
 
@@ -479,7 +481,7 @@ Not approved; each benchmark works without them. Approving one is a separate dec
 | G2 | Sensor colliders | Real bin sensors in `physics` instead of solid floors read through collision events |
 | G3 | More than 16 lights | A `lights` sweep past 16 |
 | G4 | GPU particle simulation | GPU-side particles |
-| T1 | `particles_ms` and `tweens_ms` in `FrameTimings` and the `frame:` line | A timed particle stage for `particles` (instead of `unattributed`) and attribution in `integrated` |
+| T1 | `particles_ms` and `tweens_ms` in `FrameTimings` and the `frame:` line | Closed by M38 (`D-133`): the particle and tween stages are named `post_update` systems timed in the `systems:` line, so `particles` owns them and `integrated` reads them there; no `frame:` field was added |
 | T2 | A `startup:` line with window, renderer, manifest, user startup and audio times | Load-time metrics in every capture and compare |
 | M1 | A counting global allocator in `example-02-bench` only, behind a feature | Allocations per frame; it needs a `DECISIONS.md` entry, since its counters are process-global state |
 
