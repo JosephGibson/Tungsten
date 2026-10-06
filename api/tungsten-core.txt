@@ -4016,6 +4016,21 @@ impl core::marker::Unpin for tungsten_core::display::Resolution
 impl core::marker::UnsafeUnpin for tungsten_core::display::Resolution
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::display::Resolution
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::display::Resolution
+pub struct tungsten_core::display::WindowSize
+pub tungsten_core::display::WindowSize::height: u32
+pub tungsten_core::display::WindowSize::width: u32
+impl core::clone::Clone for tungsten_core::display::WindowSize
+pub fn tungsten_core::display::WindowSize::clone(&self) -> tungsten_core::display::WindowSize
+impl core::fmt::Debug for tungsten_core::display::WindowSize
+pub fn tungsten_core::display::WindowSize::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::display::WindowSize
+impl core::marker::Freeze for tungsten_core::display::WindowSize
+impl core::marker::Send for tungsten_core::display::WindowSize
+impl core::marker::Sync for tungsten_core::display::WindowSize
+impl core::marker::Unpin for tungsten_core::display::WindowSize
+impl core::marker::UnsafeUnpin for tungsten_core::display::WindowSize
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::display::WindowSize
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::display::WindowSize
 pub mod tungsten_core::ecs
 pub struct tungsten_core::ecs::CommandBuffer
 impl tungsten_core::CommandBuffer
@@ -4137,12 +4152,14 @@ impl tungsten_core::World
 pub fn tungsten_core::World::despawn(&mut self, tungsten_core::Entity)
 pub fn tungsten_core::World::entity_count(&self) -> u32
 pub fn tungsten_core::World::flush(&mut self, tungsten_core::CommandBuffer)
+pub fn tungsten_core::World::flush_events(&mut self)
 pub fn tungsten_core::World::flush_reusing(&mut self, &mut tungsten_core::CommandBuffer)
 pub fn tungsten_core::World::get<T: 'static>(&self, tungsten_core::Entity) -> core::option::Option<&T>
 pub fn tungsten_core::World::get_mut<T: 'static>(&mut self, tungsten_core::Entity) -> core::option::Option<&mut T>
 pub fn tungsten_core::World::get_resource<T: 'static>(&self) -> core::option::Option<&T>
 pub fn tungsten_core::World::get_resource_mut<T: 'static>(&mut self) -> core::option::Option<&mut T>
 pub fn tungsten_core::World::has<T: 'static>(&self, tungsten_core::Entity) -> bool
+pub fn tungsten_core::World::has_event<T: 'static>(&self) -> bool
 pub fn tungsten_core::World::has_resource<T: 'static>(&self) -> bool
 pub fn tungsten_core::World::insert<T: 'static>(&mut self, tungsten_core::Entity, T)
 pub fn tungsten_core::World::insert_resource<T: 'static>(&mut self, T)
@@ -4161,6 +4178,8 @@ pub fn tungsten_core::World::query3_mut_without<A: 'static, B: 'static, C: 'stat
 pub fn tungsten_core::World::query3_opt2<A: 'static, B: 'static, C: 'static, D: 'static, E: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &A, &B, &C, core::option::Option<&D>, core::option::Option<&E>)>
 pub fn tungsten_core::World::query_entities<T: 'static>(&self) -> alloc::vec::Vec<tungsten_core::Entity>
 pub fn tungsten_core::World::query_mut<T: 'static>(&mut self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &mut T)>
+pub fn tungsten_core::World::register_event<T: 'static>(&mut self) -> bool
+pub fn tungsten_core::World::registered_event_count(&self) -> usize
 pub fn tungsten_core::World::remove_component<T: 'static>(&mut self, tungsten_core::Entity) -> core::option::Option<T>
 pub fn tungsten_core::World::remove_resource<T: 'static>(&mut self) -> core::option::Option<T>
 pub fn tungsten_core::World::spawn(&mut self) -> tungsten_core::Entity
@@ -4519,6 +4538,23 @@ impl core::marker::UnsafeUnpin for tungsten_core::input::InputState
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::InputState
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::InputState
 pub mod tungsten_core::inspect
+pub struct tungsten_core::inspect::InspectRegistry
+impl tungsten_core::inspect::InspectRegistry
+pub fn tungsten_core::inspect::InspectRegistry::is_empty(&self) -> bool
+pub fn tungsten_core::inspect::InspectRegistry::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&'static str, &tungsten_core::inspect::InspectFn)>
+pub fn tungsten_core::inspect::InspectRegistry::len(&self) -> usize
+pub fn tungsten_core::inspect::InspectRegistry::new() -> Self
+pub fn tungsten_core::inspect::InspectRegistry::register<T: 'static + tungsten_core::inspect::Inspectable>(&mut self, &'static str)
+pub fn tungsten_core::inspect::InspectRegistry::register_with(&mut self, &'static str, impl core::ops::function::Fn(&tungsten_core::World, tungsten_core::Entity) -> alloc::vec::Vec<(&'static str, alloc::string::String)> + 'static)
+impl core::default::Default for tungsten_core::inspect::InspectRegistry
+pub fn tungsten_core::inspect::InspectRegistry::default() -> tungsten_core::inspect::InspectRegistry
+impl core::marker::Freeze for tungsten_core::inspect::InspectRegistry
+impl !core::marker::Send for tungsten_core::inspect::InspectRegistry
+impl !core::marker::Sync for tungsten_core::inspect::InspectRegistry
+impl core::marker::Unpin for tungsten_core::inspect::InspectRegistry
+impl core::marker::UnsafeUnpin for tungsten_core::inspect::InspectRegistry
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::inspect::InspectRegistry
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::inspect::InspectRegistry
 pub trait tungsten_core::inspect::Inspectable
 pub fn tungsten_core::inspect::Inspectable::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
 impl tungsten_core::inspect::Inspectable for tungsten_core::components::Sprite
@@ -4533,6 +4569,7 @@ impl tungsten_core::inspect::Inspectable for tungsten_core::physics::components:
 pub fn tungsten_core::physics::components::Position::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
 impl tungsten_core::inspect::Inspectable for tungsten_core::physics::components::Velocity
 pub fn tungsten_core::physics::components::Velocity::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
+pub type tungsten_core::inspect::InspectFn = alloc::boxed::Box<dyn core::ops::function::Fn(&tungsten_core::World, tungsten_core::Entity) -> alloc::vec::Vec<(&'static str, alloc::string::String)>>
 pub mod tungsten_core::lighting
 pub struct tungsten_core::lighting::AmbientLight(pub glam::f32::vec3::Vec3)
 impl core::clone::Clone for tungsten_core::lighting::AmbientLight
@@ -4973,6 +5010,24 @@ impl core::marker::Unpin for tungsten_core::physics::PhysicsConfig
 impl core::marker::UnsafeUnpin for tungsten_core::physics::PhysicsConfig
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::PhysicsConfig
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::PhysicsConfig
+pub struct tungsten_core::physics::PhysicsPlugin
+impl core::clone::Clone for tungsten_core::PhysicsPlugin
+pub fn tungsten_core::PhysicsPlugin::clone(&self) -> tungsten_core::PhysicsPlugin
+impl core::default::Default for tungsten_core::PhysicsPlugin
+pub fn tungsten_core::PhysicsPlugin::default() -> tungsten_core::PhysicsPlugin
+impl core::fmt::Debug for tungsten_core::PhysicsPlugin
+pub fn tungsten_core::PhysicsPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::PhysicsPlugin
+impl tungsten_core::schedule::Plugin for tungsten_core::PhysicsPlugin
+pub fn tungsten_core::PhysicsPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::World)
+pub fn tungsten_core::PhysicsPlugin::name(&self) -> &'static str
+impl core::marker::Freeze for tungsten_core::PhysicsPlugin
+impl core::marker::Send for tungsten_core::PhysicsPlugin
+impl core::marker::Sync for tungsten_core::PhysicsPlugin
+impl core::marker::Unpin for tungsten_core::PhysicsPlugin
+impl core::marker::UnsafeUnpin for tungsten_core::PhysicsPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::PhysicsPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::PhysicsPlugin
 pub struct tungsten_core::physics::Position(pub glam::f32::vec2::Vec2)
 impl tungsten_core::physics::components::Position
 pub fn tungsten_core::physics::components::Position::new(f32, f32) -> Self
@@ -5066,6 +5121,8 @@ pub const tungsten_core::physics::FACE_BOTTOM: u8
 pub const tungsten_core::physics::FACE_LEFT: u8
 pub const tungsten_core::physics::FACE_RIGHT: u8
 pub const tungsten_core::physics::FACE_TOP: u8
+pub const tungsten_core::physics::PHYSICS_STEP: &str
+pub const tungsten_core::physics::PHYSICS_SYNC: &str
 pub fn tungsten_core::physics::aabb_vs_aabb(&tungsten_core::physics::collision::Aabb, &tungsten_core::physics::collision::Aabb) -> core::option::Option<tungsten_core::physics::collision::Contact>
 pub fn tungsten_core::physics::aabb_vs_aabb_masked(&tungsten_core::physics::collision::Aabb, &tungsten_core::physics::collision::Aabb, u8) -> core::option::Option<tungsten_core::physics::collision::Contact>
 pub fn tungsten_core::physics::aabb_vs_aabb_speculative(&tungsten_core::physics::collision::Aabb, &tungsten_core::physics::collision::Aabb, u8, f32) -> core::option::Option<tungsten_core::physics::collision::Contact>
@@ -5647,6 +5704,136 @@ impl core::marker::UnsafeUnpin for tungsten_core::rng::Pcg32
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::rng::Pcg32
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::rng::Pcg32
 pub fn tungsten_core::rng::splitmix64(u64) -> u64
+pub mod tungsten_core::schedule
+pub enum tungsten_core::schedule::ScheduleError
+pub tungsten_core::schedule::ScheduleError::Cycle
+pub tungsten_core::schedule::ScheduleError::Cycle::path: alloc::vec::Vec<alloc::string::String>
+pub tungsten_core::schedule::ScheduleError::Cycle::stage: tungsten_core::schedule::Stage
+pub tungsten_core::schedule::ScheduleError::DuplicateName
+pub tungsten_core::schedule::ScheduleError::DuplicateName::first: tungsten_core::schedule::Stage
+pub tungsten_core::schedule::ScheduleError::DuplicateName::name: alloc::string::String
+pub tungsten_core::schedule::ScheduleError::DuplicateName::second: tungsten_core::schedule::Stage
+pub tungsten_core::schedule::ScheduleError::UnknownName
+pub tungsten_core::schedule::ScheduleError::UnknownName::missing: alloc::string::String
+pub tungsten_core::schedule::ScheduleError::UnknownName::reason: alloc::string::String
+pub tungsten_core::schedule::ScheduleError::UnknownName::relation: &'static str
+pub tungsten_core::schedule::ScheduleError::UnknownName::stage: tungsten_core::schedule::Stage
+pub tungsten_core::schedule::ScheduleError::UnknownName::system: alloc::string::String
+impl core::clone::Clone for tungsten_core::schedule::ScheduleError
+pub fn tungsten_core::schedule::ScheduleError::clone(&self) -> tungsten_core::schedule::ScheduleError
+impl core::cmp::Eq for tungsten_core::schedule::ScheduleError
+impl core::cmp::PartialEq for tungsten_core::schedule::ScheduleError
+pub fn tungsten_core::schedule::ScheduleError::eq(&self, &tungsten_core::schedule::ScheduleError) -> bool
+impl core::error::Error for tungsten_core::schedule::ScheduleError
+impl core::fmt::Debug for tungsten_core::schedule::ScheduleError
+pub fn tungsten_core::schedule::ScheduleError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::schedule::ScheduleError
+pub fn tungsten_core::schedule::ScheduleError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::schedule::ScheduleError
+impl core::marker::Freeze for tungsten_core::schedule::ScheduleError
+impl core::marker::Send for tungsten_core::schedule::ScheduleError
+impl core::marker::Sync for tungsten_core::schedule::ScheduleError
+impl core::marker::Unpin for tungsten_core::schedule::ScheduleError
+impl core::marker::UnsafeUnpin for tungsten_core::schedule::ScheduleError
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::schedule::ScheduleError
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::schedule::ScheduleError
+pub enum tungsten_core::schedule::Stage
+pub tungsten_core::schedule::Stage::FixedUpdate
+pub tungsten_core::schedule::Stage::PostUpdate
+pub tungsten_core::schedule::Stage::PreUpdate
+pub tungsten_core::schedule::Stage::Startup
+pub tungsten_core::schedule::Stage::Update
+impl tungsten_core::schedule::Stage
+pub const tungsten_core::schedule::Stage::ALL: [tungsten_core::schedule::Stage; 5]
+pub fn tungsten_core::schedule::Stage::name(self) -> &'static str
+impl core::clone::Clone for tungsten_core::schedule::Stage
+pub fn tungsten_core::schedule::Stage::clone(&self) -> tungsten_core::schedule::Stage
+impl core::cmp::Eq for tungsten_core::schedule::Stage
+impl core::cmp::Ord for tungsten_core::schedule::Stage
+pub fn tungsten_core::schedule::Stage::cmp(&self, &tungsten_core::schedule::Stage) -> core::cmp::Ordering
+impl core::cmp::PartialEq for tungsten_core::schedule::Stage
+pub fn tungsten_core::schedule::Stage::eq(&self, &tungsten_core::schedule::Stage) -> bool
+impl core::cmp::PartialOrd for tungsten_core::schedule::Stage
+pub fn tungsten_core::schedule::Stage::partial_cmp(&self, &tungsten_core::schedule::Stage) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for tungsten_core::schedule::Stage
+pub fn tungsten_core::schedule::Stage::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::schedule::Stage
+pub fn tungsten_core::schedule::Stage::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::schedule::Stage
+pub fn tungsten_core::schedule::Stage::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::schedule::Stage
+impl core::marker::StructuralPartialEq for tungsten_core::schedule::Stage
+impl core::marker::Freeze for tungsten_core::schedule::Stage
+impl core::marker::Send for tungsten_core::schedule::Stage
+impl core::marker::Sync for tungsten_core::schedule::Stage
+impl core::marker::Unpin for tungsten_core::schedule::Stage
+impl core::marker::UnsafeUnpin for tungsten_core::schedule::Stage
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::schedule::Stage
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::schedule::Stage
+pub struct tungsten_core::schedule::PluginSet
+impl tungsten_core::schedule::PluginSet
+pub fn tungsten_core::schedule::PluginSet::build(self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::World)
+pub fn tungsten_core::schedule::PluginSet::contains<P: tungsten_core::schedule::Plugin>(&self) -> bool
+pub fn tungsten_core::schedule::PluginSet::is_empty(&self) -> bool
+pub fn tungsten_core::schedule::PluginSet::len(&self) -> usize
+pub fn tungsten_core::schedule::PluginSet::names(&self) -> alloc::vec::Vec<&'static str>
+pub fn tungsten_core::schedule::PluginSet::new() -> Self
+pub fn tungsten_core::schedule::PluginSet::with<P: tungsten_core::schedule::Plugin>(self, P) -> Self
+pub fn tungsten_core::schedule::PluginSet::without<P: tungsten_core::schedule::Plugin>(self) -> Self
+impl core::default::Default for tungsten_core::schedule::PluginSet
+pub fn tungsten_core::schedule::PluginSet::default() -> tungsten_core::schedule::PluginSet
+impl core::marker::Freeze for tungsten_core::schedule::PluginSet
+impl !core::marker::Send for tungsten_core::schedule::PluginSet
+impl !core::marker::Sync for tungsten_core::schedule::PluginSet
+impl core::marker::Unpin for tungsten_core::schedule::PluginSet
+impl core::marker::UnsafeUnpin for tungsten_core::schedule::PluginSet
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::schedule::PluginSet
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::schedule::PluginSet
+pub struct tungsten_core::schedule::Schedule
+impl tungsten_core::schedule::Schedule
+pub fn tungsten_core::schedule::Schedule::add(&mut self, tungsten_core::schedule::Stage, tungsten_core::schedule::SystemDesc)
+pub fn tungsten_core::schedule::Schedule::add_fn(&mut self, tungsten_core::schedule::Stage, impl core::convert::Into<alloc::string::String>, impl core::ops::function::FnMut(&mut tungsten_core::World) + 'static)
+pub fn tungsten_core::schedule::Schedule::contains(&self, &str) -> bool
+pub fn tungsten_core::schedule::Schedule::is_empty(&self) -> bool
+pub fn tungsten_core::schedule::Schedule::is_resolved(&self) -> bool
+pub fn tungsten_core::schedule::Schedule::len(&self) -> usize
+pub fn tungsten_core::schedule::Schedule::names(&self, tungsten_core::schedule::Stage) -> impl core::iter::traits::iterator::Iterator<Item = &str>
+pub fn tungsten_core::schedule::Schedule::new() -> Self
+pub fn tungsten_core::schedule::Schedule::resolve(&mut self) -> core::result::Result<(), tungsten_core::schedule::ScheduleError>
+pub fn tungsten_core::schedule::Schedule::resolved_text(&self) -> alloc::string::String
+pub fn tungsten_core::schedule::Schedule::run_stage(&mut self, tungsten_core::schedule::Stage, &mut tungsten_core::World, impl core::ops::function::FnMut(&str, core::time::Duration))
+pub fn tungsten_core::schedule::Schedule::stage_of(&self, &str) -> core::option::Option<tungsten_core::schedule::Stage>
+impl core::default::Default for tungsten_core::schedule::Schedule
+pub fn tungsten_core::schedule::Schedule::default() -> Self
+impl core::marker::Freeze for tungsten_core::schedule::Schedule
+impl !core::marker::Send for tungsten_core::schedule::Schedule
+impl !core::marker::Sync for tungsten_core::schedule::Schedule
+impl core::marker::Unpin for tungsten_core::schedule::Schedule
+impl core::marker::UnsafeUnpin for tungsten_core::schedule::Schedule
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::schedule::Schedule
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::schedule::Schedule
+pub struct tungsten_core::schedule::SystemDesc
+impl tungsten_core::schedule::SystemDesc
+pub fn tungsten_core::schedule::SystemDesc::after(self, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_core::schedule::SystemDesc::after_if_present(self, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_core::schedule::SystemDesc::before(self, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_core::schedule::SystemDesc::before_if_present(self, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_core::schedule::SystemDesc::name(&self) -> &str
+impl core::marker::Freeze for tungsten_core::schedule::SystemDesc
+impl !core::marker::Send for tungsten_core::schedule::SystemDesc
+impl !core::marker::Sync for tungsten_core::schedule::SystemDesc
+impl core::marker::Unpin for tungsten_core::schedule::SystemDesc
+impl core::marker::UnsafeUnpin for tungsten_core::schedule::SystemDesc
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::schedule::SystemDesc
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::schedule::SystemDesc
+pub trait tungsten_core::schedule::Plugin: 'static
+pub fn tungsten_core::schedule::Plugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::World)
+pub fn tungsten_core::schedule::Plugin::name(&self) -> &'static str
+impl tungsten_core::schedule::Plugin for tungsten_core::PhysicsPlugin
+pub fn tungsten_core::PhysicsPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::World)
+pub fn tungsten_core::PhysicsPlugin::name(&self) -> &'static str
+pub fn tungsten_core::schedule::system(impl core::convert::Into<alloc::string::String>, impl core::ops::function::FnMut(&mut tungsten_core::World) + 'static) -> tungsten_core::schedule::SystemDesc
+pub type tungsten_core::schedule::SystemFn = alloc::boxed::Box<dyn core::ops::function::FnMut(&mut tungsten_core::World)>
 pub mod tungsten_core::text
 #[non_exhaustive] pub enum tungsten_core::text::EllipsisAt
 pub tungsten_core::text::EllipsisAt::End
@@ -9038,6 +9225,38 @@ impl core::marker::Unpin for tungsten_core::assets::scene::SceneTweenRepeat
 impl core::marker::UnsafeUnpin for tungsten_core::assets::scene::SceneTweenRepeat
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::scene::SceneTweenRepeat
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::scene::SceneTweenRepeat
+pub enum tungsten_core::ScheduleError
+pub tungsten_core::ScheduleError::Cycle
+pub tungsten_core::ScheduleError::Cycle::path: alloc::vec::Vec<alloc::string::String>
+pub tungsten_core::ScheduleError::Cycle::stage: tungsten_core::schedule::Stage
+pub tungsten_core::ScheduleError::DuplicateName
+pub tungsten_core::ScheduleError::DuplicateName::first: tungsten_core::schedule::Stage
+pub tungsten_core::ScheduleError::DuplicateName::name: alloc::string::String
+pub tungsten_core::ScheduleError::DuplicateName::second: tungsten_core::schedule::Stage
+pub tungsten_core::ScheduleError::UnknownName
+pub tungsten_core::ScheduleError::UnknownName::missing: alloc::string::String
+pub tungsten_core::ScheduleError::UnknownName::reason: alloc::string::String
+pub tungsten_core::ScheduleError::UnknownName::relation: &'static str
+pub tungsten_core::ScheduleError::UnknownName::stage: tungsten_core::schedule::Stage
+pub tungsten_core::ScheduleError::UnknownName::system: alloc::string::String
+impl core::clone::Clone for tungsten_core::schedule::ScheduleError
+pub fn tungsten_core::schedule::ScheduleError::clone(&self) -> tungsten_core::schedule::ScheduleError
+impl core::cmp::Eq for tungsten_core::schedule::ScheduleError
+impl core::cmp::PartialEq for tungsten_core::schedule::ScheduleError
+pub fn tungsten_core::schedule::ScheduleError::eq(&self, &tungsten_core::schedule::ScheduleError) -> bool
+impl core::error::Error for tungsten_core::schedule::ScheduleError
+impl core::fmt::Debug for tungsten_core::schedule::ScheduleError
+pub fn tungsten_core::schedule::ScheduleError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::schedule::ScheduleError
+pub fn tungsten_core::schedule::ScheduleError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::schedule::ScheduleError
+impl core::marker::Freeze for tungsten_core::schedule::ScheduleError
+impl core::marker::Send for tungsten_core::schedule::ScheduleError
+impl core::marker::Sync for tungsten_core::schedule::ScheduleError
+impl core::marker::Unpin for tungsten_core::schedule::ScheduleError
+impl core::marker::UnsafeUnpin for tungsten_core::schedule::ScheduleError
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::schedule::ScheduleError
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::schedule::ScheduleError
 pub enum tungsten_core::ScrollDirection
 pub tungsten_core::ScrollDirection::Down
 pub tungsten_core::ScrollDirection::Up
@@ -9104,6 +9323,39 @@ impl core::marker::Unpin for tungsten_core::components::SquashTrigger
 impl core::marker::UnsafeUnpin for tungsten_core::components::SquashTrigger
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::components::SquashTrigger
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::components::SquashTrigger
+pub enum tungsten_core::Stage
+pub tungsten_core::Stage::FixedUpdate
+pub tungsten_core::Stage::PostUpdate
+pub tungsten_core::Stage::PreUpdate
+pub tungsten_core::Stage::Startup
+pub tungsten_core::Stage::Update
+impl tungsten_core::schedule::Stage
+pub const tungsten_core::schedule::Stage::ALL: [tungsten_core::schedule::Stage; 5]
+pub fn tungsten_core::schedule::Stage::name(self) -> &'static str
+impl core::clone::Clone for tungsten_core::schedule::Stage
+pub fn tungsten_core::schedule::Stage::clone(&self) -> tungsten_core::schedule::Stage
+impl core::cmp::Eq for tungsten_core::schedule::Stage
+impl core::cmp::Ord for tungsten_core::schedule::Stage
+pub fn tungsten_core::schedule::Stage::cmp(&self, &tungsten_core::schedule::Stage) -> core::cmp::Ordering
+impl core::cmp::PartialEq for tungsten_core::schedule::Stage
+pub fn tungsten_core::schedule::Stage::eq(&self, &tungsten_core::schedule::Stage) -> bool
+impl core::cmp::PartialOrd for tungsten_core::schedule::Stage
+pub fn tungsten_core::schedule::Stage::partial_cmp(&self, &tungsten_core::schedule::Stage) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for tungsten_core::schedule::Stage
+pub fn tungsten_core::schedule::Stage::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::schedule::Stage
+pub fn tungsten_core::schedule::Stage::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::schedule::Stage
+pub fn tungsten_core::schedule::Stage::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::schedule::Stage
+impl core::marker::StructuralPartialEq for tungsten_core::schedule::Stage
+impl core::marker::Freeze for tungsten_core::schedule::Stage
+impl core::marker::Send for tungsten_core::schedule::Stage
+impl core::marker::Sync for tungsten_core::schedule::Stage
+impl core::marker::Unpin for tungsten_core::schedule::Stage
+impl core::marker::UnsafeUnpin for tungsten_core::schedule::Stage
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::schedule::Stage
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::schedule::Stage
 #[non_exhaustive] pub enum tungsten_core::TextAlign
 pub tungsten_core::TextAlign::Center
 pub tungsten_core::TextAlign::End
@@ -10393,6 +10645,23 @@ impl core::marker::Unpin for tungsten_core::input::InputState
 impl core::marker::UnsafeUnpin for tungsten_core::input::InputState
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::InputState
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::InputState
+pub struct tungsten_core::InspectRegistry
+impl tungsten_core::inspect::InspectRegistry
+pub fn tungsten_core::inspect::InspectRegistry::is_empty(&self) -> bool
+pub fn tungsten_core::inspect::InspectRegistry::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&'static str, &tungsten_core::inspect::InspectFn)>
+pub fn tungsten_core::inspect::InspectRegistry::len(&self) -> usize
+pub fn tungsten_core::inspect::InspectRegistry::new() -> Self
+pub fn tungsten_core::inspect::InspectRegistry::register<T: 'static + tungsten_core::inspect::Inspectable>(&mut self, &'static str)
+pub fn tungsten_core::inspect::InspectRegistry::register_with(&mut self, &'static str, impl core::ops::function::Fn(&tungsten_core::World, tungsten_core::Entity) -> alloc::vec::Vec<(&'static str, alloc::string::String)> + 'static)
+impl core::default::Default for tungsten_core::inspect::InspectRegistry
+pub fn tungsten_core::inspect::InspectRegistry::default() -> tungsten_core::inspect::InspectRegistry
+impl core::marker::Freeze for tungsten_core::inspect::InspectRegistry
+impl !core::marker::Send for tungsten_core::inspect::InspectRegistry
+impl !core::marker::Sync for tungsten_core::inspect::InspectRegistry
+impl core::marker::Unpin for tungsten_core::inspect::InspectRegistry
+impl core::marker::UnsafeUnpin for tungsten_core::inspect::InspectRegistry
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::inspect::InspectRegistry
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::inspect::InspectRegistry
 pub struct tungsten_core::Light
 pub tungsten_core::Light::color: glam::f32::vec3::Vec3
 pub tungsten_core::Light::intensity: f32
@@ -10861,6 +11130,24 @@ impl core::marker::Unpin for tungsten_core::physics::PhysicsConfig
 impl core::marker::UnsafeUnpin for tungsten_core::physics::PhysicsConfig
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::PhysicsConfig
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::PhysicsConfig
+pub struct tungsten_core::PhysicsPlugin
+impl core::clone::Clone for tungsten_core::PhysicsPlugin
+pub fn tungsten_core::PhysicsPlugin::clone(&self) -> tungsten_core::PhysicsPlugin
+impl core::default::Default for tungsten_core::PhysicsPlugin
+pub fn tungsten_core::PhysicsPlugin::default() -> tungsten_core::PhysicsPlugin
+impl core::fmt::Debug for tungsten_core::PhysicsPlugin
+pub fn tungsten_core::PhysicsPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::PhysicsPlugin
+impl tungsten_core::schedule::Plugin for tungsten_core::PhysicsPlugin
+pub fn tungsten_core::PhysicsPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::World)
+pub fn tungsten_core::PhysicsPlugin::name(&self) -> &'static str
+impl core::marker::Freeze for tungsten_core::PhysicsPlugin
+impl core::marker::Send for tungsten_core::PhysicsPlugin
+impl core::marker::Sync for tungsten_core::PhysicsPlugin
+impl core::marker::Unpin for tungsten_core::PhysicsPlugin
+impl core::marker::UnsafeUnpin for tungsten_core::PhysicsPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::PhysicsPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::PhysicsPlugin
 pub struct tungsten_core::PixelOutlineParams
 pub tungsten_core::PixelOutlineParams::alpha_threshold: f32
 pub tungsten_core::PixelOutlineParams::color: [f32; 4]
@@ -10886,6 +11173,25 @@ impl core::marker::Unpin for tungsten_core::post::PixelOutlineParams
 impl core::marker::UnsafeUnpin for tungsten_core::post::PixelOutlineParams
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::post::PixelOutlineParams
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::post::PixelOutlineParams
+pub struct tungsten_core::PluginSet
+impl tungsten_core::schedule::PluginSet
+pub fn tungsten_core::schedule::PluginSet::build(self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::World)
+pub fn tungsten_core::schedule::PluginSet::contains<P: tungsten_core::schedule::Plugin>(&self) -> bool
+pub fn tungsten_core::schedule::PluginSet::is_empty(&self) -> bool
+pub fn tungsten_core::schedule::PluginSet::len(&self) -> usize
+pub fn tungsten_core::schedule::PluginSet::names(&self) -> alloc::vec::Vec<&'static str>
+pub fn tungsten_core::schedule::PluginSet::new() -> Self
+pub fn tungsten_core::schedule::PluginSet::with<P: tungsten_core::schedule::Plugin>(self, P) -> Self
+pub fn tungsten_core::schedule::PluginSet::without<P: tungsten_core::schedule::Plugin>(self) -> Self
+impl core::default::Default for tungsten_core::schedule::PluginSet
+pub fn tungsten_core::schedule::PluginSet::default() -> tungsten_core::schedule::PluginSet
+impl core::marker::Freeze for tungsten_core::schedule::PluginSet
+impl !core::marker::Send for tungsten_core::schedule::PluginSet
+impl !core::marker::Sync for tungsten_core::schedule::PluginSet
+impl core::marker::Unpin for tungsten_core::schedule::PluginSet
+impl core::marker::UnsafeUnpin for tungsten_core::schedule::PluginSet
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::schedule::PluginSet
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::schedule::PluginSet
 pub struct tungsten_core::Position(pub glam::f32::vec2::Vec2)
 impl tungsten_core::physics::components::Position
 pub fn tungsten_core::physics::components::Position::new(f32, f32) -> Self
@@ -11241,6 +11547,29 @@ impl core::marker::Unpin for tungsten_core::assets::scene::SceneTween
 impl core::marker::UnsafeUnpin for tungsten_core::assets::scene::SceneTween
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::scene::SceneTween
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::scene::SceneTween
+pub struct tungsten_core::Schedule
+impl tungsten_core::schedule::Schedule
+pub fn tungsten_core::schedule::Schedule::add(&mut self, tungsten_core::schedule::Stage, tungsten_core::schedule::SystemDesc)
+pub fn tungsten_core::schedule::Schedule::add_fn(&mut self, tungsten_core::schedule::Stage, impl core::convert::Into<alloc::string::String>, impl core::ops::function::FnMut(&mut tungsten_core::World) + 'static)
+pub fn tungsten_core::schedule::Schedule::contains(&self, &str) -> bool
+pub fn tungsten_core::schedule::Schedule::is_empty(&self) -> bool
+pub fn tungsten_core::schedule::Schedule::is_resolved(&self) -> bool
+pub fn tungsten_core::schedule::Schedule::len(&self) -> usize
+pub fn tungsten_core::schedule::Schedule::names(&self, tungsten_core::schedule::Stage) -> impl core::iter::traits::iterator::Iterator<Item = &str>
+pub fn tungsten_core::schedule::Schedule::new() -> Self
+pub fn tungsten_core::schedule::Schedule::resolve(&mut self) -> core::result::Result<(), tungsten_core::schedule::ScheduleError>
+pub fn tungsten_core::schedule::Schedule::resolved_text(&self) -> alloc::string::String
+pub fn tungsten_core::schedule::Schedule::run_stage(&mut self, tungsten_core::schedule::Stage, &mut tungsten_core::World, impl core::ops::function::FnMut(&str, core::time::Duration))
+pub fn tungsten_core::schedule::Schedule::stage_of(&self, &str) -> core::option::Option<tungsten_core::schedule::Stage>
+impl core::default::Default for tungsten_core::schedule::Schedule
+pub fn tungsten_core::schedule::Schedule::default() -> Self
+impl core::marker::Freeze for tungsten_core::schedule::Schedule
+impl !core::marker::Send for tungsten_core::schedule::Schedule
+impl !core::marker::Sync for tungsten_core::schedule::Schedule
+impl core::marker::Unpin for tungsten_core::schedule::Schedule
+impl core::marker::UnsafeUnpin for tungsten_core::schedule::Schedule
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::schedule::Schedule
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::schedule::Schedule
 pub struct tungsten_core::ShakeEvent
 pub tungsten_core::ShakeEvent::trauma_add: f32
 impl core::clone::Clone for tungsten_core::ShakeEvent
@@ -11452,6 +11781,20 @@ impl core::marker::Unpin for tungsten_core::text::StyledText
 impl core::marker::UnsafeUnpin for tungsten_core::text::StyledText
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::StyledText
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::StyledText
+pub struct tungsten_core::SystemDesc
+impl tungsten_core::schedule::SystemDesc
+pub fn tungsten_core::schedule::SystemDesc::after(self, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_core::schedule::SystemDesc::after_if_present(self, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_core::schedule::SystemDesc::before(self, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_core::schedule::SystemDesc::before_if_present(self, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_core::schedule::SystemDesc::name(&self) -> &str
+impl core::marker::Freeze for tungsten_core::schedule::SystemDesc
+impl !core::marker::Send for tungsten_core::schedule::SystemDesc
+impl !core::marker::Sync for tungsten_core::schedule::SystemDesc
+impl core::marker::Unpin for tungsten_core::schedule::SystemDesc
+impl core::marker::UnsafeUnpin for tungsten_core::schedule::SystemDesc
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::schedule::SystemDesc
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::schedule::SystemDesc
 pub struct tungsten_core::Tag
 pub tungsten_core::Tag::name: alloc::string::String
 impl tungsten_core::components::Tag
@@ -12001,6 +12344,21 @@ impl core::marker::Unpin for tungsten_core::ui::id::WidgetId
 impl core::marker::UnsafeUnpin for tungsten_core::ui::id::WidgetId
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::id::WidgetId
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::id::WidgetId
+pub struct tungsten_core::WindowSize
+pub tungsten_core::WindowSize::height: u32
+pub tungsten_core::WindowSize::width: u32
+impl core::clone::Clone for tungsten_core::display::WindowSize
+pub fn tungsten_core::display::WindowSize::clone(&self) -> tungsten_core::display::WindowSize
+impl core::fmt::Debug for tungsten_core::display::WindowSize
+pub fn tungsten_core::display::WindowSize::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::display::WindowSize
+impl core::marker::Freeze for tungsten_core::display::WindowSize
+impl core::marker::Send for tungsten_core::display::WindowSize
+impl core::marker::Sync for tungsten_core::display::WindowSize
+impl core::marker::Unpin for tungsten_core::display::WindowSize
+impl core::marker::UnsafeUnpin for tungsten_core::display::WindowSize
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::display::WindowSize
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::display::WindowSize
 pub struct tungsten_core::WipeRadialParams
 pub tungsten_core::WipeRadialParams::center: [f32; 2]
 pub tungsten_core::WipeRadialParams::progress: f32
@@ -12031,12 +12389,14 @@ impl tungsten_core::World
 pub fn tungsten_core::World::despawn(&mut self, tungsten_core::Entity)
 pub fn tungsten_core::World::entity_count(&self) -> u32
 pub fn tungsten_core::World::flush(&mut self, tungsten_core::CommandBuffer)
+pub fn tungsten_core::World::flush_events(&mut self)
 pub fn tungsten_core::World::flush_reusing(&mut self, &mut tungsten_core::CommandBuffer)
 pub fn tungsten_core::World::get<T: 'static>(&self, tungsten_core::Entity) -> core::option::Option<&T>
 pub fn tungsten_core::World::get_mut<T: 'static>(&mut self, tungsten_core::Entity) -> core::option::Option<&mut T>
 pub fn tungsten_core::World::get_resource<T: 'static>(&self) -> core::option::Option<&T>
 pub fn tungsten_core::World::get_resource_mut<T: 'static>(&mut self) -> core::option::Option<&mut T>
 pub fn tungsten_core::World::has<T: 'static>(&self, tungsten_core::Entity) -> bool
+pub fn tungsten_core::World::has_event<T: 'static>(&self) -> bool
 pub fn tungsten_core::World::has_resource<T: 'static>(&self) -> bool
 pub fn tungsten_core::World::insert<T: 'static>(&mut self, tungsten_core::Entity, T)
 pub fn tungsten_core::World::insert_resource<T: 'static>(&mut self, T)
@@ -12055,6 +12415,8 @@ pub fn tungsten_core::World::query3_mut_without<A: 'static, B: 'static, C: 'stat
 pub fn tungsten_core::World::query3_opt2<A: 'static, B: 'static, C: 'static, D: 'static, E: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &A, &B, &C, core::option::Option<&D>, core::option::Option<&E>)>
 pub fn tungsten_core::World::query_entities<T: 'static>(&self) -> alloc::vec::Vec<tungsten_core::Entity>
 pub fn tungsten_core::World::query_mut<T: 'static>(&mut self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &mut T)>
+pub fn tungsten_core::World::register_event<T: 'static>(&mut self) -> bool
+pub fn tungsten_core::World::registered_event_count(&self) -> usize
 pub fn tungsten_core::World::remove_component<T: 'static>(&mut self, tungsten_core::Entity) -> core::option::Option<T>
 pub fn tungsten_core::World::remove_resource<T: 'static>(&mut self) -> core::option::Option<T>
 pub fn tungsten_core::World::spawn(&mut self) -> tungsten_core::Entity
@@ -12109,6 +12471,12 @@ impl tungsten_core::assets::particle::Lerp for [f32; 4]
 pub fn [f32; 4]::lerp(Self, Self, f32) -> Self
 impl tungsten_core::assets::particle::Lerp for f32
 pub fn f32::lerp(Self, Self, f32) -> Self
+pub trait tungsten_core::Plugin: 'static
+pub fn tungsten_core::Plugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::World)
+pub fn tungsten_core::Plugin::name(&self) -> &'static str
+impl tungsten_core::schedule::Plugin for tungsten_core::PhysicsPlugin
+pub fn tungsten_core::PhysicsPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::World)
+pub fn tungsten_core::PhysicsPlugin::name(&self) -> &'static str
 pub trait tungsten_core::TextMeasure
 pub fn tungsten_core::TextMeasure::measure(&mut self, tungsten_core::text::TextNodeId, core::option::Option<f32>, tungsten_core::text::MeasureWidth) -> tungsten_core::text::TextMetrics
 impl tungsten_core::text::TextMeasure for tungsten_core::ui::measure::FixedAdvanceMeasure
@@ -12136,6 +12504,7 @@ pub fn tungsten_core::parallax_world_position(glam::f32::vec2::Vec2, glam::f32::
 pub fn tungsten_core::physics_step(&mut tungsten_core::World)
 pub fn tungsten_core::splitmix64(u64) -> u64
 pub fn tungsten_core::sync_position_to_transform(&mut tungsten_core::World)
+pub fn tungsten_core::system(impl core::convert::Into<alloc::string::String>, impl core::ops::function::FnMut(&mut tungsten_core::World) + 'static) -> tungsten_core::schedule::SystemDesc
 pub type tungsten_core::ParticleMeshAssetId = tungsten_core::assets::particle::AssetId<tungsten_core::assets::particle::ParticleMesh>
 pub type tungsten_core::ParticleMeshEntry = tungsten_core::assets::particle::ParticleMesh
 pub type tungsten_core::SpriteAssetId = tungsten_core::assets::particle::AssetId<tungsten_core::assets::registry::SpriteAsset>

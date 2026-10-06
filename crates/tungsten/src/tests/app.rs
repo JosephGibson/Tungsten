@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use tungsten_core::post::{FadeParams, PostPass, PostStack};
 use tungsten_core::{
     AudioCommand, AudioCommands, CollisionEvent, CommandBuffer, Config, DeltaTime, DisplayMode,
-    DisplayState, EventQueue, InputState, KeyCode, ShakeEvent, SquashEvent,
+    DisplayState, EventQueue, InputState, KeyCode, ShakeEvent, SquashEvent, Stage, World, system,
 };
 use tungsten_render::QuadInstance;
 
@@ -18,14 +18,14 @@ struct ExampleEvent;
 #[test]
 fn register_event_is_idempotent_per_type() {
     let mut app = App::new(Config::default()).expect("App::new failed");
-    let initial_flushers = app.event_flushers.len();
+    let initial_flushers = app.world.registered_event_count();
 
     app.register_event::<ExampleEvent>();
-    let after_first = app.event_flushers.len();
+    let after_first = app.world.registered_event_count();
     app.register_event::<ExampleEvent>();
 
     assert_eq!(after_first, initial_flushers + 1);
-    assert_eq!(app.event_flushers.len(), after_first);
+    assert_eq!(app.world.registered_event_count(), after_first);
     assert!(
         app.world
             .get_resource::<EventQueue<ExampleEvent>>()
@@ -36,11 +36,11 @@ fn register_event_is_idempotent_per_type() {
 #[test]
 fn collision_event_is_pre_registered() {
     let mut app = App::new(Config::default()).expect("App::new failed");
-    let initial_flushers = app.event_flushers.len();
+    let initial_flushers = app.world.registered_event_count();
 
     app.register_event::<CollisionEvent>();
 
-    assert_eq!(app.event_flushers.len(), initial_flushers);
+    assert_eq!(app.world.registered_event_count(), initial_flushers);
 }
 
 #[test]
@@ -324,6 +324,29 @@ fn headless_frame(app: &mut App) -> FrameEnd {
 
 /// The dt the last frame's systems read.
 struct SeenDt(f32);
+
+#[test]
+fn startup_time_is_excluded_from_the_next_frame_dt() {
+    // The `Startup` stage runs inside the first frame; its time must not
+    // reach the second frame's dt, as the startup hook's does not (2.3).
+    let mut app = App::new(Config::default()).expect("App::new failed");
+    app.add_system_to(
+        Stage::Startup,
+        system("slow_boot", |_: &mut World| {
+            std::thread::sleep(Duration::from_millis(20));
+        }),
+    );
+    app.resolve_schedule().expect("resolves");
+    let first = app.run_frame(Instant::now(), FrameClock::Wall, |_| {});
+    assert_eq!(first, FrameEnd::Completed);
+    let second = app.run_frame(Instant::now(), FrameClock::Wall, |_| {});
+    assert_eq!(second, FrameEnd::Completed);
+    let dt = app.world.get_resource::<DeltaTime>().expect("DeltaTime").dt;
+    assert!(
+        dt < 0.020,
+        "the second frame's dt {dt} includes the startup stage"
+    );
+}
 
 #[test]
 fn a_pinned_dt_reaches_systems_as_given() {

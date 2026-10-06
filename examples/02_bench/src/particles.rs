@@ -11,9 +11,10 @@
 //! walks `query2_mut::<AnimationState, Sprite>`, calls `advance` and
 //! restarts finished one-shots.
 //!
-//! Without T1 the particle stage (count refresh, emit, tick, between
-//! `update` and `flush`) has no timing of its own, so it lands in
-//! `unattributed`; the row owns that plus the `animate_sprites` row.
+//! The particle stage is three named `post_update` systems since M38
+//! (`particle_count_refresh`, `particle_emit`, `particle_tick`, `D-133`),
+//! timed like any other; the row owns those three plus the `animate_sprites`
+//! row, and `unattributed` holds only the event flush.
 //! Particles spawn through the `CommandBuffer` and everything draws through
 //! the default extract: `flush` belongs to `churn`, the extract to `gpu`,
 //! and both are reported only.
@@ -90,7 +91,9 @@ const ROWS: &[Row] = &[Row {
     name: "particles",
     preset: "default",
     owned: &[
-        ("stage.unattributed", P50_P95),
+        ("system.particle_count_refresh", P50_P95),
+        ("system.particle_emit", P50_P95),
+        ("system.particle_tick", P50_P95),
         ("system.animate_sprites", P50_P95),
     ],
     guards: &[Guard::CounterBand {
@@ -98,10 +101,11 @@ const ROWS: &[Row] = &[Row {
         tolerance: 0.1,
     }],
     counters: &["live", "emitters", "animated", "frame_changes"],
-    bottleneck: "stage.unattributed",
+    bottleneck: "system.particle_tick",
     key_knobs: &["emitters", "animated"],
-    note: "Without T1 the particle stage has no timing of its own: `unattributed` holds it \
-           (plus event flush), so the row owns `stage.unattributed` and `animate_sprites`",
+    note: "The particle stage is three named `post_update` systems since M38 (`D-133`): the row \
+           owns `particle_count_refresh`, `particle_emit`, `particle_tick` and `animate_sprites`; \
+           `unattributed` holds only the event flush",
 }];
 
 /// Live particles each emitter targets at `rate` 1.

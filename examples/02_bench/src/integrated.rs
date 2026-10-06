@@ -146,9 +146,9 @@ const ROWS: &[Row] = &[Row {
            threshold. No stage is owned: the declared bottleneck, \
            physics_step, is the stage calibration found limiting (walkers and crates against the \
            tile proxies), ahead of the default extract. Tiles draw at z_norm 0, so the row needs \
-           the default cpu_stable depth sort (under gpu_depth they cover every sprite). Without \
-           T1, particle and tween time lands in `unattributed`. Changing HUD and name-tag text \
-           grows RSS through the text buffer cache (360-frame TTL)",
+           the default cpu_stable depth sort (under gpu_depth they cover every sprite). Particle \
+           and tween time is timed under the engine's `post_update` systems (M38). Changing \
+           HUD and name-tag text grows RSS through the text buffer cache (360-frame TTL)",
 }];
 
 /// Every n-th walker is a caster.
@@ -342,6 +342,11 @@ fn configure(app: &mut App, cfg: &BenchConfig) {
     // The root manifest provides the `damage_flash` material and the fonts.
     app.set_manifest_roots(vec!["assets/manifest.json".into()]);
     app.on_startup(move |world, renderer| scene::startup(world, renderer, params, level, camera));
+    // Hand-wired engine systems send these; without `PhysicsPlugin` and
+    // `GameFeelPlugin` the row registers the queues itself.
+    app.register_event::<tungsten::core::CollisionEvent>();
+    app.register_event::<tungsten::core::ShakeEvent>();
+    app.register_event::<tungsten::core::SquashEvent>();
     app.add_system_named("bench_counters", bench_counters_system::<IntegratedCounts>);
     app.add_system_named("actor_ai", systems::actor_ai);
     app.add_system_named("projectiles", systems::projectiles);

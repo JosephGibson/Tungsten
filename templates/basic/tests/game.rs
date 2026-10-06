@@ -11,14 +11,14 @@ use tungsten_template_basic::components::Player;
 use tungsten_template_basic::game::{self, active_state};
 use tungsten_template_basic::states::{GAMEPLAY, PAUSE, PLAYER_START, TITLE};
 
-/// The game as `main.rs` builds it, with its startup work run by hand and
-/// one frame stepped, which puts the title state on the stack.
+/// The game as `main.rs` builds it, with one frame stepped: its `Startup`
+/// stage runs `setup`, which requests the title state, and the engine's
+/// dispatcher applies it in the same frame's `pre_update`.
 fn harness() -> Harness {
     let config = Config::load("tungsten.json").expect("tungsten.json loads");
     let mut app = App::new(config).expect("App::new failed");
     game::register(&mut app);
     let mut harness = Harness::new(app);
-    game::setup(harness.world_mut());
     harness.step(1);
     harness
 }
@@ -37,6 +37,25 @@ fn player(harness: &Harness) -> Option<[f32; 2]> {
     players
         .next()
         .map(|(_, _, transform)| [transform.position.x, transform.position.y])
+}
+
+/// The resolved schedule as `register` builds it: the game's two systems in
+/// their stages between the engine's. A reorder shows up here as a diff.
+const SCHEDULE: &str = "\
+startup: setup
+pre_update: physics_debug_toggle, systems_overlay_toggle, inspector_toggle, inspector_pick, hud_toggle, display_input, state_dispatcher
+fixed_update: physics_step
+update: player_movement
+post_update: physics_sync, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, camera_update
+";
+
+#[test]
+fn the_schedule_matches_the_snapshot() {
+    let config = Config::load("tungsten.json").expect("tungsten.json loads");
+    let mut app = App::new(config).expect("App::new failed");
+    game::register(&mut app);
+    app.resolve_schedule().expect("the schedule resolves");
+    assert_eq!(app.schedule().resolved_text(), SCHEDULE);
 }
 
 #[test]

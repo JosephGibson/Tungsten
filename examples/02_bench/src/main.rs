@@ -22,8 +22,11 @@ mod particles;
 mod physics;
 mod view;
 
-use tungsten::core::{Config, Resolution};
-use tungsten::{App, InspectorState, PhysicsDebugOverlay, SystemTimingOverlay};
+use tungsten::core::{Config, PluginSet, Resolution};
+use tungsten::{
+    App, DebugPlugin, DisplayPlugin, InspectorState, ParticlesPlugin, PhysicsDebugOverlay,
+    StatePlugin, SystemTimingOverlay, TweensPlugin,
+};
 
 use crate::knobs::Bench;
 use crate::view::VIEWPORT;
@@ -64,7 +67,16 @@ fn main() -> anyhow::Result<()> {
     });
     config.display.vsync = Some(false);
     (cfg.bench.engine_config)(&mut config, &cfg);
-    let mut app = App::new(config)?;
+    // No `DefaultPlugins`: each row wires the engine systems it measures
+    // itself, in its own order. These are the engine stages every row ran
+    // before the schedule, so the frames stay comparable.
+    let plugins = PluginSet::new()
+        .with(DebugPlugin)
+        .with(DisplayPlugin)
+        .with(StatePlugin)
+        .with(ParticlesPlugin)
+        .with(TweensPlugin);
+    let mut app = App::with_plugins(config, plugins)?;
     (cfg.bench.configure)(&mut app, &cfg);
     counters::log_config(&bench_config);
     apply_overlay_env(&mut app);

@@ -8,14 +8,20 @@ const DISPLAY_MODE_EXPECTED: &str = "windowed, borderless_fullscreen, or exclusi
 const SCALE_MODE_EXPECTED: &str = "stretch or integer";
 const PRESENT_MODE_EXPECTED: &str = "auto, immediate, mailbox, fifo, auto_vsync, or auto_no_vsync";
 
+/// How the window is presented.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DisplayMode {
+    /// A window at the configured resolution.
     Windowed,
+    /// A borderless window covering the monitor.
     BorderlessFullscreen,
+    /// The monitor's exclusive fullscreen mode.
     ExclusiveFullscreen,
 }
 
 impl DisplayMode {
+    /// The config name: `windowed`, `borderless_fullscreen` or
+    /// `exclusive_fullscreen`.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -25,6 +31,7 @@ impl DisplayMode {
         }
     }
 
+    /// The mode a config name denotes; `None` for any other string.
     #[must_use]
     pub fn from_str_name(value: &str) -> Option<Self> {
         match value {
@@ -36,13 +43,17 @@ impl DisplayMode {
     }
 }
 
+/// How the render resolution fills the window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScaleMode {
+    /// Stretched to the window.
     Stretch,
+    /// Scaled by the largest whole factor that fits, pixel-exact.
     Integer,
 }
 
 impl ScaleMode {
+    /// The config name: `stretch` or `integer`.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -51,6 +62,7 @@ impl ScaleMode {
         }
     }
 
+    /// The mode a config name denotes; `None` for any other string.
     #[must_use]
     pub fn from_str_name(value: &str) -> Option<Self> {
         match value {
@@ -61,9 +73,12 @@ impl ScaleMode {
     }
 }
 
+/// A render resolution in pixels; 1280 by 720 by default.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Resolution {
+    /// Width in pixels.
     pub width: u32,
+    /// Height in pixels.
     pub height: u32,
 }
 
@@ -76,14 +91,36 @@ impl Default for Resolution {
     }
 }
 
+/// The window's size in physical pixels: a `World` resource `App` inserts
+/// at startup and keeps current through resizes, which extracts and
+/// overlays read. In core since M38, so a plugin on core alone can read it
+/// (`D-128`); the umbrella re-exports it at its old paths.
+#[derive(Debug, Clone, Copy)]
+pub struct WindowSize {
+    /// Width in physical pixels.
+    pub width: u32,
+    /// Height in physical pixels.
+    pub height: u32,
+}
+
+/// The resolved display settings: what [`DisplayConfig::resolve`] produces
+/// at startup and a `World` resource the app keeps current as hotkeys and
+/// pending requests change them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DisplayState {
+    /// The render resolution.
     pub resolution: Resolution,
+    /// How the window is presented.
     pub display_mode: DisplayMode,
+    /// Whether presentation waits for the vertical blank.
     pub vsync: bool,
+    /// The swapchain present mode, when the config names one.
     pub present_mode: Option<PresentModeConfig>,
+    /// The swapchain's maximum frame latency, when the config sets one.
     pub max_frame_latency: Option<u32>,
+    /// How the render resolution fills the window.
     pub scale_mode: ScaleMode,
+    /// The frame-rate cap in frames per second, when one is set.
     pub frame_rate_cap: Option<u32>,
 }
 
@@ -102,6 +139,11 @@ impl Default for DisplayState {
 }
 
 impl DisplayState {
+    /// Checks the state is one the engine can run with.
+    ///
+    /// # Errors
+    ///
+    /// A zero width or height, or a frame-rate cap of zero.
     pub fn validate(&self) -> Result<(), DisplayValidationError> {
         if self.resolution.width == 0 || self.resolution.height == 0 {
             return Err(DisplayValidationError::InvalidResolution {
@@ -118,18 +160,30 @@ impl DisplayState {
     }
 }
 
+/// The `display` section of `tungsten.json`, every field optional; a value
+/// that fails to parse is dropped with a warning.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DisplayConfig {
+    /// `display.resolution`.
     pub resolution: Option<Resolution>,
+    /// `display.display_mode`.
     pub display_mode: Option<DisplayMode>,
+    /// `display.vsync`.
     pub vsync: Option<bool>,
+    /// `display.present_mode`.
     pub present_mode: Option<PresentModeConfig>,
+    /// `display.max_frame_latency`.
     pub max_frame_latency: Option<u32>,
+    /// `display.scale_mode`.
     pub scale_mode: Option<ScaleMode>,
+    /// `display.frame_rate_cap`.
     pub frame_rate_cap: Option<u32>,
 }
 
 impl DisplayConfig {
+    /// The state this section gives: each set field, else the `window`
+    /// section's size and vsync, the `render` section's present mode and
+    /// frame latency, windowed, stretched and uncapped.
     #[must_use]
     pub fn resolve(&self, window: &WindowConfig, render: &RenderConfig) -> DisplayState {
         let mut resolved = DisplayState {
@@ -225,10 +279,18 @@ impl<'de> Deserialize<'de> for DisplayConfig {
     }
 }
 
+/// A display state the engine cannot run with ([`DisplayState::validate`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum DisplayValidationError {
+    /// A zero width or height.
     #[error("invalid resolution {width}x{height}; expected width >= 1 and height >= 1")]
-    InvalidResolution { width: u32, height: u32 },
+    InvalidResolution {
+        /// The width given.
+        width: u32,
+        /// The height given.
+        height: u32,
+    },
+    /// A frame-rate cap of zero.
     #[error("invalid frame_rate_cap '{0}'; expected >= 1")]
     InvalidFrameRateCap(u32),
 }

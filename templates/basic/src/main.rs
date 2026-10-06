@@ -18,7 +18,5 @@ fn main() -> anyhow::Result<()> {
         app.enable_hot_reload(&[PathBuf::from("assets")], PathBuf::from(game::MANIFEST));
     }
     game::register(&mut app);
-    // Runs once the renderer is up and the manifest has loaded.
-    app.on_startup(|world, _renderer| game::setup(world));
     app.run()
 }

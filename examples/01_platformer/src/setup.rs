@@ -6,15 +6,10 @@ use tungsten::core::{
     CameraMode, Easing, Entity, Light, ParallaxLayer, ParticleBudget, ParticleConfigRegistry,
     ParticleEmitter, ParticleEmitterState, SoundRegistry, Sprite, SpriteSquashStretch,
     SquashTrigger, Tag, TilemapInstance, TilemapRegistry, Transform, Visibility, World,
-    sync_position_to_transform,
 };
-use tungsten::physics::{
-    BodyKind, Collider, PhysicsConfig, Position, RigidBody, Velocity, physics_step,
-};
-use tungsten::{
-    App, camera_update_system, shake_tick_system, squash_stretch_tick_system,
-    squash_stretch_trigger_system,
-};
+use tungsten::physics::{BodyKind, Collider, PhysicsConfig, Position, RigidBody, Velocity};
+use tungsten::plugins::{PARTICLE_COUNT_REFRESH, PHYSICS_STEP, PHYSICS_SYNC};
+use tungsten::{App, Stage, SystemDesc, system};
 
 use crate::extract::{extract_sprites, extract_text};
 use crate::level_layout::{EMITTERS, PROPS};
@@ -36,52 +31,157 @@ use crate::systems::{
 
 type ExampleSystem = fn(&mut World);
 
-pub(crate) const RUNTIME_SYSTEM_ORDER: &[(&str, ExampleSystem)] = &[
-    ("platformer_bindings", platformer_bindings),
-    ("update_text_display", update_text_display),
-    ("player_input", player_input),
-    ("lantern_input", crate::gameplay::lantern_input),
-    ("spawn_ball_system", spawn_ball_system),
-    ("spawn_black_hole_system", spawn_black_hole_system),
-    ("black_hole_force_system", black_hole_force_system),
+/// Where a runtime system sits against the engine's systems of its stage
+/// (`D-128`; M38). Within a slot, systems run in table order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Slot {
+    /// `pre_update`, after the engine's dispatcher by registration order.
+    PreUpdate,
+    /// `fixed_update` before `physics_step`: input and whatever drives a
+    /// body, so a press moves it on the frame after it.
+    BeforeStep,
+    /// `fixed_update` after `physics_step`: this step's `CollisionEvent`
+    /// readers and the fireball mover.
+    AfterStep,
+    /// `update`: presentation and cleanup that no contact feeds.
+    Update,
+    /// `post_update` between the physics sync and the engine's chain, which
+    /// starts at `particle_count_refresh`: newborn particles are coloured
+    /// before `particle_tick` ages them and the base zoom is written before
+    /// `camera_update` reads it.
+    AfterSync,
+}
+
+impl Slot {
+    pub(crate) fn stage(self) -> Stage {
+        match self {
+            Self::PreUpdate => Stage::PreUpdate,
+            Self::BeforeStep | Self::AfterStep => Stage::FixedUpdate,
+            Self::Update => Stage::Update,
+            Self::AfterSync => Stage::PostUpdate,
+        }
+    }
+
+    /// `name` with the slot's constraints against the engine's names.
+    fn desc(self, name: &'static str, run: ExampleSystem) -> SystemDesc {
+        let desc = system(name, run);
+        match self {
+            Self::PreUpdate | Self::Update => desc,
+            Self::BeforeStep => desc.before(PHYSICS_STEP),
+            Self::AfterStep => desc.after(PHYSICS_STEP),
+            Self::AfterSync => desc.after(PHYSICS_SYNC).before(PARTICLE_COUNT_REFRESH),
+        }
+    }
+}
+
+/// The game's systems by slot, in the order they ran as one flat list before
+/// M38: the stage boundaries are drawn through that order, nothing is
+/// reordered. `tests/main.rs` pins the resolved schedule.
+pub(crate) const RUNTIME_SYSTEM_ORDER: &[(Slot, &str, ExampleSystem)] = &[
+    (Slot::PreUpdate, "platformer_bindings", platformer_bindings),
+    (Slot::BeforeStep, "update_text_display", update_text_display),
+    (Slot::BeforeStep, "player_input", player_input),
     (
+        Slot::BeforeStep,
+        "lantern_input",
+        crate::gameplay::lantern_input,
+    ),
+    (Slot::BeforeStep, "spawn_ball_system", spawn_ball_system),
+    (
+        Slot::BeforeStep,
+        "spawn_black_hole_system",
+        spawn_black_hole_system,
+    ),
+    (
+        Slot::BeforeStep,
+        "black_hole_force_system",
+        black_hole_force_system,
+    ),
+    (
+        Slot::BeforeStep,
         "cast_fireball_system",
         crate::fireball::cast_fireball_system,
     ),
-    ("audio_input_system", audio_input_system),
-    ("camera_zoom_input_system", camera_zoom_input_system),
-    ("rainbow_ball_hue_system", rainbow_ball_hue_system),
-    ("move_obstacles", crate::gameplay::move_obstacles),
-    ("tick_ball_fire", crate::burning::tick_ball_fire),
-    ("physics_step", physics_step),
-    ("ground_detection", ground_detection),
-    ("small_ball_impacts", crate::gameplay::small_ball_impacts),
-    ("hazard_contacts", crate::gameplay::hazard_contacts),
+    (Slot::BeforeStep, "audio_input_system", audio_input_system),
     (
+        Slot::BeforeStep,
+        "camera_zoom_input_system",
+        camera_zoom_input_system,
+    ),
+    (
+        Slot::BeforeStep,
+        "rainbow_ball_hue_system",
+        rainbow_ball_hue_system,
+    ),
+    (
+        Slot::BeforeStep,
+        "move_obstacles",
+        crate::gameplay::move_obstacles,
+    ),
+    (
+        Slot::BeforeStep,
+        "tick_ball_fire",
+        crate::burning::tick_ball_fire,
+    ),
+    (Slot::AfterStep, "ground_detection", ground_detection),
+    (
+        Slot::AfterStep,
+        "small_ball_impacts",
+        crate::gameplay::small_ball_impacts,
+    ),
+    (
+        Slot::AfterStep,
+        "hazard_contacts",
+        crate::gameplay::hazard_contacts,
+    ),
+    (
+        Slot::AfterStep,
         "fireball_flight_system",
         crate::fireball::fireball_flight_system,
     ),
-    ("spread_ball_fire", crate::burning::spread_ball_fire),
-    ("black_hole_extinguish_system", black_hole_extinguish_system),
-    ("black_hole_lifetime_system", black_hole_lifetime_system),
-    ("despawn_out_of_bounds", despawn_out_of_bounds),
-    ("player_presentation_system", player_presentation_system),
-    ("animation_system", animation_system),
-    ("transient_emitter_cleanup", transient_emitter_cleanup),
-    ("sync_position_to_transform", sync_position_to_transform),
-    ("ball_fire_particles", crate::burning::ball_fire_particles),
-    ("orbit_lights_system", orbit_lights_system),
-    // M30: the trigger reads the current event window, so it must follow
-    // `ground_detection`; `shake_tick_system` must precede the camera update.
     (
-        "squash_stretch_trigger_system",
-        squash_stretch_trigger_system,
+        Slot::AfterStep,
+        "spread_ball_fire",
+        crate::burning::spread_ball_fire,
     ),
-    ("squash_stretch_tick_system", squash_stretch_tick_system),
-    ("scene_effects", crate::gameplay::scene_effects),
-    ("platformer_camera_base_zoom", platformer_camera_base_zoom),
-    ("shake_tick_system", shake_tick_system),
-    ("camera_update_system", camera_update_system),
+    (
+        Slot::Update,
+        "black_hole_extinguish_system",
+        black_hole_extinguish_system,
+    ),
+    (
+        Slot::Update,
+        "black_hole_lifetime_system",
+        black_hole_lifetime_system,
+    ),
+    (Slot::Update, "despawn_out_of_bounds", despawn_out_of_bounds),
+    (
+        Slot::Update,
+        "player_presentation_system",
+        player_presentation_system,
+    ),
+    (Slot::Update, "animation_system", animation_system),
+    (
+        Slot::Update,
+        "transient_emitter_cleanup",
+        transient_emitter_cleanup,
+    ),
+    (
+        Slot::AfterSync,
+        "ball_fire_particles",
+        crate::burning::ball_fire_particles,
+    ),
+    (Slot::AfterSync, "orbit_lights_system", orbit_lights_system),
+    (
+        Slot::AfterSync,
+        "scene_effects",
+        crate::gameplay::scene_effects,
+    ),
+    (
+        Slot::AfterSync,
+        "platformer_camera_base_zoom",
+        platformer_camera_base_zoom,
+    ),
 ];
 
 fn lighting_fixture_from_env() -> LightingFixtureMode {
@@ -516,9 +616,14 @@ fn install_startup(app: &mut App) {
 }
 
 fn install_runtime(app: &mut App) {
-    // Order: text cache -> input/gameplay -> physics -> sync -> camera.
-    for (name, system) in RUNTIME_SYSTEM_ORDER {
-        app.add_system_named(*name, *system);
+    // The game's systems by stage around the engine's (`D-128`): bindings
+    // in `pre_update`; input, the body drivers and the contact readers in
+    // `fixed_update` around `physics_step`; presentation in `update`; the
+    // particle, light and camera writers in `post_update` between the
+    // physics sync and the engine's particle, tween, game-feel and camera
+    // chain.
+    for &(slot, name, run) in RUNTIME_SYSTEM_ORDER {
+        app.add_system_to(slot.stage(), slot.desc(name, run));
     }
     app.set_extract_sprites(extract_sprites);
     app.set_extract_text(extract_text);
