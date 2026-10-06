@@ -7,16 +7,16 @@
 - **ordered steps:** Set at graduation. Candidates and their order: [implementation plan](implementation-plan.md) §4.
 - **done-when:** Set at graduation. Sketch: [criteria](criteria.md) §8.7.
 
-Skeleton. The scoping text stays in [criteria](criteria.md) §8.7 until this workstream graduates ([conventions](README.md#conventions)).
+Skeleton. The scoping text stays in [criteria](criteria.md) §8.7 until this workstream graduates ([conventions](README.md#conventions)). Revised 2026-10-06 on `01f9c55`, uncommitted: W16b gains the tilemap builder (`D-132`).
 
 ## Placement
 
 - **Proposed tier:** Must.
-- **Candidates:** W16a, the component registry and `components` in scene entries; W16b, prefab assets, `spawn_prefab` and Tiled object classes (Phase 6; split per implementation plan amendment 3).
+- **Candidates:** W16a, the component registry and `components` in scene entries; W16b, prefab assets, `spawn_prefab`, Tiled object classes and a public `TilemapData` builder with tile setters for maps built in code, which the acceptance game's generated arena needs (frame-loop gate, `D-132`; Phase 6; split per implementation plan amendment 3).
 - **Needs first:** W15a, for registration.
 - **Feeds:** W13's spawner and registered kit components; W14b `check`; the template's player and enemy.
 - **Owner questions:** None open.
-- **Decisions:** Component registry and prefabs: a `prefabs` manifest section and a row in the [assets](../../assets.md) table (extends `D-046`; `D-106` moved the table out of `AGENTS.md`).
+- **Decisions:** Component registry and prefabs: a `prefabs` manifest section and a row in the [assets](../../assets.md) table (extends `D-046`; `D-106` moved the table out of `AGENTS.md`); the tilemap builder's shape, at W16b's API review.
 
 ## Context digest
 

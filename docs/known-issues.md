@@ -48,7 +48,7 @@ Each was checked against the tree on 2026-10-02, except the last twenty-five: ni
 - Only `example-01-platformer` enables hot reload; the shader playground could too.
 - The stock shaders exist twice (`crates/tungsten-render/src/shaders/stock/**` and `assets/shaders/stock/**`, `D-059`); including the asset copies as `sprite.wgsl` and `lit_sprite.wgsl` already do would halve every stock-shader edit. `D-123` keeps both copies until crate publication is settled (Q2, W9c).
 - `Renderer::new` spends about 390 lines seeding shader IDs (`renderer.rs:145-537`).
-- `display.scale_mode` is parsed and unused (`DESIGN.md`'s config section, `core/display.rs`): wire or remove, owner's call.
+- `display.scale_mode` is parsed and unused (`DESIGN.md`'s config section, `core/display.rs`): removed before the freeze (glyph gate, `D-127`); the break-ledger row is W4b's.
 - Particle `Burst { once: false }` only suppresses `ParticleSystemDrained` and `Pulse { total_pulses: Some(0) }` fires one pulse (`tungsten/src/particles.rs:313-347`): define the semantics.
 - `render.max_frame_latency = 0` in the file passes `Config::load` and fails at renderer start (`render/surface.rs:118`), while `display.max_frame_latency = 0` warns and falls back (`core/display.rs:292-297`).
 - Perf: `env::var("TUNGSTEN_PERF_LOG")` every frame (`app.rs:1147`), the tween system cloning channel lists every frame (`tweens.rs:43`), tile proxies rebuilt from a full-map scan every frame.
