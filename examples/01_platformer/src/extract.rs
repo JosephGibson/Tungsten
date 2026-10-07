@@ -4,17 +4,14 @@ use crate::level_layout::PropDepth;
 use crate::state::{AnimatedProp, PlayerPresentation, TILE};
 use crate::state::{SMALL_BALL_SCALE, SMALL_BALL_START_SPRITE_ID, SmallBall};
 use glam::Vec2;
-use tungsten::WindowSize;
-use tungsten::core::assets::LayerKind;
 use tungsten::core::{
     AssetRegistry, CameraState, Entity, FilterMode, InputState, ParallaxLayer, Particle, Sprite,
     Time, Transform, Visibility, World, parallax_world_position,
 };
-use tungsten::core::{
-    MaterialAssetId, MaterialRegistry, SpriteAsset, TilemapInstance, TilemapRegistry,
-};
+use tungsten::core::{MaterialAssetId, MaterialRegistry, SpriteAsset};
 use tungsten::physics::{Position, PrevPosition};
 use tungsten::render::{SpriteBatch, SpriteInstance, TextSection};
+use tungsten::{WindowSize, extract_tilemap_layers};
 
 use crate::state::{
     BALL_START_SPRITE_ID, BALL_VISUAL_DIAMETER, BLACK_HOLE_VISUAL_DIAMETER, Ball, BallHue,
@@ -273,66 +270,6 @@ fn extract_parallax(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
     batches
 }
 
-/// Public tile data is enough for example-local stage selection and culling.
-pub(crate) fn extract_tile_layers(world: &World, names: &[&str]) -> Vec<SpriteBatch> {
-    let (Some(assets), Some(tilemaps)) = (
-        world.get_resource::<AssetRegistry>(),
-        world.get_resource::<TilemapRegistry>(),
-    ) else {
-        return vec![];
-    };
-    let (view_min, view_max) = view_bounds(world);
-    let mut result = Vec::new();
-    let mut maps: Vec<_> = world.query::<(Entity, &TilemapInstance)>().collect();
-    maps.sort_by_key(|(entity, _)| entity.id());
-    for (_, map) in maps {
-        let Some(data) = tilemaps.get(&map.id) else {
-            continue;
-        };
-        let tile = Vec2::new(data.tile_width as f32, data.tile_height as f32);
-        let start = ((view_min - map.origin) / tile)
-            .floor()
-            .max(Vec2::ZERO)
-            .as_uvec2();
-        let end = ((view_max - map.origin) / tile)
-            .ceil()
-            .max(Vec2::ZERO)
-            .as_uvec2()
-            .min(glam::UVec2::new(data.width, data.height));
-        for layer in &data.layers {
-            if layer.kind != LayerKind::Render || !names.contains(&layer.name.as_str()) {
-                continue;
-            }
-            let mut runs = Vec::new();
-            for row in start.y..end.y {
-                for col in start.x..end.x {
-                    let index = layer.tiles[(row * data.width + col) as usize];
-                    if index < 0 {
-                        continue;
-                    }
-                    let Some(id) = data.tileset.get(index as usize) else {
-                        continue;
-                    };
-                    let Some(asset) = assets.get_sprite(id) else {
-                        continue;
-                    };
-                    push_instance(
-                        &mut runs,
-                        asset,
-                        instance(
-                            asset,
-                            map.origin + Vec2::new(col as f32, row as f32) * tile,
-                            tile,
-                        ),
-                    );
-                }
-            }
-            result.extend(runs);
-        }
-    }
-    result
-}
-
 fn extract_props(world: &World, assets: &AssetRegistry, depth: PropDepth) -> Vec<SpriteBatch> {
     let (view_min, view_max) = view_bounds(world);
     let mut entries: Vec<_> = world
@@ -384,9 +321,12 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     };
     // M30: backdrop first, then the tilemap draws the world over it.
     let mut batches = extract_parallax(world, assets);
-    batches.extend(extract_tile_layers(world, &["background", "decorations"]));
+    batches.extend(extract_tilemap_layers(
+        world,
+        &["background", "decorations"],
+    ));
     batches.extend(extract_props(world, assets, PropDepth::Back));
-    batches.extend(extract_tile_layers(world, &["terrain"]));
+    batches.extend(extract_tilemap_layers(world, &["terrain"]));
     batches.extend(extract_props(world, assets, PropDepth::World));
 
     batches.extend(extract_obstacles(world, assets));
@@ -563,7 +503,7 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
         }
     }
     batches.extend(extract_fireballs(world, assets));
-    batches.extend(extract_tile_layers(world, &["foreground"]));
+    batches.extend(extract_tilemap_layers(world, &["foreground"]));
 
     batches.extend(extract_hearts(world, assets));
 

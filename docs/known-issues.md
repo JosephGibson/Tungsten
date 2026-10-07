@@ -39,7 +39,7 @@ Carried from the review, as of `0.27.0`.
 
 ## Follow-ups
 
-Each was checked against the tree on 2026-10-02, except the last twenty-nine: nine from the 0.40 QA pass (2026-10-03), one from M32 (`D-110`), seven from the 0.44 test-suite overhead pass (2026-10-04), one from M34 (2026-10-04), three from M35 (2026-10-05), four from M36 (2026-10-05) and the last four from M41 (2026-10-07).
+Each was checked against the tree on 2026-10-02, except the last thirty-one: nine from the 0.40 QA pass (2026-10-03), one from M32 (`D-110`), seven from the 0.44 test-suite overhead pass (2026-10-04), one from M34 (2026-10-04), three from M35 (2026-10-05), four from M36 (2026-10-05), four from M41 (2026-10-07) and the last two from M42 (2026-10-07).
 
 - Truncated Ogg files fail at probe; decide whether to decode the available prefix, as MP3 does. `tests/audio_decode.rs` pins the error.
 - Evaluate rtrb 0.4.0 against the locked 0.3.5, and adopt winit 0.31 once it leaves prerelease (0.30.13 is locked).
@@ -75,3 +75,5 @@ Each was checked against the tree on 2026-10-02, except the last twenty-nine: ni
 - `sync_position_to_transform` (`core/components.rs:305`) queries `Position` mutably for a read; since M41 `PhysicsPlugin` runs `physics_sync` in its place, and worlds driven by hand still call it. Home: the Phase 5 QA pass, if it stays public.
 - Example 01's `gameplay::PreviousPosition` (`examples/01_platformer/src/gameplay.rs:41`) sits beside the engine's `PrevPosition` (`D-137`): a rename. Home: the Phase 5 QA pass, which owns example 01's timers too.
 - Example 01's `update_text_display` runs in `fixed_update` (`setup.rs:84`), so its contact count reads one step's events in a later step; it belongs in `update`, a schedule change. Home: the Phase 5 QA pass.
+- Several tilemap extract calls in one frame share one capacity hint, `ExtractBuffers::tile_batch_lens` (`tungsten/sprite_extract.rs`), so example 01's three `extract_tilemap_layers` calls overwrite each other's; performance only. Home: C2 or the Phase 5 QA pass, if a row shows it.
+- `tungsten/sprite_extract.rs`'s module doc links the private `ExtractScratch` twice, so `rustdoc::private_intra_doc_links` warns on every `just api` run; plain code spans would silence it.

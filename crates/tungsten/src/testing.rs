@@ -57,10 +57,10 @@ pub struct Harness {
 }
 
 impl Harness {
-    /// Wraps `app` with its schedule resolved and the default extracts
-    /// installed, as [`App::run`] does. Nothing else from startup happens:
-    /// no window, renderer, audio device, watcher, startup hook or manifest
-    /// roots. The `Startup` stage runs on the first step.
+    /// Wraps `app` with its schedule resolved, as [`App::run`] does.
+    /// Nothing else from startup happens: no window, renderer, audio device,
+    /// watcher, startup hook or manifest roots. The `Startup` stage runs on
+    /// the first step.
     ///
     /// # Panics
     ///
@@ -70,7 +70,6 @@ impl Harness {
     pub fn new(mut app: App) -> Self {
         app.resolve_schedule()
             .unwrap_or_else(|err| panic!("Harness::new: {err}"));
-        app.install_default_extracts();
         Self {
             app,
             dt: DEFAULT_DT_SECS,
@@ -246,13 +245,14 @@ impl Harness {
 /// renderer.
 #[non_exhaustive]
 pub struct FrameDraw {
-    /// The app's quad extract.
+    /// The quad channel of [`Extracts`](crate::Extracts): the app's
+    /// replacement, if it set one, then the contributions.
     pub quads: Vec<QuadInstance>,
-    /// The sprite extract's batches: the default extract unless the app set
-    /// its own.
+    /// The sprite channel's batches: the default (the tilemaps, then the
+    /// `Sprite` entities) or the app's replacement, then the contributions.
     pub sprites: Vec<SpriteBatch>,
-    /// The app's text extract, then the HUD, systems overlay and inspector
-    /// sections when shown.
+    /// The text channel's sections, then the HUD, systems overlay and
+    /// inspector sections when shown.
     pub text: Vec<TextSection>,
     /// Debug-draw boxes, as outline quads.
     pub debug_quads: Vec<QuadInstance>,

@@ -28,3 +28,4 @@ Sources are [criteria](criteria.md) sections unless another file is named.
 | W6 features the acceptance game does not use | §3 | A game asks |
 | Audio pause | The frame-loop gate (`D-132`): music plays through pause and level-up, effects are short | A game pauses with long effects playing |
 | Deep-pile lever: `contact_hertz` 60 on the constant fixed step ([known issues](../../known-issues.md)) | [w03](w03-frame-loop.md#follow-ups) follow-up 1; M41 Q8 (`D-137`) | A game's pile needs the stiffer contacts; it moves the physics hash and every engine pile |
+| Tile layers ordered among sprites by z in the default sprite channel, which draws every tilemap under every sprite | M42 Q2 (`D-138`) | A game needs a tile layer between its sprites without an extract of its own, as example 01 and the `integrated` bench row have; W16b's tilemap builder may take it |

@@ -122,6 +122,16 @@ A tuple's elements are components, never bundles; join a bundle with `with`: `Ri
 
 `world.resource::<Time>()` returns a resource the engine always inserts and panics naming the type if it is missing; `get_resource` is the `Option` form for a resource a game may not have inserted.
 
+## Drawing
+
+The engine draws what the world holds: each entity with a `Sprite`, a `Transform` and `Visibility`, in `z_order`, over the render layers of every tilemap. Anything else the game draws, its own sprite batches, quads and text, it adds to the `Extracts` resource in its plugin's `build`, as the template's `GamePlugin` adds its text (`D-138`):
+
+```rust
+world.resource_mut::<Extracts>().add_text(text);
+```
+
+`add_sprites`, `add_quads` and `add_text` each take a function from `&World` to the frame's batches, quads or text sections, called once a frame after the stages. What it returns draws after the engine's own and after whatever was added before it: the engine's plugins first, then the game's, in the order they were added. Under the `gpu_depth` sort (`render.depth_sort`), an instance at `z_norm` 0 draws over everything before it, and another value is tested against the engine's sprites, which sit between 0 and 1. `replace_sprites`, or `app.set_extract_sprites(f)`, swaps the engine's sprites and tilemaps for the game's own function, and what plugins added still follows; replace only when the game draws its `Sprite` entities itself, as example 01 does for its parallax backdrop. `extract_tilemaps` and `extract_tilemap_layers` give such a function the engine's tiles.
+
 ## Time and timers
 
 The engine keeps two clocks in the `Time` resource and advances both once a frame, before any stage runs (`D-129`). Real time is the frame's elapsed time, capped at 0.1 s so that a stall cannot throw bodies about. Game time is real time times a scale, 1 unless you set one, and stands still while the game clock is paused. A system that moves or animates something reads the game clock's dt, `delta()`, as the template's `player_movement` does:

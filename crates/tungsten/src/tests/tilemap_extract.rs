@@ -5,6 +5,12 @@ use std::path::PathBuf;
 use tungsten_core::assets::{TilemapData, TilemapLayer, UvRect};
 
 fn register(world: &mut World, id: &str, page: u32, filter: FilterMode, uv: UvRect) {
+    register_as(world, id, page, filter, uv, false);
+}
+
+/// As [`register`], with a normal map when `lit`: the loader gives such a
+/// sprite a lit atlas, under its albedo page's handle.
+fn register_as(world: &mut World, id: &str, page: u32, filter: FilterMode, uv: UvRect, lit: bool) {
     world
         .get_resource_mut::<AssetRegistry>()
         .expect("AssetRegistry resource missing")
@@ -16,9 +22,9 @@ fn register(world: &mut World, id: &str, page: u32, filter: FilterMode, uv: UvRe
             PathBuf::from(format!("test/{id}.png")),
             TextureHandle(page),
             uv,
+            lit.then(|| PathBuf::from(format!("test/{id}_n.png"))),
             None,
-            None,
-            None,
+            lit.then_some(TextureHandle(page)),
         );
 }
 
@@ -323,4 +329,160 @@ fn scratch_reuse_leaves_output_unchanged() {
     world.remove_resource::<ExtractScratch>();
     assert_eq!(moved, batches_text(&extract_tilemaps(&world)));
     assert_ne!(moved, expected);
+}
+
+/// Two instances of one 4 x 2 map, the second 160 px below the first. Its
+/// render layers `back`, `mid` and `front`, in that file order around a
+/// collision layer, each draw one sprite on a page of their own: 10, 11, 12.
+fn two_map_world() -> World {
+    let mut world = world_with_map(
+        Vec2::ZERO,
+        &["back_tile", "mid_tile", "front_tile"],
+        4,
+        vec![
+            layer("back", LayerKind::Render, vec![0; 8]),
+            layer("solid", LayerKind::Collision, vec![0; 8]),
+            layer("mid", LayerKind::Render, vec![1; 8]),
+            layer("front", LayerKind::Render, vec![2; 8]),
+        ],
+    );
+    let second = world.spawn();
+    world.insert(second, TilemapInstance::new("map", Vec2::new(0.0, 160.0)));
+    register(
+        &mut world,
+        "back_tile",
+        10,
+        FilterMode::Nearest,
+        UvRect::FULL,
+    );
+    register(
+        &mut world,
+        "mid_tile",
+        11,
+        FilterMode::Nearest,
+        UvRect::FULL,
+    );
+    register(&mut world, "front_tile", 12, FilterMode::Nearest, HALF);
+    world
+}
+
+#[test]
+fn layer_form_draws_named_render_layers_in_map_order() {
+    let world = two_map_world();
+    let all = extract_tilemaps(&world);
+    let pages: Vec<u32> = all.iter().map(|batch| batch.texture.0).collect();
+    assert_eq!(pages, [10, 11, 12, 10, 11, 12]);
+    assert_eq!(all[0].instances[0].position, [0.0, 0.0]);
+    assert_eq!(all[3].instances[0].position, [0.0, 160.0]);
+
+    // Map by map, each map's layers in file order whatever the names' order.
+    // An unknown name draws nothing, and a collision layer never draws.
+    let named = extract_tilemap_layers(&world, &["front", "missing", "solid", "back"]);
+    let expected: Vec<String> = all
+        .iter()
+        .filter(|batch| batch.texture.0 != 11)
+        .map(batch_text)
+        .collect();
+    assert_eq!(batches_text(&named), expected);
+
+    assert!(extract_tilemap_layers(&world, &["missing", "solid"]).is_empty());
+    assert!(extract_tilemap_layers(&world, &[]).is_empty());
+}
+
+/// One 8 x 2 map on one atlas page. Layer `mixed` alternates a lit sprite
+/// (even columns) with an unlit one (odd columns); layer `plain` is all unlit.
+fn lit_world() -> World {
+    let mixed: Vec<i32> = (0..16).map(|i| i % 2).collect();
+    let mut world = world_with_map(
+        Vec2::ZERO,
+        &["lit_tile", "plain_tile"],
+        8,
+        vec![
+            layer("mixed", LayerKind::Render, mixed),
+            layer("plain", LayerKind::Render, vec![1; 16]),
+        ],
+    );
+    register_as(
+        &mut world,
+        "lit_tile",
+        0,
+        FilterMode::Nearest,
+        UvRect::FULL,
+        true,
+    );
+    register(&mut world, "plain_tile", 0, FilterMode::Nearest, HALF);
+    world
+}
+
+#[test]
+fn lit_tiles_batch_apart_from_unlit_on_one_page() {
+    let world = lit_world();
+    let batches = extract_tilemaps(&world);
+    let shape: Vec<(u32, bool, usize)> = batches
+        .iter()
+        .map(|batch| (batch.texture.0, batch.lit, batch.instances.len()))
+        .collect();
+    assert_eq!(shape, [(0, true, 8), (0, false, 8), (0, false, 16)]);
+
+    // Row by row: the lit batch holds the even columns, the unlit the odd.
+    let columns = |batch: &SpriteBatch| -> Vec<[f32; 2]> {
+        batch.instances.iter().map(|tile| tile.position).collect()
+    };
+    let cells = |first: u32| -> Vec<[f32; 2]> {
+        (0..2u32)
+            .flat_map(|row| {
+                (first..8)
+                    .step_by(2)
+                    .map(move |col| [col as f32 * 16.0, row as f32 * 16.0])
+            })
+            .collect()
+    };
+    assert_eq!(columns(&batches[0]), cells(0));
+    assert_eq!(columns(&batches[1]), cells(1));
+    assert!(
+        batches[0]
+            .instances
+            .iter()
+            .all(|tile| tile.uv_min == [0.0, 0.0])
+    );
+    assert!(
+        batches[1]
+            .instances
+            .iter()
+            .all(|tile| tile.uv_min == [0.5, 0.0])
+    );
+
+    // An unlit layer keeps the bytes it had before tiles could be lit.
+    let reference = reference_extract(&world);
+    assert_eq!(batches_text(&batches[2..]), batches_text(&reference[1]));
+}
+
+#[test]
+fn every_render_layer_name_matches_extract_tilemaps() {
+    for camera in [
+        Vec2::new(640.0, 360.0),
+        Vec2::new(700.5, 512.25),
+        Vec2::new(-200.0, 100.0),
+    ] {
+        let world = single_page_world(camera);
+        assert_eq!(
+            batches_text(&extract_tilemap_layers(
+                &world,
+                &["ground", "solid", "detail", "empty"]
+            )),
+            batches_text(&extract_tilemaps(&world)),
+            "camera {camera}"
+        );
+    }
+    for (world, names) in [
+        (two_page_world(), &["b", "a"][..]),
+        (two_map_world(), &["back", "mid", "front"][..]),
+        (lit_world(), &["mixed", "plain"][..]),
+    ] {
+        assert_eq!(
+            batches_text(&extract_tilemap_layers(&world, names)),
+            batches_text(&extract_tilemaps(&world)),
+            "{names:?}"
+        );
+    }
 }

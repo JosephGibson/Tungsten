@@ -10,6 +10,7 @@ use crate::display::{
     DisplayDelta, PendingDisplay, frame_budget_for, sync_display_state_and_telemetry,
     sync_window_resolution, take_pending_display,
 };
+use crate::extract::Extracts;
 use crate::hot_reload::HotReloadWatcher;
 use crate::input_bridge;
 use crate::inspector::{InspectorState, compose_inspector_text_section, default_inspect_registry};
@@ -61,13 +62,13 @@ const MAX_DT_SECS: f32 = 0.1;
 
 pub use tungsten_core::schedule::SystemFn;
 
-/// World-to-quad extract.
+/// World-to-quad extract, as [`Extracts`]' quad channel holds it.
 pub type ExtractQuadsFn = Box<dyn Fn(&World) -> Vec<QuadInstance>>;
 
-/// World-to-sprite extract.
+/// World-to-sprite extract, as [`Extracts`]' sprite channel holds it.
 pub type ExtractSpritesFn = Box<dyn Fn(&World) -> Vec<SpriteBatch>>;
 
-/// World-to-text extract.
+/// World-to-text extract, as [`Extracts`]' text channel holds it.
 pub type ExtractTextFn = Box<dyn Fn(&World) -> Vec<TextSection>>;
 
 /// The window's size in physical pixels, a core type since M38 (`D-128`);
@@ -87,9 +88,6 @@ pub struct App {
     schedule: Schedule,
     /// Whether the `Startup` stage has run.
     startup_done: bool,
-    extract_quads: Option<ExtractQuadsFn>,
-    extract_sprites: Option<ExtractSpritesFn>,
-    extract_text: Option<ExtractTextFn>,
     startup: Option<StartupFn>,
     last_frame: Option<Instant>,
     exit_on_escape: bool,
@@ -229,6 +227,7 @@ impl App {
         world.insert_resource(HudActiveState::default());
         world.insert_resource(RenderCounts::default());
         world.insert_resource(ExtractScratch::default());
+        world.insert_resource(Extracts::default());
         world.insert_resource(DebugDraw::new());
         world.insert_resource(PhysicsDebugOverlay::default());
         world.insert_resource(SystemTimingOverlay::default());
@@ -249,9 +248,6 @@ impl App {
             world,
             schedule: Schedule::new(),
             startup_done: false,
-            extract_quads: None,
-            extract_sprites: None,
-            extract_text: None,
             startup: None,
             last_frame: None,
             exit_on_escape: true,
@@ -370,19 +366,37 @@ impl App {
         self.world.register_event::<T>();
     }
 
-    /// Set quad extract function.
+    /// Replaces the quad channel's base, by default nothing, with `f`; the
+    /// quads plugins add still follow. [`Extracts::replace_quads`] on the
+    /// app's world.
+    ///
+    /// # Panics
+    ///
+    /// When the [`Extracts`] resource has been removed.
     pub fn set_extract_quads(&mut self, f: impl Fn(&World) -> Vec<QuadInstance> + 'static) {
-        self.extract_quads = Some(Box::new(f));
+        self.world.resource_mut::<Extracts>().replace_quads(f);
     }
 
-    /// Set sprite extract function.
+    /// Replaces the sprite channel's base, by default the tilemaps then the
+    /// `Sprite` entities, with `f`; the batches plugins add still follow.
+    /// [`Extracts::replace_sprites`] on the app's world.
+    ///
+    /// # Panics
+    ///
+    /// When the [`Extracts`] resource has been removed.
     pub fn set_extract_sprites(&mut self, f: impl Fn(&World) -> Vec<SpriteBatch> + 'static) {
-        self.extract_sprites = Some(Box::new(f));
+        self.world.resource_mut::<Extracts>().replace_sprites(f);
     }
 
-    /// Set text extract function.
+    /// Replaces the text channel's base, by default nothing, with `f`; the
+    /// sections plugins add still follow. [`Extracts::replace_text`] on the
+    /// app's world.
+    ///
+    /// # Panics
+    ///
+    /// When the [`Extracts`] resource has been removed.
     pub fn set_extract_text(&mut self, f: impl Fn(&World) -> Vec<TextSection> + 'static) {
-        self.extract_text = Some(Box::new(f));
+        self.world.resource_mut::<Extracts>().replace_text(f);
     }
 
     /// Set post-renderer startup hook.
@@ -415,7 +429,6 @@ impl App {
     pub fn run(mut self) -> anyhow::Result<()> {
         self.resolve_schedule()
             .inspect_err(|err| log::error!("{err}"))?;
-        self.install_default_extracts();
         self.start_hot_reload();
         let event_loop = EventLoop::new()
             .inspect_err(|err| log::error!("Failed to create the event loop: {err}"))?;
@@ -440,13 +453,6 @@ impl App {
             self.manifest_path.as_deref(),
         ));
         self.hot_reload = HotReloadWatcher::new(&dirs, &extra_files);
-    }
-
-    /// Install default extracts; idempotent.
-    pub(crate) fn install_default_extracts(&mut self) {
-        if self.extract_sprites.is_none() {
-            self.extract_sprites = Some(Box::new(crate::sprite_extract::extract_sprites_default));
-        }
     }
 
     fn engine_exit_requested(&self) -> bool {
@@ -988,23 +994,16 @@ impl App {
             let cfg = &renderer.surface_config;
             scratch.set_viewport(cfg.width, cfg.height);
         }
-        let quads = self
-            .extract_quads
-            .as_ref()
-            .map(|f| f(&self.world))
-            .unwrap_or_default();
-
-        let sprites = self
-            .extract_sprites
-            .as_ref()
-            .map(|f| f(&self.world))
-            .unwrap_or_default();
-
-        let mut text = self
-            .extract_text
-            .as_ref()
-            .map(|f| f(&self.world))
-            .unwrap_or_default();
+        // The channels; without `Extracts`, which only a removal causes,
+        // they draw nothing.
+        let (quads, sprites, mut text) = match self.world.get_resource::<Extracts>() {
+            Some(extracts) => (
+                extracts.quads(&self.world),
+                extracts.sprites(&self.world),
+                extracts.text(&self.world),
+            ),
+            None => (Vec::new(), Vec::new(), Vec::new()),
+        };
 
         // Before HUD compose: counts row uses this frame's extract.
         let entity_count = self.world.entity_count();

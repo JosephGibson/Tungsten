@@ -633,6 +633,12 @@ fn install_runtime(app: &mut App) {
     for &(slot, name, run) in RUNTIME_SYSTEM_ORDER {
         app.add_system_to(slot.stage(), slot.desc(name, run));
     }
+    // Both replace the channel's base rather than add to it. The default
+    // sprite channel would draw the parallax layers and the engine's
+    // particles, `Sprite` entities this example draws itself (a stretched
+    // sky, drifting clouds, tiling), a second time and differently. Its own
+    // extract draws the tile layers through `tungsten::extract_tilemap_layers`,
+    // between its depths.
     app.set_extract_sprites(extract_sprites);
     app.set_extract_text(extract_text);
 }
