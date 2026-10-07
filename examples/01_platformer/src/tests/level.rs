@@ -328,3 +328,37 @@ fn thin_platform_underside_and_edges_match_visible_art() {
         "head stopped at {head}"
     );
 }
+
+#[test]
+fn each_slab_platform_spawns_one_collider_with_no_join_inside() {
+    use crate::gameplay::slab_runs;
+    use crate::level_layout::SLAB_COLLIDERS;
+    let runs = slab_runs(SLAB_COLLIDERS);
+    let area = |boxes: &[[f32; 4]]| boxes.iter().map(|b| b[2] * b[3]).sum::<f32>();
+    assert_eq!(area(&runs), area(SLAB_COLLIDERS));
+    for slab in SLAB_COLLIDERS {
+        let holders = runs
+            .iter()
+            .filter(|run| {
+                run[1] == slab[1]
+                    && run[3] == slab[3]
+                    && run[0] <= slab[0]
+                    && slab[0] + slab[2] <= run[0] + run[2]
+            })
+            .count();
+        assert_eq!(holders, 1, "{slab:?}");
+    }
+    for a in &runs {
+        for b in &runs {
+            assert!(
+                !(a[1] == b[1] && a[3] == b[3] && a[0] + a[2] == b[0]),
+                "{a:?} and {b:?} still join"
+            );
+        }
+    }
+
+    let mut world = seed_world();
+    crate::gameplay::spawn_platform_colliders(&mut world);
+    assert_eq!(world.query::<(Entity, &Collider)>().count(), runs.len());
+    assert!(runs.len() < SLAB_COLLIDERS.len());
+}

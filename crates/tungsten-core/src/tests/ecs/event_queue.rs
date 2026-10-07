@@ -150,8 +150,9 @@ fn with_the_view_off_every_window_reads_as_before() {
     assert_eq!(queue.iter_current().count(), 0);
 }
 
+/// Frames that do not hold, as a paused frame does not.
 #[test]
-fn an_event_sent_after_the_steps_misses_fixed_readers_when_no_step_follows() {
+fn without_a_hold_an_event_sent_after_the_steps_misses_fixed_readers() {
     let mut queue = EventQueue::new();
     let mut seen = Vec::new();
     run_steps(&mut queue, 1, |_, q| seen.extend(q.iter().copied()));
@@ -173,4 +174,81 @@ fn a_first_step_iter_still_includes_the_previous_frame() {
         seen.push(q.iter().copied().collect::<Vec<_>>());
     });
     assert_eq!(seen, [vec![7], vec![]]);
+}
+
+fn read(events: impl Iterator<Item = i32>) -> Vec<i32> {
+    events.collect()
+}
+
+/// A frame that runs no step: `event` sent outside the steps, then the
+/// hold before the flush, as the app orders them.
+fn frame_without_a_step(queue: &mut EventQueue<i32>, event: i32) {
+    queue.send(event);
+    queue.hold_for_fixed_step();
+    queue.flush();
+}
+
+#[test]
+fn frames_with_no_step_hold_their_events_for_the_next_first_step() {
+    let mut queue = EventQueue::new();
+    let mut reads = Vec::new();
+    run_steps(&mut queue, 1, |_, q| {
+        reads.push(read(q.iter().copied()));
+        q.send(1);
+    });
+    queue.send(2);
+    queue.flush();
+    frame_without_a_step(&mut queue, 3);
+    frame_without_a_step(&mut queue, 4);
+    run_steps(&mut queue, 1, |_, q| reads.push(read(q.iter().copied())));
+    queue.flush();
+    run_steps(&mut queue, 1, |_, q| reads.push(read(q.iter().copied())));
+    assert_eq!(
+        reads,
+        [vec![], vec![1, 2, 3, 4], vec![]],
+        "each event once, in order, the step's own after its reader"
+    );
+}
+
+#[test]
+fn held_events_stay_out_of_the_frame_view_and_later_steps() {
+    let mut queue = EventQueue::new();
+    queue.send(1);
+    queue.flush();
+    frame_without_a_step(&mut queue, 2);
+    assert_eq!(read(queue.iter().copied()), [2], "the frame view");
+    assert_eq!(queue.len(), 1);
+
+    queue.set_fixed_view(true);
+    assert_eq!(read(queue.iter().copied()), [1, 2]);
+    assert_eq!(queue.len(), 2);
+    assert!(!queue.is_empty());
+    assert_eq!(queue.iter_current().count(), 0);
+
+    queue.end_fixed_step();
+    assert_eq!(queue.iter().count(), 0, "a later step reads its own events");
+    assert!(queue.is_empty());
+}
+
+#[test]
+fn a_flush_without_a_hold_drops_the_held_events() {
+    let mut queue = EventQueue::new();
+    frame_without_a_step(&mut queue, 1);
+    frame_without_a_step(&mut queue, 2);
+    // A paused frame holds nothing.
+    queue.send(3);
+    queue.flush();
+    queue.set_fixed_view(true);
+    assert_eq!(read(queue.iter().copied()), [3]);
+}
+
+#[test]
+fn a_queue_holds_at_most_256_frames_dropping_the_oldest() {
+    let mut queue = EventQueue::new();
+    for event in 0..300 {
+        frame_without_a_step(&mut queue, event);
+    }
+    queue.set_fixed_view(true);
+    assert_eq!(read(queue.iter().copied()), (43..300).collect::<Vec<_>>());
+    assert_eq!(queue.len(), 257);
 }

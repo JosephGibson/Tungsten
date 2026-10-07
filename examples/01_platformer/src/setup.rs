@@ -77,11 +77,12 @@ impl Slot {
 }
 
 /// The game's systems by slot, in the order they ran as one flat list before
-/// M38: the stage boundaries are drawn through that order, nothing is
-/// reordered. `tests/main.rs` pins the resolved schedule.
+/// M38: the stage boundaries are drawn through that order, and only
+/// `update_text_display` has moved since, after the contact readers, so the
+/// HUD counts each step's own contacts (0.57). `tests/main.rs` pins the
+/// resolved schedule.
 pub(crate) const RUNTIME_SYSTEM_ORDER: &[(Slot, &str, ExampleSystem)] = &[
     (Slot::PreUpdate, "platformer_bindings", platformer_bindings),
-    (Slot::BeforeStep, "update_text_display", update_text_display),
     (Slot::BeforeStep, "player_input", player_input),
     (
         Slot::BeforeStep,
@@ -146,6 +147,7 @@ pub(crate) const RUNTIME_SYSTEM_ORDER: &[(Slot, &str, ExampleSystem)] = &[
         "spread_ball_fire",
         crate::burning::spread_ball_fire,
     ),
+    (Slot::AfterStep, "update_text_display", update_text_display),
     (
         Slot::Update,
         "black_hole_extinguish_system",

@@ -183,14 +183,37 @@ pub(crate) fn glow_center(world: &World, entity: Entity, offset: Vec2) -> Option
 }
 
 /// Thin visible decks must not retain invisible full-tile collision below them.
+/// Each platform is one collider: at a join between two static boxes a body
+/// that has sunk into the deck meets the next box's side as a wall (0.57).
 pub(crate) fn spawn_platform_colliders(world: &mut World) {
-    for &[x, y, width, height] in SLAB_COLLIDERS {
+    for [x, y, width, height] in slab_runs(SLAB_COLLIDERS) {
         let half = Vec2::new(width, height) * 0.5;
         world.spawn_with(RigidBodyBundle::r#static(
             Position(Vec2::new(x, y) + half),
             Collider::aabb(half),
         ));
     }
+}
+
+/// `slabs` (`[x, y, width, height]`) with every run that shares a row and a
+/// height and touches end to end merged into one box, by row, then x.
+pub(crate) fn slab_runs(slabs: &[[f32; 4]]) -> Vec<[f32; 4]> {
+    let mut sorted = slabs.to_vec();
+    sorted.sort_by(|a, b| {
+        a[1].total_cmp(&b[1])
+            .then(a[3].total_cmp(&b[3]))
+            .then(a[0].total_cmp(&b[0]))
+    });
+    let mut runs: Vec<[f32; 4]> = Vec::with_capacity(sorted.len());
+    for [x, y, width, height] in sorted {
+        match runs.last_mut() {
+            Some(run) if run[1] == y && run[3] == height && run[0] + run[2] == x => {
+                run[2] += width;
+            }
+            _ => runs.push([x, y, width, height]),
+        }
+    }
+    runs
 }
 
 fn motion_position(m: MotionPlacement, time: f32) -> Vec2 {

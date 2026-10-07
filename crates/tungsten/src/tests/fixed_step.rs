@@ -238,6 +238,80 @@ fn a_fixed_reader_reads_each_steps_collision_once_and_update_reads_both() {
     );
 }
 
+fn ids_sent(harness: &Harness) -> u32 {
+    *harness.world().get_resource::<u32>().unwrap()
+}
+
+fn set_paused(harness: &mut Harness, paused: bool) {
+    harness
+        .world_mut()
+        .get_resource_mut::<Time>()
+        .unwrap()
+        .set_paused(paused);
+}
+
+#[test]
+fn at_144_hz_a_fixed_reader_reads_each_update_event_once_and_a_pause_drops_them() {
+    let mut app = app();
+    app.world_mut().insert_resource(Seen::<u32>(Vec::new()));
+    app.world_mut().insert_resource(0_u32);
+    let a = app.world_mut().spawn();
+    app.add_system_to(
+        Stage::Update,
+        system("send_collision", move |world: &mut World| {
+            let id = *world.get_resource::<u32>().unwrap();
+            *world.get_resource_mut::<u32>().unwrap() += 1;
+            world
+                .get_resource_mut::<EventQueue<CollisionEvent>>()
+                .unwrap()
+                .send(collision(a, id));
+        }),
+    );
+    app.add_system_to(
+        Stage::FixedUpdate,
+        system("fixed_read", |world: &mut World| {
+            let ids: Vec<u32> = world
+                .get_resource::<EventQueue<CollisionEvent>>()
+                .unwrap()
+                .iter()
+                .map(|e| e.penetration as u32)
+                .collect();
+            for id in ids {
+                push(world, id);
+            }
+        }),
+    );
+    let mut harness = Harness::new(app);
+    harness.set_dt(FAST);
+    harness.step(30);
+    let read = seen::<u32>(&harness).to_vec();
+    assert_eq!(
+        read,
+        (0..read.len() as u32).collect::<Vec<_>>(),
+        "each id once, in order, through the frames with no step"
+    );
+    // At most the frames since the last step wait for the next.
+    assert!(ids_sent(&harness) as usize - read.len() <= 3, "{read:?}");
+
+    set_paused(&mut harness, true);
+    harness.step(1);
+    let first_paused = ids_sent(&harness) - 1;
+    harness.step(4);
+    let last_paused = ids_sent(&harness) - 1;
+    set_paused(&mut harness, false);
+    while timings(&harness).fixed_steps == 0 {
+        harness.step(1);
+    }
+    let after = &seen::<u32>(&harness)[read.len()..];
+    assert!(!after.contains(&first_paused), "{after:?}");
+    assert_eq!(
+        after.first(),
+        Some(&last_paused),
+        "only the last paused frame's event reaches the next step"
+    );
+    assert!(after.windows(2).all(|w| w[1] == w[0] + 1), "{after:?}");
+}
+
 /// A body moving right at `SPEED`, spawned through the bundle (with
 /// history) or as a tuple (without), drawn through a `Transform`.
 fn spawn_mover(world: &mut World, history: bool) -> Entity {

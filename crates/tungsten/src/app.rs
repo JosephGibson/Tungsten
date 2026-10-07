@@ -858,8 +858,9 @@ impl App {
     /// `Time::delta()` and `DeltaTime` read the step, and input edges and
     /// event queues their step views; after the last, the game dt and the
     /// frame views again. Each system's runs are summed under its name, and
-    /// a frame with no step lists each at 0 ms. A world without `Time` runs
-    /// the stage once, as before the accumulator.
+    /// a frame with no step lists each at 0 ms and, while the game clock
+    /// advances, holds the event queues for the next step (`D-139`). A
+    /// world without `Time` runs the stage once, as before the accumulator.
     #[inline(always)]
     fn stage_fixed_update(&mut self, system_timings: &mut Vec<(String, f32)>) -> u32 {
         let Some((steps, step)) = self
@@ -876,6 +877,15 @@ impl App {
                     .names(Stage::FixedUpdate)
                     .map(|name| (name.to_string(), 0.0)),
             );
+            // The frame's events wait for the next step's readers, unless
+            // the clock stands still or no fixed system could read them.
+            let advancing = self
+                .world
+                .get_resource::<Time>()
+                .is_some_and(|time| time.game_delta() > 0.0);
+            if advancing && self.schedule.names(Stage::FixedUpdate).next().is_some() {
+                self.world.hold_events_for_fixed_step();
+            }
             return 0;
         }
         let first = system_timings.len();
