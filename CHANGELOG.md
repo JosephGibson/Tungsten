@@ -6,6 +6,14 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.57.0] - 2026-10-07
+
+Summary: a fixed-step health pass outside the register (plan archived at `docs/plans/archive/fixed-step-health-pass.md`) for what example 01 showed at uncapped frame rates since 0.55: a frame with no fixed step holds its event queues for the next step, example 01's HUD counts each step's contacts and its slab platforms are one collider each, and the step defaults stay 60 Hz and two steps a frame (`D-139`). The determinism and pinned containment hashes, the row digests and the pixel fixtures are unchanged. No new dependency, asset or manifest change.
+
+### Fixed
+
+- **Fixed-step health pass** (`D-139`; plan archived at `docs/plans/archive/fixed-step-health-pass.md`): above the 60 Hz step most frames run no step, and their flush dropped a step's collision events before the next step's earlier readers ran (0 of 512 at 1/144 and 1/1000 s). A frame with no step now holds its event queues while the game clock advances (`World::hold_events_for_fixed_step`, new), so the next frame's first step reads them through `iter`, `len` and `is_empty`; at most 256 frames, and a pause drops them; the frame view and `iter_current` are unchanged. Example 01's HUD counts each step's own contacts after the contact readers (it read 0, and two steps' events or 0 at 1/30 s), and each slab platform is one collider (155 slabs, 27 colliders), so the player no longer stops at x = 1580.25 on a join; the solver's ghost collision between touching static boxes stays in known issues. Measured on a 3,000-ball pile, 120 and 240 Hz cost the fixed systems 2× and 4× per game second at the same 0.32 ms a step, so the windowed defaults stay 60 Hz and 2. A regime test runs example 01 at 1/30, 1/60, 1/144 and 1/1000 s.
+
 ## [0.56.0] - 2026-10-07
 
 Summary: Phase 5's eleventh milestone, M42 (W15c, plan archived at `docs/plans/archive/1.0/phase5-milestone-42-additive-extracts.md`). Additive extracts: the `Extracts` resource holds the frame's sprite, quad and text channels, which games and plugins add to in registration order; the default sprite channel draws the tilemaps at the far plane, then the `Sprite` entities; `App::set_extract_*` stay as the explicit replace; `extract_tilemap_layers` and lit tiles let example 01 draw its tile layers through the engine, and the template's text goes through its plugin (`D-138`). The determinism and pinned containment hashes, the row digests and the pixel fixtures are unchanged. No new dependency, asset or manifest change.

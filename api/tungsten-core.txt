@@ -4670,6 +4670,7 @@ pub fn tungsten_core::World::get_resource_mut<T: 'static>(&mut self) -> core::op
 pub fn tungsten_core::World::has<T: 'static>(&self, tungsten_core::Entity) -> bool
 pub fn tungsten_core::World::has_event<T: 'static>(&self) -> bool
 pub fn tungsten_core::World::has_resource<T: 'static>(&self) -> bool
+pub fn tungsten_core::World::hold_events_for_fixed_step(&mut self)
 pub fn tungsten_core::World::insert<T: 'static>(&mut self, tungsten_core::Entity, T)
 pub fn tungsten_core::World::insert_bundle<B: tungsten_core::ecs::bundle::Bundle>(&mut self, tungsten_core::Entity, B)
 pub fn tungsten_core::World::insert_resource<T: 'static>(&mut self, T)
@@ -13377,6 +13378,7 @@ pub fn tungsten_core::World::get_resource_mut<T: 'static>(&mut self) -> core::op
 pub fn tungsten_core::World::has<T: 'static>(&self, tungsten_core::Entity) -> bool
 pub fn tungsten_core::World::has_event<T: 'static>(&self) -> bool
 pub fn tungsten_core::World::has_resource<T: 'static>(&self) -> bool
+pub fn tungsten_core::World::hold_events_for_fixed_step(&mut self)
 pub fn tungsten_core::World::insert<T: 'static>(&mut self, tungsten_core::Entity, T)
 pub fn tungsten_core::World::insert_bundle<B: tungsten_core::ecs::bundle::Bundle>(&mut self, tungsten_core::Entity, B)
 pub fn tungsten_core::World::insert_resource<T: 'static>(&mut self, T)

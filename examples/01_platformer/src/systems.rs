@@ -525,6 +525,9 @@ pub(crate) fn damage_feedback(world: &mut World, player: Entity) {
     }
 }
 
+/// The HUD's state row, refreshed every `TEXT_UPDATE_INTERVAL` of game
+/// time. It runs after the contact readers, so Contacts counts the step's
+/// own collision events: one per penetrating contact per substep.
 pub(crate) fn update_text_display(world: &mut World) {
     let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
 
@@ -549,7 +552,7 @@ pub(crate) fn update_text_display(world: &mut World) {
     };
     let contacts = world
         .get_resource::<EventQueue<CollisionEvent>>()
-        .map_or(0, EventQueue::len);
+        .map_or(0, |queue| queue.iter_current().count());
     let grounded = world
         .query::<(Entity, &Player)>()
         .next()

@@ -29,12 +29,13 @@ pub struct World {
     bundle_scratch: BundleScratch,
 }
 
-/// What [`World::set_fixed_event_view`] and [`World::end_fixed_step_events`]
-/// do to each queue.
+/// What [`World::set_fixed_event_view`], [`World::end_fixed_step_events`]
+/// and [`World::hold_events_for_fixed_step`] do to each queue.
 #[derive(Clone, Copy)]
 enum EventStep {
     View(bool),
     End,
+    Hold,
 }
 
 fn flush_event_queue<T: 'static>(world: &mut World) {
@@ -48,6 +49,7 @@ fn step_event_queue<T: 'static>(world: &mut World, step: EventStep) {
         match step {
             EventStep::View(on) => queue.set_fixed_view(on),
             EventStep::End => queue.end_fixed_step(),
+            EventStep::Hold => queue.hold_for_fixed_step(),
         }
     }
 }
@@ -114,6 +116,18 @@ impl World {
     pub fn end_fixed_step_events(&mut self) {
         for i in 0..self.event_steppers.len() {
             (self.event_steppers[i])(self, EventStep::End);
+        }
+    }
+
+    /// Marks a frame that runs no fixed step: every registered event
+    /// queue's next [`flush_events`](Self::flush_events) holds the events
+    /// no step has read for the next frame's first step instead of dropping
+    /// them ([`EventQueue`], `D-139`). The app calls it in such a frame
+    /// while the game clock advances and `fixed_update` has a system; a
+    /// flush in a frame that did not call it drops what was held.
+    pub fn hold_events_for_fixed_step(&mut self) {
+        for i in 0..self.event_steppers.len() {
+            (self.event_steppers[i])(self, EventStep::Hold);
         }
     }
 
