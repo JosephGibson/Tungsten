@@ -292,3 +292,7 @@ impl FrameDraw {
 #[cfg(test)]
 #[path = "tests/testing.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tests/fixed_step.rs"]
+mod fixed_step;

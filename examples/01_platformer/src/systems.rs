@@ -6,7 +6,9 @@ use tungsten::core::{
     ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, ShakeEvent, SquashEvent,
     SquashTrigger, Time, Transform, With, World,
 };
-use tungsten::physics::{BodyKind, Collider, CollisionEvent, Position, RigidBody, Shape, Velocity};
+use tungsten::physics::{
+    BodyKind, Collider, CollisionEvent, Position, PrevPosition, RigidBody, Shape, Velocity,
+};
 
 use crate::burning::BallBurn;
 use crate::gameplay::EmitterAnchor;
@@ -25,8 +27,10 @@ use crate::state::{
     SMALL_BALL_START_SPRITE_ID, SmallBall,
 };
 
-/// Ground jump preserves hold behavior; the aerial jump needs a fresh press.
+/// Ground jump preserves hold behavior and takes a press buffered since the
+/// last step (a tap between two steps); the aerial jump needs a fresh press.
 pub(crate) fn player_input(world: &mut World) {
+    let frame = world.get_resource::<Time>().map_or(0, Time::frame);
     let (pressed_left, pressed_right, pressed_space, jump_pressed);
     {
         let Some(input) = world.get_resource::<InputState>() else {
@@ -63,7 +67,7 @@ pub(crate) fn player_input(world: &mut World) {
             && world
                 .get::<Player>(entity)
                 .is_some_and(|p| !p.air_jump_used);
-        let want_jump = (pressed_space && grounded && !locked) || second_jump;
+        let want_jump = ((pressed_space || jump_pressed) && grounded && !locked) || second_jump;
         if second_jump {
             world.get_mut::<Player>(entity).unwrap().air_jump_used = true;
         }
@@ -82,13 +86,23 @@ pub(crate) fn player_input(world: &mut World) {
             .get::<Position>(entity)
             .map(|p| p.0 + Vec2::new(0.0, PLAYER_HALF.y));
         if let Some(presentation) = world.get_mut::<PlayerPresentation>(entity) {
-            presentation.pending_effect = want_jump.then_some(if second_jump {
-                PlayerEffect::DoubleJump
-            } else {
-                PlayerEffect::Jump
-            });
-            if want_jump && let Some(feet) = feet {
-                presentation.jump_origin = feet;
+            // `player_presentation_system` consumes the effect in `update`,
+            // after every step of the frame: a later step keeps one an
+            // earlier step set, and the frame's first step drops one nothing
+            // consumed, as each run did when a frame ran one step.
+            let first_step = presentation.input_frame != frame;
+            presentation.input_frame = frame;
+            if want_jump {
+                presentation.pending_effect = Some(if second_jump {
+                    PlayerEffect::DoubleJump
+                } else {
+                    PlayerEffect::Jump
+                });
+                if let Some(feet) = feet {
+                    presentation.jump_origin = feet;
+                }
+            } else if first_step {
+                presentation.pending_effect = None;
             }
             if dx != 0.0 {
                 presentation.facing_left = dx < 0.0;
@@ -526,8 +540,10 @@ pub(crate) fn update_text_display(world: &mut World) {
         return;
     }
 
-    let fps = if dt > 0.0 {
-        (1.0 / dt).round() as u32
+    // The frame rate: in `fixed_update` `delta` is the step.
+    let frame_dt = world.get_resource::<Time>().map_or(0.0, Time::real_delta);
+    let fps = if frame_dt > 0.0 {
+        (1.0 / frame_dt).round() as u32
     } else {
         0
     };
@@ -574,11 +590,21 @@ pub(crate) fn cursor_to_world(cursor: Vec2, camera: &CameraState) -> Option<Vec2
 /// `BALL_CAP` live balls.
 pub(crate) fn spawn_ball_system(world: &mut World) {
     // Counted once: both spawners draw on one budget, so a frame never
-    // overshoots the cap.
-    let live = world.query::<(Entity, &Ball)>().count();
+    // overshoots the cap. The balls this frame's earlier steps queued are
+    // not live before the frame's command flush, so they count too.
+    let frame = world.get_resource::<Time>().map_or(0, Time::frame);
+    let queued = world
+        .get_resource::<BallSpawnState>()
+        .filter(|state| state.queued_frame == frame)
+        .map_or(0, |state| state.queued);
+    let live = world.query::<(Entity, &Ball)>().count() + queued as usize;
     let budget = u32::try_from(BALL_CAP.saturating_sub(live)).unwrap_or(u32::MAX);
-    let spawned = spawn_balls(world, false, budget);
-    spawn_balls(world, true, budget - spawned);
+    let large = spawn_balls(world, false, budget);
+    let small = spawn_balls(world, true, budget - large);
+    if let Some(state) = world.get_resource_mut::<BallSpawnState>() {
+        state.queued = queued + large + small;
+        state.queued_frame = frame;
+    }
 }
 
 /// Spawns at most `budget` balls and returns how many it queued.
@@ -672,6 +698,7 @@ fn spawn_balls(world: &mut World, small: bool, budget: u32) -> u32 {
                 cmds.insert_pending(ball, SmallBall::default());
             }
             cmds.insert_pending(ball, Position(world_pos + offset));
+            cmds.insert_pending(ball, PrevPosition(world_pos + offset));
             cmds.insert_pending(ball, Velocity(Vec2::ZERO));
             cmds.insert_pending(
                 ball,
@@ -1018,8 +1045,13 @@ pub(crate) fn respawn_player(world: &mut World, entity: Entity) {
         transform.scale = Vec2::ONE;
     }
 
+    // A teleport: the history moves with the body, so it is not drawn
+    // sliding back from where it died.
     if let Some(pos) = world.get_mut::<Position>(entity) {
         pos.0 = PLAYER_SPAWN;
+    }
+    if let Some(prev) = world.get_mut::<PrevPosition>(entity) {
+        prev.0 = PLAYER_SPAWN;
     }
     if let Some(vel) = world.get_mut::<Velocity>(entity) {
         vel.0 = Vec2::ZERO;
@@ -1063,8 +1095,8 @@ pub(crate) fn orbit_lights_system(world: &mut World) {
     let center = world
         .query::<(Entity, &Player)>()
         .next()
-        .and_then(|(entity, _)| world.get::<Position>(entity))
-        .map_or(PLAYER_SPAWN, |p| p.0);
+        .and_then(|(entity, _)| crate::extract::drawn_position(world, entity))
+        .unwrap_or(PLAYER_SPAWN);
     struct Update {
         entity: Entity,
         pos: Vec2,

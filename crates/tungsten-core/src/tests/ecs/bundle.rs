@@ -11,7 +11,9 @@ use glam::Vec2;
 use super::super::archetype::Archetype;
 use super::*;
 use crate::ecs::{CommandBuffer, Entity, World};
-use crate::physics::{BodyKind, Collider, Position, RigidBody, RigidBodyBundle, Velocity};
+use crate::physics::{
+    BodyKind, Collider, Position, PrevPosition, RigidBody, RigidBodyBundle, Velocity,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct A(u32);
@@ -170,10 +172,10 @@ fn rigid_body_bundles_carry_the_components_bodies_spawn_with() {
             .with((A(7),)),
     );
 
-    assert_eq!(archetype_of(&world, ground).component_types.len(), 3);
+    assert_eq!(archetype_of(&world, ground).component_types.len(), 4);
     assert!(!world.has::<Velocity>(ground));
     assert_eq!(world.get::<RigidBody>(ground), Some(&RigidBody::r#static()));
-    assert_eq!(archetype_of(&world, rest).component_types.len(), 4);
+    assert_eq!(archetype_of(&world, rest).component_types.len(), 5);
     assert_eq!(world.get::<Velocity>(rest), Some(&Velocity(Vec2::ZERO)));
     assert_eq!(
         world.get::<RigidBody>(rest).map(|b| b.kind),
@@ -186,11 +188,19 @@ fn rigid_body_bundles_carry_the_components_bodies_spawn_with() {
         Some(0.5)
     );
     assert_eq!(world.get::<A>(ball), Some(&A(7)));
+    for (body, at) in [
+        (ground, Vec2::ZERO),
+        (rest, Vec2::new(1.0, 2.0)),
+        (ball, Vec2::new(5.0, 6.0)),
+    ] {
+        assert_eq!(world.get::<PrevPosition>(body), Some(&PrevPosition(at)));
+    }
 
     // Each body ends in the archetype its components inserted one by one
     // give it.
     let by_inserts = world.spawn();
     world.insert(by_inserts, Position::new(0.0, 0.0));
+    world.insert(by_inserts, PrevPosition(Vec2::ZERO));
     world.insert(by_inserts, Collider::aabb(Vec2::ONE));
     world.insert(by_inserts, RigidBody::r#static());
     assert_eq!(

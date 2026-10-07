@@ -121,6 +121,175 @@ fn the_game_dt_saturates_at_f32_max() {
 }
 
 #[test]
+fn a_new_time_steps_at_the_smoke_pin_two_a_frame_interpolating() {
+    let time = Time::new();
+    assert_eq!(time.fixed_step().to_bits(), (1.0_f32 / 60.0).to_bits());
+    assert_eq!(time.max_steps_per_frame(), 2);
+    assert!(time.interpolate());
+    assert_eq!(time.fixed_steps_this_frame(), 0);
+    assert_eq!(time.dropped_this_frame(), 0.0);
+    assert_eq!(time.alpha(), 0.0);
+}
+
+#[test]
+fn six_hundred_pinned_frames_run_one_step_each_at_alpha_zero() {
+    let mut time = Time::new();
+    for frame in 0..600 {
+        time.advance_frame(DT);
+        assert_eq!(time.fixed_steps_this_frame(), 1, "frame {frame}");
+        assert_eq!(time.alpha(), 0.0, "frame {frame}");
+        assert_eq!(time.dropped_this_frame(), 0.0, "frame {frame}");
+    }
+}
+
+#[test]
+fn half_a_step_a_frame_alternates_none_and_one() {
+    let mut time = Time::new();
+    for frame in 0..600 {
+        time.advance_frame(1.0 / 120.0);
+        let (steps, alpha) = if frame % 2 == 0 { (0, 0.5) } else { (1, 0.0) };
+        assert_eq!(time.fixed_steps_this_frame(), steps, "frame {frame}");
+        assert_eq!(time.alpha(), alpha, "frame {frame}");
+    }
+}
+
+#[test]
+fn two_steps_a_frame_run_at_1_30_s_and_at_scale_two() {
+    let mut slow = Time::new();
+    let mut scaled = Time::new();
+    scaled.set_scale(2.0);
+    for frame in 0..60 {
+        slow.advance_frame(1.0 / 30.0);
+        scaled.advance_frame(DT);
+        for time in [&slow, &scaled] {
+            assert_eq!(time.fixed_steps_this_frame(), 2, "frame {frame}");
+            assert_eq!(time.alpha(), 0.0, "frame {frame}");
+            assert_eq!(time.dropped_this_frame(), 0.0, "frame {frame}");
+        }
+    }
+}
+
+#[test]
+fn a_stall_runs_the_bound_and_drops_the_whole_steps_left() {
+    let mut time = Time::new();
+    time.advance_frame(0.1);
+    assert_eq!(time.fixed_steps_this_frame(), 2);
+    let dropped = time.dropped_this_frame();
+    assert!((dropped - 4.0 * DT).abs() < 1e-6, "dropped {dropped}");
+    assert!(time.alpha() < 1e-6, "alpha {}", time.alpha());
+    time.advance_frame(DT);
+    assert_eq!(time.fixed_steps_this_frame(), 1);
+    assert_eq!(time.dropped_this_frame(), 0.0);
+
+    let mut wide = Time::new();
+    wide.set_max_steps_per_frame(6);
+    wide.advance_frame(0.1);
+    assert_eq!(wide.fixed_steps_this_frame(), 6);
+    assert_eq!(wide.dropped_this_frame(), 0.0);
+}
+
+#[test]
+fn a_paused_frame_runs_no_step_and_holds_alpha_as_real_time_runs() {
+    let mut time = Time::new();
+    time.advance_frame(1.0 / 120.0);
+    assert_eq!(time.alpha(), 0.5);
+    time.pause();
+    for _ in 0..10 {
+        time.advance_frame(DT);
+        assert_eq!(time.fixed_steps_this_frame(), 0);
+        assert_eq!(time.dropped_this_frame(), 0.0);
+        assert_eq!(time.alpha(), 0.5);
+        assert_eq!(time.real_delta(), DT);
+    }
+    assert_eq!(time.frame(), 11);
+    assert!((time.real_elapsed() - (10.5 * f64::from(DT))).abs() < 1e-9);
+
+    time.resume();
+    time.advance_frame(DT);
+    assert_eq!(time.fixed_steps_this_frame(), 1);
+    assert!((time.alpha() - 0.5).abs() < 1e-6, "alpha {}", time.alpha());
+}
+
+#[test]
+fn delta_is_the_step_only_between_enter_and_leave() {
+    let mut time = Time::new();
+    time.advance_frame(1.0 / 144.0);
+    assert_eq!(time.delta(), 1.0 / 144.0);
+    time.enter_fixed_step();
+    assert_eq!(time.delta(), DT);
+    time.enter_fixed_step();
+    assert_eq!(time.delta(), DT);
+    assert_eq!(time.game_delta(), 1.0 / 144.0);
+    time.leave_fixed_steps();
+    assert_eq!(time.delta(), 1.0 / 144.0);
+
+    time.enter_fixed_step();
+    time.advance_frame(1.0 / 30.0);
+    assert_eq!(
+        time.delta(),
+        1.0 / 30.0,
+        "a new frame starts outside the steps"
+    );
+}
+
+#[test]
+fn a_new_step_and_bound_take_effect_at_the_next_frame() {
+    let mut time = Time::new();
+    time.advance_frame(DT);
+    time.set_fixed_step(DT / 2.0);
+    time.set_max_steps_per_frame(4);
+    time.enter_fixed_step();
+    assert_eq!(time.delta(), DT);
+    assert_eq!(time.fixed_step(), DT / 2.0);
+    time.leave_fixed_steps();
+    time.advance_frame(DT);
+    assert_eq!(time.fixed_steps_this_frame(), 2);
+    time.enter_fixed_step();
+    assert_eq!(time.delta(), DT / 2.0);
+}
+
+#[test]
+fn the_step_setter_panics_on_zero_nan_negative_and_infinite_steps() {
+    for secs in [0.0, f32::NAN, -1.0, f32::INFINITY] {
+        let result = std::panic::catch_unwind(|| Time::new().set_fixed_step(secs));
+        assert!(result.is_err(), "step {secs}");
+    }
+}
+
+#[test]
+#[should_panic(expected = "a frame needs at least one step")]
+fn a_zero_step_bound_panics() {
+    Time::new().set_max_steps_per_frame(0);
+}
+
+#[test]
+fn extreme_steps_and_scales_leave_a_finite_accumulator() {
+    fn check(time: &Time, case: &str) {
+        assert!(time.accumulator.is_finite(), "{case}");
+        assert!(
+            (0.0..1.0).contains(&time.alpha()),
+            "{case}: {}",
+            time.alpha()
+        );
+        assert!(time.fixed_steps_this_frame() <= 2, "{case}");
+        assert!(time.dropped_this_frame().is_finite(), "{case}");
+    }
+    let mut huge = Time::new();
+    huge.set_fixed_step(f32::MAX);
+    huge.advance_frame(f32::MAX / 2.0);
+    check(&huge, "a step of f32::MAX, half of it");
+    huge.advance_frame(f32::MAX);
+    check(&huge, "a step of f32::MAX, all of it");
+
+    let mut fast = Time::new();
+    fast.set_scale(f32::MAX);
+    for dt in [DT, f32::MAX, DT] {
+        fast.advance_frame(dt);
+        check(&fast, &format!("scale f32::MAX at {dt}"));
+    }
+}
+
+#[test]
 fn a_repeating_timer_counts_every_period_of_a_long_tick() {
     let mut timer = Timer::repeating(0.1);
     assert_eq!(timer.mode(), TimerMode::Repeating);

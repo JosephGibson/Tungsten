@@ -1284,7 +1284,7 @@ mod tests {
     const SCHEDULE: &str = "\
 startup: -
 pre_update: physics_debug_toggle, systems_overlay_toggle, inspector_toggle, inspector_pick, hud_toggle, display_input, state_dispatcher
-fixed_update: physics_step
+fixed_update: physics_prev_snapshot, physics_step
 update: playground_bounce, playground_collisions, playground_bullet_trail, playground_cycle_input, playground_post_aa_input, playground_bloom_input
 post_update: physics_sync, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, camera_update
 ";

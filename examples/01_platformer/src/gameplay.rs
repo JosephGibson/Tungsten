@@ -16,7 +16,9 @@ use tungsten::core::{
     AnimationState, Entity, InputState, KeyCode, Light, Particle, ParticleConfigRegistry,
     ParticleEmitter, ParticleEmitterState, Time, Transform, With, World,
 };
-use tungsten::physics::{Collider, Position, RigidBody, RigidBodyBundle, Velocity, wake};
+use tungsten::physics::{
+    Collider, Position, PrevPosition, RigidBody, RigidBodyBundle, Velocity, wake,
+};
 
 #[derive(Clone, Copy)]
 pub(crate) struct Health {
@@ -242,6 +244,7 @@ pub(crate) fn spawn_obstacles(world: &mut World) {
         );
         world.insert(e, Motion(placement.motion));
         world.insert(e, Position(position));
+        world.insert(e, PrevPosition(position));
         world.insert(e, Transform::from_position(position));
         world.insert(
             e,
@@ -277,6 +280,7 @@ pub(crate) fn spawn_obstacles(world: &mut World) {
         );
         world.insert(e, Motion(placement.motion));
         world.insert(e, Position(position));
+        world.insert(e, PrevPosition(position));
         world.insert(e, Transform::from_position(position));
         world.insert(
             e,
@@ -425,15 +429,6 @@ pub(crate) fn move_obstacles(world: &mut World) {
         }
         world.get_mut::<Position>(e).unwrap().0 = next;
     }
-    let anchored: Vec<_> = world
-        .query::<(Entity, &EmitterAnchor)>()
-        .filter_map(|(e, a)| Some((e, world.get::<Position>(a.parent)?.0 + a.offset)))
-        .collect();
-    for (e, position) in anchored {
-        if let Some(transform) = world.get_mut::<Transform>(e) {
-            transform.position = position;
-        }
-    }
     for e in world
         .query_filtered::<Entity, With<Explosion>>()
         .collect::<Vec<_>>()
@@ -565,6 +560,21 @@ pub(crate) fn damage_player(world: &mut World, player: Entity, origin: Vec2) {
         wake(world, player);
     }
     crate::systems::damage_feedback(world, player);
+}
+
+/// Puts each anchored emitter (hazard and missile drips, black-hole dust) at
+/// its parent's drawn point plus its offset: after `physics_sync` draws the
+/// parent and before the engine's emit pass reads the emitter (M41).
+pub(crate) fn anchor_emitters(world: &mut World) {
+    let anchored: Vec<_> = world
+        .query::<(Entity, &EmitterAnchor)>()
+        .filter_map(|(e, a)| Some((e, world.get::<Transform>(a.parent)?.position + a.offset)))
+        .collect();
+    for (e, position) in anchored {
+        if let Some(transform) = world.get_mut::<Transform>(e) {
+            transform.position = position;
+        }
+    }
 }
 
 pub(crate) fn scene_effects(world: &mut World) {

@@ -8,12 +8,12 @@ use tungsten::WindowSize;
 use tungsten::core::assets::LayerKind;
 use tungsten::core::{
     AssetRegistry, CameraState, Entity, FilterMode, InputState, ParallaxLayer, Particle, Sprite,
-    Transform, Visibility, World, parallax_world_position,
+    Time, Transform, Visibility, World, parallax_world_position,
 };
 use tungsten::core::{
     MaterialAssetId, MaterialRegistry, SpriteAsset, TilemapInstance, TilemapRegistry,
 };
-use tungsten::physics::Position;
+use tungsten::physics::{Position, PrevPosition};
 use tungsten::render::{SpriteBatch, SpriteInstance, TextSection};
 
 use crate::state::{
@@ -22,6 +22,38 @@ use crate::state::{
     PlayerMaterial, TextDisplayState,
 };
 use crate::systems::cursor_to_world;
+
+/// The fraction of a step bodies with history are drawn at this frame:
+/// `Time::alpha()` while `Time::interpolate()` is on, `None` while it is
+/// off or without `Time` (M41).
+pub(crate) fn draw_alpha(world: &World) -> Option<f32> {
+    world
+        .get_resource::<Time>()
+        .filter(|time| time.interpolate())
+        .map(Time::alpha)
+}
+
+/// Where a body is drawn: `prev + (cur - prev) * alpha` with a
+/// `PrevPosition` and an `alpha`, its `Position` otherwise. The game's one
+/// lerp, the point `physics_sync` writes to a body's `Transform`; the
+/// extract and the effects drawn at a body read it, since they read
+/// `Position` where the engine's extract reads `Transform`.
+pub(crate) fn lerp_drawn(position: Vec2, prev: Option<&PrevPosition>, alpha: Option<f32>) -> Vec2 {
+    match (prev, alpha) {
+        (Some(prev), Some(alpha)) => prev.0 + (position - prev.0) * alpha,
+        _ => position,
+    }
+}
+
+/// [`lerp_drawn`] for one entity; `None` without a `Position`.
+pub(crate) fn drawn_position(world: &World, entity: Entity) -> Option<Vec2> {
+    let position = world.get::<Position>(entity)?.0;
+    Some(lerp_drawn(
+        position,
+        world.get::<PrevPosition>(entity),
+        draw_alpha(world),
+    ))
+}
 
 #[allow(clippy::many_single_char_names)] // h/x/r/g/b bindings in HSV-to-RGB math
 fn rainbow_rgba(hue: f32) -> [u8; 4] {
@@ -406,7 +438,7 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
         if world.get::<Player>(entity).is_none() {
             continue;
         }
-        let Some(pos) = world.get::<Position>(entity).copied() else {
+        let Some(pos) = drawn_position(world, entity).map(Position) else {
             continue;
         };
         let Some(asset) = assets.get_sprite(&cs.0) else {
@@ -489,7 +521,7 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
         if burn.remaining <= 0.0 {
             continue;
         }
-        let Some(pos) = world.get::<Position>(entity) else {
+        let Some(pos) = drawn_position(world, entity).map(Position) else {
             continue;
         };
         let age = crate::burning::BALL_BURN_SECONDS - burn.remaining;
@@ -613,8 +645,9 @@ fn extract_balls(world: &World, assets: &AssetRegistry, lighting_on: bool) -> Ve
     let mut current = 0;
     // The camera shows part of the pit at most.
     let (view_min, view_max) = view_bounds(world);
+    let alpha = draw_alpha(world);
     // Both queries walk the same archetypes in the same order, so the zip
-    // reads all six columns with no per-ball lookup.
+    // reads all seven columns with no per-ball lookup.
     let sprites = world.query::<(
         Entity,
         &Ball,
@@ -628,11 +661,12 @@ fn extract_balls(world: &World, assets: &AssetRegistry, lighting_on: bool) -> Ve
         &Position,
         Option<&crate::burning::BallBurn>,
         Option<&BallHue>,
+        Option<&PrevPosition>,
     )>();
-    for ((_, _, pos, small, sprite), (_, _, _, burn, hue)) in sprites.zip(tints) {
+    for ((_, _, pos, small, sprite), (_, _, _, burn, hue, prev)) in sprites.zip(tints) {
         let small = small.is_some();
         let diameter = BALL_VISUAL_DIAMETER * if small { SMALL_BALL_SCALE } else { 1.0 };
-        let top_left = pos.0 - diameter * 0.5;
+        let top_left = lerp_drawn(pos.0, prev, alpha) - diameter * 0.5;
         if (top_left + diameter).cmplt(view_min).any() || top_left.cmpgt(view_max).any() {
             continue;
         }
@@ -833,8 +867,10 @@ fn extract_obstacles(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> 
         }
     }
     for (e, hazard) in world.query::<(Entity, &Hazard)>() {
-        let (Some(pos), Some(cs)) = (world.get::<Position>(e), world.get::<CurrentSprite>(e))
-        else {
+        let (Some(pos), Some(cs)) = (
+            drawn_position(world, e).map(Position),
+            world.get::<CurrentSprite>(e),
+        ) else {
             continue;
         };
         let Some(asset) = assets.get_sprite(&cs.0) else {
@@ -867,7 +903,7 @@ fn extract_obstacles(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> 
     }
     if let Some(asset) = assets.get_sprite("ex10_lift_deck") {
         for (e, platform) in world.query::<(Entity, &MovingPlatform)>() {
-            let Some(pos) = world.get::<Position>(e) else {
+            let Some(pos) = drawn_position(world, e).map(Position) else {
                 continue;
             };
             let width = platform.half_width * 2.0 / 3.0;
@@ -945,7 +981,7 @@ fn extract_vortices(
         ]
     };
     for (e, hole) in world.query::<(Entity, &BlackHole)>() {
-        let Some(pos) = world.get::<Position>(e) else {
+        let Some(pos) = drawn_position(world, e).map(Position) else {
             continue;
         };
         let fade = (hole.remaining * 4.0).min(1.0);
@@ -995,7 +1031,7 @@ fn extract_fireballs(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> 
     let mut batches = Vec::new();
     let glows = GlowMaterials::from_world(world);
     for (e, missile) in world.query::<(Entity, &FireballMissile)>() {
-        let Some(pos) = world.get::<Position>(e).map(|p| p.0) else {
+        let Some(pos) = drawn_position(world, e) else {
             continue;
         };
         if let Some(asset) = assets.get_sprite("ex10_flame_glow") {

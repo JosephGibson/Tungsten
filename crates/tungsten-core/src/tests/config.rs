@@ -682,3 +682,73 @@ fn configs_not_from_load_keep_no_warnings() {
         serde_json::from_str(r#"{ "display": { "display_mode": "theater_mode" } }"#).unwrap();
     assert!(parsed.take_load_warnings().is_empty());
 }
+
+fn assert_time_defaults(time: &TimeConfig, case: &str) {
+    assert_eq!(time.fixed_step_hz, 60, "{case}");
+    assert_eq!(time.max_steps_per_frame, 2, "{case}");
+    assert!(time.interpolate, "{case}");
+}
+
+#[test]
+fn a_file_without_a_time_section_or_with_an_empty_one_takes_the_defaults() {
+    assert_time_defaults(&Config::default().time, "Config::default");
+    let (_, loaded) = load_json("time-none", "{}");
+    assert_time_defaults(&loaded.unwrap().time, "no section");
+    let (_, loaded) = load_json("time-empty", r#"{ "time": {} }"#);
+    assert_time_defaults(&loaded.unwrap().time, "an empty section");
+    assert!(TimeConfig::default().validate().is_ok());
+}
+
+#[test]
+fn a_time_section_sets_the_step_the_bound_and_interpolation() {
+    let (_, loaded) = load_json(
+        "time-set",
+        r#"{ "time": { "fixed_step_hz": 120, "max_steps_per_frame": 4, "interpolate": false } }"#,
+    );
+    let time = loaded.unwrap().time;
+    assert_eq!(time.fixed_step_hz, 120);
+    assert_eq!(time.max_steps_per_frame, 4);
+    assert!(!time.interpolate);
+    let (_, loaded) = load_json("time-30", r#"{ "time": { "fixed_step_hz": 30 } }"#);
+    assert_eq!(loaded.unwrap().time.fixed_step_hz, 30);
+}
+
+#[test]
+fn a_slow_step_or_a_zero_bound_fails_naming_the_field() {
+    let cases = [
+        (
+            "time-20hz",
+            r#"{ "time": { "fixed_step_hz": 20 } }"#,
+            "time.fixed_step_hz",
+            "20",
+        ),
+        (
+            "time-bound-0",
+            r#"{ "time": { "max_steps_per_frame": 0 } }"#,
+            "time.max_steps_per_frame",
+            "0",
+        ),
+    ];
+    for (tag, json, expected_field, expected_value) in cases {
+        let (file, loaded) = load_json(tag, json);
+        match loaded.unwrap_err() {
+            ConfigError::InvalidValue {
+                path, field, value, ..
+            } => {
+                assert_eq!(field, expected_field, "{tag}");
+                assert_eq!(value, expected_value, "{tag}");
+                assert_eq!(path, file.display().to_string(), "{tag}");
+            }
+            other => panic!("unexpected error for {tag}: {other}"),
+        }
+    }
+    let time = TimeConfig {
+        fixed_step_hz: 20,
+        ..TimeConfig::default()
+    };
+    let message = time.validate().unwrap_err().to_string();
+    assert!(
+        message.starts_with("invalid time.fixed_step_hz='20': expected"),
+        "{message}"
+    );
+}

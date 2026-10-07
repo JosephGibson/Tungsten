@@ -1,6 +1,6 @@
-//! Frame time: the [`Time`] resource with the real and game clocks, the
-//! [`Timer`] countdown, and [`DeltaTime`], the single dt `Time` replaces
-//! (`D-129`).
+//! Frame time: the [`Time`] resource with the real and game clocks and the
+//! fixed-step accumulator, the [`Timer`] countdown, and [`DeltaTime`], the
+//! single dt `Time` replaces (`D-129`).
 //!
 //! The app advances `Time` once a frame, before any stage runs. The real
 //! clock takes the dt the loop gives it: elapsed wall time capped at 0.1 s
@@ -8,8 +8,21 @@
 //! (`D-110`). The game clock is the real dt times the [scale](Time::scale),
 //! zero while [paused](Time::is_paused). Systems read [`Time::delta`];
 //! anything that must run over a pause, such as a screen transition, reads
-//! [`Time::real_delta`]. A world driven by hand, without the app, calls
-//! [`Time::advance_frame`] in the clock stage's place.
+//! [`Time::real_delta`].
+//!
+//! The accumulator spends game time in whole [fixed steps](Time::fixed_step),
+//! 1/60 s unless set: the app runs `fixed_update` once per step, zero or more
+//! times a frame and at most [`max_steps_per_frame`](Time::max_steps_per_frame).
+//! Whole steps past that bound are dropped, and the fraction of a step left
+//! over is [`alpha`](Time::alpha), by which bodies with history are drawn
+//! between their last two steps. Inside the steps `delta` is the step. At
+//! the smoke pin every frame runs one step with `alpha` 0.
+//!
+//! A world driven by hand, without the app, calls [`Time::advance_frame`]
+//! in the clock stage's place. It reads the game dt everywhere unless it
+//! brackets its fixed systems with [`Time::enter_fixed_step`] and
+//! [`Time::leave_fixed_steps`], running them
+//! [`fixed_steps_this_frame`](Time::fixed_steps_this_frame) times.
 //!
 //! A [`Timer`] is a plain value that a component or resource owns and ticks
 //! with whichever clock its owner picks; there is no timer system.
@@ -17,9 +30,10 @@
 /// Elapsed seconds between frames: the frame's single dt before [`Time`].
 ///
 /// Systems read [`Time::delta`], or [`Time::real_delta`] for real time. The
-/// app still writes the game dt here each frame, so a game that reads it
-/// keeps working until W4b removes the type; a world built by hand inserts
-/// and advances `Time` instead, since engine systems no longer read this.
+/// app still writes the dt here, the step inside `fixed_update` and the game
+/// dt everywhere else, so a game that reads it keeps working until W4b
+/// removes the type; a world built by hand inserts and advances `Time`
+/// instead, since engine systems no longer read this.
 #[deprecated(
     since = "0.53.0",
     note = "read `Time::delta()`, or `Time::real_delta()` for real time; \
@@ -53,20 +67,27 @@ impl Default for DeltaTime {
     }
 }
 
-/// The frame's clocks: a `World` resource the app inserts and advances once
-/// a frame, before any stage runs.
+/// The frame's clocks and the fixed-step accumulator: a `World` resource the
+/// app inserts and advances once a frame, before any stage runs.
 ///
 /// - **Real** time is the dt the loop gives the frame
 ///   ([`real_delta`](Self::real_delta)); it keeps running while the game is
 ///   paused.
 /// - **Game** time is real time times [`scale`](Self::scale), zero while
 ///   [paused](Self::is_paused) ([`game_delta`](Self::game_delta)).
+/// - **Fixed** time is game time spent in whole steps of
+///   [`fixed_step`](Self::fixed_step): the frame runs
+///   [`fixed_steps_this_frame`](Self::fixed_steps_this_frame) steps, at most
+///   [`max_steps_per_frame`](Self::max_steps_per_frame), and keeps the rest
+///   of a step as [`alpha`](Self::alpha).
 ///
-/// [`delta`](Self::delta) is the dt a system reads: the game dt, so a pause
-/// freezes and a scale slows or speeds whatever moves by it. Scale and pause
-/// take effect from the next frame, so a system that pauses the clock leaves
-/// the current frame's dt as it was. Elapsed time on both clocks sums every
-/// frame's dt in `f64`; [`frame`](Self::frame) counts frames started.
+/// [`delta`](Self::delta) is the dt a system reads: the step inside
+/// `fixed_update`, the game dt everywhere else, so a pause freezes and a
+/// scale slows or speeds whatever moves by it. A paused frame runs no step
+/// and holds `alpha`. Scale, pause and the step settings take effect from
+/// the next frame, so a system that changes them leaves the current frame's
+/// dt and steps as they were. Elapsed time on both clocks sums every frame's
+/// dt in `f64`; [`frame`](Self::frame) counts frames started.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Time {
     real_delta: f32,
@@ -76,10 +97,30 @@ pub struct Time {
     frame: u64,
     scale: f32,
     paused: bool,
+    /// The step setting; `frame_step` takes it at each `advance_frame`.
+    fixed_step: f32,
+    max_steps_per_frame: u32,
+    interpolate: bool,
+    /// Game time not yet stepped: below `frame_step` after a frame starts.
+    accumulator: f32,
+    /// The step this frame's steps take.
+    frame_step: f32,
+    steps_this_frame: u32,
+    dropped_this_frame: f32,
+    alpha: f32,
+    in_fixed_step: bool,
 }
 
+/// The default step, the smoke pin: a pinned frame runs exactly one step.
+const DEFAULT_FIXED_STEP: f32 = 1.0 / 60.0;
+
+/// The default bound: 1/30 s of game time a frame at the default step,
+/// `D-094`'s bound on one physics call.
+const DEFAULT_MAX_STEPS_PER_FRAME: u32 = 2;
+
 impl Time {
-    /// Both clocks at zero, scale 1, running, before the first frame.
+    /// Both clocks at zero, scale 1, running, before the first frame, with a
+    /// 1/60 s step, two steps a frame at most and interpolation on.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -90,17 +131,32 @@ impl Time {
             frame: 0,
             scale: 1.0,
             paused: false,
+            fixed_step: DEFAULT_FIXED_STEP,
+            max_steps_per_frame: DEFAULT_MAX_STEPS_PER_FRAME,
+            interpolate: true,
+            accumulator: 0.0,
+            frame_step: DEFAULT_FIXED_STEP,
+            steps_this_frame: 0,
+            dropped_this_frame: 0.0,
+            alpha: 0.0,
+            in_fixed_step: false,
         }
     }
 
     /// Starts a frame of `real_dt` seconds: sets both clocks' dt, adds them
-    /// to their elapsed times and counts the frame.
+    /// to their elapsed times, counts the frame and decides its fixed steps.
     ///
     /// The app's clock stage calls it once a frame with the loop's dt
     /// (capped, pinned, or the harness's); a world driven by hand calls it in
     /// that stage's place. A negative or non-finite `real_dt` counts as zero.
     /// The game dt is `real_dt` times the scale, zero while paused, and
     /// saturates at `f32::MAX`.
+    ///
+    /// The accumulator adds the game dt, saturating at `f32::MAX`, then gives
+    /// up one step at a time while it holds a whole step, until the bound's
+    /// steps have run or a step no longer changes it. Whole steps still left
+    /// are dropped and the remainder kept, so `alpha` stays in `[0, 1)`. A
+    /// paused frame adds nothing, runs no step and holds `alpha`.
     pub fn advance_frame(&mut self, real_dt: f32) {
         let real_dt = if real_dt.is_finite() && real_dt > 0.0 {
             real_dt
@@ -116,13 +172,48 @@ impl Time {
         self.real_elapsed += f64::from(real_dt);
         self.elapsed += f64::from(self.game_delta);
         self.frame += 1;
+        self.in_fixed_step = false;
+        self.frame_step = self.fixed_step;
+        self.steps_this_frame = 0;
+        self.dropped_this_frame = 0.0;
+        if !self.paused {
+            self.step_accumulator();
+        }
     }
 
-    /// The dt a system reads: this frame's game dt. Once W3b's fixed step
-    /// lands, it is the step inside `fixed_update`.
+    /// Spends the accumulator in whole steps (the spike's loop, `D-129`).
+    fn step_accumulator(&mut self) {
+        let step = self.frame_step;
+        self.accumulator = (self.accumulator + self.game_delta).min(f32::MAX);
+        while self.steps_this_frame < self.max_steps_per_frame && self.accumulator >= step {
+            let rest = self.accumulator - step;
+            if rest == self.accumulator {
+                // The step is below the sum's precision: drop it whole below.
+                break;
+            }
+            self.accumulator = rest;
+            self.steps_this_frame += 1;
+        }
+        if self.accumulator >= step {
+            // `%` is exact, so the remainder is a finite value below the step.
+            let rest = self.accumulator % step;
+            self.dropped_this_frame = self.accumulator - rest;
+            self.accumulator = rest;
+        }
+        self.alpha = self.accumulator / step;
+    }
+
+    /// The dt a system reads: the step inside the frame's fixed steps
+    /// (between [`enter_fixed_step`](Self::enter_fixed_step) and
+    /// [`leave_fixed_steps`](Self::leave_fixed_steps)), this frame's game dt
+    /// everywhere else.
     #[must_use]
     pub fn delta(&self) -> f32 {
-        self.game_delta
+        if self.in_fixed_step {
+            self.frame_step
+        } else {
+            self.game_delta
+        }
     }
 
     /// This frame's game dt: the real dt times the scale, zero while paused.
@@ -192,6 +283,99 @@ impl Time {
     /// Pauses or resumes the game clock from the next frame on.
     pub fn set_paused(&mut self, paused: bool) {
         self.paused = paused;
+    }
+
+    /// The fixed step in game seconds: 1/60 s, the smoke pin, unless set.
+    #[must_use]
+    pub fn fixed_step(&self) -> f32 {
+        self.fixed_step
+    }
+
+    /// Sets the fixed step in game seconds from the next frame on.
+    ///
+    /// `physics_step` clamps each call to
+    /// [`PhysicsConfig::max_step_dt`](crate::physics::PhysicsConfig::max_step_dt),
+    /// 1/30 s by default (`D-094`), so a longer step makes physics run slow
+    /// against the game unless that bound rises with it. `tungsten.json`'s
+    /// `time` section refuses a step longer than 1/30 s.
+    ///
+    /// # Panics
+    /// When `secs` is not finite or not positive.
+    pub fn set_fixed_step(&mut self, secs: f32) {
+        assert!(
+            secs.is_finite() && secs > 0.0,
+            "Time::set_fixed_step: step must be finite and positive, got {secs}"
+        );
+        self.fixed_step = secs;
+    }
+
+    /// The most fixed steps a frame runs: 2 unless set.
+    #[must_use]
+    pub fn max_steps_per_frame(&self) -> u32 {
+        self.max_steps_per_frame
+    }
+
+    /// Sets the most fixed steps a frame runs, from the next frame on. A
+    /// frame that owes more drops the whole steps past the bound, so the game
+    /// runs slow on a slow frame instead of falling further behind.
+    ///
+    /// # Panics
+    /// When `steps` is 0.
+    pub fn set_max_steps_per_frame(&mut self, steps: u32) {
+        assert!(
+            steps > 0,
+            "Time::set_max_steps_per_frame: a frame needs at least one step"
+        );
+        self.max_steps_per_frame = steps;
+    }
+
+    /// How many fixed steps this frame runs: zero or more, at most
+    /// [`max_steps_per_frame`](Self::max_steps_per_frame); none while paused.
+    #[must_use]
+    pub fn fixed_steps_this_frame(&self) -> u32 {
+        self.steps_this_frame
+    }
+
+    /// The game seconds this frame dropped as whole steps past the bound; 0
+    /// unless the frame owed more steps than the bound allows.
+    #[must_use]
+    pub fn dropped_this_frame(&self) -> f32 {
+        self.dropped_this_frame
+    }
+
+    /// The game time left over after this frame's steps, as a fraction of
+    /// the step, in `[0, 1)`: where the frame sits between the last two
+    /// steps. Interpolation draws a body at `prev + (cur - prev) * alpha`.
+    #[must_use]
+    pub fn alpha(&self) -> f32 {
+        self.alpha
+    }
+
+    /// Whether bodies that carry a previous position are drawn interpolated
+    /// by [`alpha`](Self::alpha): on unless set.
+    #[must_use]
+    pub fn interpolate(&self) -> bool {
+        self.interpolate
+    }
+
+    /// Turns render interpolation on or off. Off, `PhysicsPlugin` draws every
+    /// body at its `Position`, as a body without history is drawn.
+    pub fn set_interpolate(&mut self, on: bool) {
+        self.interpolate = on;
+    }
+
+    /// Starts one of the frame's fixed steps: [`delta`](Self::delta) reads
+    /// the step until [`leave_fixed_steps`](Self::leave_fixed_steps). The app
+    /// calls it before each step; a world driven by hand that never calls it
+    /// reads the game dt throughout.
+    pub fn enter_fixed_step(&mut self) {
+        self.in_fixed_step = true;
+    }
+
+    /// Ends the frame's fixed steps: [`delta`](Self::delta) reads the game dt
+    /// again. The app calls it once, after the last step.
+    pub fn leave_fixed_steps(&mut self) {
+        self.in_fixed_step = false;
     }
 }
 

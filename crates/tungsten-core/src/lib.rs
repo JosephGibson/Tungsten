@@ -40,7 +40,9 @@ pub use components::{
     Sprite, SpriteSquashStretch, SquashStretchState, SquashTrigger, Tag, Transform, Visibility,
     parallax_world_position, sync_position_to_transform,
 };
-pub use config::{Config, ConfigError, DepthSortMode, GameConfig, PostAaMode, RenderConfig};
+pub use config::{
+    Config, ConfigError, DepthSortMode, GameConfig, PostAaMode, RenderConfig, TimeConfig,
+};
 pub use debug_draw::{DEFAULT_CIRCLE_SEGMENTS, DebugCommand, DebugDraw, DebugShape};
 pub use display::{
     DisplayConfig, DisplayMode, DisplayState, DisplayValidationError, Resolution, ScaleMode,
@@ -57,8 +59,9 @@ pub use inspect::{InspectRegistry, Inspectable};
 pub use lighting::{AmbientLight, LIGHT_CAP};
 pub use physics::{
     Aabb, BodyKind, Collider, CollisionEvent, Contact, PhysicsBuffers, PhysicsConfig,
-    PhysicsPlugin, Position, RigidBody, RigidBodyBundle, Shape, SpatialGrid, Velocity,
-    aabb_vs_aabb, aabb_vs_circle, circle_vs_circle, physics_step,
+    PhysicsPlugin, Position, PrevPosition, RigidBody, RigidBodyBundle, Shape, SpatialGrid,
+    Velocity, aabb_vs_aabb, aabb_vs_circle, circle_vs_circle, physics_prev_snapshot, physics_step,
+    physics_sync,
 };
 pub use post::{
     BloomParams, ColorAdjustParams, CrtParams, DissolveParams, DitherMode, DitherParams,

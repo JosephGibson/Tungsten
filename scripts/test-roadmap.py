@@ -261,6 +261,10 @@ class Status(unittest.TestCase):
                  (1, "M"): ("opus", "xhigh"), (None, None): ("opus", "xhigh")}
         for (c, e), want in tiers.items():
             self.assertEqual(roadmap.tier({"complexity": c, "effort": e}), want, (c, e))
+        for level, want in {"A": ("opus", "max"), "B": ("opus", "max"), "C": ("fable", "xhigh"), None: ("fable", "xhigh")}.items():
+            stop = {"complexity": 4, "effort": "L", "level": level}  # D-136: level A and B releases take Opus
+            self.assertEqual(roadmap.tier(stop), want, level)
+        self.assertEqual(roadmap.tier({"complexity": 3, "effort": "XL", "level": "B"}), ("opus", "max"))
         stop = {"id": "x", "complexity": 4, "effort": "L"}
         rec = lambda key: roadmap.recommend(stop, key)
         self.assertEqual(rec("run"), {"mode": "auto", "model": "Fable 5.1", "effort": "xhigh"})

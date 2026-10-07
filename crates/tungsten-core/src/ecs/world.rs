@@ -21,15 +21,34 @@ pub struct World {
     /// One flusher per event type `register_event` registered, in order;
     /// `flush_events` runs them once per frame (`D-040`).
     event_flushers: Vec<fn(&mut World)>,
+    /// Beside each flusher, the fixed steps' view switch for the same queue.
+    event_steppers: Vec<fn(&mut World, EventStep)>,
     event_types: HashSet<TypeId>,
     /// Staging for [`spawn_with`](Self::spawn_with) and
     /// [`insert_bundle`](Self::insert_bundle).
     bundle_scratch: BundleScratch,
 }
 
+/// What [`World::set_fixed_event_view`] and [`World::end_fixed_step_events`]
+/// do to each queue.
+#[derive(Clone, Copy)]
+enum EventStep {
+    View(bool),
+    End,
+}
+
 fn flush_event_queue<T: 'static>(world: &mut World) {
     if let Some(queue) = world.get_resource_mut::<EventQueue<T>>() {
         queue.flush();
+    }
+}
+
+fn step_event_queue<T: 'static>(world: &mut World, step: EventStep) {
+    if let Some(queue) = world.get_resource_mut::<EventQueue<T>>() {
+        match step {
+            EventStep::View(on) => queue.set_fixed_view(on),
+            EventStep::End => queue.end_fixed_step(),
+        }
     }
 }
 
@@ -40,6 +59,7 @@ impl World {
             archetypes: Archetypes::new(),
             resources: ResourceMap::new(),
             event_flushers: Vec::new(),
+            event_steppers: Vec::new(),
             event_types: HashSet::new(),
             bundle_scratch: BundleScratch::default(),
         }
@@ -53,6 +73,7 @@ impl World {
         }
         self.insert_resource(EventQueue::<T>::new());
         self.event_flushers.push(flush_event_queue::<T>);
+        self.event_steppers.push(step_event_queue::<T>);
         true
     }
 
@@ -73,6 +94,26 @@ impl World {
     pub fn flush_events(&mut self) {
         for i in 0..self.event_flushers.len() {
             (self.event_flushers[i])(self);
+        }
+    }
+
+    /// Turns every registered event queue's step view on or off. The app
+    /// turns it on for the frame's fixed steps and off after the last, so a
+    /// step after the first reads only the events sent since the step before
+    /// it ended ([`EventQueue`]).
+    pub fn set_fixed_event_view(&mut self, on: bool) {
+        for i in 0..self.event_steppers.len() {
+            (self.event_steppers[i])(self, EventStep::View(on));
+        }
+    }
+
+    /// Ends a fixed step in every registered event queue: the next step's
+    /// readers start after the events sent so far. The app calls it after
+    /// each step; [`flush_events`](Self::flush_events) starts the next frame
+    /// over.
+    pub fn end_fixed_step_events(&mut self) {
+        for i in 0..self.event_steppers.len() {
+            (self.event_steppers[i])(self, EventStep::End);
         }
     }
 

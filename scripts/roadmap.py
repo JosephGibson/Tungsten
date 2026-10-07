@@ -29,7 +29,7 @@ SCHEMA = 2  # the catalog shape `catalog` writes and the page reads
 REGISTER_FIELDS = ("candidate", "plan", "release", "status")
 FIRST_MILESTONE = 32  # docs/plans/1.0/README.md, Conventions
 
-# Session recommendations (D-118). A stop's tier comes from its complexity and effort; the scaled
+# Session recommendations (D-118, D-136). A stop's tier comes from its complexity and effort; the scaled
 # steps take it, the fixed ones never vary, a same-session step keeps the step that opened its session.
 MODELS = {"opus": "Opus 5.5", "fable": "Fable 5.1"}
 SCALED = ("plan", "qa-plan", "gate", "run", "run-c1", "experiment", "rc-fix")
@@ -151,11 +151,12 @@ def flow_row(stop):
 
 def tier(stop):
     """(model, effort) from complexity c and effort e: Fable for large architectural stops (c 4, or 3
-    and XL), Opus max for c 2–3, Opus high for very small ones (c 1 and S), else the Opus xhigh default."""
+    and XL) unless a level A or B release (D-136), Opus max for c 2–4, Opus high for very small ones
+    (c 1 and S), else the Opus xhigh default."""
     c, e = stop.get("complexity"), stop.get("effort")
-    if c == 4 or (c == 3 and e == "XL"):
+    if (c == 4 or (c == 3 and e == "XL")) and stop.get("level") not in ("A", "B"):
         return "fable", "xhigh"
-    if c in (2, 3):
+    if c in (2, 3, 4):
         return "opus", "max"
     if c == 1 and e == "S":
         return "opus", "high"

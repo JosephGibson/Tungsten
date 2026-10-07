@@ -30,7 +30,9 @@ use crate::state::state_dispatcher_system;
 use crate::systems_overlay::systems_overlay_toggle_system;
 use crate::tweens::tween_tick_system;
 
-pub use tungsten_core::physics::{PHYSICS_STEP, PHYSICS_SYNC, PhysicsPlugin};
+pub use tungsten_core::physics::{
+    PHYSICS_PREV_SNAPSHOT, PHYSICS_STEP, PHYSICS_SYNC, PhysicsPlugin,
+};
 
 /// `PreUpdate`: the physics overlay toggle.
 pub const PHYSICS_DEBUG_TOGGLE: &str = "physics_debug_toggle";

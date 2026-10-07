@@ -36,7 +36,7 @@ use tungsten_core::{
     ActionMap, AssetRegistry, AudioCommand, AudioCommands, CameraController, CameraState,
     CommandBuffer, Config, ConfigError, DebugDraw, DebugShape, DisplayMode, DisplayState,
     InputState, InspectRegistry, Inspectable, ParticleActive, ParticleBudget, Plugin, PluginSet,
-    Schedule, Stage, SystemDesc, Time, World, WorldRngSeed, system,
+    Schedule, Stage, SystemDesc, Time, TimeConfig, World, WorldRngSeed, system,
 };
 use tungsten_render::{
     DebugLineInstance, GpuFrameTimings, MeshParticleBatch, QuadInstance, Renderer, SpriteBatch,
@@ -160,6 +160,7 @@ impl App {
             .game
             .validate()
             .err()
+            .or_else(|| config.time.validate().err())
             .or_else(|| invalid_logging_level(&config.logging.level));
         let user_dirs = if invalid.is_none() {
             user_dir::resolve(
@@ -195,7 +196,7 @@ impl App {
         let action_map = load_action_map_at_startup(&input_map_path)
             .inspect_err(|err| log::error!("{err:#}"))?;
         let mut world = World::new();
-        world.insert_resource(Time::new());
+        world.insert_resource(time_from_config(&config.time));
         #[allow(deprecated)]
         world.insert_resource(DeltaTime::new());
         world.insert_resource(InputState::new());
@@ -797,6 +798,7 @@ struct FrameStageTimings {
     audio_ms: f32,
     total_ms: f32,
     interval_ms: Option<f32>,
+    fixed_steps: u32,
     system_timings: Vec<(String, f32)>,
 }
 
@@ -845,11 +847,81 @@ impl App {
             });
     }
 
-    /// `Startup` once, then `PreUpdate`, `FixedUpdate` and `Update`; `None`
-    /// when the frame's update asked the engine to exit, else the time so
-    /// far and the per-system timings `stage_post_update` extends.
+    /// `FixedUpdate` once per fixed step the frame's [`Time`] owes, zero or
+    /// more times (`D-129`), and returns the steps run. Inside the steps
+    /// `Time::delta()` and `DeltaTime` read the step, and input edges and
+    /// event queues their step views; after the last, the game dt and the
+    /// frame views again. Each system's runs are summed under its name, and
+    /// a frame with no step lists each at 0 ms. A world without `Time` runs
+    /// the stage once, as before the accumulator.
     #[inline(always)]
-    fn stage_update(&mut self) -> (Instant, Vec<(String, f32)>, bool) {
+    fn stage_fixed_update(&mut self, system_timings: &mut Vec<(String, f32)>) -> u32 {
+        let Some((steps, step)) = self
+            .world
+            .get_resource::<Time>()
+            .map(|time| (time.fixed_steps_this_frame(), time.fixed_step()))
+        else {
+            self.run_stage(Stage::FixedUpdate, system_timings);
+            return 1;
+        };
+        if steps == 0 {
+            system_timings.extend(
+                self.schedule
+                    .names(Stage::FixedUpdate)
+                    .map(|name| (name.to_string(), 0.0)),
+            );
+            return 0;
+        }
+        let first = system_timings.len();
+        for k in 0..steps {
+            if let Some(time) = self.world.get_resource_mut::<Time>() {
+                time.enter_fixed_step();
+            }
+            self.set_step_views(true, step);
+            if k == 0 {
+                self.run_stage(Stage::FixedUpdate, system_timings);
+            } else {
+                // The k-th system adds to the entry the first step pushed.
+                let mut entry = first;
+                self.schedule
+                    .run_stage(Stage::FixedUpdate, &mut self.world, |_, elapsed| {
+                        system_timings[entry].1 += elapsed.as_secs_f64() as f32 * 1000.0;
+                        entry += 1;
+                    });
+            }
+            if let Some(input) = self.world.get_resource_mut::<InputState>() {
+                input.end_fixed_step();
+            }
+            self.world.end_fixed_step_events();
+        }
+        let game_dt = self.world.get_resource_mut::<Time>().map(|time| {
+            time.leave_fixed_steps();
+            time.game_delta()
+        });
+        self.set_step_views(false, game_dt.unwrap_or(step));
+        steps
+    }
+
+    /// Turns the input and event step views on or off and writes `dt` to
+    /// `DeltaTime`: the step inside the steps, the game dt after them.
+    #[inline(always)]
+    fn set_step_views(&mut self, on: bool, dt: f32) {
+        #[allow(deprecated)]
+        if let Some(delta) = self.world.get_resource_mut::<DeltaTime>() {
+            delta.dt = dt;
+        }
+        if let Some(input) = self.world.get_resource_mut::<InputState>() {
+            input.set_fixed_view(on);
+        }
+        self.world.set_fixed_event_view(on);
+    }
+
+    /// `Startup` once, then `PreUpdate`, the frame's fixed steps and
+    /// `Update`; `None` when the frame's update asked the engine to exit,
+    /// else the time so far, the per-system timings `stage_post_update`
+    /// extends and the fixed steps run.
+    #[inline(always)]
+    fn stage_update(&mut self) -> (Instant, Vec<(String, f32)>, u32, bool) {
         let update_start = Instant::now();
         if !self.schedule.is_resolved() {
             self.resolve_schedule()
@@ -864,10 +936,10 @@ impl App {
             self.last_frame = Some(Instant::now());
         }
         self.run_stage(Stage::PreUpdate, &mut system_timings);
-        self.run_stage(Stage::FixedUpdate, &mut system_timings);
+        let fixed_steps = self.stage_fixed_update(&mut system_timings);
         self.run_stage(Stage::Update, &mut system_timings);
         let exit = self.engine_exit_requested();
-        (update_start, system_timings, exit)
+        (update_start, system_timings, fixed_steps, exit)
     }
 
     /// `PostUpdate`: physics sync, particles, tweens, game feel, camera and
@@ -1139,6 +1211,7 @@ impl App {
             ft.flush_ms = t.flush_ms;
             ft.total_ms = t.total_ms;
             ft.interval_ms = t.interval_ms;
+            ft.fixed_steps = t.fixed_steps;
             ft.system_timings = t.system_timings;
         }
     }
@@ -1166,7 +1239,7 @@ impl App {
             .map_or(0.0, |ft| ft.total_ms);
 
         self.stage_time(clock);
-        let (update_start, mut system_timings, exit) = self.stage_update();
+        let (update_start, mut system_timings, fixed_steps, exit) = self.stage_update();
         if exit {
             return FrameEnd::ExitRequested;
         }
@@ -1204,6 +1277,7 @@ impl App {
             audio_ms,
             total_ms,
             interval_ms,
+            fixed_steps,
             system_timings,
         });
 
@@ -1467,6 +1541,16 @@ fn smoke_frames_from_env() -> Option<u32> {
 
 /// A `logging.level` set in code that names no level; `Config::load`
 /// rejects the same value read from the file (`D-119`).
+/// `Time` with the `time` section's step, bound and interpolation; the
+/// section is validated first, so the setters do not panic.
+fn time_from_config(config: &TimeConfig) -> Time {
+    let mut time = Time::new();
+    time.set_fixed_step(1.0 / config.fixed_step_hz as f32);
+    time.set_max_steps_per_frame(config.max_steps_per_frame);
+    time.set_interpolate(config.interpolate);
+    time
+}
+
 fn invalid_logging_level(level: &str) -> Option<ConfigError> {
     level
         .parse::<LevelFilter>()

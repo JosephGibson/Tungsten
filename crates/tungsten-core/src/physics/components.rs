@@ -15,6 +15,20 @@ impl Position {
     }
 }
 
+/// A body's `Position` before the last fixed step: the history render
+/// interpolation draws from. [`physics_prev_snapshot`](crate::physics::physics_prev_snapshot)
+/// copies `Position` here before each step, and
+/// [`physics_sync`](crate::physics::physics_sync) draws the body at
+/// `prev + (cur - prev) * alpha`; a body without it is drawn at its
+/// `Position`.
+///
+/// Spawn it with the body, as [`RigidBodyBundle`] does: inserting it later
+/// moves the entity to another archetype, which reorders the solve
+/// (`D-066`). A teleport writes `Position` and `PrevPosition` together, so
+/// the body is not drawn sliding from the old point.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PrevPosition(pub Vec2);
+
 /// World-space velocity in pixels/second.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Velocity(pub Vec2);
@@ -119,8 +133,10 @@ impl RigidBody {
 /// `world.spawn_with(RigidBodyBundle::dynamic(position, collider))`, or
 /// `.with((Player, transform))` for the entity's other components.
 ///
-/// A dynamic body gets `Position`, `Velocity`, `Collider` and `RigidBody`; a
-/// static one the same without `Velocity`.
+/// A dynamic body gets `Position`, [`PrevPosition`] at the same point,
+/// `Velocity`, `Collider` and `RigidBody`; a static one the same without
+/// `Velocity`. So every bundle body is drawn interpolated; a game that wants
+/// a body without history spawns its components as a tuple.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RigidBodyBundle {
     /// Where the body is.
@@ -172,10 +188,12 @@ impl RigidBodyBundle {
 }
 
 impl Bundle for RigidBodyBundle {
-    /// `Position`, `Velocity` when there is one, `Collider`, `RigidBody`.
+    /// `Position`, `PrevPosition` at the same point, `Velocity` when there
+    /// is one, `Collider`, `RigidBody`.
     #[inline]
     fn put<S: BundleSink>(self, sink: &mut S) {
         sink.put(self.position);
+        sink.put(PrevPosition(self.position.0));
         if let Some(velocity) = self.velocity {
             sink.put(velocity);
         }

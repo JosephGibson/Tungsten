@@ -121,6 +121,15 @@ impl<'de> Deserialize<'de> for ScrollDirection {
 }
 
 /// Keyboard/mouse/scroll state with per-frame edges.
+///
+/// Edges have two views. The frame view, the default, holds the presses and
+/// releases since the last [`begin_frame`](Self::begin_frame). The fixed
+/// view, which the app turns on while `fixed_update` runs
+/// ([`set_fixed_view`](Self::set_fixed_view)), holds them since the last
+/// [`end_fixed_step`](Self::end_fixed_step): a frame that runs no fixed step
+/// keeps its edges for the next step, and a frame that runs two shows each
+/// edge to the first. So `just_pressed` sees each press once in either stage.
+/// Level queries, the cursor and the deltas stay per frame.
 #[derive(Debug, Clone)]
 pub struct InputState {
     pressed: HashSet<KeyCode>,
@@ -135,10 +144,25 @@ pub struct InputState {
     scroll_just_pressed: HashSet<ScrollDirection>,
     scroll_just_released: HashSet<ScrollDirection>,
 
+    fixed: FixedEdges,
+    fixed_view: bool,
+
     cursor_position: Option<(f32, f32)>,
     cursor_delta: (f32, f32),
     scroll_line_delta: (f32, f32),
     scroll_pixel_delta: (f32, f32),
+}
+
+/// The fixed view's edges: every press and release since the last fixed
+/// step ended.
+#[derive(Debug, Clone, Default)]
+struct FixedEdges {
+    just_pressed: HashSet<KeyCode>,
+    just_released: HashSet<KeyCode>,
+    mouse_just_pressed: HashSet<MouseButton>,
+    mouse_just_released: HashSet<MouseButton>,
+    scroll_just_pressed: HashSet<ScrollDirection>,
+    scroll_just_released: HashSet<ScrollDirection>,
 }
 
 impl InputState {
@@ -154,6 +178,8 @@ impl InputState {
             scroll_pressed: HashSet::new(),
             scroll_just_pressed: HashSet::new(),
             scroll_just_released: HashSet::new(),
+            fixed: FixedEdges::default(),
+            fixed_view: false,
             cursor_position: None,
             cursor_delta: (0.0, 0.0),
             scroll_line_delta: (0.0, 0.0),
@@ -161,7 +187,8 @@ impl InputState {
         }
     }
 
-    /// Clear per-frame edges and deltas.
+    /// Clear per-frame edges and deltas. The fixed view keeps its edges until
+    /// a fixed step ends; a scroll notch's release enters both views.
     pub fn begin_frame(&mut self) {
         self.just_pressed.clear();
         self.just_released.clear();
@@ -170,35 +197,61 @@ impl InputState {
 
         self.scroll_just_pressed.clear();
         self.scroll_just_released.clear();
-        self.scroll_just_released
-            .extend(self.scroll_pressed.drain());
+        for direction in self.scroll_pressed.drain() {
+            self.scroll_just_released.insert(direction);
+            self.fixed.scroll_just_released.insert(direction);
+        }
 
         self.cursor_delta = (0.0, 0.0);
         self.scroll_line_delta = (0.0, 0.0);
         self.scroll_pixel_delta = (0.0, 0.0);
     }
 
+    /// Turns the fixed view on or off: while it is on, `just_pressed`,
+    /// `just_released` and the mouse and scroll edge queries answer with the
+    /// edges since the last [`end_fixed_step`](Self::end_fixed_step), and
+    /// [`ActionMap`] with them. The app turns it on around each fixed step.
+    pub fn set_fixed_view(&mut self, on: bool) {
+        self.fixed_view = on;
+    }
+
+    /// Clears the fixed view's edges: the app calls it after each fixed
+    /// step, so the next step sees only what arrived since.
+    pub fn end_fixed_step(&mut self) {
+        let fixed = &mut self.fixed;
+        fixed.just_pressed.clear();
+        fixed.just_released.clear();
+        fixed.mouse_just_pressed.clear();
+        fixed.mouse_just_released.clear();
+        fixed.scroll_just_pressed.clear();
+        fixed.scroll_just_released.clear();
+    }
+
     pub fn key_down(&mut self, key: KeyCode) {
         if self.pressed.insert(key) {
             self.just_pressed.insert(key);
+            self.fixed.just_pressed.insert(key);
         }
     }
 
     pub fn key_up(&mut self, key: KeyCode) {
         if self.pressed.remove(&key) {
             self.just_released.insert(key);
+            self.fixed.just_released.insert(key);
         }
     }
 
     pub fn mouse_down(&mut self, button: MouseButton) {
         if self.mouse_pressed.insert(button) {
             self.mouse_just_pressed.insert(button);
+            self.fixed.mouse_just_pressed.insert(button);
         }
     }
 
     pub fn mouse_up(&mut self, button: MouseButton) {
         if self.mouse_pressed.remove(&button) {
             self.mouse_just_released.insert(button);
+            self.fixed.mouse_just_released.insert(button);
         }
     }
 
@@ -227,14 +280,26 @@ impl InputState {
         self.pressed.contains(&key)
     }
 
+    /// Pressed since the last frame, or since the last fixed step while the
+    /// fixed view is on.
     #[must_use]
     pub fn just_pressed(&self, key: KeyCode) -> bool {
-        self.just_pressed.contains(&key)
+        if self.fixed_view {
+            self.fixed.just_pressed.contains(&key)
+        } else {
+            self.just_pressed.contains(&key)
+        }
     }
 
+    /// Released since the last frame, or since the last fixed step while the
+    /// fixed view is on.
     #[must_use]
     pub fn just_released(&self, key: KeyCode) -> bool {
-        self.just_released.contains(&key)
+        if self.fixed_view {
+            self.fixed.just_released.contains(&key)
+        } else {
+            self.just_released.contains(&key)
+        }
     }
 
     #[must_use]
@@ -242,14 +307,24 @@ impl InputState {
         self.mouse_pressed.contains(&button)
     }
 
+    /// As [`just_pressed`](Self::just_pressed), for a mouse button.
     #[must_use]
     pub fn mouse_just_pressed(&self, button: MouseButton) -> bool {
-        self.mouse_just_pressed.contains(&button)
+        if self.fixed_view {
+            self.fixed.mouse_just_pressed.contains(&button)
+        } else {
+            self.mouse_just_pressed.contains(&button)
+        }
     }
 
+    /// As [`just_released`](Self::just_released), for a mouse button.
     #[must_use]
     pub fn mouse_just_released(&self, button: MouseButton) -> bool {
-        self.mouse_just_released.contains(&button)
+        if self.fixed_view {
+            self.fixed.mouse_just_released.contains(&button)
+        } else {
+            self.mouse_just_released.contains(&button)
+        }
     }
 
     #[must_use]
@@ -257,14 +332,25 @@ impl InputState {
         self.scroll_pressed.contains(&direction)
     }
 
+    /// As [`just_pressed`](Self::just_pressed), for a scroll notch.
     #[must_use]
     pub fn scroll_just_pressed(&self, direction: ScrollDirection) -> bool {
-        self.scroll_just_pressed.contains(&direction)
+        if self.fixed_view {
+            self.fixed.scroll_just_pressed.contains(&direction)
+        } else {
+            self.scroll_just_pressed.contains(&direction)
+        }
     }
 
+    /// As [`just_released`](Self::just_released), for a scroll notch, which
+    /// releases at the end of the frame it arrived in.
     #[must_use]
     pub fn scroll_just_released(&self, direction: ScrollDirection) -> bool {
-        self.scroll_just_released.contains(&direction)
+        if self.fixed_view {
+            self.fixed.scroll_just_released.contains(&direction)
+        } else {
+            self.scroll_just_released.contains(&direction)
+        }
     }
 
     #[must_use]
@@ -299,8 +385,10 @@ impl InputState {
             return;
         };
         self.scroll_just_released.remove(&direction);
+        self.fixed.scroll_just_released.remove(&direction);
         if self.scroll_pressed.insert(direction) {
             self.scroll_just_pressed.insert(direction);
+            self.fixed.scroll_just_pressed.insert(direction);
         }
     }
 }

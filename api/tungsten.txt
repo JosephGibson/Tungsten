@@ -306,6 +306,7 @@ impl core::marker::UnsafeUnpin for tungsten::physics_debug::PhysicsDebugOverlay
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::physics_debug::PhysicsDebugOverlay
 impl core::panic::unwind_safe::UnwindSafe for tungsten::physics_debug::PhysicsDebugOverlay
 pub mod tungsten::plugins
+pub use tungsten::plugins::PHYSICS_PREV_SNAPSHOT
 pub use tungsten::plugins::PHYSICS_STEP
 pub use tungsten::plugins::PHYSICS_SYNC
 pub use tungsten::plugins::PhysicsPlugin
@@ -601,6 +602,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten::telemetry::DisplayTeleme
 pub struct tungsten::telemetry::FrameTimings
 pub tungsten::telemetry::FrameTimings::audio_ms: f32
 pub tungsten::telemetry::FrameTimings::extract_ms: f32
+pub tungsten::telemetry::FrameTimings::fixed_steps: u32
 pub tungsten::telemetry::FrameTimings::flush_ms: f32
 pub tungsten::telemetry::FrameTimings::hot_reload_ms: f32
 pub tungsten::telemetry::FrameTimings::interval_ms: core::option::Option<f32>
@@ -1028,6 +1030,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten::telemetry::DisplayTeleme
 pub struct tungsten::FrameTimings
 pub tungsten::FrameTimings::audio_ms: f32
 pub tungsten::FrameTimings::extract_ms: f32
+pub tungsten::FrameTimings::fixed_steps: u32
 pub tungsten::FrameTimings::flush_ms: f32
 pub tungsten::FrameTimings::hot_reload_ms: f32
 pub tungsten::FrameTimings::interval_ms: core::option::Option<f32>

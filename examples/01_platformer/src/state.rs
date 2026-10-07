@@ -164,6 +164,11 @@ pub(crate) struct BallSpawnState {
     pub(crate) spawn_phase: u32,
     pub(crate) small_accumulator: f32,
     pub(crate) small_spawn_phase: u32,
+    /// The balls `queued_frame`'s steps queued so far: none is live until
+    /// that frame's command flush, so a later step's budget counts them.
+    pub(crate) queued: u32,
+    /// The `Time::frame()` whose steps `queued` counts.
+    pub(crate) queued_frame: u64,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -230,6 +235,9 @@ pub(crate) struct PlayerPresentation {
     pub(crate) suppress_landing: bool,
     /// The aerial jump plays its own tuck clip until the ascent ends.
     pub(crate) aerial_tuck: bool,
+    /// The `Time::frame()` whose step last ran `player_input`: a later step
+    /// of that frame keeps `pending_effect` for `player_presentation_system`.
+    pub(crate) input_frame: u64,
 }
 
 impl Default for PlayerPresentation {
@@ -242,6 +250,7 @@ impl Default for PlayerPresentation {
             jump_origin: PLAYER_SPAWN + Vec2::new(0.0, PLAYER_HALF.y),
             suppress_landing: true,
             aerial_tuck: false,
+            input_frame: 0,
         }
     }
 }
