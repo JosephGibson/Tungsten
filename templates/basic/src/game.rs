@@ -1,9 +1,9 @@
-//! What the game runs: its plugin (the setup its first frame needs and its
-//! systems, by stage) and its text.
+//! What the game runs: its plugin (the setup its first frame needs, its
+//! systems by stage and its text).
 
 use tungsten::core::{ActionMap, InputState, Time, Transform, With, World};
 use tungsten::render::TextSection;
-use tungsten::{App, DebugHud, Plugin, Schedule, Stage, StateId, StateStack, system};
+use tungsten::{App, DebugHud, Extracts, Plugin, Schedule, Stage, StateId, StateStack, system};
 
 use crate::components::Player;
 use crate::states::{GAMEPLAY, PAUSE, TITLE, TitleState};
@@ -16,8 +16,9 @@ pub const FONT: &str = "sans";
 pub const PLAYER_SPEED: f32 = 240.0;
 
 /// The game as a plugin: `setup` at startup, `player_movement` in `Update`,
-/// and the engine's HUD on in debug builds. It names no engine system; the
-/// engine's own come from `DefaultPlugins`, which `App::new` installs.
+/// its text after what the engine draws, and the engine's HUD on in debug
+/// builds. It names no engine system; the engine's own come from
+/// `DefaultPlugins`, which `App::new` installs.
 pub struct GamePlugin;
 
 impl Plugin for GamePlugin {
@@ -25,15 +26,15 @@ impl Plugin for GamePlugin {
         if let Some(hud) = world.get_resource_mut::<DebugHud>() {
             hud.enabled = cfg!(debug_assertions);
         }
+        world.resource_mut::<Extracts>().add_text(text);
         schedule.add(Stage::Startup, system("setup", setup));
         schedule.add(Stage::Update, system("player_movement", player_movement));
     }
 }
 
-/// Registers the game with `app`: its plugin and its text.
+/// Registers the game with `app`: its plugin.
 pub fn register(app: &mut App) {
     app.add_plugin(GamePlugin);
-    app.set_extract_text(text);
 }
 
 /// The startup system: the title state first. The headless harness runs

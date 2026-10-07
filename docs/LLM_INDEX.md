@@ -57,7 +57,7 @@ Read `crates/tungsten-render/AGENTS.md` before editing the render crate.
 | Text engine and GPU halves, layout cache, retained nodes, font families and fallback (`D-085`, `D-115`–`D-117`, `D-123`) | `render/text.rs`, `render/text/engine.rs`, `render/text/nodes.rs`, `render/text/fonts.rs`, `render/text/gpu.rs`, `tungsten/asset_loader/mod.rs`, `tungsten/engine_font.rs` |
 | Neutral text types, `TextMeasure`, `TextNodeStore` (`D-117`, `D-125`) | `core/text.rs` |
 | UI tree, style, layout, focus, hit testing (`D-124`, `D-125`) | `core/ui/`, `core/text.rs`, `tungsten/testing/ui.rs`, `core/tests/ui/` |
-| Render components, default sprite extract (`D-042`, `D-086`, `D-113`, `D-114`) | `core/components.rs`, `tungsten/sprite_extract.rs` |
+| Render components, default sprite extract, `Extracts` channels (`D-042`, `D-086`, `D-113`, `D-114`, `D-138`) | `core/components.rs`, `tungsten/sprite_extract.rs`, `tungsten/extract.rs` |
 | Materials, post-stack (`D-058`) | `core/assets/material.rs`, `core/post.rs`, `render/material.rs`, `render/post/`, `render/shaders/stock/` |
 | SMAA (`D-059`) | `tungsten/post_aa.rs`, `render/post/smaa.rs`, `render/post/smaa_luts.rs`, `render/targets.rs`, `render/passes/order.rs` |
 | Bloom (`D-060`) | `core/post.rs`, `render/post/bloom.rs`, `render/targets.rs` |

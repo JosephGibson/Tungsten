@@ -6,6 +6,24 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.56.0] - 2026-10-07
+
+Summary: Phase 5's eleventh milestone, M42 (W15c, plan archived at `docs/plans/archive/1.0/phase5-milestone-42-additive-extracts.md`). Additive extracts: the `Extracts` resource holds the frame's sprite, quad and text channels, which games and plugins add to in registration order; the default sprite channel draws the tilemaps at the far plane, then the `Sprite` entities; `App::set_extract_*` stay as the explicit replace; `extract_tilemap_layers` and lit tiles let example 01 draw its tile layers through the engine, and the template's text goes through its plugin (`D-138`). The determinism and pinned containment hashes, the row digests and the pixel fixtures are unchanged. No new dependency, asset or manifest change.
+
+### Added
+
+- **`Extracts`** (`D-138`, M42). `tungsten::extract::Extracts`, also at the crate root: a `World` resource that `App` inserts before any plugin builds, with sprite, quad and text channels. `add_sprites`, `add_quads` and `add_text` append a contribution, drawn after the channel's base in registration order, engine plugins before a game's; `replace_sprites`, `replace_quads` and `replace_text` replace the base and keep the contributions, the last call winning. A contribution keeps the `z_norm` its closure wrote.
+- **`extract_tilemap_layers`** (`D-138`): the named render layers of every tilemap, each map's in file order, for a game that draws between its layers.
+
+### Changed
+
+- **The default sprite extract draws tilemaps** (`D-138`, amending `D-042`; the break ledger's row): the sprite channel's default draws `extract_tilemaps` with its tiles at `z_norm` 1.0, the far plane, then `extract_sprites_default`, so under `gpu_depth` every sprite still draws over the tiles. Quads and text have no default.
+- **Lit tiles** (`D-138`; the break ledger's row): `extract_tilemaps` keys a layer's batches on atlas page and lighting, so a tile whose sprite has a normal map draws lit, as a sprite does (`D-061`); an unlit tile's batches and bytes are unchanged.
+- **`App::set_extract_*` forward to `replace_*`** with the same signatures: `App`'s three extract slots and `install_default_extracts` are gone, and `Harness::new` installs nothing.
+- **Example 01's tile layers through the engine**: its extract keeps the explicit replace, since its parallax layers and the engine's particles are `Sprite` entities it draws itself, and calls `extract_tilemap_layers` at its three depths; its own tile extract is gone, with the same per-layer output on the real level.
+- **The template and the guide**: `GamePlugin` adds its text through `Extracts` and `register` only adds the plugin; the template's `AGENTS.md` and the getting-started guide's new "Drawing" section give the rule. `DESIGN.md`'s render path, default extract and tilemaps paragraphs follow, and tile layers ordered among sprites by z is a 1.x backlog row.
+- **Perf**: no benchmark row draws through the default channel, so only the stage's dispatch moved. Every owned metric of every CPU row reads not `regressed` on both direct pairs and the aligned pair, both A/A pairs read 0 regressed and 0 improved, digests 8 of 8; `gpu` `extract` p50 0.628 → 0.638 ms and `gpu-throughput` 12.076 → 12.104 ms read `unchanged`, and a scratch probe of `gpu-throughput` on the default channel with two contributions reads `extract` p50 12.014 → 12.014 ms. The `gpu` visual and `integrated` captures are byte-identical to 0.55's.
+
 ## [0.55.0] - 2026-10-07
 
 Summary: Phase 5's tenth milestone, M41 (W3b, plan archived at `docs/plans/archive/1.0/phase5-milestone-41-fixed-step-interpolation.md`). A bounded fixed-step accumulator in `Time` that runs `fixed_update` zero or more times a frame, with `Time::delta()`, `DeltaTime.dt`, input edges and event queues on the step inside it; render interpolation on by default for bodies spawned through `RigidBodyBundle`, which now carry `PrevPosition`, written by `PhysicsPlugin`'s `physics_sync`; `tungsten.json`'s `time` section; example 01 on the fixed loop (`D-129`, `D-137`). At the pinned 1/60 s every frame runs one step with `alpha` 0, so the determinism and pinned containment hashes, the row digests and the pixel fixtures are unchanged. No new dependency, asset or manifest change. The roadmap's model tiers change beside it (`D-136`).

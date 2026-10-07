@@ -196,6 +196,24 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten::debug_hud::HudRow
 impl core::panic::unwind_safe::UnwindSafe for tungsten::debug_hud::HudRow
 pub fn tungsten::debug_hud::hud_toggle_system(&mut tungsten_core::ecs::world::World)
 pub type tungsten::debug_hud::HudRowProvider = alloc::boxed::Box<(dyn core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten::debug_hud::HudRow> + 'static)>
+pub mod tungsten::extract
+pub struct tungsten::extract::Extracts
+impl tungsten::extract::Extracts
+pub fn tungsten::extract::Extracts::add_quads(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::quad::QuadInstance> + 'static)
+pub fn tungsten::extract::Extracts::add_sprites(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch> + 'static)
+pub fn tungsten::extract::Extracts::add_text(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::text::TextSection> + 'static)
+pub fn tungsten::extract::Extracts::replace_quads(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::quad::QuadInstance> + 'static)
+pub fn tungsten::extract::Extracts::replace_sprites(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch> + 'static)
+pub fn tungsten::extract::Extracts::replace_text(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::text::TextSection> + 'static)
+impl core::default::Default for tungsten::extract::Extracts
+pub fn tungsten::extract::Extracts::default() -> Self
+impl core::marker::Freeze for tungsten::extract::Extracts
+impl !core::marker::Send for tungsten::extract::Extracts
+impl !core::marker::Sync for tungsten::extract::Extracts
+impl core::marker::Unpin for tungsten::extract::Extracts
+impl core::marker::UnsafeUnpin for tungsten::extract::Extracts
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten::extract::Extracts
+impl !core::panic::unwind_safe::UnwindSafe for tungsten::extract::Extracts
 pub mod tungsten::game_feel
 pub fn tungsten::game_feel::shake_tick_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::game_feel::squash_stretch_tick_system(&mut tungsten_core::ecs::world::World)
@@ -1027,6 +1045,23 @@ impl core::marker::Unpin for tungsten::telemetry::DisplayTelemetry
 impl core::marker::UnsafeUnpin for tungsten::telemetry::DisplayTelemetry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::telemetry::DisplayTelemetry
 impl core::panic::unwind_safe::UnwindSafe for tungsten::telemetry::DisplayTelemetry
+pub struct tungsten::Extracts
+impl tungsten::extract::Extracts
+pub fn tungsten::extract::Extracts::add_quads(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::quad::QuadInstance> + 'static)
+pub fn tungsten::extract::Extracts::add_sprites(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch> + 'static)
+pub fn tungsten::extract::Extracts::add_text(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::text::TextSection> + 'static)
+pub fn tungsten::extract::Extracts::replace_quads(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::quad::QuadInstance> + 'static)
+pub fn tungsten::extract::Extracts::replace_sprites(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch> + 'static)
+pub fn tungsten::extract::Extracts::replace_text(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::text::TextSection> + 'static)
+impl core::default::Default for tungsten::extract::Extracts
+pub fn tungsten::extract::Extracts::default() -> Self
+impl core::marker::Freeze for tungsten::extract::Extracts
+impl !core::marker::Send for tungsten::extract::Extracts
+impl !core::marker::Sync for tungsten::extract::Extracts
+impl core::marker::Unpin for tungsten::extract::Extracts
+impl core::marker::UnsafeUnpin for tungsten::extract::Extracts
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten::extract::Extracts
+impl !core::panic::unwind_safe::UnwindSafe for tungsten::extract::Extracts
 pub struct tungsten::FrameTimings
 pub tungsten::FrameTimings::audio_ms: f32
 pub tungsten::FrameTimings::extract_ms: f32
@@ -1412,6 +1447,7 @@ pub fn tungsten::despawn_scene_entities(&mut tungsten_core::ecs::world::World, t
 pub fn tungsten::extract_lights(&tungsten_core::ecs::world::World, &tungsten_core::camera::CameraState, f32, f32) -> tungsten_render::lighting::LightUbo
 pub fn tungsten::extract_mesh_particles(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::mesh_particle::MeshParticleBatch>
 pub fn tungsten::extract_sprites_default(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch>
+pub fn tungsten::extract_tilemap_layers(&tungsten_core::ecs::world::World, &[&str]) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch>
 pub fn tungsten::extract_tilemaps(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch>
 pub fn tungsten::hud_toggle_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::particle_count_refresh_system(&mut tungsten_core::ecs::world::World)

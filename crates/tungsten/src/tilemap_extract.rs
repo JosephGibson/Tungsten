@@ -14,6 +14,9 @@ use crate::sprite_extract::ExtractScratch;
 pub(crate) struct TileSprite {
     atlas: TextureHandle,
     filter: FilterMode,
+    /// Whether the sprite has a lit atlas, which draws it on the lit
+    /// pipeline (`D-061`).
+    lit: bool,
     uv_min: [f32; 2],
     uv_size: [f32; 2],
 }
@@ -54,6 +57,7 @@ impl TilesetCache {
                 Some(asset) => TileSlot::Found(TileSprite {
                     atlas: asset.atlas,
                     filter: asset.filter,
+                    lit: asset.lit_atlas.is_some(),
                     uv_min: asset.uv.min,
                     uv_size: [
                         asset.uv.max[0] - asset.uv.min[0],
@@ -72,10 +76,26 @@ impl TilesetCache {
 
 /// Extract visible render layers as sprite batches; collision layers skipped.
 ///
-/// A layer yields one batch per atlas page, in the order its visible tiles
-/// (row by row) first use each page.
+/// A layer yields one batch per atlas page and lighting, in the order its
+/// visible tiles (row by row) first use each. A tile whose sprite has a lit
+/// atlas draws in a lit batch, as a sprite does (`D-061`). Every instance
+/// has `z_norm` 0.
 #[must_use]
 pub fn extract_tilemaps(world: &World) -> Vec<SpriteBatch> {
+    extract_layers(world, None)
+}
+
+/// The named render layers of every tilemap, map by map, each map's layers in
+/// file order; a name no map has draws nothing; collision layers never draw.
+/// The batches are [`extract_tilemaps`]'s for those layers, so naming every
+/// render layer draws what it draws.
+#[must_use]
+pub fn extract_tilemap_layers(world: &World, layers: &[&str]) -> Vec<SpriteBatch> {
+    extract_layers(world, Some(layers))
+}
+
+/// The tilemap extract: every render layer, or only those `names` lists.
+fn extract_layers(world: &World, names: Option<&[&str]>) -> Vec<SpriteBatch> {
     let Some(tilemaps) = world.get_resource::<TilemapRegistry>() else {
         return vec![];
     };
@@ -132,14 +152,17 @@ pub fn extract_tilemaps(world: &World) -> Vec<SpriteBatch> {
             tileset.begin(data.tileset.len());
 
             for layer in &data.layers {
-                if layer.kind != LayerKind::Render {
+                if layer.kind != LayerKind::Render
+                    || names.is_some_and(|names| !names.contains(&layer.name.as_str()))
+                {
                     continue;
                 }
 
                 // Per-layer batches preserve layer draw order: this layer's
-                // batches are `out[layer_start..]`, one per atlas page.
+                // batches are `out[layer_start..]`, one per atlas page and
+                // lighting.
                 let layer_start = out.len();
-                let mut last: Option<(TextureHandle, usize)> = None;
+                let mut last: Option<(TextureHandle, bool, usize)> = None;
 
                 for row in row_start..row_end {
                     for col in col_start..col_end {
@@ -158,22 +181,27 @@ pub fn extract_tilemaps(world: &World) -> Vec<SpriteBatch> {
                         };
 
                         let batch = match last {
-                            Some((atlas, batch)) if atlas == sprite.atlas => batch,
+                            Some((atlas, lit, batch))
+                                if atlas == sprite.atlas && lit == sprite.lit =>
+                            {
+                                batch
+                            }
                             _ => {
-                                let opened = out[layer_start..]
-                                    .iter()
-                                    .position(|batch| batch.texture == sprite.atlas);
+                                let opened = out[layer_start..].iter().position(|batch| {
+                                    batch.texture == sprite.atlas && batch.lit == sprite.lit
+                                });
                                 let batch = if let Some(offset) = opened {
                                     layer_start + offset
                                 } else {
                                     let len =
                                         batch_lens.get(out.len()).map_or(0, |&len| len as usize);
                                     let mut batch = SpriteBatch::new(sprite.atlas, sprite.filter);
+                                    batch.lit = sprite.lit;
                                     batch.instances = pool.take(len);
                                     out.push(batch);
                                     out.len() - 1
                                 };
-                                last = Some((sprite.atlas, batch));
+                                last = Some((sprite.atlas, sprite.lit, batch));
                                 batch
                             }
                         };

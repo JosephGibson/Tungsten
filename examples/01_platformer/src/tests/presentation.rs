@@ -334,7 +334,7 @@ fn extraction_keeps_tile_stages_props_actors_foreground_and_cursor_in_order() {
     // Moving the view culls all offscreen tile layers and props.
     world.get_resource_mut::<CameraState>().unwrap().position = Vec2::splat(1000.0);
     assert!(
-        crate::extract::extract_tile_layers(
+        tungsten::extract_tilemap_layers(
             &world,
             &[
                 "background",

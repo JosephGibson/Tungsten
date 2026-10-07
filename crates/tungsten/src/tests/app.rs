@@ -58,39 +58,6 @@ fn m30_game_feel_events_are_pre_registered() {
 }
 
 #[test]
-fn default_sprite_extract_installed_when_not_set() {
-    let mut app = App::new(Config::default()).expect("App::new failed");
-    assert!(app.extract_sprites.is_none());
-    app.install_default_extracts();
-    assert!(app.extract_sprites.is_some());
-}
-
-#[test]
-fn user_extract_sprites_overrides_default() {
-    use tungsten_core::assets::{FilterMode, TextureHandle};
-    use tungsten_render::{SpriteBatch, SpriteInstance};
-
-    let mut app = App::new(Config::default()).expect("App::new failed");
-    app.set_extract_sprites(|_| {
-        let mut batch = SpriteBatch::new(TextureHandle(42), FilterMode::Linear);
-        batch.instances = vec![SpriteInstance::whole(
-            [1.5, 2.5],
-            [3.0, 4.0],
-            0.25,
-            [1, 2, 3, 4],
-        )];
-        vec![batch]
-    });
-
-    app.install_default_extracts();
-
-    let batches = app.extract_sprites.as_ref().expect("extract_sprites set")(&app.world);
-    assert_eq!(batches.len(), 1);
-    assert_eq!(batches[0].texture, TextureHandle(42));
-    assert_eq!(batches[0].instances[0].color, [1, 2, 3, 4]);
-}
-
-#[test]
 fn startup_display_downgrades_invalid_resolution_to_engine_defaults() {
     let mut config = Config::default();
     config.window.width = 0;

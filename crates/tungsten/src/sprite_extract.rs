@@ -1,4 +1,6 @@
 //! Default sprite extract: `Transform + Sprite + Visibility` -> [`SpriteBatch`].
+//! The default sprite channel of [`Extracts`](crate::Extracts) draws the
+//! tilemaps, then this.
 //!
 //! D-042: explicit `Visibility` required. Order: `(z_order, entity.id)`,
 //! batched within z-runs. `z_norm` is derived from the same painter ordering
@@ -170,12 +172,13 @@ pub(crate) struct ExtractBuffers {
     batch_list: Vec<SpriteBatch>,
 }
 
-/// World resource that lets [`extract_sprites_default`] and
-/// [`extract_tilemaps`](crate::extract_tilemaps) reuse their buffers across
-/// frames. `App` inserts it and hands each frame's batches back after the
-/// render stage; without it both extracts allocate per call. It also carries
-/// the surface size render projects with, which the sprite extract culls
-/// against (`D-114`).
+/// World resource that lets [`extract_sprites_default`] and the tilemap
+/// extracts ([`extract_tilemaps`](crate::extract_tilemaps) and
+/// [`extract_tilemap_layers`](crate::extract_tilemap_layers)) reuse their
+/// buffers across frames. `App` inserts it and hands each frame's batches
+/// back after the render stage; without it the extracts allocate per call.
+/// It also carries the surface size render projects with, which the sprite
+/// extract culls against (`D-114`).
 #[derive(Default)]
 pub(crate) struct ExtractScratch(RefCell<ExtractBuffers>, Cell<Option<(u32, u32)>>);
 
@@ -211,7 +214,8 @@ impl ExtractScratch {
     }
 }
 
-/// Default sprite extract.
+/// Default sprite extract: the `Sprite` entities, which the default sprite
+/// channel of [`Extracts`](crate::Extracts) draws after the tilemaps.
 #[must_use]
 pub fn extract_sprites_default(world: &World) -> Vec<SpriteBatch> {
     let Some(assets) = world.get_resource::<AssetRegistry>() else {
