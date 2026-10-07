@@ -78,7 +78,7 @@ use super::broadphase::{ProxyId, SpatialGrid};
 use super::collision::Aabb;
 use super::components::{BodyKind, Collider, Position, RigidBody, Shape, Velocity};
 use super::events::CollisionEvent;
-use crate::ecs::{Entity, EventQueue, World};
+use crate::ecs::{Entity, EventQueue, Without, World};
 use crate::time::Time;
 use glam::Vec2;
 
@@ -399,9 +399,13 @@ pub fn physics_step(world: &mut World) {
 /// proxies zip positionally with the query rows.
 fn write_back(world: &mut World, proxies: &[Proxy]) {
     let mut rows = proxies.iter();
-    for (entity, _collider, position, _body, velocity) in
-        world.query2_opt2_mut::<Collider, Position, RigidBody, Velocity>()
-    {
+    for (entity, _collider, position, _body, velocity) in world.query_mut::<(
+        Entity,
+        &Collider,
+        &mut Position,
+        Option<&RigidBody>,
+        Option<&mut Velocity>,
+    )>() {
         let proxy = rows
             .next()
             .expect("gather and writeback queries must agree on entity count");
@@ -421,8 +425,12 @@ fn write_back(world: &mut World, proxies: &[Proxy]) {
 /// ballistic motion the trajectories differ only at O(g·dt²)).
 /// Columnar pass over collider-less archetypes; no per-entity lookups.
 fn integrate_loose_bodies(world: &mut World, dt: f32, gravity: Vec2) {
-    for (_entity, velocity, position, body) in
-        world.query3_mut_without::<Velocity, Position, RigidBody, Collider>()
+    for (_entity, velocity, position, body) in world.query_mut_filtered::<(
+        Entity,
+        &mut Velocity,
+        &mut Position,
+        &mut RigidBody,
+    ), Without<Collider>>()
     {
         if body.kind != BodyKind::Dynamic {
             continue;

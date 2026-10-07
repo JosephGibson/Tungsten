@@ -1,5 +1,6 @@
 use super::super::command_buffer::CommandBuffer;
 use super::*;
+use crate::ecs::{With, Without};
 
 #[derive(Debug, Clone, PartialEq)]
 struct Position {
@@ -62,11 +63,12 @@ fn query_iterates_matching_entities() {
     world.insert(e2, Position { x: 2.0, y: 0.0 });
     world.insert(e3, Name("no position".into()));
 
-    let positions: Vec<_> = world.query::<Position>().collect();
+    let positions: Vec<_> = world.query::<(Entity, &Position)>().collect();
     assert_eq!(positions.len(), 2);
 }
 
 #[test]
+#[allow(deprecated)]
 fn query_entities_then_mutate() {
     let mut world = World::new();
     let e1 = world.spawn();
@@ -109,6 +111,31 @@ fn resources() {
 }
 
 #[test]
+fn resource_accessors_read_and_write_the_resource() {
+    let mut world = World::new();
+    world.insert_resource(Name("first".into()));
+    assert_eq!(world.resource::<Name>(), &Name("first".into()));
+    world.resource_mut::<Name>().0.push_str(" and last");
+    assert_eq!(world.resource::<Name>().0, "first and last");
+}
+
+#[test]
+#[should_panic(expected = "resource `tungsten_core::ecs::world::tests::Name` is not in the World")]
+fn resource_panics_naming_the_missing_type() {
+    let world = World::new();
+    let _ = world.resource::<Name>();
+}
+
+#[test]
+#[should_panic(
+    expected = "resource `tungsten_core::ecs::world::tests::Velocity` is not in the World"
+)]
+fn resource_mut_panics_naming_the_missing_type() {
+    let mut world = World::new();
+    let _ = world.resource_mut::<Velocity>();
+}
+
+#[test]
 fn remove_component() {
     let mut world = World::new();
     let e = world.spawn();
@@ -141,6 +168,7 @@ fn multiple_component_types() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn query2_returns_matching_entities() {
     let mut world = World::new();
     let e1 = world.spawn();
@@ -161,6 +189,7 @@ fn query2_returns_matching_entities() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn query2_includes_supersets() {
     let mut world = World::new();
     let e = world.spawn();
@@ -174,6 +203,7 @@ fn query2_includes_supersets() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn query2_entities_then_mutate() {
     let mut world = World::new();
     let e1 = world.spawn();
@@ -204,7 +234,7 @@ fn query_mut_mutates_in_place() {
     world.insert(e2, Position { x: 2.0, y: 0.0 });
     world.insert(e2, Velocity { dx: 0.0, dy: 0.0 });
 
-    for (_, pos) in world.query_mut::<Position>() {
+    for (_, pos) in world.query_mut::<(Entity, &mut Position)>() {
         pos.x += 10.0;
     }
 
@@ -213,6 +243,7 @@ fn query_mut_mutates_in_place() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn query2_mut_integrates_velocity_into_position() {
     let mut world = World::new();
     let e1 = world.spawn();
@@ -240,6 +271,7 @@ fn query2_mut_integrates_velocity_into_position() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn query3_mut_yields_only_full_matches() {
     let mut world = World::new();
     let e1 = world.spawn();
@@ -281,13 +313,20 @@ fn query_mut_matches_query_order() {
         }
     }
 
-    let immutable: Vec<_> = world.query::<Position>().map(|(e, _)| e).collect();
-    let mutable: Vec<_> = world.query_mut::<Position>().map(|(e, _)| e).collect();
+    let immutable: Vec<_> = world
+        .query::<(Entity, &Position)>()
+        .map(|(e, _)| e)
+        .collect();
+    let mutable: Vec<_> = world
+        .query_mut::<(Entity, &mut Position)>()
+        .map(|(e, _)| e)
+        .collect();
     assert_eq!(immutable, mutable);
 }
 
 #[test]
 #[should_panic(expected = "query2_mut: component types must be distinct")]
+#[allow(deprecated)]
 fn query2_mut_same_type_panics() {
     let mut world = World::new();
     let _ = world.query2_mut::<Position, Position>();
@@ -295,12 +334,14 @@ fn query2_mut_same_type_panics() {
 
 #[test]
 #[should_panic(expected = "query3_mut: component types must be distinct")]
+#[allow(deprecated)]
 fn query3_mut_duplicate_type_panics() {
     let mut world = World::new();
     let _ = world.query3_mut::<Position, Velocity, Velocity>();
 }
 
 #[test]
+#[allow(deprecated)]
 fn query3_returns_three_component_entities() {
     let mut world = World::new();
     let e1 = world.spawn();
@@ -332,7 +373,7 @@ fn query_across_multiple_archetypes() {
     world.insert(e3, Velocity { dx: 0.0, dy: 0.0 });
     world.insert(e3, Name("three".into()));
 
-    let positions: Vec<_> = world.query::<Position>().collect();
+    let positions: Vec<_> = world.query::<(Entity, &Position)>().collect();
     assert_eq!(positions.len(), 3);
 }
 
@@ -345,7 +386,7 @@ fn flush_spawn_entity_is_alive() {
 
     world.flush(buffer);
 
-    let results: Vec<_> = world.query::<Name>().collect();
+    let results: Vec<_> = world.query::<(Entity, &Name)>().collect();
     assert_eq!(results.len(), 1);
     assert!(world.is_alive(results[0].0));
 }
@@ -360,7 +401,7 @@ fn flush_spawn_insert_pending_components_visible() {
 
     world.flush(buffer);
 
-    let results: Vec<_> = world.query2::<Position, Velocity>().collect();
+    let results: Vec<_> = world.query::<(Entity, &Position, &Velocity)>().collect();
     assert_eq!(results.len(), 1);
     let (_, position, velocity) = results[0];
     assert_eq!(*position, Position { x: 1.0, y: 2.0 });
@@ -455,9 +496,9 @@ fn flush_empty_buffer_is_noop() {
     let entity = world.spawn();
     world.insert(entity, Position { x: 1.0, y: 2.0 });
 
-    let before = world.query::<Position>().count();
+    let before = world.query::<(Entity, &Position)>().count();
     world.flush(CommandBuffer::new());
-    let after = world.query::<Position>().count();
+    let after = world.query::<(Entity, &Position)>().count();
 
     assert_eq!(before, after);
 }
@@ -493,7 +534,7 @@ fn flush_multiple_pending_entities() {
     world.flush(buffer);
 
     let mut markers: Vec<_> = world
-        .query::<Marker>()
+        .query::<(Entity, &Marker)>()
         .map(|(entity, marker)| {
             assert!(world.is_alive(entity));
             marker.0
@@ -504,6 +545,7 @@ fn flush_multiple_pending_entities() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn query2_opt2_yields_options_per_archetype() {
     let mut world = World::new();
 
@@ -542,6 +584,7 @@ fn query2_opt2_yields_options_per_archetype() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn query2_opt2_matches_query2_order() {
     // The writeback zip in physics relies on query2_opt2 / query2_opt2_mut
     // iterating the exact archetype/row order of query2 over the same
@@ -579,6 +622,7 @@ fn query2_opt2_matches_query2_order() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn query2_opt2_mut_writes_required_and_optional() {
     let mut world = World::new();
 
@@ -605,6 +649,7 @@ fn query2_opt2_mut_writes_required_and_optional() {
 
 #[test]
 #[should_panic(expected = "component types must be distinct")]
+#[allow(deprecated)]
 fn query2_opt2_mut_duplicate_type_panics() {
     let mut world = World::new();
     let _ = world
@@ -613,6 +658,7 @@ fn query2_opt2_mut_duplicate_type_panics() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn query3_mut_without_skips_archetypes_with_the_excluded_type() {
     #[derive(Debug)]
     struct Excluded;
@@ -642,12 +688,14 @@ fn query3_mut_without_skips_archetypes_with_the_excluded_type() {
 
 #[test]
 #[should_panic(expected = "query3_mut_without: excluded type must differ")]
+#[allow(deprecated)]
 fn query3_mut_without_rejects_excluding_a_queried_type() {
     let mut world = World::new();
     let _ = world.query3_mut_without::<Position, Velocity, Name, Velocity>();
 }
 
 #[test]
+#[allow(deprecated)]
 fn query3_opt2_matches_query3_order_with_per_archetype_optionals() {
     #[derive(Debug, PartialEq)]
     struct Tag(u8);
@@ -980,7 +1028,7 @@ fn flush_insert_run_last_write_wins() {
 
     world.flush(buffer);
 
-    let rows: Vec<_> = world.query2::<Part<0>, Part<1>>().collect();
+    let rows: Vec<_> = world.query::<(Entity, &Part<0>, &Part<1>)>().collect();
     assert_eq!(rows.len(), 1);
     assert_eq!((rows[0].1.0, rows[0].2.0), (3, 2));
     assert_eq!(world.entity_count(), 1);
@@ -1057,9 +1105,9 @@ fn flush_insert_run_creates_the_archetypes_one_by_one_inserts_would() {
         assert_eq!(arch.columns.len(), arch.component_types.len());
     }
     assert_eq!(world.archetypes.archetypes[3].entities.len(), 1);
-    assert_eq!(world.query::<Part<0>>().count(), 1);
-    assert_eq!(world.query2::<Part<0>, Part<1>>().count(), 1);
-    assert_eq!(world.query_mut::<Part<1>>().count(), 1);
+    assert_eq!(world.query::<(Entity, &Part<0>)>().count(), 1);
+    assert_eq!(world.query::<(Entity, &Part<0>, &Part<1>)>().count(), 1);
+    assert_eq!(world.query_mut::<(Entity, &mut Part<1>)>().count(), 1);
 }
 
 #[test]
@@ -1120,7 +1168,7 @@ fn flush_insert_run_on_dead_entity_drops_its_values() {
 
     assert!(!world.is_alive(entity));
     assert_eq!(Rc::strong_count(&tracker), 1);
-    assert_eq!(world.query::<Held>().count(), 0);
+    assert_eq!(world.query::<(Entity, &Held)>().count(), 0);
 }
 
 #[test]
@@ -1152,7 +1200,7 @@ fn flush_reusing_empties_the_buffer_and_keeps_its_storage() {
 
     assert_eq!(world.entity_count(), 64);
     let mut values: Vec<u32> = world
-        .query2::<Part<0>, Part<1>>()
+        .query::<(Entity, &Part<0>, &Part<1>)>()
         .map(|(_, a, b)| {
             assert_eq!(a.0, b.0);
             a.0
@@ -1202,4 +1250,148 @@ fn unflushed_buffer_drops_its_values() {
     drop(buffer);
 
     assert_eq!(Rc::strong_count(&tracker), 1);
+}
+
+/// Parts on overlapping residues of 48 entities: part `k` on every row but
+/// one in `k + 2`, so each arity shape below matches several archetypes and
+/// each optional part is present in some and absent in others.
+fn arity_world() -> World {
+    let mut world = World::new();
+    for i in 0..48u32 {
+        let entity = world.spawn();
+        for k in 0..PARTS {
+            if !(i + k as u32).is_multiple_of(k as u32 + 2) {
+                with_part!(k, P => world.insert(entity, P::of(i * 10 + k as u32)));
+            }
+        }
+    }
+    world
+}
+
+type P0 = Part<0>;
+type P1 = Part<1>;
+type P2 = Part<2>;
+type P3 = Part<3>;
+type P4 = Part<4>;
+type P5 = Part<5>;
+
+/// The deprecation notes' claim: each arity-named read is its tuple form
+/// row for row, in the same order.
+#[test]
+#[allow(deprecated)]
+fn tuple_forms_read_every_arity_shape_row_for_row() {
+    let world = arity_world();
+
+    let tuple: Vec<Entity> = world.query_filtered::<Entity, With<P0>>().collect();
+    assert_eq!(tuple, world.query_entities::<P0>());
+    let tuple: Vec<Entity> = world
+        .query_filtered::<Entity, (With<P0>, With<P1>)>()
+        .collect();
+    assert_eq!(tuple, world.query2_entities::<P0, P1>());
+    let tuple: Vec<Entity> = world
+        .query_filtered::<Entity, (With<P0>, With<P1>, With<P2>)>()
+        .collect();
+    assert_eq!(tuple, world.query3_entities::<P0, P1, P2>());
+    assert!(!tuple.is_empty());
+
+    let arity: Vec<_> = world
+        .query2::<P0, P1>()
+        .map(|(e, a, b)| (e, *a, *b))
+        .collect();
+    let tuple: Vec<_> = world
+        .query::<(Entity, &P0, &P1)>()
+        .map(|(e, a, b)| (e, *a, *b))
+        .collect();
+    assert_eq!(tuple, arity);
+
+    let arity: Vec<_> = world
+        .query3::<P0, P1, P2>()
+        .map(|(e, a, b, c)| (e, *a, *b, *c))
+        .collect();
+    let tuple: Vec<_> = world
+        .query::<(Entity, &P0, &P1, &P2)>()
+        .map(|(e, a, b, c)| (e, *a, *b, *c))
+        .collect();
+    assert_eq!(tuple, arity);
+
+    let arity: Vec<_> = world
+        .query2_opt2::<P0, P1, P3, P4>()
+        .map(|(e, a, b, c, d)| (e, *a, *b, c.copied(), d.copied()))
+        .collect();
+    let tuple: Vec<_> = world
+        .query::<(Entity, &P0, &P1, Option<&P3>, Option<&P4>)>()
+        .map(|(e, a, b, c, d)| (e, *a, *b, c.copied(), d.copied()))
+        .collect();
+    assert_eq!(tuple, arity);
+    assert!(tuple.iter().any(|row| row.3.is_none()));
+    assert!(tuple.iter().any(|row| row.3.is_some()));
+
+    let arity: Vec<_> = world
+        .query3_opt2::<P0, P1, P2, P3, P4>()
+        .map(|(e, a, b, c, d, f)| (e, *a, *b, *c, d.copied(), f.copied()))
+        .collect();
+    let tuple: Vec<_> = world
+        .query::<(Entity, &P0, &P1, &P2, Option<&P3>, Option<&P4>)>()
+        .map(|(e, a, b, c, d, f)| (e, *a, *b, *c, d.copied(), f.copied()))
+        .collect();
+    assert_eq!(tuple, arity);
+}
+
+/// The mutable arity-named queries and their tuple forms, the same body on
+/// two copies of one world, leave the copies equal.
+#[test]
+#[allow(deprecated)]
+fn tuple_forms_write_every_arity_shape_row_for_row() {
+    let mut arity = arity_world();
+    let mut tuple = arity_world();
+
+    let pair = |e: Entity, a: &mut P0, b: &mut P1| {
+        a.0 += e.id();
+        b.0 += a.0;
+    };
+    for (e, a, b) in arity.query2_mut::<P0, P1>() {
+        pair(e, a, b);
+    }
+    for (e, a, b) in tuple.query_mut::<(Entity, &mut P0, &mut P1)>() {
+        pair(e, a, b);
+    }
+
+    let triple = |e: Entity, a: &mut P0, b: &mut P1, c: &mut P2| {
+        c.0 += (a.0 ^ b.0) + e.id();
+        a.0 += 1;
+    };
+    for (e, a, b, c) in arity.query3_mut::<P0, P1, P2>() {
+        triple(e, a, b, c);
+    }
+    for (e, a, b, c) in tuple.query_mut::<(Entity, &mut P0, &mut P1, &mut P2)>() {
+        triple(e, a, b, c);
+    }
+
+    let optional = |e: Entity, a: &P0, b: &mut P1, c: Option<&P3>, d: Option<&mut P4>| {
+        b.0 += a.0 + c.map_or(7, |c| c.0);
+        if let Some(d) = d {
+            d.0 += e.id();
+        }
+    };
+    for (e, a, b, c, d) in arity.query2_opt2_mut::<P0, P1, P3, P4>() {
+        optional(e, a, b, c, d);
+    }
+    for (e, a, b, c, d) in tuple.query_mut::<(Entity, &P0, &mut P1, Option<&P3>, Option<&mut P4>)>()
+    {
+        optional(e, a, b, c, d);
+    }
+
+    let mut excluded = 0;
+    for (e, a, b, c) in arity.query3_mut_without::<P0, P1, P2, P5>() {
+        triple(e, a, b, c);
+        excluded += 1;
+    }
+    for (e, a, b, c) in
+        tuple.query_mut_filtered::<(Entity, &mut P0, &mut P1, &mut P2), Without<P5>>()
+    {
+        triple(e, a, b, c);
+    }
+    assert!(excluded > 0);
+
+    assert_eq!(snapshot(&tuple), snapshot(&arity));
 }

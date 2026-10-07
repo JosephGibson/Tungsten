@@ -817,7 +817,7 @@ fn stall_guard(world: &mut World) {
     };
     let mut kicks = 0;
     state.respawns.clear();
-    for (entity, velocity, stall) in world.query2_mut::<Velocity, Stall>() {
+    for (entity, velocity, stall) in world.query_mut::<(Entity, &mut Velocity, &mut Stall)>() {
         if velocity.0.length_squared() >= STALL_SPEED * STALL_SPEED {
             *stall = Stall::default();
             continue;
@@ -990,7 +990,7 @@ fn renormalize_speeds(world: &mut World) {
         return;
     };
     let (low, high) = (state.speed_min, state.speed_max);
-    for (_entity, velocity, _ball) in world.query2_mut::<Velocity, Ball>() {
+    for (_entity, velocity, _ball) in world.query_mut::<(Entity, &mut Velocity, &mut Ball)>() {
         let speed = velocity.0.length();
         if speed < low {
             velocity.0 = if speed > 0.0 {
@@ -1027,7 +1027,7 @@ impl FrameCounters for PhysicsCounts {
         let visible = if self.render {
             let bounds = view::view_bounds(world);
             world
-                .query2::<Position, Ball>()
+                .query::<(Entity, &Position, &Ball)>()
                 .filter(|(_, position, ball)| {
                     view::in_view(bounds, position.0, Vec2::splat(ball.radius))
                 })

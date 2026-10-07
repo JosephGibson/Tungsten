@@ -2,6 +2,7 @@ use std::any::{Any, TypeId};
 use std::collections::VecDeque;
 
 use super::archetype::{AnyColumn, TypeIdMap, TypedVec};
+use super::bundle::{BufferSink, Bundle};
 use super::entity::Entity;
 use super::world::World;
 
@@ -20,6 +21,8 @@ trait InsertQueue: Any {
     fn write_next(&mut self, column: &mut dyn AnyColumn, row: usize);
     /// Take the oldest value and drop it.
     fn drop_next(&mut self);
+    /// Drop every value, keeping the storage.
+    fn clear(&mut self);
 }
 
 struct TypedQueue<T: 'static>(VecDeque<T>);
@@ -40,6 +43,10 @@ impl<T: 'static> InsertQueue for TypedQueue<T> {
     fn drop_next(&mut self) {
         self.0.pop_front();
     }
+
+    fn clear(&mut self) {
+        self.0.clear();
+    }
 }
 
 /// The values of a buffer's insert commands: one typed queue per component
@@ -59,7 +66,7 @@ pub(super) struct InsertQueues {
 
 impl InsertQueues {
     /// Queue `value` and return its queue's index.
-    fn push<T: 'static>(&mut self, value: T) -> u32 {
+    pub(super) fn push<T: 'static>(&mut self, value: T) -> u32 {
         let t_id = TypeId::of::<T>();
         let queue = if let Some(&queue) = self.index.get(&t_id) {
             queue
@@ -99,6 +106,13 @@ impl InsertQueues {
     /// flush reached the command.
     pub(super) fn drop_next(&mut self, queue: u32) {
         self.queues[queue as usize].drop_next();
+    }
+
+    /// Drop every queued value, keeping the queues and their storage.
+    pub(super) fn clear(&mut self) {
+        for queue in &mut self.queues {
+            queue.clear();
+        }
     }
 }
 
@@ -190,6 +204,34 @@ impl CommandBuffer {
         self.commands.push(Command::Insert {
             target: CommandTarget::Pending(pending.0),
             queue,
+        });
+    }
+
+    /// Queue a spawn with `bundle`'s components: a spawn and one insert per
+    /// component, which the flush applies as one archetype move (D-084), to
+    /// the archetype [`World::spawn_with`] would give it.
+    pub fn spawn_with<B: Bundle>(&mut self, bundle: B) -> PendingEntity {
+        let pending = self.spawn();
+        self.insert_bundle_pending(pending, bundle);
+        pending
+    }
+
+    /// Queue `bundle`'s components on a live entity, applied at flush as one
+    /// archetype move, like [`World::insert_bundle`]; a dead entity drops
+    /// them.
+    pub fn insert_bundle<B: Bundle>(&mut self, entity: Entity, bundle: B) {
+        bundle.put(&mut BufferSink {
+            buffer: self,
+            target: CommandTarget::Live(entity),
+        });
+    }
+
+    /// Queue `bundle`'s components on a pending entity, applied at flush as
+    /// one archetype move.
+    pub fn insert_bundle_pending<B: Bundle>(&mut self, pending: PendingEntity, bundle: B) {
+        bundle.put(&mut BufferSink {
+            buffer: self,
+            target: CommandTarget::Pending(pending.0),
         });
     }
 

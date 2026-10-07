@@ -5,7 +5,7 @@ use std::path::Path;
 
 use tungsten::App;
 use tungsten::core::assets::manifest::ResolvedManifest;
-use tungsten::core::{ActionMap, Config, Time, Transform};
+use tungsten::core::{ActionMap, Config, Time, Transform, With};
 use tungsten::testing::Harness;
 use tungsten_template_basic::components::Player;
 use tungsten_template_basic::game::{self, active_state};
@@ -33,10 +33,11 @@ fn tap(harness: &mut Harness, action: &str) {
 }
 
 fn player(harness: &Harness) -> Option<[f32; 2]> {
-    let mut players = harness.world().query2::<Player, Transform>();
-    players
+    harness
+        .world()
+        .query_filtered::<&Transform, With<Player>>()
         .next()
-        .map(|(_, _, transform)| [transform.position.x, transform.position.y])
+        .map(|transform| [transform.position.x, transform.position.y])
 }
 
 /// The resolved schedule as `register` builds it: the game's two systems in

@@ -77,7 +77,9 @@ pub(super) fn actor_ai(world: &mut World) {
     let mut shots: Vec<(Vec2, Vec2)> = Vec::new();
     let mut turns: u32 = 0;
     let rt = &mut runtime;
-    for (_, actor, velocity, position) in world.query3_mut::<Actor, Velocity, Position>() {
+    for (_, actor, velocity, position) in
+        world.query_mut::<(Entity, &mut Actor, &mut Velocity, &mut Position)>()
+    {
         let slot = actor.slot as usize;
         let a = &mut rt.actors;
         let feet = position.0 + Vec2::new(0.0, WALKER_HALF.y);
@@ -171,7 +173,7 @@ pub(super) fn projectiles(world: &mut World) {
         return;
     };
     let mut expired = Vec::new();
-    for (entity, projectile) in world.query_mut::<Projectile>() {
+    for (entity, projectile) in world.query_mut::<(Entity, &mut Projectile)>() {
         if !projectile.registered {
             projectile.registered = true;
             runtime.set_kind(entity, Kind::Projectile);
@@ -380,7 +382,7 @@ pub(super) fn animate_actors(world: &mut World) {
     let Some(registry) = world.remove_resource::<AnimationRegistry>() else {
         return;
     };
-    for (_, state, sprite) in world.query2_mut::<AnimationState, Sprite>() {
+    for (_, state, sprite) in world.query_mut::<(Entity, &mut AnimationState, &mut Sprite)>() {
         if let Some(next) = state.advance(dt_ms, &registry) {
             sprite.asset_id = next;
         }
@@ -391,7 +393,9 @@ pub(super) fn animate_actors(world: &mut World) {
 /// Physics to visuals: stands each body's sprite on its collider's bottom
 /// edge at the sprite's current scale, which a landing squash may have set.
 pub(super) fn sync_bodies(world: &mut World) {
-    for (_, transform, position, body) in world.query3_mut::<Transform, Position, Body>() {
+    for (_, transform, position, body) in
+        world.query_mut::<(Entity, &mut Transform, &mut Position, &mut Body)>()
+    {
         transform.position = top_left(position.0, *body, transform.scale);
     }
 }
@@ -423,7 +427,7 @@ pub(super) fn torch_flicker(world: &mut World) {
     else {
         return;
     };
-    for (_, light, torch) in world.query2_mut::<Light, Torch>() {
+    for (_, light, torch) in world.query_mut::<(Entity, &mut Light, &mut Torch)>() {
         light.intensity = torch.base * (0.85 + 0.15 * (elapsed * torch.rate + torch.phase).sin());
     }
 }
@@ -456,7 +460,7 @@ pub(super) fn name_tags(world: &mut World) {
     let (view_min, view_max) = camera.visible_world_aabb(VIEWPORT.x, VIEWPORT.y);
     let center = (view_min + view_max) * 0.5;
     let mut near: Vec<(f32, u32, Vec2)> = world
-        .query2::<Actor, Position>()
+        .query::<(Entity, &Actor, &Position)>()
         .filter(|(_, _, position)| in_rect(position.0, view_min, view_max))
         .map(|(_, actor, position)| {
             (
@@ -496,8 +500,8 @@ pub(super) fn name_tags(world: &mut World) {
             "actors {}  flashing {}  projectiles {}  particles {}",
             runtime.actors.len(),
             runtime.actors.flashing(),
-            world.query::<Projectile>().count(),
-            world.query::<Particle>().count()
+            world.query::<(Entity, &Projectile)>().count(),
+            world.query::<(Entity, &Particle)>().count()
         ),
         format!(
             "shots {}  hits {}  landings {}  turns {}",

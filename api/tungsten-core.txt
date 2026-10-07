@@ -4032,17 +4032,454 @@ impl core::marker::UnsafeUnpin for tungsten_core::display::WindowSize
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::display::WindowSize
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::display::WindowSize
 pub mod tungsten_core::ecs
+pub mod tungsten_core::ecs::bundle
+pub struct tungsten_core::ecs::bundle::Chain<A, B>(_, _)
+impl<A: tungsten_core::ecs::bundle::Bundle, B: tungsten_core::ecs::bundle::Bundle> tungsten_core::ecs::bundle::Bundle for tungsten_core::ecs::bundle::Chain<A, B>
+pub fn tungsten_core::ecs::bundle::Chain<A, B>::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn tungsten_core::ecs::bundle::Chain<A, B>::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<A, B> core::marker::Freeze for tungsten_core::ecs::bundle::Chain<A, B> where A: core::marker::Freeze, B: core::marker::Freeze
+impl<A, B> core::marker::Send for tungsten_core::ecs::bundle::Chain<A, B> where A: core::marker::Send, B: core::marker::Send
+impl<A, B> core::marker::Sync for tungsten_core::ecs::bundle::Chain<A, B> where A: core::marker::Sync, B: core::marker::Sync
+impl<A, B> core::marker::Unpin for tungsten_core::ecs::bundle::Chain<A, B> where A: core::marker::Unpin, B: core::marker::Unpin
+impl<A, B> core::marker::UnsafeUnpin for tungsten_core::ecs::bundle::Chain<A, B> where A: core::marker::UnsafeUnpin, B: core::marker::UnsafeUnpin
+impl<A, B> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ecs::bundle::Chain<A, B> where A: core::panic::unwind_safe::RefUnwindSafe, B: core::panic::unwind_safe::RefUnwindSafe
+impl<A, B> core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::bundle::Chain<A, B> where A: core::panic::unwind_safe::UnwindSafe, B: core::panic::unwind_safe::UnwindSafe
+pub trait tungsten_core::ecs::bundle::Bundle: 'static
+pub fn tungsten_core::ecs::bundle::Bundle::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn tungsten_core::ecs::bundle::Bundle::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl tungsten_core::ecs::bundle::Bundle for tungsten_core::physics::components::RigidBodyBundle
+pub fn tungsten_core::physics::components::RigidBodyBundle::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn tungsten_core::physics::components::RigidBodyBundle::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<A: tungsten_core::ecs::bundle::Bundle, B: tungsten_core::ecs::bundle::Bundle> tungsten_core::ecs::bundle::Bundle for tungsten_core::ecs::bundle::Chain<A, B>
+pub fn tungsten_core::ecs::bundle::Chain<A, B>::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn tungsten_core::ecs::bundle::Chain<A, B>::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static, C6: 'static, C7: 'static, C8: 'static, C9: 'static, C10: 'static, C11: 'static, C12: 'static, C13: 'static, C14: 'static, C15: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, C13, C14, C15)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, C13, C14, C15)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, C13, C14, C15)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static, C6: 'static, C7: 'static, C8: 'static, C9: 'static, C10: 'static, C11: 'static, C12: 'static, C13: 'static, C14: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, C13, C14)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, C13, C14)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, C13, C14)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static, C6: 'static, C7: 'static, C8: 'static, C9: 'static, C10: 'static, C11: 'static, C12: 'static, C13: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, C13)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, C13)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, C13)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static, C6: 'static, C7: 'static, C8: 'static, C9: 'static, C10: 'static, C11: 'static, C12: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static, C6: 'static, C7: 'static, C8: 'static, C9: 'static, C10: 'static, C11: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static, C6: 'static, C7: 'static, C8: 'static, C9: 'static, C10: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static, C6: 'static, C7: 'static, C8: 'static, C9: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static, C6: 'static, C7: 'static, C8: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5, C6, C7, C8)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static, C6: 'static, C7: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5, C6, C7)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static, C6: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5, C6)
+pub fn (C0, C1, C2, C3, C4, C5, C6)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5, C6)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5)
+pub fn (C0, C1, C2, C3, C4, C5)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4)
+pub fn (C0, C1, C2, C3, C4)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3)
+pub fn (C0, C1, C2, C3)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2)
+pub fn (C0, C1, C2)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1)
+pub fn (C0, C1)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static> tungsten_core::ecs::bundle::Bundle for (C0)
+pub fn (C0)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+pub trait tungsten_core::ecs::bundle::BundleSink: tungsten_core::ecs::bundle::sealed::Sink
+pub fn tungsten_core::ecs::bundle::BundleSink::put<T: 'static>(&mut self, T)
+pub mod tungsten_core::ecs::query
+pub struct tungsten_core::ecs::query::Columns<'w>
+impl<'w> core::marker::Freeze for tungsten_core::ecs::query::Columns<'w>
+impl<'w> !core::marker::Send for tungsten_core::ecs::query::Columns<'w>
+impl<'w> !core::marker::Sync for tungsten_core::ecs::query::Columns<'w>
+impl<'w> core::marker::Unpin for tungsten_core::ecs::query::Columns<'w>
+impl<'w> core::marker::UnsafeUnpin for tungsten_core::ecs::query::Columns<'w>
+impl<'w> !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ecs::query::Columns<'w>
+impl<'w> !core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::Columns<'w>
+pub struct tungsten_core::ecs::query::ColumnsMut<'w>
+impl<'w> core::marker::Freeze for tungsten_core::ecs::query::ColumnsMut<'w>
+impl<'w> !core::marker::Send for tungsten_core::ecs::query::ColumnsMut<'w>
+impl<'w> !core::marker::Sync for tungsten_core::ecs::query::ColumnsMut<'w>
+impl<'w> core::marker::Unpin for tungsten_core::ecs::query::ColumnsMut<'w>
+impl<'w> core::marker::UnsafeUnpin for tungsten_core::ecs::query::ColumnsMut<'w>
+impl<'w> !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ecs::query::ColumnsMut<'w>
+impl<'w> !core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::ColumnsMut<'w>
+pub struct tungsten_core::ecs::query::OptionalColumn<I>(pub core::option::Option<I>)
+impl<I: core::iter::traits::iterator::Iterator> core::iter::traits::iterator::Iterator for tungsten_core::ecs::query::OptionalColumn<I>
+pub type tungsten_core::ecs::query::OptionalColumn<I>::Item = core::option::Option<<I as core::iter::traits::iterator::Iterator>::Item>
+pub fn tungsten_core::ecs::query::OptionalColumn<I>::next(&mut self) -> core::option::Option<Self::Item>
+impl<I> core::marker::Freeze for tungsten_core::ecs::query::OptionalColumn<I> where I: core::marker::Freeze
+impl<I> core::marker::Send for tungsten_core::ecs::query::OptionalColumn<I> where I: core::marker::Send
+impl<I> core::marker::Sync for tungsten_core::ecs::query::OptionalColumn<I> where I: core::marker::Sync
+impl<I> core::marker::Unpin for tungsten_core::ecs::query::OptionalColumn<I> where I: core::marker::Unpin
+impl<I> core::marker::UnsafeUnpin for tungsten_core::ecs::query::OptionalColumn<I> where I: core::marker::UnsafeUnpin
+impl<I> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ecs::query::OptionalColumn<I> where I: core::panic::unwind_safe::RefUnwindSafe
+impl<I> core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::OptionalColumn<I> where I: core::panic::unwind_safe::UnwindSafe
+pub struct tungsten_core::ecs::query::OptionalRows<I>
+impl<I: core::iter::traits::iterator::Iterator> core::iter::traits::iterator::Iterator for tungsten_core::ecs::query::OptionalRows<I>
+pub type tungsten_core::ecs::query::OptionalRows<I>::Item = core::option::Option<<I as core::iter::traits::iterator::Iterator>::Item>
+pub fn tungsten_core::ecs::query::OptionalRows<I>::next(&mut self) -> core::option::Option<Self::Item>
+pub fn tungsten_core::ecs::query::OptionalRows<I>::size_hint(&self) -> (usize, core::option::Option<usize>)
+impl<I> core::marker::Freeze for tungsten_core::ecs::query::OptionalRows<I> where I: core::marker::Freeze
+impl<I> core::marker::Send for tungsten_core::ecs::query::OptionalRows<I> where I: core::marker::Send
+impl<I> core::marker::Sync for tungsten_core::ecs::query::OptionalRows<I> where I: core::marker::Sync
+impl<I> core::marker::Unpin for tungsten_core::ecs::query::OptionalRows<I> where I: core::marker::Unpin
+impl<I> core::marker::UnsafeUnpin for tungsten_core::ecs::query::OptionalRows<I> where I: core::marker::UnsafeUnpin
+impl<I> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ecs::query::OptionalRows<I> where I: core::panic::unwind_safe::RefUnwindSafe
+impl<I> core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::OptionalRows<I> where I: core::panic::unwind_safe::UnwindSafe
+pub struct tungsten_core::ecs::query::Rows1<I>(_)
+impl<I, T0> core::iter::traits::iterator::Iterator for tungsten_core::ecs::query::Rows1<I> where I: core::iter::traits::iterator::Iterator<Item = T0>
+pub type tungsten_core::ecs::query::Rows1<I>::Item = (T0)
+pub fn tungsten_core::ecs::query::Rows1<I>::next(&mut self) -> core::option::Option<Self::Item>
+pub fn tungsten_core::ecs::query::Rows1<I>::size_hint(&self) -> (usize, core::option::Option<usize>)
+impl<I> core::marker::Freeze for tungsten_core::ecs::query::Rows1<I> where I: core::marker::Freeze
+impl<I> core::marker::Send for tungsten_core::ecs::query::Rows1<I> where I: core::marker::Send
+impl<I> core::marker::Sync for tungsten_core::ecs::query::Rows1<I> where I: core::marker::Sync
+impl<I> core::marker::Unpin for tungsten_core::ecs::query::Rows1<I> where I: core::marker::Unpin
+impl<I> core::marker::UnsafeUnpin for tungsten_core::ecs::query::Rows1<I> where I: core::marker::UnsafeUnpin
+impl<I> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ecs::query::Rows1<I> where I: core::panic::unwind_safe::RefUnwindSafe
+impl<I> core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::Rows1<I> where I: core::panic::unwind_safe::UnwindSafe
+pub struct tungsten_core::ecs::query::Rows2<I>(_)
+impl<I, T0, T1> core::iter::traits::iterator::Iterator for tungsten_core::ecs::query::Rows2<I> where I: core::iter::traits::iterator::Iterator<Item = (T0, T1)>
+pub type tungsten_core::ecs::query::Rows2<I>::Item = (T0, T1)
+pub fn tungsten_core::ecs::query::Rows2<I>::next(&mut self) -> core::option::Option<Self::Item>
+pub fn tungsten_core::ecs::query::Rows2<I>::size_hint(&self) -> (usize, core::option::Option<usize>)
+impl<I> core::marker::Freeze for tungsten_core::ecs::query::Rows2<I> where I: core::marker::Freeze
+impl<I> core::marker::Send for tungsten_core::ecs::query::Rows2<I> where I: core::marker::Send
+impl<I> core::marker::Sync for tungsten_core::ecs::query::Rows2<I> where I: core::marker::Sync
+impl<I> core::marker::Unpin for tungsten_core::ecs::query::Rows2<I> where I: core::marker::Unpin
+impl<I> core::marker::UnsafeUnpin for tungsten_core::ecs::query::Rows2<I> where I: core::marker::UnsafeUnpin
+impl<I> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ecs::query::Rows2<I> where I: core::panic::unwind_safe::RefUnwindSafe
+impl<I> core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::Rows2<I> where I: core::panic::unwind_safe::UnwindSafe
+pub struct tungsten_core::ecs::query::Rows3<I>(_)
+impl<I, T0, T1, T2> core::iter::traits::iterator::Iterator for tungsten_core::ecs::query::Rows3<I> where I: core::iter::traits::iterator::Iterator<Item = (T0, (T1, T2))>
+pub type tungsten_core::ecs::query::Rows3<I>::Item = (T0, T1, T2)
+pub fn tungsten_core::ecs::query::Rows3<I>::next(&mut self) -> core::option::Option<Self::Item>
+pub fn tungsten_core::ecs::query::Rows3<I>::size_hint(&self) -> (usize, core::option::Option<usize>)
+impl<I> core::marker::Freeze for tungsten_core::ecs::query::Rows3<I> where I: core::marker::Freeze
+impl<I> core::marker::Send for tungsten_core::ecs::query::Rows3<I> where I: core::marker::Send
+impl<I> core::marker::Sync for tungsten_core::ecs::query::Rows3<I> where I: core::marker::Sync
+impl<I> core::marker::Unpin for tungsten_core::ecs::query::Rows3<I> where I: core::marker::Unpin
+impl<I> core::marker::UnsafeUnpin for tungsten_core::ecs::query::Rows3<I> where I: core::marker::UnsafeUnpin
+impl<I> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ecs::query::Rows3<I> where I: core::panic::unwind_safe::RefUnwindSafe
+impl<I> core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::Rows3<I> where I: core::panic::unwind_safe::UnwindSafe
+pub struct tungsten_core::ecs::query::Rows4<I>(_)
+impl<I, T0, T1, T2, T3> core::iter::traits::iterator::Iterator for tungsten_core::ecs::query::Rows4<I> where I: core::iter::traits::iterator::Iterator<Item = (T0, (T1, (T2, T3)))>
+pub type tungsten_core::ecs::query::Rows4<I>::Item = (T0, T1, T2, T3)
+pub fn tungsten_core::ecs::query::Rows4<I>::next(&mut self) -> core::option::Option<Self::Item>
+pub fn tungsten_core::ecs::query::Rows4<I>::size_hint(&self) -> (usize, core::option::Option<usize>)
+impl<I> core::marker::Freeze for tungsten_core::ecs::query::Rows4<I> where I: core::marker::Freeze
+impl<I> core::marker::Send for tungsten_core::ecs::query::Rows4<I> where I: core::marker::Send
+impl<I> core::marker::Sync for tungsten_core::ecs::query::Rows4<I> where I: core::marker::Sync
+impl<I> core::marker::Unpin for tungsten_core::ecs::query::Rows4<I> where I: core::marker::Unpin
+impl<I> core::marker::UnsafeUnpin for tungsten_core::ecs::query::Rows4<I> where I: core::marker::UnsafeUnpin
+impl<I> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ecs::query::Rows4<I> where I: core::panic::unwind_safe::RefUnwindSafe
+impl<I> core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::Rows4<I> where I: core::panic::unwind_safe::UnwindSafe
+pub struct tungsten_core::ecs::query::Rows5<I>(_)
+impl<I, T0, T1, T2, T3, T4> core::iter::traits::iterator::Iterator for tungsten_core::ecs::query::Rows5<I> where I: core::iter::traits::iterator::Iterator<Item = (T0, (T1, (T2, (T3, T4))))>
+pub type tungsten_core::ecs::query::Rows5<I>::Item = (T0, T1, T2, T3, T4)
+pub fn tungsten_core::ecs::query::Rows5<I>::next(&mut self) -> core::option::Option<Self::Item>
+pub fn tungsten_core::ecs::query::Rows5<I>::size_hint(&self) -> (usize, core::option::Option<usize>)
+impl<I> core::marker::Freeze for tungsten_core::ecs::query::Rows5<I> where I: core::marker::Freeze
+impl<I> core::marker::Send for tungsten_core::ecs::query::Rows5<I> where I: core::marker::Send
+impl<I> core::marker::Sync for tungsten_core::ecs::query::Rows5<I> where I: core::marker::Sync
+impl<I> core::marker::Unpin for tungsten_core::ecs::query::Rows5<I> where I: core::marker::Unpin
+impl<I> core::marker::UnsafeUnpin for tungsten_core::ecs::query::Rows5<I> where I: core::marker::UnsafeUnpin
+impl<I> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ecs::query::Rows5<I> where I: core::panic::unwind_safe::RefUnwindSafe
+impl<I> core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::Rows5<I> where I: core::panic::unwind_safe::UnwindSafe
+pub struct tungsten_core::ecs::query::Rows6<I>(_)
+impl<I, T0, T1, T2, T3, T4, T5> core::iter::traits::iterator::Iterator for tungsten_core::ecs::query::Rows6<I> where I: core::iter::traits::iterator::Iterator<Item = (T0, (T1, (T2, (T3, (T4, T5)))))>
+pub type tungsten_core::ecs::query::Rows6<I>::Item = (T0, T1, T2, T3, T4, T5)
+pub fn tungsten_core::ecs::query::Rows6<I>::next(&mut self) -> core::option::Option<Self::Item>
+pub fn tungsten_core::ecs::query::Rows6<I>::size_hint(&self) -> (usize, core::option::Option<usize>)
+impl<I> core::marker::Freeze for tungsten_core::ecs::query::Rows6<I> where I: core::marker::Freeze
+impl<I> core::marker::Send for tungsten_core::ecs::query::Rows6<I> where I: core::marker::Send
+impl<I> core::marker::Sync for tungsten_core::ecs::query::Rows6<I> where I: core::marker::Sync
+impl<I> core::marker::Unpin for tungsten_core::ecs::query::Rows6<I> where I: core::marker::Unpin
+impl<I> core::marker::UnsafeUnpin for tungsten_core::ecs::query::Rows6<I> where I: core::marker::UnsafeUnpin
+impl<I> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ecs::query::Rows6<I> where I: core::panic::unwind_safe::RefUnwindSafe
+impl<I> core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::Rows6<I> where I: core::panic::unwind_safe::UnwindSafe
+pub struct tungsten_core::ecs::query::Rows7<I>(_)
+impl<I, T0, T1, T2, T3, T4, T5, T6> core::iter::traits::iterator::Iterator for tungsten_core::ecs::query::Rows7<I> where I: core::iter::traits::iterator::Iterator<Item = (T0, (T1, (T2, (T3, (T4, (T5, T6))))))>
+pub type tungsten_core::ecs::query::Rows7<I>::Item = (T0, T1, T2, T3, T4, T5, T6)
+pub fn tungsten_core::ecs::query::Rows7<I>::next(&mut self) -> core::option::Option<Self::Item>
+pub fn tungsten_core::ecs::query::Rows7<I>::size_hint(&self) -> (usize, core::option::Option<usize>)
+impl<I> core::marker::Freeze for tungsten_core::ecs::query::Rows7<I> where I: core::marker::Freeze
+impl<I> core::marker::Send for tungsten_core::ecs::query::Rows7<I> where I: core::marker::Send
+impl<I> core::marker::Sync for tungsten_core::ecs::query::Rows7<I> where I: core::marker::Sync
+impl<I> core::marker::Unpin for tungsten_core::ecs::query::Rows7<I> where I: core::marker::Unpin
+impl<I> core::marker::UnsafeUnpin for tungsten_core::ecs::query::Rows7<I> where I: core::marker::UnsafeUnpin
+impl<I> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ecs::query::Rows7<I> where I: core::panic::unwind_safe::RefUnwindSafe
+impl<I> core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::Rows7<I> where I: core::panic::unwind_safe::UnwindSafe
+pub struct tungsten_core::ecs::query::Rows8<I>(_)
+impl<I, T0, T1, T2, T3, T4, T5, T6, T7> core::iter::traits::iterator::Iterator for tungsten_core::ecs::query::Rows8<I> where I: core::iter::traits::iterator::Iterator<Item = (T0, (T1, (T2, (T3, (T4, (T5, (T6, T7)))))))>
+pub type tungsten_core::ecs::query::Rows8<I>::Item = (T0, T1, T2, T3, T4, T5, T6, T7)
+pub fn tungsten_core::ecs::query::Rows8<I>::next(&mut self) -> core::option::Option<Self::Item>
+pub fn tungsten_core::ecs::query::Rows8<I>::size_hint(&self) -> (usize, core::option::Option<usize>)
+impl<I> core::marker::Freeze for tungsten_core::ecs::query::Rows8<I> where I: core::marker::Freeze
+impl<I> core::marker::Send for tungsten_core::ecs::query::Rows8<I> where I: core::marker::Send
+impl<I> core::marker::Sync for tungsten_core::ecs::query::Rows8<I> where I: core::marker::Sync
+impl<I> core::marker::Unpin for tungsten_core::ecs::query::Rows8<I> where I: core::marker::Unpin
+impl<I> core::marker::UnsafeUnpin for tungsten_core::ecs::query::Rows8<I> where I: core::marker::UnsafeUnpin
+impl<I> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ecs::query::Rows8<I> where I: core::panic::unwind_safe::RefUnwindSafe
+impl<I> core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::Rows8<I> where I: core::panic::unwind_safe::UnwindSafe
+pub struct tungsten_core::ecs::query::Slot<'w>(_)
+impl<'w> core::clone::Clone for tungsten_core::ecs::query::Slot<'w>
+pub fn tungsten_core::ecs::query::Slot<'w>::clone(&self) -> tungsten_core::ecs::query::Slot<'w>
+impl<'w> core::marker::Copy for tungsten_core::ecs::query::Slot<'w>
+impl<'w> core::marker::Freeze for tungsten_core::ecs::query::Slot<'w>
+impl<'w> !core::marker::Send for tungsten_core::ecs::query::Slot<'w>
+impl<'w> !core::marker::Sync for tungsten_core::ecs::query::Slot<'w>
+impl<'w> core::marker::Unpin for tungsten_core::ecs::query::Slot<'w>
+impl<'w> core::marker::UnsafeUnpin for tungsten_core::ecs::query::Slot<'w>
+impl<'w> !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ecs::query::Slot<'w>
+impl<'w> !core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::Slot<'w>
+pub struct tungsten_core::ecs::query::SlotMut<'w>(_)
+impl<'w> core::marker::Freeze for tungsten_core::ecs::query::SlotMut<'w>
+impl<'w> !core::marker::Send for tungsten_core::ecs::query::SlotMut<'w>
+impl<'w> !core::marker::Sync for tungsten_core::ecs::query::SlotMut<'w>
+impl<'w> core::marker::Unpin for tungsten_core::ecs::query::SlotMut<'w>
+impl<'w> core::marker::UnsafeUnpin for tungsten_core::ecs::query::SlotMut<'w>
+impl<'w> !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ecs::query::SlotMut<'w>
+impl<'w> !core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::SlotMut<'w>
+pub struct tungsten_core::ecs::query::With<T>(_)
+impl<T: 'static> tungsten_core::ecs::query::QueryFilter for tungsten_core::ecs::query::With<T>
+pub fn tungsten_core::ecs::query::With<T>::matches(&[core::any::TypeId]) -> bool
+impl<T> core::marker::Freeze for tungsten_core::ecs::query::With<T>
+impl<T> core::marker::Send for tungsten_core::ecs::query::With<T>
+impl<T> core::marker::Sync for tungsten_core::ecs::query::With<T>
+impl<T> core::marker::Unpin for tungsten_core::ecs::query::With<T>
+impl<T> core::marker::UnsafeUnpin for tungsten_core::ecs::query::With<T>
+impl<T> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ecs::query::With<T>
+impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::With<T>
+pub struct tungsten_core::ecs::query::Without<T>(_)
+impl<T: 'static> tungsten_core::ecs::query::QueryFilter for tungsten_core::ecs::query::Without<T>
+pub fn tungsten_core::ecs::query::Without<T>::matches(&[core::any::TypeId]) -> bool
+impl<T> core::marker::Freeze for tungsten_core::ecs::query::Without<T>
+impl<T> core::marker::Send for tungsten_core::ecs::query::Without<T>
+impl<T> core::marker::Sync for tungsten_core::ecs::query::Without<T>
+impl<T> core::marker::Unpin for tungsten_core::ecs::query::Without<T>
+impl<T> core::marker::UnsafeUnpin for tungsten_core::ecs::query::Without<T>
+impl<T> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ecs::query::Without<T>
+impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::Without<T>
+pub trait tungsten_core::ecs::query::QueryData<'w>: core::marker::Sized + tungsten_core::ecs::query::sealed::Data
+pub type tungsten_core::ecs::query::QueryData::Iter: core::iter::traits::iterator::Iterator<Item = Self>
+pub type tungsten_core::ecs::query::QueryData::Slices
+pub fn tungsten_core::ecs::query::QueryData::check_access()
+pub fn tungsten_core::ecs::query::QueryData::iter(Self::Slices, usize) -> Self::Iter
+pub fn tungsten_core::ecs::query::QueryData::matches(&[core::any::TypeId]) -> bool
+pub fn tungsten_core::ecs::query::QueryData::slices_mut(tungsten_core::ecs::query::ColumnsMut<'w>) -> Self::Slices
+impl<'w, A: 'static> tungsten_core::ecs::query::QueryData<'w> for &'w A
+pub type &'w A::Iter = <&'w A as tungsten_core::ecs::query::QueryItem<'w>>::Iter
+pub type &'w A::Slices = <&'w A as tungsten_core::ecs::query::QueryItem<'w>>::Slice
+pub fn &'w A::check_access()
+pub fn &'w A::iter(Self::Slices, usize) -> Self::Iter
+pub fn &'w A::matches(&[core::any::TypeId]) -> bool
+pub fn &'w A::slices_mut(tungsten_core::ecs::query::ColumnsMut<'w>) -> Self::Slices
+impl<'w, A: 'static> tungsten_core::ecs::query::QueryData<'w> for &'w mut A
+pub type &'w mut A::Iter = <&'w mut A as tungsten_core::ecs::query::QueryItem<'w>>::Iter
+pub type &'w mut A::Slices = <&'w mut A as tungsten_core::ecs::query::QueryItem<'w>>::Slice
+pub fn &'w mut A::check_access()
+pub fn &'w mut A::iter(Self::Slices, usize) -> Self::Iter
+pub fn &'w mut A::matches(&[core::any::TypeId]) -> bool
+pub fn &'w mut A::slices_mut(tungsten_core::ecs::query::ColumnsMut<'w>) -> Self::Slices
+impl<'w, A: 'static> tungsten_core::ecs::query::QueryData<'w> for core::option::Option<&'w A>
+pub type core::option::Option<&'w A>::Iter = <core::option::Option<&'w A> as tungsten_core::ecs::query::QueryItem<'w>>::Iter
+pub type core::option::Option<&'w A>::Slices = <core::option::Option<&'w A> as tungsten_core::ecs::query::QueryItem<'w>>::Slice
+pub fn core::option::Option<&'w A>::check_access()
+pub fn core::option::Option<&'w A>::iter(Self::Slices, usize) -> Self::Iter
+pub fn core::option::Option<&'w A>::matches(&[core::any::TypeId]) -> bool
+pub fn core::option::Option<&'w A>::slices_mut(tungsten_core::ecs::query::ColumnsMut<'w>) -> Self::Slices
+impl<'w, A: 'static> tungsten_core::ecs::query::QueryData<'w> for core::option::Option<&'w mut A>
+pub type core::option::Option<&'w mut A>::Iter = <core::option::Option<&'w mut A> as tungsten_core::ecs::query::QueryItem<'w>>::Iter
+pub type core::option::Option<&'w mut A>::Slices = <core::option::Option<&'w mut A> as tungsten_core::ecs::query::QueryItem<'w>>::Slice
+pub fn core::option::Option<&'w mut A>::check_access()
+pub fn core::option::Option<&'w mut A>::iter(Self::Slices, usize) -> Self::Iter
+pub fn core::option::Option<&'w mut A>::matches(&[core::any::TypeId]) -> bool
+pub fn core::option::Option<&'w mut A>::slices_mut(tungsten_core::ecs::query::ColumnsMut<'w>) -> Self::Slices
+impl<'w, T0: tungsten_core::ecs::query::QueryItem<'w>, T1: tungsten_core::ecs::query::QueryItem<'w>, T2: tungsten_core::ecs::query::QueryItem<'w>, T3: tungsten_core::ecs::query::QueryItem<'w>, T4: tungsten_core::ecs::query::QueryItem<'w>, T5: tungsten_core::ecs::query::QueryItem<'w>, T6: tungsten_core::ecs::query::QueryItem<'w>, T7: tungsten_core::ecs::query::QueryItem<'w>> tungsten_core::ecs::query::QueryData<'w> for (T0, T1, T2, T3, T4, T5, T6, T7)
+pub type (T0, T1, T2, T3, T4, T5, T6, T7)::Iter = tungsten_core::ecs::query::Rows8<core::iter::adapters::zip::Zip<<T0 as tungsten_core::ecs::query::QueryItem<'w>>::Iter, core::iter::adapters::zip::Zip<<T1 as tungsten_core::ecs::query::QueryItem<'w>>::Iter, core::iter::adapters::zip::Zip<<T2 as tungsten_core::ecs::query::QueryItem<'w>>::Iter, core::iter::adapters::zip::Zip<<T3 as tungsten_core::ecs::query::QueryItem<'w>>::Iter, core::iter::adapters::zip::Zip<<T4 as tungsten_core::ecs::query::QueryItem<'w>>::Iter, core::iter::adapters::zip::Zip<<T5 as tungsten_core::ecs::query::QueryItem<'w>>::Iter, core::iter::adapters::zip::Zip<<T6 as tungsten_core::ecs::query::QueryItem<'w>>::Iter, <T7 as tungsten_core::ecs::query::QueryItem<'w>>::Iter>>>>>>>>
+pub type (T0, T1, T2, T3, T4, T5, T6, T7)::Slices = (<T0 as tungsten_core::ecs::query::QueryItem<'w>>::Slice, <T1 as tungsten_core::ecs::query::QueryItem<'w>>::Slice, <T2 as tungsten_core::ecs::query::QueryItem<'w>>::Slice, <T3 as tungsten_core::ecs::query::QueryItem<'w>>::Slice, <T4 as tungsten_core::ecs::query::QueryItem<'w>>::Slice, <T5 as tungsten_core::ecs::query::QueryItem<'w>>::Slice, <T6 as tungsten_core::ecs::query::QueryItem<'w>>::Slice, <T7 as tungsten_core::ecs::query::QueryItem<'w>>::Slice)
+pub fn (T0, T1, T2, T3, T4, T5, T6, T7)::check_access()
+pub fn (T0, T1, T2, T3, T4, T5, T6, T7)::iter(Self::Slices, usize) -> Self::Iter
+pub fn (T0, T1, T2, T3, T4, T5, T6, T7)::matches(&[core::any::TypeId]) -> bool
+pub fn (T0, T1, T2, T3, T4, T5, T6, T7)::slices_mut(tungsten_core::ecs::query::ColumnsMut<'w>) -> Self::Slices
+impl<'w, T0: tungsten_core::ecs::query::QueryItem<'w>, T1: tungsten_core::ecs::query::QueryItem<'w>, T2: tungsten_core::ecs::query::QueryItem<'w>, T3: tungsten_core::ecs::query::QueryItem<'w>, T4: tungsten_core::ecs::query::QueryItem<'w>, T5: tungsten_core::ecs::query::QueryItem<'w>, T6: tungsten_core::ecs::query::QueryItem<'w>> tungsten_core::ecs::query::QueryData<'w> for (T0, T1, T2, T3, T4, T5, T6)
+pub type (T0, T1, T2, T3, T4, T5, T6)::Iter = tungsten_core::ecs::query::Rows7<core::iter::adapters::zip::Zip<<T0 as tungsten_core::ecs::query::QueryItem<'w>>::Iter, core::iter::adapters::zip::Zip<<T1 as tungsten_core::ecs::query::QueryItem<'w>>::Iter, core::iter::adapters::zip::Zip<<T2 as tungsten_core::ecs::query::QueryItem<'w>>::Iter, core::iter::adapters::zip::Zip<<T3 as tungsten_core::ecs::query::QueryItem<'w>>::Iter, core::iter::adapters::zip::Zip<<T4 as tungsten_core::ecs::query::QueryItem<'w>>::Iter, core::iter::adapters::zip::Zip<<T5 as tungsten_core::ecs::query::QueryItem<'w>>::Iter, <T6 as tungsten_core::ecs::query::QueryItem<'w>>::Iter>>>>>>>
+pub type (T0, T1, T2, T3, T4, T5, T6)::Slices = (<T0 as tungsten_core::ecs::query::QueryItem<'w>>::Slice, <T1 as tungsten_core::ecs::query::QueryItem<'w>>::Slice, <T2 as tungsten_core::ecs::query::QueryItem<'w>>::Slice, <T3 as tungsten_core::ecs::query::QueryItem<'w>>::Slice, <T4 as tungsten_core::ecs::query::QueryItem<'w>>::Slice, <T5 as tungsten_core::ecs::query::QueryItem<'w>>::Slice, <T6 as tungsten_core::ecs::query::QueryItem<'w>>::Slice)
+pub fn (T0, T1, T2, T3, T4, T5, T6)::check_access()
+pub fn (T0, T1, T2, T3, T4, T5, T6)::iter(Self::Slices, usize) -> Self::Iter
+pub fn (T0, T1, T2, T3, T4, T5, T6)::matches(&[core::any::TypeId]) -> bool
+pub fn (T0, T1, T2, T3, T4, T5, T6)::slices_mut(tungsten_core::ecs::query::ColumnsMut<'w>) -> Self::Slices
+impl<'w, T0: tungsten_core::ecs::query::QueryItem<'w>, T1: tungsten_core::ecs::query::QueryItem<'w>, T2: tungsten_core::ecs::query::QueryItem<'w>, T3: tungsten_core::ecs::query::QueryItem<'w>, T4: tungsten_core::ecs::query::QueryItem<'w>, T5: tungsten_core::ecs::query::QueryItem<'w>> tungsten_core::ecs::query::QueryData<'w> for (T0, T1, T2, T3, T4, T5)
+pub type (T0, T1, T2, T3, T4, T5)::Iter = tungsten_core::ecs::query::Rows6<core::iter::adapters::zip::Zip<<T0 as tungsten_core::ecs::query::QueryItem<'w>>::Iter, core::iter::adapters::zip::Zip<<T1 as tungsten_core::ecs::query::QueryItem<'w>>::Iter, core::iter::adapters::zip::Zip<<T2 as tungsten_core::ecs::query::QueryItem<'w>>::Iter, core::iter::adapters::zip::Zip<<T3 as tungsten_core::ecs::query::QueryItem<'w>>::Iter, core::iter::adapters::zip::Zip<<T4 as tungsten_core::ecs::query::QueryItem<'w>>::Iter, <T5 as tungsten_core::ecs::query::QueryItem<'w>>::Iter>>>>>>
+pub type (T0, T1, T2, T3, T4, T5)::Slices = (<T0 as tungsten_core::ecs::query::QueryItem<'w>>::Slice, <T1 as tungsten_core::ecs::query::QueryItem<'w>>::Slice, <T2 as tungsten_core::ecs::query::QueryItem<'w>>::Slice, <T3 as tungsten_core::ecs::query::QueryItem<'w>>::Slice, <T4 as tungsten_core::ecs::query::QueryItem<'w>>::Slice, <T5 as tungsten_core::ecs::query::QueryItem<'w>>::Slice)
+pub fn (T0, T1, T2, T3, T4, T5)::check_access()
+pub fn (T0, T1, T2, T3, T4, T5)::iter(Self::Slices, usize) -> Self::Iter
+pub fn (T0, T1, T2, T3, T4, T5)::matches(&[core::any::TypeId]) -> bool
+pub fn (T0, T1, T2, T3, T4, T5)::slices_mut(tungsten_core::ecs::query::ColumnsMut<'w>) -> Self::Slices
+impl<'w, T0: tungsten_core::ecs::query::QueryItem<'w>, T1: tungsten_core::ecs::query::QueryItem<'w>, T2: tungsten_core::ecs::query::QueryItem<'w>, T3: tungsten_core::ecs::query::QueryItem<'w>, T4: tungsten_core::ecs::query::QueryItem<'w>> tungsten_core::ecs::query::QueryData<'w> for (T0, T1, T2, T3, T4)
+pub type (T0, T1, T2, T3, T4)::Iter = tungsten_core::ecs::query::Rows5<core::iter::adapters::zip::Zip<<T0 as tungsten_core::ecs::query::QueryItem<'w>>::Iter, core::iter::adapters::zip::Zip<<T1 as tungsten_core::ecs::query::QueryItem<'w>>::Iter, core::iter::adapters::zip::Zip<<T2 as tungsten_core::ecs::query::QueryItem<'w>>::Iter, core::iter::adapters::zip::Zip<<T3 as tungsten_core::ecs::query::QueryItem<'w>>::Iter, <T4 as tungsten_core::ecs::query::QueryItem<'w>>::Iter>>>>>
+pub type (T0, T1, T2, T3, T4)::Slices = (<T0 as tungsten_core::ecs::query::QueryItem<'w>>::Slice, <T1 as tungsten_core::ecs::query::QueryItem<'w>>::Slice, <T2 as tungsten_core::ecs::query::QueryItem<'w>>::Slice, <T3 as tungsten_core::ecs::query::QueryItem<'w>>::Slice, <T4 as tungsten_core::ecs::query::QueryItem<'w>>::Slice)
+pub fn (T0, T1, T2, T3, T4)::check_access()
+pub fn (T0, T1, T2, T3, T4)::iter(Self::Slices, usize) -> Self::Iter
+pub fn (T0, T1, T2, T3, T4)::matches(&[core::any::TypeId]) -> bool
+pub fn (T0, T1, T2, T3, T4)::slices_mut(tungsten_core::ecs::query::ColumnsMut<'w>) -> Self::Slices
+impl<'w, T0: tungsten_core::ecs::query::QueryItem<'w>, T1: tungsten_core::ecs::query::QueryItem<'w>, T2: tungsten_core::ecs::query::QueryItem<'w>, T3: tungsten_core::ecs::query::QueryItem<'w>> tungsten_core::ecs::query::QueryData<'w> for (T0, T1, T2, T3)
+pub type (T0, T1, T2, T3)::Iter = tungsten_core::ecs::query::Rows4<core::iter::adapters::zip::Zip<<T0 as tungsten_core::ecs::query::QueryItem<'w>>::Iter, core::iter::adapters::zip::Zip<<T1 as tungsten_core::ecs::query::QueryItem<'w>>::Iter, core::iter::adapters::zip::Zip<<T2 as tungsten_core::ecs::query::QueryItem<'w>>::Iter, <T3 as tungsten_core::ecs::query::QueryItem<'w>>::Iter>>>>
+pub type (T0, T1, T2, T3)::Slices = (<T0 as tungsten_core::ecs::query::QueryItem<'w>>::Slice, <T1 as tungsten_core::ecs::query::QueryItem<'w>>::Slice, <T2 as tungsten_core::ecs::query::QueryItem<'w>>::Slice, <T3 as tungsten_core::ecs::query::QueryItem<'w>>::Slice)
+pub fn (T0, T1, T2, T3)::check_access()
+pub fn (T0, T1, T2, T3)::iter(Self::Slices, usize) -> Self::Iter
+pub fn (T0, T1, T2, T3)::matches(&[core::any::TypeId]) -> bool
+pub fn (T0, T1, T2, T3)::slices_mut(tungsten_core::ecs::query::ColumnsMut<'w>) -> Self::Slices
+impl<'w, T0: tungsten_core::ecs::query::QueryItem<'w>, T1: tungsten_core::ecs::query::QueryItem<'w>, T2: tungsten_core::ecs::query::QueryItem<'w>> tungsten_core::ecs::query::QueryData<'w> for (T0, T1, T2)
+pub type (T0, T1, T2)::Iter = tungsten_core::ecs::query::Rows3<core::iter::adapters::zip::Zip<<T0 as tungsten_core::ecs::query::QueryItem<'w>>::Iter, core::iter::adapters::zip::Zip<<T1 as tungsten_core::ecs::query::QueryItem<'w>>::Iter, <T2 as tungsten_core::ecs::query::QueryItem<'w>>::Iter>>>
+pub type (T0, T1, T2)::Slices = (<T0 as tungsten_core::ecs::query::QueryItem<'w>>::Slice, <T1 as tungsten_core::ecs::query::QueryItem<'w>>::Slice, <T2 as tungsten_core::ecs::query::QueryItem<'w>>::Slice)
+pub fn (T0, T1, T2)::check_access()
+pub fn (T0, T1, T2)::iter(Self::Slices, usize) -> Self::Iter
+pub fn (T0, T1, T2)::matches(&[core::any::TypeId]) -> bool
+pub fn (T0, T1, T2)::slices_mut(tungsten_core::ecs::query::ColumnsMut<'w>) -> Self::Slices
+impl<'w, T0: tungsten_core::ecs::query::QueryItem<'w>, T1: tungsten_core::ecs::query::QueryItem<'w>> tungsten_core::ecs::query::QueryData<'w> for (T0, T1)
+pub type (T0, T1)::Iter = tungsten_core::ecs::query::Rows2<core::iter::adapters::zip::Zip<<T0 as tungsten_core::ecs::query::QueryItem<'w>>::Iter, <T1 as tungsten_core::ecs::query::QueryItem<'w>>::Iter>>
+pub type (T0, T1)::Slices = (<T0 as tungsten_core::ecs::query::QueryItem<'w>>::Slice, <T1 as tungsten_core::ecs::query::QueryItem<'w>>::Slice)
+pub fn (T0, T1)::check_access()
+pub fn (T0, T1)::iter(Self::Slices, usize) -> Self::Iter
+pub fn (T0, T1)::matches(&[core::any::TypeId]) -> bool
+pub fn (T0, T1)::slices_mut(tungsten_core::ecs::query::ColumnsMut<'w>) -> Self::Slices
+impl<'w, T0: tungsten_core::ecs::query::QueryItem<'w>> tungsten_core::ecs::query::QueryData<'w> for (T0)
+pub type (T0)::Iter = tungsten_core::ecs::query::Rows1<<T0 as tungsten_core::ecs::query::QueryItem<'w>>::Iter>
+pub type (T0)::Slices = (<T0 as tungsten_core::ecs::query::QueryItem<'w>>::Slice)
+pub fn (T0)::check_access()
+pub fn (T0)::iter(Self::Slices, usize) -> Self::Iter
+pub fn (T0)::matches(&[core::any::TypeId]) -> bool
+pub fn (T0)::slices_mut(tungsten_core::ecs::query::ColumnsMut<'w>) -> Self::Slices
+impl<'w> tungsten_core::ecs::query::QueryData<'w> for tungsten_core::Entity
+pub type tungsten_core::Entity::Iter = core::iter::adapters::copied::Copied<core::slice::iter::Iter<'w, tungsten_core::Entity>>
+pub type tungsten_core::Entity::Slices = &'w [tungsten_core::Entity]
+pub fn tungsten_core::Entity::check_access()
+pub fn tungsten_core::Entity::iter(Self::Slices, usize) -> Self::Iter
+pub fn tungsten_core::Entity::matches(&[core::any::TypeId]) -> bool
+pub fn tungsten_core::Entity::slices_mut(tungsten_core::ecs::query::ColumnsMut<'w>) -> Self::Slices
+pub trait tungsten_core::ecs::query::QueryFilter: tungsten_core::ecs::query::sealed::Filter
+pub fn tungsten_core::ecs::query::QueryFilter::matches(&[core::any::TypeId]) -> bool
+impl tungsten_core::ecs::query::QueryFilter for ()
+pub fn ()::matches(&[core::any::TypeId]) -> bool
+impl<F0: tungsten_core::ecs::query::QueryFilter, F1: tungsten_core::ecs::query::QueryFilter, F2: tungsten_core::ecs::query::QueryFilter, F3: tungsten_core::ecs::query::QueryFilter> tungsten_core::ecs::query::QueryFilter for (F0, F1, F2, F3)
+pub fn (F0, F1, F2, F3)::matches(&[core::any::TypeId]) -> bool
+impl<F0: tungsten_core::ecs::query::QueryFilter, F1: tungsten_core::ecs::query::QueryFilter, F2: tungsten_core::ecs::query::QueryFilter> tungsten_core::ecs::query::QueryFilter for (F0, F1, F2)
+pub fn (F0, F1, F2)::matches(&[core::any::TypeId]) -> bool
+impl<F0: tungsten_core::ecs::query::QueryFilter, F1: tungsten_core::ecs::query::QueryFilter> tungsten_core::ecs::query::QueryFilter for (F0, F1)
+pub fn (F0, F1)::matches(&[core::any::TypeId]) -> bool
+impl<F0: tungsten_core::ecs::query::QueryFilter> tungsten_core::ecs::query::QueryFilter for (F0)
+pub fn (F0)::matches(&[core::any::TypeId]) -> bool
+impl<T: 'static> tungsten_core::ecs::query::QueryFilter for tungsten_core::ecs::query::With<T>
+pub fn tungsten_core::ecs::query::With<T>::matches(&[core::any::TypeId]) -> bool
+impl<T: 'static> tungsten_core::ecs::query::QueryFilter for tungsten_core::ecs::query::Without<T>
+pub fn tungsten_core::ecs::query::Without<T>::matches(&[core::any::TypeId]) -> bool
+pub trait tungsten_core::ecs::query::QueryItem<'w>: core::marker::Sized + tungsten_core::ecs::query::sealed::Data
+pub type tungsten_core::ecs::query::QueryItem::Iter: core::iter::traits::iterator::Iterator<Item = Self>
+pub type tungsten_core::ecs::query::QueryItem::Slice
+pub fn tungsten_core::ecs::query::QueryItem::component() -> core::option::Option<core::any::TypeId>
+pub fn tungsten_core::ecs::query::QueryItem::iter(Self::Slice, usize) -> Self::Iter
+pub fn tungsten_core::ecs::query::QueryItem::required() -> bool
+pub fn tungsten_core::ecs::query::QueryItem::slice_mut(tungsten_core::ecs::query::SlotMut<'w>, &'w [tungsten_core::Entity]) -> Self::Slice
+impl<'w, A: 'static> tungsten_core::ecs::query::QueryItem<'w> for &'w A
+pub type &'w A::Iter = core::slice::iter::Iter<'w, A>
+pub type &'w A::Slice = &'w [A]
+pub fn &'w A::component() -> core::option::Option<core::any::TypeId>
+pub fn &'w A::iter(Self::Slice, usize) -> Self::Iter
+pub fn &'w A::required() -> bool
+pub fn &'w A::slice_mut(tungsten_core::ecs::query::SlotMut<'w>, &'w [tungsten_core::Entity]) -> Self::Slice
+impl<'w, A: 'static> tungsten_core::ecs::query::QueryItem<'w> for &'w mut A
+pub type &'w mut A::Iter = core::slice::iter::IterMut<'w, A>
+pub type &'w mut A::Slice = &'w mut [A]
+pub fn &'w mut A::component() -> core::option::Option<core::any::TypeId>
+pub fn &'w mut A::iter(Self::Slice, usize) -> Self::Iter
+pub fn &'w mut A::required() -> bool
+pub fn &'w mut A::slice_mut(tungsten_core::ecs::query::SlotMut<'w>, &'w [tungsten_core::Entity]) -> Self::Slice
+impl<'w, A: 'static> tungsten_core::ecs::query::QueryItem<'w> for core::option::Option<&'w A>
+pub type core::option::Option<&'w A>::Iter = tungsten_core::ecs::query::OptionalRows<core::slice::iter::Iter<'w, A>>
+pub type core::option::Option<&'w A>::Slice = core::option::Option<&'w [A]>
+pub fn core::option::Option<&'w A>::component() -> core::option::Option<core::any::TypeId>
+pub fn core::option::Option<&'w A>::iter(Self::Slice, usize) -> Self::Iter
+pub fn core::option::Option<&'w A>::required() -> bool
+pub fn core::option::Option<&'w A>::slice_mut(tungsten_core::ecs::query::SlotMut<'w>, &'w [tungsten_core::Entity]) -> Self::Slice
+impl<'w, A: 'static> tungsten_core::ecs::query::QueryItem<'w> for core::option::Option<&'w mut A>
+pub type core::option::Option<&'w mut A>::Iter = tungsten_core::ecs::query::OptionalRows<core::slice::iter::IterMut<'w, A>>
+pub type core::option::Option<&'w mut A>::Slice = core::option::Option<&'w mut [A]>
+pub fn core::option::Option<&'w mut A>::component() -> core::option::Option<core::any::TypeId>
+pub fn core::option::Option<&'w mut A>::iter(Self::Slice, usize) -> Self::Iter
+pub fn core::option::Option<&'w mut A>::required() -> bool
+pub fn core::option::Option<&'w mut A>::slice_mut(tungsten_core::ecs::query::SlotMut<'w>, &'w [tungsten_core::Entity]) -> Self::Slice
+impl<'w> tungsten_core::ecs::query::QueryItem<'w> for tungsten_core::Entity
+pub type tungsten_core::Entity::Iter = core::iter::adapters::copied::Copied<core::slice::iter::Iter<'w, tungsten_core::Entity>>
+pub type tungsten_core::Entity::Slice = &'w [tungsten_core::Entity]
+pub fn tungsten_core::Entity::component() -> core::option::Option<core::any::TypeId>
+pub fn tungsten_core::Entity::iter(Self::Slice, usize) -> Self::Iter
+pub fn tungsten_core::Entity::required() -> bool
+pub fn tungsten_core::Entity::slice_mut(tungsten_core::ecs::query::SlotMut<'w>, &'w [tungsten_core::Entity]) -> Self::Slice
+pub trait tungsten_core::ecs::query::ReadOnlyItem<'w>: tungsten_core::ecs::query::QueryItem<'w>
+pub fn tungsten_core::ecs::query::ReadOnlyItem::slice(tungsten_core::ecs::query::Slot<'w>, &'w [tungsten_core::Entity]) -> Self::Slice
+impl<'w, A: 'static> tungsten_core::ecs::query::ReadOnlyItem<'w> for &'w A
+pub fn &'w A::slice(tungsten_core::ecs::query::Slot<'w>, &'w [tungsten_core::Entity]) -> Self::Slice
+impl<'w, A: 'static> tungsten_core::ecs::query::ReadOnlyItem<'w> for core::option::Option<&'w A>
+pub fn core::option::Option<&'w A>::slice(tungsten_core::ecs::query::Slot<'w>, &'w [tungsten_core::Entity]) -> Self::Slice
+impl<'w> tungsten_core::ecs::query::ReadOnlyItem<'w> for tungsten_core::Entity
+pub fn tungsten_core::Entity::slice(tungsten_core::ecs::query::Slot<'w>, &'w [tungsten_core::Entity]) -> Self::Slice
+pub trait tungsten_core::ecs::query::ReadOnlyQueryData<'w>: tungsten_core::ecs::query::QueryData<'w>
+pub fn tungsten_core::ecs::query::ReadOnlyQueryData::slices(tungsten_core::ecs::query::Columns<'w>) -> Self::Slices
+impl<'w, A: 'static> tungsten_core::ecs::query::ReadOnlyQueryData<'w> for &'w A
+pub fn &'w A::slices(tungsten_core::ecs::query::Columns<'w>) -> Self::Slices
+impl<'w, A: 'static> tungsten_core::ecs::query::ReadOnlyQueryData<'w> for core::option::Option<&'w A>
+pub fn core::option::Option<&'w A>::slices(tungsten_core::ecs::query::Columns<'w>) -> Self::Slices
+impl<'w, T0: tungsten_core::ecs::query::ReadOnlyItem<'w>, T1: tungsten_core::ecs::query::ReadOnlyItem<'w>, T2: tungsten_core::ecs::query::ReadOnlyItem<'w>, T3: tungsten_core::ecs::query::ReadOnlyItem<'w>, T4: tungsten_core::ecs::query::ReadOnlyItem<'w>, T5: tungsten_core::ecs::query::ReadOnlyItem<'w>, T6: tungsten_core::ecs::query::ReadOnlyItem<'w>, T7: tungsten_core::ecs::query::ReadOnlyItem<'w>> tungsten_core::ecs::query::ReadOnlyQueryData<'w> for (T0, T1, T2, T3, T4, T5, T6, T7)
+pub fn (T0, T1, T2, T3, T4, T5, T6, T7)::slices(tungsten_core::ecs::query::Columns<'w>) -> Self::Slices
+impl<'w, T0: tungsten_core::ecs::query::ReadOnlyItem<'w>, T1: tungsten_core::ecs::query::ReadOnlyItem<'w>, T2: tungsten_core::ecs::query::ReadOnlyItem<'w>, T3: tungsten_core::ecs::query::ReadOnlyItem<'w>, T4: tungsten_core::ecs::query::ReadOnlyItem<'w>, T5: tungsten_core::ecs::query::ReadOnlyItem<'w>, T6: tungsten_core::ecs::query::ReadOnlyItem<'w>> tungsten_core::ecs::query::ReadOnlyQueryData<'w> for (T0, T1, T2, T3, T4, T5, T6)
+pub fn (T0, T1, T2, T3, T4, T5, T6)::slices(tungsten_core::ecs::query::Columns<'w>) -> Self::Slices
+impl<'w, T0: tungsten_core::ecs::query::ReadOnlyItem<'w>, T1: tungsten_core::ecs::query::ReadOnlyItem<'w>, T2: tungsten_core::ecs::query::ReadOnlyItem<'w>, T3: tungsten_core::ecs::query::ReadOnlyItem<'w>, T4: tungsten_core::ecs::query::ReadOnlyItem<'w>, T5: tungsten_core::ecs::query::ReadOnlyItem<'w>> tungsten_core::ecs::query::ReadOnlyQueryData<'w> for (T0, T1, T2, T3, T4, T5)
+pub fn (T0, T1, T2, T3, T4, T5)::slices(tungsten_core::ecs::query::Columns<'w>) -> Self::Slices
+impl<'w, T0: tungsten_core::ecs::query::ReadOnlyItem<'w>, T1: tungsten_core::ecs::query::ReadOnlyItem<'w>, T2: tungsten_core::ecs::query::ReadOnlyItem<'w>, T3: tungsten_core::ecs::query::ReadOnlyItem<'w>, T4: tungsten_core::ecs::query::ReadOnlyItem<'w>> tungsten_core::ecs::query::ReadOnlyQueryData<'w> for (T0, T1, T2, T3, T4)
+pub fn (T0, T1, T2, T3, T4)::slices(tungsten_core::ecs::query::Columns<'w>) -> Self::Slices
+impl<'w, T0: tungsten_core::ecs::query::ReadOnlyItem<'w>, T1: tungsten_core::ecs::query::ReadOnlyItem<'w>, T2: tungsten_core::ecs::query::ReadOnlyItem<'w>, T3: tungsten_core::ecs::query::ReadOnlyItem<'w>> tungsten_core::ecs::query::ReadOnlyQueryData<'w> for (T0, T1, T2, T3)
+pub fn (T0, T1, T2, T3)::slices(tungsten_core::ecs::query::Columns<'w>) -> Self::Slices
+impl<'w, T0: tungsten_core::ecs::query::ReadOnlyItem<'w>, T1: tungsten_core::ecs::query::ReadOnlyItem<'w>, T2: tungsten_core::ecs::query::ReadOnlyItem<'w>> tungsten_core::ecs::query::ReadOnlyQueryData<'w> for (T0, T1, T2)
+pub fn (T0, T1, T2)::slices(tungsten_core::ecs::query::Columns<'w>) -> Self::Slices
+impl<'w, T0: tungsten_core::ecs::query::ReadOnlyItem<'w>, T1: tungsten_core::ecs::query::ReadOnlyItem<'w>> tungsten_core::ecs::query::ReadOnlyQueryData<'w> for (T0, T1)
+pub fn (T0, T1)::slices(tungsten_core::ecs::query::Columns<'w>) -> Self::Slices
+impl<'w, T0: tungsten_core::ecs::query::ReadOnlyItem<'w>> tungsten_core::ecs::query::ReadOnlyQueryData<'w> for (T0)
+pub fn (T0)::slices(tungsten_core::ecs::query::Columns<'w>) -> Self::Slices
+impl<'w> tungsten_core::ecs::query::ReadOnlyQueryData<'w> for tungsten_core::Entity
+pub fn tungsten_core::Entity::slices(tungsten_core::ecs::query::Columns<'w>) -> Self::Slices
 pub struct tungsten_core::ecs::CommandBuffer
 impl tungsten_core::CommandBuffer
 pub fn tungsten_core::CommandBuffer::call(&mut self, tungsten_core::Entity, fn(&mut tungsten_core::World, tungsten_core::Entity))
 pub fn tungsten_core::CommandBuffer::despawn(&mut self, tungsten_core::Entity)
 pub fn tungsten_core::CommandBuffer::insert<T: 'static>(&mut self, tungsten_core::Entity, T)
+pub fn tungsten_core::CommandBuffer::insert_bundle<B: tungsten_core::ecs::bundle::Bundle>(&mut self, tungsten_core::Entity, B)
+pub fn tungsten_core::CommandBuffer::insert_bundle_pending<B: tungsten_core::ecs::bundle::Bundle>(&mut self, tungsten_core::PendingEntity, B)
 pub fn tungsten_core::CommandBuffer::insert_pending<T: 'static>(&mut self, tungsten_core::PendingEntity, T)
 pub fn tungsten_core::CommandBuffer::is_empty(&self) -> bool
 pub fn tungsten_core::CommandBuffer::len(&self) -> usize
 pub fn tungsten_core::CommandBuffer::new() -> Self
 pub fn tungsten_core::CommandBuffer::remove_component<T: 'static>(&mut self, tungsten_core::Entity)
 pub fn tungsten_core::CommandBuffer::spawn(&mut self) -> tungsten_core::PendingEntity
+pub fn tungsten_core::CommandBuffer::spawn_with<B: tungsten_core::ecs::bundle::Bundle>(&mut self, B) -> tungsten_core::PendingEntity
 impl core::default::Default for tungsten_core::CommandBuffer
 pub fn tungsten_core::CommandBuffer::default() -> Self
 impl core::marker::Freeze for tungsten_core::CommandBuffer
@@ -4068,6 +4505,24 @@ impl core::hash::Hash for tungsten_core::Entity
 pub fn tungsten_core::Entity::hash<__H: core::hash::Hasher>(&self, &mut __H)
 impl core::marker::Copy for tungsten_core::Entity
 impl core::marker::StructuralPartialEq for tungsten_core::Entity
+impl<'w> tungsten_core::ecs::query::QueryData<'w> for tungsten_core::Entity
+pub type tungsten_core::Entity::Iter = core::iter::adapters::copied::Copied<core::slice::iter::Iter<'w, tungsten_core::Entity>>
+pub type tungsten_core::Entity::Slices = &'w [tungsten_core::Entity]
+pub fn tungsten_core::Entity::check_access()
+pub fn tungsten_core::Entity::iter(Self::Slices, usize) -> Self::Iter
+pub fn tungsten_core::Entity::matches(&[core::any::TypeId]) -> bool
+pub fn tungsten_core::Entity::slices_mut(tungsten_core::ecs::query::ColumnsMut<'w>) -> Self::Slices
+impl<'w> tungsten_core::ecs::query::QueryItem<'w> for tungsten_core::Entity
+pub type tungsten_core::Entity::Iter = core::iter::adapters::copied::Copied<core::slice::iter::Iter<'w, tungsten_core::Entity>>
+pub type tungsten_core::Entity::Slice = &'w [tungsten_core::Entity]
+pub fn tungsten_core::Entity::component() -> core::option::Option<core::any::TypeId>
+pub fn tungsten_core::Entity::iter(Self::Slice, usize) -> Self::Iter
+pub fn tungsten_core::Entity::required() -> bool
+pub fn tungsten_core::Entity::slice_mut(tungsten_core::ecs::query::SlotMut<'w>, &'w [tungsten_core::Entity]) -> Self::Slice
+impl<'w> tungsten_core::ecs::query::ReadOnlyItem<'w> for tungsten_core::Entity
+pub fn tungsten_core::Entity::slice(tungsten_core::ecs::query::Slot<'w>, &'w [tungsten_core::Entity]) -> Self::Slice
+impl<'w> tungsten_core::ecs::query::ReadOnlyQueryData<'w> for tungsten_core::Entity
+pub fn tungsten_core::Entity::slices(tungsten_core::ecs::query::Columns<'w>) -> Self::Slices
 impl core::marker::Freeze for tungsten_core::Entity
 impl core::marker::Send for tungsten_core::Entity
 impl core::marker::Sync for tungsten_core::Entity
@@ -4093,6 +4548,17 @@ impl<T> core::marker::Unpin for tungsten_core::EventQueue<T> where T: core::mark
 impl<T> core::marker::UnsafeUnpin for tungsten_core::EventQueue<T>
 impl<T> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::EventQueue<T> where T: core::panic::unwind_safe::RefUnwindSafe
 impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::EventQueue<T> where T: core::panic::unwind_safe::UnwindSafe
+pub struct tungsten_core::ecs::OptionalColumn<I>(pub core::option::Option<I>)
+impl<I: core::iter::traits::iterator::Iterator> core::iter::traits::iterator::Iterator for tungsten_core::ecs::query::OptionalColumn<I>
+pub type tungsten_core::ecs::query::OptionalColumn<I>::Item = core::option::Option<<I as core::iter::traits::iterator::Iterator>::Item>
+pub fn tungsten_core::ecs::query::OptionalColumn<I>::next(&mut self) -> core::option::Option<Self::Item>
+impl<I> core::marker::Freeze for tungsten_core::ecs::query::OptionalColumn<I> where I: core::marker::Freeze
+impl<I> core::marker::Send for tungsten_core::ecs::query::OptionalColumn<I> where I: core::marker::Send
+impl<I> core::marker::Sync for tungsten_core::ecs::query::OptionalColumn<I> where I: core::marker::Sync
+impl<I> core::marker::Unpin for tungsten_core::ecs::query::OptionalColumn<I> where I: core::marker::Unpin
+impl<I> core::marker::UnsafeUnpin for tungsten_core::ecs::query::OptionalColumn<I> where I: core::marker::UnsafeUnpin
+impl<I> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ecs::query::OptionalColumn<I> where I: core::panic::unwind_safe::RefUnwindSafe
+impl<I> core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::OptionalColumn<I> where I: core::panic::unwind_safe::UnwindSafe
 pub struct tungsten_core::ecs::PendingEntity(_)
 impl core::clone::Clone for tungsten_core::PendingEntity
 pub fn tungsten_core::PendingEntity::clone(&self) -> tungsten_core::PendingEntity
@@ -4147,6 +4613,26 @@ impl core::marker::Unpin for tungsten_core::SquashEvent
 impl core::marker::UnsafeUnpin for tungsten_core::SquashEvent
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::SquashEvent
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::SquashEvent
+pub struct tungsten_core::ecs::With<T>(_)
+impl<T: 'static> tungsten_core::ecs::query::QueryFilter for tungsten_core::ecs::query::With<T>
+pub fn tungsten_core::ecs::query::With<T>::matches(&[core::any::TypeId]) -> bool
+impl<T> core::marker::Freeze for tungsten_core::ecs::query::With<T>
+impl<T> core::marker::Send for tungsten_core::ecs::query::With<T>
+impl<T> core::marker::Sync for tungsten_core::ecs::query::With<T>
+impl<T> core::marker::Unpin for tungsten_core::ecs::query::With<T>
+impl<T> core::marker::UnsafeUnpin for tungsten_core::ecs::query::With<T>
+impl<T> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ecs::query::With<T>
+impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::With<T>
+pub struct tungsten_core::ecs::Without<T>(_)
+impl<T: 'static> tungsten_core::ecs::query::QueryFilter for tungsten_core::ecs::query::Without<T>
+pub fn tungsten_core::ecs::query::Without<T>::matches(&[core::any::TypeId]) -> bool
+impl<T> core::marker::Freeze for tungsten_core::ecs::query::Without<T>
+impl<T> core::marker::Send for tungsten_core::ecs::query::Without<T>
+impl<T> core::marker::Sync for tungsten_core::ecs::query::Without<T>
+impl<T> core::marker::Unpin for tungsten_core::ecs::query::Without<T>
+impl<T> core::marker::UnsafeUnpin for tungsten_core::ecs::query::Without<T>
+impl<T> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ecs::query::Without<T>
+impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::Without<T>
 pub struct tungsten_core::ecs::World
 impl tungsten_core::World
 pub fn tungsten_core::World::despawn(&mut self, tungsten_core::Entity)
@@ -4162,10 +4648,11 @@ pub fn tungsten_core::World::has<T: 'static>(&self, tungsten_core::Entity) -> bo
 pub fn tungsten_core::World::has_event<T: 'static>(&self) -> bool
 pub fn tungsten_core::World::has_resource<T: 'static>(&self) -> bool
 pub fn tungsten_core::World::insert<T: 'static>(&mut self, tungsten_core::Entity, T)
+pub fn tungsten_core::World::insert_bundle<B: tungsten_core::ecs::bundle::Bundle>(&mut self, tungsten_core::Entity, B)
 pub fn tungsten_core::World::insert_resource<T: 'static>(&mut self, T)
 pub fn tungsten_core::World::is_alive(&self, tungsten_core::Entity) -> bool
 pub fn tungsten_core::World::new() -> Self
-pub fn tungsten_core::World::query<T: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &T)>
+pub fn tungsten_core::World::query<'w, Q: tungsten_core::ecs::query::ReadOnlyQueryData<'w>>(&'w self) -> impl core::iter::traits::iterator::Iterator<Item = Q>
 pub fn tungsten_core::World::query2<A: 'static, B: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &A, &B)>
 pub fn tungsten_core::World::query2_entities<A: 'static, B: 'static>(&self) -> alloc::vec::Vec<tungsten_core::Entity>
 pub fn tungsten_core::World::query2_mut<A: 'static, B: 'static>(&mut self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &mut A, &mut B)>
@@ -4177,12 +4664,21 @@ pub fn tungsten_core::World::query3_mut<A: 'static, B: 'static, C: 'static>(&mut
 pub fn tungsten_core::World::query3_mut_without<A: 'static, B: 'static, C: 'static, X: 'static>(&mut self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &mut A, &mut B, &mut C)>
 pub fn tungsten_core::World::query3_opt2<A: 'static, B: 'static, C: 'static, D: 'static, E: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &A, &B, &C, core::option::Option<&D>, core::option::Option<&E>)>
 pub fn tungsten_core::World::query_entities<T: 'static>(&self) -> alloc::vec::Vec<tungsten_core::Entity>
-pub fn tungsten_core::World::query_mut<T: 'static>(&mut self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &mut T)>
+pub fn tungsten_core::World::query_filtered<'w, Q: tungsten_core::ecs::query::ReadOnlyQueryData<'w>, F: tungsten_core::ecs::query::QueryFilter>(&'w self) -> impl core::iter::traits::iterator::Iterator<Item = Q>
+pub fn tungsten_core::World::query_mut<'w, Q: tungsten_core::ecs::query::QueryData<'w>>(&'w mut self) -> impl core::iter::traits::iterator::Iterator<Item = Q>
+pub fn tungsten_core::World::query_mut_filtered<'w, Q: tungsten_core::ecs::query::QueryData<'w>, F: tungsten_core::ecs::query::QueryFilter>(&'w mut self) -> impl core::iter::traits::iterator::Iterator<Item = Q>
+pub fn tungsten_core::World::query_mut_slices<'w, Q: tungsten_core::ecs::query::QueryData<'w>>(&'w mut self) -> impl core::iter::traits::iterator::Iterator<Item = (usize, <Q as tungsten_core::ecs::query::QueryData>::Slices)>
+pub fn tungsten_core::World::query_mut_slices_filtered<'w, Q: tungsten_core::ecs::query::QueryData<'w>, F: tungsten_core::ecs::query::QueryFilter>(&'w mut self) -> impl core::iter::traits::iterator::Iterator<Item = (usize, <Q as tungsten_core::ecs::query::QueryData>::Slices)>
+pub fn tungsten_core::World::query_slices<'w, Q: tungsten_core::ecs::query::ReadOnlyQueryData<'w>>(&'w self) -> impl core::iter::traits::iterator::Iterator<Item = (usize, <Q as tungsten_core::ecs::query::QueryData>::Slices)>
+pub fn tungsten_core::World::query_slices_filtered<'w, Q: tungsten_core::ecs::query::ReadOnlyQueryData<'w>, F: tungsten_core::ecs::query::QueryFilter>(&'w self) -> impl core::iter::traits::iterator::Iterator<Item = (usize, <Q as tungsten_core::ecs::query::QueryData>::Slices)>
 pub fn tungsten_core::World::register_event<T: 'static>(&mut self) -> bool
 pub fn tungsten_core::World::registered_event_count(&self) -> usize
 pub fn tungsten_core::World::remove_component<T: 'static>(&mut self, tungsten_core::Entity) -> core::option::Option<T>
 pub fn tungsten_core::World::remove_resource<T: 'static>(&mut self) -> core::option::Option<T>
+pub fn tungsten_core::World::resource<T: 'static>(&self) -> &T
+pub fn tungsten_core::World::resource_mut<T: 'static>(&mut self) -> &mut T
 pub fn tungsten_core::World::spawn(&mut self) -> tungsten_core::Entity
+pub fn tungsten_core::World::spawn_with<B: tungsten_core::ecs::bundle::Bundle>(&mut self, B) -> tungsten_core::Entity
 impl core::default::Default for tungsten_core::World
 pub fn tungsten_core::World::default() -> Self
 impl core::marker::Freeze for tungsten_core::World
@@ -4192,6 +4688,63 @@ impl core::marker::Unpin for tungsten_core::World
 impl core::marker::UnsafeUnpin for tungsten_core::World
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::World
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::World
+pub trait tungsten_core::ecs::Bundle: 'static
+pub fn tungsten_core::ecs::Bundle::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn tungsten_core::ecs::Bundle::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl tungsten_core::ecs::bundle::Bundle for tungsten_core::physics::components::RigidBodyBundle
+pub fn tungsten_core::physics::components::RigidBodyBundle::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn tungsten_core::physics::components::RigidBodyBundle::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<A: tungsten_core::ecs::bundle::Bundle, B: tungsten_core::ecs::bundle::Bundle> tungsten_core::ecs::bundle::Bundle for tungsten_core::ecs::bundle::Chain<A, B>
+pub fn tungsten_core::ecs::bundle::Chain<A, B>::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn tungsten_core::ecs::bundle::Chain<A, B>::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static, C6: 'static, C7: 'static, C8: 'static, C9: 'static, C10: 'static, C11: 'static, C12: 'static, C13: 'static, C14: 'static, C15: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, C13, C14, C15)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, C13, C14, C15)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, C13, C14, C15)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static, C6: 'static, C7: 'static, C8: 'static, C9: 'static, C10: 'static, C11: 'static, C12: 'static, C13: 'static, C14: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, C13, C14)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, C13, C14)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, C13, C14)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static, C6: 'static, C7: 'static, C8: 'static, C9: 'static, C10: 'static, C11: 'static, C12: 'static, C13: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, C13)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, C13)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, C13)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static, C6: 'static, C7: 'static, C8: 'static, C9: 'static, C10: 'static, C11: 'static, C12: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static, C6: 'static, C7: 'static, C8: 'static, C9: 'static, C10: 'static, C11: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static, C6: 'static, C7: 'static, C8: 'static, C9: 'static, C10: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static, C6: 'static, C7: 'static, C8: 'static, C9: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static, C6: 'static, C7: 'static, C8: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5, C6, C7, C8)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static, C6: 'static, C7: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5, C6, C7)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static, C6: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5, C6)
+pub fn (C0, C1, C2, C3, C4, C5, C6)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5, C6)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5)
+pub fn (C0, C1, C2, C3, C4, C5)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4)
+pub fn (C0, C1, C2, C3, C4)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3)
+pub fn (C0, C1, C2, C3)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2)
+pub fn (C0, C1, C2)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1)
+pub fn (C0, C1)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static> tungsten_core::ecs::bundle::Bundle for (C0)
+pub fn (C0)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
 pub mod tungsten_core::input
 pub mod tungsten_core::input::action_map
 pub enum tungsten_core::input::action_map::ActionMapError
@@ -4779,6 +5332,34 @@ impl core::marker::Unpin for tungsten_core::physics::components::RigidBody
 impl core::marker::UnsafeUnpin for tungsten_core::physics::components::RigidBody
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::components::RigidBody
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::components::RigidBody
+pub struct tungsten_core::physics::components::RigidBodyBundle
+pub tungsten_core::physics::components::RigidBodyBundle::body: tungsten_core::physics::components::RigidBody
+pub tungsten_core::physics::components::RigidBodyBundle::collider: tungsten_core::physics::components::Collider
+pub tungsten_core::physics::components::RigidBodyBundle::position: tungsten_core::physics::components::Position
+pub tungsten_core::physics::components::RigidBodyBundle::velocity: core::option::Option<tungsten_core::physics::components::Velocity>
+impl tungsten_core::physics::components::RigidBodyBundle
+pub fn tungsten_core::physics::components::RigidBodyBundle::dynamic(tungsten_core::physics::components::Position, tungsten_core::physics::components::Collider) -> Self
+pub fn tungsten_core::physics::components::RigidBodyBundle::static(tungsten_core::physics::components::Position, tungsten_core::physics::components::Collider) -> Self
+pub fn tungsten_core::physics::components::RigidBodyBundle::with_body(self, tungsten_core::physics::components::RigidBody) -> Self
+pub fn tungsten_core::physics::components::RigidBodyBundle::with_velocity(self, tungsten_core::physics::components::Velocity) -> Self
+impl core::clone::Clone for tungsten_core::physics::components::RigidBodyBundle
+pub fn tungsten_core::physics::components::RigidBodyBundle::clone(&self) -> tungsten_core::physics::components::RigidBodyBundle
+impl core::cmp::PartialEq for tungsten_core::physics::components::RigidBodyBundle
+pub fn tungsten_core::physics::components::RigidBodyBundle::eq(&self, &tungsten_core::physics::components::RigidBodyBundle) -> bool
+impl core::fmt::Debug for tungsten_core::physics::components::RigidBodyBundle
+pub fn tungsten_core::physics::components::RigidBodyBundle::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::physics::components::RigidBodyBundle
+impl core::marker::StructuralPartialEq for tungsten_core::physics::components::RigidBodyBundle
+impl tungsten_core::ecs::bundle::Bundle for tungsten_core::physics::components::RigidBodyBundle
+pub fn tungsten_core::physics::components::RigidBodyBundle::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn tungsten_core::physics::components::RigidBodyBundle::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl core::marker::Freeze for tungsten_core::physics::components::RigidBodyBundle
+impl core::marker::Send for tungsten_core::physics::components::RigidBodyBundle
+impl core::marker::Sync for tungsten_core::physics::components::RigidBodyBundle
+impl core::marker::Unpin for tungsten_core::physics::components::RigidBodyBundle
+impl core::marker::UnsafeUnpin for tungsten_core::physics::components::RigidBodyBundle
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::components::RigidBodyBundle
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::components::RigidBodyBundle
 pub struct tungsten_core::physics::components::Velocity(pub glam::f32::vec2::Vec2)
 impl tungsten_core::physics::components::Velocity
 pub fn tungsten_core::physics::components::Velocity::new(f32, f32) -> Self
@@ -5072,6 +5653,34 @@ impl core::marker::Unpin for tungsten_core::physics::components::RigidBody
 impl core::marker::UnsafeUnpin for tungsten_core::physics::components::RigidBody
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::components::RigidBody
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::components::RigidBody
+pub struct tungsten_core::physics::RigidBodyBundle
+pub tungsten_core::physics::RigidBodyBundle::body: tungsten_core::physics::components::RigidBody
+pub tungsten_core::physics::RigidBodyBundle::collider: tungsten_core::physics::components::Collider
+pub tungsten_core::physics::RigidBodyBundle::position: tungsten_core::physics::components::Position
+pub tungsten_core::physics::RigidBodyBundle::velocity: core::option::Option<tungsten_core::physics::components::Velocity>
+impl tungsten_core::physics::components::RigidBodyBundle
+pub fn tungsten_core::physics::components::RigidBodyBundle::dynamic(tungsten_core::physics::components::Position, tungsten_core::physics::components::Collider) -> Self
+pub fn tungsten_core::physics::components::RigidBodyBundle::static(tungsten_core::physics::components::Position, tungsten_core::physics::components::Collider) -> Self
+pub fn tungsten_core::physics::components::RigidBodyBundle::with_body(self, tungsten_core::physics::components::RigidBody) -> Self
+pub fn tungsten_core::physics::components::RigidBodyBundle::with_velocity(self, tungsten_core::physics::components::Velocity) -> Self
+impl core::clone::Clone for tungsten_core::physics::components::RigidBodyBundle
+pub fn tungsten_core::physics::components::RigidBodyBundle::clone(&self) -> tungsten_core::physics::components::RigidBodyBundle
+impl core::cmp::PartialEq for tungsten_core::physics::components::RigidBodyBundle
+pub fn tungsten_core::physics::components::RigidBodyBundle::eq(&self, &tungsten_core::physics::components::RigidBodyBundle) -> bool
+impl core::fmt::Debug for tungsten_core::physics::components::RigidBodyBundle
+pub fn tungsten_core::physics::components::RigidBodyBundle::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::physics::components::RigidBodyBundle
+impl core::marker::StructuralPartialEq for tungsten_core::physics::components::RigidBodyBundle
+impl tungsten_core::ecs::bundle::Bundle for tungsten_core::physics::components::RigidBodyBundle
+pub fn tungsten_core::physics::components::RigidBodyBundle::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn tungsten_core::physics::components::RigidBodyBundle::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl core::marker::Freeze for tungsten_core::physics::components::RigidBodyBundle
+impl core::marker::Send for tungsten_core::physics::components::RigidBodyBundle
+impl core::marker::Sync for tungsten_core::physics::components::RigidBodyBundle
+impl core::marker::Unpin for tungsten_core::physics::components::RigidBodyBundle
+impl core::marker::UnsafeUnpin for tungsten_core::physics::components::RigidBodyBundle
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::components::RigidBodyBundle
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::components::RigidBodyBundle
 pub struct tungsten_core::physics::SpatialGrid
 impl tungsten_core::physics::broadphase::SpatialGrid
 pub fn tungsten_core::physics::broadphase::SpatialGrid::cell_size(&self) -> f32
@@ -10132,12 +10741,15 @@ impl tungsten_core::CommandBuffer
 pub fn tungsten_core::CommandBuffer::call(&mut self, tungsten_core::Entity, fn(&mut tungsten_core::World, tungsten_core::Entity))
 pub fn tungsten_core::CommandBuffer::despawn(&mut self, tungsten_core::Entity)
 pub fn tungsten_core::CommandBuffer::insert<T: 'static>(&mut self, tungsten_core::Entity, T)
+pub fn tungsten_core::CommandBuffer::insert_bundle<B: tungsten_core::ecs::bundle::Bundle>(&mut self, tungsten_core::Entity, B)
+pub fn tungsten_core::CommandBuffer::insert_bundle_pending<B: tungsten_core::ecs::bundle::Bundle>(&mut self, tungsten_core::PendingEntity, B)
 pub fn tungsten_core::CommandBuffer::insert_pending<T: 'static>(&mut self, tungsten_core::PendingEntity, T)
 pub fn tungsten_core::CommandBuffer::is_empty(&self) -> bool
 pub fn tungsten_core::CommandBuffer::len(&self) -> usize
 pub fn tungsten_core::CommandBuffer::new() -> Self
 pub fn tungsten_core::CommandBuffer::remove_component<T: 'static>(&mut self, tungsten_core::Entity)
 pub fn tungsten_core::CommandBuffer::spawn(&mut self) -> tungsten_core::PendingEntity
+pub fn tungsten_core::CommandBuffer::spawn_with<B: tungsten_core::ecs::bundle::Bundle>(&mut self, B) -> tungsten_core::PendingEntity
 impl core::default::Default for tungsten_core::CommandBuffer
 pub fn tungsten_core::CommandBuffer::default() -> Self
 impl core::marker::Freeze for tungsten_core::CommandBuffer
@@ -10416,6 +11028,24 @@ impl core::hash::Hash for tungsten_core::Entity
 pub fn tungsten_core::Entity::hash<__H: core::hash::Hasher>(&self, &mut __H)
 impl core::marker::Copy for tungsten_core::Entity
 impl core::marker::StructuralPartialEq for tungsten_core::Entity
+impl<'w> tungsten_core::ecs::query::QueryData<'w> for tungsten_core::Entity
+pub type tungsten_core::Entity::Iter = core::iter::adapters::copied::Copied<core::slice::iter::Iter<'w, tungsten_core::Entity>>
+pub type tungsten_core::Entity::Slices = &'w [tungsten_core::Entity]
+pub fn tungsten_core::Entity::check_access()
+pub fn tungsten_core::Entity::iter(Self::Slices, usize) -> Self::Iter
+pub fn tungsten_core::Entity::matches(&[core::any::TypeId]) -> bool
+pub fn tungsten_core::Entity::slices_mut(tungsten_core::ecs::query::ColumnsMut<'w>) -> Self::Slices
+impl<'w> tungsten_core::ecs::query::QueryItem<'w> for tungsten_core::Entity
+pub type tungsten_core::Entity::Iter = core::iter::adapters::copied::Copied<core::slice::iter::Iter<'w, tungsten_core::Entity>>
+pub type tungsten_core::Entity::Slice = &'w [tungsten_core::Entity]
+pub fn tungsten_core::Entity::component() -> core::option::Option<core::any::TypeId>
+pub fn tungsten_core::Entity::iter(Self::Slice, usize) -> Self::Iter
+pub fn tungsten_core::Entity::required() -> bool
+pub fn tungsten_core::Entity::slice_mut(tungsten_core::ecs::query::SlotMut<'w>, &'w [tungsten_core::Entity]) -> Self::Slice
+impl<'w> tungsten_core::ecs::query::ReadOnlyItem<'w> for tungsten_core::Entity
+pub fn tungsten_core::Entity::slice(tungsten_core::ecs::query::Slot<'w>, &'w [tungsten_core::Entity]) -> Self::Slice
+impl<'w> tungsten_core::ecs::query::ReadOnlyQueryData<'w> for tungsten_core::Entity
+pub fn tungsten_core::Entity::slices(tungsten_core::ecs::query::Columns<'w>) -> Self::Slices
 impl core::marker::Freeze for tungsten_core::Entity
 impl core::marker::Send for tungsten_core::Entity
 impl core::marker::Sync for tungsten_core::Entity
@@ -10912,6 +11542,17 @@ impl core::marker::Unpin for tungsten_core::components::MeshParticle
 impl core::marker::UnsafeUnpin for tungsten_core::components::MeshParticle
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::components::MeshParticle
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::components::MeshParticle
+pub struct tungsten_core::OptionalColumn<I>(pub core::option::Option<I>)
+impl<I: core::iter::traits::iterator::Iterator> core::iter::traits::iterator::Iterator for tungsten_core::ecs::query::OptionalColumn<I>
+pub type tungsten_core::ecs::query::OptionalColumn<I>::Item = core::option::Option<<I as core::iter::traits::iterator::Iterator>::Item>
+pub fn tungsten_core::ecs::query::OptionalColumn<I>::next(&mut self) -> core::option::Option<Self::Item>
+impl<I> core::marker::Freeze for tungsten_core::ecs::query::OptionalColumn<I> where I: core::marker::Freeze
+impl<I> core::marker::Send for tungsten_core::ecs::query::OptionalColumn<I> where I: core::marker::Send
+impl<I> core::marker::Sync for tungsten_core::ecs::query::OptionalColumn<I> where I: core::marker::Sync
+impl<I> core::marker::Unpin for tungsten_core::ecs::query::OptionalColumn<I> where I: core::marker::Unpin
+impl<I> core::marker::UnsafeUnpin for tungsten_core::ecs::query::OptionalColumn<I> where I: core::marker::UnsafeUnpin
+impl<I> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ecs::query::OptionalColumn<I> where I: core::panic::unwind_safe::RefUnwindSafe
+impl<I> core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::OptionalColumn<I> where I: core::panic::unwind_safe::UnwindSafe
 pub struct tungsten_core::ParallaxLayer
 pub tungsten_core::ParallaxLayer::scroll_factor: glam::f32::vec2::Vec2
 impl tungsten_core::components::ParallaxLayer
@@ -11544,6 +12185,34 @@ impl core::marker::Unpin for tungsten_core::physics::components::RigidBody
 impl core::marker::UnsafeUnpin for tungsten_core::physics::components::RigidBody
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::components::RigidBody
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::components::RigidBody
+pub struct tungsten_core::RigidBodyBundle
+pub tungsten_core::RigidBodyBundle::body: tungsten_core::physics::components::RigidBody
+pub tungsten_core::RigidBodyBundle::collider: tungsten_core::physics::components::Collider
+pub tungsten_core::RigidBodyBundle::position: tungsten_core::physics::components::Position
+pub tungsten_core::RigidBodyBundle::velocity: core::option::Option<tungsten_core::physics::components::Velocity>
+impl tungsten_core::physics::components::RigidBodyBundle
+pub fn tungsten_core::physics::components::RigidBodyBundle::dynamic(tungsten_core::physics::components::Position, tungsten_core::physics::components::Collider) -> Self
+pub fn tungsten_core::physics::components::RigidBodyBundle::static(tungsten_core::physics::components::Position, tungsten_core::physics::components::Collider) -> Self
+pub fn tungsten_core::physics::components::RigidBodyBundle::with_body(self, tungsten_core::physics::components::RigidBody) -> Self
+pub fn tungsten_core::physics::components::RigidBodyBundle::with_velocity(self, tungsten_core::physics::components::Velocity) -> Self
+impl core::clone::Clone for tungsten_core::physics::components::RigidBodyBundle
+pub fn tungsten_core::physics::components::RigidBodyBundle::clone(&self) -> tungsten_core::physics::components::RigidBodyBundle
+impl core::cmp::PartialEq for tungsten_core::physics::components::RigidBodyBundle
+pub fn tungsten_core::physics::components::RigidBodyBundle::eq(&self, &tungsten_core::physics::components::RigidBodyBundle) -> bool
+impl core::fmt::Debug for tungsten_core::physics::components::RigidBodyBundle
+pub fn tungsten_core::physics::components::RigidBodyBundle::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::physics::components::RigidBodyBundle
+impl core::marker::StructuralPartialEq for tungsten_core::physics::components::RigidBodyBundle
+impl tungsten_core::ecs::bundle::Bundle for tungsten_core::physics::components::RigidBodyBundle
+pub fn tungsten_core::physics::components::RigidBodyBundle::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn tungsten_core::physics::components::RigidBodyBundle::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl core::marker::Freeze for tungsten_core::physics::components::RigidBodyBundle
+impl core::marker::Send for tungsten_core::physics::components::RigidBodyBundle
+impl core::marker::Sync for tungsten_core::physics::components::RigidBodyBundle
+impl core::marker::Unpin for tungsten_core::physics::components::RigidBodyBundle
+impl core::marker::UnsafeUnpin for tungsten_core::physics::components::RigidBodyBundle
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::components::RigidBodyBundle
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::components::RigidBodyBundle
 pub struct tungsten_core::SceneData
 pub tungsten_core::SceneData::entities: alloc::vec::Vec<tungsten_core::assets::scene::SceneEntry>
 impl tungsten_core::assets::scene::SceneData
@@ -12550,6 +13219,26 @@ impl core::marker::Unpin for tungsten_core::post::WipeRadialParams
 impl core::marker::UnsafeUnpin for tungsten_core::post::WipeRadialParams
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::post::WipeRadialParams
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::post::WipeRadialParams
+pub struct tungsten_core::With<T>(_)
+impl<T: 'static> tungsten_core::ecs::query::QueryFilter for tungsten_core::ecs::query::With<T>
+pub fn tungsten_core::ecs::query::With<T>::matches(&[core::any::TypeId]) -> bool
+impl<T> core::marker::Freeze for tungsten_core::ecs::query::With<T>
+impl<T> core::marker::Send for tungsten_core::ecs::query::With<T>
+impl<T> core::marker::Sync for tungsten_core::ecs::query::With<T>
+impl<T> core::marker::Unpin for tungsten_core::ecs::query::With<T>
+impl<T> core::marker::UnsafeUnpin for tungsten_core::ecs::query::With<T>
+impl<T> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ecs::query::With<T>
+impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::With<T>
+pub struct tungsten_core::Without<T>(_)
+impl<T: 'static> tungsten_core::ecs::query::QueryFilter for tungsten_core::ecs::query::Without<T>
+pub fn tungsten_core::ecs::query::Without<T>::matches(&[core::any::TypeId]) -> bool
+impl<T> core::marker::Freeze for tungsten_core::ecs::query::Without<T>
+impl<T> core::marker::Send for tungsten_core::ecs::query::Without<T>
+impl<T> core::marker::Sync for tungsten_core::ecs::query::Without<T>
+impl<T> core::marker::Unpin for tungsten_core::ecs::query::Without<T>
+impl<T> core::marker::UnsafeUnpin for tungsten_core::ecs::query::Without<T>
+impl<T> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ecs::query::Without<T>
+impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::Without<T>
 pub struct tungsten_core::World
 impl tungsten_core::World
 pub fn tungsten_core::World::despawn(&mut self, tungsten_core::Entity)
@@ -12565,10 +13254,11 @@ pub fn tungsten_core::World::has<T: 'static>(&self, tungsten_core::Entity) -> bo
 pub fn tungsten_core::World::has_event<T: 'static>(&self) -> bool
 pub fn tungsten_core::World::has_resource<T: 'static>(&self) -> bool
 pub fn tungsten_core::World::insert<T: 'static>(&mut self, tungsten_core::Entity, T)
+pub fn tungsten_core::World::insert_bundle<B: tungsten_core::ecs::bundle::Bundle>(&mut self, tungsten_core::Entity, B)
 pub fn tungsten_core::World::insert_resource<T: 'static>(&mut self, T)
 pub fn tungsten_core::World::is_alive(&self, tungsten_core::Entity) -> bool
 pub fn tungsten_core::World::new() -> Self
-pub fn tungsten_core::World::query<T: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &T)>
+pub fn tungsten_core::World::query<'w, Q: tungsten_core::ecs::query::ReadOnlyQueryData<'w>>(&'w self) -> impl core::iter::traits::iterator::Iterator<Item = Q>
 pub fn tungsten_core::World::query2<A: 'static, B: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &A, &B)>
 pub fn tungsten_core::World::query2_entities<A: 'static, B: 'static>(&self) -> alloc::vec::Vec<tungsten_core::Entity>
 pub fn tungsten_core::World::query2_mut<A: 'static, B: 'static>(&mut self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &mut A, &mut B)>
@@ -12580,12 +13270,21 @@ pub fn tungsten_core::World::query3_mut<A: 'static, B: 'static, C: 'static>(&mut
 pub fn tungsten_core::World::query3_mut_without<A: 'static, B: 'static, C: 'static, X: 'static>(&mut self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &mut A, &mut B, &mut C)>
 pub fn tungsten_core::World::query3_opt2<A: 'static, B: 'static, C: 'static, D: 'static, E: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &A, &B, &C, core::option::Option<&D>, core::option::Option<&E>)>
 pub fn tungsten_core::World::query_entities<T: 'static>(&self) -> alloc::vec::Vec<tungsten_core::Entity>
-pub fn tungsten_core::World::query_mut<T: 'static>(&mut self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &mut T)>
+pub fn tungsten_core::World::query_filtered<'w, Q: tungsten_core::ecs::query::ReadOnlyQueryData<'w>, F: tungsten_core::ecs::query::QueryFilter>(&'w self) -> impl core::iter::traits::iterator::Iterator<Item = Q>
+pub fn tungsten_core::World::query_mut<'w, Q: tungsten_core::ecs::query::QueryData<'w>>(&'w mut self) -> impl core::iter::traits::iterator::Iterator<Item = Q>
+pub fn tungsten_core::World::query_mut_filtered<'w, Q: tungsten_core::ecs::query::QueryData<'w>, F: tungsten_core::ecs::query::QueryFilter>(&'w mut self) -> impl core::iter::traits::iterator::Iterator<Item = Q>
+pub fn tungsten_core::World::query_mut_slices<'w, Q: tungsten_core::ecs::query::QueryData<'w>>(&'w mut self) -> impl core::iter::traits::iterator::Iterator<Item = (usize, <Q as tungsten_core::ecs::query::QueryData>::Slices)>
+pub fn tungsten_core::World::query_mut_slices_filtered<'w, Q: tungsten_core::ecs::query::QueryData<'w>, F: tungsten_core::ecs::query::QueryFilter>(&'w mut self) -> impl core::iter::traits::iterator::Iterator<Item = (usize, <Q as tungsten_core::ecs::query::QueryData>::Slices)>
+pub fn tungsten_core::World::query_slices<'w, Q: tungsten_core::ecs::query::ReadOnlyQueryData<'w>>(&'w self) -> impl core::iter::traits::iterator::Iterator<Item = (usize, <Q as tungsten_core::ecs::query::QueryData>::Slices)>
+pub fn tungsten_core::World::query_slices_filtered<'w, Q: tungsten_core::ecs::query::ReadOnlyQueryData<'w>, F: tungsten_core::ecs::query::QueryFilter>(&'w self) -> impl core::iter::traits::iterator::Iterator<Item = (usize, <Q as tungsten_core::ecs::query::QueryData>::Slices)>
 pub fn tungsten_core::World::register_event<T: 'static>(&mut self) -> bool
 pub fn tungsten_core::World::registered_event_count(&self) -> usize
 pub fn tungsten_core::World::remove_component<T: 'static>(&mut self, tungsten_core::Entity) -> core::option::Option<T>
 pub fn tungsten_core::World::remove_resource<T: 'static>(&mut self) -> core::option::Option<T>
+pub fn tungsten_core::World::resource<T: 'static>(&self) -> &T
+pub fn tungsten_core::World::resource_mut<T: 'static>(&mut self) -> &mut T
 pub fn tungsten_core::World::spawn(&mut self) -> tungsten_core::Entity
+pub fn tungsten_core::World::spawn_with<B: tungsten_core::ecs::bundle::Bundle>(&mut self, B) -> tungsten_core::Entity
 impl core::default::Default for tungsten_core::World
 pub fn tungsten_core::World::default() -> Self
 impl core::marker::Freeze for tungsten_core::World
@@ -12617,6 +13316,63 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::particle::W
 pub const tungsten_core::DEFAULT_CIRCLE_SEGMENTS: u16
 pub const tungsten_core::EMPTY_TILE: tungsten_core::assets::tilemap::TileIndex
 pub const tungsten_core::LIGHT_CAP: usize
+pub trait tungsten_core::Bundle: 'static
+pub fn tungsten_core::Bundle::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn tungsten_core::Bundle::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl tungsten_core::ecs::bundle::Bundle for tungsten_core::physics::components::RigidBodyBundle
+pub fn tungsten_core::physics::components::RigidBodyBundle::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn tungsten_core::physics::components::RigidBodyBundle::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<A: tungsten_core::ecs::bundle::Bundle, B: tungsten_core::ecs::bundle::Bundle> tungsten_core::ecs::bundle::Bundle for tungsten_core::ecs::bundle::Chain<A, B>
+pub fn tungsten_core::ecs::bundle::Chain<A, B>::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn tungsten_core::ecs::bundle::Chain<A, B>::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static, C6: 'static, C7: 'static, C8: 'static, C9: 'static, C10: 'static, C11: 'static, C12: 'static, C13: 'static, C14: 'static, C15: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, C13, C14, C15)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, C13, C14, C15)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, C13, C14, C15)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static, C6: 'static, C7: 'static, C8: 'static, C9: 'static, C10: 'static, C11: 'static, C12: 'static, C13: 'static, C14: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, C13, C14)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, C13, C14)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, C13, C14)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static, C6: 'static, C7: 'static, C8: 'static, C9: 'static, C10: 'static, C11: 'static, C12: 'static, C13: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, C13)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, C13)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, C13)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static, C6: 'static, C7: 'static, C8: 'static, C9: 'static, C10: 'static, C11: 'static, C12: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static, C6: 'static, C7: 'static, C8: 'static, C9: 'static, C10: 'static, C11: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static, C6: 'static, C7: 'static, C8: 'static, C9: 'static, C10: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static, C6: 'static, C7: 'static, C8: 'static, C9: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8, C9)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static, C6: 'static, C7: 'static, C8: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5, C6, C7, C8)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7, C8)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static, C6: 'static, C7: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5, C6, C7)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5, C6, C7)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static, C6: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5, C6)
+pub fn (C0, C1, C2, C3, C4, C5, C6)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5, C6)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static, C5: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4, C5)
+pub fn (C0, C1, C2, C3, C4, C5)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4, C5)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static, C4: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3, C4)
+pub fn (C0, C1, C2, C3, C4)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3, C4)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static, C3: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2, C3)
+pub fn (C0, C1, C2, C3)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2, C3)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static, C2: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1, C2)
+pub fn (C0, C1, C2)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1, C2)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static, C1: 'static> tungsten_core::ecs::bundle::Bundle for (C0, C1)
+pub fn (C0, C1)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0, C1)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
+impl<C0: 'static> tungsten_core::ecs::bundle::Bundle for (C0)
+pub fn (C0)::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
+pub fn (C0)::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
 pub trait tungsten_core::Inspectable
 pub fn tungsten_core::Inspectable::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
 impl tungsten_core::inspect::Inspectable for tungsten_core::components::Sprite

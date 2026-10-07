@@ -1,7 +1,7 @@
 //! D-042 physics debug overlay reads `Position + Collider`, not `Transform`.
 
 use tungsten_core::physics::{Collider, Position, Shape};
-use tungsten_core::{ActionMap, DebugDraw, InputState, World};
+use tungsten_core::{ActionMap, DebugDraw, Entity, InputState, World};
 
 /// Physics debug overlay config.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -58,7 +58,7 @@ pub(crate) fn physics_debug_emit_system(world: &mut World) {
     let thickness = overlay.thickness;
 
     let mut emits: Vec<DebugEmit> = Vec::new();
-    for (_entity, position, collider) in world.query2::<Position, Collider>() {
+    for (_entity, position, collider) in world.query::<(Entity, &Position, &Collider)>() {
         let center = position.0 + collider.offset;
         match collider.shape {
             Shape::Aabb { half_extents } => {

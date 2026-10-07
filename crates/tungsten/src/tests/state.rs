@@ -97,7 +97,7 @@ fn flush(world: &mut World) {
 
 fn scene_entity_count(world: &World, id: StateId) -> usize {
     world
-        .query::<SceneEntity>()
+        .query::<(Entity, &SceneEntity)>()
         .filter(|(_, marker)| marker.state_id == id)
         .count()
 }

@@ -82,13 +82,14 @@ fn spawn_player(world: &mut World) {
     let mut transform = Transform::default();
     transform.position.x = PLAYER_START[0];
     transform.position.y = PLAYER_START[1];
-    let player = world.spawn();
-    world.insert(player, Player);
-    world.insert(player, transform);
-    world.insert(player, sprite);
-    world.insert(player, Visibility::default());
-    // The state stack despawns it when gameplay leaves the stack.
-    world.insert(player, SceneEntity { state_id: GAMEPLAY });
+    world.spawn_with((
+        Player,
+        transform,
+        sprite,
+        Visibility::default(),
+        // The state stack despawns it when gameplay leaves the stack.
+        SceneEntity { state_id: GAMEPLAY },
+    ));
 }
 
 fn just_pressed(world: &World, action: &str) -> bool {

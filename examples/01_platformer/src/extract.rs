@@ -161,7 +161,7 @@ fn extract_parallax(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
     let (view_min, view_max) = view_bounds(world);
     let overhang = Vec2::splat(2.0 * TILE);
     let mut entries: Vec<(Entity, &Transform, &Sprite, &ParallaxLayer)> = world
-        .query3::<Transform, Sprite, ParallaxLayer>()
+        .query::<(Entity, &Transform, &Sprite, &ParallaxLayer)>()
         .filter(|(entity, _, _, _)| world.get::<Visibility>(*entity).is_some_and(|v| v.visible))
         .collect();
     entries.sort_by_key(|(e, _, sprite, _)| (sprite.z_order, e.id()));
@@ -251,7 +251,7 @@ pub(crate) fn extract_tile_layers(world: &World, names: &[&str]) -> Vec<SpriteBa
     };
     let (view_min, view_max) = view_bounds(world);
     let mut result = Vec::new();
-    let mut maps: Vec<_> = world.query::<TilemapInstance>().collect();
+    let mut maps: Vec<_> = world.query::<(Entity, &TilemapInstance)>().collect();
     maps.sort_by_key(|(entity, _)| entity.id());
     for (_, map) in maps {
         let Some(data) = tilemaps.get(&map.id) else {
@@ -304,7 +304,7 @@ pub(crate) fn extract_tile_layers(world: &World, names: &[&str]) -> Vec<SpriteBa
 fn extract_props(world: &World, assets: &AssetRegistry, depth: PropDepth) -> Vec<SpriteBatch> {
     let (view_min, view_max) = view_bounds(world);
     let mut entries: Vec<_> = world
-        .query::<AnimatedProp>()
+        .query::<(Entity, &AnimatedProp)>()
         .filter(|(_, p)| p.0 == depth)
         .collect();
     entries.sort_by_key(|(e, _)| e.id());
@@ -362,7 +362,7 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
 
     // Particles before black-hole core; custom extract must include them explicitly.
     let mut particle_batches: HashMap<(u32, FilterMode), SpriteBatch> = HashMap::new();
-    for (e, _p, t, s) in world.query3::<Particle, Transform, Sprite>() {
+    for (e, _p, t, s) in world.query::<(Entity, &Particle, &Transform, &Sprite)>() {
         let visible = world.get::<Visibility>(e).is_some_and(|v| v.visible);
         if !visible {
             continue;
@@ -402,7 +402,7 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
         .get_resource::<LightingFixture>()
         .is_some_and(|fixture| fixture.mode == LightingFixtureMode::On);
     let mut player_batches = Vec::new();
-    for (entity, cs) in world.query::<CurrentSprite>() {
+    for (entity, cs) in world.query::<(Entity, &CurrentSprite)>() {
         if world.get::<Player>(entity).is_none() {
             continue;
         }
@@ -485,7 +485,7 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     batches.extend(extract_balls(world, assets, lighting_on));
     // Animated flame on every burning ball, even when the particle pool is full.
     let flames = FLAME_SPRITE_IDS.map(|id| assets.get_sprite(id));
-    for (entity, burn) in world.query::<crate::burning::BallBurn>() {
+    for (entity, burn) in world.query::<(Entity, &crate::burning::BallBurn)>() {
         if burn.remaining <= 0.0 {
             continue;
         }
@@ -615,8 +615,20 @@ fn extract_balls(world: &World, assets: &AssetRegistry, lighting_on: bool) -> Ve
     let (view_min, view_max) = view_bounds(world);
     // Both queries walk the same archetypes in the same order, so the zip
     // reads all six columns with no per-ball lookup.
-    let sprites = world.query2_opt2::<Ball, Position, SmallBall, CurrentSprite>();
-    let tints = world.query2_opt2::<Ball, Position, crate::burning::BallBurn, BallHue>();
+    let sprites = world.query::<(
+        Entity,
+        &Ball,
+        &Position,
+        Option<&SmallBall>,
+        Option<&CurrentSprite>,
+    )>();
+    let tints = world.query::<(
+        Entity,
+        &Ball,
+        &Position,
+        Option<&crate::burning::BallBurn>,
+        Option<&BallHue>,
+    )>();
     for ((_, _, pos, small, sprite), (_, _, _, burn, hue)) in sprites.zip(tints) {
         let small = small.is_some();
         let diameter = BALL_VISUAL_DIAMETER * if small { SMALL_BALL_SCALE } else { 1.0 };
@@ -677,7 +689,7 @@ fn extract_balls(world: &World, assets: &AssetRegistry, lighting_on: bool) -> Ve
 /// Pixel hearts stay at a fixed screen size and read current HP without the
 /// diagnostic text timer. Empty outlines remain visible after damage.
 fn extract_hearts(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
-    let Some((_, health)) = world.query::<crate::gameplay::Health>().next() else {
+    let Some((_, health)) = world.query::<(Entity, &crate::gameplay::Health)>().next() else {
         return vec![];
     };
     let camera = world
@@ -784,7 +796,7 @@ fn extract_obstacles(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> 
     // Soft halos complement native point lights and remain visible on scenery
     // without normal maps. Keep them behind hazard silhouettes.
     if let Some(asset) = assets.get_sprite("ex10_halo") {
-        for (e, glow) in world.query::<Glow>() {
+        for (e, glow) in world.query::<(Entity, &Glow)>() {
             let Some(center) = crate::gameplay::glow_center(world, e, glow.offset) else {
                 continue;
             };
@@ -820,7 +832,7 @@ fn extract_obstacles(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> 
             }
         }
     }
-    for (e, hazard) in world.query::<Hazard>() {
+    for (e, hazard) in world.query::<(Entity, &Hazard)>() {
         let (Some(pos), Some(cs)) = (world.get::<Position>(e), world.get::<CurrentSprite>(e))
         else {
             continue;
@@ -854,7 +866,7 @@ fn extract_obstacles(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> 
         push_instance_with_lighting(&mut batches, asset, sprite, false);
     }
     if let Some(asset) = assets.get_sprite("ex10_lift_deck") {
-        for (e, platform) in world.query::<MovingPlatform>() {
+        for (e, platform) in world.query::<(Entity, &MovingPlatform)>() {
             let Some(pos) = world.get::<Position>(e) else {
                 continue;
             };
@@ -877,7 +889,7 @@ fn extract_obstacles(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> 
         }
     }
     if let Some(asset) = assets.get_sprite("ex10_shock_ring") {
-        for (e, explosion) in world.query::<Explosion>() {
+        for (e, explosion) in world.query::<(Entity, &Explosion)>() {
             let Some(t) = world.get::<Transform>(e) else {
                 continue;
             };
@@ -932,7 +944,7 @@ fn extract_vortices(
             ("ex10_vortex", D * 1.2, time * 4.5, [190, 170, 255, 225]),
         ]
     };
-    for (e, hole) in world.query::<BlackHole>() {
+    for (e, hole) in world.query::<(Entity, &BlackHole)>() {
         let Some(pos) = world.get::<Position>(e) else {
             continue;
         };
@@ -982,7 +994,7 @@ fn extract_fireballs(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> 
     use crate::fireball::{FIREBALL_VISUAL_SIZE, FireballMissile};
     let mut batches = Vec::new();
     let glows = GlowMaterials::from_world(world);
-    for (e, missile) in world.query::<FireballMissile>() {
+    for (e, missile) in world.query::<(Entity, &FireballMissile)>() {
         let Some(pos) = world.get::<Position>(e).map(|p| p.0) else {
             continue;
         };

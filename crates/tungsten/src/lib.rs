@@ -61,8 +61,8 @@ pub use transition::{Transition, TransitionEffect, TransitionPhase, TransitionSt
 pub use tungsten_core as core;
 pub use tungsten_core::physics;
 pub use tungsten_core::{
-    ActionMap, ActionMapError, Binding, DebugDraw, DebugShape, Inspectable, Plugin, PluginSet,
-    Schedule, ScheduleError, Stage, SystemDesc, system,
+    ActionMap, ActionMapError, Binding, Bundle, DebugDraw, DebugShape, Inspectable, OptionalColumn,
+    Plugin, PluginSet, Schedule, ScheduleError, Stage, SystemDesc, With, Without, system,
 };
 pub use tungsten_render as render;
 pub use tweens::tween_tick_system;

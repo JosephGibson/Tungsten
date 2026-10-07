@@ -1,5 +1,5 @@
 use glam::Vec2;
-use tungsten::core::{CameraState, InputState, MouseButton, World};
+use tungsten::core::{CameraState, Entity, InputState, MouseButton, World};
 use tungsten::physics::{Collider, Position};
 
 use super::seed_world;
@@ -44,7 +44,7 @@ fn mouse4_casts_a_fireball_toward_the_cursor() {
     cast_fireball_system(&mut world);
 
     let missiles: Vec<_> = world
-        .query::<FireballMissile>()
+        .query::<(Entity, &FireballMissile)>()
         .map(|(e, m)| (e, *m))
         .collect();
     assert_eq!(missiles.len(), 1);
@@ -69,7 +69,7 @@ fn fireball_contact_explodes_and_ignites_small_balls() {
     }
 
     assert!(!world.is_alive(missile));
-    assert_eq!(world.query::<Explosion>().count(), 1);
+    assert_eq!(world.query::<(Entity, &Explosion)>().count(), 1);
     assert!(
         world
             .get::<BallBurn>(ball)

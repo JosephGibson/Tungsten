@@ -23,7 +23,7 @@ pub fn tween_tick_system(world: &mut World) {
     // Channel writes touch other components; buffered so the Tween pass stays columnar.
     let mut channel_work: Vec<(Entity, Vec<TweenChannel>, f32)> = Vec::new();
 
-    for (entity, t) in world.query_mut::<Tween>() {
+    for (entity, t) in world.query_mut::<(Entity, &mut Tween)>() {
         // Waiting for command-buffer flush to drop the component.
         if t.pending_remove {
             continue;

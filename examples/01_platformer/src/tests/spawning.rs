@@ -30,12 +30,12 @@ fn spawn_ball_system_spawns_at_fixed_rate_while_held() {
     harness.step(1);
 
     let world = harness.world();
-    assert_eq!(world.query::<Ball>().count(), 5);
+    assert_eq!(world.query::<(Entity, &Ball)>().count(), 5);
     // Left-click orbs carry no hue; only small marbles cycle colour.
-    assert_eq!(world.query::<BallHue>().count(), 0);
+    assert_eq!(world.query::<(Entity, &BallHue)>().count(), 0);
     let center = Vec2::new(240.0, 144.0);
     let positions: Vec<Vec2> = world
-        .query::<Ball>()
+        .query::<(Entity, &Ball)>()
         .map(|(e, _)| world.get::<Position>(e).unwrap().0)
         .collect();
     for pos in &positions {
@@ -153,7 +153,7 @@ fn spawn_black_hole_system_creates_attractor_at_cursor_on_right_click() {
 
     spawn_black_hole_system(&mut world);
 
-    let holes: Vec<_> = world.query::<BlackHole>().collect();
+    let holes: Vec<_> = world.query::<(Entity, &BlackHole)>().collect();
     assert_eq!(holes.len(), 1);
     let (hole_entity, hole) = holes[0];
     assert_eq!(hole.remaining, BLACK_HOLE_LIFETIME);
@@ -225,7 +225,7 @@ fn spawn_black_hole_system_drags_active_hole_to_cursor_while_held() {
         "holding must refresh lifetime so the hole never expires mid-drag"
     );
     assert_eq!(
-        world.query::<BlackHole>().count(),
+        world.query::<(Entity, &BlackHole)>().count(),
         1,
         "hold must not spawn a second hole per frame"
     );
@@ -236,7 +236,7 @@ fn spawn_black_hole_system_drags_active_hole_to_cursor_while_held() {
     let world = harness.world();
     assert_eq!(world.get_resource::<ActiveBlackHole>().unwrap().0, None);
     assert_eq!(
-        world.query::<BlackHole>().count(),
+        world.query::<(Entity, &BlackHole)>().count(),
         0,
         "release must despawn the dragged hole immediately, not let it fade"
     );
@@ -328,7 +328,7 @@ fn black_hole_lifetime_system_despawns_expired_hole() {
         None,
         "expired active holes must clear their drag slot"
     );
-    assert_eq!(world.query::<BlackHole>().count(), 0);
+    assert_eq!(world.query::<(Entity, &BlackHole)>().count(), 0);
 }
 
 /// The commands queued so far in the last frame, when `record_queued_commands` ran.
@@ -375,7 +375,7 @@ fn despawn_out_of_bounds_culls_escaped_balls_and_keeps_in_bounds_balls() {
     );
     world.insert(outside, Collider::circle(BALL_RADIUS));
 
-    assert_eq!(world.query::<Ball>().count(), 3);
+    assert_eq!(world.query::<(Entity, &Ball)>().count(), 3);
 
     harness.step(1);
     let world = harness.world();
@@ -385,7 +385,7 @@ fn despawn_out_of_bounds_culls_escaped_balls_and_keeps_in_bounds_balls() {
         "exactly one ball should be queued for despawn"
     );
 
-    let remaining: Vec<_> = world.query::<Ball>().map(|(e, _)| e).collect();
+    let remaining: Vec<_> = world.query::<(Entity, &Ball)>().map(|(e, _)| e).collect();
     assert_eq!(remaining, vec![inside, partly_inside]);
 }
 
@@ -414,7 +414,7 @@ fn only_small_marbles_shift_hue_while_orbs_render_untinted() {
     harness.set_dt(0.1);
     harness.step(1);
     let world = harness.world_mut();
-    let balls: Vec<_> = world.query::<Ball>().map(|(e, _)| e).collect();
+    let balls: Vec<_> = world.query::<(Entity, &Ball)>().map(|(e, _)| e).collect();
     let (small, orbs): (Vec<_>, Vec<_>) = balls
         .iter()
         .partition(|e| world.get::<SmallBall>(**e).is_some());

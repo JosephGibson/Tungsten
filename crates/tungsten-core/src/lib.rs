@@ -46,7 +46,10 @@ pub use display::{
     DisplayConfig, DisplayMode, DisplayState, DisplayValidationError, Resolution, ScaleMode,
     WindowSize,
 };
-pub use ecs::{CommandBuffer, Entity, EventQueue, PendingEntity, ShakeEvent, SquashEvent, World};
+pub use ecs::{
+    Bundle, CommandBuffer, Entity, EventQueue, OptionalColumn, PendingEntity, ShakeEvent,
+    SquashEvent, With, Without, World,
+};
 pub use input::{
     ActionMap, ActionMapError, Binding, InputState, KeyCode, MouseButton, ScrollDirection,
 };
@@ -54,8 +57,8 @@ pub use inspect::{InspectRegistry, Inspectable};
 pub use lighting::{AmbientLight, LIGHT_CAP};
 pub use physics::{
     Aabb, BodyKind, Collider, CollisionEvent, Contact, PhysicsBuffers, PhysicsConfig,
-    PhysicsPlugin, Position, RigidBody, Shape, SpatialGrid, Velocity, aabb_vs_aabb, aabb_vs_circle,
-    circle_vs_circle, physics_step,
+    PhysicsPlugin, Position, RigidBody, RigidBodyBundle, Shape, SpatialGrid, Velocity,
+    aabb_vs_aabb, aabb_vs_circle, circle_vs_circle, physics_step,
 };
 pub use post::{
     BloomParams, ColorAdjustParams, CrtParams, DissolveParams, DitherMode, DitherParams,

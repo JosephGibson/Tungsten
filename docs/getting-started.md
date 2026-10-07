@@ -92,12 +92,42 @@ Where a system goes:
 
 A constraint names a system in the same stage. A typo, a duplicate name or a cycle fails at startup with a message naming the systems, and `Harness::new` panics the same way, so a test catches it. `App::new` installs the engine's `DefaultPlugins`; a game that replaces an engine feature builds its app from the set without that plugin, `App::with_plugins(config, DefaultPlugins::set().without::<CameraPlugin>())`, and `app.add_system_to(stage, desc)` registers one system outside a plugin.
 
+## Queries and spawns
+
+A system reads and writes components through one query that names its data as a type: `&A` reads a component, `&mut A` writes one, `Option<&A>` reads one the entity may lack, and `Entity` is the entity itself, alone or in a tuple of up to eight. A filter as the second type parameter, `With<T>`, `Without<T>` or a tuple of them, narrows the rows by components the body never reads. The template's `player_movement` moves every entity that carries `Player` (`D-130`):
+
+```rust
+let step = PLAYER_SPEED * world.resource::<Time>().delta();
+for transform in world.query_mut_filtered::<&mut Transform, With<Player>>() {
+    transform.position.x += dx * step;
+    transform.position.y += dy * step;
+}
+```
+
+`world.query::<(Entity, &Transform, Option<&Sprite>)>()` reads; `query_mut` writes, and panics at the call if two items name one component. Write in place through the query rather than collecting entities and calling `get_mut` on each. The engine's `query2`, `query3_mut` and the other numbered functions are deprecated and go at the API freeze; each one's deprecation note gives its tuple form.
+
+A spawn gives the entity every component at once, in one archetype move, through a tuple of up to sixteen components. The template's `spawn_player`:
+
+```rust
+world.spawn_with((
+    Player,
+    transform,
+    sprite,
+    Visibility::default(),
+    SceneEntity { state_id: GAMEPLAY },
+));
+```
+
+A tuple's elements are components, never bundles; join a bundle with `with`: `RigidBodyBundle::dynamic(position, collider).with((Player, transform))` spawns a body with its `Position`, `Velocity`, `Collider` and `RigidBody` and the game's components beside them. A system without `&mut World` records the same through `CommandBuffer::spawn_with`.
+
+`world.resource::<Time>()` returns a resource the engine always inserts and panics naming the type if it is missing; `get_resource` is the `Option` form for a resource a game may not have inserted.
+
 ## Time and timers
 
 The engine keeps two clocks in the `Time` resource and advances both once a frame, before any stage runs (`D-129`). Real time is the frame's elapsed time, capped at 0.1 s so that a stall cannot throw bodies about. Game time is real time times a scale, 1 unless you set one, and stands still while the game clock is paused. A system that moves or animates something reads the game clock's dt, `delta()`, as the template's `player_movement` does:
 
 ```rust
-let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
+let dt = world.resource::<Time>().delta();
 ```
 
 `real_delta()` is the real clock's dt, for anything that should keep running over a pause, such as a pause menu's own animation; the engine's screen transitions run on it. `elapsed()` and `real_elapsed()` sum each clock's dts, and `frame()` counts frames.
@@ -111,7 +141,7 @@ A `Timer` counts down a cooldown, a wave or a lifetime by whichever clock's dt y
 struct WaveTimer(Timer);
 
 fn waves(world: &mut World) {
-    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
+    let dt = world.resource::<Time>().delta();
     let due = world
         .get_resource_mut::<WaveTimer>()
         .map_or(0, |timer| timer.0.tick(dt));

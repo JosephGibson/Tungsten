@@ -3,13 +3,16 @@ use super::*;
 #[test]
 fn player_moves_right_on_d() {
     let mut world = seed_world();
-    let player = world.spawn();
-    world.insert(player, Player::default());
-    world.insert(player, Position(Vec2::new(100.0, 100.0)));
-    world.insert(player, Transform::from_position(Vec2::new(100.0, 100.0)));
-    world.insert(player, Velocity(Vec2::ZERO));
-    world.insert(player, Collider::aabb(PLAYER_HALF));
-    world.insert(player, RigidBody::dynamic());
+    let player = world.spawn_with(
+        RigidBodyBundle::dynamic(
+            Position(Vec2::new(100.0, 100.0)),
+            Collider::aabb(PLAYER_HALF),
+        )
+        .with((
+            Player::default(),
+            Transform::from_position(Vec2::new(100.0, 100.0)),
+        )),
+    );
     world
         .get_resource_mut::<InputState>()
         .unwrap()
@@ -32,13 +35,14 @@ fn player_becomes_grounded_after_falling_onto_tilemap() {
     let map = world.spawn();
     world.insert(map, TilemapInstance::new("ex10_level", Vec2::ZERO));
 
-    let player = world.spawn();
-    world.insert(player, Player::default());
-    world.insert(player, Position(Vec2::new(40.0, 8.0)));
-    world.insert(player, Transform::from_position(Vec2::new(40.0, 8.0)));
-    world.insert(player, Velocity(Vec2::ZERO));
-    world.insert(player, Collider::aabb(PLAYER_HALF));
-    world.insert(player, RigidBody::dynamic());
+    let player = world.spawn_with(
+        RigidBodyBundle::dynamic(Position(Vec2::new(40.0, 8.0)), Collider::aabb(PLAYER_HALF)).with(
+            (
+                Player::default(),
+                Transform::from_position(Vec2::new(40.0, 8.0)),
+            ),
+        ),
+    );
 
     harness.step(20);
 
@@ -83,19 +87,16 @@ fn exhausted_air_jump_requires_ground_contact() {
     let map = world.spawn();
     world.insert(map, TilemapInstance::new("ex10_level", Vec2::ZERO));
 
-    let player = world.spawn();
-    world.insert(
-        player,
-        Player {
-            air_jump_used: true,
-            ..Default::default()
-        },
+    let player = world.spawn_with(
+        RigidBodyBundle::dynamic(Position(Vec2::new(40.0, 40.0)), Collider::aabb(PLAYER_HALF))
+            .with((
+                Player {
+                    air_jump_used: true,
+                    ..Default::default()
+                },
+                Transform::from_position(Vec2::new(40.0, 40.0)),
+            )),
     );
-    world.insert(player, Position(Vec2::new(40.0, 40.0)));
-    world.insert(player, Transform::from_position(Vec2::new(40.0, 40.0)));
-    world.insert(player, Velocity(Vec2::ZERO));
-    world.insert(player, Collider::aabb(PLAYER_HALF));
-    world.insert(player, RigidBody::dynamic());
     world
         .get_resource_mut::<InputState>()
         .unwrap()
@@ -225,7 +226,7 @@ struct AfterInput {
 
 /// Records [`AfterInput`] for the one player.
 fn record_after_input(world: &mut World) {
-    let player = world.query::<Player>().next().unwrap().0;
+    let player = world.query::<(Entity, &Player)>().next().unwrap().0;
     let after = AfterInput {
         air_jump_used: world.get::<Player>(player).unwrap().air_jump_used,
         pending_effect: world
@@ -278,7 +279,7 @@ fn double_jump_needs_a_fresh_press_emits_once_and_refills_on_landing() {
         .id_for_name("ex10_double_jump")
         .unwrap();
     let bursts: Vec<_> = world
-        .query::<ParticleEmitter>()
+        .query::<(Entity, &ParticleEmitter)>()
         .filter(|(_, p)| p.config == config)
         .map(|(e, _)| e)
         .collect();
@@ -301,7 +302,7 @@ fn double_jump_needs_a_fresh_press_emits_once_and_refills_on_landing() {
     assert_eq!(
         harness
             .world()
-            .query::<ParticleEmitter>()
+            .query::<(Entity, &ParticleEmitter)>()
             .filter(|(_, p)| p.config == config)
             .count(),
         1

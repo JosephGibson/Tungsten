@@ -35,5 +35,9 @@ harness = false
 name = "tween_tick"
 harness = false
 
+[[bench]]
+name = "tuple_query_bench"
+harness = false
+
 [lints]
 workspace = true

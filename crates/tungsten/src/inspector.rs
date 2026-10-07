@@ -207,7 +207,7 @@ fn pick_entity_under_cursor(world: &World, world_cursor: Vec2) -> Option<Entity>
     let mut best: Option<(Entity, f32)> = None;
 
     if let Some(registry) = world.get_resource::<AssetRegistry>() {
-        for (entity, transform, sprite) in world.query2::<Transform, Sprite>() {
+        for (entity, transform, sprite) in world.query::<(Entity, &Transform, &Sprite)>() {
             let visible = world.get::<Visibility>(entity).is_some_and(|v| v.visible);
             if !visible {
                 continue;
@@ -224,7 +224,7 @@ fn pick_entity_under_cursor(world: &World, world_cursor: Vec2) -> Option<Entity>
     }
 
     // Collider fallback catches custom-extract visuals.
-    for (entity, collider, position) in world.query2::<Collider, Position>() {
+    for (entity, collider, position) in world.query::<(Entity, &Collider, &Position)>() {
         let centre = position.0 + collider.offset;
         let half = match collider.shape {
             Shape::Aabb { half_extents } => Vec2::new(half_extents.x.abs(), half_extents.y.abs()),

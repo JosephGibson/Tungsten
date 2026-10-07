@@ -4,7 +4,7 @@ use tungsten::core::{
     ActionMap, AnimationRegistry, AnimationState, AssetRegistry, AudioCommands, AudioHandle,
     CameraController, CameraState, CommandBuffer, Entity, EventQueue, InputState, Light,
     ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, ShakeEvent, SquashEvent,
-    SquashTrigger, Time, Transform, World,
+    SquashTrigger, Time, Transform, With, World,
 };
 use tungsten::physics::{BodyKind, Collider, CollisionEvent, Position, RigidBody, Shape, Velocity};
 
@@ -41,7 +41,7 @@ pub(crate) fn player_input(world: &mut World) {
         jump_pressed = actions.just_pressed(input, "jump");
     }
 
-    let player_entities: Vec<_> = world.query::<Player>().map(|(e, _)| e).collect();
+    let player_entities: Vec<_> = world.query::<(Entity, &Player)>().map(|(e, _)| e).collect();
     let mut did_jump = false;
 
     for entity in player_entities {
@@ -209,7 +209,9 @@ pub(crate) fn animation_system(world: &mut World) {
         Some(r) => r.clone(),
         None => return,
     };
-    let entities = world.query_entities::<AnimationState>();
+    let entities = world
+        .query_filtered::<Entity, With<AnimationState>>()
+        .collect::<Vec<_>>();
     for entity in entities {
         let mut state = world.get::<AnimationState>(entity).unwrap().clone();
         let new_sprite = state.advance(dt_ms, &anim_registry);
@@ -235,7 +237,9 @@ pub(crate) fn rainbow_ball_hue_system(world: &mut World) {
         return;
     }
 
-    let entities = world.query_entities::<BallHue>();
+    let entities = world
+        .query_filtered::<Entity, With<BallHue>>()
+        .collect::<Vec<_>>();
     for entity in entities {
         let Some(hue) = world.get_mut::<BallHue>(entity) else {
             continue;
@@ -249,7 +253,7 @@ pub(crate) fn ground_detection(world: &mut World) {
         Some(queue) => queue.iter_current().copied().collect(),
         None => return,
     };
-    let player_entities: Vec<_> = world.query::<Player>().map(|(e, _)| e).collect();
+    let player_entities: Vec<_> = world.query::<(Entity, &Player)>().map(|(e, _)| e).collect();
     let mut landed: Vec<Entity> = Vec::new();
     for entity in player_entities {
         // Sleeping bodies emit no new contacts. Retain their settled state;
@@ -298,7 +302,10 @@ pub(crate) fn ground_detection(world: &mut World) {
 
 fn player_entities_for_landing(world: &mut World, landed: &[Entity]) -> Vec<Entity> {
     let mut effects = Vec::new();
-    for entity in world.query_entities::<Player>() {
+    for entity in world
+        .query_filtered::<Entity, With<Player>>()
+        .collect::<Vec<_>>()
+    {
         let grounded = world.get::<Player>(entity).is_some_and(|p| p.grounded);
         if let Some(p) = world.get_mut::<PlayerPresentation>(entity) {
             if landed.contains(&entity) && !p.suppress_landing {
@@ -318,7 +325,10 @@ fn player_entities_for_landing(world: &mut World, landed: &[Entity]) -> Vec<Enti
 /// Select after ground detection/reset; reset a clip only on a transition.
 pub(crate) fn player_presentation_system(world: &mut World) {
     let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
-    for entity in world.query_entities::<PlayerPresentation>() {
+    for entity in world
+        .query_filtered::<Entity, With<PlayerPresentation>>()
+        .collect::<Vec<_>>()
+    {
         let grounded = world.get::<Player>(entity).is_some_and(|p| p.grounded);
         let velocity = world.get::<Velocity>(entity).map_or(Vec2::ZERO, |v| v.0);
         let Some(position) = world.get::<Position>(entity).map(|p| p.0) else {
@@ -406,7 +416,7 @@ pub(crate) fn player_presentation_system(world: &mut World) {
 }
 
 pub(crate) fn spawn_transient_effect(world: &mut World, name: &str, position: Vec2) {
-    if world.query::<TransientEmitter>().count() >= TRANSIENT_EMITTER_CAP {
+    if world.query::<(Entity, &TransientEmitter)>().count() >= TRANSIENT_EMITTER_CAP {
         return;
     }
     let Some(config) = world
@@ -441,7 +451,7 @@ pub(crate) fn play_effect_sound(world: &mut World, pick: fn(&EffectSounds) -> (A
 
 pub(crate) fn transient_emitter_cleanup(world: &mut World) {
     let finished: Vec<_> = world
-        .query::<TransientEmitter>()
+        .query::<(Entity, &TransientEmitter)>()
         .filter_map(|(entity, _)| {
             let state = world.get::<ParticleEmitterState>(entity)?;
             // Counts refresh after user systems. Wait for the engine's drained report,
@@ -451,7 +461,7 @@ pub(crate) fn transient_emitter_cleanup(world: &mut World) {
                 && state.drain_reported
                 && state.active_count == 0
                 && !world
-                    .query::<tungsten::core::Particle>()
+                    .query::<(Entity, &tungsten::core::Particle)>()
                     .any(|(_, p)| p.emitter == Some(entity)))
             .then_some(entity)
         })
@@ -525,7 +535,7 @@ pub(crate) fn update_text_display(world: &mut World) {
         .get_resource::<EventQueue<CollisionEvent>>()
         .map_or(0, EventQueue::len);
     let grounded = world
-        .query::<Player>()
+        .query::<(Entity, &Player)>()
         .next()
         .is_some_and(|(_, p)| p.grounded);
     let (music_on, vol_pct) = world.get_resource::<AudioState>().map_or((false, 0), |s| {
@@ -565,7 +575,7 @@ pub(crate) fn cursor_to_world(cursor: Vec2, camera: &CameraState) -> Option<Vec2
 pub(crate) fn spawn_ball_system(world: &mut World) {
     // Counted once: both spawners draw on one budget, so a frame never
     // overshoots the cap.
-    let live = world.query::<Ball>().count();
+    let live = world.query::<(Entity, &Ball)>().count();
     let budget = u32::try_from(BALL_CAP.saturating_sub(live)).unwrap_or(u32::MAX);
     let spawned = spawn_balls(world, false, budget);
     spawn_balls(world, true, budget - spawned);
@@ -820,7 +830,7 @@ pub(crate) fn black_hole_force_system(world: &mut World) {
         return;
     }
 
-    let targets: Vec<Entity> = world.query_entities::<Velocity>();
+    let targets: Vec<Entity> = world.query_filtered::<Entity, With<Velocity>>().collect();
     for entity in targets {
         let body_is_dynamic = world
             .get::<RigidBody>(entity)
@@ -844,7 +854,7 @@ pub(crate) fn black_hole_force_system(world: &mut World) {
 
 pub(crate) fn black_hole_positions(world: &World) -> Vec<Vec2> {
     world
-        .query::<BlackHole>()
+        .query::<(Entity, &BlackHole)>()
         .filter_map(|(entity, _)| world.get::<Position>(entity).map(|p| p.0))
         .collect()
 }
@@ -878,7 +888,7 @@ pub(crate) fn black_hole_extinguish_system(world: &mut World) {
         return;
     }
     let mut doused: Vec<(Entity, Vec2)> = world
-        .query::<BallBurn>()
+        .query::<(Entity, &BallBurn)>()
         .filter(|(_, burn)| burn.remaining > 0.0)
         .filter_map(|(e, _)| world.get::<Position>(e).map(|p| (e, p.0)))
         .filter(|(_, p)| {
@@ -916,7 +926,7 @@ pub(crate) fn black_hole_lifetime_system(world: &mut World) {
     let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
     // Anchored emitters leave with their parent (black-hole dust, missile drips).
     let orphans: Vec<Entity> = world
-        .query::<EmitterAnchor>()
+        .query::<(Entity, &EmitterAnchor)>()
         .filter(|(_, anchor)| !world.is_alive(anchor.parent))
         .map(|(e, _)| e)
         .collect();
@@ -924,7 +934,9 @@ pub(crate) fn black_hole_lifetime_system(world: &mut World) {
         world.despawn(entity);
     }
 
-    let entities = world.query_entities::<BlackHole>();
+    let entities = world
+        .query_filtered::<Entity, With<BlackHole>>()
+        .collect::<Vec<_>>();
     let mut to_despawn: Vec<Entity> = Vec::new();
     for entity in entities {
         if let Some(hole) = world.get_mut::<BlackHole>(entity) {
@@ -953,7 +965,7 @@ pub(crate) fn black_hole_lifetime_system(world: &mut World) {
 /// Cull escaped bodies after physics; bounds prevent substep-cost runaway.
 pub(crate) fn despawn_out_of_bounds(world: &mut World) {
     let escaped_balls: Vec<Entity> = world
-        .query::<Ball>()
+        .query::<(Entity, &Ball)>()
         .filter_map(|(entity, _)| {
             let pos = world.get::<Position>(entity)?.0;
             let collider = world.get::<Collider>(entity).copied();
@@ -970,7 +982,7 @@ pub(crate) fn despawn_out_of_bounds(world: &mut World) {
     }
 
     let escaped_players: Vec<Entity> = world
-        .query::<Player>()
+        .query::<(Entity, &Player)>()
         .filter_map(|(entity, _)| {
             let pos = world.get::<Position>(entity)?.0;
             let collider = world.get::<Collider>(entity).copied();
@@ -1049,7 +1061,7 @@ pub(crate) fn orbit_lights_system(world: &mut World) {
         .map(Time::delta)
         .unwrap_or_default();
     let center = world
-        .query::<Player>()
+        .query::<(Entity, &Player)>()
         .next()
         .and_then(|(entity, _)| world.get::<Position>(entity))
         .map_or(PLAYER_SPAWN, |p| p.0);
@@ -1061,7 +1073,7 @@ pub(crate) fn orbit_lights_system(world: &mut World) {
         intensity: Option<f32>,
     }
     let updates: Vec<Update> = world
-        .query::<OrbitLight>()
+        .query::<(Entity, &OrbitLight)>()
         .map(|(e, ol)| {
             let new_phase = ol.phase + ol.speed * dt;
             let pos = Vec2::new(

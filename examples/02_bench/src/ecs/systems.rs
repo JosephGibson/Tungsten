@@ -3,7 +3,7 @@
 use std::f32::consts::{PI, TAU};
 
 use glam::Vec2;
-use tungsten::core::{CommandBuffer, Position, Time, World};
+use tungsten::core::{CommandBuffer, Position, Time, With, World};
 
 use super::{
     Acc, Age, Bag, BenchCounters, Brain, COOLDOWN_PERIODS, Cooldowns, EcsCounts, FACTIONS, Faction,
@@ -52,7 +52,7 @@ fn xorshift(state: &mut u32) -> u32 {
 /// below `LOW_HEALTH`. Speed is capped at `MAX_SPEED`.
 pub(super) fn brain(world: &mut World) {
     let dt = delta_seconds(world);
-    for (_, brain, vel, health) in world.query3_mut::<Brain, Vel, Health>() {
+    for (brain, vel, health) in world.query_mut::<(&mut Brain, &mut Vel, &mut Health)>() {
         brain.timer -= dt;
         if brain.timer <= 0.0 {
             let roll = xorshift(&mut brain.seed);
@@ -96,7 +96,7 @@ pub(super) fn brain(world: &mut World) {
 /// Branching timers: each expired cooldown restarts its period.
 pub(super) fn cooldowns(world: &mut World) {
     let dt = delta_seconds(world);
-    for (_, cooldowns) in world.query_mut::<Cooldowns>() {
+    for cooldowns in world.query_mut::<&mut Cooldowns>() {
         for (timer, period) in cooldowns.0.iter_mut().zip(COOLDOWN_PERIODS) {
             *timer -= dt;
             if *timer <= 0.0 {
@@ -106,12 +106,12 @@ pub(super) fn cooldowns(world: &mut World) {
     }
 }
 
-/// The `query2_opt2_mut` optional-column path: `Regen` shortens a cooldown,
-/// `Stats` tracks health.
+/// The optional-column path: `Regen` shortens a cooldown, `Stats` tracks
+/// health.
 pub(super) fn buffs(world: &mut World) {
     let dt = delta_seconds(world);
-    for (_, health, cooldowns, regen, stats) in
-        world.query2_opt2_mut::<Health, Cooldowns, Regen, Stats>()
+    for (health, cooldowns, regen, stats) in
+        world.query_mut::<(&Health, &mut Cooldowns, Option<&Regen>, Option<&mut Stats>)>()
     {
         if let Some(regen) = regen {
             cooldowns.0[1] -= regen.0 * BUFF_RATE * dt;
@@ -124,14 +124,14 @@ pub(super) fn buffs(world: &mut World) {
 
 pub(super) fn regen(world: &mut World) {
     let dt = delta_seconds(world);
-    for (_, health, regen) in world.query2_mut::<Health, Regen>() {
+    for (health, regen) in world.query_mut::<(&mut Health, &Regen)>() {
         health.0 = (health.0 + regen.0 * dt).min(MAX_HEALTH);
     }
 }
 
 pub(super) fn stats_decay(world: &mut World) {
     let keep = 1.0 - STATS_DECAY * delta_seconds(world);
-    for (_, stats) in world.query_mut::<Stats>() {
+    for stats in world.query_mut::<&mut Stats>() {
         for stat in &mut stats.0 {
             *stat = *stat * keep + STATS_FLOOR;
         }
@@ -140,7 +140,7 @@ pub(super) fn stats_decay(world: &mut World) {
 
 pub(super) fn accelerate(world: &mut World) {
     let dt = delta_seconds(world);
-    for (_, vel, acc) in world.query2_mut::<Vel, Acc>() {
+    for (vel, acc) in world.query_mut::<(&mut Vel, &Acc)>() {
         vel.0 += acc.0 * dt;
     }
 }
@@ -155,7 +155,7 @@ pub(super) fn follow(world: &mut World) {
         return;
     };
     scratch.0.clear();
-    for (_, follow, position) in world.query2::<Follow, Position>() {
+    for (follow, position) in world.query::<(&Follow, &Position)>() {
         let leader = world
             .get::<Position>(follow.0)
             .map_or(position.0, |leader| leader.0);
@@ -163,7 +163,10 @@ pub(super) fn follow(world: &mut World) {
             .0
             .push((leader - position.0).normalize_or_zero() * (FOLLOW_ACCEL * dt));
     }
-    for ((_, _, vel), steer) in world.query2_mut::<Follow, Vel>().zip(&scratch.0) {
+    for (vel, steer) in world
+        .query_mut_filtered::<&mut Vel, With<Follow>>()
+        .zip(&scratch.0)
+    {
         vel.0 += *steer;
     }
     let lookups = scratch.0.len() as u32;
@@ -173,14 +176,14 @@ pub(super) fn follow(world: &mut World) {
 
 pub(super) fn integrate(world: &mut World) {
     let dt = delta_seconds(world);
-    for (_, position, vel) in world.query2_mut::<Position, Vel>() {
+    for (position, vel) in world.query_mut::<(&mut Position, &Vel)>() {
         position.0 += vel.0 * dt;
     }
 }
 
 /// Branching wrap into the viewport-sized world.
 pub(super) fn bounds_wrap(world: &mut World) {
-    for (_, position) in world.query_mut::<Position>() {
+    for position in world.query_mut::<&mut Position>() {
         let point = &mut position.0;
         if point.x < 0.0 {
             point.x += VIEWPORT.x;
@@ -197,7 +200,7 @@ pub(super) fn bounds_wrap(world: &mut World) {
 
 /// Heading eases toward the velocity direction through `atan2`.
 pub(super) fn heading(world: &mut World) {
-    for (_, heading, vel) in world.query2_mut::<Heading, Vel>() {
+    for (heading, vel) in world.query_mut::<(&mut Heading, &Vel)>() {
         let target = vel.0.y.atan2(vel.0.x);
         let mut turn = target - heading.0;
         if turn > PI {
@@ -215,7 +218,7 @@ pub(super) fn heading(world: &mut World) {
 }
 
 pub(super) fn tint(world: &mut World) {
-    for (_, tint, health) in world.query2_mut::<Tint, Health>() {
+    for (tint, health) in world.query_mut::<(&mut Tint, &Health)>() {
         let t = health.0 / MAX_HEALTH;
         tint.0 = [(255.0 * (1.0 - t)) as u8, (255.0 * t) as u8, 64, 255];
     }
@@ -223,7 +226,7 @@ pub(super) fn tint(world: &mut World) {
 
 pub(super) fn age_phase(world: &mut World) {
     let dt = delta_seconds(world);
-    for (_, age, phase) in world.query2_mut::<Age, Phase>() {
+    for (age, phase) in world.query_mut::<(&mut Age, &mut Phase)>() {
         age.0 += dt;
         if age.0 >= MAX_AGE {
             age.0 = 0.0;
@@ -238,7 +241,7 @@ pub(super) fn age_phase(world: &mut World) {
 /// Read-only reduction: bag totals per team.
 pub(super) fn team_bags(world: &mut World) {
     let mut totals = [0_u64; TEAMS];
-    for (_, team, bag) in world.query2::<Team, Bag>() {
+    for (team, bag) in world.query::<(&Team, &Bag)>() {
         totals[team.0 as usize] += bag.0.iter().map(|&item| u64::from(item)).sum::<u64>();
     }
     if let Some(reductions) = world.get_resource_mut::<Reductions>() {
@@ -249,7 +252,7 @@ pub(super) fn team_bags(world: &mut World) {
 /// Read-only reduction: faction histogram over health buckets, read from `Tint`.
 pub(super) fn faction_histogram(world: &mut World) {
     let mut histogram = [[0_u32; HEALTH_BUCKETS]; FACTIONS];
-    for (_, faction, tint) in world.query2::<Faction, Tint>() {
+    for (faction, tint) in world.query::<(&Faction, &Tint)>() {
         histogram[faction.0 as usize][(tint.0[1] >> 6) as usize] += 1;
     }
     if let Some(reductions) = world.get_resource_mut::<Reductions>() {

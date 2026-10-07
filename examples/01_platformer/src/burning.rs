@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use glam::Vec2;
 use tungsten::core::{
     Entity, EventQueue, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, Time,
-    Transform, World,
+    Transform, With, World,
 };
 use tungsten::physics::{CollisionEvent, Position};
 
@@ -37,7 +37,10 @@ pub(crate) fn ignite(world: &mut World, entity: Entity) {
 
 pub(crate) fn tick_ball_fire(world: &mut World) {
     let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
-    for entity in world.query_entities::<BallBurn>() {
+    for entity in world
+        .query_filtered::<Entity, With<BallBurn>>()
+        .collect::<Vec<_>>()
+    {
         let burn = world.get_mut::<BallBurn>(entity).unwrap();
         burn.remaining = (burn.remaining - dt).max(0.0);
     }
@@ -54,7 +57,7 @@ fn cell(position: Vec2) -> (i32, i32) {
 /// piles, which no longer emit physics contacts. Sources are frozen per pass.
 pub(crate) fn spread_ball_fire(world: &mut World) {
     let sources: HashSet<_> = world
-        .query::<BallBurn>()
+        .query::<(Entity, &BallBurn)>()
         .filter(|(_, b)| b.remaining > 0.0)
         .map(|(e, _)| e)
         .collect();
@@ -74,7 +77,7 @@ pub(crate) fn spread_ball_fire(world: &mut World) {
         }
     }
     let mut cells: HashMap<(i32, i32), Vec<(Entity, Vec2)>> = HashMap::new();
-    for (e, _) in world.query::<SmallBall>() {
+    for (e, _) in world.query::<(Entity, &SmallBall)>() {
         if world.get::<BallBurn>(e).is_some() {
             continue;
         }
@@ -111,13 +114,15 @@ pub(crate) fn spread_ball_fire(world: &mut World) {
 /// sprite; only this bounded pool produces additional drifting particles.
 pub(crate) fn ball_fire_particles(world: &mut World) {
     let burning: Vec<_> = world
-        .query::<BallBurn>()
+        .query::<(Entity, &BallBurn)>()
         .filter(|(_, burn)| burn.remaining > 0.0)
         .filter_map(|(e, _)| world.get::<Position>(e).map(|p| p.0))
         .collect();
     let source_cap = BALL_FIRE_EMITTER_CAP / 2;
     let count = burning.len().min(source_cap) * 2;
-    let mut emitters = world.query_entities::<BallFireEmitter>();
+    let mut emitters = world
+        .query_filtered::<Entity, With<BallFireEmitter>>()
+        .collect::<Vec<_>>();
     for entity in emitters.drain(count.min(emitters.len())..) {
         world.despawn(entity);
     }

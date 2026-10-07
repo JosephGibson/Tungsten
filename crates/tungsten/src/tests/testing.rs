@@ -14,7 +14,7 @@ use tungsten_core::{
     ActionMap, AssetRegistry, AudioCommand, AudioCommands, CameraController, CameraMode,
     CameraState, Collider, Config, Easing, Entity, InputState, KeyCode, Particle, ParticleEmitter,
     ParticleEmitterState, PhysicsConfig, Position, RigidBody, Sprite, Time, Transform, Tween,
-    TweenChannel, TweenComplete, Velocity, Visibility, World,
+    TweenChannel, TweenComplete, Velocity, Visibility, With, World,
 };
 use tungsten_render::{QuadInstance, TextSection};
 
@@ -94,7 +94,13 @@ fn frames_run_particles_tweens_the_command_flush_and_event_rotation() {
     assert_eq!(harness.step(1), 1);
 
     // The particle stage queued the burst; the command flush spawned it.
-    assert_eq!(harness.world().query_entities::<Particle>().len(), 8);
+    assert_eq!(
+        harness
+            .world()
+            .query_filtered::<Entity, With<Particle>>()
+            .count(),
+        8
+    );
     let bursts: Vec<u32> = harness
         .events::<ParticleBurstEmitted>()
         .map(|burst| burst.count)
@@ -115,7 +121,13 @@ fn frames_run_particles_tweens_the_command_flush_and_event_rotation() {
     harness.step(1);
     assert_eq!(harness.events::<ParticleBurstEmitted>().count(), 0);
     assert_eq!(harness.events::<TweenComplete>().count(), 0);
-    assert_eq!(harness.world().query_entities::<Particle>().len(), 8);
+    assert_eq!(
+        harness
+            .world()
+            .query_filtered::<Entity, With<Particle>>()
+            .count(),
+        8
+    );
 }
 
 #[test]
@@ -330,7 +342,8 @@ fn held(world: &World, tweened: Entity, body: Entity) -> Held {
     Held {
         tween_x: world.get::<Transform>(tweened).unwrap().position.x,
         particles: world
-            .query_entities::<Particle>()
+            .query_filtered::<Entity, With<Particle>>()
+            .collect::<Vec<_>>()
             .into_iter()
             .map(|particle| (particle, world.get::<Transform>(particle).unwrap().position))
             .collect(),

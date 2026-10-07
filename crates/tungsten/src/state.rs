@@ -9,7 +9,7 @@
 //! game (`D-129`).
 
 use tungsten_core::post::PostPass;
-use tungsten_core::{CommandBuffer, Time, World};
+use tungsten_core::{CommandBuffer, Entity, Time, World};
 
 use crate::debug_hud::HudActiveState;
 use crate::transition::{Transition, TransitionState, TransitionStep};
@@ -182,7 +182,7 @@ impl Default for StateStack {
 /// Queue despawn for entities owned by `id`; removal waits for command flush.
 pub fn despawn_scene_entities(world: &mut World, id: StateId) {
     let targets: Vec<_> = world
-        .query::<SceneEntity>()
+        .query::<(Entity, &SceneEntity)>()
         .filter_map(|(entity, marker)| (marker.state_id == id).then_some(entity))
         .collect();
     if targets.is_empty() {

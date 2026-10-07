@@ -13,8 +13,8 @@ use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use glam::Vec2;
 use std::hint::black_box;
 use tungsten_core::{
-    Aabb, Collider, Pcg32, PhysicsConfig, Position, RigidBody, SpatialGrid, Time, Velocity, World,
-    physics_step,
+    Aabb, Collider, Entity, Pcg32, PhysicsConfig, Position, RigidBody, SpatialGrid, Time, Velocity,
+    Without, World, physics_step,
 };
 
 const DT: f32 = 1.0 / 60.0;
@@ -283,8 +283,12 @@ fn bench_position_integration_50k(c: &mut Criterion) {
     // columnar pass, Collider excluded per archetype.
     c.bench_function("position_integration_50k", |b| {
         b.iter(|| {
-            for (_entity, vel, pos, _body) in
-                world.query3_mut_without::<Velocity, Position, RigidBody, Collider>()
+            for (_entity, vel, pos, _body) in world.query_mut_filtered::<(
+                Entity,
+                &mut Velocity,
+                &mut Position,
+                &mut RigidBody,
+            ), Without<Collider>>()
             {
                 pos.0 += vel.0 * black_box(dt);
             }

@@ -1,4 +1,5 @@
 use super::*;
+use tungsten::core::With;
 
 #[test]
 fn audio_controls_and_damage_flash_shake_remain_wired() {
@@ -132,12 +133,20 @@ fn moving_fire_sweeps_fast_balls_once_and_explosions_do_not_hurt_players() {
     world.insert(ball, Position(Vec2::new(200.0, 200.0)));
     hazard_contacts(world);
     assert!(world.get::<Ball>(ball).is_none());
-    assert_eq!(world.query::<Explosion>().count(), 1);
-    assert_eq!(world.query::<crate::state::TransientEmitter>().count(), 1);
+    assert_eq!(world.query::<(Entity, &Explosion)>().count(), 1);
+    assert_eq!(
+        world
+            .query::<(Entity, &crate::state::TransientEmitter)>()
+            .count(),
+        1
+    );
     // The crossing fire hit the player once. Neither overlapping fire nor the
     // ball burst can add another hit during immunity.
     assert_eq!(world.get::<Health>(player).unwrap().hearts, 2);
-    for e in world.query_entities::<Hazard>() {
+    for e in world
+        .query_filtered::<Entity, With<Hazard>>()
+        .collect::<Vec<_>>()
+    {
         world.despawn(e);
     }
     world.get_mut::<Health>(player).unwrap().immunity = 0.0;
@@ -145,8 +154,13 @@ fn moving_fire_sweeps_fast_balls_once_and_explosions_do_not_hurt_players() {
     assert_eq!(world.get::<Health>(player).unwrap().hearts, 2);
     harness.step(150);
     let world = harness.world();
-    assert_eq!(world.query::<Explosion>().count(), 0);
-    assert_eq!(world.query::<crate::state::TransientEmitter>().count(), 0);
+    assert_eq!(world.query::<(Entity, &Explosion)>().count(), 0);
+    assert_eq!(
+        world
+            .query::<(Entity, &crate::state::TransientEmitter)>()
+            .count(),
+        0
+    );
 }
 
 #[test]
@@ -163,13 +177,15 @@ fn explosion_bursts_and_rings_stay_bounded_under_dense_ball_contact() {
         world.insert(ball, Position(Vec2::ZERO));
     }
     hazard_contacts(&mut world);
-    assert_eq!(world.query::<Ball>().count(), 0);
+    assert_eq!(world.query::<(Entity, &Ball)>().count(), 0);
     assert_eq!(
-        world.query::<Explosion>().count(),
+        world.query::<(Entity, &Explosion)>().count(),
         crate::state::TRANSIENT_EMITTER_CAP
     );
     assert_eq!(
-        world.query::<crate::state::TransientEmitter>().count(),
+        world
+            .query::<(Entity, &crate::state::TransientEmitter)>()
+            .count(),
         crate::state::TRANSIENT_EMITTER_CAP
     );
 }
@@ -190,7 +206,7 @@ fn moving_fire_emits_a_bounded_particle_trail() {
     load_presentation_assets(world);
     spawn_obstacles(world);
     let flames: Vec<_> = world
-        .query::<Hazard>()
+        .query::<(Entity, &Hazard)>()
         .filter(|(_, h)| h.fire)
         .map(|(e, _)| e)
         .collect();
@@ -202,8 +218,8 @@ fn moving_fire_emits_a_bounded_particle_trail() {
     );
     harness.step(120);
     let world = harness.world();
-    assert!(world.query::<Particle>().count() > 60);
-    assert!(world.query::<Particle>().count() <= 240);
+    assert!(world.query::<(Entity, &Particle)>().count() > 60);
+    assert!(world.query::<(Entity, &Particle)>().count() <= 240);
     for e in flames {
         assert!(world.get::<ParticleEmitterState>(e).unwrap().active_count <= 40);
     }
@@ -227,12 +243,12 @@ fn fireballs_face_their_travel_and_drag_anchored_drips() {
     spawn_test_player(&mut world, PLAYER_SPAWN);
     spawn_obstacles(&mut world);
     let fires: Vec<_> = world
-        .query::<Hazard>()
+        .query::<(Entity, &Hazard)>()
         .filter(|(_, h)| h.fire)
         .map(|(e, _)| e)
         .collect();
     let drips: Vec<_> = world
-        .query::<EmitterAnchor>()
+        .query::<(Entity, &EmitterAnchor)>()
         .map(|(e, a)| (e, a.parent))
         .collect();
     assert_eq!(drips.len(), fires.len());

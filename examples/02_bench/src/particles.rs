@@ -32,7 +32,7 @@ use serde_json::{Value as Json, json};
 use tungsten::core::assets::AnimationFrame;
 use tungsten::core::{
     AnimationData, AnimationRegistry, AnimationState, AssetRegistry, BlendMode, CameraState, Curve,
-    EmissionKind, FilterMode, InitialVelocity, Particle, ParticleBudget, ParticleConfig,
+    EmissionKind, Entity, FilterMode, InitialVelocity, Particle, ParticleBudget, ParticleConfig,
     ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, ParticleRender, Pcg32, Range,
     Sprite, Time, Transform, Visibility, World, splitmix64,
 };
@@ -468,7 +468,7 @@ fn move_emitters(world: &mut World) {
         return;
     }
     let elapsed = state.elapsed;
-    for (_, transform, path) in world.query2_mut::<Transform, EmitterPath>() {
+    for (_, transform, path) in world.query_mut::<(Entity, &mut Transform, &mut EmitterPath)>() {
         let angle = path.rate * elapsed + path.phase;
         transform.position = path.center + path.amplitude * Vec2::new(angle.x.sin(), angle.y.cos());
     }
@@ -477,7 +477,9 @@ fn move_emitters(world: &mut World) {
 /// Clears each burst emitter's fired latch once per period.
 fn rearm_bursts(world: &mut World) {
     let dt = dt_seconds(world);
-    for (_, emitter, rearm) in world.query2_mut::<ParticleEmitterState, BurstRearm>() {
+    for (_, emitter, rearm) in
+        world.query_mut::<(Entity, &mut ParticleEmitterState, &mut BurstRearm)>()
+    {
         rearm.timer += dt;
         if rearm.timer >= rearm.period {
             rearm.timer -= rearm.period;
@@ -493,7 +495,7 @@ fn animate_sprites(world: &mut World) {
         return;
     };
     let mut changes = 0;
-    for (_, state, sprite) in world.query2_mut::<AnimationState, Sprite>() {
+    for (_, state, sprite) in world.query_mut::<(Entity, &mut AnimationState, &mut Sprite)>() {
         if state.finished {
             state.frame_index = 0;
             state.accumulated_ms = 0.0;
@@ -527,7 +529,7 @@ impl FrameCounters for ParticleCounts {
         let _ = write!(
             line,
             " live={} emitters={} animated={} frame_changes={}",
-            world.query::<Particle>().count(),
+            world.query::<(Entity, &Particle)>().count(),
             state.emitters,
             state.animated,
             self.frame_changes

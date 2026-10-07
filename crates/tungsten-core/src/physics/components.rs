@@ -2,6 +2,8 @@
 
 use glam::Vec2;
 
+use crate::ecs::bundle::{Bundle, BundleSink};
+
 /// World-space position.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Position(pub Vec2);
@@ -110,5 +112,74 @@ impl RigidBody {
     pub fn with_restitution(mut self, restitution: f32) -> Self {
         self.restitution = restitution.clamp(0.0, 1.0);
         self
+    }
+}
+
+/// One body's physics components, inserted in one archetype move:
+/// `world.spawn_with(RigidBodyBundle::dynamic(position, collider))`, or
+/// `.with((Player, transform))` for the entity's other components.
+///
+/// A dynamic body gets `Position`, `Velocity`, `Collider` and `RigidBody`; a
+/// static one the same without `Velocity`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RigidBodyBundle {
+    /// Where the body is.
+    pub position: Position,
+    /// The body's velocity; `None` leaves the component off.
+    pub velocity: Option<Velocity>,
+    /// The body's shape.
+    pub collider: Collider,
+    /// Static or dynamic, with its mass and restitution.
+    pub body: RigidBody,
+}
+
+impl RigidBodyBundle {
+    /// A unit-mass dynamic body at rest.
+    #[must_use]
+    pub fn dynamic(position: Position, collider: Collider) -> Self {
+        Self {
+            position,
+            velocity: Some(Velocity(Vec2::ZERO)),
+            collider,
+            body: RigidBody::dynamic(),
+        }
+    }
+
+    /// An immovable static body, with no `Velocity`.
+    #[must_use]
+    pub fn r#static(position: Position, collider: Collider) -> Self {
+        Self {
+            position,
+            velocity: None,
+            collider,
+            body: RigidBody::r#static(),
+        }
+    }
+
+    /// The bundle with `velocity`; on a static body this adds the component.
+    #[must_use]
+    pub fn with_velocity(mut self, velocity: Velocity) -> Self {
+        self.velocity = Some(velocity);
+        self
+    }
+
+    /// The bundle with `body` in place of its constructor's.
+    #[must_use]
+    pub fn with_body(mut self, body: RigidBody) -> Self {
+        self.body = body;
+        self
+    }
+}
+
+impl Bundle for RigidBodyBundle {
+    /// `Position`, `Velocity` when there is one, `Collider`, `RigidBody`.
+    #[inline]
+    fn put<S: BundleSink>(self, sink: &mut S) {
+        sink.put(self.position);
+        if let Some(velocity) = self.velocity {
+            sink.put(velocity);
+        }
+        sink.put(self.collider);
+        sink.put(self.body);
     }
 }

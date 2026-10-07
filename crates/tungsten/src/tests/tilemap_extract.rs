@@ -93,7 +93,7 @@ fn reference_extract(world: &World) -> Vec<Vec<SpriteBatch>> {
     let (view_min, view_max) = camera.visible_world_aabb(window.width as f32, window.height as f32);
 
     let mut layers_out = Vec::new();
-    for (_entity, instance) in world.query::<TilemapInstance>() {
+    for (_entity, instance) in world.query::<(Entity, &TilemapInstance)>() {
         let data = tilemaps.get(&instance.id).unwrap();
         let tw = data.tile_width as f32;
         let th = data.tile_height as f32;

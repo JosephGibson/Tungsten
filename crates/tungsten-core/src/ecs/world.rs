@@ -1,10 +1,14 @@
-use std::any::TypeId;
+use std::any::{TypeId, type_name};
 use std::collections::HashSet;
 
 use super::archetype::{AnyColumn, Archetype, TypedVec};
+use super::bundle::{Bundle, BundleScratch};
 use super::command_buffer::{Command, CommandBuffer, CommandTarget};
 use super::entity::Entity;
 use super::event_queue::EventQueue;
+use super::query::{
+    Columns, ColumnsMut, OptionalColumn, QueryData, QueryFilter, ReadOnlyQueryData,
+};
 use super::resource::ResourceMap;
 use super::storage::Archetypes;
 
@@ -12,12 +16,15 @@ use super::storage::Archetypes;
 ///
 /// D-036: archetypal storage with contiguous columns and edge-cached transitions.
 pub struct World {
-    archetypes: Archetypes,
+    pub(super) archetypes: Archetypes,
     resources: ResourceMap,
     /// One flusher per event type `register_event` registered, in order;
     /// `flush_events` runs them once per frame (`D-040`).
     event_flushers: Vec<fn(&mut World)>,
     event_types: HashSet<TypeId>,
+    /// Staging for [`spawn_with`](Self::spawn_with) and
+    /// [`insert_bundle`](Self::insert_bundle).
+    bundle_scratch: BundleScratch,
 }
 
 fn flush_event_queue<T: 'static>(world: &mut World) {
@@ -34,6 +41,7 @@ impl World {
             resources: ResourceMap::new(),
             event_flushers: Vec::new(),
             event_types: HashSet::new(),
+            bundle_scratch: BundleScratch::default(),
         }
     }
 
@@ -96,6 +104,45 @@ impl World {
         self.archetypes.insert(entity, component);
     }
 
+    /// Spawn an entity with `bundle`'s components, moved into their
+    /// archetype in one step: `world.spawn_with((Player, transform, sprite))`.
+    /// The entity ends as a run of [`insert`](Self::insert)s would leave it,
+    /// so a type the bundle names twice keeps the later value
+    /// ([`Bundle`](super::Bundle)).
+    pub fn spawn_with<B: Bundle>(&mut self, bundle: B) -> Entity {
+        self.stage_bundle(bundle);
+        let entity = self.archetypes.spawn();
+        self.apply_bundle(entity);
+        entity
+    }
+
+    /// Insert `bundle`'s components on `entity` in one archetype move,
+    /// overwriting the types it already has, as a run of
+    /// [`insert`](Self::insert)s would.
+    ///
+    /// # Panics
+    /// Panics if `entity` is dead (D-022), as `insert` does.
+    pub fn insert_bundle<B: Bundle>(&mut self, entity: Entity, bundle: B) {
+        self.stage_bundle(bundle);
+        self.apply_bundle(entity);
+    }
+
+    /// Stage `bundle`'s values in the scratch. The World itself is untouched
+    /// until [`apply_bundle`](Self::apply_bundle), so a panic in the
+    /// bundle's `put` leaves it as it was.
+    fn stage_bundle<B: Bundle>(&mut self, bundle: B) {
+        self.bundle_scratch.reset();
+        bundle.put(&mut self.bundle_scratch);
+    }
+
+    /// Apply the staged bundle to `entity` as one archetype move (D-084).
+    fn apply_bundle(&mut self, entity: Entity) {
+        let BundleScratch { values, run } = &mut self.bundle_scratch;
+        self.archetypes
+            .insert_run(entity, run.iter().copied(), values);
+        run.clear();
+    }
+
     pub fn remove_component<T: 'static>(&mut self, entity: Entity) -> Option<T> {
         self.archetypes.remove::<T>(entity)
     }
@@ -116,20 +163,102 @@ impl World {
         self.archetypes.has::<T>(entity)
     }
 
-    /// Iterate `(Entity, &T)` in archetype/row order.
-    pub fn query<T: 'static>(&self) -> impl Iterator<Item = (Entity, &T)> {
-        self.archetypes
-            .archetypes_with::<T>()
-            .flat_map(|(arch, index)| {
-                let col = arch.columns[index]
-                    .typed::<T>()
-                    .expect("query: column type mismatch");
-                arch.entities.iter().zip(col.0.iter()).map(|(&e, v)| (e, v))
-            })
+    /// Rows matching the query data `Q`, read-only: one item (`&A`,
+    /// `Option<&A>`, `Entity`) or a tuple of up to eight, as in
+    /// `world.query::<(Entity, &A, Option<&B>)>()`. Rows come in archetype
+    /// order, then row order ([`query`](super::query)).
+    pub fn query<'w, Q: ReadOnlyQueryData<'w>>(&'w self) -> impl Iterator<Item = Q> {
+        self.query_filtered::<Q, ()>()
+    }
+
+    /// [`query`](Self::query) over the archetypes that pass `F`: `With<T>`,
+    /// `Without<T>`, `()` or a tuple of up to four of them.
+    pub fn query_filtered<'w, Q: ReadOnlyQueryData<'w>, F: QueryFilter>(
+        &'w self,
+    ) -> impl Iterator<Item = Q> {
+        self.query_slices_filtered::<Q, F>()
+            .flat_map(|(rows, slices)| Q::iter(slices, rows))
+    }
+
+    /// The row count and `Q`'s column slices of each matching archetype, for
+    /// a pass over whole columns.
+    pub fn query_slices<'w, Q: ReadOnlyQueryData<'w>>(
+        &'w self,
+    ) -> impl Iterator<Item = (usize, Q::Slices)> {
+        self.query_slices_filtered::<Q, ()>()
+    }
+
+    /// [`query_slices`](Self::query_slices) over the archetypes that pass
+    /// `F`.
+    pub fn query_slices_filtered<'w, Q: ReadOnlyQueryData<'w>, F: QueryFilter>(
+        &'w self,
+    ) -> impl Iterator<Item = (usize, Q::Slices)> {
+        self.archetypes.archetypes.iter().filter_map(|arch| {
+            if Q::matches(&arch.component_types) && F::matches(&arch.component_types) {
+                Some((arch.entities.len(), Q::slices(Columns::of(arch))))
+            } else {
+                None
+            }
+        })
+    }
+
+    /// Rows matching the query data `Q`, which may write: `&mut A` or
+    /// `Option<&mut A>` alone or in a tuple with the read-only items, as in
+    /// `world.query_mut::<(&mut A, &B, Option<&mut C>)>()`. Each column is
+    /// borrowed once per archetype.
+    ///
+    /// # Panics
+    /// Panics, naming `Q`, if two items name the same component.
+    pub fn query_mut<'w, Q: QueryData<'w>>(&'w mut self) -> impl Iterator<Item = Q> {
+        self.query_mut_filtered::<Q, ()>()
+    }
+
+    /// [`query_mut`](Self::query_mut) over the archetypes that pass `F`.
+    ///
+    /// # Panics
+    /// Panics, naming `Q`, if two items name the same component.
+    pub fn query_mut_filtered<'w, Q: QueryData<'w>, F: QueryFilter>(
+        &'w mut self,
+    ) -> impl Iterator<Item = Q> {
+        self.query_mut_slices_filtered::<Q, F>()
+            .flat_map(|(rows, slices)| Q::iter(slices, rows))
+    }
+
+    /// Mutable counterpart of [`query_slices`](Self::query_slices).
+    ///
+    /// # Panics
+    /// Panics, naming `Q`, if two items name the same component.
+    pub fn query_mut_slices<'w, Q: QueryData<'w>>(
+        &'w mut self,
+    ) -> impl Iterator<Item = (usize, Q::Slices)> {
+        self.query_mut_slices_filtered::<Q, ()>()
+    }
+
+    /// [`query_mut_slices`](Self::query_mut_slices) over the archetypes that
+    /// pass `F`.
+    ///
+    /// # Panics
+    /// Panics, naming `Q`, if two items name the same component.
+    pub fn query_mut_slices_filtered<'w, Q: QueryData<'w>, F: QueryFilter>(
+        &'w mut self,
+    ) -> impl Iterator<Item = (usize, Q::Slices)> {
+        Q::check_access();
+        self.archetypes.archetypes.iter_mut().filter_map(|arch| {
+            if Q::matches(&arch.component_types) && F::matches(&arch.component_types) {
+                let rows = arch.entities.len();
+                Some((rows, Q::slices_mut(ColumnsMut::of(arch))))
+            } else {
+                None
+            }
+        })
     }
 
     /// Collect entities with `T`; use before mixed mutable access.
     #[must_use]
+    #[deprecated(
+        since = "0.54.0",
+        note = "use `query_filtered::<Entity, With<T>>()` and collect"
+    )]
     pub fn query_entities<T: 'static>(&self) -> Vec<Entity> {
         self.archetypes
             .archetypes_with::<T>()
@@ -138,6 +267,7 @@ impl World {
     }
 
     /// Immutable two-component query; one downcast per archetype/type.
+    #[deprecated(since = "0.54.0", note = "use `query::<(Entity, &A, &B)>()`")]
     pub fn query2<A: 'static, B: 'static>(&self) -> impl Iterator<Item = (Entity, &A, &B)> {
         let a_id = TypeId::of::<A>();
         let b_id = TypeId::of::<B>();
@@ -156,6 +286,10 @@ impl World {
 
     /// Collect entities with `A` and `B`; use before mutable access.
     #[must_use]
+    #[deprecated(
+        since = "0.54.0",
+        note = "use `query_filtered::<Entity, (With<A>, With<B>)>()` and collect"
+    )]
     pub fn query2_entities<A: 'static, B: 'static>(&self) -> Vec<Entity> {
         let a_id = TypeId::of::<A>();
         let b_id = TypeId::of::<B>();
@@ -166,6 +300,7 @@ impl World {
     }
 
     /// Immutable three-component query.
+    #[deprecated(since = "0.54.0", note = "use `query::<(Entity, &A, &B, &C)>()`")]
     pub fn query3<A: 'static, B: 'static, C: 'static>(
         &self,
     ) -> impl Iterator<Item = (Entity, &A, &B, &C)> {
@@ -192,6 +327,10 @@ impl World {
     /// per-entity lookups — so rows in archetypes lacking `C` or `D` yield
     /// `None` at zero cost. Iterates the same archetype set in the same
     /// order as `query2::<A, B>`.
+    #[deprecated(
+        since = "0.54.0",
+        note = "use `query::<(Entity, &A, &B, Option<&C>, Option<&D>)>()`"
+    )]
     pub fn query2_opt2<A: 'static, B: 'static, C: 'static, D: 'static>(
         &self,
     ) -> impl Iterator<Item = (Entity, &A, &B, Option<&C>, Option<&D>)> {
@@ -220,6 +359,10 @@ impl World {
     /// per-entity lookups. Iterates the same archetype set in the same order
     /// as `query3::<A, B, C>`.
     #[allow(clippy::type_complexity)]
+    #[deprecated(
+        since = "0.54.0",
+        note = "use `query::<(Entity, &A, &B, &C, Option<&D>, Option<&E>)>()`"
+    )]
     pub fn query3_opt2<A: 'static, B: 'static, C: 'static, D: 'static, E: 'static>(
         &self,
     ) -> impl Iterator<Item = (Entity, &A, &B, &C, Option<&D>, Option<&E>)> {
@@ -253,6 +396,10 @@ impl World {
     ///
     /// # Panics
     /// Panics if any two of `A`, `B`, `C`, `D` are the same type.
+    #[deprecated(
+        since = "0.54.0",
+        note = "use `query_mut::<(Entity, &A, &mut B, Option<&C>, Option<&mut D>)>()`"
+    )]
     pub fn query2_opt2_mut<A: 'static, B: 'static, C: 'static, D: 'static>(
         &mut self,
     ) -> impl Iterator<Item = (Entity, &A, &mut B, Option<&C>, Option<&mut D>)> {
@@ -296,27 +443,16 @@ impl World {
             })
     }
 
-    /// Iterate `(Entity, &mut T)` in archetype/row order.
-    pub fn query_mut<T: 'static>(&mut self) -> impl Iterator<Item = (Entity, &mut T)> {
-        self.archetypes
-            .archetypes_with_mut::<T>()
-            .flat_map(|(arch, index)| {
-                let Archetype {
-                    columns, entities, ..
-                } = arch;
-                let col = columns[index]
-                    .typed_mut::<T>()
-                    .expect("query_mut: column type mismatch");
-                entities.iter().zip(col.0.iter_mut()).map(|(&e, v)| (e, v))
-            })
-    }
-
     /// Mutable two-component query; per-archetype split column borrows (D-036).
     ///
     /// Both refs are mutable; distinct `TypeId`s guarantee disjoint columns.
     ///
     /// # Panics
     /// Panics if `A` and `B` are the same type.
+    #[deprecated(
+        since = "0.54.0",
+        note = "use `query_mut::<(Entity, &mut A, &mut B)>()`"
+    )]
     pub fn query2_mut<A: 'static, B: 'static>(
         &mut self,
     ) -> impl Iterator<Item = (Entity, &mut A, &mut B)> {
@@ -348,6 +484,10 @@ impl World {
     ///
     /// # Panics
     /// Panics if any two of `A`, `B`, `C` are the same type.
+    #[deprecated(
+        since = "0.54.0",
+        note = "use `query_mut::<(Entity, &mut A, &mut B, &mut C)>()`"
+    )]
     pub fn query3_mut<A: 'static, B: 'static, C: 'static>(
         &mut self,
     ) -> impl Iterator<Item = (Entity, &mut A, &mut B, &mut C)> {
@@ -361,6 +501,10 @@ impl World {
     ///
     /// # Panics
     /// Panics if any two of `A`, `B`, `C`, `X` are the same type.
+    #[deprecated(
+        since = "0.54.0",
+        note = "use `query_mut_filtered::<(Entity, &mut A, &mut B, &mut C), Without<X>>()`"
+    )]
     pub fn query3_mut_without<A: 'static, B: 'static, C: 'static, X: 'static>(
         &mut self,
     ) -> impl Iterator<Item = (Entity, &mut A, &mut B, &mut C)> {
@@ -407,6 +551,10 @@ impl World {
 
     /// Collect entities with `A`, `B`, and `C`; use before mutable access.
     #[must_use]
+    #[deprecated(
+        since = "0.54.0",
+        note = "use `query_filtered::<Entity, (With<A>, With<B>, With<C>)>()` and collect"
+    )]
     pub fn query3_entities<A: 'static, B: 'static, C: 'static>(&self) -> Vec<Entity> {
         let a_id = TypeId::of::<A>();
         let b_id = TypeId::of::<B>();
@@ -428,6 +576,33 @@ impl World {
 
     pub fn get_resource_mut<T: 'static>(&mut self) -> Option<&mut T> {
         self.resources.get_mut::<T>()
+    }
+
+    /// The resource `T`, for one the World always holds (what `App`
+    /// inserts); [`get_resource`](Self::get_resource) is the `Option` form.
+    ///
+    /// # Panics
+    /// Panics, naming `T`, if the World has no `T`.
+    #[must_use]
+    #[track_caller]
+    pub fn resource<T: 'static>(&self) -> &T {
+        match self.resources.get::<T>() {
+            Some(resource) => resource,
+            None => missing_resource::<T>(),
+        }
+    }
+
+    /// Mutable counterpart of [`resource`](Self::resource);
+    /// [`get_resource_mut`](Self::get_resource_mut) is the `Option` form.
+    ///
+    /// # Panics
+    /// Panics, naming `T`, if the World has no `T`.
+    #[track_caller]
+    pub fn resource_mut<T: 'static>(&mut self) -> &mut T {
+        match self.resources.get_mut::<T>() {
+            Some(resource) => resource,
+            None => missing_resource::<T>(),
+        }
     }
 
     #[must_use]
@@ -524,20 +699,12 @@ impl Default for World {
     }
 }
 
-/// Zip adapter for optional columns: yields `Some(item)` per row when the
-/// column exists and `None` forever when it does not; the required-column
-/// zip bounds the iteration either way.
-struct OptionalColumn<I>(Option<I>);
-
-impl<I: Iterator> Iterator for OptionalColumn<I> {
-    type Item = Option<I::Item>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self.0.as_mut() {
-            Some(iter) => iter.next().map(Some),
-            None => Some(None),
-        }
-    }
+/// The panic of [`World::resource`] and [`World::resource_mut`], out of
+/// line so the accessors stay small.
+#[cold]
+#[track_caller]
+fn missing_resource<T>() -> ! {
+    panic!("resource `{}` is not in the World", type_name::<T>())
 }
 
 /// Column borrows returned by `split2_opt2_columns_mut`: shared `A`/`C`,

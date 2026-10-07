@@ -46,7 +46,7 @@ use tungsten::core::{
     Curve, Easing, EmissionKind, Entity, EventQueue, InitialVelocity, InputState, MaterialRegistry,
     ParallaxLayer, ParticleConfig, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState,
     ParticleRender, Pcg32, Range, ShakeEvent, Sprite, SpriteAssetId, SpriteSquashStretch,
-    SquashEvent, SquashTrigger, Time, Transform, Visibility, World,
+    SquashEvent, SquashTrigger, Time, Transform, Visibility, With, World,
 };
 use tungsten::particles::spawn_particle_via;
 use tungsten::{App, PostAaState, render::TextSection, request_post_aa};
@@ -634,7 +634,10 @@ fn bounce_system(world: &mut World) {
     // M30: which bouncers hit a wall this tick, for the squash envelope.
     let mut wall_hits: Vec<Entity> = Vec::new();
 
-    for entity in world.query2_entities::<Transform, Bouncer>() {
+    for entity in world
+        .query_filtered::<Entity, (With<Transform>, With<Bouncer>)>()
+        .collect::<Vec<_>>()
+    {
         let (mut velocity, angular_velocity, size) = {
             let b = world.get::<Bouncer>(entity).copied().unwrap();
             (b.velocity, b.angular_velocity, b.size)
@@ -711,7 +714,9 @@ fn bounce_system(world: &mut World) {
 /// Pair collisions as AABB (`Bouncer.size`), resolved by swapping the velocity
 /// component along the shallowest overlap axis and separating along the same.
 fn pair_collision_system(world: &mut World) {
-    let entities = world.query2_entities::<Transform, Bouncer>();
+    let entities = world
+        .query_filtered::<Entity, (With<Transform>, With<Bouncer>)>()
+        .collect::<Vec<_>>();
     let mut snapshots: Vec<(usize, Vec2, f32, Vec2)> = entities
         .iter()
         .enumerate()

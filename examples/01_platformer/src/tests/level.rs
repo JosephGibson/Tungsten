@@ -206,7 +206,7 @@ fn prescribed_platforms_carry_supported_players_and_release_jumps() {
     let mut world = seed_world();
     spawn_obstacles(&mut world);
     let (platform, half) = world
-        .query::<MovingPlatform>()
+        .query::<(Entity, &MovingPlatform)>()
         .next()
         .map(|(e, p)| (e, p.half_width))
         .unwrap();
@@ -243,7 +243,7 @@ fn platforms_support_riders_through_a_complete_cycle_with_real_physics() {
     ]);
     let world = harness.world_mut();
     spawn_obstacles(world);
-    let platform = world.query::<MovingPlatform>().next().unwrap().0;
+    let platform = world.query::<(Entity, &MovingPlatform)>().next().unwrap().0;
     let start = world.get::<Position>(platform).unwrap().0;
     let player = spawn_test_player(
         world,
