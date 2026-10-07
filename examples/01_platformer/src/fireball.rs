@@ -8,7 +8,7 @@ use tungsten::core::{
     ParticleEmitter, ParticleEmitterState, TilemapInstance, TilemapRegistry, Time, Transform,
     World,
 };
-use tungsten::physics::{Collider, Position, Shape};
+use tungsten::physics::{Collider, Position, PrevPosition, Shape};
 
 use crate::gameplay::{EmitterAnchor, Explosion};
 use crate::state::{
@@ -88,6 +88,7 @@ pub(crate) fn spawn_fireball(world: &mut World, position: Vec2, velocity: Vec2) 
     let drip_config = registry.and_then(|r| r.id_for_name("ex10_fireball_drips"));
     let entity = world.spawn();
     world.insert(entity, Position(position));
+    world.insert(entity, PrevPosition(position));
     world.insert(entity, Transform::from_position(position));
     world.insert(entity, CurrentSprite("ex10_fireball_0".into()));
     world.insert(entity, AnimationState::new("ex10_fireball"));
@@ -158,11 +159,7 @@ pub(crate) fn fireball_flight_system(world: &mut World) {
             despawn_fireball(world, entity, missile);
             continue;
         }
-        for e in [Some(entity), missile.drips].into_iter().flatten() {
-            if let Some(transform) = world.get_mut::<Transform>(e) {
-                transform.position = end;
-            }
-        }
+        // `physics_sync` draws the missile and `anchor_emitters` its drips.
         if let Some(position) = world.get_mut::<Position>(entity) {
             position.0 = end;
         }

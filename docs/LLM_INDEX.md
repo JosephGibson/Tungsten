@@ -11,7 +11,7 @@ Task → file map. Open it before a broad search; read only the matching row's f
 | Event lifetime/flush (`D-040`) | `core/ecs/event_queue.rs`, `core/ecs/world.rs` |
 | Frame order, smoke-frame exit, winit loop (`D-018`, `D-043`) | `tungsten/app.rs`, `tungsten/lib.rs` |
 | Schedule, stages, plugins, `DefaultPlugins`, engine system names (`D-128`, `D-133`) | `core/schedule.rs`, `core/physics/plugin.rs`, `tungsten/plugins.rs`, `tungsten/app.rs`, `tungsten/tests/plugins.rs` |
-| Game clock, `Time`, `Timer`, `DeltaTime` (`D-088`, `D-129`, `D-134`) | `core/time.rs`, `core/tests/time.rs`, `tungsten/app.rs`, `tungsten/tests/testing.rs` |
+| Game clock, `Time`, `Timer`, `DeltaTime`, the fixed step, interpolation (`D-088`, `D-129`, `D-134`, `D-137`) | `core/time.rs`, `core/tests/time.rs`, `core/physics/plugin.rs`, `core/ecs/event_queue.rs`, `tungsten/app.rs`, `tungsten/tests/fixed_step.rs`, `tungsten/tests/testing.rs` |
 | Tuple queries, `With`/`Without`, bundles, `spawn_with`, `RigidBodyBundle` (`D-130`, `D-135`) | `core/ecs/query.rs`, `core/ecs/bundle.rs`, `core/ecs/world.rs`, `core/tests/ecs/query.rs` |
 | Headless test harness, `Harness`, `FrameDraw`, `UiHarness` (`D-110`, `D-125`) | `tungsten/testing.rs`, `tungsten/testing/ui.rs`, `tungsten/app.rs`, `tungsten/tests/testing.rs` |
 | Config parsing, env overrides | `core/config.rs`, `core/display.rs`, `tungsten.json` |

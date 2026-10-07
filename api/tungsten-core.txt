@@ -3635,6 +3635,7 @@ pub tungsten_core::config::Config::display: tungsten_core::display::DisplayConfi
 pub tungsten_core::config::Config::game: tungsten_core::config::GameConfig
 pub tungsten_core::config::Config::logging: tungsten_core::config::LoggingConfig
 pub tungsten_core::config::Config::render: tungsten_core::config::RenderConfig
+pub tungsten_core::config::Config::time: tungsten_core::config::TimeConfig
 pub tungsten_core::config::Config::window: tungsten_core::config::WindowConfig
 impl tungsten_core::config::Config
 pub fn tungsten_core::config::Config::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::config::ConfigError>
@@ -3776,6 +3777,27 @@ impl core::marker::Unpin for tungsten_core::config::RenderConfig
 impl core::marker::UnsafeUnpin for tungsten_core::config::RenderConfig
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::RenderConfig
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::RenderConfig
+#[non_exhaustive] pub struct tungsten_core::config::TimeConfig
+pub tungsten_core::config::TimeConfig::fixed_step_hz: u32
+pub tungsten_core::config::TimeConfig::interpolate: bool
+pub tungsten_core::config::TimeConfig::max_steps_per_frame: u32
+impl tungsten_core::config::TimeConfig
+pub fn tungsten_core::config::TimeConfig::validate(&self) -> core::result::Result<(), tungsten_core::config::ConfigError>
+impl core::clone::Clone for tungsten_core::config::TimeConfig
+pub fn tungsten_core::config::TimeConfig::clone(&self) -> tungsten_core::config::TimeConfig
+impl core::default::Default for tungsten_core::config::TimeConfig
+pub fn tungsten_core::config::TimeConfig::default() -> Self
+impl core::fmt::Debug for tungsten_core::config::TimeConfig
+pub fn tungsten_core::config::TimeConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::config::TimeConfig where tungsten_core::config::TimeConfig: core::default::Default
+pub fn tungsten_core::config::TimeConfig::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::config::TimeConfig
+impl core::marker::Send for tungsten_core::config::TimeConfig
+impl core::marker::Sync for tungsten_core::config::TimeConfig
+impl core::marker::Unpin for tungsten_core::config::TimeConfig
+impl core::marker::UnsafeUnpin for tungsten_core::config::TimeConfig
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::TimeConfig
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::TimeConfig
 pub struct tungsten_core::config::WindowConfig
 pub tungsten_core::config::WindowConfig::height: u32
 pub tungsten_core::config::WindowConfig::title: alloc::string::String
@@ -4636,6 +4658,7 @@ impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::With
 pub struct tungsten_core::ecs::World
 impl tungsten_core::World
 pub fn tungsten_core::World::despawn(&mut self, tungsten_core::Entity)
+pub fn tungsten_core::World::end_fixed_step_events(&mut self)
 pub fn tungsten_core::World::entity_count(&self) -> u32
 pub fn tungsten_core::World::flush(&mut self, tungsten_core::CommandBuffer)
 pub fn tungsten_core::World::flush_events(&mut self)
@@ -4677,6 +4700,7 @@ pub fn tungsten_core::World::remove_component<T: 'static>(&mut self, tungsten_co
 pub fn tungsten_core::World::remove_resource<T: 'static>(&mut self) -> core::option::Option<T>
 pub fn tungsten_core::World::resource<T: 'static>(&self) -> &T
 pub fn tungsten_core::World::resource_mut<T: 'static>(&mut self) -> &mut T
+pub fn tungsten_core::World::set_fixed_event_view(&mut self, bool)
 pub fn tungsten_core::World::spawn(&mut self) -> tungsten_core::Entity
 pub fn tungsten_core::World::spawn_with<B: tungsten_core::ecs::bundle::Bundle>(&mut self, B) -> tungsten_core::Entity
 impl core::default::Default for tungsten_core::World
@@ -5060,6 +5084,7 @@ pub fn tungsten_core::input::InputState::add_scroll_pixel_delta(&mut self, f32, 
 pub fn tungsten_core::input::InputState::begin_frame(&mut self)
 pub fn tungsten_core::input::InputState::cursor_delta(&self) -> (f32, f32)
 pub fn tungsten_core::input::InputState::cursor_position(&self) -> core::option::Option<(f32, f32)>
+pub fn tungsten_core::input::InputState::end_fixed_step(&mut self)
 pub fn tungsten_core::input::InputState::is_mouse_pressed(&self, tungsten_core::input::MouseButton) -> bool
 pub fn tungsten_core::input::InputState::is_pressed(&self, tungsten_core::input::KeyCode) -> bool
 pub fn tungsten_core::input::InputState::is_scroll_active(&self, tungsten_core::input::ScrollDirection) -> bool
@@ -5076,6 +5101,7 @@ pub fn tungsten_core::input::InputState::scroll_just_pressed(&self, tungsten_cor
 pub fn tungsten_core::input::InputState::scroll_just_released(&self, tungsten_core::input::ScrollDirection) -> bool
 pub fn tungsten_core::input::InputState::scroll_line_delta(&self) -> (f32, f32)
 pub fn tungsten_core::input::InputState::scroll_pixel_delta(&self) -> (f32, f32)
+pub fn tungsten_core::input::InputState::set_fixed_view(&mut self, bool)
 pub fn tungsten_core::input::InputState::update_cursor_position(&mut self, f32, f32)
 impl core::clone::Clone for tungsten_core::input::InputState
 pub fn tungsten_core::input::InputState::clone(&self) -> tungsten_core::input::InputState
@@ -5308,6 +5334,22 @@ impl core::marker::Unpin for tungsten_core::physics::components::Position
 impl core::marker::UnsafeUnpin for tungsten_core::physics::components::Position
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::components::Position
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::components::Position
+pub struct tungsten_core::physics::components::PrevPosition(pub glam::f32::vec2::Vec2)
+impl core::clone::Clone for tungsten_core::physics::components::PrevPosition
+pub fn tungsten_core::physics::components::PrevPosition::clone(&self) -> tungsten_core::physics::components::PrevPosition
+impl core::cmp::PartialEq for tungsten_core::physics::components::PrevPosition
+pub fn tungsten_core::physics::components::PrevPosition::eq(&self, &tungsten_core::physics::components::PrevPosition) -> bool
+impl core::fmt::Debug for tungsten_core::physics::components::PrevPosition
+pub fn tungsten_core::physics::components::PrevPosition::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::physics::components::PrevPosition
+impl core::marker::StructuralPartialEq for tungsten_core::physics::components::PrevPosition
+impl core::marker::Freeze for tungsten_core::physics::components::PrevPosition
+impl core::marker::Send for tungsten_core::physics::components::PrevPosition
+impl core::marker::Sync for tungsten_core::physics::components::PrevPosition
+impl core::marker::Unpin for tungsten_core::physics::components::PrevPosition
+impl core::marker::UnsafeUnpin for tungsten_core::physics::components::PrevPosition
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::components::PrevPosition
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::components::PrevPosition
 pub struct tungsten_core::physics::components::RigidBody
 pub tungsten_core::physics::components::RigidBody::inv_mass: f32
 pub tungsten_core::physics::components::RigidBody::kind: tungsten_core::physics::components::BodyKind
@@ -5629,6 +5671,22 @@ impl core::marker::Unpin for tungsten_core::physics::components::Position
 impl core::marker::UnsafeUnpin for tungsten_core::physics::components::Position
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::components::Position
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::components::Position
+pub struct tungsten_core::physics::PrevPosition(pub glam::f32::vec2::Vec2)
+impl core::clone::Clone for tungsten_core::physics::components::PrevPosition
+pub fn tungsten_core::physics::components::PrevPosition::clone(&self) -> tungsten_core::physics::components::PrevPosition
+impl core::cmp::PartialEq for tungsten_core::physics::components::PrevPosition
+pub fn tungsten_core::physics::components::PrevPosition::eq(&self, &tungsten_core::physics::components::PrevPosition) -> bool
+impl core::fmt::Debug for tungsten_core::physics::components::PrevPosition
+pub fn tungsten_core::physics::components::PrevPosition::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::physics::components::PrevPosition
+impl core::marker::StructuralPartialEq for tungsten_core::physics::components::PrevPosition
+impl core::marker::Freeze for tungsten_core::physics::components::PrevPosition
+impl core::marker::Send for tungsten_core::physics::components::PrevPosition
+impl core::marker::Sync for tungsten_core::physics::components::PrevPosition
+impl core::marker::Unpin for tungsten_core::physics::components::PrevPosition
+impl core::marker::UnsafeUnpin for tungsten_core::physics::components::PrevPosition
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::components::PrevPosition
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::components::PrevPosition
 pub struct tungsten_core::physics::RigidBody
 pub tungsten_core::physics::RigidBody::inv_mass: f32
 pub tungsten_core::physics::RigidBody::kind: tungsten_core::physics::components::BodyKind
@@ -5730,6 +5788,7 @@ pub const tungsten_core::physics::FACE_BOTTOM: u8
 pub const tungsten_core::physics::FACE_LEFT: u8
 pub const tungsten_core::physics::FACE_RIGHT: u8
 pub const tungsten_core::physics::FACE_TOP: u8
+pub const tungsten_core::physics::PHYSICS_PREV_SNAPSHOT: &str
 pub const tungsten_core::physics::PHYSICS_STEP: &str
 pub const tungsten_core::physics::PHYSICS_SYNC: &str
 pub fn tungsten_core::physics::aabb_vs_aabb(&tungsten_core::physics::collision::Aabb, &tungsten_core::physics::collision::Aabb) -> core::option::Option<tungsten_core::physics::collision::Contact>
@@ -5740,7 +5799,9 @@ pub fn tungsten_core::physics::aabb_vs_circle_masked(&tungsten_core::physics::co
 pub fn tungsten_core::physics::aabb_vs_circle_speculative(&tungsten_core::physics::collision::Aabb, glam::f32::vec2::Vec2, f32, u8, f32) -> core::option::Option<tungsten_core::physics::collision::Contact>
 pub fn tungsten_core::physics::circle_vs_circle(glam::f32::vec2::Vec2, f32, glam::f32::vec2::Vec2, f32) -> core::option::Option<tungsten_core::physics::collision::Contact>
 pub fn tungsten_core::physics::circle_vs_circle_speculative(glam::f32::vec2::Vec2, f32, glam::f32::vec2::Vec2, f32, f32) -> core::option::Option<tungsten_core::physics::collision::Contact>
+pub fn tungsten_core::physics::physics_prev_snapshot(&mut tungsten_core::World)
 pub fn tungsten_core::physics::physics_step(&mut tungsten_core::World)
+pub fn tungsten_core::physics::physics_sync(&mut tungsten_core::World)
 pub fn tungsten_core::physics::wake(&mut tungsten_core::World, tungsten_core::Entity)
 pub type tungsten_core::physics::ProxyId = u32
 pub mod tungsten_core::post
@@ -6874,17 +6935,28 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::time::DeltaTime
 pub struct tungsten_core::time::Time
 impl tungsten_core::time::Time
 pub fn tungsten_core::time::Time::advance_frame(&mut self, f32)
+pub fn tungsten_core::time::Time::alpha(&self) -> f32
 pub fn tungsten_core::time::Time::delta(&self) -> f32
+pub fn tungsten_core::time::Time::dropped_this_frame(&self) -> f32
 pub fn tungsten_core::time::Time::elapsed(&self) -> f64
+pub fn tungsten_core::time::Time::enter_fixed_step(&mut self)
+pub fn tungsten_core::time::Time::fixed_step(&self) -> f32
+pub fn tungsten_core::time::Time::fixed_steps_this_frame(&self) -> u32
 pub fn tungsten_core::time::Time::frame(&self) -> u64
 pub fn tungsten_core::time::Time::game_delta(&self) -> f32
+pub fn tungsten_core::time::Time::interpolate(&self) -> bool
 pub fn tungsten_core::time::Time::is_paused(&self) -> bool
+pub fn tungsten_core::time::Time::leave_fixed_steps(&mut self)
+pub fn tungsten_core::time::Time::max_steps_per_frame(&self) -> u32
 pub fn tungsten_core::time::Time::new() -> Self
 pub fn tungsten_core::time::Time::pause(&mut self)
 pub fn tungsten_core::time::Time::real_delta(&self) -> f32
 pub fn tungsten_core::time::Time::real_elapsed(&self) -> f64
 pub fn tungsten_core::time::Time::resume(&mut self)
 pub fn tungsten_core::time::Time::scale(&self) -> f32
+pub fn tungsten_core::time::Time::set_fixed_step(&mut self, f32)
+pub fn tungsten_core::time::Time::set_interpolate(&mut self, bool)
+pub fn tungsten_core::time::Time::set_max_steps_per_frame(&mut self, u32)
 pub fn tungsten_core::time::Time::set_paused(&mut self, bool)
 pub fn tungsten_core::time::Time::set_scale(&mut self, f32)
 impl core::clone::Clone for tungsten_core::time::Time
@@ -10764,6 +10836,7 @@ pub tungsten_core::Config::display: tungsten_core::display::DisplayConfig
 pub tungsten_core::Config::game: tungsten_core::config::GameConfig
 pub tungsten_core::Config::logging: tungsten_core::config::LoggingConfig
 pub tungsten_core::Config::render: tungsten_core::config::RenderConfig
+pub tungsten_core::Config::time: tungsten_core::config::TimeConfig
 pub tungsten_core::Config::window: tungsten_core::config::WindowConfig
 impl tungsten_core::config::Config
 pub fn tungsten_core::config::Config::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::config::ConfigError>
@@ -11347,6 +11420,7 @@ pub fn tungsten_core::input::InputState::add_scroll_pixel_delta(&mut self, f32, 
 pub fn tungsten_core::input::InputState::begin_frame(&mut self)
 pub fn tungsten_core::input::InputState::cursor_delta(&self) -> (f32, f32)
 pub fn tungsten_core::input::InputState::cursor_position(&self) -> core::option::Option<(f32, f32)>
+pub fn tungsten_core::input::InputState::end_fixed_step(&mut self)
 pub fn tungsten_core::input::InputState::is_mouse_pressed(&self, tungsten_core::input::MouseButton) -> bool
 pub fn tungsten_core::input::InputState::is_pressed(&self, tungsten_core::input::KeyCode) -> bool
 pub fn tungsten_core::input::InputState::is_scroll_active(&self, tungsten_core::input::ScrollDirection) -> bool
@@ -11363,6 +11437,7 @@ pub fn tungsten_core::input::InputState::scroll_just_pressed(&self, tungsten_cor
 pub fn tungsten_core::input::InputState::scroll_just_released(&self, tungsten_core::input::ScrollDirection) -> bool
 pub fn tungsten_core::input::InputState::scroll_line_delta(&self) -> (f32, f32)
 pub fn tungsten_core::input::InputState::scroll_pixel_delta(&self) -> (f32, f32)
+pub fn tungsten_core::input::InputState::set_fixed_view(&mut self, bool)
 pub fn tungsten_core::input::InputState::update_cursor_position(&mut self, f32, f32)
 impl core::clone::Clone for tungsten_core::input::InputState
 pub fn tungsten_core::input::InputState::clone(&self) -> tungsten_core::input::InputState
@@ -11978,6 +12053,22 @@ impl core::marker::Unpin for tungsten_core::post::PostStack
 impl core::marker::UnsafeUnpin for tungsten_core::post::PostStack
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::post::PostStack
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::post::PostStack
+pub struct tungsten_core::PrevPosition(pub glam::f32::vec2::Vec2)
+impl core::clone::Clone for tungsten_core::physics::components::PrevPosition
+pub fn tungsten_core::physics::components::PrevPosition::clone(&self) -> tungsten_core::physics::components::PrevPosition
+impl core::cmp::PartialEq for tungsten_core::physics::components::PrevPosition
+pub fn tungsten_core::physics::components::PrevPosition::eq(&self, &tungsten_core::physics::components::PrevPosition) -> bool
+impl core::fmt::Debug for tungsten_core::physics::components::PrevPosition
+pub fn tungsten_core::physics::components::PrevPosition::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::physics::components::PrevPosition
+impl core::marker::StructuralPartialEq for tungsten_core::physics::components::PrevPosition
+impl core::marker::Freeze for tungsten_core::physics::components::PrevPosition
+impl core::marker::Send for tungsten_core::physics::components::PrevPosition
+impl core::marker::Sync for tungsten_core::physics::components::PrevPosition
+impl core::marker::Unpin for tungsten_core::physics::components::PrevPosition
+impl core::marker::UnsafeUnpin for tungsten_core::physics::components::PrevPosition
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::components::PrevPosition
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::components::PrevPosition
 pub struct tungsten_core::Range
 pub tungsten_core::Range::max: f32
 pub tungsten_core::Range::min: f32
@@ -12815,17 +12906,28 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::Ti
 pub struct tungsten_core::Time
 impl tungsten_core::time::Time
 pub fn tungsten_core::time::Time::advance_frame(&mut self, f32)
+pub fn tungsten_core::time::Time::alpha(&self) -> f32
 pub fn tungsten_core::time::Time::delta(&self) -> f32
+pub fn tungsten_core::time::Time::dropped_this_frame(&self) -> f32
 pub fn tungsten_core::time::Time::elapsed(&self) -> f64
+pub fn tungsten_core::time::Time::enter_fixed_step(&mut self)
+pub fn tungsten_core::time::Time::fixed_step(&self) -> f32
+pub fn tungsten_core::time::Time::fixed_steps_this_frame(&self) -> u32
 pub fn tungsten_core::time::Time::frame(&self) -> u64
 pub fn tungsten_core::time::Time::game_delta(&self) -> f32
+pub fn tungsten_core::time::Time::interpolate(&self) -> bool
 pub fn tungsten_core::time::Time::is_paused(&self) -> bool
+pub fn tungsten_core::time::Time::leave_fixed_steps(&mut self)
+pub fn tungsten_core::time::Time::max_steps_per_frame(&self) -> u32
 pub fn tungsten_core::time::Time::new() -> Self
 pub fn tungsten_core::time::Time::pause(&mut self)
 pub fn tungsten_core::time::Time::real_delta(&self) -> f32
 pub fn tungsten_core::time::Time::real_elapsed(&self) -> f64
 pub fn tungsten_core::time::Time::resume(&mut self)
 pub fn tungsten_core::time::Time::scale(&self) -> f32
+pub fn tungsten_core::time::Time::set_fixed_step(&mut self, f32)
+pub fn tungsten_core::time::Time::set_interpolate(&mut self, bool)
+pub fn tungsten_core::time::Time::set_max_steps_per_frame(&mut self, u32)
 pub fn tungsten_core::time::Time::set_paused(&mut self, bool)
 pub fn tungsten_core::time::Time::set_scale(&mut self, f32)
 impl core::clone::Clone for tungsten_core::time::Time
@@ -12845,6 +12947,27 @@ impl core::marker::Unpin for tungsten_core::time::Time
 impl core::marker::UnsafeUnpin for tungsten_core::time::Time
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::time::Time
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::time::Time
+#[non_exhaustive] pub struct tungsten_core::TimeConfig
+pub tungsten_core::TimeConfig::fixed_step_hz: u32
+pub tungsten_core::TimeConfig::interpolate: bool
+pub tungsten_core::TimeConfig::max_steps_per_frame: u32
+impl tungsten_core::config::TimeConfig
+pub fn tungsten_core::config::TimeConfig::validate(&self) -> core::result::Result<(), tungsten_core::config::ConfigError>
+impl core::clone::Clone for tungsten_core::config::TimeConfig
+pub fn tungsten_core::config::TimeConfig::clone(&self) -> tungsten_core::config::TimeConfig
+impl core::default::Default for tungsten_core::config::TimeConfig
+pub fn tungsten_core::config::TimeConfig::default() -> Self
+impl core::fmt::Debug for tungsten_core::config::TimeConfig
+pub fn tungsten_core::config::TimeConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::config::TimeConfig where tungsten_core::config::TimeConfig: core::default::Default
+pub fn tungsten_core::config::TimeConfig::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::config::TimeConfig
+impl core::marker::Send for tungsten_core::config::TimeConfig
+impl core::marker::Sync for tungsten_core::config::TimeConfig
+impl core::marker::Unpin for tungsten_core::config::TimeConfig
+impl core::marker::UnsafeUnpin for tungsten_core::config::TimeConfig
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::TimeConfig
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::TimeConfig
 pub struct tungsten_core::Timer
 impl tungsten_core::time::Timer
 pub fn tungsten_core::time::Timer::duration(&self) -> f32
@@ -13242,6 +13365,7 @@ impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::With
 pub struct tungsten_core::World
 impl tungsten_core::World
 pub fn tungsten_core::World::despawn(&mut self, tungsten_core::Entity)
+pub fn tungsten_core::World::end_fixed_step_events(&mut self)
 pub fn tungsten_core::World::entity_count(&self) -> u32
 pub fn tungsten_core::World::flush(&mut self, tungsten_core::CommandBuffer)
 pub fn tungsten_core::World::flush_events(&mut self)
@@ -13283,6 +13407,7 @@ pub fn tungsten_core::World::remove_component<T: 'static>(&mut self, tungsten_co
 pub fn tungsten_core::World::remove_resource<T: 'static>(&mut self) -> core::option::Option<T>
 pub fn tungsten_core::World::resource<T: 'static>(&self) -> &T
 pub fn tungsten_core::World::resource_mut<T: 'static>(&mut self) -> &mut T
+pub fn tungsten_core::World::set_fixed_event_view(&mut self, bool)
 pub fn tungsten_core::World::spawn(&mut self) -> tungsten_core::Entity
 pub fn tungsten_core::World::spawn_with<B: tungsten_core::ecs::bundle::Bundle>(&mut self, B) -> tungsten_core::Entity
 impl core::default::Default for tungsten_core::World
@@ -13423,7 +13548,9 @@ pub fn tungsten_core::circle_vs_circle(glam::f32::vec2::Vec2, f32, glam::f32::ve
 pub fn tungsten_core::lerp_f32(f32, f32, f32) -> f32
 pub fn tungsten_core::lerp_u8(u8, u8, f32) -> u8
 pub fn tungsten_core::parallax_world_position(glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2) -> glam::f32::vec2::Vec2
+pub fn tungsten_core::physics_prev_snapshot(&mut tungsten_core::World)
 pub fn tungsten_core::physics_step(&mut tungsten_core::World)
+pub fn tungsten_core::physics_sync(&mut tungsten_core::World)
 pub fn tungsten_core::splitmix64(u64) -> u64
 pub fn tungsten_core::sync_position_to_transform(&mut tungsten_core::World)
 pub fn tungsten_core::system(impl core::convert::Into<alloc::string::String>, impl core::ops::function::FnMut(&mut tungsten_core::World) + 'static) -> tungsten_core::schedule::SystemDesc

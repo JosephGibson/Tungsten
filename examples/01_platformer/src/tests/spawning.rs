@@ -1,4 +1,5 @@
 use super::*;
+use tungsten::physics::PrevPosition;
 
 #[test]
 fn spawn_ball_system_spawns_at_fixed_rate_while_held() {
@@ -262,6 +263,7 @@ fn black_hole_force_system_pulls_dynamic_body_toward_hole() {
     let ball = world.spawn();
     world.insert(ball, Ball);
     world.insert(ball, Position(Vec2::new(BLACK_HOLE_RADIUS * 0.5, 0.0)));
+    world.insert(ball, PrevPosition(Vec2::new(BLACK_HOLE_RADIUS * 0.5, 0.0)));
     world.insert(ball, Velocity(Vec2::ZERO));
     world.insert(ball, Collider::circle(BALL_RADIUS));
     world.insert(ball, RigidBody::dynamic());
@@ -296,6 +298,7 @@ fn black_hole_force_system_ignores_bodies_outside_radius() {
     let ball = world.spawn();
     world.insert(ball, Ball);
     world.insert(ball, Position(Vec2::new(BLACK_HOLE_RADIUS + 10.0, 0.0)));
+    world.insert(ball, PrevPosition(Vec2::new(BLACK_HOLE_RADIUS + 10.0, 0.0)));
     world.insert(ball, Velocity(Vec2::ZERO));
     world.insert(ball, Collider::circle(BALL_RADIUS));
     world.insert(ball, RigidBody::dynamic());

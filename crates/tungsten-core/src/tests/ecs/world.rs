@@ -1395,3 +1395,38 @@ fn tuple_forms_write_every_arity_shape_row_for_row() {
 
     assert_eq!(snapshot(&tuple), snapshot(&arity));
 }
+
+#[test]
+fn the_fixed_event_view_reaches_every_registered_queue() {
+    let mut world = World::new();
+    world.register_event::<i32>();
+    world.register_event::<u8>();
+    world.get_resource_mut::<EventQueue<i32>>().unwrap().send(1);
+    world.get_resource_mut::<EventQueue<u8>>().unwrap().send(1);
+
+    world.set_fixed_event_view(true);
+    world.end_fixed_step_events();
+    world.get_resource_mut::<EventQueue<u8>>().unwrap().send(2);
+    assert_eq!(world.get_resource::<EventQueue<i32>>().unwrap().len(), 0);
+    assert_eq!(
+        world
+            .get_resource::<EventQueue<u8>>()
+            .unwrap()
+            .iter_current()
+            .copied()
+            .collect::<Vec<_>>(),
+        [2]
+    );
+
+    world.set_fixed_event_view(false);
+    assert_eq!(world.get_resource::<EventQueue<i32>>().unwrap().len(), 1);
+    assert_eq!(world.get_resource::<EventQueue<u8>>().unwrap().len(), 2);
+
+    world.flush_events();
+    world.set_fixed_event_view(true);
+    assert_eq!(
+        world.get_resource::<EventQueue<u8>>().unwrap().len(),
+        2,
+        "the next frame's first step reads the previous frame"
+    );
+}

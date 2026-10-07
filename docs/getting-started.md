@@ -73,7 +73,7 @@ A debug build watches `assets/` and `input.json`. With the game running, open `a
 
 ## Systems and stages
 
-A system is a function over the world, `fn(&mut World)`, registered under a name in one of five stages the engine runs in order each frame: `startup` (once, on the first frame), `pre_update` (the engine's hotkeys and its state dispatcher), `fixed_update` (`physics_step`), `update` and `post_update` (the physics sync, particles, tweens, game feel and the camera). The template's `GamePlugin` registers `setup` in `startup` and `player_movement` in `update`:
+A system is a function over the world, `fn(&mut World)`, registered under a name in one of five stages the engine runs in order each frame: `startup` (once, on the first frame), `pre_update` (the engine's hotkeys and its state dispatcher), `fixed_update` (once per fixed step: the physics snapshot and `physics_step`), `update` and `post_update` (the physics sync, particles, tweens, game feel and the camera). The template's `GamePlugin` registers `setup` in `startup` and `player_movement` in `update`:
 
 ```rust
 impl Plugin for GamePlugin {
@@ -87,8 +87,8 @@ impl Plugin for GamePlugin {
 Where a system goes:
 
 - `update` by default. Systems in one stage run in the order they were added.
-- `fixed_update`, before `physics_step`, for a system that drives bodies or reads input for movement, so a press moves the body on the frame of the press: `schedule.add(Stage::FixedUpdate, system("jump", jump).before(PHYSICS_STEP))`, with the name from `tungsten::plugins`. For now the stage runs once a frame; a fixed-step accumulator is coming (`D-129`).
-- `post_update` for a system that reads the physics sync's `Transform` or sets up the camera, ordered against the engine's names in `tungsten::plugins`: `.after(PHYSICS_SYNC).before(PARTICLE_COUNT_REFRESH)` runs before every other engine system there, `.before(CAMERA_UPDATE)` last but for the camera.
+- `fixed_update`, before `physics_step`, for a system that drives bodies or reads input for movement: `schedule.add(Stage::FixedUpdate, system("jump", jump).before(PHYSICS_STEP))`, with the name from `tungsten::plugins`. The stage runs once per fixed step, zero, one or two times a frame ([Time and timers](#time-and-timers)), so a body moves the same at any frame rate and a press moves it on the next step. Inside it `just_pressed` and `ActionMap::just_pressed` answer with the presses since the last step, so each press reaches exactly one step, and an event queue's readers see each step's events once. A fixed system reads the events `fixed_update` sends; one that needs events from another stage reads them in `update` or keeps them in a resource, since an event sent outside the steps can rotate out before a step sees it (`D-137`).
+- `post_update` for a system that reads the physics sync's `Transform` (the body's drawn point) or sets up the camera, ordered against the engine's names in `tungsten::plugins`: `.after(PHYSICS_SYNC).before(PARTICLE_COUNT_REFRESH)` runs before every other engine system there, `.before(CAMERA_UPDATE)` last but for the camera.
 
 A constraint names a system in the same stage. A typo, a duplicate name or a cycle fails at startup with a message naming the systems, and `Harness::new` panics the same way, so a test catches it. `App::new` installs the engine's `DefaultPlugins`; a game that replaces an engine feature builds its app from the set without that plugin, `App::with_plugins(config, DefaultPlugins::set().without::<CameraPlugin>())`, and `app.add_system_to(stage, desc)` registers one system outside a plugin.
 
@@ -118,7 +118,7 @@ world.spawn_with((
 ));
 ```
 
-A tuple's elements are components, never bundles; join a bundle with `with`: `RigidBodyBundle::dynamic(position, collider).with((Player, transform))` spawns a body with its `Position`, `Velocity`, `Collider` and `RigidBody` and the game's components beside them. A system without `&mut World` records the same through `CommandBuffer::spawn_with`.
+A tuple's elements are components, never bundles; join a bundle with `with`: `RigidBodyBundle::dynamic(position, collider).with((Player, transform))` spawns a body with its `Position`, `PrevPosition` (the history it is drawn from), `Velocity`, `Collider` and `RigidBody` and the game's components beside them. A system without `&mut World` records the same through `CommandBuffer::spawn_with`. A body that jumps to a new place, a respawn or a portal, writes `Position` and `PrevPosition` together; otherwise it is drawn sliding from the old point for a step.
 
 `world.resource::<Time>()` returns a resource the engine always inserts and panics naming the type if it is missing; `get_resource` is the `Option` form for a resource a game may not have inserted.
 
@@ -151,7 +151,15 @@ fn waves(world: &mut World) {
 }
 ```
 
-`setup` inserts it with `world.insert_resource(WaveTimer(Timer::repeating(2.0)))`; `Timer::once(0.5)` finishes once and stays `finished()` until `reset()`. `fixed_update` still runs once a frame, so `delta()` is the same game dt in every stage; when the fixed-step accumulator lands, it will be the step there.
+`setup` inserts it with `world.insert_resource(WaveTimer(Timer::repeating(2.0)))`; `Timer::once(0.5)` finishes once and stays `finished()` until `reset()`.
+
+The game clock is spent in fixed steps of 1/60 s, at most two a frame: `fixed_update` runs once per step, zero times in a short frame at 144 Hz, twice at 30 Hz, and a frame that owes more drops the rest, so a stall slows the game rather than piling up steps; a paused clock runs none. Inside `fixed_update`, `delta()` is the step; in the other stages it is the frame's game dt. Bodies are drawn between their last two steps: `physics_sync` writes each body's `Transform` at `prev + (cur - prev) * alpha`, where `alpha()` is the fraction of a step left over, so a body moves smoothly at any frame rate and is drawn up to one step behind its `Position`. An extract of your own that draws from `Position` does the same lerp with `PrevPosition` and `Time::alpha()`, and draws whatever follows the body at that point. `tungsten.json` sets the step:
+
+```json
+"time": { "fixed_step_hz": 60, "max_steps_per_frame": 2, "interpolate": true }
+```
+
+A rate below 30 or a bound of 0 fails at startup, and `"interpolate": false` draws every body at its `Position`.
 
 ## Read next
 

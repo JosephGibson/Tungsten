@@ -30,7 +30,12 @@ const POST_AA_EXPECTED: &str = "one of: off, smaa_low, smaa_medium, smaa_high, s
 const BLOOM_MAX_MIPS_EXPECTED: &str = "an integer in 1..=8";
 const GAME_ID_EXPECTED: &str = "1-64 ASCII letters, digits, '.', '_' or '-', starting with a letter or digit, and not a Windows device name";
 const LOGGING_LEVEL_EXPECTED: &str = "one of: off, error, warn, info, debug, trace";
+const FIXED_STEP_HZ_EXPECTED: &str = "an integer >= 30";
+const MAX_STEPS_PER_FRAME_EXPECTED: &str = "an integer >= 1";
 const GAME_ID_MAX_LEN: usize = 64;
+/// The lowest step rate: a longer step than physics' default
+/// `max_step_dt`, 1/30 s, would run physics slow against the game (`D-094`).
+const MIN_FIXED_STEP_HZ: u32 = 30;
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
@@ -394,6 +399,69 @@ fn is_windows_device_name(id: &str) -> bool {
     }
 }
 
+/// The fixed step: `tungsten.json`'s `time` section, which `App::new`
+/// applies to [`Time`](crate::time::Time).
+///
+/// ```json
+/// "time": { "fixed_step_hz": 60, "max_steps_per_frame": 2, "interpolate": true }
+/// ```
+///
+/// Every field has its default, so a file without the section, or with an
+/// empty one, steps at 60 Hz, two steps a frame at most, interpolating.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+#[non_exhaustive]
+pub struct TimeConfig {
+    /// Fixed steps per game second: 60 unless set, the smoke pin. At least
+    /// 30, since physics clamps a step to 1/30 s by default.
+    pub fixed_step_hz: u32,
+    /// The most fixed steps a frame runs: 2 unless set, at least 1.
+    pub max_steps_per_frame: u32,
+    /// Whether bodies with a previous position are drawn interpolated: on
+    /// unless set.
+    pub interpolate: bool,
+}
+
+impl Default for TimeConfig {
+    fn default() -> Self {
+        Self {
+            fixed_step_hz: 60,
+            max_steps_per_frame: 2,
+            interpolate: true,
+        }
+    }
+}
+
+impl TimeConfig {
+    /// Checks the step rate and the bound, which `Time`'s setters would
+    /// refuse. `Config::load` and `App::new` both call this, since a config
+    /// built in code skips the load.
+    ///
+    /// # Errors
+    ///
+    /// [`ConfigError::InvalidValue`] with an empty `path` for field
+    /// `time.fixed_step_hz` below 30 or `time.max_steps_per_frame` of 0.
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        if self.fixed_step_hz < MIN_FIXED_STEP_HZ {
+            return Err(ConfigError::InvalidValue {
+                path: String::new(),
+                field: "time.fixed_step_hz",
+                value: self.fixed_step_hz.to_string(),
+                expected: FIXED_STEP_HZ_EXPECTED,
+            });
+        }
+        if self.max_steps_per_frame == 0 {
+            return Err(ConfigError::InvalidValue {
+                path: String::new(),
+                field: "time.max_steps_per_frame",
+                value: self.max_steps_per_frame.to_string(),
+                expected: MAX_STEPS_PER_FRAME_EXPECTED,
+            });
+        }
+        Ok(())
+    }
+}
+
 /// Top-level engine configuration.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct Config {
@@ -408,6 +476,9 @@ pub struct Config {
     pub render: RenderConfig,
     #[serde(default)]
     pub logging: LoggingConfig,
+    /// The fixed step and interpolation.
+    #[serde(default)]
+    pub time: TimeConfig,
     /// What `load` would have logged before any logger exists (`D-119`).
     #[serde(skip)]
     load_warnings: Vec<String>,
@@ -458,6 +529,7 @@ impl Config {
                     });
                 }
                 parsed.game.validate().map_err(|e| e.with_path(path))?;
+                parsed.time.validate().map_err(|e| e.with_path(path))?;
                 if parsed.logging.level.parse::<log::LevelFilter>().is_err() {
                     return Err(ConfigError::InvalidValue {
                         path: path.display().to_string(),

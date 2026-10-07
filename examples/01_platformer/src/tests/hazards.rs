@@ -228,8 +228,8 @@ fn moving_fire_emits_a_bounded_particle_trail() {
 #[test]
 fn fireballs_face_their_travel_and_drag_anchored_drips() {
     use crate::gameplay::{
-        EmitterAnchor, FIREBALL_DRIP_OFFSET, Hazard, fireball_faces_left, motion_velocity,
-        move_obstacles, spawn_obstacles,
+        EmitterAnchor, FIREBALL_DRIP_OFFSET, Hazard, anchor_emitters, fireball_faces_left,
+        motion_velocity, move_obstacles, spawn_obstacles,
     };
     use tungsten::core::{ParticleConfig, ParticleConfigRegistry, ParticleEmitter};
     let mut world = seed_world();
@@ -260,6 +260,9 @@ fn fireballs_face_their_travel_and_drag_anchored_drips() {
     let mut seen = vec![[false; 2]; fires.len()];
     for _ in 0..450 {
         move_obstacles(&mut world);
+        // The drips follow the drawn hazard after the sync, as in the game.
+        tungsten::physics::physics_sync(&mut world);
+        anchor_emitters(&mut world);
         for (i, fire) in fires.iter().enumerate() {
             let velocity = motion_velocity(&world, *fire).unwrap();
             let left = fireball_faces_left(&world, *fire);

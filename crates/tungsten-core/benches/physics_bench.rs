@@ -13,8 +13,9 @@ use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use glam::Vec2;
 use std::hint::black_box;
 use tungsten_core::{
-    Aabb, Collider, Entity, Pcg32, PhysicsConfig, Position, RigidBody, SpatialGrid, Time, Velocity,
-    Without, World, physics_step,
+    Aabb, Collider, Entity, Pcg32, PhysicsConfig, Position, PrevPosition, RigidBody, SpatialGrid,
+    Time, Transform, Velocity, Without, World, physics_prev_snapshot, physics_step, physics_sync,
+    sync_position_to_transform,
 };
 
 const DT: f32 = 1.0 / 60.0;
@@ -376,11 +377,44 @@ fn bench_spatial_grid_query_50k_dense(c: &mut Criterion) {
     group.finish();
 }
 
+/// 12,000 drawn bodies with history, one archetype: the plain copy, the
+/// interpolating sync at `alpha` 0.5 and the fixed step's snapshot (M41).
+fn bench_physics_sync_12k(c: &mut Criterion) {
+    const N: usize = 12_000;
+
+    let mut world = World::new();
+    let mut time = Time::new();
+    time.advance_frame(DT / 2.0);
+    assert_eq!(time.alpha(), 0.5);
+    world.insert_resource(time);
+    for i in 0..N {
+        let position = Vec2::new(i as f32, 0.5 * i as f32);
+        world.spawn_with((
+            Position(position),
+            PrevPosition(position - Vec2::ONE),
+            Transform::from_position(Vec2::ZERO),
+        ));
+    }
+
+    let mut group = c.benchmark_group("physics_sync_12k");
+    group.bench_function("sync_position_to_transform", |b| {
+        b.iter(|| sync_position_to_transform(black_box(&mut world)));
+    });
+    group.bench_function("physics_sync", |b| {
+        b.iter(|| physics_sync(black_box(&mut world)));
+    });
+    group.bench_function("physics_prev_snapshot", |b| {
+        b.iter(|| physics_prev_snapshot(black_box(&mut world)));
+    });
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_position_integration_50k,
     bench_broadphase_rebuild_5k,
     bench_spatial_grid_query_50k_dense,
     bench_physics_step_scenarios,
+    bench_physics_sync_12k,
 );
 criterion_main!(benches);

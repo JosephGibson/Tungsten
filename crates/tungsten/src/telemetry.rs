@@ -28,7 +28,12 @@ pub struct FrameTimings {
     /// Time from the previous frame's start to this frame's start: that
     /// frame's total plus the wait before this one. `None` on the first frame.
     pub interval_ms: Option<f32>,
-    /// Per-system `(name, duration_ms)` in registration order.
+    /// How many fixed steps the frame ran: zero or more, at most
+    /// `Time::max_steps_per_frame()`; 1 in a world without `Time`.
+    pub fixed_steps: u32,
+    /// Per-system `(name, duration_ms)` in stage order, each name once: a
+    /// `fixed_update` system's runs summed over the frame's steps, 0 ms in a
+    /// frame with no step.
     pub system_timings: Vec<(String, f32)>,
 }
 

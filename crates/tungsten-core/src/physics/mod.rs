@@ -15,9 +15,14 @@ pub use collision::{
     aabb_vs_aabb_masked, aabb_vs_aabb_speculative, aabb_vs_circle, aabb_vs_circle_masked,
     aabb_vs_circle_speculative, circle_vs_circle, circle_vs_circle_speculative,
 };
-pub use components::{BodyKind, Collider, Position, RigidBody, RigidBodyBundle, Shape, Velocity};
+pub use components::{
+    BodyKind, Collider, Position, PrevPosition, RigidBody, RigidBodyBundle, Shape, Velocity,
+};
 pub use events::CollisionEvent;
-pub use plugin::{PHYSICS_STEP, PHYSICS_SYNC, PhysicsPlugin};
+pub use plugin::{
+    PHYSICS_PREV_SNAPSHOT, PHYSICS_STEP, PHYSICS_SYNC, PhysicsPlugin, physics_prev_snapshot,
+    physics_sync,
+};
 pub use step::{PhysicsBuffers, physics_step, wake};
 
 use glam::Vec2;

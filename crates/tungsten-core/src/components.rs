@@ -297,7 +297,11 @@ pub struct SquashStretchState {
     pub base_scale: Vec2,
 }
 
-/// D-033 one-way sync: physics `Position` -> visual `Transform.position`.
+/// D-033 one-way sync: physics `Position` -> visual `Transform.position`,
+/// without interpolation. `PhysicsPlugin` runs
+/// [`physics_sync`](crate::physics::physics_sync) instead, which draws a
+/// body with a `PrevPosition` between its last two steps; a world driven by
+/// hand without the fixed step's snapshot calls this one.
 pub fn sync_position_to_transform(world: &mut World) {
     for (_entity, transform, position) in
         world.query_mut::<(Entity, &mut Transform, &mut Position)>()

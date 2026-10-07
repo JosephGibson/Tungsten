@@ -7,7 +7,7 @@ use crate::state::{
     TransientEmitter,
 };
 use tungsten::core::{AssetRegistry, Particle, ParticleEmitter, With};
-use tungsten::physics::Shape;
+use tungsten::physics::{PrevPosition, Shape};
 
 #[test]
 fn middle_mouse_has_five_times_the_rate_half_size_and_dedicated_animation() {
@@ -397,10 +397,12 @@ fn pit_contains_two_thousand_mixed_balls_and_fast_wall_impacts() {
         let radius = crate::gameplay::ball_radius(world, e);
         world.insert(e, Collider::circle(radius));
         world.insert(e, RigidBody::dynamic().with_restitution(BALL_RESTITUTION));
-        world.get_mut::<Position>(e).unwrap().0 = Vec2::new(
+        let at = Vec2::new(
             132.0 * TILE + 48.0 + (i % 96) as f32 * 31.0,
             46.0 * TILE - 16.0 - (i / 96) as f32 * 31.0,
         );
+        world.get_mut::<Position>(e).unwrap().0 = at;
+        world.insert(e, PrevPosition(at));
         if i < 2 {
             world.get_mut::<Velocity>(e).unwrap().0.x = if small { -1800.0 } else { 1800.0 };
         }

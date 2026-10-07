@@ -170,6 +170,11 @@ pub(crate) const RUNTIME_SYSTEM_ORDER: &[(Slot, &str, ExampleSystem)] = &[
     ),
     (
         Slot::AfterSync,
+        "anchor_emitters",
+        crate::gameplay::anchor_emitters,
+    ),
+    (
+        Slot::AfterSync,
         "ball_fire_particles",
         crate::burning::ball_fire_particles,
     ),

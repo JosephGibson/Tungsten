@@ -116,7 +116,7 @@ pub(crate) fn ball_fire_particles(world: &mut World) {
     let burning: Vec<_> = world
         .query::<(Entity, &BallBurn)>()
         .filter(|(_, burn)| burn.remaining > 0.0)
-        .filter_map(|(e, _)| world.get::<Position>(e).map(|p| p.0))
+        .filter_map(|(e, _)| crate::extract::drawn_position(world, e))
         .collect();
     let source_cap = BALL_FIRE_EMITTER_CAP / 2;
     let count = burning.len().min(source_cap) * 2;
