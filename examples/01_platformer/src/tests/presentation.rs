@@ -59,7 +59,9 @@ fn animation_transitions_hold_finish_face_and_interrupt_landing() {
         "ex10_player_idle"
     );
     assert_eq!(
-        world.query::<crate::state::TransientEmitter>().count(),
+        world
+            .query::<(Entity, &crate::state::TransientEmitter)>()
+            .count(),
         0,
         "spawn settles silently"
     );
@@ -147,24 +149,31 @@ fn jump_landing_bursts_fire_once_stay_at_event_and_cleanup() {
     input_mut(&mut harness).key_down(KeyCode::Space);
     harness.step(1);
     let world = harness.world();
-    let emitter = world.query::<TransientEmitter>().next().unwrap().0;
+    let emitter = world
+        .query::<(Entity, &TransientEmitter)>()
+        .next()
+        .unwrap()
+        .0;
     let origin = world.get::<Transform>(emitter).unwrap().position;
     assert_eq!(
         origin, takeoff,
         "jump puff belongs at the pre-physics feet position"
     );
-    assert_eq!(world.query::<TransientEmitter>().count(), 1);
+    assert_eq!(world.query::<(Entity, &TransientEmitter)>().count(), 1);
     assert!(
         world.get::<TransientEmitter>(emitter).is_some(),
         "must survive first emission tick"
     );
-    assert_eq!(world.query::<tungsten::core::Particle>().count(), 8);
+    assert_eq!(
+        world.query::<(Entity, &tungsten::core::Particle)>().count(),
+        8
+    );
     input_mut(&mut harness).key_up(KeyCode::Space);
     let mut landing_emitters = std::collections::HashSet::new();
     for _ in 0..100 {
         harness.step(1);
         let world = harness.world();
-        for (entity, _) in world.query::<TransientEmitter>() {
+        for (entity, _) in world.query::<(Entity, &TransientEmitter)>() {
             if entity != emitter {
                 landing_emitters.insert(entity);
             }
@@ -176,8 +185,11 @@ fn jump_landing_bursts_fire_once_stay_at_event_and_cleanup() {
     let world = harness.world();
     assert!(world.get::<Player>(player).unwrap().grounded);
     assert_eq!(landing_emitters.len(), 1);
-    assert_eq!(world.query::<TransientEmitter>().count(), 0);
-    assert_eq!(world.query::<tungsten::core::Particle>().count(), 0);
+    assert_eq!(world.query::<(Entity, &TransientEmitter)>().count(), 0);
+    assert_eq!(
+        world.query::<(Entity, &tungsten::core::Particle)>().count(),
+        0
+    );
 }
 
 #[test]
@@ -204,14 +216,18 @@ fn particle_caps_and_ambient_placements_remain_bounded() {
         .sum();
     assert!(ambient_max <= 256);
     assert_eq!(
-        world.query::<crate::state::AmbientEmitter>().count(),
+        world
+            .query::<(Entity, &crate::state::AmbientEmitter)>()
+            .count(),
         crate::level_layout::EMITTERS.len()
     );
     for _ in 0..30 {
         crate::systems::spawn_transient_effect(world, "ex10_landing_dust", Vec2::ZERO);
     }
     assert_eq!(
-        world.query::<crate::state::TransientEmitter>().count(),
+        world
+            .query::<(Entity, &crate::state::TransientEmitter)>()
+            .count(),
         crate::state::TRANSIENT_EMITTER_CAP
     );
     let config = world
@@ -229,14 +245,14 @@ fn particle_caps_and_ambient_placements_remain_bounded() {
         harness.step(1);
         let world = harness.world();
         assert!(
-            world.query::<Particle>().count()
+            world.query::<(Entity, &Particle)>().count()
                 <= world.get_resource::<ParticleBudget>().unwrap().global_cap as usize
         );
     }
     assert_eq!(
         harness
             .world()
-            .query::<crate::state::TransientEmitter>()
+            .query::<(Entity, &crate::state::TransientEmitter)>()
             .count(),
         0
     );
@@ -448,7 +464,7 @@ fn landing_clip_completes_without_resetting_idle_and_props_stay_synchronized() {
         before
     );
     let waterfalls: Vec<_> = world
-        .query::<AnimationState>()
+        .query::<(Entity, &AnimationState)>()
         .filter(|(_, a)| a.animation_id == "ex10_waterfall_flow")
         .collect();
     assert_eq!(waterfalls.len(), 48);
@@ -501,7 +517,7 @@ fn cloud_parallax_and_vortex_instances_animate_without_world_mutation() {
         world.get::<Position>(hole).unwrap().0,
         Vec2::new(300.0, 200.0)
     );
-    assert_eq!(world.query::<BlackHole>().count(), 1);
+    assert_eq!(world.query::<(Entity, &BlackHole)>().count(), 1);
 }
 
 #[test]
@@ -538,7 +554,7 @@ fn player_lantern_toggle_controls_halo_and_native_light_and_tracks_facing() {
     assert!(glow_center(world, player, Vec2::ZERO).is_none());
     assert_eq!(
         world
-            .query::<Light>()
+            .query::<(Entity, &Light)>()
             .filter(|(_, l)| l.intensity == 0.0)
             .count(),
         1
@@ -564,7 +580,11 @@ fn player_lantern_toggle_controls_halo_and_native_light_and_tracks_facing() {
     let world = harness.world_mut();
     scene_effects(world);
     assert!(world.get::<PlayerLantern>(player).unwrap().enabled);
-    assert!(world.query::<Light>().all(|(_, l)| l.intensity > 0.0));
+    assert!(
+        world
+            .query::<(Entity, &Light)>()
+            .all(|(_, l)| l.intensity > 0.0)
+    );
 }
 
 #[test]

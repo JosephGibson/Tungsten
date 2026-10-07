@@ -1,6 +1,6 @@
 use tungsten_core::{
-    CommandBuffer, Easing, EventQueue, Sprite, SpriteAssetId, Time, Transform, Tween, TweenChannel,
-    TweenComplete, TweenDirection, TweenRepeat, Visibility, World,
+    CommandBuffer, Easing, Entity, EventQueue, Sprite, SpriteAssetId, Time, Transform, Tween,
+    TweenChannel, TweenComplete, TweenDirection, TweenRepeat, Visibility, With, World,
 };
 
 use crate::tweens::tween_tick_system;
@@ -203,13 +203,18 @@ fn scene_tween_spawns_component_through_command_buffer() {
     world.flush(buf);
     world.insert_resource(CommandBuffer::new());
 
-    let tweens: Vec<_> = world.query::<Tween>().collect();
+    let tweens: Vec<_> = world.query::<(Entity, &Tween)>().collect();
     assert_eq!(tweens.len(), 1);
     let (_, tween) = tweens[0];
     assert_eq!(tween.duration, 0.5);
     assert_eq!(tween.easing, Easing::CubicOut);
     assert_eq!(tween.on_complete_tag.as_deref(), Some("scene_fade_in"));
-    assert_eq!(world.query2_entities::<Transform, Tween>().len(), 1);
+    assert_eq!(
+        world
+            .query_filtered::<Entity, (With<Transform>, With<Tween>)>()
+            .count(),
+        1
+    );
 }
 
 #[test]

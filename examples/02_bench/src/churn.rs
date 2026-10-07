@@ -411,7 +411,7 @@ fn churn_scan(world: &mut World) {
     let gain_from = expire_before + state.per_frame;
     let group = state.frame % state.groups.max(1);
     let statuses = u64::from(state.statuses);
-    for (entity, life) in world.query_mut::<Life>() {
+    for (entity, life) in world.query_mut::<(Entity, &mut Life)>() {
         if life.serial < expire_before {
             state.despawns.push(entity);
         } else if life.status != 0 {

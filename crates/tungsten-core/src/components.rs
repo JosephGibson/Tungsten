@@ -299,7 +299,9 @@ pub struct SquashStretchState {
 
 /// D-033 one-way sync: physics `Position` -> visual `Transform.position`.
 pub fn sync_position_to_transform(world: &mut World) {
-    for (_entity, transform, position) in world.query2_mut::<Transform, Position>() {
+    for (_entity, transform, position) in
+        world.query_mut::<(Entity, &mut Transform, &mut Position)>()
+    {
         transform.position = position.0;
     }
 }

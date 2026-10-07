@@ -15,7 +15,7 @@ use tungsten_core::{
     InitialVelocity, MeshParticle, Particle, ParticleActive, ParticleBudget, ParticleConfig,
     ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, ParticleMeshAssetId,
     ParticleMeshRegistry, ParticleRender, Range, Sprite, SpriteAssetId, Time, Transform,
-    Visibility, World, WorldRngSeed,
+    Visibility, With, World, WorldRngSeed,
 };
 use tungsten_render::{MeshParticleBatch, MeshParticleInstance};
 
@@ -34,14 +34,16 @@ pub struct ParticleSystemDrained {
 
 /// Rebuild active counts before emission budget clipping.
 pub fn particle_count_refresh_system(world: &mut World) {
-    for (_e, state, _emitter) in world.query2_mut::<ParticleEmitterState, ParticleEmitter>() {
+    for (_e, state, _emitter) in
+        world.query_mut::<(Entity, &mut ParticleEmitterState, &mut ParticleEmitter)>()
+    {
         state.active_count = 0;
     }
 
     // Owner writes are random-access; gather owners columnar first.
     let mut total: u32 = 0;
     let mut owners: Vec<Entity> = Vec::new();
-    for (_p_ent, particle) in world.query::<Particle>() {
+    for (_p_ent, particle) in world.query::<(Entity, &Particle)>() {
         total = total.saturating_add(1);
         if let Some(owner) = particle.emitter {
             owners.push(owner);
@@ -87,8 +89,13 @@ pub fn particle_emit_system(world: &mut World) {
         .get_resource::<ParticleActive>()
         .map_or(0, |a| a.count);
 
-    let emitter_entities =
-        world.query3_entities::<ParticleEmitter, ParticleEmitterState, Transform>();
+    let emitter_entities = world
+        .query_filtered::<Entity, (
+            With<ParticleEmitter>,
+            With<ParticleEmitterState>,
+            With<Transform>,
+        )>()
+        .collect::<Vec<_>>();
 
     for emitter_ent in emitter_entities {
         let (config_id, seed_override) = match world.get::<ParticleEmitter>(emitter_ent) {
@@ -226,14 +233,18 @@ pub fn particle_tick_system(world: &mut World) {
         return;
     };
 
-    for (entity, p, t, s) in world.query3_mut::<Particle, Transform, Sprite>() {
+    for (entity, p, t, s) in
+        world.query_mut::<(Entity, &mut Particle, &mut Transform, &mut Sprite)>()
+    {
         match integrate_particle(p, t, dt) {
             Some(color) => s.color = color,
             None => buf.despawn(entity),
         }
     }
 
-    for (entity, p, t, m) in world.query3_mut::<Particle, Transform, MeshParticle>() {
+    for (entity, p, t, m) in
+        world.query_mut::<(Entity, &mut Particle, &mut Transform, &mut MeshParticle)>()
+    {
         match integrate_particle(p, t, dt) {
             Some(color) => m.color = color,
             None => buf.despawn(entity),
@@ -577,7 +588,7 @@ pub fn extract_mesh_particles(world: &World) -> Vec<MeshParticleBatch> {
     // Entities of one archetype usually share a mesh: try the last batch first.
     let mut last = 0usize;
     for (_entity, transform, particle, visibility) in
-        world.query3::<Transform, MeshParticle, Visibility>()
+        world.query::<(Entity, &Transform, &MeshParticle, &Visibility)>()
     {
         if !visibility.visible {
             continue;

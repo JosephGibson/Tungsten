@@ -11,7 +11,7 @@ use tungsten::core::post::{
     TonemapParams, VignetteParams,
 };
 use tungsten::core::{
-    AssetRegistry, CameraState, EMPTY_TILE, FilterMode, LayerKind, Light, MaterialAssetId,
+    AssetRegistry, CameraState, EMPTY_TILE, Entity, FilterMode, LayerKind, Light, MaterialAssetId,
     MaterialRegistry, ParallaxLayer, Pcg32, Sprite, SpriteAssetId, TilemapData, TilemapInstance,
     TilemapLayer, TilemapRegistry, Transform, Visibility, World, splitmix64,
 };
@@ -256,7 +256,7 @@ pub(super) fn move_lights(world: &mut World) {
     let origin = world
         .get_resource::<CameraState>()
         .map_or(Vec2::ZERO, |camera| camera.position);
-    for (_, transform, path) in world.query2_mut::<Transform, LightPath>() {
+    for (_, transform, path) in world.query_mut::<(Entity, &mut Transform, &mut LightPath)>() {
         let angle = path.rate * elapsed + path.phase;
         transform.position =
             origin + path.center + path.amplitude * Vec2::new(angle.x.sin(), angle.y.cos());
@@ -313,7 +313,7 @@ pub(super) fn visible_tiles(world: &World) -> u32 {
     };
     let (view_min, view_max) = camera.visible_world_aabb(window.width as f32, window.height as f32);
     let mut count = 0;
-    for (_, instance) in world.query::<TilemapInstance>() {
+    for (_, instance) in world.query::<(Entity, &TilemapInstance)>() {
         let Some(map) = maps.get(&instance.id) else {
             continue;
         };

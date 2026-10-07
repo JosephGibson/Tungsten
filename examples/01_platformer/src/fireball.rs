@@ -52,13 +52,13 @@ pub(crate) fn cast_fireball_system(world: &mut World) {
         return;
     }
     let ages: Vec<f32> = world
-        .query::<FireballMissile>()
+        .query::<(Entity, &FireballMissile)>()
         .map(|(_, m)| m.age)
         .collect();
     if ages.len() >= FIREBALL_MAX_ALIVE || ages.iter().any(|&age| age < FIREBALL_COOLDOWN) {
         return;
     }
-    let Some(player) = world.query::<Player>().next().map(|(e, _)| e) else {
+    let Some(player) = world.query::<(Entity, &Player)>().next().map(|(e, _)| e) else {
         return;
     };
     let Some(center) = world.get::<Position>(player).map(|p| p.0) else {
@@ -135,7 +135,7 @@ pub(crate) fn fireball_flight_system(world: &mut World) {
     }
     let holes = black_hole_positions(world);
     let missiles: Vec<_> = world
-        .query::<FireballMissile>()
+        .query::<(Entity, &FireballMissile)>()
         .map(|(e, m)| (e, *m))
         .collect();
     for (entity, mut missile) in missiles {
@@ -186,7 +186,7 @@ fn first_contact(world: &World, start: Vec2, end: Vec2) -> Option<Vec2> {
     let lead = travel.normalize_or_zero() * FIREBALL_RADIUS;
     let steps = (travel.length() / SAMPLE_STEP).ceil().max(1.0) as usize;
     let solids: Vec<(Vec2, Shape)> = world
-        .query::<Collider>()
+        .query::<(Entity, &Collider)>()
         .filter(|(e, _)| world.get::<Player>(*e).is_none())
         .filter_map(|(e, c)| Some((world.get::<Position>(e)?.0 + c.offset, c.shape)))
         .collect();
@@ -216,21 +216,26 @@ fn solid_tile(world: &World, point: Vec2) -> bool {
     let Some(registry) = world.get_resource::<TilemapRegistry>() else {
         return false;
     };
-    world.query::<TilemapInstance>().any(|(_, instance)| {
-        let Some(map) = registry.get(&instance.id) else {
-            return false;
-        };
-        let tile = Vec2::new(map.tile_width as f32, map.tile_height as f32);
-        let cell = ((point - instance.origin) / tile).floor();
-        if cell.x < 0.0 || cell.y < 0.0 || cell.x >= map.width as f32 || cell.y >= map.height as f32
-        {
-            return false;
-        }
-        let index = cell.y as usize * map.width as usize + cell.x as usize;
-        map.layers
-            .iter()
-            .any(|layer| layer.kind == LayerKind::Collision && layer.tiles[index] >= 0)
-    })
+    world
+        .query::<(Entity, &TilemapInstance)>()
+        .any(|(_, instance)| {
+            let Some(map) = registry.get(&instance.id) else {
+                return false;
+            };
+            let tile = Vec2::new(map.tile_width as f32, map.tile_height as f32);
+            let cell = ((point - instance.origin) / tile).floor();
+            if cell.x < 0.0
+                || cell.y < 0.0
+                || cell.x >= map.width as f32
+                || cell.y >= map.height as f32
+            {
+                return false;
+            }
+            let index = cell.y as usize * map.width as usize + cell.x as usize;
+            map.layers
+                .iter()
+                .any(|layer| layer.kind == LayerKind::Collision && layer.tiles[index] >= 0)
+        })
 }
 
 /// Flame bloom, sparks and a shock ring; small balls in the blast catch fire.
@@ -238,13 +243,13 @@ fn solid_tile(world: &World, point: Vec2) -> bool {
 pub(crate) fn explode_fireball(world: &mut World, at: Vec2) {
     spawn_transient_effect(world, "ex10_fireball_blast", at);
     spawn_transient_effect(world, "ex10_ball_explosion", at);
-    if world.query::<Explosion>().count() < TRANSIENT_EMITTER_CAP {
+    if world.query::<(Entity, &Explosion)>().count() < TRANSIENT_EMITTER_CAP {
         let e = world.spawn();
         world.insert(e, Explosion { age: 0.0 });
         world.insert(e, Transform::from_position(at));
     }
     let mut targets: Vec<Entity> = world
-        .query::<SmallBall>()
+        .query::<(Entity, &SmallBall)>()
         .filter(|(e, _)| {
             world
                 .get::<Position>(*e)

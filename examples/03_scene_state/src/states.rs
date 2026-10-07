@@ -284,6 +284,7 @@ fn action_just_pressed(world: &World, action: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tungsten::core::Entity;
     use tungsten::state_dispatcher_system;
 
     struct TestGameplay;
@@ -345,7 +346,7 @@ mod tests {
         assert_eq!(stack.depth(), 1);
         assert!(
             world
-                .query::<SceneEntity>()
+                .query::<(Entity, &SceneEntity)>()
                 .all(|(_, marker)| marker.state_id == "menu")
         );
     }

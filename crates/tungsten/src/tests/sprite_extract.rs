@@ -471,7 +471,14 @@ fn reference_extract(world: &World) -> Vec<SpriteBatch> {
         .map_or(Vec2::ZERO, |camera| camera.position);
 
     let mut entries: Vec<_> = world
-        .query3_opt2::<Transform, Sprite, Visibility, UniformOverrideBlock, ParallaxLayer>()
+        .query::<(
+            Entity,
+            &Transform,
+            &Sprite,
+            &Visibility,
+            Option<&UniformOverrideBlock>,
+            Option<&ParallaxLayer>,
+        )>()
         .filter_map(|(e, t, s, v, override_block, parallax)| {
             if !v.visible {
                 return None;
@@ -885,7 +892,7 @@ fn scratch_reuses_storage_and_leaves_output_unchanged() {
 
     // A changed world: nothing of the last frame leaks into the next.
     let victims: Vec<Entity> = world
-        .query::<Sprite>()
+        .query::<(Entity, &Sprite)>()
         .map(|(e, _)| e)
         .filter(|e| e.id() % 3 == 0)
         .collect();
@@ -1062,7 +1069,7 @@ fn single_batch_frames_match_reference_as_the_count_changes() {
     recycle(&world, grown);
 
     let victims: Vec<Entity> = world
-        .query::<Sprite>()
+        .query::<(Entity, &Sprite)>()
         .map(|(e, _)| e)
         .filter(|e| e.id() >= 100)
         .collect();
@@ -1073,7 +1080,7 @@ fn single_batch_frames_match_reference_as_the_count_changes() {
     assert_same_batches(&shrunk, &reference_extract(&world), "shrunk");
     recycle(&world, shrunk);
 
-    let rest: Vec<Entity> = world.query::<Sprite>().map(|(e, _)| e).collect();
+    let rest: Vec<Entity> = world.query::<(Entity, &Sprite)>().map(|(e, _)| e).collect();
     for entity in rest {
         world.despawn(entity);
     }
@@ -1114,7 +1121,11 @@ fn single_batch_and_split_frames_alternate_cleanly() {
 fn single_class_out_of_painter_order_still_sorts() {
     // One class and one z, but a despawn and respawn put a low ID last.
     let mut world = single_batch_world(50);
-    let first = world.query::<Sprite>().map(|(e, _)| e).next().unwrap();
+    let first = world
+        .query::<(Entity, &Sprite)>()
+        .map(|(e, _)| e)
+        .next()
+        .unwrap();
     world.despawn(first);
     spawn_visible(&mut world, "quad", Vec2::new(-5.0, -5.0), 0);
     let batches = extract_sprites_default(&world);
@@ -1184,7 +1195,7 @@ fn culling_keeps_the_uncull_extracts_instances_and_batch_order() {
             height: 300,
         });
         if seed == 12 {
-            assert!(world.query::<Sprite>().count() > RADIX_SORT_MIN);
+            assert!(world.query::<(Entity, &Sprite)>().count() > RADIX_SORT_MIN);
         }
         let view = view_bounds(&world).unwrap();
         let culled = extract_sprites_default(&world);

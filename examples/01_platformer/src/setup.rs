@@ -5,11 +5,13 @@ use tungsten::core::{
     AmbientLight, AnimationRegistry, AssetRegistry, AudioCommands, CameraBounds, CameraController,
     CameraMode, Easing, Entity, Light, ParallaxLayer, ParticleBudget, ParticleConfigRegistry,
     ParticleEmitter, ParticleEmitterState, SoundRegistry, Sprite, SpriteSquashStretch,
-    SquashTrigger, Tag, TilemapInstance, TilemapRegistry, Transform, Visibility, World,
+    SquashTrigger, Tag, TilemapInstance, TilemapRegistry, Transform, Visibility, With, World,
 };
-use tungsten::physics::{BodyKind, Collider, PhysicsConfig, Position, RigidBody, Velocity};
+use tungsten::physics::{
+    BodyKind, Collider, PhysicsConfig, Position, RigidBody, RigidBodyBundle, Velocity,
+};
 use tungsten::plugins::{PARTICLE_COUNT_REFRESH, PHYSICS_STEP, PHYSICS_SYNC};
-use tungsten::{App, Stage, SystemDesc, system};
+use tungsten::{App, Bundle, Stage, SystemDesc, system};
 
 use crate::extract::{extract_sprites, extract_text};
 use crate::level_layout::{EMITTERS, PROPS};
@@ -347,38 +349,34 @@ fn seed_world(world: &mut World) {
     crate::gameplay::spawn_platform_colliders(world);
 
     // Safe apron; asset-dependent props are installed after manifest loading.
-    let player = world.spawn();
-    world.insert(player, Player::default());
-    world.insert(player, crate::gameplay::Health::default());
-    world.insert(player, PlayerPresentation::default());
-    world.insert(player, Position(PLAYER_SPAWN));
-    world.insert(player, Transform::from_position(PLAYER_SPAWN));
-    world.insert(player, Velocity(Vec2::ZERO));
-    world.insert(player, Collider::aabb(PLAYER_HALF));
-    world.insert(player, RigidBody::dynamic().with_restitution(0.0));
-    world.insert(
-        player,
-        tungsten::core::AnimationState::new(PLAYER_ANIMATION_ID),
+    let player = world.spawn_with(
+        RigidBodyBundle::dynamic(Position(PLAYER_SPAWN), Collider::aabb(PLAYER_HALF))
+            .with_body(RigidBody::dynamic().with_restitution(0.0))
+            .with((
+                Player::default(),
+                crate::gameplay::Health::default(),
+                PlayerPresentation::default(),
+                Transform::from_position(PLAYER_SPAWN),
+                tungsten::core::AnimationState::new(PLAYER_ANIMATION_ID),
+                CurrentSprite(PLAYER_START_SPRITE_ID.into()),
+                Tag::new("player"),
+                // M30 squash on landing. Not a `Tween` (`D-073`): the player's
+                // single `D-055` tween slot stays with the M26 damage flash
+                // below, so both fire together on a hazard hit.
+                SpriteSquashStretch {
+                    on: SquashTrigger::OnLand,
+                    amount: Vec2::new(1.16, 0.86),
+                    duration: 0.18,
+                    easing: Easing::QuadOut,
+                },
+                // M26 damage-flash: attach an empty override block and the
+                // `damage_flash` material id (if registered). Default zero
+                // overlay leaves the frame byte-identical to the pre-M26
+                // baseline — the tween in `systems.rs` is what actually lights
+                // it up on a collision.
+                tungsten::core::UniformOverrideBlock::default(),
+            )),
     );
-    world.insert(player, CurrentSprite(PLAYER_START_SPRITE_ID.into()));
-    world.insert(player, Tag::new("player"));
-    // M30 squash on landing. Not a `Tween` (`D-073`): the player's single
-    // `D-055` tween slot stays with the M26 damage flash below, so both fire
-    // together on a hazard hit.
-    world.insert(
-        player,
-        SpriteSquashStretch {
-            on: SquashTrigger::OnLand,
-            amount: Vec2::new(1.16, 0.86),
-            duration: 0.18,
-            easing: Easing::QuadOut,
-        },
-    );
-    // M26 damage-flash: attach an empty override block and the `damage_flash`
-    // material id (if registered). Default zero overlay leaves the frame
-    // byte-identical to the pre-M26 baseline — the tween in `systems.rs` is
-    // what actually lights it up on a collision.
-    world.insert(player, tungsten::core::UniformOverrideBlock::default());
     configure_platformer_camera(world, player);
 
     let ball_spawns: &[(f32, f32, f32)] = &[
@@ -393,21 +391,23 @@ fn seed_world(world: &mut World) {
         (119.0, 15.0, 240.0),
     ];
     for &(col, row, vx) in ball_spawns {
-        let ball = world.spawn();
-        world.insert(ball, Ball);
-        world.insert(ball, Position(Vec2::new(col * TILE, row * TILE)));
-        world.insert(ball, Velocity(Vec2::new(vx, 0.0)));
-        world.insert(ball, Collider::circle(BALL_RADIUS));
-        world.insert(
-            ball,
-            RigidBody {
+        world.spawn_with(
+            RigidBodyBundle::dynamic(
+                Position(Vec2::new(col * TILE, row * TILE)),
+                Collider::circle(BALL_RADIUS),
+            )
+            .with_velocity(Velocity(Vec2::new(vx, 0.0)))
+            .with_body(RigidBody {
                 kind: BodyKind::Dynamic,
                 inv_mass: 1.0,
                 restitution: BALL_RESTITUTION,
-            },
+            })
+            .with((
+                Ball,
+                tungsten::core::AnimationState::new(BALL_ANIMATION_ID),
+                CurrentSprite(BALL_START_SPRITE_ID.into()),
+            )),
         );
-        world.insert(ball, tungsten::core::AnimationState::new(BALL_ANIMATION_ID));
-        world.insert(ball, CurrentSprite(BALL_START_SPRITE_ID.into()));
     }
 }
 
@@ -549,7 +549,10 @@ fn install_startup(app: &mut App) {
             .get_resource::<tungsten::core::MaterialRegistry>()
             .and_then(|r| r.get("damage_flash"))
         {
-            for entity in world.query_entities::<Player>() {
+            for entity in world
+                .query_filtered::<Entity, With<Player>>()
+                .collect::<Vec<_>>()
+            {
                 world.insert(entity, crate::state::PlayerMaterial { material_id });
             }
         }

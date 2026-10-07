@@ -2,9 +2,11 @@ pub mod tungsten
 pub use tungsten::ActionMap
 pub use tungsten::ActionMapError
 pub use tungsten::Binding
+pub use tungsten::Bundle
 pub use tungsten::DebugDraw
 pub use tungsten::DebugShape
 pub use tungsten::Inspectable
+pub use tungsten::OptionalColumn
 pub use tungsten::PhysicsPlugin
 pub use tungsten::Plugin
 pub use tungsten::PluginSet
@@ -13,6 +15,8 @@ pub use tungsten::ScheduleError
 pub use tungsten::Stage
 pub use tungsten::SystemDesc
 pub use tungsten::WindowSize
+pub use tungsten::With
+pub use tungsten::Without
 pub use tungsten::core
 pub use tungsten::physics
 pub use tungsten::render

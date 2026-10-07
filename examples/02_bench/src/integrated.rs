@@ -29,7 +29,7 @@ use tungsten::core::post::{
     TonemapParams, VignetteParams,
 };
 use tungsten::core::{
-    AmbientLight, CameraBounds, CameraController, CameraMode, CameraState, Config, Light,
+    AmbientLight, CameraBounds, CameraController, CameraMode, CameraState, Config, Entity, Light,
     LightKind, Particle, ParticleBudget, PhysicsConfig, PostAaMode, Transform, World,
 };
 use tungsten::render::{SpriteBatch, TextSection};
@@ -470,7 +470,7 @@ impl FrameCounters for IntegratedCounts {
         .fold(0.0f32, f32::max)
         .ceil();
         let lights = world
-            .query2::<Transform, Light>()
+            .query::<(Entity, &Transform, &Light)>()
             .filter(|(_, transform, light)| match light.kind {
                 LightKind::Point { radius, .. } => {
                     distance_sq(transform.position, view_min, view_max) < radius * radius
@@ -483,9 +483,9 @@ impl FrameCounters for IntegratedCounts {
             " actors={} projectiles={} hits={} particles={} lights={lights} camera_x={} \
              view_out={out} flashing={} landings={} shots={} turns={} events={}",
             runtime.actors.len(),
-            world.query::<runtime::Projectile>().count(),
+            world.query::<(Entity, &runtime::Projectile)>().count(),
             self.hits,
-            world.query::<Particle>().count(),
+            world.query::<(Entity, &Particle)>().count(),
             camera.position.x.round(),
             runtime.actors.flashing(),
             self.landings,

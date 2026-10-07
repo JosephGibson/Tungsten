@@ -1,7 +1,9 @@
 //! Tilemap-to-sprite extraction; caller owns batch ordering.
 
 use tungsten_core::assets::{LayerKind, TextureHandle, TilemapRegistry};
-use tungsten_core::{AssetRegistry, CameraState, FilterMode, SpriteAsset, TilemapInstance, World};
+use tungsten_core::{
+    AssetRegistry, CameraState, Entity, FilterMode, SpriteAsset, TilemapInstance, World,
+};
 use tungsten_render::{SpriteBatch, SpriteInstance};
 
 use crate::WindowSize;
@@ -100,7 +102,7 @@ pub fn extract_tilemaps(world: &World) -> Vec<SpriteBatch> {
         let batch_lens = &mut buffers.tile_batch_lens;
         let mut out: Vec<SpriteBatch> = Vec::new();
 
-        for (_entity, instance) in world.query::<TilemapInstance>() {
+        for (_entity, instance) in world.query::<(Entity, &TilemapInstance)>() {
             let Some(data) = tilemaps.get(&instance.id) else {
                 log::warn!(
                     "extract_tilemaps: no tilemap registered for '{}'",

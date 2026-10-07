@@ -43,8 +43,8 @@ use glam::{BVec2, Vec2};
 use tungsten_core::assets::TextureHandle;
 use tungsten_core::tween::UniformOverrideBlock;
 use tungsten_core::{
-    AssetRegistry, CameraState, FilterMode, MaterialAssetId, ParallaxLayer, Sprite, Transform,
-    Visibility, World, parallax_world_position,
+    AssetRegistry, CameraState, Entity, FilterMode, MaterialAssetId, OptionalColumn, ParallaxLayer,
+    Sprite, Transform, Visibility, World, parallax_world_position,
 };
 use tungsten_render::{SpriteBatch, SpriteInstance};
 
@@ -292,9 +292,28 @@ fn extract_into(
     let mut in_painter_order = true;
     let (mut set_bits, mut common_bits) = (0u64, u64::MAX);
     let mut culled = 0usize;
-    world
-        .query3_opt2::<Transform, Sprite, Visibility, UniformOverrideBlock, ParallaxLayer>()
-        .for_each(|(e, t, s, v, override_block, parallax)| {
+    // The slice form, each archetype's rows zipped as `query3_opt2` zipped
+    // its columns and consumed with `for_each` at both levels: that row loop
+    // keeps its state in registers, where the tuple row iterator spills
+    // (M40 step 5).
+    let archetypes = world.query_slices::<(
+        Entity,
+        &Transform,
+        &Sprite,
+        &Visibility,
+        Option<&UniformOverrideBlock>,
+        Option<&ParallaxLayer>,
+    )>();
+    archetypes.for_each(|(_, columns)| {
+        let (entities, transforms, sprites, visibilities, override_blocks, parallaxes) = columns;
+        let rows = entities
+            .iter()
+            .zip(transforms)
+            .zip(sprites)
+            .zip(visibilities)
+            .zip(OptionalColumn(override_blocks.map(<[_]>::iter)))
+            .zip(OptionalColumn(parallaxes.map(<[_]>::iter)));
+        rows.for_each(|(((((&e, t), s), v), override_block), parallax)| {
             if !v.visible {
                 return;
             }
@@ -390,6 +409,7 @@ fn extract_into(
                 _pad: 0.0,
             });
         });
+    });
 
     // Bits of the order that differ between sprites. The orders are distinct,
     // so any correct sort gives the one painter order a stable sort by

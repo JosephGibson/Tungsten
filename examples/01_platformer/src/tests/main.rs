@@ -11,16 +11,17 @@ mod spells;
 use tungsten::core::assets::{LayerKind, TilemapData, TilemapLayer};
 use tungsten::core::{
     ActionMap, AnimationState, AudioCommand, AudioCommands, AudioHandle, Binding, CameraController,
-    CameraMode, CameraState, CommandBuffer, Config, EventQueue, InputState, KeyCode, MouseButton,
-    ShakeEvent, SquashEvent, TilemapInstance, TilemapRegistry, Time, Transform, World,
+    CameraMode, CameraState, CommandBuffer, Config, Entity, EventQueue, InputState, KeyCode,
+    MouseButton, ShakeEvent, SquashEvent, TilemapInstance, TilemapRegistry, Time, Transform, World,
     sync_position_to_transform,
 };
 use tungsten::physics::{
-    Collider, CollisionEvent, PhysicsConfig, Position, RigidBody, Velocity, physics_step,
+    Collider, CollisionEvent, PhysicsConfig, Position, RigidBody, RigidBodyBundle, Velocity,
+    physics_step,
 };
 use tungsten::testing::Harness;
 use tungsten::{
-    App, CameraPlugin, DefaultPlugins, GameFeelPlugin, PhysicsPlugin, WindowSize,
+    App, Bundle, CameraPlugin, DefaultPlugins, GameFeelPlugin, PhysicsPlugin, WindowSize,
     camera_update_system,
 };
 
@@ -167,23 +168,17 @@ fn seed_level_map(world: &mut World, map: TilemapData) {
 }
 
 fn spawn_test_player(world: &mut World, position: Vec2) -> tungsten::core::Entity {
-    let entity = world.spawn();
-    world.insert(entity, Player::default());
-    world.insert(entity, crate::state::PlayerPresentation::default());
-    world.insert(entity, Position(position));
-    world.insert(entity, Transform::from_position(position));
-    world.insert(entity, Velocity(Vec2::ZERO));
-    world.insert(entity, Collider::aabb(PLAYER_HALF));
-    world.insert(entity, RigidBody::dynamic().with_restitution(0.0));
-    world.insert(
-        entity,
-        AnimationState::new(crate::state::PLAYER_ANIMATION_ID),
-    );
-    world.insert(
-        entity,
-        CurrentSprite(crate::state::PLAYER_START_SPRITE_ID.into()),
-    );
-    entity
+    world.spawn_with(
+        RigidBodyBundle::dynamic(Position(position), Collider::aabb(PLAYER_HALF))
+            .with_body(RigidBody::dynamic().with_restitution(0.0))
+            .with((
+                Player::default(),
+                crate::state::PlayerPresentation::default(),
+                Transform::from_position(position),
+                AnimationState::new(crate::state::PLAYER_ANIMATION_ID),
+                CurrentSprite(crate::state::PLAYER_START_SPRITE_ID.into()),
+            )),
+    )
 }
 
 fn load_presentation_assets(world: &mut World) {
@@ -268,12 +263,12 @@ fn configure_app_seeds_expected_bootstrap_state() {
     assert_eq!(physics.broadphase_cell_size, TILE);
     assert!(world.get_resource::<TextDisplayState>().is_some());
 
-    let player_entities: Vec<_> = world.query::<Player>().map(|(e, _)| e).collect();
+    let player_entities: Vec<_> = world.query::<(Entity, &Player)>().map(|(e, _)| e).collect();
     assert_eq!(player_entities.len(), 1);
-    assert_eq!(world.query::<Ball>().count(), 9);
+    assert_eq!(world.query::<(Entity, &Ball)>().count(), 9);
     // Seeded balls are bronze orbs: they keep their authored colours.
-    assert_eq!(world.query::<BallHue>().count(), 0);
-    assert_eq!(world.query::<TilemapInstance>().count(), 1);
+    assert_eq!(world.query::<(Entity, &BallHue)>().count(), 0);
+    assert_eq!(world.query::<(Entity, &TilemapInstance)>().count(), 1);
 
     let player = player_entities[0];
     assert!(world.get::<AnimationState>(player).is_some());
@@ -313,7 +308,7 @@ fn a_press_moves_the_player_on_the_next_step() {
     let player_x = |harness: &Harness| {
         harness
             .world()
-            .query2::<Player, Position>()
+            .query::<(Entity, &Player, &Position)>()
             .next()
             .map(|(_, _, position)| position.0.x)
             .expect("the player is seeded")

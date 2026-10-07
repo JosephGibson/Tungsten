@@ -6,7 +6,7 @@
 
 use glam::Vec2;
 use tungsten::WindowSize;
-use tungsten::core::{AssetRegistry, CameraState, Position, World};
+use tungsten::core::{AssetRegistry, CameraState, Entity, Position, World};
 use tungsten::render::{SpriteBatch, SpriteInstance};
 
 use crate::r#gen;
@@ -69,7 +69,7 @@ pub(crate) fn extract_view(world: &World) -> Vec<SpriteBatch> {
         })
         .collect();
     let bounds = view_bounds(world);
-    for (_entity, position, sprite) in world.query2::<Position, ViewSprite>() {
+    for (_entity, position, sprite) in world.query::<(Entity, &Position, &ViewSprite)>() {
         if !in_view(bounds, position.0, sprite.half) {
             continue;
         }

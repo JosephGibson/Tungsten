@@ -16,7 +16,7 @@ use tungsten_core::assets::{
 };
 use tungsten_core::{
     CommandBuffer, Entity, EventQueue, MeshParticle, Particle, ParticleActive, ParticleBudget,
-    ParticleEmitter, ParticleEmitterState, Sprite, Time, Transform, Visibility, World,
+    ParticleEmitter, ParticleEmitterState, Sprite, Time, Transform, Visibility, With, World,
     WorldRngSeed,
 };
 
@@ -99,7 +99,7 @@ fn tick(world: &mut World, dt: f32) {
 }
 
 fn count_particles(world: &mut World) -> usize {
-    world.query_entities::<Particle>().len()
+    world.query_filtered::<Entity, With<Particle>>().count()
 }
 
 #[test]
@@ -233,7 +233,9 @@ fn hot_reload_snapshot_preserves_live_particles() {
     tick(&mut world, 1.0 / 60.0);
     assert_eq!(count_particles(&mut world), 4);
 
-    let entities = world.query_entities::<Particle>();
+    let entities = world
+        .query_filtered::<Entity, With<Particle>>()
+        .collect::<Vec<_>>();
     let original_arcs: Vec<_> = entities
         .iter()
         .map(|e| Arc::as_ptr(&world.get::<Particle>(*e).unwrap().config))
@@ -252,7 +254,9 @@ fn hot_reload_snapshot_preserves_live_particles() {
         .replace(id, new_cfg.clone());
 
     // Live particles keep original config Arc across hot reload.
-    let entities = world.query_entities::<Particle>();
+    let entities = world
+        .query_filtered::<Entity, With<Particle>>()
+        .collect::<Vec<_>>();
     for (e, original) in entities.iter().zip(original_arcs.iter()) {
         let current = Arc::as_ptr(&world.get::<Particle>(*e).unwrap().config);
         assert_eq!(current, *original, "live particle Arc must not swap");
@@ -313,7 +317,9 @@ fn mesh_config_spawns_mesh_particle_without_sprite() {
 
     tick(&mut world, 1.0 / 60.0);
 
-    let particles = world.query_entities::<Particle>();
+    let particles = world
+        .query_filtered::<Entity, With<Particle>>()
+        .collect::<Vec<_>>();
     assert_eq!(particles.len(), 8);
     for e in particles {
         let drawn = world.get::<MeshParticle>(e).expect("mesh particle");
@@ -402,7 +408,10 @@ fn mesh_particle_ages_out_and_tick_writes_color() {
 
     // Spawned at the end of the first tick, so it has not aged yet.
     tick(&mut world, 1.0 / 60.0);
-    let e = world.query_entities::<Particle>()[0];
+    let e = world
+        .query_filtered::<Entity, With<Particle>>()
+        .next()
+        .expect("an entity matches");
     assert_eq!(world.get::<MeshParticle>(e).unwrap().color, [255; 4]);
 
     // Half of the 0.5 s lifetime: alpha 0.5, moved and rotated.

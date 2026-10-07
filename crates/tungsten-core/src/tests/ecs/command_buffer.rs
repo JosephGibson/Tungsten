@@ -125,3 +125,38 @@ fn remove_component_queued() {
 
     assert_eq!(buffer.len(), 1);
 }
+
+#[test]
+fn bundle_forms_record_one_insert_per_component() {
+    let mut buffer = CommandBuffer::new();
+    let entity = Entity {
+        index: 0,
+        generation: 0,
+    };
+
+    let pending = buffer.spawn_with((Position { x: 1.0, y: 2.0 }, 7u32));
+    assert_eq!(buffer.len(), 3);
+    buffer.insert_bundle(entity, (8u32,));
+    buffer.insert_bundle_pending(pending, (Position { x: 3.0, y: 4.0 }, 9u32));
+    assert_eq!(buffer.len(), 6);
+
+    // A spawn, then each component as an insert on its target, in bundle
+    // order, through the one queue per component type.
+    assert!(matches!(
+        buffer.commands[0],
+        Command::Spawn { pending_id: 0 }
+    ));
+    let inserts: Vec<(bool, u32)> = buffer.commands[1..]
+        .iter()
+        .map(|command| match command {
+            Command::Insert { target, queue } => {
+                (*target == CommandTarget::Pending(pending.0), *queue)
+            }
+            _ => unreachable!(),
+        })
+        .collect();
+    assert_eq!(
+        inserts,
+        vec![(true, 0), (true, 1), (false, 1), (true, 0), (true, 1)]
+    );
+}

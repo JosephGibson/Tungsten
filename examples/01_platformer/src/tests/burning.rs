@@ -164,7 +164,7 @@ fn burning_particles_use_a_rotating_bounded_pool_and_drain_after_burnout() {
         assert_eq!(
             harness
                 .world()
-                .query::<Particle>()
+                .query::<(Entity, &Particle)>()
                 .filter(|(_, p)| p.config.sprite == sprite)
                 .count(),
             expected
@@ -178,10 +178,14 @@ fn burning_particles_use_a_rotating_bounded_pool_and_drain_after_burnout() {
     }
     ball_fire_particles(world);
     assert_eq!(
-        world.query::<BallFireEmitter>().count(),
+        world.query::<(Entity, &BallFireEmitter)>().count(),
         BALL_FIRE_EMITTER_CAP
     );
-    let first = world.query::<BallFireEmitter>().next().unwrap().0;
+    let first = world
+        .query::<(Entity, &BallFireEmitter)>()
+        .next()
+        .unwrap()
+        .0;
     let old_position = world.get::<Transform>(first).unwrap().position;
     world.insert_resource(crate::gameplay::SceneTime(0.125));
     ball_fire_particles(world);
@@ -194,26 +198,26 @@ fn burning_particles_use_a_rotating_bounded_pool_and_drain_after_burnout() {
     for _ in 0..60 {
         ball_fire_particles(harness.world_mut());
         harness.step(1);
-        assert!(harness.world().query::<Particle>().count() <= 32);
+        assert!(harness.world().query::<(Entity, &Particle)>().count() <= 32);
     }
-    assert!(harness.world().query::<Particle>().count() > 0);
+    assert!(harness.world().query::<(Entity, &Particle)>().count() > 0);
     set_dt(&mut harness, 10.0);
     let world = harness.world_mut();
     tick_ball_fire(world);
     ball_fire_particles(world);
-    assert_eq!(world.query::<BallFireEmitter>().count(), 0);
+    assert_eq!(world.query::<(Entity, &BallFireEmitter)>().count(), 0);
     set_dt(&mut harness, 1.0 / 60.0);
     harness.step(90);
     let world = harness.world_mut();
-    assert_eq!(world.query::<Particle>().count(), 0);
-    assert_eq!(world.query::<Ball>().count(), 2048);
+    assert_eq!(world.query::<(Entity, &Particle)>().count(), 0);
+    assert_eq!(world.query::<(Entity, &Ball)>().count(), 2048);
     let fresh = ball(world, Vec2::ZERO, true);
     ignite(world, fresh);
     ball_fire_particles(world);
-    assert_eq!(world.query::<BallFireEmitter>().count(), 2);
+    assert_eq!(world.query::<(Entity, &BallFireEmitter)>().count(), 2);
     world.despawn(fresh);
     ball_fire_particles(world);
-    assert_eq!(world.query::<BallFireEmitter>().count(), 0);
+    assert_eq!(world.query::<(Entity, &BallFireEmitter)>().count(), 0);
 }
 
 #[test]

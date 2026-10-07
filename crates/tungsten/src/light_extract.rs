@@ -5,7 +5,7 @@
 //! packs into a `LightUbo` along with the optional `AmbientLight` resource
 //! (defaults to `Vec3::ONE` per `D-061`).
 
-use tungsten_core::{AmbientLight, CameraState, Light, Transform, World};
+use tungsten_core::{AmbientLight, CameraState, Entity, Light, Transform, World};
 use tungsten_render::{LightUbo, cull_to_cap, pack_lights};
 
 /// Build the per-frame `LightUbo` from world state.
@@ -18,7 +18,7 @@ pub fn extract_lights(
 ) -> LightUbo {
     let aabb = camera.visible_world_aabb(viewport_w, viewport_h);
     let entries: Vec<(glam::Vec2, Light)> = world
-        .query2::<Transform, Light>()
+        .query::<(Entity, &Transform, &Light)>()
         .map(|(_, t, l)| (t.position, *l))
         .collect();
     let ambient = world

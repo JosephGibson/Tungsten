@@ -333,7 +333,8 @@ impl Archetypes {
     }
 
     /// Mutable archetypes containing component `T`, each with `T`'s column
-    /// index.
+    /// index. Test-only since `World::query_mut` took query data (`D-130`).
+    #[cfg(test)]
     pub fn archetypes_with_mut<T: 'static>(
         &mut self,
     ) -> impl Iterator<Item = (&mut Archetype, usize)> {

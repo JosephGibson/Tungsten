@@ -376,7 +376,7 @@ fn insert_tags(world: &mut World, entity: Entity, combination: u32) {
 fn digest(world: &World) -> u64 {
     let mut hash = FNV_OFFSET;
     let mut mix = |word: u64| hash = (hash ^ word).wrapping_mul(FNV_PRIME);
-    for (_, position) in world.query::<Position>() {
+    for position in world.query::<&Position>() {
         mix(u64::from(position.0.x.to_bits()) | u64::from(position.0.y.to_bits()) << 32);
     }
     if let Some(reductions) = world.get_resource::<Reductions>() {

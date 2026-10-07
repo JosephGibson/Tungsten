@@ -21,7 +21,7 @@ use std::path::PathBuf;
 
 use glam::Vec2;
 
-use tungsten::core::{Config, Tag, Time, Transform, World};
+use tungsten::core::{Config, Entity, Tag, Time, Transform, With, World};
 use tungsten::render::TextSection;
 use tungsten::{App, DebugHud, StateStack, Transition, TransitionEffect};
 
@@ -135,7 +135,9 @@ fn menu_idle_system(world: &mut World) {
         clock.0 += dt;
     }
 
-    let entities = world.query2_entities::<Tag, Transform>();
+    let entities = world
+        .query_filtered::<Entity, (With<Tag>, With<Transform>)>()
+        .collect::<Vec<_>>();
     for entity in entities {
         let is_decoration = world
             .get::<Tag>(entity)
@@ -178,7 +180,9 @@ fn gameplay_orbit_system(world: &mut World) {
         0.0
     };
 
-    let entities = world.query2_entities::<Tag, Transform>();
+    let entities = world
+        .query_filtered::<Entity, (With<Tag>, With<Transform>)>()
+        .collect::<Vec<_>>();
     for entity in entities {
         let Some(tag_name) = world.get::<Tag>(entity).map(|t| t.name.clone()) else {
             continue;

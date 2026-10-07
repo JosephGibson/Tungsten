@@ -11,7 +11,7 @@ use tungsten_core::post::{FadeParams, PostPass, PostStack};
 use tungsten_core::DeltaTime;
 use tungsten_core::{
     AudioCommand, AudioCommands, CollisionEvent, CommandBuffer, Config, DisplayMode, DisplayState,
-    EventQueue, InputState, KeyCode, ShakeEvent, SquashEvent, Stage, Time, World, system,
+    Entity, EventQueue, InputState, KeyCode, ShakeEvent, SquashEvent, Stage, Time, World, system,
 };
 use tungsten_render::QuadInstance;
 
@@ -427,7 +427,7 @@ fn a_command_a_system_queues_is_applied_by_the_end_of_its_frame() {
     let before = app.world.entity_count();
     headless_frame(&mut app);
     assert_eq!(app.world.entity_count(), before + 1);
-    assert_eq!(app.world.query::<Marker>().count(), 1);
+    assert_eq!(app.world.query::<(Entity, &Marker)>().count(), 1);
 }
 
 #[test]

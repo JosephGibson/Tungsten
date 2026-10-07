@@ -5,7 +5,7 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::hint::black_box;
-use tungsten_core::{CommandBuffer, EventQueue, World};
+use tungsten_core::{CommandBuffer, Entity, EventQueue, World};
 
 #[allow(dead_code)]
 #[derive(Clone, Copy)]
@@ -73,7 +73,7 @@ fn bench_query_single(c: &mut Criterion) {
 
     c.bench_function("query_single_10k", |b| {
         b.iter(|| {
-            let sum: f32 = world.query::<Position>().map(|(_, p)| p.x).sum();
+            let sum: f32 = world.query::<(Entity, &Position)>().map(|(_, p)| p.x).sum();
             black_box(sum);
         });
     });
@@ -96,7 +96,7 @@ fn bench_query2_homogeneous(c: &mut Criterion) {
     c.bench_function("query2_homogeneous_10k", |b| {
         b.iter(|| {
             let sum: f32 = world
-                .query2::<Position, Velocity>()
+                .query::<(Entity, &Position, &Velocity)>()
                 .map(|(_, p, v)| p.x + v.dx)
                 .sum();
             black_box(sum);
@@ -120,7 +120,7 @@ fn bench_query2_mut(c: &mut Criterion) {
 
     c.bench_function("query2_mut_10k", |b| {
         b.iter(|| {
-            for (_, p, v) in world.query2_mut::<Position, Velocity>() {
+            for (_, p, v) in world.query_mut::<(Entity, &mut Position, &mut Velocity)>() {
                 p.x += v.dx;
             }
             black_box(&world);
@@ -196,7 +196,7 @@ fn bench_query2_fragmented(c: &mut Criterion) {
     c.bench_function("query2_fragmented_5arch_10k", |b| {
         b.iter(|| {
             let sum: f32 = world
-                .query2::<Position, Velocity>()
+                .query::<(Entity, &Position, &Velocity)>()
                 .map(|(_, p, v)| p.x + v.dx)
                 .sum();
             black_box(sum);
@@ -265,7 +265,7 @@ fn bench_query2_10k_5archetypes_pv(c: &mut Criterion) {
     c.bench_function("query2_10k_5archetypes_pv", |b| {
         b.iter(|| {
             let sum: Vec2 = world
-                .query2::<Position, Velocity>()
+                .query::<(Entity, &Position, &Velocity)>()
                 .fold(Vec2::ZERO, |acc, (_, p, v)| acc + p.0 + v.0);
             black_box(sum);
         });
@@ -367,7 +367,8 @@ impl NaiveWorld {
             .insert(id, Box::new(val));
     }
 
-    fn query<T: 'static>(&self) -> impl Iterator<Item = (u32, &T)> {
+    /// Every `T` with its id: the store's own iteration.
+    fn components<T: 'static>(&self) -> impl Iterator<Item = (u32, &T)> {
         self.stores
             .get(&TypeId::of::<T>())
             .into_iter()
@@ -379,7 +380,7 @@ impl NaiveWorld {
     }
 
     /// Old query2 shape: query plus per-entity `HashMap` lookup.
-    fn query_entities<T: 'static>(&self) -> Vec<u32> {
+    fn ids_with<T: 'static>(&self) -> Vec<u32> {
         self.stores
             .get(&TypeId::of::<T>())
             .map(|s| s.keys().copied().collect())
@@ -411,7 +412,7 @@ fn bench_naive_query_single(c: &mut Criterion) {
 
     c.bench_function("naive_query_single_10k", |b| {
         b.iter(|| {
-            let sum: f32 = world.query::<Position>().map(|(_, p)| p.x).sum();
+            let sum: f32 = world.components::<Position>().map(|(_, p)| p.x).sum();
             black_box(sum);
         });
     });
@@ -433,7 +434,7 @@ fn bench_naive_query2_via_entities(c: &mut Criterion) {
 
     c.bench_function("naive_query2_via_entities_10k", |b| {
         b.iter(|| {
-            let entities = world.query_entities::<Position>();
+            let entities = world.ids_with::<Position>();
             let sum: f32 = entities
                 .iter()
                 .filter_map(|&id| {
@@ -564,7 +565,7 @@ fn bench_sprite_components_query3_2k(c: &mut Criterion) {
     c.bench_function("sprite_components_query3_2k", |b| {
         b.iter(|| {
             let sum: i64 = world
-                .query3::<Transform, Sprite, Visibility>()
+                .query::<(Entity, &Transform, &Sprite, &Visibility)>()
                 .map(|(_, _, s, _)| i64::from(s.z_order))
                 .sum();
             black_box(sum);
@@ -607,7 +608,7 @@ fn bench_high_load_iteration_50k(c: &mut Criterion) {
     c.bench_function("high_load_query3_50k", |b| {
         b.iter(|| {
             let sum = world
-                .query3::<StressAgent, Position, Velocity>()
+                .query::<(Entity, &StressAgent, &Position, &Velocity)>()
                 .fold(Vec2::ZERO, |acc, (_, a, p, v)| {
                     acc + p.0 + v.0 + a.drift * a.phase + a.tint_basis[0]
                 });
@@ -617,7 +618,9 @@ fn bench_high_load_iteration_50k(c: &mut Criterion) {
     c.bench_function("high_load_query3_mut_50k", |b| {
         b.iter(|| {
             // Bounded values keep long Criterion runs in the same numeric regime.
-            for (_, v, a, p) in world.query3_mut::<Velocity, StressAgent, Position>() {
+            for (_, v, a, p) in
+                world.query_mut::<(Entity, &mut Velocity, &mut StressAgent, &mut Position)>()
+            {
                 v.0 = p.0 * 0.01 + a.drift * a.phase;
             }
             black_box(&world);

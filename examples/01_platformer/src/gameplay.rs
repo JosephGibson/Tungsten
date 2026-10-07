@@ -14,9 +14,9 @@ use crate::{
 use glam::{Vec2, Vec3};
 use tungsten::core::{
     AnimationState, Entity, InputState, KeyCode, Light, Particle, ParticleConfigRegistry,
-    ParticleEmitter, ParticleEmitterState, Time, Transform, World,
+    ParticleEmitter, ParticleEmitterState, Time, Transform, With, World,
 };
-use tungsten::physics::{Collider, Position, RigidBody, Velocity, wake};
+use tungsten::physics::{Collider, Position, RigidBody, RigidBodyBundle, Velocity, wake};
 
 #[derive(Clone, Copy)]
 pub(crate) struct Health {
@@ -140,7 +140,10 @@ pub(crate) fn lantern_input(world: &mut World) {
         .get_resource::<InputState>()
         .is_some_and(|input| input.just_pressed(KeyCode::KeyL))
     {
-        for e in world.query_entities::<PlayerLantern>() {
+        for e in world
+            .query_filtered::<Entity, With<PlayerLantern>>()
+            .collect::<Vec<_>>()
+        {
             let lantern = world.get_mut::<PlayerLantern>(e).unwrap();
             lantern.enabled = !lantern.enabled;
         }
@@ -180,11 +183,11 @@ pub(crate) fn glow_center(world: &World, entity: Entity, offset: Vec2) -> Option
 /// Thin visible decks must not retain invisible full-tile collision below them.
 pub(crate) fn spawn_platform_colliders(world: &mut World) {
     for &[x, y, width, height] in SLAB_COLLIDERS {
-        let e = world.spawn();
         let half = Vec2::new(width, height) * 0.5;
-        world.insert(e, Position(Vec2::new(x, y) + half));
-        world.insert(e, Collider::aabb(half));
-        world.insert(e, RigidBody::r#static());
+        world.spawn_with(RigidBodyBundle::r#static(
+            Position(Vec2::new(x, y) + half),
+            Collider::aabb(half),
+        ));
     }
 }
 
@@ -212,7 +215,7 @@ pub(crate) fn fireball_faces_left(world: &World, hazard: Entity) -> bool {
     }
     let own = world.get::<Position>(hazard).map(|p| p.0.x);
     let player = world
-        .query::<Player>()
+        .query::<(Entity, &Player)>()
         .next()
         .and_then(|(e, _)| world.get::<Position>(e))
         .map(|p| p.0.x);
@@ -221,7 +224,10 @@ pub(crate) fn fireball_faces_left(world: &World, hazard: Entity) -> bool {
 
 pub(crate) fn spawn_obstacles(world: &mut World) {
     world.insert_resource(SceneTime::default());
-    for e in world.query_entities::<Player>() {
+    for e in world
+        .query_filtered::<Entity, With<Player>>()
+        .collect::<Vec<_>>()
+    {
         world.insert(e, PlayerLantern { enabled: true });
         add_glow(world, e, Vec2::ZERO, 125.0, [255, 190, 100, 255]);
     }
@@ -279,7 +285,7 @@ pub(crate) fn spawn_obstacles(world: &mut World) {
         world.insert(e, RigidBody::r#static());
     }
     let props: Vec<_> = world
-        .query::<AnimatedProp>()
+        .query::<(Entity, &AnimatedProp)>()
         .filter_map(|(e, _)| {
             let name = &world.get::<CurrentSprite>(e)?.0;
             if name.starts_with("ex10_lantern") {
@@ -303,7 +309,7 @@ pub(crate) fn spawn_obstacles(world: &mut World) {
         return;
     };
     let fires: Vec<_> = world
-        .query::<Hazard>()
+        .query::<(Entity, &Hazard)>()
         .filter(|(_, h)| h.fire)
         .filter_map(|(e, _)| Some((e, world.get::<Position>(e)?.0)))
         .collect();
@@ -354,21 +360,30 @@ pub(crate) fn move_obstacles(world: &mut World) {
     } else {
         0.0
     };
-    for e in world.query_entities::<SmallBall>() {
+    for e in world
+        .query_filtered::<Entity, With<SmallBall>>()
+        .collect::<Vec<_>>()
+    {
         let ball = world.get_mut::<SmallBall>(e).unwrap();
         ball.impact_cooldown = (ball.impact_cooldown - dt).max(0.0);
     }
-    for e in world.query_entities::<Velocity>() {
+    for e in world
+        .query_filtered::<Entity, With<Velocity>>()
+        .collect::<Vec<_>>()
+    {
         let velocity = world.get::<Velocity>(e).unwrap().0;
         world.insert(e, PreviousVelocity(velocity));
     }
-    for e in world.query_entities::<Health>() {
+    for e in world
+        .query_filtered::<Entity, With<Health>>()
+        .collect::<Vec<_>>()
+    {
         let h = world.get_mut::<Health>(e).unwrap();
         h.immunity = (h.immunity - dt).max(0.0);
         h.control_lock = (h.control_lock - dt).max(0.0);
     }
     let bodies: Vec<_> = world
-        .query::<Position>()
+        .query::<(Entity, &Position)>()
         .filter(|(e, _)| {
             world.get::<Player>(*e).is_some()
                 || world.get::<Ball>(*e).is_some()
@@ -380,14 +395,14 @@ pub(crate) fn move_obstacles(world: &mut World) {
         world.insert(e, PreviousPosition(p));
     }
     let moves: Vec<_> = world
-        .query::<Motion>()
+        .query::<(Entity, &Motion)>()
         .map(|(e, m)| (e, motion_position(m.0, time)))
         .collect();
     for (e, next) in moves {
         let old = world.get::<Position>(e).unwrap().0;
         if let Some(platform) = world.get::<MovingPlatform>(e).copied() {
             let riders: Vec<_> = world
-                .query::<Position>()
+                .query::<(Entity, &Position)>()
                 .filter_map(|(r, p)| {
                     let half = if world.get::<Player>(r).is_some() {
                         PLAYER_HALF
@@ -411,7 +426,7 @@ pub(crate) fn move_obstacles(world: &mut World) {
         world.get_mut::<Position>(e).unwrap().0 = next;
     }
     let anchored: Vec<_> = world
-        .query::<EmitterAnchor>()
+        .query::<(Entity, &EmitterAnchor)>()
         .filter_map(|(e, a)| Some((e, world.get::<Position>(a.parent)?.0 + a.offset)))
         .collect();
     for (e, position) in anchored {
@@ -419,7 +434,10 @@ pub(crate) fn move_obstacles(world: &mut World) {
             transform.position = position;
         }
     }
-    for e in world.query_entities::<Explosion>() {
+    for e in world
+        .query_filtered::<Entity, With<Explosion>>()
+        .collect::<Vec<_>>()
+    {
         let explosion = world.get_mut::<Explosion>(e).unwrap();
         explosion.age += dt;
         if explosion.age >= 0.45 {
@@ -461,10 +479,13 @@ fn contact(world: &World, body: Entity, hazard: Entity, half: Vec2) -> Option<f3
 }
 
 pub(crate) fn hazard_contacts(world: &mut World) {
-    let hazards: Vec<_> = world.query::<Hazard>().map(|(e, h)| (e, *h)).collect();
+    let hazards: Vec<_> = world
+        .query::<(Entity, &Hazard)>()
+        .map(|(e, h)| (e, *h))
+        .collect();
     // One ignition or destruction per ball, even when two flames overlap.
     let touched: Vec<_> = world
-        .query::<Ball>()
+        .query::<(Entity, &Ball)>()
         .filter_map(|(ball, _)| {
             let hit = hazards
                 .iter()
@@ -490,13 +511,16 @@ pub(crate) fn hazard_contacts(world: &mut World) {
         }
         world.despawn(ball);
         crate::systems::spawn_transient_effect(world, "ex10_ball_explosion", position);
-        if world.query::<Explosion>().count() < TRANSIENT_EMITTER_CAP {
+        if world.query::<(Entity, &Explosion)>().count() < TRANSIENT_EMITTER_CAP {
             let e = world.spawn();
             world.insert(e, Explosion { age: 0.0 });
             world.insert(e, Transform::from_position(position));
         }
     }
-    for player in world.query_entities::<Player>() {
+    for player in world
+        .query_filtered::<Entity, With<Player>>()
+        .collect::<Vec<_>>()
+    {
         if world
             .get::<Health>(player)
             .is_some_and(|h| h.immunity > 0.0)
@@ -546,7 +570,7 @@ pub(crate) fn damage_player(world: &mut World, player: Entity, origin: Vec2) {
 pub(crate) fn scene_effects(world: &mut World) {
     let time = world.get_resource::<SceneTime>().map_or(0.0, |t| t.0);
     let lights: Vec<_> = world
-        .query::<LightAnchor>()
+        .query::<(Entity, &LightAnchor)>()
         .map(|(e, a)| {
             (
                 e,
@@ -579,7 +603,7 @@ pub(crate) fn scene_effects(world: &mut World) {
         .get_resource::<ParticleConfigRegistry>()
         .and_then(|r| r.id_for_name("ex10_small_ball_impact"));
     let newborn: Vec<_> = world
-        .query::<Particle>()
+        .query::<(Entity, &Particle)>()
         .filter_map(|(e, p)| {
             let emitter = world.get::<ParticleEmitter>(p.emitter?)?;
             (p.age == 0.0 && Some(emitter.config) == rainbow).then_some((e, p.velocity))
@@ -594,7 +618,7 @@ pub(crate) fn scene_effects(world: &mut World) {
     // Only owned vortex particles are steered; the engine integrates them once.
     let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
     let particles: Vec<_> = world
-        .query::<Particle>()
+        .query::<(Entity, &Particle)>()
         .filter_map(|(e, p)| {
             // Black-hole dust comes from an emitter anchored to the hole.
             let emitter = p.emitter?;

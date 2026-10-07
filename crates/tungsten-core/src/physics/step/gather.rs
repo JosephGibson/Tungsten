@@ -31,9 +31,13 @@ pub(super) fn gather_proxies(world: &World, proxies: &mut Vec<Proxy>) {
 
     // Columnar 4-way gather: RigidBody/Velocity columns resolve once per
     // archetype — no per-entity random lookups (D-066).
-    for (entity, collider, position, body, velocity) in
-        world.query2_opt2::<Collider, Position, RigidBody, Velocity>()
-    {
+    for (entity, collider, position, body, velocity) in world.query::<(
+        Entity,
+        &Collider,
+        &Position,
+        Option<&RigidBody>,
+        Option<&Velocity>,
+    )>() {
         let has_velocity = velocity.is_some();
         let velocity = velocity.map_or(Vec2::ZERO, |v| v.0);
         let body = body.copied();
@@ -76,7 +80,7 @@ fn gather_tilemap_proxies(world: &World, proxies: &mut Vec<Proxy>) {
         return;
     };
 
-    for (_entity, instance) in world.query::<TilemapInstance>() {
+    for (_entity, instance) in world.query::<(Entity, &TilemapInstance)>() {
         let Some(data) = registry.get(&instance.id) else {
             continue;
         };

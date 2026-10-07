@@ -15,7 +15,7 @@
 use glam::Vec2;
 use tungsten_core::{
     CameraController, CommandBuffer, Entity, EventQueue, ShakeEvent, SpriteSquashStretch,
-    SquashEvent, SquashStretchState, Time, Transform, World,
+    SquashEvent, SquashStretchState, Time, Transform, With, World,
 };
 
 /// Drains `EventQueue<ShakeEvent>` into `CameraController::shake_trauma`, then
@@ -115,7 +115,9 @@ pub fn squash_stretch_tick_system(world: &mut World) {
     let mut writes: Vec<(Entity, Vec2)> = Vec::new();
     let mut finished: Vec<Entity> = Vec::new();
 
-    for (entity, state, squash) in world.query2_mut::<SquashStretchState, SpriteSquashStretch>() {
+    for (entity, state, squash) in
+        world.query_mut::<(Entity, &mut SquashStretchState, &mut SpriteSquashStretch)>()
+    {
         state.elapsed += dt;
         writes.push((entity, squash.scale_at(state.base_scale, state.elapsed)));
         if squash.duration <= 0.0 || state.elapsed >= squash.duration {
@@ -125,7 +127,10 @@ pub fn squash_stretch_tick_system(world: &mut World) {
 
     // A state whose config was removed mid-flight is not matched above. Restore
     // its authored scale and retire it rather than freezing `Transform.scale`.
-    for entity in world.query_entities::<SquashStretchState>() {
+    for entity in world
+        .query_filtered::<Entity, With<SquashStretchState>>()
+        .collect::<Vec<_>>()
+    {
         if world.get::<SpriteSquashStretch>(entity).is_some() {
             continue;
         }

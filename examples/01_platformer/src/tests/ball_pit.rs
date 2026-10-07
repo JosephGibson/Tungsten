@@ -6,7 +6,7 @@ use crate::state::{
     SMALL_BALL_SCALE, SMALL_BALL_START_SPRITE_ID, SmallBall, TRANSIENT_EMITTER_CAP,
     TransientEmitter,
 };
-use tungsten::core::{AssetRegistry, Particle, ParticleEmitter};
+use tungsten::core::{AssetRegistry, Particle, ParticleEmitter, With};
 use tungsten::physics::Shape;
 
 #[test]
@@ -39,15 +39,15 @@ fn middle_mouse_has_five_times_the_rate_half_size_and_dedicated_animation() {
         // Independent timers preserve the rate at high and low frame rates.
         harness.step(frames);
         let world = harness.world_mut();
-        let small = world.query::<SmallBall>().count();
-        let normal = world.query::<Ball>().count() - small;
+        let small = world.query::<(Entity, &SmallBall)>().count();
+        let normal = world.query::<(Entity, &Ball)>().count() - small;
         assert_eq!(normal, expected_normal);
         assert_eq!(small, expected_small, "dt={dt}");
         let mut assets = AssetRegistry::new();
         mock_sprite(&mut assets, BALL_START_SPRITE_ID, 901, false);
         mock_sprite(&mut assets, SMALL_BALL_START_SPRITE_ID, 902, false);
         world.insert_resource(assets);
-        for (entity, _) in world.query::<Ball>() {
+        for (entity, _) in world.query::<(Entity, &Ball)>() {
             let small = world.get::<SmallBall>(entity).is_some();
             let scale = if small { SMALL_BALL_SCALE } else { 1.0 };
             assert_eq!(
@@ -114,7 +114,7 @@ fn middle_mouse_has_five_times_the_rate_half_size_and_dedicated_animation() {
                 .small_accumulator,
             0.0
         );
-        assert_eq!(world.query::<SmallBall>().count(), small);
+        assert_eq!(world.query::<(Entity, &SmallBall)>().count(), small);
     }
 }
 
@@ -147,7 +147,7 @@ fn spawning_stops_at_the_ball_cap() {
     // The one ball left in the budget goes out, then nothing.
     for _ in 0..2 {
         harness.step(1);
-        assert_eq!(harness.world().query::<Ball>().count(), BALL_CAP);
+        assert_eq!(harness.world().query::<(Entity, &Ball)>().count(), BALL_CAP);
     }
 }
 
@@ -245,10 +245,13 @@ fn impacts_require_small_ball_and_closing_speed_strictly_above_threshold() {
         world.get_mut::<Velocity>(e).unwrap().0 = Vec2::ZERO;
         floor_contact(&mut world, e);
         small_ball_impacts(&mut world);
-        assert_eq!(world.query::<TransientEmitter>().count(), expected);
+        assert_eq!(
+            world.query::<(Entity, &TransientEmitter)>().count(),
+            expected
+        );
         small_ball_impacts(&mut world);
         assert_eq!(
-            world.query::<TransientEmitter>().count(),
+            world.query::<(Entity, &TransientEmitter)>().count(),
             expected,
             "per-ball cooldown"
         );
@@ -276,8 +279,11 @@ fn relative_body_impacts_work_on_b_side_and_dense_contacts_remain_bounded() {
             penetration: 0.1,
         });
     small_ball_impacts(world);
-    assert_eq!(world.query::<TransientEmitter>().count(), 1);
-    for e in world.query_entities::<TransientEmitter>() {
+    assert_eq!(world.query::<(Entity, &TransientEmitter)>().count(), 1);
+    for e in world
+        .query_filtered::<Entity, With<TransientEmitter>>()
+        .collect::<Vec<_>>()
+    {
         world.despawn(e);
     }
     for _ in 0..200 {
@@ -290,20 +296,20 @@ fn relative_body_impacts_work_on_b_side_and_dense_contacts_remain_bounded() {
     move_obstacles(world);
     small_ball_impacts(world);
     assert_eq!(
-        world.query::<TransientEmitter>().count(),
+        world.query::<(Entity, &TransientEmitter)>().count(),
         SMALL_BALL_BURSTS_PER_FRAME
     );
     for _ in 0..20 {
         small_ball_impacts(world);
     }
     assert_eq!(
-        world.query::<TransientEmitter>().count(),
+        world.query::<(Entity, &TransientEmitter)>().count(),
         TRANSIENT_EMITTER_CAP
     );
     harness.step(50);
     let world = harness.world_mut();
     crate::systems::transient_emitter_cleanup(world);
-    assert_eq!(world.query::<TransientEmitter>().count(), 0);
+    assert_eq!(world.query::<(Entity, &TransientEmitter)>().count(), 0);
 }
 
 #[test]
@@ -319,7 +325,7 @@ fn impact_particles_span_rainbow_and_vortex_births_spiral_inward() {
     let world = harness.world_mut();
     crate::gameplay::scene_effects(world);
     let colors: Vec<_> = world
-        .query::<Particle>()
+        .query::<(Entity, &Particle)>()
         .map(|(_, p)| p.base_rgba)
         .collect();
     for channel in 0..3 {
@@ -342,7 +348,7 @@ fn impact_particles_span_rainbow_and_vortex_births_spiral_inward() {
     crate::gameplay::scene_effects(world);
     let mut checked = 0;
     for (e, p) in world
-        .query::<Particle>()
+        .query::<(Entity, &Particle)>()
         .filter(|(_, p)| p.emitter == Some(hole))
     {
         let delta = world.get::<Transform>(e).unwrap().position;
@@ -354,7 +360,7 @@ fn impact_particles_span_rainbow_and_vortex_births_spiral_inward() {
     assert!(checked > 0);
     // The discrete integration must keep shrinking the orbit near the core.
     let tracked = world
-        .query::<Particle>()
+        .query::<(Entity, &Particle)>()
         .find(|(_, p)| p.emitter == Some(hole))
         .unwrap()
         .0;
@@ -402,7 +408,7 @@ fn pit_contains_two_thousand_mixed_balls_and_fast_wall_impacts() {
     for _ in 0..180 {
         harness.step(1);
         let world = harness.world();
-        for (e, _) in world.query::<Ball>() {
+        for (e, _) in world.query::<(Entity, &Ball)>() {
             let p = world.get::<Position>(e).unwrap().0;
             // Check containment, allowing the solver’s shallow contact penetration.
             assert!(
@@ -415,5 +421,5 @@ fn pit_contains_two_thousand_mixed_balls_and_fast_wall_impacts() {
             );
         }
     }
-    assert_eq!(harness.world().query::<Ball>().count(), 2048);
+    assert_eq!(harness.world().query::<(Entity, &Ball)>().count(), 2048);
 }

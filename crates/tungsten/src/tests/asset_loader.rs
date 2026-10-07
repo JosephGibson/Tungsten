@@ -10,7 +10,7 @@ use tungsten_core::assets::{
     ParticleMesh, ParticleMeshRegistry, ParticleRender, ResolvedManifest, ResolvedParticleMesh,
     TilemapData, TilemapLayer, TilemapRegistry, UvRect,
 };
-use tungsten_core::ecs::World;
+use tungsten_core::ecs::{Entity, World};
 use tungsten_core::{AssetRegistry, TextureHandle};
 
 use super::*;
@@ -236,7 +236,10 @@ fn scene_sprite_named_before_registration_draws_once_registered() {
         .unwrap()
         .sprite_id("late");
     assert!(late.is_some(), "spawn interned the scene's name");
-    let spawned: Vec<_> = world.query::<Sprite>().map(|(_, s)| s.asset_id).collect();
+    let spawned: Vec<_> = world
+        .query::<(Entity, &Sprite)>()
+        .map(|(_, s)| s.asset_id)
+        .collect();
     assert_eq!(spawned, [late.unwrap()]);
     assert!(crate::sprite_extract::extract_sprites_default(&world).is_empty());
 
