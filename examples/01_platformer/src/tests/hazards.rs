@@ -302,10 +302,17 @@ fn a_hit_plays_its_sound_and_immunity_ignores_repeat_hits_until_it_runs_out() {
     let hit = AudioHandle(9);
     world.insert_resource(EffectSounds {
         cast: (AudioHandle(1), 1.0),
+        ice_cast: (AudioHandle(6), 1.0),
+        ice_loop: (AudioHandle(7), 1.0),
+        ice_freeze: (AudioHandle(8), 1.0),
+        ice_end: (AudioHandle(10), 1.0),
+        ice_shatter: (AudioHandle(11), 1.0),
         blast: (AudioHandle(2), 1.0),
         extinguish: (AudioHandle(3), 1.0),
         hit: (hit, 0.6),
+        crush: (AudioHandle(4), 0.65),
         extinguish_cooldown: 0.0,
+        crush_cooldown: 0.0,
     });
     let player = spawn_test_player(world, PLAYER_SPAWN);
     world.insert(player, Health::default());

@@ -76,12 +76,20 @@ pub(crate) struct AudioState {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct EffectSounds {
     pub(crate) cast: (AudioHandle, f32),
+    pub(crate) ice_cast: (AudioHandle, f32),
+    pub(crate) ice_loop: (AudioHandle, f32),
+    pub(crate) ice_freeze: (AudioHandle, f32),
+    pub(crate) ice_end: (AudioHandle, f32),
+    pub(crate) ice_shatter: (AudioHandle, f32),
     pub(crate) blast: (AudioHandle, f32),
     pub(crate) extinguish: (AudioHandle, f32),
     /// The player takes damage.
     pub(crate) hit: (AudioHandle, f32),
+    /// Heavy impact, breaking glass and ringing iron.
+    pub(crate) crush: (AudioHandle, f32),
     /// Seconds until the next sizzle may play.
     pub(crate) extinguish_cooldown: f32,
+    pub(crate) crush_cooldown: f32,
 }
 
 pub(crate) struct TextDisplayState {

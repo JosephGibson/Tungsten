@@ -53,7 +53,7 @@
   ],
   "drag_per_sec": 0.8,
   "emission": {
-    "count": 12,
+    "count": 24,
     "kind": "burst",
     "once": true
   },
@@ -64,15 +64,15 @@
   "initial_velocity": {
     "kind": "radial",
     "speed": {
-      "max": 260,
-      "min": 90
+      "max": 520,
+      "min": 150
     }
   },
   "lifetime": {
-    "max": 0.6,
-    "min": 0.3
+    "max": 0.65,
+    "min": 0.25
   },
-  "max_alive": 12,
+  "max_alive": 24,
   "scale_over_life": [
     [
       0,
@@ -90,7 +90,7 @@
   "seed": 48657,
   "sprite": "ex10_spark",
   "start_scale": {
-    "max": 0.13,
+    "max": 0.16,
     "min": 0.06
   }
 }

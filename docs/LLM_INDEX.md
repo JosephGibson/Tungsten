@@ -71,7 +71,7 @@ Run with `cargo run -p example-NN-name`.
 
 | Task | Open |
 | --- | --- |
-| Platformer | `examples/01_platformer/src/main.rs`, `examples/01_platformer/src/setup.rs`, `examples/01_platformer/src/systems.rs`, `examples/01_platformer/src/extract.rs`, `examples/01_platformer/src/state.rs`, `examples/01_platformer/src/gameplay.rs`, `examples/01_platformer/src/fireball.rs`, `examples/01_platformer/src/burning.rs`, `examples/01_platformer/src/brick.rs`, `examples/01_platformer/src/death.rs` |
+| Platformer | `examples/01_platformer/src/main.rs`, `examples/01_platformer/src/setup.rs`, `examples/01_platformer/src/systems.rs`, `examples/01_platformer/src/extract.rs`, `examples/01_platformer/src/state.rs`, `examples/01_platformer/src/gameplay.rs`, `examples/01_platformer/src/fireball.rs`, `examples/01_platformer/src/ice.rs`, `examples/01_platformer/src/burning.rs`, `examples/01_platformer/src/brick.rs`, `examples/01_platformer/src/death.rs` |
 | Platformer art, level and layout regeneration | `examples/01_platformer/tools/README.md`, `examples/01_platformer/tools/generate.py`, `examples/01_platformer/tools/level.json`, `examples/01_platformer/src/level_layout.rs` |
 | Benchmark harness, knobs, presets | `examples/02_bench/src/main.rs`, `examples/02_bench/src/knobs.rs`, `docs/perf/benchmarks.md` |
 | One benchmark's workload | `examples/02_bench/src/<bench>.rs` |

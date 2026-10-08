@@ -147,6 +147,12 @@
     "ex10_blast_dust": {
       "path": "particles/blast_dust.json"
     },
+    "ex10_blast_embers": {
+      "path": "particles/blast_embers.json"
+    },
+    "ex10_blast_smoke": {
+      "path": "particles/blast_smoke.json"
+    },
     "ex10_double_jump": {
       "path": "particles/double_jump.json"
     },
@@ -161,6 +167,21 @@
     },
     "ex10_fireball_drips": {
       "path": "particles/fireball_drips.json"
+    },
+    "ex10_ice_beam": {
+      "path": "particles/ice_beam.json"
+    },
+    "ex10_ice_contact": {
+      "path": "particles/ice_contact.json"
+    },
+    "ex10_ice_frost": {
+      "path": "particles/ice_frost.json"
+    },
+    "ex10_ice_mist": {
+      "path": "particles/ice_mist.json"
+    },
+    "ex10_ice_shatter": {
+      "path": "particles/ice_shatter.json"
     },
     "ex10_jump_puff": {
       "path": "particles/jump_puff.json"
@@ -209,6 +230,36 @@
       "looping": false,
       "path": "sounds/fireball_cast.wav",
       "volume": 0.45
+    },
+    "ex10_ice_beam_sfx": {
+      "looping": false,
+      "path": "sounds/ice_beam.wav",
+      "volume": 0.42
+    },
+    "ex10_ice_end_sfx": {
+      "looping": false,
+      "path": "sounds/ice_end.wav",
+      "volume": 0.22
+    },
+    "ex10_ice_freeze_sfx": {
+      "looping": false,
+      "path": "sounds/ice_freeze.wav",
+      "volume": 0.55
+    },
+    "ex10_ice_shatter_sfx": {
+      "looping": false,
+      "path": "sounds/ice_shatter.wav",
+      "volume": 0.5
+    },
+    "ex10_ice_spray_sfx": {
+      "looping": true,
+      "path": "sounds/ice_spray.wav",
+      "volume": 0.32
+    },
+    "ex10_iron_crush_sfx": {
+      "looping": false,
+      "path": "sounds/iron_crush.wav",
+      "volume": 0.65
     },
     "ex10_player_hit_sfx": {
       "looping": false,
@@ -689,6 +740,18 @@
       "filter": "nearest",
       "path": "sprites/heart_full.png"
     },
+    "ex10_ice_chip": {
+      "filter": "nearest",
+      "path": "sprites/ice_chip.png"
+    },
+    "ex10_ice_crystal": {
+      "filter": "nearest",
+      "path": "sprites/ice_crystal.png"
+    },
+    "ex10_ice_ring": {
+      "filter": "nearest",
+      "path": "sprites/ice_ring.png"
+    },
     "ex10_infall_streak": {
       "filter": "linear",
       "path": "sprites/infall_streak.png"
@@ -716,6 +779,62 @@
       "filter": "nearest",
       "normal_map": "sprites/iron_brick_big_1_1_n.png",
       "path": "sprites/iron_brick_big_1_1.png"
+    },
+    "ex10_iron_frost_big_0_0": {
+      "filter": "nearest",
+      "path": "sprites/iron_frost_big_0_0.png"
+    },
+    "ex10_iron_frost_big_0_1": {
+      "filter": "nearest",
+      "path": "sprites/iron_frost_big_0_1.png"
+    },
+    "ex10_iron_frost_big_1_0": {
+      "filter": "nearest",
+      "path": "sprites/iron_frost_big_1_0.png"
+    },
+    "ex10_iron_frost_big_1_1": {
+      "filter": "nearest",
+      "path": "sprites/iron_frost_big_1_1.png"
+    },
+    "ex10_iron_scrap_0": {
+      "emissive_mask": "sprites/iron_scrap_0_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/iron_scrap_0_n.png",
+      "path": "sprites/iron_scrap_0.png"
+    },
+    "ex10_iron_scrap_1": {
+      "emissive_mask": "sprites/iron_scrap_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/iron_scrap_1_n.png",
+      "path": "sprites/iron_scrap_1.png"
+    },
+    "ex10_iron_scrap_2": {
+      "emissive_mask": "sprites/iron_scrap_2_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/iron_scrap_2_n.png",
+      "path": "sprites/iron_scrap_2.png"
+    },
+    "ex10_iron_scrap_3": {
+      "emissive_mask": "sprites/iron_scrap_3_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/iron_scrap_3_n.png",
+      "path": "sprites/iron_scrap_3.png"
+    },
+    "ex10_iron_scrap_frost_0": {
+      "filter": "nearest",
+      "path": "sprites/iron_scrap_frost_0.png"
+    },
+    "ex10_iron_scrap_frost_1": {
+      "filter": "nearest",
+      "path": "sprites/iron_scrap_frost_1.png"
+    },
+    "ex10_iron_scrap_frost_2": {
+      "filter": "nearest",
+      "path": "sprites/iron_scrap_frost_2.png"
+    },
+    "ex10_iron_scrap_frost_3": {
+      "filter": "nearest",
+      "path": "sprites/iron_scrap_frost_3.png"
     },
     "ex10_lantern": {
       "emissive_mask": "sprites/lantern_e.png",

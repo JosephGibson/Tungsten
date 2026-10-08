@@ -6,6 +6,23 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.60.0] - 2026-10-08
+
+Summary: a feature release with no plan, mostly example 01: hold F to freeze iron, then shatter it with fireballs or hard iron impacts into tumbling metal scraps. Heavier bricks crush more marbles, fireball blasts push farther with richer effects, and fatal falls open the animated death screen. The engine gains `KeyCode::KeyF`; no decision or dependency change.
+
+### Added
+
+- **Ice spray in example 01** (`ice.rs`): holding F channels an occluded 28-degree cone out to 448 pixels. Iron freezes after 1.5 game seconds of exposure; partial frost thaws, while a completed coating persists and reduces sliding friction. Crystals, translucent mist, contact splashes, frost overlays, completion pulses and synthesized looping audio follow the caster and aim every drawn frame; release, death or caster removal stops the channel even between fixed steps.
+- **Frozen iron shattering** (`brick.rs`): a fireball blast within 72 pixels of a frozen surface or a head-on iron impact at 600 pixels/second breaks a full block into sixteen physical scraps that preserve its total mass. Dedicated lit broken-metal sprites tumble with matching frost; scraps launch outward, ride lifts, respond strongly to black holes and can be refrozen and broken into chips. Freeze completion and fracture have separate particle, ring and sound cues.
+- **`KeyCode::KeyF`** (`tungsten-core`, `tungsten`): the key enum, action-map JSON name and winit bridge recognize F. The public API snapshot includes it; exhaustive matches on `KeyCode` need the new variant (recorded in the [W4 break ledger](docs/plans/1.0/w04-api-freeze.md#break-ledger)).
+
+### Changed
+
+- **Heavier iron and stronger crushing**: bricks weigh 200 balls, with a cap of 24 and stronger supported friction. Crushing uses pre-resolution velocity and current physics contacts, selects the most head-on marbles first, breaks up to 64 per step and retains 90% of incoming speed. Larger glass-chip bursts and a shared crunch-sound cooldown mark impacts; black holes can drag full bricks and readily collect scraps.
+- **Fireball blast presentation and push** (`fireball.rs`, `extract.rs`): push reaches 288 pixels at 2,500 pixels/second for a unit-mass body at the centre. Larger flame, ember, dust and smoke bursts accompany a hot flash, two expanding shock fronts, stronger camera shake and a brighter, wider light flare.
+- **Death screen and fatal falls** (`death.rs`, `systems.rs`, `extract.rs`): falling below the kill plane or outside the world now kills the player, including during hit immunity. Death pixelates and dims the scene under an animated red title and pulsing restart prompt, hides the gameplay HUD and keeps text sharp above the post stack. Enter still rebuilds the run behind a fade, using real time.
+- **Platformer asset generation and controls**: the deterministic generators and inventories include the ice, frost, scrap, blast and sound assets, and the compact control hints include F. The [platformer tools guide](examples/01_platformer/tools/README.md) records behavior, test coverage and remaining audio/resized-window review.
+
 ## [0.59.0] - 2026-10-08
 
 Summary: a feature release with no plan, mostly example 01: R drops an iron brick at the cursor, losing the last heart opens a death screen with a restart, fireballs push what they blast, and burning piles read as coals under a flickering crest. The one engine change is a `KeyCode::KeyR` variant. No decision or dependency change; the physics hashes and row digests are unchanged.

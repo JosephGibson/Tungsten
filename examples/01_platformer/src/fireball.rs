@@ -30,18 +30,16 @@ pub(crate) const FIREBALL_LIFETIME: f32 = 2.1;
 pub(crate) const FIREBALL_COOLDOWN: f32 = 0.2;
 pub(crate) const FIREBALL_MAX_ALIVE: usize = 6;
 pub(crate) const FIREBALL_BLAST_RADIUS: f32 = 72.0;
-/// Reach of the blast's push: a pile crater a little wider than the player is tall.
-pub(crate) const FIREBALL_PUSH_RADIUS: f32 = 2.5 * TILE;
+/// Reach of the blast's push: a wide crater in a pile of balls.
+pub(crate) const FIREBALL_PUSH_RADIUS: f32 = 4.5 * TILE;
 /// Speed the push gives a unit-mass body (a ball, the player) at the blast
 /// centre, pixels/second: falling linearly to zero at the reach, divided by
-/// mass, so the iron brick barely moves. Close to the player's jump.
-pub(crate) const FIREBALL_PUSH_SPEED: f32 = 1100.0;
+/// mass, so the iron brick barely moves.
+pub(crate) const FIREBALL_PUSH_SPEED: f32 = 2500.0;
 /// Seconds of lost control at full push, so the shove is not walked off at once.
 const PUSH_CONTROL_LOCK: f32 = 0.15;
-/// Camera trauma of a blast within a quarter view width of the view's
-/// centre, falling to none a view width and a half away. The shake grows
-/// with its square: about 4 pixels at most, for a quarter second.
-pub(crate) const BLAST_TRAUMA: f32 = 0.55;
+/// Camera trauma near the view's centre, falling to none far off screen.
+pub(crate) const BLAST_TRAUMA: f32 = 0.68;
 const TRAIL_LIGHT_COLOR: Vec3 = Vec3::new(1.0, 0.56, 0.22);
 // Bright enough to warm the dark, low-albedo masonry it passes.
 const TRAIL_LIGHT_RADIUS: f32 = 3.0 * TILE;
@@ -54,6 +52,10 @@ pub(crate) const FIREBALL_VISUAL_SIZE: f32 = 40.0;
 const MUZZLE_OFFSET: f32 = 24.0;
 /// Longest gap between contact samples along one frame's travel.
 const SAMPLE_STEP: f32 = 6.0;
+
+/// Marks a shock ring with the fireball's hot flash and secondary shock front.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct FireballBlast;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct FireballMissile {
@@ -211,8 +213,8 @@ pub(crate) fn fireball_light_system(world: &mut World) {
                     continue;
                 }
                 let left = 1.0 - elapsed / secs;
-                // A blast flares to over twice the flight brightness, then drops.
-                let flare = if light.blast { 2.4 * left } else { 1.0 };
+                // A blast flares brightly, then drops through the smoke.
+                let flare = if light.blast { 4.0 * left } else { 1.0 };
                 TRAIL_LIGHT_INTENSITY * left * flare
             }
         };
@@ -224,7 +226,7 @@ pub(crate) fn fireball_light_system(world: &mut World) {
         if let Some(value) = world.get_mut::<Light>(entity) {
             value.intensity = intensity;
             if let LightKind::Point { radius } = &mut value.kind {
-                *radius = TRAIL_LIGHT_RADIUS * if light.blast { 1.5 } else { 1.0 };
+                *radius = TRAIL_LIGHT_RADIUS * if light.blast { 2.0 } else { 1.0 };
             }
         }
         *world.get_mut::<TrailLight>(entity).unwrap() = light;
@@ -319,7 +321,7 @@ fn touches(center: Vec2, shape: Shape, point: Vec2) -> bool {
     }
 }
 
-fn solid_tile(world: &World, point: Vec2) -> bool {
+pub(crate) fn solid_tile(world: &World, point: Vec2) -> bool {
     let Some(registry) = world.get_resource::<TilemapRegistry>() else {
         return false;
     };
@@ -345,14 +347,15 @@ fn solid_tile(world: &World, point: Vec2) -> bool {
         })
 }
 
-/// Flame bloom, sparks, a dust ring and a shock ring as wide as the push;
+/// Flame bloom, flying embers, smoke, dust and two shock fronts;
 /// every dynamic body in reach is pushed away, small balls in the blast
 /// catch fire and the camera shakes with the blast's nearness. The blast
 /// does not hurt the player.
 pub(crate) fn explode_fireball(world: &mut World, at: Vec2) {
     spawn_transient_effect(world, "ex10_fireball_blast", at);
-    spawn_transient_effect(world, "ex10_ball_explosion", at);
+    spawn_transient_effect(world, "ex10_blast_embers", at);
     spawn_transient_effect(world, "ex10_blast_dust", at);
+    spawn_transient_effect(world, "ex10_blast_smoke", at);
     if world.query::<(Entity, &Explosion)>().count() < TRANSIENT_EMITTER_CAP {
         let e = world.spawn();
         world.insert(
@@ -362,8 +365,10 @@ pub(crate) fn explode_fireball(world: &mut World, at: Vec2) {
                 size: 2.0 * FIREBALL_PUSH_RADIUS,
             },
         );
+        world.insert(e, FireballBlast);
         world.insert(e, Transform::from_position(at));
     }
+    crate::brick::thermal_shatter(world, at, FIREBALL_BLAST_RADIUS);
     push_bodies(world, at);
     let trauma = blast_trauma(world, at);
     if trauma > 0.0

@@ -464,6 +464,8 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     batches.extend(extract_bricks(world, assets));
     batches.extend(extract_flames(world, assets));
     batches.extend(extract_fireballs(world, assets));
+    batches.extend(extract_ice_beams(world, assets));
+    batches.extend(extract_ice_pulses(world, assets));
     batches.extend(extract_tilemap_layers(world, &["foreground"]));
 
     batches.extend(extract_hearts(world, assets));
@@ -628,6 +630,24 @@ const BRICK_QUARTERS: [(&str, Vec2); 4] = [
     ("ex10_iron_brick_big_1_0", Vec2::new(0.0, 1.0)),
     ("ex10_iron_brick_big_1_1", Vec2::new(1.0, 1.0)),
 ];
+const FROST_QUARTERS: [&str; 4] = [
+    "ex10_iron_frost_big_0_0",
+    "ex10_iron_frost_big_0_1",
+    "ex10_iron_frost_big_1_0",
+    "ex10_iron_frost_big_1_1",
+];
+const SCRAP_SPRITES: [&str; 4] = [
+    "ex10_iron_scrap_0",
+    "ex10_iron_scrap_1",
+    "ex10_iron_scrap_2",
+    "ex10_iron_scrap_3",
+];
+const SCRAP_FROST_SPRITES: [&str; 4] = [
+    "ex10_iron_scrap_frost_0",
+    "ex10_iron_scrap_frost_1",
+    "ex10_iron_scrap_frost_2",
+    "ex10_iron_scrap_frost_3",
+];
 
 /// The iron bricks: four 64-pixel quarters each, lit like the masonry, so
 /// the art keeps the terrain's pixel scale.
@@ -644,18 +664,62 @@ fn extract_bricks(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
         if (top_left + 2.0 * TILE).cmplt(view_min).any() || top_left.cmpgt(view_max).any() {
             continue;
         }
-        for (id, offset) in BRICK_QUARTERS {
+        let frost_amount = crate::ice::freeze_amount(world, e);
+        for (quarter, (id, offset)) in BRICK_QUARTERS.into_iter().enumerate() {
             let Some(asset) = assets.get_sprite(id) else {
                 continue;
             };
-            push_instance(
-                &mut batches,
-                asset,
-                instance(asset, top_left + offset * TILE, Vec2::splat(TILE)),
-            );
+            let mut sprite = instance(asset, top_left + offset * TILE, Vec2::splat(TILE));
+            sprite.color = frost_tint(frost_amount);
+            push_instance(&mut batches, asset, sprite);
+            if frost_amount > 0.0
+                && let Some(frost) = assets.get_sprite(FROST_QUARTERS[quarter])
+            {
+                let mut coating = instance(frost, top_left + offset * TILE, Vec2::splat(TILE));
+                coating.color[3] = (255.0 * frost_amount) as u8;
+                push_instance_with_lighting(&mut batches, frost, coating, false);
+            }
+        }
+    }
+    let time = drawn_scene_time(world);
+    for (e, scrap) in world.query::<(Entity, &crate::brick::IronScrap)>() {
+        let Some(center) = drawn_position(world, e) else {
+            continue;
+        };
+        let size = Vec2::splat(TILE * 0.5);
+        if (center + size).cmplt(view_min).any() || (center - size).cmpgt(view_max).any() {
+            continue;
+        }
+        let Some(asset) = assets.get_sprite(SCRAP_SPRITES[scrap.variant]) else {
+            continue;
+        };
+        let mut sprite = instance(asset, center - size * 0.5, size);
+        let rotation = world
+            .get::<crate::brick::ScrapTumble>(e)
+            .map_or(0.0, |tumble| tumble.rotation(time));
+        sprite.rotation = rotation;
+        let frost_amount = crate::ice::freeze_amount(world, e);
+        sprite.color = frost_tint(frost_amount);
+        push_instance(&mut batches, asset, sprite);
+        if frost_amount > 0.0
+            && let Some(frost) = assets.get_sprite(SCRAP_FROST_SPRITES[scrap.variant])
+        {
+            let mut coating = instance(frost, center - size * 0.5, size);
+            coating.rotation = rotation;
+            coating.color[3] = (255.0 * frost_amount) as u8;
+            push_instance_with_lighting(&mut batches, frost, coating, false);
         }
     }
     batches
+}
+
+fn frost_tint(amount: f32) -> [u8; 4] {
+    [
+        (255.0 - 155.0 * amount) as u8,
+        (255.0 - 60.0 * amount) as u8,
+        255,
+        255,
+    ]
 }
 
 /// A flame tongue on each exposed burning ball in view, over a soft glow;
@@ -769,14 +833,29 @@ fn text_outlined(section: TextSection) -> impl Iterator<Item = TextSection> {
 }
 
 pub(crate) fn extract_text(world: &World) -> Vec<TextSection> {
+    if crate::death::player_dead(world) {
+        return death_title(world);
+    }
     let mut sections = Vec::new();
+    let width = world
+        .get_resource::<WindowSize>()
+        .map_or(1920.0, |w| w.width as f32);
+    let controls = if width < 900.0 {
+        "Move A/D  Jump Space  LMB balls  MMB small balls (5x)\n\
+         Black hole RMB  Fireball M4  Ice hold F  Iron R\n\
+         L lantern  M music  S stop  +/- zoom  F4 HUD  Esc exit"
+    } else {
+        "Move A/D or arrows  Space jump/double jump  LMB balls  MMB small balls (5x)  RMB black hole\n\
+         Fireball M4  Ice spray hold F  Iron block R  Lantern L\n\
+         M music  S stop  1/2/3 volume  +/- or wheel zoom  F4 HUD  F9 vsync  F11 fullscreen  Esc exit"
+    };
+    let longest = controls.lines().map(str::len).max().unwrap_or(1) as f32;
+    let font_size = ((width - 32.0).max(1.0) / (longest * 0.62)).min(20.0);
     sections.extend(text_outlined(TextSection {
-        content: "A/D or ←/→ move  Space jump / double jump  LMB balls  MMB small balls (5x)  RMB black hole  M4 fireball  R iron brick\n\
-                  M music  S stop  1/2/3 volume  =/- or wheel zoom  L lantern  F4 HUD  F9 vsync  F11 fullscreen  Esc exit"
-            .into(),
+        content: controls.into(),
         font_id: "mono".into(),
-        font_size: 24.0,
-        line_height: 32.0,
+        font_size,
+        line_height: font_size * 1.2,
         color: [200, 220, 255, 210],
         position: [16.0, 14.0],
         bounds: None,
@@ -826,18 +905,36 @@ fn death_title(world: &World) -> Vec<TextSection> {
             height: 1080,
         });
     let (width, height) = (window.width as f32, window.height as f32);
+    let scale = (width / 1280.0).min(height / 720.0).min(1.35);
+    let elapsed = match screen {
+        DeathScreen::Dying { elapsed } => elapsed,
+        _ => crate::death::DIM_SECS,
+    };
+    let settle = tungsten::core::Easing::QuadOut.apply(((elapsed - 0.25) / 0.5).clamp(0.0, 1.0));
     let fade = |rgb: [u8; 3], a: f32| [rgb[0], rgb[1], rgb[2], (a * 255.0) as u8];
     let centered = TextLayout::default().with_align(TextAlign::Center);
-    let mut sections = vec![TextSection {
-        content: "YOU DIED".into(),
-        font_id: "sans_bold".into(),
-        font_size: 96.0,
-        line_height: 110.0,
-        color: fade([236, 72, 60], alpha),
-        position: [0.0, height * 0.36],
-        bounds: Some([width, 120.0]),
-        layout: centered.clone(),
-    }];
+    let mut sections = vec![
+        TextSection {
+            content: "YOUR JOURNEY ENDS HERE".into(),
+            font_id: "sans".into(),
+            font_size: 22.0 * scale,
+            line_height: 30.0 * scale,
+            color: fade([194, 150, 148], alpha),
+            position: [0.0, height * 0.43 - 52.0 * scale],
+            bounds: Some([width, 36.0 * scale]),
+            layout: centered.clone(),
+        },
+        TextSection {
+            content: "YOU DIED".into(),
+            font_id: "sans_bold".into(),
+            font_size: 112.0 * scale * (1.0 + 0.22 * (1.0 - settle)),
+            line_height: 145.0 * scale,
+            color: fade([245, 55, 48], alpha),
+            position: [0.0, height * 0.43 - 18.0 * scale * (1.0 - settle)],
+            bounds: Some([width, 160.0 * scale]),
+            layout: centered.clone(),
+        },
+    ];
     // The prompt shows once the restart press is taken.
     let prompt = if screen.accepts_restart() || matches!(screen, DeathScreen::Covering { .. }) {
         alpha
@@ -848,15 +945,25 @@ fn death_title(world: &World) -> Vec<TextSection> {
         sections.push(TextSection {
             content: "Press Enter to restart".into(),
             font_id: "sans".into(),
-            font_size: 32.0,
-            line_height: 40.0,
-            color: fade([232, 222, 212], prompt),
-            position: [0.0, height * 0.36 + 130.0],
-            bounds: Some([width, 48.0]),
+            font_size: 28.0 * scale,
+            line_height: 36.0 * scale,
+            color: fade(
+                [232, 222, 212],
+                prompt * (0.86 + 0.14 * (elapsed * 3.0).sin()),
+            ),
+            position: [0.0, height * 0.43 + 155.0 * scale],
+            bounds: Some([width, 44.0 * scale]),
             layout: centered,
         });
     }
-    sections.into_iter().flat_map(text_outlined).collect()
+    let mut outlined: Vec<_> = sections.into_iter().flat_map(text_outlined).collect();
+    // Outline shadows fade with the title rather than appearing at full opacity.
+    for section in &mut outlined {
+        if section.color[..3] == [0, 0, 0] {
+            section.color[3] = (section.color[3] as f32 * alpha) as u8;
+        }
+    }
+    outlined
 }
 
 fn extract_obstacles(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
@@ -967,8 +1074,14 @@ fn extract_obstacles(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> 
             let Some(t) = world.get::<Transform>(e) else {
                 continue;
             };
-            let progress = explosion.age / 0.45;
-            let size = 32.0 + progress * (explosion.size - 32.0);
+            let progress = (explosion.age / 0.45).clamp(0.0, 1.0);
+            let fireball = world.has::<crate::fireball::FireballBlast>(e);
+            let spread = if fireball {
+                1.0 - (1.0 - progress).powi(3)
+            } else {
+                progress
+            };
+            let size = 32.0 + spread * (explosion.size - 32.0);
             let mut sprite = instance(
                 asset,
                 t.position - Vec2::splat(size / 2.0),
@@ -976,6 +1089,27 @@ fn extract_obstacles(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> 
             );
             sprite.color = [255, 210, 140, ((1.0 - progress) * 220.0) as u8];
             push_instance(&mut batches, asset, sprite);
+            if fireball {
+                let size = size * 0.72;
+                let mut front = instance(
+                    asset,
+                    t.position - Vec2::splat(size * 0.5),
+                    Vec2::splat(size),
+                );
+                front.color = [255, 95, 28, ((1.0 - progress).powi(2) * 240.0) as u8];
+                push_instance(&mut batches, asset, front);
+                if let Some(core) = assets.get_sprite("ex10_flame_glow") {
+                    let flash = (1.0 - explosion.age / 0.18).max(0.0);
+                    let size = 100.0 + 180.0 * (1.0 - flash);
+                    let mut sprite = instance(
+                        core,
+                        t.position - Vec2::splat(size * 0.5),
+                        Vec2::splat(size),
+                    );
+                    sprite.color = [255, 245, 200, (flash * 255.0) as u8];
+                    push_glow(&mut batches, core, sprite, glows.flame);
+                }
+            }
         }
     }
     batches
@@ -1094,6 +1228,76 @@ fn extract_fireballs(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> 
             v.y.atan2(v.x)
         };
         push_instance_with_lighting(&mut batches, asset, sprite, false);
+    }
+    batches
+}
+
+/// Soft widening wisps back the snow-crystal and mist particles, with no rigid core.
+fn extract_ice_beams(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
+    let mut batches = Vec::new();
+    let glows = GlowMaterials::from_world(world);
+    let Some(asset) = assets.get_sprite("ex10_flame_glow") else {
+        return batches;
+    };
+    for (_, beam) in world.query::<(Entity, &crate::ice::IceBeam)>() {
+        let travel = beam.end - beam.start;
+        let length = travel.length().min(beam.age * 800.0 + 24.0);
+        if length <= 0.01 {
+            continue;
+        }
+        let direction = travel.normalize();
+        let across = Vec2::new(-direction.y, direction.x);
+        for i in 0..6 {
+            let progress = (i as f32 + 0.5) / 6.0;
+            let distance = length * progress;
+            let flutter = (beam.age * 18.0 - i as f32 * 1.7).sin();
+            let center = beam.start + direction * distance + across * flutter * progress * 9.0;
+            let width = 18.0 + distance * 0.45;
+            let size = Vec2::new((length / 6.0 * 1.8).max(32.0), width);
+            let mut sprite = instance(asset, center - size * 0.5, size);
+            sprite.rotation = travel.y.atan2(travel.x);
+            sprite.color = [
+                100,
+                200,
+                255,
+                (100.0 - progress * 40.0 + flutter * 10.0) as u8,
+            ];
+            push_glow(&mut batches, asset, sprite, glows.flame);
+        }
+    }
+    batches
+}
+
+/// A short icy ring separates the moment of freezing from the burst of fracture.
+fn extract_ice_pulses(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
+    let mut batches = Vec::new();
+    let glows = GlowMaterials::from_world(world);
+    let (view_min, view_max) = view_bounds(world);
+    for (_, pulse) in world.query::<(Entity, &crate::ice::IcePulse)>() {
+        let progress = (pulse.age / pulse.duration()).clamp(0.0, 1.0);
+        let reach = Vec2::splat(pulse.size * 1.3);
+        if (pulse.at + reach).cmplt(view_min).any() || (pulse.at - reach).cmpgt(view_max).any() {
+            continue;
+        }
+        let left = 1.0 - progress;
+        if let Some(asset) = assets.get_sprite("ex10_flame_glow") {
+            let size = Vec2::splat(pulse.size * (1.5 + progress * 0.8));
+            let mut glow = instance(asset, pulse.at - size * 0.5, size);
+            glow.color = [160, 230, 255, (150.0 * left * left) as u8];
+            push_glow(&mut batches, asset, glow, glows.flame);
+        }
+        if let Some(asset) = assets.get_sprite("ex10_ice_ring") {
+            let growth = if pulse.shatter {
+                1.0 + progress * 1.5
+            } else {
+                1.3 + progress * 0.5
+            };
+            let size = Vec2::splat(pulse.size * growth);
+            let mut ring = instance(asset, pulse.at - size * 0.5, size);
+            ring.color = [190, 245, 255, (210.0 * left * left) as u8];
+            ring.rotation = pulse.age * if pulse.shatter { -1.5 } else { 0.5 };
+            push_instance_with_lighting(&mut batches, asset, ring, false);
+        }
     }
     batches
 }

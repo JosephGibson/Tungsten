@@ -1,4 +1,5 @@
-//! The death screen. Losing the last heart dims the frame under a title; a
+//! The death screen. Losing the last heart or falling out of bounds pixelates
+//! and dims the frame under an animated title; a
 //! restart press covers the frame fully, rebuilds the world as a fresh
 //! launch builds it (`setup::restart_world`) and uncovers the new run. The
 //! dimming is the stock `fade` post pass on the example's `PostStack`.
@@ -17,6 +18,8 @@ pub(crate) const UNCOVER_SECS: f32 = 0.5;
 const FADE: TransitionEffect = TransitionEffect::Fade {
     color: [0.03, 0.002, 0.008, 1.0],
 };
+/// The same coarsening used when entering the Sprite Scene pause menu.
+const PIXELATE: TransitionEffect = TransitionEffect::Pixelate { max_block_px: 48.0 };
 
 /// Where the death screen is; `Alive` draws nothing.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -75,11 +78,25 @@ pub(crate) fn player_dead(world: &World) -> bool {
 /// The last heart is gone: the body leaves the physics where it fell, so
 /// nothing collides with it and the camera holds there, and the screen starts.
 pub(crate) fn kill_player(world: &mut World, player: Entity) {
+    if player_dead(world) {
+        return;
+    }
     world.insert_resource(DeathScreen::Dying { elapsed: 0.0 });
+    if world.get::<crate::gameplay::Health>(player).is_none() {
+        world.insert(player, crate::gameplay::Health::default());
+    }
+    world
+        .get_mut::<crate::gameplay::Health>(player)
+        .unwrap()
+        .hearts = 0;
+    if let Some(state) = world.get_mut::<crate::state::PlayerPresentation>(player) {
+        state.pending_effect = None;
+    }
     world.remove_component::<Collider>(player);
     world.remove_component::<RigidBody>(player);
     world.remove_component::<Velocity>(player);
     if let Some(position) = world.get::<Position>(player).map(|p| p.0) {
+        world.insert(player, tungsten::physics::PrevPosition(position));
         crate::systems::spawn_transient_effect(world, "ex10_double_jump", position);
     }
 }
@@ -118,9 +135,12 @@ pub(crate) fn death_screen_system(world: &mut World) {
     };
     world.insert_resource(next);
     if let Some(stack) = world.get_resource_mut::<PostStack>() {
-        stack.0.retain(|pass| !matches!(pass, PostPass::Fade(_)));
+        stack
+            .0
+            .retain(|pass| !matches!(pass, PostPass::Fade(_) | PostPass::Pixelate(_)));
         let cover = next.cover();
         if cover > 0.0 {
+            stack.push(PIXELATE.pass_at((cover / DEATH_DIM).min(1.0)));
             stack.push(FADE.pass_at(cover));
         }
     }

@@ -441,6 +441,8 @@ pub(crate) fn move_obstacles(world: &mut World) {
                         Vec2::splat(ball_radius(world, r))
                     } else if world.get::<crate::brick::IronBrick>(r).is_some() {
                         crate::brick::BRICK_HALF
+                    } else if world.has::<crate::brick::IronScrap>(r) {
+                        crate::brick::SCRAP_HALF
                     } else {
                         return None;
                     };

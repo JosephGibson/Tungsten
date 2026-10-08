@@ -19,8 +19,8 @@ use crate::state::{
     BLACK_HOLE_LIFETIME, BLACK_HOLE_RADIUS, Ball, BallHue, BallSpawnState, BlackHole, CAMERA_ROWS,
     CurrentSprite, CycleMode, EXTINGUISH_BURSTS_PER_FRAME, EXTINGUISH_SFX_INTERVAL, EffectSequence,
     EffectSounds, KILL_Y, OrbitLight, PLAYER_HALF, PLAYER_JUMP_IMPULSE, PLAYER_MOVE_SPEED,
-    PLAYER_SPAWN, PLAYER_START_SPRITE_ID, Player, PlayerPresentation, TEXT_UPDATE_INTERVAL, TILE,
-    TRANSIENT_EMITTER_CAP, TextDisplayState, TransientEmitter, WORLD_BOUNDS_MAX, WORLD_BOUNDS_MIN,
+    PLAYER_SPAWN, Player, PlayerPresentation, TEXT_UPDATE_INTERVAL, TILE, TRANSIENT_EMITTER_CAP,
+    TextDisplayState, TransientEmitter, WORLD_BOUNDS_MAX, WORLD_BOUNDS_MIN,
 };
 use crate::state::{
     SMALL_BALL_ANIMATION_ID, SMALL_BALL_SCALE, SMALL_BALL_SPAWN_INTERVAL,
@@ -859,7 +859,8 @@ pub(crate) fn spawn_black_hole_system(world: &mut World) {
     }
 }
 
-/// Black-hole acceleration before physics; static tiles excluded by no velocity.
+/// Black-hole pull before physics. Whole iron moves more slowly than balls;
+/// light scraps respond like balls so nearby holes readily gather loose debris.
 pub(crate) fn black_hole_force_system(world: &mut World) {
     let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
     if dt <= 0.0 {
@@ -873,23 +874,32 @@ pub(crate) fn black_hole_force_system(world: &mut World) {
 
     let targets: Vec<Entity> = world.query_filtered::<Entity, With<Velocity>>().collect();
     for entity in targets {
-        let body_is_dynamic = world
+        let Some(inv_mass) = world
             .get::<RigidBody>(entity)
-            .is_some_and(|b| b.kind == BodyKind::Dynamic);
-        if !body_is_dynamic {
+            .filter(|b| b.kind == BodyKind::Dynamic)
+            .map(|b| b.inv_mass)
+        else {
             continue;
-        }
+        };
         let Some(pos) = world.get::<Position>(entity).copied() else {
             continue;
         };
 
-        let accel = black_hole_acceleration(&holes, pos.0);
+        let response = if world.has::<crate::brick::IronBrick>(entity) {
+            crate::brick::BRICK_BLACK_HOLE_PULL
+        } else if world.has::<crate::brick::IronScrap>(entity) {
+            crate::brick::SCRAP_BLACK_HOLE_PULL
+        } else {
+            inv_mass
+        };
+        let accel = black_hole_acceleration(&holes, pos.0) * response;
         if accel == Vec2::ZERO {
             continue;
         }
         if let Some(vel) = world.get_mut::<Velocity>(entity) {
             vel.0 += accel * dt;
         }
+        tungsten::physics::wake(world, entity);
     }
 }
 
@@ -1010,6 +1020,7 @@ pub(crate) fn despawn_out_of_bounds(world: &mut World) {
         .filter(|(entity, _)| {
             world.get::<Ball>(*entity).is_some()
                 || world.get::<crate::brick::IronBrick>(*entity).is_some()
+                || world.get::<crate::brick::IronScrap>(*entity).is_some()
         })
         .filter_map(|(entity, pos)| {
             let collider = world.get::<Collider>(entity).copied();
@@ -1039,45 +1050,9 @@ pub(crate) fn despawn_out_of_bounds(world: &mut World) {
         return;
     }
     for entity in escaped_players {
-        respawn_player(world, entity);
+        crate::death::kill_player(world, entity);
+        damage_feedback(world, entity);
     }
-}
-
-pub(crate) fn respawn_player(world: &mut World, entity: Entity) {
-    world.insert(
-        entity,
-        crate::gameplay::Health {
-            immunity: 1.2,
-            ..Default::default()
-        },
-    );
-    world.insert(entity, crate::gameplay::PreviousPosition(PLAYER_SPAWN));
-    world.remove_component::<tungsten::core::Tween>(entity);
-    world.insert(entity, tungsten::core::UniformOverrideBlock::default());
-    world.insert(entity, Player::default());
-    world.insert(entity, PlayerPresentation::default());
-    world.insert(
-        entity,
-        AnimationState::new(crate::state::PLAYER_ANIMATION_ID),
-    );
-    world.insert(entity, CurrentSprite(PLAYER_START_SPRITE_ID.into()));
-    world.remove_component::<tungsten::core::SquashStretchState>(entity);
-    if let Some(transform) = world.get_mut::<Transform>(entity) {
-        transform.scale = Vec2::ONE;
-    }
-
-    // A teleport: the history moves with the body, so it is not drawn
-    // sliding back from where it died.
-    if let Some(pos) = world.get_mut::<Position>(entity) {
-        pos.0 = PLAYER_SPAWN;
-    }
-    if let Some(prev) = world.get_mut::<PrevPosition>(entity) {
-        prev.0 = PLAYER_SPAWN;
-    }
-    if let Some(vel) = world.get_mut::<Velocity>(entity) {
-        vel.0 = Vec2::ZERO;
-    }
-    tungsten::physics::wake(world, entity);
 }
 
 fn is_body_out_of_bounds(pos: Vec2, collider: Option<Collider>) -> bool {

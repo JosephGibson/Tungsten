@@ -112,7 +112,7 @@ fn exhausted_air_jump_requires_ground_contact() {
 }
 
 #[test]
-fn despawn_out_of_bounds_resets_escaped_player_to_spawn() {
+fn despawn_out_of_bounds_kills_escaped_player_and_holds_the_death_position() {
     let mut world = seed_world();
     world.insert_resource(CommandBuffer::new());
 
@@ -128,9 +128,17 @@ fn despawn_out_of_bounds_resets_escaped_player_to_spawn() {
     despawn_out_of_bounds(&mut world);
 
     let pos = world.get::<Position>(player).unwrap().0;
-    let vel = world.get::<Velocity>(player).unwrap().0;
-    assert_eq!(pos, PLAYER_SPAWN, "player not reset to spawn");
-    assert_eq!(vel, Vec2::ZERO, "player velocity not cleared on reset");
+    assert_eq!(
+        pos,
+        Vec2::new(100.0, WORLD_BOUNDS_MAX.y + PLAYER_HALF.y + 50.0)
+    );
+    assert_eq!(
+        world.get::<crate::gameplay::Health>(player).unwrap().hearts,
+        0
+    );
+    assert!(world.get::<Velocity>(player).is_none());
+    assert!(world.get::<Collider>(player).is_none());
+    assert!(crate::death::player_dead(&world));
 }
 
 #[test]
@@ -184,7 +192,7 @@ fn despawn_out_of_bounds_is_noop_for_in_bounds_player() {
 }
 
 #[test]
-fn real_map_dimensions_spawn_and_fall_reset() {
+fn real_map_dimensions_spawn_and_fall_death() {
     let mut harness = platformer_harness(&PHYSICS_SYSTEMS);
     seed_level(harness.world_mut());
     let map = harness
@@ -208,12 +216,15 @@ fn real_map_dimensions_spawn_and_fall_reset() {
         .unwrap()
         .pending_effect = Some(crate::state::PlayerEffect::Land);
     despawn_out_of_bounds(world);
-    assert_eq!(world.get::<Position>(player).unwrap().0, PLAYER_SPAWN);
-    assert!(!world.get::<Player>(player).unwrap().grounded);
+    assert_eq!(
+        world.get::<Position>(player).unwrap().0.y,
+        crate::state::KILL_Y + 1.0
+    );
+    assert!(crate::death::player_dead(world));
     let p = world
         .get::<crate::state::PlayerPresentation>(player)
         .unwrap();
-    assert!(p.suppress_landing && p.pending_effect.is_none());
+    assert!(p.pending_effect.is_none());
 }
 
 /// The player's state right after `player_input`, in the last frame.
@@ -311,9 +322,6 @@ fn double_jump_needs_a_fresh_press_emits_once_and_refills_on_landing() {
     harness.step(150);
     let world = harness.world_mut();
     assert!(world.get::<Player>(player).unwrap().grounded);
-    assert!(!world.get::<Player>(player).unwrap().air_jump_used);
-    world.get_mut::<Player>(player).unwrap().air_jump_used = true;
-    crate::systems::respawn_player(world, player);
     assert!(!world.get::<Player>(player).unwrap().air_jump_used);
 }
 

@@ -115,12 +115,30 @@ def particle_configs():
         scale_over_life=[[0, 1], [.5, .6], [1, .1]],
         alpha_over_life=[[0, 0], [.06, 1], [.5, .7], [1, 0]])
     configs['fireball_blast'] = dict(
-        config('flame_glow', 22, 22, .65, 320, .8, spread=360, burst=True),
-        initial_velocity=dict(kind='radial', speed=dict(min=80, max=320)),
-        lifetime=dict(min=.3, max=.65), start_scale=dict(min=.35, max=.8),
-        gravity=[0, -90], drag_per_sec=3.2, color_over_life=ember_ramp,
-        scale_over_life=[[0, .6], [.2, 1], [1, .15]],
-        alpha_over_life=[[0, 0], [.05, 1], [.5, .8], [1, 0]])
+        config('flame_glow', 48, 48, .8, 760, 1.25, spread=360, burst=True),
+        initial_velocity=dict(kind='radial', speed=dict(min=220, max=760)),
+        lifetime=dict(min=.25, max=.8), start_scale=dict(min=.45, max=1.25),
+        gravity=[0, -240], drag_per_sec=2.6,
+        angular_velocity=dict(min=-4, max=4), color_over_life=ember_ramp,
+        scale_over_life=[[0, .4], [.14, 1], [.5, .8], [1, .05]],
+        alpha_over_life=[[0, 1], [.15, 1], [.55, .8], [1, 0]])
+    # Fast hot fragments shoot beyond the flame bloom, arc and cool to red.
+    configs['blast_embers'] = dict(
+        config('spark', 64, 64, 1.1, 1250, .22, spread=360, burst=True),
+        initial_velocity=dict(kind='radial', speed=dict(min=420, max=1250)),
+        lifetime=dict(min=.35, max=1.1), start_scale=dict(min=.07, max=.22),
+        gravity=[0, 650], drag_per_sec=1.2, angular_velocity=dict(min=-10, max=10),
+        color_over_life=ember_ramp, alpha_over_life=[[0, 1], [.55, 1], [1, 0]])
+    # Smoke grows behind the hot fragments and lingers after the flash.
+    configs['blast_smoke'] = dict(
+        config('dust', 20, 20, 1.5, 400, .85, spread=360, burst=True),
+        initial_velocity=dict(kind='radial', speed=dict(min=100, max=400)),
+        lifetime=dict(min=.8, max=1.5), start_scale=dict(min=.4, max=.85),
+        gravity=[0, -180], drag_per_sec=2.0, angular_velocity=dict(min=-2, max=2),
+        scale_over_life=[[0, .4], [.3, 1.3], [1, 2]],
+        alpha_over_life=[[0, 0], [.15, .55], [.6, .4], [1, 0]],
+        color_over_life=[[0, [.55, .22, .08, 1]], [.25, [.16, .12, .13, 1]],
+                         [1, [.06, .055, .065, 1]]])
     configs['extinguish'] = dict(
         config('dust', 14, 14, 1.2, 110, .34, spread=140, burst=True),
         lifetime=dict(min=.7, max=1.2), start_scale=dict(min=.18, max=.34),
@@ -128,23 +146,60 @@ def particle_configs():
         scale_over_life=[[0, .5], [.3, 1], [1, 1.35]],
         alpha_over_life=[[0, 0], [.08, .85], [.6, .45], [1, 0]],
         color_over_life=[[0, [1, .55, .2, 1]], [.18, [.85, .85, .9, 1]], [1, [.55, .58, .66, 1]]])
-    # The fireball's push: a dust ring thrown out to about its 160-pixel reach.
+    # A hard outward dust front underneath the flames and flying embers.
     configs['blast_dust'] = dict(
-        config('dust', 20, 20, .8, 560, .55, spread=360, burst=True),
-        initial_velocity=dict(kind='radial', speed=dict(min=300, max=560)),
-        lifetime=dict(min=.45, max=.8), start_scale=dict(min=.35, max=.6),
-        gravity=[0, 40], drag_per_sec=3.6, angular_velocity=dict(min=-1.5, max=1.5),
+        config('dust', 24, 24, .85, 1000, .7, spread=360, burst=True),
+        initial_velocity=dict(kind='radial', speed=dict(min=650, max=1000)),
+        lifetime=dict(min=.35, max=.85), start_scale=dict(min=.3, max=.7),
+        gravity=[0, 40], drag_per_sec=2.4, angular_velocity=dict(min=-1.5, max=1.5),
         scale_over_life=[[0, .5], [.35, 1], [1, 1.5]],
         alpha_over_life=[[0, 0], [.06, .7], [.5, .4], [1, 0]],
         color_over_life=[[0, [1, .78, .5, 1]], [.25, [.62, .55, .5, 1]], [1, [.32, .3, .3, 1]]])
     # A marble the iron brick smashes: glass chips that fall away.
     configs['ball_smash'] = dict(
-        config('spark', 12, 12, .55, 260, .12, spread=360, burst=True),
-        initial_velocity=dict(kind='radial', speed=dict(min=90, max=260)),
-        lifetime=dict(min=.3, max=.6), start_scale=dict(min=.06, max=.13),
+        config('spark', 24, 24, .65, 520, .16, spread=360, burst=True),
+        initial_velocity=dict(kind='radial', speed=dict(min=150, max=520)),
+        lifetime=dict(min=.25, max=.65), start_scale=dict(min=.06, max=.16),
         gravity=[0, 720], drag_per_sec=.8, angular_velocity=dict(min=-9, max=9),
         alpha_over_life=[[0, 0], [.05, 1], [.6, .85], [1, 0]],
         color_over_life=[[0, [1, 1, 1, 1]], [.5, [.8, .86, .92, 1]], [1, [.5, .55, .62, 0]]])
+    # A held cold jet: snow crystals, expanding mist and surface frost splashes.
+    ice_ramp = [[0, [.75, .95, 1, 1]], [.5, [.25, .65, 1, 1]], [1, [.1, .35, .8, 0]]]
+    configs['ice_beam'] = dict(
+        config('ice_crystal', 144, 260, .65, 1050, .2, direction=(1, 0), spread=28),
+        initial_velocity=dict(kind='cone', direction=[1, 0], spread_deg=28,
+                              speed=dict(min=750, max=1050)),
+        lifetime=dict(min=.4, max=.65), gravity=[0, 0], drag_per_sec=.15,
+        angular_velocity=dict(min=-8, max=8), start_scale=dict(min=.08, max=.2),
+        scale_over_life=[[0, .5], [.18, 1], [.75, .85], [1, .15]],
+        color_over_life=ice_ramp, alpha_over_life=[[0, .6], [.08, 1], [.7, .9], [1, 0]])
+    configs['ice_mist'] = dict(
+        config('flame_glow', 100, 120, .8, 850, 1.2, direction=(1, 0), spread=28),
+        initial_velocity=dict(kind='cone', direction=[1, 0], spread_deg=28,
+                              speed=dict(min=600, max=850)),
+        lifetime=dict(min=.5, max=.8), gravity=[0, 0], drag_per_sec=.2,
+        start_scale=dict(min=.4, max=1.2), angular_velocity=dict(min=-2, max=2),
+        scale_over_life=[[0, .3], [.3, 1.2], [.8, 2], [1, 2.5]],
+        color_over_life=[[0, [.9, 1, 1, 1]], [.4, [.4, .8, 1, 1]], [1, [.2, .55, 1, 0]]],
+        alpha_over_life=[[0, 0], [.12, .65], [.6, .4], [1, 0]])
+    configs['ice_contact'] = dict(
+        config('ice_crystal', 48, 100, .55, 190, .2, spread=360),
+        initial_velocity=dict(kind='radial', speed=dict(min=55, max=190)),
+        lifetime=dict(min=.25, max=.55), gravity=[0, 80], drag_per_sec=1.2,
+        angular_velocity=dict(min=-6, max=6), color_over_life=ice_ramp,
+        alpha_over_life=[[0, .8], [.15, 1], [.7, .8], [1, 0]])
+    configs['ice_frost'] = dict(
+        config('ice_crystal', 24, 24, .7, 240, .24, spread=360, burst=True),
+        initial_velocity=dict(kind='radial', speed=dict(min=60, max=240)),
+        lifetime=dict(min=.3, max=.7), angular_velocity=dict(min=-5, max=5),
+        gravity=[0, 55], drag_per_sec=1.8, color_over_life=ice_ramp,
+        alpha_over_life=[[0, 1], [.6, .8], [1, 0]])
+    configs['ice_shatter'] = dict(
+        configs['ice_frost'], sprite='ex10_ice_chip', max_alive=32,
+        emission=dict(kind='burst', count=32, once=True),
+        initial_velocity=dict(kind='radial', speed=dict(min=150, max=600)),
+        gravity=[0, 600], lifetime=dict(min=.35, max=.9), start_scale=dict(min=.08, max=.25),
+        angular_velocity=dict(min=-12, max=12))
     return configs
 
 
