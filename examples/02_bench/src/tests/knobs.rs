@@ -115,3 +115,17 @@ fn validation_errors_name_the_knob_and_range() {
         "{text}"
     );
 }
+
+#[test]
+fn next_bench_visits_every_bench_and_wraps() {
+    let mut name = crate::BENCHES[0].name;
+    let mut seen = Vec::new();
+    for _ in 0..crate::BENCHES.len() {
+        name = next_bench(crate::BENCHES, name).name;
+        seen.push(name);
+    }
+    let mut expected: Vec<_> = crate::BENCHES.iter().map(|bench| bench.name).collect();
+    expected.rotate_left(1);
+    assert_eq!(seen, expected);
+    assert_eq!(name, crate::BENCHES[0].name);
+}

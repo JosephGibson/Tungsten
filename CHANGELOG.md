@@ -6,6 +6,14 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.58.0] - 2026-10-08
+
+Summary: a small interactive feature with no plan: example 02's bench window moves to the next benchmark on Tab. No engine, decision, dependency, asset or manifest change; captures, smoke runs and the row digests are unchanged.
+
+### Added
+
+- **Tab cycles the benchmarks in example 02**: in a window run (`TUNGSTEN_SMOKE_FRAMES` unset or 0) Tab starts the binary on the next benchmark in `BENCHES` order (`physics`, `ecs`, `churn`, `gpu`, `particles`, `integrated`, then `physics` again) and closes the old window. The preset carries over when the next benchmark has one of that name, else it falls back to `default`; `TUNGSTEN_BENCH_SCALE` carries over and `TUNGSTEN_BENCH_SET` is dropped, since its knobs belong to the benchmark left. The title ends with `- Tab: next benchmark`. Under `TUNGSTEN_SMOKE_FRAMES` no `bench_cycle` system registers, so capture `systems:` lines keep their rows. `physics-sparse` and `gpu-throughput` are knob modes, not cycle entries. The binary still runs one benchmark per launch (`D-078`); `docs/perf/benchmarks.md` (Harness) describes the key, and `next_bench_visits_every_bench_and_wraps` pins the order.
+
 ## [0.57.1] - 2026-10-08
 
 Summary: a maintenance release with no plan, for what example 01 still showed at uncapped frame rates after 0.57: the physics debug overlay outlines bodies where their sprites are drawn, and the example's scene animations move in every frame, not only in frames that step (`D-137`, `D-139`). Engine behaviour outside the `F1` overlay is unchanged. No new dependency, asset, manifest or decision.
