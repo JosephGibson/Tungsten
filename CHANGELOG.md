@@ -6,6 +6,15 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.59.1] - 2026-10-08
+
+Summary: a maintenance release with no plan that retunes 0.59's example 01 brick and fireball push after play: the brick is heavier and stiffer, up to 24 stand at once, and a blast reaches farther and shoves harder. Constants only; no engine, API, decision, dependency, asset or manifest change.
+
+### Changed
+
+- **Iron brick weighs 250 balls** (`brick::BRICK_MASS` 60 → 250), resting friction doubles to 1,000 pixels/second² (`BRICK_FRICTION`) and the cap rises from 12 to 24 (`BRICK_CAP`). The player shoves it more slowly than in 0.59.0 and a blast moves it a quarter as far per unit of push.
+- **Fireball push reaches 288 pixels at 2,500 pixels/second** (`fireball::FIREBALL_PUSH_RADIUS` 2.5 → 4.5 tiles, `FIREBALL_PUSH_SPEED` 1,100 → 2,500), so a point-blank shove carries the player several tiles. The ignition radius, the 0.15-second control lock and the camera shake are unchanged. `examples/01_platformer/tools/README.md` states the new numbers.
+
 ## [0.59.0] - 2026-10-08
 
 Summary: a feature release with no plan, mostly example 01: R drops an iron brick at the cursor, losing the last heart opens a death screen with a restart, fireballs push what they blast, and burning piles read as coals under a flickering crest. The one engine change is a `KeyCode::KeyR` variant. No decision or dependency change; the physics hashes and row digests are unchanged.

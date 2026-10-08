@@ -31,11 +31,11 @@ pub(crate) const FIREBALL_COOLDOWN: f32 = 0.2;
 pub(crate) const FIREBALL_MAX_ALIVE: usize = 6;
 pub(crate) const FIREBALL_BLAST_RADIUS: f32 = 72.0;
 /// Reach of the blast's push: a pile crater a little wider than the player is tall.
-pub(crate) const FIREBALL_PUSH_RADIUS: f32 = 2.5 * TILE;
+pub(crate) const FIREBALL_PUSH_RADIUS: f32 = 4.5 * TILE;
 /// Speed the push gives a unit-mass body (a ball, the player) at the blast
 /// centre, pixels/second: falling linearly to zero at the reach, divided by
 /// mass, so the iron brick barely moves. Close to the player's jump.
-pub(crate) const FIREBALL_PUSH_SPEED: f32 = 1100.0;
+pub(crate) const FIREBALL_PUSH_SPEED: f32 = 2500.0;
 /// Seconds of lost control at full push, so the shove is not walked off at once.
 const PUSH_CONTROL_LOCK: f32 = 0.15;
 /// Camera trauma of a blast within a quarter view width of the view's

@@ -358,10 +358,10 @@ It explodes on the first solid it touches: any collider except the player's
 (balls of either size, slab decks, lifts, iron bricks) or a solid collision tile.
 The blast spawns a flame bloom (`fireball_blast`), the existing spark burst, a
 dust ring (`blast_dust`) and a shock ring as wide as its push. It pushes every
-dynamic body within 160 pixels straight away from it: 1,100 pixels/second for a
+dynamic body within 288 pixels straight away from it: 2,500 pixels/second for a
 unit-mass body (a ball, the player) at the centre, falling linearly to nothing at
 the edge and divided by mass, so an iron brick barely moves. A pushed player loses
-control for up to 0.15 seconds, so a point-blank shove carries about two tiles.
+control for up to 0.15 seconds, so a point-blank shove carries several tiles.
 The blast ignites every small ball within 72 pixels through `burning::ignite`, so
 spent balls stay spent and normal balls never burn. It does not hurt the player.
 The camera shakes with trauma 0.55 (about 4 pixels for a quarter second) for a
@@ -409,13 +409,13 @@ its ID, path and volume in `sounds.json`, and regenerate. Generation rejects a
 
 ## Iron brick, death screen and restart
 
-Press **R** to place an iron brick at the cursor, at most 12. It is a
+Press **R** to place an iron brick at the cursor, at most 24. It is a
 120-pixel square collider, four large-ball diameters on a side, drawn from four
 64-pixel lit quarters (`iron_brick_big_*`: riveted plates cut along their seams),
-so it keeps the terrain's pixel scale. It weighs 60 balls. The solver has no
-friction, so a brick resting on anything loses horizontal speed at 500
-pixels/second²: the player shoves it along at about 75 pixels/second and single
-balls barely move it. Lifts carry it like the player and balls. `KeyR` is a
+so it keeps the terrain's pixel scale. It weighs 250 balls. The solver has no
+friction, so a brick resting on anything loses horizontal speed at 1,000
+pixels/second²: the player shoves it along slowly and single balls barely move
+it. Lifts carry it like the player and balls. `KeyR` is a
 `tungsten-core` `KeyCode` variant added for this binding.
 
 A brick moving at 360 pixels/second or more into a body, taken from its velocity

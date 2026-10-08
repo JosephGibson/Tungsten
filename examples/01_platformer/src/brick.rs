@@ -19,14 +19,14 @@ use crate::systems::{cursor_to_world, spawn_transient_effect};
 
 /// Four large-ball diameters on a side.
 pub(crate) const BRICK_HALF: Vec2 = Vec2::splat(4.0 * BALL_RADIUS);
-/// Sixty balls' worth: about three times a large ball's density over twenty
-/// times its area.
-pub(crate) const BRICK_MASS: f32 = 60.0;
-pub(crate) const BRICK_CAP: usize = 12;
+/// About 250 small balls' worth, a little over four times the former 60-ball
+/// weight, so a blast that sends a ball far barely shifts it.
+pub(crate) const BRICK_MASS: f32 = 250.0;
+pub(crate) const BRICK_CAP: usize = 24;
 /// Sliding friction while the brick rests on something, in pixels/second².
-/// The player shoves it along at about 75 pixels/second, an eighth of
-/// walking speed; balls barely move it.
-pub(crate) const BRICK_FRICTION: f32 = 500.0;
+/// The player shoves it along slowly, a small fraction of walking speed;
+/// balls barely move it.
+pub(crate) const BRICK_FRICTION: f32 = 1000.0;
 /// The brick's own speed into a body, pixels/second, from which it hurts
 /// the player and smashes small balls; a resting or creeping brick does neither.
 pub(crate) const BRICK_CRUSH_SPEED: f32 = 360.0;
