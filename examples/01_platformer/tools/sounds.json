@@ -18,5 +18,10 @@
     "looping": false,
     "path": "sounds/fireball_cast.wav",
     "volume": 0.45
+  },
+  "ex10_player_hit_sfx": {
+    "looping": false,
+    "path": "sounds/player_hit.wav",
+    "volume": 0.6
   }
 }

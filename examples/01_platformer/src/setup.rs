@@ -105,6 +105,11 @@ pub(crate) const RUNTIME_SYSTEM_ORDER: &[(Slot, &str, ExampleSystem)] = &[
         "cast_fireball_system",
         crate::fireball::cast_fireball_system,
     ),
+    (
+        Slot::BeforeStep,
+        "place_brick_system",
+        crate::brick::place_brick_system,
+    ),
     (Slot::BeforeStep, "audio_input_system", audio_input_system),
     (
         Slot::BeforeStep,
@@ -139,6 +144,16 @@ pub(crate) const RUNTIME_SYSTEM_ORDER: &[(Slot, &str, ExampleSystem)] = &[
     ),
     (
         Slot::AfterStep,
+        "brick_impacts",
+        crate::brick::brick_impacts,
+    ),
+    (
+        Slot::AfterStep,
+        "brick_friction",
+        crate::brick::brick_friction,
+    ),
+    (
+        Slot::AfterStep,
         "fireball_flight_system",
         crate::fireball::fireball_flight_system,
     ),
@@ -146,6 +161,11 @@ pub(crate) const RUNTIME_SYSTEM_ORDER: &[(Slot, &str, ExampleSystem)] = &[
         Slot::AfterStep,
         "spread_ball_fire",
         crate::burning::spread_ball_fire,
+    ),
+    (
+        Slot::AfterStep,
+        "flame_exposure",
+        crate::burning::flame_exposure,
     ),
     (Slot::AfterStep, "update_text_display", update_text_display),
     (
@@ -170,10 +190,22 @@ pub(crate) const RUNTIME_SYSTEM_ORDER: &[(Slot, &str, ExampleSystem)] = &[
         "transient_emitter_cleanup",
         transient_emitter_cleanup,
     ),
+    // Last in `update`: a restart rebuilds the world after the old run's
+    // systems, and `post_update` draws the new one.
+    (
+        Slot::Update,
+        "death_screen_system",
+        crate::death::death_screen_system,
+    ),
     (
         Slot::AfterSync,
         "anchor_emitters",
         crate::gameplay::anchor_emitters,
+    ),
+    (
+        Slot::AfterSync,
+        "fireball_light_system",
+        crate::fireball::fireball_light_system,
     ),
     (
         Slot::AfterSync,
@@ -241,6 +273,18 @@ pub(crate) fn platformer_bindings(world: &mut World) {
                 button: MouseButton::Other(4),
             },
         ),
+        (
+            "place_brick",
+            Binding::Key {
+                code: KeyCode::KeyR,
+            },
+        ),
+        (
+            "restart",
+            Binding::Key {
+                code: KeyCode::Enter,
+            },
+        ),
     ] {
         if actions.bindings(name) != [binding] {
             actions.replace_bindings(name, vec![binding]);
@@ -257,6 +301,7 @@ fn enable_hot_reload(app: &mut App) {
 }
 
 fn seed_world(world: &mut World) {
+    world.insert_resource(crate::death::DeathScreen::default());
     if let Some(cfg) = world.get_resource_mut::<PhysicsConfig>() {
         cfg.gravity = Vec2::new(0.0, GRAVITY_Y);
         // One-tile cells cap dense-pile pair candidates.
@@ -511,118 +556,166 @@ pub(crate) fn configure_platformer_camera(world: &mut World, player: Entity) {
 fn install_startup(app: &mut App) {
     app.on_startup(|world, _renderer| {
         // D-052: manifests loaded before startup; wire asset-dependent state.
-        let registry = world.get_resource::<AssetRegistry>().unwrap();
-        for id in [
-            PLAYER_START_SPRITE_ID,
-            BALL_START_SPRITE_ID,
-            "ex10_sky",
-            "ex10_distant_ridges",
-            "ex10_near_woodland",
-            "ex10_cursor",
-        ] {
-            assert!(registry.get_sprite(id).is_some(), "missing sprite '{id}'");
-        }
-        for placement in PROPS {
-            assert!(
-                registry.get_sprite(placement.sprite).is_some(),
-                "missing prop '{}'",
-                placement.sprite
-            );
-        }
-        let animations = world.get_resource::<AnimationRegistry>().unwrap();
-        for id in [
-            PLAYER_ANIMATION_ID,
-            BALL_ANIMATION_ID,
-            "ex10_player_walk",
-            "ex10_player_jump",
-            "ex10_player_fall",
-            "ex10_player_land",
-            "ex10_player_double_jump",
-            "ex10_fireball",
-            "ex10_torch_flicker",
-            "ex10_waterfall_flow",
-            "ex10_vines_sway",
-        ] {
-            assert!(animations.get(id).is_some(), "missing animation '{id}'");
-        }
-        let tilemaps = world.get_resource::<TilemapRegistry>().unwrap();
-        assert!(
-            tilemaps.get("ex10_level").is_some(),
-            "missing tilemap 'ex10_level'"
-        );
-
-        // Materials are registered only after manifests load, before startup.
-        if let Some(material_id) = world
-            .get_resource::<tungsten::core::MaterialRegistry>()
-            .and_then(|r| r.get("damage_flash"))
-        {
-            for entity in world
-                .query_filtered::<Entity, With<Player>>()
-                .collect::<Vec<_>>()
-            {
-                world.insert(entity, crate::state::PlayerMaterial { material_id });
-            }
-        }
-        spawn_level_presentation(world);
-        crate::gameplay::spawn_obstacles(world);
-
-        let (
-            sfx_handle,
-            black_hole_sfx_handle,
-            music_handle,
-            sfx_volume,
-            black_hole_sfx_volume,
-            music_volume,
-        ) = {
-            let reg = world
-                .get_resource::<SoundRegistry>()
-                .expect("SoundRegistry missing");
-            let sfx = reg.get_by_id("sfx_blip").expect("sfx_blip not found");
-            let black_hole_sfx = reg
-                .get_by_id("ex10_black_hole_sfx")
-                .expect("ex10_black_hole_sfx not found");
-            let music = reg.get_by_id("music_main").expect("music_main not found");
-            (
-                sfx,
-                black_hole_sfx,
-                music,
-                reg.get_volume(sfx),
-                reg.get_volume(black_hole_sfx),
-                reg.get_volume(music),
-            )
-        };
-        world.insert_resource(AudioState {
-            sfx_handle,
-            black_hole_sfx_handle,
-            music_handle,
-            sfx_volume,
-            black_hole_sfx_volume,
-            music_volume,
-            music_playing: false,
-            master_volume: 0.5,
-        });
-        let effect_sounds = {
-            let reg = world
-                .get_resource::<SoundRegistry>()
-                .expect("SoundRegistry missing");
-            let sound = |id: &str| {
-                let handle = reg
-                    .get_by_id(id)
-                    .unwrap_or_else(|| panic!("{id} not found"));
-                (handle, reg.get_volume(handle))
-            };
-            EffectSounds {
-                cast: sound("ex10_fireball_cast_sfx"),
-                blast: sound("ex10_fireball_blast_sfx"),
-                extinguish: sound("ex10_extinguish_sfx"),
-                extinguish_cooldown: 0.0,
-            }
-        };
-        world.insert_resource(effect_sounds);
-        if let Some(cmds) = world.get_resource_mut::<AudioCommands>() {
-            cmds.set_master_volume(0.5);
-        }
+        check_assets(world);
+        populate_world(world);
     });
+}
+
+/// The startup assertions: every sprite, animation and the tilemap the
+/// game names by ID loaded.
+fn check_assets(world: &World) {
+    let registry = world.get_resource::<AssetRegistry>().unwrap();
+    for id in [
+        PLAYER_START_SPRITE_ID,
+        BALL_START_SPRITE_ID,
+        "ex10_sky",
+        "ex10_distant_ridges",
+        "ex10_near_woodland",
+        "ex10_cursor",
+    ] {
+        assert!(registry.get_sprite(id).is_some(), "missing sprite '{id}'");
+    }
+    for placement in PROPS {
+        assert!(
+            registry.get_sprite(placement.sprite).is_some(),
+            "missing prop '{}'",
+            placement.sprite
+        );
+    }
+    let animations = world.get_resource::<AnimationRegistry>().unwrap();
+    for id in [
+        PLAYER_ANIMATION_ID,
+        BALL_ANIMATION_ID,
+        "ex10_player_walk",
+        "ex10_player_jump",
+        "ex10_player_fall",
+        "ex10_player_land",
+        "ex10_player_double_jump",
+        "ex10_fireball",
+        "ex10_torch_flicker",
+        "ex10_waterfall_flow",
+        "ex10_vines_sway",
+    ] {
+        assert!(animations.get(id).is_some(), "missing animation '{id}'");
+    }
+    let tilemaps = world.get_resource::<TilemapRegistry>().unwrap();
+    assert!(
+        tilemaps.get("ex10_level").is_some(),
+        "missing tilemap 'ex10_level'"
+    );
+}
+
+/// The half of a launch that needs the loaded manifests: the player's
+/// material, the level's presentation and obstacles, and the sound
+/// handles. Startup runs it after `seed_world`; a restart runs both again.
+pub(crate) fn populate_world(world: &mut World) {
+    // Materials are registered only after manifests load, before startup.
+    if let Some(material_id) = world
+        .get_resource::<tungsten::core::MaterialRegistry>()
+        .and_then(|r| r.get("damage_flash"))
+    {
+        for entity in world
+            .query_filtered::<Entity, With<Player>>()
+            .collect::<Vec<_>>()
+        {
+            world.insert(entity, crate::state::PlayerMaterial { material_id });
+        }
+    }
+    spawn_level_presentation(world);
+    crate::gameplay::spawn_obstacles(world);
+
+    let (
+        sfx_handle,
+        black_hole_sfx_handle,
+        music_handle,
+        sfx_volume,
+        black_hole_sfx_volume,
+        music_volume,
+    ) = {
+        let reg = world
+            .get_resource::<SoundRegistry>()
+            .expect("SoundRegistry missing");
+        let sfx = reg.get_by_id("sfx_blip").expect("sfx_blip not found");
+        let black_hole_sfx = reg
+            .get_by_id("ex10_black_hole_sfx")
+            .expect("ex10_black_hole_sfx not found");
+        let music = reg.get_by_id("music_main").expect("music_main not found");
+        (
+            sfx,
+            black_hole_sfx,
+            music,
+            reg.get_volume(sfx),
+            reg.get_volume(black_hole_sfx),
+            reg.get_volume(music),
+        )
+    };
+    world.insert_resource(AudioState {
+        sfx_handle,
+        black_hole_sfx_handle,
+        music_handle,
+        sfx_volume,
+        black_hole_sfx_volume,
+        music_volume,
+        music_playing: false,
+        master_volume: 0.5,
+    });
+    let effect_sounds = {
+        let reg = world
+            .get_resource::<SoundRegistry>()
+            .expect("SoundRegistry missing");
+        let sound = |id: &str| {
+            let handle = reg
+                .get_by_id(id)
+                .unwrap_or_else(|| panic!("{id} not found"));
+            (handle, reg.get_volume(handle))
+        };
+        EffectSounds {
+            cast: sound("ex10_fireball_cast_sfx"),
+            blast: sound("ex10_fireball_blast_sfx"),
+            extinguish: sound("ex10_extinguish_sfx"),
+            hit: sound("ex10_player_hit_sfx"),
+            extinguish_cooldown: 0.0,
+        }
+    };
+    world.insert_resource(effect_sounds);
+    if let Some(cmds) = world.get_resource_mut::<AudioCommands>() {
+        cmds.set_master_volume(0.5);
+    }
+}
+
+/// Rebuilds the world as a fresh launch builds it, leaving nothing of the
+/// run before: every entity goes, the per-run engine state goes back to
+/// what `App::new` inserts, sound stops, and `seed_world` and
+/// `populate_world` run again with their timers, counters and camera.
+/// Asset registries, input bindings and display settings stay. Freed entity
+/// slots are reused, so new entities' ids differ from a launch's.
+pub(crate) fn restart_world(world: &mut World) {
+    for entity in world.query::<Entity>().collect::<Vec<_>>() {
+        world.despawn(entity);
+    }
+    // The step makes fresh buffers (sleep islands, warm starts) on first use.
+    world.remove_resource::<tungsten::physics::PhysicsBuffers>();
+    // Commands and events the old run queued would land in the new one.
+    world.insert_resource(tungsten::core::CommandBuffer::new());
+    fresh_events::<tungsten::physics::CollisionEvent>(world);
+    fresh_events::<tungsten::core::ShakeEvent>(world);
+    fresh_events::<tungsten::core::SquashEvent>(world);
+    world.insert_resource(tungsten::core::CameraState::new());
+    world.insert_resource(CameraController::default());
+    world.insert_resource(tungsten::core::ParticleActive::default());
+    world.insert_resource(tungsten::core::WorldRngSeed::default());
+    if let Some(cmds) = world.get_resource_mut::<AudioCommands>() {
+        cmds.stop_all();
+    }
+    seed_world(world);
+    platformer_bindings(world);
+    populate_world(world);
+}
+
+fn fresh_events<T: 'static>(world: &mut World) {
+    if world.has_event::<T>() {
+        world.insert_resource(tungsten::core::EventQueue::<T>::new());
+    }
 }
 
 fn install_runtime(app: &mut App) {

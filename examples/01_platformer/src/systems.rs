@@ -30,6 +30,9 @@ use crate::state::{
 /// Ground jump preserves hold behavior and takes a press buffered since the
 /// last step (a tap between two steps); the aerial jump needs a fresh press.
 pub(crate) fn player_input(world: &mut World) {
+    if crate::death::player_dead(world) {
+        return;
+    }
     let frame = world.get_resource::<Time>().map_or(0, Time::frame);
     let (pressed_left, pressed_right, pressed_space, jump_pressed);
     {
@@ -495,9 +498,11 @@ fn player_is_grounded_by_event(player: Entity, event: &CollisionEvent) -> bool {
     }
 }
 
-/// Shared hazard hit flash and camera feedback; balls never call this.
+/// Every hit's feedback: the hit sound, the damage-flash frame and a
+/// subtle camera kick. The blink that follows lasts the immunity window.
 pub(crate) fn damage_feedback(world: &mut World, player: Entity) {
     use tungsten::core::{Easing, ScalarSlot, Tween, TweenChannel, UniformOverrideBlock, Vec4Slot};
+    play_effect_sound(world, |s| s.hit);
     // D-055 keeps one Tween per entity — overwrite any active tween.
     let tween = Tween::new(0.25, Easing::QuadOut)
         .with_channel(TweenChannel::UniformVec4Lane {
@@ -521,9 +526,15 @@ pub(crate) fn damage_feedback(world: &mut World, player: Entity) {
     // `D-055` tween slot; trauma lives on the camera controller, so both
     // read on screen at once.
     if let Some(queue) = world.get_resource_mut::<EventQueue<ShakeEvent>>() {
-        queue.send(ShakeEvent { trauma_add: 0.5 });
+        queue.send(ShakeEvent {
+            trauma_add: HIT_TRAUMA,
+        });
     }
 }
+
+/// Camera trauma per hit: the shake scales with its square, so 0.5 moves
+/// the view a quarter of `shake_max_offset`, a few pixels.
+pub(crate) const HIT_TRAUMA: f32 = 0.5;
 
 /// The HUD's state row, refreshed every `TEXT_UPDATE_INTERVAL` of game
 /// time. It runs after the contact readers, so Contacts counts the step's
@@ -995,11 +1006,14 @@ pub(crate) fn black_hole_lifetime_system(world: &mut World) {
 /// Cull escaped bodies after physics; bounds prevent substep-cost runaway.
 pub(crate) fn despawn_out_of_bounds(world: &mut World) {
     let escaped_balls: Vec<Entity> = world
-        .query::<(Entity, &Ball)>()
-        .filter_map(|(entity, _)| {
-            let pos = world.get::<Position>(entity)?.0;
+        .query::<(Entity, &Position)>()
+        .filter(|(entity, _)| {
+            world.get::<Ball>(*entity).is_some()
+                || world.get::<crate::brick::IronBrick>(*entity).is_some()
+        })
+        .filter_map(|(entity, pos)| {
             let collider = world.get::<Collider>(entity).copied();
-            is_body_out_of_bounds(pos, collider).then_some(entity)
+            is_body_out_of_bounds(pos.0, collider).then_some(entity)
         })
         .collect();
 
@@ -1020,6 +1034,10 @@ pub(crate) fn despawn_out_of_bounds(world: &mut World) {
         })
         .collect();
 
+    // A dead player has no body and waits for the restart.
+    if crate::death::player_dead(world) {
+        return;
+    }
     for entity in escaped_players {
         respawn_player(world, entity);
     }

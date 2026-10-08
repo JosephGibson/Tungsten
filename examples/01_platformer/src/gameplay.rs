@@ -127,10 +127,14 @@ pub(crate) struct EmitterAnchor {
 }
 /// Molten drips leak from the underside of each fireball.
 pub(crate) const FIREBALL_DRIP_OFFSET: Vec2 = Vec2::new(0.0, 12.0);
+/// The expanding shock ring of a blast, `size` pixels across at its end.
 #[derive(Clone, Copy)]
 pub(crate) struct Explosion {
     pub(crate) age: f32,
+    pub(crate) size: f32,
 }
+/// Final ring diameter of a burst ball.
+pub(crate) const BALL_BURST_RING: f32 = 140.0;
 
 #[derive(Clone, Copy)]
 pub(crate) struct PlayerLantern {
@@ -155,7 +159,7 @@ pub(crate) fn lantern_input(world: &mut World) {
 pub(crate) fn glow_center(world: &World, entity: Entity, offset: Vec2) -> Option<Vec2> {
     let transform = world.get::<Transform>(entity)?;
     if let Some(lantern) = world.get::<PlayerLantern>(entity) {
-        if !lantern.enabled {
+        if !lantern.enabled || crate::death::player_dead(world) {
             return None;
         }
         let name = &world.get::<CurrentSprite>(entity)?.0;
@@ -435,6 +439,8 @@ pub(crate) fn move_obstacles(world: &mut World) {
                         PLAYER_HALF
                     } else if world.get::<Ball>(r).is_some() {
                         Vec2::splat(ball_radius(world, r))
+                    } else if world.get::<crate::brick::IronBrick>(r).is_some() {
+                        crate::brick::BRICK_HALF
                     } else {
                         return None;
                     };
@@ -531,7 +537,13 @@ pub(crate) fn hazard_contacts(world: &mut World) {
         crate::systems::spawn_transient_effect(world, "ex10_ball_explosion", position);
         if world.query::<(Entity, &Explosion)>().count() < TRANSIENT_EMITTER_CAP {
             let e = world.spawn();
-            world.insert(e, Explosion { age: 0.0 });
+            world.insert(
+                e,
+                Explosion {
+                    age: 0.0,
+                    size: BALL_BURST_RING,
+                },
+            );
             world.insert(e, Transform::from_position(position));
         }
     }
@@ -550,11 +562,22 @@ pub(crate) fn hazard_contacts(world: &mut World) {
             .find(|(e, h)| contact(world, player, *e, h.half() + PLAYER_HALF).is_some())
         {
             let origin = world.get::<Position>(*hazard).unwrap().0;
-            damage_player(world, player, origin);
+            damage_player(world, player, origin, 1);
         }
     }
 }
-pub(crate) fn damage_player(world: &mut World, player: Entity, origin: Vec2) {
+
+/// Seconds after a hit during which further damage is ignored; the player
+/// blinks for as long (`extract`).
+pub(crate) const HIT_IMMUNITY: f32 = 1.1;
+
+/// The one damage path: takes `hearts` unless the player is immune or dead,
+/// knocks the player away from `origin`, and on the last heart starts the
+/// death screen. Every hit plays the hit feedback.
+pub(crate) fn damage_player(world: &mut World, player: Entity, origin: Vec2, hearts: u8) {
+    if crate::death::player_dead(world) {
+        return;
+    }
     if world.get::<Health>(player).is_none() {
         world.insert(player, Health::default());
     }
@@ -562,11 +585,11 @@ pub(crate) fn damage_player(world: &mut World, player: Entity, origin: Vec2) {
     if health.immunity > 0.0 {
         return;
     }
-    health.hearts = health.hearts.saturating_sub(1);
-    health.immunity = 1.1;
+    health.hearts = health.hearts.saturating_sub(hearts);
+    health.immunity = HIT_IMMUNITY;
     health.control_lock = 0.18;
     if health.hearts == 0 {
-        crate::systems::respawn_player(world, player);
+        crate::death::kill_player(world, player);
     } else {
         let direction = if world.get::<Position>(player).unwrap().0.x < origin.x {
             -1.0

@@ -1,7 +1,9 @@
 use glam::Vec2;
 mod ball_pit;
+mod brick;
 mod burning;
 mod camera;
+mod death;
 mod fixed_step;
 mod hazards;
 mod level;
@@ -289,9 +291,9 @@ fn configure_app_seeds_expected_bootstrap_state() {
 const RUNTIME_SCHEDULE: &str = "\
 startup: -
 pre_update: physics_debug_toggle, systems_overlay_toggle, inspector_toggle, inspector_pick, hud_toggle, display_input, state_dispatcher, platformer_bindings
-fixed_update: physics_prev_snapshot, player_input, lantern_input, spawn_ball_system, spawn_black_hole_system, black_hole_force_system, cast_fireball_system, audio_input_system, camera_zoom_input_system, rainbow_ball_hue_system, move_obstacles, tick_ball_fire, physics_step, ground_detection, small_ball_impacts, hazard_contacts, fireball_flight_system, spread_ball_fire, update_text_display
-update: black_hole_extinguish_system, black_hole_lifetime_system, despawn_out_of_bounds, player_presentation_system, animation_system, transient_emitter_cleanup
-post_update: physics_sync, anchor_emitters, ball_fire_particles, orbit_lights_system, scene_effects, platformer_camera_base_zoom, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, camera_update
+fixed_update: physics_prev_snapshot, player_input, lantern_input, spawn_ball_system, spawn_black_hole_system, black_hole_force_system, cast_fireball_system, place_brick_system, audio_input_system, camera_zoom_input_system, rainbow_ball_hue_system, move_obstacles, tick_ball_fire, physics_step, ground_detection, small_ball_impacts, hazard_contacts, brick_impacts, brick_friction, fireball_flight_system, spread_ball_fire, flame_exposure, update_text_display
+update: black_hole_extinguish_system, black_hole_lifetime_system, despawn_out_of_bounds, player_presentation_system, animation_system, transient_emitter_cleanup, death_screen_system
+post_update: physics_sync, anchor_emitters, fireball_light_system, ball_fire_particles, orbit_lights_system, scene_effects, platformer_camera_base_zoom, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, camera_update
 ";
 
 #[test]

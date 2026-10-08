@@ -51,7 +51,7 @@ pixel) for any hand-authored sprite. The modules:
 | `scenery.py` | Lamp posts, ivy, waystone, summit gate, oak, arch, roots, undergrowth, crystals, waterfall, spikes |
 | `backdrops.py` | Sky, moon, clouds, ridges, woodland |
 | `effects.py` | Particle sprites (dust, spark, droplet, firefly mote, cursor), glow gradients, black-hole layers |
-| `polish_art.py` | HUD hearts, burning-ball flames, explosion shock ring |
+| `polish_art.py` | HUD hearts, burning-ball flames, explosion shock ring, iron brick |
 | `sfx.py` | Synthesized sound effects (WAV) |
 | `shaders/soft_glow.wgsl` | Example-local glow material, copied to `assets/shaders/` |
 
@@ -172,8 +172,13 @@ remaining visual checks are listed here; archived implementation plans are histo
 
 LMB balls render at 32 pixels with a 15-pixel collider radius and cause no damage.
 Spikes and moving fire use swept relative contact tests after physics. The
-player has three health points, 1.1 seconds of hit immunity, brief knockback,
-and a full-health safe respawn. Fire destroys normal balls with a short particle burst
+player has three health points. Every hit, from a hazard or a falling iron
+brick, goes through `gameplay::damage_player`: it plays the hit sound, flashes
+the damage material red, kicks the camera (trauma 0.5, a few pixels) and starts
+1.1 seconds of immunity in which further hits are ignored and the player blinks,
+with brief knockback and loss of control. The last heart opens the death screen
+(see "Iron brick, death screen and restart"); a fall below the kill plane still
+respawns the player at full health on the safe apron. Fire destroys normal balls with a short particle burst
 and expanding ring. Those effects cannot hurt the player; both emitter and ring
 counts are capped at 16. The HUD shows remaining health.
 
@@ -313,13 +318,25 @@ outward burst.
 Small balls ignite on contact with moving fire hazards and spread fire to other
 small balls they touch, including settled piles that emit no new physics contacts.
 Each ball burns for 10 seconds from its first ignition; contact never resets the
-timer. Burned-out balls remain as dark, nonflammable physics bodies. Every burning
-ball has two large, flickering animated flame tongues, a pulsing glow and warm
-tint. Up to 64 sampled balls share 128 emitters, rotating through the population
-every 0.125 seconds. Each sampled ball emits 48 flame particles and 24 fast sparks
-per second (six times the former total emission rate), with live caps of 40 and
-24 respectively and the existing global 2,048-particle limit. The pool shrinks as
-balls burn out or despawn, and remaining particles finish their short lifetimes.
+timer. Burned-out balls remain as dark, nonflammable physics bodies.
+
+A burning pile reads as coals under a flickering crest. Every burning ball takes
+an ember tint pulsing between deep red and orange at its own rate, darkening to
+char over its last two seconds. Only balls with nothing resting on them
+(`burning::flame_exposure`: no ball directly above, nor one above on each side)
+draw a flame tongue and a soft glow, so a slope's surface burns too; buried balls
+only glow. Flames on every ball of a large pile stacked into one opaque orange
+sheet with diagonal banding, which is what this replaced. Each tongue is one of eight
+frames drawn on a 32-pixel grid in 2×2 blocks and drawn at 32 pixels, so it
+samples exactly; its frame offset, rate (10–18 frames/second), mirror and tint
+come from a hash of the ball's id, and a new fire grows in over 0.2 seconds.
+Tints multiply the glass in linear light, hence their low green and blue.
+Up to 64 surface balls share 128 emitters: each pair (flame wisps and sparks)
+stays on one ball for half a second and the pairs hop in turn. Each pair emits
+20 wisps and 8 sparks per second with live caps of 12 and 6, so a full pool
+stays near half the global 2,048-particle budget and blasts over a burning pit
+still get theirs. The pool shrinks as balls burn out or despawn, and remaining
+particles finish their short lifetimes.
 Normal balls retain their fire-destruction behavior; burning small balls do not
 damage the player or ignite normal balls.
 
@@ -334,17 +351,28 @@ from the player toward the cursor. The binding is example-local, applied by
 `platformer_bindings` like MMB. Each fresh press casts one missile: at most six
 alive, 0.2 seconds apart. It leaves the body at 900 pixels/second, falls under a
 tenth of world gravity, is pulled by black holes with the same force and falloff
-as physics bodies, and burns out silently after 1.4 seconds or outside the world
-bounds. The missile is example-moved, not a physics body: it cannot push the
-player or balls.
+as physics bodies, and burns out silently after 2.1 seconds or outside the world
+bounds. The missile is example-moved, not a physics body; only its blast pushes.
 
 It explodes on the first solid it touches: any collider except the player's
-(balls of either size, slab decks, lifts) or a solid collision tile. The blast
-spawns a flame bloom (`fireball_blast`), the existing spark burst and shock ring,
-and ignites every small ball within 72 pixels through `burning::ignite`, so spent
-balls stay spent and normal balls never burn. It does not hurt the player.
+(balls of either size, slab decks, lifts, iron bricks) or a solid collision tile.
+The blast spawns a flame bloom (`fireball_blast`), the existing spark burst, a
+dust ring (`blast_dust`) and a shock ring as wide as its push. It pushes every
+dynamic body within 160 pixels straight away from it: 1,100 pixels/second for a
+unit-mass body (a ball, the player) at the centre, falling linearly to nothing at
+the edge and divided by mass, so an iron brick barely moves. A pushed player loses
+control for up to 0.15 seconds, so a point-blank shove carries about two tiles.
+The blast ignites every small ball within 72 pixels through `burning::ignite`, so
+spent balls stay spent and normal balls never burn. It does not hurt the player.
+The camera shakes with trauma 0.55 (about 4 pixels for a quarter second) for a
+blast within a quarter view width of the view's centre, less with distance, and
+not at all a view width and a half away.
 In flight it draws the fireball frames at 40 pixels, turned along its velocity,
-with a soft flame glow, a dense `spell_trail` comet tail and molten drips.
+with a soft flame glow, a dense `spell_trail` comet tail and molten drips, and it
+carries one warm point light (192-pixel radius). The light fades over 0.3 seconds
+where the missile burns out, or flares and fades over 0.5 seconds where it
+explodes. Point lights are subtle on the dark masonry: it warms the lit terrain,
+props and bricks within about three tiles.
 
 A black hole puts out every burning small ball inside its 384-pixel pull radius
 in the same frame, leaving it spent exactly as after a normal burnout. At most
@@ -377,3 +405,42 @@ its ID, path and volume in `sounds.json`, and regenerate. Generation rejects a
 | `ex10_fireball_cast_sfx` | `fireball_cast.wav` | A missile is cast |
 | `ex10_fireball_blast_sfx` | `fireball_blast.wav` | A missile explodes |
 | `ex10_extinguish_sfx` | `extinguish.wav` | A black hole puts out burning balls |
+| `ex10_player_hit_sfx` | `player_hit.wav` | The player takes damage |
+
+## Iron brick, death screen and restart
+
+Press **R** to place an iron brick at the cursor, at most 12. It is a
+120-pixel square collider, four large-ball diameters on a side, drawn from four
+64-pixel lit quarters (`iron_brick_big_*`: riveted plates cut along their seams),
+so it keeps the terrain's pixel scale. It weighs 60 balls. The solver has no
+friction, so a brick resting on anything loses horizontal speed at 500
+pixels/second²: the player shoves it along at about 75 pixels/second and single
+balls barely move it. Lifts carry it like the player and balls. `KeyR` is a
+`tungsten-core` `KeyCode` variant added for this binding.
+
+A brick moving at 360 pixels/second or more into a body, taken from its velocity
+before the physics step, hurts the player it drives into (one heart, and one
+more per further 600 pixels/second) and smashes the small balls ahead of it (one
+per step, and one more per further 120 pixels/second, most head-on first).
+Smashed balls vanish with a few `ball_smash` glass-chip bursts, and the brick
+keeps three quarters of its speed through them, so a fast drop plows several
+layers into a pile. A resting or creeping brick does neither, and large balls
+are never smashed.
+
+Losing the last heart starts the death screen (`death.rs`). The body leaves the
+physics where it fell, a golden burst marks the spot, and over 0.9 seconds the
+stock `fade` post pass dims the frame 80% toward a near-black crimson under a
+centred YOU DIED title; screen text draws after the post stack, so the title
+stays sharp. Once the frame is dim, **Enter** restarts: the fade closes to full
+cover in 0.35 seconds, `setup::restart_world` rebuilds the world under it, and
+the cover lifts over 0.5 seconds. The screen runs on real time, so a paused or
+scaled game clock cannot hold it.
+
+`restart_world` despawns every entity, puts the per-run engine state back to what
+`App::new` inserts (physics buffers, pending commands, the example's events,
+camera state and controller, particle counters and the world RNG seed), stops all
+sound and runs `seed_world` and the startup hook's `populate_world` again, so
+resources, timers, spawn counters, cooldowns, zoom and camera match a launch.
+Asset registries, bindings and display settings stay. Freed entity slots are
+reused, so entity ids, and the cosmetic phases and emitter seeds derived from
+them, can differ from a launch's.

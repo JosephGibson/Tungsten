@@ -135,11 +135,17 @@
     "ex10_ball_explosion": {
       "path": "particles/ball_explosion.json"
     },
+    "ex10_ball_smash": {
+      "path": "particles/ball_smash.json"
+    },
     "ex10_black_hole": {
       "path": "particles/black_hole.json"
     },
     "ex10_black_hole_dust": {
       "path": "particles/black_hole_dust.json"
+    },
+    "ex10_blast_dust": {
+      "path": "particles/blast_dust.json"
     },
     "ex10_double_jump": {
       "path": "particles/double_jump.json"
@@ -203,6 +209,11 @@
       "looping": false,
       "path": "sounds/fireball_cast.wav",
       "volume": 0.45
+    },
+    "ex10_player_hit_sfx": {
+      "looping": false,
+      "path": "sounds/player_hit.wav",
+      "volume": 0.6
     }
   },
   "sprites": {
@@ -681,6 +692,30 @@
     "ex10_infall_streak": {
       "filter": "linear",
       "path": "sprites/infall_streak.png"
+    },
+    "ex10_iron_brick_big_0_0": {
+      "emissive_mask": "sprites/iron_brick_big_0_0_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/iron_brick_big_0_0_n.png",
+      "path": "sprites/iron_brick_big_0_0.png"
+    },
+    "ex10_iron_brick_big_0_1": {
+      "emissive_mask": "sprites/iron_brick_big_0_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/iron_brick_big_0_1_n.png",
+      "path": "sprites/iron_brick_big_0_1.png"
+    },
+    "ex10_iron_brick_big_1_0": {
+      "emissive_mask": "sprites/iron_brick_big_1_0_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/iron_brick_big_1_0_n.png",
+      "path": "sprites/iron_brick_big_1_0.png"
+    },
+    "ex10_iron_brick_big_1_1": {
+      "emissive_mask": "sprites/iron_brick_big_1_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/iron_brick_big_1_1_n.png",
+      "path": "sprites/iron_brick_big_1_1.png"
     },
     "ex10_lantern": {
       "emissive_mask": "sprites/lantern_e.png",

@@ -125,10 +125,29 @@ def extinguish():
     return finish(samples)
 
 
+def player_hit():
+    """A hurt: a dull body thump under a short gritty crack and a falling yelp tone."""
+    duration = 0.32
+    noise, low, high = Noise(0x417E), LowPass(), LowPass()
+    samples, thump_phase, tone_phase = [], 0.0, 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        p = t / duration
+        n = noise()
+        crack = (low(n, 3800) - high(n, 900)) * math.exp(-t / 0.028)
+        thump_phase += math.tau * glide(150, 55, min(1.0, t / 0.12)) / RATE
+        thump = 1.1 * math.sin(thump_phase) * min(1.0, t / 0.003) * math.exp(-t / 0.075)
+        tone_phase += math.tau * glide(520, 260, p) / RATE
+        tone = 0.28 * math.sin(tone_phase) * min(1.0, t / 0.01) * math.exp(-t / 0.09)
+        samples.append(math.tanh(1.3 * (1.5 * crack + thump + tone)))
+    return finish(samples, fade_in=0.001)
+
+
 def build_sounds():
     """Return `{file name: WAV bytes}` for every synthesized sound."""
     return {
         'fireball_cast.wav': fireball_cast(),
         'fireball_blast.wav': fireball_blast(),
         'extinguish.wav': extinguish(),
+        'player_hit.wav': player_hit(),
     }

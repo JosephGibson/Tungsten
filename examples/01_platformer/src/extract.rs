@@ -9,6 +9,7 @@ use tungsten::core::{
     Time, Transform, Visibility, World, parallax_world_position,
 };
 use tungsten::core::{MaterialAssetId, MaterialRegistry, SpriteAsset};
+use tungsten::core::{TextAlign, TextLayout};
 use tungsten::physics::{Position, PrevPosition};
 use tungsten::render::{SpriteBatch, SpriteInstance, TextSection};
 use tungsten::{WindowSize, extract_tilemap_layers};
@@ -319,18 +320,6 @@ fn extract_props(world: &World, assets: &AssetRegistry, depth: PropDepth) -> Vec
     batches
 }
 
-/// Frames of the burning-ball flame, in animation order.
-const FLAME_SPRITE_IDS: [&str; 8] = [
-    "ex10_fire_0",
-    "ex10_fire_1",
-    "ex10_fire_2",
-    "ex10_fire_3",
-    "ex10_fire_4",
-    "ex10_fire_5",
-    "ex10_fire_6",
-    "ex10_fire_7",
-];
-
 pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     let Some(assets) = world.get_resource::<AssetRegistry>() else {
         return vec![];
@@ -391,7 +380,8 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
         .is_some_and(|fixture| fixture.mode == LightingFixtureMode::On);
     let mut player_batches = Vec::new();
     for (entity, cs) in world.query::<(Entity, &CurrentSprite)>() {
-        if world.get::<Player>(entity).is_none() {
+        // A dead player is gone from the screen until the restart.
+        if world.get::<Player>(entity).is_none() || crate::death::player_dead(world) {
             continue;
         }
         let Some(pos) = drawn_position(world, entity).map(Position) else {
@@ -471,53 +461,8 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     batches.extend(player_batches);
 
     batches.extend(extract_balls(world, assets, lighting_on));
-    // Animated flame on every burning ball, even when the particle pool is full.
-    let flames = FLAME_SPRITE_IDS.map(|id| assets.get_sprite(id));
-    for (entity, burn) in world.query::<(Entity, &crate::burning::BallBurn)>() {
-        if burn.remaining <= 0.0 {
-            continue;
-        }
-        let Some(pos) = drawn_position(world, entity).map(Position) else {
-            continue;
-        };
-        let age = crate::burning::BALL_BURN_SECONDS - burn.remaining;
-        let phase = age * 23.0 + entity.id() as f32 * 2.4;
-        let flicker = phase.sin();
-        let fade = (burn.remaining * 2.0).min(1.0);
-        if let Some(asset) = assets.get_sprite("ex10_flame_glow") {
-            let size = Vec2::splat(48.0 + flicker * 6.0);
-            let mut glow = instance(asset, pos.0 - size * 0.5, size);
-            glow.color = [255, 155, 55, (fade * 180.0) as u8];
-            push_instance_with_lighting(&mut batches, asset, glow, false);
-        }
-        let frame = ((age * 20.0) as usize + entity.id() as usize) % flames.len();
-        // Two independent tongues lick upward; the brighter inner flame stays
-        // anchored to the ball while the outer silhouette stretches and sways.
-        for (index, size, sway, color) in [
-            (
-                frame,
-                Vec2::new(36.0, 54.0 + flicker * 9.0),
-                flicker * 4.0,
-                [255, 175, 95, 235],
-            ),
-            (
-                (frame + 3) % flames.len(),
-                Vec2::new(23.0, 37.0 - flicker * 5.0),
-                -flicker * 2.0,
-                [255, 245, 195, 255],
-            ),
-        ] {
-            if let Some(asset) = flames[index] {
-                let origin = pos.0 + Vec2::new(sway - size.x * 0.5, 8.0 - size.y);
-                let mut flame = instance(asset, origin, size);
-                flame.color = color;
-                flame.color[3] = (fade * color[3] as f32) as u8;
-                // Self-lit flames stay bright and batch with their glow, without
-                // creating a light or alternating lit/unlit draws for each ball.
-                push_instance_with_lighting(&mut batches, asset, flame, false);
-            }
-        }
-    }
+    batches.extend(extract_bricks(world, assets));
+    batches.extend(extract_flames(world, assets));
     batches.extend(extract_fireballs(world, assets));
     batches.extend(extract_tilemap_layers(world, &["foreground"]));
 
@@ -602,6 +547,7 @@ fn extract_balls(world: &World, assets: &AssetRegistry, lighting_on: bool) -> Ve
     // The camera shows part of the pit at most.
     let (view_min, view_max) = view_bounds(world);
     let alpha = draw_alpha(world);
+    let time = drawn_scene_time(world);
     // Both queries walk the same archetypes in the same order, so the zip
     // reads all seven columns with no per-ball lookup.
     let sprites = world.query::<(
@@ -619,7 +565,7 @@ fn extract_balls(world: &World, assets: &AssetRegistry, lighting_on: bool) -> Ve
         Option<&BallHue>,
         Option<&PrevPosition>,
     )>();
-    for ((_, _, pos, small, sprite), (_, _, _, burn, hue, prev)) in sprites.zip(tints) {
+    for ((entity, _, pos, small, sprite), (_, _, _, burn, hue, prev)) in sprites.zip(tints) {
         let small = small.is_some();
         let diameter = BALL_VISUAL_DIAMETER * if small { SMALL_BALL_SCALE } else { 1.0 };
         let top_left = lerp_drawn(pos.0, prev, alpha) - diameter * 0.5;
@@ -656,8 +602,7 @@ fn extract_balls(world: &World, assets: &AssetRegistry, lighting_on: bool) -> Ve
             });
         }
         let color = match burn {
-            Some(burn) if burn.remaining > 0.0 => [255, 150, 55, 255],
-            Some(_) => [55, 48, 45, 255],
+            Some(burn) => crate::burning::ember_tint(entity, *burn, time),
             None => hue.map_or([255; 4], |hue| rainbow_rgba(hue.hue)),
         };
         ball_batches[current].instances.push(SpriteInstance {
@@ -674,6 +619,88 @@ fn extract_balls(world: &World, assets: &AssetRegistry, lighting_on: bool) -> Ve
     // Stable: batches sharing a texture keep the order their keys first appeared in.
     ball_batches.sort_by_key(|b| b.texture.0);
     ball_batches
+}
+
+/// An iron brick's quarters and their offsets in tiles.
+const BRICK_QUARTERS: [(&str, Vec2); 4] = [
+    ("ex10_iron_brick_big_0_0", Vec2::new(0.0, 0.0)),
+    ("ex10_iron_brick_big_0_1", Vec2::new(1.0, 0.0)),
+    ("ex10_iron_brick_big_1_0", Vec2::new(0.0, 1.0)),
+    ("ex10_iron_brick_big_1_1", Vec2::new(1.0, 1.0)),
+];
+
+/// The iron bricks: four 64-pixel quarters each, lit like the masonry, so
+/// the art keeps the terrain's pixel scale.
+fn extract_bricks(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
+    use crate::brick::IronBrick;
+    let (view_min, view_max) = view_bounds(world);
+    let mut batches = Vec::new();
+    for (e, _) in world.query::<(Entity, &IronBrick)>() {
+        let Some(center) = drawn_position(world, e) else {
+            continue;
+        };
+        // The art is 128 pixels with the 120-pixel brick centred in it.
+        let top_left = center - Vec2::splat(TILE);
+        if (top_left + 2.0 * TILE).cmplt(view_min).any() || top_left.cmpgt(view_max).any() {
+            continue;
+        }
+        for (id, offset) in BRICK_QUARTERS {
+            let Some(asset) = assets.get_sprite(id) else {
+                continue;
+            };
+            push_instance(
+                &mut batches,
+                asset,
+                instance(asset, top_left + offset * TILE, Vec2::splat(TILE)),
+            );
+        }
+    }
+    batches
+}
+
+/// A flame tongue on each exposed burning ball in view, over a soft glow;
+/// `burning::flame_look` varies both per ball. All glows draw first, so a
+/// burning crest costs two batches, not two per ball.
+fn extract_flames(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
+    use crate::burning::{BallBurn, FLAME_SIZE, FLAME_SPRITE_IDS, flame_look};
+    let (view_min, view_max) = view_bounds(world);
+    let time = drawn_scene_time(world);
+    let flames: Vec<_> = world
+        .query::<(Entity, &BallBurn)>()
+        .filter_map(|(e, burn)| {
+            let look = flame_look(e, *burn, time)?;
+            let center = drawn_position(world, e)?;
+            let reach = Vec2::splat(FLAME_SIZE);
+            ((center + reach).cmpge(view_min).all() && (center - reach).cmple(view_max).all())
+                .then_some((center, look))
+        })
+        .collect();
+    let mut batches = Vec::new();
+    if let Some(asset) = assets.get_sprite("ex10_flame_glow") {
+        let material = GlowMaterials::from_world(world).flame;
+        for &(center, look) in &flames {
+            let size = Vec2::splat(look.glow_size);
+            let mut glow = instance(asset, center - size * 0.5 - Vec2::new(0.0, 4.0), size);
+            glow.color = look.glow;
+            push_glow(&mut batches, asset, glow, material);
+        }
+    }
+    let frames = FLAME_SPRITE_IDS.map(|id| assets.get_sprite(id));
+    for (center, look) in flames {
+        let Some(asset) = frames[look.frame] else {
+            continue;
+        };
+        // The tongue's base sits just below the ball's centre, so it wraps the ball's top.
+        let origin = center + Vec2::new(-0.5 * FLAME_SIZE, 6.0 - FLAME_SIZE);
+        let mut flame = instance(asset, origin, Vec2::splat(FLAME_SIZE));
+        if look.mirror {
+            flip_horizontally(&mut flame);
+        }
+        flame.color = look.color;
+        // Self-lit: the flames keep their colours and batch together.
+        push_instance_with_lighting(&mut batches, asset, flame, false);
+    }
+    batches
 }
 
 /// Pixel hearts stay at a fixed screen size and read current HP without the
@@ -734,7 +761,8 @@ fn text_outlined(section: TextSection) -> impl Iterator<Item = TextSection> {
             color: OUTLINE,
             position: [section.position[0] + dx, section.position[1] + dy],
             bounds: section.bounds,
-            ..Default::default()
+            // The shadow lines up with the text however it is aligned.
+            layout: section.layout.clone(),
         })
         .collect();
     shadows.into_iter().chain(std::iter::once(section))
@@ -743,7 +771,7 @@ fn text_outlined(section: TextSection) -> impl Iterator<Item = TextSection> {
 pub(crate) fn extract_text(world: &World) -> Vec<TextSection> {
     let mut sections = Vec::new();
     sections.extend(text_outlined(TextSection {
-        content: "A/D or ←/→ move  Space jump / double jump  LMB balls  MMB small balls (5x)  RMB black hole  M4 fireball\n\
+        content: "A/D or ←/→ move  Space jump / double jump  LMB balls  MMB small balls (5x)  RMB black hole  M4 fireball  R iron brick\n\
                   M music  S stop  1/2/3 volume  =/- or wheel zoom  L lantern  F4 HUD  F9 vsync  F11 fullscreen  Esc exit"
             .into(),
         font_id: "mono".into(),
@@ -754,6 +782,7 @@ pub(crate) fn extract_text(world: &World) -> Vec<TextSection> {
         bounds: None,
         ..Default::default()
     }));
+    sections.extend(death_title(world));
     if let Some(state) = world.get_resource::<TextDisplayState>() {
         sections.extend(text_outlined(TextSection {
             content: format!(
@@ -775,6 +804,59 @@ pub(crate) fn extract_text(world: &World) -> Vec<TextSection> {
         }));
     }
     sections
+}
+
+/// The death screen's title and restart prompt, centred over the fade;
+/// screen text draws after the post stack, so the fade never covers it.
+fn death_title(world: &World) -> Vec<TextSection> {
+    use crate::death::DeathScreen;
+    let screen = world
+        .get_resource::<DeathScreen>()
+        .copied()
+        .unwrap_or_default();
+    let alpha = screen.title_alpha();
+    if alpha <= 0.0 {
+        return vec![];
+    }
+    let window = world
+        .get_resource::<WindowSize>()
+        .copied()
+        .unwrap_or(WindowSize {
+            width: 1920,
+            height: 1080,
+        });
+    let (width, height) = (window.width as f32, window.height as f32);
+    let fade = |rgb: [u8; 3], a: f32| [rgb[0], rgb[1], rgb[2], (a * 255.0) as u8];
+    let centered = TextLayout::default().with_align(TextAlign::Center);
+    let mut sections = vec![TextSection {
+        content: "YOU DIED".into(),
+        font_id: "sans_bold".into(),
+        font_size: 96.0,
+        line_height: 110.0,
+        color: fade([236, 72, 60], alpha),
+        position: [0.0, height * 0.36],
+        bounds: Some([width, 120.0]),
+        layout: centered.clone(),
+    }];
+    // The prompt shows once the restart press is taken.
+    let prompt = if screen.accepts_restart() || matches!(screen, DeathScreen::Covering { .. }) {
+        alpha
+    } else {
+        0.0
+    };
+    if prompt > 0.0 {
+        sections.push(TextSection {
+            content: "Press Enter to restart".into(),
+            font_id: "sans".into(),
+            font_size: 32.0,
+            line_height: 40.0,
+            color: fade([232, 222, 212], prompt),
+            position: [0.0, height * 0.36 + 130.0],
+            bounds: Some([width, 48.0]),
+            layout: centered,
+        });
+    }
+    sections.into_iter().flat_map(text_outlined).collect()
 }
 
 fn extract_obstacles(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
@@ -886,7 +968,7 @@ fn extract_obstacles(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> 
                 continue;
             };
             let progress = explosion.age / 0.45;
-            let size = 32.0 + progress * 108.0;
+            let size = 32.0 + progress * (explosion.size - 32.0);
             let mut sprite = instance(
                 asset,
                 t.position - Vec2::splat(size / 2.0),
