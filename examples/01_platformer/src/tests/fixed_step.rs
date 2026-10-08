@@ -252,3 +252,24 @@ fn at_30_hz_both_spawners_stop_at_the_cap_across_two_steps() {
         assert_eq!(harness.world().query::<(Entity, &Ball)>().count(), BALL_CAP);
     }
 }
+
+#[test]
+fn at_144_hz_the_scene_clock_is_drawn_forward_in_every_frame() {
+    let mut harness = game();
+    // The startup hook the harness skips inserts it with the obstacles.
+    harness
+        .world_mut()
+        .insert_resource(crate::gameplay::SceneTime::default());
+    harness.set_dt(FAST);
+    harness.step(60);
+    let mut last = crate::extract::drawn_scene_time(harness.world());
+    let mut stepless = 0;
+    for _ in 0..12 {
+        harness.step(1);
+        stepless += u32::from(steps_this_frame(&harness) == 0);
+        let drawn = crate::extract::drawn_scene_time(harness.world());
+        assert!((drawn - last - FAST).abs() < 1e-4, "{last} -> {drawn}");
+        last = drawn;
+    }
+    assert!(stepless > 0);
+}

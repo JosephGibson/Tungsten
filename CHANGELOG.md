@@ -6,6 +6,15 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.57.1] - 2026-10-08
+
+Summary: a maintenance release with no plan, for what example 01 still showed at uncapped frame rates after 0.57: the physics debug overlay outlines bodies where their sprites are drawn, and the example's scene animations move in every frame, not only in frames that step (`D-137`, `D-139`). Engine behaviour outside the `F1` overlay is unchanged. No new dependency, asset, manifest or decision.
+
+### Fixed
+
+- **Physics debug overlay follows interpolation** (`D-137`): `F1` outlines a body that carries a `PrevPosition` at `prev + (cur - prev) * alpha` while `Time::interpolate()` is on, the point `physics_sync` draws it at, and every other collider at its `Position`. Since 0.55 it drew the step's `Position`, up to a step ahead of the sprite and moving only at 60 Hz, so at uncapped frame rates the outline lurched against the smoothly following camera and showed as two copies of the player's box.
+- **Example 01's scene animations move every frame** (`D-139`'s known issue): the cloud drift, glow and light flicker, the black hole's rings and the burning emitters read `extract::drawn_scene_time`, `SceneTime − (1 − alpha) × step` while interpolation is on, the time the bodies are drawn at. Since 0.55 they read `SceneTime`, which `move_obstacles` advances once a step, so at uncapped frame rates they moved only in frames that stepped (about two frames in five at 150 fps) and stuttered against the scrolling camera. Gameplay (`move_obstacles`, `motion_velocity`) stays on the step's clock. `at_144_hz_the_scene_clock_is_drawn_forward_in_every_frame` pins it.
+
 ## [0.57.0] - 2026-10-07
 
 Summary: a fixed-step health pass outside the register (plan archived at `docs/plans/archive/fixed-step-health-pass.md`) for what example 01 showed at uncapped frame rates since 0.55: a frame with no fixed step holds its event queues for the next step, example 01's HUD counts each step's contacts and its slab platforms are one collider each, and the step defaults stay 60 Hz and two steps a frame (`D-139`). The determinism and pinned containment hashes, the row digests and the pixel fixtures are unchanged. No new dependency, asset or manifest change.
