@@ -2,7 +2,7 @@
 
 Everything is built from integer xorshift noise, one-pole filters, sine
 oscillators and exponential envelopes, so regeneration is byte-identical.
-Each sound is normalized to a -2 dBFS peak with short fades against clicks.
+Each sound is normalized to a -2 dBFS peak; one-shots fade and loops crossfade.
 """
 import io
 import math
@@ -143,6 +143,119 @@ def player_hit():
     return finish(samples, fade_in=0.001)
 
 
+def iron_crush():
+    """A heavy crunch with brittle glass cracks and a bright, ringing iron clink."""
+    duration = 0.65
+    noise, cracks, low = Noise(0x170C), Noise(0x61A5), LowPass()
+    samples, phase, crack = [], 0.0, 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        n = noise()
+        crunch = (n - low(n, 700)) * math.exp(-t / .06)
+        phase += math.tau * glide(120, 42, min(1.0, t / .14)) / RATE
+        thud = math.sin(phase) * min(1.0, t / .002) * math.exp(-t / .09)
+        if cracks() > 1 - .006 * math.exp(-t / .08):
+            crack = .65
+        crack *= .94
+        glass = crack * cracks()
+        # Inharmonic resonances ring after the first crunch, like riveted iron.
+        ring_t = max(0.0, t - .012)
+        ring = sum(math.sin(math.tau * f * ring_t) * weight * math.exp(-ring_t / decay)
+                   for f, weight, decay in [(1380, .32, .19), (2213, .18, .13),
+                                           (3671, .1, .075)])
+        ring *= min(1.0, ring_t / .002)
+        samples.append(math.tanh(1.5 * (1.1 * crunch + .85 * thud + glass)) + ring)
+    return finish(samples, fade_in=.001)
+
+
+def ice_beam():
+    """A cold rushing hiss with a descending crystalline shimmer."""
+    duration = 0.48
+    noise, low, high = Noise(0x1CEB), LowPass(), LowPass()
+    samples, phase = [], 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        p = t / duration
+        n = noise()
+        hiss = low(n, 7200) - high(n, 1800)
+        envelope = min(1.0, t / .012) * math.exp(-t / .16)
+        phase += math.tau * glide(2600, 1400, p) / RATE
+        shimmer = sum(math.sin(phase * ratio) * weight
+                      for ratio, weight in [(1, .3), (1.49, .18), (2.17, .1)])
+        samples.append((hiss * 1.4 + shimmer) * envelope)
+    return finish(samples, fade_in=.002)
+
+
+def ice_spray():
+    """Seamless cold wind with fluttering hiss and faint crystalline resonances."""
+    duration, overlap = 2.0, int(.1 * RATE)
+    noise, low, high = Noise(0x1CE5), LowPass(), LowPass()
+    count = int(duration * RATE)
+    samples = []
+    for i in range(count + overlap):
+        t = i / RATE
+        n = noise()
+        wind = low(n, 6800) - high(n, 750)
+        flutter = .78 + .12 * math.sin(math.tau * 17 * t) + .1 * math.sin(math.tau * 29 * t)
+        shimmer = sum(math.sin(math.tau * frequency * t) * weight
+                      for frequency, weight in [(1451, .05), (2177, .03), (3221, .018)])
+        samples.append(1.3 * wind * flutter + shimmer * (.6 + .4 * math.sin(math.tau * 3 * t)))
+    # Crossfade the extra tail into the beginning, then wrap at adjacent samples.
+    loop = samples[overlap:count]
+    for i in range(overlap):
+        blend = i / (overlap - 1)
+        loop.append(samples[count + i] * (1 - blend) + samples[i] * blend)
+    return finish(loop, fade_in=0, fade_out=0)
+
+
+def ice_freeze():
+    """A coating locks into ice with a short crackle and bright glassy chimes."""
+    noise, cracks, low = Noise(0xF20E), Noise(0xC1CE), LowPass()
+    samples, crack = [], 0.0
+    for i in range(int(.65 * RATE)):
+        t = i / RATE
+        n = noise()
+        frost = (n - low(n, 2200)) * math.exp(-t / .045)
+        if cracks() > 1 - .005 * math.exp(-t / .1):
+            crack = .7
+        crack *= .95
+        chimes = sum(math.sin(math.tau * frequency * t) * weight * math.exp(-t / decay)
+                     for frequency, weight, decay in [(1860, .5, .22), (2797, .3, .17),
+                                                     (4223, .15, .11)])
+        samples.append(frost + crack * cracks() + chimes * min(1.0, t / .003))
+    return finish(samples, fade_in=.001)
+
+
+def ice_end():
+    """A soft pressure release masks the abrupt stop of the sustained cold jet."""
+    noise, low, high = Noise(0x1CE0), LowPass(), LowPass()
+    samples = []
+    for i in range(int(.18 * RATE)):
+        t = i / RATE
+        n = noise()
+        hiss = low(n, glide(6200, 1800, min(1.0, t / .18))) - high(n, 700)
+        samples.append(hiss * math.exp(-t / .04))
+    return finish(samples, fade_in=.003, fade_out=.025)
+
+
+def ice_shatter():
+    """A sharp fracture followed by falling glass fragments and a short icy ring."""
+    noise, chips, low = Noise(0x5A77), Noise(0xC419), LowPass()
+    samples, chip = [], 0.0
+    for i in range(int(.62 * RATE)):
+        t = i / RATE
+        n = noise()
+        snap = (n - low(n, 900)) * math.exp(-t / .018)
+        if chips() > 1 - .008 * math.exp(-t / .12):
+            chip = .7
+        chip *= .965
+        ring = sum(math.sin(math.tau * frequency * t) * weight * math.exp(-t / decay)
+                   for frequency, weight, decay in [(813, .24, .12), (1537, .18, .19),
+                                                   (2761, .12, .1)])
+        samples.append(math.tanh(1.6 * snap + chip * chips()) + ring * min(1.0, t / .002))
+    return finish(samples, fade_in=.001)
+
+
 def build_sounds():
     """Return `{file name: WAV bytes}` for every synthesized sound."""
     return {
@@ -150,4 +263,10 @@ def build_sounds():
         'fireball_blast.wav': fireball_blast(),
         'extinguish.wav': extinguish(),
         'player_hit.wav': player_hit(),
+        'iron_crush.wav': iron_crush(),
+        'ice_beam.wav': ice_beam(),
+        'ice_spray.wav': ice_spray(),
+        'ice_freeze.wav': ice_freeze(),
+        'ice_end.wav': ice_end(),
+        'ice_shatter.wav': ice_shatter(),
     }

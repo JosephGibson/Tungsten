@@ -10,6 +10,7 @@ mod death;
 mod extract;
 mod fireball;
 mod gameplay;
+mod ice;
 mod level_layout;
 mod setup;
 mod state;

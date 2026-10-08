@@ -23,5 +23,35 @@
     "looping": false,
     "path": "sounds/player_hit.wav",
     "volume": 0.6
+  },
+  "ex10_ice_beam_sfx": {
+    "looping": false,
+    "path": "sounds/ice_beam.wav",
+    "volume": 0.42
+  },
+  "ex10_ice_spray_sfx": {
+    "looping": true,
+    "path": "sounds/ice_spray.wav",
+    "volume": 0.32
+  },
+  "ex10_ice_freeze_sfx": {
+    "looping": false,
+    "path": "sounds/ice_freeze.wav",
+    "volume": 0.55
+  },
+  "ex10_ice_end_sfx": {
+    "looping": false,
+    "path": "sounds/ice_end.wav",
+    "volume": 0.22
+  },
+  "ex10_ice_shatter_sfx": {
+    "looping": false,
+    "path": "sounds/ice_shatter.wav",
+    "volume": 0.5
+  },
+  "ex10_iron_crush_sfx": {
+    "looping": false,
+    "path": "sounds/iron_crush.wav",
+    "volume": 0.65
   }
 }

@@ -124,3 +124,62 @@ fn a_blast_pushes_dynamic_bodies_away_by_distance_and_mass() {
     physics_step(&mut world);
     assert!(world.get::<Position>(near).unwrap().0.x > 40.0);
 }
+
+#[test]
+fn fireball_blast_layers_emit_particles_and_drain_within_the_shared_budget() {
+    use super::{load_presentation_assets, platformer_harness, set_dt};
+    use crate::fireball::{FireballBlast, explode_fireball};
+    use crate::state::{TRANSIENT_EMITTER_CAP, TransientEmitter};
+    use tungsten::core::{Particle, ParticleBudget, ParticleEmitter};
+    let mut harness = platformer_harness(&[
+        ("move_obstacles", crate::gameplay::move_obstacles),
+        (
+            "transient_emitter_cleanup",
+            crate::systems::transient_emitter_cleanup,
+        ),
+        ("scene_effects", crate::gameplay::scene_effects),
+    ]);
+    load_presentation_assets(harness.world_mut());
+    set_dt(&mut harness, 1.0 / 60.0);
+    explode_fireball(harness.world_mut(), Vec2::ZERO);
+    assert_eq!(
+        harness
+            .world()
+            .query::<(Entity, &ParticleEmitter)>()
+            .count(),
+        4
+    );
+    assert_eq!(
+        harness.world().query::<(Entity, &FireballBlast)>().count(),
+        1
+    );
+    harness.step(1);
+    assert_eq!(harness.world().query::<(Entity, &Particle)>().count(), 156);
+    for _ in 0..10 {
+        explode_fireball(harness.world_mut(), Vec2::ZERO);
+    }
+    assert_eq!(
+        harness
+            .world()
+            .query::<(Entity, &TransientEmitter)>()
+            .count(),
+        TRANSIENT_EMITTER_CAP
+    );
+    assert!(harness.world().query::<(Entity, &Explosion)>().count() <= TRANSIENT_EMITTER_CAP);
+    for _ in 0..120 {
+        harness.step(1);
+        let world = harness.world();
+        assert!(
+            world.query::<(Entity, &Particle)>().count()
+                <= world.get_resource::<ParticleBudget>().unwrap().global_cap as usize
+        );
+    }
+    assert_eq!(
+        harness
+            .world()
+            .query::<(Entity, &TransientEmitter)>()
+            .count(),
+        0
+    );
+    assert_eq!(harness.world().query::<(Entity, &Explosion)>().count(), 0);
+}

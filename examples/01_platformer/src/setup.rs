@@ -110,6 +110,11 @@ pub(crate) const RUNTIME_SYSTEM_ORDER: &[(Slot, &str, ExampleSystem)] = &[
         "place_brick_system",
         crate::brick::place_brick_system,
     ),
+    (
+        Slot::BeforeStep,
+        "cast_ice_beam_system",
+        crate::ice::cast_ice_beam_system,
+    ),
     (Slot::BeforeStep, "audio_input_system", audio_input_system),
     (
         Slot::BeforeStep,
@@ -181,6 +186,11 @@ pub(crate) const RUNTIME_SYSTEM_ORDER: &[(Slot, &str, ExampleSystem)] = &[
     (Slot::Update, "despawn_out_of_bounds", despawn_out_of_bounds),
     (
         Slot::Update,
+        "ice_beam_cleanup",
+        crate::ice::ice_beam_cleanup,
+    ),
+    (
+        Slot::Update,
         "player_presentation_system",
         player_presentation_system,
     ),
@@ -211,6 +221,11 @@ pub(crate) const RUNTIME_SYSTEM_ORDER: &[(Slot, &str, ExampleSystem)] = &[
         Slot::AfterSync,
         "ball_fire_particles",
         crate::burning::ball_fire_particles,
+    ),
+    (
+        Slot::AfterSync,
+        "ice_beam_presentation",
+        crate::ice::ice_beam_presentation,
     ),
     (Slot::AfterSync, "orbit_lights_system", orbit_lights_system),
     (
@@ -277,6 +292,12 @@ pub(crate) fn platformer_bindings(world: &mut World) {
             "place_brick",
             Binding::Key {
                 code: KeyCode::KeyR,
+            },
+        ),
+        (
+            "cast_ice_beam",
+            Binding::Key {
+                code: KeyCode::KeyF,
             },
         ),
         (
@@ -671,10 +692,17 @@ pub(crate) fn populate_world(world: &mut World) {
         };
         EffectSounds {
             cast: sound("ex10_fireball_cast_sfx"),
+            ice_cast: sound("ex10_ice_beam_sfx"),
+            ice_loop: sound("ex10_ice_spray_sfx"),
+            ice_freeze: sound("ex10_ice_freeze_sfx"),
+            ice_end: sound("ex10_ice_end_sfx"),
+            ice_shatter: sound("ex10_ice_shatter_sfx"),
             blast: sound("ex10_fireball_blast_sfx"),
             extinguish: sound("ex10_extinguish_sfx"),
             hit: sound("ex10_player_hit_sfx"),
+            crush: sound("ex10_iron_crush_sfx"),
             extinguish_cooldown: 0.0,
+            crush_cooldown: 0.0,
         }
     };
     world.insert_resource(effect_sounds);

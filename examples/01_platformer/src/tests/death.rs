@@ -28,6 +28,12 @@ fn launched() -> Harness {
         "ex10_fireball_blast_sfx",
         "ex10_extinguish_sfx",
         "ex10_player_hit_sfx",
+        "ex10_iron_crush_sfx",
+        "ex10_ice_beam_sfx",
+        "ex10_ice_spray_sfx",
+        "ex10_ice_freeze_sfx",
+        "ex10_ice_end_sfx",
+        "ex10_ice_shatter_sfx",
     ] {
         let silence = SoundData {
             samples: vec![0.0],
@@ -221,7 +227,60 @@ fn the_death_screen_dims_takes_the_restart_and_uncovers_a_new_run() {
     let player = world.query::<(Entity, &Player)>().next().unwrap().0;
     assert_eq!(world.get::<Health>(player).unwrap().hearts, 3);
     assert!(world.get::<Collider>(player).is_some());
+    assert!(!world.get::<Player>(player).unwrap().air_jump_used);
     harness.step(frames(UNCOVER_SECS));
     assert_eq!(screen(&harness), DeathScreen::Alive);
     assert_eq!(fades(&harness), 0);
+    assert!(
+        !harness
+            .world()
+            .get_resource::<PostStack>()
+            .unwrap()
+            .0
+            .iter()
+            .any(|p| matches!(p, PostPass::Pixelate(_)))
+    );
+}
+
+#[test]
+fn a_fall_is_fatal_during_immunity_and_the_screen_advances_while_game_time_is_paused() {
+    let mut harness = launched();
+    set_dt(&mut harness, 1.0 / 60.0);
+    let world = harness.world_mut();
+    let player = world.query::<(Entity, &Player)>().next().unwrap().0;
+    world.get_mut::<Health>(player).unwrap().immunity = 10.0;
+    world.get_mut::<Position>(player).unwrap().0.y = crate::state::KILL_Y + 1.0;
+    crate::systems::despawn_out_of_bounds(world);
+    assert_eq!(world.get::<Health>(player).unwrap().hearts, 0);
+    assert!(world.get::<RigidBody>(player).is_none());
+    world.get_resource_mut::<Time>().unwrap().set_paused(true);
+    harness.step(frames(DIM_SECS));
+    let world = harness.world();
+    assert!(
+        world
+            .get_resource::<DeathScreen>()
+            .unwrap()
+            .accepts_restart()
+    );
+    assert_eq!(world.get::<Health>(player).unwrap().hearts, 0);
+    assert!(
+        world
+            .get_resource::<PostStack>()
+            .unwrap()
+            .0
+            .iter()
+            .any(|p| matches!(p, PostPass::Pixelate(block) if *block == 48.0))
+    );
+    let sections = crate::extract::extract_text(world);
+    assert!(sections.iter().any(|s| s.content == "YOU DIED"));
+    assert!(
+        sections
+            .iter()
+            .any(|s| s.content == "Press Enter to restart")
+    );
+    assert!(
+        !sections
+            .iter()
+            .any(|s| s.content.contains("FPS") || s.content.contains("A/D"))
+    );
 }

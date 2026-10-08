@@ -4953,6 +4953,7 @@ pub tungsten_core::input::KeyCode::KeyA
 pub tungsten_core::input::KeyCode::KeyB
 pub tungsten_core::input::KeyCode::KeyC
 pub tungsten_core::input::KeyCode::KeyD
+pub tungsten_core::input::KeyCode::KeyF
 pub tungsten_core::input::KeyCode::KeyH
 pub tungsten_core::input::KeyCode::KeyI
 pub tungsten_core::input::KeyCode::KeyJ
@@ -9527,6 +9528,7 @@ pub tungsten_core::KeyCode::KeyA
 pub tungsten_core::KeyCode::KeyB
 pub tungsten_core::KeyCode::KeyC
 pub tungsten_core::KeyCode::KeyD
+pub tungsten_core::KeyCode::KeyF
 pub tungsten_core::KeyCode::KeyH
 pub tungsten_core::KeyCode::KeyI
 pub tungsten_core::KeyCode::KeyJ
