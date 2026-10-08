@@ -8,6 +8,8 @@
 //! `TUNGSTEN_BENCH_DESCRIBE=1` prints every benchmark's schema as JSON and
 //! `=config` the resolved configuration, both before a window opens.
 //! `TUNGSTEN_OVERLAYS_ON=physics,systems,inspector` enables overlays.
+//! In an interactive run (no `TUNGSTEN_SMOKE_FRAMES`) Tab relaunches the
+//! binary on the next benchmark.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -22,7 +24,7 @@ mod particles;
 mod physics;
 mod view;
 
-use tungsten::core::{Config, PluginSet, Resolution};
+use tungsten::core::{Config, InputState, KeyCode, PluginSet, Resolution, World};
 use tungsten::{
     App, DebugPlugin, DisplayPlugin, InspectorState, ParticlesPlugin, PhysicsDebugOverlay,
     StatePlugin, SystemTimingOverlay, TweensPlugin,
@@ -60,7 +62,13 @@ fn main() -> anyhow::Result<()> {
     }
 
     let mut config = Config::load("tungsten.json")?;
-    config.window.title = format!("Tungsten bench: {} ({})", cfg.row(), cfg.preset);
+    let interactive = interactive();
+    let hint = if interactive {
+        " - Tab: next benchmark"
+    } else {
+        ""
+    };
+    config.window.title = format!("Tungsten bench: {} ({}){hint}", cfg.row(), cfg.preset);
     config.display.resolution = Some(Resolution {
         width: VIEWPORT.x as u32,
         height: VIEWPORT.y as u32,
@@ -78,9 +86,58 @@ fn main() -> anyhow::Result<()> {
         .with(TweensPlugin);
     let mut app = App::with_plugins(config, plugins)?;
     (cfg.bench.configure)(&mut app, &cfg);
+    // Captures run under `TUNGSTEN_SMOKE_FRAMES`; the extra system would add a
+    // row to their `systems:` lines.
+    if interactive {
+        app.add_system_named("bench_cycle", cycle_system(cfg.bench.name, cfg.preset));
+    }
     counters::log_config(&bench_config);
     apply_overlay_env(&mut app);
     app.run()
+}
+
+/// Whether this is a window run rather than a pinned-dt smoke or capture run.
+fn interactive() -> bool {
+    std::env::var("TUNGSTEN_SMOKE_FRAMES")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+        .is_none_or(|frames| frames == 0)
+}
+
+/// Tab starts the next benchmark in `BENCHES` and closes this window.
+fn cycle_system(current: &'static str, preset: &'static str) -> impl FnMut(&mut World) + 'static {
+    move |world| {
+        let pressed = world
+            .get_resource::<InputState>()
+            .is_some_and(|input| input.just_pressed(KeyCode::Tab));
+        if !pressed {
+            return;
+        }
+        let next = knobs::next_bench(BENCHES, current);
+        match relaunch(next, preset) {
+            Ok(()) => std::process::exit(0),
+            Err(err) => log::error!("cannot start '{}': {err}", next.name),
+        }
+    }
+}
+
+/// Spawn this binary on `next`. The preset carries over when `next` has it;
+/// `TUNGSTEN_BENCH_SET` names knobs of the current benchmark, so it is dropped.
+fn relaunch(next: &Bench, preset: &str) -> std::io::Result<()> {
+    let mut command = std::process::Command::new(std::env::current_exe()?);
+    command
+        .env("TUNGSTEN_BENCH", next.name)
+        .env_remove("TUNGSTEN_BENCH_SET");
+    if next
+        .presets
+        .iter()
+        .any(|candidate| candidate.name == preset)
+    {
+        command.env("TUNGSTEN_BENCH_PRESET", preset);
+    } else {
+        command.env_remove("TUNGSTEN_BENCH_PRESET");
+    }
+    command.spawn().map(drop)
 }
 
 /// Enable overlays listed in `TUNGSTEN_OVERLAYS_ON`.

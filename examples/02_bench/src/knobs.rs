@@ -551,6 +551,15 @@ pub(crate) fn select(
         })
 }
 
+/// The benchmark after `current` in `benches`, wrapping at the end.
+pub(crate) fn next_bench(benches: &[&'static Bench], current: &str) -> &'static Bench {
+    let index = benches
+        .iter()
+        .position(|bench| bench.name == current)
+        .unwrap_or(0);
+    benches[(index + 1) % benches.len()]
+}
+
 /// Resolve the configuration from the `TUNGSTEN_BENCH*` environment.
 pub(crate) fn from_env(benches: &[&'static Bench]) -> anyhow::Result<BenchConfig> {
     let var = |name: &str| std::env::var(name).ok();
