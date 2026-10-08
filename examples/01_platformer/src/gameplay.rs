@@ -601,7 +601,7 @@ pub(crate) fn anchor_emitters(world: &mut World) {
 }
 
 pub(crate) fn scene_effects(world: &mut World) {
-    let time = world.get_resource::<SceneTime>().map_or(0.0, |t| t.0);
+    let time = crate::extract::drawn_scene_time(world);
     let lights: Vec<_> = world
         .query::<(Entity, &LightAnchor)>()
         .map(|(e, a)| {

@@ -1,7 +1,8 @@
-//! D-042 physics debug overlay reads `Position + Collider`, not `Transform`.
+//! D-042 physics debug overlay reads `Position + Collider`, not `Transform`,
+//! drawn at the point `physics_sync` draws the body (`D-137`).
 
-use tungsten_core::physics::{Collider, Position, Shape};
-use tungsten_core::{ActionMap, DebugDraw, Entity, InputState, World};
+use tungsten_core::physics::{Collider, Position, PrevPosition, Shape};
+use tungsten_core::{ActionMap, DebugDraw, Entity, InputState, Time, World};
 
 /// Physics debug overlay config.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -45,7 +46,11 @@ pub(crate) fn physics_debug_toggle_system(world: &mut World) {
     }
 }
 
-/// Emit collider outlines before `DebugDraw` drain.
+/// Emit collider outlines before `DebugDraw` drain. A body with a
+/// [`PrevPosition`] is outlined at `prev + (cur - prev) * alpha` while
+/// [`Time::interpolate`] is on, where its sprite is drawn, so the outline
+/// does not lead the sprite by up to a step; every other collider at its
+/// `Position`.
 pub(crate) fn physics_debug_emit_system(world: &mut World) {
     let Some(overlay) = world.get_resource::<PhysicsDebugOverlay>() else {
         return;
@@ -56,10 +61,20 @@ pub(crate) fn physics_debug_emit_system(world: &mut World) {
     let color_aabb = overlay.color_aabb;
     let color_circle = overlay.color_circle;
     let thickness = overlay.thickness;
+    let alpha = world
+        .get_resource::<Time>()
+        .filter(|time| time.interpolate())
+        .map(Time::alpha);
 
     let mut emits: Vec<DebugEmit> = Vec::new();
-    for (_entity, position, collider) in world.query::<(Entity, &Position, &Collider)>() {
-        let center = position.0 + collider.offset;
+    for (_entity, position, collider, prev) in
+        world.query::<(Entity, &Position, &Collider, Option<&PrevPosition>)>()
+    {
+        let drawn = match (alpha, prev) {
+            (Some(alpha), Some(prev)) => prev.0 + (position.0 - prev.0) * alpha,
+            _ => position.0,
+        };
+        let center = drawn + collider.offset;
         match collider.shape {
             Shape::Aabb { half_extents } => {
                 emits.push(DebugEmit::Aabb {

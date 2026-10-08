@@ -42,6 +42,24 @@ pub(crate) fn lerp_drawn(position: Vec2, prev: Option<&PrevPosition>, alpha: Opt
     }
 }
 
+/// The scene clock at the instant bodies are drawn: `SceneTime`, which
+/// `move_obstacles` advances once a step, less the `(1 - alpha)` of a step
+/// the drawn bodies trail the last step by, while `Time::interpolate()` is
+/// on; `SceneTime` itself otherwise. The scene's animations read it, so they
+/// move in every frame, not only in frames that step (`D-139`'s known issue).
+pub(crate) fn drawn_scene_time(world: &World) -> f32 {
+    let time = world
+        .get_resource::<crate::gameplay::SceneTime>()
+        .map_or(0.0, |t| t.0);
+    match world
+        .get_resource::<Time>()
+        .filter(|clock| clock.interpolate())
+    {
+        Some(clock) => (time - (1.0 - clock.alpha()) * clock.fixed_step()).max(0.0),
+        None => time,
+    }
+}
+
 /// [`lerp_drawn`] for one entity; `None` without a `Position`.
 pub(crate) fn drawn_position(world: &World, entity: Entity) -> Option<Vec2> {
     let position = world.get::<Position>(entity)?.0;
@@ -212,9 +230,7 @@ fn extract_parallax(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
         } else {
             let size = Vec2::new(asset.width as f32, asset.height as f32) * transform.scale;
             let cloud = name.starts_with("ex10_clouds");
-            let time = world
-                .get_resource::<crate::gameplay::SceneTime>()
-                .map_or(0.0, |t| t.0);
+            let time = drawn_scene_time(world);
             let drift = if cloud {
                 Vec2::new(time * layer.scroll_factor.x * 28.0, 0.0)
             } else {
@@ -762,9 +778,9 @@ pub(crate) fn extract_text(world: &World) -> Vec<TextSection> {
 }
 
 fn extract_obstacles(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
-    use crate::gameplay::{Explosion, Glow, Hazard, MovingPlatform, SceneTime};
+    use crate::gameplay::{Explosion, Glow, Hazard, MovingPlatform};
     let (min, max) = view_bounds(world);
-    let time = world.get_resource::<SceneTime>().map_or(0.0, |t| t.0);
+    let time = drawn_scene_time(world);
     let mut batches = Vec::new();
     let glows = GlowMaterials::from_world(world);
     // Soft halos complement native point lights and remain visible on scenery
@@ -892,9 +908,7 @@ fn extract_vortices(
     over_particles: bool,
 ) -> Vec<SpriteBatch> {
     const D: f32 = BLACK_HOLE_VISUAL_DIAMETER;
-    let time = world
-        .get_resource::<crate::gameplay::SceneTime>()
-        .map_or(0.0, |t| t.0);
+    let time = drawn_scene_time(world);
     let mut batches = Vec::new();
     let glows = GlowMaterials::from_world(world);
     let layers: &[(&str, f32, f32, [u8; 4])] = if over_particles {

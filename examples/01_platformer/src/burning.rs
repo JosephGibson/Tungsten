@@ -159,9 +159,7 @@ pub(crate) fn ball_fire_particles(world: &mut World) {
         world.insert(e, Transform::default());
         emitters.push(e);
     }
-    let time = world
-        .get_resource::<crate::gameplay::SceneTime>()
-        .map_or(0.0, |t| t.0);
+    let time = crate::extract::drawn_scene_time(world);
     let offset = (time * 8.0) as usize * source_cap;
     for (i, entity) in emitters.into_iter().enumerate() {
         world.get_mut::<Transform>(entity).unwrap().position =
