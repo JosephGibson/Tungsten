@@ -6,6 +6,22 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.59.0] - 2026-10-08
+
+Summary: a feature release with no plan, mostly example 01: R drops an iron brick at the cursor, losing the last heart opens a death screen with a restart, fireballs push what they blast, and burning piles read as coals under a flickering crest. The one engine change is a `KeyCode::KeyR` variant. No decision or dependency change; the physics hashes and row digests are unchanged.
+
+### Added
+
+- **`KeyCode::KeyR`** (`tungsten-core`, `tungsten`): the key enum gains `KeyR`, with its `"KeyR"` name in the action-map JSON and the winit translation in `input_bridge`. `api/tungsten-core.txt` lists it under `input::KeyCode` and `KeyCode`.
+- **Iron brick in example 01** (`brick.rs`): R places a brick at the cursor, up to twelve at once (`BRICK_CAP`). It is four large-ball diameters on a side with the mass of sixty balls, shoves balls aside and barely yields to the player. A brick moving at 360 pixels/second or more into a body costs the player one heart per further 600 pixels/second and smashes one more small ball per further 120, keeping 0.75 of its speed through a layer it smashed. Four new `ex10_iron_brick_big_*` sprites with normal and emissive maps, the `ball_smash` particle config and the `level.tmj` tile set carry it.
+- **Death screen and restart in example 01** (`death.rs`): the last heart dims the frame under a title; Enter (the `restart` action) then fades to black, rebuilds the world as a fresh launch does (`setup::restart_world`) and fades back in. It runs on real time, so a paused or scaled game clock cannot hold it, and uses the stock `fade` post pass.
+- **Player hit feedback**: every hit goes through `gameplay::damage_player`, which plays `ex10_player_hit_sfx`, flashes the damage material, kicks the camera and starts the immunity blink.
+- **Fireball blast push**: a blast pushes every dynamic body within 160 pixels away from it, 1,100 pixels/second for a unit-mass body at the centre, falling linearly and divided by mass, and shakes the camera for a blast near the view. It adds a `blast_dust` ring; the missile lives 2.1 seconds, up from 1.4, and carries a warm point light.
+
+### Changed
+
+- **Burning balls read as coals under a flickering crest**: each burning ball takes an ember tint and darkens to char over its last two seconds; only balls with nothing resting on them (`burning::flame_exposure`) draw a flame tongue and glow, from eight 32-pixel frames chosen by ball id. Up to 64 surface balls share 128 emitters, with lower per-pair rates and caps. The asset generators (`polish_art.py`, `generate.py`, `sfx.py`) and `examples/01_platformer/tools/README.md` describe the new art and sounds.
+
 ## [0.58.0] - 2026-10-08
 
 Summary: a small interactive feature with no plan: example 02's bench window moves to the next benchmark on Tab. No engine, decision, dependency, asset or manifest change; captures, smoke runs and the row digests are unchanged.

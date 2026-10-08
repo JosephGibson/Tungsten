@@ -38,6 +38,7 @@ pub enum KeyCode {
     KeyM,
     KeyN,
     KeyP,
+    KeyR,
     KeyU,
     KeyV,
     KeyY,

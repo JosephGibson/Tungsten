@@ -78,6 +78,8 @@ pub(crate) struct EffectSounds {
     pub(crate) cast: (AudioHandle, f32),
     pub(crate) blast: (AudioHandle, f32),
     pub(crate) extinguish: (AudioHandle, f32),
+    /// The player takes damage.
+    pub(crate) hit: (AudioHandle, f32),
     /// Seconds until the next sizzle may play.
     pub(crate) extinguish_cooldown: f32,
 }
@@ -144,7 +146,8 @@ impl BallHue {
     }
 }
 
-fn hash_unit(mut x: u32) -> f32 {
+/// A well-mixed value in `[0, 1]` from `x`.
+pub(crate) fn hash_unit(mut x: u32) -> f32 {
     x ^= x >> 16;
     x = x.wrapping_mul(0x7feb_352d);
     x ^= x >> 15;

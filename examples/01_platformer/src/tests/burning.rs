@@ -1,7 +1,7 @@
 use super::*;
 use crate::burning::{
-    BALL_BURN_SECONDS, BALL_FIRE_EMITTER_CAP, BallBurn, BallFireEmitter, ball_fire_particles,
-    ignite, spread_ball_fire, tick_ball_fire,
+    BALL_BURN_SECONDS, BALL_FIRE_EMITTER_CAP, BallBurn, BallFireEmitter, EMITTER_DWELL, FLAME_SIZE,
+    ball_fire_particles, ember_tint, flame_exposure, ignite, spread_ball_fire, tick_ball_fire,
 };
 use crate::gameplay::{Hazard, PreviousPosition, hazard_contacts};
 use crate::state::SmallBall;
@@ -159,8 +159,8 @@ fn burning_particles_use_a_rotating_bounded_pool_and_drain_after_burnout() {
     set_dt(&mut harness, 0.25);
     ball_fire_particles(harness.world_mut());
     harness.step(1);
-    // Six times the old 12/sec output, split into plumes and faster sparks.
-    for (sprite, expected) in [("ex10_flame_glow", 12), ("ex10_spark", 6)] {
+    // A quarter second of one pair: 20 wisps and 8 sparks a second.
+    for (sprite, expected) in [("ex10_flame_glow", 5), ("ex10_spark", 2)] {
         assert_eq!(
             harness
                 .world()
@@ -187,7 +187,8 @@ fn burning_particles_use_a_rotating_bounded_pool_and_drain_after_burnout() {
         .unwrap()
         .0;
     let old_position = world.get::<Transform>(first).unwrap().position;
-    world.insert_resource(crate::gameplay::SceneTime(0.125));
+    // Each pair hops once a dwell, the first at a whole dwell.
+    world.insert_resource(crate::gameplay::SceneTime(EMITTER_DWELL));
     ball_fire_particles(world);
     assert_ne!(
         world.get::<Transform>(first).unwrap().position,
@@ -221,7 +222,7 @@ fn burning_particles_use_a_rotating_bounded_pool_and_drain_after_burnout() {
 }
 
 #[test]
-fn extraction_shows_flames_while_burning_and_charcoal_after_burnout() {
+fn extraction_shows_flames_on_the_surface_embers_beneath_and_charcoal_after_burnout() {
     let mut world = seed_world();
     let e = ball(&mut world, Vec2::new(200.0, 200.0), true);
     let mut assets = AssetRegistry::new();
@@ -237,30 +238,44 @@ fn extraction_shows_flames_while_burning_and_charcoal_after_burnout() {
     mock_sprite(&mut assets, "ex10_flame_glow", 952, false);
     world.insert_resource(assets);
     ignite(&mut world, e);
-    let batches = crate::extract::extract_sprites(&world);
-    let flames: Vec<_> = batches
-        .iter()
-        .filter(|b| b.texture.0 == 951)
-        .flat_map(|b| &b.instances)
-        .collect();
-    assert_eq!(flames.len(), 2);
-    assert!(
+    let flames = |world: &World| {
+        let batches = crate::extract::extract_sprites(world);
+        assert!(
+            batches
+                .iter()
+                .filter(|b| b.texture.0 == 951)
+                .all(|b| !b.lit)
+        );
         batches
             .iter()
             .filter(|b| b.texture.0 == 951)
-            .all(|b| !b.lit)
-    );
-    assert!(flames.iter().any(|f| f.size[1] >= 45.0));
-    assert!(batches.iter().any(|b| b.texture.0 == 952));
-    assert_eq!(
-        batches
+            .flat_map(|b| b.instances.clone())
+            .collect::<Vec<_>>()
+    };
+    let tint = |world: &World| {
+        crate::extract::extract_sprites(world)
             .iter()
             .find(|b| b.texture.0 == 950)
             .unwrap()
             .instances[0]
-            .color,
-        [255, 150, 55, 255]
+            .color
+    };
+    // One unlit tongue drawn at its exact pixel scale over a glow.
+    let drawn = flames(&world);
+    assert_eq!(drawn.len(), 1);
+    assert_eq!(drawn[0].size, [FLAME_SIZE; 2]);
+    assert!(
+        crate::extract::extract_sprites(&world)
+            .iter()
+            .any(|b| b.texture.0 == 952)
     );
+    let burn = *world.get::<BallBurn>(e).unwrap();
+    assert_eq!(tint(&world), ember_tint(e, burn, 0.0));
+    // A ball resting on it buries it: it glows but draws no tongue.
+    let cover = ball(&mut world, Vec2::new(200.0, 186.0), true);
+    flame_exposure(&mut world);
+    assert!(flames(&world).is_empty());
+    world.despawn(cover);
     world
         .get_resource_mut::<Time>()
         .unwrap()
@@ -268,13 +283,5 @@ fn extraction_shows_flames_while_burning_and_charcoal_after_burnout() {
     tick_ball_fire(&mut world);
     let batches = crate::extract::extract_sprites(&world);
     assert!(batches.iter().all(|b| !matches!(b.texture.0, 951 | 952)));
-    assert_eq!(
-        batches
-            .iter()
-            .find(|b| b.texture.0 == 950)
-            .unwrap()
-            .instances[0]
-            .color,
-        [55, 48, 45, 255]
-    );
+    assert_eq!(tint(&world), [55, 48, 45, 255]);
 }

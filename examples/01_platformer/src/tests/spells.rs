@@ -94,3 +94,33 @@ fn black_hole_leaves_burning_balls_inside_its_radius_spent() {
     assert_eq!(world.get::<BallBurn>(inside).unwrap().remaining, 0.0);
     assert!(world.get::<BallBurn>(outside).unwrap().remaining > 0.0);
 }
+
+#[test]
+fn a_blast_pushes_dynamic_bodies_away_by_distance_and_mass() {
+    use crate::brick::BRICK_MASS;
+    use crate::fireball::{FIREBALL_PUSH_RADIUS, FIREBALL_PUSH_SPEED, explode_fireball};
+    use tungsten::physics::{RigidBody, RigidBodyBundle, Velocity, physics_step};
+    let mut world = seed_world();
+    let mut body = |at: Vec2, mass: f32| {
+        world.spawn_with(
+            RigidBodyBundle::dynamic(Position(at), Collider::circle(BALL_RADIUS))
+                .with_body(RigidBody::dynamic().with_mass(mass)),
+        )
+    };
+    let near = body(Vec2::new(40.0, 0.0), 1.0);
+    let far = body(Vec2::new(120.0, 0.0), 1.0);
+    let heavy = body(Vec2::new(-40.0, 0.0), BRICK_MASS);
+    let beyond = body(Vec2::new(0.0, FIREBALL_PUSH_RADIUS + 1.0), 1.0);
+
+    explode_fireball(&mut world, Vec2::ZERO);
+
+    let velocity = |e| world.get::<Velocity>(e).unwrap().0;
+    let falloff = 1.0 - 40.0 / FIREBALL_PUSH_RADIUS;
+    assert!((velocity(near) - Vec2::new(FIREBALL_PUSH_SPEED * falloff, 0.0)).length() < 1e-3);
+    assert!(velocity(far).x > 0.0 && velocity(far).x < velocity(near).x);
+    assert!((velocity(heavy).x + velocity(near).x / BRICK_MASS).abs() < 1e-3);
+    assert_eq!(velocity(beyond), Vec2::ZERO);
+    // The step carries the push into the body's position.
+    physics_step(&mut world);
+    assert!(world.get::<Position>(near).unwrap().0.x > 40.0);
+}

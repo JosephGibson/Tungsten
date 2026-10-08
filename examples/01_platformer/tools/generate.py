@@ -59,16 +59,18 @@ def particle_configs():
         alpha_over_life=[[0,0],[.06,1],[.5,.85],[1,0]],
         color_over_life=[[0,[1,1,1,1]],[.6,[1,1,1,1]],[1,[.45,.45,.45,0]]])
     configs['waterfall_spray']['gravity']=[0,260]
-    configs['ball_burn']=dict(configs['fire_trail'],max_alive=40,
-        emission=dict(kind='continuous',rate_hz=48),gravity=[0,-210],
-        lifetime=dict(min=.35,max=.85),start_scale=dict(min=.15,max=.42),
-        alpha_over_life=[[0,0],[.05,1],[.55,.85],[1,0]],
-        initial_velocity=dict(kind='cone',direction=[0,-1],spread_deg=80,speed=dict(min=70,max=190)))
-    configs['ball_burn_embers']=dict(configs['torch_embers'],max_alive=24,
-        emission=dict(kind='continuous',rate_hz=24),gravity=[0,-100],drag_per_sec=.6,
-        lifetime=dict(min=.35,max=1.1),start_scale=dict(min=.055,max=.15),
+    # Burning-ball wisps and sparks: 64 pool pairs stay near half the global
+    # 2,048 budget, leaving room for blasts and impacts over a burning pit.
+    configs['ball_burn']=dict(configs['fire_trail'],max_alive=12,
+        emission=dict(kind='continuous',rate_hz=20),gravity=[0,-180],
+        lifetime=dict(min=.22,max=.5),start_scale=dict(min=.08,max=.2),
+        alpha_over_life=[[0,0],[.06,.75],[.45,.5],[1,0]],
+        initial_velocity=dict(kind='cone',direction=[0,-1],spread_deg=50,speed=dict(min=40,max=110)))
+    configs['ball_burn_embers']=dict(configs['torch_embers'],max_alive=6,
+        emission=dict(kind='continuous',rate_hz=8),gravity=[0,-100],drag_per_sec=.6,
+        lifetime=dict(min=.5,max=1.2),start_scale=dict(min=.045,max=.11),
         alpha_over_life=[[0,0],[.04,1],[.7,.8],[1,0]],
-        initial_velocity=dict(kind='cone',direction=[0,-1],spread_deg=110,speed=dict(min=110,max=260)))
+        initial_velocity=dict(kind='cone',direction=[0,-1],spread_deg=90,speed=dict(min=90,max=230)))
     # The fireball hazard leaks licking flames upward and molten drips downward.
     # `ball_burn` above was copied from the earlier trail and keeps those values.
     ember_ramp = [[0, [1, .98, .86, 1]], [.2, [1, .8, .32, 1]], [.5, [.98, .42, .1, 1]],
@@ -126,6 +128,23 @@ def particle_configs():
         scale_over_life=[[0, .5], [.3, 1], [1, 1.35]],
         alpha_over_life=[[0, 0], [.08, .85], [.6, .45], [1, 0]],
         color_over_life=[[0, [1, .55, .2, 1]], [.18, [.85, .85, .9, 1]], [1, [.55, .58, .66, 1]]])
+    # The fireball's push: a dust ring thrown out to about its 160-pixel reach.
+    configs['blast_dust'] = dict(
+        config('dust', 20, 20, .8, 560, .55, spread=360, burst=True),
+        initial_velocity=dict(kind='radial', speed=dict(min=300, max=560)),
+        lifetime=dict(min=.45, max=.8), start_scale=dict(min=.35, max=.6),
+        gravity=[0, 40], drag_per_sec=3.6, angular_velocity=dict(min=-1.5, max=1.5),
+        scale_over_life=[[0, .5], [.35, 1], [1, 1.5]],
+        alpha_over_life=[[0, 0], [.06, .7], [.5, .4], [1, 0]],
+        color_over_life=[[0, [1, .78, .5, 1]], [.25, [.62, .55, .5, 1]], [1, [.32, .3, .3, 1]]])
+    # A marble the iron brick smashes: glass chips that fall away.
+    configs['ball_smash'] = dict(
+        config('spark', 12, 12, .55, 260, .12, spread=360, burst=True),
+        initial_velocity=dict(kind='radial', speed=dict(min=90, max=260)),
+        lifetime=dict(min=.3, max=.6), start_scale=dict(min=.06, max=.13),
+        gravity=[0, 720], drag_per_sec=.8, angular_velocity=dict(min=-9, max=9),
+        alpha_over_life=[[0, 0], [.05, 1], [.6, .85], [1, 0]],
+        color_over_life=[[0, [1, 1, 1, 1]], [.5, [.8, .86, .92, 1]], [1, [.5, .55, .62, 0]]])
     return configs
 
 

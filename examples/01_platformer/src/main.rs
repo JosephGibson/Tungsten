@@ -4,7 +4,9 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod brick;
 mod burning;
+mod death;
 mod extract;
 mod fireball;
 mod gameplay;

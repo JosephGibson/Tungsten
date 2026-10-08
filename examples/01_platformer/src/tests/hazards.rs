@@ -70,7 +70,7 @@ fn audio_controls_and_damage_flash_shake_remain_wired() {
             .unwrap()
             .is_empty()
     );
-    crate::gameplay::damage_player(world, player, PLAYER_SPAWN + Vec2::X);
+    crate::gameplay::damage_player(world, player, PLAYER_SPAWN + Vec2::X, 1);
     assert!(world.get::<Tween>(player).is_some());
     assert!(
         !world
@@ -81,7 +81,7 @@ fn audio_controls_and_damage_flash_shake_remain_wired() {
 }
 
 #[test]
-fn hazards_damage_once_per_cooldown_and_restore_health_on_respawn() {
+fn hazards_damage_once_per_cooldown_and_the_last_heart_starts_the_death_screen() {
     use crate::gameplay::*;
     let mut world = seed_world();
     let player = spawn_test_player(&mut world, Vec2::new(100.0, 100.0));
@@ -100,10 +100,16 @@ fn hazards_damage_once_per_cooldown_and_restore_health_on_respawn() {
     assert_eq!(world.get::<Health>(player).unwrap().hearts, 1);
     world.get_mut::<Health>(player).unwrap().immunity = 0.0;
     hazard_contacts(&mut world);
-    assert_eq!(world.get::<Health>(player).unwrap().hearts, 3);
-    assert_eq!(world.get::<Position>(player).unwrap().0, PLAYER_SPAWN);
-    assert_eq!(world.get::<Velocity>(player).unwrap().0, Vec2::ZERO);
-    assert!(world.get::<Health>(player).unwrap().immunity > 1.0);
+    assert_eq!(world.get::<Health>(player).unwrap().hearts, 0);
+    assert!(matches!(
+        world.get_resource::<crate::death::DeathScreen>(),
+        Some(crate::death::DeathScreen::Dying { .. })
+    ));
+    // The body leaves the physics where it fell and takes no more hits.
+    assert!(world.get::<Collider>(player).is_none());
+    world.get_mut::<Health>(player).unwrap().immunity = 0.0;
+    hazard_contacts(&mut world);
+    assert_eq!(world.get::<Health>(player).unwrap().immunity, 0.0);
 }
 
 #[test]
@@ -285,4 +291,44 @@ fn fireballs_face_their_travel_and_drag_anchored_drips() {
             assert_eq!(seen[i], [true, true]);
         }
     }
+}
+
+#[test]
+fn a_hit_plays_its_sound_and_immunity_ignores_repeat_hits_until_it_runs_out() {
+    use crate::gameplay::{HIT_IMMUNITY, Health, damage_player, move_obstacles};
+    use crate::state::EffectSounds;
+    let mut harness = platformer_harness(&[("move_obstacles", move_obstacles)]);
+    let world = harness.world_mut();
+    let hit = AudioHandle(9);
+    world.insert_resource(EffectSounds {
+        cast: (AudioHandle(1), 1.0),
+        blast: (AudioHandle(2), 1.0),
+        extinguish: (AudioHandle(3), 1.0),
+        hit: (hit, 0.6),
+        extinguish_cooldown: 0.0,
+    });
+    let player = spawn_test_player(world, PLAYER_SPAWN);
+    world.insert(player, Health::default());
+    let origin = PLAYER_SPAWN + Vec2::X;
+    let hearts = |world: &World| world.get::<Health>(player).unwrap().hearts;
+
+    damage_player(world, player, origin, 1);
+    assert_eq!(hearts(world), 2);
+    let played = world.get_resource_mut::<AudioCommands>().unwrap().drain();
+    assert!(matches!(played[..], [AudioCommand::Play { handle, .. }] if handle == hit));
+    damage_player(world, player, origin, 1);
+    assert_eq!(hearts(world), 2);
+
+    // The window counts down by itself; a hit just inside it still misses.
+    set_dt(&mut harness, 1.0 / 60.0);
+    harness.step((HIT_IMMUNITY * 60.0) as u32 - 2);
+    let world = harness.world_mut();
+    assert!(world.get::<Health>(player).unwrap().immunity > 0.0);
+    damage_player(world, player, origin, 1);
+    assert_eq!(hearts(world), 2);
+    harness.step(3);
+    let world = harness.world_mut();
+    assert_eq!(world.get::<Health>(player).unwrap().immunity, 0.0);
+    damage_player(world, player, origin, 1);
+    assert_eq!(hearts(world), 1);
 }

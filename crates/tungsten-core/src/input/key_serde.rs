@@ -31,6 +31,7 @@ const KEYCODE_NAMES: &[(KeyCode, &str)] = &[
     (KeyCode::KeyM, "KeyM"),
     (KeyCode::KeyN, "KeyN"),
     (KeyCode::KeyP, "KeyP"),
+    (KeyCode::KeyR, "KeyR"),
     (KeyCode::KeyU, "KeyU"),
     (KeyCode::KeyV, "KeyV"),
     (KeyCode::KeyY, "KeyY"),
