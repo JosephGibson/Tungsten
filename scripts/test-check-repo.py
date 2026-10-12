@@ -260,9 +260,10 @@ class SummaryChecks(unittest.TestCase):
         self.doc = self.root / qa.roadmap.SUMMARY_DOC
         self.doc.write_text(qa.roadmap.summary_text(self.state))
 
-    def check(self):
+    def check(self, refs=True):
         errors, notes = [], []
-        with patch.object(qa.roadmap, "derive", return_value=self.state):
+        with (patch.object(qa.roadmap, "derive", return_value=self.state),
+              patch.object(qa, "has_release_refs", return_value=refs)):
             qa.check_summary(self.root, errors, notes)
         return errors
 
@@ -277,6 +278,15 @@ class SummaryChecks(unittest.TestCase):
                 errors = self.check()
                 self.assertEqual(len(errors), 1)
                 self.assertIn(f"stale owned field {field!r}: 'stale', expected {value!r}", errors[0])
+
+    def test_without_release_refs_only_tree_fields_are_compared(self):
+        for field, value in qa.roadmap.summary_fields(self.state).items():
+            with self.subTest(field=field):
+                self.doc.write_text(qa.roadmap.summary_text(self.state).replace(f"`{value}`", "`stale`"))
+                self.assertEqual(len(self.check(refs=False)), 0 if field in qa.REF_FIELDS else 1)
+
+    def test_a_tree_outside_git_has_no_release_refs(self):
+        self.assertFalse(qa.has_release_refs(self.root))
 
     def test_missing_duplicate_and_unknown_fields_are_not_accepted(self):
         for corrupt in (qa.roadmap.summary_text(self.state).replace("Workspace", "Unknown"),

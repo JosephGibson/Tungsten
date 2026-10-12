@@ -39,6 +39,8 @@ CITING_SUFFIXES = (".rs", ".py", ".sh", ".md", ".toml", ".yml")
 CITATION_EXEMPT = ("CHANGELOG.md", "DECISIONS.md")
 PLAN_CITATION = re.compile(r"docs/plans/[\w./-]+?\.md")
 ROADMAP_ID = re.compile(r"[a-z0-9]+")
+# Owned summary fields that roadmap.derive reads from local tags and origin/main.
+REF_FIELDS = ("First open stop", "Stop state")
 LOCAL_LINK = re.compile(r'\]\((<[^>]+>|[^\s)]+)(?:\s+"[^"]*")?\)|^\s{0,3}\[[^\]]+\]:\s*(<[^>]+>|\S+)', re.M)
 # The milestone skeleton is not a live plan; its links resolve at its eventual
 # docs/plans/1.0/ destination. It is outside active_plan_documents, intentionally.
@@ -360,6 +362,13 @@ def check_agent_config(root, errors):
         errors.append(".ignore: missing archive exclusion")
 
 
+def has_release_refs(root):
+    """Whether the checkout holds origin/main unshallowed, which REF_FIELDS derive from."""
+    git = roadmap.Git(root)
+    return (bool(git.run("rev-parse", "--verify", "--quiet", "refs/remotes/origin/main"))
+            and git.run("rev-parse", "--is-shallow-repository") == "false")
+
+
 def check_summary(root, errors, notes):
     if not (root / roadmap.CATALOG).is_file():
         return
@@ -377,10 +386,14 @@ def check_summary(root, errors, notes):
     if len(lines) != len(expected) or set(dict(lines)) != set(expected):
         errors.append(f"{rel}: owned roadmap summary needs exactly {', '.join(expected)}")
         return
+    refs = has_release_refs(root)
     for field, value in lines:
-        if value != expected[field]:
+        if value != expected[field] and (refs or field not in REF_FIELDS):
             errors.append(f"{rel}: stale owned field {field!r}: {value!r}, expected {expected[field]!r}; run python3 -B scripts/roadmap.py summary")
-    notes.append("roadmap summary uses local refs only; inspect roadmap.py status's fetch freshness before publication claims")
+    if refs:
+        notes.append("roadmap summary uses local refs only; inspect roadmap.py status's fetch freshness before publication claims")
+    else:
+        notes.append(f"roadmap summary: no unshallowed origin/main (CI's checkout), so {' and '.join(REF_FIELDS)} were not compared")
 
 
 def changed_paths(root, base=None):

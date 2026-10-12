@@ -25,6 +25,10 @@ Summary: Phase 5's twelfth milestone, M43 (W8a, plan archived at `docs/plans/arc
 - **Workflow audit follow-through** (`D-141`): reuse derived roadmap status in session guidance, consolidate authoring validation instructions, refuse known perf background load before building, enable shader-playground hot reload, accept renamed games in the template's config test, and remove the duplicate platformer smoke launch. Existing capture validity and hardware gates remain.
 - **AI development workflow, approved proposals 1–3** (`D-140`): repair commit/status/profiling guidance, check owned roadmap fields and active-document links, shorten navigation/current snapshots, scale maintenance planning to scope, and centralize validation with a read-only path/Git check selector; regressions and byte measurements are recorded in [the execution record](docs/plans/ai-development-workflow.md#approved-subset-execution). Proposals 4–9 remain unapproved.
 
+### Fixed
+
+- **CI's owned-field check** (`scripts/check-repo.py`): `just repo-check` compared the roadmap's First open stop and Stop state, which `roadmap.py` derives from tags and `origin/main`, in CI's shallow checkout, which has neither, so the CPU checks job failed since the `D-140` change. Without an unshallowed `origin/main` it now compares only Workspace and Next milestone and notes the skip.
+
 ## [0.60.0] - 2026-10-08
 
 Summary: a feature release with no plan, mostly example 01: hold F to freeze iron, then shatter it with fireballs or hard iron impacts into tumbling metal scraps. Heavier bricks crush more marbles, fireball blasts push farther with richer effects, and fatal falls open the animated death screen. The engine gains `KeyCode::KeyF`; no decision or dependency change.
