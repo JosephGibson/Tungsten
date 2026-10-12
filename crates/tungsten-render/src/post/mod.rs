@@ -489,7 +489,9 @@ impl PostStackRenderer {
     /// `PassDesc` is treated as a debug-only label. `slot` is the pass's
     /// index in the post stack: each slot keeps GPU objects of its own. The
     /// composite writes the frame's swapchain view when `dst` is
-    /// [`TargetId::Swapchain`]; `timing` records the sub-passes.
+    /// [`TargetId::Swapchain`]; a slot recorded before the surface acquire
+    /// has no view (`None`), and a swapchain `dst` without one panics
+    /// (`D-145`). `timing` records the sub-passes.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn record_bloom_slot_timed(
         &mut self,
@@ -497,7 +499,7 @@ impl PostStackRenderer {
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         pool: &RenderTargetPool,
-        swap_view: &wgpu::TextureView,
+        swap_view: Option<&wgpu::TextureView>,
         params: &tungsten_core::post::BloomParams,
         src: TargetId,
         dst: TargetId,
@@ -505,16 +507,7 @@ impl PostStackRenderer {
         slot: usize,
     ) {
         self.bloom.record_pass_timed(
-            device,
-            queue,
-            encoder,
-            pool,
-            Some(swap_view),
-            params,
-            src,
-            dst,
-            timing,
-            slot,
+            device, queue, encoder, pool, swap_view, params, src, dst, timing, slot,
         );
     }
 }

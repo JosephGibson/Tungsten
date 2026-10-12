@@ -6,6 +6,29 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.62.0] - 2026-10-12
+
+Summary: Phase 5's thirteenth milestone, M44 (W1 M0b with W2 R2, plan archived at `docs/plans/archive/1.0/phase5-milestone-44-input-groundwork-late-acquire.md`). Input groundwork: 28 more `KeyCode` variants, the frame's raw input in arrival order, focus loss releasing held keys and buttons, modifiers, pointer leave and the `ScaleFactor` resource (`D-144`). Late acquire: a frame records and submits every pass before the stage that writes the swapchain before it waits for the surface, and records the rest after (`D-145`); the `gpu` row's `extract` is an accepted regression, the cost moved from its recording. The determinism and pinned containment hashes, the row digests and the pixel fixtures are unchanged. No new dependency, asset or manifest change.
+
+### Added
+
+- **Key codes** (`D-144`; the break ledger's `KeyCode` row): Home, End, Delete, PageUp, PageDown, both sides of Shift, Control, Alt and Super, KeyE, KeyG, KeyO, KeyQ, KeyT, KeyX, KeyZ, Digit4, Digit9, F5–F8, F10 and F12, named in `input.json` by their winit variant names (`D-045`). Every other key stays `Other`, whose number lasts one build and never serializes.
+- **The raw input stream** (`D-144`): `InputState::raw_events()` lists the frame's `RawEvent { seq, input }`s in arrival order, recorded by the existing mutators and cleared by `begin_frame`: `RawInput` keys (with a repeat flag and the modifiers held), mouse buttons, pointer moves (only adjacent moves coalesce), pointer leave, the wheel, modifiers and focus. Nothing routes it yet (W1 M3). With it come `Modifiers`, `WheelDelta`, `focused`/`set_focused`, `modifiers`/`set_modifiers`, `pointer_in_window`, `pointer_left` and `suppress_until_release`.
+- **`ScaleFactor`** (`D-127`, `D-144`): the display's scale factor as a core resource, 1.0 until the window reports its own at `resumed` and on `ScaleFactorChanged`; `get()` will multiply in the user's UI scale (W11b), and nothing applies it before W1 M2.
+- **`render_encode_pre_acquire`** (`D-145`; the break ledger's row): `CpuFrameTimings::encode_pre_acquire_ms`, `FrameTimings::render_encode_pre_acquire_ms` and the `frame:` key, the part of `render_encode` recorded before the surface acquire.
+
+### Changed
+
+- **Late acquire** (`D-145`, W2 R2): `render_frame_internal` records the camera upload, the text preparation and every pass before the one that writes the swapchain (`D-087`'s stage) into a first command buffer and submits it before the acquire, so the GPU can start on them while the CPU waits; the swapchain stage, the text overlay and a capture frame's blit and readback record after it, and the GPU timestamps resolve there. An acquire that resized the targets records the first part again at the new size. A bloom slot that writes the swapchain stays whole after the acquire. Both presentation paths draw byte-equal frames: `just visual`'s eleven captures match the tree before.
+- **Render timings** (`D-145`): `render_encode` stays the frame's whole recording, `render_submit_present` includes the early submit and `render_span` the gap across the acquire; the profiling workflow's telemetry and `render` classification say what each field measures.
+- **Window input** (`D-144`; `tungsten/input_bridge.rs`): the bridge applies `Focused`, `ModifiersChanged`, `CursorLeft` and `ScaleFactorChanged` through one key table, drops winit's synthetic releases, keeps a key held across a focus change released until it is pressed again (its synthetic press and X11's auto-repeat are ignored until its release) and drops a repeat of a key not held.
+- **Perf** (M44 step 5): every owned metric of every CPU row reads not `regressed` on both pairs against the tree before and on the aligned pair, or is cleared under the plan's Q10, except `gpu` `stage.extract`: p50 0.61 → 0.83 ms and p95 +0.15 to +0.20 ms in all three pairs and with the early submit off, while the row's `render_encode` reads 2.04 → 1.63 ms and `total` p50 10.76 → 10.65 ms; the owner accepted it as cost moved between CPU stages (`D-145`). GPU engine time per frame reads `unchanged` on `gpu` and `integrated`, both A/A pairs are clean outside the listed metrics and the digests match 8 of 8.
+
+### Fixed
+
+- **Keys held across a focus change** (`D-144`): focus loss releases every held key and mouse button with release edges and clears the modifiers, so a key no longer sticks after an alt-tab where winit sends no release (Wayland and macOS, which have no host to check them; known issues).
+- **A timed frame resized in its acquire**: with GPU timing on, an acquire that resized the targets to a size with more bloom mips could overrun the frame's timestamp query set and panic; the frame now rebuilds its timing resources (`D-145`).
+
 ## [0.61.0] - 2026-10-12
 
 Summary: Phase 5's twelfth milestone, M43 (W8a, plan archived at `docs/plans/archive/1.0/phase5-milestone-43-render-result-engine-bugs.md`), with the AI development workflow changes (`D-140`, `D-141`). Render results: each `render_frame*` call returns its frame's `RenderOutcome`, presented with the result of the capture armed for it or skipped, or the failed frame as `Err`; `TUNGSTEN_CAPTURE_FRAME` arms one frame, a capture that writes no file fails the run, and `App::run` returns the render failure, else the capture error (`D-142`). Burst `once: false` re-arms and zero pulses emit nothing (`D-143`); the default extract warns once per sprite ID. The far-plane tile step was skipped at its control and goes to W8b. The determinism and pinned containment hashes, the row digests and the pixel fixtures are unchanged. No new dependency, asset or manifest change.

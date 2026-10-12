@@ -199,6 +199,8 @@ impl App {
             width: resolved_display.resolution.width,
             height: resolved_display.resolution.height,
         });
+        // The window's factor replaces it at `resumed` (D-144).
+        world.insert_resource(tungsten_core::ScaleFactor::default());
         world.insert_resource(AssetRegistry::new());
         world.insert_resource(SoundRegistry::new());
         world.insert_resource(AudioCommands::new());
@@ -800,6 +802,7 @@ struct FrameRenderOut {
     render_ms: f32,
     render_acquire_ms: f32,
     render_encode_ms: f32,
+    render_encode_pre_acquire_ms: f32,
     render_submit_present_ms: f32,
     gpu_frame_ms: Option<f32>,
 }
@@ -813,6 +816,7 @@ struct FrameStageTimings {
     render_ms: f32,
     render_acquire_ms: f32,
     render_encode_ms: f32,
+    render_encode_pre_acquire_ms: f32,
     render_submit_present_ms: f32,
     audio_ms: f32,
     total_ms: f32,
@@ -1173,6 +1177,7 @@ impl App {
             });
             out.render_acquire_ms = renderer.cpu_timings.acquire_ms;
             out.render_encode_ms = renderer.cpu_timings.encode_ms;
+            out.render_encode_pre_acquire_ms = renderer.cpu_timings.encode_pre_acquire_ms;
             out.render_submit_present_ms = renderer.cpu_timings.submit_present_ms;
             out.gpu_frame_ms = renderer.gpu_timings.frame_gpu_ms;
             if let Some(gpu) = self.world.get_resource_mut::<GpuFrameTimings>() {
@@ -1243,6 +1248,7 @@ impl App {
             ft.render_ms = t.render_ms;
             ft.render_acquire_ms = t.render_acquire_ms;
             ft.render_encode_ms = t.render_encode_ms;
+            ft.render_encode_pre_acquire_ms = t.render_encode_pre_acquire_ms;
             ft.render_submit_present_ms = t.render_submit_present_ms;
             ft.audio_ms = t.audio_ms;
             ft.hot_reload_ms = t.hot_reload_ms;
@@ -1311,6 +1317,7 @@ impl App {
             render_ms: render_out.render_ms,
             render_acquire_ms: render_out.render_acquire_ms,
             render_encode_ms: render_out.render_encode_ms,
+            render_encode_pre_acquire_ms: render_out.render_encode_pre_acquire_ms,
             render_submit_present_ms: render_out.render_submit_present_ms,
             audio_ms,
             total_ms,
@@ -1513,7 +1520,7 @@ fn log_perf_line(
     // The first frame has no previous frame start.
     let interval_for_log = interval_ms.map_or_else(|| "n/a".to_string(), |ms| format!("{ms:.2}ms"));
     log::debug!(
-        "frame: total={:.2}ms interval={} update={:.2}ms flush={:.2}ms extract={:.2}ms render={:.2}ms render_acquire={:.2}ms render_encode={:.2}ms render_submit_present={:.2}ms gpu={} audio={:.2}ms hot_reload={:.2}ms",
+        "frame: total={:.2}ms interval={} update={:.2}ms flush={:.2}ms extract={:.2}ms render={:.2}ms render_acquire={:.2}ms render_encode={:.2}ms render_encode_pre_acquire={:.2}ms render_submit_present={:.2}ms gpu={} audio={:.2}ms hot_reload={:.2}ms",
         total_ms,
         interval_for_log,
         update_ms,
@@ -1522,6 +1529,7 @@ fn log_perf_line(
         render_out.render_ms,
         render_out.render_acquire_ms,
         render_out.render_encode_ms,
+        render_out.render_encode_pre_acquire_ms,
         render_out.render_submit_present_ms,
         gpu_for_log,
         audio_ms,
@@ -1768,6 +1776,7 @@ impl ApplicationHandler for App {
         }
         apply_window_fullscreen(&window, startup_mode);
         let initial_inner_size = window.inner_size();
+        input_bridge::apply_scale_factor(&mut self.world, window.scale_factor());
 
         let mut render_config = self.config.render.clone();
         let startup_state = DisplayState {
@@ -1886,14 +1895,20 @@ impl ApplicationHandler for App {
                     actual_present_mode,
                 );
             }
-            WindowEvent::KeyboardInput { event, .. } => {
-                let key = input_bridge::translate_key(event.physical_key);
-                if let Some(input) = self.world.get_resource_mut::<InputState>() {
-                    match event.state {
-                        ElementState::Pressed => input.key_down(key),
-                        ElementState::Released => input.key_up(key),
-                    }
-                }
+            WindowEvent::KeyboardInput {
+                event,
+                is_synthetic,
+                ..
+            } => input_bridge::apply_key(
+                &mut self.world,
+                event.physical_key,
+                event.state,
+                event.repeat,
+                is_synthetic,
+            ),
+            WindowEvent::Focused(focused) => input_bridge::apply_focus(&mut self.world, focused),
+            WindowEvent::ModifiersChanged(modifiers) => {
+                input_bridge::apply_modifiers(&mut self.world, modifiers.state());
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 let btn = input_bridge::translate_mouse_button(button);
@@ -1909,6 +1924,7 @@ impl ApplicationHandler for App {
                     input.update_cursor_position(position.x as f32, position.y as f32);
                 }
             }
+            WindowEvent::CursorLeft { .. } => input_bridge::apply_pointer_left(&mut self.world),
             WindowEvent::MouseWheel { delta, .. } => {
                 if let Some(input) = self.world.get_resource_mut::<InputState>() {
                     match delta {
@@ -1918,6 +1934,9 @@ impl ApplicationHandler for App {
                         }
                     }
                 }
+            }
+            WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                input_bridge::apply_scale_factor(&mut self.world, scale_factor);
             }
             WindowEvent::RedrawRequested => {
                 let frame_start = Instant::now();

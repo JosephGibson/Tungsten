@@ -86,6 +86,22 @@ pub(crate) fn reconfigure_for_suboptimal(
     resized || last != Some(configured)
 }
 
+/// The scene targets a frame records into: the target pool's generation and
+/// the surface size.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct TargetsAt {
+    pub(crate) generation: u64,
+    pub(crate) size: (u32, u32),
+}
+
+/// Whether a frame records its passes before the swapchain stage again after
+/// the acquire (late acquire, `D-145`): when the acquire reallocated the
+/// targets or resized the surface (a first outdated status reconfigures to
+/// the window's size), those passes drew into targets of the old size.
+pub(crate) fn record_again_after_acquire(before: TargetsAt, after: TargetsAt) -> bool {
+    before != after
+}
+
 #[cfg(test)]
 #[path = "tests/surface_acquire.rs"]
 mod tests;

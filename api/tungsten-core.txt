@@ -4041,6 +4041,28 @@ impl core::marker::Unpin for tungsten_core::display::Resolution
 impl core::marker::UnsafeUnpin for tungsten_core::display::Resolution
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::display::Resolution
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::display::Resolution
+pub struct tungsten_core::display::ScaleFactor
+impl tungsten_core::display::ScaleFactor
+pub fn tungsten_core::display::ScaleFactor::get(&self) -> f32
+pub fn tungsten_core::display::ScaleFactor::os(&self) -> f32
+pub fn tungsten_core::display::ScaleFactor::set_os(&mut self, f32)
+impl core::clone::Clone for tungsten_core::display::ScaleFactor
+pub fn tungsten_core::display::ScaleFactor::clone(&self) -> tungsten_core::display::ScaleFactor
+impl core::cmp::PartialEq for tungsten_core::display::ScaleFactor
+pub fn tungsten_core::display::ScaleFactor::eq(&self, &tungsten_core::display::ScaleFactor) -> bool
+impl core::default::Default for tungsten_core::display::ScaleFactor
+pub fn tungsten_core::display::ScaleFactor::default() -> Self
+impl core::fmt::Debug for tungsten_core::display::ScaleFactor
+pub fn tungsten_core::display::ScaleFactor::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::display::ScaleFactor
+impl core::marker::StructuralPartialEq for tungsten_core::display::ScaleFactor
+impl core::marker::Freeze for tungsten_core::display::ScaleFactor
+impl core::marker::Send for tungsten_core::display::ScaleFactor
+impl core::marker::Sync for tungsten_core::display::ScaleFactor
+impl core::marker::Unpin for tungsten_core::display::ScaleFactor
+impl core::marker::UnsafeUnpin for tungsten_core::display::ScaleFactor
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::display::ScaleFactor
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::display::ScaleFactor
 pub struct tungsten_core::display::WindowSize
 pub tungsten_core::display::WindowSize::height: u32
 pub tungsten_core::display::WindowSize::width: u32
@@ -4928,6 +4950,8 @@ impl core::marker::UnsafeUnpin for tungsten_core::input::action_map::Binding
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::action_map::Binding
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::action_map::Binding
 pub enum tungsten_core::input::KeyCode
+pub tungsten_core::input::KeyCode::AltLeft
+pub tungsten_core::input::KeyCode::AltRight
 pub tungsten_core::input::KeyCode::ArrowDown
 pub tungsten_core::input::KeyCode::ArrowLeft
 pub tungsten_core::input::KeyCode::ArrowRight
@@ -4935,28 +4959,43 @@ pub tungsten_core::input::KeyCode::ArrowUp
 pub tungsten_core::input::KeyCode::Backspace
 pub tungsten_core::input::KeyCode::BracketLeft
 pub tungsten_core::input::KeyCode::BracketRight
+pub tungsten_core::input::KeyCode::ControlLeft
+pub tungsten_core::input::KeyCode::ControlRight
+pub tungsten_core::input::KeyCode::Delete
 pub tungsten_core::input::KeyCode::Digit0
 pub tungsten_core::input::KeyCode::Digit1
 pub tungsten_core::input::KeyCode::Digit2
 pub tungsten_core::input::KeyCode::Digit3
+pub tungsten_core::input::KeyCode::Digit4
 pub tungsten_core::input::KeyCode::Digit5
 pub tungsten_core::input::KeyCode::Digit6
 pub tungsten_core::input::KeyCode::Digit7
 pub tungsten_core::input::KeyCode::Digit8
+pub tungsten_core::input::KeyCode::Digit9
+pub tungsten_core::input::KeyCode::End
 pub tungsten_core::input::KeyCode::Enter
 pub tungsten_core::input::KeyCode::Equal
 pub tungsten_core::input::KeyCode::Escape
 pub tungsten_core::input::KeyCode::F1
+pub tungsten_core::input::KeyCode::F10
 pub tungsten_core::input::KeyCode::F11
+pub tungsten_core::input::KeyCode::F12
 pub tungsten_core::input::KeyCode::F2
 pub tungsten_core::input::KeyCode::F3
 pub tungsten_core::input::KeyCode::F4
+pub tungsten_core::input::KeyCode::F5
+pub tungsten_core::input::KeyCode::F6
+pub tungsten_core::input::KeyCode::F7
+pub tungsten_core::input::KeyCode::F8
 pub tungsten_core::input::KeyCode::F9
+pub tungsten_core::input::KeyCode::Home
 pub tungsten_core::input::KeyCode::KeyA
 pub tungsten_core::input::KeyCode::KeyB
 pub tungsten_core::input::KeyCode::KeyC
 pub tungsten_core::input::KeyCode::KeyD
+pub tungsten_core::input::KeyCode::KeyE
 pub tungsten_core::input::KeyCode::KeyF
+pub tungsten_core::input::KeyCode::KeyG
 pub tungsten_core::input::KeyCode::KeyH
 pub tungsten_core::input::KeyCode::KeyI
 pub tungsten_core::input::KeyCode::KeyJ
@@ -4964,16 +5003,27 @@ pub tungsten_core::input::KeyCode::KeyK
 pub tungsten_core::input::KeyCode::KeyL
 pub tungsten_core::input::KeyCode::KeyM
 pub tungsten_core::input::KeyCode::KeyN
+pub tungsten_core::input::KeyCode::KeyO
 pub tungsten_core::input::KeyCode::KeyP
+pub tungsten_core::input::KeyCode::KeyQ
 pub tungsten_core::input::KeyCode::KeyR
 pub tungsten_core::input::KeyCode::KeyS
+pub tungsten_core::input::KeyCode::KeyT
 pub tungsten_core::input::KeyCode::KeyU
 pub tungsten_core::input::KeyCode::KeyV
 pub tungsten_core::input::KeyCode::KeyW
+pub tungsten_core::input::KeyCode::KeyX
 pub tungsten_core::input::KeyCode::KeyY
+pub tungsten_core::input::KeyCode::KeyZ
 pub tungsten_core::input::KeyCode::Minus
 pub tungsten_core::input::KeyCode::Other(u32)
+pub tungsten_core::input::KeyCode::PageDown
+pub tungsten_core::input::KeyCode::PageUp
+pub tungsten_core::input::KeyCode::ShiftLeft
+pub tungsten_core::input::KeyCode::ShiftRight
 pub tungsten_core::input::KeyCode::Space
+pub tungsten_core::input::KeyCode::SuperLeft
+pub tungsten_core::input::KeyCode::SuperRight
 pub tungsten_core::input::KeyCode::Tab
 impl core::clone::Clone for tungsten_core::input::KeyCode
 pub fn tungsten_core::input::KeyCode::clone(&self) -> tungsten_core::input::KeyCode
@@ -5024,6 +5074,38 @@ impl core::marker::Unpin for tungsten_core::input::MouseButton
 impl core::marker::UnsafeUnpin for tungsten_core::input::MouseButton
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::MouseButton
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::MouseButton
+#[non_exhaustive] pub enum tungsten_core::input::RawInput
+pub tungsten_core::input::RawInput::Focus(bool)
+#[non_exhaustive] pub tungsten_core::input::RawInput::Key
+pub tungsten_core::input::RawInput::Key::code: tungsten_core::input::KeyCode
+pub tungsten_core::input::RawInput::Key::modifiers: tungsten_core::input::Modifiers
+pub tungsten_core::input::RawInput::Key::pressed: bool
+pub tungsten_core::input::RawInput::Key::repeat: bool
+pub tungsten_core::input::RawInput::Modifiers(tungsten_core::input::Modifiers)
+#[non_exhaustive] pub tungsten_core::input::RawInput::MouseButton
+pub tungsten_core::input::RawInput::MouseButton::button: tungsten_core::input::MouseButton
+pub tungsten_core::input::RawInput::MouseButton::pressed: bool
+pub tungsten_core::input::RawInput::PointerLeft
+#[non_exhaustive] pub tungsten_core::input::RawInput::PointerMoved
+pub tungsten_core::input::RawInput::PointerMoved::x: f32
+pub tungsten_core::input::RawInput::PointerMoved::y: f32
+#[non_exhaustive] pub tungsten_core::input::RawInput::Wheel
+pub tungsten_core::input::RawInput::Wheel::delta: tungsten_core::input::WheelDelta
+impl core::clone::Clone for tungsten_core::input::RawInput
+pub fn tungsten_core::input::RawInput::clone(&self) -> tungsten_core::input::RawInput
+impl core::cmp::PartialEq for tungsten_core::input::RawInput
+pub fn tungsten_core::input::RawInput::eq(&self, &tungsten_core::input::RawInput) -> bool
+impl core::fmt::Debug for tungsten_core::input::RawInput
+pub fn tungsten_core::input::RawInput::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::input::RawInput
+impl core::marker::StructuralPartialEq for tungsten_core::input::RawInput
+impl core::marker::Freeze for tungsten_core::input::RawInput
+impl core::marker::Send for tungsten_core::input::RawInput
+impl core::marker::Sync for tungsten_core::input::RawInput
+impl core::marker::Unpin for tungsten_core::input::RawInput
+impl core::marker::UnsafeUnpin for tungsten_core::input::RawInput
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::RawInput
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::RawInput
 pub enum tungsten_core::input::ScrollDirection
 pub tungsten_core::input::ScrollDirection::Down
 pub tungsten_core::input::ScrollDirection::Up
@@ -5049,6 +5131,24 @@ impl core::marker::Unpin for tungsten_core::input::ScrollDirection
 impl core::marker::UnsafeUnpin for tungsten_core::input::ScrollDirection
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::ScrollDirection
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::ScrollDirection
+pub enum tungsten_core::input::WheelDelta
+pub tungsten_core::input::WheelDelta::Lines(f32, f32)
+pub tungsten_core::input::WheelDelta::Pixels(f32, f32)
+impl core::clone::Clone for tungsten_core::input::WheelDelta
+pub fn tungsten_core::input::WheelDelta::clone(&self) -> tungsten_core::input::WheelDelta
+impl core::cmp::PartialEq for tungsten_core::input::WheelDelta
+pub fn tungsten_core::input::WheelDelta::eq(&self, &tungsten_core::input::WheelDelta) -> bool
+impl core::fmt::Debug for tungsten_core::input::WheelDelta
+pub fn tungsten_core::input::WheelDelta::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::input::WheelDelta
+impl core::marker::StructuralPartialEq for tungsten_core::input::WheelDelta
+impl core::marker::Freeze for tungsten_core::input::WheelDelta
+impl core::marker::Send for tungsten_core::input::WheelDelta
+impl core::marker::Sync for tungsten_core::input::WheelDelta
+impl core::marker::Unpin for tungsten_core::input::WheelDelta
+impl core::marker::UnsafeUnpin for tungsten_core::input::WheelDelta
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::WheelDelta
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::WheelDelta
 pub struct tungsten_core::input::ActionMap
 impl tungsten_core::input::action_map::ActionMap
 pub fn tungsten_core::input::action_map::ActionMap::bindings(&self, &str) -> &[tungsten_core::input::action_map::Binding]
@@ -5091,6 +5191,7 @@ pub fn tungsten_core::input::InputState::begin_frame(&mut self)
 pub fn tungsten_core::input::InputState::cursor_delta(&self) -> (f32, f32)
 pub fn tungsten_core::input::InputState::cursor_position(&self) -> core::option::Option<(f32, f32)>
 pub fn tungsten_core::input::InputState::end_fixed_step(&mut self)
+pub fn tungsten_core::input::InputState::focused(&self) -> bool
 pub fn tungsten_core::input::InputState::is_mouse_pressed(&self, tungsten_core::input::MouseButton) -> bool
 pub fn tungsten_core::input::InputState::is_pressed(&self, tungsten_core::input::KeyCode) -> bool
 pub fn tungsten_core::input::InputState::is_scroll_active(&self, tungsten_core::input::ScrollDirection) -> bool
@@ -5098,16 +5199,23 @@ pub fn tungsten_core::input::InputState::just_pressed(&self, tungsten_core::inpu
 pub fn tungsten_core::input::InputState::just_released(&self, tungsten_core::input::KeyCode) -> bool
 pub fn tungsten_core::input::InputState::key_down(&mut self, tungsten_core::input::KeyCode)
 pub fn tungsten_core::input::InputState::key_up(&mut self, tungsten_core::input::KeyCode)
+pub fn tungsten_core::input::InputState::modifiers(&self) -> tungsten_core::input::Modifiers
 pub fn tungsten_core::input::InputState::mouse_down(&mut self, tungsten_core::input::MouseButton)
 pub fn tungsten_core::input::InputState::mouse_just_pressed(&self, tungsten_core::input::MouseButton) -> bool
 pub fn tungsten_core::input::InputState::mouse_just_released(&self, tungsten_core::input::MouseButton) -> bool
 pub fn tungsten_core::input::InputState::mouse_up(&mut self, tungsten_core::input::MouseButton)
 pub fn tungsten_core::input::InputState::new() -> Self
+pub fn tungsten_core::input::InputState::pointer_in_window(&self) -> bool
+pub fn tungsten_core::input::InputState::pointer_left(&mut self)
+pub fn tungsten_core::input::InputState::raw_events(&self) -> &[tungsten_core::input::RawEvent]
 pub fn tungsten_core::input::InputState::scroll_just_pressed(&self, tungsten_core::input::ScrollDirection) -> bool
 pub fn tungsten_core::input::InputState::scroll_just_released(&self, tungsten_core::input::ScrollDirection) -> bool
 pub fn tungsten_core::input::InputState::scroll_line_delta(&self) -> (f32, f32)
 pub fn tungsten_core::input::InputState::scroll_pixel_delta(&self) -> (f32, f32)
 pub fn tungsten_core::input::InputState::set_fixed_view(&mut self, bool)
+pub fn tungsten_core::input::InputState::set_focused(&mut self, bool)
+pub fn tungsten_core::input::InputState::set_modifiers(&mut self, tungsten_core::input::Modifiers)
+pub fn tungsten_core::input::InputState::suppress_until_release(&mut self, tungsten_core::input::KeyCode)
 pub fn tungsten_core::input::InputState::update_cursor_position(&mut self, f32, f32)
 impl core::clone::Clone for tungsten_core::input::InputState
 pub fn tungsten_core::input::InputState::clone(&self) -> tungsten_core::input::InputState
@@ -5122,6 +5230,57 @@ impl core::marker::Unpin for tungsten_core::input::InputState
 impl core::marker::UnsafeUnpin for tungsten_core::input::InputState
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::InputState
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::InputState
+pub struct tungsten_core::input::Modifiers
+impl tungsten_core::input::Modifiers
+pub const tungsten_core::input::Modifiers::ALT: Self
+pub const tungsten_core::input::Modifiers::CONTROL: Self
+pub const tungsten_core::input::Modifiers::SHIFT: Self
+pub const tungsten_core::input::Modifiers::SUPER: Self
+pub const fn tungsten_core::input::Modifiers::alt(self) -> bool
+pub const fn tungsten_core::input::Modifiers::contains(self, Self) -> bool
+pub const fn tungsten_core::input::Modifiers::control(self) -> bool
+pub const fn tungsten_core::input::Modifiers::empty() -> Self
+pub const fn tungsten_core::input::Modifiers::shift(self) -> bool
+pub const fn tungsten_core::input::Modifiers::super_key(self) -> bool
+pub const fn tungsten_core::input::Modifiers::union(self, Self) -> Self
+impl core::clone::Clone for tungsten_core::input::Modifiers
+pub fn tungsten_core::input::Modifiers::clone(&self) -> tungsten_core::input::Modifiers
+impl core::cmp::Eq for tungsten_core::input::Modifiers
+impl core::cmp::PartialEq for tungsten_core::input::Modifiers
+pub fn tungsten_core::input::Modifiers::eq(&self, &tungsten_core::input::Modifiers) -> bool
+impl core::default::Default for tungsten_core::input::Modifiers
+pub fn tungsten_core::input::Modifiers::default() -> tungsten_core::input::Modifiers
+impl core::fmt::Debug for tungsten_core::input::Modifiers
+pub fn tungsten_core::input::Modifiers::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::input::Modifiers
+pub fn tungsten_core::input::Modifiers::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::input::Modifiers
+impl core::marker::StructuralPartialEq for tungsten_core::input::Modifiers
+impl core::marker::Freeze for tungsten_core::input::Modifiers
+impl core::marker::Send for tungsten_core::input::Modifiers
+impl core::marker::Sync for tungsten_core::input::Modifiers
+impl core::marker::Unpin for tungsten_core::input::Modifiers
+impl core::marker::UnsafeUnpin for tungsten_core::input::Modifiers
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::Modifiers
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::Modifiers
+#[non_exhaustive] pub struct tungsten_core::input::RawEvent
+pub tungsten_core::input::RawEvent::input: tungsten_core::input::RawInput
+pub tungsten_core::input::RawEvent::seq: u64
+impl core::clone::Clone for tungsten_core::input::RawEvent
+pub fn tungsten_core::input::RawEvent::clone(&self) -> tungsten_core::input::RawEvent
+impl core::cmp::PartialEq for tungsten_core::input::RawEvent
+pub fn tungsten_core::input::RawEvent::eq(&self, &tungsten_core::input::RawEvent) -> bool
+impl core::fmt::Debug for tungsten_core::input::RawEvent
+pub fn tungsten_core::input::RawEvent::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::input::RawEvent
+impl core::marker::StructuralPartialEq for tungsten_core::input::RawEvent
+impl core::marker::Freeze for tungsten_core::input::RawEvent
+impl core::marker::Send for tungsten_core::input::RawEvent
+impl core::marker::Sync for tungsten_core::input::RawEvent
+impl core::marker::Unpin for tungsten_core::input::RawEvent
+impl core::marker::UnsafeUnpin for tungsten_core::input::RawEvent
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::RawEvent
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::RawEvent
 pub mod tungsten_core::inspect
 pub struct tungsten_core::inspect::InspectRegistry
 impl tungsten_core::inspect::InspectRegistry
@@ -9503,6 +9662,8 @@ impl core::marker::UnsafeUnpin for tungsten_core::tween::IntSlot
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::tween::IntSlot
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::tween::IntSlot
 pub enum tungsten_core::KeyCode
+pub tungsten_core::KeyCode::AltLeft
+pub tungsten_core::KeyCode::AltRight
 pub tungsten_core::KeyCode::ArrowDown
 pub tungsten_core::KeyCode::ArrowLeft
 pub tungsten_core::KeyCode::ArrowRight
@@ -9510,28 +9671,43 @@ pub tungsten_core::KeyCode::ArrowUp
 pub tungsten_core::KeyCode::Backspace
 pub tungsten_core::KeyCode::BracketLeft
 pub tungsten_core::KeyCode::BracketRight
+pub tungsten_core::KeyCode::ControlLeft
+pub tungsten_core::KeyCode::ControlRight
+pub tungsten_core::KeyCode::Delete
 pub tungsten_core::KeyCode::Digit0
 pub tungsten_core::KeyCode::Digit1
 pub tungsten_core::KeyCode::Digit2
 pub tungsten_core::KeyCode::Digit3
+pub tungsten_core::KeyCode::Digit4
 pub tungsten_core::KeyCode::Digit5
 pub tungsten_core::KeyCode::Digit6
 pub tungsten_core::KeyCode::Digit7
 pub tungsten_core::KeyCode::Digit8
+pub tungsten_core::KeyCode::Digit9
+pub tungsten_core::KeyCode::End
 pub tungsten_core::KeyCode::Enter
 pub tungsten_core::KeyCode::Equal
 pub tungsten_core::KeyCode::Escape
 pub tungsten_core::KeyCode::F1
+pub tungsten_core::KeyCode::F10
 pub tungsten_core::KeyCode::F11
+pub tungsten_core::KeyCode::F12
 pub tungsten_core::KeyCode::F2
 pub tungsten_core::KeyCode::F3
 pub tungsten_core::KeyCode::F4
+pub tungsten_core::KeyCode::F5
+pub tungsten_core::KeyCode::F6
+pub tungsten_core::KeyCode::F7
+pub tungsten_core::KeyCode::F8
 pub tungsten_core::KeyCode::F9
+pub tungsten_core::KeyCode::Home
 pub tungsten_core::KeyCode::KeyA
 pub tungsten_core::KeyCode::KeyB
 pub tungsten_core::KeyCode::KeyC
 pub tungsten_core::KeyCode::KeyD
+pub tungsten_core::KeyCode::KeyE
 pub tungsten_core::KeyCode::KeyF
+pub tungsten_core::KeyCode::KeyG
 pub tungsten_core::KeyCode::KeyH
 pub tungsten_core::KeyCode::KeyI
 pub tungsten_core::KeyCode::KeyJ
@@ -9539,16 +9715,27 @@ pub tungsten_core::KeyCode::KeyK
 pub tungsten_core::KeyCode::KeyL
 pub tungsten_core::KeyCode::KeyM
 pub tungsten_core::KeyCode::KeyN
+pub tungsten_core::KeyCode::KeyO
 pub tungsten_core::KeyCode::KeyP
+pub tungsten_core::KeyCode::KeyQ
 pub tungsten_core::KeyCode::KeyR
 pub tungsten_core::KeyCode::KeyS
+pub tungsten_core::KeyCode::KeyT
 pub tungsten_core::KeyCode::KeyU
 pub tungsten_core::KeyCode::KeyV
 pub tungsten_core::KeyCode::KeyW
+pub tungsten_core::KeyCode::KeyX
 pub tungsten_core::KeyCode::KeyY
+pub tungsten_core::KeyCode::KeyZ
 pub tungsten_core::KeyCode::Minus
 pub tungsten_core::KeyCode::Other(u32)
+pub tungsten_core::KeyCode::PageDown
+pub tungsten_core::KeyCode::PageUp
+pub tungsten_core::KeyCode::ShiftLeft
+pub tungsten_core::KeyCode::ShiftRight
 pub tungsten_core::KeyCode::Space
+pub tungsten_core::KeyCode::SuperLeft
+pub tungsten_core::KeyCode::SuperRight
 pub tungsten_core::KeyCode::Tab
 impl core::clone::Clone for tungsten_core::input::KeyCode
 pub fn tungsten_core::input::KeyCode::clone(&self) -> tungsten_core::input::KeyCode
@@ -9839,6 +10026,38 @@ impl core::marker::Unpin for tungsten_core::post::PostPass
 impl core::marker::UnsafeUnpin for tungsten_core::post::PostPass
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::post::PostPass
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::post::PostPass
+#[non_exhaustive] pub enum tungsten_core::RawInput
+pub tungsten_core::RawInput::Focus(bool)
+#[non_exhaustive] pub tungsten_core::RawInput::Key
+pub tungsten_core::RawInput::Key::code: tungsten_core::input::KeyCode
+pub tungsten_core::RawInput::Key::modifiers: tungsten_core::input::Modifiers
+pub tungsten_core::RawInput::Key::pressed: bool
+pub tungsten_core::RawInput::Key::repeat: bool
+pub tungsten_core::RawInput::Modifiers(tungsten_core::input::Modifiers)
+#[non_exhaustive] pub tungsten_core::RawInput::MouseButton
+pub tungsten_core::RawInput::MouseButton::button: tungsten_core::input::MouseButton
+pub tungsten_core::RawInput::MouseButton::pressed: bool
+pub tungsten_core::RawInput::PointerLeft
+#[non_exhaustive] pub tungsten_core::RawInput::PointerMoved
+pub tungsten_core::RawInput::PointerMoved::x: f32
+pub tungsten_core::RawInput::PointerMoved::y: f32
+#[non_exhaustive] pub tungsten_core::RawInput::Wheel
+pub tungsten_core::RawInput::Wheel::delta: tungsten_core::input::WheelDelta
+impl core::clone::Clone for tungsten_core::input::RawInput
+pub fn tungsten_core::input::RawInput::clone(&self) -> tungsten_core::input::RawInput
+impl core::cmp::PartialEq for tungsten_core::input::RawInput
+pub fn tungsten_core::input::RawInput::eq(&self, &tungsten_core::input::RawInput) -> bool
+impl core::fmt::Debug for tungsten_core::input::RawInput
+pub fn tungsten_core::input::RawInput::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::input::RawInput
+impl core::marker::StructuralPartialEq for tungsten_core::input::RawInput
+impl core::marker::Freeze for tungsten_core::input::RawInput
+impl core::marker::Send for tungsten_core::input::RawInput
+impl core::marker::Sync for tungsten_core::input::RawInput
+impl core::marker::Unpin for tungsten_core::input::RawInput
+impl core::marker::UnsafeUnpin for tungsten_core::input::RawInput
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::RawInput
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::RawInput
 pub enum tungsten_core::ScalarSlot
 pub tungsten_core::ScalarSlot::F0
 pub tungsten_core::ScalarSlot::F1
@@ -10430,6 +10649,24 @@ impl core::marker::Unpin for tungsten_core::tween::Vec4Slot
 impl core::marker::UnsafeUnpin for tungsten_core::tween::Vec4Slot
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::tween::Vec4Slot
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::tween::Vec4Slot
+pub enum tungsten_core::WheelDelta
+pub tungsten_core::WheelDelta::Lines(f32, f32)
+pub tungsten_core::WheelDelta::Pixels(f32, f32)
+impl core::clone::Clone for tungsten_core::input::WheelDelta
+pub fn tungsten_core::input::WheelDelta::clone(&self) -> tungsten_core::input::WheelDelta
+impl core::cmp::PartialEq for tungsten_core::input::WheelDelta
+pub fn tungsten_core::input::WheelDelta::eq(&self, &tungsten_core::input::WheelDelta) -> bool
+impl core::fmt::Debug for tungsten_core::input::WheelDelta
+pub fn tungsten_core::input::WheelDelta::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::input::WheelDelta
+impl core::marker::StructuralPartialEq for tungsten_core::input::WheelDelta
+impl core::marker::Freeze for tungsten_core::input::WheelDelta
+impl core::marker::Send for tungsten_core::input::WheelDelta
+impl core::marker::Sync for tungsten_core::input::WheelDelta
+impl core::marker::Unpin for tungsten_core::input::WheelDelta
+impl core::marker::UnsafeUnpin for tungsten_core::input::WheelDelta
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::WheelDelta
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::WheelDelta
 pub struct tungsten_core::Aabb
 pub tungsten_core::Aabb::center: glam::f32::vec2::Vec2
 pub tungsten_core::Aabb::half_extents: glam::f32::vec2::Vec2
@@ -11429,6 +11666,7 @@ pub fn tungsten_core::input::InputState::begin_frame(&mut self)
 pub fn tungsten_core::input::InputState::cursor_delta(&self) -> (f32, f32)
 pub fn tungsten_core::input::InputState::cursor_position(&self) -> core::option::Option<(f32, f32)>
 pub fn tungsten_core::input::InputState::end_fixed_step(&mut self)
+pub fn tungsten_core::input::InputState::focused(&self) -> bool
 pub fn tungsten_core::input::InputState::is_mouse_pressed(&self, tungsten_core::input::MouseButton) -> bool
 pub fn tungsten_core::input::InputState::is_pressed(&self, tungsten_core::input::KeyCode) -> bool
 pub fn tungsten_core::input::InputState::is_scroll_active(&self, tungsten_core::input::ScrollDirection) -> bool
@@ -11436,16 +11674,23 @@ pub fn tungsten_core::input::InputState::just_pressed(&self, tungsten_core::inpu
 pub fn tungsten_core::input::InputState::just_released(&self, tungsten_core::input::KeyCode) -> bool
 pub fn tungsten_core::input::InputState::key_down(&mut self, tungsten_core::input::KeyCode)
 pub fn tungsten_core::input::InputState::key_up(&mut self, tungsten_core::input::KeyCode)
+pub fn tungsten_core::input::InputState::modifiers(&self) -> tungsten_core::input::Modifiers
 pub fn tungsten_core::input::InputState::mouse_down(&mut self, tungsten_core::input::MouseButton)
 pub fn tungsten_core::input::InputState::mouse_just_pressed(&self, tungsten_core::input::MouseButton) -> bool
 pub fn tungsten_core::input::InputState::mouse_just_released(&self, tungsten_core::input::MouseButton) -> bool
 pub fn tungsten_core::input::InputState::mouse_up(&mut self, tungsten_core::input::MouseButton)
 pub fn tungsten_core::input::InputState::new() -> Self
+pub fn tungsten_core::input::InputState::pointer_in_window(&self) -> bool
+pub fn tungsten_core::input::InputState::pointer_left(&mut self)
+pub fn tungsten_core::input::InputState::raw_events(&self) -> &[tungsten_core::input::RawEvent]
 pub fn tungsten_core::input::InputState::scroll_just_pressed(&self, tungsten_core::input::ScrollDirection) -> bool
 pub fn tungsten_core::input::InputState::scroll_just_released(&self, tungsten_core::input::ScrollDirection) -> bool
 pub fn tungsten_core::input::InputState::scroll_line_delta(&self) -> (f32, f32)
 pub fn tungsten_core::input::InputState::scroll_pixel_delta(&self) -> (f32, f32)
 pub fn tungsten_core::input::InputState::set_fixed_view(&mut self, bool)
+pub fn tungsten_core::input::InputState::set_focused(&mut self, bool)
+pub fn tungsten_core::input::InputState::set_modifiers(&mut self, tungsten_core::input::Modifiers)
+pub fn tungsten_core::input::InputState::suppress_until_release(&mut self, tungsten_core::input::KeyCode)
 pub fn tungsten_core::input::InputState::update_cursor_position(&mut self, f32, f32)
 impl core::clone::Clone for tungsten_core::input::InputState
 pub fn tungsten_core::input::InputState::clone(&self) -> tungsten_core::input::InputState
@@ -11625,6 +11870,39 @@ impl core::marker::Unpin for tungsten_core::components::MeshParticle
 impl core::marker::UnsafeUnpin for tungsten_core::components::MeshParticle
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::components::MeshParticle
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::components::MeshParticle
+pub struct tungsten_core::Modifiers
+impl tungsten_core::input::Modifiers
+pub const tungsten_core::input::Modifiers::ALT: Self
+pub const tungsten_core::input::Modifiers::CONTROL: Self
+pub const tungsten_core::input::Modifiers::SHIFT: Self
+pub const tungsten_core::input::Modifiers::SUPER: Self
+pub const fn tungsten_core::input::Modifiers::alt(self) -> bool
+pub const fn tungsten_core::input::Modifiers::contains(self, Self) -> bool
+pub const fn tungsten_core::input::Modifiers::control(self) -> bool
+pub const fn tungsten_core::input::Modifiers::empty() -> Self
+pub const fn tungsten_core::input::Modifiers::shift(self) -> bool
+pub const fn tungsten_core::input::Modifiers::super_key(self) -> bool
+pub const fn tungsten_core::input::Modifiers::union(self, Self) -> Self
+impl core::clone::Clone for tungsten_core::input::Modifiers
+pub fn tungsten_core::input::Modifiers::clone(&self) -> tungsten_core::input::Modifiers
+impl core::cmp::Eq for tungsten_core::input::Modifiers
+impl core::cmp::PartialEq for tungsten_core::input::Modifiers
+pub fn tungsten_core::input::Modifiers::eq(&self, &tungsten_core::input::Modifiers) -> bool
+impl core::default::Default for tungsten_core::input::Modifiers
+pub fn tungsten_core::input::Modifiers::default() -> tungsten_core::input::Modifiers
+impl core::fmt::Debug for tungsten_core::input::Modifiers
+pub fn tungsten_core::input::Modifiers::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::input::Modifiers
+pub fn tungsten_core::input::Modifiers::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::input::Modifiers
+impl core::marker::StructuralPartialEq for tungsten_core::input::Modifiers
+impl core::marker::Freeze for tungsten_core::input::Modifiers
+impl core::marker::Send for tungsten_core::input::Modifiers
+impl core::marker::Sync for tungsten_core::input::Modifiers
+impl core::marker::Unpin for tungsten_core::input::Modifiers
+impl core::marker::UnsafeUnpin for tungsten_core::input::Modifiers
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::Modifiers
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::Modifiers
 pub struct tungsten_core::OptionalColumn<I>(pub core::option::Option<I>)
 impl<I: core::iter::traits::iterator::Iterator> core::iter::traits::iterator::Iterator for tungsten_core::ecs::query::OptionalColumn<I>
 pub type tungsten_core::ecs::query::OptionalColumn<I>::Item = core::option::Option<<I as core::iter::traits::iterator::Iterator>::Item>
@@ -12099,6 +12377,24 @@ impl core::marker::Unpin for tungsten_core::assets::particle::Range
 impl core::marker::UnsafeUnpin for tungsten_core::assets::particle::Range
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::particle::Range
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::particle::Range
+#[non_exhaustive] pub struct tungsten_core::RawEvent
+pub tungsten_core::RawEvent::input: tungsten_core::input::RawInput
+pub tungsten_core::RawEvent::seq: u64
+impl core::clone::Clone for tungsten_core::input::RawEvent
+pub fn tungsten_core::input::RawEvent::clone(&self) -> tungsten_core::input::RawEvent
+impl core::cmp::PartialEq for tungsten_core::input::RawEvent
+pub fn tungsten_core::input::RawEvent::eq(&self, &tungsten_core::input::RawEvent) -> bool
+impl core::fmt::Debug for tungsten_core::input::RawEvent
+pub fn tungsten_core::input::RawEvent::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::input::RawEvent
+impl core::marker::StructuralPartialEq for tungsten_core::input::RawEvent
+impl core::marker::Freeze for tungsten_core::input::RawEvent
+impl core::marker::Send for tungsten_core::input::RawEvent
+impl core::marker::Sync for tungsten_core::input::RawEvent
+impl core::marker::Unpin for tungsten_core::input::RawEvent
+impl core::marker::UnsafeUnpin for tungsten_core::input::RawEvent
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::RawEvent
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::RawEvent
 pub struct tungsten_core::RenderConfig
 pub tungsten_core::RenderConfig::bloom_max_mips: u32
 pub tungsten_core::RenderConfig::clear_color: [f64; 4]
@@ -12315,6 +12611,28 @@ impl core::marker::Unpin for tungsten_core::physics::components::RigidBodyBundle
 impl core::marker::UnsafeUnpin for tungsten_core::physics::components::RigidBodyBundle
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::components::RigidBodyBundle
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::components::RigidBodyBundle
+pub struct tungsten_core::ScaleFactor
+impl tungsten_core::display::ScaleFactor
+pub fn tungsten_core::display::ScaleFactor::get(&self) -> f32
+pub fn tungsten_core::display::ScaleFactor::os(&self) -> f32
+pub fn tungsten_core::display::ScaleFactor::set_os(&mut self, f32)
+impl core::clone::Clone for tungsten_core::display::ScaleFactor
+pub fn tungsten_core::display::ScaleFactor::clone(&self) -> tungsten_core::display::ScaleFactor
+impl core::cmp::PartialEq for tungsten_core::display::ScaleFactor
+pub fn tungsten_core::display::ScaleFactor::eq(&self, &tungsten_core::display::ScaleFactor) -> bool
+impl core::default::Default for tungsten_core::display::ScaleFactor
+pub fn tungsten_core::display::ScaleFactor::default() -> Self
+impl core::fmt::Debug for tungsten_core::display::ScaleFactor
+pub fn tungsten_core::display::ScaleFactor::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::display::ScaleFactor
+impl core::marker::StructuralPartialEq for tungsten_core::display::ScaleFactor
+impl core::marker::Freeze for tungsten_core::display::ScaleFactor
+impl core::marker::Send for tungsten_core::display::ScaleFactor
+impl core::marker::Sync for tungsten_core::display::ScaleFactor
+impl core::marker::Unpin for tungsten_core::display::ScaleFactor
+impl core::marker::UnsafeUnpin for tungsten_core::display::ScaleFactor
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::display::ScaleFactor
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::display::ScaleFactor
 pub struct tungsten_core::SceneData
 pub tungsten_core::SceneData::entities: alloc::vec::Vec<tungsten_core::assets::scene::SceneEntry>
 impl tungsten_core::assets::scene::SceneData

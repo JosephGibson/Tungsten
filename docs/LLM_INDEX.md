@@ -18,6 +18,7 @@ Task → file map. Open it before a broad search; read only the matching row's f
 | Logs, user folder, crash reports, `TUNGSTEN_USER_DIR`, `TUNGSTEN_TEST_PANIC` (`D-119`) | `tungsten/logging.rs`, `tungsten/user_dir.rs`, `tungsten/crash.rs`, `tungsten/app.rs`, `tools/crash-probe/` |
 | Display apply, fullscreen, vsync, frame cap (`D-043`) | `tungsten/display.rs`, `core/display.rs` |
 | Input actions, `input.json`, rebind reload (`D-045`) | `core/input/action_map.rs`, `core/input/key_serde.rs`, `tungsten/asset_loader/reload.rs`, `tungsten/debug_hud.rs`, `tungsten/display.rs`, `input.json` |
+| Input state, raw input stream, focus loss, modifiers, pointer leave, `ScaleFactor`, the winit bridge (`D-144`) | `core/input.rs`, `core/display.rs`, `tungsten/input_bridge.rs`, `tungsten/app.rs`, `core/tests/input.rs`, `tungsten/tests/input_bridge.rs` |
 | Camera follow/zoom/bounds/shake (`D-073`) | `core/camera.rs`, `tungsten/camera.rs`, `examples/01_platformer/src/setup.rs`, `examples/01_platformer/src/systems.rs` |
 | State stack, scene spawn, `SceneEntity` cleanup, screen transitions (`D-046`, `D-093`) | `tungsten/state.rs`, `tungsten/transition.rs`, `core/assets/scene.rs`, `tungsten/asset_loader/scene.rs`, `examples/03_scene_state/src/states.rs` |
 | Tweens (`D-054`–`D-056`) | `core/tween.rs`, `tungsten/tweens.rs`, `core/assets/scene.rs` |
@@ -53,7 +54,7 @@ Read `crates/tungsten-render/AGENTS.md` before editing the render crate.
 | Task | Open |
 | --- | --- |
 | Renderer, pools, draw, GPU timings, surface acquire | `render/lib.rs`, `render/renderer.rs`, `render/timing.rs`, `render/surface_acquire.rs` |
-| Pass order, direct present path (`D-087`) | `render/passes/order.rs`, `render/renderer.rs`, `render/screenshot.rs` |
+| Pass order, direct present path, late acquire (`D-087`, `D-145`) | `render/passes/order.rs`, `render/renderer.rs`, `render/surface_acquire.rs`, `render/screenshot.rs` |
 | Text engine and GPU halves, layout cache, retained nodes, font families and fallback (`D-085`, `D-115`–`D-117`, `D-123`) | `render/text.rs`, `render/text/engine.rs`, `render/text/nodes.rs`, `render/text/fonts.rs`, `render/text/gpu.rs`, `tungsten/asset_loader/mod.rs`, `tungsten/engine_font.rs` |
 | Neutral text types, `TextMeasure`, `TextNodeStore` (`D-117`, `D-125`) | `core/text.rs` |
 | UI tree, style, layout, focus, hit testing (`D-124`, `D-125`) | `core/ui/`, `core/text.rs`, `tungsten/testing/ui.rs`, `core/tests/ui/` |

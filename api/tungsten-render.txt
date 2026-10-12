@@ -669,6 +669,7 @@ impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::renderer::Render
 pub struct tungsten_render::renderer::CpuFrameTimings
 pub tungsten_render::renderer::CpuFrameTimings::acquire_ms: f32
 pub tungsten_render::renderer::CpuFrameTimings::encode_ms: f32
+pub tungsten_render::renderer::CpuFrameTimings::encode_pre_acquire_ms: f32
 pub tungsten_render::renderer::CpuFrameTimings::submit_present_ms: f32
 impl core::clone::Clone for tungsten_render::timing::CpuFrameTimings
 pub fn tungsten_render::timing::CpuFrameTimings::clone(&self) -> tungsten_render::timing::CpuFrameTimings
@@ -1149,6 +1150,7 @@ pub mod tungsten_render::timing
 pub struct tungsten_render::timing::CpuFrameTimings
 pub tungsten_render::timing::CpuFrameTimings::acquire_ms: f32
 pub tungsten_render::timing::CpuFrameTimings::encode_ms: f32
+pub tungsten_render::timing::CpuFrameTimings::encode_pre_acquire_ms: f32
 pub tungsten_render::timing::CpuFrameTimings::submit_present_ms: f32
 impl core::clone::Clone for tungsten_render::timing::CpuFrameTimings
 pub fn tungsten_render::timing::CpuFrameTimings::clone(&self) -> tungsten_render::timing::CpuFrameTimings
@@ -1318,6 +1320,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_render::targets::TargetId
 pub struct tungsten_render::CpuFrameTimings
 pub tungsten_render::CpuFrameTimings::acquire_ms: f32
 pub tungsten_render::CpuFrameTimings::encode_ms: f32
+pub tungsten_render::CpuFrameTimings::encode_pre_acquire_ms: f32
 pub tungsten_render::CpuFrameTimings::submit_present_ms: f32
 impl core::clone::Clone for tungsten_render::timing::CpuFrameTimings
 pub fn tungsten_render::timing::CpuFrameTimings::clone(&self) -> tungsten_render::timing::CpuFrameTimings

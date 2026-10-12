@@ -218,3 +218,28 @@ fn a_valid_section_collects_nothing() {
     assert_eq!(config.frame_rate_cap, Some(144));
     assert!(warnings.is_empty(), "{warnings:?}");
 }
+
+#[test]
+fn scale_factor_defaults_to_one() {
+    let scale = ScaleFactor::default();
+    assert_eq!(scale.os(), 1.0);
+    assert_eq!(scale.get(), 1.0);
+}
+
+#[test]
+fn scale_factor_set_os_sets_both_readings() {
+    let mut scale = ScaleFactor::default();
+    scale.set_os(1.5);
+    assert_eq!(scale.os(), 1.5);
+    assert_eq!(scale.get(), 1.5, "no UI scale yet, so get is the OS scale");
+}
+
+#[test]
+fn scale_factor_ignores_values_that_are_not_finite_and_positive() {
+    let mut scale = ScaleFactor::default();
+    scale.set_os(2.0);
+    for bad in [0.0, -0.0, -1.25, f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+        scale.set_os(bad);
+        assert_eq!(scale.os(), 2.0, "{bad} is ignored");
+    }
+}

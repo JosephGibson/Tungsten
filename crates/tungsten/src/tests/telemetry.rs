@@ -7,6 +7,7 @@ fn default_is_zero() {
     assert_eq!(ft.render_ms, 0.0);
     assert_eq!(ft.render_acquire_ms, 0.0);
     assert_eq!(ft.render_encode_ms, 0.0);
+    assert_eq!(ft.render_encode_pre_acquire_ms, 0.0);
     assert_eq!(ft.render_submit_present_ms, 0.0);
     assert_eq!(ft.flush_ms, 0.0);
     assert!(ft.interval_ms.is_none());

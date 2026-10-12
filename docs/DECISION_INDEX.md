@@ -62,6 +62,7 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-123` | Game-local config/assets, engine font, template outside-copy check and canonical input reload path. Amends `D-008`, `D-013`, `D-045`. |
 | `D-126` | 1.0 glyph path: shared atlas, batch renderers, deferred trim (T1b); owned path/R3 deferred. Extends `D-026`. |
 | `D-127` | Logical UI layout, physical text rasterization, hinting off; scene scaling deferred to 1.x. |
+| `D-145` | W2 R2 late acquire: passes before the swapchain stage record and submit before the acquire; a resize inside it records them again; `render_encode` stays whole, `render_encode_pre_acquire` its part before. |
 
 ## Dependencies / Tooling
 
@@ -165,6 +166,7 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-139` | Zero-step frames hold bounded events for fixed readers; HUD counts step contacts. Amends `D-040`, `D-137`. |
 | `D-142` | Render frames return presented/skipped or a failed frame; one-frame captures report their result; `App::run` returns the render failure, else the capture error. Amends `D-047`. |
 | `D-143` | Burst `once: false` re-arms through `rearm_burst` and never drains; the latch is `burst_fired`; zero total pulses emit nothing and fail `validate`. |
+| `D-144` | W1 M0b input groundwork: 28 more key variants, an ordered per-frame raw input stream in `InputState`, focus loss releasing held input, modifiers, pointer leave and the `ScaleFactor` resource. |
 
 ## When To Open a Decision
 
