@@ -24,6 +24,10 @@
 //! pass: its instance list becomes the batch. A sprite's interned asset ID
 //! indexes the registry directly, with no hashing or string compare.
 //!
+//! A sprite ID with no loaded asset, or a lit sprite carrying a material, logs
+//! a warning once per ID for as long as [`ExtractScratch`] lives (every
+//! `App`); the flags and the log sit in a cold helper outside the row loop.
+//!
 //! `D-114`: a sprite drawn by the stock sprite or lit pipeline whose bound lies
 //! wholly outside the camera's view writes no instance. The view is the one
 //! render projects with: the surface size the app passes through
@@ -42,7 +46,7 @@ use std::collections::HashMap;
 use std::hash::Hasher;
 
 use glam::{BVec2, Vec2};
-use tungsten_core::assets::TextureHandle;
+use tungsten_core::assets::{SpriteAssetId, TextureHandle};
 use tungsten_core::tween::UniformOverrideBlock;
 use tungsten_core::{
     AssetRegistry, CameraState, Entity, FilterMode, MaterialAssetId, OptionalColumn, ParallaxLayer,
@@ -150,6 +154,77 @@ impl InstancePool {
     }
 }
 
+/// Sprite IDs a warning has named, one bit per [`SpriteAssetId`] index.
+#[derive(Default)]
+pub(crate) struct WarnedIds(Vec<u64>);
+
+impl WarnedIds {
+    /// Marks `id`; true the first time.
+    fn first(&mut self, id: SpriteAssetId) -> bool {
+        let index = id.index() as usize;
+        let (word, bit) = (index / 64, 1u64 << (index % 64));
+        if word >= self.0.len() {
+            self.0.resize(word + 1, 0);
+        }
+        let first = self.0[word] & bit == 0;
+        self.0[word] |= bit;
+        first
+    }
+
+    #[cfg(test)]
+    fn contains(&self, id: SpriteAssetId) -> bool {
+        let index = id.index() as usize;
+        self.0
+            .get(index / 64)
+            .is_some_and(|word| word & (1u64 << (index % 64)) != 0)
+    }
+}
+
+/// What the default extract warns about, once per sprite ID.
+#[derive(Clone, Copy)]
+enum SpriteWarning {
+    /// The ID names no loaded sprite, so the sprite draws nothing.
+    NoAsset,
+    /// A lit sprite carries this material; lit wins and the material is not
+    /// bound (`D-061`).
+    LitMaterial(Option<MaterialAssetId>),
+}
+
+/// Logs `warning` about sprite `id` the first time these buffers meet it.
+/// Cold and out of line: the row loop keeps only the branch tests that lead
+/// here.
+#[cold]
+#[inline(never)]
+fn warn_once(
+    buffers: &mut SpriteWarnings,
+    assets: &AssetRegistry,
+    id: SpriteAssetId,
+    warning: SpriteWarning,
+) {
+    let name = assets.sprite_name(id).unwrap_or("?");
+    match warning {
+        SpriteWarning::NoAsset => {
+            if buffers.no_asset.first(id) {
+                log::warn!("sprite '{name}' has no loaded asset; it draws nothing");
+            }
+        }
+        SpriteWarning::LitMaterial(material) => {
+            if buffers.lit_material.first(id) {
+                log::warn!(
+                    "lit sprite '{name}' carries material_id {material:?}; lit wins (material UBO not bound)"
+                );
+            }
+        }
+    }
+}
+
+/// The sprite IDs each warning of the default extract has named.
+#[derive(Default)]
+pub(crate) struct SpriteWarnings {
+    no_asset: WarnedIds,
+    lit_material: WarnedIds,
+}
+
 /// Buffers of the default sprite extract and the tilemap extract.
 #[derive(Default)]
 pub(crate) struct ExtractBuffers {
@@ -170,6 +245,8 @@ pub(crate) struct ExtractBuffers {
     pub(crate) pool: InstancePool,
     /// The last frame's emptied batch list.
     batch_list: Vec<SpriteBatch>,
+    /// Sprite IDs already warned about, so each warning comes once.
+    warnings: SpriteWarnings,
 }
 
 /// World resource that lets [`extract_sprites_default`] and the tilemap
@@ -273,6 +350,7 @@ fn extract_into(
         sprite_batch_lens,
         pool,
         batch_list,
+        warnings,
         ..
     } = buffers;
     let camera_position = world
@@ -322,21 +400,20 @@ fn extract_into(
                 return;
             }
             let Some(asset) = assets.sprite(s.asset_id) else {
+                warn_once(warnings, assets, s.asset_id, SpriteWarning::NoAsset);
                 return;
             };
 
             let override_hash = override_block.map(override_key);
             // M29: lit wins over material when both are present. The collision
-            // is intentionally a non-goal in M29 (`D-061`); warn so debug logs
-            // surface the conflict rather than silently dropping the material.
+            // is intentionally a non-goal in M29 (`D-061`); warn once per
+            // sprite ID so debug logs surface the conflict rather than
+            // silently dropping the material.
             let lit = asset.lit_atlas.is_some();
             let effective_material = if lit { None } else { s.material_id };
             if lit && s.material_id.is_some() {
-                log::warn!(
-                    "lit sprite '{}' carries material_id {:?}; lit wins (material UBO not bound)",
-                    assets.sprite_name(s.asset_id).unwrap_or("?"),
-                    s.material_id
-                );
+                let warning = SpriteWarning::LitMaterial(s.material_id);
+                warn_once(warnings, assets, s.asset_id, warning);
             }
             let key: BatchKey = (
                 asset.atlas.0,

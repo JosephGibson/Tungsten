@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 
 use crate::asset_loader;
 use crate::audio::AudioSystem;
+use crate::capture::{Capture, parse_capture_config};
 use crate::crash::{self, CrashContext};
 use crate::debug_hud::{DebugHud, HudActiveState, compose_hud_text_sections};
 use crate::display::{
@@ -39,9 +40,10 @@ use tungsten_core::{
     InputState, InspectRegistry, Inspectable, ParticleActive, ParticleBudget, Plugin, PluginSet,
     Schedule, Stage, SystemDesc, Time, TimeConfig, World, WorldRngSeed, system,
 };
+use tungsten_render::renderer::RenderError;
 use tungsten_render::{
-    DebugLineInstance, GpuFrameTimings, MeshParticleBatch, QuadInstance, Renderer, SpriteBatch,
-    TextSection,
+    DebugLineInstance, GpuFrameTimings, MeshParticleBatch, QuadInstance, RenderOutcome, Renderer,
+    SpriteBatch, TextSection,
 };
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseScrollDelta, WindowEvent};
@@ -108,26 +110,20 @@ pub struct App {
     redraw_deadline: Option<Instant>,
     // Start of the previous redraw; the `interval` telemetry measures from it.
     prev_frame_start: Option<Instant>,
-    capture_config: Option<CaptureConfig>,
+    /// The one-frame PNG capture `TUNGSTEN_CAPTURE_FRAME` asks for (`D-142`).
+    capture: Option<Capture>,
     /// With no audio device, the audio stage appends a frame's commands here
     /// when set, instead of dropping them: the commands that frame would have
     /// played. Only a headless caller sets it.
     pub(crate) audio_capture: Option<Vec<AudioCommand>>,
+    /// Frames that reached render, presented or skipped; the capture's frame
+    /// numbers count them (`D-142`).
     frames_rendered: u64,
+    /// The setup or render failure that ended the run; [`App::run`] returns it.
     fatal_error: Option<anyhow::Error>,
     // M31: the user's post stack plus the transition pass, rebuilt on each
     // frame a screen transition draws; kept to reuse its allocation.
     transition_post_stack: PostStack,
-}
-
-#[derive(Debug, Clone)]
-struct CaptureConfig {
-    target_frame: u64,
-    path: PathBuf,
-    /// `TUNGSTEN_CAPTURE_DIRECT=1`: capture what the direct present path
-    /// draws, not the blit path's source (`D-087`).
-    direct: bool,
-    captured: bool,
 }
 
 impl App {
@@ -263,7 +259,7 @@ impl App {
             frame_budget: frame_budget_for(resolved_display.frame_rate_cap),
             redraw_deadline: None,
             prev_frame_start: None,
-            capture_config: parse_capture_config(),
+            capture: parse_capture_config().map(Capture::new),
             audio_capture: None,
             frames_rendered: 0,
             fatal_error: None,
@@ -424,8 +420,12 @@ impl App {
     ///
     /// # Errors
     ///
-    /// The event loop's, logged first, or the fatal error that ended the
-    /// run, logged where it arose.
+    /// The event loop's, logged first. Otherwise the fatal error that ended
+    /// the run, logged where it arose: a setup failure (window, renderer,
+    /// manifests) or a failed frame, whose render error names the frame
+    /// (`D-142`). Otherwise the capture error, logged once, when the frame
+    /// `TUNGSTEN_CAPTURE_FRAME` names wrote no file: its readback, encode or
+    /// write failed, it was skipped, or the run ended before it.
     pub fn run(mut self) -> anyhow::Result<()> {
         self.resolve_schedule()
             .inspect_err(|err| log::error!("{err}"))?;
@@ -435,10 +435,20 @@ impl App {
         event_loop
             .run_app(&mut self)
             .inspect_err(|err| log::error!("Event loop failed: {err}"))?;
-        if let Some(error) = self.fatal_error {
-            return Err(error);
+        match self.take_run_error() {
+            Some(error) => Err(error),
+            None => Ok(()),
         }
-        Ok(())
+    }
+
+    /// The error a finished run returns (`D-142`): the fatal error, else the
+    /// capture's. A capture whose frame never came records its error here.
+    fn take_run_error(&mut self) -> Option<anyhow::Error> {
+        let capture_error = self
+            .capture
+            .as_mut()
+            .and_then(|capture| capture.finish(self.frames_rendered));
+        self.fatal_error.take().or(capture_error)
     }
 
     /// Start the watcher `enable_hot_reload` asked for: its directories, plus
@@ -763,6 +773,9 @@ pub(crate) enum FrameEnd {
     Completed,
     /// `engine_exit` was just pressed; the stages after update did not run.
     ExitRequested,
+    /// Every stage ran, but the render failed: the run's fatal error holds
+    /// why, and the window loop exits (`D-142`).
+    RenderFailed,
 }
 
 // Extract output kept in umbrella crate; renderer stays World-free.
@@ -1082,10 +1095,13 @@ impl App {
         }
     }
 
+    /// Renders the frame and books its result (`D-142`); the [`FrameEnd`] is
+    /// how the frame will end, `RenderFailed` on a failed render.
     #[inline(always)]
-    fn stage_render(&mut self, extract: &FrameExtract) -> FrameRenderOut {
+    fn stage_render(&mut self, extract: &FrameExtract) -> (FrameRenderOut, FrameEnd) {
         let render_start = Instant::now();
         let mut out = FrameRenderOut::default();
+        let mut result = None;
         if let Some(renderer) = &mut self.renderer {
             let (vw, vh) = {
                 let cfg = &renderer.surface_config;
@@ -1098,17 +1114,18 @@ impl App {
                 .unwrap_or_default()
                 .view_projection(vw, vh);
 
-            // Arm before target render; mark captured after successful submit.
-            if let Some(cfg) = self.capture_config.as_mut()
-                && !cfg.captured
-                && self.frames_rendered + 1 == cfg.target_frame
-                && let Err(e) = if cfg.direct {
-                    renderer.capture_frame_direct(&cfg.path)
-                } else {
-                    renderer.capture_frame(&cfg.path)
-                }
+            // The capture is armed for its frame alone; a skipped or failed
+            // frame drops it, and the outcome carries its result.
+            if let Some(cfg) = self
+                .capture
+                .as_ref()
+                .and_then(|capture| capture.armed_for(self.frames_rendered + 1))
             {
-                log::warn!("capture_frame({}) failed to arm: {e}", cfg.path.display());
+                if cfg.direct {
+                    renderer.capture_frame_direct(&cfg.path);
+                } else {
+                    renderer.capture_frame(&cfg.path);
+                }
             }
 
             // M26: PostStack is a world resource; default is empty.
@@ -1133,7 +1150,7 @@ impl App {
             // the previous frame's draws.
             renderer.update_mesh_particles(&extract.mesh_particles);
 
-            let result = if self.gpu_timing_enabled {
+            result = Some(if self.gpu_timing_enabled {
                 renderer.render_frame_full_timed(
                     &view_proj,
                     &extract.quads,
@@ -1153,23 +1170,7 @@ impl App {
                     &extract.text,
                     post_stack,
                 )
-            };
-            if let Err(e) = result {
-                log::error!("Render error: {e}");
-            } else {
-                self.frames_rendered = self.frames_rendered.saturating_add(1);
-                if let Some(cfg) = self.capture_config.as_mut()
-                    && !cfg.captured
-                    && self.frames_rendered == cfg.target_frame
-                {
-                    cfg.captured = true;
-                    log::info!(
-                        "captured frame {} -> {}",
-                        cfg.target_frame,
-                        cfg.path.display()
-                    );
-                }
-            }
+            });
             out.render_acquire_ms = renderer.cpu_timings.acquire_ms;
             out.render_encode_ms = renderer.cpu_timings.encode_ms;
             out.render_submit_present_ms = renderer.cpu_timings.submit_present_ms;
@@ -1178,8 +1179,36 @@ impl App {
                 *gpu = renderer.gpu_timings.clone();
             }
         }
+        let end = result.map_or(FrameEnd::Completed, |result| self.settle_render(result));
         out.render_ms = render_start.elapsed().as_secs_f64() as f32 * 1000.0;
-        out
+        (out, end)
+    }
+
+    /// Books the render result of the frame after `frames_rendered`
+    /// (`D-142`). A presented or skipped frame counts, and settles the
+    /// capture when it is the capture's frame. A failed frame is the run's
+    /// fatal error, naming the frame and logged once, and ends
+    /// `RenderFailed`.
+    fn settle_render(&mut self, result: Result<RenderOutcome, RenderError>) -> FrameEnd {
+        let frame = self.frames_rendered + 1;
+        match result {
+            Ok(outcome) => {
+                self.frames_rendered = frame;
+                if let Some(capture) = &mut self.capture {
+                    capture.frame_rendered(frame, outcome);
+                }
+                FrameEnd::Completed
+            }
+            Err(error) => {
+                if self.fatal_error.is_none() {
+                    let error = anyhow::Error::new(error)
+                        .context(format!("render failed at frame {frame}"));
+                    log::error!("{error:#}");
+                    self.fatal_error = Some(error);
+                }
+                FrameEnd::RenderFailed
+            }
+        }
     }
 
     /// Hands the drawn frame's sprite batches back to the extract scratch:
@@ -1263,7 +1292,7 @@ impl App {
         let mut extract_out = self.stage_extract(prev_total_ms);
         let extract_ms = extract_out.extract_ms;
 
-        let render_out = self.stage_render(&extract_out);
+        let (render_out, end) = self.stage_render(&extract_out);
         inspect(&extract_out);
         self.stage_recycle(&mut extract_out);
 
@@ -1326,7 +1355,7 @@ impl App {
             }
         }
 
-        FrameEnd::Completed
+        end
     }
 
     #[inline(always)]
@@ -1619,23 +1648,6 @@ fn parse_capture_resolution() -> Option<(u32, u32)> {
     Some((w, h))
 }
 
-/// Parse one-shot capture env vars.
-fn parse_capture_config() -> Option<CaptureConfig> {
-    let target_frame: u64 = std::env::var("TUNGSTEN_CAPTURE_FRAME").ok()?.parse().ok()?;
-    if target_frame == 0 {
-        return None;
-    }
-    let path = std::env::var("TUNGSTEN_CAPTURE_PATH")
-        .map_or_else(|_| PathBuf::from("actual.png"), PathBuf::from);
-    let direct = std::env::var("TUNGSTEN_CAPTURE_DIRECT").is_ok_and(|value| value == "1");
-    Some(CaptureConfig {
-        target_frame,
-        path,
-        direct,
-        captured: false,
-    })
-}
-
 /// Expand AABB outline into interior edge quads.
 fn expand_aabb(
     out: &mut Vec<QuadInstance>,
@@ -1909,10 +1921,14 @@ impl ApplicationHandler for App {
             }
             WindowEvent::RedrawRequested => {
                 let frame_start = Instant::now();
-                if self.run_frame(frame_start, FrameClock::Wall, |_| {}) == FrameEnd::ExitRequested
-                {
-                    event_loop.exit();
-                    return;
+                match self.run_frame(frame_start, FrameClock::Wall, |_| {}) {
+                    FrameEnd::Completed => {}
+                    // A failed render ends the run at once; `App::run`
+                    // returns its error.
+                    FrameEnd::ExitRequested | FrameEnd::RenderFailed => {
+                        event_loop.exit();
+                        return;
+                    }
                 }
 
                 self.stage_pacing(event_loop, frame_start);

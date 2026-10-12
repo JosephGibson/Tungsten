@@ -3361,6 +3361,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::components::Part
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::components::ParticleEmitter
 pub struct tungsten_core::components::ParticleEmitterState
 pub tungsten_core::components::ParticleEmitterState::active_count: u32
+pub tungsten_core::components::ParticleEmitterState::burst_fired: bool
 pub tungsten_core::components::ParticleEmitterState::config_snapshot: core::option::Option<alloc::sync::Arc<tungsten_core::assets::particle::ParticleConfig>>
 pub tungsten_core::components::ParticleEmitterState::continuous_accum: f32
 pub tungsten_core::components::ParticleEmitterState::drain_reported: bool
@@ -3370,6 +3371,8 @@ pub tungsten_core::components::ParticleEmitterState::first_tick_done: bool
 pub tungsten_core::components::ParticleEmitterState::pulse_timer: f32
 pub tungsten_core::components::ParticleEmitterState::pulses_fired: u32
 pub tungsten_core::components::ParticleEmitterState::rng: tungsten_core::rng::Pcg32
+impl tungsten_core::components::ParticleEmitterState
+pub fn tungsten_core::components::ParticleEmitterState::rearm_burst(&mut self)
 impl core::clone::Clone for tungsten_core::components::ParticleEmitterState
 pub fn tungsten_core::components::ParticleEmitterState::clone(&self) -> tungsten_core::components::ParticleEmitterState
 impl core::default::Default for tungsten_core::components::ParticleEmitterState
@@ -11784,6 +11787,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::components::Part
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::components::ParticleEmitter
 pub struct tungsten_core::ParticleEmitterState
 pub tungsten_core::ParticleEmitterState::active_count: u32
+pub tungsten_core::ParticleEmitterState::burst_fired: bool
 pub tungsten_core::ParticleEmitterState::config_snapshot: core::option::Option<alloc::sync::Arc<tungsten_core::assets::particle::ParticleConfig>>
 pub tungsten_core::ParticleEmitterState::continuous_accum: f32
 pub tungsten_core::ParticleEmitterState::drain_reported: bool
@@ -11793,6 +11797,8 @@ pub tungsten_core::ParticleEmitterState::first_tick_done: bool
 pub tungsten_core::ParticleEmitterState::pulse_timer: f32
 pub tungsten_core::ParticleEmitterState::pulses_fired: u32
 pub tungsten_core::ParticleEmitterState::rng: tungsten_core::rng::Pcg32
+impl tungsten_core::components::ParticleEmitterState
+pub fn tungsten_core::components::ParticleEmitterState::rearm_burst(&mut self)
 impl core::clone::Clone for tungsten_core::components::ParticleEmitterState
 pub fn tungsten_core::components::ParticleEmitterState::clone(&self) -> tungsten_core::components::ParticleEmitterState
 impl core::default::Default for tungsten_core::components::ParticleEmitterState

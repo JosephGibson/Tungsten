@@ -38,7 +38,7 @@ pub use post::smaa::{
     SmaaPipeline, SmaaPreset, SmaaPresetUbo, SmaaShaderIds,
 };
 pub use quad::QuadInstance;
-pub use renderer::{CpuFrameTimings, GpuFrameTimings, Renderer};
+pub use renderer::{CpuFrameTimings, GpuFrameTimings, RenderOutcome, Renderer};
 pub use screenshot::ScreenshotError;
 pub use shader_hot_reload::{ShaderError, ShaderModuleCache, validate_wgsl_source};
 pub use sprite::{SpriteBatch, SpriteInstance, SpritePipeline};

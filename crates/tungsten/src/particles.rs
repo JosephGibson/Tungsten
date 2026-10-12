@@ -322,11 +322,11 @@ fn plan_emission(
 
     match cfg.emission {
         EmissionKind::Burst { count, once } => {
-            // One-shot latch: `continuous_accum` 0 = pending, 1 = fired.
-            if state.continuous_accum >= 1.0 {
+            // Fired until `rearm_burst`; a `once` burst drains (`D-143`).
+            if state.burst_fired {
                 return (0, true);
             }
-            state.continuous_accum = 1.0;
+            state.burst_fired = true;
             if once {
                 state.drained = true;
             }
@@ -343,6 +343,11 @@ fn plan_emission(
             interval_sec,
             total_pulses,
         } => {
+            // Zero pulses: nothing to fire, so drain at once (`D-143`).
+            if total_pulses == Some(0) {
+                state.drained = true;
+                return (0, true);
+            }
             state.pulse_timer += dt;
             // At most one pulse per tick; overflow waits.
             if state.pulse_timer < interval_sec {

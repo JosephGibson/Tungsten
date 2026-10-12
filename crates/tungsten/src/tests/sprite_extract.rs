@@ -1444,3 +1444,99 @@ fn without_a_viewport_or_a_camera_nothing_is_culled() {
         "no camera"
     );
 }
+
+/// Spawns a visible sprite of `id` at the origin, with `material`.
+fn spawn_with_material(
+    world: &mut World,
+    id: SpriteAssetId,
+    material: Option<MaterialAssetId>,
+) -> Entity {
+    let e = world.spawn();
+    world.insert(e, Transform::default());
+    world.insert(
+        e,
+        Sprite {
+            material_id: material,
+            ..Sprite::new(id)
+        },
+    );
+    world.insert(e, Visibility::default());
+    e
+}
+
+/// Runs three extracts through `world`'s scratch, each checked against the
+/// reference extract, and reports after each which warnings had named `id`:
+/// `(no asset, lit with a material)`.
+fn warned_over_three_extracts(world: &mut World, id: SpriteAssetId) -> Vec<(bool, bool)> {
+    world.insert_resource(ExtractScratch::default());
+    let expected = reference_extract(world);
+    (0..3)
+        .map(|frame| {
+            let batches = extract_sprites_default(world);
+            assert_same_batches(&batches, &expected, &format!("frame {frame}"));
+            let scratch = world.get_resource::<ExtractScratch>().unwrap();
+            let warned = {
+                let warnings = &scratch.0.borrow().warnings;
+                (
+                    warnings.no_asset.contains(id),
+                    warnings.lit_material.contains(id),
+                )
+            };
+            scratch.recycle(batches);
+            warned
+        })
+        .collect()
+}
+
+#[test]
+fn an_unknown_id_is_flagged_on_its_first_extract_and_draws_what_the_reference_draws() {
+    let mut world = golden_world(4, 300);
+    let ghost = intern(&mut world, "ghost");
+    spawn_with_material(&mut world, ghost, None);
+    spawn_with_material(&mut world, ghost, None);
+    let page0 = intern(&mut world, "page0_a");
+
+    let ghost_warned = warned_over_three_extracts(&mut world, ghost);
+    assert_eq!(ghost_warned, vec![(true, false); 3]);
+    let scratch = world.get_resource::<ExtractScratch>().unwrap();
+    let warnings = &scratch.0.borrow().warnings;
+    assert!(
+        !warnings.no_asset.contains(page0),
+        "a loaded ID never warns"
+    );
+}
+
+#[test]
+fn a_lit_sprite_with_a_material_is_flagged_on_its_first_extract_and_draws_what_the_reference_draws()
+{
+    let mut world = golden_world(6, 300);
+    register_lit_sprite(&mut world, "lit_glow");
+    let lit_glow = intern(&mut world, "lit_glow");
+    spawn_with_material(&mut world, lit_glow, Some(MaterialAssetId(1)));
+    let page1 = intern(&mut world, "page1");
+    spawn_with_material(&mut world, page1, Some(MaterialAssetId(1)));
+
+    let lit_warned = warned_over_three_extracts(&mut world, lit_glow);
+    assert_eq!(lit_warned, vec![(false, true); 3]);
+    let scratch = world.get_resource::<ExtractScratch>().unwrap();
+    let warnings = &scratch.0.borrow().warnings;
+    assert!(
+        !warnings.lit_material.contains(page1),
+        "an unlit sprite's material is its own"
+    );
+}
+
+#[test]
+fn warned_ids_mark_each_id_once() {
+    let mut warned = WarnedIds::default();
+    let (low, high) = (SpriteAssetId::new(3), SpriteAssetId::new(130));
+    assert!(
+        warned.first(high),
+        "first sight of a high ID grows the bits"
+    );
+    assert!(warned.first(low));
+    assert!(!warned.first(high));
+    assert!(!warned.first(low));
+    assert!(warned.contains(low) && warned.contains(high));
+    assert!(!warned.contains(SpriteAssetId::new(4)));
+}

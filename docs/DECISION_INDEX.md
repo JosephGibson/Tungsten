@@ -126,7 +126,7 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-044` | Off-by-default umbrella telemetry HUD. Narrowed by `D-078`: suite measures overhead; input toggles follow `D-045`. |
 | `D-045` | Core action names/bindings with watcher reload. Amended by `D-123`: game-local canonical input path. |
 | `D-046` | Engine dispatcher, state stack and scene-owned entity cleanup; scenes reuse render components. |
-| `D-047` | Core debug data, independent overlays and offscreen screenshot readback; GPU labels/groups always on. |
+| `D-047` | Core debug data, independent overlays and offscreen screenshot readback; GPU labels/groups always on. Amended by `D-142`: one-frame captures whose result comes back. |
 | `D-049` | In-tree PCG32 + SplitMix64; no RNG dependency. |
 | `D-050` | Emitters and live particles retain Arc config snapshots across reload. |
 | `D-051` | Entity per particle; deferred despawn and explicit budgets. Amended by `D-093`: mesh particles. |
@@ -163,6 +163,8 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-137` | W3b landed: bounded fixed loop, input/event step views and interpolation. Amends `D-040`. Amended by `D-139`: zero-step holds. |
 | `D-138` | W15c landed: additive extracts, tiles before sprites, explicit replace preserved, lit tiles (`D-061`). Amends `D-042`. |
 | `D-139` | Zero-step frames hold bounded events for fixed readers; HUD counts step contacts. Amends `D-040`, `D-137`. |
+| `D-142` | Render frames return presented/skipped or a failed frame; one-frame captures report their result; `App::run` returns the render failure, else the capture error. Amends `D-047`. |
+| `D-143` | Burst `once: false` re-arms through `rearm_burst` and never drains; the latch is `burst_fired`; zero total pulses emit nothing and fail `validate`. |
 
 ## When To Open a Decision
 

@@ -12,11 +12,11 @@ Skeleton. The scoping text stays in [criteria](criteria.md) §2.1 and §8.1 unti
 ## Placement
 
 - **Proposed tier:** Must.
-- **Candidates:** W8a, the capture-completion contract and the engine-finding bugs, the burst latch among them (Phase 5, Track A; amendment 10); W8b, the shader ID allocator, queued transitions and the remaining P3s, inside the Phase 6 QA pass (amendment 18). The Phase 5 QA pass, after Track C, audits what Phase 5 changed.
+- **Candidates:** W8a, the capture-completion contract and the engine-finding bugs, the burst latch among them (Phase 5, Track A; amendment 10); W8b, the shader ID allocator, queued transitions and the remaining P3s, inside the Phase 6 QA pass (amendment 18); since M43 also the tiles at the far plane and the default extract's per-class order under `gpu_depth`, which skipped M43's step 3 (known issues). The Phase 5 QA pass, after Track C, audits what Phase 5 changed.
 - **Needs first:** Nothing.
 - **Feeds:** W1 M2's direct-versus-capture check; W4's break ledger (the render result type, `App::run` returning runtime errors); W14b `check` (the once-per-ID warning for an unknown sprite).
 - **Owner questions:** None.
-- **Decisions:** None listed yet; the render result type is a break ([break ledger](w04-api-freeze.md#break-ledger)).
+- **Decisions:** Written at W8a (M43, 0.61): the render result, one-frame captures and `App::run` returning the render failure (`D-142`, amends `D-047`; a break in the [break ledger](w04-api-freeze.md#break-ledger)), and burst and pulse semantics (`D-143`). The far-plane tiles' decision waits for W8b.
 
 ## Context digest
 

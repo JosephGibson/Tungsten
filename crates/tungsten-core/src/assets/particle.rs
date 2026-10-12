@@ -121,7 +121,11 @@ fn default_blend() -> BlendMode {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum EmissionKind {
-    /// Emit `count` particles.
+    /// Emit `count` particles on the emitter's first tick (`D-143`). With
+    /// `once` (the default) the emitter then drains, and
+    /// `ParticleSystemDrained` comes once its particles are gone. Without it
+    /// the burst never drains and fires again on the first tick after each
+    /// `ParticleEmitterState::rearm_burst`.
     Burst {
         count: u32,
         #[serde(default = "default_true")]
@@ -129,7 +133,10 @@ pub enum EmissionKind {
     },
     /// Sustained particles per second.
     Continuous { rate_hz: f32 },
-    /// Repeating burst.
+    /// Repeating burst: `count_per_pulse` every `interval_sec`, at most one
+    /// pulse a tick, until `total_pulses` have fired, or forever without it.
+    /// `validate` rejects `total_pulses` 0; an emitter given it emits nothing
+    /// and drains on its first tick (`D-143`).
     Pulse {
         count_per_pulse: u32,
         interval_sec: f32,
@@ -356,10 +363,13 @@ impl ParticleConfig {
             EmissionKind::Pulse {
                 count_per_pulse,
                 interval_sec,
-                ..
+                total_pulses,
             } => {
                 if *count_per_pulse == 0 {
                     return Err("emission.pulse.count_per_pulse must be >= 1".into());
+                }
+                if *total_pulses == Some(0) {
+                    return Err("emission.pulse.total_pulses must be >= 1 when set".into());
                 }
                 if !interval_sec.is_finite() || *interval_sec <= 0.0 {
                     return Err("emission.pulse.interval_sec must be finite and > 0".into());
