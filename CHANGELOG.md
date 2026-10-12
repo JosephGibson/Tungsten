@@ -6,6 +6,29 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.61.0] - 2026-10-12
+
+Summary: Phase 5's twelfth milestone, M43 (W8a, plan archived at `docs/plans/archive/1.0/phase5-milestone-43-render-result-engine-bugs.md`), with the AI development workflow changes (`D-140`, `D-141`). Render results: each `render_frame*` call returns its frame's `RenderOutcome`, presented with the result of the capture armed for it or skipped, or the failed frame as `Err`; `TUNGSTEN_CAPTURE_FRAME` arms one frame, a capture that writes no file fails the run, and `App::run` returns the render failure, else the capture error (`D-142`). Burst `once: false` re-arms and zero pulses emit nothing (`D-143`); the default extract warns once per sprite ID. The far-plane tile step was skipped at its control and goes to W8b. The determinism and pinned containment hashes, the row digests and the pixel fixtures are unchanged. No new dependency, asset or manifest change.
+
+### Added
+
+- **`RenderOutcome`** (`D-142`, M43). `tungsten_render::RenderOutcome`, `#[non_exhaustive]`: `Presented { capture }`, where `capture` is the armed capture's result, the path written or the readback, encode or IO error; `Skipped` when the surface gave no texture (timeout, occluded, or still outdated after one reconfigure), which presents nothing and drops an armed capture unwritten.
+- **`ParticleEmitterState::burst_fired` and `rearm_burst()`** (`D-143`): the burst latch, which `continuous_accum` no longer doubles as, and the call that re-arms a `once: false` burst; it does nothing on a drained emitter.
+
+### Changed
+
+- **Render frames return their result** (`D-142`, amending `D-047`; the break ledger's row): `render_frame`, `render_frame_with_quads`, `render_frame_full` and `render_frame_full_timed` return `Result<RenderOutcome, RenderError>`, where `Err` is a failed frame, a surface lost again after its recreation or a failed recreation; `capture_frame` and `capture_frame_direct` return `()` and arm the next frame only. The 0.27.0 acquire policy is unchanged and now recorded. wgpu's fatal paths (a validation error at the acquire with no error scope, device loss inside a blocking poll) still panic into the crash hook (known issues).
+- **Captures and `App::run`** (`D-142`; `tungsten/capture.rs`): `TUNGSTEN_CAPTURE_FRAME=N` counts frames that reach render, presented or skipped, and arms frame N alone; a skipped frame N, a run that ends before it, or a readback, encode or IO failure is the run's capture error, logged once, and the run goes on. A failed render ends the loop at once. `App::run` returns the render failure, else the capture error, so a binary that returns `app.run()` exits non-zero; `captured frame N -> path` is logged only for a written file. Two visual tests check a capture past the last frame and an unwritable path.
+- **Burst and pulse semantics** (`D-143`; the break ledger's rows): `Burst { once: false }` fires again on the first tick after each `rearm_burst()` and never drains; `once: true` is unchanged. `Pulse { total_pulses: Some(0) }` emits nothing and drains, and `ParticleConfig::validate` rejects it. The bench's `particles` row calls `rearm_burst` on its old schedule, so its workload and digest stay.
+- **Once-per-ID extract warnings**: `extract_sprites_default` warns once per sprite ID, for as long as the app's extract scratch lives, for a sprite ID with no loaded asset (silent before) and for a lit sprite carrying a material (per sprite and frame before; lit still wins, `D-061`), from a cold helper outside the row loop. The shorter loop retires about 8.6% fewer instructions in `gpu-throughput`'s extract.
+- **Perf** (M43 step 5): every owned metric of every CPU row reads not `regressed` on both direct pairs and the aligned pair, or on its row's `--repeat 10` rerun (`gpu-throughput` `render_encode` p95), except `ecs` `bounds_wrap` p50, 0.315 → 0.368 ms on plain builds in its rerun, whose code is untouched and whose address moved to 48 mod 64; the aligned pair reads 0.316 → 0.316 ms, and it is accepted as code placement. Both A/A pairs read 0 regressed and 0 improved, digests 8 of 8, and the visual captures are byte-identical to the baseline's.
+- **Workflow audit follow-through** (`D-141`): reuse derived roadmap status in session guidance, consolidate authoring validation instructions, refuse known perf background load before building, enable shader-playground hot reload, accept renamed games in the template's config test, and remove the duplicate platformer smoke launch. Existing capture validity and hardware gates remain.
+- **AI development workflow, approved proposals 1–3** (`D-140`): repair commit/status/profiling guidance, check owned roadmap fields and active-document links, shorten navigation/current snapshots, scale maintenance planning to scope, and centralize validation with a read-only path/Git check selector; regressions and byte measurements are recorded in [the execution record](docs/plans/ai-development-workflow.md#approved-subset-execution). Proposals 4–9 remain unapproved.
+
+### Fixed
+
+- **CI's owned-field check** (`scripts/check-repo.py`): `just repo-check` compared the roadmap's First open stop and Stop state, which `roadmap.py` derives from tags and `origin/main`, in CI's shallow checkout, which has neither, so the CPU checks job failed since the `D-140` change. Without an unshallowed `origin/main` it now compares only Workspace and Next milestone and notes the skip.
+
 ## [0.60.0] - 2026-10-08
 
 Summary: a feature release with no plan, mostly example 01: hold F to freeze iron, then shatter it with fireballs or hard iron impacts into tumbling metal scraps. Heavier bricks crush more marbles, fireball blasts push farther with richer effects, and fatal falls open the animated death screen. The engine gains `KeyCode::KeyF`; no decision or dependency change.

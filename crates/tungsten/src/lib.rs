@@ -4,6 +4,7 @@ pub mod app;
 pub mod asset_loader;
 pub mod audio;
 pub mod camera;
+mod capture;
 mod crash;
 pub mod debug_hud;
 mod display;

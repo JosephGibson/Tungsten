@@ -9,38 +9,19 @@ Native Rust 2D game engine: `winit` + `wgpu` + `glam` + hand-rolled ECS + manife
 ## Reading
 
 - Start here, then open only the files the task touches. [`docs/LLM_INDEX.md`](docs/LLM_INDEX.md) maps tasks to files; open it before a broad search.
-- Rationale: [`docs/DECISION_INDEX.md`](docs/DECISION_INDEX.md), then `rg -n 'D-0NN' DECISIONS.md`. Never read `DECISIONS.md`, `DESIGN.md` or `CHANGELOG.md` whole: `rg -n '^#' <file>`, then read one section.
+- Rationale: matching rows in [`docs/DECISION_INDEX.md`](docs/DECISION_INDEX.md), then `rg -n 'D-0NN' DECISIONS.md`. Never read `DECISIONS.md`, `DESIGN.md` or `CHANGELOG.md` whole: `rg -n '^#' <file>`, then read one section.
 - **Never read, search or glob `docs/plans/archive/`** (completed or abandoned plans). `.ignore` filters it; never bypass that with `rg -uu`.
 - [Doc map](docs/README.md): canonical sources. Plans follow [`docs/plans/README.md`](docs/plans/README.md); client setup is in [`docs/agent-setup.md`](docs/agent-setup.md).
 
 ## Commands
 
-From the repo root; examples need a GPU and display. `just` recipes wrap the raw commands (`just --list`).
-
-```bash
-just check                  # fmt-check, clippy -D warnings, tests
-just smoke                  # layer 2 (GPU): scripts/smoke-examples.sh
-just visual                 # pixel test, reference machine only
-just perf suite --repeat 5  # see docs/perf/profiling-workflow.md
-just deps                   # cargo deny: advisories, licenses, sources
-just ctx                    # instruction budgets and links
-cargo run -p example-NN-name
-```
-
-Finish substantial work with `just check`. Wrong backend: `WGPU_BACKEND=vulkan|metal|dx12`.
+Run from the repo root. `just --list` lists wrappers for the raw commands; [validation](docs/validation.md) selects them. Examples use `cargo run -p example-NN-name` and need a GPU/display. Wrong backend: `WGPU_BACKEND=vulkan|metal|dx12`.
 
 ## Tests
 
-- **Layer 1:** `crates/tungsten-core/tests/manifests.rs` loads every `manifest.json`; part of `cargo test`.
-- **Layer 2:** smoke runs each example for `TUNGSTEN_SMOKE_FRAMES=3` plus render fixture matrices. GPU, Linux only; elsewhere run examples with that variable.
-- **Visual:** `TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p example-02-bench --test visual_regression`; without the variable it skips the pixel comparison.
+[Validation](docs/validation.md) owns the detailed change-to-check matrix and targeted edit-loop commands. `just checks [PATH…]` prints recommendations; with no paths it reads Git changes including untracked files (`--base REF` includes committed work). It runs no checks. Finish substantial work with `just check`; milestone and release requirements still apply.
 
-| Change touches | Run |
-| --- | --- |
-| Manifests, assets, core/render seam | layer 1 |
-| Engine or example wiring | layer 2 |
-| Scripts or perf tooling | `just script-test` |
-| Dependency bump, clean checkout, anything non-trivial | both |
+GPU smoke and pixel comparisons stay local. A CPU test run without `TUNGSTEN_VISUAL_REGRESSION=1` skips pixel comparisons; report them as not run.
 
 ## Where code goes
 
@@ -62,19 +43,19 @@ Asset files are listed in a `manifest.json` and named by registry ID. [`docs/ass
 - No global mutable state (`static mut`, `lazy_static`); state lives in `World` or is passed explicitly.
 - No new third-party runtime dependency without a `DECISIONS.md` entry citing its `D-015` rule.
 - No hardcoded asset paths in game code except explicit scene loading (`D-046`).
-- No scope creep: finish the task, open a new one for the rest.
+- No scope creep: finish the task, open a new one for the rest. Leave work uncommitted (`D-105`); Git publication stays with the human.
 
 ## Conventions
 
-- `rustfmt` defaults. `UpperCamelCase` types, `snake_case` functions, `SCREAMING_SNAKE` constants.
+- `rustfmt` defaults and Rust naming conventions.
 - Doc comments where a public name isn't self-evident; unit tests in `#[cfg(test)] mod tests`.
 - `thiserror` at library boundaries, `anyhow` at app/example top level; `log` for logging (`println!` in examples only).
 - `unwrap`/`expect` are fine while exploring; tighten once a module stabilizes.
 
 ## Sessions
 
-- **Feature:** plan first (files, API shape, tests).
-- **Audit:** read the full crate surface, report findings only unless the user requests fixes. Check decisions before calling a choice wrong.
+- **Feature:** plan first (files, API shape, tests). Bounded maintenance records scope, affected files and acceptance checks in the session; multi-session work keeps a saved handoff plan (`D-140`, [routes](docs/plans/README.md#choosing-a-route)). Milestone/API review requirements stand.
+- **Audit:** crate correctness audits read the full named crate surface; scoped workflow/documentation audits read the named docs and tools. Report findings only unless fixes are requested. Check decisions before calling a choice wrong.
 - **Docs:** read the whole doc before editing. Decisions are immutable: a reversal adds an entry and marks the old one `Superseded by D-NNN`. New decisions add their `docs/DECISION_INDEX.md` row in the same change (test-enforced). Releases follow [docs/releases.md](docs/releases.md); README stays version-free.
 - Don't change code you haven't read. Stuck: re-read scope, check decisions, or leave `// TODO: ask about X`.
 

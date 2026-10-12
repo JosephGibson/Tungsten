@@ -11,14 +11,17 @@ From the repository root:
 ```sh
 python3 -m pip install -r examples/01_platformer/tools/requirements.txt
 python3 examples/01_platformer/tools/generate.py
-python3 examples/01_platformer/tools/generate.py --check
-python3 -B -m unittest discover -s examples/01_platformer/tools -p 'test_*.py'
 just level-check
 cargo test -p example-01-platformer
-cargo test -p tungsten-core --test manifests
-just check
-just repo-check
-just smoke
+```
+
+This is the authoring edit loop. At handoff, use the canonical
+[validation matrix](../../../docs/validation.md#change-to-check-matrix), running
+each applicable check once for that stage. The generator and Rust tests cover
+different guarantees; keep both. For visible or audible changes, apply the
+content-specific acceptance below by running:
+
+```sh
 cargo run -p example-01-platformer
 TUNGSTEN_LIGHTING_FIXTURE=on cargo run -p example-01-platformer
 ```

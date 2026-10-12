@@ -102,6 +102,23 @@ fn config_rejects_negative_lifetime() {
 }
 
 #[test]
+fn config_rejects_zero_total_pulses() {
+    let src = r#"{
+        "sprite": "s",
+        "max_alive": 4,
+        "emission": { "kind": "pulse", "count_per_pulse": 2, "interval_sec": 0.1, "total_pulses": 0 },
+        "lifetime": { "min": 0.5, "max": 1.0 },
+        "initial_velocity": { "kind": "radial", "speed": { "min": 10.0, "max": 10.0 } }
+    }"#;
+    let cfg: ParticleConfig = serde_json::from_str(src).unwrap();
+    let err = cfg.validate().unwrap_err();
+    assert!(
+        err.contains("total_pulses"),
+        "expected total_pulses error, got: {err}"
+    );
+}
+
+#[test]
 fn world_rng_seed_is_deterministic_and_post_increments() {
     let mut a = WorldRngSeed::new(0);
     let mut b = WorldRngSeed::new(0);

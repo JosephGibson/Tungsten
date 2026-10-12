@@ -1,6 +1,18 @@
 # Session Plans
 
-Short-lived multi-step plans saved as `*.md`. A plan is the handoff artifact for a fresh assistant context, instead of long chat history; a typical restart prompt is `read docs/plans/… and implement; stay in scope`. For multi-step work, write the agreed plan here rather than leaving it only in chat.
+Short-lived multi-step plans saved as `*.md`. A plan is the handoff artifact for a fresh assistant context, instead of long chat history; a typical restart prompt is `read docs/plans/… and implement; stay in scope`. For work spanning sessions, write the agreed plan here rather than leaving it only in chat.
+
+## Choosing a route
+
+`D-140` scales planning to the change:
+
+- Bounded maintenance (a local bug fix, documentation correction or tooling repair) records scope/non-goals, affected files and acceptance commands in the session before editing. Use the [validation matrix](../validation.md) to select checks. A saved milestone plan or another approval round is unnecessary within the owner's authorized scope.
+- Multi-session work keeps a saved handoff plan with the headers below, ordered steps, stop conditions and evidence, so a fresh context can resume it. Promote maintenance to this route when its scope grows or a handoff is needed.
+- 1.0 milestone candidates and work whose deliverable is a new public API keep the [program workflow](1.0/workflow.md#2-session-types), milestone skill, critique, approval and level C API review where applicable. Calling that work maintenance cannot bypass review.
+
+Audit scope is separate: a crate correctness audit reads the full named crate surface; a scoped workflow/documentation audit reads its named documents/tools and reports within that scope. Both report findings unless fixes were requested.
+
+Commit, publication, capture provenance and hardware-check rules stand (`D-105`, `D-070`, `D-079`, `D-095`). All routes leave work uncommitted; no route cuts a release unless the owner requested one.
 
 ## Naming
 

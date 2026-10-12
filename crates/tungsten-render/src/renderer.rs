@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -23,7 +24,9 @@ use crate::post::smaa::{
 };
 use crate::post::{PostStackRenderer, STOCK_SHADERS};
 use crate::quad::{QuadInstance, QuadPipeline};
-use crate::screenshot::{PendingCapture, aligned_bytes_per_row, strip_row_padding};
+use crate::screenshot::{
+    PendingCapture, ScreenshotError, aligned_bytes_per_row, capture_for_frame, strip_row_padding,
+};
 use crate::shader_hot_reload::{ShaderError, ShaderModuleCache, build_validated};
 use crate::sprite::{SpriteBatch, SpritePipeline};
 use crate::surface::{present_mode_label, resolve_max_frame_latency, resolve_present_mode};
@@ -66,6 +69,26 @@ pub enum RenderError {
     Surface(String),
     #[error("shader error: {0}")]
     Shader(#[from] ShaderError),
+}
+
+/// What one `render_frame*` call did with its frame (`D-142`). A failed frame
+/// is the call's `Err(RenderError)`: a surface lost again right after its
+/// recreation, which device loss produces, or a failed recreation.
+#[must_use]
+#[non_exhaustive]
+#[derive(Debug)]
+pub enum RenderOutcome {
+    /// Drawn, submitted and presented. `capture` is the result of the capture
+    /// armed for this frame ([`Renderer::capture_frame`]): the path written,
+    /// or the readback, encode or IO error; `None` when none was armed.
+    Presented {
+        capture: Option<Result<PathBuf, ScreenshotError>>,
+    },
+    /// No surface texture (a timeout, an occluded window, or a surface still
+    /// outdated after one reconfigure): nothing was presented, and a capture
+    /// armed for this frame was dropped unwritten. Work recorded before the
+    /// acquire may have run.
+    Skipped,
 }
 
 /// Stable well-known id for the engine-internal sprite shader. Matches the
@@ -1086,7 +1109,10 @@ impl Renderer {
                         _ => None,
                     });
                 }
-                AcquireAction::Skip => return Ok(None),
+                AcquireAction::Skip => {
+                    log::debug!("frame skipped: surface acquire returned {status:?}");
+                    return Ok(None);
+                }
                 // Outdated and Lost carry no texture, so nothing is held while
                 // the surface is reconfigured or replaced.
                 AcquireAction::ReconfigureAndRetry => self.sync_surface_to_window(),
@@ -1144,12 +1170,15 @@ impl Renderer {
     }
 
     /// Clear-only frame.
-    pub fn render_frame(&mut self) -> Result<(), RenderError> {
+    pub fn render_frame(&mut self) -> Result<RenderOutcome, RenderError> {
         self.render_frame_with_quads(&[])
     }
 
     /// D-018 direct-data quad frame with default pixel ortho.
-    pub fn render_frame_with_quads(&mut self, quads: &[QuadInstance]) -> Result<(), RenderError> {
+    pub fn render_frame_with_quads(
+        &mut self,
+        quads: &[QuadInstance],
+    ) -> Result<RenderOutcome, RenderError> {
         let w = self.surface_config.width as f32;
         let h = self.surface_config.height as f32;
         let default_view_proj =
@@ -1159,6 +1188,12 @@ impl Renderer {
     }
 
     /// Render quads, sprites, debug primitives, and screen-space text.
+    ///
+    /// # Errors
+    ///
+    /// The failed frame: a surface lost again right after its recreation, or
+    /// a failed recreation (`D-142`). A skipped frame is
+    /// [`RenderOutcome::Skipped`], not an error.
     #[allow(clippy::too_many_arguments)]
     pub fn render_frame_full(
         &mut self,
@@ -1169,7 +1204,7 @@ impl Renderer {
         debug_lines: &[DebugLineInstance],
         text_sections: &[TextSection],
         post_stack: &PostStack,
-    ) -> Result<(), RenderError> {
+    ) -> Result<RenderOutcome, RenderError> {
         self.render_frame_internal(
             view_proj,
             quads,
@@ -1183,6 +1218,10 @@ impl Renderer {
     }
 
     /// Timed full frame; stalls on `device.poll(wait_indefinitely())`.
+    ///
+    /// # Errors
+    ///
+    /// As [`Renderer::render_frame_full`].
     #[allow(clippy::too_many_arguments)]
     pub fn render_frame_full_timed(
         &mut self,
@@ -1193,7 +1232,7 @@ impl Renderer {
         debug_lines: &[DebugLineInstance],
         text_sections: &[TextSection],
         post_stack: &PostStack,
-    ) -> Result<(), RenderError> {
+    ) -> Result<RenderOutcome, RenderError> {
         let timing = if self.timestamp_support {
             TimingResources::new(
                 &self.device,
@@ -1230,13 +1269,17 @@ impl Renderer {
         text_sections: &[TextSection],
         post_stack: &PostStack,
         mut timing: Option<TimingResources>,
-    ) -> Result<(), RenderError> {
+    ) -> Result<RenderOutcome, RenderError> {
         self.cpu_timings = CpuFrameTimings::default();
         self.gpu_timings.clear_durations();
 
         let acquire_start = Instant::now();
-        let Some((output, reconfigure_after)) = self.acquire_texture()? else {
-            return Ok(());
+        let acquired = self.acquire_texture();
+        // The capture armed for this frame is its alone: taken whatever the
+        // acquire gave, it survives only into a frame that presents.
+        let capture = capture_for_frame(&mut self.pending_capture, &acquired);
+        let Some((output, reconfigure_after)) = acquired? else {
+            return Ok(RenderOutcome::Skipped);
         };
         self.cpu_timings.acquire_ms = acquire_start.elapsed().as_secs_f64() as f32 * 1000.0;
 
@@ -1271,7 +1314,6 @@ impl Renderer {
         // the swapchain (`D-087`). A direct capture keeps the direct path and
         // renders it into a stand-in for the swapchain, which is read back
         // and then blitted to the real one.
-        let capture = self.pending_capture.take();
         let present_path = match &capture {
             Some(capture) if !capture.direct => PresentPath::Blit,
             _ => PresentPath::Direct,
@@ -1596,8 +1638,8 @@ impl Renderer {
         self.queue.submit(std::iter::once(finished));
         self.queue.present(output);
 
-        if let (Some(capture), Some(target)) = (capture, capture_target)
-            && let Err(e) = finalize_capture(
+        let capture = capture.zip(capture_target).map(|(capture, target)| {
+            finalize_capture(
                 &self.device,
                 &target,
                 self.surface_config.format,
@@ -1605,9 +1647,8 @@ impl Renderer {
                 h,
                 &capture.path,
             )
-        {
-            log::warn!("screenshot capture failed: {e}");
-        }
+            .map(|()| capture.path)
+        });
 
         self.text_pipeline.post_frame();
 
@@ -1623,7 +1664,7 @@ impl Renderer {
             self.reconfigure_after_suboptimal();
         }
 
-        Ok(())
+        Ok(RenderOutcome::Presented { capture })
     }
 }
 
@@ -1856,9 +1897,7 @@ pub(crate) fn finalize_capture(
     width: u32,
     height: u32,
     path: &std::path::Path,
-) -> Result<(), crate::screenshot::ScreenshotError> {
-    use crate::screenshot::ScreenshotError;
-
+) -> Result<(), ScreenshotError> {
     let slice = target.readback.slice(..);
     let (sender, receiver) = std::sync::mpsc::channel();
     slice.map_async(wgpu::MapMode::Read, move |result| {

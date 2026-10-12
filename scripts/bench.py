@@ -45,7 +45,8 @@ CLEARED_NAMES = ("TUNGSTEN_GPU_TIMING", "TUNGSTEN_OVERLAYS_ON", "TUNGSTEN_SMOKE_
 RSS_POLL_SECONDS = 0.1
 # Background load (D-095): the remote-desktop encoder anywhere, and builds
 # outside the runner's own process tree, which is how another session's work
-# shows. Scanned before, once a second during and once after a measured run.
+# shows. Checked before the build, then before, once a second during and once
+# after a measured run.
 ENCODER = "nxcodec.bin"
 BUILD_NAMES = ("cargo", "rustc")
 BACKGROUND_SCAN_SECONDS = 1.0
@@ -232,6 +233,16 @@ def background_offenders(processes, own_pid):
         return False
 
     return sorted({name for pid, _, name in processes if name == ENCODER or (name in BUILD_NAMES and not own(pid))})
+
+
+def preflight_background(allow_background):
+    """Refuse known background load before building or creating a capture."""
+    offenders = background_offenders(list_processes(), os.getpid())
+    if offenders and not allow_background:
+        raise BenchError(
+            f"background load: {', '.join(offenders)}; stop it before capturing "
+            "or use --allow-background for a diagnostic capture"
+        )
 
 
 # --- Child processes -------------------------------------------------------
@@ -618,6 +629,7 @@ def cmd_run(args):
     rustflags = perf_rustflags()
     if args.profile and args.call_graph == "fp" and not frame_pointers_enabled(rustflags):
         raise BenchError("--call-graph fp needs TUNGSTEN_PERF_RUSTFLAGS with -C force-frame-pointers=yes")
+    preflight_background(args.allow_background)
     provenance = collect_provenance(root)
     binary = build(root, rustflags)
     bench = find_bench(load_schema(binary, root), args.bench)
@@ -945,6 +957,7 @@ def cmd_suite(args, root=REPO_ROOT):
         if kind != "suite":
             raise BenchError(f"'{args.compare}' is a single capture; `suite --compare` needs a suite")
     rustflags = perf_rustflags()
+    preflight_background(args.allow_background)
     provenance = collect_provenance(root)
     binary = build(root, rustflags)
     plan = []
@@ -1439,7 +1452,7 @@ def parser():
     run.add_argument(
         "--compare", metavar="BASELINE", help="compare the new capture against a baseline name or capture directory; a suite gives its row"
     )
-    run.add_argument("--allow-background", action="store_true", help="background load during a measured run is a note, not invalid")
+    run.add_argument("--allow-background", action="store_true", help="allow known load at preflight; measured background load is a note, not invalid")
 
     suite = commands.add_parser("suite", help="capture every tracked row")
     suite.add_argument("--preset", help="replaces the preset of rows whose own preset is `default`; other rows keep theirs")
@@ -1447,7 +1460,7 @@ def parser():
     suite.add_argument("--only", metavar="ROWS", help="comma-separated row names")
     suite.add_argument("--repeat", type=positive_int, default=1)
     suite.add_argument("--compare", metavar="BASELINE", help="compare the suite against a baseline name or suite directory")
-    suite.add_argument("--allow-background", action="store_true", help="background load during a measured run is a note, not invalid")
+    suite.add_argument("--allow-background", action="store_true", help="allow known load at preflight; measured background load is a note, not invalid")
 
     compare = commands.add_parser("compare", help="compare two captures or two suites")
     compare.add_argument("baseline", help="baseline name, capture directory or suite directory")

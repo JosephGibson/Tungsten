@@ -19,8 +19,8 @@
 //! the default extract: `flush` belongs to `churn`, the extract to `gpu`,
 //! and both are reported only.
 //!
-//! The engine latches a burst after it fires (`continuous_accum` 1), whatever
-//! `once` says, so `rearm_bursts` clears the latch every burst period.
+//! A `once: false` burst fires once until it is re-armed (`D-143`), so
+//! `rearm_bursts` calls `ParticleEmitterState::rearm_burst` every burst period.
 
 use std::f32::consts::TAU;
 use std::fmt::Write as _;
@@ -474,7 +474,7 @@ fn move_emitters(world: &mut World) {
     }
 }
 
-/// Clears each burst emitter's fired latch once per period.
+/// Re-arms each burst emitter once per period.
 fn rearm_bursts(world: &mut World) {
     let dt = dt_seconds(world);
     for (_, emitter, rearm) in
@@ -483,7 +483,7 @@ fn rearm_bursts(world: &mut World) {
         rearm.timer += dt;
         if rearm.timer >= rearm.period {
             rearm.timer -= rearm.period;
-            emitter.continuous_accum = 0.0;
+            emitter.rearm_burst();
         }
     }
 }

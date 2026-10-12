@@ -144,6 +144,20 @@ class Status(unittest.TestCase):
         self.assertEqual((stops["gdef"]["release"], stops["s0"]["release"]), ("0.41", "0.42"))
         self.assertEqual((state["release"], state["milestone"], state["stop"]), ("0.42", "M32", "s0"))
 
+    def test_summary_owns_only_workspace_stop_state_and_milestone(self):
+        state, stops = self.status()
+        self.assertEqual(roadmap.summary_fields(state), {"Workspace": "0.42.0", "First open stop": "s0",
+                                                       "Stop state": "ready", "Next milestone": "M32"})
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            roadmap.main(["--root", str(self.root), "summary"])
+        self.assertEqual(output.getvalue(), roadmap.summary_text(state) + "\n")
+        self.git("tag", "v0.42.0")
+        self.assertEqual(roadmap.summary_fields(self.status()[0])["Stop state"], "review")
+        self.commit("Update 0.42: shipped")
+        self.git("update-ref", "refs/remotes/origin/main", "HEAD")
+        self.assertEqual(roadmap.summary_fields(self.status()[0])["First open stop"], "w14a")
+
     def test_stale_fetch_reports_review_unverified(self):
         self.git("tag", "v0.42.0")
         self.fetched(time.time() - 3600)

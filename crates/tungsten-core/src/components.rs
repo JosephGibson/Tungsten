@@ -164,10 +164,12 @@ impl ParticleEmitter {
 
 /// Particle emitter runtime state; first tick captures config `Arc`.
 #[derive(Debug, Clone)]
+#[allow(clippy::struct_excessive_bools)] // Independent flags (`D-143` adds the burst latch); no two are a state machine.
 pub struct ParticleEmitterState {
     pub config_snapshot: Option<Arc<ParticleConfig>>,
     pub rng: Pcg32,
     pub elapsed: f32,
+    /// A `Continuous` emitter's fractional particles carried to the next tick.
     pub continuous_accum: f32,
     pub pulse_timer: f32,
     pub pulses_fired: u32,
@@ -175,6 +177,20 @@ pub struct ParticleEmitterState {
     pub drained: bool,
     pub first_tick_done: bool,
     pub drain_reported: bool,
+    /// A `Burst` emitter has fired since it spawned or was last re-armed
+    /// ([`ParticleEmitterState::rearm_burst`], `D-143`).
+    pub burst_fired: bool,
+}
+
+impl ParticleEmitterState {
+    /// Re-arms a `Burst { once: false }` emitter: it fires again on its next
+    /// tick (`D-143`). Does nothing on a drained emitter, so a `once: true`
+    /// burst that has fired stays spent.
+    pub fn rearm_burst(&mut self) {
+        if !self.drained {
+            self.burst_fired = false;
+        }
+    }
 }
 
 impl Default for ParticleEmitterState {
@@ -190,6 +206,7 @@ impl Default for ParticleEmitterState {
             drained: false,
             first_tick_done: false,
             drain_reported: false,
+            burst_fired: false,
         }
     }
 }

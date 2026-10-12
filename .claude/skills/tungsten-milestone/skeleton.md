@@ -36,7 +36,7 @@ Read at `<commit>`.
 
 ### Step <N>: Release 0.<NN>
 
-- **Files:** `CHANGELOG.md`, `DESIGN.md`, `Cargo.toml`, `Cargo.lock`, the register row, the README "Now" lines, this plan (moved to `docs/plans/archive/`)
+- **Files:** `CHANGELOG.md`, `DESIGN.md`, `Cargo.toml`, `Cargo.lock`, the register row, the README's four owned Now fields (`roadmap.py summary`), this plan (moved to `docs/plans/archive/`)
 - **Change:** close workflow §5 and this step's evidence row with `status: done`; then [tungsten-finalize](../../../.claude/skills/tungsten-finalize/SKILL.md) and [tungsten-release](../../../.claude/skills/tungsten-release/SKILL.md) ([releases](../../releases.md)): the plan archived, `just release-cut 0.<NN>.0` once, every release check once after it with <the gates by change no step ran>, then the preflight with `--message`
 - **Done-when:** [releases](../../releases.md) step 1's command chain → every check passes, quoted in the report (the plan is archived before the cut); `just release-preflight 0.<NN>.0 --repo JosephGibson/Tungsten --message 'Update 0.<NN>: <summary>'` → passes and prints the command block and the post-merge block
 - **Ends with:** the changed-file list, the command block, the post-merge block, then the next prompt: <the plan prompt for the next register row, or the gate, graduation or experiment prompt>
@@ -75,7 +75,7 @@ Read at `<commit>`.
 | 6 Template and guide | <N> | <n/a before W12a> |
 | 7 Routes (`docs/LLM_INDEX.md`, `just ctx`) | <N> | |
 | 8 Design | <N> | |
-| 9 Records (known issues, backlog, gap log, register, workstream file, README "Now") | <N> | |
+| 9 Records (known issues, backlog, gap log, register, workstream file, README's four owned Now fields) | <N> | `python3 -B scripts/roadmap.py summary` supplies the owned fields |
 | 10 Close (one `CHANGELOG.md` line, `status: done`, the plan archived) | release | Then the cut, the checks and the preflight; the session ends with both blocks and the next prompt |
 
 ## 9. Critique

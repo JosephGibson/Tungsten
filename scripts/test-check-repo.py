@@ -3,6 +3,9 @@
 
 import importlib.util
 import json
+import contextlib
+import io
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -199,6 +202,241 @@ class RepoChecks(unittest.TestCase):
         qa.check_docs(self.root, errors, notes)
         self.assertEqual(len(errors), 2)
         self.assertTrue(any("archive link left unread" in n for n in notes))
+
+    def test_active_program_links_and_fragments_fail_for_the_destination(self):
+        self.write("DECISIONS.md", "## D-001 — test\n")
+        for doc in qa.DOCS:
+            self.write(doc, "# Doc\n")
+        self.write("scripts/check-agent-context.py", "def check(root): return []\n")
+        self.write("docs/plans/1.0/README.md", "[plan](work.md#acceptance)\n[missing](gone.md)\n")
+        self.write("docs/plans/1.0/work.md", "# Work\n\n## Acceptance\n[bad](#old-checks)\n")
+        errors, notes = [], []
+        qa.check_docs(self.root, errors, notes)
+        self.assertEqual(errors, ["docs/plans/1.0/README.md: broken link gone.md",
+                                  "docs/plans/1.0/work.md: broken fragment #old-checks"])
+
+    def test_links_skip_archive_and_template_examples_without_probing_them(self):
+        self.write("DECISIONS.md", "## D-001 — test\n")
+        for doc in qa.DOCS:
+            self.write(doc, "# Doc\n")
+        self.write("scripts/check-agent-context.py", "def check(root): return []\n")
+        self.write("docs/plans/1.0/README.md", "[history](../archive/unread.md#anything)\n"
+                   "```md\n[placeholder](<future file.md>)\n```\n")
+        self.write(".claude/skills/tungsten-milestone/skeleton.md", "[rules](../README.md)\n")
+        originals = {name: getattr(Path, name) for name in ("exists", "read_text", "glob", "iterdir")}
+
+        def guard(name):
+            def guarded(path, *args, **kwargs):
+                if "archive" in path.parts:
+                    raise AssertionError(f"archive {name}")
+                return originals[name](path, *args, **kwargs)
+            return guarded
+
+        with patch.object(Path, "exists", guard("exists")), patch.object(Path, "read_text", guard("read_text")), \
+                patch.object(Path, "glob", guard("glob")), patch.object(Path, "iterdir", guard("iterdir")):
+            errors, notes = [], []
+            qa.check_docs(self.root, errors, notes)
+        self.assertEqual(errors, [])
+        self.assertIn("archive link left unread: docs/plans/1.0/README.md: ../archive/unread.md#anything", notes)
+
+    def test_reference_links_spaces_and_duplicate_heading_fragments(self):
+        path = self.write("docs/a.md", "# A\n[space](<with space.md#two-words-1>)\n[ref][dest]\n"
+                          "[dest]: with%20space.md#explicit\n")
+        self.write("docs/with space.md", '# Two `words`\n## Two words\n<a id="explicit"></a>\n')
+        errors, notes = [], []
+        qa.check_local_links(self.root, path, path.read_text(), errors, notes, {})
+        self.assertEqual(errors, [])
+
+
+class SummaryChecks(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        (self.root / qa.roadmap.PROGRAM).mkdir(parents=True)
+        (self.root / qa.roadmap.CATALOG).write_text("{}")
+        self.state = {"workspace": "0.60.0", "stop": "w8a", "milestone": "M43",
+                      "stops": [{"id": "w8a", "status": "todo"}]}
+        self.doc = self.root / qa.roadmap.SUMMARY_DOC
+        self.doc.write_text(qa.roadmap.summary_text(self.state))
+
+    def check(self, refs=True):
+        errors, notes = [], []
+        with (patch.object(qa.roadmap, "derive", return_value=self.state),
+              patch.object(qa, "has_release_refs", return_value=refs)):
+            qa.check_summary(self.root, errors, notes)
+        return errors
+
+    def test_current_owned_fields_pass_and_dated_prose_is_not_interpreted(self):
+        self.doc.write_text(self.doc.read_text() + "\nHistorical: 0.56 awaits a merge; 2020-01-01.\n")
+        self.assertEqual(self.check(), [])
+
+    def test_each_stale_owned_field_fails_with_its_expected_value(self):
+        for field, value in qa.roadmap.summary_fields(self.state).items():
+            with self.subTest(field=field):
+                self.doc.write_text(qa.roadmap.summary_text(self.state).replace(f"`{value}`", "`stale`"))
+                errors = self.check()
+                self.assertEqual(len(errors), 1)
+                self.assertIn(f"stale owned field {field!r}: 'stale', expected {value!r}", errors[0])
+
+    def test_without_release_refs_only_tree_fields_are_compared(self):
+        for field, value in qa.roadmap.summary_fields(self.state).items():
+            with self.subTest(field=field):
+                self.doc.write_text(qa.roadmap.summary_text(self.state).replace(f"`{value}`", "`stale`"))
+                self.assertEqual(len(self.check(refs=False)), 0 if field in qa.REF_FIELDS else 1)
+
+    def test_a_tree_outside_git_has_no_release_refs(self):
+        self.assertFalse(qa.has_release_refs(self.root))
+
+    def test_missing_duplicate_and_unknown_fields_are_not_accepted(self):
+        for corrupt in (qa.roadmap.summary_text(self.state).replace("Workspace", "Unknown"),
+                        qa.roadmap.summary_text(self.state).replace("Next milestone", "Workspace"),
+                        qa.roadmap.SUMMARY_END + qa.roadmap.summary_text(self.state).replace(qa.roadmap.SUMMARY_END, ""),
+                        "# Now\n"):
+            self.doc.write_text(corrupt)
+            self.assertTrue(self.check())
+
+
+class CheckSelection(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+
+    def selection(self, *paths):
+        return qa.select_checks(self.root, list(paths))
+
+    def test_documentation_only_needs_cpu_qa_without_perf_or_hardware(self):
+        commands, review, unknown = self.selection("docs/agent-setup.md")
+        self.assertEqual(set(commands), {"just check", "git diff --check", "just ctx", "just repo-check"})
+        self.assertEqual((review, unknown), ([], []))
+        self.assertFalse(any(c["kind"] == "Hardware" for c in commands.values()))
+
+    def test_generator_inputs_and_generated_outputs_select_consistency_and_routes(self):
+        for path in ("examples/01_platformer/tools/level.json", "examples/01_platformer/tools/actors.py",
+                     "examples/01_platformer/tools/shaders/soft_glow.wgsl", "examples/01_platformer/src/level_layout.rs"):
+            commands, review, unknown = self.selection(path)
+            self.assertTrue({"just level-check", "cargo test -p example-01-platformer --locked",
+                             "cargo test -p tungsten-core --test manifests --locked", "just smoke"} <= commands.keys())
+            self.assertEqual(unknown, [])
+        path = self.root / "examples/01_platformer/tools/outputs.json"
+        path.parent.mkdir(parents=True)
+        path.write_text('["assets/tilemaps/ruin.tmj"]')
+        self.assertIn("just level-check", self.selection("examples/01_platformer/assets/tilemaps/ruin.tmj")[0])
+        self.assertNotIn("just level-check", self.selection("examples/01_platformer/assets/sounds/black_hole.ogg")[0])
+        self.assertNotIn("just level-check", self.selection("examples/01_platformer/tools/README.md")[0])
+
+    def test_solver_needs_release_checks_that_debug_tests_skip(self):
+        commands, review, unknown = self.selection("crates/tungsten-core/src/physics/step/solver.rs")
+        self.assertTrue({"cargo test -p tungsten-core --locked", "just physics-release", "just smoke"} <= commands.keys())
+        self.assertEqual(commands["just physics-release"]["kind"], "CPU release")
+        self.assertTrue(any("ignored in debug" in r for r in commands["just physics-release"]["reasons"]))
+        self.assertEqual(unknown, [])
+
+    def test_renderer_and_shader_mirror_need_actual_hardware_comparisons(self):
+        commands, review, unknown = self.selection("crates/tungsten-render/src/renderer.rs",
+                                                 "crates/tungsten-render/src/shaders/stock/bloom.wgsl",
+                                                 "assets/shaders/stock/bloom.wgsl")
+        self.assertTrue({"cargo test -p tungsten-render --locked", "just smoke", "just visual"} <= commands.keys())
+        self.assertEqual(commands["just visual"]["kind"], "Hardware")
+        self.assertNotIn("cargo test -p tungsten-render --test shader_coverage --locked", commands)
+        self.assertTrue(any("mirror" in r for r in commands["cargo test -p tungsten-render --locked"]["reasons"]))
+        self.assertTrue(any("mirrors" in note for note in review))
+        self.assertEqual(unknown, [])
+
+    def test_mixed_changes_merge_reasons_and_leave_uncertainty_visible(self):
+        paths = ["docs/agent-setup.md", "scripts/check-repo.py", "assets/shaders/sprite.wgsl", "unmapped.data"]
+        commands, review, unknown = self.selection(*paths)
+        self.assertTrue({"just ctx", "just repo-check", "just script-test", "just visual"} <= commands.keys())
+        self.assertEqual(len(commands["just repo-check"]["reasons"]), 3)
+        self.assertEqual(unknown, ["unmapped.data"])
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), patch.object(qa.subprocess, "run", side_effect=AssertionError("executed a check")):
+            self.assertEqual(qa.main(["--root", str(self.root), "--select-checks", *paths]), 0)
+        text = output.getvalue()
+        self.assertIn("no checks executed, no results certified", text)
+        self.assertIn("Hardware (not run", text)
+        self.assertIn("Visual comparisons are NOT RUN by CPU tests", text)
+        self.assertIn("UNCLASSIFIED: unmapped.data", text)
+        self.assertNotIn("passed", text)
+
+    def test_manifest_seam_public_api_template_and_workflow_routes(self):
+        cases = {
+            "assets/manifest.json": {"cargo test -p tungsten-core --test manifests --locked", "just smoke"},
+            "crates/tungsten/src/asset_loader/mod.rs": {"cargo test -p tungsten-core --test manifests --locked", "just repo-check"},
+            "api/tungsten.txt": {"just api-check"},
+            "templates/basic/src/game.rs": {"just template-check", "cargo test -p tungsten-template-basic --locked"},
+            ".github/workflows/ci.yml": {"just script-test", "just repo-check"},
+            "Cargo.lock": {"just deps", "just smoke"},
+        }
+        for path, wanted in cases.items():
+            with self.subTest(path=path):
+                commands, review, unknown = self.selection(path)
+                self.assertTrue(wanted <= commands.keys())
+                self.assertEqual(unknown, [])
+
+    def test_explicit_deleted_paths_spaces_and_root_boundary(self):
+        self.assertEqual(qa.normalize_paths(self.root, ["docs/with space.md", "docs/../docs/gone.md", "docs/gone.md"]),
+                         ["docs/gone.md", "docs/with space.md"])
+        with self.assertRaisesRegex(ValueError, "outside repository"):
+            qa.normalize_paths(self.root, ["../outside.md"])
+        self.assertEqual(qa.normalize_paths(self.root, [str(self.root / "docs/a.md")]), ["docs/a.md"])
+
+
+class GitCheckSelection(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.git("init", "-q", "-b", "maintenance")
+        self.write("docs/old.md", "old")
+        self.write("crates/tungsten-core/src/physics/step/solver.rs", "solver")
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "initial fixture")
+
+    def git(self, *args):
+        return subprocess.run(["git", "-c", "user.name=fixture", "-c", "user.email=fixture@example.com",
+                               "-C", str(self.root), *args], check=True, capture_output=True, text=True).stdout.strip()
+
+    def write(self, rel, text):
+        path = self.root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+
+    def test_git_includes_staged_unstaged_untracked_renames_and_deletions(self):
+        self.write("assets/shaders/.keep", "")
+        self.git("mv", "docs/old.md", "assets/shaders/new.wgsl")
+        solver = "crates/tungsten-core/src/physics/step/solver.rs"
+        (self.root / solver).unlink()
+        self.write("docs/untracked space.md", "new")
+        self.write(".gitignore", "ignored.md\n")
+        self.write("ignored.md", "ignored")
+        paths = qa.changed_paths(self.root)
+        self.assertTrue({"docs/old.md", "assets/shaders/new.wgsl", solver, "docs/untracked space.md"} <= set(paths))
+        self.assertNotIn("ignored.md", paths)
+        commands, review, unknown = qa.select_checks(self.root, paths)
+        self.assertTrue({"just visual", "just physics-release", "just ctx"} <= commands.keys())
+
+    def test_base_adds_committed_work_and_never_fetches_or_writes(self):
+        self.write("examples/01_platformer/tools/level.json", "{}")
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "generator fixture")
+        self.assertEqual(qa.changed_paths(self.root), [])
+        before = self.git("status", "--porcelain=v1")
+        paths = qa.changed_paths(self.root, "HEAD~1")
+        self.assertEqual(paths, ["examples/01_platformer/tools/level.json"])
+        self.assertIn("just level-check", qa.select_checks(self.root, paths)[0])
+        self.assertEqual(self.git("status", "--porcelain=v1"), before)
+        self.assertFalse((self.root / ".git/FETCH_HEAD").exists())
+        with self.assertRaises(ValueError):
+            qa.changed_paths(self.root, "nonexistent-ref")
+
+    def test_unborn_repository_selects_new_files_without_head(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subprocess.run(["git", "init", "-q", str(root)], check=True, capture_output=True)
+            (root / "new doc.md").write_text("new")
+            self.assertEqual(qa.changed_paths(root), ["new doc.md"])
 
 
 ROADMAP_PLAN = """# Plan

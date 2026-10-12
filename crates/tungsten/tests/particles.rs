@@ -137,6 +137,75 @@ fn burst_once_emits_exactly_count_then_drains() {
     assert!(state.drained);
 }
 
+/// A burst config whose particles outlive the test, so every burst stays
+/// countable.
+fn long_burst_cfg(once: bool) -> ParticleConfig {
+    let mut cfg = base_cfg(EmissionKind::Burst { count: 5, once }, 64);
+    cfg.lifetime = Range {
+        min: 10.0,
+        max: 10.0,
+    };
+    cfg
+}
+
+#[test]
+fn burst_not_once_fires_again_after_rearm() {
+    let mut world = world_with_resources();
+    let id = register_config(&mut world, long_burst_cfg(false), "rearmable");
+    let emitter = spawn_emitter(&mut world, id);
+
+    let mut bursts = Vec::new();
+    let mut drained_events = 0;
+    for round in 0..3 {
+        if round > 0 {
+            world
+                .get_mut::<ParticleEmitterState>(emitter)
+                .unwrap()
+                .rearm_burst();
+        }
+        // It fires on the first tick after a re-arm, and only then.
+        for _ in 0..3 {
+            tick(&mut world, 1.0 / 60.0);
+            let queue = world
+                .get_resource::<EventQueue<ParticleBurstEmitted>>()
+                .unwrap();
+            bursts.extend(queue.iter().map(|e| e.count));
+            drained_events += world
+                .get_resource::<EventQueue<ParticleSystemDrained>>()
+                .unwrap()
+                .iter()
+                .count();
+        }
+    }
+
+    assert_eq!(bursts, vec![5, 5, 5], "one burst per re-arm");
+    assert_eq!(count_particles(&mut world), 15);
+    let state = world.get::<ParticleEmitterState>(emitter).unwrap();
+    assert!(!state.drained, "a once: false burst never drains");
+    assert_eq!(drained_events, 0, "no ParticleSystemDrained");
+}
+
+#[test]
+fn burst_once_ignores_rearm() {
+    let mut world = world_with_resources();
+    let id = register_config(&mut world, long_burst_cfg(true), "spent");
+    let emitter = spawn_emitter(&mut world, id);
+
+    tick(&mut world, 1.0 / 60.0);
+    world
+        .get_mut::<ParticleEmitterState>(emitter)
+        .unwrap()
+        .rearm_burst();
+    for _ in 0..3 {
+        tick(&mut world, 1.0 / 60.0);
+    }
+
+    assert_eq!(count_particles(&mut world), 5, "a spent burst stays spent");
+    let state = world.get::<ParticleEmitterState>(emitter).unwrap();
+    assert!(state.drained);
+    assert!(state.burst_fired);
+}
+
 #[test]
 fn continuous_rate_matches_expected_count() {
     let mut world = world_with_resources();
@@ -178,6 +247,40 @@ fn pulse_emits_fixed_pulses_then_drains() {
     let state = world.get::<ParticleEmitterState>(emitter).unwrap();
     assert_eq!(state.pulses_fired, 3, "exactly 3 pulses");
     assert!(state.drained, "pulse emitter drained after total_pulses");
+}
+
+#[test]
+fn pulse_with_zero_total_emits_nothing_and_drains() {
+    let mut world = world_with_resources();
+    let cfg = base_cfg(
+        EmissionKind::Pulse {
+            count_per_pulse: 4,
+            interval_sec: 0.1,
+            total_pulses: Some(0),
+        },
+        64,
+    );
+    let id = register_config(&mut world, cfg, "no_pulses");
+    let emitter = spawn_emitter(&mut world, id);
+
+    // Drained on its first tick, before any interval has passed.
+    tick(&mut world, 0.05);
+    let state = world.get::<ParticleEmitterState>(emitter).unwrap();
+    assert!(state.drained, "zero pulses drain on the first tick");
+    let drained = world
+        .get_resource::<EventQueue<ParticleSystemDrained>>()
+        .unwrap()
+        .iter()
+        .count();
+    assert_eq!(drained, 1, "ParticleSystemDrained comes once");
+
+    // Past several intervals, still nothing.
+    for _ in 0..10 {
+        tick(&mut world, 0.05);
+    }
+    assert_eq!(count_particles(&mut world), 0, "no pulse fires");
+    let state = world.get::<ParticleEmitterState>(emitter).unwrap();
+    assert_eq!(state.pulses_fired, 0);
 }
 
 #[test]

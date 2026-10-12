@@ -79,7 +79,7 @@ expect_output() {
 if run_case "all pass" 0; then
   for line in "Passed: 4/4" "Template passed: 1/1" "Matrix passed: 4/4" "Post-stack passed: 2/2" \
     "Post-AA passed: 1/1" "Bloom passed: 1/1" "Lighting passed: 1/1" \
-    "Game-feel passed: 2/2" "Mesh/transition passed: 5/5" "Benchmarks passed: 15/15" \
+    "Game-feel passed: 1/1" "Mesh/transition passed: 5/5" "Benchmarks passed: 15/15" \
     "Frame cap passed: 1/1"; do
     expect_output "all pass" "$line"
   done
@@ -100,7 +100,6 @@ example-04-shader-playground msaa= sort= post=empty aa=smaa_high bloom= light= f
 example-04-shader-playground msaa= sort= post=bloom_only aa= bloom=on light= feel= frames=3 timing= bench= preset=
 example-01-platformer msaa= sort= post= aa= bloom= light=on feel= frames=3 timing= bench= preset=
 example-04-shader-playground msaa= sort= post= aa= bloom= light= feel=on frames=3 timing= bench= preset=
-example-01-platformer msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench= preset=
 example-04-shader-playground msaa=4 sort=gpu_depth post= aa= bloom= light= feel= frames=3 timing= bench= preset=
 example-03-scene-state msaa= sort= post= aa= bloom= light= feel= frames=16 timing= bench= preset= transition=fade
 example-03-scene-state msaa= sort= post= aa= bloom= light= feel= frames=16 timing= bench= preset= transition=wipe_radial

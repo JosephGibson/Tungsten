@@ -16,6 +16,8 @@ Drafted 2026-10-03 on branch `0.40` (`941b63e`), from the plans and evidence log
 - Limits that shape it, on 2026-10-03: the root `AGENTS.md` has 17 B of its 6,144 B budget left and `docs/LLM_INDEX.md` 195 B of 8,192 B (`just ctx` at `9cd5709`; the index had 599 B before the 0.40 close-out added rows). The reference machine is the only GPU, display and perf host. Captures wait for the remote-desktop encoder to exit, and `D-095` invalidates a capture during which any tracked file changes. The disk filled during 0.40 (step 3 freed 34 GB of stale incremental caches).
 - From 0.42 sessions don't commit (`D-105`): a milestone's work stays uncommitted on its branch until the release session's command block makes the release's only commit, so the tree holds every session's changes until then (§6).
 
+Bounded maintenance outside a milestone uses the [plan routes](../README.md#choosing-a-route) (`D-140`). Multi-session work keeps a saved handoff; this program's milestone critique, approval and API review requirements remain in force.
+
 ## 1. Units of work
 
 | Unit | Lives in | Written by | Ends when |
@@ -77,7 +79,7 @@ Level C exists because the freeze makes API taste expensive to fix later. Every 
 The release step checks each line, or the release session for a release with no plan. A missing line becomes a step, not a footnote.
 
 1. **Evidence.** Each step's done-when is quoted in the evidence log, or the step is marked skipped with its reason.
-2. **Gates by change.** The [AGENTS.md](../../../AGENTS.md#tests) table applies: `just check` always; layer 1, `just smoke`, `just visual`, `just physics-release` and `just script-test` as the change requires. The release step runs the release checks (`just check`, `just smoke` and `just script-test` among them) once, after the cut, with any gate here that no step ran. Perf rows that its code touches read "not `regressed`" ([done-when rules](../../perf/profiling-workflow.md#writing-done-when-checks)); a change to shared ECS or frame-loop code captures every CPU row.
+2. **Gates by change.** The [validation matrix](../../validation.md#change-to-check-matrix) applies, with final `just check`; `just checks` recommends commands without running them. The release step runs the release checks (`just check`, `just smoke` and `just script-test` among them) once, after the cut, with any gate here that no step ran. Perf rows that its code touches read "not `regressed`" ([done-when rules](../../perf/profiling-workflow.md#writing-done-when-checks)); a change to shared ECS or frame-loop code captures every CPU row.
 3. **Invariants.** The determinism hash, the pinned containment hash, the row digests, `gpu-visual.png` and the post and transition regressions are unchanged, or a step moves them on purpose and records the new values in the evidence log and in its `CHANGELOG.md` line.
 4. **Decisions.** Written with the tungsten-decision skill, their index rows in the same change, and landed before the docs that cite them.
 5. **API.** Every public-API break has a row in the [break ledger](w04-api-freeze.md#break-ledger), new public surface is listed for the freeze, and every new public item has rustdoc, since `missing_docs` gates the freeze.

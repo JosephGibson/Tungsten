@@ -98,6 +98,10 @@ repo-check:
     python3 -B scripts/release.py check
     cargo test -p tungsten-core --test manifests --test decision_index --locked -q
 
+# Recommend checks without running them; explicit paths or Git changes, including untracked (--base REF for committed work).
+checks *args:
+    python3 -B scripts/check-repo.py --select-checks "$@"
+
 # The template copied outside the repository, then built, tested and smoke-run there (D-123); a release check. GPU; free-space floor first.
 template-check:
     bash scripts/template-check.sh

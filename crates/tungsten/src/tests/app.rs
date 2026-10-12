@@ -13,7 +13,8 @@ use tungsten_core::{
     AudioCommand, AudioCommands, CollisionEvent, CommandBuffer, Config, DisplayMode, DisplayState,
     Entity, EventQueue, InputState, KeyCode, ShakeEvent, SquashEvent, Stage, Time, World, system,
 };
-use tungsten_render::QuadInstance;
+use tungsten_render::renderer::RenderError;
+use tungsten_render::{QuadInstance, RenderOutcome, ScreenshotError};
 
 #[derive(Debug, Clone, Copy)]
 struct ExampleEvent;
@@ -472,6 +473,81 @@ fn audio_a_frame_queues_lands_in_the_capture_list_only_when_one_is_set() {
         app.audio_capture.as_deref(),
         Some([AudioCommand::StopAll])
     ));
+}
+
+/// A capture of `target_frame`, as `TUNGSTEN_CAPTURE_FRAME` arms it.
+fn capture_frame(target_frame: u64) -> crate::capture::Capture {
+    crate::capture::Capture::new(crate::capture::CaptureConfig {
+        target_frame,
+        path: PathBuf::from("shots/frame.png"),
+        direct: false,
+    })
+}
+
+#[test]
+fn a_failed_render_ends_the_frame_and_is_the_runs_fatal_error() {
+    let mut app = App::new(Config::default()).unwrap();
+    let presented = RenderOutcome::Presented { capture: None };
+    assert_eq!(app.settle_render(Ok(presented)), FrameEnd::Completed);
+    assert_eq!(
+        app.settle_render(Ok(RenderOutcome::Skipped)),
+        FrameEnd::Completed
+    );
+    let failed = Err(RenderError::Surface("lost again".to_string()));
+    assert_eq!(app.settle_render(failed), FrameEnd::RenderFailed);
+    let error = app
+        .take_run_error()
+        .expect("the failed frame is the run's error");
+    let message = format!("{error:#}");
+    // Frames 1 (presented) and 2 (skipped) counted; frame 3 failed.
+    assert!(message.contains("render failed at frame 3"), "{message}");
+    assert!(message.contains("lost again"), "{message}");
+}
+
+#[test]
+fn the_run_returns_the_capture_error_and_goes_on_after_it() {
+    let mut app = App::new(Config::default()).unwrap();
+    app.capture = Some(capture_frame(2));
+    let presented = RenderOutcome::Presented { capture: None };
+    assert_eq!(app.settle_render(Ok(presented)), FrameEnd::Completed);
+    let failed_write = RenderOutcome::Presented {
+        capture: Some(Err(ScreenshotError::MapFailed)),
+    };
+    // A capture error does not end the frame or the run.
+    assert_eq!(app.settle_render(Ok(failed_write)), FrameEnd::Completed);
+    assert_eq!(
+        app.settle_render(Ok(RenderOutcome::Skipped)),
+        FrameEnd::Completed
+    );
+    let error = app
+        .take_run_error()
+        .expect("the failed capture is the run's error");
+    let message = format!("{error:#}");
+    assert!(message.contains("capture frame 2"), "{message}");
+    assert!(message.contains("buffer map failed"), "{message}");
+}
+
+#[test]
+fn a_render_failure_wins_over_the_capture_error() {
+    let mut app = App::new(Config::default()).unwrap();
+    app.capture = Some(capture_frame(5));
+    let failed = Err(RenderError::Surface("recreation failed".to_string()));
+    assert_eq!(app.settle_render(failed), FrameEnd::RenderFailed);
+    let error = app
+        .take_run_error()
+        .expect("the failed frame is the run's error");
+    assert!(
+        format!("{error:#}").contains("render failed at frame 1"),
+        "{error:#}"
+    );
+}
+
+#[test]
+fn a_run_with_no_failure_and_no_capture_returns_no_error() {
+    let mut app = App::new(Config::default()).unwrap();
+    let presented = RenderOutcome::Presented { capture: None };
+    assert_eq!(app.settle_render(Ok(presented)), FrameEnd::Completed);
+    assert!(app.take_run_error().is_none());
 }
 
 #[test]
