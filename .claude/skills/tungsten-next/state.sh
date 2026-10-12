@@ -163,16 +163,9 @@ for l in .agents/skills/*; do
 done
 
 echo "== now ($readme $(state "$readme"))"
-sed -n '/^## Now/,/^A session/p' "$readme" | grep '^- '
-rt=$(stat -c %Y "$readme")
-[ "$(state "$readme")" = committed ] && rt=$(git log -1 --format=%ct)
-lag=$(printf '%s\n' "$changes" | awk -v t="$rt" -v r="$readme" -v i="$impl" \
-  '$1 > t { f = substr($0, index($0, " ") + 1); if (f != r && f != i) { n++; if (n <= 4) l = l " " f } } END { if (n) print n " files, newest:" l; else print "none" }')
-echo "edited after the Now lines were last written: $lag"
-
-echo "== register (open rows; $impl $(state "$impl"))"
-awk '/^## 10\. Register/{f=1} /^## 11\./{f=0} f' "$impl" \
-  | grep '^| ' | grep -v -e '^| Candidate' -e '^| ---' | grep -viE '\| *(released|done)[^|]*\| *$' | head -5
+# The same derivation owns the checked README fields and the skill's status
+# payload; free-form register prose and file mtimes do not decide completion.
+python3 -B scripts/roadmap.py summary || exit 1
 newd=$(comm -13 <(git show HEAD:DECISIONS.md | grep -oE '^## D-[0-9]+' | sort) <(grep -oE '^## D-[0-9]+' DECISIONS.md | sort) | sed 's/^## //' | tr '\n' ' ')
 echo "decisions not in HEAD: ${newd:-none}"
 

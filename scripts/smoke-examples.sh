@@ -202,14 +202,13 @@ end_section "Lighting passed" "Lighting failures" 1
 
 # M30: game-feel rows. The playground row pins the fixture env so trauma and
 # every squash envelope are armed at startup — a three-frame run would not
-# otherwise reach a collision. The platformer row runs plain: the parallax
-# backdrop and the landing squash are wired unconditionally there.
+# otherwise reach a collision. The default example discovery row already
+# exercises the platformer's unconditional parallax backdrop and landing squash.
 feel_pkg="example-04-shader-playground"
-begin_section "M30 game-feel fixture matrix (pkgs: $feel_pkg, $lighting_pkg)"
+begin_section "M30 game-feel fixture row (pkg: $feel_pkg)"
 row "game_feel_fixture=on" "$log_dir/${feel_pkg}-game-feel.log" "$feel_pkg" \
   TUNGSTEN_GAME_FEEL_FIXTURE=on
-row "parallax backdrop" "$log_dir/${lighting_pkg}-game-feel.log" "$lighting_pkg"
-end_section "Game-feel passed" "Game-feel failures" 2
+end_section "Game-feel passed" "Game-feel failures" 1
 
 # M31: mesh particle and screen transition rows. The playground row draws the
 # bullet trail's mesh pipeline under MSAA with a depth attachment. Each

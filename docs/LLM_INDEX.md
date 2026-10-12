@@ -44,7 +44,7 @@ Task → file map. Open it before a broad search; read only the matching row's f
 | Task | Open |
 | --- | --- |
 | Contacts, resolution, broadphase, pair repair, sleeping, arrival pass, step bound (`D-033`, `D-062`–`D-067`, `D-075`, `D-076`, `D-080`–`D-082`, `D-092`, `D-094`) | `core/physics/step/`, `core/physics/collision.rs`, `core/physics/broadphase.rs` |
-| Benchmarks, tunneling, determinism | `crates/tungsten-core/benches/physics_bench.rs`, `crates/tungsten-core/tests/physics_tunneling.rs`, `crates/tungsten-core/tests/physics_containment.rs`, `crates/tungsten-core/tests/physics_determinism.rs`; after `core/physics/step/`, `core/physics/collision.rs` or `core/physics/broadphase.rs` changes run `just physics-release` (determinism and containment are ignored in debug, so `just check` skips them) |
+| Benchmarks, tunneling, determinism | `crates/tungsten-core/benches/physics_bench.rs`, `crates/tungsten-core/tests/physics_tunneling.rs`, `crates/tungsten-core/tests/physics_containment.rs`, `crates/tungsten-core/tests/physics_determinism.rs`; [validation](validation.md#change-to-check-matrix) routes release-only physics checks |
 
 ## Rendering
 
@@ -81,7 +81,7 @@ Run with `cargo run -p example-NN-name`.
 | GPU smoke run, fixture matrices (`just smoke`) | `scripts/smoke-examples.sh`, `scripts/test-smoke-examples.sh` |
 | Documentation maintenance | `docs/README.md`, `docs/plans/README.md` |
 | Open findings, unchecked platforms and follow-ups | `docs/known-issues.md` |
-| Repository QA and quick checks | `scripts/check-repo.py`, `scripts/test-check-repo.py`, `justfile`, `docs/agent-setup.md` |
+| Validation selection (`just checks`), repository QA and quick checks | `docs/validation.md`, `scripts/check-repo.py`, `scripts/test-check-repo.py`, `justfile`; client setup: `docs/agent-setup.md` |
 | Agent instruction budgets and links (`just ctx`) | `scripts/check-agent-context.py` |
 | Public-API snapshots (`just api`, `D-107`); breaks go in the W4 ledger | `scripts/public-api.sh`, `api/`, `docs/plans/1.0/w04-api-freeze.md` |
 | Writing or running a 1.0 milestone plan | `.claude/skills/tungsten-milestone/SKILL.md`, `docs/plans/1.0/workflow.md` |

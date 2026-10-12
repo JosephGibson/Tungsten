@@ -9,7 +9,7 @@ Answers "what do I run next, and where?" on the road to 1.0. The repo is the sou
 
 ## 1. Gather, in one round of parallel calls
 
-- Run `bash .claude/skills/tungsten-next/state.sh` from the repo root; don't read the script. It prints git and release state, other agent sessions open in this tree, a running perf capture, the NoMachine encoder and what waits on it, uncommitted edits in time-ordered groups, what the release commit's `git add -A` would take or miss, the [1.0 README](../../../docs/plans/1.0/README.md) "Now" lines, the open register rows, decisions not yet in `HEAD`, Step 0's items while its row is unreleased, each plan's status, approval, steps, evidence and capture steps, and gate sign-offs.
+- Run `bash .claude/skills/tungsten-next/state.sh` from the repo root; don't read the script. It prints git and release state, other agent sessions open in this tree, a running perf capture, the NoMachine encoder and what waits on it, uncommitted edits in time-ordered groups, what the release commit's `git add -A` would take or miss, the four derived [Now fields](../../../docs/validation.md#read-only-selector), decisions not yet in `HEAD`, Step 0's items while its row is unreleased, each plan's status, approval, steps, evidence and capture steps, and gate sign-offs.
 - Read [prompts.md](prompts.md).
 - Run `python3 -B scripts/roadmap.py status --json <scratch>/status.json` and `python3 -B scripts/roadmap.py catalog <scratch>/catalog.json`, `<scratch>` being the session's scratchpad, never the tree. `status` prints each stop's status with its evidence, the current stop, the next release and milestone.
 - Claude Code: read [roadmap.md](roadmap.md) and list the artifact's `meta` and `stops` collections with `ArtifactData` (load it with ToolSearch `select:ArtifactData` when deferred). Any other client, such as Codex, has no `ArtifactData`: skip both, and §5 says what to print.
@@ -18,16 +18,16 @@ Then read the named stop's entry in the payload, which fills its prompts (prompt
 
 ## 2. Check the records against the tree
 
-The tree is evidence. The README "Now" lines, the register and plan headers are records that sessions write, and they lag when a session stops before its records step or two sessions share the tree. Trust the tree, then the register, then the "Now" lines; decide from the tree.
+The tree is evidence. `roadmap.py` derives stop status and the first open stop from register/plan evidence and local refs; the README's four owned fields mirror it. Do not reparse free-form register prose or use timestamps to decide completion. Check other prose and plan headers against the step's actual evidence.
 
 | The state shows | Say (Heads-up) | Then |
 | --- | --- | --- |
-| Work the records don't mention (Step 0 items present while "Next" says Step 0 hasn't started) | `<file> lags the tree: "<record>"; the tree has <evidence>.` | Records-lag line from prompts.md: prepended to the next prompt, or same session if the one that did the work is still open |
+| Work the records don't mention (Step 0 items present while its record says it hasn't started) | `<file> lags the tree: "<record>"; the tree has <evidence>.` | Records-lag line from prompts.md: prepended to the next prompt, or same session if the one that did the work is still open |
 | Records claim work the tree lacks | Both sides, quoted | Ask the owner: the work may sit in another clone or a stash. Don't recommend redoing it |
 | A step's items partly present, nothing edited in the last 3 minutes | The session stopped partway | Resume prompt |
 | Edits in the last 3 minutes | A session is still working | Wait for it; give the step after it, marked "once it stops" |
 | Another agent session open in this tree | Which step it ran (its start time against the edit groups); open is not editing | Close it or confirm it's idle before a new editing session. Two sessions whose uptimes both cover one edit group may have edited at once: the owner checks `git diff` there for crossed edits |
-| "Next" and the register disagree | Both, quoted | Follow the one the tree supports; if neither, the register |
+| The README's owned fields disagree with derived status | Both, quoted | Records-lag prompt: replace those four fields with `roadmap.py summary`; other roadmap prose is not another status source |
 
 ## 3. Decide the next step
 
@@ -37,13 +37,13 @@ First row that applies:
 | --- | --- |
 | A perf capture is running | Nothing that writes. Give the step marked "once the capture ends" |
 | A session is still working (§2) | The step after it, marked "once it stops" |
-| A release is cut with no tag (the register row says cut; its plan archived) | You: ship it in one sitting (prompts.md, Ship). It comes before the next candidate's plan even when "Next" skips it |
+| A release is cut with no tag (the register row says cut; its plan archived) | You: ship it in one sitting (prompts.md, Ship). It comes before the next candidate's plan |
 | Work landed for a release with no plan or cut (register row landed, or a plan's run stopped before its release step) | You: review the uncommitted diff; then the release prompt, new session |
 | Tag exists, release not on `origin/main` | You: finish shipping (approve, squash-merge, the post-merge block) |
 | Release on `origin/main` | Sync the roadmap. Then the plan prompt the run session ended with, or the next candidate's; first, you: the post-merge block if the next branch is missing |
-| "Next" says the owner reviews something | You: that review; fixes go to the same session |
-| "Next" names a gate or a graduation | That prompt |
-| First open register row has no plan | The plan prompt |
+| The stop's next stage needs owner review | You: that review; fixes go to the same session |
+| The first open stop is a gate or a graduation | That prompt |
+| The first open stop is a candidate with no plan | The plan prompt |
 | Plan without an "Approved" line | Read its open questions; the approve prompt, same session |
 | Approved, steps without evidence rows | The run prompt for its level, which ends in the release, or the resume prompt if its session closed |
 | Frame-loop gate next, acceptance-game pitch not agreed | The game spec session first |

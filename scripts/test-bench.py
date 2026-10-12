@@ -555,9 +555,45 @@ class Runner(unittest.TestCase):
 
 
 class BackgroundLoad(unittest.TestCase):
-    """`D-095`: background load during a measured run invalidates it unless allowed."""
+    """`D-095`/`D-141`: refuse known load early; keep measured-run invalidation."""
 
     ENCODER = [(4242, 1, "nxcodec.bin")]
+
+    def test_preflight_refuses_known_load_before_build_or_capture(self):
+        for argv in (["run", "physics"], ["run", "gpu", "--sweep", "lights=0,1"], ["suite"]):
+            for processes in (self.ENCODER, [(4242, 1, "cargo"), (4243, 4242, "rustc")]):
+                with (
+                    self.subTest(argv=argv, processes=processes),
+                    mock.patch.object(bench, "list_processes", return_value=processes),
+                    mock.patch.object(bench, "collect_provenance") as provenance,
+                    mock.patch.object(bench, "build") as build,
+                    mock.patch.object(bench, "new_run_dir") as capture_dir,
+                    contextlib.redirect_stderr(io.StringIO()) as error,
+                ):
+                    self.assertEqual(bench.main(argv), 2)
+                    self.assertIn("background load:", error.getvalue())
+                    self.assertIn("--allow-background", error.getvalue())
+                    provenance.assert_not_called()
+                    build.assert_not_called()
+                    capture_dir.assert_not_called()
+
+    def test_preflight_allows_clean_own_tree_and_explicit_override(self):
+        own = [(os.getpid(), 1, "python3"), (900_001, os.getpid(), "cargo"), (900_002, 900_001, "rustc")]
+        cases = (([], []), (own, []), (self.ENCODER, ["--allow-background"]),
+                 ([(4242, 1, "cargo")], ["--allow-background"]))
+        for argv in (["run", "physics"], ["run", "gpu", "--sweep", "lights=0,1"], ["suite"]):
+            for processes, flags in cases:
+                with (
+                    self.subTest(argv=argv, flags=flags, processes=processes),
+                    mock.patch.object(bench, "list_processes", return_value=processes),
+                    mock.patch.object(bench, "collect_provenance"),
+                    mock.patch.object(bench, "build", side_effect=bench.BenchError("build reached")) as build,
+                ):
+                    args = bench.parser().parse_args([*argv, *flags])
+                    command = bench.cmd_suite if args.command == "suite" else bench.cmd_run
+                    with self.assertRaisesRegex(bench.BenchError, "build reached"):
+                        command(args)
+                    build.assert_called_once()
 
     def capture(self, directory, *, lister, trees=(BUILT_TREE, BUILT_TREE), allow=False, sleep=0.0):
         """Two timing runs of the fake binary through `capture_to`, with an

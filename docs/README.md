@@ -6,7 +6,8 @@ Start with the document that owns the fact you need. Code and executable checks 
 | --- | --- |
 | Build, run, project overview | [README](../README.md) |
 | Making a game from the template | [Getting started](getting-started.md) |
-| Repository rules and required checks | [AGENTS](../AGENTS.md); [renderer rules](../crates/tungsten-render/AGENTS.md) when editing that crate |
+| Repository rules | [AGENTS](../AGENTS.md); [renderer rules](../crates/tungsten-render/AGENTS.md) when editing that crate |
+| Change-to-check matrix, targeted iteration and read-only selection | [Validation](validation.md) |
 | Task → source paths | [LLM index](LLM_INDEX.md) |
 | Current architecture and reload support | [Design](../DESIGN.md) |
 | Design rationale | [Decision index](DECISION_INDEX.md), then one `D-NNN` section of [DECISIONS](../DECISIONS.md) |
@@ -27,4 +28,4 @@ For large docs, locate a heading with `rg -n '^#{1,3} ' <file>` and read the rel
 
 Completed or retired plans live under `docs/plans/archive/` with their original basenames. Historical `docs/plans/<name>.md` references may therefore name their former locations. Agents never read, search or list the archive.
 
-After documentation changes, run `just ctx`, `just repo-check` and `git diff --check`; substantial work also finishes with `just check`. The maintained-doc checker covers selected files, not every Markdown file or link fragment, so check other touched local links and anchors too.
+After documentation changes, run `just ctx`, `just repo-check` and `git diff --check`; substantial work also finishes with `just check`. The checker covers maintained docs and active program documents one folder deep, including local destinations and Markdown fragments; archive targets stay unread. Check other touched local links/anchors and external URLs separately.

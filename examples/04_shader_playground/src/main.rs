@@ -26,6 +26,10 @@
 //! `TUNGSTEN_MATERIAL_PAIR_FIXTURE={pair|same}` adds two screen-locked sprites
 //! drawn through the root manifest's `damage_flash`, red and blue (`pair`) or
 //! blue twice (`same`), for `tests/post_regression.rs`.
+//!
+//! Shared and example-local assets hot-reload while the playground runs.
+//! Edit manifest WGSL bodies to iterate without restarting; invalid WGSL keeps
+//! the last valid pipeline. Shader signatures still require a rebuild (`D-057`).
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -146,6 +150,13 @@ fn main() -> anyhow::Result<()> {
         PathBuf::from(ROOT_MANIFEST),
         PathBuf::from(LOCAL_MANIFEST),
     ]);
+    app.enable_hot_reload(
+        &[
+            PathBuf::from("assets"),
+            PathBuf::from("examples/04_shader_playground/assets"),
+        ],
+        PathBuf::from(LOCAL_MANIFEST),
+    );
 
     {
         let world = app.world_mut();

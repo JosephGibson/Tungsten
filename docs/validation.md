@@ -1,0 +1,59 @@
+# Validation selection
+
+This guide owns the detailed change-to-check matrix (`D-140`). [AGENTS](../AGENTS.md) owns repository constraints; the [1.0 workflow](plans/1.0/workflow.md#5-what-every-milestone-owes-before-its-release) and [release guide](releases.md#ordinary-milestone-release) add their milestone/release gates. CI is informational and CPU-only (`D-070`); local hardware evidence remains necessary when the change requires it.
+
+## Edit loop and handoff
+
+During an edit, run the smallest relevant crate, integration test or script regression below. Use `cargo test -p <package> --locked <test-filter>` for a unit-test filter, or `cargo test -p <package> --test <test-name> --locked` for an integration test. `cargo check -p <package> --all-targets --locked` is a type check only. `just quick` includes workspace type checking and repository/instruction QA; it is broader than these targeted commands.
+
+Finish substantial work with `just check` (formatting, strict workspace clippy, tests and doctests) and `git diff --check`. Add the applicable rows below. Milestones retain their approved done-when checks, invariant evidence, API ledger/template review and perf obligations; releases retain all release checks on the cut tree. Targeted checks do not replace these final gates. No result cache is introduced.
+
+## Change-to-check matrix
+
+Rows combine: use each applicable command once per verification stage, keeping the reasons. The edit-loop column gives focused commands; the additions column names final checks beyond `just check`. A source path can only recommend content-dependent checks: inspect the actual diff and task's acceptance criteria.
+
+| Change | Targeted edit loop | Additional CPU checks | Local hardware or review |
+| --- | --- | --- | --- |
+| Documentation, instructions, plans, skills and current snapshots | `python3 -B scripts/check-repo.py`; for instructions, `just ctx` | `just ctx`, `just repo-check`, changed local links/anchors; inspect the four owned roadmap fields after tree/ref changes | No GPU, audio or perf capture for prose-only work. External URLs remain manual/network review |
+| Manifests, asset files, asset schema/registry/IDs | `cargo test -p tungsten-core --test manifests --locked` (layer 1) and affected crate tests | `just repo-check` for coverage | `just smoke` (layer 2) for runtime loading/upload/wiring; visual or audible review when changed content requires it |
+| Core/render boundary: asset loader/upload, components, text types and extracts | Affected core/umbrella/render crate tests; layer 1 above | `just repo-check`; API review below when public types change | `just smoke`; `just visual` when pixels change or the renderer path is touched; keep `&World`/plain-data seam evidence |
+| Core ECS, clocks, schedule or other core runtime behavior | `cargo test -p tungsten-core --locked` with the relevant filter; umbrella harness tests for frame-loop behavior | Applicable manifest/API checks | `just smoke` for engine wiring. For hot shared ECS/frame-loop milestone work, capture every CPU row under the profiling contract |
+| Physics solver, collision, broadphase, step/gather/sleep or physics regression fixtures | Relevant `tungsten-core` unit/integration tests | `just physics-release`: release determinism, tunneling and containment, with the runner's flags; determinism/containment are ignored in debug | `just smoke` for runtime source changes. Select affected physics/integrated perf rows when a hot-path change or milestone requires it; preserve hashes or explain moves |
+| Renderer pipelines/resources/passes, text GPU path and presentation | `cargo test -p tungsten-render --locked`; GPU-free surface policy/layout tests can use a filter | Shader coverage below when applicable; public API review | `just smoke`, `just visual` on the reference machine; inspect affected reload/presentation paths. Perf work follows the profiling guide; Vulkan success does not certify Metal/DX12 |
+| WGSL, including manifest shaders, compiled sources and stock mirrors | `cargo test -p tungsten-render --test shader_coverage --locked`: Naga validation and byte-equal mirrors | Layer 1/coverage for asset-tree changes; edit both stock mirrors together; retain LYGIA headers | `just smoke`, `just visual`; demonstrate affected reload paths. Naga/cache success does not prove pixels; explain golden changes before replacement |
+| Platformer generator sources/inputs, inventory or generated outputs (`tools/`, generated assets and `src/level_layout.rs`) | `just level-check` (read-only regeneration comparison plus Python tests; Pillow required), `cargo test -p example-01-platformer --locked` | Layer 1 and `just repo-check`; all owned outputs accompany their sources | `just smoke`; use the [authoring guide](../examples/01_platformer/tools/README.md#runtime-and-visual-checks) for applicable routes, motion, resized windows and audible review. Hand-authored assets retain ordinary asset checks |
+| Other engine/example wiring and gameplay | Affected package tests, preferably a real harness scenario matching the behavior | Applicable manifest/API checks | `just smoke`; visible behavior needs applicable visual/motion review, sound changes audible review; startup smoke alone cannot certify them |
+| Scripts, just recipes, perf helpers or `.github/workflows/` | The changed helper's existing regression test, e.g. `python3 -B scripts/test-check-repo.py` | `just script-test` (ShellCheck, actionlint and regression suites), `just ctx`, `just repo-check` | Tooling-only changes need no capture. Runtime/hardware recipe changes also take the checks for the behavior they alter |
+| Public API, re-exports, feature wiring and `api/` snapshots | Affected crate tests/doctests; inspect supported umbrella surface | Inspect the diff for additions/breaks; regenerate with `just api` when surface changes and run `just api-check`; update [W4 ledger](plans/1.0/w04-api-freeze.md#break-ledger), rustdoc and template for authoring changes | Milestone/API work keeps critique/approval and applicable level C API review; hardware checks follow affected runtime paths |
+| Template source/assets/config/toolchain/wiring | `cargo test -p tungsten-template-basic --locked`; layer 1 for assets | `just repo-check` validates coverage and toolchain/MSRV agreement; API/guide review for authoring changes | `just smoke`, `just template-check` (outside-copy build/test/smoke, disk floor and GPU/display); every release retains its outside-copy check |
+| Dependencies, lockfile, toolchain, build flags or dependency policy | Affected package type check/tests | `just deps`, `just repo-check`, final `just check`; inspect API/toolchain snapshot and license-notice requirements | `just smoke`; template and release checks as their guides require. New runtime dependencies still need a `D-015` decision |
+| Release tooling, archives, notices and platform jobs | Existing script/probe tests; `just script-test` for scripts/workflows | Applicable [release checks](releases.md#ordinary-milestone-release), including notices/API/consistency | Published archive, crash, audio and platform verification as the release guide requires; this matrix grants no publication authority |
+| Unclassified paths or changes whose behavior is unclear | Inspect the diff, task route and relevant tests | Selector prints `UNCLASSIFIED`; recommendations cannot certify complete coverage | Resolve the required evidence from the task/milestone/release; do not infer success from missing recommendations |
+
+A clean checkout or non-trivial dependency/runtime change runs both manifest validation and smoke under the existing rules. Documentation/QA-only work needs its CPU gates and no hardware run unless it changes a hardware workflow's behavior.
+
+## Read-only selector
+
+From the repository root:
+
+```bash
+just checks docs/agent-setup.md
+just checks examples/01_platformer/tools/level.json
+just checks crates/tungsten-core/src/physics/step/solver.rs
+just checks crates/tungsten-render/src/renderer.rs assets/shaders/sprite.wgsl
+just checks
+just checks --base origin/main
+python3 -B scripts/check-repo.py --select-checks --base HEAD~1
+```
+
+Explicit paths are repository-relative (absolute paths within the root also work) and need not exist, so deletions are selectable. With no paths, Git selection compares `HEAD` directly with the working tree, covering staged and unstaged changes, and adds untracked, non-ignored files. `--base REF` compares that commit directly to the work tree, including committed changes since that ref; it is not a merge-base calculation and never fetches. Use a reviewed base for the milestone's full change. Explicit paths and `--base` are separate modes. An unborn repository uses staged/unstaged/untracked paths. Invalid Git refs fail visibly; rename detection is disabled so both old and new locations contribute their requirements. Filenames are NUL-delimited in Git queries, preserving spaces.
+
+The selector combines identical commands and prints their reasons, separates edit-loop, CPU and hardware recommendations, and identifies content-dependent API/perf/visual decisions for review. It reads paths and, for platformer asset ownership, the generator inventory; it does not infer an API or visual effect from prose or automatically launch any check. It does not fetch, cache results, regenerate files, change Git state or authorize releases. The matrix and task's acceptance checks remain the contract.
+
+The roadmap's four owned fields are **Workspace**, **First open stop**, **Stop state** and **Next milestone** inside the marked block in the [Now section](plans/1.0/README.md#now). `python3 -B scripts/roadmap.py summary` prints replacement lines; `just repo-check` compares those explicit fields to `roadmap.derive` and workspace metadata. Keep them current after a cut, register/plan change or local-ref update. Branch/fetch details are deliberately outside the owned fields: `roadmap.py status` reports freshness, and publication claims require the release guide's live checks. Historical prose/dates do not determine completion.
+
+## Evidence and hardware boundaries
+
+Report each required check as **passed**, **failed** (with its actionable output), or **not run** (with the reason/prerequisite). Selector output is a recommendation, never a result. CPU workspace tests return successfully when visual integration tests take their skip path; without `TUNGSTEN_VISUAL_REGRESSION=1`, report pixel comparisons as **not run**, even if Cargo says the test passed. `just visual` sets that switch for the benchmark, post-stack and transition comparisons and needs the reference GPU/display. `just smoke` starts examples for three frames and exercises render fixture matrices on Linux; elsewhere use the documented smoke variable with the examples. Neither smoke nor shader validation establishes visual quality or audible behavior.
+
+Hardware commands are never started by selection. GPU/display, manual audio/playthrough and quiet performance sittings remain local. Performance captures and comparisons follow the [profiling contract](perf/profiling-workflow.md#comparison-rule-and-capture-rules), including background-load/tree-drift invalidation; timing claims require its provenance and repeat rules. No new hardware or commit/publication boundary is introduced here.

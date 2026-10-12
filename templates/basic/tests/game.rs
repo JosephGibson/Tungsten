@@ -62,7 +62,11 @@ fn the_schedule_matches_the_snapshot() {
 #[test]
 fn data_files_load() {
     let config = Config::load("tungsten.json").expect("tungsten.json loads");
-    assert_eq!(config.game.id.as_deref(), Some("tungsten-template-basic"));
+    // Config::load validates the ID; copied games choose their own name.
+    assert!(
+        config.game.id.is_some(),
+        "the game config needs an explicit ID"
+    );
     let actions = ActionMap::load(Path::new("input.json")).expect("input.json loads");
     for action in ["move_left", "move_right", "move_up", "move_down"] {
         assert!(

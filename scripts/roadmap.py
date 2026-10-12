@@ -7,7 +7,8 @@ model and effort for each session stage (`D-118`).
 `status [--json OUT]` derives each stop's status from the tree: the register, plan files,
 approval lines, evidence rows, tags and the local `origin/main` (never fetched), and prints
 the evidence for each with the next release and milestone. `scripts/check-repo.py` imports
-the register parsers, so both read the register one way.
+the register parsers, so both read the register one way. `summary` prints the four
+owned README fields (workspace, first open stop, stop state, next milestone).
 """
 
 import argparse
@@ -18,6 +19,7 @@ import re
 import subprocess
 import sys
 import time
+import tomllib
 from pathlib import Path
 
 PROGRAM = "docs/plans/1.0"
@@ -28,6 +30,10 @@ PROMPTS = ".claude/skills/tungsten-next/prompts.md"
 SCHEMA = 2  # the catalog shape `catalog` writes and the page reads
 REGISTER_FIELDS = ("candidate", "plan", "release", "status")
 FIRST_MILESTONE = 32  # docs/plans/1.0/README.md, Conventions
+SUMMARY_DOC = f"{PROGRAM}/README.md"
+SUMMARY_START = "<!-- roadmap-summary:start -->"
+SUMMARY_END = "<!-- roadmap-summary:end -->"
+SUMMARY_FIELDS = ("Workspace", "First open stop", "Stop state", "Next milestone")
 
 # Session recommendations (D-118, D-136). A stop's tier comes from its complexity and effort; the scaled
 # steps take it, the fixed ones never vary, a same-session step keeps the step that opened its session.
@@ -375,10 +381,24 @@ def derive(root):
             stops[i]["why"] = f"verdicts feed {gate['id']}, {gate['status']}" if gate else "no gate after it"
     current =next((s["id"] for s in stops if s["status"] not in ("done", "skip")), None)
     return {
+        "workspace": tomllib.loads((root / "Cargo.toml").read_text())["workspace"]["package"]["version"],
         "branch": git.branch(), "release": next_release(root, git), "milestone": next_milestone(rows.values()),
         "fetched": time.strftime("%Y-%m-%d %H:%M", time.localtime(fetched)) if fetched else None,
         "stop": current, "stops": stops,
     }
+
+
+def summary_fields(state):
+    """The four owned fields; no dates, prose, branch name or publication inference."""
+    stop = next((s for s in state["stops"] if s["id"] == state["stop"]), None)
+    return dict(zip(SUMMARY_FIELDS, (state["workspace"], state["stop"] or "none",
+                                   stop["status"] if stop else "none", state["milestone"])))
+
+
+def summary_text(state):
+    lines = [SUMMARY_START]
+    lines.extend(f"- **{key}:** `{value}`" for key, value in summary_fields(state).items())
+    return "\n".join(lines + [SUMMARY_END])
 
 
 def main(argv=None):
@@ -386,6 +406,7 @@ def main(argv=None):
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parent.parent)
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("catalog", help="write the meta/catalog document").add_argument("out", type=Path)
+    sub.add_parser("summary", help="print the README's four owned fields, using local refs only")
     status = sub.add_parser("status", help="derive each stop's status from the tree")
     status.add_argument("--json", type=Path, help="also write the result as JSON")
     args = parser.parse_args(argv)
@@ -396,6 +417,9 @@ def main(argv=None):
         print(f"catalog hash {payload['hash']} · {len(text.encode())} bytes · {args.out}")
         return 0
     state = derive(args.root)
+    if args.command == "summary":
+        print(summary_text(state))
+        return 0
     print(f"branch {state['branch'] or '(detached)'} · next release {state['release']} · "
           f"next milestone {state['milestone']} · last fetch {state['fetched'] or 'never'} · "
           f"current stop {state['stop']}")

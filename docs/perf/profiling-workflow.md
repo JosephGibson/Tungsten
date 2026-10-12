@@ -19,17 +19,17 @@ Compare two captures only when they measure the same row with the same `workload
 | GPU timing | only in the separate GPU diagnostic run (`gpu` and `integrated`), never in a timing run |
 | Machine | governor `performance`; nothing else using the CPU, the GPU or the screen |
 
-**No remote-desktop encoder may run during a capture.** A connected NoMachine client runs `nxcodec.bin`, which encodes the screen and competes for memory bandwidth with the integrated GPU. On the reference machine it slowed every third frame of `ecs`, moving `total` p95 from 11.5 to 18.2 ms, while every guard passed and the digests matched. The runner scans for it before, once a second during and once after every measured run and invalidates a run it overlaps (see [validity](#validity-and-determinism)). Check anyway before a sitting, so no capture is wasted, and before and after capacity probes, smoke timings and visual runs, which the runner doesn't scan; poll during long ones:
+**No remote-desktop encoder may run during a capture.** A connected NoMachine client runs `nxcodec.bin`, which encodes the screen and competes for memory bandwidth with the integrated GPU. On the reference machine it slowed every third frame of `ecs`, moving `total` p95 from 11.5 to 18.2 ms, while every guard passed and the digests matched. `run`, `suite` and `--sweep` now refuse known encoder/foreign-build load before building (`D-141`), replacing separate manual prechecks for those commands. The runner still scans before, once a second during and once after every measured run and invalidates a run it overlaps (see [validity](#validity-and-determinism)). Capacity probes, manual profiler/criterion runs, smoke timings and visual runs are not scanned: check before and after them, and poll during long ones:
 
 ```bash
-pgrep -x nxcodec.bin && echo "disconnect the remote-desktop client first"
+pgrep -x 'nxcodec.bin|cargo|rustc' && echo "disconnect the remote-desktop client and stop builds first"
 ```
 
 A capture that overlapped such a session is invalid: exclude it and capture again.
 
 **Nothing else may load the machine during a sitting either.** Guards and digests pass under this load too:
 
-- **No other agent session or build.** Another session's `cargo` run in the same tree landed inside a suite: one `particles` run read `total` p95 41.9 ms against about 12.5, and `particles` and `integrated` read 3–9% high for the whole window. Before a sitting, check that no other Claude or Codex session is working in the tree (`pwdx $(pgrep -x 'claude|codex')` shows where each runs) and that `pgrep -x 'cargo|rustc'` finds nothing. During the sitting the runner flags a `cargo` or `rustc` outside its own process tree, and a commit or dirty-tree hash that changed during a run, which a session editing without building leaves; a session that only reads files goes unflagged.
+- **No other agent session or build.** Another session's `cargo` run in the same tree landed inside a suite: one `particles` run read `total` p95 41.9 ms against about 12.5, and `particles` and `integrated` read 3–9% high for the whole window. Before a sitting, check that no other Claude or Codex session is working in the tree (`pwdx $(pgrep -x 'claude|codex')` shows where each runs). Runner preflight handles foreign `cargo`/`rustc`; the manual process check above remains for unscanned workflows. During the sitting the runner flags a `cargo` or `rustc` outside its own process tree, and a commit or dirty-tree hash that changed during a run, which a session editing without building leaves; a session that only reads files and other process names go unflagged. Preflight is not a machine-idle guarantee.
 - **None of your own commands.** Searches and edits beside a capture took `churn` `flush` p95 from 3.07–3.12 to 3.14–3.46 ms and `integrated` jitter from 0.7–1.4 to 0.8–2.6 ms, with p50 unmoved. Run each sitting as one blocking foreground command. Check a capture that ran beside other work against a clean capture's p95 and jitter, and capture it again if they are fatter.
 
 ## Quick start
@@ -129,6 +129,8 @@ TUNGSTEN_BENCH=ecs TUNGSTEN_SMOKE_FRAMES=360 TUNGSTEN_PERF_LOG=1 RUST_LOG=tungst
 ```
 
 ## Validity and determinism
+
+Before provenance collection, building or creating output, `run`, `suite` and `--sweep` use the existing process scanner to refuse `nxcodec.bin` anywhere or `cargo`/`rustc` outside the runner's own process tree. Refusal exits 2 with the offending names and writes no capture. `--allow-background` bypasses that preflight refusal for diagnostics; measured-run load still follows the notes policy below. Load that starts after preflight remains detectable by the existing measured-run scans (`D-095`, `D-141`).
 
 A capture is valid when every run, GPU diagnostic runs included:
 
@@ -249,12 +251,12 @@ Every row also reports peak RSS, with a verdict, and RSS growth. `interval` and,
 
 Search these first in a flamegraph:
 
-- `App::window_event`, `render_frame_full`, `render_frame_full_timed`
-- `extract_`, `extract_sprites_default` (no culling; one pass, a key sort that is skipped when the query is already in painter order, and a string compare per sprite, `D-086`)
-- `query2`, `World::flush` (archetype moves; the app's flush shows as `World::flush_reusing`, with `insert_run` and `move_components_to` under it)
+- `App::run_frame` (shared with the headless harness, `D-110`), `App::window_event`, `render_frame_full`, `render_frame_full_timed`
+- `extract_`, `extract_sprites_default` (column-slice queries, interned `SpriteAssetId` registry indexing, reused buffers and a key sort skipped in painter order; stock sprite/lit pipelines cull outside the projected view, material sprites remain; `D-086`, `D-113`, `D-114`, `D-135`)
+- `World::query`, `World::query_mut`, `World::query_slices` (`D-135`), `World::flush` (archetype moves; the app's flush shows as `World::flush_reusing`, with `insert_run` and `move_components_to` under it)
 - `physics_step`, `build_pairs`, `gather_tilemap_proxies` (tile proxies rebuilt from a full-map scan every frame)
 - `particle_tick_system`
-- `glyphon` and the text `prepare` (`TextPipeline::prepare`: `TextLayoutCache::update` reshapes every changed section, and a frame of unchanged text skips glyphon's prepare)
+- `glyphon`, `TextEngine` layout/cache work and `TextPipeline::prepare` (device-free shaping in `text/engine.rs`, GPU preparation in `text/gpu.rs`; unchanged section layouts are reused and unchanged frames skip glyphon preparation; `D-085`, `D-117`)
 - `wgpu`
 
 Interpretation:

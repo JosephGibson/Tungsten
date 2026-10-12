@@ -1123,6 +1123,7 @@ The bound belongs to the step, not to the app loop: `physics_step` is public and
 - No `unsafe`, no new dependency. `PhysicsConfig` gains a field, so code that builds one as a full literal adds `max_step_dt`.
 
 ## D-095 — Perf runner flags background load and reports digest matches
+**Amended by D-141:** known encoder/build load is refused before the build; separate manual prechecks for those processes are no longer required for `run`, `suite` or `--sweep`; measured-run scans, tree-drift checks and unscanned-workflow rules stand.
 **Date:** 2026-10-03
 **Decision:** `scripts/bench.py` checks every measured run, timing and GPU diagnostic alike, for background load. It scans `/proc` before the run, once a second during it and once after it exits, for `nxcodec.bin` anywhere and for `cargo` or `rustc` outside the runner's own process tree; after the run it recomputes the commit and the dirty-tree hash and compares them with the provenance read before the build. An offender makes the run invalid with `background load: <name>`, a changed tree with `background load: tree changed`; `--allow-background` (`run`, `suite`) turns both into capture notes. The capture's provenance gains a soft `background` record: the offenders seen, the runs after which the tree differed with the values seen, and whether they were allowed. Compare reports whether the two sides' first-run digests match, for information only; suite compare lists the rows whose digests differ; `run --compare` given a suite compares against its row of the same name.
 
@@ -1709,3 +1710,28 @@ The suite with culling against the suite with interned IDs only (`D-113`), and a
 - The break ledger's row: a behaviour change, not a compile break, and one public addition, `World::hold_events_for_fixed_step`.
 - Pinned by `ecs::event_queue::tests` (the hold across frames with no step, the frame view and later steps without the held events, the drop without a hold, the 256-frame cap), `ecs::world::tests::the_fixed_step_hold_reaches_every_registered_queue`, the umbrella's `testing::fixed_step::at_144_hz_a_fixed_reader_reads_each_update_event_once_and_a_pause_drops_them`, example 01's regime test and `RUNTIME_SCHEDULE`, and the `api/` snapshot.
 - Not decided here: a reader cursor; per-step cursor and scroll deltas (`D-137`); a catch-up bound that knows the step's cost; example 01's `SceneTime` animation at the interpolated time (known issues).
+
+## D-140 — Bounded maintenance plans in the session; handoffs and milestone reviews retain their routes
+**Date:** 2026-10-11
+**Decision:** Bounded maintenance records scope/non-goals, affected files and acceptance checks in the session before editing, without requiring a saved milestone plan or a fresh approval for routine choices already authorized. Multi-session work retains a saved handoff plan. A 1.0 milestone candidate, or work whose deliverable is a new public API, retains the program's plan, critique, approval and applicable level C API review. `docs/validation.md` owns the detailed change-to-check matrix; existing QA tooling may recommend checks from paths, without executing them or certifying results.
+
+**Why:** The owner approved workflow research proposals 1–3 on 2026-10-11. The current decision index measured 43,894 bytes and DESIGN Status 13,689 bytes before the change; those are context-size measurements, not task-time or token savings. Ordinary maintenance needs a concrete scope and acceptance check, while a saved plan serves a handoff and milestone review settles lasting API choices. The detailed checks were distributed across operational guides and left generator and release-only physics routing easy to miss.
+
+**Consequences:**
+- Amends no decision. `D-105`'s uncommitted work, `D-070`'s informational CPU CI, `D-079`'s human publication and `D-095`'s capture provenance rules stand. No release is implied by maintenance, and no runtime dependency is added (`D-015` does not apply).
+- `AGENTS.md` distinguishes full named-crate correctness audits from scoped workflow/documentation audits and points to the plan routes and canonical validation matrix. Milestone and release checks remain additional requirements.
+- Decision navigation keeps each ID and amendment/supersession relationship; detailed measurements and edge rules stay in the immutable decision sections. Current snapshots link to the changelog, register and gate records rather than repeating release history.
+- The QA selector prints recommendations and reasons, combines overlapping checks, includes untracked and renamed/deleted paths, and exposes unknown paths and content-dependent choices. CPU success without the visual switch cannot certify pixel comparisons.
+- Real-task time, usage, repeated exploration and owner corrections still need a pilot; this implementation measures documentation bytes and verifies representative navigation only. Proposals 4–9 remain unapproved.
+
+## D-141 — Perf captures refuse known background load before building
+**Date:** 2026-10-12
+**Decision:** `scripts/bench.py` reuses its existing `/proc` scanner and own-process-tree rule before provenance collection or building for `run`, `suite` and `run --sweep`. A known `nxcodec.bin`, or foreign `cargo`/`rustc`, refuses the command with an environment error (exit 2) before any capture directory is created. The existing `--allow-background` flag bypasses this refusal for diagnostics; measured-run scans still record the load they observe and apply the existing validity/notes policy.
+
+**Why:** `D-095` records repeated spoiled captures despite passing workload guards and digests. Its scanner previously ran only after the build, and the capture rules therefore required a separate manual process check before every sitting. Reusing that scanner before the build replaces those duplicate encoder/build prechecks and avoids starting a sitting already known to be unsuitable. No task-time saving is claimed.
+
+**Consequences:**
+- Amends `D-095` as its marker line says. Measured-run scans, tree-drift invalidation, repeats, digests, comparability and thresholds remain unchanged; load starting after preflight still invalidates the capture unless explicitly allowed.
+- The scanner is not a machine-idle guarantee. Other load, concurrent sessions and the agent's own commands retain the quiet-sitting rules. Capacity probes, manual profiler/criterion runs, smoke timings and visual runs retain manual process checks because they are not scanned.
+- No dependency, flag, lock, state file or new scanning policy is added. Preflight costs one existing process scan per command; `D-095` measured a scan at 4.2 ms for 344 processes on the reference machine, not a new measurement here.
+- Existing `BackgroundLoad` tests inject process lists and build/capture mocks to cover refusal before build/output for run, sweep and suite, own-tree/clean acceptance and the explicit override. The existing measured-load and tree-drift tests remain.
