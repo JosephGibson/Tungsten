@@ -1,5 +1,6 @@
 use super::{
-    AcquireAction, AcquireStatus, MAX_ACQUIRE_ATTEMPTS, acquire_action, reconfigure_for_suboptimal,
+    AcquireAction, AcquireStatus, MAX_ACQUIRE_ATTEMPTS, TargetsAt, acquire_action,
+    reconfigure_for_suboptimal, record_again_after_acquire,
 };
 
 const LAST: u32 = MAX_ACQUIRE_ATTEMPTS - 1;
@@ -115,4 +116,16 @@ fn suboptimal_follows_window_size_changes() {
         configured,
         Some(configured)
     ));
+}
+
+#[test]
+fn the_first_part_records_again_only_after_an_acquire_that_resized_the_targets() {
+    let at = |generation, size| TargetsAt { generation, size };
+    let before = at(3, (1280, 720));
+    // Same generation and size: the first part stands.
+    assert!(!record_again_after_acquire(before, at(3, (1280, 720))));
+    // The targets were reallocated, or the surface took the window's size.
+    assert!(record_again_after_acquire(before, at(4, (1280, 720))));
+    assert!(record_again_after_acquire(before, at(3, (1600, 900))));
+    assert!(record_again_after_acquire(before, at(4, (1600, 900))));
 }

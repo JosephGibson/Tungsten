@@ -24,6 +24,7 @@ Sources are [criteria](criteria.md) sections unless another file is named.
 | Parallel custom extracts | [w02](w02-multi-core-rendering.md#options), R1 | A custom extract dominates a row |
 | Pipelined render thread (R4) | The definition gate (Q4, `D-102`), as the [implementation plan](implementation-plan.md) §6 proposed | C1 shows a game-frame row over budget that R4 would fix |
 | Parallel asset decode (R5) | [w02](w02-multi-core-rendering.md#options) | Startup metrics (proposal T2) ask for it |
+| R2's later half: one command encoder per worker, submitted in order, and render bundles for static content such as tile layers; with them, bloom's offscreen passes ahead of the acquire when bloom ends a direct stack | [w02](w02-multi-core-rendering.md#follow-ups) follow-up 1; M44, whose split around the acquire records on one thread and keeps a bloom slot that writes the swapchain whole after it (Q13, `D-145`) | A worker mechanism exists (`D-131`) and a row is bound by command recording; render bundles need no worker, only a row that records unchanged content every frame |
 | Kit items with no user by the freeze | §8.4 | A user appears |
 | W6 features the acceptance game does not use | §3 | A game asks |
 | Audio pause | The frame-loop gate (`D-132`): music plays through pause and level-up, effects are short | A game pauses with long effects playing |

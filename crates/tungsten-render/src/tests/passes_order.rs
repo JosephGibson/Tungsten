@@ -499,3 +499,52 @@ fn direct_order_is_the_blit_order_without_its_present_pass() {
         }
     }
 }
+
+// Late acquire (`D-145`): the passes before the swapchain stage record before
+// the surface acquire.
+
+#[test]
+fn the_acquire_split_falls_on_the_swapchain_stage_on_both_paths() {
+    let writes_swapchain = |pass: &PassDesc| {
+        pass.color == TargetId::Swapchain || pass.color_resolve == Some(TargetId::Swapchain)
+    };
+    // No post and no SMAA, a post stack, SMAA after the scene and after a
+    // stack, MSAA 4 with and without a stack, GPU depth.
+    let configs = [
+        (1u32, DepthSortMode::CpuStable, 0usize, PostAaMode::Off),
+        (1, DepthSortMode::CpuStable, 2, PostAaMode::Off),
+        (1, DepthSortMode::CpuStable, 0, PostAaMode::SmaaHigh),
+        (1, DepthSortMode::CpuStable, 3, PostAaMode::SmaaHigh),
+        (4, DepthSortMode::CpuStable, 0, PostAaMode::Off),
+        (4, DepthSortMode::CpuStable, 2, PostAaMode::Off),
+        (1, DepthSortMode::GpuDepth, 1, PostAaMode::Off),
+        (4, DepthSortMode::GpuDepth, 0, PostAaMode::SmaaUltra),
+    ];
+    for (msaa, depth_sort, stack, post_aa) in configs {
+        let context = format!("msaa={msaa} sort={depth_sort:?} stack={stack} aa={post_aa:?}");
+        let order = |present| default_pass_order(msaa, depth_sort, true, stack, post_aa, present);
+        let (direct, blit) = (order(PresentPath::Direct), order(PresentPath::Blit));
+        let split = acquire_split(stack, post_aa);
+
+        for passes in [direct.as_slice(), blit.as_slice()] {
+            assert!(
+                !passes[..split].iter().any(writes_swapchain),
+                "a pass before the split writes the swapchain: {context}"
+            );
+        }
+        assert!(writes_swapchain(&direct.as_slice()[split]), "{context}");
+        assert_eq!(
+            direct.as_slice()[split].label,
+            blit.as_slice()[split].label,
+            "{context}"
+        );
+        let blit_writers: Vec<usize> = blit
+            .as_slice()
+            .iter()
+            .enumerate()
+            .filter(|(_, pass)| writes_swapchain(pass))
+            .map(|(index, _)| index)
+            .collect();
+        assert_eq!(blit_writers, [blit.as_slice().len() - 1], "{context}");
+    }
+}

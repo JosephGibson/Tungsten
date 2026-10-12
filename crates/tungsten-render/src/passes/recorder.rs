@@ -22,14 +22,18 @@ impl PassRecorder {
         swap_view: &'a wgpu::TextureView,
         clear_override: Option<wgpu::Color>,
     ) -> wgpu::RenderPass<'a> {
-        Self::begin_timed(encoder, desc, pool, swap_view, clear_override, None)
+        Self::begin_timed(encoder, desc, pool, Some(swap_view), clear_override, None)
     }
 
+    /// As [`begin`](Self::begin), with the pass's timestamp writes. The
+    /// passes a frame records before the surface acquire have no swapchain
+    /// view yet (`D-145`): `swap_view` is `None` for them, and a
+    /// [`TargetId::Swapchain`] target without one panics.
     pub(crate) fn begin_timed<'a>(
         encoder: &'a mut wgpu::CommandEncoder,
         desc: &PassDesc,
         pool: &'a RenderTargetPool,
-        swap_view: &'a wgpu::TextureView,
+        swap_view: Option<&'a wgpu::TextureView>,
         clear_override: Option<wgpu::Color>,
         timestamp_writes: Option<wgpu::RenderPassTimestampWrites<'a>>,
     ) -> wgpu::RenderPass<'a> {
@@ -81,7 +85,7 @@ impl PassRecorder {
 fn resolve_view<'a>(
     id: TargetId,
     pool: &'a RenderTargetPool,
-    swap_view: &'a wgpu::TextureView,
+    swap_view: Option<&'a wgpu::TextureView>,
 ) -> &'a wgpu::TextureView {
     match id {
         TargetId::SceneColor => pool.scene.color_view(),
@@ -107,6 +111,8 @@ fn resolve_view<'a>(
             .scene
             .present_source_view()
             .expect("PresentSource requested but post_aa == Off"),
-        TargetId::Swapchain => swap_view,
+        TargetId::Swapchain => {
+            swap_view.expect("a pass that writes the swapchain records after the surface acquire")
+        }
     }
 }

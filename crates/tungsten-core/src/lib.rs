@@ -45,15 +45,16 @@ pub use config::{
 };
 pub use debug_draw::{DEFAULT_CIRCLE_SEGMENTS, DebugCommand, DebugDraw, DebugShape};
 pub use display::{
-    DisplayConfig, DisplayMode, DisplayState, DisplayValidationError, Resolution, ScaleMode,
-    WindowSize,
+    DisplayConfig, DisplayMode, DisplayState, DisplayValidationError, Resolution, ScaleFactor,
+    ScaleMode, WindowSize,
 };
 pub use ecs::{
     Bundle, CommandBuffer, Entity, EventQueue, OptionalColumn, PendingEntity, ShakeEvent,
     SquashEvent, With, Without, World,
 };
 pub use input::{
-    ActionMap, ActionMapError, Binding, InputState, KeyCode, MouseButton, ScrollDirection,
+    ActionMap, ActionMapError, Binding, InputState, KeyCode, Modifiers, MouseButton, RawEvent,
+    RawInput, ScrollDirection, WheelDelta,
 };
 pub use inspect::{InspectRegistry, Inspectable};
 pub use lighting::{AmbientLight, LIGHT_CAP};

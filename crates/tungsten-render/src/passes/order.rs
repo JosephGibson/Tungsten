@@ -185,6 +185,22 @@ pub fn default_pass_order(
     PassOrder(passes)
 }
 
+/// Index of the pass a frame splits at around the surface acquire (late
+/// acquire, `D-145`): the first pass of the direct order whose color or
+/// resolve target is the swapchain, `D-087`'s stage. That is SMAA's
+/// neighborhood pass; without SMAA the last post pass; with neither the scene
+/// pass, index 0. The passes before it record and submit before the acquire.
+/// A blit frame splits at the same index, since both orders list the same
+/// stages up to the text overlay.
+pub(crate) fn acquire_split(post_stack_len: usize, post_aa: PostAaMode) -> usize {
+    if post_aa.is_smaa() {
+        // The scene, the post passes, then SMAA's edge and blend passes.
+        post_stack_len + 3
+    } else {
+        post_stack_len
+    }
+}
+
 /// Target the text-overlay pass writes into on a [`PresentPath::Blit`] frame:
 /// whichever texture the present blit samples and the screenshot reads. When
 /// `post_aa != Off` the SMAA tail has already composited into `PresentSource`,

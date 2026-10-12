@@ -132,6 +132,9 @@ impl TimingResources {
         }
     }
 
+    /// Resolves every query taken so far, in the frame's last command
+    /// buffer: those written by the buffer submitted before the acquire are
+    /// resolved there too (`D-145`).
     pub(crate) fn resolve(&self, encoder: &mut wgpu::CommandEncoder) {
         let count = self.labels.len() as u32 * 2;
         encoder.resolve_query_set(&self.query_set, 0..count, &self.resolve_buf, 0);
@@ -178,9 +181,15 @@ impl TimingResources {
 pub struct CpuFrameTimings {
     /// Surface acquire time.
     pub acquire_ms: f32,
-    /// Encode/command-recording time.
+    /// Encode/command-recording time: the whole frame's, before and after
+    /// the acquire.
     pub encode_ms: f32,
-    /// Submit/present/readback wait time.
+    /// The part of `encode_ms` recorded before the acquire: the camera
+    /// upload, the text preparation and the passes before the one that
+    /// writes the swapchain (`D-145`).
+    pub encode_pre_acquire_ms: f32,
+    /// Submit/present/readback wait time, the submit before the acquire
+    /// included.
     pub submit_present_ms: f32,
 }
 

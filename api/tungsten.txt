@@ -626,6 +626,7 @@ pub tungsten::telemetry::FrameTimings::hot_reload_ms: f32
 pub tungsten::telemetry::FrameTimings::interval_ms: core::option::Option<f32>
 pub tungsten::telemetry::FrameTimings::render_acquire_ms: f32
 pub tungsten::telemetry::FrameTimings::render_encode_ms: f32
+pub tungsten::telemetry::FrameTimings::render_encode_pre_acquire_ms: f32
 pub tungsten::telemetry::FrameTimings::render_ms: f32
 pub tungsten::telemetry::FrameTimings::render_submit_present_ms: f32
 pub tungsten::telemetry::FrameTimings::system_timings: alloc::vec::Vec<(alloc::string::String, f32)>
@@ -1071,6 +1072,7 @@ pub tungsten::FrameTimings::hot_reload_ms: f32
 pub tungsten::FrameTimings::interval_ms: core::option::Option<f32>
 pub tungsten::FrameTimings::render_acquire_ms: f32
 pub tungsten::FrameTimings::render_encode_ms: f32
+pub tungsten::FrameTimings::render_encode_pre_acquire_ms: f32
 pub tungsten::FrameTimings::render_ms: f32
 pub tungsten::FrameTimings::render_submit_present_ms: f32
 pub tungsten::FrameTimings::system_timings: alloc::vec::Vec<(alloc::string::String, f32)>

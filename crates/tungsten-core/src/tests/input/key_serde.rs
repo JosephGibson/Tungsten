@@ -6,11 +6,58 @@ fn keycode_names_round_trip() {
         assert_eq!(keycode_from_str(name), Some(*code));
         assert_eq!(keycode_to_str(*code), Some(*name));
     }
+    // One row per named variant; the window bridge's key table pins the same
+    // count, so every name has a winit key.
+    assert_eq!(KEYCODE_NAMES.len(), 74);
+}
+
+#[test]
+fn each_new_key_name_round_trips_through_json() {
+    let new = [
+        (KeyCode::Home, "Home"),
+        (KeyCode::End, "End"),
+        (KeyCode::Delete, "Delete"),
+        (KeyCode::PageUp, "PageUp"),
+        (KeyCode::PageDown, "PageDown"),
+        (KeyCode::ShiftLeft, "ShiftLeft"),
+        (KeyCode::ShiftRight, "ShiftRight"),
+        (KeyCode::ControlLeft, "ControlLeft"),
+        (KeyCode::ControlRight, "ControlRight"),
+        (KeyCode::AltLeft, "AltLeft"),
+        (KeyCode::AltRight, "AltRight"),
+        (KeyCode::SuperLeft, "SuperLeft"),
+        (KeyCode::SuperRight, "SuperRight"),
+        (KeyCode::KeyE, "KeyE"),
+        (KeyCode::KeyG, "KeyG"),
+        (KeyCode::KeyO, "KeyO"),
+        (KeyCode::KeyQ, "KeyQ"),
+        (KeyCode::KeyT, "KeyT"),
+        (KeyCode::KeyX, "KeyX"),
+        (KeyCode::KeyZ, "KeyZ"),
+        (KeyCode::Digit4, "Digit4"),
+        (KeyCode::Digit9, "Digit9"),
+        (KeyCode::F5, "F5"),
+        (KeyCode::F6, "F6"),
+        (KeyCode::F7, "F7"),
+        (KeyCode::F8, "F8"),
+        (KeyCode::F10, "F10"),
+        (KeyCode::F12, "F12"),
+    ];
+    for (code, name) in new {
+        let json = format!("\"{name}\"");
+        assert_eq!(serde_json::to_string(&code).unwrap(), json);
+        assert_eq!(serde_json::from_str::<KeyCode>(&json).unwrap(), code);
+    }
 }
 
 #[test]
 fn keycode_other_has_no_name() {
     assert!(keycode_to_str(KeyCode::Other(42)).is_none());
+}
+
+#[test]
+fn keycode_other_fails_to_serialize() {
+    assert!(serde_json::to_string(&KeyCode::Other(42)).is_err());
 }
 
 #[test]

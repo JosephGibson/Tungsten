@@ -13,9 +13,14 @@ pub struct FrameTimings {
     pub render_ms: f32,
     /// Surface acquire time.
     pub render_acquire_ms: f32,
-    /// Encode/command recording time.
+    /// Encode/command recording time: the whole frame's, before and after
+    /// the surface acquire.
     pub render_encode_ms: f32,
-    /// Submit/present/readback wait time.
+    /// The part of `render_encode_ms` recorded before the surface acquire
+    /// (`D-145`).
+    pub render_encode_pre_acquire_ms: f32,
+    /// Submit/present/readback wait time, the submit before the acquire
+    /// included.
     pub render_submit_present_ms: f32,
     /// Audio command forwarding time.
     pub audio_ms: f32,

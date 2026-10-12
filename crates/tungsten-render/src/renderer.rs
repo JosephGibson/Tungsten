@@ -11,8 +11,10 @@ use crate::lit_sprite::{
 };
 use crate::material::{MaterialPipeline, build_material_pipeline};
 use crate::mesh_particle::{MeshParticleBatch, MeshParticlePipeline};
+use crate::passes::order::acquire_split;
 use crate::passes::{
-    PassDesc, PassRecorder, PresentPath, TargetId, default_pass_order, text_overlay_target,
+    PassDesc, PassOrder, PassRecorder, PresentPath, TargetId, default_pass_order,
+    text_overlay_target,
 };
 use crate::post::bloom::{
     BLOOM_COMPOSITE_SHADER_NAME, BLOOM_DOWNSAMPLE_SHADER_NAME, BLOOM_THRESHOLD_SHADER_NAME,
@@ -46,7 +48,8 @@ use tungsten_core::post::{PostPass, PostStack};
 use winit::window::Window;
 
 use crate::surface_acquire::{
-    AcquireAction, AcquireStatus, MAX_ACQUIRE_ATTEMPTS, acquire_action, reconfigure_for_suboptimal,
+    AcquireAction, AcquireStatus, MAX_ACQUIRE_ATTEMPTS, TargetsAt, acquire_action,
+    reconfigure_for_suboptimal, record_again_after_acquire,
 };
 
 #[derive(Debug, Error)]
@@ -94,6 +97,12 @@ pub enum RenderOutcome {
 /// Stable well-known id for the engine-internal sprite shader. Matches the
 /// manifest entry under `shaders.sprite`.
 pub const SPRITE_SHADER_NAME: &str = "sprite";
+
+/// Submit a frame's first command buffer, its passes before the swapchain
+/// stage, before the surface acquire, so the GPU starts on them while the CPU
+/// waits for the swapchain (`D-145`). Off, the first buffer is submitted with
+/// the second.
+const SUBMIT_BEFORE_ACQUIRE: bool = true;
 
 /// Cache id of the first stock post shader. Ids 0-10 belong to the sprite,
 /// SMAA, bloom and lit-sprite shaders that `Renderer::new` seeds by number;
@@ -1273,30 +1282,102 @@ impl Renderer {
         self.cpu_timings = CpuFrameTimings::default();
         self.gpu_timings.clear_durations();
 
+        let post_stack_len = post_stack.len();
+        // A capture frame takes the blit path, whose source the screenshot
+        // reads. Every other frame renders its last full-screen stage into
+        // the swapchain (`D-087`). A direct capture keeps the direct path and
+        // renders it into a stand-in for the swapchain, which is read back
+        // and then blitted to the real one. The armed capture picks the path
+        // here; the acquire takes it.
+        let present_path = match &self.pending_capture {
+            Some(capture) if !capture.direct => PresentPath::Blit,
+            _ => PresentPath::Direct,
+        };
+        let plan = FramePlan {
+            order: default_pass_order(
+                self.sample_count,
+                self.depth_sort,
+                self.depth_enabled,
+                post_stack_len,
+                self.post_aa,
+                present_path,
+            ),
+            post_targets: PostStackRenderer::plan_targets(post_stack_len),
+            split: acquire_split(post_stack_len, self.post_aa),
+        };
+        let draws = FrameDraws {
+            quads,
+            sprite_batches,
+            debug_quads,
+            debug_lines,
+            post_stack,
+        };
+
+        // Late acquire (`D-145`): the passes before the swapchain stage
+        // record, and submit, before the acquire waits for the swapchain.
+        let encode_start = Instant::now();
+        let mut first =
+            self.record_before_acquire(view_proj, text_sections, &plan, draws, timing.as_mut());
+        let mut encode_ms = encode_start.elapsed().as_secs_f64() as f32 * 1000.0;
+        let mut submit_ms = 0.0;
+        if SUBMIT_BEFORE_ACQUIRE && let Some(buffer) = first.take() {
+            let submit_start = Instant::now();
+            self.queue.submit(std::iter::once(buffer));
+            submit_ms = submit_start.elapsed().as_secs_f64() as f32 * 1000.0;
+        }
+        self.cpu_timings.encode_pre_acquire_ms = encode_ms;
+        self.cpu_timings.encode_ms = encode_ms;
+        self.cpu_timings.submit_present_ms = submit_ms;
+
+        let targets_before = self.targets_at();
         let acquire_start = Instant::now();
         let acquired = self.acquire_texture();
         // The capture armed for this frame is its alone: taken whatever the
         // acquire gave, it survives only into a frame that presents.
         let capture = capture_for_frame(&mut self.pending_capture, &acquired);
-        let Some((output, reconfigure_after)) = acquired? else {
-            return Ok(RenderOutcome::Skipped);
+        let (output, reconfigure_after) = match acquired {
+            Ok(Some(acquired)) => acquired,
+            // Each prepare is trimmed once, whether the frame presents or not.
+            Ok(None) => {
+                self.text_pipeline.post_frame();
+                return Ok(RenderOutcome::Skipped);
+            }
+            Err(err) => {
+                self.text_pipeline.post_frame();
+                return Err(err);
+            }
         };
         self.cpu_timings.acquire_ms = acquire_start.elapsed().as_secs_f64() as f32 * 1000.0;
 
-        let encode_start = Instant::now();
+        // An acquire that resized the targets leaves the first part drawn at
+        // the old size: record it again at the new one, with timing
+        // resources from the resized pool, since a larger size can add bloom
+        // mips.
+        if record_again_after_acquire(targets_before, self.targets_at()) {
+            log::debug!(
+                "late acquire: the acquire resized the targets to {}x{}; recording the passes before the swapchain stage again",
+                self.surface_config.width,
+                self.surface_config.height
+            );
+            let record_start = Instant::now();
+            self.text_pipeline.post_frame();
+            if timing.is_some() {
+                timing = TimingResources::new(
+                    &self.device,
+                    post_stack,
+                    self.target_pool.scene.bloom_mip_count(),
+                    self.post_aa.is_smaa() && self.smaa.is_some(),
+                    capture.is_some(),
+                );
+            }
+            first =
+                self.record_before_acquire(view_proj, text_sections, &plan, draws, timing.as_mut());
+            encode_ms += record_start.elapsed().as_secs_f64() as f32 * 1000.0;
+        }
+
+        let record_start = Instant::now();
         let w = self.surface_config.width;
         let h = self.surface_config.height;
-        // Both camera buffers hold the last matrix written; a camera that
-        // stands still uploads nothing.
-        let camera: [u8; 64] = bytemuck::cast(view_proj.to_cols_array());
-        if self.camera_written != Some(camera) {
-            self.quad_pipeline.update_camera(&self.queue, view_proj);
-            self.sprite_pipeline.update_camera(&self.queue, view_proj);
-            self.camera_written = Some(camera);
-        }
-        self.text_pipeline
-            .prepare(&self.device, &self.queue, text_sections, w, h);
-
         let swap_view = output
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -1307,17 +1388,6 @@ impl Renderer {
                 label: Some("frame_encoder"),
             });
 
-        let post_stack_len = post_stack.len();
-        let smaa_active = self.post_aa.is_smaa() && self.smaa.is_some();
-        // A capture frame takes the blit path, whose source the screenshot
-        // reads. Every other frame renders its last full-screen stage into
-        // the swapchain (`D-087`). A direct capture keeps the direct path and
-        // renders it into a stand-in for the swapchain, which is read back
-        // and then blitted to the real one.
-        let present_path = match &capture {
-            Some(capture) if !capture.direct => PresentPath::Blit,
-            _ => PresentPath::Direct,
-        };
         let standin = capture
             .as_ref()
             .filter(|capture| capture.direct)
@@ -1357,214 +1427,16 @@ impl Renderer {
             }
         };
 
-        let order = default_pass_order(
-            self.sample_count,
-            self.depth_sort,
-            self.depth_enabled,
-            post_stack_len,
-            self.post_aa,
-            present_path,
-        );
-        let post_plan = PostStackRenderer::plan_targets(post_stack_len);
-        // Text overlay follows the last post pass / SMAA tail.
-        // `post_stack_len + 1` accounts for the leading scene pass; SMAA
-        // inserts three more before the overlay. Only the blit order holds a
-        // present pass, after the overlay.
-        let smaa_edge_idx = post_stack_len + 1;
-        let smaa_blend_idx = smaa_edge_idx + 1;
-        let smaa_nbh_idx = smaa_blend_idx + 1;
-        let text_overlay_idx = if smaa_active {
-            smaa_nbh_idx + 1
-        } else {
-            post_stack_len + 1
-        };
-        let present_idx = text_overlay_idx + 1;
-        // SMAA edge / neighborhood read whatever target the post stack ended
-        // on (or `SceneColor` when the stack is empty). When the swapchain
-        // format has a non-sRGB twin, sample through it so edge detection
-        // sees gamma-encoded values; otherwise fall back to the primary view.
-        let smaa_source_target = if post_stack_len == 0 {
-            TargetId::SceneColor
-        } else if (post_stack_len - 1).is_multiple_of(2) {
-            TargetId::PostPing
-        } else {
-            TargetId::PostPong
-        };
-        let smaa_source_view: &wgpu::TextureView = if smaa_active {
-            match smaa_source_target {
-                TargetId::SceneColor => self
-                    .target_pool
-                    .scene
-                    .scene_color_smaa_read_view()
-                    .unwrap_or_else(|| self.target_pool.scene.color_view()),
-                TargetId::PostPing => self
-                    .target_pool
-                    .scene
-                    .post_ping_smaa_read_view()
-                    .unwrap_or_else(|| self.target_pool.scene.post_ping_view()),
-                TargetId::PostPong => self
-                    .target_pool
-                    .scene
-                    .post_pong_smaa_read_view()
-                    .unwrap_or_else(|| self.target_pool.scene.post_pong_view()),
-                _ => self.target_pool.scene.color_view(),
-            }
-        } else {
-            self.target_pool.scene.color_view()
-        };
-        // The neighborhood pass writes the sRGB swapchain, which encodes on
-        // store. It must read the primary sRGB view (decoded to linear on
-        // sample); the non-sRGB twin above would encode the frame twice and
-        // wash it out.
-        let smaa_nbh_source_view: &wgpu::TextureView = match smaa_source_target {
-            TargetId::PostPing => self.target_pool.scene.post_ping_view(),
-            TargetId::PostPong => self.target_pool.scene.post_pong_view(),
-            _ => self.target_pool.scene.color_view(),
-        };
-
         encoder.push_debug_group("tungsten_frame");
-        for (idx, pass_desc) in order.as_slice().iter().enumerate() {
-            let is_scene = idx == 0;
-            let is_present = idx == present_idx;
-            let is_text_overlay = idx == text_overlay_idx;
-            let is_smaa_edge = smaa_active && idx == smaa_edge_idx;
-            let is_smaa_blend = smaa_active && idx == smaa_blend_idx;
-            let is_smaa_nbh = smaa_active && idx == smaa_nbh_idx;
-            let post_index = if !is_scene
-                && !is_present
-                && !is_text_overlay
-                && !is_smaa_edge
-                && !is_smaa_blend
-                && !is_smaa_nbh
-            {
-                Some(idx - 1)
-            } else {
-                None
-            };
-
-            // Bloom is the only post variant that does not record a single
-            // fullscreen draw into the slot's auto-opened render pass; it
-            // opens its own per-subpass passes through the encoder. Detect it
-            // before `PassRecorder::begin` and skip the auto-open path.
-            if let Some(pi) = post_index
-                && let (Some(PostPass::Bloom(params)), Some(&(src, _))) =
-                    (post_stack.0.get(pi), post_plan.get(pi))
-            {
-                // The slot's destination is the pass's target: the ladder's,
-                // or the swapchain when bloom ends a direct frame's stack.
-                self.post_stack.record_bloom_slot_timed(
-                    &self.device,
-                    &self.queue,
-                    &mut encoder,
-                    &self.target_pool,
-                    frame_view,
-                    params,
-                    src,
-                    pass_desc.color,
-                    timing.as_mut(),
-                    pi,
-                );
-                continue;
-            }
-
-            let clear_override = if is_scene {
-                Some(self.clear_color)
-            } else {
-                None
-            };
-            let timestamp_writes = timing.as_mut().map(|t| {
-                let label = if let Some(pi) = post_index {
-                    format!("post{pi}_{}", post_stack.0[pi].kind_name())
-                } else if is_scene {
-                    "scene".into()
-                } else if is_present {
-                    "present".into()
-                } else if is_text_overlay {
-                    "text".into()
-                } else if is_smaa_edge {
-                    "smaa_edges".into()
-                } else if is_smaa_blend {
-                    "smaa_blend_weights".into()
-                } else {
-                    "smaa_neighborhood".into()
-                };
-                t.next(label)
-            });
-            let mut pass = PassRecorder::begin_timed(
-                &mut encoder,
-                pass_desc,
-                &self.target_pool,
-                frame_view,
-                clear_override,
-                timestamp_writes,
-            );
-
-            if is_scene {
-                record_main_draws(
-                    &mut pass,
-                    &self.device,
-                    &self.queue,
-                    &self.quad_pipeline,
-                    &mut self.sprite_pipeline,
-                    &self.debug_line_pipeline,
-                    &self.mesh_particle_pipeline,
-                    quads,
-                    sprite_batches,
-                    debug_quads,
-                    debug_lines,
-                    &self.materials,
-                    &self.lit_sprite_pipeline,
-                    &self.lighting,
-                );
-            } else if is_smaa_edge {
-                if let Some(smaa) = self.smaa.as_mut() {
-                    smaa.record_edge_pass(
-                        &self.device,
-                        &mut pass,
-                        &self.target_pool,
-                        smaa_source_target,
-                        smaa_source_view,
-                    );
-                }
-            } else if is_smaa_blend {
-                if let Some(smaa) = self.smaa.as_mut() {
-                    smaa.record_blend_weights_pass(&self.device, &mut pass, &self.target_pool);
-                }
-            } else if is_smaa_nbh {
-                if let Some(smaa) = self.smaa.as_mut() {
-                    smaa.record_neighborhood_pass(
-                        &self.device,
-                        &mut pass,
-                        &self.target_pool,
-                        smaa_source_target,
-                        smaa_nbh_source_view,
-                    );
-                }
-            } else if is_text_overlay {
-                pass.push_debug_group("text");
-                self.text_pipeline.render(&mut pass);
-                pass.pop_debug_group();
-            } else if is_present {
-                if let Some(bind_group) = &blit_bind_group {
-                    pass.set_pipeline(&self.present_blit.pipeline);
-                    pass.set_bind_group(0, bind_group, &[]);
-                    pass.draw(0..3, 0..1);
-                }
-            } else if let Some(pi) = post_index
-                && let (Some(post_pass), Some(&(src, _dst))) =
-                    (post_stack.0.get(pi), post_plan.get(pi))
-            {
-                self.post_stack.record_pass(
-                    &self.device,
-                    &self.queue,
-                    &mut pass,
-                    &self.target_pool,
-                    post_pass,
-                    src,
-                    pi,
-                );
-            }
-        }
+        self.record_passes(
+            &mut encoder,
+            &plan,
+            plan.split..plan.order.as_slice().len(),
+            draws,
+            Some(frame_view),
+            blit_bind_group.as_ref(),
+            timing.as_mut(),
+        );
 
         // A direct capture's frame is in the stand-in: the same blit puts it
         // on the real swapchain.
@@ -1575,7 +1447,7 @@ impl Renderer {
                 &mut encoder,
                 &desc,
                 &self.target_pool,
-                &swap_view,
+                Some(&swap_view),
                 None,
                 timestamp_writes,
             );
@@ -1632,10 +1504,14 @@ impl Renderer {
         encoder.pop_debug_group();
 
         let finished = encoder.finish();
-        self.cpu_timings.encode_ms = encode_start.elapsed().as_secs_f64() as f32 * 1000.0;
+        encode_ms += record_start.elapsed().as_secs_f64() as f32 * 1000.0;
+        self.cpu_timings.encode_ms = encode_ms;
 
         let submit_present_start = Instant::now();
-        self.queue.submit(std::iter::once(finished));
+        // The first part, when it was not submitted before the acquire or
+        // was recorded again after it, goes first.
+        self.queue
+            .submit(first.into_iter().chain(std::iter::once(finished)));
         self.queue.present(output);
 
         let capture = capture.zip(capture_target).map(|(capture, target)| {
@@ -1657,7 +1533,7 @@ impl Renderer {
         }
 
         self.cpu_timings.submit_present_ms =
-            submit_present_start.elapsed().as_secs_f64() as f32 * 1000.0;
+            submit_ms + submit_present_start.elapsed().as_secs_f64() as f32 * 1000.0;
 
         // The presented texture is released, so the surface can be reconfigured.
         if reconfigure_after {
@@ -1666,6 +1542,300 @@ impl Renderer {
 
         Ok(RenderOutcome::Presented { capture })
     }
+
+    /// The target pool's generation and the surface size, which an acquire
+    /// can change.
+    fn targets_at(&self) -> TargetsAt {
+        TargetsAt {
+            generation: self.target_pool.generation(),
+            size: (self.surface_config.width, self.surface_config.height),
+        }
+    }
+
+    /// The frame's work before the surface acquire (`D-145`): uploads the
+    /// camera, prepares the text and records the passes before the split,
+    /// the swapchain stage, into a command buffer of their own; `None` when
+    /// the scene pass writes the swapchain. A frame whose acquire resized the
+    /// targets calls it again at the new size.
+    fn record_before_acquire(
+        &mut self,
+        view_proj: &glam::Mat4,
+        text_sections: &[TextSection],
+        plan: &FramePlan,
+        draws: FrameDraws<'_>,
+        timing: Option<&mut TimingResources>,
+    ) -> Option<wgpu::CommandBuffer> {
+        // Both camera buffers hold the last matrix written; a camera that
+        // stands still uploads nothing.
+        let camera: [u8; 64] = bytemuck::cast(view_proj.to_cols_array());
+        if self.camera_written != Some(camera) {
+            self.quad_pipeline.update_camera(&self.queue, view_proj);
+            self.sprite_pipeline.update_camera(&self.queue, view_proj);
+            self.camera_written = Some(camera);
+        }
+        self.text_pipeline.prepare(
+            &self.device,
+            &self.queue,
+            text_sections,
+            self.surface_config.width,
+            self.surface_config.height,
+        );
+        if plan.split == 0 {
+            return None;
+        }
+
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("frame_encoder_before_acquire"),
+            });
+        encoder.push_debug_group("tungsten_frame_before_acquire");
+        self.record_passes(&mut encoder, plan, 0..plan.split, draws, None, None, timing);
+        encoder.pop_debug_group();
+        Some(encoder.finish())
+    }
+
+    /// Records the passes of `plan` at the indices `passes` into `encoder`.
+    /// `frame_view` is the swapchain's view or a direct capture's stand-in,
+    /// which the passes before the split record without (`D-145`);
+    /// `blit_bind_group` is the source of a capture frame's present blit.
+    #[allow(clippy::too_many_arguments)]
+    fn record_passes(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        plan: &FramePlan,
+        passes: std::ops::Range<usize>,
+        draws: FrameDraws<'_>,
+        frame_view: Option<&wgpu::TextureView>,
+        blit_bind_group: Option<&wgpu::BindGroup>,
+        mut timing: Option<&mut TimingResources>,
+    ) {
+        let FrameDraws {
+            quads,
+            sprite_batches,
+            debug_quads,
+            debug_lines,
+            post_stack,
+        } = draws;
+        let post_stack_len = post_stack.len();
+        let smaa_active = self.post_aa.is_smaa() && self.smaa.is_some();
+        // Text overlay follows the last post pass / SMAA tail.
+        // `post_stack_len + 1` accounts for the leading scene pass; SMAA
+        // inserts three more before the overlay. Only the blit order holds a
+        // present pass, after the overlay.
+        let smaa_edge_idx = post_stack_len + 1;
+        let smaa_blend_idx = smaa_edge_idx + 1;
+        let smaa_nbh_idx = smaa_blend_idx + 1;
+        let text_overlay_idx = if smaa_active {
+            smaa_nbh_idx + 1
+        } else {
+            post_stack_len + 1
+        };
+        let present_idx = text_overlay_idx + 1;
+        // SMAA edge / neighborhood read whatever target the post stack ended
+        // on (or `SceneColor` when the stack is empty). When the swapchain
+        // format has a non-sRGB twin, sample through it so edge detection
+        // sees gamma-encoded values; otherwise fall back to the primary view.
+        let smaa_source_target = if post_stack_len == 0 {
+            TargetId::SceneColor
+        } else if (post_stack_len - 1).is_multiple_of(2) {
+            TargetId::PostPing
+        } else {
+            TargetId::PostPong
+        };
+        let smaa_source_view: &wgpu::TextureView = if smaa_active {
+            match smaa_source_target {
+                TargetId::SceneColor => self
+                    .target_pool
+                    .scene
+                    .scene_color_smaa_read_view()
+                    .unwrap_or_else(|| self.target_pool.scene.color_view()),
+                TargetId::PostPing => self
+                    .target_pool
+                    .scene
+                    .post_ping_smaa_read_view()
+                    .unwrap_or_else(|| self.target_pool.scene.post_ping_view()),
+                TargetId::PostPong => self
+                    .target_pool
+                    .scene
+                    .post_pong_smaa_read_view()
+                    .unwrap_or_else(|| self.target_pool.scene.post_pong_view()),
+                _ => self.target_pool.scene.color_view(),
+            }
+        } else {
+            self.target_pool.scene.color_view()
+        };
+        // The neighborhood pass writes the sRGB swapchain, which encodes on
+        // store. It must read the primary sRGB view (decoded to linear on
+        // sample); the non-sRGB twin above would encode the frame twice and
+        // wash it out.
+        let smaa_nbh_source_view: &wgpu::TextureView = match smaa_source_target {
+            TargetId::PostPing => self.target_pool.scene.post_ping_view(),
+            TargetId::PostPong => self.target_pool.scene.post_pong_view(),
+            _ => self.target_pool.scene.color_view(),
+        };
+
+        for (idx, pass_desc) in passes.clone().zip(&plan.order.as_slice()[passes]) {
+            let is_scene = idx == 0;
+            let is_present = idx == present_idx;
+            let is_text_overlay = idx == text_overlay_idx;
+            let is_smaa_edge = smaa_active && idx == smaa_edge_idx;
+            let is_smaa_blend = smaa_active && idx == smaa_blend_idx;
+            let is_smaa_nbh = smaa_active && idx == smaa_nbh_idx;
+            let post_index = if !is_scene
+                && !is_present
+                && !is_text_overlay
+                && !is_smaa_edge
+                && !is_smaa_blend
+                && !is_smaa_nbh
+            {
+                Some(idx - 1)
+            } else {
+                None
+            };
+
+            // Bloom is the only post variant that does not record a single
+            // fullscreen draw into the slot's auto-opened render pass; it
+            // opens its own per-subpass passes through the encoder. Detect it
+            // before `PassRecorder::begin` and skip the auto-open path.
+            if let Some(pi) = post_index
+                && let (Some(PostPass::Bloom(params)), Some(&(src, _))) =
+                    (post_stack.0.get(pi), plan.post_targets.get(pi))
+            {
+                // The slot's destination is the pass's target: the ladder's,
+                // or the swapchain when bloom ends a direct frame's stack.
+                self.post_stack.record_bloom_slot_timed(
+                    &self.device,
+                    &self.queue,
+                    encoder,
+                    &self.target_pool,
+                    frame_view,
+                    params,
+                    src,
+                    pass_desc.color,
+                    timing.as_deref_mut(),
+                    pi,
+                );
+                continue;
+            }
+
+            let clear_override = if is_scene {
+                Some(self.clear_color)
+            } else {
+                None
+            };
+            let timestamp_writes = timing.as_deref_mut().map(|t| {
+                let label = if let Some(pi) = post_index {
+                    format!("post{pi}_{}", post_stack.0[pi].kind_name())
+                } else if is_scene {
+                    "scene".into()
+                } else if is_present {
+                    "present".into()
+                } else if is_text_overlay {
+                    "text".into()
+                } else if is_smaa_edge {
+                    "smaa_edges".into()
+                } else if is_smaa_blend {
+                    "smaa_blend_weights".into()
+                } else {
+                    "smaa_neighborhood".into()
+                };
+                t.next(label)
+            });
+            let mut pass = PassRecorder::begin_timed(
+                encoder,
+                pass_desc,
+                &self.target_pool,
+                frame_view,
+                clear_override,
+                timestamp_writes,
+            );
+
+            if is_scene {
+                record_main_draws(
+                    &mut pass,
+                    &self.device,
+                    &self.queue,
+                    &self.quad_pipeline,
+                    &mut self.sprite_pipeline,
+                    &self.debug_line_pipeline,
+                    &self.mesh_particle_pipeline,
+                    quads,
+                    sprite_batches,
+                    debug_quads,
+                    debug_lines,
+                    &self.materials,
+                    &self.lit_sprite_pipeline,
+                    &self.lighting,
+                );
+            } else if is_smaa_edge {
+                if let Some(smaa) = self.smaa.as_mut() {
+                    smaa.record_edge_pass(
+                        &self.device,
+                        &mut pass,
+                        &self.target_pool,
+                        smaa_source_target,
+                        smaa_source_view,
+                    );
+                }
+            } else if is_smaa_blend {
+                if let Some(smaa) = self.smaa.as_mut() {
+                    smaa.record_blend_weights_pass(&self.device, &mut pass, &self.target_pool);
+                }
+            } else if is_smaa_nbh {
+                if let Some(smaa) = self.smaa.as_mut() {
+                    smaa.record_neighborhood_pass(
+                        &self.device,
+                        &mut pass,
+                        &self.target_pool,
+                        smaa_source_target,
+                        smaa_nbh_source_view,
+                    );
+                }
+            } else if is_text_overlay {
+                pass.push_debug_group("text");
+                self.text_pipeline.render(&mut pass);
+                pass.pop_debug_group();
+            } else if is_present {
+                if let Some(bind_group) = blit_bind_group {
+                    pass.set_pipeline(&self.present_blit.pipeline);
+                    pass.set_bind_group(0, bind_group, &[]);
+                    pass.draw(0..3, 0..1);
+                }
+            } else if let Some(pi) = post_index
+                && let (Some(post_pass), Some(&(src, _dst))) =
+                    (post_stack.0.get(pi), plan.post_targets.get(pi))
+            {
+                self.post_stack.record_pass(
+                    &self.device,
+                    &self.queue,
+                    &mut pass,
+                    &self.target_pool,
+                    post_pass,
+                    src,
+                    pi,
+                );
+            }
+        }
+    }
+}
+
+/// A frame's passes: its pass order, the post stack's source and destination
+/// targets, and the index it splits at around the surface acquire.
+struct FramePlan {
+    order: PassOrder,
+    post_targets: Vec<(TargetId, TargetId)>,
+    split: usize,
+}
+
+/// The frame's draw data, as [`Renderer::render_frame_full`] takes it.
+#[derive(Clone, Copy)]
+struct FrameDraws<'f> {
+    quads: &'f [QuadInstance],
+    sprite_batches: &'f [SpriteBatch],
+    debug_quads: &'f [QuadInstance],
+    debug_lines: &'f [DebugLineInstance],
+    post_stack: &'f PostStack,
 }
 
 #[allow(clippy::too_many_arguments)]

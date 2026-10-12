@@ -103,6 +103,44 @@ pub struct WindowSize {
     pub height: u32,
 }
 
+/// The display's scale factor: a `World` resource `App` inserts at 1.0 and
+/// keeps current from the window. [`os`](Self::os) is the OS scale, physical
+/// pixels per logical unit, and [`get`](Self::get) the factor UI layout uses
+/// (`D-127`, `D-144`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ScaleFactor {
+    os: f32,
+}
+
+impl ScaleFactor {
+    /// The factor UI layout uses: the OS scale times the user's UI scale, a
+    /// setting not yet added, so for now the OS scale.
+    #[must_use]
+    pub fn get(&self) -> f32 {
+        self.os
+    }
+
+    /// The OS scale: physical pixels per logical unit.
+    #[must_use]
+    pub fn os(&self) -> f32 {
+        self.os
+    }
+
+    /// Sets the OS scale; a value that is not finite or not positive is
+    /// ignored.
+    pub fn set_os(&mut self, scale: f32) {
+        if scale.is_finite() && scale > 0.0 {
+            self.os = scale;
+        }
+    }
+}
+
+impl Default for ScaleFactor {
+    fn default() -> Self {
+        Self { os: 1.0 }
+    }
+}
+
 /// The resolved display settings: what [`DisplayConfig::resolve`] produces
 /// at startup and a `World` resource the app keeps current as hotkeys and
 /// pending requests change them.
