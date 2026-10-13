@@ -23,7 +23,7 @@ Read at `<commit>`.
 
 ## 2. Design
 
-<The API sketch (level C reviews it after step 1), types and names, the seam (`D-007`, `D-018`), the template change once W12a has landed.>
+<The API sketch (level C critiques its step 1 diff against it), types and names, the seam (`D-007`, `D-018`), the template change once W12a has landed.>
 
 ## 3. Steps
 
@@ -39,7 +39,7 @@ Read at `<commit>`.
 - **Files:** `CHANGELOG.md`, `DESIGN.md`, `Cargo.toml`, `Cargo.lock`, the register row, the README's four owned Now fields (`roadmap.py summary`), this plan (moved to `docs/plans/archive/`)
 - **Change:** close workflow §5 and this step's evidence row with `status: done`; then [tungsten-finalize](../../../.claude/skills/tungsten-finalize/SKILL.md) and [tungsten-release](../../../.claude/skills/tungsten-release/SKILL.md) ([releases](../../releases.md)): the plan archived, `just release-cut 0.<NN>.0` once, every release check once after it with <the gates by change no step ran>, then the preflight with `--message`
 - **Done-when:** [releases](../../releases.md) step 1's command chain → every check passes, quoted in the report (the plan is archived before the cut); `just release-preflight 0.<NN>.0 --repo JosephGibson/Tungsten --message 'Update 0.<NN>: <summary>'` → passes and prints the command block and the post-merge block
-- **Ends with:** the changed-file list, the command block, the post-merge block, then the next prompt: <the plan prompt for the next register row, or the gate, graduation or experiment prompt>
+- **Ends with:** the changed-file list, the command block, the post-merge block, then the next prompt: <the plan prompt for the next register row, or the gate or experiment prompt>
 
 ## 4. Open questions
 
@@ -47,7 +47,7 @@ Read at `<commit>`.
 | --- | --- | --- |
 | Q1 | <question> | <stated default> |
 
-<Approval line goes here: "Approved <date> with the stated defaults", plus any change.>
+Each question takes its stated default; the owner reviews the plan on their own time (`D-150`).
 
 ## 5. Decisions expected
 
@@ -80,7 +80,7 @@ Read at `<commit>`.
 
 ## 9. Critique
 
-<Reviewer (the `critique` skill with `--repo`, or `codex:rescue` when the skill was missing) and its model family, the date, the commit it read, the round, and the model, effort, wall time and tokens from the skill's footer line; or "Not run: <error line>". Each finding is checked against the repo or the docs it cites before it changes anything; none is applied unchecked. A second round's rows are numbered `2.<n>`.>
+<Reviewer (the `critique` skill with `--repo`, `gpt-6-astra` by default, or `codex:rescue` when the skill was missing), the date, the commit it read, the round, and the model, effort, context, wall time, tokens and usage windows from the skill's footer line; or "Not run: <error line>". Each finding is checked against the repo or the docs it cites before it changes anything; none is applied unchecked. A second round's rows are numbered `2.<n>`, and a level C run's step 1 API critique `C.<n>`.>
 
 | # | Finding | Checked against | Verdict | Change or reason |
 | --- | --- | --- | --- | --- |

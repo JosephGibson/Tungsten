@@ -1,6 +1,6 @@
 # AI development workflow improvements — research and approved execution
 
-- **status:** draft (proposals 4–9; approved proposals 1–3 complete 2026-10-11)
+- **status:** superseded (approved proposals 1–3 complete 2026-10-11; 8 landed in 0.66; 4–7 and 9 carried to `docs/known-issues.md` by the 0.66 project-health pass)
 - **goal:** Reduce context reconstruction, avoidable interruptions and verification gaps in Tungsten development while preserving the current architecture and release controls.
 - **non-goals:** Implementing proposals 4–9; large refactors, crate moves, renderer or ECS redesign, changing publication permissions, introducing an agent orchestration platform, or weakening hardware/performance checks.
 - **files to touch:** Approved subset: `AGENTS.md`, DESIGN Status, `DECISIONS.md`, `docs/{README,DECISION_INDEX,LLM_INDEX,agent-setup,validation}.md`, `docs/perf/profiling-workflow.md`, `docs/plans/README.md`, `docs/plans/1.0/{README,workflow}.md`, `scripts/{roadmap,check-repo,test-roadmap,test-check-repo}.py`, `justfile`, `CHANGELOG.md`, and this record. Research proposals 4–9 remain unapproved.
@@ -50,7 +50,7 @@ Value combines expected frequency, avoided rework and implementation cost. Small
 
 ### 1. Repair conflicting current guidance and make status drift visible
 
-**Evidence.** [Agent setup](../agent-setup.md), Permissions, still says agents commit plan work locally under `D-097`. [Plan execution rules](README.md#executing-a-plan) and `D-105` require leaving it uncommitted until the release commit. The [1.0 README](1.0/README.md#now) says 0.56 is awaiting its release PR, although current source and changelog are 0.60 and the roadmap helper recognizes W15c as done. The [profiling guide](../perf/profiling-workflow.md#hotspots) describes sprite extraction with no culling and string comparisons despite `D-113` and `D-114`. Its text-path names also precede the text split. These contradictions coexist with passing repository QA.
+**Evidence.** [Agent setup](../../agent-setup.md), Permissions, still says agents commit plan work locally under `D-097`. [Plan execution rules](../README.md#executing-a-plan) and `D-105` require leaving it uncommitted until the release commit. The [1.0 README](../1.0/README.md#now) says 0.56 is awaiting its release PR, although current source and changelog are 0.60 and the roadmap helper recognizes W15c as done. The [profiling guide](../../perf/profiling-workflow.md#hotspots) describes sprite extraction with no culling and string comparisons despite `D-113` and `D-114`. Its text-path names also precede the text split. These contradictions coexist with passing repository QA.
 
 **Proposal.** Correct the maintained operational instructions. Put current state before dated findings in planning documents, linking to the applicable decisions when the initial proposal has since landed. Preserve immutable decisions and dated evidence. Use the existing roadmap helper for the brief current-state summary instead of maintaining another release narrative by hand. Extend repository QA with an explicit check for that summary's owned fields and with local-link checks over active program documents. Avoid trying to infer completion from age or free-form prose.
 
@@ -60,7 +60,7 @@ Value combines expected frequency, avoided rework and implementation cost. Small
 
 ### 2. Reduce task context and scale planning to the size of the change
 
-**Evidence.** Measured file sizes: root `AGENTS.md` 5,332 B; renderer instructions 4,066 B, leaving only 30 B of their budget; navigation index 10,990 B; decision index 43,894 B; implementation plan 81,791 B. DESIGN's Status section alone is 13,679 B, mostly release history. The 1.0 README's Phase bullet is 4,747 characters. Line-count limits therefore conceal substantial context costs. [Milestone planning](../../.claude/skills/tungsten-milestone/SKILL.md) already scopes its audit, while the root audit instruction can be read as requiring a whole crate for any audit.
+**Evidence.** Measured file sizes: root `AGENTS.md` 5,332 B; renderer instructions 4,066 B, leaving only 30 B of their budget; navigation index 10,990 B; decision index 43,894 B; implementation plan 81,791 B. DESIGN's Status section alone is 13,679 B, mostly release history. The 1.0 README's Phase bullet is 4,747 characters. Line-count limits therefore conceal substantial context costs. [Milestone planning](../../../.claude/skills/tungsten-milestone/SKILL.md) already scopes its audit, while the root audit instruction can be read as requiring a whole crate for any audit.
 
 **Proposal.** Keep startup rules focused on unusual constraints and required boundaries. Make the decision index a short current takeaway and pointer per decision; leave measurements in their canonical sections. Make DESIGN Status and the README Now section a brief current snapshot with links to history. Read only the matching decision-index rows during routine work. Clarify that a crate correctness audit reads its full relevant surface, while a workflow or documentation audit follows its own scope.
 
@@ -74,7 +74,7 @@ This direction follows Claude's guidance to keep persistent instructions concise
 
 ### 3. Make validation selection complete and easy to follow
 
-**Evidence.** [The root test matrix](../../AGENTS.md#tests), [setup tiers](../agent-setup.md#local-check-tiers), the navigation index, release guide and authoring guide each contribute part of the validation contract. `just quick` runs context checks, repository QA including Rust integration tests, then an all-workspace type check. It is broader than a targeted edit-loop check. `just level-check` exists but is absent from the setup tier table and root matrix. Release-only physics checks are routed through the index. Visual tests return early without their environment switch and consequently appear passed in ordinary test output.
+**Evidence.** [The root test matrix](../../../AGENTS.md#tests), [setup tiers](../../agent-setup.md#local-check-tiers), the navigation index, release guide and authoring guide each contribute part of the validation contract. `just quick` runs context checks, repository QA including Rust integration tests, then an all-workspace type check. It is broader than a targeted edit-loop check. `just level-check` exists but is absent from the setup tier table and root matrix. Release-only physics checks are routed through the index. Visual tests return early without their environment switch and consequently appear passed in ordinary test output.
 
 **Proposal.** Keep one detailed change-to-check matrix and link to it from the other operational documents. Add a small read-only selection mode to existing QA tooling that prints the checks required by supplied paths or the milestone's changed paths, including untracked files. It should recommend commands, rather than silently launch GPU/perf work. Include platformer generator sources and generated outputs, physics internals, shader mirrors, scripts/workflows, public API, template wiring and docs.
 
@@ -88,7 +88,7 @@ The expected gain is fewer omitted checks and fewer repeated broad checks during
 
 ### 4. Enforce a few expensive-to-violate rules mechanically
 
-**Evidence.** [Dependency policy](../../deny.toml)'s bans section currently warns about duplicate versions; it does not list the prohibited engine/ECS crates or async runtimes from `AGENTS.md`. The [decision-index tests](../../crates/tungsten-core/tests/decision_index.rs) check sets of IDs anywhere in the index, so a mention can satisfy coverage without a proper row; the decision skill itself records this limitation. Core/render dependency direction is an instruction rather than a dedicated repository check.
+**Evidence.** [Dependency policy](../../../deny.toml)'s bans section currently warns about duplicate versions; it does not list the prohibited engine/ECS crates or async runtimes from `AGENTS.md`. The [decision-index tests](../../../crates/tungsten-core/tests/decision_index.rs) check sets of IDs anywhere in the index, so a mention can satisfy coverage without a proper row; the decision skill itself records this limitation. Core/render dependency direction is an instruction rather than a dedicated repository check.
 
 **Proposal.** Add the existing prohibited dependency names to cargo-deny's bans, verifying them against the approved graph. Add a narrow manifest check for core's dependency direction and the prohibition on a direct `wgpu` dependency. Strengthen decision-index validation to require one actual row per decision, reject duplicate rows/headings and retain amendment references. Limit automation to these objective contracts; leave contextual design and dependency-admission judgments with the agent and owner.
 
@@ -98,7 +98,7 @@ The expected gain is fewer omitted checks and fewer repeated broad checks during
 
 ### 5. Exercise standalone and AI-assisted engine use earlier
 
-**Evidence.** [The outside-copy check](../../scripts/template-check.sh) shares the engine checkout, build profiles and lockfile. That is useful for checking self-containment but does not exercise the guide's first dependency resolution from a git tag. [Known issues](../known-issues.md#follow-ups) already records this distinction. The fresh-Claude feature exercise, RC-A9, is scheduled at [C3](1.0/release-checklist.md); the documented acceptance-game gap table is empty. The latter does not prove the game repository has no work or gaps.
+**Evidence.** [The outside-copy check](../../../scripts/template-check.sh) shares the engine checkout, build profiles and lockfile. That is useful for checking self-containment but does not exercise the guide's first dependency resolution from a git tag. [Known issues](../../known-issues.md#follow-ups) already records this distinction. The fresh-Claude feature exercise, RC-A9, is scheduled at [C3](../1.0/release-checklist.md); the documented acceptance-game gap table is empty. The latter does not prove the game repository has no work or gaps.
 
 **Proposal.** Add a periodic clean-consumer exercise after changes to the supported authoring API or guide: follow the published-tag instructions without copying the engine lockfile, then run the game's tests. Keep the inexpensive existing outside-copy check. Also pilot RC-A9 earlier on a tiny feature, such as a timed pickup that affects player movement, using only template instructions, the guide and rustdoc. Record engine-source lookups, missing documentation, workaround code and observed behavior. File gaps in the existing log; resolve them in normal scoped work.
 
@@ -122,7 +122,7 @@ OpenAI's skill-evaluation guidance supports testing actual task behavior, rather
 
 ### 7. Standardize behavior and visual evidence for feature reviews
 
-**Evidence.** The harness, template state tests, platformer frame-rate regime tests and GPU comparison facilities are already substantial. However, [showcase captures](../showcase/README.md) mix historical images, recipe-only entries and previously inspected captures that are not retained. The platformer's authoring guide explicitly says CPU tests and startup smoke do not establish readability or particle appearance in motion. Recent effect work still needs audible/resized-window review.
+**Evidence.** The harness, template state tests, platformer frame-rate regime tests and GPU comparison facilities are already substantial. However, [showcase captures](../../showcase/README.md) mix historical images, recipe-only entries and previously inspected captures that are not retained. The platformer's authoring guide explicitly says CPU tests and startup smoke do not establish readability or particle appearance in motion. Recent effect work still needs audible/resized-window review.
 
 **Proposal.** For a behavior change, choose the smallest observable scenario that fails before the fix and passes afterward through the real harness. Reuse the existing regime pattern when time/input/event order is involved. For visible features, attach fixed-frame before/after images with commit, backend and settings, plus a short motion capture when a still cannot demonstrate the effect. Label human audio/playthrough checks as pending until reviewed. Use existing capture facilities and preserve the golden-image approval rules.
 
@@ -134,7 +134,7 @@ Claude's official guidance recommends observable verification criteria and visua
 
 ### 8. Reduce routine check output and human handoff repetition
 
-**Evidence.** A successful repository QA run prints many archive-citation, active-plan and asset-exception notes before its zero-error verdict. The [1.0 workflow](1.0/workflow.md#9-owner-touchpoints) documents five owner touchpoints for a level B candidate, and `D-108` already allows eligible pairs to share them. The next-session prompts and milestone skeleton are already centralized, so another prompt framework would duplicate working machinery.
+**Evidence.** A successful repository QA run prints many archive-citation, active-plan and asset-exception notes before its zero-error verdict. The [1.0 workflow](../1.0/workflow.md#9-owner-touchpoints) documents five owner touchpoints for a level B candidate, and `D-108` already allows eligible pairs to share them. The next-session prompts and milestone skeleton are already centralized, so another prompt framework would duplicate working machinery.
 
 **Proposal.** Add an optional concise output mode: verdict and counts on success, complete actionable diagnostics on failure, with detailed notes still available. Reuse the existing final response format for scope, evidence, remaining owner action and the next prompt. Apply existing pairing and same-session approval rules consistently. For small maintenance tasks, use proposal 2's shorter route. Any broader reduction of milestone review/approval stages requires a separate owner-approved policy decision.
 

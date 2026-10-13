@@ -127,9 +127,10 @@ release-check *args:
 release-preflight version *args:
     python3 -B scripts/release-preflight.py "$@"
 
-# Cut VERSION: [Unreleased] becomes [VERSION] - today (--date to override); version, status lines, Cargo.lock follow.
+# Cut VERSION: [Unreleased] becomes [VERSION] - today (--date to override); version, status lines, Cargo.lock and the 1.0 README's owned fields (D-152) follow.
 release-cut version *args:
     python3 -B scripts/release.py cut "$@"
+    python3 -B scripts/roadmap.py summary --write
     cargo update --workspace --offline || { echo "Cargo.lock not refreshed; run: cargo update --workspace" >&2; exit 1; }
 
 # Fast iteration: format check, agent/repo QA, type-check; `just check` still runs clippy and tests.

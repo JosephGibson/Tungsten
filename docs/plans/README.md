@@ -8,7 +8,7 @@ Short-lived multi-step plans saved as `*.md`. A plan is the handoff artifact for
 
 - Bounded maintenance (a local bug fix, documentation correction or tooling repair) records scope/non-goals, affected files and acceptance commands in the session before editing. Use the [validation matrix](../validation.md) to select checks. A saved milestone plan or another approval round is unnecessary within the owner's authorized scope.
 - Multi-session work keeps a saved handoff plan with the headers below, ordered steps, stop conditions and evidence, so a fresh context can resume it. Promote maintenance to this route when its scope grows or a handoff is needed.
-- 1.0 milestone candidates and work whose deliverable is a new public API keep the [program workflow](1.0/workflow.md#2-session-types), milestone skill, critique, approval and level C API review where applicable. Calling that work maintenance cannot bypass review.
+- 1.0 milestone candidates and work whose deliverable is a new public API keep the [program workflow](1.0/workflow.md#2-session-types), the milestone skill and the plan's critique, with level C's step 1 API critique where it applies; none stops for the owner's approval (`D-150`). Calling that work maintenance cannot bypass the critique.
 
 Audit scope is separate: a crate correctness audit reads the full named crate surface; a scoped workflow/documentation audit reads its named documents/tools and reports within that scope. Both report findings unless fixes were requested.
 

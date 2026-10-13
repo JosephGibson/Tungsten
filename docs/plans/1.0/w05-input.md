@@ -12,7 +12,7 @@ Skeleton. The scoping text stays in [criteria](criteria.md) §8.1 until this wor
 ## Placement
 
 - **Tier:** Must (Q9, answered at the definition gate, `D-102`).
-- **Candidates:** W5a, gamepad backend (Phase 6).
+- **Candidates:** W5a, gamepad backend (Phase 6), paired with W1 WL since 0.66 so the gamepad lands before W1 M4's playthrough ([implementation plan](implementation-plan.md) §10).
 - **Needs first:** W1 M0b; a `D-015` rule 1 decision for the gamepad crate, after checking its Linux backend for threads and `libudev` (the workflows stopped installing `libudev-dev` in 0.40, QA step 12).
 - **Feeds:** UI controller navigation through `ui_*` actions; the acceptance game; RC-A5.
 - **Owner questions:** None open; Q9 answered at the definition gate.

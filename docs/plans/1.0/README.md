@@ -5,15 +5,15 @@ Planning for Tungsten 1.0: what it means, which workstreams reach it, in what or
 ## Now
 
 <!-- roadmap-summary:start -->
-- **Workspace:** `0.65.0`
-- **First open stop:** `m3`
-- **Stop state:** `ready`
+- **Workspace:** `0.66.0`
+- **First open stop:** `w16a`
+- **Stop state:** `todo`
 - **Next milestone:** `M48`
 <!-- roadmap-summary:end -->
 
-This is the local tree's snapshot, not proof of publication. `python3 -B scripts/roadmap.py summary` prints the four owned fields above; `just repo-check` checks them against workspace metadata and the existing status derivation. `python3 -B scripts/roadmap.py status` reports the branch, tags, stop evidence and last fetch without fetching. Refresh/review local refs before claiming a release is merged or published.
+This is the local tree's snapshot, not proof of publication. `python3 -B scripts/roadmap.py summary` prints the four owned fields above, and `--write` replaces them; `just repo-check` checks them against workspace metadata and the existing status derivation. `python3 -B scripts/roadmap.py status` reports the branch, tags, stop evidence and last fetch without fetching. Refresh/review local refs before claiming a release is merged or published.
 
-Track C through W15c is complete in the local refs. The [queue](implementation-plan.md#6-critical-path-and-the-queue) and [register](implementation-plan.md#10-register) own the remaining order and Phase 5 QA placement. Use `/tungsten-next` for the session prompt. Dated release contents stay in [CHANGELOG](../../../CHANGELOG.md), and the former summary's unique tag/date/commit metadata in [the historical record](../ai-development-workflow.md#historical-roadmap-metadata); gate answers and signatures stay in the [gate records](implementation-plan.md#11-gate-records).
+Phase 5 is complete in the local refs. The [queue](implementation-plan.md#6-critical-path-and-the-queue) and [register](implementation-plan.md#10-register) own the remaining order. Use `/tungsten-next` for the session prompt. A stop that is cut, tagged or merged counts as closed here, and `just release-cut` rewrites the block, so it holds through the merge (`D-152`). Dated release contents stay in [CHANGELOG](../../../CHANGELOG.md), each release's squash commit in `git log origin/main`, and gate answers and signatures in the [gate records](implementation-plan.md#11-gate-records).
 
 ## Reading order
 
@@ -29,7 +29,7 @@ Track C through W15c is complete in the local refs. The [queue](implementation-p
 | --- | --- |
 | [criteria.md](criteria.md) | What 1.0 means, the gaps, the 16 workstreams with proposed tiers, owner questions, decisions and risks. The scoping source for every workstream that has not graduated |
 | [implementation-plan.md](implementation-plan.md) | Phases, gates, candidates in order with cards for Phase 5, the queue, when each owner question is needed, amendments proposed to criteria.md, the definition gate agenda, the register and gate records |
-| [workflow.md](workflow.md) | How the program runs as Claude Code sessions: session types, autonomy levels, what every milestone owes before its release, sharing the tree and the reference machine, owner touchpoints, the tooling Step 0 proposes |
+| [workflow.md](workflow.md) | How the program runs as Claude Code sessions: session types, levels, what every milestone owes before its release, sharing the tree and the reference machine, owner touchpoints, Step 0's tooling |
 | [release-checklist.md](release-checklist.md) | The checks that tag 1.0; C3 runs them on a release candidate |
 | [acceptance-game.md](acceptance-game.md) | The game that tests definition A; its feature list cuts W5, W6 and W13 |
 | [backlog-1.x.md](backlog-1.x.md) | What 1.0 defers, and what would bring each item back |
@@ -59,7 +59,7 @@ Track C through W15c is complete in the local refs. The [queue](implementation-p
 - **Names.** One `wNN-slug.md` per workstream. Milestone plans for 1.0 are written here too, named by the [plan naming rule](../README.md#naming) and numbered from M32 when they are next to start. The [register](implementation-plan.md#10-register) maps each candidate to its plan and release.
 - **Headers.** Every file except this one carries the six plan header fields, which the repository check reads (below). Skeletons say `draft (skeleton)`.
 - **Catalog.** [roadmap.json](roadmap.json) is data, not a plan: it carries no plan headers, and the repository check reads it against the register instead (`D-109`).
-- **Graduation.** Once the owner settles a workstream's tier and scope, its section moves from criteria.md into its file verbatim, with links fixed for the new place. Criteria.md then keeps a short placement paragraph, as §4 already does for W1. The file's steps become its candidates in order, each with a done-when; the execution steps live in each candidate's milestone plan. Until then a workstream file holds placement only and never a copy of the scoping text, so each fact has one source. A milestone plan can be written before its workstream graduates, with criteria.md as its scoping source.
+- **Graduation.** W2, W3, W4, W9, W11, W12, W14 and W15 graduated: their criteria sections moved verbatim into their files, which hold their candidates in order, each with a done-when, and criteria.md keeps a placement paragraph. The rest stay in criteria.md, and no graduation session is scheduled (`D-150`): a milestone plan cites its workstream's criteria section as its scoping source. A workstream file that has not graduated holds placement only and never a copy of the scoping text, so each fact has one source.
 - **Repository check.** `just repo-check` reads this folder too (Step 0a): it checks every file's headers but this one's and flags a finished file left here, naming `docs/plans/archive/1.0/` as its place.
 - **Lifecycle.** A finished, abandoned or superseded file moves to `docs/plans/archive/1.0/` with the same basename, and the rest of the folder follows after 1.0. Agents never read the archive.
 - **Former paths.** `docs/plans/1.0-criteria-draft.md` is now [criteria.md](criteria.md), and `docs/plans/ui-text-suite-draft.md` is now [w01-ui-text-suite.md](w01-ui-text-suite.md). The released sections of `CHANGELOG.md` and the 0.40 QA plan still name the old paths; `DESIGN.md` names the new one since 0.40 QA step 11.

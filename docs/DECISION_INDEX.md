@@ -99,17 +99,19 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-106` | 12 KiB on-demand index; root rules stay 6 KiB with asset detail linked out. Amends `D-068`. |
 | `D-107` | Pinned-toolchain rustdoc JSON snapshots, `just api`/`api-check`. Amends `D-104`. Amended by `D-110`: umbrella testing feature. |
 | `D-108` | Adjacent A/B candidates with separate files may share plan/release; revises the definition gate's one-release rule. |
-| `D-109` | Checked roadmap catalog and one prompt home; viewer fed from tree-derived state. Amended by `D-118`: stages/session recommendations. |
+| `D-109` | Checked roadmap catalog and one prompt home; viewer fed from tree-derived state. Amended by `D-118`: stages/session recommendations; `D-150`: plan/run status without approval lines, no graduation sessions. |
 | `D-111` | Dev/test debuginfo in unpacked .dwo files; supported backtraces, smaller/faster builds. Amends `D-041`. |
 | `D-112` | CI builds benchmarks in dev profile; local bench profile remains. Amends `D-070`. |
-| `D-118` | Roadmap stages from prompt flows; session model/mode/effort by stop. Amends `D-109`. Amended by `D-136`: A/B releases use Opus max. |
+| `D-118` | Roadmap stages from prompt flows; session model/mode/effort by stop. Amends `D-109`. Amended by `D-136`: A/B releases use Opus max; `D-150`: no same-session stages, auto mode. Max clause superseded by `D-151`. |
 | `D-120` | Separate identity-checked release debug archives and crash probe. Amends `D-071`. |
 | `D-121` | Informational CPU-only Windows test job. Amends `D-070`. |
 | `D-122` | Release archives include version-checked third-party/license notices; `just notices`. Amends `D-071`, `D-072`. |
 | `D-124` | Taffy behind Tungsten layout styles, never public (`D-015` rule 3); no grid, rounding at extraction. |
-
-| `D-140` | Bounded maintenance plans in-session; saved handoffs and milestone/API reviews remain. Canonical checks: [validation](validation.md). |
+| `D-140` | Bounded maintenance plans in-session; saved handoffs and milestone/API reviews remain. Canonical checks: [validation](validation.md). Amended by `D-150`: no approval or API review stop. |
 | `D-141` | Perf run/suite/sweep refuse known encoder/foreign-build load before building; existing override and measured scans remain. Amends `D-095`. |
+| `D-150` | No owner-approval stops on the road to 1.0: plans end with the run prompt, level C critiques its own step 1 API diff, gates take defaults and sign, plan/run status from the plan's header and evidence, no graduation sessions; publication stays the owner's. Amends `D-109`, `D-118`, `D-140`. |
+| `D-151` | Opus 5.5 max only for level C plans and gates (complexity 2–4); every other session stage xhigh, Fable and high rules kept. Supersedes the max clauses of `D-118` and `D-136`. |
+| `D-152` | README owned fields count cut/tagged/merged stops as closed; `just release-cut` writes them; register rows are not edited after the merge. Extends `D-109`. |
 
 ## ECS / Runtime Flow
 
@@ -162,7 +164,7 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-133` | W15a landed: schedule plugins, named engine systems, core WindowSize; particles benchmark ownership. |
 | `D-134` | W3a landed: Time/Timer edge rules and engine clock migration; DeltaTime deprecated. |
 | `D-135` | W15b landed: tuple/slice queries, accessors and one-move bundles; accepted costs recorded here. Amends `D-130`. |
-| `D-136` | Fable for level C/gates/spikes; A/B releases use Opus max. Amends `D-118`. |
+| `D-136` | Fable for level C/gates/spikes; A/B releases use Opus max. Amends `D-118`. Max clause superseded by `D-151`: A/B releases use Opus xhigh. |
 | `D-137` | W3b landed: bounded fixed loop, input/event step views and interpolation. Amends `D-040`. Amended by `D-139`: zero-step holds; `D-146`: stopped-clock input edges drop. |
 | `D-138` | W15c landed: additive extracts, tiles before sprites, explicit replace preserved, lit tiles (`D-061`). Amends `D-042`. |
 | `D-139` | Zero-step frames hold bounded events for fixed readers; HUD counts step contacts. Amends `D-040`, `D-137`. |

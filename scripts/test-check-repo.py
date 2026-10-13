@@ -297,6 +297,32 @@ class SummaryChecks(unittest.TestCase):
             self.assertTrue(self.check())
 
 
+class Output(unittest.TestCase):
+    """Notes are counted unless --notes asks for them; errors always print."""
+
+    def run_main(self, *args):
+        output = io.StringIO()
+        notes = lambda root, errors, notes: notes.extend(["second note", "first note", "first note"])
+        failing = lambda root, errors, notes: errors.append("broken")
+        quiet = lambda root, errors, notes: None
+        with tempfile.TemporaryDirectory() as temp, contextlib.redirect_stdout(output), \
+                patch.object(qa, "check_assets", notes), patch.object(qa, "check_templates", failing), \
+                patch.object(qa, "check_plans", quiet), patch.object(qa, "check_docs", quiet), \
+                patch.object(qa, "check_plan_citations", quiet), patch.object(qa, "check_roadmap", quiet), \
+                patch.object(qa, "check_summary", quiet), patch.object(qa, "check_agent_config", lambda root, errors: None):
+            code = qa.main(["--root", temp, *args])
+        return code, output.getvalue().splitlines()
+
+    def test_notes_are_counted_by_default(self):
+        code, lines = self.run_main()
+        self.assertEqual(code, 1)
+        self.assertEqual(lines, ["ERROR: broken", "Repository QA: 1 error(s), 2 note(s) (--notes lists them)"])
+
+    def test_notes_flag_lists_them_once_each(self):
+        code, lines = self.run_main("--notes")
+        self.assertEqual(lines, ["NOTE: first note", "NOTE: second note", "ERROR: broken", "Repository QA: 1 error(s), 2 note(s)"])
+
+
 class CheckSelection(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

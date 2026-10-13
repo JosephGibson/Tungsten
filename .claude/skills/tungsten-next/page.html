@@ -268,10 +268,10 @@ footer { display: grid; gap: 8px; font-size: 12px; color: var(--fg-3); border-to
 const SCHEMA = 2; // the catalog shape this page is built for (D-118)
 const READS = [1, 2]; // schema 1, from before D-118, renders without stages
 const CACHE = "tungsten-roadmap-cache", OPEN = "tungsten-roadmap-open";
-const STATUS = { todo: "not started", plan: "plan in review", run: "running", ready: "ready to ship", review: "release PR open", done: "done", skip: "skipped" };
+const STATUS = { todo: "not started", plan: "planned", run: "running", ready: "ready to ship", review: "release PR open", done: "done", skip: "skipped" };
 const WHERE = { new: "new session", same: "same session", you: "you" };
 const MODE = { auto: "auto mode", plan: "plan mode" };
-const LEVEL = { A: "A · unattended", B: "B · approved design", C: "C · owner in the loop", S: "S · experiment" };
+const LEVEL = { A: "A · mechanical", B: "B · settled design", C: "C · new public API", S: "S · experiment" };
 const CX = ["", "S", "M", "L", "XL"]; // the catalog rates complexity 1–4; the page shows it on effort's scale
 const ROLE = { decide: "you decide", api: "you review the API", hands: "you check by hand", play: "you play" };
 const FLAG = { api: ["new API", "api"], break: ["API break", "api"], dep: ["new dependency", "api"], perf: ["perf", "chk"], visual: ["visual", "chk"], hash: ["hashes", "chk"], ci: ["CI", "chk"] };
@@ -310,9 +310,8 @@ const atList = at => (Array.isArray(at) ? at : String(at || "").split(/\s*(?:,|\
 const tickKey = (status, key) => status + ":" + key;
 const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 const recPlain = r => [MODE[r.mode] || r.mode, r.model, r.effort].filter(Boolean).join(" · ");
-const recText = r => (!r ? "" : (r.keeps ? "keeps " + r.keeps + "'s " : "") + recPlain(r));
-const recNodes = r => (!r ? [] : [(r.keeps ? "keeps " + r.keeps + "'s " : "") + (MODE[r.mode] || r.mode || ""), r.model ? [" · ", h("b", { text: r.model })] : null, r.effort ? " · " + r.effort : null]);
-const ifNew = r => (r && r.if_new ? "In a new session: " + recPlain(r.if_new) : null);
+const recText = r => (!r ? "" : recPlain(r));
+const recNodes = r => (!r ? [] : [MODE[r.mode] || r.mode || "", r.model ? [" · ", h("b", { text: r.model })] : null, r.effort ? " · " + r.effort : null]);
 const stagesOf = s => (s && Array.isArray(s.stages) ? s.stages : null);
 
 function remember() { try { localStorage.setItem(OPEN, JSON.stringify([...S.open])); } catch (e) { /* per-viewer convenience only */ } }
@@ -408,11 +407,11 @@ function chain(s) {
 function nextRec(n, stop) {
   let rec = n.next.rec;
   if (!rec) { const g = (stagesOf(stop) || []).find(x => x.key === n.next.key); rec = g ? g.rec : null; }
-  return rec && rec.keeps && rec.if_new && n.next.where === "new" ? rec.if_new : rec; // a same-session step that has to start fresh
+  return rec;
 }
 function recoveryRec(r, stop) {
   if (r.rec) return r.rec;
-  if (r.key === "resume") { const g = (stagesOf(stop) || []).find(x => x.key === "run" || x.key === "run-c1"); return g ? g.rec : null; }
+  if (r.key === "resume") { const g = (stagesOf(stop) || []).find(x => x.key === "run"); return g ? g.rec : null; }
   return (S.catalog.sessions || {})[r.key] || null;
 }
 function progress(id) {
@@ -446,7 +445,7 @@ function nextBlock() {
     return h("li", { class: [x.state, x.on ? "ticked" : ""].filter(Boolean).join(" "), "aria-current": x.state === "cur" ? "step" : null },
       box ? h("label", { for: id }, box, name) : name,
       h("span", { class: "w" + (x.g.where === "you" ? " you" : ""), text: WHERE[x.g.where] || x.g.where || "" }),
-      x.g.rec ? h("span", { class: "rec", title: ifNew(x.g.rec) }, recNodes(x.g.rec)) : null,
+      x.g.rec ? h("span", { class: "rec" }, recNodes(x.g.rec)) : null,
       x.state === "cur" ? h("span", { class: "up", text: "up next" }) : null);
   });
   const rec = nextRec(n, stop);
@@ -454,7 +453,7 @@ function nextBlock() {
   const heads = (n.heads_up || []).length ? h("div", { class: "heads" }, h("h3", { class: "eb", text: "Heads-up" }), h("ul", null, n.heads_up.map(t => h("li", { text: t })))) : null;
   const recovery = (n.recovery || []).length ? fold("fold:recovery", "If something went wrong", h("div", { class: "recovery" }, n.recovery.map((r, i) => {
     const rr = recoveryRec(r, stop);
-    return h("div", { class: "rec-item" }, h("h3", null, h("span", { text: r.title || r.key }), rr ? h("span", { class: "rec", title: ifNew(rr) }, recNodes(rr)) : null), promptBlock(r.text || "", "rec-" + i));
+    return h("div", { class: "rec-item" }, h("h3", null, h("span", { text: r.title || r.key }), rr ? h("span", { class: "rec" }, recNodes(rr)) : null), promptBlock(r.text || "", "rec-" + i));
   }))) : null;
   const tree = n.tree && typeof n.tree === "object" ? fold("fold:tree", "Tree at sync" + (n.commit ? " · " + n.commit : ""),
     h("dl", { class: "tree" }, TREE.filter(([k]) => n.tree[k]).map(([k, label]) => [h("dt", { text: label }), h("dd", { text: String(n.tree[k]) })]))) : null;
@@ -463,7 +462,7 @@ function nextBlock() {
       h("span", { class: "eb where" + (you ? " you" : ""), text: WHERE[n.next.where] || n.next.where || "" }),
       stop ? h("button", { type: "button", class: "jump", onclick: () => jump(stop.id) }, "Show in route") : null),
     h("div", { class: "title-block" },
-      h("div", { class: "title-row" }, n.next.title ? h("p", { class: "next-title", text: n.next.title }) : null, rec ? h("p", { class: "rec", title: ifNew(rec) }, recNodes(rec)) : null),
+      h("div", { class: "title-row" }, n.next.title ? h("p", { class: "next-title", text: n.next.title }) : null, rec ? h("p", { class: "rec" }, recNodes(rec)) : null),
       n.headline ? h("p", { class: "lead", text: n.headline }) : null),
     n.next.text ? promptBlock(n.next.text, "next-text", "Prompt to paste") : null,
     progress(n.stop), stopQuestions(stop),
@@ -522,7 +521,7 @@ function phaseOf(stop) { return groupPhase[stop.group]; }
 function stageRec(s, st) {
   const list = stagesOf(s);
   if (!list || !list.length || st === "skip") return null;
-  if (st === "done") { const g = list.find(x => x.rec && (x.key === "run" || x.key === "run-c1")) || list.find(x => x.rec); return g ? g.rec : null; }
+  if (st === "done") { const g = list.find(x => x.rec && x.key === "run") || list.find(x => x.rec); return g ? g.rec : null; }
   const cur = stageStates(s.id, list).find(x => x.state === "cur");
   return cur && cur.g.rec ? cur.g.rec : null;
 }
@@ -557,7 +556,7 @@ function fillBody(s, box) {
   const doc = S.stops[s.id] || {}, st = statusOf(s.id), facts = [];
   const add = (k, v) => { if (v != null && v !== "" && !(Array.isArray(v) && !v.length)) facts.push(h("dt", { class: "eb", text: k }), h("dd", null, v)); };
   add("Status", [h("b", { class: "st-" + st, text: STATUS[st] }), [doc.release && " · " + doc.release, doc.milestone && " · " + doc.milestone, doc.plan_steps ? " · " + (doc.evidence || 0) + " of " + doc.plan_steps + " steps with evidence" : ""].filter(Boolean).join("")]);
-  add("Level", s.level ? LEVEL[s.level] || s.level : s.kind === "release" ? "not set yet: the stages assume level A or B" : null);
+  add("Level", s.level ? LEVEL[s.level] || s.level : s.kind === "release" ? "not set yet: the feature gate cards it" : null);
   const ratings = [s.complexity ? "complexity " + (CX[s.complexity] || s.complexity) : "", s.effort ? "effort " + s.effort : ""].filter(Boolean);
   add("Ratings", ratings.length ? [ratings.join(" · ") + ", estimated", h("span", { class: "nt", text: " · they set its sessions' model and reasoning effort (D-118)" })] : null);
   const steps = stagesOf(s);
@@ -565,7 +564,6 @@ function fillBody(s, box) {
     h("span", { class: stageClass(x), text: x.g.key }),
     h("span", null, [x.g.title, WHERE[x.g.where] || x.g.where].filter(Boolean).join(" · "),
       x.g.rec ? h("span", { class: "rec" }, " · ", recNodes(x.g.rec)) : null,
-      x.g.rec && x.g.rec.if_new ? h("span", { class: "nt", text: " · in a new session: " + recPlain(x.g.rec.if_new) }) : null,
       x.g.note ? h("span", { class: "nt", text: " · " + x.g.note }) : null)))) : "None: prompts.md's Flow table has no row for this kind of stop.");
   add("Register row", s.row);
   add("Plan", doc.plan ? h("span", { class: "mono", text: doc.plan }) : null);
@@ -635,7 +633,7 @@ function footer() {
     h("ul", { class: "legend", "aria-label": "What each color means" }, LEGEND.map(([k, name, meaning]) =>
       h("li", null, h("i", { class: "sw " + k }), h("span", null, h("b", { class: k === "idle" ? null : "c-" + k, text: name }), " " + meaning)))),
     h("p", null, "Chips on a stop: its level, complexity and effort from the catalog; the model and reasoning effort its current stage's session runs on (a finished stop's run session got); what waits on you; the checks its work needs; public API flags; its release. Orange chips wait on you, cyan is the session's model, pink a public API or dependency, green a shipped release, yellow an experiment."),
-    h("p", null, "Stages: the underlined one is current, ✓ is done, a dotted one has a note (hover it). Each session stage shows its mode, model and effort; a same-session stage keeps its session's."),
+    h("p", null, "Stages: the underlined one is current, ✓ is done, a dotted one has a note (hover it). Each session stage shows its mode, model and effort."),
     h("p", null, "Data: ", h("span", { class: "mono", text: "docs/plans/1.0/roadmap.json" }), ", the Flow table in ", h("span", { class: "mono", text: "prompts.md" }),
       " and the tree, synced by ", h("span", { class: "mono", text: "/tungsten-next" }),
       ". Page: ", h("span", { class: "mono", text: ".claude/skills/tungsten-next/page.html" }),
