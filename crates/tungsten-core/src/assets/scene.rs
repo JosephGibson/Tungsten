@@ -1,12 +1,24 @@
 //! D-046 scene data model; sprite ID validation deferred to extract path.
 //! D-054/D-055 scene tweens map one `Tween` per entry.
+//! M48: an entry's `components` name registered components, checked at load
+//! against the World's `ComponentRegistry`; unknown keys fail the parse.
 
+use std::collections::BTreeMap;
+use std::fmt;
 use std::path::Path;
 
+use serde::de::{self, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Number, Value};
 use thiserror::Error;
 
+use crate::component_registry::ComponentRegistry;
+use crate::ecs::World;
 use crate::tween::{Easing, IntSlot, ScalarSlot, Tween, TweenChannel, TweenRepeat, Vec4Slot};
+
+/// The largest position a scene transform may name on either axis: 2^24,
+/// where an `f32` still holds whole pixels.
+const MAX_POSITION: f32 = 16_777_216.0;
 
 #[derive(Debug, Error)]
 pub enum SceneError {
@@ -25,12 +37,14 @@ pub enum SceneError {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SceneData {
     #[serde(default)]
     pub entities: Vec<SceneEntry>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SceneEntry {
     pub transform: SceneTransform,
     #[serde(default)]
@@ -41,9 +55,19 @@ pub struct SceneEntry {
     pub tag: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tweens: Vec<SceneTween>,
+    /// Registered components by name: each value deserializes as the type its
+    /// name was registered with and spawns after the fields above, in name
+    /// order. A name given twice fails the parse.
+    #[serde(
+        default,
+        skip_serializing_if = "BTreeMap::is_empty",
+        deserialize_with = "strict_components"
+    )]
+    pub components: BTreeMap<String, Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SceneTween {
     pub duration: f32,
     #[serde(default)]
@@ -202,6 +226,7 @@ impl SceneTween {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SceneTransform {
     pub position: [f32; 2],
     #[serde(default)]
@@ -211,6 +236,7 @@ pub struct SceneTransform {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SceneSprite {
     pub asset_id: String,
     #[serde(default = "white")]
@@ -231,8 +257,32 @@ fn white() -> [u8; 4] {
     [255; 4]
 }
 
+impl SceneTransform {
+    /// Every number finite, and the position within ±2^24 on both axes.
+    fn validate(&self) -> Result<(), String> {
+        let [x, y] = self.position;
+        if !(x.abs() <= MAX_POSITION && y.abs() <= MAX_POSITION) {
+            return Err(format!(
+                "position must be finite and within ±{MAX_POSITION} (got [{x}, {y}])"
+            ));
+        }
+        if !self.rotation.is_finite() {
+            return Err(format!("rotation must be finite (got {})", self.rotation));
+        }
+        let [sx, sy] = self.scale;
+        if !(sx.is_finite() && sy.is_finite()) {
+            return Err(format!("scale must be finite (got [{sx}, {sy}])"));
+        }
+        Ok(())
+    }
+}
+
 impl SceneData {
-    pub fn load(path: &Path) -> Result<Self, SceneError> {
+    /// Reads and parses `path`, then checks every entry's transform and
+    /// tweens, and its components against `world`'s `ComponentRegistry`
+    /// (an empty one when the World has none, so any component is unknown).
+    /// The first error stops the load.
+    pub fn load(path: &Path, world: &World) -> Result<Self, SceneError> {
         let contents = std::fs::read_to_string(path).map_err(|source| SceneError::Io {
             path: path.display().to_string(),
             source,
@@ -242,15 +292,137 @@ impl SceneData {
                 path: path.display().to_string(),
                 source,
             })?;
+        let invalid = |message: String| SceneError::Validation {
+            path: path.display().to_string(),
+            message,
+        };
+        let empty = ComponentRegistry::new();
+        let registry = world.get_resource::<ComponentRegistry>().unwrap_or(&empty);
         for (i, entry) in data.entities.iter().enumerate() {
+            entry
+                .transform
+                .validate()
+                .map_err(|msg| invalid(format!("entities[{i}].transform: {msg}")))?;
             for (j, tween) in entry.tweens.iter().enumerate() {
-                tween.validate().map_err(|msg| SceneError::Validation {
-                    path: path.display().to_string(),
-                    message: format!("entities[{i}].tweens[{j}]: {msg}"),
-                })?;
+                tween
+                    .validate()
+                    .map_err(|msg| invalid(format!("entities[{i}].tweens[{j}]: {msg}")))?;
+            }
+            for (name, value) in &entry.components {
+                registry
+                    .check(name, value)
+                    .map_err(|err| invalid(format!("entities[{i}]: {err}")))?;
             }
         }
         Ok(data)
+    }
+}
+
+/// `components`' reader: fails on a component named twice, and on a key
+/// repeated at any depth inside a value, where a plain `Value` keeps the
+/// last one and a valid repeat would mask an invalid first.
+fn strict_components<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<BTreeMap<String, Value>, D::Error> {
+    struct Components;
+
+    impl<'de> Visitor<'de> for Components {
+        type Value = BTreeMap<String, Value>;
+
+        fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str("an object of components by name")
+        }
+
+        fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+            let mut components = BTreeMap::new();
+            while let Some(name) = map.next_key::<String>()? {
+                if components.contains_key(&name) {
+                    return Err(de::Error::custom(format_args!(
+                        "duplicate component `{name}`"
+                    )));
+                }
+                let StrictValue(value) = map.next_value()?;
+                components.insert(name, value);
+            }
+            Ok(components)
+        }
+    }
+
+    deserializer.deserialize_map(Components)
+}
+
+/// A JSON value whose objects refuse a repeated key.
+struct StrictValue(Value);
+
+impl<'de> Deserialize<'de> for StrictValue {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_any(StrictVisitor).map(StrictValue)
+    }
+}
+
+struct StrictVisitor;
+
+impl<'de> Visitor<'de> for StrictVisitor {
+    type Value = Value;
+
+    fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("any JSON value")
+    }
+
+    fn visit_bool<E: de::Error>(self, value: bool) -> Result<Value, E> {
+        Ok(Value::Bool(value))
+    }
+
+    fn visit_i64<E: de::Error>(self, value: i64) -> Result<Value, E> {
+        Ok(Value::from(value))
+    }
+
+    fn visit_u64<E: de::Error>(self, value: u64) -> Result<Value, E> {
+        Ok(Value::from(value))
+    }
+
+    fn visit_f64<E: de::Error>(self, value: f64) -> Result<Value, E> {
+        Ok(Number::from_f64(value).map_or(Value::Null, Value::Number))
+    }
+
+    fn visit_str<E: de::Error>(self, value: &str) -> Result<Value, E> {
+        Ok(Value::String(value.to_owned()))
+    }
+
+    fn visit_string<E: de::Error>(self, value: String) -> Result<Value, E> {
+        Ok(Value::String(value))
+    }
+
+    fn visit_none<E: de::Error>(self) -> Result<Value, E> {
+        Ok(Value::Null)
+    }
+
+    fn visit_unit<E: de::Error>(self) -> Result<Value, E> {
+        Ok(Value::Null)
+    }
+
+    fn visit_some<D: Deserializer<'de>>(self, deserializer: D) -> Result<Value, D::Error> {
+        StrictValue::deserialize(deserializer).map(|StrictValue(value)| value)
+    }
+
+    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Value, A::Error> {
+        let mut items = Vec::new();
+        while let Some(StrictValue(item)) = seq.next_element()? {
+            items.push(item);
+        }
+        Ok(Value::Array(items))
+    }
+
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Value, A::Error> {
+        let mut object = Map::new();
+        while let Some(key) = map.next_key::<String>()? {
+            if object.contains_key(&key) {
+                return Err(de::Error::custom(format_args!("duplicate field `{key}`")));
+            }
+            let StrictValue(value) = map.next_value()?;
+            object.insert(key, value);
+        }
+        Ok(Value::Object(object))
     }
 }
 

@@ -3,6 +3,7 @@
 pub mod assets;
 pub mod audio;
 pub mod camera;
+pub mod component_registry;
 pub mod components;
 pub mod config;
 pub mod debug_draw;
@@ -35,6 +36,7 @@ pub use assets::{
 };
 pub use audio::{AudioCommand, AudioCommands};
 pub use camera::{CameraBounds, CameraController, CameraMode, CameraState};
+pub use component_registry::{ComponentError, ComponentRegistry, PreparedComponent, SpawnContext};
 pub use components::{
     Light, LightKind, MeshParticle, ParallaxLayer, Particle, ParticleEmitter, ParticleEmitterState,
     Sprite, SpriteSquashStretch, SquashStretchState, SquashTrigger, Tag, Transform, Visibility,

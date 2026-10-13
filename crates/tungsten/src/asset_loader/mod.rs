@@ -25,6 +25,7 @@ pub use reload::{
     reload_ui_themes_from_manifest,
 };
 pub use scene::{load_scene, spawn_scene};
+pub(crate) use scene::{register_extract_components, register_squash_stretch};
 
 /// Theme file paths by `ui_themes` ID (M46, `D-148`): the hot reload's
 /// reverse lookup, as [`FontRegistry`] is for fonts.

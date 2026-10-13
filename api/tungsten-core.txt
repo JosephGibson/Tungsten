@@ -1345,7 +1345,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::scene::Scen
 pub struct tungsten_core::assets::scene::SceneData
 pub tungsten_core::assets::scene::SceneData::entities: alloc::vec::Vec<tungsten_core::assets::scene::SceneEntry>
 impl tungsten_core::assets::scene::SceneData
-pub fn tungsten_core::assets::scene::SceneData::load(&std::path::Path) -> core::result::Result<Self, tungsten_core::assets::scene::SceneError>
+pub fn tungsten_core::assets::scene::SceneData::load(&std::path::Path, &tungsten_core::World) -> core::result::Result<Self, tungsten_core::assets::scene::SceneError>
 impl core::clone::Clone for tungsten_core::assets::scene::SceneData
 pub fn tungsten_core::assets::scene::SceneData::clone(&self) -> tungsten_core::assets::scene::SceneData
 impl core::default::Default for tungsten_core::assets::scene::SceneData
@@ -1364,6 +1364,7 @@ impl core::marker::UnsafeUnpin for tungsten_core::assets::scene::SceneData
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::scene::SceneData
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::scene::SceneData
 pub struct tungsten_core::assets::scene::SceneEntry
+pub tungsten_core::assets::scene::SceneEntry::components: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
 pub tungsten_core::assets::scene::SceneEntry::sprite: core::option::Option<tungsten_core::assets::scene::SceneSprite>
 pub tungsten_core::assets::scene::SceneEntry::tag: core::option::Option<alloc::string::String>
 pub tungsten_core::assets::scene::SceneEntry::transform: tungsten_core::assets::scene::SceneTransform
@@ -2757,7 +2758,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::R
 pub struct tungsten_core::assets::SceneData
 pub tungsten_core::assets::SceneData::entities: alloc::vec::Vec<tungsten_core::assets::scene::SceneEntry>
 impl tungsten_core::assets::scene::SceneData
-pub fn tungsten_core::assets::scene::SceneData::load(&std::path::Path) -> core::result::Result<Self, tungsten_core::assets::scene::SceneError>
+pub fn tungsten_core::assets::scene::SceneData::load(&std::path::Path, &tungsten_core::World) -> core::result::Result<Self, tungsten_core::assets::scene::SceneError>
 impl core::clone::Clone for tungsten_core::assets::scene::SceneData
 pub fn tungsten_core::assets::scene::SceneData::clone(&self) -> tungsten_core::assets::scene::SceneData
 impl core::default::Default for tungsten_core::assets::scene::SceneData
@@ -2776,6 +2777,7 @@ impl core::marker::UnsafeUnpin for tungsten_core::assets::scene::SceneData
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::scene::SceneData
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::scene::SceneData
 pub struct tungsten_core::assets::SceneEntry
+pub tungsten_core::assets::SceneEntry::components: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
 pub tungsten_core::assets::SceneEntry::sprite: core::option::Option<tungsten_core::assets::scene::SceneSprite>
 pub tungsten_core::assets::SceneEntry::tag: core::option::Option<alloc::string::String>
 pub tungsten_core::assets::SceneEntry::transform: tungsten_core::assets::scene::SceneTransform
@@ -3300,6 +3302,74 @@ impl core::marker::Unpin for tungsten_core::camera::CameraState
 impl core::marker::UnsafeUnpin for tungsten_core::camera::CameraState
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::camera::CameraState
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::camera::CameraState
+pub mod tungsten_core::component_registry
+#[non_exhaustive] pub enum tungsten_core::component_registry::ComponentError
+pub tungsten_core::component_registry::ComponentError::Invalid
+pub tungsten_core::component_registry::ComponentError::Invalid::field: alloc::string::String
+pub tungsten_core::component_registry::ComponentError::Invalid::name: alloc::string::String
+pub tungsten_core::component_registry::ComponentError::Invalid::source: serde_json::error::Error
+pub tungsten_core::component_registry::ComponentError::Unknown
+pub tungsten_core::component_registry::ComponentError::Unknown::name: alloc::string::String
+impl core::error::Error for tungsten_core::component_registry::ComponentError
+pub fn tungsten_core::component_registry::ComponentError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tungsten_core::component_registry::ComponentError
+pub fn tungsten_core::component_registry::ComponentError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::component_registry::ComponentError
+pub fn tungsten_core::component_registry::ComponentError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::component_registry::ComponentError
+impl core::marker::Send for tungsten_core::component_registry::ComponentError
+impl core::marker::Sync for tungsten_core::component_registry::ComponentError
+impl core::marker::Unpin for tungsten_core::component_registry::ComponentError
+impl core::marker::UnsafeUnpin for tungsten_core::component_registry::ComponentError
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::component_registry::ComponentError
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::component_registry::ComponentError
+pub struct tungsten_core::component_registry::ComponentRegistry
+impl tungsten_core::component_registry::ComponentRegistry
+pub fn tungsten_core::component_registry::ComponentRegistry::check(&self, &str, &serde_json::value::Value) -> core::result::Result<(), tungsten_core::component_registry::ComponentError>
+pub fn tungsten_core::component_registry::ComponentRegistry::contains(&self, &str) -> bool
+pub fn tungsten_core::component_registry::ComponentRegistry::is_empty(&self) -> bool
+pub fn tungsten_core::component_registry::ComponentRegistry::len(&self) -> usize
+pub fn tungsten_core::component_registry::ComponentRegistry::name_of<T: 'static>(&self) -> core::option::Option<&str>
+pub fn tungsten_core::component_registry::ComponentRegistry::names(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
+pub fn tungsten_core::component_registry::ComponentRegistry::new() -> Self
+pub fn tungsten_core::component_registry::ComponentRegistry::prepare(&self, &str, &serde_json::value::Value, &tungsten_core::component_registry::SpawnContext<'_>) -> core::result::Result<tungsten_core::component_registry::PreparedComponent, tungsten_core::component_registry::ComponentError>
+pub fn tungsten_core::component_registry::ComponentRegistry::register<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &str) -> bool
+pub fn tungsten_core::component_registry::ComponentRegistry::register_with<D, B>(&mut self, &str, impl core::ops::function::Fn(D, &tungsten_core::component_registry::SpawnContext<'_>) -> B + 'static) -> bool where D: serde_core::de::DeserializeOwned + 'static, B: tungsten_core::ecs::bundle::Bundle
+impl core::default::Default for tungsten_core::component_registry::ComponentRegistry
+pub fn tungsten_core::component_registry::ComponentRegistry::default() -> tungsten_core::component_registry::ComponentRegistry
+impl core::fmt::Debug for tungsten_core::component_registry::ComponentRegistry
+pub fn tungsten_core::component_registry::ComponentRegistry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::component_registry::ComponentRegistry
+impl !core::marker::Send for tungsten_core::component_registry::ComponentRegistry
+impl !core::marker::Sync for tungsten_core::component_registry::ComponentRegistry
+impl core::marker::Unpin for tungsten_core::component_registry::ComponentRegistry
+impl core::marker::UnsafeUnpin for tungsten_core::component_registry::ComponentRegistry
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::component_registry::ComponentRegistry
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::component_registry::ComponentRegistry
+pub struct tungsten_core::component_registry::PreparedComponent
+impl tungsten_core::component_registry::PreparedComponent
+pub fn tungsten_core::component_registry::PreparedComponent::insert_pending(self, &mut tungsten_core::CommandBuffer, tungsten_core::PendingEntity)
+impl core::fmt::Debug for tungsten_core::component_registry::PreparedComponent
+pub fn tungsten_core::component_registry::PreparedComponent::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::component_registry::PreparedComponent
+impl !core::marker::Send for tungsten_core::component_registry::PreparedComponent
+impl !core::marker::Sync for tungsten_core::component_registry::PreparedComponent
+impl core::marker::Unpin for tungsten_core::component_registry::PreparedComponent
+impl core::marker::UnsafeUnpin for tungsten_core::component_registry::PreparedComponent
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::component_registry::PreparedComponent
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::component_registry::PreparedComponent
+pub struct tungsten_core::component_registry::SpawnContext<'w>
+impl<'w> tungsten_core::component_registry::SpawnContext<'w>
+pub fn tungsten_core::component_registry::SpawnContext<'w>::new(&'w tungsten_core::World, tungsten_core::components::Transform) -> Self
+pub fn tungsten_core::component_registry::SpawnContext<'w>::transform(&self) -> &tungsten_core::components::Transform
+pub fn tungsten_core::component_registry::SpawnContext<'w>::world(&self) -> &'w tungsten_core::World
+impl<'w> core::marker::Freeze for tungsten_core::component_registry::SpawnContext<'w>
+impl<'w> !core::marker::Send for tungsten_core::component_registry::SpawnContext<'w>
+impl<'w> !core::marker::Sync for tungsten_core::component_registry::SpawnContext<'w>
+impl<'w> core::marker::Unpin for tungsten_core::component_registry::SpawnContext<'w>
+impl<'w> core::marker::UnsafeUnpin for tungsten_core::component_registry::SpawnContext<'w>
+impl<'w> !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::component_registry::SpawnContext<'w>
+impl<'w> !core::panic::unwind_safe::UnwindSafe for tungsten_core::component_registry::SpawnContext<'w>
 pub mod tungsten_core::components
 pub enum tungsten_core::components::LightKind
 pub tungsten_core::components::LightKind::Directional
@@ -4812,6 +4882,9 @@ pub fn tungsten_core::World::resource_mut<T: 'static>(&mut self) -> &mut T
 pub fn tungsten_core::World::set_fixed_event_view(&mut self, bool)
 pub fn tungsten_core::World::spawn(&mut self) -> tungsten_core::Entity
 pub fn tungsten_core::World::spawn_with<B: tungsten_core::ecs::bundle::Bundle>(&mut self, B) -> tungsten_core::Entity
+impl tungsten_core::World
+pub fn tungsten_core::World::register_component<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &str) -> bool
+pub fn tungsten_core::World::register_component_with<D, B>(&mut self, &str, impl core::ops::function::Fn(D, &tungsten_core::component_registry::SpawnContext<'_>) -> B + 'static) -> bool where D: serde_core::de::DeserializeOwned + 'static, B: tungsten_core::ecs::bundle::Bundle
 impl core::default::Default for tungsten_core::World
 pub fn tungsten_core::World::default() -> Self
 impl core::marker::Freeze for tungsten_core::World
@@ -10186,6 +10259,26 @@ impl core::marker::Unpin for tungsten_core::camera::CameraMode
 impl core::marker::UnsafeUnpin for tungsten_core::camera::CameraMode
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::camera::CameraMode
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::camera::CameraMode
+#[non_exhaustive] pub enum tungsten_core::ComponentError
+pub tungsten_core::ComponentError::Invalid
+pub tungsten_core::ComponentError::Invalid::field: alloc::string::String
+pub tungsten_core::ComponentError::Invalid::name: alloc::string::String
+pub tungsten_core::ComponentError::Invalid::source: serde_json::error::Error
+pub tungsten_core::ComponentError::Unknown
+pub tungsten_core::ComponentError::Unknown::name: alloc::string::String
+impl core::error::Error for tungsten_core::component_registry::ComponentError
+pub fn tungsten_core::component_registry::ComponentError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tungsten_core::component_registry::ComponentError
+pub fn tungsten_core::component_registry::ComponentError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::component_registry::ComponentError
+pub fn tungsten_core::component_registry::ComponentError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::component_registry::ComponentError
+impl core::marker::Send for tungsten_core::component_registry::ComponentError
+impl core::marker::Sync for tungsten_core::component_registry::ComponentError
+impl core::marker::Unpin for tungsten_core::component_registry::ComponentError
+impl core::marker::UnsafeUnpin for tungsten_core::component_registry::ComponentError
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::component_registry::ComponentError
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::component_registry::ComponentError
 pub enum tungsten_core::ConfigError
 pub tungsten_core::ConfigError::InvalidEnvOverride
 pub tungsten_core::ConfigError::InvalidEnvOverride::expected: &'static str
@@ -11969,6 +12062,29 @@ impl core::marker::Unpin for tungsten_core::CommandBuffer
 impl core::marker::UnsafeUnpin for tungsten_core::CommandBuffer
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::CommandBuffer
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::CommandBuffer
+pub struct tungsten_core::ComponentRegistry
+impl tungsten_core::component_registry::ComponentRegistry
+pub fn tungsten_core::component_registry::ComponentRegistry::check(&self, &str, &serde_json::value::Value) -> core::result::Result<(), tungsten_core::component_registry::ComponentError>
+pub fn tungsten_core::component_registry::ComponentRegistry::contains(&self, &str) -> bool
+pub fn tungsten_core::component_registry::ComponentRegistry::is_empty(&self) -> bool
+pub fn tungsten_core::component_registry::ComponentRegistry::len(&self) -> usize
+pub fn tungsten_core::component_registry::ComponentRegistry::name_of<T: 'static>(&self) -> core::option::Option<&str>
+pub fn tungsten_core::component_registry::ComponentRegistry::names(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
+pub fn tungsten_core::component_registry::ComponentRegistry::new() -> Self
+pub fn tungsten_core::component_registry::ComponentRegistry::prepare(&self, &str, &serde_json::value::Value, &tungsten_core::component_registry::SpawnContext<'_>) -> core::result::Result<tungsten_core::component_registry::PreparedComponent, tungsten_core::component_registry::ComponentError>
+pub fn tungsten_core::component_registry::ComponentRegistry::register<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &str) -> bool
+pub fn tungsten_core::component_registry::ComponentRegistry::register_with<D, B>(&mut self, &str, impl core::ops::function::Fn(D, &tungsten_core::component_registry::SpawnContext<'_>) -> B + 'static) -> bool where D: serde_core::de::DeserializeOwned + 'static, B: tungsten_core::ecs::bundle::Bundle
+impl core::default::Default for tungsten_core::component_registry::ComponentRegistry
+pub fn tungsten_core::component_registry::ComponentRegistry::default() -> tungsten_core::component_registry::ComponentRegistry
+impl core::fmt::Debug for tungsten_core::component_registry::ComponentRegistry
+pub fn tungsten_core::component_registry::ComponentRegistry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::component_registry::ComponentRegistry
+impl !core::marker::Send for tungsten_core::component_registry::ComponentRegistry
+impl !core::marker::Sync for tungsten_core::component_registry::ComponentRegistry
+impl core::marker::Unpin for tungsten_core::component_registry::ComponentRegistry
+impl core::marker::UnsafeUnpin for tungsten_core::component_registry::ComponentRegistry
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::component_registry::ComponentRegistry
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::component_registry::ComponentRegistry
 pub struct tungsten_core::Config
 pub tungsten_core::Config::display: tungsten_core::display::DisplayConfig
 pub tungsten_core::Config::game: tungsten_core::config::GameConfig
@@ -13263,6 +13379,18 @@ impl core::marker::Unpin for tungsten_core::post::PostStack
 impl core::marker::UnsafeUnpin for tungsten_core::post::PostStack
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::post::PostStack
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::post::PostStack
+pub struct tungsten_core::PreparedComponent
+impl tungsten_core::component_registry::PreparedComponent
+pub fn tungsten_core::component_registry::PreparedComponent::insert_pending(self, &mut tungsten_core::CommandBuffer, tungsten_core::PendingEntity)
+impl core::fmt::Debug for tungsten_core::component_registry::PreparedComponent
+pub fn tungsten_core::component_registry::PreparedComponent::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::component_registry::PreparedComponent
+impl !core::marker::Send for tungsten_core::component_registry::PreparedComponent
+impl !core::marker::Sync for tungsten_core::component_registry::PreparedComponent
+impl core::marker::Unpin for tungsten_core::component_registry::PreparedComponent
+impl core::marker::UnsafeUnpin for tungsten_core::component_registry::PreparedComponent
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::component_registry::PreparedComponent
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::component_registry::PreparedComponent
 pub struct tungsten_core::PrevPosition(pub glam::f32::vec2::Vec2)
 impl core::clone::Clone for tungsten_core::physics::components::PrevPosition
 pub fn tungsten_core::physics::components::PrevPosition::clone(&self) -> tungsten_core::physics::components::PrevPosition
@@ -13594,7 +13722,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::display::ScaleFacto
 pub struct tungsten_core::SceneData
 pub tungsten_core::SceneData::entities: alloc::vec::Vec<tungsten_core::assets::scene::SceneEntry>
 impl tungsten_core::assets::scene::SceneData
-pub fn tungsten_core::assets::scene::SceneData::load(&std::path::Path) -> core::result::Result<Self, tungsten_core::assets::scene::SceneError>
+pub fn tungsten_core::assets::scene::SceneData::load(&std::path::Path, &tungsten_core::World) -> core::result::Result<Self, tungsten_core::assets::scene::SceneError>
 impl core::clone::Clone for tungsten_core::assets::scene::SceneData
 pub fn tungsten_core::assets::scene::SceneData::clone(&self) -> tungsten_core::assets::scene::SceneData
 impl core::default::Default for tungsten_core::assets::scene::SceneData
@@ -13613,6 +13741,7 @@ impl core::marker::UnsafeUnpin for tungsten_core::assets::scene::SceneData
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::scene::SceneData
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::scene::SceneData
 pub struct tungsten_core::SceneEntry
+pub tungsten_core::SceneEntry::components: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
 pub tungsten_core::SceneEntry::sprite: core::option::Option<tungsten_core::assets::scene::SceneSprite>
 pub tungsten_core::SceneEntry::tag: core::option::Option<alloc::string::String>
 pub tungsten_core::SceneEntry::transform: tungsten_core::assets::scene::SceneTransform
@@ -13806,6 +13935,18 @@ impl core::marker::Unpin for tungsten_core::physics::broadphase::SpatialGrid
 impl core::marker::UnsafeUnpin for tungsten_core::physics::broadphase::SpatialGrid
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::broadphase::SpatialGrid
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::broadphase::SpatialGrid
+pub struct tungsten_core::SpawnContext<'w>
+impl<'w> tungsten_core::component_registry::SpawnContext<'w>
+pub fn tungsten_core::component_registry::SpawnContext<'w>::new(&'w tungsten_core::World, tungsten_core::components::Transform) -> Self
+pub fn tungsten_core::component_registry::SpawnContext<'w>::transform(&self) -> &tungsten_core::components::Transform
+pub fn tungsten_core::component_registry::SpawnContext<'w>::world(&self) -> &'w tungsten_core::World
+impl<'w> core::marker::Freeze for tungsten_core::component_registry::SpawnContext<'w>
+impl<'w> !core::marker::Send for tungsten_core::component_registry::SpawnContext<'w>
+impl<'w> !core::marker::Sync for tungsten_core::component_registry::SpawnContext<'w>
+impl<'w> core::marker::Unpin for tungsten_core::component_registry::SpawnContext<'w>
+impl<'w> core::marker::UnsafeUnpin for tungsten_core::component_registry::SpawnContext<'w>
+impl<'w> !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::component_registry::SpawnContext<'w>
+impl<'w> !core::panic::unwind_safe::UnwindSafe for tungsten_core::component_registry::SpawnContext<'w>
 pub struct tungsten_core::Sprite
 pub tungsten_core::Sprite::asset_id: tungsten_core::assets::registry::SpriteAssetId
 pub tungsten_core::Sprite::color: [u8; 4]
@@ -14798,6 +14939,9 @@ pub fn tungsten_core::World::resource_mut<T: 'static>(&mut self) -> &mut T
 pub fn tungsten_core::World::set_fixed_event_view(&mut self, bool)
 pub fn tungsten_core::World::spawn(&mut self) -> tungsten_core::Entity
 pub fn tungsten_core::World::spawn_with<B: tungsten_core::ecs::bundle::Bundle>(&mut self, B) -> tungsten_core::Entity
+impl tungsten_core::World
+pub fn tungsten_core::World::register_component<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &str) -> bool
+pub fn tungsten_core::World::register_component_with<D, B>(&mut self, &str, impl core::ops::function::Fn(D, &tungsten_core::component_registry::SpawnContext<'_>) -> B + 'static) -> bool where D: serde_core::de::DeserializeOwned + 'static, B: tungsten_core::ecs::bundle::Bundle
 impl core::default::Default for tungsten_core::World
 pub fn tungsten_core::World::default() -> Self
 impl core::marker::Freeze for tungsten_core::World

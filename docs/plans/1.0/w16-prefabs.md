@@ -12,7 +12,7 @@ Skeleton. The scoping text stays in [criteria](criteria.md) §8.7 until this wor
 ## Placement
 
 - **Proposed tier:** Must.
-- **Candidates:** W16a, the component registry and `components` in scene entries; W16b, prefab assets, `spawn_prefab`, Tiled object classes and a public `TilemapData` builder with tile setters for maps built in code, which the acceptance game's generated arena needs (frame-loop gate, `D-132`; Phase 6; split per implementation plan amendment 3).
+- **Candidates:** W16a, the component registry and `components` in scene entries, landed in M48 (`D-153`, 0.67); W16b, prefab assets, `spawn_prefab`, Tiled object classes and a public `TilemapData` builder with tile setters for maps built in code, which the acceptance game's generated arena needs (frame-loop gate, `D-132`; Phase 6; split per implementation plan amendment 3).
 - **Needs first:** W15a, for registration.
 - **Feeds:** W13's spawner and registered kit components; W14b `check`; the template's player and enemy.
 - **Owner questions:** None open.
@@ -32,4 +32,4 @@ Written at graduation.
 
 ## Follow-ups
 
-None yet.
+1. **W16b builds on M48's registry** (`D-153`). It adds the registration form whose check also resolves the asset IDs a value names, against the World that `SceneData::load` and the prefab section's load take, and registers `particle_emitter` (its config named by manifest ID and resolved through `SpawnContext::world` at spawn, since asset loading replaces `ParticleConfigRegistry`) and `tilemap` (`TilemapInstance`) on it. Prefab entries spawn through M48's prepare-then-queue path, the one `spawn_scene` uses, and W16b's prefab entry amends `D-153` with a marker line.

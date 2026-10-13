@@ -227,6 +227,7 @@ fn scene_sprite_named_before_registration_draws_once_registered() {
             visible: true,
             tag: None,
             tweens: Vec::new(),
+            components: std::collections::BTreeMap::new(),
         }],
     };
     spawn_scene(&mut world, &data, "gameplay");
@@ -772,4 +773,420 @@ fn nine_slice_insets_apply_once_per_change_and_move_the_sprite_epoch() {
     assert_eq!(registry.sprite_epoch(), epoch + 2);
     assert!(!apply_nine_slice(registry, "missing", Some([1, 1, 1, 1])));
     assert_eq!(registry.sprite_epoch(), epoch + 2);
+}
+
+/// A game component the scene tests register.
+#[derive(Debug, PartialEq, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Health {
+    max: u32,
+}
+
+/// A marker whose definition hides the entity, overriding the entry's
+/// `visible`.
+#[derive(serde::Deserialize)]
+struct Hidden;
+
+fn scene_world() -> World {
+    let mut world = seed_world();
+    world.insert_resource(tungsten_core::CommandBuffer::new());
+    world.register_component::<Health>("health");
+    world.register_component_with(
+        "hidden",
+        |_: Hidden, _: &tungsten_core::SpawnContext<'_>| {
+            (tungsten_core::Visibility { visible: false },)
+        },
+    );
+    world
+}
+
+fn scene_from(world: &World, src: &str) -> tungsten_core::assets::SceneData {
+    let dir = tempdir();
+    let path = dir.join("scene.json");
+    write(&path, src);
+    let data = load_scene(world, &path);
+    fs::remove_dir_all(&dir).unwrap();
+    data.unwrap()
+}
+
+fn flush(world: &mut World) {
+    let buf = world
+        .remove_resource::<tungsten_core::CommandBuffer>()
+        .unwrap();
+    world.flush(buf);
+    world.insert_resource(tungsten_core::CommandBuffer::new());
+}
+
+#[test]
+fn a_scene_entry_spawns_its_components_beside_its_fields() {
+    use crate::state::SceneEntity;
+    use tungsten_core::{Transform, Visibility};
+
+    let mut world = scene_world();
+    let data = scene_from(
+        &world,
+        r#"{ "entities": [ {
+            "transform": { "position": [3.0, 4.0] },
+            "components": { "health": { "max": 12 } }
+        } ] }"#,
+    );
+    spawn_scene(&mut world, &data, "gameplay");
+    flush(&mut world);
+
+    let spawned: Vec<_> = world
+        .query::<(&Health, &Transform, &Visibility, &SceneEntity)>()
+        .map(|(health, transform, visibility, scene)| {
+            (
+                health.max,
+                transform.position,
+                visibility.visible,
+                scene.state_id,
+            )
+        })
+        .collect();
+    assert_eq!(spawned, [(12, glam::Vec2::new(3.0, 4.0), true, "gameplay")]);
+}
+
+#[test]
+fn a_component_overrides_a_field_of_the_same_type() {
+    use tungsten_core::Visibility;
+
+    let mut world = scene_world();
+    let data = scene_from(
+        &world,
+        r#"{ "entities": [ {
+            "transform": { "position": [0.0, 0.0] },
+            "visible": true,
+            "components": { "hidden": null }
+        } ] }"#,
+    );
+    spawn_scene(&mut world, &data, "gameplay");
+    flush(&mut world);
+    let visible: Vec<_> = world.query::<&Visibility>().map(|v| v.visible).collect();
+    assert_eq!(visible, [false]);
+}
+
+#[test]
+fn an_unregistered_component_panics_before_anything_is_queued() {
+    let mut world = scene_world();
+    // Checked against another World's registry, so it skipped this one's.
+    let mut other = World::new();
+    other.register_component::<Health>("helth");
+    let data = scene_from(
+        &other,
+        r#"{ "entities": [ {
+            "transform": { "position": [0.0, 0.0] },
+            "sprite": { "asset_id": "never" },
+            "components": { "helth": { "max": 1 } }
+        } ] }"#,
+    );
+    let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        spawn_scene(&mut world, &data, "gameplay");
+    }))
+    .expect_err("an unknown component must panic");
+    let message = payload
+        .downcast_ref::<String>()
+        .cloned()
+        .unwrap_or_default();
+    assert_eq!(message, "scene entities[0]: unknown component `helth`");
+    assert!(
+        world
+            .get_resource::<tungsten_core::CommandBuffer>()
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        world
+            .get_resource::<AssetRegistry>()
+            .unwrap()
+            .sprite_id("never")
+            .is_none(),
+        "no sprite name interned"
+    );
+}
+
+#[test]
+fn load_scene_checks_against_the_worlds_registry() {
+    let dir = tempdir();
+    let path = dir.join("scene.json");
+    write(
+        &path,
+        r#"{ "entities": [ {
+            "transform": { "position": [0.0, 0.0] },
+            "components": { "health": { "max": 1 } }
+        } ] }"#,
+    );
+    let unregistered = load_scene(&World::new(), &path).unwrap_err().to_string();
+    assert!(
+        unregistered.ends_with("entities[0]: unknown component `health`"),
+        "{unregistered}"
+    );
+    assert!(load_scene(&scene_world(), &path).is_ok());
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+/// A state that loads and spawns a scene file on enter.
+struct SceneState(PathBuf);
+
+impl crate::state::GameState for SceneState {
+    fn id(&self) -> crate::state::StateId {
+        "scene"
+    }
+
+    fn on_enter(&mut self, ctx: &mut crate::state::StateContext) {
+        let data = load_scene(ctx.world, &self.0).unwrap();
+        spawn_scene(ctx.world, &data, "scene");
+    }
+
+    fn on_exit(&mut self, _ctx: &mut crate::state::StateContext) {}
+
+    fn update(&mut self, _world: &mut World) {}
+}
+
+#[test]
+fn an_app_registered_component_spawns_from_a_scene_and_leaves_with_its_state() {
+    use crate::state::StateStack;
+
+    let dir = tempdir();
+    let path = dir.join("scene.json");
+    write(
+        &path,
+        r#"{ "entities": [ {
+            "transform": { "position": [0.0, 0.0] },
+            "components": { "health": { "max": 30 } }
+        } ] }"#,
+    );
+    let mut app = crate::App::new(tungsten_core::Config::default()).unwrap();
+    app.register_component::<Health>("health");
+    app.world_mut()
+        .resource_mut::<StateStack>()
+        .request_push(SceneState(path));
+    let mut harness = crate::testing::Harness::new(app);
+    harness.step(1);
+    let healths: Vec<_> = harness.world().query::<&Health>().map(|h| h.max).collect();
+    assert_eq!(healths, [30]);
+
+    harness
+        .world_mut()
+        .resource_mut::<StateStack>()
+        .request_pop();
+    harness.step(1);
+    assert_eq!(harness.world().query::<&Health>().count(), 0);
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+/// A world with the umbrella's three scene components.
+fn umbrella_components_world() -> World {
+    let mut world = seed_world();
+    world.insert_resource(tungsten_core::CommandBuffer::new());
+    register_extract_components(&mut world);
+    register_squash_stretch(&mut world);
+    world
+}
+
+#[test]
+fn the_umbrella_components_spawn_with_their_values() {
+    use tungsten_core::{
+        Easing, Light, LightKind, ParallaxLayer, SpriteSquashStretch, SquashTrigger,
+    };
+
+    let mut world = umbrella_components_world();
+    let data = scene_from(
+        &world,
+        r#"{ "entities": [
+            { "transform": { "position": [0.0, 0.0] }, "components": {
+                "light": { "kind": "point", "radius": 40.0, "color": [1.0, 0.5, 0.0], "intensity": 2.0 },
+                "parallax_layer": { "scroll_factor": [0.5, 0.25] },
+                "squash_stretch": { "on": "on_land", "amount": [1.3, 0.7], "duration": 0.2, "easing": "cubic_out" }
+            } },
+            { "transform": { "position": [0.0, 0.0] }, "components": {
+                "light": { "kind": "directional", "angle": 1.5, "color": [0.2, 0.2, 0.2] },
+                "squash_stretch": { "on": "manual", "amount": [1.1, 1.1], "duration": 0.5 }
+            } }
+        ] }"#,
+    );
+    spawn_scene(&mut world, &data, "gameplay");
+    flush(&mut world);
+
+    let mut lights: Vec<Light> = world.query::<&Light>().copied().collect();
+    lights.sort_by(|a, b| a.intensity.total_cmp(&b.intensity));
+    assert_eq!(
+        lights,
+        [
+            Light {
+                kind: LightKind::Directional { angle: 1.5 },
+                color: glam::Vec3::new(0.2, 0.2, 0.2),
+                intensity: 1.0,
+            },
+            Light {
+                kind: LightKind::Point { radius: 40.0 },
+                color: glam::Vec3::new(1.0, 0.5, 0.0),
+                intensity: 2.0,
+            },
+        ]
+    );
+    let layers: Vec<ParallaxLayer> = world.query::<&ParallaxLayer>().copied().collect();
+    assert_eq!(layers, [ParallaxLayer::new(glam::Vec2::new(0.5, 0.25))]);
+    let mut squashes: Vec<SpriteSquashStretch> =
+        world.query::<&SpriteSquashStretch>().copied().collect();
+    squashes.sort_by(|a, b| a.duration.total_cmp(&b.duration));
+    assert_eq!(
+        squashes,
+        [
+            SpriteSquashStretch {
+                on: SquashTrigger::OnLand,
+                amount: glam::Vec2::new(1.3, 0.7),
+                duration: 0.2,
+                easing: Easing::CubicOut,
+            },
+            SpriteSquashStretch {
+                on: SquashTrigger::Manual,
+                amount: glam::Vec2::new(1.1, 1.1),
+                duration: 0.5,
+                easing: Easing::Linear,
+            },
+        ]
+    );
+}
+
+#[test]
+fn the_umbrella_components_reject_bad_values() {
+    let world = umbrella_components_world();
+    let cases = [
+        (
+            "light",
+            r#"{ "kind": "point", "radius": 0.0, "color": [1.0, 1.0, 1.0] }"#,
+            "`radius` must be finite and > 0 (got 0)",
+        ),
+        (
+            "light",
+            r#"{ "kind": "point", "radius": 4.0, "color": [1.0, -0.1, 1.0] }"#,
+            "`color` channels must be finite and >= 0 (got [1, -0.1, 1])",
+        ),
+        (
+            "light",
+            r#"{ "kind": "directional", "angle": 0.0, "color": [1.0, 1.0, 1.0], "intensity": -1.0 }"#,
+            "`intensity` must be finite and >= 0 (got -1)",
+        ),
+        (
+            "light",
+            r#"{ "kind": "directional", "angle": 1e40, "color": [1.0, 1.0, 1.0] }"#,
+            "`angle` must be finite (got inf)",
+        ),
+        (
+            "light",
+            r#"{ "kind": "spot", "radius": 4.0, "color": [1.0, 1.0, 1.0] }"#,
+            "unknown variant `spot`",
+        ),
+        (
+            "light",
+            r#"{ "kind": "point", "radius": 4.0, "color": [1.0, 1.0, 1.0], "falloff": 2 }"#,
+            "unknown field `falloff`",
+        ),
+        (
+            "light",
+            r#"{ "kind": "point", "radius": 4.0 }"#,
+            "missing field `color`",
+        ),
+        (
+            "parallax_layer",
+            r#"{ "scroll_factor": [1e40, 0.0] }"#,
+            "`scroll_factor` must be finite (got [inf, 0])",
+        ),
+        (
+            "parallax_layer",
+            r#"{ "scroll_factor": [1.0, 1.0], "depth": 2 }"#,
+            "unknown field `depth`",
+        ),
+        (
+            "squash_stretch",
+            r#"{ "on": "on_land", "amount": [1.0, 0.0], "duration": 0.2 }"#,
+            "`amount` must be finite and > 0 on both axes (got [1, 0])",
+        ),
+        (
+            "squash_stretch",
+            r#"{ "on": "on_land", "amount": [1.2, 0.8], "duration": 0.0 }"#,
+            "`duration` must be finite and > 0 (got 0)",
+        ),
+        (
+            "squash_stretch",
+            r#"{ "on": "on_jump", "amount": [1.2, 0.8], "duration": 0.2 }"#,
+            "unknown variant `on_jump`",
+        ),
+        (
+            "squash_stretch",
+            r#"{ "on": "on_land", "amount": [1.2, 0.8], "duration": 0.2, "easing": "wobbly" }"#,
+            "unknown variant `wobbly`",
+        ),
+    ];
+    for (name, value, expected) in cases {
+        let src = format!(
+            r#"{{ "entities": [ {{ "transform": {{ "position": [0.0, 0.0] }}, "components": {{ "{name}": {value} }} }} ] }}"#
+        );
+        let dir = tempdir();
+        let path = dir.join("scene.json");
+        write(&path, &src);
+        let err = load_scene(&world, &path).unwrap_err().to_string();
+        fs::remove_dir_all(&dir).unwrap();
+        assert!(
+            err.contains(&format!("entities[0]: component `{name}`")) && err.contains(expected),
+            "{name} {value}: {err}"
+        );
+    }
+}
+
+#[test]
+fn a_scene_naming_the_four_engine_components_spawns_them_and_steps_the_bodies() {
+    use crate::state::StateStack;
+    use tungsten_core::{Light, ParallaxLayer, Position, RigidBody, SpriteSquashStretch};
+
+    let dir = tempdir();
+    let path = dir.join("scene.json");
+    write(
+        &path,
+        r#"{ "entities": [
+            { "transform": { "position": [100.0, 50.0] }, "components": {
+                "rigid_body": { "kind": "dynamic", "shape": { "kind": "circle", "radius": 4.0 },
+                                "velocity": [60.0, 0.0] },
+                "light": { "kind": "point", "radius": 30.0, "color": [1.0, 1.0, 1.0] },
+                "parallax_layer": { "scroll_factor": [1.0, 1.0] },
+                "squash_stretch": { "on": "on_land", "amount": [1.2, 0.8], "duration": 0.1 }
+            } },
+            { "transform": { "position": [-200.0, 50.0] }, "components": {
+                "rigid_body": { "kind": "static", "shape": { "kind": "aabb", "half_extents": [16.0, 4.0] } }
+            } }
+        ] }"#,
+    );
+    let mut app = crate::App::new(tungsten_core::Config::default()).unwrap();
+    app.world_mut()
+        .resource_mut::<StateStack>()
+        .request_push(SceneState(path));
+    let mut harness = crate::testing::Harness::new(app);
+    harness.step(1);
+    let world = harness.world();
+    assert_eq!(world.query::<&Light>().count(), 1);
+    assert_eq!(world.query::<&ParallaxLayer>().count(), 1);
+    assert_eq!(world.query::<&SpriteSquashStretch>().count(), 1);
+    let bodies = |world: &World| {
+        let mut bodies: Vec<(bool, glam::Vec2)> = world
+            .query::<(&RigidBody, &Position)>()
+            .map(|(body, position)| (body.inv_mass > 0.0, position.0))
+            .collect();
+        bodies.sort_by_key(|body| body.0);
+        bodies
+    };
+    let spawned = bodies(world);
+    assert_eq!(spawned.len(), 2);
+
+    harness.step(1);
+    let stepped = bodies(harness.world());
+    let (still, moving) = (stepped[0], stepped[1]);
+    assert_eq!(still, spawned[0], "the static body stays");
+    assert!(
+        moving.1.x > spawned[1].1.x,
+        "{moving:?} after {:?}",
+        spawned[1]
+    );
+    assert_eq!(moving.1.y, spawned[1].1.y);
+    fs::remove_dir_all(&dir).unwrap();
 }

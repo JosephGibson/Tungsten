@@ -187,7 +187,8 @@ impl Plugin for TweensPlugin {
 }
 
 /// Squash trigger and tick and the shake tick in `PostUpdate`, after the
-/// tween tick, and the `ShakeEvent` and `SquashEvent` queues (`D-073`).
+/// tween tick, the `ShakeEvent` and `SquashEvent` queues (`D-073`) and the
+/// `squash_stretch` scene component.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct GameFeelPlugin;
 
@@ -195,6 +196,7 @@ impl Plugin for GameFeelPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         world.register_event::<ShakeEvent>();
         world.register_event::<SquashEvent>();
+        crate::asset_loader::register_squash_stretch(world);
         schedule.add(
             Stage::PostUpdate,
             system(SQUASH_STRETCH_TRIGGER, squash_stretch_trigger_system)

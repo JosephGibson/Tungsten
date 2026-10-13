@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.66.0"
+version = "0.67.0"
 edition = "2024"
 rust-version = "1.98.1"
 license = "MIT"
@@ -51,6 +51,9 @@ symphonia = { version = "0.6", default-features = false, features = ["ogg", "vor
 
 # Math primitives (D-015 rule 3)
 glam = "0.33.10"
+
+# The field a scene component's value fails at (D-015 rule 3).
+serde_path_to_error = "0.1"
 
 # UI layout solver behind core's own `LayoutStyle` types (D-015 rule 3, D-124).
 # No grid, float, calc, content-size or detailed-info features, so no smallvec.

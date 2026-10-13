@@ -37,6 +37,7 @@ pub fn tungsten::app::App::add_system_to(&mut self, tungsten_core::schedule::Sta
 pub fn tungsten::app::App::enable_hot_reload(&mut self, &[std::path::PathBuf], std::path::PathBuf)
 pub fn tungsten::app::App::new(tungsten_core::config::Config) -> anyhow::Result<Self>
 pub fn tungsten::app::App::on_startup(&mut self, impl core::ops::function::FnOnce(&mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) + 'static)
+pub fn tungsten::app::App::register_component<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &str)
 pub fn tungsten::app::App::register_event<T: 'static>(&mut self)
 pub fn tungsten::app::App::register_inspectable<T: 'static + tungsten_core::inspect::Inspectable>(&mut self, &'static str)
 pub fn tungsten::app::App::renderer_mut(&mut self) -> core::option::Option<&mut tungsten_render::renderer::Renderer>
@@ -107,7 +108,7 @@ pub fn tungsten::asset_loader::load_fonts(&tungsten_core::assets::manifest::Reso
 pub fn tungsten::asset_loader::load_materials(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::load_particle_meshes(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::load_particles(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
-pub fn tungsten::asset_loader::load_scene(&std::path::Path) -> anyhow::Result<tungsten_core::assets::scene::SceneData>
+pub fn tungsten::asset_loader::load_scene(&tungsten_core::ecs::world::World, &std::path::Path) -> anyhow::Result<tungsten_core::assets::scene::SceneData>
 pub fn tungsten::asset_loader::load_shaders(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::load_sounds(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::load_sprites(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
@@ -961,6 +962,7 @@ pub fn tungsten::app::App::add_system_to(&mut self, tungsten_core::schedule::Sta
 pub fn tungsten::app::App::enable_hot_reload(&mut self, &[std::path::PathBuf], std::path::PathBuf)
 pub fn tungsten::app::App::new(tungsten_core::config::Config) -> anyhow::Result<Self>
 pub fn tungsten::app::App::on_startup(&mut self, impl core::ops::function::FnOnce(&mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) + 'static)
+pub fn tungsten::app::App::register_component<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &str)
 pub fn tungsten::app::App::register_event<T: 'static>(&mut self)
 pub fn tungsten::app::App::register_inspectable<T: 'static + tungsten_core::inspect::Inspectable>(&mut self, &'static str)
 pub fn tungsten::app::App::renderer_mut(&mut self) -> core::option::Option<&mut tungsten_render::renderer::Renderer>
