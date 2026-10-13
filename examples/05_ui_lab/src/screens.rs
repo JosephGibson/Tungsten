@@ -2,14 +2,15 @@
 //! counter), a window with a nine-slice frame, a wrapped body and two
 //! buttons, and a popup on the popup layer overlapping the window, so its
 //! text paints over the window's panel and opens the second text batch
-//! (w01 §6's partition rule).
+//! (w01 §6's partition rule). The popup is modal (`D-149`): its buttons or
+//! Escape hide it, and the window's "Drop" shows it again.
 
 use glam::Vec2;
-use tungsten::core::AssetRegistry;
 use tungsten::core::ui::{
-    Align, Anchor, Justify, LayoutStyle, Sizing, StyleOverrides, TextOverrides, UiLayer, UiTree,
-    WidgetId,
+    Align, Anchor, CursorIcon, Justify, LayoutStyle, Sizing, StyleOverrides, TextOverrides,
+    UiEvent, UiLayer, UiTree, Visibility, WidgetId,
 };
+use tungsten::core::{AssetRegistry, EventQueue, World};
 
 /// The `ui_themes` ID the lab applies.
 pub const THEME_ID: &str = "ex05_default";
@@ -29,6 +30,12 @@ pub struct UiLab {
     pub window: WidgetId,
     /// The popup root, over the window.
     pub popup: WidgetId,
+    /// The window's "Drop" button, which shows the popup.
+    pub drop: WidgetId,
+    /// The popup's "Cancel" button.
+    pub cancel: WidgetId,
+    /// The popup's "Drop it" button, focused when the popup shows.
+    pub drop_it: WidgetId,
     /// Frames the counter has shown.
     pub frames: u64,
 }
@@ -56,13 +63,15 @@ pub fn build(tree: &mut UiTree, sprites: &mut AssetRegistry) -> UiLab {
     hud_style.align_items = Align::Center;
     let hud = tree.add_root(UiLayer::Game, hud_style);
     tree.set_hit_testable(hud, false);
-    tree.image(
+    let hud_icon = tree.image(
         hud,
         icon,
         Vec2::new(32.0, 32.0),
         LayoutStyle::default().with_size(Sizing::Px(32.0), Sizing::Px(32.0)),
     );
+    tree.set_hit_testable(hud_icon, false);
     let counter = tree.label(hud, "frame 0");
+    tree.set_hit_testable(counter, false);
     tree.set_overrides(
         counter,
         text(TextOverrides {
@@ -114,8 +123,8 @@ pub fn build(tree: &mut UiTree, sprites: &mut AssetRegistry) -> UiLab {
             ..StyleOverrides::default()
         },
     );
-    tree.button(buttons, "Equip");
-    tree.button(buttons, "Drop");
+    let equip = tree.button(buttons, "Equip");
+    let drop = tree.button(buttons, "Drop");
 
     // The popup, on the popup layer over the window's body text and beside
     // its buttons. The roots fit a 1280×720 window at an OS scale up to 1.75,
@@ -128,6 +137,7 @@ pub fn build(tree: &mut UiTree, sprites: &mut AssetRegistry) -> UiLab {
             .with_size(Sizing::Px(300.0), Sizing::Auto)
             .anchored(Anchor::Center, Vec2::new(140.0, 70.0)),
     );
+    tree.set_modal(popup, true);
     let heading = tree.label(popup, "Confirm");
     tree.set_overrides(
         heading,
@@ -150,15 +160,49 @@ pub fn build(tree: &mut UiTree, sprites: &mut AssetRegistry) -> UiLab {
             ..StyleOverrides::default()
         },
     );
-    tree.button(row, "Cancel");
-    let drop = tree.button(row, "Drop it");
-    tree.focus(drop);
+    let cancel = tree.button(row, "Cancel");
+    let drop_it = tree.button(row, "Drop it");
+    tree.focus(drop_it);
+    for button in [equip, drop, cancel, drop_it] {
+        tree.set_cursor(button, Some(CursorIcon::Pointer));
+    }
 
     UiLab {
         hud,
         counter,
         window,
         popup,
+        drop,
+        cancel,
+        drop_it,
         frames: 0,
+    }
+}
+
+/// Reacts to this frame's routing (`D-149`): the popup's "Cancel" or "Drop
+/// it", or a `Cancel` while it shows, hides it, and the window's "Drop"
+/// shows it again with "Drop it" focused.
+pub fn popup_system(world: &mut World) {
+    let (Some(lab), Some(events)) = (
+        world.get_resource::<UiLab>(),
+        world.get_resource::<EventQueue<UiEvent>>(),
+    ) else {
+        return;
+    };
+    let (popup, drop_it) = (lab.popup, lab.drop_it);
+    let hide = events.activated(lab.cancel)
+        || events.activated(drop_it)
+        || events
+            .iter_current()
+            .any(|event| matches!(event, UiEvent::Cancel { scope, .. } if *scope == popup));
+    let show = events.activated(lab.drop);
+    let Some(tree) = world.get_resource_mut::<UiTree>() else {
+        return;
+    };
+    if hide {
+        tree.set_visibility(popup, Visibility::Hidden);
+    } else if show {
+        tree.set_visibility(popup, Visibility::Visible);
+        tree.focus(drop_it);
     }
 }

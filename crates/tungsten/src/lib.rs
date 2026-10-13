@@ -50,7 +50,7 @@ pub use particles::{
 pub use physics_debug::PhysicsDebugOverlay;
 pub use plugins::{
     CameraPlugin, DebugPlugin, DefaultPlugins, DisplayPlugin, GameFeelPlugin, ParticlesPlugin,
-    PhysicsPlugin, StatePlugin, TweensPlugin,
+    PhysicsPlugin, StatePlugin, TweensPlugin, UiPlugin,
 };
 pub use post_aa::{PostAaState, request_post_aa};
 pub use sprite_extract::extract_sprites_default;
@@ -66,7 +66,8 @@ pub use tungsten_core as core;
 pub use tungsten_core::physics;
 pub use tungsten_core::{
     ActionMap, ActionMapError, Binding, Bundle, DebugDraw, DebugShape, Inspectable, OptionalColumn,
-    Plugin, PluginSet, Schedule, ScheduleError, Stage, SystemDesc, With, Without, system,
+    Plugin, PluginSet, RoutedInput, Schedule, ScheduleError, Stage, SystemDesc, UiEvent, UiRouter,
+    With, Without, system,
 };
 pub use tungsten_render as render;
 pub use tweens::tween_tick_system;

@@ -54,6 +54,37 @@ fn default_map_has_platformer_and_engine_actions() {
 }
 
 #[test]
+fn default_map_binds_the_ui_actions() {
+    let map = ActionMap::default_map();
+    let keys = |codes: &[KeyCode]| {
+        codes
+            .iter()
+            .map(|&code| Binding::Key { code })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        map.bindings(UI_ACCEPT),
+        keys(&[KeyCode::Enter, KeyCode::Space])
+    );
+    assert_eq!(map.bindings(UI_CANCEL), keys(&[KeyCode::Escape]));
+    assert_eq!(map.bindings(UI_NEXT), keys(&[KeyCode::Tab]));
+    assert_eq!(map.bindings(UI_UP), keys(&[KeyCode::ArrowUp]));
+    assert_eq!(map.bindings(UI_DOWN), keys(&[KeyCode::ArrowDown]));
+    assert_eq!(map.bindings(UI_LEFT), keys(&[KeyCode::ArrowLeft]));
+    assert_eq!(map.bindings(UI_RIGHT), keys(&[KeyCode::ArrowRight]));
+    assert!(
+        map.bindings(UI_PREV).is_empty(),
+        "unbound: Shift with ui_next goes back"
+    );
+    assert!(
+        map.iter().any(|(action, _)| action == UI_PREV),
+        "listed, so a rebind screen can offer it"
+    );
+    assert_eq!(UI_ACCEPT, "ui_accept");
+    assert_eq!(UI_PREV, "ui_prev");
+}
+
+#[test]
 fn unknown_action_returns_false() {
     let map = ActionMap::default_map();
     let input = InputState::new();

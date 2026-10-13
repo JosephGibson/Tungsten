@@ -1,5 +1,5 @@
-//! Node data (`D-125`): the closed kind, layer, role and visibility enums
-//! (closed as `Easing` is, `D-054`) and the record behind every
+//! Node data (`D-125`): the closed kind, layer, role, visibility and cursor
+//! enums (closed as `Easing` is, `D-054`) and the record behind every
 //! [`WidgetId`].
 
 use glam::Vec2;
@@ -105,6 +105,33 @@ impl Visibility {
     }
 }
 
+/// A system cursor a widget asks for while the pointer is over it
+/// (`D-149`). The umbrella maps each to the window's own; game cursors,
+/// cursor visibility and grab are not here.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum CursorIcon {
+    /// The platform's arrow.
+    #[default]
+    Default,
+    /// A hand, for something to click.
+    Pointer,
+    /// A text beam, for text to select or edit.
+    Text,
+    /// Four arrows, for something to move.
+    Move,
+    /// A crossed circle, for an action not available.
+    NotAllowed,
+    /// A horizontal resize arrow, east to west.
+    EwResize,
+    /// A vertical resize arrow, north to south.
+    NsResize,
+    /// A diagonal resize arrow, top left to bottom right.
+    NwseResize,
+    /// A diagonal resize arrow, top right to bottom left.
+    NeswResize,
+}
+
 /// A label's text and its flattened form, for the accessible name.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TextContent {
@@ -156,6 +183,15 @@ pub(crate) struct Node {
     pub(crate) focusable: bool,
     pub(crate) focus_scope: bool,
     pub(crate) hit_testable: bool,
+    /// Roots: whether this root, while shown, blocks the roots below it.
+    pub(crate) modal: bool,
+    /// The cursor shown over this widget and the children that set none.
+    pub(crate) cursor: Option<CursorIcon>,
+    /// Directional focus's explicit neighbours, by `NavDirection`; `None`
+    /// until one is set.
+    pub(crate) focus_neighbors: Option<Box<[Option<WidgetId>; 4]>>,
+    /// Focus scopes and roots: whether directional focus wraps inside.
+    pub(crate) focus_wrap: bool,
     /// The node's own style overrides, applied after the kind's variant.
     pub(crate) overrides: StyleOverrides,
     /// The last resolution; `None` before the first.
@@ -204,6 +240,10 @@ impl Node {
             focusable: is_button,
             focus_scope: false,
             hit_testable: true,
+            modal: false,
+            cursor: None,
+            focus_neighbors: None,
+            focus_wrap: false,
             overrides: StyleOverrides::default(),
             resolved: None,
             style_dirty: true,

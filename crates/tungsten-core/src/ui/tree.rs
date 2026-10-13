@@ -1,8 +1,9 @@
 //! The `UiTree` resource (`D-125`): slots behind generational IDs, roots on
-//! layers, building, queries, the behaviour flags and the dirty flags. Every
-//! mutation is a method call that marks only what it changes: text,
-//! visibility, an image's size and layout style mark layout (and so paint);
-//! enabled, a tint and the clip flag mark paint; roles, names and the
+//! layers, building, queries, the behaviour flags, the interaction state and
+//! the dirty flags. Every mutation is a method call that marks only what it
+//! changes: text, visibility, an image's size and layout style mark layout
+//! (and so paint); enabled, a tint and the clip flag mark paint; hover,
+//! press and focus visibility mark the widgets' styles; roles, names and the
 //! behaviour flags mark nothing.
 
 use std::collections::HashSet;
@@ -13,7 +14,9 @@ use crate::assets::SpriteAssetId;
 use crate::text::{FontEpoch, StyledText, TextNodeId, TextStyle};
 
 use super::id::WidgetId;
-use super::node::{ImageContent, Node, Role, TextContent, UiLayer, Visibility, WidgetKind};
+use super::node::{
+    CursorIcon, ImageContent, Node, Role, TextContent, UiLayer, Visibility, WidgetKind,
+};
 use super::style::LayoutStyle;
 use super::theme::{self, ResolvedStyle, StyleOverrides, Theme, ThemeEpoch, WidgetState};
 
@@ -76,8 +79,14 @@ pub struct UiTree {
     /// The store's font epoch at the last layout; `None` before the first.
     pub(crate) font_epoch: Option<FontEpoch>,
     /// Per focus scope entered, the focus left behind, restored when the
-    /// scope is removed.
+    /// scope is removed, hidden or collapsed.
     pub(crate) focus_return: Vec<(WidgetId, Option<WidgetId>)>,
+    /// The widget under the pointer that the router hovers.
+    pub(crate) hovered: Option<WidgetId>,
+    /// The widget the router shows pressed.
+    pub(crate) pressed: Option<WidgetId>,
+    /// Whether focus is hidden, after pointer use; visible on a new tree.
+    pub(crate) focus_hidden: bool,
 }
 
 impl std::fmt::Debug for UiTree {
@@ -328,8 +337,10 @@ impl UiTree {
         self.node(id).is_some_and(|node| node.clip_children)
     }
 
-    /// Removes `id` and its subtree. Focus held inside it is released and its
-    /// text nodes are freed at the next layout. An invalid ID does nothing.
+    /// Removes `id` and its subtree. Focus, hover and a press held inside it
+    /// are released, focus going back to where it was when a scope removed
+    /// with it was entered, and its text nodes are freed at the next layout.
+    /// An invalid ID does nothing.
     pub fn remove(&mut self, id: WidgetId) {
         let Some(parent) = self.node(id).map(|node| node.parent) else {
             return;
@@ -348,6 +359,12 @@ impl UiTree {
         while let Some(current) = stack.pop() {
             if self.focused == Some(current) {
                 self.set_focused(None);
+            }
+            if self.hovered == Some(current) {
+                self.hovered = None;
+            }
+            if self.pressed == Some(current) {
+                self.pressed = None;
             }
             removed.push(current);
             if let Some(node) = self.release(current) {
@@ -473,6 +490,9 @@ impl UiTree {
     // ---- flags ----
 
     /// Shows, hides (keeping the box) or collapses `id` and its subtree.
+    /// Hiding or collapsing releases focus, hover and a press held inside it;
+    /// focus goes back to where it was when a scope under `id` was entered,
+    /// as [`Self::remove`] does (`D-149`).
     pub fn set_visibility(&mut self, id: WidgetId, visibility: Visibility) {
         let Some(node) = self.node_mut(id) else {
             return;
@@ -482,7 +502,8 @@ impl UiTree {
         }
         node.visibility = visibility;
         if visibility != Visibility::Visible {
-            self.drop_focus_under(id);
+            self.drop_pointer_under(id);
+            self.hide_focus_under(id);
         }
         self.mark_layout_dirty(id);
     }
@@ -494,10 +515,10 @@ impl UiTree {
     }
 
     /// Enables or disables `id`. A disabled widget keeps its box and blocks
-    /// what is behind it; it holds no focus, so disabling the focused widget
-    /// clears focus. Marks paint, and the node's style for the next
-    /// resolution, which relayouts its root when the `disabled` variant
-    /// changes the text style.
+    /// what is behind it; it holds no focus, hover or press, so disabling the
+    /// widget holding one releases it. Marks paint, and the node's style for
+    /// the next resolution, which relayouts its root when the `disabled`
+    /// variant changes the text style.
     pub fn set_enabled(&mut self, id: WidgetId, enabled: bool) {
         let Some(node) = self.node_mut(id) else {
             return;
@@ -506,8 +527,16 @@ impl UiTree {
             return;
         }
         node.enabled = enabled;
-        if !enabled && self.focused == Some(id) {
-            self.set_focused(None);
+        if !enabled {
+            if self.focused == Some(id) {
+                self.set_focused(None);
+            }
+            if self.hovered == Some(id) {
+                self.set_hovered(None);
+            }
+            if self.pressed == Some(id) {
+                self.set_pressed(None);
+            }
         }
         self.mark_style_dirty(id);
         self.mark_paint_dirty();
@@ -555,8 +584,10 @@ impl UiTree {
             .map(|content| content.flat.as_str())
     }
 
-    /// Marks a custom widget as one M3 emits events for (w01 §14). Marks
-    /// nothing now.
+    /// Marks `id` as a widget the pointer acts on (`D-149`): a hit's target
+    /// is its nearest enabled interactive ancestor-or-self, which hovers,
+    /// presses and gets the `UiEvent`s. Buttons start interactive. Marks
+    /// nothing.
     pub fn set_interactive(&mut self, id: WidgetId, on: bool) {
         if let Some(node) = self.node_mut(id) {
             node.interactive = on;
@@ -612,6 +643,125 @@ impl UiTree {
     #[must_use]
     pub fn hit_testable(&self, id: WidgetId) -> bool {
         self.node(id).is_some_and(|node| node.hit_testable)
+    }
+
+    /// Makes `root` modal, or not (`D-149`). While a modal root is visible and
+    /// laid out it blocks every root below it in hit order
+    /// ([`Self::hit_test`]); roots above it, Debug roots among them, still
+    /// hit, and the router gives the UI every key press. Does nothing for a
+    /// widget that is not a root. Marks nothing.
+    pub fn set_modal(&mut self, root: WidgetId, on: bool) {
+        if let Some(node) = self.node_mut(root)
+            && node.parent.is_none()
+        {
+            node.modal = on;
+        }
+    }
+
+    /// Whether `id` is a modal root; `false` for any other widget or an
+    /// invalid ID.
+    #[must_use]
+    pub fn modal(&self, id: WidgetId) -> bool {
+        self.node(id).is_some_and(|node| node.modal)
+    }
+
+    /// Sets the system cursor the pointer shows over `id` and over the
+    /// widgets under it that set none, or clears it with `None` so `id`
+    /// shows its nearest ancestor's (`D-149`). Marks nothing.
+    pub fn set_cursor(&mut self, id: WidgetId, cursor: Option<CursorIcon>) {
+        if let Some(node) = self.node_mut(id) {
+            node.cursor = cursor;
+        }
+    }
+
+    /// The cursor set on `id` itself, not inherited; `None` when none is set
+    /// or for an invalid ID.
+    #[must_use]
+    pub fn cursor(&self, id: WidgetId) -> Option<CursorIcon> {
+        self.node(id)?.cursor
+    }
+
+    // ---- interaction state ----
+
+    /// The widget the pointer hovers: the target under it, or the captured
+    /// widget while the pointer is over it (`D-149`). The router sets it;
+    /// removal, hiding and disabling clear it.
+    #[must_use]
+    pub fn hovered(&self) -> Option<WidgetId> {
+        self.hovered
+    }
+
+    /// The widget shown pressed: the captured widget while the pointer is
+    /// over it (`D-149`). The router sets it; removal, hiding and disabling
+    /// clear it.
+    #[must_use]
+    pub fn pressed(&self) -> Option<WidgetId> {
+        self.pressed
+    }
+
+    /// Whether focus is visible, so the focused widget layers its `focused`
+    /// variant: after keyboard use, not after pointer use (`D-149`). True on
+    /// a new tree, so a focus set at build shows.
+    #[must_use]
+    pub fn focus_visible(&self) -> bool {
+        !self.focus_hidden
+    }
+
+    /// Moves the hover to `next`, marking both widgets' styles.
+    pub(crate) fn set_hovered(&mut self, next: Option<WidgetId>) {
+        if self.hovered == next {
+            return;
+        }
+        if let Some(previous) = self.hovered {
+            self.mark_style_dirty(previous);
+        }
+        self.hovered = next;
+        if let Some(next) = next {
+            self.mark_style_dirty(next);
+        }
+    }
+
+    /// Moves the press to `next`, marking both widgets' styles.
+    pub(crate) fn set_pressed(&mut self, next: Option<WidgetId>) {
+        if self.pressed == next {
+            return;
+        }
+        if let Some(previous) = self.pressed {
+            self.mark_style_dirty(previous);
+        }
+        self.pressed = next;
+        if let Some(next) = next {
+            self.mark_style_dirty(next);
+        }
+    }
+
+    /// Shows or hides focus, marking the focused widget's style.
+    pub(crate) fn set_focus_visible(&mut self, visible: bool) {
+        let hidden = !visible;
+        if self.focus_hidden == hidden {
+            return;
+        }
+        self.focus_hidden = hidden;
+        if let Some(focused) = self.focused {
+            self.mark_style_dirty(focused);
+        }
+    }
+
+    /// Clears the hover and the press when they sit on `id` or under it; for
+    /// a widget that was hidden or collapsed.
+    fn drop_pointer_under(&mut self, id: WidgetId) {
+        if self
+            .hovered
+            .is_some_and(|hovered| self.is_within(hovered, id))
+        {
+            self.set_hovered(None);
+        }
+        if self
+            .pressed
+            .is_some_and(|pressed| self.is_within(pressed, id))
+        {
+            self.set_pressed(None);
+        }
     }
 
     // ---- theme and style ----
@@ -689,18 +839,38 @@ impl UiTree {
         self.node(id)?.resolved.as_ref()
     }
 
-    /// The state the node's style resolves for: `Disabled` when disabled,
-    /// `Focused` while it holds focus, else `Normal`.
+    /// The top state the node's style layers (`D-149`): `Disabled` when
+    /// disabled, else `Pressed`, `Hovered`, or `Focused` while it holds
+    /// visible focus, else `Normal`.
     #[must_use]
     pub fn widget_state(&self, id: WidgetId) -> Option<WidgetState> {
         let node = self.node(id)?;
-        Some(if !node.enabled {
-            WidgetState::Disabled
-        } else if self.focused == Some(id) {
-            WidgetState::Focused
-        } else {
-            WidgetState::Normal
-        })
+        Some(
+            self.style_layers(id, node)
+                .into_iter()
+                .rev()
+                .find(|state| *state != WidgetState::Normal)
+                .unwrap_or_default(),
+        )
+    }
+
+    /// The states whose variants `id`'s style applies, in order: `disabled`
+    /// alone; otherwise `focused` while focus is on it and visible, then
+    /// `hovered`, then `pressed`. `Normal` fills the slots not applied.
+    fn style_layers(&self, id: WidgetId, node: &Node) -> [WidgetState; 3] {
+        let normal = WidgetState::Normal;
+        if !node.enabled {
+            return [WidgetState::Disabled, normal, normal];
+        }
+        let layer = |on: bool, state: WidgetState| if on { state } else { normal };
+        [
+            layer(
+                self.focused == Some(id) && !self.focus_hidden,
+                WidgetState::Focused,
+            ),
+            layer(self.hovered == Some(id), WidgetState::Hovered),
+            layer(self.pressed == Some(id), WidgetState::Pressed),
+        ]
     }
 
     /// Marks `id` for the next resolution pass, and its root's subtree.
@@ -751,9 +921,14 @@ impl UiTree {
         let children = node.children.clone();
         let mut text_changed = false;
         if node.style_dirty || parent_text_changed {
-            let state = self.widget_state(id).unwrap_or_default();
-            let resolved =
-                theme::resolve(&self.theme, node.kind, state, &node.overrides, parent_text);
+            let layers = self.style_layers(id, node);
+            let resolved = theme::resolve_layers(
+                &self.theme,
+                node.kind,
+                &layers,
+                &node.overrides,
+                parent_text,
+            );
             let (changed_text, changed_measure, changed_visual) = match &node.resolved {
                 Some(old) => (
                     old.text != resolved.text,

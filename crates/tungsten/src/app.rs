@@ -18,6 +18,7 @@ use crate::inspector::{InspectorState, compose_inspector_text_section, default_i
 use crate::logging;
 use crate::physics_debug::{PhysicsDebugOverlay, physics_debug_emit_system};
 use crate::plugins::DefaultPlugins;
+use crate::plugins::UI_ROUTE;
 use crate::post_aa::{PendingPostAa, PostAaState, sync_post_aa_state, take_pending_post_aa};
 use crate::sprite_extract::ExtractScratch;
 use crate::state::StateStack;
@@ -31,15 +32,16 @@ use tungsten_core::assets::{
 };
 use tungsten_core::physics::{PhysicsBuffers, PhysicsConfig};
 use tungsten_core::post::{PostPass, PostStack};
-use tungsten_core::ui::{PaintList, UiDebug, UiThemeRegistry, UiTree};
+use tungsten_core::ui::{CursorIcon, PaintList, UiDebug, UiRouter, UiThemeRegistry, UiTree};
 // `App` writes the deprecated `DeltaTime` each frame until W4b removes it.
 #[allow(deprecated)]
 use tungsten_core::DeltaTime;
 use tungsten_core::{
-    ActionMap, AssetRegistry, AudioCommand, AudioCommands, CameraController, CameraState,
+    ActionMap, AssetRegistry, AudioCommand, AudioCommands, Binding, CameraController, CameraState,
     CommandBuffer, Config, ConfigError, DebugDraw, DebugShape, DisplayMode, DisplayState,
     InputState, InspectRegistry, Inspectable, ParticleActive, ParticleBudget, Plugin, PluginSet,
-    Schedule, Stage, SystemDesc, Time, TimeConfig, World, WorldRngSeed, system,
+    RawInput, RoutedInput, Schedule, Stage, SystemDesc, Time, TimeConfig, World, WorldRngSeed,
+    system,
 };
 use tungsten_render::renderer::RenderError;
 use tungsten_render::{
@@ -130,6 +132,11 @@ pub struct App {
     ui_paint: PaintList,
     /// What the retained list was painted with; `None` before the first.
     painted_at: Option<PaintedAt>,
+    /// The system cursor last set on the window (`D-149`).
+    cursor: CursorIcon,
+    /// The frame's raw events when `PreUpdate`, and so the UI's routing,
+    /// ended; the exit check reads later ones raw.
+    routed_events: usize,
 }
 
 impl App {
@@ -236,6 +243,8 @@ impl App {
         // M46: the UI tree, its debug flags and the loaded theme assets.
         world.insert_resource(UiTree::new());
         world.insert_resource(UiDebug::default());
+        world.insert_resource(UiRouter::default());
+        world.insert_resource(RoutedInput::default());
         world.insert_resource(UiThemeRegistry::new());
         world.insert_resource(PhysicsDebugOverlay::default());
         world.insert_resource(SystemTimingOverlay::default());
@@ -278,6 +287,8 @@ impl App {
             transition_post_stack: PostStack::new(),
             ui_paint: PaintList::default(),
             painted_at: None,
+            cursor: CursorIcon::Default,
+            routed_events: 0,
         };
 
         // Engine plugins register first, so their `PreUpdate` systems precede
@@ -479,18 +490,39 @@ impl App {
         self.hot_reload = HotReloadWatcher::new(&dirs, &extra_files);
     }
 
+    /// Whether `engine_exit` was just pressed (`D-149`). When the schedule
+    /// routes UI input, in the routed view, so an Escape the UI took does not
+    /// exit, or as a key or button press that reached the raw input after
+    /// `PreUpdate`, which the UI never saw; else in the raw input.
     fn engine_exit_requested(&self) -> bool {
         if !self.exit_on_escape {
             return false;
         }
-
-        let Some(input) = self.world.get_resource::<InputState>() else {
-            return false;
-        };
         let Some(actions) = self.world.get_resource::<ActionMap>() else {
             return false;
         };
-        actions.just_pressed(input, "engine_exit")
+        let raw = self.world.get_resource::<InputState>();
+        if !self
+            .schedule
+            .names(Stage::PreUpdate)
+            .any(|name| name == UI_ROUTE)
+        {
+            return raw.is_some_and(|input| actions.just_pressed(input, "engine_exit"));
+        }
+        let routed = self
+            .world
+            .get_resource::<RoutedInput>()
+            .is_some_and(|routed| actions.just_pressed(routed, "engine_exit"));
+        let bindings = actions.bindings("engine_exit");
+        let late = raw.is_some_and(|input| {
+            input
+                .raw_events()
+                .get(self.routed_events..)
+                .unwrap_or_default()
+                .iter()
+                .any(|event| presses(bindings, event.input))
+        });
+        routed || late
     }
 
     /// Poll hot reload; apply before extract/render.
@@ -942,8 +974,8 @@ impl App {
             }
             // Edges made while the clock stands still reach no step, as its
             // events do not; a frame with no time at all keeps them.
-            if stopped && let Some(input) = self.world.get_resource_mut::<InputState>() {
-                input.end_fixed_step();
+            if stopped {
+                self.end_input_steps();
             }
             return 0;
         }
@@ -964,9 +996,7 @@ impl App {
                         entry += 1;
                     });
             }
-            if let Some(input) = self.world.get_resource_mut::<InputState>() {
-                input.end_fixed_step();
-            }
+            self.end_input_steps();
             self.world.end_fixed_step_events();
         }
         let game_dt = self.world.get_resource_mut::<Time>().map(|time| {
@@ -977,8 +1007,9 @@ impl App {
         steps
     }
 
-    /// Turns the input and event step views on or off and writes `dt` to
-    /// `DeltaTime`: the step inside the steps, the game dt after them.
+    /// Turns the input and event step views on or off, the routed input's
+    /// with the raw (`D-149`), and writes `dt` to `DeltaTime`: the step
+    /// inside the steps, the game dt after them.
     #[inline(always)]
     fn set_step_views(&mut self, on: bool, dt: f32) {
         #[allow(deprecated)]
@@ -988,7 +1019,44 @@ impl App {
         if let Some(input) = self.world.get_resource_mut::<InputState>() {
             input.set_fixed_view(on);
         }
+        if let Some(routed) = self.world.get_resource_mut::<RoutedInput>() {
+            routed.set_fixed_view(on);
+        }
         self.world.set_fixed_event_view(on);
+    }
+
+    /// Ends the fixed view's step in the raw and the routed input (`D-146`,
+    /// `D-149`).
+    #[inline(always)]
+    fn end_input_steps(&mut self) {
+        if let Some(input) = self.world.get_resource_mut::<InputState>() {
+            input.end_fixed_step();
+        }
+        if let Some(routed) = self.world.get_resource_mut::<RoutedInput>() {
+            routed.end_fixed_step();
+        }
+    }
+
+    /// The system cursor last set on the window.
+    #[cfg(test)]
+    pub(crate) fn applied_cursor(&self) -> CursorIcon {
+        self.cursor
+    }
+
+    /// Sets the window's cursor to the one the UI router asks for, when it
+    /// changed (`D-149`).
+    #[inline(always)]
+    fn stage_cursor(&mut self) {
+        let Some(cursor) = self.world.get_resource::<UiRouter>().map(UiRouter::cursor) else {
+            return;
+        };
+        if cursor == self.cursor {
+            return;
+        }
+        self.cursor = cursor;
+        if let Some(window) = &self.window {
+            window.set_cursor(input_bridge::cursor_icon(cursor));
+        }
     }
 
     /// `Startup` once, then `PreUpdate`, the frame's fixed steps and
@@ -1011,6 +1079,10 @@ impl App {
             self.last_frame = Some(Instant::now());
         }
         self.run_stage(Stage::PreUpdate, &mut system_timings);
+        self.routed_events = self
+            .world
+            .get_resource::<InputState>()
+            .map_or(0, |input| input.raw_events().len());
         let fixed_steps = self.stage_fixed_update(&mut system_timings);
         self.run_stage(Stage::Update, &mut system_timings);
         let exit = self.engine_exit_requested();
@@ -1419,6 +1491,7 @@ impl App {
         if exit {
             return FrameEnd::ExitRequested;
         }
+        self.stage_cursor();
         self.stage_post_update(&mut system_timings);
         let update_ms = update_start.elapsed().as_secs_f64() as f32 * 1000.0;
 
@@ -1586,6 +1659,25 @@ fn is_action_map(canon: &Path, input_map_path: &Path) -> bool {
 /// particles, tweens and scene animation produce frame-accurate deterministic
 /// output. Wall-clock dt varies with CPU load and makes visual-regression
 /// captures drift between runs on the same binary. The capture path used by
+/// Whether `input` is a press, not an OS repeat, of a key or button in
+/// `bindings`.
+fn presses(bindings: &[Binding], input: RawInput) -> bool {
+    match input {
+        RawInput::Key {
+            code,
+            pressed: true,
+            repeat: false,
+            ..
+        } => bindings.contains(&Binding::Key { code }),
+        RawInput::MouseButton {
+            button,
+            pressed: true,
+            ..
+        } => bindings.contains(&Binding::Mouse { button }),
+        _ => false,
+    }
+}
+
 /// `visual_regression.rs` (smoke frames + capture frame env vars) is the
 /// canonical consumer. A normal frame gets the elapsed time, capped at
 /// [`MAX_DT_SECS`].
@@ -2029,6 +2121,15 @@ impl ApplicationHandler for App {
                     actual_present_mode,
                 );
             }
+            // Smoke runs drop the window's input, so a resting pointer cannot
+            // hover a pixel fixture; focus, resize and scale still apply
+            // (`D-149`).
+            WindowEvent::KeyboardInput { .. }
+            | WindowEvent::MouseInput { .. }
+            | WindowEvent::CursorMoved { .. }
+            | WindowEvent::CursorLeft { .. }
+            | WindowEvent::MouseWheel { .. }
+                if self.smoke_frames_remaining.is_some() => {}
             WindowEvent::KeyboardInput {
                 event,
                 is_synthetic,

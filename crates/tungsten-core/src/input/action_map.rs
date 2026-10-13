@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::input::{InputState, KeyCode, MouseButton, ScrollDirection};
+use crate::ui::{UI_ACCEPT, UI_CANCEL, UI_DOWN, UI_LEFT, UI_NEXT, UI_PREV, UI_RIGHT, UI_UP};
 
 /// Physical input binding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -66,7 +67,10 @@ impl ActionMap {
         Self::default()
     }
 
-    /// Engine default bindings for examples and engine-owned controls.
+    /// Engine default bindings for examples and engine-owned controls, the
+    /// UI's `ui_*` actions among them (`D-149`): `ui_accept` on Enter and
+    /// Space, `ui_cancel` on Escape, `ui_next` on Tab, the directions on the
+    /// arrows and `ui_prev` unbound.
     #[must_use]
     pub fn default_map() -> Self {
         let mut actions: HashMap<String, Vec<Binding>> = HashMap::new();
@@ -227,6 +231,18 @@ impl ActionMap {
                 code: KeyCode::Backspace,
             }],
         );
+        let key = |code| Binding::Key { code };
+        actions.insert(
+            UI_ACCEPT.into(),
+            vec![key(KeyCode::Enter), key(KeyCode::Space)],
+        );
+        actions.insert(UI_CANCEL.into(), vec![key(KeyCode::Escape)]);
+        actions.insert(UI_NEXT.into(), vec![key(KeyCode::Tab)]);
+        actions.insert(UI_PREV.into(), Vec::new());
+        actions.insert(UI_UP.into(), vec![key(KeyCode::ArrowUp)]);
+        actions.insert(UI_DOWN.into(), vec![key(KeyCode::ArrowDown)]);
+        actions.insert(UI_LEFT.into(), vec![key(KeyCode::ArrowLeft)]);
+        actions.insert(UI_RIGHT.into(), vec![key(KeyCode::ArrowRight)]);
         Self {
             actions,
             source_path: None,

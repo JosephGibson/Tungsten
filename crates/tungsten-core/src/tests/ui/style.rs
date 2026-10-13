@@ -130,6 +130,99 @@ fn the_focused_then_the_disabled_variant_apply_by_state() {
 }
 
 #[test]
+fn hover_and_press_layer_over_visible_focus_and_disabled_applies_alone() {
+    let (mut tree, _root, button, _label) = clean_button();
+    let theme = tree.theme().clone();
+    let kind = &theme.kinds.button;
+    let focus_border = theme.tokens.colors.focus;
+    let hover_fill = kind.hovered.background.unwrap();
+    let press_fill = kind.pressed.background.unwrap();
+
+    tree.set_hovered(Some(button));
+    assert_eq!(tree.hovered(), Some(button));
+    assert!(!tree.is_paint_dirty(), "hover marks the style, not paint");
+    let stats = tree.resolve_styles();
+    assert_eq!(stats.resolved, 1);
+    assert!(tree.is_paint_dirty(), "the new fill marks paint");
+    assert!(!tree.is_layout_dirty());
+    assert_eq!(tree.widget_state(button), Some(WidgetState::Hovered));
+    assert_eq!(resolved(&tree, button).background, hover_fill);
+
+    assert!(tree.focus(button));
+    tree.resolve_styles();
+    assert_eq!(
+        tree.widget_state(button),
+        Some(WidgetState::Hovered),
+        "hover is above focus"
+    );
+    let style = resolved(&tree, button);
+    assert_eq!(style.border, focus_border, "the focus border stays");
+    assert_eq!(style.border_width, 2.0);
+    assert_eq!(style.background, hover_fill, "the hover fill over it");
+
+    tree.set_pressed(Some(button));
+    tree.resolve_styles();
+    assert_eq!(tree.widget_state(button), Some(WidgetState::Pressed));
+    let style = resolved(&tree, button);
+    assert_eq!(style.background, press_fill, "pressed wins the fill");
+    assert_eq!(style.border, focus_border);
+
+    assert!(tree.focus_visible());
+    tree.set_focus_visible(false);
+    tree.resolve_styles();
+    assert_eq!(tree.focused(), Some(button), "hidden focus is still focus");
+    let style = resolved(&tree, button);
+    assert_eq!(
+        style.border, kind.normal.border,
+        "a hidden focus drops the focused variant"
+    );
+    assert_eq!(style.border_width, 1.0);
+    assert_eq!(style.background, press_fill);
+    tree.set_pressed(None);
+    tree.set_hovered(None);
+    tree.resolve_styles();
+    assert_eq!(tree.widget_state(button), Some(WidgetState::Normal));
+    assert_eq!(resolved(&tree, button).background, kind.normal.background);
+    tree.set_focus_visible(true);
+    tree.resolve_styles();
+    assert_eq!(tree.widget_state(button), Some(WidgetState::Focused));
+    assert_eq!(resolved(&tree, button).border, focus_border);
+
+    tree.set_hovered(Some(button));
+    tree.set_pressed(Some(button));
+    tree.set_enabled(button, false);
+    assert_eq!(
+        (tree.focused(), tree.hovered(), tree.pressed()),
+        (None, None, None),
+        "disabling releases all three"
+    );
+    tree.set_hovered(Some(button));
+    tree.set_pressed(Some(button));
+    tree.resolve_styles();
+    assert_eq!(tree.widget_state(button), Some(WidgetState::Disabled));
+    let style = resolved(&tree, button);
+    assert_eq!(
+        style.background,
+        kind.disabled.background.unwrap(),
+        "disabled applies alone"
+    );
+    assert_eq!(style.border, kind.normal.border);
+    assert_eq!(style.text.color, theme.tokens.colors.disabled_text);
+
+    // `theme::resolve` keeps applying the one state it is given.
+    let base = theme.base_text();
+    let hovered = crate::ui::theme::resolve(
+        &theme,
+        crate::ui::WidgetKind::Button,
+        WidgetState::Hovered,
+        &StyleOverrides::default(),
+        &base,
+    );
+    assert_eq!(hovered.background, hover_fill);
+    assert_eq!(hovered.border, kind.normal.border);
+}
+
+#[test]
 fn a_node_override_beats_the_variant() {
     let (mut tree, _root, button, _label) = clean_button();
     tree.set_overrides(

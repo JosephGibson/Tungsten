@@ -54,7 +54,7 @@ pub use ecs::{
 };
 pub use input::{
     ActionMap, ActionMapError, Binding, InputState, KeyCode, Modifiers, MouseButton, RawEvent,
-    RawInput, ScrollDirection, WheelDelta,
+    RawInput, RoutedInput, ScrollDirection, WheelDelta,
 };
 pub use inspect::{InspectRegistry, Inspectable};
 pub use lighting::{AmbientLight, LIGHT_CAP};
@@ -84,4 +84,4 @@ pub use tween::{
     Easing, IntSlot, ScalarSlot, Tween, TweenChannel, TweenComplete, TweenDirection, TweenRepeat,
     UniformOverrideBlock, Vec4Slot, lerp_f32, lerp_u8,
 };
-pub use ui::{PaintList, UiDebug, UiThemeRegistry, UiTree, WidgetId};
+pub use ui::{PaintList, UiDebug, UiEvent, UiRouter, UiThemeRegistry, UiTree, WidgetId};

@@ -7,7 +7,7 @@ use tungsten_core::{CollisionEvent, Config, EventQueue, PluginSet, Stage, system
 /// asks for. An engine reorder shows up here as a diff.
 const DEFAULT_SCHEDULE: &str = "\
 startup: -
-pre_update: physics_debug_toggle, systems_overlay_toggle, inspector_toggle, inspector_pick, hud_toggle, ui_debug_toggle, display_input, state_dispatcher
+pre_update: physics_debug_toggle, systems_overlay_toggle, inspector_toggle, inspector_pick, hud_toggle, ui_debug_toggle, display_input, state_dispatcher, ui_route
 fixed_update: physics_prev_snapshot, physics_step
 update: -
 post_update: physics_sync, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, camera_update
@@ -18,7 +18,7 @@ fn default_plugins_resolve_to_the_snapshot() {
     let mut app = App::new(Config::default()).unwrap();
     app.resolve_schedule().unwrap();
     assert_eq!(app.schedule().resolved_text(), DEFAULT_SCHEDULE);
-    assert_eq!(DefaultPlugins::set().len(), 8);
+    assert_eq!(DefaultPlugins::set().len(), 9);
 }
 
 #[test]

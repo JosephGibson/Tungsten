@@ -203,3 +203,25 @@ fn the_scale_factor_reaches_the_resource() {
     apply_scale_factor(&mut world, 0.0);
     assert_eq!(world.get_resource::<ScaleFactor>().unwrap().os(), 1.75);
 }
+
+#[test]
+fn every_ui_cursor_maps_to_its_window_cursor() {
+    use tungsten_core::ui::CursorIcon as Ui;
+    use winit::window::CursorIcon as Window;
+    let pairs = [
+        (Ui::Default, Window::Default),
+        (Ui::Pointer, Window::Pointer),
+        (Ui::Text, Window::Text),
+        (Ui::Move, Window::Move),
+        (Ui::NotAllowed, Window::NotAllowed),
+        (Ui::EwResize, Window::EwResize),
+        (Ui::NsResize, Window::NsResize),
+        (Ui::NwseResize, Window::NwseResize),
+        (Ui::NeswResize, Window::NeswResize),
+    ];
+    for (ui, window) in pairs {
+        assert_eq!(cursor_icon(ui), window, "{ui:?}");
+    }
+    let distinct: HashSet<Window> = pairs.iter().map(|(ui, _)| cursor_icon(*ui)).collect();
+    assert_eq!(distinct.len(), pairs.len(), "no two share a window cursor");
+}

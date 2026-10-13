@@ -1,21 +1,24 @@
 //! A [`Harness`] with a `UiTree` laid out after every frame (`D-125`),
 //! standing in for the app's layout stage, which needs a renderer, through
 //! a [`FixedAdvanceMeasure`] so no font is needed: every glyph advances half
-//! the font size. The frame's extract paints the tree as the app does, one
-//! layout behind; [`UiHarness::paint`] paints it now (M46).
+//! the font size. It lays out at the logical viewport, as the app does
+//! (`D-127`), and scripts the pointer and keys the UI routes (`D-149`). The
+//! frame's extract paints the tree as the app does, one layout behind;
+//! [`UiHarness::paint`] paints it now (M46).
 
 use glam::Vec2;
 use tungsten_core::ui::{
     FixedAdvanceMeasure, LayoutStats, PaintList, Rect, UiDebug, UiTree, WidgetId,
 };
-use tungsten_core::{AssetRegistry, World};
+use tungsten_core::{AssetRegistry, KeyCode, MouseButton, ScaleFactor, World};
 
 use super::Harness;
 use crate::app::{App, WindowSize};
 
 /// Runs an [`App`]'s frames as [`Harness`] does and lays its `UiTree` out
-/// at the `WindowSize` viewport after each one, so a system reads the
-/// previous frame's rects, as it will under M2's layout stage.
+/// at the logical viewport, `WindowSize` divided by `ScaleFactor::get()`,
+/// after each one, so a system reads the previous frame's rects, as under
+/// the app's layout stage.
 pub struct UiHarness {
     harness: Harness,
     text: FixedAdvanceMeasure,
@@ -95,15 +98,17 @@ impl UiHarness {
         frames
     }
 
-    /// Lays the tree out at the `WindowSize` viewport without running a
-    /// frame.
+    /// Lays the tree out at the logical viewport, `WindowSize` divided by
+    /// `ScaleFactor::get()` as the app's layout stage does, without running
+    /// a frame.
     pub fn layout(&mut self) -> LayoutStats {
+        let scale = self.scale();
         let viewport = self
             .harness
             .world()
             .get_resource::<WindowSize>()
             .map_or(Vec2::ZERO, |size| {
-                Vec2::new(size.width as f32, size.height as f32)
+                Vec2::new(size.width as f32, size.height as f32) / scale
             });
         let text = &mut self.text;
         self.harness
@@ -116,7 +121,73 @@ impl UiHarness {
     /// The widget under (`x`, `y`) in window pixels, after the last layout.
     #[must_use]
     pub fn hit(&self, x: f32, y: f32) -> Option<WidgetId> {
-        self.tree().hit_test(Vec2::new(x, y))
+        self.tree().hit_test(Vec2::new(x, y) / self.scale())
+    }
+
+    /// Moves the pointer to (`x`, `y`) in window pixels, as a cursor event
+    /// would between redraws; the next frame routes it.
+    pub fn pointer_to(&mut self, x: f32, y: f32) {
+        self.harness.input_mut().update_cursor_position(x, y);
+    }
+
+    /// Presses the primary button where the pointer is.
+    pub fn pointer_down(&mut self) {
+        self.harness.input_mut().mouse_down(MouseButton::Left);
+    }
+
+    /// Releases the primary button.
+    pub fn pointer_up(&mut self) {
+        self.harness.input_mut().mouse_up(MouseButton::Left);
+    }
+
+    /// Moves the pointer to the centre of `widget`'s last box, then presses
+    /// and releases the primary button there: one click for the next frame
+    /// to route.
+    ///
+    /// # Panics
+    ///
+    /// When `widget` has no box: not laid out, collapsed or removed.
+    pub fn click(&mut self, widget: WidgetId) {
+        let rect = self
+            .rect(widget)
+            .unwrap_or_else(|| panic!("UiHarness::click: {widget:?} has no box"));
+        let centre = (rect.min + rect.max) * 0.5 * self.scale();
+        self.pointer_to(centre.x, centre.y);
+        self.pointer_down();
+        self.pointer_up();
+    }
+
+    /// Presses `key`, as a key event would between redraws.
+    pub fn key_down(&mut self, key: KeyCode) {
+        self.harness.input_mut().key_down(key);
+    }
+
+    /// Releases `key`.
+    pub fn key_up(&mut self, key: KeyCode) {
+        self.harness.input_mut().key_up(key);
+    }
+
+    /// The first widget whose accessible name is `name`, in tree order:
+    /// roots in order, each depth first, so a button comes before its
+    /// label.
+    #[must_use]
+    pub fn find(&self, name: &str) -> Option<WidgetId> {
+        let tree = self.tree();
+        let mut stack: Vec<WidgetId> = tree.roots().iter().rev().copied().collect();
+        while let Some(id) = stack.pop() {
+            if tree.accessible_name(id) == Some(name) {
+                return Some(id);
+            }
+            stack.extend(tree.children(id).iter().rev().copied());
+        }
+        None
+    }
+
+    /// Physical pixels per UI unit, as the layout divides by.
+    fn scale(&self) -> f32 {
+        self.world()
+            .get_resource::<ScaleFactor>()
+            .map_or(1.0, ScaleFactor::get)
     }
 
     /// The widget's committed box after the last layout.
@@ -183,3 +254,7 @@ impl UiHarness {
 #[cfg(test)]
 #[path = "../tests/testing_ui.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../tests/ui_route.rs"]
+mod ui_route;

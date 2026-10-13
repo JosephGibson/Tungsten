@@ -1,11 +1,92 @@
 //! Keyboard focus (`D-125`): one focused widget, tab order in depth-first
-//! tree order inside the nearest focus scope, wrapping, and the rules that
-//! keep `focused()` from naming a widget the traversal would skip. M3 drives
-//! these from the `ui_*` actions; M1 exposes the calls.
+//! tree order inside the nearest focus scope, wrapping, directional focus
+//! (`D-149`), and the rules that keep `focused()` from naming a widget the
+//! traversal would skip. M3's router drives these from the `ui_*` actions.
 
+use glam::Vec2;
+
+use super::geometry::Rect;
 use super::id::WidgetId;
 use super::node::Visibility;
 use super::tree::UiTree;
+
+/// A direction for [`UiTree::focus_direction`], the `ui_up`, `ui_down`,
+/// `ui_left` and `ui_right` actions' (`D-149`).
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum NavDirection {
+    /// Towards the top of the viewport.
+    Up,
+    /// Towards the bottom.
+    Down,
+    /// Towards the left.
+    Left,
+    /// Towards the right.
+    Right,
+}
+
+impl NavDirection {
+    /// The slot in a node's explicit neighbours.
+    const fn index(self) -> usize {
+        match self {
+            Self::Up => 0,
+            Self::Down => 1,
+            Self::Left => 2,
+            Self::Right => 3,
+        }
+    }
+
+    /// From `from` to `to`: the distance this way, negative behind, and the
+    /// offset across it.
+    fn axes(self, from: Vec2, to: Vec2) -> (f32, f32) {
+        let d = to - from;
+        match self {
+            Self::Up => (-d.y, d.x.abs()),
+            Self::Down => (d.y, d.x.abs()),
+            Self::Left => (-d.x, d.y.abs()),
+            Self::Right => (d.x, d.y.abs()),
+        }
+    }
+
+    /// Where a wrapped search starts: on `scope`'s edge behind this
+    /// direction, level with `from`.
+    fn wrap_origin(self, scope: Rect, from: Vec2) -> Vec2 {
+        match self {
+            Self::Up => Vec2::new(from.x, scope.max.y),
+            Self::Down => Vec2::new(from.x, scope.min.y),
+            Self::Left => Vec2::new(scope.max.x, from.y),
+            Self::Right => Vec2::new(scope.min.x, from.y),
+        }
+    }
+}
+
+fn centre(rect: Rect) -> Vec2 {
+    (rect.min + rect.max) * 0.5
+}
+
+/// The candidate whose centre lies `dir` of `origin` with the lowest score,
+/// the distance that way plus twice the offset across it (`D-149`); the
+/// first in tab order on a tie. `inclusive` lets a centre level with
+/// `origin` count.
+fn nearest(
+    dir: NavDirection,
+    origin: Vec2,
+    candidates: &[(WidgetId, Vec2)],
+    inclusive: bool,
+) -> Option<WidgetId> {
+    let mut best: Option<(WidgetId, f32)> = None;
+    for &(id, centre) in candidates {
+        let (along, across) = dir.axes(origin, centre);
+        if along < 0.0 || (along == 0.0 && !inclusive) {
+            continue;
+        }
+        let score = along + 2.0 * across;
+        if best.is_none_or(|(_, best)| score < best) {
+            best = Some((id, score));
+        }
+    }
+    best.map(|(id, _)| id)
+}
 
 impl UiTree {
     /// Whether `id` can hold focus now: focusable, enabled, visible, and
@@ -47,7 +128,7 @@ impl UiTree {
 
     /// The scope `id`'s traversal stays in: itself or the nearest ancestor
     /// flagged a focus scope, else its root.
-    fn scope_of(&self, id: WidgetId) -> Option<WidgetId> {
+    pub(crate) fn scope_of(&self, id: WidgetId) -> Option<WidgetId> {
         let mut current = Some(id);
         while let Some(id) = current {
             let node = self.node(id)?;
@@ -76,6 +157,20 @@ impl UiTree {
         }
     }
 
+    /// The first widget under `id`, in tab order, that can take focus.
+    pub(crate) fn first_focusable(&self, id: WidgetId) -> Option<WidgetId> {
+        let node = self.node(id)?;
+        if node.visibility != Visibility::Visible {
+            return None;
+        }
+        if node.focusable && node.enabled {
+            return Some(id);
+        }
+        node.children
+            .iter()
+            .find_map(|child| self.first_focusable(*child))
+    }
+
     /// The tab order of the current scope: the focused widget's scope, or
     /// every root in order when nothing is focused.
     fn tab_order(&self) -> Vec<WidgetId> {
@@ -92,8 +187,9 @@ impl UiTree {
     }
 
     /// Focuses `id` when [`Self::can_focus`]; returns whether it did. Moving
-    /// into another scope records the focus left behind, which removing that
-    /// scope restores. The widgets that gained and lost focus resolve their
+    /// into another scope records the focus left behind, replacing that
+    /// scope's earlier record, and removing, hiding or collapsing the scope
+    /// restores it. The widgets that gained and lost focus resolve their
     /// styles at the next layout, so a `focused` variant with text overrides
     /// relayouts then.
     pub fn focus(&mut self, id: WidgetId) -> bool {
@@ -109,6 +205,7 @@ impl UiTree {
         if let Some(scope) = new_scope
             && new_scope != old_scope
         {
+            self.focus_return.retain(|(entered, _)| *entered != scope);
             self.focus_return.push((scope, previous));
         }
         self.set_focused(Some(id));
@@ -136,6 +233,78 @@ impl UiTree {
     /// The mirror of [`Self::focus_next`].
     pub fn focus_prev(&mut self) -> Option<WidgetId> {
         self.focus_step(-1)
+    }
+
+    /// Moves focus `dir` inside the current scope (`D-149`): to the focused
+    /// widget's explicit neighbour that way when it can take focus;
+    /// otherwise to the nearest laid-out widget that can, in the focused
+    /// widget's scope, whose centre lies that way, scored by the distance
+    /// that way plus twice the offset across it, the first in tab order on a
+    /// tie. When none lies that way and the scope wraps
+    /// ([`Self::set_focus_wrap`]), the search runs again from the scope's
+    /// opposite edge. Returns the widget focused; `None`, focus unchanged,
+    /// when nothing is focused or nothing lies that way.
+    pub fn focus_direction(&mut self, dir: NavDirection) -> Option<WidgetId> {
+        let focused = self.focused?;
+        if let Some(neighbor) = self.focus_neighbor(focused, dir)
+            && self.can_focus(neighbor)
+        {
+            return self.focus(neighbor).then_some(neighbor);
+        }
+        let from = centre(self.rect(focused)?);
+        let scope = self.scope_of(focused)?;
+        let mut order = Vec::new();
+        self.collect_focusables(scope, &mut order);
+        let candidates: Vec<(WidgetId, Vec2)> = order
+            .into_iter()
+            .filter(|id| *id != focused)
+            .filter_map(|id| Some((id, centre(self.rect(id)?))))
+            .collect();
+        let target = nearest(dir, from, &candidates, false).or_else(|| {
+            if !self.focus_wrap(scope) {
+                return None;
+            }
+            let origin = dir.wrap_origin(self.rect(scope)?, from);
+            nearest(dir, origin, &candidates, true)
+        })?;
+        self.focus(target).then_some(target)
+    }
+
+    /// Sets `id`'s explicit neighbour `dir`, which
+    /// [`Self::focus_direction`] takes before searching, or clears it with
+    /// `None`. The neighbour may sit in another scope. Marks nothing.
+    pub fn set_focus_neighbor(&mut self, id: WidgetId, dir: NavDirection, to: Option<WidgetId>) {
+        let Some(node) = self.node_mut(id) else {
+            return;
+        };
+        if node.focus_neighbors.is_none() && to.is_none() {
+            return;
+        }
+        node.focus_neighbors.get_or_insert_default()[dir.index()] = to;
+    }
+
+    /// `id`'s explicit neighbour `dir`; `None` when none is set or for an
+    /// invalid ID.
+    #[must_use]
+    pub fn focus_neighbor(&self, id: WidgetId, dir: NavDirection) -> Option<WidgetId> {
+        self.node(id)?.focus_neighbors.as_ref()?[dir.index()]
+    }
+
+    /// Lets directional focus wrap inside `scope`: a search that finds
+    /// nothing that way runs again from the scope's opposite edge. Read on
+    /// the scope the focused widget's traversal stays in, a root or a widget
+    /// flagged with [`Self::set_focus_scope`]. Off by default. Marks nothing.
+    pub fn set_focus_wrap(&mut self, scope: WidgetId, on: bool) {
+        if let Some(node) = self.node_mut(scope) {
+            node.focus_wrap = on;
+        }
+    }
+
+    /// Whether directional focus wraps inside `id`; `false` for an invalid
+    /// ID.
+    #[must_use]
+    pub fn focus_wrap(&self, id: WidgetId) -> bool {
+        self.node(id).is_some_and(|node| node.focus_wrap)
     }
 
     fn focus_step(&mut self, step: isize) -> Option<WidgetId> {
@@ -170,24 +339,31 @@ impl UiTree {
         self.mark_paint_dirty();
     }
 
-    /// Clears focus when it sits on `id` or under it; for a widget that was
-    /// hidden, collapsed, disabled or made unfocusable.
-    pub(crate) fn drop_focus_under(&mut self, id: WidgetId) {
+    /// For `id` hidden or collapsed: clears focus when it sits on `id` or
+    /// under it, then leaves the scopes under `id` as removing them would.
+    pub(crate) fn hide_focus_under(&mut self, id: WidgetId) {
         if let Some(focused) = self.focused
             && self.is_within(focused, id)
         {
             self.set_focused(None);
         }
+        self.leave_scopes(|tree, scope| tree.is_within(scope, id));
     }
 
-    /// After `removed` left the tree: forgets their scope entries, and when
-    /// focus was lost with a scope, restores the focus recorded when that
-    /// scope was entered, if it is still valid.
+    /// After `removed` left the tree: leaves their scopes.
     pub(crate) fn focus_after_removal(&mut self, removed: &[WidgetId]) {
+        self.leave_scopes(|_, scope| removed.contains(&scope));
+    }
+
+    /// Forgets the entries of the scopes `gone` names, and when focus was
+    /// lost with them, restores the focus recorded when the last of them
+    /// was entered, if it can still take focus.
+    fn leave_scopes(&mut self, gone: impl Fn(&Self, WidgetId) -> bool) {
         let mut restore = None;
-        let mut kept = Vec::with_capacity(self.focus_return.len());
-        for (scope, previous) in self.focus_return.drain(..) {
-            if removed.contains(&scope) {
+        let entries = std::mem::take(&mut self.focus_return);
+        let mut kept = Vec::with_capacity(entries.len());
+        for (scope, previous) in entries {
+            if gone(self, scope) {
                 restore = previous;
             } else {
                 kept.push((scope, previous));

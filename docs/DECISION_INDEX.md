@@ -154,7 +154,7 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-100` | Camera smoothing is a per-1/60 s rate, independent of frame rate. |
 | `D-110` | Harness runs the real frame body without devices, behind testing feature. Amends `D-088`, `D-107`. Amended by `D-125`: UiHarness. |
 | `D-119` | Game ID selects user folder; engine logger and crash hook installed once. Amends `D-008`: validation. |
-| `D-125` | Core generational UI tree, theme/layout, hit testing/focus and TextNodeStore seam; headless UiHarness. Amends `D-110`, `D-117`. |
+| `D-125` | Core generational UI tree, theme/layout, hit testing/focus and TextNodeStore seam; headless UiHarness. Amends `D-110`, `D-117`. Amended by `D-149`: clip-stack and modal hit testing, visible-focus layered states, scope restore on hide. |
 | `D-128` | Five closed schedule stages, named systems/plugins and core event registration. Amends `D-018`, `D-040`. |
 | `D-129` | Real/game Time, bounded fixed steps, timers and default interpolation. Amends `D-088`, `D-093`, `D-094`. |
 | `D-130` | Safe tuple queries/filters and bundles; old arities deprecated to freeze. Amended by `D-135`: landed forms/accessor, measured costs, PrevPosition at W3b. |
@@ -170,6 +170,7 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-143` | Burst `once: false` re-arms through `rearm_burst` and never drains; the latch is `burst_fired`; zero total pulses emit nothing and fail `validate`. |
 | `D-144` | W1 M0b input groundwork: 28 more key variants, an ordered per-frame raw input stream in `InputState`, focus loss releasing held input, modifiers, pointer leave and the `ScaleFactor` resource. |
 | `D-146` | A zero-step frame on a stopped clock (game dt 0, real dt above 0) drops the fixed view's input edges: a press made while paused or at scale 0 reaches no step; a zero-dt frame keeps them. Amends `D-137`. |
+| `D-149` | W1 M3 UI input routing: `ui_route` in `PreUpdate` routes the ordered raw stream against the last layout (clip-stack hit testing, modal roots, capture, hover, visible-focus keyboard, the `ui_*` actions, directional focus with repeat), publishes `UiEvent`s and feeds the opt-in `RoutedInput`; press ownership keeps keys from sticking; the exit check reads the routed view. Amends `D-125`. Extends `D-040`, `D-045`, `D-088`, `D-128`, `D-144`. |
 
 ## When To Open a Decision
 
