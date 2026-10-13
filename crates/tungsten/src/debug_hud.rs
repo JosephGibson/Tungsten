@@ -67,6 +67,7 @@ impl DebugHud {
             Box::new(camera_provider),
             Box::new(counts_provider),
             Box::new(render_cpu_provider),
+            Box::new(ui_provider),
         ];
         Self {
             enabled: false,
@@ -202,6 +203,28 @@ fn render_cpu_provider(world: &World) -> Vec<HudRow> {
         value: format!(
             "acq {:.2} enc {:.2} sub {:.2}ms",
             ft.render_acquire_ms, ft.render_encode_ms, ft.render_submit_present_ms
+        ),
+    }]
+}
+
+/// M46: the UI paint list's size, the layout stage's cost and the text
+/// batch telemetry (`D-126`'s observable half, Q3).
+fn ui_provider(world: &World) -> Vec<HudRow> {
+    let Some(rc) = world.get_resource::<RenderCounts>() else {
+        return Vec::new();
+    };
+    vec![HudRow {
+        label: "ui",
+        value: format!(
+            "{} cmds layout {}us {}r/{}n text {}b {}prep full {} atlas_full {}",
+            rc.ui_commands,
+            rc.ui_layout_us,
+            rc.ui_roots_laid_out,
+            rc.ui_nodes_laid_out,
+            rc.text_batches,
+            rc.text_batches_prepared,
+            rc.text_full_frames,
+            rc.text_atlas_full
         ),
     }]
 }

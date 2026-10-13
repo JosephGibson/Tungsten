@@ -332,6 +332,9 @@ pub tungsten_core::assets::manifest::ManifestError::MissingSoundFile::path: allo
 pub tungsten_core::assets::manifest::ManifestError::MissingTilemapFile
 pub tungsten_core::assets::manifest::ManifestError::MissingTilemapFile::id: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::MissingTilemapFile::path: alloc::string::String
+pub tungsten_core::assets::manifest::ManifestError::MissingUiThemeFile
+pub tungsten_core::assets::manifest::ManifestError::MissingUiThemeFile::id: alloc::string::String
+pub tungsten_core::assets::manifest::ManifestError::MissingUiThemeFile::path: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::Parse
 pub tungsten_core::assets::manifest::ManifestError::Parse::path: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::Parse::source: serde_json::error::Error
@@ -455,6 +458,7 @@ pub tungsten_core::assets::manifest::RawManifest::shaders: std::collections::has
 pub tungsten_core::assets::manifest::RawManifest::sounds: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::SoundEntry>
 pub tungsten_core::assets::manifest::RawManifest::sprites: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::SpriteEntry>
 pub tungsten_core::assets::manifest::RawManifest::tilemaps: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::TilemapEntry>
+pub tungsten_core::assets::manifest::RawManifest::ui_themes: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::UiThemeEntry>
 impl core::clone::Clone for tungsten_core::assets::manifest::RawManifest
 pub fn tungsten_core::assets::manifest::RawManifest::clone(&self) -> tungsten_core::assets::manifest::RawManifest
 impl core::default::Default for tungsten_core::assets::manifest::RawManifest
@@ -527,6 +531,7 @@ pub tungsten_core::assets::manifest::ResolvedManifest::shaders: std::collections
 pub tungsten_core::assets::manifest::ResolvedManifest::sounds: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedSound>
 pub tungsten_core::assets::manifest::ResolvedManifest::sprites: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedSprite>
 pub tungsten_core::assets::manifest::ResolvedManifest::tilemaps: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedTilemap>
+pub tungsten_core::assets::manifest::ResolvedManifest::ui_themes: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedUiTheme>
 impl tungsten_core::assets::manifest::ResolvedManifest
 pub fn tungsten_core::assets::manifest::ResolvedManifest::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::assets::manifest::ManifestError>
 pub fn tungsten_core::assets::manifest::ResolvedManifest::load_and_merge_many(&[impl core::convert::AsRef<std::path::Path>]) -> core::result::Result<tungsten_core::assets::manifest::ResolvedManifest, tungsten_core::assets::manifest::ManifestError>
@@ -617,6 +622,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::R
 pub struct tungsten_core::assets::manifest::ResolvedSprite
 pub tungsten_core::assets::manifest::ResolvedSprite::emissive_path: core::option::Option<std::path::PathBuf>
 pub tungsten_core::assets::manifest::ResolvedSprite::filter: tungsten_core::assets::manifest::FilterMode
+pub tungsten_core::assets::manifest::ResolvedSprite::nine_slice: core::option::Option<[u32; 4]>
 pub tungsten_core::assets::manifest::ResolvedSprite::normal_path: core::option::Option<std::path::PathBuf>
 pub tungsten_core::assets::manifest::ResolvedSprite::path: std::path::PathBuf
 impl core::clone::Clone for tungsten_core::assets::manifest::ResolvedSprite
@@ -643,6 +649,23 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedTilemap
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedTilemap
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedTilemap
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedTilemap
+pub struct tungsten_core::assets::manifest::ResolvedUiTheme
+pub tungsten_core::assets::manifest::ResolvedUiTheme::path: std::path::PathBuf
+impl core::clone::Clone for tungsten_core::assets::manifest::ResolvedUiTheme
+pub fn tungsten_core::assets::manifest::ResolvedUiTheme::clone(&self) -> tungsten_core::assets::manifest::ResolvedUiTheme
+impl core::cmp::Eq for tungsten_core::assets::manifest::ResolvedUiTheme
+impl core::cmp::PartialEq for tungsten_core::assets::manifest::ResolvedUiTheme
+pub fn tungsten_core::assets::manifest::ResolvedUiTheme::eq(&self, &tungsten_core::assets::manifest::ResolvedUiTheme) -> bool
+impl core::fmt::Debug for tungsten_core::assets::manifest::ResolvedUiTheme
+pub fn tungsten_core::assets::manifest::ResolvedUiTheme::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::manifest::ResolvedUiTheme
+impl core::marker::Freeze for tungsten_core::assets::manifest::ResolvedUiTheme
+impl core::marker::Send for tungsten_core::assets::manifest::ResolvedUiTheme
+impl core::marker::Sync for tungsten_core::assets::manifest::ResolvedUiTheme
+impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedUiTheme
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedUiTheme
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedUiTheme
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedUiTheme
 pub struct tungsten_core::assets::manifest::ShaderEntry
 pub tungsten_core::assets::manifest::ShaderEntry::path: alloc::string::String
 impl core::clone::Clone for tungsten_core::assets::manifest::ShaderEntry
@@ -678,6 +701,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::S
 pub struct tungsten_core::assets::manifest::SpriteEntry
 pub tungsten_core::assets::manifest::SpriteEntry::emissive_mask: core::option::Option<alloc::string::String>
 pub tungsten_core::assets::manifest::SpriteEntry::filter: tungsten_core::assets::manifest::FilterMode
+pub tungsten_core::assets::manifest::SpriteEntry::nine_slice: core::option::Option<[u32; 4]>
 pub tungsten_core::assets::manifest::SpriteEntry::normal_map: core::option::Option<alloc::string::String>
 pub tungsten_core::assets::manifest::SpriteEntry::path: alloc::string::String
 impl core::clone::Clone for tungsten_core::assets::manifest::SpriteEntry
@@ -708,6 +732,21 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::TilemapEntry
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::TilemapEntry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::TilemapEntry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::TilemapEntry
+pub struct tungsten_core::assets::manifest::UiThemeEntry
+pub tungsten_core::assets::manifest::UiThemeEntry::path: alloc::string::String
+impl core::clone::Clone for tungsten_core::assets::manifest::UiThemeEntry
+pub fn tungsten_core::assets::manifest::UiThemeEntry::clone(&self) -> tungsten_core::assets::manifest::UiThemeEntry
+impl core::fmt::Debug for tungsten_core::assets::manifest::UiThemeEntry
+pub fn tungsten_core::assets::manifest::UiThemeEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::manifest::UiThemeEntry
+pub fn tungsten_core::assets::manifest::UiThemeEntry::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::manifest::UiThemeEntry
+impl core::marker::Send for tungsten_core::assets::manifest::UiThemeEntry
+impl core::marker::Sync for tungsten_core::assets::manifest::UiThemeEntry
+impl core::marker::Unpin for tungsten_core::assets::manifest::UiThemeEntry
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::UiThemeEntry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::UiThemeEntry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::UiThemeEntry
 pub type tungsten_core::assets::manifest::ParticleMeshEntry = tungsten_core::assets::particle::ParticleMesh
 pub mod tungsten_core::assets::material
 pub struct tungsten_core::assets::material::MaterialAssetId(pub u32)
@@ -1116,7 +1155,9 @@ pub fn tungsten_core::assets::registry::AssetRegistry::intern_sprite(&mut self, 
 pub fn tungsten_core::assets::registry::AssetRegistry::intern_sprites<'a>(&mut self, impl core::iter::traits::collect::IntoIterator<Item = &'a str>)
 pub fn tungsten_core::assets::registry::AssetRegistry::new() -> Self
 pub fn tungsten_core::assets::registry::AssetRegistry::register_sprite(&mut self, alloc::string::String, tungsten_core::assets::manifest::FilterMode, u32, u32, std::path::PathBuf, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, core::option::Option<std::path::PathBuf>, core::option::Option<std::path::PathBuf>, core::option::Option<tungsten_core::assets::registry::TextureHandle>) -> tungsten_core::assets::registry::SpriteAssetId
+pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_nine_slice(&mut self, &str, core::option::Option<[u32; 4]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<&tungsten_core::assets::registry::SpriteAsset>
+pub fn tungsten_core::assets::registry::AssetRegistry::sprite_epoch(&self) -> u64
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_id(&self, &str) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_name(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<&str>
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_name_for_path(&self, &std::path::Path) -> core::option::Option<&str>
@@ -1157,6 +1198,7 @@ pub tungsten_core::assets::registry::SpriteAsset::emissive_path: core::option::O
 pub tungsten_core::assets::registry::SpriteAsset::filter: tungsten_core::assets::manifest::FilterMode
 pub tungsten_core::assets::registry::SpriteAsset::height: u32
 pub tungsten_core::assets::registry::SpriteAsset::lit_atlas: core::option::Option<tungsten_core::assets::registry::TextureHandle>
+pub tungsten_core::assets::registry::SpriteAsset::nine_slice: core::option::Option<[u32; 4]>
 pub tungsten_core::assets::registry::SpriteAsset::normal_path: core::option::Option<std::path::PathBuf>
 pub tungsten_core::assets::registry::SpriteAsset::path: std::path::PathBuf
 pub tungsten_core::assets::registry::SpriteAsset::uv: tungsten_core::assets::atlas::UvRect
@@ -1792,6 +1834,9 @@ pub tungsten_core::assets::ManifestError::MissingSoundFile::path: alloc::string:
 pub tungsten_core::assets::ManifestError::MissingTilemapFile
 pub tungsten_core::assets::ManifestError::MissingTilemapFile::id: alloc::string::String
 pub tungsten_core::assets::ManifestError::MissingTilemapFile::path: alloc::string::String
+pub tungsten_core::assets::ManifestError::MissingUiThemeFile
+pub tungsten_core::assets::ManifestError::MissingUiThemeFile::id: alloc::string::String
+pub tungsten_core::assets::ManifestError::MissingUiThemeFile::path: alloc::string::String
 pub tungsten_core::assets::ManifestError::Parse
 pub tungsten_core::assets::ManifestError::Parse::path: alloc::string::String
 pub tungsten_core::assets::ManifestError::Parse::source: serde_json::error::Error
@@ -2104,7 +2149,9 @@ pub fn tungsten_core::assets::registry::AssetRegistry::intern_sprite(&mut self, 
 pub fn tungsten_core::assets::registry::AssetRegistry::intern_sprites<'a>(&mut self, impl core::iter::traits::collect::IntoIterator<Item = &'a str>)
 pub fn tungsten_core::assets::registry::AssetRegistry::new() -> Self
 pub fn tungsten_core::assets::registry::AssetRegistry::register_sprite(&mut self, alloc::string::String, tungsten_core::assets::manifest::FilterMode, u32, u32, std::path::PathBuf, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, core::option::Option<std::path::PathBuf>, core::option::Option<std::path::PathBuf>, core::option::Option<tungsten_core::assets::registry::TextureHandle>) -> tungsten_core::assets::registry::SpriteAssetId
+pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_nine_slice(&mut self, &str, core::option::Option<[u32; 4]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<&tungsten_core::assets::registry::SpriteAsset>
+pub fn tungsten_core::assets::registry::AssetRegistry::sprite_epoch(&self) -> u64
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_id(&self, &str) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_name(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<&str>
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_name_for_path(&self, &std::path::Path) -> core::option::Option<&str>
@@ -2589,6 +2636,7 @@ pub tungsten_core::assets::ResolvedManifest::shaders: std::collections::hash::ma
 pub tungsten_core::assets::ResolvedManifest::sounds: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedSound>
 pub tungsten_core::assets::ResolvedManifest::sprites: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedSprite>
 pub tungsten_core::assets::ResolvedManifest::tilemaps: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedTilemap>
+pub tungsten_core::assets::ResolvedManifest::ui_themes: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedUiTheme>
 impl tungsten_core::assets::manifest::ResolvedManifest
 pub fn tungsten_core::assets::manifest::ResolvedManifest::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::assets::manifest::ManifestError>
 pub fn tungsten_core::assets::manifest::ResolvedManifest::load_and_merge_many(&[impl core::convert::AsRef<std::path::Path>]) -> core::result::Result<tungsten_core::assets::manifest::ResolvedManifest, tungsten_core::assets::manifest::ManifestError>
@@ -2689,6 +2737,23 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedTilemap
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedTilemap
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedTilemap
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedTilemap
+pub struct tungsten_core::assets::ResolvedUiTheme
+pub tungsten_core::assets::ResolvedUiTheme::path: std::path::PathBuf
+impl core::clone::Clone for tungsten_core::assets::manifest::ResolvedUiTheme
+pub fn tungsten_core::assets::manifest::ResolvedUiTheme::clone(&self) -> tungsten_core::assets::manifest::ResolvedUiTheme
+impl core::cmp::Eq for tungsten_core::assets::manifest::ResolvedUiTheme
+impl core::cmp::PartialEq for tungsten_core::assets::manifest::ResolvedUiTheme
+pub fn tungsten_core::assets::manifest::ResolvedUiTheme::eq(&self, &tungsten_core::assets::manifest::ResolvedUiTheme) -> bool
+impl core::fmt::Debug for tungsten_core::assets::manifest::ResolvedUiTheme
+pub fn tungsten_core::assets::manifest::ResolvedUiTheme::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::manifest::ResolvedUiTheme
+impl core::marker::Freeze for tungsten_core::assets::manifest::ResolvedUiTheme
+impl core::marker::Send for tungsten_core::assets::manifest::ResolvedUiTheme
+impl core::marker::Sync for tungsten_core::assets::manifest::ResolvedUiTheme
+impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedUiTheme
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedUiTheme
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedUiTheme
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedUiTheme
 pub struct tungsten_core::assets::SceneData
 pub tungsten_core::assets::SceneData::entities: alloc::vec::Vec<tungsten_core::assets::scene::SceneEntry>
 impl tungsten_core::assets::scene::SceneData
@@ -2904,6 +2969,7 @@ pub tungsten_core::assets::SpriteAsset::emissive_path: core::option::Option<std:
 pub tungsten_core::assets::SpriteAsset::filter: tungsten_core::assets::manifest::FilterMode
 pub tungsten_core::assets::SpriteAsset::height: u32
 pub tungsten_core::assets::SpriteAsset::lit_atlas: core::option::Option<tungsten_core::assets::registry::TextureHandle>
+pub tungsten_core::assets::SpriteAsset::nine_slice: core::option::Option<[u32; 4]>
 pub tungsten_core::assets::SpriteAsset::normal_path: core::option::Option<std::path::PathBuf>
 pub tungsten_core::assets::SpriteAsset::path: std::path::PathBuf
 pub tungsten_core::assets::SpriteAsset::uv: tungsten_core::assets::atlas::UvRect
@@ -3032,6 +3098,21 @@ impl core::marker::Unpin for tungsten_core::assets::tilemap::TilemapRegistry
 impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::TilemapRegistry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::TilemapRegistry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::TilemapRegistry
+pub struct tungsten_core::assets::UiThemeEntry
+pub tungsten_core::assets::UiThemeEntry::path: alloc::string::String
+impl core::clone::Clone for tungsten_core::assets::manifest::UiThemeEntry
+pub fn tungsten_core::assets::manifest::UiThemeEntry::clone(&self) -> tungsten_core::assets::manifest::UiThemeEntry
+impl core::fmt::Debug for tungsten_core::assets::manifest::UiThemeEntry
+pub fn tungsten_core::assets::manifest::UiThemeEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::manifest::UiThemeEntry
+pub fn tungsten_core::assets::manifest::UiThemeEntry::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::manifest::UiThemeEntry
+impl core::marker::Send for tungsten_core::assets::manifest::UiThemeEntry
+impl core::marker::Sync for tungsten_core::assets::manifest::UiThemeEntry
+impl core::marker::Unpin for tungsten_core::assets::manifest::UiThemeEntry
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::UiThemeEntry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::UiThemeEntry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::UiThemeEntry
 pub struct tungsten_core::assets::UvRect
 pub tungsten_core::assets::UvRect::max: [f32; 2]
 pub tungsten_core::assets::UvRect::min: [f32; 2]
@@ -7587,6 +7668,7 @@ pub mod tungsten_core::ui::node
 pub tungsten_core::ui::node::Role::Button
 pub tungsten_core::ui::node::Role::Dialog
 pub tungsten_core::ui::node::Role::Group
+pub tungsten_core::ui::node::Role::Image
 pub tungsten_core::ui::node::Role::Label
 pub tungsten_core::ui::node::Role::None
 pub tungsten_core::ui::node::Role::Window
@@ -7667,10 +7749,12 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::node::Visibi
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::node::Visibility
 #[non_exhaustive] pub enum tungsten_core::ui::node::WidgetKind
 pub tungsten_core::ui::node::WidgetKind::Button
+pub tungsten_core::ui::node::WidgetKind::Image
 pub tungsten_core::ui::node::WidgetKind::Label
 pub tungsten_core::ui::node::WidgetKind::Panel
 impl tungsten_core::ui::node::WidgetKind
 pub const fn tungsten_core::ui::node::WidgetKind::default_role(self) -> tungsten_core::ui::node::Role
+pub const fn tungsten_core::ui::node::WidgetKind::is_leaf(self) -> bool
 impl core::clone::Clone for tungsten_core::ui::node::WidgetKind
 pub fn tungsten_core::ui::node::WidgetKind::clone(&self) -> tungsten_core::ui::node::WidgetKind
 impl core::cmp::Eq for tungsten_core::ui::node::WidgetKind
@@ -7689,6 +7773,124 @@ impl core::marker::Unpin for tungsten_core::ui::node::WidgetKind
 impl core::marker::UnsafeUnpin for tungsten_core::ui::node::WidgetKind
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::node::WidgetKind
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::node::WidgetKind
+pub mod tungsten_core::ui::paint
+#[non_exhaustive] pub enum tungsten_core::ui::paint::PaintCommand
+pub tungsten_core::ui::paint::PaintCommand::Image
+pub tungsten_core::ui::paint::PaintCommand::Image::clip: u32
+pub tungsten_core::ui::paint::PaintCommand::Image::filter: tungsten_core::assets::manifest::FilterMode
+pub tungsten_core::ui::paint::PaintCommand::Image::rect: tungsten_core::ui::geometry::Rect
+pub tungsten_core::ui::paint::PaintCommand::Image::texture: tungsten_core::assets::registry::TextureHandle
+pub tungsten_core::ui::paint::PaintCommand::Image::tint: [u8; 4]
+pub tungsten_core::ui::paint::PaintCommand::Image::uv: tungsten_core::assets::atlas::UvRect
+pub tungsten_core::ui::paint::PaintCommand::Rect
+pub tungsten_core::ui::paint::PaintCommand::Rect::border: [u8; 4]
+pub tungsten_core::ui::paint::PaintCommand::Rect::border_width: f32
+pub tungsten_core::ui::paint::PaintCommand::Rect::clip: u32
+pub tungsten_core::ui::paint::PaintCommand::Rect::corner_radius: f32
+pub tungsten_core::ui::paint::PaintCommand::Rect::fill: [u8; 4]
+pub tungsten_core::ui::paint::PaintCommand::Rect::rect: tungsten_core::ui::geometry::Rect
+pub tungsten_core::ui::paint::PaintCommand::Text
+pub tungsten_core::ui::paint::PaintCommand::Text::clip: u32
+pub tungsten_core::ui::paint::PaintCommand::Text::color: [u8; 4]
+pub tungsten_core::ui::paint::PaintCommand::Text::node: tungsten_core::text::TextNodeId
+pub tungsten_core::ui::paint::PaintCommand::Text::rect: tungsten_core::ui::geometry::Rect
+impl tungsten_core::ui::paint::PaintCommand
+pub fn tungsten_core::ui::paint::PaintCommand::clip(&self) -> u32
+pub fn tungsten_core::ui::paint::PaintCommand::is_text(&self) -> bool
+pub fn tungsten_core::ui::paint::PaintCommand::rect(&self) -> tungsten_core::ui::geometry::Rect
+impl core::clone::Clone for tungsten_core::ui::paint::PaintCommand
+pub fn tungsten_core::ui::paint::PaintCommand::clone(&self) -> tungsten_core::ui::paint::PaintCommand
+impl core::cmp::PartialEq for tungsten_core::ui::paint::PaintCommand
+pub fn tungsten_core::ui::paint::PaintCommand::eq(&self, &tungsten_core::ui::paint::PaintCommand) -> bool
+impl core::fmt::Debug for tungsten_core::ui::paint::PaintCommand
+pub fn tungsten_core::ui::paint::PaintCommand::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::ui::paint::PaintCommand
+impl core::marker::StructuralPartialEq for tungsten_core::ui::paint::PaintCommand
+impl core::marker::Freeze for tungsten_core::ui::paint::PaintCommand
+impl core::marker::Send for tungsten_core::ui::paint::PaintCommand
+impl core::marker::Sync for tungsten_core::ui::paint::PaintCommand
+impl core::marker::Unpin for tungsten_core::ui::paint::PaintCommand
+impl core::marker::UnsafeUnpin for tungsten_core::ui::paint::PaintCommand
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::paint::PaintCommand
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::paint::PaintCommand
+pub struct tungsten_core::ui::paint::ClipRect
+pub tungsten_core::ui::paint::ClipRect::height: i32
+pub tungsten_core::ui::paint::ClipRect::width: i32
+pub tungsten_core::ui::paint::ClipRect::x: i32
+pub tungsten_core::ui::paint::ClipRect::y: i32
+impl tungsten_core::ui::paint::ClipRect
+pub fn tungsten_core::ui::paint::ClipRect::intersect(self, Self) -> Self
+pub const fn tungsten_core::ui::paint::ClipRect::is_empty(self) -> bool
+impl core::clone::Clone for tungsten_core::ui::paint::ClipRect
+pub fn tungsten_core::ui::paint::ClipRect::clone(&self) -> tungsten_core::ui::paint::ClipRect
+impl core::cmp::Eq for tungsten_core::ui::paint::ClipRect
+impl core::cmp::PartialEq for tungsten_core::ui::paint::ClipRect
+pub fn tungsten_core::ui::paint::ClipRect::eq(&self, &tungsten_core::ui::paint::ClipRect) -> bool
+impl core::default::Default for tungsten_core::ui::paint::ClipRect
+pub fn tungsten_core::ui::paint::ClipRect::default() -> tungsten_core::ui::paint::ClipRect
+impl core::fmt::Debug for tungsten_core::ui::paint::ClipRect
+pub fn tungsten_core::ui::paint::ClipRect::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::ui::paint::ClipRect
+pub fn tungsten_core::ui::paint::ClipRect::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::ui::paint::ClipRect
+impl core::marker::StructuralPartialEq for tungsten_core::ui::paint::ClipRect
+impl core::marker::Freeze for tungsten_core::ui::paint::ClipRect
+impl core::marker::Send for tungsten_core::ui::paint::ClipRect
+impl core::marker::Sync for tungsten_core::ui::paint::ClipRect
+impl core::marker::Unpin for tungsten_core::ui::paint::ClipRect
+impl core::marker::UnsafeUnpin for tungsten_core::ui::paint::ClipRect
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::paint::ClipRect
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::paint::ClipRect
+pub struct tungsten_core::ui::paint::PaintList
+pub tungsten_core::ui::paint::PaintList::clips: alloc::vec::Vec<tungsten_core::ui::paint::ClipRect>
+pub tungsten_core::ui::paint::PaintList::commands: alloc::vec::Vec<tungsten_core::ui::paint::PaintCommand>
+pub tungsten_core::ui::paint::PaintList::scale: f32
+impl tungsten_core::ui::paint::PaintList
+pub fn tungsten_core::ui::paint::PaintList::clear(&mut self)
+pub fn tungsten_core::ui::paint::PaintList::clip_of(&self, &tungsten_core::ui::paint::PaintCommand) -> tungsten_core::ui::paint::ClipRect
+pub fn tungsten_core::ui::paint::PaintList::dump(&self) -> alloc::string::String
+pub fn tungsten_core::ui::paint::PaintList::is_empty(&self) -> bool
+pub fn tungsten_core::ui::paint::PaintList::text_batches(&self) -> alloc::vec::Vec<core::ops::range::Range<usize>>
+impl core::clone::Clone for tungsten_core::ui::paint::PaintList
+pub fn tungsten_core::ui::paint::PaintList::clone(&self) -> tungsten_core::ui::paint::PaintList
+impl core::cmp::PartialEq for tungsten_core::ui::paint::PaintList
+pub fn tungsten_core::ui::paint::PaintList::eq(&self, &tungsten_core::ui::paint::PaintList) -> bool
+impl core::default::Default for tungsten_core::ui::paint::PaintList
+pub fn tungsten_core::ui::paint::PaintList::default() -> Self
+impl core::fmt::Debug for tungsten_core::ui::paint::PaintList
+pub fn tungsten_core::ui::paint::PaintList::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::ui::paint::PaintList
+impl core::marker::Freeze for tungsten_core::ui::paint::PaintList
+impl core::marker::Send for tungsten_core::ui::paint::PaintList
+impl core::marker::Sync for tungsten_core::ui::paint::PaintList
+impl core::marker::Unpin for tungsten_core::ui::paint::PaintList
+impl core::marker::UnsafeUnpin for tungsten_core::ui::paint::PaintList
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::paint::PaintList
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::paint::PaintList
+pub struct tungsten_core::ui::paint::UiDebug
+pub tungsten_core::ui::paint::UiDebug::hide_game_layers: bool
+pub tungsten_core::ui::paint::UiDebug::show_bounds: bool
+impl core::clone::Clone for tungsten_core::ui::paint::UiDebug
+pub fn tungsten_core::ui::paint::UiDebug::clone(&self) -> tungsten_core::ui::paint::UiDebug
+impl core::cmp::Eq for tungsten_core::ui::paint::UiDebug
+impl core::cmp::PartialEq for tungsten_core::ui::paint::UiDebug
+pub fn tungsten_core::ui::paint::UiDebug::eq(&self, &tungsten_core::ui::paint::UiDebug) -> bool
+impl core::default::Default for tungsten_core::ui::paint::UiDebug
+pub fn tungsten_core::ui::paint::UiDebug::default() -> tungsten_core::ui::paint::UiDebug
+impl core::fmt::Debug for tungsten_core::ui::paint::UiDebug
+pub fn tungsten_core::ui::paint::UiDebug::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::ui::paint::UiDebug
+pub fn tungsten_core::ui::paint::UiDebug::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::ui::paint::UiDebug
+impl core::marker::StructuralPartialEq for tungsten_core::ui::paint::UiDebug
+impl core::marker::Freeze for tungsten_core::ui::paint::UiDebug
+impl core::marker::Send for tungsten_core::ui::paint::UiDebug
+impl core::marker::Sync for tungsten_core::ui::paint::UiDebug
+impl core::marker::Unpin for tungsten_core::ui::paint::UiDebug
+impl core::marker::UnsafeUnpin for tungsten_core::ui::paint::UiDebug
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::paint::UiDebug
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::paint::UiDebug
+pub fn tungsten_core::ui::paint::to_physical(tungsten_core::ui::geometry::Rect, f32) -> tungsten_core::ui::paint::ClipRect
 pub mod tungsten_core::ui::style
 #[non_exhaustive] pub enum tungsten_core::ui::style::Align
 pub tungsten_core::ui::style::Align::Center
@@ -8001,6 +8203,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme::KindS
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme::KindStyle
 pub struct tungsten_core::ui::theme::KindStyles
 pub tungsten_core::ui::theme::KindStyles::button: tungsten_core::ui::theme::KindStyle
+pub tungsten_core::ui::theme::KindStyles::image: tungsten_core::ui::theme::KindStyle
 pub tungsten_core::ui::theme::KindStyles::label: tungsten_core::ui::theme::KindStyle
 pub tungsten_core::ui::theme::KindStyles::panel: tungsten_core::ui::theme::KindStyle
 impl tungsten_core::ui::theme::KindStyles
@@ -8253,6 +8456,67 @@ impl core::marker::UnsafeUnpin for tungsten_core::ui::theme::VisualStyle
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme::VisualStyle
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme::VisualStyle
 pub fn tungsten_core::ui::theme::resolve(&tungsten_core::ui::theme::Theme, tungsten_core::ui::node::WidgetKind, tungsten_core::ui::theme::WidgetState, &tungsten_core::ui::theme::StyleOverrides, &tungsten_core::text::TextStyle) -> tungsten_core::ui::theme::ResolvedStyle
+pub mod tungsten_core::ui::theme_file
+pub enum tungsten_core::ui::theme_file::ThemeFileError
+pub tungsten_core::ui::theme_file::ThemeFileError::Io
+pub tungsten_core::ui::theme_file::ThemeFileError::Io::path: alloc::string::String
+pub tungsten_core::ui::theme_file::ThemeFileError::Io::source: core::io::error::Error
+pub tungsten_core::ui::theme_file::ThemeFileError::Parse
+pub tungsten_core::ui::theme_file::ThemeFileError::Parse::path: alloc::string::String
+pub tungsten_core::ui::theme_file::ThemeFileError::Parse::source: serde_json::error::Error
+impl core::error::Error for tungsten_core::ui::theme_file::ThemeFileError
+pub fn tungsten_core::ui::theme_file::ThemeFileError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tungsten_core::ui::theme_file::ThemeFileError
+pub fn tungsten_core::ui::theme_file::ThemeFileError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::ui::theme_file::ThemeFileError
+pub fn tungsten_core::ui::theme_file::ThemeFileError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::ui::theme_file::ThemeFileError
+impl core::marker::Send for tungsten_core::ui::theme_file::ThemeFileError
+impl core::marker::Sync for tungsten_core::ui::theme_file::ThemeFileError
+impl core::marker::Unpin for tungsten_core::ui::theme_file::ThemeFileError
+impl core::marker::UnsafeUnpin for tungsten_core::ui::theme_file::ThemeFileError
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme_file::ThemeFileError
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme_file::ThemeFileError
+pub struct tungsten_core::ui::theme_file::ThemeFile
+impl tungsten_core::ui::theme_file::ThemeFile
+pub fn tungsten_core::ui::theme_file::ThemeFile::from_json(&str) -> core::result::Result<Self, serde_json::error::Error>
+pub fn tungsten_core::ui::theme_file::ThemeFile::into_theme(self) -> tungsten_core::ui::theme::Theme
+pub fn tungsten_core::ui::theme_file::ThemeFile::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::ui::theme_file::ThemeFileError>
+impl core::clone::Clone for tungsten_core::ui::theme_file::ThemeFile
+pub fn tungsten_core::ui::theme_file::ThemeFile::clone(&self) -> tungsten_core::ui::theme_file::ThemeFile
+impl core::default::Default for tungsten_core::ui::theme_file::ThemeFile
+pub fn tungsten_core::ui::theme_file::ThemeFile::default() -> tungsten_core::ui::theme_file::ThemeFile
+impl core::fmt::Debug for tungsten_core::ui::theme_file::ThemeFile
+pub fn tungsten_core::ui::theme_file::ThemeFile::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::ui::theme_file::ThemeFile where tungsten_core::ui::theme_file::ThemeFile: core::default::Default
+pub fn tungsten_core::ui::theme_file::ThemeFile::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::ui::theme_file::ThemeFile
+impl core::marker::Send for tungsten_core::ui::theme_file::ThemeFile
+impl core::marker::Sync for tungsten_core::ui::theme_file::ThemeFile
+impl core::marker::Unpin for tungsten_core::ui::theme_file::ThemeFile
+impl core::marker::UnsafeUnpin for tungsten_core::ui::theme_file::ThemeFile
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme_file::ThemeFile
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme_file::ThemeFile
+pub struct tungsten_core::ui::theme_file::UiThemeRegistry
+impl tungsten_core::ui::theme_file::UiThemeRegistry
+pub fn tungsten_core::ui::theme_file::UiThemeRegistry::contains(&self, &str) -> bool
+pub fn tungsten_core::ui::theme_file::UiThemeRegistry::get(&self, &str) -> core::option::Option<&tungsten_core::ui::theme::Theme>
+pub fn tungsten_core::ui::theme_file::UiThemeRegistry::ids(&self) -> alloc::vec::Vec<&str>
+pub fn tungsten_core::ui::theme_file::UiThemeRegistry::insert(&mut self, impl core::convert::Into<alloc::string::String>, tungsten_core::ui::theme::Theme) -> core::option::Option<tungsten_core::ui::theme::Theme>
+pub fn tungsten_core::ui::theme_file::UiThemeRegistry::is_empty(&self) -> bool
+pub fn tungsten_core::ui::theme_file::UiThemeRegistry::len(&self) -> usize
+pub fn tungsten_core::ui::theme_file::UiThemeRegistry::new() -> Self
+impl core::default::Default for tungsten_core::ui::theme_file::UiThemeRegistry
+pub fn tungsten_core::ui::theme_file::UiThemeRegistry::default() -> tungsten_core::ui::theme_file::UiThemeRegistry
+impl core::fmt::Debug for tungsten_core::ui::theme_file::UiThemeRegistry
+pub fn tungsten_core::ui::theme_file::UiThemeRegistry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::ui::theme_file::UiThemeRegistry
+impl core::marker::Send for tungsten_core::ui::theme_file::UiThemeRegistry
+impl core::marker::Sync for tungsten_core::ui::theme_file::UiThemeRegistry
+impl core::marker::Unpin for tungsten_core::ui::theme_file::UiThemeRegistry
+impl core::marker::UnsafeUnpin for tungsten_core::ui::theme_file::UiThemeRegistry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme_file::UiThemeRegistry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme_file::UiThemeRegistry
 pub mod tungsten_core::ui::tree
 pub struct tungsten_core::ui::tree::LayoutStats
 pub tungsten_core::ui::tree::LayoutStats::commits: u32
@@ -8284,11 +8548,14 @@ pub fn tungsten_core::ui::tree::UiTree::add_root(&mut self, tungsten_core::ui::n
 pub fn tungsten_core::ui::tree::UiTree::button(&mut self, tungsten_core::ui::id::WidgetId, impl core::convert::Into<tungsten_core::text::StyledText>) -> tungsten_core::ui::id::WidgetId
 pub fn tungsten_core::ui::tree::UiTree::children(&self, tungsten_core::ui::id::WidgetId) -> &[tungsten_core::ui::id::WidgetId]
 pub fn tungsten_core::ui::tree::UiTree::clear_paint_dirty(&mut self)
+pub fn tungsten_core::ui::tree::UiTree::clips_children(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::contains(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::enabled(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::focus_scope(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::focusable(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::hit_testable(&self, tungsten_core::ui::id::WidgetId) -> bool
+pub fn tungsten_core::ui::tree::UiTree::image(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::assets::registry::SpriteAssetId, glam::f32::vec2::Vec2, tungsten_core::ui::style::LayoutStyle) -> tungsten_core::ui::id::WidgetId
+pub fn tungsten_core::ui::tree::UiTree::image_sprite(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
 pub fn tungsten_core::ui::tree::UiTree::interactive(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::is_layout_dirty(&self) -> bool
 pub fn tungsten_core::ui::tree::UiTree::is_paint_dirty(&self) -> bool
@@ -8306,20 +8573,25 @@ pub fn tungsten_core::ui::tree::UiTree::role(&self, tungsten_core::ui::id::Widge
 pub fn tungsten_core::ui::tree::UiTree::root_of(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten_core::ui::tree::UiTree::roots(&self) -> &[tungsten_core::ui::id::WidgetId]
 pub fn tungsten_core::ui::tree::UiTree::set_accessible_name(&mut self, tungsten_core::ui::id::WidgetId, core::option::Option<alloc::string::String>)
+pub fn tungsten_core::ui::tree::UiTree::set_clip_children(&mut self, tungsten_core::ui::id::WidgetId, bool)
 pub fn tungsten_core::ui::tree::UiTree::set_enabled(&mut self, tungsten_core::ui::id::WidgetId, bool)
 pub fn tungsten_core::ui::tree::UiTree::set_focus_scope(&mut self, tungsten_core::ui::id::WidgetId, bool)
 pub fn tungsten_core::ui::tree::UiTree::set_focusable(&mut self, tungsten_core::ui::id::WidgetId, bool)
 pub fn tungsten_core::ui::tree::UiTree::set_hit_testable(&mut self, tungsten_core::ui::id::WidgetId, bool)
+pub fn tungsten_core::ui::tree::UiTree::set_image(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::assets::registry::SpriteAssetId, glam::f32::vec2::Vec2)
+pub fn tungsten_core::ui::tree::UiTree::set_image_tint(&mut self, tungsten_core::ui::id::WidgetId, [u8; 4])
 pub fn tungsten_core::ui::tree::UiTree::set_interactive(&mut self, tungsten_core::ui::id::WidgetId, bool)
 pub fn tungsten_core::ui::tree::UiTree::set_layout_style(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::style::LayoutStyle)
 pub fn tungsten_core::ui::tree::UiTree::set_overrides(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::theme::StyleOverrides)
 pub fn tungsten_core::ui::tree::UiTree::set_role(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::node::Role)
 pub fn tungsten_core::ui::tree::UiTree::set_text(&mut self, tungsten_core::ui::id::WidgetId, impl core::convert::Into<tungsten_core::text::StyledText>) -> bool
 pub fn tungsten_core::ui::tree::UiTree::set_theme(&mut self, tungsten_core::ui::theme::Theme)
+pub fn tungsten_core::ui::tree::UiTree::set_theme_asset(&mut self, &str, tungsten_core::ui::theme::Theme)
 pub fn tungsten_core::ui::tree::UiTree::set_visibility(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::node::Visibility)
 pub fn tungsten_core::ui::tree::UiTree::text(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<&tungsten_core::text::StyledText>
 pub fn tungsten_core::ui::tree::UiTree::theme(&self) -> &tungsten_core::ui::theme::Theme
 pub fn tungsten_core::ui::tree::UiTree::theme_epoch(&self) -> tungsten_core::ui::theme::ThemeEpoch
+pub fn tungsten_core::ui::tree::UiTree::theme_id(&self) -> core::option::Option<&str>
 pub fn tungsten_core::ui::tree::UiTree::visibility(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::node::Visibility>
 pub fn tungsten_core::ui::tree::UiTree::widget_state(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::theme::WidgetState>
 impl tungsten_core::ui::tree::UiTree
@@ -8336,6 +8608,8 @@ pub fn tungsten_core::ui::tree::UiTree::rect(&self, tungsten_core::ui::id::Widge
 pub fn tungsten_core::ui::tree::UiTree::text_node(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::text::TextNodeId>
 impl tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::hit_test(&self, glam::f32::vec2::Vec2) -> core::option::Option<tungsten_core::ui::id::WidgetId>
+impl tungsten_core::ui::tree::UiTree
+pub fn tungsten_core::ui::tree::UiTree::paint(&mut self, f32, &tungsten_core::ui::paint::UiDebug, &tungsten_core::assets::registry::AssetRegistry, &mut tungsten_core::ui::paint::PaintList)
 impl core::default::Default for tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::default() -> tungsten_core::ui::tree::UiTree
 impl core::fmt::Debug for tungsten_core::ui::tree::UiTree
@@ -8452,6 +8726,45 @@ impl core::marker::Unpin for tungsten_core::ui::style::Justify
 impl core::marker::UnsafeUnpin for tungsten_core::ui::style::Justify
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::style::Justify
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::style::Justify
+#[non_exhaustive] pub enum tungsten_core::ui::PaintCommand
+pub tungsten_core::ui::PaintCommand::Image
+pub tungsten_core::ui::PaintCommand::Image::clip: u32
+pub tungsten_core::ui::PaintCommand::Image::filter: tungsten_core::assets::manifest::FilterMode
+pub tungsten_core::ui::PaintCommand::Image::rect: tungsten_core::ui::geometry::Rect
+pub tungsten_core::ui::PaintCommand::Image::texture: tungsten_core::assets::registry::TextureHandle
+pub tungsten_core::ui::PaintCommand::Image::tint: [u8; 4]
+pub tungsten_core::ui::PaintCommand::Image::uv: tungsten_core::assets::atlas::UvRect
+pub tungsten_core::ui::PaintCommand::Rect
+pub tungsten_core::ui::PaintCommand::Rect::border: [u8; 4]
+pub tungsten_core::ui::PaintCommand::Rect::border_width: f32
+pub tungsten_core::ui::PaintCommand::Rect::clip: u32
+pub tungsten_core::ui::PaintCommand::Rect::corner_radius: f32
+pub tungsten_core::ui::PaintCommand::Rect::fill: [u8; 4]
+pub tungsten_core::ui::PaintCommand::Rect::rect: tungsten_core::ui::geometry::Rect
+pub tungsten_core::ui::PaintCommand::Text
+pub tungsten_core::ui::PaintCommand::Text::clip: u32
+pub tungsten_core::ui::PaintCommand::Text::color: [u8; 4]
+pub tungsten_core::ui::PaintCommand::Text::node: tungsten_core::text::TextNodeId
+pub tungsten_core::ui::PaintCommand::Text::rect: tungsten_core::ui::geometry::Rect
+impl tungsten_core::ui::paint::PaintCommand
+pub fn tungsten_core::ui::paint::PaintCommand::clip(&self) -> u32
+pub fn tungsten_core::ui::paint::PaintCommand::is_text(&self) -> bool
+pub fn tungsten_core::ui::paint::PaintCommand::rect(&self) -> tungsten_core::ui::geometry::Rect
+impl core::clone::Clone for tungsten_core::ui::paint::PaintCommand
+pub fn tungsten_core::ui::paint::PaintCommand::clone(&self) -> tungsten_core::ui::paint::PaintCommand
+impl core::cmp::PartialEq for tungsten_core::ui::paint::PaintCommand
+pub fn tungsten_core::ui::paint::PaintCommand::eq(&self, &tungsten_core::ui::paint::PaintCommand) -> bool
+impl core::fmt::Debug for tungsten_core::ui::paint::PaintCommand
+pub fn tungsten_core::ui::paint::PaintCommand::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::ui::paint::PaintCommand
+impl core::marker::StructuralPartialEq for tungsten_core::ui::paint::PaintCommand
+impl core::marker::Freeze for tungsten_core::ui::paint::PaintCommand
+impl core::marker::Send for tungsten_core::ui::paint::PaintCommand
+impl core::marker::Sync for tungsten_core::ui::paint::PaintCommand
+impl core::marker::Unpin for tungsten_core::ui::paint::PaintCommand
+impl core::marker::UnsafeUnpin for tungsten_core::ui::paint::PaintCommand
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::paint::PaintCommand
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::paint::PaintCommand
 #[non_exhaustive] pub enum tungsten_core::ui::Placement
 pub tungsten_core::ui::Placement::Anchored
 pub tungsten_core::ui::Placement::Anchored::anchor: tungsten_core::ui::style::Anchor
@@ -8478,6 +8791,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::style::Placemen
 pub tungsten_core::ui::Role::Button
 pub tungsten_core::ui::Role::Dialog
 pub tungsten_core::ui::Role::Group
+pub tungsten_core::ui::Role::Image
 pub tungsten_core::ui::Role::Label
 pub tungsten_core::ui::Role::None
 pub tungsten_core::ui::Role::Window
@@ -8523,6 +8837,26 @@ impl core::marker::Unpin for tungsten_core::ui::style::Sizing
 impl core::marker::UnsafeUnpin for tungsten_core::ui::style::Sizing
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::style::Sizing
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::style::Sizing
+pub enum tungsten_core::ui::ThemeFileError
+pub tungsten_core::ui::ThemeFileError::Io
+pub tungsten_core::ui::ThemeFileError::Io::path: alloc::string::String
+pub tungsten_core::ui::ThemeFileError::Io::source: core::io::error::Error
+pub tungsten_core::ui::ThemeFileError::Parse
+pub tungsten_core::ui::ThemeFileError::Parse::path: alloc::string::String
+pub tungsten_core::ui::ThemeFileError::Parse::source: serde_json::error::Error
+impl core::error::Error for tungsten_core::ui::theme_file::ThemeFileError
+pub fn tungsten_core::ui::theme_file::ThemeFileError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tungsten_core::ui::theme_file::ThemeFileError
+pub fn tungsten_core::ui::theme_file::ThemeFileError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::ui::theme_file::ThemeFileError
+pub fn tungsten_core::ui::theme_file::ThemeFileError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::ui::theme_file::ThemeFileError
+impl core::marker::Send for tungsten_core::ui::theme_file::ThemeFileError
+impl core::marker::Sync for tungsten_core::ui::theme_file::ThemeFileError
+impl core::marker::Unpin for tungsten_core::ui::theme_file::ThemeFileError
+impl core::marker::UnsafeUnpin for tungsten_core::ui::theme_file::ThemeFileError
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme_file::ThemeFileError
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme_file::ThemeFileError
 #[non_exhaustive] pub enum tungsten_core::ui::UiLayer
 pub tungsten_core::ui::UiLayer::Debug
 pub tungsten_core::ui::UiLayer::DebugPopup
@@ -8580,10 +8914,12 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::node::Visibi
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::node::Visibility
 #[non_exhaustive] pub enum tungsten_core::ui::WidgetKind
 pub tungsten_core::ui::WidgetKind::Button
+pub tungsten_core::ui::WidgetKind::Image
 pub tungsten_core::ui::WidgetKind::Label
 pub tungsten_core::ui::WidgetKind::Panel
 impl tungsten_core::ui::node::WidgetKind
 pub const fn tungsten_core::ui::node::WidgetKind::default_role(self) -> tungsten_core::ui::node::Role
+pub const fn tungsten_core::ui::node::WidgetKind::is_leaf(self) -> bool
 impl core::clone::Clone for tungsten_core::ui::node::WidgetKind
 pub fn tungsten_core::ui::node::WidgetKind::clone(&self) -> tungsten_core::ui::node::WidgetKind
 impl core::cmp::Eq for tungsten_core::ui::node::WidgetKind
@@ -8626,6 +8962,34 @@ impl core::marker::Unpin for tungsten_core::ui::theme::WidgetState
 impl core::marker::UnsafeUnpin for tungsten_core::ui::theme::WidgetState
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme::WidgetState
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme::WidgetState
+pub struct tungsten_core::ui::ClipRect
+pub tungsten_core::ui::ClipRect::height: i32
+pub tungsten_core::ui::ClipRect::width: i32
+pub tungsten_core::ui::ClipRect::x: i32
+pub tungsten_core::ui::ClipRect::y: i32
+impl tungsten_core::ui::paint::ClipRect
+pub fn tungsten_core::ui::paint::ClipRect::intersect(self, Self) -> Self
+pub const fn tungsten_core::ui::paint::ClipRect::is_empty(self) -> bool
+impl core::clone::Clone for tungsten_core::ui::paint::ClipRect
+pub fn tungsten_core::ui::paint::ClipRect::clone(&self) -> tungsten_core::ui::paint::ClipRect
+impl core::cmp::Eq for tungsten_core::ui::paint::ClipRect
+impl core::cmp::PartialEq for tungsten_core::ui::paint::ClipRect
+pub fn tungsten_core::ui::paint::ClipRect::eq(&self, &tungsten_core::ui::paint::ClipRect) -> bool
+impl core::default::Default for tungsten_core::ui::paint::ClipRect
+pub fn tungsten_core::ui::paint::ClipRect::default() -> tungsten_core::ui::paint::ClipRect
+impl core::fmt::Debug for tungsten_core::ui::paint::ClipRect
+pub fn tungsten_core::ui::paint::ClipRect::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::ui::paint::ClipRect
+pub fn tungsten_core::ui::paint::ClipRect::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::ui::paint::ClipRect
+impl core::marker::StructuralPartialEq for tungsten_core::ui::paint::ClipRect
+impl core::marker::Freeze for tungsten_core::ui::paint::ClipRect
+impl core::marker::Send for tungsten_core::ui::paint::ClipRect
+impl core::marker::Sync for tungsten_core::ui::paint::ClipRect
+impl core::marker::Unpin for tungsten_core::ui::paint::ClipRect
+impl core::marker::UnsafeUnpin for tungsten_core::ui::paint::ClipRect
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::paint::ClipRect
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::paint::ClipRect
 pub struct tungsten_core::ui::ColorTokens
 pub tungsten_core::ui::ColorTokens::accent: [u8; 4]
 pub tungsten_core::ui::ColorTokens::accent_text: [u8; 4]
@@ -8752,6 +9116,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme::KindS
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme::KindStyle
 pub struct tungsten_core::ui::KindStyles
 pub tungsten_core::ui::KindStyles::button: tungsten_core::ui::theme::KindStyle
+pub tungsten_core::ui::KindStyles::image: tungsten_core::ui::theme::KindStyle
 pub tungsten_core::ui::KindStyles::label: tungsten_core::ui::theme::KindStyle
 pub tungsten_core::ui::KindStyles::panel: tungsten_core::ui::theme::KindStyle
 impl tungsten_core::ui::theme::KindStyles
@@ -8853,6 +9218,32 @@ impl core::marker::Unpin for tungsten_core::ui::measure::MeasureCounts
 impl core::marker::UnsafeUnpin for tungsten_core::ui::measure::MeasureCounts
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::measure::MeasureCounts
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::measure::MeasureCounts
+pub struct tungsten_core::ui::PaintList
+pub tungsten_core::ui::PaintList::clips: alloc::vec::Vec<tungsten_core::ui::paint::ClipRect>
+pub tungsten_core::ui::PaintList::commands: alloc::vec::Vec<tungsten_core::ui::paint::PaintCommand>
+pub tungsten_core::ui::PaintList::scale: f32
+impl tungsten_core::ui::paint::PaintList
+pub fn tungsten_core::ui::paint::PaintList::clear(&mut self)
+pub fn tungsten_core::ui::paint::PaintList::clip_of(&self, &tungsten_core::ui::paint::PaintCommand) -> tungsten_core::ui::paint::ClipRect
+pub fn tungsten_core::ui::paint::PaintList::dump(&self) -> alloc::string::String
+pub fn tungsten_core::ui::paint::PaintList::is_empty(&self) -> bool
+pub fn tungsten_core::ui::paint::PaintList::text_batches(&self) -> alloc::vec::Vec<core::ops::range::Range<usize>>
+impl core::clone::Clone for tungsten_core::ui::paint::PaintList
+pub fn tungsten_core::ui::paint::PaintList::clone(&self) -> tungsten_core::ui::paint::PaintList
+impl core::cmp::PartialEq for tungsten_core::ui::paint::PaintList
+pub fn tungsten_core::ui::paint::PaintList::eq(&self, &tungsten_core::ui::paint::PaintList) -> bool
+impl core::default::Default for tungsten_core::ui::paint::PaintList
+pub fn tungsten_core::ui::paint::PaintList::default() -> Self
+impl core::fmt::Debug for tungsten_core::ui::paint::PaintList
+pub fn tungsten_core::ui::paint::PaintList::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::ui::paint::PaintList
+impl core::marker::Freeze for tungsten_core::ui::paint::PaintList
+impl core::marker::Send for tungsten_core::ui::paint::PaintList
+impl core::marker::Sync for tungsten_core::ui::paint::PaintList
+impl core::marker::Unpin for tungsten_core::ui::paint::PaintList
+impl core::marker::UnsafeUnpin for tungsten_core::ui::paint::PaintList
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::paint::PaintList
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::paint::PaintList
 pub struct tungsten_core::ui::RadiusTokens
 pub tungsten_core::ui::RadiusTokens::lg: f32
 pub tungsten_core::ui::RadiusTokens::md: f32
@@ -9069,6 +9460,26 @@ impl core::marker::Unpin for tungsten_core::ui::theme::ThemeEpoch
 impl core::marker::UnsafeUnpin for tungsten_core::ui::theme::ThemeEpoch
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme::ThemeEpoch
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme::ThemeEpoch
+pub struct tungsten_core::ui::ThemeFile
+impl tungsten_core::ui::theme_file::ThemeFile
+pub fn tungsten_core::ui::theme_file::ThemeFile::from_json(&str) -> core::result::Result<Self, serde_json::error::Error>
+pub fn tungsten_core::ui::theme_file::ThemeFile::into_theme(self) -> tungsten_core::ui::theme::Theme
+pub fn tungsten_core::ui::theme_file::ThemeFile::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::ui::theme_file::ThemeFileError>
+impl core::clone::Clone for tungsten_core::ui::theme_file::ThemeFile
+pub fn tungsten_core::ui::theme_file::ThemeFile::clone(&self) -> tungsten_core::ui::theme_file::ThemeFile
+impl core::default::Default for tungsten_core::ui::theme_file::ThemeFile
+pub fn tungsten_core::ui::theme_file::ThemeFile::default() -> tungsten_core::ui::theme_file::ThemeFile
+impl core::fmt::Debug for tungsten_core::ui::theme_file::ThemeFile
+pub fn tungsten_core::ui::theme_file::ThemeFile::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::ui::theme_file::ThemeFile where tungsten_core::ui::theme_file::ThemeFile: core::default::Default
+pub fn tungsten_core::ui::theme_file::ThemeFile::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::ui::theme_file::ThemeFile
+impl core::marker::Send for tungsten_core::ui::theme_file::ThemeFile
+impl core::marker::Sync for tungsten_core::ui::theme_file::ThemeFile
+impl core::marker::Unpin for tungsten_core::ui::theme_file::ThemeFile
+impl core::marker::UnsafeUnpin for tungsten_core::ui::theme_file::ThemeFile
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme_file::ThemeFile
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme_file::ThemeFile
 pub struct tungsten_core::ui::Tokens
 pub tungsten_core::ui::Tokens::colors: tungsten_core::ui::theme::ColorTokens
 pub tungsten_core::ui::Tokens::fonts: tungsten_core::ui::theme::FontTokens
@@ -9091,6 +9502,49 @@ impl core::marker::Unpin for tungsten_core::ui::theme::Tokens
 impl core::marker::UnsafeUnpin for tungsten_core::ui::theme::Tokens
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme::Tokens
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme::Tokens
+pub struct tungsten_core::ui::UiDebug
+pub tungsten_core::ui::UiDebug::hide_game_layers: bool
+pub tungsten_core::ui::UiDebug::show_bounds: bool
+impl core::clone::Clone for tungsten_core::ui::paint::UiDebug
+pub fn tungsten_core::ui::paint::UiDebug::clone(&self) -> tungsten_core::ui::paint::UiDebug
+impl core::cmp::Eq for tungsten_core::ui::paint::UiDebug
+impl core::cmp::PartialEq for tungsten_core::ui::paint::UiDebug
+pub fn tungsten_core::ui::paint::UiDebug::eq(&self, &tungsten_core::ui::paint::UiDebug) -> bool
+impl core::default::Default for tungsten_core::ui::paint::UiDebug
+pub fn tungsten_core::ui::paint::UiDebug::default() -> tungsten_core::ui::paint::UiDebug
+impl core::fmt::Debug for tungsten_core::ui::paint::UiDebug
+pub fn tungsten_core::ui::paint::UiDebug::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::ui::paint::UiDebug
+pub fn tungsten_core::ui::paint::UiDebug::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::ui::paint::UiDebug
+impl core::marker::StructuralPartialEq for tungsten_core::ui::paint::UiDebug
+impl core::marker::Freeze for tungsten_core::ui::paint::UiDebug
+impl core::marker::Send for tungsten_core::ui::paint::UiDebug
+impl core::marker::Sync for tungsten_core::ui::paint::UiDebug
+impl core::marker::Unpin for tungsten_core::ui::paint::UiDebug
+impl core::marker::UnsafeUnpin for tungsten_core::ui::paint::UiDebug
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::paint::UiDebug
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::paint::UiDebug
+pub struct tungsten_core::ui::UiThemeRegistry
+impl tungsten_core::ui::theme_file::UiThemeRegistry
+pub fn tungsten_core::ui::theme_file::UiThemeRegistry::contains(&self, &str) -> bool
+pub fn tungsten_core::ui::theme_file::UiThemeRegistry::get(&self, &str) -> core::option::Option<&tungsten_core::ui::theme::Theme>
+pub fn tungsten_core::ui::theme_file::UiThemeRegistry::ids(&self) -> alloc::vec::Vec<&str>
+pub fn tungsten_core::ui::theme_file::UiThemeRegistry::insert(&mut self, impl core::convert::Into<alloc::string::String>, tungsten_core::ui::theme::Theme) -> core::option::Option<tungsten_core::ui::theme::Theme>
+pub fn tungsten_core::ui::theme_file::UiThemeRegistry::is_empty(&self) -> bool
+pub fn tungsten_core::ui::theme_file::UiThemeRegistry::len(&self) -> usize
+pub fn tungsten_core::ui::theme_file::UiThemeRegistry::new() -> Self
+impl core::default::Default for tungsten_core::ui::theme_file::UiThemeRegistry
+pub fn tungsten_core::ui::theme_file::UiThemeRegistry::default() -> tungsten_core::ui::theme_file::UiThemeRegistry
+impl core::fmt::Debug for tungsten_core::ui::theme_file::UiThemeRegistry
+pub fn tungsten_core::ui::theme_file::UiThemeRegistry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::ui::theme_file::UiThemeRegistry
+impl core::marker::Send for tungsten_core::ui::theme_file::UiThemeRegistry
+impl core::marker::Sync for tungsten_core::ui::theme_file::UiThemeRegistry
+impl core::marker::Unpin for tungsten_core::ui::theme_file::UiThemeRegistry
+impl core::marker::UnsafeUnpin for tungsten_core::ui::theme_file::UiThemeRegistry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme_file::UiThemeRegistry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme_file::UiThemeRegistry
 pub struct tungsten_core::ui::UiTree
 impl tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::accessible_name(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<&str>
@@ -9098,11 +9552,14 @@ pub fn tungsten_core::ui::tree::UiTree::add_root(&mut self, tungsten_core::ui::n
 pub fn tungsten_core::ui::tree::UiTree::button(&mut self, tungsten_core::ui::id::WidgetId, impl core::convert::Into<tungsten_core::text::StyledText>) -> tungsten_core::ui::id::WidgetId
 pub fn tungsten_core::ui::tree::UiTree::children(&self, tungsten_core::ui::id::WidgetId) -> &[tungsten_core::ui::id::WidgetId]
 pub fn tungsten_core::ui::tree::UiTree::clear_paint_dirty(&mut self)
+pub fn tungsten_core::ui::tree::UiTree::clips_children(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::contains(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::enabled(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::focus_scope(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::focusable(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::hit_testable(&self, tungsten_core::ui::id::WidgetId) -> bool
+pub fn tungsten_core::ui::tree::UiTree::image(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::assets::registry::SpriteAssetId, glam::f32::vec2::Vec2, tungsten_core::ui::style::LayoutStyle) -> tungsten_core::ui::id::WidgetId
+pub fn tungsten_core::ui::tree::UiTree::image_sprite(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
 pub fn tungsten_core::ui::tree::UiTree::interactive(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::is_layout_dirty(&self) -> bool
 pub fn tungsten_core::ui::tree::UiTree::is_paint_dirty(&self) -> bool
@@ -9120,20 +9577,25 @@ pub fn tungsten_core::ui::tree::UiTree::role(&self, tungsten_core::ui::id::Widge
 pub fn tungsten_core::ui::tree::UiTree::root_of(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten_core::ui::tree::UiTree::roots(&self) -> &[tungsten_core::ui::id::WidgetId]
 pub fn tungsten_core::ui::tree::UiTree::set_accessible_name(&mut self, tungsten_core::ui::id::WidgetId, core::option::Option<alloc::string::String>)
+pub fn tungsten_core::ui::tree::UiTree::set_clip_children(&mut self, tungsten_core::ui::id::WidgetId, bool)
 pub fn tungsten_core::ui::tree::UiTree::set_enabled(&mut self, tungsten_core::ui::id::WidgetId, bool)
 pub fn tungsten_core::ui::tree::UiTree::set_focus_scope(&mut self, tungsten_core::ui::id::WidgetId, bool)
 pub fn tungsten_core::ui::tree::UiTree::set_focusable(&mut self, tungsten_core::ui::id::WidgetId, bool)
 pub fn tungsten_core::ui::tree::UiTree::set_hit_testable(&mut self, tungsten_core::ui::id::WidgetId, bool)
+pub fn tungsten_core::ui::tree::UiTree::set_image(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::assets::registry::SpriteAssetId, glam::f32::vec2::Vec2)
+pub fn tungsten_core::ui::tree::UiTree::set_image_tint(&mut self, tungsten_core::ui::id::WidgetId, [u8; 4])
 pub fn tungsten_core::ui::tree::UiTree::set_interactive(&mut self, tungsten_core::ui::id::WidgetId, bool)
 pub fn tungsten_core::ui::tree::UiTree::set_layout_style(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::style::LayoutStyle)
 pub fn tungsten_core::ui::tree::UiTree::set_overrides(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::theme::StyleOverrides)
 pub fn tungsten_core::ui::tree::UiTree::set_role(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::node::Role)
 pub fn tungsten_core::ui::tree::UiTree::set_text(&mut self, tungsten_core::ui::id::WidgetId, impl core::convert::Into<tungsten_core::text::StyledText>) -> bool
 pub fn tungsten_core::ui::tree::UiTree::set_theme(&mut self, tungsten_core::ui::theme::Theme)
+pub fn tungsten_core::ui::tree::UiTree::set_theme_asset(&mut self, &str, tungsten_core::ui::theme::Theme)
 pub fn tungsten_core::ui::tree::UiTree::set_visibility(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::node::Visibility)
 pub fn tungsten_core::ui::tree::UiTree::text(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<&tungsten_core::text::StyledText>
 pub fn tungsten_core::ui::tree::UiTree::theme(&self) -> &tungsten_core::ui::theme::Theme
 pub fn tungsten_core::ui::tree::UiTree::theme_epoch(&self) -> tungsten_core::ui::theme::ThemeEpoch
+pub fn tungsten_core::ui::tree::UiTree::theme_id(&self) -> core::option::Option<&str>
 pub fn tungsten_core::ui::tree::UiTree::visibility(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::node::Visibility>
 pub fn tungsten_core::ui::tree::UiTree::widget_state(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::theme::WidgetState>
 impl tungsten_core::ui::tree::UiTree
@@ -9150,6 +9612,8 @@ pub fn tungsten_core::ui::tree::UiTree::rect(&self, tungsten_core::ui::id::Widge
 pub fn tungsten_core::ui::tree::UiTree::text_node(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::text::TextNodeId>
 impl tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::hit_test(&self, glam::f32::vec2::Vec2) -> core::option::Option<tungsten_core::ui::id::WidgetId>
+impl tungsten_core::ui::tree::UiTree
+pub fn tungsten_core::ui::tree::UiTree::paint(&mut self, f32, &tungsten_core::ui::paint::UiDebug, &tungsten_core::assets::registry::AssetRegistry, &mut tungsten_core::ui::paint::PaintList)
 impl core::default::Default for tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::default() -> tungsten_core::ui::tree::UiTree
 impl core::fmt::Debug for tungsten_core::ui::tree::UiTree
@@ -9203,6 +9667,7 @@ impl core::marker::Unpin for tungsten_core::ui::id::WidgetId
 impl core::marker::UnsafeUnpin for tungsten_core::ui::id::WidgetId
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::id::WidgetId
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::id::WidgetId
+pub fn tungsten_core::ui::to_physical(tungsten_core::ui::geometry::Rect, f32) -> tungsten_core::ui::paint::ClipRect
 pub enum tungsten_core::ActionMapError
 pub tungsten_core::ActionMapError::Io
 pub tungsten_core::ActionMapError::Io::path: alloc::string::String
@@ -9844,6 +10309,9 @@ pub tungsten_core::ManifestError::MissingSoundFile::path: alloc::string::String
 pub tungsten_core::ManifestError::MissingTilemapFile
 pub tungsten_core::ManifestError::MissingTilemapFile::id: alloc::string::String
 pub tungsten_core::ManifestError::MissingTilemapFile::path: alloc::string::String
+pub tungsten_core::ManifestError::MissingUiThemeFile
+pub tungsten_core::ManifestError::MissingUiThemeFile::id: alloc::string::String
+pub tungsten_core::ManifestError::MissingUiThemeFile::path: alloc::string::String
 pub tungsten_core::ManifestError::Parse
 pub tungsten_core::ManifestError::Parse::path: alloc::string::String
 pub tungsten_core::ManifestError::Parse::source: serde_json::error::Error
@@ -10832,7 +11300,9 @@ pub fn tungsten_core::assets::registry::AssetRegistry::intern_sprite(&mut self, 
 pub fn tungsten_core::assets::registry::AssetRegistry::intern_sprites<'a>(&mut self, impl core::iter::traits::collect::IntoIterator<Item = &'a str>)
 pub fn tungsten_core::assets::registry::AssetRegistry::new() -> Self
 pub fn tungsten_core::assets::registry::AssetRegistry::register_sprite(&mut self, alloc::string::String, tungsten_core::assets::manifest::FilterMode, u32, u32, std::path::PathBuf, tungsten_core::assets::registry::TextureHandle, tungsten_core::assets::atlas::UvRect, core::option::Option<std::path::PathBuf>, core::option::Option<std::path::PathBuf>, core::option::Option<tungsten_core::assets::registry::TextureHandle>) -> tungsten_core::assets::registry::SpriteAssetId
+pub fn tungsten_core::assets::registry::AssetRegistry::set_sprite_nine_slice(&mut self, &str, core::option::Option<[u32; 4]>)
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<&tungsten_core::assets::registry::SpriteAsset>
+pub fn tungsten_core::assets::registry::AssetRegistry::sprite_epoch(&self) -> u64
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_id(&self, &str) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_name(&self, tungsten_core::assets::registry::SpriteAssetId) -> core::option::Option<&str>
 pub fn tungsten_core::assets::registry::AssetRegistry::sprite_name_for_path(&self, &std::path::Path) -> core::option::Option<&str>
@@ -11914,6 +12384,32 @@ impl<I> core::marker::Unpin for tungsten_core::ecs::query::OptionalColumn<I> whe
 impl<I> core::marker::UnsafeUnpin for tungsten_core::ecs::query::OptionalColumn<I> where I: core::marker::UnsafeUnpin
 impl<I> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ecs::query::OptionalColumn<I> where I: core::panic::unwind_safe::RefUnwindSafe
 impl<I> core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::OptionalColumn<I> where I: core::panic::unwind_safe::UnwindSafe
+pub struct tungsten_core::PaintList
+pub tungsten_core::PaintList::clips: alloc::vec::Vec<tungsten_core::ui::paint::ClipRect>
+pub tungsten_core::PaintList::commands: alloc::vec::Vec<tungsten_core::ui::paint::PaintCommand>
+pub tungsten_core::PaintList::scale: f32
+impl tungsten_core::ui::paint::PaintList
+pub fn tungsten_core::ui::paint::PaintList::clear(&mut self)
+pub fn tungsten_core::ui::paint::PaintList::clip_of(&self, &tungsten_core::ui::paint::PaintCommand) -> tungsten_core::ui::paint::ClipRect
+pub fn tungsten_core::ui::paint::PaintList::dump(&self) -> alloc::string::String
+pub fn tungsten_core::ui::paint::PaintList::is_empty(&self) -> bool
+pub fn tungsten_core::ui::paint::PaintList::text_batches(&self) -> alloc::vec::Vec<core::ops::range::Range<usize>>
+impl core::clone::Clone for tungsten_core::ui::paint::PaintList
+pub fn tungsten_core::ui::paint::PaintList::clone(&self) -> tungsten_core::ui::paint::PaintList
+impl core::cmp::PartialEq for tungsten_core::ui::paint::PaintList
+pub fn tungsten_core::ui::paint::PaintList::eq(&self, &tungsten_core::ui::paint::PaintList) -> bool
+impl core::default::Default for tungsten_core::ui::paint::PaintList
+pub fn tungsten_core::ui::paint::PaintList::default() -> Self
+impl core::fmt::Debug for tungsten_core::ui::paint::PaintList
+pub fn tungsten_core::ui::paint::PaintList::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::ui::paint::PaintList
+impl core::marker::Freeze for tungsten_core::ui::paint::PaintList
+impl core::marker::Send for tungsten_core::ui::paint::PaintList
+impl core::marker::Sync for tungsten_core::ui::paint::PaintList
+impl core::marker::Unpin for tungsten_core::ui::paint::PaintList
+impl core::marker::UnsafeUnpin for tungsten_core::ui::paint::PaintList
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::paint::PaintList
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::paint::PaintList
 pub struct tungsten_core::ParallaxLayer
 pub tungsten_core::ParallaxLayer::scroll_factor: glam::f32::vec2::Vec2
 impl tungsten_core::components::ParallaxLayer
@@ -12485,6 +12981,7 @@ pub tungsten_core::ResolvedManifest::shaders: std::collections::hash::map::HashM
 pub tungsten_core::ResolvedManifest::sounds: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedSound>
 pub tungsten_core::ResolvedManifest::sprites: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedSprite>
 pub tungsten_core::ResolvedManifest::tilemaps: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedTilemap>
+pub tungsten_core::ResolvedManifest::ui_themes: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedUiTheme>
 impl tungsten_core::assets::manifest::ResolvedManifest
 pub fn tungsten_core::assets::manifest::ResolvedManifest::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::assets::manifest::ManifestError>
 pub fn tungsten_core::assets::manifest::ResolvedManifest::load_and_merge_many(&[impl core::convert::AsRef<std::path::Path>]) -> core::result::Result<tungsten_core::assets::manifest::ResolvedManifest, tungsten_core::assets::manifest::ManifestError>
@@ -12559,6 +13056,23 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedSound
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedSound
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedSound
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedSound
+pub struct tungsten_core::ResolvedUiTheme
+pub tungsten_core::ResolvedUiTheme::path: std::path::PathBuf
+impl core::clone::Clone for tungsten_core::assets::manifest::ResolvedUiTheme
+pub fn tungsten_core::assets::manifest::ResolvedUiTheme::clone(&self) -> tungsten_core::assets::manifest::ResolvedUiTheme
+impl core::cmp::Eq for tungsten_core::assets::manifest::ResolvedUiTheme
+impl core::cmp::PartialEq for tungsten_core::assets::manifest::ResolvedUiTheme
+pub fn tungsten_core::assets::manifest::ResolvedUiTheme::eq(&self, &tungsten_core::assets::manifest::ResolvedUiTheme) -> bool
+impl core::fmt::Debug for tungsten_core::assets::manifest::ResolvedUiTheme
+pub fn tungsten_core::assets::manifest::ResolvedUiTheme::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::manifest::ResolvedUiTheme
+impl core::marker::Freeze for tungsten_core::assets::manifest::ResolvedUiTheme
+impl core::marker::Send for tungsten_core::assets::manifest::ResolvedUiTheme
+impl core::marker::Sync for tungsten_core::assets::manifest::ResolvedUiTheme
+impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedUiTheme
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedUiTheme
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedUiTheme
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedUiTheme
 pub struct tungsten_core::RigidBody
 pub tungsten_core::RigidBody::inv_mass: f32
 pub tungsten_core::RigidBody::kind: tungsten_core::physics::components::BodyKind
@@ -12876,6 +13390,7 @@ pub tungsten_core::SpriteAsset::emissive_path: core::option::Option<std::path::P
 pub tungsten_core::SpriteAsset::filter: tungsten_core::assets::manifest::FilterMode
 pub tungsten_core::SpriteAsset::height: u32
 pub tungsten_core::SpriteAsset::lit_atlas: core::option::Option<tungsten_core::assets::registry::TextureHandle>
+pub tungsten_core::SpriteAsset::nine_slice: core::option::Option<[u32; 4]>
 pub tungsten_core::SpriteAsset::normal_path: core::option::Option<std::path::PathBuf>
 pub tungsten_core::SpriteAsset::path: std::path::PathBuf
 pub tungsten_core::SpriteAsset::uv: tungsten_core::assets::atlas::UvRect
@@ -13444,6 +13959,64 @@ impl core::marker::Unpin for tungsten_core::tween::TweenComplete
 impl core::marker::UnsafeUnpin for tungsten_core::tween::TweenComplete
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::tween::TweenComplete
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::tween::TweenComplete
+pub struct tungsten_core::UiDebug
+pub tungsten_core::UiDebug::hide_game_layers: bool
+pub tungsten_core::UiDebug::show_bounds: bool
+impl core::clone::Clone for tungsten_core::ui::paint::UiDebug
+pub fn tungsten_core::ui::paint::UiDebug::clone(&self) -> tungsten_core::ui::paint::UiDebug
+impl core::cmp::Eq for tungsten_core::ui::paint::UiDebug
+impl core::cmp::PartialEq for tungsten_core::ui::paint::UiDebug
+pub fn tungsten_core::ui::paint::UiDebug::eq(&self, &tungsten_core::ui::paint::UiDebug) -> bool
+impl core::default::Default for tungsten_core::ui::paint::UiDebug
+pub fn tungsten_core::ui::paint::UiDebug::default() -> tungsten_core::ui::paint::UiDebug
+impl core::fmt::Debug for tungsten_core::ui::paint::UiDebug
+pub fn tungsten_core::ui::paint::UiDebug::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::ui::paint::UiDebug
+pub fn tungsten_core::ui::paint::UiDebug::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::ui::paint::UiDebug
+impl core::marker::StructuralPartialEq for tungsten_core::ui::paint::UiDebug
+impl core::marker::Freeze for tungsten_core::ui::paint::UiDebug
+impl core::marker::Send for tungsten_core::ui::paint::UiDebug
+impl core::marker::Sync for tungsten_core::ui::paint::UiDebug
+impl core::marker::Unpin for tungsten_core::ui::paint::UiDebug
+impl core::marker::UnsafeUnpin for tungsten_core::ui::paint::UiDebug
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::paint::UiDebug
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::paint::UiDebug
+pub struct tungsten_core::UiThemeEntry
+pub tungsten_core::UiThemeEntry::path: alloc::string::String
+impl core::clone::Clone for tungsten_core::assets::manifest::UiThemeEntry
+pub fn tungsten_core::assets::manifest::UiThemeEntry::clone(&self) -> tungsten_core::assets::manifest::UiThemeEntry
+impl core::fmt::Debug for tungsten_core::assets::manifest::UiThemeEntry
+pub fn tungsten_core::assets::manifest::UiThemeEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::manifest::UiThemeEntry
+pub fn tungsten_core::assets::manifest::UiThemeEntry::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::manifest::UiThemeEntry
+impl core::marker::Send for tungsten_core::assets::manifest::UiThemeEntry
+impl core::marker::Sync for tungsten_core::assets::manifest::UiThemeEntry
+impl core::marker::Unpin for tungsten_core::assets::manifest::UiThemeEntry
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::UiThemeEntry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::UiThemeEntry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::UiThemeEntry
+pub struct tungsten_core::UiThemeRegistry
+impl tungsten_core::ui::theme_file::UiThemeRegistry
+pub fn tungsten_core::ui::theme_file::UiThemeRegistry::contains(&self, &str) -> bool
+pub fn tungsten_core::ui::theme_file::UiThemeRegistry::get(&self, &str) -> core::option::Option<&tungsten_core::ui::theme::Theme>
+pub fn tungsten_core::ui::theme_file::UiThemeRegistry::ids(&self) -> alloc::vec::Vec<&str>
+pub fn tungsten_core::ui::theme_file::UiThemeRegistry::insert(&mut self, impl core::convert::Into<alloc::string::String>, tungsten_core::ui::theme::Theme) -> core::option::Option<tungsten_core::ui::theme::Theme>
+pub fn tungsten_core::ui::theme_file::UiThemeRegistry::is_empty(&self) -> bool
+pub fn tungsten_core::ui::theme_file::UiThemeRegistry::len(&self) -> usize
+pub fn tungsten_core::ui::theme_file::UiThemeRegistry::new() -> Self
+impl core::default::Default for tungsten_core::ui::theme_file::UiThemeRegistry
+pub fn tungsten_core::ui::theme_file::UiThemeRegistry::default() -> tungsten_core::ui::theme_file::UiThemeRegistry
+impl core::fmt::Debug for tungsten_core::ui::theme_file::UiThemeRegistry
+pub fn tungsten_core::ui::theme_file::UiThemeRegistry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::ui::theme_file::UiThemeRegistry
+impl core::marker::Send for tungsten_core::ui::theme_file::UiThemeRegistry
+impl core::marker::Sync for tungsten_core::ui::theme_file::UiThemeRegistry
+impl core::marker::Unpin for tungsten_core::ui::theme_file::UiThemeRegistry
+impl core::marker::UnsafeUnpin for tungsten_core::ui::theme_file::UiThemeRegistry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme_file::UiThemeRegistry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme_file::UiThemeRegistry
 pub struct tungsten_core::UiTree
 impl tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::accessible_name(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<&str>
@@ -13451,11 +14024,14 @@ pub fn tungsten_core::ui::tree::UiTree::add_root(&mut self, tungsten_core::ui::n
 pub fn tungsten_core::ui::tree::UiTree::button(&mut self, tungsten_core::ui::id::WidgetId, impl core::convert::Into<tungsten_core::text::StyledText>) -> tungsten_core::ui::id::WidgetId
 pub fn tungsten_core::ui::tree::UiTree::children(&self, tungsten_core::ui::id::WidgetId) -> &[tungsten_core::ui::id::WidgetId]
 pub fn tungsten_core::ui::tree::UiTree::clear_paint_dirty(&mut self)
+pub fn tungsten_core::ui::tree::UiTree::clips_children(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::contains(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::enabled(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::focus_scope(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::focusable(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::hit_testable(&self, tungsten_core::ui::id::WidgetId) -> bool
+pub fn tungsten_core::ui::tree::UiTree::image(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::assets::registry::SpriteAssetId, glam::f32::vec2::Vec2, tungsten_core::ui::style::LayoutStyle) -> tungsten_core::ui::id::WidgetId
+pub fn tungsten_core::ui::tree::UiTree::image_sprite(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::assets::registry::SpriteAssetId>
 pub fn tungsten_core::ui::tree::UiTree::interactive(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::is_layout_dirty(&self) -> bool
 pub fn tungsten_core::ui::tree::UiTree::is_paint_dirty(&self) -> bool
@@ -13473,20 +14049,25 @@ pub fn tungsten_core::ui::tree::UiTree::role(&self, tungsten_core::ui::id::Widge
 pub fn tungsten_core::ui::tree::UiTree::root_of(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten_core::ui::tree::UiTree::roots(&self) -> &[tungsten_core::ui::id::WidgetId]
 pub fn tungsten_core::ui::tree::UiTree::set_accessible_name(&mut self, tungsten_core::ui::id::WidgetId, core::option::Option<alloc::string::String>)
+pub fn tungsten_core::ui::tree::UiTree::set_clip_children(&mut self, tungsten_core::ui::id::WidgetId, bool)
 pub fn tungsten_core::ui::tree::UiTree::set_enabled(&mut self, tungsten_core::ui::id::WidgetId, bool)
 pub fn tungsten_core::ui::tree::UiTree::set_focus_scope(&mut self, tungsten_core::ui::id::WidgetId, bool)
 pub fn tungsten_core::ui::tree::UiTree::set_focusable(&mut self, tungsten_core::ui::id::WidgetId, bool)
 pub fn tungsten_core::ui::tree::UiTree::set_hit_testable(&mut self, tungsten_core::ui::id::WidgetId, bool)
+pub fn tungsten_core::ui::tree::UiTree::set_image(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::assets::registry::SpriteAssetId, glam::f32::vec2::Vec2)
+pub fn tungsten_core::ui::tree::UiTree::set_image_tint(&mut self, tungsten_core::ui::id::WidgetId, [u8; 4])
 pub fn tungsten_core::ui::tree::UiTree::set_interactive(&mut self, tungsten_core::ui::id::WidgetId, bool)
 pub fn tungsten_core::ui::tree::UiTree::set_layout_style(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::style::LayoutStyle)
 pub fn tungsten_core::ui::tree::UiTree::set_overrides(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::theme::StyleOverrides)
 pub fn tungsten_core::ui::tree::UiTree::set_role(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::node::Role)
 pub fn tungsten_core::ui::tree::UiTree::set_text(&mut self, tungsten_core::ui::id::WidgetId, impl core::convert::Into<tungsten_core::text::StyledText>) -> bool
 pub fn tungsten_core::ui::tree::UiTree::set_theme(&mut self, tungsten_core::ui::theme::Theme)
+pub fn tungsten_core::ui::tree::UiTree::set_theme_asset(&mut self, &str, tungsten_core::ui::theme::Theme)
 pub fn tungsten_core::ui::tree::UiTree::set_visibility(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::node::Visibility)
 pub fn tungsten_core::ui::tree::UiTree::text(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<&tungsten_core::text::StyledText>
 pub fn tungsten_core::ui::tree::UiTree::theme(&self) -> &tungsten_core::ui::theme::Theme
 pub fn tungsten_core::ui::tree::UiTree::theme_epoch(&self) -> tungsten_core::ui::theme::ThemeEpoch
+pub fn tungsten_core::ui::tree::UiTree::theme_id(&self) -> core::option::Option<&str>
 pub fn tungsten_core::ui::tree::UiTree::visibility(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::node::Visibility>
 pub fn tungsten_core::ui::tree::UiTree::widget_state(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::theme::WidgetState>
 impl tungsten_core::ui::tree::UiTree
@@ -13503,6 +14084,8 @@ pub fn tungsten_core::ui::tree::UiTree::rect(&self, tungsten_core::ui::id::Widge
 pub fn tungsten_core::ui::tree::UiTree::text_node(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::text::TextNodeId>
 impl tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::hit_test(&self, glam::f32::vec2::Vec2) -> core::option::Option<tungsten_core::ui::id::WidgetId>
+impl tungsten_core::ui::tree::UiTree
+pub fn tungsten_core::ui::tree::UiTree::paint(&mut self, f32, &tungsten_core::ui::paint::UiDebug, &tungsten_core::assets::registry::AssetRegistry, &mut tungsten_core::ui::paint::PaintList)
 impl core::default::Default for tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::default() -> tungsten_core::ui::tree::UiTree
 impl core::fmt::Debug for tungsten_core::ui::tree::UiTree

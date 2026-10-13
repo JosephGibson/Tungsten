@@ -33,9 +33,10 @@ use crate::shader_hot_reload::{ShaderError, ShaderModuleCache, build_validated};
 use crate::sprite::{SpriteBatch, SpritePipeline};
 use crate::surface::{present_mode_label, resolve_max_frame_latency, resolve_present_mode};
 use crate::targets::{RenderTargetPool, TargetCache};
-use crate::text::{FontSource, TextEngine, TextNodes, TextPipeline, TextSection};
+use crate::text::{FontSource, TextEngine, TextNodes, TextPipeline, TextSection, TextStats};
 use crate::timing::TimingResources;
 pub use crate::timing::{CpuFrameTimings, GpuFrameTimings};
+use crate::ui::{DrawItem, UiPipeline, attachment_scissor};
 use thiserror::Error;
 use tungsten_core::assets::{
     FilterMode, MaterialAssetId, MaterialUniformDefaults, ParticleMeshAssetId, ResolvedFontFamily,
@@ -45,6 +46,7 @@ use tungsten_core::config::{
     DepthSortMode, PostAaMode, PresentModeConfig, RenderConfig, is_supported_msaa,
 };
 use tungsten_core::post::{PostPass, PostStack};
+use tungsten_core::ui::PaintList;
 use winit::window::Window;
 
 use crate::surface_acquire::{
@@ -129,6 +131,8 @@ pub struct Renderer {
     debug_line_pipeline: DebugLinePipeline,
     mesh_particle_pipeline: MeshParticlePipeline,
     text_pipeline: TextPipeline,
+    /// M46 UI primitives, drawn in the overlay pass before the text.
+    ui_pipeline: UiPipeline,
     present_blit: PresentBlitPipeline,
     post_stack: PostStackRenderer,
     target_pool: RenderTargetPool,
@@ -306,6 +310,12 @@ impl Renderer {
             FontSource::Packaged
         };
         let text_pipeline = TextPipeline::with_font_source(&device, &queue, format, font_source);
+        let ui_pipeline = UiPipeline::new(
+            &device,
+            &queue,
+            format,
+            sprite_pipeline.texture_bind_group_layout(),
+        );
 
         let post_aa = config.post_aa;
         let bloom_max_mips =
@@ -544,6 +554,7 @@ impl Renderer {
             debug_line_pipeline,
             mesh_particle_pipeline,
             text_pipeline,
+            ui_pipeline,
             present_blit,
             post_stack,
             target_pool,
@@ -735,6 +746,13 @@ impl Renderer {
     #[must_use]
     pub fn text_engine(&self) -> &TextEngine {
         self.text_pipeline.engine()
+    }
+
+    /// The last frame's text telemetry: UI batches, batches prepared, full
+    /// and forced frames, `AtlasFull` events (M46).
+    #[must_use]
+    pub fn text_stats(&self) -> TextStats {
+        self.text_pipeline.stats()
     }
 
     /// The text node methods, for layout to measure and commit with
@@ -1193,10 +1211,22 @@ impl Renderer {
         let default_view_proj =
             glam::camera::rh::proj::directx::orthographic(0.0, w, h, 0.0, -1.0, 1.0);
         let empty_stack = PostStack::default();
-        self.render_frame_full(&default_view_proj, quads, &[], &[], &[], &[], &empty_stack)
+        let empty_ui = PaintList::default();
+        self.render_frame_full(
+            &default_view_proj,
+            quads,
+            &[],
+            &[],
+            &[],
+            &[],
+            &empty_ui,
+            &empty_stack,
+        )
     }
 
-    /// Render quads, sprites, debug primitives, and screen-space text.
+    /// Render quads, sprites, debug primitives, the UI paint list and
+    /// screen-space text. The UI draws in the overlay pass in paint order,
+    /// before the text sections (M46); an empty list records no UI draw.
     ///
     /// # Errors
     ///
@@ -1212,6 +1242,7 @@ impl Renderer {
         debug_quads: &[QuadInstance],
         debug_lines: &[DebugLineInstance],
         text_sections: &[TextSection],
+        ui: &PaintList,
         post_stack: &PostStack,
     ) -> Result<RenderOutcome, RenderError> {
         self.render_frame_internal(
@@ -1221,6 +1252,7 @@ impl Renderer {
             debug_quads,
             debug_lines,
             text_sections,
+            ui,
             post_stack,
             None,
         )
@@ -1240,6 +1272,7 @@ impl Renderer {
         debug_quads: &[QuadInstance],
         debug_lines: &[DebugLineInstance],
         text_sections: &[TextSection],
+        ui: &PaintList,
         post_stack: &PostStack,
     ) -> Result<RenderOutcome, RenderError> {
         let timing = if self.timestamp_support {
@@ -1262,6 +1295,7 @@ impl Renderer {
             debug_quads,
             debug_lines,
             text_sections,
+            ui,
             post_stack,
             timing,
         )
@@ -1276,6 +1310,7 @@ impl Renderer {
         debug_quads: &[QuadInstance],
         debug_lines: &[DebugLineInstance],
         text_sections: &[TextSection],
+        ui: &PaintList,
         post_stack: &PostStack,
         mut timing: Option<TimingResources>,
     ) -> Result<RenderOutcome, RenderError> {
@@ -1310,6 +1345,7 @@ impl Renderer {
             sprite_batches,
             debug_quads,
             debug_lines,
+            ui,
             post_stack,
         };
 
@@ -1337,15 +1373,10 @@ impl Renderer {
         let capture = capture_for_frame(&mut self.pending_capture, &acquired);
         let (output, reconfigure_after) = match acquired {
             Ok(Some(acquired)) => acquired,
-            // Each prepare is trimmed once, whether the frame presents or not.
-            Ok(None) => {
-                self.text_pipeline.post_frame();
-                return Ok(RenderOutcome::Skipped);
-            }
-            Err(err) => {
-                self.text_pipeline.post_frame();
-                return Err(err);
-            }
+            // A skipped frame keeps its prepare: the trim rule trims before
+            // the next full frame (`D-147`).
+            Ok(None) => return Ok(RenderOutcome::Skipped),
+            Err(err) => return Err(err),
         };
         self.cpu_timings.acquire_ms = acquire_start.elapsed().as_secs_f64() as f32 * 1000.0;
 
@@ -1360,7 +1391,6 @@ impl Renderer {
                 self.surface_config.height
             );
             let record_start = Instant::now();
-            self.text_pipeline.post_frame();
             if timing.is_some() {
                 timing = TimingResources::new(
                     &self.device,
@@ -1526,8 +1556,6 @@ impl Renderer {
             .map(|()| capture.path)
         });
 
-        self.text_pipeline.post_frame();
-
         if let Some(t) = timing {
             t.read(&self.device, &self.queue, &mut self.gpu_timings);
         }
@@ -1577,6 +1605,14 @@ impl Renderer {
             &self.device,
             &self.queue,
             text_sections,
+            draws.ui,
+            self.surface_config.width,
+            self.surface_config.height,
+        );
+        self.ui_pipeline.upload(
+            &self.device,
+            &self.queue,
+            draws.ui,
             self.surface_config.width,
             self.surface_config.height,
         );
@@ -1616,6 +1652,7 @@ impl Renderer {
             debug_quads,
             debug_lines,
             post_stack,
+            ..
         } = draws;
         let post_stack_len = post_stack.len();
         let smaa_active = self.post_aa.is_smaa() && self.smaa.is_some();
@@ -1793,6 +1830,37 @@ impl Renderer {
                     );
                 }
             } else if is_text_overlay {
+                // M46: the UI's items in paint order, each setting its
+                // scissor, then the text sections under the whole attachment.
+                // An empty paint list records nothing here.
+                let attachment = (self.surface_config.width, self.surface_config.height);
+                let items = self.ui_pipeline.items();
+                if !items.is_empty() {
+                    pass.push_debug_group("ui");
+                    for item in items {
+                        match item {
+                            DrawItem::Primitives { .. } => self.ui_pipeline.draw_primitives(
+                                &mut pass,
+                                item,
+                                &self.sprite_pipeline,
+                                attachment,
+                            ),
+                            DrawItem::Text { batch, scissor } => {
+                                // glyphon clips through `TextBounds` and
+                                // leaves the scissor as it finds it, so the
+                                // batch draws under the viewport's.
+                                if let Some((x, y, width, height)) =
+                                    attachment_scissor(*scissor, attachment)
+                                {
+                                    pass.set_scissor_rect(x, y, width, height);
+                                    self.text_pipeline.render_batch(&mut pass, *batch);
+                                }
+                            }
+                        }
+                    }
+                    pass.set_scissor_rect(0, 0, attachment.0, attachment.1);
+                    pass.pop_debug_group();
+                }
                 pass.push_debug_group("text");
                 self.text_pipeline.render(&mut pass);
                 pass.pop_debug_group();
@@ -1835,6 +1903,8 @@ struct FrameDraws<'f> {
     sprite_batches: &'f [SpriteBatch],
     debug_quads: &'f [QuadInstance],
     debug_lines: &'f [DebugLineInstance],
+    /// The UI paint list (M46).
+    ui: &'f PaintList,
     post_stack: &'f PostStack,
 }
 

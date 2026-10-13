@@ -2,13 +2,15 @@
 //! sprites, `reload` holds the other hot-reload paths and `scene` loads and
 //! spawns scene files; every public item is re-exported here.
 
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 use tungsten_core::assets::{
     AnimationData, AnimationRegistry, FontRegistry, LoadedManifest, MaterialRegistry,
     ParticleConfig, ParticleConfigRegistry, ParticleMeshRegistry, ParticleRender, ResolvedManifest,
     ShaderRegistry, SoundData, SoundRegistry, TilemapData, TilemapRegistry,
 };
+use tungsten_core::ui::{Theme, ThemeFile, UiThemeRegistry};
 use tungsten_core::{AssetRegistry, World};
 use tungsten_render::Renderer;
 
@@ -19,9 +21,72 @@ mod scene;
 pub use atlas::{AtlasRegistry, load_sprites, rebuild_atlas_for_filter, reload_sprite};
 pub use reload::{
     reload_action_map, reload_animation, reload_font, reload_manifest, reload_material,
-    reload_particle, reload_shader, reload_tilemap,
+    reload_particle, reload_shader, reload_tilemap, reload_ui_theme,
+    reload_ui_themes_from_manifest,
 };
 pub use scene::{load_scene, spawn_scene};
+
+/// Theme file paths by `ui_themes` ID (M46, `D-148`): the hot reload's
+/// reverse lookup, as [`FontRegistry`] is for fonts.
+#[derive(Debug, Default)]
+pub struct UiThemePaths {
+    path_to_id: HashMap<PathBuf, String>,
+}
+
+impl UiThemePaths {
+    /// Records that `path` loads as theme `id`.
+    pub fn register(&mut self, id: String, path: PathBuf) {
+        self.path_to_id.insert(path, id);
+    }
+
+    /// The theme a file path loads as.
+    #[must_use]
+    pub fn id_for_path(&self, path: &Path) -> Option<&str> {
+        self.path_to_id.get(path).map(String::as_str)
+    }
+}
+
+/// Load the manifest's `ui_themes` into a [`UiThemeRegistry`] and their
+/// paths into [`UiThemePaths`] (M46, `D-148`), in sorted ID order, each file
+/// over the built-in theme. A theme whose font tokens name no
+/// `font_families` entry warns per token; a file that does not load is an
+/// error, as any other asset's.
+pub fn load_ui_themes(manifest: &ResolvedManifest, world: &mut World) -> anyhow::Result<()> {
+    let mut registry = UiThemeRegistry::new();
+    let mut paths = UiThemePaths::default();
+    let mut ids: Vec<&String> = manifest.ui_themes.keys().collect();
+    ids.sort();
+    for id in ids {
+        let entry = &manifest.ui_themes[id];
+        let theme = ThemeFile::load(&entry.path)
+            .map_err(|e| anyhow::anyhow!("Failed to load ui theme '{id}': {e}"))?
+            .into_theme();
+        warn_unknown_font_tokens(id, &theme, manifest);
+        log::info!("Loaded ui theme '{id}' from '{}'", entry.path.display());
+        registry.insert(id.clone(), theme);
+        paths.register(id.clone(), entry.path.clone());
+    }
+    world.insert_resource(registry);
+    world.insert_resource(paths);
+    Ok(())
+}
+
+/// Warns for each font token of `theme` that names no `font_families` entry
+/// of `manifest`: such text falls back through the chain at draw time.
+pub(crate) fn warn_unknown_font_tokens(id: &str, theme: &Theme, manifest: &ResolvedManifest) {
+    let fonts = &theme.tokens.fonts;
+    for (token, family) in [
+        ("body", &fonts.body),
+        ("heading", &fonts.heading),
+        ("mono", &fonts.mono),
+    ] {
+        if !manifest.font_families.contains_key(family) {
+            log::warn!(
+                "ui theme '{id}': fonts.{token} names family '{family}', which no font_families entry declares"
+            );
+        }
+    }
+}
 
 /// Load animation data from manifest.
 pub fn load_animations(manifest: &ResolvedManifest, world: &mut World) -> anyhow::Result<()> {
@@ -339,6 +404,7 @@ pub fn load_all(
     load_sprites(manifest, world, renderer)?;
     load_animations(manifest, world)?;
     load_fonts(manifest, world, renderer)?;
+    load_ui_themes(manifest, world)?;
     load_shaders(manifest, world, renderer)?;
     load_materials(manifest, world, renderer)?;
     load_sounds(manifest, world)?;

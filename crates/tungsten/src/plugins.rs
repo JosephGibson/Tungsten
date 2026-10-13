@@ -29,6 +29,7 @@ use crate::physics_debug::physics_debug_toggle_system;
 use crate::state::state_dispatcher_system;
 use crate::systems_overlay::systems_overlay_toggle_system;
 use crate::tweens::tween_tick_system;
+use crate::ui_debug::ui_debug_toggle_system;
 
 pub use tungsten_core::physics::{
     PHYSICS_PREV_SNAPSHOT, PHYSICS_STEP, PHYSICS_SYNC, PhysicsPlugin,
@@ -44,6 +45,8 @@ pub const INSPECTOR_TOGGLE: &str = "inspector_toggle";
 pub const INSPECTOR_PICK: &str = "inspector_pick";
 /// `PreUpdate`: the HUD toggle.
 pub const HUD_TOGGLE: &str = "hud_toggle";
+/// `PreUpdate`: the UI debug toggles (bounds overlay, hide game layers).
+pub const UI_DEBUG_TOGGLE: &str = "ui_debug_toggle";
 /// `PreUpdate`: vsync and fullscreen hotkeys.
 pub const DISPLAY_INPUT: &str = "display_input";
 /// `PreUpdate`: the state stack's dispatcher, after the display hotkeys.
@@ -65,7 +68,8 @@ pub const SHAKE_TICK: &str = "shake_tick";
 /// `PostUpdate`: the camera, after the shake tick.
 pub const CAMERA_UPDATE: &str = "camera_update";
 
-/// The overlay toggles and the inspector's pick, in `PreUpdate`.
+/// The overlay toggles, the inspector's pick and the UI debug toggles, in
+/// `PreUpdate`.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct DebugPlugin;
 
@@ -88,6 +92,10 @@ impl Plugin for DebugPlugin {
             system(INSPECTOR_PICK, inspector_pick_system).after(INSPECTOR_TOGGLE),
         );
         schedule.add(Stage::PreUpdate, system(HUD_TOGGLE, hud_toggle_system));
+        schedule.add(
+            Stage::PreUpdate,
+            system(UI_DEBUG_TOGGLE, ui_debug_toggle_system),
+        );
     }
 }
 

@@ -28,6 +28,7 @@
 
 use std::time::Instant;
 
+use tungsten_core::ui::PaintList;
 use tungsten_core::{
     ActionMap, AudioCommand, Binding, EventQueue, InputState, ScrollDirection, World,
 };
@@ -262,6 +263,10 @@ pub struct FrameDraw {
     pub light_ubo: LightUbo,
     /// Mesh particles, one batch per mesh.
     pub mesh_particles: Vec<MeshParticleBatch>,
+    /// The UI paint list the frame drew (M46): the app's retained list,
+    /// repainted when the tree, the scale, `UiDebug` or the sprite epoch
+    /// changed.
+    pub ui: PaintList,
 }
 
 impl FrameDraw {
@@ -285,6 +290,7 @@ impl FrameDraw {
             debug_lines: extract.debug_lines.clone(),
             light_ubo: extract.light_ubo,
             mesh_particles: extract.mesh_particles.clone(),
+            ui: extract.ui.clone(),
         }
     }
 }

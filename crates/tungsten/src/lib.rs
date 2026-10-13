@@ -29,6 +29,7 @@ pub mod testing;
 mod tilemap_extract;
 pub mod transition;
 pub mod tweens;
+pub mod ui_debug;
 mod user_dir;
 
 pub use app::{App, WindowSize};
@@ -69,3 +70,4 @@ pub use tungsten_core::{
 };
 pub use tungsten_render as render;
 pub use tweens::tween_tick_system;
+pub use ui_debug::ui_debug_toggle_system;

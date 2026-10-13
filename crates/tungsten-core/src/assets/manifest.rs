@@ -36,6 +36,8 @@ pub enum ManifestError {
     MissingParticleFile { id: String, path: String },
     #[error("shader '{id}' references missing file: {path}")]
     MissingShaderFile { id: String, path: String },
+    #[error("ui theme '{id}' references missing file: {path}")]
+    MissingUiThemeFile { id: String, path: String },
     #[error("material '{id}' references unknown shader '{shader}'")]
     MaterialShaderMissing { id: String, shader: String },
     #[error("particle mesh '{id}' is invalid: {reason}")]
@@ -75,6 +77,9 @@ pub struct RawManifest {
     /// Family IDs in order of preference for glyphs a style's family lacks.
     #[serde(default)]
     pub font_fallback: Vec<String>,
+    /// UI themes: a theme ID and the theme file it loads (M2, w01 §14).
+    #[serde(default)]
+    pub ui_themes: HashMap<String, UiThemeEntry>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -88,6 +93,17 @@ pub struct SpriteEntry {
     /// M29 sibling emissive mask; alpha or luma authored, decoded into RGB.
     #[serde(default)]
     pub emissive_mask: Option<String>,
+    /// M2 nine-slice insets `[left, top, right, bottom]` in source pixels: a
+    /// UI image of this sprite keeps the corners at source size and
+    /// stretches the edges and the centre (Q5).
+    #[serde(default)]
+    pub nine_slice: Option<[u32; 4]>,
+}
+
+/// A `ui_themes` entry: the theme file's path, relative to the manifest.
+#[derive(Debug, Clone, Deserialize)]
+pub struct UiThemeEntry {
+    pub path: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
@@ -197,6 +213,8 @@ pub struct ResolvedManifest {
     pub font_families: HashMap<String, ResolvedFontFamily>,
     /// The fallback chain: family IDs in order of preference, each once.
     pub font_fallback: Vec<String>,
+    /// UI themes by ID (M2).
+    pub ui_themes: HashMap<String, ResolvedUiTheme>,
 }
 
 #[derive(Debug, Clone)]
@@ -205,6 +223,14 @@ pub struct ResolvedSprite {
     pub filter: FilterMode,
     pub normal_path: Option<PathBuf>,
     pub emissive_path: Option<PathBuf>,
+    /// Nine-slice insets `[left, top, right, bottom]` in source pixels.
+    pub nine_slice: Option<[u32; 4]>,
+}
+
+/// A UI theme: the theme file's resolved path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedUiTheme {
+    pub path: PathBuf,
 }
 
 #[derive(Debug, Clone)]
@@ -346,6 +372,7 @@ impl ResolvedManifest {
                     filter: entry.filter,
                     normal_path,
                     emissive_path,
+                    nine_slice: entry.nine_slice,
                 },
             );
         }
@@ -443,6 +470,20 @@ impl ResolvedManifest {
             result
                 .shaders
                 .insert(id, ResolvedShader { path: full_path });
+        }
+
+        for (id, entry) in raw.ui_themes {
+            let full_path = base_dir.join(&entry.path);
+            if !full_path.exists() {
+                return Err(ManifestError::MissingUiThemeFile {
+                    id,
+                    path: full_path.display().to_string(),
+                });
+            }
+            let full_path = full_path.canonicalize().unwrap_or(full_path);
+            result
+                .ui_themes
+                .insert(id, ResolvedUiTheme { path: full_path });
         }
 
         // The material -> shader reference is checked by the caller, on this
@@ -625,6 +666,12 @@ impl ResolvedManifest {
                 return Err(ManifestError::DuplicateId { id });
             }
             self.font_families.insert(id, family);
+        }
+        for (id, theme) in other.ui_themes {
+            if self.ui_themes.contains_key(&id) {
+                return Err(ManifestError::DuplicateId { id });
+            }
+            self.ui_themes.insert(id, theme);
         }
         append_fallback(&mut self.font_fallback, other.font_fallback);
         if check_refs {

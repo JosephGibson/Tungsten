@@ -1,6 +1,7 @@
 use glam::Vec2;
 
 use super::*;
+use crate::assets::SpriteAssetId;
 use crate::text::{TextMeasure, TextNodeStore, TextWrap};
 use crate::ui::theme::{StyleOverrides, TextOverrides, Theme};
 use crate::ui::{
@@ -634,4 +635,81 @@ fn a_fractional_percent_width_stays_fractional() {
         2
     );
     assert_commits_fit(&tree, &mut store);
+}
+
+#[test]
+fn a_clean_tree_relayouts_when_the_viewport_changes() {
+    let mut tree = UiTree::new();
+    let root = tree.add_root(
+        UiLayer::Game,
+        LayoutStyle::default()
+            .with_size(Sizing::Px(50.0), Sizing::Px(50.0))
+            .anchored(Anchor::BottomEnd, Vec2::new(10.0, 10.0)),
+    );
+    let mut store = store();
+    tree.layout(VIEWPORT, &mut store);
+    tree.clear_paint_dirty();
+    assert_eq!(
+        tree.rect(root),
+        Some(Rect::from_pos_size(
+            Vec2::new(340.0, 240.0),
+            Vec2::new(50.0, 50.0)
+        ))
+    );
+    assert!(!tree.is_layout_dirty());
+
+    let stats = tree.layout(VIEWPORT, &mut store);
+    assert_eq!(stats.roots_laid_out, 0, "the same viewport costs nothing");
+    assert!(!tree.is_paint_dirty());
+
+    let stats = tree.layout(Vec2::new(800.0, 600.0), &mut store);
+    assert_eq!(stats.roots_laid_out, 1);
+    assert_eq!(
+        tree.rect(root),
+        Some(Rect::from_pos_size(
+            Vec2::new(740.0, 540.0),
+            Vec2::new(50.0, 50.0)
+        ))
+    );
+    assert!(tree.is_paint_dirty(), "the paint list follows the resize");
+    assert!(!tree.is_layout_dirty());
+}
+
+#[test]
+fn an_image_measures_its_natural_size_on_an_auto_axis() {
+    let mut tree = UiTree::new();
+    let root = tree.add_root(UiLayer::Game, LayoutStyle::row());
+    let icon = SpriteAssetId::new(0);
+    let natural = tree.image(root, icon, Vec2::new(32.0, 16.0), LayoutStyle::default());
+    let wide = tree.image(
+        root,
+        icon,
+        Vec2::new(32.0, 16.0),
+        LayoutStyle::default().with_size(Sizing::Px(100.0), Sizing::Auto),
+    );
+    let fixed = tree.image(root, icon, Vec2::new(32.0, 16.0), fill());
+    let mut store = store();
+    let stats = tree.layout(VIEWPORT, &mut store);
+    assert_eq!(stats.measure_calls, 0, "images never measure text");
+    assert_eq!(stats.commits, 0);
+    assert_eq!(
+        tree.rect(natural),
+        Some(Rect::from_pos_size(Vec2::ZERO, Vec2::new(32.0, 16.0)))
+    );
+    assert_eq!(
+        tree.rect(wide),
+        Some(Rect::from_pos_size(
+            Vec2::new(32.0, 0.0),
+            Vec2::new(100.0, 16.0)
+        ))
+    );
+    assert_eq!(
+        tree.rect(fixed),
+        Some(Rect::from_pos_size(
+            Vec2::new(132.0, 0.0),
+            Vec2::new(268.0, 16.0)
+        )),
+        "Fill takes the rest of the row"
+    );
+    assert_eq!(tree.text_node(natural), None);
 }

@@ -82,6 +82,21 @@ impl core::marker::Unpin for tungsten::asset_loader::AtlasRegistry
 impl core::marker::UnsafeUnpin for tungsten::asset_loader::AtlasRegistry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::asset_loader::AtlasRegistry
 impl core::panic::unwind_safe::UnwindSafe for tungsten::asset_loader::AtlasRegistry
+pub struct tungsten::asset_loader::UiThemePaths
+impl tungsten::asset_loader::UiThemePaths
+pub fn tungsten::asset_loader::UiThemePaths::id_for_path(&self, &std::path::Path) -> core::option::Option<&str>
+pub fn tungsten::asset_loader::UiThemePaths::register(&mut self, alloc::string::String, std::path::PathBuf)
+impl core::default::Default for tungsten::asset_loader::UiThemePaths
+pub fn tungsten::asset_loader::UiThemePaths::default() -> tungsten::asset_loader::UiThemePaths
+impl core::fmt::Debug for tungsten::asset_loader::UiThemePaths
+pub fn tungsten::asset_loader::UiThemePaths::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten::asset_loader::UiThemePaths
+impl core::marker::Send for tungsten::asset_loader::UiThemePaths
+impl core::marker::Sync for tungsten::asset_loader::UiThemePaths
+impl core::marker::Unpin for tungsten::asset_loader::UiThemePaths
+impl core::marker::UnsafeUnpin for tungsten::asset_loader::UiThemePaths
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::asset_loader::UiThemePaths
+impl core::panic::unwind_safe::UnwindSafe for tungsten::asset_loader::UiThemePaths
 pub fn tungsten::asset_loader::load_all(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::load_all_merged(&[impl core::convert::AsRef<std::path::Path>], &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::load_animations(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
@@ -94,6 +109,7 @@ pub fn tungsten::asset_loader::load_shaders(&tungsten_core::assets::manifest::Re
 pub fn tungsten::asset_loader::load_sounds(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::load_sprites(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::load_tilemaps(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
+pub fn tungsten::asset_loader::load_ui_themes(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::rebuild_atlas_for_filter(tungsten_core::assets::manifest::FilterMode, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::reload_action_map(&std::path::Path, &mut tungsten_core::ecs::world::World) -> core::result::Result<(), tungsten_core::input::action_map::ActionMapError>
 pub fn tungsten::asset_loader::reload_animation(&str, &std::path::Path, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
@@ -104,6 +120,8 @@ pub fn tungsten::asset_loader::reload_particle(&str, &std::path::Path, &mut tung
 pub fn tungsten::asset_loader::reload_shader(&str, &std::path::Path, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::reload_sprite(&str, &std::path::Path, tungsten_core::assets::manifest::FilterMode, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::reload_tilemap(&str, &std::path::Path, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
+pub fn tungsten::asset_loader::reload_ui_theme(&str, &std::path::Path, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
+pub fn tungsten::asset_loader::reload_ui_themes_from_manifest(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World)
 pub fn tungsten::asset_loader::spawn_scene(&mut tungsten_core::ecs::world::World, &tungsten_core::assets::scene::SceneData, tungsten::state::StateId)
 pub mod tungsten::audio
 pub struct tungsten::audio::AudioSystem
@@ -479,6 +497,7 @@ pub const tungsten::plugins::SQUASH_STRETCH_TRIGGER: &str
 pub const tungsten::plugins::STATE_DISPATCHER: &str
 pub const tungsten::plugins::SYSTEMS_OVERLAY_TOGGLE: &str
 pub const tungsten::plugins::TWEEN_TICK: &str
+pub const tungsten::plugins::UI_DEBUG_TOGGLE: &str
 pub mod tungsten::post_aa
 pub struct tungsten::post_aa::PostAaState
 pub tungsten::post_aa::PostAaState::mode: tungsten_core::config::PostAaMode
@@ -651,6 +670,14 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten::telemetry::FrameTimings
 pub struct tungsten::telemetry::RenderCounts
 pub tungsten::telemetry::RenderCounts::entities: u32
 pub tungsten::telemetry::RenderCounts::sprite_instances: u32
+pub tungsten::telemetry::RenderCounts::text_atlas_full: u64
+pub tungsten::telemetry::RenderCounts::text_batches: u32
+pub tungsten::telemetry::RenderCounts::text_batches_prepared: u32
+pub tungsten::telemetry::RenderCounts::text_full_frames: u64
+pub tungsten::telemetry::RenderCounts::ui_commands: u32
+pub tungsten::telemetry::RenderCounts::ui_layout_us: u32
+pub tungsten::telemetry::RenderCounts::ui_nodes_laid_out: u32
+pub tungsten::telemetry::RenderCounts::ui_roots_laid_out: u32
 impl core::clone::Clone for tungsten::telemetry::RenderCounts
 pub fn tungsten::telemetry::RenderCounts::clone(&self) -> tungsten::telemetry::RenderCounts
 impl core::default::Default for tungsten::telemetry::RenderCounts
@@ -674,6 +701,7 @@ pub tungsten::testing::FrameDraw::mesh_particles: alloc::vec::Vec<tungsten_rende
 pub tungsten::testing::FrameDraw::quads: alloc::vec::Vec<tungsten_render::quad::QuadInstance>
 pub tungsten::testing::FrameDraw::sprites: alloc::vec::Vec<tungsten_render::sprite::SpriteBatch>
 pub tungsten::testing::FrameDraw::text: alloc::vec::Vec<tungsten_render::text::TextSection>
+pub tungsten::testing::FrameDraw::ui: tungsten_core::ui::paint::PaintList
 impl core::marker::Freeze for tungsten::testing::FrameDraw
 impl core::marker::Send for tungsten::testing::FrameDraw
 impl core::marker::Sync for tungsten::testing::FrameDraw
@@ -706,6 +734,7 @@ impl !core::panic::unwind_safe::UnwindSafe for tungsten::testing::Harness
 pub struct tungsten::testing::UiHarness
 impl tungsten::testing::UiHarness
 pub fn tungsten::testing::UiHarness::dump(&self) -> alloc::string::String
+pub fn tungsten::testing::UiHarness::dump_paint(&mut self) -> alloc::string::String
 pub fn tungsten::testing::UiHarness::focus(&mut self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten::testing::UiHarness::focus_next(&mut self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten::testing::UiHarness::focus_prev(&mut self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
@@ -714,6 +743,7 @@ pub fn tungsten::testing::UiHarness::harness_mut(&mut self) -> &mut tungsten::te
 pub fn tungsten::testing::UiHarness::hit(&self, f32, f32) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten::testing::UiHarness::layout(&mut self) -> tungsten_core::ui::tree::LayoutStats
 pub fn tungsten::testing::UiHarness::new(tungsten::app::App) -> Self
+pub fn tungsten::testing::UiHarness::paint(&mut self) -> tungsten_core::ui::paint::PaintList
 pub fn tungsten::testing::UiHarness::rect(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::geometry::Rect>
 pub fn tungsten::testing::UiHarness::step(&mut self, u32) -> u32
 pub fn tungsten::testing::UiHarness::text(&self) -> &tungsten_core::ui::measure::FixedAdvanceMeasure
@@ -823,6 +853,8 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten::transition::Transitio
 impl core::panic::unwind_safe::UnwindSafe for tungsten::transition::TransitionState
 pub mod tungsten::tweens
 pub fn tungsten::tweens::tween_tick_system(&mut tungsten_core::ecs::world::World)
+pub mod tungsten::ui_debug
+pub fn tungsten::ui_debug::ui_debug_toggle_system(&mut tungsten_core::ecs::world::World)
 pub enum tungsten::HudCorner
 pub tungsten::HudCorner::BottomLeft
 pub tungsten::HudCorner::BottomRight
@@ -1270,6 +1302,14 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten::post_aa::PostAaState
 pub struct tungsten::RenderCounts
 pub tungsten::RenderCounts::entities: u32
 pub tungsten::RenderCounts::sprite_instances: u32
+pub tungsten::RenderCounts::text_atlas_full: u64
+pub tungsten::RenderCounts::text_batches: u32
+pub tungsten::RenderCounts::text_batches_prepared: u32
+pub tungsten::RenderCounts::text_full_frames: u64
+pub tungsten::RenderCounts::ui_commands: u32
+pub tungsten::RenderCounts::ui_layout_us: u32
+pub tungsten::RenderCounts::ui_nodes_laid_out: u32
+pub tungsten::RenderCounts::ui_roots_laid_out: u32
 impl core::clone::Clone for tungsten::telemetry::RenderCounts
 pub fn tungsten::telemetry::RenderCounts::clone(&self) -> tungsten::telemetry::RenderCounts
 impl core::default::Default for tungsten::telemetry::RenderCounts
@@ -1463,4 +1503,5 @@ pub fn tungsten::squash_stretch_tick_system(&mut tungsten_core::ecs::world::Worl
 pub fn tungsten::squash_stretch_trigger_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::state_dispatcher_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::tween_tick_system(&mut tungsten_core::ecs::world::World)
+pub fn tungsten::ui_debug_toggle_system(&mut tungsten_core::ecs::world::World)
 pub type tungsten::StateId = &'static str

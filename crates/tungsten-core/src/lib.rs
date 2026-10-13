@@ -28,10 +28,10 @@ pub use assets::{
     ParticleConfigError, ParticleConfigRegistry, ParticleEntry, ParticleMesh, ParticleMeshAssetId,
     ParticleMeshEntry, ParticleMeshRegistry, ParticleRender, Range, ResolvedFont,
     ResolvedFontFamily, ResolvedManifest, ResolvedMaterial, ResolvedParticle, ResolvedParticleMesh,
-    ResolvedSound, SceneData, SceneEntry, SceneError, SceneSprite, SceneTransform, SceneTween,
-    SceneTweenChannel, SceneTweenRepeat, SoundData, SoundEntry, SoundRegistry, SpriteAsset,
-    SpriteAssetId, TextureHandle, TileIndex, TilemapData, TilemapInstance, TilemapLayer,
-    TilemapRegistry, WorldRngSeed,
+    ResolvedSound, ResolvedUiTheme, SceneData, SceneEntry, SceneError, SceneSprite, SceneTransform,
+    SceneTween, SceneTweenChannel, SceneTweenRepeat, SoundData, SoundEntry, SoundRegistry,
+    SpriteAsset, SpriteAssetId, TextureHandle, TileIndex, TilemapData, TilemapInstance,
+    TilemapLayer, TilemapRegistry, UiThemeEntry, WorldRngSeed,
 };
 pub use audio::{AudioCommand, AudioCommands};
 pub use camera::{CameraBounds, CameraController, CameraMode, CameraState};
@@ -84,4 +84,4 @@ pub use tween::{
     Easing, IntSlot, ScalarSlot, Tween, TweenChannel, TweenComplete, TweenDirection, TweenRepeat,
     UniformOverrideBlock, Vec4Slot, lerp_f32, lerp_u8,
 };
-pub use ui::{UiTree, WidgetId};
+pub use ui::{PaintList, UiDebug, UiThemeRegistry, UiTree, WidgetId};

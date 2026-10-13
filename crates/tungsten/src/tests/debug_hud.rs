@@ -62,6 +62,7 @@ fn counts_row_renders_entity_and_sprite_totals() {
     world.insert_resource(RenderCounts {
         entities: 42,
         sprite_instances: 128,
+        ..RenderCounts::default()
     });
 
     let mut hud = DebugHud::new();
@@ -178,4 +179,34 @@ fn outline_disabled_emits_single_section() {
     let world = World::new();
     let sections = compose_hud_text_sections(&mut hud, &world, (1280, 720), 16.67);
     assert_eq!(sections.len(), 1);
+}
+
+#[test]
+fn ui_row_renders_the_paint_list_layout_and_text_batch_counts() {
+    let mut world = World::new();
+    world.insert_resource(RenderCounts {
+        ui_commands: 17,
+        ui_layout_us: 42,
+        ui_roots_laid_out: 1,
+        ui_nodes_laid_out: 9,
+        text_batches: 2,
+        text_batches_prepared: 1,
+        text_full_frames: 3,
+        text_atlas_full: 0,
+        ..RenderCounts::default()
+    });
+
+    let mut hud = DebugHud::new();
+    hud.enabled = true;
+    hud.refresh_interval_ms = 0.0;
+    let sections = compose_hud_text_sections(&mut hud, &world, (1280, 720), 16.67);
+    let content = &sections.last().unwrap().content;
+    let row = content
+        .lines()
+        .find(|line| line.trim_start().starts_with("ui "))
+        .unwrap_or_else(|| panic!("ui row missing in:\n{content}"));
+    assert_eq!(
+        row.trim_start(),
+        "ui 17 cmds layout 42us 1r/9n text 2b 1prep full 3 atlas_full 0"
+    );
 }

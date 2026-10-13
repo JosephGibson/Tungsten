@@ -2,6 +2,9 @@
 //! (closed as `Easing` is, `D-054`) and the record behind every
 //! [`WidgetId`].
 
+use glam::Vec2;
+
+use crate::assets::SpriteAssetId;
 use crate::text::{StyledText, TextNodeId};
 
 use super::WidgetId;
@@ -24,7 +27,7 @@ pub enum UiLayer {
     DebugPopup,
 }
 
-/// What a widget is. `Image` joins at M2, `Toggle` and `Slider` at BC.
+/// What a widget is. `Toggle` and `Slider` join at BC.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum WidgetKind {
@@ -34,6 +37,9 @@ pub enum WidgetKind {
     Label,
     /// A focusable, interactive panel holding one `Label`.
     Button,
+    /// A leaf drawing one sprite, stretched into its box, or nine-sliced
+    /// when the sprite has insets (M2).
+    Image,
 }
 
 impl WidgetKind {
@@ -44,7 +50,14 @@ impl WidgetKind {
             Self::Panel => Role::None,
             Self::Label => Role::Label,
             Self::Button => Role::Button,
+            Self::Image => Role::Image,
         }
+    }
+
+    /// Whether widgets of this kind hold no children: labels and images.
+    #[must_use]
+    pub const fn is_leaf(self) -> bool {
+        matches!(self, Self::Label | Self::Image)
     }
 }
 
@@ -66,6 +79,8 @@ pub enum Role {
     Label,
     /// An activatable control.
     Button,
+    /// A picture.
+    Image,
 }
 
 /// Whether a widget takes part in layout, paint and hit testing.
@@ -104,6 +119,17 @@ impl TextContent {
     }
 }
 
+/// An image's sprite, the size an `Auto` box measures and its tint.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct ImageContent {
+    pub(crate) sprite: SpriteAssetId,
+    /// The size an `Auto` axis takes, in UI units (Q4).
+    pub(crate) natural_size: Vec2,
+    /// Multiplied into the sampled colour; opaque white draws the sprite as
+    /// authored.
+    pub(crate) tint: [u8; 4],
+}
+
 /// The record behind a [`WidgetId`].
 #[derive(Debug)]
 #[allow(clippy::struct_excessive_bools)] // One behaviour flag each (w01 §14); no two are a state machine.
@@ -117,6 +143,10 @@ pub(crate) struct Node {
     pub(crate) children: Vec<WidgetId>,
     /// Set for a `Label`.
     pub(crate) text: Option<TextContent>,
+    /// Set for an `Image`.
+    pub(crate) image: Option<ImageContent>,
+    /// Whether the children paint only inside this node's box (Q6).
+    pub(crate) clip_children: bool,
     pub(crate) layout_style: LayoutStyle,
     pub(crate) visibility: Visibility,
     pub(crate) role: Role,
@@ -163,6 +193,8 @@ impl Node {
             layer,
             children: Vec::new(),
             text: None,
+            image: None,
+            clip_children: false,
             layout_style,
             visibility: Visibility::Visible,
             role: kind.default_role(),

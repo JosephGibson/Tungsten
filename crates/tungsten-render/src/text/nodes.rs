@@ -4,7 +4,7 @@
 
 use glam::Vec2;
 use glyphon::cosmic_text::Ellipsize;
-use glyphon::{Attrs, Buffer, Color, Family, Metrics, Shaping, Wrap};
+use glyphon::{Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, Wrap};
 use tungsten_core::text::{
     FontEpoch, MeasureWidth, StyledText, TextMeasure, TextMetrics, TextNodeId, TextNodeStore,
     TextStyle, TextWrap,
@@ -38,6 +38,9 @@ struct Node {
     definite: Option<(u32, TextMetrics)>,
     /// The committed layout and its metrics.
     committed: Option<(LayoutState, TextMetrics)>,
+    /// Rises on a changing `set_text` and on every `commit_layout`, so a UI
+    /// text batch's signature moves with what the buffer draws (M46).
+    revision: u64,
 }
 
 impl Node {
@@ -54,6 +57,7 @@ impl Node {
             max: None,
             definite: None,
             committed: None,
+            revision: 0,
         }
     }
 
@@ -109,6 +113,33 @@ impl NodeStore {
     fn node_mut(&mut self, id: TextNodeId) -> Option<&mut Node> {
         self.slot_mut(id)?.node.as_mut()
     }
+
+    /// The committed buffer of `id` and the node's revision, while the
+    /// buffer still holds that layout under `epoch`.
+    fn area(&self, id: TextNodeId, epoch: FontEpoch) -> Option<(&Buffer, u64)> {
+        let current = self.slot(id)?.node.as_ref()?;
+        let (state, _) = current.committed?;
+        (current.shaped == Some(epoch) && current.laid_out == Some(state))
+            .then_some((&current.buffer, current.revision))
+    }
+}
+
+/// The committed node buffers, lent to a UI text batch's prepare beside the
+/// font system (M46).
+pub(crate) struct NodeAreas<'a> {
+    nodes: &'a NodeStore,
+    epoch: FontEpoch,
+}
+
+impl<'a> NodeAreas<'a> {
+    pub(super) fn new(nodes: &'a NodeStore, epoch: FontEpoch) -> Self {
+        Self { nodes, epoch }
+    }
+
+    /// See [`TextEngine::node_area`].
+    pub(crate) fn area(&self, id: TextNodeId) -> Option<(&'a Buffer, u64)> {
+        self.nodes.area(id, self.epoch)
+    }
 }
 
 impl TextEngine {
@@ -160,6 +191,7 @@ impl TextEngine {
                 current.text.clone_from(text);
                 current.style.clone_from(style);
                 current.invalidate();
+                current.revision += 1;
             }
             None => slot.node = Some(Node::new(text.clone(), style.clone())),
         }
@@ -189,6 +221,7 @@ impl TextEngine {
                 "the buffer holds the committed size",
             );
             current.committed = Some((state, metrics));
+            current.revision += 1;
         }
         metrics
     }
@@ -200,6 +233,32 @@ impl TextEngine {
         let current = self.nodes.slot(node)?.node.as_ref()?;
         let (state, metrics) = current.committed?;
         (current.shaped == Some(self.epoch) && current.laid_out == Some(state)).then_some(metrics)
+    }
+
+    /// The node's revision: it rises on a changing [`Self::set_text`] and on
+    /// every [`Self::commit_layout`], never on equal text; `None` for a stale
+    /// ID or a node without text. A UI text batch's signature carries it
+    /// (M46).
+    #[must_use]
+    pub fn node_revision(&self, node: TextNodeId) -> Option<u64> {
+        Some(self.nodes.slot(node)?.node.as_ref()?.revision)
+    }
+
+    /// The committed buffer of `node` and its revision, while the buffer
+    /// still holds that layout under the current font epoch; what a UI text
+    /// batch draws through [`NodeAreas::area`].
+    #[cfg(test)]
+    pub(crate) fn node_area(&self, node: TextNodeId) -> Option<(&Buffer, u64)> {
+        self.nodes.area(node, self.epoch)
+    }
+
+    /// The font system and the committed node buffers, for a UI text
+    /// batch's prepare.
+    pub(crate) fn batch_parts(&mut self) -> (&mut FontSystem, NodeAreas<'_>) {
+        (
+            &mut self.font_system,
+            NodeAreas::new(&self.nodes, self.epoch),
+        )
     }
 
     /// Logs a stale or removed node ID, once per ID.

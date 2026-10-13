@@ -20,6 +20,7 @@ use super::fonts::{ChainFallback, FaceStyle, FamilyNames, FontSource, pick_face}
 #[path = "nodes.rs"]
 mod nodes;
 
+pub(crate) use nodes::NodeAreas;
 pub use nodes::TextNodes;
 
 struct StoredFontAttrs {

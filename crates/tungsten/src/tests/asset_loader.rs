@@ -11,8 +11,10 @@ use tungsten_core::assets::{
     TilemapData, TilemapLayer, TilemapRegistry, UvRect,
 };
 use tungsten_core::ecs::{Entity, World};
+use tungsten_core::ui::{Theme, UiThemeRegistry, UiTree};
 use tungsten_core::{AssetRegistry, TextureHandle};
 
+use super::reload::apply_nine_slice;
 use super::*;
 
 static COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -576,4 +578,198 @@ fn fonts_load_in_sorted_id_order() {
         .map(String::as_str)
         .collect();
     assert_eq!(order, sorted);
+}
+
+// ---- M46: ui themes and nine-slice insets ----
+
+fn theme_json(text_color: &str) -> String {
+    format!(r#"{{ "tokens": {{ "colors": {{ "text": "{text_color}" }} }} }}"#)
+}
+
+/// A manifest whose `ui_themes` are `themes` (ID, file text), written under
+/// `dir`, with `sans` and `mono` families declared.
+fn theme_manifest(dir: &Path, themes: &[(&str, &str)]) -> ResolvedManifest {
+    let mut manifest = ResolvedManifest::default();
+    for family in ["sans", "mono"] {
+        manifest.font_families.insert(
+            family.to_string(),
+            tungsten_core::assets::ResolvedFontFamily::new(vec![family.to_string()]),
+        );
+    }
+    for (id, text) in themes {
+        let path = dir.join("ui").join("themes").join(format!("{id}.json"));
+        write(&path, text);
+        manifest.ui_themes.insert(
+            (*id).to_string(),
+            tungsten_core::assets::ResolvedUiTheme { path },
+        );
+    }
+    manifest
+}
+
+#[test]
+fn ui_themes_load_into_the_registry_with_their_paths() {
+    let dir = tempdir();
+    let manifest = theme_manifest(&dir, &[("dark", &theme_json("#ff0000")), ("light", "{}")]);
+    let mut world = World::new();
+    load_ui_themes(&manifest, &mut world).unwrap();
+    let registry = world.get_resource::<UiThemeRegistry>().unwrap();
+    assert_eq!(registry.ids(), ["dark", "light"]);
+    assert_eq!(
+        registry.get("dark").unwrap().tokens.colors.text,
+        [255, 0, 0, 255]
+    );
+    assert_eq!(registry.get("light"), Some(&Theme::default()));
+    let paths = world.get_resource::<UiThemePaths>().unwrap();
+    assert_eq!(
+        paths.id_for_path(&manifest.ui_themes["dark"].path),
+        Some("dark")
+    );
+    assert_eq!(paths.id_for_path(Path::new("elsewhere.json")), None);
+
+    let bad = theme_manifest(&dir, &[("broken", "{ \"kinds\": { \"slider\": {} } }")]);
+    let err = load_ui_themes(&bad, &mut world).unwrap_err();
+    assert!(err.to_string().contains("ui theme 'broken'"), "{err}");
+}
+
+#[test]
+fn reloading_the_applied_theme_restyles_the_tree_and_another_does_not() {
+    let dir = tempdir();
+    let manifest = theme_manifest(
+        &dir,
+        &[
+            ("dark", &theme_json("#ff0000")),
+            ("light", &theme_json("#000000")),
+        ],
+    );
+    let mut world = World::new();
+    load_ui_themes(&manifest, &mut world).unwrap();
+    let dark = world
+        .get_resource::<UiThemeRegistry>()
+        .unwrap()
+        .get("dark")
+        .unwrap()
+        .clone();
+    let mut tree = UiTree::new();
+    tree.add_root(
+        tungsten_core::ui::UiLayer::Game,
+        tungsten_core::ui::LayoutStyle::default(),
+    );
+    tree.set_theme_asset("dark", dark);
+    tree.clear_paint_dirty();
+    let epoch = tree.theme_epoch();
+    world.insert_resource(tree);
+
+    // The applied theme's file changes: the registry and the tree follow.
+    let dark_path = manifest.ui_themes["dark"].path.clone();
+    write(&dark_path, &theme_json("#00ff00"));
+    reload_ui_theme("dark", &dark_path, &mut world).unwrap();
+    let tree = world.get_resource::<UiTree>().unwrap();
+    assert_eq!(tree.theme_epoch(), epoch.next());
+    assert!(tree.is_paint_dirty());
+    assert!(tree.is_layout_dirty());
+    assert_eq!(tree.theme().tokens.colors.text, [0, 255, 0, 255]);
+    assert_eq!(tree.theme_id(), Some("dark"));
+    assert_eq!(
+        world
+            .get_resource::<UiThemeRegistry>()
+            .unwrap()
+            .get("dark")
+            .unwrap()
+            .tokens
+            .colors
+            .text,
+        [0, 255, 0, 255]
+    );
+
+    // Another theme's file changes: the registry follows, the tree does not.
+    world
+        .get_resource_mut::<UiTree>()
+        .unwrap()
+        .clear_paint_dirty();
+    let light_path = manifest.ui_themes["light"].path.clone();
+    write(&light_path, &theme_json("#0000ff"));
+    reload_ui_theme("light", &light_path, &mut world).unwrap();
+    let tree = world.get_resource::<UiTree>().unwrap();
+    assert_eq!(tree.theme_epoch(), epoch.next());
+    assert!(!tree.is_paint_dirty());
+    assert_eq!(
+        world
+            .get_resource::<UiThemeRegistry>()
+            .unwrap()
+            .get("light")
+            .unwrap()
+            .tokens
+            .colors
+            .text,
+        [0, 0, 255, 255]
+    );
+
+    // A bad file keeps the previous theme, in the registry and on the tree.
+    write(&dark_path, "{ not json");
+    reload_ui_theme("dark", &dark_path, &mut world).unwrap();
+    let tree = world.get_resource::<UiTree>().unwrap();
+    assert_eq!(tree.theme_epoch(), epoch.next());
+    assert_eq!(tree.theme().tokens.colors.text, [0, 255, 0, 255]);
+    assert_eq!(
+        world
+            .get_resource::<UiThemeRegistry>()
+            .unwrap()
+            .get("dark")
+            .unwrap()
+            .tokens
+            .colors
+            .text,
+        [0, 255, 0, 255]
+    );
+}
+
+#[test]
+fn a_manifest_reload_adds_a_new_theme_and_keeps_a_removed_one() {
+    let dir = tempdir();
+    let first = theme_manifest(&dir, &[("dark", &theme_json("#ff0000"))]);
+    let mut world = World::new();
+    load_ui_themes(&first, &mut world).unwrap();
+
+    let second = theme_manifest(&dir, &[("light", "{}"), ("broken", "[]")]);
+    reload_ui_themes_from_manifest(&second, &mut world);
+    let registry = world.get_resource::<UiThemeRegistry>().unwrap();
+    assert_eq!(
+        registry.ids(),
+        ["dark", "light"],
+        "the removed theme stays, the new one loads, the broken one does not"
+    );
+    assert_eq!(
+        registry.get("dark").unwrap().tokens.colors.text,
+        [255, 0, 0, 255],
+        "an existing entry keeps its theme"
+    );
+    let paths = world.get_resource::<UiThemePaths>().unwrap();
+    assert_eq!(
+        paths.id_for_path(&second.ui_themes["light"].path),
+        Some("light")
+    );
+}
+
+#[test]
+fn nine_slice_insets_apply_once_per_change_and_move_the_sprite_epoch() {
+    let mut world = seed_world();
+    seed_sprite(&mut world, "frame");
+    let registry = world.get_resource_mut::<AssetRegistry>().unwrap();
+    let epoch = registry.sprite_epoch();
+    assert!(apply_nine_slice(registry, "frame", Some([4, 4, 4, 4])));
+    assert_eq!(registry.sprite_epoch(), epoch + 1);
+    assert_eq!(
+        registry.get_sprite("frame").unwrap().nine_slice,
+        Some([4, 4, 4, 4])
+    );
+    assert!(
+        !apply_nine_slice(registry, "frame", Some([4, 4, 4, 4])),
+        "equal insets change nothing"
+    );
+    assert_eq!(registry.sprite_epoch(), epoch + 1);
+    assert!(apply_nine_slice(registry, "frame", None));
+    assert_eq!(registry.sprite_epoch(), epoch + 2);
+    assert!(!apply_nine_slice(registry, "missing", Some([1, 1, 1, 1])));
+    assert_eq!(registry.sprite_epoch(), epoch + 2);
 }

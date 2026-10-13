@@ -1,8 +1,9 @@
 use glam::Vec2;
 
 use super::*;
+use crate::assets::SpriteAssetId;
 use crate::text::StyledText;
-use crate::ui::{FixedAdvanceMeasure, LayoutStyle, Role, UiLayer, Visibility, WidgetKind};
+use crate::ui::{FixedAdvanceMeasure, LayoutStyle, Role, Theme, UiLayer, Visibility, WidgetKind};
 
 const VIEWPORT: Vec2 = Vec2::new(800.0, 600.0);
 
@@ -309,4 +310,96 @@ fn a_child_of_a_dead_parent_panics() {
     let panel = tree.panel(root, LayoutStyle::default());
     tree.remove(panel);
     tree.panel(panel, LayoutStyle::default());
+}
+
+#[test]
+fn an_image_is_a_leaf_with_a_sprite_a_natural_size_and_a_tint() {
+    let (mut tree, root) = clean_tree();
+    let icon = SpriteAssetId::new(3);
+    let image = tree.image(root, icon, Vec2::new(32.0, 16.0), LayoutStyle::default());
+    assert_eq!(tree.kind(image), Some(WidgetKind::Image));
+    assert_eq!(tree.role(image), Some(Role::Image));
+    assert_eq!(tree.image_sprite(image), Some(icon));
+    assert!(!tree.focusable(image));
+    assert!(!tree.interactive(image));
+    assert!(tree.hit_testable(image));
+    assert!(!tree.clips_children(image));
+    assert_eq!(tree.text(image), None);
+    assert!(!tree.set_text(image, "x"));
+    assert!(tree.is_layout_dirty());
+    settle(&mut tree);
+
+    // The same sprite and size mark nothing; a new size marks layout; a new
+    // sprite alone marks paint.
+    tree.set_image(image, icon, Vec2::new(32.0, 16.0));
+    assert!(!tree.is_layout_dirty());
+    assert!(!tree.is_paint_dirty());
+    tree.set_image(image, icon, Vec2::new(64.0, 16.0));
+    assert!(tree.is_layout_dirty());
+    settle(&mut tree);
+    let other = SpriteAssetId::new(4);
+    tree.set_image(image, other, Vec2::new(64.0, 16.0));
+    assert_eq!(tree.image_sprite(image), Some(other));
+    assert!(tree.is_paint_dirty());
+    assert!(!tree.is_layout_dirty());
+    tree.clear_paint_dirty();
+
+    // A tint and the clip flag mark paint only; equal values mark nothing.
+    tree.set_image_tint(image, [255, 255, 255, 255]);
+    assert!(!tree.is_paint_dirty());
+    tree.set_image_tint(image, [255, 0, 0, 255]);
+    assert!(tree.is_paint_dirty());
+    assert!(!tree.is_layout_dirty());
+    tree.clear_paint_dirty();
+    tree.set_clip_children(root, true);
+    assert!(tree.clips_children(root));
+    assert!(tree.is_paint_dirty());
+    assert!(!tree.is_layout_dirty());
+    tree.clear_paint_dirty();
+    tree.set_clip_children(root, true);
+    assert!(!tree.is_paint_dirty());
+
+    // Panels and labels hold no image.
+    assert_eq!(tree.image_sprite(root), None);
+    tree.set_image(root, icon, Vec2::ZERO);
+    tree.set_image_tint(root, [0, 0, 0, 0]);
+    assert!(!tree.is_paint_dirty());
+    assert!(!tree.clips_children(WidgetId::new(99, 0)));
+    assert_eq!(
+        tree.dump_layout(),
+        "Panel None Visible (0.0, 0.0) 800.0×16.0\n  Image Image Visible (0.0, 0.0) 800.0×16.0\n"
+    );
+}
+
+#[test]
+#[should_panic(expected = "Image holds no children")]
+fn a_child_of_an_image_panics() {
+    let (mut tree, root) = clean_tree();
+    let image = tree.image(
+        root,
+        SpriteAssetId::new(0),
+        Vec2::ONE,
+        LayoutStyle::default(),
+    );
+    tree.label(image, "x");
+}
+
+#[test]
+fn the_theme_asset_id_follows_set_theme_asset_and_clears_on_set_theme() {
+    let (mut tree, _root) = clean_tree();
+    assert_eq!(tree.theme_id(), None);
+    let epoch = tree.theme_epoch();
+    let mut dark = Theme::default();
+    dark.tokens.colors.text = [1, 2, 3, 255];
+    tree.set_theme_asset("dark", dark.clone());
+    assert_eq!(tree.theme_id(), Some("dark"));
+    assert_eq!(tree.theme(), &dark);
+    assert_eq!(tree.theme_epoch(), epoch.next());
+    assert!(tree.is_layout_dirty());
+    assert!(tree.is_paint_dirty());
+    settle(&mut tree);
+    assert_eq!(tree.theme_id(), Some("dark"), "a layout keeps it");
+    tree.set_theme(Theme::default());
+    assert_eq!(tree.theme_id(), None);
+    assert_eq!(tree.theme_epoch(), epoch.next().next());
 }

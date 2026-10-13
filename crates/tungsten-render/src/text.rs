@@ -8,7 +8,7 @@ mod gpu;
 
 pub use engine::{TextEngine, TextNodes};
 pub use fonts::FontSource;
-pub use gpu::TextPipeline;
+pub use gpu::{TextPipeline, TextStats};
 use tungsten_core::text::TextLayout;
 
 /// High-level text draw command. Build one with `..Default::default()` for

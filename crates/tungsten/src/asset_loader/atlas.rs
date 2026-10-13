@@ -53,6 +53,9 @@ struct Decoded {
     normal_rgba: Option<Vec<u8>>,
     /// M29 decoded sibling emissive RGB-promoted to RGBA, dimensions == albedo.
     emissive_rgba: Option<Vec<u8>>,
+    /// M46 nine-slice insets from the manifest entry; `None` on a repack,
+    /// which keeps the registered ones.
+    nine_slice: Option<[u32; 4]>,
 }
 
 /// Decoded M29 siblings of one sprite: the normal map as RGBA and the
@@ -313,6 +316,10 @@ fn build_atlas_for_filter(
             src.emissive_path.clone(),
             lit_atlas,
         );
+        // M46: the manifest's nine-slice insets, carried onto the asset.
+        if src.nine_slice.is_some() {
+            registry.set_sprite_nine_slice(&src.id, src.nine_slice);
+        }
         atlas_registry.packed.insert(src.id.clone(), packed.clone());
     }
 
@@ -364,6 +371,7 @@ pub fn load_sprites(
             },
             emissive_rgba: if lit { siblings.emissive } else { None },
             normal_rgba: siblings.normal,
+            nine_slice: sprite.nine_slice,
         };
         match sprite.filter {
             FilterMode::Nearest => decoded_nearest.push(entry),
@@ -636,6 +644,7 @@ pub fn rebuild_atlas_for_filter(
             emissive_path: if lit { emissive_path } else { None },
             emissive_rgba: if lit { siblings.emissive } else { None },
             normal_rgba: siblings.normal,
+            nine_slice: None,
         });
     }
 

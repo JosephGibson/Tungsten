@@ -1,10 +1,14 @@
-//! A [`Harness`] with a `UiTree` laid out after every frame (`D-125`), the
-//! way M2's layout stage will run it, through a [`FixedAdvanceMeasure`] so
-//! no font is needed: every glyph advances half the font size.
+//! A [`Harness`] with a `UiTree` laid out after every frame (`D-125`),
+//! standing in for the app's layout stage, which needs a renderer, through
+//! a [`FixedAdvanceMeasure`] so no font is needed: every glyph advances half
+//! the font size. The frame's extract paints the tree as the app does, one
+//! layout behind; [`UiHarness::paint`] paints it now (M46).
 
 use glam::Vec2;
-use tungsten_core::World;
-use tungsten_core::ui::{FixedAdvanceMeasure, LayoutStats, Rect, UiTree, WidgetId};
+use tungsten_core::ui::{
+    FixedAdvanceMeasure, LayoutStats, PaintList, Rect, UiDebug, UiTree, WidgetId,
+};
+use tungsten_core::{AssetRegistry, World};
 
 use super::Harness;
 use crate::app::{App, WindowSize};
@@ -140,6 +144,33 @@ impl UiHarness {
     #[must_use]
     pub fn dump(&self) -> String {
         self.tree().dump_layout()
+    }
+
+    /// Paints the tree now, at scale 1 with the world's `UiDebug` flags and
+    /// sprite registry, as the app's extract paints it (M46). Clears the
+    /// tree's paint-dirty flag.
+    ///
+    /// # Panics
+    ///
+    /// When a test removed the `UiTree` resource.
+    pub fn paint(&mut self) -> PaintList {
+        let world = self.harness.world_mut();
+        let debug = world.get_resource::<UiDebug>().copied().unwrap_or_default();
+        let mut tree = world
+            .remove_resource::<UiTree>()
+            .expect("UiHarness: the UiTree resource was removed");
+        let empty = AssetRegistry::new();
+        let sprites = world.get_resource::<AssetRegistry>().unwrap_or(&empty);
+        let mut list = PaintList::default();
+        tree.paint(1.0, &debug, sprites, &mut list);
+        world.insert_resource(tree);
+        list
+    }
+
+    /// [`Self::paint`]'s snapshot: one line per clip and per command, with
+    /// the text batch boundaries.
+    pub fn dump_paint(&mut self) -> String {
+        self.paint().dump()
     }
 
     /// The text double the layouts measure with, for its counts and commits.

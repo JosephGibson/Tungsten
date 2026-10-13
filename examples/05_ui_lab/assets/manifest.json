@@ -1,0 +1,9 @@
+{
+  "sprites": {
+    "ex05_frame": { "path": "sprites/frame.png", "filter": "nearest", "nine_slice": [12, 12, 12, 12] },
+    "ex05_icon": { "path": "sprites/icon.png", "filter": "nearest" }
+  },
+  "ui_themes": {
+    "ex05_default": { "path": "ui/themes/ex05_default.json" }
+  }
+}

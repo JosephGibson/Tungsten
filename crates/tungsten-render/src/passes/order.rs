@@ -91,9 +91,10 @@ fn post_pass_label(i: usize) -> &'static str {
 /// - When `post_aa != Off` (M27), three SMAA passes (edge, blend weights,
 ///   neighborhood blend) splice in between the post stack and the text overlay
 ///   pass.
-/// - A `tungsten_text_overlay_pass` runs after the post stack / SMAA tail and
-///   composites screen-space text on top, so text is never sampled by post
-///   shaders.
+/// - A `tungsten_text_overlay_pass`, the overlay, runs after the post stack /
+///   SMAA tail and composites the UI paint list (M46) and then screen-space
+///   text on top, so neither is sampled by post shaders. The pass keeps its
+///   label and its `text` timing label (M46 Q1).
 ///
 /// `present` picks the tail (`D-087`):
 ///
@@ -201,7 +202,8 @@ pub(crate) fn acquire_split(post_stack_len: usize, post_aa: PostAaMode) -> usize
     }
 }
 
-/// Target the text-overlay pass writes into on a [`PresentPath::Blit`] frame:
+/// Target the overlay pass (UI, then text) writes into on a
+/// [`PresentPath::Blit`] frame:
 /// whichever texture the present blit samples and the screenshot reads. When
 /// `post_aa != Off` the SMAA tail has already composited into `PresentSource`,
 /// so the overlay lands there. Otherwise it follows the M26 post-stack

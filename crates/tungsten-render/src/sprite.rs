@@ -404,6 +404,14 @@ impl SpritePipeline {
         &self.texture_bind_group_layout
     }
 
+    /// The bind group of an uploaded page, for the UI pipeline's image
+    /// batches (M46); `None` for a handle nothing uploaded.
+    pub(crate) fn texture_bind_group(&self, handle: TextureHandle) -> Option<&wgpu::BindGroup> {
+        self.textures
+            .get(&handle)
+            .map(|texture| &texture.bind_group)
+    }
+
     /// M29 lit-texture bind-group layout (group 1) used by `LitSpritePipeline`.
     /// Three texture views (albedo, normal, emissive) + one filtering sampler.
     #[must_use]

@@ -27,6 +27,9 @@ pub struct SpriteAsset {
     /// rect with a parallel normal/emissive bundle uploaded under `handle`
     /// (typically equal to `atlas` since lit pages reuse the albedo handle).
     pub lit_atlas: Option<TextureHandle>,
+    /// M2 nine-slice insets `[left, top, right, bottom]` in source pixels;
+    /// `None` draws the sprite stretched.
+    pub nine_slice: Option<[u32; 4]>,
 }
 
 /// Dense sprite handle, minted by [`AssetRegistry`]; stable for the registry's life.
@@ -46,6 +49,8 @@ pub struct AssetRegistry {
     sprite_names: Vec<String>,
     sprite_id_by_name: HashMap<String, SpriteAssetId>,
     path_to_sprite_id: HashMap<PathBuf, SpriteAssetId>,
+    /// Rises on every change to a registered sprite; see [`Self::sprite_epoch`].
+    sprite_epoch: u64,
 }
 
 impl AssetRegistry {
@@ -149,7 +154,9 @@ impl AssetRegistry {
             normal_path,
             emissive_path,
             lit_atlas,
+            nine_slice: None,
         });
+        self.sprite_epoch += 1;
         sprite_id
     }
 
@@ -192,6 +199,7 @@ impl AssetRegistry {
             asset.uv = uv;
             asset.width = width;
             asset.height = height;
+            self.sprite_epoch += 1;
         }
     }
 
@@ -199,7 +207,27 @@ impl AssetRegistry {
     pub fn update_sprite_lit_atlas(&mut self, id: &str, lit_atlas: Option<TextureHandle>) {
         if let Some(asset) = self.get_sprite_mut(id) {
             asset.lit_atlas = lit_atlas;
+            self.sprite_epoch += 1;
         }
+    }
+
+    /// Sets the M2 nine-slice insets of a registered sprite, as the loader
+    /// carries them from the manifest; an unregistered ID does nothing.
+    pub fn set_sprite_nine_slice(&mut self, id: &str, nine_slice: Option<[u32; 4]>) {
+        if let Some(asset) = self.get_sprite_mut(id) {
+            asset.nine_slice = nine_slice;
+            self.sprite_epoch += 1;
+        }
+    }
+
+    /// A count that rises whenever a registered sprite changes: on
+    /// [`Self::register_sprite`], [`Self::update_sprite_entry`],
+    /// [`Self::update_sprite_lit_atlas`] and [`Self::set_sprite_nine_slice`],
+    /// never on interning. A retained UI paint list repaints when it moved,
+    /// since a repack may have moved a UV.
+    #[must_use]
+    pub fn sprite_epoch(&self) -> u64 {
+        self.sprite_epoch
     }
 }
 

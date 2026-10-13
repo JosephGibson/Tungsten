@@ -63,6 +63,8 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-126` | 1.0 glyph path: shared atlas, batch renderers, deferred trim (T1b); owned path/R3 deferred. Extends `D-026`. |
 | `D-127` | Logical UI layout, physical text rasterization, hinting off; scene scaling deferred to 1.x. |
 | `D-145` | W2 R2 late acquire: passes before the swapchain stage record and submit before the acquire; a resize inside it records them again; `render_encode` stays whole, `render_encode_pre_acquire` its part before. |
+| `D-147` | W1 M2 UI overlay: core paints one ordered list in physical pixels under `D-127`'s rounding rule with indexed integer clips; the overlay pass draws SDF primitives and `D-126` text batches in paint order, each item setting its scissor, sRGB colours decoded in the shader; an empty list leaves the frame unchanged. Extends `D-087`, `D-125`, `D-126`, `D-127`. |
+| `D-148` | W1 M2 theme asset and skins: `ui_themes` manifest files (optional fields over the built-in theme, sRGB colours) in a core `UiThemeRegistry`, reloaded live and re-applied to the tree following the ID; `nine_slice` insets on sprite entries through `set_sprite_nine_slice`; `sprite_epoch` for repaints; `UiDebug` with `engine_toggle_ui_bounds` (F5) and `engine_toggle_ui` (F6). Extends `D-031`, `D-045`, `D-048`, `D-053`. |
 
 ## Dependencies / Tooling
 

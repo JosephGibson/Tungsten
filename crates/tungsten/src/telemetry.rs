@@ -95,11 +95,29 @@ impl Default for DisplayTelemetry {
     }
 }
 
-/// Per-frame render counts from extract.
+/// Per-frame render counts from extract, and the UI's counts (M46): the
+/// paint list's and the layout stage's from this frame's extract, the text
+/// batch counts from the previous frame's render.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct RenderCounts {
     pub entities: u32,
     pub sprite_instances: u32,
+    /// Commands in the UI paint list.
+    pub ui_commands: u32,
+    /// Microseconds the UI layout stage took.
+    pub ui_layout_us: u32,
+    /// Roots the UI layout stage laid out.
+    pub ui_roots_laid_out: u32,
+    /// Nodes the UI layout stage laid out.
+    pub ui_nodes_laid_out: u32,
+    /// UI text batches in the last rendered frame.
+    pub text_batches: u32,
+    /// Text batches prepared in the last rendered frame.
+    pub text_batches_prepared: u32,
+    /// Full text frames (atlas trimmed, everything prepared) so far.
+    pub text_full_frames: u64,
+    /// `AtlasFull` results so far.
+    pub text_atlas_full: u64,
 }
 
 #[cfg(test)]

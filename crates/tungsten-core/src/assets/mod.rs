@@ -18,7 +18,7 @@ pub use manifest::{
     FilterMode, FontEntry, FontFamilyEntry, LoadedManifest, ManifestError, MaterialEntry,
     ParticleEntry, ParticleMeshEntry, ResolvedFont, ResolvedFontFamily, ResolvedManifest,
     ResolvedMaterial, ResolvedParticle, ResolvedParticleMesh, ResolvedShader, ResolvedSound,
-    ResolvedTilemap, ShaderEntry, SoundEntry, TilemapEntry,
+    ResolvedTilemap, ResolvedUiTheme, ShaderEntry, SoundEntry, TilemapEntry, UiThemeEntry,
 };
 pub use material::{MaterialAssetId, MaterialRegistry, MaterialUniformDefaults};
 pub use particle::{

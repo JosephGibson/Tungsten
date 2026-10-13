@@ -31,6 +31,8 @@ fn default_map_has_platformer_and_engine_actions() {
         "engine_toggle_systems_overlay",
         "engine_toggle_inspector",
         "engine_toggle_hud",
+        "engine_toggle_ui_bounds",
+        "engine_toggle_ui",
         "engine_toggle_vsync",
         "engine_toggle_fullscreen",
         "engine_exit",

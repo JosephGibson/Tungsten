@@ -31,6 +31,7 @@ use tungsten_core::assets::{
 };
 use tungsten_core::physics::{PhysicsBuffers, PhysicsConfig};
 use tungsten_core::post::{PostPass, PostStack};
+use tungsten_core::ui::{PaintList, UiDebug, UiThemeRegistry, UiTree};
 // `App` writes the deprecated `DeltaTime` each frame until W4b removes it.
 #[allow(deprecated)]
 use tungsten_core::DeltaTime;
@@ -124,6 +125,11 @@ pub struct App {
     // M31: the user's post stack plus the transition pass, rebuilt on each
     // frame a screen transition draws; kept to reuse its allocation.
     transition_post_stack: PostStack,
+    /// The UI paint list (M46), retained across frames and repainted when
+    /// the tree is paint-dirty or `painted_at` no longer matches.
+    ui_paint: PaintList,
+    /// What the retained list was painted with; `None` before the first.
+    painted_at: Option<PaintedAt>,
 }
 
 impl App {
@@ -227,6 +233,10 @@ impl App {
         world.insert_resource(ExtractScratch::default());
         world.insert_resource(Extracts::default());
         world.insert_resource(DebugDraw::new());
+        // M46: the UI tree, its debug flags and the loaded theme assets.
+        world.insert_resource(UiTree::new());
+        world.insert_resource(UiDebug::default());
+        world.insert_resource(UiThemeRegistry::new());
         world.insert_resource(PhysicsDebugOverlay::default());
         world.insert_resource(SystemTimingOverlay::default());
         world.insert_resource(InspectorState::new());
@@ -266,6 +276,8 @@ impl App {
             frames_rendered: 0,
             fatal_error: None,
             transition_post_stack: PostStack::new(),
+            ui_paint: PaintList::default(),
+            painted_at: None,
         };
 
         // Engine plugins register first, so their `PreUpdate` systems precede
@@ -550,6 +562,11 @@ impl App {
                     }
                 }
                 "json" => {
+                    // M46: a theme file, by the path the loader recorded.
+                    let theme_id = self
+                        .world
+                        .get_resource::<asset_loader::UiThemePaths>()
+                        .and_then(|paths| paths.id_for_path(&canon).map(ToString::to_string));
                     let anim_id = self
                         .world
                         .get_resource::<AnimationRegistry>()
@@ -561,7 +578,12 @@ impl App {
                             pr.id_for_path(&canon)
                                 .and_then(|aid| pr.name_for_id(aid).map(ToString::to_string))
                         });
-                    if let Some(id) = anim_id {
+                    if let Some(id) = theme_id {
+                        if let Err(e) = asset_loader::reload_ui_theme(&id, &canon, &mut self.world)
+                        {
+                            log::error!("Ui theme reload '{id}': {e}");
+                        }
+                    } else if let Some(id) = anim_id {
                         if let Err(e) = asset_loader::reload_animation(&id, &canon, &mut self.world)
                         {
                             log::error!("Animation reload '{id}': {e}");
@@ -573,7 +595,7 @@ impl App {
                         }
                     } else {
                         log::debug!(
-                            "Hot reload: no animation or particle registered for '{}'",
+                            "Hot reload: no animation, particle or ui theme registered for '{}'",
                             canon.display()
                         );
                     }
@@ -793,7 +815,17 @@ pub(crate) struct FrameExtract {
     /// M31 mesh particles, one batch per mesh. Engine-owned extract: there is
     /// no setter.
     pub(crate) mesh_particles: Vec<MeshParticleBatch>,
+    /// M46 UI paint list: a copy of the app's retained one.
+    pub(crate) ui: PaintList,
     extract_ms: f32,
+}
+
+/// What the retained UI paint list was painted with (M46).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PaintedAt {
+    scale_bits: u32,
+    debug: UiDebug,
+    sprite_epoch: u64,
 }
 
 #[allow(clippy::struct_field_names)]
@@ -1020,6 +1052,80 @@ impl App {
         hot_reload_start.elapsed().as_secs_f64() as f32 * 1000.0
     }
 
+    /// Lays the `UiTree` out at the window size in logical units (`D-127`)
+    /// through the renderer's text nodes, before the extract paints it. With
+    /// no renderer (the harness) it does nothing: `UiHarness` lays out after
+    /// the frame with its own text double. Returns the stage's milliseconds
+    /// and records the stats on `RenderCounts`.
+    #[inline(always)]
+    fn stage_ui_layout(&mut self) -> f32 {
+        let Some(renderer) = self.renderer.as_mut() else {
+            return 0.0;
+        };
+        let Some(size) = self.world.get_resource::<WindowSize>().copied() else {
+            return 0.0;
+        };
+        let scale = self
+            .world
+            .get_resource::<tungsten_core::ScaleFactor>()
+            .map_or(1.0, tungsten_core::ScaleFactor::get);
+        let viewport = glam::Vec2::new(size.width as f32 / scale, size.height as f32 / scale);
+        let start = Instant::now();
+        let Some(tree) = self.world.get_resource_mut::<UiTree>() else {
+            return 0.0;
+        };
+        let stats = tree.layout(viewport, &mut renderer.text_nodes());
+        let layout_ms = start.elapsed().as_secs_f64() as f32 * 1000.0;
+        if let Some(rc) = self.world.get_resource_mut::<RenderCounts>() {
+            rc.ui_layout_us = (layout_ms * 1000.0) as u32;
+            rc.ui_roots_laid_out = stats.roots_laid_out;
+            rc.ui_nodes_laid_out = stats.nodes_laid_out;
+        }
+        layout_ms
+    }
+
+    /// Repaints the retained UI paint list when the tree is paint-dirty or
+    /// the scale, the `UiDebug` flags or the sprite epoch moved since the
+    /// last paint, so a static tree follows a debug toggle, an atlas repack
+    /// and a scale change (M46).
+    #[inline(always)]
+    fn paint_ui(&mut self) {
+        let scale = self
+            .world
+            .get_resource::<tungsten_core::ScaleFactor>()
+            .map_or(1.0, tungsten_core::ScaleFactor::get);
+        let debug = self
+            .world
+            .get_resource::<UiDebug>()
+            .copied()
+            .unwrap_or_default();
+        let sprite_epoch = self
+            .world
+            .get_resource::<AssetRegistry>()
+            .map_or(0, AssetRegistry::sprite_epoch);
+        let at = PaintedAt {
+            scale_bits: scale.to_bits(),
+            debug,
+            sprite_epoch,
+        };
+        let dirty = self
+            .world
+            .get_resource::<UiTree>()
+            .is_some_and(UiTree::is_paint_dirty);
+        if !dirty && self.painted_at == Some(at) {
+            return;
+        }
+        // Borrow split: the tree paints with `&World`'s registry.
+        let Some(mut tree) = self.world.remove_resource::<UiTree>() else {
+            return;
+        };
+        let empty = AssetRegistry::new();
+        let sprites = self.world.get_resource::<AssetRegistry>().unwrap_or(&empty);
+        tree.paint(scale, &debug, sprites, &mut self.ui_paint);
+        self.world.insert_resource(tree);
+        self.painted_at = Some(at);
+    }
+
     #[inline(always)]
     fn stage_extract(&mut self, prev_total_ms: f32) -> FrameExtract {
         let extract_start = Instant::now();
@@ -1042,12 +1148,17 @@ impl App {
             None => (Vec::new(), Vec::new(), Vec::new()),
         };
 
+        // M46: the UI paint list, before the HUD so its row counts it.
+        self.paint_ui();
+
         // Before HUD compose: counts row uses this frame's extract.
         let entity_count = self.world.entity_count();
         let sprite_instance_count: u32 = sprites.iter().map(|b| b.instances.len() as u32).sum();
+        let ui_commands = self.ui_paint.commands.len() as u32;
         if let Some(rc) = self.world.get_resource_mut::<RenderCounts>() {
             rc.entities = entity_count;
             rc.sprite_instances = sprite_instance_count;
+            rc.ui_commands = ui_commands;
         }
 
         // Extract-start emit: debug draw visible same frame.
@@ -1105,6 +1216,7 @@ impl App {
             debug_lines,
             light_ubo,
             mesh_particles,
+            ui: self.ui_paint.clone(),
             extract_ms,
         }
     }
@@ -1172,6 +1284,7 @@ impl App {
                     &extract.debug_quads,
                     &extract.debug_lines,
                     &extract.text,
+                    &extract.ui,
                     post_stack,
                 )
             } else {
@@ -1182,9 +1295,18 @@ impl App {
                     &extract.debug_quads,
                     &extract.debug_lines,
                     &extract.text,
+                    &extract.ui,
                     post_stack,
                 )
             });
+            // M46: the text batch counts the HUD shows next frame.
+            let text_stats = renderer.text_stats();
+            if let Some(rc) = self.world.get_resource_mut::<RenderCounts>() {
+                rc.text_batches = text_stats.batches;
+                rc.text_batches_prepared = text_stats.prepared;
+                rc.text_full_frames = text_stats.full_frames_total;
+                rc.text_atlas_full = text_stats.atlas_full_total;
+            }
             out.render_acquire_ms = renderer.cpu_timings.acquire_ms;
             out.render_encode_ms = renderer.cpu_timings.encode_ms;
             out.render_encode_pre_acquire_ms = renderer.cpu_timings.encode_pre_acquire_ms;
@@ -1305,8 +1427,10 @@ impl App {
         let hot_reload_ms = self.stage_hot_reload();
         self.apply_pending_post_aa_request();
 
+        // M46: the UI layout, counted in `extract` (Q11).
+        let ui_layout_ms = self.stage_ui_layout();
         let mut extract_out = self.stage_extract(prev_total_ms);
-        let extract_ms = extract_out.extract_ms;
+        let extract_ms = extract_out.extract_ms + ui_layout_ms;
 
         let (render_out, end) = self.stage_render(&extract_out);
         inspect(&extract_out);

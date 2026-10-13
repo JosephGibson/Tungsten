@@ -397,3 +397,30 @@ fn resolution_runs_inside_layout() {
         TextStyle::new("sans", 16.0, 20.0).with_color([235, 235, 240, 255])
     );
 }
+
+#[test]
+fn images_are_transparent_like_labels_and_resolve_under_their_parent() {
+    let theme = Theme::default();
+    let image = theme.kind(crate::ui::WidgetKind::Image);
+    assert_eq!(image, &theme.kinds.image);
+    assert_eq!(image.normal.background, [0, 0, 0, 0]);
+    assert_eq!(image.normal.border_width, 0.0);
+    assert!(image.normal.text.is_empty());
+    assert_eq!(
+        image.variant(WidgetState::Focused),
+        Some(&StyleOverrides::default())
+    );
+
+    let mut tree = UiTree::new();
+    let root = tree.add_root(UiLayer::Game, LayoutStyle::default());
+    let image = tree.image(
+        root,
+        crate::assets::SpriteAssetId::new(0),
+        Vec2::new(8.0, 8.0),
+        LayoutStyle::default(),
+    );
+    settle(&mut tree);
+    let style = resolved(&tree, image);
+    assert_eq!(style.background, [0, 0, 0, 0]);
+    assert_eq!(style.text, theme.base_text(), "text inherits from the root");
+}

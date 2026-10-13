@@ -1,0 +1,22 @@
+{
+  "tokens": {
+    "colors": {
+      "surface": "#1e1e24",
+      "border": "#4a4e63",
+      "text": "#f0f0f5",
+      "text_muted": "#a0a2af",
+      "accent": "#5b8def",
+      "accent_text": "#ffffff",
+      "focus": "#ffd166"
+    },
+    "radii": { "md": 6, "lg": 10 },
+    "text": { "size": 16, "line_height": 22, "heading_size": 24 }
+  },
+  "kinds": {
+    "panel": { "normal": { "corner_radius": 10, "border_width": 1 } },
+    "button": {
+      "normal": { "border_width": 1, "corner_radius": 6, "text": { "weight": 600 } },
+      "focused": { "border": "#ffd166", "border_width": 2 }
+    }
+  }
+}
