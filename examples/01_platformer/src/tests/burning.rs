@@ -3,9 +3,10 @@ use crate::burning::{
     BALL_BURN_SECONDS, BALL_FIRE_EMITTER_CAP, BallBurn, BallFireEmitter, EMITTER_DWELL, FLAME_SIZE,
     ball_fire_particles, ember_tint, flame_exposure, ignite, spread_ball_fire, tick_ball_fire,
 };
-use crate::gameplay::{Hazard, PreviousPosition, hazard_contacts};
+use crate::gameplay::{Hazard, hazard_contacts};
 use crate::state::SmallBall;
 use tungsten::core::{AssetRegistry, Particle, ParticleBudget};
+use tungsten::physics::PrevPosition;
 
 fn ball(world: &mut World, position: Vec2, small: bool) -> tungsten::core::Entity {
     let entity = world.spawn();
@@ -38,7 +39,7 @@ fn fire_ignites_small_balls_including_swept_crossings_and_still_destroys_normal_
     world.insert(fire, Position(Vec2::ZERO));
     let small = ball(&mut world, Vec2::ZERO, true);
     let crossing = ball(&mut world, Vec2::new(100.0, 0.0), true);
-    world.insert(crossing, PreviousPosition(Vec2::new(-100.0, 0.0)));
+    world.insert(crossing, PrevPosition(Vec2::new(-100.0, 0.0)));
     let normal = ball(&mut world, Vec2::ZERO, false);
     let distant = ball(&mut world, Vec2::new(0.0, 100.0), true);
     hazard_contacts(&mut world);

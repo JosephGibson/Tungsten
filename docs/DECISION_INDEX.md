@@ -161,12 +161,13 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-134` | W3a landed: Time/Timer edge rules and engine clock migration; DeltaTime deprecated. |
 | `D-135` | W15b landed: tuple/slice queries, accessors and one-move bundles; accepted costs recorded here. Amends `D-130`. |
 | `D-136` | Fable for level C/gates/spikes; A/B releases use Opus max. Amends `D-118`. |
-| `D-137` | W3b landed: bounded fixed loop, input/event step views and interpolation. Amends `D-040`. Amended by `D-139`: zero-step holds. |
+| `D-137` | W3b landed: bounded fixed loop, input/event step views and interpolation. Amends `D-040`. Amended by `D-139`: zero-step holds; `D-146`: stopped-clock input edges drop. |
 | `D-138` | W15c landed: additive extracts, tiles before sprites, explicit replace preserved, lit tiles (`D-061`). Amends `D-042`. |
 | `D-139` | Zero-step frames hold bounded events for fixed readers; HUD counts step contacts. Amends `D-040`, `D-137`. |
 | `D-142` | Render frames return presented/skipped or a failed frame; one-frame captures report their result; `App::run` returns the render failure, else the capture error. Amends `D-047`. |
 | `D-143` | Burst `once: false` re-arms through `rearm_burst` and never drains; the latch is `burst_fired`; zero total pulses emit nothing and fail `validate`. |
 | `D-144` | W1 M0b input groundwork: 28 more key variants, an ordered per-frame raw input stream in `InputState`, focus loss releasing held input, modifiers, pointer leave and the `ScaleFactor` resource. |
+| `D-146` | A zero-step frame on a stopped clock (game dt 0, real dt above 0) drops the fixed view's input edges: a press made while paused or at scale 0 reaches no step; a zero-dt frame keeps them. Amends `D-137`. |
 
 ## When To Open a Decision
 

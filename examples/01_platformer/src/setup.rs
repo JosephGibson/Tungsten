@@ -5,7 +5,8 @@ use tungsten::core::{
     AmbientLight, AnimationRegistry, AssetRegistry, AudioCommands, CameraBounds, CameraController,
     CameraMode, Easing, Entity, Light, ParallaxLayer, ParticleBudget, ParticleConfigRegistry,
     ParticleEmitter, ParticleEmitterState, SoundRegistry, Sprite, SpriteSquashStretch,
-    SquashTrigger, Tag, TilemapInstance, TilemapRegistry, Transform, Visibility, With, World,
+    SquashTrigger, Tag, TilemapInstance, TilemapRegistry, Timer, Transform, Visibility, With,
+    World,
 };
 use tungsten::physics::{
     BodyKind, Collider, PhysicsConfig, Position, RigidBody, RigidBodyBundle, Velocity,
@@ -701,8 +702,8 @@ pub(crate) fn populate_world(world: &mut World) {
             extinguish: sound("ex10_extinguish_sfx"),
             hit: sound("ex10_player_hit_sfx"),
             crush: sound("ex10_iron_crush_sfx"),
-            extinguish_cooldown: 0.0,
-            crush_cooldown: 0.0,
+            extinguish_cooldown: Timer::once(0.0),
+            crush_cooldown: Timer::once(0.0),
         }
     };
     world.insert_resource(effect_sounds);

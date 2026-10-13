@@ -8,7 +8,7 @@ description: Add, amend or supersede a Tungsten decision in DECISIONS.md — nex
 Writes a decision; [AGENTS.md](../../../AGENTS.md) owns the rules. Lookups: [the index](../../../docs/DECISION_INDEX.md), then one section of [DECISIONS.md](../../../DECISIONS.md) by ID; never read it whole.
 
 ```bash
-rg -oN '^## D-(\d+)' -r '$1' DECISIONS.md | sort -n | tail -1 | awk '{printf "D-%03d\n", $1 + 1}'  # next ID
+rg -oN '^## D-\d+' DECISIONS.md | cut -d- -f2 | sort -n | tail -1 | awk '{printf "D-%03d\n", $NF + 1}'  # next ID
 rg -n '^## D-' DECISIONS.md | rg -A1 ':## D-0NN '  # one entry's line range
 ```
 

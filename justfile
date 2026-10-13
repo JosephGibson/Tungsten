@@ -55,11 +55,16 @@ perf *args:
 perf-test:
     python3 -B scripts/test-bench.py
 
+# Report stale build artifacts in target/debug (hashes cargo left behind; newest 2 per crate stay); `just clean-target --apply` deletes, --keep N and --profile release adjust.
+clean-target *args:
+    python3 -B scripts/clean-target.py "$@"
+
 # Shell and workflow lint plus smoke-script, perf-helper, repo-checker, roadmap-helper and release-script tests (no GPU).
 script-test: perf-test
     shellcheck scripts/*.sh
     actionlint
     bash scripts/test-smoke-examples.sh
+    python3 -B scripts/test-clean-target.py
     python3 -B scripts/test-check-repo.py
     python3 -B scripts/test-roadmap.py
     python3 -B scripts/test-release.py

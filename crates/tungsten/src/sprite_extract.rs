@@ -25,18 +25,18 @@
 //! indexes the registry directly, with no hashing or string compare.
 //!
 //! A sprite ID with no loaded asset, or a lit sprite carrying a material, logs
-//! a warning once per ID for as long as [`ExtractScratch`] lives (every
+//! a warning once per ID for as long as `ExtractScratch` lives (every
 //! `App`); the flags and the log sit in a cold helper outside the row loop.
 //!
 //! `D-114`: a sprite drawn by the stock sprite or lit pipeline whose bound lies
 //! wholly outside the camera's view writes no instance. The view is the one
 //! render projects with: the surface size the app passes through
-//! [`ExtractScratch`], else `WindowSize`; without a camera or a size nothing is
+//! `ExtractScratch`, else `WindowSize`; without a camera or a size nothing is
 //! culled. A culled sprite keeps its class and sort key, so batches open where
 //! they did, `z_norm` counts it, and every kept instance and the order of every
 //! non-empty batch equal the uncull extract's; batches culling empties are
 //! dropped. Material sprites run their shader's own vertex stage and are kept.
-//! With [`ExtractScratch`] in the world every buffer, the batches' instance
+//! With `ExtractScratch` in the world every buffer, the batches' instance
 //! vectors included, is reused across frames. Output bytes are unchanged from
 //! the tuple-sorting extract this replaced; `tests/sprite_extract.rs` keeps
 //! that extract as the reference.

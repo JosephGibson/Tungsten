@@ -51,7 +51,7 @@ Read at `<commit>`.
 
 ## 5. Decisions expected
 
-<`D-NNN`: title; amends or supersedes `D-0NN`. Next free IDs when written; checked again when the step runs.>
+<NNN: title; amends or supersedes `D-0NN`. Next free IDs when written; checked again when the step runs. Write each expected ID as a bare number: `just repo-check` rejects a `D-` ID that an active plan cites before `DECISIONS.md` has its entry.>
 
 ## 6. Invariants
 

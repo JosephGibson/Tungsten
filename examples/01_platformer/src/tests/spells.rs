@@ -1,5 +1,5 @@
 use glam::Vec2;
-use tungsten::core::{CameraState, Entity, InputState, MouseButton, World};
+use tungsten::core::{CameraState, Entity, InputState, MouseButton, Timer, World};
 use tungsten::physics::{Collider, Position};
 
 use super::seed_world;
@@ -81,7 +81,12 @@ fn fireball_contact_explodes_and_ignites_small_balls() {
 fn black_hole_leaves_burning_balls_inside_its_radius_spent() {
     let mut world = seed_world();
     let hole = world.spawn();
-    world.insert(hole, BlackHole { remaining: 2.0 });
+    world.insert(
+        hole,
+        BlackHole {
+            lifetime: Timer::once(2.0),
+        },
+    );
     world.insert(hole, Position(Vec2::ZERO));
     let inside = small_ball(&mut world, Vec2::new(BLACK_HOLE_RADIUS * 0.5, 0.0));
     let outside = small_ball(&mut world, Vec2::new(BLACK_HOLE_RADIUS * 1.5, 0.0));

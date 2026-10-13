@@ -41,8 +41,8 @@ fn ice_sounds() -> EffectSounds {
         extinguish: (AudioHandle(3), 1.0),
         hit: (AudioHandle(4), 1.0),
         crush: (AudioHandle(5), 1.0),
-        extinguish_cooldown: 0.0,
-        crush_cooldown: 0.0,
+        extinguish_cooldown: Timer::once(0.0),
+        crush_cooldown: Timer::once(0.0),
     }
 }
 

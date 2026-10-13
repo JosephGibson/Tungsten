@@ -17,8 +17,8 @@ use tungsten::core::assets::{LayerKind, TilemapData, TilemapLayer};
 use tungsten::core::{
     ActionMap, AnimationState, AudioCommand, AudioCommands, AudioHandle, Binding, CameraController,
     CameraMode, CameraState, CommandBuffer, Config, Entity, EventQueue, InputState, KeyCode,
-    MouseButton, ShakeEvent, SquashEvent, TilemapInstance, TilemapRegistry, Time, Transform, World,
-    sync_position_to_transform,
+    MouseButton, ShakeEvent, SquashEvent, TilemapInstance, TilemapRegistry, Time, Timer, Transform,
+    World, sync_position_to_transform,
 };
 use tungsten::physics::{
     Collider, CollisionEvent, PhysicsConfig, Position, RigidBody, RigidBodyBundle, Velocity,
@@ -34,8 +34,8 @@ use crate::setup::configure_platformer_camera;
 use crate::state::{
     ActiveBlackHole, AudioState, BALL_RADIUS, BALL_SPAWN_JITTER, BLACK_HOLE_LIFETIME,
     BLACK_HOLE_RADIUS, Ball, BallHue, BallSpawnState, BlackHole, CurrentSprite, GRAVITY_Y,
-    MAP_COLS, MAP_ROWS, PLAYER_HALF, PLAYER_SPAWN, Player, TEXT_UPDATE_INTERVAL, TILE,
-    TextDisplayState, WORLD_BOUNDS_MAX, WORLD_BOUNDS_MIN,
+    MAP_COLS, MAP_ROWS, PLAYER_HALF, PLAYER_SPAWN, Player, TILE, TextDisplayState,
+    WORLD_BOUNDS_MAX, WORLD_BOUNDS_MIN,
 };
 use crate::systems::{
     black_hole_force_system, black_hole_lifetime_system, cursor_to_world, despawn_out_of_bounds,

@@ -8,7 +8,7 @@ use tungsten::core::assets::LayerKind;
 use tungsten::core::{
     ActionMap, AnimationState, CameraState, Entity, EventQueue, InputState, Light, LightKind,
     ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, ShakeEvent, TilemapInstance,
-    TilemapRegistry, Time, Transform, World,
+    TilemapRegistry, Time, Timer, Transform, World,
 };
 use tungsten::physics::{BodyKind, Collider, Position, PrevPosition, RigidBody, Shape, Velocity};
 
@@ -419,7 +419,9 @@ pub(crate) fn push_bodies(world: &mut World, at: Vec2) {
         tungsten::physics::wake(world, entity);
         if let Some(health) = world.get_mut::<Health>(entity) {
             let lock = PUSH_CONTROL_LOCK * kick.length() / FIREBALL_PUSH_SPEED;
-            health.control_lock = health.control_lock.max(lock);
+            if lock > health.control_lock.remaining() {
+                health.control_lock = Timer::once(lock);
+            }
         }
     }
 }

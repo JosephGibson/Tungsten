@@ -445,8 +445,10 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
             rotation: 0.0,
             color: if world
                 .get::<crate::gameplay::Health>(entity)
-                .is_some_and(|h| h.immunity > 0.0 && ((h.immunity * 12.0) as u32).is_multiple_of(2))
-            {
+                .is_some_and(|h| {
+                    let left = h.immunity.remaining();
+                    left > 0.0 && ((left * 12.0) as u32).is_multiple_of(2)
+                }) {
                 [255, 190, 180, 130]
             } else {
                 [255; 4]
@@ -1154,7 +1156,7 @@ fn extract_vortices(
         let Some(pos) = drawn_position(world, e).map(Position) else {
             continue;
         };
-        let fade = (hole.remaining * 4.0).min(1.0);
+        let fade = (hole.lifetime.remaining() * 4.0).min(1.0);
         if over_particles && let Some(asset) = assets.get_sprite("ex10_infall_streak") {
             for i in 0..48 {
                 let progress = (i as f32 / 48.0 + time * 0.45).fract();

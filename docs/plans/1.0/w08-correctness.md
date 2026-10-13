@@ -12,7 +12,7 @@ Skeleton. The scoping text stays in [criteria](criteria.md) §2.1 and §8.1 unti
 ## Placement
 
 - **Proposed tier:** Must.
-- **Candidates:** W8a, the capture-completion contract and the engine-finding bugs, the burst latch among them (Phase 5, Track A; amendment 10); W8b, the shader ID allocator, queued transitions and the remaining P3s, inside the Phase 6 QA pass (amendment 18); since M43 also the tiles at the far plane and the default extract's per-class order under `gpu_depth`, which skipped M43's step 3 (known issues). The Phase 5 QA pass, after Track C, audits what Phase 5 changed.
+- **Candidates:** W8a, the capture-completion contract and the engine-finding bugs, the burst latch among them (Phase 5, Track A; amendment 10); W8b, the shader ID allocator, queued transitions and the remaining P3s, inside the Phase 6 QA pass (amendment 18); since M43 also the tiles at the far plane and the default extract's per-class order under `gpu_depth`, which skipped M43's step 3 (known issues). The Phase 5 QA pass, after Track C, audits what Phase 5 changed. *Run as M45 (0.63): input edges on a stopped clock (`D-146`), the inspector's collider pick at the drawn point, dependency hygiene, example 01's `PrevPosition` and timers, and the records; the once-per-ID warning for an unknown font joins W8b.*
 - **Needs first:** Nothing.
 - **Feeds:** W1 M2's direct-versus-capture check; W4's break ledger (the render result type, `App::run` returning runtime errors); W14b `check` (the once-per-ID warning for an unknown sprite).
 - **Owner questions:** None.

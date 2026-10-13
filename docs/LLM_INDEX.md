@@ -11,11 +11,11 @@ Task → file map. Open it before a broad search; read only the matching row's f
 | Event lifetime/flush, events held for the next fixed step (`D-040`, `D-139`) | `core/ecs/event_queue.rs`, `core/ecs/world.rs` |
 | Frame order, smoke-frame exit, winit loop (`D-018`, `D-043`) | `tungsten/app.rs`, `tungsten/lib.rs` |
 | Schedule, stages, plugins, `DefaultPlugins`, engine system names (`D-128`, `D-133`) | `core/schedule.rs`, `core/physics/plugin.rs`, `tungsten/plugins.rs`, `tungsten/app.rs`, `tungsten/tests/plugins.rs` |
-| Game clock, `Time`, `Timer`, `DeltaTime`, the fixed step, interpolation (`D-088`, `D-129`, `D-134`, `D-137`, `D-139`) | `core/time.rs`, `core/tests/time.rs`, `core/physics/plugin.rs`, `core/ecs/event_queue.rs`, `tungsten/app.rs`, `tungsten/tests/fixed_step.rs`, `tungsten/tests/testing.rs`, `examples/01_platformer/src/tests/regime.rs` |
+| Game clock, `Time`, `Timer`, `DeltaTime`, the fixed step, interpolation (`D-088`, `D-129`, `D-134`, `D-137`, `D-139`, `D-146`) | `core/time.rs`, `core/tests/time.rs`, `core/physics/plugin.rs`, `core/ecs/event_queue.rs`, `tungsten/app.rs`, `tungsten/tests/fixed_step.rs`, `tungsten/tests/testing.rs`, `examples/01_platformer/src/tests/regime.rs` |
 | Tuple queries, `With`/`Without`, bundles, `spawn_with`, `RigidBodyBundle` (`D-130`, `D-135`) | `core/ecs/query.rs`, `core/ecs/bundle.rs`, `core/ecs/world.rs`, `core/tests/ecs/query.rs` |
 | Headless test harness, `Harness`, `FrameDraw`, `UiHarness` (`D-110`, `D-125`) | `tungsten/testing.rs`, `tungsten/testing/ui.rs`, `tungsten/app.rs`, `tungsten/tests/testing.rs` |
 | Config parsing, env overrides | `core/config.rs`, `core/display.rs`, `tungsten.json` |
-| Logs, user folder, crash reports, `TUNGSTEN_USER_DIR`, `TUNGSTEN_TEST_PANIC` (`D-119`) | `tungsten/logging.rs`, `tungsten/user_dir.rs`, `tungsten/crash.rs`, `tungsten/app.rs`, `tools/crash-probe/` |
+| Logs, user folder, crash reports and the target triple they print, `TUNGSTEN_USER_DIR`, `TUNGSTEN_TEST_PANIC` (`D-119`) | `tungsten/logging.rs`, `tungsten/user_dir.rs`, `tungsten/crash.rs`, `tungsten/app.rs`, `crates/tungsten/build.rs`, `tools/crash-probe/` |
 | Display apply, fullscreen, vsync, frame cap (`D-043`) | `tungsten/display.rs`, `core/display.rs` |
 | Input actions, `input.json`, rebind reload (`D-045`) | `core/input/action_map.rs`, `core/input/key_serde.rs`, `tungsten/asset_loader/reload.rs`, `tungsten/debug_hud.rs`, `tungsten/display.rs`, `input.json` |
 | Input state, raw input stream, focus loss, modifiers, pointer leave, `ScaleFactor`, the winit bridge (`D-144`) | `core/input.rs`, `core/display.rs`, `tungsten/input_bridge.rs`, `tungsten/app.rs`, `core/tests/input.rs`, `tungsten/tests/input_bridge.rs` |
@@ -84,13 +84,14 @@ Run with `cargo run -p example-NN-name`.
 | Open findings, unchecked platforms and follow-ups | `docs/known-issues.md` |
 | Validation selection (`just checks`), repository QA and quick checks | `docs/validation.md`, `scripts/check-repo.py`, `scripts/test-check-repo.py`, `justfile`; client setup: `docs/agent-setup.md` |
 | Agent instruction budgets and links (`just ctx`) | `scripts/check-agent-context.py` |
+| Pruning stale `target/` artifacts, a full disk (`just clean-target`) | `scripts/clean-target.py`, `scripts/test-clean-target.py` |
 | Public-API snapshots (`just api`, `D-107`); breaks go in the W4 ledger | `scripts/public-api.sh`, `api/`, `docs/plans/1.0/w04-api-freeze.md` |
 | Writing or running a 1.0 milestone plan | `.claude/skills/tungsten-milestone/SKILL.md`, `docs/plans/1.0/workflow.md` |
 | Road to 1.0 status, next prompt, roadmap page, stop stages and session recommendations (`D-109`, `D-118`) | `.claude/skills/tungsten-next/SKILL.md`, `.claude/skills/tungsten-next/prompts.md`, `docs/plans/1.0/roadmap.json`, `scripts/roadmap.py`, `scripts/test-roadmap.py`, `.claude/skills/tungsten-next/page.html` |
 | Release preparation, checks and command hand-off, publication/recovery, debug archives, license notices and crash symbolization (`D-071`, `D-074`, `D-079`, `D-120`, `D-122`) | `.github/workflows/release.yml`, `scripts/release.py`, `scripts/test-release.py`, `licenses/`, `scripts/crash-report.py`, `scripts/test-crash-report.py`, `tools/launcher/src/main.rs`, `.claude/skills/tungsten-finalize/SKILL.md`, `.claude/skills/tungsten-release/SKILL.md`, `docs/releases.md`, `scripts/release-preflight.py`, `scripts/test-release-preflight.py` |
 | CI jobs, the Windows test job (`D-070`, `D-121`) | `.github/workflows/ci.yml` |
 | New dependency or design change | `docs/DECISION_INDEX.md`, then `DECISIONS.md` by ID; to write an entry, `.claude/skills/tungsten-decision/SKILL.md` |
-| Committing plan work (`D-097`, `D-098`) | `docs/plans/README.md` |
+| Committing plan work (`D-105`) | `docs/plans/README.md` |
 
 ## Usually skip
 

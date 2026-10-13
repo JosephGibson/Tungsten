@@ -33,7 +33,7 @@ fn update_text_display_refreshes_default_state_on_first_tick() {
     let display = world.get_resource::<TextDisplayState>().unwrap();
     assert_eq!(display.fps, 60);
     assert!(
-        display.timer < TEXT_UPDATE_INTERVAL,
+        display.timer.just_finished(),
         "first refresh should consume the primed display timer"
     );
 }
@@ -494,7 +494,12 @@ fn cloud_parallax_and_vortex_instances_animate_without_world_mutation() {
     }
     world.insert_resource(assets);
     let hole = world.spawn();
-    world.insert(hole, BlackHole { remaining: 2.0 });
+    world.insert(
+        hole,
+        BlackHole {
+            lifetime: Timer::once(2.0),
+        },
+    );
     world.insert(hole, Position(Vec2::new(300.0, 200.0)));
     world.insert_resource(crate::gameplay::SceneTime(0.0));
     let first = crate::extract::extract_sprites(&world);

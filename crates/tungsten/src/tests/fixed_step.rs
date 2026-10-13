@@ -1,7 +1,7 @@
 //! The fixed loop through the harness (M41): the step dt inside
-//! `fixed_update`, one step per edge and per event, interpolated bodies,
-//! the step count and summed timings, a paused game, a world without
-//! `Time` and the `time` section.
+//! `fixed_update`, one step per edge and per event, input edges on a
+//! stopped clock, interpolated bodies, the step count and summed timings, a
+//! paused game, a world without `Time` and the `time` section.
 
 use super::Harness;
 use crate::{App, FrameTimings};
@@ -310,6 +310,137 @@ fn at_144_hz_a_fixed_reader_reads_each_update_event_once_and_a_pause_drops_them(
         "only the last paused frame's event reaches the next step"
     );
     assert!(after.windows(2).all(|w| w[1] == w[0] + 1), "{after:?}");
+}
+
+/// The keys the edge recorder watches.
+const KEYS: [KeyCode; 5] = [
+    KeyCode::KeyA,
+    KeyCode::KeyB,
+    KeyCode::KeyC,
+    KeyCode::KeyD,
+    KeyCode::KeyE,
+];
+
+/// Set, the next frame's `pre_update` restarts the game clock, as a state
+/// change leaving a pause screen would.
+struct Restart(bool);
+
+/// An app whose `fixed_update` records each of [`KEYS`] it reads as just
+/// pressed, once per step, and whose `pre_update` restarts the clock when
+/// [`Restart`] is set.
+fn edge_recorder() -> App {
+    let mut app = app();
+    app.world_mut().insert_resource(Seen::<KeyCode>(Vec::new()));
+    app.world_mut().insert_resource(Restart(false));
+    app.add_system_to(
+        Stage::PreUpdate,
+        system("restart_clock", |world: &mut World| {
+            if std::mem::take(&mut world.get_resource_mut::<Restart>().unwrap().0) {
+                let time = world.get_resource_mut::<Time>().unwrap();
+                time.resume();
+                time.set_scale(1.0);
+            }
+        }),
+    );
+    app.add_system_to(
+        Stage::FixedUpdate,
+        system("fixed_presses", |world: &mut World| {
+            let input = world.get_resource::<InputState>().unwrap();
+            let read: Vec<KeyCode> = KEYS
+                .into_iter()
+                .filter(|&key| input.just_pressed(key))
+                .collect();
+            for key in read {
+                push(world, key);
+            }
+        }),
+    );
+    app
+}
+
+fn input(harness: &mut Harness) -> &mut InputState {
+    harness
+        .world_mut()
+        .get_resource_mut::<InputState>()
+        .unwrap()
+}
+
+/// The keys the recorder read since `from`.
+fn read_since(harness: &Harness, from: usize) -> &[KeyCode] {
+    &seen::<KeyCode>(harness)[from..]
+}
+
+/// Stops the game clock from the next frame on.
+type Stop = fn(&mut Time);
+
+#[test]
+fn a_press_on_a_stopped_clock_reaches_no_step() {
+    let stops: [(&str, Stop); 2] = [
+        ("paused", Time::pause),
+        ("scale 0", |time| time.set_scale(0.0)),
+    ];
+    for (stop_name, stop) in stops {
+        let mut harness = Harness::new(edge_recorder());
+        harness.step(3);
+        stop(harness.world_mut().get_resource_mut::<Time>().unwrap());
+        harness.step(1);
+        input(&mut harness).key_down(KeyCode::KeyA);
+        harness.step(1);
+        input(&mut harness).key_up(KeyCode::KeyA);
+        harness.step(1);
+        // The last stopped frame reads this press; its `pre_update` restarts
+        // the clock.
+        input(&mut harness).key_down(KeyCode::KeyB);
+        harness.world_mut().get_resource_mut::<Restart>().unwrap().0 = true;
+        harness.step(1);
+        assert_eq!(timings(&harness).fixed_steps, 0, "{stop_name}");
+        let restarted = seen::<KeyCode>(&harness).len();
+        harness.step(1);
+        assert_eq!(timings(&harness).fixed_steps, 1, "{stop_name}");
+        let read = read_since(&harness, restarted);
+        assert!(
+            read.is_empty(),
+            "{stop_name}: the step after the restart read {read:?}, pressed on the stopped clock"
+        );
+        input(&mut harness).key_down(KeyCode::KeyC);
+        harness.step(3);
+        assert_eq!(
+            read_since(&harness, restarted),
+            [KeyCode::KeyC],
+            "{stop_name}: a press after the restart reaches one step"
+        );
+    }
+
+    // On a running clock a press waits for the next step, through a frame
+    // too short for one and through a frame with no time at all.
+    let mut harness = Harness::new(edge_recorder());
+    harness.set_dt(FAST);
+    harness.step(1);
+    while timings(&harness).fixed_steps == 0 {
+        harness.step(1);
+    }
+    let from = seen::<KeyCode>(&harness).len();
+    input(&mut harness).key_down(KeyCode::KeyD);
+    harness.step(1);
+    assert_eq!(timings(&harness).fixed_steps, 0, "a short frame read KeyD");
+    while timings(&harness).fixed_steps == 0 {
+        harness.step(1);
+    }
+    assert_eq!(read_since(&harness, from), [KeyCode::KeyD]);
+
+    let from = seen::<KeyCode>(&harness).len();
+    harness.set_dt(0.0);
+    input(&mut harness).key_down(KeyCode::KeyE);
+    harness.step(1);
+    assert_eq!(
+        timings(&harness).fixed_steps,
+        0,
+        "a zero-dt frame read KeyE"
+    );
+    harness.set_dt(PIN);
+    harness.step(1);
+    assert_eq!(timings(&harness).fixed_steps, 1);
+    assert_eq!(read_since(&harness, from), [KeyCode::KeyE]);
 }
 
 /// A body moving right at `SPEED`, spawned through the bundle (with

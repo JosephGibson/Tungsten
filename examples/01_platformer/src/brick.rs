@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use glam::Vec2;
 use tungsten::Bundle;
 use tungsten::core::{
-    ActionMap, CameraState, Entity, EventQueue, InputState, Time, Transform, World,
+    ActionMap, CameraState, Entity, EventQueue, InputState, Time, Timer, Transform, World,
 };
 use tungsten::physics::{
     Collider, CollisionEvent, Position, PrevPosition, RigidBody, RigidBodyBundle, Velocity,
@@ -267,7 +267,7 @@ fn severity(speed: f32, per: f32) -> usize {
 pub(crate) fn brick_impacts(world: &mut World) {
     let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
     if let Some(sounds) = world.get_resource_mut::<EffectSounds>() {
-        sounds.crush_cooldown = (sounds.crush_cooldown - dt).max(0.0);
+        sounds.crush_cooldown.tick(dt);
     }
     let bricks: Vec<(Entity, Vec2, Vec2)> = world
         .query::<(Entity, &IronBrick, &Position)>()
@@ -381,7 +381,7 @@ pub(crate) fn brick_impacts(world: &mut World) {
             crushed_player |= !crate::death::player_dead(world)
                 && world
                     .get::<Health>(player)
-                    .is_none_or(|h| h.immunity <= 0.0);
+                    .is_none_or(|h| h.immunity.remaining() <= 0.0);
             damage_player(world, player, center, hearts);
         }
     }
@@ -393,13 +393,13 @@ pub(crate) fn brick_impacts(world: &mut World) {
     if (crushed_player || !smashed.is_empty() || !shattered.is_empty())
         && world
             .get_resource::<EffectSounds>()
-            .is_some_and(|s| s.crush_cooldown <= 0.0)
+            .is_some_and(|s| s.crush_cooldown.remaining() <= 0.0)
     {
         play_effect_sound(world, |s| s.crush);
         world
             .get_resource_mut::<EffectSounds>()
             .unwrap()
-            .crush_cooldown = CRUSH_SFX_INTERVAL;
+            .crush_cooldown = Timer::once(CRUSH_SFX_INTERVAL);
     }
     if smashed.is_empty() {
         return;

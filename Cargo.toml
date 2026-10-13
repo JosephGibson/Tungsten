@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.62.0"
+version = "0.63.0"
 edition = "2024"
 rust-version = "1.98.1"
 license = "MIT"
@@ -17,6 +17,17 @@ members = [
     "templates/basic",
     "tools/crash-probe",
     "tools/launcher",
+]
+
+# `just udeps`: test modules included through `#[path = "../tests/…"]` from a
+# file in a subdirectory, which cargo-shear reports as unlinked. Globs are
+# relative to the workspace root.
+[workspace.metadata.cargo-shear]
+ignored-paths = [
+    "crates/tungsten-core/src/tests/{assets,ecs,input,physics,ui}/*.rs",
+    "crates/tungsten-render/src/tests/{bloom,passes_order,post,smaa,text,text_fonts,text_nodes}.rs",
+    "crates/tungsten/src/tests/{asset_loader,testing_ui}.rs",
+    "examples/01_platformer/src/tests/*.rs",
 ]
 
 [workspace.dependencies]

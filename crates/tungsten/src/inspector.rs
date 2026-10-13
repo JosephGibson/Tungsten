@@ -202,7 +202,8 @@ fn sprite_rows(world: &World, entity: Entity) -> Vec<(&'static str, String)> {
     rows
 }
 
-/// Pick smallest sprite/collider AABB containing `world_cursor`.
+/// Pick smallest sprite/collider AABB containing `world_cursor`; a collider
+/// sits at its body's `Transform` when it has one, else at `Position`.
 fn pick_entity_under_cursor(world: &World, world_cursor: Vec2) -> Option<Entity> {
     let mut best: Option<(Entity, f32)> = None;
 
@@ -223,9 +224,14 @@ fn pick_entity_under_cursor(world: &World, world_cursor: Vec2) -> Option<Entity>
         }
     }
 
-    // Collider fallback catches custom-extract visuals.
-    for (entity, collider, position) in world.query::<(Entity, &Collider, &Position)>() {
-        let centre = position.0 + collider.offset;
+    // Collider fallback catches custom-extract visuals. A body is tested
+    // where the last frame drew it, the `Transform` `physics_sync` wrote:
+    // the pick runs before this frame's steps, so its `alpha` would pair
+    // with positions the steps have yet to move.
+    for (entity, collider, position, drawn) in
+        world.query::<(Entity, &Collider, &Position, Option<&Transform>)>()
+    {
+        let centre = drawn.map_or(position.0, |transform| transform.position) + collider.offset;
         let half = match collider.shape {
             Shape::Aabb { half_extents } => Vec2::new(half_extents.x.abs(), half_extents.y.abs()),
             Shape::Circle { radius } => Vec2::splat(radius.abs()),

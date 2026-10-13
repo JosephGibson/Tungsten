@@ -6,6 +6,27 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.63.0] - 2026-10-12
+
+Summary: Phase 5's QA pass, its fourteenth and last milestone, M45 (plan archived at `docs/plans/archive/1.0/phase5-milestone-45-qa-pass.md`), in the 0.40 shape: an audit of what Phase 5 changed (0.42–0.62), its two bugs fixed with a failing test first, the follow-ups Phase 5 left to the pass, the records brought in line with the tree, and a close-out compare of every CPU row against 0.62.
+
+### Added
+
+- **`just clean-target`** (another session's maintenance, outside M45's plan, shipped as it stands under its Q6): `scripts/clean-target.py` reports the build artifacts cargo leaves behind in `target/debug`, keeping the newest two units per crate; `--apply` deletes them, `--keep N` and `--profile release` adjust it, and `just script-test` runs its tests.
+
+### Changed
+
+- **Example 01's history and timers** (M45 A6, A7): the swept hazard contact reads the engine's `PrevPosition`, which `physics_prev_snapshot` writes at the head of `fixed_update`, in place of the example's own `PreviousPosition`; the impact, sizzle and crush cooldowns, `Health`'s immunity and control lock and the black hole's lifetime count with `Timer::once`, the HUD's refresh with `Timer::repeating`. Ages and burn times stay `f32`.
+- **Dependency hygiene** (M45 A3–A5): the template and the guide's snippet drop the unused `log` dependency; `just udeps` passes, with the 53 test modules included through `#[path]` listed under `[workspace.metadata.cargo-shear]` `ignored-paths`; `sync_position_to_transform` reads `Position` without borrowing it mutably.
+- **Skills and prompts** (M45 A9): the decision skill's next-ID command no longer uses `$1`, which skill arguments replace; the milestone skeleton asks for expected decision IDs as bare numbers, since `just repo-check` rejects a plan's `D-` ID before its entry exists; the `qa-plan` prompt critiques the plan as the `plan` prompt does.
+- **Records** (M45 A8, A11–A13): known issues lose the entries the pass fixed or closed (the hand-written loops stay, as system tests; a test that asserts stage order runs on `Harness`) and their stale line numbers; the index routes `crates/tungsten/build.rs`, files committing under `D-105` and the clock under `D-146`; the W8a and M44 register rows record their squash commits.
+- **Perf** (M45 step 7): every CPU row against 0.62 (`git archive e95d973`) on two direct pairs and an aligned pair, digests 8 of 8 in every compare: `ecs` `bounds_wrap` and `churn` `churn_scan` read `regressed` in a direct pair and `unchanged` on the aligned pair (code placement), and `ecs` `buffs` p50 (0.64 → 0.66 ms) `unchanged` on the aligned pair run again at `--repeat 10`; both A/A pairs clean outside the listed exceptions once `gpu`'s ran again; the 26 visual captures byte-identical to 0.62's and the physics release tests green, the determinism and containment hashes unchanged.
+
+### Fixed
+
+- **A press made during a pause** (`D-146`, amends `D-137`; the break ledger's row): a frame with no fixed step whose game clock stood still while real time ran, paused or at a scale of 0, now drops the fixed view's input edges, so a press or release made on a stopped clock no longer reaches the first fixed step after the resume; a frame with no time at all keeps them. The template's `AGENTS.md` and the guide say so.
+- **Debug picks** (M45 A2): the inspector's collider pick tests a body where the last frame drew it, its `Transform`, not the step's `Position`, which runs up to a step ahead at uncapped frame rates; `rustdoc::private_intra_doc_links` no longer warns on `just api` (M45 A10).
+
 ## [0.62.0] - 2026-10-12
 
 Summary: Phase 5's thirteenth milestone, M44 (W1 M0b with W2 R2, plan archived at `docs/plans/archive/1.0/phase5-milestone-44-input-groundwork-late-acquire.md`). Input groundwork: 28 more `KeyCode` variants, the frame's raw input in arrival order, focus loss releasing held keys and buttons, modifiers, pointer leave and the `ScaleFactor` resource (`D-144`). Late acquire: a frame records and submits every pass before the stage that writes the swapchain before it waits for the surface, and records the rest after (`D-145`); the `gpu` row's `extract` is an accepted regression, the cost moved from its recording. The determinism and pinned containment hashes, the row digests and the pixel fixtures are unchanged. No new dependency, asset or manifest change.

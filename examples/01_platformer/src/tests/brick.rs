@@ -233,7 +233,12 @@ fn black_holes_move_iron_more_slowly_than_balls_and_skip_static_bodies() {
     world.insert(fixed, Velocity(Vec2::ZERO));
     world.insert(fixed, Position(at));
     let hole = world.spawn();
-    world.insert(hole, BlackHole { remaining: 2.0 });
+    world.insert(
+        hole,
+        BlackHole {
+            lifetime: Timer::once(2.0),
+        },
+    );
     world.insert(hole, Position(Vec2::ZERO));
 
     black_hole_force_system(&mut world);
@@ -271,7 +276,12 @@ fn black_holes_gather_warm_and_frozen_scraps_as_readily_as_balls() {
         e
     });
     let hole = world.spawn();
-    world.insert(hole, BlackHole { remaining: 2.0 });
+    world.insert(
+        hole,
+        BlackHole {
+            lifetime: Timer::once(2.0),
+        },
+    );
     world.insert(hole, Position(Vec2::ZERO));
     black_hole_force_system(&mut world);
     let ball_pull = world.get::<Velocity>(ball).unwrap().0;
@@ -306,8 +316,8 @@ fn faster_slams_crush_more_marble_contacts_keep_momentum_and_throttle_audio() {
             extinguish: (AudioHandle(3), 1.0),
             hit: (AudioHandle(4), 1.0),
             crush: (crush, 0.65),
-            extinguish_cooldown: 0.0,
-            crush_cooldown: 0.0,
+            extinguish_cooldown: Timer::once(0.0),
+            crush_cooldown: Timer::once(0.0),
         });
         let brick = spawn_brick(&mut world, Vec2::ZERO);
         world.insert(brick, PreviousVelocity(Vec2::Y * speed));
