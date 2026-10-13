@@ -14,7 +14,7 @@ use crate::{
 use glam::{Vec2, Vec3};
 use tungsten::core::{
     AnimationState, Entity, InputState, KeyCode, Light, Particle, ParticleConfigRegistry,
-    ParticleEmitter, ParticleEmitterState, Time, Transform, With, World,
+    ParticleEmitter, ParticleEmitterState, Time, Timer, Transform, With, World,
 };
 use tungsten::physics::{
     Collider, Position, PrevPosition, RigidBody, RigidBodyBundle, Velocity, wake,
@@ -23,22 +23,22 @@ use tungsten::physics::{
 #[derive(Clone, Copy)]
 pub(crate) struct Health {
     pub(crate) hearts: u8,
-    pub(crate) immunity: f32,
-    pub(crate) control_lock: f32,
+    /// Runs from each hit; while time remains, hits are ignored.
+    pub(crate) immunity: Timer,
+    /// Runs from each hit or push; while time remains, input is ignored.
+    pub(crate) control_lock: Timer,
 }
 impl Default for Health {
     fn default() -> Self {
         Self {
             hearts: 3,
-            immunity: 0.0,
-            control_lock: 0.0,
+            immunity: Timer::once(0.0),
+            control_lock: Timer::once(0.0),
         }
     }
 }
 #[derive(Default)]
 pub(crate) struct SceneTime(pub(crate) f32);
-#[derive(Clone, Copy)]
-pub(crate) struct PreviousPosition(pub(crate) Vec2);
 #[derive(Clone, Copy)]
 pub(crate) struct PreviousVelocity(pub(crate) Vec2);
 
@@ -74,7 +74,7 @@ pub(crate) fn small_ball_impacts(world: &mut World) {
         for entity in [Some(event.a), event.b].into_iter().flatten() {
             if world
                 .get::<SmallBall>(entity)
-                .is_some_and(|b| b.impact_cooldown <= 0.0)
+                .is_some_and(|b| b.impact_cooldown.remaining() <= 0.0)
                 && !hits.contains(&entity)
                 && world.get::<Position>(entity).is_some()
             {
@@ -89,7 +89,8 @@ pub(crate) fn small_ball_impacts(world: &mut World) {
         }
     }
     for entity in hits {
-        world.get_mut::<SmallBall>(entity).unwrap().impact_cooldown = SMALL_BALL_IMPACT_COOLDOWN;
+        world.get_mut::<SmallBall>(entity).unwrap().impact_cooldown =
+            Timer::once(SMALL_BALL_IMPACT_COOLDOWN);
         let position = world.get::<Position>(entity).unwrap().0;
         crate::systems::spawn_transient_effect(world, "ex10_small_ball_impact", position);
     }
@@ -395,8 +396,11 @@ pub(crate) fn move_obstacles(world: &mut World) {
         .query_filtered::<Entity, With<SmallBall>>()
         .collect::<Vec<_>>()
     {
-        let ball = world.get_mut::<SmallBall>(e).unwrap();
-        ball.impact_cooldown = (ball.impact_cooldown - dt).max(0.0);
+        world
+            .get_mut::<SmallBall>(e)
+            .unwrap()
+            .impact_cooldown
+            .tick(dt);
     }
     for e in world
         .query_filtered::<Entity, With<Velocity>>()
@@ -410,20 +414,8 @@ pub(crate) fn move_obstacles(world: &mut World) {
         .collect::<Vec<_>>()
     {
         let h = world.get_mut::<Health>(e).unwrap();
-        h.immunity = (h.immunity - dt).max(0.0);
-        h.control_lock = (h.control_lock - dt).max(0.0);
-    }
-    let bodies: Vec<_> = world
-        .query::<(Entity, &Position)>()
-        .filter(|(e, _)| {
-            world.get::<Player>(*e).is_some()
-                || world.get::<Ball>(*e).is_some()
-                || world.get::<Hazard>(*e).is_some()
-        })
-        .map(|(e, p)| (e, p.0))
-        .collect();
-    for (e, p) in bodies {
-        world.insert(e, PreviousPosition(p));
+        h.immunity.tick(dt);
+        h.control_lock.tick(dt);
     }
     let moves: Vec<_> = world
         .query::<(Entity, &Motion)>()
@@ -497,9 +489,9 @@ fn swept_box(start: Vec2, end: Vec2, half: Vec2) -> Option<f32> {
 fn contact(world: &World, body: Entity, hazard: Entity, half: Vec2) -> Option<f32> {
     let end = world.get::<Position>(body)?.0;
     let hazard_end = world.get::<Position>(hazard)?.0;
-    let start = world.get::<PreviousPosition>(body).map_or(end, |p| p.0);
+    let start = world.get::<PrevPosition>(body).map_or(end, |p| p.0);
     let hazard_start = world
-        .get::<PreviousPosition>(hazard)
+        .get::<PrevPosition>(hazard)
         .map_or(hazard_end, |p| p.0);
     swept_box(start - hazard_start, end - hazard_end, half)
 }
@@ -526,7 +518,7 @@ pub(crate) fn hazard_contacts(world: &mut World) {
                 })
                 .min_by(f32::total_cmp)?;
             let end = world.get::<Position>(ball)?.0;
-            let start = world.get::<PreviousPosition>(ball).map_or(end, |p| p.0);
+            let start = world.get::<PrevPosition>(ball).map_or(end, |p| p.0);
             Some((ball, start.lerp(end, hit)))
         })
         .collect();
@@ -555,7 +547,7 @@ pub(crate) fn hazard_contacts(world: &mut World) {
     {
         if world
             .get::<Health>(player)
-            .is_some_and(|h| h.immunity > 0.0)
+            .is_some_and(|h| h.immunity.remaining() > 0.0)
         {
             continue;
         }
@@ -584,12 +576,12 @@ pub(crate) fn damage_player(world: &mut World, player: Entity, origin: Vec2, hea
         world.insert(player, Health::default());
     }
     let health = world.get_mut::<Health>(player).unwrap();
-    if health.immunity > 0.0 {
+    if health.immunity.remaining() > 0.0 {
         return;
     }
     health.hearts = health.hearts.saturating_sub(hearts);
-    health.immunity = HIT_IMMUNITY;
-    health.control_lock = 0.18;
+    health.immunity = Timer::once(HIT_IMMUNITY);
+    health.control_lock = Timer::once(0.18);
     if health.hearts == 0 {
         crate::death::kill_player(world, player);
     } else {

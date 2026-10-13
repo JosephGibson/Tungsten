@@ -333,7 +333,12 @@ fn impact_particles_span_rainbow_and_vortex_births_spiral_inward() {
         assert!(colors.iter().any(|c| c[channel] < 0.2));
     }
     let hole = world.spawn();
-    world.insert(hole, BlackHole { remaining: 2.0 });
+    world.insert(
+        hole,
+        BlackHole {
+            lifetime: Timer::once(2.0),
+        },
+    );
     world.insert(hole, Position(Vec2::ZERO));
     world.insert(hole, Transform::default());
     let config = world

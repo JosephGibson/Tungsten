@@ -1,5 +1,5 @@
 use glam::Vec2;
-use tungsten::core::{AudioHandle, Entity};
+use tungsten::core::{AudioHandle, Entity, Timer};
 
 pub(crate) const MANIFEST_ROOT: &str = "assets/manifest.json";
 pub(crate) const MANIFEST_LOCAL: &str = "examples/01_platformer/assets/manifest.json";
@@ -87,9 +87,10 @@ pub(crate) struct EffectSounds {
     pub(crate) hit: (AudioHandle, f32),
     /// Heavy impact, breaking glass and ringing iron.
     pub(crate) crush: (AudioHandle, f32),
-    /// Seconds until the next sizzle may play.
-    pub(crate) extinguish_cooldown: f32,
-    pub(crate) crush_cooldown: f32,
+    /// Runs from each sizzle; the next may play once it has run out.
+    pub(crate) extinguish_cooldown: Timer,
+    /// Runs from each crush sound, as `extinguish_cooldown` does.
+    pub(crate) crush_cooldown: Timer,
 }
 
 pub(crate) struct TextDisplayState {
@@ -99,7 +100,9 @@ pub(crate) struct TextDisplayState {
     pub(crate) music_on: bool,
     pub(crate) vol_pct: u32,
     pub(crate) zoom_pct: u32,
-    pub(crate) timer: f32,
+    /// Finishes every `TEXT_UPDATE_INTERVAL` of game time, each time the
+    /// row refreshes.
+    pub(crate) timer: Timer,
 }
 
 impl Default for TextDisplayState {
@@ -111,9 +114,17 @@ impl Default for TextDisplayState {
             music_on: false,
             vol_pct: 50,
             zoom_pct: 100,
-            timer: TEXT_UPDATE_INTERVAL,
+            timer: primed_text_timer(),
         }
     }
+}
+
+/// The HUD timer one ulp short of its first period, so the first tick
+/// refreshes the row.
+fn primed_text_timer() -> Timer {
+    let mut timer = Timer::repeating(TEXT_UPDATE_INTERVAL);
+    timer.tick(TEXT_UPDATE_INTERVAL.next_down());
+    timer
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -130,9 +141,19 @@ pub(crate) struct Player {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Ball;
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct SmallBall {
-    pub(crate) impact_cooldown: f32,
+    /// Runs from each impact burst; the ball may burst again once it has
+    /// run out.
+    pub(crate) impact_cooldown: Timer,
+}
+
+impl Default for SmallBall {
+    fn default() -> Self {
+        Self {
+            impact_cooldown: Timer::once(0.0),
+        }
+    }
 }
 
 /// Rainbow tint for small glass marbles; bronze orbs carry none and render untinted.
@@ -166,7 +187,8 @@ pub(crate) fn hash_unit(mut x: u32) -> f32 {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct BlackHole {
-    pub(crate) remaining: f32,
+    /// Finishes `BLACK_HOLE_LIFETIME` after the hole was last held.
+    pub(crate) lifetime: Timer,
 }
 
 #[derive(Debug, Clone, Copy, Default)]

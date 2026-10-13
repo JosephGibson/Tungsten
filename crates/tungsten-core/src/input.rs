@@ -325,6 +325,9 @@ impl<'de> Deserialize<'de> for ScrollDirection {
 /// [`end_fixed_step`](Self::end_fixed_step): a frame that runs no fixed step
 /// keeps its edges for the next step, and a frame that runs two shows each
 /// edge to the first. So `just_pressed` sees each press once in either stage.
+/// A frame with no step whose game clock stood still while real time ran (a
+/// pause, or a scale of 0) drops them instead, so a press made on a stopped
+/// clock reaches no step (`D-146`).
 /// Level queries, the cursor, the deltas and
 /// [`raw_events`](Self::raw_events) stay per frame.
 ///
@@ -433,7 +436,8 @@ impl InputState {
     }
 
     /// Clears the fixed view's edges: the app calls it after each fixed
-    /// step, so the next step sees only what arrived since.
+    /// step, so the next step sees only what arrived since, and in a frame
+    /// with no step while the game clock stands still.
     pub fn end_fixed_step(&mut self) {
         let fixed = &mut self.fixed;
         fixed.just_pressed.clear();

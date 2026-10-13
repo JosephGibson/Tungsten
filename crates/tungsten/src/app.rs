@@ -876,8 +876,10 @@ impl App {
     /// event queues their step views; after the last, the game dt and the
     /// frame views again. Each system's runs are summed under its name, and
     /// a frame with no step lists each at 0 ms and, while the game clock
-    /// advances, holds the event queues for the next step (`D-139`). A
-    /// world without `Time` runs the stage once, as before the accumulator.
+    /// advances, holds the event queues for the next step (`D-139`); while
+    /// it stands still and real time runs, it drops the fixed view's input
+    /// edges (`D-146`). A world without `Time` runs the stage once, as
+    /// before the accumulator.
     #[inline(always)]
     fn stage_fixed_update(&mut self, system_timings: &mut Vec<(String, f32)>) -> u32 {
         let Some((steps, step)) = self
@@ -896,12 +898,20 @@ impl App {
             );
             // The frame's events wait for the next step's readers, unless
             // the clock stands still or no fixed system could read them.
-            let advancing = self
-                .world
-                .get_resource::<Time>()
-                .is_some_and(|time| time.game_delta() > 0.0);
+            let (advancing, stopped) =
+                self.world
+                    .get_resource::<Time>()
+                    .map_or((false, false), |time| {
+                        let game_dt = time.game_delta();
+                        (game_dt > 0.0, game_dt == 0.0 && time.real_delta() > 0.0)
+                    });
             if advancing && self.schedule.names(Stage::FixedUpdate).next().is_some() {
                 self.world.hold_events_for_fixed_step();
+            }
+            // Edges made while the clock stands still reach no step, as its
+            // events do not; a frame with no time at all keeps them.
+            if stopped && let Some(input) = self.world.get_resource_mut::<InputState>() {
+                input.end_fixed_step();
             }
             return 0;
         }

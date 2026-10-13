@@ -1,5 +1,6 @@
 use super::*;
 use tungsten::core::With;
+use tungsten::physics::PrevPosition;
 
 #[test]
 fn audio_controls_and_damage_flash_shake_remain_wired() {
@@ -95,10 +96,10 @@ fn hazards_damage_once_per_cooldown_and_the_last_heart_starts_the_death_screen()
         hazard_contacts(&mut world);
     }
     assert_eq!(world.get::<Health>(player).unwrap().hearts, 2);
-    world.get_mut::<Health>(player).unwrap().immunity = 0.0;
+    world.get_mut::<Health>(player).unwrap().immunity = Timer::once(0.0);
     hazard_contacts(&mut world);
     assert_eq!(world.get::<Health>(player).unwrap().hearts, 1);
-    world.get_mut::<Health>(player).unwrap().immunity = 0.0;
+    world.get_mut::<Health>(player).unwrap().immunity = Timer::once(0.0);
     hazard_contacts(&mut world);
     assert_eq!(world.get::<Health>(player).unwrap().hearts, 0);
     assert!(matches!(
@@ -107,9 +108,12 @@ fn hazards_damage_once_per_cooldown_and_the_last_heart_starts_the_death_screen()
     ));
     // The body leaves the physics where it fell and takes no more hits.
     assert!(world.get::<Collider>(player).is_none());
-    world.get_mut::<Health>(player).unwrap().immunity = 0.0;
+    world.get_mut::<Health>(player).unwrap().immunity = Timer::once(0.0);
     hazard_contacts(&mut world);
-    assert_eq!(world.get::<Health>(player).unwrap().immunity, 0.0);
+    assert_eq!(
+        world.get::<Health>(player).unwrap().immunity.remaining(),
+        0.0
+    );
 }
 
 #[test]
@@ -130,12 +134,12 @@ fn moving_fire_sweeps_fast_balls_once_and_explosions_do_not_hurt_players() {
         let fire = world.spawn();
         world.insert(fire, Hazard { fire: true });
         world.insert(fire, Position(Vec2::new(100.0, 100.0)));
-        world.insert(fire, PreviousPosition(Vec2::new(100.0, 300.0)));
+        world.insert(fire, PrevPosition(Vec2::new(100.0, 300.0)));
     }
     // Both the ball and moving fire cross between frames.
     let ball = world.spawn();
     world.insert(ball, Ball);
-    world.insert(ball, PreviousPosition(Vec2::new(0.0, 200.0)));
+    world.insert(ball, PrevPosition(Vec2::new(0.0, 200.0)));
     world.insert(ball, Position(Vec2::new(200.0, 200.0)));
     hazard_contacts(world);
     assert!(world.get::<Ball>(ball).is_none());
@@ -155,7 +159,7 @@ fn moving_fire_sweeps_fast_balls_once_and_explosions_do_not_hurt_players() {
     {
         world.despawn(e);
     }
-    world.get_mut::<Health>(player).unwrap().immunity = 0.0;
+    world.get_mut::<Health>(player).unwrap().immunity = Timer::once(0.0);
     hazard_contacts(world);
     assert_eq!(world.get::<Health>(player).unwrap().hearts, 2);
     harness.step(150);
@@ -311,8 +315,8 @@ fn a_hit_plays_its_sound_and_immunity_ignores_repeat_hits_until_it_runs_out() {
         extinguish: (AudioHandle(3), 1.0),
         hit: (hit, 0.6),
         crush: (AudioHandle(4), 0.65),
-        extinguish_cooldown: 0.0,
-        crush_cooldown: 0.0,
+        extinguish_cooldown: Timer::once(0.0),
+        crush_cooldown: Timer::once(0.0),
     });
     let player = spawn_test_player(world, PLAYER_SPAWN);
     world.insert(player, Health::default());
@@ -330,12 +334,15 @@ fn a_hit_plays_its_sound_and_immunity_ignores_repeat_hits_until_it_runs_out() {
     set_dt(&mut harness, 1.0 / 60.0);
     harness.step((HIT_IMMUNITY * 60.0) as u32 - 2);
     let world = harness.world_mut();
-    assert!(world.get::<Health>(player).unwrap().immunity > 0.0);
+    assert!(world.get::<Health>(player).unwrap().immunity.remaining() > 0.0);
     damage_player(world, player, origin, 1);
     assert_eq!(hearts(world), 2);
     harness.step(3);
     let world = harness.world_mut();
-    assert_eq!(world.get::<Health>(player).unwrap().immunity, 0.0);
+    assert_eq!(
+        world.get::<Health>(player).unwrap().immunity.remaining(),
+        0.0
+    );
     damage_player(world, player, origin, 1);
     assert_eq!(hearts(world), 1);
 }

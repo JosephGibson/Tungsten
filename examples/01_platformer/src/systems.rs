@@ -4,7 +4,7 @@ use tungsten::core::{
     ActionMap, AnimationRegistry, AnimationState, AssetRegistry, AudioCommands, AudioHandle,
     CameraController, CameraState, CommandBuffer, Entity, EventQueue, InputState, Light,
     ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, ShakeEvent, SquashEvent,
-    SquashTrigger, Time, Transform, With, World,
+    SquashTrigger, Time, Timer, Transform, With, World,
 };
 use tungsten::physics::{
     BodyKind, Collider, CollisionEvent, Position, PrevPosition, RigidBody, Shape, Velocity,
@@ -19,8 +19,8 @@ use crate::state::{
     BLACK_HOLE_LIFETIME, BLACK_HOLE_RADIUS, Ball, BallHue, BallSpawnState, BlackHole, CAMERA_ROWS,
     CurrentSprite, CycleMode, EXTINGUISH_BURSTS_PER_FRAME, EXTINGUISH_SFX_INTERVAL, EffectSequence,
     EffectSounds, KILL_Y, OrbitLight, PLAYER_HALF, PLAYER_JUMP_IMPULSE, PLAYER_MOVE_SPEED,
-    PLAYER_SPAWN, Player, PlayerPresentation, TEXT_UPDATE_INTERVAL, TILE, TRANSIENT_EMITTER_CAP,
-    TextDisplayState, TransientEmitter, WORLD_BOUNDS_MAX, WORLD_BOUNDS_MIN,
+    PLAYER_SPAWN, Player, PlayerPresentation, TILE, TRANSIENT_EMITTER_CAP, TextDisplayState,
+    TransientEmitter, WORLD_BOUNDS_MAX, WORLD_BOUNDS_MIN,
 };
 use crate::state::{
     SMALL_BALL_ANIMATION_ID, SMALL_BALL_SCALE, SMALL_BALL_SPAWN_INTERVAL,
@@ -63,7 +63,7 @@ pub(crate) fn player_input(world: &mut World) {
         let grounded = world.get::<Player>(entity).is_some_and(|p| p.grounded);
         let locked = world
             .get::<crate::gameplay::Health>(entity)
-            .is_some_and(|h| h.control_lock > 0.0);
+            .is_some_and(|h| h.control_lock.remaining() > 0.0);
         let second_jump = !grounded
             && jump_pressed
             && !locked
@@ -542,15 +542,10 @@ pub(crate) const HIT_TRAUMA: f32 = 0.5;
 pub(crate) fn update_text_display(world: &mut World) {
     let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
 
-    let timer = world
-        .get_resource::<TextDisplayState>()
-        .map_or(0.0, |s| s.timer);
-    let new_timer = timer + dt;
-
-    if new_timer < TEXT_UPDATE_INTERVAL {
-        if let Some(state) = world.get_resource_mut::<TextDisplayState>() {
-            state.timer = new_timer;
-        }
+    let due = world
+        .get_resource_mut::<TextDisplayState>()
+        .is_some_and(|state| state.timer.tick(dt) > 0);
+    if !due {
         return;
     }
 
@@ -584,7 +579,6 @@ pub(crate) fn update_text_display(world: &mut World) {
         state.music_on = music_on;
         state.vol_pct = vol_pct;
         state.zoom_pct = zoom_pct;
-        state.timer = new_timer - TEXT_UPDATE_INTERVAL;
     }
 }
 
@@ -802,7 +796,7 @@ pub(crate) fn spawn_black_hole_system(world: &mut World) {
         world.insert(
             entity,
             BlackHole {
-                remaining: BLACK_HOLE_LIFETIME,
+                lifetime: Timer::once(BLACK_HOLE_LIFETIME),
             },
         );
         world.insert(entity, Position(world_pos));
@@ -854,7 +848,7 @@ pub(crate) fn spawn_black_hole_system(world: &mut World) {
             t.position = world_pos;
         }
         if let Some(hole) = world.get_mut::<BlackHole>(entity) {
-            hole.remaining = BLACK_HOLE_LIFETIME;
+            hole.lifetime = Timer::once(BLACK_HOLE_LIFETIME);
         }
     }
 }
@@ -932,7 +926,7 @@ pub(crate) fn black_hole_acceleration(holes: &[Vec2], position: Vec2) -> Vec2 {
 pub(crate) fn black_hole_extinguish_system(world: &mut World) {
     let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
     if let Some(sounds) = world.get_resource_mut::<EffectSounds>() {
-        sounds.extinguish_cooldown = (sounds.extinguish_cooldown - dt).max(0.0);
+        sounds.extinguish_cooldown.tick(dt);
     }
     let holes = black_hole_positions(world);
     if holes.is_empty() {
@@ -964,11 +958,11 @@ pub(crate) fn black_hole_extinguish_system(world: &mut World) {
     }
     if world
         .get_resource::<EffectSounds>()
-        .is_some_and(|s| s.extinguish_cooldown <= 0.0)
+        .is_some_and(|s| s.extinguish_cooldown.remaining() <= 0.0)
     {
         play_effect_sound(world, |s| s.extinguish);
         if let Some(sounds) = world.get_resource_mut::<EffectSounds>() {
-            sounds.extinguish_cooldown = EXTINGUISH_SFX_INTERVAL;
+            sounds.extinguish_cooldown = Timer::once(EXTINGUISH_SFX_INTERVAL);
         }
     }
 }
@@ -991,8 +985,8 @@ pub(crate) fn black_hole_lifetime_system(world: &mut World) {
     let mut to_despawn: Vec<Entity> = Vec::new();
     for entity in entities {
         if let Some(hole) = world.get_mut::<BlackHole>(entity) {
-            hole.remaining -= dt;
-            if hole.remaining <= 0.0 {
+            hole.lifetime.tick(dt);
+            if hole.lifetime.finished() {
                 to_despawn.push(entity);
             }
         }

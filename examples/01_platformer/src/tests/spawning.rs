@@ -157,7 +157,7 @@ fn spawn_black_hole_system_creates_attractor_at_cursor_on_right_click() {
     let holes: Vec<_> = world.query::<(Entity, &BlackHole)>().collect();
     assert_eq!(holes.len(), 1);
     let (hole_entity, hole) = holes[0];
-    assert_eq!(hole.remaining, BLACK_HOLE_LIFETIME);
+    assert_eq!(hole.lifetime.remaining(), BLACK_HOLE_LIFETIME);
     let pos = world.get::<Position>(hole_entity).unwrap().0;
     assert_eq!(pos, Vec2::new(120.0, 80.0));
     assert_eq!(
@@ -212,7 +212,7 @@ fn spawn_black_hole_system_drags_active_hole_to_cursor_while_held() {
 
     // Frame 2: hold moves and refreshes lifetime.
     if let Some(hole) = harness.world_mut().get_mut::<BlackHole>(hole_entity) {
-        hole.remaining = 0.5;
+        hole.lifetime.tick(BLACK_HOLE_LIFETIME - 0.5);
     }
     harness.set_cursor(200.0, 150.0);
     harness.step(1);
@@ -221,7 +221,11 @@ fn spawn_black_hole_system_drags_active_hole_to_cursor_while_held() {
     let pos = world.get::<Position>(hole_entity).unwrap().0;
     assert_eq!(pos, Vec2::new(200.0, 150.0), "hole should follow cursor");
     assert_eq!(
-        world.get::<BlackHole>(hole_entity).unwrap().remaining,
+        world
+            .get::<BlackHole>(hole_entity)
+            .unwrap()
+            .lifetime
+            .remaining(),
         BLACK_HOLE_LIFETIME,
         "holding must refresh lifetime so the hole never expires mid-drag"
     );
@@ -255,7 +259,7 @@ fn black_hole_force_system_pulls_dynamic_body_toward_hole() {
     world.insert(
         hole,
         BlackHole {
-            remaining: BLACK_HOLE_LIFETIME,
+            lifetime: Timer::once(BLACK_HOLE_LIFETIME),
         },
     );
     world.insert(hole, Position(Vec2::new(0.0, 0.0)));
@@ -290,7 +294,7 @@ fn black_hole_force_system_ignores_bodies_outside_radius() {
     world.insert(
         hole,
         BlackHole {
-            remaining: BLACK_HOLE_LIFETIME,
+            lifetime: Timer::once(BLACK_HOLE_LIFETIME),
         },
     );
     world.insert(hole, Position(Vec2::ZERO));
@@ -318,7 +322,7 @@ fn black_hole_lifetime_system_despawns_expired_hole() {
     world.insert(
         hole,
         BlackHole {
-            remaining: BLACK_HOLE_LIFETIME,
+            lifetime: Timer::once(BLACK_HOLE_LIFETIME),
         },
     );
     world.insert(hole, Position(Vec2::ZERO));

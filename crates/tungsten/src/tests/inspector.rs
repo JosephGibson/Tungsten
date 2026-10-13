@@ -167,6 +167,38 @@ fn pick_hits_circle_collider_bounding_box() {
 }
 
 #[test]
+fn pick_tests_a_body_where_the_last_frame_drew_it() {
+    // The world `pre_update` sees at an accumulator rollover: the clock has
+    // set the new frame's alpha, the steps have not run, and the body's
+    // `Transform` holds the point the last frame's `physics_sync` drew.
+    use tungsten_core::Time;
+    use tungsten_core::physics::{Collider, Position, PrevPosition};
+
+    let mut world = make_world();
+    world.get_resource_mut::<InspectorState>().unwrap().enabled = true;
+    let mut time = Time::new();
+    time.advance_frame(time.fixed_step() * 0.1);
+    assert!((time.alpha() - 0.1).abs() < 1e-6, "{}", time.alpha());
+    world.insert_resource(time);
+
+    let body = world.spawn();
+    world.insert(body, PrevPosition(Vec2::new(0.0, 50.0)));
+    world.insert(body, Position(Vec2::new(100.0, 50.0)));
+    world.insert(body, Transform::from_position(Vec2::new(90.0, 50.0)));
+    world.insert(body, Collider::aabb(Vec2::splat(4.0)));
+
+    for (x, picked) in [(90.0, Some(body)), (100.0, None), (10.0, None)] {
+        press_mouse3_at(&mut world, x, 50.0);
+        inspector_pick_system(&mut world);
+        assert_eq!(
+            world.get_resource::<InspectorState>().unwrap().selected,
+            picked,
+            "a click at x {x}"
+        );
+    }
+}
+
+#[test]
 fn pick_skips_invisible_sprites() {
     let mut world = make_world();
     world.get_resource_mut::<InspectorState>().unwrap().enabled = true;

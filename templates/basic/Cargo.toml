@@ -7,7 +7,6 @@ publish = false
 
 [dependencies]
 anyhow = "1"
-log = "0.4"
 tungsten = { path = "../../crates/tungsten" }
 
 [dev-dependencies]

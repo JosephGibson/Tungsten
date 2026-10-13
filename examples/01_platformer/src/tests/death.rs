@@ -85,7 +85,7 @@ fn snapshot(world: &World) -> Vec<String> {
             ));
             if let Some(h) = world.get::<Health>(e) {
                 line.push(format!(
-                    "hearts {} {} {}",
+                    "hearts {} {:?} {:?}",
                     h.hearts, h.immunity, h.control_lock
                 ));
             }
@@ -124,7 +124,7 @@ fn snapshot(world: &World) -> Vec<String> {
         ),
         format!("audio {} {}", audio.music_playing, audio.master_volume),
         format!(
-            "text {} {} {} {} {}",
+            "text {:?} {} {} {} {}",
             text.timer, text.contacts, text.music_on, text.vol_pct, text.zoom_pct
         ),
         format!(
@@ -145,7 +145,7 @@ fn snapshot(world: &World) -> Vec<String> {
 fn kill_player(world: &mut World) {
     let player = world.query::<(Entity, &Player)>().next().unwrap().0;
     for _ in 0..3 {
-        world.get_mut::<Health>(player).unwrap().immunity = 0.0;
+        world.get_mut::<Health>(player).unwrap().immunity = Timer::once(0.0);
         crate::gameplay::damage_player(world, player, PLAYER_SPAWN, 1);
     }
 }
@@ -248,7 +248,7 @@ fn a_fall_is_fatal_during_immunity_and_the_screen_advances_while_game_time_is_pa
     set_dt(&mut harness, 1.0 / 60.0);
     let world = harness.world_mut();
     let player = world.query::<(Entity, &Player)>().next().unwrap().0;
-    world.get_mut::<Health>(player).unwrap().immunity = 10.0;
+    world.get_mut::<Health>(player).unwrap().immunity = Timer::once(10.0);
     world.get_mut::<Position>(player).unwrap().0.y = crate::state::KILL_Y + 1.0;
     crate::systems::despawn_out_of_bounds(world);
     assert_eq!(world.get::<Health>(player).unwrap().hearts, 0);

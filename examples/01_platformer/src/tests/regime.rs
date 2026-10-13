@@ -127,7 +127,8 @@ fn run(name: &str, dt: f32) -> (String, Vec<String>) {
         .world()
         .get_resource::<TextDisplayState>()
         .unwrap()
-        .timer;
+        .timer
+        .elapsed();
     for _ in 0..frames(WALK_SECS) {
         let counted = harness
             .world()
@@ -143,8 +144,8 @@ fn run(name: &str, dt: f32) -> (String, Vec<String>) {
             far_x = far_x.max(at.x);
         }
         let hud = world.get_resource::<TextDisplayState>().unwrap();
-        // The timer only drops when the HUD refreshes.
-        if hud.timer < timer && on_row {
+        // The timer's elapsed time only drops when the HUD refreshes.
+        if hud.timer.elapsed() < timer && on_row {
             refreshes += 1;
             // One step's events: this frame's steps or the one before them.
             let counts = &world.get_resource::<Probe>().unwrap().step_counts;
@@ -153,7 +154,7 @@ fn run(name: &str, dt: f32) -> (String, Vec<String>) {
                 bad_contacts.push(format!("{} (steps {one_step:?})", hud.contacts));
             }
         }
-        timer = hud.timer;
+        timer = hud.timer.elapsed();
     }
 
     let probe = harness.world().get_resource::<Probe>().unwrap();

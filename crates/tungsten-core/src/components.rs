@@ -320,9 +320,7 @@ pub struct SquashStretchState {
 /// body with a `PrevPosition` between its last two steps; a world driven by
 /// hand without the fixed step's snapshot calls this one.
 pub fn sync_position_to_transform(world: &mut World) {
-    for (_entity, transform, position) in
-        world.query_mut::<(Entity, &mut Transform, &mut Position)>()
-    {
+    for (transform, position) in world.query_mut::<(&mut Transform, &Position)>() {
         transform.position = position.0;
     }
 }
