@@ -98,3 +98,187 @@ fn physics_plugin_alone_resolves_to_the_snapshot_the_step_and_the_sync() {
          update: -\npost_update: physics_sync\n"
     );
 }
+
+fn physics_world() -> World {
+    let mut world = World::new();
+    PhysicsPlugin.build(&mut Schedule::new(), &mut world);
+    world
+}
+
+/// Spawns `rigid_body: value` at `at` and returns the entity.
+fn spawn_body(world: &mut World, at: Vec2, value: &serde_json::Value) -> Entity {
+    use crate::component_registry::ComponentRegistry;
+    use crate::ecs::CommandBuffer;
+
+    let context = SpawnContext::new(world, Transform::from_position(at));
+    let prepared = world
+        .resource::<ComponentRegistry>()
+        .prepare("rigid_body", value, &context)
+        .unwrap();
+    let mut buffer = CommandBuffer::new();
+    let pending = buffer.spawn();
+    prepared.insert_pending(&mut buffer, pending);
+    let before: Vec<Entity> = world.query::<Entity>().collect();
+    world.flush(buffer);
+    world
+        .query::<Entity>()
+        .find(|entity| !before.contains(entity))
+        .unwrap()
+}
+
+fn check_error(world: &World, value: &serde_json::Value) -> String {
+    world
+        .resource::<crate::component_registry::ComponentRegistry>()
+        .check("rigid_body", value)
+        .expect_err("must fail")
+        .to_string()
+}
+
+#[test]
+fn physics_plugin_registers_rigid_body_on_a_bare_world() {
+    let world = physics_world();
+    let registry = world.resource::<crate::component_registry::ComponentRegistry>();
+    assert_eq!(registry.names().collect::<Vec<_>>(), ["rigid_body"]);
+}
+
+#[test]
+fn a_dynamic_rigid_body_spawns_at_the_transform() {
+    let mut world = physics_world();
+    let body = spawn_body(
+        &mut world,
+        Vec2::new(10.0, -20.0),
+        &serde_json::json!({
+            "kind": "dynamic",
+            "shape": { "kind": "circle", "radius": 6.0 },
+            "offset": [1.0, 2.0],
+            "mass": 2.0,
+            "restitution": 0.25
+        }),
+    );
+    assert_eq!(
+        world.get::<Position>(body),
+        Some(&Position::new(10.0, -20.0))
+    );
+    assert_eq!(
+        world.get::<PrevPosition>(body),
+        Some(&PrevPosition(Vec2::new(10.0, -20.0)))
+    );
+    assert_eq!(world.get::<Velocity>(body), Some(&Velocity::new(0.0, 0.0)));
+    assert_eq!(
+        world.get::<Collider>(body),
+        Some(&Collider::circle(6.0).with_offset(Vec2::new(1.0, 2.0)))
+    );
+    let rigid = world.get::<RigidBody>(body).unwrap();
+    assert_eq!(rigid.kind, crate::physics::BodyKind::Dynamic);
+    assert_eq!(rigid.inv_mass, 0.5);
+    assert_eq!(rigid.restitution, 0.25);
+}
+
+#[test]
+fn a_static_rigid_body_has_no_velocity_unless_one_is_given() {
+    let mut world = physics_world();
+    let still = spawn_body(
+        &mut world,
+        Vec2::ZERO,
+        &serde_json::json!({
+            "kind": "static",
+            "shape": { "kind": "aabb", "half_extents": [8.0, 4.0] }
+        }),
+    );
+    assert!(!world.has::<Velocity>(still));
+    assert_eq!(
+        world.get::<Collider>(still),
+        Some(&Collider::aabb(Vec2::new(8.0, 4.0)))
+    );
+    assert_eq!(world.get::<RigidBody>(still), Some(&RigidBody::r#static()));
+    let moving = spawn_body(
+        &mut world,
+        Vec2::ZERO,
+        &serde_json::json!({
+            "kind": "static",
+            "shape": { "kind": "aabb", "half_extents": [8.0, 4.0] },
+            "velocity": [3.0, 0.0]
+        }),
+    );
+    assert_eq!(
+        world.get::<Velocity>(moving),
+        Some(&Velocity::new(3.0, 0.0))
+    );
+}
+
+#[test]
+fn rigid_body_rejects_bad_values_naming_the_field_or_value() {
+    let world = physics_world();
+    let circle = serde_json::json!({ "kind": "circle", "radius": 4.0 });
+    let cases = [
+        (
+            serde_json::json!({ "kind": "static", "shape": circle, "mass": 2.0 }),
+            "`mass` is for dynamic bodies only",
+        ),
+        (
+            serde_json::json!({ "kind": "dynamic", "shape": circle, "mass": 0.0 }),
+            "`mass` must be finite and > 0 with a finite inverse (got 0)",
+        ),
+        (
+            serde_json::json!({ "kind": "dynamic", "shape": circle, "mass": -1.0 }),
+            "`mass` must be finite and > 0 with a finite inverse (got -1)",
+        ),
+        (
+            serde_json::json!({ "kind": "dynamic", "shape": circle, "mass": 1e-40 }),
+            "`mass` must be finite and > 0 with a finite inverse",
+        ),
+        (
+            serde_json::json!({ "kind": "dynamic", "shape": { "kind": "circle", "radius": 0.0 } }),
+            "`shape.radius` must be in (0, 16384] (got 0)",
+        ),
+        (
+            serde_json::json!({ "kind": "dynamic", "shape": { "kind": "circle", "radius": 1e12 } }),
+            "`shape.radius` must be in (0, 16384]",
+        ),
+        (
+            serde_json::json!({ "kind": "dynamic",
+                "shape": { "kind": "aabb", "half_extents": [4.0, -1.0] } }),
+            "`shape.half_extents` must be in (0, 16384] (got [4, -1])",
+        ),
+        (
+            serde_json::json!({ "kind": "dynamic", "shape": circle, "offset": [16385.0, 0.0] }),
+            "`offset` must be within ±16384 (got [16385, 0])",
+        ),
+        (
+            serde_json::json!({ "kind": "dynamic", "shape": circle, "restitution": 1.5 }),
+            "`restitution` must be in 0..=1 (got 1.5)",
+        ),
+        (
+            serde_json::json!({ "kind": "dynamic", "shape": circle, "velocity": [1e40, 0.0] }),
+            "`velocity` must be finite (got [inf, 0])",
+        ),
+        (
+            serde_json::json!({ "kind": "dynamic", "shape": circle, "friction": 0.5 }),
+            "unknown field `friction`",
+        ),
+        (
+            serde_json::json!({ "kind": "dynamic",
+                "shape": { "kind": "circle", "radius": 4.0, "sides": 6 } }),
+            "unknown field `sides`",
+        ),
+        (
+            serde_json::json!({ "kind": "kinematic", "shape": circle }),
+            "unknown variant `kinematic`",
+        ),
+        (
+            serde_json::json!({ "kind": "dynamic", "shape": { "kind": "capsule", "radius": 4.0 } }),
+            "unknown variant `capsule`",
+        ),
+        (
+            serde_json::json!({ "kind": "dynamic" }),
+            "missing field `shape`",
+        ),
+    ];
+    for (value, expected) in cases {
+        let message = check_error(&world, &value);
+        assert!(
+            message.starts_with("component `rigid_body`") && message.contains(expected),
+            "{value}: {message}"
+        );
+    }
+}

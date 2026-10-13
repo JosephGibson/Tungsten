@@ -6,8 +6,20 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.67.0] - 2026-10-13
+
+Summary: M48, W16a (plan archived at `docs/plans/archive/1.0/phase6-milestone-48-component-registry.md`): scene entries name registered components. A `ComponentRegistry` World resource maps names to serde types; a game registers with `App::register_component`, a plugin through `World::register_component`; a scene entry's `"components"` object is checked at load against the World, its errors naming the file, the entry and the field, and spawns with the entry; the engine registers `rigid_body`, `light`, `parallax_layer` and `squash_stretch` where their readers live, and scene files reject unknown keys (`D-153`, amending `D-046` and `D-103`). The determinism and containment hashes, `DefaultPlugins`' schedule and the `just visual` comparisons are unchanged.
+
+### Added
+
+- **Component registry** (`D-153`): `tungsten_core::component_registry` with `ComponentRegistry` (`register`, `register_with`, `contains`, `name_of`, `names`, `len`, `is_empty`, `check`, `prepare`), `PreparedComponent`, `SpawnContext` (the entity's transform and `&World`) and `ComponentError` (`Unknown`, `Invalid` with the field path), re-exported at the core root; `World::register_component` and `register_component_with`, which insert the registry on a bare World; `App::register_component`. One new dependency, `serde_path_to_error` 0.1.20 (`D-015` rule 3), and a `serde` edge for the umbrella.
+- **Scene components** (`D-153`): `SceneEntry.components`; `spawn_scene` prepares every component with `&World` before it changes anything, then queues each entry's components after its fields in name order, in one archetype move; `rigid_body` (`PhysicsPlugin`, a `RigidBodyBundle` at the entry's position), `light` and `parallax_layer` (`App`, beside the default extracts) and `squash_stretch` (`GameFeelPlugin`), their JSON shapes in the module doc.
+
 ### Changed
 
+- **Scene loading** (`D-153`, amending `D-046`): `SceneData::load(path, world)` and `asset_loader::load_scene(world, path)` check each entry's transform (finite, positions within ±2^24), tweens and components against the World's registry, stopping at the first error with `entities[<i>]` and the field; the five scene structs deny unknown keys, and a repeated component name or key fails the parse; example 03 loads through `load_scene`.
+- **File-format promise** (`D-153`, amending `D-103`): from 1.0 the component names `App` and `DefaultPlugins` register are fixed; a minor release adds names only in plugins a game adds itself.
+- **Records**: `DESIGN.md` gains "Component Registry — M48"; the index routes `core/component_registry.rs`; three break-ledger rows; the W16b, W6a and W14 follow-ups; the core scene tests remove their temp directories, so known issues keep only the manifest helper's.
 - **Critique effort** (`tungsten-milestone` step 7): plan critiques run at the critic's default, xhigh; only a level C plan's first round passes `--effort max`. Three parallel `gpt-6-astra` runs exhausted the ChatGPT plan's 5-hour usage window in under 10 minutes on 2026-10-13, and a plan can need up to three critique runs.
 - **Critique usage** (skeleton §9): the critic's footer shows the ChatGPT plan's 5-hour and weekly usage windows before and after each run, and §9 records them with the rest of the footer.
 

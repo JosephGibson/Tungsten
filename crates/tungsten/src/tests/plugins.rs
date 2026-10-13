@@ -179,3 +179,30 @@ fn every_engine_system_is_timed_under_its_public_name() {
     app = App::with_plugins(Config::default(), PluginSet::new()).unwrap();
     assert_eq!(app.schedule().len(), 0);
 }
+
+fn component_names(app: &mut App) -> Vec<String> {
+    app.world_mut()
+        .resource::<tungsten_core::ComponentRegistry>()
+        .names()
+        .map(str::to_owned)
+        .collect()
+}
+
+#[test]
+fn each_owner_registers_its_scene_components() {
+    assert_eq!(
+        component_names(&mut App::new(Config::default()).unwrap()),
+        ["light", "parallax_layer", "rigid_body", "squash_stretch"]
+    );
+    let set = DefaultPlugins::set()
+        .without::<PhysicsPlugin>()
+        .without::<GameFeelPlugin>();
+    assert_eq!(
+        component_names(&mut App::with_plugins(Config::default(), set).unwrap()),
+        ["light", "parallax_layer"]
+    );
+    assert_eq!(
+        component_names(&mut App::with_plugins(Config::default(), PluginSet::new()).unwrap()),
+        ["light", "parallax_layer"]
+    );
+}

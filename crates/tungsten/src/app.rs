@@ -26,6 +26,7 @@ use crate::systems_overlay::{SystemTimingOverlay, compose_systems_overlay_text_s
 use crate::telemetry::{DisplayTelemetry, FrameTimings, RenderCounts};
 use crate::user_dir::{self, Platform};
 use log::LevelFilter;
+use serde::de::DeserializeOwned;
 use tungsten_core::assets::{
     AnimationRegistry, FontRegistry, ParticleConfigRegistry, ParticleMeshRegistry, ShaderRegistry,
     SoundRegistry, TilemapRegistry,
@@ -38,10 +39,10 @@ use tungsten_core::ui::{CursorIcon, PaintList, UiDebug, UiRouter, UiThemeRegistr
 use tungsten_core::DeltaTime;
 use tungsten_core::{
     ActionMap, AssetRegistry, AudioCommand, AudioCommands, Binding, CameraController, CameraState,
-    CommandBuffer, Config, ConfigError, DebugDraw, DebugShape, DisplayMode, DisplayState,
-    InputState, InspectRegistry, Inspectable, ParticleActive, ParticleBudget, Plugin, PluginSet,
-    RawInput, RoutedInput, Schedule, Stage, SystemDesc, Time, TimeConfig, World, WorldRngSeed,
-    system,
+    CommandBuffer, ComponentRegistry, Config, ConfigError, DebugDraw, DebugShape, DisplayMode,
+    DisplayState, InputState, InspectRegistry, Inspectable, ParticleActive, ParticleBudget, Plugin,
+    PluginSet, RawInput, RoutedInput, Schedule, Stage, SystemDesc, Time, TimeConfig, World,
+    WorldRngSeed, system,
 };
 use tungsten_render::renderer::RenderError;
 use tungsten_render::{
@@ -250,6 +251,10 @@ impl App {
         world.insert_resource(SystemTimingOverlay::default());
         world.insert_resource(InspectorState::new());
         world.insert_resource(default_inspect_registry());
+        // M48: the components scene entries name, with those the default
+        // extracts draw; plugins register theirs as they build.
+        world.insert_resource(ComponentRegistry::new());
+        asset_loader::register_extract_components(&mut world);
         // M26: empty post stack by default — byte-identical to M25 baseline.
         world.insert_resource(tungsten_core::post::PostStack::new());
         // M27: track post-AA state from startup config; pending request seam.
@@ -309,6 +314,18 @@ impl App {
         if let Some(registry) = self.world.get_resource_mut::<InspectRegistry>() {
             registry.register::<T>(label);
         }
+    }
+
+    /// [`World::register_component`] on the app's world: `components.<name>`
+    /// in a scene entry spawns a `T`.
+    ///
+    /// # Panics
+    ///
+    /// When `name` is not `[a-z][a-z0-9_]*`, already names another type, or
+    /// `T` already has another name ([`ComponentRegistry::register`]).
+    #[track_caller]
+    pub fn register_component<T: DeserializeOwned + 'static>(&mut self, name: &str) {
+        self.world.register_component::<T>(name);
     }
 
     /// Builds `plugin` into the schedule and the world now.

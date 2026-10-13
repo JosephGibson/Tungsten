@@ -195,6 +195,7 @@ fn scene_tween_spawns_component_through_command_buffer() {
                 tag: Some("scene_fade_in".to_string()),
                 channels: vec![SceneTweenChannel::ColorA { from: 0, to: 255 }],
             }],
+            components: std::collections::BTreeMap::new(),
         }],
     };
 

@@ -1,11 +1,18 @@
 //! The physics plugin: the snapshot and the step at the fixed stage, the
-//! one-way, interpolating sync to `Transform` after update, and the
-//! collision event queue. A plugin whose every need is met by core, so it
-//! lives here (the kit's shape, `D-007`).
+//! one-way, interpolating sync to `Transform` after update, the collision
+//! event queue and the `rigid_body` scene component. A plugin whose every
+//! need is met by core, so it lives here (the kit's shape, `D-007`).
 
+use glam::Vec2;
+use serde::Deserialize;
+
+use crate::component_registry::SpawnContext;
 use crate::components::Transform;
 use crate::ecs::World;
-use crate::physics::{CollisionEvent, Position, PrevPosition, physics_step};
+use crate::physics::{
+    Collider, CollisionEvent, Position, PrevPosition, RigidBody, RigidBodyBundle, Shape, Velocity,
+    physics_step,
+};
 use crate::schedule::{Plugin, Schedule, Stage, system};
 use crate::time::Time;
 
@@ -17,17 +24,20 @@ pub const PHYSICS_STEP: &str = "physics_step";
 pub const PHYSICS_SYNC: &str = "physics_sync";
 
 /// Registers [`PHYSICS_PREV_SNAPSHOT`] and [`PHYSICS_STEP`] after it in
-/// `FixedUpdate`, [`PHYSICS_SYNC`] in `PostUpdate` and
-/// `EventQueue<CollisionEvent>`. The snapshot is registered first, so it
-/// heads the stage ahead of a game's fixed systems, which `DefaultPlugins`
-/// builds before. `PhysicsConfig` stays the app's resource, so a game edits
-/// it before or after adding the plugin.
+/// `FixedUpdate`, [`PHYSICS_SYNC`] in `PostUpdate`,
+/// `EventQueue<CollisionEvent>` and the `rigid_body` scene component, which
+/// spawns a [`RigidBodyBundle`] at the entry's position
+/// ([`component_registry`](crate::component_registry)). The snapshot is
+/// registered first, so it heads the stage ahead of a game's fixed systems,
+/// which `DefaultPlugins` builds before. `PhysicsConfig` stays the app's
+/// resource, so a game edits it before or after adding the plugin.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct PhysicsPlugin;
 
 impl Plugin for PhysicsPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         world.register_event::<CollisionEvent>();
+        world.register_component_with(RIGID_BODY, spawn_rigid_body);
         schedule.add(
             Stage::FixedUpdate,
             system(PHYSICS_PREV_SNAPSHOT, physics_prev_snapshot),
@@ -81,6 +91,142 @@ pub fn physics_sync(world: &mut World) {
                 .zip(positions)
                 .for_each(|(transform, position)| transform.position = position.0),
         });
+}
+
+/// The scene component [`PhysicsPlugin`] registers.
+const RIGID_BODY: &str = "rigid_body";
+
+/// The largest collider size and offset a scene names, in pixels: with the
+/// transform's ±2^24, a scene's bodies stay inside the broadphase's `i32`
+/// cells.
+const MAX_BODY_EXTENT: f32 = 16_384.0;
+
+/// `rigid_body.kind`.
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum SceneBodyKind {
+    Dynamic,
+    Static,
+}
+
+/// `rigid_body.shape`.
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+enum SceneShape {
+    Aabb { half_extents: [f32; 2] },
+    Circle { radius: f32 },
+}
+
+/// `components.rigid_body` as written.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RigidBodyFields {
+    kind: SceneBodyKind,
+    shape: SceneShape,
+    #[serde(default)]
+    offset: [f32; 2],
+    mass: Option<f32>,
+    #[serde(default)]
+    restitution: f32,
+    velocity: Option<[f32; 2]>,
+}
+
+/// `components.rigid_body`, checked: the bundle's parts beside the entry's
+/// position.
+#[derive(Clone, Copy, Deserialize)]
+#[serde(try_from = "RigidBodyFields")]
+struct RigidBodyDef {
+    velocity: Option<Velocity>,
+    collider: Collider,
+    body: RigidBody,
+}
+
+impl TryFrom<RigidBodyFields> for RigidBodyDef {
+    type Error = String;
+
+    fn try_from(fields: RigidBodyFields) -> Result<Self, String> {
+        let size = |v: f32| v > 0.0 && v <= MAX_BODY_EXTENT;
+        let shape = match fields.shape {
+            SceneShape::Aabb {
+                half_extents: [x, y],
+            } => {
+                if !(size(x) && size(y)) {
+                    return Err(format!(
+                        "`shape.half_extents` must be in (0, {MAX_BODY_EXTENT}] (got [{x}, {y}])"
+                    ));
+                }
+                Shape::Aabb {
+                    half_extents: Vec2::new(x, y),
+                }
+            }
+            SceneShape::Circle { radius } => {
+                if !size(radius) {
+                    return Err(format!(
+                        "`shape.radius` must be in (0, {MAX_BODY_EXTENT}] (got {radius})"
+                    ));
+                }
+                Shape::Circle { radius }
+            }
+        };
+        let [ox, oy] = fields.offset;
+        if !(ox.abs() <= MAX_BODY_EXTENT && oy.abs() <= MAX_BODY_EXTENT) {
+            return Err(format!(
+                "`offset` must be within ±{MAX_BODY_EXTENT} (got [{ox}, {oy}])"
+            ));
+        }
+        if !(0.0..=1.0).contains(&fields.restitution) {
+            return Err(format!(
+                "`restitution` must be in 0..=1 (got {})",
+                fields.restitution
+            ));
+        }
+        let velocity = match fields.velocity {
+            Some([x, y]) if !(x.is_finite() && y.is_finite()) => {
+                return Err(format!("`velocity` must be finite (got [{x}, {y}])"));
+            }
+            velocity => velocity.map(|[x, y]| Velocity::new(x, y)),
+        };
+        let (body, velocity) = match fields.kind {
+            SceneBodyKind::Dynamic => {
+                let mass = fields.mass.unwrap_or(1.0);
+                if !(mass.is_finite() && mass > 0.0 && (1.0 / mass).is_finite()) {
+                    return Err(format!(
+                        "`mass` must be finite and > 0 with a finite inverse (got {mass})"
+                    ));
+                }
+                (
+                    RigidBody::dynamic().with_mass(mass),
+                    Some(velocity.unwrap_or_default()),
+                )
+            }
+            SceneBodyKind::Static => {
+                if fields.mass.is_some() {
+                    return Err("`mass` is for dynamic bodies only".to_owned());
+                }
+                (RigidBody::r#static(), velocity)
+            }
+        };
+        Ok(Self {
+            velocity,
+            collider: Collider {
+                shape,
+                offset: Vec2::new(ox, oy),
+            },
+            body: body.with_restitution(fields.restitution),
+        })
+    }
+}
+
+/// `rigid_body`'s spawn: a [`RigidBodyBundle`] at the entry's position, so
+/// `Position` and `PrevPosition` start there; the transform's scale does not
+/// size the collider.
+fn spawn_rigid_body(def: RigidBodyDef, at: &SpawnContext<'_>) -> RigidBodyBundle {
+    RigidBodyBundle {
+        position: Position(at.transform().position),
+        velocity: def.velocity,
+        collider: def.collider,
+        body: def.body,
+    }
 }
 
 #[cfg(test)]

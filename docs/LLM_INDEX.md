@@ -20,7 +20,7 @@ Task → file map. Open it before a broad search; read only the matching row's f
 | Input actions, `input.json`, rebind reload (`D-045`) | `core/input/action_map.rs`, `core/input/key_serde.rs`, `tungsten/asset_loader/reload.rs`, `tungsten/debug_hud.rs`, `tungsten/display.rs`, `input.json` |
 | Input state, raw input stream, focus loss, modifiers, pointer leave, `ScaleFactor`, the winit bridge (`D-144`) | `core/input.rs`, `core/display.rs`, `tungsten/input_bridge.rs`, `tungsten/app.rs`, `core/tests/input.rs`, `tungsten/tests/input_bridge.rs` |
 | Camera follow/zoom/bounds/shake (`D-073`) | `core/camera.rs`, `tungsten/camera.rs`, `examples/01_platformer/src/setup.rs`, `examples/01_platformer/src/systems.rs` |
-| State stack, scene spawn, `SceneEntity` cleanup, screen transitions (`D-046`, `D-093`) | `tungsten/state.rs`, `tungsten/transition.rs`, `core/assets/scene.rs`, `tungsten/asset_loader/scene.rs`, `examples/03_scene_state/src/states.rs` |
+| State stack, scenes and components, `SceneEntity` cleanup, transitions (`D-046`, `D-093`, `D-153`) | `tungsten/state.rs`, `tungsten/transition.rs`, `core/assets/scene.rs`, `core/component_registry.rs`, `tungsten/asset_loader/scene.rs`, `examples/03_scene_state/src/states.rs` |
 | Tweens (`D-054`–`D-056`) | `core/tween.rs`, `tungsten/tweens.rs`, `core/assets/scene.rs` |
 | Parallax, camera shake trauma, squash/stretch (`D-073`) | `core/components.rs`, `core/camera.rs`, `tungsten/game_feel.rs`, `tungsten/sprite_extract.rs` |
 | Particles, mesh particles (`D-049`–`D-051`, `D-093`) | `core/assets/particle.rs`, `core/rng.rs`, `core/components.rs`, `tungsten/particles.rs`, `render/mesh_particle.rs`, `examples/01_platformer/assets/particles/` |

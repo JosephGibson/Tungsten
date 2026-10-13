@@ -16,6 +16,7 @@ tungsten-core = { workspace = true }
 tungsten-render = { workspace = true }
 winit = { workspace = true }
 glam = { workspace = true }
+serde = { workspace = true }
 image = { workspace = true }
 log = { workspace = true }
 env_logger = { workspace = true }

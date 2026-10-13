@@ -18,7 +18,7 @@ use std::path::Path;
 
 use glam::Vec2;
 
-use tungsten::core::{ActionMap, AssetRegistry, InputState, SceneData, SpriteAssetId, World};
+use tungsten::core::{ActionMap, AssetRegistry, InputState, SpriteAssetId, World};
 use tungsten::core::{CommandBuffer, Sprite, Tag, Transform, Visibility};
 use tungsten::{
     GameState, SceneEntity, StateContext, StateId, StateStack, Transition, TransitionEffect,
@@ -112,8 +112,8 @@ impl GameState for GameplayState {
         if let Some(clock) = ctx.world.get_resource_mut::<crate::GameplayClock>() {
             clock.0 = 0.0;
         }
-        let scene =
-            SceneData::load(Path::new(self.scene_path)).expect("scene.json missing or invalid");
+        let scene = asset_loader::load_scene(ctx.world, Path::new(self.scene_path))
+            .expect("scene.json missing or invalid");
         asset_loader::spawn_scene(ctx.world, &scene, "gameplay");
     }
 

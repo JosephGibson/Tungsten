@@ -791,7 +791,7 @@ dependencies = [
 
 [[package]]
 name = "example-01-platformer"
-version = "0.66.0"
+version = "0.67.0"
 dependencies = [
  "anyhow",
  "glam",
@@ -800,7 +800,7 @@ dependencies = [
 
 [[package]]
 name = "example-02-bench"
-version = "0.66.0"
+version = "0.67.0"
 dependencies = [
  "anyhow",
  "glam",
@@ -811,7 +811,7 @@ dependencies = [
 
 [[package]]
 name = "example-03-scene-state"
-version = "0.66.0"
+version = "0.67.0"
 dependencies = [
  "anyhow",
  "glam",
@@ -820,7 +820,7 @@ dependencies = [
 
 [[package]]
 name = "example-04-shader-playground"
-version = "0.66.0"
+version = "0.67.0"
 dependencies = [
  "anyhow",
  "glam",
@@ -829,7 +829,7 @@ dependencies = [
 
 [[package]]
 name = "example-05-ui-lab"
-version = "0.66.0"
+version = "0.67.0"
 dependencies = [
  "anyhow",
  "glam",
@@ -2522,6 +2522,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_path_to_error"
+version = "0.1.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "10a9ff822e371bb5403e391ecd83e182e0e77ba7f6fe0160b795797109d1b457"
+dependencies = [
+ "itoa",
+ "serde",
+ "serde_core",
+]
+
+[[package]]
 name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2974,7 +2985,7 @@ dependencies = [
 
 [[package]]
 name = "tungsten"
-version = "0.66.0"
+version = "0.67.0"
 dependencies = [
  "anyhow",
  "cpal",
@@ -2985,6 +2996,7 @@ dependencies = [
  "log",
  "notify",
  "rtrb",
+ "serde",
  "tungsten-core",
  "tungsten-render",
  "winit",
@@ -2992,7 +3004,7 @@ dependencies = [
 
 [[package]]
 name = "tungsten-core"
-version = "0.66.0"
+version = "0.67.0"
 dependencies = [
  "bytemuck",
  "criterion",
@@ -3000,6 +3012,7 @@ dependencies = [
  "log",
  "serde",
  "serde_json",
+ "serde_path_to_error",
  "symphonia",
  "taffy",
  "thiserror 2.0.21",
@@ -3007,7 +3020,7 @@ dependencies = [
 
 [[package]]
 name = "tungsten-crash-probe"
-version = "0.66.0"
+version = "0.67.0"
 dependencies = [
  "log",
  "tungsten",
@@ -3015,11 +3028,11 @@ dependencies = [
 
 [[package]]
 name = "tungsten-launcher"
-version = "0.66.0"
+version = "0.67.0"
 
 [[package]]
 name = "tungsten-render"
-version = "0.66.0"
+version = "0.67.0"
 dependencies = [
  "bytemuck",
  "criterion",

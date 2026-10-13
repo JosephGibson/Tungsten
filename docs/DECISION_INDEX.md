@@ -15,7 +15,7 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-007` | `tungsten-render` may depend on `tungsten-core`; strict isolation is not the goal. |
 | `D-008` | Config loads at startup from the game's folder. Amended by `D-119`: ID/log validation; `D-123`: game-local path. |
 | `D-102` | 1.0 means a complete game engine and stable library, tested by an acceptance game. Amended by `D-131`: R2 only, R1/R4 to 1.x. |
-| `D-103` | Semver promises umbrella API, file formats and CLI; excludes direct crate/backend types. Amends `D-069`: MSRV bumps in minors. |
+| `D-103` | Semver promises umbrella API, file formats and CLI; excludes direct crate/backend types. Amends `D-069`: MSRV bumps in minors. Amended by `D-153`: the default scene component names are fixed from 1.0. |
 | `D-132` | Acceptance-game map sets W6/W13 tiers; bodies on roots, tilemap builder in W16b, world labels after M3. |
 
 ## Assets / Rendering
@@ -130,7 +130,7 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-043` | Display config and runtime apply at frame boundaries through requested settings. |
 | `D-044` | Off-by-default umbrella telemetry HUD. Narrowed by `D-078`: suite measures overhead; input toggles follow `D-045`. |
 | `D-045` | Core action names/bindings with watcher reload. Amended by `D-123`: game-local canonical input path. |
-| `D-046` | Engine dispatcher, state stack and scene-owned entity cleanup; scenes reuse render components. |
+| `D-046` | Engine dispatcher, state stack and scene-owned entity cleanup; scenes reuse render components. Amended by `D-153`: entries carry registered components checked at load against the World; unknown keys fail. |
 | `D-047` | Core debug data, independent overlays and offscreen screenshot readback; GPU labels/groups always on. Amended by `D-142`: one-frame captures whose result comes back. |
 | `D-049` | In-tree PCG32 + SplitMix64; no RNG dependency. |
 | `D-050` | Emitters and live particles retain Arc config snapshots across reload. |
@@ -173,6 +173,7 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-144` | W1 M0b input groundwork: 28 more key variants, an ordered per-frame raw input stream in `InputState`, focus loss releasing held input, modifiers, pointer leave and the `ScaleFactor` resource. |
 | `D-146` | A zero-step frame on a stopped clock (game dt 0, real dt above 0) drops the fixed view's input edges: a press made while paused or at scale 0 reaches no step; a zero-dt frame keeps them. Amends `D-137`. |
 | `D-149` | W1 M3 UI input routing: `ui_route` in `PreUpdate` routes the ordered raw stream against the last layout (clip-stack hit testing, modal roots, capture, hover, visible-focus keyboard, the `ui_*` actions, directional focus with repeat), publishes `UiEvent`s and feeds the opt-in `RoutedInput`; press ownership keeps keys from sticking; the exit check reads the routed view. Amends `D-125`. Extends `D-040`, `D-045`, `D-088`, `D-128`, `D-144`. |
+| `D-153` | W16a landed: `ComponentRegistry` by name and type; scene `components` checked at load against the World with field paths; strict scene keys and transform bounds; four engine components registered by their owners; no `Component` marker; `serde_path_to_error` (`D-015` rule 3). Amends `D-046`, `D-103`. |
 
 ## When To Open a Decision
 

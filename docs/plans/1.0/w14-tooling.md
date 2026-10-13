@@ -57,3 +57,4 @@ The platformer's tests run through the harness with no hand-written loop, and RC
 ## Follow-ups
 
 1. **RC-A7 needs `tungsten new`, which is proposed as Should.** If Q20 keeps it Should and it is cut, RC-A7 and C3's outside-workspace check need another way to make the project, such as W12a's outside-copy recipe. Settle it with Q20 when W14b starts.
+2. **`check` and the scene load disagree on how many errors to report** (M48, `D-153`). `SceneData::load(path, world)` stops at the first error and checks components against the `ComponentRegistry` of the World it is given; `check` reports every error and needs the game's registered component names, which only the game's code holds, so W14b decides how it gets them (a registry the game builds for the tool, or the game's own binary).
