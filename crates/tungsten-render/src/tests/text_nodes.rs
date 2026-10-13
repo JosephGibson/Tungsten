@@ -389,3 +389,33 @@ fn the_engine_and_the_facade_are_node_stores() {
     );
     assert_eq!(engine.committed(direct).map(|m| m.line_count), Some(1));
 }
+
+#[test]
+fn a_nodes_revision_moves_on_changed_text_and_on_commits_only() {
+    let mut engine = engine();
+    let node = engine.create_node();
+    assert_eq!(engine.node_revision(node), None, "no text yet");
+    let style = TextStyle::new("sans", 16.0, LINE_HEIGHT);
+    engine.set_text(node, &StyledText::from("one"), &style);
+    assert_eq!(engine.node_revision(node), Some(0));
+    engine.set_text(node, &StyledText::from("one"), &style);
+    assert_eq!(
+        engine.node_revision(node),
+        Some(0),
+        "equal text is not a change"
+    );
+    engine.set_text(node, &StyledText::from("two"), &style);
+    assert_eq!(engine.node_revision(node), Some(1));
+    engine.commit_layout(node, Vec2::new(100.0, LINE_HEIGHT));
+    assert_eq!(engine.node_revision(node), Some(2));
+    engine.measure(node, None, MeasureWidth::MaxContent);
+    assert_eq!(
+        engine.node_revision(node),
+        Some(2),
+        "a measure moves nothing"
+    );
+    engine.commit_layout(node, Vec2::new(100.0, LINE_HEIGHT));
+    assert_eq!(engine.node_revision(node), Some(3), "every commit counts");
+    engine.remove_node(node);
+    assert_eq!(engine.node_revision(node), None);
+}

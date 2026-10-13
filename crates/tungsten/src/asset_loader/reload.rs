@@ -8,10 +8,106 @@ use tungsten_core::assets::{
     ParticleConfig, ParticleConfigRegistry, ParticleMeshRegistry, ResolvedManifest, SoundRegistry,
     TextureHandle, TilemapData, TilemapRegistry, UvRect,
 };
+use tungsten_core::ui::{Theme, ThemeFile, UiThemeRegistry, UiTree};
 use tungsten_core::{ActionMap, ActionMapError, AssetRegistry, World};
 use tungsten_render::Renderer;
 
-use super::{diff_particle_meshes, missing_particle_render_ref, rebuild_atlas_for_filter};
+use super::{
+    UiThemePaths, diff_particle_meshes, missing_particle_render_ref, rebuild_atlas_for_filter,
+    warn_unknown_font_tokens,
+};
+
+/// Hot-reload one `ui_themes` file (M46, `D-148`): the registry entry is
+/// replaced and, when the `UiTree` follows that ID, re-applied through
+/// `set_theme_asset`, so a running game restyles. A file that fails to load
+/// keeps the previous theme with one error.
+pub fn reload_ui_theme(id: &str, path: &Path, world: &mut World) -> anyhow::Result<()> {
+    let theme = match ThemeFile::load(path) {
+        Ok(file) => file.into_theme(),
+        Err(e) => {
+            log::error!("Hot reload ui theme '{id}': {e}; keeping the previous theme");
+            return Ok(());
+        }
+    };
+    if let Some(manifest) = world.get_resource::<LoadedManifest>() {
+        warn_unknown_font_tokens(id, &theme, manifest.as_resolved());
+    }
+    apply_ui_theme(id, theme, world);
+    log::info!("Hot-reloaded ui theme '{id}' from '{}'", path.display());
+    Ok(())
+}
+
+/// Stores `theme` as `id` in the registry and re-applies it to a tree whose
+/// `theme_id` is `id`.
+pub(crate) fn apply_ui_theme(id: &str, theme: Theme, world: &mut World) {
+    if let Some(tree) = world.get_resource_mut::<UiTree>()
+        && tree.theme_id() == Some(id)
+    {
+        tree.set_theme_asset(id, theme.clone());
+    }
+    if let Some(registry) = world.get_resource_mut::<UiThemeRegistry>() {
+        registry.insert(id, theme);
+    } else {
+        let mut registry = UiThemeRegistry::new();
+        registry.insert(id, theme);
+        world.insert_resource(registry);
+    }
+}
+
+/// The manifest reload's `ui_themes` diff (M46, `D-148`): a new entry loads
+/// (a file that fails is one error and no entry), a removed one stays stale,
+/// an existing one keeps its loaded theme (a changed file arrives through
+/// [`reload_ui_theme`]); every entry's path is recorded for the watcher.
+pub fn reload_ui_themes_from_manifest(new_manifest: &ResolvedManifest, world: &mut World) {
+    let existing: Vec<String> = world
+        .get_resource::<UiThemeRegistry>()
+        .map(|registry| registry.ids().iter().map(ToString::to_string).collect())
+        .unwrap_or_default();
+    for id in &existing {
+        if !new_manifest.ui_themes.contains_key(id.as_str()) {
+            log::warn!("Manifest reload: ui theme '{id}' removed — keeping stale");
+        }
+    }
+    let mut ids: Vec<&String> = new_manifest.ui_themes.keys().collect();
+    ids.sort();
+    let mut paths = world.remove_resource::<UiThemePaths>().unwrap_or_default();
+    for id in ids {
+        let entry = &new_manifest.ui_themes[id];
+        paths.register(id.clone(), entry.path.clone());
+        if existing.iter().any(|e| e == id) {
+            continue;
+        }
+        match ThemeFile::load(&entry.path) {
+            Ok(file) => {
+                let theme = file.into_theme();
+                warn_unknown_font_tokens(id, &theme, new_manifest);
+                apply_ui_theme(id, theme, world);
+                log::info!("Manifest reload: loaded new ui theme '{id}'");
+            }
+            Err(e) => log::error!("Manifest reload: new ui theme '{id}': {e}"),
+        }
+    }
+    world.insert_resource(paths);
+}
+
+/// Sets a registered sprite's nine-slice insets when they differ from the
+/// registered ones, so an unchanged manifest moves no sprite epoch. Returns
+/// whether they changed.
+pub(crate) fn apply_nine_slice(
+    registry: &mut AssetRegistry,
+    id: &str,
+    nine_slice: Option<[u32; 4]>,
+) -> bool {
+    if registry
+        .get_sprite(id)
+        .is_some_and(|asset| asset.nine_slice != nine_slice)
+    {
+        registry.set_sprite_nine_slice(id, nine_slice);
+        true
+    } else {
+        false
+    }
+}
 
 /// Hot-reload a manifest-tracked material: look up by name, re-upload under
 /// the current `ResolvedMaterial` entry. Validation failure keeps the prior
@@ -297,6 +393,15 @@ pub fn reload_manifest(
                 }
                 log::info!("Manifest reload: staging new sprite '{id}'");
             }
+            // M46: nine-slice insets follow the manifest, new and existing.
+            for (id, entry) in &new_manifest.sprites {
+                if apply_nine_slice(registry, id, entry.nine_slice) {
+                    log::info!(
+                        "Manifest reload: sprite '{id}' nine_slice is now {:?}",
+                        entry.nine_slice
+                    );
+                }
+            }
         }
         if gained_nearest
             && let Err(e) = rebuild_atlas_for_filter(FilterMode::Nearest, world, renderer)
@@ -529,6 +634,9 @@ pub fn reload_manifest(
             }
         }
     }
+
+    // M46 ui themes: load new entries, keep removed ones stale.
+    reload_ui_themes_from_manifest(&new_manifest, world);
 
     // Keep diagnostics/reload diff graph current.
     world.insert_resource(tungsten_core::assets::LoadedManifest::new(

@@ -1,7 +1,13 @@
 use glam::Vec2;
+use std::path::PathBuf;
 use tungsten_core::Config;
 use tungsten_core::text::TextNodeStore;
-use tungsten_core::ui::{LayoutStyle, Rect, Sizing, UiLayer, UiTree, WidgetId, WidgetKind};
+
+use tungsten_core::assets::{FilterMode, TextureHandle, UvRect};
+use tungsten_core::ui::{
+    LayoutStyle, Rect, Sizing, UiDebug, UiLayer, UiTree, WidgetId, WidgetKind,
+};
+use tungsten_core::{AssetRegistry, World};
 
 use super::UiHarness;
 use crate::App;
@@ -217,4 +223,174 @@ fn a_batch_of_frames_records_what_single_steps_record() {
         tungsten_core::ui::LayoutStats::default(),
         "nothing changed since the last layout"
     );
+}
+
+// ---- M46: the paint list through the frame ----
+
+fn frame_ui(harness: &UiHarness) -> &tungsten_core::ui::PaintList {
+    &harness.harness().draw().expect("a frame ran").ui
+}
+
+#[test]
+fn an_app_with_no_roots_paints_an_empty_list_and_the_layout_stage_costs_nothing() {
+    let mut harness = UiHarness::new(app());
+    assert_eq!(harness.step(1), 1);
+    let ui = frame_ui(&harness);
+    assert!(ui.is_empty());
+    assert_eq!(ui.clips.len(), 1, "the viewport clip alone");
+    assert_eq!(harness.text().counts.commits, 0);
+    let counts = harness
+        .world()
+        .get_resource::<crate::RenderCounts>()
+        .unwrap();
+    assert_eq!(counts.ui_commands, 0);
+    assert_eq!(
+        counts.ui_layout_us, 0,
+        "the harness has no renderer, so the app's layout stage does not run"
+    );
+    assert_eq!(harness.dump_paint(), "clip 0 (0, 0) 1280×720\n");
+}
+
+#[test]
+fn a_root_built_in_a_startup_system_is_laid_out_and_painted_the_next_frame() {
+    let mut app = app();
+    app.add_system_to(
+        tungsten_core::Stage::Startup,
+        tungsten_core::system("build_ui", |world: &mut World| {
+            let tree = world.get_resource_mut::<UiTree>().unwrap();
+            let root = tree.add_root(UiLayer::Game, LayoutStyle::column().with_padding(10.0));
+            tree.label(root, "hello");
+        }),
+    );
+    let mut harness = UiHarness::new(app);
+    assert_eq!(harness.step(1), 1);
+    assert!(
+        frame_ui(&harness).is_empty(),
+        "the first frame painted before the harness laid out"
+    );
+    assert_eq!(harness.step(1), 1);
+    let ui = frame_ui(&harness);
+    assert_eq!(ui.commands.len(), 2, "the root's rect and the label's text");
+    assert_eq!(ui.text_batches().len(), 1);
+    assert_eq!(ui.scale, 1.0);
+    assert!(!harness.tree().is_paint_dirty());
+}
+
+#[test]
+fn a_label_change_marks_paint_and_repaints_with_the_new_box() {
+    let mut harness = UiHarness::new(app());
+    // A row, so the button's box follows its text's width.
+    let root = harness
+        .tree_mut()
+        .add_root(UiLayer::Game, LayoutStyle::row());
+    let button = harness.tree_mut().button(root, "Start");
+    assert_eq!(harness.step(2), 2);
+    let before = frame_ui(&harness).clone();
+    assert!(!harness.tree().is_paint_dirty());
+
+    assert!(harness.tree_mut().set_text(button, "Resume the game"));
+    assert!(harness.tree().is_paint_dirty());
+    assert_eq!(harness.step(2), 2);
+    let after = frame_ui(&harness).clone();
+    assert_ne!(before, after, "the button's text run moved with its box");
+    assert_eq!(after.commands.len(), before.commands.len());
+    assert!(
+        after.commands[1].rect().width() > before.commands[1].rect().width(),
+        "the button widened"
+    );
+}
+
+#[test]
+fn a_static_tree_repaints_on_a_debug_flip_a_sprite_epoch_move_and_a_resize_only() {
+    let mut harness = UiHarness::new(app());
+    menu(&mut harness);
+    assert_eq!(harness.step(2), 2);
+    let painted = frame_ui(&harness).clone();
+    assert!(!painted.is_empty());
+
+    // Nothing changed: the same list comes back, untouched.
+    assert_eq!(harness.step(1), 1);
+    assert_eq!(frame_ui(&harness), &painted);
+    assert!(!harness.tree().is_paint_dirty());
+
+    // A debug flag flip repaints: the bounds overlay appends outlines.
+    harness
+        .world_mut()
+        .get_resource_mut::<UiDebug>()
+        .unwrap()
+        .show_bounds = true;
+    assert_eq!(harness.step(1), 1);
+    let outlined = frame_ui(&harness).clone();
+    assert_eq!(
+        outlined.commands.len(),
+        painted.commands.len() + 3,
+        "one outline per painted node: root, button, label"
+    );
+    harness
+        .world_mut()
+        .get_resource_mut::<UiDebug>()
+        .unwrap()
+        .show_bounds = false;
+    assert_eq!(harness.step(1), 1);
+    assert_eq!(frame_ui(&harness), &painted);
+
+    // A sprite epoch move repaints too, to the same list for a tree without
+    // images.
+    harness
+        .world_mut()
+        .get_resource_mut::<AssetRegistry>()
+        .unwrap()
+        .register_sprite(
+            "icon".to_owned(),
+            FilterMode::Nearest,
+            4,
+            4,
+            PathBuf::from("icon.png"),
+            TextureHandle(0),
+            UvRect::FULL,
+            None,
+            None,
+            None,
+        );
+    assert_eq!(harness.step(1), 1);
+    assert_eq!(frame_ui(&harness), &painted);
+
+    // A resize relayouts the tree and repaints it with the new viewport.
+    harness.world_mut().insert_resource(WindowSize {
+        width: 640,
+        height: 480,
+    });
+    assert_eq!(harness.step(2), 2);
+    let resized = frame_ui(&harness);
+    assert_eq!(resized.clips[0].width, 640);
+    assert_ne!(resized, &painted);
+}
+
+#[test]
+fn hide_game_layers_leaves_the_debug_layer_and_paint_dumps_now() {
+    let mut harness = UiHarness::new(app());
+    menu(&mut harness);
+    let debug_root = harness
+        .tree_mut()
+        .add_root(UiLayer::Debug, LayoutStyle::default());
+    harness.tree_mut().label(debug_root, "fps");
+    assert_eq!(harness.step(2), 2);
+    let all = frame_ui(&harness).clone();
+    assert_eq!(all.text_batches().len(), 2);
+
+    harness
+        .world_mut()
+        .get_resource_mut::<UiDebug>()
+        .unwrap()
+        .hide_game_layers = true;
+    assert_eq!(harness.step(1), 1);
+    let debug_only = frame_ui(&harness).clone();
+    assert_eq!(debug_only.commands.len(), 2, "the debug root and its label");
+    assert_eq!(debug_only.text_batches().len(), 1);
+
+    // `paint` paints now, with the world's flags, and clears the flag.
+    let now = harness.paint();
+    assert_eq!(now, debug_only);
+    assert!(!harness.tree().is_paint_dirty());
+    assert!(harness.dump_paint().contains("-- batch 0\n"));
 }

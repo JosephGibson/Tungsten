@@ -1,7 +1,8 @@
 //! The Taffy side of layout (`D-124`): the `LayoutStyle` conversion, one
 //! solver tree per dirty root inside a synthetic viewport-sized parent, the
-//! measure closure over [`TextNodeStore::measure`], and the walk that writes
-//! viewport-space rects and commits text boxes. The tree is built afresh for
+//! measure closure over [`TextNodeStore::measure`] and an image's natural
+//! size, and the walk that writes viewport-space rects and commits text
+//! boxes. The tree is built afresh for
 //! each dirty root: a root is small, and the text engine caches shaping per
 //! node, so a clean root costs nothing and a dirty one costs its solve.
 
@@ -210,7 +211,7 @@ fn viewport_style(viewport: Vec2) -> Style {
 }
 
 /// Builds `id`'s subtree into `taffy`, skipping collapsed subtrees. Labels
-/// are leaves carrying their widget as context.
+/// and images are leaves carrying their widget as context.
 fn build(
     tree: &UiTree,
     taffy: &mut TaffyTree<WidgetId>,
@@ -223,7 +224,7 @@ fn build(
         return None;
     }
     let style = to_taffy(&node.layout_style, parent_dir);
-    let taffy_node = if node.kind == WidgetKind::Label {
+    let taffy_node = if node.kind.is_leaf() {
         taffy.new_leaf_with_context(style, id)
     } else {
         let children: Vec<NodeId> = node
@@ -339,15 +340,21 @@ pub(crate) fn lay_out_root(
                     style,
                     |_, _| 0.0,
                     |known, space| {
-                        let Some(text_node) = context
-                            .and_then(|id| tree.node(*id))
-                            .and_then(|node| node.text_id)
-                        else {
+                        let Some(node) = context.and_then(|id| tree.node(*id)) else {
                             return Size::ZERO;
                         };
                         if let (Some(width), Some(height)) = (known.width, known.height) {
                             return Size { width, height };
                         }
+                        if let Some(image) = node.image {
+                            return Size {
+                                width: known.width.unwrap_or(image.natural_size.x),
+                                height: known.height.unwrap_or(image.natural_size.y),
+                            };
+                        }
+                        let Some(text_node) = node.text_id else {
+                            return Size::ZERO;
+                        };
                         measure_calls += 1;
                         let metrics = store.measure(text_node, known.width, available(space.width));
                         Size {

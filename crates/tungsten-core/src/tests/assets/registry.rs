@@ -196,3 +196,36 @@ fn path_lookup_survives_interning_before_registration() {
     register(&mut reg, "foo", FilterMode::Nearest, 32, 32, "foo.png");
     assert_eq!(reg.sprite_name_for_path(Path::new("foo.png")), Some("foo"));
 }
+
+#[test]
+fn the_sprite_epoch_rises_on_every_change_and_never_on_interning() {
+    let mut reg = AssetRegistry::new();
+    assert_eq!(reg.sprite_epoch(), 0);
+    reg.intern_sprite("later");
+    reg.intern_sprites(["a", "b"]);
+    assert_eq!(reg.sprite_epoch(), 0, "interning changes no sprite");
+    register(&mut reg, "later", FilterMode::Nearest, 16, 16, "later.png");
+    assert_eq!(reg.sprite_epoch(), 1);
+    assert_eq!(reg.get_sprite("later").unwrap().nine_slice, None);
+
+    reg.update_sprite_entry("later", TextureHandle(2), UvRect::FULL, 32, 32);
+    assert_eq!(reg.sprite_epoch(), 2);
+    reg.update_sprite_lit_atlas("later", Some(TextureHandle(2)));
+    assert_eq!(reg.sprite_epoch(), 3);
+    reg.set_sprite_nine_slice("later", Some([4, 4, 4, 4]));
+    assert_eq!(reg.sprite_epoch(), 4);
+    assert_eq!(
+        reg.get_sprite("later").unwrap().nine_slice,
+        Some([4, 4, 4, 4])
+    );
+    reg.set_sprite_nine_slice("later", None);
+    assert_eq!(reg.sprite_epoch(), 5);
+    assert_eq!(reg.get_sprite("later").unwrap().nine_slice, None);
+
+    // An unregistered ID changes nothing.
+    reg.update_sprite_entry("a", TextureHandle(2), UvRect::FULL, 32, 32);
+    reg.update_sprite_lit_atlas("missing", None);
+    reg.set_sprite_nine_slice("a", Some([1, 1, 1, 1]));
+    assert_eq!(reg.sprite_epoch(), 5);
+    assert!(reg.sprite(reg.sprite_id("a").unwrap()).is_none());
+}

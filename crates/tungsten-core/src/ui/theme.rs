@@ -45,6 +45,7 @@ impl Theme {
             WidgetKind::Panel => &self.kinds.panel,
             WidgetKind::Label => &self.kinds.label,
             WidgetKind::Button => &self.kinds.button,
+            WidgetKind::Image => &self.kinds.image,
         }
     }
 }
@@ -206,16 +207,27 @@ pub struct KindStyles {
     pub label: KindStyle,
     /// Buttons.
     pub button: KindStyle,
+    /// Images.
+    pub image: KindStyle,
 }
 
 impl KindStyles {
     /// The built-in kind styles drawn from `tokens`: panels on the surface
-    /// with a border, labels transparent, buttons on the accent with bold
-    /// accent text, a focus-coloured border when focused and muted text when
-    /// disabled.
+    /// with a border, labels and images transparent, buttons on the accent
+    /// with bold accent text, a focus-coloured border when focused and muted
+    /// text when disabled.
     #[must_use]
     pub fn for_tokens(tokens: &Tokens) -> Self {
         let transparent = [0, 0, 0, 0];
+        let plain = || {
+            KindStyle::plain(VisualStyle {
+                background: transparent,
+                border: transparent,
+                border_width: 0.0,
+                corner_radius: tokens.radii.none,
+                text: TextOverrides::default(),
+            })
+        };
         Self {
             panel: KindStyle::plain(VisualStyle {
                 background: tokens.colors.surface,
@@ -224,13 +236,8 @@ impl KindStyles {
                 corner_radius: tokens.radii.md,
                 text: TextOverrides::default(),
             }),
-            label: KindStyle::plain(VisualStyle {
-                background: transparent,
-                border: transparent,
-                border_width: 0.0,
-                corner_radius: tokens.radii.none,
-                text: TextOverrides::default(),
-            }),
+            label: plain(),
+            image: plain(),
             button: KindStyle {
                 normal: VisualStyle {
                     background: tokens.colors.accent,

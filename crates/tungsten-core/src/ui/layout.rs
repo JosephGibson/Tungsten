@@ -18,14 +18,25 @@ pub(crate) mod taffy;
 
 impl UiTree {
     /// Resolves styles and lays out the dirty roots in a `viewport`-sized
-    /// box (window pixels until M0b), creating, setting and committing text
-    /// nodes through `text`. Text nodes of removed labels are freed first. A
-    /// font epoch that moved since the last pass relayouts every root with
-    /// text, since their commits are stale (`D-117`). A root with no change
-    /// costs nothing.
+    /// box (logical UI units, `D-127`), creating, setting and committing
+    /// text nodes through `text`. Text nodes of removed labels are freed
+    /// first. A font epoch that moved since the last pass relayouts every
+    /// root with text, since their commits are stale (`D-117`); a viewport
+    /// that differs from the last pass's relayouts every root, so a static
+    /// UI follows a resize. A root with no change costs nothing.
     pub fn layout(&mut self, viewport: Vec2, text: &mut dyn TextNodeStore) -> LayoutStats {
         for node in self.pending_text_release.drain(..) {
             text.remove_node(node);
+        }
+        if self.viewport != Some(viewport) {
+            let roots = self.roots.clone();
+            for root in roots {
+                if let Some(node) = self.node_mut(root) {
+                    node.layout_dirty = true;
+                }
+            }
+            self.viewport = Some(viewport);
+            self.paint_dirty = true;
         }
         let epoch = text.font_epoch();
         if self.font_epoch != Some(epoch) {
@@ -58,6 +69,11 @@ impl UiTree {
             if let Some(node) = self.node_mut(root) {
                 node.layout_dirty = false;
             }
+        }
+        if stats.roots_laid_out > 0 {
+            // Boxes moved, so the paint list must follow, whichever order a
+            // caller runs its layout and paint in.
+            self.paint_dirty = true;
         }
         stats
     }

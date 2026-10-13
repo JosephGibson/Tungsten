@@ -81,6 +81,7 @@ fn merge_success() {
             filter: FilterMode::Nearest,
             normal_path: None,
             emissive_path: None,
+            nine_slice: None,
         },
     );
 
@@ -92,6 +93,7 @@ fn merge_success() {
             filter: FilterMode::Linear,
             normal_path: None,
             emissive_path: None,
+            nine_slice: None,
         },
     );
 
@@ -110,6 +112,7 @@ fn merge_duplicate_sprite_is_error() {
             filter: FilterMode::Nearest,
             normal_path: None,
             emissive_path: None,
+            nine_slice: None,
         },
     );
 
@@ -121,6 +124,7 @@ fn merge_duplicate_sprite_is_error() {
             filter: FilterMode::Nearest,
             normal_path: None,
             emissive_path: None,
+            nine_slice: None,
         },
     );
 
@@ -636,4 +640,60 @@ fn tempdir() -> PathBuf {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
+}
+
+#[test]
+fn load_manifest_with_ui_themes_and_nine_slice() {
+    let tmp = tempdir();
+    write_file(&tmp, "frame.png");
+    write_file(&tmp, "icon.png");
+    write_file(&tmp, "ui/themes/dark.json");
+    let path = write_manifest(
+        &tmp,
+        r#"{"sprites": {"frame": {"path": "frame.png", "nine_slice": [4, 6, 4, 6]},
+                        "icon": {"path": "icon.png"}},
+            "ui_themes": {"dark": {"path": "ui/themes/dark.json"}}}"#,
+    );
+    let m = ResolvedManifest::load(&path).unwrap();
+    assert_eq!(m.sprites["frame"].nine_slice, Some([4, 6, 4, 6]));
+    assert_eq!(m.sprites["icon"].nine_slice, None);
+    assert_eq!(m.ui_themes.len(), 1);
+    assert!(m.ui_themes["dark"].path.ends_with("dark.json"));
+    assert!(m.ui_themes["dark"].path.is_absolute());
+}
+
+#[test]
+fn load_manifest_missing_ui_theme_file() {
+    let tmp = tempdir();
+    let path = write_manifest(
+        &tmp,
+        r#"{"ui_themes": {"dark": {"path": "ui/themes/dark.json"}}}"#,
+    );
+    let err = ResolvedManifest::load(&path).unwrap_err();
+    assert!(
+        matches!(&err, ManifestError::MissingUiThemeFile { id, path } if id == "dark" && path.ends_with("dark.json")),
+        "{err:?}"
+    );
+    assert!(
+        err.to_string()
+            .starts_with("ui theme 'dark' references missing file")
+    );
+}
+
+#[test]
+fn merge_duplicate_ui_theme_is_error() {
+    let theme = ResolvedUiTheme {
+        path: "dark.json".into(),
+    };
+    let mut a = ResolvedManifest::default();
+    a.ui_themes.insert("dark".into(), theme.clone());
+    let mut b = ResolvedManifest::default();
+    b.ui_themes.insert("dark".into(), theme.clone());
+    let err = a.merge(b).unwrap_err();
+    assert!(matches!(err, ManifestError::DuplicateId { id } if id == "dark"));
+
+    let mut c = ResolvedManifest::default();
+    c.ui_themes.insert("light".into(), theme);
+    a.merge(c).unwrap();
+    assert_eq!(a.ui_themes.len(), 2);
 }

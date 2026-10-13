@@ -5,15 +5,15 @@ Scoped rules for this crate, on top of the root `AGENTS.md`. The `tungsten-wgpu`
 ## Shaders (`D-057`, narrows `D-023`)
 
 - Runtime shaders are manifest-tracked assets under `assets/shaders/`, loaded through `ShaderRegistry` + `ShaderModuleCache`.
-- Mirrors: `src/shaders/stock/**` ↔ `assets/shaders/stock/**` stay byte-equal; edit both copies together. The loader skips a reload when bytes match the compiled-in source. `sprite.wgsl` and `lit_sprite.wgsl` exist only in `assets/shaders/`, which the renderer compiles in. `quad`, `debug_line`, `mesh_particle` and `present_blit` are internal and not manifest-tracked.
+- Mirrors: `src/shaders/stock/**` ↔ `assets/shaders/stock/**` stay byte-equal; edit both copies together. The loader skips a reload when bytes match the compiled-in source. `sprite.wgsl` and `lit_sprite.wgsl` exist only in `assets/shaders/`, which the renderer compiles in. `quad`, `debug_line`, `mesh_particle`, `ui` and `present_blit` are internal and not manifest-tracked.
 - Body edits use the umbrella watcher and Naga validation; signature/layout changes rebuild. Pipeline coverage and manifest-add limits are in [the reload matrix](../../DESIGN.md#hot-reload--m9); cache success alone is not a visible reload.
 - LYGIA helpers under `stock/lygia/` keep their MIT headers.
 
 ## Frame order
 
-`Scene → PostStack → [SMAA tail] → Text Overlay` (`D-087`). The last full-screen stage renders into the swapchain and clears it: SMAA's neighborhood pass; without SMAA the last post pass, or bloom's composite; with neither the scene pass, or its resolve under MSAA. The text overlay then draws on the swapchain. Text always draws after presentation AA, so SMAA never samples it.
+`Scene → PostStack → [SMAA tail] → Overlay` (`D-087`, `D-147`). The last full-screen stage renders into the swapchain and clears it: SMAA's neighborhood pass; without SMAA the last post pass, or bloom's composite; with neither the scene pass, or its resolve under MSAA. The overlay (timing label `text`) then draws the UI paint list, each item under its scissor, then the text, after presentation AA.
 
-A capture frame (`Renderer::capture_frame`, `TUNGSTEN_CAPTURE_FRAME`) keeps the blit tail, `… → [SMAA tail → PresentSource] → Text Overlay → Present Blit → Swapchain`, and the screenshot reads the blit's source. `default_pass_order` takes the `PresentPath`; a new full-screen stage must work on both. `TUNGSTEN_CAPTURE_DIRECT=1` captures the direct path instead, for the pixel test that compares the two.
+A capture frame (`Renderer::capture_frame`, `TUNGSTEN_CAPTURE_FRAME`) keeps the blit tail, `… → [SMAA tail → PresentSource] → Overlay → Present Blit → Swapchain`, and the screenshot reads the blit's source. `default_pass_order` takes the `PresentPath`; a new full-screen stage must work on both. `TUNGSTEN_CAPTURE_DIRECT=1` captures the direct path instead, for the pixel test that compares the two.
 
 Surface acquire decisions (reconfigure, recreate, skip, fail) live in the GPU-free `src/surface_acquire.rs` with transition tests; change the policy there, not inline in `renderer.rs`.
 

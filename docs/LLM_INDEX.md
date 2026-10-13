@@ -39,6 +39,7 @@ Task → file map. Open it before a broad search; read only the matching row's f
 | Hot reload, file watch (`D-031`, `D-053`) | `tungsten/hot_reload.rs`, `tungsten/asset_loader/reload.rs` |
 | Sprite atlases (`D-048`) | `core/assets/atlas.rs`, `tungsten/asset_loader/atlas.rs` |
 | Tilemaps, tile collision (`D-032`, `D-033`) | `core/assets/tilemap.rs`, `tungsten/tilemap_extract.rs`, `core/physics/step/gather.rs` |
+| UI theme asset and nine-slice sprite insets (`D-148`) | `core/ui/theme_file.rs`, `core/assets/manifest.rs`, `tungsten/asset_loader/mod.rs`, `tungsten/asset_loader/reload.rs`, `tungsten/tests/asset_loader.rs` |
 
 ## Physics
 
@@ -58,13 +59,14 @@ Read `crates/tungsten-render/AGENTS.md` before editing the render crate.
 | Text engine and GPU halves, layout cache, retained nodes, font families and fallback (`D-085`, `D-115`–`D-117`, `D-123`) | `render/text.rs`, `render/text/engine.rs`, `render/text/nodes.rs`, `render/text/fonts.rs`, `render/text/gpu.rs`, `tungsten/asset_loader/mod.rs`, `tungsten/engine_font.rs` |
 | Neutral text types, `TextMeasure`, `TextNodeStore` (`D-117`, `D-125`) | `core/text.rs` |
 | UI tree, style, layout, focus, hit testing (`D-124`, `D-125`) | `core/ui/`, `core/text.rs`, `tungsten/testing/ui.rs`, `core/tests/ui/` |
+| UI paint list, overlay pipeline, text batches, UI layout stage and debug actions (`D-147`, `D-148`) | `core/ui/paint.rs`, `render/ui.rs`, `render/ui.wgsl`, `render/text/gpu.rs`, `tungsten/app.rs`, `tungsten/ui_debug.rs`, `core/tests/ui/paint.rs`, `render/tests/ui.rs`, `render/tests/text_batches.rs` |
 | Render components, default sprite extract, `Extracts` channels (`D-042`, `D-086`, `D-113`, `D-114`, `D-138`) | `core/components.rs`, `tungsten/sprite_extract.rs`, `tungsten/extract.rs` |
 | Materials, post-stack (`D-058`) | `core/assets/material.rs`, `core/post.rs`, `render/material.rs`, `render/post/`, `render/shaders/stock/` |
 | SMAA (`D-059`) | `tungsten/post_aa.rs`, `render/post/smaa.rs`, `render/post/smaa_luts.rs`, `render/targets.rs`, `render/passes/order.rs` |
 | Bloom (`D-060`) | `core/post.rs`, `render/post/bloom.rs`, `render/targets.rs` |
 | Lighting (`D-061`) | `core/components.rs`, `core/lighting.rs`, `render/lighting.rs`, `render/lit_sprite.rs`, `assets/shaders/lit_sprite.wgsl`, `tungsten/light_extract.rs` |
 | Debug overlays, screenshots (`D-047`, `D-142`) | `core/debug_draw.rs`, `core/inspect.rs`, `render/debug_line.rs`, `render/screenshot.rs`, `render/image_diff.rs`, `tungsten/capture.rs`, `tungsten/physics_debug.rs`, `tungsten/systems_overlay.rs`, `tungsten/inspector.rs` |
-| Pixel tests (`just visual`) | `examples/02_bench/tests/visual_regression.rs`, `examples/04_shader_playground/tests/post_regression.rs`, `examples/03_scene_state/tests/transition_regression.rs` |
+| Pixel tests (`just visual`) | `examples/02_bench/tests/visual_regression.rs`, `examples/04_shader_playground/tests/post_regression.rs`, `examples/03_scene_state/tests/transition_regression.rs`, `examples/05_ui_lab/tests/ui_regression.rs` |
 
 ## Examples
 
@@ -78,6 +80,7 @@ Run with `cargo run -p example-NN-name`.
 | One benchmark's workload | `examples/02_bench/src/<bench>.rs` |
 | Scene/state lifecycle | `examples/03_scene_state/src/main.rs`, `examples/03_scene_state/src/states.rs` |
 | Shader/material/post fixtures | `examples/04_shader_playground/src/main.rs` |
+| UI lab: the paint list, a theme reloaded live, the UI debug actions (M46) | `examples/05_ui_lab/src/main.rs`, `examples/05_ui_lab/src/screens.rs`, `examples/05_ui_lab/tests/ui_regression.rs`, `examples/05_ui_lab/tools/README.md` |
 | The game template, a game's layout from its own folder (`D-123`) | `templates/basic/src/game.rs`, `templates/basic/src/states.rs`, `templates/basic/tests/game.rs`, `templates/basic/AGENTS.md`, `scripts/smoke-examples.sh`, `scripts/template-check.sh`, `docs/getting-started.md` |
 | GPU smoke run, fixture matrices (`just smoke`) | `scripts/smoke-examples.sh`, `scripts/test-smoke-examples.sh` |
 | Documentation maintenance | `docs/README.md`, `docs/plans/README.md` |

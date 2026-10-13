@@ -41,11 +41,12 @@ bench-build:
 smoke:
     ./scripts/smoke-examples.sh
 
-# Pixel tests: the reference PNG (reference machine only), then the post-stack and transition regressions.
+# Pixel tests: the reference PNGs (reference machine only), then the post-stack, transition and UI overlay regressions.
 visual:
     TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p example-02-bench --test visual_regression --locked -- --nocapture
     TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p example-04-shader-playground --test post_regression --locked -- --nocapture
     TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p example-03-scene-state --test transition_regression --locked -- --nocapture
+    TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p example-05-ui-lab --test ui_regression --locked -- --nocapture
 
 # Benchmark runner; arguments go to scripts/bench.py, e.g. `just perf run physics --repeat 5`.
 perf *args:

@@ -729,8 +729,8 @@ pub fn tungsten_render::renderer::Renderer::reload_font(&mut self, &str, alloc::
 pub fn tungsten_render::renderer::Renderer::reload_material(&mut self, tungsten_core::assets::material::MaterialAssetId, tungsten_core::assets::material::MaterialUniformDefaults) -> core::result::Result<(), tungsten_render::renderer::RenderError>
 pub fn tungsten_render::renderer::Renderer::reload_shader(&mut self, &str, alloc::string::String) -> core::result::Result<(), tungsten_render::renderer::RenderError>
 pub fn tungsten_render::renderer::Renderer::render_frame(&mut self) -> core::result::Result<tungsten_render::renderer::RenderOutcome, tungsten_render::renderer::RenderError>
-pub fn tungsten_render::renderer::Renderer::render_frame_full(&mut self, &glam::f32::sse2::mat4::Mat4, &[tungsten_render::quad::QuadInstance], &[tungsten_render::sprite::SpriteBatch], &[tungsten_render::quad::QuadInstance], &[tungsten_render::debug_line::DebugLineInstance], &[tungsten_render::text::TextSection], &tungsten_core::post::PostStack) -> core::result::Result<tungsten_render::renderer::RenderOutcome, tungsten_render::renderer::RenderError>
-pub fn tungsten_render::renderer::Renderer::render_frame_full_timed(&mut self, &glam::f32::sse2::mat4::Mat4, &[tungsten_render::quad::QuadInstance], &[tungsten_render::sprite::SpriteBatch], &[tungsten_render::quad::QuadInstance], &[tungsten_render::debug_line::DebugLineInstance], &[tungsten_render::text::TextSection], &tungsten_core::post::PostStack) -> core::result::Result<tungsten_render::renderer::RenderOutcome, tungsten_render::renderer::RenderError>
+pub fn tungsten_render::renderer::Renderer::render_frame_full(&mut self, &glam::f32::sse2::mat4::Mat4, &[tungsten_render::quad::QuadInstance], &[tungsten_render::sprite::SpriteBatch], &[tungsten_render::quad::QuadInstance], &[tungsten_render::debug_line::DebugLineInstance], &[tungsten_render::text::TextSection], &tungsten_core::ui::paint::PaintList, &tungsten_core::post::PostStack) -> core::result::Result<tungsten_render::renderer::RenderOutcome, tungsten_render::renderer::RenderError>
+pub fn tungsten_render::renderer::Renderer::render_frame_full_timed(&mut self, &glam::f32::sse2::mat4::Mat4, &[tungsten_render::quad::QuadInstance], &[tungsten_render::sprite::SpriteBatch], &[tungsten_render::quad::QuadInstance], &[tungsten_render::debug_line::DebugLineInstance], &[tungsten_render::text::TextSection], &tungsten_core::ui::paint::PaintList, &tungsten_core::post::PostStack) -> core::result::Result<tungsten_render::renderer::RenderOutcome, tungsten_render::renderer::RenderError>
 pub fn tungsten_render::renderer::Renderer::render_frame_with_quads(&mut self, &[tungsten_render::quad::QuadInstance]) -> core::result::Result<tungsten_render::renderer::RenderOutcome, tungsten_render::renderer::RenderError>
 pub fn tungsten_render::renderer::Renderer::resize(&mut self, u32, u32)
 pub fn tungsten_render::renderer::Renderer::sample_count(&self) -> u32
@@ -739,6 +739,7 @@ pub fn tungsten_render::renderer::Renderer::set_post_aa(&mut self, tungsten_core
 pub fn tungsten_render::renderer::Renderer::surface_format(&self) -> wgpu_types::texture::format::TextureFormat
 pub fn tungsten_render::renderer::Renderer::text_engine(&self) -> &tungsten_render::TextEngine
 pub fn tungsten_render::renderer::Renderer::text_nodes(&mut self) -> tungsten_render::text::TextNodes<'_>
+pub fn tungsten_render::renderer::Renderer::text_stats(&self) -> tungsten_render::TextStats
 pub fn tungsten_render::renderer::Renderer::update_lights(&mut self, &tungsten_render::lighting::LightUbo)
 pub fn tungsten_render::renderer::Renderer::update_mesh_particles(&mut self, &[tungsten_render::mesh_particle::MeshParticleBatch])
 pub fn tungsten_render::renderer::Renderer::upload_lit_texture(&mut self, tungsten_core::assets::registry::TextureHandle, &[u8], &[u8], &[u8], u32, u32, tungsten_core::assets::manifest::FilterMode)
@@ -1063,6 +1064,7 @@ impl tungsten_render::TextEngine
 pub fn tungsten_render::TextEngine::commit_layout(&mut self, tungsten_core::text::TextNodeId, glam::f32::vec2::Vec2) -> tungsten_core::text::TextMetrics
 pub fn tungsten_render::TextEngine::committed(&self, tungsten_core::text::TextNodeId) -> core::option::Option<tungsten_core::text::TextMetrics>
 pub fn tungsten_render::TextEngine::create_node(&mut self) -> tungsten_core::text::TextNodeId
+pub fn tungsten_render::TextEngine::node_revision(&self, tungsten_core::text::TextNodeId) -> core::option::Option<u64>
 pub fn tungsten_render::TextEngine::remove_node(&mut self, tungsten_core::text::TextNodeId)
 pub fn tungsten_render::TextEngine::set_text(&mut self, tungsten_core::text::TextNodeId, &tungsten_core::text::StyledText, &tungsten_core::text::TextStyle)
 impl tungsten_render::TextEngine
@@ -1112,10 +1114,10 @@ pub struct tungsten_render::text::TextPipeline
 impl tungsten_render::TextPipeline
 pub fn tungsten_render::TextPipeline::load_font(&mut self, &str, alloc::vec::Vec<u8>)
 pub fn tungsten_render::TextPipeline::new(&wgpu::api::device::Device, &wgpu::api::queue::Queue, wgpu_types::texture::format::TextureFormat) -> Self
-pub fn tungsten_render::TextPipeline::post_frame(&mut self)
-pub fn tungsten_render::TextPipeline::prepare(&mut self, &wgpu::api::device::Device, &wgpu::api::queue::Queue, &[tungsten_render::text::TextSection], u32, u32)
+pub fn tungsten_render::TextPipeline::prepare(&mut self, &wgpu::api::device::Device, &wgpu::api::queue::Queue, &[tungsten_render::text::TextSection], &tungsten_core::ui::paint::PaintList, u32, u32)
 pub fn tungsten_render::TextPipeline::reload_font(&mut self, &str, alloc::vec::Vec<u8>)
 pub fn tungsten_render::TextPipeline::render<'pass>(&'pass self, &mut wgpu::api::render_pass::RenderPass<'pass>)
+pub fn tungsten_render::TextPipeline::stats(&self) -> tungsten_render::TextStats
 pub fn tungsten_render::TextPipeline::with_font_source(&wgpu::api::device::Device, &wgpu::api::queue::Queue, wgpu_types::texture::format::TextureFormat, tungsten_render::text::FontSource) -> Self
 impl !core::marker::Freeze for tungsten_render::TextPipeline
 impl core::marker::Send for tungsten_render::TextPipeline
@@ -1146,6 +1148,31 @@ impl core::marker::Unpin for tungsten_render::text::TextSection
 impl core::marker::UnsafeUnpin for tungsten_render::text::TextSection
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::text::TextSection
 impl core::panic::unwind_safe::UnwindSafe for tungsten_render::text::TextSection
+pub struct tungsten_render::text::TextStats
+pub tungsten_render::text::TextStats::atlas_full_total: u64
+pub tungsten_render::text::TextStats::batches: u32
+pub tungsten_render::text::TextStats::forced: bool
+pub tungsten_render::text::TextStats::full_frame: bool
+pub tungsten_render::text::TextStats::full_frames_total: u64
+pub tungsten_render::text::TextStats::prepared: u32
+impl core::clone::Clone for tungsten_render::TextStats
+pub fn tungsten_render::TextStats::clone(&self) -> tungsten_render::TextStats
+impl core::cmp::Eq for tungsten_render::TextStats
+impl core::cmp::PartialEq for tungsten_render::TextStats
+pub fn tungsten_render::TextStats::eq(&self, &tungsten_render::TextStats) -> bool
+impl core::default::Default for tungsten_render::TextStats
+pub fn tungsten_render::TextStats::default() -> tungsten_render::TextStats
+impl core::fmt::Debug for tungsten_render::TextStats
+pub fn tungsten_render::TextStats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::TextStats
+impl core::marker::StructuralPartialEq for tungsten_render::TextStats
+impl core::marker::Freeze for tungsten_render::TextStats
+impl core::marker::Send for tungsten_render::TextStats
+impl core::marker::Sync for tungsten_render::TextStats
+impl core::marker::Unpin for tungsten_render::TextStats
+impl core::marker::UnsafeUnpin for tungsten_render::TextStats
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::TextStats
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::TextStats
 pub mod tungsten_render::timing
 pub struct tungsten_render::timing::CpuFrameTimings
 pub tungsten_render::timing::CpuFrameTimings::acquire_ms: f32
@@ -1186,6 +1213,54 @@ impl core::marker::Unpin for tungsten_render::timing::GpuFrameTimings
 impl core::marker::UnsafeUnpin for tungsten_render::timing::GpuFrameTimings
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::timing::GpuFrameTimings
 impl core::panic::unwind_safe::UnwindSafe for tungsten_render::timing::GpuFrameTimings
+pub mod tungsten_render::ui
+#[repr(C)] pub struct tungsten_render::ui::UiInstance
+pub tungsten_render::ui::UiInstance::border: [u8; 4]
+pub tungsten_render::ui::UiInstance::border_width: f32
+pub tungsten_render::ui::UiInstance::corner_radius: f32
+pub tungsten_render::ui::UiInstance::fill: [u8; 4]
+pub tungsten_render::ui::UiInstance::flags: u32
+pub tungsten_render::ui::UiInstance::gradient_color: [u8; 4]
+pub tungsten_render::ui::UiInstance::gradient_dir: [f32; 2]
+pub tungsten_render::ui::UiInstance::position: [f32; 2]
+pub tungsten_render::ui::UiInstance::shadow_blur: f32
+pub tungsten_render::ui::UiInstance::shadow_color: [u8; 4]
+pub tungsten_render::ui::UiInstance::shadow_offset: [f32; 2]
+pub tungsten_render::ui::UiInstance::size: [f32; 2]
+pub tungsten_render::ui::UiInstance::uv_min: [f32; 2]
+pub tungsten_render::ui::UiInstance::uv_size: [f32; 2]
+impl tungsten_render::ui::UiInstance
+pub const tungsten_render::ui::UiInstance::FLAG_TEXTURED: u32
+pub fn tungsten_render::ui::UiInstance::desc() -> wgpu::api::render_pipeline::VertexBufferLayout<'static>
+pub fn tungsten_render::ui::UiInstance::image(tungsten_core::ui::geometry::Rect, tungsten_core::assets::atlas::UvRect, [u8; 4]) -> Self
+pub fn tungsten_render::ui::UiInstance::rect(tungsten_core::ui::geometry::Rect, [u8; 4], [u8; 4], f32, f32) -> Self
+impl bytemuck::pod::Pod for tungsten_render::ui::UiInstance
+impl bytemuck::zeroable::Zeroable for tungsten_render::ui::UiInstance
+impl core::clone::Clone for tungsten_render::ui::UiInstance
+pub fn tungsten_render::ui::UiInstance::clone(&self) -> tungsten_render::ui::UiInstance
+impl core::cmp::PartialEq for tungsten_render::ui::UiInstance
+pub fn tungsten_render::ui::UiInstance::eq(&self, &tungsten_render::ui::UiInstance) -> bool
+impl core::fmt::Debug for tungsten_render::ui::UiInstance
+pub fn tungsten_render::ui::UiInstance::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::ui::UiInstance
+impl core::marker::StructuralPartialEq for tungsten_render::ui::UiInstance
+impl core::marker::Freeze for tungsten_render::ui::UiInstance
+impl core::marker::Send for tungsten_render::ui::UiInstance
+impl core::marker::Sync for tungsten_render::ui::UiInstance
+impl core::marker::Unpin for tungsten_render::ui::UiInstance
+impl core::marker::UnsafeUnpin for tungsten_render::ui::UiInstance
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::ui::UiInstance
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::ui::UiInstance
+pub struct tungsten_render::ui::UiPipeline
+impl tungsten_render::ui::UiPipeline
+pub fn tungsten_render::ui::UiPipeline::new(&wgpu::api::device::Device, &wgpu::api::queue::Queue, wgpu_types::texture::format::TextureFormat, &wgpu::api::bind_group_layout::BindGroupLayout) -> Self
+impl core::marker::Freeze for tungsten_render::ui::UiPipeline
+impl core::marker::Send for tungsten_render::ui::UiPipeline
+impl core::marker::Sync for tungsten_render::ui::UiPipeline
+impl core::marker::Unpin for tungsten_render::ui::UiPipeline
+impl core::marker::UnsafeUnpin for tungsten_render::ui::UiPipeline
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::ui::UiPipeline
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::ui::UiPipeline
 pub enum tungsten_render::ImageDiffError
 pub tungsten_render::ImageDiffError::Decode(image::error::ImageError)
 pub tungsten_render::ImageDiffError::DimensionMismatch
@@ -1662,8 +1737,8 @@ pub fn tungsten_render::renderer::Renderer::reload_font(&mut self, &str, alloc::
 pub fn tungsten_render::renderer::Renderer::reload_material(&mut self, tungsten_core::assets::material::MaterialAssetId, tungsten_core::assets::material::MaterialUniformDefaults) -> core::result::Result<(), tungsten_render::renderer::RenderError>
 pub fn tungsten_render::renderer::Renderer::reload_shader(&mut self, &str, alloc::string::String) -> core::result::Result<(), tungsten_render::renderer::RenderError>
 pub fn tungsten_render::renderer::Renderer::render_frame(&mut self) -> core::result::Result<tungsten_render::renderer::RenderOutcome, tungsten_render::renderer::RenderError>
-pub fn tungsten_render::renderer::Renderer::render_frame_full(&mut self, &glam::f32::sse2::mat4::Mat4, &[tungsten_render::quad::QuadInstance], &[tungsten_render::sprite::SpriteBatch], &[tungsten_render::quad::QuadInstance], &[tungsten_render::debug_line::DebugLineInstance], &[tungsten_render::text::TextSection], &tungsten_core::post::PostStack) -> core::result::Result<tungsten_render::renderer::RenderOutcome, tungsten_render::renderer::RenderError>
-pub fn tungsten_render::renderer::Renderer::render_frame_full_timed(&mut self, &glam::f32::sse2::mat4::Mat4, &[tungsten_render::quad::QuadInstance], &[tungsten_render::sprite::SpriteBatch], &[tungsten_render::quad::QuadInstance], &[tungsten_render::debug_line::DebugLineInstance], &[tungsten_render::text::TextSection], &tungsten_core::post::PostStack) -> core::result::Result<tungsten_render::renderer::RenderOutcome, tungsten_render::renderer::RenderError>
+pub fn tungsten_render::renderer::Renderer::render_frame_full(&mut self, &glam::f32::sse2::mat4::Mat4, &[tungsten_render::quad::QuadInstance], &[tungsten_render::sprite::SpriteBatch], &[tungsten_render::quad::QuadInstance], &[tungsten_render::debug_line::DebugLineInstance], &[tungsten_render::text::TextSection], &tungsten_core::ui::paint::PaintList, &tungsten_core::post::PostStack) -> core::result::Result<tungsten_render::renderer::RenderOutcome, tungsten_render::renderer::RenderError>
+pub fn tungsten_render::renderer::Renderer::render_frame_full_timed(&mut self, &glam::f32::sse2::mat4::Mat4, &[tungsten_render::quad::QuadInstance], &[tungsten_render::sprite::SpriteBatch], &[tungsten_render::quad::QuadInstance], &[tungsten_render::debug_line::DebugLineInstance], &[tungsten_render::text::TextSection], &tungsten_core::ui::paint::PaintList, &tungsten_core::post::PostStack) -> core::result::Result<tungsten_render::renderer::RenderOutcome, tungsten_render::renderer::RenderError>
 pub fn tungsten_render::renderer::Renderer::render_frame_with_quads(&mut self, &[tungsten_render::quad::QuadInstance]) -> core::result::Result<tungsten_render::renderer::RenderOutcome, tungsten_render::renderer::RenderError>
 pub fn tungsten_render::renderer::Renderer::resize(&mut self, u32, u32)
 pub fn tungsten_render::renderer::Renderer::sample_count(&self) -> u32
@@ -1672,6 +1747,7 @@ pub fn tungsten_render::renderer::Renderer::set_post_aa(&mut self, tungsten_core
 pub fn tungsten_render::renderer::Renderer::surface_format(&self) -> wgpu_types::texture::format::TextureFormat
 pub fn tungsten_render::renderer::Renderer::text_engine(&self) -> &tungsten_render::TextEngine
 pub fn tungsten_render::renderer::Renderer::text_nodes(&mut self) -> tungsten_render::text::TextNodes<'_>
+pub fn tungsten_render::renderer::Renderer::text_stats(&self) -> tungsten_render::TextStats
 pub fn tungsten_render::renderer::Renderer::update_lights(&mut self, &tungsten_render::lighting::LightUbo)
 pub fn tungsten_render::renderer::Renderer::update_mesh_particles(&mut self, &[tungsten_render::mesh_particle::MeshParticleBatch])
 pub fn tungsten_render::renderer::Renderer::upload_lit_texture(&mut self, tungsten_core::assets::registry::TextureHandle, &[u8], &[u8], &[u8], u32, u32, tungsten_core::assets::manifest::FilterMode)
@@ -1908,6 +1984,7 @@ impl tungsten_render::TextEngine
 pub fn tungsten_render::TextEngine::commit_layout(&mut self, tungsten_core::text::TextNodeId, glam::f32::vec2::Vec2) -> tungsten_core::text::TextMetrics
 pub fn tungsten_render::TextEngine::committed(&self, tungsten_core::text::TextNodeId) -> core::option::Option<tungsten_core::text::TextMetrics>
 pub fn tungsten_render::TextEngine::create_node(&mut self) -> tungsten_core::text::TextNodeId
+pub fn tungsten_render::TextEngine::node_revision(&self, tungsten_core::text::TextNodeId) -> core::option::Option<u64>
 pub fn tungsten_render::TextEngine::remove_node(&mut self, tungsten_core::text::TextNodeId)
 pub fn tungsten_render::TextEngine::set_text(&mut self, tungsten_core::text::TextNodeId, &tungsten_core::text::StyledText, &tungsten_core::text::TextStyle)
 impl tungsten_render::TextEngine
@@ -1933,10 +2010,10 @@ pub struct tungsten_render::TextPipeline
 impl tungsten_render::TextPipeline
 pub fn tungsten_render::TextPipeline::load_font(&mut self, &str, alloc::vec::Vec<u8>)
 pub fn tungsten_render::TextPipeline::new(&wgpu::api::device::Device, &wgpu::api::queue::Queue, wgpu_types::texture::format::TextureFormat) -> Self
-pub fn tungsten_render::TextPipeline::post_frame(&mut self)
-pub fn tungsten_render::TextPipeline::prepare(&mut self, &wgpu::api::device::Device, &wgpu::api::queue::Queue, &[tungsten_render::text::TextSection], u32, u32)
+pub fn tungsten_render::TextPipeline::prepare(&mut self, &wgpu::api::device::Device, &wgpu::api::queue::Queue, &[tungsten_render::text::TextSection], &tungsten_core::ui::paint::PaintList, u32, u32)
 pub fn tungsten_render::TextPipeline::reload_font(&mut self, &str, alloc::vec::Vec<u8>)
 pub fn tungsten_render::TextPipeline::render<'pass>(&'pass self, &mut wgpu::api::render_pass::RenderPass<'pass>)
+pub fn tungsten_render::TextPipeline::stats(&self) -> tungsten_render::TextStats
 pub fn tungsten_render::TextPipeline::with_font_source(&wgpu::api::device::Device, &wgpu::api::queue::Queue, wgpu_types::texture::format::TextureFormat, tungsten_render::text::FontSource) -> Self
 impl !core::marker::Freeze for tungsten_render::TextPipeline
 impl core::marker::Send for tungsten_render::TextPipeline
@@ -1967,6 +2044,78 @@ impl core::marker::Unpin for tungsten_render::text::TextSection
 impl core::marker::UnsafeUnpin for tungsten_render::text::TextSection
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::text::TextSection
 impl core::panic::unwind_safe::UnwindSafe for tungsten_render::text::TextSection
+pub struct tungsten_render::TextStats
+pub tungsten_render::TextStats::atlas_full_total: u64
+pub tungsten_render::TextStats::batches: u32
+pub tungsten_render::TextStats::forced: bool
+pub tungsten_render::TextStats::full_frame: bool
+pub tungsten_render::TextStats::full_frames_total: u64
+pub tungsten_render::TextStats::prepared: u32
+impl core::clone::Clone for tungsten_render::TextStats
+pub fn tungsten_render::TextStats::clone(&self) -> tungsten_render::TextStats
+impl core::cmp::Eq for tungsten_render::TextStats
+impl core::cmp::PartialEq for tungsten_render::TextStats
+pub fn tungsten_render::TextStats::eq(&self, &tungsten_render::TextStats) -> bool
+impl core::default::Default for tungsten_render::TextStats
+pub fn tungsten_render::TextStats::default() -> tungsten_render::TextStats
+impl core::fmt::Debug for tungsten_render::TextStats
+pub fn tungsten_render::TextStats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::TextStats
+impl core::marker::StructuralPartialEq for tungsten_render::TextStats
+impl core::marker::Freeze for tungsten_render::TextStats
+impl core::marker::Send for tungsten_render::TextStats
+impl core::marker::Sync for tungsten_render::TextStats
+impl core::marker::Unpin for tungsten_render::TextStats
+impl core::marker::UnsafeUnpin for tungsten_render::TextStats
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::TextStats
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::TextStats
+#[repr(C)] pub struct tungsten_render::UiInstance
+pub tungsten_render::UiInstance::border: [u8; 4]
+pub tungsten_render::UiInstance::border_width: f32
+pub tungsten_render::UiInstance::corner_radius: f32
+pub tungsten_render::UiInstance::fill: [u8; 4]
+pub tungsten_render::UiInstance::flags: u32
+pub tungsten_render::UiInstance::gradient_color: [u8; 4]
+pub tungsten_render::UiInstance::gradient_dir: [f32; 2]
+pub tungsten_render::UiInstance::position: [f32; 2]
+pub tungsten_render::UiInstance::shadow_blur: f32
+pub tungsten_render::UiInstance::shadow_color: [u8; 4]
+pub tungsten_render::UiInstance::shadow_offset: [f32; 2]
+pub tungsten_render::UiInstance::size: [f32; 2]
+pub tungsten_render::UiInstance::uv_min: [f32; 2]
+pub tungsten_render::UiInstance::uv_size: [f32; 2]
+impl tungsten_render::ui::UiInstance
+pub const tungsten_render::ui::UiInstance::FLAG_TEXTURED: u32
+pub fn tungsten_render::ui::UiInstance::desc() -> wgpu::api::render_pipeline::VertexBufferLayout<'static>
+pub fn tungsten_render::ui::UiInstance::image(tungsten_core::ui::geometry::Rect, tungsten_core::assets::atlas::UvRect, [u8; 4]) -> Self
+pub fn tungsten_render::ui::UiInstance::rect(tungsten_core::ui::geometry::Rect, [u8; 4], [u8; 4], f32, f32) -> Self
+impl bytemuck::pod::Pod for tungsten_render::ui::UiInstance
+impl bytemuck::zeroable::Zeroable for tungsten_render::ui::UiInstance
+impl core::clone::Clone for tungsten_render::ui::UiInstance
+pub fn tungsten_render::ui::UiInstance::clone(&self) -> tungsten_render::ui::UiInstance
+impl core::cmp::PartialEq for tungsten_render::ui::UiInstance
+pub fn tungsten_render::ui::UiInstance::eq(&self, &tungsten_render::ui::UiInstance) -> bool
+impl core::fmt::Debug for tungsten_render::ui::UiInstance
+pub fn tungsten_render::ui::UiInstance::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::ui::UiInstance
+impl core::marker::StructuralPartialEq for tungsten_render::ui::UiInstance
+impl core::marker::Freeze for tungsten_render::ui::UiInstance
+impl core::marker::Send for tungsten_render::ui::UiInstance
+impl core::marker::Sync for tungsten_render::ui::UiInstance
+impl core::marker::Unpin for tungsten_render::ui::UiInstance
+impl core::marker::UnsafeUnpin for tungsten_render::ui::UiInstance
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::ui::UiInstance
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::ui::UiInstance
+pub struct tungsten_render::UiPipeline
+impl tungsten_render::ui::UiPipeline
+pub fn tungsten_render::ui::UiPipeline::new(&wgpu::api::device::Device, &wgpu::api::queue::Queue, wgpu_types::texture::format::TextureFormat, &wgpu::api::bind_group_layout::BindGroupLayout) -> Self
+impl core::marker::Freeze for tungsten_render::ui::UiPipeline
+impl core::marker::Send for tungsten_render::ui::UiPipeline
+impl core::marker::Sync for tungsten_render::ui::UiPipeline
+impl core::marker::Unpin for tungsten_render::ui::UiPipeline
+impl core::marker::UnsafeUnpin for tungsten_render::ui::UiPipeline
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::ui::UiPipeline
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::ui::UiPipeline
 pub const tungsten_render::EMISSIVE_MASK_SHADER_NAME: &str
 pub const tungsten_render::LIT_LIGHT_CAP: usize
 pub const tungsten_render::LIT_SPRITE_SHADER_NAME: &str

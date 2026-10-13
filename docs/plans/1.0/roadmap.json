@@ -466,7 +466,7 @@
     },
     {
       "id": "m2",
-      "row": "W1 M2, M3",
+      "row": "W1 M2",
       "label": "W1 M2",
       "group": "close-5",
       "kind": "release",
@@ -485,7 +485,7 @@
     },
     {
       "id": "m3",
-      "row": "W1 M2, M3",
+      "row": "W1 M3",
       "label": "W1 M3",
       "group": "close-5",
       "kind": "release",

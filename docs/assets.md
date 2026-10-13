@@ -6,7 +6,7 @@ Every asset file is listed in a `manifest.json` and named in game code by its re
 
 | Type | Location | Section | Required |
 | --- | --- | --- | --- |
-| Sprite | `assets/sprites/` | `sprites` | ID, filter `nearest`/`linear`; optional `normal_map`, `emissive_mask` |
+| Sprite | `assets/sprites/` | `sprites` | ID, filter `nearest`/`linear`; optional `normal_map`, `emissive_mask`, `nine_slice` (`[left, top, right, bottom]` in source pixels, for UI images; `D-148`) |
 | Animation | `assets/animations/` | `animations` | ID; sprite IDs must exist |
 | Font | `assets/fonts/<Fam>/` | `fonts` | ID |
 | Font family | manifest only | `font_families` | family ID, `faces` (`fonts` IDs) (`D-115`) |
@@ -15,6 +15,7 @@ Every asset file is listed in a `manifest.json` and named in game code by its re
 | Shader | `assets/shaders/` | `shaders` | ID (`D-057`) |
 | Material | manifest only | `materials` | `shader` ID, `uniform_defaults` (`D-058`) |
 | Particle mesh | manifest only | `particle_meshes` | `vertices`, `indices` |
+| UI theme | `assets/ui/themes/` | `ui_themes` | ID, `path`; a JSON object of optional fields over the built-in theme (`tokens`, `kinds`), colours `#rrggbb` or `#rrggbbaa`; reloaded live and re-applied to the tree following the ID (`D-148`) |
 
 - Example-local assets: `examples/NN_name/assets/` with its own `manifest.json`. IDs are unique across loaded manifests; duplicates are fatal.
 - Template-local assets: `templates/<name>/assets/` with its own `manifest.json`, the only root a game made from the template loads (`D-123`). Layer 1 loads each template manifest on its own, outside the examples' uniqueness merge, and `just repo-check` covers its files as it covers an example's.

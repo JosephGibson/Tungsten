@@ -1,13 +1,19 @@
 //! The `UiTree` resource (`D-125`): slots behind generational IDs, roots on
 //! layers, building, queries, the behaviour flags and the dirty flags. Every
 //! mutation is a method call that marks only what it changes: text,
-//! visibility and layout style mark layout (and so paint); enabled marks
-//! paint; roles, names and the behaviour flags mark nothing.
+//! visibility, an image's size and layout style mark layout (and so paint);
+//! enabled, a tint and the clip flag mark paint; roles, names and the
+//! behaviour flags mark nothing.
 
+use std::collections::HashSet;
+
+use glam::Vec2;
+
+use crate::assets::SpriteAssetId;
 use crate::text::{FontEpoch, StyledText, TextNodeId, TextStyle};
 
 use super::id::WidgetId;
-use super::node::{Node, Role, TextContent, UiLayer, Visibility, WidgetKind};
+use super::node::{ImageContent, Node, Role, TextContent, UiLayer, Visibility, WidgetKind};
 use super::style::LayoutStyle;
 use super::theme::{self, ResolvedStyle, StyleOverrides, Theme, ThemeEpoch, WidgetState};
 
@@ -55,6 +61,14 @@ pub struct UiTree {
     pub(crate) paint_dirty: bool,
     pub(crate) theme: Theme,
     pub(crate) theme_epoch: ThemeEpoch,
+    /// The `ui_themes` ID the theme came from, for a reload to re-apply
+    /// (Q9); `None` for the built-in theme or one set by hand.
+    pub(crate) theme_id: Option<String>,
+    /// The viewport of the last layout pass; `None` before the first.
+    pub(crate) viewport: Option<Vec2>,
+    /// Sprites an image named that the registry had not registered, each
+    /// warned about once.
+    pub(crate) warned_sprites: HashSet<SpriteAssetId>,
     /// The widget holding keyboard focus.
     pub(crate) focused: Option<WidgetId>,
     /// Text nodes of removed labels, freed at the next layout.
@@ -194,8 +208,9 @@ impl UiTree {
             || panic!("UiTree: parent {parent:?} is not in the tree"),
             |node| {
                 assert!(
-                    node.kind != WidgetKind::Label,
-                    "UiTree: a label holds no children ({parent:?})"
+                    !node.kind.is_leaf(),
+                    "UiTree: a {:?} holds no children ({parent:?})",
+                    node.kind
                 );
                 (node.root, node.layer)
             },
@@ -231,6 +246,86 @@ impl UiTree {
         let id = self.add_child(parent, WidgetKind::Button, LayoutStyle::default());
         self.label(id, text);
         id
+    }
+
+    /// An image under `parent`: a leaf drawing `sprite` stretched into its
+    /// box, or nine-sliced when the sprite has insets. An `Auto` axis takes
+    /// `natural_size` (Q4); the tint starts opaque white. Panics when
+    /// `parent` is not in the tree.
+    pub fn image(
+        &mut self,
+        parent: WidgetId,
+        sprite: SpriteAssetId,
+        natural_size: Vec2,
+        style: LayoutStyle,
+    ) -> WidgetId {
+        let id = self.add_child(parent, WidgetKind::Image, style);
+        if let Some(node) = self.node_mut(id) {
+            node.image = Some(ImageContent {
+                sprite,
+                natural_size,
+                tint: [255, 255, 255, 255],
+            });
+        }
+        id
+    }
+
+    /// Replaces an image's sprite and natural size: marks layout when the
+    /// size changed, paint when only the sprite did, nothing when both are
+    /// equal. Does nothing for a widget that is not an image.
+    pub fn set_image(&mut self, id: WidgetId, sprite: SpriteAssetId, natural_size: Vec2) {
+        let Some(image) = self.node_mut(id).and_then(|node| node.image.as_mut()) else {
+            return;
+        };
+        let size_changed = image.natural_size != natural_size;
+        let sprite_changed = image.sprite != sprite;
+        image.sprite = sprite;
+        image.natural_size = natural_size;
+        if size_changed {
+            self.mark_layout_dirty(id);
+        } else if sprite_changed {
+            self.mark_paint_dirty();
+        }
+    }
+
+    /// An image's sprite; `None` for a widget that is not an image.
+    #[must_use]
+    pub fn image_sprite(&self, id: WidgetId) -> Option<SpriteAssetId> {
+        self.node(id)?.image.map(|image| image.sprite)
+    }
+
+    /// Sets the colour an image's pixels are multiplied by. Marks paint; an
+    /// equal tint marks nothing.
+    pub fn set_image_tint(&mut self, id: WidgetId, tint: [u8; 4]) {
+        let Some(image) = self.node_mut(id).and_then(|node| node.image.as_mut()) else {
+            return;
+        };
+        if image.tint == tint {
+            return;
+        }
+        image.tint = tint;
+        self.mark_paint_dirty();
+    }
+
+    /// Keeps `id`'s children's paint inside its box: the paint list clips
+    /// them to the intersection of the box and the enclosing clip, and skips
+    /// them when it is empty. Off by default; roots are clipped by the
+    /// viewport alone (Q6). Marks paint; an equal flag marks nothing.
+    pub fn set_clip_children(&mut self, id: WidgetId, on: bool) {
+        let Some(node) = self.node_mut(id) else {
+            return;
+        };
+        if node.clip_children == on {
+            return;
+        }
+        node.clip_children = on;
+        self.mark_paint_dirty();
+    }
+
+    /// Whether `id` clips its children's paint; `false` for an invalid ID.
+    #[must_use]
+    pub fn clips_children(&self, id: WidgetId) -> bool {
+        self.node(id).is_some_and(|node| node.clip_children)
     }
 
     /// Removes `id` and its subtree. Focus held inside it is released and its
@@ -317,7 +412,7 @@ impl UiTree {
         match node.kind {
             WidgetKind::Label => Some(id),
             WidgetKind::Button => node.children.first().copied(),
-            WidgetKind::Panel => None,
+            WidgetKind::Panel | WidgetKind::Image => None,
         }
     }
 
@@ -528,8 +623,21 @@ impl UiTree {
     }
 
     /// Replaces the theme: bumps the epoch, marks every node for resolution
-    /// and every root for layout.
+    /// and every root for layout. The tree then follows no theme asset
+    /// ([`Self::theme_id`] is `None`) until [`Self::set_theme_asset`].
     pub fn set_theme(&mut self, theme: Theme) {
+        self.theme_id = None;
+        self.apply_theme(theme);
+    }
+
+    /// [`Self::set_theme`] with the `ui_themes` ID `theme` was loaded from,
+    /// so a reload of that asset re-applies it to this tree (Q9).
+    pub fn set_theme_asset(&mut self, id: &str, theme: Theme) {
+        self.theme_id = Some(id.to_owned());
+        self.apply_theme(theme);
+    }
+
+    fn apply_theme(&mut self, theme: Theme) {
         self.theme = theme;
         self.theme_epoch = self.theme_epoch.next();
         for slot in &mut self.slots {
@@ -542,7 +650,14 @@ impl UiTree {
         self.paint_dirty = true;
     }
 
-    /// Rises on every [`Self::set_theme`].
+    /// The `ui_themes` ID the theme came from; `None` for the built-in theme
+    /// or one set by hand.
+    #[must_use]
+    pub fn theme_id(&self) -> Option<&str> {
+        self.theme_id.as_deref()
+    }
+
+    /// Rises on every [`Self::set_theme`] and [`Self::set_theme_asset`].
     #[must_use]
     pub fn theme_epoch(&self) -> ThemeEpoch {
         self.theme_epoch
