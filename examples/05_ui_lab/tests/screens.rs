@@ -1,14 +1,17 @@
 //! The lab's screens through the headless harness (`D-125`): the paint
-//! list's snapshot, with no GPU and no fonts.
+//! list's snapshot, with no GPU and no fonts, and the popup driven by
+//! routed input (`D-149`).
 
 use example_05_ui_lab::screens;
 use tungsten::App;
-use tungsten::core::ui::{UiLayer, UiTree, WidgetKind};
-use tungsten::core::{AssetRegistry, Config};
+use tungsten::core::ui::{UiEvent, UiLayer, UiTree, Visibility, WidgetKind};
+use tungsten::core::{AssetRegistry, Config, EventQueue, KeyCode};
 use tungsten::testing::UiHarness;
 
 fn lab() -> UiHarness {
-    let mut harness = UiHarness::new(App::new(Config::default()).expect("App::new failed"));
+    let mut app = App::new(Config::default()).expect("App::new failed");
+    app.add_system_named("ui_lab_popup", screens::popup_system);
+    let mut harness = UiHarness::new(app);
     let world = harness.world_mut();
     let mut tree = world.remove_resource::<UiTree>().expect("UiTree");
     let sprites = world
@@ -56,4 +59,60 @@ fn the_popup_over_the_window_opens_a_second_text_batch() {
         tree.focused().is_some(),
         "the popup's confirm button holds focus"
     );
+}
+
+#[test]
+fn escape_hides_the_popup_and_the_windows_drop_shows_it_again() {
+    let mut harness = lab();
+    assert_eq!(harness.step(1), 1);
+    let lab = harness
+        .world()
+        .get_resource::<screens::UiLab>()
+        .expect("UiLab");
+    let (popup, drop, drop_it) = (lab.popup, lab.drop, lab.drop_it);
+    assert_eq!(harness.tree().focused(), Some(drop_it));
+
+    harness.click(drop);
+    harness.step(1);
+    assert_eq!(
+        harness.tree().visibility(popup),
+        Some(Visibility::Visible),
+        "the window's Drop under the modal popup changes nothing"
+    );
+    assert_eq!(harness.tree().focused(), Some(drop_it));
+    assert_eq!(
+        harness.tree().hovered(),
+        None,
+        "the modal blocks the window"
+    );
+    assert!(
+        !harness
+            .world()
+            .get_resource::<EventQueue<UiEvent>>()
+            .expect("UiEvent queue")
+            .iter()
+            .any(|event| matches!(event, UiEvent::Activated { widget, .. } if *widget == drop)),
+        "Drop was not activated"
+    );
+
+    harness.key_down(KeyCode::Escape);
+    harness.step(1);
+    harness.key_up(KeyCode::Escape);
+    assert_eq!(
+        harness.tree().visibility(popup),
+        Some(Visibility::Hidden),
+        "Escape hides the popup"
+    );
+    assert_eq!(harness.tree().focused(), None, "and drops its focus");
+    assert!(!harness.harness().exit_requested(), "the popup took it");
+
+    harness.step(1);
+    harness.click(drop);
+    harness.step(1);
+    assert_eq!(
+        harness.tree().visibility(popup),
+        Some(Visibility::Visible),
+        "the same click with the popup hidden shows it"
+    );
+    assert_eq!(harness.tree().focused(), Some(drop_it), "on Drop it");
 }

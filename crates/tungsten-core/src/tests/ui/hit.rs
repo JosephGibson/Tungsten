@@ -48,12 +48,13 @@ fn the_later_sibling_wins_where_two_overlap() {
 }
 
 #[test]
-fn a_child_outside_its_parents_box_is_not_hit() {
+fn the_paint_clip_decides_whether_an_overflowing_child_is_hit() {
     let mut tree = UiTree::new();
     let root = tree.add_root(UiLayer::Game, boxed(400.0, 300.0));
     let parent = tree.panel(root, at(0.0, 0.0, 100.0, 100.0));
     let child = tree.panel(parent, at(50.0, 50.0, 100.0, 100.0));
     layout(&mut tree);
+    assert_eq!(tree.rect(child).unwrap().max, Vec2::new(150.0, 150.0));
     assert_eq!(
         tree.hit_test(Vec2::new(75.0, 75.0)),
         Some(child),
@@ -61,10 +62,58 @@ fn a_child_outside_its_parents_box_is_not_hit() {
     );
     assert_eq!(
         tree.hit_test(Vec2::new(125.0, 125.0)),
-        Some(root),
-        "inside the child, outside the parent"
+        Some(child),
+        "outside a parent that does not clip, where the child paints"
     );
-    assert_eq!(tree.rect(child).unwrap().max, Vec2::new(150.0, 150.0));
+
+    tree.set_clip_children(parent, true);
+    assert_eq!(tree.hit_test(Vec2::new(75.0, 75.0)), Some(child));
+    assert_eq!(
+        tree.hit_test(Vec2::new(125.0, 125.0)),
+        Some(root),
+        "outside the clipping parent"
+    );
+    assert_eq!(
+        tree.hit_test(Vec2::new(100.0, 100.0)),
+        Some(child),
+        "the clip's edges included"
+    );
+    assert_eq!(tree.hit_test(Vec2::new(100.5, 75.0)), Some(root));
+
+    // A clipping grandparent bounds through a parent that does not clip.
+    let outer = tree.panel(root, at(200.0, 0.0, 100.0, 100.0));
+    tree.set_clip_children(outer, true);
+    let middle = tree.panel(outer, at(0.0, 0.0, 20.0, 20.0));
+    let inner = tree.panel(middle, at(50.0, 50.0, 100.0, 100.0));
+    layout(&mut tree);
+    assert_eq!(
+        tree.hit_test(Vec2::new(275.0, 75.0)),
+        Some(inner),
+        "outside its parent, inside the grandparent's clip"
+    );
+    assert_eq!(
+        tree.hit_test(Vec2::new(325.0, 75.0)),
+        Some(root),
+        "outside the grandparent's clip"
+    );
+
+    // The viewport clips the roots, and a clip with no area hides its
+    // subtree from the pointer as from paint.
+    let edge = tree.panel(root, at(350.0, 250.0, 100.0, 100.0));
+    let empty = tree.panel(root, at(0.0, 200.0, 0.0, 0.0));
+    tree.set_clip_children(empty, true);
+    let unseen = tree.panel(empty, at(0.0, 0.0, 50.0, 50.0));
+    layout(&mut tree);
+    assert_eq!(tree.hit_test(Vec2::new(380.0, 280.0)), Some(edge));
+    assert_eq!(
+        tree.hit_test(Vec2::new(420.0, 320.0)),
+        None,
+        "outside the viewport"
+    );
+    assert_eq!(tree.rect(unseen).unwrap().width(), 50.0);
+    assert_eq!(tree.hit_test(Vec2::new(25.0, 225.0)), Some(root));
+    tree.set_clip_children(empty, false);
+    assert_eq!(tree.hit_test(Vec2::new(25.0, 225.0)), Some(unseen));
 }
 
 #[test]
@@ -170,4 +219,102 @@ fn a_debug_root_beats_a_game_root_and_a_later_root_beats_an_earlier_one() {
     assert_eq!(tree.hit_test(Vec2::new(10.0, 150.0)), Some(game_a));
     assert_eq!(tree.hit_test(Vec2::new(175.0, 175.0)), Some(popup));
     assert_eq!(tree.hit_test(Vec2::new(300.0, 300.0)), None);
+}
+
+#[test]
+fn a_shown_modal_root_blocks_the_roots_below_it_and_not_those_above() {
+    let mut tree = UiTree::new();
+    let game = tree.add_root(UiLayer::Game, boxed(400.0, 300.0));
+    let under = tree.panel(game, at(0.0, 0.0, 100.0, 40.0));
+    let popup = tree.add_root(UiLayer::GamePopup, at(150.0, 100.0, 100.0, 100.0));
+    let debug = tree.add_root(UiLayer::Debug, at(300.0, 0.0, 100.0, 100.0));
+    tree.set_modal(popup, true);
+    layout(&mut tree);
+    assert_eq!(tree.hit_test(Vec2::new(200.0, 150.0)), Some(popup));
+    assert_eq!(
+        tree.hit_test(Vec2::new(50.0, 20.0)),
+        None,
+        "a widget below the modal"
+    );
+    assert_eq!(
+        tree.hit_test(Vec2::new(10.0, 290.0)),
+        None,
+        "the root below it"
+    );
+    assert_eq!(
+        tree.hit_test(Vec2::new(350.0, 50.0)),
+        Some(debug),
+        "a Debug root above it still hits"
+    );
+
+    tree.set_visibility(popup, Visibility::Hidden);
+    layout(&mut tree);
+    assert_eq!(
+        tree.hit_test(Vec2::new(50.0, 20.0)),
+        Some(under),
+        "a hidden modal blocks nothing"
+    );
+    assert_eq!(tree.hit_test(Vec2::new(200.0, 150.0)), Some(game));
+
+    tree.set_visibility(popup, Visibility::Visible);
+    tree.set_modal(popup, false);
+    layout(&mut tree);
+    assert_eq!(tree.hit_test(Vec2::new(200.0, 150.0)), Some(popup));
+    assert_eq!(tree.hit_test(Vec2::new(50.0, 20.0)), Some(under));
+}
+
+#[test]
+fn a_root_takes_hits_once_it_is_visible_and_laid_out() {
+    let mut tree = UiTree::new();
+    let game = tree.add_root(UiLayer::Game, boxed(400.0, 300.0));
+    layout(&mut tree);
+    let late = tree.add_root(UiLayer::Game, at(0.0, 0.0, 100.0, 100.0));
+    tree.set_modal(late, true);
+    assert_eq!(
+        tree.hit_test(Vec2::new(50.0, 50.0)),
+        Some(game),
+        "an unlaid root is not hit"
+    );
+    assert_eq!(
+        tree.hit_test(Vec2::new(200.0, 200.0)),
+        Some(game),
+        "an unlaid modal root blocks nothing"
+    );
+    layout(&mut tree);
+    assert_eq!(tree.hit_test(Vec2::new(50.0, 50.0)), Some(late));
+    assert_eq!(
+        tree.hit_test(Vec2::new(200.0, 200.0)),
+        None,
+        "laid out, it blocks"
+    );
+
+    tree.set_visibility(late, Visibility::Collapsed);
+    layout(&mut tree);
+    assert_eq!(
+        tree.hit_test(Vec2::new(50.0, 50.0)),
+        Some(game),
+        "collapsed"
+    );
+}
+
+#[test]
+fn hidden_game_layers_take_no_hits() {
+    let mut tree = UiTree::new();
+    let game = tree.add_root(UiLayer::Game, boxed(400.0, 300.0));
+    let popup = tree.add_root(UiLayer::GamePopup, at(0.0, 0.0, 100.0, 100.0));
+    let debug = tree.add_root(UiLayer::Debug, at(300.0, 0.0, 100.0, 100.0));
+    tree.set_modal(popup, true);
+    layout(&mut tree);
+    assert_eq!(
+        tree.hit_test_layers(Vec2::new(50.0, 50.0), false),
+        Some(popup)
+    );
+    assert_eq!(tree.hit_test_layers(Vec2::new(50.0, 50.0), true), None);
+    assert_eq!(tree.hit_test_layers(Vec2::new(200.0, 200.0), true), None);
+    assert_eq!(
+        tree.hit_test_layers(Vec2::new(350.0, 50.0), true),
+        Some(debug)
+    );
+    assert!(!tree.root_routes(game, true));
+    assert!(tree.root_routes(game, false));
 }

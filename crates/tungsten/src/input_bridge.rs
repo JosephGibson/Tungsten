@@ -1,4 +1,5 @@
 use tungsten_core::input::{InputState, KeyCode, Modifiers, MouseButton};
+use tungsten_core::ui::CursorIcon;
 use tungsten_core::{ScaleFactor, World};
 use winit::event::ElementState;
 use winit::keyboard::{KeyCode as WinitKeyCode, ModifiersState, PhysicalKey};
@@ -162,6 +163,23 @@ pub fn apply_modifiers(world: &mut World, state: ModifiersState) {
 pub fn apply_pointer_left(world: &mut World) {
     if let Some(input) = world.get_resource_mut::<InputState>() {
         input.pointer_left();
+    }
+}
+
+/// The window's cursor for a UI [`CursorIcon`] (`D-149`); one added to
+/// core before this mapping shows the default arrow.
+pub fn cursor_icon(icon: CursorIcon) -> winit::window::CursorIcon {
+    use winit::window::CursorIcon as Window;
+    match icon {
+        CursorIcon::Pointer => Window::Pointer,
+        CursorIcon::Text => Window::Text,
+        CursorIcon::Move => Window::Move,
+        CursorIcon::NotAllowed => Window::NotAllowed,
+        CursorIcon::EwResize => Window::EwResize,
+        CursorIcon::NsResize => Window::NsResize,
+        CursorIcon::NwseResize => Window::NwseResize,
+        CursorIcon::NeswResize => Window::NeswResize,
+        _ => Window::Default,
     }
 }
 

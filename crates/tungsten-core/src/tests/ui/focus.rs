@@ -2,9 +2,15 @@ use glam::Vec2;
 
 use super::*;
 use crate::ui::theme::{StyleOverrides, TextOverrides, Theme};
-use crate::ui::{FixedAdvanceMeasure, LayoutStyle, UiLayer, Visibility};
+use crate::ui::{Anchor, FixedAdvanceMeasure, LayoutStyle, Sizing, UiLayer, Visibility};
 
 const VIEWPORT: Vec2 = Vec2::new(400.0, 300.0);
+
+fn at(x: f32, y: f32, w: f32, h: f32) -> LayoutStyle {
+    LayoutStyle::default()
+        .with_size(Sizing::Px(w), Sizing::Px(h))
+        .anchored(Anchor::TopStart, Vec2::new(x, y))
+}
 
 fn settle(tree: &mut UiTree) -> FixedAdvanceMeasure {
     let mut store = FixedAdvanceMeasure::default();
@@ -251,4 +257,207 @@ fn a_focus_change_relayouts_only_when_the_focused_variant_changes_text() {
         tree.resolved_style(button).unwrap().background,
         [9, 9, 9, 255]
     );
+}
+
+/// A full-viewport root holding a grid, 50 by 30 each: `t1 t2 t3` with
+/// centres on y 15, `b1 b2 b3` on y 115, at x 25, 125 and 225, and `mid`
+/// centred at (175, 75), nearer `b2` along the axis than `t2` but off to
+/// the side.
+fn grid() -> (UiTree, WidgetId, [WidgetId; 7]) {
+    let mut tree = UiTree::new();
+    let root = tree.add_root(
+        UiLayer::Game,
+        LayoutStyle::default().with_size(Sizing::Px(400.0), Sizing::Px(300.0)),
+    );
+    let mut place = |x: f32, y: f32| {
+        let button = tree.button(root, "x");
+        tree.set_layout_style(button, at(x, y, 50.0, 30.0));
+        button
+    };
+    let ids = [
+        place(0.0, 0.0),
+        place(100.0, 0.0),
+        place(200.0, 0.0),
+        place(0.0, 100.0),
+        place(100.0, 100.0),
+        place(200.0, 100.0),
+        place(150.0, 60.0),
+    ];
+    settle(&mut tree);
+    (tree, root, ids)
+}
+
+#[test]
+fn focus_direction_takes_the_explicit_neighbour_then_the_scored_nearest() {
+    let (mut tree, _root, [t1, t2, t3, b1, b2, b3, mid]) = grid();
+    assert_eq!(
+        tree.focus_direction(NavDirection::Right),
+        None,
+        "nothing focused"
+    );
+    assert!(tree.focus(t1));
+    assert_eq!(tree.focus_direction(NavDirection::Right), Some(t2));
+    assert_eq!(tree.focus_direction(NavDirection::Down), Some(b2));
+    assert_eq!(
+        tree.focus_direction(NavDirection::Up),
+        Some(t2),
+        "t2 level with b2 beats mid, nearer along the axis but off to the side"
+    );
+    assert_eq!(tree.focus_direction(NavDirection::Right), Some(t3));
+    assert_eq!(tree.focus_direction(NavDirection::Down), Some(b3));
+    assert_eq!(tree.focus_direction(NavDirection::Left), Some(b2));
+    assert_eq!(tree.focus_direction(NavDirection::Left), Some(b1));
+    assert_eq!(
+        tree.focus_direction(NavDirection::Left),
+        None,
+        "nothing lies that way"
+    );
+    assert_eq!(tree.focused(), Some(b1), "and focus stays");
+
+    tree.set_focus_neighbor(b1, NavDirection::Right, Some(mid));
+    assert_eq!(
+        tree.focus_direction(NavDirection::Right),
+        Some(mid),
+        "the explicit neighbour first"
+    );
+    assert!(tree.focus(b1));
+    tree.set_focus_neighbor(b1, NavDirection::Right, None);
+    assert_eq!(tree.focus_direction(NavDirection::Right), Some(b2));
+
+    assert!(tree.focus(b1));
+    tree.set_focus_neighbor(b1, NavDirection::Right, Some(b3));
+    tree.set_enabled(b3, false);
+    assert_eq!(
+        tree.focus_direction(NavDirection::Right),
+        Some(b2),
+        "a neighbour that cannot take focus falls back to the search"
+    );
+}
+
+#[test]
+fn focus_direction_skips_disabled_and_hidden_widgets_and_stays_in_its_scope() {
+    let (mut tree, root, [t1, t2, t3, _b1, b2, _b3, mid]) = grid();
+    tree.set_visibility(t2, Visibility::Hidden);
+    assert!(tree.focus(t1));
+    assert_eq!(
+        tree.focus_direction(NavDirection::Right),
+        Some(t3),
+        "past the hidden t2"
+    );
+
+    tree.set_visibility(t2, Visibility::Visible);
+    tree.set_enabled(t2, false);
+    tree.set_enabled(mid, false);
+    assert!(tree.focus(b2));
+    assert_eq!(
+        tree.focus_direction(NavDirection::Up),
+        Some(t1),
+        "t1 and t3 tie with t2 and mid disabled: the first in tab order"
+    );
+
+    // Another root level with t3 is not a candidate.
+    let side = tree.add_root(UiLayer::Game, at(300.0, 0.0, 100.0, 30.0));
+    let beyond = tree.button(side, "beyond");
+    // A scope inside the root keeps its own widgets to themselves.
+    let group = tree.panel(root, at(0.0, 200.0, 400.0, 100.0));
+    tree.set_focus_scope(group, true);
+    let left = tree.button(group, "l");
+    tree.set_layout_style(left, at(0.0, 0.0, 50.0, 30.0));
+    let right = tree.button(group, "r");
+    tree.set_layout_style(right, at(200.0, 0.0, 50.0, 30.0));
+    settle(&mut tree);
+    assert!(tree.focus(t3));
+    assert_eq!(
+        tree.focus_direction(NavDirection::Right),
+        None,
+        "another root's widget"
+    );
+    assert!(tree.focus(left));
+    assert_eq!(tree.focus_direction(NavDirection::Right), Some(right));
+    assert_eq!(
+        tree.focus_direction(NavDirection::Up),
+        None,
+        "the root's widgets lie outside the group's scope"
+    );
+    assert!(tree.can_focus(beyond));
+}
+
+#[test]
+fn focus_direction_wraps_only_inside_a_scope_flagged_to() {
+    let (mut tree, root, [t1, t2, t3, b1, _b2, _b3, mid]) = grid();
+    assert!(tree.focus(t3));
+    assert_eq!(tree.focus_direction(NavDirection::Right), None);
+    tree.set_focus_wrap(mid, true);
+    assert_eq!(
+        tree.focus_direction(NavDirection::Right),
+        None,
+        "the flag is read on the scope, here the root"
+    );
+
+    tree.set_focus_wrap(root, true);
+    assert!(tree.focus_wrap(root));
+    assert_eq!(
+        tree.focus_direction(NavDirection::Right),
+        Some(t1),
+        "from the scope's left edge, level with t3"
+    );
+    assert_eq!(tree.focus_direction(NavDirection::Left), Some(t3));
+    assert!(tree.focus(t1));
+    assert_eq!(
+        tree.focus_direction(NavDirection::Up),
+        Some(b1),
+        "from the scope's bottom edge"
+    );
+    assert_eq!(tree.focus_direction(NavDirection::Down), Some(t1));
+    assert_eq!(tree.focus_direction(NavDirection::Right), Some(t2));
+
+    tree.set_focus_wrap(root, false);
+    assert!(tree.focus(t3));
+    assert_eq!(tree.focus_direction(NavDirection::Right), None);
+}
+
+#[test]
+fn hiding_or_collapsing_a_scope_restores_the_focus_it_was_entered_from() {
+    let (mut tree, _root, [a, b, _c], _panel) = menu();
+    assert!(tree.focus(b));
+    let dialog = tree.add_root(UiLayer::GamePopup, LayoutStyle::default());
+    let ok = tree.button(dialog, "ok");
+    settle(&mut tree);
+    assert!(tree.focus(ok));
+    tree.set_visibility(dialog, Visibility::Hidden);
+    assert_eq!(tree.focused(), Some(b), "the focus left behind comes back");
+
+    // Entered again, the dialog records the focus it was entered from then.
+    tree.set_visibility(dialog, Visibility::Visible);
+    assert!(tree.focus(a));
+    assert!(tree.focus(ok));
+    tree.set_visibility(dialog, Visibility::Collapsed);
+    assert_eq!(tree.focused(), Some(a));
+
+    // Moving back and forth keeps one record per scope.
+    tree.set_visibility(dialog, Visibility::Visible);
+    for _ in 0..3 {
+        assert!(tree.focus(ok));
+        assert!(tree.focus(a));
+    }
+    assert_eq!(tree.focus_return.len(), 2);
+
+    // Hiding an ancestor of a scope leaves it too; a recorded widget that
+    // cannot take focus any more restores nothing.
+    let (mut tree, root, [a, _b, _c], _panel) = menu();
+    let holder = tree.panel(root, LayoutStyle::default());
+    let group = tree.panel(holder, LayoutStyle::default());
+    tree.set_focus_scope(group, true);
+    let x = tree.button(group, "x");
+    settle(&mut tree);
+    assert!(tree.focus(a));
+    assert!(tree.focus(x));
+    tree.set_visibility(holder, Visibility::Hidden);
+    assert_eq!(tree.focused(), Some(a));
+
+    tree.set_visibility(holder, Visibility::Visible);
+    assert!(tree.focus(x));
+    tree.set_enabled(a, false);
+    tree.set_visibility(holder, Visibility::Hidden);
+    assert_eq!(tree.focused(), None);
 }

@@ -39,5 +39,9 @@ harness = false
 name = "tuple_query_bench"
 harness = false
 
+[[bench]]
+name = "ui_route_bench"
+harness = false
+
 [lints]
 workspace = true

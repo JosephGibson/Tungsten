@@ -1,6 +1,7 @@
 //! Example 05: the UI lab (M46, `D-147`, `D-148`): a HUD, a window and a
 //! popup painted through the paint list, with the theme `ex05_default`
-//! hot-reloaded from `assets/ui/themes/ex05_default.json`.
+//! hot-reloaded from `assets/ui/themes/ex05_default.json`. The popup is a
+//! modal the pointer and keys drive (M47, `D-149`).
 //!
 //! Env for the smoke matrix and `tests/ui_regression.rs`:
 //! `TUNGSTEN_UI_LAB_FIXTURE={default|empty|hidden}` turns the debug HUD off
@@ -97,6 +98,7 @@ fn main() -> anyhow::Result<()> {
         }
     });
     app.add_system_named("ui_lab_counter", counter_system);
+    app.add_system_named("ui_lab_popup", screens::popup_system);
 
     app.run()
 }

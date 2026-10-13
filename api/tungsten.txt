@@ -10,10 +10,13 @@ pub use tungsten::OptionalColumn
 pub use tungsten::PhysicsPlugin
 pub use tungsten::Plugin
 pub use tungsten::PluginSet
+pub use tungsten::RoutedInput
 pub use tungsten::Schedule
 pub use tungsten::ScheduleError
 pub use tungsten::Stage
 pub use tungsten::SystemDesc
+pub use tungsten::UiEvent
+pub use tungsten::UiRouter
 pub use tungsten::WindowSize
 pub use tungsten::With
 pub use tungsten::Without
@@ -482,6 +485,23 @@ impl core::marker::Unpin for tungsten::plugins::TweensPlugin
 impl core::marker::UnsafeUnpin for tungsten::plugins::TweensPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::plugins::TweensPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten::plugins::TweensPlugin
+pub struct tungsten::plugins::UiPlugin
+impl core::clone::Clone for tungsten::plugins::UiPlugin
+pub fn tungsten::plugins::UiPlugin::clone(&self) -> tungsten::plugins::UiPlugin
+impl core::default::Default for tungsten::plugins::UiPlugin
+pub fn tungsten::plugins::UiPlugin::default() -> tungsten::plugins::UiPlugin
+impl core::fmt::Debug for tungsten::plugins::UiPlugin
+pub fn tungsten::plugins::UiPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::plugins::UiPlugin
+impl tungsten_core::schedule::Plugin for tungsten::plugins::UiPlugin
+pub fn tungsten::plugins::UiPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten::plugins::UiPlugin
+impl core::marker::Send for tungsten::plugins::UiPlugin
+impl core::marker::Sync for tungsten::plugins::UiPlugin
+impl core::marker::Unpin for tungsten::plugins::UiPlugin
+impl core::marker::UnsafeUnpin for tungsten::plugins::UiPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::plugins::UiPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten::plugins::UiPlugin
 pub const tungsten::plugins::CAMERA_UPDATE: &str
 pub const tungsten::plugins::DISPLAY_INPUT: &str
 pub const tungsten::plugins::HUD_TOGGLE: &str
@@ -498,6 +518,7 @@ pub const tungsten::plugins::STATE_DISPATCHER: &str
 pub const tungsten::plugins::SYSTEMS_OVERLAY_TOGGLE: &str
 pub const tungsten::plugins::TWEEN_TICK: &str
 pub const tungsten::plugins::UI_DEBUG_TOGGLE: &str
+pub const tungsten::plugins::UI_ROUTE: &str
 pub mod tungsten::post_aa
 pub struct tungsten::post_aa::PostAaState
 pub tungsten::post_aa::PostAaState::mode: tungsten_core::config::PostAaMode
@@ -733,17 +754,24 @@ impl !core::panic::unwind_safe::RefUnwindSafe for tungsten::testing::Harness
 impl !core::panic::unwind_safe::UnwindSafe for tungsten::testing::Harness
 pub struct tungsten::testing::UiHarness
 impl tungsten::testing::UiHarness
+pub fn tungsten::testing::UiHarness::click(&mut self, tungsten_core::ui::id::WidgetId)
 pub fn tungsten::testing::UiHarness::dump(&self) -> alloc::string::String
 pub fn tungsten::testing::UiHarness::dump_paint(&mut self) -> alloc::string::String
+pub fn tungsten::testing::UiHarness::find(&self, &str) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten::testing::UiHarness::focus(&mut self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten::testing::UiHarness::focus_next(&mut self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten::testing::UiHarness::focus_prev(&mut self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten::testing::UiHarness::harness(&self) -> &tungsten::testing::Harness
 pub fn tungsten::testing::UiHarness::harness_mut(&mut self) -> &mut tungsten::testing::Harness
 pub fn tungsten::testing::UiHarness::hit(&self, f32, f32) -> core::option::Option<tungsten_core::ui::id::WidgetId>
+pub fn tungsten::testing::UiHarness::key_down(&mut self, tungsten_core::input::KeyCode)
+pub fn tungsten::testing::UiHarness::key_up(&mut self, tungsten_core::input::KeyCode)
 pub fn tungsten::testing::UiHarness::layout(&mut self) -> tungsten_core::ui::tree::LayoutStats
 pub fn tungsten::testing::UiHarness::new(tungsten::app::App) -> Self
 pub fn tungsten::testing::UiHarness::paint(&mut self) -> tungsten_core::ui::paint::PaintList
+pub fn tungsten::testing::UiHarness::pointer_down(&mut self)
+pub fn tungsten::testing::UiHarness::pointer_to(&mut self, f32, f32)
+pub fn tungsten::testing::UiHarness::pointer_up(&mut self)
 pub fn tungsten::testing::UiHarness::rect(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::geometry::Rect>
 pub fn tungsten::testing::UiHarness::step(&mut self, u32) -> u32
 pub fn tungsten::testing::UiHarness::text(&self) -> &tungsten_core::ui::measure::FixedAdvanceMeasure
@@ -1476,6 +1504,23 @@ impl core::marker::Unpin for tungsten::plugins::TweensPlugin
 impl core::marker::UnsafeUnpin for tungsten::plugins::TweensPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::plugins::TweensPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten::plugins::TweensPlugin
+pub struct tungsten::UiPlugin
+impl core::clone::Clone for tungsten::plugins::UiPlugin
+pub fn tungsten::plugins::UiPlugin::clone(&self) -> tungsten::plugins::UiPlugin
+impl core::default::Default for tungsten::plugins::UiPlugin
+pub fn tungsten::plugins::UiPlugin::default() -> tungsten::plugins::UiPlugin
+impl core::fmt::Debug for tungsten::plugins::UiPlugin
+pub fn tungsten::plugins::UiPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::plugins::UiPlugin
+impl tungsten_core::schedule::Plugin for tungsten::plugins::UiPlugin
+pub fn tungsten::plugins::UiPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten::plugins::UiPlugin
+impl core::marker::Send for tungsten::plugins::UiPlugin
+impl core::marker::Sync for tungsten::plugins::UiPlugin
+impl core::marker::Unpin for tungsten::plugins::UiPlugin
+impl core::marker::UnsafeUnpin for tungsten::plugins::UiPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::plugins::UiPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten::plugins::UiPlugin
 pub const tungsten::ENGINE_FONT_ID: &str
 pub trait tungsten::GameState: 'static
 pub fn tungsten::GameState::id(&self) -> tungsten::state::StateId

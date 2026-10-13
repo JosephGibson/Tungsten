@@ -3,7 +3,10 @@ use glam::Vec2;
 use super::*;
 use crate::assets::SpriteAssetId;
 use crate::text::StyledText;
-use crate::ui::{FixedAdvanceMeasure, LayoutStyle, Role, Theme, UiLayer, Visibility, WidgetKind};
+use crate::ui::{
+    CursorIcon, FixedAdvanceMeasure, LayoutStyle, NavDirection, Role, Theme, UiLayer, Visibility,
+    WidgetKind,
+};
 
 const VIEWPORT: Vec2 = Vec2::new(800.0, 600.0);
 
@@ -402,4 +405,99 @@ fn the_theme_asset_id_follows_set_theme_asset_and_clears_on_set_theme() {
     tree.set_theme(Theme::default());
     assert_eq!(tree.theme_id(), None);
     assert_eq!(tree.theme_epoch(), epoch.next().next());
+}
+
+#[test]
+fn hover_and_press_clear_on_removal_hiding_and_disabling() {
+    let (mut tree, root) = clean_tree();
+    assert!(tree.focus_visible(), "focus shows on a new tree");
+    assert_eq!((tree.hovered(), tree.pressed()), (None, None));
+    let panel = tree.panel(root, LayoutStyle::default());
+    let button = tree.button(panel, "ok");
+    let other = tree.button(root, "other");
+    settle(&mut tree);
+
+    tree.set_hovered(Some(button));
+    tree.set_pressed(Some(button));
+    tree.set_visibility(panel, Visibility::Hidden);
+    assert_eq!(
+        (tree.hovered(), tree.pressed()),
+        (None, None),
+        "under a hidden panel"
+    );
+    tree.set_visibility(panel, Visibility::Visible);
+
+    tree.set_hovered(Some(button));
+    tree.set_pressed(Some(button));
+    tree.set_visibility(button, Visibility::Collapsed);
+    assert_eq!((tree.hovered(), tree.pressed()), (None, None), "collapsed");
+    tree.set_visibility(button, Visibility::Visible);
+
+    tree.set_hovered(Some(button));
+    tree.set_pressed(Some(other));
+    tree.set_visibility(panel, Visibility::Hidden);
+    assert_eq!(tree.pressed(), Some(other), "a press elsewhere stays");
+    tree.set_visibility(panel, Visibility::Visible);
+    tree.set_hovered(Some(button));
+    tree.set_enabled(button, false);
+    assert_eq!(tree.hovered(), None, "disabled");
+    assert_eq!(tree.pressed(), Some(other));
+    tree.set_enabled(button, true);
+
+    tree.set_hovered(Some(button));
+    tree.remove(panel);
+    assert_eq!(tree.hovered(), None, "removed with its parent");
+    assert_eq!(tree.pressed(), Some(other));
+    tree.remove(other);
+    assert_eq!(tree.pressed(), None, "removed");
+}
+
+#[test]
+fn modal_cursor_focus_links_and_wrap_are_node_data_that_mark_nothing() {
+    let (mut tree, root) = clean_tree();
+    let panel = tree.panel(root, LayoutStyle::default());
+    let button = tree.button(panel, "ok");
+    settle(&mut tree);
+
+    assert!(!tree.modal(root));
+    tree.set_modal(root, true);
+    assert!(tree.modal(root));
+    tree.set_modal(panel, true);
+    assert!(!tree.modal(panel), "only a root is modal");
+
+    assert_eq!(tree.cursor(button), None);
+    tree.set_cursor(button, Some(CursorIcon::Pointer));
+    assert_eq!(tree.cursor(button), Some(CursorIcon::Pointer));
+    assert_eq!(
+        tree.cursor(tree.children(button)[0]),
+        None,
+        "the set one only"
+    );
+    tree.set_cursor(button, None);
+    assert_eq!(tree.cursor(button), None);
+    assert_eq!(CursorIcon::default(), CursorIcon::Default);
+
+    assert_eq!(tree.focus_neighbor(button, NavDirection::Up), None);
+    tree.set_focus_neighbor(button, NavDirection::Up, Some(panel));
+    assert_eq!(tree.focus_neighbor(button, NavDirection::Up), Some(panel));
+    assert_eq!(tree.focus_neighbor(button, NavDirection::Down), None);
+    tree.set_focus_neighbor(button, NavDirection::Up, None);
+    assert_eq!(tree.focus_neighbor(button, NavDirection::Up), None);
+
+    assert!(!tree.focus_wrap(panel));
+    tree.set_focus_wrap(panel, true);
+    assert!(tree.focus_wrap(panel));
+
+    assert!(!tree.is_layout_dirty());
+    assert!(!tree.is_paint_dirty(), "none of them marks anything");
+
+    tree.set_cursor(button, Some(CursorIcon::Text));
+    tree.set_focus_neighbor(button, NavDirection::Left, Some(root));
+    tree.remove(panel);
+    assert!(!tree.focus_wrap(panel), "an invalid ID reads as unset");
+    assert_eq!(tree.cursor(button), None);
+    assert_eq!(tree.focus_neighbor(button, NavDirection::Left), None);
+    tree.set_cursor(button, Some(CursorIcon::Move));
+    tree.set_modal(button, true);
+    assert!(!tree.modal(button));
 }

@@ -214,8 +214,9 @@ pub struct KindStyles {
 impl KindStyles {
     /// The built-in kind styles drawn from `tokens`: panels on the surface
     /// with a border, labels and images transparent, buttons on the accent
-    /// with bold accent text, a focus-coloured border when focused and muted
-    /// text when disabled.
+    /// with bold accent text, a focus-coloured border when focused, a lighter
+    /// fill when hovered, a darker one when pressed and muted text when
+    /// disabled.
     #[must_use]
     pub fn for_tokens(tokens: &Tokens) -> Self {
         let transparent = [0, 0, 0, 0];
@@ -297,18 +298,19 @@ fn darken(color: [u8; 4], by: u8) -> [u8; 4] {
 }
 
 /// A kind's look: its normal visual and the overrides each state applies.
-/// `hovered` and `pressed` are defined now and resolved from M3.
+/// An enabled widget layers `focused`, `hovered` and `pressed` in that
+/// order, each over the last; a disabled one applies `disabled` alone (`D-149`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct KindStyle {
     /// The enabled, unfocused look.
     pub normal: VisualStyle,
-    /// Applied while the widget has keyboard focus.
+    /// Applied while the widget holds keyboard focus and focus is visible.
     pub focused: StyleOverrides,
-    /// Applied while the widget is disabled; wins over `focused`.
+    /// Applied alone while the widget is disabled.
     pub disabled: StyleOverrides,
-    /// Applied while the pointer is over the widget (M3).
+    /// Applied over `focused` while the pointer is over the widget.
     pub hovered: StyleOverrides,
-    /// Applied while the widget is pressed (M3).
+    /// Applied over `hovered` while the widget is pressed.
     pub pressed: StyleOverrides,
 }
 
@@ -332,6 +334,8 @@ impl KindStyle {
             WidgetState::Normal => None,
             WidgetState::Focused => Some(&self.focused),
             WidgetState::Disabled => Some(&self.disabled),
+            WidgetState::Hovered => Some(&self.hovered),
+            WidgetState::Pressed => Some(&self.pressed),
         }
     }
 }
@@ -450,19 +454,26 @@ impl TextOverrides {
     }
 }
 
-/// The state a widget's style resolves for. `Disabled` wins over `Focused`,
-/// since a disabled widget holds no focus. `Hovered` and `Pressed` join at
-/// M3.
+/// A state whose variant a widget's style applies (`D-149`). An enabled
+/// widget layers `Focused`, `Hovered` and `Pressed` in that order; a
+/// disabled one is `Disabled` alone, since it holds no focus and the pointer
+/// does not act on it.
+/// [`UiTree::widget_state`](super::UiTree::widget_state) names the top
+/// layer: `Disabled`, then `Pressed`, `Hovered`, `Focused`, `Normal`.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub enum WidgetState {
-    /// Enabled, unfocused.
+    /// Enabled, with no state applied.
     #[default]
     Normal,
-    /// Holding keyboard focus.
+    /// Holding keyboard focus while focus is visible.
     Focused,
     /// Disabled.
     Disabled,
+    /// Under the pointer: the hovered target.
+    Hovered,
+    /// Pressed: captured by a press with the pointer over it.
+    Pressed,
 }
 
 /// Rises on every [`UiTree::set_theme`](super::UiTree::set_theme); part of
@@ -485,8 +496,8 @@ impl ThemeEpoch {
 }
 
 /// A widget's look after resolution: the kind's normal visual, then the
-/// state variant, then the node's own overrides; text inherited down the
-/// tree with the same three layers applied at every node.
+/// state variants in layer order, then the node's own overrides; text
+/// inherited down the tree with the same layers applied at every node.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ResolvedStyle {
     /// Fill colour.
@@ -527,11 +538,23 @@ pub fn resolve(
     overrides: &StyleOverrides,
     parent_text: &TextStyle,
 ) -> ResolvedStyle {
+    resolve_layers(theme, kind, &[state], overrides, parent_text)
+}
+
+/// [`resolve`] with each of `states`' variants applied in order, the tree's
+/// layers; `Normal` applies nothing.
+pub(crate) fn resolve_layers(
+    theme: &Theme,
+    kind: WidgetKind,
+    states: &[WidgetState],
+    overrides: &StyleOverrides,
+    parent_text: &TextStyle,
+) -> ResolvedStyle {
     let kind_style = theme.kind(kind);
     let mut visual = kind_style.normal.clone();
     let mut text = parent_text.clone();
     visual.text.apply(&mut text);
-    if let Some(variant) = kind_style.variant(state) {
+    for variant in states.iter().filter_map(|state| kind_style.variant(*state)) {
         variant.apply_visual(&mut visual);
         variant.text.apply(&mut text);
     }

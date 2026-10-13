@@ -1,0 +1,737 @@
+use super::*;
+use crate::input::Modifiers;
+use crate::ui::{Anchor, FixedAdvanceMeasure, LayoutStyle, Sizing, UiLayer, Visibility};
+
+/// The logical viewport every rig lays out in.
+const VIEWPORT: Vec2 = Vec2::new(400.0, 300.0);
+/// One frame's real seconds: 1/32 is exact in binary, so 0.5 s is 16
+/// frames and no timer edge falls on a rounding error.
+const DT: f32 = 1.0 / 32.0;
+const LEFT: MouseButton = MouseButton::Left;
+
+fn at(x: f32, y: f32, w: f32, h: f32) -> LayoutStyle {
+    LayoutStyle::default()
+        .with_size(Sizing::Px(w), Sizing::Px(h))
+        .anchored(Anchor::TopStart, Vec2::new(x, y))
+}
+
+fn activations(events: &[UiEvent]) -> Vec<WidgetId> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            UiEvent::Activated { widget } => Some(*widget),
+            _ => None,
+        })
+        .collect()
+}
+
+/// A hand-built world with every resource the router reads, driven a frame
+/// at a time as the app does: raw input, the clock, the routing, then the
+/// frame's layout.
+struct Rig {
+    world: World,
+}
+
+impl Rig {
+    /// A full-viewport `Game` root, laid out.
+    fn empty() -> (Self, WidgetId) {
+        let mut world = World::new();
+        world.insert_resource(InputState::new());
+        world.insert_resource(ActionMap::default_map());
+        world.insert_resource(Time::new());
+        world.insert_resource(ScaleFactor::default());
+        world.insert_resource(UiRouter::default());
+        world.insert_resource(RoutedInput::default());
+        world.register_event::<UiEvent>();
+        let mut tree = UiTree::new();
+        let root = tree.add_root(
+            UiLayer::Game,
+            LayoutStyle::default().with_size(Sizing::Px(400.0), Sizing::Px(300.0)),
+        );
+        world.insert_resource(tree);
+        let mut rig = Self { world };
+        rig.layout();
+        (rig, root)
+    }
+
+    /// The root with buttons `a` at (10, 10) and `b` at (10, 60), 100 by
+    /// 30 each.
+    fn new() -> (Self, WidgetId, WidgetId, WidgetId) {
+        let (mut rig, root) = Self::empty();
+        let a = rig.place(root, at(10.0, 10.0, 100.0, 30.0));
+        let b = rig.place(root, at(10.0, 60.0, 100.0, 30.0));
+        rig.layout();
+        (rig, root, a, b)
+    }
+
+    fn place(&mut self, parent: WidgetId, style: LayoutStyle) -> WidgetId {
+        let tree = self.tree_mut();
+        let button = tree.button(parent, "x");
+        tree.set_layout_style(button, style);
+        button
+    }
+
+    fn layout(&mut self) {
+        self.tree_mut()
+            .layout(VIEWPORT, &mut FixedAdvanceMeasure::default());
+    }
+
+    fn frame(&mut self, feed: impl FnOnce(&mut InputState)) -> Vec<UiEvent> {
+        self.frame_dt(DT, feed)
+    }
+
+    /// One frame of `dt` real seconds: the queues rotate, `feed` gives the
+    /// raw input, the clock advances, the UI routes, the tree lays out.
+    /// Returns the routing's events.
+    fn frame_dt(&mut self, dt: f32, feed: impl FnOnce(&mut InputState)) -> Vec<UiEvent> {
+        self.world.flush_events();
+        let input = self.world.resource_mut::<InputState>();
+        input.begin_frame();
+        feed(input);
+        self.world.resource_mut::<Time>().advance_frame(dt);
+        ui_route_system(&mut self.world);
+        self.layout();
+        self.queue().iter_current().copied().collect()
+    }
+
+    /// A widget's centre in UI units, physical pixels at scale 1.
+    fn centre(&self, id: WidgetId) -> Vec2 {
+        let rect = self.tree().rect(id).expect("laid out");
+        (rect.min + rect.max) * 0.5
+    }
+
+    fn click(&mut self, id: WidgetId) -> Vec<UiEvent> {
+        let point = self.centre(id);
+        self.click_px(point)
+    }
+
+    /// A move, a press and a release at `point` in physical pixels.
+    fn click_px(&mut self, point: Vec2) -> Vec<UiEvent> {
+        self.frame(|input| {
+            input.update_cursor_position(point.x, point.y);
+            input.mouse_down(LEFT);
+            input.mouse_up(LEFT);
+        })
+    }
+
+    fn tree(&self) -> &UiTree {
+        self.world.resource::<UiTree>()
+    }
+
+    fn tree_mut(&mut self) -> &mut UiTree {
+        self.world.resource_mut::<UiTree>()
+    }
+
+    fn router(&self) -> &UiRouter {
+        self.world.resource::<UiRouter>()
+    }
+
+    fn routed(&self) -> &RoutedInput {
+        self.world.resource::<RoutedInput>()
+    }
+
+    fn queue(&self) -> &EventQueue<UiEvent> {
+        self.world.resource::<EventQueue<UiEvent>>()
+    }
+
+    /// Whether the routed view pressed `action` this frame.
+    fn game_pressed(&self, action: &str) -> bool {
+        self.world
+            .resource::<ActionMap>()
+            .just_pressed(self.routed(), action)
+    }
+}
+
+#[test]
+fn a_move_press_and_release_in_one_stream_click_where_the_move_put_the_pointer() {
+    let (mut rig, _root, a, b) = Rig::new();
+    let at_b = rig.centre(b);
+    let events = rig.click_px(at_b);
+    assert_eq!(
+        events,
+        [
+            UiEvent::PointerEntered { widget: b },
+            UiEvent::Pressed {
+                widget: b,
+                button: LEFT
+            },
+            UiEvent::FocusGained { widget: b },
+            UiEvent::Released {
+                widget: b,
+                button: LEFT
+            },
+            UiEvent::Activated { widget: b },
+        ]
+    );
+    assert!(!activations(&events).contains(&a));
+    assert_eq!(rig.tree().focused(), Some(b), "a click focuses its target");
+    assert_eq!(rig.tree().hovered(), Some(b));
+    assert_eq!(rig.tree().pressed(), None);
+    let routed = rig.routed();
+    assert!(
+        !routed.mouse_just_pressed(LEFT) && !routed.mouse_just_released(LEFT),
+        "the click is the UI's"
+    );
+    assert_eq!(
+        routed.cursor_position(),
+        Some((at_b.x, at_b.y)),
+        "moves always reach the routed view"
+    );
+    assert!(rig.router().pointer_over_ui());
+}
+
+#[test]
+fn a_release_off_the_captured_widget_releases_without_activating() {
+    let (mut rig, _root, a, b) = Rig::new();
+    let (at_a, at_b) = (rig.centre(a), rig.centre(b));
+    rig.frame(|input| {
+        input.update_cursor_position(at_b.x, at_b.y);
+        input.mouse_down(LEFT);
+    });
+    assert_eq!(rig.tree().pressed(), Some(b));
+    let events = rig.frame(|input| input.update_cursor_position(at_a.x, at_a.y));
+    assert_eq!(
+        events,
+        [UiEvent::PointerLeft { widget: b }],
+        "only the captured widget hovers"
+    );
+    assert_eq!(rig.tree().hovered(), None);
+    assert_eq!(rig.tree().pressed(), None, "pressed only while over it");
+    rig.frame(|input| input.update_cursor_position(at_b.x, at_b.y));
+    assert_eq!(rig.tree().pressed(), Some(b));
+    rig.frame(|input| input.update_cursor_position(at_a.x, at_a.y));
+    let events = rig.frame(|input| input.mouse_up(LEFT));
+    assert_eq!(
+        events,
+        [
+            UiEvent::Released {
+                widget: b,
+                button: LEFT
+            },
+            UiEvent::PointerEntered { widget: a },
+        ]
+    );
+    assert!(
+        !rig.routed().mouse_just_released(LEFT),
+        "the UI got the press, so the release"
+    );
+}
+
+#[test]
+fn another_button_presses_and_releases_its_target_and_does_nothing_else() {
+    let (mut rig, _root, a, _b) = Rig::new();
+    let at_a = rig.centre(a);
+    let right = MouseButton::Right;
+    let events = rig.frame(|input| {
+        input.update_cursor_position(at_a.x, at_a.y);
+        input.mouse_down(right);
+    });
+    assert_eq!(
+        events,
+        [
+            UiEvent::PointerEntered { widget: a },
+            UiEvent::Pressed {
+                widget: a,
+                button: right
+            },
+        ]
+    );
+    assert_eq!(rig.tree().focused(), None, "no capture and no focus");
+    assert_eq!(rig.tree().pressed(), None);
+    let events = rig.frame(|input| input.mouse_up(right));
+    assert_eq!(
+        events,
+        [UiEvent::Released {
+            widget: a,
+            button: right
+        }]
+    );
+}
+
+#[test]
+fn a_press_ends_cancelled_when_its_widget_hides_or_the_pointer_leaves() {
+    let (mut rig, _root, a, b) = Rig::new();
+    let at_a = rig.centre(a);
+    rig.frame(|input| {
+        input.update_cursor_position(at_a.x, at_a.y);
+        input.mouse_down(LEFT);
+    });
+    rig.tree_mut().set_visibility(a, Visibility::Hidden);
+    let events = rig.frame(|_| {});
+    assert_eq!(
+        events,
+        [
+            UiEvent::FocusLost { widget: a },
+            UiEvent::PressCancelled { widget: a },
+            UiEvent::PointerLeft { widget: a },
+        ]
+    );
+    let events = rig.frame(|input| input.mouse_up(LEFT));
+    assert!(events.is_empty(), "the cancelled press's release is silent");
+    assert!(!rig.routed().mouse_just_released(LEFT));
+
+    let at_b = rig.centre(b);
+    rig.frame(|input| {
+        input.update_cursor_position(at_b.x, at_b.y);
+        input.mouse_down(LEFT);
+    });
+    let events = rig.frame(InputState::pointer_left);
+    assert_eq!(
+        events,
+        [
+            UiEvent::PressCancelled { widget: b },
+            UiEvent::PointerLeft { widget: b },
+        ]
+    );
+    assert_eq!(rig.tree().pressed(), None);
+    assert!(!rig.router().pointer_over_ui());
+}
+
+#[test]
+fn focus_loss_cancels_the_press_clears_the_hover_and_releases_both_sides() {
+    let (mut rig, _root, a, b) = Rig::new();
+    rig.tree_mut().focus(a);
+    let at_b = rig.centre(b);
+    rig.frame(|input| {
+        input.key_down(KeyCode::ArrowDown);
+        input.key_down(KeyCode::KeyW);
+        input.update_cursor_position(at_b.x, at_b.y);
+        input.mouse_down(LEFT);
+    });
+    assert_eq!(rig.tree().focused(), Some(b), "the UI took the arrow");
+    assert!(rig.routed().is_pressed(KeyCode::KeyW));
+    assert!(!rig.routed().is_pressed(KeyCode::ArrowDown));
+    assert_eq!(rig.tree().pressed(), Some(b));
+
+    let events = rig.frame(|input| input.set_focused(false));
+    assert_eq!(
+        events,
+        [
+            UiEvent::PressCancelled { widget: b },
+            UiEvent::PointerLeft { widget: b },
+        ]
+    );
+    assert_eq!((rig.tree().hovered(), rig.tree().pressed()), (None, None));
+    let routed = rig.routed();
+    assert!(!routed.is_pressed(KeyCode::KeyW));
+    assert!(routed.just_released(KeyCode::KeyW), "with a release edge");
+    assert!(!routed.focused());
+    let router = rig.router();
+    assert!(
+        router.ui_keys.is_empty() && router.ui_buttons.is_empty(),
+        "the UI's held keys and buttons are forgotten"
+    );
+    rig.frame(|_| {});
+    assert_eq!(
+        rig.tree().hovered(),
+        None,
+        "nor does the next routing hover from the old position"
+    );
+}
+
+#[test]
+fn one_click_or_accept_press_activates_once() {
+    let (mut rig, _root, _a, b) = Rig::new();
+    rig.click(b);
+    assert!(rig.queue().activated(b));
+    rig.frame(|_| {});
+    assert!(
+        !rig.queue().activated(b),
+        "activated() sees the click in one frame"
+    );
+    assert_eq!(
+        rig.queue()
+            .iter()
+            .filter(|event| **event == UiEvent::Activated { widget: b })
+            .count(),
+        1,
+        "where iter() sees it in a second"
+    );
+
+    rig.frame(|input| input.key_down(KeyCode::KeyW));
+    assert!(rig.tree().focus_visible(), "a game key shows focus");
+    let events = rig.frame(|input| input.key_down(KeyCode::Enter));
+    assert_eq!(activations(&events), [b]);
+    let events = rig.frame(|input| input.key_down(KeyCode::Enter));
+    assert!(activations(&events).is_empty(), "an OS repeat");
+    let events = rig.frame(|_| {});
+    assert!(activations(&events).is_empty(), "a held key");
+    rig.frame(|input| input.key_up(KeyCode::Enter));
+    let events = rig.frame(|input| input.key_down(KeyCode::Space));
+    assert_eq!(activations(&events), [b], "Space accepts too");
+}
+
+#[test]
+fn a_held_direction_moves_focus_then_repeats_after_half_a_second_every_tenth() {
+    let (mut rig, root) = Rig::empty();
+    let column: Vec<WidgetId> = (0..12)
+        .map(|i| rig.place(root, at(10.0, 24.0 * i as f32, 100.0, 20.0)))
+        .collect();
+    rig.layout();
+    let index = |rig: &Rig| {
+        column
+            .iter()
+            .position(|id| rig.tree().focused() == Some(*id))
+            .expect("focus in the column")
+    };
+    rig.tree_mut().focus(column[0]);
+    rig.frame(|input| input.key_down(KeyCode::ArrowDown));
+    assert_eq!(index(&rig), 1, "the press moves once");
+    assert!(!rig.routed().is_pressed(KeyCode::ArrowDown));
+
+    // 0.5 s is 16 frames; then 0.6, 0.7 and 0.8 s end in frames 20, 23
+    // and 26 of 1/32 s.
+    let mut moved = Vec::new();
+    for frame in 1..=26 {
+        let before = rig.tree().focused();
+        rig.frame(|_| {});
+        if rig.tree().focused() != before {
+            moved.push(frame);
+        }
+    }
+    assert_eq!(moved, [16, 20, 23, 26]);
+    assert_eq!(index(&rig), 5);
+
+    rig.frame_dt(0.35, |_| {});
+    assert_eq!(index(&rig), 6, "at most once a routing");
+    rig.frame(|_| {});
+    assert_eq!(index(&rig), 6, "and no catching up after it");
+
+    rig.frame(|input| input.key_up(KeyCode::ArrowDown));
+    for _ in 0..40 {
+        rig.frame(|_| {});
+    }
+    assert_eq!(index(&rig), 6, "the release stops it");
+    assert!(!rig.routed().just_released(KeyCode::ArrowDown));
+}
+
+#[test]
+fn tab_moves_in_tab_order_and_shift_or_a_bound_ui_prev_goes_back() {
+    let (mut rig, _root, a, b) = Rig::new();
+    rig.tree_mut().focus(a);
+    rig.frame(|input| input.key_down(KeyCode::Tab));
+    assert_eq!(rig.tree().focused(), Some(b));
+    rig.frame(|input| {
+        input.key_up(KeyCode::Tab);
+        input.set_modifiers(Modifiers::SHIFT);
+        input.key_down(KeyCode::Tab);
+    });
+    assert_eq!(rig.tree().focused(), Some(a), "Shift with ui_next");
+    rig.frame(|input| {
+        input.key_up(KeyCode::Tab);
+        input.set_modifiers(Modifiers::empty());
+    });
+    rig.world.resource_mut::<ActionMap>().replace_bindings(
+        UI_PREV,
+        vec![Binding::Key {
+            code: KeyCode::KeyQ,
+        }],
+    );
+    rig.frame(|input| input.key_down(KeyCode::KeyQ));
+    assert_eq!(rig.tree().focused(), Some(b), "ui_prev wraps backwards");
+    assert!(!rig.routed().is_pressed(KeyCode::KeyQ));
+}
+
+#[test]
+fn a_held_key_releases_to_the_side_that_got_its_press() {
+    let (mut rig, _root, a, _b) = Rig::new();
+    rig.click(a);
+    assert!(!rig.tree().focus_visible());
+    rig.frame(|input| input.key_down(KeyCode::Space));
+    assert!(
+        rig.routed().just_pressed(KeyCode::Space),
+        "hidden focus: the game's"
+    );
+    assert!(rig.tree().focus_visible(), "the press shows focus");
+    rig.frame(|input| input.key_up(KeyCode::Space));
+    assert!(
+        rig.routed().just_released(KeyCode::Space),
+        "its release follows its press"
+    );
+
+    let events = rig.frame(|input| input.key_down(KeyCode::Enter));
+    assert_eq!(activations(&events), [a]);
+    assert!(!rig.routed().just_pressed(KeyCode::Enter));
+    rig.frame(|input| input.key_up(KeyCode::Enter));
+    assert!(
+        !rig.routed().just_released(KeyCode::Enter),
+        "one the UI took never reaches the routed view"
+    );
+}
+
+#[test]
+fn under_a_shown_modal_every_press_is_the_uis_and_a_debug_root_above_still_hits() {
+    let (mut rig, _root, a, _b) = Rig::new();
+    let popup = rig
+        .tree_mut()
+        .add_root(UiLayer::GamePopup, at(150.0, 100.0, 200.0, 100.0));
+    rig.tree_mut().set_modal(popup, true);
+    let ok = rig.place(popup, at(10.0, 10.0, 80.0, 30.0));
+    let debug = rig
+        .tree_mut()
+        .add_root(UiLayer::Debug, at(300.0, 250.0, 100.0, 50.0));
+    let tool = rig.place(debug, at(0.0, 0.0, 100.0, 50.0));
+    rig.layout();
+
+    let events = rig.frame(|input| input.key_down(KeyCode::KeyW));
+    assert_eq!(
+        events,
+        [UiEvent::FocusGained { widget: ok }],
+        "the modal takes focus on its first focusable widget"
+    );
+    assert!(
+        !rig.routed().is_pressed(KeyCode::KeyW),
+        "a key no action names is the UI's"
+    );
+    assert!(rig.router().wants_keyboard());
+
+    let at_a = rig.centre(a);
+    let events = rig.click_px(at_a);
+    assert!(
+        events.is_empty(),
+        "the widget under the modal is not hit: {events:?}"
+    );
+    assert!(
+        !rig.routed().mouse_just_pressed(LEFT),
+        "and the click is the UI's"
+    );
+    assert!(rig.router().pointer_over_ui());
+
+    let events = rig.click(tool);
+    assert_eq!(
+        activations(&events),
+        [tool],
+        "a Debug root above it still hits"
+    );
+    assert_eq!(rig.tree().focused(), Some(tool));
+    rig.frame(|_| {});
+    assert_eq!(
+        rig.tree().focused(),
+        Some(tool),
+        "focus above the modal stays"
+    );
+}
+
+#[test]
+fn escape_with_visible_focus_cancels_and_clears_it_and_without_focus_is_the_games() {
+    let (mut rig, root, a, _b) = Rig::new();
+    rig.tree_mut().focus(a);
+    let events = rig.frame(|input| input.key_down(KeyCode::Escape));
+    assert!(events.contains(&UiEvent::Cancel { scope: root }));
+    assert_eq!(
+        rig.tree().focused(),
+        None,
+        "outside a modal it clears focus"
+    );
+    assert!(!rig.game_pressed("engine_exit"), "the UI took it");
+    rig.frame(|input| input.key_up(KeyCode::Escape));
+    let events = rig.frame(|input| input.key_down(KeyCode::Escape));
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, UiEvent::Cancel { .. }))
+    );
+    assert!(rig.game_pressed("engine_exit"), "without focus: the game's");
+
+    // Under a modal Escape cancels the modal and keeps focus.
+    let popup = rig
+        .tree_mut()
+        .add_root(UiLayer::GamePopup, at(100.0, 100.0, 200.0, 100.0));
+    rig.tree_mut().set_modal(popup, true);
+    let ok = rig.place(popup, at(10.0, 10.0, 80.0, 30.0));
+    rig.layout();
+    rig.frame(|input| input.key_up(KeyCode::Escape));
+    let events = rig.frame(|input| input.key_down(KeyCode::Escape));
+    assert!(events.contains(&UiEvent::Cancel { scope: popup }));
+    assert_eq!(rig.tree().focused(), Some(ok));
+    assert!(!rig.game_pressed("engine_exit"));
+}
+
+#[test]
+fn at_scale_2_a_physical_click_lands_on_the_logical_rect() {
+    let (mut rig, _root, a, b) = Rig::new();
+    rig.world.resource_mut::<ScaleFactor>().set_os(2.0);
+    // `a` spans (10, 10)–(110, 40) in UI units, (20, 20)–(220, 80) in
+    // pixels; `b` starts at y 60, pixel 120.
+    let events = rig.click_px(Vec2::new(200.0, 70.0));
+    assert_eq!(activations(&events), [a]);
+    let events = rig.click_px(Vec2::new(200.0, 110.0));
+    assert!(activations(&events).is_empty(), "between the two");
+    let events = rig.click_px(Vec2::new(100.0, 150.0));
+    assert_eq!(activations(&events), [b]);
+}
+
+#[test]
+fn a_second_click_on_the_same_widget_soon_and_near_is_a_double_click() {
+    let (mut rig, _root, a, b) = Rig::new();
+    rig.click(a);
+    let events = rig.click(a);
+    assert_eq!(
+        &events[events.len() - 2..],
+        [
+            UiEvent::Activated { widget: a },
+            UiEvent::DoubleClicked { widget: a },
+        ]
+    );
+    let events = rig.click(a);
+    assert!(
+        !events.contains(&UiEvent::DoubleClicked { widget: a }),
+        "a third click starts a pair again"
+    );
+
+    // 0.5 s apart is still one; 17 frames is past it.
+    for _ in 0..15 {
+        rig.frame(|_| {});
+    }
+    let events = rig.click(a);
+    assert!(events.contains(&UiEvent::DoubleClicked { widget: a }));
+    rig.click(a);
+    for _ in 0..16 {
+        rig.frame(|_| {});
+    }
+    assert!(!rig.click(a).contains(&UiEvent::DoubleClicked { widget: a }));
+
+    let near = rig.centre(a);
+    rig.click_px(near + Vec2::new(5.0, 0.0));
+    assert!(
+        !rig.click_px(near)
+            .contains(&UiEvent::DoubleClicked { widget: a }),
+        "5 units apart"
+    );
+    rig.click(b);
+    assert!(
+        !rig.click(a).contains(&UiEvent::DoubleClicked { widget: a }),
+        "another widget between"
+    );
+}
+
+#[test]
+fn a_key_shows_focus_a_click_or_the_wheel_hides_it_and_a_move_leaves_it() {
+    let (mut rig, _root, a, _b) = Rig::new();
+    assert_eq!(rig.router().last_device(), InputDevice::Keyboard);
+    rig.click(a);
+    assert_eq!(rig.router().last_device(), InputDevice::Pointer);
+    assert!(!rig.tree().focus_visible());
+    assert!(!rig.router().wants_keyboard(), "hidden focus");
+    rig.frame(|input| input.update_cursor_position(300.0, 200.0));
+    assert!(!rig.tree().focus_visible(), "a move changes nothing");
+    rig.frame(|input| input.key_down(KeyCode::KeyW));
+    assert_eq!(rig.router().last_device(), InputDevice::Keyboard);
+    assert!(rig.tree().focus_visible());
+    assert!(rig.router().wants_keyboard());
+    rig.frame(|input| input.update_cursor_position(20.0, 20.0));
+    assert!(rig.tree().focus_visible(), "nor does this one");
+    rig.frame(|input| input.add_scroll_line_delta(0.0, 1.0));
+    assert_eq!(rig.router().last_device(), InputDevice::Pointer);
+    assert!(!rig.tree().focus_visible());
+    assert!(
+        !rig.routed()
+            .is_scroll_active(crate::input::ScrollDirection::Up),
+        "the wheel over the UI is the UI's"
+    );
+}
+
+#[test]
+fn the_cursor_is_the_nearest_one_set_under_the_pointer_or_on_the_captured_widget() {
+    let (mut rig, root, a, b) = Rig::new();
+    rig.tree_mut().set_cursor(a, Some(CursorIcon::Pointer));
+    rig.tree_mut().set_cursor(root, Some(CursorIcon::Move));
+    let label = rig.tree().children(a)[0];
+    let (at_a, at_label, at_b) = (rig.centre(a), rig.centre(label), rig.centre(b));
+    assert_eq!(rig.router().cursor(), CursorIcon::Default);
+    rig.frame(|input| input.update_cursor_position(at_a.x, at_a.y));
+    assert_eq!(rig.router().cursor(), CursorIcon::Pointer);
+    rig.frame(|input| input.update_cursor_position(at_label.x, at_label.y));
+    assert_eq!(
+        rig.router().cursor(),
+        CursorIcon::Pointer,
+        "set on the button, read through its label"
+    );
+    rig.frame(|input| input.update_cursor_position(at_b.x, at_b.y));
+    assert_eq!(rig.router().cursor(), CursorIcon::Move, "the root's");
+    rig.frame(|input| {
+        input.update_cursor_position(at_a.x, at_a.y);
+        input.mouse_down(LEFT);
+        input.update_cursor_position(at_b.x, at_b.y);
+    });
+    assert_eq!(
+        rig.router().cursor(),
+        CursorIcon::Pointer,
+        "the captured widget's"
+    );
+    rig.frame(|input| input.mouse_up(LEFT));
+    assert_eq!(rig.router().cursor(), CursorIcon::Move);
+    rig.frame(InputState::pointer_left);
+    assert_eq!(rig.router().cursor(), CursorIcon::Default);
+}
+
+#[test]
+fn a_focus_change_by_the_game_is_reported_at_the_next_routing() {
+    let (mut rig, _root, a, b) = Rig::new();
+    rig.tree_mut().focus(a);
+    assert_eq!(rig.frame(|_| {}), [UiEvent::FocusGained { widget: a }]);
+    rig.tree_mut().focus(b);
+    assert_eq!(
+        rig.frame(|_| {}),
+        [
+            UiEvent::FocusLost { widget: a },
+            UiEvent::FocusGained { widget: b },
+        ]
+    );
+    assert!(rig.frame(|_| {}).is_empty());
+}
+
+#[test]
+fn a_root_added_since_the_last_layout_takes_no_input_until_laid_out() {
+    let (mut rig, _root, a, _b) = Rig::new();
+    let cover = rig
+        .tree_mut()
+        .add_root(UiLayer::GamePopup, at(0.0, 0.0, 200.0, 100.0));
+    rig.tree_mut().set_interactive(cover, true);
+    let at_a = rig.centre(a);
+    let events = rig.click_px(at_a);
+    assert_eq!(
+        activations(&events),
+        [a],
+        "the routing before its first layout"
+    );
+    let events = rig.click_px(at_a);
+    assert_eq!(activations(&events), [cover], "laid out at the frame's end");
+}
+
+#[test]
+fn hidden_game_layers_take_no_input() {
+    let (mut rig, _root, a, _b) = Rig::new();
+    rig.world.insert_resource(UiDebug {
+        hide_game_layers: true,
+        show_bounds: false,
+    });
+    let events = rig.click(a);
+    assert!(events.is_empty(), "{events:?}");
+    assert!(rig.routed().mouse_just_pressed(LEFT), "the game's click");
+    assert!(!rig.router().pointer_over_ui());
+}
+
+#[test]
+fn a_world_without_the_queue_the_router_or_the_tree_still_feeds_the_routed_view() {
+    let mut world = World::new();
+    world.insert_resource(InputState::new());
+    world.insert_resource(RoutedInput::default());
+    world.resource_mut::<InputState>().key_down(KeyCode::Escape);
+    ui_route_system(&mut world);
+    assert!(
+        world
+            .resource::<RoutedInput>()
+            .just_pressed(KeyCode::Escape)
+    );
+    assert!(world.has_resource::<UiRouter>(), "the router is inserted");
+    assert!(!world.has_resource::<EventQueue<UiEvent>>());
+    world.resource_mut::<InputState>().begin_frame();
+    world.resource_mut::<InputState>().key_up(KeyCode::Escape);
+    ui_route_system(&mut world);
+    assert!(
+        world
+            .resource::<RoutedInput>()
+            .just_released(KeyCode::Escape)
+    );
+}

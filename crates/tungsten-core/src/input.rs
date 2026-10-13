@@ -755,6 +755,33 @@ impl Default for InputState {
     }
 }
 
+/// The input the UI did not take (`D-149`): an [`InputState`] that only the
+/// UI routing system feeds, through the same mutators, in arrival order. A
+/// press the UI takes never reaches it, nor does that key's or button's
+/// release, and a press it got always gets its release, so no key sticks on
+/// either side; moves, pointer leave, modifiers and focus always reach it.
+/// [`ActionMap`] reads it through `Deref`, and its frame and fixed views
+/// behave as [`InputState`]'s. Its frame starts at each routing, so a reader
+/// that runs before the routing sees the previous routing's edges. It is
+/// opt-in: [`InputState`] stays the raw input, which the engine's own toggles
+/// read.
+#[derive(Debug, Clone, Default)]
+pub struct RoutedInput(InputState);
+
+impl std::ops::Deref for RoutedInput {
+    type Target = InputState;
+
+    fn deref(&self) -> &InputState {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for RoutedInput {
+    fn deref_mut(&mut self) -> &mut InputState {
+        &mut self.0
+    }
+}
+
 #[cfg(test)]
 #[path = "tests/input.rs"]
 mod tests;

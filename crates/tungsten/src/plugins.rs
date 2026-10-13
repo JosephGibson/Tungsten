@@ -10,8 +10,10 @@
 //! `after_if_present`, so leaving a plugin out never fails startup.
 //! Constraints within a plugin are required.
 
+use tungsten_core::ui::ui_route_system;
 use tungsten_core::{
-    Plugin, PluginSet, Schedule, ShakeEvent, SquashEvent, Stage, TweenComplete, World, system,
+    Plugin, PluginSet, Schedule, ShakeEvent, SquashEvent, Stage, TweenComplete, UiEvent, World,
+    system,
 };
 
 use crate::camera::camera_update_system;
@@ -51,6 +53,8 @@ pub const UI_DEBUG_TOGGLE: &str = "ui_debug_toggle";
 pub const DISPLAY_INPUT: &str = "display_input";
 /// `PreUpdate`: the state stack's dispatcher, after the display hotkeys.
 pub const STATE_DISPATCHER: &str = "state_dispatcher";
+/// `PreUpdate`: UI input routing, after the state dispatcher (`D-149`).
+pub const UI_ROUTE: &str = "ui_route";
 /// `PostUpdate`: particle emitter counts, before the emit.
 pub const PARTICLE_COUNT_REFRESH: &str = "particle_count_refresh";
 /// `PostUpdate`: particle emission, before the tick.
@@ -121,6 +125,22 @@ impl Plugin for StatePlugin {
         schedule.add(
             Stage::PreUpdate,
             system(STATE_DISPATCHER, state_dispatcher_system).after_if_present(DISPLAY_INPUT),
+        );
+    }
+}
+
+/// UI input routing in `PreUpdate`, after the state dispatcher, and the
+/// `UiEvent` queue (`D-149`). Without it the UI takes no input and
+/// `RoutedInput` stays empty.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct UiPlugin;
+
+impl Plugin for UiPlugin {
+    fn build(&self, schedule: &mut Schedule, world: &mut World) {
+        world.register_event::<UiEvent>();
+        schedule.add(
+            Stage::PreUpdate,
+            system(UI_ROUTE, ui_route_system).after_if_present(STATE_DISPATCHER),
         );
     }
 }
@@ -215,13 +235,15 @@ impl Plugin for CameraPlugin {
 pub struct DefaultPlugins;
 
 impl DefaultPlugins {
-    /// Debug, display, state, physics, particles, tweens, game feel, camera.
+    /// Debug, display, state, UI, physics, particles, tweens, game feel,
+    /// camera.
     #[must_use]
     pub fn set() -> PluginSet {
         PluginSet::new()
             .with(DebugPlugin)
             .with(DisplayPlugin)
             .with(StatePlugin)
+            .with(UiPlugin)
             .with(PhysicsPlugin)
             .with(ParticlesPlugin)
             .with(TweensPlugin)

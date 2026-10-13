@@ -498,3 +498,30 @@ fn key_events_carry_the_modifiers_held() {
         ]
     );
 }
+
+#[test]
+fn routed_input_reads_as_an_input_state_of_its_own() {
+    let map = ActionMap::default_map();
+    let raw = InputState::new();
+    let mut routed = RoutedInput::default();
+    assert!(routed.focused());
+    routed.key_down(KeyCode::Space);
+    assert!(
+        map.just_pressed(&routed, "jump"),
+        "the action map reads it through Deref"
+    );
+    assert!(!map.is_pressed(&raw, "jump"), "it shares nothing");
+    routed.set_fixed_view(true);
+    assert!(map.just_pressed(&routed, "jump"), "its fixed view");
+    routed.end_fixed_step();
+    assert!(!map.just_pressed(&routed, "jump"));
+    routed.set_fixed_view(false);
+    assert!(
+        map.just_pressed(&routed, "jump"),
+        "the frame view keeps its edge"
+    );
+    routed.begin_frame();
+    assert!(!map.just_pressed(&routed, "jump"));
+    assert!(map.is_pressed(&routed, "jump"));
+    assert_eq!(routed.raw_events(), &[]);
+}
