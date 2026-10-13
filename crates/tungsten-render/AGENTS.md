@@ -28,5 +28,5 @@ Surface acquire decisions (reconfigure, recreate, skip, fail) live in the GPU-fr
 ## Checks
 
 - `cargo test -p tungsten-render`: layout tests plus `tests/shader_coverage.rs`, which Naga-validates every `.wgsl` in both trees and checks each mirror pair byte for byte. A new LYGIA fragment that calls a sibling needs a `FRAGMENT_DEPS` entry.
-- GPU changes: `WGPU_BACKEND=vulkan ./scripts/smoke-examples.sh` and the visual test from the root `AGENTS.md`. Naga success doesn't prove pixels; Vulkan success doesn't certify Metal or DX12.
+- GPU changes: `just smoke` and `just visual` ([validation](../../docs/validation.md)). Naga success doesn't prove pixels; Vulkan success doesn't certify Metal or DX12.
 - Don't replace golden images to make a test pass; explain the pixel difference first.

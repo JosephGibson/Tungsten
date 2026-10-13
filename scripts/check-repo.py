@@ -375,7 +375,7 @@ def check_summary(root, errors, notes):
     rel = roadmap.SUMMARY_DOC
     text = (root / rel).read_text()
     if text.count(roadmap.SUMMARY_START) != 1 or text.count(roadmap.SUMMARY_END) != 1:
-        errors.append(f"{rel}: expected one owned roadmap summary block; run python3 -B scripts/roadmap.py summary")
+        errors.append(f"{rel}: expected one owned roadmap summary block; run python3 -B scripts/roadmap.py summary --write")
         return
     if text.index(roadmap.SUMMARY_END) < text.index(roadmap.SUMMARY_START):
         errors.append(f"{rel}: owned roadmap summary end precedes its start")
@@ -389,7 +389,7 @@ def check_summary(root, errors, notes):
     refs = has_release_refs(root)
     for field, value in lines:
         if value != expected[field] and (refs or field not in REF_FIELDS):
-            errors.append(f"{rel}: stale owned field {field!r}: {value!r}, expected {expected[field]!r}; run python3 -B scripts/roadmap.py summary")
+            errors.append(f"{rel}: stale owned field {field!r}: {value!r}, expected {expected[field]!r}; run python3 -B scripts/roadmap.py summary --write")
     if refs:
         notes.append("roadmap summary uses local refs only; inspect roadmap.py status's fetch freshness before publication claims")
     else:
@@ -593,6 +593,7 @@ def main(argv=None):
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parent.parent)
     parser.add_argument("--select-checks", action="store_true", help="print recommendations only; paths or Git changes including untracked files")
     parser.add_argument("--base", help="compare this commit/ref directly to the work tree (default HEAD); no fetch")
+    parser.add_argument("--notes", action="store_true", help="also list the informational notes, not only their count")
     parser.add_argument("paths", nargs="*", help="explicit repository-relative paths, including deleted files")
     args = parser.parse_args(argv)
     if (args.base or args.paths) and not args.select_checks:
@@ -618,11 +619,14 @@ def main(argv=None):
         check_agent_config(root, errors)
     except (OSError, ValueError) as exc:
         errors.append(f"agent config: {exc}")
-    for note in sorted(set(notes)):
-        print(f"NOTE: {note}")
+    notes = sorted(set(notes))
+    if args.notes:
+        for note in notes:
+            print(f"NOTE: {note}")
     for error in errors:
         print(f"ERROR: {error}")
-    print(f"Repository QA: {len(errors)} error(s)")
+    listed = "" if args.notes or not notes else " (--notes lists them)"
+    print(f"Repository QA: {len(errors)} error(s), {len(notes)} note(s){listed}")
     return int(bool(errors))
 
 

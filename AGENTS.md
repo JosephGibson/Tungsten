@@ -54,7 +54,7 @@ Asset files are listed in a `manifest.json` and named by registry ID. [`docs/ass
 
 ## Sessions
 
-- **Feature:** plan first (files, API shape, tests). Bounded maintenance records scope, affected files and acceptance checks in the session; multi-session work keeps a saved handoff plan (`D-140`, [routes](docs/plans/README.md#choosing-a-route)). Milestone/API review requirements stand.
+- **Feature:** plan first (files, API shape, tests). Bounded maintenance records scope, affected files and acceptance checks in the session; multi-session work keeps a saved handoff plan (`D-140`, [routes](docs/plans/README.md#choosing-a-route)). Milestones keep their plan and critique; nothing stops for approval (`D-150`).
 - **Audit:** crate correctness audits read the full named crate surface; scoped workflow/documentation audits read the named docs and tools. Report findings only unless fixes are requested. Check decisions before calling a choice wrong.
 - **Docs:** read the whole doc before editing. Decisions are immutable: a reversal adds an entry and marks the old one `Superseded by D-NNN`. New decisions add their `docs/DECISION_INDEX.md` row in the same change (test-enforced). Releases follow [docs/releases.md](docs/releases.md); README stays version-free.
 - Don't change code you haven't read. Stuck: re-read scope, check decisions, or leave `// TODO: ask about X`.

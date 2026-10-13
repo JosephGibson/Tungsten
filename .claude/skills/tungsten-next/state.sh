@@ -169,25 +169,17 @@ python3 -B scripts/roadmap.py summary || exit 1
 newd=$(comm -13 <(git show HEAD:DECISIONS.md | grep -oE '^## D-[0-9]+' | sort) <(grep -oE '^## D-[0-9]+' DECISIONS.md | sort) | sed 's/^## //' | tr '\n' ' ')
 echo "decisions not in HEAD: ${newd:-none}"
 
-row=$(grep -m1 '^| Step 0 |' "$impl")
-case "$row" in
-  "" | *[Rr]eleased*) ;;
-  *)
-    dec() { if grep -q "^## D-$1 " DECISIONS.md; then git show HEAD:DECISIONS.md | grep -q "^## D-$1 " && echo committed || echo uncommitted; else echo missing; fi; }
-    echo "== step 0 items (workflow §8)"
-    echo "0a plan check: plan_files() $(grep -q '^def plan_files' scripts/check-repo.py && echo present || echo missing) in scripts/check-repo.py ($(state scripts/check-repo.py))"
-    echo "0b headroom: D-106 $(dec 106), docs/assets.md $(state docs/assets.md)"
-    echo "0c milestone skill: .claude/skills/tungsten-milestone/ $(state .claude/skills/tungsten-milestone/SKILL.md)"
-    echo "0d api snapshot: D-107 $(dec 107), scripts/public-api.sh $(state scripts/public-api.sh), api/ $(state api), just api $(grep -q '^api:' justfile && echo present || echo missing)" ;;
-esac
-
 echo "== milestone and QA plans"
 found=0
 for p in "$plans"/phase*.md; do
   [ -e "$p" ] || continue
   found=1
   st=$(grep -m1 '^- \*\*status:\*\*' "$p" | sed 's/^- \*\*status:\*\* *//')
-  ap=$(grep -m1 -n '^Approved' "$p" | cut -d: -f1)
+  # D-150: a plan has started once its status header says so or its evidence log has a row. Its
+  # critique record, the plan session's last write, is any line of the Critique section besides the
+  # skeleton's <placeholders>, the table's header and its rule: the reviewer line, "Not run: …" or a row.
+  crit=$(awk '/^## .*Critique/ { f = 1; next } /^## / { f = 0 }
+    f && NF && !/^</ && !/\| *</ && !/^\| *# *\|/ && !/^\| *-+ *\|/ { print "recorded"; exit }' "$p")
   steps=$(grep -c '^### Step ' "$p")
   ev=$(awk '/^## Evidence/{f=1;next} /^## /{f=0} f' "$p" | sed -nE 's/^\| *(Step +)?([0-9]+) *\|.*/\2/p' | sort -un | tr '\n' ' ')
   miss=none
@@ -207,8 +199,8 @@ for p in "$plans"/phase*.md; do
         if (c ~ /(just perf|bench\.py) +(run|suite|capacity)/ || (c ~ /cargo bench/ && c !~ /--no-run/)) hit[s] = 1
       } }
     END { for (k in hit) if (!index(ev, " " k " ")) print k }' "$p" | sort -n | tr '\n' ' ')
-  [ -n "$ap" ] && ap="line $ap"
-  echo "$p ($(state "$p"), $(age "$(stat -c %Y "$p")")) | status: ${st:-?} | approved: ${ap:-no} | steps: $steps | evidence: ${ev:-none}| first without evidence: $miss | captures without evidence: ${caps:-none}"
+  case "$st" in "in progress"* | done*) started=yes ;; *) [ -n "$ev" ] && started=yes || started=no ;; esac
+  echo "$p ($(state "$p"), $(age "$(stat -c %Y "$p")")) | status: ${st:-?} | started: $started | critique: ${crit:-none} | steps: $steps | evidence: ${ev:-none}| first without evidence: $miss | captures without evidence: ${caps:-none}"
 done
 [ "$found" = 1 ] || echo "none"
 

@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Road-to-1.0 catalog and stop status for the roadmap page (stdlib only, read-only).
+"""Road-to-1.0 catalog and stop status for the roadmap page (stdlib only; read-only but `summary --write`).
 
 `catalog OUT` writes the page's `meta/catalog` document (`{schema, hash, catalog}`) to OUT: the
 catalog plus each stop's stages, read from the Flow table in tungsten-next's `prompts.md`, and a mode,
-model and effort for each session stage (`D-118`).
-`status [--json OUT]` derives each stop's status from the tree: the register, plan files,
-approval lines, evidence rows, tags and the local `origin/main` (never fetched), and prints
-the evidence for each with the next release and milestone. `scripts/check-repo.py` imports
-the register parsers, so both read the register one way. `summary` prints the four
-owned README fields (workspace, first open stop, stop state, next milestone).
+model and effort for each session stage (`D-118`, `D-151`).
+`status [--json OUT]` derives each stop's status from the tree: the register, plan files with their
+`status:` headers and evidence rows, gate records, tags and the local `origin/main` (never fetched),
+and prints the evidence for each with the next release and milestone. `scripts/check-repo.py` imports
+the register parsers, so both read the register one way. `summary [--write]` prints the four owned
+README fields (workspace, first open stop, stop state, next milestone); `--write` also replaces them
+in the README (`D-152`).
 """
 
 import argparse
@@ -34,18 +35,19 @@ SUMMARY_DOC = f"{PROGRAM}/README.md"
 SUMMARY_START = "<!-- roadmap-summary:start -->"
 SUMMARY_END = "<!-- roadmap-summary:end -->"
 SUMMARY_FIELDS = ("Workspace", "First open stop", "Stop state", "Next milestone")
+# A stop cut, tagged, merged or skipped is closed for the owned fields, so the fields written at a cut
+# hold through the merge (D-152).
+CLOSED = ("ready", "review", "done", "skip")
 
-# Session recommendations (D-118, D-136). A stop's tier comes from its complexity and effort; the scaled
-# steps take it, the fixed ones never vary, a same-session step keeps the step that opened its session.
+# Session recommendations (D-118, D-136, D-151). A stage's tier comes from its stop's complexity,
+# effort and level and the stage's key; the fixed steps never vary. Every session stage runs in auto
+# mode, and none keeps another stage's session (D-150).
 MODELS = {"opus": "Opus 5.5", "fable": "Fable 5.1"}
-SCALED = ("plan", "qa-plan", "gate", "run", "run-c1", "experiment", "rc-fix")
-FIXED = {"game-spec": ("opus", "max"), "graduate": ("opus", "xhigh"), "rc-checklist": ("opus", "xhigh"),
-         "release": ("opus", "xhigh"), "verify": ("opus", "high")}
-PLAN_MODE = ("gate", "game-spec")  # they ask before they write
-KEEPS = {"approve": ("plan", "qa-plan"), "run-c-rest": ("run-c1",)}
+SCALED = ("plan", "qa-plan", "gate", "run", "experiment", "rc-fix")
+FIXED = {"rc-checklist": ("opus", "xhigh"), "release": ("opus", "xhigh"), "verify": ("opus", "high")}
+FINAL = ("gate",)  # with a level C plan, the stages whose judgment no command checks (D-151)
 SESSIONS = ("release", "verify")  # session prompts outside every flow
 FLOW_STEP = re.compile(r"`([\w-]+)` \((new|same|you), ([^;)]+?)(?:; ([^)]*))?\)")
-GATE_ONLY = re.compile(r"\bthe ([\w-]+) gate only\b")
 
 
 def unique_object(pairs):
@@ -143,11 +145,10 @@ def flows(root):
 
 
 def flow_row(stop):
-    """The Flow row a stop runs: by kind, and level C apart for releases; None for a custom stop."""
+    """The Flow row a stop runs, by kind (every release level runs one row, D-150); None for a custom stop."""
+    rows = {"release": "Release", "qa": "QA pass", "gate": "Gate", "spike": "Experiments (Track B)",
+            "rc": "Release candidates (C3)"}
     kind = stop["kind"]
-    if kind == "release":
-        return "Release, level C" if stop.get("level") == "C" else "Release, level A or B"
-    rows = {"qa": "QA pass", "gate": "Gate", "spike": "Experiments (Track B)", "rc": "Release candidates (C3)"}
     if kind in rows:
         return rows[kind]
     if kind == "custom":
@@ -155,36 +156,30 @@ def flow_row(stop):
     raise ValueError(f"{stop['id']}: no Flow row for kind {kind!r}")
 
 
-def tier(stop):
-    """(model, effort) from complexity c and effort e: Fable for large architectural stops (c 4, or 3
-    and XL) unless a level A or B release (D-136), Opus max for c 2–4, Opus high for very small ones
-    (c 1 and S), else the Opus xhigh default."""
-    c, e = stop.get("complexity"), stop.get("effort")
-    if (c == 4 or (c == 3 and e == "XL")) and stop.get("level") not in ("A", "B"):
+def tier(stop, key=None):
+    """(model, effort) for stage `key` of a stop (D-151): Fable for large architectural stops
+    (complexity 4, or 3 and XL) unless a level A or B release (D-136); Opus high for very small ones
+    (1 and S); Opus max only where the stage's judgment is final, a gate or a level C plan, at
+    complexity 2–4; else the Opus xhigh default."""
+    c, e, level = stop.get("complexity"), stop.get("effort"), stop.get("level")
+    if (c == 4 or (c == 3 and e == "XL")) and level not in ("A", "B"):
         return "fable", "xhigh"
-    if c in (2, 3, 4):
-        return "opus", "max"
     if c == 1 and e == "S":
         return "opus", "high"
+    if c in (2, 3, 4) and (key in FINAL or (key == "plan" and level == "C")):
+        return "opus", "max"
     return "opus", "xhigh"
 
 
-def recommend(stop, key, opened=()):
-    """`{mode, model, effort}` for a session step, `opened` holding the stop's earlier stages; a
-    same-session step adds `keeps` and `if_new`. None for owner steps and steps without a rule."""
-    def rec(model, effort):
-        return {"mode": "plan" if key in PLAN_MODE else "auto", "model": MODELS[model], "effort": effort}
+def recommend(stop, key):
+    """`{mode, model, effort}` for a session step; None for owner steps and steps without a rule."""
     if key in SCALED:
-        return rec(*tier(stop))
-    if key in FIXED:
-        return rec(*FIXED[key])
-    if key in KEEPS:
-        opener = next((s for s in reversed(opened) if s["key"] in KEEPS[key] and "rec" in s), None)
-        if opener is None:
-            raise ValueError(f"{stop['id']}: {key} has no earlier {' or '.join(KEEPS[key])} step to keep")
-        kept = {k: opener["rec"][k] for k in ("mode", "model", "effort")}
-        return {"keeps": opener["key"], **kept, "if_new": rec("opus", "high") if key == "approve" else dict(kept)}
-    return None
+        model, effort = tier(stop, key)
+    elif key in FIXED:
+        model, effort = FIXED[key]
+    else:
+        return None
+    return {"mode": "auto", "model": MODELS[model], "effort": effort}
 
 
 def stages(stop, flow):
@@ -196,11 +191,8 @@ def stages(stop, flow):
         raise ValueError(f"{stop['id']}: {PROMPTS} has no Flow row {label!r}")
     result = []
     for step in flow[label]:
-        only = GATE_ONLY.search(step.get("note", ""))
-        if only and f"{only[1]} gate" not in (stop.get("gate") or ""):
-            continue
         stage = dict(step)
-        rec = recommend(stop, step["key"], result)
+        rec = recommend(stop, step["key"])
         if rec:
             stage["rec"] = rec
         result.append(stage)
@@ -278,24 +270,27 @@ def next_milestone(rows):
 
 
 def plan_file(root, cell):
-    """The milestone plan a register cell names, as a repo path, and whether it exists."""
+    """The milestone plan a register cell names, as a repo path, and whether it is in the tree. An
+    archived plan keeps its archive path and is never opened."""
     match = re.search(r"([\w./-]+\.md)", cell)
     if not match:
         return None, False
     name = match[1]
+    if "archive/" in name:  # released plans; never opened
+        return "docs/plans/archive/" + name.split("archive/", 1)[1], False
     rel = name if name.startswith("docs/") else f"{PROGRAM}/{Path(name).name}"
-    if "/archive/" in rel:  # released plans; never opened
-        return rel, False
     return rel, (Path(root) / rel).is_file()
 
 
 def plan_progress(text):
-    """(approved, step count, steps with an evidence row), the patterns state.sh uses."""
-    approved = re.search(r"^Approved", text, re.M) is not None
+    """(started, step count, steps with an evidence row), the patterns state.sh uses. A plan has
+    started once its `status:` header reads `in progress` or `done`, or its evidence log has a row (D-150)."""
+    header = re.search(r"^- \*\*status:\*\*\s*(.*)$", text, re.M)
+    status = header[1].strip() if header else ""
     steps = len(re.findall(r"^### Step ", text, re.M))
     log = re.search(r"^## Evidence.*?(?=^## |\Z)", text, re.M | re.S)
-    rows = re.findall(r"^\| *(?:Step +)?(\d+) *\|", log[0], re.M) if log else []
-    return approved, steps, len(set(rows))
+    rows = set(re.findall(r"^\| *(?:Step +)?(\d+) *\|", log[0], re.M)) if log else set()
+    return status.startswith(("in progress", "done")) or bool(rows), steps, len(rows)
 
 
 def gate_record(plan_text, name):
@@ -362,12 +357,14 @@ def derive(root):
                 doc["status"] = "ready"
                 why.append(f"cut for {doc['release']}, tag v{doc['release']}.0 none")
             if exists:
-                approved, steps, evidence = plan_progress((root / path).read_text())
+                started, steps, evidence = plan_progress((root / path).read_text())
                 doc["plan_steps"], doc["evidence"] = steps, evidence
                 if doc["status"] == "todo":
-                    doc["status"] = "run" if approved else "plan"
-                why.append(f"{path}: {'approved' if approved else 'not approved'}, "
+                    doc["status"] = "run" if started else "plan"
+                why.append(f"{path}: {'started' if started else 'not started'}, "
                            f"{evidence} of {steps} steps with evidence")
+            elif path and path.startswith("docs/plans/archive/"):
+                why.append("plan archived")
             elif path:
                 why.append(f"{path} not in the tree")
             elif doc["status"] == "todo":
@@ -379,7 +376,7 @@ def derive(root):
             if gate and gate["status"] == "done":
                 stops[i]["status"] = "done"
             stops[i]["why"] = f"verdicts feed {gate['id']}, {gate['status']}" if gate else "no gate after it"
-    current =next((s["id"] for s in stops if s["status"] not in ("done", "skip")), None)
+    current = next((s["id"] for s in stops if s["status"] not in ("done", "skip")), None)
     return {
         "workspace": tomllib.loads((root / "Cargo.toml").read_text())["workspace"]["package"]["version"],
         "branch": git.branch(), "release": next_release(root, git), "milestone": next_milestone(rows.values()),
@@ -389,9 +386,10 @@ def derive(root):
 
 
 def summary_fields(state):
-    """The four owned fields; no dates, prose, branch name or publication inference."""
-    stop = next((s for s in state["stops"] if s["id"] == state["stop"]), None)
-    return dict(zip(SUMMARY_FIELDS, (state["workspace"], state["stop"] or "none",
+    """The four owned fields; no dates, prose, branch name or publication inference. The first open
+    stop is the first that is not cut, tagged, merged or skipped (D-152)."""
+    stop = next((s for s in state["stops"] if s["status"] not in CLOSED), None)
+    return dict(zip(SUMMARY_FIELDS, (state["workspace"], stop["id"] if stop else "none",
                                    stop["status"] if stop else "none", state["milestone"])))
 
 
@@ -401,12 +399,24 @@ def summary_text(state):
     return "\n".join(lines + [SUMMARY_END])
 
 
+def write_summary(root, state):
+    """Replace the README's owned block with the derived fields."""
+    path = Path(root) / SUMMARY_DOC
+    text = path.read_text()
+    if (text.count(SUMMARY_START) != 1 or text.count(SUMMARY_END) != 1
+            or text.index(SUMMARY_END) < text.index(SUMMARY_START)):
+        raise ValueError(f"{SUMMARY_DOC}: expected one owned roadmap summary block")
+    head, rest = text.split(SUMMARY_START, 1)
+    path.write_text(head + summary_text(state) + rest.split(SUMMARY_END, 1)[1])
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parent.parent)
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("catalog", help="write the meta/catalog document").add_argument("out", type=Path)
-    sub.add_parser("summary", help="print the README's four owned fields, using local refs only")
+    summary = sub.add_parser("summary", help="print the README's four owned fields, using local refs only")
+    summary.add_argument("--write", action="store_true", help=f"also replace them in {SUMMARY_DOC}")
     status = sub.add_parser("status", help="derive each stop's status from the tree")
     status.add_argument("--json", type=Path, help="also write the result as JSON")
     args = parser.parse_args(argv)
@@ -419,6 +429,12 @@ def main(argv=None):
     state = derive(args.root)
     if args.command == "summary":
         print(summary_text(state))
+        if args.write:
+            try:
+                write_summary(args.root, state)
+            except (OSError, ValueError) as exc:
+                print(f"roadmap.py: {exc}", file=sys.stderr)
+                return 1
         return 0
     print(f"branch {state['branch'] or '(detached)'} · next release {state['release']} · "
           f"next milestone {state['milestone']} · last fetch {state['fetched'] or 'never'} · "

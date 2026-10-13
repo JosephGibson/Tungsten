@@ -2,9 +2,9 @@
 
 ## Status
 
-Workspace `v0.65.0`. Phases 3 to 5 are complete; Phase 6 is next. The current engine has scheduled plugins, tuple queries/bundles, real/game clocks with bounded fixed steps and interpolation, additive extracts, render results with one-frame captures, a late-acquire render split, the frame's raw input in arrival order with focus-loss release and a scale-factor resource, retained text, and a core UI model that paints through one ordered list into the overlay pass and routes input before gameplay, with theme assets reloaded live; see the checked [roadmap snapshot](docs/plans/1.0/README.md#now) and [register](docs/plans/1.0/implementation-plan.md#10-register).
+Workspace `v0.66.0`. Phases 3 to 5 are complete; Phase 6 is next. The current engine has scheduled plugins, tuple queries/bundles, real/game clocks with bounded fixed steps and interpolation, additive extracts, render results with one-frame captures, a late-acquire render split, the frame's raw input in arrival order with focus-loss release and a scale-factor resource, retained text, and a core UI model that paints through one ordered list into the overlay pass and routes input before gameplay, with theme assets reloaded live; see the checked [roadmap snapshot](docs/plans/1.0/README.md#now) and [register](docs/plans/1.0/implementation-plan.md#10-register).
 
-0.61 adds render results and capture completion (`D-142`), burst and pulse semantics (`D-143`) and once-per-ID extract warnings (W8a, M43), with the AI development workflow changes (`D-140`, `D-141`); the [W4 ledger](docs/plans/1.0/w04-api-freeze.md#break-ledger) records the breaks. [CHANGELOG](CHANGELOG.md) preserves dated releases, [decision index](docs/DECISION_INDEX.md) routes to immutable rationale and measured evidence, and [LLM index](docs/LLM_INDEX.md) maps tasks to source. Unapproved performance experiments remain [proposals](docs/perf/benchmarks.md#open-proposals).
+The [W4 ledger](docs/plans/1.0/w04-api-freeze.md#break-ledger) records the public-API breaks bound for the freeze. [CHANGELOG](CHANGELOG.md) preserves dated releases, [decision index](docs/DECISION_INDEX.md) routes to immutable rationale and measured evidence, and [LLM index](docs/LLM_INDEX.md) maps tasks to source. Unapproved performance experiments remain [proposals](docs/perf/benchmarks.md#open-proposals).
 
 ## What It Is
 

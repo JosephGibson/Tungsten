@@ -220,12 +220,12 @@ The [implementation plan](implementation-plan.md) holds the order: three phases 
 
 Open questions keep their numbers; answered ones are under [Answered](#answered) below. The [implementation plan](implementation-plan.md) §7 says by when each is needed.
 
-- **2.** Publish the library crates on crates.io for 1.0?
-- **3.** Platform tiers: certify Linux only, or find Windows and macOS hosts? Should releases build macOS?
+- **2.** Publish the library crates on crates.io for 1.0? *Default, which the freeze gate takes unless the owner answers first (`D-150`): no; games use a git dependency, and the gate strikes W9c and RC-D5.*
+- **3.** Platform tiers: certify Linux only, or find Windows and macOS hosts? Should releases build macOS? *Default, which the feature gate takes unless the owner answers first (`D-150`): Linux certified, the other platforms on stated tiers as far as hosts allow, and no macOS release build for 1.0.*
 - **12.** Which performance budgets gate 1.0?
 - **15.** Which settings does the engine persist itself, and does a corrupt user file reset to defaults (proposed) or stop the game as an invalid `tungsten.json` does?
 - **20.** CLI: `check` and `package` must and `new` should (proposed)? Argument parsing and archive writing by hand or by crate (§8.5)?
-- **22.** Controllers: anything beyond ground check, coyote time, jump buffer and variable jump, such as slopes, one-way platforms or ladders?
+- **22.** Controllers: anything beyond ground check, coyote time, jump buffer and variable jump, such as slopes, one-way platforms or ladders? *Default, which W13c's plan takes (`D-150`): nothing beyond those four; slopes, one-way platforms and ladders go to the backlog.*
 
 ### Answered
 
