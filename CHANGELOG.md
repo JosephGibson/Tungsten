@@ -6,6 +6,11 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Critique effort** (`tungsten-milestone` step 7): plan critiques run at the critic's default, xhigh; only a level C plan's first round passes `--effort max`. Three parallel `gpt-6-astra` runs exhausted the ChatGPT plan's 5-hour usage window in under 10 minutes on 2026-10-13, and a plan can need up to three critique runs.
+- **Critique usage** (skeleton §9): the critic's footer shows the ChatGPT plan's 5-hour and weekly usage windows before and after each run, and §9 records them with the rest of the footer.
+
 ## [0.66.0] - 2026-10-13
 
 Summary: the 0.66 project-health pass (plan archived at `docs/plans/archive/project-health-pass.md`), a short break from the road to 1.0 that makes its remaining stops faster to run. The road runs without owner-approval stops (`D-150`), Opus 5.5 max stays only where a session's judgment is final (`D-151`), and records written at a release's cut hold through its merge (`D-152`). Two Phase 6 stops fold into others, the agent docs and memory lose stale and duplicated text, and the plan critic moves to `gpt-6-astra` with a larger budget. No engine code, public API, asset or shader changes.

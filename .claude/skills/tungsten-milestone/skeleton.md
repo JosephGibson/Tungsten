@@ -80,7 +80,7 @@ Each question takes its stated default; the owner reviews the plan on their own 
 
 ## 9. Critique
 
-<Reviewer (the `critique` skill with `--repo`, `gpt-6-astra` by default, or `codex:rescue` when the skill was missing), the date, the commit it read, the round, and the model, effort, context, wall time and tokens from the skill's footer line; or "Not run: <error line>". Each finding is checked against the repo or the docs it cites before it changes anything; none is applied unchecked. A second round's rows are numbered `2.<n>`, and a level C run's step 1 API critique `C.<n>`.>
+<Reviewer (the `critique` skill with `--repo`, `gpt-6-astra` by default, or `codex:rescue` when the skill was missing), the date, the commit it read, the round, and the model, effort, context, wall time, tokens and usage windows from the skill's footer line; or "Not run: <error line>". Each finding is checked against the repo or the docs it cites before it changes anything; none is applied unchecked. A second round's rows are numbered `2.<n>`, and a level C run's step 1 API critique `C.<n>`.>
 
 | # | Finding | Checked against | Verdict | Change or reason |
 | --- | --- | --- | --- | --- |
