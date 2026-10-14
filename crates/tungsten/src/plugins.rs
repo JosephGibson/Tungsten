@@ -118,8 +118,9 @@ impl Plugin for UiPlugin {
     }
 }
 
-/// Count refresh, emit and tick in `PostUpdate`, and the burst and drained
-/// events.
+/// Count refresh, emit and tick in `PostUpdate`, the burst and drained
+/// events, and the `particle_emitter` scene and prefab component, checked
+/// against the World's particle configs.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ParticlesPlugin;
 
@@ -127,6 +128,7 @@ impl Plugin for ParticlesPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         world.register_event::<ParticleBurstEmitted>();
         world.register_event::<ParticleSystemDrained>();
+        crate::asset_loader::register_particle_emitter(world);
         schedule.add(
             Stage::PostUpdate,
             system(PARTICLE_COUNT_REFRESH, particle_count_refresh_system)

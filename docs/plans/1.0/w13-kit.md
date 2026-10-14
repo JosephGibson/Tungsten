@@ -7,7 +7,7 @@
 - **ordered steps:** Set at graduation. Candidates and their order: [implementation plan](implementation-plan.md) §4.
 - **done-when:** Set at graduation. Sketch: [criteria](criteria.md) §8.4.
 
-Skeleton. The scoping text stays in [criteria](criteria.md) §8.4 until this workstream graduates ([conventions](README.md#conventions)). Revised 2026-10-03 on `db1177c`: the definition gate's tier timing and Q24's answer. Revised 2026-10-05 on `01f9c55`, uncommitted: tiers proposed from the acceptance game's mechanics rows. Revised 2026-10-06, uncommitted: the frame-loop gate confirmed them and answered Q21 (`D-132`). Revised 2026-10-14, uncommitted: W13a and W13b landed in 0.69 (M50, `D-155`): `tungsten-kit` on core alone, re-exported as `tungsten::kit` behind a default feature, with opt-in plugins per item and harness tests in the umbrella; its value types keep private fields behind constructors in place of `#[non_exhaustive]`.
+Skeleton. The scoping text stays in [criteria](criteria.md) §8.4 until this workstream graduates ([conventions](README.md#conventions)). Revised 2026-10-03 on `db1177c`: the definition gate's tier timing and Q24's answer. Revised 2026-10-05 on `01f9c55`, uncommitted: tiers proposed from the acceptance game's mechanics rows. Revised 2026-10-06, uncommitted: the frame-loop gate confirmed them and answered Q21 (`D-132`). Revised 2026-10-14, uncommitted: W13a and W13b landed in 0.69 (M50, `D-155`): `tungsten-kit` on core alone, re-exported as `tungsten::kit` behind a default feature, with opt-in plugins per item and harness tests in the umbrella; its value types keep private fields behind constructors in place of `#[non_exhaustive]`. Revised again the same day, uncommitted: the spawner landed in 0.71 (M51, `D-157`), under the same rules: `Spawner` and `SpawnerPlugin`, whose `spawner_tick` spawns a prefab at its entity's position once per interval of game time through the command buffer.
 
 ## Placement
 
@@ -40,3 +40,8 @@ Each waits for a user (M50's plan, archived at `docs/plans/archive/1.0/phase6-mi
 - A `KitPlugins` set, if games add most of the kit's plugins together.
 - Scene components for `lifetime` and `despawn_outside`, when W16b's prefabs need them (M50 Q8).
 - An exactly-once event reader in core, if a second reader needs `SoundOnEvent`'s handled-count cursor.
+
+From M51 (`docs/plans/archive/1.0/phase6-milestone-51-prefabs-tiled-objects.md`), each waiting for a user:
+
+- A `spawner` scene component, so a level file places a `Spawner`; the acceptance game's generator places its spawners in code (M51 Q16).
+- State ownership of spawned entities: a `Spawner`'s entities carry no `SceneEntity`, so a state's exit leaves them ([known issues](../../known-issues.md)); W13c and W13d, which add more spawning helpers, or the acceptance game's first gap.

@@ -8,5 +8,8 @@
   "font_families": {
     "sans": { "faces": ["sans"] }
   },
-  "font_fallback": ["sans"]
+  "font_fallback": ["sans"],
+  "prefabs": {
+    "player": { "path": "prefabs/player.json" }
+  }
 }

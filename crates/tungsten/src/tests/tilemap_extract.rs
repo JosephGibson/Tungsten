@@ -50,18 +50,11 @@ fn world_with_map(camera: Vec2, tileset: &[&str], width: u32, layers: Vec<Tilema
     world.insert_resource(state);
 
     let height = layers[0].tiles.len() as u32 / width;
+    let mut map = TilemapData::new(16, 16, width, height);
+    map.tileset = tileset.iter().map(ToString::to_string).collect();
+    map.layers = layers;
     let mut tilemaps = TilemapRegistry::new();
-    tilemaps.insert(
-        "map".to_string(),
-        TilemapData {
-            tile_width: 16,
-            tile_height: 16,
-            width,
-            height,
-            tileset: tileset.iter().map(ToString::to_string).collect(),
-            layers,
-        },
-    );
+    tilemaps.insert("map".to_string(), map);
     world.insert_resource(tilemaps);
     let e = world.spawn();
     world.insert(e, TilemapInstance::new("map", Vec2::ZERO));

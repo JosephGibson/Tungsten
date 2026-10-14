@@ -219,6 +219,7 @@ impl App {
         world.insert_resource(SoundRegistry::new());
         world.insert_resource(AudioCommands::new());
         world.insert_resource(TilemapRegistry::new());
+        world.insert_resource(tungsten_core::PrefabRegistry::new());
         world.insert_resource(ParticleConfigRegistry::new());
         world.insert_resource(ParticleMeshRegistry::new());
         world.insert_resource(ShaderRegistry::new());
@@ -636,6 +637,10 @@ impl App {
                             pr.id_for_path(&canon)
                                 .and_then(|aid| pr.name_for_id(aid).map(ToString::to_string))
                         });
+                    let prefab_id = self
+                        .world
+                        .get_resource::<tungsten_core::PrefabRegistry>()
+                        .and_then(|prefabs| prefabs.id_for_path(&canon).map(ToString::to_string));
                     if let Some(id) = theme_id {
                         if let Err(e) = asset_loader::reload_ui_theme(&id, &canon, &mut self.world)
                         {
@@ -651,9 +656,13 @@ impl App {
                         {
                             log::error!("Particle reload '{id}': {e}");
                         }
+                    } else if let Some(id) = prefab_id {
+                        if let Err(e) = asset_loader::reload_prefab(&id, &canon, &mut self.world) {
+                            log::error!("Prefab reload '{id}': {e}");
+                        }
                     } else {
                         log::debug!(
-                            "Hot reload: no animation, particle or ui theme registered for '{}'",
+                            "Hot reload: no animation, particle, prefab or ui theme registered for '{}'",
                             canon.display()
                         );
                     }

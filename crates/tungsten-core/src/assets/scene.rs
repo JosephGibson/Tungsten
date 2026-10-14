@@ -2,6 +2,8 @@
 //! D-054/D-055 scene tweens map one `Tween` per entry.
 //! M48: an entry's `components` name registered components, checked at load
 //! against the World's `ComponentRegistry`; unknown keys fail the parse.
+//! M51: prefab files and Tiled objects share the entry's readers and its
+//! position bound.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -17,8 +19,14 @@ use crate::ecs::World;
 use crate::tween::{Easing, IntSlot, ScalarSlot, Tween, TweenChannel, TweenRepeat, Vec4Slot};
 
 /// The largest position a scene transform may name on either axis: 2^24,
-/// where an `f32` still holds whole pixels.
-const MAX_POSITION: f32 = 16_777_216.0;
+/// where an `f32` still holds whole pixels. Prefab spawns and Tiled objects
+/// keep the same bound.
+pub(crate) const MAX_POSITION: f32 = 16_777_216.0;
+
+/// Whether both coordinates are finite and within ±[`MAX_POSITION`].
+pub(crate) fn within_position_bound(x: f32, y: f32) -> bool {
+    x.abs() <= MAX_POSITION && y.abs() <= MAX_POSITION
+}
 
 #[derive(Debug, Error)]
 pub enum SceneError {
@@ -245,7 +253,7 @@ pub struct SceneSprite {
     pub z_order: i32,
 }
 
-fn default_visible() -> bool {
+pub(crate) fn default_visible() -> bool {
     true
 }
 
@@ -261,7 +269,7 @@ impl SceneTransform {
     /// Every number finite, and the position within ±2^24 on both axes.
     fn validate(&self) -> Result<(), String> {
         let [x, y] = self.position;
-        if !(x.abs() <= MAX_POSITION && y.abs() <= MAX_POSITION) {
+        if !within_position_bound(x, y) {
             return Err(format!(
                 "position must be finite and within ±{MAX_POSITION} (got [{x}, {y}])"
             ));
@@ -279,8 +287,9 @@ impl SceneTransform {
 
 impl SceneData {
     /// Reads and parses `path`, then checks every entry's transform and
-    /// tweens, and its components against `world`'s `ComponentRegistry`
-    /// (an empty one when the World has none, so any component is unknown).
+    /// tweens, and its components with `ComponentRegistry::check_in` against
+    /// `world` (an empty registry when the World has none, so any component
+    /// is unknown), so an asset ID a component names must be in `world`.
     /// The first error stops the load.
     pub fn load(path: &Path, world: &World) -> Result<Self, SceneError> {
         let contents = std::fs::read_to_string(path).map_err(|source| SceneError::Io {
@@ -310,7 +319,7 @@ impl SceneData {
             }
             for (name, value) in &entry.components {
                 registry
-                    .check(name, value)
+                    .check_in(name, value, world)
                     .map_err(|err| invalid(format!("entities[{i}]: {err}")))?;
             }
         }
@@ -321,7 +330,7 @@ impl SceneData {
 /// `components`' reader: fails on a component named twice, and on a key
 /// repeated at any depth inside a value, where a plain `Value` keeps the
 /// last one and a valid repeat would mask an invalid first.
-fn strict_components<'de, D: Deserializer<'de>>(
+pub(crate) fn strict_components<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<BTreeMap<String, Value>, D::Error> {
     struct Components;

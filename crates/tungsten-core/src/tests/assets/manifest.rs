@@ -749,3 +749,60 @@ fn merge_duplicate_ui_theme_is_error() {
     a.merge(c).unwrap();
     assert_eq!(a.ui_themes.len(), 2);
 }
+
+#[test]
+fn load_manifest_with_prefabs() {
+    let tmp = tempdir();
+    write_file(&tmp, "prefabs/slime.json");
+    let path = write_manifest(
+        &tmp,
+        r#"{"prefabs": {"slime": {"path": "prefabs/slime.json"}}}"#,
+    );
+    let m = ResolvedManifest::load(&path).unwrap();
+    assert_eq!(m.prefabs.len(), 1);
+    assert!(m.prefabs["slime"].path.ends_with("prefabs/slime.json"));
+    assert!(m.prefabs["slime"].path.is_absolute(), "canonicalized");
+}
+
+#[test]
+fn load_manifest_missing_prefab_file() {
+    let tmp = tempdir();
+    let path = write_manifest(
+        &tmp,
+        r#"{"prefabs": {"slime": {"path": "prefabs/slime.json"}}}"#,
+    );
+    let err = ResolvedManifest::load(&path).unwrap_err();
+    assert!(
+        matches!(&err, ManifestError::MissingPrefabFile { id, path } if id == "slime" && path.ends_with("slime.json")),
+        "{err:?}"
+    );
+    assert!(
+        err.to_string()
+            .starts_with("prefab 'slime' references missing file: ")
+    );
+}
+
+#[test]
+fn a_repeated_prefab_id_fails_in_one_section_and_across_manifests() {
+    let tmp = tempdir();
+    write_file(&tmp, "a.json");
+    let path = write_manifest(
+        &tmp,
+        r#"{"prefabs": {"slime": {"path": "a.json"}, "slime": {"path": "a.json"}}}"#,
+    );
+    let err = ResolvedManifest::load(&path).unwrap_err();
+    assert!(matches!(err, ManifestError::Parse { .. }), "{err}");
+    assert!(err.to_string().contains("duplicate ID `slime`"), "{err}");
+
+    let prefab = ResolvedPrefab::new(PathBuf::from("a.json"));
+    let mut a = ResolvedManifest::default();
+    a.prefabs.insert("slime".into(), prefab.clone());
+    let mut b = ResolvedManifest::default();
+    b.prefabs.insert("slime".into(), prefab.clone());
+    let err = a.merge(b).unwrap_err();
+    assert!(matches!(err, ManifestError::DuplicateId { id } if id == "slime"));
+    let mut c = ResolvedManifest::default();
+    c.prefabs.insert("bat".into(), prefab);
+    a.merge(c).unwrap();
+    assert_eq!(a.prefabs.len(), 2);
+}

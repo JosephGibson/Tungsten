@@ -12,6 +12,7 @@ use tungsten_core::ui::{Theme, ThemeFile, UiThemeRegistry, UiTree};
 use tungsten_core::{ActionMap, ActionMapError, AssetRegistry, World};
 use tungsten_render::Renderer;
 
+use super::prefab::reload_new_prefabs;
 use super::{
     UiThemePaths, diff_particle_meshes, missing_particle_render_ref, rebuild_atlas_for_filter,
     warn_unknown_font_tokens,
@@ -187,7 +188,9 @@ pub fn reload_animation(id: &str, path: &Path, world: &mut World) -> anyhow::Res
     Ok(())
 }
 
-/// Hot-reload tilemap; failures keep last-known-good data.
+/// Hot-reload tilemap; failures keep last-known-good data. The map's tileset
+/// sprites must be registered and its objects must resolve against the
+/// loaded prefabs (`World::check_map_objects`).
 pub fn reload_tilemap(id: &str, path: &Path, world: &mut World) -> anyhow::Result<()> {
     let data = match TilemapData::load(path) {
         Ok(d) => d,
@@ -210,6 +213,10 @@ pub fn reload_tilemap(id: &str, path: &Path, world: &mut World) -> anyhow::Resul
                 return Ok(());
             }
         }
+    }
+    if let Err(e) = world.check_map_objects(id, &data) {
+        log::error!("Hot reload tilemap '{id}': {e} — keeping stale");
+        return Ok(());
     }
 
     world
@@ -308,6 +315,57 @@ pub fn reload_action_map(path: &Path, world: &mut World) -> Result<(), ActionMap
     }
     log::info!("Hot-reloaded action map from '{}'", path.display());
     Ok(())
+}
+
+/// The manifest reload's tilemap block: a new map parses and passes the
+/// tileset check, then inserts with its tiles (its objects wait for the
+/// prefab block); a removed one warns and stays. Returns the IDs it added.
+pub(crate) fn reload_new_tilemaps(
+    new_manifest: &ResolvedManifest,
+    world: &mut World,
+) -> Vec<String> {
+    let existing: Vec<String> = world
+        .get_resource::<TilemapRegistry>()
+        .map(|tr| tr.ids().map(ToString::to_string).collect())
+        .unwrap_or_default();
+
+    for id in &existing {
+        if !new_manifest.tilemaps.contains_key(id.as_str()) {
+            log::warn!("Manifest reload: tilemap '{id}' removed — keeping stale");
+        }
+    }
+
+    let mut added = Vec::new();
+    for (id, entry) in &new_manifest.tilemaps {
+        if existing.iter().any(|e| e == id) {
+            continue;
+        }
+        match TilemapData::load(&entry.path) {
+            Ok(data) => {
+                let all_known = {
+                    let registry = world
+                        .get_resource::<AssetRegistry>()
+                        .expect("AssetRegistry resource missing");
+                    data.tileset
+                        .iter()
+                        .all(|sid| registry.get_sprite(sid).is_some())
+                };
+                if !all_known {
+                    log::error!(
+                        "Manifest reload: new tilemap '{id}' references unknown sprite IDs — skipping"
+                    );
+                    continue;
+                }
+                if let Some(tr) = world.get_resource_mut::<TilemapRegistry>() {
+                    tr.insert_with_path(id.clone(), data, entry.path.clone());
+                    log::info!("Manifest reload: loaded new tilemap '{id}'");
+                    added.push(id.clone());
+                }
+            }
+            Err(e) => log::error!("Manifest reload: new tilemap '{id}': {e}"),
+        }
+    }
+    added
 }
 
 /// Hot-reload manifest additions; removals stay stale and last-known-good wins.
@@ -457,47 +515,7 @@ pub fn reload_manifest(
         }
     }
 
-    {
-        let existing: Vec<String> = world
-            .get_resource::<TilemapRegistry>()
-            .map(|tr| tr.ids().map(ToString::to_string).collect())
-            .unwrap_or_default();
-
-        for id in &existing {
-            if !new_manifest.tilemaps.contains_key(id.as_str()) {
-                log::warn!("Manifest reload: tilemap '{id}' removed — keeping stale");
-            }
-        }
-
-        for (id, entry) in &new_manifest.tilemaps {
-            if existing.iter().any(|e| e == id) {
-                continue;
-            }
-            match TilemapData::load(&entry.path) {
-                Ok(data) => {
-                    let all_known = {
-                        let registry = world
-                            .get_resource::<AssetRegistry>()
-                            .expect("AssetRegistry resource missing");
-                        data.tileset
-                            .iter()
-                            .all(|sid| registry.get_sprite(sid).is_some())
-                    };
-                    if !all_known {
-                        log::error!(
-                            "Manifest reload: new tilemap '{id}' references unknown sprite IDs — skipping"
-                        );
-                        continue;
-                    }
-                    if let Some(tr) = world.get_resource_mut::<TilemapRegistry>() {
-                        tr.insert_with_path(id.clone(), data, entry.path.clone());
-                        log::info!("Manifest reload: loaded new tilemap '{id}'");
-                    }
-                }
-                Err(e) => log::error!("Manifest reload: new tilemap '{id}': {e}"),
-            }
-        }
-    }
+    let new_maps = reload_new_tilemaps(&new_manifest, world);
 
     {
         for id in super::font_load_order(&new_manifest) {
@@ -582,6 +600,10 @@ pub fn reload_manifest(
             }
         }
     }
+
+    // M51 prefabs, in the startup order: after the tilemaps and particle
+    // configs their components name; then the new maps' objects.
+    reload_new_prefabs(&new_manifest, world, &new_maps);
 
     // D-053: audio session-static; mixer owns cloned PCM.
     {

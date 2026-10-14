@@ -205,6 +205,11 @@
       "path": "particles/wind_motes.json"
     }
   },
+  "prefabs": {
+    "ex10_ambient_emitter": {
+      "path": "prefabs/ambient_emitter.json"
+    }
+  },
   "shaders": {
     "ex10_soft_glow": {
       "path": "shaders/soft_glow.wgsl"

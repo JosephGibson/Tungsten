@@ -1,17 +1,22 @@
 //! Scene files (`D-046`): load with path context, spawn through the
 //! `CommandBuffer`; and the umbrella's scene components (M48): `light` and
 //! `parallax_layer`, which `App` registers beside the default extracts that
-//! draw them, and `squash_stretch`, which `GameFeelPlugin` registers.
+//! draw them, and `squash_stretch`, which `GameFeelPlugin` registers. M51
+//! adds the two that name assets, checked against the World: `tilemap`,
+//! which `App` registers beside the tilemap extract, and `particle_emitter`,
+//! which `ParticlesPlugin` registers.
 
 use std::path::Path;
 
 use glam::{Vec2, Vec3};
 use serde::Deserialize;
-use tungsten_core::assets::{SceneData, SceneTransform};
+use tungsten_core::assets::{
+    ParticleConfigRegistry, SceneData, SceneTransform, TilemapInstance, TilemapRegistry,
+};
 use tungsten_core::{
-    AssetRegistry, CommandBuffer, ComponentRegistry, Easing, Light, LightKind, ParallaxLayer,
-    PreparedComponent, SpawnContext, Sprite, SpriteAssetId, SpriteSquashStretch, SquashTrigger,
-    Tag, Transform, Visibility, World,
+    AssetRegistry, CommandBuffer, ComponentRegistry, Easing, Light, LightKind, MissingAsset,
+    ParallaxLayer, ParticleEmitter, ParticleEmitterState, PreparedComponent, SpawnContext, Sprite,
+    SpriteAssetId, SpriteSquashStretch, SquashTrigger, Tag, Transform, Visibility, World,
 };
 
 use crate::state::{SceneEntity, StateId};
@@ -127,13 +132,21 @@ fn scene_transform(transform: &SceneTransform) -> Transform {
     }
 }
 
-/// Registers `light` and `parallax_layer`, the components the default
-/// extracts draw; `App::with_plugins` calls it before the plugins build.
+/// Registers `light`, `parallax_layer` and `tilemap`, the components the
+/// default extracts draw; `App::with_plugins` calls it before the plugins
+/// build.
 pub(crate) fn register_extract_components(world: &mut World) {
     world.register_component_with("light", |def: LightDef, _: &SpawnContext<'_>| (def.0,));
     world.register_component_with(
         "parallax_layer",
         |def: ParallaxDef, _: &SpawnContext<'_>| (def.0,),
+    );
+    world.register_component_with_assets(
+        "tilemap",
+        tilemap_known,
+        |def: TilemapDef, at: &SpawnContext<'_>| {
+            (TilemapInstance::new(def.id, at.transform().position),)
+        },
     );
 }
 
@@ -142,6 +155,68 @@ pub(crate) fn register_squash_stretch(world: &mut World) {
     world.register_component_with("squash_stretch", |def: SquashDef, _: &SpawnContext<'_>| {
         (def.0,)
     });
+}
+
+/// Registers `particle_emitter`, which `ParticlesPlugin`'s systems read.
+pub(crate) fn register_particle_emitter(world: &mut World) {
+    world.register_component_with_assets(
+        "particle_emitter",
+        config_known,
+        |def: ParticleEmitterDef, at: &SpawnContext<'_>| {
+            let config = at
+                .world()
+                .resource::<ParticleConfigRegistry>()
+                .id_for_name(&def.config)
+                .expect("the asset check found the config in this World");
+            (
+                ParticleEmitter {
+                    config,
+                    seed_override: def.seed,
+                },
+                ParticleEmitterState::default(),
+            )
+        },
+    );
+}
+
+/// `components.tilemap`: a manifest `tilemaps` ID.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TilemapDef {
+    id: String,
+}
+
+fn tilemap_known(def: &TilemapDef, world: &World) -> Result<(), MissingAsset> {
+    if world
+        .get_resource::<TilemapRegistry>()
+        .is_some_and(|maps| maps.get(&def.id).is_some())
+    {
+        Ok(())
+    } else {
+        Err(MissingAsset::new("id", "tilemap", &def.id))
+    }
+}
+
+/// `components.particle_emitter`: a manifest `particles` ID, and the seed
+/// that replaces the config's.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ParticleEmitterDef {
+    config: String,
+    #[serde(default)]
+    seed: Option<u64>,
+}
+
+fn config_known(def: &ParticleEmitterDef, world: &World) -> Result<(), MissingAsset> {
+    if world
+        .get_resource::<ParticleConfigRegistry>()
+        .and_then(|configs| configs.id_for_name(&def.config))
+        .is_some()
+    {
+        Ok(())
+    } else {
+        Err(MissingAsset::new("config", "particle config", &def.config))
+    }
 }
 
 fn unit() -> f32 {

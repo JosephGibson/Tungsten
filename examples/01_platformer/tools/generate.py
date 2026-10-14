@@ -218,7 +218,7 @@ def generate(dest):
     images,lit,animations=build_art();validate_art(images,lit)
     tiled,rust,source=build_level(images)
     configs=particle_configs()
-    manifest={section:{} for section in ['sprites','animations','tilemaps','particles','shaders','materials']}
+    manifest={section:{} for section in ['sprites','animations','tilemaps','particles','shaders','materials','prefabs']}
     manifest['sounds']=json.loads((TOOLS/'sounds.json').read_text())
     owned=[]
     def output(path):
@@ -239,6 +239,11 @@ def generate(dest):
             path=f'{section}/{name}.json';write_json(output('assets/'+path),data)
             manifest[section]['ex10_'+name]=dict(path=path)
     manifest['tilemaps']['ex10_level']=dict(path='tilemaps/level.tmj')
+    # The class of the level's `emitters` objects: each object's properties
+    # set its emitter's config and seed over this prefab's.
+    write_json(output('assets/prefabs/ambient_emitter.json'),dict(components=dict(
+        ambient_emitter=None,particle_emitter=dict(config='ex10_torch_embers'))))
+    manifest['prefabs']['ex10_ambient_emitter']=dict(path='prefabs/ambient_emitter.json')
     # The soft-glow shader is authored in tools/shaders and owned like any output.
     for name in SHADERS:
         path=f'shaders/{name}.wgsl'

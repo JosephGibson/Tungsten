@@ -328,6 +328,9 @@ pub tungsten_core::assets::manifest::ManifestError::MissingNormalMapFile::path: 
 pub tungsten_core::assets::manifest::ManifestError::MissingParticleFile
 pub tungsten_core::assets::manifest::ManifestError::MissingParticleFile::id: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::MissingParticleFile::path: alloc::string::String
+pub tungsten_core::assets::manifest::ManifestError::MissingPrefabFile
+pub tungsten_core::assets::manifest::ManifestError::MissingPrefabFile::id: alloc::string::String
+pub tungsten_core::assets::manifest::ManifestError::MissingPrefabFile::path: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::MissingShaderFile
 pub tungsten_core::assets::manifest::ManifestError::MissingShaderFile::id: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::MissingShaderFile::path: alloc::string::String
@@ -451,6 +454,21 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::ParticleEntry
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ParticleEntry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ParticleEntry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ParticleEntry
+#[non_exhaustive] pub struct tungsten_core::assets::manifest::PrefabEntry
+pub tungsten_core::assets::manifest::PrefabEntry::path: alloc::string::String
+impl core::clone::Clone for tungsten_core::assets::manifest::PrefabEntry
+pub fn tungsten_core::assets::manifest::PrefabEntry::clone(&self) -> tungsten_core::assets::manifest::PrefabEntry
+impl core::fmt::Debug for tungsten_core::assets::manifest::PrefabEntry
+pub fn tungsten_core::assets::manifest::PrefabEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::manifest::PrefabEntry
+pub fn tungsten_core::assets::manifest::PrefabEntry::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::manifest::PrefabEntry
+impl core::marker::Send for tungsten_core::assets::manifest::PrefabEntry
+impl core::marker::Sync for tungsten_core::assets::manifest::PrefabEntry
+impl core::marker::Unpin for tungsten_core::assets::manifest::PrefabEntry
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::PrefabEntry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::PrefabEntry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::PrefabEntry
 pub struct tungsten_core::assets::manifest::RawManifest
 pub tungsten_core::assets::manifest::RawManifest::animations: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::AnimationEntry>
 pub tungsten_core::assets::manifest::RawManifest::font_fallback: alloc::vec::Vec<alloc::string::String>
@@ -459,6 +477,7 @@ pub tungsten_core::assets::manifest::RawManifest::fonts: std::collections::hash:
 pub tungsten_core::assets::manifest::RawManifest::materials: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::MaterialEntry>
 pub tungsten_core::assets::manifest::RawManifest::particle_meshes: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ParticleMeshEntry>
 pub tungsten_core::assets::manifest::RawManifest::particles: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ParticleEntry>
+pub tungsten_core::assets::manifest::RawManifest::prefabs: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::PrefabEntry>
 pub tungsten_core::assets::manifest::RawManifest::shaders: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ShaderEntry>
 pub tungsten_core::assets::manifest::RawManifest::sounds: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::SoundEntry>
 pub tungsten_core::assets::manifest::RawManifest::sprites: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::SpriteEntry>
@@ -532,6 +551,7 @@ pub tungsten_core::assets::manifest::ResolvedManifest::fonts: std::collections::
 pub tungsten_core::assets::manifest::ResolvedManifest::materials: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedMaterial>
 pub tungsten_core::assets::manifest::ResolvedManifest::particle_meshes: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedParticleMesh>
 pub tungsten_core::assets::manifest::ResolvedManifest::particles: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedParticle>
+pub tungsten_core::assets::manifest::ResolvedManifest::prefabs: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedPrefab>
 pub tungsten_core::assets::manifest::ResolvedManifest::shaders: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedShader>
 pub tungsten_core::assets::manifest::ResolvedManifest::sounds: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedSound>
 pub tungsten_core::assets::manifest::ResolvedManifest::sprites: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedSprite>
@@ -596,6 +616,21 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedParticleMe
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedParticleMesh
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedParticleMesh
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedParticleMesh
+#[non_exhaustive] pub struct tungsten_core::assets::manifest::ResolvedPrefab
+pub tungsten_core::assets::manifest::ResolvedPrefab::path: std::path::PathBuf
+impl tungsten_core::assets::manifest::ResolvedPrefab
+pub fn tungsten_core::assets::manifest::ResolvedPrefab::new(std::path::PathBuf) -> Self
+impl core::clone::Clone for tungsten_core::assets::manifest::ResolvedPrefab
+pub fn tungsten_core::assets::manifest::ResolvedPrefab::clone(&self) -> tungsten_core::assets::manifest::ResolvedPrefab
+impl core::fmt::Debug for tungsten_core::assets::manifest::ResolvedPrefab
+pub fn tungsten_core::assets::manifest::ResolvedPrefab::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::manifest::ResolvedPrefab
+impl core::marker::Send for tungsten_core::assets::manifest::ResolvedPrefab
+impl core::marker::Sync for tungsten_core::assets::manifest::ResolvedPrefab
+impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedPrefab
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedPrefab
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedPrefab
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedPrefab
 pub struct tungsten_core::assets::manifest::ResolvedShader
 pub tungsten_core::assets::manifest::ResolvedShader::path: std::path::PathBuf
 impl core::clone::Clone for tungsten_core::assets::manifest::ResolvedShader
@@ -1151,6 +1186,106 @@ pub fn [f32; 4]::lerp(Self, Self, f32) -> Self
 impl tungsten_core::assets::particle::Lerp for f32
 pub fn f32::lerp(Self, Self, f32) -> Self
 pub type tungsten_core::assets::particle::ParticleMeshAssetId = tungsten_core::assets::particle::AssetId<tungsten_core::assets::particle::ParticleMesh>
+pub mod tungsten_core::assets::prefab
+#[non_exhaustive] pub enum tungsten_core::assets::prefab::PrefabError
+pub tungsten_core::assets::prefab::PrefabError::Component
+pub tungsten_core::assets::prefab::PrefabError::Component::id: alloc::string::String
+pub tungsten_core::assets::prefab::PrefabError::Component::source: tungsten_core::component_registry::ComponentError
+pub tungsten_core::assets::prefab::PrefabError::Invalid
+pub tungsten_core::assets::prefab::PrefabError::Invalid::id: alloc::string::String
+pub tungsten_core::assets::prefab::PrefabError::Invalid::message: alloc::string::String
+pub tungsten_core::assets::prefab::PrefabError::Io
+pub tungsten_core::assets::prefab::PrefabError::Io::path: alloc::string::String
+pub tungsten_core::assets::prefab::PrefabError::Io::source: core::io::error::Error
+pub tungsten_core::assets::prefab::PrefabError::Object
+pub tungsten_core::assets::prefab::PrefabError::Object::layer: alloc::string::String
+pub tungsten_core::assets::prefab::PrefabError::Object::map: alloc::string::String
+pub tungsten_core::assets::prefab::PrefabError::Object::message: alloc::string::String
+pub tungsten_core::assets::prefab::PrefabError::Object::object: u32
+pub tungsten_core::assets::prefab::PrefabError::Parse
+pub tungsten_core::assets::prefab::PrefabError::Parse::path: alloc::string::String
+pub tungsten_core::assets::prefab::PrefabError::Parse::source: serde_json::error::Error
+pub tungsten_core::assets::prefab::PrefabError::Position
+pub tungsten_core::assets::prefab::PrefabError::Position::id: alloc::string::String
+pub tungsten_core::assets::prefab::PrefabError::Position::position: glam::f32::vec2::Vec2
+pub tungsten_core::assets::prefab::PrefabError::Unknown
+pub tungsten_core::assets::prefab::PrefabError::Unknown::id: alloc::string::String
+pub tungsten_core::assets::prefab::PrefabError::UnknownMap
+pub tungsten_core::assets::prefab::PrefabError::UnknownMap::map: alloc::string::String
+pub tungsten_core::assets::prefab::PrefabError::Validation
+pub tungsten_core::assets::prefab::PrefabError::Validation::message: alloc::string::String
+pub tungsten_core::assets::prefab::PrefabError::Validation::path: alloc::string::String
+impl core::error::Error for tungsten_core::assets::prefab::PrefabError
+pub fn tungsten_core::assets::prefab::PrefabError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tungsten_core::assets::prefab::PrefabError
+pub fn tungsten_core::assets::prefab::PrefabError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::assets::prefab::PrefabError
+pub fn tungsten_core::assets::prefab::PrefabError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::prefab::PrefabError
+impl core::marker::Send for tungsten_core::assets::prefab::PrefabError
+impl core::marker::Sync for tungsten_core::assets::prefab::PrefabError
+impl core::marker::Unpin for tungsten_core::assets::prefab::PrefabError
+impl core::marker::UnsafeUnpin for tungsten_core::assets::prefab::PrefabError
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::prefab::PrefabError
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::prefab::PrefabError
+#[non_exhaustive] pub struct tungsten_core::assets::prefab::PrefabData
+pub tungsten_core::assets::prefab::PrefabData::components: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub tungsten_core::assets::prefab::PrefabData::sprite: core::option::Option<tungsten_core::assets::scene::SceneSprite>
+pub tungsten_core::assets::prefab::PrefabData::tag: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::prefab::PrefabData::tweens: alloc::vec::Vec<tungsten_core::assets::scene::SceneTween>
+pub tungsten_core::assets::prefab::PrefabData::visible: bool
+impl tungsten_core::assets::prefab::PrefabData
+pub fn tungsten_core::assets::prefab::PrefabData::load(&std::path::Path, &tungsten_core::World) -> core::result::Result<Self, tungsten_core::assets::prefab::PrefabError>
+impl core::clone::Clone for tungsten_core::assets::prefab::PrefabData
+pub fn tungsten_core::assets::prefab::PrefabData::clone(&self) -> tungsten_core::assets::prefab::PrefabData
+impl core::fmt::Debug for tungsten_core::assets::prefab::PrefabData
+pub fn tungsten_core::assets::prefab::PrefabData::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl serde_core::ser::Serialize for tungsten_core::assets::prefab::PrefabData
+pub fn tungsten_core::assets::prefab::PrefabData::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::prefab::PrefabData
+pub fn tungsten_core::assets::prefab::PrefabData::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::prefab::PrefabData
+impl core::marker::Send for tungsten_core::assets::prefab::PrefabData
+impl core::marker::Sync for tungsten_core::assets::prefab::PrefabData
+impl core::marker::Unpin for tungsten_core::assets::prefab::PrefabData
+impl core::marker::UnsafeUnpin for tungsten_core::assets::prefab::PrefabData
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::prefab::PrefabData
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::prefab::PrefabData
+pub struct tungsten_core::assets::prefab::PrefabRegistry
+impl tungsten_core::assets::prefab::PrefabRegistry
+pub fn tungsten_core::assets::prefab::PrefabRegistry::get(&self, &str) -> core::option::Option<&tungsten_core::assets::prefab::PrefabData>
+pub fn tungsten_core::assets::prefab::PrefabRegistry::id_for_path(&self, &std::path::Path) -> core::option::Option<&str>
+pub fn tungsten_core::assets::prefab::PrefabRegistry::ids(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
+pub fn tungsten_core::assets::prefab::PrefabRegistry::insert(&mut self, alloc::string::String, tungsten_core::assets::prefab::PrefabData)
+pub fn tungsten_core::assets::prefab::PrefabRegistry::insert_with_path(&mut self, alloc::string::String, tungsten_core::assets::prefab::PrefabData, std::path::PathBuf)
+pub fn tungsten_core::assets::prefab::PrefabRegistry::is_empty(&self) -> bool
+pub fn tungsten_core::assets::prefab::PrefabRegistry::len(&self) -> usize
+pub fn tungsten_core::assets::prefab::PrefabRegistry::new() -> Self
+impl core::default::Default for tungsten_core::assets::prefab::PrefabRegistry
+pub fn tungsten_core::assets::prefab::PrefabRegistry::default() -> tungsten_core::assets::prefab::PrefabRegistry
+impl core::fmt::Debug for tungsten_core::assets::prefab::PrefabRegistry
+pub fn tungsten_core::assets::prefab::PrefabRegistry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::prefab::PrefabRegistry
+impl core::marker::Send for tungsten_core::assets::prefab::PrefabRegistry
+impl core::marker::Sync for tungsten_core::assets::prefab::PrefabRegistry
+impl core::marker::Unpin for tungsten_core::assets::prefab::PrefabRegistry
+impl core::marker::UnsafeUnpin for tungsten_core::assets::prefab::PrefabRegistry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::prefab::PrefabRegistry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::prefab::PrefabRegistry
+pub struct tungsten_core::assets::prefab::PreparedPrefab
+impl tungsten_core::assets::prefab::PreparedPrefab
+pub fn tungsten_core::assets::prefab::PreparedPrefab::id(&self) -> &str
+pub fn tungsten_core::assets::prefab::PreparedPrefab::spawn(self, &mut tungsten_core::World) -> tungsten_core::Entity
+pub fn tungsten_core::assets::prefab::PreparedPrefab::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> Self
+impl core::fmt::Debug for tungsten_core::assets::prefab::PreparedPrefab
+pub fn tungsten_core::assets::prefab::PreparedPrefab::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::prefab::PreparedPrefab
+impl !core::marker::Send for tungsten_core::assets::prefab::PreparedPrefab
+impl !core::marker::Sync for tungsten_core::assets::prefab::PreparedPrefab
+impl core::marker::Unpin for tungsten_core::assets::prefab::PreparedPrefab
+impl core::marker::UnsafeUnpin for tungsten_core::assets::prefab::PreparedPrefab
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::prefab::PreparedPrefab
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::prefab::PreparedPrefab
 pub mod tungsten_core::assets::registry
 pub struct tungsten_core::assets::registry::AssetRegistry
 impl tungsten_core::assets::registry::AssetRegistry
@@ -1557,16 +1692,60 @@ impl core::marker::Unpin for tungsten_core::assets::tilemap::TilemapError
 impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::TilemapError
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::TilemapError
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::TilemapError
-pub struct tungsten_core::assets::tilemap::TilemapData
+#[non_exhaustive] pub struct tungsten_core::assets::tilemap::MapObject
+pub tungsten_core::assets::tilemap::MapObject::class: alloc::string::String
+pub tungsten_core::assets::tilemap::MapObject::id: u32
+pub tungsten_core::assets::tilemap::MapObject::name: alloc::string::String
+pub tungsten_core::assets::tilemap::MapObject::position: glam::f32::vec2::Vec2
+pub tungsten_core::assets::tilemap::MapObject::properties: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub tungsten_core::assets::tilemap::MapObject::size: glam::f32::vec2::Vec2
+impl core::clone::Clone for tungsten_core::assets::tilemap::MapObject
+pub fn tungsten_core::assets::tilemap::MapObject::clone(&self) -> tungsten_core::assets::tilemap::MapObject
+impl core::cmp::PartialEq for tungsten_core::assets::tilemap::MapObject
+pub fn tungsten_core::assets::tilemap::MapObject::eq(&self, &tungsten_core::assets::tilemap::MapObject) -> bool
+impl core::fmt::Debug for tungsten_core::assets::tilemap::MapObject
+pub fn tungsten_core::assets::tilemap::MapObject::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::tilemap::MapObject
+impl core::marker::Freeze for tungsten_core::assets::tilemap::MapObject
+impl core::marker::Send for tungsten_core::assets::tilemap::MapObject
+impl core::marker::Sync for tungsten_core::assets::tilemap::MapObject
+impl core::marker::Unpin for tungsten_core::assets::tilemap::MapObject
+impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::MapObject
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::MapObject
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::MapObject
+#[non_exhaustive] pub struct tungsten_core::assets::tilemap::ObjectLayer
+pub tungsten_core::assets::tilemap::ObjectLayer::name: alloc::string::String
+pub tungsten_core::assets::tilemap::ObjectLayer::objects: alloc::vec::Vec<tungsten_core::assets::tilemap::MapObject>
+impl core::clone::Clone for tungsten_core::assets::tilemap::ObjectLayer
+pub fn tungsten_core::assets::tilemap::ObjectLayer::clone(&self) -> tungsten_core::assets::tilemap::ObjectLayer
+impl core::cmp::PartialEq for tungsten_core::assets::tilemap::ObjectLayer
+pub fn tungsten_core::assets::tilemap::ObjectLayer::eq(&self, &tungsten_core::assets::tilemap::ObjectLayer) -> bool
+impl core::fmt::Debug for tungsten_core::assets::tilemap::ObjectLayer
+pub fn tungsten_core::assets::tilemap::ObjectLayer::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::tilemap::ObjectLayer
+impl core::marker::Freeze for tungsten_core::assets::tilemap::ObjectLayer
+impl core::marker::Send for tungsten_core::assets::tilemap::ObjectLayer
+impl core::marker::Sync for tungsten_core::assets::tilemap::ObjectLayer
+impl core::marker::Unpin for tungsten_core::assets::tilemap::ObjectLayer
+impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::ObjectLayer
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::ObjectLayer
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::ObjectLayer
+#[non_exhaustive] pub struct tungsten_core::assets::tilemap::TilemapData
 pub tungsten_core::assets::tilemap::TilemapData::height: u32
 pub tungsten_core::assets::tilemap::TilemapData::layers: alloc::vec::Vec<tungsten_core::assets::tilemap::TilemapLayer>
+pub tungsten_core::assets::tilemap::TilemapData::object_layers: alloc::vec::Vec<tungsten_core::assets::tilemap::ObjectLayer>
 pub tungsten_core::assets::tilemap::TilemapData::tile_height: u32
 pub tungsten_core::assets::tilemap::TilemapData::tile_width: u32
 pub tungsten_core::assets::tilemap::TilemapData::tileset: alloc::vec::Vec<alloc::string::String>
 pub tungsten_core::assets::tilemap::TilemapData::width: u32
 impl tungsten_core::assets::tilemap::TilemapData
+pub fn tungsten_core::assets::tilemap::TilemapData::add_layer(&mut self, impl core::convert::Into<alloc::string::String>, tungsten_core::assets::tilemap::LayerKind) -> usize
+pub fn tungsten_core::assets::tilemap::TilemapData::add_tile(&mut self, impl core::convert::Into<alloc::string::String>) -> tungsten_core::assets::tilemap::TileIndex
+pub fn tungsten_core::assets::tilemap::TilemapData::fill(&mut self, usize, tungsten_core::assets::tilemap::TileIndex)
 pub fn tungsten_core::assets::tilemap::TilemapData::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::assets::tilemap::TilemapError>
+pub fn tungsten_core::assets::tilemap::TilemapData::new(u32, u32, u32, u32) -> Self
 pub fn tungsten_core::assets::tilemap::TilemapData::pixel_size(&self) -> glam::f32::vec2::Vec2
+pub fn tungsten_core::assets::tilemap::TilemapData::set_tile(&mut self, usize, u32, u32, tungsten_core::assets::tilemap::TileIndex)
 pub fn tungsten_core::assets::tilemap::TilemapData::tile_at(&self, usize, u32, u32) -> core::option::Option<tungsten_core::assets::tilemap::TileIndex>
 impl core::clone::Clone for tungsten_core::assets::tilemap::TilemapData
 pub fn tungsten_core::assets::tilemap::TilemapData::clone(&self) -> tungsten_core::assets::tilemap::TilemapData
@@ -1833,6 +2012,9 @@ pub tungsten_core::assets::ManifestError::MissingNormalMapFile::path: alloc::str
 pub tungsten_core::assets::ManifestError::MissingParticleFile
 pub tungsten_core::assets::ManifestError::MissingParticleFile::id: alloc::string::String
 pub tungsten_core::assets::ManifestError::MissingParticleFile::path: alloc::string::String
+pub tungsten_core::assets::ManifestError::MissingPrefabFile
+pub tungsten_core::assets::ManifestError::MissingPrefabFile::id: alloc::string::String
+pub tungsten_core::assets::ManifestError::MissingPrefabFile::path: alloc::string::String
 pub tungsten_core::assets::ManifestError::MissingShaderFile
 pub tungsten_core::assets::ManifestError::MissingShaderFile::id: alloc::string::String
 pub tungsten_core::assets::ManifestError::MissingShaderFile::path: alloc::string::String
@@ -1909,6 +2091,47 @@ impl core::marker::Unpin for tungsten_core::assets::particle::ParticleRender
 impl core::marker::UnsafeUnpin for tungsten_core::assets::particle::ParticleRender
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::particle::ParticleRender
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::particle::ParticleRender
+#[non_exhaustive] pub enum tungsten_core::assets::PrefabError
+pub tungsten_core::assets::PrefabError::Component
+pub tungsten_core::assets::PrefabError::Component::id: alloc::string::String
+pub tungsten_core::assets::PrefabError::Component::source: tungsten_core::component_registry::ComponentError
+pub tungsten_core::assets::PrefabError::Invalid
+pub tungsten_core::assets::PrefabError::Invalid::id: alloc::string::String
+pub tungsten_core::assets::PrefabError::Invalid::message: alloc::string::String
+pub tungsten_core::assets::PrefabError::Io
+pub tungsten_core::assets::PrefabError::Io::path: alloc::string::String
+pub tungsten_core::assets::PrefabError::Io::source: core::io::error::Error
+pub tungsten_core::assets::PrefabError::Object
+pub tungsten_core::assets::PrefabError::Object::layer: alloc::string::String
+pub tungsten_core::assets::PrefabError::Object::map: alloc::string::String
+pub tungsten_core::assets::PrefabError::Object::message: alloc::string::String
+pub tungsten_core::assets::PrefabError::Object::object: u32
+pub tungsten_core::assets::PrefabError::Parse
+pub tungsten_core::assets::PrefabError::Parse::path: alloc::string::String
+pub tungsten_core::assets::PrefabError::Parse::source: serde_json::error::Error
+pub tungsten_core::assets::PrefabError::Position
+pub tungsten_core::assets::PrefabError::Position::id: alloc::string::String
+pub tungsten_core::assets::PrefabError::Position::position: glam::f32::vec2::Vec2
+pub tungsten_core::assets::PrefabError::Unknown
+pub tungsten_core::assets::PrefabError::Unknown::id: alloc::string::String
+pub tungsten_core::assets::PrefabError::UnknownMap
+pub tungsten_core::assets::PrefabError::UnknownMap::map: alloc::string::String
+pub tungsten_core::assets::PrefabError::Validation
+pub tungsten_core::assets::PrefabError::Validation::message: alloc::string::String
+pub tungsten_core::assets::PrefabError::Validation::path: alloc::string::String
+impl core::error::Error for tungsten_core::assets::prefab::PrefabError
+pub fn tungsten_core::assets::prefab::PrefabError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tungsten_core::assets::prefab::PrefabError
+pub fn tungsten_core::assets::prefab::PrefabError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::assets::prefab::PrefabError
+pub fn tungsten_core::assets::prefab::PrefabError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::prefab::PrefabError
+impl core::marker::Send for tungsten_core::assets::prefab::PrefabError
+impl core::marker::Sync for tungsten_core::assets::prefab::PrefabError
+impl core::marker::Unpin for tungsten_core::assets::prefab::PrefabError
+impl core::marker::UnsafeUnpin for tungsten_core::assets::prefab::PrefabError
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::prefab::PrefabError
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::prefab::PrefabError
 pub enum tungsten_core::assets::SceneError
 pub tungsten_core::assets::SceneError::Io
 pub tungsten_core::assets::SceneError::Io::path: alloc::string::String
@@ -2295,6 +2518,27 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::LoadedManifest
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::LoadedManifest
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::LoadedManifest
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::LoadedManifest
+#[non_exhaustive] pub struct tungsten_core::assets::MapObject
+pub tungsten_core::assets::MapObject::class: alloc::string::String
+pub tungsten_core::assets::MapObject::id: u32
+pub tungsten_core::assets::MapObject::name: alloc::string::String
+pub tungsten_core::assets::MapObject::position: glam::f32::vec2::Vec2
+pub tungsten_core::assets::MapObject::properties: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub tungsten_core::assets::MapObject::size: glam::f32::vec2::Vec2
+impl core::clone::Clone for tungsten_core::assets::tilemap::MapObject
+pub fn tungsten_core::assets::tilemap::MapObject::clone(&self) -> tungsten_core::assets::tilemap::MapObject
+impl core::cmp::PartialEq for tungsten_core::assets::tilemap::MapObject
+pub fn tungsten_core::assets::tilemap::MapObject::eq(&self, &tungsten_core::assets::tilemap::MapObject) -> bool
+impl core::fmt::Debug for tungsten_core::assets::tilemap::MapObject
+pub fn tungsten_core::assets::tilemap::MapObject::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::tilemap::MapObject
+impl core::marker::Freeze for tungsten_core::assets::tilemap::MapObject
+impl core::marker::Send for tungsten_core::assets::tilemap::MapObject
+impl core::marker::Sync for tungsten_core::assets::tilemap::MapObject
+impl core::marker::Unpin for tungsten_core::assets::tilemap::MapObject
+impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::MapObject
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::MapObject
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::MapObject
 pub struct tungsten_core::assets::MaterialAssetId(pub u32)
 impl core::clone::Clone for tungsten_core::assets::material::MaterialAssetId
 pub fn tungsten_core::assets::material::MaterialAssetId::clone(&self) -> tungsten_core::assets::material::MaterialAssetId
@@ -2377,6 +2621,23 @@ impl core::marker::Unpin for tungsten_core::assets::material::MaterialUniformDef
 impl core::marker::UnsafeUnpin for tungsten_core::assets::material::MaterialUniformDefaults
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::material::MaterialUniformDefaults
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::material::MaterialUniformDefaults
+#[non_exhaustive] pub struct tungsten_core::assets::ObjectLayer
+pub tungsten_core::assets::ObjectLayer::name: alloc::string::String
+pub tungsten_core::assets::ObjectLayer::objects: alloc::vec::Vec<tungsten_core::assets::tilemap::MapObject>
+impl core::clone::Clone for tungsten_core::assets::tilemap::ObjectLayer
+pub fn tungsten_core::assets::tilemap::ObjectLayer::clone(&self) -> tungsten_core::assets::tilemap::ObjectLayer
+impl core::cmp::PartialEq for tungsten_core::assets::tilemap::ObjectLayer
+pub fn tungsten_core::assets::tilemap::ObjectLayer::eq(&self, &tungsten_core::assets::tilemap::ObjectLayer) -> bool
+impl core::fmt::Debug for tungsten_core::assets::tilemap::ObjectLayer
+pub fn tungsten_core::assets::tilemap::ObjectLayer::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::tilemap::ObjectLayer
+impl core::marker::Freeze for tungsten_core::assets::tilemap::ObjectLayer
+impl core::marker::Send for tungsten_core::assets::tilemap::ObjectLayer
+impl core::marker::Sync for tungsten_core::assets::tilemap::ObjectLayer
+impl core::marker::Unpin for tungsten_core::assets::tilemap::ObjectLayer
+impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::ObjectLayer
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::ObjectLayer
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::ObjectLayer
 pub struct tungsten_core::assets::PackInput<'a>
 pub tungsten_core::assets::PackInput::height: u32
 pub tungsten_core::assets::PackInput::id: &'a str
@@ -2580,6 +2841,79 @@ impl core::marker::Unpin for tungsten_core::assets::particle::ParticleMeshRegist
 impl core::marker::UnsafeUnpin for tungsten_core::assets::particle::ParticleMeshRegistry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::particle::ParticleMeshRegistry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::particle::ParticleMeshRegistry
+#[non_exhaustive] pub struct tungsten_core::assets::PrefabData
+pub tungsten_core::assets::PrefabData::components: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub tungsten_core::assets::PrefabData::sprite: core::option::Option<tungsten_core::assets::scene::SceneSprite>
+pub tungsten_core::assets::PrefabData::tag: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::PrefabData::tweens: alloc::vec::Vec<tungsten_core::assets::scene::SceneTween>
+pub tungsten_core::assets::PrefabData::visible: bool
+impl tungsten_core::assets::prefab::PrefabData
+pub fn tungsten_core::assets::prefab::PrefabData::load(&std::path::Path, &tungsten_core::World) -> core::result::Result<Self, tungsten_core::assets::prefab::PrefabError>
+impl core::clone::Clone for tungsten_core::assets::prefab::PrefabData
+pub fn tungsten_core::assets::prefab::PrefabData::clone(&self) -> tungsten_core::assets::prefab::PrefabData
+impl core::fmt::Debug for tungsten_core::assets::prefab::PrefabData
+pub fn tungsten_core::assets::prefab::PrefabData::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl serde_core::ser::Serialize for tungsten_core::assets::prefab::PrefabData
+pub fn tungsten_core::assets::prefab::PrefabData::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::prefab::PrefabData
+pub fn tungsten_core::assets::prefab::PrefabData::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::prefab::PrefabData
+impl core::marker::Send for tungsten_core::assets::prefab::PrefabData
+impl core::marker::Sync for tungsten_core::assets::prefab::PrefabData
+impl core::marker::Unpin for tungsten_core::assets::prefab::PrefabData
+impl core::marker::UnsafeUnpin for tungsten_core::assets::prefab::PrefabData
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::prefab::PrefabData
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::prefab::PrefabData
+#[non_exhaustive] pub struct tungsten_core::assets::PrefabEntry
+pub tungsten_core::assets::PrefabEntry::path: alloc::string::String
+impl core::clone::Clone for tungsten_core::assets::manifest::PrefabEntry
+pub fn tungsten_core::assets::manifest::PrefabEntry::clone(&self) -> tungsten_core::assets::manifest::PrefabEntry
+impl core::fmt::Debug for tungsten_core::assets::manifest::PrefabEntry
+pub fn tungsten_core::assets::manifest::PrefabEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::manifest::PrefabEntry
+pub fn tungsten_core::assets::manifest::PrefabEntry::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::manifest::PrefabEntry
+impl core::marker::Send for tungsten_core::assets::manifest::PrefabEntry
+impl core::marker::Sync for tungsten_core::assets::manifest::PrefabEntry
+impl core::marker::Unpin for tungsten_core::assets::manifest::PrefabEntry
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::PrefabEntry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::PrefabEntry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::PrefabEntry
+pub struct tungsten_core::assets::PrefabRegistry
+impl tungsten_core::assets::prefab::PrefabRegistry
+pub fn tungsten_core::assets::prefab::PrefabRegistry::get(&self, &str) -> core::option::Option<&tungsten_core::assets::prefab::PrefabData>
+pub fn tungsten_core::assets::prefab::PrefabRegistry::id_for_path(&self, &std::path::Path) -> core::option::Option<&str>
+pub fn tungsten_core::assets::prefab::PrefabRegistry::ids(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
+pub fn tungsten_core::assets::prefab::PrefabRegistry::insert(&mut self, alloc::string::String, tungsten_core::assets::prefab::PrefabData)
+pub fn tungsten_core::assets::prefab::PrefabRegistry::insert_with_path(&mut self, alloc::string::String, tungsten_core::assets::prefab::PrefabData, std::path::PathBuf)
+pub fn tungsten_core::assets::prefab::PrefabRegistry::is_empty(&self) -> bool
+pub fn tungsten_core::assets::prefab::PrefabRegistry::len(&self) -> usize
+pub fn tungsten_core::assets::prefab::PrefabRegistry::new() -> Self
+impl core::default::Default for tungsten_core::assets::prefab::PrefabRegistry
+pub fn tungsten_core::assets::prefab::PrefabRegistry::default() -> tungsten_core::assets::prefab::PrefabRegistry
+impl core::fmt::Debug for tungsten_core::assets::prefab::PrefabRegistry
+pub fn tungsten_core::assets::prefab::PrefabRegistry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::prefab::PrefabRegistry
+impl core::marker::Send for tungsten_core::assets::prefab::PrefabRegistry
+impl core::marker::Sync for tungsten_core::assets::prefab::PrefabRegistry
+impl core::marker::Unpin for tungsten_core::assets::prefab::PrefabRegistry
+impl core::marker::UnsafeUnpin for tungsten_core::assets::prefab::PrefabRegistry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::prefab::PrefabRegistry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::prefab::PrefabRegistry
+pub struct tungsten_core::assets::PreparedPrefab
+impl tungsten_core::assets::prefab::PreparedPrefab
+pub fn tungsten_core::assets::prefab::PreparedPrefab::id(&self) -> &str
+pub fn tungsten_core::assets::prefab::PreparedPrefab::spawn(self, &mut tungsten_core::World) -> tungsten_core::Entity
+pub fn tungsten_core::assets::prefab::PreparedPrefab::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> Self
+impl core::fmt::Debug for tungsten_core::assets::prefab::PreparedPrefab
+pub fn tungsten_core::assets::prefab::PreparedPrefab::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::prefab::PreparedPrefab
+impl !core::marker::Send for tungsten_core::assets::prefab::PreparedPrefab
+impl !core::marker::Sync for tungsten_core::assets::prefab::PreparedPrefab
+impl core::marker::Unpin for tungsten_core::assets::prefab::PreparedPrefab
+impl core::marker::UnsafeUnpin for tungsten_core::assets::prefab::PreparedPrefab
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::prefab::PreparedPrefab
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::prefab::PreparedPrefab
 pub struct tungsten_core::assets::Range
 pub tungsten_core::assets::Range::max: f32
 pub tungsten_core::assets::Range::min: f32
@@ -2639,6 +2973,7 @@ pub tungsten_core::assets::ResolvedManifest::fonts: std::collections::hash::map:
 pub tungsten_core::assets::ResolvedManifest::materials: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedMaterial>
 pub tungsten_core::assets::ResolvedManifest::particle_meshes: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedParticleMesh>
 pub tungsten_core::assets::ResolvedManifest::particles: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedParticle>
+pub tungsten_core::assets::ResolvedManifest::prefabs: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedPrefab>
 pub tungsten_core::assets::ResolvedManifest::shaders: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedShader>
 pub tungsten_core::assets::ResolvedManifest::sounds: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedSound>
 pub tungsten_core::assets::ResolvedManifest::sprites: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedSprite>
@@ -2703,6 +3038,21 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedParticleMe
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedParticleMesh
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedParticleMesh
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedParticleMesh
+#[non_exhaustive] pub struct tungsten_core::assets::ResolvedPrefab
+pub tungsten_core::assets::ResolvedPrefab::path: std::path::PathBuf
+impl tungsten_core::assets::manifest::ResolvedPrefab
+pub fn tungsten_core::assets::manifest::ResolvedPrefab::new(std::path::PathBuf) -> Self
+impl core::clone::Clone for tungsten_core::assets::manifest::ResolvedPrefab
+pub fn tungsten_core::assets::manifest::ResolvedPrefab::clone(&self) -> tungsten_core::assets::manifest::ResolvedPrefab
+impl core::fmt::Debug for tungsten_core::assets::manifest::ResolvedPrefab
+pub fn tungsten_core::assets::manifest::ResolvedPrefab::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::manifest::ResolvedPrefab
+impl core::marker::Send for tungsten_core::assets::manifest::ResolvedPrefab
+impl core::marker::Sync for tungsten_core::assets::manifest::ResolvedPrefab
+impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedPrefab
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedPrefab
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedPrefab
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedPrefab
 pub struct tungsten_core::assets::ResolvedShader
 pub tungsten_core::assets::ResolvedShader::path: std::path::PathBuf
 impl core::clone::Clone for tungsten_core::assets::manifest::ResolvedShader
@@ -3012,16 +3362,22 @@ impl core::marker::Unpin for tungsten_core::assets::registry::TextureHandle
 impl core::marker::UnsafeUnpin for tungsten_core::assets::registry::TextureHandle
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::registry::TextureHandle
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::registry::TextureHandle
-pub struct tungsten_core::assets::TilemapData
+#[non_exhaustive] pub struct tungsten_core::assets::TilemapData
 pub tungsten_core::assets::TilemapData::height: u32
 pub tungsten_core::assets::TilemapData::layers: alloc::vec::Vec<tungsten_core::assets::tilemap::TilemapLayer>
+pub tungsten_core::assets::TilemapData::object_layers: alloc::vec::Vec<tungsten_core::assets::tilemap::ObjectLayer>
 pub tungsten_core::assets::TilemapData::tile_height: u32
 pub tungsten_core::assets::TilemapData::tile_width: u32
 pub tungsten_core::assets::TilemapData::tileset: alloc::vec::Vec<alloc::string::String>
 pub tungsten_core::assets::TilemapData::width: u32
 impl tungsten_core::assets::tilemap::TilemapData
+pub fn tungsten_core::assets::tilemap::TilemapData::add_layer(&mut self, impl core::convert::Into<alloc::string::String>, tungsten_core::assets::tilemap::LayerKind) -> usize
+pub fn tungsten_core::assets::tilemap::TilemapData::add_tile(&mut self, impl core::convert::Into<alloc::string::String>) -> tungsten_core::assets::tilemap::TileIndex
+pub fn tungsten_core::assets::tilemap::TilemapData::fill(&mut self, usize, tungsten_core::assets::tilemap::TileIndex)
 pub fn tungsten_core::assets::tilemap::TilemapData::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::assets::tilemap::TilemapError>
+pub fn tungsten_core::assets::tilemap::TilemapData::new(u32, u32, u32, u32) -> Self
 pub fn tungsten_core::assets::tilemap::TilemapData::pixel_size(&self) -> glam::f32::vec2::Vec2
+pub fn tungsten_core::assets::tilemap::TilemapData::set_tile(&mut self, usize, u32, u32, tungsten_core::assets::tilemap::TileIndex)
 pub fn tungsten_core::assets::tilemap::TilemapData::tile_at(&self, usize, u32, u32) -> core::option::Option<tungsten_core::assets::tilemap::TileIndex>
 impl core::clone::Clone for tungsten_core::assets::tilemap::TilemapData
 pub fn tungsten_core::assets::tilemap::TilemapData::clone(&self) -> tungsten_core::assets::tilemap::TilemapData
@@ -3316,6 +3672,11 @@ pub tungsten_core::component_registry::ComponentError::Invalid
 pub tungsten_core::component_registry::ComponentError::Invalid::field: alloc::string::String
 pub tungsten_core::component_registry::ComponentError::Invalid::name: alloc::string::String
 pub tungsten_core::component_registry::ComponentError::Invalid::source: serde_json::error::Error
+pub tungsten_core::component_registry::ComponentError::MissingAsset
+pub tungsten_core::component_registry::ComponentError::MissingAsset::field: alloc::string::String
+pub tungsten_core::component_registry::ComponentError::MissingAsset::id: alloc::string::String
+pub tungsten_core::component_registry::ComponentError::MissingAsset::kind: &'static str
+pub tungsten_core::component_registry::ComponentError::MissingAsset::name: alloc::string::String
 pub tungsten_core::component_registry::ComponentError::Unknown
 pub tungsten_core::component_registry::ComponentError::Unknown::name: alloc::string::String
 impl core::error::Error for tungsten_core::component_registry::ComponentError
@@ -3334,6 +3695,7 @@ impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::component_registry
 pub struct tungsten_core::component_registry::ComponentRegistry
 impl tungsten_core::component_registry::ComponentRegistry
 pub fn tungsten_core::component_registry::ComponentRegistry::check(&self, &str, &serde_json::value::Value) -> core::result::Result<(), tungsten_core::component_registry::ComponentError>
+pub fn tungsten_core::component_registry::ComponentRegistry::check_in(&self, &str, &serde_json::value::Value, &tungsten_core::World) -> core::result::Result<(), tungsten_core::component_registry::ComponentError>
 pub fn tungsten_core::component_registry::ComponentRegistry::contains(&self, &str) -> bool
 pub fn tungsten_core::component_registry::ComponentRegistry::is_empty(&self) -> bool
 pub fn tungsten_core::component_registry::ComponentRegistry::len(&self) -> usize
@@ -3343,6 +3705,7 @@ pub fn tungsten_core::component_registry::ComponentRegistry::new() -> Self
 pub fn tungsten_core::component_registry::ComponentRegistry::prepare(&self, &str, &serde_json::value::Value, &tungsten_core::component_registry::SpawnContext<'_>) -> core::result::Result<tungsten_core::component_registry::PreparedComponent, tungsten_core::component_registry::ComponentError>
 pub fn tungsten_core::component_registry::ComponentRegistry::register<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &str) -> bool
 pub fn tungsten_core::component_registry::ComponentRegistry::register_with<D, B>(&mut self, &str, impl core::ops::function::Fn(D, &tungsten_core::component_registry::SpawnContext<'_>) -> B + 'static) -> bool where D: serde_core::de::DeserializeOwned + 'static, B: tungsten_core::ecs::bundle::Bundle
+pub fn tungsten_core::component_registry::ComponentRegistry::register_with_assets<D, B>(&mut self, &str, impl core::ops::function::Fn(&D, &tungsten_core::World) -> core::result::Result<(), tungsten_core::component_registry::MissingAsset> + 'static, impl core::ops::function::Fn(D, &tungsten_core::component_registry::SpawnContext<'_>) -> B + 'static) -> bool where D: serde_core::de::DeserializeOwned + 'static, B: tungsten_core::ecs::bundle::Bundle
 impl core::default::Default for tungsten_core::component_registry::ComponentRegistry
 pub fn tungsten_core::component_registry::ComponentRegistry::default() -> tungsten_core::component_registry::ComponentRegistry
 impl core::fmt::Debug for tungsten_core::component_registry::ComponentRegistry
@@ -3354,6 +3717,27 @@ impl core::marker::Unpin for tungsten_core::component_registry::ComponentRegistr
 impl core::marker::UnsafeUnpin for tungsten_core::component_registry::ComponentRegistry
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::component_registry::ComponentRegistry
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::component_registry::ComponentRegistry
+#[non_exhaustive] pub struct tungsten_core::component_registry::MissingAsset
+pub tungsten_core::component_registry::MissingAsset::field: alloc::string::String
+pub tungsten_core::component_registry::MissingAsset::id: alloc::string::String
+pub tungsten_core::component_registry::MissingAsset::kind: &'static str
+impl tungsten_core::component_registry::MissingAsset
+pub fn tungsten_core::component_registry::MissingAsset::new(impl core::convert::Into<alloc::string::String>, &'static str, impl core::convert::Into<alloc::string::String>) -> Self
+impl core::clone::Clone for tungsten_core::component_registry::MissingAsset
+pub fn tungsten_core::component_registry::MissingAsset::clone(&self) -> tungsten_core::component_registry::MissingAsset
+impl core::cmp::Eq for tungsten_core::component_registry::MissingAsset
+impl core::cmp::PartialEq for tungsten_core::component_registry::MissingAsset
+pub fn tungsten_core::component_registry::MissingAsset::eq(&self, &tungsten_core::component_registry::MissingAsset) -> bool
+impl core::fmt::Debug for tungsten_core::component_registry::MissingAsset
+pub fn tungsten_core::component_registry::MissingAsset::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::component_registry::MissingAsset
+impl core::marker::Freeze for tungsten_core::component_registry::MissingAsset
+impl core::marker::Send for tungsten_core::component_registry::MissingAsset
+impl core::marker::Sync for tungsten_core::component_registry::MissingAsset
+impl core::marker::Unpin for tungsten_core::component_registry::MissingAsset
+impl core::marker::UnsafeUnpin for tungsten_core::component_registry::MissingAsset
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::component_registry::MissingAsset
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::component_registry::MissingAsset
 pub struct tungsten_core::component_registry::PreparedComponent
 impl tungsten_core::component_registry::PreparedComponent
 pub fn tungsten_core::component_registry::PreparedComponent::insert_pending(self, &mut tungsten_core::CommandBuffer, tungsten_core::PendingEntity)
@@ -4686,6 +5070,8 @@ pub fn tungsten_core::CommandBuffer::new() -> Self
 pub fn tungsten_core::CommandBuffer::remove_component<T: 'static>(&mut self, tungsten_core::Entity)
 pub fn tungsten_core::CommandBuffer::spawn(&mut self) -> tungsten_core::PendingEntity
 pub fn tungsten_core::CommandBuffer::spawn_with<B: tungsten_core::ecs::bundle::Bundle>(&mut self, B) -> tungsten_core::PendingEntity
+impl tungsten_core::CommandBuffer
+pub fn tungsten_core::CommandBuffer::spawn_prefab(&mut self, tungsten_core::assets::prefab::PreparedPrefab) -> tungsten_core::PendingEntity
 impl core::default::Default for tungsten_core::CommandBuffer
 pub fn tungsten_core::CommandBuffer::default() -> Self
 impl core::marker::Freeze for tungsten_core::CommandBuffer
@@ -4843,6 +5229,12 @@ impl<T> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ecs::query::W
 impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::Without<T>
 pub struct tungsten_core::ecs::World
 impl tungsten_core::World
+pub fn tungsten_core::World::check_map_objects(&self, &str, &tungsten_core::assets::tilemap::TilemapData) -> core::result::Result<(), tungsten_core::assets::prefab::PrefabError>
+pub fn tungsten_core::World::prepare_map_objects(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<alloc::vec::Vec<tungsten_core::assets::prefab::PreparedPrefab>, tungsten_core::assets::prefab::PrefabError>
+pub fn tungsten_core::World::prepare_prefab(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<tungsten_core::assets::prefab::PreparedPrefab, tungsten_core::assets::prefab::PrefabError>
+pub fn tungsten_core::World::spawn_map_objects(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<alloc::vec::Vec<tungsten_core::Entity>, tungsten_core::assets::prefab::PrefabError>
+pub fn tungsten_core::World::spawn_prefab(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<tungsten_core::Entity, tungsten_core::assets::prefab::PrefabError>
+impl tungsten_core::World
 pub fn tungsten_core::World::despawn(&mut self, tungsten_core::Entity)
 pub fn tungsten_core::World::end_fixed_step_events(&mut self)
 pub fn tungsten_core::World::entity_count(&self) -> u32
@@ -4893,6 +5285,7 @@ pub fn tungsten_core::World::spawn_with<B: tungsten_core::ecs::bundle::Bundle>(&
 impl tungsten_core::World
 pub fn tungsten_core::World::register_component<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &str) -> bool
 pub fn tungsten_core::World::register_component_with<D, B>(&mut self, &str, impl core::ops::function::Fn(D, &tungsten_core::component_registry::SpawnContext<'_>) -> B + 'static) -> bool where D: serde_core::de::DeserializeOwned + 'static, B: tungsten_core::ecs::bundle::Bundle
+pub fn tungsten_core::World::register_component_with_assets<D, B>(&mut self, &str, impl core::ops::function::Fn(&D, &tungsten_core::World) -> core::result::Result<(), tungsten_core::component_registry::MissingAsset> + 'static, impl core::ops::function::Fn(D, &tungsten_core::component_registry::SpawnContext<'_>) -> B + 'static) -> bool where D: serde_core::de::DeserializeOwned + 'static, B: tungsten_core::ecs::bundle::Bundle
 impl core::default::Default for tungsten_core::World
 pub fn tungsten_core::World::default() -> Self
 impl core::marker::Freeze for tungsten_core::World
@@ -10399,6 +10792,11 @@ pub tungsten_core::ComponentError::Invalid
 pub tungsten_core::ComponentError::Invalid::field: alloc::string::String
 pub tungsten_core::ComponentError::Invalid::name: alloc::string::String
 pub tungsten_core::ComponentError::Invalid::source: serde_json::error::Error
+pub tungsten_core::ComponentError::MissingAsset
+pub tungsten_core::ComponentError::MissingAsset::field: alloc::string::String
+pub tungsten_core::ComponentError::MissingAsset::id: alloc::string::String
+pub tungsten_core::ComponentError::MissingAsset::kind: &'static str
+pub tungsten_core::ComponentError::MissingAsset::name: alloc::string::String
 pub tungsten_core::ComponentError::Unknown
 pub tungsten_core::ComponentError::Unknown::name: alloc::string::String
 impl core::error::Error for tungsten_core::component_registry::ComponentError
@@ -10911,6 +11309,9 @@ pub tungsten_core::ManifestError::MissingNormalMapFile::path: alloc::string::Str
 pub tungsten_core::ManifestError::MissingParticleFile
 pub tungsten_core::ManifestError::MissingParticleFile::id: alloc::string::String
 pub tungsten_core::ManifestError::MissingParticleFile::path: alloc::string::String
+pub tungsten_core::ManifestError::MissingPrefabFile
+pub tungsten_core::ManifestError::MissingPrefabFile::id: alloc::string::String
+pub tungsten_core::ManifestError::MissingPrefabFile::path: alloc::string::String
 pub tungsten_core::ManifestError::MissingShaderFile
 pub tungsten_core::ManifestError::MissingShaderFile::id: alloc::string::String
 pub tungsten_core::ManifestError::MissingShaderFile::path: alloc::string::String
@@ -11105,6 +11506,47 @@ impl core::marker::Unpin for tungsten_core::post::PostPass
 impl core::marker::UnsafeUnpin for tungsten_core::post::PostPass
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::post::PostPass
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::post::PostPass
+#[non_exhaustive] pub enum tungsten_core::PrefabError
+pub tungsten_core::PrefabError::Component
+pub tungsten_core::PrefabError::Component::id: alloc::string::String
+pub tungsten_core::PrefabError::Component::source: tungsten_core::component_registry::ComponentError
+pub tungsten_core::PrefabError::Invalid
+pub tungsten_core::PrefabError::Invalid::id: alloc::string::String
+pub tungsten_core::PrefabError::Invalid::message: alloc::string::String
+pub tungsten_core::PrefabError::Io
+pub tungsten_core::PrefabError::Io::path: alloc::string::String
+pub tungsten_core::PrefabError::Io::source: core::io::error::Error
+pub tungsten_core::PrefabError::Object
+pub tungsten_core::PrefabError::Object::layer: alloc::string::String
+pub tungsten_core::PrefabError::Object::map: alloc::string::String
+pub tungsten_core::PrefabError::Object::message: alloc::string::String
+pub tungsten_core::PrefabError::Object::object: u32
+pub tungsten_core::PrefabError::Parse
+pub tungsten_core::PrefabError::Parse::path: alloc::string::String
+pub tungsten_core::PrefabError::Parse::source: serde_json::error::Error
+pub tungsten_core::PrefabError::Position
+pub tungsten_core::PrefabError::Position::id: alloc::string::String
+pub tungsten_core::PrefabError::Position::position: glam::f32::vec2::Vec2
+pub tungsten_core::PrefabError::Unknown
+pub tungsten_core::PrefabError::Unknown::id: alloc::string::String
+pub tungsten_core::PrefabError::UnknownMap
+pub tungsten_core::PrefabError::UnknownMap::map: alloc::string::String
+pub tungsten_core::PrefabError::Validation
+pub tungsten_core::PrefabError::Validation::message: alloc::string::String
+pub tungsten_core::PrefabError::Validation::path: alloc::string::String
+impl core::error::Error for tungsten_core::assets::prefab::PrefabError
+pub fn tungsten_core::assets::prefab::PrefabError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tungsten_core::assets::prefab::PrefabError
+pub fn tungsten_core::assets::prefab::PrefabError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::assets::prefab::PrefabError
+pub fn tungsten_core::assets::prefab::PrefabError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::prefab::PrefabError
+impl core::marker::Send for tungsten_core::assets::prefab::PrefabError
+impl core::marker::Sync for tungsten_core::assets::prefab::PrefabError
+impl core::marker::Unpin for tungsten_core::assets::prefab::PrefabError
+impl core::marker::UnsafeUnpin for tungsten_core::assets::prefab::PrefabError
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::prefab::PrefabError
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::prefab::PrefabError
 #[non_exhaustive] pub enum tungsten_core::RawInput
 pub tungsten_core::RawInput::Focus(bool)
 #[non_exhaustive] pub tungsten_core::RawInput::Key
@@ -12191,6 +12633,8 @@ pub fn tungsten_core::CommandBuffer::new() -> Self
 pub fn tungsten_core::CommandBuffer::remove_component<T: 'static>(&mut self, tungsten_core::Entity)
 pub fn tungsten_core::CommandBuffer::spawn(&mut self) -> tungsten_core::PendingEntity
 pub fn tungsten_core::CommandBuffer::spawn_with<B: tungsten_core::ecs::bundle::Bundle>(&mut self, B) -> tungsten_core::PendingEntity
+impl tungsten_core::CommandBuffer
+pub fn tungsten_core::CommandBuffer::spawn_prefab(&mut self, tungsten_core::assets::prefab::PreparedPrefab) -> tungsten_core::PendingEntity
 impl core::default::Default for tungsten_core::CommandBuffer
 pub fn tungsten_core::CommandBuffer::default() -> Self
 impl core::marker::Freeze for tungsten_core::CommandBuffer
@@ -12203,6 +12647,7 @@ impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::CommandBuffer
 pub struct tungsten_core::ComponentRegistry
 impl tungsten_core::component_registry::ComponentRegistry
 pub fn tungsten_core::component_registry::ComponentRegistry::check(&self, &str, &serde_json::value::Value) -> core::result::Result<(), tungsten_core::component_registry::ComponentError>
+pub fn tungsten_core::component_registry::ComponentRegistry::check_in(&self, &str, &serde_json::value::Value, &tungsten_core::World) -> core::result::Result<(), tungsten_core::component_registry::ComponentError>
 pub fn tungsten_core::component_registry::ComponentRegistry::contains(&self, &str) -> bool
 pub fn tungsten_core::component_registry::ComponentRegistry::is_empty(&self) -> bool
 pub fn tungsten_core::component_registry::ComponentRegistry::len(&self) -> usize
@@ -12212,6 +12657,7 @@ pub fn tungsten_core::component_registry::ComponentRegistry::new() -> Self
 pub fn tungsten_core::component_registry::ComponentRegistry::prepare(&self, &str, &serde_json::value::Value, &tungsten_core::component_registry::SpawnContext<'_>) -> core::result::Result<tungsten_core::component_registry::PreparedComponent, tungsten_core::component_registry::ComponentError>
 pub fn tungsten_core::component_registry::ComponentRegistry::register<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &str) -> bool
 pub fn tungsten_core::component_registry::ComponentRegistry::register_with<D, B>(&mut self, &str, impl core::ops::function::Fn(D, &tungsten_core::component_registry::SpawnContext<'_>) -> B + 'static) -> bool where D: serde_core::de::DeserializeOwned + 'static, B: tungsten_core::ecs::bundle::Bundle
+pub fn tungsten_core::component_registry::ComponentRegistry::register_with_assets<D, B>(&mut self, &str, impl core::ops::function::Fn(&D, &tungsten_core::World) -> core::result::Result<(), tungsten_core::component_registry::MissingAsset> + 'static, impl core::ops::function::Fn(D, &tungsten_core::component_registry::SpawnContext<'_>) -> B + 'static) -> bool where D: serde_core::de::DeserializeOwned + 'static, B: tungsten_core::ecs::bundle::Bundle
 impl core::default::Default for tungsten_core::component_registry::ComponentRegistry
 pub fn tungsten_core::component_registry::ComponentRegistry::default() -> tungsten_core::component_registry::ComponentRegistry
 impl core::fmt::Debug for tungsten_core::component_registry::ComponentRegistry
@@ -12934,6 +13380,27 @@ impl core::marker::Unpin for tungsten_core::post::LutParams
 impl core::marker::UnsafeUnpin for tungsten_core::post::LutParams
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::post::LutParams
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::post::LutParams
+#[non_exhaustive] pub struct tungsten_core::MapObject
+pub tungsten_core::MapObject::class: alloc::string::String
+pub tungsten_core::MapObject::id: u32
+pub tungsten_core::MapObject::name: alloc::string::String
+pub tungsten_core::MapObject::position: glam::f32::vec2::Vec2
+pub tungsten_core::MapObject::properties: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub tungsten_core::MapObject::size: glam::f32::vec2::Vec2
+impl core::clone::Clone for tungsten_core::assets::tilemap::MapObject
+pub fn tungsten_core::assets::tilemap::MapObject::clone(&self) -> tungsten_core::assets::tilemap::MapObject
+impl core::cmp::PartialEq for tungsten_core::assets::tilemap::MapObject
+pub fn tungsten_core::assets::tilemap::MapObject::eq(&self, &tungsten_core::assets::tilemap::MapObject) -> bool
+impl core::fmt::Debug for tungsten_core::assets::tilemap::MapObject
+pub fn tungsten_core::assets::tilemap::MapObject::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::tilemap::MapObject
+impl core::marker::Freeze for tungsten_core::assets::tilemap::MapObject
+impl core::marker::Send for tungsten_core::assets::tilemap::MapObject
+impl core::marker::Sync for tungsten_core::assets::tilemap::MapObject
+impl core::marker::Unpin for tungsten_core::assets::tilemap::MapObject
+impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::MapObject
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::MapObject
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::MapObject
 pub struct tungsten_core::MaterialAssetId(pub u32)
 impl core::clone::Clone for tungsten_core::assets::material::MaterialAssetId
 pub fn tungsten_core::assets::material::MaterialAssetId::clone(&self) -> tungsten_core::assets::material::MaterialAssetId
@@ -13018,6 +13485,27 @@ impl core::marker::Unpin for tungsten_core::components::MeshParticle
 impl core::marker::UnsafeUnpin for tungsten_core::components::MeshParticle
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::components::MeshParticle
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::components::MeshParticle
+#[non_exhaustive] pub struct tungsten_core::MissingAsset
+pub tungsten_core::MissingAsset::field: alloc::string::String
+pub tungsten_core::MissingAsset::id: alloc::string::String
+pub tungsten_core::MissingAsset::kind: &'static str
+impl tungsten_core::component_registry::MissingAsset
+pub fn tungsten_core::component_registry::MissingAsset::new(impl core::convert::Into<alloc::string::String>, &'static str, impl core::convert::Into<alloc::string::String>) -> Self
+impl core::clone::Clone for tungsten_core::component_registry::MissingAsset
+pub fn tungsten_core::component_registry::MissingAsset::clone(&self) -> tungsten_core::component_registry::MissingAsset
+impl core::cmp::Eq for tungsten_core::component_registry::MissingAsset
+impl core::cmp::PartialEq for tungsten_core::component_registry::MissingAsset
+pub fn tungsten_core::component_registry::MissingAsset::eq(&self, &tungsten_core::component_registry::MissingAsset) -> bool
+impl core::fmt::Debug for tungsten_core::component_registry::MissingAsset
+pub fn tungsten_core::component_registry::MissingAsset::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::component_registry::MissingAsset
+impl core::marker::Freeze for tungsten_core::component_registry::MissingAsset
+impl core::marker::Send for tungsten_core::component_registry::MissingAsset
+impl core::marker::Sync for tungsten_core::component_registry::MissingAsset
+impl core::marker::Unpin for tungsten_core::component_registry::MissingAsset
+impl core::marker::UnsafeUnpin for tungsten_core::component_registry::MissingAsset
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::component_registry::MissingAsset
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::component_registry::MissingAsset
 pub struct tungsten_core::Modifiers
 impl tungsten_core::input::Modifiers
 pub const tungsten_core::input::Modifiers::ALT: Self
@@ -13051,6 +13539,23 @@ impl core::marker::Unpin for tungsten_core::input::Modifiers
 impl core::marker::UnsafeUnpin for tungsten_core::input::Modifiers
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::Modifiers
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::Modifiers
+#[non_exhaustive] pub struct tungsten_core::ObjectLayer
+pub tungsten_core::ObjectLayer::name: alloc::string::String
+pub tungsten_core::ObjectLayer::objects: alloc::vec::Vec<tungsten_core::assets::tilemap::MapObject>
+impl core::clone::Clone for tungsten_core::assets::tilemap::ObjectLayer
+pub fn tungsten_core::assets::tilemap::ObjectLayer::clone(&self) -> tungsten_core::assets::tilemap::ObjectLayer
+impl core::cmp::PartialEq for tungsten_core::assets::tilemap::ObjectLayer
+pub fn tungsten_core::assets::tilemap::ObjectLayer::eq(&self, &tungsten_core::assets::tilemap::ObjectLayer) -> bool
+impl core::fmt::Debug for tungsten_core::assets::tilemap::ObjectLayer
+pub fn tungsten_core::assets::tilemap::ObjectLayer::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::tilemap::ObjectLayer
+impl core::marker::Freeze for tungsten_core::assets::tilemap::ObjectLayer
+impl core::marker::Send for tungsten_core::assets::tilemap::ObjectLayer
+impl core::marker::Sync for tungsten_core::assets::tilemap::ObjectLayer
+impl core::marker::Unpin for tungsten_core::assets::tilemap::ObjectLayer
+impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::ObjectLayer
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::ObjectLayer
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::ObjectLayer
 pub struct tungsten_core::OptionalColumn<I>(pub core::option::Option<I>)
 impl<I: core::iter::traits::iterator::Iterator> core::iter::traits::iterator::Iterator for tungsten_core::ecs::query::OptionalColumn<I>
 pub type tungsten_core::ecs::query::OptionalColumn<I>::Item = core::option::Option<<I as core::iter::traits::iterator::Iterator>::Item>
@@ -13516,6 +14021,65 @@ impl core::marker::Unpin for tungsten_core::post::PostStack
 impl core::marker::UnsafeUnpin for tungsten_core::post::PostStack
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::post::PostStack
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::post::PostStack
+#[non_exhaustive] pub struct tungsten_core::PrefabData
+pub tungsten_core::PrefabData::components: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub tungsten_core::PrefabData::sprite: core::option::Option<tungsten_core::assets::scene::SceneSprite>
+pub tungsten_core::PrefabData::tag: core::option::Option<alloc::string::String>
+pub tungsten_core::PrefabData::tweens: alloc::vec::Vec<tungsten_core::assets::scene::SceneTween>
+pub tungsten_core::PrefabData::visible: bool
+impl tungsten_core::assets::prefab::PrefabData
+pub fn tungsten_core::assets::prefab::PrefabData::load(&std::path::Path, &tungsten_core::World) -> core::result::Result<Self, tungsten_core::assets::prefab::PrefabError>
+impl core::clone::Clone for tungsten_core::assets::prefab::PrefabData
+pub fn tungsten_core::assets::prefab::PrefabData::clone(&self) -> tungsten_core::assets::prefab::PrefabData
+impl core::fmt::Debug for tungsten_core::assets::prefab::PrefabData
+pub fn tungsten_core::assets::prefab::PrefabData::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl serde_core::ser::Serialize for tungsten_core::assets::prefab::PrefabData
+pub fn tungsten_core::assets::prefab::PrefabData::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::prefab::PrefabData
+pub fn tungsten_core::assets::prefab::PrefabData::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::prefab::PrefabData
+impl core::marker::Send for tungsten_core::assets::prefab::PrefabData
+impl core::marker::Sync for tungsten_core::assets::prefab::PrefabData
+impl core::marker::Unpin for tungsten_core::assets::prefab::PrefabData
+impl core::marker::UnsafeUnpin for tungsten_core::assets::prefab::PrefabData
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::prefab::PrefabData
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::prefab::PrefabData
+#[non_exhaustive] pub struct tungsten_core::PrefabEntry
+pub tungsten_core::PrefabEntry::path: alloc::string::String
+impl core::clone::Clone for tungsten_core::assets::manifest::PrefabEntry
+pub fn tungsten_core::assets::manifest::PrefabEntry::clone(&self) -> tungsten_core::assets::manifest::PrefabEntry
+impl core::fmt::Debug for tungsten_core::assets::manifest::PrefabEntry
+pub fn tungsten_core::assets::manifest::PrefabEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::manifest::PrefabEntry
+pub fn tungsten_core::assets::manifest::PrefabEntry::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::manifest::PrefabEntry
+impl core::marker::Send for tungsten_core::assets::manifest::PrefabEntry
+impl core::marker::Sync for tungsten_core::assets::manifest::PrefabEntry
+impl core::marker::Unpin for tungsten_core::assets::manifest::PrefabEntry
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::PrefabEntry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::PrefabEntry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::PrefabEntry
+pub struct tungsten_core::PrefabRegistry
+impl tungsten_core::assets::prefab::PrefabRegistry
+pub fn tungsten_core::assets::prefab::PrefabRegistry::get(&self, &str) -> core::option::Option<&tungsten_core::assets::prefab::PrefabData>
+pub fn tungsten_core::assets::prefab::PrefabRegistry::id_for_path(&self, &std::path::Path) -> core::option::Option<&str>
+pub fn tungsten_core::assets::prefab::PrefabRegistry::ids(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
+pub fn tungsten_core::assets::prefab::PrefabRegistry::insert(&mut self, alloc::string::String, tungsten_core::assets::prefab::PrefabData)
+pub fn tungsten_core::assets::prefab::PrefabRegistry::insert_with_path(&mut self, alloc::string::String, tungsten_core::assets::prefab::PrefabData, std::path::PathBuf)
+pub fn tungsten_core::assets::prefab::PrefabRegistry::is_empty(&self) -> bool
+pub fn tungsten_core::assets::prefab::PrefabRegistry::len(&self) -> usize
+pub fn tungsten_core::assets::prefab::PrefabRegistry::new() -> Self
+impl core::default::Default for tungsten_core::assets::prefab::PrefabRegistry
+pub fn tungsten_core::assets::prefab::PrefabRegistry::default() -> tungsten_core::assets::prefab::PrefabRegistry
+impl core::fmt::Debug for tungsten_core::assets::prefab::PrefabRegistry
+pub fn tungsten_core::assets::prefab::PrefabRegistry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::prefab::PrefabRegistry
+impl core::marker::Send for tungsten_core::assets::prefab::PrefabRegistry
+impl core::marker::Sync for tungsten_core::assets::prefab::PrefabRegistry
+impl core::marker::Unpin for tungsten_core::assets::prefab::PrefabRegistry
+impl core::marker::UnsafeUnpin for tungsten_core::assets::prefab::PrefabRegistry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::prefab::PrefabRegistry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::prefab::PrefabRegistry
 pub struct tungsten_core::PreparedComponent
 impl tungsten_core::component_registry::PreparedComponent
 pub fn tungsten_core::component_registry::PreparedComponent::insert_pending(self, &mut tungsten_core::CommandBuffer, tungsten_core::PendingEntity)
@@ -13528,6 +14092,20 @@ impl core::marker::Unpin for tungsten_core::component_registry::PreparedComponen
 impl core::marker::UnsafeUnpin for tungsten_core::component_registry::PreparedComponent
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::component_registry::PreparedComponent
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::component_registry::PreparedComponent
+pub struct tungsten_core::PreparedPrefab
+impl tungsten_core::assets::prefab::PreparedPrefab
+pub fn tungsten_core::assets::prefab::PreparedPrefab::id(&self) -> &str
+pub fn tungsten_core::assets::prefab::PreparedPrefab::spawn(self, &mut tungsten_core::World) -> tungsten_core::Entity
+pub fn tungsten_core::assets::prefab::PreparedPrefab::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> Self
+impl core::fmt::Debug for tungsten_core::assets::prefab::PreparedPrefab
+pub fn tungsten_core::assets::prefab::PreparedPrefab::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::prefab::PreparedPrefab
+impl !core::marker::Send for tungsten_core::assets::prefab::PreparedPrefab
+impl !core::marker::Sync for tungsten_core::assets::prefab::PreparedPrefab
+impl core::marker::Unpin for tungsten_core::assets::prefab::PreparedPrefab
+impl core::marker::UnsafeUnpin for tungsten_core::assets::prefab::PreparedPrefab
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::prefab::PreparedPrefab
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::prefab::PreparedPrefab
 pub struct tungsten_core::PrevPosition(pub glam::f32::vec2::Vec2)
 impl core::clone::Clone for tungsten_core::physics::components::PrevPosition
 pub fn tungsten_core::physics::components::PrevPosition::clone(&self) -> tungsten_core::physics::components::PrevPosition
@@ -13667,6 +14245,7 @@ pub tungsten_core::ResolvedManifest::fonts: std::collections::hash::map::HashMap
 pub tungsten_core::ResolvedManifest::materials: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedMaterial>
 pub tungsten_core::ResolvedManifest::particle_meshes: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedParticleMesh>
 pub tungsten_core::ResolvedManifest::particles: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedParticle>
+pub tungsten_core::ResolvedManifest::prefabs: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedPrefab>
 pub tungsten_core::ResolvedManifest::shaders: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedShader>
 pub tungsten_core::ResolvedManifest::sounds: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedSound>
 pub tungsten_core::ResolvedManifest::sprites: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedSprite>
@@ -13731,6 +14310,21 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedParticleMe
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedParticleMesh
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedParticleMesh
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedParticleMesh
+#[non_exhaustive] pub struct tungsten_core::ResolvedPrefab
+pub tungsten_core::ResolvedPrefab::path: std::path::PathBuf
+impl tungsten_core::assets::manifest::ResolvedPrefab
+pub fn tungsten_core::assets::manifest::ResolvedPrefab::new(std::path::PathBuf) -> Self
+impl core::clone::Clone for tungsten_core::assets::manifest::ResolvedPrefab
+pub fn tungsten_core::assets::manifest::ResolvedPrefab::clone(&self) -> tungsten_core::assets::manifest::ResolvedPrefab
+impl core::fmt::Debug for tungsten_core::assets::manifest::ResolvedPrefab
+pub fn tungsten_core::assets::manifest::ResolvedPrefab::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::manifest::ResolvedPrefab
+impl core::marker::Send for tungsten_core::assets::manifest::ResolvedPrefab
+impl core::marker::Sync for tungsten_core::assets::manifest::ResolvedPrefab
+impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedPrefab
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedPrefab
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedPrefab
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedPrefab
 pub struct tungsten_core::ResolvedSound
 pub tungsten_core::ResolvedSound::looping: bool
 pub tungsten_core::ResolvedSound::path: std::path::PathBuf
@@ -14460,16 +15054,22 @@ impl core::marker::Unpin for tungsten_core::assets::registry::TextureHandle
 impl core::marker::UnsafeUnpin for tungsten_core::assets::registry::TextureHandle
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::registry::TextureHandle
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::registry::TextureHandle
-pub struct tungsten_core::TilemapData
+#[non_exhaustive] pub struct tungsten_core::TilemapData
 pub tungsten_core::TilemapData::height: u32
 pub tungsten_core::TilemapData::layers: alloc::vec::Vec<tungsten_core::assets::tilemap::TilemapLayer>
+pub tungsten_core::TilemapData::object_layers: alloc::vec::Vec<tungsten_core::assets::tilemap::ObjectLayer>
 pub tungsten_core::TilemapData::tile_height: u32
 pub tungsten_core::TilemapData::tile_width: u32
 pub tungsten_core::TilemapData::tileset: alloc::vec::Vec<alloc::string::String>
 pub tungsten_core::TilemapData::width: u32
 impl tungsten_core::assets::tilemap::TilemapData
+pub fn tungsten_core::assets::tilemap::TilemapData::add_layer(&mut self, impl core::convert::Into<alloc::string::String>, tungsten_core::assets::tilemap::LayerKind) -> usize
+pub fn tungsten_core::assets::tilemap::TilemapData::add_tile(&mut self, impl core::convert::Into<alloc::string::String>) -> tungsten_core::assets::tilemap::TileIndex
+pub fn tungsten_core::assets::tilemap::TilemapData::fill(&mut self, usize, tungsten_core::assets::tilemap::TileIndex)
 pub fn tungsten_core::assets::tilemap::TilemapData::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::assets::tilemap::TilemapError>
+pub fn tungsten_core::assets::tilemap::TilemapData::new(u32, u32, u32, u32) -> Self
 pub fn tungsten_core::assets::tilemap::TilemapData::pixel_size(&self) -> glam::f32::vec2::Vec2
+pub fn tungsten_core::assets::tilemap::TilemapData::set_tile(&mut self, usize, u32, u32, tungsten_core::assets::tilemap::TileIndex)
 pub fn tungsten_core::assets::tilemap::TilemapData::tile_at(&self, usize, u32, u32) -> core::option::Option<tungsten_core::assets::tilemap::TileIndex>
 impl core::clone::Clone for tungsten_core::assets::tilemap::TilemapData
 pub fn tungsten_core::assets::tilemap::TilemapData::clone(&self) -> tungsten_core::assets::tilemap::TilemapData
@@ -15099,6 +15699,12 @@ impl<T> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ecs::query::W
 impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::Without<T>
 pub struct tungsten_core::World
 impl tungsten_core::World
+pub fn tungsten_core::World::check_map_objects(&self, &str, &tungsten_core::assets::tilemap::TilemapData) -> core::result::Result<(), tungsten_core::assets::prefab::PrefabError>
+pub fn tungsten_core::World::prepare_map_objects(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<alloc::vec::Vec<tungsten_core::assets::prefab::PreparedPrefab>, tungsten_core::assets::prefab::PrefabError>
+pub fn tungsten_core::World::prepare_prefab(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<tungsten_core::assets::prefab::PreparedPrefab, tungsten_core::assets::prefab::PrefabError>
+pub fn tungsten_core::World::spawn_map_objects(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<alloc::vec::Vec<tungsten_core::Entity>, tungsten_core::assets::prefab::PrefabError>
+pub fn tungsten_core::World::spawn_prefab(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<tungsten_core::Entity, tungsten_core::assets::prefab::PrefabError>
+impl tungsten_core::World
 pub fn tungsten_core::World::despawn(&mut self, tungsten_core::Entity)
 pub fn tungsten_core::World::end_fixed_step_events(&mut self)
 pub fn tungsten_core::World::entity_count(&self) -> u32
@@ -15149,6 +15755,7 @@ pub fn tungsten_core::World::spawn_with<B: tungsten_core::ecs::bundle::Bundle>(&
 impl tungsten_core::World
 pub fn tungsten_core::World::register_component<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &str) -> bool
 pub fn tungsten_core::World::register_component_with<D, B>(&mut self, &str, impl core::ops::function::Fn(D, &tungsten_core::component_registry::SpawnContext<'_>) -> B + 'static) -> bool where D: serde_core::de::DeserializeOwned + 'static, B: tungsten_core::ecs::bundle::Bundle
+pub fn tungsten_core::World::register_component_with_assets<D, B>(&mut self, &str, impl core::ops::function::Fn(&D, &tungsten_core::World) -> core::result::Result<(), tungsten_core::component_registry::MissingAsset> + 'static, impl core::ops::function::Fn(D, &tungsten_core::component_registry::SpawnContext<'_>) -> B + 'static) -> bool where D: serde_core::de::DeserializeOwned + 'static, B: tungsten_core::ecs::bundle::Bundle
 impl core::default::Default for tungsten_core::World
 pub fn tungsten_core::World::default() -> Self
 impl core::marker::Freeze for tungsten_core::World

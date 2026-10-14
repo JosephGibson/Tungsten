@@ -975,25 +975,47 @@ fn an_app_registered_component_spawns_from_a_scene_and_leaves_with_its_state() {
     fs::remove_dir_all(&dir).unwrap();
 }
 
-/// A world with the umbrella's three scene components.
+/// A world with the umbrella's scene components.
 fn umbrella_components_world() -> World {
     let mut world = seed_world();
     world.insert_resource(tungsten_core::CommandBuffer::new());
     register_extract_components(&mut world);
     register_squash_stretch(&mut world);
+    register_particle_emitter(&mut world);
     world
 }
 
 #[test]
 fn the_umbrella_components_spawn_with_their_values() {
     use tungsten_core::{
-        Easing, Light, LightKind, ParallaxLayer, SpriteSquashStretch, SquashTrigger,
+        Easing, Light, LightKind, ParallaxLayer, ParticleEmitter, ParticleEmitterState,
+        SpriteSquashStretch, SquashTrigger, TilemapInstance,
     };
 
     let mut world = umbrella_components_world();
+    let dir = tempdir();
+    let config_path = dir.join("embers.json");
+    write(&config_path, &build_minimal_particle_json("spark"));
+    let config = ParticleConfig::load(&config_path).unwrap();
+    fs::remove_dir_all(&dir).unwrap();
+    let embers = world.resource_mut::<ParticleConfigRegistry>().register(
+        "embers".into(),
+        config_path,
+        config,
+    );
+    world
+        .resource_mut::<TilemapRegistry>()
+        .insert("arena".into(), TilemapData::new(16, 16, 1, 1));
     let data = scene_from(
         &world,
         r#"{ "entities": [
+            { "transform": { "position": [7.0, 9.0] }, "components": {
+                "particle_emitter": { "config": "embers", "seed": 9 },
+                "tilemap": { "id": "arena" }
+            } },
+            { "transform": { "position": [0.0, 0.0] }, "components": {
+                "particle_emitter": { "config": "embers" }
+            } },
             { "transform": { "position": [0.0, 0.0] }, "components": {
                 "light": { "kind": "point", "radius": 40.0, "color": [1.0, 0.5, 0.0], "intensity": 2.0 },
                 "parallax_layer": { "scroll_factor": [0.5, 0.25] },
@@ -1007,6 +1029,22 @@ fn the_umbrella_components_spawn_with_their_values() {
     );
     spawn_scene(&mut world, &data, "gameplay");
     flush(&mut world);
+
+    let mut emitters: Vec<_> = world
+        .query::<(&ParticleEmitter, &ParticleEmitterState)>()
+        .map(|(emitter, state)| (emitter.config, emitter.seed_override, state.first_tick_done))
+        .collect();
+    emitters.sort_by_key(|emitter| emitter.1);
+    assert_eq!(emitters, [(embers, None, false), (embers, Some(9), false)]);
+    let maps: Vec<_> = world
+        .query::<&TilemapInstance>()
+        .map(|map| (map.id.clone(), map.origin))
+        .collect();
+    assert_eq!(
+        maps,
+        [("arena".to_owned(), glam::Vec2::new(7.0, 9.0))],
+        "the entry's position is the map's top-left"
+    );
 
     let mut lights: Vec<Light> = world.query::<&Light>().copied().collect();
     lights.sort_by(|a, b| a.intensity.total_cmp(&b.intensity));
@@ -1117,6 +1155,36 @@ fn the_umbrella_components_reject_bad_values() {
             "squash_stretch",
             r#"{ "on": "on_land", "amount": [1.2, 0.8], "duration": 0.2, "easing": "wobbly" }"#,
             "unknown variant `wobbly`",
+        ),
+        (
+            "particle_emitter",
+            r#"{ "config": "embers" }"#,
+            "field `config`: unknown particle config `embers`",
+        ),
+        (
+            "particle_emitter",
+            r#"{ "config": "embers", "rate": 2 }"#,
+            "unknown field `rate`",
+        ),
+        (
+            "particle_emitter",
+            r#"{ "seed": 2 }"#,
+            "missing field `config`",
+        ),
+        (
+            "particle_emitter",
+            r#"{ "config": "embers", "seed": -1 }"#,
+            "field `seed`: invalid value: integer `-1`",
+        ),
+        (
+            "tilemap",
+            r#"{ "id": "cave" }"#,
+            "field `id`: unknown tilemap `cave`",
+        ),
+        (
+            "tilemap",
+            r#"{ "id": "cave", "layer": 1 }"#,
+            "unknown field `layer`",
         ),
     ];
     for (name, value, expected) in cases {

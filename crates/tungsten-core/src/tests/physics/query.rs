@@ -41,6 +41,7 @@ fn floor(world: &mut World, width: u32) {
             width,
             height: 2,
             tileset: vec!["solid".into()],
+            object_layers: Vec::new(),
             layers: vec![TilemapLayer {
                 name: "solid".into(),
                 kind: LayerKind::Collision,

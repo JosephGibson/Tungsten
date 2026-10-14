@@ -291,14 +291,10 @@ fn tilemap(params: &Params, (width, height): (u32, u32)) -> TilemapData {
             }
         })
         .collect();
-    TilemapData {
-        tile_width: params.tile_px,
-        tile_height: params.tile_px,
-        width,
-        height,
-        tileset: (0..TILE_VARIANTS).map(tile_id).collect(),
-        layers,
-    }
+    let mut map = TilemapData::new(params.tile_px, params.tile_px, width, height);
+    map.tileset = (0..TILE_VARIANTS).map(tile_id).collect();
+    map.layers = layers;
+    map
 }
 
 /// Non-empty render-layer tiles inside the camera's view, culled as

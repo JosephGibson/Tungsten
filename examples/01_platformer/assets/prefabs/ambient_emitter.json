@@ -1,0 +1,8 @@
+{
+  "components": {
+    "ambient_emitter": null,
+    "particle_emitter": {
+      "config": "ex10_torch_embers"
+    }
+  }
+}

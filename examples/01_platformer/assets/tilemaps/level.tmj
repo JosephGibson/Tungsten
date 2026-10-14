@@ -36859,6 +36859,258 @@
       "y": 0
     },
     {
+      "draworder": "topdown",
+      "id": 6,
+      "name": "emitters",
+      "objects": [
+        {
+          "height": 0,
+          "id": 1,
+          "name": "",
+          "point": true,
+          "properties": [
+            {
+              "name": "particle_emitter.config",
+              "type": "string",
+              "value": "ex10_torch_embers"
+            },
+            {
+              "name": "particle_emitter.seed",
+              "type": "int",
+              "value": 10101
+            }
+          ],
+          "rotation": 0,
+          "type": "ex10_ambient_emitter",
+          "visible": true,
+          "width": 0,
+          "x": 288.0,
+          "y": 2275.0
+        },
+        {
+          "height": 0,
+          "id": 2,
+          "name": "",
+          "point": true,
+          "properties": [
+            {
+              "name": "particle_emitter.config",
+              "type": "string",
+              "value": "ex10_torch_embers"
+            },
+            {
+              "name": "particle_emitter.seed",
+              "type": "int",
+              "value": 18020
+            }
+          ],
+          "rotation": 0,
+          "type": "ex10_ambient_emitter",
+          "visible": true,
+          "width": 0,
+          "x": 1824.0,
+          "y": 1891.0
+        },
+        {
+          "height": 0,
+          "id": 3,
+          "name": "",
+          "point": true,
+          "properties": [
+            {
+              "name": "particle_emitter.config",
+              "type": "string",
+              "value": "ex10_torch_embers"
+            },
+            {
+              "name": "particle_emitter.seed",
+              "type": "int",
+              "value": 25939
+            }
+          ],
+          "rotation": 0,
+          "type": "ex10_ambient_emitter",
+          "visible": true,
+          "width": 0,
+          "x": 3744.0,
+          "y": 2147.0
+        },
+        {
+          "height": 0,
+          "id": 4,
+          "name": "",
+          "point": true,
+          "properties": [
+            {
+              "name": "particle_emitter.config",
+              "type": "string",
+              "value": "ex10_torch_embers"
+            },
+            {
+              "name": "particle_emitter.seed",
+              "type": "int",
+              "value": 33858
+            }
+          ],
+          "rotation": 0,
+          "type": "ex10_ambient_emitter",
+          "visible": true,
+          "width": 0,
+          "x": 5792.0,
+          "y": 1123.0
+        },
+        {
+          "height": 0,
+          "id": 5,
+          "name": "",
+          "point": true,
+          "properties": [
+            {
+              "name": "particle_emitter.config",
+              "type": "string",
+              "value": "ex10_torch_embers"
+            },
+            {
+              "name": "particle_emitter.seed",
+              "type": "int",
+              "value": 41777
+            }
+          ],
+          "rotation": 0,
+          "type": "ex10_ambient_emitter",
+          "visible": true,
+          "width": 0,
+          "x": 7136.0,
+          "y": 1123.0
+        },
+        {
+          "height": 0,
+          "id": 6,
+          "name": "",
+          "point": true,
+          "properties": [
+            {
+              "name": "particle_emitter.config",
+              "type": "string",
+              "value": "ex10_waterfall_spray"
+            },
+            {
+              "name": "particle_emitter.seed",
+              "type": "int",
+              "value": 49696
+            }
+          ],
+          "rotation": 0,
+          "type": "ex10_ambient_emitter",
+          "visible": true,
+          "width": 0,
+          "x": 4160,
+          "y": 2368
+        },
+        {
+          "height": 0,
+          "id": 7,
+          "name": "",
+          "point": true,
+          "properties": [
+            {
+              "name": "particle_emitter.config",
+              "type": "string",
+              "value": "ex10_wind_motes"
+            },
+            {
+              "name": "particle_emitter.seed",
+              "type": "int",
+              "value": 57615
+            }
+          ],
+          "rotation": 0,
+          "type": "ex10_ambient_emitter",
+          "visible": true,
+          "width": 0,
+          "x": 1152,
+          "y": 1920
+        },
+        {
+          "height": 0,
+          "id": 8,
+          "name": "",
+          "point": true,
+          "properties": [
+            {
+              "name": "particle_emitter.config",
+              "type": "string",
+              "value": "ex10_wind_motes"
+            },
+            {
+              "name": "particle_emitter.seed",
+              "type": "int",
+              "value": 65534
+            }
+          ],
+          "rotation": 0,
+          "type": "ex10_ambient_emitter",
+          "visible": true,
+          "width": 0,
+          "x": 2816,
+          "y": 1728
+        },
+        {
+          "height": 0,
+          "id": 9,
+          "name": "",
+          "point": true,
+          "properties": [
+            {
+              "name": "particle_emitter.config",
+              "type": "string",
+              "value": "ex10_wind_motes"
+            },
+            {
+              "name": "particle_emitter.seed",
+              "type": "int",
+              "value": 73453
+            }
+          ],
+          "rotation": 0,
+          "type": "ex10_ambient_emitter",
+          "visible": true,
+          "width": 0,
+          "x": 4992,
+          "y": 1536
+        },
+        {
+          "height": 0,
+          "id": 10,
+          "name": "",
+          "point": true,
+          "properties": [
+            {
+              "name": "particle_emitter.config",
+              "type": "string",
+              "value": "ex10_wind_motes"
+            },
+            {
+              "name": "particle_emitter.seed",
+              "type": "int",
+              "value": 81372
+            }
+          ],
+          "rotation": 0,
+          "type": "ex10_ambient_emitter",
+          "visible": true,
+          "width": 0,
+          "x": 6720,
+          "y": 1024
+        }
+      ],
+      "opacity": 1,
+      "type": "objectgroup",
+      "visible": true,
+      "x": 0,
+      "y": 0
+    },
+    {
       "data": [
         0,
         0,

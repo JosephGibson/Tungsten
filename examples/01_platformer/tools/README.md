@@ -146,7 +146,12 @@ alone do not prove clearance beneath the solid platforms.
 
 `level.py` emits the embedded Tiled catalog (`firstgid=1`, contiguous local IDs,
 zero for empty, no flip bits) and `src/level_layout.rs`. Edit their source instead
-of the generated output. No Tiled object layers or extra runtime paths are used.
+of the generated output. One object layer, `emitters`, sits before `collision`: a
+point object per ambient emitter, of the prefab class `ex10_ambient_emitter`
+(`assets/prefabs/ambient_emitter.json`), whose `particle_emitter.config` and
+`particle_emitter.seed` properties set the emitter; `spawn_level_objects` spawns
+them through `World::spawn_map_objects`, and the generated `EMITTERS` table stays
+for the tests. No other runtime paths are used.
 
 ## Runtime and visual checks
 

@@ -430,3 +430,45 @@ impl Drop for SceneFile {
         let _ = std::fs::remove_dir_all(&self.dir);
     }
 }
+
+#[test]
+fn the_load_checks_the_asset_ids_a_component_names() {
+    // `SceneData::load` runs `check_in`: a value naming an asset the World
+    // lacks fails, naming the entry, the component, its field and the ID.
+    #[derive(Debug, serde::Deserialize)]
+    struct Emitter {
+        config: String,
+    }
+    struct Configs(Vec<&'static str>);
+    let mut world = World::new();
+    world.insert_resource(Configs(vec!["embers"]));
+    world.register_component_with_assets(
+        "emitter",
+        |emitter: &Emitter, world: &World| {
+            if world
+                .resource::<Configs>()
+                .0
+                .contains(&emitter.config.as_str())
+            {
+                Ok(())
+            } else {
+                Err(crate::component_registry::MissingAsset::new(
+                    "config",
+                    "particle config",
+                    &emitter.config,
+                ))
+            }
+        },
+        |emitter: Emitter, _: &crate::component_registry::SpawnContext<'_>| (emitter,),
+    );
+    assert_eq!(
+        load_message(
+            r#"{ "entities": [
+                { "transform": { "position": [0.0, 0.0] }, "components": { "emitter": { "config": "embers" } } },
+                { "transform": { "position": [0.0, 0.0] }, "components": { "emitter": { "config": "smoke" } } }
+            ] }"#,
+            &world
+        ),
+        "entities[1]: component `emitter`, field `config`: unknown particle config `smoke`"
+    );
+}

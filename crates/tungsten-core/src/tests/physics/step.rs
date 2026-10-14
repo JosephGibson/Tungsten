@@ -83,6 +83,7 @@ fn tilemap_collision_layer_blocks_dynamic_body() {
             width: 3,
             height: 1,
             tileset: vec!["solid".into()],
+            object_layers: Vec::new(),
             layers: vec![TilemapLayer {
                 name: "solid".into(),
                 kind: LayerKind::Collision,
@@ -459,6 +460,7 @@ fn sweep_grid_returns_the_pair_grids_statics_in_order() {
                 width: 12,
                 height: 2,
                 tileset: vec!["solid".into()],
+                object_layers: Vec::new(),
                 layers: vec![TilemapLayer {
                     name: "collision".into(),
                     kind: LayerKind::Collision,
@@ -590,6 +592,7 @@ fn zero_restitution_body_does_not_bounce_off_multi_tile_floor() {
             width: 4,
             height: 1,
             tileset: vec!["solid".into()],
+            object_layers: Vec::new(),
             layers: vec![TilemapLayer {
                 name: "collision".into(),
                 kind: LayerKind::Collision,
@@ -630,6 +633,7 @@ fn bouncy_ball_does_not_double_impulse_on_multi_tile_seam() {
             width: 4,
             height: 1,
             tileset: vec!["solid".into()],
+            object_layers: Vec::new(),
             layers: vec![TilemapLayer {
                 name: "collision".into(),
                 kind: LayerKind::Collision,
@@ -744,6 +748,7 @@ fn pile_of_balls_does_not_escape_bottom_right_corner() {
             width: W,
             height: H,
             tileset: vec!["solid".into()],
+            object_layers: Vec::new(),
             layers: vec![TilemapLayer {
                 name: "collision".into(),
                 kind: LayerKind::Collision,
@@ -2410,6 +2415,7 @@ fn kinematic_body_passes_static_bodies_tiles_and_kinematic_bodies() {
             width: 10,
             height: 1,
             tileset: vec!["solid".into()],
+            object_layers: Vec::new(),
             layers: vec![TilemapLayer {
                 name: "solid".into(),
                 kind: LayerKind::Collision,
@@ -2776,6 +2782,7 @@ fn map_data(width: u32, layers: Vec<Vec<i32>>) -> TilemapData {
         width,
         height: layers[0].len() as u32 / width,
         tileset: vec!["solid".into()],
+        object_layers: Vec::new(),
         layers: layers
             .into_iter()
             .enumerate()
@@ -3493,6 +3500,7 @@ fn a_tile_support_removed_wakes_the_island_on_it() {
         width: 4,
         height: 1,
         tileset: vec!["solid".into()],
+        object_layers: Vec::new(),
         layers: vec![TilemapLayer {
             name: "collision".into(),
             kind: LayerKind::Collision,

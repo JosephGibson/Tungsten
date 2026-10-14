@@ -177,9 +177,45 @@ impl<E> core::marker::Unpin for tungsten_kit::SoundOnEvent<E>
 impl<E> core::marker::UnsafeUnpin for tungsten_kit::SoundOnEvent<E>
 impl<E> core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::SoundOnEvent<E>
 impl<E> core::panic::unwind_safe::UnwindSafe for tungsten_kit::SoundOnEvent<E>
+pub struct tungsten_kit::Spawner
+impl tungsten_kit::Spawner
+pub fn tungsten_kit::Spawner::new(impl core::convert::Into<alloc::string::String>, f32) -> Self
+pub fn tungsten_kit::Spawner::prefab(&self) -> &str
+pub fn tungsten_kit::Spawner::remaining(&self) -> core::option::Option<u32>
+pub fn tungsten_kit::Spawner::timer(&self) -> &tungsten_core::time::Timer
+pub fn tungsten_kit::Spawner::with_count(self, u32) -> Self
+impl core::clone::Clone for tungsten_kit::Spawner
+pub fn tungsten_kit::Spawner::clone(&self) -> tungsten_kit::Spawner
+impl core::fmt::Debug for tungsten_kit::Spawner
+pub fn tungsten_kit::Spawner::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_kit::Spawner
+impl core::marker::Send for tungsten_kit::Spawner
+impl core::marker::Sync for tungsten_kit::Spawner
+impl core::marker::Unpin for tungsten_kit::Spawner
+impl core::marker::UnsafeUnpin for tungsten_kit::Spawner
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Spawner
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Spawner
+pub struct tungsten_kit::SpawnerPlugin
+impl core::clone::Clone for tungsten_kit::SpawnerPlugin
+pub fn tungsten_kit::SpawnerPlugin::clone(&self) -> tungsten_kit::SpawnerPlugin
+impl core::default::Default for tungsten_kit::SpawnerPlugin
+pub fn tungsten_kit::SpawnerPlugin::default() -> tungsten_kit::SpawnerPlugin
+impl core::fmt::Debug for tungsten_kit::SpawnerPlugin
+pub fn tungsten_kit::SpawnerPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::SpawnerPlugin
+impl tungsten_core::schedule::Plugin for tungsten_kit::SpawnerPlugin
+pub fn tungsten_kit::SpawnerPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten_kit::SpawnerPlugin
+impl core::marker::Send for tungsten_kit::SpawnerPlugin
+impl core::marker::Sync for tungsten_kit::SpawnerPlugin
+impl core::marker::Unpin for tungsten_kit::SpawnerPlugin
+impl core::marker::UnsafeUnpin for tungsten_kit::SpawnerPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::SpawnerPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::SpawnerPlugin
 pub const tungsten_kit::ANIMATION_TICK: &str
 pub const tungsten_kit::DESPAWN_OUTSIDE: &str
 pub const tungsten_kit::LIFETIME_TICK: &str
+pub const tungsten_kit::SPAWNER_TICK: &str
 pub const tungsten_kit::TRANSFORM_PROPAGATE: &str
 pub const tungsten_kit::TRANSFORM_PROPAGATE_LATE: &str
 pub fn tungsten_kit::cursor_to_world(&tungsten_core::ecs::world::World) -> core::option::Option<glam::f32::vec2::Vec2>

@@ -152,20 +152,13 @@ pub(super) fn register_tilemap(world: &mut World, level: &Level, collision: bool
             tiles: tiles.clone(),
         });
     }
+    let mut map = TilemapData::new(TILE as u32, TILE as u32, level.width, ROWS);
+    map.tileset = (0..4).map(tile_id).collect();
+    map.layers = layers;
     world
         .get_resource_mut::<TilemapRegistry>()
         .expect("TilemapRegistry resource missing")
-        .insert(
-            TILEMAP.to_string(),
-            TilemapData {
-                tile_width: TILE as u32,
-                tile_height: TILE as u32,
-                width: level.width,
-                height: ROWS,
-                tileset: (0..4).map(tile_id).collect(),
-                layers,
-            },
-        );
+        .insert(TILEMAP.to_string(), map);
     let entity = world.spawn();
     world.insert(entity, TilemapInstance::new(TILEMAP, Vec2::ZERO));
 }

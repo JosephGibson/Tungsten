@@ -4,6 +4,7 @@ pub mod audio;
 pub mod manifest;
 pub mod material;
 pub mod particle;
+pub mod prefab;
 pub mod registry;
 pub mod scene;
 pub mod shader;
@@ -16,9 +17,10 @@ pub use atlas::{AtlasPage, PackInput, PackResult, PackedSprite, UvRect, oversize
 pub use audio::{AudioDecodeError, AudioHandle, SoundData, SoundRegistry};
 pub use manifest::{
     FilterMode, FontEntry, FontFamilyEntry, LoadedManifest, ManifestError, MaterialEntry,
-    ParticleEntry, ParticleMeshEntry, ResolvedFont, ResolvedFontFamily, ResolvedManifest,
-    ResolvedMaterial, ResolvedParticle, ResolvedParticleMesh, ResolvedShader, ResolvedSound,
-    ResolvedTilemap, ResolvedUiTheme, ShaderEntry, SoundEntry, TilemapEntry, UiThemeEntry,
+    ParticleEntry, ParticleMeshEntry, PrefabEntry, ResolvedFont, ResolvedFontFamily,
+    ResolvedManifest, ResolvedMaterial, ResolvedParticle, ResolvedParticleMesh, ResolvedPrefab,
+    ResolvedShader, ResolvedSound, ResolvedTilemap, ResolvedUiTheme, ShaderEntry, SoundEntry,
+    TilemapEntry, UiThemeEntry,
 };
 pub use material::{MaterialAssetId, MaterialRegistry, MaterialUniformDefaults};
 pub use particle::{
@@ -26,6 +28,7 @@ pub use particle::{
     ParticleConfig, ParticleConfigError, ParticleConfigRegistry, ParticleMesh, ParticleMeshAssetId,
     ParticleMeshRegistry, ParticleRender, Range, WorldRngSeed,
 };
+pub use prefab::{PrefabData, PrefabError, PrefabRegistry, PreparedPrefab};
 pub use registry::{AssetRegistry, FontRegistry, SpriteAsset, SpriteAssetId, TextureHandle};
 pub use scene::{
     SceneData, SceneEntry, SceneError, SceneSprite, SceneTransform, SceneTween, SceneTweenChannel,
@@ -33,6 +36,6 @@ pub use scene::{
 };
 pub use shader::{ShaderAssetId, ShaderRegistry};
 pub use tilemap::{
-    EMPTY_TILE, LayerKind, TileIndex, TilemapData, TilemapError, TilemapInstance, TilemapLayer,
-    TilemapRegistry,
+    EMPTY_TILE, LayerKind, MapObject, ObjectLayer, TileIndex, TilemapData, TilemapError,
+    TilemapInstance, TilemapLayer, TilemapRegistry,
 };

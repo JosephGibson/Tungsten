@@ -1,6 +1,7 @@
 //! Manifest-driven asset loading and hot reload. `atlas` packs and reloads
-//! sprites, `reload` holds the other hot-reload paths and `scene` loads and
-//! spawns scene files; every public item is re-exported here.
+//! sprites, `reload` holds the other hot-reload paths, `scene` loads and
+//! spawns scene files and `prefab` loads and reloads prefab files; every
+//! public item is re-exported here.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -15,17 +16,21 @@ use tungsten_core::{AssetRegistry, World};
 use tungsten_render::Renderer;
 
 mod atlas;
+mod prefab;
 mod reload;
 mod scene;
 
 pub use atlas::{AtlasRegistry, load_sprites, rebuild_atlas_for_filter, reload_sprite};
+pub use prefab::{load_prefabs, reload_prefab};
 pub use reload::{
     reload_action_map, reload_animation, reload_font, reload_manifest, reload_material,
     reload_particle, reload_shader, reload_tilemap, reload_ui_theme,
     reload_ui_themes_from_manifest,
 };
 pub use scene::{load_scene, spawn_scene};
-pub(crate) use scene::{register_extract_components, register_squash_stretch};
+pub(crate) use scene::{
+    register_extract_components, register_particle_emitter, register_squash_stretch,
+};
 
 /// Theme file paths by `ui_themes` ID (M46, `D-148`): the hot reload's
 /// reverse lookup, as [`FontRegistry`] is for fonts.
@@ -396,7 +401,10 @@ pub fn load_particles(manifest: &ResolvedManifest, world: &mut World) -> anyhow:
     Ok(())
 }
 
-/// Load all assets and validate sprite and particle-mesh cross-references (D-009).
+/// Load all assets and validate sprite and particle-mesh cross-references
+/// (D-009), then every map's objects against the loaded prefabs (M51). The
+/// prefabs load after the particle configs and tilemaps their components
+/// name.
 pub fn load_all(
     manifest: &ResolvedManifest,
     world: &mut World,
@@ -412,6 +420,7 @@ pub fn load_all(
     load_tilemaps(manifest, world)?;
     load_particle_meshes(manifest, world, renderer)?;
     load_particles(manifest, world)?;
+    load_prefabs(manifest, world)?;
 
     let registry = world
         .get_resource::<AssetRegistry>()
@@ -464,7 +473,7 @@ pub fn load_all(
         }
     }
 
-    Ok(())
+    prefab::check_all_map_objects(world)
 }
 
 /// D-052 composition entry; D-017 duplicate IDs fatal.

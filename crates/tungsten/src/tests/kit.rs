@@ -13,14 +13,14 @@ use tungsten_core::{
 use crate::App;
 use crate::kit::{
     AnimationPlugin, Children, DespawnOutside, DespawnOutsidePlugin, HierarchyPlugin, Lifetime,
-    LifetimePlugin, LocalOffset, Parent, SoundOnEvent, cursor_to_world, despawn_recursive,
-    spawn_child,
+    LifetimePlugin, LocalOffset, Parent, SoundOnEvent, Spawner, SpawnerPlugin, cursor_to_world,
+    despawn_recursive, spawn_child,
 };
 use crate::testing::Harness;
 
 /// `post_update` with `DefaultPlugins`, then the hierarchy, animation,
-/// lifetime, despawn-outside and sound plugins added in that order.
-const KIT_POST_UPDATE: &str = "post_update: physics_sync, transform_propagate, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, transform_propagate_late, camera_update, animation_tick, lifetime_tick, despawn_outside, hit_sound";
+/// lifetime, despawn-outside, sound and spawner plugins added in that order.
+const KIT_POST_UPDATE: &str = "post_update: physics_sync, transform_propagate, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, transform_propagate_late, camera_update, animation_tick, lifetime_tick, despawn_outside, hit_sound, spawner_tick";
 
 /// The event the sound plugin plays.
 struct Hit;
@@ -40,6 +40,7 @@ fn kit_app() -> App {
     app.add_plugin(LifetimePlugin);
     app.add_plugin(DespawnOutsidePlugin);
     app.add_plugin(SoundOnEvent::<Hit>::new("hit_sound", "thud"));
+    app.add_plugin(SpawnerPlugin);
     app
 }
 
@@ -534,4 +535,63 @@ fn the_kit_writes_only_what_the_default_extract_reads() {
         Some(&LocalOffset(Vec2::new(5.0, 0.0)))
     );
     assert_eq!(position(&harness, pod), Vec2::new(15.0, 20.0));
+}
+
+#[test]
+fn a_spawner_spawns_its_prefab_on_the_game_clock_at_its_position() {
+    use tungsten_core::{PrefabData, PrefabRegistry, Tag};
+
+    let dir = std::env::temp_dir().join(format!("tungsten_kit_spawner_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("slime.json");
+    std::fs::write(&path, r#"{ "tag": "slime" }"#).unwrap();
+    let mut harness = Harness::new(kit_app());
+    let slime = PrefabData::load(&path, harness.world()).unwrap();
+    std::fs::remove_dir_all(&dir).unwrap();
+    harness
+        .world_mut()
+        .resource_mut::<PrefabRegistry>()
+        .insert("slime".to_string(), slime);
+    harness.set_dt(0.05);
+    let nest = spawn_at(
+        &mut harness,
+        40.0,
+        24.0,
+        (Spawner::new("slime", 0.1).with_count(3),),
+    );
+    let slimes = |harness: &Harness| {
+        harness
+            .world()
+            .query::<(&Tag, &Transform)>()
+            .filter(|(tag, _)| tag.name == "slime")
+            .map(|(_, transform)| transform.position)
+            .collect::<Vec<_>>()
+    };
+
+    harness.step(1);
+    assert!(slimes(&harness).is_empty(), "the first after one interval");
+    harness.step(1);
+    assert_eq!(
+        slimes(&harness),
+        [Vec2::new(40.0, 24.0)],
+        "spawned by the flush"
+    );
+
+    harness.world_mut().resource_mut::<Time>().pause();
+    harness.step(10);
+    assert_eq!(
+        slimes(&harness).len(),
+        1,
+        "a paused clock holds the spawner"
+    );
+
+    harness.world_mut().resource_mut::<Time>().resume();
+    harness.step(4);
+    assert_eq!(slimes(&harness).len(), 3);
+    harness.step(10);
+    assert_eq!(slimes(&harness).len(), 3, "the count is spent");
+    assert_eq!(
+        harness.world().get::<Spawner>(nest).unwrap().remaining(),
+        Some(0)
+    );
 }

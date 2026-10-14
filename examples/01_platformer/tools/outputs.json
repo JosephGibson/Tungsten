@@ -38,6 +38,7 @@
   "assets/particles/torch_embers.json",
   "assets/particles/waterfall_spray.json",
   "assets/particles/wind_motes.json",
+  "assets/prefabs/ambient_emitter.json",
   "assets/shaders/soft_glow.wgsl",
   "assets/sounds/extinguish.wav",
   "assets/sounds/fireball_blast.wav",
