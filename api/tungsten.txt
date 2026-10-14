@@ -1538,6 +1538,7 @@ pub fn tungsten::GameState::on_exit(&mut self, &mut tungsten::state::StateContex
 pub fn tungsten::GameState::on_pause(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::GameState::on_resume(&mut self, &mut tungsten::state::StateContext<'_>)
 pub fn tungsten::GameState::update(&mut self, &mut tungsten_core::ecs::world::World)
+pub fn tungsten::apply_settings(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::camera_update_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::despawn_scene_entities(&mut tungsten_core::ecs::world::World, tungsten::state::StateId)
 pub fn tungsten::extract_lights(&tungsten_core::ecs::world::World, &tungsten_core::camera::CameraState, f32, f32) -> tungsten_render::lighting::LightUbo

@@ -304,10 +304,19 @@ pub fn reload_font(id: &str, path: &Path, renderer: &mut Renderer) -> anyhow::Re
     Ok(())
 }
 
-/// Hot-reload `input.json`; load failure preserves previous map.
+/// Hot-reload `input.json`; load failure preserves previous map. The
+/// current map's user layer, if any, is laid over the reloaded one, so the
+/// player's bindings survive (`D-159`).
 pub fn reload_action_map(path: &Path, world: &mut World) -> Result<(), ActionMapError> {
     let loaded = ActionMap::load(path)?;
-    let merged = ActionMap::merged_with_defaults(loaded);
+    let user_layer = world
+        .get_resource::<ActionMap>()
+        .and_then(ActionMap::user_layer_path)
+        .map(Path::to_path_buf);
+    let mut merged = ActionMap::merged_with_defaults(loaded).with_user_layer(user_layer.as_deref());
+    for warning in merged.take_load_warnings() {
+        log::warn!("{warning}");
+    }
     if let Some(map) = world.get_resource_mut::<ActionMap>() {
         *map = merged;
     } else {

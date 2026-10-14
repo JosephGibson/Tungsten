@@ -12,10 +12,13 @@ pub mod ecs;
 pub mod input;
 pub mod inspect;
 pub mod lighting;
+pub mod persist;
 pub mod physics;
 pub mod post;
 pub mod rng;
+pub mod save;
 pub mod schedule;
+pub mod settings;
 pub mod text;
 pub mod time;
 pub mod tween;
@@ -76,7 +79,9 @@ pub use post::{
     TonemapParams, VignetteParams, WipeRadialParams,
 };
 pub use rng::{Pcg32, splitmix64};
+pub use save::{SaveData, SaveSlots};
 pub use schedule::{Plugin, PluginSet, Schedule, ScheduleError, Stage, SystemDesc, system};
+pub use settings::{Settings, UserFolder};
 pub use text::{
     EllipsisAt, FontEpoch, FontFeature, FontFeatures, MeasureWidth, StyledText, TextAlign,
     TextHinting, TextLayout, TextMeasure, TextMetrics, TextNodeId, TextNodeStore, TextOverflow,

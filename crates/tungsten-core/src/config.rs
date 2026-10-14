@@ -1,4 +1,5 @@
 use crate::display::{DisplayConfig, DisplayMode, Resolution};
+use crate::settings::{Settings, UserFolder};
 use serde::Deserialize;
 use serde_json::Value;
 use std::path::Path;
@@ -354,6 +355,11 @@ pub struct GameConfig {
     pub id: Option<String>,
     /// Free text that crash files print.
     pub version: Option<String>,
+    /// Where the user folder is, set in code (`D-159`): the platform's by
+    /// default, a fixed folder, or none, as a test that must not read the
+    /// developer's own settings sets it.
+    #[serde(skip)]
+    pub user_folder: UserFolder,
 }
 
 impl GameConfig {
@@ -482,6 +488,10 @@ pub struct Config {
     /// What `load` would have logged before any logger exists (`D-119`).
     #[serde(skip)]
     load_warnings: Vec<String>,
+    /// Set by `load`, so `apply_settings` applies the environment overrides
+    /// again only to a config they applied to.
+    #[serde(skip)]
+    env_overrides: bool,
 }
 
 impl Config {
@@ -556,8 +566,44 @@ impl Config {
             })?,
         };
 
+        config.env_overrides = true;
         config.apply_env_overrides_from_env()?;
         Ok(config)
+    }
+
+    /// Lays the player's [`Settings`] over this config (`D-159`): each set
+    /// display value replaces the file's, and a set vsync also clears both
+    /// present modes, so `auto` follows it. A config [`load`](Self::load)
+    /// built then takes its environment overrides again, so they stay last;
+    /// one built in code stays free of them.
+    ///
+    /// # Errors
+    ///
+    /// [`ConfigError::InvalidEnvOverride`], as `load` returns it.
+    pub fn apply_settings(&mut self, settings: &Settings) -> Result<(), ConfigError> {
+        self.apply_settings_with(settings, env_var)
+    }
+
+    fn apply_settings_with(
+        &mut self,
+        settings: &Settings,
+        env: impl Fn(&str) -> Option<String>,
+    ) -> Result<(), ConfigError> {
+        if let Some(mode) = settings.display_mode() {
+            self.display.display_mode = Some(mode);
+        }
+        if let Some(resolution) = settings.resolution() {
+            self.display.resolution = Some(resolution);
+        }
+        if let Some(vsync) = settings.vsync() {
+            self.display.vsync = Some(vsync);
+            self.display.present_mode = None;
+            self.render.present_mode = None;
+        }
+        if self.env_overrides {
+            self.apply_env_overrides(env)?;
+        }
+        Ok(())
     }
 
     /// Takes the warnings [`Config::load`] kept, for the caller to log once
@@ -567,40 +613,48 @@ impl Config {
     }
 
     fn apply_env_overrides_from_env(&mut self) -> Result<(), ConfigError> {
-        if let Ok(value) = std::env::var(DISPLAY_MODE_ENV) {
+        self.apply_env_overrides(env_var)
+    }
+
+    /// `env` looks a variable up, so tests need no `set_var`.
+    fn apply_env_overrides(
+        &mut self,
+        env: impl Fn(&str) -> Option<String>,
+    ) -> Result<(), ConfigError> {
+        if let Some(value) = env(DISPLAY_MODE_ENV) {
             self.apply_display_mode_override(&value)?;
         }
-        if let Ok(value) = std::env::var(DISPLAY_RESOLUTION_ENV) {
+        if let Some(value) = env(DISPLAY_RESOLUTION_ENV) {
             self.apply_display_resolution_override(&value)?;
         }
-        if let Ok(value) = std::env::var(DISPLAY_FRAME_RATE_CAP_ENV) {
+        if let Some(value) = env(DISPLAY_FRAME_RATE_CAP_ENV) {
             self.apply_display_frame_rate_cap_override(&value)?;
         }
-        if let Ok(value) = std::env::var(DISPLAY_PRESENT_MODE_ENV) {
+        if let Some(value) = env(DISPLAY_PRESENT_MODE_ENV) {
             self.apply_display_present_mode_override(&value)?;
         }
-        if let Ok(value) = std::env::var(DISPLAY_MAX_FRAME_LATENCY_ENV) {
+        if let Some(value) = env(DISPLAY_MAX_FRAME_LATENCY_ENV) {
             self.apply_display_max_frame_latency_override(&value)?;
         }
-        if let Ok(value) = std::env::var(RENDER_PRESENT_MODE_ENV) {
+        if let Some(value) = env(RENDER_PRESENT_MODE_ENV) {
             self.apply_present_mode_override(&value)?;
         }
-        if let Ok(value) = std::env::var(RENDER_MAX_FRAME_LATENCY_ENV) {
+        if let Some(value) = env(RENDER_MAX_FRAME_LATENCY_ENV) {
             self.apply_max_frame_latency_override(&value)?;
         }
-        if let Ok(value) = std::env::var(RENDER_MSAA_ENV) {
+        if let Some(value) = env(RENDER_MSAA_ENV) {
             self.apply_msaa_override(&value)?;
         }
-        if let Ok(value) = std::env::var(RENDER_DEPTH_ENABLED_ENV) {
+        if let Some(value) = env(RENDER_DEPTH_ENABLED_ENV) {
             self.apply_depth_enabled_override(&value)?;
         }
-        if let Ok(value) = std::env::var(RENDER_DEPTH_SORT_ENV) {
+        if let Some(value) = env(RENDER_DEPTH_SORT_ENV) {
             self.apply_depth_sort_override(&value)?;
         }
-        if let Ok(value) = std::env::var(RENDER_POST_AA_ENV) {
+        if let Some(value) = env(RENDER_POST_AA_ENV) {
             self.apply_post_aa_override(&value)?;
         }
-        if let Ok(value) = std::env::var(RENDER_BLOOM_MAX_MIPS_ENV) {
+        if let Some(value) = env(RENDER_BLOOM_MAX_MIPS_ENV) {
             self.apply_bloom_max_mips_override(&value)?;
         }
         Ok(())
@@ -759,6 +813,10 @@ impl Config {
         self.render.max_frame_latency = Some(parsed);
         Ok(())
     }
+}
+
+fn env_var(name: &str) -> Option<String> {
+    std::env::var(name).ok()
 }
 
 fn parse_resolution_override(value: &str) -> Option<Resolution> {

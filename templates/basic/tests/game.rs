@@ -1,15 +1,27 @@
 //! The game on the engine's headless harness: no window or renderer, the
 //! frames stepped one call at a time. A test per system.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use tungsten::core::assets::manifest::ResolvedManifest;
-use tungsten::core::{ActionMap, AssetRegistry, Config, Sprite, Time, Transform, With};
+use tungsten::core::{
+    ActionMap, AssetRegistry, Config, Settings, Sprite, Time, Transform, UserFolder, With,
+};
 use tungsten::testing::Harness;
 use tungsten::{App, SceneEntity};
 use tungsten_template_basic::components::Player;
 use tungsten_template_basic::game::{self, active_state};
-use tungsten_template_basic::states::{GAMEPLAY, PAUSE, PLAYER_PREFAB, PLAYER_START, TITLE};
+use tungsten_template_basic::states::{
+    AUTOSAVE, GAMEPLAY, PAUSE, PLAYER_PREFAB, PLAYER_START, TITLE,
+};
+
+/// The game's config with its user folder set: `Off` in tests, so they
+/// never read or write the developer's own settings and saves.
+fn config(user_folder: UserFolder) -> Config {
+    let mut config = Config::load("tungsten.json").expect("tungsten.json loads");
+    config.game.user_folder = user_folder;
+    config
+}
 
 /// The game as `main.rs` builds it, with one frame stepped: its `Startup`
 /// stage runs `setup`, which requests the title state, and the engine's
@@ -17,8 +29,11 @@ use tungsten_template_basic::states::{GAMEPLAY, PAUSE, PLAYER_PREFAB, PLAYER_STA
 /// no manifest, so the prefabs load from it here, as a window's startup
 /// loads them.
 fn harness() -> Harness {
-    let config = Config::load("tungsten.json").expect("tungsten.json loads");
-    let mut app = App::new(config).expect("App::new failed");
+    harness_with(UserFolder::Off)
+}
+
+fn harness_with(user_folder: UserFolder) -> Harness {
+    let mut app = App::new(config(user_folder)).expect("App::new failed");
     game::register(&mut app);
     let mut harness = Harness::new(app);
     let manifest = ResolvedManifest::load(game::MANIFEST).expect("the manifest loads");
@@ -44,20 +59,26 @@ fn player(harness: &Harness) -> Option<[f32; 2]> {
         .map(|transform| [transform.position.x, transform.position.y])
 }
 
-/// The resolved schedule as `register` builds it: the game's two systems in
+/// A fresh user folder for one persistence test.
+fn user_folder(tag: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("tungsten-template-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    dir
+}
+
+/// The resolved schedule as `register` builds it: the game's systems in
 /// their stages between the engine's. A reorder shows up here as a diff.
 const SCHEDULE: &str = "\
 startup: setup
 pre_update: physics_debug_toggle, systems_overlay_toggle, inspector_toggle, inspector_pick, hud_toggle, ui_debug_toggle, display_input, state_dispatcher, ui_route
 fixed_update: physics_prev_snapshot, physics_step
-update: player_movement
+update: player_movement, toggle_mute
 post_update: physics_sync, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, camera_update
 ";
 
 #[test]
 fn the_schedule_matches_the_snapshot() {
-    let config = Config::load("tungsten.json").expect("tungsten.json loads");
-    let mut app = App::new(config).expect("App::new failed");
+    let mut app = App::new(config(UserFolder::Off)).expect("App::new failed");
     game::register(&mut app);
     app.resolve_schedule().expect("the schedule resolves");
     assert_eq!(app.schedule().resolved_text(), SCHEDULE);
@@ -183,4 +204,76 @@ fn text_follows_the_state_on_top() {
             .iter()
             .any(|section| section.font_id == game::FONT)
     );
+}
+
+#[test]
+fn mute_survives_a_restart() {
+    let dir = user_folder("mute");
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    assert_eq!(harness.world().resource::<Settings>().master_volume(), None);
+    tap(&mut harness, "toggle_mute");
+    assert_eq!(
+        harness.world().resource::<Settings>().master_volume(),
+        Some(0.0)
+    );
+    assert!(dir.join("settings/settings.json").is_file());
+
+    let mut restarted = harness_with(UserFolder::At(dir.clone()));
+    assert_eq!(
+        restarted.world().resource::<Settings>().master_volume(),
+        Some(0.0),
+        "the mute is back after a restart"
+    );
+    tap(&mut restarted, "toggle_mute");
+    assert_eq!(
+        restarted.world().resource::<Settings>().master_volume(),
+        None
+    );
+    let restarted = harness_with(UserFolder::At(dir.clone()));
+    assert_eq!(
+        restarted.world().resource::<Settings>().master_volume(),
+        None
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn continue_from_the_autosave() {
+    let dir = user_folder("autosave");
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    tap(&mut harness, "state_start");
+    harness.press_action("move_right");
+    harness.step(30);
+    harness.release_action("move_right");
+    let moved = player(&harness).expect("the player spawned");
+    assert_ne!(moved, PLAYER_START);
+    tap(&mut harness, "state_pause");
+    assert!(dir.join("saves").join(format!("{AUTOSAVE}.json")).is_file());
+
+    let mut restarted = harness_with(UserFolder::At(dir.clone()));
+    tap(&mut restarted, "state_start");
+    assert_eq!(player(&restarted), Some(moved), "gameplay continues");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_slot_that_fails_to_load_is_never_overwritten() {
+    let dir = user_folder("newer-save");
+    let slot = dir.join("saves").join(format!("{AUTOSAVE}.json"));
+    std::fs::create_dir_all(slot.parent().unwrap()).unwrap();
+    // A save from a newer build of the game: schema 2.
+    let newer = r#"{ "envelope": 1, "slot": "autosave", "schema": 2, "engine_version": "9.0.0", "saved_at_ms": 1, "data": { "player": [1.0, 2.0], "lives": 3 } }"#;
+    std::fs::write(&slot, newer).unwrap();
+
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    tap(&mut harness, "state_start");
+    assert_eq!(player(&harness), Some(PLAYER_START));
+    tap(&mut harness, "state_pause");
+    assert_eq!(active_state(harness.world()), Some(PAUSE));
+    assert_eq!(
+        std::fs::read_to_string(&slot).unwrap(),
+        newer,
+        "the slot is untouched"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }

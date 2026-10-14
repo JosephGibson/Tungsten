@@ -105,19 +105,20 @@ pub struct WindowSize {
 
 /// The display's scale factor: a `World` resource `App` inserts at 1.0 and
 /// keeps current from the window. [`os`](Self::os) is the OS scale, physical
-/// pixels per logical unit, and [`get`](Self::get) the factor UI layout uses
-/// (`D-127`, `D-144`).
+/// pixels per logical unit, [`ui_scale`](Self::ui_scale) the player's
+/// setting, and [`get`](Self::get) the factor UI layout uses (`D-127`,
+/// `D-144`, `D-159`).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ScaleFactor {
     os: f32,
+    ui: f32,
 }
 
 impl ScaleFactor {
-    /// The factor UI layout uses: the OS scale times the user's UI scale, a
-    /// setting not yet added, so for now the OS scale.
+    /// The factor UI layout uses: the OS scale times the player's UI scale.
     #[must_use]
     pub fn get(&self) -> f32 {
-        self.os
+        self.os * self.ui
     }
 
     /// The OS scale: physical pixels per logical unit.
@@ -133,11 +134,25 @@ impl ScaleFactor {
             self.os = scale;
         }
     }
+
+    /// The player's UI scale, from `Settings`: 1.0 unless set.
+    #[must_use]
+    pub fn ui_scale(&self) -> f32 {
+        self.ui
+    }
+
+    /// Sets the player's UI scale; a value that is not finite or not
+    /// positive is ignored.
+    pub fn set_ui_scale(&mut self, scale: f32) {
+        if scale.is_finite() && scale > 0.0 {
+            self.ui = scale;
+        }
+    }
 }
 
 impl Default for ScaleFactor {
     fn default() -> Self {
-        Self { os: 1.0 }
+        Self { os: 1.0, ui: 1.0 }
     }
 }
 

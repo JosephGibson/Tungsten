@@ -231,7 +231,28 @@ fn scale_factor_set_os_sets_both_readings() {
     let mut scale = ScaleFactor::default();
     scale.set_os(1.5);
     assert_eq!(scale.os(), 1.5);
-    assert_eq!(scale.get(), 1.5, "no UI scale yet, so get is the OS scale");
+    assert_eq!(
+        scale.get(),
+        1.5,
+        "the UI scale defaults to 1, so get is the OS scale"
+    );
+}
+
+#[test]
+fn get_is_the_os_scale_times_the_ui_scale() {
+    let mut scale = ScaleFactor::default();
+    assert_eq!(scale.ui_scale(), 1.0);
+    scale.set_os(2.0);
+    scale.set_ui_scale(1.25);
+    assert_eq!(scale.os(), 2.0);
+    assert_eq!(scale.ui_scale(), 1.25);
+    assert_eq!(scale.get(), 2.5);
+    for bad in [0.0, -1.0, f32::NAN, f32::INFINITY] {
+        scale.set_ui_scale(bad);
+        assert_eq!(scale.ui_scale(), 1.25, "{bad} is ignored");
+    }
+    scale.set_os(1.0);
+    assert_eq!(scale.get(), 1.25);
 }
 
 #[test]

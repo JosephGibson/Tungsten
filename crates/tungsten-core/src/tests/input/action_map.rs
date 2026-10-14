@@ -400,3 +400,209 @@ fn a_utf8_byte_order_mark_is_skipped_and_kept_on_persist() {
         }]
     );
 }
+
+#[test]
+fn a_key_with_no_name_is_skipped_and_the_rest_saved() {
+    let dir = tempdir();
+    let path = dir.join("input.json");
+    let mut map = ActionMap::default_map();
+    map.set_source_path(&path);
+    map.replace_bindings_and_persist(
+        "jump",
+        vec![
+            Binding::Key {
+                code: KeyCode::Other(42),
+            },
+            Binding::Key {
+                code: KeyCode::Enter,
+            },
+            Binding::Mouse {
+                button: MouseButton::Other(0),
+            },
+        ],
+    )
+    .expect("an unnamed key no longer fails the whole map");
+    let reloaded = ActionMap::merged_with_defaults(ActionMap::load(&path).unwrap());
+    assert_eq!(
+        reloaded.bindings("jump"),
+        &[
+            Binding::Key {
+                code: KeyCode::Enter
+            },
+            Binding::Mouse {
+                button: MouseButton::Other(0)
+            }
+        ]
+    );
+    assert_eq!(
+        reloaded.bindings("move_left"),
+        ActionMap::default_map().bindings("move_left")
+    );
+}
+
+#[test]
+fn an_action_left_with_no_saveable_binding_is_left_out() {
+    let dir = tempdir();
+    let path = dir.join("input.json");
+    let mut map = ActionMap::default_map();
+    map.replace_bindings(
+        "jump",
+        vec![Binding::Key {
+            code: KeyCode::Other(42),
+        }],
+    );
+    map.persist_to(&path).unwrap();
+    let persisted = std::fs::read_to_string(&path).unwrap();
+    assert!(!persisted.contains("\"jump\""), "{persisted}");
+    assert!(
+        persisted.contains("\"ui_prev\": []"),
+        "an action disabled on purpose stays disabled"
+    );
+    let reloaded = ActionMap::merged_with_defaults(ActionMap::load(&path).unwrap());
+    assert_eq!(
+        reloaded.bindings("jump"),
+        ActionMap::default_map().bindings("jump"),
+        "a restart falls back to the layer below rather than disabling it"
+    );
+}
+
+const SHIPPED_JSON: &str = r#"{
+    "note": "shipped",
+    "actions": {
+        "jump": [{ "kind": "key", "code": "Space" }],
+        "fire": [{ "kind": "mouse", "button": "left" }]
+    }
+}"#;
+
+/// The shipped file in `dir` and the map the app builds from it.
+fn shipped_in(dir: &Path) -> (PathBuf, ActionMap) {
+    let path = dir.join("input.json");
+    std::fs::write(&path, SHIPPED_JSON).unwrap();
+    let map = ActionMap::merged_with_defaults(ActionMap::load(&path).unwrap());
+    (path, map)
+}
+
+fn key(code: KeyCode) -> Binding {
+    Binding::Key { code }
+}
+
+#[test]
+fn a_user_layer_overlays_per_action_and_saves_only_the_difference() {
+    let dir = tempdir();
+    let (_, shipped) = shipped_in(&dir);
+    let user = dir.join("user").join("input.json");
+    std::fs::create_dir_all(user.parent().unwrap()).unwrap();
+    std::fs::write(
+        &user,
+        r#"{ "actions": { "jump": [{ "kind": "key", "code": "KeyZ" }], "ui_prev": [] } }"#,
+    )
+    .unwrap();
+
+    let mut map = shipped.with_user_layer(Some(&user));
+    assert!(map.take_load_warnings().is_empty());
+    assert_eq!(map.user_layer_path(), Some(user.as_path()));
+    assert_eq!(map.bindings("jump"), &[key(KeyCode::KeyZ)]);
+    assert_eq!(
+        map.bindings("fire"),
+        &[Binding::Mouse {
+            button: MouseButton::Left
+        }],
+        "the shipped layer shows through"
+    );
+    assert_eq!(
+        map.bindings("move_left"),
+        ActionMap::default_map().bindings("move_left")
+    );
+
+    map.replace_bindings_and_persist("move_left", vec![key(KeyCode::KeyQ)])
+        .unwrap();
+    let saved = ActionMap::load(&user).unwrap();
+    let mut names: Vec<&str> = saved.iter().map(|(action, _)| action).collect();
+    names.sort_unstable();
+    assert_eq!(names, ["jump", "move_left"], "only the player's changes");
+
+    map.replace_bindings_and_persist("jump", vec![key(KeyCode::Space)])
+        .unwrap();
+    let saved = ActionMap::load(&user).unwrap();
+    assert!(
+        saved.bindings("jump").is_empty() && !saved.iter().any(|(a, _)| a == "jump"),
+        "an action set back to the shipped binding leaves the file"
+    );
+}
+
+#[test]
+fn persist_with_a_user_layer_leaves_the_shipped_file_alone() {
+    let dir = tempdir();
+    let (shipped_path, shipped) = shipped_in(&dir);
+    let user = dir.join("settings").join("input.json");
+    let mut map = shipped.with_user_layer(Some(&user));
+    map.replace_bindings_and_persist("fire", vec![key(KeyCode::KeyF)])
+        .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(&shipped_path).unwrap(),
+        SHIPPED_JSON,
+        "the shipped file's bytes are unchanged"
+    );
+    let saved = ActionMap::load(&user).unwrap();
+    assert_eq!(saved.bindings("fire"), &[key(KeyCode::KeyF)]);
+    assert_eq!(saved.iter().count(), 1);
+
+    let (_, shipped) = shipped_in(&dir);
+    let restarted = shipped.with_user_layer(Some(&user));
+    assert_eq!(restarted.bindings("fire"), &[key(KeyCode::KeyF)]);
+    assert_eq!(restarted.bindings("jump"), &[key(KeyCode::Space)]);
+}
+
+#[test]
+fn a_corrupt_user_layer_falls_back_with_a_backup() {
+    let dir = tempdir();
+    let (_, shipped) = shipped_in(&dir);
+    let user_dir = dir.join("settings");
+    std::fs::create_dir_all(&user_dir).unwrap();
+    let user = user_dir.join("input.json");
+    let corrupt = r#"{ "actions": { "jump": [{ "kind": "key", "code": "Dance" }] } }"#;
+    std::fs::write(&user, corrupt).unwrap();
+
+    let mut map = shipped.with_user_layer(Some(&user));
+    assert_eq!(map.bindings("jump"), &[key(KeyCode::Space)]);
+    let backup = user_dir.join("input.json.bad");
+    assert_eq!(std::fs::read_to_string(&backup).unwrap(), corrupt);
+    assert!(!user.exists());
+    let warnings = map.take_load_warnings();
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(
+        warnings[0].contains(&backup.display().to_string()),
+        "{warnings:?}"
+    );
+
+    map.replace_bindings_and_persist("jump", vec![key(KeyCode::KeyX)])
+        .unwrap();
+    assert_eq!(
+        ActionMap::load(&user).unwrap().bindings("jump"),
+        &[key(KeyCode::KeyX)]
+    );
+}
+
+#[test]
+fn no_user_layer_persist_is_missing_source_path() {
+    let dir = tempdir();
+    let (shipped_path, shipped) = shipped_in(&dir);
+    let mut map = shipped.with_user_layer(None);
+    assert_eq!(map.user_layer_path(), None);
+    let error = map
+        .replace_bindings_and_persist("jump", vec![key(KeyCode::KeyX)])
+        .unwrap_err();
+    assert!(
+        matches!(error, ActionMapError::MissingSourcePath),
+        "{error}"
+    );
+    assert_eq!(
+        map.bindings("jump"),
+        &[key(KeyCode::KeyX)],
+        "still in memory"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&shipped_path).unwrap(),
+        SHIPPED_JSON
+    );
+}

@@ -1,0 +1,176 @@
+use super::*;
+use std::sync::atomic::{AtomicU32, Ordering};
+
+fn tempdir() -> PathBuf {
+    static COUNTER: AtomicU32 = AtomicU32::new(0);
+    let nonce = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!(
+        "tungsten_settings_test_{}_{}",
+        std::process::id(),
+        nonce
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+fn load_text(text: &str) -> (PathBuf, Settings) {
+    let path = tempdir().join(Settings::FILE);
+    std::fs::write(&path, text).unwrap();
+    let settings = Settings::load(&path);
+    (path, settings)
+}
+
+fn is_default(settings: &Settings) -> bool {
+    settings.display_mode().is_none()
+        && settings.resolution().is_none()
+        && settings.vsync().is_none()
+        && settings.ui_scale().is_none()
+        && settings.master_volume().is_none()
+}
+
+#[test]
+fn a_missing_file_gives_defaults_without_a_warning() {
+    let path = tempdir().join(Settings::FILE);
+    let mut settings = Settings::load(&path);
+    assert!(is_default(&settings));
+    assert_eq!(settings.path(), Some(path.as_path()));
+    assert!(settings.take_load_warnings().is_empty());
+    assert!(!path.exists(), "loading writes nothing");
+}
+
+#[test]
+fn a_corrupt_file_falls_back_and_stays_beside_as_a_backup() {
+    let corrupt = b"{ \"ui_scale\": 1.5, \"display\": ";
+    for bytes in [
+        &corrupt[..],
+        b"\xff\xfe not utf-8",
+        b"[]",
+        b"{\"display\": []}",
+    ] {
+        let dir = tempdir();
+        let path = dir.join(Settings::FILE);
+        std::fs::write(&path, bytes).unwrap();
+        let mut settings = Settings::load(&path);
+        assert!(is_default(&settings));
+        let backup = dir.join("settings.json.bad");
+        assert_eq!(std::fs::read(&backup).unwrap(), bytes, "the bytes are kept");
+        assert!(!path.exists());
+        let warnings = settings.take_load_warnings();
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        assert!(
+            warnings[0].contains(&path.display().to_string())
+                && warnings[0].contains(&backup.display().to_string()),
+            "{warnings:?}"
+        );
+        assert!(settings.take_load_warnings().is_empty());
+    }
+}
+
+#[test]
+fn an_out_of_range_value_invalidates_the_file() {
+    for text in [
+        r#"{ "ui_scale": 0.25, "master_volume": 0.5 }"#,
+        r#"{ "ui_scale": 3.5 }"#,
+        r#"{ "ui_scale": 1e40 }"#,
+        r#"{ "master_volume": 1.5 }"#,
+        r#"{ "master_volume": -0.1 }"#,
+        r#"{ "master_volume": "loud" }"#,
+        r#"{ "display": { "display_mode": "fullscreen" } }"#,
+        r#"{ "display": { "resolution": { "width": 0, "height": 720 } } }"#,
+        r#"{ "display": { "resolution": [1920, 1080] } }"#,
+        r#"{ "display": { "vsync": "yes" } }"#,
+    ] {
+        let (path, mut settings) = load_text(text);
+        assert!(is_default(&settings), "{text}");
+        assert_eq!(settings.take_load_warnings().len(), 1, "{text}");
+        assert!(path.with_file_name("settings.json.bad").exists(), "{text}");
+    }
+}
+
+#[test]
+fn unknown_keys_are_ignored() {
+    let (path, mut settings) = load_text(
+        r#"{ "ui_scale": 1.5, "bus_volume": { "music": 0.2 }, "display": { "vsync": true, "hdr": true } }"#,
+    );
+    assert_eq!(settings.ui_scale(), Some(1.5));
+    assert_eq!(settings.vsync(), Some(true));
+    assert!(settings.take_load_warnings().is_empty());
+    assert!(path.exists());
+    assert!(!path.with_file_name("settings.json.bad").exists());
+}
+
+#[test]
+fn save_writes_only_set_values_and_load_reads_them_back() {
+    let path = tempdir().join("settings").join(Settings::FILE);
+    let mut settings = Settings::load(&path);
+    settings.set_master_volume(Some(0.0));
+    settings.save().unwrap();
+    let written: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    assert_eq!(written, serde_json::json!({ "master_volume": 0.0 }));
+
+    settings.set_display_mode(Some(DisplayMode::BorderlessFullscreen));
+    settings.set_resolution(Some(Resolution {
+        width: 1920,
+        height: 1080,
+    }));
+    settings.set_vsync(Some(true));
+    settings.set_ui_scale(Some(1.25));
+    settings.set_master_volume(Some(0.8));
+    settings.save().unwrap();
+    let mut reloaded = Settings::load(&path);
+    assert!(reloaded.take_load_warnings().is_empty());
+    assert_eq!(reloaded, settings);
+
+    settings.set_display_mode(None);
+    settings.set_resolution(None);
+    settings.set_vsync(None);
+    settings.save().unwrap();
+    let written: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    assert_eq!(
+        written,
+        serde_json::json!({ "ui_scale": 1.25, "master_volume": 0.8 }),
+        "no empty display object"
+    );
+}
+
+#[test]
+fn save_without_a_folder_is_no_folder() {
+    let mut settings = Settings::default();
+    settings.set_ui_scale(Some(2.0));
+    assert_eq!(settings.path(), None);
+    assert!(matches!(settings.save(), Err(SettingsError::NoFolder)));
+}
+
+#[test]
+fn setters_clamp_and_ignore_non_finite() {
+    let mut settings = Settings::default();
+    settings.set_ui_scale(Some(0.1));
+    assert_eq!(settings.ui_scale(), Some(0.5));
+    settings.set_ui_scale(Some(9.0));
+    assert_eq!(settings.ui_scale(), Some(3.0));
+    settings.set_ui_scale(Some(f32::NAN));
+    assert_eq!(settings.ui_scale(), Some(3.0), "NaN is ignored");
+    settings.set_ui_scale(None);
+    assert_eq!(settings.ui_scale(), None);
+
+    settings.set_master_volume(Some(-1.0));
+    assert_eq!(settings.master_volume(), Some(0.0));
+    settings.set_master_volume(Some(2.0));
+    assert_eq!(settings.master_volume(), Some(1.0));
+    settings.set_master_volume(Some(f32::INFINITY));
+    assert_eq!(settings.master_volume(), Some(1.0), "infinity is ignored");
+
+    let hd = Resolution {
+        width: 1920,
+        height: 1080,
+    };
+    settings.set_resolution(Some(hd));
+    settings.set_resolution(Some(Resolution {
+        width: 0,
+        height: 1080,
+    }));
+    assert_eq!(settings.resolution(), Some(hd), "a zero side is ignored");
+}

@@ -83,8 +83,18 @@ fn mouse_button_other_round_trips_through_button_prefix() {
 }
 
 #[test]
-fn mouse_button_zero_is_rejected() {
-    assert!(mouse_button_from_str("button0").is_none());
+fn button0_round_trips() {
+    assert_eq!(
+        mouse_button_from_str("button0"),
+        Some(MouseButton::Other(0))
+    );
+    assert_eq!(mouse_button_to_string(MouseButton::Other(0)), "button0");
+    let json = serde_json::to_string(&MouseButton::Other(0)).unwrap();
+    assert_eq!(json, "\"button0\"");
+    assert_eq!(
+        serde_json::from_str::<MouseButton>(&json).unwrap(),
+        MouseButton::Other(0)
+    );
 }
 
 #[test]

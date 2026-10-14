@@ -20,6 +20,7 @@ pub mod particles;
 pub mod physics_debug;
 pub mod plugins;
 pub mod post_aa;
+mod settings;
 pub mod sprite_extract;
 pub mod state;
 pub mod systems_overlay;
@@ -53,6 +54,7 @@ pub use plugins::{
     PhysicsPlugin, StatePlugin, TweensPlugin, UiPlugin,
 };
 pub use post_aa::{PostAaState, request_post_aa};
+pub use settings::apply_settings;
 pub use sprite_extract::extract_sprites_default;
 pub use state::{
     GameState, SceneEntity, StateContext, StateId, StateStack, despawn_scene_entities,
@@ -80,3 +82,7 @@ pub use ui_debug::ui_debug_toggle_system;
 #[cfg(all(test, feature = "kit"))]
 #[path = "tests/kit.rs"]
 mod kit_tests;
+
+#[cfg(test)]
+#[path = "tests/save_slots.rs"]
+mod save_slots_tests;
