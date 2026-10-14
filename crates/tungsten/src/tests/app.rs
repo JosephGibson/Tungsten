@@ -1,7 +1,8 @@
 use super::{
     App, FrameClock, FrameEnd, RedrawSchedule, compose_post_stack, format_perf_physics_line,
     format_perf_systems_line, frame_dt_secs, frame_interval_ms, is_action_map, is_reload_root,
-    manifest_reload_roots, redraw_schedule, resolve_startup_display, runtime_display_mode,
+    load_action_map_at_startup, manifest_reload_roots, redraw_schedule, resolve_startup_display,
+    runtime_display_mode,
 };
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -578,4 +579,149 @@ fn an_invalid_logging_level_set_in_code_is_an_error_naming_the_field() {
         .err()
         .expect("App::new accepted logging.level 'verbose'");
     assert!(err.to_string().contains("logging.level"), "{err}");
+}
+
+/// A fresh folder for one test's user files.
+fn user_tempdir(tag: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("tungsten_app_{tag}_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("settings")).unwrap();
+    dir
+}
+
+fn config_at(dir: &Path) -> Config {
+    let mut config = Config::default();
+    config.game.user_folder = tungsten_core::UserFolder::At(dir.to_path_buf());
+    config
+}
+
+#[test]
+fn settings_and_bindings_load_from_the_user_folder() {
+    let dir = user_tempdir("user_files");
+    std::fs::write(
+        dir.join("settings/settings.json"),
+        r#"{ "display": { "display_mode": "borderless_fullscreen", "resolution": { "width": 1600, "height": 900 }, "vsync": true }, "ui_scale": 1.25, "master_volume": 0.5 }"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("settings/input.json"),
+        r#"{ "actions": { "jump": [{ "kind": "key", "code": "KeyZ" }] } }"#,
+    )
+    .unwrap();
+
+    let mut app = App::new(config_at(&dir)).unwrap();
+    let state = *app.world.resource::<DisplayState>();
+    assert_eq!(state.display_mode, DisplayMode::BorderlessFullscreen);
+    assert_eq!(
+        (state.resolution.width, state.resolution.height),
+        (1600, 900)
+    );
+    assert!(state.vsync);
+    assert_eq!(
+        app.world.resource::<tungsten_core::ScaleFactor>().get(),
+        1.25
+    );
+    let actions = app.world.resource::<tungsten_core::ActionMap>();
+    assert_eq!(
+        actions.bindings("jump"),
+        &[tungsten_core::Binding::Key {
+            code: KeyCode::KeyZ
+        }]
+    );
+    assert_eq!(
+        actions.user_layer_path(),
+        Some(dir.join("settings/input.json").as_path())
+    );
+
+    app.audio_capture = Some(Vec::new());
+    headless_frame(&mut app);
+    assert!(
+        matches!(
+            app.audio_capture.as_deref(),
+            Some([AudioCommand::SetMasterVolume(volume)]) if *volume == 0.5
+        ),
+        "{:?}",
+        app.audio_capture
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_corrupt_user_file_never_stops_the_app() {
+    let dir = user_tempdir("corrupt");
+    std::fs::write(dir.join("settings/settings.json"), "{ \"ui_scale\": ").unwrap();
+    std::fs::write(dir.join("settings/input.json"), "[1, 2").unwrap();
+
+    let app = App::new(config_at(&dir)).expect("a file the game wrote never stops it");
+    assert_eq!(
+        *app.world.resource::<DisplayState>(),
+        DisplayState::default()
+    );
+    assert_eq!(
+        app.world.resource::<tungsten_core::ScaleFactor>().get(),
+        1.0
+    );
+    assert_eq!(
+        app.world
+            .resource::<tungsten_core::ActionMap>()
+            .bindings("jump"),
+        tungsten_core::ActionMap::default_map().bindings("jump")
+    );
+    assert!(dir.join("settings/settings.json.bad").exists());
+    assert!(dir.join("settings/input.json.bad").exists());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn an_invalid_shipped_input_json_still_fails() {
+    let dir = user_tempdir("invalid_shipped");
+    let shipped = dir.join("input.json");
+    std::fs::write(&shipped, "{ not json").unwrap();
+    let user = dir.join("settings/input.json");
+    std::fs::write(&user, r#"{ "actions": {} }"#).unwrap();
+
+    let error = load_action_map_at_startup(&shipped, Some(&user)).unwrap_err();
+    assert!(
+        matches!(
+            error.downcast_ref::<tungsten_core::ActionMapError>(),
+            Some(tungsten_core::ActionMapError::Parse { .. })
+        ),
+        "{error:#}"
+    );
+    assert!(user.exists(), "the user file is not touched");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn without_a_folder_nothing_persists() {
+    let mut config = Config::default();
+    config.game.id = Some("tungsten-no-folder".into());
+    config.game.user_folder = tungsten_core::UserFolder::Off;
+    let mut app = App::new(config).unwrap();
+
+    let settings = app.world.resource_mut::<tungsten_core::Settings>();
+    assert_eq!(settings.path(), None);
+    settings.set_master_volume(Some(0.0));
+    assert!(matches!(
+        settings.save(),
+        Err(tungsten_core::settings::SettingsError::NoFolder)
+    ));
+    let actions = app.world.resource_mut::<tungsten_core::ActionMap>();
+    assert_eq!(actions.user_layer_path(), None);
+    let error = actions
+        .replace_bindings_and_persist(
+            "jump",
+            vec![tungsten_core::Binding::Key {
+                code: KeyCode::KeyX,
+            }],
+        )
+        .unwrap_err();
+    assert!(
+        matches!(error, tungsten_core::ActionMapError::MissingSourcePath),
+        "{error}"
+    );
+    assert!(
+        !Path::new("input.json").exists(),
+        "nothing is written to the working directory"
+    );
 }

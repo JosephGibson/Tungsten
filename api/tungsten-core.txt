@@ -4184,6 +4184,7 @@ pub tungsten_core::config::Config::render: tungsten_core::config::RenderConfig
 pub tungsten_core::config::Config::time: tungsten_core::config::TimeConfig
 pub tungsten_core::config::Config::window: tungsten_core::config::WindowConfig
 impl tungsten_core::config::Config
+pub fn tungsten_core::config::Config::apply_settings(&mut self, &tungsten_core::settings::Settings) -> core::result::Result<(), tungsten_core::config::ConfigError>
 pub fn tungsten_core::config::Config::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::config::ConfigError>
 pub fn tungsten_core::config::Config::take_load_warnings(&mut self) -> alloc::vec::Vec<alloc::string::String>
 impl core::clone::Clone for tungsten_core::config::Config
@@ -4203,6 +4204,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::Config
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::Config
 #[non_exhaustive] pub struct tungsten_core::config::GameConfig
 pub tungsten_core::config::GameConfig::id: core::option::Option<alloc::string::String>
+pub tungsten_core::config::GameConfig::user_folder: tungsten_core::settings::UserFolder
 pub tungsten_core::config::GameConfig::version: core::option::Option<alloc::string::String>
 impl tungsten_core::config::GameConfig
 pub fn tungsten_core::config::GameConfig::validate(&self) -> core::result::Result<(), tungsten_core::config::ConfigError>
@@ -4589,6 +4591,8 @@ impl tungsten_core::display::ScaleFactor
 pub fn tungsten_core::display::ScaleFactor::get(&self) -> f32
 pub fn tungsten_core::display::ScaleFactor::os(&self) -> f32
 pub fn tungsten_core::display::ScaleFactor::set_os(&mut self, f32)
+pub fn tungsten_core::display::ScaleFactor::set_ui_scale(&mut self, f32)
+pub fn tungsten_core::display::ScaleFactor::ui_scale(&self) -> f32
 impl core::clone::Clone for tungsten_core::display::ScaleFactor
 pub fn tungsten_core::display::ScaleFactor::clone(&self) -> tungsten_core::display::ScaleFactor
 impl core::cmp::PartialEq for tungsten_core::display::ScaleFactor
@@ -5426,6 +5430,9 @@ pub fn tungsten_core::input::action_map::ActionMap::persist_to(&mut self, &std::
 pub fn tungsten_core::input::action_map::ActionMap::replace_bindings(&mut self, impl core::convert::Into<alloc::string::String>, alloc::vec::Vec<tungsten_core::input::action_map::Binding>)
 pub fn tungsten_core::input::action_map::ActionMap::replace_bindings_and_persist(&mut self, impl core::convert::Into<alloc::string::String>, alloc::vec::Vec<tungsten_core::input::action_map::Binding>) -> core::result::Result<(), tungsten_core::input::action_map::ActionMapError>
 pub fn tungsten_core::input::action_map::ActionMap::set_source_path(&mut self, impl core::convert::Into<std::path::PathBuf>)
+pub fn tungsten_core::input::action_map::ActionMap::take_load_warnings(&mut self) -> alloc::vec::Vec<alloc::string::String>
+pub fn tungsten_core::input::action_map::ActionMap::user_layer_path(&self) -> core::option::Option<&std::path::Path>
+pub fn tungsten_core::input::action_map::ActionMap::with_user_layer(self, core::option::Option<&std::path::Path>) -> Self
 impl core::clone::Clone for tungsten_core::input::action_map::ActionMap
 pub fn tungsten_core::input::action_map::ActionMap::clone(&self) -> tungsten_core::input::action_map::ActionMap
 impl core::default::Default for tungsten_core::input::action_map::ActionMap
@@ -5723,6 +5730,9 @@ pub fn tungsten_core::input::action_map::ActionMap::persist_to(&mut self, &std::
 pub fn tungsten_core::input::action_map::ActionMap::replace_bindings(&mut self, impl core::convert::Into<alloc::string::String>, alloc::vec::Vec<tungsten_core::input::action_map::Binding>)
 pub fn tungsten_core::input::action_map::ActionMap::replace_bindings_and_persist(&mut self, impl core::convert::Into<alloc::string::String>, alloc::vec::Vec<tungsten_core::input::action_map::Binding>) -> core::result::Result<(), tungsten_core::input::action_map::ActionMapError>
 pub fn tungsten_core::input::action_map::ActionMap::set_source_path(&mut self, impl core::convert::Into<std::path::PathBuf>)
+pub fn tungsten_core::input::action_map::ActionMap::take_load_warnings(&mut self) -> alloc::vec::Vec<alloc::string::String>
+pub fn tungsten_core::input::action_map::ActionMap::user_layer_path(&self) -> core::option::Option<&std::path::Path>
+pub fn tungsten_core::input::action_map::ActionMap::with_user_layer(self, core::option::Option<&std::path::Path>) -> Self
 impl core::clone::Clone for tungsten_core::input::action_map::ActionMap
 pub fn tungsten_core::input::action_map::ActionMap::clone(&self) -> tungsten_core::input::action_map::ActionMap
 impl core::default::Default for tungsten_core::input::action_map::ActionMap
@@ -5910,6 +5920,33 @@ impl core::marker::UnsafeUnpin for tungsten_core::lighting::AmbientLight
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::lighting::AmbientLight
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::lighting::AmbientLight
 pub const tungsten_core::lighting::LIGHT_CAP: usize
+pub mod tungsten_core::persist
+#[non_exhaustive] pub enum tungsten_core::persist::WriteError
+pub tungsten_core::persist::WriteError::Busy
+pub tungsten_core::persist::WriteError::Busy::attempts: u32
+pub tungsten_core::persist::WriteError::Busy::path: std::path::PathBuf
+pub tungsten_core::persist::WriteError::Busy::source: core::io::error::Error
+pub tungsten_core::persist::WriteError::Io
+pub tungsten_core::persist::WriteError::Io::path: std::path::PathBuf
+pub tungsten_core::persist::WriteError::Io::source: core::io::error::Error
+impl core::convert::From<tungsten_core::persist::WriteError> for tungsten_core::save::SaveError
+pub fn tungsten_core::save::SaveError::from(tungsten_core::persist::WriteError) -> Self
+impl core::convert::From<tungsten_core::persist::WriteError> for tungsten_core::settings::SettingsError
+pub fn tungsten_core::settings::SettingsError::from(tungsten_core::persist::WriteError) -> Self
+impl core::error::Error for tungsten_core::persist::WriteError
+pub fn tungsten_core::persist::WriteError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tungsten_core::persist::WriteError
+pub fn tungsten_core::persist::WriteError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::persist::WriteError
+pub fn tungsten_core::persist::WriteError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::persist::WriteError
+impl core::marker::Send for tungsten_core::persist::WriteError
+impl core::marker::Sync for tungsten_core::persist::WriteError
+impl core::marker::Unpin for tungsten_core::persist::WriteError
+impl core::marker::UnsafeUnpin for tungsten_core::persist::WriteError
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::persist::WriteError
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::persist::WriteError
+pub fn tungsten_core::persist::write_atomic(&std::path::Path, &[u8]) -> core::result::Result<(), tungsten_core::persist::WriteError>
 pub mod tungsten_core::physics
 pub mod tungsten_core::physics::broadphase
 pub struct tungsten_core::physics::broadphase::SpatialGrid
@@ -7222,6 +7259,110 @@ impl core::marker::UnsafeUnpin for tungsten_core::rng::Pcg32
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::rng::Pcg32
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::rng::Pcg32
 pub fn tungsten_core::rng::splitmix64(u64) -> u64
+pub mod tungsten_core::save
+pub use tungsten_core::save::Value
+#[non_exhaustive] pub enum tungsten_core::save::SaveError
+pub tungsten_core::save::SaveError::Corrupt
+pub tungsten_core::save::SaveError::Corrupt::slot: alloc::string::String
+pub tungsten_core::save::SaveError::Corrupt::source: serde_json::error::Error
+pub tungsten_core::save::SaveError::InvalidName
+pub tungsten_core::save::SaveError::InvalidName::name: alloc::string::String
+pub tungsten_core::save::SaveError::Io
+pub tungsten_core::save::SaveError::Io::path: std::path::PathBuf
+pub tungsten_core::save::SaveError::Io::source: core::io::error::Error
+pub tungsten_core::save::SaveError::Migration
+pub tungsten_core::save::SaveError::Migration::from: u32
+pub tungsten_core::save::SaveError::Migration::slot: alloc::string::String
+pub tungsten_core::save::SaveError::Migration::source: alloc::boxed::Box<(dyn core::error::Error + core::marker::Send + core::marker::Sync)>
+pub tungsten_core::save::SaveError::NewerSchema
+pub tungsten_core::save::SaveError::NewerSchema::found: u32
+pub tungsten_core::save::SaveError::NewerSchema::slot: alloc::string::String
+pub tungsten_core::save::SaveError::NewerSchema::supported: u32
+pub tungsten_core::save::SaveError::NoFolder
+pub tungsten_core::save::SaveError::NotFound
+pub tungsten_core::save::SaveError::NotFound::slot: alloc::string::String
+pub tungsten_core::save::SaveError::Serialize
+pub tungsten_core::save::SaveError::Serialize::slot: alloc::string::String
+pub tungsten_core::save::SaveError::Serialize::source: serde_json::error::Error
+pub tungsten_core::save::SaveError::UnknownEnvelope
+pub tungsten_core::save::SaveError::UnknownEnvelope::envelope: u32
+pub tungsten_core::save::SaveError::UnknownEnvelope::slot: alloc::string::String
+pub tungsten_core::save::SaveError::Write(tungsten_core::persist::WriteError)
+impl core::convert::From<tungsten_core::persist::WriteError> for tungsten_core::save::SaveError
+pub fn tungsten_core::save::SaveError::from(tungsten_core::persist::WriteError) -> Self
+impl core::error::Error for tungsten_core::save::SaveError
+pub fn tungsten_core::save::SaveError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tungsten_core::save::SaveError
+pub fn tungsten_core::save::SaveError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::save::SaveError
+pub fn tungsten_core::save::SaveError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::save::SaveError
+impl core::marker::Send for tungsten_core::save::SaveError
+impl core::marker::Sync for tungsten_core::save::SaveError
+impl core::marker::Unpin for tungsten_core::save::SaveError
+impl core::marker::UnsafeUnpin for tungsten_core::save::SaveError
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::save::SaveError
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::save::SaveError
+pub struct tungsten_core::save::SaveSlots
+impl tungsten_core::save::SaveSlots
+pub fn tungsten_core::save::SaveSlots::delete(&self, &str) -> core::result::Result<(), tungsten_core::save::SaveError>
+pub fn tungsten_core::save::SaveSlots::dir(&self) -> core::option::Option<&std::path::Path>
+pub fn tungsten_core::save::SaveSlots::list(&self) -> core::result::Result<tungsten_core::save::SlotList, tungsten_core::save::SaveError>
+pub fn tungsten_core::save::SaveSlots::load<T: tungsten_core::save::SaveData>(&self, &str) -> core::result::Result<T, tungsten_core::save::SaveError>
+pub fn tungsten_core::save::SaveSlots::new(core::option::Option<std::path::PathBuf>) -> Self
+pub fn tungsten_core::save::SaveSlots::save<T: tungsten_core::save::SaveData>(&self, &str, &T) -> core::result::Result<(), tungsten_core::save::SaveError>
+impl core::clone::Clone for tungsten_core::save::SaveSlots
+pub fn tungsten_core::save::SaveSlots::clone(&self) -> tungsten_core::save::SaveSlots
+impl core::default::Default for tungsten_core::save::SaveSlots
+pub fn tungsten_core::save::SaveSlots::default() -> tungsten_core::save::SaveSlots
+impl core::fmt::Debug for tungsten_core::save::SaveSlots
+pub fn tungsten_core::save::SaveSlots::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::save::SaveSlots
+impl core::marker::Send for tungsten_core::save::SaveSlots
+impl core::marker::Sync for tungsten_core::save::SaveSlots
+impl core::marker::Unpin for tungsten_core::save::SaveSlots
+impl core::marker::UnsafeUnpin for tungsten_core::save::SaveSlots
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::save::SaveSlots
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::save::SaveSlots
+#[non_exhaustive] pub struct tungsten_core::save::SlotInfo
+pub tungsten_core::save::SlotInfo::engine_version: alloc::string::String
+pub tungsten_core::save::SlotInfo::name: alloc::string::String
+pub tungsten_core::save::SlotInfo::saved_at_ms: u64
+pub tungsten_core::save::SlotInfo::schema: u32
+impl core::clone::Clone for tungsten_core::save::SlotInfo
+pub fn tungsten_core::save::SlotInfo::clone(&self) -> tungsten_core::save::SlotInfo
+impl core::cmp::Eq for tungsten_core::save::SlotInfo
+impl core::cmp::PartialEq for tungsten_core::save::SlotInfo
+pub fn tungsten_core::save::SlotInfo::eq(&self, &tungsten_core::save::SlotInfo) -> bool
+impl core::fmt::Debug for tungsten_core::save::SlotInfo
+pub fn tungsten_core::save::SlotInfo::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::save::SlotInfo
+impl core::marker::Freeze for tungsten_core::save::SlotInfo
+impl core::marker::Send for tungsten_core::save::SlotInfo
+impl core::marker::Sync for tungsten_core::save::SlotInfo
+impl core::marker::Unpin for tungsten_core::save::SlotInfo
+impl core::marker::UnsafeUnpin for tungsten_core::save::SlotInfo
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::save::SlotInfo
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::save::SlotInfo
+#[non_exhaustive] pub struct tungsten_core::save::SlotList
+pub tungsten_core::save::SlotList::slots: alloc::vec::Vec<tungsten_core::save::SlotInfo>
+pub tungsten_core::save::SlotList::warnings: alloc::vec::Vec<alloc::string::String>
+impl core::clone::Clone for tungsten_core::save::SlotList
+pub fn tungsten_core::save::SlotList::clone(&self) -> tungsten_core::save::SlotList
+impl core::default::Default for tungsten_core::save::SlotList
+pub fn tungsten_core::save::SlotList::default() -> tungsten_core::save::SlotList
+impl core::fmt::Debug for tungsten_core::save::SlotList
+pub fn tungsten_core::save::SlotList::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::save::SlotList
+impl core::marker::Send for tungsten_core::save::SlotList
+impl core::marker::Sync for tungsten_core::save::SlotList
+impl core::marker::Unpin for tungsten_core::save::SlotList
+impl core::marker::UnsafeUnpin for tungsten_core::save::SlotList
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::save::SlotList
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::save::SlotList
+pub trait tungsten_core::save::SaveData: serde_core::ser::Serialize + serde_core::de::DeserializeOwned
+pub const tungsten_core::save::SaveData::SCHEMA: u32
+pub fn tungsten_core::save::SaveData::migrate(u32, serde_json::value::Value) -> core::result::Result<serde_json::value::Value, alloc::boxed::Box<(dyn core::error::Error + core::marker::Send + core::marker::Sync)>>
 pub mod tungsten_core::schedule
 pub mod tungsten_core::schedule::names
 pub const tungsten_core::schedule::names::CAMERA_UPDATE: &str
@@ -7370,6 +7511,80 @@ pub fn tungsten_core::PhysicsPlugin::build(&self, &mut tungsten_core::schedule::
 pub fn tungsten_core::PhysicsPlugin::name(&self) -> &'static str
 pub fn tungsten_core::schedule::system(impl core::convert::Into<alloc::string::String>, impl core::ops::function::FnMut(&mut tungsten_core::World) + 'static) -> tungsten_core::schedule::SystemDesc
 pub type tungsten_core::schedule::SystemFn = alloc::boxed::Box<dyn core::ops::function::FnMut(&mut tungsten_core::World)>
+pub mod tungsten_core::settings
+#[non_exhaustive] pub enum tungsten_core::settings::SettingsError
+pub tungsten_core::settings::SettingsError::NoFolder
+pub tungsten_core::settings::SettingsError::Write(tungsten_core::persist::WriteError)
+impl core::convert::From<tungsten_core::persist::WriteError> for tungsten_core::settings::SettingsError
+pub fn tungsten_core::settings::SettingsError::from(tungsten_core::persist::WriteError) -> Self
+impl core::error::Error for tungsten_core::settings::SettingsError
+pub fn tungsten_core::settings::SettingsError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tungsten_core::settings::SettingsError
+pub fn tungsten_core::settings::SettingsError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::settings::SettingsError
+pub fn tungsten_core::settings::SettingsError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::settings::SettingsError
+impl core::marker::Send for tungsten_core::settings::SettingsError
+impl core::marker::Sync for tungsten_core::settings::SettingsError
+impl core::marker::Unpin for tungsten_core::settings::SettingsError
+impl core::marker::UnsafeUnpin for tungsten_core::settings::SettingsError
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::settings::SettingsError
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::settings::SettingsError
+#[non_exhaustive] pub enum tungsten_core::settings::UserFolder
+pub tungsten_core::settings::UserFolder::At(std::path::PathBuf)
+pub tungsten_core::settings::UserFolder::Off
+pub tungsten_core::settings::UserFolder::Platform
+impl core::clone::Clone for tungsten_core::settings::UserFolder
+pub fn tungsten_core::settings::UserFolder::clone(&self) -> tungsten_core::settings::UserFolder
+impl core::cmp::Eq for tungsten_core::settings::UserFolder
+impl core::cmp::PartialEq for tungsten_core::settings::UserFolder
+pub fn tungsten_core::settings::UserFolder::eq(&self, &tungsten_core::settings::UserFolder) -> bool
+impl core::default::Default for tungsten_core::settings::UserFolder
+pub fn tungsten_core::settings::UserFolder::default() -> tungsten_core::settings::UserFolder
+impl core::fmt::Debug for tungsten_core::settings::UserFolder
+pub fn tungsten_core::settings::UserFolder::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::settings::UserFolder
+impl core::marker::Freeze for tungsten_core::settings::UserFolder
+impl core::marker::Send for tungsten_core::settings::UserFolder
+impl core::marker::Sync for tungsten_core::settings::UserFolder
+impl core::marker::Unpin for tungsten_core::settings::UserFolder
+impl core::marker::UnsafeUnpin for tungsten_core::settings::UserFolder
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::settings::UserFolder
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::settings::UserFolder
+pub struct tungsten_core::settings::Settings
+impl tungsten_core::settings::Settings
+pub const tungsten_core::settings::Settings::FILE: &'static str
+pub const tungsten_core::settings::Settings::UI_SCALE_RANGE: core::ops::range::RangeInclusive<f32>
+pub fn tungsten_core::settings::Settings::display_mode(&self) -> core::option::Option<tungsten_core::display::DisplayMode>
+pub fn tungsten_core::settings::Settings::load(impl core::convert::Into<std::path::PathBuf>) -> Self
+pub fn tungsten_core::settings::Settings::master_volume(&self) -> core::option::Option<f32>
+pub fn tungsten_core::settings::Settings::path(&self) -> core::option::Option<&std::path::Path>
+pub fn tungsten_core::settings::Settings::resolution(&self) -> core::option::Option<tungsten_core::display::Resolution>
+pub fn tungsten_core::settings::Settings::save(&self) -> core::result::Result<(), tungsten_core::settings::SettingsError>
+pub fn tungsten_core::settings::Settings::set_display_mode(&mut self, core::option::Option<tungsten_core::display::DisplayMode>)
+pub fn tungsten_core::settings::Settings::set_master_volume(&mut self, core::option::Option<f32>)
+pub fn tungsten_core::settings::Settings::set_resolution(&mut self, core::option::Option<tungsten_core::display::Resolution>)
+pub fn tungsten_core::settings::Settings::set_ui_scale(&mut self, core::option::Option<f32>)
+pub fn tungsten_core::settings::Settings::set_vsync(&mut self, core::option::Option<bool>)
+pub fn tungsten_core::settings::Settings::take_load_warnings(&mut self) -> alloc::vec::Vec<alloc::string::String>
+pub fn tungsten_core::settings::Settings::ui_scale(&self) -> core::option::Option<f32>
+pub fn tungsten_core::settings::Settings::vsync(&self) -> core::option::Option<bool>
+impl core::clone::Clone for tungsten_core::settings::Settings
+pub fn tungsten_core::settings::Settings::clone(&self) -> tungsten_core::settings::Settings
+impl core::cmp::PartialEq for tungsten_core::settings::Settings
+pub fn tungsten_core::settings::Settings::eq(&self, &tungsten_core::settings::Settings) -> bool
+impl core::default::Default for tungsten_core::settings::Settings
+pub fn tungsten_core::settings::Settings::default() -> tungsten_core::settings::Settings
+impl core::fmt::Debug for tungsten_core::settings::Settings
+pub fn tungsten_core::settings::Settings::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::settings::Settings
+impl core::marker::Freeze for tungsten_core::settings::Settings
+impl core::marker::Send for tungsten_core::settings::Settings
+impl core::marker::Sync for tungsten_core::settings::Settings
+impl core::marker::Unpin for tungsten_core::settings::Settings
+impl core::marker::UnsafeUnpin for tungsten_core::settings::Settings
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::settings::Settings
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::settings::Settings
 pub mod tungsten_core::text
 #[non_exhaustive] pub enum tungsten_core::text::EllipsisAt
 pub tungsten_core::text::EllipsisAt::End
@@ -12181,6 +12396,27 @@ impl core::marker::Unpin for tungsten_core::ui::event::UiEvent
 impl core::marker::UnsafeUnpin for tungsten_core::ui::event::UiEvent
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::event::UiEvent
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::event::UiEvent
+#[non_exhaustive] pub enum tungsten_core::UserFolder
+pub tungsten_core::UserFolder::At(std::path::PathBuf)
+pub tungsten_core::UserFolder::Off
+pub tungsten_core::UserFolder::Platform
+impl core::clone::Clone for tungsten_core::settings::UserFolder
+pub fn tungsten_core::settings::UserFolder::clone(&self) -> tungsten_core::settings::UserFolder
+impl core::cmp::Eq for tungsten_core::settings::UserFolder
+impl core::cmp::PartialEq for tungsten_core::settings::UserFolder
+pub fn tungsten_core::settings::UserFolder::eq(&self, &tungsten_core::settings::UserFolder) -> bool
+impl core::default::Default for tungsten_core::settings::UserFolder
+pub fn tungsten_core::settings::UserFolder::default() -> tungsten_core::settings::UserFolder
+impl core::fmt::Debug for tungsten_core::settings::UserFolder
+pub fn tungsten_core::settings::UserFolder::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::settings::UserFolder
+impl core::marker::Freeze for tungsten_core::settings::UserFolder
+impl core::marker::Send for tungsten_core::settings::UserFolder
+impl core::marker::Sync for tungsten_core::settings::UserFolder
+impl core::marker::Unpin for tungsten_core::settings::UserFolder
+impl core::marker::UnsafeUnpin for tungsten_core::settings::UserFolder
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::settings::UserFolder
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::settings::UserFolder
 pub enum tungsten_core::Vec4Slot
 pub tungsten_core::Vec4Slot::V0
 pub tungsten_core::Vec4Slot::V1
@@ -12270,6 +12506,9 @@ pub fn tungsten_core::input::action_map::ActionMap::persist_to(&mut self, &std::
 pub fn tungsten_core::input::action_map::ActionMap::replace_bindings(&mut self, impl core::convert::Into<alloc::string::String>, alloc::vec::Vec<tungsten_core::input::action_map::Binding>)
 pub fn tungsten_core::input::action_map::ActionMap::replace_bindings_and_persist(&mut self, impl core::convert::Into<alloc::string::String>, alloc::vec::Vec<tungsten_core::input::action_map::Binding>) -> core::result::Result<(), tungsten_core::input::action_map::ActionMapError>
 pub fn tungsten_core::input::action_map::ActionMap::set_source_path(&mut self, impl core::convert::Into<std::path::PathBuf>)
+pub fn tungsten_core::input::action_map::ActionMap::take_load_warnings(&mut self) -> alloc::vec::Vec<alloc::string::String>
+pub fn tungsten_core::input::action_map::ActionMap::user_layer_path(&self) -> core::option::Option<&std::path::Path>
+pub fn tungsten_core::input::action_map::ActionMap::with_user_layer(self, core::option::Option<&std::path::Path>) -> Self
 impl core::clone::Clone for tungsten_core::input::action_map::ActionMap
 pub fn tungsten_core::input::action_map::ActionMap::clone(&self) -> tungsten_core::input::action_map::ActionMap
 impl core::default::Default for tungsten_core::input::action_map::ActionMap
@@ -12677,6 +12916,7 @@ pub tungsten_core::Config::render: tungsten_core::config::RenderConfig
 pub tungsten_core::Config::time: tungsten_core::config::TimeConfig
 pub tungsten_core::Config::window: tungsten_core::config::WindowConfig
 impl tungsten_core::config::Config
+pub fn tungsten_core::config::Config::apply_settings(&mut self, &tungsten_core::settings::Settings) -> core::result::Result<(), tungsten_core::config::ConfigError>
 pub fn tungsten_core::config::Config::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::config::ConfigError>
 pub fn tungsten_core::config::Config::take_load_warnings(&mut self) -> alloc::vec::Vec<alloc::string::String>
 impl core::clone::Clone for tungsten_core::config::Config
@@ -13183,6 +13423,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::registry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::registry::FontRegistry
 #[non_exhaustive] pub struct tungsten_core::GameConfig
 pub tungsten_core::GameConfig::id: core::option::Option<alloc::string::String>
+pub tungsten_core::GameConfig::user_folder: tungsten_core::settings::UserFolder
 pub tungsten_core::GameConfig::version: core::option::Option<alloc::string::String>
 impl tungsten_core::config::GameConfig
 pub fn tungsten_core::config::GameConfig::validate(&self) -> core::result::Result<(), tungsten_core::config::ConfigError>
@@ -14432,11 +14673,34 @@ impl core::marker::Unpin for tungsten_core::input::RoutedInput
 impl core::marker::UnsafeUnpin for tungsten_core::input::RoutedInput
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::RoutedInput
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::RoutedInput
+pub struct tungsten_core::SaveSlots
+impl tungsten_core::save::SaveSlots
+pub fn tungsten_core::save::SaveSlots::delete(&self, &str) -> core::result::Result<(), tungsten_core::save::SaveError>
+pub fn tungsten_core::save::SaveSlots::dir(&self) -> core::option::Option<&std::path::Path>
+pub fn tungsten_core::save::SaveSlots::list(&self) -> core::result::Result<tungsten_core::save::SlotList, tungsten_core::save::SaveError>
+pub fn tungsten_core::save::SaveSlots::load<T: tungsten_core::save::SaveData>(&self, &str) -> core::result::Result<T, tungsten_core::save::SaveError>
+pub fn tungsten_core::save::SaveSlots::new(core::option::Option<std::path::PathBuf>) -> Self
+pub fn tungsten_core::save::SaveSlots::save<T: tungsten_core::save::SaveData>(&self, &str, &T) -> core::result::Result<(), tungsten_core::save::SaveError>
+impl core::clone::Clone for tungsten_core::save::SaveSlots
+pub fn tungsten_core::save::SaveSlots::clone(&self) -> tungsten_core::save::SaveSlots
+impl core::default::Default for tungsten_core::save::SaveSlots
+pub fn tungsten_core::save::SaveSlots::default() -> tungsten_core::save::SaveSlots
+impl core::fmt::Debug for tungsten_core::save::SaveSlots
+pub fn tungsten_core::save::SaveSlots::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::save::SaveSlots
+impl core::marker::Send for tungsten_core::save::SaveSlots
+impl core::marker::Sync for tungsten_core::save::SaveSlots
+impl core::marker::Unpin for tungsten_core::save::SaveSlots
+impl core::marker::UnsafeUnpin for tungsten_core::save::SaveSlots
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::save::SaveSlots
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::save::SaveSlots
 pub struct tungsten_core::ScaleFactor
 impl tungsten_core::display::ScaleFactor
 pub fn tungsten_core::display::ScaleFactor::get(&self) -> f32
 pub fn tungsten_core::display::ScaleFactor::os(&self) -> f32
 pub fn tungsten_core::display::ScaleFactor::set_os(&mut self, f32)
+pub fn tungsten_core::display::ScaleFactor::set_ui_scale(&mut self, f32)
+pub fn tungsten_core::display::ScaleFactor::ui_scale(&self) -> f32
 impl core::clone::Clone for tungsten_core::display::ScaleFactor
 pub fn tungsten_core::display::ScaleFactor::clone(&self) -> tungsten_core::display::ScaleFactor
 impl core::cmp::PartialEq for tungsten_core::display::ScaleFactor
@@ -14604,6 +14868,40 @@ impl core::marker::Unpin for tungsten_core::physics::events::SensorEntered
 impl core::marker::UnsafeUnpin for tungsten_core::physics::events::SensorEntered
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::events::SensorEntered
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::events::SensorEntered
+pub struct tungsten_core::Settings
+impl tungsten_core::settings::Settings
+pub const tungsten_core::settings::Settings::FILE: &'static str
+pub const tungsten_core::settings::Settings::UI_SCALE_RANGE: core::ops::range::RangeInclusive<f32>
+pub fn tungsten_core::settings::Settings::display_mode(&self) -> core::option::Option<tungsten_core::display::DisplayMode>
+pub fn tungsten_core::settings::Settings::load(impl core::convert::Into<std::path::PathBuf>) -> Self
+pub fn tungsten_core::settings::Settings::master_volume(&self) -> core::option::Option<f32>
+pub fn tungsten_core::settings::Settings::path(&self) -> core::option::Option<&std::path::Path>
+pub fn tungsten_core::settings::Settings::resolution(&self) -> core::option::Option<tungsten_core::display::Resolution>
+pub fn tungsten_core::settings::Settings::save(&self) -> core::result::Result<(), tungsten_core::settings::SettingsError>
+pub fn tungsten_core::settings::Settings::set_display_mode(&mut self, core::option::Option<tungsten_core::display::DisplayMode>)
+pub fn tungsten_core::settings::Settings::set_master_volume(&mut self, core::option::Option<f32>)
+pub fn tungsten_core::settings::Settings::set_resolution(&mut self, core::option::Option<tungsten_core::display::Resolution>)
+pub fn tungsten_core::settings::Settings::set_ui_scale(&mut self, core::option::Option<f32>)
+pub fn tungsten_core::settings::Settings::set_vsync(&mut self, core::option::Option<bool>)
+pub fn tungsten_core::settings::Settings::take_load_warnings(&mut self) -> alloc::vec::Vec<alloc::string::String>
+pub fn tungsten_core::settings::Settings::ui_scale(&self) -> core::option::Option<f32>
+pub fn tungsten_core::settings::Settings::vsync(&self) -> core::option::Option<bool>
+impl core::clone::Clone for tungsten_core::settings::Settings
+pub fn tungsten_core::settings::Settings::clone(&self) -> tungsten_core::settings::Settings
+impl core::cmp::PartialEq for tungsten_core::settings::Settings
+pub fn tungsten_core::settings::Settings::eq(&self, &tungsten_core::settings::Settings) -> bool
+impl core::default::Default for tungsten_core::settings::Settings
+pub fn tungsten_core::settings::Settings::default() -> tungsten_core::settings::Settings
+impl core::fmt::Debug for tungsten_core::settings::Settings
+pub fn tungsten_core::settings::Settings::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::settings::Settings
+impl core::marker::Freeze for tungsten_core::settings::Settings
+impl core::marker::Send for tungsten_core::settings::Settings
+impl core::marker::Sync for tungsten_core::settings::Settings
+impl core::marker::Unpin for tungsten_core::settings::Settings
+impl core::marker::UnsafeUnpin for tungsten_core::settings::Settings
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::settings::Settings
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::settings::Settings
 pub struct tungsten_core::ShakeEvent
 pub tungsten_core::ShakeEvent::trauma_add: f32
 impl core::clone::Clone for tungsten_core::ShakeEvent
@@ -15870,6 +16168,9 @@ pub fn tungsten_core::Plugin::name(&self) -> &'static str
 impl tungsten_core::schedule::Plugin for tungsten_core::PhysicsPlugin
 pub fn tungsten_core::PhysicsPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::World)
 pub fn tungsten_core::PhysicsPlugin::name(&self) -> &'static str
+pub trait tungsten_core::SaveData: serde_core::ser::Serialize + serde_core::de::DeserializeOwned
+pub const tungsten_core::SaveData::SCHEMA: u32
+pub fn tungsten_core::SaveData::migrate(u32, serde_json::value::Value) -> core::result::Result<serde_json::value::Value, alloc::boxed::Box<(dyn core::error::Error + core::marker::Send + core::marker::Sync)>>
 pub trait tungsten_core::TextMeasure
 pub fn tungsten_core::TextMeasure::measure(&mut self, tungsten_core::text::TextNodeId, core::option::Option<f32>, tungsten_core::text::MeasureWidth) -> tungsten_core::text::TextMetrics
 impl tungsten_core::text::TextMeasure for tungsten_core::ui::measure::FixedAdvanceMeasure

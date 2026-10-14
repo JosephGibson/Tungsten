@@ -13,7 +13,7 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-005` | No external ECS crate. ECS work stays in-project by design. |
 | `D-006` | Three-crate workspace split is intentional: `tungsten-core`, `tungsten-render`, `tungsten`. Amended by `D-155`: a fourth crate, `tungsten-kit`, on core alone. |
 | `D-007` | `tungsten-render` may depend on `tungsten-core`; strict isolation is not the goal. |
-| `D-008` | Config loads at startup from the game's folder. Amended by `D-119`: ID/log validation; `D-123`: game-local path. |
+| `D-008` | Config loads at startup from the game's folder. Amended by `D-119`: ID/log validation; `D-123`: game-local path; `D-159`: user settings before the environment. |
 | `D-102` | 1.0 means a complete game engine and stable library, tested by an acceptance game. Amended by `D-131`: R2 only, R1/R4 to 1.x. |
 | `D-103` | Semver promises umbrella API, file formats and CLI; excludes direct crate/backend types. Amends `D-069`: MSRV bumps in minors. Amended by `D-153`: the default scene component names are fixed from 1.0. |
 | `D-132` | Acceptance-game map sets W6/W13 tiers; bodies on roots, tilemap builder in W16b, world labels after M3. |
@@ -129,7 +129,7 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-040` | Two-window typed events. Amended by `D-128`: World registration/flush; `D-137`: step views; `D-139`: zero-step holds. |
 | `D-043` | Display config and runtime apply at frame boundaries through requested settings. |
 | `D-044` | Off-by-default umbrella telemetry HUD. Narrowed by `D-078`: suite measures overhead; input toggles follow `D-045`. |
-| `D-045` | Core action names/bindings with watcher reload. Amended by `D-123`: game-local canonical input path. |
+| `D-045` | Core action names/bindings with watcher reload. Amended by `D-123`: game-local canonical input path; `D-159`: player bindings in the user folder, persisted there. |
 | `D-046` | Engine dispatcher, state stack and scene-owned entity cleanup; scenes reuse render components. Amended by `D-153`: entries carry registered components checked at load against the World; unknown keys fail. |
 | `D-047` | Core debug data, independent overlays and offscreen screenshot readback; GPU labels/groups always on. Amended by `D-142`: one-frame captures whose result comes back. |
 | `D-049` | In-tree PCG32 + SplitMix64; no RNG dependency. |
@@ -155,7 +155,7 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-099` | Flush removes a completed tween only while still pending, sparing replacements. Amends `D-056`. |
 | `D-100` | Camera smoothing is a per-1/60 s rate, independent of frame rate. |
 | `D-110` | Harness runs the real frame body without devices, behind testing feature. Amends `D-088`, `D-107`. Amended by `D-125`: UiHarness. |
-| `D-119` | Game ID selects user folder; engine logger and crash hook installed once. Amends `D-008`: validation. |
+| `D-119` | Game ID selects user folder; engine logger and crash hook installed once. Amends `D-008`: validation. Amended by `D-159`: `UserFolder` set in code, before the environment. |
 | `D-125` | Core generational UI tree, theme/layout, hit testing/focus and TextNodeStore seam; headless UiHarness. Amends `D-110`, `D-117`. Amended by `D-149`: clip-stack and modal hit testing, visible-focus layered states, scope restore on hide. |
 | `D-128` | Five closed schedule stages, named systems/plugins and core event registration. Amends `D-018`, `D-040`. Amended by `D-155`: the kit's constraints are if-present. |
 | `D-129` | Real/game Time, bounded fixed steps, timers and default interpolation. Amends `D-088`, `D-093`, `D-094`. |
@@ -179,6 +179,8 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-156` | A static or tile support that goes, moves or changes wakes every sleeping island within the speculative slack of it, found by comparing the supports recorded while anything slept; an island sleeps only after a frame with every member below the threshold, so `time_to_sleep <= 0` sleeps no moving body. Hashes unchanged. Amends `D-065`. |
 | `D-157` | W16b landed: prefab files in a `prefabs` section, spawned now or at the flush; Tiled object classes name prefabs, their properties over its components; asset-checked components with `particle_emitter` and `tilemap`; `TilemapData` `#[non_exhaustive]` with a builder; the kit's spawner. Amends `D-032`, `D-153`. |
 | `D-158` | W13c and W13d landed: the kit's platformer controller and top-down mover move kinematic bodies by casts in `fixed_update` before `physics_step`, a still first step; health with a window on the fixed step, `damage` and `Damaged`; a hit flash on `damage_flash` restoring material and block; trigger zones over `SensorEntered` by the game's types; a path follower; a per-entity state machine. Example 01's player stays its own (a route corner). Amends `D-155`. |
+| `D-159` | W11b landed: one atomic write (`persist::write_atomic`, Windows retry); `Settings` (display mode, resolution, vsync, UI scale, master volume) in the user folder between `tungsten.json` and the environment; player bindings over the shipped `input.json`, saving the difference; a corrupt user file falls back beside a `.bad` backup; `UserFolder` in code; `tungsten::apply_settings`. Amends `D-008`, `D-045`, `D-119`. |
+| `D-160` | W11c landed: `SaveSlots` over the user folder's `saves`, the game's `SaveData` types in a versioned envelope, its own `migrate` for an older schema, a newer one refused; lowercase `game.id`-rule slot names, header listing, typed `SaveError`s. Narrows DESIGN's save/load non-commitment to World snapshots. |
 
 ## When To Open a Decision
 

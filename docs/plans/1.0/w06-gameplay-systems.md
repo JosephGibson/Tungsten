@@ -32,4 +32,4 @@ Written at graduation.
 
 ## Follow-ups
 
-None yet.
+- W6c: each bus's volume joins `Settings` beside the master volume that W11b persists (M53, `D-159`), so a player's bus levels survive a restart and `tungsten::apply_settings` pushes them.

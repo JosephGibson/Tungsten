@@ -113,9 +113,10 @@ pub fn mouse_button_from_str(name: &str) -> Option<MouseButton> {
         return Some(button);
     }
 
+    // `button0` too: `mouse_button_to_string` writes it, so every saved
+    // button loads (Core F4).
     name.strip_prefix("button")
         .and_then(|rest| rest.parse::<u16>().ok())
-        .filter(|id| *id > 0)
         .map(MouseButton::Other)
 }
 

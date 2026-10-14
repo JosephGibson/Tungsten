@@ -1,11 +1,11 @@
-//! The game's per-user folder (`D-119`): where its settings, saves and logs
-//! live, resolved from `game.id`, smoke mode, the platform and the
-//! environment.
+//! The game's per-user folder (`D-119`, `D-159`): where its settings, saves
+//! and logs live, resolved from smoke mode, `game.id`, `game.user_folder`,
+//! the environment and the platform.
 
 use std::ffi::{OsStr, OsString};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use tungsten_core::GameConfig;
+use tungsten_core::{GameConfig, UserFolder};
 
 /// Replaces the platform folder; set but empty, the game has no folder.
 pub(crate) const USER_DIR_ENV: &str = "TUNGSTEN_USER_DIR";
@@ -32,19 +32,32 @@ impl Platform {
     }
 }
 
-/// The game's folders. Only `logs` is created by the engine so far.
+/// The game's folders. `logs` is created at startup, `settings` on the first
+/// save of the settings or bindings, `saves` on the first slot saved.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct UserDirs {
-    #[allow(dead_code, reason = "settings (W11b) read and create it")]
     pub(crate) settings: PathBuf,
-    #[allow(dead_code, reason = "save slots (W11c) read and create it")]
     pub(crate) saves: PathBuf,
     pub(crate) logs: PathBuf,
 }
 
-/// Resolves the game's folders, or `None`: in smoke mode, for an invalid
-/// id, for an empty `TUNGSTEN_USER_DIR`, without an id and no override, or
-/// when the platform's variables give no absolute base. `env` looks a
+impl UserDirs {
+    /// `<dir>/settings`, `<dir>/saves` and `<dir>/logs`.
+    fn under(dir: &Path) -> Self {
+        Self {
+            settings: dir.join("settings"),
+            saves: dir.join("saves"),
+            logs: dir.join("logs"),
+        }
+    }
+}
+
+/// Resolves the game's folders, in this order: smoke mode, an invalid id and
+/// `UserFolder::Off` give `None`; `UserFolder::At` its folder; then
+/// `TUNGSTEN_USER_DIR` (set but empty, `None`); then without an id `None`;
+/// then the platform's folders, `None` when its variables give no absolute
+/// base. Code wins over the environment, so a test that pins a folder stays
+/// pinned in a developer's shell; smoke mode wins over both. `env` looks a
 /// variable up, so tests need no `set_var`.
 pub(crate) fn resolve(
     game: &GameConfig,
@@ -55,16 +68,16 @@ pub(crate) fn resolve(
     if smoke || game.validate().is_err() {
         return None;
     }
+    match &game.user_folder {
+        UserFolder::Off => return None,
+        UserFolder::At(dir) => return Some(UserDirs::under(dir)),
+        _ => {}
+    }
     if let Some(dir) = env(USER_DIR_ENV) {
         if dir.is_empty() {
             return None;
         }
-        let dir = PathBuf::from(dir);
-        return Some(UserDirs {
-            settings: dir.join("settings"),
-            saves: dir.join("saves"),
-            logs: dir.join("logs"),
-        });
+        return Some(UserDirs::under(Path::new(&dir)));
     }
     let id = game.id.as_deref()?;
     match platform {

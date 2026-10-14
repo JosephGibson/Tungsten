@@ -1,7 +1,7 @@
 //! What the game runs: its plugin (the setup its first frame needs, its
 //! systems by stage and its text).
 
-use tungsten::core::{ActionMap, InputState, Time, Transform, With, World};
+use tungsten::core::{ActionMap, InputState, Settings, Time, Transform, With, World};
 use tungsten::render::TextSection;
 use tungsten::{App, DebugHud, Extracts, Plugin, Schedule, Stage, StateId, StateStack, system};
 
@@ -16,8 +16,8 @@ pub const FONT: &str = "sans";
 pub const PLAYER_SPEED: f32 = 240.0;
 
 /// The game as a plugin: the components its prefab files name, `setup` at
-/// startup, `player_movement` in `Update`, its text after what the engine
-/// draws, and the engine's HUD on in debug builds. It names no engine
+/// startup, `player_movement` and `toggle_mute` in `Update`, its text after
+/// what the engine draws, and the engine's HUD on in debug builds. It names no engine
 /// system; the engine's own come from `DefaultPlugins`, which `App::new`
 /// installs.
 pub struct GamePlugin;
@@ -32,6 +32,7 @@ impl Plugin for GamePlugin {
         world.resource_mut::<Extracts>().add_text(text);
         schedule.add(Stage::Startup, system("setup", setup));
         schedule.add(Stage::Update, system("player_movement", player_movement));
+        schedule.add(Stage::Update, system("toggle_mute", toggle_mute));
     }
 }
 
@@ -82,6 +83,28 @@ pub fn player_movement(world: &mut World) {
     }
 }
 
+/// Mutes or unmutes on `toggle_mute` and keeps the choice in the player's
+/// settings, in the game's user folder, so it survives a restart: the master
+/// volume set to 0, or unset to return to full.
+pub fn toggle_mute(world: &mut World) {
+    let pressed = match (
+        world.get_resource::<InputState>(),
+        world.get_resource::<ActionMap>(),
+    ) {
+        (Some(input), Some(actions)) => actions.just_pressed(input, "toggle_mute"),
+        _ => false,
+    };
+    let Some(settings) = world.get_resource_mut::<Settings>().filter(|_| pressed) else {
+        return;
+    };
+    let muted = settings.master_volume().is_some_and(|volume| volume <= 0.0);
+    settings.set_master_volume(if muted { None } else { Some(0.0) });
+    tungsten::apply_settings(world);
+    if let Err(err) = world.resource::<Settings>().save() {
+        log::warn!("Settings not saved: {err}");
+    }
+}
+
 /// The text for the state on top: the title, the controls or the pause notice.
 #[must_use]
 pub fn text(world: &World) -> Vec<TextSection> {
@@ -90,7 +113,7 @@ pub fn text(world: &World) -> Vec<TextSection> {
             ("Tungsten template", 56.0),
             ("Enter starts · Esc quits", 24.0),
         ],
-        Some(GAMEPLAY) => &[("Arrows or WASD move · P pauses", 24.0)],
+        Some(GAMEPLAY) => &[("Arrows or WASD move · P pauses · M mutes", 24.0)],
         Some(PAUSE) => &[("Paused", 56.0), ("Backspace or P resumes", 24.0)],
         _ => &[],
     };

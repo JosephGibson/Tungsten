@@ -1,14 +1,14 @@
 //! Core-owned action map; pure data over read-only `InputState` queries.
 
 use std::collections::{BTreeMap, HashMap};
-use std::fs::{File, OpenOptions};
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::input::key_serde::keycode_to_str;
 use crate::input::{InputState, KeyCode, MouseButton, ScrollDirection};
+use crate::persist::{quarantine, write_atomic};
 use crate::ui::{UI_ACCEPT, UI_CANCEL, UI_DOWN, UI_LEFT, UI_NEXT, UI_PREV, UI_RIGHT, UI_UP};
 
 /// Physical input binding.
@@ -21,6 +21,10 @@ pub enum Binding {
 }
 
 /// String action names mapped to physical bindings.
+///
+/// Three layers, per action: the engine defaults, the shipped `input.json`
+/// and, through [`with_user_layer`](Self::with_user_layer), the player's
+/// `input.json` in the user folder (`D-159`).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ActionMap {
     #[serde(default)]
@@ -29,6 +33,13 @@ pub struct ActionMap {
     source_path: Option<PathBuf>,
     #[serde(skip)]
     source_text: Option<String>,
+    /// The actions before the user layer; a save writes only the difference.
+    #[serde(skip)]
+    base: Option<HashMap<String, Vec<Binding>>>,
+    #[serde(skip)]
+    user_layer: Option<PathBuf>,
+    #[serde(skip)]
+    load_warnings: Vec<String>,
 }
 
 #[derive(Debug, Error)]
@@ -245,8 +256,7 @@ impl ActionMap {
         actions.insert(UI_RIGHT.into(), vec![key(KeyCode::ArrowRight)]);
         Self {
             actions,
-            source_path: None,
-            source_text: None,
+            ..Self::default()
         }
     }
 
@@ -285,6 +295,7 @@ impl ActionMap {
             actions,
             source_path,
             source_text,
+            ..
         } = loaded;
         let mut merged = Self::default_map();
         for (action, bindings) in actions {
@@ -296,6 +307,67 @@ impl ActionMap {
         merged
     }
 
+    /// Lays the user's bindings at `path` over this map, per action, and
+    /// makes `path` where `persist` writes, saving only the actions whose
+    /// bindings differ from this map. `None`: no user layer, and `persist`
+    /// returns `MissingSourcePath`. A corrupt user file is renamed to
+    /// `input.json.bad`; warnings wait in [`take_load_warnings`](Self::take_load_warnings).
+    #[must_use]
+    pub fn with_user_layer(mut self, path: Option<&Path>) -> Self {
+        self.base = Some(self.actions.clone());
+        self.user_layer = path.map(Path::to_path_buf);
+        self.source_path.clone_from(&self.user_layer);
+        self.source_text = None;
+        let Some(path) = path else {
+            return self;
+        };
+        let bytes = match std::fs::read(path) {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return self,
+            Err(error) => {
+                self.load_warnings.push(format!(
+                    "failed to read the player's bindings '{}': {error}; using the shipped ones",
+                    path.display()
+                ));
+                return self;
+            }
+        };
+        let parsed = std::str::from_utf8(&bytes)
+            .map_err(|error| format!("not UTF-8: {error}"))
+            .and_then(|text| Self::from_json(text, path).map_err(|error| error.to_string()));
+        match parsed {
+            Ok(user) => {
+                self.actions.extend(user.actions);
+                self.source_text = user.source_text;
+            }
+            Err(reason) => {
+                let warning = match quarantine(path) {
+                    Ok(backup) => format!(
+                        "the player's bindings are invalid ({reason}); using the shipped ones, the file kept as '{}'",
+                        backup.display()
+                    ),
+                    Err(error) => format!(
+                        "the player's bindings are invalid ({reason}); using the shipped ones, and the file could not be moved aside: {error}"
+                    ),
+                };
+                self.load_warnings.push(warning);
+            }
+        }
+        self
+    }
+
+    /// The user file `persist` writes, when a user layer is set.
+    #[must_use]
+    pub fn user_layer_path(&self) -> Option<&Path> {
+        self.user_layer.as_deref()
+    }
+
+    /// Takes the warnings [`with_user_layer`](Self::with_user_layer) kept,
+    /// for the caller to log; `App::new` logs them. Later calls return none.
+    pub fn take_load_warnings(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.load_warnings)
+    }
+
     /// Persist to remembered source path via temp-file rename.
     pub fn persist(&mut self) -> Result<(), ActionMapError> {
         let path = self
@@ -305,10 +377,17 @@ impl ActionMap {
         self.persist_to(&path)
     }
 
-    /// Persist to path and remember it.
+    /// Persist to path and remember it. With a user layer, only the actions
+    /// whose bindings differ from the layers below are written. A binding
+    /// with no `input.json` name (`KeyCode::Other`) is skipped with a logged
+    /// warning, and an action left with none is left out, so the next load
+    /// falls back to the layer below for it.
     pub fn persist_to(&mut self, path: &Path) -> Result<(), ActionMapError> {
         let rendered = self.render_for_save()?;
-        atomic_write(path, &rendered)?;
+        write_atomic(path, rendered.as_bytes()).map_err(|error| ActionMapError::Write {
+            path: path.display().to_string(),
+            source: error.into_source(),
+        })?;
         self.source_path = Some(path.to_path_buf());
         self.source_text = Some(rendered);
         Ok(())
@@ -380,13 +459,55 @@ impl ActionMap {
     }
 
     fn render_for_save(&self) -> Result<String, ActionMapError> {
-        let actions_object = canonical_actions_object(&self.actions)?;
+        let saveable = self.saveable_actions();
+        let actions_object = canonical_actions_object(&saveable)?;
         if let Some(existing) = &self.source_text
             && let Some(patched) = replace_top_level_actions_object(existing, &actions_object)
         {
             return Ok(patched);
         }
-        canonical_document(&self.actions)
+        canonical_document(&saveable)
+    }
+
+    /// The actions to save, with every binding `input.json` can name (Core
+    /// F4); with a base, only those that differ from it.
+    fn saveable_actions(&self) -> HashMap<String, Vec<Binding>> {
+        let mut saveable = HashMap::with_capacity(self.actions.len());
+        for (action, bindings) in &self.actions {
+            if let Some(base) = &self.base
+                && base.get(action) == Some(bindings)
+            {
+                continue;
+            }
+            let kept: Vec<Binding> = bindings
+                .iter()
+                .copied()
+                .filter(|binding| {
+                    let named = binding_has_name(*binding);
+                    if !named {
+                        log::warn!(
+                            "action '{action}': {binding:?} has no name in input.json, so it is not saved"
+                        );
+                    }
+                    named
+                })
+                .collect();
+            if kept.is_empty() && !bindings.is_empty() {
+                log::warn!(
+                    "action '{action}' has no binding input.json can name, so it is left out and loads its default"
+                );
+                continue;
+            }
+            saveable.insert(action.clone(), kept);
+        }
+        saveable
+    }
+}
+
+fn binding_has_name(binding: Binding) -> bool {
+    match binding {
+        Binding::Key { code } => keycode_to_str(code).is_some(),
+        Binding::Mouse { .. } | Binding::Scroll { .. } => true,
     }
 }
 
@@ -553,55 +674,6 @@ fn indent_multiline(text: &str, indent: &str) -> String {
         rendered.push_str(line);
     }
     rendered
-}
-
-fn atomic_write(path: &Path, contents: &str) -> Result<(), ActionMapError> {
-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
-    std::fs::create_dir_all(parent).map_err(|source| ActionMapError::Write {
-        path: path.display().to_string(),
-        source,
-    })?;
-
-    let file_name = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("input.json");
-    let (temp_path, mut file) =
-        create_temp_file(parent, file_name).map_err(|source| ActionMapError::Write {
-            path: path.display().to_string(),
-            source,
-        })?;
-    let result = (|| {
-        file.write_all(contents.as_bytes())?;
-        file.sync_all()?;
-        drop(file);
-        std::fs::rename(&temp_path, path)
-    })();
-    if let Err(source) = result {
-        let _ = std::fs::remove_file(&temp_path);
-        return Err(ActionMapError::Write {
-            path: path.display().to_string(),
-            source,
-        });
-    }
-    Ok(())
-}
-
-fn create_temp_file(parent: &Path, file_name: &str) -> std::io::Result<(PathBuf, File)> {
-    // Exclusive creation handles stale files and concurrent saves without a
-    // global nonce or truncating another writer's temporary file.
-    for nonce in 0..1024 {
-        let path = parent.join(format!(".{file_name}.{}.{nonce}.tmp", std::process::id()));
-        match OpenOptions::new().write(true).create_new(true).open(&path) {
-            Ok(file) => return Ok((path, file)),
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
-            Err(error) => return Err(error),
-        }
-    }
-    Err(std::io::Error::new(
-        std::io::ErrorKind::AlreadyExists,
-        "no unused action-map temporary filename",
-    ))
 }
 
 /// Resolve path for logging.

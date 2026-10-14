@@ -202,3 +202,64 @@ fn an_invalid_id_builds_no_path() {
         }
     }
 }
+
+fn pinned(folder: UserFolder) -> GameConfig {
+    let mut game = game("my-game");
+    game.user_folder = folder;
+    game
+}
+
+#[test]
+fn off_gives_no_folder() {
+    for platform in PLATFORMS {
+        for vars in [
+            &[HOME, APPDATA, LOCALAPPDATA][..],
+            &[HOME, APPDATA, LOCALAPPDATA, OVERRIDE][..],
+        ] {
+            let dirs = resolve(&pinned(UserFolder::Off), false, platform, env_of(vars));
+            assert_eq!(dirs, None, "{platform:?}");
+        }
+    }
+}
+
+#[test]
+fn at_wins_over_the_environment() {
+    let vars = [HOME, APPDATA, LOCALAPPDATA, OVERRIDE];
+    let base = Path::new("/pinned/run");
+    for platform in PLATFORMS {
+        let dirs = resolve(
+            &pinned(UserFolder::At(base.to_path_buf())),
+            false,
+            platform,
+            env_of(&vars),
+        );
+        assert_eq!(
+            dirs,
+            Some(UserDirs {
+                settings: base.join("settings"),
+                saves: base.join("saves"),
+                logs: base.join("logs"),
+            }),
+            "{platform:?}"
+        );
+    }
+    // No id needed, as for the environment's override; an empty override
+    // does not unset it either.
+    let mut no_id = GameConfig::default();
+    no_id.user_folder = UserFolder::At(base.to_path_buf());
+    let dirs = resolve(&no_id, false, Platform::Unix, env_of(&[(USER_DIR_ENV, "")]));
+    assert_eq!(dirs.unwrap().saves, base.join("saves"));
+}
+
+#[test]
+fn smoke_mode_wins_over_at() {
+    for platform in PLATFORMS {
+        let dirs = resolve(
+            &pinned(UserFolder::At(PathBuf::from("/pinned/run"))),
+            true,
+            platform,
+            env_of(&[HOME, APPDATA, LOCALAPPDATA]),
+        );
+        assert_eq!(dirs, None, "{platform:?}");
+    }
+}

@@ -6,6 +6,29 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.73.0] - 2026-10-14
+
+Summary: M53, W11b and W11c (plan archived at `docs/plans/archive/1.0/phase6-milestone-53-settings-save-slots.md`): a shipped game keeps its player's settings and saves in the user folder. One atomic write serves the action map, the settings and the save slots; typed settings (display mode, resolution, vsync, UI scale, master volume) sit between `tungsten.json` and the environment; the player's bindings go over the shipped `input.json`; a corrupt user file falls back to defaults beside a `.bad` backup; save slots hold the game's own serde types in a versioned envelope with the game's own migrations (`D-159`, amending `D-008`, `D-045` and `D-119`; `D-160`). The template mutes on M and continues from an autosave that pause writes. Smoke mode has no user folder, so captures read no user file; the engine schedule, the physics hashes, the benchmark digests and the pixel references are unchanged.
+
+### Added
+
+- **Atomic writes** (`D-159`): `tungsten_core::persist::write_atomic` and `WriteError`: a synced temp file renamed over the target, the folder synced on Unix, a Windows rename blocked by another process retried five times before `Busy`.
+- **Settings**: `Settings`, a `World` resource read from and saved to `<settings>/settings.json` with only the values the player set, `SettingsError`, `Config::apply_settings` and `tungsten::apply_settings`, which applies a change at runtime as a restart would; `ScaleFactor::ui_scale` and `set_ui_scale`, with `get()` the OS scale times the UI scale.
+- **Bindings in the user folder**: `ActionMap::with_user_layer`, `user_layer_path` and `take_load_warnings`; a rebinding saves only the actions that differ from the shipped file, to the user folder.
+- **`UserFolder`**: `GameConfig::user_folder`, set in code, `Platform`, `At(dir)` or `Off`, ahead of `TUNGSTEN_USER_DIR`, so tests never touch the developer's own files.
+- **Save slots** (`D-160`): `SaveData`, `SaveSlots` (`save`, `load`, `list`, `delete`), `SlotInfo`, `SlotList`, `SaveError` and the `Value` re-export: a versioned envelope, one migration per older schema through the game's `migrate`, a newer schema refused, lowercase slot names.
+- **Template**: `toggle_mute` on M, saved in the settings; gameplay continues from slot `autosave`, which pause writes and which is never overwritten after a failed load; `log` in its manifest; its tests run with `UserFolder::Off` or a temp folder.
+
+### Changed
+
+- **Loading order** (`D-159` amends `D-008`): `tungsten.json`, then the player's settings, then the environment overrides; a user file the game wrote never stops it, while the shipped files stay fatal when invalid.
+- **Action map persistence** (`D-159` amends `D-045`): under `App`, `persist` writes the user folder's `input.json`, never the shipped one, and returns `MissingSourcePath` without a folder; a hot reload keeps the player's layer.
+- **Records**: `DESIGN.md`'s Settings and Save Slots section, its config, input and user-folder text and the save/load non-commitment narrowed to World snapshots; the getting-started guide's Settings and saves section; the LLM index's config, user-folder and input rows; the break ledger's two rows; the W11 and W6 files.
+
+### Fixed
+
+- **Core F4**: a binding with no name in `input.json` (`KeyCode::Other`) is skipped on save with a warning instead of failing the whole save, an action left with none is left out, and `"button0"` loads, so every saved button loads at the next start.
+
 ## [0.72.0] - 2026-10-14
 
 Summary: M52, W13c and W13d (plan archived at `docs/plans/archive/1.0/phase6-milestone-52-controllers-helpers.md`): the kit's character controllers and gameplay helpers, a platformer controller and a top-down mover on kinematic bodies, health and damage with an invulnerability window and a hit flash, trigger zones, a path follower and a per-entity state machine, with the systems that drive a body or count a window in `fixed_update` before `physics_step` (`D-158`). Example 01's player stays its own: its move onto the platformer controller stopped at the plan's stop condition, since the route test found a corner (`gate_step` to `gate_crest`) that only the dynamic solver's push-out passed. No core, render or umbrella runtime file changes; the physics hashes, the benchmark digests and the pixel references are unchanged.

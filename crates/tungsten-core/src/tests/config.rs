@@ -510,6 +510,7 @@ fn game_with_id(id: &str) -> GameConfig {
     GameConfig {
         id: Some(id.to_string()),
         version: None,
+        user_folder: UserFolder::default(),
     }
 }
 
@@ -759,4 +760,121 @@ fn a_utf8_byte_order_mark_is_skipped() {
     // an unexpected character and the game would not start (`D-008`).
     let (_, loaded) = load_json("bom", "\u{feff}{ \"logging\": { \"level\": \"warn\" } }");
     assert_eq!(loaded.unwrap().logging.level, "warn");
+}
+
+fn env_of<'a>(vars: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+    move |name| {
+        vars.iter()
+            .find(|(key, _)| *key == name)
+            .map(|(_, value)| (*value).to_string())
+    }
+}
+
+#[test]
+fn user_settings_sit_between_the_file_and_the_environment() {
+    let (_, loaded) = load_json(
+        "m53-layer",
+        r#"{ "display": { "display_mode": "windowed", "resolution": { "width": 1280, "height": 720 } } }"#,
+    );
+    let mut config = loaded.unwrap();
+    let mut settings = Settings::default();
+    settings.set_display_mode(Some(DisplayMode::BorderlessFullscreen));
+    settings.set_resolution(Some(Resolution {
+        width: 1920,
+        height: 1080,
+    }));
+
+    let mut no_env = config.clone();
+    no_env.apply_settings_with(&settings, |_| None).unwrap();
+    let state = no_env.display.resolve(&no_env.window, &no_env.render);
+    assert_eq!(state.display_mode, DisplayMode::BorderlessFullscreen);
+
+    config
+        .apply_settings_with(&settings, env_of(&[(DISPLAY_MODE_ENV, "windowed")]))
+        .unwrap();
+    let state = config.display.resolve(&config.window, &config.render);
+    assert_eq!(
+        state.display_mode,
+        DisplayMode::Windowed,
+        "the environment is last"
+    );
+    assert_eq!(
+        state.resolution,
+        Resolution {
+            width: 1920,
+            height: 1080
+        },
+        "the settings beat the file"
+    );
+}
+
+#[test]
+fn a_user_vsync_clears_the_present_mode() {
+    let (_, loaded) = load_json(
+        "m53-vsync",
+        r#"{ "display": { "vsync": true, "present_mode": "fifo" }, "render": { "present_mode": "immediate" } }"#,
+    );
+    let shipped = loaded.unwrap();
+
+    let mut untouched = shipped.clone();
+    untouched
+        .apply_settings_with(&Settings::default(), |_| None)
+        .unwrap();
+    assert_eq!(
+        untouched.display.present_mode,
+        Some(PresentModeConfig::Fifo)
+    );
+
+    let mut settings = Settings::default();
+    settings.set_vsync(Some(false));
+    let mut config = shipped.clone();
+    config.apply_settings_with(&settings, |_| None).unwrap();
+    assert_eq!(config.display.vsync, Some(false));
+    assert_eq!(config.display.present_mode, None);
+    assert_eq!(config.render.present_mode, None);
+    let state = config.display.resolve(&config.window, &config.render);
+    assert!(!state.vsync);
+    assert_eq!(state.present_mode, None, "auto follows the player's vsync");
+
+    let mut config = shipped;
+    config
+        .apply_settings_with(&settings, env_of(&[(DISPLAY_PRESENT_MODE_ENV, "mailbox")]))
+        .unwrap();
+    assert_eq!(
+        config.display.present_mode,
+        Some(PresentModeConfig::Mailbox),
+        "an override still applies after it"
+    );
+}
+
+#[test]
+fn apply_settings_reapplies_overrides_only_to_a_loaded_config() {
+    let env = env_of(&[(DISPLAY_MODE_ENV, "exclusive_fullscreen")]);
+    let mut settings = Settings::default();
+    settings.set_display_mode(Some(DisplayMode::Windowed));
+
+    let mut in_code = Config::default();
+    in_code.apply_settings_with(&settings, &env).unwrap();
+    assert_eq!(in_code.display.display_mode, Some(DisplayMode::Windowed));
+
+    let mut loaded = Config::load("/nonexistent/path/tungsten.json").unwrap();
+    loaded.apply_settings_with(&settings, &env).unwrap();
+    assert_eq!(
+        loaded.display.display_mode,
+        Some(DisplayMode::ExclusiveFullscreen)
+    );
+
+    let error = loaded
+        .apply_settings_with(&settings, env_of(&[(DISPLAY_MODE_ENV, "huge")]))
+        .unwrap_err();
+    assert!(
+        matches!(
+            error,
+            ConfigError::InvalidEnvOverride {
+                var: DISPLAY_MODE_ENV,
+                ..
+            }
+        ),
+        "{error}"
+    );
 }

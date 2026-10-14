@@ -26,6 +26,7 @@ In `Cargo.toml`, point both engine dependencies at the same tag:
 ```toml
 [dependencies]
 anyhow = "1"
+log = "0.4"
 serde = { version = "1", features = ["derive"] }
 tungsten = { git = "https://github.com/JosephGibson/Tungsten", tag = "vX.Y.Z" }
 
@@ -37,7 +38,7 @@ Rename the game:
 
 - the package in `Cargo.toml`: `name = "my-game"`;
 - the crate in `src/main.rs` and `tests/game.rs`: `tungsten_template_basic` becomes `my_game`;
-- the game in `tungsten.json`: `"game": { "id": "my-game" }`. The ID names the folder where the game writes its logs and crash reports: up to 64 ASCII letters, digits, `.`, `_` or `-`, starting with a letter or digit, and not a Windows device name such as `con`.
+- the game in `tungsten.json`: `"game": { "id": "my-game" }`. The ID names the folder where the game keeps its player's settings and saves and writes its logs and crash reports: up to 64 ASCII letters, digits, `.`, `_` or `-`, starting with a letter or digit, and not a Windows device name such as `con`.
 
 Add a development profile to `Cargo.toml`, so the engine and its dependencies build optimized while your own code builds fast:
 
@@ -55,11 +56,51 @@ cargo run    # a debug build, with hot reload and the engine's HUD (F4 toggles i
 cargo test   # the game's tests, on the engine's headless harness
 ```
 
-The first build compiles the engine and its dependencies, which takes a few minutes and more than a gigabyte of disk. In the game, Enter starts, the arrow keys or WASD move the player, P pauses, Backspace or P resumes and Escape quits.
+The first build compiles the engine and its dependencies, which takes a few minutes and more than a gigabyte of disk. In the game, Enter starts, the arrow keys or WASD move the player, P pauses, Backspace or P resumes, M mutes and Escape quits.
 
 ## Change it while it runs
 
 A debug build watches `assets/` and `input.json`. With the game running, open `assets/sprites/player.png` in an image editor, change it and save: the player draws with the new image. Change a binding in `input.json`, say `move_up` to `KeyI`, and save: the next press reads the new key.
+
+## Settings and saves
+
+The engine keeps the player's settings in the game's user folder, which `game.id` names (`D-119`, `D-159`): `~/.config/<id>` on Linux, `%APPDATA%\<id>` on Windows and `~/Library/Application Support/<id>` on macOS, or `settings/` under `TUNGSTEN_USER_DIR` when that is set. Two files live there, both written by the game: `settings.json`, the display mode, resolution, vsync, UI scale and master volume the player set, and `input.json`, the bindings the player changed, laid over the shipped `input.json` action by action. A file there that is corrupt falls back to the defaults and stays beside them as `settings.json.bad` or `input.json.bad`; it never stops the game, while a broken shipped `tungsten.json` or `input.json` still does. Without a folder (smoke mode, or no `game.id`) nothing is saved.
+
+The `Settings` resource holds the player's values, `None` for each one left at the shipped value. Change one, apply it, then save, as the template's `toggle_mute` does on M:
+
+```rust
+let settings = world.resource_mut::<Settings>();
+let muted = settings.master_volume().is_some_and(|volume| volume <= 0.0);
+settings.set_master_volume(if muted { None } else { Some(0.0) });
+tungsten::apply_settings(world);
+if let Err(err) = world.resource::<Settings>().save() {
+    log::warn!("Settings not saved: {err}");
+}
+```
+
+`apply_settings` applies them as a restart would: the display through a request the next frame takes, the UI scale to `ScaleFactor` and the master volume to the mixer. A value set back to `None` returns to `tungsten.json`'s, and the `TUNGSTEN_DISPLAY_*` overrides still win over both. `ActionMap::replace_bindings_and_persist` writes a rebinding to the user folder's `input.json`, and only the actions that differ from the shipped file, so a game update's new bindings reach every action the player left alone.
+
+Saves go in the user folder's `saves` (`~/.local/share/<id>/saves` on Linux, `saves` beside the settings on Windows and macOS), one file per slot, through the `SaveSlots` resource (`D-160`). A save is the game's own serde type with a schema number; bump the number when the type changes shape, and write `migrate` to rewrite an older save into the new shape. The template's `SaveGame` holds the player's position: gameplay continues from slot `autosave` and pause saves it.
+
+```rust
+#[derive(Serialize, Deserialize)]
+pub struct SaveGame {
+    pub player: [f32; 2],
+}
+
+impl SaveData for SaveGame {
+    const SCHEMA: u32 = 1;
+}
+
+let start = match world.resource::<SaveSlots>().load::<SaveGame>(AUTOSAVE) {
+    Ok(save) => save.player,
+    Err(_) => PLAYER_START,
+};
+```
+
+`save(slot, &data)`, `load`, `list` and `delete` return a `SaveError` rather than panic: `NotFound` for a slot never saved, `NewerSchema` for one a newer build wrote, `Corrupt`, `Migration`, `NoFolder` without a folder. A slot name is lowercase letters, digits, `.`, `_` and `-`. A slot that failed to load is the player's progress all the same: the template never overwrites one in the same run.
+
+Tests set the folder in code, so they never read or write your own settings or saves: the template's `harness()` sets `config.game.user_folder = UserFolder::Off`, and a persistence test points `UserFolder::At(dir)` at a fresh temp folder and builds a second app on it, as `mute_survives_a_restart` and `continue_from_the_autosave` do.
 
 ## How the game is laid out
 

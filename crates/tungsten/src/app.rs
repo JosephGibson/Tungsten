@@ -20,6 +20,7 @@ use crate::physics_debug::{PhysicsDebugOverlay, physics_debug_emit_system};
 use crate::plugins::DefaultPlugins;
 use crate::plugins::UI_ROUTE;
 use crate::post_aa::{PendingPostAa, PostAaState, sync_post_aa_state, take_pending_post_aa};
+use crate::settings::ShippedConfig;
 use crate::sprite_extract::ExtractScratch;
 use crate::state::StateStack;
 use crate::systems_overlay::{SystemTimingOverlay, compose_systems_overlay_text_section};
@@ -41,8 +42,8 @@ use tungsten_core::{
     ActionMap, AssetRegistry, AudioCommand, AudioCommands, Binding, CameraController, CameraState,
     CommandBuffer, ComponentRegistry, Config, ConfigError, DebugDraw, DebugShape, DisplayMode,
     DisplayState, InputState, InspectRegistry, Inspectable, ParticleActive, ParticleBudget, Plugin,
-    PluginSet, RawInput, RoutedInput, Schedule, Stage, SystemDesc, Time, TimeConfig, World,
-    WorldRngSeed, system,
+    PluginSet, RawInput, RoutedInput, SaveSlots, Schedule, Settings, Stage, SystemDesc, Time,
+    TimeConfig, World, WorldRngSeed, system,
 };
 use tungsten_render::renderer::RenderError;
 use tungsten_render::{
@@ -146,10 +147,17 @@ impl App {
     /// folder (`D-119`), then logs [`Config::take_load_warnings`]. An error
     /// it returns is logged first, so it reaches the log file too.
     ///
+    /// The player's [`Settings`] and bindings load from the user folder's
+    /// `settings` folder (`D-159`): the settings between `tungsten.json` and
+    /// the environment, the bindings over the shipped `input.json`. A file
+    /// there that is corrupt falls back to the defaults, kept beside them as
+    /// `.bad`, and never stops the game. [`SaveSlots`] keep the game's saves
+    /// in its `saves` folder (`D-160`). Without a folder nothing persists.
+    ///
     /// # Errors
     ///
-    /// An invalid `game.id` or `logging.level`, or an `input.json` that
-    /// cannot be read or parsed.
+    /// An invalid `game.id` or `logging.level`, or a shipped `input.json`
+    /// that cannot be read or parsed.
     pub fn new(config: Config) -> anyhow::Result<Self> {
         Self::with_plugins(config, DefaultPlugins::set())
     }
@@ -199,10 +207,36 @@ impl App {
             crash::install(CrashContext::new(&config.game, dirs.logs.clone(), log_file));
         }
 
+        let mut settings = match &user_dirs {
+            Some(dirs) => Settings::load(dirs.settings.join(Settings::FILE)),
+            None => Settings::default(),
+        };
+        for warning in settings.take_load_warnings() {
+            log::warn!(target: "tungsten_core::settings", "{warning}");
+        }
+        // The baseline `apply_settings` starts from at runtime too, so a
+        // runtime apply and a restart agree.
+        let shipped = ShippedConfig(config.clone());
+        if let Err(err) = config.apply_settings(&settings) {
+            log::error!("{err}");
+            return Err(err.into());
+        }
+
         let resolved_display = resolve_startup_display(&config);
         let input_map_path = PathBuf::from("input.json");
-        let action_map = load_action_map_at_startup(&input_map_path)
+        let user_bindings = user_dirs
+            .as_ref()
+            .map(|dirs| dirs.settings.join("input.json"));
+        let action_map = load_action_map_at_startup(&input_map_path, user_bindings.as_deref())
             .inspect_err(|err| log::error!("{err:#}"))?;
+        let mut scale_factor = tungsten_core::ScaleFactor::default();
+        if let Some(ui_scale) = settings.ui_scale() {
+            scale_factor.set_ui_scale(ui_scale);
+        }
+        let mut audio_commands = AudioCommands::new();
+        if let Some(volume) = settings.master_volume() {
+            audio_commands.set_master_volume(volume);
+        }
         let mut world = World::new();
         world.insert_resource(time_from_config(&config.time));
         #[allow(deprecated)]
@@ -213,11 +247,17 @@ impl App {
             width: resolved_display.resolution.width,
             height: resolved_display.resolution.height,
         });
-        // The window's factor replaces it at `resumed` (D-144).
-        world.insert_resource(tungsten_core::ScaleFactor::default());
+        // The window's factor replaces the OS scale at `resumed` (D-144);
+        // the player's UI scale stays.
+        world.insert_resource(scale_factor);
+        world.insert_resource(settings);
+        world.insert_resource(shipped);
+        world.insert_resource(SaveSlots::new(
+            user_dirs.as_ref().map(|dirs| dirs.saves.clone()),
+        ));
         world.insert_resource(AssetRegistry::new());
         world.insert_resource(SoundRegistry::new());
-        world.insert_resource(AudioCommands::new());
+        world.insert_resource(audio_commands);
         world.insert_resource(TilemapRegistry::new());
         world.insert_resource(tungsten_core::PrefabRegistry::new());
         world.insert_resource(ParticleConfigRegistry::new());
@@ -1873,26 +1913,34 @@ fn invalid_logging_level(level: &str) -> Option<ConfigError> {
 }
 
 /// D-008: missing `input.json` uses defaults; parse/IO errors are fatal.
-fn load_action_map_at_startup(path: &Path) -> anyhow::Result<ActionMap> {
-    match ActionMap::load(path) {
+/// The player's bindings at `user_layer` go over it and never fail
+/// (`D-159`); without one nothing persists.
+pub(crate) fn load_action_map_at_startup(
+    path: &Path,
+    user_layer: Option<&Path>,
+) -> anyhow::Result<ActionMap> {
+    let shipped = match ActionMap::load(path) {
         Ok(loaded) => {
             log::info!("Loaded action map from '{}'", path.display());
-            Ok(ActionMap::merged_with_defaults(loaded))
+            ActionMap::merged_with_defaults(loaded)
         }
         Err(err) if err.is_not_found() => {
             log::info!(
                 "Action map '{}' not found; using engine defaults",
                 path.display()
             );
-            let mut map = ActionMap::default_map();
-            map.set_source_path(path);
-            Ok(map)
+            ActionMap::default_map()
         }
-        Err(err) => Err(err.into()),
+        Err(err) => return Err(err.into()),
+    };
+    let mut map = shipped.with_user_layer(user_layer);
+    for warning in map.take_load_warnings() {
+        log::warn!(target: "tungsten_core::input", "{warning}");
     }
+    Ok(map)
 }
 
-fn resolve_startup_display(config: &Config) -> DisplayState {
+pub(crate) fn resolve_startup_display(config: &Config) -> DisplayState {
     let mut resolved = config.display.resolve(&config.window, &config.render);
     if let Some((w, h)) = parse_capture_resolution() {
         resolved.resolution.width = w;
