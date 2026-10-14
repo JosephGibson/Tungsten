@@ -1,7 +1,8 @@
 //! Once-per-frame gather of entity and tilemap collider proxies in
-//! deterministic `World` order (D-066), and their warm-start keys.
+//! deterministic `World` order (D-066), and their warm-start keys; sensors
+//! are gathered beside the proxies, never as one.
 
-use super::Proxy;
+use super::{Proxy, SensorBody};
 use crate::assets::{LayerKind, TilemapInstance, TilemapRegistry};
 use crate::ecs::{Entity, World};
 use crate::physics::collision::{FACE_ALL, FACE_BOTTOM, FACE_LEFT, FACE_RIGHT, FACE_TOP};
@@ -23,11 +24,35 @@ fn tile_key(center: Vec2) -> u64 {
     h & !(1 << 63)
 }
 
+/// A tile's identity in sensor overlap keys: its map entity, layer and
+/// cell, so a map whose origin moves keeps it, and another layer's tile at
+/// the cell is another tile. Bit 63 stays clear, apart from entity keys.
+fn tile_identity(map: Entity, layer: usize, col: u32, row: u32) -> u64 {
+    let cell = (u64::from(row) << 32) | u64::from(col);
+    let h = entity_key(map).wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        ^ (layer as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F)
+        ^ cell.wrapping_mul(0x8DA6_B343_D816_3841);
+    let h = (h ^ (h >> 29)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    (h ^ (h >> 32)) & !(1 << 63)
+}
+
 /// Gather entity + tilemap proxies in deterministic `World` order, once per
 /// frame (D-066); the gather runs before any integration, so
-/// `prev_center == center` at gather time.
-pub(super) fn gather_proxies(world: &World, proxies: &mut Vec<Proxy>) {
+/// `prev_center == center` at gather time. A sensor row joins `sensors`
+/// instead of the proxies; in a frame with sensors, `tile_ids` gets each
+/// tile proxy's identity, in proxy order, and stays empty otherwise.
+/// Returns how many kinematic proxies it staged, which sets the frame's
+/// substep count.
+pub(super) fn gather_proxies(
+    world: &World,
+    proxies: &mut Vec<Proxy>,
+    sensors: &mut Vec<SensorBody>,
+    tile_ids: &mut Vec<u64>,
+) -> usize {
     proxies.clear();
+    sensors.clear();
+    tile_ids.clear();
+    let mut kinematics = 0;
 
     // Columnar 4-way gather: RigidBody/Velocity columns resolve once per
     // archetype — no per-entity random lookups (D-066).
@@ -41,17 +66,25 @@ pub(super) fn gather_proxies(world: &World, proxies: &mut Vec<Proxy>) {
         let has_velocity = velocity.is_some();
         let velocity = velocity.map_or(Vec2::ZERO, |v| v.0);
         let body = body.copied();
-        let (is_dynamic, inv_mass, restitution) = match body {
-            Some(b) => (
-                b.kind == BodyKind::Dynamic,
-                if b.kind == BodyKind::Dynamic {
-                    b.inv_mass
-                } else {
-                    0.0
-                },
-                b.restitution,
-            ),
-            None => (false, 0.0, 0.0),
+        if body.is_some_and(|b| b.kind == BodyKind::Sensor) {
+            sensors.push(SensorBody {
+                entity,
+                key: entity_key(entity),
+                center: position.0 + collider.offset,
+                shape: collider.shape,
+                velocity,
+            });
+            continue;
+        }
+        // Every kind but `Dynamic` is immovable: inverse mass 0.
+        let (is_dynamic, kinematic, inv_mass, restitution) = match body {
+            Some(b) if b.kind == BodyKind::Dynamic => (true, false, b.inv_mass, b.restitution),
+            Some(b) if b.kind == BodyKind::Kinematic => {
+                kinematics += 1;
+                (false, true, 0.0, b.restitution)
+            }
+            Some(b) => (false, false, 0.0, b.restitution),
+            None => (false, false, 0.0, 0.0),
         };
         let center = position.0 + collider.offset;
         proxies.push(Proxy {
@@ -68,19 +101,28 @@ pub(super) fn gather_proxies(world: &World, proxies: &mut Vec<Proxy>) {
             restitution,
             face_mask: FACE_ALL,
             sleeping: false,
+            kinematic,
+            kept_awake: false,
         });
     }
 
-    gather_tilemap_proxies(world, proxies);
+    let tile_ids = (!sensors.is_empty()).then_some(tile_ids);
+    gather_tilemap_proxies(world, proxies, tile_ids);
+    kinematics
 }
 
-/// Emit transient static tile proxies for collision layers.
-fn gather_tilemap_proxies(world: &World, proxies: &mut Vec<Proxy>) {
+/// Emit transient static tile proxies for collision layers, and their
+/// identities when `tile_ids` is given.
+fn gather_tilemap_proxies(
+    world: &World,
+    proxies: &mut Vec<Proxy>,
+    mut tile_ids: Option<&mut Vec<u64>>,
+) {
     let Some(registry) = world.get_resource::<TilemapRegistry>() else {
         return;
     };
 
-    for (_entity, instance) in world.query::<(Entity, &TilemapInstance)>() {
+    for (map, instance) in world.query::<(Entity, &TilemapInstance)>() {
         let Some(data) = registry.get(&instance.id) else {
             continue;
         };
@@ -88,7 +130,7 @@ fn gather_tilemap_proxies(world: &World, proxies: &mut Vec<Proxy>) {
         let th = data.tile_height as f32;
         let half = Vec2::new(tw * 0.5, th * 0.5);
 
-        for layer in &data.layers {
+        for (layer_index, layer) in data.layers.iter().enumerate() {
             if layer.kind != LayerKind::Collision {
                 continue;
             }
@@ -142,7 +184,12 @@ fn gather_tilemap_proxies(world: &World, proxies: &mut Vec<Proxy>) {
                         restitution: 0.0,
                         face_mask,
                         sleeping: false,
+                        kinematic: false,
+                        kept_awake: false,
                     });
+                    if let Some(ids) = tile_ids.as_deref_mut() {
+                        ids.push(tile_identity(map, layer_index, col, row));
+                    }
                 }
             }
         }

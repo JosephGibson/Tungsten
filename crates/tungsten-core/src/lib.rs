@@ -62,9 +62,9 @@ pub use inspect::{InspectRegistry, Inspectable};
 pub use lighting::{AmbientLight, LIGHT_CAP};
 pub use physics::{
     Aabb, BodyKind, Collider, CollisionEvent, Contact, PhysicsBuffers, PhysicsConfig,
-    PhysicsPlugin, Position, PrevPosition, RigidBody, RigidBodyBundle, Shape, SpatialGrid,
-    Velocity, aabb_vs_aabb, aabb_vs_circle, circle_vs_circle, physics_prev_snapshot, physics_step,
-    physics_sync,
+    PhysicsPlugin, Position, PrevPosition, RigidBody, RigidBodyBundle, SensorEntered, Shape,
+    SpatialFilter, SpatialGrid, SpatialHit, Velocity, aabb_vs_aabb, aabb_vs_circle,
+    circle_vs_circle, physics_prev_snapshot, physics_step, physics_sync,
 };
 pub use post::{
     BloomParams, ColorAdjustParams, CrtParams, DissolveParams, DitherMode, DitherParams,

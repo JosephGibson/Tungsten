@@ -2,7 +2,11 @@
 //! soft solve -> integrate -> arrival pass) -> events.
 //!
 //! The substep count is fixed via `PhysicsConfig::substeps` (D-064); no
-//! velocity-derived amplification exists. Tunneling safety comes from
+//! velocity-derived amplification exists. A world with a kinematic proxy,
+//! moving or still, runs a step longer than 1/60 s in more substeps, up to
+//! twice the count, so that no substep is longer than a 1/60 s step's up to
+//! the default step bound: a crowd pressing on a kinematic body meets the
+//! contact stiffness it has at 1/60 s. Tunneling safety comes from
 //! speculative contacts: the narrow phase admits broadphase pairs with a
 //! positive gap up to a per-pair margin (relative travel per substep plus
 //! slack) as signed-distance contacts, and the solver's separated branch
@@ -66,6 +70,30 @@
 //! API. Because sleeping-sleeping pairs skip the narrow phase, sleeping
 //! islands emit no `CollisionEvent`s; waking resumes emission.
 //!
+//! Kinematic bodies are proxies that move by their velocity each substep,
+//! with no gravity, and that no contact moves: inverse mass 0, the static
+//! softness, no sleep entry and no island. They initiate pairs as awake
+//! bodies do, inflated by their travel; the narrow phase drops their pairs
+//! with static, kinematic and tile proxies as it drops static pairs, and
+//! their events name the dynamic body as `a`. A moving one wakes a sleeper it
+//! touches or closes on at any speed, since a slower pair would be dropped
+//! with both sides immovable, and a body touching it keeps its island awake
+//! through the frame-end pass. The wake reaches through that island, as this
+//! frame's unions have built it so far: a sleeper one of its bodies touches
+//! or closes on wakes at any speed and joins it, so a pressed row wakes body
+//! by body instead of holding the pressed bodies against the kinematic body.
+//! The safety net and its statics-only grid leave them out; the arrival pass
+//! holds them immovable where the substep began.
+//!
+//! Sensors are gathered beside the proxies, never as one, so no substep,
+//! pair, solve or sweep sees them. The writeback moves each by its velocity;
+//! then the step builds the spatial index and tests each sensor, in gather
+//! order, against the bodies and tiles it overlaps at their final positions.
+//! A pair the previous step lacked sends `SensorEntered`, after the frame's
+//! collision events. A pair's key holds the sensor's key in its high half
+//! and the other's identity in its low half (a tile's names its map, layer
+//! and cell), and a step without sensors forgets every pair.
+//!
 //! The whole step is serial and deterministic by design (D-067): a
 //! color-parallel contact solver was built, measured and dropped — at 25k
 //! awake bodies the contact-solve passes are ~2% of the frame (the cost is
@@ -75,9 +103,10 @@
 
 use super::PhysicsConfig;
 use super::broadphase::{ProxyId, SpatialGrid};
-use super::collision::Aabb;
+use super::collision::{Aabb, Contact, FACE_ALL};
 use super::components::{BodyKind, Collider, Position, RigidBody, Shape, Velocity};
-use super::events::CollisionEvent;
+use super::events::{CollisionEvent, SensorEntered};
+use super::query::{IndexEntry, SpatialIndex};
 use crate::ecs::{Entity, EventQueue, Without, World};
 use crate::time::Time;
 use glam::Vec2;
@@ -92,12 +121,14 @@ mod sweep;
 use arrival::{ARRIVAL_SLOPS, ArrivalScratch, arrival_pass};
 use gather::{entity_key, gather_proxies};
 use pairs::{ImpulseMap, PairBudget, pair_key, refresh_pairs, sync_impulses};
-use sleep::{SleepTable, sleep_frame_end, sleep_frame_start, uf_union};
+use sleep::{SleepTable, island_holds_any, sleep_frame_end, sleep_frame_start, uf_union};
 use solver::{apply_impulse, apply_restitution, narrow_phase, soft_params, solve_contacts};
 use sweep::{SweepGrid, speculative_pass};
 
 /// Per-substep collider proxy; tile proxies use `entity = None`.
 #[derive(Debug, Clone, Copy)]
+// Independent per-proxy flags, packed into the 80-byte proxy's padding.
+#[allow(clippy::struct_excessive_bools)]
 struct Proxy {
     entity: Option<Entity>,
     /// Frame-stable warm-start identity (entity id or tile-position hash).
@@ -121,9 +152,21 @@ struct Proxy {
     /// the body. Proxies persist across substeps (D-066), so this carries
     /// through the frame.
     sleeping: bool,
+    /// Kinematic body: moves by its velocity, which nothing changes within
+    /// the frame, and counts as immovable (`is_dynamic` is false).
+    kinematic: bool,
+    /// A dynamic body that touched a moving kinematic body this frame; the
+    /// frame-end sleep pass keeps its island awake.
+    kept_awake: bool,
 }
 
 impl Proxy {
+    /// The proxy moves within a substep: an awake dynamic body or a
+    /// kinematic one. Only these initiate pairs and spend travel budgets.
+    fn moves(&self) -> bool {
+        (self.is_dynamic && !self.sleeping) || self.kinematic
+    }
+
     fn world_aabb(&self) -> Aabb {
         Aabb::new(self.center, self.half_extents())
     }
@@ -151,6 +194,19 @@ impl Proxy {
         let prev = Aabb::new(self.prev_center, self.half_extents());
         cur.union(&prev)
     }
+}
+
+/// A sensor for the frame: never a proxy, so no substep sees it. The
+/// writeback moves it and the sensor pass tests it.
+#[derive(Debug, Clone, Copy)]
+struct SensorBody {
+    entity: Entity,
+    /// Its entity key: the high half of its overlap keys.
+    key: u64,
+    /// Collider centre; the writeback moves it to the step's end.
+    center: Vec2,
+    shape: Shape,
+    velocity: Vec2,
 }
 
 /// One narrow-phase contact prepared for the soft solver.
@@ -193,8 +249,8 @@ pub struct PhysicsBuffers {
     /// `PAIR_*` bits per proxy. Pair queries read this byte instead of the
     /// 80-byte `Proxy` (D-080).
     pair_flags: Vec<u8>,
-    /// Awake dynamic proxies whose travel budget ran out, in proxy order
-    /// (D-081); refilled before every substep.
+    /// Moving proxies whose travel budget ran out, in proxy order (D-081);
+    /// refilled before every substep.
     tripped: Vec<u32>,
     /// Proxies repaired since the last pair build, in repair order.
     repaired: Vec<u32>,
@@ -215,11 +271,25 @@ pub struct PhysicsBuffers {
     check_pair_contacts: bool,
     #[cfg(test)]
     checked_substeps: usize,
+    /// Substeps run since the buffers were made.
+    #[cfg(test)]
+    substeps_run: usize,
     /// D-063 reference model, rebuilt every substep in regression tests only.
     #[cfg(test)]
     reference_impulses: Option<ImpulseMap>,
     pairs: Vec<(u32, u32)>,
     events: Vec<CollisionEvent>,
+    /// Sensors gathered this frame, in gather order.
+    sensors: Vec<SensorBody>,
+    /// Each tile proxy's identity, in proxy order after the entity proxies;
+    /// filled only in a frame with sensors.
+    tile_ids: Vec<u64>,
+    /// The last step's sensor pairs, sorted: the sensor's key in the high
+    /// half, the other's identity in the low half.
+    sensor_pairs: Vec<u128>,
+    /// Scratch for this step's sensor pairs.
+    sensor_scratch: Vec<u128>,
+    sensor_events: Vec<SensorEntered>,
     candidates: Vec<ProxyId>,
     grid: SpatialGrid,
     static_grid: SweepGrid,
@@ -237,6 +307,9 @@ pub struct PhysicsBuffers {
     sleep: SleepTable,
     /// Union-find parent per proxy index; unions accumulate across substeps.
     island_parent: Vec<u32>,
+    /// Proxies touching a moving kinematic body this frame
+    /// (`Proxy::kept_awake`), in the order they first touched it.
+    kept: Vec<u32>,
     /// Scratch: minimum member sleep timer per island root.
     island_min_timer: Vec<f32>,
     /// Scratch: adopted sleeping-island tag per island root (0 = fresh).
@@ -306,6 +379,39 @@ impl PhysicsBuffers {
     pub fn contact_count(&self) -> usize {
         self.contacts.len()
     }
+
+    /// The last step's proxies at their final positions, in proxy order,
+    /// then its sensors: what the spatial index holds. A body's identity is
+    /// its key; a tile's names its map, layer and cell in a frame with
+    /// sensors and is 0 otherwise.
+    pub(super) fn index_entries(&self, out: &mut Vec<IndexEntry>) {
+        let first_tile = self.proxies.len() - self.tile_ids.len();
+        out.extend(self.proxies.iter().enumerate().map(|(index, proxy)| {
+            let identity = if proxy.entity.is_some() {
+                proxy.key
+            } else {
+                index
+                    .checked_sub(first_tile)
+                    .map_or(0, |tile| self.tile_ids[tile])
+            };
+            IndexEntry {
+                entity: proxy.entity,
+                center: proxy.center,
+                shape: proxy.shape,
+                face_mask: proxy.face_mask,
+                sensor: false,
+                identity,
+            }
+        }));
+        out.extend(self.sensors.iter().map(|sensor| IndexEntry {
+            entity: Some(sensor.entity),
+            center: sensor.center,
+            shape: sensor.shape,
+            face_mask: FACE_ALL,
+            sensor: true,
+            identity: sensor.key,
+        }));
+    }
 }
 
 /// Wake `entity`'s sleep island (D-065); no-op when nothing has ever slept.
@@ -338,9 +444,6 @@ pub fn physics_step(world: &mut World) {
         dt
     };
 
-    let substeps = config.substeps.max(1);
-    let sub_dt = dt / substeps as f32;
-
     // Remove/reinsert buffers to avoid resource borrow + entity borrow overlap.
     let mut buffers = world
         .remove_resource::<PhysicsBuffers>()
@@ -348,7 +451,14 @@ pub fn physics_step(world: &mut World) {
 
     integrate_loose_bodies(world, dt, config.gravity);
 
-    gather_proxies(world, &mut buffers.proxies);
+    let kinematics = gather_proxies(
+        world,
+        &mut buffers.proxies,
+        &mut buffers.sensors,
+        &mut buffers.tile_ids,
+    );
+    let substeps = substep_count(&config, dt, kinematics > 0);
+    let sub_dt = dt / substeps as f32;
     buffers.pairs_invalidated = true;
     buffers.static_grid.begin_frame();
 
@@ -363,15 +473,27 @@ pub fn physics_step(world: &mut World) {
     buffers
         .island_parent
         .extend(0..buffers.proxies.len() as u32);
+    buffers.kept.clear();
     buffers.events.clear();
 
     for step in 0..substeps {
         let time_left = (dt - step as f32 * sub_dt).max(sub_dt);
         substep(&config, sub_dt, time_left, &mut buffers, sleep_enabled);
+        #[cfg(test)]
+        {
+            buffers.substeps_run += 1;
+        }
     }
 
     sync_impulses(&mut buffers);
-    write_back(world, &buffers.proxies);
+    write_back(world, &buffers.proxies, &mut buffers.sensors, dt);
+    // Queries see this step's final positions from here on.
+    SpatialIndex::mark_stale(world);
+    if buffers.sensors.is_empty() {
+        buffers.sensor_pairs.clear();
+    } else {
+        sensor_pass(world, &mut buffers);
+    }
 
     if sleep_enabled {
         sleep_frame_end(world, &config, dt, &mut buffers);
@@ -388,29 +510,73 @@ pub fn physics_step(world: &mut World) {
             buffers.events.clear();
         }
     }
+    if !buffers.sensor_events.is_empty() {
+        if let Some(sink) = world.get_resource_mut::<EventQueue<SensorEntered>>() {
+            for event in buffers.sensor_events.drain(..) {
+                sink.send(event);
+            }
+        } else {
+            buffers.sensor_events.clear();
+        }
+    }
 
     world.insert_resource(buffers);
 }
 
+/// The step's substep count (D-064): `PhysicsConfig::substeps`, or, in a
+/// world with a kinematic proxy, enough that no substep is longer than a
+/// 1/60 s step's, from `substeps` up to twice it. Contacts against a
+/// kinematic body take the immovable softness, which `soft_params` caps at a
+/// quarter of the substep rate, and a crowd pressing on the body needs what
+/// a 1/60 s step gives it. A still kinematic body counts, so one that starts
+/// or stops moving leaves the count as it was.
+fn substep_count(config: &PhysicsConfig, dt: f32, kinematic: bool) -> u32 {
+    let substeps = config.substeps.max(1);
+    if !kinematic {
+        return substeps;
+    }
+    // The 0.001 keeps rounding at 1/60 and 1/30 s from adding a substep.
+    let wanted = (substeps as f32 * dt * 60.0 - 0.001).ceil();
+    (wanted as u32).clamp(substeps, substeps.saturating_mul(2))
+}
+
 /// Write end-of-frame state back to the `World`, once per frame (D-066).
 /// Sleeping bodies skip writeback so their components stay bit-frozen — the
-/// invariant external-write detection relies on (D-065). The mutable query
-/// iterates the exact archetype/row order `gather_proxies` used, so entity
-/// proxies zip positionally with the query rows.
-fn write_back(world: &mut World, proxies: &[Proxy]) {
+/// invariant external-write detection relies on (D-065). A moving kinematic
+/// body writes its `Position` only: the step never changes its velocity. A
+/// sensor row pulls no proxy: it moves by `velocity · dt` and records its
+/// new centre. The mutable query iterates the exact archetype/row order
+/// `gather_proxies` used, so entity proxies zip positionally with the query
+/// rows.
+fn write_back(world: &mut World, proxies: &[Proxy], sensors: &mut [SensorBody], dt: f32) {
     let mut rows = proxies.iter();
-    for (entity, _collider, position, _body, velocity) in world.query_mut::<(
+    let mut sensor_rows = sensors.iter_mut();
+    for (entity, collider, position, body, velocity) in world.query_mut::<(
         Entity,
         &Collider,
         &mut Position,
         Option<&RigidBody>,
         Option<&mut Velocity>,
     )>() {
+        if body.is_some_and(|body| body.kind == BodyKind::Sensor) {
+            let sensor = sensor_rows
+                .next()
+                .expect("gather and writeback queries must agree on sensors");
+            debug_assert_eq!(sensor.entity, entity, "sensor order diverged");
+            if sensor.velocity != Vec2::ZERO {
+                position.0 += sensor.velocity * dt;
+            }
+            sensor.center = position.0 + collider.offset;
+            continue;
+        }
         let proxy = rows
             .next()
             .expect("gather and writeback queries must agree on entity count");
         debug_assert_eq!(proxy.entity, Some(entity), "proxy order diverged");
         if !proxy.is_dynamic || proxy.sleeping {
+            if proxy.kinematic && proxy.velocity != Vec2::ZERO {
+                position.0 = proxy.center - proxy.offset;
+            }
             continue;
         }
         position.0 = proxy.center - proxy.offset;
@@ -422,7 +588,9 @@ fn write_back(world: &mut World, proxies: &[Proxy]) {
 
 /// Dynamic bodies without a collider never enter the solver; integrate them
 /// once per frame (old behavior integrated them per substep — for pure
-/// ballistic motion the trajectories differ only at O(g·dt²)).
+/// ballistic motion the trajectories differ only at O(g·dt²)). A
+/// collider-less kinematic body or sensor moves by its velocity, without
+/// gravity.
 /// Columnar pass over collider-less archetypes; no per-entity lookups.
 fn integrate_loose_bodies(world: &mut World, dt: f32, gravity: Vec2) {
     for (_entity, velocity, position, body) in world.query_mut_filtered::<(
@@ -432,11 +600,14 @@ fn integrate_loose_bodies(world: &mut World, dt: f32, gravity: Vec2) {
         &mut RigidBody,
     ), Without<Collider>>()
     {
-        if body.kind != BodyKind::Dynamic {
-            continue;
+        match body.kind {
+            BodyKind::Dynamic => {
+                velocity.0 += gravity * dt;
+                position.0 += velocity.0 * dt;
+            }
+            BodyKind::Kinematic | BodyKind::Sensor => position.0 += velocity.0 * dt,
+            BodyKind::Static => {}
         }
-        velocity.0 += gravity * dt;
-        position.0 += velocity.0 * dt;
     }
 }
 
@@ -477,6 +648,7 @@ fn substep(
         reference_impulses,
         sleep,
         island_parent,
+        kept,
         arrival,
         ..
     } = buffers;
@@ -514,7 +686,21 @@ fn substep(
         if proxies[b_idx].sleeping {
             debug_assert!(!proxies[a_idx].sleeping, "sleeping bodies never initiate");
             let relative = proxies[a_idx].velocity - proxies[b_idx].velocity;
-            let wakes = if contact.penetration > 0.0 {
+            let wakes = if proxies[a_idx].kinematic {
+                // A moving kinematic body wakes a sleeper it touches or
+                // closes on at any speed: under the threshold both sides
+                // would stay immovable, the pair would be dropped below and
+                // the kinematic body would pass through. A still one wakes
+                // nothing, as a static body does.
+                proxies[a_idx].velocity != Vec2::ZERO
+                    && (contact.penetration > 0.0 || relative.dot(contact.normal) < 0.0)
+            } else if !kept.is_empty() && island_holds_any(island_parent, a_u, kept) {
+                // The same wake reaches through the island a moving
+                // kinematic body presses: a sleeper ahead of it would hold
+                // the pressed bodies at inverse mass 0 against the
+                // kinematic body, and they would sink into it.
+                contact.penetration > 0.0 || relative.dot(contact.normal) < 0.0
+            } else if contact.penetration > 0.0 {
                 relative.length_squared() > wake_threshold * wake_threshold
             } else {
                 relative.dot(contact.normal) < -wake_threshold
@@ -568,25 +754,29 @@ fn substep(
             key,
             pair_index,
         });
-        // Touching contacts between awake dynamic bodies join one island;
-        // islands sleep and re-sleep as a unit (D-065).
-        if sleep_enabled
-            && contact.penetration > 0.0
-            && proxies[b_idx].is_dynamic
-            && !proxies[b_idx].sleeping
-            && proxies[b_idx].entity.is_some()
-        {
-            uf_union(island_parent, a_u, b_u);
-        }
-        if contact.penetration > 0.0
-            && let Some(a_entity) = proxies[a_idx].entity
-        {
-            events.push(CollisionEvent {
-                a: a_entity,
-                b: proxies[b_idx].entity,
-                normal: contact.normal,
-                penetration: contact.penetration,
-            });
+        if contact.penetration > 0.0 {
+            if proxies[a_idx].kinematic || proxies[b_idx].kinematic {
+                kinematic_touch(proxies, events, kept, a_idx, b_idx, &contact);
+                continue;
+            }
+            // Touching contacts between awake dynamic bodies join one island;
+            // islands sleep and re-sleep as a unit (D-065). Without a
+            // kinematic side, `a` is an awake dynamic body.
+            if sleep_enabled
+                && proxies[b_idx].is_dynamic
+                && !proxies[b_idx].sleeping
+                && proxies[b_idx].entity.is_some()
+            {
+                uf_union(island_parent, a_u, b_u);
+            }
+            if let Some(a_entity) = proxies[a_idx].entity {
+                events.push(CollisionEvent {
+                    a: a_entity,
+                    b: proxies[b_idx].entity,
+                    normal: contact.normal,
+                    penetration: contact.penetration,
+                });
+            }
         }
     }
 
@@ -629,6 +819,12 @@ fn substep(
     arrival.list.clear();
     for (index, (proxy, admitted)) in proxies.iter_mut().zip(arrival.admitted.iter()).enumerate() {
         if !proxy.is_dynamic || proxy.sleeping {
+            // A kinematic body moves by its velocity; no solve changed it,
+            // so it is never listed.
+            if proxy.kinematic {
+                proxy.prev_center = proxy.center;
+                proxy.center += proxy.velocity * sub_dt;
+            }
             continue;
         }
         if (proxy.velocity - *admitted).length_squared() > arrival_threshold_sq {
@@ -682,9 +878,67 @@ fn substep(
     // Sum displacement between narrow phases, including the sweep's clamp.
     // This bounds distance from the build center even after direction changes.
     for (proxy, budget) in proxies.iter().zip(pair_budgets) {
-        if proxy.is_dynamic && !proxy.sleeping {
+        if proxy.moves() {
             budget.travel += (proxy.center - proxy.prev_center).length();
         }
+    }
+}
+
+/// Sensor pass: each sensor, in gather order, against the bodies and tiles
+/// it overlaps at the step's final positions, in index order (the spatial
+/// index, built here). A pair the previous step lacked sends
+/// `SensorEntered`; the step's pairs, sorted, replace the previous ones.
+fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
+    let mut pairs = std::mem::take(&mut buffers.sensor_scratch);
+    let mut entered = std::mem::take(&mut buffers.sensor_events);
+    pairs.clear();
+    let previous = &buffers.sensor_pairs;
+    SpatialIndex::sensor_overlaps(world, buffers, |sensor, other| {
+        let pair = (u128::from(sensor.identity) << 64) | u128::from(other.identity);
+        pairs.push(pair);
+        if previous.binary_search(&pair).is_err()
+            && let Some(sensor) = sensor.entity
+        {
+            entered.push(SensorEntered::new(sensor, other.entity));
+        }
+    });
+    pairs.sort_unstable();
+    buffers.sensor_scratch = std::mem::replace(&mut buffers.sensor_pairs, pairs);
+    buffers.sensor_events = entered;
+}
+
+/// A touching contact with a kinematic side; the other is an awake dynamic
+/// body, since a pair of immovables never reaches here. Its event names the
+/// dynamic body as `a`, pushed along `normal`, and a moving kinematic body
+/// keeps that body's island awake for the frame and lists it in `kept`,
+/// through which the island wakes the sleepers it reaches. Kinematic bodies
+/// join no island.
+#[cold]
+#[inline(never)]
+fn kinematic_touch(
+    proxies: &mut [Proxy],
+    events: &mut Vec<CollisionEvent>,
+    kept: &mut Vec<u32>,
+    a_idx: usize,
+    b_idx: usize,
+    contact: &Contact,
+) {
+    let (pushed, kinematic, normal) = if proxies[a_idx].kinematic {
+        (b_idx, a_idx, -contact.normal)
+    } else {
+        (a_idx, b_idx, contact.normal)
+    };
+    if proxies[kinematic].velocity != Vec2::ZERO && !proxies[pushed].kept_awake {
+        proxies[pushed].kept_awake = true;
+        kept.push(pushed as u32);
+    }
+    if let Some(entity) = proxies[pushed].entity {
+        events.push(CollisionEvent {
+            a: entity,
+            b: proxies[kinematic].entity,
+            normal,
+            penetration: contact.penetration,
+        });
     }
 }
 

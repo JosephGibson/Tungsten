@@ -120,8 +120,8 @@ impl ArrivalScratch {
     }
 }
 
-/// Inverse mass in the arrival pass: a static or sleeping body does not give
-/// way.
+/// Inverse mass in the arrival pass: a static, kinematic or sleeping body
+/// does not give way.
 fn arrival_inv(proxy: &Proxy) -> f32 {
     if proxy.is_dynamic && !proxy.sleeping {
         proxy.inv_mass
@@ -131,9 +131,9 @@ fn arrival_inv(proxy: &Proxy) -> f32 {
 }
 
 /// Where a proxy was when the substep began. The pass runs after position
-/// integration, which moved the awake dynamic ones.
+/// integration, which moved the awake dynamic and the kinematic ones.
 fn arrival_center(proxy: &Proxy) -> Vec2 {
-    if proxy.is_dynamic && !proxy.sleeping {
+    if proxy.moves() {
         proxy.prev_center
     } else {
         proxy.center

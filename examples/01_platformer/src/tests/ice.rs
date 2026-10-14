@@ -434,12 +434,7 @@ fn frozen_iron_slides_with_reduced_friction_and_scraps_can_refreeze() {
         world
             .get_resource_mut::<EventQueue<CollisionEvent>>()
             .unwrap()
-            .send(CollisionEvent {
-                a: e,
-                b: None,
-                normal: -Vec2::Y,
-                penetration: 0.0,
-            });
+            .send(CollisionEvent::new(e, None, -Vec2::Y, 0.0));
         if i == 1 {
             freeze_iron(&mut world, e);
         }
@@ -483,12 +478,12 @@ fn scrap_friction_is_one_sixteenth_of_full_iron_with_the_same_frozen_reduction()
         world
             .get_resource_mut::<EventQueue<CollisionEvent>>()
             .unwrap()
-            .send(CollisionEvent {
-                a: if index == 0 { scrap } else { warm },
-                b: (index == 1).then_some(scrap),
-                normal: if index == 0 { -Vec2::Y } else { Vec2::Y },
-                penetration: 0.0,
-            });
+            .send(CollisionEvent::new(
+                if index == 0 { scrap } else { warm },
+                (index == 1).then_some(scrap),
+                if index == 0 { -Vec2::Y } else { Vec2::Y },
+                0.0,
+            ));
     }
     let dt = world.get_resource::<Time>().unwrap().delta();
     brick_friction(&mut world);

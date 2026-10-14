@@ -135,12 +135,12 @@ fn frozen_iron_shatters_once_from_solver_contacts_in_either_pair_order() {
             world
                 .get_resource_mut::<EventQueue<CollisionEvent>>()
                 .unwrap()
-                .send(CollisionEvent {
-                    a: if reversed { target } else { striker },
-                    b: Some(if reversed { striker } else { target }),
-                    normal: if reversed { Vec2::X } else { -Vec2::X },
-                    penetration: 0.0,
-                });
+                .send(CollisionEvent::new(
+                    if reversed { target } else { striker },
+                    Some(if reversed { striker } else { target }),
+                    if reversed { Vec2::X } else { -Vec2::X },
+                    0.0,
+                ));
         }
         brick_impacts(&mut world);
         brick_impacts(&mut world);
@@ -340,12 +340,7 @@ fn faster_slams_crush_more_marble_contacts_keep_momentum_and_throttle_audio() {
                 world
                     .get_resource_mut::<EventQueue<CollisionEvent>>()
                     .unwrap()
-                    .send(CollisionEvent {
-                        a,
-                        b: Some(b),
-                        normal,
-                        penetration: 1.0,
-                    });
+                    .send(CollisionEvent::new(a, Some(b), normal, 1.0));
             }
         }
         let large = world.spawn_with(

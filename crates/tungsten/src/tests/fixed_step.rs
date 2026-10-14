@@ -170,15 +170,6 @@ struct Read {
     ids: Vec<u32>,
 }
 
-fn collision(a: Entity, id: u32) -> CollisionEvent {
-    CollisionEvent {
-        a,
-        b: None,
-        normal: Vec2::Y,
-        penetration: id as f32,
-    }
-}
-
 #[test]
 fn a_fixed_reader_reads_each_steps_collision_once_and_update_reads_both() {
     let mut app = app();
@@ -193,7 +184,7 @@ fn a_fixed_reader_reads_each_steps_collision_once_and_update_reads_both() {
             world
                 .get_resource_mut::<EventQueue<CollisionEvent>>()
                 .unwrap()
-                .send(collision(a, id));
+                .send(CollisionEvent::new(a, None, Vec2::Y, id as f32));
         })
         .after(PHYSICS_STEP),
     );
@@ -264,7 +255,7 @@ fn at_144_hz_a_fixed_reader_reads_each_update_event_once_and_a_pause_drops_them(
             world
                 .get_resource_mut::<EventQueue<CollisionEvent>>()
                 .unwrap()
-                .send(collision(a, id));
+                .send(CollisionEvent::new(a, None, Vec2::Y, id as f32));
         }),
     );
     app.add_system_to(

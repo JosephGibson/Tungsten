@@ -201,6 +201,15 @@ fn uf_find(parent: &mut [u32], mut i: u32) -> u32 {
     i
 }
 
+/// True when the island of `a`, as this frame's unions have built it so far,
+/// holds one of `members`.
+pub(super) fn island_holds_any(parent: &mut [u32], a: u32, members: &[u32]) -> bool {
+    let root = uf_find(parent, a);
+    members
+        .iter()
+        .any(|&member| uf_find(parent, member) == root)
+}
+
 /// Min-index root keeps island roots independent of union order.
 pub(super) fn uf_union(parent: &mut [u32], a: u32, b: u32) {
     let root_a = uf_find(parent, a);
@@ -245,7 +254,9 @@ pub(super) fn sleep_frame_start(buffers: &mut PhysicsBuffers) {
 
 /// Frame-end sleep pass (D-065): update per-body low-velocity timers from
 /// end-of-frame velocities, then sleep every island whose slowest member has
-/// been below the threshold for `time_to_sleep`. Members freeze with zeroed
+/// been below the threshold for `time_to_sleep`. A member that touched a
+/// moving kinematic body this frame restarts its timer and keeps its island
+/// awake, whatever `time_to_sleep` is. Members freeze with zeroed
 /// velocity. An island falling asleep while resting on an already sleeping
 /// island adopts that island's tag, so a later island wake (despawn deep in a
 /// pile) also lifts bodies that settled on top after it slept; bridging two
@@ -282,13 +293,18 @@ pub(super) fn sleep_frame_end(
             continue;
         }
         let entry = &mut sleep.entries[index];
-        entry.timer = if proxy.velocity.length_squared() <= threshold_sq {
+        entry.timer = if proxy.velocity.length_squared() <= threshold_sq && !proxy.kept_awake {
             entry.timer + dt
         } else {
             0.0
         };
         let root = uf_find(island_parent, index as u32) as usize;
-        island_min_timer[root] = island_min_timer[root].min(entry.timer);
+        let timer = if proxy.kept_awake {
+            f32::NEG_INFINITY
+        } else {
+            entry.timer
+        };
+        island_min_timer[root] = island_min_timer[root].min(timer);
     }
 
     // Tag adoption from the final substep's resting contacts vs sleepers.

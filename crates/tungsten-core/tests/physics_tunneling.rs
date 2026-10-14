@@ -79,6 +79,7 @@ fn spawn_wall(world: &mut World, kind: BodyKind) {
             BodyKind::Static => RigidBody::r#static(),
             // Heavy enough to be effectively immovable over the run.
             BodyKind::Dynamic => RigidBody::dynamic().with_mass(1.0e6),
+            _ => unreachable!("walls are static or dynamic"),
         },
     );
     world.insert(
@@ -522,6 +523,7 @@ fn push_scene(case: PushCase) -> PushScene {
                 world.insert(entity, RigidBody::dynamic().with_mass(1.0e6));
                 world.insert(entity, Velocity(Vec2::ZERO));
             }
+            _ => unreachable!("gates are static or dynamic"),
         }
         entity
     };

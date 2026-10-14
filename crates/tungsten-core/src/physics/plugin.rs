@@ -1,7 +1,8 @@
 //! The physics plugin: the snapshot and the step at the fixed stage, the
 //! one-way, interpolating sync to `Transform` after update, the collision
-//! event queue and the `rigid_body` scene component. A plugin whose every
-//! need is met by core, so it lives here (the kit's shape, `D-007`).
+//! and sensor event queues and the `rigid_body` scene component. A plugin
+//! whose every need is met by core, so it lives here (the kit's shape,
+//! `D-007`).
 
 use glam::Vec2;
 use serde::Deserialize;
@@ -10,8 +11,8 @@ use crate::component_registry::SpawnContext;
 use crate::components::Transform;
 use crate::ecs::World;
 use crate::physics::{
-    Collider, CollisionEvent, Position, PrevPosition, RigidBody, RigidBodyBundle, Shape, Velocity,
-    physics_step,
+    Collider, CollisionEvent, Position, PrevPosition, RigidBody, RigidBodyBundle, SensorEntered,
+    Shape, Velocity, physics_step,
 };
 use crate::schedule::{Plugin, Schedule, Stage, system};
 use crate::time::Time;
@@ -25,7 +26,8 @@ pub const PHYSICS_SYNC: &str = "physics_sync";
 
 /// Registers [`PHYSICS_PREV_SNAPSHOT`] and [`PHYSICS_STEP`] after it in
 /// `FixedUpdate`, [`PHYSICS_SYNC`] in `PostUpdate`,
-/// `EventQueue<CollisionEvent>` and the `rigid_body` scene component, which
+/// `EventQueue<CollisionEvent>`, `EventQueue<SensorEntered>` and the
+/// `rigid_body` scene component, which
 /// spawns a [`RigidBodyBundle`] at the entry's position
 /// ([`component_registry`](crate::component_registry)). The snapshot is
 /// registered first, so it heads the stage ahead of a game's fixed systems,
@@ -37,6 +39,7 @@ pub struct PhysicsPlugin;
 impl Plugin for PhysicsPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         world.register_event::<CollisionEvent>();
+        world.register_event::<SensorEntered>();
         world.register_component_with(RIGID_BODY, spawn_rigid_body);
         schedule.add(
             Stage::FixedUpdate,
@@ -107,6 +110,8 @@ const MAX_BODY_EXTENT: f32 = 16_384.0;
 enum SceneBodyKind {
     Dynamic,
     Static,
+    Kinematic,
+    Sensor,
 }
 
 /// `rigid_body.shape`.
@@ -186,6 +191,11 @@ impl TryFrom<RigidBodyFields> for RigidBodyDef {
             }
             velocity => velocity.map(|[x, y]| Velocity::new(x, y)),
         };
+        if fields.mass.is_some() && !matches!(fields.kind, SceneBodyKind::Dynamic) {
+            return Err("`mass` is for dynamic bodies only".to_owned());
+        }
+        // `restitution` is accepted on every kind and does nothing on a
+        // sensor, which has no contacts.
         let (body, velocity) = match fields.kind {
             SceneBodyKind::Dynamic => {
                 let mass = fields.mass.unwrap_or(1.0);
@@ -199,12 +209,11 @@ impl TryFrom<RigidBodyFields> for RigidBodyDef {
                     Some(velocity.unwrap_or_default()),
                 )
             }
-            SceneBodyKind::Static => {
-                if fields.mass.is_some() {
-                    return Err("`mass` is for dynamic bodies only".to_owned());
-                }
-                (RigidBody::r#static(), velocity)
+            SceneBodyKind::Static => (RigidBody::r#static(), velocity),
+            SceneBodyKind::Kinematic => {
+                (RigidBody::kinematic(), Some(velocity.unwrap_or_default()))
             }
+            SceneBodyKind::Sensor => (RigidBody::sensor(), Some(velocity.unwrap_or_default())),
         };
         Ok(Self {
             velocity,

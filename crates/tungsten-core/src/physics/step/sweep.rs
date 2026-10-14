@@ -50,7 +50,8 @@ impl SweepGrid {
 
     /// Stage every static proxy with the `2·linear_slop` inflation a pair
     /// build gives it, in proxy order. Statics never move within a frame, so
-    /// one staging serves every substep.
+    /// one staging serves every substep; kinematic proxies move, so they are
+    /// not statics here.
     pub(super) fn stage(&mut self, config: &PhysicsConfig, proxies: &[Proxy]) {
         let grid = &mut self.grid;
         if (grid.cell_size() - config.broadphase_cell_size).abs() > f32::EPSILON {
@@ -59,7 +60,7 @@ impl SweepGrid {
         grid.clear();
         let inflation = Vec2::splat(2.0 * config.linear_slop);
         for (id, proxy) in proxies.iter().enumerate() {
-            if proxy.is_dynamic {
+            if proxy.is_dynamic || proxy.kinematic {
                 continue;
             }
             let mut aabb = proxy.world_aabb();
@@ -76,9 +77,9 @@ impl SweepGrid {
 /// the solver after contacts were built (impulse chains, deep-recovery bias).
 /// Static circles promote conservatively to their bounding squares.
 ///
-/// Only statics can be hit. The pair grid answers the query until the
-/// statics-only grid is worth staging (D-080); both return the same statics
-/// in the same order, so the first hit is the same.
+/// Only statics can be hit, never a kinematic body. The pair grid answers
+/// the query until the statics-only grid is worth staging (D-080); both
+/// return the same statics in the same order, so the first hit is the same.
 pub(super) fn speculative_pass(
     config: &PhysicsConfig,
     proxies: &mut [Proxy],
@@ -120,7 +121,7 @@ pub(super) fn speculative_pass(
         for &b_id in candidates.iter() {
             let b_idx = b_id as usize;
             let target = &proxies[b_idx];
-            if target.is_dynamic {
+            if target.is_dynamic || target.kinematic {
                 continue;
             }
             let b_half = match target.shape {

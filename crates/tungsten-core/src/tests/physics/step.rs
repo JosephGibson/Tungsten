@@ -5,6 +5,7 @@ use super::*;
 use crate::assets::{LayerKind, TilemapInstance};
 use crate::assets::{TilemapData, TilemapLayer, TilemapRegistry};
 use crate::ecs::World;
+use crate::physics::components::RigidBodyBundle;
 
 fn seed_world() -> World {
     let mut world = World::new();
@@ -12,6 +13,7 @@ fn seed_world() -> World {
     time.advance_frame(1.0 / 60.0);
     world.insert_resource(time);
     world.insert_resource(EventQueue::<CollisionEvent>::new());
+    world.insert_resource(EventQueue::<SensorEntered>::new());
     world.insert_resource(PhysicsConfig::default());
     world.insert_resource(TilemapRegistry::new());
     world
@@ -500,7 +502,12 @@ fn sweep_grid_returns_the_pair_grids_statics_in_order() {
         }
         let config = *world.get_resource::<PhysicsConfig>().unwrap();
         let mut buffers = PhysicsBuffers::default();
-        gather_proxies(&world, &mut buffers.proxies);
+        gather_proxies(
+            &world,
+            &mut buffers.proxies,
+            &mut buffers.sensors,
+            &mut buffers.tile_ids,
+        );
         for proxy in buffers.proxies.iter_mut().step_by(4) {
             proxy.sleeping = proxy.is_dynamic;
         }
@@ -1432,12 +1439,12 @@ pub(super) fn assert_pair_contacts(config: &PhysicsConfig, sub_dt: f32, buffers:
         .collect();
     let mut fresh = BTreeSet::new();
     let mut exhaustive = BTreeSet::new();
+    // A kinematic proxy initiates as an awake dynamic one does.
     for (a, proxy) in proxies.iter().enumerate() {
-        if !proxy.is_dynamic || proxy.sleeping {
+        if !proxy.moves() {
             continue;
         }
-        let eligible =
-            |b: usize| a != b && (!proxies[b].is_dynamic || proxies[b].sleeping || b > a);
+        let eligible = |b: usize| a != b && (!proxies[b].moves() || b > a);
         fresh_grid.for_each_in(&bounds[a], Some(a as u32), |b| {
             let b = b as usize;
             if eligible(b)
@@ -1562,7 +1569,12 @@ fn contact_woken_body_rebuilds_pairs_over_static_floor_in_waking_frame() {
     let dt = 1.0 / 60.0;
     let sub_dt = dt / config.substeps as f32;
     let mut buffers = world.remove_resource::<PhysicsBuffers>().unwrap();
-    gather_proxies(&world, &mut buffers.proxies);
+    gather_proxies(
+        &world,
+        &mut buffers.proxies,
+        &mut buffers.sensors,
+        &mut buffers.tile_ids,
+    );
     sleep_frame_start(&mut buffers);
     buffers.island_parent = (0..buffers.proxies.len() as u32).collect();
     buffers.events.clear();
@@ -1634,7 +1646,12 @@ fn lone_fast_body_trips_its_budget_and_rebuilds_before_narrow_phase() {
     let dt = 1.0 / 60.0;
     let sub_dt = dt / config.substeps as f32;
     let mut buffers = PhysicsBuffers::default();
-    gather_proxies(&world, &mut buffers.proxies);
+    gather_proxies(
+        &world,
+        &mut buffers.proxies,
+        &mut buffers.sensors,
+        &mut buffers.tile_ids,
+    );
     buffers.island_parent = (0..buffers.proxies.len() as u32).collect();
     buffers.check_pair_contacts = true;
     build_pairs(&config, sub_dt, dt, &mut buffers);
@@ -1741,7 +1758,12 @@ fn spawn_lattice(world: &mut World, cols: usize, rows: usize) {
 /// start against the per-substep keyed map (D-076).
 fn oracle_buffers(world: &World) -> PhysicsBuffers {
     let mut buffers = PhysicsBuffers::default();
-    gather_proxies(world, &mut buffers.proxies);
+    gather_proxies(
+        world,
+        &mut buffers.proxies,
+        &mut buffers.sensors,
+        &mut buffers.tile_ids,
+    );
     buffers.island_parent = (0..buffers.proxies.len() as u32).collect();
     buffers.pairs_invalidated = true;
     buffers.check_pair_contacts = true;
@@ -1879,7 +1901,12 @@ fn warm_start_forgets_disappearing_contacts_and_syncs_empty_final_substep() {
         ..PhysicsConfig::default()
     };
     let mut buffers = PhysicsBuffers::default();
-    gather_proxies(&world, &mut buffers.proxies);
+    gather_proxies(
+        &world,
+        &mut buffers.proxies,
+        &mut buffers.sensors,
+        &mut buffers.tile_ids,
+    );
     buffers.reference_impulses = Some(ImpulseMap::default());
     let body_index = buffers
         .proxies
@@ -2152,4 +2179,1256 @@ fn step_bound_is_invisible_at_a_sixtieth() {
         step_bound_scene(bound, 1.0 / 60.0),
         step_bound_scene(0.0, 1.0 / 60.0)
     );
+}
+
+/// A body with `Position`, `Velocity`, `Collider` and `RigidBody`, so
+/// kinematic and dynamic bodies share one archetype and proxy order is spawn
+/// order.
+fn spawn_body(
+    world: &mut World,
+    body: RigidBody,
+    collider: Collider,
+    position: Vec2,
+    velocity: Vec2,
+) -> Entity {
+    let entity = world.spawn();
+    world.insert(entity, Position(position));
+    world.insert(entity, Velocity(velocity));
+    world.insert(entity, collider);
+    world.insert(entity, body);
+    entity
+}
+
+fn spawn_kinematic(
+    world: &mut World,
+    collider: Collider,
+    position: Vec2,
+    velocity: Vec2,
+) -> Entity {
+    spawn_body(world, RigidBody::kinematic(), collider, position, velocity)
+}
+
+fn spawn_ball(world: &mut World, position: Vec2) -> Entity {
+    spawn_body(
+        world,
+        RigidBody::dynamic(),
+        Collider::circle(10.0),
+        position,
+        Vec2::ZERO,
+    )
+}
+
+fn position_bits(world: &World, body: Entity) -> [u32; 2] {
+    world
+        .get::<Position>(body)
+        .unwrap()
+        .0
+        .to_array()
+        .map(f32::to_bits)
+}
+
+fn is_sleeping(world: &World, body: Entity) -> bool {
+    world
+        .get_resource::<PhysicsBuffers>()
+        .unwrap()
+        .is_sleeping(body)
+}
+
+/// Position bits of a kinematic body after `steps` steps of 1/60 s in a
+/// world that holds nothing else, under `gravity`.
+fn kinematic_alone(
+    collider: Collider,
+    start: Vec2,
+    velocity: Vec2,
+    gravity: Vec2,
+    steps: usize,
+) -> [u32; 2] {
+    let mut world = seed_world();
+    world.get_resource_mut::<PhysicsConfig>().unwrap().gravity = gravity;
+    let body = spawn_kinematic(&mut world, collider, start, velocity);
+    for _ in 0..steps {
+        physics_step(&mut world);
+    }
+    position_bits(&world, body)
+}
+
+/// Every collision event sent by the last step, flushing the queue.
+fn drain_events(world: &mut World) -> Vec<CollisionEvent> {
+    let events = world
+        .get_resource_mut::<EventQueue<CollisionEvent>>()
+        .unwrap();
+    let sent = events.iter_current().copied().collect();
+    events.flush();
+    sent
+}
+
+#[test]
+fn kinematic_body_moves_by_its_velocity_without_gravity() {
+    // Gravity, falling bodies and a floor elsewhere leave its path alone.
+    let gravity = Vec2::new(0.0, 900.0);
+    let velocity = Vec2::new(60.0, -30.0);
+    let collider = Collider::aabb(Vec2::splat(12.0));
+    let mut world = seed_world();
+    world.get_resource_mut::<PhysicsConfig>().unwrap().gravity = gravity;
+    let floor = world.spawn();
+    world.insert(floor, Position(Vec2::new(0.0, 400.0)));
+    world.insert(floor, Collider::aabb(Vec2::new(200.0, 8.0)));
+    world.insert(floor, RigidBody::r#static());
+    for i in 0..4 {
+        spawn_ball(&mut world, Vec2::new(-150.0 + 30.0 * i as f32, 300.0));
+    }
+    let body = spawn_kinematic(&mut world, collider, Vec2::ZERO, velocity);
+    for _ in 0..60 {
+        physics_step(&mut world);
+    }
+    let position = world.get::<Position>(body).unwrap().0;
+    assert!(
+        (position - velocity).length() < 1.0e-3,
+        "one second at {velocity:?} ended at {position:?}"
+    );
+    assert_eq!(
+        world.get::<Velocity>(body).unwrap().0,
+        velocity,
+        "the step changed a kinematic velocity"
+    );
+    assert_eq!(
+        position_bits(&world, body),
+        kinematic_alone(collider, Vec2::ZERO, velocity, gravity, 60),
+        "the kinematic body left the path it takes alone"
+    );
+}
+
+#[test]
+fn kinematic_body_pushes_a_dynamic_body_and_is_never_pushed() {
+    let collider = Collider::aabb(Vec2::splat(12.0));
+    let velocity = Vec2::new(150.0, 0.0);
+    let mut world = seed_world();
+    let body = spawn_kinematic(&mut world, collider, Vec2::ZERO, velocity);
+    let ball = spawn_ball(&mut world, Vec2::new(40.0, 0.0));
+    let heavy = spawn_body(
+        &mut world,
+        RigidBody::dynamic().with_mass(1.0e6),
+        Collider::circle(10.0),
+        Vec2::new(40.0, 60.0),
+        Vec2::ZERO,
+    );
+    // A second kinematic body drives into the heavy one from below.
+    let lifter = spawn_kinematic(
+        &mut world,
+        collider,
+        Vec2::new(40.0, 100.0),
+        Vec2::new(0.0, -60.0),
+    );
+    for _ in 0..60 {
+        physics_step(&mut world);
+    }
+    assert_eq!(
+        position_bits(&world, body),
+        kinematic_alone(collider, Vec2::ZERO, velocity, Vec2::ZERO, 60),
+        "the pushed ball moved the kinematic body"
+    );
+    assert_eq!(
+        position_bits(&world, lifter),
+        kinematic_alone(
+            collider,
+            Vec2::new(40.0, 100.0),
+            Vec2::new(0.0, -60.0),
+            Vec2::ZERO,
+            60
+        ),
+        "a heavy body moved the kinematic body"
+    );
+    let face = world.get::<Position>(body).unwrap().0.x + 12.0;
+    let ball_x = world.get::<Position>(ball).unwrap().0.x;
+    assert!(
+        ball_x - 10.0 > face - 1.0,
+        "the ball sank into the kinematic body: ball {ball_x}, face {face}"
+    );
+    assert!(
+        world.get::<Velocity>(ball).unwrap().0.x > 100.0,
+        "the ball was not pushed along"
+    );
+    let heavy_y = world.get::<Position>(heavy).unwrap().0.y;
+    let top = world.get::<Position>(lifter).unwrap().0.y - 12.0;
+    assert!(
+        heavy_y + 10.0 < top + 1.0,
+        "the heavy body sank into the lifter: heavy {heavy_y}, top {top}"
+    );
+}
+
+#[test]
+fn kinematic_contact_event_names_the_dynamic_body_as_a() {
+    for kinematic_first in [true, false] {
+        let mut world = seed_world();
+        let spawn = |world: &mut World| {
+            spawn_kinematic(
+                world,
+                Collider::aabb(Vec2::splat(12.0)),
+                Vec2::ZERO,
+                Vec2::new(150.0, 0.0),
+            )
+        };
+        let (body, ball) = if kinematic_first {
+            let body = spawn(&mut world);
+            (body, spawn_ball(&mut world, Vec2::new(40.0, 0.0)))
+        } else {
+            let ball = spawn_ball(&mut world, Vec2::new(40.0, 0.0));
+            (spawn(&mut world), ball)
+        };
+        let mut seen = 0;
+        for _ in 0..30 {
+            physics_step(&mut world);
+            for event in drain_events(&mut world) {
+                assert_eq!(
+                    event.a, ball,
+                    "a is not the pushed body (kinematic first: {kinematic_first})"
+                );
+                assert_eq!(event.b, Some(body));
+                assert!(
+                    event.normal.x > 0.99,
+                    "normal {:?} is not the push (kinematic first: {kinematic_first})",
+                    event.normal
+                );
+                seen += 1;
+            }
+        }
+        assert!(
+            seen > 0,
+            "no contact event (kinematic first: {kinematic_first})"
+        );
+    }
+}
+
+#[test]
+fn kinematic_body_passes_static_bodies_tiles_and_kinematic_bodies() {
+    let mut world = seed_world();
+    world.get_resource_mut::<TilemapRegistry>().unwrap().insert(
+        "strip".into(),
+        TilemapData {
+            tile_width: 16,
+            tile_height: 16,
+            width: 10,
+            height: 1,
+            tileset: vec!["solid".into()],
+            layers: vec![TilemapLayer {
+                name: "solid".into(),
+                kind: LayerKind::Collision,
+                tiles: vec![-1, -1, -1, -1, -1, 0, -1, -1, -1, -1],
+            }],
+        },
+    );
+    let map = world.spawn();
+    world.insert(map, TilemapInstance::new("strip", Vec2::ZERO));
+    let wall = world.spawn();
+    world.insert(wall, Position(Vec2::new(40.0, 8.0)));
+    world.insert(wall, Collider::aabb(Vec2::splat(8.0)));
+    world.insert(wall, RigidBody::r#static());
+    let collider = Collider::aabb(Vec2::splat(6.0));
+    let mover = (Vec2::new(0.0, 8.0), Vec2::new(150.0, 0.0));
+    let other = (Vec2::new(120.0, 8.0), Vec2::new(-50.0, 0.0));
+    let body = spawn_kinematic(&mut world, collider, mover.0, mover.1);
+    let oncoming = spawn_kinematic(&mut world, Collider::circle(6.0), other.0, other.1);
+    for step in 0..60 {
+        physics_step(&mut world);
+        assert!(
+            drain_events(&mut world).is_empty(),
+            "a kinematic body sent an event at step {step}"
+        );
+        assert_eq!(
+            world
+                .get_resource::<PhysicsBuffers>()
+                .unwrap()
+                .contact_count(),
+            0,
+            "a kinematic body made a contact at step {step}"
+        );
+    }
+    assert_eq!(
+        position_bits(&world, body),
+        kinematic_alone(collider, mover.0, mover.1, Vec2::ZERO, 60)
+    );
+    assert_eq!(
+        position_bits(&world, oncoming),
+        kinematic_alone(Collider::circle(6.0), other.0, other.1, Vec2::ZERO, 60)
+    );
+    assert!(
+        world.get::<Position>(body).unwrap().0.x > 140.0,
+        "the kinematic body stopped"
+    );
+}
+
+#[test]
+fn kinematic_body_moving_into_a_sleeping_body_wakes_it() {
+    let mut world = seed_world();
+    let body = spawn_kinematic(
+        &mut world,
+        Collider::aabb(Vec2::splat(12.0)),
+        Vec2::ZERO,
+        Vec2::ZERO,
+    );
+    let ball = spawn_ball(&mut world, Vec2::new(60.0, 0.0));
+    for _ in 0..60 {
+        physics_step(&mut world);
+    }
+    assert!(is_sleeping(&world, ball), "the idle ball never slept");
+    world.get_mut::<Velocity>(body).unwrap().0 = Vec2::new(150.0, 0.0);
+    let mut woke = false;
+    for step in 0..60 {
+        physics_step(&mut world);
+        woke |= !is_sleeping(&world, ball);
+        let face = world.get::<Position>(body).unwrap().0.x + 12.0;
+        let ball_x = world.get::<Position>(ball).unwrap().0.x;
+        assert!(
+            ball_x > face,
+            "passed the ball at step {step}: ball {ball_x}, face {face}"
+        );
+    }
+    assert!(woke, "the kinematic body never woke the ball");
+    assert!(
+        world.get::<Position>(ball).unwrap().0.x > 150.0,
+        "the ball was not pushed"
+    );
+}
+
+#[test]
+fn kinematic_body_moving_away_from_a_resting_body_wakes_it() {
+    let mut world = seed_world();
+    world.get_resource_mut::<PhysicsConfig>().unwrap().gravity = Vec2::new(0.0, 900.0);
+    let platform = spawn_kinematic(
+        &mut world,
+        Collider::aabb(Vec2::new(40.0, 8.0)),
+        Vec2::new(0.0, 100.0),
+        Vec2::ZERO,
+    );
+    let rider = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::aabb(Vec2::splat(8.0)),
+        Vec2::new(0.0, 84.2),
+        Vec2::ZERO,
+    );
+    for _ in 0..150 {
+        physics_step(&mut world);
+    }
+    assert!(
+        is_sleeping(&world, rider),
+        "the rider never slept on the still platform"
+    );
+    let rest_y = world.get::<Position>(rider).unwrap().0.y;
+    // The platform drops away, below the sleep threshold.
+    world.get_mut::<Velocity>(platform).unwrap().0 = Vec2::new(0.0, 10.0);
+    physics_step(&mut world);
+    assert!(
+        !is_sleeping(&world, rider),
+        "the platform left without waking the rider"
+    );
+    for _ in 0..59 {
+        physics_step(&mut world);
+    }
+    let rider_y = world.get::<Position>(rider).unwrap().0.y;
+    assert!(
+        rider_y > rest_y + 9.0,
+        "the rider stayed behind: {rest_y} to {rider_y}"
+    );
+}
+
+/// A kinematic box at `speed` walks into a ball asleep 2 px ahead of it; the
+/// ball's centre stays ahead of the box's leading face throughout.
+fn kinematic_walks_into_a_sleeper(speed: f32) {
+    let mut world = seed_world();
+    let body = spawn_kinematic(
+        &mut world,
+        Collider::aabb(Vec2::splat(12.0)),
+        Vec2::ZERO,
+        Vec2::ZERO,
+    );
+    let ball = spawn_ball(&mut world, Vec2::new(24.0, 0.0));
+    for _ in 0..60 {
+        physics_step(&mut world);
+    }
+    assert!(is_sleeping(&world, ball), "the idle ball never slept");
+    world.get_mut::<Velocity>(body).unwrap().0 = Vec2::new(speed, 0.0);
+    let mut woke = false;
+    for step in 0..240 {
+        physics_step(&mut world);
+        woke |= !is_sleeping(&world, ball);
+        let face = world.get::<Position>(body).unwrap().0.x + 12.0;
+        let ball_x = world.get::<Position>(ball).unwrap().0.x;
+        assert!(
+            ball_x > face,
+            "at {speed} px/s the box passed the ball at step {step}: ball {ball_x}, face {face}"
+        );
+    }
+    assert!(woke, "at {speed} px/s the box never woke the ball");
+    let ball_x = world.get::<Position>(ball).unwrap().0.x;
+    assert!(
+        ball_x > 24.0 + 4.0 * speed - 4.0,
+        "at {speed} px/s the ball was not pushed: {ball_x}"
+    );
+}
+
+#[test]
+fn kinematic_body_wakes_a_sleeper_at_half_the_sleep_threshold() {
+    assert_eq!(PhysicsConfig::default().sleep_threshold, 20.0);
+    kinematic_walks_into_a_sleeper(10.0);
+}
+
+#[test]
+fn kinematic_body_wakes_a_sleeper_at_the_sleep_threshold() {
+    kinematic_walks_into_a_sleeper(20.0);
+}
+
+/// A box resting on a kinematic platform that rises at 10 px/s under
+/// gravity stays awake for 2 s at `time_to_sleep`.
+fn rides_a_rising_platform(time_to_sleep: f32) {
+    let mut world = seed_world();
+    {
+        let config = world.get_resource_mut::<PhysicsConfig>().unwrap();
+        config.gravity = Vec2::new(0.0, 900.0);
+        config.time_to_sleep = time_to_sleep;
+    }
+    let platform = spawn_kinematic(
+        &mut world,
+        Collider::aabb(Vec2::new(40.0, 8.0)),
+        Vec2::new(0.0, 100.0),
+        Vec2::new(0.0, -10.0),
+    );
+    let rider = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::aabb(Vec2::splat(8.0)),
+        Vec2::new(0.0, 84.2),
+        Vec2::ZERO,
+    );
+    for step in 0..120 {
+        physics_step(&mut world);
+        assert!(
+            !is_sleeping(&world, rider),
+            "slept on the rising platform at step {step} (time_to_sleep {time_to_sleep})"
+        );
+    }
+    let top = world.get::<Position>(platform).unwrap().0.y - 8.0;
+    let bottom = world.get::<Position>(rider).unwrap().0.y + 8.0;
+    assert!(
+        (top - bottom).abs() < 1.0,
+        "the rider left the platform: top {top}, bottom {bottom}"
+    );
+}
+
+#[test]
+fn body_on_a_rising_kinematic_platform_stays_awake() {
+    rides_a_rising_platform(PhysicsConfig::default().time_to_sleep);
+}
+
+#[test]
+fn body_on_a_rising_kinematic_platform_stays_awake_when_time_to_sleep_is_under_a_step() {
+    rides_a_rising_platform(0.01);
+}
+
+#[test]
+fn body_on_a_rising_kinematic_platform_stays_awake_when_time_to_sleep_is_zero() {
+    rides_a_rising_platform(0.0);
+}
+
+#[test]
+fn body_on_a_still_kinematic_body_falls_asleep() {
+    let mut world = seed_world();
+    world.get_resource_mut::<PhysicsConfig>().unwrap().gravity = Vec2::new(0.0, 900.0);
+    spawn_kinematic(
+        &mut world,
+        Collider::aabb(Vec2::new(40.0, 8.0)),
+        Vec2::new(0.0, 100.0),
+        Vec2::ZERO,
+    );
+    let rider = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::aabb(Vec2::splat(8.0)),
+        Vec2::new(0.0, 84.2),
+        Vec2::ZERO,
+    );
+    for _ in 0..150 {
+        physics_step(&mut world);
+    }
+    assert!(
+        is_sleeping(&world, rider),
+        "a still kinematic body kept the rider awake"
+    );
+}
+
+#[test]
+fn persistent_pairs_match_fresh_contacts_with_kinematic_bodies() {
+    use crate::Pcg32;
+
+    let mut checked = 0;
+    for seed in 0..4 {
+        let mut rng = Pcg32::seeded(0x0049 + seed);
+        let mut world = seed_world();
+        let (bottom, top) = spawn_sleeping_stack(&mut world);
+        settle_to_sleep(&mut world, &[bottom, top]);
+        let buffers = world.get_resource_mut::<PhysicsBuffers>().unwrap();
+        buffers.check_pair_contacts = true;
+        buffers.reference_impulses = Some(buffers.impulses.clone());
+        let config = world.get_resource_mut::<PhysicsConfig>().unwrap();
+        config.substeps = [1, 2, 4, 8][seed as usize % 4];
+        config.broadphase_cell_size = [8.0, 16.0, 32.0][seed as usize % 3];
+        for i in 0..30 {
+            let position = Vec2::new(
+                (i % 6) as f32 * 11.0 - 28.0 + rng.next_range(-1.0, 1.0),
+                65.0 - (i / 6) as f32 * 11.0 + rng.next_range(-1.0, 1.0),
+            );
+            let collider = if i % 3 == 0 {
+                Collider::aabb(Vec2::splat(5.0))
+            } else {
+                Collider::circle(5.0)
+            };
+            let speed = rng.next_range(0.0, 80.0);
+            spawn_body(
+                &mut world,
+                RigidBody::dynamic(),
+                collider,
+                position,
+                rng.next_unit_vec2() * speed,
+            );
+        }
+        // Kinematic bodies cross the pile and the sleeping stack, one still.
+        for i in 0..5 {
+            let velocity = if i == 0 {
+                Vec2::ZERO
+            } else {
+                rng.next_unit_vec2() * rng.next_range(20.0, 240.0)
+            };
+            let collider = if i % 2 == 0 {
+                Collider::aabb(Vec2::new(12.0, 4.0))
+            } else {
+                Collider::circle(7.0)
+            };
+            let start = Vec2::new(rng.next_range(-60.0, 60.0), rng.next_range(0.0, 110.0));
+            spawn_kinematic(&mut world, collider, start, velocity);
+        }
+        for _ in 0..40 {
+            physics_step(&mut world);
+            drain_events(&mut world);
+        }
+        checked += world
+            .get_resource::<PhysicsBuffers>()
+            .unwrap()
+            .checked_substeps;
+    }
+    assert_eq!(
+        checked, 600,
+        "every substep must run the equivalence oracle"
+    );
+}
+
+#[test]
+fn collider_less_kinematic_body_moves_by_its_velocity() {
+    let mut world = seed_world();
+    world.get_resource_mut::<PhysicsConfig>().unwrap().gravity = Vec2::new(0.0, 900.0);
+    let velocity = Vec2::new(60.0, -30.0);
+    let loose = world.spawn();
+    world.insert(loose, Position(Vec2::ZERO));
+    world.insert(loose, Velocity(velocity));
+    world.insert(loose, RigidBody::kinematic());
+    for _ in 0..30 {
+        physics_step(&mut world);
+    }
+    let position = world.get::<Position>(loose).unwrap().0;
+    assert!(
+        (position - velocity * 0.5).length() < 1.0e-3,
+        "half a second at {velocity:?} ended at {position:?}"
+    );
+    assert_eq!(world.get::<Velocity>(loose).unwrap().0, velocity);
+}
+
+#[test]
+fn proxy_stays_80_bytes_with_the_kinematic_flag() {
+    assert_eq!(std::mem::size_of::<Proxy>(), 80);
+}
+
+/// Every sensor event sent by the last step, flushing the queue.
+fn drain_sensor_events(world: &mut World) -> Vec<SensorEntered> {
+    let events = world
+        .get_resource_mut::<EventQueue<SensorEntered>>()
+        .unwrap();
+    let sent = events.iter_current().copied().collect();
+    events.flush();
+    sent
+}
+
+fn spawn_sensor(world: &mut World, collider: Collider, position: Vec2, velocity: Vec2) -> Entity {
+    spawn_body(world, RigidBody::sensor(), collider, position, velocity)
+}
+
+fn spawn_static(world: &mut World, collider: Collider, position: Vec2) -> Entity {
+    let entity = world.spawn();
+    world.insert(entity, Position(position));
+    world.insert(entity, collider);
+    world.insert(entity, RigidBody::r#static());
+    entity
+}
+
+/// 16 px tiles, `width` wide, every layer a collision layer.
+fn map_data(width: u32, layers: Vec<Vec<i32>>) -> TilemapData {
+    TilemapData {
+        tile_width: 16,
+        tile_height: 16,
+        width,
+        height: layers[0].len() as u32 / width,
+        tileset: vec!["solid".into()],
+        layers: layers
+            .into_iter()
+            .enumerate()
+            .map(|(index, tiles)| TilemapLayer {
+                name: format!("solid{index}"),
+                kind: LayerKind::Collision,
+                tiles,
+            })
+            .collect(),
+    }
+}
+
+fn spawn_map(
+    world: &mut World,
+    id: &str,
+    origin: Vec2,
+    width: u32,
+    layers: Vec<Vec<i32>>,
+) -> Entity {
+    world
+        .get_resource_mut::<TilemapRegistry>()
+        .unwrap()
+        .insert(id.into(), map_data(width, layers));
+    let map = world.spawn();
+    world.insert(map, TilemapInstance::new(id, origin));
+    map
+}
+
+#[test]
+fn sensor_moves_by_its_velocity_and_bodies_pass_through_it() {
+    let collider = Collider::aabb(Vec2::splat(12.0));
+    let velocity = Vec2::new(60.0, 0.0);
+    let alone = {
+        let mut world = seed_world();
+        let sensor = spawn_sensor(&mut world, collider, Vec2::ZERO, velocity);
+        for _ in 0..60 {
+            physics_step(&mut world);
+        }
+        position_bits(&world, sensor)
+    };
+    let mut world = seed_world();
+    let sensor = spawn_sensor(&mut world, collider, Vec2::ZERO, velocity);
+    let ball = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::circle(10.0),
+        Vec2::new(100.0, 0.0),
+        Vec2::new(-150.0, 0.0),
+    );
+    let mut entered = Vec::new();
+    for step in 0..60 {
+        physics_step(&mut world);
+        assert!(
+            drain_events(&mut world).is_empty(),
+            "a sensor made a contact at step {step}"
+        );
+        entered.extend(drain_sensor_events(&mut world));
+    }
+    assert_eq!(
+        position_bits(&world, sensor),
+        alone,
+        "the ball moved the sensor"
+    );
+    assert_eq!(entered, [SensorEntered::new(sensor, Some(ball))]);
+    let ball_x = world.get::<Position>(ball).unwrap().0.x;
+    assert!(
+        (ball_x + 50.0).abs() < 1.0e-2,
+        "the ball did not pass through: {ball_x}"
+    );
+    assert_eq!(
+        world.get::<Velocity>(ball).unwrap().0,
+        Vec2::new(-150.0, 0.0)
+    );
+}
+
+#[test]
+fn sensor_enters_once_per_overlap_with_every_body_kind_and_a_tile() {
+    let mut world = seed_world();
+    let sensor = spawn_sensor(
+        &mut world,
+        Collider::aabb(Vec2::splat(6.0)),
+        Vec2::new(-20.0, 0.0),
+        Vec2::new(120.0, 0.0),
+    );
+    let dynamic = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::circle(5.0),
+        Vec2::new(20.0, 0.0),
+        Vec2::ZERO,
+    );
+    let kinematic = spawn_kinematic(
+        &mut world,
+        Collider::aabb(Vec2::splat(4.0)),
+        Vec2::new(50.0, 0.0),
+        Vec2::ZERO,
+    );
+    let fixed = spawn_static(
+        &mut world,
+        Collider::aabb(Vec2::splat(4.0)),
+        Vec2::new(80.0, 0.0),
+    );
+    let sleeper = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::circle(5.0),
+        Vec2::new(110.0, 0.0),
+        Vec2::ZERO,
+    );
+    // One solid tile, x 144 to 160 and y -8 to 8.
+    let mut strip = vec![-1; 10];
+    strip[9] = 0;
+    spawn_map(&mut world, "strip", Vec2::new(0.0, -8.0), 10, vec![strip]);
+    let mut entered = Vec::new();
+    let mut asleep_at_entry = false;
+    for _ in 0..120 {
+        physics_step(&mut world);
+        for event in drain_sensor_events(&mut world) {
+            if event.other == Some(sleeper) {
+                asleep_at_entry = is_sleeping(&world, sleeper);
+            }
+            entered.push(event);
+        }
+    }
+    assert_eq!(
+        entered.iter().map(|event| event.other).collect::<Vec<_>>(),
+        [
+            Some(dynamic),
+            Some(kinematic),
+            Some(fixed),
+            Some(sleeper),
+            None
+        ]
+    );
+    assert!(entered.iter().all(|event| event.sensor == sensor));
+    assert!(
+        asleep_at_entry,
+        "the sleeper woke before the sensor reached it"
+    );
+}
+
+#[test]
+fn sensor_enters_again_after_separating() {
+    let mut world = seed_world();
+    let sensor = spawn_sensor(
+        &mut world,
+        Collider::aabb(Vec2::splat(6.0)),
+        Vec2::ZERO,
+        Vec2::new(60.0, 0.0),
+    );
+    let target = spawn_static(
+        &mut world,
+        Collider::aabb(Vec2::splat(4.0)),
+        Vec2::new(20.0, 0.0),
+    );
+    let mut entered = Vec::new();
+    for step in 0..120 {
+        if step == 60 {
+            world.get_mut::<Velocity>(sensor).unwrap().0 = Vec2::new(-60.0, 0.0);
+        }
+        physics_step(&mut world);
+        entered.extend(drain_sensor_events(&mut world));
+    }
+    assert_eq!(entered, [SensorEntered::new(sensor, Some(target)); 2]);
+}
+
+#[test]
+fn sensor_does_not_detect_sensors() {
+    let mut world = seed_world();
+    let first = spawn_sensor(&mut world, Collider::circle(10.0), Vec2::ZERO, Vec2::ZERO);
+    let second = spawn_sensor(
+        &mut world,
+        Collider::aabb(Vec2::splat(8.0)),
+        Vec2::new(5.0, 0.0),
+        Vec2::ZERO,
+    );
+    let body = spawn_static(
+        &mut world,
+        Collider::aabb(Vec2::splat(4.0)),
+        Vec2::new(2.0, 0.0),
+    );
+    physics_step(&mut world);
+    assert_eq!(
+        drain_sensor_events(&mut world),
+        [
+            SensorEntered::new(first, Some(body)),
+            SensorEntered::new(second, Some(body))
+        ]
+    );
+    for _ in 0..10 {
+        physics_step(&mut world);
+        assert!(drain_sensor_events(&mut world).is_empty());
+    }
+}
+
+#[test]
+fn sensor_spawned_overlapping_a_body_reports_it_on_the_first_step() {
+    let mut world = seed_world();
+    let body = spawn_ball(&mut world, Vec2::ZERO);
+    let sensor = world.spawn_with(RigidBodyBundle::sensor(
+        Position::new(3.0, 0.0),
+        Collider::circle(4.0),
+    ));
+    physics_step(&mut world);
+    assert_eq!(
+        drain_sensor_events(&mut world),
+        [SensorEntered::new(sensor, Some(body))]
+    );
+}
+
+#[test]
+fn swapping_which_entity_is_the_sensor_sends_one_event_for_the_new_sensor() {
+    let mut world = seed_world();
+    let a = spawn_sensor(
+        &mut world,
+        Collider::aabb(Vec2::splat(8.0)),
+        Vec2::ZERO,
+        Vec2::ZERO,
+    );
+    let b = spawn_static(
+        &mut world,
+        Collider::aabb(Vec2::splat(8.0)),
+        Vec2::new(4.0, 0.0),
+    );
+    physics_step(&mut world);
+    assert_eq!(
+        drain_sensor_events(&mut world),
+        [SensorEntered::new(a, Some(b))]
+    );
+    *world.get_mut::<RigidBody>(a).unwrap() = RigidBody::r#static();
+    *world.get_mut::<RigidBody>(b).unwrap() = RigidBody::sensor();
+    physics_step(&mut world);
+    assert_eq!(
+        drain_sensor_events(&mut world),
+        [SensorEntered::new(b, Some(a))]
+    );
+    physics_step(&mut world);
+    assert!(drain_sensor_events(&mut world).is_empty());
+}
+
+#[test]
+fn the_only_sensor_turned_into_a_body_and_back_reports_again() {
+    let mut world = seed_world();
+    let sensor = spawn_sensor(&mut world, Collider::circle(6.0), Vec2::ZERO, Vec2::ZERO);
+    let target = spawn_static(
+        &mut world,
+        Collider::aabb(Vec2::splat(4.0)),
+        Vec2::new(5.0, 0.0),
+    );
+    let overlap = [SensorEntered::new(sensor, Some(target))];
+    physics_step(&mut world);
+    assert_eq!(drain_sensor_events(&mut world), overlap);
+    *world.get_mut::<RigidBody>(sensor).unwrap() = RigidBody::r#static();
+    physics_step(&mut world);
+    assert!(drain_sensor_events(&mut world).is_empty());
+    *world.get_mut::<RigidBody>(sensor).unwrap() = RigidBody::sensor();
+    physics_step(&mut world);
+    assert_eq!(drain_sensor_events(&mut world), overlap);
+}
+
+#[test]
+fn sensor_on_a_tile_of_a_moving_map_sends_one_event() {
+    let mut world = seed_world();
+    let map = spawn_map(&mut world, "moving", Vec2::ZERO, 1, vec![vec![0]]);
+    let sensor = spawn_sensor(
+        &mut world,
+        Collider::aabb(Vec2::new(20.0, 4.0)),
+        Vec2::new(8.0, 8.0),
+        Vec2::ZERO,
+    );
+    let mut entered = Vec::new();
+    for _ in 0..10 {
+        physics_step(&mut world);
+        entered.extend(drain_sensor_events(&mut world));
+        world.get_mut::<TilemapInstance>(map).unwrap().origin.x += 0.5;
+    }
+    assert_eq!(entered, [SensorEntered::new(sensor, None)]);
+}
+
+#[test]
+fn sensor_sees_another_layers_tile_at_the_same_cell_as_new() {
+    let mut world = seed_world();
+    spawn_map(&mut world, "layers", Vec2::ZERO, 1, vec![vec![0], vec![-1]]);
+    let sensor = spawn_sensor(
+        &mut world,
+        Collider::circle(4.0),
+        Vec2::new(8.0, 8.0),
+        Vec2::ZERO,
+    );
+    let tile = [SensorEntered::new(sensor, None)];
+    physics_step(&mut world);
+    assert_eq!(drain_sensor_events(&mut world), tile);
+    physics_step(&mut world);
+    assert!(drain_sensor_events(&mut world).is_empty());
+    // The cell's solid tile now comes from the other layer.
+    world
+        .get_resource_mut::<TilemapRegistry>()
+        .unwrap()
+        .insert("layers".into(), map_data(1, vec![vec![-1], vec![0]]));
+    physics_step(&mut world);
+    assert_eq!(drain_sensor_events(&mut world), tile);
+}
+
+#[test]
+fn paused_clock_sends_no_sensor_events() {
+    let mut world = seed_world();
+    let sensor = spawn_sensor(
+        &mut world,
+        Collider::circle(6.0),
+        Vec2::ZERO,
+        Vec2::new(30.0, 0.0),
+    );
+    let target = spawn_static(
+        &mut world,
+        Collider::aabb(Vec2::splat(4.0)),
+        Vec2::new(5.0, 0.0),
+    );
+    physics_step(&mut world);
+    assert_eq!(
+        drain_sensor_events(&mut world),
+        [SensorEntered::new(sensor, Some(target))]
+    );
+    let position = position_bits(&world, sensor);
+    world.get_resource_mut::<Time>().unwrap().advance_frame(0.0);
+    for _ in 0..5 {
+        physics_step(&mut world);
+        assert!(drain_sensor_events(&mut world).is_empty());
+    }
+    assert_eq!(
+        position_bits(&world, sensor),
+        position,
+        "a paused step moved the sensor"
+    );
+    world
+        .get_resource_mut::<Time>()
+        .unwrap()
+        .advance_frame(1.0 / 60.0);
+    physics_step(&mut world);
+    assert!(
+        drain_sensor_events(&mut world).is_empty(),
+        "the pause forgot the pair"
+    );
+}
+
+#[test]
+fn sensor_events_follow_sensor_order_then_index_order() {
+    let mut world = seed_world();
+    let first = spawn_sensor(
+        &mut world,
+        Collider::aabb(Vec2::splat(30.0)),
+        Vec2::new(8.0, 8.0),
+        Vec2::ZERO,
+    );
+    let second = spawn_sensor(
+        &mut world,
+        Collider::circle(30.0),
+        Vec2::new(8.0, 8.0),
+        Vec2::ZERO,
+    );
+    let left = spawn_static(
+        &mut world,
+        Collider::aabb(Vec2::splat(4.0)),
+        Vec2::new(-10.0, 0.0),
+    );
+    let right = spawn_static(
+        &mut world,
+        Collider::aabb(Vec2::splat(4.0)),
+        Vec2::new(20.0, 0.0),
+    );
+    spawn_map(&mut world, "pair", Vec2::ZERO, 2, vec![vec![0, 0]]);
+    physics_step(&mut world);
+    let expected: Vec<_> = [first, second]
+        .into_iter()
+        .flat_map(|sensor| {
+            [Some(left), Some(right), None, None].map(|other| SensorEntered::new(sensor, other))
+        })
+        .collect();
+    assert_eq!(drain_sensor_events(&mut world), expected);
+}
+
+#[test]
+fn identical_runs_send_identical_sensor_events() {
+    use crate::Pcg32;
+
+    let run = || {
+        let mut world = seed_world();
+        world.get_resource_mut::<PhysicsConfig>().unwrap().gravity = Vec2::new(0.0, 900.0);
+        let mut rng = Pcg32::seeded(0x5E);
+        spawn_map(
+            &mut world,
+            "ground",
+            Vec2::new(-80.0, 100.0),
+            10,
+            vec![vec![0; 10]],
+        );
+        for _ in 0..20 {
+            let position = Vec2::new(rng.next_range(-70.0, 70.0), rng.next_range(-60.0, 60.0));
+            let velocity = rng.next_unit_vec2() * rng.next_range(0.0, 120.0);
+            let collider = Collider::circle(rng.next_range(3.0, 7.0));
+            spawn_body(
+                &mut world,
+                RigidBody::dynamic(),
+                collider,
+                position,
+                velocity,
+            );
+        }
+        for _ in 0..4 {
+            let position = Vec2::new(rng.next_range(-70.0, 70.0), rng.next_range(-60.0, 90.0));
+            let velocity = rng.next_unit_vec2() * rng.next_range(20.0, 90.0);
+            let collider = Collider::aabb(Vec2::splat(rng.next_range(6.0, 20.0)));
+            spawn_sensor(&mut world, collider, position, velocity);
+        }
+        let mut entered = Vec::new();
+        for _ in 0..90 {
+            physics_step(&mut world);
+            entered.extend(drain_sensor_events(&mut world));
+            drain_events(&mut world);
+        }
+        entered
+    };
+    let first = run();
+    assert!(first.len() > 4, "only {} sensor events", first.len());
+    assert_eq!(first, run());
+}
+
+#[test]
+fn collider_less_sensor_moves_by_its_velocity() {
+    let mut world = seed_world();
+    world.get_resource_mut::<PhysicsConfig>().unwrap().gravity = Vec2::new(0.0, 900.0);
+    let velocity = Vec2::new(60.0, -30.0);
+    let loose = world.spawn();
+    world.insert(loose, Position(Vec2::ZERO));
+    world.insert(loose, Velocity(velocity));
+    world.insert(loose, RigidBody::sensor());
+    for _ in 0..30 {
+        physics_step(&mut world);
+    }
+    let position = world.get::<Position>(loose).unwrap().0;
+    assert!(
+        (position - velocity * 0.5).length() < 1.0e-3,
+        "half a second at {velocity:?} ended at {position:?}"
+    );
+    assert_eq!(world.get::<Velocity>(loose).unwrap().0, velocity);
+}
+
+/// Substeps run by one step of a frame of `dt` under `config`, in a world
+/// `spawn` fills.
+fn substeps_in_one_step(config: PhysicsConfig, dt: f32, spawn: impl Fn(&mut World)) -> usize {
+    let mut world = seed_world();
+    *world.get_resource_mut::<PhysicsConfig>().unwrap() = config;
+    spawn(&mut world);
+    world.get_resource_mut::<Time>().unwrap().advance_frame(dt);
+    physics_step(&mut world);
+    world.get_resource::<PhysicsBuffers>().unwrap().substeps_run
+}
+
+#[test]
+fn kinematic_world_runs_more_substeps_on_steps_over_a_sixtieth() {
+    let default = PhysicsConfig::default();
+    assert_eq!(default.substeps, 4);
+    let bounded = PhysicsConfig {
+        max_step_dt: 0.05,
+        ..default
+    };
+    let single = PhysicsConfig {
+        substeps: 1,
+        ..default
+    };
+    // A still kinematic body counts as a moving one does.
+    for velocity in [Vec2::new(30.0, 0.0), Vec2::ZERO] {
+        let spawn = |world: &mut World| {
+            spawn_ball(world, Vec2::new(60.0, 0.0));
+            spawn_kinematic(
+                world,
+                Collider::aabb(Vec2::splat(12.0)),
+                Vec2::ZERO,
+                velocity,
+            );
+        };
+        for (config, dt, expected) in [
+            (default, 1.0 / 120.0, 4),
+            (default, 1.0 / 60.0, 4),
+            (default, 1.0 / 45.0, 6),
+            (default, 1.0 / 30.0, 8),
+            (default, 0.1, 8),
+            (bounded, 0.05, 8),
+            (single, 1.0 / 30.0, 2),
+        ] {
+            assert_eq!(
+                substeps_in_one_step(config, dt, spawn),
+                expected,
+                "{} substeps, bound {}, dt {dt}, kinematic velocity {velocity:?}",
+                config.substeps,
+                config.max_step_dt
+            );
+        }
+    }
+}
+
+#[test]
+fn world_without_a_kinematic_proxy_keeps_its_substeps_on_long_steps() {
+    let spawn = |world: &mut World| {
+        spawn_static(
+            world,
+            Collider::aabb(Vec2::new(100.0, 8.0)),
+            Vec2::new(0.0, 50.0),
+        );
+        spawn_map(world, "floor", Vec2::new(-32.0, 70.0), 4, vec![vec![0; 4]]);
+        spawn_ball(world, Vec2::ZERO);
+        spawn_sensor(
+            world,
+            Collider::circle(8.0),
+            Vec2::new(40.0, 0.0),
+            Vec2::new(30.0, 0.0),
+        );
+        // A kinematic body without a collider is no proxy.
+        let loose = world.spawn();
+        world.insert(loose, Position(Vec2::new(-40.0, 0.0)));
+        world.insert(loose, Velocity(Vec2::new(30.0, 0.0)));
+        world.insert(loose, RigidBody::kinematic());
+    };
+    for dt in [1.0 / 30.0, 0.1] {
+        assert_eq!(
+            substeps_in_one_step(PhysicsConfig::default(), dt, spawn),
+            4,
+            "dt {dt}"
+        );
+    }
+}
+
+/// A kinematic box walks at 10 px/s for 4 s, at frame dt `dt`, into a ball
+/// asleep 1 px ahead of it with a row of `sleepers` more ahead of that ball,
+/// each asleep 1 px from the last. The pressed ball never sinks more than
+/// 1 px into the box; returns the step at which each of the row first woke.
+fn kinematic_press_into_sleepers(dt: f32, sleepers: usize) -> Vec<Option<usize>> {
+    let mut world = seed_world();
+    let body = spawn_kinematic(
+        &mut world,
+        Collider::aabb(Vec2::splat(12.0)),
+        Vec2::ZERO,
+        Vec2::ZERO,
+    );
+    let pressed = spawn_ball(&mut world, Vec2::new(23.0, 0.0));
+    let row: Vec<Entity> = (1..=sleepers)
+        .map(|i| spawn_ball(&mut world, Vec2::new(23.0 + 21.0 * i as f32, 0.0)))
+        .collect();
+    for _ in 0..60 {
+        physics_step(&mut world);
+    }
+    assert!(
+        is_sleeping(&world, pressed) && row.iter().all(|&ball| is_sleeping(&world, ball)),
+        "the idle row never slept"
+    );
+    world.get_mut::<Velocity>(body).unwrap().0 = Vec2::new(10.0, 0.0);
+    world.get_resource_mut::<Time>().unwrap().advance_frame(dt);
+    let mut woke = vec![None; sleepers];
+    for step in 0..(4.0 / dt).round() as usize {
+        physics_step(&mut world);
+        drain_events(&mut world);
+        let face = world.get::<Position>(body).unwrap().0.x + 12.0;
+        let sink = face - (world.get::<Position>(pressed).unwrap().0.x - 10.0);
+        assert!(
+            sink <= 1.0,
+            "at dt {dt} the pressed ball sank {sink} px into the box at step {step}"
+        );
+        for (first, &ball) in woke.iter_mut().zip(&row) {
+            if first.is_none() && !is_sleeping(&world, ball) {
+                *first = Some(step);
+            }
+        }
+    }
+    woke
+}
+
+#[test]
+fn kinematic_press_wakes_the_sleeper_ahead_of_the_pressed_body() {
+    for dt in [1.0 / 60.0, 1.0 / 30.0] {
+        let woke = kinematic_press_into_sleepers(dt, 1);
+        assert!(woke[0].is_some(), "at dt {dt} the sleeper ahead never woke");
+    }
+}
+
+#[test]
+fn kinematic_press_wakes_a_row_of_sleepers_in_order() {
+    for dt in [1.0 / 60.0, 1.0 / 30.0] {
+        let woke = kinematic_press_into_sleepers(dt, 3);
+        assert!(
+            woke.iter().all(Option::is_some),
+            "at dt {dt} a sleeper never woke: {woke:?}"
+        );
+        assert!(
+            woke.windows(2).all(|pair| pair[0] <= pair[1]),
+            "at dt {dt} the row woke out of order: {woke:?}"
+        );
+    }
+}
+
+/// A ball moving at 10 px/s, half the sleep threshold, arrives at a ball
+/// asleep ahead of it; the sleeper stays asleep for 2 s.
+fn slow_arrival_leaves_the_sleeper_asleep(world: &mut World, mover: Entity, sleeper: Entity) {
+    for _ in 0..60 {
+        physics_step(world);
+    }
+    assert!(
+        is_sleeping(world, mover) && is_sleeping(world, sleeper),
+        "the idle bodies never slept"
+    );
+    world.get_mut::<Velocity>(mover).unwrap().0 = Vec2::new(10.0, 0.0);
+    let start = world.get::<Position>(mover).unwrap().0.x;
+    for step in 0..120 {
+        physics_step(world);
+        drain_events(world);
+        assert!(
+            is_sleeping(world, sleeper),
+            "the slow arrival woke the sleeper at step {step}"
+        );
+    }
+    assert!(
+        world.get::<Position>(mover).unwrap().0.x > start + 0.5,
+        "the slow body never moved"
+    );
+}
+
+#[test]
+fn slow_body_without_a_kinematic_press_leaves_a_sleeper_asleep() {
+    let mut world = seed_world();
+    let mover = spawn_ball(&mut world, Vec2::new(23.0, 0.0));
+    let sleeper = spawn_ball(&mut world, Vec2::new(44.0, 0.0));
+    slow_arrival_leaves_the_sleeper_asleep(&mut world, mover, sleeper);
+}
+
+#[test]
+fn still_kinematic_body_carries_no_wake_through_a_body_touching_it() {
+    // Both boxes rest on a still kinematic platform under gravity.
+    let mut world = seed_world();
+    world.get_resource_mut::<PhysicsConfig>().unwrap().gravity = Vec2::new(0.0, 900.0);
+    spawn_kinematic(
+        &mut world,
+        Collider::aabb(Vec2::new(100.0, 8.0)),
+        Vec2::new(0.0, 100.0),
+        Vec2::ZERO,
+    );
+    let rest = |world: &mut World, x: f32| {
+        spawn_body(
+            world,
+            RigidBody::dynamic(),
+            Collider::aabb(Vec2::splat(8.0)),
+            Vec2::new(x, 84.2),
+            Vec2::ZERO,
+        )
+    };
+    let mover = rest(&mut world, 0.0);
+    let sleeper = rest(&mut world, 17.0);
+    slow_arrival_leaves_the_sleeper_asleep(&mut world, mover, sleeper);
 }

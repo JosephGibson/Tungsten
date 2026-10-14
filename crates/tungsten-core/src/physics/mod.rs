@@ -1,12 +1,19 @@
 //! Hand-rolled 2D physics: AABB/circle, uniform grid, warm-started soft
 //! contact solver, fixed substeps with speculative-contact CCD, island
-//! sleeping.
+//! sleeping. Bodies are static, dynamic or kinematic, or sensors
+//! ([`BodyKind`]): a kinematic body moves by its velocity alone and pushes
+//! dynamic bodies; a sensor moves the same way, collides with nothing and
+//! reports what it begins to overlap ([`SensorEntered`]). Ray and shape
+//! casts, overlaps and nearest-surface queries read the last step's bodies,
+//! sensors and tiles ([`cast_ray`], [`cast_shape`], [`overlap`],
+//! [`nearest`]).
 
 pub mod broadphase;
 pub mod collision;
 pub mod components;
 pub mod events;
 mod plugin;
+mod query;
 pub mod step;
 
 pub use broadphase::{ProxyId, SpatialGrid};
@@ -18,11 +25,12 @@ pub use collision::{
 pub use components::{
     BodyKind, Collider, Position, PrevPosition, RigidBody, RigidBodyBundle, Shape, Velocity,
 };
-pub use events::CollisionEvent;
+pub use events::{CollisionEvent, SensorEntered};
 pub use plugin::{
     PHYSICS_PREV_SNAPSHOT, PHYSICS_STEP, PHYSICS_SYNC, PhysicsPlugin, physics_prev_snapshot,
     physics_sync,
 };
+pub use query::{SpatialFilter, SpatialHit, cast_ray, cast_shape, nearest, overlap};
 pub use step::{PhysicsBuffers, physics_step, wake};
 
 use glam::Vec2;
@@ -36,13 +44,23 @@ pub struct PhysicsConfig {
     /// primary CCD, so no per-speed substep amplification exists; more
     /// substeps buy solver stiffness (the contact-hertz cap scales with the
     /// substep rate), not tunneling safety.
+    ///
+    /// A step whose world holds a kinematic body with a collider, moving or
+    /// still, runs `clamp(⌈substeps · dt · 60 − 0.001⌉, substeps,
+    /// 2 · substeps)` substeps, `dt` being the step after `max_step_dt`:
+    /// `substeps` at 1/60 s and shorter, and with the default 4, six at
+    /// 1/45 s and eight at 1/30 s. No substep is then longer than a 1/60 s
+    /// step's up to the default bound, so contacts against the kinematic
+    /// body keep their 1/60 s stiffness. Every other world runs `substeps`.
     pub substeps: u32,
     /// Longest simulated time, in seconds, one `physics_step` call advances
     /// (D-094); a longer frame dt is clamped to it and the rest of the frame
     /// is not simulated. Protects the contact-hertz cap: at the default
     /// 1/30 s over 4 substeps the substep never exceeds 1/120 s, so
-    /// `contact_hertz` keeps its 30 Hz however slow the frame. `<= 0` means
-    /// unbounded.
+    /// `contact_hertz` keeps its 30 Hz however slow the frame; a world with a
+    /// kinematic body runs that step in up to twice `substeps` (see
+    /// `substeps`), which a larger bound or none cannot raise further.
+    /// `<= 0` means unbounded.
     pub max_step_dt: f32,
     /// Biased velocity iterations per substep; one bias-free relax iteration
     /// always follows (D-063). Substeps-over-iterations (D-064): the default

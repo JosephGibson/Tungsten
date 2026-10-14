@@ -1,4 +1,5 @@
-//! Physics components: AABB/circle, static/dynamic, no rotation.
+//! Physics components: AABB/circle, static, dynamic and kinematic bodies and
+//! sensors, no rotation.
 
 use glam::Vec2;
 
@@ -80,11 +81,30 @@ impl Collider {
     }
 }
 
-/// Static or integrated body.
+/// How a body moves and what its contacts do. A match outside this crate
+/// needs a wildcard arm, since later kinds are additions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum BodyKind {
+    /// Never moves; the immovable side of its contacts with dynamic bodies.
     Static,
+    /// Moved by gravity, its `Velocity` and its contacts; sleeps in islands.
     Dynamic,
+    /// Moved by its `Velocity` alone, each substep and without gravity; a
+    /// contact never moves it. It pushes dynamic bodies as an immovable one
+    /// and has no contact or event with static or kinematic bodies or tiles,
+    /// which reach it through casts and queries. Moving at any speed, it wakes
+    /// a sleeping body it touches or closes on and keeps awake the bodies
+    /// touching it; it never sleeps. A `Position` write teleports it: no
+    /// contact sees the jump and it wakes nothing.
+    Kinematic,
+    /// Moves as a kinematic body does, but takes part in no contact: bodies
+    /// pass through it and no `CollisionEvent` names it. At the end of each
+    /// step it sends a [`SensorEntered`](crate::physics::SensorEntered) for
+    /// every static, dynamic or kinematic body or solid tile it has begun to
+    /// overlap; a body it passes within one step goes unseen, and sensors do
+    /// not detect sensors. It never sleeps.
+    Sensor,
 }
 
 /// Body mass/restitution state.
@@ -116,6 +136,31 @@ impl RigidBody {
         }
     }
 
+    /// Kinematic body ([`BodyKind::Kinematic`]): inverse mass 0, restitution
+    /// 0. It moves by its `Velocity`, which the step never changes, and
+    /// pushes the dynamic bodies in its way; their `CollisionEvent` names
+    /// the dynamic body as `a`.
+    #[must_use]
+    pub fn kinematic() -> Self {
+        Self {
+            kind: BodyKind::Kinematic,
+            inv_mass: 0.0,
+            restitution: 0.0,
+        }
+    }
+
+    /// Sensor ([`BodyKind::Sensor`]): inverse mass 0, restitution 0. It moves
+    /// by its `Velocity` and reports the bodies and tiles it begins to
+    /// overlap.
+    #[must_use]
+    pub fn sensor() -> Self {
+        Self {
+            kind: BodyKind::Sensor,
+            inv_mass: 0.0,
+            restitution: 0.0,
+        }
+    }
+
     #[must_use]
     pub fn with_mass(mut self, mass: f32) -> Self {
         self.inv_mass = if mass > 0.0 { 1.0 / mass } else { 0.0 };
@@ -133,10 +178,11 @@ impl RigidBody {
 /// `world.spawn_with(RigidBodyBundle::dynamic(position, collider))`, or
 /// `.with((Player, transform))` for the entity's other components.
 ///
-/// A dynamic body gets `Position`, [`PrevPosition`] at the same point,
-/// `Velocity`, `Collider` and `RigidBody`; a static one the same without
-/// `Velocity`. So every bundle body is drawn interpolated; a game that wants
-/// a body without history spawns its components as a tuple.
+/// A dynamic or kinematic body or a sensor gets `Position`,
+/// [`PrevPosition`] at the same point, `Velocity`, `Collider` and
+/// `RigidBody`; a static one the same without `Velocity`. So every bundle
+/// body is drawn interpolated; a game that wants a body without history
+/// spawns its components as a tuple.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RigidBodyBundle {
     /// Where the body is.
@@ -145,7 +191,7 @@ pub struct RigidBodyBundle {
     pub velocity: Option<Velocity>,
     /// The body's shape.
     pub collider: Collider,
-    /// Static or dynamic, with its mass and restitution.
+    /// Its kind, with its mass and restitution.
     pub body: RigidBody,
 }
 
@@ -169,6 +215,30 @@ impl RigidBodyBundle {
             velocity: None,
             collider,
             body: RigidBody::r#static(),
+        }
+    }
+
+    /// A kinematic body at rest ([`RigidBody::kinematic`]): it moves once its
+    /// `Velocity` is set, by that velocity alone.
+    #[must_use]
+    pub fn kinematic(position: Position, collider: Collider) -> Self {
+        Self {
+            position,
+            velocity: Some(Velocity(Vec2::ZERO)),
+            collider,
+            body: RigidBody::kinematic(),
+        }
+    }
+
+    /// A sensor at rest ([`RigidBody::sensor`]): it moves once its `Velocity`
+    /// is set, by that velocity alone.
+    #[must_use]
+    pub fn sensor(position: Position, collider: Collider) -> Self {
+        Self {
+            position,
+            velocity: Some(Velocity(Vec2::ZERO)),
+            collider,
+            body: RigidBody::sensor(),
         }
     }
 

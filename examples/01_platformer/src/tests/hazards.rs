@@ -52,12 +52,7 @@ fn audio_controls_and_damage_flash_shake_remain_wired() {
     world
         .get_resource_mut::<EventQueue<CollisionEvent>>()
         .unwrap()
-        .send(CollisionEvent {
-            a: player,
-            b: Some(ball),
-            normal: Vec2::X,
-            penetration: 1.0,
-        });
+        .send(CollisionEvent::new(player, Some(ball), Vec2::X, 1.0));
     world.insert(player, crate::gameplay::Health::default());
     crate::gameplay::hazard_contacts(world);
     assert_eq!(
