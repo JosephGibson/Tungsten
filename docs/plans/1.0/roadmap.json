@@ -585,8 +585,8 @@
       "group": "data-gameplay",
       "kind": "release",
       "level": "C",
-      "title": "Movers, spawners and controllers",
-      "summary": "The top-down mover the acceptance game uses and the platformer controller example 01 uses (ground check, coyote time, jump buffer, variable jump), plus a per-entity state machine.",
+      "title": "Controllers and gameplay helpers",
+      "summary": "The top-down mover the acceptance game uses and the platformer controller for example 01 (ground check, coyote time, jump buffer, variable jump), plus health with a hit flash, trigger zones, a path follower and a per-entity state machine.",
       "note": null,
       "src": ["docs/plans/1.0/criteria.md §8.4 (W13)"],
       "slug": "controllers-helpers",
@@ -1074,8 +1074,8 @@
       "text": "Controllers: anything beyond ground check, coyote time, jump buffer and variable jump?",
       "by": "W13c starts",
       "default": "Nothing beyond those four; slopes, one-way platforms and ladders go to the backlog",
-      "state": "open",
-      "answer": ""
+      "state": "default",
+      "answer": "Nothing beyond those four; slopes, one-way platforms and ladders in the 1.x backlog (D-158)"
     },
     {
       "id": "q20",
