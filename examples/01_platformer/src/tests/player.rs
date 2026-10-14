@@ -61,12 +61,7 @@ fn player_becomes_grounded_when_collision_event_lists_player_as_b() {
     world
         .get_resource_mut::<EventQueue<CollisionEvent>>()
         .unwrap()
-        .send(CollisionEvent {
-            a: support,
-            b: Some(player),
-            normal: Vec2::Y,
-            penetration: 1.0,
-        });
+        .send(CollisionEvent::new(support, Some(player), Vec2::Y, 1.0));
 
     ground_detection(&mut world);
 

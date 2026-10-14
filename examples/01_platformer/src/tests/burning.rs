@@ -23,12 +23,7 @@ fn contact(world: &mut World, a: tungsten::core::Entity, b: tungsten::core::Enti
     world
         .get_resource_mut::<EventQueue<CollisionEvent>>()
         .unwrap()
-        .send(CollisionEvent {
-            a,
-            b: Some(b),
-            normal: Vec2::X,
-            penetration: 0.1,
-        });
+        .send(CollisionEvent::new(a, Some(b), Vec2::X, 0.1));
 }
 
 #[test]

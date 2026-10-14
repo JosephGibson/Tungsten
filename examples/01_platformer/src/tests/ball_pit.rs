@@ -219,12 +219,7 @@ fn floor_contact(world: &mut World, e: tungsten::core::Entity) {
     world
         .get_resource_mut::<EventQueue<CollisionEvent>>()
         .unwrap()
-        .send(CollisionEvent {
-            a: e,
-            b: None,
-            normal: -Vec2::Y,
-            penetration: 0.1,
-        });
+        .send(CollisionEvent::new(e, None, -Vec2::Y, 0.1));
 }
 
 #[test]
@@ -272,12 +267,7 @@ fn relative_body_impacts_work_on_b_side_and_dense_contacts_remain_bounded() {
     world
         .get_resource_mut::<EventQueue<CollisionEvent>>()
         .unwrap()
-        .send(CollisionEvent {
-            a,
-            b: Some(b),
-            normal: -Vec2::X,
-            penetration: 0.1,
-        });
+        .send(CollisionEvent::new(a, Some(b), -Vec2::X, 0.1));
     small_ball_impacts(world);
     assert_eq!(world.query::<(Entity, &TransientEmitter)>().count(), 1);
     for e in world

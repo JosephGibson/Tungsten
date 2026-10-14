@@ -122,7 +122,7 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-024` | Phase 1 close-out observations were recorded to guide Phase 2. |
 | `D-029` | Audio mixer stays hand-rolled; no `kira`. |
 | `D-030` | The M12 ECS rewrite required an explicit go/no-go decision. |
-| `D-033` | Hand-rolled core physics; position separate from rendering. Dt limit amended by `D-088`, `D-094`. |
+| `D-033` | Hand-rolled core physics; position separate from rendering. Dt limit amended by `D-088`, `D-094`. Amended by `D-154`: every body kind reaches tile layers. |
 | `D-035` | Manifest merge order is call-site order, usually shared manifest first then example-local. |
 | `D-036` | Archetypal ECS rewrite is intentional and benchmark-validated. Its storage description is amended by `D-083`. |
 | `D-039` | Deferred structural changes flush before extract. Amended by `D-084`: typed queues and reused buffer. |
@@ -138,20 +138,20 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-056` | TweenComplete event and deferred terminal removal. Amended by `D-099`: same-frame replacement survives. |
 | `D-062` | Reuse spatial broadphase across substeps. Supersedes `D-033` rebuild; staging/budget/prefilter superseded by `D-075`; layout amended by `D-080`. |
 | `D-063` | Warm-started soft constraints. Map rebuild superseded by `D-076`; substep order amended by `D-092`. |
-| `D-064` | Speculative CCD, four substeps, seam face masks. Supersedes `D-033` CCD clause. Amended by `D-092`: solver-injected travel. |
-| `D-065` | Deterministic island sleeping, explicit wake paths. Amended by `D-082`: parallel arrays replace rebuilt keyed map. |
-| `D-066` | Dense SoA gather/writeback around substeps. Event-order clause superseded by `D-075`. |
+| `D-064` | Speculative CCD, four substeps, seam face masks. Supersedes `D-033` CCD clause. Amended by `D-092`: solver-injected travel. Amended by `D-154`: up to twice the substeps in a kinematic world. |
+| `D-065` | Deterministic island sleeping, explicit wake paths. Amended by `D-082`: parallel arrays replace rebuilt keyed map. Amended by `D-154`: kinematic wake through the pressed island. |
+| `D-066` | Dense SoA gather/writeback around substeps. Event-order clause superseded by `D-075`. Amended by `D-154`: sensor rows in the writeback zip. |
 | `D-067` | Physics stays serial; parallel prototype dropped on measured costs; threading rule stands. |
 | `D-075` | Persistent pairs under travel budgets. Supersedes `D-062` staging/prefilter and `D-066` event order. Budget rebuild/radius superseded by `D-081`; sweep amended by `D-080`. |
 | `D-076` | Warm starts follow persistent pair indices. Supersedes `D-063` map rebuild. Amended by `D-081`: repair by pair key. |
 | `D-080` | Statics sweep grid, direct compact cell table, compact flags. Amends `D-062` layout and `D-075` sweep note. |
-| `D-081` | Repair pairs only for tripped proxies; full rebuild for wakes/large changes. Supersedes `D-075` rule (a)/radius; amends `D-076`. |
+| `D-081` | Repair pairs only for tripped proxies; full rebuild for wakes/large changes. Supersedes `D-075` rule (a)/radius; amends `D-076`. Amended by `D-154`: kinematic budgets. |
 | `D-082` | Sleep arrays parallel to proxies, rebuilt only on body-sequence change. Amends `D-065` keyed map/rebuild. |
 | `D-083` | Sorted columns, unboxed moves and slot-table access. Amends `D-036` storage; accepted costs recorded here. |
 | `D-084` | Typed command queues, function-pointer removes, reused buffer and grouped inserts. Amends `D-039`; accepted regression recorded here. |
 | `D-088` | Wall dt cap and smoke pin stand. Amends `D-033`. Amended by `D-094`: physics bound; `D-110`: harness uncapped; `D-129`: Time/fixed loop. |
-| `D-092` | Arrival pass clamps solver-pushed bodies against reached neighbours. Amends `D-063`, `D-064`; residuals/accepted costs recorded here. |
-| `D-094` | Direct physics step bound defaults to 1/30 s. Amends `D-088`, `D-033`. Amended by `D-129`: bounded fixed loop; direct-call bound stands. |
+| `D-092` | Arrival pass clamps solver-pushed bodies against reached neighbours. Amends `D-063`, `D-064`; residuals/accepted costs recorded here. Amended by `D-154`: kinematic bodies are immovable members. |
+| `D-094` | Direct physics step bound defaults to 1/30 s. Amends `D-088`, `D-033`. Amended by `D-129`: bounded fixed loop; direct-call bound stands. Amended by `D-154`: a kinematic world's 1/30 s step runs eight substeps. |
 | `D-099` | Flush removes a completed tween only while still pending, sparing replacements. Amends `D-056`. |
 | `D-100` | Camera smoothing is a per-1/60 s rate, independent of frame rate. |
 | `D-110` | Harness runs the real frame body without devices, behind testing feature. Amends `D-088`, `D-107`. Amended by `D-125`: UiHarness. |
@@ -174,6 +174,7 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-146` | A zero-step frame on a stopped clock (game dt 0, real dt above 0) drops the fixed view's input edges: a press made while paused or at scale 0 reaches no step; a zero-dt frame keeps them. Amends `D-137`. |
 | `D-149` | W1 M3 UI input routing: `ui_route` in `PreUpdate` routes the ordered raw stream against the last layout (clip-stack hit testing, modal roots, capture, hover, visible-focus keyboard, the `ui_*` actions, directional focus with repeat), publishes `UiEvent`s and feeds the opt-in `RoutedInput`; press ownership keeps keys from sticking; the exit check reads the routed view. Amends `D-125`. Extends `D-040`, `D-045`, `D-088`, `D-128`, `D-144`. |
 | `D-153` | W16a landed: `ComponentRegistry` by name and type; scene `components` checked at load against the World with field paths; strict scene keys and transform bounds; four engine components registered by their owners; no `Component` marker; `serde_path_to_error` (`D-015` rule 3). Amends `D-046`, `D-103`. |
+| `D-154` | W6a landed: kinematic bodies and sensors (`SensorEntered` per pair); spatial queries and casts over the last step; a kinematic world runs up to twice the substeps past 1/60 s and its press wakes through the island. Amends `D-033`, `D-064`, `D-065`, `D-066`, `D-081`, `D-092`, `D-094`. |
 
 ## When To Open a Decision
 

@@ -6,6 +6,25 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.68.0] - 2026-10-13
+
+Summary: M49, W6a (plan archived at `docs/plans/archive/1.0/phase6-milestone-49-kinematic-sensors-queries.md`): kinematic bodies, sensors and spatial queries in core physics. A kinematic body moves by its velocity, pushes dynamic bodies and is never pushed, and its contact events name the dynamic body; a sensor reports each body or solid tile it begins to overlap as `SensorEntered`; ray and shape casts, overlaps and nearest-surface queries read the last step's bodies, sensors and tiles from `&World`. A probe of 500 bodies pressing on a kinematic body set two rules: a world with a kinematic body runs a step past 1/60 s in up to twice the substeps, and a moving kinematic body's wake reaches through the island it presses (`D-154`, amending `D-033`, `D-064`, `D-065`, `D-066`, `D-081`, `D-092` and `D-094`). The determinism and containment hashes, the eight row digests and `gpu-visual.png` are unchanged.
+
+### Added
+
+- **Kinematic bodies** (`D-154`): `BodyKind::Kinematic`, `RigidBody::kinematic` and `RigidBodyBundle::kinematic`. A kinematic body moves by its `Velocity` each substep without gravity, pushes dynamic bodies from inverse mass 0, passes static and kinematic bodies and tiles, and wakes a sleeper it touches or closes on at any speed; a body touching a moving one keeps its island awake.
+- **Sensors** (`D-154`): `BodyKind::Sensor`, `RigidBody::sensor`, `RigidBodyBundle::sensor` and `SensorEntered { sensor, other }`, sent once for each pair a sensor begins to overlap at the step's end (`other: None` for a solid tile); `PhysicsPlugin` registers its queue.
+- **Spatial queries** (`D-154`): `cast_ray`, `cast_shape`, `overlap` and `nearest`, with `SpatialFilter` and `SpatialHit`, over an index of the last step's final positions built at most once per step; a tile face its solid neighbours hide is never hit.
+- **Scene and overlay**: `rigid_body` entries take `"kinematic"` and `"sensor"`; `PhysicsDebugOverlay` outlines them in `color_kinematic` and `color_sensor`.
+- **Crowd probe**: three release-only tests in `crates/tungsten-core/tests/physics_containment.rs`, 48 cases over shapes, spawn orders and frame dts.
+
+### Changed
+
+- **Physics API** (`D-154`): `BodyKind` and `CollisionEvent` are `#[non_exhaustive]`; code outside the crate builds an event with `CollisionEvent::new`, whose `a` is the body the contact pushed.
+- **Kinematic contacts** (`D-154`, amending `D-064`, `D-065` and `D-094`): a world with a kinematic body that has a collider runs `clamp(⌈substeps · dt · 60 − 0.001⌉, substeps, 2 · substeps)` substeps, eight at 1/30 s, and a moving kinematic body's island wakes the sleepers ahead of it at any speed; every other world, the benchmark rows among them, keeps `substeps`.
+- **Records**: `DESIGN.md`'s Physics section; known issues gain the sensor, query and kinematic limits; the LLM index routes `core/physics/query.rs`; the benchmarks' G1 and G2 landed; four break-ledger rows.
+- **Critique cost** (`tungsten-milestone` step 7, skeleton §9): a second plan round drops §9 and the evidence log from the artifact and passes a focus file of round 1's changes and rejections; §9 records the footer's output cap, command count and output size. The user-level `critique` gains `--focus-file`, `--dry-run`, a per-run command trace and a 4,000-token cap on each command's output, and its repository prompt asks for narrow, batched reads.
+
 ## [0.67.0] - 2026-10-13
 
 Summary: M48, W16a (plan archived at `docs/plans/archive/1.0/phase6-milestone-48-component-registry.md`): scene entries name registered components. A `ComponentRegistry` World resource maps names to serde types; a game registers with `App::register_component`, a plugin through `World::register_component`; a scene entry's `"components"` object is checked at load against the World, its errors naming the file, the entry and the field, and spawns with the entry; the engine registers `rigid_body`, `light`, `parallax_layer` and `squash_stretch` where their readers live, and scene files reject unknown keys (`D-153`, amending `D-046` and `D-103`). The determinism and containment hashes, `DefaultPlugins`' schedule and the `just visual` comparisons are unchanged.

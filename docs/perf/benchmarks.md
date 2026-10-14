@@ -477,8 +477,8 @@ Not approved; each benchmark works without them. Approving one is a separate dec
 
 | ID | Proposal | Would enable |
 | --- | --- | --- |
-| G1 | Kinematic bodies | Moving paddles and spinners in `physics`, moving platforms in `integrated` |
-| G2 | Sensor colliders | Real bin sensors in `physics` instead of solid floors read through collision events |
+| G1 | Kinematic bodies | Moving paddles and spinners in `physics`, moving platforms in `integrated`. The engine side landed in 0.68 (M49, `D-154`); a benchmark that uses it is a workload change, with a decision of its own |
+| G2 | Sensor colliders | Real bin sensors in `physics` instead of solid floors read through collision events. Sensors landed in 0.68 (M49, `D-154`); a benchmark that uses them is a workload change, with a decision of its own |
 | G3 | More than 16 lights | A `lights` sweep past 16 |
 | G4 | GPU particle simulation | GPU-side particles |
 | T1 | `particles_ms` and `tweens_ms` in `FrameTimings` and the `frame:` line | Closed by M38 (`D-133`): the particle and tween stages are named `post_update` systems timed in the `systems:` line, so `particles` owns them and `integrated` reads them there; no `frame:` field was added |

@@ -92,7 +92,8 @@ pub(super) const PAIR_MARGIN_SLOPS: f32 = 2.0;
 /// tripped proxy in this many awake bodies rebuilds instead (D-081).
 const REBUILD_ONE_IN: usize = 4;
 
-/// `PhysicsBuffers::pair_flags` bit: awake dynamic body at the last build.
+/// `PhysicsBuffers::pair_flags` bit: a moving proxy (an awake dynamic or a
+/// kinematic body) at the last build.
 pub(super) const PAIR_AWAKE: u8 = 1;
 /// `pair_flags` bit: member of the repair in progress.
 const PAIR_TRIPPED: u8 = 1 << 1;
@@ -109,7 +110,8 @@ pub(super) fn gravity_allowance(config: &PhysicsConfig, sub_dt: f32, time_left: 
     0.5 * config.gravity.length() * (time_left - sub_dt).max(0.0) * (time_left + 2.0 * sub_dt)
 }
 
-/// Pair inflation of an awake dynamic body moving at `speed` (D-081).
+/// Pair inflation of a moving body at `speed` (D-081); a kinematic body
+/// passes a `gravity_allowance` of 0.
 fn awake_pair_radius(
     config: &PhysicsConfig,
     speed: f32,
@@ -146,7 +148,8 @@ pub(super) fn refresh_pairs(
 /// Build pairs from fresh per-proxy travel-inflated AABBs (D-075, radius per
 /// D-081). The inflation includes the speculative slack on both sides of a
 /// pair, so neither the query nor the overlap prefilter needs a
-/// grid-staleness margin.
+/// grid-staleness margin. A kinematic proxy initiates as an awake one does;
+/// it moves, so it is not counted among the statics.
 pub(super) fn build_pairs(
     config: &PhysicsConfig,
     sub_dt: f32,
@@ -181,14 +184,18 @@ pub(super) fn build_pairs(
     let static_radius = 2.0 * config.linear_slop;
     let gravity_allowance = gravity_allowance(config, sub_dt, time_left);
     for (id, proxy) in proxies.iter().enumerate() {
-        static_grid.statics += usize::from(!proxy.is_dynamic);
-        let awake = proxy.is_dynamic && !proxy.sleeping;
+        static_grid.statics += usize::from(!proxy.is_dynamic && !proxy.kinematic);
+        let awake = proxy.moves();
         let radius = if awake {
             awake_pair_radius(
                 config,
                 proxy.velocity.length(),
                 time_left,
-                gravity_allowance,
+                if proxy.kinematic {
+                    0.0
+                } else {
+                    gravity_allowance
+                },
             )
         } else {
             static_radius
@@ -228,10 +235,11 @@ pub(super) fn build_pairs(
     }
 }
 
-/// Collect, in proxy order, the awake dynamic proxies whose budget does not
-/// cover the coming substep, and return the awake dynamic count. Solver
-/// impulses and gravity can change velocity after a build, so predicted
-/// travel alone is insufficient: accumulated actual travel must fit as well.
+/// Collect, in proxy order, the moving proxies whose budget does not cover
+/// the coming substep, and return the moving count. Solver impulses and
+/// gravity can change velocity after a build, so predicted travel alone is
+/// insufficient: accumulated actual travel must fit as well. A kinematic
+/// proxy's velocity cannot change within a frame, so it never trips.
 pub(super) fn collect_tripped(
     config: &PhysicsConfig,
     sub_dt: f32,
@@ -247,7 +255,7 @@ pub(super) fn collect_tripped(
     let slack = 2.0 * config.linear_slop;
     let mut awake = 0;
     for (index, (proxy, budget)) in proxies.iter().zip(pair_budgets.iter()).enumerate() {
-        if !proxy.is_dynamic || proxy.sleeping {
+        if !proxy.moves() {
             continue;
         }
         awake += 1;
@@ -313,7 +321,11 @@ fn repair_pairs(config: &PhysicsConfig, sub_dt: f32, time_left: f32, buffers: &m
             config,
             proxy.velocity.length(),
             time_left,
-            gravity_allowance,
+            if proxy.kinematic {
+                0.0
+            } else {
+                gravity_allowance
+            },
         );
         let mut aabb = proxy.world_aabb();
         aabb.half_extents += Vec2::splat(radius);

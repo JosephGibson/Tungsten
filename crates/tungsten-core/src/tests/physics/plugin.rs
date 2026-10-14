@@ -135,6 +135,13 @@ fn check_error(world: &World, value: &serde_json::Value) -> String {
 }
 
 #[test]
+fn physics_plugin_registers_the_sensor_event_queue() {
+    let world = physics_world();
+    assert!(world.has_event::<SensorEntered>());
+    assert!(world.has_event::<CollisionEvent>());
+}
+
+#[test]
 fn physics_plugin_registers_rigid_body_on_a_bare_world() {
     let world = physics_world();
     let registry = world.resource::<crate::component_registry::ComponentRegistry>();
@@ -207,6 +214,72 @@ fn a_static_rigid_body_has_no_velocity_unless_one_is_given() {
 }
 
 #[test]
+fn a_kinematic_rigid_body_spawns_with_a_zero_velocity_unless_one_is_given() {
+    let mut world = physics_world();
+    let shape = serde_json::json!({ "kind": "aabb", "half_extents": [8.0, 4.0] });
+    let still = spawn_body(
+        &mut world,
+        Vec2::new(3.0, 4.0),
+        &serde_json::json!({ "kind": "kinematic", "shape": shape }),
+    );
+    assert_eq!(world.get::<Velocity>(still), Some(&Velocity::new(0.0, 0.0)));
+    assert_eq!(world.get::<RigidBody>(still), Some(&RigidBody::kinematic()));
+    assert_eq!(world.get::<Position>(still), Some(&Position::new(3.0, 4.0)));
+    assert_eq!(
+        world.get::<PrevPosition>(still),
+        Some(&PrevPosition(Vec2::new(3.0, 4.0)))
+    );
+    let moving = spawn_body(
+        &mut world,
+        Vec2::ZERO,
+        &serde_json::json!({ "kind": "kinematic", "shape": shape, "velocity": [-5.0, 2.0] }),
+    );
+    assert_eq!(
+        world.get::<Velocity>(moving),
+        Some(&Velocity::new(-5.0, 2.0))
+    );
+}
+
+#[test]
+fn a_sensor_rigid_body_spawns_with_a_zero_velocity_and_accepts_restitution() {
+    let mut world = physics_world();
+    let sensor = spawn_body(
+        &mut world,
+        Vec2::ZERO,
+        &serde_json::json!({
+            "kind": "sensor",
+            "shape": { "kind": "circle", "radius": 6.0 },
+            "restitution": 0.5
+        }),
+    );
+    assert_eq!(
+        world.get::<Velocity>(sensor),
+        Some(&Velocity::new(0.0, 0.0))
+    );
+    assert_eq!(
+        world.get::<RigidBody>(sensor),
+        Some(&RigidBody::sensor().with_restitution(0.5))
+    );
+    assert_eq!(world.get::<Collider>(sensor), Some(&Collider::circle(6.0)));
+}
+
+#[test]
+fn mass_on_a_kinematic_or_sensor_rigid_body_fails_naming_mass() {
+    let world = physics_world();
+    for kind in ["kinematic", "sensor"] {
+        let message = check_error(
+            &world,
+            &serde_json::json!({
+                "kind": kind,
+                "shape": { "kind": "circle", "radius": 4.0 },
+                "mass": 1.0
+            }),
+        );
+        assert!(message.contains("`mass`"), "{kind}: {message}");
+    }
+}
+
+#[test]
 fn rigid_body_rejects_bad_values_naming_the_field_or_value() {
     let world = physics_world();
     let circle = serde_json::json!({ "kind": "circle", "radius": 4.0 });
@@ -262,8 +335,16 @@ fn rigid_body_rejects_bad_values_naming_the_field_or_value() {
             "unknown field `sides`",
         ),
         (
-            serde_json::json!({ "kind": "kinematic", "shape": circle }),
-            "unknown variant `kinematic`",
+            serde_json::json!({ "kind": "kinematic", "shape": circle, "mass": 2.0 }),
+            "`mass` is for dynamic bodies only",
+        ),
+        (
+            serde_json::json!({ "kind": "sensor", "shape": circle, "mass": 2.0 }),
+            "`mass` is for dynamic bodies only",
+        ),
+        (
+            serde_json::json!({ "kind": "ghost", "shape": circle }),
+            "unknown variant `ghost`",
         ),
         (
             serde_json::json!({ "kind": "dynamic", "shape": { "kind": "capsule", "radius": 4.0 } }),

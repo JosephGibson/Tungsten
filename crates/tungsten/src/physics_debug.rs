@@ -1,15 +1,27 @@
 //! D-042 physics debug overlay reads `Position + Collider`, not `Transform`,
 //! drawn at the point `physics_sync` draws the body (`D-137`).
 
-use tungsten_core::physics::{Collider, Position, PrevPosition, Shape};
+use tungsten_core::physics::{BodyKind, Collider, Position, PrevPosition, RigidBody, Shape};
 use tungsten_core::{ActionMap, DebugDraw, Entity, InputState, Time, World};
 
-/// Physics debug overlay config.
+/// Physics debug overlay config. A kinematic body or a sensor is outlined in
+/// its kind's colour, whatever its shape; every other collider in its
+/// shape's colour.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PhysicsDebugOverlay {
+    /// Outlines are drawn.
     pub enabled: bool,
+    /// Box colliders of static and dynamic bodies and of colliders without
+    /// a body.
     pub color_aabb: [f32; 4],
+    /// Circle colliders of static and dynamic bodies and of colliders
+    /// without a body.
     pub color_circle: [f32; 4],
+    /// Kinematic bodies, either shape.
+    pub color_kinematic: [f32; 4],
+    /// Sensors, either shape.
+    pub color_sensor: [f32; 4],
+    /// Outline width.
     pub thickness: f32,
 }
 
@@ -19,6 +31,8 @@ impl Default for PhysicsDebugOverlay {
             enabled: false,
             color_aabb: [0.0, 1.0, 0.0, 0.9],
             color_circle: [0.0, 0.8, 1.0, 0.9],
+            color_kinematic: [1.0, 0.55, 0.0, 0.9],
+            color_sensor: [1.0, 0.25, 0.9, 0.9],
             thickness: 1.5,
         }
     }
@@ -60,6 +74,8 @@ pub(crate) fn physics_debug_emit_system(world: &mut World) {
     }
     let color_aabb = overlay.color_aabb;
     let color_circle = overlay.color_circle;
+    let color_kinematic = overlay.color_kinematic;
+    let color_sensor = overlay.color_sensor;
     let thickness = overlay.thickness;
     let alpha = world
         .get_resource::<Time>()
@@ -67,20 +83,29 @@ pub(crate) fn physics_debug_emit_system(world: &mut World) {
         .map(Time::alpha);
 
     let mut emits: Vec<DebugEmit> = Vec::new();
-    for (_entity, position, collider, prev) in
-        world.query::<(Entity, &Position, &Collider, Option<&PrevPosition>)>()
-    {
+    for (_entity, position, collider, prev, body) in world.query::<(
+        Entity,
+        &Position,
+        &Collider,
+        Option<&PrevPosition>,
+        Option<&RigidBody>,
+    )>() {
         let drawn = match (alpha, prev) {
             (Some(alpha), Some(prev)) => prev.0 + (position.0 - prev.0) * alpha,
             _ => position.0,
         };
         let center = drawn + collider.offset;
+        let kind_color = match body.map(|body| body.kind) {
+            Some(BodyKind::Kinematic) => Some(color_kinematic),
+            Some(BodyKind::Sensor) => Some(color_sensor),
+            _ => None,
+        };
         match collider.shape {
             Shape::Aabb { half_extents } => {
                 emits.push(DebugEmit::Aabb {
                     min: center - half_extents,
                     max: center + half_extents,
-                    color: color_aabb,
+                    color: kind_color.unwrap_or(color_aabb),
                     thickness,
                 });
             }
@@ -88,7 +113,7 @@ pub(crate) fn physics_debug_emit_system(world: &mut World) {
                 emits.push(DebugEmit::Circle {
                     center,
                     radius,
-                    color: color_circle,
+                    color: kind_color.unwrap_or(color_circle),
                     thickness,
                 });
             }
