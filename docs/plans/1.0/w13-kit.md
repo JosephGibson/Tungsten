@@ -7,7 +7,7 @@
 - **ordered steps:** Set at graduation. Candidates and their order: [implementation plan](implementation-plan.md) §4.
 - **done-when:** Set at graduation. Sketch: [criteria](criteria.md) §8.4.
 
-Skeleton. The scoping text stays in [criteria](criteria.md) §8.4 until this workstream graduates ([conventions](README.md#conventions)). Revised 2026-10-03 on `db1177c`: the definition gate's tier timing and Q24's answer. Revised 2026-10-05 on `01f9c55`, uncommitted: tiers proposed from the acceptance game's mechanics rows. Revised 2026-10-06, uncommitted: the frame-loop gate confirmed them and answered Q21 (`D-132`). Revised 2026-10-14, uncommitted: W13a and W13b landed in 0.69 (M50, `D-155`): `tungsten-kit` on core alone, re-exported as `tungsten::kit` behind a default feature, with opt-in plugins per item and harness tests in the umbrella; its value types keep private fields behind constructors in place of `#[non_exhaustive]`. Revised again the same day, uncommitted: the spawner landed in 0.71 (M51, `D-157`), under the same rules: `Spawner` and `SpawnerPlugin`, whose `spawner_tick` spawns a prefab at its entity's position once per interval of game time through the command buffer.
+Skeleton. The scoping text stays in [criteria](criteria.md) §8.4 until this workstream graduates ([conventions](README.md#conventions)). Revised 2026-10-03 on `db1177c`: the definition gate's tier timing and Q24's answer. Revised 2026-10-05 on `01f9c55`, uncommitted: tiers proposed from the acceptance game's mechanics rows. Revised 2026-10-06, uncommitted: the frame-loop gate confirmed them and answered Q21 (`D-132`). Revised 2026-10-14, uncommitted: W13a and W13b landed in 0.69 (M50, `D-155`): `tungsten-kit` on core alone, re-exported as `tungsten::kit` behind a default feature, with opt-in plugins per item and harness tests in the umbrella; its value types keep private fields behind constructors in place of `#[non_exhaustive]`. Revised again the same day, uncommitted: the spawner landed in 0.71 (M51, `D-157`), under the same rules: `Spawner` and `SpawnerPlugin`, whose `spawner_tick` spawns a prefab at its entity's position once per interval of game time through the command buffer. Revised a third time the same day, uncommitted: W13c and W13d landed in 0.72 (M52, `D-158`): the platformer controller and the top-down mover on kinematic bodies, health and `damage` with a hit flash, trigger zones, a path follower and a per-entity state machine, the body drivers and window counts in `FixedUpdate` before `physics_step`. Example 01's player did not move onto the platformer controller (a route corner only overlap resolution passed), so the platformer controller and the path follower wait for W12b's move for their user.
 
 ## Placement
 
@@ -44,4 +44,13 @@ Each waits for a user (M50's plan, archived at `docs/plans/archive/1.0/phase6-mi
 From M51 (`docs/plans/archive/1.0/phase6-milestone-51-prefabs-tiled-objects.md`), each waiting for a user:
 
 - A `spawner` scene component, so a level file places a `Spawner`; the acceptance game's generator places its spawners in code (M51 Q16).
-- State ownership of spawned entities: a `Spawner`'s entities carry no `SceneEntity`, so a state's exit leaves them ([known issues](../../known-issues.md)); W13c and W13d, which add more spawning helpers, or the acceptance game's first gap.
+- State ownership of spawned entities: a `Spawner`'s entities carry no `SceneEntity`, so a state's exit leaves them ([known issues](../../known-issues.md)); the acceptance game's first gap.
+
+From M52 (`docs/plans/archive/1.0/phase6-milestone-52-controllers-helpers.md`):
+
+- Example 01's player onto the platformer controller, with W12b: the `gate_step` corner first ([known issues](../../known-issues.md)); the path follower's user is example 01's moving platforms, also W12b's.
+- Slopes, one-way platforms and ladders: the [backlog](backlog-1.x.md) (Q22).
+- A controller that pushes dynamic bodies, or a body-kind query filter: W6b's layers and masks first, a push option when a game asks.
+- Scene components for the controllers and helpers, when a level file needs one; a game's own component builds the kit's meanwhile (`D-153`).
+- `damage_flash` for a game outside this repository: the template or W9b's guide.
+- Sensor exit events, when a zone needs leaving (`D-154`).

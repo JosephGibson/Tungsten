@@ -225,7 +225,6 @@ Open questions keep their numbers; answered ones are under [Answered](#answered)
 - **12.** Which performance budgets gate 1.0?
 - **15.** Which settings does the engine persist itself, and does a corrupt user file reset to defaults (proposed) or stop the game as an invalid `tungsten.json` does?
 - **20.** CLI: `check` and `package` must and `new` should (proposed)? Argument parsing and archive writing by hand or by crate (§8.5)?
-- **22.** Controllers: anything beyond ground check, coyote time, jump buffer and variable jump, such as slopes, one-way platforms or ladders? *Default, which W13c's plan takes (`D-150`): nothing beyond those four; slopes, one-way platforms and ladders go to the backlog.*
 
 ### Answered
 
@@ -247,6 +246,7 @@ Answered on 2026-10-03: a game lives in its own repository on a git dependency, 
 - **18.** Where do examples run from (§8.3)? *Answered 2026-10-03: their own folders, like a copied template.*
 - **19.** Engine-owned text. *Answered 2026-10-03: embed JetBrains Mono; every game carries its OFL notice.*
 - **21.** Hierarchy: physics bodies on root entities only for 1.0 (proposed)? *Answered 2026-10-06 at the frame-loop gate: yes; the acceptance game places its orbiting blades each fixed step (`D-132`).*
+- **22.** Controllers: anything beyond ground check, coyote time, jump buffer and variable jump, such as slopes, one-way platforms or ladders? *Answered 2026-10-14 by its default, which M52 took (`D-150`): nothing beyond those four; slopes, one-way platforms and ladders are in the [backlog](backlog-1.x.md) (`D-158`).*
 - **23.** Closing order (§8.8). *Answered 2026-10-03: C1 runs before the freeze, so fixes that need API changes still land.*
 - **24.** Kit stability: inside the 1.0 promise, or a tier of its own (§8.4)? *Answered 2026-10-03 at the definition gate: inside the promise, with `#[non_exhaustive]` on kit settings structs (`D-103`).*
 

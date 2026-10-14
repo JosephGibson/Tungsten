@@ -6,6 +6,24 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.72.0] - 2026-10-14
+
+Summary: M52, W13c and W13d (plan archived at `docs/plans/archive/1.0/phase6-milestone-52-controllers-helpers.md`): the kit's character controllers and gameplay helpers, a platformer controller and a top-down mover on kinematic bodies, health and damage with an invulnerability window and a hit flash, trigger zones, a path follower and a per-entity state machine, with the systems that drive a body or count a window in `fixed_update` before `physics_step` (`D-158`). Example 01's player stays its own: its move onto the platformer controller stopped at the plan's stop condition, since the route test found a corner (`gate_step` to `gate_crest`) that only the dynamic solver's push-out passed. No core, render or umbrella runtime file changes; the physics hashes, the benchmark digests and the pixel references are unchanged.
+
+### Added
+
+- **Platformer controller** (`D-158`): `PlatformerController` and `PlatformerControllerPlugin` (`platformer_controller`): run, a ground check, coyote time, a jump buffer and variable jump height, with `launch`, `push` and `lock_input`, moving a kinematic body by casts that slide along walls, land on floors and ride a kinematic ground; a jump lies on the exact parabola at each step.
+- **Top-down mover**: `TopDownMover` and `TopDownMoverPlugin` (`top_down_mover`), sliding along walls and stopping at bodies.
+- **Health and the hit flash**: `Health`, `damage`, `Hit`, `Damaged`, `HitFlash` and `HealthPlugin`, the windows counted by the fixed step (`health_tick`) and the flash drawn through the `damage_flash` material after the tweens (`hit_flash_tick`), restoring the sprite's own material and override block.
+- **Trigger zones**: `TriggerZone<Z, T>` and `TriggerEntered<Z, T>`, over the step's `SensorEntered` and keyed by the game's own component types.
+- **Path follower**: `PathFollower`, stopping, looping or ping-pong and eased per segment, and `PathFollowerPlugin` (`path_follow`).
+- **State machine**: `StateMachine<S>` and `StateMachinePlugin<S>`, with enter, exit and update hooks per state.
+
+### Changed
+
+- **The kit's stages** (`D-158` amends `D-155`): a kit system that drives a body or counts a window runs in `FixedUpdate` after the history snapshot and before `physics_step`, and a trigger zone's after the step.
+- **Records**: `DESIGN.md`'s Controllers and Gameplay Helpers section; the LLM index's kit row; known issues gain the controllers' recorded limits and example 01's route corner; the backlog gains slopes, one-way platforms and ladders; criteria Q22 answered by its default; the W13 file's follow-ups, the break ledger's addition row and the roadmap's `w13cd` stop.
+
 ## [0.71.0] - 2026-10-14
 
 Summary: M51, W16b (plan archived at `docs/plans/archive/1.0/phase6-milestone-51-prefabs-tiled-objects.md`): prefab files in a `prefabs` manifest section, spawned by ID at once or through the command buffer; Tiled object layers whose object classes name prefabs, their properties written over the prefabs' components; the asset-checked registration form with the engine's `particle_emitter` and `tilemap` components on it; a `#[non_exhaustive]` `TilemapData` with a builder for maps built in code; and the kit's spawner (`D-157`, amending `D-032` and `D-153`). The template's player and example 01's ten ambient emitters spawn from prefabs. The determinism and containment hashes, the `integrated`, `gpu` and `gpu-throughput` digests, `gpu-visual.png`, the post-stack, transition and UI overlay references, `DefaultPlugins`' and the template's schedules and `api/tungsten-render.txt` are unchanged.
