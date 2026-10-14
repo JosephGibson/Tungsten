@@ -166,6 +166,17 @@ impl TilemapData {
 
         let mut layers: Vec<TilemapLayer> = Vec::new();
         for tl in &tiled.layers {
+            // Skipped with its group, a collision layer would go unnoticed.
+            if tl.layer_type == "group" {
+                return Err(TilemapError::Invalid {
+                    path,
+                    message: format!(
+                        "group layer '{}' is not supported; move its layers to the top level",
+                        tl.name
+                    ),
+                });
+            }
+            // Object and image layers carry nothing a tilemap draws.
             if tl.layer_type != "tilelayer" {
                 continue;
             }

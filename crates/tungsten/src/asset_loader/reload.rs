@@ -286,8 +286,14 @@ pub fn reload_font(id: &str, path: &Path, renderer: &mut Renderer) -> anyhow::Re
         }
     };
 
-    renderer.reload_font(id, data);
-    log::info!("Hot-reloaded font '{id}'");
+    if renderer.reload_font(id, data) {
+        log::info!("Hot-reloaded font '{id}'");
+    } else {
+        log::error!(
+            "Hot reload font '{id}': '{}' holds no face; keeping the previous font",
+            path.display()
+        );
+    }
     Ok(())
 }
 

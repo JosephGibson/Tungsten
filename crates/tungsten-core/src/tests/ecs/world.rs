@@ -1172,6 +1172,40 @@ fn flush_insert_run_on_dead_entity_drops_its_values() {
 }
 
 #[test]
+fn a_call_that_despawns_a_later_pending_spawn_drops_its_inserts() {
+    use std::rc::Rc;
+
+    struct Held(#[allow(dead_code)] Rc<()>);
+    struct Keep;
+
+    // Every pending spawn exists, empty, before the replay, so a "clear the
+    // level" call sees the spawn recorded after it and despawns it; that
+    // spawn's insert run then reached a dead entity and panicked.
+    fn clear_level(world: &mut World, _: Entity) {
+        let doomed: Vec<Entity> = world.query_filtered::<Entity, Without<Keep>>().collect();
+        for entity in doomed {
+            world.despawn(entity);
+        }
+    }
+
+    let tracker = Rc::new(());
+    let mut world = World::new();
+    let player = world.spawn();
+    world.insert(player, Keep);
+    let mut buffer = CommandBuffer::new();
+    buffer.call(player, clear_level);
+    let pending = buffer.spawn();
+    buffer.insert_pending(pending, Held(tracker.clone()));
+    buffer.insert_pending(pending, Position { x: 1.0, y: 2.0 });
+    world.flush(buffer);
+
+    assert_eq!(world.entity_count(), 1);
+    assert!(world.is_alive(player));
+    assert_eq!(Rc::strong_count(&tracker), 1);
+    assert_eq!(world.query::<&Position>().count(), 0);
+}
+
+#[test]
 fn flush_reusing_empties_the_buffer_and_keeps_its_storage() {
     let mut world = World::new();
     let mut buffer = CommandBuffer::new();

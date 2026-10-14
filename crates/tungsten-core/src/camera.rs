@@ -67,9 +67,12 @@ impl CameraBounds {
         let min_y = self.min.y - offset_min.y;
         let max_x = (self.max.x - offset_max.x).max(min_x);
         let max_y = (self.max.y - offset_max.y).max(min_y);
+        // `max` and `min`, not `clamp`, whose assert fails on a NaN bound: a
+        // NaN rotation leaves the axis unclamped, a NaN minimum clamps it from
+        // above only, and a NaN maximum pins it to the minimum, as before.
         Vec2::new(
-            position.x.clamp(min_x, max_x),
-            position.y.clamp(min_y, max_y),
+            position.x.max(min_x).min(max_x),
+            position.y.max(min_y).min(max_y),
         )
     }
 }

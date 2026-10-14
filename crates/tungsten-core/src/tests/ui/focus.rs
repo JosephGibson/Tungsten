@@ -461,3 +461,60 @@ fn hiding_or_collapsing_a_scope_restores_the_focus_it_was_entered_from() {
     tree.set_visibility(holder, Visibility::Hidden);
     assert_eq!(tree.focused(), None);
 }
+
+#[test]
+fn disabling_a_container_disables_what_is_inside_it() {
+    // `D-125`: traversal skips disabled nodes and their descendants, and
+    // disabling the focused node or an ancestor clears it.
+    let (mut tree, _root, [a, b, c], panel) = menu();
+    assert!(tree.focus(b));
+    tree.set_hovered(Some(b));
+    tree.set_pressed(Some(b));
+    tree.set_enabled(panel, false);
+    assert_eq!(tree.focused(), None, "disabling an ancestor clears focus");
+    assert_eq!(tree.hovered(), None);
+    assert_eq!(tree.pressed(), None);
+    assert!(tree.enabled(b), "the widget's own flag is unchanged");
+    assert!(!tree.can_focus(b));
+    assert!(!tree.focus(b));
+    assert_eq!(tree.focus_next(), Some(a));
+    assert_eq!(tree.focus_next(), Some(c), "tab skips the disabled panel");
+    assert_eq!(tree.focus_next(), Some(a));
+    assert_eq!(tree.focus_prev(), Some(c));
+
+    tree.set_enabled(panel, true);
+    assert!(tree.can_focus(b));
+    assert_eq!(tree.focus_prev(), Some(b));
+}
+
+#[test]
+fn closing_a_popup_with_a_scope_inside_restores_the_focus_from_before_it() {
+    // `D-149`: hiding a scope restores the focus recorded on entering it.
+    // With a scope nested in a popup, the inner scope's record or one
+    // pointing inside the popup won, and focus was lost.
+    let (mut tree, _root, [a, _b, _c], _panel) = menu();
+    let popup = tree.add_root(UiLayer::GamePopup, LayoutStyle::default());
+    let ok = tree.button(popup, "ok");
+    let group = tree.panel(popup, LayoutStyle::default());
+    tree.set_focus_scope(group, true);
+    let x = tree.button(group, "x");
+    settle(&mut tree);
+    assert!(tree.focus(a));
+    assert!(tree.focus(ok));
+    assert!(tree.focus(x));
+    tree.set_visibility(popup, Visibility::Hidden);
+    assert_eq!(tree.focused(), Some(a), "the newest record that can focus");
+
+    // Coming back out of the inner scope records nothing for the popup.
+    tree.set_visibility(popup, Visibility::Visible);
+    assert!(tree.focus(ok));
+    assert!(tree.focus(x));
+    assert!(tree.focus(ok));
+    tree.set_visibility(popup, Visibility::Hidden);
+    assert_eq!(tree.focused(), Some(a));
+
+    tree.set_visibility(popup, Visibility::Visible);
+    assert!(tree.focus(x));
+    tree.remove(popup);
+    assert_eq!(tree.focused(), Some(a));
+}

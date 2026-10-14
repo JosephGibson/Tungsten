@@ -466,7 +466,9 @@ pub fn physics_step(world: &mut World) {
     if sleep_enabled {
         // Gather leaves `sleeping = false` on every proxy; this flags the
         // proxies of persistent sleepers for the frame.
-        sleep_frame_start(&mut buffers);
+        // A sleeper within the speculative slack of a support that changed
+        // wakes; one resting on it sits closer.
+        sleep_frame_start(&mut buffers, 4.0 * config.linear_slop);
     }
     // Island union-find over this frame's touching contacts (D-065).
     buffers.island_parent.clear();

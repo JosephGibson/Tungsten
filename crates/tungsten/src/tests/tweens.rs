@@ -245,3 +245,22 @@ fn replacement_tween_queued_before_completion_survives_flush() {
     assert_eq!(tween.duration, 1.0);
     assert!(!tween.pending_remove);
 }
+
+#[test]
+fn a_duration_written_past_new_is_sanitised() {
+    // `Tween`'s fields are public, so `duration` can skip `Tween::new`'s
+    // clamp: a negative or NaN one reached `f32::clamp`'s assert every
+    // frame, and 0 wrote 0 / 0 into the transform.
+    for duration in [-1.0, f32::NAN, 0.0, f32::INFINITY] {
+        let mut world = make_world(0.016);
+        let mut tween =
+            Tween::new(1.0, Easing::Linear).with_channel(TweenChannel::ColorA { from: 0, to: 255 });
+        tween.duration = duration;
+        let entity = spawn_fading_sprite(&mut world, tween);
+        tween_tick_system(&mut world);
+        flush(&mut world);
+        let sprite = world.get::<Sprite>(entity).expect("sprite survives");
+        assert_eq!(sprite.color[3], 255, "{duration}: finishes at once");
+        assert!(world.get::<Tween>(entity).is_none(), "{duration}: removed");
+    }
+}

@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use tungsten_core::assets::{
     AtlasPage, FilterMode, PackInput, PackResult, PackedSprite, ResolvedManifest, TextureHandle,
-    UvRect, pack_shelf,
+    UvRect, oversized, pack_shelf,
 };
 use tungsten_core::{AssetRegistry, World};
 use tungsten_render::Renderer;
@@ -231,6 +231,27 @@ fn upload_pages(
     }
 }
 
+/// The pack inputs of `decoded`, and why they cannot pack when one is larger
+/// than a page of `max_dim` with the 1 px padding holds.
+fn pack_inputs(decoded: &[Decoded], max_dim: u32) -> (Vec<PackInput<'_>>, Option<String>) {
+    let inputs: Vec<PackInput<'_>> = decoded
+        .iter()
+        .map(|d| PackInput {
+            id: d.id.as_str(),
+            width: d.width,
+            height: d.height,
+        })
+        .collect();
+    let too_large = oversized(&inputs, max_dim, 1).map(|input| {
+        let side = max_dim.saturating_sub(2);
+        format!(
+            "sprite '{}' ({}x{}) is larger than an atlas page holds ({side}x{side} px)",
+            input.id, input.width, input.height
+        )
+    });
+    (inputs, too_large)
+}
+
 /// UV of a packed rect with the half-texel inset; assumes no mipmaps.
 fn packed_uv(packed: &PackedSprite, page: AtlasPage) -> UvRect {
     let (pw, ph) = (page.width as f32, page.height as f32);
@@ -275,14 +296,8 @@ fn build_atlas_for_filter(
         return Vec::new();
     }
 
-    let inputs: Vec<PackInput<'_>> = decoded
-        .iter()
-        .map(|d| PackInput {
-            id: d.id.as_str(),
-            width: d.width,
-            height: d.height,
-        })
-        .collect();
+    // `load_sprites` refused oversized sprites before calling this.
+    let (inputs, _) = pack_inputs(decoded, max_dim);
     let pack = pack_shelf(&inputs, max_dim, 1);
     let by_id: HashMap<&str, &Decoded> = decoded.iter().map(|d| (d.id.as_str(), d)).collect();
 
@@ -380,6 +395,11 @@ pub fn load_sprites(
     }
 
     let max_dim = renderer.max_2d_texture_dimension();
+    for decoded in [&decoded_nearest, &decoded_linear] {
+        if let (_, Some(why)) = pack_inputs(decoded, max_dim) {
+            anyhow::bail!("Failed to pack sprites: {why}");
+        }
+    }
     let n_sprites = decoded_nearest.len() + decoded_linear.len();
 
     // Borrow split: `AtlasRegistry` plus `AssetRegistry`.
@@ -649,14 +669,11 @@ pub fn rebuild_atlas_for_filter(
     }
 
     let max_dim = renderer.max_2d_texture_dimension();
-    let inputs: Vec<PackInput<'_>> = decoded
-        .iter()
-        .map(|d| PackInput {
-            id: d.id.as_str(),
-            width: d.width,
-            height: d.height,
-        })
-        .collect();
+    let (inputs, too_large) = pack_inputs(&decoded, max_dim);
+    if let Some(why) = too_large {
+        log::error!("Rebuild {filter:?} atlas: {why}; keeping previous atlas");
+        return Ok(());
+    }
     let pack = pack_shelf(&inputs, max_dim, 1);
 
     let mut atlas_registry = world

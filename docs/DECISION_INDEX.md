@@ -139,7 +139,7 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-062` | Reuse spatial broadphase across substeps. Supersedes `D-033` rebuild; staging/budget/prefilter superseded by `D-075`; layout amended by `D-080`. |
 | `D-063` | Warm-started soft constraints. Map rebuild superseded by `D-076`; substep order amended by `D-092`. |
 | `D-064` | Speculative CCD, four substeps, seam face masks. Supersedes `D-033` CCD clause. Amended by `D-092`: solver-injected travel. Amended by `D-154`: up to twice the substeps in a kinematic world. |
-| `D-065` | Deterministic island sleeping, explicit wake paths. Amended by `D-082`: parallel arrays replace rebuilt keyed map. Amended by `D-154`: kinematic wake through the pressed island. |
+| `D-065` | Deterministic island sleeping, explicit wake paths. Amended by `D-082`: parallel arrays replace rebuilt keyed map. Amended by `D-154`: kinematic wake through the pressed island. Amended by `D-156`: a changed static or tile support wakes the islands near it; an island sleeps only after a frame below the threshold. |
 | `D-066` | Dense SoA gather/writeback around substeps. Event-order clause superseded by `D-075`. Amended by `D-154`: sensor rows in the writeback zip. |
 | `D-067` | Physics stays serial; parallel prototype dropped on measured costs; threading rule stands. |
 | `D-075` | Persistent pairs under travel budgets. Supersedes `D-062` staging/prefilter and `D-066` event order. Budget rebuild/radius superseded by `D-081`; sweep amended by `D-080`. |
@@ -176,6 +176,7 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-153` | W16a landed: `ComponentRegistry` by name and type; scene `components` checked at load against the World with field paths; strict scene keys and transform bounds; four engine components registered by their owners; no `Component` marker; `serde_path_to_error` (`D-015` rule 3). Amends `D-046`, `D-103`. |
 | `D-154` | W6a landed: kinematic bodies and sensors (`SensorEntered` per pair); spatial queries and casts over the last step; a kinematic world runs up to twice the substeps past 1/60 s and its press wakes through the island. Amends `D-033`, `D-064`, `D-065`, `D-066`, `D-081`, `D-092`, `D-094`. |
 | `D-155` | W13a and W13b landed: `tungsten-kit` on core alone, re-exported as `tungsten::kit` behind a default feature; opt-in plugins for an animated sprite, lifetimes, despawn outside a region or the view and a sound per event, `cursor_to_world`; a positions-only hierarchy propagated after the physics sync and after the tweens, bodies on roots; engine system names in core; `CameraState::screen_to_world`. Amends `D-006`, `D-107`, `D-128`, `D-133`. |
+| `D-156` | A static or tile support that goes, moves or changes wakes every sleeping island within the speculative slack of it, found by comparing the supports recorded while anything slept; an island sleeps only after a frame with every member below the threshold, so `time_to_sleep <= 0` sleeps no moving body. Hashes unchanged. Amends `D-065`. |
 
 ## When To Open a Decision
 

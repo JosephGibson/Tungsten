@@ -90,13 +90,29 @@ fn nearest(
 
 impl UiTree {
     /// Whether `id` can hold focus now: focusable, enabled, visible, and
-    /// under no hidden or collapsed ancestor.
+    /// under no disabled, hidden or collapsed ancestor.
     #[must_use]
     pub fn can_focus(&self, id: WidgetId) -> bool {
         let Some(node) = self.node(id) else {
             return false;
         };
-        node.focusable && node.enabled && self.is_shown(id)
+        node.focusable && self.is_enabled_in_tree(id) && self.is_shown(id)
+    }
+
+    /// Whether `id` and every ancestor are enabled: a disabled widget
+    /// disables what is inside it (`D-125`).
+    pub(crate) fn is_enabled_in_tree(&self, id: WidgetId) -> bool {
+        let mut current = Some(id);
+        while let Some(id) = current {
+            let Some(node) = self.node(id) else {
+                return false;
+            };
+            if !node.enabled {
+                return false;
+            }
+            current = node.parent;
+        }
+        true
     }
 
     /// Whether `id` and every ancestor are visible.
@@ -140,16 +156,17 @@ impl UiTree {
         None
     }
 
-    /// Focusable widgets under `id` in depth-first order, skipping hidden and
-    /// collapsed subtrees.
+    /// Focusable widgets under `id` in depth-first order, skipping disabled,
+    /// hidden and collapsed subtrees. Callers start at a root or at the
+    /// focused widget's scope, whose ancestors are enabled.
     fn collect_focusables(&self, id: WidgetId, out: &mut Vec<WidgetId>) {
         let Some(node) = self.node(id) else {
             return;
         };
-        if node.visibility != Visibility::Visible {
+        if node.visibility != Visibility::Visible || !node.enabled {
             return;
         }
-        if node.focusable && node.enabled {
+        if node.focusable {
             out.push(id);
         }
         for child in &node.children {
@@ -157,13 +174,14 @@ impl UiTree {
         }
     }
 
-    /// The first widget under `id`, in tab order, that can take focus.
+    /// The first widget under `id`, a root, in tab order, that can take
+    /// focus; disabled, hidden and collapsed subtrees are skipped.
     pub(crate) fn first_focusable(&self, id: WidgetId) -> Option<WidgetId> {
         let node = self.node(id)?;
-        if node.visibility != Visibility::Visible {
+        if node.visibility != Visibility::Visible || !node.enabled {
             return None;
         }
-        if node.focusable && node.enabled {
+        if node.focusable {
             return Some(id);
         }
         node.children
@@ -187,11 +205,12 @@ impl UiTree {
     }
 
     /// Focuses `id` when [`Self::can_focus`]; returns whether it did. Moving
-    /// into another scope records the focus left behind, replacing that
-    /// scope's earlier record, and removing, hiding or collapsing the scope
-    /// restores it. The widgets that gained and lost focus resolve their
-    /// styles at the next layout, so a `focused` variant with text overrides
-    /// relayouts then.
+    /// into another scope from outside it records the focus left behind,
+    /// replacing that scope's earlier record, and removing, hiding or
+    /// collapsing the scope restores it; coming back from a scope nested
+    /// inside records nothing. The widgets that gained and lost focus
+    /// resolve their styles at the next layout, so a `focused` variant with
+    /// text overrides relayouts then.
     pub fn focus(&mut self, id: WidgetId) -> bool {
         if !self.can_focus(id) {
             return false;
@@ -204,6 +223,7 @@ impl UiTree {
         let old_scope = previous.and_then(|previous| self.scope_of(previous));
         if let Some(scope) = new_scope
             && new_scope != old_scope
+            && !previous.is_some_and(|previous| self.is_within(previous, scope))
         {
             self.focus_return.retain(|(entered, _)| *entered != scope);
             self.focus_return.push((scope, previous));
@@ -356,23 +376,21 @@ impl UiTree {
     }
 
     /// Forgets the entries of the scopes `gone` names, and when focus was
-    /// lost with them, restores the focus recorded when the last of them
-    /// was entered, if it can still take focus.
+    /// lost with them, restores the newest of their recorded focuses that
+    /// can still take focus: a scope nested in a closed one recorded a
+    /// widget inside it.
     fn leave_scopes(&mut self, gone: impl Fn(&Self, WidgetId) -> bool) {
-        let mut restore = None;
         let entries = std::mem::take(&mut self.focus_return);
-        let mut kept = Vec::with_capacity(entries.len());
-        for (scope, previous) in entries {
-            if gone(self, scope) {
-                restore = previous;
-            } else {
-                kept.push((scope, previous));
-            }
-        }
+        let (left, kept): (Vec<_>, Vec<_>) = entries
+            .into_iter()
+            .partition(|&(scope, _)| gone(self, scope));
         self.focus_return = kept;
         if self.focused.is_none()
-            && let Some(previous) = restore
-            && self.can_focus(previous)
+            && let Some(previous) = left
+                .iter()
+                .rev()
+                .filter_map(|&(_, previous)| previous)
+                .find(|&previous| self.can_focus(previous))
         {
             self.set_focused(Some(previous));
         }

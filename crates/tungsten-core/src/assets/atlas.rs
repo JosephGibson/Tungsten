@@ -51,11 +51,26 @@ pub struct PackResult {
     pub sprites: Vec<PackedSprite>,
 }
 
+/// The first input wider or taller than `max_dim - 2 * padding`, which no
+/// page holds: what [`pack_shelf`] panics on. Loaders check it first, so an
+/// oversized image is a load error.
+#[must_use]
+pub fn oversized<'a, 'b>(
+    inputs: &'b [PackInput<'a>],
+    max_dim: u32,
+    padding: u32,
+) -> Option<&'b PackInput<'a>> {
+    let max_usable = max_dim.saturating_sub(padding.saturating_mul(2));
+    inputs
+        .iter()
+        .find(|input| input.width > max_usable || input.height > max_usable)
+}
+
 /// Run deterministic shelf-next-fit packer.
 ///
 /// # Panics
 ///
-/// Panics when a sprite exceeds `max_dim - 2 * padding`.
+/// Panics when a sprite exceeds `max_dim - 2 * padding` ([`oversized`]).
 #[must_use]
 pub fn pack_shelf(inputs: &[PackInput<'_>], max_dim: u32, padding: u32) -> PackResult {
     if inputs.is_empty() {
@@ -66,16 +81,10 @@ pub fn pack_shelf(inputs: &[PackInput<'_>], max_dim: u32, padding: u32) -> PackR
     }
 
     let pad = padding;
-    let max_usable = max_dim.saturating_sub(2 * pad);
-    for input in inputs {
-        assert!(
-            input.width <= max_usable && input.height <= max_usable,
+    if let Some(input) = oversized(inputs, max_dim, pad) {
+        panic!(
             "sprite '{}' ({}x{}) exceeds max atlas page dimension {} (padding {})",
-            input.id,
-            input.width,
-            input.height,
-            max_dim,
-            pad
+            input.id, input.width, input.height, max_dim, pad
         );
     }
 

@@ -5,6 +5,7 @@
 use super::{PhysicsBuffers, Proxy};
 use crate::ecs::World;
 use crate::physics::PhysicsConfig;
+use crate::physics::collision::Aabb;
 use crate::physics::components::Velocity;
 use glam::Vec2;
 
@@ -55,8 +56,44 @@ pub(super) struct SleepTable {
     next_entries: Vec<SleepEntry>,
     /// Scratch: old entries a rebuild carried over.
     carried: Vec<bool>,
+    /// The static and tile proxies at the end of the last frame in which an
+    /// island slept, in proxy order: key and box. Only dynamic members carry
+    /// sleep entries, so a support that went, moved or changed is found by
+    /// comparing this with the next frame's (`wake_on_supports`).
+    supports: Vec<(u64, Aabb)>,
+    /// `supports` matches the last frame's proxies; false while no island
+    /// sleeps, when nothing is recorded.
+    supports_valid: bool,
+    /// Scratch: supports whose box changed, by index, with the new box.
+    moved_supports: Vec<(usize, Aabb)>,
+    /// Scratch: the old and new boxes of the supports that changed.
+    changed_supports: Vec<Aabb>,
+    /// Scratch for the sorted comparison when supports appear or go.
+    sorted_old: Vec<(u64, Aabb)>,
+    sorted_new: Vec<(u64, Aabb)>,
     #[cfg(test)]
     pub(super) rebuilds: usize,
+}
+
+/// A proxy sleepers can rest on that holds no sleep entry: a static entity
+/// or a tile. Kinematic bodies wake what they press (`D-154`).
+fn is_support(proxy: &Proxy) -> bool {
+    !proxy.is_dynamic && !proxy.kinematic
+}
+
+/// A total order on a support for the sorted comparison: key, then the box's
+/// bits.
+fn support_order(a: &(u64, Aabb), b: &(u64, Aabb)) -> std::cmp::Ordering {
+    let bits = |(key, aabb): &(u64, Aabb)| {
+        (
+            *key,
+            aabb.center.x.to_bits(),
+            aabb.center.y.to_bits(),
+            aabb.half_extents.x.to_bits(),
+            aabb.half_extents.y.to_bits(),
+        )
+    };
+    bits(a).cmp(&bits(b))
 }
 
 impl SleepTable {
@@ -189,6 +226,82 @@ impl SleepTable {
     pub(super) fn sleeping_count(&self) -> usize {
         self.entries.iter().filter(|entry| entry.sleeping).count()
     }
+
+    /// Brings the support record up to `proxies` and collects into
+    /// `changed_supports` the old and new box of every support that moved or
+    /// changed shape, and the box of every one that went or appeared. While
+    /// the supports keep their keys in order, boxes compare in place.
+    fn diff_supports(&mut self, proxies: &[Proxy]) {
+        self.changed_supports.clear();
+        self.moved_supports.clear();
+        let mut count = 0;
+        let mut same_keys = true;
+        for proxy in proxies.iter().filter(|proxy| is_support(proxy)) {
+            match self.supports.get(count) {
+                Some(&(key, old)) if key == proxy.key => {
+                    let aabb = proxy.world_aabb();
+                    if old != aabb {
+                        self.moved_supports.push((count, aabb));
+                    }
+                }
+                _ => {
+                    same_keys = false;
+                    break;
+                }
+            }
+            count += 1;
+        }
+        if same_keys && count == self.supports.len() {
+            for &(index, aabb) in &self.moved_supports {
+                self.changed_supports.push(self.supports[index].1);
+                self.changed_supports.push(aabb);
+                self.supports[index].1 = aabb;
+            }
+            return;
+        }
+        // A support appeared or went: every entry in only one of the two
+        // sorted lists changed.
+        self.sorted_old.clear();
+        self.sorted_old.extend_from_slice(&self.supports);
+        self.record_supports(proxies);
+        self.sorted_new.clear();
+        self.sorted_new.extend_from_slice(&self.supports);
+        self.sorted_old.sort_unstable_by(support_order);
+        self.sorted_new.sort_unstable_by(support_order);
+        let (mut i, mut j) = (0, 0);
+        while i < self.sorted_old.len() || j < self.sorted_new.len() {
+            let order = match (self.sorted_old.get(i), self.sorted_new.get(j)) {
+                (Some(old), Some(new)) => support_order(old, new),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                _ => std::cmp::Ordering::Greater,
+            };
+            match order {
+                std::cmp::Ordering::Less => {
+                    self.changed_supports.push(self.sorted_old[i].1);
+                    i += 1;
+                }
+                std::cmp::Ordering::Greater => {
+                    self.changed_supports.push(self.sorted_new[j].1);
+                    j += 1;
+                }
+                std::cmp::Ordering::Equal => {
+                    i += 1;
+                    j += 1;
+                }
+            }
+        }
+    }
+
+    /// Records this frame's supports, in proxy order.
+    fn record_supports(&mut self, proxies: &[Proxy]) {
+        self.supports.clear();
+        self.supports.extend(
+            proxies
+                .iter()
+                .filter(|proxy| is_support(proxy))
+                .map(|proxy| (proxy.key, proxy.world_aabb())),
+        );
+    }
 }
 
 /// Union-find root with path halving; serial and deterministic (D-065).
@@ -226,8 +339,10 @@ pub(super) fn uf_union(parent: &mut [u32], a: u32, b: u32) {
 
 /// Frame-start sleep bookkeeping (D-065): line the persistent sleep state up
 /// with this frame's proxies (D-082), waking islands whose members despawned
-/// (or lost their dynamic body/collider) and islands with an external write.
-pub(super) fn sleep_frame_start(buffers: &mut PhysicsBuffers) {
+/// (or lost their dynamic body/collider), islands with an external write, and
+/// islands within `margin` of a static or tile support that went, moved or
+/// changed since the last frame.
+pub(super) fn sleep_frame_start(buffers: &mut PhysicsBuffers, margin: f32) {
     let PhysicsBuffers {
         proxies,
         sleep,
@@ -239,6 +354,23 @@ pub(super) fn sleep_frame_start(buffers: &mut PhysicsBuffers) {
     if !sleep.same_bodies(proxies, wake_islands) {
         wake_islands.clear();
         sleep.rebuild(proxies, wake_islands);
+    }
+    if sleep.supports_valid {
+        sleep.diff_supports(proxies);
+        if !sleep.changed_supports.is_empty() {
+            let reach = Vec2::splat(margin);
+            for (proxy, entry) in proxies.iter().zip(&sleep.entries) {
+                if !entry.sleeping {
+                    continue;
+                }
+                let body = proxy.world_aabb();
+                if sleep.changed_supports.iter().any(|support| {
+                    Aabb::new(support.center, support.half_extents + reach).overlaps(&body)
+                }) {
+                    wake_islands.push(entry.island);
+                }
+            }
+        }
     }
     if !wake_islands.is_empty() {
         sleep.wake_islands(wake_islands);
@@ -254,7 +386,8 @@ pub(super) fn sleep_frame_start(buffers: &mut PhysicsBuffers) {
 
 /// Frame-end sleep pass (D-065): update per-body low-velocity timers from
 /// end-of-frame velocities, then sleep every island whose slowest member has
-/// been below the threshold for `time_to_sleep`. A member that touched a
+/// been below the threshold for `time_to_sleep`, and this frame at least, so
+/// a `time_to_sleep` of 0 or less never sleeps a moving body. A member that touched a
 /// moving kinematic body this frame restarts its timer and keeps its island
 /// awake, whatever `time_to_sleep` is. Members freeze with zeroed
 /// velocity. An island falling asleep while resting on an already sleeping
@@ -317,7 +450,7 @@ pub(super) fn sleep_frame_end(
             continue;
         }
         let root = uf_find(island_parent, contact.a) as usize;
-        if island_min_timer[root] < config.time_to_sleep {
+        if !ready_to_sleep(island_min_timer[root], config) {
             continue;
         }
         let tag = sleep.entries[b_idx].island;
@@ -341,7 +474,7 @@ pub(super) fn sleep_frame_end(
         }
         let Some(entity) = proxy.entity else { continue };
         let root = uf_find(island_parent, index as u32) as usize;
-        if island_min_timer[root] < config.time_to_sleep {
+        if !ready_to_sleep(island_min_timer[root], config) {
             continue;
         }
         let tag = if island_tag[root] != 0 {
@@ -359,4 +492,22 @@ pub(super) fn sleep_frame_end(
             vel.0 = Vec2::ZERO;
         }
     }
+
+    // The supports the sleepers rest among, for the next frame's start; the
+    // start's comparison already brought a valid record up to date.
+    if sleep.entries.iter().any(|entry| entry.sleeping) {
+        if !sleep.supports_valid {
+            sleep.record_supports(proxies);
+            sleep.supports_valid = true;
+        }
+    } else {
+        sleep.supports_valid = false;
+    }
+}
+
+/// Whether an island whose slowest member's timer is `min_timer` sleeps: every
+/// member below the threshold this frame (a timer above 0) and for
+/// `time_to_sleep`.
+fn ready_to_sleep(min_timer: f32, config: &PhysicsConfig) -> bool {
+    min_timer > 0.0 && min_timer >= config.time_to_sleep
 }

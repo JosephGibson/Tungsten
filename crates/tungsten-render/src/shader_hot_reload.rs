@@ -47,18 +47,43 @@ pub struct Entry {
 }
 
 /// Session cache of validated WGSL modules.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ShaderModuleCache {
     modules: HashMap<ShaderAssetId, Entry>,
     /// Count of `upload`/`reload` calls that were no-ops because the bytes
     /// matched the cached text. Used by tests + telemetry.
     pub unchanged_count: u64,
+    /// What Naga parses and validates with: the device's capabilities once
+    /// the renderer sets them, every capability until then.
+    capabilities: Capabilities,
+}
+
+impl Default for ShaderModuleCache {
+    fn default() -> Self {
+        Self {
+            modules: HashMap::new(),
+            unchanged_count: 0,
+            capabilities: Capabilities::all(),
+        }
+    }
 }
 
 impl ShaderModuleCache {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Validates with `capabilities` from now on: the device's, from
+    /// [`naga_capabilities`], so Naga rejects what the device would.
+    pub(crate) fn set_capabilities(&mut self, capabilities: Capabilities) {
+        self.capabilities = capabilities;
+    }
+
+    /// The device-free half of a module build: parse and validate with the
+    /// cache's capabilities.
+    pub(crate) fn precheck(&self, name: &str, wgsl: &str) -> Result<(), ShaderError> {
+        validate_wgsl_with(name, wgsl, self.capabilities)
     }
 
     /// Validate + create module; insert into cache keyed by `id`.
@@ -76,7 +101,7 @@ impl ShaderModuleCache {
             self.unchanged_count = self.unchanged_count.saturating_add(1);
             return Ok(());
         }
-        let module = compile_and_validate(device, name, &wgsl)?;
+        let module = self.compile_and_validate(device, name, &wgsl)?;
         self.modules.insert(id, Entry { text: wgsl, module });
         Ok(())
     }
@@ -90,7 +115,29 @@ impl ShaderModuleCache {
         name: &str,
         wgsl: &str,
     ) -> Result<wgpu::ShaderModule, ShaderError> {
-        compile_and_validate(device, name, wgsl)
+        self.compile_and_validate(device, name, wgsl)
+    }
+
+    /// Naga first, then the module inside a validation error scope: wgpu
+    /// checks more than Naga (bind group limits, the device's own parse), and
+    /// an error outside a scope reaches the default handler, which panics.
+    fn compile_and_validate(
+        &self,
+        device: &wgpu::Device,
+        name: &str,
+        wgsl: &str,
+    ) -> Result<wgpu::ShaderModule, ShaderError> {
+        self.precheck(name, wgsl)?;
+        build_validated(device, || {
+            device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some(name),
+                source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(wgsl)),
+            })
+        })
+        .map_err(|report| ShaderError::Validation {
+            name: name.to_string(),
+            report,
+        })
     }
 
     /// Replace the live entry with a previously validated module. Callers that
@@ -123,27 +170,38 @@ impl ShaderModuleCache {
     }
 }
 
-fn compile_and_validate(
-    device: &wgpu::Device,
-    name: &str,
-    wgsl: &str,
-) -> Result<wgpu::ShaderModule, ShaderError> {
-    validate_wgsl_source(name, wgsl)?;
-    Ok(device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some(name),
-        source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Owned(wgsl.to_string())),
-    }))
+/// The Naga capabilities wgpu parses and validates a device's shaders with,
+/// from its features and the adapter's downlevel flags.
+pub(crate) fn naga_capabilities(
+    features: wgpu::Features,
+    downlevel: wgpu::DownlevelFlags,
+) -> Capabilities {
+    wgpu::wgc::device::features_to_naga_capabilities(features, downlevel)
 }
 
-/// Device-free WGSL parse + semantic validation. Used by the cache before
-/// touching the GPU and directly by tests that have no `wgpu::Device`.
+/// Device-free WGSL parse + semantic validation with every capability. Used
+/// directly by tests that have no `wgpu::Device`; the cache validates with
+/// the device's capabilities.
 pub fn validate_wgsl_source(name: &str, wgsl: &str) -> Result<(), ShaderError> {
-    let module = naga_wgsl::parse_str(wgsl).map_err(|e| ShaderError::Parse {
-        name: name.to_string(),
-        report: e.to_string(),
-    })?;
+    validate_wgsl_with(name, wgsl, Capabilities::all())
+}
 
-    Validator::new(ValidationFlags::all(), Capabilities::all())
+/// Parse and validate as wgpu does for a device with `capabilities`.
+fn validate_wgsl_with(
+    name: &str,
+    wgsl: &str,
+    capabilities: Capabilities,
+) -> Result<(), ShaderError> {
+    let mut options = naga_wgsl::Options::new();
+    options.capabilities = capabilities;
+    let module = naga_wgsl::Frontend::new_with_options(options)
+        .parse(wgsl)
+        .map_err(|e| ShaderError::Parse {
+            name: name.to_string(),
+            report: e.to_string(),
+        })?;
+
+    Validator::new(ValidationFlags::all(), capabilities)
         .validate(&module)
         .map_err(|e| ShaderError::Validation {
             name: name.to_string(),

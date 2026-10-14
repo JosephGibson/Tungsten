@@ -47,32 +47,51 @@ impl ClipRect {
     }
 
     /// The pixels inside both; an empty result keeps a zero width or
-    /// height.
+    /// height. Edges are summed in `i64`, so no field values overflow.
     #[must_use]
     pub fn intersect(self, other: Self) -> Self {
         let x = self.x.max(other.x);
         let y = self.y.max(other.y);
-        let right = (self.x + self.width).min(other.x + other.width);
-        let bottom = (self.y + self.height).min(other.y + other.height);
+        let right = edge_sum(self.x, self.width).min(edge_sum(other.x, other.width));
+        let bottom = edge_sum(self.y, self.height).min(edge_sum(other.y, other.height));
+        let extent =
+            |far: i64, near: i32| i32::try_from((far - i64::from(near)).max(0)).unwrap_or(i32::MAX);
         Self {
             x,
             y,
-            width: (right - x).max(0),
-            height: (bottom - y).max(0),
+            width: extent(right, x),
+            height: extent(bottom, y),
         }
     }
+}
+
+/// `start + length` without overflow.
+fn edge_sum(start: i32, length: i32) -> i64 {
+    i64::from(start) + i64::from(length)
+}
+
+/// How far from the origin [`to_physical`] places an edge: within ±2^30
+/// physical pixels, every width and edge sum fits in `i32`.
+const PHYSICAL_EDGE_LIMIT: i64 = 1 << 30;
+
+/// A physical edge from its rounded float, within the limit (NaN is 0).
+fn physical_edge(value: f32) -> i32 {
+    // The `as` cast saturates at the `i64` range.
+    (value as i64).clamp(-PHYSICAL_EDGE_LIMIT, PHYSICAL_EDGE_LIMIT - 1) as i32
 }
 
 /// The one rounding rule (`D-127`): a box in UI units becomes the integer
 /// physical rectangle from `floor(min · scale)` to `ceil(max · scale)`, so
 /// it covers every pixel the box's primitives touch. Primitives and glyph
-/// clips both come through here, so their edges cannot disagree.
+/// clips both come through here, so their edges cannot disagree. Edges stay
+/// within ±2^30 physical pixels, far past any screen, so a box beyond that
+/// is cut there rather than overflowing `i32`.
 #[must_use]
 pub fn to_physical(rect: Rect, scale: f32) -> ClipRect {
-    let x = (rect.min.x * scale).floor() as i32;
-    let y = (rect.min.y * scale).floor() as i32;
-    let right = (rect.max.x * scale).ceil() as i32;
-    let bottom = (rect.max.y * scale).ceil() as i32;
+    let x = physical_edge((rect.min.x * scale).floor());
+    let y = physical_edge((rect.min.y * scale).floor());
+    let right = physical_edge((rect.max.x * scale).ceil());
+    let bottom = physical_edge((rect.max.y * scale).ceil());
     ClipRect {
         x,
         y,

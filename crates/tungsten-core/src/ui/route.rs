@@ -426,8 +426,8 @@ impl Routing<'_> {
         self.router.pointer.map(|pointer| pointer / self.scale)
     }
 
-    /// The widget under the pointer, and its target: the nearest enabled
-    /// interactive ancestor-or-self.
+    /// The widget under the pointer, and its target: the nearest
+    /// interactive ancestor-or-self that is enabled, its ancestors too.
     fn hit(&self) -> (Option<WidgetId>, Option<WidgetId>) {
         let Some(point) = self.point() else {
             return (None, None);
@@ -435,7 +435,7 @@ impl Routing<'_> {
         let hit = self.tree.hit_test_layers(point, self.hide);
         let mut target = hit;
         while let Some(id) = target {
-            if self.tree.interactive(id) && self.tree.enabled(id) {
+            if self.tree.interactive(id) && self.tree.is_enabled_in_tree(id) {
                 break;
             }
             target = self.tree.parent(id);
@@ -580,7 +580,7 @@ impl Routing<'_> {
 
     fn takes_input(&self, widget: WidgetId) -> bool {
         self.tree.is_shown(widget)
-            && self.tree.enabled(widget)
+            && self.tree.is_enabled_in_tree(widget)
             && self
                 .tree
                 .root_of(widget)

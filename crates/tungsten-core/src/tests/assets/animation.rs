@@ -166,3 +166,19 @@ fn load_interns_frame_names_in_the_sprite_registry() {
     assert_eq!(frames, [(walk_1, 80), (walk_0, 90), (walk_1, 100)]);
     assert!(anim.looping);
 }
+
+#[test]
+fn total_duration_saturates_instead_of_overflowing() {
+    // The loader logs every animation's total; two frames of 3e9 ms
+    // overflowed `u32` and panicked under debug overflow checks.
+    let long = |sprite| AnimationFrame {
+        sprite,
+        duration_ms: 3_000_000_000,
+    };
+    let data = AnimationData {
+        looping: false,
+        frames: vec![long(walk(0)), long(walk(1))],
+    };
+    assert_eq!(data.total_duration_ms(), u32::MAX);
+    assert_eq!(test_anim().total_duration_ms(), 400);
+}

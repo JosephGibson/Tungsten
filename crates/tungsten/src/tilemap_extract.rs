@@ -120,14 +120,18 @@ fn extract_layers(world: &World, names: Option<&[&str]>) -> Vec<SpriteBatch> {
         let tileset = &mut buffers.tileset;
         let pool = &mut buffers.pool;
         let batch_lens = &mut buffers.tile_batch_lens;
+        let unknown = &mut buffers.unknown_tilemaps;
         let mut out: Vec<SpriteBatch> = Vec::new();
 
         for (_entity, instance) in world.query::<(Entity, &TilemapInstance)>() {
             let Some(data) = tilemaps.get(&instance.id) else {
-                log::warn!(
-                    "extract_tilemaps: no tilemap registered for '{}'",
-                    instance.id
-                );
+                if !unknown.contains(&instance.id) {
+                    log::warn!(
+                        "extract_tilemaps: no tilemap registered for '{}'; it draws nothing",
+                        instance.id
+                    );
+                    unknown.push(instance.id.clone());
+                }
                 continue;
             };
 

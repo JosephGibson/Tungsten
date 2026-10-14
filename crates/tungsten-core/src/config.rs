@@ -494,8 +494,10 @@ impl Config {
         let path = path.as_ref();
         let mut config = match std::fs::read_to_string(path) {
             Ok(contents) => {
+                // An editor's byte-order mark is not JSON.
+                let json = contents.strip_prefix('\u{feff}').unwrap_or(&contents);
                 let mut raw: Value =
-                    serde_json::from_str(&contents).map_err(|e| ConfigError::Parse {
+                    serde_json::from_str(json).map_err(|e| ConfigError::Parse {
                         path: path.display().to_string(),
                         source: e,
                     })?;

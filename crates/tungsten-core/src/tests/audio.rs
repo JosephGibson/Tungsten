@@ -62,3 +62,28 @@ fn stop_all_queues_correctly() {
     let drained = cmds.drain();
     assert!(matches!(drained[0], AudioCommand::StopAll));
 }
+
+#[test]
+fn a_volume_that_is_not_finite_or_is_negative_plays_silent() {
+    // A slider computing `x / 0.0` sent NaN, and every output sample went
+    // NaN; a negative gain inverts the waveform.
+    let mut cmds = AudioCommands::new();
+    for volume in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, -1.0, 0.5] {
+        cmds.play_with(AudioHandle(0), volume, false);
+        cmds.set_master_volume(volume);
+    }
+    let expected = [0.0, 0.0, 0.0, 0.0, 0.5];
+    let drained = cmds.drain();
+    for (pair, want) in drained.chunks(2).zip(expected) {
+        match pair {
+            [
+                AudioCommand::Play { volume, .. },
+                AudioCommand::SetMasterVolume(master),
+            ] => {
+                assert_eq!(*volume, want);
+                assert_eq!(*master, want);
+            }
+            other => panic!("unexpected commands {other:?}"),
+        }
+    }
+}

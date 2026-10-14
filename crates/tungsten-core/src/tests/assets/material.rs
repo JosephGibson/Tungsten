@@ -42,7 +42,7 @@ fn allocate_mints_distinct_ids_for_distinct_names() {
 }
 
 #[test]
-fn path_reverse_lookup_round_trips() {
+fn lookups_round_trip() {
     let mut reg = MaterialRegistry::new();
     let path = PathBuf::from("manifest.json");
     let id = reg.allocate(
@@ -51,7 +51,6 @@ fn path_reverse_lookup_round_trips() {
         "flash_shader".to_string(),
         defaults(),
     );
-    assert_eq!(reg.id_for_path(&path), Some(id));
     assert_eq!(reg.get("flash"), Some(id));
     assert_eq!(reg.name_for_id(id), Some("flash"));
     assert_eq!(reg.shader_name_for_id(id), Some("flash_shader"));
@@ -60,21 +59,24 @@ fn path_reverse_lookup_round_trips() {
 
 #[test]
 fn allocate_rebinds_path_without_dropping_id() {
+    // Every material of a manifest shares its path: re-pointing one leaves
+    // the others' (the removed path-to-ID map kept one ID per path).
     let mut reg = MaterialRegistry::new();
     let old_path = PathBuf::from("old.json");
     let new_path = PathBuf::from("new.json");
     let id = reg.allocate("flash", old_path.clone(), "flash".to_string(), defaults());
+    let other = reg.allocate("glow", old_path.clone(), "glow".to_string(), defaults());
     let id2 = reg.allocate("flash", new_path.clone(), "flash".to_string(), defaults());
     assert_eq!(id, id2);
-    assert_eq!(reg.id_for_path(&new_path), Some(id));
-    assert_eq!(reg.id_for_path(&old_path), None);
+    assert_eq!(reg.path_for_id(id), Some(new_path.as_path()));
+    assert_eq!(reg.path_for_id(other), Some(old_path.as_path()));
 }
 
 #[test]
 fn unknown_name_and_path_return_none() {
     let reg = MaterialRegistry::new();
     assert!(reg.get("flash").is_none());
-    assert!(reg.id_for_path(&PathBuf::from("nothing")).is_none());
+    assert!(reg.path_for_id(MaterialAssetId(0)).is_none());
 }
 
 #[test]

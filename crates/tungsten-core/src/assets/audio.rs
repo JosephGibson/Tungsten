@@ -7,6 +7,10 @@ use thiserror::Error;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AudioHandle(pub u32);
 
+/// The sample rates [`SoundData::decode`] accepts, from telephony's 8 kHz
+/// with margin to 384 kHz.
+pub const SUPPORTED_SAMPLE_RATES: std::ops::RangeInclusive<u32> = 1_000..=384_000;
+
 /// Eager-decoded PCM audio data.
 pub struct SoundData {
     /// Interleaved f32 PCM samples.
@@ -30,6 +34,10 @@ pub enum AudioDecodeError {
     NoTrack { path: String },
     #[error("Unknown sample rate in '{path}'")]
     UnknownSampleRate { path: String },
+    /// A header rate outside [`SUPPORTED_SAMPLE_RATES`]: the mixer resamples
+    /// to the device's rate, so 0 Hz would ask it for `usize::MAX` frames.
+    #[error("Sample rate {rate} Hz in '{path}' is outside 1000..=384000 Hz")]
+    UnsupportedSampleRate { path: String, rate: u32 },
     #[error("Failed to create decoder: {error}")]
     Decoder {
         error: symphonia::core::errors::Error,
@@ -92,6 +100,12 @@ impl SoundData {
         let sample_rate = params
             .sample_rate
             .ok_or_else(|| AudioDecodeError::UnknownSampleRate { path: display() })?;
+        if !SUPPORTED_SAMPLE_RATES.contains(&sample_rate) {
+            return Err(AudioDecodeError::UnsupportedSampleRate {
+                path: display(),
+                rate: sample_rate,
+            });
+        }
         let channels = params.channels.as_ref().map_or(2, |c| c.count() as u16);
 
         let mut decoder = symphonia::default::get_codecs()

@@ -359,9 +359,13 @@ impl TextPipeline {
 
     /// Hot-reload font bytes and evict dependent caches: the next frame that
     /// prepares is full, so the atlas trims before every batch re-prepares.
-    pub fn reload_font(&mut self, id: &str, data: Vec<u8>) {
-        self.engine.reload_font(id, data);
-        self.policy.force_full();
+    /// False when the data holds no face: the font keeps its old faces.
+    pub fn reload_font(&mut self, id: &str, data: Vec<u8>) -> bool {
+        let reloaded = self.engine.reload_font(id, data);
+        if reloaded {
+            self.policy.force_full();
+        }
+        reloaded
     }
 
     pub(crate) fn engine(&self) -> &TextEngine {

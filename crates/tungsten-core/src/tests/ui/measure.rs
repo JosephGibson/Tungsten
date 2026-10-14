@@ -294,3 +294,24 @@ fn the_double_is_a_measure_through_the_store_trait() {
     );
     assert_eq!(store.advance_em(), 1.0);
 }
+
+#[test]
+fn a_zero_or_negative_advance_puts_every_glyph_on_one_line() {
+    // Under `TextWrap::Glyph`, `n * advance <= width` holds for every `n`
+    // when the advance is 0 or below: counting glyphs per line never ended.
+    let mut store = FixedAdvanceMeasure::default();
+    let zero = TextStyle::new("sans", 0.0, LINE_HEIGHT)
+        .with_layout(TextLayout::default().with_wrap(TextWrap::Glyph));
+    let pulled = style(TextWrap::Glyph).with_layout(
+        TextLayout::default()
+            .with_wrap(TextWrap::Glyph)
+            .with_letter_spacing(-0.5),
+    );
+    for style in [zero, pulled] {
+        let node = node_with(&mut store, "abcdef", &style);
+        for available in [MeasureWidth::MinContent, MeasureWidth::Definite(20.0)] {
+            let metrics = store.measure(node, None, available);
+            assert_eq!(metrics.line_count, 1, "{available:?}");
+        }
+    }
+}

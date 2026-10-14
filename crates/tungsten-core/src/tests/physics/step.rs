@@ -1575,7 +1575,7 @@ fn contact_woken_body_rebuilds_pairs_over_static_floor_in_waking_frame() {
         &mut buffers.sensors,
         &mut buffers.tile_ids,
     );
-    sleep_frame_start(&mut buffers);
+    sleep_frame_start(&mut buffers, 4.0 * config.linear_slop);
     buffers.island_parent = (0..buffers.proxies.len() as u32).collect();
     buffers.events.clear();
     buffers.pairs_invalidated = true;
@@ -3431,4 +3431,128 @@ fn still_kinematic_body_carries_no_wake_through_a_body_touching_it() {
     let mover = rest(&mut world, 0.0);
     let sleeper = rest(&mut world, 17.0);
     slow_arrival_leaves_the_sleeper_asleep(&mut world, mover, sleeper);
+}
+
+/// The static floor `spawn_sleeping_stack` rests its balls on.
+fn stack_floor(world: &World) -> Entity {
+    world
+        .query_filtered::<Entity, (crate::ecs::With<Collider>, crate::ecs::Without<Velocity>)>()
+        .next()
+        .expect("the stack's floor")
+}
+
+#[test]
+fn a_static_support_that_goes_or_moves_wakes_the_islands_on_it() {
+    // D-065's wake paths run through dynamic members: statics hold no sleep
+    // entry, so a floor could go or move under a frozen island, which then
+    // hung in the air.
+    for change in 0..3 {
+        let mut world = seed_world();
+        let (bottom, top) = spawn_sleeping_stack(&mut world);
+        let far = world.spawn();
+        world.insert(far, Position(Vec2::new(900.0, 110.0)));
+        world.insert(far, Collider::aabb(Vec2::new(16.0, 8.0)));
+        world.insert(far, RigidBody::r#static());
+        settle_to_sleep(&mut world, &[bottom, top]);
+
+        // A support far from the island moving wakes nothing.
+        world.get_mut::<Position>(far).unwrap().0.x += 50.0;
+        physics_step(&mut world);
+        let buffers = world.get_resource::<PhysicsBuffers>().unwrap();
+        assert!(buffers.is_sleeping(bottom) && buffers.is_sleeping(top));
+
+        let floor = stack_floor(&world);
+        match change {
+            0 => world.despawn(floor),
+            1 => world.get_mut::<Position>(floor).unwrap().0.y += 40.0,
+            _ => world.get_mut::<Position>(floor).unwrap().0.x += 500.0,
+        }
+        let resting = world.get::<Position>(bottom).unwrap().0.y;
+        for _ in 0..10 {
+            physics_step(&mut world);
+        }
+        let buffers = world.get_resource::<PhysicsBuffers>().unwrap();
+        assert!(
+            !buffers.is_sleeping(bottom) && !buffers.is_sleeping(top),
+            "change {change}: the island stayed asleep"
+        );
+        assert!(
+            world.get::<Position>(bottom).unwrap().0.y > resting + 1.0,
+            "change {change}: the bottom ball did not fall"
+        );
+    }
+}
+
+#[test]
+fn a_tile_support_removed_wakes_the_island_on_it() {
+    let mut world = seed_world();
+    world.get_resource_mut::<PhysicsConfig>().unwrap().gravity = Vec2::new(0.0, 900.0);
+    let floor = |tiles: Vec<i32>| TilemapData {
+        tile_width: 16,
+        tile_height: 16,
+        width: 4,
+        height: 1,
+        tileset: vec!["solid".into()],
+        layers: vec![TilemapLayer {
+            name: "collision".into(),
+            kind: LayerKind::Collision,
+            tiles,
+        }],
+    };
+    world
+        .get_resource_mut::<TilemapRegistry>()
+        .unwrap()
+        .insert("floor".into(), floor(vec![0, 0, 0, 0]));
+    let map = world.spawn();
+    world.insert(map, TilemapInstance::new("floor", Vec2::new(0.0, 16.0)));
+    let ball = world.spawn();
+    world.insert(ball, Position(Vec2::new(24.0, 9.0)));
+    world.insert(ball, Velocity(Vec2::ZERO));
+    world.insert(ball, Collider::circle(6.0));
+    world.insert(ball, RigidBody::dynamic().with_restitution(0.0));
+    settle_to_sleep(&mut world, &[ball]);
+
+    // The map replaced without the tiles under the ball.
+    world
+        .get_resource_mut::<TilemapRegistry>()
+        .unwrap()
+        .insert("floor".into(), floor(vec![0, -1, -1, 0]));
+    let resting = world.get::<Position>(ball).unwrap().0.y;
+    for _ in 0..10 {
+        physics_step(&mut world);
+    }
+    assert!(
+        !world
+            .get_resource::<PhysicsBuffers>()
+            .unwrap()
+            .is_sleeping(ball),
+        "the ball stayed asleep over the gap"
+    );
+    assert!(world.get::<Position>(ball).unwrap().0.y > resting + 1.0);
+}
+
+#[test]
+fn a_time_to_sleep_of_zero_never_sleeps_a_moving_body() {
+    // A body above the threshold has a timer of 0, and `0 < 0` is false: at
+    // `time_to_sleep` 0 a body at 1,000 px/s slept mid-flight.
+    let mut world = seed_world();
+    world
+        .get_resource_mut::<PhysicsConfig>()
+        .unwrap()
+        .time_to_sleep = 0.0;
+    let moving = world.spawn();
+    world.insert(moving, Position(Vec2::ZERO));
+    world.insert(moving, Velocity(Vec2::new(1_000.0, 0.0)));
+    world.insert(moving, Collider::circle(4.0));
+    world.insert(moving, RigidBody::dynamic());
+    let still = world.spawn();
+    world.insert(still, Position(Vec2::new(0.0, 500.0)));
+    world.insert(still, Velocity(Vec2::ZERO));
+    world.insert(still, Collider::circle(4.0));
+    world.insert(still, RigidBody::dynamic());
+    physics_step(&mut world);
+    let buffers = world.get_resource::<PhysicsBuffers>().unwrap();
+    assert!(!buffers.is_sleeping(moving), "a moving body fell asleep");
+    assert!(buffers.is_sleeping(still), "a still body sleeps at once");
+    assert_eq!(world.get::<Velocity>(moving).unwrap().0.x, 1_000.0);
 }

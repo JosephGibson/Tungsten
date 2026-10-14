@@ -220,13 +220,14 @@ fn line_lengths(text: &str, wrap: TextWrap, advance: f32, width: f32) -> Vec<usi
 }
 
 /// Splits `glyphs` glyphs into lines of as many as fit, at least one each.
+/// An advance of 0 or below fits them all on one.
 fn glyph_chunks(glyphs: usize, advance: f32, width: f32, lines: &mut Vec<usize>) {
     if glyphs == 0 {
         lines.push(0);
         return;
     }
     let mut per_line = 0_usize;
-    while fits(per_line + 1, advance, width) {
+    while per_line < glyphs && fits(per_line + 1, advance, width) {
         per_line += 1;
     }
     let per_line = per_line.max(1);

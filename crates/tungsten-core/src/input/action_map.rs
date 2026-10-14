@@ -264,13 +264,14 @@ impl ActionMap {
         Self::from_json(&contents, path)
     }
 
-    /// Parse action map JSON text.
+    /// Parse action map JSON text. A leading byte-order mark is skipped, and
+    /// kept in the text a persist patches.
     pub fn from_json(contents: &str, path: &Path) -> Result<Self, ActionMapError> {
-        let mut map: Self =
-            serde_json::from_str(contents).map_err(|source| ActionMapError::Parse {
-                path: path.display().to_string(),
-                source,
-            })?;
+        let json = contents.strip_prefix('\u{feff}').unwrap_or(contents);
+        let mut map: Self = serde_json::from_str(json).map_err(|source| ActionMapError::Parse {
+            path: path.display().to_string(),
+            source,
+        })?;
         map.deduplicate_bindings();
         map.source_path = Some(path.to_path_buf());
         map.source_text = Some(contents.to_string());

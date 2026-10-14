@@ -29,6 +29,11 @@ pub fn tween_tick_system(world: &mut World) {
             continue;
         }
 
+        // The field is public, so a write can skip `Tween::new`'s clamp;
+        // `f32::clamp` below asserts a finite, ordered range.
+        if !(t.duration.is_finite() && t.duration > 0.0) {
+            t.duration = f32::EPSILON;
+        }
         let direction = t.direction;
         let signed_dt = if direction == TweenDirection::Backward {
             -dt

@@ -334,3 +334,36 @@ fn scissors_are_clamped_to_the_attachment_and_empty_ones_skipped() {
     );
     assert_eq!(attachment_scissor(clip(0, 0, 10, 10), (0, 0)), None);
 }
+
+#[test]
+fn items_past_the_buffer_limit_are_cut() {
+    let list = list(
+        vec![clip(0, 0, 800, 600)],
+        vec![
+            rect_command(rect(0.0, 0.0, 10.0, 10.0), 0),
+            rect_command(rect(10.0, 0.0, 10.0, 10.0), 0),
+            text_command(rect(0.0, 20.0, 50.0, 10.0), 0),
+            rect_command(rect(0.0, 40.0, 10.0, 10.0), 0),
+            image_command(rect(0.0, 60.0, 10.0, 10.0), 3, 0),
+        ],
+    );
+    let mut instances = Vec::new();
+    let mut items = build_items(&list, &mut instances);
+    assert_eq!(instances.len(), 4);
+    assert!(cap_items(&mut items, &mut instances, 3));
+    assert_eq!(instances.len(), 3);
+    let ranges: Vec<_> = items
+        .iter()
+        .filter_map(|item| match item {
+            DrawItem::Primitives { instances, .. } => Some(instances.clone()),
+            DrawItem::Text { .. } => None,
+        })
+        .collect();
+    assert_eq!(ranges, [0..2, 2..3]);
+    assert!(
+        items
+            .iter()
+            .any(|item| matches!(item, DrawItem::Text { .. }))
+    );
+    assert!(!cap_items(&mut items, &mut instances, 3));
+}

@@ -112,6 +112,17 @@ impl<'de> Deserialize<'de> for Color {
     }
 }
 
+/// A `line_height`: finite and above zero, since the text engine cannot lay a
+/// line out at zero (cosmic-text asserts it). `null` is no value.
+fn line_height<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<f32>, D::Error> {
+    match Option::<f32>::deserialize(deserializer)? {
+        Some(value) if !(value.is_finite() && value > 0.0) => Err(de::Error::custom(format!(
+            "line_height {value} is not a finite number above 0"
+        ))),
+        value => Ok(value),
+    }
+}
+
 /// `#rrggbb` (opaque) or `#rrggbbaa`, case-insensitive.
 pub(crate) fn parse_color(text: &str) -> Result<[u8; 4], String> {
     let invalid = || format!("colour '{text}' is not #rrggbb or #rrggbbaa");
@@ -246,6 +257,7 @@ struct FontsFile {
 #[serde(default, deny_unknown_fields)]
 struct TextTokensFile {
     size: Option<f32>,
+    #[serde(deserialize_with = "line_height")]
     line_height: Option<f32>,
     heading_size: Option<f32>,
 }
@@ -328,6 +340,7 @@ impl OverridesFile {
 struct TextFile {
     family: Option<String>,
     size: Option<f32>,
+    #[serde(deserialize_with = "line_height")]
     line_height: Option<f32>,
     weight: Option<u16>,
     italic: Option<bool>,

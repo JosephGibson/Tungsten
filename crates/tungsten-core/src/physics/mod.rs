@@ -87,7 +87,8 @@ pub struct PhysicsConfig {
     /// sleeping bodies. `<= 0` disables sleeping entirely.
     pub sleep_threshold: f32,
     /// Seconds every island member must stay below `sleep_threshold` before
-    /// the island sleeps (D-065).
+    /// the island sleeps (D-065). At 0 or less an island sleeps at the end of
+    /// the first frame in which every member is below it.
     pub time_to_sleep: f32,
 }
 

@@ -198,3 +198,38 @@ fn shake_offset_clamps_out_of_range_trauma() {
     c.shake_trauma = -1.0;
     assert_vec2_close(c.shake_offset(), Vec2::ZERO);
 }
+
+#[test]
+fn nan_rotation_or_bounds_leave_the_position_unclamped() {
+    // A NaN reaches `f32::clamp` as a bound, whose assert panicked every
+    // frame; every other zoom path here is already guarded.
+    let bounds = CameraBounds {
+        min: Vec2::ZERO,
+        max: Vec2::new(1000.0, 1000.0),
+    };
+    let position = Vec2::new(50.0, 60.0);
+    assert_eq!(
+        bounds.clamp_position(position, 800.0, 600.0, 1.0, f32::NAN),
+        position
+    );
+    let nan_bounds = CameraBounds {
+        min: Vec2::new(f32::NAN, 0.0),
+        max: Vec2::new(1000.0, f32::NAN),
+    };
+    let clamped = nan_bounds.clamp_position(Vec2::new(-5.0, -5.0), 800.0, 600.0, 1.0, 0.0);
+    assert_eq!(clamped.x, -5.0);
+    assert!(clamped.y.is_finite());
+    // Finite input clamps as before, half-open bounds included.
+    assert_eq!(
+        bounds.clamp_position(Vec2::new(-5.0, 900.0), 800.0, 600.0, 1.0, 0.0),
+        Vec2::new(0.0, 400.0)
+    );
+    let open = CameraBounds {
+        min: Vec2::new(f32::NEG_INFINITY, 0.0),
+        max: Vec2::new(100.0, f32::INFINITY),
+    };
+    assert_eq!(
+        open.clamp_position(Vec2::new(-1e9, 1e9), 800.0, 600.0, 1.0, 0.0),
+        Vec2::new(-1e9, 1e9)
+    );
+}

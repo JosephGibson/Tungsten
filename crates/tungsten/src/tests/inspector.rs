@@ -1,5 +1,7 @@
 use super::*;
 use std::path::PathBuf;
+
+use crate::app::WindowSize;
 use tungsten_core::assets::{FilterMode, TextureHandle, UvRect};
 use tungsten_core::input::{KeyCode, MouseButton};
 
@@ -434,4 +436,32 @@ fn sprite_rows_print_the_asset_name() {
     let rows = read(&world, e);
     assert_eq!(rows[0], ("asset", "hero".to_string()));
     assert_eq!(rows.len(), 3);
+}
+
+#[test]
+fn pick_follows_a_rotated_camera() {
+    // The pick turned the cursor by the inverse of the camera's rotation:
+    // at position (100, 50), zoom 2 and rotation 0.5 rad, the pixel where
+    // (130, 70) draws mapped to (133.04, 35.56).
+    let mut world = make_world();
+    world.get_resource_mut::<InspectorState>().unwrap().enabled = true;
+    {
+        let camera = world.get_resource_mut::<CameraState>().unwrap();
+        camera.position = Vec2::new(100.0, 50.0);
+        camera.zoom = 2.0;
+        camera.rotation = 0.5;
+    }
+    let target = spawn_sprite(&mut world, "target", Vec2::new(126.0, 66.0), 8);
+    // (130, 70) relative to the camera, turned back by the rotation and
+    // scaled by the zoom: the pixel it draws at.
+    let (sin, cos) = 0.5_f32.sin_cos();
+    let local = Vec2::new(30.0, 20.0);
+    let screen = Vec2::new(
+        local.x * cos + local.y * sin,
+        -local.x * sin + local.y * cos,
+    ) * 2.0;
+    press_mouse3_at(&mut world, screen.x, screen.y);
+    inspector_pick_system(&mut world);
+    let selected = world.get_resource::<InspectorState>().unwrap().selected;
+    assert_eq!(selected, Some(target));
 }

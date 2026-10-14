@@ -122,3 +122,30 @@ fn plan_clears_the_previous_frame() {
     assert!(draws.is_empty());
     assert!(missing.is_empty());
 }
+
+#[test]
+fn draws_past_the_buffer_limit_are_cut() {
+    let batches = [batch(0, &[1.0, 2.0, 3.0]), batch(1, &[4.0, 5.0, 6.0])];
+    let (mut staging, mut draws, mut missing) = (Vec::new(), Vec::new(), Vec::new());
+    plan_draws(&batches, |_| true, &mut staging, &mut draws, &mut missing);
+    assert!(cap_draws(&mut staging, &mut draws, 4));
+    assert_eq!(staging.len(), 4);
+    assert_eq!(
+        draws,
+        [
+            DrawRange {
+                mesh: ParticleMeshAssetId::new(0),
+                first: 0,
+                count: 3
+            },
+            DrawRange {
+                mesh: ParticleMeshAssetId::new(1),
+                first: 3,
+                count: 1
+            },
+        ]
+    );
+    assert!(cap_draws(&mut staging, &mut draws, 3));
+    assert_eq!((staging.len(), draws.len()), (3, 1));
+    assert!(!cap_draws(&mut staging, &mut draws, 3));
+}

@@ -183,3 +183,49 @@ fn garbage_empty_and_missing_inputs_are_errors() {
         "unexpected error: {err}"
     );
 }
+
+/// A 16-bit mono PCM WAV of `frames` silent frames whose header says `rate`.
+fn wav_at(rate: u32, frames: u32) -> Vec<u8> {
+    let data_len = frames * 2;
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(b"RIFF");
+    bytes.extend_from_slice(&(36 + data_len).to_le_bytes());
+    bytes.extend_from_slice(b"WAVEfmt ");
+    bytes.extend_from_slice(&16_u32.to_le_bytes());
+    bytes.extend_from_slice(&1_u16.to_le_bytes()); // PCM
+    bytes.extend_from_slice(&1_u16.to_le_bytes()); // mono
+    bytes.extend_from_slice(&rate.to_le_bytes());
+    bytes.extend_from_slice(&rate.wrapping_mul(2).to_le_bytes()); // byte rate
+    bytes.extend_from_slice(&2_u16.to_le_bytes()); // block align
+    bytes.extend_from_slice(&16_u16.to_le_bytes()); // bits per sample
+    bytes.extend_from_slice(b"data");
+    bytes.extend_from_slice(&data_len.to_le_bytes());
+    bytes.resize(bytes.len() + data_len as usize, 0);
+    bytes
+}
+
+#[test]
+fn a_sample_rate_outside_the_supported_range_is_an_error() {
+    // The mixer resamples to the device's rate: a header of 0 Hz asked it
+    // for `usize::MAX` frames, and 1 Hz for 48,000 times the file's.
+    for rate in [0, 1, 999, 384_001] {
+        let path = scratch(&format!("rate_{rate}.wav"), &wav_at(rate, 64));
+        let err = SoundData::decode(&path)
+            .err()
+            .unwrap_or_else(|| panic!("{rate} Hz decoded"));
+        assert!(
+            matches!(
+                err,
+                tungsten_core::assets::AudioDecodeError::UnsupportedSampleRate { rate: r, .. }
+                    if r == rate
+            ),
+            "{rate}: {err}"
+        );
+    }
+    for rate in [1_000, 8_000, 44_100, 384_000] {
+        let path = scratch(&format!("rate_{rate}.wav"), &wav_at(rate, 64));
+        let data = SoundData::decode(&path).unwrap_or_else(|e| panic!("{rate}: {e}"));
+        assert_eq!(data.sample_rate, rate);
+        assert_eq!(frames(&data), 64);
+    }
+}

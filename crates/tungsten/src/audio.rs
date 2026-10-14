@@ -168,7 +168,7 @@ fn process_command(cmd: &AudioCommand, playing: &mut Vec<PlayingSound>, master_v
             playing.push(PlayingSound {
                 handle,
                 cursor: 0,
-                volume,
+                volume: playable_volume(volume),
                 looping,
                 finished: false,
             });
@@ -186,8 +186,19 @@ fn process_command(cmd: &AudioCommand, playing: &mut Vec<PlayingSound>, master_v
             }
         }
         AudioCommand::SetMasterVolume(v) => {
-            *master_volume = v.clamp(0.0, 1.0);
+            *master_volume = playable_volume(v).min(1.0);
         }
+    }
+}
+
+/// A command's volume as a gain: one that is not finite or is negative is 0,
+/// since a raw command skips `AudioCommands`' check and a NaN master volume
+/// turns every sample into NaN.
+fn playable_volume(volume: f32) -> f32 {
+    if volume.is_finite() && volume > 0.0 {
+        volume
+    } else {
+        0.0
     }
 }
 

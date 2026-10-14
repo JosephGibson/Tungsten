@@ -157,6 +157,28 @@ fn an_unknown_kind_token_or_field_is_rejected() {
 }
 
 #[test]
+fn a_line_height_must_be_finite_and_above_zero() {
+    // The text engine cannot lay a line out at a zero line height
+    // (cosmic-text asserts it), so the file is refused at load and a reload
+    // keeps the previous theme (`D-148`).
+    for bad in [
+        r#"{ "tokens": { "text": { "line_height": 0 } } }"#,
+        r#"{ "tokens": { "text": { "line_height": -2.5 } } }"#,
+        r#"{ "tokens": { "text": { "line_height": 1e39 } } }"#,
+        r#"{ "kinds": { "label": { "normal": { "text": { "line_height": 0 } } } } }"#,
+        r#"{ "kinds": { "button": { "focused": { "text": { "line_height": 0.0 } } } } }"#,
+    ] {
+        let err = ThemeFile::from_json(bad).unwrap_err();
+        assert!(err.to_string().contains("line_height"), "{bad}: {err}");
+    }
+    let theme = theme_of(
+        r#"{ "tokens": { "text": { "line_height": 18.5 } },
+             "kinds": { "label": { "normal": { "text": { "line_height": null } } } } }"#,
+    );
+    assert_eq!(theme.tokens.text.line_height, 18.5);
+}
+
+#[test]
 fn load_reads_a_file_and_names_it_in_errors() {
     let dir = std::env::temp_dir().join(format!("tungsten_theme_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);

@@ -548,6 +548,15 @@ impl App {
             Some(w) => w.drain_ready(),
             None => return,
         };
+        // A stopped watcher sends nothing more; the drain above flushed its
+        // last paths, which still apply.
+        if self
+            .hot_reload
+            .as_ref()
+            .is_some_and(HotReloadWatcher::disconnected)
+        {
+            self.hot_reload = None;
+        }
         if ready.is_empty() {
             return;
         }
@@ -804,10 +813,12 @@ impl App {
         let Some(requested) = take_pending_post_aa(&mut self.world) else {
             return;
         };
-        if let Some(renderer) = self.renderer.as_mut() {
+        // The renderer keeps SMAA off when its pipelines fail validation.
+        let applied = self.renderer.as_mut().map_or(requested, |renderer| {
             renderer.set_post_aa(requested);
-        }
-        sync_post_aa_state(&mut self.world, requested);
+            renderer.post_aa()
+        });
+        sync_post_aa_state(&mut self.world, applied);
     }
 }
 

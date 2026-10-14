@@ -373,3 +373,30 @@ fn persist_preserves_existing_temporary_files_and_cleans_failed_writes() {
     assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 3);
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn a_utf8_byte_order_mark_is_skipped_and_kept_on_persist() {
+    // An editor that writes a byte-order mark would otherwise make the
+    // player's input.json fatal at the next start (`D-008`).
+    let dir = tempdir();
+    let path = dir.join("input.json");
+    std::fs::write(&path, format!("\u{feff}{SAMPLE_JSON}")).unwrap();
+    let mut map = ActionMap::load(&path).expect("a byte-order mark is skipped");
+    assert!(!map.bindings("jump").is_empty());
+    map.replace_bindings(
+        "jump",
+        vec![Binding::Key {
+            code: KeyCode::KeyZ,
+        }],
+    );
+    map.persist().unwrap();
+    let persisted = std::fs::read_to_string(&path).unwrap();
+    assert!(persisted.starts_with('\u{feff}'), "{persisted:?}");
+    let reloaded = ActionMap::load(&path).unwrap();
+    assert_eq!(
+        reloaded.bindings("jump"),
+        &[Binding::Key {
+            code: KeyCode::KeyZ
+        }]
+    );
+}
