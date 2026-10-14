@@ -24,19 +24,22 @@ pub mod ui;
 pub use assets::{
     AnimationData, AnimationRegistry, AnimationState, AssetId, AssetRegistry, AudioHandle,
     BlendMode, Curve, EMPTY_TILE, EmissionKind, FilterMode, FontEntry, FontFamilyEntry,
-    FontRegistry, InitialVelocity, LayerKind, Lerp, LoadedManifest, ManifestError, MaterialAssetId,
-    MaterialRegistry, MaterialUniformDefaults, ParticleActive, ParticleBudget, ParticleConfig,
-    ParticleConfigError, ParticleConfigRegistry, ParticleEntry, ParticleMesh, ParticleMeshAssetId,
-    ParticleMeshEntry, ParticleMeshRegistry, ParticleRender, Range, ResolvedFont,
+    FontRegistry, InitialVelocity, LayerKind, Lerp, LoadedManifest, ManifestError, MapObject,
+    MaterialAssetId, MaterialRegistry, MaterialUniformDefaults, ObjectLayer, ParticleActive,
+    ParticleBudget, ParticleConfig, ParticleConfigError, ParticleConfigRegistry, ParticleEntry,
+    ParticleMesh, ParticleMeshAssetId, ParticleMeshEntry, ParticleMeshRegistry, ParticleRender,
+    PrefabData, PrefabEntry, PrefabError, PrefabRegistry, PreparedPrefab, Range, ResolvedFont,
     ResolvedFontFamily, ResolvedManifest, ResolvedMaterial, ResolvedParticle, ResolvedParticleMesh,
-    ResolvedSound, ResolvedUiTheme, SceneData, SceneEntry, SceneError, SceneSprite, SceneTransform,
-    SceneTween, SceneTweenChannel, SceneTweenRepeat, SoundData, SoundEntry, SoundRegistry,
-    SpriteAsset, SpriteAssetId, TextureHandle, TileIndex, TilemapData, TilemapInstance,
-    TilemapLayer, TilemapRegistry, UiThemeEntry, WorldRngSeed,
+    ResolvedPrefab, ResolvedSound, ResolvedUiTheme, SceneData, SceneEntry, SceneError, SceneSprite,
+    SceneTransform, SceneTween, SceneTweenChannel, SceneTweenRepeat, SoundData, SoundEntry,
+    SoundRegistry, SpriteAsset, SpriteAssetId, TextureHandle, TileIndex, TilemapData,
+    TilemapInstance, TilemapLayer, TilemapRegistry, UiThemeEntry, WorldRngSeed,
 };
 pub use audio::{AudioCommand, AudioCommands};
 pub use camera::{CameraBounds, CameraController, CameraMode, CameraState};
-pub use component_registry::{ComponentError, ComponentRegistry, PreparedComponent, SpawnContext};
+pub use component_registry::{
+    ComponentError, ComponentRegistry, MissingAsset, PreparedComponent, SpawnContext,
+};
 pub use components::{
     Light, LightKind, MeshParticle, ParallaxLayer, Particle, ParticleEmitter, ParticleEmitterState,
     Sprite, SpriteSquashStretch, SquashStretchState, SquashTrigger, Tag, Transform, Visibility,

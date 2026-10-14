@@ -33,7 +33,7 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-018` | Extract reads `&World`, passes plain data to render. Amended by `D-128`: five scheduled stages precede extract. |
 | `D-023` | WGSL shaders are embedded with `include_str!`; shader edits require rebuilds. Narrowed by `D-057`: shader bodies now hot-reload; signature changes still rebuild. |
 | `D-026` | Text rendering uses `glyphon` / `cosmic-text`. |
-| `D-032` | Tilemaps use Tiled-compatible `.tmj` data and reuse the sprite render path instead of a separate tile pipeline. |
+| `D-032` | Tilemaps use Tiled-compatible `.tmj` data and reuse the sprite render path instead of a separate tile pipeline. Amended by `D-157`: object layers load, their classes naming prefabs. |
 | `D-042` | Engine render components opt into default extract. Amended by `D-113`: IDs; `D-114`: culling; `D-138`: additive channels/tiles. |
 | `D-048` | Deterministic per-filter shelf atlases; padding/inset, renderer-minted handles and rebuild on growth. |
 | `D-054` | M24 easings are a closed `enum` with pure `apply(t)`; no trait object or dependency. |
@@ -173,10 +173,11 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-144` | W1 M0b input groundwork: 28 more key variants, an ordered per-frame raw input stream in `InputState`, focus loss releasing held input, modifiers, pointer leave and the `ScaleFactor` resource. |
 | `D-146` | A zero-step frame on a stopped clock (game dt 0, real dt above 0) drops the fixed view's input edges: a press made while paused or at scale 0 reaches no step; a zero-dt frame keeps them. Amends `D-137`. |
 | `D-149` | W1 M3 UI input routing: `ui_route` in `PreUpdate` routes the ordered raw stream against the last layout (clip-stack hit testing, modal roots, capture, hover, visible-focus keyboard, the `ui_*` actions, directional focus with repeat), publishes `UiEvent`s and feeds the opt-in `RoutedInput`; press ownership keeps keys from sticking; the exit check reads the routed view. Amends `D-125`. Extends `D-040`, `D-045`, `D-088`, `D-128`, `D-144`. |
-| `D-153` | W16a landed: `ComponentRegistry` by name and type; scene `components` checked at load against the World with field paths; strict scene keys and transform bounds; four engine components registered by their owners; no `Component` marker; `serde_path_to_error` (`D-015` rule 3). Amends `D-046`, `D-103`. |
+| `D-153` | W16a landed: `ComponentRegistry` by name and type; scene `components` checked at load against the World with field paths; strict scene keys and transform bounds; four engine components registered by their owners; no `Component` marker; `serde_path_to_error` (`D-015` rule 3). Amends `D-046`, `D-103`. Amended by `D-157`: prefab files, asset-checked components, `particle_emitter` and `tilemap`. |
 | `D-154` | W6a landed: kinematic bodies and sensors (`SensorEntered` per pair); spatial queries and casts over the last step; a kinematic world runs up to twice the substeps past 1/60 s and its press wakes through the island. Amends `D-033`, `D-064`, `D-065`, `D-066`, `D-081`, `D-092`, `D-094`. |
 | `D-155` | W13a and W13b landed: `tungsten-kit` on core alone, re-exported as `tungsten::kit` behind a default feature; opt-in plugins for an animated sprite, lifetimes, despawn outside a region or the view and a sound per event, `cursor_to_world`; a positions-only hierarchy propagated after the physics sync and after the tweens, bodies on roots; engine system names in core; `CameraState::screen_to_world`. Amends `D-006`, `D-107`, `D-128`, `D-133`. |
 | `D-156` | A static or tile support that goes, moves or changes wakes every sleeping island within the speculative slack of it, found by comparing the supports recorded while anything slept; an island sleeps only after a frame with every member below the threshold, so `time_to_sleep <= 0` sleeps no moving body. Hashes unchanged. Amends `D-065`. |
+| `D-157` | W16b landed: prefab files in a `prefabs` section, spawned now or at the flush; Tiled object classes name prefabs, their properties over its components; asset-checked components with `particle_emitter` and `tilemap`; `TilemapData` `#[non_exhaustive]` with a builder; the kit's spawner. Amends `D-032`, `D-153`. |
 
 ## When To Open a Decision
 

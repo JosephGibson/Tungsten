@@ -3,10 +3,9 @@ use std::path::PathBuf;
 use glam::{Vec2, Vec3};
 use tungsten::core::{
     AmbientLight, AnimationRegistry, AssetRegistry, AudioCommands, CameraBounds, CameraController,
-    CameraMode, Easing, Entity, Light, ParallaxLayer, ParticleBudget, ParticleConfigRegistry,
-    ParticleEmitter, ParticleEmitterState, SoundRegistry, Sprite, SpriteSquashStretch,
-    SquashTrigger, Tag, TilemapInstance, TilemapRegistry, Timer, Transform, Visibility, With,
-    World,
+    CameraMode, Easing, Entity, Light, ParallaxLayer, ParticleBudget, SoundRegistry, Sprite,
+    SpriteSquashStretch, SquashTrigger, Tag, TilemapInstance, TilemapRegistry, Timer, Transform,
+    Visibility, With, World,
 };
 use tungsten::physics::{
     BodyKind, Collider, PhysicsConfig, Position, RigidBody, RigidBodyBundle, Velocity,
@@ -15,7 +14,7 @@ use tungsten::plugins::{PARTICLE_COUNT_REFRESH, PHYSICS_STEP, PHYSICS_SYNC};
 use tungsten::{App, Bundle, Stage, SystemDesc, system};
 
 use crate::extract::{extract_sprites, extract_text};
-use crate::level_layout::{EMITTERS, PROPS};
+use crate::level_layout::PROPS;
 use crate::state::{
     ASSETS_LOCAL, ASSETS_ROOT, ActiveBlackHole, AudioState, BALL_ANIMATION_ID, BALL_RADIUS,
     BALL_RESTITUTION, BALL_START_SPRITE_ID, Ball, BallSpawnState, CurrentSprite, CycleMode,
@@ -257,10 +256,17 @@ pub(crate) fn configure_app(app: &mut App) {
         PathBuf::from(MANIFEST_ROOT),
         PathBuf::from(MANIFEST_LOCAL),
     ]);
+    // Before the manifests load, which checks the prefabs' components.
+    register_components(app.world_mut());
     seed_world(app.world_mut());
     platformer_bindings(app.world_mut());
     install_startup(app);
     install_runtime(app);
+}
+
+/// The example's components that its prefab files name: `ambient_emitter`.
+pub(crate) fn register_components(world: &mut World) {
+    world.register_component::<AmbientEmitter>("ambient_emitter");
 }
 
 /// Keep these example-local controls across shared input.json hot reloads.
@@ -537,20 +543,15 @@ pub(crate) fn spawn_level_presentation(world: &mut World) {
             world.insert(entity, tungsten::core::AnimationState::new(animation));
         }
     }
-    for placement in EMITTERS {
-        let config = world
-            .get_resource::<ParticleConfigRegistry>()
-            .and_then(|registry| registry.id_for_name(placement.config))
-            .expect("authored ambient particle config missing");
-        let entity = world.spawn();
-        world.insert(entity, AmbientEmitter);
-        world.insert(
-            entity,
-            Transform::from_position(Vec2::from_array(placement.tile_position) * TILE),
-        );
-        world.insert(entity, ParticleEmitter::with_seed(config, placement.seed));
-        world.insert(entity, ParticleEmitterState::default());
-    }
+}
+
+/// The level map's objects: the ambient emitters, each an
+/// `ex10_ambient_emitter` prefab with its object's config and seed. The
+/// manifest load checked them, so a failure here is a bug.
+pub(crate) fn spawn_level_objects(world: &mut World) {
+    world
+        .spawn_map_objects("ex10_level", Vec2::ZERO)
+        .expect("the level's objects load with the manifest");
 }
 
 pub(crate) fn configure_platformer_camera(world: &mut World, player: Entity) {
@@ -644,6 +645,7 @@ pub(crate) fn populate_world(world: &mut World) {
         }
     }
     spawn_level_presentation(world);
+    spawn_level_objects(world);
     crate::gameplay::spawn_obstacles(world);
 
     let (

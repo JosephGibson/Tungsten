@@ -1,24 +1,28 @@
-//! The game on the engine's headless harness: no window, renderer or
-//! manifest, the frames stepped one call at a time. A test per system.
+//! The game on the engine's headless harness: no window or renderer, the
+//! frames stepped one call at a time. A test per system.
 
 use std::path::Path;
 
-use tungsten::App;
 use tungsten::core::assets::manifest::ResolvedManifest;
-use tungsten::core::{ActionMap, Config, Time, Transform, With};
+use tungsten::core::{ActionMap, AssetRegistry, Config, Sprite, Time, Transform, With};
 use tungsten::testing::Harness;
+use tungsten::{App, SceneEntity};
 use tungsten_template_basic::components::Player;
 use tungsten_template_basic::game::{self, active_state};
-use tungsten_template_basic::states::{GAMEPLAY, PAUSE, PLAYER_START, TITLE};
+use tungsten_template_basic::states::{GAMEPLAY, PAUSE, PLAYER_PREFAB, PLAYER_START, TITLE};
 
 /// The game as `main.rs` builds it, with one frame stepped: its `Startup`
 /// stage runs `setup`, which requests the title state, and the engine's
-/// dispatcher applies it in the same frame's `pre_update`.
+/// dispatcher applies it in the same frame's `pre_update`. The harness loads
+/// no manifest, so the prefabs load from it here, as a window's startup
+/// loads them.
 fn harness() -> Harness {
     let config = Config::load("tungsten.json").expect("tungsten.json loads");
     let mut app = App::new(config).expect("App::new failed");
     game::register(&mut app);
     let mut harness = Harness::new(app);
+    let manifest = ResolvedManifest::load(game::MANIFEST).expect("the manifest loads");
+    tungsten::asset_loader::load_prefabs(&manifest, harness.world_mut()).expect("the prefabs load");
     harness.step(1);
     harness
 }
@@ -77,6 +81,7 @@ fn data_files_load() {
     let manifest = ResolvedManifest::load(game::MANIFEST).expect("the manifest loads");
     assert!(manifest.sprites["player"].path.is_file());
     assert!(manifest.fonts[game::FONT].path.is_file());
+    assert!(manifest.prefabs[PLAYER_PREFAB].path.is_file());
 }
 
 #[test]
@@ -87,6 +92,15 @@ fn state_start_starts_gameplay_with_the_player() {
     tap(&mut harness, "state_start");
     assert_eq!(active_state(harness.world()), Some(GAMEPLAY));
     assert_eq!(player(&harness), Some(PLAYER_START));
+    // The prefab's sprite, and gameplay owns the player.
+    let world = harness.world();
+    let (sprite, owner) = world
+        .query_filtered::<(&Sprite, &SceneEntity), With<Player>>()
+        .next()
+        .expect("the player spawned");
+    let assets = world.resource::<AssetRegistry>();
+    assert_eq!(assets.sprite_name(sprite.asset_id), Some("player"));
+    assert_eq!(owner.state_id, GAMEPLAY);
 }
 
 #[test]

@@ -749,21 +749,17 @@ fn pin_case(wall: Wall, dt: f32, path: &[[u32; 2]]) -> Probe {
             world.insert(entity, RigidBody::r#static());
         }
         Wall::Tiles => {
-            world.get_resource_mut::<TilemapRegistry>().unwrap().insert(
-                "wall".into(),
-                TilemapData {
-                    tile_width: 16,
-                    tile_height: 16,
-                    width: 1,
-                    height: 8,
-                    tileset: vec!["solid".into()],
-                    layers: vec![TilemapLayer {
-                        name: "solid".into(),
-                        kind: LayerKind::Collision,
-                        tiles: vec![0; 8],
-                    }],
-                },
-            );
+            let mut map_data = TilemapData::new(16, 16, 1, 8);
+            map_data.tileset = vec!["solid".into()];
+            map_data.layers = vec![TilemapLayer {
+                name: "solid".into(),
+                kind: LayerKind::Collision,
+                tiles: vec![0; 8],
+            }];
+            world
+                .get_resource_mut::<TilemapRegistry>()
+                .unwrap()
+                .insert("wall".into(), map_data);
             let map = world.spawn();
             world.insert(
                 map,

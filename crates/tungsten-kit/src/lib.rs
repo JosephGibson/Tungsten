@@ -31,6 +31,8 @@
 //! - [`DespawnOutside`] and [`DespawnOutsidePlugin`]: an entity despawned
 //!   once it leaves a world-space box or the camera's view.
 //! - [`SoundOnEvent`]: a manifest sound played once per event.
+//! - [`Spawner`] and [`SpawnerPlugin`]: a prefab spawned at an entity's
+//!   position once per interval of game time.
 //! - [`cursor_to_world`]: the world point under the cursor.
 //! - The transform hierarchy: [`spawn_child`], [`Parent`], [`Children`],
 //!   [`LocalOffset`], [`despawn_recursive`] and [`HierarchyPlugin`], which
@@ -45,6 +47,7 @@ mod despawn;
 mod hierarchy;
 mod lifetime;
 mod sound;
+mod spawner;
 
 pub use animation::{ANIMATION_TICK, AnimationPlugin};
 pub use cursor::cursor_to_world;
@@ -55,3 +58,4 @@ pub use hierarchy::{
 };
 pub use lifetime::{LIFETIME_TICK, Lifetime, LifetimePlugin};
 pub use sound::SoundOnEvent;
+pub use spawner::{SPAWNER_TICK, Spawner, SpawnerPlugin};

@@ -15,14 +15,17 @@ pub const FONT: &str = "sans";
 /// How far the player moves per second, in pixels.
 pub const PLAYER_SPEED: f32 = 240.0;
 
-/// The game as a plugin: `setup` at startup, `player_movement` in `Update`,
-/// its text after what the engine draws, and the engine's HUD on in debug
-/// builds. It names no engine system; the engine's own come from
-/// `DefaultPlugins`, which `App::new` installs.
+/// The game as a plugin: the components its prefab files name, `setup` at
+/// startup, `player_movement` in `Update`, its text after what the engine
+/// draws, and the engine's HUD on in debug builds. It names no engine
+/// system; the engine's own come from `DefaultPlugins`, which `App::new`
+/// installs.
 pub struct GamePlugin;
 
 impl Plugin for GamePlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
+        // Before the manifest loads, which checks each prefab's components.
+        world.register_component::<Player>("player");
         if let Some(hud) = world.get_resource_mut::<DebugHud>() {
             hud.enabled = cfg!(debug_assertions);
         }

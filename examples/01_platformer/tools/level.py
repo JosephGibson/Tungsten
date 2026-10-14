@@ -40,8 +40,15 @@ def build_level(images):
         if p['style']=='ground':put('collision',x,y,'ex10_ground')
     for p in source['decorations']:put(p['layer'],p['col'],p['row'],p['sprite'])
     tile=source['tile']
+    tile_layers=[dict(id=i+1,type='tilelayer',name=name,width=cols,height=rows,visible=True,opacity=1,x=0,y=0,data=data,properties=[dict(name='kind',type='string',value='collision') ] if name=='collision' else []) for i,(name,data) in enumerate(layers.items())]
+    # The ambient emitters as point objects of the prefab class
+    # `ex10_ambient_emitter`; their properties set the emitter's config and seed.
+    # Before `collision`, so the first and last layers stay tile layers.
+    emitters=dict(id=len(tile_layers)+1,type='objectgroup',name='emitters',draworder='topdown',visible=True,opacity=1,x=0,y=0,
+        objects=[dict(id=i+1,name='',type='ex10_ambient_emitter',x=p['x']*tile,y=p['y']*tile,width=0,height=0,rotation=0,visible=True,point=True,
+            properties=[dict(name='particle_emitter.config',type='string',value=p['config']),dict(name='particle_emitter.seed',type='int',value=p['seed'])]) for i,p in enumerate(source['emitters'])])
     tiled=dict(type='map',version='1.10',orientation='orthogonal',renderorder='right-down',infinite=False,width=cols,height=rows,tilewidth=tile,tileheight=tile,
-        layers=[dict(id=i+1,type='tilelayer',name=name,width=cols,height=rows,visible=True,opacity=1,x=0,y=0,data=data,properties=[dict(name='kind',type='string',value='collision') ] if name=='collision' else []) for i,(name,data) in enumerate(layers.items())],
+        layers=tile_layers[:-1]+[emitters]+tile_layers[-1:],
         tilesets=[dict(firstgid=1,name='twilight_ruin',tilewidth=tile,tileheight=tile,tilecount=len(catalog),columns=0,tiles=[dict(id=i,image='../sprites/'+s.removeprefix('ex10_')+'.png',imagewidth=tile,imageheight=tile,properties=[dict(name='sprite_id',type='string',value=s)]) for i,s in enumerate(catalog)])])
     validate_level(source,tiled,set(gids))
     return tiled,rust_layout(source),source
@@ -53,6 +60,7 @@ def validate_level(source,tiled,sprite_ids):
     for t in ts['tiles']:
         if t['properties'][0]['value'] not in sprite_ids:raise ValueError('unknown sprite reference')
     for layer in tiled['layers']:
+        if layer['type']!='tilelayer':continue
         if len(layer['data'])!=cols*rows:raise ValueError('wrong layer length')
         if any(not isinstance(g,int) or g<0 or g>ts['tilecount'] for g in layer['data']):raise ValueError('invalid GID')
     collision=next(l['data'] for l in tiled['layers'] if l['name']=='collision')
@@ -95,7 +103,8 @@ def rust_layout(s):
         lines.append(f'("ex10_{name}", [{anchor[0]}, {anchor[1]}]),')
     lines += ['];', f"pub(crate) const DECK_DEPTH: f32 = {float(s['deck_depth'])};", 'pub(crate) const SLAB_COLLIDERS: &[[f32; 4]] = &[']
     for rectangle in s['slab_colliders']:lines.append('['+', '.join(str(float(v)) for v in rectangle)+'],')
-    lines+= ['];','pub(crate) struct EmitterPlacement { pub(crate) config: &\'static str, pub(crate) tile_position: [f32; 2], pub(crate) seed: u64 }','pub(crate) const EMITTERS: &[EmitterPlacement] = &[']
+    # The level map's `emitters` object layer places them; this table checks it.
+    lines+= ['];','#[cfg(test)] pub(crate) struct EmitterPlacement { pub(crate) config: &\'static str, pub(crate) tile_position: [f32; 2], pub(crate) seed: u64 }','#[cfg(test)] pub(crate) const EMITTERS: &[EmitterPlacement] = &[']
     for p in s['emitters']:lines.append(f'EmitterPlacement {{ config: "{p["config"]}", tile_position: [{float(p["x"])}, {float(p["y"])}], seed: {p["seed"]} }},')
     lines += ['];', '#[derive(Clone, Copy)] pub(crate) struct MotionPlacement { pub(crate) position: [f32;2], pub(crate) travel: [f32;2], pub(crate) period: f32, pub(crate) phase: f32 }',
         'pub(crate) struct HazardPlacement { pub(crate) fire: bool, pub(crate) motion: MotionPlacement }',

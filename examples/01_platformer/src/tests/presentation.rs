@@ -204,6 +204,7 @@ fn particle_caps_and_ambient_placements_remain_bounded() {
     let world = harness.world_mut();
     load_presentation_assets(world);
     crate::setup::spawn_level_presentation(world);
+    crate::setup::spawn_level_objects(world);
     let registry = world.get_resource::<ParticleConfigRegistry>().unwrap();
     let ambient_max: u32 = crate::level_layout::EMITTERS
         .iter()
@@ -215,12 +216,26 @@ fn particle_caps_and_ambient_placements_remain_bounded() {
         })
         .sum();
     assert!(ambient_max <= 256);
-    assert_eq!(
-        world
-            .query::<(Entity, &crate::state::AmbientEmitter)>()
-            .count(),
-        crate::level_layout::EMITTERS.len()
-    );
+    // The map's objects are the generated table's emitters: each at its
+    // place, with its config and seed.
+    let spawned: Vec<_> = world
+        .query::<(&crate::state::AmbientEmitter, &Transform, &ParticleEmitter)>()
+        .map(|(_, transform, emitter)| (transform.position, emitter.config, emitter.seed_override))
+        .collect();
+    assert_eq!(spawned.len(), crate::level_layout::EMITTERS.len());
+    for placement in crate::level_layout::EMITTERS {
+        let config = registry.id_for_name(placement.config).unwrap();
+        let at = Vec2::from_array(placement.tile_position) * TILE;
+        assert!(
+            spawned.iter().any(|&(position, id, seed)| {
+                (position - at).abs().max_element() <= 1e-3
+                    && id == config
+                    && seed == Some(placement.seed)
+            }),
+            "emitter {} at {at}",
+            placement.seed
+        );
+    }
     for _ in 0..30 {
         crate::systems::spawn_transient_effect(world, "ex10_landing_dust", Vec2::ZERO);
     }
@@ -298,19 +313,15 @@ fn extraction_keeps_tile_stages_props_actors_foreground_and_cursor_in_order() {
         tiles: vec![tile],
     })
     .collect();
-    world.get_resource_mut::<TilemapRegistry>().unwrap().insert(
-        "test".into(),
-        TilemapData {
-            width: 1,
-            height: 1,
-            tile_width: 64,
-            tile_height: 64,
-            tileset: ["back", "decoration", "terrain", "foreground"]
-                .map(str::to_owned)
-                .into(),
-            layers,
-        },
-    );
+    let mut map_data = TilemapData::new(64, 64, 1, 1);
+    map_data.tileset = ["back", "decoration", "terrain", "foreground"]
+        .map(str::to_owned)
+        .into();
+    map_data.layers = layers;
+    world
+        .get_resource_mut::<TilemapRegistry>()
+        .unwrap()
+        .insert("test".into(), map_data);
     let map = world.spawn();
     world.insert(map, TilemapInstance::new("test", Vec2::ZERO));
     let player = spawn_test_player(&mut world, Vec2::new(32.0, 32.0));

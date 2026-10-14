@@ -50,21 +50,16 @@ fn spawn_sprite(world: &mut World, asset: SpriteAssetId, position: Vec2, z_order
 /// A map `width` tiles wide at the origin, one render layer of tileset
 /// entry 0, `tile`.
 fn add_map(world: &mut World, tile: &str, width: u32, height: u32) {
-    world.resource_mut::<TilemapRegistry>().insert(
-        "map".to_string(),
-        TilemapData {
-            tile_width: 16,
-            tile_height: 16,
-            width,
-            height,
-            tileset: vec![tile.to_string()],
-            layers: vec![TilemapLayer {
-                name: "ground".to_string(),
-                kind: LayerKind::Render,
-                tiles: vec![0; (width * height) as usize],
-            }],
-        },
-    );
+    let mut map = TilemapData::new(16, 16, width, height);
+    map.tileset = vec![tile.to_string()];
+    map.layers = vec![TilemapLayer {
+        name: "ground".to_string(),
+        kind: LayerKind::Render,
+        tiles: vec![0; (width * height) as usize],
+    }];
+    world
+        .resource_mut::<TilemapRegistry>()
+        .insert("map".to_string(), map);
     world.spawn_with((TilemapInstance::new("map", Vec2::ZERO),));
 }
 

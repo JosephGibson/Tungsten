@@ -26,6 +26,7 @@ In `Cargo.toml`, point both engine dependencies at the same tag:
 ```toml
 [dependencies]
 anyhow = "1"
+serde = { version = "1", features = ["derive"] }
 tungsten = { git = "https://github.com/JosephGibson/Tungsten", tag = "vX.Y.Z" }
 
 [dev-dependencies]
@@ -68,6 +69,7 @@ A debug build watches `assets/` and `input.json`. With the game running, open `a
 - `src/components.rs` holds the game's components.
 - `tests/game.rs` steps the game on the headless harness, with no window: a test per system and a snapshot of the resolved schedule.
 - `assets/manifest.json` names every asset by an ID, and game code uses the IDs, never file paths ([assets](assets.md)).
+- `assets/prefabs/` holds the prefab files, one per entity kind the game spawns by ID ([Queries and spawns](#queries-and-spawns)).
 - `AGENTS.md` holds the repository's rules for agent sessions, and `CLAUDE.md` imports it.
 
 ## Systems and stages
@@ -105,19 +107,20 @@ for transform in world.query_mut_filtered::<&mut Transform, With<Player>>() {
 
 `world.query::<(Entity, &Transform, Option<&Sprite>)>()` reads; `query_mut` writes, and panics at the call if two items name one component. Write in place through the query rather than collecting entities and calling `get_mut` on each. The engine's `query2`, `query3_mut` and the other numbered functions are deprecated and go at the API freeze; each one's deprecation note gives its tuple form.
 
-A spawn gives the entity every component at once, in one archetype move, through a tuple of up to sixteen components. The template's `spawn_player`:
+A spawn gives the entity every component at once, in one archetype move, through a tuple of up to sixteen components: `world.spawn_with((Player, transform, sprite, Visibility::default()))`. A tuple's elements are components, never bundles; join a bundle with `with`: `RigidBodyBundle::dynamic(position, collider).with((Player, transform))` spawns a body with its `Position`, `PrevPosition` (the history it is drawn from), `Velocity`, `Collider` and `RigidBody` and the game's components beside them. A system without `&mut World` records the same through `CommandBuffer::spawn_with`. A body that jumps to a new place, a respawn or a portal, writes `Position` and `PrevPosition` together; otherwise it is drawn sliding from the old point for a step.
+
+An entity kind the game places more than once, or that a level places, is a prefab: a file under `assets/prefabs/`, listed in the manifest's `prefabs`, with a scene entry's fields but no transform: its sprite, visibility, tag, one tween and its components by their registered names. The template's player is one, `{ "sprite": { "asset_id": "player" }, "components": { "player": null } }`, and `GamePlugin::build` registers `Player` as `player` before the manifest loads, which checks each prefab's components and the assets they name. The template's `spawn_player`:
 
 ```rust
-world.spawn_with((
-    Player,
-    transform,
-    sprite,
-    Visibility::default(),
-    SceneEntity { state_id: GAMEPLAY },
-));
+world
+    .prepare_prefab(PLAYER_PREFAB, PLAYER_START)
+    .expect("the player prefab loads with the manifest")
+    // The state stack despawns it when gameplay leaves the stack.
+    .with((SceneEntity { state_id: GAMEPLAY },))
+    .spawn(world);
 ```
 
-A tuple's elements are components, never bundles; join a bundle with `with`: `RigidBodyBundle::dynamic(position, collider).with((Player, transform))` spawns a body with its `Position`, `PrevPosition` (the history it is drawn from), `Velocity`, `Collider` and `RigidBody` and the game's components beside them. A system without `&mut World` records the same through `CommandBuffer::spawn_with`. A body that jumps to a new place, a respawn or a portal, writes `Position` and `PrevPosition` together; otherwise it is drawn sliding from the old point for a step.
+`prepare_prefab` builds the spawn against the world, with its top-left at the position, and `with` adds components in the same archetype move, here the state that owns the player; `world.spawn_prefab(id, position)` does both. A system queues the spawn for the frame's command flush instead: `let bolt = world.prepare_prefab("bolt", muzzle)?;`, then `world.resource_mut::<CommandBuffer>().spawn_prefab(bolt)`, which the kit's `Spawner` does once per interval. In a Tiled map, an object whose class names a prefab spawns it at the object's top-left, with the object's custom properties written over the prefab's components by dotted path, such as `particle_emitter.config`, through `world.spawn_map_objects(map, origin)`; an object without a class is a marker the game reads from the map's `object_layers`.
 
 `world.resource::<Time>()` returns a resource the engine always inserts and panics naming the type if it is missing; `get_resource` is the `Option` form for a resource a game may not have inserted.
 

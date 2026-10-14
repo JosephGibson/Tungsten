@@ -1,0 +1,4 @@
+{
+  "sprite": { "asset_id": "player" },
+  "components": { "player": null }
+}

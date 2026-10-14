@@ -586,7 +586,7 @@
       "kind": "release",
       "level": "C",
       "title": "Movers, spawners and controllers",
-      "summary": "The top-down mover the acceptance game uses and the platformer controller example 01 uses (ground check, coyote time, jump buffer, variable jump), plus spawners and a per-entity state machine.",
+      "summary": "The top-down mover the acceptance game uses and the platformer controller example 01 uses (ground check, coyote time, jump buffer, variable jump), plus a per-entity state machine.",
       "note": null,
       "src": ["docs/plans/1.0/criteria.md §8.4 (W13)"],
       "slug": "controllers-helpers",

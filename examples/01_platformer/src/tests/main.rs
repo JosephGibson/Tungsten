@@ -128,18 +128,14 @@ fn solid_floor(width: u32) -> TilemapData {
     for x in 0..width as usize {
         tiles[width as usize + x] = 0;
     }
-    TilemapData {
-        tile_width: TILE as u32,
-        tile_height: TILE as u32,
-        width,
-        height: 2,
-        tileset: vec!["ex10_ground".into()],
-        layers: vec![TilemapLayer {
-            name: "collision".into(),
-            kind: LayerKind::Collision,
-            tiles,
-        }],
-    }
+    let mut floor = TilemapData::new(TILE as u32, TILE as u32, width, 2);
+    floor.tileset = vec!["ex10_ground".into()];
+    floor.layers = vec![TilemapLayer {
+        name: "collision".into(),
+        kind: LayerKind::Collision,
+        tiles,
+    }];
+    floor
 }
 
 fn asset_path(relative: &str) -> std::path::PathBuf {
@@ -251,6 +247,23 @@ fn load_presentation_assets(world: &mut World) {
     world.insert_resource(ParticleBudget { global_cap: 2048 });
     world.insert_resource(CommandBuffer::new());
     world.insert_resource(crate::state::EffectSequence::default());
+    // The prefabs and the level map whose objects name them. The engine's
+    // `particle_emitter` comes with `ParticlesPlugin`, which a bare World
+    // lacks; built again over an app's World, it changes nothing.
+    tungsten::Plugin::build(
+        &tungsten::ParticlesPlugin,
+        &mut tungsten::Schedule::new(),
+        world,
+    );
+    crate::setup::register_components(world);
+    let maps = world.get_resource_mut::<TilemapRegistry>().unwrap();
+    if maps.get("ex10_level").is_none() {
+        maps.insert("ex10_level".into(), level_map());
+    }
+    let manifest =
+        tungsten::core::assets::manifest::ResolvedManifest::load(asset_path("manifest.json"))
+            .unwrap();
+    tungsten::asset_loader::load_prefabs(&manifest, world).unwrap();
 }
 
 fn mock_sprite(assets: &mut tungsten::core::AssetRegistry, name: &str, handle: u32, lit: bool) {

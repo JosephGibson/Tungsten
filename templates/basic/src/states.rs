@@ -1,16 +1,14 @@
 //! The game's states on the engine's state stack: title, then gameplay, with
 //! pause pushed over gameplay. Each state reads actions, never keys.
 
-use tungsten::core::{ActionMap, AssetRegistry, InputState, Sprite, Transform, Visibility, World};
+use tungsten::core::{ActionMap, InputState, World};
 use tungsten::{GameState, SceneEntity, StateContext, StateId, StateStack};
-
-use crate::components::Player;
 
 pub const TITLE: StateId = "title";
 pub const GAMEPLAY: StateId = "gameplay";
 pub const PAUSE: StateId = "pause";
-/// The player's sprite, by its manifest ID.
-pub const PLAYER_SPRITE: &str = "player";
+/// The player's prefab, by its manifest ID: its sprite and `Player`.
+pub const PLAYER_PREFAB: &str = "player";
 /// Where the player starts: the middle of a 1280 × 720 window.
 pub const PLAYER_START: [f32; 2] = [624.0, 344.0];
 
@@ -74,22 +72,15 @@ impl GameState for PauseState {
     }
 }
 
+/// Spawns the player prefab at its start. The startup load checked the
+/// prefab against the game's components, so a failure here is a bug.
 fn spawn_player(world: &mut World) {
-    let Some(registry) = world.get_resource_mut::<AssetRegistry>() else {
-        return;
-    };
-    let sprite = Sprite::new(registry.intern_sprite(PLAYER_SPRITE));
-    let mut transform = Transform::default();
-    transform.position.x = PLAYER_START[0];
-    transform.position.y = PLAYER_START[1];
-    world.spawn_with((
-        Player,
-        transform,
-        sprite,
-        Visibility::default(),
+    world
+        .prepare_prefab(PLAYER_PREFAB, PLAYER_START)
+        .expect("the player prefab loads with the manifest")
         // The state stack despawns it when gameplay leaves the stack.
-        SceneEntity { state_id: GAMEPLAY },
-    ));
+        .with((SceneEntity { state_id: GAMEPLAY },))
+        .spawn(world);
 }
 
 fn just_pressed(world: &World, action: &str) -> bool {

@@ -1772,11 +1772,13 @@ pub(crate) const SLAB_COLLIDERS: &[[f32; 4]] = &[
     [5_056.0, 2_432.0, 64.0, 23.0],
     [5_120.0, 2_432.0, 64.0, 23.0],
 ];
+#[cfg(test)]
 pub(crate) struct EmitterPlacement {
     pub(crate) config: &'static str,
     pub(crate) tile_position: [f32; 2],
     pub(crate) seed: u64,
 }
+#[cfg(test)]
 pub(crate) const EMITTERS: &[EmitterPlacement] = &[
     EmitterPlacement {
         config: "ex10_torch_embers",

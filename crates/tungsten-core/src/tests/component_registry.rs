@@ -308,3 +308,197 @@ fn the_world_door_inserts_the_registry_and_shares_it() {
         ["armor", "health", "player"]
     );
 }
+
+/// The configs a test World holds, by ID.
+struct Configs(Vec<&'static str>);
+
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct Emitter {
+    config: String,
+}
+
+fn config_known(emitter: &Emitter, world: &World) -> Result<(), MissingAsset> {
+    let known = world
+        .get_resource::<Configs>()
+        .is_some_and(|configs| configs.0.contains(&emitter.config.as_str()));
+    if known {
+        Ok(())
+    } else {
+        Err(MissingAsset::new(
+            "config",
+            "particle config",
+            &emitter.config,
+        ))
+    }
+}
+
+#[test]
+fn check_in_runs_the_asset_check_and_check_skips_it() {
+    let mut world = World::new();
+    world.insert_resource(Configs(vec!["embers"]));
+    world.register_component_with_assets(
+        "emitter",
+        config_known,
+        |def: Emitter, _: &SpawnContext<'_>| (def,),
+    );
+    world.register_component::<Health>("health");
+    let registry = world.resource::<ComponentRegistry>();
+
+    assert!(
+        registry
+            .check_in("emitter", &json!({ "config": "embers" }), &world)
+            .is_ok()
+    );
+    assert!(
+        registry
+            .check("emitter", &json!({ "config": "smoke" }))
+            .is_ok(),
+        "the shape alone"
+    );
+    let err = registry
+        .check_in("emitter", &json!({ "config": "smoke" }), &world)
+        .unwrap_err();
+    assert!(
+        matches!(
+            &err,
+            ComponentError::MissingAsset { name, field, kind, id }
+                if name == "emitter" && field == "config" && *kind == "particle config" && id == "smoke"
+        ),
+        "{err:?}"
+    );
+    assert_eq!(
+        err.to_string(),
+        "component `emitter`, field `config`: unknown particle config `smoke`"
+    );
+    // A bad shape fails before the asset check, and a plain registration
+    // has none.
+    let (_, field, _) = invalid(
+        registry
+            .check_in("emitter", &json!({ "config": 3 }), &world)
+            .unwrap_err(),
+    );
+    assert_eq!(field, "config");
+    assert!(
+        registry
+            .check_in("health", &json!({ "max": 1 }), &world)
+            .is_ok()
+    );
+    assert!(matches!(
+        registry.check_in("helth", &json!({}), &world),
+        Err(ComponentError::Unknown { .. })
+    ));
+}
+
+#[test]
+fn prepare_runs_the_asset_check_against_its_world_before_build() {
+    let mut world = World::new();
+    world.insert_resource(Configs(vec!["embers"]));
+    world.register_component_with_assets(
+        "emitter",
+        config_known,
+        |def: Emitter, at: &SpawnContext<'_>| {
+            // The check passed against this World, so the ID resolves.
+            assert!(
+                at.world()
+                    .resource::<Configs>()
+                    .0
+                    .contains(&def.config.as_str())
+            );
+            (def,)
+        },
+    );
+    let at = SpawnContext::new(&world, Transform::default());
+    let registry = world.resource::<ComponentRegistry>();
+    let err = registry
+        .prepare("emitter", &json!({ "config": "smoke" }), &at)
+        .unwrap_err();
+    assert!(
+        matches!(err, ComponentError::MissingAsset { .. }),
+        "{err:?}"
+    );
+    let prepared = registry
+        .prepare("emitter", &json!({ "config": "embers" }), &at)
+        .unwrap();
+
+    let mut buffer = CommandBuffer::new();
+    let pending = buffer.spawn();
+    prepared.insert_pending(&mut buffer, pending);
+    world.flush(buffer);
+    let found: Vec<_> = world.query::<&Emitter>().collect();
+    assert_eq!(
+        found,
+        [&Emitter {
+            config: "embers".to_owned()
+        }]
+    );
+
+    // An asset that went between a check and the spawn fails the prepare.
+    let checked = world.resource::<ComponentRegistry>().check_in(
+        "emitter",
+        &json!({ "config": "embers" }),
+        &world,
+    );
+    assert!(checked.is_ok());
+    world.resource_mut::<Configs>().0.clear();
+    let at = SpawnContext::new(&world, Transform::default());
+    assert!(matches!(
+        world.resource::<ComponentRegistry>().prepare(
+            "emitter",
+            &json!({ "config": "embers" }),
+            &at
+        ),
+        Err(ComponentError::MissingAsset { .. })
+    ));
+}
+
+#[test]
+fn a_missing_asset_at_the_values_top_prints_no_field() {
+    let err = ComponentError::MissingAsset {
+        name: "tilemap".to_owned(),
+        field: String::new(),
+        kind: "tilemap",
+        id: "cave".to_owned(),
+    };
+    assert_eq!(
+        err.to_string(),
+        "component `tilemap`: unknown tilemap `cave`"
+    );
+    let missing = MissingAsset::new("id", "tilemap", "cave");
+    assert_eq!(
+        (missing.field.as_str(), missing.kind, missing.id.as_str()),
+        ("id", "tilemap", "cave")
+    );
+}
+
+#[test]
+fn the_asset_form_takes_names_and_types_as_register_with_does() {
+    let mut world = World::new();
+    assert!(world.register_component_with_assets(
+        "emitter",
+        config_known,
+        |def: Emitter, _: &SpawnContext<'_>| (def,)
+    ));
+    assert!(!world.register_component_with_assets(
+        "emitter",
+        config_known,
+        |def: Emitter, _: &SpawnContext<'_>| (def,)
+    ));
+    assert_eq!(
+        world.resource::<ComponentRegistry>().name_of::<Emitter>(),
+        Some("emitter")
+    );
+    let message = panic_message(|| {
+        world.register_component::<Health>("emitter");
+    });
+    assert!(message.contains("`emitter`"), "{message}");
+    assert!(message.contains(type_name::<Emitter>()), "{message}");
+    let message = panic_message(|| {
+        world.register_component_with_assets(
+            "smoke",
+            config_known,
+            |def: Emitter, _: &SpawnContext<'_>| (def,),
+        );
+    });
+    assert!(message.contains("`smoke`"), "{message}");
+}

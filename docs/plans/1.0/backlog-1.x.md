@@ -17,6 +17,9 @@ Sources are [criteria](criteria.md) sections unless another file is named.
 | Integer scene scaling (`display.scale_mode`) | The glyph gate (`D-127`) | A pixel-art game asks; the UI stays at native resolution |
 | JSON schemas for config files; live editing in the game | [w14](w14-tooling.md) | W1's widgets have shipped |
 | Nested prefabs; patching live entities on hot reload | §8.7 | A game asks |
+| Scene entries that instance prefabs | M51's non-goals (`D-157`) | A scene places an entity kind a prefab already describes, with overrides |
+| Rotated and templated Tiled objects | M51 Q9 (`D-157`): a classed object with a rotation and any object with a `template` fail the load | A level needs turned props, or its author uses Tiled templates; rotation needs a pivot design for the default extract, which turns a sprite about its centre, and templates a `.tx` reader |
+| A rotation or scale in prefab files; overrides of a prefab's sprite, tag and tween | M51 Q2, Q8 (`D-157`): a prefab spawns unrotated at scale 1, and an object's properties reach `components` only | A game places one kind at several sizes or angles, or a level changes a prefab's look per object |
 | World snapshots and saves by reflection | [w11](w11-shipping-basics.md), §8.7 | Component reflection exists |
 | Crash files for signals (segfault, driver abort) | [w11](w11-shipping-basics.md) | A game ships and needs them |
 | Parallel system scheduler | [w02](w02-multi-core-rendering.md#decisions-the-pass-needs-first) | A CPU-bound game row needs it; Q6 set no bounds (`D-131`), so it is opt-in per system over `Sync` types |

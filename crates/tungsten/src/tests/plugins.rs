@@ -192,17 +192,35 @@ fn component_names(app: &mut App) -> Vec<String> {
 fn each_owner_registers_its_scene_components() {
     assert_eq!(
         component_names(&mut App::new(Config::default()).unwrap()),
-        ["light", "parallax_layer", "rigid_body", "squash_stretch"]
+        [
+            "light",
+            "parallax_layer",
+            "particle_emitter",
+            "rigid_body",
+            "squash_stretch",
+            "tilemap"
+        ]
     );
     let set = DefaultPlugins::set()
         .without::<PhysicsPlugin>()
         .without::<GameFeelPlugin>();
     assert_eq!(
         component_names(&mut App::with_plugins(Config::default(), set).unwrap()),
-        ["light", "parallax_layer"]
+        ["light", "parallax_layer", "particle_emitter", "tilemap"]
+    );
+    let set = DefaultPlugins::set().without::<ParticlesPlugin>();
+    assert_eq!(
+        component_names(&mut App::with_plugins(Config::default(), set).unwrap()),
+        [
+            "light",
+            "parallax_layer",
+            "rigid_body",
+            "squash_stretch",
+            "tilemap"
+        ]
     );
     assert_eq!(
         component_names(&mut App::with_plugins(Config::default(), PluginSet::new()).unwrap()),
-        ["light", "parallax_layer"]
+        ["light", "parallax_layer", "tilemap"]
     );
 }

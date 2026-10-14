@@ -294,7 +294,10 @@ pub(crate) struct AnimatedProp(pub(crate) crate::level_layout::PropDepth);
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct TransientEmitter;
 
-#[derive(Debug, Clone, Copy)]
+/// A level emitter of torch embers, spray or motes; the level map's
+/// `emitters` objects spawn it from the `ex10_ambient_emitter` prefab, which
+/// names it `ambient_emitter`.
+#[derive(Debug, Clone, Copy, serde::Deserialize)]
 pub(crate) struct AmbientEmitter;
 
 #[derive(Default)]

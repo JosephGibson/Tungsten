@@ -6,6 +6,25 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.71.0] - 2026-10-14
+
+Summary: M51, W16b (plan archived at `docs/plans/archive/1.0/phase6-milestone-51-prefabs-tiled-objects.md`): prefab files in a `prefabs` manifest section, spawned by ID at once or through the command buffer; Tiled object layers whose object classes name prefabs, their properties written over the prefabs' components; the asset-checked registration form with the engine's `particle_emitter` and `tilemap` components on it; a `#[non_exhaustive]` `TilemapData` with a builder for maps built in code; and the kit's spawner (`D-157`, amending `D-032` and `D-153`). The template's player and example 01's ten ambient emitters spawn from prefabs. The determinism and containment hashes, the `integrated`, `gpu` and `gpu-throughput` digests, `gpu-visual.png`, the post-stack, transition and UI overlay references, `DefaultPlugins`' and the template's schedules and `api/tungsten-render.txt` are unchanged.
+
+### Added
+
+- **Prefab files** (`D-157`): a `prefabs` manifest section of files under `assets/prefabs/`, each a scene entry's fields without `transform`, parsed as strictly and checked against the World at load (`PrefabData`, `PrefabRegistry`, `PrefabError`); `tungsten::asset_loader::load_prefabs`, and `reload_prefab` for later spawns, a bad edit keeping the previous prefab.
+- **Spawning by ID**: `World::prepare_prefab` and `spawn_prefab`, `PreparedPrefab::with` and `spawn`, and `CommandBuffer::spawn_prefab` for a system, each one archetype move; a failed spawn leaves the World as it was.
+- **Tiled objects**: object layers load into `TilemapData::object_layers` (`ObjectLayer`, `MapObject`); `World::spawn_map_objects` spawns each classed object's prefab, its custom properties written over the prefab's components by dotted path, all or nothing, with `check_map_objects` and `prepare_map_objects` beside it.
+- **Asset-checked components**: `ComponentRegistry::register_with_assets` and `check_in` and `World::register_component_with_assets`, with `MissingAsset` and `ComponentError::MissingAsset`; the engine's `particle_emitter` (`ParticlesPlugin`) and `tilemap` (`App`) components, for scenes and prefabs alike.
+- **Tilemap builder**: `TilemapData::new`, `add_tile`, `add_layer`, `set_tile` and `fill`, for a map built in code.
+- **Spawner**: the kit's `Spawner` and `SpawnerPlugin` (`spawner_tick`): a prefab at its entity's position once per interval of game time.
+
+### Changed
+
+- **Breaks** (the W4 ledger's five W16b rows): `TilemapData` is `#[non_exhaustive]`, built outside core with `new` and the setters; the manifest types gain `prefabs` and `ManifestError::MissingPrefabFile`; a Tiled object that is templated, classed and rotated, or given two classes or one property twice fails the load; `particle_emitter` and `tilemap` are default component names.
+- **Template and example 01**: the template's player is a prefab, its harness loads the manifest's prefabs, and its `AGENTS.md` and the getting-started guide say how prefabs spawn; example 01's ten ambient emitters are one prefab class on its level's `emitters` object layer, which `tools/level.py` writes.
+- **Records**: `DESIGN.md`'s Prefabs and Tiled Objects section, the reload matrix's Prefab row and the tilemap paragraph's object layers; the assets table's Tilemap and Prefab rows; the LLM index's prefab route; known issues, the backlog and the W13 and W16 files take M51's follow-ups; the roadmap's `w13cd` summary drops the spawner.
+
 ## [0.70.0] - 2026-10-14
 
 Summary: the 0.70 review fixes (plan archived at `docs/plans/archive/review-fixes-0-70.md`), a break from the road to 1.0 that fixes the confirmed, high-value findings of the 2026-10-14 correctness review of `026f9e4`, with regression tests (device-free policy tests and scratch GPU probes where a failure needs a device), and files the rest in `docs/known-issues.md` by home. Crashes, hangs and silent losses become errors, fallbacks or no-ops; a disabled container disables what is inside it and nested focus scopes restore focus (`D-125`, `D-149`); a sleeping island wakes when its static or tile support changes (`D-156`, amending `D-065`). The determinism and containment hashes are unchanged, and `integrated` and `particles` read no owned metric `regressed` against 0.69 (`perf-runs/20261014-r070-review-fixes/`).

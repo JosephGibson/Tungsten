@@ -1,6 +1,7 @@
 //! Repo-wide manifest validation; no GPU/display.
 
 use std::path::{Path, PathBuf};
+use tungsten_core::PrefabData;
 use tungsten_core::assets::manifest::ResolvedManifest;
 
 fn workspace_root() -> PathBuf {
@@ -114,4 +115,42 @@ fn all_manifest_ids_are_globally_unique() {
             );
         }
     }
+}
+
+/// Every `prefabs` entry of every example and template manifest parses as a
+/// prefab file: its keys, its sprite and tween, and its components' shape
+/// as JSON. The components' types and asset IDs need the game's World,
+/// which the game's own load checks.
+#[test]
+fn every_prefab_file_parses() {
+    let root = workspace_root();
+    let mut manifests = collect_manifests(&root);
+    manifests.extend(collect_template_manifests(&root));
+    let mut failures = Vec::new();
+    for manifest in &manifests {
+        let loaded = ResolvedManifest::load(manifest)
+            .unwrap_or_else(|e| panic!("{}: {e:?}", manifest.display()));
+        let mut prefabs: Vec<_> = loaded.prefabs.iter().collect();
+        prefabs.sort_by(|a, b| a.0.cmp(b.0));
+        for (id, prefab) in prefabs {
+            let parsed = std::fs::read_to_string(&prefab.path)
+                .map_err(|e| e.to_string())
+                .and_then(|text| {
+                    serde_json::from_str::<PrefabData>(&text).map_err(|e| e.to_string())
+                });
+            if let Err(e) = parsed {
+                failures.push(format!(
+                    "{}: prefab '{id}' ({}): {e}",
+                    manifest.display(),
+                    prefab.path.display()
+                ));
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{} prefab file(s) failed to parse:\n  - {}",
+        failures.len(),
+        failures.join("\n  - ")
+    );
 }

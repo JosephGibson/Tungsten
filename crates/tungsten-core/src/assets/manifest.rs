@@ -38,6 +38,14 @@ pub enum ManifestError {
     MissingShaderFile { id: String, path: String },
     #[error("ui theme '{id}' references missing file: {path}")]
     MissingUiThemeFile { id: String, path: String },
+    /// A `prefabs` entry names a file that does not exist (M51).
+    #[error("prefab '{id}' references missing file: {path}")]
+    MissingPrefabFile {
+        /// The prefab's ID.
+        id: String,
+        /// The file the entry resolves to.
+        path: String,
+    },
     #[error("material '{id}' references unknown shader '{shader}'")]
     MaterialShaderMissing { id: String, shader: String },
     #[error("particle mesh '{id}' is invalid: {reason}")]
@@ -81,6 +89,9 @@ pub struct RawManifest {
     /// UI themes: a theme ID and the theme file it loads (M2, w01 §14).
     #[serde(default, deserialize_with = "unique_ids")]
     pub ui_themes: HashMap<String, UiThemeEntry>,
+    /// Prefabs: a prefab ID and the prefab file it loads (M51).
+    #[serde(default, deserialize_with = "unique_ids")]
+    pub prefabs: HashMap<String, PrefabEntry>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -207,6 +218,14 @@ pub struct TilemapEntry {
     pub path: String,
 }
 
+/// A `prefabs` entry: the prefab file's path, relative to the manifest.
+#[derive(Debug, Clone, Deserialize)]
+#[non_exhaustive]
+pub struct PrefabEntry {
+    /// The prefab file, relative to the manifest.
+    pub path: String,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct ParticleEntry {
     pub path: String,
@@ -266,6 +285,8 @@ pub struct ResolvedManifest {
     pub font_fallback: Vec<String>,
     /// UI themes by ID (M2).
     pub ui_themes: HashMap<String, ResolvedUiTheme>,
+    /// Prefabs by ID (M51).
+    pub prefabs: HashMap<String, ResolvedPrefab>,
 }
 
 #[derive(Debug, Clone)]
@@ -320,6 +341,22 @@ pub struct ResolvedSound {
 #[derive(Debug, Clone)]
 pub struct ResolvedTilemap {
     pub path: PathBuf,
+}
+
+/// A prefab: the prefab file's resolved path.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct ResolvedPrefab {
+    /// The prefab file, canonical when it resolves.
+    pub path: PathBuf,
+}
+
+impl ResolvedPrefab {
+    /// A prefab loaded from `path`.
+    #[must_use]
+    pub fn new(path: PathBuf) -> Self {
+        Self { path }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -537,6 +574,20 @@ impl ResolvedManifest {
                 .insert(id, ResolvedUiTheme { path: full_path });
         }
 
+        for (id, entry) in raw.prefabs {
+            let full_path = base_dir.join(&entry.path);
+            if !full_path.exists() {
+                return Err(ManifestError::MissingPrefabFile {
+                    id,
+                    path: full_path.display().to_string(),
+                });
+            }
+            let full_path = full_path.canonicalize().unwrap_or(full_path);
+            result
+                .prefabs
+                .insert(id, ResolvedPrefab { path: full_path });
+        }
+
         // The material -> shader reference is checked by the caller, on this
         // file alone (`load`) or on the merged graph (`load_and_merge_many`).
         let source_manifest = manifest_path
@@ -723,6 +774,12 @@ impl ResolvedManifest {
                 return Err(ManifestError::DuplicateId { id });
             }
             self.ui_themes.insert(id, theme);
+        }
+        for (id, prefab) in other.prefabs {
+            if self.prefabs.contains_key(&id) {
+                return Err(ManifestError::DuplicateId { id });
+            }
+            self.prefabs.insert(id, prefab);
         }
         append_fallback(&mut self.font_fallback, other.font_fallback);
         if check_refs {
