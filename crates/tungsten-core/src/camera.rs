@@ -232,6 +232,16 @@ impl CameraState {
         let (offset_min, offset_max) = rotated_view_extents(view_size, self.rotation);
         (self.position + offset_min, self.position + offset_max)
     }
+
+    /// The world point drawn at `screen` (physical pixels from the window's
+    /// top-left): the inverse of [`view_projection`](Self::view_projection),
+    /// rotation included. The viewport's size does not enter it, since the
+    /// camera is anchored at the top-left.
+    #[must_use]
+    pub fn screen_to_world(&self, screen: Vec2) -> Vec2 {
+        let zoom = self.zoom.max(f32::EPSILON);
+        self.position + rotate_vec(screen / zoom, self.rotation)
+    }
 }
 
 impl Default for CameraState {

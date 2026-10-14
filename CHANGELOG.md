@@ -6,6 +6,25 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.69.0] - 2026-10-14
+
+Summary: M50, W13a and W13b (plan archived at `docs/plans/archive/1.0/phase6-milestone-50-kit-basics-hierarchy.md`): `tungsten-kit`, a fourth crate on core alone, re-exported as `tungsten::kit` behind the default `kit` feature, with opt-in plugins for an animated sprite, lifetimes, despawn outside a region or the view and a sound per event, `cursor_to_world`, and a positions-only transform hierarchy propagated after the physics sync and again after the tweens; the engine's system names move to core (`D-155`, amending `D-006`, `D-107`, `D-128` and `D-133`). The determinism and containment hashes, the `integrated` and `particles` digests, `gpu-visual.png`, the post-stack, transition and UI overlay references, `DefaultPlugins`' schedule and `api/tungsten-render.txt` are unchanged; one direct pair's `particles` `particle_count_refresh` p50 reading (0.620 → 0.654 ms) is accepted by the owner as the recorded same-build drift.
+
+### Added
+
+- **`tungsten-kit`** (`D-155`): a crate on `tungsten-core` alone with no new third-party dependency, private modules re-exported at its root and `#![deny(missing_docs)]`; an item joins when it is generic and has a user, with a rustdoc example and a harness test. Each item is an opt-in plugin a game adds after the engine's; `DefaultPlugins` holds none, and the kit's ordering constraints are if-present.
+- **Animated sprite**: `AnimationPlugin` advances each `AnimationState` on the game clock and writes the current frame into `Sprite.asset_id`, and registers the `animation` scene component.
+- **Lifetimes and despawn outside**: `Lifetime::new(seconds)` with `LifetimePlugin`; `DespawnOutside::region(min, max)` and `DespawnOutside::view(margin)` with `DespawnOutsidePlugin`; both despawn the entity with its children.
+- **Sound on an event**: `SoundOnEvent::<E>::new(name, sound)` and `select(name, pick)` play each event once at the manifest volume, whatever the system's order against the senders.
+- **Cursor in world space**: `cursor_to_world(&World)` and `CameraState::screen_to_world`, `view_projection`'s inverse, rotation included.
+- **Transform hierarchy**: `Parent`, `Children`, `LocalOffset`, `spawn_child`, `despawn_recursive` and `HierarchyPlugin` (`transform_propagate` after `physics_sync`, `transform_propagate_late` after the tween tick). Positions only; bodies stay on roots (`D-132`), a child whose parent died goes at the next propagation, and a recursive despawn spares a child detached earlier in the same flush.
+
+### Changed
+
+- **System names** (`D-155`, amending `D-133`): the engine's 17 name constants live in `tungsten_core::schedule::names`; `tungsten::plugins` re-exports each, so no path changes.
+- **Snapshots and routing**: `api/tungsten-kit.txt` is a fourth snapshot (`D-107`); `check-repo.py`'s selector routes `crates/tungsten-kit/` to the kit's tests and the umbrella's `kit_tests`.
+- **Records**: `AGENTS.md` lists the kit and gains its "Where code goes" row; the template's `AGENTS.md` takes generic gameplay from `tungsten::kit`; `DESIGN.md`'s Kit and Transform Hierarchy section; the LLM index routes the kit (the platformer row trimmed to its folder); known issues gain the kit's limits and the inspector's rotated pick; the break ledger lists the kit for the freeze; the roadmap's `w13ab` summary drops W13d's health and damage.
+
 ## [0.68.0] - 2026-10-13
 
 Summary: M49, W6a (plan archived at `docs/plans/archive/1.0/phase6-milestone-49-kinematic-sensors-queries.md`): kinematic bodies, sensors and spatial queries in core physics. A kinematic body moves by its velocity, pushes dynamic bodies and is never pushed, and its contact events name the dynamic body; a sensor reports each body or solid tile it begins to overlap as `SensorEntered`; ray and shape casts, overlaps and nearest-surface queries read the last step's bodies, sensors and tiles from `&World`. A probe of 500 bodies pressing on a kinematic body set two rules: a world with a kinematic body runs a step past 1/60 s in up to twice the substeps, and a moving kinematic body's wake reaches through the island it presses (`D-154`, amending `D-033`, `D-064`, `D-065`, `D-066`, `D-081`, `D-092` and `D-094`). The determinism and containment hashes, the eight row digests and `gpu-visual.png` are unchanged.

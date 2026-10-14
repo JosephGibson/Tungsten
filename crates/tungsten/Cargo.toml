@@ -7,6 +7,10 @@ license.workspace = true
 description = "Umbrella crate and winit application loop for the Tungsten 2D engine"
 
 [features]
+default = ["kit"]
+# The kit, `tungsten::kit`: generic gameplay components and systems over core,
+# each behind an opt-in plugin.
+kit = ["dep:tungsten-kit"]
 # The headless test harness, `tungsten::testing` (`D-110`); games enable it as
 # a dev-dependency feature.
 testing = []
@@ -14,6 +18,7 @@ testing = []
 [dependencies]
 tungsten-core = { workspace = true }
 tungsten-render = { workspace = true }
+tungsten-kit = { workspace = true, optional = true }
 winit = { workspace = true }
 glam = { workspace = true }
 serde = { workspace = true }

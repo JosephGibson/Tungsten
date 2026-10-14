@@ -69,6 +69,14 @@ pub use tungsten_core::{
     Plugin, PluginSet, RoutedInput, Schedule, ScheduleError, Stage, SystemDesc, UiEvent, UiRouter,
     With, Without, system,
 };
+/// The kit: generic 2D gameplay components and systems over core, each
+/// behind an opt-in plugin; the default `kit` feature.
+#[cfg(feature = "kit")]
+pub use tungsten_kit as kit;
 pub use tungsten_render as render;
 pub use tweens::tween_tick_system;
 pub use ui_debug::ui_debug_toggle_system;
+
+#[cfg(all(test, feature = "kit"))]
+#[path = "tests/kit.rs"]
+mod kit_tests;

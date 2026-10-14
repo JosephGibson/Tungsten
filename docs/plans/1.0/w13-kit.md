@@ -7,7 +7,7 @@
 - **ordered steps:** Set at graduation. Candidates and their order: [implementation plan](implementation-plan.md) §4.
 - **done-when:** Set at graduation. Sketch: [criteria](criteria.md) §8.4.
 
-Skeleton. The scoping text stays in [criteria](criteria.md) §8.4 until this workstream graduates ([conventions](README.md#conventions)). Revised 2026-10-03 on `db1177c`: the definition gate's tier timing and Q24's answer. Revised 2026-10-05 on `01f9c55`, uncommitted: tiers proposed from the acceptance game's mechanics rows. Revised 2026-10-06, uncommitted: the frame-loop gate confirmed them and answered Q21 (`D-132`).
+Skeleton. The scoping text stays in [criteria](criteria.md) §8.4 until this workstream graduates ([conventions](README.md#conventions)). Revised 2026-10-03 on `db1177c`: the definition gate's tier timing and Q24's answer. Revised 2026-10-05 on `01f9c55`, uncommitted: tiers proposed from the acceptance game's mechanics rows. Revised 2026-10-06, uncommitted: the frame-loop gate confirmed them and answered Q21 (`D-132`). Revised 2026-10-14, uncommitted: W13a and W13b landed in 0.69 (M50, `D-155`): `tungsten-kit` on core alone, re-exported as `tungsten::kit` behind a default feature, with opt-in plugins per item and harness tests in the umbrella; its value types keep private fields behind constructors in place of `#[non_exhaustive]`.
 
 ## Placement
 
@@ -32,4 +32,11 @@ Written at graduation.
 
 ## Follow-ups
 
-None yet.
+Each waits for a user (M50's plan, archived at `docs/plans/archive/1.0/phase6-milestone-50-kit-basics-hierarchy.md`):
+
+- Reparenting and detaching through the kit; today a game removes `Parent`, which detaches the child where it stands.
+- Spawning children through the command buffer; `spawn_child` is immediate, and a child spawned at the flush would draw one frame before its first propagation.
+- Rotation and scale inheritance, with a pivot design for the default extract, which turns a sprite about its centre (M50 Q7).
+- A `KitPlugins` set, if games add most of the kit's plugins together.
+- Scene components for `lifetime` and `despawn_outside`, when W16b's prefabs need them (M50 Q8).
+- An exactly-once event reader in core, if a second reader needs `SoundOnEvent`'s handled-count cursor.

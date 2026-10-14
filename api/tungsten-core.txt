@@ -3286,6 +3286,7 @@ pub tungsten_core::camera::CameraState::rotation: f32
 pub tungsten_core::camera::CameraState::zoom: f32
 impl tungsten_core::camera::CameraState
 pub fn tungsten_core::camera::CameraState::new() -> Self
+pub fn tungsten_core::camera::CameraState::screen_to_world(&self, glam::f32::vec2::Vec2) -> glam::f32::vec2::Vec2
 pub fn tungsten_core::camera::CameraState::view_projection(&self, f32, f32) -> glam::f32::sse2::mat4::Mat4
 pub fn tungsten_core::camera::CameraState::visible_world_aabb(&self, f32, f32) -> (glam::f32::vec2::Vec2, glam::f32::vec2::Vec2)
 impl core::clone::Clone for tungsten_core::camera::CameraState
@@ -6822,6 +6823,24 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::rng::Pcg32
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::rng::Pcg32
 pub fn tungsten_core::rng::splitmix64(u64) -> u64
 pub mod tungsten_core::schedule
+pub mod tungsten_core::schedule::names
+pub const tungsten_core::schedule::names::CAMERA_UPDATE: &str
+pub const tungsten_core::schedule::names::DISPLAY_INPUT: &str
+pub const tungsten_core::schedule::names::HUD_TOGGLE: &str
+pub const tungsten_core::schedule::names::INSPECTOR_PICK: &str
+pub const tungsten_core::schedule::names::INSPECTOR_TOGGLE: &str
+pub const tungsten_core::schedule::names::PARTICLE_COUNT_REFRESH: &str
+pub const tungsten_core::schedule::names::PARTICLE_EMIT: &str
+pub const tungsten_core::schedule::names::PARTICLE_TICK: &str
+pub const tungsten_core::schedule::names::PHYSICS_DEBUG_TOGGLE: &str
+pub const tungsten_core::schedule::names::SHAKE_TICK: &str
+pub const tungsten_core::schedule::names::SQUASH_STRETCH_TICK: &str
+pub const tungsten_core::schedule::names::SQUASH_STRETCH_TRIGGER: &str
+pub const tungsten_core::schedule::names::STATE_DISPATCHER: &str
+pub const tungsten_core::schedule::names::SYSTEMS_OVERLAY_TOGGLE: &str
+pub const tungsten_core::schedule::names::TWEEN_TICK: &str
+pub const tungsten_core::schedule::names::UI_DEBUG_TOGGLE: &str
+pub const tungsten_core::schedule::names::UI_ROUTE: &str
 pub enum tungsten_core::schedule::ScheduleError
 pub tungsten_core::schedule::ScheduleError::Cycle
 pub tungsten_core::schedule::ScheduleError::Cycle::path: alloc::vec::Vec<alloc::string::String>
@@ -12068,6 +12087,7 @@ pub tungsten_core::CameraState::rotation: f32
 pub tungsten_core::CameraState::zoom: f32
 impl tungsten_core::camera::CameraState
 pub fn tungsten_core::camera::CameraState::new() -> Self
+pub fn tungsten_core::camera::CameraState::screen_to_world(&self, glam::f32::vec2::Vec2) -> glam::f32::vec2::Vec2
 pub fn tungsten_core::camera::CameraState::view_projection(&self, f32, f32) -> glam::f32::sse2::mat4::Mat4
 pub fn tungsten_core::camera::CameraState::visible_world_aabb(&self, f32, f32) -> (glam::f32::vec2::Vec2, glam::f32::vec2::Vec2)
 impl core::clone::Clone for tungsten_core::camera::CameraState

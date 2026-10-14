@@ -548,7 +548,7 @@
       "kind": "release",
       "level": "C",
       "title": "Kit basics and parent–child transforms",
-      "summary": "Health and damage with invulnerability time and hit flash, lifetimes and despawn outside a region come from tungsten-kit instead of example code; children move with their parents.",
+      "summary": "Animated sprites, lifetimes, despawn outside a region or the view, a sound on an event and the cursor in world space come from tungsten-kit instead of example code; children follow their parents.",
       "note": null,
       "src": ["docs/plans/1.0/criteria.md §8.4 (W13)"],
       "slug": "kit-basics-hierarchy",

@@ -1,0 +1,19 @@
+[package]
+name = "tungsten-kit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Generic 2D gameplay components and systems over tungsten-core for the Tungsten 2D engine"
+
+[dependencies]
+tungsten-core = { workspace = true }
+glam = { workspace = true }
+serde = { workspace = true }
+log = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

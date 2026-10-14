@@ -4,7 +4,7 @@ Shared Tungsten rules (`CLAUDE.md` imports this file). **Before editing under `c
 
 ## Project
 
-Native Rust 2D game engine: `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Crates: `tungsten-core` (ECS, config, physics, asset registry), `tungsten-render` (wgpu), `tungsten` (app loop, loaders, audio, hot reload). Demos: `examples/NN_name/`.
+Native Rust 2D game engine: `winit` + `wgpu` + `glam` + hand-rolled ECS + manifest-driven assets. Crates: `tungsten-core` (ECS, config, physics, asset registry), `tungsten-render` (wgpu), `tungsten` (app loop, loaders, audio, hot reload), `tungsten-kit` (generic gameplay components and systems over core, re-exported as `tungsten::kit`). Demos: `examples/NN_name/`.
 
 ## Reading
 
@@ -28,6 +28,7 @@ GPU smoke and pixel comparisons stay local. A CPU test run without `TUNGSTEN_VIS
 - ECS, config, asset registry/manifest schema/IDs, math used twice+ → `tungsten-core`
 - Rendering primitives, GPU upload of decoded assets → `tungsten-render`
 - App/event loop, input, time, load bridge → `tungsten`
+- Generic gameplay components and systems with a user, under the kit's admission rule (`D-155`) → `tungsten-kit`, on core alone
 - Demo-specific components/systems → `examples/`, never library crates
 
 Seam (`D-007`, `D-016`, `D-018`): core defines `TextureHandle(u32)`, has no `wgpu` types and never calls render. Render allocates handles (`D-048`); the umbrella registers core metadata and uploads pixels under the same handle. Extract runs on the main thread with `&World` and passes render data; render needs no mutable `World`.
