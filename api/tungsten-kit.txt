@@ -1,0 +1,187 @@
+pub mod tungsten_kit
+pub struct tungsten_kit::AnimationPlugin
+impl core::clone::Clone for tungsten_kit::AnimationPlugin
+pub fn tungsten_kit::AnimationPlugin::clone(&self) -> tungsten_kit::AnimationPlugin
+impl core::default::Default for tungsten_kit::AnimationPlugin
+pub fn tungsten_kit::AnimationPlugin::default() -> tungsten_kit::AnimationPlugin
+impl core::fmt::Debug for tungsten_kit::AnimationPlugin
+pub fn tungsten_kit::AnimationPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::AnimationPlugin
+impl tungsten_core::schedule::Plugin for tungsten_kit::AnimationPlugin
+pub fn tungsten_kit::AnimationPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten_kit::AnimationPlugin
+impl core::marker::Send for tungsten_kit::AnimationPlugin
+impl core::marker::Sync for tungsten_kit::AnimationPlugin
+impl core::marker::Unpin for tungsten_kit::AnimationPlugin
+impl core::marker::UnsafeUnpin for tungsten_kit::AnimationPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::AnimationPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::AnimationPlugin
+pub struct tungsten_kit::Children(_)
+impl tungsten_kit::Children
+pub fn tungsten_kit::Children::is_empty(&self) -> bool
+pub fn tungsten_kit::Children::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = tungsten_core::ecs::entity::Entity>
+pub fn tungsten_kit::Children::len(&self) -> usize
+impl core::clone::Clone for tungsten_kit::Children
+pub fn tungsten_kit::Children::clone(&self) -> tungsten_kit::Children
+impl core::cmp::Eq for tungsten_kit::Children
+impl core::cmp::PartialEq for tungsten_kit::Children
+pub fn tungsten_kit::Children::eq(&self, &tungsten_kit::Children) -> bool
+impl core::fmt::Debug for tungsten_kit::Children
+pub fn tungsten_kit::Children::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Children
+impl core::marker::Freeze for tungsten_kit::Children
+impl core::marker::Send for tungsten_kit::Children
+impl core::marker::Sync for tungsten_kit::Children
+impl core::marker::Unpin for tungsten_kit::Children
+impl core::marker::UnsafeUnpin for tungsten_kit::Children
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Children
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Children
+pub struct tungsten_kit::DespawnOutside
+impl tungsten_kit::DespawnOutside
+pub fn tungsten_kit::DespawnOutside::region(glam::f32::vec2::Vec2, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_kit::DespawnOutside::view(f32) -> Self
+impl core::clone::Clone for tungsten_kit::DespawnOutside
+pub fn tungsten_kit::DespawnOutside::clone(&self) -> tungsten_kit::DespawnOutside
+impl core::cmp::PartialEq for tungsten_kit::DespawnOutside
+pub fn tungsten_kit::DespawnOutside::eq(&self, &tungsten_kit::DespawnOutside) -> bool
+impl core::fmt::Debug for tungsten_kit::DespawnOutside
+pub fn tungsten_kit::DespawnOutside::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::DespawnOutside
+impl core::marker::StructuralPartialEq for tungsten_kit::DespawnOutside
+impl core::marker::Freeze for tungsten_kit::DespawnOutside
+impl core::marker::Send for tungsten_kit::DespawnOutside
+impl core::marker::Sync for tungsten_kit::DespawnOutside
+impl core::marker::Unpin for tungsten_kit::DespawnOutside
+impl core::marker::UnsafeUnpin for tungsten_kit::DespawnOutside
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::DespawnOutside
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::DespawnOutside
+pub struct tungsten_kit::DespawnOutsidePlugin
+impl core::clone::Clone for tungsten_kit::DespawnOutsidePlugin
+pub fn tungsten_kit::DespawnOutsidePlugin::clone(&self) -> tungsten_kit::DespawnOutsidePlugin
+impl core::default::Default for tungsten_kit::DespawnOutsidePlugin
+pub fn tungsten_kit::DespawnOutsidePlugin::default() -> tungsten_kit::DespawnOutsidePlugin
+impl core::fmt::Debug for tungsten_kit::DespawnOutsidePlugin
+pub fn tungsten_kit::DespawnOutsidePlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::DespawnOutsidePlugin
+impl tungsten_core::schedule::Plugin for tungsten_kit::DespawnOutsidePlugin
+pub fn tungsten_kit::DespawnOutsidePlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten_kit::DespawnOutsidePlugin
+impl core::marker::Send for tungsten_kit::DespawnOutsidePlugin
+impl core::marker::Sync for tungsten_kit::DespawnOutsidePlugin
+impl core::marker::Unpin for tungsten_kit::DespawnOutsidePlugin
+impl core::marker::UnsafeUnpin for tungsten_kit::DespawnOutsidePlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::DespawnOutsidePlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::DespawnOutsidePlugin
+pub struct tungsten_kit::HierarchyPlugin
+impl core::clone::Clone for tungsten_kit::HierarchyPlugin
+pub fn tungsten_kit::HierarchyPlugin::clone(&self) -> tungsten_kit::HierarchyPlugin
+impl core::default::Default for tungsten_kit::HierarchyPlugin
+pub fn tungsten_kit::HierarchyPlugin::default() -> tungsten_kit::HierarchyPlugin
+impl core::fmt::Debug for tungsten_kit::HierarchyPlugin
+pub fn tungsten_kit::HierarchyPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::HierarchyPlugin
+impl tungsten_core::schedule::Plugin for tungsten_kit::HierarchyPlugin
+pub fn tungsten_kit::HierarchyPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten_kit::HierarchyPlugin
+impl core::marker::Send for tungsten_kit::HierarchyPlugin
+impl core::marker::Sync for tungsten_kit::HierarchyPlugin
+impl core::marker::Unpin for tungsten_kit::HierarchyPlugin
+impl core::marker::UnsafeUnpin for tungsten_kit::HierarchyPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::HierarchyPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::HierarchyPlugin
+pub struct tungsten_kit::Lifetime
+impl tungsten_kit::Lifetime
+pub fn tungsten_kit::Lifetime::new(f32) -> Self
+pub fn tungsten_kit::Lifetime::timer(&self) -> &tungsten_core::time::Timer
+impl core::clone::Clone for tungsten_kit::Lifetime
+pub fn tungsten_kit::Lifetime::clone(&self) -> tungsten_kit::Lifetime
+impl core::fmt::Debug for tungsten_kit::Lifetime
+pub fn tungsten_kit::Lifetime::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_kit::Lifetime
+impl core::marker::Send for tungsten_kit::Lifetime
+impl core::marker::Sync for tungsten_kit::Lifetime
+impl core::marker::Unpin for tungsten_kit::Lifetime
+impl core::marker::UnsafeUnpin for tungsten_kit::Lifetime
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Lifetime
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Lifetime
+pub struct tungsten_kit::LifetimePlugin
+impl core::clone::Clone for tungsten_kit::LifetimePlugin
+pub fn tungsten_kit::LifetimePlugin::clone(&self) -> tungsten_kit::LifetimePlugin
+impl core::default::Default for tungsten_kit::LifetimePlugin
+pub fn tungsten_kit::LifetimePlugin::default() -> tungsten_kit::LifetimePlugin
+impl core::fmt::Debug for tungsten_kit::LifetimePlugin
+pub fn tungsten_kit::LifetimePlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::LifetimePlugin
+impl tungsten_core::schedule::Plugin for tungsten_kit::LifetimePlugin
+pub fn tungsten_kit::LifetimePlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten_kit::LifetimePlugin
+impl core::marker::Send for tungsten_kit::LifetimePlugin
+impl core::marker::Sync for tungsten_kit::LifetimePlugin
+impl core::marker::Unpin for tungsten_kit::LifetimePlugin
+impl core::marker::UnsafeUnpin for tungsten_kit::LifetimePlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::LifetimePlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::LifetimePlugin
+pub struct tungsten_kit::LocalOffset(pub glam::f32::vec2::Vec2)
+impl core::clone::Clone for tungsten_kit::LocalOffset
+pub fn tungsten_kit::LocalOffset::clone(&self) -> tungsten_kit::LocalOffset
+impl core::cmp::PartialEq for tungsten_kit::LocalOffset
+pub fn tungsten_kit::LocalOffset::eq(&self, &tungsten_kit::LocalOffset) -> bool
+impl core::default::Default for tungsten_kit::LocalOffset
+pub fn tungsten_kit::LocalOffset::default() -> tungsten_kit::LocalOffset
+impl core::fmt::Debug for tungsten_kit::LocalOffset
+pub fn tungsten_kit::LocalOffset::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::LocalOffset
+impl core::marker::StructuralPartialEq for tungsten_kit::LocalOffset
+impl core::marker::Freeze for tungsten_kit::LocalOffset
+impl core::marker::Send for tungsten_kit::LocalOffset
+impl core::marker::Sync for tungsten_kit::LocalOffset
+impl core::marker::Unpin for tungsten_kit::LocalOffset
+impl core::marker::UnsafeUnpin for tungsten_kit::LocalOffset
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::LocalOffset
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::LocalOffset
+pub struct tungsten_kit::Parent(_)
+impl tungsten_kit::Parent
+pub fn tungsten_kit::Parent::entity(self) -> tungsten_core::ecs::entity::Entity
+impl core::clone::Clone for tungsten_kit::Parent
+pub fn tungsten_kit::Parent::clone(&self) -> tungsten_kit::Parent
+impl core::cmp::Eq for tungsten_kit::Parent
+impl core::cmp::PartialEq for tungsten_kit::Parent
+pub fn tungsten_kit::Parent::eq(&self, &tungsten_kit::Parent) -> bool
+impl core::fmt::Debug for tungsten_kit::Parent
+pub fn tungsten_kit::Parent::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_kit::Parent
+pub fn tungsten_kit::Parent::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_kit::Parent
+impl core::marker::StructuralPartialEq for tungsten_kit::Parent
+impl core::marker::Freeze for tungsten_kit::Parent
+impl core::marker::Send for tungsten_kit::Parent
+impl core::marker::Sync for tungsten_kit::Parent
+impl core::marker::Unpin for tungsten_kit::Parent
+impl core::marker::UnsafeUnpin for tungsten_kit::Parent
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Parent
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Parent
+pub struct tungsten_kit::SoundOnEvent<E>
+impl<E: 'static> tungsten_kit::SoundOnEvent<E>
+pub fn tungsten_kit::SoundOnEvent<E>::new(&'static str, &'static str) -> Self
+pub fn tungsten_kit::SoundOnEvent<E>::select(&'static str, fn(&E) -> core::option::Option<&str>) -> Self
+impl<E: 'static> tungsten_core::schedule::Plugin for tungsten_kit::SoundOnEvent<E>
+pub fn tungsten_kit::SoundOnEvent<E>::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl<E> core::clone::Clone for tungsten_kit::SoundOnEvent<E>
+pub fn tungsten_kit::SoundOnEvent<E>::clone(&self) -> Self
+impl<E> core::fmt::Debug for tungsten_kit::SoundOnEvent<E>
+pub fn tungsten_kit::SoundOnEvent<E>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<E> core::marker::Freeze for tungsten_kit::SoundOnEvent<E>
+impl<E> core::marker::Send for tungsten_kit::SoundOnEvent<E>
+impl<E> core::marker::Sync for tungsten_kit::SoundOnEvent<E>
+impl<E> core::marker::Unpin for tungsten_kit::SoundOnEvent<E>
+impl<E> core::marker::UnsafeUnpin for tungsten_kit::SoundOnEvent<E>
+impl<E> core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::SoundOnEvent<E>
+impl<E> core::panic::unwind_safe::UnwindSafe for tungsten_kit::SoundOnEvent<E>
+pub const tungsten_kit::ANIMATION_TICK: &str
+pub const tungsten_kit::DESPAWN_OUTSIDE: &str
+pub const tungsten_kit::LIFETIME_TICK: &str
+pub const tungsten_kit::TRANSFORM_PROPAGATE: &str
+pub const tungsten_kit::TRANSFORM_PROPAGATE_LATE: &str
+pub fn tungsten_kit::cursor_to_world(&tungsten_core::ecs::world::World) -> core::option::Option<glam::f32::vec2::Vec2>
+pub fn tungsten_kit::despawn_recursive(&mut tungsten_core::ecs::command_buffer::CommandBuffer, tungsten_core::ecs::entity::Entity)
+pub fn tungsten_kit::spawn_child<B: tungsten_core::ecs::bundle::Bundle>(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2, B) -> tungsten_core::ecs::entity::Entity

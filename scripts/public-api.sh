@@ -3,7 +3,8 @@
 # rustdoc JSON from the pinned toolchain in rust-toolchain.toml, with
 # RUSTC_BOOTSTRAP=1 for that one rustdoc call, listed by cargo-public-api.
 # The umbrella's call enables its `testing` feature, so the headless harness
-# is listed too (D-110).
+# is listed too (D-110); its default `kit` feature prints the kit as one
+# `pub use tungsten::kit` line, and tungsten-kit has a file of its own.
 # --check writes to target/public-api/check/ instead and fails when a tracked
 # file differs, so the release checks catch a stale snapshot.
 #
@@ -18,7 +19,7 @@ cd "$(dirname "$0")/.." || exit 1
 
 TOOL_VERSION="0.52.0"
 FORMAT_VERSION=60
-CRATES=(tungsten-core tungsten-render tungsten)
+CRATES=(tungsten-core tungsten-render tungsten tungsten-kit)
 # Its own target dir, so the bootstrap flag never touches the debug or perf builds.
 TARGET="target/public-api"
 

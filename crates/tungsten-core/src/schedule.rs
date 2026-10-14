@@ -74,6 +74,48 @@ impl fmt::Display for Stage {
     }
 }
 
+/// The engine's system names, by stage: the umbrella's plugins register
+/// their systems under them, and a game or a kit plugin orders its own
+/// against them with `before` and `after`. They live in core so a crate on
+/// core alone can name them; `tungsten::plugins` re-exports each one. The
+/// physics plugin's three are in [`crate::physics`].
+pub mod names {
+    /// `PreUpdate`: the physics overlay toggle.
+    pub const PHYSICS_DEBUG_TOGGLE: &str = "physics_debug_toggle";
+    /// `PreUpdate`: the systems overlay toggle.
+    pub const SYSTEMS_OVERLAY_TOGGLE: &str = "systems_overlay_toggle";
+    /// `PreUpdate`: the inspector toggle.
+    pub const INSPECTOR_TOGGLE: &str = "inspector_toggle";
+    /// `PreUpdate`: the inspector's pick, after its toggle.
+    pub const INSPECTOR_PICK: &str = "inspector_pick";
+    /// `PreUpdate`: the HUD toggle.
+    pub const HUD_TOGGLE: &str = "hud_toggle";
+    /// `PreUpdate`: the UI debug toggles (bounds overlay, hide game layers).
+    pub const UI_DEBUG_TOGGLE: &str = "ui_debug_toggle";
+    /// `PreUpdate`: vsync and fullscreen hotkeys.
+    pub const DISPLAY_INPUT: &str = "display_input";
+    /// `PreUpdate`: the state stack's dispatcher, after the display hotkeys.
+    pub const STATE_DISPATCHER: &str = "state_dispatcher";
+    /// `PreUpdate`: UI input routing, after the state dispatcher (`D-149`).
+    pub const UI_ROUTE: &str = "ui_route";
+    /// `PostUpdate`: particle emitter counts, before the emit.
+    pub const PARTICLE_COUNT_REFRESH: &str = "particle_count_refresh";
+    /// `PostUpdate`: particle emission, before the tick.
+    pub const PARTICLE_EMIT: &str = "particle_emit";
+    /// `PostUpdate`: particle ageing and despawn.
+    pub const PARTICLE_TICK: &str = "particle_tick";
+    /// `PostUpdate`: the tween tick, after the particle tick so tween writes win.
+    pub const TWEEN_TICK: &str = "tween_tick";
+    /// `PostUpdate`: arms squash envelopes from this frame's `SquashEvent`s.
+    pub const SQUASH_STRETCH_TRIGGER: &str = "squash_stretch_trigger";
+    /// `PostUpdate`: advances squash envelopes, after the trigger.
+    pub const SQUASH_STRETCH_TICK: &str = "squash_stretch_tick";
+    /// `PostUpdate`: camera trauma from this frame's `ShakeEvent`s.
+    pub const SHAKE_TICK: &str = "shake_tick";
+    /// `PostUpdate`: the camera, after the shake tick.
+    pub const CAMERA_UPDATE: &str = "camera_update";
+}
+
 /// A tick system.
 pub type SystemFn = Box<dyn FnMut(&mut World)>;
 

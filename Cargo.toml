@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.68.0"
+version = "0.69.0"
 edition = "2024"
 rust-version = "1.98.1"
 license = "MIT"
@@ -10,6 +10,7 @@ members = [
     "crates/tungsten-core",
     "crates/tungsten-render",
     "crates/tungsten",
+    "crates/tungsten-kit",
     "examples/01_platformer",
     "examples/02_bench",
     "examples/03_scene_state",
@@ -35,6 +36,7 @@ ignored-paths = [
 tungsten-core = { path = "crates/tungsten-core" }
 tungsten-render = { path = "crates/tungsten-render" }
 tungsten = { path = "crates/tungsten" }
+tungsten-kit = { path = "crates/tungsten-kit" }
 
 # Platform abstractions (D-015 rule 1)
 wgpu = "30.0.1"

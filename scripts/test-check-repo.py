@@ -370,6 +370,16 @@ class CheckSelection(unittest.TestCase):
         self.assertTrue(any("mirrors" in note for note in review))
         self.assertEqual(unknown, [])
 
+    def test_kit_sources_select_their_tests_and_the_umbrellas_harness_tests(self):
+        for path in ("crates/tungsten-kit/src/hierarchy.rs", "crates/tungsten-kit/src/tests/sound.rs"):
+            with self.subTest(path=path):
+                commands, review, unknown = self.selection(path)
+                self.assertTrue({"cargo test -p tungsten-kit --locked", "cargo test -p tungsten --locked",
+                                 "just smoke"} <= commands.keys())
+                self.assertTrue(any("harness" in r for r in commands["cargo test -p tungsten --locked"]["reasons"]))
+                self.assertTrue(any("Public API" in note for note in review))
+                self.assertEqual(unknown, [])
+
     def test_mixed_changes_merge_reasons_and_leave_uncertainty_visible(self):
         paths = ["docs/agent-setup.md", "scripts/check-repo.py", "assets/shaders/sprite.wgsl", "unmapped.data"]
         commands, review, unknown = self.selection(*paths)

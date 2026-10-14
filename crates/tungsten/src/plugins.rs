@@ -1,6 +1,8 @@
 //! The engine's plugins and `DefaultPlugins` (W15a's design, spiked
 //! 2026-10-05). Each registers its systems under the public names below,
-//! in the stage the frame map gives it, and the events it sends. `App::new`
+//! which core defines in `tungsten_core::schedule::names` so a crate on core
+//! alone can name them, in the stage the frame map gives it, and the events
+//! it sends. `App::new`
 //! installs [`DefaultPlugins::set`]; a game that replaces an engine feature
 //! builds its app with [`App::with_plugins`](crate::App::with_plugins) and
 //! the set without that plugin. The resources every engine feature reads
@@ -36,41 +38,12 @@ use crate::ui_debug::ui_debug_toggle_system;
 pub use tungsten_core::physics::{
     PHYSICS_PREV_SNAPSHOT, PHYSICS_STEP, PHYSICS_SYNC, PhysicsPlugin,
 };
-
-/// `PreUpdate`: the physics overlay toggle.
-pub const PHYSICS_DEBUG_TOGGLE: &str = "physics_debug_toggle";
-/// `PreUpdate`: the systems overlay toggle.
-pub const SYSTEMS_OVERLAY_TOGGLE: &str = "systems_overlay_toggle";
-/// `PreUpdate`: the inspector toggle.
-pub const INSPECTOR_TOGGLE: &str = "inspector_toggle";
-/// `PreUpdate`: the inspector's pick, after its toggle.
-pub const INSPECTOR_PICK: &str = "inspector_pick";
-/// `PreUpdate`: the HUD toggle.
-pub const HUD_TOGGLE: &str = "hud_toggle";
-/// `PreUpdate`: the UI debug toggles (bounds overlay, hide game layers).
-pub const UI_DEBUG_TOGGLE: &str = "ui_debug_toggle";
-/// `PreUpdate`: vsync and fullscreen hotkeys.
-pub const DISPLAY_INPUT: &str = "display_input";
-/// `PreUpdate`: the state stack's dispatcher, after the display hotkeys.
-pub const STATE_DISPATCHER: &str = "state_dispatcher";
-/// `PreUpdate`: UI input routing, after the state dispatcher (`D-149`).
-pub const UI_ROUTE: &str = "ui_route";
-/// `PostUpdate`: particle emitter counts, before the emit.
-pub const PARTICLE_COUNT_REFRESH: &str = "particle_count_refresh";
-/// `PostUpdate`: particle emission, before the tick.
-pub const PARTICLE_EMIT: &str = "particle_emit";
-/// `PostUpdate`: particle ageing and despawn.
-pub const PARTICLE_TICK: &str = "particle_tick";
-/// `PostUpdate`: the tween tick, after the particle tick so tween writes win.
-pub const TWEEN_TICK: &str = "tween_tick";
-/// `PostUpdate`: arms squash envelopes from this frame's `SquashEvent`s.
-pub const SQUASH_STRETCH_TRIGGER: &str = "squash_stretch_trigger";
-/// `PostUpdate`: advances squash envelopes, after the trigger.
-pub const SQUASH_STRETCH_TICK: &str = "squash_stretch_tick";
-/// `PostUpdate`: camera trauma from this frame's `ShakeEvent`s.
-pub const SHAKE_TICK: &str = "shake_tick";
-/// `PostUpdate`: the camera, after the shake tick.
-pub const CAMERA_UPDATE: &str = "camera_update";
+pub use tungsten_core::schedule::names::{
+    CAMERA_UPDATE, DISPLAY_INPUT, HUD_TOGGLE, INSPECTOR_PICK, INSPECTOR_TOGGLE,
+    PARTICLE_COUNT_REFRESH, PARTICLE_EMIT, PARTICLE_TICK, PHYSICS_DEBUG_TOGGLE, SHAKE_TICK,
+    SQUASH_STRETCH_TICK, SQUASH_STRETCH_TRIGGER, STATE_DISPATCHER, SYSTEMS_OVERLAY_TOGGLE,
+    TWEEN_TICK, UI_DEBUG_TOGGLE, UI_ROUTE,
+};
 
 /// The overlay toggles, the inspector's pick and the UI debug toggles, in
 /// `PreUpdate`.

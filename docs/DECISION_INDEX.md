@@ -11,7 +11,7 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-003` | Native only. No WASM target or WASM-driven design compromises. |
 | `D-004` | `wgpu` is the renderer. |
 | `D-005` | No external ECS crate. ECS work stays in-project by design. |
-| `D-006` | Three-crate workspace split is intentional: `tungsten-core`, `tungsten-render`, `tungsten`. |
+| `D-006` | Three-crate workspace split is intentional: `tungsten-core`, `tungsten-render`, `tungsten`. Amended by `D-155`: a fourth crate, `tungsten-kit`, on core alone. |
 | `D-007` | `tungsten-render` may depend on `tungsten-core`; strict isolation is not the goal. |
 | `D-008` | Config loads at startup from the game's folder. Amended by `D-119`: ID/log validation; `D-123`: game-local path. |
 | `D-102` | 1.0 means a complete game engine and stable library, tested by an acceptance game. Amended by `D-131`: R2 only, R1/R4 to 1.x. |
@@ -97,7 +97,7 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-104` | Tracked public-API snapshots. Amended by `D-105`: before release; `D-107`: pinned toolchain, api/ paths and release check. |
 | `D-105` | Sessions leave work uncommitted; human release block makes the only commit. Supersedes `D-097`/`D-098` commit clauses; amends `D-104`. |
 | `D-106` | 12 KiB on-demand index; root rules stay 6 KiB with asset detail linked out. Amends `D-068`. |
-| `D-107` | Pinned-toolchain rustdoc JSON snapshots, `just api`/`api-check`. Amends `D-104`. Amended by `D-110`: umbrella testing feature. |
+| `D-107` | Pinned-toolchain rustdoc JSON snapshots, `just api`/`api-check`. Amends `D-104`. Amended by `D-110`: umbrella testing feature. Amended by `D-155`: the kit's snapshot file. |
 | `D-108` | Adjacent A/B candidates with separate files may share plan/release; revises the definition gate's one-release rule. |
 | `D-109` | Checked roadmap catalog and one prompt home; viewer fed from tree-derived state. Amended by `D-118`: stages/session recommendations; `D-150`: plan/run status without approval lines, no graduation sessions. |
 | `D-111` | Dev/test debuginfo in unpacked .dwo files; supported backtraces, smaller/faster builds. Amends `D-041`. |
@@ -157,11 +157,11 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-110` | Harness runs the real frame body without devices, behind testing feature. Amends `D-088`, `D-107`. Amended by `D-125`: UiHarness. |
 | `D-119` | Game ID selects user folder; engine logger and crash hook installed once. Amends `D-008`: validation. |
 | `D-125` | Core generational UI tree, theme/layout, hit testing/focus and TextNodeStore seam; headless UiHarness. Amends `D-110`, `D-117`. Amended by `D-149`: clip-stack and modal hit testing, visible-focus layered states, scope restore on hide. |
-| `D-128` | Five closed schedule stages, named systems/plugins and core event registration. Amends `D-018`, `D-040`. |
+| `D-128` | Five closed schedule stages, named systems/plugins and core event registration. Amends `D-018`, `D-040`. Amended by `D-155`: the kit's constraints are if-present. |
 | `D-129` | Real/game Time, bounded fixed steps, timers and default interpolation. Amends `D-088`, `D-093`, `D-094`. |
 | `D-130` | Safe tuple queries/filters and bundles; old arities deprecated to freeze. Amended by `D-135`: landed forms/accessor, measured costs, PrevPosition at W3b. |
 | `D-131` | 1.0 rendering scope R0/R2; no workers or Send/Sync bounds; R1 to 1.x. Amends `D-102`; `D-067` and two-thread rule stand. |
-| `D-133` | W15a landed: schedule plugins, named engine systems, core WindowSize; particles benchmark ownership. |
+| `D-133` | W15a landed: schedule plugins, named engine systems, core WindowSize; particles benchmark ownership. Amended by `D-155`: the names are defined in core. |
 | `D-134` | W3a landed: Time/Timer edge rules and engine clock migration; DeltaTime deprecated. |
 | `D-135` | W15b landed: tuple/slice queries, accessors and one-move bundles; accepted costs recorded here. Amends `D-130`. |
 | `D-136` | Fable for level C/gates/spikes; A/B releases use Opus max. Amends `D-118`. Max clause superseded by `D-151`: A/B releases use Opus xhigh. |
@@ -175,6 +175,7 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-149` | W1 M3 UI input routing: `ui_route` in `PreUpdate` routes the ordered raw stream against the last layout (clip-stack hit testing, modal roots, capture, hover, visible-focus keyboard, the `ui_*` actions, directional focus with repeat), publishes `UiEvent`s and feeds the opt-in `RoutedInput`; press ownership keeps keys from sticking; the exit check reads the routed view. Amends `D-125`. Extends `D-040`, `D-045`, `D-088`, `D-128`, `D-144`. |
 | `D-153` | W16a landed: `ComponentRegistry` by name and type; scene `components` checked at load against the World with field paths; strict scene keys and transform bounds; four engine components registered by their owners; no `Component` marker; `serde_path_to_error` (`D-015` rule 3). Amends `D-046`, `D-103`. |
 | `D-154` | W6a landed: kinematic bodies and sensors (`SensorEntered` per pair); spatial queries and casts over the last step; a kinematic world runs up to twice the substeps past 1/60 s and its press wakes through the island. Amends `D-033`, `D-064`, `D-065`, `D-066`, `D-081`, `D-092`, `D-094`. |
+| `D-155` | W13a and W13b landed: `tungsten-kit` on core alone, re-exported as `tungsten::kit` behind a default feature; opt-in plugins for an animated sprite, lifetimes, despawn outside a region or the view and a sound per event, `cursor_to_world`; a positions-only hierarchy propagated after the physics sync and after the tweens, bodies on roots; engine system names in core; `CameraState::screen_to_world`. Amends `D-006`, `D-107`, `D-128`, `D-133`. |
 
 ## When To Open a Decision
 

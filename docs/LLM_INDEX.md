@@ -11,6 +11,7 @@ Task → file map. Open it before a broad search; read only the matching row's f
 | Event lifetime/flush, events held for the next fixed step (`D-040`, `D-139`) | `core/ecs/event_queue.rs`, `core/ecs/world.rs` |
 | Frame order, smoke-frame exit, winit loop (`D-018`, `D-043`) | `tungsten/app.rs`, `tungsten/lib.rs` |
 | Schedule, stages, plugins, `DefaultPlugins`, engine system names (`D-128`, `D-133`) | `core/schedule.rs`, `core/physics/plugin.rs`, `tungsten/plugins.rs`, `tungsten/app.rs`, `tungsten/tests/plugins.rs` |
+| Kit: animated sprite, lifetimes, despawn outside a region or the view, a sound on an event, `cursor_to_world`, the transform hierarchy (`D-155`) | `crates/tungsten-kit/src/` (one module per item), `tungsten/tests/kit.rs` |
 | Game clock, `Time`, `Timer`, `DeltaTime`, the fixed step, interpolation (`D-088`, `D-129`, `D-134`, `D-137`, `D-139`, `D-146`) | `core/time.rs`, `core/tests/time.rs`, `core/physics/plugin.rs`, `tungsten/app.rs`, `tungsten/tests/fixed_step.rs`, `tungsten/tests/testing.rs`, `examples/01_platformer/src/tests/regime.rs` |
 | Tuple queries, `With`/`Without`, bundles, `spawn_with`, `RigidBodyBundle` (`D-130`, `D-135`) | `core/ecs/query.rs`, `core/ecs/bundle.rs`, `core/ecs/world.rs`, `core/tests/ecs/query.rs` |
 | Headless test harness, `Harness`, `FrameDraw`, `UiHarness` (`D-110`, `D-125`) | `tungsten/testing.rs`, `tungsten/testing/ui.rs`, `tungsten/app.rs`, `tungsten/tests/testing.rs` |
@@ -74,7 +75,7 @@ Run with `cargo run -p example-NN-name`.
 
 | Task | Open |
 | --- | --- |
-| Platformer | `examples/01_platformer/src/main.rs`, `examples/01_platformer/src/setup.rs`, `examples/01_platformer/src/systems.rs`, `examples/01_platformer/src/extract.rs`, `examples/01_platformer/src/state.rs`, `examples/01_platformer/src/gameplay.rs`, `examples/01_platformer/src/fireball.rs`, `examples/01_platformer/src/ice.rs`, `examples/01_platformer/src/burning.rs`, `examples/01_platformer/src/brick.rs`, `examples/01_platformer/src/death.rs` |
+| Platformer | `examples/01_platformer/src/`: main, setup, systems, extract, state, gameplay, fireball, ice, burning, brick and death |
 | Platformer art, level and layout regeneration | `examples/01_platformer/tools/README.md`, `examples/01_platformer/tools/generate.py`, `examples/01_platformer/tools/level.json`, `examples/01_platformer/src/level_layout.rs` |
 | Benchmark harness, knobs, presets | `examples/02_bench/src/main.rs`, `examples/02_bench/src/knobs.rs`, `docs/perf/benchmarks.md` |
 | One benchmark's workload | `examples/02_bench/src/<bench>.rs` |

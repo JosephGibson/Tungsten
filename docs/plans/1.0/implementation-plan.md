@@ -308,7 +308,7 @@ One row per candidate, or per pair that shares a plan and a release (§6, `D-108
 | W1 M3 | [M47](../archive/1.0/phase5-milestone-47-ui-input-routing.md) | 0.65 | Released 2026-10-13 in `v0.65.0`, squash-merged as `12ccd36`, PR #68 (`D-149`); its critique did not run (Codex returned 503) |
 | W16a | [M48](../archive/1.0/phase6-milestone-48-component-registry.md) | 0.67 | Cut 2026-10-13 as `v0.67.0` (`D-153`): the component registry, scene `components` checked at load against the World, strict scene keys and the engine's four data-only components |
 | W6a | [M49](../archive/1.0/phase6-milestone-49-kinematic-sensors-queries.md) | 0.68 | Cut 2026-10-13 as `v0.68.0` (`D-154`): kinematic bodies and sensors with their events, ray and shape casts and overlap and nearest queries over the last step, and the crowd probe, whose first run added the kinematic substep and wake rules |
-| W13a and W13b | — | — | Not started; Phase 6, after W3a, W16a and W15a; tiers and bodies on roots given (`D-132`) |
+| W13a and W13b | [M50](../archive/1.0/phase6-milestone-50-kit-basics-hierarchy.md) | 0.69 | Cut 2026-10-14 as `v0.69.0` (`D-155`): `tungsten-kit` on core alone, re-exported as `tungsten::kit`, with an animated sprite, lifetimes, despawn outside a region or the view, a sound per event, `cursor_to_world` and a positions-only transform hierarchy; the engine's system names in core; the perf step's one `particle_count_refresh` p50 reading accepted by the owner as same-build drift |
 | W16b | — | — | Not started; Phase 6, after W16a; carries the tilemap builder (`D-132`) |
 | W13c and W13d | — | — | Not started; Phase 6, after W6a |
 | W11b and W11c | — | — | Not started; Phase 6, after W11a; one candidate since 0.66, since W11c needs only W11b's atomic write |

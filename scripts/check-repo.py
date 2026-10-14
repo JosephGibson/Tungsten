@@ -504,10 +504,12 @@ def select_checks(root, paths):
                 require("just level-check", "CPU", "generator-owned output (or missing ownership inventory)")
                 require("cargo test -p example-01-platformer --locked", "Edit loop", "generated layout/gameplay integration")
             review.add("Platformer art/layout/audio: review applicable runtime appearance and sound through the authoring guide.")
-        crate = re.match(r"crates/(tungsten(?:-core|-render)?)/(src|tests|benches)/", path)
+        crate = re.match(r"crates/(tungsten(?:-core|-render|-kit)?)/(src|tests|benches)/", path)
         if crate:
             name, folder = crate.groups()
             require(f"cargo test -p {name} --locked", "Edit loop", "targeted crate tests")
+            if name == "tungsten-kit":
+                require("cargo test -p tungsten --locked", "Edit loop", "the kit's harness tests, which live in the umbrella")
             if folder == "src":
                 require("just smoke", "Hardware", "engine runtime wiring; local GPU/display")
                 review.add("Public API may change: inspect the diff; regenerate with just api when needed, run just api-check and update the W4 ledger/template for breaks or authoring changes.")

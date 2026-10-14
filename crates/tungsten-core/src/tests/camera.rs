@@ -56,6 +56,46 @@ fn rotated_visible_world_aabb_over_covers_rotated_view() {
 }
 
 #[test]
+fn screen_to_world_inverts_view_projection() {
+    let (width, height) = (800.0, 600.0);
+    for rotation in [0.0, 0.5] {
+        let cam = CameraState {
+            position: Vec2::new(100.0, 50.0),
+            zoom: 2.0,
+            rotation,
+        };
+        let view_projection = cam.view_projection(width, height);
+        for screen in [
+            Vec2::ZERO,
+            Vec2::new(71.83, 6.34),
+            Vec2::new(400.0, 300.0),
+            Vec2::new(799.0, 599.0),
+        ] {
+            let world = cam.screen_to_world(screen);
+            let ndc = view_projection.project_point3(Vec3::new(world.x, world.y, 0.0));
+            // NDC is y-up with its origin at the centre; pixels are y-down from the top-left.
+            let back = (Vec2::new(ndc.x, -ndc.y) + Vec2::ONE) * 0.5 * Vec2::new(width, height);
+            let delta = (back - screen).abs();
+            assert!(
+                delta.x <= 1e-3 && delta.y <= 1e-3,
+                "rotation {rotation}: {screen:?} maps to {world:?}, drawn at {back:?}"
+            );
+        }
+    }
+    // The drawn point of (130, 70) under the rotated camera maps back to it.
+    let cam = CameraState {
+        position: Vec2::new(100.0, 50.0),
+        zoom: 2.0,
+        rotation: 0.5,
+    };
+    let world = cam.screen_to_world(Vec2::new(71.83, 6.34));
+    assert!(
+        (world - Vec2::new(130.0, 70.0)).abs().max_element() <= 1e-2,
+        "{world:?}"
+    );
+}
+
+#[test]
 fn bounds_clamp_pins_camera_to_world_rect() {
     let bounds = CameraBounds {
         min: Vec2::ZERO,
