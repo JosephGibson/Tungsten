@@ -227,6 +227,43 @@ fn zero_font_size_shapes_into_a_fresh_buffer() {
 }
 
 #[test]
+fn a_line_height_that_is_not_positive_lays_out_at_the_default_ratio() {
+    // cosmic-text's buffers assert a non-zero line height, and
+    // `TextSection::default()` has one of 0: a fresh buffer and a recycled
+    // one must both take 1.25 times the font size instead.
+    let assert_default = |cache: &TextLayoutCache, line_height: f32| {
+        let area = text_areas(&cache.prepared, &cache.buffers).next().unwrap();
+        let metrics = area.buffer.metrics();
+        assert!(
+            (metrics.line_height - 14.0 * 1.25).abs() < 1e-3,
+            "{line_height}: {metrics:?}"
+        );
+    };
+    for line_height in [0.0, -4.0, f32::NAN, f32::INFINITY] {
+        let mut cache = mono_cache();
+        let mut odd = section("fresh", 0);
+        odd.line_height = line_height;
+        assert!(frame(&mut cache, std::slice::from_ref(&odd)));
+        assert_default(&cache, line_height);
+        for index in 0..=BUFFER_CACHE_MAX_UNUSED_FRAMES + 1 {
+            frame(&mut cache, &[section(&format!("warm {index}"), 0)]);
+        }
+        assert!(frame(&mut cache, &[]));
+        assert!(!cache.spare.is_empty());
+        odd.content = "recycled".to_string();
+        assert!(frame(&mut cache, std::slice::from_ref(&odd)));
+        assert_default(&cache, line_height);
+    }
+    let defaulted = TextSection {
+        content: "defaults".to_string(),
+        font_id: "mono".to_string(),
+        font_size: 16.0,
+        ..Default::default()
+    };
+    assert!(frame(&mut mono_cache(), &[defaulted]));
+}
+
+#[test]
 fn font_reload_empties_every_cache() {
     let mut cache = mono_cache();
     let changing = |index: u32| -> Vec<TextSection> {
@@ -457,4 +494,28 @@ fn tabular_figures_give_digits_one_advance() {
     digits.layout.features = FontFeatures::tabular_figures();
     let tabular = laid_out(&mut cache, digits)[0].0.clone();
     assert_eq!(tabular[0].2, tabular[1].2);
+}
+
+#[test]
+fn a_reload_without_a_face_keeps_the_font() {
+    // A truncated or partial save reaches the watcher: the font's faces
+    // went before the new data was checked, so text fell back.
+    let mut cache = mono_cache();
+    let epoch = cache.font_epoch();
+    let faces = cache.font_attrs["mono"].face_ids.clone();
+    assert!(!cache.reload_font("mono", b"not a font".to_vec()));
+    let kept = cache.font_attrs.get("mono").expect("still registered");
+    assert_eq!(kept.face_ids, faces);
+    assert!(
+        faces
+            .iter()
+            .all(|&face| cache.font_system.db().face(face).is_some())
+    );
+    assert_eq!(cache.font_epoch(), epoch);
+    assert!(cache.reload_font(
+        "mono",
+        font_bytes("JetBrainsMono/static/JetBrainsMono-Regular.ttf"),
+    ));
+    assert_ne!(cache.font_epoch(), epoch);
+    assert!(cache.font_attrs.contains_key("mono"));
 }

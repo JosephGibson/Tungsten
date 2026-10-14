@@ -50,35 +50,36 @@ pub enum ManifestError {
     UnknownFallbackFamily { family: String },
 }
 
-/// Raw manifest JSON.
+/// Raw manifest JSON. An ID repeated inside one section is a parse error
+/// (`D-017`); `merge` refuses one repeated across manifests.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct RawManifest {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "unique_ids")]
     pub sprites: HashMap<String, SpriteEntry>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "unique_ids")]
     pub animations: HashMap<String, AnimationEntry>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "unique_ids")]
     pub fonts: HashMap<String, FontEntry>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "unique_ids")]
     pub sounds: HashMap<String, SoundEntry>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "unique_ids")]
     pub tilemaps: HashMap<String, TilemapEntry>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "unique_ids")]
     pub particles: HashMap<String, ParticleEntry>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "unique_ids")]
     pub shaders: HashMap<String, ShaderEntry>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "unique_ids")]
     pub materials: HashMap<String, MaterialEntry>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "unique_ids")]
     pub particle_meshes: HashMap<String, ParticleMeshEntry>,
     /// Font families: a family ID and the `fonts` face IDs it groups (`D-115`).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "unique_ids")]
     pub font_families: HashMap<String, FontFamilyEntry>,
     /// Family IDs in order of preference for glyphs a style's family lacks.
     #[serde(default)]
     pub font_fallback: Vec<String>,
     /// UI themes: a theme ID and the theme file it loads (M2, w01 §14).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "unique_ids")]
     pub ui_themes: HashMap<String, UiThemeEntry>,
 }
 
@@ -142,9 +143,59 @@ pub struct SoundEntry {
     /// Default loop flag.
     #[serde(default)]
     pub looping: bool,
-    /// Base volume before master volume.
-    #[serde(default = "default_volume")]
+    /// Base volume before master volume: finite and at least 0.
+    #[serde(default = "default_volume", deserialize_with = "sound_volume")]
     pub volume: f32,
+}
+
+/// A manifest section, entries by ID, refusing an ID it repeats: serde's
+/// map would keep the last one (`D-017`).
+fn unique_ids<'de, D, T>(deserializer: D) -> Result<HashMap<String, T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    struct Section<T>(std::marker::PhantomData<T>);
+
+    impl<'de, T: Deserialize<'de>> serde::de::Visitor<'de> for Section<T> {
+        type Value = HashMap<String, T>;
+
+        fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("an object of entries by ID")
+        }
+
+        fn visit_map<A: serde::de::MapAccess<'de>>(
+            self,
+            mut map: A,
+        ) -> Result<Self::Value, A::Error> {
+            let mut entries = HashMap::with_capacity(map.size_hint().unwrap_or(0));
+            while let Some(id) = map.next_key::<String>()? {
+                if entries.contains_key(&id) {
+                    return Err(serde::de::Error::custom(format_args!(
+                        "duplicate ID `{id}` in one section"
+                    )));
+                }
+                let entry = map.next_value()?;
+                entries.insert(id, entry);
+            }
+            Ok(entries)
+        }
+    }
+
+    deserializer.deserialize_map(Section(std::marker::PhantomData))
+}
+
+/// A sound's `volume`, which the mixer multiplies by: finite and at least
+/// 0 (`1e39` narrows to an infinite `f32`).
+fn sound_volume<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<f32, D::Error> {
+    let volume = f32::deserialize(deserializer)?;
+    if volume.is_finite() && volume >= 0.0 {
+        Ok(volume)
+    } else {
+        Err(serde::de::Error::custom(format!(
+            "sound volume {volume} is not a finite number of at least 0"
+        )))
+    }
 }
 
 fn default_volume() -> f32 {

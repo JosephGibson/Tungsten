@@ -39,7 +39,8 @@ impl Pcg32 {
         (self.next_u32() >> 8) as f32 / (1u32 << 24) as f32
     }
 
-    /// Uniform `f32` on `[lo, hi)`.
+    /// Uniform `f32` on `[lo, hi]`: `lo + (hi - lo) * u` can round to `hi`
+    /// for the largest units when `lo` is not 0, about 1 call in 2^24.
     pub fn next_range(&mut self, lo: f32, hi: f32) -> f32 {
         lo + (hi - lo) * self.next_f32_unit()
     }

@@ -73,9 +73,12 @@ impl AnimationData {
         })
     }
 
+    /// The frames' durations summed, saturating at `u32::MAX`.
     #[must_use]
     pub fn total_duration_ms(&self) -> u32 {
-        self.frames.iter().map(|f| f.duration_ms).sum()
+        self.frames.iter().fold(0, |total: u32, frame| {
+            total.saturating_add(frame.duration_ms)
+        })
     }
 }
 

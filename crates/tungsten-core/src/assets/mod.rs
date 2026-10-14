@@ -12,7 +12,7 @@ pub mod tilemap;
 pub use animation::{
     AnimationData, AnimationError, AnimationFrame, AnimationRegistry, AnimationState,
 };
-pub use atlas::{AtlasPage, PackInput, PackResult, PackedSprite, UvRect, pack_shelf};
+pub use atlas::{AtlasPage, PackInput, PackResult, PackedSprite, UvRect, oversized, pack_shelf};
 pub use audio::{AudioDecodeError, AudioHandle, SoundData, SoundRegistry};
 pub use manifest::{
     FilterMode, FontEntry, FontFamilyEntry, LoadedManifest, ManifestError, MaterialEntry,

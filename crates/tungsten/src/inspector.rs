@@ -10,7 +10,6 @@ use tungsten_core::physics::{Collider, Position, Shape, Velocity};
 use tungsten_core::{AssetRegistry, CameraState, Entity, InspectRegistry, Inspectable, World};
 use tungsten_render::TextSection;
 
-use crate::app::WindowSize;
 use crate::debug_hud::{HudCorner, anchor_text_block};
 
 pub use tungsten_core::inspect::InspectFn;
@@ -158,7 +157,7 @@ pub(crate) fn inspector_pick_system(world: &mut World) {
     }
 
     // Pick edge sticks selection until next pick or despawn.
-    let (cursor, camera, viewport) = {
+    let (cursor, camera) = {
         let Some(input) = world.get_resource::<InputState>() else {
             return;
         };
@@ -174,13 +173,10 @@ pub(crate) fn inspector_pick_system(world: &mut World) {
         let Some(camera) = world.get_resource::<CameraState>().copied() else {
             return;
         };
-        let Some(viewport) = world.get_resource::<WindowSize>().copied() else {
-            return;
-        };
-        (cursor, camera, viewport)
+        (cursor, camera)
     };
 
-    let world_cursor = screen_to_world(cursor, &camera, viewport);
+    let world_cursor = camera.screen_to_world(Vec2::new(cursor.0, cursor.1));
     let picked = pick_entity_under_cursor(world, world_cursor);
     if let Some(state) = world.get_resource_mut::<InspectorState>() {
         state.selected = picked;
@@ -260,21 +256,6 @@ fn try_hit_aabb(
     if best.is_none_or(|(_, a)| area < a) {
         *best = Some((entity, area));
     }
-}
-
-fn screen_to_world(cursor: (f32, f32), camera: &CameraState, _viewport: WindowSize) -> Vec2 {
-    let zoom = camera.zoom.max(f32::EPSILON);
-    let screen = Vec2::new(cursor.0, cursor.1);
-    if camera.rotation == 0.0 {
-        return camera.position + screen / zoom;
-    }
-    let (sin, cos) = (-camera.rotation).sin_cos();
-    let scaled = screen / zoom;
-    let rotated = Vec2::new(
-        scaled.x * cos - scaled.y * sin,
-        scaled.x * sin + scaled.y * cos,
-    );
-    camera.position + rotated
 }
 
 pub(crate) fn compose_inspector_text_section(

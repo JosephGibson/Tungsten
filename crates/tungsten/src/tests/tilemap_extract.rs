@@ -486,3 +486,21 @@ fn every_render_layer_name_matches_extract_tilemaps() {
         );
     }
 }
+
+#[test]
+fn an_unknown_tilemap_id_is_warned_about_once() {
+    // A typo or an instance spawned before its map loads warned on every
+    // extract, several times a frame, into an uncapped log.
+    let mut world = single_page_world(Vec2::new(640.0, 360.0));
+    let e = world.spawn();
+    world.insert(e, TilemapInstance::new("missing", Vec2::ZERO));
+    world.insert_resource(ExtractScratch::default());
+    let expected = batches_text(&extract_tilemaps(&world));
+    for _ in 0..3 {
+        let batches = extract_tilemaps(&world);
+        assert_eq!(batches_text(&batches), expected);
+        let _ = extract_tilemap_layers(&world, &["ground"]);
+    }
+    let warned = ExtractScratch::with(&world, |buffers| buffers.unknown_tilemaps.clone());
+    assert_eq!(warned, ["missing"]);
+}

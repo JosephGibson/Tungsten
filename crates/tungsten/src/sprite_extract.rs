@@ -247,6 +247,9 @@ pub(crate) struct ExtractBuffers {
     batch_list: Vec<SpriteBatch>,
     /// Sprite IDs already warned about, so each warning comes once.
     warnings: SpriteWarnings,
+    /// Tilemap IDs the tilemap extract found no map for, warned about once
+    /// each.
+    pub(crate) unknown_tilemaps: Vec<String>,
 }
 
 /// World resource that lets [`extract_sprites_default`] and the tilemap

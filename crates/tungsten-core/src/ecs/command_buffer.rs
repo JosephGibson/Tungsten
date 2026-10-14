@@ -242,7 +242,10 @@ impl CommandBuffer {
 
     /// Queue `call(world, entity)` at flush, in queue order, so it sees what
     /// the commands before it did; for a change that depends on the state at
-    /// flush. A plain function, so recording it boxes nothing (D-084).
+    /// flush. A plain function, so recording it boxes nothing (D-084). The
+    /// buffer's spawns all exist, still empty, before the first command
+    /// replays, so a call also sees those recorded after it; one it despawns
+    /// drops its queued inserts.
     pub fn call(&mut self, entity: Entity, call: fn(&mut World, Entity)) {
         self.commands.push(Command::Call { entity, call });
     }

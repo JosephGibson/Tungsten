@@ -50,11 +50,12 @@ impl AudioCommands {
         });
     }
 
-    /// Play with explicit volume/loop.
+    /// Play with explicit volume/loop. A volume that is not finite or is
+    /// negative plays at 0.
     pub fn play_with(&mut self, handle: AudioHandle, volume: f32, looping: bool) {
         self.commands.push(AudioCommand::Play {
             handle,
-            volume,
+            volume: sanitize_volume(volume),
             looping,
         });
     }
@@ -69,14 +70,25 @@ impl AudioCommands {
         self.commands.push(AudioCommand::StopAll);
     }
 
-    /// Set master volume.
+    /// Set master volume; one that is not finite or is negative is 0.
     pub fn set_master_volume(&mut self, volume: f32) {
-        self.commands.push(AudioCommand::SetMasterVolume(volume));
+        self.commands
+            .push(AudioCommand::SetMasterVolume(sanitize_volume(volume)));
     }
 
     /// Drain pending commands after tick.
     pub fn drain(&mut self) -> Vec<AudioCommand> {
         std::mem::take(&mut self.commands)
+    }
+}
+
+/// A volume the mixer can multiply by: one that is not finite or is
+/// negative becomes 0, so no NaN or inverted gain reaches the samples.
+fn sanitize_volume(volume: f32) -> f32 {
+    if volume.is_finite() && volume > 0.0 {
+        volume
+    } else {
+        0.0
     }
 }
 

@@ -187,15 +187,15 @@ impl TextEngine {
         }
     }
 
-    pub(crate) fn reload_font(&mut self, id: &str, data: Vec<u8>) {
-        if let Some(old) = self.font_attrs.remove(id) {
-            let db = self.font_system.db_mut();
-            for face_id in old.face_ids {
-                db.remove_face(face_id);
-            }
+    /// Replaces `id`'s faces with the data's; false, changing nothing, when
+    /// the data holds no face (a partial save): `register` adds the new
+    /// faces before it drops the old ones.
+    pub(crate) fn reload_font(&mut self, id: &str, data: Vec<u8>) -> bool {
+        let registered = self.register(id, data);
+        if registered {
+            self.font_changed();
         }
-        self.register(id, data);
-        self.font_changed();
+        registered
     }
 
     /// Adds a file's faces to the database under manifest ID `id`; false when
@@ -464,7 +464,7 @@ impl TextEngine {
             }
 
             // Never `Buffer::new`: it shapes an empty line first.
-            let metrics = Metrics::new(section.font_size, section.line_height);
+            let metrics = layout_metrics(section.font_size, section.line_height);
             let (mut owned_key, mut buffer) = match self.spare.pop() {
                 // `set_metrics` rejects a zero font size; `new_empty` takes one.
                 Some((spare_key, mut spare_buffer)) if metrics.font_size != 0.0 => {
@@ -520,6 +520,24 @@ impl TextEngine {
             text_areas(&self.prepared, &self.buffers),
         )
     }
+}
+
+/// The metrics a buffer lays out with. cosmic-text asserts a non-zero line
+/// height, so one that is not finite and above zero, as
+/// `TextSection::default()`'s 0 is, takes the built-in theme's ratio of 1.25
+/// times the font size, and at least 1.
+fn layout_metrics(font_size: f32, line_height: f32) -> Metrics {
+    let line_height = if line_height.is_finite() && line_height > 0.0 {
+        line_height
+    } else {
+        let scaled = font_size * 1.25;
+        if scaled.is_finite() && scaled > 1.0 {
+            scaled
+        } else {
+            1.0
+        }
+    };
+    Metrics::new(font_size, line_height)
 }
 
 impl TextLayoutKey {

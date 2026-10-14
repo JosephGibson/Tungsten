@@ -220,6 +220,58 @@ fn sound_defaults_looping_false_volume_one() {
 }
 
 #[test]
+fn a_sound_volume_must_be_finite_and_not_negative() {
+    // The mixer multiplies by it: 1e39 narrows to an infinite f32, and a
+    // negative gain inverts the waveform.
+    let tmp = tempdir();
+    write_file(&tmp, "blip.ogg");
+    for volume in ["1e39", "-2", "-0.5"] {
+        let path = write_manifest(
+            &tmp,
+            &format!(r#"{{"sounds": {{"sfx_blip": {{"path": "blip.ogg", "volume": {volume}}}}}}}"#),
+        );
+        let err = ResolvedManifest::load(&path).unwrap_err();
+        assert!(
+            matches!(err, ManifestError::Parse { .. }),
+            "{volume}: {err}"
+        );
+        assert!(err.to_string().contains("volume"), "{volume}: {err}");
+    }
+    let path = write_manifest(
+        &tmp,
+        r#"{"sounds": {"sfx_blip": {"path": "blip.ogg", "volume": 0}}}"#,
+    );
+    assert_eq!(
+        ResolvedManifest::load(&path).unwrap().sounds["sfx_blip"].volume,
+        0.0
+    );
+}
+
+#[test]
+fn a_repeated_id_inside_one_section_is_an_error() {
+    // `D-017`: duplicate IDs are fatal. serde's map kept the last entry,
+    // so a repeat inside one manifest passed while one across two failed.
+    let tmp = tempdir();
+    write_file(&tmp, "a.png");
+    write_file(&tmp, "b.png");
+    write_file(&tmp, "blip.ogg");
+    for json in [
+        r#"{"sprites": {"hero": {"path": "a.png"}, "hero": {"path": "b.png"}}}"#,
+        r#"{"sounds": {"blip": {"path": "blip.ogg"}, "blip": {"path": "blip.ogg"}}}"#,
+    ] {
+        let path = write_manifest(&tmp, json);
+        let err = ResolvedManifest::load(&path).unwrap_err();
+        assert!(matches!(err, ManifestError::Parse { .. }), "{json}: {err}");
+        assert!(err.to_string().contains("duplicate ID"), "{json}: {err}");
+    }
+    let path = write_manifest(
+        &tmp,
+        r#"{"sprites": {"hero": {"path": "a.png"}, "villain": {"path": "b.png"}}}"#,
+    );
+    assert_eq!(ResolvedManifest::load(&path).unwrap().sprites.len(), 2);
+}
+
+#[test]
 fn load_manifest_missing_sound_file() {
     let tmp = tempdir();
     let path = write_manifest(&tmp, r#"{"sounds": {"sfx_blip": {"path": "missing.ogg"}}}"#);

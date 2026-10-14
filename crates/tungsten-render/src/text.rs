@@ -18,6 +18,8 @@ pub struct TextSection {
     pub content: String,
     pub font_id: String,
     pub font_size: f32,
+    /// Line height in pixels. One that is not finite and above zero, such as
+    /// the default 0, lays out at 1.25 times `font_size`.
     pub line_height: f32,
     /// RGBA color.
     pub color: [u8; 4],

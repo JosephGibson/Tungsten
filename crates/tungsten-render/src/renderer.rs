@@ -9,7 +9,9 @@ use crate::lit_sprite::{
     EMISSIVE_MASK_SHADER_NAME, LIT_SPRITE_SHADER_NAME, LIT_SPRITE_SHADER_SOURCE, LitSpritePipeline,
     RIM_LIGHT_SHADER_NAME,
 };
-use crate::material::{MaterialPipeline, build_material_pipeline};
+use crate::material::{
+    MaterialPipeline, PendingMaterial, PendingMaterials, build_material_pipeline,
+};
 use crate::mesh_particle::{MeshParticleBatch, MeshParticlePipeline};
 use crate::passes::order::acquire_split;
 use crate::passes::{
@@ -29,10 +31,15 @@ use crate::quad::{QuadInstance, QuadPipeline};
 use crate::screenshot::{
     PendingCapture, ScreenshotError, aligned_bytes_per_row, capture_for_frame, strip_row_padding,
 };
-use crate::shader_hot_reload::{ShaderError, ShaderModuleCache, build_validated};
+use crate::shader_hot_reload::{
+    ShaderError, ShaderModuleCache, build_validated, naga_capabilities,
+};
 use crate::sprite::{SpriteBatch, SpritePipeline};
-use crate::surface::{present_mode_label, resolve_max_frame_latency, resolve_present_mode};
-use crate::targets::{RenderTargetPool, TargetCache};
+use crate::surface::{
+    device_format_flags, msaa_sample_count, present_mode_label, resolve_max_frame_latency,
+    resolve_present_mode, surface_extent,
+};
+use crate::targets::{DEPTH_FORMAT, RenderTargetPool, TargetCache};
 use crate::text::{FontSource, TextEngine, TextNodes, TextPipeline, TextSection, TextStats};
 use crate::timing::TimingResources;
 pub use crate::timing::{CpuFrameTimings, GpuFrameTimings};
@@ -153,6 +160,9 @@ pub struct Renderer {
     lighting: LightingResources,
     /// M26 material pipelines keyed by id.
     materials: HashMap<MaterialAssetId, MaterialPipeline>,
+    /// Materials whose upload failed with no pipeline to keep, built when
+    /// their shader next uploads or reloads.
+    pending_materials: PendingMaterials,
     /// M26 known manifest-tracked shader ids (name → id). The built-in
     /// sprite shader is always pre-seeded; material/stock loads register the
     /// rest. `upload_shader` / `reload_shader` consult this map to pick the
@@ -200,9 +210,13 @@ impl Renderer {
             apply_limit_buckets: false,
         }))?;
 
-        // Optional feature only; device creation must not depend on timestamps.
+        // Optional features only; device creation must not depend on them.
+        // Without the adapter's own format features, wgpu holds every format
+        // to WebGPU's guarantee, where 4 is the only multisample count.
         let adapter_features = adapter.features();
-        let desired_features = adapter_features & wgpu::Features::TIMESTAMP_QUERY;
+        let desired_features = adapter_features
+            & (wgpu::Features::TIMESTAMP_QUERY
+                | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES);
 
         let (device, queue) =
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
@@ -216,6 +230,15 @@ impl Renderer {
         let adapter_info = adapter.get_info();
 
         let size = window.inner_size();
+        let window_size = (size.width.max(1), size.height.max(1));
+        let (width, height) = surface_extent(window_size, device.limits().max_texture_dimension_2d);
+        if (width, height) != window_size {
+            log::warn!(
+                "window {}x{} is larger than the device's textures; rendering at {width}x{height}",
+                window_size.0,
+                window_size.1
+            );
+        }
         let surface_caps = surface.get_capabilities(&adapter);
         let format = surface_caps
             .formats
@@ -232,8 +255,8 @@ impl Renderer {
         let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format,
-            width: size.width.max(1),
-            height: size.height.max(1),
+            width,
+            height,
             present_mode,
             alpha_mode: surface_caps.alpha_modes[0],
             view_formats: vec![],
@@ -261,7 +284,7 @@ impl Renderer {
             a: c[3],
         };
 
-        let sample_count = if is_supported_msaa(config.msaa) {
+        let requested_msaa = if is_supported_msaa(config.msaa) {
             config.msaa
         } else {
             log::warn!(
@@ -271,6 +294,28 @@ impl Renderer {
             1
         };
         let depth_enabled = config.depth_enabled;
+        // The multisampled targets are the scene color, in the surface
+        // format, and the depth target when depth is enabled.
+        let downlevel = adapter.get_downlevel_capabilities().flags;
+        let flags_of = |format: wgpu::TextureFormat| {
+            let adapter_flags = adapter.get_texture_format_features(format).flags;
+            device_format_flags(device.features(), downlevel, adapter_flags, format)
+        };
+        let sample_count = msaa_sample_count(
+            requested_msaa,
+            flags_of(format),
+            depth_enabled.then(|| flags_of(DEPTH_FORMAT)),
+        );
+        if sample_count != requested_msaa {
+            let depth = if depth_enabled {
+                format!(" and {DEPTH_FORMAT:?}")
+            } else {
+                String::new()
+            };
+            log::warn!(
+                "msaa {requested_msaa} is not supported for {format:?}{depth} on this adapter; using {sample_count}"
+            );
+        }
         // `GpuDepth` without a depth target is a nonsense combo; normalize
         // before any pipeline/pass decision reads it so the two knobs can
         // never disagree at runtime.
@@ -343,6 +388,10 @@ impl Renderer {
         // first `asset_loader::load_shaders` call is a no-op when the
         // on-disk bytes match. Same for the three SMAA stage shaders.
         let mut shader_cache = ShaderModuleCache::new();
+        shader_cache.set_capabilities(naga_capabilities(
+            device.features(),
+            adapter.get_downlevel_capabilities().flags,
+        ));
         let sprite_shader_id = ShaderAssetId(0);
         let sprite_src = include_str!("../../../assets/shaders/sprite.wgsl").to_string();
         shader_cache
@@ -488,19 +537,23 @@ impl Renderer {
             depth_attached,
         );
 
-        let smaa = if post_aa.is_smaa() {
-            Some(build_smaa_pipeline(
-                &device,
-                &queue,
-                format,
-                &shader_cache,
-                smaa_shader_ids,
-                post_aa,
-                (surface_config.width, surface_config.height),
-            ))
-        } else {
-            None
-        };
+        let smaa =
+            if post_aa.is_smaa() {
+                let built = build_smaa_pipeline(
+                    &device,
+                    &queue,
+                    format,
+                    &shader_cache,
+                    smaa_shader_ids,
+                    post_aa,
+                    (surface_config.width, surface_config.height),
+                );
+                Some(built.unwrap_or_else(|report| {
+                    panic!("compile-time SMAA shaders must build: {report}")
+                }))
+            } else {
+                None
+            };
 
         let mut shader_ids = HashMap::new();
         shader_ids.insert(SPRITE_SHADER_NAME.to_string(), sprite_shader_id);
@@ -569,6 +622,7 @@ impl Renderer {
             lit_sprite_pipeline,
             lighting,
             materials: HashMap::new(),
+            pending_materials: PendingMaterials::default(),
             shader_ids,
             next_shader_id: STOCK_SHADER_ID_BASE + STOCK_SHADERS.len() as u32,
             timestamp_support,
@@ -736,9 +790,10 @@ impl Renderer {
         self.text_pipeline.load_font(id, data);
     }
 
-    /// Hot-reload font bytes.
-    pub fn reload_font(&mut self, id: &str, data: Vec<u8>) {
-        self.text_pipeline.reload_font(id, data);
+    /// Hot-reload font bytes; false when they hold no face, which keeps the
+    /// font's old faces.
+    pub fn reload_font(&mut self, id: &str, data: Vec<u8>) -> bool {
+        self.text_pipeline.reload_font(id, data)
     }
 
     /// The text engine, read-only: its font epoch and committed node layouts
@@ -927,8 +982,32 @@ impl Renderer {
     }
 
     /// Upload a new user-authored material (M26). Validation-failed builds
-    /// keep the last-known-good entry; first-time failure leaves nothing.
+    /// keep the last-known-good entry; a first-time failure leaves none, and
+    /// the material builds when its shader next uploads or reloads.
     pub fn upload_material(
+        &mut self,
+        id: MaterialAssetId,
+        name: &str,
+        shader_name: &str,
+        defaults: MaterialUniformDefaults,
+    ) -> Result<(), RenderError> {
+        let result = self.build_material(id, name, shader_name, defaults);
+        if result.is_ok() {
+            self.pending_materials.built(id);
+        } else if !self.materials.contains_key(&id) {
+            self.pending_materials.wait(
+                id,
+                PendingMaterial {
+                    name: name.to_string(),
+                    shader_name: shader_name.to_string(),
+                    defaults,
+                },
+            );
+        }
+        result
+    }
+
+    fn build_material(
         &mut self,
         id: MaterialAssetId,
         name: &str,
@@ -1005,13 +1084,21 @@ impl Renderer {
         self.upload_material(id, &name, &shader_name, defaults)
     }
 
+    /// Builds every material bound to `shader_name` again, those whose first
+    /// upload failed included.
     fn rebuild_materials_for_shader(&mut self, shader_name: &str) {
-        let ids_to_rebuild: Vec<(MaterialAssetId, String, MaterialUniformDefaults)> = self
+        let mut ids_to_rebuild: Vec<(MaterialAssetId, String, MaterialUniformDefaults)> = self
             .materials
             .iter()
             .filter(|(_, mp)| mp.shader_id_name == shader_name)
             .map(|(id, mp)| (*id, mp.name.clone(), mp.defaults))
             .collect();
+        ids_to_rebuild.extend(
+            self.pending_materials
+                .on_shader(shader_name)
+                .into_iter()
+                .map(|(id, pending)| (id, pending.name, pending.defaults)),
+        );
         for (id, name, defaults) in ids_to_rebuild {
             if let Err(e) = self.upload_material(id, &name, shader_name, defaults) {
                 log::error!("material '{name}' rebuild after shader reload failed: {e}");
@@ -1019,9 +1106,11 @@ impl Renderer {
         }
     }
 
-    /// Reconfigure surface after resize.
+    /// Reconfigure surface after resize. A side larger than the device's
+    /// textures is clamped to them, with a warning.
     pub fn resize(&mut self, width: u32, height: u32) {
         if width > 0 && height > 0 {
+            let (width, height) = self.clamp_to_device(width, height);
             self.surface_config.width = width;
             self.surface_config.height = height;
             self.surface.configure(&self.device, &self.surface_config);
@@ -1030,6 +1119,33 @@ impl Renderer {
                 smaa.update_preset(&self.queue, self.post_aa, (width, height));
             }
         }
+    }
+
+    /// The window's size as a surface size: each side clamped to the
+    /// device's textures; zero while minimized.
+    fn window_extent(&self) -> (u32, u32) {
+        let size = self.window.inner_size();
+        surface_extent(
+            (size.width, size.height),
+            self.device.limits().max_texture_dimension_2d,
+        )
+    }
+
+    /// `width` × `height` clamped to the device's textures, warning when
+    /// that cuts it.
+    fn clamp_to_device(&self, width: u32, height: u32) -> (u32, u32) {
+        let clamped = surface_extent(
+            (width, height),
+            self.device.limits().max_texture_dimension_2d,
+        );
+        if clamped != (width, height) {
+            log::warn!(
+                "window {width}x{height} is larger than the device's textures; rendering at {}x{}",
+                clamped.0,
+                clamped.1
+            );
+        }
+        clamped
     }
 
     /// Fits the scene targets to `size` and the current config. When that
@@ -1064,34 +1180,43 @@ impl Renderer {
 
     /// Switch presentation AA at a frame boundary. Allocates / drops SMAA
     /// intermediates as needed without relaunch. Must not be called from
-    /// within `render_frame_internal`.
+    /// within `render_frame_internal`. Turning SMAA on builds its pipelines
+    /// first: a stage shader reloaded while SMAA was off was committed
+    /// without one, so a build that fails validation logs and leaves the
+    /// mode off ([`Self::post_aa`] reads what applied).
     pub fn set_post_aa(&mut self, mode: PostAaMode) {
         if mode == self.post_aa {
             return;
         }
-        self.post_aa = mode;
         let size = (self.surface_config.width, self.surface_config.height);
-        self.resize_targets(size);
-        match (self.post_aa.is_smaa(), self.smaa.is_some()) {
-            (true, false) => {
-                self.smaa = Some(build_smaa_pipeline(
-                    &self.device,
-                    &self.queue,
-                    self.surface_config.format,
-                    &self.shader_cache,
-                    self.smaa_shader_ids,
-                    self.post_aa,
-                    size,
-                ));
-            }
-            (true, true) => {
-                if let Some(smaa) = self.smaa.as_ref() {
-                    smaa.update_preset(&self.queue, self.post_aa, size);
+        if mode.is_smaa() && self.smaa.is_none() {
+            match build_smaa_pipeline(
+                &self.device,
+                &self.queue,
+                self.surface_config.format,
+                &self.shader_cache,
+                self.smaa_shader_ids,
+                mode,
+                size,
+            ) {
+                Ok(smaa) => self.smaa = Some(smaa),
+                Err(report) => {
+                    log::error!(
+                        "SMAA pipeline failed validation; post_aa stays {:?}: {report}",
+                        self.post_aa
+                    );
+                    return;
                 }
             }
-            (false, _) => {
-                self.smaa = None;
-            }
+        }
+        self.post_aa = mode;
+        self.resize_targets(size);
+        if let Some(smaa) = self.smaa.as_ref()
+            && self.post_aa.is_smaa()
+        {
+            smaa.update_preset(&self.queue, self.post_aa, size);
+        } else {
+            self.smaa = None;
         }
     }
 
@@ -1171,10 +1296,10 @@ impl Renderer {
     /// resize event hasn't arrived yet (a zero size means minimized: keep the
     /// current size).
     fn sync_surface_to_window(&mut self) {
-        let size = self.window.inner_size();
+        let size = self.window_extent();
         let current = (self.surface_config.width, self.surface_config.height);
-        if size.width > 0 && size.height > 0 && (size.width, size.height) != current {
-            self.resize(size.width, size.height);
+        if size.0 > 0 && size.1 > 0 && size != current {
+            self.resize(size.0, size.1);
         } else {
             self.surface.configure(&self.device, &self.surface_config);
         }
@@ -1183,13 +1308,9 @@ impl Renderer {
     /// Refresh the surface after presenting a suboptimal frame, at most once
     /// per unchanged size.
     fn reconfigure_after_suboptimal(&mut self) {
-        let size = self.window.inner_size();
+        let size = self.window_extent();
         let configured = (self.surface_config.width, self.surface_config.height);
-        if reconfigure_for_suboptimal(
-            (size.width, size.height),
-            configured,
-            self.suboptimal_reconfigured,
-        ) {
+        if reconfigure_for_suboptimal(size, configured, self.suboptimal_reconfigured) {
             self.sync_surface_to_window();
             self.suboptimal_reconfigured =
                 Some((self.surface_config.width, self.surface_config.height));
@@ -2194,7 +2315,7 @@ fn build_smaa_pipeline(
     ids: SmaaShaderIds,
     mode: PostAaMode,
     size: (u32, u32),
-) -> SmaaPipeline {
+) -> Result<SmaaPipeline, String> {
     let edge_module = cache
         .get(ids.edge)
         .expect("smaa_edge module must be in cache");
@@ -2204,17 +2325,21 @@ fn build_smaa_pipeline(
     let nbh_module = cache
         .get(ids.neighborhood_blend)
         .expect("smaa_neighborhood_blend module must be in cache");
-    let pipeline = SmaaPipeline::new(
-        device,
-        queue,
-        format,
-        edge_module,
-        blend_module,
-        nbh_module,
-        ids,
-    );
+    // Inside an error scope: a stage module may have been committed while
+    // no SMAA pipeline existed to check it against (B2, `D-057`).
+    let pipeline = build_validated(device, || {
+        SmaaPipeline::new(
+            device,
+            queue,
+            format,
+            edge_module,
+            blend_module,
+            nbh_module,
+            ids,
+        )
+    })?;
     pipeline.update_preset(queue, mode, size);
-    pipeline
+    Ok(pipeline)
 }
 
 #[cfg(test)]

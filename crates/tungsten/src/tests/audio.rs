@@ -115,3 +115,34 @@ fn empty_looping_sound_finishes() {
     assert!(playing.finished);
     assert_eq!(output, [0.0; 4]);
 }
+
+#[test]
+fn process_sanitises_volumes_that_are_not_finite_or_are_negative() {
+    // A raw command can carry NaN: a NaN master made every sample NaN.
+    let mut playing = Vec::new();
+    let mut master = 1.0f32;
+    for volume in [f32::NAN, f32::INFINITY, -2.0] {
+        process_command(
+            &AudioCommand::Play {
+                handle: AudioHandle(0),
+                volume,
+                looping: false,
+            },
+            &mut playing,
+            &mut master,
+        );
+        process_command(
+            &AudioCommand::SetMasterVolume(volume),
+            &mut playing,
+            &mut master,
+        );
+        assert_eq!(master, 0.0, "{volume}");
+    }
+    assert!(playing.iter().all(|ps| ps.volume == 0.0));
+    process_command(
+        &AudioCommand::SetMasterVolume(2.0),
+        &mut playing,
+        &mut master,
+    );
+    assert_eq!(master, 1.0);
+}

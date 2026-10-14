@@ -187,6 +187,7 @@ impl core::marker::Unpin for tungsten_core::assets::atlas::UvRect
 impl core::marker::UnsafeUnpin for tungsten_core::assets::atlas::UvRect
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::atlas::UvRect
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::atlas::UvRect
+pub fn tungsten_core::assets::atlas::oversized<'a, 'b>(&'b [tungsten_core::assets::atlas::PackInput<'a>], u32, u32) -> core::option::Option<&'b tungsten_core::assets::atlas::PackInput<'a>>
 pub fn tungsten_core::assets::atlas::pack_shelf(&[tungsten_core::assets::atlas::PackInput<'_>], u32, u32) -> tungsten_core::assets::atlas::PackResult
 pub mod tungsten_core::assets::audio
 pub enum tungsten_core::assets::audio::AudioDecodeError
@@ -204,6 +205,9 @@ pub tungsten_core::assets::audio::AudioDecodeError::Probe::error: symphonia_core
 pub tungsten_core::assets::audio::AudioDecodeError::Probe::path: alloc::string::String
 pub tungsten_core::assets::audio::AudioDecodeError::UnknownSampleRate
 pub tungsten_core::assets::audio::AudioDecodeError::UnknownSampleRate::path: alloc::string::String
+pub tungsten_core::assets::audio::AudioDecodeError::UnsupportedSampleRate
+pub tungsten_core::assets::audio::AudioDecodeError::UnsupportedSampleRate::path: alloc::string::String
+pub tungsten_core::assets::audio::AudioDecodeError::UnsupportedSampleRate::rate: u32
 impl core::error::Error for tungsten_core::assets::audio::AudioDecodeError
 impl core::fmt::Debug for tungsten_core::assets::audio::AudioDecodeError
 pub fn tungsten_core::assets::audio::AudioDecodeError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -266,6 +270,7 @@ impl core::marker::Unpin for tungsten_core::assets::audio::SoundRegistry
 impl core::marker::UnsafeUnpin for tungsten_core::assets::audio::SoundRegistry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::audio::SoundRegistry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::audio::SoundRegistry
+pub const tungsten_core::assets::audio::SUPPORTED_SAMPLE_RATES: core::ops::range::RangeInclusive<u32>
 pub mod tungsten_core::assets::manifest
 pub enum tungsten_core::assets::manifest::FilterMode
 pub tungsten_core::assets::manifest::FilterMode::Linear
@@ -773,7 +778,6 @@ impl tungsten_core::assets::material::MaterialRegistry
 pub fn tungsten_core::assets::material::MaterialRegistry::allocate(&mut self, &str, std::path::PathBuf, alloc::string::String, tungsten_core::assets::material::MaterialUniformDefaults) -> tungsten_core::assets::material::MaterialAssetId
 pub fn tungsten_core::assets::material::MaterialRegistry::defaults_for_id(&self, tungsten_core::assets::material::MaterialAssetId) -> core::option::Option<tungsten_core::assets::material::MaterialUniformDefaults>
 pub fn tungsten_core::assets::material::MaterialRegistry::get(&self, &str) -> core::option::Option<tungsten_core::assets::material::MaterialAssetId>
-pub fn tungsten_core::assets::material::MaterialRegistry::id_for_path(&self, &std::path::Path) -> core::option::Option<tungsten_core::assets::material::MaterialAssetId>
 pub fn tungsten_core::assets::material::MaterialRegistry::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, tungsten_core::assets::material::MaterialAssetId)>
 pub fn tungsten_core::assets::material::MaterialRegistry::name_for_id(&self, tungsten_core::assets::material::MaterialAssetId) -> core::option::Option<&str>
 pub fn tungsten_core::assets::material::MaterialRegistry::new() -> Self
@@ -1668,6 +1672,9 @@ pub tungsten_core::assets::AudioDecodeError::Probe::error: symphonia_core::error
 pub tungsten_core::assets::AudioDecodeError::Probe::path: alloc::string::String
 pub tungsten_core::assets::AudioDecodeError::UnknownSampleRate
 pub tungsten_core::assets::AudioDecodeError::UnknownSampleRate::path: alloc::string::String
+pub tungsten_core::assets::AudioDecodeError::UnsupportedSampleRate
+pub tungsten_core::assets::AudioDecodeError::UnsupportedSampleRate::path: alloc::string::String
+pub tungsten_core::assets::AudioDecodeError::UnsupportedSampleRate::rate: u32
 impl core::error::Error for tungsten_core::assets::audio::AudioDecodeError
 impl core::fmt::Debug for tungsten_core::assets::audio::AudioDecodeError
 pub fn tungsten_core::assets::audio::AudioDecodeError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -2328,7 +2335,6 @@ impl tungsten_core::assets::material::MaterialRegistry
 pub fn tungsten_core::assets::material::MaterialRegistry::allocate(&mut self, &str, std::path::PathBuf, alloc::string::String, tungsten_core::assets::material::MaterialUniformDefaults) -> tungsten_core::assets::material::MaterialAssetId
 pub fn tungsten_core::assets::material::MaterialRegistry::defaults_for_id(&self, tungsten_core::assets::material::MaterialAssetId) -> core::option::Option<tungsten_core::assets::material::MaterialUniformDefaults>
 pub fn tungsten_core::assets::material::MaterialRegistry::get(&self, &str) -> core::option::Option<tungsten_core::assets::material::MaterialAssetId>
-pub fn tungsten_core::assets::material::MaterialRegistry::id_for_path(&self, &std::path::Path) -> core::option::Option<tungsten_core::assets::material::MaterialAssetId>
 pub fn tungsten_core::assets::material::MaterialRegistry::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, tungsten_core::assets::material::MaterialAssetId)>
 pub fn tungsten_core::assets::material::MaterialRegistry::name_for_id(&self, tungsten_core::assets::material::MaterialAssetId) -> core::option::Option<&str>
 pub fn tungsten_core::assets::material::MaterialRegistry::new() -> Self
@@ -3161,6 +3167,7 @@ impl tungsten_core::assets::particle::Lerp for [f32; 4]
 pub fn [f32; 4]::lerp(Self, Self, f32) -> Self
 impl tungsten_core::assets::particle::Lerp for f32
 pub fn f32::lerp(Self, Self, f32) -> Self
+pub fn tungsten_core::assets::oversized<'a, 'b>(&'b [tungsten_core::assets::atlas::PackInput<'a>], u32, u32) -> core::option::Option<&'b tungsten_core::assets::atlas::PackInput<'a>>
 pub fn tungsten_core::assets::pack_shelf(&[tungsten_core::assets::atlas::PackInput<'_>], u32, u32) -> tungsten_core::assets::atlas::PackResult
 pub type tungsten_core::assets::ParticleMeshAssetId = tungsten_core::assets::particle::AssetId<tungsten_core::assets::particle::ParticleMesh>
 pub type tungsten_core::assets::ParticleMeshEntry = tungsten_core::assets::particle::ParticleMesh
@@ -12951,7 +12958,6 @@ impl tungsten_core::assets::material::MaterialRegistry
 pub fn tungsten_core::assets::material::MaterialRegistry::allocate(&mut self, &str, std::path::PathBuf, alloc::string::String, tungsten_core::assets::material::MaterialUniformDefaults) -> tungsten_core::assets::material::MaterialAssetId
 pub fn tungsten_core::assets::material::MaterialRegistry::defaults_for_id(&self, tungsten_core::assets::material::MaterialAssetId) -> core::option::Option<tungsten_core::assets::material::MaterialUniformDefaults>
 pub fn tungsten_core::assets::material::MaterialRegistry::get(&self, &str) -> core::option::Option<tungsten_core::assets::material::MaterialAssetId>
-pub fn tungsten_core::assets::material::MaterialRegistry::id_for_path(&self, &std::path::Path) -> core::option::Option<tungsten_core::assets::material::MaterialAssetId>
 pub fn tungsten_core::assets::material::MaterialRegistry::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, tungsten_core::assets::material::MaterialAssetId)>
 pub fn tungsten_core::assets::material::MaterialRegistry::name_for_id(&self, tungsten_core::assets::material::MaterialAssetId) -> core::option::Option<&str>
 pub fn tungsten_core::assets::material::MaterialRegistry::new() -> Self

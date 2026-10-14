@@ -175,3 +175,40 @@ fn sparse_tiled_ids_resolve_and_invalid_gids_return_errors() {
     }
     std::fs::remove_file(path).unwrap();
 }
+
+#[test]
+fn a_group_layer_is_an_error() {
+    // Tiled's usual way to organise layers is a group; a collision layer
+    // inside one was skipped with the group, so the map loaded with no
+    // collision and no word.
+    let dir = std::env::temp_dir().join(format!(
+        "tungsten_tilemap_group_{}_{}",
+        std::process::id(),
+        std::time::UNIX_EPOCH.elapsed().unwrap().as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("grouped.tmj");
+    std::fs::write(
+        &path,
+        br#"{
+      "tilewidth": 8, "tileheight": 8, "width": 1, "height": 1,
+      "tilesets": [{ "firstgid": 1, "tiles": [
+        { "id": 0, "properties": [{"name": "sprite_id", "type": "string", "value": "a"}] }
+      ]}],
+      "layers": [
+        { "type": "objectgroup", "name": "spawns", "objects": [] },
+        { "type": "group", "name": "level", "layers": [
+          { "type": "tilelayer", "name": "solid", "data": [1],
+            "properties": [{"name": "kind", "type": "string", "value": "collision"}] }
+        ]}
+      ]
+    }"#,
+    )
+    .unwrap();
+    let err = TilemapData::load(&path).unwrap_err();
+    assert!(
+        matches!(&err, TilemapError::Invalid { message, .. } if message.contains("'level'")),
+        "{err}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

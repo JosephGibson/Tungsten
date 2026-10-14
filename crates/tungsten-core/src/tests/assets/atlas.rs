@@ -70,3 +70,18 @@ fn determinism_same_input_same_output() {
     let r2 = pack_shelf(&a, 128, 1);
     assert_eq!(r1, r2);
 }
+
+#[test]
+fn oversized_names_the_first_input_a_page_cannot_hold() {
+    // A page of 8192 px with 1 px of padding on each side holds 8190 px; an
+    // 8192 px parallax strip reached `pack_shelf`'s assert from the loaders.
+    let fits = [pi("a", 16, 16), pi("strip", 8190, 512)];
+    assert!(oversized(&fits, 8192, 1).is_none());
+    let strip = [pi("a", 16, 16), pi("strip", 8192, 512), pi("tall", 4, 9000)];
+    assert_eq!(oversized(&strip, 8192, 1).map(|i| i.id), Some("strip"));
+    assert_eq!(
+        oversized(&[pi("tall", 4, 8191)], 8192, 1).map(|i| i.id),
+        Some("tall")
+    );
+    assert_eq!(oversized(&[pi("b", 2, 2)], 1, 1).map(|i| i.id), Some("b"));
+}

@@ -4,7 +4,7 @@
 
 use glam::Vec2;
 use glyphon::cosmic_text::Ellipsize;
-use glyphon::{Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, Wrap};
+use glyphon::{Attrs, Buffer, Color, Family, FontSystem, Shaping, Wrap};
 use tungsten_core::text::{
     FontEpoch, MeasureWidth, StyledText, TextMeasure, TextMetrics, TextNodeId, TextNodeStore,
     TextStyle, TextWrap,
@@ -12,7 +12,7 @@ use tungsten_core::text::{
 
 use super::{
     SPARE_BUFFER_CAP, StoredFontAttrs, TextEngine, TextLayoutKey, cosmic_align, cosmic_ellipsize,
-    cosmic_hinting, cosmic_wrap, with_layout,
+    cosmic_hinting, cosmic_wrap, layout_metrics, with_layout,
 };
 
 /// The settings a node's buffer is laid out with.
@@ -46,7 +46,7 @@ struct Node {
 impl Node {
     fn new(text: StyledText, style: TextStyle) -> Self {
         // Never `Buffer::new`: it shapes an empty line first.
-        let buffer = Buffer::new_empty(Metrics::new(style.size, style.line_height));
+        let buffer = Buffer::new_empty(layout_metrics(style.size, style.line_height));
         Self {
             text,
             style,
@@ -340,9 +340,9 @@ impl TextEngine {
         let Some(current) = self.nodes.node_mut(node) else {
             return false;
         };
-        let metrics = Metrics::new(style.size, style.line_height);
-        if metrics.font_size == 0.0 || metrics.line_height == 0.0 {
-            // `set_metrics` rejects zero; `new_empty` takes it.
+        let metrics = layout_metrics(style.size, style.line_height);
+        if metrics.font_size == 0.0 {
+            // `set_metrics` rejects a zero font size; `new_empty` takes one.
             current.buffer = Buffer::new_empty(metrics);
         } else {
             current.buffer.set_metrics(metrics);
@@ -381,7 +381,7 @@ impl TextEngine {
                 .shape_until_scroll(&mut self.font_system, false);
             current.laid_out = Some(state);
         }
-        let metrics = line_metrics(&current.buffer, current.style.line_height);
+        let metrics = line_metrics(&current.buffer);
         #[cfg(test)]
         if relaid {
             self.nodes.layouts += 1;
@@ -511,8 +511,9 @@ impl TextMeasure for TextEngine {
 }
 
 /// Size, first baseline and line count of a laid-out buffer. Text with no
-/// lines measures one line height.
-fn line_metrics(buffer: &Buffer, line_height: f32) -> TextMetrics {
+/// lines measures one line height, the one the buffer lays out with.
+fn line_metrics(buffer: &Buffer) -> TextMetrics {
+    let line_height = buffer.metrics().line_height;
     let mut width = 0.0_f32;
     let mut bottom = 0.0_f32;
     let mut first_baseline = None;

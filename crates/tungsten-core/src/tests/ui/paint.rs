@@ -686,3 +686,40 @@ fn an_empty_tree_paints_the_viewport_clip_and_nothing_else() {
     assert!(reused.is_empty() && reused.clips.is_empty());
     assert_eq!(reused.scale, 2.0, "clear keeps the scale");
 }
+
+#[test]
+fn physical_rects_far_from_the_origin_do_not_overflow() {
+    // A box past about -2.1e9 physical px: `right - x` overflowed `i32`,
+    // panicking a debug build and wrapping to an empty clip in release.
+    let far = Rect::new(Vec2::new(-3e9, -3e9), Vec2::new(100.0, 50.0));
+    let clip = to_physical(far, 1.0);
+    assert_eq!((clip.x, clip.y), (-(1 << 30), -(1 << 30)));
+    assert_eq!(clip.x + clip.width, 100);
+    assert_eq!(clip.y + clip.height, 50);
+    let viewport = ClipRect {
+        x: 0,
+        y: 0,
+        width: 800,
+        height: 600,
+    };
+    assert_eq!(
+        clip.intersect(viewport),
+        ClipRect {
+            x: 0,
+            y: 0,
+            width: 100,
+            height: 50,
+        }
+    );
+    let past = to_physical(Rect::new(Vec2::splat(-1.0), Vec2::splat(1e30)), 2.0);
+    assert_eq!((past.x, past.width), (-2, (1 << 30) + 1));
+    // Edge sums of rects built by hand stay in range too.
+    let wide = ClipRect {
+        x: i32::MAX - 10,
+        y: 0,
+        width: i32::MAX,
+        height: 10,
+    };
+    assert_eq!(wide.intersect(wide).width, i32::MAX);
+    assert_eq!(wide.intersect(viewport).width, 0);
+}

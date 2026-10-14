@@ -116,3 +116,49 @@ pub(crate) fn resolve_max_frame_latency(
         None => Ok(default_max_frame_latency(present_mode)),
     }
 }
+
+/// The features the device validates `format` against, as wgpu-core decides
+/// them (`describe_format_features`): the adapter's own when the device has
+/// `TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES` or the adapter lacks WebGPU's
+/// format guarantees, the WebGPU guarantee otherwise.
+pub(crate) fn device_format_flags(
+    device_features: wgpu::Features,
+    downlevel: wgpu::DownlevelFlags,
+    adapter_flags: wgpu::TextureFormatFeatureFlags,
+    format: wgpu::TextureFormat,
+) -> wgpu::TextureFormatFeatureFlags {
+    if device_features.contains(wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES)
+        || !downlevel.contains(wgpu::DownlevelFlags::WEBGPU_TEXTURE_FORMAT_SUPPORT)
+    {
+        adapter_flags
+    } else {
+        format.guaranteed_format_features(device_features).flags
+    }
+}
+
+/// The MSAA sample count the scene renders with: `requested` when the color
+/// target's format takes it and resolves, and the depth target's does too
+/// when there is one; else 4 under the same test; else 1.
+pub(crate) fn msaa_sample_count(
+    requested: u32,
+    color: wgpu::TextureFormatFeatureFlags,
+    depth: Option<wgpu::TextureFormatFeatureFlags>,
+) -> u32 {
+    let takes = |count: u32| {
+        count == 1
+            || (color.sample_count_supported(count)
+                && color.contains(wgpu::TextureFormatFeatureFlags::MULTISAMPLE_RESOLVE)
+                && depth.is_none_or(|depth| depth.sample_count_supported(count)))
+    };
+    [requested, 4]
+        .into_iter()
+        .find(|&count| takes(count))
+        .unwrap_or(1)
+}
+
+/// The surface size for a window of `size`: each side at most
+/// `max_dimension`, the device's `max_texture_dimension_2d`, since wgpu
+/// rejects a larger surface (a validation error, which panics).
+pub(crate) fn surface_extent(size: (u32, u32), max_dimension: u32) -> (u32, u32) {
+    (size.0.min(max_dimension), size.1.min(max_dimension))
+}

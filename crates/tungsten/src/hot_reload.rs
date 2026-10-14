@@ -8,33 +8,139 @@ use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 /// Collapse editor swap-saves into one reload event per path.
 const DEBOUNCE_MS: u64 = 50;
 
-/// Background file watcher; `mpsc`, no async, no shared mutable state.
-pub struct HotReloadWatcher {
-    /// Keep OS watcher alive.
-    _watcher: RecommendedWatcher,
-    receiver: Receiver<PathBuf>,
+/// What the watcher thread sends the main thread, which does the logging.
+#[derive(Debug, PartialEq)]
+enum WatchMessage {
+    /// A file was created or modified.
+    Changed(PathBuf),
+    /// The watcher reported an error.
+    Error(String),
+    /// The OS dropped events (an inotify queue overflow, say), so some edits
+    /// arrive as nothing.
+    Rescan,
+}
+
+/// Turns one watcher callback into the messages it sends.
+fn classify(result: notify::Result<Event>, mut send: impl FnMut(WatchMessage)) {
+    match result {
+        Ok(event) if event.need_rescan() => send(WatchMessage::Rescan),
+        Ok(event) if matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_)) => {
+            for path in event.paths {
+                send(WatchMessage::Changed(path));
+            }
+        }
+        Ok(_) => {}
+        Err(error) => send(WatchMessage::Error(error.to_string())),
+    }
+}
+
+/// The main thread's side of the channel: debounced paths, and the reports
+/// logged once each.
+struct Inbox {
+    receiver: Receiver<WatchMessage>,
     /// Pending path -> last event time.
     pending: HashMap<PathBuf, Instant>,
     /// Canonical recursive watch roots.
     recursive_roots: Vec<PathBuf>,
     /// Canonical extra files watched via parent directories.
     allowed_extra_files: HashSet<PathBuf>,
+    /// A watch error has been logged; later ones are not.
+    logged_error: bool,
+    /// A rescan has been logged; later ones are not.
+    logged_rescan: bool,
+    /// The watcher thread has stopped; nothing more arrives.
+    disconnected: bool,
+}
+
+impl Inbox {
+    fn new(
+        receiver: Receiver<WatchMessage>,
+        recursive_roots: Vec<PathBuf>,
+        allowed_extra_files: HashSet<PathBuf>,
+    ) -> Self {
+        Self {
+            receiver,
+            pending: HashMap::new(),
+            recursive_roots,
+            allowed_extra_files,
+            logged_error: false,
+            logged_rescan: false,
+            disconnected: false,
+        }
+    }
+
+    /// The paths whose debounce ended by `now`.
+    fn drain(&mut self, now: Instant) -> Vec<PathBuf> {
+        let window = Duration::from_millis(DEBOUNCE_MS);
+
+        // Accepted events reset the path debounce deadline.
+        loop {
+            match self.receiver.try_recv() {
+                Ok(WatchMessage::Changed(path)) => {
+                    if accept_path(&path, &self.recursive_roots, &self.allowed_extra_files) {
+                        self.pending.insert(path, now);
+                    }
+                }
+                Ok(WatchMessage::Error(error)) => {
+                    if !self.logged_error {
+                        self.logged_error = true;
+                        log::error!(
+                            "Hot reload: watcher error: {error}; later errors are not logged"
+                        );
+                    }
+                }
+                Ok(WatchMessage::Rescan) => {
+                    if !self.logged_rescan {
+                        self.logged_rescan = true;
+                        log::warn!(
+                            "Hot reload: the watcher dropped events; an edit may not reload until its file is saved again"
+                        );
+                    }
+                }
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    if !self.disconnected {
+                        self.disconnected = true;
+                        log::warn!("Hot reload: the watcher stopped; hot reload is off");
+                    }
+                    break;
+                }
+            }
+        }
+
+        // A stopped watcher sends nothing more and the app drops it, so the
+        // paths still inside their debounce go now.
+        let flush = self.disconnected;
+        let mut ready = Vec::new();
+        self.pending.retain(|path, last_seen| {
+            if flush || now.duration_since(*last_seen) >= window {
+                ready.push(path.clone());
+                false
+            } else {
+                true
+            }
+        });
+        ready
+    }
+}
+
+/// Background file watcher; `mpsc`, no async, no shared mutable state.
+pub struct HotReloadWatcher {
+    /// Keep OS watcher alive.
+    _watcher: RecommendedWatcher,
+    inbox: Inbox,
 }
 
 impl HotReloadWatcher {
     /// Start recursive dir watches plus parent watches for explicit files.
     #[must_use]
     pub fn new(watch_dirs: &[PathBuf], extra_files: &[PathBuf]) -> Option<Self> {
-        let (tx, rx) = mpsc::channel::<PathBuf>();
+        let (tx, rx) = mpsc::channel::<WatchMessage>();
 
         let mut watcher = match notify::recommended_watcher(move |res: notify::Result<Event>| {
-            if let Ok(event) = res
-                && matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_))
-            {
-                for path in event.paths {
-                    let _ = tx.send(path);
-                }
-            }
+            classify(res, |message| {
+                let _ = tx.send(message);
+            });
         }) {
             Ok(w) => w,
             Err(e) => {
@@ -104,48 +210,19 @@ impl HotReloadWatcher {
 
         Some(Self {
             _watcher: watcher,
-            receiver: rx,
-            pending: HashMap::new(),
-            recursive_roots,
-            allowed_extra_files,
+            inbox: Inbox::new(rx, recursive_roots, allowed_extra_files),
         })
     }
 
     /// Drain debounced, accepted paths; call once per frame before render.
+    /// A watcher error and a dropped-events notice are logged once each.
     pub fn drain_ready(&mut self) -> Vec<PathBuf> {
-        let now = Instant::now();
-        let window = Duration::from_millis(DEBOUNCE_MS);
-
-        // Accepted events reset the path debounce deadline.
-        loop {
-            match self.receiver.try_recv() {
-                Ok(path) => {
-                    if self.accept(&path) {
-                        self.pending.insert(path, now);
-                    }
-                }
-                Err(TryRecvError::Empty) => break,
-                Err(TryRecvError::Disconnected) => {
-                    log::warn!("Hot reload: watcher channel disconnected");
-                    break;
-                }
-            }
-        }
-
-        let mut ready = Vec::new();
-        self.pending.retain(|path, last_seen| {
-            if now.duration_since(*last_seen) >= window {
-                ready.push(path.clone());
-                false
-            } else {
-                true
-            }
-        });
-        ready
+        self.inbox.drain(Instant::now())
     }
 
-    fn accept(&self, path: &Path) -> bool {
-        accept_path(path, &self.recursive_roots, &self.allowed_extra_files)
+    /// The watcher thread stopped, logged once: the app drops the watcher.
+    pub(crate) fn disconnected(&self) -> bool {
+        self.inbox.disconnected
     }
 }
 

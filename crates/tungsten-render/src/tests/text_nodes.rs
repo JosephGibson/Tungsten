@@ -162,6 +162,30 @@ fn empty_text_measures_one_line_height() {
 }
 
 #[test]
+fn a_line_height_that_is_not_positive_lays_out_at_the_default_ratio() {
+    // cosmic-text's buffers assert a non-zero line height; a style can still
+    // carry one, from code or an override: on a node's first text and on a
+    // restyle.
+    let default = 14.0 * 1.25;
+    for line_height in [0.0, -4.0, f32::NAN] {
+        let mut engine = engine();
+        let odd = TextStyle::new("mono", 14.0, line_height);
+        let fresh = node_with(&mut engine, "fresh", &odd);
+        let restyled = node_with(&mut engine, "restyled", &mono());
+        engine.commit_layout(restyled, Vec2::new(200.0, 100.0));
+        engine.set_text(restyled, &StyledText::from("restyled"), &odd);
+        for node in [fresh, restyled] {
+            let metrics = engine.commit_layout(node, Vec2::new(200.0, 100.0));
+            assert_eq!(metrics.line_count, 1, "{line_height}");
+            assert_close(metrics.size.y, default, &format!("{line_height}"));
+        }
+        let empty = node_with(&mut engine, "", &odd);
+        let metrics = engine.measure(empty, None, MeasureWidth::MaxContent);
+        assert_close(metrics.size.y, default, &format!("empty {line_height}"));
+    }
+}
+
+#[test]
 fn repeated_measures_and_equal_text_do_no_work() {
     let mut engine = engine();
     let node = node_with(&mut engine, LONG_LINE, &mono());

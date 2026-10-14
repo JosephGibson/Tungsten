@@ -41,8 +41,8 @@ pub struct MaterialRegistry {
     next: u32,
     ids: HashMap<String, MaterialAssetId>,
     names: HashMap<MaterialAssetId, String>,
+    /// The manifest each material came from; several share one.
     paths: HashMap<MaterialAssetId, PathBuf>,
-    reverse: HashMap<PathBuf, MaterialAssetId>,
     shader_names: HashMap<MaterialAssetId, String>,
     defaults: HashMap<MaterialAssetId, MaterialUniformDefaults>,
 }
@@ -66,12 +66,7 @@ impl MaterialRegistry {
         if let Some(&existing) = self.ids.get(id) {
             self.shader_names.insert(existing, shader_name);
             self.defaults.insert(existing, defaults);
-            if let Some(old) = self.paths.insert(existing, path.clone())
-                && old != path
-            {
-                self.reverse.remove(&old);
-            }
-            self.reverse.insert(path, existing);
+            self.paths.insert(existing, path);
             return existing;
         }
 
@@ -79,7 +74,6 @@ impl MaterialRegistry {
         self.next += 1;
         self.ids.insert(id.to_string(), asset);
         self.names.insert(asset, id.to_string());
-        self.reverse.insert(path.clone(), asset);
         self.paths.insert(asset, path);
         self.shader_names.insert(asset, shader_name);
         self.defaults.insert(asset, defaults);
@@ -89,11 +83,6 @@ impl MaterialRegistry {
     #[must_use]
     pub fn get(&self, id: &str) -> Option<MaterialAssetId> {
         self.ids.get(id).copied()
-    }
-
-    #[must_use]
-    pub fn id_for_path(&self, path: &Path) -> Option<MaterialAssetId> {
-        self.reverse.get(path).copied()
     }
 
     #[must_use]

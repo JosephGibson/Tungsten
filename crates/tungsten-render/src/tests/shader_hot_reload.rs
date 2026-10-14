@@ -51,3 +51,42 @@ fn cache_byte_equal_short_circuit_counts_unchanged_calls() {
     assert!(!cache.bytes_equal(id, VALID_WGSL));
     assert_eq!(cache.unchanged_count, 0);
 }
+
+/// Needs `SHADER_F16`, which the renderer never requests.
+const F16_WGSL: &str = r"
+enable f16;
+@fragment fn fs_main() -> @location(0) vec4<f32> {
+    let half: f16 = 0.5h;
+    return vec4<f32>(f32(half));
+}
+";
+
+#[test]
+fn the_cache_validates_against_the_device_capabilities() {
+    // Naga with every capability accepts a module a device without the
+    // feature rejects, and wgpu's rejection outside an error scope panics.
+    validate_wgsl_source("half", F16_WGSL).expect("every capability takes f16");
+    let mut cache = ShaderModuleCache::new();
+    cache.set_capabilities(naga_capabilities(
+        wgpu::Features::TIMESTAMP_QUERY,
+        wgpu::DownlevelFlags::all(),
+    ));
+    let err = cache.precheck("half", F16_WGSL).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            ShaderError::Parse { .. } | ShaderError::Validation { .. }
+        ),
+        "{err}"
+    );
+    cache.set_capabilities(naga_capabilities(
+        wgpu::Features::SHADER_F16,
+        wgpu::DownlevelFlags::all(),
+    ));
+    cache
+        .precheck("half", F16_WGSL)
+        .expect("the feature takes f16");
+    cache
+        .precheck("sprite", VALID_WGSL)
+        .expect("valid WGSL passes");
+}

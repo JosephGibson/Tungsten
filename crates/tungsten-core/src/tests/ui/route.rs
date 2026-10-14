@@ -735,3 +735,35 @@ fn a_world_without_the_queue_the_router_or_the_tree_still_feeds_the_routed_view(
             .just_released(KeyCode::Escape)
     );
 }
+
+#[test]
+fn a_widget_under_a_disabled_container_takes_no_click_or_press() {
+    // `D-125`: disabling a container disables what is inside it.
+    let (mut rig, root, _a, _b) = Rig::new();
+    let panel = rig.tree_mut().panel(root, at(150.0, 10.0, 200.0, 100.0));
+    let inner = rig.place(panel, at(0.0, 0.0, 100.0, 30.0));
+    rig.layout();
+    rig.tree_mut().set_enabled(panel, false);
+    let events = rig.click(inner);
+    assert!(activations(&events).is_empty(), "{events:?}");
+    assert_eq!(rig.tree().pressed(), None);
+
+    // A press held when its container is disabled ends cancelled.
+    rig.tree_mut().set_enabled(panel, true);
+    let point = rig.centre(inner);
+    rig.frame(|input| {
+        input.update_cursor_position(point.x, point.y);
+        input.mouse_down(LEFT);
+    });
+    assert_eq!(rig.tree().pressed(), Some(inner));
+    rig.tree_mut().set_enabled(panel, false);
+    let events = rig.frame(|input| input.mouse_up(LEFT));
+    assert!(
+        events.contains(&UiEvent::PressCancelled { widget: inner }),
+        "{events:?}"
+    );
+    assert!(activations(&events).is_empty());
+
+    rig.tree_mut().set_enabled(panel, true);
+    assert_eq!(activations(&rig.click(inner)), [inner]);
+}

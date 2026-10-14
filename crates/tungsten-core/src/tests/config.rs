@@ -752,3 +752,11 @@ fn a_slow_step_or_a_zero_bound_fails_naming_the_field() {
         "{message}"
     );
 }
+
+#[test]
+fn a_utf8_byte_order_mark_is_skipped() {
+    // Some editors save JSON with a byte-order mark; serde_json reads it as
+    // an unexpected character and the game would not start (`D-008`).
+    let (_, loaded) = load_json("bom", "\u{feff}{ \"logging\": { \"level\": \"warn\" } }");
+    assert_eq!(loaded.unwrap().logging.level, "warn");
+}

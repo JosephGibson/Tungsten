@@ -13,7 +13,7 @@ use tungsten_core::assets::{TextureHandle, UvRect};
 use tungsten_core::ui::{ClipRect, PaintCommand, PaintList, Rect};
 use wgpu::util::DeviceExt;
 
-use crate::sprite::SpritePipeline;
+use crate::sprite::{SpritePipeline, instance_capacity};
 
 /// Unit-square two-triangle vertex; the instance places and sizes it.
 #[repr(C)]
@@ -244,6 +244,28 @@ pub(crate) fn build_items(list: &PaintList, instances: &mut Vec<UiInstance>) -> 
     items
 }
 
+/// Keeps the first `limit` instances and the primitive items over them, the
+/// last one shortened; text items stay. True when that cut anything.
+pub(crate) fn cap_items(
+    items: &mut Vec<DrawItem>,
+    instances: &mut Vec<UiInstance>,
+    limit: usize,
+) -> bool {
+    if instances.len() <= limit {
+        return false;
+    }
+    instances.truncate(limit);
+    let limit = u32::try_from(limit).unwrap_or(u32::MAX);
+    items.retain_mut(|item| match item {
+        DrawItem::Primitives { instances, .. } => {
+            instances.end = instances.end.min(limit);
+            instances.start < instances.end
+        }
+        DrawItem::Text { .. } => true,
+    });
+    true
+}
+
 /// Uploads `command`'s instance, when it has one, into the open primitive
 /// run or a new one when its page or clip differ.
 fn push_primitive(
@@ -305,6 +327,8 @@ pub struct UiPipeline {
     instance_capacity: usize,
     instances: Vec<UiInstance>,
     items: Vec<DrawItem>,
+    /// Whether a frame has outgrown the largest instance buffer, logged once.
+    warned_instance_cap: bool,
 }
 
 impl UiPipeline {
@@ -464,6 +488,7 @@ impl UiPipeline {
             instance_capacity: INSTANCE_CAPACITY,
             instances: Vec::new(),
             items: Vec::new(),
+            warned_instance_cap: false,
         }
     }
 
@@ -495,10 +520,25 @@ impl UiPipeline {
             queue.write_buffer(&self.viewport_buffer, 0, bytemuck::cast_slice(matrix));
             self.viewport_written = Some((width, height));
         }
-        if self.instances.len() > self.instance_capacity {
-            let capacity = self.instances.len().next_power_of_two();
+        let capacity = instance_capacity(
+            self.instances.len(),
+            std::mem::size_of::<UiInstance>(),
+            device.limits().max_buffer_size,
+        );
+        if capacity > self.instance_capacity {
             self.instance_buffer = create_instance_buffer(device, capacity);
             self.instance_capacity = capacity;
+        }
+        // Past the largest buffer wgpu allows, the frame draws what fits.
+        let built = self.instances.len();
+        if cap_items(&mut self.items, &mut self.instances, self.instance_capacity)
+            && !self.warned_instance_cap
+        {
+            self.warned_instance_cap = true;
+            log::warn!(
+                "{built} UI instances outgrow one instance buffer; drawing the first {}",
+                self.instances.len()
+            );
         }
         queue.write_buffer(
             &self.instance_buffer,

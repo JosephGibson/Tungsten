@@ -5,6 +5,8 @@ use bytemuck::{Pod, Zeroable};
 use tungsten_core::ParticleMeshAssetId;
 use wgpu::util::DeviceExt;
 
+use crate::sprite::instance_capacity;
+
 /// One mesh particle: the mesh origin in world pixels, a per-axis scale, a
 /// rotation in radians about the origin, and a color.
 #[repr(C)]
@@ -92,6 +94,25 @@ fn plan_draws(
     }
 }
 
+/// Keeps the first `limit` staged instances and the draw ranges over them,
+/// the last one shortened; true when that cut anything.
+fn cap_draws(
+    staging: &mut Vec<MeshParticleInstance>,
+    draws: &mut Vec<DrawRange>,
+    limit: usize,
+) -> bool {
+    if staging.len() <= limit {
+        return false;
+    }
+    staging.truncate(limit);
+    let limit = limit as u32;
+    draws.retain_mut(|draw| {
+        draw.count = draw.count.min(limit.saturating_sub(draw.first));
+        draw.count > 0
+    });
+    true
+}
+
 struct GpuMesh {
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
@@ -110,6 +131,8 @@ pub struct MeshParticlePipeline {
     missing: Vec<ParticleMeshAssetId>,
     /// Meshes already reported as drawn without an upload.
     warned: Vec<ParticleMeshAssetId>,
+    /// Whether a frame has outgrown the largest instance buffer, logged once.
+    warned_instance_cap: bool,
 }
 
 impl MeshParticlePipeline {
@@ -181,6 +204,7 @@ impl MeshParticlePipeline {
             draws: Vec::new(),
             missing: Vec::new(),
             warned: Vec::new(),
+            warned_instance_cap: false,
         }
     }
 
@@ -194,11 +218,16 @@ impl MeshParticlePipeline {
     }
 
     fn ensure_instance_capacity(&mut self, device: &wgpu::Device, required_instances: usize) {
-        if required_instances <= self.instance_capacity {
+        let capacity = instance_capacity(
+            required_instances,
+            std::mem::size_of::<MeshParticleInstance>(),
+            device.limits().max_buffer_size,
+        );
+        if capacity <= self.instance_capacity {
             return;
         }
 
-        self.instance_capacity = required_instances.next_power_of_two().max(1);
+        self.instance_capacity = capacity;
         self.instance_buffer = Self::create_instance_buffer(device, self.instance_capacity);
     }
 
@@ -271,6 +300,17 @@ impl MeshParticlePipeline {
             return;
         }
         self.ensure_instance_capacity(device, self.staging.len());
+        // Past the largest buffer wgpu allows, the frame draws what fits.
+        let staged = self.staging.len();
+        if cap_draws(&mut self.staging, &mut self.draws, self.instance_capacity)
+            && !self.warned_instance_cap
+        {
+            self.warned_instance_cap = true;
+            log::warn!(
+                "{staged} mesh particle instances outgrow one instance buffer; drawing the first {}",
+                self.staging.len()
+            );
+        }
         queue.write_buffer(
             &self.instance_buffer,
             0,

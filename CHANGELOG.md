@@ -6,6 +6,34 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.70.0] - 2026-10-14
+
+Summary: the 0.70 review fixes (plan archived at `docs/plans/archive/review-fixes-0-70.md`), a break from the road to 1.0 that fixes the confirmed, high-value findings of the 2026-10-14 correctness review of `026f9e4`, with regression tests (device-free policy tests and scratch GPU probes where a failure needs a device), and files the rest in `docs/known-issues.md` by home. Crashes, hangs and silent losses become errors, fallbacks or no-ops; a disabled container disables what is inside it and nested focus scopes restore focus (`D-125`, `D-149`); a sleeping island wakes when its static or tile support changes (`D-156`, amending `D-065`). The determinism and containment hashes are unchanged, and `integrated` and `particles` read no owned metric `regressed` against 0.69 (`perf-runs/20261014-r070-review-fixes/`).
+
+### Fixed
+
+- **Text line height** (UI F1, render F2): a theme file's `line_height` must be finite and above 0, and a `TextSection` or style line height that is not, `TextSection::default()`'s 0 among them, lays out at 1.25 times the font size, where cosmic-text's assert panicked.
+- **Shaders and SMAA** (render F3, F6): the shader cache parses and validates with the device's Naga capabilities and creates each module inside a validation error scope, so a shader using a feature the device lacks is an error at load or reload, not a panic; turning SMAA on builds its pipelines inside an error scope and stays off when they fail.
+- **MSAA 2 and 8** (render F1): the renderer asks for the adapter's own format features and falls back to 4, then 1, with a warning, when the surface format or, with depth, `Depth32Float` cannot take the count; `msaa: 8` panicked on the reference machine.
+- **Sizes past device limits** (assets F2, render F8, F9): a sprite larger than an atlas page fails `load_sprites` with an error and leaves a repack's previous atlas; a window past `max_texture_dimension_2d` renders at that size; instance buffers stay within `max_buffer_size`, and a frame past it draws the first instances that fit.
+- **Asset and config input** (assets F3, F6, core F6): a decoded sample rate outside 1,000–384,000 Hz is `AudioDecodeError::UnsupportedSampleRate`; `AnimationData::total_duration_ms` saturates; `tungsten.json` and `input.json` parse past a UTF-8 byte-order mark, which a persist keeps.
+- **Runtime edges** (core F1, F2, F3, UI F5, F7): a `call` that despawns a spawn recorded after it drops that spawn's inserts instead of panicking at the flush; a written tween `duration` that is not finite and positive acts as `Tween::new`'s; `CameraBounds::clamp_position` survives a NaN rotation or bound; `FixedAdvanceMeasure` no longer hangs on an advance of 0 or below; UI clip rectangles far from the origin no longer overflow `i32`.
+- **Font reload** (render F7): data with no face keeps the font's faces and logs an error, where the faces went first and the log said it had reloaded.
+- **Volumes** (assets F5, UI F9, app 6): a volume that is not finite or is negative plays at 0, in `AudioCommands` and again in the mixer; a manifest sound `volume` must be finite and at least 0. The summed output still has no clamp (`D-029`).
+- **UI input** (UI F2, F3): a widget inside a disabled container takes no focus, press or click, and disabling releases the focus, hover and press under it (`D-125`); focus records a scope only when it enters from outside, and closing scopes restores the newest record that can still take focus (`D-149`).
+- **Sleeping** (physics F1, F4, `D-156`): a sleeping island within the speculative slack of a static or tile support that goes, moves or changes wakes at the next step; a `time_to_sleep` of 0 or less no longer sleeps a moving body.
+- **Tools and reload** (app 8, 10, 11, render F5): the inspector picks through `CameraState::screen_to_world`, so a rotated camera picks right; an unknown tilemap ID warns once; the watcher logs its errors and dropped events once, and a stopped watcher hands over its last paths and turns hot reload off; a material whose first upload failed builds when its shader is fixed.
+- **Manifests and maps** (assets F7, F8): an ID repeated inside one manifest section is a parse error (`D-017`), and a Tiled group layer is an error, where its layers were skipped.
+
+### Removed
+
+- **`MaterialRegistry::id_for_path`** (assets F9): its path-to-ID map named one material per manifest path, though every material of a manifest shares it; nothing outside its tests called it.
+
+### Changed
+
+- **API** (`api/*.txt`, the W4 break ledger): `Renderer::reload_font` and `TextPipeline::reload_font` return whether the data held a face; `AudioDecodeError` gains `UnsupportedSampleRate`; `tungsten_core::assets::oversized` and `assets::audio::SUPPORTED_SAMPLE_RATES` are new; `Pcg32::next_range`'s doc says `[lo, hi]`.
+- **Known issues**: 26 rows carry the review's open findings to their homes (W1 M4, W6c, W7b, W11b, W12b with W1 M6 and the Phase 6 QA pass), and the inspector's entry goes.
+
 ## [0.69.0] - 2026-10-14
 
 Summary: M50, W13a and W13b (plan archived at `docs/plans/archive/1.0/phase6-milestone-50-kit-basics-hierarchy.md`): `tungsten-kit`, a fourth crate on core alone, re-exported as `tungsten::kit` behind the default `kit` feature, with opt-in plugins for an animated sprite, lifetimes, despawn outside a region or the view and a sound per event, `cursor_to_world`, and a positions-only transform hierarchy propagated after the physics sync and again after the tweens; the engine's system names move to core (`D-155`, amending `D-006`, `D-107`, `D-128` and `D-133`). The determinism and containment hashes, the `integrated` and `particles` digests, `gpu-visual.png`, the post-stack, transition and UI overlay references, `DefaultPlugins`' schedule and `api/tungsten-render.txt` are unchanged; one direct pair's `particles` `particle_count_refresh` p50 reading (0.620 → 0.654 ms) is accepted by the owner as the recorded same-build drift.

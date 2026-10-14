@@ -515,10 +515,12 @@ impl UiTree {
     }
 
     /// Enables or disables `id`. A disabled widget keeps its box and blocks
-    /// what is behind it; it holds no focus, hover or press, so disabling the
-    /// widget holding one releases it. Marks paint, and the node's style for
-    /// the next resolution, which relayouts its root when the `disabled`
-    /// variant changes the text style.
+    /// what is behind it; it and every widget inside it take no focus,
+    /// press or click (`D-125`), so disabling releases the focus, hover and
+    /// press held anywhere under it. Its own `disabled` variant applies; the
+    /// widgets inside keep theirs. Marks paint, and the node's style for the
+    /// next resolution, which relayouts its root when the `disabled` variant
+    /// changes the text style.
     pub fn set_enabled(&mut self, id: WidgetId, enabled: bool) {
         let Some(node) = self.node_mut(id) else {
             return;
@@ -528,21 +530,20 @@ impl UiTree {
         }
         node.enabled = enabled;
         if !enabled {
-            if self.focused == Some(id) {
+            if self
+                .focused
+                .is_some_and(|focused| self.is_within(focused, id))
+            {
                 self.set_focused(None);
             }
-            if self.hovered == Some(id) {
-                self.set_hovered(None);
-            }
-            if self.pressed == Some(id) {
-                self.set_pressed(None);
-            }
+            self.drop_pointer_under(id);
         }
         self.mark_style_dirty(id);
         self.mark_paint_dirty();
     }
 
-    /// Whether `id` is enabled; `false` for an invalid ID.
+    /// Whether `id` itself is enabled, whatever its ancestors are; `false`
+    /// for an invalid ID.
     #[must_use]
     pub fn enabled(&self, id: WidgetId) -> bool {
         self.node(id).is_some_and(|node| node.enabled)

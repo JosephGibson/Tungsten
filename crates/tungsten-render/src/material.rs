@@ -23,6 +23,42 @@ pub struct MaterialPipeline {
     pub material_id: MaterialAssetId,
 }
 
+/// A material whose upload failed with no pipeline to keep: what building
+/// it again needs once its shader has a live module.
+#[derive(Debug, Clone)]
+pub(crate) struct PendingMaterial {
+    pub(crate) name: String,
+    pub(crate) shader_name: String,
+    pub(crate) defaults: MaterialUniformDefaults,
+}
+
+/// The materials waiting on their shader, in the order they last failed; a
+/// shader upload or reload builds the ones it names.
+#[derive(Debug, Default)]
+pub(crate) struct PendingMaterials(Vec<(MaterialAssetId, PendingMaterial)>);
+
+impl PendingMaterials {
+    /// Records `id` as waiting, replacing an earlier record of it.
+    pub(crate) fn wait(&mut self, id: MaterialAssetId, material: PendingMaterial) {
+        self.built(id);
+        self.0.push((id, material));
+    }
+
+    /// Forgets `id`, which has a pipeline now.
+    pub(crate) fn built(&mut self, id: MaterialAssetId) {
+        self.0.retain(|(waiting, _)| *waiting != id);
+    }
+
+    /// The materials waiting on `shader_name`.
+    pub(crate) fn on_shader(&self, shader_name: &str) -> Vec<(MaterialAssetId, PendingMaterial)> {
+        self.0
+            .iter()
+            .filter(|(_, material)| material.shader_name == shader_name)
+            .cloned()
+            .collect()
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 #[must_use]
 pub fn build_material_pipeline(

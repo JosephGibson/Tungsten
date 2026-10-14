@@ -719,15 +719,15 @@ impl World {
                     });
                     index = end;
                     let entity = match target {
-                        CommandTarget::Live(entity) => {
-                            if !self.is_alive(entity) {
-                                run.for_each(|queue| values.drop_next(queue));
-                                continue;
-                            }
-                            entity
-                        }
+                        CommandTarget::Live(entity) => entity,
                         CommandTarget::Pending(id) => pending_entities[id as usize],
                     };
+                    // A despawn or an earlier `call` can kill either kind,
+                    // a pending spawn included: its values drop in order.
+                    if !self.is_alive(entity) {
+                        run.for_each(|queue| values.drop_next(queue));
+                        continue;
+                    }
                     self.archetypes.insert_run(entity, run, values);
                 }
                 Command::Call { entity, call } => {

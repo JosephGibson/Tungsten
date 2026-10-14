@@ -185,6 +185,20 @@ impl SpriteBatch {
     }
 }
 
+/// Instances a growing instance buffer is sized for: `required` rounded up
+/// to a power of two, at most what one buffer of `stride`-byte instances may
+/// hold under `max_buffer_size` (wgpu's default limit is 256 MiB), and at
+/// least 1. A frame with more draws the first that many.
+pub(crate) fn instance_capacity(required: usize, stride: usize, max_buffer_size: u64) -> usize {
+    let limit = usize::try_from(max_buffer_size / stride as u64).unwrap_or(usize::MAX);
+    required
+        .max(1)
+        .checked_next_power_of_two()
+        .unwrap_or(usize::MAX)
+        .min(limit)
+        .max(1)
+}
+
 /// Textured sprite pipeline, samplers, and texture pool.
 pub struct SpritePipeline {
     pipeline: wgpu::RenderPipeline,
@@ -211,6 +225,8 @@ pub struct SpritePipeline {
     material_slots: HashMap<MaterialAssetId, ParamSlots<MaterialSlot>>,
     /// Batches of each material drawn so far this frame.
     material_batches: HashMap<MaterialAssetId, usize>,
+    /// Whether a frame has outgrown the largest instance buffer, logged once.
+    warned_instance_cap: bool,
 }
 
 impl SpritePipeline {
@@ -388,6 +404,7 @@ impl SpritePipeline {
             next_handle: 0,
             material_slots: HashMap::new(),
             material_batches: HashMap::new(),
+            warned_instance_cap: false,
         }
     }
 
@@ -821,11 +838,16 @@ impl SpritePipeline {
     }
 
     fn ensure_instance_capacity(&mut self, device: &wgpu::Device, required_instances: usize) {
-        if required_instances <= self.instance_capacity {
+        let capacity = instance_capacity(
+            required_instances,
+            std::mem::size_of::<SpriteInstance>(),
+            device.limits().max_buffer_size,
+        );
+        if capacity <= self.instance_capacity {
             return;
         }
 
-        self.instance_capacity = required_instances.next_power_of_two().max(1);
+        self.instance_capacity = capacity;
         self.instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("sprite_instance_buffer"),
             size: (self.instance_capacity * std::mem::size_of::<SpriteInstance>()) as u64,
@@ -860,27 +882,37 @@ impl SpritePipeline {
         }
 
         self.ensure_instance_capacity(device, total_instances);
+        // Past the largest buffer wgpu allows, the frame draws what fits.
+        let drawn = total_instances.min(self.instance_capacity);
+        if drawn < total_instances && !self.warned_instance_cap {
+            self.warned_instance_cap = true;
+            log::warn!(
+                "{total_instances} sprite instances outgrow one instance buffer; drawing the first {drawn}"
+            );
+        }
         self.material_batches.clear();
         let instance_stride = std::mem::size_of::<SpriteInstance>() as wgpu::BufferAddress;
         // Each batch lands in the staging view as one slice copy, in batch
         // order, so draw ranges below index it the same way. No intermediate
         // flattened Vec: element-wise flattening was 21% of samples at 100k.
-        let Some(upload_size) = wgpu::BufferSize::new(total_instances as u64 * instance_stride)
-        else {
+        let Some(upload_size) = wgpu::BufferSize::new(drawn as u64 * instance_stride) else {
             return;
         };
         let Some(mut upload) = queue.write_buffer_with(&self.instance_buffer, 0, upload_size)
         else {
-            log::error!("sprite instance upload of {total_instances} instances was rejected");
+            log::error!("sprite instance upload of {drawn} instances was rejected");
             return;
         };
         let mut offset = 0usize;
+        let mut left = drawn;
         for batch in batches {
-            let bytes: &[u8] = bytemuck::cast_slice(&batch.instances);
+            let take = batch.instances.len().min(left);
+            let bytes: &[u8] = bytemuck::cast_slice(&batch.instances[..take]);
             upload
                 .slice(offset..offset + bytes.len())
                 .copy_from_slice(bytes);
             offset += bytes.len();
+            left -= take;
         }
         drop(upload);
 
@@ -904,10 +936,14 @@ impl SpritePipeline {
             if batch.instances.is_empty() {
                 continue;
             }
+            let count = batch.instances.len().min(drawn - base_instance);
+            if count == 0 {
+                break;
+            }
 
             let start = (base_instance as wgpu::BufferAddress) * instance_stride;
-            let end = start + (batch.instances.len() as wgpu::BufferAddress) * instance_stride;
-            base_instance += batch.instances.len();
+            let end = start + (count as wgpu::BufferAddress) * instance_stride;
+            base_instance += count;
 
             // Decide pipeline up-front.
             let lit_resources = if batch.lit {
@@ -1012,7 +1048,7 @@ impl SpritePipeline {
             }
 
             render_pass.set_vertex_buffer(1, self.instance_buffer.slice(start..end));
-            render_pass.draw(0..6, 0..batch.instances.len() as u32);
+            render_pass.draw(0..6, 0..count as u32);
         }
     }
 
