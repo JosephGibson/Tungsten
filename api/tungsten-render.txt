@@ -742,6 +742,7 @@ pub fn tungsten_render::renderer::Renderer::text_nodes(&mut self) -> tungsten_re
 pub fn tungsten_render::renderer::Renderer::text_stats(&self) -> tungsten_render::TextStats
 pub fn tungsten_render::renderer::Renderer::update_lights(&mut self, &tungsten_render::lighting::LightUbo)
 pub fn tungsten_render::renderer::Renderer::update_mesh_particles(&mut self, &[tungsten_render::mesh_particle::MeshParticleBatch])
+pub fn tungsten_render::renderer::Renderer::update_world_labels(&mut self, &[tungsten_render::text::WorldLabelRun])
 pub fn tungsten_render::renderer::Renderer::upload_lit_texture(&mut self, tungsten_core::assets::registry::TextureHandle, &[u8], &[u8], &[u8], u32, u32, tungsten_core::assets::manifest::FilterMode)
 pub fn tungsten_render::renderer::Renderer::upload_material(&mut self, tungsten_core::assets::material::MaterialAssetId, &str, &str, tungsten_core::assets::material::MaterialUniformDefaults) -> core::result::Result<(), tungsten_render::renderer::RenderError>
 pub fn tungsten_render::renderer::Renderer::upload_particle_mesh(&mut self, tungsten_core::assets::particle::ParticleMeshAssetId, &[[f32; 2]], &[u16])
@@ -1154,6 +1155,9 @@ pub tungsten_render::text::TextStats::batches: u32
 pub tungsten_render::text::TextStats::forced: bool
 pub tungsten_render::text::TextStats::full_frame: bool
 pub tungsten_render::text::TextStats::full_frames_total: u64
+pub tungsten_render::text::TextStats::label_glyphs: u32
+pub tungsten_render::text::TextStats::labels: u32
+pub tungsten_render::text::TextStats::layouts: u32
 pub tungsten_render::text::TextStats::prepared: u32
 impl core::clone::Clone for tungsten_render::TextStats
 pub fn tungsten_render::TextStats::clone(&self) -> tungsten_render::TextStats
@@ -1173,6 +1177,31 @@ impl core::marker::Unpin for tungsten_render::TextStats
 impl core::marker::UnsafeUnpin for tungsten_render::TextStats
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::TextStats
 impl core::panic::unwind_safe::UnwindSafe for tungsten_render::TextStats
+#[non_exhaustive] pub struct tungsten_render::text::WorldLabelRun
+pub tungsten_render::text::WorldLabelRun::color: [u8; 4]
+pub tungsten_render::text::WorldLabelRun::content: alloc::string::String
+pub tungsten_render::text::WorldLabelRun::font_id: alloc::string::String
+pub tungsten_render::text::WorldLabelRun::font_size: f32
+pub tungsten_render::text::WorldLabelRun::line_height: f32
+pub tungsten_render::text::WorldLabelRun::pivot: [f32; 2]
+pub tungsten_render::text::WorldLabelRun::position: [f32; 2]
+pub tungsten_render::text::WorldLabelRun::scale: f32
+impl core::clone::Clone for tungsten_render::text::WorldLabelRun
+pub fn tungsten_render::text::WorldLabelRun::clone(&self) -> tungsten_render::text::WorldLabelRun
+impl core::cmp::PartialEq for tungsten_render::text::WorldLabelRun
+pub fn tungsten_render::text::WorldLabelRun::eq(&self, &tungsten_render::text::WorldLabelRun) -> bool
+impl core::default::Default for tungsten_render::text::WorldLabelRun
+pub fn tungsten_render::text::WorldLabelRun::default() -> tungsten_render::text::WorldLabelRun
+impl core::fmt::Debug for tungsten_render::text::WorldLabelRun
+pub fn tungsten_render::text::WorldLabelRun::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_render::text::WorldLabelRun
+impl core::marker::Freeze for tungsten_render::text::WorldLabelRun
+impl core::marker::Send for tungsten_render::text::WorldLabelRun
+impl core::marker::Sync for tungsten_render::text::WorldLabelRun
+impl core::marker::Unpin for tungsten_render::text::WorldLabelRun
+impl core::marker::UnsafeUnpin for tungsten_render::text::WorldLabelRun
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::text::WorldLabelRun
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::text::WorldLabelRun
 pub mod tungsten_render::timing
 pub struct tungsten_render::timing::CpuFrameTimings
 pub tungsten_render::timing::CpuFrameTimings::acquire_ms: f32
@@ -1750,6 +1779,7 @@ pub fn tungsten_render::renderer::Renderer::text_nodes(&mut self) -> tungsten_re
 pub fn tungsten_render::renderer::Renderer::text_stats(&self) -> tungsten_render::TextStats
 pub fn tungsten_render::renderer::Renderer::update_lights(&mut self, &tungsten_render::lighting::LightUbo)
 pub fn tungsten_render::renderer::Renderer::update_mesh_particles(&mut self, &[tungsten_render::mesh_particle::MeshParticleBatch])
+pub fn tungsten_render::renderer::Renderer::update_world_labels(&mut self, &[tungsten_render::text::WorldLabelRun])
 pub fn tungsten_render::renderer::Renderer::upload_lit_texture(&mut self, tungsten_core::assets::registry::TextureHandle, &[u8], &[u8], &[u8], u32, u32, tungsten_core::assets::manifest::FilterMode)
 pub fn tungsten_render::renderer::Renderer::upload_material(&mut self, tungsten_core::assets::material::MaterialAssetId, &str, &str, tungsten_core::assets::material::MaterialUniformDefaults) -> core::result::Result<(), tungsten_render::renderer::RenderError>
 pub fn tungsten_render::renderer::Renderer::upload_particle_mesh(&mut self, tungsten_core::assets::particle::ParticleMeshAssetId, &[[f32; 2]], &[u16])
@@ -2050,6 +2080,9 @@ pub tungsten_render::TextStats::batches: u32
 pub tungsten_render::TextStats::forced: bool
 pub tungsten_render::TextStats::full_frame: bool
 pub tungsten_render::TextStats::full_frames_total: u64
+pub tungsten_render::TextStats::label_glyphs: u32
+pub tungsten_render::TextStats::labels: u32
+pub tungsten_render::TextStats::layouts: u32
 pub tungsten_render::TextStats::prepared: u32
 impl core::clone::Clone for tungsten_render::TextStats
 pub fn tungsten_render::TextStats::clone(&self) -> tungsten_render::TextStats
@@ -2116,6 +2149,31 @@ impl core::marker::Unpin for tungsten_render::ui::UiPipeline
 impl core::marker::UnsafeUnpin for tungsten_render::ui::UiPipeline
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::ui::UiPipeline
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::ui::UiPipeline
+#[non_exhaustive] pub struct tungsten_render::WorldLabelRun
+pub tungsten_render::WorldLabelRun::color: [u8; 4]
+pub tungsten_render::WorldLabelRun::content: alloc::string::String
+pub tungsten_render::WorldLabelRun::font_id: alloc::string::String
+pub tungsten_render::WorldLabelRun::font_size: f32
+pub tungsten_render::WorldLabelRun::line_height: f32
+pub tungsten_render::WorldLabelRun::pivot: [f32; 2]
+pub tungsten_render::WorldLabelRun::position: [f32; 2]
+pub tungsten_render::WorldLabelRun::scale: f32
+impl core::clone::Clone for tungsten_render::text::WorldLabelRun
+pub fn tungsten_render::text::WorldLabelRun::clone(&self) -> tungsten_render::text::WorldLabelRun
+impl core::cmp::PartialEq for tungsten_render::text::WorldLabelRun
+pub fn tungsten_render::text::WorldLabelRun::eq(&self, &tungsten_render::text::WorldLabelRun) -> bool
+impl core::default::Default for tungsten_render::text::WorldLabelRun
+pub fn tungsten_render::text::WorldLabelRun::default() -> tungsten_render::text::WorldLabelRun
+impl core::fmt::Debug for tungsten_render::text::WorldLabelRun
+pub fn tungsten_render::text::WorldLabelRun::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_render::text::WorldLabelRun
+impl core::marker::Freeze for tungsten_render::text::WorldLabelRun
+impl core::marker::Send for tungsten_render::text::WorldLabelRun
+impl core::marker::Sync for tungsten_render::text::WorldLabelRun
+impl core::marker::Unpin for tungsten_render::text::WorldLabelRun
+impl core::marker::UnsafeUnpin for tungsten_render::text::WorldLabelRun
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::text::WorldLabelRun
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::text::WorldLabelRun
 pub const tungsten_render::EMISSIVE_MASK_SHADER_NAME: &str
 pub const tungsten_render::LIT_LIGHT_CAP: usize
 pub const tungsten_render::LIT_SPRITE_SHADER_NAME: &str

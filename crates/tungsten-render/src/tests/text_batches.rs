@@ -188,6 +188,32 @@ fn with_no_batches_every_changed_frame_is_full() {
     assert_eq!(policy.full_frames_total(), 5);
 }
 
+#[test]
+fn labels_count_as_a_batch() {
+    let labels = [WorldLabelRun {
+        content: "12".to_string(),
+        ..WorldLabelRun::default()
+    }];
+    assert_eq!(trim_batches(0, &[]), 0);
+    assert_eq!(trim_batches(0, &labels), 1);
+    assert_eq!(trim_batches(2, &labels), 3);
+
+    // A frame of labels and no UI batch defers its trim to the Kth changed
+    // frame, as a frame of UI does; without labels every changed frame is
+    // full.
+    let mut policy = TrimPolicy::default();
+    let kinds: Vec<FrameKind> = (0..FULL_FRAME_INTERVAL)
+        .map(|_| policy.decide(epoch(1), trim_batches(0, &labels), true))
+        .collect();
+    let last = FULL_FRAME_INTERVAL as usize - 1;
+    assert!(kinds[..last].iter().all(|kind| *kind == FrameKind::Partial));
+    assert_eq!(kinds[last], FrameKind::Full { forced: false });
+    assert_eq!(
+        policy.decide(epoch(1), trim_batches(0, &[]), true),
+        FrameKind::Full { forced: false }
+    );
+}
+
 // ---- signatures and the book ----
 
 #[test]

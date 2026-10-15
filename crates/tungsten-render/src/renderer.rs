@@ -40,7 +40,9 @@ use crate::surface::{
     resolve_present_mode, surface_extent,
 };
 use crate::targets::{DEPTH_FORMAT, RenderTargetPool, TargetCache};
-use crate::text::{FontSource, TextEngine, TextNodes, TextPipeline, TextSection, TextStats};
+use crate::text::{
+    FontSource, TextEngine, TextNodes, TextPipeline, TextSection, TextStats, WorldLabelRun,
+};
 use crate::timing::TimingResources;
 pub use crate::timing::{CpuFrameTimings, GpuFrameTimings};
 use crate::ui::{DrawItem, UiPipeline, attachment_scissor};
@@ -766,6 +768,13 @@ impl Renderer {
             .prepare(&self.device, &self.queue, batches);
     }
 
+    /// M54 world labels for the next frame (`D-161`): a copy is kept until
+    /// the next call, so the app calls it every frame; an empty list draws
+    /// none.
+    pub fn update_world_labels(&mut self, labels: &[WorldLabelRun]) {
+        self.text_pipeline.set_world_labels(labels);
+    }
+
     /// Portable atlas page dimension cap.
     pub fn max_2d_texture_dimension(&self) -> u32 {
         self.device.limits().max_texture_dimension_2d.min(8192)
@@ -804,7 +813,8 @@ impl Renderer {
     }
 
     /// The last frame's text telemetry: UI batches, batches prepared, full
-    /// and forced frames, `AtlasFull` events (M46).
+    /// and forced frames, `AtlasFull` events (M46), and the world labels
+    /// drawn, their glyphs and the layouts cached (M54).
     #[must_use]
     pub fn text_stats(&self) -> TextStats {
         self.text_pipeline.stats()
@@ -1951,9 +1961,16 @@ impl Renderer {
                     );
                 }
             } else if is_text_overlay {
-                // M46: the UI's items in paint order, each setting its
+                // M54: the world labels first, under the paint list's game
+                // layers (`D-161`); a frame without labels records nothing
+                // here. M46: the UI's items in paint order, each setting its
                 // scissor, then the text sections under the whole attachment.
                 // An empty paint list records nothing here.
+                if self.text_pipeline.has_labels() {
+                    pass.push_debug_group("world labels");
+                    self.text_pipeline.render_labels(&mut pass);
+                    pass.pop_debug_group();
+                }
                 let attachment = (self.surface_config.width, self.surface_config.height);
                 let items = self.ui_pipeline.items();
                 if !items.is_empty() {

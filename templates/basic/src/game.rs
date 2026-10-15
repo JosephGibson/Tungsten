@@ -57,7 +57,8 @@ pub fn active_state(world: &World) -> Option<StateId> {
         .and_then(StateStack::active_id)
 }
 
-/// Moves the player by the move actions while gameplay is on top.
+/// Moves the player by the move actions while gameplay is on top: a key at
+/// full speed, a stick in proportion to its tilt (`ActionMap::value`).
 pub fn player_movement(world: &mut World) {
     if active_state(world) != Some(GAMEPLAY) {
         return;
@@ -69,8 +70,7 @@ pub fn player_movement(world: &mut World) {
         return;
     };
     let axis = |negative: &str, positive: &str| {
-        f32::from(u8::from(actions.is_pressed(input, positive)))
-            - f32::from(u8::from(actions.is_pressed(input, negative)))
+        actions.value(input, positive) - actions.value(input, negative)
     };
     let (dx, dy) = (
         axis("move_left", "move_right"),

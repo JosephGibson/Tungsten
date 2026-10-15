@@ -4,10 +4,12 @@
 //! Each channel is a base, its default or a game's replacement, followed by
 //! the contributions in the order they were added. `App` calls the channels
 //! after the stages with a shared `&World` (`D-018`, `D-128`), then adds its
-//! own pieces: the HUD, the overlays, debug draw, lights and mesh particles.
+//! own pieces: the world labels, the HUD, the overlays, debug draw, lights
+//! and mesh particles.
 
-use tungsten_core::World;
-use tungsten_render::{QuadInstance, SpriteBatch, TextSection};
+use glam::Vec2;
+use tungsten_core::{CameraState, ScaleFactor, UiDebug, World, WorldLabels};
+use tungsten_render::{QuadInstance, SpriteBatch, TextSection, WorldLabelRun};
 
 use crate::sprite_extract::extract_sprites_default;
 use crate::tilemap_extract::extract_tilemaps;
@@ -151,6 +153,87 @@ fn default_sprites(world: &World) -> Vec<SpriteBatch> {
     }
     batches.extend(extract_sprites_default(world));
     batches
+}
+
+/// The step a world label's drawn scale snaps to (Q17 of M54): glyphon keys
+/// a glyph by its physical size, so a continuous pop would rasterize new
+/// glyphs every frame, while eighths rasterize a few sizes (`D-126`).
+pub(crate) const LABEL_SCALE_STEP: f32 = 0.125;
+
+/// What the world-label extract did with the frame's labels.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct WorldLabelCounts {
+    /// Labels kept for drawing.
+    pub(crate) kept: u32,
+    /// Labels whose projected point lay outside the grown viewport, or whose
+    /// drawn scale snapped to nothing.
+    pub(crate) culled: u32,
+    /// Labels past the cap, the latest pushes.
+    pub(crate) dropped: u32,
+}
+
+/// Drains the frame's [`WorldLabels`] and projects each through the camera
+/// onto the `viewport`, in physical pixels: the anchor's screen point plus
+/// the offset times the scale factor. It culls a label whose point lies
+/// outside the viewport grown by the cull margin, keeps the first `cap`
+/// survivors in push order and snaps each one's scale to
+/// [`LABEL_SCALE_STEP`]. While `UiDebug::hide_game_layers` is set it drains
+/// and keeps nothing. Without the resource it does nothing.
+pub(crate) fn extract_world_labels(
+    world: &mut World,
+    viewport: (f32, f32),
+) -> (Vec<WorldLabelRun>, WorldLabelCounts) {
+    let mut runs = Vec::new();
+    let mut counts = WorldLabelCounts::default();
+    let camera = world
+        .get_resource::<CameraState>()
+        .copied()
+        .unwrap_or_default();
+    let scale = world
+        .get_resource::<ScaleFactor>()
+        .map_or(1.0, ScaleFactor::get);
+    let hidden = world
+        .get_resource::<UiDebug>()
+        .is_some_and(|debug| debug.hide_game_layers);
+    let Some(labels) = world.get_resource_mut::<WorldLabels>() else {
+        return (runs, counts);
+    };
+    if hidden {
+        labels.clear();
+        return (runs, counts);
+    }
+    let cap = labels.cap();
+    let margin = labels.cull_margin() * scale;
+    let (min, max) = (
+        Vec2::splat(-margin),
+        Vec2::new(viewport.0 + margin, viewport.1 + margin),
+    );
+    for label in labels.drain() {
+        let point = camera.world_to_screen(label.anchor) + label.offset * scale;
+        let drawn_scale = (label.scale * scale / LABEL_SCALE_STEP).round() * LABEL_SCALE_STEP;
+        // Written so that a NaN point or scale culls.
+        let inside = point.x >= min.x && point.x <= max.x && point.y >= min.y && point.y <= max.y;
+        if !(inside && drawn_scale > 0.0 && drawn_scale.is_finite()) {
+            counts.culled += 1;
+            continue;
+        }
+        if runs.len() >= cap {
+            counts.dropped += 1;
+            continue;
+        }
+        let mut run = WorldLabelRun::default();
+        run.content = label.text;
+        run.font_id = label.font_id;
+        run.font_size = label.font_size;
+        run.line_height = label.line_height;
+        run.position = point.to_array();
+        run.pivot = label.pivot.to_array();
+        run.scale = drawn_scale;
+        run.color = label.color;
+        runs.push(run);
+    }
+    counts.kept = runs.len() as u32;
+    (runs, counts)
 }
 
 #[cfg(test)]

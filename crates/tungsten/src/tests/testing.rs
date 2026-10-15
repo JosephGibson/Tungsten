@@ -261,6 +261,58 @@ fn press_action_gives_one_just_pressed_frame_and_set_cursor_reaches_input() {
 }
 
 #[test]
+fn press_action_presses_a_gamepad_binding() {
+    use tungsten_core::{AxisDirection, Binding, GamepadAxis, GamepadButton, GamepadId};
+
+    let mut app = app();
+    let actions = app.world_mut().resource_mut::<ActionMap>();
+    actions.replace_bindings(
+        "jump",
+        vec![Binding::GamepadButton {
+            button: GamepadButton::South,
+        }],
+    );
+    actions.replace_bindings(
+        "move_left",
+        vec![Binding::GamepadAxis {
+            axis: GamepadAxis::LeftStickX,
+            direction: AxisDirection::Negative,
+        }],
+    );
+    #[derive(Default)]
+    struct Seen(Vec<(bool, bool, f32)>);
+    app.world_mut().insert_resource(Seen::default());
+    app.add_system(|world| {
+        let input = world.get_resource::<InputState>().unwrap();
+        let actions = world.get_resource::<ActionMap>().unwrap();
+        let seen = (
+            actions.just_pressed(input, "jump"),
+            actions.is_pressed(input, "jump"),
+            actions.value(input, "move_left"),
+        );
+        world.get_resource_mut::<Seen>().unwrap().0.push(seen);
+    });
+    let mut harness = Harness::new(app);
+    harness.press_action("jump");
+    harness.press_action("move_left");
+    harness.step(2);
+    let input = harness.world().resource::<InputState>();
+    assert!(input.is_gamepad_pressed_on(GamepadId::new(0), GamepadButton::South));
+    assert_eq!(
+        input.gamepad_axis_on(GamepadId::new(0), GamepadAxis::LeftStickX),
+        -1.0,
+        "full tilt its way"
+    );
+    harness.release_action("jump");
+    harness.release_action("move_left");
+    harness.step(1);
+    assert_eq!(
+        harness.world().resource::<Seen>().0,
+        [(true, true, 1.0), (false, true, 1.0), (false, false, 0.0)]
+    );
+}
+
+#[test]
 fn an_engine_exit_press_stops_step() {
     let mut exiting = app();
     let mut calls = 0;

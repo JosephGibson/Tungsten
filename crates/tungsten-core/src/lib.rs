@@ -61,8 +61,9 @@ pub use ecs::{
     SquashEvent, With, Without, World,
 };
 pub use input::{
-    ActionMap, ActionMapError, Binding, InputState, KeyCode, Modifiers, MouseButton, RawEvent,
-    RawInput, RoutedInput, ScrollDirection, WheelDelta,
+    ActionMap, ActionMapError, AxisDirection, Binding, GamepadAxis, GamepadButton, GamepadId,
+    InputState, KeyCode, Modifiers, MouseButton, RawEvent, RawInput, RoutedInput, STICK_PRESS,
+    STICK_RELEASE, ScrollDirection, WheelDelta,
 };
 pub use inspect::{InspectRegistry, Inspectable};
 pub use lighting::{AmbientLight, LIGHT_CAP};
@@ -85,7 +86,7 @@ pub use settings::{Settings, UserFolder};
 pub use text::{
     EllipsisAt, FontEpoch, FontFeature, FontFeatures, MeasureWidth, StyledText, TextAlign,
     TextHinting, TextLayout, TextMeasure, TextMetrics, TextNodeId, TextNodeStore, TextOverflow,
-    TextSpan, TextStyle, TextWrap,
+    TextSpan, TextStyle, TextWrap, WorldLabel, WorldLabels,
 };
 #[allow(deprecated)]
 pub use time::DeltaTime;

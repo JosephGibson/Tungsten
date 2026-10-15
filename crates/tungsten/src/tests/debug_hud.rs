@@ -193,6 +193,11 @@ fn ui_row_renders_the_paint_list_layout_and_text_batch_counts() {
         text_batches_prepared: 1,
         text_full_frames: 3,
         text_atlas_full: 0,
+        world_labels: 5,
+        world_labels_culled: 1,
+        world_labels_dropped: 2,
+        text_label_glyphs: 37,
+        text_layouts: 12,
         ..RenderCounts::default()
     });
 
@@ -207,6 +212,6 @@ fn ui_row_renders_the_paint_list_layout_and_text_batch_counts() {
         .unwrap_or_else(|| panic!("ui row missing in:\n{content}"));
     assert_eq!(
         row.trim_start(),
-        "ui 17 cmds layout 42us 1r/9n text 2b 1prep full 3 atlas_full 0"
+        "ui 17 cmds layout 42us 1r/9n text 2b 1prep full 3 atlas_full 0 labels 5/1c/2d lg 37 lay 12"
     );
 }

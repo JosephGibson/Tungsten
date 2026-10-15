@@ -43,12 +43,12 @@ use tungsten_core::{
     CommandBuffer, ComponentRegistry, Config, ConfigError, DebugDraw, DebugShape, DisplayMode,
     DisplayState, InputState, InspectRegistry, Inspectable, ParticleActive, ParticleBudget, Plugin,
     PluginSet, RawInput, RoutedInput, SaveSlots, Schedule, Settings, Stage, SystemDesc, Time,
-    TimeConfig, World, WorldRngSeed, system,
+    TimeConfig, World, WorldLabels, WorldRngSeed, system,
 };
 use tungsten_render::renderer::RenderError;
 use tungsten_render::{
     DebugLineInstance, GpuFrameTimings, MeshParticleBatch, QuadInstance, RenderOutcome, Renderer,
-    SpriteBatch, TextSection,
+    SpriteBatch, TextSection, WorldLabelRun,
 };
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseScrollDelta, WindowEvent};
@@ -282,6 +282,7 @@ impl App {
         world.insert_resource(ExtractScratch::default());
         world.insert_resource(Extracts::default());
         world.insert_resource(DebugDraw::new());
+        world.insert_resource(WorldLabels::default());
         // M46: the UI tree, its debug flags and the loaded theme assets.
         world.insert_resource(UiTree::new());
         world.insert_resource(UiDebug::default());
@@ -926,6 +927,8 @@ pub(crate) struct FrameExtract {
     pub(crate) mesh_particles: Vec<MeshParticleBatch>,
     /// M46 UI paint list: a copy of the app's retained one.
     pub(crate) ui: PaintList,
+    /// M54 world labels, projected, culled and capped.
+    pub(crate) world_labels: Vec<WorldLabelRun>,
     extract_ms: f32,
 }
 
@@ -1300,6 +1303,20 @@ impl App {
         // M46: the UI paint list, before the HUD so its row counts it.
         self.paint_ui();
 
+        // M54: the world labels, projected onto the size render draws at.
+        let label_viewport = match &self.renderer {
+            Some(renderer) => {
+                let cfg = &renderer.surface_config;
+                (cfg.width as f32, cfg.height as f32)
+            }
+            None => self
+                .world
+                .get_resource::<WindowSize>()
+                .map_or((0.0, 0.0), |w| (w.width as f32, w.height as f32)),
+        };
+        let (world_labels, label_counts) =
+            crate::extract::extract_world_labels(&mut self.world, label_viewport);
+
         // Before HUD compose: counts row uses this frame's extract.
         let entity_count = self.world.entity_count();
         let sprite_instance_count: u32 = sprites.iter().map(|b| b.instances.len() as u32).sum();
@@ -1308,6 +1325,9 @@ impl App {
             rc.entities = entity_count;
             rc.sprite_instances = sprite_instance_count;
             rc.ui_commands = ui_commands;
+            rc.world_labels = label_counts.kept;
+            rc.world_labels_culled = label_counts.culled;
+            rc.world_labels_dropped = label_counts.dropped;
         }
 
         // Extract-start emit: debug draw visible same frame.
@@ -1366,6 +1386,7 @@ impl App {
             light_ubo,
             mesh_particles,
             ui: self.ui_paint.clone(),
+            world_labels,
             extract_ms,
         }
     }
@@ -1424,6 +1445,8 @@ impl App {
             // M31: this frame's mesh particle instances; an empty list clears
             // the previous frame's draws.
             renderer.update_mesh_particles(&extract.mesh_particles);
+            // M54: this frame's world labels; an empty list draws none.
+            renderer.update_world_labels(&extract.world_labels);
 
             result = Some(if self.gpu_timing_enabled {
                 renderer.render_frame_full_timed(
@@ -1455,6 +1478,8 @@ impl App {
                 rc.text_batches_prepared = text_stats.prepared;
                 rc.text_full_frames = text_stats.full_frames_total;
                 rc.text_atlas_full = text_stats.atlas_full_total;
+                rc.text_label_glyphs = text_stats.label_glyphs;
+                rc.text_layouts = text_stats.layouts;
             }
             out.render_acquire_ms = renderer.cpu_timings.acquire_ms;
             out.render_encode_ms = renderer.cpu_timings.encode_ms;

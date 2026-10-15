@@ -6,6 +6,25 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.74.0] - 2026-10-14
+
+Summary: M54, W1 WL with W5a (plan archived at `docs/plans/archive/1.0/phase6-milestone-54-world-labels-gamepad.md`): world-anchored labels for damage numbers and name tags, drawn as one text batch under the UI, and gamepad input in core with its bindings, analog values and UI navigation. The `gilrs` backend did not land, since neither `gilrs` nor `gilrs-core` ships a licence file, so no window reads a pad yet ([known issues](docs/known-issues.md)).
+
+### Added
+
+- **World labels** (`D-161`): `WorldLabel` and the `WorldLabels` resource, pushed each frame and drained by the extract, which projects through the new `CameraState::world_to_screen`, culls outside the view grown by 64 UI units, keeps the first 512 and snaps each label's scale to eighths; `WorldLabelRun`, `Renderer::update_world_labels` and `FrameDraw::world_labels`; the labels draw as one glyphon batch on the shared layout cache, counted under the trim rule; `RenderCounts` and `TextStats` count them, and the HUD's `ui` row shows the counts.
+- **Gamepad input in core**: `GamepadId`, `GamepadButton`, `GamepadAxis`, `AxisDirection`, `STICK_PRESS` and `STICK_RELEASE`; `InputState` keeps each pad's buttons, stick directions and axes with edges in both views and records them in the raw stream; the `gamepad_button` and `gamepad_axis` bindings in `input.json`; `ActionMap::value` for analog movement; the UI router navigates, repeats and activates on pad buttons and stick directions, keyed by their pad, and `RoutedInput` reads a stick the UI holds as 0; `InputDevice::Gamepad`; the harness presses pad bindings on pad 0.
+- **UI lab**: a `labels` fixture compared with `ui-labels.png`, and floating damage numbers in the interactive run.
+- **Template**: the moves bind the left stick and the d-pad, mute binds North, and movement reads `ActionMap::value`.
+
+### Changed
+
+- **The `ui_*` defaults** bind South, East, the shoulders, the d-pad and the left stick; `ui_prev` is LeftShoulder rather than empty. Focus shows after a pad press, and focus loss releases pad input and zeroes the axes.
+- **Overlay order and layout cache** (`D-161` amends `D-085` and `D-147`): world labels draw before the paint list, and the layout cache ages once per frame in which the sections or the labels changed.
+- **Example 02**: the `integrated` row's name tags are world labels at the same pixels; its `bench:` line gains `labels`, `label_glyphs` and `text_layouts`, which move its digest to `6ae63eae31b75278` while the work stays at `workload_version` 1.
+- **Breaks for the freeze**: `Binding` is `#[non_exhaustive]`; `RenderCounts` and `TextStats` gain fields.
+- **Records**: `DESIGN.md`'s World Labels and Gamepad section; the break ledger's five M54 rows; the LLM index's input and text rows; w01's WL row; w05's placement; four backlog rows; a known-issues row for the missing gamepad backend.
+
 ## [0.73.0] - 2026-10-14
 
 Summary: M53, W11b and W11c (plan archived at `docs/plans/archive/1.0/phase6-milestone-53-settings-save-slots.md`): a shipped game keeps its player's settings and saves in the user folder. One atomic write serves the action map, the settings and the save slots; typed settings (display mode, resolution, vsync, UI scale, master volume) sit between `tungsten.json` and the environment; the player's bindings go over the shipped `input.json`; a corrupt user file falls back to defaults beside a `.bad` backup; save slots hold the game's own serde types in a versioned envelope with the game's own migrations (`D-159`, amending `D-008`, `D-045` and `D-119`; `D-160`). The template mutes on M and continues from an autosave that pause writes. Smoke mode has no user folder, so captures read no user file; the engine schedule, the physics hashes, the benchmark digests and the pixel references are unchanged.

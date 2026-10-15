@@ -3652,6 +3652,7 @@ pub fn tungsten_core::camera::CameraState::new() -> Self
 pub fn tungsten_core::camera::CameraState::screen_to_world(&self, glam::f32::vec2::Vec2) -> glam::f32::vec2::Vec2
 pub fn tungsten_core::camera::CameraState::view_projection(&self, f32, f32) -> glam::f32::sse2::mat4::Mat4
 pub fn tungsten_core::camera::CameraState::visible_world_aabb(&self, f32, f32) -> (glam::f32::vec2::Vec2, glam::f32::vec2::Vec2)
+pub fn tungsten_core::camera::CameraState::world_to_screen(&self, glam::f32::vec2::Vec2) -> glam::f32::vec2::Vec2
 impl core::clone::Clone for tungsten_core::camera::CameraState
 pub fn tungsten_core::camera::CameraState::clone(&self) -> tungsten_core::camera::CameraState
 impl core::default::Default for tungsten_core::camera::CameraState
@@ -5384,7 +5385,12 @@ impl core::marker::Unpin for tungsten_core::input::action_map::ActionMapError
 impl core::marker::UnsafeUnpin for tungsten_core::input::action_map::ActionMapError
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::action_map::ActionMapError
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::input::action_map::ActionMapError
-pub enum tungsten_core::input::action_map::Binding
+#[non_exhaustive] pub enum tungsten_core::input::action_map::Binding
+pub tungsten_core::input::action_map::Binding::GamepadAxis
+pub tungsten_core::input::action_map::Binding::GamepadAxis::axis: tungsten_core::input::GamepadAxis
+pub tungsten_core::input::action_map::Binding::GamepadAxis::direction: tungsten_core::input::AxisDirection
+pub tungsten_core::input::action_map::Binding::GamepadButton
+pub tungsten_core::input::action_map::Binding::GamepadButton::button: tungsten_core::input::GamepadButton
 pub tungsten_core::input::action_map::Binding::Key
 pub tungsten_core::input::action_map::Binding::Key::code: tungsten_core::input::KeyCode
 pub tungsten_core::input::action_map::Binding::Mouse
@@ -5432,6 +5438,7 @@ pub fn tungsten_core::input::action_map::ActionMap::replace_bindings_and_persist
 pub fn tungsten_core::input::action_map::ActionMap::set_source_path(&mut self, impl core::convert::Into<std::path::PathBuf>)
 pub fn tungsten_core::input::action_map::ActionMap::take_load_warnings(&mut self) -> alloc::vec::Vec<alloc::string::String>
 pub fn tungsten_core::input::action_map::ActionMap::user_layer_path(&self) -> core::option::Option<&std::path::Path>
+pub fn tungsten_core::input::action_map::ActionMap::value(&self, &tungsten_core::input::InputState, &str) -> f32
 pub fn tungsten_core::input::action_map::ActionMap::with_user_layer(self, core::option::Option<&std::path::Path>) -> Self
 impl core::clone::Clone for tungsten_core::input::action_map::ActionMap
 pub fn tungsten_core::input::action_map::ActionMap::clone(&self) -> tungsten_core::input::action_map::ActionMap
@@ -5452,6 +5459,12 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::action_ma
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::action_map::ActionMap
 pub fn tungsten_core::input::action_map::resolve_path(&std::path::Path) -> std::path::PathBuf
 pub mod tungsten_core::input::key_serde
+pub fn tungsten_core::input::key_serde::axis_direction_from_str(&str) -> core::option::Option<tungsten_core::input::AxisDirection>
+pub fn tungsten_core::input::key_serde::axis_direction_to_str(tungsten_core::input::AxisDirection) -> &'static str
+pub fn tungsten_core::input::key_serde::gamepad_axis_from_str(&str) -> core::option::Option<tungsten_core::input::GamepadAxis>
+pub fn tungsten_core::input::key_serde::gamepad_axis_to_str(tungsten_core::input::GamepadAxis) -> &'static str
+pub fn tungsten_core::input::key_serde::gamepad_button_from_str(&str) -> core::option::Option<tungsten_core::input::GamepadButton>
+pub fn tungsten_core::input::key_serde::gamepad_button_to_str(tungsten_core::input::GamepadButton) -> &'static str
 pub fn tungsten_core::input::key_serde::keycode_from_str(&str) -> core::option::Option<tungsten_core::input::KeyCode>
 pub fn tungsten_core::input::key_serde::keycode_to_str(tungsten_core::input::KeyCode) -> core::option::Option<&'static str>
 pub fn tungsten_core::input::key_serde::mouse_button_from_str(&str) -> core::option::Option<tungsten_core::input::MouseButton>
@@ -5484,7 +5497,39 @@ impl core::marker::Unpin for tungsten_core::input::action_map::ActionMapError
 impl core::marker::UnsafeUnpin for tungsten_core::input::action_map::ActionMapError
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::action_map::ActionMapError
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::input::action_map::ActionMapError
-pub enum tungsten_core::input::Binding
+pub enum tungsten_core::input::AxisDirection
+pub tungsten_core::input::AxisDirection::Negative
+pub tungsten_core::input::AxisDirection::Positive
+impl tungsten_core::input::AxisDirection
+pub fn tungsten_core::input::AxisDirection::along(self, f32) -> f32
+impl core::clone::Clone for tungsten_core::input::AxisDirection
+pub fn tungsten_core::input::AxisDirection::clone(&self) -> tungsten_core::input::AxisDirection
+impl core::cmp::Eq for tungsten_core::input::AxisDirection
+impl core::cmp::PartialEq for tungsten_core::input::AxisDirection
+pub fn tungsten_core::input::AxisDirection::eq(&self, &tungsten_core::input::AxisDirection) -> bool
+impl core::fmt::Debug for tungsten_core::input::AxisDirection
+pub fn tungsten_core::input::AxisDirection::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::input::AxisDirection
+pub fn tungsten_core::input::AxisDirection::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::input::AxisDirection
+impl core::marker::StructuralPartialEq for tungsten_core::input::AxisDirection
+impl serde_core::ser::Serialize for tungsten_core::input::AxisDirection
+pub fn tungsten_core::input::AxisDirection::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::input::AxisDirection
+pub fn tungsten_core::input::AxisDirection::deserialize<D: serde_core::de::Deserializer<'de>>(D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error>
+impl core::marker::Freeze for tungsten_core::input::AxisDirection
+impl core::marker::Send for tungsten_core::input::AxisDirection
+impl core::marker::Sync for tungsten_core::input::AxisDirection
+impl core::marker::Unpin for tungsten_core::input::AxisDirection
+impl core::marker::UnsafeUnpin for tungsten_core::input::AxisDirection
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::AxisDirection
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::AxisDirection
+#[non_exhaustive] pub enum tungsten_core::input::Binding
+pub tungsten_core::input::Binding::GamepadAxis
+pub tungsten_core::input::Binding::GamepadAxis::axis: tungsten_core::input::GamepadAxis
+pub tungsten_core::input::Binding::GamepadAxis::direction: tungsten_core::input::AxisDirection
+pub tungsten_core::input::Binding::GamepadButton
+pub tungsten_core::input::Binding::GamepadButton::button: tungsten_core::input::GamepadButton
 pub tungsten_core::input::Binding::Key
 pub tungsten_core::input::Binding::Key::code: tungsten_core::input::KeyCode
 pub tungsten_core::input::Binding::Mouse
@@ -5513,6 +5558,73 @@ impl core::marker::Unpin for tungsten_core::input::action_map::Binding
 impl core::marker::UnsafeUnpin for tungsten_core::input::action_map::Binding
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::action_map::Binding
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::action_map::Binding
+#[non_exhaustive] pub enum tungsten_core::input::GamepadAxis
+pub tungsten_core::input::GamepadAxis::LeftStickX
+pub tungsten_core::input::GamepadAxis::LeftStickY
+pub tungsten_core::input::GamepadAxis::RightStickX
+pub tungsten_core::input::GamepadAxis::RightStickY
+impl core::clone::Clone for tungsten_core::input::GamepadAxis
+pub fn tungsten_core::input::GamepadAxis::clone(&self) -> tungsten_core::input::GamepadAxis
+impl core::cmp::Eq for tungsten_core::input::GamepadAxis
+impl core::cmp::PartialEq for tungsten_core::input::GamepadAxis
+pub fn tungsten_core::input::GamepadAxis::eq(&self, &tungsten_core::input::GamepadAxis) -> bool
+impl core::fmt::Debug for tungsten_core::input::GamepadAxis
+pub fn tungsten_core::input::GamepadAxis::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::input::GamepadAxis
+pub fn tungsten_core::input::GamepadAxis::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::input::GamepadAxis
+impl core::marker::StructuralPartialEq for tungsten_core::input::GamepadAxis
+impl serde_core::ser::Serialize for tungsten_core::input::GamepadAxis
+pub fn tungsten_core::input::GamepadAxis::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::input::GamepadAxis
+pub fn tungsten_core::input::GamepadAxis::deserialize<D: serde_core::de::Deserializer<'de>>(D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error>
+impl core::marker::Freeze for tungsten_core::input::GamepadAxis
+impl core::marker::Send for tungsten_core::input::GamepadAxis
+impl core::marker::Sync for tungsten_core::input::GamepadAxis
+impl core::marker::Unpin for tungsten_core::input::GamepadAxis
+impl core::marker::UnsafeUnpin for tungsten_core::input::GamepadAxis
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::GamepadAxis
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::GamepadAxis
+#[non_exhaustive] pub enum tungsten_core::input::GamepadButton
+pub tungsten_core::input::GamepadButton::DPadDown
+pub tungsten_core::input::GamepadButton::DPadLeft
+pub tungsten_core::input::GamepadButton::DPadRight
+pub tungsten_core::input::GamepadButton::DPadUp
+pub tungsten_core::input::GamepadButton::East
+pub tungsten_core::input::GamepadButton::LeftShoulder
+pub tungsten_core::input::GamepadButton::LeftStick
+pub tungsten_core::input::GamepadButton::LeftTrigger
+pub tungsten_core::input::GamepadButton::Mode
+pub tungsten_core::input::GamepadButton::North
+pub tungsten_core::input::GamepadButton::RightShoulder
+pub tungsten_core::input::GamepadButton::RightStick
+pub tungsten_core::input::GamepadButton::RightTrigger
+pub tungsten_core::input::GamepadButton::Select
+pub tungsten_core::input::GamepadButton::South
+pub tungsten_core::input::GamepadButton::Start
+pub tungsten_core::input::GamepadButton::West
+impl core::clone::Clone for tungsten_core::input::GamepadButton
+pub fn tungsten_core::input::GamepadButton::clone(&self) -> tungsten_core::input::GamepadButton
+impl core::cmp::Eq for tungsten_core::input::GamepadButton
+impl core::cmp::PartialEq for tungsten_core::input::GamepadButton
+pub fn tungsten_core::input::GamepadButton::eq(&self, &tungsten_core::input::GamepadButton) -> bool
+impl core::fmt::Debug for tungsten_core::input::GamepadButton
+pub fn tungsten_core::input::GamepadButton::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::input::GamepadButton
+pub fn tungsten_core::input::GamepadButton::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::input::GamepadButton
+impl core::marker::StructuralPartialEq for tungsten_core::input::GamepadButton
+impl serde_core::ser::Serialize for tungsten_core::input::GamepadButton
+pub fn tungsten_core::input::GamepadButton::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::input::GamepadButton
+pub fn tungsten_core::input::GamepadButton::deserialize<D: serde_core::de::Deserializer<'de>>(D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error>
+impl core::marker::Freeze for tungsten_core::input::GamepadButton
+impl core::marker::Send for tungsten_core::input::GamepadButton
+impl core::marker::Sync for tungsten_core::input::GamepadButton
+impl core::marker::Unpin for tungsten_core::input::GamepadButton
+impl core::marker::UnsafeUnpin for tungsten_core::input::GamepadButton
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::GamepadButton
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::GamepadButton
 pub enum tungsten_core::input::KeyCode
 pub tungsten_core::input::KeyCode::AltLeft
 pub tungsten_core::input::KeyCode::AltRight
@@ -5640,6 +5752,22 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::MouseButt
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::MouseButton
 #[non_exhaustive] pub enum tungsten_core::input::RawInput
 pub tungsten_core::input::RawInput::Focus(bool)
+#[non_exhaustive] pub tungsten_core::input::RawInput::Gamepad
+pub tungsten_core::input::RawInput::Gamepad::connected: bool
+pub tungsten_core::input::RawInput::Gamepad::pad: tungsten_core::input::GamepadId
+#[non_exhaustive] pub tungsten_core::input::RawInput::GamepadAxis
+pub tungsten_core::input::RawInput::GamepadAxis::axis: tungsten_core::input::GamepadAxis
+pub tungsten_core::input::RawInput::GamepadAxis::pad: tungsten_core::input::GamepadId
+pub tungsten_core::input::RawInput::GamepadAxis::value: f32
+#[non_exhaustive] pub tungsten_core::input::RawInput::GamepadButton
+pub tungsten_core::input::RawInput::GamepadButton::button: tungsten_core::input::GamepadButton
+pub tungsten_core::input::RawInput::GamepadButton::pad: tungsten_core::input::GamepadId
+pub tungsten_core::input::RawInput::GamepadButton::pressed: bool
+#[non_exhaustive] pub tungsten_core::input::RawInput::GamepadStick
+pub tungsten_core::input::RawInput::GamepadStick::axis: tungsten_core::input::GamepadAxis
+pub tungsten_core::input::RawInput::GamepadStick::direction: tungsten_core::input::AxisDirection
+pub tungsten_core::input::RawInput::GamepadStick::pad: tungsten_core::input::GamepadId
+pub tungsten_core::input::RawInput::GamepadStick::pressed: bool
 #[non_exhaustive] pub tungsten_core::input::RawInput::Key
 pub tungsten_core::input::RawInput::Key::code: tungsten_core::input::KeyCode
 pub tungsten_core::input::RawInput::Key::modifiers: tungsten_core::input::Modifiers
@@ -5732,6 +5860,7 @@ pub fn tungsten_core::input::action_map::ActionMap::replace_bindings_and_persist
 pub fn tungsten_core::input::action_map::ActionMap::set_source_path(&mut self, impl core::convert::Into<std::path::PathBuf>)
 pub fn tungsten_core::input::action_map::ActionMap::take_load_warnings(&mut self) -> alloc::vec::Vec<alloc::string::String>
 pub fn tungsten_core::input::action_map::ActionMap::user_layer_path(&self) -> core::option::Option<&std::path::Path>
+pub fn tungsten_core::input::action_map::ActionMap::value(&self, &tungsten_core::input::InputState, &str) -> f32
 pub fn tungsten_core::input::action_map::ActionMap::with_user_layer(self, core::option::Option<&std::path::Path>) -> Self
 impl core::clone::Clone for tungsten_core::input::action_map::ActionMap
 pub fn tungsten_core::input::action_map::ActionMap::clone(&self) -> tungsten_core::input::action_map::ActionMap
@@ -5750,6 +5879,32 @@ impl core::marker::Unpin for tungsten_core::input::action_map::ActionMap
 impl core::marker::UnsafeUnpin for tungsten_core::input::action_map::ActionMap
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::action_map::ActionMap
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::action_map::ActionMap
+pub struct tungsten_core::input::GamepadId(_)
+impl tungsten_core::input::GamepadId
+pub const fn tungsten_core::input::GamepadId::get(self) -> u32
+pub const fn tungsten_core::input::GamepadId::new(u32) -> Self
+impl core::clone::Clone for tungsten_core::input::GamepadId
+pub fn tungsten_core::input::GamepadId::clone(&self) -> tungsten_core::input::GamepadId
+impl core::cmp::Eq for tungsten_core::input::GamepadId
+impl core::cmp::Ord for tungsten_core::input::GamepadId
+pub fn tungsten_core::input::GamepadId::cmp(&self, &tungsten_core::input::GamepadId) -> core::cmp::Ordering
+impl core::cmp::PartialEq for tungsten_core::input::GamepadId
+pub fn tungsten_core::input::GamepadId::eq(&self, &tungsten_core::input::GamepadId) -> bool
+impl core::cmp::PartialOrd for tungsten_core::input::GamepadId
+pub fn tungsten_core::input::GamepadId::partial_cmp(&self, &tungsten_core::input::GamepadId) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for tungsten_core::input::GamepadId
+pub fn tungsten_core::input::GamepadId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::input::GamepadId
+pub fn tungsten_core::input::GamepadId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::input::GamepadId
+impl core::marker::StructuralPartialEq for tungsten_core::input::GamepadId
+impl core::marker::Freeze for tungsten_core::input::GamepadId
+impl core::marker::Send for tungsten_core::input::GamepadId
+impl core::marker::Sync for tungsten_core::input::GamepadId
+impl core::marker::Unpin for tungsten_core::input::GamepadId
+impl core::marker::UnsafeUnpin for tungsten_core::input::GamepadId
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::GamepadId
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::GamepadId
 pub struct tungsten_core::input::InputState
 impl tungsten_core::input::InputState
 pub fn tungsten_core::input::InputState::add_scroll_line_delta(&mut self, f32, f32)
@@ -5759,9 +5914,21 @@ pub fn tungsten_core::input::InputState::cursor_delta(&self) -> (f32, f32)
 pub fn tungsten_core::input::InputState::cursor_position(&self) -> core::option::Option<(f32, f32)>
 pub fn tungsten_core::input::InputState::end_fixed_step(&mut self)
 pub fn tungsten_core::input::InputState::focused(&self) -> bool
+pub fn tungsten_core::input::InputState::gamepad_axis(&self, tungsten_core::input::GamepadAxis) -> f32
+pub fn tungsten_core::input::InputState::gamepad_axis_on(&self, tungsten_core::input::GamepadId, tungsten_core::input::GamepadAxis) -> f32
+pub fn tungsten_core::input::InputState::gamepad_button_down(&mut self, tungsten_core::input::GamepadId, tungsten_core::input::GamepadButton)
+pub fn tungsten_core::input::InputState::gamepad_button_up(&mut self, tungsten_core::input::GamepadId, tungsten_core::input::GamepadButton)
+pub fn tungsten_core::input::InputState::gamepad_connected(&mut self, tungsten_core::input::GamepadId)
+pub fn tungsten_core::input::InputState::gamepad_disconnected(&mut self, tungsten_core::input::GamepadId)
+pub fn tungsten_core::input::InputState::gamepad_just_pressed(&self, tungsten_core::input::GamepadButton) -> bool
+pub fn tungsten_core::input::InputState::gamepad_just_released(&self, tungsten_core::input::GamepadButton) -> bool
+pub fn tungsten_core::input::InputState::gamepads(&self) -> impl core::iter::traits::iterator::Iterator<Item = tungsten_core::input::GamepadId> + '_
+pub fn tungsten_core::input::InputState::is_gamepad_pressed(&self, tungsten_core::input::GamepadButton) -> bool
+pub fn tungsten_core::input::InputState::is_gamepad_pressed_on(&self, tungsten_core::input::GamepadId, tungsten_core::input::GamepadButton) -> bool
 pub fn tungsten_core::input::InputState::is_mouse_pressed(&self, tungsten_core::input::MouseButton) -> bool
 pub fn tungsten_core::input::InputState::is_pressed(&self, tungsten_core::input::KeyCode) -> bool
 pub fn tungsten_core::input::InputState::is_scroll_active(&self, tungsten_core::input::ScrollDirection) -> bool
+pub fn tungsten_core::input::InputState::is_stick_pressed(&self, tungsten_core::input::GamepadAxis, tungsten_core::input::AxisDirection) -> bool
 pub fn tungsten_core::input::InputState::just_pressed(&self, tungsten_core::input::KeyCode) -> bool
 pub fn tungsten_core::input::InputState::just_released(&self, tungsten_core::input::KeyCode) -> bool
 pub fn tungsten_core::input::InputState::key_down(&mut self, tungsten_core::input::KeyCode)
@@ -5781,7 +5948,10 @@ pub fn tungsten_core::input::InputState::scroll_line_delta(&self) -> (f32, f32)
 pub fn tungsten_core::input::InputState::scroll_pixel_delta(&self) -> (f32, f32)
 pub fn tungsten_core::input::InputState::set_fixed_view(&mut self, bool)
 pub fn tungsten_core::input::InputState::set_focused(&mut self, bool)
+pub fn tungsten_core::input::InputState::set_gamepad_axis(&mut self, tungsten_core::input::GamepadId, tungsten_core::input::GamepadAxis, f32)
 pub fn tungsten_core::input::InputState::set_modifiers(&mut self, tungsten_core::input::Modifiers)
+pub fn tungsten_core::input::InputState::stick_just_pressed(&self, tungsten_core::input::GamepadAxis, tungsten_core::input::AxisDirection) -> bool
+pub fn tungsten_core::input::InputState::stick_just_released(&self, tungsten_core::input::GamepadAxis, tungsten_core::input::AxisDirection) -> bool
 pub fn tungsten_core::input::InputState::suppress_until_release(&mut self, tungsten_core::input::KeyCode)
 pub fn tungsten_core::input::InputState::update_cursor_position(&mut self, f32, f32)
 impl core::clone::Clone for tungsten_core::input::InputState
@@ -5867,6 +6037,8 @@ impl core::marker::Unpin for tungsten_core::input::RoutedInput
 impl core::marker::UnsafeUnpin for tungsten_core::input::RoutedInput
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::RoutedInput
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::RoutedInput
+pub const tungsten_core::input::STICK_PRESS: f32
+pub const tungsten_core::input::STICK_RELEASE: f32
 pub mod tungsten_core::inspect
 pub struct tungsten_core::inspect::InspectRegistry
 impl tungsten_core::inspect::InspectRegistry
@@ -7956,6 +8128,59 @@ impl core::marker::Unpin for tungsten_core::text::TextStyle
 impl core::marker::UnsafeUnpin for tungsten_core::text::TextStyle
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::TextStyle
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::TextStyle
+#[non_exhaustive] pub struct tungsten_core::text::WorldLabel
+pub tungsten_core::text::WorldLabel::anchor: glam::f32::vec2::Vec2
+pub tungsten_core::text::WorldLabel::color: [u8; 4]
+pub tungsten_core::text::WorldLabel::font_id: alloc::string::String
+pub tungsten_core::text::WorldLabel::font_size: f32
+pub tungsten_core::text::WorldLabel::line_height: f32
+pub tungsten_core::text::WorldLabel::offset: glam::f32::vec2::Vec2
+pub tungsten_core::text::WorldLabel::pivot: glam::f32::vec2::Vec2
+pub tungsten_core::text::WorldLabel::scale: f32
+pub tungsten_core::text::WorldLabel::text: alloc::string::String
+impl tungsten_core::text::WorldLabel
+pub fn tungsten_core::text::WorldLabel::new(impl core::convert::Into<alloc::string::String>, glam::f32::vec2::Vec2, impl core::convert::Into<alloc::string::String>, f32) -> Self
+pub fn tungsten_core::text::WorldLabel::with_color(self, [u8; 4]) -> Self
+pub fn tungsten_core::text::WorldLabel::with_line_height(self, f32) -> Self
+pub fn tungsten_core::text::WorldLabel::with_offset(self, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_core::text::WorldLabel::with_pivot(self, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_core::text::WorldLabel::with_scale(self, f32) -> Self
+impl core::clone::Clone for tungsten_core::text::WorldLabel
+pub fn tungsten_core::text::WorldLabel::clone(&self) -> tungsten_core::text::WorldLabel
+impl core::cmp::PartialEq for tungsten_core::text::WorldLabel
+pub fn tungsten_core::text::WorldLabel::eq(&self, &tungsten_core::text::WorldLabel) -> bool
+impl core::fmt::Debug for tungsten_core::text::WorldLabel
+pub fn tungsten_core::text::WorldLabel::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::text::WorldLabel
+impl core::marker::Freeze for tungsten_core::text::WorldLabel
+impl core::marker::Send for tungsten_core::text::WorldLabel
+impl core::marker::Sync for tungsten_core::text::WorldLabel
+impl core::marker::Unpin for tungsten_core::text::WorldLabel
+impl core::marker::UnsafeUnpin for tungsten_core::text::WorldLabel
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::WorldLabel
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::WorldLabel
+pub struct tungsten_core::text::WorldLabels
+impl tungsten_core::text::WorldLabels
+pub fn tungsten_core::text::WorldLabels::cap(&self) -> usize
+pub fn tungsten_core::text::WorldLabels::clear(&mut self)
+pub fn tungsten_core::text::WorldLabels::cull_margin(&self) -> f32
+pub fn tungsten_core::text::WorldLabels::drain(&mut self) -> impl core::iter::traits::iterator::Iterator<Item = tungsten_core::text::WorldLabel> + '_
+pub fn tungsten_core::text::WorldLabels::is_empty(&self) -> bool
+pub fn tungsten_core::text::WorldLabels::len(&self) -> usize
+pub fn tungsten_core::text::WorldLabels::push(&mut self, tungsten_core::text::WorldLabel)
+pub fn tungsten_core::text::WorldLabels::set_cap(&mut self, usize)
+pub fn tungsten_core::text::WorldLabels::set_cull_margin(&mut self, f32)
+impl core::default::Default for tungsten_core::text::WorldLabels
+pub fn tungsten_core::text::WorldLabels::default() -> Self
+impl core::fmt::Debug for tungsten_core::text::WorldLabels
+pub fn tungsten_core::text::WorldLabels::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::text::WorldLabels
+impl core::marker::Send for tungsten_core::text::WorldLabels
+impl core::marker::Sync for tungsten_core::text::WorldLabels
+impl core::marker::Unpin for tungsten_core::text::WorldLabels
+impl core::marker::UnsafeUnpin for tungsten_core::text::WorldLabels
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::WorldLabels
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::WorldLabels
 pub trait tungsten_core::text::TextMeasure
 pub fn tungsten_core::text::TextMeasure::measure(&mut self, tungsten_core::text::TextNodeId, core::option::Option<f32>, tungsten_core::text::MeasureWidth) -> tungsten_core::text::TextMetrics
 impl tungsten_core::text::TextMeasure for tungsten_core::ui::measure::FixedAdvanceMeasure
@@ -8822,6 +9047,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::paint::UiDebug
 pub fn tungsten_core::ui::paint::to_physical(tungsten_core::ui::geometry::Rect, f32) -> tungsten_core::ui::paint::ClipRect
 pub mod tungsten_core::ui::route
 #[non_exhaustive] pub enum tungsten_core::ui::route::InputDevice
+pub tungsten_core::ui::route::InputDevice::Gamepad
 pub tungsten_core::ui::route::InputDevice::Keyboard
 pub tungsten_core::ui::route::InputDevice::Pointer
 impl core::clone::Clone for tungsten_core::ui::route::InputDevice
@@ -9747,6 +9973,7 @@ impl core::marker::UnsafeUnpin for tungsten_core::ui::style::Direction
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::style::Direction
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::style::Direction
 #[non_exhaustive] pub enum tungsten_core::ui::InputDevice
+pub tungsten_core::ui::InputDevice::Gamepad
 pub tungsten_core::ui::InputDevice::Keyboard
 pub tungsten_core::ui::InputDevice::Pointer
 impl core::clone::Clone for tungsten_core::ui::route::InputDevice
@@ -10911,7 +11138,39 @@ impl core::marker::Unpin for tungsten_core::audio::AudioCommand
 impl core::marker::UnsafeUnpin for tungsten_core::audio::AudioCommand
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::audio::AudioCommand
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::audio::AudioCommand
-pub enum tungsten_core::Binding
+pub enum tungsten_core::AxisDirection
+pub tungsten_core::AxisDirection::Negative
+pub tungsten_core::AxisDirection::Positive
+impl tungsten_core::input::AxisDirection
+pub fn tungsten_core::input::AxisDirection::along(self, f32) -> f32
+impl core::clone::Clone for tungsten_core::input::AxisDirection
+pub fn tungsten_core::input::AxisDirection::clone(&self) -> tungsten_core::input::AxisDirection
+impl core::cmp::Eq for tungsten_core::input::AxisDirection
+impl core::cmp::PartialEq for tungsten_core::input::AxisDirection
+pub fn tungsten_core::input::AxisDirection::eq(&self, &tungsten_core::input::AxisDirection) -> bool
+impl core::fmt::Debug for tungsten_core::input::AxisDirection
+pub fn tungsten_core::input::AxisDirection::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::input::AxisDirection
+pub fn tungsten_core::input::AxisDirection::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::input::AxisDirection
+impl core::marker::StructuralPartialEq for tungsten_core::input::AxisDirection
+impl serde_core::ser::Serialize for tungsten_core::input::AxisDirection
+pub fn tungsten_core::input::AxisDirection::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::input::AxisDirection
+pub fn tungsten_core::input::AxisDirection::deserialize<D: serde_core::de::Deserializer<'de>>(D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error>
+impl core::marker::Freeze for tungsten_core::input::AxisDirection
+impl core::marker::Send for tungsten_core::input::AxisDirection
+impl core::marker::Sync for tungsten_core::input::AxisDirection
+impl core::marker::Unpin for tungsten_core::input::AxisDirection
+impl core::marker::UnsafeUnpin for tungsten_core::input::AxisDirection
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::AxisDirection
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::AxisDirection
+#[non_exhaustive] pub enum tungsten_core::Binding
+pub tungsten_core::Binding::GamepadAxis
+pub tungsten_core::Binding::GamepadAxis::axis: tungsten_core::input::GamepadAxis
+pub tungsten_core::Binding::GamepadAxis::direction: tungsten_core::input::AxisDirection
+pub tungsten_core::Binding::GamepadButton
+pub tungsten_core::Binding::GamepadButton::button: tungsten_core::input::GamepadButton
 pub tungsten_core::Binding::Key
 pub tungsten_core::Binding::Key::code: tungsten_core::input::KeyCode
 pub tungsten_core::Binding::Mouse
@@ -11298,6 +11557,73 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::FilterMode
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::FilterMode
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::FilterMode
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::FilterMode
+#[non_exhaustive] pub enum tungsten_core::GamepadAxis
+pub tungsten_core::GamepadAxis::LeftStickX
+pub tungsten_core::GamepadAxis::LeftStickY
+pub tungsten_core::GamepadAxis::RightStickX
+pub tungsten_core::GamepadAxis::RightStickY
+impl core::clone::Clone for tungsten_core::input::GamepadAxis
+pub fn tungsten_core::input::GamepadAxis::clone(&self) -> tungsten_core::input::GamepadAxis
+impl core::cmp::Eq for tungsten_core::input::GamepadAxis
+impl core::cmp::PartialEq for tungsten_core::input::GamepadAxis
+pub fn tungsten_core::input::GamepadAxis::eq(&self, &tungsten_core::input::GamepadAxis) -> bool
+impl core::fmt::Debug for tungsten_core::input::GamepadAxis
+pub fn tungsten_core::input::GamepadAxis::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::input::GamepadAxis
+pub fn tungsten_core::input::GamepadAxis::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::input::GamepadAxis
+impl core::marker::StructuralPartialEq for tungsten_core::input::GamepadAxis
+impl serde_core::ser::Serialize for tungsten_core::input::GamepadAxis
+pub fn tungsten_core::input::GamepadAxis::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::input::GamepadAxis
+pub fn tungsten_core::input::GamepadAxis::deserialize<D: serde_core::de::Deserializer<'de>>(D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error>
+impl core::marker::Freeze for tungsten_core::input::GamepadAxis
+impl core::marker::Send for tungsten_core::input::GamepadAxis
+impl core::marker::Sync for tungsten_core::input::GamepadAxis
+impl core::marker::Unpin for tungsten_core::input::GamepadAxis
+impl core::marker::UnsafeUnpin for tungsten_core::input::GamepadAxis
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::GamepadAxis
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::GamepadAxis
+#[non_exhaustive] pub enum tungsten_core::GamepadButton
+pub tungsten_core::GamepadButton::DPadDown
+pub tungsten_core::GamepadButton::DPadLeft
+pub tungsten_core::GamepadButton::DPadRight
+pub tungsten_core::GamepadButton::DPadUp
+pub tungsten_core::GamepadButton::East
+pub tungsten_core::GamepadButton::LeftShoulder
+pub tungsten_core::GamepadButton::LeftStick
+pub tungsten_core::GamepadButton::LeftTrigger
+pub tungsten_core::GamepadButton::Mode
+pub tungsten_core::GamepadButton::North
+pub tungsten_core::GamepadButton::RightShoulder
+pub tungsten_core::GamepadButton::RightStick
+pub tungsten_core::GamepadButton::RightTrigger
+pub tungsten_core::GamepadButton::Select
+pub tungsten_core::GamepadButton::South
+pub tungsten_core::GamepadButton::Start
+pub tungsten_core::GamepadButton::West
+impl core::clone::Clone for tungsten_core::input::GamepadButton
+pub fn tungsten_core::input::GamepadButton::clone(&self) -> tungsten_core::input::GamepadButton
+impl core::cmp::Eq for tungsten_core::input::GamepadButton
+impl core::cmp::PartialEq for tungsten_core::input::GamepadButton
+pub fn tungsten_core::input::GamepadButton::eq(&self, &tungsten_core::input::GamepadButton) -> bool
+impl core::fmt::Debug for tungsten_core::input::GamepadButton
+pub fn tungsten_core::input::GamepadButton::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::input::GamepadButton
+pub fn tungsten_core::input::GamepadButton::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::input::GamepadButton
+impl core::marker::StructuralPartialEq for tungsten_core::input::GamepadButton
+impl serde_core::ser::Serialize for tungsten_core::input::GamepadButton
+pub fn tungsten_core::input::GamepadButton::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::input::GamepadButton
+pub fn tungsten_core::input::GamepadButton::deserialize<D: serde_core::de::Deserializer<'de>>(D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error>
+impl core::marker::Freeze for tungsten_core::input::GamepadButton
+impl core::marker::Send for tungsten_core::input::GamepadButton
+impl core::marker::Sync for tungsten_core::input::GamepadButton
+impl core::marker::Unpin for tungsten_core::input::GamepadButton
+impl core::marker::UnsafeUnpin for tungsten_core::input::GamepadButton
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::GamepadButton
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::GamepadButton
 pub enum tungsten_core::InitialVelocity
 pub tungsten_core::InitialVelocity::Cone
 pub tungsten_core::InitialVelocity::Cone::direction: [f32; 2]
@@ -11764,6 +12090,22 @@ impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::prefab:
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::prefab::PrefabError
 #[non_exhaustive] pub enum tungsten_core::RawInput
 pub tungsten_core::RawInput::Focus(bool)
+#[non_exhaustive] pub tungsten_core::RawInput::Gamepad
+pub tungsten_core::RawInput::Gamepad::connected: bool
+pub tungsten_core::RawInput::Gamepad::pad: tungsten_core::input::GamepadId
+#[non_exhaustive] pub tungsten_core::RawInput::GamepadAxis
+pub tungsten_core::RawInput::GamepadAxis::axis: tungsten_core::input::GamepadAxis
+pub tungsten_core::RawInput::GamepadAxis::pad: tungsten_core::input::GamepadId
+pub tungsten_core::RawInput::GamepadAxis::value: f32
+#[non_exhaustive] pub tungsten_core::RawInput::GamepadButton
+pub tungsten_core::RawInput::GamepadButton::button: tungsten_core::input::GamepadButton
+pub tungsten_core::RawInput::GamepadButton::pad: tungsten_core::input::GamepadId
+pub tungsten_core::RawInput::GamepadButton::pressed: bool
+#[non_exhaustive] pub tungsten_core::RawInput::GamepadStick
+pub tungsten_core::RawInput::GamepadStick::axis: tungsten_core::input::GamepadAxis
+pub tungsten_core::RawInput::GamepadStick::direction: tungsten_core::input::AxisDirection
+pub tungsten_core::RawInput::GamepadStick::pad: tungsten_core::input::GamepadId
+pub tungsten_core::RawInput::GamepadStick::pressed: bool
 #[non_exhaustive] pub tungsten_core::RawInput::Key
 pub tungsten_core::RawInput::Key::code: tungsten_core::input::KeyCode
 pub tungsten_core::RawInput::Key::modifiers: tungsten_core::input::Modifiers
@@ -12508,6 +12850,7 @@ pub fn tungsten_core::input::action_map::ActionMap::replace_bindings_and_persist
 pub fn tungsten_core::input::action_map::ActionMap::set_source_path(&mut self, impl core::convert::Into<std::path::PathBuf>)
 pub fn tungsten_core::input::action_map::ActionMap::take_load_warnings(&mut self) -> alloc::vec::Vec<alloc::string::String>
 pub fn tungsten_core::input::action_map::ActionMap::user_layer_path(&self) -> core::option::Option<&std::path::Path>
+pub fn tungsten_core::input::action_map::ActionMap::value(&self, &tungsten_core::input::InputState, &str) -> f32
 pub fn tungsten_core::input::action_map::ActionMap::with_user_layer(self, core::option::Option<&std::path::Path>) -> Self
 impl core::clone::Clone for tungsten_core::input::action_map::ActionMap
 pub fn tungsten_core::input::action_map::ActionMap::clone(&self) -> tungsten_core::input::action_map::ActionMap
@@ -12778,6 +13121,7 @@ pub fn tungsten_core::camera::CameraState::new() -> Self
 pub fn tungsten_core::camera::CameraState::screen_to_world(&self, glam::f32::vec2::Vec2) -> glam::f32::vec2::Vec2
 pub fn tungsten_core::camera::CameraState::view_projection(&self, f32, f32) -> glam::f32::sse2::mat4::Mat4
 pub fn tungsten_core::camera::CameraState::visible_world_aabb(&self, f32, f32) -> (glam::f32::vec2::Vec2, glam::f32::vec2::Vec2)
+pub fn tungsten_core::camera::CameraState::world_to_screen(&self, glam::f32::vec2::Vec2) -> glam::f32::vec2::Vec2
 impl core::clone::Clone for tungsten_core::camera::CameraState
 pub fn tungsten_core::camera::CameraState::clone(&self) -> tungsten_core::camera::CameraState
 impl core::default::Default for tungsten_core::camera::CameraState
@@ -13442,6 +13786,32 @@ impl core::marker::Unpin for tungsten_core::config::GameConfig
 impl core::marker::UnsafeUnpin for tungsten_core::config::GameConfig
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::GameConfig
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::GameConfig
+pub struct tungsten_core::GamepadId(_)
+impl tungsten_core::input::GamepadId
+pub const fn tungsten_core::input::GamepadId::get(self) -> u32
+pub const fn tungsten_core::input::GamepadId::new(u32) -> Self
+impl core::clone::Clone for tungsten_core::input::GamepadId
+pub fn tungsten_core::input::GamepadId::clone(&self) -> tungsten_core::input::GamepadId
+impl core::cmp::Eq for tungsten_core::input::GamepadId
+impl core::cmp::Ord for tungsten_core::input::GamepadId
+pub fn tungsten_core::input::GamepadId::cmp(&self, &tungsten_core::input::GamepadId) -> core::cmp::Ordering
+impl core::cmp::PartialEq for tungsten_core::input::GamepadId
+pub fn tungsten_core::input::GamepadId::eq(&self, &tungsten_core::input::GamepadId) -> bool
+impl core::cmp::PartialOrd for tungsten_core::input::GamepadId
+pub fn tungsten_core::input::GamepadId::partial_cmp(&self, &tungsten_core::input::GamepadId) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for tungsten_core::input::GamepadId
+pub fn tungsten_core::input::GamepadId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::input::GamepadId
+pub fn tungsten_core::input::GamepadId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::input::GamepadId
+impl core::marker::StructuralPartialEq for tungsten_core::input::GamepadId
+impl core::marker::Freeze for tungsten_core::input::GamepadId
+impl core::marker::Send for tungsten_core::input::GamepadId
+impl core::marker::Sync for tungsten_core::input::GamepadId
+impl core::marker::Unpin for tungsten_core::input::GamepadId
+impl core::marker::UnsafeUnpin for tungsten_core::input::GamepadId
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::GamepadId
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::GamepadId
 pub struct tungsten_core::GlitchParams
 pub tungsten_core::GlitchParams::block_strength: f32
 pub tungsten_core::GlitchParams::shift_px: f32
@@ -13503,9 +13873,21 @@ pub fn tungsten_core::input::InputState::cursor_delta(&self) -> (f32, f32)
 pub fn tungsten_core::input::InputState::cursor_position(&self) -> core::option::Option<(f32, f32)>
 pub fn tungsten_core::input::InputState::end_fixed_step(&mut self)
 pub fn tungsten_core::input::InputState::focused(&self) -> bool
+pub fn tungsten_core::input::InputState::gamepad_axis(&self, tungsten_core::input::GamepadAxis) -> f32
+pub fn tungsten_core::input::InputState::gamepad_axis_on(&self, tungsten_core::input::GamepadId, tungsten_core::input::GamepadAxis) -> f32
+pub fn tungsten_core::input::InputState::gamepad_button_down(&mut self, tungsten_core::input::GamepadId, tungsten_core::input::GamepadButton)
+pub fn tungsten_core::input::InputState::gamepad_button_up(&mut self, tungsten_core::input::GamepadId, tungsten_core::input::GamepadButton)
+pub fn tungsten_core::input::InputState::gamepad_connected(&mut self, tungsten_core::input::GamepadId)
+pub fn tungsten_core::input::InputState::gamepad_disconnected(&mut self, tungsten_core::input::GamepadId)
+pub fn tungsten_core::input::InputState::gamepad_just_pressed(&self, tungsten_core::input::GamepadButton) -> bool
+pub fn tungsten_core::input::InputState::gamepad_just_released(&self, tungsten_core::input::GamepadButton) -> bool
+pub fn tungsten_core::input::InputState::gamepads(&self) -> impl core::iter::traits::iterator::Iterator<Item = tungsten_core::input::GamepadId> + '_
+pub fn tungsten_core::input::InputState::is_gamepad_pressed(&self, tungsten_core::input::GamepadButton) -> bool
+pub fn tungsten_core::input::InputState::is_gamepad_pressed_on(&self, tungsten_core::input::GamepadId, tungsten_core::input::GamepadButton) -> bool
 pub fn tungsten_core::input::InputState::is_mouse_pressed(&self, tungsten_core::input::MouseButton) -> bool
 pub fn tungsten_core::input::InputState::is_pressed(&self, tungsten_core::input::KeyCode) -> bool
 pub fn tungsten_core::input::InputState::is_scroll_active(&self, tungsten_core::input::ScrollDirection) -> bool
+pub fn tungsten_core::input::InputState::is_stick_pressed(&self, tungsten_core::input::GamepadAxis, tungsten_core::input::AxisDirection) -> bool
 pub fn tungsten_core::input::InputState::just_pressed(&self, tungsten_core::input::KeyCode) -> bool
 pub fn tungsten_core::input::InputState::just_released(&self, tungsten_core::input::KeyCode) -> bool
 pub fn tungsten_core::input::InputState::key_down(&mut self, tungsten_core::input::KeyCode)
@@ -13525,7 +13907,10 @@ pub fn tungsten_core::input::InputState::scroll_line_delta(&self) -> (f32, f32)
 pub fn tungsten_core::input::InputState::scroll_pixel_delta(&self) -> (f32, f32)
 pub fn tungsten_core::input::InputState::set_fixed_view(&mut self, bool)
 pub fn tungsten_core::input::InputState::set_focused(&mut self, bool)
+pub fn tungsten_core::input::InputState::set_gamepad_axis(&mut self, tungsten_core::input::GamepadId, tungsten_core::input::GamepadAxis, f32)
 pub fn tungsten_core::input::InputState::set_modifiers(&mut self, tungsten_core::input::Modifiers)
+pub fn tungsten_core::input::InputState::stick_just_pressed(&self, tungsten_core::input::GamepadAxis, tungsten_core::input::AxisDirection) -> bool
+pub fn tungsten_core::input::InputState::stick_just_released(&self, tungsten_core::input::GamepadAxis, tungsten_core::input::AxisDirection) -> bool
 pub fn tungsten_core::input::InputState::suppress_until_release(&mut self, tungsten_core::input::KeyCode)
 pub fn tungsten_core::input::InputState::update_cursor_position(&mut self, f32, f32)
 impl core::clone::Clone for tungsten_core::input::InputState
@@ -16063,6 +16448,59 @@ impl core::marker::Unpin for tungsten_core::World
 impl core::marker::UnsafeUnpin for tungsten_core::World
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::World
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::World
+#[non_exhaustive] pub struct tungsten_core::WorldLabel
+pub tungsten_core::WorldLabel::anchor: glam::f32::vec2::Vec2
+pub tungsten_core::WorldLabel::color: [u8; 4]
+pub tungsten_core::WorldLabel::font_id: alloc::string::String
+pub tungsten_core::WorldLabel::font_size: f32
+pub tungsten_core::WorldLabel::line_height: f32
+pub tungsten_core::WorldLabel::offset: glam::f32::vec2::Vec2
+pub tungsten_core::WorldLabel::pivot: glam::f32::vec2::Vec2
+pub tungsten_core::WorldLabel::scale: f32
+pub tungsten_core::WorldLabel::text: alloc::string::String
+impl tungsten_core::text::WorldLabel
+pub fn tungsten_core::text::WorldLabel::new(impl core::convert::Into<alloc::string::String>, glam::f32::vec2::Vec2, impl core::convert::Into<alloc::string::String>, f32) -> Self
+pub fn tungsten_core::text::WorldLabel::with_color(self, [u8; 4]) -> Self
+pub fn tungsten_core::text::WorldLabel::with_line_height(self, f32) -> Self
+pub fn tungsten_core::text::WorldLabel::with_offset(self, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_core::text::WorldLabel::with_pivot(self, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_core::text::WorldLabel::with_scale(self, f32) -> Self
+impl core::clone::Clone for tungsten_core::text::WorldLabel
+pub fn tungsten_core::text::WorldLabel::clone(&self) -> tungsten_core::text::WorldLabel
+impl core::cmp::PartialEq for tungsten_core::text::WorldLabel
+pub fn tungsten_core::text::WorldLabel::eq(&self, &tungsten_core::text::WorldLabel) -> bool
+impl core::fmt::Debug for tungsten_core::text::WorldLabel
+pub fn tungsten_core::text::WorldLabel::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::text::WorldLabel
+impl core::marker::Freeze for tungsten_core::text::WorldLabel
+impl core::marker::Send for tungsten_core::text::WorldLabel
+impl core::marker::Sync for tungsten_core::text::WorldLabel
+impl core::marker::Unpin for tungsten_core::text::WorldLabel
+impl core::marker::UnsafeUnpin for tungsten_core::text::WorldLabel
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::WorldLabel
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::WorldLabel
+pub struct tungsten_core::WorldLabels
+impl tungsten_core::text::WorldLabels
+pub fn tungsten_core::text::WorldLabels::cap(&self) -> usize
+pub fn tungsten_core::text::WorldLabels::clear(&mut self)
+pub fn tungsten_core::text::WorldLabels::cull_margin(&self) -> f32
+pub fn tungsten_core::text::WorldLabels::drain(&mut self) -> impl core::iter::traits::iterator::Iterator<Item = tungsten_core::text::WorldLabel> + '_
+pub fn tungsten_core::text::WorldLabels::is_empty(&self) -> bool
+pub fn tungsten_core::text::WorldLabels::len(&self) -> usize
+pub fn tungsten_core::text::WorldLabels::push(&mut self, tungsten_core::text::WorldLabel)
+pub fn tungsten_core::text::WorldLabels::set_cap(&mut self, usize)
+pub fn tungsten_core::text::WorldLabels::set_cull_margin(&mut self, f32)
+impl core::default::Default for tungsten_core::text::WorldLabels
+pub fn tungsten_core::text::WorldLabels::default() -> Self
+impl core::fmt::Debug for tungsten_core::text::WorldLabels
+pub fn tungsten_core::text::WorldLabels::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::text::WorldLabels
+impl core::marker::Send for tungsten_core::text::WorldLabels
+impl core::marker::Sync for tungsten_core::text::WorldLabels
+impl core::marker::Unpin for tungsten_core::text::WorldLabels
+impl core::marker::UnsafeUnpin for tungsten_core::text::WorldLabels
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::WorldLabels
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::WorldLabels
 pub struct tungsten_core::WorldRngSeed
 pub tungsten_core::WorldRngSeed::next: u64
 impl tungsten_core::assets::particle::WorldRngSeed
@@ -16085,6 +16523,8 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::particle::W
 pub const tungsten_core::DEFAULT_CIRCLE_SEGMENTS: u16
 pub const tungsten_core::EMPTY_TILE: tungsten_core::assets::tilemap::TileIndex
 pub const tungsten_core::LIGHT_CAP: usize
+pub const tungsten_core::STICK_PRESS: f32
+pub const tungsten_core::STICK_RELEASE: f32
 pub trait tungsten_core::Bundle: 'static
 pub fn tungsten_core::Bundle::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
 pub fn tungsten_core::Bundle::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized

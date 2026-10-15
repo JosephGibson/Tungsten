@@ -1,6 +1,9 @@
-//! Canonical `input.json` names for keys, mouse buttons, and scroll directions.
+//! Canonical `input.json` names for keys, mouse buttons, scroll directions,
+//! gamepad buttons, gamepad axes and axis directions.
 
-use crate::input::{KeyCode, MouseButton, ScrollDirection};
+use crate::input::{
+    AxisDirection, GamepadAxis, GamepadButton, KeyCode, MouseButton, ScrollDirection,
+};
 
 const KEYCODE_NAMES: &[(KeyCode, &str)] = &[
     (KeyCode::ArrowUp, "ArrowUp"),
@@ -88,6 +91,39 @@ const MOUSE_BUTTON_NAMES: &[(MouseButton, &str)] = &[
 const SCROLL_DIRECTION_NAMES: &[(ScrollDirection, &str)] =
     &[(ScrollDirection::Up, "up"), (ScrollDirection::Down, "down")];
 
+/// Positional names, the variant names (Q10 of M54).
+const GAMEPAD_BUTTON_NAMES: &[(GamepadButton, &str)] = &[
+    (GamepadButton::South, "South"),
+    (GamepadButton::East, "East"),
+    (GamepadButton::North, "North"),
+    (GamepadButton::West, "West"),
+    (GamepadButton::LeftShoulder, "LeftShoulder"),
+    (GamepadButton::RightShoulder, "RightShoulder"),
+    (GamepadButton::LeftTrigger, "LeftTrigger"),
+    (GamepadButton::RightTrigger, "RightTrigger"),
+    (GamepadButton::Select, "Select"),
+    (GamepadButton::Start, "Start"),
+    (GamepadButton::Mode, "Mode"),
+    (GamepadButton::LeftStick, "LeftStick"),
+    (GamepadButton::RightStick, "RightStick"),
+    (GamepadButton::DPadUp, "DPadUp"),
+    (GamepadButton::DPadDown, "DPadDown"),
+    (GamepadButton::DPadLeft, "DPadLeft"),
+    (GamepadButton::DPadRight, "DPadRight"),
+];
+
+const GAMEPAD_AXIS_NAMES: &[(GamepadAxis, &str)] = &[
+    (GamepadAxis::LeftStickX, "LeftStickX"),
+    (GamepadAxis::LeftStickY, "LeftStickY"),
+    (GamepadAxis::RightStickX, "RightStickX"),
+    (GamepadAxis::RightStickY, "RightStickY"),
+];
+
+const AXIS_DIRECTION_NAMES: &[(AxisDirection, &str)] = &[
+    (AxisDirection::Negative, "negative"),
+    (AxisDirection::Positive, "positive"),
+];
+
 #[must_use]
 pub fn keycode_from_str(name: &str) -> Option<KeyCode> {
     KEYCODE_NAMES
@@ -146,6 +182,64 @@ pub fn scroll_direction_to_str(direction: ScrollDirection) -> &'static str {
         .find(|(candidate, _)| *candidate == direction)
         .map(|(_, name)| *name)
         .expect("scroll direction missing canonical name")
+}
+
+/// The gamepad button named `name` in `input.json`, such as `South`.
+#[must_use]
+pub fn gamepad_button_from_str(name: &str) -> Option<GamepadButton> {
+    GAMEPAD_BUTTON_NAMES
+        .iter()
+        .find(|(_, candidate)| *candidate == name)
+        .map(|(button, _)| *button)
+}
+
+/// `button`'s `input.json` name.
+#[must_use]
+pub fn gamepad_button_to_str(button: GamepadButton) -> &'static str {
+    GAMEPAD_BUTTON_NAMES
+        .iter()
+        .find(|(candidate, _)| *candidate == button)
+        .map(|(_, name)| *name)
+        .expect("gamepad button missing canonical name")
+}
+
+/// The gamepad axis named `name` in `input.json`, such as `LeftStickX`.
+#[must_use]
+pub fn gamepad_axis_from_str(name: &str) -> Option<GamepadAxis> {
+    GAMEPAD_AXIS_NAMES
+        .iter()
+        .find(|(_, candidate)| *candidate == name)
+        .map(|(axis, _)| *axis)
+}
+
+/// `axis`'s `input.json` name.
+#[must_use]
+pub fn gamepad_axis_to_str(axis: GamepadAxis) -> &'static str {
+    GAMEPAD_AXIS_NAMES
+        .iter()
+        .find(|(candidate, _)| *candidate == axis)
+        .map(|(_, name)| *name)
+        .expect("gamepad axis missing canonical name")
+}
+
+/// The axis direction named `name` in `input.json`: `negative` or
+/// `positive`.
+#[must_use]
+pub fn axis_direction_from_str(name: &str) -> Option<AxisDirection> {
+    AXIS_DIRECTION_NAMES
+        .iter()
+        .find(|(_, candidate)| *candidate == name)
+        .map(|(direction, _)| *direction)
+}
+
+/// `direction`'s `input.json` name.
+#[must_use]
+pub fn axis_direction_to_str(direction: AxisDirection) -> &'static str {
+    AXIS_DIRECTION_NAMES
+        .iter()
+        .find(|(candidate, _)| *candidate == direction)
+        .map(|(_, name)| *name)
+        .expect("axis direction missing canonical name")
 }
 
 #[cfg(test)]

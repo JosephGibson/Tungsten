@@ -96,6 +96,39 @@ fn screen_to_world_inverts_view_projection() {
 }
 
 #[test]
+fn world_to_screen_inverts_screen_to_world() {
+    for (rotation, zoom) in [(0.0, 1.0), (0.5, 2.0), (-2.0, 0.75)] {
+        let cam = CameraState {
+            position: Vec2::new(100.0, 50.0),
+            zoom,
+            rotation,
+        };
+        for screen in [
+            Vec2::ZERO,
+            Vec2::new(71.83, 6.34),
+            Vec2::new(400.0, 300.0),
+            Vec2::new(-20.0, 799.0),
+        ] {
+            let back = cam.world_to_screen(cam.screen_to_world(screen));
+            assert!(
+                (back - screen).abs().max_element() <= 1e-3,
+                "rotation {rotation}, zoom {zoom}: {screen:?} comes back as {back:?}"
+            );
+        }
+    }
+    // Unrotated: an offset from the top-left times the zoom.
+    let cam = CameraState {
+        position: Vec2::new(100.0, 50.0),
+        zoom: 2.0,
+        rotation: 0.0,
+    };
+    assert_vec2_close(
+        cam.world_to_screen(Vec2::new(150.0, 80.0)),
+        Vec2::new(100.0, 60.0),
+    );
+}
+
+#[test]
 fn bounds_clamp_pins_camera_to_world_rect() {
     let bounds = CameraBounds {
         min: Vec2::ZERO,

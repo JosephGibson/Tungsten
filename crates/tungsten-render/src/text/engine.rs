@@ -12,8 +12,8 @@ use tungsten_core::text::{
     EllipsisAt, FontEpoch, FontFeatures, TextAlign, TextHinting, TextLayout, TextOverflow, TextWrap,
 };
 
-use super::TextSection;
 use super::fonts::{ChainFallback, FaceStyle, FamilyNames, FontSource, pick_face};
+use super::{TextSection, WorldLabelRun};
 
 // Retained nodes live in `text/nodes.rs`, as a child of this module so their
 // methods reach the engine's fonts.
@@ -92,11 +92,51 @@ struct PreparedSection {
     clip: TextBounds,
 }
 
+/// One world label of the last prepared frame: its layout key, the draw
+/// values glyphon baked into its vertices, and the box's top-left that the
+/// pivot placed (`D-161`).
+#[derive(Debug)]
+struct PreparedLabel {
+    key: TextLayoutKey,
+    position: [f32; 2],
+    pivot: [f32; 2],
+    scale: f32,
+    color: [u8; 4],
+    left: f32,
+    top: f32,
+}
+
+/// Which of a frame's two groups changed: the screen-space sections, the
+/// world labels. Each changed group prepares again.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct FrameUpdate {
+    pub(crate) sections: bool,
+    pub(crate) labels: bool,
+}
+
+/// What a layout shapes from: a section's or a label's text and style.
+struct ShapeInput<'a> {
+    content: &'a str,
+    font_id: &'a str,
+    font_size: f32,
+    line_height: f32,
+    layout: &'a TextLayout,
+    size: (Option<f32>, Option<f32>),
+}
+
+/// Which prepared group holds a layout key.
+#[derive(Clone, Copy)]
+enum Group {
+    Section(usize),
+    Label(usize),
+}
+
 /// Device-free half of the text pipeline: the font system, the registered
 /// faces, the font families and the fallback chain (`D-115`, `D-116`), the
-/// shaped section layouts (`D-085`), the signature of the last prepared frame
-/// and the retained text nodes that layout measures (`D-117`). It holds no GPU
-/// state; [`super::TextPipeline`] owns one and draws what it lays out.
+/// shaped layouts of the sections and the world labels (`D-085`, `D-161`), the
+/// signature of the last prepared frame and the retained text nodes that
+/// layout measures (`D-117`). It holds no GPU state;
+/// [`super::TextPipeline`] owns one and draws what it lays out.
 pub struct TextEngine {
     font_system: FontSystem,
     /// Where faces come from; a rebuilt font system keeps it.
@@ -118,7 +158,8 @@ pub struct TextEngine {
     buffers: HashMap<TextLayoutKey, CachedTextBuffer>,
     /// Evicted entries, at most `SPARE_BUFFER_CAP`; a miss reuses their allocations.
     spare: Vec<(TextLayoutKey, Buffer)>,
-    /// Counts prepared frames only: a skipped frame ages nothing.
+    /// Counts frames in which either group changed: a skipped frame ages
+    /// nothing (`D-161`).
     frame_counter: u64,
     /// Sections of the last prepared frame, in order.
     prepared: Vec<PreparedSection>,
@@ -126,6 +167,10 @@ pub struct TextEngine {
     /// don't match `prepared`: before the first frame, after a font change
     /// and after a failed prepare.
     prepared_viewport: Option<(u32, u32)>,
+    /// World labels of the last update, in order.
+    prepared_labels: Vec<PreparedLabel>,
+    /// `prepared_viewport` for the labels.
+    labels_viewport: Option<(u32, u32)>,
 }
 
 impl TextEngine {
@@ -172,6 +217,8 @@ impl TextEngine {
             frame_counter: 0,
             prepared: Vec::new(),
             prepared_viewport: None,
+            prepared_labels: Vec::new(),
+            labels_viewport: None,
         }
     }
 
@@ -406,27 +453,56 @@ impl TextEngine {
         self.spare.clear();
         self.prepared.clear();
         self.prepared_viewport = None;
+        self.prepared_labels.clear();
+        self.labels_viewport = None;
     }
 
-    /// Brings the cache up to this frame's sections and shapes the ones it
-    /// lacks. Returns `false`, having touched nothing, when the frame equals
-    /// the last prepared one.
+    /// [`Self::update_frame`] for sections alone, with no labels.
+    #[cfg(test)]
     pub(crate) fn update(&mut self, sections: &[TextSection], width: u32, height: u32) -> bool {
-        if self.prepared_viewport == Some((width, height))
-            && self.prepared.len() == sections.len()
-            && self
-                .prepared
-                .iter()
-                .zip(sections)
-                .all(|(prepared, section)| prepared.matches(section, width, height))
-        {
-            return false;
+        self.update_frame(sections, &[], width, height).sections
+    }
+
+    /// Brings the cache up to this frame's sections and world labels and
+    /// shapes the layouts it lacks. A group changed when it differs from the
+    /// last prepared one or that prepare did not complete; an empty label
+    /// group after an empty one never changed. With neither changed it
+    /// returns both false, having touched nothing. Otherwise the frame
+    /// counter advances once, layouts unused for more than
+    /// `BUFFER_CACHE_MAX_UNUSED_FRAMES` counted frames age out, and every
+    /// layout of both groups is touched, so a static group's layouts stay
+    /// while the other changes (`D-161`).
+    pub(crate) fn update_frame(
+        &mut self,
+        sections: &[TextSection],
+        labels: &[WorldLabelRun],
+        width: u32,
+        height: u32,
+    ) -> FrameUpdate {
+        let change = FrameUpdate {
+            sections: !(self.prepared_viewport == Some((width, height))
+                && self.prepared.len() == sections.len()
+                && self
+                    .prepared
+                    .iter()
+                    .zip(sections)
+                    .all(|(prepared, section)| prepared.matches(section, width, height))),
+            labels: !((labels.is_empty() && self.prepared_labels.is_empty())
+                || (self.labels_viewport == Some((width, height))
+                    && self.prepared_labels.len() == labels.len()
+                    && self
+                        .prepared_labels
+                        .iter()
+                        .zip(labels)
+                        .all(|(prepared, label)| prepared.matches(label)))),
+        };
+        if change == FrameUpdate::default() {
+            return change;
         }
-        self.prepared_viewport = None;
         self.frame_counter += 1;
         let frame = self.frame_counter;
 
-        // Age out before inserting: the map then peaks at the sections of
+        // Age out before inserting: the map then peaks at the layouts of
         // this frame and of the two before it.
         for (key, cached) in self
             .buffers
@@ -437,72 +513,133 @@ impl TextEngine {
             }
         }
 
-        self.prepared.truncate(sections.len());
-        for (index, section) in sections.iter().enumerate() {
-            let (buf_w, buf_h) = buffer_size(section, width);
-            let clip = clip_bounds_for_section(section, width, height);
-            if let Some(prepared) = self.prepared.get_mut(index) {
-                prepared.key.assign(section, buf_w, buf_h);
-                prepared.position = section.position;
-                prepared.color = section.color;
-                prepared.clip = clip;
-            } else {
-                let mut key = TextLayoutKey::default();
-                key.assign(section, buf_w, buf_h);
-                self.prepared.push(PreparedSection {
-                    key,
-                    position: section.position,
-                    color: section.color,
-                    clip,
-                });
-            }
-            let key = &self.prepared[index].key;
-
-            if let Some(cached) = self.buffers.get_mut(key) {
-                cached.last_used_frame = frame;
-                continue;
-            }
-
-            // Never `Buffer::new`: it shapes an empty line first.
-            let metrics = layout_metrics(section.font_size, section.line_height);
-            let (mut owned_key, mut buffer) = match self.spare.pop() {
-                // `set_metrics` rejects a zero font size; `new_empty` takes one.
-                Some((spare_key, mut spare_buffer)) if metrics.font_size != 0.0 => {
-                    spare_buffer.set_metrics(metrics);
-                    (spare_key, spare_buffer)
+        if change.sections {
+            self.prepared_viewport = None;
+            self.prepared.truncate(sections.len());
+            for (index, section) in sections.iter().enumerate() {
+                let (buf_w, buf_h) = buffer_size(section, width);
+                let clip = clip_bounds_for_section(section, width, height);
+                if let Some(prepared) = self.prepared.get_mut(index) {
+                    prepared.key.assign(section, buf_w, buf_h);
+                    prepared.position = section.position;
+                    prepared.color = section.color;
+                    prepared.clip = clip;
+                } else {
+                    let mut key = TextLayoutKey::default();
+                    key.assign(section, buf_w, buf_h);
+                    self.prepared.push(PreparedSection {
+                        key,
+                        position: section.position,
+                        color: section.color,
+                        clip,
+                    });
                 }
-                _ => (TextLayoutKey::default(), Buffer::new_empty(metrics)),
-            };
-            buffer.set_size(buf_w, buf_h);
-            // Set every field: a recycled buffer keeps its last layout's.
-            let layout = &section.layout;
-            buffer.set_wrap(cosmic_wrap(layout.wrap));
-            buffer.set_ellipsize(cosmic_ellipsize(layout.overflow, buf_h));
-            buffer.set_hinting(cosmic_hinting(layout.hinting));
-            let attrs = section_attrs(
-                &self.font_attrs,
-                &self.families,
-                &self.chain,
-                &section.font_id,
-            );
-            let attrs = with_layout(attrs, layout);
-            buffer.set_text(
-                &section.content,
-                &attrs,
-                Shaping::Advanced,
-                cosmic_align(layout.align),
-            );
-            buffer.shape_until_scroll(&mut self.font_system, false);
-            owned_key.clone_from(key);
-            self.buffers.insert(
-                owned_key,
-                CachedTextBuffer {
-                    buffer,
-                    last_used_frame: frame,
-                },
-            );
+            }
         }
-        true
+        for (index, section) in sections.iter().enumerate().take(self.prepared.len()) {
+            let input = ShapeInput {
+                content: &section.content,
+                font_id: &section.font_id,
+                font_size: section.font_size,
+                line_height: section.line_height,
+                layout: &section.layout,
+                size: buffer_size(section, width),
+            };
+            self.ensure_layout(Group::Section(index), &input, frame);
+        }
+
+        let label_layout = TextLayout::default();
+        if change.labels {
+            self.labels_viewport = None;
+            self.prepared_labels.truncate(labels.len());
+            for (index, label) in labels.iter().enumerate() {
+                if let Some(prepared) = self.prepared_labels.get_mut(index) {
+                    prepared.assign(label, &label_layout);
+                } else {
+                    let mut key = TextLayoutKey::default();
+                    key.assign_label(label, &label_layout);
+                    self.prepared_labels.push(PreparedLabel {
+                        key,
+                        position: label.position,
+                        pivot: label.pivot,
+                        scale: label.scale,
+                        color: label.color,
+                        left: 0.0,
+                        top: 0.0,
+                    });
+                }
+            }
+        }
+        for (index, label) in labels.iter().enumerate().take(self.prepared_labels.len()) {
+            let input = ShapeInput {
+                content: &label.content,
+                font_id: &label.font_id,
+                font_size: label.font_size,
+                line_height: label.line_height,
+                layout: &label_layout,
+                size: (None, None),
+            };
+            self.ensure_layout(Group::Label(index), &input, frame);
+        }
+        if change.labels {
+            for prepared in &mut self.prepared_labels {
+                let (width, height) = self
+                    .buffers
+                    .get(&prepared.key)
+                    .map_or((0.0, 0.0), |cached| buffer_extent(&cached.buffer));
+                prepared.left = prepared.position[0] - width * prepared.scale * prepared.pivot[0];
+                prepared.top = prepared.position[1] - height * prepared.scale * prepared.pivot[1];
+            }
+        }
+        change
+    }
+
+    /// Marks the layout under `group`'s key used in `frame`, shaping it
+    /// from `input` when the map lacks it.
+    fn ensure_layout(&mut self, group: Group, input: &ShapeInput<'_>, frame: u64) {
+        let key = match group {
+            Group::Section(index) => &self.prepared[index].key,
+            Group::Label(index) => &self.prepared_labels[index].key,
+        };
+        if let Some(cached) = self.buffers.get_mut(key) {
+            cached.last_used_frame = frame;
+            return;
+        }
+
+        // Never `Buffer::new`: it shapes an empty line first.
+        let metrics = layout_metrics(input.font_size, input.line_height);
+        let (mut owned_key, mut buffer) = match self.spare.pop() {
+            // `set_metrics` rejects a zero font size; `new_empty` takes one.
+            Some((spare_key, mut spare_buffer)) if metrics.font_size != 0.0 => {
+                spare_buffer.set_metrics(metrics);
+                (spare_key, spare_buffer)
+            }
+            _ => (TextLayoutKey::default(), Buffer::new_empty(metrics)),
+        };
+        let (buf_w, buf_h) = input.size;
+        buffer.set_size(buf_w, buf_h);
+        // Set every field: a recycled buffer keeps its last layout's.
+        let layout = input.layout;
+        buffer.set_wrap(cosmic_wrap(layout.wrap));
+        buffer.set_ellipsize(cosmic_ellipsize(layout.overflow, buf_h));
+        buffer.set_hinting(cosmic_hinting(layout.hinting));
+        let attrs = section_attrs(&self.font_attrs, &self.families, &self.chain, input.font_id);
+        let attrs = with_layout(attrs, layout);
+        buffer.set_text(
+            input.content,
+            &attrs,
+            Shaping::Advanced,
+            cosmic_align(layout.align),
+        );
+        buffer.shape_until_scroll(&mut self.font_system, false);
+        owned_key.clone_from(key);
+        self.buffers.insert(
+            owned_key,
+            CachedTextBuffer {
+                buffer,
+                last_used_frame: frame,
+            },
+        );
     }
 
     /// Records that glyphon prepared the sections of the last `update`.
@@ -519,6 +656,46 @@ impl TextEngine {
             &mut self.font_system,
             text_areas(&self.prepared, &self.buffers),
         )
+    }
+
+    /// Records that glyphon prepared the labels of the last update.
+    pub(crate) fn mark_labels_prepared(&mut self, width: u32, height: u32) {
+        self.labels_viewport = Some((width, height));
+    }
+
+    /// The font system and the text areas of the last update's labels, in
+    /// order, bounded by the `width` × `height` viewport, for glyphon's
+    /// prepare.
+    pub(crate) fn label_prepare_parts(
+        &mut self,
+        width: u32,
+        height: u32,
+    ) -> (&mut FontSystem, impl Iterator<Item = TextArea<'_>>) {
+        (
+            &mut self.font_system,
+            label_areas(&self.prepared_labels, &self.buffers, width, height),
+        )
+    }
+
+    /// Glyphs in the last update's label areas, a label sharing a layout
+    /// counted once per label.
+    pub(crate) fn label_glyphs(&self) -> u32 {
+        self.prepared_labels
+            .iter()
+            .filter_map(|label| self.buffers.get(&label.key))
+            .map(|cached| {
+                cached
+                    .buffer
+                    .layout_runs()
+                    .map(|run| run.glyphs.len() as u32)
+                    .sum::<u32>()
+            })
+            .sum()
+    }
+
+    /// Layouts in the map, both groups' together.
+    pub(crate) fn layout_count(&self) -> usize {
+        self.buffers.len()
     }
 }
 
@@ -541,6 +718,27 @@ fn layout_metrics(font_size: f32, line_height: f32) -> Metrics {
 }
 
 impl TextLayoutKey {
+    /// Overwrites the key with a label's, which lays out unbounded under
+    /// `layout`, keeping its string allocations.
+    fn assign_label(&mut self, label: &WorldLabelRun, layout: &TextLayout) {
+        self.content.clone_from(&label.content);
+        self.font_id.clone_from(&label.font_id);
+        self.font_size_bits = label.font_size.to_bits();
+        self.line_height_bits = label.line_height.to_bits();
+        self.buffer_width_bits = None;
+        self.buffer_height_bits = None;
+        self.layout.assign(layout);
+    }
+
+    /// Whether `label` lays out under this key, the layout aside: a label's
+    /// is always the default.
+    fn matches_label(&self, label: &WorldLabelRun) -> bool {
+        self.content == label.content
+            && self.font_id == label.font_id
+            && self.font_size_bits == label.font_size.to_bits()
+            && self.line_height_bits == label.line_height.to_bits()
+    }
+
     /// Overwrites the key in place, keeping its string allocations.
     fn assign(
         &mut self,
@@ -604,6 +802,68 @@ impl PreparedSection {
             && self.clip == clip_bounds_for_section(section, width, height)
             && self.key.matches(section, buf_w, buf_h)
     }
+}
+
+impl PreparedLabel {
+    /// Overwrites the label in place; `left` and `top` follow its layout.
+    fn assign(&mut self, label: &WorldLabelRun, layout: &TextLayout) {
+        self.key.assign_label(label, layout);
+        self.position = label.position;
+        self.pivot = label.pivot;
+        self.scale = label.scale;
+        self.color = label.color;
+    }
+
+    /// True when `label` lays out and draws exactly as this one did.
+    fn matches(&self, label: &WorldLabelRun) -> bool {
+        self.position.map(f32::to_bits) == label.position.map(f32::to_bits)
+            && self.pivot.map(f32::to_bits) == label.pivot.map(f32::to_bits)
+            && self.scale.to_bits() == label.scale.to_bits()
+            && self.color == label.color
+            && self.key.matches_label(label)
+    }
+}
+
+/// Text areas of the prepared labels, in order: each at its box's top-left
+/// and scale, bounded by the viewport.
+fn label_areas<'a>(
+    prepared: &'a [PreparedLabel],
+    buffers: &'a HashMap<TextLayoutKey, CachedTextBuffer>,
+    width: u32,
+    height: u32,
+) -> impl Iterator<Item = TextArea<'a>> {
+    let bounds = TextBounds {
+        left: 0,
+        top: 0,
+        right: width as i32,
+        bottom: height as i32,
+    };
+    prepared.iter().filter_map(move |label| {
+        let cached = buffers.get(&label.key)?;
+        let [r, g, b, a] = label.color;
+        Some(TextArea {
+            buffer: &cached.buffer,
+            left: label.left,
+            top: label.top,
+            scale: label.scale,
+            bounds,
+            default_color: Color::rgba(r, g, b, a),
+            custom_glyphs: &[],
+        })
+    })
+}
+
+/// The laid-out box of an unbounded buffer: its widest line and the bottom
+/// of its last line, before any scale.
+fn buffer_extent(buffer: &Buffer) -> (f32, f32) {
+    buffer
+        .layout_runs()
+        .fold((0.0_f32, 0.0_f32), |(width, height), run| {
+            (
+                width.max(run.line_w),
+                height.max(run.line_top + run.line_height),
+            )
+        })
 }
 
 /// Text areas of the prepared sections, in section order.

@@ -86,3 +86,43 @@ fn a_node_store_measures_through_its_supertrait() {
     assert_eq!(metrics.size, Vec2::new(20.0, 12.0));
     assert_eq!(metrics.line_count, 1);
 }
+
+#[test]
+fn world_label_builders_set_their_fields() {
+    let label = WorldLabel::new("12", Vec2::new(3.0, 4.0), "sans", 14.0);
+    assert_eq!(label.text, "12");
+    assert_eq!(label.anchor, Vec2::new(3.0, 4.0));
+    assert_eq!(label.offset, Vec2::ZERO);
+    assert_eq!(label.pivot, Vec2::new(0.5, 1.0));
+    assert_eq!(label.font_id, "sans");
+    assert_eq!(label.font_size, 14.0);
+    assert_eq!(label.line_height, 0.0);
+    assert_eq!(label.color, [255, 255, 255, 255]);
+    assert_eq!(label.scale, 1.0);
+
+    let label = label
+        .with_offset(Vec2::new(-1.0, -2.0))
+        .with_pivot(Vec2::ZERO)
+        .with_line_height(18.0)
+        .with_color([255, 200, 0, 255])
+        .with_scale(1.5);
+    assert_eq!(label.offset, Vec2::new(-1.0, -2.0));
+    assert_eq!(label.pivot, Vec2::ZERO);
+    assert_eq!(label.line_height, 18.0);
+    assert_eq!(label.color, [255, 200, 0, 255]);
+    assert_eq!(label.scale, 1.5);
+
+    let mut labels = WorldLabels::default();
+    assert_eq!((labels.cap(), labels.cull_margin()), (512, 64.0));
+    labels.set_cap(2);
+    labels.set_cull_margin(-1.0);
+    labels.set_cull_margin(f32::NAN);
+    assert_eq!((labels.cap(), labels.cull_margin()), (2, 64.0));
+    labels.push(label.clone());
+    labels.push(WorldLabel::new("b", Vec2::ZERO, "mono", 11.0));
+    assert_eq!(labels.len(), 2);
+    let drained: Vec<_> = labels.drain().collect();
+    assert_eq!(drained[0], label);
+    assert_eq!(drained[1].text, "b");
+    assert!(labels.is_empty());
+}

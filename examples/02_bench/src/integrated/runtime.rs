@@ -9,7 +9,6 @@ use tungsten::core::{
     ParticleConfig, Pcg32, ScalarSlot, Sprite, TextureHandle, Tween, TweenChannel, World,
     splitmix64,
 };
-use tungsten::render::TextSection;
 
 use super::assets;
 use super::level::Level;
@@ -161,8 +160,7 @@ pub(super) struct Runtime {
     pub(super) flash: Option<MaterialAssetId>,
     /// The parallax strips' atlas page; its batches come first.
     pub(super) parallax_page: Option<TextureHandle>,
-    pub(super) hud: Vec<TextSection>,
-    pub(super) tags: Vec<TextSection>,
+    pub(super) hud: Vec<tungsten::render::TextSection>,
     pub(super) totals: Totals,
     pub(super) spark_seed: u64,
 }
@@ -190,7 +188,6 @@ impl Runtime {
             flash,
             parallax_page,
             hud: Vec::new(),
-            tags: Vec::new(),
             totals: Totals::default(),
             spark_seed: params.seed,
         }

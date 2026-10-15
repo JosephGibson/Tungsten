@@ -1,10 +1,12 @@
 //! The GPU half of text (`D-026`, `D-117`): glyphon's atlas, viewport and
-//! swash cache, one renderer for the screen-space sections and one per UI
-//! text batch on the shared atlas, under T1b's trim rule (`D-126`, `D-147`):
-//! `trim` runs only before a full frame, which re-prepares every batch and
-//! the sections; a full frame is forced after [`FULL_FRAME_INTERVAL`] changed
-//! frames, on `AtlasFull`, on a font reload and on every changed frame while
-//! there are no batches, so frames without UI prepare and trim as before.
+//! swash cache, one renderer for the screen-space sections, one for the
+//! world labels and one per UI text batch on the shared atlas, under T1b's
+//! trim rule (`D-126`, `D-147`, `D-161`): `trim` runs only before a full
+//! frame, which re-prepares every batch, the labels and the sections; a full
+//! frame is forced after [`FULL_FRAME_INTERVAL`] changed frames, on
+//! `AtlasFull`, on a font reload and on every changed frame while there are
+//! no batches, the labels counting as one, so frames without UI or labels
+//! prepare and trim as before.
 //! Between full frames only batches whose signature changed re-prepare, and
 //! a batch whose prepare failed is not drawn. The rule, the signatures and
 //! the batch bookkeeping are GPU-free types with their own tests.
@@ -22,7 +24,7 @@ use tungsten_core::ui::{ClipRect, PaintCommand, PaintList, Rect};
 use wgpu::{Device, MultisampleState, Queue, RenderPass, TextureFormat};
 
 use super::engine::NodeAreas;
-use super::{FontSource, TextEngine, TextSection};
+use super::{FontSource, TextEngine, TextSection, WorldLabelRun};
 
 /// K (`D-126`): the changed frame at which a full frame is forced while
 /// batches are retained. Sixteen trades prepare cost against atlas bytes on
@@ -53,6 +55,13 @@ pub struct TextStats {
     pub atlas_full_total: u64,
     /// Full frames since the pipeline was made.
     pub full_frames_total: u64,
+    /// World labels drawn this frame (M54).
+    pub labels: u32,
+    /// Glyphs in the label areas this frame's prepare took; 0 when the
+    /// labels did not prepare.
+    pub label_glyphs: u32,
+    /// Layouts in the engine's cache, sections and labels together.
+    pub layouts: u32,
 }
 
 /// What a frame's prepare does under the trim rule.
@@ -127,6 +136,13 @@ impl TrimPolicy {
     pub(crate) fn atlas_full_total(&self) -> u64 {
         self.atlas_full_total
     }
+}
+
+/// The batches the trim rule counts: the UI's, and the world labels as one
+/// when there are any (`D-161`), so a frame of labels without UI defers its
+/// trim as a frame of UI does.
+pub(crate) fn trim_batches(ui_batches: usize, labels: &[WorldLabelRun]) -> usize {
+    ui_batches + usize::from(!labels.is_empty())
 }
 
 /// One text command's draw inputs: everything glyphon bakes into the batch's
@@ -298,6 +314,12 @@ pub struct TextPipeline {
     text_renderer: TextRenderer,
     /// Whether the sections' last prepare completed, so they draw.
     sections_drawable: bool,
+    /// The world labels' renderer (`D-161`).
+    labels_renderer: TextRenderer,
+    /// Whether the labels' last prepare completed, so they draw.
+    labels_drawable: bool,
+    /// The labels of the next prepare, from [`Self::set_world_labels`].
+    world_labels: Vec<WorldLabelRun>,
     /// One renderer per UI batch index, grown and never shrunk.
     batches: Vec<TextRenderer>,
     /// Batches in the last prepared paint list.
@@ -336,6 +358,12 @@ impl TextPipeline {
             MULTISAMPLE,
             crate::quad::passthrough_depth_stencil(false),
         );
+        let labels_renderer = TextRenderer::new(
+            &mut atlas,
+            device,
+            MULTISAMPLE,
+            crate::quad::passthrough_depth_stencil(false),
+        );
 
         Self {
             engine: TextEngine::new(source),
@@ -344,6 +372,9 @@ impl TextPipeline {
             atlas,
             text_renderer,
             sections_drawable: true,
+            labels_renderer,
+            labels_drawable: false,
+            world_labels: Vec::new(),
             batches: Vec::new(),
             batch_count: 0,
             book: BatchBook::default(),
@@ -387,19 +418,27 @@ impl TextPipeline {
         self.engine.set_font_families(families, fallback);
     }
 
+    /// Sets the world labels the next [`Self::prepare`] lays out, reusing
+    /// the strings of the last call's.
+    pub(crate) fn set_world_labels(&mut self, labels: &[WorldLabelRun]) {
+        copy_runs(&mut self.world_labels, labels);
+    }
+
     /// The frame's text telemetry, from the last `prepare`.
     #[must_use]
     pub fn stats(&self) -> TextStats {
         self.stats
     }
 
-    /// Prepares the sections and the UI text batches of `ui` for an
-    /// attachment of `width` × `height` under the trim rule: a full frame
-    /// trims first and prepares everything; a partial one only the batches
-    /// whose signature changed and, when changed, the sections; a frame with
-    /// nothing changed prepares nothing. A batch or the sections whose
-    /// prepare returns `AtlasFull` is not drawn until a prepare completes,
-    /// and the next frame is full.
+    /// Prepares the sections, the world labels of the last
+    /// `set_world_labels` and the UI text batches of `ui` for an attachment
+    /// of `width` × `height` under the trim rule: a full frame trims first
+    /// and prepares everything; a partial one only the batches whose
+    /// signature changed and, when changed, the labels and the sections; a
+    /// frame with nothing changed prepares nothing. A batch, the labels or
+    /// the sections whose prepare returns `AtlasFull` are not drawn until a
+    /// prepare completes, and the next frame is full. An empty label list
+    /// prepares and draws nothing.
     pub fn prepare(
         &mut self,
         device: &Device,
@@ -417,12 +456,20 @@ impl TextPipeline {
             .map(|range| batch_signature(ui, range.clone(), &self.engine, width, height))
             .collect();
         let changed = self.book.changed(&signatures);
-        let sections_changed = self.engine.update(sections, width, height);
-        let any_changed = sections_changed || changed.iter().any(|changed| *changed);
-        let kind = self
-            .policy
-            .decide(self.engine.font_epoch(), ranges.len(), any_changed);
+        let update = self
+            .engine
+            .update_frame(sections, &self.world_labels, width, height);
+        let any_changed =
+            update.sections || update.labels || changed.iter().any(|changed| *changed);
+        let kind = self.policy.decide(
+            self.engine.font_epoch(),
+            trim_batches(ranges.len(), &self.world_labels),
+            any_changed,
+        );
         self.batch_count = ranges.len();
+        if self.world_labels.is_empty() {
+            self.labels_drawable = false;
+        }
         self.stats = TextStats {
             batches: ranges.len() as u32,
             prepared: 0,
@@ -430,9 +477,15 @@ impl TextPipeline {
             forced: false,
             atlas_full_total: self.policy.atlas_full_total(),
             full_frames_total: self.policy.full_frames_total(),
+            labels: 0,
+            label_glyphs: 0,
+            layouts: self.engine.layout_count() as u32,
         };
         let full = match kind {
-            FrameKind::Nothing => return,
+            FrameKind::Nothing => {
+                self.stats.labels = self.drawn_labels();
+                return;
+            }
             FrameKind::Partial => false,
             FrameKind::Full { forced } => {
                 // Every retained batch re-prepares below, so nothing a
@@ -483,7 +536,33 @@ impl TextPipeline {
             }
         }
 
-        if full || sections_changed {
+        if !self.world_labels.is_empty() && (full || update.labels) {
+            let (font_system, areas) = self.engine.label_prepare_parts(width, height);
+            match self.labels_renderer.prepare(
+                device,
+                queue,
+                font_system,
+                &mut self.atlas,
+                &self.viewport,
+                areas,
+                &mut self.swash_cache,
+            ) {
+                Ok(()) => {
+                    self.engine.mark_labels_prepared(width, height);
+                    self.labels_drawable = true;
+                    self.stats.label_glyphs = self.engine.label_glyphs();
+                }
+                Err(PrepareError::AtlasFull) => {
+                    self.labels_drawable = false;
+                    self.policy.atlas_full();
+                    log::warn!(
+                        "World label prepare: the glyph atlas is full; the labels are not drawn this frame"
+                    );
+                }
+            }
+        }
+
+        if full || update.sections {
             let (font_system, areas) = self.engine.prepare_parts();
             match self.text_renderer.prepare(
                 device,
@@ -509,6 +588,36 @@ impl TextPipeline {
         }
         self.stats.atlas_full_total = self.policy.atlas_full_total();
         self.stats.full_frames_total = self.policy.full_frames_total();
+        self.stats.labels = self.drawn_labels();
+    }
+
+    /// The labels the overlay draws: the last prepared list when its
+    /// prepare completed, else none.
+    fn drawn_labels(&self) -> u32 {
+        if self.labels_drawable {
+            self.world_labels.len() as u32
+        } else {
+            0
+        }
+    }
+
+    /// Draws the prepared world labels, when there are some and their last
+    /// prepare completed.
+    pub(crate) fn render_labels<'pass>(&'pass self, pass: &mut RenderPass<'pass>) {
+        if !self.labels_drawable || self.world_labels.is_empty() {
+            return;
+        }
+        if let Err(e) = self
+            .labels_renderer
+            .render(&self.atlas, &self.viewport, pass)
+        {
+            log::error!("World label render error: {e:?}");
+        }
+    }
+
+    /// Whether the overlay has world labels to draw this frame.
+    pub(crate) fn has_labels(&self) -> bool {
+        self.labels_drawable && !self.world_labels.is_empty()
     }
 
     /// Draws the prepared sections.
@@ -534,6 +643,23 @@ impl TextPipeline {
             log::error!("Text batch {batch} render error: {e:?}");
         }
     }
+}
+
+/// Copies `src` into `dst`, reusing `dst`'s strings for the runs both hold.
+fn copy_runs(dst: &mut Vec<WorldLabelRun>, src: &[WorldLabelRun]) {
+    dst.truncate(src.len());
+    for (to, from) in dst.iter_mut().zip(src) {
+        to.content.clone_from(&from.content);
+        to.font_id.clone_from(&from.font_id);
+        to.font_size = from.font_size;
+        to.line_height = from.line_height;
+        to.position = from.position;
+        to.pivot = from.pivot;
+        to.scale = from.scale;
+        to.color = from.color;
+    }
+    let kept = dst.len();
+    dst.extend_from_slice(&src[kept..]);
 }
 
 #[cfg(test)]

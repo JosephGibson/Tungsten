@@ -525,3 +525,258 @@ fn routed_input_reads_as_an_input_state_of_its_own() {
     assert!(map.is_pressed(&routed, "jump"));
     assert_eq!(routed.raw_events(), &[]);
 }
+
+// ---- gamepads (M54) ----
+
+const PAD: GamepadId = GamepadId::new(0);
+const PAD_B: GamepadId = GamepadId::new(3);
+
+/// The frame's records, without their sequence numbers.
+fn records(input: &InputState) -> Vec<RawInput> {
+    input.raw_events().iter().map(|event| event.input).collect()
+}
+
+#[test]
+fn gamepad_button_edges_in_both_views() {
+    let mut input = InputState::new();
+    input.gamepad_connected(PAD);
+    input.gamepad_button_down(PAD, GamepadButton::South);
+    assert!(input.is_gamepad_pressed(GamepadButton::South));
+    assert!(input.is_gamepad_pressed_on(PAD, GamepadButton::South));
+    assert!(!input.is_gamepad_pressed_on(PAD_B, GamepadButton::South));
+    assert!(input.gamepad_just_pressed(GamepadButton::South));
+    input.set_fixed_view(true);
+    assert!(
+        input.gamepad_just_pressed(GamepadButton::South),
+        "fixed view"
+    );
+    input.set_fixed_view(false);
+    // A second press of a held button records nothing.
+    input.gamepad_button_down(PAD, GamepadButton::South);
+    assert_eq!(
+        records(&input),
+        [
+            RawInput::Gamepad {
+                pad: PAD,
+                connected: true
+            },
+            RawInput::GamepadButton {
+                pad: PAD,
+                button: GamepadButton::South,
+                pressed: true
+            },
+        ]
+    );
+
+    // The frame view clears at the frame; the fixed view at the step.
+    input.begin_frame();
+    assert!(!input.gamepad_just_pressed(GamepadButton::South));
+    input.set_fixed_view(true);
+    assert!(input.gamepad_just_pressed(GamepadButton::South));
+    input.end_fixed_step();
+    assert!(!input.gamepad_just_pressed(GamepadButton::South));
+    input.set_fixed_view(false);
+
+    input.gamepad_button_up(PAD, GamepadButton::South);
+    assert!(!input.is_gamepad_pressed(GamepadButton::South));
+    assert!(input.gamepad_just_released(GamepadButton::South));
+    input.set_fixed_view(true);
+    assert!(input.gamepad_just_released(GamepadButton::South));
+    input.set_fixed_view(false);
+    // A release of a button not held records nothing.
+    input.gamepad_button_up(PAD, GamepadButton::East);
+    assert_eq!(records(&input).len(), 1);
+    assert_eq!(input.gamepads().collect::<Vec<_>>(), [PAD]);
+}
+
+#[test]
+fn stick_directions_press_with_hysteresis() {
+    let mut input = InputState::new();
+    let x = GamepadAxis::LeftStickX;
+    let held = |input: &InputState| {
+        (
+            input.is_stick_pressed(x, AxisDirection::Negative),
+            input.is_stick_pressed(x, AxisDirection::Positive),
+        )
+    };
+    input.set_gamepad_axis(PAD, x, 0.49);
+    assert_eq!(held(&input), (false, false), "below the press threshold");
+    assert_eq!(
+        input.gamepads().collect::<Vec<_>>(),
+        [PAD],
+        "input connects"
+    );
+    input.set_gamepad_axis(PAD, x, STICK_PRESS);
+    assert_eq!(held(&input), (false, true));
+    assert!(input.stick_just_pressed(x, AxisDirection::Positive));
+    input.begin_frame();
+    input.set_gamepad_axis(PAD, x, 0.36);
+    assert_eq!(
+        held(&input),
+        (false, true),
+        "held down to the release threshold"
+    );
+    input.set_gamepad_axis(PAD, x, 0.34);
+    assert_eq!(held(&input), (false, false));
+    assert!(input.stick_just_released(x, AxisDirection::Positive));
+    assert_eq!(input.gamepad_axis(x), 0.34);
+    assert_eq!(input.gamepad_axis_on(PAD, x), 0.34);
+
+    // Full right to full left in one move releases one way and presses the
+    // other, both recorded before the axis record.
+    input.set_gamepad_axis(PAD, x, 1.0);
+    input.begin_frame();
+    input.set_gamepad_axis(PAD, x, -1.5);
+    assert_eq!(held(&input), (true, false));
+    assert_eq!(input.gamepad_axis(x), -1.0, "clamped");
+    assert_eq!(
+        records(&input),
+        [
+            RawInput::GamepadStick {
+                pad: PAD,
+                axis: x,
+                direction: AxisDirection::Negative,
+                pressed: true
+            },
+            RawInput::GamepadStick {
+                pad: PAD,
+                axis: x,
+                direction: AxisDirection::Positive,
+                pressed: false
+            },
+            RawInput::GamepadAxis {
+                pad: PAD,
+                axis: x,
+                value: -1.0
+            },
+        ]
+    );
+
+    // Any pad: the farthest value, and a held direction on either.
+    input.set_gamepad_axis(PAD_B, x, 0.6);
+    assert_eq!(input.gamepad_axis(x), -1.0);
+    assert!(input.is_stick_pressed(x, AxisDirection::Positive));
+    assert_eq!(input.gamepads().collect::<Vec<_>>(), [PAD, PAD_B]);
+}
+
+#[test]
+fn focus_loss_releases_gamepad_input() {
+    let mut input = InputState::new();
+    let mut map = ActionMap::new();
+    map.replace_bindings(
+        "move_right",
+        vec![Binding::GamepadAxis {
+            axis: GamepadAxis::LeftStickX,
+            direction: AxisDirection::Positive,
+        }],
+    );
+    map.replace_bindings(
+        "jump",
+        vec![Binding::GamepadButton {
+            button: GamepadButton::South,
+        }],
+    );
+    input.gamepad_connected(PAD);
+    input.gamepad_button_down(PAD, GamepadButton::South);
+    input.set_gamepad_axis(PAD, GamepadAxis::LeftStickX, 1.0);
+    assert_eq!(map.value(&input, "move_right"), 1.0);
+    input.begin_frame();
+
+    input.set_focused(false);
+    assert!(!input.is_gamepad_pressed(GamepadButton::South));
+    assert!(input.gamepad_just_released(GamepadButton::South));
+    assert!(!input.is_stick_pressed(GamepadAxis::LeftStickX, AxisDirection::Positive));
+    assert!(input.stick_just_released(GamepadAxis::LeftStickX, AxisDirection::Positive));
+    input.set_fixed_view(true);
+    assert!(
+        input.gamepad_just_released(GamepadButton::South),
+        "fixed view"
+    );
+    input.set_fixed_view(false);
+    assert_eq!(input.gamepad_axis(GamepadAxis::LeftStickX), 0.0);
+    assert_eq!(map.value(&input, "move_right"), 0.0);
+    assert_eq!(map.value(&input, "jump"), 0.0);
+    assert!(map.just_released(&input, "jump"));
+    // No recorded releases; the pad stays connected.
+    assert_eq!(records(&input), [RawInput::Focus(false)]);
+    assert_eq!(input.gamepads().collect::<Vec<_>>(), [PAD]);
+}
+
+#[test]
+fn disconnect_releases_the_pads_input() {
+    let mut input = InputState::new();
+    input.gamepad_connected(PAD);
+    input.gamepad_connected(PAD_B);
+    input.gamepad_button_down(PAD, GamepadButton::North);
+    input.gamepad_button_down(PAD_B, GamepadButton::West);
+    input.set_gamepad_axis(PAD, GamepadAxis::RightStickY, -0.9);
+    input.begin_frame();
+
+    input.gamepad_disconnected(PAD);
+    assert_eq!(input.gamepads().collect::<Vec<_>>(), [PAD_B]);
+    assert!(!input.is_gamepad_pressed(GamepadButton::North));
+    assert!(input.gamepad_just_released(GamepadButton::North));
+    assert!(input.stick_just_released(GamepadAxis::RightStickY, AxisDirection::Negative));
+    assert_eq!(input.gamepad_axis(GamepadAxis::RightStickY), 0.0);
+    assert_eq!(input.gamepad_axis_on(PAD, GamepadAxis::RightStickY), 0.0);
+    assert!(
+        input.is_gamepad_pressed_on(PAD_B, GamepadButton::West),
+        "the other pad holds"
+    );
+    assert_eq!(
+        records(&input),
+        [RawInput::Gamepad {
+            pad: PAD,
+            connected: false
+        }]
+    );
+}
+
+#[test]
+fn adjacent_axis_moves_coalesce() {
+    let mut input = InputState::new();
+    let x = GamepadAxis::LeftStickX;
+    let y = GamepadAxis::LeftStickY;
+    let axis = |pad, axis, value| RawInput::GamepadAxis { pad, axis, value };
+    input.set_gamepad_axis(PAD, x, 0.1);
+    input.set_gamepad_axis(PAD, x, 0.2);
+    input.set_gamepad_axis(PAD, x, 0.3);
+    assert_eq!(
+        records(&input),
+        [axis(PAD, x, 0.3)],
+        "one record, the last value"
+    );
+
+    // Another axis, or another pad, starts a record of its own.
+    input.set_gamepad_axis(PAD, y, 0.1);
+    input.set_gamepad_axis(PAD_B, y, 0.1);
+    input.set_gamepad_axis(PAD_B, y, 0.2);
+    assert_eq!(
+        records(&input)[1..],
+        [axis(PAD, y, 0.1), axis(PAD_B, y, 0.2)]
+    );
+
+    // A crossing move starts a record and keeps its value; the next move
+    // starts another.
+    input.begin_frame();
+    input.set_gamepad_axis(PAD, x, 0.6);
+    input.set_gamepad_axis(PAD, x, 0.45);
+    input.set_gamepad_axis(PAD, x, 0.4);
+    let press = RawInput::GamepadStick {
+        pad: PAD,
+        axis: x,
+        direction: AxisDirection::Positive,
+        pressed: true,
+    };
+    assert_eq!(
+        records(&input),
+        [press, axis(PAD, x, 0.6), axis(PAD, x, 0.4)]
+    );
+
+    // Something recorded in between ends the run.
+    input.begin_frame();
+    input.set_gamepad_axis(PAD, x, 0.41);
+    input.key_down(KeyCode::KeyA);
+    input.set_gamepad_axis(PAD, x, 0.42);
+    assert_eq!(records(&input).len(), 3);
+}

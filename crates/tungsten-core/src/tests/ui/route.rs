@@ -318,7 +318,7 @@ fn focus_loss_cancels_the_press_clears_the_hover_and_releases_both_sides() {
     assert!(!routed.focused());
     let router = rig.router();
     assert!(
-        router.ui_keys.is_empty() && router.ui_buttons.is_empty(),
+        router.ui_held.is_empty() && router.ui_buttons.is_empty(),
         "the UI's held keys and buttons are forgotten"
     );
     rig.frame(|_| {});
@@ -766,4 +766,232 @@ fn a_widget_under_a_disabled_container_takes_no_click_or_press() {
 
     rig.tree_mut().set_enabled(panel, true);
     assert_eq!(activations(&rig.click(inner)), [inner]);
+}
+
+// ---- gamepads (M54) ----
+
+const PAD: GamepadId = GamepadId::new(0);
+const PAD_B: GamepadId = GamepadId::new(1);
+const STICK_X: GamepadAxis = GamepadAxis::LeftStickX;
+
+#[test]
+fn dpad_moves_focus_and_south_activates() {
+    let (mut rig, _root, a, b) = Rig::new();
+    rig.tree_mut().focus(a);
+    rig.frame(|input| input.gamepad_button_down(PAD, GamepadButton::DPadDown));
+    assert_eq!(rig.tree().focused(), Some(b));
+    assert_eq!(rig.router().last_device(), InputDevice::Gamepad);
+    assert!(
+        !rig.routed().gamepad_just_pressed(GamepadButton::DPadDown),
+        "the UI took the press"
+    );
+    let events = rig.frame(|input| {
+        input.gamepad_button_up(PAD, GamepadButton::DPadDown);
+        input.gamepad_button_down(PAD, GamepadButton::South);
+    });
+    assert_eq!(activations(&events), [b]);
+    assert!(
+        !rig.routed().gamepad_just_released(GamepadButton::DPadDown)
+            && !rig.routed().gamepad_just_pressed(GamepadButton::South),
+        "and its release, and South"
+    );
+    assert!(!rig.game_pressed(UI_ACCEPT));
+    let events = rig.frame(|input| input.gamepad_button_up(PAD, GamepadButton::South));
+    assert!(activations(&events).is_empty());
+    assert!(!rig.routed().gamepad_just_released(GamepadButton::South));
+
+    // East cancels the focused scope, as Escape does.
+    let events = rig.frame(|input| input.gamepad_button_down(PAD, GamepadButton::East));
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, UiEvent::Cancel { .. }))
+    );
+}
+
+#[test]
+fn a_held_stick_repeats_navigation() {
+    let (mut rig, root) = Rig::empty();
+    let column: Vec<WidgetId> = (0..12)
+        .map(|i| rig.place(root, at(10.0, 24.0 * i as f32, 100.0, 20.0)))
+        .collect();
+    rig.layout();
+    let index = |rig: &Rig| {
+        column
+            .iter()
+            .position(|id| rig.tree().focused() == Some(*id))
+            .expect("focus in the column")
+    };
+    rig.tree_mut().focus(column[0]);
+    // Down on the left stick: y grows upward.
+    rig.frame(|input| input.set_gamepad_axis(PAD, GamepadAxis::LeftStickY, -0.9));
+    assert_eq!(index(&rig), 1, "the press moves once");
+
+    let mut moved = Vec::new();
+    for frame in 1..=26 {
+        let before = rig.tree().focused();
+        // Small moves inside the held range do not restart it.
+        rig.frame(|input| {
+            input.set_gamepad_axis(
+                PAD,
+                GamepadAxis::LeftStickY,
+                -0.9 + 0.01 * (frame % 2) as f32,
+            );
+        });
+        if rig.tree().focused() != before {
+            moved.push(frame);
+        }
+    }
+    assert_eq!(moved, [16, 20, 23, 26]);
+    assert_eq!(index(&rig), 5);
+
+    rig.frame(|input| input.set_gamepad_axis(PAD, GamepadAxis::LeftStickY, -0.2));
+    for _ in 0..40 {
+        rig.frame(|_| {});
+    }
+    assert_eq!(index(&rig), 5, "the release stops it");
+
+    // The d-pad repeats too.
+    rig.frame(|input| input.gamepad_button_down(PAD, GamepadButton::DPadUp));
+    assert_eq!(index(&rig), 4);
+    for _ in 1..=16 {
+        rig.frame(|_| {});
+    }
+    assert_eq!(index(&rig), 3, "after half a second");
+}
+
+#[test]
+fn a_stick_the_ui_took_reads_zero_when_routed() {
+    let (mut rig, _root, a, _b) = Rig::new();
+    rig.tree_mut().focus(a);
+    let mut routed = Vec::new();
+    for value in [0.2, 0.4, 0.6, 0.8, 0.3, 0.1] {
+        rig.frame(|input| input.set_gamepad_axis(PAD, STICK_X, value));
+        let view = rig.routed();
+        routed.push(view.gamepad_axis(STICK_X));
+        for direction in [AxisDirection::Negative, AxisDirection::Positive] {
+            assert!(
+                !view.is_stick_pressed(STICK_X, direction)
+                    && !view.stick_just_pressed(STICK_X, direction)
+                    && !view.stick_just_released(STICK_X, direction),
+                "no stick edge at {value}"
+            );
+        }
+    }
+    assert_eq!(routed, [0.2, 0.4, 0.0, 0.0, 0.3, 0.1]);
+    let input = rig.world.resource::<InputState>();
+    assert_eq!(
+        input.gamepad_axis(STICK_X),
+        0.1,
+        "the raw view reads it all"
+    );
+}
+
+#[test]
+fn gamepad_navigation_shows_focus() {
+    let (mut rig, _root, a, b) = Rig::new();
+    rig.click(a);
+    assert!(!rig.tree().focus_visible());
+    // The first press shows focus and goes to the game, as a key's does.
+    rig.frame(|input| input.gamepad_button_down(PAD, GamepadButton::DPadDown));
+    assert_eq!(rig.router().last_device(), InputDevice::Gamepad);
+    assert!(rig.tree().focus_visible());
+    assert!(rig.router().wants_keyboard());
+    assert!(rig.routed().gamepad_just_pressed(GamepadButton::DPadDown));
+    assert_eq!(rig.tree().focused(), Some(a));
+    rig.frame(|input| input.gamepad_button_up(PAD, GamepadButton::DPadDown));
+    rig.frame(|input| input.gamepad_button_down(PAD, GamepadButton::DPadDown));
+    assert_eq!(rig.tree().focused(), Some(b), "the next one navigates");
+
+    // A stick press shows it too.
+    rig.click(a);
+    assert!(!rig.tree().focus_visible());
+    rig.frame(|input| input.set_gamepad_axis(PAD, STICK_X, 0.7));
+    assert!(rig.tree().focus_visible());
+}
+
+#[test]
+fn two_pads_keep_their_own_presses() {
+    let (mut rig, _root, _a, _b) = Rig::new();
+    // Nothing focused: pad A's South is the game's.
+    rig.frame(|input| input.gamepad_button_down(PAD, GamepadButton::South));
+    assert!(
+        rig.routed()
+            .is_gamepad_pressed_on(PAD, GamepadButton::South)
+    );
+
+    let popup = rig
+        .tree_mut()
+        .add_root(UiLayer::GamePopup, at(150.0, 100.0, 200.0, 100.0));
+    rig.tree_mut().set_modal(popup, true);
+    let ok = rig.place(popup, at(10.0, 10.0, 80.0, 30.0));
+    rig.layout();
+    let events = rig.frame(|input| input.gamepad_button_down(PAD_B, GamepadButton::South));
+    assert_eq!(activations(&events), [ok], "pad B's South is the modal's");
+    assert!(
+        !rig.routed()
+            .is_gamepad_pressed_on(PAD_B, GamepadButton::South)
+    );
+
+    rig.frame(|input| input.gamepad_button_up(PAD, GamepadButton::South));
+    let routed = rig.routed();
+    assert!(
+        routed.gamepad_just_released(GamepadButton::South)
+            && !routed.is_gamepad_pressed_on(PAD, GamepadButton::South),
+        "pad A's release reaches the game"
+    );
+    rig.frame(|input| input.gamepad_button_up(PAD_B, GamepadButton::South));
+    assert!(
+        !rig.routed().gamepad_just_released(GamepadButton::South),
+        "pad B's is the UI's"
+    );
+
+    // A disconnect forgets the pad's UI presses.
+    rig.frame(|input| input.gamepad_button_down(PAD_B, GamepadButton::DPadUp));
+    rig.frame(|input| input.gamepad_disconnected(PAD_B));
+    assert!(rig.router().ui_held.is_empty());
+    assert!(rig.router().repeat.is_none());
+    assert_eq!(rig.routed().gamepads().collect::<Vec<_>>(), [PAD]);
+}
+
+#[test]
+fn same_frame_crossings_reach_the_routed_view() {
+    // No focusable widget: the UI takes nothing.
+    let (mut rig, _root) = Rig::empty();
+    let views = |rig: &Rig| {
+        let read = |input: &InputState| {
+            (
+                input.is_stick_pressed(STICK_X, AxisDirection::Positive),
+                input.stick_just_pressed(STICK_X, AxisDirection::Positive),
+                input.stick_just_released(STICK_X, AxisDirection::Positive),
+                input.gamepad_axis(STICK_X),
+            )
+        };
+        (read(rig.world.resource::<InputState>()), read(rig.routed()))
+    };
+    rig.frame(|input| input.set_gamepad_axis(PAD, STICK_X, 0.8));
+    let (raw, routed) = views(&rig);
+    assert_eq!(raw, (true, true, false, 0.8));
+    assert_eq!(routed, raw);
+
+    rig.frame(|input| {
+        input.set_gamepad_axis(PAD, STICK_X, 0.3);
+        input.set_gamepad_axis(PAD, STICK_X, 0.4);
+    });
+    let (raw, routed) = views(&rig);
+    assert_eq!(
+        raw,
+        (false, false, true, 0.4),
+        "released and not pressed again"
+    );
+    assert_eq!(routed, raw);
+
+    rig.frame(|input| {
+        input.set_gamepad_axis(PAD, STICK_X, 0.2);
+        input.set_gamepad_axis(PAD, STICK_X, 0.6);
+        input.set_gamepad_axis(PAD, STICK_X, 0.45);
+    });
+    let (raw, routed) = views(&rig);
+    assert_eq!(raw, (true, true, false, 0.45), "pressed and still held");
+    assert_eq!(routed, raw);
 }

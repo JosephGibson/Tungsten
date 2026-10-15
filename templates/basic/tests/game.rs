@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use tungsten::core::assets::manifest::ResolvedManifest;
 use tungsten::core::{
-    ActionMap, AssetRegistry, Config, Settings, Sprite, Time, Transform, UserFolder, With,
+    ActionMap, AssetRegistry, Binding, Config, Settings, Sprite, Time, Transform, UserFolder, With,
 };
 use tungsten::testing::Harness;
 use tungsten::{App, SceneEntity};
@@ -98,6 +98,13 @@ fn data_files_load() {
             !actions.bindings(action).is_empty(),
             "{action} has no binding"
         );
+        assert!(
+            actions.bindings(action).iter().any(|binding| matches!(
+                binding,
+                Binding::GamepadAxis { .. } | Binding::GamepadButton { .. }
+            )),
+            "{action} has no gamepad binding"
+        );
     }
     let manifest = ResolvedManifest::load(game::MANIFEST).expect("the manifest loads");
     assert!(manifest.sprites["player"].path.is_file());
@@ -144,6 +151,28 @@ fn player_moves_under_move_right_only_in_gameplay() {
         Some(x),
         "paused, the player stays"
     );
+}
+
+#[test]
+fn a_gamepad_stick_moves_the_player() {
+    let mut harness = harness();
+    tap(&mut harness, "state_start");
+    // The harness presses an action's first binding: make it the stick's.
+    let actions = harness.world_mut().resource_mut::<ActionMap>();
+    let stick: Vec<Binding> = actions
+        .bindings("move_right")
+        .iter()
+        .copied()
+        .filter(|binding| matches!(binding, Binding::GamepadAxis { .. }))
+        .collect();
+    assert_eq!(stick.len(), 1, "move_right has one stick binding");
+    actions.replace_bindings("move_right", stick);
+    harness.press_action("move_right");
+    harness.step(30);
+    let [x, y] = player(&harness).expect("the player spawned");
+    let expected = PLAYER_START[0] + game::PLAYER_SPEED * 30.0 / 60.0;
+    assert!((x - expected).abs() < 1e-3, "x = {x}, expected {expected}");
+    assert!((y - PLAYER_START[1]).abs() < f32::EPSILON);
 }
 
 #[test]

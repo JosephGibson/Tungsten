@@ -519,3 +519,175 @@ fn a_reload_without_a_face_keeps_the_font() {
     assert_ne!(cache.font_epoch(), epoch);
     assert!(cache.font_attrs.contains_key("mono"));
 }
+
+// ---- world labels (`D-161`) ----
+
+fn label(content: &str, x: f32, y: f32) -> WorldLabelRun {
+    WorldLabelRun {
+        content: content.to_string(),
+        font_id: "mono".to_string(),
+        font_size: 14.0,
+        line_height: 18.0,
+        position: [x, y],
+        pivot: [0.5, 1.0],
+        scale: 1.0,
+        color: [255, 255, 255, 255],
+    }
+}
+
+/// One frame of sections and labels as the pipeline runs it: the update,
+/// then glyphon's prepare of each changed group, which the marks stand in
+/// for.
+fn labelled_frame(
+    cache: &mut TextLayoutCache,
+    sections: &[TextSection],
+    labels: &[WorldLabelRun],
+) -> FrameUpdate {
+    let update = cache.update_frame(sections, labels, WIDTH, HEIGHT);
+    if update.sections {
+        cache.mark_prepared(WIDTH, HEIGHT);
+    }
+    if update.labels {
+        cache.mark_labels_prepared(WIDTH, HEIGHT);
+    }
+    update
+}
+
+fn label_area_list(cache: &TextLayoutCache) -> Vec<TextArea<'_>> {
+    label_areas(&cache.prepared_labels, &cache.buffers, WIDTH, HEIGHT).collect()
+}
+
+#[test]
+fn label_layouts_plateau_under_unique_text() {
+    const LABELS: usize = 512;
+    let mut cache = mono_cache();
+    let (mut peak_first, mut peak_second) = (0, 0);
+    for index in 0..1_000u32 {
+        let labels: Vec<_> = (0..LABELS)
+            .map(|row| {
+                label(
+                    &format!("{index:04} {row:03}"),
+                    10.0 + row as f32,
+                    40.0 + (row % 40) as f32 * 20.0,
+                )
+            })
+            .collect();
+        let update = labelled_frame(&mut cache, &[], &labels);
+        assert!(update.labels, "frame {index}");
+        let layouts = cache.buffers.len();
+        assert!(layouts <= 3 * LABELS, "frame {index}: {layouts} layouts");
+        assert!(cache.spare.len() <= SPARE_BUFFER_CAP, "frame {index}");
+        if index < 500 {
+            peak_first = peak_first.max(layouts);
+        } else {
+            peak_second = peak_second.max(layouts);
+        }
+    }
+    assert!(
+        peak_second <= peak_first,
+        "the map grew: {peak_first} then {peak_second}"
+    );
+    assert_eq!(label_area_list(&cache).len(), LABELS);
+}
+
+#[test]
+fn labels_share_layouts_with_sections() {
+    let mut cache = mono_cache();
+    let sections = [section("fps 60", 0)];
+    let labels = [
+        label("12", 100.0, 100.0),
+        label("12", 300.0, 200.0),
+        label("crit", 500.0, 300.0),
+    ];
+    let update = labelled_frame(&mut cache, &sections, &labels);
+    assert!(update.sections && update.labels);
+    // One map: the section's layout, and one per distinct label text.
+    assert_eq!(cache.buffers.len(), 3);
+    assert_eq!(cache.layout_count(), 3);
+    assert_eq!(label_area_list(&cache).len(), 3);
+
+    // An unchanged frame touches nothing.
+    let counter = cache.frame_counter;
+    assert_eq!(
+        labelled_frame(&mut cache, &sections, &labels),
+        FrameUpdate::default()
+    );
+    assert_eq!(cache.frame_counter, counter);
+
+    // Labels that change every frame advance the one counter, and the
+    // static section's layout stays live through it.
+    for index in 0..=BUFFER_CACHE_MAX_UNUSED_FRAMES + 4 {
+        let moving = [label(&format!("{index}"), 100.0, 100.0)];
+        let update = labelled_frame(&mut cache, &sections, &moving);
+        assert!(update.labels && !update.sections, "frame {index}");
+        assert!(
+            cache.buffers.keys().any(|key| key.content == "fps 60"),
+            "frame {index}: the section's layout aged out"
+        );
+    }
+    assert_eq!(
+        cache.frame_counter,
+        counter + BUFFER_CACHE_MAX_UNUSED_FRAMES + 5
+    );
+    assert_eq!(glyphs(&cache).len(), 1);
+
+    // No labels after some: the group changes once, then rests.
+    assert!(labelled_frame(&mut cache, &sections, &[]).labels);
+    assert!(label_area_list(&cache).is_empty());
+    assert_eq!(
+        labelled_frame(&mut cache, &sections, &[]),
+        FrameUpdate::default()
+    );
+}
+
+#[test]
+fn label_pivot_places_the_box() {
+    let mut cache = mono_cache();
+    let mut centred = label("pivot", 400.0, 300.0);
+    centred.scale = 2.0;
+    let mut corner = label("pivot", 400.0, 300.0);
+    corner.pivot = [0.0, 0.0];
+    let mut right = label("pivot", 400.0, 300.0);
+    right.pivot = [1.0, 0.5];
+    right.scale = 1.5;
+    labelled_frame(&mut cache, &[], &[centred, corner, right]);
+
+    let areas = label_area_list(&cache);
+    assert_eq!(areas.len(), 3);
+    let (width, height) = buffer_extent(areas[0].buffer);
+    assert!(width > 0.0);
+    // One line at the 18-unit line height.
+    assert_eq!(height, 18.0);
+    let place = |area: &TextArea<'_>| (area.left, area.top, area.scale);
+    assert_eq!(
+        place(&areas[0]),
+        (400.0 - width * 2.0 * 0.5, 300.0 - height * 2.0, 2.0)
+    );
+    assert_eq!(place(&areas[1]), (400.0, 300.0, 1.0));
+    assert_eq!(
+        place(&areas[2]),
+        (400.0 - width * 1.5, 300.0 - height * 1.5 * 0.5, 1.5)
+    );
+    for area in &areas {
+        assert_eq!(
+            (area.bounds.left, area.bounds.top),
+            (0, 0),
+            "bounded by the viewport"
+        );
+        assert_eq!(
+            (area.bounds.right, area.bounds.bottom),
+            (WIDTH as i32, HEIGHT as i32)
+        );
+    }
+
+    // A changed scale or pivot alone re-prepares the group.
+    let mut moved = label("pivot", 400.0, 300.0);
+    moved.pivot = [0.0, 0.0];
+    let unchanged = [moved.clone()];
+    labelled_frame(&mut cache, &[], &unchanged);
+    assert!(!labelled_frame(&mut cache, &[], &unchanged).labels);
+    moved.scale = 1.125;
+    assert!(labelled_frame(&mut cache, &[], &[moved.clone()]).labels);
+    moved.pivot = [0.25, 0.0];
+    assert!(labelled_frame(&mut cache, &[], &[moved]).labels);
+}

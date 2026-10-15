@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use tungsten_core::assets::{LayerKind, TilemapRegistry, UvRect};
 use tungsten_core::{
     AssetRegistry, Config, FilterMode, Plugin, Schedule, Sprite, SpriteAssetId, TextureHandle,
-    TilemapData, TilemapInstance, TilemapLayer, Transform, Visibility,
+    TilemapData, TilemapInstance, TilemapLayer, Transform, Visibility, WorldLabel,
 };
 use tungsten_render::SpriteInstance;
 
@@ -298,4 +298,202 @@ fn last_replace_wins() {
     assert_eq!(batches_text(&draw.sprites), batches_text(&[batch(21, 0.0)]));
     assert_eq!(debug_text(&draw.quads), debug_text(&[quad(21)]));
     assert_eq!(debug_text(&draw.text), debug_text(&[section("third")]));
+}
+
+/// A harness on an 800 x 600 window at scale 1, with the camera at the
+/// origin.
+fn label_harness() -> Harness {
+    let mut app = new_app();
+    let world = app.world_mut();
+    world.insert_resource(crate::WindowSize {
+        width: 800,
+        height: 600,
+    });
+    world.insert_resource(tungsten_core::ScaleFactor::default());
+    Harness::new(app)
+}
+
+fn push_label(harness: &mut Harness, label: WorldLabel) {
+    harness
+        .world_mut()
+        .resource_mut::<WorldLabels>()
+        .push(label);
+}
+
+fn label_counts(harness: &Harness) -> (u32, u32, u32) {
+    let counts = harness.world().resource::<crate::RenderCounts>();
+    (
+        counts.world_labels,
+        counts.world_labels_culled,
+        counts.world_labels_dropped,
+    )
+}
+
+fn drawn_labels(harness: &Harness) -> Vec<WorldLabelRun> {
+    harness.draw().expect("a frame ran").world_labels.clone()
+}
+
+#[test]
+fn world_labels_project_through_the_camera() {
+    let mut harness = label_harness();
+    *harness.world_mut().resource_mut::<CameraState>() = CameraState {
+        position: Vec2::new(100.0, 50.0),
+        zoom: 2.0,
+        rotation: 0.0,
+    };
+    let label = WorldLabel::new("12", Vec2::new(150.0, 80.0), "sans", 14.0)
+        .with_offset(Vec2::new(4.0, -10.0))
+        .with_pivot(Vec2::new(0.0, 0.5))
+        .with_line_height(18.0)
+        .with_color([255, 0, 0, 255]);
+    push_label(&mut harness, label.clone());
+    harness.step(1);
+    let runs = drawn_labels(&harness);
+    assert_eq!(runs.len(), 1);
+    let run = &runs[0];
+    // (150 - 100) * 2 + 4, (80 - 50) * 2 - 10.
+    assert_eq!(run.position, [104.0, 50.0]);
+    assert_eq!(run.pivot, [0.0, 0.5]);
+    assert_eq!(run.content, "12");
+    assert_eq!(run.font_id, "sans");
+    assert_eq!((run.font_size, run.line_height), (14.0, 18.0));
+    assert_eq!(run.color, [255, 0, 0, 255]);
+    assert_eq!(run.scale, 1.0);
+
+    // The offset is in UI units: it scales with the display; the anchor's
+    // projection does not.
+    harness
+        .world_mut()
+        .resource_mut::<tungsten_core::ScaleFactor>()
+        .set_ui_scale(2.0);
+    push_label(&mut harness, label);
+    harness.step(1);
+    let run = &drawn_labels(&harness)[0];
+    assert_eq!(run.position, [108.0, 40.0]);
+    assert_eq!(run.scale, 2.0);
+}
+
+#[test]
+fn world_labels_cull_outside_the_view() {
+    let mut harness = label_harness();
+    // The margin is 64 UI units around the 800 x 600 view.
+    for (text, x, y) in [
+        ("left in", -60.0, 10.0),
+        ("left out", -70.0, 10.0),
+        ("right in", 860.0, 10.0),
+        ("right out", 870.0, 10.0),
+        ("below out", 10.0, 670.0),
+        ("centre", 400.0, 300.0),
+    ] {
+        push_label(
+            &mut harness,
+            WorldLabel::new(text, Vec2::new(x, y), "mono", 11.0),
+        );
+    }
+    harness.step(1);
+    let kept: Vec<_> = drawn_labels(&harness)
+        .into_iter()
+        .map(|run| run.content)
+        .collect();
+    assert_eq!(kept, ["left in", "right in", "centre"]);
+    assert_eq!(label_counts(&harness), (3, 3, 0));
+
+    // A tighter margin culls the near ones too.
+    harness
+        .world_mut()
+        .resource_mut::<WorldLabels>()
+        .set_cull_margin(0.0);
+    push_label(
+        &mut harness,
+        WorldLabel::new("left in", Vec2::new(-60.0, 10.0), "mono", 11.0),
+    );
+    harness.step(1);
+    assert!(drawn_labels(&harness).is_empty());
+    assert_eq!(label_counts(&harness), (0, 1, 0));
+}
+
+#[test]
+fn world_labels_cap_drops_the_latest() {
+    let mut harness = label_harness();
+    harness.world_mut().resource_mut::<WorldLabels>().set_cap(2);
+    push_label(
+        &mut harness,
+        WorldLabel::new("off", Vec2::new(-500.0, 0.0), "mono", 11.0),
+    );
+    for text in ["a", "b", "c", "d"] {
+        push_label(
+            &mut harness,
+            WorldLabel::new(text, Vec2::new(10.0, 10.0), "mono", 11.0),
+        );
+    }
+    harness.step(1);
+    let kept: Vec<_> = drawn_labels(&harness)
+        .into_iter()
+        .map(|run| run.content)
+        .collect();
+    // Culled labels do not count against the cap.
+    assert_eq!(kept, ["a", "b"]);
+    assert_eq!(label_counts(&harness), (2, 1, 2));
+}
+
+#[test]
+fn world_labels_last_one_frame() {
+    let mut harness = label_harness();
+    push_label(
+        &mut harness,
+        WorldLabel::new("hit", Vec2::new(10.0, 10.0), "mono", 11.0),
+    );
+    harness.step(1);
+    assert_eq!(drawn_labels(&harness).len(), 1);
+    assert!(harness.world().resource::<WorldLabels>().is_empty());
+    harness.step(1);
+    assert!(drawn_labels(&harness).is_empty());
+    assert_eq!(label_counts(&harness), (0, 0, 0));
+}
+
+#[test]
+fn hidden_ui_hides_world_labels() {
+    let mut harness = label_harness();
+    harness
+        .world_mut()
+        .resource_mut::<UiDebug>()
+        .hide_game_layers = true;
+    push_label(
+        &mut harness,
+        WorldLabel::new("hit", Vec2::new(10.0, 10.0), "mono", 11.0),
+    );
+    harness.step(1);
+    assert!(drawn_labels(&harness).is_empty());
+    assert!(harness.world().resource::<WorldLabels>().is_empty());
+    assert_eq!(label_counts(&harness), (0, 0, 0));
+}
+
+#[test]
+fn label_scale_snaps_to_eighths() {
+    let mut harness = label_harness();
+    for scale in [1.0, 1.06, 1.07, 1.3, 1.6, 0.05] {
+        push_label(
+            &mut harness,
+            WorldLabel::new("n", Vec2::new(10.0, 10.0), "mono", 11.0).with_scale(scale),
+        );
+    }
+    harness.step(1);
+    let scales: Vec<f32> = drawn_labels(&harness).iter().map(|run| run.scale).collect();
+    // 0.05 snaps to 0 and draws nothing, counted as culled.
+    assert_eq!(scales, [1.0, 1.0, 1.125, 1.25, 1.625]);
+    assert_eq!(label_counts(&harness), (5, 1, 0));
+    assert_eq!(LABEL_SCALE_STEP, 0.125);
+
+    // The display's scale enters before the snap.
+    harness
+        .world_mut()
+        .resource_mut::<tungsten_core::ScaleFactor>()
+        .set_ui_scale(1.5);
+    push_label(
+        &mut harness,
+        WorldLabel::new("n", Vec2::new(10.0, 10.0), "mono", 11.0).with_scale(1.1),
+    );
+    harness.step(1);
+    // 1.1 * 1.5 = 1.65 snaps to 1.625.
+    assert_eq!(drawn_labels(&harness)[0].scale, 1.625);
 }
