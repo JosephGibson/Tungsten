@@ -5,12 +5,15 @@
 //! (w01 §6's partition rule). The popup is modal (`D-149`): its buttons or
 //! Escape hide it, and the window's "Drop" shows it again. World labels
 //! (M54, `D-161`) draw under the UI: a fixed set for the `labels` fixture and
-//! floating damage numbers in the interactive run.
+//! floating damage numbers in the interactive run. The interactive run adds
+//! a "Settings" window of checkboxes and sliders (M55) at the top end
+//! corner, whose controls switch the damage numbers, set their rate and
+//! show a volume readout; it takes input once the modal popup is gone.
 
 use glam::Vec2;
 use tungsten::core::ui::{
-    Align, Anchor, CursorIcon, Justify, LayoutStyle, Sizing, StyleOverrides, TextOverrides,
-    UiEvent, UiLayer, UiTree, Visibility, WidgetId,
+    Align, Anchor, CursorIcon, Justify, LayoutStyle, Sizing, SliderRange, StyleOverrides,
+    TextOverrides, UiEvent, UiLayer, UiTree, UiValue, Visibility, WidgetId,
 };
 use tungsten::core::{AssetRegistry, EventQueue, Time, World, WorldLabel, WorldLabels};
 
@@ -254,7 +257,7 @@ pub fn fixture_labels_system(world: &mut World) {
     ));
 }
 
-/// Seconds between two damage numbers.
+/// Seconds between two damage numbers at the start: four a second.
 const SPAWN_INTERVAL: f32 = 0.25;
 /// A damage number's life in seconds.
 const LIFE: f32 = 0.8;
@@ -275,26 +278,56 @@ struct DamageNumber {
 }
 
 /// The interactive run's floating damage numbers, a `World` resource the
-/// lab owns.
-#[derive(Debug, Default)]
+/// lab owns; the "Settings" window switches them and sets their rate.
+#[derive(Debug)]
 pub struct DamageNumbers {
     numbers: Vec<DamageNumber>,
     until_next: f32,
     spawned: u32,
+    enabled: bool,
+    interval: f32,
 }
 
-/// Spawns a number every 0.25 s near a fixed point, every fourth a gold
-/// crit in `sans_bold`; each floats 40 UI units up over 0.8 s, pops from
-/// scale 1.6 to 1 over its first 0.15 s and fades out, ticked on
-/// `Time::delta`.
+impl Default for DamageNumbers {
+    fn default() -> Self {
+        Self {
+            numbers: Vec::new(),
+            until_next: 0.0,
+            spawned: 0,
+            enabled: true,
+            interval: SPAWN_INTERVAL,
+        }
+    }
+}
+
+impl DamageNumbers {
+    /// Whether new numbers spawn; the ones afloat finish either way.
+    #[must_use]
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    /// Seconds between two numbers.
+    #[must_use]
+    pub fn interval(&self) -> f32 {
+        self.interval
+    }
+}
+
+/// While enabled, spawns a number every interval (0.25 s at the start) near
+/// a fixed point, every fourth a gold crit in `sans_bold`; each floats 40 UI
+/// units up over 0.8 s, pops from scale 1.6 to 1 over its first 0.15 s and
+/// fades out, ticked on `Time::delta`.
 pub fn damage_numbers_system(world: &mut World) {
     let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
     let Some(mut damage) = world.remove_resource::<DamageNumbers>() else {
         return;
     };
-    damage.until_next -= dt;
-    while damage.until_next <= 0.0 {
-        damage.until_next += SPAWN_INTERVAL;
+    if damage.enabled {
+        damage.until_next -= dt;
+    }
+    while damage.enabled && damage.until_next <= 0.0 {
+        damage.until_next += damage.interval;
         let n = damage.spawned;
         damage.spawned += 1;
         let jitter = [-24.0, 8.0, -8.0, 24.0][(n % 4) as usize];
@@ -330,4 +363,148 @@ pub fn damage_numbers_system(world: &mut World) {
         }
     }
     world.insert_resource(damage);
+}
+
+/// The "Settings" window's controls, a `World` resource the controls system
+/// reads.
+#[derive(Debug)]
+pub struct UiControls {
+    /// The window root.
+    pub window: WidgetId,
+    /// "Damage numbers": spawns them while on.
+    pub damage: WidgetId,
+    /// "Spawn rate": damage numbers a second, 1 to 8.
+    pub spawn_rate: WidgetId,
+    /// "Volume": 0 to 100 by 5, shown in the readout.
+    pub volume: WidgetId,
+    /// The volume's readout label, "80%" at the start.
+    pub volume_readout: WidgetId,
+    /// "Locked": a disabled toggle that shows the disabled look.
+    pub locked: WidgetId,
+}
+
+/// A row of the "Settings" window holding `caption`, which fills the space
+/// before the control.
+fn control_row(tree: &mut UiTree, window: WidgetId, caption: &str) -> WidgetId {
+    let mut style = LayoutStyle::row().with_gap(8.0);
+    style.align_items = Align::Center;
+    let row = tree.panel(window, style);
+    tree.set_overrides(
+        row,
+        StyleOverrides {
+            background: Some([0, 0, 0, 0]),
+            border_width: Some(0.0),
+            ..StyleOverrides::default()
+        },
+    );
+    let label = tree.label(row, caption);
+    tree.set_layout_style(
+        label,
+        LayoutStyle::default().with_size(Sizing::Fill, Sizing::Auto),
+    );
+    row
+}
+
+/// Gives a control its caption as its accessible name and the pointer
+/// cursor.
+fn name_control(tree: &mut UiTree, control: WidgetId, caption: &str) {
+    tree.set_accessible_name(control, Some(caption.to_owned()));
+    tree.set_cursor(control, Some(CursorIcon::Pointer));
+}
+
+/// Builds the "Settings" window into `tree`: a root about 240 units wide at
+/// the top end corner on the game layer, with a "Damage numbers" toggle
+/// (on), a "Spawn rate" slider (1 to 8 a second by 1, at 4), a "Volume"
+/// slider (0 to 100 by 5, at 80) with its readout, and a disabled "Locked"
+/// toggle, each in a row after its caption.
+pub fn build_controls(tree: &mut UiTree) -> UiControls {
+    let window = tree.add_root(
+        UiLayer::Game,
+        LayoutStyle::column()
+            .with_padding(12.0)
+            .with_gap(8.0)
+            .with_size(Sizing::Px(240.0), Sizing::Auto)
+            .anchored(Anchor::TopEnd, Vec2::new(16.0, 16.0)),
+    );
+    let title = tree.label(window, "Settings");
+    tree.set_overrides(
+        title,
+        text(TextOverrides {
+            weight: Some(700),
+            ..TextOverrides::default()
+        }),
+    );
+
+    let row = control_row(tree, window, "Damage numbers");
+    let damage = tree.toggle(row, true);
+    name_control(tree, damage, "Damage numbers");
+
+    let row = control_row(tree, window, "Spawn rate");
+    let spawn_rate = tree.slider(row, SliderRange::new(1.0, 8.0).with_step(1.0), 4.0);
+    tree.set_layout_style(
+        spawn_rate,
+        LayoutStyle::default().with_size(Sizing::Px(110.0), Sizing::Auto),
+    );
+    name_control(tree, spawn_rate, "Spawn rate");
+
+    let row = control_row(tree, window, "Volume");
+    let volume = tree.slider(row, SliderRange::new(0.0, 100.0).with_step(5.0), 80.0);
+    tree.set_layout_style(
+        volume,
+        LayoutStyle::default().with_size(Sizing::Px(70.0), Sizing::Auto),
+    );
+    name_control(tree, volume, "Volume");
+    let volume_readout = tree.label(row, "80%");
+    tree.set_layout_style(
+        volume_readout,
+        LayoutStyle::default().with_size(Sizing::Px(40.0), Sizing::Auto),
+    );
+
+    let row = control_row(tree, window, "Locked");
+    let locked = tree.toggle(row, false);
+    name_control(tree, locked, "Locked");
+    tree.set_enabled(locked, false);
+
+    UiControls {
+        window,
+        damage,
+        spawn_rate,
+        volume,
+        volume_readout,
+        locked,
+    }
+}
+
+/// Applies this frame's control changes (`UiEvent::ValueChanged`): the
+/// damage numbers' switch and rate, and the volume's readout.
+pub fn controls_system(world: &mut World) {
+    let (Some(controls), Some(events)) = (
+        world.get_resource::<UiControls>(),
+        world.get_resource::<EventQueue<UiEvent>>(),
+    ) else {
+        return;
+    };
+    let damage_on = events
+        .value_changed(controls.damage)
+        .and_then(UiValue::as_bool);
+    let rate = events
+        .value_changed(controls.spawn_rate)
+        .and_then(UiValue::as_number);
+    let volume = events
+        .value_changed(controls.volume)
+        .and_then(UiValue::as_number);
+    let readout = controls.volume_readout;
+    if let Some(volume) = volume
+        && let Some(tree) = world.get_resource_mut::<UiTree>()
+    {
+        tree.set_text(readout, format!("{volume:.0}%"));
+    }
+    if let Some(damage) = world.get_resource_mut::<DamageNumbers>() {
+        if let Some(on) = damage_on {
+            damage.enabled = on;
+        }
+        if let Some(rate) = rate {
+            damage.interval = 1.0 / rate;
+        }
+    }
 }

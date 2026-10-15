@@ -4,7 +4,7 @@ use super::*;
 use crate::text::{TextStyle, TextWrap};
 use crate::ui::theme::{ResolvedStyle, StyleOverrides, TextOverrides, Theme, WidgetState};
 use crate::ui::tree::StyleStats;
-use crate::ui::{FixedAdvanceMeasure, UiLayer, UiTree, WidgetId};
+use crate::ui::{FixedAdvanceMeasure, SliderRange, UiLayer, UiTree, WidgetId, WidgetKind};
 
 const VIEWPORT: Vec2 = Vec2::new(800.0, 600.0);
 
@@ -516,4 +516,106 @@ fn images_are_transparent_like_labels_and_resolve_under_their_parent() {
     let style = resolved(&tree, image);
     assert_eq!(style.background, [0, 0, 0, 0]);
     assert_eq!(style.text, theme.base_text(), "text inherits from the root");
+}
+
+#[test]
+fn toggles_and_sliders_have_built_in_looks_from_the_tokens() {
+    let theme = Theme::default();
+    let tokens = &theme.tokens;
+    let toggle = theme.kind(WidgetKind::Toggle);
+    assert_eq!(toggle, &theme.kinds.toggle);
+    assert_eq!(toggle.normal.background, tokens.colors.surface);
+    assert_eq!(toggle.normal.border, tokens.colors.border);
+    assert_eq!(toggle.normal.border_width, 1.0);
+    assert_eq!(toggle.normal.corner_radius, tokens.radii.sm);
+    assert_eq!(toggle.normal.text.color, Some(tokens.colors.accent));
+    assert_eq!(toggle.focused.border, Some(tokens.colors.focus));
+    assert_eq!(toggle.focused.border_width, Some(2.0));
+    assert_eq!(
+        toggle.disabled.text.color,
+        Some(tokens.colors.disabled_text)
+    );
+    assert_eq!(toggle.disabled.background, None);
+    assert_eq!(toggle.hovered.background, Some([56, 57, 64, 255]));
+    assert_eq!(toggle.pressed.background, Some([16, 17, 24, 255]));
+
+    let slider = theme.kind(WidgetKind::Slider);
+    assert_eq!(slider, &theme.kinds.slider);
+    assert_eq!(slider.normal.background, tokens.colors.border, "the track");
+    assert_eq!(slider.normal.border, tokens.colors.border);
+    assert_eq!(slider.normal.border_width, 0.0);
+    assert_eq!(slider.normal.corner_radius, tokens.radii.sm);
+    assert_eq!(slider.normal.text.color, Some(tokens.colors.accent));
+    assert_eq!(slider.focused.border, Some(tokens.colors.focus));
+    assert_eq!(slider.focused.border_width, Some(2.0));
+    assert_eq!(
+        slider.disabled.text.color,
+        Some(tokens.colors.disabled_text)
+    );
+    assert_eq!(slider.hovered.text.color, Some([110, 180, 255, 255]));
+    assert_eq!(slider.hovered.background, None);
+    assert_eq!(slider.pressed.text.color, Some([54, 124, 223, 255]));
+}
+
+#[test]
+fn a_controls_colour_only_change_repaints_and_a_line_height_change_relayouts() {
+    let mut tree = UiTree::new();
+    let root = tree.add_root(UiLayer::Game, LayoutStyle::row());
+    let toggle = tree.toggle(root, true);
+    let slider = tree.slider(root, SliderRange::new(0.0, 1.0), 0.5);
+    settle(&mut tree);
+    let theme = Theme::default();
+
+    // Hovering a slider moves its text colour alone: paint, no layout.
+    tree.set_hovered(Some(slider));
+    let stats = tree.resolve_styles();
+    assert_eq!(
+        stats,
+        StyleStats {
+            resolved: 1,
+            text_changed: 1,
+            measurement_changed: 0,
+        }
+    );
+    assert!(!tree.is_layout_dirty(), "a control holds no text node");
+    assert!(tree.is_paint_dirty());
+    assert_eq!(
+        resolved(&tree, slider).text.color,
+        theme.kinds.slider.hovered.text.color.expect("set")
+    );
+    settle(&mut tree);
+
+    // Disabling a toggle moves its text colour alone, too.
+    tree.set_enabled(toggle, false);
+    tree.clear_paint_dirty();
+    let stats = tree.resolve_styles();
+    assert_eq!(stats.text_changed, 1);
+    assert_eq!(stats.measurement_changed, 0);
+    assert!(!tree.is_layout_dirty());
+    assert!(tree.is_paint_dirty());
+    assert_eq!(
+        resolved(&tree, toggle).text.color,
+        theme.tokens.colors.disabled_text
+    );
+    settle(&mut tree);
+
+    // A line height sizes a control: its root relayouts.
+    tree.set_overrides(
+        toggle,
+        StyleOverrides {
+            text: TextOverrides {
+                line_height: Some(30.0),
+                ..TextOverrides::default()
+            },
+            ..StyleOverrides::default()
+        },
+    );
+    let stats = tree.resolve_styles();
+    assert_eq!(stats.measurement_changed, 1);
+    assert!(tree.is_layout_dirty());
+    settle(&mut tree);
+    assert_eq!(
+        tree.rect(toggle).expect("laid out").size(),
+        Vec2::new(30.0, 30.0)
+    );
 }

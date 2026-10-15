@@ -5130,6 +5130,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::Entity
 pub struct tungsten_core::ecs::EventQueue<T>
 impl tungsten_core::EventQueue<tungsten_core::ui::event::UiEvent>
 pub fn tungsten_core::EventQueue<tungsten_core::ui::event::UiEvent>::activated(&self, tungsten_core::ui::id::WidgetId) -> bool
+pub fn tungsten_core::EventQueue<tungsten_core::ui::event::UiEvent>::value_changed(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::event::UiValue>
 impl<T> tungsten_core::EventQueue<T>
 pub fn tungsten_core::EventQueue<T>::flush(&mut self)
 pub fn tungsten_core::EventQueue<T>::is_empty(&self) -> bool
@@ -8621,6 +8622,29 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::tween::UniformOverr
 pub fn tungsten_core::tween::lerp_f32(f32, f32, f32) -> f32
 pub fn tungsten_core::tween::lerp_u8(u8, u8, f32) -> u8
 pub mod tungsten_core::ui
+pub mod tungsten_core::ui::control
+pub struct tungsten_core::ui::control::SliderRange
+impl tungsten_core::ui::control::SliderRange
+pub fn tungsten_core::ui::control::SliderRange::max(self) -> f32
+pub fn tungsten_core::ui::control::SliderRange::min(self) -> f32
+pub fn tungsten_core::ui::control::SliderRange::new(f32, f32) -> Self
+pub fn tungsten_core::ui::control::SliderRange::step(self) -> f32
+pub fn tungsten_core::ui::control::SliderRange::with_step(self, f32) -> Self
+impl core::clone::Clone for tungsten_core::ui::control::SliderRange
+pub fn tungsten_core::ui::control::SliderRange::clone(&self) -> tungsten_core::ui::control::SliderRange
+impl core::cmp::PartialEq for tungsten_core::ui::control::SliderRange
+pub fn tungsten_core::ui::control::SliderRange::eq(&self, &tungsten_core::ui::control::SliderRange) -> bool
+impl core::fmt::Debug for tungsten_core::ui::control::SliderRange
+pub fn tungsten_core::ui::control::SliderRange::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::ui::control::SliderRange
+impl core::marker::StructuralPartialEq for tungsten_core::ui::control::SliderRange
+impl core::marker::Freeze for tungsten_core::ui::control::SliderRange
+impl core::marker::Send for tungsten_core::ui::control::SliderRange
+impl core::marker::Sync for tungsten_core::ui::control::SliderRange
+impl core::marker::Unpin for tungsten_core::ui::control::SliderRange
+impl core::marker::UnsafeUnpin for tungsten_core::ui::control::SliderRange
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::control::SliderRange
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::control::SliderRange
 pub mod tungsten_core::ui::event
 #[non_exhaustive] pub enum tungsten_core::ui::event::UiEvent
 #[non_exhaustive] pub tungsten_core::ui::event::UiEvent::Activated
@@ -8645,6 +8669,9 @@ pub tungsten_core::ui::event::UiEvent::Pressed::widget: tungsten_core::ui::id::W
 #[non_exhaustive] pub tungsten_core::ui::event::UiEvent::Released
 pub tungsten_core::ui::event::UiEvent::Released::button: tungsten_core::input::MouseButton
 pub tungsten_core::ui::event::UiEvent::Released::widget: tungsten_core::ui::id::WidgetId
+#[non_exhaustive] pub tungsten_core::ui::event::UiEvent::ValueChanged
+pub tungsten_core::ui::event::UiEvent::ValueChanged::value: tungsten_core::ui::event::UiValue
+pub tungsten_core::ui::event::UiEvent::ValueChanged::widget: tungsten_core::ui::id::WidgetId
 impl tungsten_core::ui::event::UiEvent
 pub const fn tungsten_core::ui::event::UiEvent::widget(&self) -> tungsten_core::ui::id::WidgetId
 impl core::clone::Clone for tungsten_core::ui::event::UiEvent
@@ -8662,6 +8689,27 @@ impl core::marker::Unpin for tungsten_core::ui::event::UiEvent
 impl core::marker::UnsafeUnpin for tungsten_core::ui::event::UiEvent
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::event::UiEvent
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::event::UiEvent
+#[non_exhaustive] pub enum tungsten_core::ui::event::UiValue
+pub tungsten_core::ui::event::UiValue::Bool(bool)
+pub tungsten_core::ui::event::UiValue::Number(f32)
+impl tungsten_core::ui::event::UiValue
+pub const fn tungsten_core::ui::event::UiValue::as_bool(self) -> core::option::Option<bool>
+pub const fn tungsten_core::ui::event::UiValue::as_number(self) -> core::option::Option<f32>
+impl core::clone::Clone for tungsten_core::ui::event::UiValue
+pub fn tungsten_core::ui::event::UiValue::clone(&self) -> tungsten_core::ui::event::UiValue
+impl core::cmp::PartialEq for tungsten_core::ui::event::UiValue
+pub fn tungsten_core::ui::event::UiValue::eq(&self, &tungsten_core::ui::event::UiValue) -> bool
+impl core::fmt::Debug for tungsten_core::ui::event::UiValue
+pub fn tungsten_core::ui::event::UiValue::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::ui::event::UiValue
+impl core::marker::StructuralPartialEq for tungsten_core::ui::event::UiValue
+impl core::marker::Freeze for tungsten_core::ui::event::UiValue
+impl core::marker::Send for tungsten_core::ui::event::UiValue
+impl core::marker::Sync for tungsten_core::ui::event::UiValue
+impl core::marker::Unpin for tungsten_core::ui::event::UiValue
+impl core::marker::UnsafeUnpin for tungsten_core::ui::event::UiValue
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::event::UiValue
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::event::UiValue
 pub mod tungsten_core::ui::focus
 #[non_exhaustive] pub enum tungsten_core::ui::focus::NavDirection
 pub tungsten_core::ui::focus::NavDirection::Down
@@ -8820,11 +8868,13 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::node::Cursor
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::node::CursorIcon
 #[non_exhaustive] pub enum tungsten_core::ui::node::Role
 pub tungsten_core::ui::node::Role::Button
+pub tungsten_core::ui::node::Role::CheckBox
 pub tungsten_core::ui::node::Role::Dialog
 pub tungsten_core::ui::node::Role::Group
 pub tungsten_core::ui::node::Role::Image
 pub tungsten_core::ui::node::Role::Label
 pub tungsten_core::ui::node::Role::None
+pub tungsten_core::ui::node::Role::Slider
 pub tungsten_core::ui::node::Role::Window
 impl core::clone::Clone for tungsten_core::ui::node::Role
 pub fn tungsten_core::ui::node::Role::clone(&self) -> tungsten_core::ui::node::Role
@@ -8906,6 +8956,8 @@ pub tungsten_core::ui::node::WidgetKind::Button
 pub tungsten_core::ui::node::WidgetKind::Image
 pub tungsten_core::ui::node::WidgetKind::Label
 pub tungsten_core::ui::node::WidgetKind::Panel
+pub tungsten_core::ui::node::WidgetKind::Slider
+pub tungsten_core::ui::node::WidgetKind::Toggle
 impl tungsten_core::ui::node::WidgetKind
 pub const fn tungsten_core::ui::node::WidgetKind::default_role(self) -> tungsten_core::ui::node::Role
 pub const fn tungsten_core::ui::node::WidgetKind::is_leaf(self) -> bool
@@ -9437,6 +9489,8 @@ pub tungsten_core::ui::theme::KindStyles::button: tungsten_core::ui::theme::Kind
 pub tungsten_core::ui::theme::KindStyles::image: tungsten_core::ui::theme::KindStyle
 pub tungsten_core::ui::theme::KindStyles::label: tungsten_core::ui::theme::KindStyle
 pub tungsten_core::ui::theme::KindStyles::panel: tungsten_core::ui::theme::KindStyle
+pub tungsten_core::ui::theme::KindStyles::slider: tungsten_core::ui::theme::KindStyle
+pub tungsten_core::ui::theme::KindStyles::toggle: tungsten_core::ui::theme::KindStyle
 impl tungsten_core::ui::theme::KindStyles
 pub fn tungsten_core::ui::theme::KindStyles::for_tokens(&tungsten_core::ui::theme::Tokens) -> Self
 impl core::clone::Clone for tungsten_core::ui::theme::KindStyles
@@ -9853,6 +9907,15 @@ impl tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::hit_test(&self, glam::f32::vec2::Vec2) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 impl tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::paint(&mut self, f32, &tungsten_core::ui::paint::UiDebug, &tungsten_core::assets::registry::AssetRegistry, &mut tungsten_core::ui::paint::PaintList)
+impl tungsten_core::ui::tree::UiTree
+pub fn tungsten_core::ui::tree::UiTree::set_slider_range(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::control::SliderRange)
+pub fn tungsten_core::ui::tree::UiTree::set_slider_value(&mut self, tungsten_core::ui::id::WidgetId, f32) -> bool
+pub fn tungsten_core::ui::tree::UiTree::set_toggled(&mut self, tungsten_core::ui::id::WidgetId, bool) -> bool
+pub fn tungsten_core::ui::tree::UiTree::slider(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::control::SliderRange, f32) -> tungsten_core::ui::id::WidgetId
+pub fn tungsten_core::ui::tree::UiTree::slider_range(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::control::SliderRange>
+pub fn tungsten_core::ui::tree::UiTree::slider_value(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<f32>
+pub fn tungsten_core::ui::tree::UiTree::toggle(&mut self, tungsten_core::ui::id::WidgetId, bool) -> tungsten_core::ui::id::WidgetId
+pub fn tungsten_core::ui::tree::UiTree::toggled(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<bool>
 impl core::default::Default for tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::default() -> tungsten_core::ui::tree::UiTree
 impl core::fmt::Debug for tungsten_core::ui::tree::UiTree
@@ -10109,11 +10172,13 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::style::Place
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::style::Placement
 #[non_exhaustive] pub enum tungsten_core::ui::Role
 pub tungsten_core::ui::Role::Button
+pub tungsten_core::ui::Role::CheckBox
 pub tungsten_core::ui::Role::Dialog
 pub tungsten_core::ui::Role::Group
 pub tungsten_core::ui::Role::Image
 pub tungsten_core::ui::Role::Label
 pub tungsten_core::ui::Role::None
+pub tungsten_core::ui::Role::Slider
 pub tungsten_core::ui::Role::Window
 impl core::clone::Clone for tungsten_core::ui::node::Role
 pub fn tungsten_core::ui::node::Role::clone(&self) -> tungsten_core::ui::node::Role
@@ -10200,6 +10265,9 @@ pub tungsten_core::ui::UiEvent::Pressed::widget: tungsten_core::ui::id::WidgetId
 #[non_exhaustive] pub tungsten_core::ui::UiEvent::Released
 pub tungsten_core::ui::UiEvent::Released::button: tungsten_core::input::MouseButton
 pub tungsten_core::ui::UiEvent::Released::widget: tungsten_core::ui::id::WidgetId
+#[non_exhaustive] pub tungsten_core::ui::UiEvent::ValueChanged
+pub tungsten_core::ui::UiEvent::ValueChanged::value: tungsten_core::ui::event::UiValue
+pub tungsten_core::ui::UiEvent::ValueChanged::widget: tungsten_core::ui::id::WidgetId
 impl tungsten_core::ui::event::UiEvent
 pub const fn tungsten_core::ui::event::UiEvent::widget(&self) -> tungsten_core::ui::id::WidgetId
 impl core::clone::Clone for tungsten_core::ui::event::UiEvent
@@ -10246,6 +10314,27 @@ impl core::marker::Unpin for tungsten_core::ui::node::UiLayer
 impl core::marker::UnsafeUnpin for tungsten_core::ui::node::UiLayer
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::node::UiLayer
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::node::UiLayer
+#[non_exhaustive] pub enum tungsten_core::ui::UiValue
+pub tungsten_core::ui::UiValue::Bool(bool)
+pub tungsten_core::ui::UiValue::Number(f32)
+impl tungsten_core::ui::event::UiValue
+pub const fn tungsten_core::ui::event::UiValue::as_bool(self) -> core::option::Option<bool>
+pub const fn tungsten_core::ui::event::UiValue::as_number(self) -> core::option::Option<f32>
+impl core::clone::Clone for tungsten_core::ui::event::UiValue
+pub fn tungsten_core::ui::event::UiValue::clone(&self) -> tungsten_core::ui::event::UiValue
+impl core::cmp::PartialEq for tungsten_core::ui::event::UiValue
+pub fn tungsten_core::ui::event::UiValue::eq(&self, &tungsten_core::ui::event::UiValue) -> bool
+impl core::fmt::Debug for tungsten_core::ui::event::UiValue
+pub fn tungsten_core::ui::event::UiValue::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::ui::event::UiValue
+impl core::marker::StructuralPartialEq for tungsten_core::ui::event::UiValue
+impl core::marker::Freeze for tungsten_core::ui::event::UiValue
+impl core::marker::Send for tungsten_core::ui::event::UiValue
+impl core::marker::Sync for tungsten_core::ui::event::UiValue
+impl core::marker::Unpin for tungsten_core::ui::event::UiValue
+impl core::marker::UnsafeUnpin for tungsten_core::ui::event::UiValue
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::event::UiValue
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::event::UiValue
 #[non_exhaustive] pub enum tungsten_core::ui::Visibility
 pub tungsten_core::ui::Visibility::Collapsed
 pub tungsten_core::ui::Visibility::Hidden
@@ -10277,6 +10366,8 @@ pub tungsten_core::ui::WidgetKind::Button
 pub tungsten_core::ui::WidgetKind::Image
 pub tungsten_core::ui::WidgetKind::Label
 pub tungsten_core::ui::WidgetKind::Panel
+pub tungsten_core::ui::WidgetKind::Slider
+pub tungsten_core::ui::WidgetKind::Toggle
 impl tungsten_core::ui::node::WidgetKind
 pub const fn tungsten_core::ui::node::WidgetKind::default_role(self) -> tungsten_core::ui::node::Role
 pub const fn tungsten_core::ui::node::WidgetKind::is_leaf(self) -> bool
@@ -10481,6 +10572,8 @@ pub tungsten_core::ui::KindStyles::button: tungsten_core::ui::theme::KindStyle
 pub tungsten_core::ui::KindStyles::image: tungsten_core::ui::theme::KindStyle
 pub tungsten_core::ui::KindStyles::label: tungsten_core::ui::theme::KindStyle
 pub tungsten_core::ui::KindStyles::panel: tungsten_core::ui::theme::KindStyle
+pub tungsten_core::ui::KindStyles::slider: tungsten_core::ui::theme::KindStyle
+pub tungsten_core::ui::KindStyles::toggle: tungsten_core::ui::theme::KindStyle
 impl tungsten_core::ui::theme::KindStyles
 pub fn tungsten_core::ui::theme::KindStyles::for_tokens(&tungsten_core::ui::theme::Tokens) -> Self
 impl core::clone::Clone for tungsten_core::ui::theme::KindStyles
@@ -10675,6 +10768,28 @@ impl core::marker::Unpin for tungsten_core::ui::theme::ResolvedStyle
 impl core::marker::UnsafeUnpin for tungsten_core::ui::theme::ResolvedStyle
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme::ResolvedStyle
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme::ResolvedStyle
+pub struct tungsten_core::ui::SliderRange
+impl tungsten_core::ui::control::SliderRange
+pub fn tungsten_core::ui::control::SliderRange::max(self) -> f32
+pub fn tungsten_core::ui::control::SliderRange::min(self) -> f32
+pub fn tungsten_core::ui::control::SliderRange::new(f32, f32) -> Self
+pub fn tungsten_core::ui::control::SliderRange::step(self) -> f32
+pub fn tungsten_core::ui::control::SliderRange::with_step(self, f32) -> Self
+impl core::clone::Clone for tungsten_core::ui::control::SliderRange
+pub fn tungsten_core::ui::control::SliderRange::clone(&self) -> tungsten_core::ui::control::SliderRange
+impl core::cmp::PartialEq for tungsten_core::ui::control::SliderRange
+pub fn tungsten_core::ui::control::SliderRange::eq(&self, &tungsten_core::ui::control::SliderRange) -> bool
+impl core::fmt::Debug for tungsten_core::ui::control::SliderRange
+pub fn tungsten_core::ui::control::SliderRange::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::ui::control::SliderRange
+impl core::marker::StructuralPartialEq for tungsten_core::ui::control::SliderRange
+impl core::marker::Freeze for tungsten_core::ui::control::SliderRange
+impl core::marker::Send for tungsten_core::ui::control::SliderRange
+impl core::marker::Sync for tungsten_core::ui::control::SliderRange
+impl core::marker::Unpin for tungsten_core::ui::control::SliderRange
+impl core::marker::UnsafeUnpin for tungsten_core::ui::control::SliderRange
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::control::SliderRange
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::control::SliderRange
 pub struct tungsten_core::ui::SpacingTokens
 pub tungsten_core::ui::SpacingTokens::lg: f32
 pub tungsten_core::ui::SpacingTokens::md: f32
@@ -11029,6 +11144,15 @@ impl tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::hit_test(&self, glam::f32::vec2::Vec2) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 impl tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::paint(&mut self, f32, &tungsten_core::ui::paint::UiDebug, &tungsten_core::assets::registry::AssetRegistry, &mut tungsten_core::ui::paint::PaintList)
+impl tungsten_core::ui::tree::UiTree
+pub fn tungsten_core::ui::tree::UiTree::set_slider_range(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::control::SliderRange)
+pub fn tungsten_core::ui::tree::UiTree::set_slider_value(&mut self, tungsten_core::ui::id::WidgetId, f32) -> bool
+pub fn tungsten_core::ui::tree::UiTree::set_toggled(&mut self, tungsten_core::ui::id::WidgetId, bool) -> bool
+pub fn tungsten_core::ui::tree::UiTree::slider(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::control::SliderRange, f32) -> tungsten_core::ui::id::WidgetId
+pub fn tungsten_core::ui::tree::UiTree::slider_range(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::control::SliderRange>
+pub fn tungsten_core::ui::tree::UiTree::slider_value(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<f32>
+pub fn tungsten_core::ui::tree::UiTree::toggle(&mut self, tungsten_core::ui::id::WidgetId, bool) -> tungsten_core::ui::id::WidgetId
+pub fn tungsten_core::ui::tree::UiTree::toggled(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<bool>
 impl core::default::Default for tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::default() -> tungsten_core::ui::tree::UiTree
 impl core::fmt::Debug for tungsten_core::ui::tree::UiTree
@@ -12721,6 +12845,9 @@ pub tungsten_core::UiEvent::Pressed::widget: tungsten_core::ui::id::WidgetId
 #[non_exhaustive] pub tungsten_core::UiEvent::Released
 pub tungsten_core::UiEvent::Released::button: tungsten_core::input::MouseButton
 pub tungsten_core::UiEvent::Released::widget: tungsten_core::ui::id::WidgetId
+#[non_exhaustive] pub tungsten_core::UiEvent::ValueChanged
+pub tungsten_core::UiEvent::ValueChanged::value: tungsten_core::ui::event::UiValue
+pub tungsten_core::UiEvent::ValueChanged::widget: tungsten_core::ui::id::WidgetId
 impl tungsten_core::ui::event::UiEvent
 pub const fn tungsten_core::ui::event::UiEvent::widget(&self) -> tungsten_core::ui::id::WidgetId
 impl core::clone::Clone for tungsten_core::ui::event::UiEvent
@@ -13551,6 +13678,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::Entity
 pub struct tungsten_core::EventQueue<T>
 impl tungsten_core::EventQueue<tungsten_core::ui::event::UiEvent>
 pub fn tungsten_core::EventQueue<tungsten_core::ui::event::UiEvent>::activated(&self, tungsten_core::ui::id::WidgetId) -> bool
+pub fn tungsten_core::EventQueue<tungsten_core::ui::event::UiEvent>::value_changed(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::event::UiValue>
 impl<T> tungsten_core::EventQueue<T>
 pub fn tungsten_core::EventQueue<T>::flush(&mut self)
 pub fn tungsten_core::EventQueue<T>::is_empty(&self) -> bool
@@ -16192,6 +16320,15 @@ impl tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::hit_test(&self, glam::f32::vec2::Vec2) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 impl tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::paint(&mut self, f32, &tungsten_core::ui::paint::UiDebug, &tungsten_core::assets::registry::AssetRegistry, &mut tungsten_core::ui::paint::PaintList)
+impl tungsten_core::ui::tree::UiTree
+pub fn tungsten_core::ui::tree::UiTree::set_slider_range(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::control::SliderRange)
+pub fn tungsten_core::ui::tree::UiTree::set_slider_value(&mut self, tungsten_core::ui::id::WidgetId, f32) -> bool
+pub fn tungsten_core::ui::tree::UiTree::set_toggled(&mut self, tungsten_core::ui::id::WidgetId, bool) -> bool
+pub fn tungsten_core::ui::tree::UiTree::slider(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::control::SliderRange, f32) -> tungsten_core::ui::id::WidgetId
+pub fn tungsten_core::ui::tree::UiTree::slider_range(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::control::SliderRange>
+pub fn tungsten_core::ui::tree::UiTree::slider_value(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<f32>
+pub fn tungsten_core::ui::tree::UiTree::toggle(&mut self, tungsten_core::ui::id::WidgetId, bool) -> tungsten_core::ui::id::WidgetId
+pub fn tungsten_core::ui::tree::UiTree::toggled(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<bool>
 impl core::default::Default for tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::default() -> tungsten_core::ui::tree::UiTree
 impl core::fmt::Debug for tungsten_core::ui::tree::UiTree

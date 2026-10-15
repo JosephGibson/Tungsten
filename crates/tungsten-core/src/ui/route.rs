@@ -3,7 +3,10 @@
 //! [`ui_route_system`], which once a frame turns the ordered raw input into
 //! hover, press, capture, focus and [`UiEvent`]s against the last committed
 //! layout and feeds [`RoutedInput`] what the UI did not take. Gamepad
-//! buttons and stick directions navigate as keys do (M54).
+//! buttons and stick directions navigate as keys do (M54). An activation
+//! flips a toggle; a primary press and the moves while it holds set a
+//! slider from the pointer, and `ui_left` and `ui_right` step a focused one
+//! (M55).
 
 use glam::Vec2;
 
@@ -15,7 +18,8 @@ use crate::input::{
 };
 use crate::time::Time;
 
-use super::event::UiEvent;
+use super::control;
+use super::event::{UiEvent, UiValue};
 use super::focus::NavDirection;
 use super::id::WidgetId;
 use super::node::CursorIcon;
@@ -446,6 +450,9 @@ impl Routing<'_> {
             RawInput::PointerMoved { x, y } => {
                 self.router.pointer = Some(Vec2::new(x, y));
                 self.update_hover();
+                if let Some(captured) = self.router.captured {
+                    self.slide_to_pointer(captured);
+                }
                 self.router.routed.push(input);
             }
             RawInput::PointerLeft => {
@@ -637,6 +644,7 @@ impl Routing<'_> {
             self.tree.focus(widget);
             self.sync_focus();
             self.update_hover();
+            self.slide_to_pointer(widget);
         } else {
             self.router.presses.push((button, widget));
         }
@@ -657,7 +665,7 @@ impl Routing<'_> {
                     .events
                     .push(UiEvent::Released { widget, button });
                 if self.router.hovered == Some(widget) {
-                    self.router.events.push(UiEvent::Activated { widget });
+                    self.activate(widget);
                     self.double_click(widget);
                 }
                 self.update_hover();
@@ -668,6 +676,20 @@ impl Routing<'_> {
                 .events
                 .push(UiEvent::Released { widget, button });
         }
+    }
+
+    /// Sets a slider's value from the pointer, past either end too, and
+    /// reports a change; anything else, or no pointer, changes nothing.
+    fn slide_to_pointer(&mut self, widget: WidgetId) {
+        let (Some(point), Some(rect), Some(range)) = (
+            self.point(),
+            self.tree.rect(widget),
+            self.tree.slider_range(widget),
+        ) else {
+            return;
+        };
+        let value = control::pointer_value(rect, range, point.x);
+        self.set_slider(widget, value);
     }
 
     /// After a click activated `widget`: a double click when the last one
@@ -801,10 +823,7 @@ impl Routing<'_> {
             self.sync_focus();
         }
         if let Some(&(_, dir)) = DIRECTIONS.iter().find(|(bit, _)| actions & bit != 0) {
-            if self.focus_in_play().is_some() {
-                self.tree.focus_direction(dir);
-                self.sync_focus();
-            }
+            self.navigate(dir);
             self.router.repeat = Some(Repeat {
                 dir,
                 input: nav,
@@ -814,7 +833,7 @@ impl Routing<'_> {
         if actions & ACCEPT != 0
             && let Some(widget) = self.focus_in_play()
         {
-            self.router.events.push(UiEvent::Activated { widget });
+            self.activate(widget);
         }
         if actions & CANCEL != 0 {
             let scope = self
@@ -860,8 +879,33 @@ impl Routing<'_> {
         }
     }
 
-    /// Moves focus once more for a held direction that is due, at most once
-    /// a routing; a routing late by more than an interval does not catch up.
+    /// A direction press or its repeat, while focus is in play: `Left` and
+    /// `Right` step a focused slider's value, at an end changing nothing;
+    /// otherwise focus moves that way.
+    fn navigate(&mut self, dir: NavDirection) {
+        let Some(focused) = self.focus_in_play() else {
+            return;
+        };
+        let up = match dir {
+            NavDirection::Left => Some(false),
+            NavDirection::Right => Some(true),
+            _ => None,
+        };
+        if let (Some(up), Some(range), Some(value)) = (
+            up,
+            self.tree.slider_range(focused),
+            self.tree.slider_value(focused),
+        ) {
+            self.set_slider(focused, range.key_step(value, up));
+            return;
+        }
+        self.tree.focus_direction(dir);
+        self.sync_focus();
+    }
+
+    /// Moves focus, or steps a focused slider, once more for a held
+    /// direction that is due, at most once a routing; a routing late by more
+    /// than an interval does not catch up.
     fn tick_repeat(&mut self) {
         let Some(mut repeat) = self.router.repeat else {
             return;
@@ -870,10 +914,7 @@ impl Routing<'_> {
         if clock < repeat.next {
             return;
         }
-        if self.focus_in_play().is_some() {
-            self.tree.focus_direction(repeat.dir);
-            self.sync_focus();
-        }
+        self.navigate(repeat.dir);
         let interval = f64::from(self.router.settings.repeat_interval);
         repeat.next += interval;
         if repeat.next <= clock {
@@ -896,6 +937,31 @@ impl Routing<'_> {
     }
 
     // ---- shared ----
+
+    /// An activation: `Activated`, then a toggle flips and reports its new
+    /// state.
+    fn activate(&mut self, widget: WidgetId) {
+        self.router.events.push(UiEvent::Activated { widget });
+        if let Some(on) = self.tree.toggled(widget) {
+            self.tree.set_toggled(widget, !on);
+            self.router.events.push(UiEvent::ValueChanged {
+                widget,
+                value: UiValue::Bool(!on),
+            });
+        }
+    }
+
+    /// Sets a slider's value and reports it when the stored value changed.
+    fn set_slider(&mut self, widget: WidgetId, value: f32) {
+        if self.tree.set_slider_value(widget, value)
+            && let Some(value) = self.tree.slider_value(widget)
+        {
+            self.router.events.push(UiEvent::ValueChanged {
+                widget,
+                value: UiValue::Number(value),
+            });
+        }
+    }
 
     fn set_device(&mut self, device: InputDevice) {
         self.router.last_device = device;

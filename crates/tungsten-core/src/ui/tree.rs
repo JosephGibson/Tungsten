@@ -212,7 +212,12 @@ impl UiTree {
         id
     }
 
-    fn add_child(&mut self, parent: WidgetId, kind: WidgetKind, style: LayoutStyle) -> WidgetId {
+    pub(crate) fn add_child(
+        &mut self,
+        parent: WidgetId,
+        kind: WidgetKind,
+        style: LayoutStyle,
+    ) -> WidgetId {
         let (root, layer) = self.node(parent).map_or_else(
             || panic!("UiTree: parent {parent:?} is not in the tree"),
             |node| {
@@ -429,7 +434,7 @@ impl UiTree {
         match node.kind {
             WidgetKind::Label => Some(id),
             WidgetKind::Button => node.children.first().copied(),
-            WidgetKind::Panel | WidgetKind::Image => None,
+            WidgetKind::Panel | WidgetKind::Image | WidgetKind::Toggle | WidgetKind::Slider => None,
         }
     }
 
@@ -891,8 +896,10 @@ impl UiTree {
     /// resolved text changed, on the roots that hold one. A node whose
     /// resolved text style changed in any property marks its root for
     /// layout, since the text node must be re-set and committed again
-    /// (`D-117`); a non-text change marks paint. [`Self::layout`] runs this
-    /// first.
+    /// (`D-117`); a non-text change marks paint. A toggle or a slider holds
+    /// no text node, so its text change marks layout only when it measures
+    /// differently (its line height sizes it), and paint when only the
+    /// colour moved. [`Self::layout`] runs this first.
     pub(crate) fn resolve_styles(&mut self) -> StyleStats {
         let mut stats = StyleStats::default();
         let base = self.theme.base_text();
@@ -923,6 +930,7 @@ impl UiTree {
         let mut text_changed = false;
         if node.style_dirty || parent_text_changed {
             let layers = self.style_layers(id, node);
+            let holds_text = !matches!(node.kind, WidgetKind::Toggle | WidgetKind::Slider);
             let resolved = theme::resolve_layers(
                 &self.theme,
                 node.kind,
@@ -949,9 +957,9 @@ impl UiTree {
                 node.style_dirty = false;
                 node.text_stale |= changed_text;
             }
-            if changed_text {
+            if changed_text && (holds_text || changed_measure) {
                 self.mark_layout_dirty(id);
-            } else if changed_visual {
+            } else if changed_text || changed_visual {
                 self.paint_dirty = true;
             }
             text_changed = changed_text;

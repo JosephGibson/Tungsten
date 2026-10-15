@@ -5,7 +5,7 @@ use glam::Vec2;
 use super::*;
 use crate::assets::{AssetRegistry, SpriteAssetId};
 use crate::ui::theme::StyleOverrides;
-use crate::ui::{Anchor, FixedAdvanceMeasure, LayoutStyle, Sizing, Visibility};
+use crate::ui::{Anchor, FixedAdvanceMeasure, LayoutStyle, Sizing, SliderRange, Visibility};
 
 /// 8 px per glyph at the theme's size 16; lines are 20 tall.
 const VIEWPORT: Vec2 = Vec2::new(800.0, 600.0);
@@ -722,4 +722,229 @@ fn physical_rects_far_from_the_origin_do_not_overflow() {
     };
     assert_eq!(wide.intersect(wide).width, i32::MAX);
     assert_eq!(wide.intersect(viewport).width, 0);
+}
+
+/// A root at the origin with no fill or border, so only its children paint.
+fn bare_root(tree: &mut UiTree, style: LayoutStyle) -> WidgetId {
+    let root = tree.add_root(UiLayer::Game, style);
+    tree.set_overrides(
+        root,
+        StyleOverrides {
+            background: Some([0, 0, 0, 0]),
+            border_width: Some(0.0),
+            ..StyleOverrides::default()
+        },
+    );
+    root
+}
+
+/// The dump of a lone slider of `width`×`height` at `value` in 0 to 10 by 1.
+fn slider_dump(width: f32, height: f32, value: f32, scale: f32) -> String {
+    let mut tree = UiTree::new();
+    let root = bare_root(&mut tree, LayoutStyle::default());
+    let slider = tree.slider(root, SliderRange::new(0.0, 10.0).with_step(1.0), value);
+    tree.set_layout_style(slider, fixed(width, height));
+    paint(&mut tree, scale, UiDebug::default(), &AssetRegistry::new()).dump()
+}
+
+#[test]
+fn a_toggle_paints_its_box_and_its_mark_only_when_on() {
+    let mut tree = UiTree::new();
+    let root = bare_root(&mut tree, LayoutStyle::default());
+    let toggle = tree.toggle(root, false);
+    tree.set_layout_style(toggle, fixed(20.0, 20.0));
+    let sprites = AssetRegistry::new();
+    let off = paint(&mut tree, 1.0, UiDebug::default(), &sprites);
+    assert_eq!(
+        off.dump(),
+        "clip 0 (0, 0) 800×600\n\
+         Rect (0.0, 0.0) 20.0×20.0 fill #202128ff border #464854ff 1.0 r 2.0 clip 0\n"
+    );
+
+    tree.set_toggled(toggle, true);
+    let on = paint(&mut tree, 1.0, UiDebug::default(), &sprites);
+    assert_eq!(
+        on.dump(),
+        "clip 0 (0, 0) 800×600\n\
+         Rect (0.0, 0.0) 20.0×20.0 fill #202128ff border #464854ff 1.0 r 2.0 clip 0\n\
+         Rect (5.0, 5.0) 10.0×10.0 fill #569cffff border #00000000 0.0 r 0.0 clip 0\n",
+        "the mark: inset a quarter of the shorter side, in the text colour"
+    );
+
+    // A wider box with rounder corners: the inset follows the shorter side,
+    // the mark's radius the box's less the inset; scaled once.
+    tree.set_layout_style(toggle, fixed(40.0, 24.0));
+    tree.set_overrides(
+        toggle,
+        StyleOverrides {
+            corner_radius: Some(8.0),
+            ..StyleOverrides::default()
+        },
+    );
+    let wide = paint(&mut tree, 1.5, UiDebug::default(), &sprites);
+    assert_eq!(
+        wide.dump(),
+        "clip 0 (0, 0) 1200×900\n\
+         Rect (0.0, 0.0) 60.0×36.0 fill #202128ff border #464854ff 1.5 r 12.0 clip 0\n\
+         Rect (9.0, 9.0) 42.0×18.0 fill #569cffff border #00000000 0.0 r 3.0 clip 0\n"
+    );
+}
+
+#[test]
+fn a_slider_paints_its_track_fill_and_thumb_in_place_of_its_box() {
+    // §2.6's example: 200×20 halfway.
+    assert_eq!(
+        slider_dump(200.0, 20.0, 5.0, 1.0),
+        "clip 0 (0, 0) 800×600\n\
+         Rect (0.0, 7.5) 200.0×5.0 fill #464854ff border #00000000 0.0 r 2.0 clip 0\n\
+         Rect (0.0, 7.5) 100.0×5.0 fill #569cffff border #00000000 0.0 r 2.0 clip 0\n\
+         Rect (90.0, 0.0) 20.0×20.0 fill #569cffff border #464854ff 0.0 r 2.0 clip 0\n"
+    );
+    // 200×24 at its minimum, a middle step and its maximum, at scales 1
+    // and 1.5: the thumb's centre runs from 12 to 188.
+    let cases = [
+        (
+            0.0,
+            1.0,
+            "(0.0, 9.0) 200.0×6.0",
+            "(0.0, 9.0) 12.0×6.0",
+            "(0.0, 0.0) 24.0×24.0",
+            "2.0",
+        ),
+        (
+            5.0,
+            1.0,
+            "(0.0, 9.0) 200.0×6.0",
+            "(0.0, 9.0) 100.0×6.0",
+            "(88.0, 0.0) 24.0×24.0",
+            "2.0",
+        ),
+        (
+            10.0,
+            1.0,
+            "(0.0, 9.0) 200.0×6.0",
+            "(0.0, 9.0) 188.0×6.0",
+            "(176.0, 0.0) 24.0×24.0",
+            "2.0",
+        ),
+        (
+            0.0,
+            1.5,
+            "(0.0, 13.5) 300.0×9.0",
+            "(0.0, 13.5) 18.0×9.0",
+            "(0.0, 0.0) 36.0×36.0",
+            "3.0",
+        ),
+        (
+            5.0,
+            1.5,
+            "(0.0, 13.5) 300.0×9.0",
+            "(0.0, 13.5) 150.0×9.0",
+            "(132.0, 0.0) 36.0×36.0",
+            "3.0",
+        ),
+        (
+            10.0,
+            1.5,
+            "(0.0, 13.5) 300.0×9.0",
+            "(0.0, 13.5) 282.0×9.0",
+            "(264.0, 0.0) 36.0×36.0",
+            "3.0",
+        ),
+    ];
+    for (value, scale, track, fill, thumb, r) in cases {
+        let clip = if scale == 1.0 {
+            "800×600"
+        } else {
+            "1200×900"
+        };
+        assert_eq!(
+            slider_dump(200.0, 24.0, value, scale),
+            format!(
+                "clip 0 (0, 0) {clip}\n\
+                 Rect {track} fill #464854ff border #00000000 0.0 r {r} clip 0\n\
+                 Rect {fill} fill #569cffff border #00000000 0.0 r {r} clip 0\n\
+                 Rect {thumb} fill #569cffff border #464854ff 0.0 r {r} clip 0\n"
+            ),
+            "value {value} at scale {scale}"
+        );
+    }
+}
+
+#[test]
+fn a_singleton_sliders_thumb_sits_at_the_start() {
+    let mut tree = UiTree::new();
+    let root = bare_root(&mut tree, LayoutStyle::default());
+    let slider = tree.slider(root, SliderRange::new(3.0, 3.0), 3.0);
+    tree.set_layout_style(slider, fixed(200.0, 20.0));
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+    assert_eq!(
+        rects(&list)[1..],
+        [rect(0.0, 7.5, 10.0, 5.0), rect(0.0, 0.0, 20.0, 20.0)],
+        "the fill to the thumb's centre, the thumb at the start"
+    );
+}
+
+#[test]
+fn focus_rings_the_thumb_and_disabled_controls_take_the_disabled_colour() {
+    let mut tree = UiTree::new();
+    let root = bare_root(&mut tree, LayoutStyle::default());
+    let slider = tree.slider(root, SliderRange::new(0.0, 1.0), 0.5);
+    tree.set_layout_style(slider, fixed(200.0, 20.0));
+    assert!(tree.focus(slider));
+    let sprites = AssetRegistry::new();
+    let focused = paint(&mut tree, 1.0, UiDebug::default(), &sprites);
+    assert_eq!(
+        focused.dump(),
+        "clip 0 (0, 0) 800×600\n\
+         Rect (0.0, 7.5) 200.0×5.0 fill #464854ff border #00000000 0.0 r 2.0 clip 0\n\
+         Rect (0.0, 7.5) 100.0×5.0 fill #569cffff border #00000000 0.0 r 2.0 clip 0\n\
+         Rect (90.0, 0.0) 20.0×20.0 fill #569cffff border #ffc440ff 2.0 r 2.0 clip 0\n",
+        "the focus border rings the thumb, not the track"
+    );
+
+    let toggle = tree.toggle(root, true);
+    tree.set_layout_style(toggle, fixed(20.0, 20.0));
+    tree.set_enabled(slider, false);
+    tree.set_enabled(toggle, false);
+    let disabled = paint(&mut tree, 1.0, UiDebug::default(), &sprites);
+    assert_eq!(
+        disabled.dump(),
+        "clip 0 (0, 0) 800×600\n\
+         Rect (0.0, 7.5) 200.0×5.0 fill #464854ff border #00000000 0.0 r 2.0 clip 0\n\
+         Rect (0.0, 7.5) 100.0×5.0 fill #787a87ff border #00000000 0.0 r 2.0 clip 0\n\
+         Rect (90.0, 0.0) 20.0×20.0 fill #787a87ff border #464854ff 0.0 r 2.0 clip 0\n\
+         Rect (0.0, 20.0) 20.0×20.0 fill #202128ff border #464854ff 1.0 r 2.0 clip 0\n\
+         Rect (5.0, 25.0) 10.0×10.0 fill #787a87ff border #00000000 0.0 r 0.0 clip 0\n"
+    );
+}
+
+#[test]
+fn a_row_of_labels_and_controls_keeps_its_text_in_one_batch() {
+    let mut tree = UiTree::new();
+    let root = bare_root(&mut tree, LayoutStyle::row());
+    tree.label(root, "On");
+    tree.toggle(root, true);
+    tree.label(root, "Vol");
+    tree.slider(root, SliderRange::new(0.0, 1.0), 0.5);
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+    assert_eq!(kinds(&list), "TRRTRRR");
+    assert_eq!(
+        rects(&list),
+        [
+            rect(0.0, 0.0, 16.0, 20.0),
+            rect(16.0, 0.0, 20.0, 20.0),
+            rect(21.0, 5.0, 10.0, 10.0),
+            rect(36.0, 0.0, 24.0, 20.0),
+            rect(60.0, 7.5, 200.0, 5.0),
+            rect(60.0, 7.5, 100.0, 5.0),
+            rect(150.0, 0.0, 20.0, 20.0),
+        ]
+    );
+    let batches = list.text_batches();
+    assert_eq!(
+        (batches.len(), batches.first().cloned()),
+        (1, Some(0..4)),
+        "a control's rectangles overlap no label beside it"
+    );
 }

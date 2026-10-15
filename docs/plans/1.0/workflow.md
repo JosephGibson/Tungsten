@@ -58,7 +58,7 @@ No session stops for the owner's approval (`D-150`). Graduation sessions ended w
 
 ## 3. Restart prompts
 
-A plan is the hand-off, so a prompt names the plan and the scope ([plan rules](../README.md)). Each session ends with the next one's prompt: a plan session with the run, a run with the next stop's plan. `/tungsten-next` then runs once per release, after the merge, to sync the roadmap, or to resume after a crash.
+A plan is the hand-off, so a prompt names the plan and the scope ([plan rules](../README.md)). Each session ends with the next one's prompt: a plan session with the run, a run with the next stop's plan. The prompt carries its mode, model and effort from the stage's `rec`, in the label line [tungsten-next](../../../.claude/skills/tungsten-next/SKILL.md) uses (§6 Reply). `/tungsten-next` then runs once per release, after the merge, to sync the roadmap, or to resume after a crash.
 
 The prompts, their keys and the order each kind of stop runs them in live in one place, [tungsten-next's prompts](../../../.claude/skills/tungsten-next/prompts.md). A release session runs the [tungsten-finalize](../../../.claude/skills/tungsten-finalize/SKILL.md) and [tungsten-release](../../../.claude/skills/tungsten-release/SKILL.md) skills.
 

@@ -1,6 +1,6 @@
 //! The lab's screens through the headless harness (`D-125`): the paint
-//! list's snapshot, with no GPU and no fonts, and the popup driven by
-//! routed input (`D-149`).
+//! list's snapshot, with no GPU and no fonts, the popup driven by routed
+//! input (`D-149`), and the "Settings" window's controls (M55).
 
 use example_05_ui_lab::screens;
 use tungsten::App;
@@ -115,4 +115,68 @@ fn escape_hides_the_popup_and_the_windows_drop_shows_it_again() {
         "the same click with the popup hidden shows it"
     );
     assert_eq!(harness.tree().focused(), Some(drop_it), "on Drop it");
+}
+
+/// The "Settings" window alone, with its system and the damage numbers it
+/// drives.
+fn controls_lab() -> UiHarness {
+    let mut app = App::new(Config::default()).expect("App::new failed");
+    app.world_mut()
+        .insert_resource(screens::DamageNumbers::default());
+    app.add_system_named("ui_lab_controls", screens::controls_system);
+    let mut harness = UiHarness::new(app);
+    let controls = screens::build_controls(harness.tree_mut());
+    harness.world_mut().insert_resource(controls);
+    harness.layout();
+    harness
+}
+
+#[test]
+fn the_settings_volume_and_damage_switch_follow_the_pointer_and_keys() {
+    let mut harness = controls_lab();
+    let controls = harness.world().resource::<screens::UiControls>();
+    let (volume, readout, damage) = (controls.volume, controls.volume_readout, controls.damage);
+    let shown = |harness: &UiHarness| {
+        harness
+            .tree()
+            .accessible_name(readout)
+            .map(str::to_owned)
+            .unwrap_or_default()
+    };
+    assert_eq!(shown(&harness), "80%");
+
+    let rect = harness.rect(volume).expect("laid out");
+    harness.pointer_to(rect.min.x + 1.0, f32::midpoint(rect.min.y, rect.max.y));
+    harness.pointer_down();
+    harness.pointer_up();
+    harness.step(1);
+    assert_eq!(shown(&harness), "0%", "a click at the slider's start");
+
+    harness.key_down(KeyCode::ArrowRight);
+    harness.step(1);
+    harness.key_up(KeyCode::ArrowRight);
+    assert_eq!(
+        shown(&harness),
+        "0%",
+        "the first key after the pointer is the game's (D-149)"
+    );
+    harness.step(1);
+    harness.key_down(KeyCode::ArrowRight);
+    harness.step(1);
+    harness.key_up(KeyCode::ArrowRight);
+    assert_eq!(shown(&harness), "5%");
+
+    let numbers = |harness: &UiHarness| {
+        harness
+            .world()
+            .resource::<screens::DamageNumbers>()
+            .enabled()
+    };
+    assert!(numbers(&harness));
+    harness.click(damage);
+    harness.step(1);
+    assert!(
+        !numbers(&harness),
+        "the toggle turns the damage numbers off"
+    );
 }

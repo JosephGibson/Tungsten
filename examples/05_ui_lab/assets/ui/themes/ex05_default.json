@@ -17,6 +17,15 @@
     "button": {
       "normal": { "border_width": 1, "corner_radius": 6, "text": { "weight": 600 } },
       "focused": { "border": "#ffd166", "border_width": 2 }
+    },
+    "toggle": {
+      "normal": { "background": "#15151a", "corner_radius": 4, "text": { "color": "#5b8def" } },
+      "focused": { "border": "#ffd166", "border_width": 2 }
+    },
+    "slider": {
+      "normal": { "background": "#4a4e63", "corner_radius": 11, "text": { "color": "#5b8def" } },
+      "focused": { "border": "#ffd166", "border_width": 2 },
+      "hovered": { "text": { "color": "#86a9f3" } }
     }
   }
 }

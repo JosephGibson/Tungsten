@@ -1,7 +1,9 @@
-use tungsten_core::ui::{Anchor, CursorIcon, InputDevice, LayoutStyle, Sizing, UiLayer};
+use tungsten_core::ui::{
+    Anchor, CursorIcon, InputDevice, LayoutStyle, Sizing, SliderRange, UI_RIGHT, UiLayer, UiValue,
+};
 use tungsten_core::{
-    ActionMap, Config, EventQueue, InputState, KeyCode, MouseButton, RoutedInput, Stage, UiEvent,
-    UiRouter, system,
+    ActionMap, Binding, Config, EventQueue, GamepadButton, GamepadId, InputState, KeyCode,
+    MouseButton, RoutedInput, Stage, UiEvent, UiRouter, system,
 };
 
 use super::*;
@@ -277,5 +279,137 @@ fn at_scale_2_the_harness_lays_out_logically_and_a_physical_click_lands() {
             .resource::<EventQueue<UiEvent>>()
             .iter()
             .any(|event| matches!(event, UiEvent::Activated { widget, .. } if *widget == button))
+    );
+}
+
+/// The values `Watched` controls took, as an `Update` system saw them.
+#[derive(Default)]
+struct Values(Vec<UiValue>);
+struct WatchedControls(Vec<WidgetId>);
+
+fn record_values(world: &mut World) {
+    let queue = world.resource::<EventQueue<UiEvent>>();
+    let seen: Vec<UiValue> = world
+        .resource::<WatchedControls>()
+        .0
+        .iter()
+        .filter_map(|widget| queue.value_changed(*widget))
+        .collect();
+    world.resource_mut::<Values>().0.extend(seen);
+}
+
+/// A root at the window's top left holding a slider (0 to 10 by 1, at 5)
+/// at (20, 20), 200 by 20, whose thumb's centre runs from x 30 to 210, and
+/// a toggle (off) at (20, 60), laid out.
+fn controls(harness: &mut UiHarness) -> (WidgetId, WidgetId) {
+    let tree = harness.tree_mut();
+    let root = tree.add_root(UiLayer::Game, at(0.0, 0.0, 300.0, 100.0));
+    let slider = tree.slider(root, SliderRange::new(0.0, 10.0).with_step(1.0), 5.0);
+    tree.set_layout_style(slider, at(20.0, 20.0, 200.0, 20.0));
+    let toggle = tree.toggle(root, false);
+    tree.set_layout_style(toggle, at(20.0, 60.0, 20.0, 20.0));
+    harness.layout();
+    (slider, toggle)
+}
+
+/// The x of the value `value` on the controls' slider.
+fn slider_x(value: f32) -> f32 {
+    30.0 + 18.0 * value
+}
+
+#[test]
+fn an_update_system_sees_each_value_change_once() {
+    let mut app = app();
+    app.add_system_named("record_values", record_values);
+    let mut harness = UiHarness::new(app);
+    let (slider, toggle) = controls(&mut harness);
+    harness
+        .world_mut()
+        .insert_resource(WatchedControls(vec![slider, toggle]));
+    harness.world_mut().insert_resource(Values::default());
+    let seen = |harness: &UiHarness| harness.world().resource::<Values>().0.clone();
+
+    // A click.
+    harness.pointer_to(slider_x(2.0), 30.0);
+    harness.pointer_down();
+    harness.pointer_up();
+    harness.step(3);
+    assert_eq!(seen(&harness), [UiValue::Number(2.0)]);
+
+    // A drag across two frames.
+    harness.pointer_to(slider_x(7.0), 30.0);
+    harness.pointer_down();
+    harness.step(1);
+    harness.pointer_to(slider_x(9.0), 30.0);
+    harness.step(1);
+    harness.pointer_up();
+    harness.step(2);
+    assert_eq!(
+        seen(&harness),
+        [
+            UiValue::Number(2.0),
+            UiValue::Number(7.0),
+            UiValue::Number(9.0)
+        ]
+    );
+
+    // An arrow press made while focus shows: the first key after pointer
+    // use is the game's and shows focus.
+    harness.key_down(KeyCode::ArrowRight);
+    harness.step(1);
+    harness.key_up(KeyCode::ArrowRight);
+    harness.step(1);
+    assert_eq!(harness.tree().slider_value(slider), Some(9.0));
+    harness.key_down(KeyCode::ArrowRight);
+    harness.step(2);
+    harness.key_up(KeyCode::ArrowRight);
+    harness.step(1);
+    assert_eq!(seen(&harness).last(), Some(&UiValue::Number(10.0)));
+    assert_eq!(seen(&harness).len(), 4);
+
+    harness.click(toggle);
+    harness.step(2);
+    assert_eq!(seen(&harness).last(), Some(&UiValue::Bool(true)));
+    assert_eq!(seen(&harness).len(), 5);
+}
+
+#[test]
+fn a_rebound_key_and_the_dpad_step_a_slider_holding_visible_focus() {
+    let mut harness = UiHarness::new(app());
+    let (slider, _toggle) = controls(&mut harness);
+    assert!(harness.focus(slider));
+    let pad = GamepadId::new(0);
+    harness
+        .harness_mut()
+        .input_mut()
+        .gamepad_button_down(pad, GamepadButton::DPadRight);
+    harness.step(1);
+    assert_eq!(harness.tree().slider_value(slider), Some(6.0));
+    harness
+        .harness_mut()
+        .input_mut()
+        .gamepad_button_up(pad, GamepadButton::DPadRight);
+    harness.step(1);
+
+    harness
+        .world_mut()
+        .resource_mut::<ActionMap>()
+        .replace_bindings(
+            UI_RIGHT,
+            vec![Binding::Key {
+                code: KeyCode::KeyD,
+            }],
+        );
+    harness.key_down(KeyCode::KeyD);
+    harness.step(1);
+    assert_eq!(harness.tree().slider_value(slider), Some(7.0));
+    assert!(!routed(&harness).is_pressed(KeyCode::KeyD), "the UI's key");
+    harness.key_up(KeyCode::KeyD);
+    harness.key_down(KeyCode::ArrowRight);
+    harness.step(1);
+    assert_eq!(
+        harness.tree().slider_value(slider),
+        Some(7.0),
+        "the arrow left ui_right"
     );
 }

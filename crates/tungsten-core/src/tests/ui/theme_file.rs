@@ -73,6 +73,51 @@ fn a_partial_file_overrides_the_defaults_and_the_kinds_follow_its_tokens() {
 }
 
 #[test]
+fn toggle_and_slider_looks_parse_and_merge_over_the_built_in_ones() {
+    let theme = theme_of(
+        r##"{
+          "tokens": { "colors": { "accent": "#40c070" } },
+          "kinds": { "toggle": { "normal": { "corner_radius": 5, "text": { "color": "#ffffff" } },
+                                 "pressed": { "background": "#101010" } },
+                     "slider": { "normal": { "background": "#303030" },
+                                 "hovered": { "text": { "color": "#80ff80" } },
+                                 "focused": { "border_width": 3 } } }
+        }"##,
+    );
+    let default = Theme::default();
+    let toggle = &theme.kinds.toggle;
+    assert_eq!(toggle.normal.corner_radius, 5.0);
+    assert_eq!(toggle.normal.text.color, Some([255, 255, 255, 255]));
+    assert_eq!(
+        toggle.normal.background,
+        default.kinds.toggle.normal.background
+    );
+    assert_eq!(toggle.pressed.background, Some([0x10, 0x10, 0x10, 255]));
+    assert_eq!(toggle.hovered, default.kinds.toggle.hovered);
+    assert_eq!(theme.kind(WidgetKind::Toggle), toggle);
+
+    let slider = &theme.kinds.slider;
+    assert_eq!(slider.normal.background, [0x30, 0x30, 0x30, 255]);
+    assert_eq!(
+        slider.normal.text.color,
+        Some([0x40, 0xc0, 0x70, 255]),
+        "the fill follows the file's accent"
+    );
+    assert_eq!(slider.hovered.text.color, Some([0x80, 0xff, 0x80, 255]));
+    assert_eq!(slider.focused.border_width, Some(3.0));
+    assert_eq!(
+        slider.focused.border,
+        Some(default.tokens.colors.focus),
+        "a variant merges over the built-in one"
+    );
+    assert_eq!(theme.kind(WidgetKind::Slider), slider);
+    assert_eq!(
+        theme_of(r#"{ "kinds": { "toggle": {}, "slider": {} } }"#),
+        default
+    );
+}
+
+#[test]
 fn text_fields_map_onto_the_text_overrides() {
     let theme = theme_of(
         r##"{ "kinds": { "label": { "normal": { "text": {
@@ -141,7 +186,7 @@ fn colours_are_rrggbb_or_rrggbbaa() {
 #[test]
 fn an_unknown_kind_token_or_field_is_rejected() {
     for bad in [
-        r#"{ "kinds": { "slider": {} } }"#,
+        r#"{ "kinds": { "progress": {} } }"#,
         r##"{ "tokens": { "colors": { "primary": "#000000" } } }"##,
         r#"{ "tokens": { "sizes": {} } }"#,
         r#"{ "kinds": { "button": { "active": {} } } }"#,

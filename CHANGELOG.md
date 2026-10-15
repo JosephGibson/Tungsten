@@ -6,6 +6,22 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.75.0] - 2026-10-14
+
+Summary: M55, W1 BC (plan archived at `docs/plans/archive/1.0/phase6-milestone-55-broader-controls.md`): checkboxes and horizontal sliders in the core UI, the two controls M4's settings screen needs, changed by the pointer, the keys and the `ui_*` actions and reported as `UiEvent::ValueChanged`.
+
+### Added
+
+- **Checkboxes and sliders** (`D-162`): `WidgetKind::Toggle` and `Slider`, focusable, interactive leaves with the roles `Role::CheckBox` and `Slider`; `UiTree::toggle`, `slider`, `toggled`, `set_toggled`, `slider_value`, `set_slider_value`, `slider_range` and `set_slider_range`; `SliderRange` (`new`, `with_step`, `min`, `max`, `step`) in the new `tungsten_core::ui::control`, continuous or stepped, snapping in `f64` with `max` always reachable; natural sizes from the line height; `UiEvent::ValueChanged` with `UiValue` (`Bool`, `Number`) and `EventQueue::<UiEvent>::value_changed`. An activation flips a toggle after its `Activated`; a primary press and the moves while it holds set a slider from the pointer; `ui_left` and `ui_right` step a focused slider on the navigation repeat. The setters send nothing.
+- **Theme kinds**: `KindStyles::toggle` and `slider` with built-in looks from the tokens, and the theme file's `toggle` and `slider` kinds; the mark, the fill and the thumb paint in the kind's text colour.
+- **UI lab**: a "Settings" window in the interactive run whose controls switch and pace the damage numbers and show a volume readout, with the lab theme's control looks.
+
+### Changed
+
+- **Paint, relayout and direction rules** (`D-162` amends `D-125`, `D-147` and `D-149`): a toggle paints a mark after its box when on and a slider its track, fill and thumb in place of its box; a control's colour-only style change repaints without relayout; left and right step a focused slider instead of moving focus.
+- **Breaks for the freeze**: `KindStyles` gains two fields.
+- **Records**: `DESIGN.md`'s Broader Controls section; the break ledger's two M55 rows; w01's BC row; a backlog row for the controls beyond checkboxes and sliders, which takes `D-149`'s popup and click-outside limits; the workflow and the release guide label the next session's prompt with its mode, model and effort from the catalog.
+
 ## [0.74.0] - 2026-10-14
 
 Summary: M54, W1 WL with W5a (plan archived at `docs/plans/archive/1.0/phase6-milestone-54-world-labels-gamepad.md`): world-anchored labels for damage numbers and name tags, drawn as one text batch under the UI, and gamepad input in core with its bindings, analog values and UI navigation. The `gilrs` backend did not land, since neither `gilrs` nor `gilrs-core` ships a licence file, so no window reads a pad yet ([known issues](docs/known-issues.md)).
