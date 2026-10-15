@@ -237,6 +237,10 @@ impl App {
         if let Some(volume) = settings.master_volume() {
             audio_commands.set_master_volume(volume);
         }
+        let mut ui_tree = UiTree::new();
+        if let Some(text_scale) = settings.text_scale() {
+            ui_tree.set_text_scale(text_scale);
+        }
         let mut world = World::new();
         world.insert_resource(time_from_config(&config.time));
         #[allow(deprecated)]
@@ -283,8 +287,9 @@ impl App {
         world.insert_resource(Extracts::default());
         world.insert_resource(DebugDraw::new());
         world.insert_resource(WorldLabels::default());
-        // M46: the UI tree, its debug flags and the loaded theme assets.
-        world.insert_resource(UiTree::new());
+        // M46: the UI tree, its debug flags and the loaded theme assets; the
+        // player's text scale on the tree from the start (M56).
+        world.insert_resource(ui_tree);
         world.insert_resource(UiDebug::default());
         world.insert_resource(UiRouter::default());
         world.insert_resource(RoutedInput::default());
@@ -927,6 +932,10 @@ pub(crate) struct FrameExtract {
     pub(crate) mesh_particles: Vec<MeshParticleBatch>,
     /// M46 UI paint list: a copy of the app's retained one.
     pub(crate) ui: PaintList,
+    /// M56: the text runs of the roots a prewarm asked for, painted on the
+    /// frame they were first laid out; render rasterizes them before its
+    /// prepare.
+    pub(crate) ui_prewarm: Option<PaintList>,
     /// M54 world labels, projected, culled and capped.
     pub(crate) world_labels: Vec<WorldLabelRun>,
     extract_ms: f32,
@@ -1278,6 +1287,21 @@ impl App {
         self.painted_at = Some(at);
     }
 
+    /// Paints the text runs of the roots a prewarm asked for (M56); `None`
+    /// when no request waits or none is laid out yet.
+    fn paint_prewarm(&mut self) -> Option<PaintList> {
+        let scale = self
+            .world
+            .get_resource::<tungsten_core::ScaleFactor>()
+            .map_or(1.0, tungsten_core::ScaleFactor::get);
+        let tree = self.world.get_resource_mut::<UiTree>()?;
+        if !tree.prewarm_pending() {
+            return None;
+        }
+        let mut list = PaintList::default();
+        tree.paint_prewarm(scale, &mut list).then_some(list)
+    }
+
     #[inline(always)]
     fn stage_extract(&mut self, prev_total_ms: f32) -> FrameExtract {
         let extract_start = Instant::now();
@@ -1302,6 +1326,8 @@ impl App {
 
         // M46: the UI paint list, before the HUD so its row counts it.
         self.paint_ui();
+        // M56: a pending prewarm's runs.
+        let ui_prewarm = self.paint_prewarm();
 
         // M54: the world labels, projected onto the size render draws at.
         let label_viewport = match &self.renderer {
@@ -1386,6 +1412,7 @@ impl App {
             light_ubo,
             mesh_particles,
             ui: self.ui_paint.clone(),
+            ui_prewarm,
             world_labels,
             extract_ms,
         }
@@ -1447,6 +1474,11 @@ impl App {
             renderer.update_mesh_particles(&extract.mesh_particles);
             // M54: this frame's world labels; an empty list draws none.
             renderer.update_world_labels(&extract.world_labels);
+            // M56: a prewarm's runs reach the atlas before this frame's
+            // prepare.
+            if let Some(list) = &extract.ui_prewarm {
+                renderer.prewarm_ui_text(list);
+            }
 
             result = Some(if self.gpu_timing_enabled {
                 renderer.render_frame_full_timed(

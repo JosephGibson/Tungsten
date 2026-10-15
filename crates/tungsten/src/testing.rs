@@ -285,6 +285,10 @@ pub struct FrameDraw {
     /// [`WorldLabels`](tungsten_core::WorldLabels) since the last frame,
     /// projected through the camera, culled and capped.
     pub world_labels: Vec<WorldLabelRun>,
+    /// The prewarm list the frame handed the renderer before its prepare
+    /// (M56): the text runs of the roots `UiTree::prewarm` asked for, on the
+    /// frame they were first laid out; `None` on every other frame.
+    pub ui_prewarm: Option<PaintList>,
 }
 
 impl FrameDraw {
@@ -310,6 +314,7 @@ impl FrameDraw {
             mesh_particles: extract.mesh_particles.clone(),
             ui: extract.ui.clone(),
             world_labels: extract.world_labels.clone(),
+            ui_prewarm: extract.ui_prewarm.clone(),
         }
     }
 }

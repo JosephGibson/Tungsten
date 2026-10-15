@@ -24,7 +24,7 @@ use tungsten_core::ui::{ClipRect, PaintCommand, PaintList, Rect};
 use wgpu::{Device, MultisampleState, Queue, RenderPass, TextureFormat};
 
 use super::engine::NodeAreas;
-use super::{FontSource, TextEngine, TextSection, WorldLabelRun};
+use super::{FontSource, TextEngine, TextPrewarm, TextSection, WorldLabelRun};
 
 /// K (`D-126`): the changed frame at which a full frame is forced while
 /// batches are retained. Sixteen trades prepare cost against atlas bytes on
@@ -155,6 +155,8 @@ pub(crate) struct CommandSignature {
     position: [u32; 2],
     size: [u32; 2],
     color: [u8; 4],
+    /// The command's own text scale (M56).
+    scale_bits: u32,
     /// The clip's rectangle, never its index (M46 critique 1.5).
     clip: ClipRect,
 }
@@ -181,13 +183,18 @@ pub(crate) fn batch_signature(
         .iter()
         .filter_map(|command| match command {
             PaintCommand::Text {
-                node, rect, color, ..
+                node,
+                rect,
+                color,
+                scale,
+                ..
             } => Some(CommandSignature {
                 node: *node,
                 revision: engine.node_revision(*node),
                 position: rect.min.to_array().map(f32::to_bits),
                 size: rect.size().to_array().map(f32::to_bits),
                 color: *color,
+                scale_bits: scale.to_bits(),
                 clip: list.clip_of(command),
             }),
             _ => None,
@@ -273,7 +280,8 @@ impl BatchBook {
 
 /// The text areas of the batch at `range`: one per text command whose node
 /// is committed under the current font epoch, at the command's physical box,
-/// scaled by the paint scale (`D-127`) and bounded by its box ∩ clip.
+/// scaled by the paint scale (`D-127`) times the command's (M56) and bounded
+/// by its box ∩ clip.
 fn batch_areas<'a>(
     list: &'a PaintList,
     range: Range<usize>,
@@ -282,7 +290,11 @@ fn batch_areas<'a>(
 ) {
     for command in &list.commands[range] {
         let PaintCommand::Text {
-            node, rect, color, ..
+            node,
+            rect,
+            color,
+            scale,
+            ..
         } = command
         else {
             continue;
@@ -295,12 +307,31 @@ fn batch_areas<'a>(
             buffer,
             left: rect.min.x,
             top: rect.min.y,
-            scale: list.scale,
+            scale: list.scale * scale,
             bounds: text_bounds(*rect, list.clip_of(command)),
             default_color: Color::rgba(r, g, b, a),
             custom_glyphs: &[],
         });
     }
+}
+
+/// The prewarm's text areas (M56): every text command of `list`, as a
+/// batch's, at its box and scale.
+fn prewarm_areas<'a>(list: &'a PaintList, nodes: &NodeAreas<'a>, out: &mut Vec<TextArea<'a>>) {
+    batch_areas(list, 0..list.commands.len(), nodes, out);
+}
+
+/// Glyphs in the laid-out lines of `areas`' buffers.
+fn area_glyphs(areas: &[TextArea<'_>]) -> u32 {
+    areas
+        .iter()
+        .map(|area| {
+            area.buffer
+                .layout_runs()
+                .map(|run| run.glyphs.len() as u32)
+                .sum::<u32>()
+        })
+        .sum()
 }
 
 /// Glyphon text pipeline state: the [`TextEngine`] that lays text out, and
@@ -322,6 +353,8 @@ pub struct TextPipeline {
     world_labels: Vec<WorldLabelRun>,
     /// One renderer per UI batch index, grown and never shrunk.
     batches: Vec<TextRenderer>,
+    /// The prewarm's renderer, made at the first prewarm and never drawn.
+    prewarm_renderer: Option<TextRenderer>,
     /// Batches in the last prepared paint list.
     batch_count: usize,
     book: BatchBook,
@@ -376,6 +409,7 @@ impl TextPipeline {
             labels_drawable: false,
             world_labels: Vec::new(),
             batches: Vec::new(),
+            prewarm_renderer: None,
             batch_count: 0,
             book: BatchBook::default(),
             policy: TrimPolicy::default(),
@@ -589,6 +623,61 @@ impl TextPipeline {
         self.stats.atlas_full_total = self.policy.atlas_full_total();
         self.stats.full_frames_total = self.policy.full_frames_total();
         self.stats.labels = self.drawn_labels();
+    }
+
+    /// Rasterizes the text runs of `list` into the shared atlas without
+    /// drawing them (M56): updates the viewport to `width` × `height`,
+    /// prepares the runs on a renderer of their own and logs `UI prewarm:
+    /// <runs> text runs, <glyphs> glyphs in <ms> ms`. The same positions
+    /// and scale give the same glyph keys, so a later frame's prepare finds
+    /// the glyphs; they stay until the atlas needs their room after a full
+    /// frame's trim (`D-126`). An `AtlasFull` result counts toward the trim
+    /// rule as a batch's does.
+    pub fn prewarm(
+        &mut self,
+        device: &Device,
+        queue: &Queue,
+        list: &PaintList,
+        width: u32,
+        height: u32,
+    ) -> TextPrewarm {
+        let start = std::time::Instant::now();
+        self.viewport.update(queue, Resolution { width, height });
+        let renderer = self.prewarm_renderer.get_or_insert_with(|| {
+            TextRenderer::new(
+                &mut self.atlas,
+                device,
+                MULTISAMPLE,
+                crate::quad::passthrough_depth_stencil(false),
+            )
+        });
+        let (font_system, nodes) = self.engine.batch_parts();
+        let mut areas = Vec::new();
+        prewarm_areas(list, &nodes, &mut areas);
+        let runs = areas.len() as u32;
+        let glyphs = area_glyphs(&areas);
+        if let Err(PrepareError::AtlasFull) = renderer.prepare(
+            device,
+            queue,
+            font_system,
+            &mut self.atlas,
+            &self.viewport,
+            areas,
+            &mut self.swash_cache,
+        ) {
+            self.policy.atlas_full();
+            log::warn!("UI prewarm: the glyph atlas is full; the next frame trims");
+        }
+        let micros = start.elapsed().as_micros() as u64;
+        log::info!(
+            "UI prewarm: {runs} text runs, {glyphs} glyphs in {:.3} ms",
+            micros as f64 / 1000.0
+        );
+        TextPrewarm {
+            runs,
+            glyphs,
+            micros,
+        }
     }
 
     /// The labels the overlay draws: the last prepared list when its

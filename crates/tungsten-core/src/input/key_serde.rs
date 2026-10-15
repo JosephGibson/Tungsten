@@ -1,5 +1,8 @@
 //! Canonical `input.json` names for keys, mouse buttons, scroll directions,
-//! gamepad buttons, gamepad axes and axis directions.
+//! gamepad buttons, gamepad axes and axis directions, and the labels a
+//! prompt shows for them (M56).
+
+use std::borrow::Cow;
 
 use crate::input::{
     AxisDirection, GamepadAxis, GamepadButton, KeyCode, MouseButton, ScrollDirection,
@@ -240,6 +243,168 @@ pub fn axis_direction_to_str(direction: AxisDirection) -> &'static str {
         .find(|(candidate, _)| *candidate == direction)
         .map(|(_, name)| *name)
         .expect("axis direction missing canonical name")
+}
+
+/// What a prompt shows for a named key: the physical key's US label
+/// (winit 0.30 has no keymap query, so an AZERTY player sees US labels).
+const KEYCODE_LABELS: &[(KeyCode, &str)] = &[
+    (KeyCode::ArrowUp, "Up"),
+    (KeyCode::ArrowDown, "Down"),
+    (KeyCode::ArrowLeft, "Left"),
+    (KeyCode::ArrowRight, "Right"),
+    (KeyCode::Space, "Space"),
+    (KeyCode::Enter, "Enter"),
+    (KeyCode::Escape, "Esc"),
+    (KeyCode::Backspace, "Backspace"),
+    (KeyCode::F1, "F1"),
+    (KeyCode::F2, "F2"),
+    (KeyCode::F3, "F3"),
+    (KeyCode::F4, "F4"),
+    (KeyCode::F5, "F5"),
+    (KeyCode::F6, "F6"),
+    (KeyCode::F7, "F7"),
+    (KeyCode::F8, "F8"),
+    (KeyCode::F9, "F9"),
+    (KeyCode::F10, "F10"),
+    (KeyCode::F11, "F11"),
+    (KeyCode::F12, "F12"),
+    (KeyCode::KeyW, "W"),
+    (KeyCode::KeyA, "A"),
+    (KeyCode::KeyS, "S"),
+    (KeyCode::KeyD, "D"),
+    (KeyCode::KeyF, "F"),
+    (KeyCode::KeyB, "B"),
+    (KeyCode::KeyC, "C"),
+    (KeyCode::KeyE, "E"),
+    (KeyCode::KeyG, "G"),
+    (KeyCode::KeyH, "H"),
+    (KeyCode::KeyI, "I"),
+    (KeyCode::KeyJ, "J"),
+    (KeyCode::KeyK, "K"),
+    (KeyCode::KeyL, "L"),
+    (KeyCode::KeyM, "M"),
+    (KeyCode::KeyN, "N"),
+    (KeyCode::KeyO, "O"),
+    (KeyCode::KeyP, "P"),
+    (KeyCode::KeyQ, "Q"),
+    (KeyCode::KeyR, "R"),
+    (KeyCode::KeyT, "T"),
+    (KeyCode::KeyU, "U"),
+    (KeyCode::KeyV, "V"),
+    (KeyCode::KeyX, "X"),
+    (KeyCode::KeyY, "Y"),
+    (KeyCode::KeyZ, "Z"),
+    (KeyCode::Tab, "Tab"),
+    (KeyCode::Digit0, "0"),
+    (KeyCode::Digit1, "1"),
+    (KeyCode::Digit2, "2"),
+    (KeyCode::Digit3, "3"),
+    (KeyCode::Digit4, "4"),
+    (KeyCode::Digit5, "5"),
+    (KeyCode::Digit6, "6"),
+    (KeyCode::Digit7, "7"),
+    (KeyCode::Digit8, "8"),
+    (KeyCode::Digit9, "9"),
+    (KeyCode::Equal, "="),
+    (KeyCode::Minus, "-"),
+    (KeyCode::BracketLeft, "["),
+    (KeyCode::BracketRight, "]"),
+    (KeyCode::Home, "Home"),
+    (KeyCode::End, "End"),
+    (KeyCode::Delete, "Delete"),
+    (KeyCode::PageUp, "Page Up"),
+    (KeyCode::PageDown, "Page Down"),
+    (KeyCode::ShiftLeft, "Left Shift"),
+    (KeyCode::ShiftRight, "Right Shift"),
+    (KeyCode::ControlLeft, "Left Ctrl"),
+    (KeyCode::ControlRight, "Right Ctrl"),
+    (KeyCode::AltLeft, "Left Alt"),
+    (KeyCode::AltRight, "Right Alt"),
+    (KeyCode::SuperLeft, "Left Super"),
+    (KeyCode::SuperRight, "Right Super"),
+];
+
+/// Xbox-style pad labels (Q7 of M56): `A` for the south button, as SDL's
+/// reference layout; a Nintendo pad reads swapped.
+const GAMEPAD_BUTTON_LABELS: &[(GamepadButton, &str)] = &[
+    (GamepadButton::South, "A"),
+    (GamepadButton::East, "B"),
+    (GamepadButton::North, "Y"),
+    (GamepadButton::West, "X"),
+    (GamepadButton::LeftShoulder, "LB"),
+    (GamepadButton::RightShoulder, "RB"),
+    (GamepadButton::LeftTrigger, "LT"),
+    (GamepadButton::RightTrigger, "RT"),
+    (GamepadButton::Select, "Select"),
+    (GamepadButton::Start, "Start"),
+    (GamepadButton::Mode, "Home"),
+    (GamepadButton::LeftStick, "LS"),
+    (GamepadButton::RightStick, "RS"),
+    (GamepadButton::DPadUp, "D-Pad Up"),
+    (GamepadButton::DPadDown, "D-Pad Down"),
+    (GamepadButton::DPadLeft, "D-Pad Left"),
+    (GamepadButton::DPadRight, "D-Pad Right"),
+];
+
+/// A key's prompt label: `W`, `Space`, `Esc`, `Left Shift`, `Page Up`; a
+/// key with no variant reads `Key <n>`.
+#[must_use]
+pub fn key_label(code: KeyCode) -> Cow<'static, str> {
+    match code {
+        KeyCode::Other(n) => Cow::Owned(format!("Key {n}")),
+        named => KEYCODE_LABELS
+            .iter()
+            .find(|(candidate, _)| *candidate == named)
+            .map_or(Cow::Borrowed("Key"), |(_, label)| Cow::Borrowed(*label)),
+    }
+}
+
+/// A mouse button's prompt label: `Left Mouse`, `Right Mouse`, `Middle
+/// Mouse`, `Mouse <n>`.
+#[must_use]
+pub fn mouse_button_label(button: MouseButton) -> Cow<'static, str> {
+    match button {
+        MouseButton::Left => Cow::Borrowed("Left Mouse"),
+        MouseButton::Right => Cow::Borrowed("Right Mouse"),
+        MouseButton::Middle => Cow::Borrowed("Middle Mouse"),
+        MouseButton::Other(n) => Cow::Owned(format!("Mouse {n}")),
+    }
+}
+
+/// A wheel direction's prompt label: `Wheel Up` or `Wheel Down`.
+#[must_use]
+pub fn scroll_direction_label(direction: ScrollDirection) -> &'static str {
+    match direction {
+        ScrollDirection::Up => "Wheel Up",
+        ScrollDirection::Down => "Wheel Down",
+    }
+}
+
+/// A pad button's prompt label, Xbox-style: `A`, `LB`, `D-Pad Up`.
+#[must_use]
+pub fn gamepad_button_label(button: GamepadButton) -> &'static str {
+    GAMEPAD_BUTTON_LABELS
+        .iter()
+        .find(|(candidate, _)| *candidate == button)
+        .map(|(_, label)| *label)
+        .expect("gamepad button missing label")
+}
+
+/// A stick direction's prompt label: `Left Stick Up`, `Right Stick Left`.
+/// Negative is left on x and down on y.
+#[must_use]
+pub fn stick_label(axis: GamepadAxis, direction: AxisDirection) -> &'static str {
+    use AxisDirection::{Negative, Positive};
+    match (axis, direction) {
+        (GamepadAxis::LeftStickX, Negative) => "Left Stick Left",
+        (GamepadAxis::LeftStickX, Positive) => "Left Stick Right",
+        (GamepadAxis::LeftStickY, Negative) => "Left Stick Down",
+        (GamepadAxis::LeftStickY, Positive) => "Left Stick Up",
+        (GamepadAxis::RightStickX, Negative) => "Right Stick Left",
+        (GamepadAxis::RightStickX, Positive) => "Right Stick Right",
+        (GamepadAxis::RightStickY, Negative) => "Right Stick Down",
+        (GamepadAxis::RightStickY, Positive) => "Right Stick Up",
+    }
 }
 
 #[cfg(test)]

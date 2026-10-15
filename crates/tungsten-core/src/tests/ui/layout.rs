@@ -493,7 +493,8 @@ fn a_state_change_relayouts_only_when_the_resolved_text_changed() {
     assert_eq!(stats, LayoutStats::default());
     assert!(store.committed(tree.text_node(label).unwrap()).is_some());
 
-    // The text colour: the root relayouts and the label keeps a valid commit.
+    // The text colour: paint only (M56); no relayout, no `set_text`, and
+    // the label keeps its commit.
     let (mut tree, button, label, mut store) = themed_button(
         TextOverrides {
             color: Some([6, 6, 6, 255]),
@@ -502,14 +503,18 @@ fn a_state_change_relayouts_only_when_the_resolved_text_changed() {
         None,
     );
     let before = store.counts;
+    tree.clear_paint_dirty();
     tree.set_enabled(button, false);
     let stats = tree.layout(VIEWPORT, &mut store);
-    assert_eq!(stats.roots_laid_out, 1);
-    assert_eq!(stats.commits, 1);
+    assert_eq!(stats, LayoutStats::default());
+    assert!(tree.is_paint_dirty());
     assert_eq!(
-        store.counts.set_text_calls,
-        before.set_text_calls + 1,
-        "the node is re-set with its new colour"
+        store.counts.set_text_calls, before.set_text_calls,
+        "the colour reaches paint, not the node"
+    );
+    assert_eq!(
+        tree.resolved_style(label).unwrap().text.color,
+        [6, 6, 6, 255]
     );
     let node = tree.text_node(label).unwrap();
     assert!(
@@ -712,4 +717,88 @@ fn an_image_measures_its_natural_size_on_an_auto_axis() {
         "Fill takes the rest of the row"
     );
     assert_eq!(tree.text_node(natural), None);
+}
+
+// ---- M56: the text scale and allocation-free text ----
+
+#[test]
+fn the_text_scale_grows_labels_and_controls_and_leaves_styles_unscaled() {
+    let mut tree = UiTree::new();
+    let root = tree.add_root(UiLayer::Game, LayoutStyle::default());
+    let label = tree.label(root, "abcd");
+    let toggle = tree.toggle(root, false);
+    let slider = tree.slider(root, crate::ui::SliderRange::new(0.0, 1.0), 0.5);
+    // Content-sized: anchored, so no axis stretches.
+    for (id, y) in [(label, 0.0), (toggle, 100.0), (slider, 200.0)] {
+        tree.set_layout_style(
+            id,
+            LayoutStyle::default().anchored(Anchor::TopStart, Vec2::new(0.0, y)),
+        );
+    }
+    let mut store = store();
+    tree.layout(VIEWPORT, &mut store);
+    let before = |tree: &UiTree, id| tree.rect(id).unwrap().size();
+    let (label_size, toggle_size, slider_size) = (
+        before(&tree, label),
+        before(&tree, toggle),
+        before(&tree, slider),
+    );
+    let style = tree.resolved_style(label).unwrap().text.clone();
+    let sets = store.counts.set_text_calls;
+
+    tree.set_text_scale(1.5);
+    assert!(tree.is_layout_dirty());
+    let stats = tree.layout(VIEWPORT, &mut store);
+    assert_eq!(stats.roots_laid_out, 1);
+    assert_eq!(store.counts.set_text_calls, sets + 1, "each label set once");
+    assert_eq!(tree.rect(label).unwrap().size(), label_size * 1.5);
+    assert_eq!(tree.rect(toggle).unwrap().size(), toggle_size * 1.5);
+    assert_eq!(tree.rect(slider).unwrap().size(), slider_size * 1.5);
+    assert_eq!(
+        tree.resolved_style(label).unwrap().text,
+        style,
+        "resolved styles stay unscaled"
+    );
+    assert_commits_fit(&tree, &mut store);
+    assert_eq!(tree.layout(VIEWPORT, &mut store), LayoutStats::default());
+
+    tree.set_text_scale(1.5);
+    assert!(!tree.is_layout_dirty(), "an equal scale marks nothing");
+    for (input, expected) in [
+        (f32::NAN, 1.5),
+        (f32::INFINITY, 1.5),
+        (0.0, 1.5),
+        (-2.0, 1.5),
+        (1e30, 4.0),
+        (0.01, 0.25),
+    ] {
+        tree.set_text_scale(input);
+        assert_eq!(tree.text_scale(), expected, "{input}");
+    }
+}
+
+#[test]
+fn set_plain_text_compares_without_setting_and_sets_a_new_value_once() {
+    let mut tree = UiTree::new();
+    let root = tree.add_root(UiLayer::Game, LayoutStyle::default());
+    let label = tree.label(root, "12");
+    let mut store = store();
+    tree.layout(VIEWPORT, &mut store);
+    tree.clear_paint_dirty();
+    let sets = store.counts.set_text_calls;
+    let mut value = String::with_capacity(8);
+    use std::fmt::Write as _;
+    write!(value, "{}", 12).unwrap();
+    assert!(!tree.set_plain_text(label, &value));
+    assert!(!tree.is_layout_dirty() && !tree.is_paint_dirty());
+    tree.layout(VIEWPORT, &mut store);
+    assert_eq!(store.counts.set_text_calls, sets);
+
+    value.clear();
+    write!(value, "{}", 13).unwrap();
+    assert!(tree.set_plain_text(label, &value));
+    assert!(tree.is_layout_dirty());
+    tree.layout(VIEWPORT, &mut store);
+    assert_eq!(store.counts.set_text_calls, sets + 1);
+    assert_eq!(tree.accessible_name(label), Some("13"));
 }

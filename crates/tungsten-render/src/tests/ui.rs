@@ -50,6 +50,7 @@ fn text_command(rect: Rect, clip: u32) -> PaintCommand {
         node: TextNodeId::new(0, 0),
         rect,
         color: WHITE,
+        scale: 1.0,
         clip,
     }
 }

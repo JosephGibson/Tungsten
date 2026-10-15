@@ -4,8 +4,11 @@ use glam::Vec2;
 
 use super::*;
 use crate::assets::{AssetRegistry, SpriteAssetId};
-use crate::ui::theme::StyleOverrides;
-use crate::ui::{Anchor, FixedAdvanceMeasure, LayoutStyle, Sizing, SliderRange, Visibility};
+use crate::text::TextNodeStore as _;
+use crate::ui::theme::{StyleOverrides, WidgetState};
+use crate::ui::{
+    Anchor, FixedAdvanceMeasure, LayoutStats, LayoutStyle, Sizing, SliderRange, Visibility,
+};
 
 /// 8 px per glyph at the theme's size 16; lines are 20 tall.
 const VIEWPORT: Vec2 = Vec2::new(800.0, 600.0);
@@ -88,6 +91,7 @@ fn text_command(rect: Rect) -> PaintCommand {
         node: TextNodeId::new(0, 0),
         rect,
         color: WHITE,
+        scale: 1.0,
         clip: 0,
     }
 }
@@ -947,4 +951,395 @@ fn a_row_of_labels_and_controls_keeps_its_text_in_one_batch() {
         (1, Some(0..4)),
         "a control's rectangles overlap no label beside it"
     );
+}
+
+// ---- M56: paint-only properties ----
+
+/// Every colour's alpha a command paints with: fill and border, tint, text.
+fn alphas(list: &PaintList) -> Vec<u8> {
+    list.commands
+        .iter()
+        .flat_map(|command| match command {
+            PaintCommand::Rect { fill, border, .. } => vec![fill[3], border[3]],
+            PaintCommand::Image { tint, .. } => vec![tint[3]],
+            PaintCommand::Text { color, .. } => vec![color[3]],
+        })
+        .collect()
+}
+
+fn opaque() -> StyleOverrides {
+    StyleOverrides {
+        background: Some(WHITE),
+        border: Some(WHITE),
+        border_width: Some(2.0),
+        corner_radius: Some(4.0),
+        ..StyleOverrides::default()
+    }
+}
+
+/// A root holding a filled panel at (100, 100), 100 by 50, which holds a
+/// label "ab" and an image: (tree, root, panel, label, image, sprites).
+fn painted_panel() -> (
+    UiTree,
+    WidgetId,
+    WidgetId,
+    WidgetId,
+    WidgetId,
+    AssetRegistry,
+) {
+    let (sprites, sprite) = registry("icon", None);
+    let mut tree = UiTree::new();
+    let root = bare_root(&mut tree, LayoutStyle::default());
+    let panel = tree.panel(root, at(100.0, 100.0, 100.0, 50.0));
+    tree.set_overrides(panel, opaque());
+    let label = tree.label(panel, "ab");
+    let image = tree.image(panel, sprite, Vec2::new(10.0, 10.0), LayoutStyle::default());
+    (tree, root, panel, label, image, sprites)
+}
+
+#[test]
+fn opacity_and_a_roots_fade_multiply_every_commands_alpha_in_the_subtree() {
+    let (mut tree, root, panel, _label, _image, sprites) = painted_panel();
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &sprites);
+    assert_eq!(kinds(&list), "RTI");
+    assert!(alphas(&list).iter().all(|alpha| *alpha == 255));
+
+    tree.set_fade(root, 0.5);
+    tree.set_opacity(panel, 0.5);
+    assert!(tree.is_paint_dirty());
+    assert!(!tree.is_layout_dirty(), "paint only");
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &sprites);
+    assert_eq!(kinds(&list), "RTI");
+    assert!(
+        alphas(&list).iter().all(|alpha| *alpha == 64),
+        "255 × 0.25, rounded: {:?}",
+        alphas(&list)
+    );
+}
+
+#[test]
+fn an_alpha_zero_subtree_paints_nothing_and_is_still_hit() {
+    let (mut tree, _root, panel, _label, _image, sprites) = painted_panel();
+    tree.set_opacity(panel, 0.0);
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &sprites);
+    assert!(list.is_empty());
+    assert_eq!(tree.hit_test(Vec2::new(195.0, 145.0)), Some(panel));
+}
+
+#[test]
+fn a_translation_moves_paint_and_hits_by_whole_physical_pixels() {
+    let (mut tree, _root, panel, _label, _image, sprites) = painted_panel();
+    let before = paint(&mut tree, 1.5, UiDebug::default(), &sprites);
+    tree.set_translation(panel, Vec2::new(3.3, -0.2));
+    assert!(!tree.is_layout_dirty(), "paint only");
+    let after = paint(&mut tree, 1.5, UiDebug::default(), &sprites);
+    for (old, new) in rects(&before).iter().zip(rects(&after)) {
+        // 3.3 × 1.5 = 4.95 rounds to 5 physical pixels; -0.3 to 0.
+        assert_eq!(new.min - old.min, Vec2::new(5.0, 0.0));
+        assert_eq!(new.size(), old.size());
+    }
+    let shift = 5.0 / 1.5;
+    let visual = tree.visual_rect(panel).unwrap();
+    assert_eq!(visual.min, Vec2::new(100.0 + shift, 100.0));
+    assert_eq!(tree.rect(panel), Some(rect(100.0, 100.0, 100.0, 50.0)));
+    // Past the layout box's right edge but inside the painted one, below
+    // the image.
+    let right = Vec2::new(200.0 + shift * 0.5, 140.0);
+    assert_eq!(tree.hit_test(right), Some(panel));
+    assert_eq!(tree.hit_test(Vec2::new(100.0 + shift * 0.5, 140.0)), None);
+}
+
+#[test]
+fn a_scale_maps_rects_radii_borders_clips_and_text_about_the_centre() {
+    let (mut tree, _root, panel, label, _image, sprites) = painted_panel();
+    tree.set_clip_children(panel, true);
+    let before = paint(&mut tree, 1.0, UiDebug::default(), &sprites);
+    tree.set_scale(panel, 2.0);
+    let after = paint(&mut tree, 1.0, UiDebug::default(), &sprites);
+    let map = |p: Vec2| Vec2::new(150.0, 125.0) + (p - Vec2::new(150.0, 125.0)) * 2.0;
+    for (old, new) in rects(&before).iter().zip(rects(&after)) {
+        assert_eq!(new.min, map(old.min));
+        assert_eq!(new.max, map(old.max));
+    }
+    let PaintCommand::Rect {
+        border_width,
+        corner_radius,
+        ..
+    } = after.commands[0]
+    else {
+        panic!("the panel's box first");
+    };
+    assert_eq!((border_width, corner_radius), (4.0, 8.0));
+    assert_eq!(
+        after.clips[1],
+        to_physical(rect(50.0, 75.0, 200.0, 100.0), 1.0),
+        "the panel's clip is its scaled box"
+    );
+    let PaintCommand::Text { scale, rect, .. } = after.commands[1] else {
+        panic!("the label's run second");
+    };
+    assert_eq!(scale, 2.0);
+    let label_box = tree.rect(label).unwrap();
+    assert_eq!(rect.min, map(label_box.min));
+    assert_eq!(rect.max, map(label_box.max));
+}
+
+#[test]
+fn text_scales_round_down_to_a_32nd_inside_their_exact_box() {
+    for (set, drawn) in [
+        (1.02, 1.0),
+        (1.03125, 1.03125),
+        (1.0 / 40.0, 1.0 / 40.0),
+        (0.5, 0.5),
+        (3.0, 3.0),
+    ] {
+        let (mut tree, _root, panel, label, _image, sprites) = painted_panel();
+        tree.set_scale(panel, set);
+        let list = paint(&mut tree, 1.0, UiDebug::default(), &sprites);
+        let PaintCommand::Text { scale, rect, .. } = list.commands[1] else {
+            panic!("the label's run second");
+        };
+        assert_eq!(scale, drawn, "set {set}");
+        let exact = tree.visual_rect(label).unwrap();
+        assert!(
+            rect.min.x >= exact.min.x - 1e-4
+                && rect.min.y >= exact.min.y - 1e-4
+                && rect.max.x <= exact.max.x + 1e-4
+                && rect.max.y <= exact.max.y + 1e-4,
+            "set {set}: {rect:?} inside {exact:?}"
+        );
+        let centre = |r: Rect| (r.min + r.max) * 0.5;
+        assert!((centre(rect) - centre(exact)).length() < 1e-3);
+        assert!((rect.width() - exact.width() * drawn / set).abs() < 1e-3);
+    }
+    assert_eq!(text_scale_step(1.0 / 32.0), 1.0 / 32.0);
+    assert_eq!(text_scale_step(0.03), 0.03);
+}
+
+#[test]
+fn nested_scales_paint_down_to_a_64th_and_below_it_nothing_paints_or_hits() {
+    let mut tree = UiTree::new();
+    let root = bare_root(&mut tree, LayoutStyle::default());
+    let outer = tree.panel(root, at(0.0, 0.0, 800.0, 600.0));
+    tree.set_overrides(
+        outer,
+        StyleOverrides {
+            background: Some([0; 4]),
+            border_width: Some(0.0),
+            ..StyleOverrides::default()
+        },
+    );
+    let inner = tree.panel(outer, at(0.0, 0.0, 800.0, 600.0));
+    tree.set_overrides(inner, opaque());
+    tree.label(inner, "ab");
+    tree.set_scale(outer, 1.0 / 8.0);
+    tree.set_scale(inner, 1.0 / 8.0);
+    let sprites = AssetRegistry::new();
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &sprites);
+    assert_eq!(kinds(&list), "RT", "1/8 × 1/8 = 1/64 paints");
+    assert_eq!(tree.hit_test(Vec2::new(400.0, 300.0)), Some(inner));
+
+    tree.set_scale(inner, 1.0 / 16.0);
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &sprites);
+    assert!(list.is_empty(), "1/128 paints nothing");
+    assert_eq!(
+        tree.hit_test(Vec2::new(400.0, 300.0)),
+        Some(outer),
+        "and hits nothing under it"
+    );
+}
+
+#[test]
+fn paint_only_setters_ignore_what_is_not_finite_and_clamp_the_rest() {
+    let (mut tree, root, panel, _label, _image, sprites) = painted_panel();
+    paint(&mut tree, 1.0, UiDebug::default(), &sprites);
+
+    tree.set_opacity(panel, f32::NAN);
+    tree.set_translation(panel, Vec2::new(f32::NAN, 0.0));
+    tree.set_translation(panel, Vec2::new(0.0, f32::INFINITY));
+    for scale in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, 0.0, -1.0] {
+        tree.set_scale(panel, scale);
+    }
+    tree.set_fade(root, f32::NAN);
+    assert!(!tree.is_paint_dirty(), "every one ignored");
+    assert_eq!(tree.opacity(panel), Some(1.0));
+    assert_eq!(tree.translation(panel), Some(Vec2::ZERO));
+    assert_eq!(tree.scale(panel), Some(1.0));
+    assert_eq!(tree.fade(root), Some(1.0));
+
+    tree.set_opacity(panel, -1.0);
+    assert_eq!(tree.opacity(panel), Some(0.0));
+    tree.set_opacity(panel, f32::INFINITY);
+    assert_eq!(tree.opacity(panel), Some(1.0));
+    tree.set_scale(panel, 1e9);
+    assert_eq!(tree.scale(panel), Some(64.0));
+    tree.set_scale(panel, 1e-9);
+    assert_eq!(tree.scale(panel), Some(1.0 / 64.0));
+    tree.set_fade(root, -2.0);
+    assert_eq!(tree.fade(root), Some(0.0));
+    tree.set_fade(root, f32::INFINITY);
+    assert_eq!(tree.fade(root), Some(1.0));
+    tree.set_translation(panel, Vec2::new(-4.0, 0.0));
+    assert_eq!(tree.translation(panel), Some(Vec2::new(-4.0, 0.0)));
+    assert!(!tree.is_layout_dirty(), "never layout");
+
+    tree.clear_paint_dirty();
+    tree.set_translation(panel, Vec2::new(-4.0, 0.0));
+    tree.set_fade(root, 1.0);
+    assert!(!tree.is_paint_dirty(), "an equal value marks nothing");
+
+    // A widget that is not a root takes no fade or freeze.
+    tree.set_fade(panel, 0.5);
+    tree.set_frozen(panel, true);
+    assert_eq!(tree.fade(panel), None);
+    assert!(!tree.frozen(panel));
+    tree.set_frozen(root, true);
+    assert!(tree.frozen(root));
+    assert!(!tree.is_paint_dirty(), "a freeze marks nothing");
+    let gone = WidgetId::new(99, 0);
+    assert_eq!(tree.opacity(gone), None);
+    assert_eq!(tree.translation(gone), None);
+    assert_eq!(tree.scale(gone), None);
+}
+
+#[test]
+fn a_padded_label_commits_and_paints_at_its_content_box() {
+    let mut tree = UiTree::new();
+    let root = bare_root(&mut tree, LayoutStyle::default());
+    // "aaa bbb" is 56 wide: one line in the 60 border box, two in the 40
+    // content box.
+    let label = tree.label(root, "aaa bbb");
+    tree.set_layout_style(
+        label,
+        LayoutStyle::default()
+            .with_size(Sizing::Px(60.0), Sizing::Auto)
+            .with_padding(10.0),
+    );
+    let mut store = FixedAdvanceMeasure::default();
+    let list = paint_with(
+        &mut tree,
+        &mut store,
+        1.0,
+        UiDebug::default(),
+        &AssetRegistry::new(),
+    );
+    let border = tree.rect(label).unwrap();
+    assert_eq!(border.size(), Vec2::new(60.0, 60.0));
+    let committed = store.committed(tree.text_node(label).unwrap()).unwrap();
+    assert_eq!(committed.size.y, 40.0, "two lines in the content box");
+    let PaintCommand::Text { rect: text, .. } = list.commands[0] else {
+        panic!("one text run");
+    };
+    assert_eq!(text.min, border.min + Vec2::splat(10.0));
+    assert_eq!(text.size(), Vec2::new(40.0, 40.0));
+}
+
+#[test]
+fn a_labels_colour_only_change_repaints_without_setting_its_text() {
+    let mut tree = UiTree::new();
+    let root = bare_root(&mut tree, LayoutStyle::default());
+    let label = tree.label(root, "ab");
+    let mut store = FixedAdvanceMeasure::default();
+    let sprites = AssetRegistry::new();
+    paint_with(&mut tree, &mut store, 1.0, UiDebug::default(), &sprites);
+    let before = store.counts;
+    let mut overrides = StyleOverrides::default();
+    overrides.text.color = Some([1, 2, 3, 255]);
+    tree.set_overrides(label, overrides);
+    let stats = tree.layout(VIEWPORT, &mut store);
+    assert_eq!(stats, LayoutStats::default(), "no relayout");
+    assert!(tree.is_paint_dirty());
+    assert_eq!(store.counts.set_text_calls, before.set_text_calls);
+    let list = paint_with(&mut tree, &mut store, 1.0, UiDebug::default(), &sprites);
+    let PaintCommand::Text { color, .. } = list.commands[0] else {
+        panic!("one text run");
+    };
+    assert_eq!(color, [1, 2, 3, 255]);
+}
+
+#[test]
+fn a_widget_under_a_disabled_panel_resolves_disabled_and_back() {
+    let mut tree = UiTree::new();
+    let root = tree.add_root(UiLayer::Game, LayoutStyle::default());
+    let panel = tree.panel(root, LayoutStyle::default());
+    let button = tree.button(panel, "go");
+    let sprites = AssetRegistry::new();
+    paint(&mut tree, 1.0, UiDebug::default(), &sprites);
+    let normal = tree.resolved_style(button).unwrap().background;
+    tree.set_enabled(panel, false);
+    paint(&mut tree, 1.0, UiDebug::default(), &sprites);
+    assert_eq!(tree.widget_state(button), Some(WidgetState::Disabled));
+    let theme = tree.theme().clone();
+    assert_eq!(
+        tree.resolved_style(button).unwrap().background,
+        theme.kinds.button.disabled.background.unwrap()
+    );
+    assert!(tree.enabled(button), "its own flag stays");
+    tree.set_enabled(panel, true);
+    paint(&mut tree, 1.0, UiDebug::default(), &sprites);
+    assert_eq!(tree.widget_state(button), Some(WidgetState::Normal));
+    assert_eq!(tree.resolved_style(button).unwrap().background, normal);
+}
+
+// ---- M56: prewarm ----
+
+#[test]
+fn a_prewarm_paints_a_hidden_roots_runs_once_at_their_transforms() {
+    let mut tree = UiTree::new();
+    let root = bare_root(&mut tree, LayoutStyle::default());
+    let panel = tree.panel(root, at(100.0, 100.0, 100.0, 50.0));
+    let label = tree.label(panel, "ab");
+    let digits = tree.label(panel, "0123456789");
+    tree.set_visibility(digits, Visibility::Hidden);
+    tree.set_visibility(root, Visibility::Hidden);
+    tree.set_scale(panel, 2.0);
+    tree.set_opacity(panel, 0.0);
+    tree.prewarm(root);
+    tree.prewarm(panel);
+    assert!(tree.prewarm_pending());
+
+    let mut list = PaintList::default();
+    assert!(!tree.paint_prewarm(1.0, &mut list), "not laid out yet");
+    assert!(
+        tree.prewarm_pending(),
+        "the request waits for the first layout"
+    );
+
+    let sprites = AssetRegistry::new();
+    let shown = paint(&mut tree, 1.0, UiDebug::default(), &sprites);
+    assert!(shown.is_empty(), "hidden: the frame paints nothing");
+    assert!(tree.paint_prewarm(1.5, &mut list));
+    assert_eq!(kinds(&list), "TT", "both runs, the hidden one too");
+    assert_eq!(list.scale, 1.5);
+    assert_eq!(list.clips.len(), 1);
+    let PaintCommand::Text {
+        scale, rect, node, ..
+    } = list.commands[0]
+    else {
+        panic!("a run");
+    };
+    assert_eq!(node, tree.text_node(label).unwrap());
+    assert_eq!(scale, 2.0, "at its transform");
+    let visual = tree.visual_rect(label).unwrap();
+    assert_eq!(rect.min, visual.min * 1.5);
+    assert!(!tree.prewarm_pending());
+    assert!(!tree.paint_prewarm(1.5, &mut list));
+    assert!(list.is_empty(), "nothing on the next call");
+}
+
+#[test]
+fn a_collapsed_or_removed_root_drops_its_prewarm() {
+    let mut tree = UiTree::new();
+    let collapsed = bare_root(&mut tree, LayoutStyle::default());
+    tree.label(collapsed, "x");
+    tree.set_visibility(collapsed, Visibility::Collapsed);
+    let removed = bare_root(&mut tree, LayoutStyle::default());
+    tree.label(removed, "y");
+    tree.prewarm(collapsed);
+    tree.prewarm(removed);
+    tree.remove(removed);
+    paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+    let mut list = PaintList::default();
+    assert!(!tree.paint_prewarm(1.0, &mut list));
+    assert!(!tree.prewarm_pending(), "both requests dropped");
 }

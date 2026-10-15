@@ -94,10 +94,18 @@ pub mod names {
     pub const UI_DEBUG_TOGGLE: &str = "ui_debug_toggle";
     /// `PreUpdate`: vsync and fullscreen hotkeys.
     pub const DISPLAY_INPUT: &str = "display_input";
-    /// `PreUpdate`: the state stack's dispatcher, after the display hotkeys.
+    /// `PreUpdate`: the state stack's dispatcher, after the display hotkeys
+    /// and the UI's routing and animation (M56).
     pub const STATE_DISPATCHER: &str = "state_dispatcher";
-    /// `PreUpdate`: UI input routing, after the state dispatcher (`D-149`).
+    /// `PreUpdate`: the state stack's UI roots frozen and faded for a
+    /// transition queued since the dispatcher, before the routing (M56).
+    pub const UI_STATE_ROOTS: &str = "ui_state_roots";
+    /// `PreUpdate`: UI input routing, before the state dispatcher, so a
+    /// state's `update` reads this frame's routing (`D-149`, M56).
     pub const UI_ROUTE: &str = "ui_route";
+    /// `PreUpdate`: UI animation tracks on the real clock, after the routing
+    /// and before the state dispatcher (M56).
+    pub const UI_ANIMATE: &str = "ui_animate";
     /// `PostUpdate`: particle emitter counts, before the emit.
     pub const PARTICLE_COUNT_REFRESH: &str = "particle_count_refresh";
     /// `PostUpdate`: particle emission, before the tick.

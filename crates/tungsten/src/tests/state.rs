@@ -588,3 +588,247 @@ fn top_state_updates_during_transition() {
     dispatch(&mut world, 0.125);
     assert_eq!(*hooks.borrow(), ["gameplay:update"]);
 }
+
+// ---- M56: state-owned UI roots ----
+
+use std::cell::Cell;
+use tungsten_core::ui::{LayoutStyle, UiLayer, UiTree, Visibility, WidgetId};
+
+/// A state that adds and owns one root in `on_enter`, or two with `pair`
+/// (a `Hide` root, then a `Show` one), recording whether its first root
+/// was still in the tree at `on_exit`.
+struct RootState {
+    id: StateId,
+    cover: RootCover,
+    roots: Rc<RefCell<Vec<WidgetId>>>,
+    present_at_exit: Rc<Cell<Option<bool>>>,
+}
+
+impl RootState {
+    fn new(id: StateId, cover: RootCover) -> Self {
+        Self {
+            id,
+            cover,
+            roots: Rc::default(),
+            present_at_exit: Rc::default(),
+        }
+    }
+}
+
+impl GameState for RootState {
+    fn id(&self) -> StateId {
+        self.id
+    }
+
+    fn on_enter(&mut self, ctx: &mut StateContext) {
+        let root = ctx
+            .world
+            .resource_mut::<UiTree>()
+            .add_root(UiLayer::Game, LayoutStyle::default());
+        ctx.world
+            .resource_mut::<StateStack>()
+            .own_root(root, self.cover);
+        self.roots.borrow_mut().push(root);
+    }
+
+    fn on_exit(&mut self, ctx: &mut StateContext) {
+        let root = self.roots.borrow()[0];
+        self.present_at_exit
+            .set(Some(ctx.world.resource::<UiTree>().contains(root)));
+    }
+
+    fn update(&mut self, _world: &mut World) {}
+}
+
+fn ui_world() -> World {
+    let mut world = make_world();
+    world.insert_resource(UiTree::new());
+    world
+}
+
+fn tree(world: &World) -> &UiTree {
+    world.resource::<UiTree>()
+}
+
+/// Pushes `state` with a plain request and dispatches; returns its roots.
+fn push_roots(world: &mut World, state: RootState) -> Rc<RefCell<Vec<WidgetId>>> {
+    let roots = state.roots.clone();
+    stack_mut(world).request_push(state);
+    dispatch(world, 0.0);
+    roots
+}
+
+#[test]
+fn a_root_owned_in_on_enter_is_removed_after_on_exit_by_a_pop_and_a_replace() {
+    let mut world = ui_world();
+    let state = RootState::new("menu", RootCover::Hide);
+    let (roots, present) = (state.roots.clone(), state.present_at_exit.clone());
+    stack_mut(&mut world).request_push(state);
+    dispatch(&mut world, 0.0);
+    let root = roots.borrow()[0];
+    assert!(tree(&world).contains(root));
+    stack_mut(&mut world).request_pop();
+    dispatch(&mut world, 0.0);
+    assert_eq!(present.get(), Some(true), "on_exit still sees it");
+    assert!(!tree(&world).contains(root), "then it goes");
+
+    let state = RootState::new("menu", RootCover::Hide);
+    let (roots, present) = (state.roots.clone(), state.present_at_exit.clone());
+    push_roots(&mut world, state);
+    let root = roots.borrow()[0];
+    let next = RootState::new("gameplay", RootCover::Hide);
+    let next_roots = next.roots.clone();
+    stack_mut(&mut world).request_replace(next);
+    dispatch(&mut world, 0.0);
+    assert_eq!(present.get(), Some(true));
+    assert!(!tree(&world).contains(root));
+    let replacement = next_roots.borrow()[0];
+    assert!(tree(&world).contains(replacement));
+    assert!(!tree(&world).frozen(replacement), "the new top is live");
+}
+
+#[test]
+fn push_hides_or_freezes_by_cover_and_pop_restores_each_visibility() {
+    let mut world = ui_world();
+    let play = push_roots(&mut world, RootState::new("gameplay", RootCover::Show));
+    let shown = play.borrow()[0];
+    // Two more roots for the top state, owned from outside any hook.
+    let (hidden, game_hidden) = {
+        let tree = world.resource_mut::<UiTree>();
+        let a = tree.add_root(UiLayer::Game, LayoutStyle::default());
+        let b = tree.add_root(UiLayer::Game, LayoutStyle::default());
+        tree.set_visibility(b, Visibility::Hidden);
+        (a, b)
+    };
+    stack_mut(&mut world).own_root(hidden, RootCover::Hide);
+    stack_mut(&mut world).own_root(game_hidden, RootCover::Hide);
+    dispatch(&mut world, 0.0);
+    assert!(!tree(&world).frozen(shown));
+
+    let pause = push_roots(&mut world, RootState::new("pause", RootCover::Hide));
+    let pause_root = pause.borrow()[0];
+    let ui = tree(&world);
+    assert_eq!(ui.visibility(shown), Some(Visibility::Visible));
+    assert!(ui.frozen(shown), "a Show root stays shown and frozen");
+    assert_eq!(ui.visibility(hidden), Some(Visibility::Hidden));
+    assert_eq!(ui.visibility(game_hidden), Some(Visibility::Hidden));
+    assert!(!ui.frozen(pause_root));
+
+    stack_mut(&mut world).request_pop();
+    dispatch(&mut world, 0.0);
+    let ui = tree(&world);
+    assert!(!ui.contains(pause_root));
+    assert!(!ui.frozen(shown));
+    assert_eq!(ui.visibility(hidden), Some(Visibility::Visible));
+    assert_eq!(
+        ui.visibility(game_hidden),
+        Some(Visibility::Hidden),
+        "a root the game hid stays hidden"
+    );
+}
+
+#[test]
+fn a_root_owned_outside_any_hook_belongs_to_the_top_state() {
+    let mut world = ui_world();
+    push_roots(&mut world, RootState::new("menu", RootCover::Hide));
+    push_roots(&mut world, RootState::new("pause", RootCover::Hide));
+    let root = world
+        .resource_mut::<UiTree>()
+        .add_root(UiLayer::Game, LayoutStyle::default());
+    stack_mut(&mut world).own_root(root, RootCover::Hide);
+    assert_eq!(stack(&world).owned_roots.last().map(|o| o.owner), Some(1));
+    stack_mut(&mut world).request_pop();
+    dispatch(&mut world, 0.0);
+    assert!(!tree(&world).contains(root), "it left with the top state");
+
+    // An empty stack owns nothing.
+    let mut empty = ui_world();
+    let root = empty
+        .resource_mut::<UiTree>()
+        .add_root(UiLayer::Game, LayoutStyle::default());
+    stack_mut(&mut empty).own_root(root, RootCover::Show);
+    assert!(stack(&empty).owned_roots.is_empty());
+}
+
+#[test]
+fn two_instances_of_one_state_id_each_lose_only_their_own_roots() {
+    let mut world = ui_world();
+    let first = push_roots(&mut world, RootState::new("menu", RootCover::Hide));
+    let second = push_roots(&mut world, RootState::new("menu", RootCover::Hide));
+    let (a, b) = (first.borrow()[0], second.borrow()[0]);
+    assert_eq!(tree(&world).visibility(a), Some(Visibility::Hidden));
+    stack_mut(&mut world).request_pop();
+    dispatch(&mut world, 0.0);
+    assert!(!tree(&world).contains(b));
+    assert!(
+        tree(&world).contains(a),
+        "the lower instance keeps its root"
+    );
+    assert_eq!(tree(&world).visibility(a), Some(Visibility::Visible));
+}
+
+#[test]
+fn a_fade_transition_freezes_every_owned_root_and_fades_it_with_the_cover() {
+    let mut world = ui_world();
+    let play = push_roots(&mut world, RootState::new("gameplay", RootCover::Show));
+    let shown = play.borrow()[0];
+    let unowned = world
+        .resource_mut::<UiTree>()
+        .add_root(UiLayer::Game, LayoutStyle::default());
+    let pause = RootState::new("pause", RootCover::Hide);
+    let pause_roots = pause.roots.clone();
+    assert!(stack_mut(&mut world).request_push_transition(pause, fade(1.0)));
+    // Queued only: frozen at fade 1 from the next sync.
+    ui_state_roots_system(&mut world);
+    assert!(tree(&world).frozen(shown));
+    assert_eq!(tree(&world).fade(shown), Some(1.0));
+    let mut saw_pause = false;
+    for _ in 0..100 {
+        dispatch(&mut world, 1.0 / 32.0);
+        let cover = stack(&world).transition_cover();
+        let transitioning = stack(&world).is_transitioning();
+        let mut owned = vec![shown];
+        owned.extend(pause_roots.borrow().iter().copied());
+        saw_pause |= !pause_roots.borrow().is_empty();
+        for root in owned {
+            let ui = tree(&world);
+            if transitioning {
+                assert!(ui.frozen(root));
+                assert_eq!(ui.fade(root), Some(1.0 - cover));
+            } else {
+                assert_eq!(ui.fade(root), Some(1.0));
+            }
+        }
+        assert!(!tree(&world).frozen(unowned), "a root no state owns");
+        assert_eq!(tree(&world).fade(unowned), Some(1.0));
+    }
+    assert!(saw_pause);
+    assert!(!stack(&world).is_transitioning());
+    let pause_root = pause_roots.borrow()[0];
+    assert!(!tree(&world).frozen(pause_root), "the new top thaws");
+    assert!(
+        tree(&world).frozen(shown),
+        "the covered Show root stays frozen"
+    );
+}
+
+#[test]
+fn with_no_owned_roots_a_dispatch_leaves_the_tree_untouched() {
+    let hooks: Hooks = Rc::new(RefCell::new(Vec::new()));
+    let mut world = ui_world();
+    let root = world
+        .resource_mut::<UiTree>()
+        .add_root(UiLayer::Game, LayoutStyle::default());
+    world.resource_mut::<UiTree>().clear_paint_dirty();
+    stack_mut(&mut world).request_push(TestState::new("menu", hooks.clone(), false));
+    stack_mut(&mut world)
+        .request_push_transition(TestState::new("pause", hooks.clone(), false), fade(0.25));
+    for _ in 0..12 {
+        dispatch(&mut world, 1.0 / 32.0);
+        let ui = tree(&world);
+        assert!(!ui.is_paint_dirty());
+        assert!(!ui.frozen(root));
+        assert_eq!(ui.fade(root), Some(1.0));
+    }
+    assert!(stack(&world).owned_roots.is_empty());
+}

@@ -9,6 +9,19 @@ mod gpu;
 pub use engine::{TextEngine, TextNodes};
 pub use fonts::FontSource;
 pub use gpu::{TextPipeline, TextStats};
+
+/// What [`Renderer::prewarm_ui_text`](crate::Renderer::prewarm_ui_text) did
+/// (M56): the runs it prepared, their glyphs and the time it took.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TextPrewarm {
+    /// Text runs prepared: the list's text commands whose node is committed.
+    pub runs: u32,
+    /// Glyphs in those runs' laid-out lines.
+    pub glyphs: u32,
+    /// Wall-clock microseconds, layout of the areas and the prepare.
+    pub micros: u64,
+}
 use tungsten_core::text::TextLayout;
 
 /// High-level text draw command. Build one with `..Default::default()` for

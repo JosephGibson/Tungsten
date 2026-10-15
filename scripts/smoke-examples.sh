@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Runs every example in smoke-test mode (renders a few frames, then exits),
-# then the template from its own folder, the render fixture matrices, the
-# benchmark rows and a frame-cap timing row, and reports panics, failures and
-# timeouts.
+# then the template from its own folder, the render fixture matrices, the UI
+# lab's screens row, the benchmark rows and a frame-cap timing row, and
+# reports panics, failures and timeouts.
 #
 # Requires a real GPU and display — not for CI. Use as a pre-commit check
 # when touching engine code, asset manifests, or example wiring. Regression
@@ -224,6 +224,15 @@ for effect in fade wipe_radial dissolve pixelate; do
     TUNGSTEN_SMOKE_FRAMES=16 TUNGSTEN_TRANSITION_FIXTURE="$effect"
 done
 end_section "Mesh/transition passed" "Mesh/transition failures" 5
+
+# M56: the UI lab's gameplay screens. The `menus` fixture scripts the play
+# state through the pause menu, the settings screen, a cancelled capture and
+# back, each behind a fade, within its 150 frames.
+ui_pkg="example-05-ui-lab"
+begin_section "M56 UI screens row (pkg: $ui_pkg)"
+row "fixture=menus" "$log_dir/${ui_pkg}-menus.log" "$ui_pkg" \
+  TUNGSTEN_SMOKE_FRAMES=150 TUNGSTEN_UI_LAB_FIXTURE=menus
+end_section "UI screens passed" "UI screens failures" 1
 
 # Benchmarks: each example-02-bench row at smoke length. Default-scale rows
 # run at dev opt-level 0; the slowest, ecs at default, takes about 12 s. The

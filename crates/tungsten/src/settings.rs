@@ -1,7 +1,7 @@
 //! The runtime apply of the player's [`Settings`] (`D-159`): what a settings
 //! screen calls after changing them, before `Settings::save`.
 
-use tungsten_core::{AudioCommands, Config, DisplayState, ScaleFactor, Settings, World};
+use tungsten_core::{AudioCommands, Config, DisplayState, ScaleFactor, Settings, UiTree, World};
 
 use crate::app::resolve_startup_display;
 use crate::display::{PendingDisplay, request_display_settings};
@@ -13,9 +13,10 @@ pub(crate) struct ShippedConfig(pub(crate) Config);
 
 /// Applies the world's [`Settings`] now, as a restart would: the display
 /// mode, resolution and vsync through a display request, the UI scale to
-/// [`ScaleFactor`], the master volume through [`AudioCommands`]. A value the
-/// player unset returns to the shipped one, the UI scale and the master
-/// volume to 1.0. A display request queued earlier this frame, such as a
+/// [`ScaleFactor`], the text scale to the [`UiTree`] (M56), the master
+/// volume through [`AudioCommands`]. A value the player unset returns to
+/// the shipped one, the UI scale, the text scale and the master volume to
+/// 1.0. A display request queued earlier this frame, such as a
 /// hotkey's, takes the persisted values, so the last apply wins; the F9 and
 /// F11 hotkeys' changes to them since startup are replaced. A function, not
 /// a system: call it after changing `Settings`, then save them.
@@ -28,6 +29,9 @@ pub fn apply_settings(world: &mut World) {
     };
     if let Some(scale) = world.get_resource_mut::<ScaleFactor>() {
         scale.set_ui_scale(settings.ui_scale().unwrap_or(1.0));
+    }
+    if let Some(tree) = world.get_resource_mut::<UiTree>() {
+        tree.set_text_scale(settings.text_scale().unwrap_or(1.0));
     }
     if let Some(audio) = world.get_resource_mut::<AudioCommands>() {
         audio.set_master_volume(settings.master_volume().unwrap_or(1.0));

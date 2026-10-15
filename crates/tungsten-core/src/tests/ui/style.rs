@@ -118,7 +118,8 @@ fn the_focused_then_the_disabled_variant_apply_by_state() {
     assert_eq!(style.text.color, theme.tokens.colors.disabled_text);
     assert_eq!(
         tree.widget_state(tree.children(button)[0]),
-        Some(WidgetState::Normal)
+        Some(WidgetState::Disabled),
+        "a widget under a disabled one applies its disabled variant (M56)"
     );
 
     tree.set_enabled(button, true);
@@ -423,7 +424,8 @@ fn a_disabled_variant_reports_what_it_changes_on_a_clean_tree() {
     );
     assert!(tree.is_layout_dirty());
 
-    // The background only: resolved, no text change, no layout dirt.
+    // The background only: resolved with the label under it (M56), no
+    // text change, no layout dirt.
     let (mut tree, _root, button, _label) = clean_button();
     tree.set_theme(disabled_variant(
         TextOverrides::default(),
@@ -435,7 +437,7 @@ fn a_disabled_variant_reports_what_it_changes_on_a_clean_tree() {
     assert_eq!(
         stats,
         StyleStats {
-            resolved: 1,
+            resolved: 2,
             text_changed: 0,
             measurement_changed: 0,
         }
@@ -465,9 +467,10 @@ fn a_disabled_variant_reports_what_it_changes_on_a_clean_tree() {
         }
     );
     assert!(
-        tree.is_layout_dirty(),
-        "a colour change re-sets the node, so its root relayouts (Q10)"
+        !tree.is_layout_dirty(),
+        "a colour change alone repaints and re-sets no node (M56)"
     );
+    assert!(tree.is_paint_dirty());
     assert_eq!(resolved(&tree, label).text.color, [6, 6, 6, 255]);
 }
 

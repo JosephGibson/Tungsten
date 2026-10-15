@@ -370,8 +370,10 @@ pub use tungsten::plugins::SQUASH_STRETCH_TRIGGER
 pub use tungsten::plugins::STATE_DISPATCHER
 pub use tungsten::plugins::SYSTEMS_OVERLAY_TOGGLE
 pub use tungsten::plugins::TWEEN_TICK
+pub use tungsten::plugins::UI_ANIMATE
 pub use tungsten::plugins::UI_DEBUG_TOGGLE
 pub use tungsten::plugins::UI_ROUTE
+pub use tungsten::plugins::UI_STATE_ROOTS
 pub struct tungsten::plugins::CameraPlugin
 impl core::clone::Clone for tungsten::plugins::CameraPlugin
 pub fn tungsten::plugins::CameraPlugin::clone(&self) -> tungsten::plugins::CameraPlugin
@@ -550,6 +552,27 @@ pub fn tungsten::post_aa::request_post_aa(&mut tungsten_core::ecs::world::World,
 pub mod tungsten::sprite_extract
 pub fn tungsten::sprite_extract::extract_sprites_default(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch>
 pub mod tungsten::state
+#[non_exhaustive] pub enum tungsten::state::RootCover
+pub tungsten::state::RootCover::Hide
+pub tungsten::state::RootCover::Show
+impl core::clone::Clone for tungsten::state::RootCover
+pub fn tungsten::state::RootCover::clone(&self) -> tungsten::state::RootCover
+impl core::cmp::Eq for tungsten::state::RootCover
+impl core::cmp::PartialEq for tungsten::state::RootCover
+pub fn tungsten::state::RootCover::eq(&self, &tungsten::state::RootCover) -> bool
+impl core::fmt::Debug for tungsten::state::RootCover
+pub fn tungsten::state::RootCover::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten::state::RootCover
+pub fn tungsten::state::RootCover::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten::state::RootCover
+impl core::marker::StructuralPartialEq for tungsten::state::RootCover
+impl core::marker::Freeze for tungsten::state::RootCover
+impl core::marker::Send for tungsten::state::RootCover
+impl core::marker::Sync for tungsten::state::RootCover
+impl core::marker::Unpin for tungsten::state::RootCover
+impl core::marker::UnsafeUnpin for tungsten::state::RootCover
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::state::RootCover
+impl core::panic::unwind_safe::UnwindSafe for tungsten::state::RootCover
 pub struct tungsten::state::SceneEntity
 pub tungsten::state::SceneEntity::state_id: tungsten::state::StateId
 impl core::clone::Clone for tungsten::state::SceneEntity
@@ -580,6 +603,7 @@ pub fn tungsten::state::StateStack::active_id(&self) -> core::option::Option<tun
 pub fn tungsten::state::StateStack::depth(&self) -> usize
 pub fn tungsten::state::StateStack::is_transitioning(&self) -> bool
 pub fn tungsten::state::StateStack::new() -> Self
+pub fn tungsten::state::StateStack::own_root(&mut self, tungsten_core::ui::id::WidgetId, tungsten::state::RootCover)
 pub fn tungsten::state::StateStack::request_pop(&mut self)
 pub fn tungsten::state::StateStack::request_pop_transition(&mut self, tungsten::transition::Transition) -> bool
 pub fn tungsten::state::StateStack::request_push(&mut self, impl tungsten::state::GameState)
@@ -607,6 +631,7 @@ pub fn tungsten::state::GameState::on_resume(&mut self, &mut tungsten::state::St
 pub fn tungsten::state::GameState::update(&mut self, &mut tungsten_core::ecs::world::World)
 pub fn tungsten::state::despawn_scene_entities(&mut tungsten_core::ecs::world::World, tungsten::state::StateId)
 pub fn tungsten::state::state_dispatcher_system(&mut tungsten_core::ecs::world::World)
+pub fn tungsten::state::ui_state_roots_system(&mut tungsten_core::ecs::world::World)
 pub type tungsten::state::StateId = &'static str
 pub mod tungsten::systems_overlay
 pub struct tungsten::systems_overlay::SystemTimingOverlay
@@ -734,6 +759,7 @@ pub tungsten::testing::FrameDraw::quads: alloc::vec::Vec<tungsten_render::quad::
 pub tungsten::testing::FrameDraw::sprites: alloc::vec::Vec<tungsten_render::sprite::SpriteBatch>
 pub tungsten::testing::FrameDraw::text: alloc::vec::Vec<tungsten_render::text::TextSection>
 pub tungsten::testing::FrameDraw::ui: tungsten_core::ui::paint::PaintList
+pub tungsten::testing::FrameDraw::ui_prewarm: core::option::Option<tungsten_core::ui::paint::PaintList>
 pub tungsten::testing::FrameDraw::world_labels: alloc::vec::Vec<tungsten_render::text::WorldLabelRun>
 impl core::marker::Freeze for tungsten::testing::FrameDraw
 impl core::marker::Send for tungsten::testing::FrameDraw
@@ -916,6 +942,27 @@ impl core::marker::Unpin for tungsten::debug_hud::HudCorner
 impl core::marker::UnsafeUnpin for tungsten::debug_hud::HudCorner
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::debug_hud::HudCorner
 impl core::panic::unwind_safe::UnwindSafe for tungsten::debug_hud::HudCorner
+#[non_exhaustive] pub enum tungsten::RootCover
+pub tungsten::RootCover::Hide
+pub tungsten::RootCover::Show
+impl core::clone::Clone for tungsten::state::RootCover
+pub fn tungsten::state::RootCover::clone(&self) -> tungsten::state::RootCover
+impl core::cmp::Eq for tungsten::state::RootCover
+impl core::cmp::PartialEq for tungsten::state::RootCover
+pub fn tungsten::state::RootCover::eq(&self, &tungsten::state::RootCover) -> bool
+impl core::fmt::Debug for tungsten::state::RootCover
+pub fn tungsten::state::RootCover::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten::state::RootCover
+pub fn tungsten::state::RootCover::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten::state::RootCover
+impl core::marker::StructuralPartialEq for tungsten::state::RootCover
+impl core::marker::Freeze for tungsten::state::RootCover
+impl core::marker::Send for tungsten::state::RootCover
+impl core::marker::Sync for tungsten::state::RootCover
+impl core::marker::Unpin for tungsten::state::RootCover
+impl core::marker::UnsafeUnpin for tungsten::state::RootCover
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::state::RootCover
+impl core::panic::unwind_safe::UnwindSafe for tungsten::state::RootCover
 pub enum tungsten::TransitionEffect
 pub tungsten::TransitionEffect::Dissolve
 pub tungsten::TransitionEffect::Dissolve::edge_color: [f32; 4]
@@ -1419,6 +1466,7 @@ pub fn tungsten::state::StateStack::active_id(&self) -> core::option::Option<tun
 pub fn tungsten::state::StateStack::depth(&self) -> usize
 pub fn tungsten::state::StateStack::is_transitioning(&self) -> bool
 pub fn tungsten::state::StateStack::new() -> Self
+pub fn tungsten::state::StateStack::own_root(&mut self, tungsten_core::ui::id::WidgetId, tungsten::state::RootCover)
 pub fn tungsten::state::StateStack::request_pop(&mut self)
 pub fn tungsten::state::StateStack::request_pop_transition(&mut self, tungsten::transition::Transition) -> bool
 pub fn tungsten::state::StateStack::request_push(&mut self, impl tungsten::state::GameState)
@@ -1570,4 +1618,5 @@ pub fn tungsten::squash_stretch_trigger_system(&mut tungsten_core::ecs::world::W
 pub fn tungsten::state_dispatcher_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::tween_tick_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::ui_debug_toggle_system(&mut tungsten_core::ecs::world::World)
+pub fn tungsten::ui_state_roots_system(&mut tungsten_core::ecs::world::World)
 pub type tungsten::StateId = &'static str

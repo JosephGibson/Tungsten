@@ -95,4 +95,6 @@ pub use tween::{
     Easing, IntSlot, ScalarSlot, Tween, TweenChannel, TweenComplete, TweenDirection, TweenRepeat,
     UniformOverrideBlock, Vec4Slot, lerp_f32, lerp_u8,
 };
-pub use ui::{PaintList, UiDebug, UiEvent, UiRouter, UiThemeRegistry, UiTree, WidgetId};
+pub use ui::{
+    PaintList, UiDebug, UiEvent, UiProperty, UiRouter, UiThemeRegistry, UiTrack, UiTree, WidgetId,
+};

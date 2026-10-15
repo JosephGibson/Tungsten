@@ -57,8 +57,8 @@ pub use post_aa::{PostAaState, request_post_aa};
 pub use settings::apply_settings;
 pub use sprite_extract::extract_sprites_default;
 pub use state::{
-    GameState, SceneEntity, StateContext, StateId, StateStack, despawn_scene_entities,
-    state_dispatcher_system,
+    GameState, RootCover, SceneEntity, StateContext, StateId, StateStack, despawn_scene_entities,
+    state_dispatcher_system, ui_state_roots_system,
 };
 pub use systems_overlay::SystemTimingOverlay;
 pub use telemetry::{DisplayTelemetry, FrameTimings, RenderCounts};

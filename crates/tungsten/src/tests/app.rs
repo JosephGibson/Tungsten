@@ -596,6 +596,21 @@ fn config_at(dir: &Path) -> Config {
 }
 
 #[test]
+fn saved_settings_put_the_text_scale_on_the_tree_before_the_first_frame() {
+    let dir = user_tempdir("text_scale");
+    std::fs::write(
+        dir.join("settings/settings.json"),
+        r#"{ "text_scale": 1.5 }"#,
+    )
+    .unwrap();
+    let app = App::new(config_at(&dir)).unwrap();
+    assert_eq!(
+        app.world.resource::<tungsten_core::UiTree>().text_scale(),
+        1.5
+    );
+}
+
+#[test]
 fn settings_and_bindings_load_from_the_user_folder() {
     let dir = user_tempdir("user_files");
     std::fs::write(

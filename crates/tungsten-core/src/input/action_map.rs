@@ -1,12 +1,13 @@
 //! Core-owned action map; pure data over read-only `InputState` queries.
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::input::key_serde::keycode_to_str;
+use crate::input::key_serde::{self, keycode_to_str};
 use crate::input::{
     AxisDirection, GamepadAxis, GamepadButton, InputState, KeyCode, MouseButton, STICK_RELEASE,
     ScrollDirection,
@@ -42,6 +43,29 @@ pub enum Binding {
         /// The direction along it.
         direction: AxisDirection,
     },
+}
+
+impl Binding {
+    /// What a prompt shows for this binding (M56): the physical key's US
+    /// label (`W`, `Space`, `Esc`, `Left Shift`), `Left Mouse`, `Wheel Up`,
+    /// an Xbox-style pad button (`A`, `LB`, `D-Pad Up`) or a stick direction
+    /// (`Left Stick Up`).
+    #[must_use]
+    pub fn label(self) -> Cow<'static, str> {
+        match self {
+            Self::Key { code } => key_serde::key_label(code),
+            Self::Mouse { button } => key_serde::mouse_button_label(button),
+            Self::Scroll { direction } => {
+                Cow::Borrowed(key_serde::scroll_direction_label(direction))
+            }
+            Self::GamepadButton { button } => {
+                Cow::Borrowed(key_serde::gamepad_button_label(button))
+            }
+            Self::GamepadAxis { axis, direction } => {
+                Cow::Borrowed(key_serde::stick_label(axis, direction))
+            }
+        }
+    }
 }
 
 /// String action names mapped to physical bindings.

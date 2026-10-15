@@ -394,3 +394,32 @@ fn hide_game_layers_leaves_the_debug_layer_and_paint_dumps_now() {
     assert!(!harness.tree().is_paint_dirty());
     assert!(harness.dump_paint().contains("-- batch 0\n"));
 }
+
+#[test]
+fn frame_draw_holds_a_prewarms_runs_in_one_frame_only() {
+    let mut harness = UiHarness::new(app());
+    let (root, _button) = menu(&mut harness);
+    harness
+        .tree_mut()
+        .set_visibility(root, tungsten_core::ui::Visibility::Hidden);
+    harness.tree_mut().prewarm(root);
+    harness.step(1);
+    assert!(
+        harness.harness().draw().unwrap().ui_prewarm.is_none(),
+        "not laid out yet: the request waits"
+    );
+    harness.layout();
+    harness.step(1);
+    let draw = harness.harness().draw().unwrap();
+    let prewarm = draw.ui_prewarm.as_ref().expect("the runs, this frame");
+    let label = harness.tree().children(harness.tree().children(root)[0])[0];
+    let node = harness.tree().text_node(label).unwrap();
+    assert_eq!(prewarm.commands.len(), 1);
+    assert!(matches!(
+        prewarm.commands[0],
+        tungsten_core::ui::PaintCommand::Text { node: n, .. } if n == node
+    ));
+    assert!(draw.ui.is_empty(), "hidden: the frame draws none of it");
+    harness.step(1);
+    assert!(harness.harness().draw().unwrap().ui_prewarm.is_none());
+}

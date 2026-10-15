@@ -164,3 +164,16 @@ fn the_last_apply_before_a_frame_wins() {
     apply_settings(world);
     assert_eq!(pending(world), None, "the hotkey's change is replaced");
 }
+
+#[test]
+fn apply_settings_sets_the_trees_text_scale_and_unset_returns_it_to_one() {
+    let dir = tempdir();
+    let mut app = app_at(&dir, Config::default());
+    let world = app.world_mut();
+    world.resource_mut::<Settings>().set_text_scale(Some(1.5));
+    apply_settings(world);
+    assert_eq!(world.resource::<tungsten_core::UiTree>().text_scale(), 1.5);
+    world.resource_mut::<Settings>().set_text_scale(None);
+    apply_settings(world);
+    assert_eq!(world.resource::<tungsten_core::UiTree>().text_scale(), 1.0);
+}

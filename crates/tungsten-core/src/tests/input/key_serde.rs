@@ -104,3 +104,53 @@ fn scroll_direction_round_trips() {
         assert_eq!(scroll_direction_to_str(*direction), *name);
     }
 }
+
+#[test]
+fn every_named_key_button_and_axis_has_a_label() {
+    use std::collections::HashSet;
+    let mut seen = HashSet::new();
+    for (code, _) in KEYCODE_NAMES {
+        let label = key_label(*code);
+        assert!(!label.is_empty() && label != "Key", "{code:?}");
+        assert!(seen.insert(label.clone()), "{code:?} repeats {label}");
+    }
+    assert_eq!(KEYCODE_LABELS.len(), KEYCODE_NAMES.len());
+    assert_eq!(key_label(KeyCode::KeyW), "W");
+    assert_eq!(key_label(KeyCode::Space), "Space");
+    assert_eq!(key_label(KeyCode::Escape), "Esc");
+    assert_eq!(key_label(KeyCode::ArrowUp), "Up");
+    assert_eq!(key_label(KeyCode::ShiftLeft), "Left Shift");
+    assert_eq!(key_label(KeyCode::PageUp), "Page Up");
+    assert_eq!(key_label(KeyCode::Digit7), "7");
+    assert_eq!(key_label(KeyCode::Other(42)), "Key 42");
+
+    assert_eq!(mouse_button_label(MouseButton::Left), "Left Mouse");
+    assert_eq!(mouse_button_label(MouseButton::Right), "Right Mouse");
+    assert_eq!(mouse_button_label(MouseButton::Middle), "Middle Mouse");
+    assert_eq!(mouse_button_label(MouseButton::Other(4)), "Mouse 4");
+    assert_eq!(scroll_direction_label(ScrollDirection::Up), "Wheel Up");
+    assert_eq!(scroll_direction_label(ScrollDirection::Down), "Wheel Down");
+
+    let mut pads = HashSet::new();
+    for (button, _) in GAMEPAD_BUTTON_NAMES {
+        assert!(pads.insert(gamepad_button_label(*button)), "{button:?}");
+    }
+    assert_eq!(gamepad_button_label(GamepadButton::South), "A");
+    assert_eq!(gamepad_button_label(GamepadButton::LeftShoulder), "LB");
+    assert_eq!(gamepad_button_label(GamepadButton::DPadUp), "D-Pad Up");
+
+    let mut sticks = HashSet::new();
+    for (axis, _) in GAMEPAD_AXIS_NAMES {
+        for (direction, _) in AXIS_DIRECTION_NAMES {
+            assert!(sticks.insert(stick_label(*axis, *direction)));
+        }
+    }
+    assert_eq!(
+        stick_label(GamepadAxis::LeftStickY, AxisDirection::Positive),
+        "Left Stick Up"
+    );
+    assert_eq!(
+        stick_label(GamepadAxis::RightStickX, AxisDirection::Negative),
+        "Right Stick Left"
+    );
+}
