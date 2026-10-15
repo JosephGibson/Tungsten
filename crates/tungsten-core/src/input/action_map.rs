@@ -260,6 +260,14 @@ impl ActionMap {
             vec![Binding::Key { code: KeyCode::F6 }],
         );
         actions.insert(
+            "engine_toggle_ui_inspector".into(),
+            vec![Binding::Key { code: KeyCode::F7 }],
+        );
+        actions.insert(
+            "engine_toggle_log_console".into(),
+            vec![Binding::Key { code: KeyCode::F8 }],
+        );
+        actions.insert(
             "engine_toggle_vsync".into(),
             vec![Binding::Key { code: KeyCode::F9 }],
         );

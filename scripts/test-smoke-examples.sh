@@ -80,7 +80,7 @@ if run_case "all pass" 0; then
   for line in "Passed: 4/4" "Template passed: 1/1" "Matrix passed: 4/4" "Post-stack passed: 2/2" \
     "Post-AA passed: 1/1" "Bloom passed: 1/1" "Lighting passed: 1/1" \
     "Game-feel passed: 1/1" "Mesh/transition passed: 5/5" "UI screens passed: 1/1" \
-    "Benchmarks passed: 15/15" \
+    "Debug views passed: 1/1" "Benchmarks passed: 15/15" \
     "Frame cap passed: 1/1"; do
     expect_output "all pass" "$line"
   done
@@ -107,6 +107,7 @@ example-03-scene-state msaa= sort= post= aa= bloom= light= feel= frames=16 timin
 example-03-scene-state msaa= sort= post= aa= bloom= light= feel= frames=16 timing= bench= preset= transition=dissolve
 example-03-scene-state msaa= sort= post= aa= bloom= light= feel= frames=16 timing= bench= preset= transition=pixelate
 example-05-ui-lab msaa= sort= post= aa= bloom= light= feel= frames=150 timing= bench= preset= ui=menus
+example-05-ui-lab msaa= sort= post= aa= bloom= light= feel= frames=120 timing= bench= preset= ui=debug
 example-02-bench msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench=physics preset=min
 example-02-bench msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench=physics preset=default
 example-02-bench msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench=physics preset=sparse-min
@@ -146,7 +147,7 @@ if run_case "timeout" nonzero STUB_HANG_PKG=example-01-platformer; then
 fi
 
 if run_case "template unknown font" nonzero STUB_UNKNOWN_FONT=1; then
-  expect_output "template unknown font" "FAIL (log has 'Unknown font ID')"
+  expect_output "template unknown font" "FAIL (log has 'Unknown font')"
   expect_output "template unknown font" "Template passed: 0/1"
 fi
 

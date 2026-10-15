@@ -4,14 +4,16 @@
 //! size, and the walk that writes viewport-space rects and commits text
 //! boxes. The tree is built afresh for
 //! each dirty root: a root is small, and the text engine caches shaping per
-//! node, so a clean root costs nothing and a dirty one costs its solve.
+//! node, so a clean root costs nothing and a dirty one costs its solve. A
+//! scroll panel (M57) hides its vertical overflow, so it can be shorter than
+//! its content, and the walk sets its largest offset.
 
 use std::collections::HashMap;
 
 use glam::Vec2;
 use taffy::prelude::*;
 use taffy::style_helpers::{auto, length, percent};
-use taffy::{AvailableSpace, Display, FlexDirection, NodeId, Position, TaffyTree};
+use taffy::{AvailableSpace, Display, FlexDirection, NodeId, Overflow, Position, TaffyTree};
 
 use crate::text::{MeasureWidth, TextNodeStore};
 
@@ -210,8 +212,27 @@ fn viewport_style(viewport: Vec2) -> Style {
     style
 }
 
+/// A scroll panel's additions (M57): its vertical overflow hidden, which
+/// lets it be shorter than its content (Taffy's automatic minimum is then
+/// 0), and shrink 1 when its main size is `Auto`, so it takes its content's
+/// height up to what its parent's limits leave.
+fn scroll_style(style: &mut Style, layout: &LayoutStyle, parent_dir: Direction) {
+    style.overflow = taffy::Point {
+        x: Overflow::Visible,
+        y: Overflow::Hidden,
+    };
+    let main = match parent_dir {
+        Direction::Row => layout.width,
+        Direction::Column => layout.height,
+    };
+    if main == Sizing::Auto {
+        style.flex_shrink = 1.0;
+    }
+}
+
 /// Builds `id`'s subtree into `taffy`, skipping collapsed subtrees. Labels,
-/// images, toggles and sliders are leaves carrying their widget as context.
+/// images, toggles, sliders and meshes are leaves carrying their widget as
+/// context.
 fn build(
     tree: &UiTree,
     taffy: &mut TaffyTree<WidgetId>,
@@ -223,7 +244,10 @@ fn build(
     if node.visibility == Visibility::Collapsed {
         return None;
     }
-    let style = to_taffy(&node.layout_style, parent_dir);
+    let mut style = to_taffy(&node.layout_style, parent_dir);
+    if node.scroll.is_some() {
+        scroll_style(&mut style, &node.layout_style, parent_dir);
+    }
     let taffy_node = if node.kind.is_leaf() {
         taffy.new_leaf_with_context(style, id)
     } else {
@@ -250,7 +274,10 @@ fn available(space: AvailableSpace) -> MeasureWidth {
 /// Writes `id`'s viewport-space rect from its solved layout under a parent at
 /// `parent_pos` of `parent_size`, shifting a centred anchor by half the free
 /// space plus its offset, then its children; collects the text leaves with
-/// their content boxes, the box less Taffy's border and padding (M56).
+/// their content boxes, the box less Taffy's border and padding (M56). A
+/// scroll panel then takes its largest offset (M57): how far its lowest
+/// child's box, margin included, and its bottom padding and border reach
+/// past its box, at least 0.
 fn place(
     tree: &mut UiTree,
     taffy: &TaffyTree<WidgetId>,
@@ -282,6 +309,7 @@ fn place(
     }
     let children = node.children.clone();
     let is_label = node.kind == WidgetKind::Label;
+    let scrolls = node.scroll.is_some();
     let content = is_label.then(|| {
         let (padding, border) = (layout.padding, layout.border);
         let start = Vec2::new(padding.left + border.left, padding.top + border.top);
@@ -295,8 +323,31 @@ fn place(
     if let Some(content) = content {
         text_leaves.push((id, content));
     }
-    for child in children {
-        place(tree, taffy, map, child, pos, size, text_leaves);
+    for child in &children {
+        place(tree, taffy, map, *child, pos, size, text_leaves);
+    }
+    if scrolls {
+        let insets = (
+            layout.padding.top + layout.border.top,
+            layout.padding.bottom + layout.border.bottom,
+        );
+        let furthest = children
+            .iter()
+            .filter_map(|child| {
+                let rect = tree.node(*child)?.rect?;
+                let margin = map
+                    .get(child)
+                    .and_then(|node| taffy.layout(*node).ok())
+                    .map_or(0.0, |layout| layout.margin.bottom);
+                Some(rect.max.y + margin)
+            })
+            .reduce(f32::max);
+        let max = furthest.map_or(0.0, |furthest| {
+            (furthest + insets.1 - (pos.y + size.y)).max(0.0)
+        });
+        if let Some(state) = tree.node_mut(id).and_then(|node| node.scroll.as_mut()) {
+            state.measured(max, insets);
+        }
     }
 }
 

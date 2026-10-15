@@ -515,7 +515,7 @@ Not approved; each benchmark works without them. Approving one is a separate dec
 - A compositor-bypass hint on X11: the compositor's stall is what sets the tail of `gpu` at `min` (the frames near 4.7 ms above).
 - The shape-run cache experiment for the text pipeline's shaping cost.
 - The frame cap overshoots its period by 0.06 ms per frame (16.73 ms mean `interval` at a cap of 60, 59.8 FPS), because each deadline counts from the frame's own start; a deadline grid kept across frames would remove it.
-- The HUD's `fps` row still divides by the CPU frame time; `FrameTimings::interval_ms` now holds the period it would need.
+- The HUD's `fps` row divided by the CPU frame time. Landed in 0.77 (M57, `D-165`): it reads `1000 / EWMA(interval)` beside `EWMA(total)`, and the views' refresh counts `FrameTimings::interval_ms`.
 
 **Left open by M33 (2026-10-04, `D-113`, `D-114`).** None is approved:
 

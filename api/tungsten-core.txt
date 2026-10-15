@@ -7554,6 +7554,7 @@ pub const tungsten_core::schedule::names::DISPLAY_INPUT: &str
 pub const tungsten_core::schedule::names::HUD_TOGGLE: &str
 pub const tungsten_core::schedule::names::INSPECTOR_PICK: &str
 pub const tungsten_core::schedule::names::INSPECTOR_TOGGLE: &str
+pub const tungsten_core::schedule::names::LOG_CONSOLE_TOGGLE: &str
 pub const tungsten_core::schedule::names::PARTICLE_COUNT_REFRESH: &str
 pub const tungsten_core::schedule::names::PARTICLE_EMIT: &str
 pub const tungsten_core::schedule::names::PARTICLE_TICK: &str
@@ -7566,6 +7567,7 @@ pub const tungsten_core::schedule::names::SYSTEMS_OVERLAY_TOGGLE: &str
 pub const tungsten_core::schedule::names::TWEEN_TICK: &str
 pub const tungsten_core::schedule::names::UI_ANIMATE: &str
 pub const tungsten_core::schedule::names::UI_DEBUG_TOGGLE: &str
+pub const tungsten_core::schedule::names::UI_INSPECTOR_TOGGLE: &str
 pub const tungsten_core::schedule::names::UI_ROUTE: &str
 pub const tungsten_core::schedule::names::UI_STATE_ROOTS: &str
 pub enum tungsten_core::schedule::ScheduleError
@@ -8751,9 +8753,14 @@ pub tungsten_core::ui::event::UiEvent::Pressed::widget: tungsten_core::ui::id::W
 #[non_exhaustive] pub tungsten_core::ui::event::UiEvent::Released
 pub tungsten_core::ui::event::UiEvent::Released::button: tungsten_core::input::MouseButton
 pub tungsten_core::ui::event::UiEvent::Released::widget: tungsten_core::ui::id::WidgetId
+#[non_exhaustive] pub tungsten_core::ui::event::UiEvent::Scrolled
+pub tungsten_core::ui::event::UiEvent::Scrolled::offset: f32
+pub tungsten_core::ui::event::UiEvent::Scrolled::widget: tungsten_core::ui::id::WidgetId
 #[non_exhaustive] pub tungsten_core::ui::event::UiEvent::ValueChanged
 pub tungsten_core::ui::event::UiEvent::ValueChanged::value: tungsten_core::ui::event::UiValue
 pub tungsten_core::ui::event::UiEvent::ValueChanged::widget: tungsten_core::ui::id::WidgetId
+#[non_exhaustive] pub tungsten_core::ui::event::UiEvent::WindowMoved
+pub tungsten_core::ui::event::UiEvent::WindowMoved::window: tungsten_core::ui::id::WidgetId
 impl tungsten_core::ui::event::UiEvent
 pub const fn tungsten_core::ui::event::UiEvent::widget(&self) -> tungsten_core::ui::id::WidgetId
 impl core::clone::Clone for tungsten_core::ui::event::UiEvent
@@ -9037,6 +9044,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::node::Visibilit
 pub tungsten_core::ui::node::WidgetKind::Button
 pub tungsten_core::ui::node::WidgetKind::Image
 pub tungsten_core::ui::node::WidgetKind::Label
+pub tungsten_core::ui::node::WidgetKind::Mesh
 pub tungsten_core::ui::node::WidgetKind::Panel
 pub tungsten_core::ui::node::WidgetKind::Slider
 pub tungsten_core::ui::node::WidgetKind::Toggle
@@ -9061,6 +9069,26 @@ impl core::marker::Unpin for tungsten_core::ui::node::WidgetKind
 impl core::marker::UnsafeUnpin for tungsten_core::ui::node::WidgetKind
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::node::WidgetKind
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::node::WidgetKind
+#[non_exhaustive] pub struct tungsten_core::ui::node::UiVertex
+pub tungsten_core::ui::node::UiVertex::color: [u8; 4]
+pub tungsten_core::ui::node::UiVertex::position: glam::f32::vec2::Vec2
+impl tungsten_core::ui::node::UiVertex
+pub const fn tungsten_core::ui::node::UiVertex::new(glam::f32::vec2::Vec2, [u8; 4]) -> Self
+impl core::clone::Clone for tungsten_core::ui::node::UiVertex
+pub fn tungsten_core::ui::node::UiVertex::clone(&self) -> tungsten_core::ui::node::UiVertex
+impl core::cmp::PartialEq for tungsten_core::ui::node::UiVertex
+pub fn tungsten_core::ui::node::UiVertex::eq(&self, &tungsten_core::ui::node::UiVertex) -> bool
+impl core::fmt::Debug for tungsten_core::ui::node::UiVertex
+pub fn tungsten_core::ui::node::UiVertex::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::ui::node::UiVertex
+impl core::marker::StructuralPartialEq for tungsten_core::ui::node::UiVertex
+impl core::marker::Freeze for tungsten_core::ui::node::UiVertex
+impl core::marker::Send for tungsten_core::ui::node::UiVertex
+impl core::marker::Sync for tungsten_core::ui::node::UiVertex
+impl core::marker::Unpin for tungsten_core::ui::node::UiVertex
+impl core::marker::UnsafeUnpin for tungsten_core::ui::node::UiVertex
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::node::UiVertex
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::node::UiVertex
 pub mod tungsten_core::ui::paint
 #[non_exhaustive] pub enum tungsten_core::ui::paint::PaintCommand
 pub tungsten_core::ui::paint::PaintCommand::Image
@@ -9070,6 +9098,11 @@ pub tungsten_core::ui::paint::PaintCommand::Image::rect: tungsten_core::ui::geom
 pub tungsten_core::ui::paint::PaintCommand::Image::texture: tungsten_core::assets::registry::TextureHandle
 pub tungsten_core::ui::paint::PaintCommand::Image::tint: [u8; 4]
 pub tungsten_core::ui::paint::PaintCommand::Image::uv: tungsten_core::assets::atlas::UvRect
+pub tungsten_core::ui::paint::PaintCommand::Mesh
+pub tungsten_core::ui::paint::PaintCommand::Mesh::clip: u32
+pub tungsten_core::ui::paint::PaintCommand::Mesh::count: u32
+pub tungsten_core::ui::paint::PaintCommand::Mesh::first: u32
+pub tungsten_core::ui::paint::PaintCommand::Mesh::rect: tungsten_core::ui::geometry::Rect
 pub tungsten_core::ui::paint::PaintCommand::Rect
 pub tungsten_core::ui::paint::PaintCommand::Rect::border: [u8; 4]
 pub tungsten_core::ui::paint::PaintCommand::Rect::border_width: f32
@@ -9134,11 +9167,13 @@ pub struct tungsten_core::ui::paint::PaintList
 pub tungsten_core::ui::paint::PaintList::clips: alloc::vec::Vec<tungsten_core::ui::paint::ClipRect>
 pub tungsten_core::ui::paint::PaintList::commands: alloc::vec::Vec<tungsten_core::ui::paint::PaintCommand>
 pub tungsten_core::ui::paint::PaintList::scale: f32
+pub tungsten_core::ui::paint::PaintList::vertices: alloc::vec::Vec<tungsten_core::ui::node::UiVertex>
 impl tungsten_core::ui::paint::PaintList
 pub fn tungsten_core::ui::paint::PaintList::clear(&mut self)
 pub fn tungsten_core::ui::paint::PaintList::clip_of(&self, &tungsten_core::ui::paint::PaintCommand) -> tungsten_core::ui::paint::ClipRect
 pub fn tungsten_core::ui::paint::PaintList::dump(&self) -> alloc::string::String
 pub fn tungsten_core::ui::paint::PaintList::is_empty(&self) -> bool
+pub fn tungsten_core::ui::paint::PaintList::mesh_vertices(&self, &tungsten_core::ui::paint::PaintCommand) -> &[tungsten_core::ui::node::UiVertex]
 pub fn tungsten_core::ui::paint::PaintList::text_batches(&self) -> alloc::vec::Vec<core::ops::range::Range<usize>>
 impl core::clone::Clone for tungsten_core::ui::paint::PaintList
 pub fn tungsten_core::ui::paint::PaintList::clone(&self) -> tungsten_core::ui::paint::PaintList
@@ -9209,8 +9244,10 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::route::InputDev
 #[non_exhaustive] pub struct tungsten_core::ui::route::UiRouteSettings
 pub tungsten_core::ui::route::UiRouteSettings::double_click_distance: f32
 pub tungsten_core::ui::route::UiRouteSettings::double_click_time: f32
+pub tungsten_core::ui::route::UiRouteSettings::drag_threshold: f32
 pub tungsten_core::ui::route::UiRouteSettings::repeat_delay: f32
 pub tungsten_core::ui::route::UiRouteSettings::repeat_interval: f32
+pub tungsten_core::ui::route::UiRouteSettings::scroll_line: f32
 impl core::clone::Clone for tungsten_core::ui::route::UiRouteSettings
 pub fn tungsten_core::ui::route::UiRouteSettings::clone(&self) -> tungsten_core::ui::route::UiRouteSettings
 impl core::cmp::PartialEq for tungsten_core::ui::route::UiRouteSettings
@@ -9259,6 +9296,7 @@ pub const tungsten_core::ui::route::UI_PREV: &str
 pub const tungsten_core::ui::route::UI_RIGHT: &str
 pub const tungsten_core::ui::route::UI_UP: &str
 pub fn tungsten_core::ui::route::ui_route_system(&mut tungsten_core::World)
+pub mod tungsten_core::ui::scroll
 pub mod tungsten_core::ui::style
 #[non_exhaustive] pub enum tungsten_core::ui::style::Align
 pub tungsten_core::ui::style::Align::Center
@@ -9940,6 +9978,8 @@ pub fn tungsten_core::ui::tree::UiTree::kind(&self, tungsten_core::ui::id::Widge
 pub fn tungsten_core::ui::tree::UiTree::label(&mut self, tungsten_core::ui::id::WidgetId, impl core::convert::Into<tungsten_core::text::StyledText>) -> tungsten_core::ui::id::WidgetId
 pub fn tungsten_core::ui::tree::UiTree::layer(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::node::UiLayer>
 pub fn tungsten_core::ui::tree::UiTree::layout_style(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<&tungsten_core::ui::style::LayoutStyle>
+pub fn tungsten_core::ui::tree::UiTree::mesh(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::style::LayoutStyle) -> tungsten_core::ui::id::WidgetId
+pub fn tungsten_core::ui::tree::UiTree::mesh_vertices(&self, tungsten_core::ui::id::WidgetId) -> &[tungsten_core::ui::node::UiVertex]
 pub fn tungsten_core::ui::tree::UiTree::modal(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::new() -> Self
 pub fn tungsten_core::ui::tree::UiTree::opacity(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<f32>
@@ -9966,6 +10006,7 @@ pub fn tungsten_core::ui::tree::UiTree::set_image(&mut self, tungsten_core::ui::
 pub fn tungsten_core::ui::tree::UiTree::set_image_tint(&mut self, tungsten_core::ui::id::WidgetId, [u8; 4])
 pub fn tungsten_core::ui::tree::UiTree::set_interactive(&mut self, tungsten_core::ui::id::WidgetId, bool)
 pub fn tungsten_core::ui::tree::UiTree::set_layout_style(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::style::LayoutStyle)
+pub fn tungsten_core::ui::tree::UiTree::set_mesh(&mut self, tungsten_core::ui::id::WidgetId, &[tungsten_core::ui::node::UiVertex]) -> bool
 pub fn tungsten_core::ui::tree::UiTree::set_modal(&mut self, tungsten_core::ui::id::WidgetId, bool)
 pub fn tungsten_core::ui::tree::UiTree::set_opacity(&mut self, tungsten_core::ui::id::WidgetId, f32)
 pub fn tungsten_core::ui::tree::UiTree::set_overrides(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::theme::StyleOverrides)
@@ -9985,6 +10026,7 @@ pub fn tungsten_core::ui::tree::UiTree::theme_epoch(&self) -> tungsten_core::ui:
 pub fn tungsten_core::ui::tree::UiTree::theme_id(&self) -> core::option::Option<&str>
 pub fn tungsten_core::ui::tree::UiTree::translation(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_core::ui::tree::UiTree::visibility(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::node::Visibility>
+pub fn tungsten_core::ui::tree::UiTree::widget_dirty(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::tree::WidgetDirty>
 pub fn tungsten_core::ui::tree::UiTree::widget_state(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::theme::WidgetState>
 impl tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::animate(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::anim::UiTrack) -> bool
@@ -10003,6 +10045,11 @@ pub fn tungsten_core::ui::tree::UiTree::focused(&self) -> core::option::Option<t
 pub fn tungsten_core::ui::tree::UiTree::set_focus_neighbor(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::focus::NavDirection, core::option::Option<tungsten_core::ui::id::WidgetId>)
 pub fn tungsten_core::ui::tree::UiTree::set_focus_wrap(&mut self, tungsten_core::ui::id::WidgetId, bool)
 impl tungsten_core::ui::tree::UiTree
+pub fn tungsten_core::ui::tree::UiTree::drag_handle(&self, tungsten_core::ui::id::WidgetId) -> bool
+pub fn tungsten_core::ui::tree::UiTree::set_drag_handle(&mut self, tungsten_core::ui::id::WidgetId, bool)
+pub fn tungsten_core::ui::tree::UiTree::set_window_position(&mut self, tungsten_core::ui::id::WidgetId, glam::f32::vec2::Vec2) -> bool
+pub fn tungsten_core::ui::tree::UiTree::window_position(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<glam::f32::vec2::Vec2>
+impl tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::dump_layout(&self) -> alloc::string::String
 pub fn tungsten_core::ui::tree::UiTree::layout(&mut self, glam::f32::vec2::Vec2, &mut dyn tungsten_core::text::TextNodeStore) -> tungsten_core::ui::tree::LayoutStats
 pub fn tungsten_core::ui::tree::UiTree::rect(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::geometry::Rect>
@@ -10018,6 +10065,12 @@ pub fn tungsten_core::ui::tree::UiTree::paint(&mut self, f32, &tungsten_core::ui
 pub fn tungsten_core::ui::tree::UiTree::paint_prewarm(&mut self, f32, &mut tungsten_core::ui::paint::PaintList) -> bool
 pub fn tungsten_core::ui::tree::UiTree::prewarm(&mut self, tungsten_core::ui::id::WidgetId)
 pub fn tungsten_core::ui::tree::UiTree::prewarm_pending(&self) -> bool
+impl tungsten_core::ui::tree::UiTree
+pub fn tungsten_core::ui::tree::UiTree::scroll(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<f32>
+pub fn tungsten_core::ui::tree::UiTree::scroll_into_view(&mut self, tungsten_core::ui::id::WidgetId) -> bool
+pub fn tungsten_core::ui::tree::UiTree::scroll_max(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<f32>
+pub fn tungsten_core::ui::tree::UiTree::scroll_panel(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::style::LayoutStyle) -> tungsten_core::ui::id::WidgetId
+pub fn tungsten_core::ui::tree::UiTree::set_scroll(&mut self, tungsten_core::ui::id::WidgetId, f32) -> bool
 impl tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::set_slider_range(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::control::SliderRange)
 pub fn tungsten_core::ui::tree::UiTree::set_slider_value(&mut self, tungsten_core::ui::id::WidgetId, f32) -> bool
@@ -10038,6 +10091,47 @@ impl core::marker::Unpin for tungsten_core::ui::tree::UiTree
 impl core::marker::UnsafeUnpin for tungsten_core::ui::tree::UiTree
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::tree::UiTree
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::tree::UiTree
+#[non_exhaustive] pub struct tungsten_core::ui::tree::WidgetDirty
+pub tungsten_core::ui::tree::WidgetDirty::layout: bool
+pub tungsten_core::ui::tree::WidgetDirty::style: bool
+pub tungsten_core::ui::tree::WidgetDirty::text: bool
+impl core::clone::Clone for tungsten_core::ui::tree::WidgetDirty
+pub fn tungsten_core::ui::tree::WidgetDirty::clone(&self) -> tungsten_core::ui::tree::WidgetDirty
+impl core::cmp::Eq for tungsten_core::ui::tree::WidgetDirty
+impl core::cmp::PartialEq for tungsten_core::ui::tree::WidgetDirty
+pub fn tungsten_core::ui::tree::WidgetDirty::eq(&self, &tungsten_core::ui::tree::WidgetDirty) -> bool
+impl core::default::Default for tungsten_core::ui::tree::WidgetDirty
+pub fn tungsten_core::ui::tree::WidgetDirty::default() -> tungsten_core::ui::tree::WidgetDirty
+impl core::fmt::Debug for tungsten_core::ui::tree::WidgetDirty
+pub fn tungsten_core::ui::tree::WidgetDirty::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::ui::tree::WidgetDirty
+impl core::marker::StructuralPartialEq for tungsten_core::ui::tree::WidgetDirty
+impl core::marker::Freeze for tungsten_core::ui::tree::WidgetDirty
+impl core::marker::Send for tungsten_core::ui::tree::WidgetDirty
+impl core::marker::Sync for tungsten_core::ui::tree::WidgetDirty
+impl core::marker::Unpin for tungsten_core::ui::tree::WidgetDirty
+impl core::marker::UnsafeUnpin for tungsten_core::ui::tree::WidgetDirty
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::tree::WidgetDirty
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::tree::WidgetDirty
+pub mod tungsten_core::ui::window
+pub struct tungsten_core::ui::window::WindowPlacements
+impl tungsten_core::ui::window::WindowPlacements
+pub fn tungsten_core::ui::window::WindowPlacements::get(&self, &str) -> core::option::Option<glam::f32::vec2::Vec2>
+pub fn tungsten_core::ui::window::WindowPlacements::load(impl core::convert::Into<std::path::PathBuf>) -> Self
+pub fn tungsten_core::ui::window::WindowPlacements::save(&self) -> core::result::Result<(), tungsten_core::persist::WriteError>
+pub fn tungsten_core::ui::window::WindowPlacements::set(&mut self, &str, glam::f32::vec2::Vec2) -> bool
+pub fn tungsten_core::ui::window::WindowPlacements::take_load_warnings(&mut self) -> alloc::vec::Vec<alloc::string::String>
+impl core::default::Default for tungsten_core::ui::window::WindowPlacements
+pub fn tungsten_core::ui::window::WindowPlacements::default() -> tungsten_core::ui::window::WindowPlacements
+impl core::fmt::Debug for tungsten_core::ui::window::WindowPlacements
+pub fn tungsten_core::ui::window::WindowPlacements::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::ui::window::WindowPlacements
+impl core::marker::Send for tungsten_core::ui::window::WindowPlacements
+impl core::marker::Sync for tungsten_core::ui::window::WindowPlacements
+impl core::marker::Unpin for tungsten_core::ui::window::WindowPlacements
+impl core::marker::UnsafeUnpin for tungsten_core::ui::window::WindowPlacements
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::window::WindowPlacements
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::window::WindowPlacements
 #[non_exhaustive] pub enum tungsten_core::ui::Align
 pub tungsten_core::ui::Align::Center
 pub tungsten_core::ui::Align::End
@@ -10228,6 +10322,11 @@ pub tungsten_core::ui::PaintCommand::Image::rect: tungsten_core::ui::geometry::R
 pub tungsten_core::ui::PaintCommand::Image::texture: tungsten_core::assets::registry::TextureHandle
 pub tungsten_core::ui::PaintCommand::Image::tint: [u8; 4]
 pub tungsten_core::ui::PaintCommand::Image::uv: tungsten_core::assets::atlas::UvRect
+pub tungsten_core::ui::PaintCommand::Mesh
+pub tungsten_core::ui::PaintCommand::Mesh::clip: u32
+pub tungsten_core::ui::PaintCommand::Mesh::count: u32
+pub tungsten_core::ui::PaintCommand::Mesh::first: u32
+pub tungsten_core::ui::PaintCommand::Mesh::rect: tungsten_core::ui::geometry::Rect
 pub tungsten_core::ui::PaintCommand::Rect
 pub tungsten_core::ui::PaintCommand::Rect::border: [u8; 4]
 pub tungsten_core::ui::PaintCommand::Rect::border_width: f32
@@ -10386,9 +10485,14 @@ pub tungsten_core::ui::UiEvent::Pressed::widget: tungsten_core::ui::id::WidgetId
 #[non_exhaustive] pub tungsten_core::ui::UiEvent::Released
 pub tungsten_core::ui::UiEvent::Released::button: tungsten_core::input::MouseButton
 pub tungsten_core::ui::UiEvent::Released::widget: tungsten_core::ui::id::WidgetId
+#[non_exhaustive] pub tungsten_core::ui::UiEvent::Scrolled
+pub tungsten_core::ui::UiEvent::Scrolled::offset: f32
+pub tungsten_core::ui::UiEvent::Scrolled::widget: tungsten_core::ui::id::WidgetId
 #[non_exhaustive] pub tungsten_core::ui::UiEvent::ValueChanged
 pub tungsten_core::ui::UiEvent::ValueChanged::value: tungsten_core::ui::event::UiValue
 pub tungsten_core::ui::UiEvent::ValueChanged::widget: tungsten_core::ui::id::WidgetId
+#[non_exhaustive] pub tungsten_core::ui::UiEvent::WindowMoved
+pub tungsten_core::ui::UiEvent::WindowMoved::window: tungsten_core::ui::id::WidgetId
 impl tungsten_core::ui::event::UiEvent
 pub const fn tungsten_core::ui::event::UiEvent::widget(&self) -> tungsten_core::ui::id::WidgetId
 impl core::clone::Clone for tungsten_core::ui::event::UiEvent
@@ -10511,6 +10615,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::node::Visibilit
 pub tungsten_core::ui::WidgetKind::Button
 pub tungsten_core::ui::WidgetKind::Image
 pub tungsten_core::ui::WidgetKind::Label
+pub tungsten_core::ui::WidgetKind::Mesh
 pub tungsten_core::ui::WidgetKind::Panel
 pub tungsten_core::ui::WidgetKind::Slider
 pub tungsten_core::ui::WidgetKind::Toggle
@@ -10823,11 +10928,13 @@ pub struct tungsten_core::ui::PaintList
 pub tungsten_core::ui::PaintList::clips: alloc::vec::Vec<tungsten_core::ui::paint::ClipRect>
 pub tungsten_core::ui::PaintList::commands: alloc::vec::Vec<tungsten_core::ui::paint::PaintCommand>
 pub tungsten_core::ui::PaintList::scale: f32
+pub tungsten_core::ui::PaintList::vertices: alloc::vec::Vec<tungsten_core::ui::node::UiVertex>
 impl tungsten_core::ui::paint::PaintList
 pub fn tungsten_core::ui::paint::PaintList::clear(&mut self)
 pub fn tungsten_core::ui::paint::PaintList::clip_of(&self, &tungsten_core::ui::paint::PaintCommand) -> tungsten_core::ui::paint::ClipRect
 pub fn tungsten_core::ui::paint::PaintList::dump(&self) -> alloc::string::String
 pub fn tungsten_core::ui::paint::PaintList::is_empty(&self) -> bool
+pub fn tungsten_core::ui::paint::PaintList::mesh_vertices(&self, &tungsten_core::ui::paint::PaintCommand) -> &[tungsten_core::ui::node::UiVertex]
 pub fn tungsten_core::ui::paint::PaintList::text_batches(&self) -> alloc::vec::Vec<core::ops::range::Range<usize>>
 impl core::clone::Clone for tungsten_core::ui::paint::PaintList
 pub fn tungsten_core::ui::paint::PaintList::clone(&self) -> tungsten_core::ui::paint::PaintList
@@ -11151,8 +11258,10 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::paint::UiDebug
 #[non_exhaustive] pub struct tungsten_core::ui::UiRouteSettings
 pub tungsten_core::ui::UiRouteSettings::double_click_distance: f32
 pub tungsten_core::ui::UiRouteSettings::double_click_time: f32
+pub tungsten_core::ui::UiRouteSettings::drag_threshold: f32
 pub tungsten_core::ui::UiRouteSettings::repeat_delay: f32
 pub tungsten_core::ui::UiRouteSettings::repeat_interval: f32
+pub tungsten_core::ui::UiRouteSettings::scroll_line: f32
 impl core::clone::Clone for tungsten_core::ui::route::UiRouteSettings
 pub fn tungsten_core::ui::route::UiRouteSettings::clone(&self) -> tungsten_core::ui::route::UiRouteSettings
 impl core::cmp::PartialEq for tungsten_core::ui::route::UiRouteSettings
@@ -11269,6 +11378,8 @@ pub fn tungsten_core::ui::tree::UiTree::kind(&self, tungsten_core::ui::id::Widge
 pub fn tungsten_core::ui::tree::UiTree::label(&mut self, tungsten_core::ui::id::WidgetId, impl core::convert::Into<tungsten_core::text::StyledText>) -> tungsten_core::ui::id::WidgetId
 pub fn tungsten_core::ui::tree::UiTree::layer(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::node::UiLayer>
 pub fn tungsten_core::ui::tree::UiTree::layout_style(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<&tungsten_core::ui::style::LayoutStyle>
+pub fn tungsten_core::ui::tree::UiTree::mesh(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::style::LayoutStyle) -> tungsten_core::ui::id::WidgetId
+pub fn tungsten_core::ui::tree::UiTree::mesh_vertices(&self, tungsten_core::ui::id::WidgetId) -> &[tungsten_core::ui::node::UiVertex]
 pub fn tungsten_core::ui::tree::UiTree::modal(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::new() -> Self
 pub fn tungsten_core::ui::tree::UiTree::opacity(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<f32>
@@ -11295,6 +11406,7 @@ pub fn tungsten_core::ui::tree::UiTree::set_image(&mut self, tungsten_core::ui::
 pub fn tungsten_core::ui::tree::UiTree::set_image_tint(&mut self, tungsten_core::ui::id::WidgetId, [u8; 4])
 pub fn tungsten_core::ui::tree::UiTree::set_interactive(&mut self, tungsten_core::ui::id::WidgetId, bool)
 pub fn tungsten_core::ui::tree::UiTree::set_layout_style(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::style::LayoutStyle)
+pub fn tungsten_core::ui::tree::UiTree::set_mesh(&mut self, tungsten_core::ui::id::WidgetId, &[tungsten_core::ui::node::UiVertex]) -> bool
 pub fn tungsten_core::ui::tree::UiTree::set_modal(&mut self, tungsten_core::ui::id::WidgetId, bool)
 pub fn tungsten_core::ui::tree::UiTree::set_opacity(&mut self, tungsten_core::ui::id::WidgetId, f32)
 pub fn tungsten_core::ui::tree::UiTree::set_overrides(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::theme::StyleOverrides)
@@ -11314,6 +11426,7 @@ pub fn tungsten_core::ui::tree::UiTree::theme_epoch(&self) -> tungsten_core::ui:
 pub fn tungsten_core::ui::tree::UiTree::theme_id(&self) -> core::option::Option<&str>
 pub fn tungsten_core::ui::tree::UiTree::translation(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_core::ui::tree::UiTree::visibility(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::node::Visibility>
+pub fn tungsten_core::ui::tree::UiTree::widget_dirty(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::tree::WidgetDirty>
 pub fn tungsten_core::ui::tree::UiTree::widget_state(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::theme::WidgetState>
 impl tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::animate(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::anim::UiTrack) -> bool
@@ -11332,6 +11445,11 @@ pub fn tungsten_core::ui::tree::UiTree::focused(&self) -> core::option::Option<t
 pub fn tungsten_core::ui::tree::UiTree::set_focus_neighbor(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::focus::NavDirection, core::option::Option<tungsten_core::ui::id::WidgetId>)
 pub fn tungsten_core::ui::tree::UiTree::set_focus_wrap(&mut self, tungsten_core::ui::id::WidgetId, bool)
 impl tungsten_core::ui::tree::UiTree
+pub fn tungsten_core::ui::tree::UiTree::drag_handle(&self, tungsten_core::ui::id::WidgetId) -> bool
+pub fn tungsten_core::ui::tree::UiTree::set_drag_handle(&mut self, tungsten_core::ui::id::WidgetId, bool)
+pub fn tungsten_core::ui::tree::UiTree::set_window_position(&mut self, tungsten_core::ui::id::WidgetId, glam::f32::vec2::Vec2) -> bool
+pub fn tungsten_core::ui::tree::UiTree::window_position(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<glam::f32::vec2::Vec2>
+impl tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::dump_layout(&self) -> alloc::string::String
 pub fn tungsten_core::ui::tree::UiTree::layout(&mut self, glam::f32::vec2::Vec2, &mut dyn tungsten_core::text::TextNodeStore) -> tungsten_core::ui::tree::LayoutStats
 pub fn tungsten_core::ui::tree::UiTree::rect(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::geometry::Rect>
@@ -11347,6 +11465,12 @@ pub fn tungsten_core::ui::tree::UiTree::paint(&mut self, f32, &tungsten_core::ui
 pub fn tungsten_core::ui::tree::UiTree::paint_prewarm(&mut self, f32, &mut tungsten_core::ui::paint::PaintList) -> bool
 pub fn tungsten_core::ui::tree::UiTree::prewarm(&mut self, tungsten_core::ui::id::WidgetId)
 pub fn tungsten_core::ui::tree::UiTree::prewarm_pending(&self) -> bool
+impl tungsten_core::ui::tree::UiTree
+pub fn tungsten_core::ui::tree::UiTree::scroll(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<f32>
+pub fn tungsten_core::ui::tree::UiTree::scroll_into_view(&mut self, tungsten_core::ui::id::WidgetId) -> bool
+pub fn tungsten_core::ui::tree::UiTree::scroll_max(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<f32>
+pub fn tungsten_core::ui::tree::UiTree::scroll_panel(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::style::LayoutStyle) -> tungsten_core::ui::id::WidgetId
+pub fn tungsten_core::ui::tree::UiTree::set_scroll(&mut self, tungsten_core::ui::id::WidgetId, f32) -> bool
 impl tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::set_slider_range(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::control::SliderRange)
 pub fn tungsten_core::ui::tree::UiTree::set_slider_value(&mut self, tungsten_core::ui::id::WidgetId, f32) -> bool
@@ -11367,6 +11491,26 @@ impl core::marker::Unpin for tungsten_core::ui::tree::UiTree
 impl core::marker::UnsafeUnpin for tungsten_core::ui::tree::UiTree
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::tree::UiTree
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::tree::UiTree
+#[non_exhaustive] pub struct tungsten_core::ui::UiVertex
+pub tungsten_core::ui::UiVertex::color: [u8; 4]
+pub tungsten_core::ui::UiVertex::position: glam::f32::vec2::Vec2
+impl tungsten_core::ui::node::UiVertex
+pub const fn tungsten_core::ui::node::UiVertex::new(glam::f32::vec2::Vec2, [u8; 4]) -> Self
+impl core::clone::Clone for tungsten_core::ui::node::UiVertex
+pub fn tungsten_core::ui::node::UiVertex::clone(&self) -> tungsten_core::ui::node::UiVertex
+impl core::cmp::PartialEq for tungsten_core::ui::node::UiVertex
+pub fn tungsten_core::ui::node::UiVertex::eq(&self, &tungsten_core::ui::node::UiVertex) -> bool
+impl core::fmt::Debug for tungsten_core::ui::node::UiVertex
+pub fn tungsten_core::ui::node::UiVertex::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::ui::node::UiVertex
+impl core::marker::StructuralPartialEq for tungsten_core::ui::node::UiVertex
+impl core::marker::Freeze for tungsten_core::ui::node::UiVertex
+impl core::marker::Send for tungsten_core::ui::node::UiVertex
+impl core::marker::Sync for tungsten_core::ui::node::UiVertex
+impl core::marker::Unpin for tungsten_core::ui::node::UiVertex
+impl core::marker::UnsafeUnpin for tungsten_core::ui::node::UiVertex
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::node::UiVertex
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::node::UiVertex
 pub struct tungsten_core::ui::VisualStyle
 pub tungsten_core::ui::VisualStyle::background: [u8; 4]
 pub tungsten_core::ui::VisualStyle::border: [u8; 4]
@@ -11387,6 +11531,28 @@ impl core::marker::Unpin for tungsten_core::ui::theme::VisualStyle
 impl core::marker::UnsafeUnpin for tungsten_core::ui::theme::VisualStyle
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::theme::VisualStyle
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::theme::VisualStyle
+#[non_exhaustive] pub struct tungsten_core::ui::WidgetDirty
+pub tungsten_core::ui::WidgetDirty::layout: bool
+pub tungsten_core::ui::WidgetDirty::style: bool
+pub tungsten_core::ui::WidgetDirty::text: bool
+impl core::clone::Clone for tungsten_core::ui::tree::WidgetDirty
+pub fn tungsten_core::ui::tree::WidgetDirty::clone(&self) -> tungsten_core::ui::tree::WidgetDirty
+impl core::cmp::Eq for tungsten_core::ui::tree::WidgetDirty
+impl core::cmp::PartialEq for tungsten_core::ui::tree::WidgetDirty
+pub fn tungsten_core::ui::tree::WidgetDirty::eq(&self, &tungsten_core::ui::tree::WidgetDirty) -> bool
+impl core::default::Default for tungsten_core::ui::tree::WidgetDirty
+pub fn tungsten_core::ui::tree::WidgetDirty::default() -> tungsten_core::ui::tree::WidgetDirty
+impl core::fmt::Debug for tungsten_core::ui::tree::WidgetDirty
+pub fn tungsten_core::ui::tree::WidgetDirty::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::ui::tree::WidgetDirty
+impl core::marker::StructuralPartialEq for tungsten_core::ui::tree::WidgetDirty
+impl core::marker::Freeze for tungsten_core::ui::tree::WidgetDirty
+impl core::marker::Send for tungsten_core::ui::tree::WidgetDirty
+impl core::marker::Sync for tungsten_core::ui::tree::WidgetDirty
+impl core::marker::Unpin for tungsten_core::ui::tree::WidgetDirty
+impl core::marker::UnsafeUnpin for tungsten_core::ui::tree::WidgetDirty
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::tree::WidgetDirty
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::tree::WidgetDirty
 pub struct tungsten_core::ui::WidgetId
 impl tungsten_core::ui::id::WidgetId
 pub const fn tungsten_core::ui::id::WidgetId::generation(self) -> u32
@@ -11409,6 +11575,24 @@ impl core::marker::Unpin for tungsten_core::ui::id::WidgetId
 impl core::marker::UnsafeUnpin for tungsten_core::ui::id::WidgetId
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::id::WidgetId
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::id::WidgetId
+pub struct tungsten_core::ui::WindowPlacements
+impl tungsten_core::ui::window::WindowPlacements
+pub fn tungsten_core::ui::window::WindowPlacements::get(&self, &str) -> core::option::Option<glam::f32::vec2::Vec2>
+pub fn tungsten_core::ui::window::WindowPlacements::load(impl core::convert::Into<std::path::PathBuf>) -> Self
+pub fn tungsten_core::ui::window::WindowPlacements::save(&self) -> core::result::Result<(), tungsten_core::persist::WriteError>
+pub fn tungsten_core::ui::window::WindowPlacements::set(&mut self, &str, glam::f32::vec2::Vec2) -> bool
+pub fn tungsten_core::ui::window::WindowPlacements::take_load_warnings(&mut self) -> alloc::vec::Vec<alloc::string::String>
+impl core::default::Default for tungsten_core::ui::window::WindowPlacements
+pub fn tungsten_core::ui::window::WindowPlacements::default() -> tungsten_core::ui::window::WindowPlacements
+impl core::fmt::Debug for tungsten_core::ui::window::WindowPlacements
+pub fn tungsten_core::ui::window::WindowPlacements::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::ui::window::WindowPlacements
+impl core::marker::Send for tungsten_core::ui::window::WindowPlacements
+impl core::marker::Sync for tungsten_core::ui::window::WindowPlacements
+impl core::marker::Unpin for tungsten_core::ui::window::WindowPlacements
+impl core::marker::UnsafeUnpin for tungsten_core::ui::window::WindowPlacements
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::window::WindowPlacements
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::window::WindowPlacements
 pub const tungsten_core::ui::UI_ACCEPT: &str
 pub const tungsten_core::ui::UI_CANCEL: &str
 pub const tungsten_core::ui::UI_DOWN: &str
@@ -13060,9 +13244,14 @@ pub tungsten_core::UiEvent::Pressed::widget: tungsten_core::ui::id::WidgetId
 #[non_exhaustive] pub tungsten_core::UiEvent::Released
 pub tungsten_core::UiEvent::Released::button: tungsten_core::input::MouseButton
 pub tungsten_core::UiEvent::Released::widget: tungsten_core::ui::id::WidgetId
+#[non_exhaustive] pub tungsten_core::UiEvent::Scrolled
+pub tungsten_core::UiEvent::Scrolled::offset: f32
+pub tungsten_core::UiEvent::Scrolled::widget: tungsten_core::ui::id::WidgetId
 #[non_exhaustive] pub tungsten_core::UiEvent::ValueChanged
 pub tungsten_core::UiEvent::ValueChanged::value: tungsten_core::ui::event::UiValue
 pub tungsten_core::UiEvent::ValueChanged::widget: tungsten_core::ui::id::WidgetId
+#[non_exhaustive] pub tungsten_core::UiEvent::WindowMoved
+pub tungsten_core::UiEvent::WindowMoved::window: tungsten_core::ui::id::WidgetId
 impl tungsten_core::ui::event::UiEvent
 pub const fn tungsten_core::ui::event::UiEvent::widget(&self) -> tungsten_core::ui::id::WidgetId
 impl core::clone::Clone for tungsten_core::ui::event::UiEvent
@@ -14567,11 +14756,13 @@ pub struct tungsten_core::PaintList
 pub tungsten_core::PaintList::clips: alloc::vec::Vec<tungsten_core::ui::paint::ClipRect>
 pub tungsten_core::PaintList::commands: alloc::vec::Vec<tungsten_core::ui::paint::PaintCommand>
 pub tungsten_core::PaintList::scale: f32
+pub tungsten_core::PaintList::vertices: alloc::vec::Vec<tungsten_core::ui::node::UiVertex>
 impl tungsten_core::ui::paint::PaintList
 pub fn tungsten_core::ui::paint::PaintList::clear(&mut self)
 pub fn tungsten_core::ui::paint::PaintList::clip_of(&self, &tungsten_core::ui::paint::PaintCommand) -> tungsten_core::ui::paint::ClipRect
 pub fn tungsten_core::ui::paint::PaintList::dump(&self) -> alloc::string::String
 pub fn tungsten_core::ui::paint::PaintList::is_empty(&self) -> bool
+pub fn tungsten_core::ui::paint::PaintList::mesh_vertices(&self, &tungsten_core::ui::paint::PaintCommand) -> &[tungsten_core::ui::node::UiVertex]
 pub fn tungsten_core::ui::paint::PaintList::text_batches(&self) -> alloc::vec::Vec<core::ops::range::Range<usize>>
 impl core::clone::Clone for tungsten_core::ui::paint::PaintList
 pub fn tungsten_core::ui::paint::PaintList::clone(&self) -> tungsten_core::ui::paint::PaintList
@@ -16544,6 +16735,8 @@ pub fn tungsten_core::ui::tree::UiTree::kind(&self, tungsten_core::ui::id::Widge
 pub fn tungsten_core::ui::tree::UiTree::label(&mut self, tungsten_core::ui::id::WidgetId, impl core::convert::Into<tungsten_core::text::StyledText>) -> tungsten_core::ui::id::WidgetId
 pub fn tungsten_core::ui::tree::UiTree::layer(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::node::UiLayer>
 pub fn tungsten_core::ui::tree::UiTree::layout_style(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<&tungsten_core::ui::style::LayoutStyle>
+pub fn tungsten_core::ui::tree::UiTree::mesh(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::style::LayoutStyle) -> tungsten_core::ui::id::WidgetId
+pub fn tungsten_core::ui::tree::UiTree::mesh_vertices(&self, tungsten_core::ui::id::WidgetId) -> &[tungsten_core::ui::node::UiVertex]
 pub fn tungsten_core::ui::tree::UiTree::modal(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::new() -> Self
 pub fn tungsten_core::ui::tree::UiTree::opacity(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<f32>
@@ -16570,6 +16763,7 @@ pub fn tungsten_core::ui::tree::UiTree::set_image(&mut self, tungsten_core::ui::
 pub fn tungsten_core::ui::tree::UiTree::set_image_tint(&mut self, tungsten_core::ui::id::WidgetId, [u8; 4])
 pub fn tungsten_core::ui::tree::UiTree::set_interactive(&mut self, tungsten_core::ui::id::WidgetId, bool)
 pub fn tungsten_core::ui::tree::UiTree::set_layout_style(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::style::LayoutStyle)
+pub fn tungsten_core::ui::tree::UiTree::set_mesh(&mut self, tungsten_core::ui::id::WidgetId, &[tungsten_core::ui::node::UiVertex]) -> bool
 pub fn tungsten_core::ui::tree::UiTree::set_modal(&mut self, tungsten_core::ui::id::WidgetId, bool)
 pub fn tungsten_core::ui::tree::UiTree::set_opacity(&mut self, tungsten_core::ui::id::WidgetId, f32)
 pub fn tungsten_core::ui::tree::UiTree::set_overrides(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::theme::StyleOverrides)
@@ -16589,6 +16783,7 @@ pub fn tungsten_core::ui::tree::UiTree::theme_epoch(&self) -> tungsten_core::ui:
 pub fn tungsten_core::ui::tree::UiTree::theme_id(&self) -> core::option::Option<&str>
 pub fn tungsten_core::ui::tree::UiTree::translation(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_core::ui::tree::UiTree::visibility(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::node::Visibility>
+pub fn tungsten_core::ui::tree::UiTree::widget_dirty(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::tree::WidgetDirty>
 pub fn tungsten_core::ui::tree::UiTree::widget_state(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::theme::WidgetState>
 impl tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::animate(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::anim::UiTrack) -> bool
@@ -16607,6 +16802,11 @@ pub fn tungsten_core::ui::tree::UiTree::focused(&self) -> core::option::Option<t
 pub fn tungsten_core::ui::tree::UiTree::set_focus_neighbor(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::focus::NavDirection, core::option::Option<tungsten_core::ui::id::WidgetId>)
 pub fn tungsten_core::ui::tree::UiTree::set_focus_wrap(&mut self, tungsten_core::ui::id::WidgetId, bool)
 impl tungsten_core::ui::tree::UiTree
+pub fn tungsten_core::ui::tree::UiTree::drag_handle(&self, tungsten_core::ui::id::WidgetId) -> bool
+pub fn tungsten_core::ui::tree::UiTree::set_drag_handle(&mut self, tungsten_core::ui::id::WidgetId, bool)
+pub fn tungsten_core::ui::tree::UiTree::set_window_position(&mut self, tungsten_core::ui::id::WidgetId, glam::f32::vec2::Vec2) -> bool
+pub fn tungsten_core::ui::tree::UiTree::window_position(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<glam::f32::vec2::Vec2>
+impl tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::dump_layout(&self) -> alloc::string::String
 pub fn tungsten_core::ui::tree::UiTree::layout(&mut self, glam::f32::vec2::Vec2, &mut dyn tungsten_core::text::TextNodeStore) -> tungsten_core::ui::tree::LayoutStats
 pub fn tungsten_core::ui::tree::UiTree::rect(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::geometry::Rect>
@@ -16622,6 +16822,12 @@ pub fn tungsten_core::ui::tree::UiTree::paint(&mut self, f32, &tungsten_core::ui
 pub fn tungsten_core::ui::tree::UiTree::paint_prewarm(&mut self, f32, &mut tungsten_core::ui::paint::PaintList) -> bool
 pub fn tungsten_core::ui::tree::UiTree::prewarm(&mut self, tungsten_core::ui::id::WidgetId)
 pub fn tungsten_core::ui::tree::UiTree::prewarm_pending(&self) -> bool
+impl tungsten_core::ui::tree::UiTree
+pub fn tungsten_core::ui::tree::UiTree::scroll(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<f32>
+pub fn tungsten_core::ui::tree::UiTree::scroll_into_view(&mut self, tungsten_core::ui::id::WidgetId) -> bool
+pub fn tungsten_core::ui::tree::UiTree::scroll_max(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<f32>
+pub fn tungsten_core::ui::tree::UiTree::scroll_panel(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::style::LayoutStyle) -> tungsten_core::ui::id::WidgetId
+pub fn tungsten_core::ui::tree::UiTree::set_scroll(&mut self, tungsten_core::ui::id::WidgetId, f32) -> bool
 impl tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::set_slider_range(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::control::SliderRange)
 pub fn tungsten_core::ui::tree::UiTree::set_slider_value(&mut self, tungsten_core::ui::id::WidgetId, f32) -> bool

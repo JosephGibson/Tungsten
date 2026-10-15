@@ -6,6 +6,7 @@
 //! behind them; hidden and collapsed subtrees are skipped. From M56 a
 //! widget's box is where it paints, under its and its ancestors'
 //! translation and scale; opacity and a root's freeze change nothing here.
+//! From M57 a scroll panel's children are hit where its offset moves them.
 
 use glam::Vec2;
 
@@ -13,6 +14,7 @@ use super::geometry::{Rect, UiTransform};
 use super::id::WidgetId;
 use super::node::{UiLayer, Visibility};
 use super::paint::node_transform;
+use super::scroll::children_transform;
 use super::tree::{MIN_SCALE, UiTree};
 
 impl UiTree {
@@ -89,12 +91,13 @@ impl UiTree {
         } else {
             Some(clip)
         };
+        let children = transform.compose(children_transform(node, self.paint_scale()));
         if let Some(child_clip) = child_clip
             && let Some(hit) = node
                 .children
                 .iter()
                 .rev()
-                .find_map(|child| self.hit_node(*child, point, child_clip, transform))
+                .find_map(|child| self.hit_node(*child, point, child_clip, children))
         {
             return Some(hit);
         }
@@ -107,9 +110,10 @@ impl UiTree {
     }
 
     /// Where `id` paints and is hit, in viewport space (M56): its committed
-    /// box under its own and its ancestors' translation and scale, with
-    /// translations rounded at the last paint's scale. Equal to
-    /// [`Self::rect`] when nothing moves it; `None` when that is.
+    /// box under its own and its ancestors' translation and scale, and its
+    /// scroll panel ancestors' offsets (M57), with translations rounded at
+    /// the last paint's scale. Equal to [`Self::rect`] when nothing moves
+    /// it; `None` when that is.
     #[must_use]
     pub fn visual_rect(&self, id: WidgetId) -> Option<Rect> {
         let mut chain = Vec::new();
@@ -120,13 +124,17 @@ impl UiTree {
             current = node.parent;
         }
         let scale = self.paint_scale();
-        let transform = chain
+        let (own, ancestors) = chain.split_first()?;
+        let parent = ancestors
             .iter()
             .rev()
             .fold(UiTransform::IDENTITY, |parent, (node, rect)| {
-                parent.compose(node_transform(node, *rect, scale))
+                parent
+                    .compose(node_transform(node, *rect, scale))
+                    .compose(children_transform(node, scale))
             });
-        Some(transform.rect(chain.first()?.1))
+        let transform = parent.compose(node_transform(own.0, own.1, scale));
+        Some(transform.rect(own.1))
     }
 }
 

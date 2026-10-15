@@ -344,7 +344,8 @@ impl UiTree {
         self.focus(next).then_some(next)
     }
 
-    /// Writes the focused widget and marks both widgets for resolution.
+    /// Writes the focused widget, marks both widgets for resolution and
+    /// scrolls the new focus into view (M57).
     pub(crate) fn set_focused(&mut self, next: Option<WidgetId>) {
         if self.focused == next {
             return;
@@ -355,6 +356,7 @@ impl UiTree {
         self.focused = next;
         if let Some(next) = next {
             self.mark_style_dirty(next);
+            self.scroll_into_view(next);
         }
         self.mark_paint_dirty();
     }

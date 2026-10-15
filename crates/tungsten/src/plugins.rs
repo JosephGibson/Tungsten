@@ -20,6 +20,7 @@ use tungsten_core::{
 
 use crate::camera::camera_update_system;
 use crate::debug_hud::hud_toggle_system;
+use crate::debug_views::{log_console_toggle_system, ui_inspector_toggle_system};
 use crate::display::engine_display_input_system;
 use crate::game_feel::{
     shake_tick_system, squash_stretch_tick_system, squash_stretch_trigger_system,
@@ -39,14 +40,16 @@ pub use tungsten_core::physics::{
     PHYSICS_PREV_SNAPSHOT, PHYSICS_STEP, PHYSICS_SYNC, PhysicsPlugin,
 };
 pub use tungsten_core::schedule::names::{
-    CAMERA_UPDATE, DISPLAY_INPUT, HUD_TOGGLE, INSPECTOR_PICK, INSPECTOR_TOGGLE,
+    CAMERA_UPDATE, DISPLAY_INPUT, HUD_TOGGLE, INSPECTOR_PICK, INSPECTOR_TOGGLE, LOG_CONSOLE_TOGGLE,
     PARTICLE_COUNT_REFRESH, PARTICLE_EMIT, PARTICLE_TICK, PHYSICS_DEBUG_TOGGLE, SHAKE_TICK,
     SQUASH_STRETCH_TICK, SQUASH_STRETCH_TRIGGER, STATE_DISPATCHER, SYSTEMS_OVERLAY_TOGGLE,
-    TWEEN_TICK, UI_ANIMATE, UI_DEBUG_TOGGLE, UI_ROUTE, UI_STATE_ROOTS,
+    TWEEN_TICK, UI_ANIMATE, UI_DEBUG_TOGGLE, UI_INSPECTOR_TOGGLE, UI_ROUTE, UI_STATE_ROOTS,
 };
 
-/// The overlay toggles, the inspector's pick and the UI debug toggles, in
-/// `PreUpdate`.
+/// The overlay toggles, the inspector's pick, the UI debug toggles and the
+/// UI inspector's and log console's toggles (M57), in `PreUpdate`. The
+/// pick runs after the UI's routing when it is installed (M57), so it reads
+/// the input the UI did not take.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct DebugPlugin;
 
@@ -66,12 +69,22 @@ impl Plugin for DebugPlugin {
         );
         schedule.add(
             Stage::PreUpdate,
-            system(INSPECTOR_PICK, inspector_pick_system).after(INSPECTOR_TOGGLE),
+            system(INSPECTOR_PICK, inspector_pick_system)
+                .after(INSPECTOR_TOGGLE)
+                .after_if_present(UI_ROUTE),
         );
         schedule.add(Stage::PreUpdate, system(HUD_TOGGLE, hud_toggle_system));
         schedule.add(
             Stage::PreUpdate,
             system(UI_DEBUG_TOGGLE, ui_debug_toggle_system),
+        );
+        schedule.add(
+            Stage::PreUpdate,
+            system(UI_INSPECTOR_TOGGLE, ui_inspector_toggle_system),
+        );
+        schedule.add(
+            Stage::PreUpdate,
+            system(LOG_CONSOLE_TOGGLE, log_console_toggle_system),
         );
     }
 }

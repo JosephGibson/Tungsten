@@ -4,7 +4,9 @@
 // textured instances, colours decoded from sRGB to linear as glyphon's
 // `Accurate` mode decodes its text colours, and straight-alpha output for
 // `ALPHA_BLENDING`. The shadow and gradient fields are reserved and ignored
-// (M46 Q13).
+// (M46 Q13). M57 adds the mesh entry points: coloured triangles in physical
+// pixels through the same projection, colours decoded as the primitives'
+// are, with no texture and no anti-aliasing.
 
 struct Viewport {
     projection: mat4x4<f32>,
@@ -104,4 +106,27 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
     let rgb = (fill.rgb * fill_alpha + in.border.rgb * border_alpha) / alpha;
     return vec4<f32>(rgb, alpha);
+}
+
+struct MeshInput {
+    @location(0) position: vec2<f32>,
+    @location(1) color: vec4<f32>,
+};
+
+struct MeshOutput {
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) color: vec4<f32>,
+};
+
+@vertex
+fn vs_mesh(vertex: MeshInput) -> MeshOutput {
+    var out: MeshOutput;
+    out.clip_position = viewport.projection * vec4<f32>(vertex.position, 0.0, 1.0);
+    out.color = decode(vertex.color);
+    return out;
+}
+
+@fragment
+fn fs_mesh(in: MeshOutput) -> @location(0) vec4<f32> {
+    return in.color;
 }

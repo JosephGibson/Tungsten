@@ -2,6 +2,7 @@ use std::mem::{align_of, offset_of, size_of};
 
 use glam::Vec2;
 use tungsten_core::text::TextNodeId;
+use tungsten_core::ui::UiVertex;
 
 use super::*;
 
@@ -60,7 +61,21 @@ fn list(clips: Vec<ClipRect>, commands: Vec<PaintCommand>) -> PaintList {
         scale: 1.0,
         clips,
         commands,
+        vertices: Vec::new(),
     }
+}
+
+fn mesh_command(rect: Rect, first: u32, count: u32, clip: u32) -> PaintCommand {
+    PaintCommand::Mesh {
+        rect,
+        first,
+        count,
+        clip,
+    }
+}
+
+fn ui_vertex(x: f32, y: f32, color: [u8; 4]) -> UiVertex {
+    UiVertex::new(Vec2::new(x, y), color)
 }
 
 #[test]
@@ -187,7 +202,7 @@ fn items_split_at_page_and_clip_changes_and_keep_paint_order() {
         ],
     );
     let mut instances = Vec::new();
-    let items = build_items(&list, &mut instances);
+    let items = build_items(&list, &mut instances, &mut Vec::new());
     assert_eq!(
         items,
         [
@@ -241,7 +256,7 @@ fn a_text_item_sits_where_its_batch_closes_with_the_viewport_scissor() {
         ],
     );
     let mut instances = Vec::new();
-    let items = build_items(&list, &mut instances);
+    let items = build_items(&list, &mut instances, &mut Vec::new());
     assert_eq!(
         items,
         [
@@ -281,7 +296,7 @@ fn adjacent_text_commands_of_one_batch_make_one_item() {
         ],
     );
     let mut instances = Vec::new();
-    let items = build_items(&list, &mut instances);
+    let items = build_items(&list, &mut instances, &mut Vec::new());
     assert_eq!(
         items,
         [
@@ -308,12 +323,17 @@ fn an_empty_list_yields_no_items_and_no_instances() {
         0.0,
         0.0,
     )];
-    let items = build_items(&PaintList::default(), &mut instances);
+    let mut vertices = vec![MeshVertex {
+        position: [0.0, 0.0],
+        color: WHITE,
+    }];
+    let items = build_items(&PaintList::default(), &mut instances, &mut vertices);
     assert!(items.is_empty());
     assert!(
         instances.is_empty(),
         "upload clears the previous frame's instances"
     );
+    assert!(vertices.is_empty(), "and its mesh vertices");
 }
 
 #[test]
@@ -349,7 +369,7 @@ fn items_past_the_buffer_limit_are_cut() {
         ],
     );
     let mut instances = Vec::new();
-    let mut items = build_items(&list, &mut instances);
+    let mut items = build_items(&list, &mut instances, &mut Vec::new());
     assert_eq!(instances.len(), 4);
     assert!(cap_items(&mut items, &mut instances, 3));
     assert_eq!(instances.len(), 3);
@@ -357,7 +377,7 @@ fn items_past_the_buffer_limit_are_cut() {
         .iter()
         .filter_map(|item| match item {
             DrawItem::Primitives { instances, .. } => Some(instances.clone()),
-            DrawItem::Text { .. } => None,
+            DrawItem::Text { .. } | DrawItem::Mesh { .. } => None,
         })
         .collect();
     assert_eq!(ranges, [0..2, 2..3]);
@@ -367,4 +387,153 @@ fn items_past_the_buffer_limit_are_cut() {
             .any(|item| matches!(item, DrawItem::Text { .. }))
     );
     assert!(!cap_items(&mut items, &mut instances, 3));
+}
+
+#[test]
+fn the_mesh_vertex_is_12_bytes_of_position_and_colour() {
+    assert_eq!(size_of::<MeshVertex>(), 12);
+    assert_eq!(align_of::<MeshVertex>(), 4);
+    let desc = MeshVertex::desc();
+    assert_eq!(desc.array_stride, 12);
+    assert_eq!(desc.step_mode, wgpu::VertexStepMode::Vertex);
+    let expected = [
+        (
+            0,
+            offset_of!(MeshVertex, position) as u64,
+            wgpu::VertexFormat::Float32x2,
+        ),
+        (
+            1,
+            offset_of!(MeshVertex, color) as u64,
+            wgpu::VertexFormat::Unorm8x4,
+        ),
+    ];
+    assert_eq!(desc.attributes.len(), expected.len());
+    for (attribute, (location, offset, format)) in desc.attributes.iter().zip(expected) {
+        assert_eq!(attribute.shader_location, location);
+        assert_eq!(attribute.offset, offset);
+        assert_eq!(attribute.format, format);
+    }
+}
+
+#[test]
+fn a_mesh_item_closes_the_primitive_run_in_paint_order() {
+    let clips = vec![clip(0, 0, 800, 600), clip(10, 10, 100, 100)];
+    let mut list = list(
+        clips.clone(),
+        vec![
+            rect_command(rect(0.0, 0.0, 10.0, 10.0), 0),
+            rect_command(rect(10.0, 0.0, 10.0, 10.0), 0),
+            mesh_command(rect(10.0, 10.0, 90.0, 90.0), 3, 6, 1),
+            rect_command(rect(20.0, 0.0, 10.0, 10.0), 0),
+            mesh_command(rect(0.0, 0.0, 30.0, 30.0), 0, 3, 0),
+        ],
+    );
+    list.vertices = vec![
+        ui_vertex(0.0, 0.0, [1, 2, 3, 4]),
+        ui_vertex(30.0, 0.0, [5, 6, 7, 8]),
+        ui_vertex(0.0, 30.0, [9, 10, 11, 12]),
+        ui_vertex(10.0, 10.0, [255, 0, 0, 255]),
+        ui_vertex(100.0, 10.0, [0, 255, 0, 255]),
+        ui_vertex(10.0, 100.0, [0, 0, 255, 128]),
+        ui_vertex(100.0, 10.0, [0, 255, 0, 255]),
+        ui_vertex(100.0, 100.0, [0, 0, 255, 128]),
+        ui_vertex(10.0, 100.0, [0, 0, 255, 128]),
+    ];
+    let mut instances = Vec::new();
+    let mut vertices = Vec::new();
+    let items = build_items(&list, &mut instances, &mut vertices);
+    assert_eq!(
+        items,
+        [
+            DrawItem::Primitives {
+                texture: None,
+                scissor: clips[0],
+                instances: 0..2,
+            },
+            DrawItem::Mesh {
+                scissor: clips[1],
+                vertices: 0..6,
+            },
+            DrawItem::Primitives {
+                texture: None,
+                scissor: clips[0],
+                instances: 2..3,
+            },
+            DrawItem::Mesh {
+                scissor: clips[0],
+                vertices: 6..9,
+            },
+        ],
+        "the rect after the mesh opens a new run"
+    );
+    assert_eq!(instances.len(), 3);
+    let converted: Vec<MeshVertex> = list.vertices[3..9]
+        .iter()
+        .chain(&list.vertices[0..3])
+        .map(|vertex| MeshVertex {
+            position: vertex.position.to_array(),
+            color: vertex.color,
+        })
+        .collect();
+    assert_eq!(vertices, converted, "each command's range, in paint order");
+    assert_eq!(
+        vertices[2].color,
+        [0, 0, 255, 128],
+        "sRGB bytes, decoded in the shader"
+    );
+}
+
+#[test]
+fn the_mesh_cap_cuts_at_a_whole_triangle() {
+    let mut meshes = list(
+        vec![clip(0, 0, 800, 600)],
+        vec![
+            mesh_command(rect(0.0, 0.0, 10.0, 10.0), 0, 6, 0),
+            rect_command(rect(0.0, 0.0, 10.0, 10.0), 0),
+            mesh_command(rect(0.0, 0.0, 10.0, 10.0), 6, 6, 0),
+            mesh_command(rect(0.0, 0.0, 10.0, 10.0), 12, 3, 0),
+        ],
+    );
+    meshes.vertices = (0..15).map(|i| ui_vertex(i as f32, 0.0, WHITE)).collect();
+    let mut instances = Vec::new();
+    let mut vertices = Vec::new();
+    let mut items = build_items(&meshes, &mut instances, &mut vertices);
+    assert_eq!(vertices.len(), 15);
+    assert!(cap_mesh_items(&mut items, &mut vertices, 11));
+    assert_eq!(vertices.len(), 9, "11 rounds down to three triangles");
+    let ranges: Vec<_> = items
+        .iter()
+        .filter_map(|item| match item {
+            DrawItem::Mesh { vertices, .. } => Some(vertices.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        ranges,
+        [0..6, 6..9],
+        "the second mesh keeps one whole triangle"
+    );
+    assert!(
+        items
+            .iter()
+            .any(|item| matches!(item, DrawItem::Primitives { .. })),
+        "other items stay"
+    );
+    assert!(!cap_mesh_items(&mut items, &mut vertices, 9));
+
+    // A hand-built command holding a partial triangle uploads whole ones.
+    let mut partial = list(
+        vec![clip(0, 0, 800, 600)],
+        vec![mesh_command(rect(0.0, 0.0, 1.0, 1.0), 0, 5, 0)],
+    );
+    partial.vertices = (0..5).map(|i| ui_vertex(i as f32, 0.0, WHITE)).collect();
+    let items = build_items(&partial, &mut instances, &mut vertices);
+    assert_eq!(
+        items,
+        [DrawItem::Mesh {
+            scissor: clip(0, 0, 800, 600),
+            vertices: 0..3,
+        }]
+    );
 }

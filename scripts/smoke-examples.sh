@@ -141,11 +141,12 @@ end_section() {
 
 # W12a: the template, run from its own folder as a copied game is, with its
 # own tungsten.json, input.json and assets/ (D-123). Its HUD draws with the
-# engine font and its text with its own, so an unknown font ID fails the row.
+# engine font family (M57) and its text with its own, so an unknown font ID
+# or family fails the row.
 template_pkg="tungsten-template-basic"
 begin_section "Template row (pkg: $template_pkg, from templates/basic)"
 run_in=templates/basic
-log_forbids="Unknown font ID"
+log_forbids="Unknown font"
 row "templates/basic" "$log_dir/${template_pkg}.log" "$template_pkg"
 run_in=.
 log_forbids=""
@@ -233,6 +234,18 @@ begin_section "M56 UI screens row (pkg: $ui_pkg)"
 row "fixture=menus" "$log_dir/${ui_pkg}-menus.log" "$ui_pkg" \
   TUNGSTEN_SMOKE_FRAMES=150 TUNGSTEN_UI_LAB_FIXTURE=menus
 end_section "UI screens passed" "UI screens failures" 1
+
+# M57: the engine's debug views as windows over the UI lab. The `debug`
+# fixture opens the HUD with its frame-time graph, the timing overlay and
+# the inspector over a selected entity, scrolls the overlay and moves the
+# HUD at frame 30. The views draw with the engine font family, so an
+# unknown font ID or family fails the row.
+begin_section "M57 Debug views row (pkg: $ui_pkg)"
+log_forbids="Unknown font"
+row "fixture=debug" "$log_dir/${ui_pkg}-debug.log" "$ui_pkg" \
+  TUNGSTEN_SMOKE_FRAMES=120 TUNGSTEN_UI_LAB_FIXTURE=debug
+log_forbids=""
+end_section "Debug views passed" "Debug views failures" 1
 
 # Benchmarks: each example-02-bench row at smoke length. Default-scale rows
 # run at dev opt-level 0; the slowest, ecs at default, takes about 12 s. The

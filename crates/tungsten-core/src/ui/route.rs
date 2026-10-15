@@ -10,7 +10,9 @@
 //! blocks the pointer and, when modal, the keyboard (M56); the pointer maps
 //! through translation and scale as paint does. M56 also adds the
 //! capture-next-input mode for rebinding and resolves prompts after each
-//! routing.
+//! routing. M57's wheel moves the scroll panels under the pointer, and a
+//! primary press on a drag handle drags its root once the pointer moves
+//! past the drag threshold.
 
 use glam::Vec2;
 
@@ -117,7 +119,8 @@ impl NavInput {
     }
 }
 
-/// Navigation repeat and double-click timing (`D-149`), on the real clock.
+/// Navigation repeat and double-click timing (`D-149`), on the real clock,
+/// the wheel's step and the drag threshold (M57).
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct UiRouteSettings {
@@ -131,7 +134,20 @@ pub struct UiRouteSettings {
     pub double_click_time: f32,
     /// The farthest the pointer may move between them, in UI units; 4.
     pub double_click_distance: f32,
+    /// UI units one wheel line moves a scroll panel; 40 (M57). A value that
+    /// is not finite and above 0 acts as 40.
+    pub scroll_line: f32,
+    /// How far, in UI units, the pointer must move from a primary press on
+    /// a drag handle before the drag moves its root; 4, the double-click
+    /// distance (M57). A value that is not finite and above 0 acts as 4.
+    pub drag_threshold: f32,
 }
+
+/// [`UiRouteSettings::scroll_line`]'s default.
+const SCROLL_LINE: f32 = 40.0;
+
+/// [`UiRouteSettings::drag_threshold`]'s default.
+const DRAG_THRESHOLD: f32 = 4.0;
 
 impl Default for UiRouteSettings {
     fn default() -> Self {
@@ -140,8 +156,43 @@ impl Default for UiRouteSettings {
             repeat_interval: 0.1,
             double_click_time: 0.5,
             double_click_distance: 4.0,
+            scroll_line: SCROLL_LINE,
+            drag_threshold: DRAG_THRESHOLD,
         }
     }
+}
+
+impl UiRouteSettings {
+    /// The wheel line in use: [`Self::scroll_line`] when it is finite and
+    /// above 0, else its default.
+    fn line(&self) -> f32 {
+        if self.scroll_line.is_finite() && self.scroll_line > 0.0 {
+            self.scroll_line
+        } else {
+            SCROLL_LINE
+        }
+    }
+
+    /// The drag threshold in use: [`Self::drag_threshold`] when it is
+    /// finite and above 0, else its default.
+    fn threshold(&self) -> f32 {
+        if self.drag_threshold.is_finite() && self.drag_threshold > 0.0 {
+            self.drag_threshold
+        } else {
+            DRAG_THRESHOLD
+        }
+    }
+}
+
+/// A primary press on a drag handle (M57): the root it moves, the press's
+/// point and the root's top-left then, in UI units, and whether the pointer
+/// has passed the threshold.
+#[derive(Debug, Clone, Copy)]
+struct Drag {
+    root: WidgetId,
+    from: Vec2,
+    start: Vec2,
+    moving: bool,
 }
 
 /// A held direction and when it next moves focus.
@@ -171,6 +222,8 @@ pub struct UiRouter {
     hovered: Option<WidgetId>,
     /// The widget a primary press captured, until its release.
     captured: Option<WidgetId>,
+    /// The captured widget's drag, when it is a drag handle (M57).
+    drag: Option<Drag>,
     /// Other buttons' presses on targets, until their releases.
     presses: Vec<(MouseButton, WidgetId)>,
     /// Keys, pad buttons, stick directions and mouse buttons whose presses
@@ -268,7 +321,8 @@ impl UiRouter {
 
     /// The system cursor the window shows: the nearest one set
     /// ([`UiTree::set_cursor`]) on the captured widget or its ancestors,
-    /// else on the widget under the pointer or its ancestors, else
+    /// else on the widget under the pointer or its ancestors, a drag handle
+    /// with none set counting as [`CursorIcon::Move`] (M57), else
     /// [`CursorIcon::Default`].
     #[must_use]
     pub fn cursor(&self) -> CursorIcon {
@@ -316,6 +370,7 @@ impl UiRouter {
             scale,
             hide,
             nav_actions: &nav_actions,
+            scrolled: Vec::new(),
         }
         .run(&stream);
         self.resolve_prompts(world);
@@ -487,6 +542,8 @@ struct Routing<'a> {
     /// The top modal root that takes input; fixed for the routing, since
     /// only game code shows or hides roots.
     modal: Option<WidgetId>,
+    /// The scroll panels the wheel moved, in the order it first moved them.
+    scrolled: Vec<WidgetId>,
 }
 
 impl Routing<'_> {
@@ -510,6 +567,13 @@ impl Routing<'_> {
         }
         self.tick_repeat();
         self.sync_focus();
+        for widget in std::mem::take(&mut self.scrolled) {
+            if let Some(offset) = self.tree.scroll(widget) {
+                self.router
+                    .events
+                    .push(UiEvent::Scrolled { widget, offset });
+            }
+        }
         self.finish();
     }
 
@@ -519,6 +583,7 @@ impl Routing<'_> {
                 self.router.pointer = Some(Vec2::new(x, y));
                 self.update_hover();
                 if let Some(captured) = self.router.captured {
+                    self.drag_to_pointer();
                     self.slide_to_pointer(captured);
                 }
                 self.router.routed.push(input);
@@ -537,13 +602,15 @@ impl Routing<'_> {
                 button,
                 pressed: false,
             } => self.button_up(button),
-            RawInput::Wheel { .. } => {
+            RawInput::Wheel { delta } => {
                 if self.router.capture.is_some() {
                     // Taken: neither captured nor routed (Q10).
                     return;
                 }
                 self.set_device(InputDevice::Pointer);
-                if !self.pointer_takes() {
+                if self.pointer_takes() {
+                    self.wheel(delta);
+                } else {
                     self.router.routed.push(input);
                 }
             }
@@ -653,8 +720,8 @@ impl Routing<'_> {
     }
 
     /// The widget under the pointer, and its target: the nearest
-    /// interactive ancestor-or-self that is enabled, its ancestors too; no
-    /// target in a frozen root.
+    /// interactive or drag handle ancestor-or-self that is enabled, its
+    /// ancestors too; no target in a frozen root.
     fn hit(&self) -> (Option<WidgetId>, Option<WidgetId>) {
         let Some(point) = self.point() else {
             return (None, None);
@@ -668,7 +735,9 @@ impl Routing<'_> {
         }
         let mut target = hit;
         while let Some(id) = target {
-            if self.tree.interactive(id) && self.tree.is_enabled_in_tree(id) {
+            if (self.tree.interactive(id) || self.tree.drag_handle(id))
+                && self.tree.is_enabled_in_tree(id)
+            {
                 break;
             }
             target = self.tree.parent(id);
@@ -726,6 +795,7 @@ impl Routing<'_> {
         self.router.events.push(UiEvent::Pressed { widget, button });
         if button == MouseButton::Left {
             self.router.captured = Some(widget);
+            self.start_drag(widget);
             self.tree.focus(widget);
             self.sync_focus();
             self.update_hover();
@@ -749,7 +819,7 @@ impl Routing<'_> {
                 self.router
                     .events
                     .push(UiEvent::Released { widget, button });
-                if self.router.hovered == Some(widget) {
+                if !self.end_drag() && self.router.hovered == Some(widget) {
                     self.activate(widget);
                     self.double_click(widget);
                 }
@@ -761,6 +831,83 @@ impl Routing<'_> {
                 .events
                 .push(UiEvent::Released { widget, button });
         }
+    }
+
+    /// The wheel over the UI (M57): moves the innermost scroll panel at or
+    /// above the widget under the pointer that can move that way and takes
+    /// input, a line by `scroll_line` units and a pixel delta divided by the
+    /// scale; a positive `y` moves the content down. A delta that is not
+    /// finite moves nothing.
+    fn wheel(&mut self, delta: WheelDelta) {
+        let y = match delta {
+            WheelDelta::Lines(_, y) => y * self.router.settings.line(),
+            WheelDelta::Pixels(_, y) => y / self.scale,
+        };
+        if !y.is_finite() || y == 0.0 {
+            return;
+        }
+        let mut current = self.hit().0;
+        while let Some(id) = current {
+            if self.takes_input(id) && self.tree.scroll_by(id, -y).is_some() {
+                if !self.scrolled.contains(&id) {
+                    self.scrolled.push(id);
+                }
+                self.update_hover();
+                return;
+            }
+            current = self.tree.parent(id);
+        }
+    }
+
+    /// A primary press on `widget`: a drag handle starts a drag of its
+    /// root, from the pointer and the root's top-left at the last layout.
+    fn start_drag(&mut self, widget: WidgetId) {
+        self.router.drag = None;
+        if !self.tree.drag_handle(widget) {
+            return;
+        }
+        let (Some(from), Some(root)) = (self.point(), self.tree.root_of(widget)) else {
+            return;
+        };
+        if let Some(start) = self.tree.window_position(root) {
+            self.router.drag = Some(Drag {
+                root,
+                from,
+                start,
+                moving: false,
+            });
+        }
+    }
+
+    /// Moves a drag's root by the pointer's motion since the press, once
+    /// that motion is past the threshold.
+    fn drag_to_pointer(&mut self) {
+        let (Some(mut drag), Some(point)) = (self.router.drag, self.point()) else {
+            return;
+        };
+        if !drag.moving {
+            if point.distance(drag.from) <= self.router.settings.threshold() {
+                return;
+            }
+            drag.moving = true;
+            self.router.drag = Some(drag);
+        }
+        self.tree
+            .set_window_position(drag.root, drag.start + (point - drag.from));
+    }
+
+    /// Ends the drag of a press that ended: a root it moved, still in the
+    /// tree, reports `WindowMoved`. Returns whether the press dragged.
+    fn end_drag(&mut self) -> bool {
+        let Some(drag) = self.router.drag.take() else {
+            return false;
+        };
+        if drag.moving && self.tree.contains(drag.root) {
+            self.router
+                .events
+                .push(UiEvent::WindowMoved { window: drag.root });
+        }
+        drag.moving
     }
 
     /// Sets a slider's value from the pointer, past either end too, and
@@ -797,10 +944,12 @@ impl Routing<'_> {
         }
     }
 
-    /// Ends every press without a release.
+    /// Ends every press without a release; a drag leaves its root where it
+    /// is.
     fn cancel_presses(&mut self) {
         if let Some(widget) = self.router.captured.take() {
             self.router.events.push(UiEvent::PressCancelled { widget });
+            self.end_drag();
         }
         for &(_, widget) in &self.router.presses {
             self.router.events.push(UiEvent::PressCancelled { widget });
@@ -817,6 +966,7 @@ impl Routing<'_> {
         {
             self.router.captured = None;
             self.router.events.push(UiEvent::PressCancelled { widget });
+            self.end_drag();
             self.tree.set_pressed(None);
         }
         let mut i = 0;
@@ -1120,7 +1270,10 @@ impl Routing<'_> {
         let mut source = self.router.captured.or(hit);
         let mut cursor = None;
         while let Some(id) = source {
-            cursor = self.tree.cursor(id);
+            cursor = self
+                .tree
+                .cursor(id)
+                .or_else(|| self.tree.drag_handle(id).then_some(CursorIcon::Move));
             if cursor.is_some() {
                 break;
             }

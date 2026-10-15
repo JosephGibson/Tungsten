@@ -6,6 +6,34 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.77.0] - 2026-10-15
+
+Summary: M57, W1 M5 (plan archived at `docs/plans/archive/1.0/phase6-milestone-57-engine-debug-views.md`): the engine's debug views become movable windows on the core UI's debug layer, on scroll panels, drag handles and places saved in the user folder, with a frame-time graph drawn by a new mesh paint command, a log console on the engine logger and a picked-widget panel.
+
+### Added
+
+- **Debug views as windows** (`D-165`): the HUD, the system timing overlay and the entity inspector draw as windows on `UiLayer::Debug`, a title bar that drags them over label columns sized by layout, every node overriding every style; `window()` and `background` on `DebugHud`, `SystemTimingOverlay` and `InspectorState`; the HUD's frame-time graph of the last 240 intervals, amber over 16.7 ms.
+- **Log console and UI inspector** (`D-165`): `LogConsole` (F8, `engine_toggle_log_console`) shows the engine logger's records, `ERROR` red and `WARN` amber, following the newest until the wheel moves it off; `UiInspector` (F7, `engine_toggle_ui_inspector`) shows the widget a middle click picked on any layer, with its rects, look, text style, state, flags, pending work and text batch; `UI_INSPECTOR_TOGGLE` and `LOG_CONSOLE_TOGGLE`.
+- **Mesh paint command** (`D-165`): `WidgetKind::Mesh`, `UiVertex`, `UiTree::mesh`, `set_mesh` and `mesh_vertices`; `PaintCommand::Mesh` with `PaintList::vertices` and `mesh_vertices`; the overlay's mesh pipeline and `tungsten_render::ui::MeshVertex`.
+- **Scroll panels** (`D-165`): `UiTree::scroll_panel`, `set_scroll`, `scroll`, `scroll_max` and `scroll_into_view`; the wheel moves the innermost panel (`UiRouteSettings::scroll_line`, `UiEvent::Scrolled`), focus scrolls into view and a thumb shows the view; `UiHarness::wheel`.
+- **Movable windows and saved places** (`D-165`, `D-166`): `UiTree::set_drag_handle`, `drag_handle`, `set_window_position` and `window_position`; `UiRouteSettings::drag_threshold` and `UiEvent::WindowMoved`; `WindowPlacements`, kept in the user folder's `settings/debug_windows.json`.
+- **Pending work** (`D-165`): `UiTree::widget_dirty` and `WidgetDirty`.
+- **UI lab**: the `debug` fixture (smoke's `Debug views` row) opens every view over a selected entity and a picked widget, then scrolls the timing overlay and moves the HUD at frame 30.
+
+### Changed
+
+- **The views' look and time base** (`D-165`): they add no text section; `font_id` names a UI font family, `engine_mono` over the engine face, which joins the manifest's families; `outline_color` and `outline_px` are the window's border; sizes are UI units; the rows refresh on the frame interval.
+- **The inspector's pick and the engine actions** (`D-165` amends `D-149`): `inspector_pick` runs after `ui_route` and reads the routed input at the press's position; `pre_update` gains `ui_inspector_toggle` and `log_console_toggle`; the default map and the root `input.json` gain F7 and F8; the template and examples' pinned schedule strings follow.
+- **Engine logger** (`D-165`): the `Tee` carries stderr whenever stderr or the file is on and copies each record into the console's bounded channel; a debug build without a log file prints plain level labels.
+- **Breaks for the freeze**: `PaintList` gains `vertices` (`D-165` amends `D-147`).
+- **Records**: `DESIGN.md`'s Engine Debug Views section and its engine actions, logger and schedule lines; four break-ledger rows; w01's M5 row; three backlog rows (scrollbar dragging and horizontal scroll panels, saved open state, raising a window on click); the LLM index's debug views row; smoke's template row forbids `Unknown font`.
+
+### Fixed
+
+- **Refresh throttles**: the HUD's and the overlay's 500 ms refresh counted the frames' work time, so under vsync or a frame cap it stretched to seconds; it counts the frame interval.
+- **The HUD's fps**: it divided by the CPU frame time; it reads `1000 / EWMA(interval)`.
+- **Picking through the UI**: a middle click on a UI root also picked the entity behind it; a press the UI took now picks nothing.
+
 ## [0.76.0] - 2026-10-15
 
 Summary: M56, W1 M4 (plan archived at `docs/plans/archive/1.0/phase6-milestone-56-gameplay-screen-fixture.md`): gameplay screens on the core UI, with roots a state owns, which fade with its transition and freeze while covered, UI animation tracks, binding-aware prompts, a capture-next-input rebind, a text scale and a glyph prewarm, shown in the UI lab as a pause menu, a HUD and a settings screen.

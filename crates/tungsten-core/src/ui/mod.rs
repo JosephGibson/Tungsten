@@ -13,7 +13,11 @@
 //! [`UiValue`]. M56 adds paint-only opacity, translation and scale, a
 //! root's fade and freeze, content-box text, disabled ancestors' look,
 //! [`UiTrack`] animations on the real clock, binding-aware prompts and the
-//! router's capture-next-input mode for rebinding.
+//! router's capture-next-input mode for rebinding. M57 adds the mesh kind,
+//! its [`UiVertex`] triangles and their paint command, vertical scroll
+//! panels (paint-only offsets, the wheel, scrolling focus into view), drag
+//! handles that move their root, [`WindowPlacements`], the file that keeps
+//! named windows' places, and [`WidgetDirty`], what a widget waits on.
 //! Nothing here draws: the render crate consumes the paint list.
 
 pub mod anim;
@@ -29,10 +33,12 @@ pub mod node;
 pub mod paint;
 pub mod prompt;
 pub mod route;
+pub mod scroll;
 pub mod style;
 pub mod theme;
 pub mod theme_file;
 pub mod tree;
+pub mod window;
 
 pub use anim::{UiProperty, UiTrack, ui_animate_system};
 pub use control::SliderRange;
@@ -41,7 +47,7 @@ pub use focus::NavDirection;
 pub use geometry::Rect;
 pub use id::WidgetId;
 pub use measure::{FixedAdvanceMeasure, MeasureCounts};
-pub use node::{CursorIcon, Role, UiLayer, Visibility, WidgetKind};
+pub use node::{CursorIcon, Role, UiLayer, UiVertex, Visibility, WidgetKind};
 pub use paint::{ClipRect, PaintCommand, PaintList, UiDebug, to_physical};
 pub use route::{
     InputDevice, UI_ACCEPT, UI_CANCEL, UI_DOWN, UI_LEFT, UI_NEXT, UI_PREV, UI_RIGHT, UI_UP,
@@ -53,4 +59,5 @@ pub use theme::{
     StyleOverrides, TextOverrides, TextTokens, Theme, ThemeEpoch, Tokens, VisualStyle, WidgetState,
 };
 pub use theme_file::{ThemeFile, ThemeFileError, UiThemeRegistry};
-pub use tree::{LayoutStats, UiTree};
+pub use tree::{LayoutStats, UiTree, WidgetDirty};
+pub use window::WindowPlacements;

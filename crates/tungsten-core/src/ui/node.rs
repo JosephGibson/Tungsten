@@ -10,6 +10,7 @@ use crate::text::{StyledText, TextNodeId};
 use super::WidgetId;
 use super::control::Control;
 use super::geometry::Rect;
+use super::scroll::ScrollState;
 use super::style::LayoutStyle;
 use super::theme::{ResolvedStyle, StyleOverrides};
 
@@ -47,6 +48,10 @@ pub enum WidgetKind {
     /// A horizontal slider: a focusable, interactive leaf holding a value in
     /// a [`SliderRange`](super::SliderRange) (M55).
     Slider,
+    /// A leaf drawing coloured triangles, [`UiVertex`] positions as fractions
+    /// of its box (M57). It takes the panel's kind style for its own box and
+    /// has no natural size.
+    Mesh,
 }
 
 impl WidgetKind {
@@ -57,19 +62,19 @@ impl WidgetKind {
             Self::Panel => Role::None,
             Self::Label => Role::Label,
             Self::Button => Role::Button,
-            Self::Image => Role::Image,
+            Self::Image | Self::Mesh => Role::Image,
             Self::Toggle => Role::CheckBox,
             Self::Slider => Role::Slider,
         }
     }
 
     /// Whether widgets of this kind hold no children: labels, images,
-    /// toggles and sliders.
+    /// toggles, sliders and meshes.
     #[must_use]
     pub const fn is_leaf(self) -> bool {
         matches!(
             self,
-            Self::Label | Self::Image | Self::Toggle | Self::Slider
+            Self::Label | Self::Image | Self::Toggle | Self::Slider | Self::Mesh
         )
     }
 
@@ -155,6 +160,27 @@ pub enum CursorIcon {
     NeswResize,
 }
 
+/// One vertex of a [`WidgetKind::Mesh`] (M57): every three make a triangle.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct UiVertex {
+    /// Where the vertex sits as fractions of the widget's box, 0 to 1 from
+    /// its top-left corner; values outside place it outside the box, where
+    /// the clips cut it.
+    pub position: Vec2,
+    /// Its colour, sRGB with straight alpha; the triangle blends between its
+    /// three.
+    pub color: [u8; 4],
+}
+
+impl UiVertex {
+    /// A vertex at `position`, in box fractions, of `color`.
+    #[must_use]
+    pub const fn new(position: Vec2, color: [u8; 4]) -> Self {
+        Self { position, color }
+    }
+}
+
 /// A label's text and its flattened form, for the accessible name.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TextContent {
@@ -197,8 +223,12 @@ pub(crate) struct Node {
     pub(crate) image: Option<ImageContent>,
     /// Set for a `Toggle` or a `Slider`.
     pub(crate) control: Option<Control>,
+    /// Meshes: whole triangles of finite vertices, in box fractions (M57).
+    pub(crate) mesh: Vec<UiVertex>,
     /// Whether the children paint only inside this node's box (Q6).
     pub(crate) clip_children: bool,
+    /// Scroll panels: their offset and the last layout's maximum (M57).
+    pub(crate) scroll: Option<ScrollState>,
     pub(crate) layout_style: LayoutStyle,
     pub(crate) visibility: Visibility,
     pub(crate) role: Role,
@@ -210,6 +240,9 @@ pub(crate) struct Node {
     pub(crate) hit_testable: bool,
     /// Roots: whether this root, while shown, blocks the roots below it.
     pub(crate) modal: bool,
+    /// Whether a primary press dragging past the threshold moves the root
+    /// (M57).
+    pub(crate) drag_handle: bool,
     /// The cursor shown over this widget and the children that set none.
     pub(crate) cursor: Option<CursorIcon>,
     /// Directional focus's explicit neighbours, by `NavDirection`; `None`
@@ -271,7 +304,9 @@ impl Node {
             text: None,
             image: None,
             control: None,
+            mesh: Vec::new(),
             clip_children: false,
+            scroll: None,
             layout_style,
             visibility: Visibility::Visible,
             role: kind.default_role(),
@@ -282,6 +317,7 @@ impl Node {
             focus_scope: false,
             hit_testable: true,
             modal: false,
+            drag_handle: false,
             cursor: None,
             focus_neighbors: None,
             focus_wrap: false,

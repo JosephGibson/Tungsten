@@ -4,13 +4,15 @@
 //! each item's scissor. Item building is GPU-free (`build_items`) so the
 //! batching has tests without a device. The pipeline draws in the overlay
 //! pass after the acquire split (`D-145`), onto a single-sample target with
-//! no depth, with straight-alpha blending, as text does.
+//! no depth, with straight-alpha blending, as text does. M57 adds the mesh
+//! pipeline: a paint list's mesh commands as plain coloured triangles, one
+//! draw item each, from a vertex buffer of their own.
 
 use std::ops::Range;
 
 use bytemuck::{Pod, Zeroable};
 use tungsten_core::assets::{TextureHandle, UvRect};
-use tungsten_core::ui::{ClipRect, PaintCommand, PaintList, Rect};
+use tungsten_core::ui::{ClipRect, PaintCommand, PaintList, Rect, UiVertex};
 use wgpu::util::DeviceExt;
 
 use crate::sprite::{SpritePipeline, instance_capacity};
@@ -54,6 +56,41 @@ const UNIT_QUAD: &[Vertex] = &[
         position: [0.0, 1.0],
     },
 ];
+
+/// One mesh vertex, 12 bytes (M57): a position in physical pixels and an
+/// sRGB colour with straight alpha, decoded in the shader.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
+pub struct MeshVertex {
+    /// Position in physical pixels.
+    pub position: [f32; 2],
+    /// Colour, sRGB.
+    pub color: [u8; 4],
+}
+
+impl MeshVertex {
+    const ATTRIBS: [wgpu::VertexAttribute; 2] =
+        wgpu::vertex_attr_array![0 => Float32x2, 1 => Unorm8x4];
+
+    /// The per-vertex buffer layout.
+    #[must_use]
+    pub fn desc() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<MeshVertex>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &Self::ATTRIBS,
+        }
+    }
+}
+
+impl From<&UiVertex> for MeshVertex {
+    fn from(vertex: &UiVertex) -> Self {
+        Self {
+            position: vertex.position.to_array(),
+            color: vertex.color,
+        }
+    }
+}
 
 /// One rounded rectangle or textured rectangle, 80 bytes. `fill`, `border`,
 /// `shadow_color` and `gradient_color` are sRGB, decoded in the shader. The
@@ -177,6 +214,12 @@ pub(crate) enum DrawItem {
     /// The text batch at this index of the paint list's partition, drawn
     /// where its range closes.
     Text { batch: usize, scissor: ClipRect },
+    /// One mesh command's triangles (M57): a range of the mesh vertices,
+    /// under the command's clip.
+    Mesh {
+        scissor: ClipRect,
+        vertices: Range<u32>,
+    },
 }
 
 /// The scissor an item sets on an attachment of `size`: its clip intersected
@@ -203,13 +246,20 @@ pub(crate) fn attachment_scissor(clip: ClipRect, size: (u32, u32)) -> Option<(u3
     ))
 }
 
-/// Builds the overlay's draw items from `list` and its instances into
-/// `instances`: one primitive item per run of commands sharing a page and a
-/// clip, a text item where each batch of [`PaintList::text_batches`] closes,
-/// after the non-text commands inside its range, in paint order. Text
-/// commands upload nothing; their batch draws them.
-pub(crate) fn build_items(list: &PaintList, instances: &mut Vec<UiInstance>) -> Vec<DrawItem> {
+/// Builds the overlay's draw items from `list`, its instances into
+/// `instances` and its mesh vertices into `vertices`: one primitive item per
+/// run of commands sharing a page and a clip, a mesh item per mesh command,
+/// closing the open run, and a text item where each batch of
+/// [`PaintList::text_batches`] closes, after the non-text commands inside
+/// its range, in paint order. Text commands upload nothing; their batch
+/// draws them.
+pub(crate) fn build_items(
+    list: &PaintList,
+    instances: &mut Vec<UiInstance>,
+    vertices: &mut Vec<MeshVertex>,
+) -> Vec<DrawItem> {
     instances.clear();
+    vertices.clear();
     let viewport = list.clips.first().copied().unwrap_or_default();
     let batches = list.text_batches();
     let mut next_batch = 0;
@@ -227,7 +277,22 @@ pub(crate) fn build_items(list: &PaintList, instances: &mut Vec<UiInstance>) -> 
         }
     };
     for (i, command) in list.commands.iter().enumerate() {
-        push_primitive(list, command, &mut open, &mut items, instances, &close);
+        if let PaintCommand::Mesh { clip, .. } = *command {
+            // Whole triangles only; a hand-built command may hold a part.
+            let source = list.mesh_vertices(command);
+            let source = &source[..source.len() / 3 * 3];
+            if !source.is_empty() {
+                close(&mut open, &mut items, instances.len() as u32);
+                let start = vertices.len() as u32;
+                vertices.extend(source.iter().map(MeshVertex::from));
+                items.push(DrawItem::Mesh {
+                    scissor: list.clips.get(clip as usize).copied().unwrap_or_default(),
+                    vertices: start..vertices.len() as u32,
+                });
+            }
+        } else {
+            push_primitive(command, &mut open, &mut items, instances, &close);
+        }
         if batches
             .get(next_batch)
             .is_some_and(|batch| batch.end == i + 1)
@@ -261,7 +326,32 @@ pub(crate) fn cap_items(
             instances.end = instances.end.min(limit);
             instances.start < instances.end
         }
-        DrawItem::Text { .. } => true,
+        DrawItem::Text { .. } | DrawItem::Mesh { .. } => true,
+    });
+    true
+}
+
+/// Keeps the mesh vertices up to `limit`, rounded down to a whole triangle,
+/// and the mesh items over them, the last one shortened; other items stay.
+/// Every item's range starts at a whole triangle, so each keeps whole ones.
+/// True when that cut anything.
+pub(crate) fn cap_mesh_items(
+    items: &mut Vec<DrawItem>,
+    vertices: &mut Vec<MeshVertex>,
+    limit: usize,
+) -> bool {
+    let limit = limit - limit % 3;
+    if vertices.len() <= limit {
+        return false;
+    }
+    vertices.truncate(limit);
+    let limit = u32::try_from(limit).unwrap_or(u32::MAX);
+    items.retain_mut(|item| match item {
+        DrawItem::Mesh { vertices, .. } => {
+            vertices.end = vertices.end.min(limit);
+            vertices.start < vertices.end
+        }
+        DrawItem::Primitives { .. } | DrawItem::Text { .. } => true,
     });
     true
 }
@@ -269,7 +359,6 @@ pub(crate) fn cap_items(
 /// Uploads `command`'s instance, when it has one, into the open primitive
 /// run or a new one when its page or clip differ.
 fn push_primitive(
-    list: &PaintList,
     command: &PaintCommand,
     open: &mut Option<(Option<TextureHandle>, u32, u32)>,
     items: &mut Vec<DrawItem>,
@@ -277,7 +366,6 @@ fn push_primitive(
     close: &impl Fn(&mut Option<(Option<TextureHandle>, u32, u32)>, &mut Vec<DrawItem>, u32),
 ) {
     {
-        let _ = list;
         let (key, instance) = match *command {
             PaintCommand::Rect {
                 rect,
@@ -298,8 +386,9 @@ fn push_primitive(
                 clip,
                 ..
             } => ((Some(texture), clip), UiInstance::image(rect, uv, tint)),
-            // Text draws through its batch; a command kind this crate does
-            // not know uploads nothing (`PaintCommand` is non-exhaustive).
+            // Text draws through its batch, a mesh through its own item; a
+            // command kind this crate does not know uploads nothing
+            // (`PaintCommand` is non-exhaustive).
             _ => return,
         };
         if open.is_none_or(|(texture, clip, _)| (texture, clip) != key) {
@@ -313,9 +402,14 @@ fn push_primitive(
 /// Instances the buffer holds before it first grows.
 const INSTANCE_CAPACITY: usize = 256;
 
+/// Mesh vertices the buffer holds before it first grows.
+const MESH_VERTEX_CAPACITY: usize = 256;
+
 /// The UI primitive pipeline and the frame's uploaded items.
 pub struct UiPipeline {
     pipeline: wgpu::RenderPipeline,
+    /// The mesh pipeline (M57): plain coloured triangles, no texture.
+    mesh_pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
     viewport_buffer: wgpu::Buffer,
     viewport_bind_group: wgpu::BindGroup,
@@ -326,9 +420,14 @@ pub struct UiPipeline {
     instance_buffer: wgpu::Buffer,
     instance_capacity: usize,
     instances: Vec<UiInstance>,
+    mesh_buffer: wgpu::Buffer,
+    mesh_capacity: usize,
+    mesh_vertices: Vec<MeshVertex>,
     items: Vec<DrawItem>,
     /// Whether a frame has outgrown the largest instance buffer, logged once.
     warned_instance_cap: bool,
+    /// Whether a frame has outgrown the largest mesh buffer, logged once.
+    warned_mesh_cap: bool,
 }
 
 impl UiPipeline {
@@ -470,15 +569,57 @@ impl UiPipeline {
             cache: None,
         });
 
+        let mesh_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("ui_mesh_pipeline_layout"),
+            bind_group_layouts: &[Some(&viewport_layout)],
+            immediate_size: 0,
+        });
+        let mesh_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("ui_mesh_pipeline"),
+            layout: Some(&mesh_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_mesh"),
+                buffers: &[Some(MeshVertex::desc())],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_mesh"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                ..Default::default()
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            multiview_mask: None,
+            cache: None,
+        });
+
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("ui_vertex_buffer"),
             contents: bytemuck::cast_slice(UNIT_QUAD),
             usage: wgpu::BufferUsages::VERTEX,
         });
         let instance_buffer = create_instance_buffer(device, INSTANCE_CAPACITY);
+        let mesh_buffer = create_mesh_buffer(device, MESH_VERTEX_CAPACITY);
 
         Self {
             pipeline,
+            mesh_pipeline,
             vertex_buffer,
             viewport_buffer,
             viewport_bind_group,
@@ -487,14 +628,18 @@ impl UiPipeline {
             instance_buffer,
             instance_capacity: INSTANCE_CAPACITY,
             instances: Vec::new(),
+            mesh_buffer,
+            mesh_capacity: MESH_VERTEX_CAPACITY,
+            mesh_vertices: Vec::new(),
             items: Vec::new(),
             warned_instance_cap: false,
+            warned_mesh_cap: false,
         }
     }
 
-    /// Builds the frame's items from `list` and uploads its instances for an
-    /// attachment of `width` × `height`. An empty list uploads nothing; the
-    /// projection is written when the size changed.
+    /// Builds the frame's items from `list` and uploads its instances and
+    /// mesh vertices for an attachment of `width` × `height`. An empty list
+    /// uploads nothing; the projection is written when the size changed.
     pub(crate) fn upload(
         &mut self,
         device: &wgpu::Device,
@@ -503,8 +648,8 @@ impl UiPipeline {
         width: u32,
         height: u32,
     ) {
-        self.items = build_items(list, &mut self.instances);
-        if self.instances.is_empty() {
+        self.items = build_items(list, &mut self.instances, &mut self.mesh_vertices);
+        if self.instances.is_empty() && self.mesh_vertices.is_empty() {
             return;
         }
         if self.viewport_written != Some((width, height)) {
@@ -519,6 +664,10 @@ impl UiPipeline {
             let matrix: &[f32; 16] = projection.as_ref();
             queue.write_buffer(&self.viewport_buffer, 0, bytemuck::cast_slice(matrix));
             self.viewport_written = Some((width, height));
+        }
+        self.upload_mesh_vertices(device, queue);
+        if self.instances.is_empty() {
+            return;
         }
         let capacity = instance_capacity(
             self.instances.len(),
@@ -544,6 +693,39 @@ impl UiPipeline {
             &self.instance_buffer,
             0,
             bytemuck::cast_slice(&self.instances),
+        );
+    }
+
+    /// Uploads the frame's mesh vertices, growing the buffer as the instance
+    /// buffer grows; past the largest buffer, the frame draws the whole
+    /// triangles that fit, warned once.
+    fn upload_mesh_vertices(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+        if self.mesh_vertices.is_empty() {
+            return;
+        }
+        let capacity = instance_capacity(
+            self.mesh_vertices.len(),
+            std::mem::size_of::<MeshVertex>(),
+            device.limits().max_buffer_size,
+        );
+        if capacity > self.mesh_capacity {
+            self.mesh_buffer = create_mesh_buffer(device, capacity);
+            self.mesh_capacity = capacity;
+        }
+        let built = self.mesh_vertices.len();
+        if cap_mesh_items(&mut self.items, &mut self.mesh_vertices, self.mesh_capacity)
+            && !self.warned_mesh_cap
+        {
+            self.warned_mesh_cap = true;
+            log::warn!(
+                "{built} UI mesh vertices outgrow one vertex buffer; drawing the first {}",
+                self.mesh_vertices.len()
+            );
+        }
+        queue.write_buffer(
+            &self.mesh_buffer,
+            0,
+            bytemuck::cast_slice(&self.mesh_vertices),
         );
     }
 
@@ -585,6 +767,37 @@ impl UiPipeline {
         pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
         pass.draw(0..6, instances.clone());
     }
+
+    /// Draws a mesh item: its scissor clamped to `attachment`, then its
+    /// vertices as triangles. An item whose scissor misses the attachment
+    /// draws nothing.
+    pub(crate) fn draw_mesh(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        item: &DrawItem,
+        attachment: (u32, u32),
+    ) {
+        let DrawItem::Mesh { scissor, vertices } = item else {
+            return;
+        };
+        let Some((x, y, width, height)) = attachment_scissor(*scissor, attachment) else {
+            return;
+        };
+        pass.set_scissor_rect(x, y, width, height);
+        pass.set_pipeline(&self.mesh_pipeline);
+        pass.set_bind_group(0, &self.viewport_bind_group, &[]);
+        pass.set_vertex_buffer(0, self.mesh_buffer.slice(..));
+        pass.draw(vertices.clone(), 0..1);
+    }
+}
+
+fn create_mesh_buffer(device: &wgpu::Device, capacity: usize) -> wgpu::Buffer {
+    device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("ui_mesh_vertex_buffer"),
+        size: (capacity * std::mem::size_of::<MeshVertex>()) as wgpu::BufferAddress,
+        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    })
 }
 
 fn create_instance_buffer(device: &wgpu::Device, capacity: usize) -> wgpu::Buffer {

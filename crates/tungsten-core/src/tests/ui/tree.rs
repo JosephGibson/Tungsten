@@ -501,3 +501,54 @@ fn modal_cursor_focus_links_and_wrap_are_node_data_that_mark_nothing() {
     tree.set_modal(button, true);
     assert!(!tree.modal(button));
 }
+
+#[test]
+fn widget_dirty_names_the_style_text_and_layout_a_widget_waits_on() {
+    let (mut tree, root) = clean_tree();
+    let label = tree.label(root, "x");
+    let panel = tree.panel(root, LayoutStyle::default());
+    let all = WidgetDirty {
+        style: true,
+        text: true,
+        layout: true,
+    };
+    assert_eq!(
+        tree.widget_dirty(label),
+        Some(all),
+        "a new label waits on all"
+    );
+    assert_eq!(
+        tree.widget_dirty(panel),
+        Some(WidgetDirty { text: false, ..all }),
+        "only a label has a text node"
+    );
+    settle(&mut tree);
+    assert_eq!(tree.widget_dirty(label), Some(WidgetDirty::default()));
+
+    tree.set_text(label, "changed");
+    assert_eq!(
+        tree.widget_dirty(label),
+        Some(WidgetDirty {
+            style: false,
+            ..all
+        })
+    );
+    settle(&mut tree);
+    tree.set_overrides(
+        panel,
+        crate::ui::StyleOverrides {
+            background: Some([1, 2, 3, 4]),
+            ..Default::default()
+        },
+    );
+    assert_eq!(
+        tree.widget_dirty(panel),
+        Some(WidgetDirty {
+            style: true,
+            ..WidgetDirty::default()
+        }),
+        "a style change alone lays nothing out"
+    );
+    tree.remove(label);
+    assert_eq!(tree.widget_dirty(label), None);
+}

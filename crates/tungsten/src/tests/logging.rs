@@ -199,7 +199,8 @@ fn the_tee_writes_each_record_to_the_file() {
     file.set(File::create(&path).unwrap()).unwrap();
     let mut tee = Tee {
         file: Arc::clone(&file),
-        stderr: false,
+        stderr: StderrMode::Off,
+        console: None,
     };
 
     tee.write_all(b"[INFO game] one\n").unwrap();
@@ -217,7 +218,82 @@ fn the_tee_writes_each_record_to_the_file() {
 fn the_tee_without_a_file_drops_records() {
     let mut tee = Tee {
         file: LogFile::default(),
-        stderr: false,
+        stderr: StderrMode::Off,
+        console: None,
     };
     tee.write_all(b"[INFO game] dropped\n").unwrap();
+}
+
+#[test]
+fn the_console_sink_receives_each_record_whole_without_its_newline() {
+    let (sink, feed) = console_channel(8);
+    let mut tee = Tee {
+        file: LogFile::default(),
+        stderr: StderrMode::Off,
+        console: Some(sink),
+    };
+    tee.write_all(b"[2026-10-15T00:00:00Z INFO  game] one\n")
+        .unwrap();
+    tee.write_all(b"[2026-10-15T00:00:00Z WARN  game] two\nlines\n")
+        .unwrap();
+    tee.write_all(b"bad \xff byte").unwrap();
+    let records: Vec<String> = feed.records.try_iter().collect();
+    assert_eq!(
+        records,
+        [
+            "[2026-10-15T00:00:00Z INFO  game] one",
+            "[2026-10-15T00:00:00Z WARN  game] two\nlines",
+            "bad \u{fffd} byte",
+        ],
+        "one trailing newline dropped, lossy UTF-8"
+    );
+    assert_eq!(feed.dropped.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn a_full_or_closed_console_channel_counts_the_records_it_drops() {
+    let (sink, feed) = console_channel(2);
+    for n in 0..5 {
+        sink.send(format!("record {n}\n").as_bytes());
+    }
+    assert_eq!(feed.dropped.load(Ordering::Relaxed), 3, "two fit");
+    assert_eq!(feed.records.try_iter().count(), 2);
+    let dropped = Arc::clone(&feed.dropped);
+    drop(feed);
+    sink.send(b"after the console went\n");
+    assert_eq!(
+        dropped.load(Ordering::Relaxed),
+        4,
+        "a closed channel drops too"
+    );
+}
+
+#[test]
+fn stderr_modes_follow_the_build_and_the_file() {
+    let cases = [
+        // (debug build, stderr, file) -> mode
+        ((true, true, false), StderrMode::Captured),
+        ((true, true, true), StderrMode::Direct),
+        ((false, true, false), StderrMode::Direct),
+        ((false, true, true), StderrMode::Direct),
+        ((true, false, true), StderrMode::Off),
+        ((false, false, true), StderrMode::Off),
+    ];
+    for ((debug, stderr, file), mode) in cases {
+        assert_eq!(
+            StderrMode::new(debug, Sinks { stderr, file }),
+            mode,
+            "debug {debug}, stderr {stderr}, file {file}"
+        );
+    }
+}
+
+#[test]
+fn an_install_after_a_logger_is_set_has_no_console_feed() {
+    // The first call may install the process's logger, or find another
+    // test's; the second always finds one.
+    let _ = install(LevelFilter::Info, None);
+    let (file, feed) = install(LevelFilter::Info, None);
+    assert!(feed.is_none(), "the logger already set keeps its sinks");
+    assert!(file.get().is_none());
 }

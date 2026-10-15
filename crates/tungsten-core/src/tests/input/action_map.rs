@@ -35,6 +35,8 @@ fn default_map_has_platformer_and_engine_actions() {
         "engine_toggle_hud",
         "engine_toggle_ui_bounds",
         "engine_toggle_ui",
+        "engine_toggle_ui_inspector",
+        "engine_toggle_log_console",
         "engine_toggle_vsync",
         "engine_toggle_fullscreen",
         "engine_exit",
@@ -188,6 +190,15 @@ fn checked_in_input_json_loads() {
             code: KeyCode::Digit8
         }]
     );
+    // M57: the UI inspector and the log console, as the defaults bind them.
+    let defaults = ActionMap::default_map();
+    for (action, code) in [
+        ("engine_toggle_ui_inspector", KeyCode::F7),
+        ("engine_toggle_log_console", KeyCode::F8),
+    ] {
+        assert_eq!(map.bindings(action), &[Binding::Key { code }], "{action}");
+        assert_eq!(defaults.bindings(action), map.bindings(action), "{action}");
+    }
 }
 
 #[test]

@@ -70,7 +70,7 @@ fn user_folder(tag: &str) -> PathBuf {
 /// their stages between the engine's. A reorder shows up here as a diff.
 const SCHEDULE: &str = "\
 startup: setup
-pre_update: physics_debug_toggle, systems_overlay_toggle, inspector_toggle, inspector_pick, hud_toggle, ui_debug_toggle, display_input, ui_state_roots, ui_route, ui_animate, state_dispatcher
+pre_update: physics_debug_toggle, systems_overlay_toggle, inspector_toggle, hud_toggle, ui_debug_toggle, ui_inspector_toggle, log_console_toggle, display_input, ui_state_roots, ui_route, inspector_pick, ui_animate, state_dispatcher
 fixed_update: physics_prev_snapshot, physics_step
 update: player_movement, toggle_mute
 post_update: physics_sync, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, camera_update

@@ -1,10 +1,13 @@
 //! The engine logger (`D-119`): one `env_logger` per process, installed by
 //! `App::new` unless the game set its own, writing to stderr and to a log
-//! file per run in the game's user folder.
+//! file per run in the game's user folder. From M57 its [`Tee`] also copies
+//! each record into the log console's bounded channel.
 
 use std::fs::{File, OpenOptions};
 use std::io::{self, Write};
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::sync::{Arc, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -17,6 +20,9 @@ pub(crate) type LogFile = Arc<OnceLock<File>>;
 
 /// Log files kept per executable stem.
 const KEPT_LOGS: usize = 10;
+
+/// Records the console's channel holds before it drops them (M57, Q8).
+pub(crate) const CONSOLE_CHANNEL: usize = 1024;
 
 /// Where records go.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,30 +43,95 @@ impl Sinks {
     }
 }
 
+/// How the [`Tee`] writes stderr (M57).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum StderrMode {
+    /// Not at all.
+    Off,
+    /// Through `eprint!`, which the test harness captures as `env_logger`'s
+    /// `is_test` did: a debug build without a log file.
+    Captured,
+    /// With `write_all` on the stream.
+    Direct,
+}
+
+impl StderrMode {
+    /// The mode for `sinks` in a debug build or not.
+    pub(crate) const fn new(debug_build: bool, sinks: Sinks) -> Self {
+        if !sinks.stderr {
+            Self::Off
+        } else if debug_build && !sinks.file {
+            Self::Captured
+        } else {
+            Self::Direct
+        }
+    }
+}
+
+/// The log console's end of the engine logger (M57): each record the
+/// [`Tee`] sent, and how many it dropped on a full or closed channel.
+#[derive(Debug)]
+pub(crate) struct ConsoleFeed {
+    pub(crate) records: Receiver<String>,
+    pub(crate) dropped: Arc<AtomicU64>,
+}
+
+/// The [`Tee`]'s end of the console's channel.
+#[derive(Debug)]
+pub(crate) struct ConsoleSink {
+    sender: SyncSender<String>,
+    dropped: Arc<AtomicU64>,
+}
+
+impl ConsoleSink {
+    /// Copies one record, lossy UTF-8 with one trailing newline dropped,
+    /// into the channel; a full or closed channel counts it dropped.
+    pub(crate) fn send(&self, record: &[u8]) {
+        let mut text = String::from_utf8_lossy(record).into_owned();
+        if text.ends_with('\n') {
+            text.pop();
+        }
+        if self.sender.try_send(text).is_err() {
+            self.dropped.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+}
+
+/// A console channel of `capacity` records: the sink the [`Tee`] writes,
+/// the feed the console drains.
+pub(crate) fn console_channel(capacity: usize) -> (ConsoleSink, ConsoleFeed) {
+    let (sender, records) = sync_channel(capacity);
+    let dropped = Arc::new(AtomicU64::new(0));
+    (
+        ConsoleSink {
+            sender,
+            dropped: Arc::clone(&dropped),
+        },
+        ConsoleFeed { records, dropped },
+    )
+}
+
 /// Installs the engine logger unless a logger is already set, the game's
 /// or an earlier `App`'s, which then stays: no file is opened and none
 /// deleted. `logs` is the user folder's logs directory. Returns the run's
-/// log file, empty when none was opened.
-pub(crate) fn install(level: LevelFilter, logs: Option<&Path>) -> LogFile {
+/// log file, empty when none was opened, and the log console's feed, none
+/// when this call installed no logger (M57).
+pub(crate) fn install(level: LevelFilter, logs: Option<&Path>) -> (LogFile, Option<ConsoleFeed>) {
     let rust_log = std::env::var("RUST_LOG").ok();
     let sinks = Sinks::new(cfg!(debug_assertions), rust_log.is_some(), logs.is_some());
     let file = LogFile::default();
     if !sinks.stderr && !sinks.file {
-        return file;
+        return (file, None);
     }
+    let (console, feed) = console_channel(CONSOLE_CHANNEL);
     let mut builder = builder(rust_log.as_deref(), level);
-    if sinks.file {
-        builder.target(Target::Pipe(Box::new(Tee {
-            file: Arc::clone(&file),
-            stderr: sinks.stderr,
-        })));
-    } else {
-        builder
-            .target(Target::Stderr)
-            .is_test(cfg!(debug_assertions));
-    }
+    builder.target(Target::Pipe(Box::new(Tee {
+        file: Arc::clone(&file),
+        stderr: StderrMode::new(cfg!(debug_assertions), sinks),
+        console: Some(console),
+    })));
     if builder.try_init().is_err() {
-        return file;
+        return (file, None);
     }
     if let Some(logs) = logs {
         open(
@@ -71,7 +142,7 @@ pub(crate) fn install(level: LevelFilter, logs: Option<&Path>) -> LogFile {
             std::process::id(),
         );
     }
-    file
+    (file, Some(feed))
 }
 
 /// `RUST_LOG`, when set, is the whole filter, parsed as `env_logger::init`
@@ -193,13 +264,15 @@ pub(crate) fn exe_stem() -> String {
         .unwrap_or_else(|| "tungsten".to_string())
 }
 
-/// The one fan-out point for records (`D-119`). `env_logger` hands it each
-/// whole formatted record in one `write_all`, under its lock, and it writes
-/// the record to the file and, when enabled, to stderr. W1 M5's console
-/// adds its bounded channel sink here, not a second logger.
+/// The one fan-out point for records (`D-119`), the logger's target
+/// whenever stderr or the file is on. `env_logger` hands it each whole
+/// formatted record in one `write_all`, under its lock, and it writes the
+/// record to the file, to stderr as its mode says, and to the log
+/// console's bounded channel (M57), not through a second logger.
 pub(crate) struct Tee {
     pub(crate) file: LogFile,
-    pub(crate) stderr: bool,
+    pub(crate) stderr: StderrMode,
+    pub(crate) console: Option<ConsoleSink>,
 }
 
 impl Write for Tee {
@@ -207,8 +280,15 @@ impl Write for Tee {
         if let Some(mut file) = self.file.get() {
             let _ = file.write_all(buf);
         }
-        if self.stderr {
-            let _ = io::stderr().write_all(buf);
+        match self.stderr {
+            StderrMode::Off => {}
+            StderrMode::Captured => eprint!("{}", String::from_utf8_lossy(buf)),
+            StderrMode::Direct => {
+                let _ = io::stderr().write_all(buf);
+            }
+        }
+        if let Some(console) = &self.console {
+            console.send(buf);
         }
         Ok(buf.len())
     }

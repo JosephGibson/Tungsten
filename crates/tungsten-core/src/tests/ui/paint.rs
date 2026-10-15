@@ -7,7 +7,8 @@ use crate::assets::{AssetRegistry, SpriteAssetId};
 use crate::text::TextNodeStore as _;
 use crate::ui::theme::{StyleOverrides, WidgetState};
 use crate::ui::{
-    Anchor, FixedAdvanceMeasure, LayoutStats, LayoutStyle, Sizing, SliderRange, Visibility,
+    Anchor, FixedAdvanceMeasure, LayoutStats, LayoutStyle, Sizing, SliderRange, UiVertex,
+    Visibility,
 };
 
 /// 8 px per glyph at the theme's size 16; lines are 20 tall.
@@ -106,6 +107,7 @@ fn list_of(commands: Vec<PaintCommand>) -> PaintList {
             height: 600,
         }],
         commands,
+        vertices: Vec::new(),
     }
 }
 
@@ -120,6 +122,7 @@ fn kinds(list: &PaintList) -> String {
             PaintCommand::Rect { .. } => "R",
             PaintCommand::Image { .. } => "I",
             PaintCommand::Text { .. } => "T",
+            PaintCommand::Mesh { .. } => "M",
         })
         .collect()
 }
@@ -963,6 +966,11 @@ fn alphas(list: &PaintList) -> Vec<u8> {
             PaintCommand::Rect { fill, border, .. } => vec![fill[3], border[3]],
             PaintCommand::Image { tint, .. } => vec![tint[3]],
             PaintCommand::Text { color, .. } => vec![color[3]],
+            PaintCommand::Mesh { .. } => list
+                .mesh_vertices(command)
+                .iter()
+                .map(|vertex| vertex.color[3])
+                .collect(),
         })
         .collect()
 }
@@ -1342,4 +1350,253 @@ fn a_collapsed_or_removed_root_drops_its_prewarm() {
     let mut list = PaintList::default();
     assert!(!tree.paint_prewarm(1.0, &mut list));
     assert!(!tree.prewarm_pending(), "both requests dropped");
+}
+
+// ---- M57: meshes ----
+
+const RED: [u8; 4] = [255, 0, 0, 255];
+const GREEN: [u8; 4] = [0, 255, 0, 255];
+const BLUE: [u8; 4] = [0, 0, 255, 200];
+
+fn vertex(x: f32, y: f32, color: [u8; 4]) -> UiVertex {
+    UiVertex::new(Vec2::new(x, y), color)
+}
+
+/// No fill and no border, so a widget paints only what it holds.
+fn bare() -> StyleOverrides {
+    StyleOverrides {
+        background: Some([0, 0, 0, 0]),
+        border_width: Some(0.0),
+        ..StyleOverrides::default()
+    }
+}
+
+/// A bare mesh under a bare root, laid out by `style`.
+fn bare_mesh(tree: &mut UiTree, style: LayoutStyle) -> (WidgetId, WidgetId) {
+    let root = bare_root(tree, LayoutStyle::default());
+    let mesh = tree.mesh(root, style);
+    tree.set_overrides(mesh, bare());
+    (root, mesh)
+}
+
+#[test]
+fn a_meshs_vertices_map_into_its_box_under_its_transform_with_the_fade() {
+    let mut tree = UiTree::new();
+    let (root, mesh) = bare_mesh(&mut tree, at(100.0, 100.0, 100.0, 50.0));
+    let triangle = [
+        vertex(0.0, 0.0, RED),
+        vertex(1.0, 0.0, GREEN),
+        vertex(1.0, 1.0, BLUE),
+    ];
+    assert!(tree.set_mesh(mesh, &triangle));
+    assert_eq!(tree.kind(mesh), Some(WidgetKind::Mesh));
+    assert_eq!(tree.role(mesh), Some(crate::ui::Role::Image));
+    tree.set_scale(mesh, 2.0);
+    tree.set_translation(mesh, Vec2::new(10.0, 0.0));
+    tree.set_fade(root, 0.5);
+    let list = paint(&mut tree, 1.5, UiDebug::default(), &AssetRegistry::new());
+
+    assert_eq!(kinds(&list), "M", "a bare box paints nothing of its own");
+    // p ↦ (150, 125) + 2 · (p − (150, 125)) + (10, 0), then × 1.5.
+    let expected = [
+        vertex(90.0, 112.5, [255, 0, 0, 128]),
+        vertex(390.0, 112.5, [0, 255, 0, 128]),
+        vertex(390.0, 262.5, [0, 0, 255, 100]),
+    ];
+    assert_eq!(list.mesh_vertices(&list.commands[0]), expected);
+    assert_eq!(list.vertices, expected);
+    assert_eq!(
+        list.commands[0],
+        PaintCommand::Mesh {
+            rect: Rect::new(Vec2::new(90.0, 112.5), Vec2::new(390.0, 262.5)),
+            first: 0,
+            count: 3,
+            clip: 0,
+        }
+    );
+    assert!(
+        list.mesh_vertices(&rect_command(rect(0.0, 0.0, 1.0, 1.0)))
+            .is_empty()
+    );
+    let mut reused = list;
+    reused.clear();
+    assert!(reused.vertices.is_empty(), "clear drops the vertices");
+}
+
+#[test]
+fn set_mesh_keeps_whole_finite_triangles_and_marks_paint_only() {
+    let mut tree = UiTree::new();
+    let (root, mesh) = bare_mesh(&mut tree, at(0.0, 0.0, 10.0, 10.0));
+    let label = tree.label(root, "x");
+    paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+    assert!(!tree.is_layout_dirty() && !tree.is_paint_dirty());
+
+    let a = [
+        vertex(0.0, 0.0, RED),
+        vertex(1.0, 0.0, RED),
+        vertex(0.0, 1.0, RED),
+    ];
+    let d = [
+        vertex(0.5, 0.5, BLUE),
+        vertex(2.0, 0.5, BLUE),
+        vertex(0.5, -1.0, BLUE),
+    ];
+    let mut vertices = a.to_vec();
+    vertices.extend([
+        vertex(f32::NAN, 0.0, GREEN),
+        vertex(1.0, 0.0, GREEN),
+        vertex(0.0, 1.0, GREEN),
+    ]);
+    vertices.extend([
+        vertex(0.0, 0.0, GREEN),
+        vertex(1.0, f32::INFINITY, GREEN),
+        vertex(0.0, 1.0, GREEN),
+    ]);
+    vertices.extend(d);
+    vertices.extend([vertex(0.0, 0.0, RED), vertex(1.0, 1.0, RED)]);
+    assert!(tree.set_mesh(mesh, &vertices));
+    let kept: Vec<UiVertex> = a.iter().chain(&d).copied().collect();
+    assert_eq!(tree.mesh_vertices(mesh), kept);
+    assert!(tree.is_paint_dirty());
+    assert!(!tree.is_layout_dirty(), "paint only");
+
+    paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+    assert!(!tree.set_mesh(mesh, &vertices), "the same triangles");
+    assert!(!tree.set_mesh(mesh, &kept), "the same kept triangles");
+    assert!(!tree.is_paint_dirty());
+    assert!(tree.set_mesh(mesh, &[]));
+    assert!(tree.mesh_vertices(mesh).is_empty());
+
+    assert!(!tree.set_mesh(label, &a), "not a mesh");
+    assert!(tree.mesh_vertices(label).is_empty());
+}
+
+#[test]
+fn a_mesh_with_no_triangle_paints_only_its_box_and_measures_zero() {
+    let mut tree = UiTree::new();
+    let root = bare_root(&mut tree, LayoutStyle::default());
+    let mesh = tree.mesh(
+        root,
+        LayoutStyle::default().with_size(Sizing::Px(40.0), Sizing::Auto),
+    );
+    tree.set_mesh(mesh, &[vertex(0.0, 0.0, RED), vertex(1.0, 1.0, RED)]);
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+    assert_eq!(
+        tree.rect(mesh),
+        Some(rect(0.0, 0.0, 40.0, 0.0)),
+        "no natural size"
+    );
+    assert!(list.vertices.is_empty());
+    assert!(
+        list.commands
+            .iter()
+            .all(|command| !matches!(command, PaintCommand::Mesh { .. }))
+    );
+
+    tree.set_layout_style(mesh, fixed(40.0, 30.0));
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+    assert_eq!(
+        list.dump(),
+        "clip 0 (0, 0) 800×600\n\
+         Rect (0.0, 0.0) 40.0×30.0 fill #202128ff border #464854ff 1.0 r 4.0 clip 0\n",
+        "the panel's look, and no triangle"
+    );
+}
+
+#[test]
+fn the_dump_line_of_a_mesh() {
+    let mut tree = UiTree::new();
+    let root = bare_root(&mut tree, at(0.0, 0.0, 200.0, 200.0));
+    tree.set_clip_children(root, true);
+    let mesh = tree.mesh(root, at(10.0, 20.0, 40.0, 30.0));
+    tree.set_overrides(mesh, bare());
+    tree.set_mesh(
+        mesh,
+        &[
+            vertex(0.0, 0.0, RED),
+            vertex(1.0, 0.0, RED),
+            vertex(0.0, 1.0, RED),
+            vertex(1.0, 0.0, GREEN),
+            vertex(1.0, 1.0, GREEN),
+            vertex(0.0, 1.0, GREEN),
+        ],
+    );
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+    assert_eq!(
+        list.dump(),
+        "clip 0 (0, 0) 800×600\n\
+         clip 1 (0, 0) 200×200\n\
+         Mesh (10.0, 20.0) 40.0×30.0 verts 6 clip 1\n"
+    );
+}
+
+#[test]
+fn a_mesh_over_text_closes_its_batch() {
+    let mut list = list_of(vec![
+        text_command(rect(0.0, 0.0, 100.0, 20.0)),
+        PaintCommand::Mesh {
+            rect: rect(50.0, 10.0, 100.0, 100.0),
+            first: 0,
+            count: 3,
+            clip: 0,
+        },
+        text_command(rect(60.0, 20.0, 100.0, 20.0)),
+    ]);
+    list.vertices = vec![
+        vertex(50.0, 10.0, RED),
+        vertex(150.0, 10.0, RED),
+        vertex(50.0, 110.0, RED),
+    ];
+    assert_eq!(list.text_batches(), [0..1, 2..3]);
+    let missed = list_of(vec![
+        text_command(rect(0.0, 0.0, 100.0, 20.0)),
+        PaintCommand::Mesh {
+            rect: rect(0.0, 20.0, 100.0, 100.0),
+            first: 0,
+            count: 3,
+            clip: 0,
+        },
+        text_command(rect(0.0, 200.0, 100.0, 20.0)),
+    ]);
+    let batches = missed.text_batches();
+    assert_eq!(
+        (batches.len(), batches.first().cloned()),
+        (1, Some(0..3)),
+        "a mesh touching the text's edge misses it"
+    );
+}
+
+#[test]
+fn a_triangle_leaving_its_box_over_earlier_text_closes_that_batch() {
+    let mut tree = UiTree::new();
+    let root = bare_root(&mut tree, LayoutStyle::default());
+    let a = tree.label(root, "aaaa");
+    tree.set_layout_style(a, at(0.0, 0.0, 100.0, 20.0));
+    let mesh = tree.mesh(root, at(0.0, 100.0, 50.0, 50.0));
+    tree.set_overrides(mesh, bare());
+    // The apex sits three box heights above the box: y = 100 − 150.
+    tree.set_mesh(
+        mesh,
+        &[
+            vertex(0.0, 0.0, RED),
+            vertex(1.0, 0.0, RED),
+            vertex(0.5, -3.0, RED),
+        ],
+    );
+    let b = tree.label(root, "bbbb");
+    tree.set_layout_style(b, at(300.0, 300.0, 100.0, 20.0));
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+
+    assert_eq!(kinds(&list), "TMT");
+    assert_eq!(tree.rect(mesh), Some(rect(0.0, 100.0, 50.0, 50.0)));
+    assert_eq!(
+        list.commands[1].rect(),
+        Rect::new(Vec2::new(0.0, -50.0), Vec2::new(50.0, 100.0)),
+        "the command bounds the triangle, not the box"
+    );
+    assert_eq!(
+        list.text_batches(),
+        [0..1, 2..3],
+        "A's batch closes before the mesh, which draws over A"
+    );
 }
