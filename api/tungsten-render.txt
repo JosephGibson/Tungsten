@@ -724,6 +724,7 @@ pub fn tungsten_render::renderer::Renderer::load_font(&mut self, &str, alloc::ve
 pub fn tungsten_render::renderer::Renderer::max_2d_texture_dimension(&self) -> u32
 pub fn tungsten_render::renderer::Renderer::new(alloc::sync::Arc<winit::window::Window>, &tungsten_core::config::RenderConfig, bool) -> core::result::Result<Self, tungsten_render::renderer::RenderError>
 pub fn tungsten_render::renderer::Renderer::post_aa(&self) -> tungsten_core::config::PostAaMode
+pub fn tungsten_render::renderer::Renderer::prewarm_ui_text(&mut self, &tungsten_core::ui::paint::PaintList) -> tungsten_render::text::TextPrewarm
 pub fn tungsten_render::renderer::Renderer::reconfigure_surface_pacing(&mut self, core::option::Option<tungsten_core::config::PresentModeConfig>, bool, core::option::Option<u32>) -> core::result::Result<(), tungsten_render::renderer::RenderError>
 pub fn tungsten_render::renderer::Renderer::reload_font(&mut self, &str, alloc::vec::Vec<u8>) -> bool
 pub fn tungsten_render::renderer::Renderer::reload_material(&mut self, tungsten_core::assets::material::MaterialAssetId, tungsten_core::assets::material::MaterialUniformDefaults) -> core::result::Result<(), tungsten_render::renderer::RenderError>
@@ -1116,6 +1117,7 @@ impl tungsten_render::TextPipeline
 pub fn tungsten_render::TextPipeline::load_font(&mut self, &str, alloc::vec::Vec<u8>)
 pub fn tungsten_render::TextPipeline::new(&wgpu::api::device::Device, &wgpu::api::queue::Queue, wgpu_types::texture::format::TextureFormat) -> Self
 pub fn tungsten_render::TextPipeline::prepare(&mut self, &wgpu::api::device::Device, &wgpu::api::queue::Queue, &[tungsten_render::text::TextSection], &tungsten_core::ui::paint::PaintList, u32, u32)
+pub fn tungsten_render::TextPipeline::prewarm(&mut self, &wgpu::api::device::Device, &wgpu::api::queue::Queue, &tungsten_core::ui::paint::PaintList, u32, u32) -> tungsten_render::text::TextPrewarm
 pub fn tungsten_render::TextPipeline::reload_font(&mut self, &str, alloc::vec::Vec<u8>) -> bool
 pub fn tungsten_render::TextPipeline::render<'pass>(&'pass self, &mut wgpu::api::render_pass::RenderPass<'pass>)
 pub fn tungsten_render::TextPipeline::stats(&self) -> tungsten_render::TextStats
@@ -1127,6 +1129,28 @@ impl core::marker::Unpin for tungsten_render::TextPipeline
 impl core::marker::UnsafeUnpin for tungsten_render::TextPipeline
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::TextPipeline
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::TextPipeline
+#[non_exhaustive] pub struct tungsten_render::text::TextPrewarm
+pub tungsten_render::text::TextPrewarm::glyphs: u32
+pub tungsten_render::text::TextPrewarm::micros: u64
+pub tungsten_render::text::TextPrewarm::runs: u32
+impl core::clone::Clone for tungsten_render::text::TextPrewarm
+pub fn tungsten_render::text::TextPrewarm::clone(&self) -> tungsten_render::text::TextPrewarm
+impl core::cmp::Eq for tungsten_render::text::TextPrewarm
+impl core::cmp::PartialEq for tungsten_render::text::TextPrewarm
+pub fn tungsten_render::text::TextPrewarm::eq(&self, &tungsten_render::text::TextPrewarm) -> bool
+impl core::default::Default for tungsten_render::text::TextPrewarm
+pub fn tungsten_render::text::TextPrewarm::default() -> tungsten_render::text::TextPrewarm
+impl core::fmt::Debug for tungsten_render::text::TextPrewarm
+pub fn tungsten_render::text::TextPrewarm::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::text::TextPrewarm
+impl core::marker::StructuralPartialEq for tungsten_render::text::TextPrewarm
+impl core::marker::Freeze for tungsten_render::text::TextPrewarm
+impl core::marker::Send for tungsten_render::text::TextPrewarm
+impl core::marker::Sync for tungsten_render::text::TextPrewarm
+impl core::marker::Unpin for tungsten_render::text::TextPrewarm
+impl core::marker::UnsafeUnpin for tungsten_render::text::TextPrewarm
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::text::TextPrewarm
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::text::TextPrewarm
 pub struct tungsten_render::text::TextSection
 pub tungsten_render::text::TextSection::bounds: core::option::Option<[f32; 2]>
 pub tungsten_render::text::TextSection::color: [u8; 4]
@@ -1761,6 +1785,7 @@ pub fn tungsten_render::renderer::Renderer::load_font(&mut self, &str, alloc::ve
 pub fn tungsten_render::renderer::Renderer::max_2d_texture_dimension(&self) -> u32
 pub fn tungsten_render::renderer::Renderer::new(alloc::sync::Arc<winit::window::Window>, &tungsten_core::config::RenderConfig, bool) -> core::result::Result<Self, tungsten_render::renderer::RenderError>
 pub fn tungsten_render::renderer::Renderer::post_aa(&self) -> tungsten_core::config::PostAaMode
+pub fn tungsten_render::renderer::Renderer::prewarm_ui_text(&mut self, &tungsten_core::ui::paint::PaintList) -> tungsten_render::text::TextPrewarm
 pub fn tungsten_render::renderer::Renderer::reconfigure_surface_pacing(&mut self, core::option::Option<tungsten_core::config::PresentModeConfig>, bool, core::option::Option<u32>) -> core::result::Result<(), tungsten_render::renderer::RenderError>
 pub fn tungsten_render::renderer::Renderer::reload_font(&mut self, &str, alloc::vec::Vec<u8>) -> bool
 pub fn tungsten_render::renderer::Renderer::reload_material(&mut self, tungsten_core::assets::material::MaterialAssetId, tungsten_core::assets::material::MaterialUniformDefaults) -> core::result::Result<(), tungsten_render::renderer::RenderError>
@@ -2041,6 +2066,7 @@ impl tungsten_render::TextPipeline
 pub fn tungsten_render::TextPipeline::load_font(&mut self, &str, alloc::vec::Vec<u8>)
 pub fn tungsten_render::TextPipeline::new(&wgpu::api::device::Device, &wgpu::api::queue::Queue, wgpu_types::texture::format::TextureFormat) -> Self
 pub fn tungsten_render::TextPipeline::prepare(&mut self, &wgpu::api::device::Device, &wgpu::api::queue::Queue, &[tungsten_render::text::TextSection], &tungsten_core::ui::paint::PaintList, u32, u32)
+pub fn tungsten_render::TextPipeline::prewarm(&mut self, &wgpu::api::device::Device, &wgpu::api::queue::Queue, &tungsten_core::ui::paint::PaintList, u32, u32) -> tungsten_render::text::TextPrewarm
 pub fn tungsten_render::TextPipeline::reload_font(&mut self, &str, alloc::vec::Vec<u8>) -> bool
 pub fn tungsten_render::TextPipeline::render<'pass>(&'pass self, &mut wgpu::api::render_pass::RenderPass<'pass>)
 pub fn tungsten_render::TextPipeline::stats(&self) -> tungsten_render::TextStats
@@ -2052,6 +2078,28 @@ impl core::marker::Unpin for tungsten_render::TextPipeline
 impl core::marker::UnsafeUnpin for tungsten_render::TextPipeline
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_render::TextPipeline
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_render::TextPipeline
+#[non_exhaustive] pub struct tungsten_render::TextPrewarm
+pub tungsten_render::TextPrewarm::glyphs: u32
+pub tungsten_render::TextPrewarm::micros: u64
+pub tungsten_render::TextPrewarm::runs: u32
+impl core::clone::Clone for tungsten_render::text::TextPrewarm
+pub fn tungsten_render::text::TextPrewarm::clone(&self) -> tungsten_render::text::TextPrewarm
+impl core::cmp::Eq for tungsten_render::text::TextPrewarm
+impl core::cmp::PartialEq for tungsten_render::text::TextPrewarm
+pub fn tungsten_render::text::TextPrewarm::eq(&self, &tungsten_render::text::TextPrewarm) -> bool
+impl core::default::Default for tungsten_render::text::TextPrewarm
+pub fn tungsten_render::text::TextPrewarm::default() -> tungsten_render::text::TextPrewarm
+impl core::fmt::Debug for tungsten_render::text::TextPrewarm
+pub fn tungsten_render::text::TextPrewarm::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::text::TextPrewarm
+impl core::marker::StructuralPartialEq for tungsten_render::text::TextPrewarm
+impl core::marker::Freeze for tungsten_render::text::TextPrewarm
+impl core::marker::Send for tungsten_render::text::TextPrewarm
+impl core::marker::Sync for tungsten_render::text::TextPrewarm
+impl core::marker::Unpin for tungsten_render::text::TextPrewarm
+impl core::marker::UnsafeUnpin for tungsten_render::text::TextPrewarm
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::text::TextPrewarm
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::text::TextPrewarm
 pub struct tungsten_render::TextSection
 pub tungsten_render::TextSection::bounds: core::option::Option<[f32; 2]>
 pub tungsten_render::TextSection::color: [u8; 4]

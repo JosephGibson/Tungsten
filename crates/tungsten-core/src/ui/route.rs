@@ -6,7 +6,11 @@
 //! buttons and stick directions navigate as keys do (M54). An activation
 //! flips a toggle; a primary press and the moves while it holds set a
 //! slider from the pointer, and `ui_left` and `ui_right` step a focused one
-//! (M55).
+//! (M55). A frozen root's widgets take no input, while the root still
+//! blocks the pointer and, when modal, the keyboard (M56); the pointer maps
+//! through translation and scale as paint does. M56 also adds the
+//! capture-next-input mode for rebinding and resolves prompts after each
+//! routing.
 
 use glam::Vec2;
 
@@ -24,6 +28,7 @@ use super::focus::NavDirection;
 use super::id::WidgetId;
 use super::node::CursorIcon;
 use super::paint::UiDebug;
+use super::prompt;
 use super::tree::UiTree;
 
 /// Activates the focused widget; Enter and Space by default.
@@ -187,6 +192,11 @@ pub struct UiRouter {
     routed: Vec<RawInput>,
     /// The `ui_*` actions of each binding pressed in this routing's stream.
     nav_actions: Vec<(Binding, u8)>,
+    /// The widget a pending capture is for (M56).
+    capture: Option<WidgetId>,
+    /// Events from between routings (a capture cancelled or replaced),
+    /// sent at the next one.
+    pending_events: Vec<UiEvent>,
 }
 
 impl UiRouter {
@@ -217,11 +227,43 @@ impl UiRouter {
     }
 
     /// Whether the UI had the keyboard at the last routing: while a modal
-    /// root is shown, every key press is the UI's; while a widget holds
-    /// visible focus, the presses of keys bound to the `ui_*` actions are.
+    /// root is shown or a capture is pending, every key press is the UI's;
+    /// while a widget holds visible focus, the presses of keys bound to the
+    /// `ui_*` actions are.
     #[must_use]
     pub fn wants_keyboard(&self) -> bool {
         self.wants_keyboard
+    }
+
+    /// Captures the next key, mouse button, pad button or stick direction
+    /// press for `widget`, from the next routing (M56): until then every
+    /// such press is the UI's ([`Self::wants_keyboard`] holds) and none
+    /// navigates; the first that is not an OS repeat ends the capture with
+    /// [`UiEvent::InputCaptured`], and its release stays the UI's. Escape
+    /// is captured like any key (Q9); the wheel is taken, neither captured
+    /// nor routed (Q10). A capture already pending ends with
+    /// [`UiEvent::CaptureCancelled`], as one does on window focus loss or
+    /// when the widget is removed, hidden, disabled or frozen.
+    pub fn capture_next_input(&mut self, widget: WidgetId) {
+        if let Some(previous) = self.capture.replace(widget) {
+            self.pending_events
+                .push(UiEvent::CaptureCancelled { widget: previous });
+        }
+    }
+
+    /// Ends a pending capture; its [`UiEvent::CaptureCancelled`] comes at
+    /// the next routing. Does nothing when none is pending.
+    pub fn cancel_capture(&mut self) {
+        if let Some(widget) = self.capture.take() {
+            self.pending_events
+                .push(UiEvent::CaptureCancelled { widget });
+        }
+    }
+
+    /// The widget a pending capture is for.
+    #[must_use]
+    pub fn capturing(&self) -> Option<WidgetId> {
+        self.capture
     }
 
     /// The system cursor the window shows: the nearest one set
@@ -260,6 +302,7 @@ impl UiRouter {
             }
         }
         self.events.clear();
+        self.events.append(&mut self.pending_events);
         self.routed.clear();
         let mut fallback = None;
         let tree = match world.get_resource_mut::<UiTree>() {
@@ -275,6 +318,7 @@ impl UiRouter {
             nav_actions: &nav_actions,
         }
         .run(&stream);
+        self.resolve_prompts(world);
         if let Some(routed) = world.get_resource_mut::<RoutedInput>() {
             routed.begin_frame();
             for input in &self.routed {
@@ -292,18 +336,41 @@ impl UiRouter {
         self.stream = stream;
         self.nav_actions = nav_actions;
     }
+
+    /// Rebuilds the prompts whose device kind or bindings moved (M56). The
+    /// prompts leave the tree while the action map is read.
+    fn resolve_prompts(&self, world: &mut World) {
+        let Some(tree) = world.get_resource_mut::<UiTree>() else {
+            return;
+        };
+        if tree.prompts.is_empty() {
+            return;
+        }
+        let mut prompts = tree.take_prompts();
+        let mut texts = Vec::new();
+        prompt::resolve_prompts(
+            &mut prompts,
+            world.get_resource::<ActionMap>(),
+            self.last_device,
+            &mut texts,
+        );
+        if let Some(tree) = world.get_resource_mut::<UiTree>() {
+            tree.restore_prompts(prompts, texts);
+        }
+    }
 }
 
 /// Routes the frame's input through the UI (`D-149`), once a frame in
-/// `pre_update` after the state dispatcher; the umbrella's `UiPlugin`
-/// registers it as `ui_route`. Reads [`InputState::raw_events`] in arrival
-/// order against the [`UiTree`]'s last committed layout, pointer positions
-/// divided by [`ScaleFactor::get`], timers on [`Time::real_delta`];
-/// updates the tree's hover, press and focus and the [`UiRouter`]; sends
-/// [`UiEvent`]s when `EventQueue<UiEvent>` is registered; and feeds
-/// [`RoutedInput`], after its `begin_frame`, the input the UI did not take.
-/// A world without a `UiRouter` gets one; without a `UiTree`, every input
-/// is the game's.
+/// `pre_update` before the state dispatcher, so a state's `update` reads
+/// this frame's routing (M56); the umbrella's `UiPlugin` registers it as
+/// `ui_route`. Reads [`InputState::raw_events`] in arrival order against
+/// the [`UiTree`]'s last committed layout, pointer positions divided by
+/// [`ScaleFactor::get`], timers on [`Time::real_delta`]; updates the tree's
+/// hover, press and focus and the [`UiRouter`]; resolves the tree's prompts
+/// against the [`ActionMap`] and the last device; sends [`UiEvent`]s when
+/// `EventQueue<UiEvent>` is registered; and feeds [`RoutedInput`], after
+/// its `begin_frame`, the input the UI did not take. A world without a
+/// `UiRouter` gets one; without a `UiTree`, every input is the game's.
 pub fn ui_route_system(world: &mut World) {
     let mut router = world
         .get_resource_mut::<UiRouter>()
@@ -435,6 +502,7 @@ impl Routing<'_> {
             .set_focus_visible(self.router.last_device != InputDevice::Pointer);
         self.sync_focus();
         self.check_presses();
+        self.check_capture();
         self.focus_into_modal();
         self.update_hover();
         for event in stream {
@@ -470,6 +538,10 @@ impl Routing<'_> {
                 pressed: false,
             } => self.button_up(button),
             RawInput::Wheel { .. } => {
+                if self.router.capture.is_some() {
+                    // Taken: neither captured nor routed (Q10).
+                    return;
+                }
                 self.set_device(InputDevice::Pointer);
                 if !self.pointer_takes() {
                     self.router.routed.push(input);
@@ -478,7 +550,9 @@ impl Routing<'_> {
             RawInput::Key {
                 code, repeat: true, ..
             } => {
-                if !self.router.ui_held.contains(&NavInput::Key(code)) {
+                if self.router.capture.is_none()
+                    && !self.router.ui_held.contains(&NavInput::Key(code))
+                {
                     self.router.routed.push(input);
                 }
             }
@@ -579,12 +653,19 @@ impl Routing<'_> {
     }
 
     /// The widget under the pointer, and its target: the nearest
-    /// interactive ancestor-or-self that is enabled, its ancestors too.
+    /// interactive ancestor-or-self that is enabled, its ancestors too; no
+    /// target in a frozen root.
     fn hit(&self) -> (Option<WidgetId>, Option<WidgetId>) {
         let Some(point) = self.point() else {
             return (None, None);
         };
         let hit = self.tree.hit_test_layers(point, self.hide);
+        if hit
+            .and_then(|hit| self.tree.root_of(hit))
+            .is_some_and(|root| self.tree.frozen(root))
+        {
+            return (hit, None);
+        }
         let mut target = hit;
         while let Some(id) = target {
             if self.tree.interactive(id) && self.tree.is_enabled_in_tree(id) {
@@ -627,6 +708,10 @@ impl Routing<'_> {
 
     fn button_down(&mut self, button: MouseButton) {
         self.set_device(InputDevice::Pointer);
+        if self.capture_press(Binding::Mouse { button }) {
+            self.router.ui_buttons.push(button);
+            return;
+        }
         if !self.pointer_takes() {
             self.router.routed.push(RawInput::MouseButton {
                 button,
@@ -679,11 +764,12 @@ impl Routing<'_> {
     }
 
     /// Sets a slider's value from the pointer, past either end too, and
-    /// reports a change; anything else, or no pointer, changes nothing.
+    /// reports a change; anything else, or no pointer, changes nothing. The
+    /// pointer maps onto the box the slider paints in.
     fn slide_to_pointer(&mut self, widget: WidgetId) {
         let (Some(point), Some(rect), Some(range)) = (
             self.point(),
-            self.tree.rect(widget),
+            self.tree.visual_rect(widget),
             self.tree.slider_range(widget),
         ) else {
             return;
@@ -745,23 +831,47 @@ impl Routing<'_> {
         }
     }
 
+    /// Ends a pending capture whose widget was removed, hidden or disabled,
+    /// or whose root stopped taking input or froze, since the last routing.
+    fn check_capture(&mut self) {
+        if let Some(widget) = self.router.capture
+            && !self.takes_input(widget)
+        {
+            self.router.capture = None;
+            self.router
+                .events
+                .push(UiEvent::CaptureCancelled { widget });
+        }
+    }
+
+    /// Ends a pending capture with `binding`, the press it took; `false`
+    /// when none is pending.
+    fn capture_press(&mut self, binding: Binding) -> bool {
+        let Some(widget) = self.router.capture.take() else {
+            return false;
+        };
+        self.router
+            .events
+            .push(UiEvent::InputCaptured { widget, binding });
+        true
+    }
+
     fn takes_input(&self, widget: WidgetId) -> bool {
         self.tree.is_shown(widget)
             && self.tree.is_enabled_in_tree(widget)
-            && self
-                .tree
-                .root_of(widget)
-                .is_some_and(|root| self.tree.root_routes(root, self.hide))
+            && self.tree.root_of(widget).is_some_and(|root| {
+                self.tree.root_routes(root, self.hide) && !self.tree.frozen(root)
+            })
     }
 
     // ---- keyboard ----
 
-    /// The focused widget when keys act on it: in a root that takes input,
-    /// and not under the shown modal root.
+    /// The focused widget when keys act on it: in a root that takes input
+    /// and is not frozen, and not under the shown modal root.
     fn focus_in_play(&self) -> Option<WidgetId> {
         let focused = self.tree.focused()?;
         let root = self.tree.root_of(focused)?;
-        if !self.tree.root_routes(root, self.hide) {
+        if !self.tree.root_routes(root, self.hide) || self.tree.frozen(root) {
             return None;
         }
         if let Some(modal) = self.modal {
@@ -774,10 +884,11 @@ impl Routing<'_> {
         Some(focused)
     }
 
-    /// A shown modal root with no focus in it or above it focuses its first
-    /// focusable widget.
+    /// A shown modal root that is not frozen, with no focus in it or above
+    /// it, focuses its first focusable widget.
     fn focus_into_modal(&mut self) {
         if let Some(modal) = self.modal
+            && !self.tree.frozen(modal)
             && self.focus_in_play().is_none()
             && let Some(first) = self.tree.first_focusable(modal)
         {
@@ -799,6 +910,12 @@ impl Routing<'_> {
         device: InputDevice,
     ) -> bool {
         let binding = nav.binding();
+        if self.router.capture.is_some() {
+            self.set_device(device);
+            self.capture_press(binding);
+            self.router.ui_held.push(nav);
+            return true;
+        }
         let actions = self
             .nav_actions
             .iter()
@@ -839,7 +956,7 @@ impl Routing<'_> {
             let scope = self
                 .focus_in_play()
                 .and_then(|focused| self.tree.scope_of(focused))
-                .or(self.modal);
+                .or(self.modal.filter(|modal| !self.tree.frozen(*modal)));
             if let Some(scope) = scope {
                 self.router.events.push(UiEvent::Cancel { scope });
             }
@@ -910,6 +1027,9 @@ impl Routing<'_> {
         let Some(mut repeat) = self.router.repeat else {
             return;
         };
+        if self.router.capture.is_some() {
+            return;
+        }
         let clock = self.router.clock;
         if clock < repeat.next {
             return;
@@ -923,11 +1043,16 @@ impl Routing<'_> {
         self.router.repeat = Some(repeat);
     }
 
-    /// Window focus loss: ends the presses, forgets the UI's held keys,
-    /// buttons, stick directions and withheld axes and the pointer, and
-    /// clears the hover.
+    /// Window focus loss: ends the presses and a pending capture, forgets
+    /// the UI's held keys, buttons, stick directions and withheld axes and
+    /// the pointer, and clears the hover.
     fn focus_lost(&mut self) {
         self.cancel_presses();
+        if let Some(widget) = self.router.capture.take() {
+            self.router
+                .events
+                .push(UiEvent::CaptureCancelled { widget });
+        }
         self.router.ui_held.clear();
         self.router.ui_buttons.clear();
         self.router.withheld.clear();
@@ -989,8 +1114,9 @@ impl Routing<'_> {
         let hit = self.hit().0;
         self.router.pointer_over_ui =
             self.router.pointer.is_some() && (hit.is_some() || self.modal.is_some());
-        self.router.wants_keyboard =
-            self.modal.is_some() || (self.focus_in_play().is_some() && self.tree.focus_visible());
+        self.router.wants_keyboard = self.modal.is_some()
+            || self.router.capture.is_some()
+            || (self.focus_in_play().is_some() && self.tree.focus_visible());
         let mut source = self.router.captured.or(hit);
         let mut cursor = None;
         while let Some(id) = source {

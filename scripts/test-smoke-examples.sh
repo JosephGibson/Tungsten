@@ -35,7 +35,7 @@ case "$1" in
     pkg="$3"
     where=""
     case "$PWD" in */templates/basic) where=" dir=templates/basic" ;; esac
-    echo "$pkg msaa=${TUNGSTEN_RENDER_MSAA:-} sort=${TUNGSTEN_RENDER_DEPTH_SORT:-} post=${TUNGSTEN_POST_STACK_FIXTURE:-} aa=${TUNGSTEN_POST_AA_FIXTURE:-} bloom=${TUNGSTEN_BLOOM_FIXTURE:-} light=${TUNGSTEN_LIGHTING_FIXTURE:-} feel=${TUNGSTEN_GAME_FEEL_FIXTURE:-} frames=${TUNGSTEN_SMOKE_FRAMES:-} timing=${TUNGSTEN_GPU_TIMING:-} bench=${TUNGSTEN_BENCH:-} preset=${TUNGSTEN_BENCH_PRESET:-}${TUNGSTEN_TRANSITION_FIXTURE:+ transition=$TUNGSTEN_TRANSITION_FIXTURE}${TUNGSTEN_DISPLAY_FRAME_RATE_CAP:+ cap=$TUNGSTEN_DISPLAY_FRAME_RATE_CAP}$where" >>"$STUB_RUNS"
+    echo "$pkg msaa=${TUNGSTEN_RENDER_MSAA:-} sort=${TUNGSTEN_RENDER_DEPTH_SORT:-} post=${TUNGSTEN_POST_STACK_FIXTURE:-} aa=${TUNGSTEN_POST_AA_FIXTURE:-} bloom=${TUNGSTEN_BLOOM_FIXTURE:-} light=${TUNGSTEN_LIGHTING_FIXTURE:-} feel=${TUNGSTEN_GAME_FEEL_FIXTURE:-} frames=${TUNGSTEN_SMOKE_FRAMES:-} timing=${TUNGSTEN_GPU_TIMING:-} bench=${TUNGSTEN_BENCH:-} preset=${TUNGSTEN_BENCH_PRESET:-}${TUNGSTEN_TRANSITION_FIXTURE:+ transition=$TUNGSTEN_TRANSITION_FIXTURE}${TUNGSTEN_UI_LAB_FIXTURE:+ ui=$TUNGSTEN_UI_LAB_FIXTURE}${TUNGSTEN_DISPLAY_FRAME_RATE_CAP:+ cap=$TUNGSTEN_DISPLAY_FRAME_RATE_CAP}$where" >>"$STUB_RUNS"
     if [ -n "$where" ] && [ -n "${STUB_UNKNOWN_FONT:-}" ]; then echo "WARN Unknown font ID 'mono', falling back"; fi
     if [ -n "${TUNGSTEN_DISPLAY_FRAME_RATE_CAP:-}" ] && [ -z "${STUB_UNCAPPED:-}" ]; then sleep 1; fi
     if [ "$pkg" = "${STUB_HANG_PKG:-}" ]; then exec sleep 30; fi
@@ -79,7 +79,8 @@ expect_output() {
 if run_case "all pass" 0; then
   for line in "Passed: 4/4" "Template passed: 1/1" "Matrix passed: 4/4" "Post-stack passed: 2/2" \
     "Post-AA passed: 1/1" "Bloom passed: 1/1" "Lighting passed: 1/1" \
-    "Game-feel passed: 1/1" "Mesh/transition passed: 5/5" "Benchmarks passed: 15/15" \
+    "Game-feel passed: 1/1" "Mesh/transition passed: 5/5" "UI screens passed: 1/1" \
+    "Benchmarks passed: 15/15" \
     "Frame cap passed: 1/1"; do
     expect_output "all pass" "$line"
   done
@@ -105,6 +106,7 @@ example-03-scene-state msaa= sort= post= aa= bloom= light= feel= frames=16 timin
 example-03-scene-state msaa= sort= post= aa= bloom= light= feel= frames=16 timing= bench= preset= transition=wipe_radial
 example-03-scene-state msaa= sort= post= aa= bloom= light= feel= frames=16 timing= bench= preset= transition=dissolve
 example-03-scene-state msaa= sort= post= aa= bloom= light= feel= frames=16 timing= bench= preset= transition=pixelate
+example-05-ui-lab msaa= sort= post= aa= bloom= light= feel= frames=150 timing= bench= preset= ui=menus
 example-02-bench msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench=physics preset=min
 example-02-bench msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench=physics preset=default
 example-02-bench msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench=physics preset=sparse-min

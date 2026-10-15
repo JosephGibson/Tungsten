@@ -1,10 +1,12 @@
 //! UI events (`D-149`): what the router publishes into
 //! `EventQueue<UiEvent>` once a frame, before the systems that read them,
-//! under `D-040`'s rotation. M55 adds a control's [`UiValue`] (`D-162`).
+//! under `D-040`'s rotation. M55 adds a control's [`UiValue`] (`D-162`);
+//! M56 adds a finished animation track's event and the capture mode's.
 
 use crate::ecs::EventQueue;
-use crate::input::MouseButton;
+use crate::input::{Binding, MouseButton};
 
+use super::anim::UiProperty;
 use super::id::WidgetId;
 
 /// Something that happened to a widget at a routing (`D-149`). A
@@ -95,6 +97,40 @@ pub enum UiEvent {
         /// Its new value.
         value: UiValue,
     },
+    /// A capture started with
+    /// [`UiRouter::capture_next_input`](super::UiRouter::capture_next_input)
+    /// took the next key, mouse button, pad button or stick direction press
+    /// (M56). The press and its release are the UI's. Read it with
+    /// [`EventQueue::input_captured`].
+    #[non_exhaustive]
+    InputCaptured {
+        /// The widget the capture was for.
+        widget: WidgetId,
+        /// What was pressed; a key with no `input.json` name is reported
+        /// too, and persisting skips it (`D-159`).
+        binding: Binding,
+    },
+    /// A pending capture ended without an input: window focus loss,
+    /// [`UiRouter::cancel_capture`](super::UiRouter::cancel_capture), a new
+    /// capture, or the widget removed, hidden, disabled or frozen (M56).
+    #[non_exhaustive]
+    CaptureCancelled {
+        /// The widget the capture was for.
+        widget: WidgetId,
+    },
+    /// An animation track that plays `Once` or `Times` reached its end and
+    /// wrote its end value (M56). `ui_animate` sends it, after the routing;
+    /// a replaced or stopped track sends none. Read it with
+    /// [`EventQueue::animation_finished`].
+    #[non_exhaustive]
+    AnimationFinished {
+        /// The animated widget.
+        widget: WidgetId,
+        /// The property the track moved.
+        property: UiProperty,
+        /// The track's tag.
+        tag: u32,
+    },
 }
 
 /// A control's value, as [`UiEvent::ValueChanged`] carries it.
@@ -142,6 +178,9 @@ impl UiEvent {
             | Self::FocusGained { widget }
             | Self::FocusLost { widget }
             | Self::ValueChanged { widget, .. }
+            | Self::AnimationFinished { widget, .. }
+            | Self::InputCaptured { widget, .. }
+            | Self::CaptureCancelled { widget }
             | Self::Cancel { scope: widget } => widget,
         }
     }
@@ -170,5 +209,26 @@ impl EventQueue<UiEvent> {
                 _ => None,
             })
             .last()
+    }
+
+    /// What a capture for `widget` took at this frame's routing; `None` when
+    /// it took nothing. Reads [`iter_current`](Self::iter_current), as
+    /// [`activated`](Self::activated) does.
+    #[must_use]
+    pub fn input_captured(&self, widget: WidgetId) -> Option<Binding> {
+        self.iter_current().find_map(|event| match *event {
+            UiEvent::InputCaptured { widget: w, binding } if w == widget => Some(binding),
+            _ => None,
+        })
+    }
+
+    /// Whether a track tagged `tag` on `widget` finished at this frame's
+    /// tick. Reads [`iter_current`](Self::iter_current), as
+    /// [`activated`](Self::activated) does.
+    #[must_use]
+    pub fn animation_finished(&self, widget: WidgetId, tag: u32) -> bool {
+        self.iter_current().any(|event| {
+            matches!(event, UiEvent::AnimationFinished { widget: w, tag: t, .. } if *w == widget && *t == tag)
+        })
     }
 }

@@ -41,7 +41,8 @@ use crate::surface::{
 };
 use crate::targets::{DEPTH_FORMAT, RenderTargetPool, TargetCache};
 use crate::text::{
-    FontSource, TextEngine, TextNodes, TextPipeline, TextSection, TextStats, WorldLabelRun,
+    FontSource, TextEngine, TextNodes, TextPipeline, TextPrewarm, TextSection, TextStats,
+    WorldLabelRun,
 };
 use crate::timing::TimingResources;
 pub use crate::timing::{CpuFrameTimings, GpuFrameTimings};
@@ -818,6 +819,17 @@ impl Renderer {
     #[must_use]
     pub fn text_stats(&self) -> TextStats {
         self.text_pipeline.stats()
+    }
+
+    /// Rasterizes the UI text runs of `list`, a prewarm list from
+    /// `UiTree::paint_prewarm`, into the glyph atlas without drawing them,
+    /// at the surface's size (M56). Call it before the frame's render, so a
+    /// menu's first open prepares glyphs the atlas already holds; it logs
+    /// `UI prewarm: <runs> text runs, <glyphs> glyphs in <ms> ms`.
+    pub fn prewarm_ui_text(&mut self, list: &PaintList) -> TextPrewarm {
+        let (width, height) = (self.surface_config.width, self.surface_config.height);
+        self.text_pipeline
+            .prewarm(&self.device, &self.queue, list, width, height)
     }
 
     /// The text node methods, for layout to measure and commit with

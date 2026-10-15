@@ -58,6 +58,7 @@ fn text(node: TextNodeId, rect: Rect, clip: u32) -> PaintCommand {
         node,
         rect,
         color: [255, 255, 255, 255],
+        scale: 1.0,
         clip,
     }
 }
@@ -293,6 +294,7 @@ fn position_colour_scale_and_viewport_are_in_the_signature() {
         node,
         rect: rect(0.0, 0.0, 100.0, 20.0),
         color: [1, 2, 3, 255],
+        scale: 1.0,
         clip: 0,
     };
     assert_ne!(
@@ -302,6 +304,19 @@ fn position_colour_scale_and_viewport_are_in_the_signature() {
     let mut scaled = base.clone();
     scaled.scale = 2.0;
     assert_ne!(batch_signature(&scaled, 0..1, &engine, 800, 600), reference);
+    let mut text_scaled = base.clone();
+    text_scaled.commands[0] = PaintCommand::Text {
+        node,
+        rect: rect(0.0, 0.0, 100.0, 20.0),
+        color: [255, 255, 255, 255],
+        scale: 0.5,
+        clip: 0,
+    };
+    assert_ne!(
+        batch_signature(&text_scaled, 0..1, &engine, 800, 600),
+        reference,
+        "the command's text scale is in the signature (M56)"
+    );
     assert_ne!(batch_signature(&base, 0..1, &engine, 640, 480), reference);
     assert_eq!(batch_signature(&base, 0..1, &engine, 800, 600), reference);
 }
@@ -424,4 +439,60 @@ fn only_committed_nodes_under_the_current_epoch_give_areas() {
     engine.commit_layout(committed, Vec2::new(200.0, 20.0));
     assert!(engine.node_area(committed).is_some());
     assert_eq!(engine.node_revision(committed), Some(2));
+}
+
+#[test]
+fn a_commands_text_scale_reaches_its_area_on_top_of_the_paint_scale() {
+    let mut engine = engine();
+    let node = committed_node(&mut engine, "x");
+    let list = PaintList {
+        scale: 1.5,
+        clips: vec![clip(0, 0, 800, 600)],
+        commands: vec![
+            text(node, rect(0.0, 0.0, 100.0, 20.0), 0),
+            PaintCommand::Text {
+                node,
+                rect: rect(0.0, 30.0, 50.0, 10.0),
+                color: [255, 255, 255, 255],
+                scale: 0.5,
+                clip: 0,
+            },
+        ],
+    };
+    let (_, nodes) = engine.batch_parts();
+    let mut areas = Vec::new();
+    batch_areas(&list, 0..2, &nodes, &mut areas);
+    let scales: Vec<f32> = areas.iter().map(|area| area.scale).collect();
+    assert_eq!(scales, [1.5, 0.75]);
+    assert_eq!((areas[1].left, areas[1].top), (0.0, 30.0));
+}
+
+#[test]
+fn the_prewarms_areas_are_the_lists_runs_at_their_boxes_and_scales() {
+    let mut engine = engine();
+    let a = committed_node(&mut engine, "ab");
+    let b = committed_node(&mut engine, "cd");
+    let list = PaintList {
+        scale: 2.0,
+        clips: vec![clip(0, 0, 1600, 1200)],
+        commands: vec![
+            text(a, rect(10.0, 20.0, 100.0, 20.0), 0),
+            PaintCommand::Text {
+                node: b,
+                rect: rect(200.0, 300.0, 50.0, 10.0),
+                color: [255, 255, 255, 255],
+                scale: 1.5,
+                clip: 0,
+            },
+        ],
+    };
+    let (_, nodes) = engine.batch_parts();
+    let mut areas = Vec::new();
+    prewarm_areas(&list, &nodes, &mut areas);
+    let placed: Vec<(f32, f32, f32)> = areas
+        .iter()
+        .map(|area| (area.left, area.top, area.scale))
+        .collect();
+    assert_eq!(placed, [(10.0, 20.0, 2.0), (200.0, 300.0, 3.0)]);
+    assert_eq!(area_glyphs(&areas), 4);
 }

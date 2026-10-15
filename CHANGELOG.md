@@ -6,6 +6,32 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.76.0] - 2026-10-15
+
+Summary: M56, W1 M4 (plan archived at `docs/plans/archive/1.0/phase6-milestone-56-gameplay-screen-fixture.md`): gameplay screens on the core UI, with roots a state owns, which fade with its transition and freeze while covered, UI animation tracks, binding-aware prompts, a capture-next-input rebind, a text scale and a glyph prewarm, shown in the UI lab as a pause menu, a HUD and a settings screen.
+
+### Added
+
+- **State-owned UI roots** (`D-163`): `StateStack::own_root(root, RootCover)` gives a root to the state being dispatched, by its place on the stack; a covered owner's `Hide` root hides and its `Show` root stays shown and frozen, an uncovered one is restored, and the owner's pop or replace removes it after `on_exit`; while a transition runs every owned root is frozen and faded by `1 − transition_cover()`. `ui_state_roots_system` (`UI_STATE_ROOTS`) syncs them before the routing.
+- **Paint-only properties** (`D-163`): `UiTree::set_opacity`, `set_translation` and `set_scale` with getters, a root's `set_fade` and `set_frozen`, and `visual_rect`; text draws at the composed scale rounded down to a 32nd inside its box; hit testing and a slider's pointer follow the painted box.
+- **UI animation tracks** (`D-163`): `UiTrack` and `UiProperty` (opacity, translation, scale, background, border, text colour) with core's easing, repeat and direction and a `u32` tag; `UiTree::animate`, `stop_animation` and `is_animating`; `ui_animate_system` (`UI_ANIMATE`) on the real clock; `UiEvent::AnimationFinished` and `EventQueue::<UiEvent>::animation_finished`.
+- **Prompts and rebinding** (`D-164`): `Binding::label` and `key_serde`'s label functions; `UiTree::set_prompt` templates with `{action:NAME}` placeholders resolved after each routing for the last device; `UiRouter::capture_next_input`, `cancel_capture` and `capturing`, with `UiEvent::InputCaptured`, `CaptureCancelled` and `EventQueue::<UiEvent>::input_captured`.
+- **Text scale and allocation-free text** (`D-163`): `UiTree::set_text_scale` and `text_scale`; `Settings::text_scale`, `set_text_scale` and `TEXT_SCALE_RANGE`, applied by `apply_settings` and at startup; `UiTree::set_plain_text`.
+- **Prewarm** (`D-163`): `UiTree::prewarm`, `prewarm_pending` and `paint_prewarm`; `Renderer::prewarm_ui_text` and `TextPipeline::prewarm` returning `TextPrewarm`, logging `UI prewarm: …`; `FrameDraw::ui_prewarm`.
+- **UI lab**: the interactive run is a `play` state with a HUD row, a pause menu and a settings screen (display mode, UI and text scale, volume, a `jump` rebind, Back); the `menus` fixture (smoke's `UI screens` row) and the `menu`, `menu-prewarm` and `menu-cold` perf fixtures.
+
+### Changed
+
+- **Schedule** (`D-163` amends `D-149`): `pre_update` runs `display_input, ui_state_roots, ui_route, ui_animate, state_dispatcher`, so a state's `update` reads this frame's routing; the template and examples' pinned schedule strings follow.
+- **Paint and style rules** (`D-163` amends `D-125`, `D-147`, `D-149`, `D-159`): a label's colour-only change repaints without re-setting its text, render bakes no style colour into glyphs, a widget under a disabled container looks disabled, and a frozen root takes no input while it blocks.
+- **Breaks for the freeze**: `PaintCommand::Text` gains `scale`, and its `rect` is the label's content box.
+- **Records**: `DESIGN.md`'s Gameplay Screens section and frame map; three break-ledger rows; w01's M4 row; five backlog rows (interaction-state easing, size tracks, fading a span with its own colour, prompt icons, keymap-aware names) and the T2 row's atlas readout; the LLM index's UI, state stack and UI lab rows.
+
+### Fixed
+
+- **UI F4**: a padded label measured, wrapped and painted at its border box; it now measures and commits at its content box.
+- **UI F2's remainder**: a widget inside a disabled container kept its own look; it now applies its `disabled` variant.
+
 ## [0.75.0] - 2026-10-14
 
 Summary: M55, W1 BC (plan archived at `docs/plans/archive/1.0/phase6-milestone-55-broader-controls.md`): checkboxes and horizontal sliders in the core UI, the two controls M4's settings screen needs, changed by the pointer, the keys and the `ui_*` actions and reported as `UiEvent::ValueChanged`.

@@ -232,6 +232,21 @@ pub(crate) struct Node {
     pub(crate) text_stale: bool,
     /// The committed box; `None` before the first layout or when collapsed.
     pub(crate) rect: Option<Rect>,
+    /// Labels: the committed content box, the box less Taffy's border and
+    /// padding, where the text commits and paints (M56).
+    pub(crate) content: Option<Rect>,
+    /// Paint only (M56): multiplied into the alpha of everything the
+    /// subtree paints, 0..=1.
+    pub(crate) opacity: f32,
+    /// Paint only (M56): the subtree's offset in UI units.
+    pub(crate) translation: Vec2,
+    /// Paint only (M56): the subtree's scale about this node's centre.
+    pub(crate) scale: f32,
+    /// Roots: the transition's fade, multiplied in as `opacity` is.
+    pub(crate) fade: f32,
+    /// Roots: whether the root keeps its look and blocks the pointer while
+    /// its widgets take no input.
+    pub(crate) frozen: bool,
     /// Roots: their place in insertion order.
     pub(crate) root_seq: u64,
     /// Roots: whether the next layout pass must lay this root out.
@@ -277,6 +292,12 @@ impl Node {
             text_id: None,
             text_stale: true,
             rect: None,
+            content: None,
+            opacity: 1.0,
+            translation: Vec2::ZERO,
+            scale: 1.0,
+            fade: 1.0,
+            frozen: false,
             root_seq: 0,
             layout_dirty: true,
         }

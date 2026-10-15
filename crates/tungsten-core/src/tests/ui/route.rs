@@ -1,7 +1,7 @@
 use super::*;
 use crate::input::Modifiers;
 use crate::ui::{
-    Anchor, FixedAdvanceMeasure, LayoutStyle, Sizing, SliderRange, UiLayer, Visibility,
+    Anchor, FixedAdvanceMeasure, LayoutStyle, Rect, Sizing, SliderRange, UiLayer, Visibility,
 };
 
 /// The logical viewport every rig lays out in.
@@ -1348,4 +1348,307 @@ fn the_setters_route_no_value_change() {
     let events = rig.frame(|_| {});
     assert!(values(&events).is_empty(), "{events:?}");
     assert_eq!(rig.value(slider), 4.0);
+}
+
+// ---- M56: frozen roots and transforms ----
+
+#[test]
+fn a_frozen_modal_root_keeps_the_keyboard_and_blocks_the_pointer_while_nothing_in_it_acts() {
+    let (mut rig, _root, a, _b) = Rig::new();
+    let popup = rig
+        .tree_mut()
+        .add_root(UiLayer::GamePopup, at(100.0, 100.0, 200.0, 100.0));
+    rig.tree_mut().set_modal(popup, true);
+    let ok = rig.place(popup, at(10.0, 10.0, 80.0, 30.0));
+    rig.layout();
+    rig.frame(|_| {});
+    assert_eq!(rig.tree().focused(), Some(ok));
+
+    // A press held over `ok` when the root freezes is cancelled.
+    let at_ok = rig.centre(ok);
+    rig.frame(|input| {
+        input.update_cursor_position(at_ok.x, at_ok.y);
+        input.mouse_down(LEFT);
+    });
+    assert_eq!(rig.tree().pressed(), Some(ok));
+    rig.tree_mut().set_frozen(popup, true);
+    let events = rig.frame(|input| input.mouse_up(LEFT));
+    assert!(events.contains(&UiEvent::PressCancelled { widget: ok }));
+    assert!(activations(&events).is_empty());
+    assert!(
+        !rig.routed().mouse_just_released(LEFT),
+        "the release is the UI's"
+    );
+
+    for key in [
+        KeyCode::Enter,
+        KeyCode::Space,
+        KeyCode::ArrowDown,
+        KeyCode::Tab,
+    ] {
+        let events = rig.tap(key);
+        assert!(activations(&events).is_empty(), "{key:?} activates nothing");
+        assert!(!rig.routed().just_pressed(key), "{key:?} is the UI's");
+        assert_eq!(rig.tree().focused(), Some(ok), "{key:?} moves no focus");
+    }
+    let events = rig.frame(|input| input.key_down(KeyCode::Escape));
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, UiEvent::Cancel { .. })),
+        "Escape sends no Cancel"
+    );
+    assert!(!rig.routed().just_pressed(KeyCode::Escape));
+    assert!(!rig.game_pressed("engine_exit"));
+    assert!(rig.router().wants_keyboard());
+    rig.frame(|input| input.key_up(KeyCode::Escape));
+
+    let events = rig.click(ok);
+    assert!(
+        events.is_empty(),
+        "no press, hover or activation: {events:?}"
+    );
+    let events = rig.click(a);
+    assert!(events.is_empty(), "the modal blocks what is under it");
+    assert!(!rig.routed().mouse_just_pressed(LEFT));
+    assert!(rig.router().pointer_over_ui());
+
+    rig.tree_mut().set_frozen(popup, false);
+    let events = rig.tap(KeyCode::Enter);
+    assert_eq!(activations(&events), [ok], "thawed, it acts again");
+}
+
+#[test]
+fn a_translated_slider_maps_the_pointer_where_it_paints() {
+    let range = SliderRange::new(0.0, 100.0);
+    let (mut rig, slider, _b) = Rig::slider(range, 0.0);
+    let x = Rig::along(0.5);
+    rig.click_px(Vec2::new(x, 20.0));
+    let untouched = rig.value(slider);
+    rig.tree_mut().set_slider_value(slider, 0.0);
+    // 20.4 rounds to 20 whole pixels at the last paint's scale, 1.
+    rig.tree_mut().set_translation(slider, Vec2::new(20.4, 0.0));
+    assert_eq!(
+        rig.tree().visual_rect(slider),
+        Some(Rect::from_pos_size(
+            Vec2::new(30.0, 10.0),
+            Vec2::new(200.0, 20.0)
+        ))
+    );
+    rig.click_px(Vec2::new(x + 20.0, 20.0));
+    assert_eq!(rig.value(slider), untouched);
+    assert_eq!(
+        rig.tree().hit_test(Vec2::new(225.0, 20.0)),
+        Some(slider),
+        "past the layout box, inside the painted one"
+    );
+    assert_ne!(rig.tree().hit_test(Vec2::new(15.0, 20.0)), Some(slider));
+}
+
+// ---- M56: the capture-next-input mode ----
+
+fn captured(events: &[UiEvent]) -> Vec<(WidgetId, Binding)> {
+    events
+        .iter()
+        .filter_map(|event| match *event {
+            UiEvent::InputCaptured { widget, binding } => Some((widget, binding)),
+            _ => None,
+        })
+        .collect()
+}
+
+fn cancelled(events: &[UiEvent]) -> Vec<WidgetId> {
+    events
+        .iter()
+        .filter_map(|event| match *event {
+            UiEvent::CaptureCancelled { widget } => Some(widget),
+            _ => None,
+        })
+        .collect()
+}
+
+fn start_capture(rig: &mut Rig, widget: WidgetId) {
+    rig.world
+        .resource_mut::<UiRouter>()
+        .capture_next_input(widget);
+}
+
+#[test]
+fn a_capture_takes_one_key_mouse_pad_or_stick_press_and_withholds_its_release() {
+    let (mut rig, _root, a, _b) = Rig::new();
+
+    start_capture(&mut rig, a);
+    rig.frame(|_| {});
+    assert!(
+        rig.router().wants_keyboard(),
+        "a pending capture has the keyboard"
+    );
+    let events = rig.frame(|input| input.key_down(KeyCode::KeyK));
+    assert_eq!(
+        captured(&events),
+        [(
+            a,
+            Binding::Key {
+                code: KeyCode::KeyK
+            }
+        )]
+    );
+    assert_eq!(rig.router().capturing(), None);
+    assert!(!rig.routed().just_pressed(KeyCode::KeyK));
+    rig.frame(|input| input.key_up(KeyCode::KeyK));
+    assert!(
+        !rig.routed().just_released(KeyCode::KeyK),
+        "the release too"
+    );
+
+    start_capture(&mut rig, a);
+    let events = rig.frame(|input| input.mouse_down(MouseButton::Right));
+    assert_eq!(
+        captured(&events),
+        [(
+            a,
+            Binding::Mouse {
+                button: MouseButton::Right
+            }
+        )]
+    );
+    assert!(!rig.routed().mouse_just_pressed(MouseButton::Right));
+    rig.frame(|input| input.mouse_up(MouseButton::Right));
+    assert!(!rig.routed().mouse_just_released(MouseButton::Right));
+
+    start_capture(&mut rig, a);
+    let events = rig.frame(|input| input.gamepad_button_down(PAD, GamepadButton::North));
+    assert_eq!(
+        captured(&events),
+        [(
+            a,
+            Binding::GamepadButton {
+                button: GamepadButton::North
+            }
+        )]
+    );
+    assert!(!rig.routed().gamepad_just_pressed(GamepadButton::North));
+    rig.frame(|input| input.gamepad_button_up(PAD, GamepadButton::North));
+    assert!(!rig.routed().gamepad_just_released(GamepadButton::North));
+
+    start_capture(&mut rig, a);
+    let events = rig.frame(|input| input.set_gamepad_axis(PAD, STICK_X, 0.9));
+    assert_eq!(
+        captured(&events),
+        [(
+            a,
+            Binding::GamepadAxis {
+                axis: STICK_X,
+                direction: AxisDirection::Positive
+            }
+        )]
+    );
+    assert_eq!(rig.routed().gamepad_axis(STICK_X), 0.0, "withheld");
+    rig.frame(|input| input.set_gamepad_axis(PAD, STICK_X, 0.0));
+    assert!(
+        !rig.routed()
+            .stick_just_pressed(STICK_X, AxisDirection::Positive)
+    );
+    assert_eq!(rig.router().last_device(), InputDevice::Gamepad);
+}
+
+#[test]
+fn escape_is_captured_a_repeat_is_not_and_the_wheel_is_taken() {
+    let (mut rig, _root, a, _b) = Rig::new();
+    // W held by the game before the capture starts.
+    rig.frame(|input| input.key_down(KeyCode::KeyW));
+    start_capture(&mut rig, a);
+    let events = rig.frame(|input| {
+        input.key_down(KeyCode::KeyW);
+        input.add_scroll_line_delta(0.0, 1.0);
+    });
+    assert!(captured(&events).is_empty(), "an OS repeat and the wheel");
+    assert_eq!(rig.router().capturing(), Some(a));
+    assert_eq!(
+        rig.routed().scroll_line_delta(),
+        (0.0, 0.0),
+        "the wheel is taken"
+    );
+    let events = rig.frame(|input| input.key_down(KeyCode::Escape));
+    assert_eq!(
+        captured(&events),
+        [(
+            a,
+            Binding::Key {
+                code: KeyCode::Escape
+            }
+        )]
+    );
+    assert!(events.iter().all(|e| !matches!(e, UiEvent::Cancel { .. })));
+    assert!(!rig.game_pressed("engine_exit"));
+    rig.frame(|input| input.key_up(KeyCode::Escape));
+    assert!(!rig.routed().just_released(KeyCode::Escape));
+}
+
+#[test]
+fn nothing_navigates_while_a_capture_is_pending() {
+    let (mut rig, _root, a, b) = Rig::new();
+    rig.tree_mut().focus(a);
+    rig.frame(|_| {});
+    // A held direction's repeat stops too.
+    rig.frame(|input| input.key_down(KeyCode::ArrowDown));
+    assert_eq!(rig.tree().focused(), Some(b));
+    rig.tree_mut().focus(a);
+    start_capture(&mut rig, a);
+    for _ in 0..40 {
+        rig.frame(|_| {});
+    }
+    assert_eq!(rig.tree().focused(), Some(a), "no repeat moved it");
+    rig.frame(|input| input.key_up(KeyCode::ArrowDown));
+    let events = rig.frame(|input| input.key_down(KeyCode::Tab));
+    assert_eq!(captured(&events).len(), 1);
+    assert_eq!(rig.tree().focused(), Some(a));
+    assert!(activations(&events).is_empty());
+}
+
+#[test]
+fn a_capture_ends_without_input_for_each_cancelling_cause() {
+    // Focus loss.
+    let (mut rig, _root, a, _b) = Rig::new();
+    start_capture(&mut rig, a);
+    let events = rig.frame(|input| input.set_focused(false));
+    assert_eq!(cancelled(&events), [a]);
+    assert_eq!(rig.router().capturing(), None);
+
+    // Removal, hiding, disabling and freezing.
+    type Cause = fn(&mut UiTree, WidgetId, WidgetId);
+    let causes: [Cause; 4] = [
+        |tree, _root, a| tree.remove(a),
+        |tree, _root, a| tree.set_visibility(a, Visibility::Hidden),
+        |tree, _root, a| tree.set_enabled(a, false),
+        |tree, root, _a| tree.set_frozen(root, true),
+    ];
+    for cause in causes {
+        let (mut rig, root, a, _b) = Rig::new();
+        start_capture(&mut rig, a);
+        cause(rig.tree_mut(), root, a);
+        let events = rig.frame(|input| input.key_down(KeyCode::KeyK));
+        assert_eq!(cancelled(&events), [a]);
+        assert!(captured(&events).is_empty());
+    }
+
+    // `cancel_capture` and a second capture.
+    let (mut rig, _root, a, b) = Rig::new();
+    start_capture(&mut rig, a);
+    rig.world.resource_mut::<UiRouter>().cancel_capture();
+    let events = rig.frame(|_| {});
+    assert_eq!(cancelled(&events), [a]);
+    start_capture(&mut rig, a);
+    start_capture(&mut rig, b);
+    let events = rig.frame(|input| input.key_down(KeyCode::KeyK));
+    assert_eq!(cancelled(&events), [a]);
+    assert_eq!(
+        captured(&events),
+        [(
+            b,
+            Binding::Key {
+                code: KeyCode::KeyK
+            }
+        )]
+    );
 }

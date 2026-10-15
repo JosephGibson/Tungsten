@@ -91,8 +91,9 @@ impl UiTree {
     }
 
     /// Gives every label in `id`'s non-collapsed subtree a text node and sets
-    /// the stale ones: new labels, changed text and changed resolved text
-    /// styles.
+    /// the stale ones: new labels, changed text, changed resolved text
+    /// styles and a changed text scale, which multiplies the size and line
+    /// height set here (M56).
     fn prepare_text(&mut self, id: WidgetId, store: &mut dyn TextNodeStore) {
         let Some(node) = self.node(id) else {
             return;
@@ -106,7 +107,15 @@ impl UiTree {
             if (node.text_stale || node.text_id.is_none())
                 && let (Some(content), Some(resolved)) = (&node.text, &node.resolved)
             {
-                store.set_text(text_node, &content.text, &resolved.text);
+                let scale = self.text_scale();
+                if scale == 1.0 {
+                    store.set_text(text_node, &content.text, &resolved.text);
+                } else {
+                    let mut style = resolved.text.clone();
+                    style.size *= scale;
+                    style.line_height *= scale;
+                    store.set_text(text_node, &content.text, &style);
+                }
             }
             if let Some(node) = self.node_mut(id) {
                 node.text_id = Some(text_node);

@@ -174,3 +174,44 @@ fn setters_clamp_and_ignore_non_finite() {
     }));
     assert_eq!(settings.resolution(), Some(hd), "a zero side is ignored");
 }
+
+#[test]
+fn the_text_scale_saves_loads_clamps_and_falls_back() {
+    let dir = tempdir();
+    let path = dir.join(Settings::FILE);
+    let mut settings = Settings::load(&path);
+    assert_eq!(settings.text_scale(), None);
+    settings.set_text_scale(Some(1.5));
+    assert_eq!(settings.text_scale(), Some(1.5));
+    settings.save().unwrap();
+    let saved: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    assert_eq!(saved, serde_json::json!({ "text_scale": 1.5 }));
+    assert_eq!(Settings::load(&path).text_scale(), Some(1.5));
+
+    settings.set_text_scale(Some(9.0));
+    assert_eq!(settings.text_scale(), Some(2.0));
+    settings.set_text_scale(Some(0.1));
+    assert_eq!(settings.text_scale(), Some(0.75));
+    for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+        settings.set_text_scale(Some(value));
+        assert_eq!(settings.text_scale(), Some(0.75), "{value} ignored");
+    }
+    settings.set_text_scale(None);
+    assert_eq!(settings.text_scale(), None);
+
+    let (_, without) = load_text(r#"{ "ui_scale": 1.5 }"#);
+    assert_eq!(without.text_scale(), None, "a file without the key");
+    assert_eq!(without.ui_scale(), Some(1.5));
+
+    for text in [r#"{ "text_scale": "big" }"#, r#"{ "text_scale": 3.0 }"#] {
+        let (path, mut fallen) = load_text(text);
+        assert!(
+            is_default(&fallen) && fallen.text_scale().is_none(),
+            "{text}"
+        );
+        let backup = path.with_file_name("settings.json.bad");
+        assert_eq!(std::fs::read_to_string(&backup).unwrap(), text);
+        assert_eq!(fallen.take_load_warnings().len(), 1);
+    }
+}

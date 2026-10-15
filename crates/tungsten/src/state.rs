@@ -7,8 +7,15 @@
 //! phase completes, with the same hooks and despawns as a plain request.
 //! Transitions advance on the real clock, so a fade finishes over a paused
 //! game (`D-129`).
+//!
+//! M56: a state owns UI roots ([`StateStack::own_root`]), by its place on
+//! the stack. Covered, a root hides or stays shown and frozen
+//! ([`RootCover`]); uncovered, it is restored; its state's exit removes it.
+//! While a transition is queued or active every owned root is frozen and
+//! faded with the frame, since the UI draws after the transition pass.
 
 use tungsten_core::post::PostPass;
+use tungsten_core::ui::{UiTree, Visibility, WidgetId};
 use tungsten_core::{CommandBuffer, Entity, Time, World};
 
 use crate::debug_hud::HudActiveState;
@@ -58,12 +65,39 @@ pub(crate) struct ActiveTransition {
     pub(crate) state: TransitionState,
 }
 
+/// What a state's UI root does while another state covers its owner (M56).
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RootCover {
+    /// Hidden while covered; uncovered, it takes back the visibility it had
+    /// when it was covered. For a screen the next one replaces.
+    Hide,
+    /// Shown and frozen while covered: it keeps its look, blocks the
+    /// pointer and takes no input. For a game screen under a pause menu.
+    Show,
+}
+
+/// A UI root a state owns, by the owner's place on the stack.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct OwnedRoot {
+    root: WidgetId,
+    cover: RootCover,
+    owner: usize,
+    /// A `Hide` root's visibility when it was covered; `None` while not.
+    hidden_from: Option<Visibility>,
+}
+
 /// State stack resource plus pending command queue and screen transition.
 pub struct StateStack {
     pub(crate) stack: Vec<Box<dyn GameState>>,
     pub(crate) pending: Vec<StateCommand>,
     pub(crate) queued_transition: Option<QueuedTransition>,
     pub(crate) active_transition: Option<ActiveTransition>,
+    /// The roots states own (M56).
+    pub(crate) owned_roots: Vec<OwnedRoot>,
+    /// The stack index of the state whose hook or `update` runs, off the
+    /// stack; `None` outside the dispatcher.
+    pub(crate) dispatching: Option<usize>,
 }
 
 impl StateStack {
@@ -74,7 +108,38 @@ impl StateStack {
             pending: Vec::new(),
             queued_transition: None,
             active_transition: None,
+            owned_roots: Vec::new(),
+            dispatching: None,
         }
+    }
+
+    /// Gives `root` to a state (M56): from a state's hook or `update`, the
+    /// state being dispatched; elsewhere the top state. Ownership is by the
+    /// state's place on the stack, so two instances of one `StateId` keep
+    /// their own roots. While another state covers the owner, `cover`
+    /// decides whether the root hides or stays shown and frozen; uncovered,
+    /// it is restored and thawed; the owner's pop or replace removes it from
+    /// the tree after its `on_exit`. While a transition is queued or active
+    /// every owned root is frozen and its fade is `1 - transition_cover()`.
+    /// Owning a root again moves it. With an empty stack this warns and
+    /// does nothing; a widget that is not a root warns at the next sync and
+    /// is dropped.
+    pub fn own_root(&mut self, root: WidgetId, cover: RootCover) {
+        let owner = match self.dispatching {
+            Some(index) => index,
+            None if self.stack.is_empty() => {
+                log::warn!("StateStack::own_root({root:?}): no state to own it; ignored");
+                return;
+            }
+            None => self.stack.len() - 1,
+        };
+        self.owned_roots.retain(|owned| owned.root != root);
+        self.owned_roots.push(OwnedRoot {
+            root,
+            cover,
+            owner,
+            hidden_from: None,
+        });
     }
 
     /// Queue push: pause old top, enter new state.
@@ -197,13 +262,14 @@ pub fn despawn_scene_entities(world: &mut World, id: StateId) {
 }
 
 /// Drain plain commands, advance the screen transition, update top state,
-/// mirror active ID.
+/// sync the owned UI roots, mirror active ID.
 ///
 /// Order per frame: plain requests apply at once, even during a transition;
 /// a queued transition activates when none is active; the active one advances
 /// by the real dt ([`Time::real_delta`]) and applies its command on the
 /// boundary frame; then the top state updates (the old state during `Out`,
-/// the new one during `In`).
+/// the new one during `In`); then the owned roots take this frame's freeze
+/// and fade (M56).
 pub fn state_dispatcher_system(world: &mut World) {
     let pending: Vec<StateCommand> = match world.get_resource_mut::<StateStack>() {
         Some(stack) => std::mem::take(&mut stack.pending),
@@ -220,6 +286,8 @@ pub fn state_dispatcher_system(world: &mut World) {
         top.update(world);
         push_top(world, top);
     }
+
+    sync_state_roots(world, 0);
 
     let active = world
         .get_resource::<StateStack>()
@@ -273,6 +341,103 @@ fn advance_transition(world: &mut World) {
     }
 }
 
+/// Syncs the owned UI roots (M56) for the UI's routing: a transition an
+/// `Update` system queued after the dispatcher freezes them before the next
+/// frame's routing. The umbrella's `UiPlugin` registers it as
+/// `ui_state_roots`, before `ui_route`; the dispatcher runs the same sync at
+/// its end. Returns at once when no state owns a root.
+pub fn ui_state_roots_system(world: &mut World) {
+    sync_state_roots(world, 0);
+}
+
+/// Applies the cover, restore, freeze and fade rules to every owned root,
+/// as though `incoming` more states sat on the stack (1 while a push's
+/// covered state has paused and the new one has not entered), and drops
+/// the entries whose root is gone or is not a root.
+fn sync_state_roots(world: &mut World, incoming: usize) {
+    let Some(stack) = world.get_resource_mut::<StateStack>() else {
+        return;
+    };
+    if stack.owned_roots.is_empty() {
+        return;
+    }
+    let transitioning = stack.is_transitioning();
+    let fade = 1.0 - stack.transition_cover();
+    let depth = stack.stack.len() + incoming;
+    let mut owned = std::mem::take(&mut stack.owned_roots);
+    if let Some(tree) = world.get_resource_mut::<UiTree>() {
+        owned.retain_mut(|entry| sync_root(tree, entry, depth, transitioning, fade));
+    }
+    if let Some(stack) = world.get_resource_mut::<StateStack>() {
+        stack.owned_roots = owned;
+    }
+}
+
+/// One owned root's sync; `false` drops the entry.
+fn sync_root(
+    tree: &mut UiTree,
+    entry: &mut OwnedRoot,
+    depth: usize,
+    transitioning: bool,
+    fade: f32,
+) -> bool {
+    let root = entry.root;
+    if !tree.contains(root) {
+        return false;
+    }
+    if tree.parent(root).is_some() {
+        log::warn!("StateStack::own_root({root:?}): not a root; ignored");
+        return false;
+    }
+    let covered = entry.owner + 1 < depth;
+    if entry.cover == RootCover::Hide {
+        if covered && entry.hidden_from.is_none() {
+            entry.hidden_from = tree.visibility(root);
+            tree.set_visibility(root, Visibility::Hidden);
+        } else if !covered && let Some(visibility) = entry.hidden_from.take() {
+            tree.set_visibility(root, visibility);
+        }
+    }
+    tree.set_frozen(root, transitioning || covered);
+    tree.set_fade(root, fade);
+    true
+}
+
+/// Removes the roots the state at `index` owns, after its exit, and ends
+/// its dispatch.
+fn release_roots(world: &mut World, index: usize) {
+    let Some(stack) = world.get_resource_mut::<StateStack>() else {
+        return;
+    };
+    stack.dispatching = None;
+    if stack.owned_roots.is_empty() {
+        return;
+    }
+    let mut released = Vec::new();
+    stack.owned_roots.retain(|owned| {
+        let gone = owned.owner == index;
+        if gone {
+            released.push(owned.root);
+        }
+        !gone
+    });
+    if let Some(tree) = world.get_resource_mut::<UiTree>() {
+        for root in released {
+            tree.remove(root);
+        }
+    }
+}
+
+/// Marks the state about to enter at the top as the one being dispatched.
+fn dispatch_next(world: &mut World) -> usize {
+    let stack = world
+        .get_resource_mut::<StateStack>()
+        .expect("StateStack removed mid-dispatch");
+    let index = stack.stack.len();
+    stack.dispatching = Some(index);
+    index
+}
+
 fn apply_command(world: &mut World, cmd: StateCommand) {
     match cmd {
         StateCommand::Push(mut new_state) => {
@@ -283,8 +448,10 @@ fn apply_command(world: &mut World, cmd: StateCommand) {
                     state_id: old_id,
                 });
                 push_top(world, old);
+                sync_state_roots(world, 1);
             }
             let new_id = new_state.id();
+            dispatch_next(world);
             new_state.on_enter(&mut StateContext {
                 world,
                 state_id: new_id,
@@ -299,6 +466,11 @@ fn apply_command(world: &mut World, cmd: StateCommand) {
                     world,
                     state_id: old_id,
                 });
+                let index = world
+                    .get_resource::<StateStack>()
+                    .map_or(0, |s| s.stack.len());
+                release_roots(world, index);
+                sync_state_roots(world, 0);
             }
             if let Some(mut next) = pop_top(world) {
                 let next_id = next.id();
@@ -317,8 +489,13 @@ fn apply_command(world: &mut World, cmd: StateCommand) {
                     world,
                     state_id: old_id,
                 });
+                let index = world
+                    .get_resource::<StateStack>()
+                    .map_or(0, |s| s.stack.len());
+                release_roots(world, index);
             }
             let new_id = new_state.id();
+            dispatch_next(world);
             new_state.on_enter(&mut StateContext {
                 world,
                 state_id: new_id,
@@ -328,16 +505,22 @@ fn apply_command(world: &mut World, cmd: StateCommand) {
     }
 }
 
+/// Takes the top state off the stack for a hook or its `update`, which
+/// dispatches it at the index it held.
 fn pop_top(world: &mut World) -> Option<Box<dyn GameState>> {
-    world.get_resource_mut::<StateStack>()?.stack.pop()
+    let stack = world.get_resource_mut::<StateStack>()?;
+    let top = stack.stack.pop()?;
+    stack.dispatching = Some(stack.stack.len());
+    Some(top)
 }
 
+/// Puts a state back on top and ends its dispatch.
 fn push_top(world: &mut World, state: Box<dyn GameState>) {
-    world
+    let stack = world
         .get_resource_mut::<StateStack>()
-        .expect("StateStack removed mid-dispatch")
-        .stack
-        .push(state);
+        .expect("StateStack removed mid-dispatch");
+    stack.stack.push(state);
+    stack.dispatching = None;
 }
 
 #[cfg(test)]

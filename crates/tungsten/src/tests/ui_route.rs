@@ -413,3 +413,295 @@ fn a_rebound_key_and_the_dpad_step_a_slider_holding_visible_focus() {
         "the arrow left ui_right"
     );
 }
+
+// ---- M56: state-owned roots, the schedule and tracks ----
+
+use crate::state::{GameState, RootCover, StateContext, StateId, StateStack};
+use crate::transition::{Transition, TransitionEffect};
+use tungsten_core::Time;
+use tungsten_core::ui::UiTrack;
+
+fn fade(secs: f32) -> Transition {
+    Transition::new(
+        TransitionEffect::Fade {
+            color: [0.0, 0.0, 0.0, 1.0],
+        },
+        secs,
+    )
+}
+
+/// A state owning one root built by `build` in `on_enter`, which records
+/// its widgets; its `update` counts the activations of its first widget.
+struct Screen {
+    id: StateId,
+    cover: RootCover,
+    modal: bool,
+}
+
+/// The widgets the last `Screen` built: its root, then its button.
+struct Built(Vec<WidgetId>);
+
+impl GameState for Screen {
+    fn id(&self) -> StateId {
+        self.id
+    }
+
+    fn on_enter(&mut self, ctx: &mut StateContext) {
+        let tree = ctx.world.resource_mut::<UiTree>();
+        let root = tree.add_root(UiLayer::GamePopup, at(0.0, 0.0, 200.0, 100.0));
+        tree.set_modal(root, self.modal);
+        let button = tree.button(root, self.id);
+        tree.set_layout_style(button, at(20.0, 20.0, 100.0, 40.0));
+        if self.modal {
+            tree.focus(button);
+        }
+        ctx.world
+            .resource_mut::<StateStack>()
+            .own_root(root, self.cover);
+        ctx.world.insert_resource(Built(vec![root, button]));
+    }
+
+    fn on_exit(&mut self, _ctx: &mut StateContext) {}
+
+    fn update(&mut self, world: &mut World) {
+        let Some(button) = world.get_resource::<Built>().map(|built| built.0[1]) else {
+            return;
+        };
+        if world.resource::<EventQueue<UiEvent>>().activated(button)
+            && let Some(count) = world.get_resource_mut::<Count>()
+        {
+            count.0 += 1;
+        }
+    }
+}
+
+fn built(harness: &UiHarness) -> (WidgetId, WidgetId) {
+    let built = &harness.world().resource::<Built>().0;
+    (built[0], built[1])
+}
+
+fn push(harness: &mut UiHarness, screen: Screen) {
+    harness
+        .world_mut()
+        .resource_mut::<StateStack>()
+        .request_push(screen);
+    harness.step(1);
+    harness.layout();
+}
+
+#[test]
+fn a_states_update_sees_the_activation_routed_in_the_same_frame() {
+    let mut harness = UiHarness::new(app());
+    harness.world_mut().insert_resource(Count(0));
+    push(
+        &mut harness,
+        Screen {
+            id: "play",
+            cover: RootCover::Show,
+            modal: false,
+        },
+    );
+    let (_, button) = built(&harness);
+    harness.click(button);
+    harness.step(1);
+    assert_eq!(
+        harness.world().resource::<Count>().0,
+        1,
+        "routed before the dispatcher (M56)"
+    );
+}
+
+#[test]
+fn escape_on_a_frozen_modal_root_during_its_fade_sends_no_cancel_and_does_not_exit() {
+    let mut harness = UiHarness::new(app());
+    push(
+        &mut harness,
+        Screen {
+            id: "play",
+            cover: RootCover::Show,
+            modal: false,
+        },
+    );
+    let (play_root, _) = built(&harness);
+    let pause = Screen {
+        id: "pause",
+        cover: RootCover::Hide,
+        modal: true,
+    };
+    assert!(
+        harness
+            .world_mut()
+            .resource_mut::<StateStack>()
+            .request_push_transition(pause, fade(0.5))
+    );
+    // Through `Out` to the boundary, where the pause root appears.
+    let mut frames = 0;
+    while built(&harness).0 == play_root {
+        harness.step(1);
+        frames += 1;
+        assert!(frames < 200, "the boundary never came");
+    }
+    harness.layout();
+    let (pause_root, _) = built(&harness);
+    assert!(harness.tree().modal(pause_root));
+    assert!(harness.tree().frozen(pause_root), "frozen while it fades");
+    harness.key_down(KeyCode::Escape);
+    harness.step(1);
+    let cancels = harness
+        .harness()
+        .events::<UiEvent>()
+        .filter(|event| matches!(event, UiEvent::Cancel { .. }))
+        .count();
+    assert_eq!(cancels, 0, "no Cancel");
+    assert!(!routed(&harness).just_pressed(KeyCode::Escape));
+    assert!(!harness.harness().exit_requested());
+    harness.key_up(KeyCode::Escape);
+    harness.step(40);
+    assert!(!harness.world().resource::<StateStack>().is_transitioning());
+    assert!(!harness.tree().frozen(pause_root));
+    assert!(!harness.harness().exit_requested());
+}
+
+/// Queues a fade pop when `Requested` is set: a transition from `Update`.
+struct Requested(bool);
+
+fn request_from_update(world: &mut World) {
+    if std::mem::replace(&mut world.resource_mut::<Requested>().0, false) {
+        world
+            .resource_mut::<StateStack>()
+            .request_pop_transition(fade(0.5));
+    }
+}
+
+#[test]
+fn a_transition_queued_by_an_update_system_freezes_the_roots_before_the_next_routing() {
+    let mut app = app();
+    app.add_system_named("request_from_update", request_from_update);
+    let mut harness = UiHarness::new(app);
+    harness.world_mut().insert_resource(Count(0));
+    harness.world_mut().insert_resource(Requested(false));
+    push(
+        &mut harness,
+        Screen {
+            id: "play",
+            cover: RootCover::Show,
+            modal: false,
+        },
+    );
+    let (root, button) = built(&harness);
+    harness.world_mut().resource_mut::<Requested>().0 = true;
+    harness.step(1);
+    assert!(harness.world().resource::<StateStack>().is_transitioning());
+    harness.click(button);
+    harness.step(1);
+    assert!(harness.tree().frozen(root));
+    assert_eq!(
+        harness.world().resource::<Count>().0,
+        0,
+        "the click on that frame activates nothing"
+    );
+}
+
+#[test]
+fn a_track_ticks_while_the_game_clock_is_paused() {
+    let mut harness = UiHarness::new(app());
+    let button = button(&mut harness);
+    harness
+        .tree_mut()
+        .animate(button, UiTrack::opacity(0.0, 1.0, 1.0));
+    harness.world_mut().resource_mut::<Time>().pause();
+    harness.step(10);
+    let opacity = harness.tree().opacity(button).unwrap();
+    assert!(opacity > 0.0, "the real clock drives it: {opacity}");
+}
+
+// ---- M56: prompts and the capture mode ----
+
+#[test]
+fn a_prompt_follows_a_replaced_action_map_and_the_last_device() {
+    let mut harness = UiHarness::new(app());
+    let tree = harness.tree_mut();
+    let root = tree.add_root(UiLayer::Game, at(0.0, 0.0, 300.0, 40.0));
+    let label = tree.label(root, "");
+    tree.set_prompt(label, "Jump: {action:jump}");
+    harness.step(1);
+    assert_eq!(harness.tree().accessible_name(label), Some("Jump: Space"));
+
+    // As `reload_action_map` does: the resource replaced whole.
+    let mut reloaded = ActionMap::default_map();
+    reloaded.replace_bindings(
+        "jump",
+        vec![
+            Binding::Key {
+                code: KeyCode::KeyK,
+            },
+            Binding::GamepadButton {
+                button: GamepadButton::South,
+            },
+        ],
+    );
+    *harness.world_mut().resource_mut::<ActionMap>() = reloaded;
+    harness.step(1);
+    assert_eq!(harness.tree().accessible_name(label), Some("Jump: K"));
+
+    let pad = GamepadId::new(0);
+    harness
+        .world_mut()
+        .resource_mut::<InputState>()
+        .gamepad_button_down(pad, GamepadButton::West);
+    harness.step(1);
+    assert_eq!(
+        harness.world().resource::<UiRouter>().last_device(),
+        InputDevice::Gamepad
+    );
+    assert_eq!(harness.tree().accessible_name(label), Some("Jump: A"));
+}
+
+/// The binding a capture took, as a system read it.
+struct Took(Option<Binding>);
+
+/// Starts a capture when the watched button activates, and records what a
+/// capture for it took.
+fn rebind(world: &mut World) {
+    let button = world.resource::<Watched>().0;
+    let queue = world.resource::<EventQueue<UiEvent>>();
+    let activated = queue.activated(button);
+    let took = queue.input_captured(button);
+    if took.is_some() {
+        world.resource_mut::<Took>().0 = took;
+    }
+    if activated {
+        world.resource_mut::<UiRouter>().capture_next_input(button);
+    }
+}
+
+#[test]
+fn a_capture_started_after_an_activation_reports_the_next_key_and_keeps_it_from_the_game() {
+    let mut app = app();
+    app.add_system_named("rebind", rebind);
+    let mut harness = UiHarness::new(app);
+    let button = button(&mut harness);
+    harness.world_mut().insert_resource(Watched(button));
+    harness.world_mut().insert_resource(Took(None));
+    harness.click(button);
+    harness.step(1);
+    assert_eq!(
+        harness.world().resource::<UiRouter>().capturing(),
+        Some(button)
+    );
+    harness.key_down(KeyCode::Escape);
+    harness.step(1);
+    assert_eq!(
+        harness.world().resource::<Took>().0,
+        Some(Binding::Key {
+            code: KeyCode::Escape
+        })
+    );
+    assert!(!routed(&harness).just_pressed(KeyCode::Escape));
+    assert!(!harness.harness().exit_requested());
+    harness.key_up(KeyCode::Escape);
+    harness.step(1);
+    assert!(!routed(&harness).just_released(KeyCode::Escape));
+    assert!(!harness.harness().exit_requested());
+    assert_eq!(harness.world().resource::<UiRouter>().capturing(), None);
+}

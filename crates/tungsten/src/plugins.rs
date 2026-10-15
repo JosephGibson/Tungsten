@@ -12,7 +12,7 @@
 //! `after_if_present`, so leaving a plugin out never fails startup.
 //! Constraints within a plugin are required.
 
-use tungsten_core::ui::ui_route_system;
+use tungsten_core::ui::{ui_animate_system, ui_route_system};
 use tungsten_core::{
     Plugin, PluginSet, Schedule, ShakeEvent, SquashEvent, Stage, TweenComplete, UiEvent, World,
     system,
@@ -30,7 +30,7 @@ use crate::particles::{
     particle_emit_system, particle_tick_system,
 };
 use crate::physics_debug::physics_debug_toggle_system;
-use crate::state::state_dispatcher_system;
+use crate::state::{state_dispatcher_system, ui_state_roots_system};
 use crate::systems_overlay::systems_overlay_toggle_system;
 use crate::tweens::tween_tick_system;
 use crate::ui_debug::ui_debug_toggle_system;
@@ -42,7 +42,7 @@ pub use tungsten_core::schedule::names::{
     CAMERA_UPDATE, DISPLAY_INPUT, HUD_TOGGLE, INSPECTOR_PICK, INSPECTOR_TOGGLE,
     PARTICLE_COUNT_REFRESH, PARTICLE_EMIT, PARTICLE_TICK, PHYSICS_DEBUG_TOGGLE, SHAKE_TICK,
     SQUASH_STRETCH_TICK, SQUASH_STRETCH_TRIGGER, STATE_DISPATCHER, SYSTEMS_OVERLAY_TOGGLE,
-    TWEEN_TICK, UI_DEBUG_TOGGLE, UI_ROUTE,
+    TWEEN_TICK, UI_ANIMATE, UI_DEBUG_TOGGLE, UI_ROUTE, UI_STATE_ROOTS,
 };
 
 /// The overlay toggles, the inspector's pick and the UI debug toggles, in
@@ -89,7 +89,8 @@ impl Plugin for DisplayPlugin {
     }
 }
 
-/// The state stack's dispatcher, in `PreUpdate` after the display hotkeys.
+/// The state stack's dispatcher, in `PreUpdate` after the display hotkeys
+/// (and the UI's systems, which order themselves before it).
 #[derive(Debug, Default, Clone, Copy)]
 pub struct StatePlugin;
 
@@ -102,9 +103,11 @@ impl Plugin for StatePlugin {
     }
 }
 
-/// UI input routing in `PreUpdate`, after the state dispatcher, and the
-/// `UiEvent` queue (`D-149`). Without it the UI takes no input and
-/// `RoutedInput` stays empty.
+/// The UI in `PreUpdate`, before the state dispatcher (M56): the state
+/// stack's roots synced for a transition queued since the dispatcher, the
+/// input routing, then the animation tracks; and the `UiEvent` queue
+/// (`D-149`). A state's `update` reads this frame's routing. Without it
+/// the UI takes no input and `RoutedInput` stays empty.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct UiPlugin;
 
@@ -113,7 +116,19 @@ impl Plugin for UiPlugin {
         world.register_event::<UiEvent>();
         schedule.add(
             Stage::PreUpdate,
-            system(UI_ROUTE, ui_route_system).after_if_present(STATE_DISPATCHER),
+            system(UI_STATE_ROOTS, ui_state_roots_system).before(UI_ROUTE),
+        );
+        schedule.add(
+            Stage::PreUpdate,
+            system(UI_ROUTE, ui_route_system).before_if_present(STATE_DISPATCHER),
+        );
+        // Both constraints: the scheduler runs the earliest-registered ready
+        // system, and the state plugin registers first.
+        schedule.add(
+            Stage::PreUpdate,
+            system(UI_ANIMATE, ui_animate_system)
+                .after(UI_ROUTE)
+                .before_if_present(STATE_DISPATCHER),
         );
     }
 }

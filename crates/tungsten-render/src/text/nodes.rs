@@ -318,18 +318,22 @@ impl TextEngine {
                 StoredFontAttrs::attrs,
             )
         };
+        // The style's colour is not baked in (M56): glyphs without a span
+        // colour take the text area's default colour, which the paint
+        // command sets, so a colour change or a fade re-prepares the batch
+        // and never reshapes. A span's own colour stays baked.
         let color = |[r, g, b, a]: [u8; 4]| Color::rgba(r, g, b, a);
-        let default_attrs = with_layout(
-            face_attrs(base.as_ref()).color(color(style.color)),
-            &style.layout,
-        );
+        let default_attrs = with_layout(face_attrs(base.as_ref()), &style.layout);
         let mut spans: Vec<(&str, Attrs)> = text
             .spans
             .iter()
             .zip(&span_faces)
             .map(|(span, face)| {
-                let attrs =
-                    face_attrs(face.as_ref()).color(color(span.color.unwrap_or(style.color)));
+                let attrs = face_attrs(face.as_ref());
+                let attrs = match span.color {
+                    Some(own) => attrs.color(color(own)),
+                    None => attrs,
+                };
                 (span.text.as_str(), with_layout(attrs, &style.layout))
             })
             .collect();

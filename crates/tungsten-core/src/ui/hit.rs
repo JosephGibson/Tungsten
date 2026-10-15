@@ -3,23 +3,28 @@
 //! children before their parent; a widget counts inside its own box and
 //! every clipping ancestor's, as its paint is clipped. A shown modal root
 //! blocks the roots below it. Disabled widgets are hit and block what is
-//! behind them; hidden and collapsed subtrees are skipped.
+//! behind them; hidden and collapsed subtrees are skipped. From M56 a
+//! widget's box is where it paints, under its and its ancestors'
+//! translation and scale; opacity and a root's freeze change nothing here.
 
 use glam::Vec2;
 
-use super::geometry::Rect;
+use super::geometry::{Rect, UiTransform};
 use super::id::WidgetId;
 use super::node::{UiLayer, Visibility};
-use super::tree::UiTree;
+use super::paint::node_transform;
+use super::tree::{MIN_SCALE, UiTree};
 
 impl UiTree {
     /// The deepest visible, hit-testable widget under `point` (viewport
     /// space), in paint order reversed: the highest layer, the latest root
     /// and sibling, and children before their parent first. A widget counts
-    /// inside its own committed rect, edges included, when that point is
-    /// also inside every [`clip_children`](Self::set_clip_children)
-    /// ancestor's rect and the viewport, as its paint is clipped; an
-    /// ancestor that does not clip does not bound it. Only visible, laid-out
+    /// inside its [`visual_rect`](Self::visual_rect), edges included, when
+    /// that point is also inside every
+    /// [`clip_children`](Self::set_clip_children) ancestor's and the
+    /// viewport, as its paint is clipped; an ancestor that does not clip
+    /// does not bound it, and a subtree whose composed scale is below 1/64
+    /// is skipped. Only visible, laid-out
     /// roots count, and a modal one ([`Self::set_modal`]) blocks every root
     /// below it, so a point it misses hits nothing. Disabled widgets count
     /// and block; hidden, collapsed and non-hit-testable ones do not, and
@@ -37,7 +42,7 @@ impl UiTree {
             if !self.root_routes(root, hide_game_layers) {
                 continue;
             }
-            if let Some(hit) = self.hit_node(root, point, viewport) {
+            if let Some(hit) = self.hit_node(root, point, viewport, UiTransform::IDENTITY) {
                 return Some(hit);
             }
             if self.modal(root) {
@@ -57,8 +62,15 @@ impl UiTree {
         })
     }
 
-    /// The hit in `id`'s subtree, inside `clip`: the clip `id` paints in.
-    fn hit_node(&self, id: WidgetId, point: Vec2, clip: Rect) -> Option<WidgetId> {
+    /// The hit in `id`'s subtree, inside `clip`: the clip `id` paints in,
+    /// under its ancestors' composed map `parent`.
+    fn hit_node(
+        &self,
+        id: WidgetId,
+        point: Vec2,
+        clip: Rect,
+        parent: UiTransform,
+    ) -> Option<WidgetId> {
         if !clip.contains(point) {
             return None;
         }
@@ -66,7 +78,12 @@ impl UiTree {
         if node.visibility != Visibility::Visible {
             return None;
         }
-        let rect = node.rect?;
+        let layout = node.rect?;
+        let transform = parent.compose(node_transform(node, layout, self.paint_scale()));
+        if transform.scale < MIN_SCALE {
+            return None;
+        }
+        let rect = transform.rect(layout);
         let child_clip = if node.clip_children {
             intersect(clip, rect)
         } else {
@@ -77,11 +94,39 @@ impl UiTree {
                 .children
                 .iter()
                 .rev()
-                .find_map(|child| self.hit_node(*child, point, child_clip))
+                .find_map(|child| self.hit_node(*child, point, child_clip, transform))
         {
             return Some(hit);
         }
         (node.hit_testable && rect.contains(point)).then_some(id)
+    }
+
+    /// The scale translations round at: the last paint's, else 1.
+    fn paint_scale(&self) -> f32 {
+        self.paint_scale.unwrap_or(1.0)
+    }
+
+    /// Where `id` paints and is hit, in viewport space (M56): its committed
+    /// box under its own and its ancestors' translation and scale, with
+    /// translations rounded at the last paint's scale. Equal to
+    /// [`Self::rect`] when nothing moves it; `None` when that is.
+    #[must_use]
+    pub fn visual_rect(&self, id: WidgetId) -> Option<Rect> {
+        let mut chain = Vec::new();
+        let mut current = Some(id);
+        while let Some(at) = current {
+            let node = self.node(at)?;
+            chain.push((node, node.rect?));
+            current = node.parent;
+        }
+        let scale = self.paint_scale();
+        let transform = chain
+            .iter()
+            .rev()
+            .fold(UiTransform::IDENTITY, |parent, (node, rect)| {
+                parent.compose(node_transform(node, *rect, scale))
+            });
+        Some(transform.rect(chain.first()?.1))
     }
 }
 

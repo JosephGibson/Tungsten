@@ -2,9 +2,10 @@
 //! layers, building, queries, the behaviour flags, the interaction state and
 //! the dirty flags. Every mutation is a method call that marks only what it
 //! changes: text, visibility, an image's size and layout style mark layout
-//! (and so paint); enabled, a tint and the clip flag mark paint; hover,
-//! press and focus visibility mark the widgets' styles; roles, names and the
-//! behaviour flags mark nothing.
+//! (and so paint); enabled, a tint, the clip flag, opacity, translation,
+//! scale and a root's fade mark paint (M56); hover, press and focus
+//! visibility mark the widgets' styles; roles, names, the behaviour flags
+//! and a root's freeze mark nothing.
 
 use std::collections::HashSet;
 
@@ -13,12 +14,18 @@ use glam::Vec2;
 use crate::assets::SpriteAssetId;
 use crate::text::{FontEpoch, StyledText, TextNodeId, TextStyle};
 
+use super::anim::RunningTrack;
 use super::id::WidgetId;
 use super::node::{
     CursorIcon, ImageContent, Node, Role, TextContent, UiLayer, Visibility, WidgetKind,
 };
+use super::prompt::Prompt;
 use super::style::LayoutStyle;
 use super::theme::{self, ResolvedStyle, StyleOverrides, Theme, ThemeEpoch, WidgetState};
+
+/// The smallest scale [`UiTree::set_scale`] takes, and the composed scale
+/// below which a subtree paints and hits nothing.
+pub(crate) const MIN_SCALE: f32 = 1.0 / 64.0;
 
 struct Slot {
     generation: u32,
@@ -87,6 +94,17 @@ pub struct UiTree {
     pub(crate) pressed: Option<WidgetId>,
     /// Whether focus is hidden, after pointer use; visible on a new tree.
     pub(crate) focus_hidden: bool,
+    /// The scale of the last [`Self::paint`]; translations round to its
+    /// whole pixels, in hit testing too. `None` before the first.
+    pub(crate) paint_scale: Option<f32>,
+    /// Running animation tracks, in start order (M56).
+    pub(crate) tracks: Vec<RunningTrack>,
+    /// Labels' prompts (M56).
+    pub(crate) prompts: Vec<Prompt>,
+    /// The text scale (M56); `None` is 1.
+    pub(crate) text_scale: Option<f32>,
+    /// Roots whose text runs the next [`Self::paint_prewarm`] paints (M56).
+    pub(crate) prewarm_roots: Vec<WidgetId>,
 }
 
 impl std::fmt::Debug for UiTree {
@@ -344,8 +362,8 @@ impl UiTree {
 
     /// Removes `id` and its subtree. Focus, hover and a press held inside it
     /// are released, focus going back to where it was when a scope removed
-    /// with it was entered, and its text nodes are freed at the next layout.
-    /// An invalid ID does nothing.
+    /// with it was entered, its animation tracks are dropped, and its text
+    /// nodes are freed at the next layout. An invalid ID does nothing.
     pub fn remove(&mut self, id: WidgetId) {
         let Some(parent) = self.node(id).map(|node| node.parent) else {
             return;
@@ -380,6 +398,16 @@ impl UiTree {
             }
         }
         self.focus_after_removal(&removed);
+        if !self.tracks.is_empty() {
+            let mut tracks = std::mem::take(&mut self.tracks);
+            tracks.retain(|running| self.contains(running.widget));
+            self.tracks = tracks;
+        }
+        if !self.prompts.is_empty() {
+            let mut prompts = std::mem::take(&mut self.prompts);
+            prompts.retain(|prompt| self.contains(prompt.label));
+            self.prompts = prompts;
+        }
     }
 
     // ---- queries ----
@@ -429,7 +457,7 @@ impl UiTree {
     // ---- text ----
 
     /// The node that holds `id`'s text: a label itself, a button's label.
-    fn text_holder(&self, id: WidgetId) -> Option<WidgetId> {
+    pub(crate) fn text_holder(&self, id: WidgetId) -> Option<WidgetId> {
         let node = self.node(id)?;
         match node.kind {
             WidgetKind::Label => Some(id),
@@ -438,14 +466,51 @@ impl UiTree {
         }
     }
 
-    /// Sets a label's or a button's text. Returns `false`, and marks nothing,
-    /// when the text is equal (compare-on-write, w01 §2) or `id` holds no
-    /// text.
+    /// Sets a label's or a button's text and clears its prompt (M56).
+    /// Returns `false`, and marks nothing, when the text is equal
+    /// (compare-on-write, w01 §2) or `id` holds no text.
     pub fn set_text(&mut self, id: WidgetId, text: impl Into<StyledText>) -> bool {
         let Some(target) = self.text_holder(id) else {
             return false;
         };
-        let text = text.into();
+        if !self.prompts.is_empty() {
+            self.prompts.retain(|prompt| prompt.label != target);
+        }
+        self.replace_text(target, text.into())
+    }
+
+    /// [`Self::set_text`] for one plain span (w01 §14's allocation-free
+    /// values): a label, or a button's label, already holding `text` as one
+    /// span with no overrides returns `false` without allocating, so a live
+    /// value written with `write!` into a retained `String` costs a format
+    /// and a compare. Clears the label's prompt.
+    pub fn set_plain_text(&mut self, id: WidgetId, text: &str) -> bool {
+        let Some(target) = self.text_holder(id) else {
+            return false;
+        };
+        let equal = self
+            .node(target)
+            .and_then(|node| node.text.as_ref())
+            .is_some_and(|content| match content.text.spans.as_slice() {
+                [span] => {
+                    span.text == text
+                        && span.weight.is_none()
+                        && span.italic.is_none()
+                        && span.color.is_none()
+                }
+                _ => false,
+            });
+        if equal {
+            if !self.prompts.is_empty() {
+                self.prompts.retain(|prompt| prompt.label != target);
+            }
+            return false;
+        }
+        self.set_text(id, text)
+    }
+
+    /// Sets the text of `target`, a label, keeping its prompt.
+    pub(crate) fn replace_text(&mut self, target: WidgetId, text: StyledText) -> bool {
         let Some(node) = self.node_mut(target) else {
             return false;
         };
@@ -472,6 +537,39 @@ impl UiTree {
             .map(|content| &content.text)
     }
 
+    // ---- text scale (M56) ----
+
+    /// Sets the scale every label's text size and line height take, and the
+    /// controls whose natural size follows the line height, beside the UI
+    /// scale; clamped to 0.25..=4.0, a value that is not finite or not
+    /// positive ignored. Resolved styles and their inheritance stay
+    /// unscaled; the scale applies where a label's text node is set. A
+    /// change marks every label for a new text node set and every root for
+    /// layout; an equal value marks nothing.
+    pub fn set_text_scale(&mut self, scale: f32) {
+        if !scale.is_finite() || scale <= 0.0 {
+            return;
+        }
+        let scale = scale.clamp(0.25, 4.0);
+        if self.text_scale() == scale {
+            return;
+        }
+        self.text_scale = Some(scale);
+        for slot in &mut self.slots {
+            if let Some(node) = &mut slot.node {
+                node.text_stale |= node.kind == WidgetKind::Label;
+                node.layout_dirty |= node.parent.is_none();
+            }
+        }
+        self.paint_dirty = true;
+    }
+
+    /// The text scale; 1 on a new tree.
+    #[must_use]
+    pub fn text_scale(&self) -> f32 {
+        self.text_scale.unwrap_or(1.0)
+    }
+
     // ---- layout style ----
 
     /// Replaces the layout style; an equal style marks nothing.
@@ -490,6 +588,132 @@ impl UiTree {
     #[must_use]
     pub fn layout_style(&self, id: WidgetId) -> Option<&LayoutStyle> {
         self.node(id).map(|node| &node.layout_style)
+    }
+
+    // ---- paint-only properties (M56) ----
+
+    /// Sets the opacity multiplied into the alpha of everything `id` and
+    /// its subtree paint, clamped to 0..=1; NaN is ignored. A subtree at
+    /// alpha 0 paints nothing and is still hit. Marks paint, never layout;
+    /// an equal value marks nothing.
+    pub fn set_opacity(&mut self, id: WidgetId, opacity: f32) {
+        if opacity.is_nan() {
+            return;
+        }
+        let opacity = opacity.clamp(0.0, 1.0);
+        let Some(node) = self.node_mut(id) else {
+            return;
+        };
+        if node.opacity == opacity {
+            return;
+        }
+        node.opacity = opacity;
+        self.mark_paint_dirty();
+    }
+
+    /// The opacity set on `id` itself; `None` for an invalid ID.
+    #[must_use]
+    pub fn opacity(&self, id: WidgetId) -> Option<f32> {
+        self.node(id).map(|node| node.opacity)
+    }
+
+    /// Moves `id` and its subtree by `translation` UI units in paint and hit
+    /// testing, rounded to whole physical pixels at the paint scale; layout
+    /// and directional focus keep the committed boxes. A non-finite value is
+    /// ignored. Marks paint, never layout; an equal value marks nothing.
+    pub fn set_translation(&mut self, id: WidgetId, translation: Vec2) {
+        if !translation.is_finite() {
+            return;
+        }
+        let Some(node) = self.node_mut(id) else {
+            return;
+        };
+        if node.translation == translation {
+            return;
+        }
+        node.translation = translation;
+        self.mark_paint_dirty();
+    }
+
+    /// The translation set on `id` itself; `None` for an invalid ID.
+    #[must_use]
+    pub fn translation(&self, id: WidgetId) -> Option<Vec2> {
+        self.node(id).map(|node| node.translation)
+    }
+
+    /// Scales `id` and its subtree about its layout centre in paint and hit
+    /// testing, clamped to 1/64..=64; a value that is not finite or not
+    /// positive is ignored. Text draws at the composed scale rounded down to
+    /// a multiple of 1/32, so it never outgrows its box; a subtree whose
+    /// composed scale is below 1/64 paints and hits nothing. Marks paint,
+    /// never layout; an equal value marks nothing.
+    pub fn set_scale(&mut self, id: WidgetId, scale: f32) {
+        if !scale.is_finite() || scale <= 0.0 {
+            return;
+        }
+        let scale = scale.clamp(MIN_SCALE, 1.0 / MIN_SCALE);
+        let Some(node) = self.node_mut(id) else {
+            return;
+        };
+        if node.scale == scale {
+            return;
+        }
+        node.scale = scale;
+        self.mark_paint_dirty();
+    }
+
+    /// The scale set on `id` itself; `None` for an invalid ID.
+    #[must_use]
+    pub fn scale(&self, id: WidgetId) -> Option<f32> {
+        self.node(id).map(|node| node.scale)
+    }
+
+    /// Sets a root's fade, multiplied into its paint as opacity is and
+    /// clamped to 0..=1; NaN is ignored. The state stack sets it during a
+    /// screen transition, and a game may too. Does nothing for a widget that
+    /// is not a root. Marks paint; an equal value marks nothing.
+    pub fn set_fade(&mut self, root: WidgetId, fade: f32) {
+        if fade.is_nan() {
+            return;
+        }
+        let fade = fade.clamp(0.0, 1.0);
+        let Some(node) = self.node_mut(root) else {
+            return;
+        };
+        if node.parent.is_some() || node.fade == fade {
+            return;
+        }
+        node.fade = fade;
+        self.mark_paint_dirty();
+    }
+
+    /// A root's fade; `None` for any other widget or an invalid ID.
+    #[must_use]
+    pub fn fade(&self, root: WidgetId) -> Option<f32> {
+        self.node(root)
+            .filter(|node| node.parent.is_none())
+            .map(|node| node.fade)
+    }
+
+    /// Freezes a root, or thaws it (M56): a frozen root keeps its look, is
+    /// hit and blocks what is behind it, and a press over it is the UI's,
+    /// but its widgets take no press, activation, value change or focus
+    /// move, a press one held is cancelled at the next routing, and no
+    /// `ui_*` action acts in it. A frozen modal root still takes every key
+    /// press. Does nothing for a widget that is not a root. Marks nothing.
+    pub fn set_frozen(&mut self, root: WidgetId, frozen: bool) {
+        if let Some(node) = self.node_mut(root)
+            && node.parent.is_none()
+        {
+            node.frozen = frozen;
+        }
+    }
+
+    /// Whether `id` is a frozen root; `false` for any other widget or an
+    /// invalid ID.
+    #[must_use]
+    pub fn frozen(&self, id: WidgetId) -> bool {
+        self.node(id).is_some_and(|node| node.frozen)
     }
 
     // ---- flags ----
@@ -522,10 +746,10 @@ impl UiTree {
     /// Enables or disables `id`. A disabled widget keeps its box and blocks
     /// what is behind it; it and every widget inside it take no focus,
     /// press or click (`D-125`), so disabling releases the focus, hover and
-    /// press held anywhere under it. Its own `disabled` variant applies; the
-    /// widgets inside keep theirs. Marks paint, and the node's style for the
-    /// next resolution, which relayouts its root when the `disabled` variant
-    /// changes the text style.
+    /// press held anywhere under it. It and every widget inside it apply
+    /// their `disabled` variants (M56). Marks paint, and the subtree's
+    /// styles for the next resolution, which relayouts its root when a
+    /// `disabled` variant changes how text measures.
     pub fn set_enabled(&mut self, id: WidgetId, enabled: bool) {
         let Some(node) = self.node_mut(id) else {
             return;
@@ -543,7 +767,7 @@ impl UiTree {
             }
             self.drop_pointer_under(id);
         }
-        self.mark_style_dirty(id);
+        self.mark_subtree_style_dirty(id);
         self.mark_paint_dirty();
     }
 
@@ -845,9 +1069,9 @@ impl UiTree {
         self.node(id)?.resolved.as_ref()
     }
 
-    /// The top state the node's style layers (`D-149`): `Disabled` when
-    /// disabled, else `Pressed`, `Hovered`, or `Focused` while it holds
-    /// visible focus, else `Normal`.
+    /// The top state the node's style layers (`D-149`): `Disabled` when it
+    /// or an ancestor is disabled (M56), else `Pressed`, `Hovered`, or
+    /// `Focused` while it holds visible focus, else `Normal`.
     #[must_use]
     pub fn widget_state(&self, id: WidgetId) -> Option<WidgetState> {
         let node = self.node(id)?;
@@ -861,11 +1085,12 @@ impl UiTree {
     }
 
     /// The states whose variants `id`'s style applies, in order: `disabled`
-    /// alone; otherwise `focused` while focus is on it and visible, then
-    /// `hovered`, then `pressed`. `Normal` fills the slots not applied.
+    /// alone under a disabled ancestor-or-self; otherwise `focused` while
+    /// focus is on it and visible, then `hovered`, then `pressed`. `Normal`
+    /// fills the slots not applied.
     fn style_layers(&self, id: WidgetId, node: &Node) -> [WidgetState; 3] {
         let normal = WidgetState::Normal;
-        if !node.enabled {
+        if !node.enabled || !self.is_enabled_in_tree(id) {
             return [WidgetState::Disabled, normal, normal];
         }
         let layer = |on: bool, state: WidgetState| if on { state } else { normal };
@@ -892,14 +1117,23 @@ impl UiTree {
         }
     }
 
+    /// Marks `id` and every node under it for the next resolution pass.
+    fn mark_subtree_style_dirty(&mut self, id: WidgetId) {
+        let mut stack = vec![id];
+        while let Some(current) = stack.pop() {
+            self.mark_style_dirty(current);
+            stack.extend_from_slice(self.children(current));
+        }
+    }
+
     /// Resolves every style-dirty node, and every node under one whose
     /// resolved text changed, on the roots that hold one. A node whose
-    /// resolved text style changed in any property marks its root for
-    /// layout, since the text node must be re-set and committed again
-    /// (`D-117`); a non-text change marks paint. A toggle or a slider holds
-    /// no text node, so its text change marks layout only when it measures
-    /// differently (its line height sizes it), and paint when only the
-    /// colour moved. [`Self::layout`] runs this first.
+    /// resolved text style changed in a property that measures marks its
+    /// root for layout, since a label's text node must be re-set and
+    /// committed again (`D-117`); a change of the text colour alone, or of a
+    /// non-text property, marks paint (M56): the paint command carries the
+    /// colour, so the text node is not re-set. [`Self::layout`] runs this
+    /// first.
     pub(crate) fn resolve_styles(&mut self) -> StyleStats {
         let mut stats = StyleStats::default();
         let base = self.theme.base_text();
@@ -930,7 +1164,6 @@ impl UiTree {
         let mut text_changed = false;
         if node.style_dirty || parent_text_changed {
             let layers = self.style_layers(id, node);
-            let holds_text = !matches!(node.kind, WidgetKind::Toggle | WidgetKind::Slider);
             let resolved = theme::resolve_layers(
                 &self.theme,
                 node.kind,
@@ -955,9 +1188,9 @@ impl UiTree {
             if let Some(node) = self.node_mut(id) {
                 node.resolved = Some(resolved);
                 node.style_dirty = false;
-                node.text_stale |= changed_text;
+                node.text_stale |= changed_measure;
             }
-            if changed_text && (holds_text || changed_measure) {
+            if changed_measure {
                 self.mark_layout_dirty(id);
             } else if changed_text || changed_visual {
                 self.paint_dirty = true;

@@ -10,9 +10,13 @@
 //! styles, hit testing through the paint clip stack, modal roots,
 //! directional focus, cursors, [`UiEvent`], [`UiRouter`] and the `ui_*`
 //! actions. M55 adds the checkbox and slider kinds, [`SliderRange`] and
-//! [`UiValue`]. Nothing here draws: the render crate consumes the paint
-//! list.
+//! [`UiValue`]. M56 adds paint-only opacity, translation and scale, a
+//! root's fade and freeze, content-box text, disabled ancestors' look,
+//! [`UiTrack`] animations on the real clock, binding-aware prompts and the
+//! router's capture-next-input mode for rebinding.
+//! Nothing here draws: the render crate consumes the paint list.
 
+pub mod anim;
 pub mod control;
 pub mod event;
 pub mod focus;
@@ -23,12 +27,14 @@ pub mod layout;
 pub mod measure;
 pub mod node;
 pub mod paint;
+pub mod prompt;
 pub mod route;
 pub mod style;
 pub mod theme;
 pub mod theme_file;
 pub mod tree;
 
+pub use anim::{UiProperty, UiTrack, ui_animate_system};
 pub use control::SliderRange;
 pub use event::{UiEvent, UiValue};
 pub use focus::NavDirection;

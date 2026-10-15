@@ -1,6 +1,7 @@
 //! The player's settings, kept in the game's user folder (`D-159`): the
-//! display mode, resolution and vsync, the UI scale and the master volume,
-//! layered between `tungsten.json` and the environment.
+//! display mode, resolution and vsync, the UI scale, the text scale (M56)
+//! and the master volume, layered between `tungsten.json` and the
+//! environment.
 
 use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
@@ -35,6 +36,7 @@ pub enum UserFolder {
 /// {
 ///   "display": { "display_mode": "borderless_fullscreen", "resolution": { "width": 1920, "height": 1080 }, "vsync": true },
 ///   "ui_scale": 1.25,
+///   "text_scale": 1.5,
 ///   "master_volume": 0.8
 /// }
 /// ```
@@ -44,6 +46,7 @@ pub struct Settings {
     resolution: Option<Resolution>,
     vsync: Option<bool>,
     ui_scale: Option<f32>,
+    text_scale: Option<f32>,
     master_volume: Option<f32>,
     path: Option<PathBuf>,
     load_warnings: Vec<String>,
@@ -66,6 +69,9 @@ impl Settings {
     pub const FILE: &'static str = "settings.json";
     /// The UI scales a player can set.
     pub const UI_SCALE_RANGE: RangeInclusive<f32> = 0.5..=3.0;
+    /// The text scales a player can set (M56, Q13); the UI tree itself
+    /// takes 0.25..=4.0.
+    pub const TEXT_SCALE_RANGE: RangeInclusive<f32> = 0.75..=2.0;
 
     /// Reads `path`. A missing file gives defaults; an unreadable, corrupt or
     /// invalid one gives defaults and is renamed to `settings.json.bad`.
@@ -182,6 +188,27 @@ impl Settings {
         }
     }
 
+    /// The text scale the player set (M56), which the UI tree multiplies
+    /// every label's text size and line height by.
+    #[must_use]
+    pub fn text_scale(&self) -> Option<f32> {
+        self.text_scale
+    }
+
+    /// Sets or unsets the text scale, clamped to
+    /// [`TEXT_SCALE_RANGE`](Self::TEXT_SCALE_RANGE); a value that is not
+    /// finite is ignored.
+    pub fn set_text_scale(&mut self, scale: Option<f32>) {
+        match scale {
+            Some(scale) if !scale.is_finite() => {}
+            Some(scale) => {
+                let range = Self::TEXT_SCALE_RANGE;
+                self.text_scale = Some(scale.clamp(*range.start(), *range.end()));
+            }
+            None => self.text_scale = None,
+        }
+    }
+
     /// The master volume the player set, 0 to 1.
     #[must_use]
     pub fn master_volume(&self) -> Option<f32> {
@@ -217,6 +244,7 @@ impl Settings {
         let file = SettingsFile {
             display: (display != DisplayFile::default()).then_some(display),
             ui_scale: self.ui_scale,
+            text_scale: self.text_scale,
             master_volume: self.master_volume,
         };
         let mut json = serde_json::to_string_pretty(&file)
@@ -239,6 +267,7 @@ impl Settings {
             self.vsync = display.vsync;
         }
         self.ui_scale = file.ui_scale;
+        self.text_scale = file.text_scale;
         self.master_volume = file.master_volume;
     }
 }
@@ -249,6 +278,8 @@ struct SettingsFile {
     display: Option<DisplayFile>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     ui_scale: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    text_scale: Option<f32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     master_volume: Option<f32>,
 }
@@ -306,6 +337,11 @@ fn parse(bytes: &[u8]) -> Result<SettingsFile, String> {
         && !(scale.is_finite() && Settings::UI_SCALE_RANGE.contains(&scale))
     {
         return Err(format!("ui_scale {scale} is outside 0.5..=3"));
+    }
+    if let Some(scale) = file.text_scale
+        && !(scale.is_finite() && Settings::TEXT_SCALE_RANGE.contains(&scale))
+    {
+        return Err(format!("text_scale {scale} is outside 0.75..=2"));
     }
     if let Some(volume) = file.master_volume
         && !(volume.is_finite() && (0.0..=1.0).contains(&volume))

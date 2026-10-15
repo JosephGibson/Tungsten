@@ -5,7 +5,11 @@
 //! integer rectangles under one rounding rule (`D-127`). The partition rule
 //! ([`PaintList::text_batches`]) splits the text into batches that draw in
 //! paint order, so a rear window's text paints before a front window's
-//! background.
+//! background. M56 adds the paint-only properties: opacity and a root's
+//! fade multiply every colour's alpha, and translation and scale map each
+//! subtree, text at a scale rounded down to a multiple of 1/32; and the
+//! prewarm list, a root's text runs painted shown or hidden so the renderer
+//! can rasterize them before the root first opens.
 
 use std::collections::HashSet;
 use std::fmt::Write as _;
@@ -17,10 +21,10 @@ use crate::assets::{AssetRegistry, FilterMode, SpriteAsset, SpriteAssetId, Textu
 use crate::text::TextNodeId;
 
 use super::control::{self, Control};
-use super::geometry::Rect;
+use super::geometry::{Rect, UiTransform};
 use super::id::WidgetId;
-use super::node::{UiLayer, Visibility, WidgetKind};
-use super::tree::UiTree;
+use super::node::{Node, UiLayer, Visibility, WidgetKind};
+use super::tree::{MIN_SCALE, UiTree};
 
 /// The border colour of the layout-bounds overlay.
 const BOUNDS_OUTLINE: [u8; 4] = [255, 64, 255, 255];
@@ -109,6 +113,84 @@ fn scaled(rect: Rect, scale: f32) -> Rect {
     Rect::new(rect.min * scale, rect.max * scale)
 }
 
+/// The scale a text run draws at under a composed scale `scale` (M56, Q4):
+/// rounded down to a multiple of 1/32, so a scale track rasterizes a few
+/// sizes and resting text is never larger than its box; below 1/32 the
+/// scale itself.
+pub(crate) fn text_scale_step(scale: f32) -> f32 {
+    if scale < 1.0 / 32.0 {
+        scale
+    } else {
+        (scale * 32.0).floor() / 32.0
+    }
+}
+
+/// `rect` scaled by `ratio` about its centre.
+fn shrink_about_centre(rect: Rect, ratio: f32) -> Rect {
+    let centre = (rect.min + rect.max) * 0.5;
+    let half = rect.size() * 0.5 * ratio;
+    Rect::new(centre - half, centre + half)
+}
+
+/// `color` with its alpha times `alpha`, rounded.
+fn faded(color: [u8; 4], alpha: f32) -> [u8; 4] {
+    if alpha >= 1.0 {
+        return color;
+    }
+    let [r, g, b, a] = color;
+    [r, g, b, (f32::from(a) * alpha).round() as u8]
+}
+
+/// A node's own map in UI units (M56): its scale about its layout centre,
+/// then its translation rounded to whole physical pixels at `paint_scale`.
+pub(crate) fn node_transform(node: &Node, rect: Rect, paint_scale: f32) -> UiTransform {
+    if node.scale == 1.0 && node.translation == Vec2::ZERO {
+        return UiTransform::IDENTITY;
+    }
+    let translation = if paint_scale > 0.0 && paint_scale.is_finite() {
+        (node.translation * paint_scale).round() / paint_scale
+    } else {
+        node.translation
+    };
+    UiTransform::about((rect.min + rect.max) * 0.5, node.scale, translation)
+}
+
+/// A label's text command under `transform`: its content box mapped, at
+/// the composed scale rounded down to a 32nd and shrunk to match about its
+/// centre, so the run never outgrows its box or its clips.
+fn text_command(
+    node: &Node,
+    rect: Rect,
+    transform: UiTransform,
+    scale: f32,
+    color: [u8; 4],
+    clip: u32,
+) -> Option<PaintCommand> {
+    let text_node = node.text_id?;
+    let exact = transform.rect(node.content.unwrap_or(rect));
+    let text_scale = text_scale_step(transform.scale);
+    let text_rect = if text_scale == transform.scale {
+        exact
+    } else {
+        shrink_about_centre(exact, text_scale / transform.scale)
+    };
+    Some(PaintCommand::Text {
+        node: text_node,
+        rect: scaled(text_rect, scale),
+        color,
+        scale: text_scale,
+        clip,
+    })
+}
+
+/// What a node inherits from its ancestors in a paint walk.
+#[derive(Debug, Clone, Copy)]
+struct Inherited {
+    clip: u32,
+    alpha: f32,
+    transform: UiTransform,
+}
+
 /// One thing to draw, in physical pixels; `clip` indexes
 /// [`PaintList::clips`].
 #[non_exhaustive]
@@ -148,16 +230,20 @@ pub enum PaintCommand {
         clip: u32,
     },
     /// A text run: the committed layout of `node`, never a glyphon type
-    /// (`D-126`), drawn in `color` at `rect` and trimmed to `rect` ∩ the
-    /// clip, so an unwrapped line never leaves the box the partition rule
-    /// reasons about.
+    /// (`D-126`), drawn in `color` at `rect` and `scale` and trimmed to
+    /// `rect` ∩ the clip, so an unwrapped line never leaves the box the
+    /// partition rule reasons about.
     Text {
         /// The text node the label shaped with.
         node: TextNodeId,
-        /// The label's box.
+        /// The label's content box (M56: its box less padding and border).
         rect: Rect,
-        /// Text colour, sRGB.
+        /// Text colour, sRGB, its alpha times the label's opacity.
         color: [u8; 4],
+        /// The scale the run draws at on top of [`PaintList::scale`]: the
+        /// label's composed scale rounded down to a multiple of 1/32 (M56);
+        /// 1 for a label nothing scales.
+        scale: f32,
         /// The clip index.
         clip: u32,
     },
@@ -273,8 +359,9 @@ impl PaintList {
     /// The snapshot-test format: one `clip n (x, y) w×h` line per clip, then
     /// one line per command (`Rect (x, y) w×h fill #rrggbbaa border #rrggbbaa
     /// 1.0 r 4.0 clip 0`, `Image (x, y) w×h tex 3 uv (u, v)-(u, v) nearest
-    /// tint #rrggbbaa clip 1`, `Text node 2:0 (x, y) w×h #rrggbbaa clip 1`)
-    /// with a `-- batch n` line where [`Self::text_batches`] opens a batch.
+    /// tint #rrggbbaa clip 1`, `Text node 2:0 (x, y) w×h #rrggbbaa clip 1`,
+    /// with ` x0.5` before the clip when the text scale is not 1) with a
+    /// `-- batch n` line where [`Self::text_batches`] opens a batch.
     #[must_use]
     pub fn dump(&self) -> String {
         let mut out = String::new();
@@ -340,11 +427,17 @@ impl PaintList {
                     node,
                     rect,
                     color,
+                    scale,
                     clip,
                 } => {
+                    let scale = if *scale == 1.0 {
+                        String::new()
+                    } else {
+                        format!(" x{scale}")
+                    };
                     let _ = writeln!(
                         out,
-                        "Text node {}:{} {} {} clip {clip}",
+                        "Text node {}:{} {} {}{scale} clip {clip}",
                         node.index(),
                         node.generation(),
                         rect_str(*rect),
@@ -523,6 +616,7 @@ impl UiTree {
     ) {
         out.clear();
         out.scale = scale;
+        self.paint_scale = Some(scale);
         let viewport = self
             .viewport
             .map_or(Rect::new(Vec2::ZERO, Vec2::ZERO), |size| {
@@ -532,7 +626,7 @@ impl UiTree {
 
         let mut warned = std::mem::take(&mut self.warned_sprites);
         let mut bounds = Vec::new();
-        let mut stack: Vec<(WidgetId, u32)> = Vec::new();
+        let mut stack: Vec<(WidgetId, Inherited)> = Vec::new();
         for i in 0..self.roots.len() {
             let root = self.roots[i];
             if debug.hide_game_layers
@@ -542,11 +636,18 @@ impl UiTree {
             {
                 continue;
             }
-            stack.push((root, 0));
-            while let Some((id, clip)) = stack.pop() {
+            stack.push((
+                root,
+                Inherited {
+                    clip: 0,
+                    alpha: 1.0,
+                    transform: UiTransform::IDENTITY,
+                },
+            ));
+            while let Some((id, inherited)) = stack.pop() {
                 self.paint_node(
                     id,
-                    clip,
+                    inherited,
                     scale,
                     sprites,
                     out,
@@ -573,17 +674,21 @@ impl UiTree {
     }
 
     /// Paints one node and queues its children, last first, on `stack`.
+    /// The node's alpha is `inherited.alpha` times its opacity (and a
+    /// root's fade); its map is the inherited one after its own. A subtree
+    /// at alpha 0 or under a composed scale below 1/64 paints nothing.
     #[allow(clippy::too_many_arguments)] // The walk's state, passed rather than kept on the tree.
+    #[allow(clippy::too_many_lines)] // One arm per kind, each a few pushes.
     fn paint_node(
         &self,
         id: WidgetId,
-        clip: u32,
+        inherited: Inherited,
         scale: f32,
         sprites: &AssetRegistry,
         out: &mut PaintList,
         bounds: &mut Vec<Rect>,
         warned: &mut HashSet<SpriteAssetId>,
-        stack: &mut Vec<(WidgetId, u32)>,
+        stack: &mut Vec<(WidgetId, Inherited)>,
     ) {
         let Some(node) = self.node(id) else {
             return;
@@ -594,35 +699,53 @@ impl UiTree {
         let (Some(rect), Some(resolved)) = (node.rect, node.resolved.as_ref()) else {
             return;
         };
-        let physical = scaled(rect, scale);
+        let fade = if node.parent.is_none() {
+            node.fade
+        } else {
+            1.0
+        };
+        let alpha = inherited.alpha * node.opacity * fade;
+        let transform = inherited
+            .transform
+            .compose(node_transform(node, rect, scale));
+        if alpha <= 0.0 || transform.scale < MIN_SCALE {
+            return;
+        }
+        let clip = inherited.clip;
+        // Lengths in physical pixels per UI unit, under this node's scale.
+        let length = scale * transform.scale;
+        let physical = scaled(transform.rect(rect), scale);
+        let paint_rect = |part: Rect| scaled(transform.rect(part), scale);
         bounds.push(physical);
         if node.kind != WidgetKind::Slider {
             push_box(
                 out,
                 physical,
-                resolved.background,
-                resolved.border,
-                resolved.border_width * scale,
-                resolved.corner_radius * scale,
+                faded(resolved.background, alpha),
+                faded(resolved.border, alpha),
+                resolved.border_width * length,
+                resolved.corner_radius * length,
                 clip,
             );
         }
         match node.kind {
             WidgetKind::Label => {
-                if let Some(text_node) = node.text_id {
-                    out.commands.push(PaintCommand::Text {
-                        node: text_node,
-                        rect: physical,
-                        color: resolved.text.color,
-                        clip,
-                    });
-                }
+                let color = faded(resolved.text.color, alpha);
+                out.commands
+                    .extend(text_command(node, rect, transform, scale, color, clip));
             }
             WidgetKind::Image => {
                 if let Some(image) = node.image {
                     match sprites.sprite(image.sprite) {
                         Some(sprite) => {
-                            push_images(out, physical, sprite, image.tint, scale, clip);
+                            push_images(
+                                out,
+                                physical,
+                                sprite,
+                                faded(image.tint, alpha),
+                                length,
+                                clip,
+                            );
                         }
                         None => {
                             if warned.insert(image.sprite) {
@@ -641,11 +764,11 @@ impl UiTree {
                     let (mark, radius) = control::toggle_mark(rect, resolved.corner_radius);
                     push_box(
                         out,
-                        scaled(mark, scale),
-                        resolved.text.color,
+                        paint_rect(mark),
+                        faded(resolved.text.color, alpha),
                         TRANSPARENT,
                         0.0,
-                        radius * scale,
+                        radius * length,
                         clip,
                     );
                 }
@@ -654,15 +777,15 @@ impl UiTree {
                 if let Some(Control::Slider { value, range }) = node.control {
                     let parts =
                         control::slider_parts(rect, range.fraction(value), resolved.corner_radius);
-                    let track_radius = parts.track_radius * scale;
+                    let track_radius = parts.track_radius * length;
                     for (part, fill) in [
                         (parts.track, resolved.background),
                         (parts.fill, resolved.text.color),
                     ] {
                         push_box(
                             out,
-                            scaled(part, scale),
-                            fill,
+                            paint_rect(part),
+                            faded(fill, alpha),
                             TRANSPARENT,
                             0.0,
                             track_radius,
@@ -671,11 +794,11 @@ impl UiTree {
                     }
                     push_box(
                         out,
-                        scaled(parts.thumb, scale),
-                        resolved.text.color,
-                        resolved.border,
-                        resolved.border_width * scale,
-                        resolved.corner_radius * scale,
+                        paint_rect(parts.thumb),
+                        faded(resolved.text.color, alpha),
+                        faded(resolved.border, alpha),
+                        resolved.border_width * length,
+                        resolved.corner_radius * length,
                         clip,
                     );
                 }
@@ -691,7 +814,7 @@ impl UiTree {
                 .get(clip as usize)
                 .copied()
                 .unwrap_or_default()
-                .intersect(to_physical(rect, scale));
+                .intersect(to_physical(transform.rect(rect), scale));
             if inner.is_empty() {
                 return;
             }
@@ -700,8 +823,107 @@ impl UiTree {
         } else {
             clip
         };
+        let inherited = Inherited {
+            clip: child_clip,
+            alpha,
+            transform,
+        };
         for child in node.children.iter().rev() {
-            stack.push((*child, child_clip));
+            stack.push((*child, inherited));
+        }
+    }
+
+    /// Asks for a one-shot raster of `root`'s text runs, shown or hidden,
+    /// once it is laid out (M56): the next [`Self::paint_prewarm`] after its
+    /// first layout paints them, and the app hands them to the renderer
+    /// before the frame's prepare, so a menu's first open finds its glyphs
+    /// in the atlas. A collapsed or removed root drops the request; a
+    /// widget that is not a root does nothing. A declared character set,
+    /// such as a HUD's digits, is a hidden label in a prewarm root.
+    pub fn prewarm(&mut self, root: WidgetId) {
+        if self.node(root).is_some_and(|node| node.parent.is_none())
+            && !self.prewarm_roots.contains(&root)
+        {
+            self.prewarm_roots.push(root);
+        }
+    }
+
+    /// Whether a prewarm request waits.
+    #[must_use]
+    pub fn prewarm_pending(&self) -> bool {
+        !self.prewarm_roots.is_empty()
+    }
+
+    /// Paints into `out`, at `scale`, the text commands of the roots
+    /// [`Self::prewarm`] asked for that are laid out, at their current
+    /// transforms and whatever their visibility, opacity or freeze, under
+    /// the viewport clip; clears those requests and drops those of
+    /// collapsed and removed roots, keeping the rest for their first
+    /// layout. Returns whether it painted any run.
+    pub fn paint_prewarm(&mut self, scale: f32, out: &mut PaintList) -> bool {
+        out.clear();
+        out.scale = scale;
+        if self.prewarm_roots.is_empty() {
+            return false;
+        }
+        let viewport = self
+            .viewport
+            .map_or(Rect::new(Vec2::ZERO, Vec2::ZERO), |size| {
+                Rect::from_pos_size(Vec2::ZERO, size)
+            });
+        out.clips.push(to_physical(viewport, scale));
+        let requests = std::mem::take(&mut self.prewarm_roots);
+        let mut stack: Vec<(WidgetId, UiTransform)> = Vec::new();
+        for root in requests {
+            let Some(node) = self.node(root) else {
+                continue;
+            };
+            if node.visibility == Visibility::Collapsed {
+                continue;
+            }
+            if node.rect.is_none() {
+                self.prewarm_roots.push(root);
+                continue;
+            }
+            stack.push((root, UiTransform::IDENTITY));
+            while let Some((id, parent)) = stack.pop() {
+                self.prewarm_node(id, parent, scale, out, &mut stack);
+            }
+        }
+        !out.commands.is_empty()
+    }
+
+    /// One node of the prewarm walk: its text run, then its children.
+    fn prewarm_node(
+        &self,
+        id: WidgetId,
+        parent: UiTransform,
+        scale: f32,
+        out: &mut PaintList,
+        stack: &mut Vec<(WidgetId, UiTransform)>,
+    ) {
+        let Some(node) = self.node(id) else {
+            return;
+        };
+        let (Some(rect), Some(resolved)) = (node.rect, node.resolved.as_ref()) else {
+            return;
+        };
+        let transform = parent.compose(node_transform(node, rect, scale));
+        if transform.scale < MIN_SCALE {
+            return;
+        }
+        if node.kind == WidgetKind::Label {
+            out.commands.extend(text_command(
+                node,
+                rect,
+                transform,
+                scale,
+                resolved.text.color,
+                0,
+            ));
+        }
+        for child in node.children.iter().rev() {
+            stack.push((*child, transform));
         }
     }
 }

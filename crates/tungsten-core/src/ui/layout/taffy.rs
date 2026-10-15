@@ -249,7 +249,8 @@ fn available(space: AvailableSpace) -> MeasureWidth {
 
 /// Writes `id`'s viewport-space rect from its solved layout under a parent at
 /// `parent_pos` of `parent_size`, shifting a centred anchor by half the free
-/// space plus its offset, then its children; collects the text leaves.
+/// space plus its offset, then its children; collects the text leaves with
+/// their content boxes, the box less Taffy's border and padding (M56).
 fn place(
     tree: &mut UiTree,
     taffy: &TaffyTree<WidgetId>,
@@ -257,7 +258,7 @@ fn place(
     id: WidgetId,
     parent_pos: Vec2,
     parent_size: Vec2,
-    text_leaves: &mut Vec<(WidgetId, Vec2)>,
+    text_leaves: &mut Vec<(WidgetId, Rect)>,
 ) {
     let Some(taffy_node) = map.get(&id) else {
         return;
@@ -281,11 +282,18 @@ fn place(
     }
     let children = node.children.clone();
     let is_label = node.kind == WidgetKind::Label;
+    let content = is_label.then(|| {
+        let (padding, border) = (layout.padding, layout.border);
+        let start = Vec2::new(padding.left + border.left, padding.top + border.top);
+        let end = Vec2::new(padding.right + border.right, padding.bottom + border.bottom);
+        Rect::from_pos_size(pos + start, (size - start - end).max(Vec2::ZERO))
+    });
     if let Some(node) = tree.node_mut(id) {
         node.rect = Some(Rect::from_pos_size(pos, size));
+        node.content = content;
     }
-    if is_label {
-        text_leaves.push((id, size));
+    if let Some(content) = content {
+        text_leaves.push((id, content));
     }
     for child in children {
         place(tree, taffy, map, child, pos, size, text_leaves);
@@ -298,6 +306,7 @@ fn clear_rects(tree: &mut UiTree, id: WidgetId) {
         return;
     };
     node.rect = None;
+    node.content = None;
     let children = node.children.clone();
     for child in children {
         clear_rects(tree, child);
@@ -327,6 +336,7 @@ pub(crate) fn lay_out_root(
     result.nodes = map.len() as u32;
 
     let mut measure_calls = 0_u32;
+    let text_scale = tree.text_scale();
     taffy
         .compute_layout_with_measure(
             viewport_node,
@@ -353,10 +363,13 @@ pub(crate) fn lay_out_root(
                             };
                         }
                         if let Some(control) = node.control {
+                            // The text scale grows a control with its line
+                            // height (M56).
                             let line = node
                                 .resolved
                                 .as_ref()
-                                .map_or(0.0, |resolved| resolved.text.line_height);
+                                .map_or(0.0, |resolved| resolved.text.line_height)
+                                * text_scale;
                             let (width, height) = control.natural_size(line);
                             return Size {
                                 width: known.width.unwrap_or(width),
@@ -367,7 +380,14 @@ pub(crate) fn lay_out_root(
                             return Size::ZERO;
                         };
                         measure_calls += 1;
-                        let metrics = store.measure(text_node, known.width, available(space.width));
+                        // A known width is the border box's; the available
+                        // width is then the content box's, where the text
+                        // commits (M56).
+                        let width = known.width.map(|width| match space.width {
+                            AvailableSpace::Definite(content) => content,
+                            _ => width,
+                        });
+                        let metrics = store.measure(text_node, width, available(space.width));
                         Size {
                             width: known.width.unwrap_or(metrics.size.x),
                             height: known.height.unwrap_or(metrics.size.y),
@@ -389,11 +409,11 @@ pub(crate) fn lay_out_root(
         viewport,
         &mut text_leaves,
     );
-    for (id, size) in text_leaves {
+    for (id, content) in text_leaves {
         let Some(text_node) = tree.node(id).and_then(|node| node.text_id) else {
             continue;
         };
-        store.commit_layout(text_node, size);
+        store.commit_layout(text_node, content.size());
         result.commits += 1;
     }
     result

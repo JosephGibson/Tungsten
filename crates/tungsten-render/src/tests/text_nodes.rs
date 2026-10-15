@@ -443,3 +443,43 @@ fn a_nodes_revision_moves_on_changed_text_and_on_commits_only() {
     engine.remove_node(node);
     assert_eq!(engine.node_revision(node), None);
 }
+
+#[test]
+fn the_style_colour_is_not_baked_into_glyphs_and_a_span_colour_is() {
+    let mut engine = engine();
+    let mut style = mono();
+    style.color = [10, 20, 30, 255];
+    let node = node_with(&mut engine, "plain", &style);
+    engine.measure(node, None, MeasureWidth::MaxContent);
+    let colours = |engine: &TextEngine, node| -> Vec<Option<glyphon::Color>> {
+        let current = engine.nodes.slot(node).unwrap().node.as_ref().unwrap();
+        current
+            .buffer
+            .layout_runs()
+            .flat_map(|run| run.glyphs.iter().map(|g| g.color_opt).collect::<Vec<_>>())
+            .collect()
+    };
+    let plain = colours(&engine, node);
+    assert!(!plain.is_empty());
+    assert!(
+        plain.iter().all(Option::is_none),
+        "glyphs take the area's default colour (M56)"
+    );
+
+    let mut red = TextSpan::new("red");
+    red.color = Some([255, 0, 0, 255]);
+    let text = StyledText {
+        spans: vec![red, TextSpan::new("rest")],
+    };
+    let mixed = engine.create_node();
+    engine.set_text(mixed, &text, &style);
+    engine.measure(mixed, None, MeasureWidth::MaxContent);
+    let colours = colours(&engine, mixed);
+    assert_eq!(colours.len(), 7);
+    assert!(
+        colours[..3]
+            .iter()
+            .all(|c| *c == Some(glyphon::Color::rgba(255, 0, 0, 255)))
+    );
+    assert!(colours[3..].iter().all(Option::is_none));
+}
