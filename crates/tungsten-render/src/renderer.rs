@@ -1995,6 +1995,9 @@ impl Renderer {
                                 &self.sprite_pipeline,
                                 attachment,
                             ),
+                            DrawItem::Mesh { .. } => {
+                                self.ui_pipeline.draw_mesh(&mut pass, item, attachment);
+                            }
                             DrawItem::Text { batch, scissor } => {
                                 // glyphon clips through `TextBounds` and
                                 // leaves the scissor as it finds it, so the

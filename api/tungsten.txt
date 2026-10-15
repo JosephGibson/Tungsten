@@ -167,6 +167,7 @@ impl core::marker::UnsafeUnpin for tungsten::debug_hud::HudCorner
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::debug_hud::HudCorner
 impl core::panic::unwind_safe::UnwindSafe for tungsten::debug_hud::HudCorner
 pub struct tungsten::debug_hud::DebugHud
+pub tungsten::debug_hud::DebugHud::background: [u8; 4]
 pub tungsten::debug_hud::DebugHud::color: [u8; 4]
 pub tungsten::debug_hud::DebugHud::corner: tungsten::debug_hud::HudCorner
 pub tungsten::debug_hud::DebugHud::enabled: bool
@@ -182,6 +183,7 @@ pub fn tungsten::debug_hud::DebugHud::add_row<F>(&mut self, F) where F: core::op
 pub fn tungsten::debug_hud::DebugHud::new() -> Self
 pub fn tungsten::debug_hud::DebugHud::rendered_height_px(&self) -> f32
 pub fn tungsten::debug_hud::DebugHud::toggle(&mut self)
+pub fn tungsten::debug_hud::DebugHud::window(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 impl core::default::Default for tungsten::debug_hud::DebugHud
 pub fn tungsten::debug_hud::DebugHud::default() -> Self
 impl core::marker::Freeze for tungsten::debug_hud::DebugHud
@@ -258,6 +260,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten::hot_reload::HotReloadWat
 pub mod tungsten::inspector
 pub use tungsten::inspector::InspectFn
 pub struct tungsten::inspector::InspectorState
+pub tungsten::inspector::InspectorState::background: [u8; 4]
 pub tungsten::inspector::InspectorState::color: [u8; 4]
 pub tungsten::inspector::InspectorState::corner: tungsten::debug_hud::HudCorner
 pub tungsten::inspector::InspectorState::enabled: bool
@@ -275,6 +278,7 @@ pub fn tungsten::inspector::InspectorState::new_with_defaults() -> Self
 pub fn tungsten::inspector::InspectorState::register<T: 'static + tungsten_core::inspect::Inspectable>(&mut self, &'static str)
 pub fn tungsten::inspector::InspectorState::registered_len(&self) -> usize
 pub fn tungsten::inspector::InspectorState::toggle(&mut self)
+pub fn tungsten::inspector::InspectorState::window(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 impl core::default::Default for tungsten::inspector::InspectorState
 pub fn tungsten::inspector::InspectorState::default() -> Self
 impl core::marker::Freeze for tungsten::inspector::InspectorState
@@ -356,6 +360,7 @@ pub use tungsten::plugins::DISPLAY_INPUT
 pub use tungsten::plugins::HUD_TOGGLE
 pub use tungsten::plugins::INSPECTOR_PICK
 pub use tungsten::plugins::INSPECTOR_TOGGLE
+pub use tungsten::plugins::LOG_CONSOLE_TOGGLE
 pub use tungsten::plugins::PARTICLE_COUNT_REFRESH
 pub use tungsten::plugins::PARTICLE_EMIT
 pub use tungsten::plugins::PARTICLE_TICK
@@ -372,6 +377,7 @@ pub use tungsten::plugins::SYSTEMS_OVERLAY_TOGGLE
 pub use tungsten::plugins::TWEEN_TICK
 pub use tungsten::plugins::UI_ANIMATE
 pub use tungsten::plugins::UI_DEBUG_TOGGLE
+pub use tungsten::plugins::UI_INSPECTOR_TOGGLE
 pub use tungsten::plugins::UI_ROUTE
 pub use tungsten::plugins::UI_STATE_ROOTS
 pub struct tungsten::plugins::CameraPlugin
@@ -636,6 +642,7 @@ pub type tungsten::state::StateId = &'static str
 pub mod tungsten::systems_overlay
 pub struct tungsten::systems_overlay::SystemTimingOverlay
 pub tungsten::systems_overlay::SystemTimingOverlay::alpha: f32
+pub tungsten::systems_overlay::SystemTimingOverlay::background: [u8; 4]
 pub tungsten::systems_overlay::SystemTimingOverlay::color: [u8; 4]
 pub tungsten::systems_overlay::SystemTimingOverlay::corner: tungsten::debug_hud::HudCorner
 pub tungsten::systems_overlay::SystemTimingOverlay::enabled: bool
@@ -648,6 +655,7 @@ pub tungsten::systems_overlay::SystemTimingOverlay::padding_px: f32
 pub tungsten::systems_overlay::SystemTimingOverlay::refresh_interval_ms: f32
 impl tungsten::systems_overlay::SystemTimingOverlay
 pub fn tungsten::systems_overlay::SystemTimingOverlay::toggle(&mut self)
+pub fn tungsten::systems_overlay::SystemTimingOverlay::window(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 impl core::default::Default for tungsten::systems_overlay::SystemTimingOverlay
 pub fn tungsten::systems_overlay::SystemTimingOverlay::default() -> Self
 impl core::fmt::Debug for tungsten::systems_overlay::SystemTimingOverlay
@@ -815,6 +823,7 @@ pub fn tungsten::testing::UiHarness::step(&mut self, u32) -> u32
 pub fn tungsten::testing::UiHarness::text(&self) -> &tungsten_core::ui::measure::FixedAdvanceMeasure
 pub fn tungsten::testing::UiHarness::tree(&self) -> &tungsten_core::ui::tree::UiTree
 pub fn tungsten::testing::UiHarness::tree_mut(&mut self) -> &mut tungsten_core::ui::tree::UiTree
+pub fn tungsten::testing::UiHarness::wheel(&mut self, f32)
 pub fn tungsten::testing::UiHarness::world(&self) -> &tungsten_core::ecs::world::World
 pub fn tungsten::testing::UiHarness::world_mut(&mut self) -> &mut tungsten_core::ecs::world::World
 impl !core::marker::Freeze for tungsten::testing::UiHarness
@@ -1063,6 +1072,7 @@ impl core::marker::UnsafeUnpin for tungsten::plugins::CameraPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::plugins::CameraPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten::plugins::CameraPlugin
 pub struct tungsten::DebugHud
+pub tungsten::DebugHud::background: [u8; 4]
 pub tungsten::DebugHud::color: [u8; 4]
 pub tungsten::DebugHud::corner: tungsten::debug_hud::HudCorner
 pub tungsten::DebugHud::enabled: bool
@@ -1078,6 +1088,7 @@ pub fn tungsten::debug_hud::DebugHud::add_row<F>(&mut self, F) where F: core::op
 pub fn tungsten::debug_hud::DebugHud::new() -> Self
 pub fn tungsten::debug_hud::DebugHud::rendered_height_px(&self) -> f32
 pub fn tungsten::debug_hud::DebugHud::toggle(&mut self)
+pub fn tungsten::debug_hud::DebugHud::window(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 impl core::default::Default for tungsten::debug_hud::DebugHud
 pub fn tungsten::debug_hud::DebugHud::default() -> Self
 impl core::marker::Freeze for tungsten::debug_hud::DebugHud
@@ -1271,6 +1282,7 @@ impl core::marker::UnsafeUnpin for tungsten::debug_hud::HudRow
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::debug_hud::HudRow
 impl core::panic::unwind_safe::UnwindSafe for tungsten::debug_hud::HudRow
 pub struct tungsten::InspectorState
+pub tungsten::InspectorState::background: [u8; 4]
 pub tungsten::InspectorState::color: [u8; 4]
 pub tungsten::InspectorState::corner: tungsten::debug_hud::HudCorner
 pub tungsten::InspectorState::enabled: bool
@@ -1288,6 +1300,7 @@ pub fn tungsten::inspector::InspectorState::new_with_defaults() -> Self
 pub fn tungsten::inspector::InspectorState::register<T: 'static + tungsten_core::inspect::Inspectable>(&mut self, &'static str)
 pub fn tungsten::inspector::InspectorState::registered_len(&self) -> usize
 pub fn tungsten::inspector::InspectorState::toggle(&mut self)
+pub fn tungsten::inspector::InspectorState::window(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 impl core::default::Default for tungsten::inspector::InspectorState
 pub fn tungsten::inspector::InspectorState::default() -> Self
 impl core::marker::Freeze for tungsten::inspector::InspectorState
@@ -1297,6 +1310,33 @@ impl core::marker::Unpin for tungsten::inspector::InspectorState
 impl core::marker::UnsafeUnpin for tungsten::inspector::InspectorState
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten::inspector::InspectorState
 impl !core::panic::unwind_safe::UnwindSafe for tungsten::inspector::InspectorState
+pub struct tungsten::LogConsole
+pub tungsten::LogConsole::background: [u8; 4]
+pub tungsten::LogConsole::capacity: usize
+pub tungsten::LogConsole::color: [u8; 4]
+pub tungsten::LogConsole::corner: tungsten::debug_hud::HudCorner
+pub tungsten::LogConsole::enabled: bool
+pub tungsten::LogConsole::font_id: alloc::string::String
+pub tungsten::LogConsole::font_size: f32
+pub tungsten::LogConsole::line_height: f32
+pub tungsten::LogConsole::outline_color: [u8; 4]
+pub tungsten::LogConsole::outline_px: f32
+pub tungsten::LogConsole::padding_px: f32
+pub tungsten::LogConsole::refresh_interval_ms: f32
+impl tungsten::LogConsole
+pub fn tungsten::LogConsole::dropped(&self) -> u64
+pub fn tungsten::LogConsole::lines(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
+pub fn tungsten::LogConsole::toggle(&mut self)
+pub fn tungsten::LogConsole::window(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
+impl core::default::Default for tungsten::LogConsole
+pub fn tungsten::LogConsole::default() -> Self
+impl core::marker::Freeze for tungsten::LogConsole
+impl core::marker::Send for tungsten::LogConsole
+impl !core::marker::Sync for tungsten::LogConsole
+impl core::marker::Unpin for tungsten::LogConsole
+impl core::marker::UnsafeUnpin for tungsten::LogConsole
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::LogConsole
+impl core::panic::unwind_safe::UnwindSafe for tungsten::LogConsole
 pub struct tungsten::ParticleBurstEmitted
 pub tungsten::ParticleBurstEmitted::count: u32
 pub tungsten::ParticleBurstEmitted::emitter: tungsten_core::ecs::entity::Entity
@@ -1487,6 +1527,7 @@ impl !core::panic::unwind_safe::RefUnwindSafe for tungsten::state::StateStack
 impl !core::panic::unwind_safe::UnwindSafe for tungsten::state::StateStack
 pub struct tungsten::SystemTimingOverlay
 pub tungsten::SystemTimingOverlay::alpha: f32
+pub tungsten::SystemTimingOverlay::background: [u8; 4]
 pub tungsten::SystemTimingOverlay::color: [u8; 4]
 pub tungsten::SystemTimingOverlay::corner: tungsten::debug_hud::HudCorner
 pub tungsten::SystemTimingOverlay::enabled: bool
@@ -1499,6 +1540,7 @@ pub tungsten::SystemTimingOverlay::padding_px: f32
 pub tungsten::SystemTimingOverlay::refresh_interval_ms: f32
 impl tungsten::systems_overlay::SystemTimingOverlay
 pub fn tungsten::systems_overlay::SystemTimingOverlay::toggle(&mut self)
+pub fn tungsten::systems_overlay::SystemTimingOverlay::window(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 impl core::default::Default for tungsten::systems_overlay::SystemTimingOverlay
 pub fn tungsten::systems_overlay::SystemTimingOverlay::default() -> Self
 impl core::fmt::Debug for tungsten::systems_overlay::SystemTimingOverlay
@@ -1572,6 +1614,31 @@ impl core::marker::Unpin for tungsten::plugins::TweensPlugin
 impl core::marker::UnsafeUnpin for tungsten::plugins::TweensPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::plugins::TweensPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten::plugins::TweensPlugin
+pub struct tungsten::UiInspector
+pub tungsten::UiInspector::background: [u8; 4]
+pub tungsten::UiInspector::color: [u8; 4]
+pub tungsten::UiInspector::corner: tungsten::debug_hud::HudCorner
+pub tungsten::UiInspector::enabled: bool
+pub tungsten::UiInspector::font_id: alloc::string::String
+pub tungsten::UiInspector::font_size: f32
+pub tungsten::UiInspector::line_height: f32
+pub tungsten::UiInspector::outline_color: [u8; 4]
+pub tungsten::UiInspector::outline_px: f32
+pub tungsten::UiInspector::padding_px: f32
+pub tungsten::UiInspector::picked: core::option::Option<tungsten_core::ui::id::WidgetId>
+pub tungsten::UiInspector::refresh_interval_ms: f32
+impl tungsten::UiInspector
+pub fn tungsten::UiInspector::toggle(&mut self)
+pub fn tungsten::UiInspector::window(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
+impl core::default::Default for tungsten::UiInspector
+pub fn tungsten::UiInspector::default() -> Self
+impl core::marker::Freeze for tungsten::UiInspector
+impl core::marker::Send for tungsten::UiInspector
+impl core::marker::Sync for tungsten::UiInspector
+impl core::marker::Unpin for tungsten::UiInspector
+impl core::marker::UnsafeUnpin for tungsten::UiInspector
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::UiInspector
+impl core::panic::unwind_safe::UnwindSafe for tungsten::UiInspector
 pub struct tungsten::UiPlugin
 impl core::clone::Clone for tungsten::plugins::UiPlugin
 pub fn tungsten::plugins::UiPlugin::clone(&self) -> tungsten::plugins::UiPlugin

@@ -9,7 +9,10 @@
 //! fade multiply every colour's alpha, and translation and scale map each
 //! subtree, text at a scale rounded down to a multiple of 1/32; and the
 //! prewarm list, a root's text runs painted shown or hidden so the renderer
-//! can rasterize them before the root first opens.
+//! can rasterize them before the root first opens. M57 adds the mesh
+//! command: a mesh widget's triangles, their vertices in
+//! [`PaintList::vertices`]; and scroll panels, whose children map through
+//! their offset and whose thumb paints after them.
 
 use std::collections::HashSet;
 use std::fmt::Write as _;
@@ -23,7 +26,8 @@ use crate::text::TextNodeId;
 use super::control::{self, Control};
 use super::geometry::{Rect, UiTransform};
 use super::id::WidgetId;
-use super::node::{Node, UiLayer, Visibility, WidgetKind};
+use super::node::{Node, UiLayer, UiVertex, Visibility, WidgetKind};
+use super::scroll::{self, THUMB_WIDTH, children_transform};
 use super::tree::{MIN_SCALE, UiTree};
 
 /// The border colour of the layout-bounds overlay.
@@ -191,6 +195,16 @@ struct Inherited {
     transform: UiTransform,
 }
 
+/// One entry of the paint walk's stack.
+#[derive(Debug, Clone, Copy)]
+enum PaintStep {
+    /// A node to paint, with what it inherits.
+    Node(WidgetId, Inherited),
+    /// A command to push once the subtree queued above it has painted: a
+    /// scroll panel's thumb (M57).
+    After(PaintCommand),
+}
+
 /// One thing to draw, in physical pixels; `clip` indexes
 /// [`PaintList::clips`].
 #[non_exhaustive]
@@ -247,6 +261,22 @@ pub enum PaintCommand {
         /// The clip index.
         clip: u32,
     },
+    /// A mesh widget's triangles (M57): `count` vertices of
+    /// [`PaintList::vertices`] from `first`, every three a triangle, in
+    /// physical pixels with straight-alpha sRGB colours, no texture and no
+    /// anti-aliasing. [`PaintList::mesh_vertices`] reads them.
+    Mesh {
+        /// The bounding box of the mapped vertices, which may leave the
+        /// widget's box, so the partition rule sees every pixel a triangle
+        /// can paint.
+        rect: Rect,
+        /// The first vertex.
+        first: u32,
+        /// The vertex count, a multiple of 3.
+        count: u32,
+        /// The clip index.
+        clip: u32,
+    },
 }
 
 impl PaintCommand {
@@ -254,7 +284,10 @@ impl PaintCommand {
     #[must_use]
     pub fn rect(&self) -> Rect {
         match self {
-            Self::Rect { rect, .. } | Self::Image { rect, .. } | Self::Text { rect, .. } => *rect,
+            Self::Rect { rect, .. }
+            | Self::Image { rect, .. }
+            | Self::Text { rect, .. }
+            | Self::Mesh { rect, .. } => *rect,
         }
     }
 
@@ -262,7 +295,10 @@ impl PaintCommand {
     #[must_use]
     pub fn clip(&self) -> u32 {
         match self {
-            Self::Rect { clip, .. } | Self::Image { clip, .. } | Self::Text { clip, .. } => *clip,
+            Self::Rect { clip, .. }
+            | Self::Image { clip, .. }
+            | Self::Text { clip, .. }
+            | Self::Mesh { clip, .. } => *clip,
         }
     }
 
@@ -284,6 +320,9 @@ pub struct PaintList {
     pub clips: Vec<ClipRect>,
     /// The commands in paint order.
     pub commands: Vec<PaintCommand>,
+    /// The vertices [`PaintCommand::Mesh`] commands index, in physical
+    /// pixels (M57).
+    pub vertices: Vec<UiVertex>,
 }
 
 impl Default for PaintList {
@@ -293,15 +332,31 @@ impl Default for PaintList {
             scale: 1.0,
             clips: Vec::new(),
             commands: Vec::new(),
+            vertices: Vec::new(),
         }
     }
 }
 
 impl PaintList {
-    /// Drops the clips and commands, keeping their capacity and the scale.
+    /// Drops the clips, commands and vertices, keeping their capacity and
+    /// the scale.
     pub fn clear(&mut self) {
         self.clips.clear();
         self.commands.clear();
+        self.vertices.clear();
+    }
+
+    /// The vertices a [`PaintCommand::Mesh`] draws; empty for any other
+    /// command or a range past [`Self::vertices`].
+    #[must_use]
+    pub fn mesh_vertices(&self, command: &PaintCommand) -> &[UiVertex] {
+        let PaintCommand::Mesh { first, count, .. } = *command else {
+            return &[];
+        };
+        let start = first as usize;
+        self.vertices
+            .get(start..start.saturating_add(count as usize))
+            .unwrap_or(&[])
     }
 
     /// Whether there is nothing to draw.
@@ -360,8 +415,9 @@ impl PaintList {
     /// one line per command (`Rect (x, y) w×h fill #rrggbbaa border #rrggbbaa
     /// 1.0 r 4.0 clip 0`, `Image (x, y) w×h tex 3 uv (u, v)-(u, v) nearest
     /// tint #rrggbbaa clip 1`, `Text node 2:0 (x, y) w×h #rrggbbaa clip 1`,
-    /// with ` x0.5` before the clip when the text scale is not 1) with a
-    /// `-- batch n` line where [`Self::text_batches`] opens a batch.
+    /// with ` x0.5` before the clip when the text scale is not 1, `Mesh (x,
+    /// y) w×h verts 6 clip 0`) with a `-- batch n` line where
+    /// [`Self::text_batches`] opens a batch.
     #[must_use]
     pub fn dump(&self) -> String {
         let mut out = String::new();
@@ -443,6 +499,11 @@ impl PaintList {
                         rect_str(*rect),
                         hex(*color)
                     );
+                }
+                PaintCommand::Mesh {
+                    rect, count, clip, ..
+                } => {
+                    let _ = writeln!(out, "Mesh {} verts {count} clip {clip}", rect_str(*rect));
                 }
             }
         }
@@ -572,6 +633,38 @@ fn push_images(
     }
 }
 
+/// Pushes a mesh's triangles, when it has any, as one command: each vertex
+/// at its fraction of `rect`, mapped by `transform`, in physical pixels at
+/// `scale`, its colour's alpha times `alpha`; the command's box bounds them.
+fn push_mesh(
+    out: &mut PaintList,
+    mesh: &[UiVertex],
+    rect: Rect,
+    transform: UiTransform,
+    scale: f32,
+    alpha: f32,
+    clip: u32,
+) {
+    if mesh.is_empty() {
+        return;
+    }
+    let first = out.vertices.len();
+    let size = rect.size();
+    let mut bounds = Rect::new(Vec2::splat(f32::INFINITY), Vec2::splat(f32::NEG_INFINITY));
+    for vertex in mesh {
+        let position = transform.point(rect.min + vertex.position * size) * scale;
+        bounds = Rect::new(bounds.min.min(position), bounds.max.max(position));
+        out.vertices
+            .push(UiVertex::new(position, faded(vertex.color, alpha)));
+    }
+    out.commands.push(PaintCommand::Mesh {
+        rect: bounds,
+        first: first as u32,
+        count: mesh.len() as u32,
+        clip,
+    });
+}
+
 /// Pushes a rectangle when its fill or its border shows.
 fn push_box(
     out: &mut PaintList,
@@ -599,14 +692,14 @@ impl UiTree {
     /// layers low to high, roots and children in order, each node's own box
     /// when its fill or border is visible, then a label's text run, an
     /// image's sprite (`sprites` resolves it; an unregistered sprite warns
-    /// once per ID and draws nothing) or a toggle's mark when it is on; a
-    /// slider paints its track, fill and thumb in place of its box. Then its
-    /// children, inside the intersection of its box and the enclosing clip
-    /// when it clips them, skipped when that is empty. Clip 0 is the
-    /// viewport of the last [`Self::layout`]. `Hidden` and `Collapsed`
-    /// subtrees paint nothing; with `debug.hide_game_layers` neither do the
-    /// `Game` and `GamePopup` layers, and `debug.show_bounds` appends an
-    /// outline per painted node. Clears the paint-dirty flag.
+    /// once per ID and draws nothing), a toggle's mark when it is on or a
+    /// mesh's triangles; a slider paints its track, fill and thumb in place
+    /// of its box. Then its children, inside the intersection of its box and
+    /// the enclosing clip when it clips them, skipped when that is empty.
+    /// Clip 0 is the viewport of the last [`Self::layout`]. `Hidden` and
+    /// `Collapsed` subtrees paint nothing; with `debug.hide_game_layers`
+    /// neither do the `Game` and `GamePopup` layers, and `debug.show_bounds`
+    /// appends an outline per painted node. Clears the paint-dirty flag.
     pub fn paint(
         &mut self,
         scale: f32,
@@ -626,7 +719,7 @@ impl UiTree {
 
         let mut warned = std::mem::take(&mut self.warned_sprites);
         let mut bounds = Vec::new();
-        let mut stack: Vec<(WidgetId, Inherited)> = Vec::new();
+        let mut stack: Vec<PaintStep> = Vec::new();
         for i in 0..self.roots.len() {
             let root = self.roots[i];
             if debug.hide_game_layers
@@ -636,7 +729,7 @@ impl UiTree {
             {
                 continue;
             }
-            stack.push((
+            stack.push(PaintStep::Node(
                 root,
                 Inherited {
                     clip: 0,
@@ -644,17 +737,20 @@ impl UiTree {
                     transform: UiTransform::IDENTITY,
                 },
             ));
-            while let Some((id, inherited)) = stack.pop() {
-                self.paint_node(
-                    id,
-                    inherited,
-                    scale,
-                    sprites,
-                    out,
-                    &mut bounds,
-                    &mut warned,
-                    &mut stack,
-                );
+            while let Some(step) = stack.pop() {
+                match step {
+                    PaintStep::Node(id, inherited) => self.paint_node(
+                        id,
+                        inherited,
+                        scale,
+                        sprites,
+                        out,
+                        &mut bounds,
+                        &mut warned,
+                        &mut stack,
+                    ),
+                    PaintStep::After(command) => out.commands.push(command),
+                }
             }
         }
         if debug.show_bounds {
@@ -673,10 +769,12 @@ impl UiTree {
         self.paint_dirty = false;
     }
 
-    /// Paints one node and queues its children, last first, on `stack`.
-    /// The node's alpha is `inherited.alpha` times its opacity (and a
-    /// root's fade); its map is the inherited one after its own. A subtree
-    /// at alpha 0 or under a composed scale below 1/64 paints nothing.
+    /// Paints one node and queues its children, last first, on `stack`,
+    /// under a scroll panel's thumb. The node's alpha is `inherited.alpha`
+    /// times its opacity (and a root's fade); its map is the inherited one
+    /// after its own, and its children's that after a scroll panel's
+    /// offset. A subtree at alpha 0 or under a composed scale below 1/64
+    /// paints nothing.
     #[allow(clippy::too_many_arguments)] // The walk's state, passed rather than kept on the tree.
     #[allow(clippy::too_many_lines)] // One arm per kind, each a few pushes.
     fn paint_node(
@@ -688,7 +786,7 @@ impl UiTree {
         out: &mut PaintList,
         bounds: &mut Vec<Rect>,
         warned: &mut HashSet<SpriteAssetId>,
-        stack: &mut Vec<(WidgetId, Inherited)>,
+        stack: &mut Vec<PaintStep>,
     ) {
         let Some(node) = self.node(id) else {
             return;
@@ -803,6 +901,9 @@ impl UiTree {
                     );
                 }
             }
+            WidgetKind::Mesh => {
+                push_mesh(out, &node.mesh, rect, transform, scale, alpha, clip);
+            }
             WidgetKind::Panel | WidgetKind::Button => {}
         }
         if node.children.is_empty() {
@@ -823,13 +924,26 @@ impl UiTree {
         } else {
             clip
         };
+        if let Some(thumb) = node
+            .scroll
+            .and_then(|state| scroll::thumb(rect, state, resolved.border_width))
+        {
+            stack.push(PaintStep::After(PaintCommand::Rect {
+                rect: paint_rect(thumb),
+                fill: faded(resolved.text.color, 0.5 * alpha),
+                border: TRANSPARENT,
+                border_width: 0.0,
+                corner_radius: THUMB_WIDTH * 0.5 * length,
+                clip,
+            }));
+        }
         let inherited = Inherited {
             clip: child_clip,
             alpha,
-            transform,
+            transform: transform.compose(children_transform(node, scale)),
         };
         for child in node.children.iter().rev() {
-            stack.push((*child, inherited));
+            stack.push(PaintStep::Node(*child, inherited));
         }
     }
 
@@ -922,8 +1036,9 @@ impl UiTree {
                 0,
             ));
         }
+        let children = transform.compose(children_transform(node, scale));
         for child in node.children.iter().rev() {
-            stack.push((*child, transform));
+            stack.push((*child, children));
         }
     }
 }

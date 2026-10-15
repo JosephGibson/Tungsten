@@ -3,9 +3,9 @@
 //! the dirty flags. Every mutation is a method call that marks only what it
 //! changes: text, visibility, an image's size and layout style mark layout
 //! (and so paint); enabled, a tint, the clip flag, opacity, translation,
-//! scale and a root's fade mark paint (M56); hover, press and focus
-//! visibility mark the widgets' styles; roles, names, the behaviour flags
-//! and a root's freeze mark nothing.
+//! scale and a root's fade mark paint (M56), as a mesh's triangles do (M57);
+//! hover, press and focus visibility mark the widgets' styles; roles, names,
+//! the behaviour flags and a root's freeze mark nothing.
 
 use std::collections::HashSet;
 
@@ -17,7 +17,7 @@ use crate::text::{FontEpoch, StyledText, TextNodeId, TextStyle};
 use super::anim::RunningTrack;
 use super::id::WidgetId;
 use super::node::{
-    CursorIcon, ImageContent, Node, Role, TextContent, UiLayer, Visibility, WidgetKind,
+    CursorIcon, ImageContent, Node, Role, TextContent, UiLayer, UiVertex, Visibility, WidgetKind,
 };
 use super::prompt::Prompt;
 use super::style::LayoutStyle;
@@ -56,6 +56,19 @@ pub struct LayoutStats {
     pub measure_calls: u32,
     /// Text nodes committed.
     pub commits: u32,
+}
+
+/// The work a widget waits on, from [`UiTree::widget_dirty`] (M57).
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct WidgetDirty {
+    /// Its style resolves at the next layout.
+    pub style: bool,
+    /// A label's text node is set again at the next layout: new, changed
+    /// text or a changed text style.
+    pub text: bool,
+    /// Its root is laid out at the next layout.
+    pub layout: bool,
 }
 
 /// The UI: one `World` resource holding every root, on layers, with the
@@ -339,6 +352,45 @@ impl UiTree {
         self.mark_paint_dirty();
     }
 
+    /// A mesh under `parent` (M57): a leaf drawing the triangles
+    /// [`Self::set_mesh`] gives it, over its own box, which takes the panel's
+    /// kind style. It has no natural size, so an `Auto` axis measures 0; it
+    /// starts with no triangle. Panics when `parent` is not in the tree.
+    pub fn mesh(&mut self, parent: WidgetId, style: LayoutStyle) -> WidgetId {
+        self.add_child(parent, WidgetKind::Mesh, style)
+    }
+
+    /// Replaces a mesh's triangles: every three of `vertices` make one, in
+    /// fractions of the widget's box. Keeps the whole triangles whose six
+    /// coordinates are finite and drops a trailing partial one. Returns
+    /// whether the stored mesh changed, and then marks paint, never layout;
+    /// does nothing for a widget that is not a mesh.
+    pub fn set_mesh(&mut self, id: WidgetId, vertices: &[UiVertex]) -> bool {
+        let Some(node) = self
+            .node_mut(id)
+            .filter(|node| node.kind == WidgetKind::Mesh)
+        else {
+            return false;
+        };
+        let (triangles, _partial) = vertices.as_chunks::<3>();
+        let kept = triangles
+            .iter()
+            .filter(|triangle| triangle.iter().all(|vertex| vertex.position.is_finite()));
+        if kept.clone().flatten().eq(node.mesh.iter()) {
+            return false;
+        }
+        node.mesh.clear();
+        node.mesh.extend(kept.flatten().copied());
+        self.mark_paint_dirty();
+        true
+    }
+
+    /// A mesh's stored triangles; empty for a widget that is not a mesh.
+    #[must_use]
+    pub fn mesh_vertices(&self, id: WidgetId) -> &[UiVertex] {
+        self.node(id).map_or(&[], |node| node.mesh.as_slice())
+    }
+
     /// Keeps `id`'s children's paint inside its box: the paint list clips
     /// them to the intersection of the box and the enclosing clip, and skips
     /// them when it is empty. Off by default; roots are clipped by the
@@ -462,7 +514,11 @@ impl UiTree {
         match node.kind {
             WidgetKind::Label => Some(id),
             WidgetKind::Button => node.children.first().copied(),
-            WidgetKind::Panel | WidgetKind::Image | WidgetKind::Toggle | WidgetKind::Slider => None,
+            WidgetKind::Panel
+            | WidgetKind::Image
+            | WidgetKind::Toggle
+            | WidgetKind::Slider
+            | WidgetKind::Mesh => None,
         }
     }
 
@@ -1082,6 +1138,19 @@ impl UiTree {
                 .find(|state| *state != WidgetState::Normal)
                 .unwrap_or_default(),
         )
+    }
+
+    /// What `id` waits on until the next layout (M57): its style, a label's
+    /// text node and its root's layout. `None` for an invalid ID.
+    #[must_use]
+    pub fn widget_dirty(&self, id: WidgetId) -> Option<WidgetDirty> {
+        let node = self.node(id)?;
+        let layout = self.node(node.root).is_some_and(|root| root.layout_dirty);
+        Some(WidgetDirty {
+            style: node.style_dirty,
+            text: node.kind == WidgetKind::Label && node.text_stale,
+            layout,
+        })
     }
 
     /// The states whose variants `id`'s style applies, in order: `disabled`

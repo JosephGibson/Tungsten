@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use crate::app::WindowSize;
 use tungsten_core::assets::{FilterMode, TextureHandle, UvRect};
 use tungsten_core::input::{KeyCode, MouseButton};
+use tungsten_core::ui::UiTree;
 
 fn make_world() -> World {
     let mut world = World::new();
@@ -303,125 +304,112 @@ fn stale_selection_is_cleared_before_picking() {
     );
 }
 
+/// The views' frame after a frame `interval` ms apart from the one before.
+fn views_frame(world: &mut World, interval: Option<f32>) {
+    if !world.has_resource::<UiTree>() {
+        world.insert_resource(UiTree::new());
+    }
+    let mut timings = crate::telemetry::FrameTimings::new();
+    timings.interval_ms = interval;
+    world.insert_resource(timings);
+    crate::debug_views::update(world);
+}
+
+/// The window's header and its rows' cells.
+fn window_texts(world: &World) -> (String, Vec<Vec<String>>) {
+    let window = world
+        .resource::<InspectorState>()
+        .window
+        .as_ref()
+        .expect("open");
+    let tree = world.resource::<UiTree>();
+    let text = |id: WidgetId| -> String {
+        tree.text(id)
+            .map(|text| text.spans.iter().map(|span| span.text.as_str()).collect())
+            .unwrap_or_default()
+    };
+    let columns: Vec<&[WidgetId]> = window
+        .columns
+        .iter()
+        .map(|column| tree.children(*column))
+        .collect();
+    let rows = (0..columns[0].len())
+        .map(|i| columns.iter().map(|column| text(column[i])).collect())
+        .collect();
+    (text(window.header.unwrap()), rows)
+}
+
 #[test]
-fn compose_renders_hint_message_when_enabled() {
-    let mut state = InspectorState::new();
-    state.enabled = true;
-    let world = World::new();
-    let sections = compose_inspector_text_section(&mut state, &world, (800, 600), 16.0);
-    assert!(!sections.is_empty());
-    assert!(
-        sections
-            .iter()
-            .any(|s| s.content.contains("mouse 3 to pick"))
-    );
+fn the_window_says_mouse_3_to_pick_with_nothing_selected() {
+    let mut world = make_world();
+    world.resource_mut::<InspectorState>().enabled = true;
+    views_frame(&mut world, None);
+    let (header, rows) = window_texts(&world);
+    assert_eq!(header, "mouse 3 to pick");
+    assert!(rows.is_empty());
 }
 
 #[test]
 #[allow(deprecated)]
-fn compose_renders_registered_rows_for_selected_entity() {
-    let mut world = World::new();
+fn the_window_lists_the_entity_then_section_row_and_value_columns() {
+    let mut world = make_world();
     let e = world.spawn();
     world.insert(e, Tag::new("hero"));
     world.insert(e, Transform::from_position(Vec2::new(3.0, 5.0)));
-
-    let mut state = InspectorState::new_with_defaults();
-    state.enabled = true;
-    state.selected = Some(e);
-
-    let sections = compose_inspector_text_section(&mut state, &world, (800, 600), 16.0);
-    let joined: String = sections
-        .iter()
-        .map(|s| s.content.as_str())
-        .collect::<Vec<_>>()
-        .join("\n");
-    // Compact layout: no bracketed headers or blank separators.
-    assert!(joined.contains("Tag"));
-    assert!(joined.contains("hero"));
-    assert!(joined.contains("Transform"));
-    assert!(joined.contains("pos"));
-    assert!(!joined.contains("[ Tag ]"));
-    assert!(!joined.contains("────"));
-}
-
-#[test]
-#[allow(deprecated)]
-fn compose_renders_registry_rows_before_the_states_own() {
-    let mut world = World::new();
-    world.insert_resource(default_inspect_registry());
-    let e = world.spawn();
-    world.insert(e, Tag::new("hero"));
-
     let mut state = InspectorState::new();
     state.register::<Tag>("Again");
     state.enabled = true;
     state.selected = Some(e);
+    world.insert_resource(state);
+    views_frame(&mut world, None);
+    let (header, rows) = window_texts(&world);
+    assert_eq!(header, format!("entity {e}"));
+    assert_eq!(rows[0], ["Tag", "name", "hero"]);
+    assert!(
+        rows.iter()
+            .any(|row| row[0] == "Transform" && row[1] == "pos")
+    );
+    assert_eq!(
+        rows.last().unwrap()[0],
+        "Again",
+        "the registry's rows first, then the state's own"
+    );
 
-    let sections = compose_inspector_text_section(&mut state, &world, (800, 600), 16.0);
-    let joined: String = sections
-        .iter()
-        .map(|s| s.content.as_str())
-        .collect::<Vec<_>>()
-        .join("\n");
-    let registry_row = joined.find("Tag").expect("the registry's Tag row");
-    let own_row = joined.find("Again").expect("the state's own row");
-    assert!(registry_row < own_row, "{joined}");
+    let bare = world.spawn();
+    world.resource_mut::<InspectorState>().selected = Some(bare);
+    views_frame(&mut world, None);
+    let (header, rows) = window_texts(&world);
+    assert_eq!(header, format!("entity {bare}"));
+    assert_eq!(rows, [["(no registered components)", "", ""]]);
 }
 
 #[test]
-fn compose_returns_empty_when_disabled() {
-    let mut state = InspectorState::new();
-    let world = World::new();
-    let sections = compose_inspector_text_section(&mut state, &world, (800, 600), 16.0);
-    assert!(sections.is_empty());
-}
-
-#[test]
-fn compose_throttles_rebuild_between_intervals() {
-    let mut world = World::new();
-    world.insert_resource(default_inspect_registry());
-    let e = world.spawn();
-    world.insert(e, Tag::new("hero"));
-
-    let mut state = InspectorState::new();
-    state.enabled = true;
-    state.selected = Some(e);
-    state.refresh_interval_ms = 100.0;
-
-    let first = compose_inspector_text_section(&mut state, &world, (800, 600), 16.0);
-    let first_content = first.last().unwrap().content.clone();
-
-    // Cache wins inside 100 ms interval.
-    world.get_mut::<Tag>(e).unwrap().name = "villain".into();
-    let second = compose_inspector_text_section(&mut state, &world, (800, 600), 16.0);
-    assert_eq!(second.last().unwrap().content, first_content);
-
-    let third = compose_inspector_text_section(&mut state, &world, (800, 600), 200.0);
-    assert!(third.last().unwrap().content.contains("villain"));
-}
-
-#[test]
-fn compose_rebuilds_immediately_when_selection_changes() {
-    // Regression: selection edge bypasses 500 ms throttle.
-    let mut world = World::new();
-    world.insert_resource(default_inspect_registry());
+fn a_new_selection_refreshes_at_once_and_otherwise_the_interval_does() {
+    let mut world = make_world();
     let hero = world.spawn();
     world.insert(hero, Tag::new("hero"));
     let villain = world.spawn();
     world.insert(villain, Tag::new("villain"));
+    {
+        let state = world.resource_mut::<InspectorState>();
+        state.enabled = true;
+        state.selected = Some(hero);
+        state.refresh_interval_ms = 100.0;
+    }
+    views_frame(&mut world, None);
+    assert_eq!(window_texts(&world).1[0][2], "hero");
 
-    let mut state = InspectorState::new();
-    state.enabled = true;
-    state.selected = Some(hero);
-    state.refresh_interval_ms = 500.0;
+    world.get_mut::<Tag>(hero).unwrap().name = "renamed".into();
+    views_frame(&mut world, Some(60.0));
+    assert_eq!(window_texts(&world).1[0][2], "hero", "inside the interval");
+    views_frame(&mut world, Some(60.0));
+    assert_eq!(window_texts(&world).1[0][2], "renamed", "past it");
 
-    let first = compose_inspector_text_section(&mut state, &world, (800, 600), 16.0);
-    assert!(first.last().unwrap().content.contains("hero"));
-
-    state.selected = Some(villain);
-    let second = compose_inspector_text_section(&mut state, &world, (800, 600), 16.0);
-    assert!(second.last().unwrap().content.contains("villain"));
-    assert!(!second.last().unwrap().content.contains("hero"));
+    world.resource_mut::<InspectorState>().selected = Some(villain);
+    views_frame(&mut world, Some(1.0));
+    let (header, rows) = window_texts(&world);
+    assert_eq!(header, format!("entity {villain}"), "at once");
+    assert_eq!(rows[0][2], "villain");
 }
 
 #[test]

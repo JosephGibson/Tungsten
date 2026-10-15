@@ -1267,6 +1267,30 @@ impl core::marker::UnsafeUnpin for tungsten_render::timing::GpuFrameTimings
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::timing::GpuFrameTimings
 impl core::panic::unwind_safe::UnwindSafe for tungsten_render::timing::GpuFrameTimings
 pub mod tungsten_render::ui
+#[repr(C)] pub struct tungsten_render::ui::MeshVertex
+pub tungsten_render::ui::MeshVertex::color: [u8; 4]
+pub tungsten_render::ui::MeshVertex::position: [f32; 2]
+impl tungsten_render::ui::MeshVertex
+pub fn tungsten_render::ui::MeshVertex::desc() -> wgpu::api::render_pipeline::VertexBufferLayout<'static>
+impl bytemuck::pod::Pod for tungsten_render::ui::MeshVertex
+impl bytemuck::zeroable::Zeroable for tungsten_render::ui::MeshVertex
+impl core::clone::Clone for tungsten_render::ui::MeshVertex
+pub fn tungsten_render::ui::MeshVertex::clone(&self) -> tungsten_render::ui::MeshVertex
+impl core::cmp::PartialEq for tungsten_render::ui::MeshVertex
+pub fn tungsten_render::ui::MeshVertex::eq(&self, &tungsten_render::ui::MeshVertex) -> bool
+impl core::convert::From<&tungsten_core::ui::node::UiVertex> for tungsten_render::ui::MeshVertex
+pub fn tungsten_render::ui::MeshVertex::from(&tungsten_core::ui::node::UiVertex) -> Self
+impl core::fmt::Debug for tungsten_render::ui::MeshVertex
+pub fn tungsten_render::ui::MeshVertex::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::ui::MeshVertex
+impl core::marker::StructuralPartialEq for tungsten_render::ui::MeshVertex
+impl core::marker::Freeze for tungsten_render::ui::MeshVertex
+impl core::marker::Send for tungsten_render::ui::MeshVertex
+impl core::marker::Sync for tungsten_render::ui::MeshVertex
+impl core::marker::Unpin for tungsten_render::ui::MeshVertex
+impl core::marker::UnsafeUnpin for tungsten_render::ui::MeshVertex
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::ui::MeshVertex
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::ui::MeshVertex
 #[repr(C)] pub struct tungsten_render::ui::UiInstance
 pub tungsten_render::ui::UiInstance::border: [u8; 4]
 pub tungsten_render::ui::UiInstance::border_width: f32

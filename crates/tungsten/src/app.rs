@@ -6,7 +6,8 @@ use crate::asset_loader;
 use crate::audio::AudioSystem;
 use crate::capture::{Capture, parse_capture_config};
 use crate::crash::{self, CrashContext};
-use crate::debug_hud::{DebugHud, HudActiveState, compose_hud_text_sections};
+use crate::debug_hud::{DebugHud, HudActiveState};
+use crate::debug_views::{DEBUG_WINDOWS_FILE, LogConsole, UiInspector};
 use crate::display::{
     DisplayDelta, PendingDisplay, frame_budget_for, sync_display_state_and_telemetry,
     sync_window_resolution, take_pending_display,
@@ -14,7 +15,7 @@ use crate::display::{
 use crate::extract::Extracts;
 use crate::hot_reload::HotReloadWatcher;
 use crate::input_bridge;
-use crate::inspector::{InspectorState, compose_inspector_text_section, default_inspect_registry};
+use crate::inspector::{InspectorState, UiRouteInstalled, default_inspect_registry};
 use crate::logging;
 use crate::physics_debug::{PhysicsDebugOverlay, physics_debug_emit_system};
 use crate::plugins::DefaultPlugins;
@@ -23,7 +24,7 @@ use crate::post_aa::{PendingPostAa, PostAaState, sync_post_aa_state, take_pendin
 use crate::settings::ShippedConfig;
 use crate::sprite_extract::ExtractScratch;
 use crate::state::StateStack;
-use crate::systems_overlay::{SystemTimingOverlay, compose_systems_overlay_text_section};
+use crate::systems_overlay::SystemTimingOverlay;
 use crate::telemetry::{DisplayTelemetry, FrameTimings, RenderCounts};
 use crate::user_dir::{self, Platform};
 use log::LevelFilter;
@@ -34,7 +35,9 @@ use tungsten_core::assets::{
 };
 use tungsten_core::physics::{PhysicsBuffers, PhysicsConfig};
 use tungsten_core::post::{PostPass, PostStack};
-use tungsten_core::ui::{CursorIcon, PaintList, UiDebug, UiRouter, UiThemeRegistry, UiTree};
+use tungsten_core::ui::{
+    CursorIcon, PaintList, UiDebug, UiRouter, UiThemeRegistry, UiTree, WindowPlacements,
+};
 // `App` writes the deprecated `DeltaTime` each frame until W4b removes it.
 #[allow(deprecated)]
 use tungsten_core::DeltaTime;
@@ -189,7 +192,8 @@ impl App {
             None
         };
         let level = config.logging.level.parse().unwrap_or(LevelFilter::Info);
-        let log_file = logging::install(level, user_dirs.as_ref().map(|dirs| dirs.logs.as_path()));
+        let (log_file, console_feed) =
+            logging::install(level, user_dirs.as_ref().map(|dirs| dirs.logs.as_path()));
         if let Some(err) = invalid {
             log::error!("{err}");
             return Err(err.into());
@@ -213,6 +217,14 @@ impl App {
         };
         for warning in settings.take_load_warnings() {
             log::warn!(target: "tungsten_core::settings", "{warning}");
+        }
+        // M57: the debug views' window places, beside the settings.
+        let mut placements = match &user_dirs {
+            Some(dirs) => WindowPlacements::load(dirs.settings.join(DEBUG_WINDOWS_FILE)),
+            None => WindowPlacements::default(),
+        };
+        for warning in placements.take_load_warnings() {
+            log::warn!(target: "tungsten::debug_views", "{warning}");
         }
         // The baseline `apply_settings` starts from at runtime too, so a
         // runtime apply and a restart agree.
@@ -297,6 +309,10 @@ impl App {
         world.insert_resource(PhysicsDebugOverlay::default());
         world.insert_resource(SystemTimingOverlay::default());
         world.insert_resource(InspectorState::new());
+        // M57: the log console on the logger's feed, and the UI inspector.
+        world.insert_resource(LogConsole::with_feed(console_feed));
+        world.insert_resource(UiInspector::default());
+        world.insert_resource(placements);
         world.insert_resource(default_inspect_registry());
         // M48: the components scene entries name, with those the default
         // extracts draw; plugins register theirs as they build.
@@ -406,7 +422,14 @@ impl App {
     pub fn resolve_schedule(&mut self) -> anyhow::Result<()> {
         self.schedule
             .resolve()
-            .map_err(|err| anyhow::anyhow!("Schedule: {err}"))
+            .map_err(|err| anyhow::anyhow!("Schedule: {err}"))?;
+        // M57: the inspector's pick reads the routed input when routing runs.
+        let routed = self
+            .schedule
+            .names(Stage::PreUpdate)
+            .any(|name| name == UI_ROUTE);
+        self.world.insert_resource(UiRouteInstalled(routed));
+        Ok(())
     }
 
     /// Enable or disable engine exit action handling.
@@ -1303,7 +1326,7 @@ impl App {
     }
 
     #[inline(always)]
-    fn stage_extract(&mut self, prev_total_ms: f32) -> FrameExtract {
+    fn stage_extract(&mut self) -> FrameExtract {
         let extract_start = Instant::now();
         // The sprite extract culls at the size render projects with
         // (`D-114`); a pending resize leaves `WindowSize` ahead of the surface.
@@ -1315,7 +1338,7 @@ impl App {
         }
         // The channels; without `Extracts`, which only a removal causes,
         // they draw nothing.
-        let (quads, sprites, mut text) = match self.world.get_resource::<Extracts>() {
+        let (quads, sprites, text) = match self.world.get_resource::<Extracts>() {
             Some(extracts) => (
                 extracts.quads(&self.world),
                 extracts.sprites(&self.world),
@@ -1362,33 +1385,10 @@ impl App {
         // AABBs -> quads; angled lines/circles -> debug-line pipeline.
         let (debug_quads, debug_lines) = drain_debug_draw(&mut self.world);
 
-        // Borrow split: remove UI state, compose with `&World`, reinsert.
         let viewport = self
             .world
             .get_resource::<WindowSize>()
             .map_or((0, 0), |w| (w.width, w.height));
-        if let Some(mut hud) = self.world.remove_resource::<DebugHud>() {
-            let hud_sections =
-                compose_hud_text_sections(&mut hud, &self.world, viewport, prev_total_ms);
-            self.world.insert_resource(hud);
-            text.extend(hud_sections);
-        }
-        if let Some(mut overlay) = self.world.remove_resource::<SystemTimingOverlay>() {
-            let sections = compose_systems_overlay_text_section(
-                &mut overlay,
-                &self.world,
-                viewport,
-                prev_total_ms,
-            );
-            self.world.insert_resource(overlay);
-            text.extend(sections);
-        }
-        if let Some(mut state) = self.world.remove_resource::<InspectorState>() {
-            let sections =
-                compose_inspector_text_section(&mut state, &self.world, viewport, prev_total_ms);
-            self.world.insert_resource(state);
-            text.extend(sections);
-        }
 
         // M29: pull lights into a UBO every frame regardless of presence so
         // the lit pipeline (when active) reads coherent ambient + count = 0.
@@ -1614,12 +1614,6 @@ impl App {
             frame_interval_ms(self.prev_frame_start.replace(frame_start), frame_start);
         self.apply_pending_display_request();
 
-        // HUD smoothing uses previous frame; compose still occurs before render.
-        let prev_total_ms = self
-            .world
-            .get_resource::<FrameTimings>()
-            .map_or(0.0, |ft| ft.total_ms);
-
         self.stage_time(clock);
         let (update_start, mut system_timings, fixed_steps, exit) = self.stage_update();
         if exit {
@@ -1634,10 +1628,15 @@ impl App {
         let hot_reload_ms = self.stage_hot_reload();
         self.apply_pending_post_aa_request();
 
+        // M57: the debug views' windows, from the previous frame's timings,
+        // before the layout lays them out; counted in `extract` as it is.
+        let views_start = Instant::now();
+        crate::debug_views::update_with(&mut self.world, Some(&self.ui_paint));
+        let views_ms = views_start.elapsed().as_secs_f64() as f32 * 1000.0;
         // M46: the UI layout, counted in `extract` (Q11).
         let ui_layout_ms = self.stage_ui_layout();
-        let mut extract_out = self.stage_extract(prev_total_ms);
-        let extract_ms = extract_out.extract_ms + ui_layout_ms;
+        let mut extract_out = self.stage_extract();
+        let extract_ms = extract_out.extract_ms + ui_layout_ms + views_ms;
 
         let (render_out, end) = self.stage_render(&extract_out);
         inspect(&extract_out);
@@ -1795,7 +1794,7 @@ fn is_action_map(canon: &Path, input_map_path: &Path) -> bool {
 /// captures drift between runs on the same binary. The capture path used by
 /// Whether `input` is a press, not an OS repeat, of a key or button in
 /// `bindings`.
-fn presses(bindings: &[Binding], input: RawInput) -> bool {
+pub(crate) fn presses(bindings: &[Binding], input: RawInput) -> bool {
     match input {
         RawInput::Key {
             code,

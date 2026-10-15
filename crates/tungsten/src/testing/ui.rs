@@ -2,9 +2,9 @@
 //! standing in for the app's layout stage, which needs a renderer, through
 //! a [`FixedAdvanceMeasure`] so no font is needed: every glyph advances half
 //! the font size. It lays out at the logical viewport, as the app does
-//! (`D-127`), and scripts the pointer and keys the UI routes (`D-149`). The
-//! frame's extract paints the tree as the app does, one layout behind;
-//! [`UiHarness::paint`] paints it now (M46).
+//! (`D-127`), and scripts the pointer, the wheel (M57) and keys the UI
+//! routes (`D-149`). The frame's extract paints the tree as the app does,
+//! one layout behind; [`UiHarness::paint`] paints it now (M46).
 
 use glam::Vec2;
 use tungsten_core::ui::{
@@ -138,6 +138,13 @@ impl UiHarness {
     /// Releases the primary button.
     pub fn pointer_up(&mut self) {
         self.harness.input_mut().mouse_up(MouseButton::Left);
+    }
+
+    /// Turns the wheel `lines` lines where the pointer is, as one vertical
+    /// wheel event would between redraws; a positive count scrolls up, so a
+    /// scroll panel under the pointer moves its content down (M57).
+    pub fn wheel(&mut self, lines: f32) {
+        self.harness.input_mut().add_scroll_line_delta(0.0, lines);
     }
 
     /// Moves the pointer to the centre of `widget`'s last box, then presses

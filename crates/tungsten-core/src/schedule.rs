@@ -92,6 +92,10 @@ pub mod names {
     pub const HUD_TOGGLE: &str = "hud_toggle";
     /// `PreUpdate`: the UI debug toggles (bounds overlay, hide game layers).
     pub const UI_DEBUG_TOGGLE: &str = "ui_debug_toggle";
+    /// `PreUpdate`: the UI inspector's toggle (M57).
+    pub const UI_INSPECTOR_TOGGLE: &str = "ui_inspector_toggle";
+    /// `PreUpdate`: the log console's toggle (M57).
+    pub const LOG_CONSOLE_TOGGLE: &str = "log_console_toggle";
     /// `PreUpdate`: vsync and fullscreen hotkeys.
     pub const DISPLAY_INPUT: &str = "display_input";
     /// `PreUpdate`: the state stack's dispatcher, after the display hotkeys

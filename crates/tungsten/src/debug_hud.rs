@@ -1,14 +1,22 @@
-//! Runtime developer HUD; toggled by `engine_toggle_hud`.
+//! Runtime developer HUD; toggled by `engine_toggle_hud`. From M57 a
+//! movable window on the core UI (`debug_views`): the fps row, the built-in
+//! rows and the game's, refreshed on the frame interval, over a graph of
+//! the last 240 frame intervals redrawn every frame.
+
+use std::collections::VecDeque;
 
 use tungsten_core::World;
 use tungsten_core::camera::{CameraController, CameraMode, CameraState};
 use tungsten_core::input::{ActionMap, InputState};
-use tungsten_render::{GpuFrameTimings, TextSection};
+use tungsten_core::text::TextAlign;
+use tungsten_core::ui::{UiVertex, WidgetId};
+use tungsten_render::GpuFrameTimings;
 
+use crate::debug_views::{
+    BACKGROUND, GRAPH_SAMPLES, Look, Shape, ViewFrame, ViewSpec, ViewWindow, graph_vertices,
+    write_rows,
+};
 use crate::telemetry::{DisplayTelemetry, FrameTimings, RenderCounts};
-
-/// Monospace width heuristic for right-anchored text.
-pub(crate) const MONO_ADVANCE_RATIO: f32 = 0.65;
 
 /// Screen-anchor corner.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,30 +41,49 @@ pub type HudRowProvider = Box<dyn Fn(&World) -> Vec<HudRow> + 'static>;
 #[derive(Debug, Clone, Default)]
 pub struct HudActiveState(pub String);
 
-/// Runtime developer HUD resource.
+/// Runtime developer HUD resource: a window on the UI's debug layer (M57).
 pub struct DebugHud {
     pub enabled: bool,
+    /// The corner the window opens at when no place is saved for it.
     pub corner: HudCorner,
-    /// The engine font, [`ENGINE_FONT_ID`](crate::ENGINE_FONT_ID), by default.
+    /// The UI font family the window's text takes: the engine font's,
+    /// [`ENGINE_FONT_ID`](crate::ENGINE_FONT_ID), by default (M57).
     pub font_id: String,
+    /// Text size in UI units.
     pub font_size: f32,
+    /// Line height in UI units.
     pub line_height: f32,
     pub color: [u8; 4],
-    /// Outline color.
+    /// The window's fill (M57).
+    pub background: [u8; 4],
+    /// The window's border colour; the text outline's before M57.
     pub outline_color: [u8; 4],
-    /// Outline offset; `0.0` disables outline.
+    /// The window's border width in UI units; `0.0` draws none.
     pub outline_px: f32,
+    /// Space between the window and its corner, and below it for the next
+    /// window at that corner, in UI units.
     pub padding_px: f32,
-    /// Text refresh interval; EWMA still updates every frame.
+    /// Row refresh interval on the frame interval; the averages and the
+    /// graph still update every frame.
     pub refresh_interval_ms: f32,
-    fps_ewma: f32,
-    frame_ms_ewma: f32,
+    interval_ewma: f32,
+    total_ewma: f32,
     ewma_alpha: f32,
     time_since_refresh_ms: f32,
-    cached_sections: Vec<TextSection>,
+    /// The last [`GRAPH_SAMPLES`] frame intervals, oldest first.
+    samples: VecDeque<f32>,
+    /// The graph's vertices, reused.
+    vertices: Vec<UiVertex>,
+    /// The graph's samples, contiguous for the mesh, reused.
+    graph_samples: Vec<f32>,
+    rendered_height: f32,
+    pub(crate) window: Option<ViewWindow>,
     built_in: Vec<HudRowProvider>,
     custom: Vec<HudRowProvider>,
 }
+
+/// The HUD's columns: labels right-aligned, then values.
+const COLUMNS: &[TextAlign] = &[TextAlign::End, TextAlign::Start];
 
 impl DebugHud {
     pub fn new() -> Self {
@@ -76,15 +103,20 @@ impl DebugHud {
             font_size: 26.0,
             line_height: 30.0,
             color: [240, 240, 240, 240],
+            background: BACKGROUND,
             outline_color: [0, 0, 0, 220],
             outline_px: 1.0,
             padding_px: 10.0,
             refresh_interval_ms: 500.0,
-            fps_ewma: 0.0,
-            frame_ms_ewma: 0.0,
+            interval_ewma: 0.0,
+            total_ewma: 0.0,
             ewma_alpha: 0.1,
             time_since_refresh_ms: f32::INFINITY,
-            cached_sections: Vec::new(),
+            samples: VecDeque::with_capacity(GRAPH_SAMPLES),
+            vertices: Vec::new(),
+            graph_samples: Vec::new(),
+            rendered_height: 0.0,
+            window: None,
             built_in,
             custom: Vec::new(),
         }
@@ -95,17 +127,22 @@ impl DebugHud {
         self.enabled = !self.enabled;
     }
 
-    /// Last composed height, including top padding.
+    /// The HUD window's laid-out height plus [`Self::padding_px`], in
+    /// physical pixels: where a block below it at its corner starts. 0
+    /// while hidden or before the window's first layout.
     #[must_use]
     pub fn rendered_height_px(&self) -> f32 {
-        if !self.enabled {
-            return 0.0;
+        if self.enabled {
+            self.rendered_height
+        } else {
+            0.0
         }
-        let Some(main) = self.cached_sections.last() else {
-            return 0.0;
-        };
-        let lines = main.content.lines().count().max(1) as f32;
-        self.padding_px + lines * self.line_height
+    }
+
+    /// The window's root while the HUD is shown (M57).
+    #[must_use]
+    pub fn window(&self) -> Option<WidgetId> {
+        self.window.as_ref().map(|window| window.root)
     }
 
     /// Register custom rows after built-ins.
@@ -116,11 +153,91 @@ impl DebugHud {
         self.custom.push(Box::new(provider));
     }
 
-    fn fps_row(&self) -> Vec<HudRow> {
-        vec![HudRow {
+    fn fps_row(&self) -> HudRow {
+        let fps = if self.interval_ewma > 0.0 {
+            1000.0 / self.interval_ewma
+        } else {
+            0.0
+        };
+        HudRow {
             label: "fps",
-            value: format!("{:>5.1}  {:>5.2}ms", self.fps_ewma, self.frame_ms_ewma),
-        }]
+            value: format!("{fps:>5.1}  {:>5.2}ms", self.total_ewma),
+        }
+    }
+
+    /// The HUD's frame (M57): the averages, the graph and, on its interval,
+    /// the rows, from the previous frame's `FrameTimings`; while it is
+    /// shown. Its window opens, closes and moves through `frame`.
+    pub(crate) fn update_window(&mut self, world: &World, frame: &mut ViewFrame<'_>) {
+        let spec = ViewSpec {
+            name: "hud",
+            title: "HUD",
+            enabled: self.enabled,
+            corner: self.corner,
+            padding: self.padding_px,
+            look: Look {
+                family: self.font_id.clone(),
+                size: self.font_size,
+                line_height: self.line_height,
+                color: self.color,
+                background: self.background,
+                border: self.outline_color,
+                border_width: self.outline_px,
+            },
+            shape: Shape {
+                columns: COLUMNS,
+                header: false,
+                graph: true,
+                scroll: false,
+            },
+        };
+        if !frame.sync(&mut self.window, &spec) {
+            self.time_since_refresh_ms = f32::INFINITY;
+            self.rendered_height = 0.0;
+            return;
+        }
+        let Some(window) = self.window.as_ref() else {
+            return;
+        };
+        let (interval, total) = world
+            .get_resource::<FrameTimings>()
+            .map_or((None, None), |ft| (ft.interval_ms, Some(ft.total_ms)));
+        if let Some(total) = total.filter(|ms| ms.is_finite()) {
+            self.total_ewma = (1.0 - self.ewma_alpha) * self.total_ewma + self.ewma_alpha * total;
+        }
+        let interval = interval.filter(|ms| ms.is_finite() && *ms >= 0.0);
+        if let Some(interval) = interval {
+            self.interval_ewma =
+                (1.0 - self.ewma_alpha) * self.interval_ewma + self.ewma_alpha * interval;
+            if self.samples.len() == GRAPH_SAMPLES {
+                self.samples.pop_front();
+            }
+            self.samples.push_back(interval);
+        }
+        if let Some(graph) = window.graph {
+            self.graph_samples.clear();
+            self.graph_samples.extend(self.samples.iter().copied());
+            graph_vertices(&self.graph_samples, self.color, &mut self.vertices);
+            frame.tree.set_mesh(graph, &self.vertices);
+        }
+
+        self.time_since_refresh_ms += interval.unwrap_or(0.0);
+        if self.time_since_refresh_ms >= self.refresh_interval_ms {
+            self.time_since_refresh_ms = 0.0;
+            let mut rows = vec![self.fps_row()];
+            for provider in self.built_in.iter().chain(&self.custom) {
+                rows.extend(provider(world));
+            }
+            let cells: Vec<Vec<String>> = rows
+                .into_iter()
+                .map(|row| vec![row.label.to_string(), row.value])
+                .collect();
+            write_rows(frame.tree, window, &cells);
+        }
+        self.rendered_height = frame
+            .tree
+            .rect(window.root)
+            .map_or(0.0, |rect| (rect.height() + self.padding_px) * frame.scale);
     }
 }
 
@@ -233,151 +350,6 @@ fn ui_provider(world: &World) -> Vec<HudRow> {
             rc.text_layouts
         ),
     }]
-}
-
-/// Compose HUD sections; caller removes/reinserts resource to split borrows.
-pub(crate) fn compose_hud_text_sections(
-    hud: &mut DebugHud,
-    world: &World,
-    viewport: (u32, u32),
-    frame_ms: f32,
-) -> Vec<TextSection> {
-    if !hud.enabled {
-        hud.cached_sections.clear();
-        hud.time_since_refresh_ms = f32::INFINITY;
-        return Vec::new();
-    }
-
-    // EWMA updates every frame, displayed snapshot is throttled.
-    hud.frame_ms_ewma = (1.0 - hud.ewma_alpha) * hud.frame_ms_ewma + hud.ewma_alpha * frame_ms;
-    hud.fps_ewma = if hud.frame_ms_ewma > 0.0 {
-        1000.0 / hud.frame_ms_ewma
-    } else {
-        0.0
-    };
-
-    hud.time_since_refresh_ms += frame_ms;
-    if hud.time_since_refresh_ms < hud.refresh_interval_ms && !hud.cached_sections.is_empty() {
-        return hud.cached_sections.clone();
-    }
-    hud.time_since_refresh_ms = 0.0;
-
-    let mut rows = hud.fps_row();
-    for provider in &hud.built_in {
-        rows.extend(provider(world));
-    }
-    for provider in &hud.custom {
-        rows.extend(provider(world));
-    }
-
-    if rows.is_empty() {
-        hud.cached_sections.clear();
-        return Vec::new();
-    }
-
-    // Right-align labels; values stay compact.
-    let label_w = rows
-        .iter()
-        .map(|r| r.label.chars().count())
-        .max()
-        .unwrap_or(0)
-        .max(3);
-    let rendered: Vec<String> = rows
-        .iter()
-        .map(|r| format!("{:>w$} {}", r.label, r.value, w = label_w))
-        .collect();
-    let content = rendered.join("\n");
-
-    let (vw, vh) = (viewport.0 as f32, viewport.1 as f32);
-    let line_count = rendered.len() as f32;
-    let pad = hud.padding_px;
-
-    let (x, y) = match hud.corner {
-        HudCorner::TopLeft => (pad, pad),
-        HudCorner::BottomLeft => (pad, (vh - line_count * hud.line_height - pad).max(0.0)),
-        HudCorner::TopRight => {
-            let char_w = hud.font_size * MONO_ADVANCE_RATIO;
-            let max_chars = rendered
-                .iter()
-                .map(|s| s.chars().count())
-                .max()
-                .unwrap_or(0) as f32;
-            let text_w = char_w * max_chars;
-            ((vw - text_w - pad).max(0.0), pad)
-        }
-        HudCorner::BottomRight => {
-            let char_w = hud.font_size * MONO_ADVANCE_RATIO;
-            let max_chars = rendered
-                .iter()
-                .map(|s| s.chars().count())
-                .max()
-                .unwrap_or(0) as f32;
-            let text_w = char_w * max_chars;
-            (
-                (vw - text_w - pad).max(0.0),
-                (vh - line_count * hud.line_height - pad).max(0.0),
-            )
-        }
-    };
-
-    let main = TextSection {
-        content,
-        font_id: hud.font_id.clone(),
-        font_size: hud.font_size,
-        line_height: hud.line_height,
-        color: hud.color,
-        position: [x, y],
-        bounds: None,
-        ..Default::default()
-    };
-
-    let sections = if hud.outline_px > 0.0 {
-        let ox = hud.outline_px;
-        let mut out = Vec::with_capacity(5);
-        for (dx, dy) in [(-ox, 0.0), (ox, 0.0), (0.0, -ox), (0.0, ox)] {
-            out.push(TextSection {
-                content: main.content.clone(),
-                font_id: main.font_id.clone(),
-                font_size: main.font_size,
-                line_height: main.line_height,
-                color: hud.outline_color,
-                position: [x + dx, y + dy],
-                bounds: None,
-                ..Default::default()
-            });
-        }
-        out.push(main);
-        out
-    } else {
-        vec![main]
-    };
-    hud.cached_sections.clone_from(&sections);
-    sections
-}
-
-/// Anchor multi-line text block using HUD monospace heuristic.
-pub(crate) fn anchor_text_block(
-    corner: HudCorner,
-    lines: &[String],
-    font_size: f32,
-    line_height: f32,
-    padding: f32,
-    viewport: (u32, u32),
-) -> (f32, f32) {
-    let (vw, vh) = (viewport.0 as f32, viewport.1 as f32);
-    let line_count = lines.len().max(1) as f32;
-    let max_chars = lines.iter().map(|s| s.chars().count()).max().unwrap_or(0) as f32;
-    let text_w = font_size * MONO_ADVANCE_RATIO * max_chars;
-    let text_h = line_count * line_height;
-    match corner {
-        HudCorner::TopLeft => (padding, padding),
-        HudCorner::TopRight => ((vw - text_w - padding).max(0.0), padding),
-        HudCorner::BottomLeft => (padding, (vh - text_h - padding).max(0.0)),
-        HudCorner::BottomRight => (
-            (vw - text_w - padding).max(0.0),
-            (vh - text_h - padding).max(0.0),
-        ),
-    }
 }
 
 /// Toggle HUD on `engine_toggle_hud` edge.

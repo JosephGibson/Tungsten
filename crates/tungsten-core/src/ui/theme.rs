@@ -42,7 +42,8 @@ impl Theme {
     #[must_use]
     pub fn kind(&self, kind: WidgetKind) -> &KindStyle {
         match kind {
-            WidgetKind::Panel => &self.kinds.panel,
+            // A mesh's own box looks like a panel (M57).
+            WidgetKind::Panel | WidgetKind::Mesh => &self.kinds.panel,
             WidgetKind::Label => &self.kinds.label,
             WidgetKind::Button => &self.kinds.button,
             WidgetKind::Image => &self.kinds.image,

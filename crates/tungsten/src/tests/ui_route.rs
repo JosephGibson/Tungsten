@@ -705,3 +705,82 @@ fn a_capture_started_after_an_activation_reports_the_next_key_and_keeps_it_from_
     assert!(!harness.harness().exit_requested());
     assert_eq!(harness.world().resource::<UiRouter>().capturing(), None);
 }
+
+#[test]
+fn the_wheel_scrolls_a_panel_through_the_app_and_never_reaches_the_routed_view() {
+    let mut harness = UiHarness::new(app());
+    let tree = harness.tree_mut();
+    let root = tree.add_root(UiLayer::Game, at(0.0, 0.0, 200.0, 100.0));
+    let panel = tree.scroll_panel(root, LayoutStyle::default());
+    for _ in 0..10 {
+        tree.panel(
+            panel,
+            LayoutStyle::default().with_size(Sizing::Px(100.0), Sizing::Px(30.0)),
+        );
+    }
+    harness.layout();
+    assert_eq!(harness.tree().scroll_max(panel), Some(200.0));
+    harness.pointer_to(50.0, 50.0);
+    harness.wheel(-2.0);
+    harness.step(1);
+    assert_eq!(harness.tree().scroll(panel), Some(80.0), "two lines of 40");
+    assert!(
+        harness
+            .harness()
+            .events::<UiEvent>()
+            .any(|event| matches!(event, UiEvent::Scrolled { widget, .. } if *widget == panel))
+    );
+    assert_eq!(routed(&harness).scroll_line_delta(), (0.0, 0.0));
+
+    harness.pointer_to(600.0, 400.0);
+    harness.wheel(1.0);
+    harness.step(1);
+    assert_eq!(
+        routed(&harness).scroll_line_delta(),
+        (0.0, 1.0),
+        "beside the UI the wheel is the game's"
+    );
+    assert_eq!(harness.tree().scroll(panel), Some(80.0));
+}
+
+#[test]
+fn a_drag_through_the_app_moves_a_window_and_sends_window_moved() {
+    let mut harness = UiHarness::new(app());
+    let tree = harness.tree_mut();
+    let root = tree.add_root(UiLayer::Debug, at(100.0, 100.0, 200.0, 120.0));
+    let handle = tree.panel(
+        root,
+        LayoutStyle::default().with_size(Sizing::Px(200.0), Sizing::Px(20.0)),
+    );
+    tree.set_drag_handle(handle, true);
+    harness.layout();
+    harness.pointer_to(150.0, 110.0);
+    harness.pointer_down();
+    harness.step(1);
+    harness.pointer_to(200.0, 150.0);
+    harness.step(1);
+    assert_eq!(
+        harness.tree().window_position(root),
+        Some(Vec2::new(150.0, 140.0)),
+        "the root follows the pointer"
+    );
+    harness.pointer_up();
+    harness.step(1);
+    let events: Vec<UiEvent> = harness.harness().events::<UiEvent>().copied().collect();
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, UiEvent::WindowMoved { window, .. } if *window == root)),
+        "{events:?}"
+    );
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, UiEvent::Activated { .. })),
+        "a drag is no click"
+    );
+    assert_eq!(
+        harness.world().resource::<UiRouter>().cursor(),
+        CursorIcon::Move
+    );
+}

@@ -15,7 +15,7 @@
 //! that differs from the shipped layers, Start on `state_pause` among them.
 //!
 //! Env for the smoke matrix, `tests/ui_regression.rs` and the perf sitting:
-//! `TUNGSTEN_UI_LAB_FIXTURE={default|empty|hidden|labels|menus|menu|menu-prewarm|menu-cold}`
+//! `TUNGSTEN_UI_LAB_FIXTURE={default|empty|hidden|labels|menus|menu|menu-prewarm|menu-cold|debug}`
 //! turns the debug HUD off and builds the lab (`default`), no UI at all
 //! (`empty`), the lab with `UiDebug::hide_game_layers` set at startup
 //! (`hidden`), the lab with a fixed set of world labels (`labels`), the
@@ -24,7 +24,12 @@
 //! shown from the first frame (`menu`, the warmed-menu budget's subject),
 //! or that menu hidden and shown at frame 240, hidden at 300 and shown
 //! again at 360, prewarmed or not (`menu-prewarm`, `menu-cold`, the
-//! first-open check); `TUNGSTEN_UI_LAB_POST={off|vignette}` appends a
+//! first-open check), or the lab with every debug view open: the HUD, the
+//! system timing overlay, the inspector over a selected entity, the log
+//! console over the engine's warning about an ownerless root, and the UI
+//! inspector over the lab's counter; the overlay scrolled and the HUD moved
+//! at frame 30 (`debug`, smoke's M57 row);
+//! `TUNGSTEN_UI_LAB_POST={off|vignette}` appends a
 //! vignette to the post stack. `TUNGSTEN_RENDER_POST_AA` works as
 //! everywhere.
 
@@ -33,12 +38,18 @@
 use std::fmt::Write as _;
 use std::path::PathBuf;
 
+use glam::Vec2;
+
 use example_05_ui_lab::menus::{self, FixtureClock, PlayState};
 use example_05_ui_lab::screens::{self, THEME_ID, UiLab};
+use tungsten::core::components::{Tag, Transform};
 use tungsten::core::post::{PostPass, PostStack, VignetteParams};
 use tungsten::core::ui::{UiDebug, UiThemeRegistry, UiTree, WidgetId};
 use tungsten::core::{AssetRegistry, Config, World};
-use tungsten::{App, DebugHud, StateStack};
+use tungsten::{
+    App, DebugHud, InspectorState, LogConsole, RootCover, StateStack, SystemTimingOverlay,
+    UiInspector,
+};
 
 const ROOT_MANIFEST: &str = "assets/manifest.json";
 const LOCAL_MANIFEST: &str = "examples/05_ui_lab/assets/manifest.json";
@@ -64,6 +75,8 @@ enum Fixture {
     MenuPrewarm,
     /// That menu hidden, not prewarmed, shown at frame 240 (M56).
     MenuCold,
+    /// The lab under the HUD, the timing overlay and the inspector (M57).
+    Debug,
 }
 
 fn fixture() -> anyhow::Result<Fixture> {
@@ -79,8 +92,9 @@ fn fixture() -> anyhow::Result<Fixture> {
         "menu" => Ok(Fixture::Menu),
         "menu-prewarm" => Ok(Fixture::MenuPrewarm),
         "menu-cold" => Ok(Fixture::MenuCold),
+        "debug" => Ok(Fixture::Debug),
         other => anyhow::bail!(
-            "invalid TUNGSTEN_UI_LAB_FIXTURE='{other}': expected one of default, empty, hidden, labels, menus, menu, menu-prewarm, menu-cold"
+            "invalid TUNGSTEN_UI_LAB_FIXTURE='{other}': expected one of default, empty, hidden, labels, menus, menu, menu-prewarm, menu-cold, debug"
         ),
     }
 }
@@ -116,7 +130,7 @@ fn main() -> anyhow::Result<()> {
 
     app.on_startup(move |world, _renderer| {
         if let Some(hud) = world.get_resource_mut::<DebugHud>() {
-            hud.enabled = fixture == Fixture::Off;
+            hud.enabled = matches!(fixture, Fixture::Off | Fixture::Debug);
         }
         if post == Post::Vignette
             && let Some(stack) = world.get_resource_mut::<PostStack>()
@@ -143,6 +157,10 @@ fn main() -> anyhow::Result<()> {
             Fixture::Default | Fixture::Hidden | Fixture::Labels => {
                 build_ui(world, false);
             }
+            Fixture::Debug => {
+                build_ui(world, false);
+                open_debug_views(world);
+            }
         }
     });
     app.world_mut().insert_resource(CounterText::default());
@@ -159,6 +177,7 @@ fn main() -> anyhow::Result<()> {
             app.world_mut().insert_resource(FixtureClock::default());
             app.add_system_named("ui_lab_menu_open", menus::menu_open_system);
         }
+        Fixture::Debug => app.add_system_named("ui_lab_debug", debug_fixture_system),
         Fixture::Off => {
             app.world_mut()
                 .insert_resource(screens::DamageNumbers::default());
@@ -219,6 +238,72 @@ fn build_menu(world: &mut World, fixture: Fixture) {
     }
     world.insert_resource(tree);
     world.insert_resource(menu);
+}
+
+/// Opens the timing overlay, the inspector over a tagged entity it selects,
+/// the log console and the UI inspector over the lab's counter (M57), and
+/// logs one warning: the state stack's, for a root with no state to own it.
+/// The HUD opens with the fixture.
+fn open_debug_views(world: &mut World) {
+    let hero = world.spawn_with((
+        Tag::new("lab_hero"),
+        Transform::from_position(Vec2::new(64.0, 48.0)),
+    ));
+    if let Some(overlay) = world.get_resource_mut::<SystemTimingOverlay>() {
+        overlay.enabled = true;
+    }
+    if let Some(inspector) = world.get_resource_mut::<InspectorState>() {
+        inspector.enabled = true;
+        inspector.selected = Some(hero);
+    }
+    if let Some(console) = world.get_resource_mut::<LogConsole>() {
+        console.enabled = true;
+    }
+    let lab = world
+        .get_resource::<UiLab>()
+        .map(|lab| (lab.hud, lab.counter));
+    if let Some(inspector) = world.get_resource_mut::<UiInspector>() {
+        inspector.enabled = true;
+        inspector.picked = lab.map(|(_, counter)| counter);
+    }
+    if let Some((hud, _)) = lab {
+        // No state is pushed: the stack warns and ignores it.
+        world
+            .resource_mut::<StateStack>()
+            .own_root(hud, RootCover::Hide);
+    }
+}
+
+/// At frame 30, scrolls the timing overlay's body and moves the HUD's
+/// window, as the wheel and a drag would.
+fn debug_fixture_system(world: &mut World) {
+    if world.get_resource::<UiLab>().map(|lab| lab.frames) != Some(30) {
+        return;
+    }
+    let hud = world.get_resource::<DebugHud>().and_then(DebugHud::window);
+    let overlay = world
+        .get_resource::<SystemTimingOverlay>()
+        .and_then(SystemTimingOverlay::window);
+    let Some(tree) = world.get_resource_mut::<UiTree>() else {
+        return;
+    };
+    let body = overlay.and_then(|root| {
+        tree.children(root)
+            .iter()
+            .copied()
+            .find(|child| tree.scroll(*child).is_some())
+    });
+    if let Some(body) = body {
+        tree.set_scroll(body, 120.0);
+        println!(
+            "ui lab: scrolled the timing overlay to {:?}",
+            tree.scroll(body)
+        );
+    }
+    if let Some(root) = hud {
+        tree.set_window_position(root, Vec2::new(40.0, 160.0));
+        println!("ui lab: moved the HUD window");
+    }
 }
 
 /// The counter's text, retained so the counter writes without allocating.

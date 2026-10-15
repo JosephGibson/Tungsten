@@ -80,18 +80,30 @@ pub fn load_ui_themes(manifest: &ResolvedManifest, world: &mut World) -> anyhow:
 /// Warns for each font token of `theme` that names no `font_families` entry
 /// of `manifest`: such text falls back through the chain at draw time.
 pub(crate) fn warn_unknown_font_tokens(id: &str, theme: &Theme, manifest: &ResolvedManifest) {
-    let fonts = &theme.tokens.fonts;
-    for (token, family) in [
-        ("body", &fonts.body),
-        ("heading", &fonts.heading),
-        ("mono", &fonts.mono),
-    ] {
-        if !manifest.font_families.contains_key(family) {
-            log::warn!(
-                "ui theme '{id}': fonts.{token} names family '{family}', which no font_families entry declares"
-            );
-        }
+    for (token, family) in unknown_font_tokens(theme, manifest) {
+        log::warn!(
+            "ui theme '{id}': fonts.{token} names family '{family}', which no font_families entry declares"
+        );
     }
+}
+
+/// The font tokens of `theme` whose family neither `manifest` declares nor
+/// the engine adds (`engine_mono`, M57), with their families.
+pub(crate) fn unknown_font_tokens<'a>(
+    theme: &'a Theme,
+    manifest: &ResolvedManifest,
+) -> Vec<(&'static str, &'a str)> {
+    let fonts = &theme.tokens.fonts;
+    [
+        ("body", fonts.body.as_str()),
+        ("heading", fonts.heading.as_str()),
+        ("mono", fonts.mono.as_str()),
+    ]
+    .into_iter()
+    .filter(|(_, family)| {
+        *family != crate::ENGINE_FONT_ID && !manifest.font_families.contains_key(*family)
+    })
+    .collect()
 }
 
 /// Load animation data from manifest.
@@ -145,7 +157,10 @@ pub fn load_fonts(
         renderer.load_font(id, data);
         font_registry.register(id.clone(), font_entry.path.clone());
     }
-    renderer.set_font_families(&manifest.font_families, &manifest.font_fallback);
+    renderer.set_font_families(
+        &crate::engine_font::with_engine_family(&manifest.font_families),
+        &manifest.font_fallback,
+    );
 
     world.insert_resource(font_registry);
     Ok(())

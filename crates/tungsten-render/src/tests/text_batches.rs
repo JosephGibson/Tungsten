@@ -230,6 +230,7 @@ fn a_changed_label_re_prepares_its_batch_alone() {
             panel(rect(50.0, 0.0, 100.0, 100.0), 0),
             text(right, rect(60.0, 10.0, 80.0, 20.0), 0),
         ],
+        vertices: Vec::new(),
     };
     let mut book = BatchBook::default();
     let first = signatures(&list, &engine);
@@ -262,6 +263,7 @@ fn a_clip_rectangle_that_changes_under_an_unchanged_command_re_prepares() {
         scale: 1.0,
         clips: vec![clip(0, 0, 800, 600), clip(0, 0, 50, 50)],
         commands: vec![text(node, rect(0.0, 0.0, 100.0, 20.0), 1)],
+        vertices: Vec::new(),
     };
     let before = signatures(&list, &engine);
     list.clips[1] = clip(0, 0, 60, 50);
@@ -284,6 +286,7 @@ fn position_colour_scale_and_viewport_are_in_the_signature() {
         scale: 1.0,
         clips: vec![clip(0, 0, 800, 600)],
         commands: vec![text(node, rect(0.0, 0.0, 100.0, 20.0), 0)],
+        vertices: Vec::new(),
     };
     let reference = batch_signature(&base, 0..1, &engine, 800, 600);
     let mut moved = base.clone();
@@ -334,11 +337,13 @@ fn a_batch_absent_for_a_frame_re_prepares_when_it_returns() {
             panel(rect(0.0, 0.0, 300.0, 300.0), 0),
             text(b, rect(10.0, 10.0, 100.0, 20.0), 0),
         ],
+        vertices: Vec::new(),
     };
     let one = PaintList {
         scale: 1.0,
         clips: vec![clip(0, 0, 800, 600)],
         commands: vec![text(a, rect(0.0, 0.0, 100.0, 20.0), 0)],
+        vertices: Vec::new(),
     };
     let mut book = BatchBook::default();
     let both = signatures(&two, &engine);
@@ -366,6 +371,7 @@ fn a_failed_batch_is_not_drawn_and_prepares_again() {
         scale: 1.0,
         clips: vec![clip(0, 0, 800, 600)],
         commands: vec![text(node, rect(0.0, 0.0, 100.0, 20.0), 0)],
+        vertices: Vec::new(),
     };
     let mut book = BatchBook::default();
     let signature = signatures(&list, &engine);
@@ -419,6 +425,7 @@ fn only_committed_nodes_under_the_current_epoch_give_areas() {
             text(committed, rect(10.0, 10.0, 100.0, 20.0), 0),
             text(bare, rect(10.0, 40.0, 100.0, 20.0), 0),
         ],
+        vertices: Vec::new(),
     };
     let (_, nodes) = engine.batch_parts();
     let mut areas = Vec::new();
@@ -458,6 +465,7 @@ fn a_commands_text_scale_reaches_its_area_on_top_of_the_paint_scale() {
                 clip: 0,
             },
         ],
+        vertices: Vec::new(),
     };
     let (_, nodes) = engine.batch_parts();
     let mut areas = Vec::new();
@@ -485,6 +493,7 @@ fn the_prewarms_areas_are_the_lists_runs_at_their_boxes_and_scales() {
                 clip: 0,
             },
         ],
+        vertices: Vec::new(),
     };
     let (_, nodes) = engine.batch_parts();
     let mut areas = Vec::new();

@@ -1,7 +1,8 @@
 //! UI events (`D-149`): what the router publishes into
 //! `EventQueue<UiEvent>` once a frame, before the systems that read them,
 //! under `D-040`'s rotation. M55 adds a control's [`UiValue`] (`D-162`);
-//! M56 adds a finished animation track's event and the capture mode's.
+//! M56 adds a finished animation track's event and the capture mode's; M57
+//! the wheel's scroll event and the end of a window drag.
 
 use crate::ecs::EventQueue;
 use crate::input::{Binding, MouseButton};
@@ -131,6 +132,28 @@ pub enum UiEvent {
         /// The track's tag.
         tag: u32,
     },
+    /// The wheel moved a scroll panel (M57): one per panel per routing,
+    /// after the routing's other events, with the offset it left.
+    /// [`UiTree::set_scroll`](super::UiTree::set_scroll) and focus scrolling
+    /// into view send none.
+    #[non_exhaustive]
+    Scrolled {
+        /// The scroll panel.
+        widget: WidgetId,
+        /// Its offset in UI units.
+        offset: f32,
+    },
+    /// A drag on a drag handle moved its root and ended (M57): after the
+    /// release's `Released`, which then activates nothing, or after the
+    /// `PressCancelled` of a press that ended without one, the root left
+    /// where the drag put it. The root's placement holds its new top-left
+    /// at once, [`UiTree::window_position`](super::UiTree::window_position)
+    /// after the next layout.
+    #[non_exhaustive]
+    WindowMoved {
+        /// The root the handle moved.
+        window: WidgetId,
+    },
 }
 
 /// A control's value, as [`UiEvent::ValueChanged`] carries it.
@@ -164,7 +187,8 @@ impl UiValue {
 }
 
 impl UiEvent {
-    /// The widget the event is about; a `Cancel`'s scope.
+    /// The widget the event is about; a `Cancel`'s scope, a `WindowMoved`'s
+    /// root.
     #[must_use]
     pub const fn widget(&self) -> WidgetId {
         match *self {
@@ -181,6 +205,8 @@ impl UiEvent {
             | Self::AnimationFinished { widget, .. }
             | Self::InputCaptured { widget, .. }
             | Self::CaptureCancelled { widget }
+            | Self::Scrolled { widget, .. }
+            | Self::WindowMoved { window: widget }
             | Self::Cancel { scope: widget } => widget,
         }
     }

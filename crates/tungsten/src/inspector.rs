@@ -1,16 +1,31 @@
-//! Text-only entity inspector; pick uses sprite AABB, then collider AABB.
+//! Entity inspector; pick uses sprite AABB, then collider AABB.
 //!
 //! Smallest footprint wins; selection clears after despawn to avoid stale IDs.
+//! From M57 a movable window on the core UI (`debug_views`): the entity, then
+//! section, row and value columns in a scrolling body. With the UI's routing
+//! installed the pick reads the routed input, so a press the UI took never
+//! picks, at the press's own position.
 
 use glam::Vec2;
 
 use tungsten_core::components::{Sprite, Tag, Transform, Visibility};
-use tungsten_core::input::{ActionMap, InputState};
-use tungsten_core::physics::{Collider, Position, Shape, Velocity};
+use tungsten_core::input::{ActionMap, InputState, RawInput, RoutedInput};
+use tungsten_core::physics::{Collider, Position, Shape as ColliderShape, Velocity};
+use tungsten_core::text::TextAlign;
+use tungsten_core::ui::WidgetId;
 use tungsten_core::{AssetRegistry, CameraState, Entity, InspectRegistry, Inspectable, World};
-use tungsten_render::TextSection;
 
-use crate::debug_hud::{HudCorner, anchor_text_block};
+use crate::debug_hud::HudCorner;
+use crate::debug_views::{BACKGROUND, Look, Shape, ViewFrame, ViewSpec, ViewWindow, write_rows};
+
+/// The inspector's columns: section, row, value.
+const COLUMNS: &[TextAlign] = &[TextAlign::Start, TextAlign::Start, TextAlign::Start];
+
+/// Whether the schedule's `PreUpdate` holds `ui_route`, which
+/// `App::resolve_schedule` records (M57): the pick then reads the routed
+/// input.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct UiRouteInstalled(pub(crate) bool);
 
 pub use tungsten_core::inspect::InspectFn;
 
@@ -21,21 +36,33 @@ pub struct InspectorState {
     /// [`InspectorState::register`]; the overlay prints them after the
     /// [`InspectRegistry`] resource's rows.
     registered: Vec<(&'static str, InspectFn)>,
+    /// The corner the window opens at when no place is saved for it.
     pub corner: HudCorner,
+    /// Space between the window and its corner, in UI units.
     pub padding_px: f32,
-    /// The engine font, [`ENGINE_FONT_ID`](crate::ENGINE_FONT_ID), by default.
+    /// The UI font family the window's text takes: the engine font's,
+    /// [`ENGINE_FONT_ID`](crate::ENGINE_FONT_ID), by default (M57).
     pub font_id: String,
+    /// Text size in UI units.
     pub font_size: f32,
+    /// Line height in UI units.
     pub line_height: f32,
     pub color: [u8; 4],
+    /// The window's fill (M57).
+    pub background: [u8; 4],
+    /// The window's border colour; the text outline's before M57.
     pub outline_color: [u8; 4],
+    /// The window's border width in UI units; `0.0` draws none.
     pub outline_px: f32,
-    /// Text rebuild interval; cached sections re-emitted between ticks.
+    /// Row refresh interval on the frame interval; a new selection
+    /// refreshes at once.
     pub refresh_interval_ms: f32,
-    cached_sections: Vec<TextSection>,
-    cached_viewport: (u32, u32),
-    cached_selected: Option<Entity>,
+    shown_selected: Option<Entity>,
     time_since_refresh_ms: f32,
+    /// Where the cursor ended the previous frame the pick ran, physical
+    /// pixels: a press with no move before it in its frame picks there.
+    last_cursor: Option<(f32, f32)>,
+    pub(crate) window: Option<ViewWindow>,
 }
 
 impl Default for InspectorState {
@@ -51,13 +78,14 @@ impl Default for InspectorState {
             font_size: 28.0,
             line_height: 32.0,
             color: [240, 240, 240, 240],
+            background: BACKGROUND,
             outline_color: [0, 0, 0, 220],
             outline_px: 1.5,
             refresh_interval_ms: 500.0,
-            cached_sections: Vec::new(),
-            cached_viewport: (0, 0),
-            cached_selected: None,
+            shown_selected: None,
             time_since_refresh_ms: f32::INFINITY,
+            last_cursor: None,
+            window: None,
         }
     }
 }
@@ -122,6 +150,63 @@ impl InspectorState {
     pub fn toggle(&mut self) {
         self.enabled = !self.enabled;
     }
+
+    /// The window's root while the inspector is shown (M57).
+    #[must_use]
+    pub fn window(&self) -> Option<WidgetId> {
+        self.window.as_ref().map(|window| window.root)
+    }
+
+    /// The inspector's frame (M57): the selected entity's rows, on its
+    /// interval or at once when the selection changed; while it is shown.
+    pub(crate) fn update_window(&mut self, world: &World, frame: &mut ViewFrame<'_>) {
+        let spec = ViewSpec {
+            name: "inspector",
+            title: "Inspector",
+            enabled: self.enabled,
+            corner: self.corner,
+            padding: self.padding_px,
+            look: Look {
+                family: self.font_id.clone(),
+                size: self.font_size,
+                line_height: self.line_height,
+                color: self.color,
+                background: self.background,
+                border: self.outline_color,
+                border_width: self.outline_px,
+            },
+            shape: Shape {
+                columns: COLUMNS,
+                header: true,
+                graph: false,
+                scroll: true,
+            },
+        };
+        if !frame.sync(&mut self.window, &spec) {
+            self.time_since_refresh_ms = f32::INFINITY;
+            return;
+        }
+        let Some(window) = self.window.as_ref() else {
+            return;
+        };
+        let interval = world
+            .get_resource::<crate::telemetry::FrameTimings>()
+            .and_then(|ft| ft.interval_ms)
+            .filter(|ms| ms.is_finite());
+        self.time_since_refresh_ms += interval.unwrap_or(0.0);
+        if self.time_since_refresh_ms < self.refresh_interval_ms
+            && self.shown_selected == self.selected
+        {
+            return;
+        }
+        self.time_since_refresh_ms = 0.0;
+        self.shown_selected = self.selected;
+        let (header, rows) = inspector_rows(self, world);
+        if let Some(line) = window.header {
+            frame.tree.set_plain_text(line, &header);
+        }
+        write_rows(frame.tree, window, &rows);
+    }
 }
 
 pub(crate) fn inspector_toggle_system(world: &mut World) {
@@ -156,31 +241,68 @@ pub(crate) fn inspector_pick_system(world: &mut World) {
         state.selected = None;
     }
 
-    // Pick edge sticks selection until next pick or despawn.
-    let (cursor, camera) = {
-        let Some(input) = world.get_resource::<InputState>() else {
+    // Pick edge sticks selection until next pick or despawn. With the UI's
+    // routing, the routed view: a press the UI took is not in it.
+    let routed = world
+        .get_resource::<UiRouteInstalled>()
+        .is_some_and(|installed| installed.0);
+    let last_cursor = world
+        .get_resource::<InspectorState>()
+        .and_then(|state| state.last_cursor);
+    let (press, cursor) = {
+        let input = if routed {
+            world
+                .get_resource::<RoutedInput>()
+                .map(std::ops::Deref::deref)
+        } else {
+            world.get_resource::<InputState>()
+        };
+        let Some(input) = input else {
             return;
         };
         let Some(actions) = world.get_resource::<ActionMap>() else {
             return;
         };
-        if !actions.just_pressed(input, "engine_inspector_pick") {
-            return;
-        }
-        let Some(cursor) = input.cursor_position() else {
-            return;
-        };
-        let Some(camera) = world.get_resource::<CameraState>().copied() else {
-            return;
-        };
-        (cursor, camera)
+        (
+            press_position(input, actions, last_cursor),
+            input.cursor_position(),
+        )
     };
-
-    let world_cursor = camera.screen_to_world(Vec2::new(cursor.0, cursor.1));
+    if let Some(state) = world.get_resource_mut::<InspectorState>() {
+        state.last_cursor = cursor;
+    }
+    let Some(at) = press else {
+        return;
+    };
+    let Some(camera) = world.get_resource::<CameraState>().copied() else {
+        return;
+    };
+    let world_cursor = camera.screen_to_world(Vec2::new(at.0, at.1));
     let picked = pick_entity_under_cursor(world, world_cursor);
     if let Some(state) = world.get_resource_mut::<InspectorState>() {
         state.selected = picked;
     }
+}
+
+/// Where this frame's first press of `engine_inspector_pick` in `input`'s
+/// stream happened: the last pointer move before it in the stream, else
+/// `last_cursor`, where the cursor ended the previous frame. `None` with no
+/// press, or no position for it.
+fn press_position(
+    input: &InputState,
+    actions: &ActionMap,
+    last_cursor: Option<(f32, f32)>,
+) -> Option<(f32, f32)> {
+    let bindings = actions.bindings("engine_inspector_pick");
+    let mut at = last_cursor;
+    for event in input.raw_events() {
+        match event.input {
+            RawInput::PointerMoved { x, y, .. } => at = Some((x, y)),
+            press if crate::app::presses(bindings, press) => return at,
+            _ => {}
+        }
+    }
+    None
 }
 
 /// `Sprite` rows with the asset's name, which core's `Inspectable` has no registry to read.
@@ -229,8 +351,10 @@ fn pick_entity_under_cursor(world: &World, world_cursor: Vec2) -> Option<Entity>
     {
         let centre = drawn.map_or(position.0, |transform| transform.position) + collider.offset;
         let half = match collider.shape {
-            Shape::Aabb { half_extents } => Vec2::new(half_extents.x.abs(), half_extents.y.abs()),
-            Shape::Circle { radius } => Vec2::splat(radius.abs()),
+            ColliderShape::Aabb { half_extents } => {
+                Vec2::new(half_extents.x.abs(), half_extents.y.abs())
+            }
+            ColliderShape::Circle { radius } => Vec2::splat(radius.abs()),
         };
         try_hit_aabb(&mut best, entity, world_cursor, centre - half, half * 2.0);
     }
@@ -258,76 +382,6 @@ fn try_hit_aabb(
     }
 }
 
-pub(crate) fn compose_inspector_text_section(
-    state: &mut InspectorState,
-    world: &World,
-    viewport: (u32, u32),
-    frame_ms: f32,
-) -> Vec<TextSection> {
-    if !state.enabled {
-        state.cached_sections.clear();
-        state.time_since_refresh_ms = f32::INFINITY;
-        return Vec::new();
-    }
-
-    state.time_since_refresh_ms += frame_ms;
-    // Cache key: refresh window, viewport, selected entity.
-    if state.time_since_refresh_ms < state.refresh_interval_ms
-        && !state.cached_sections.is_empty()
-        && state.cached_viewport == viewport
-        && state.cached_selected == state.selected
-    {
-        return state.cached_sections.clone();
-    }
-    state.time_since_refresh_ms = 0.0;
-    state.cached_viewport = viewport;
-    state.cached_selected = state.selected;
-
-    let lines = render_inspector_lines(state, world);
-    let content = lines.join("\n");
-    let (x, y) = anchor_text_block(
-        state.corner,
-        &lines,
-        state.font_size,
-        state.line_height,
-        state.padding_px,
-        viewport,
-    );
-    let main = TextSection {
-        content,
-        font_id: state.font_id.clone(),
-        font_size: state.font_size,
-        line_height: state.line_height,
-        color: state.color,
-        position: [x, y],
-        bounds: None,
-        ..Default::default()
-    };
-
-    let sections = if state.outline_px > 0.0 {
-        let ox = state.outline_px;
-        let mut out = Vec::with_capacity(5);
-        for (dx, dy) in [(-ox, 0.0), (ox, 0.0), (0.0, -ox), (0.0, ox)] {
-            out.push(TextSection {
-                content: main.content.clone(),
-                font_id: main.font_id.clone(),
-                font_size: main.font_size,
-                line_height: main.line_height,
-                color: state.outline_color,
-                position: [x + dx, y + dy],
-                bounds: None,
-                ..Default::default()
-            });
-        }
-        out.push(main);
-        out
-    } else {
-        vec![main]
-    };
-    state.cached_sections.clone_from(&sections);
-    sections
-}
-
 /// The canonical engine components' rows: what `App` registers before any
 /// plugin, in the [`InspectRegistry`] resource plugins and games extend.
 #[must_use]
@@ -342,56 +396,26 @@ pub fn default_inspect_registry() -> InspectRegistry {
     registry
 }
 
-fn render_inspector_lines(state: &InspectorState, world: &World) -> Vec<String> {
-    let mut lines: Vec<String> = Vec::new();
+/// The header line and the rows: `mouse 3 to pick` and none with nothing
+/// selected; else `entity <e>` and each section's rows, the registry's
+/// first, then the state's own (deprecated) list.
+fn inspector_rows(state: &InspectorState, world: &World) -> (String, Vec<Vec<String>>) {
     let empty = InspectRegistry::new();
     let registry = world.get_resource::<InspectRegistry>().unwrap_or(&empty);
-    let selected = match state.selected {
-        Some(e) if world.is_alive(e) => Some(e),
-        _ => None,
+    let Some(entity) = state.selected.filter(|entity| world.is_alive(*entity)) else {
+        return ("mouse 3 to pick".to_string(), Vec::new());
     };
-
-    match selected {
-        None => {
-            lines.push("mouse 3 to pick".to_string());
-        }
-        Some(entity) => {
-            // Size columns from visible component rows only.
-            let mut visible: Vec<(&str, Vec<(&'static str, String)>)> = Vec::new();
-            // The registry's rows first, then the state's own (deprecated) list.
-            let own = state.registered.iter().map(|(label, rows)| (*label, rows));
-            for (section, inspect) in registry.iter().chain(own) {
-                let rows = inspect(world, entity);
-                if rows.is_empty() {
-                    continue;
-                }
-                visible.push((section, rows));
-            }
-            lines.push(format!("entity {entity}"));
-            if visible.is_empty() {
-                lines.push("(no registered components)".to_string());
-            } else {
-                let section_w = visible
-                    .iter()
-                    .map(|(name, _)| name.chars().count())
-                    .max()
-                    .unwrap_or(0);
-                let label_w = visible
-                    .iter()
-                    .flat_map(|(_, rows)| rows.iter().map(|(l, _)| l.chars().count()))
-                    .max()
-                    .unwrap_or(0);
-                for (section, rows) in &visible {
-                    for (row_label, value) in rows {
-                        lines.push(format!(
-                            "{section:<section_w$} {row_label:<label_w$} {value}"
-                        ));
-                    }
-                }
-            }
+    let own = state.registered.iter().map(|(label, rows)| (*label, rows));
+    let mut rows = Vec::new();
+    for (section, inspect) in registry.iter().chain(own) {
+        for (row, value) in inspect(world, entity) {
+            rows.push(vec![section.to_string(), row.to_string(), value]);
         }
     }
-    lines
+    if rows.is_empty() {
+        rows.push(vec!["(no registered components)".to_string()]);
+    }
+    (format!("entity {entity}"), rows)
 }
 
 #[cfg(test)]

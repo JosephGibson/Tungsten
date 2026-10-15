@@ -549,8 +549,12 @@ pub fn reload_manifest(
                 }
             }
         }
-        // A new epoch only when the families or the chain changed.
-        renderer.set_font_families(&new_manifest.font_families, &new_manifest.font_fallback);
+        // A new epoch only when the families or the chain changed; the
+        // engine family stays (M57).
+        renderer.set_font_families(
+            &crate::engine_font::with_engine_family(&new_manifest.font_families),
+            &new_manifest.font_fallback,
+        );
     }
 
     // M31 particle meshes: register and upload new ones, re-upload changed

@@ -609,6 +609,20 @@ fn theme_manifest(dir: &Path, themes: &[(&str, &str)]) -> ResolvedManifest {
 }
 
 #[test]
+fn the_theme_token_check_accepts_the_engine_family() {
+    let dir = tempdir();
+    let manifest = theme_manifest(&dir, &[]);
+    let mut theme = Theme::default();
+    theme.tokens.fonts.mono = crate::ENGINE_FONT_ID.to_string();
+    theme.tokens.fonts.heading = "display".to_string();
+    assert_eq!(
+        unknown_font_tokens(&theme, &manifest),
+        [("heading", "display")],
+        "engine_mono is the engine's; sans is the manifest's"
+    );
+}
+
+#[test]
 fn ui_themes_load_into_the_registry_with_their_paths() {
     let dir = tempdir();
     let manifest = theme_manifest(&dir, &[("dark", &theme_json("#ff0000")), ("light", "{}")]);
