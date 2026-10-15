@@ -1,6 +1,6 @@
 //! UI events (`D-149`): what the router publishes into
 //! `EventQueue<UiEvent>` once a frame, before the systems that read them,
-//! under `D-040`'s rotation.
+//! under `D-040`'s rotation. M55 adds a control's [`UiValue`] (`D-162`).
 
 use crate::ecs::EventQueue;
 use crate::input::MouseButton;
@@ -84,6 +84,47 @@ pub enum UiEvent {
         /// The scope to back out of.
         scope: WidgetId,
     },
+    /// A toggle or a slider took a new value from the pointer or a `ui_*`
+    /// action (`D-162`). One per change, after the press's own events; a
+    /// toggle's follows its `Activated`. The `UiTree` setters send none.
+    /// Read it with [`EventQueue::value_changed`].
+    #[non_exhaustive]
+    ValueChanged {
+        /// The toggle or slider.
+        widget: WidgetId,
+        /// Its new value.
+        value: UiValue,
+    },
+}
+
+/// A control's value, as [`UiEvent::ValueChanged`] carries it.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum UiValue {
+    /// A toggle's state.
+    Bool(bool),
+    /// A slider's value, inside its range and on its step.
+    Number(f32),
+}
+
+impl UiValue {
+    /// A toggle's state; `None` for a slider's value.
+    #[must_use]
+    pub const fn as_bool(self) -> Option<bool> {
+        match self {
+            Self::Bool(on) => Some(on),
+            Self::Number(_) => None,
+        }
+    }
+
+    /// A slider's value; `None` for a toggle's state.
+    #[must_use]
+    pub const fn as_number(self) -> Option<f32> {
+        match self {
+            Self::Number(value) => Some(value),
+            Self::Bool(_) => None,
+        }
+    }
 }
 
 impl UiEvent {
@@ -100,6 +141,7 @@ impl UiEvent {
             | Self::DoubleClicked { widget }
             | Self::FocusGained { widget }
             | Self::FocusLost { widget }
+            | Self::ValueChanged { widget, .. }
             | Self::Cancel { scope: widget } => widget,
         }
     }
@@ -114,5 +156,19 @@ impl EventQueue<UiEvent> {
     pub fn activated(&self, widget: WidgetId) -> bool {
         self.iter_current()
             .any(|event| matches!(event, UiEvent::Activated { widget: w } if *w == widget))
+    }
+
+    /// The value `widget` took last at this frame's routing; `None` when it
+    /// took none. Reads [`iter_current`](Self::iter_current), as
+    /// [`activated`](Self::activated) does, so a reader that runs every
+    /// frame sees each change once.
+    #[must_use]
+    pub fn value_changed(&self, widget: WidgetId) -> Option<UiValue> {
+        self.iter_current()
+            .filter_map(|event| match *event {
+                UiEvent::ValueChanged { widget: w, value } if w == widget => Some(value),
+                _ => None,
+            })
+            .last()
     }
 }

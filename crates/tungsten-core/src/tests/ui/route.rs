@@ -1,6 +1,8 @@
 use super::*;
 use crate::input::Modifiers;
-use crate::ui::{Anchor, FixedAdvanceMeasure, LayoutStyle, Sizing, UiLayer, Visibility};
+use crate::ui::{
+    Anchor, FixedAdvanceMeasure, LayoutStyle, Sizing, SliderRange, UiLayer, Visibility,
+};
 
 /// The logical viewport every rig lays out in.
 const VIEWPORT: Vec2 = Vec2::new(400.0, 300.0);
@@ -994,4 +996,356 @@ fn same_frame_crossings_reach_the_routed_view() {
     let (raw, routed) = views(&rig);
     assert_eq!(raw, (true, true, false, 0.45), "pressed and still held");
     assert_eq!(routed, raw);
+}
+
+/// The `ValueChanged` events, in order.
+fn values(events: &[UiEvent]) -> Vec<(WidgetId, UiValue)> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            UiEvent::ValueChanged { widget, value } => Some((*widget, *value)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// `min + k·step` as a range computes it: in `f64`, stored as `f32`.
+fn allowed(min: f32, step: f32, k: u32) -> f32 {
+    (f64::from(min) + f64::from(k) * f64::from(step)) as f32
+}
+
+impl Rig {
+    /// The root with a slider `s` at (10, 10), 200 by 20, over `range` at
+    /// `value`, and button `b` below it at (10, 60): the thumb is 20 wide,
+    /// so its centre runs from x 20 to 200.
+    fn slider(range: SliderRange, value: f32) -> (Self, WidgetId, WidgetId) {
+        let (mut rig, root) = Self::empty();
+        let tree = rig.tree_mut();
+        let slider = tree.slider(root, range, value);
+        tree.set_layout_style(slider, at(10.0, 10.0, 200.0, 20.0));
+        let b = rig.place(root, at(10.0, 60.0, 100.0, 30.0));
+        rig.layout();
+        (rig, slider, b)
+    }
+
+    /// The x where `fraction` of the slider's travel lies.
+    fn along(fraction: f32) -> f32 {
+        20.0 + 180.0 * fraction
+    }
+
+    fn value(&self, slider: WidgetId) -> f32 {
+        self.tree().slider_value(slider).expect("a slider")
+    }
+
+    /// A press of `key`, then its release in the next frame; the press's
+    /// events.
+    fn tap(&mut self, key: KeyCode) -> Vec<UiEvent> {
+        let events = self.frame(|input| input.key_down(key));
+        self.frame(|input| input.key_up(key));
+        events
+    }
+}
+
+#[test]
+fn a_click_and_an_accept_press_flip_a_toggle_after_its_activation() {
+    let (mut rig, root) = Rig::empty();
+    let toggle = rig.tree_mut().toggle(root, false);
+    rig.tree_mut()
+        .set_layout_style(toggle, at(10.0, 10.0, 20.0, 20.0));
+    rig.layout();
+    let events = rig.click(toggle);
+    assert_eq!(
+        events,
+        [
+            UiEvent::PointerEntered { widget: toggle },
+            UiEvent::Pressed {
+                widget: toggle,
+                button: LEFT
+            },
+            UiEvent::FocusGained { widget: toggle },
+            UiEvent::Released {
+                widget: toggle,
+                button: LEFT
+            },
+            UiEvent::Activated { widget: toggle },
+            UiEvent::ValueChanged {
+                widget: toggle,
+                value: UiValue::Bool(true)
+            },
+        ]
+    );
+    assert_eq!(rig.tree().toggled(toggle), Some(true));
+    assert_eq!(rig.queue().value_changed(toggle), Some(UiValue::Bool(true)));
+
+    // A second click soon after: a double click, which flips it back.
+    let events = rig.click(toggle);
+    assert_eq!(
+        events[2..],
+        [
+            UiEvent::Activated { widget: toggle },
+            UiEvent::ValueChanged {
+                widget: toggle,
+                value: UiValue::Bool(false)
+            },
+            UiEvent::DoubleClicked { widget: toggle },
+        ]
+    );
+    assert_eq!(rig.tree().toggled(toggle), Some(false));
+
+    rig.frame(|input| input.key_down(KeyCode::KeyW));
+    assert!(rig.tree().focus_visible(), "a key shows focus");
+    let events = rig.frame(|input| input.key_down(KeyCode::Enter));
+    assert_eq!(
+        events,
+        [
+            UiEvent::Activated { widget: toggle },
+            UiEvent::ValueChanged {
+                widget: toggle,
+                value: UiValue::Bool(true)
+            },
+        ]
+    );
+    assert_eq!(rig.tree().toggled(toggle), Some(true));
+}
+
+#[test]
+fn a_press_sets_a_slider_from_the_pointer_and_moves_follow_past_both_ends() {
+    let range = SliderRange::new(0.0, 10.0).with_step(1.0);
+    let (mut rig, slider, _b) = Rig::slider(range, 5.0);
+    let x = Rig::along(0.3);
+    let events = rig.frame(|input| {
+        input.update_cursor_position(x, 20.0);
+        input.mouse_down(LEFT);
+    });
+    assert_eq!(
+        events,
+        [
+            UiEvent::PointerEntered { widget: slider },
+            UiEvent::Pressed {
+                widget: slider,
+                button: LEFT
+            },
+            UiEvent::FocusGained { widget: slider },
+            UiEvent::ValueChanged {
+                widget: slider,
+                value: UiValue::Number(3.0)
+            },
+        ],
+        "the value after the press's own events"
+    );
+
+    let events = rig.frame(|input| input.update_cursor_position(300.0, 200.0));
+    assert_eq!(
+        values(&events),
+        [(slider, UiValue::Number(10.0))],
+        "past the end and off the slider"
+    );
+    let events = rig.frame(|input| input.update_cursor_position(-50.0, 20.0));
+    assert_eq!(values(&events), [(slider, UiValue::Number(0.0))]);
+    let events = rig.frame(|input| input.update_cursor_position(Rig::along(0.04), 20.0));
+    assert!(
+        values(&events).is_empty(),
+        "a move that snaps to the same value sends nothing"
+    );
+    let events = rig.frame(|input| input.update_cursor_position(Rig::along(0.81), 20.0));
+    assert_eq!(values(&events), [(slider, UiValue::Number(8.0))]);
+    assert_eq!(
+        rig.queue().value_changed(slider),
+        Some(UiValue::Number(8.0))
+    );
+
+    let events = rig.frame(|input| {
+        input.update_cursor_position(Rig::along(0.2), 20.0);
+        input.mouse_up(LEFT);
+    });
+    assert_eq!(
+        values(&events),
+        [(slider, UiValue::Number(2.0))],
+        "the move before the release"
+    );
+    assert_eq!(activations(&events), [slider], "a click still activates");
+    let events = rig.frame(|input| input.update_cursor_position(Rig::along(0.9), 20.0));
+    assert!(values(&events).is_empty(), "the release ended the drag");
+    assert_eq!(rig.value(slider), 2.0);
+
+    let events = rig.frame(|input| input.mouse_down(MouseButton::Right));
+    assert!(events.contains(&UiEvent::Pressed {
+        widget: slider,
+        button: MouseButton::Right
+    }));
+    let events = rig.frame(|input| input.update_cursor_position(Rig::along(0.5), 20.0));
+    assert!(values(&events).is_empty(), "another button changes nothing");
+    assert_eq!(rig.value(slider), 2.0);
+}
+
+#[test]
+fn arrows_step_a_focused_slider_with_the_repeat_and_stop_at_the_ends() {
+    // 0 to 1 by 0.3: 0, 0.3, 0.6, 0.9 and 1.
+    let range = SliderRange::new(0.0, 1.0).with_step(0.3);
+    let (mut rig, slider, b) = Rig::slider(range, 0.0);
+    rig.tree_mut().focus(slider);
+    let events = rig.frame(|input| input.key_down(KeyCode::ArrowRight));
+    assert_eq!(
+        values(&events),
+        [(slider, UiValue::Number(allowed(0.0, 0.3, 1)))]
+    );
+    assert_eq!(
+        rig.tree().focused(),
+        Some(slider),
+        "the arrow stepped, not moved"
+    );
+    assert!(!rig.routed().is_pressed(KeyCode::ArrowRight));
+
+    // The navigation repeat: frames 16, 20, 23 and 26 of 1/32 s; the last
+    // finds the slider at its end.
+    let mut changed = Vec::new();
+    for frame in 1..=26 {
+        if !values(&rig.frame(|_| {})).is_empty() {
+            changed.push(frame);
+        }
+    }
+    assert_eq!(changed, [16, 20, 23]);
+    assert_eq!(rig.value(slider), 1.0, "max is reachable");
+    rig.frame(|input| input.key_up(KeyCode::ArrowRight));
+    let events = rig.tap(KeyCode::ArrowRight);
+    assert!(values(&events).is_empty(), "at the end: nothing");
+    assert!(
+        !rig.routed().just_released(KeyCode::ArrowRight),
+        "and the press stays the UI's"
+    );
+
+    let events = rig.tap(KeyCode::ArrowLeft);
+    assert_eq!(
+        values(&events),
+        [(slider, UiValue::Number(allowed(0.0, 0.3, 3)))],
+        "back to the last whole step"
+    );
+    for _ in 0..3 {
+        rig.tap(KeyCode::ArrowLeft);
+    }
+    assert_eq!(rig.value(slider), 0.0);
+    assert!(values(&rig.tap(KeyCode::ArrowLeft)).is_empty());
+
+    rig.tap(KeyCode::ArrowDown);
+    assert_eq!(
+        rig.tree().focused(),
+        Some(b),
+        "up and down still move focus"
+    );
+    rig.tap(KeyCode::ArrowUp);
+    assert_eq!(rig.tree().focused(), Some(slider));
+}
+
+#[test]
+fn a_step_finer_than_the_f32_spacing_still_moves_each_press() {
+    // At 2^24 the f32 spacing is 2, so min + 0.5 stores as min.
+    let range = SliderRange::new(16_777_216.0, 16_777_220.0).with_step(0.5);
+    let (mut rig, slider, _b) = Rig::slider(range, 16_777_216.0);
+    rig.tree_mut().focus(slider);
+    let events = rig.tap(KeyCode::ArrowRight);
+    assert_eq!(values(&events), [(slider, UiValue::Number(16_777_218.0))]);
+    let events = rig.tap(KeyCode::ArrowRight);
+    assert_eq!(values(&events), [(slider, UiValue::Number(16_777_220.0))]);
+    assert!(values(&rig.tap(KeyCode::ArrowRight)).is_empty());
+    let events = rig.tap(KeyCode::ArrowLeft);
+    assert_eq!(values(&events), [(slider, UiValue::Number(16_777_218.0))]);
+
+    // A continuous range moves a tenth of its span.
+    let (mut rig, slider, _b) = Rig::slider(SliderRange::new(-1.0, 1.0), 0.0);
+    rig.tree_mut().focus(slider);
+    rig.tap(KeyCode::ArrowRight);
+    assert_eq!(rig.value(slider), 0.2);
+}
+
+#[test]
+fn the_first_arrow_after_a_pointer_press_is_the_games_and_the_next_steps() {
+    let range = SliderRange::new(0.0, 10.0).with_step(1.0);
+    let (mut rig, slider, _b) = Rig::slider(range, 5.0);
+    rig.click_px(Vec2::new(Rig::along(0.0), 20.0));
+    assert_eq!(rig.value(slider), 0.0);
+    assert!(!rig.tree().focus_visible());
+    let events = rig.frame(|input| input.key_down(KeyCode::ArrowRight));
+    assert!(
+        values(&events).is_empty(),
+        "hidden focus: the game's (D-149)"
+    );
+    assert!(rig.routed().just_pressed(KeyCode::ArrowRight));
+    rig.frame(|input| input.key_up(KeyCode::ArrowRight));
+    let events = rig.tap(KeyCode::ArrowRight);
+    assert_eq!(values(&events), [(slider, UiValue::Number(1.0))]);
+}
+
+#[test]
+fn a_singleton_slider_takes_a_press_and_arrows_and_changes_nothing() {
+    let (mut rig, slider, _b) = Rig::slider(SliderRange::new(3.0, 3.0), 3.0);
+    let events = rig.click_px(Vec2::new(Rig::along(0.8), 20.0));
+    assert!(activations(&events).contains(&slider), "the UI's press");
+    assert!(values(&events).is_empty());
+    rig.tap(KeyCode::KeyW);
+    let events = rig.tap(KeyCode::ArrowRight);
+    assert!(values(&events).is_empty());
+    assert!(
+        !rig.routed().just_released(KeyCode::ArrowRight),
+        "the UI's key"
+    );
+    assert_eq!(rig.value(slider), 3.0);
+}
+
+#[test]
+fn a_disabled_or_hidden_control_takes_nothing() {
+    let range = SliderRange::new(0.0, 10.0).with_step(1.0);
+    let (mut rig, slider, _b) = Rig::slider(range, 5.0);
+    let root = rig.tree().root_of(slider).expect("in the tree");
+    let toggle = rig.tree_mut().toggle(root, false);
+    rig.tree_mut()
+        .set_layout_style(toggle, at(250.0, 10.0, 20.0, 20.0));
+    rig.layout();
+    rig.tree_mut().set_enabled(toggle, false);
+    rig.tree_mut().set_visibility(slider, Visibility::Hidden);
+    let events = rig.click(toggle);
+    assert!(events.is_empty(), "{events:?}");
+    let events = rig.click_px(Vec2::new(Rig::along(0.9), 20.0));
+    assert!(events.is_empty(), "{events:?}");
+    assert_eq!(rig.tree().toggled(toggle), Some(false));
+    assert_eq!(rig.value(slider), 5.0);
+}
+
+#[test]
+fn a_press_cancelled_by_focus_loss_keeps_the_value() {
+    let range = SliderRange::new(0.0, 10.0).with_step(1.0);
+    let (mut rig, slider, _b) = Rig::slider(range, 5.0);
+    rig.frame(|input| {
+        input.update_cursor_position(Rig::along(0.7), 20.0);
+        input.mouse_down(LEFT);
+    });
+    assert_eq!(rig.value(slider), 7.0);
+    let events = rig.frame(|input| input.set_focused(false));
+    assert!(events.contains(&UiEvent::PressCancelled { widget: slider }));
+    assert!(values(&events).is_empty());
+    assert_eq!(rig.value(slider), 7.0);
+    rig.frame(|input| input.set_focused(true));
+    let events = rig.frame(|input| {
+        input.update_cursor_position(Rig::along(0.1), 20.0);
+        input.mouse_up(LEFT);
+    });
+    assert!(
+        values(&events).is_empty(),
+        "the cancelled press drags nothing"
+    );
+    assert_eq!(rig.value(slider), 7.0);
+}
+
+#[test]
+fn the_setters_route_no_value_change() {
+    let range = SliderRange::new(0.0, 10.0).with_step(1.0);
+    let (mut rig, slider, _b) = Rig::slider(range, 5.0);
+    let root = rig.tree().root_of(slider).expect("in the tree");
+    let toggle = rig.tree_mut().toggle(root, false);
+    assert!(rig.tree_mut().set_slider_value(slider, 9.0));
+    assert!(rig.tree_mut().set_toggled(toggle, true));
+    rig.tree_mut()
+        .set_slider_range(slider, SliderRange::new(0.0, 4.0));
+    let events = rig.frame(|_| {});
+    assert!(values(&events).is_empty(), "{events:?}");
+    assert_eq!(rig.value(slider), 4.0);
 }

@@ -628,7 +628,7 @@ fn ui_themes_load_into_the_registry_with_their_paths() {
     );
     assert_eq!(paths.id_for_path(Path::new("elsewhere.json")), None);
 
-    let bad = theme_manifest(&dir, &[("broken", "{ \"kinds\": { \"slider\": {} } }")]);
+    let bad = theme_manifest(&dir, &[("broken", "{ \"kinds\": { \"progress\": {} } }")]);
     let err = load_ui_themes(&bad, &mut world).unwrap_err();
     assert!(err.to_string().contains("ui theme 'broken'"), "{err}");
 }

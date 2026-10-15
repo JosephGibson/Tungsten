@@ -41,9 +41,10 @@ pub enum ThemeFileError {
 
 /// A theme file: every field optional, each `Some` replacing the built-in
 /// theme's value. `tokens` holds the token groups; `kinds` holds, per widget
-/// kind (`panel`, `label`, `button`, `image`), a `normal` look and the
-/// `focused`, `disabled`, `hovered` and `pressed` variants, each merged
-/// over the kind's built-in one. An unknown field is an error.
+/// kind (`panel`, `label`, `button`, `image`, `toggle`, `slider`), a
+/// `normal` look and the `focused`, `disabled`, `hovered` and `pressed`
+/// variants, each merged over the kind's built-in one. An unknown field is
+/// an error.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct ThemeFile {
@@ -86,12 +87,16 @@ impl ThemeFile {
             label,
             button,
             image,
+            toggle,
+            slider,
         } = self.kinds;
         for (file, kind) in [
             (panel, &mut kinds.panel),
             (label, &mut kinds.label),
             (button, &mut kinds.button),
             (image, &mut kinds.image),
+            (toggle, &mut kinds.toggle),
+            (slider, &mut kinds.slider),
         ] {
             if let Some(file) = file {
                 file.apply(kind);
@@ -269,6 +274,8 @@ struct KindsFile {
     label: Option<KindFile>,
     button: Option<KindFile>,
     image: Option<KindFile>,
+    toggle: Option<KindFile>,
+    slider: Option<KindFile>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

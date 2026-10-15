@@ -210,8 +210,8 @@ fn viewport_style(viewport: Vec2) -> Style {
     style
 }
 
-/// Builds `id`'s subtree into `taffy`, skipping collapsed subtrees. Labels
-/// and images are leaves carrying their widget as context.
+/// Builds `id`'s subtree into `taffy`, skipping collapsed subtrees. Labels,
+/// images, toggles and sliders are leaves carrying their widget as context.
 fn build(
     tree: &UiTree,
     taffy: &mut TaffyTree<WidgetId>,
@@ -350,6 +350,17 @@ pub(crate) fn lay_out_root(
                             return Size {
                                 width: known.width.unwrap_or(image.natural_size.x),
                                 height: known.height.unwrap_or(image.natural_size.y),
+                            };
+                        }
+                        if let Some(control) = node.control {
+                            let line = node
+                                .resolved
+                                .as_ref()
+                                .map_or(0.0, |resolved| resolved.text.line_height);
+                            let (width, height) = control.natural_size(line);
+                            return Size {
+                                width: known.width.unwrap_or(width),
+                                height: known.height.unwrap_or(height),
                             };
                         }
                         let Some(text_node) = node.text_id else {

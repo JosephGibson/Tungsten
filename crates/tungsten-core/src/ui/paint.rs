@@ -16,6 +16,7 @@ use glam::Vec2;
 use crate::assets::{AssetRegistry, FilterMode, SpriteAsset, SpriteAssetId, TextureHandle, UvRect};
 use crate::text::TextNodeId;
 
+use super::control::{self, Control};
 use super::geometry::Rect;
 use super::id::WidgetId;
 use super::node::{UiLayer, Visibility, WidgetKind};
@@ -23,6 +24,9 @@ use super::tree::UiTree;
 
 /// The border colour of the layout-bounds overlay.
 const BOUNDS_OUTLINE: [u8; 4] = [255, 64, 255, 255];
+
+/// No colour: a part with no border.
+const TRANSPARENT: [u8; 4] = [0, 0, 0, 0];
 
 /// An integer rectangle in physical pixels: a primitive's scissor and the
 /// bounds a text run is trimmed to. Index 0 of [`PaintList::clips`] is the
@@ -475,18 +479,41 @@ fn push_images(
     }
 }
 
+/// Pushes a rectangle when its fill or its border shows.
+fn push_box(
+    out: &mut PaintList,
+    rect: Rect,
+    fill: [u8; 4],
+    border: [u8; 4],
+    border_width: f32,
+    corner_radius: f32,
+    clip: u32,
+) {
+    if fill[3] > 0 || (border[3] > 0 && border_width > 0.0) {
+        out.commands.push(PaintCommand::Rect {
+            rect,
+            fill,
+            border,
+            border_width,
+            corner_radius,
+            clip,
+        });
+    }
+}
+
 impl UiTree {
     /// Paints the tree into `out` at `scale` physical pixels per UI unit:
     /// layers low to high, roots and children in order, each node's own box
-    /// when its fill or border is visible, then a label's text run or an
+    /// when its fill or border is visible, then a label's text run, an
     /// image's sprite (`sprites` resolves it; an unregistered sprite warns
-    /// once per ID and draws nothing), then its children, inside the
-    /// intersection of its box and the enclosing clip when it clips them,
-    /// skipped when that is empty. Clip 0 is the viewport of the last
-    /// [`Self::layout`]. `Hidden` and `Collapsed` subtrees paint nothing;
-    /// with `debug.hide_game_layers` neither do the `Game` and `GamePopup`
-    /// layers, and `debug.show_bounds` appends an outline per painted node.
-    /// Clears the paint-dirty flag.
+    /// once per ID and draws nothing) or a toggle's mark when it is on; a
+    /// slider paints its track, fill and thumb in place of its box. Then its
+    /// children, inside the intersection of its box and the enclosing clip
+    /// when it clips them, skipped when that is empty. Clip 0 is the
+    /// viewport of the last [`Self::layout`]. `Hidden` and `Collapsed`
+    /// subtrees paint nothing; with `debug.hide_game_layers` neither do the
+    /// `Game` and `GamePopup` layers, and `debug.show_bounds` appends an
+    /// outline per painted node. Clears the paint-dirty flag.
     pub fn paint(
         &mut self,
         scale: f32,
@@ -569,15 +596,16 @@ impl UiTree {
         };
         let physical = scaled(rect, scale);
         bounds.push(physical);
-        if resolved.background[3] > 0 || (resolved.border[3] > 0 && resolved.border_width > 0.0) {
-            out.commands.push(PaintCommand::Rect {
-                rect: physical,
-                fill: resolved.background,
-                border: resolved.border,
-                border_width: resolved.border_width * scale,
-                corner_radius: resolved.corner_radius * scale,
+        if node.kind != WidgetKind::Slider {
+            push_box(
+                out,
+                physical,
+                resolved.background,
+                resolved.border,
+                resolved.border_width * scale,
+                resolved.corner_radius * scale,
                 clip,
-            });
+            );
         }
         match node.kind {
             WidgetKind::Label => {
@@ -606,6 +634,50 @@ impl UiTree {
                             }
                         }
                     }
+                }
+            }
+            WidgetKind::Toggle => {
+                if let Some(Control::Toggle(true)) = node.control {
+                    let (mark, radius) = control::toggle_mark(rect, resolved.corner_radius);
+                    push_box(
+                        out,
+                        scaled(mark, scale),
+                        resolved.text.color,
+                        TRANSPARENT,
+                        0.0,
+                        radius * scale,
+                        clip,
+                    );
+                }
+            }
+            WidgetKind::Slider => {
+                if let Some(Control::Slider { value, range }) = node.control {
+                    let parts =
+                        control::slider_parts(rect, range.fraction(value), resolved.corner_radius);
+                    let track_radius = parts.track_radius * scale;
+                    for (part, fill) in [
+                        (parts.track, resolved.background),
+                        (parts.fill, resolved.text.color),
+                    ] {
+                        push_box(
+                            out,
+                            scaled(part, scale),
+                            fill,
+                            TRANSPARENT,
+                            0.0,
+                            track_radius,
+                            clip,
+                        );
+                    }
+                    push_box(
+                        out,
+                        scaled(parts.thumb, scale),
+                        resolved.text.color,
+                        resolved.border,
+                        resolved.border_width * scale,
+                        resolved.corner_radius * scale,
+                        clip,
+                    );
                 }
             }
             WidgetKind::Panel | WidgetKind::Button => {}

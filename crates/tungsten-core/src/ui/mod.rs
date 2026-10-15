@@ -9,8 +9,11 @@
 //! adds input (`D-149`): hover, press and focus visibility layered into
 //! styles, hit testing through the paint clip stack, modal roots,
 //! directional focus, cursors, [`UiEvent`], [`UiRouter`] and the `ui_*`
-//! actions. Nothing here draws: the render crate consumes the paint list.
+//! actions. M55 adds the checkbox and slider kinds, [`SliderRange`] and
+//! [`UiValue`]. Nothing here draws: the render crate consumes the paint
+//! list.
 
+pub mod control;
 pub mod event;
 pub mod focus;
 pub mod geometry;
@@ -26,7 +29,8 @@ pub mod theme;
 pub mod theme_file;
 pub mod tree;
 
-pub use event::UiEvent;
+pub use control::SliderRange;
+pub use event::{UiEvent, UiValue};
 pub use focus::NavDirection;
 pub use geometry::Rect;
 pub use id::WidgetId;

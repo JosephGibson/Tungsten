@@ -8,6 +8,7 @@ use crate::assets::SpriteAssetId;
 use crate::text::{StyledText, TextNodeId};
 
 use super::WidgetId;
+use super::control::Control;
 use super::geometry::Rect;
 use super::style::LayoutStyle;
 use super::theme::{ResolvedStyle, StyleOverrides};
@@ -27,7 +28,7 @@ pub enum UiLayer {
     DebugPopup,
 }
 
-/// What a widget is. `Toggle` and `Slider` join at BC.
+/// What a widget is.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum WidgetKind {
@@ -40,6 +41,12 @@ pub enum WidgetKind {
     /// A leaf drawing one sprite, stretched into its box, or nine-sliced
     /// when the sprite has insets (M2).
     Image,
+    /// A checkbox: a focusable, interactive leaf that is on or off (M55).
+    /// Its caption is a sibling `Label`.
+    Toggle,
+    /// A horizontal slider: a focusable, interactive leaf holding a value in
+    /// a [`SliderRange`](super::SliderRange) (M55).
+    Slider,
 }
 
 impl WidgetKind {
@@ -51,13 +58,25 @@ impl WidgetKind {
             Self::Label => Role::Label,
             Self::Button => Role::Button,
             Self::Image => Role::Image,
+            Self::Toggle => Role::CheckBox,
+            Self::Slider => Role::Slider,
         }
     }
 
-    /// Whether widgets of this kind hold no children: labels and images.
+    /// Whether widgets of this kind hold no children: labels, images,
+    /// toggles and sliders.
     #[must_use]
     pub const fn is_leaf(self) -> bool {
-        matches!(self, Self::Label | Self::Image)
+        matches!(
+            self,
+            Self::Label | Self::Image | Self::Toggle | Self::Slider
+        )
+    }
+
+    /// Whether widgets of this kind start focusable and interactive:
+    /// buttons, toggles and sliders.
+    const fn is_control(self) -> bool {
+        matches!(self, Self::Button | Self::Toggle | Self::Slider)
     }
 }
 
@@ -81,6 +100,10 @@ pub enum Role {
     Button,
     /// A picture.
     Image,
+    /// A control that is on or off.
+    CheckBox,
+    /// A control that picks a value in a range.
+    Slider,
 }
 
 /// Whether a widget takes part in layout, paint and hit testing.
@@ -172,6 +195,8 @@ pub(crate) struct Node {
     pub(crate) text: Option<TextContent>,
     /// Set for an `Image`.
     pub(crate) image: Option<ImageContent>,
+    /// Set for a `Toggle` or a `Slider`.
+    pub(crate) control: Option<Control>,
     /// Whether the children paint only inside this node's box (Q6).
     pub(crate) clip_children: bool,
     pub(crate) layout_style: LayoutStyle,
@@ -221,7 +246,7 @@ impl Node {
         layer: UiLayer,
         layout_style: LayoutStyle,
     ) -> Self {
-        let is_button = matches!(kind, WidgetKind::Button);
+        let is_control = kind.is_control();
         Self {
             kind,
             parent,
@@ -230,14 +255,15 @@ impl Node {
             children: Vec::new(),
             text: None,
             image: None,
+            control: None,
             clip_children: false,
             layout_style,
             visibility: Visibility::Visible,
             role: kind.default_role(),
             accessible_name: None,
             enabled: true,
-            interactive: is_button,
-            focusable: is_button,
+            interactive: is_control,
+            focusable: is_control,
             focus_scope: false,
             hit_testable: true,
             modal: false,

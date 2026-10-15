@@ -46,6 +46,8 @@ impl Theme {
             WidgetKind::Label => &self.kinds.label,
             WidgetKind::Button => &self.kinds.button,
             WidgetKind::Image => &self.kinds.image,
+            WidgetKind::Toggle => &self.kinds.toggle,
+            WidgetKind::Slider => &self.kinds.slider,
         }
     }
 }
@@ -209,6 +211,12 @@ pub struct KindStyles {
     pub button: KindStyle,
     /// Images.
     pub image: KindStyle,
+    /// Toggles: the box in the background and border, the mark in the text
+    /// colour.
+    pub toggle: KindStyle,
+    /// Sliders: the track in the background, the fill and thumb in the text
+    /// colour, the thumb's border in the border colour and width.
+    pub slider: KindStyle,
 }
 
 impl KindStyles {
@@ -216,10 +224,20 @@ impl KindStyles {
     /// with a border, labels and images transparent, buttons on the accent
     /// with bold accent text, a focus-coloured border when focused, a lighter
     /// fill when hovered, a darker one when pressed and muted text when
+    /// disabled. Toggles are a bordered surface box with an accent mark,
+    /// lighter when hovered and darker when pressed; sliders a
+    /// border-coloured track with an accent fill and thumb, lighter when
+    /// hovered and darker when pressed. Both take the focus border when
+    /// focused and the disabled text colour, their indicator's, when
     /// disabled.
     #[must_use]
     pub fn for_tokens(tokens: &Tokens) -> Self {
         let transparent = [0, 0, 0, 0];
+        let focused = || StyleOverrides {
+            border: Some(tokens.colors.focus),
+            border_width: Some(2.0),
+            ..StyleOverrides::default()
+        };
         let plain = || {
             KindStyle::plain(VisualStyle {
                 background: transparent,
@@ -273,7 +291,58 @@ impl KindStyles {
                     ..StyleOverrides::default()
                 },
             },
+            toggle: KindStyle {
+                normal: VisualStyle {
+                    background: tokens.colors.surface,
+                    border: tokens.colors.border,
+                    border_width: 1.0,
+                    corner_radius: tokens.radii.sm,
+                    text: text_color(tokens.colors.accent),
+                },
+                focused: focused(),
+                disabled: StyleOverrides {
+                    text: text_color(tokens.colors.disabled_text),
+                    ..StyleOverrides::default()
+                },
+                hovered: StyleOverrides {
+                    background: Some(lighten(tokens.colors.surface, 24)),
+                    ..StyleOverrides::default()
+                },
+                pressed: StyleOverrides {
+                    background: Some(darken(tokens.colors.surface, 16)),
+                    ..StyleOverrides::default()
+                },
+            },
+            slider: KindStyle {
+                normal: VisualStyle {
+                    background: tokens.colors.border,
+                    border: tokens.colors.border,
+                    border_width: 0.0,
+                    corner_radius: tokens.radii.sm,
+                    text: text_color(tokens.colors.accent),
+                },
+                focused: focused(),
+                disabled: StyleOverrides {
+                    text: text_color(tokens.colors.disabled_text),
+                    ..StyleOverrides::default()
+                },
+                hovered: StyleOverrides {
+                    text: text_color(lighten(tokens.colors.accent, 24)),
+                    ..StyleOverrides::default()
+                },
+                pressed: StyleOverrides {
+                    text: text_color(darken(tokens.colors.accent, 32)),
+                    ..StyleOverrides::default()
+                },
+            },
         }
+    }
+}
+
+fn text_color(color: [u8; 4]) -> TextOverrides {
+    TextOverrides {
+        color: Some(color),
+        ..TextOverrides::default()
     }
 }
 

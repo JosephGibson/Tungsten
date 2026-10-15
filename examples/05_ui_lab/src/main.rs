@@ -3,7 +3,9 @@
 //! hot-reloaded from `assets/ui/themes/ex05_default.json`. The popup is a
 //! modal the pointer and keys drive (M47, `D-149`).
 //!
-//! The interactive run floats damage numbers as world labels (M54, `D-161`).
+//! The interactive run floats damage numbers as world labels (M54, `D-161`)
+//! and adds a "Settings" window of checkboxes and sliders that switches
+//! them, sets their rate and shows a volume readout (M55).
 //!
 //! Env for the smoke matrix and `tests/ui_regression.rs`:
 //! `TUNGSTEN_UI_LAB_FIXTURE={default|empty|hidden|labels}` turns the debug
@@ -100,7 +102,7 @@ fn main() -> anyhow::Result<()> {
             debug.hide_game_layers = true;
         }
         if fixture != Fixture::Empty {
-            build_ui(world);
+            build_ui(world, fixture == Fixture::Off);
         }
     });
     app.add_system_named("ui_lab_counter", counter_system);
@@ -111,6 +113,7 @@ fn main() -> anyhow::Result<()> {
         Fixture::Off => {
             app.world_mut()
                 .insert_resource(screens::DamageNumbers::default());
+            app.add_system_named("ui_lab_controls", screens::controls_system);
             app.add_system_named("ui_lab_damage_numbers", screens::damage_numbers_system);
         }
         _ => {}
@@ -119,8 +122,9 @@ fn main() -> anyhow::Result<()> {
     app.run()
 }
 
-/// Applies the lab's theme from the registry and builds the screens.
-fn build_ui(world: &mut World) {
+/// Applies the lab's theme from the registry and builds the screens, with
+/// the "Settings" window when `controls` is set.
+fn build_ui(world: &mut World, controls: bool) {
     let theme = world
         .get_resource::<UiThemeRegistry>()
         .and_then(|registry| registry.get(THEME_ID).cloned());
@@ -137,6 +141,10 @@ fn build_ui(world: &mut World) {
             .expect("AssetRegistry resource missing");
         screens::build(&mut tree, sprites)
     };
+    if controls {
+        let controls = screens::build_controls(&mut tree);
+        world.insert_resource(controls);
+    }
     world.insert_resource(tree);
     world.insert_resource(lab);
 }
