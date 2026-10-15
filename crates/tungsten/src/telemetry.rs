@@ -96,8 +96,8 @@ impl Default for DisplayTelemetry {
 }
 
 /// Per-frame render counts from extract, and the UI's counts (M46): the
-/// paint list's and the layout stage's from this frame's extract, the text
-/// batch counts from the previous frame's render.
+/// paint list's, the layout stage's and the world labels' from this frame's
+/// extract, the text batch counts from the previous frame's render.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct RenderCounts {
     pub entities: u32,
@@ -118,6 +118,17 @@ pub struct RenderCounts {
     pub text_full_frames: u64,
     /// `AtlasFull` results so far.
     pub text_atlas_full: u64,
+    /// World labels this frame's extract kept for drawing (M54).
+    pub world_labels: u32,
+    /// World labels this frame's extract culled outside the view.
+    pub world_labels_culled: u32,
+    /// World labels this frame's extract dropped past the cap.
+    pub world_labels_dropped: u32,
+    /// Glyphs the world labels' prepare took in the last rendered frame; 0
+    /// when they did not prepare.
+    pub text_label_glyphs: u32,
+    /// Layouts in the text cache after the last rendered frame.
+    pub text_layouts: u32,
 }
 
 #[cfg(test)]

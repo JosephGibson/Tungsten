@@ -208,7 +208,8 @@ fn render_cpu_provider(world: &World) -> Vec<HudRow> {
 }
 
 /// M46: the UI paint list's size, the layout stage's cost and the text
-/// batch telemetry (`D-126`'s observable half, Q3).
+/// batch telemetry (`D-126`'s observable half, Q3); M54: the world labels
+/// kept, culled and dropped, their glyphs and the cached layouts.
 fn ui_provider(world: &World) -> Vec<HudRow> {
     let Some(rc) = world.get_resource::<RenderCounts>() else {
         return Vec::new();
@@ -216,7 +217,7 @@ fn ui_provider(world: &World) -> Vec<HudRow> {
     vec![HudRow {
         label: "ui",
         value: format!(
-            "{} cmds layout {}us {}r/{}n text {}b {}prep full {} atlas_full {}",
+            "{} cmds layout {}us {}r/{}n text {}b {}prep full {} atlas_full {} labels {}/{}c/{}d lg {} lay {}",
             rc.ui_commands,
             rc.ui_layout_us,
             rc.ui_roots_laid_out,
@@ -224,7 +225,12 @@ fn ui_provider(world: &World) -> Vec<HudRow> {
             rc.text_batches,
             rc.text_batches_prepared,
             rc.text_full_frames,
-            rc.text_atlas_full
+            rc.text_atlas_full,
+            rc.world_labels,
+            rc.world_labels_culled,
+            rc.world_labels_dropped,
+            rc.text_label_glyphs,
+            rc.text_layouts
         ),
     }]
 }

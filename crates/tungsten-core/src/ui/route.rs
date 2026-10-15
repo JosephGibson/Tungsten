@@ -2,15 +2,16 @@
 //! [`UiRouter`] resource, its timing settings, the last device used, and
 //! [`ui_route_system`], which once a frame turns the ordered raw input into
 //! hover, press, capture, focus and [`UiEvent`]s against the last committed
-//! layout and feeds [`RoutedInput`] what the UI did not take.
+//! layout and feeds [`RoutedInput`] what the UI did not take. Gamepad
+//! buttons and stick directions navigate as keys do (M54).
 
 use glam::Vec2;
 
 use crate::display::ScaleFactor;
 use crate::ecs::{EventQueue, World};
 use crate::input::{
-    ActionMap, Binding, InputState, KeyCode, MouseButton, RawEvent, RawInput, RoutedInput,
-    WheelDelta,
+    ActionMap, AxisDirection, Binding, GamepadAxis, GamepadButton, GamepadId, InputState, KeyCode,
+    MouseButton, RawEvent, RawInput, RoutedInput, WheelDelta,
 };
 use crate::time::Time;
 
@@ -29,16 +30,19 @@ pub const UI_CANCEL: &str = "ui_cancel";
 /// Moves focus to the next widget in tab order, or back with Shift held;
 /// Tab by default.
 pub const UI_NEXT: &str = "ui_next";
-/// Moves focus back in tab order; unbound by default, since Shift with
-/// [`UI_NEXT`] does it and bindings carry no modifiers (`D-045`).
+/// Moves focus back in tab order; the left shoulder by default, and on the
+/// keyboard Shift with [`UI_NEXT`] does it, since bindings carry no
+/// modifiers (`D-045`).
 pub const UI_PREV: &str = "ui_prev";
-/// Moves focus up ([`NavDirection::Up`]); the up arrow by default.
+/// Moves focus up ([`NavDirection::Up`]); the up arrow, the d-pad and the
+/// left stick by default.
 pub const UI_UP: &str = "ui_up";
-/// Moves focus down; the down arrow by default.
+/// Moves focus down; the down arrow, the d-pad and the left stick by default.
 pub const UI_DOWN: &str = "ui_down";
-/// Moves focus left; the left arrow by default.
+/// Moves focus left; the left arrow, the d-pad and the left stick by default.
 pub const UI_LEFT: &str = "ui_left";
-/// Moves focus right; the right arrow by default.
+/// Moves focus right; the right arrow, the d-pad and the left stick by
+/// default.
 pub const UI_RIGHT: &str = "ui_right";
 
 const ACCEPT: u8 = 1;
@@ -63,7 +67,7 @@ const ACTIONS: [(&str, u8); 8] = [
 ];
 
 /// The device that last drove the UI (`D-149`): focus shows after the
-/// keyboard and hides after the pointer.
+/// keyboard or a gamepad and hides after the pointer.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub enum InputDevice {
@@ -72,6 +76,36 @@ pub enum InputDevice {
     Keyboard,
     /// A mouse button press or the wheel; a move alone changes nothing.
     Pointer,
+    /// A gamepad button or stick direction press (M54).
+    Gamepad,
+}
+
+/// A press that navigates, with its pad, so each pad's presses and releases
+/// keep their owner.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NavInput {
+    Key(KeyCode),
+    Pad(GamepadId, GamepadButton),
+    Stick(GamepadId, GamepadAxis, AxisDirection),
+}
+
+impl NavInput {
+    /// The binding that names this press, pad aside.
+    fn binding(self) -> Binding {
+        match self {
+            Self::Key(code) => Binding::Key { code },
+            Self::Pad(_, button) => Binding::GamepadButton { button },
+            Self::Stick(_, axis, direction) => Binding::GamepadAxis { axis, direction },
+        }
+    }
+
+    /// The pad that pressed it; `None` for a key.
+    fn pad(self) -> Option<GamepadId> {
+        match self {
+            Self::Key(_) => None,
+            Self::Pad(pad, _) | Self::Stick(pad, ..) => Some(pad),
+        }
+    }
 }
 
 /// Navigation repeat and double-click timing (`D-149`), on the real clock.
@@ -105,7 +139,7 @@ impl Default for UiRouteSettings {
 #[derive(Debug, Clone, Copy)]
 struct Repeat {
     dir: NavDirection,
-    key: KeyCode,
+    input: NavInput,
     /// Router clock seconds.
     next: f64,
 }
@@ -130,9 +164,13 @@ pub struct UiRouter {
     captured: Option<WidgetId>,
     /// Other buttons' presses on targets, until their releases.
     presses: Vec<(MouseButton, WidgetId)>,
-    /// Keys and buttons whose presses the UI took: their releases are its.
-    ui_keys: Vec<KeyCode>,
+    /// Keys, pad buttons, stick directions and mouse buttons whose presses
+    /// the UI took: their releases are its.
+    ui_held: Vec<NavInput>,
     ui_buttons: Vec<MouseButton>,
+    /// Pads' axes whose stick direction the UI holds: the routed view reads
+    /// them as 0 until that direction's release.
+    withheld: Vec<(GamepadId, GamepadAxis)>,
     repeat: Option<Repeat>,
     /// The last click activation: widget, router clock, position in UI
     /// units.
@@ -143,8 +181,8 @@ pub struct UiRouter {
     stream: Vec<RawEvent>,
     events: Vec<UiEvent>,
     routed: Vec<RawInput>,
-    /// The `ui_*` actions of each key pressed in this routing's stream.
-    key_actions: Vec<(KeyCode, u8)>,
+    /// The `ui_*` actions of each binding pressed in this routing's stream.
+    nav_actions: Vec<(Binding, u8)>,
 }
 
 impl UiRouter {
@@ -159,8 +197,8 @@ impl UiRouter {
         &mut self.settings
     }
 
-    /// The device of the last key, button or wheel input routed; `Keyboard`
-    /// before any.
+    /// The device of the last key, button, stick or wheel input routed;
+    /// `Keyboard` before any.
     #[must_use]
     pub fn last_device(&self) -> InputDevice {
         self.last_device
@@ -206,21 +244,14 @@ impl UiRouter {
         if let Some(input) = world.get_resource::<InputState>() {
             stream.extend_from_slice(input.raw_events());
         }
-        let mut key_actions = std::mem::take(&mut self.key_actions);
-        key_actions.clear();
-        let presses = stream.iter().filter_map(|event| match event.input {
-            RawInput::Key {
-                code,
-                pressed: true,
-                repeat: false,
-                ..
-            } => Some(code),
-            _ => None,
-        });
+        let mut nav_actions = std::mem::take(&mut self.nav_actions);
+        nav_actions.clear();
+        let presses = stream.iter().filter_map(|event| nav_press(event.input));
         if let Some(map) = world.get_resource::<ActionMap>() {
-            for code in presses {
-                if !key_actions.iter().any(|(key, _)| *key == code) {
-                    key_actions.push((code, ui_actions(map, code)));
+            for nav in presses {
+                let binding = nav.binding();
+                if !nav_actions.iter().any(|(seen, _)| *seen == binding) {
+                    nav_actions.push((binding, ui_actions(map, binding)));
                 }
             }
         }
@@ -237,7 +268,7 @@ impl UiRouter {
             tree,
             scale,
             hide,
-            key_actions: &key_actions,
+            nav_actions: &nav_actions,
         }
         .run(&stream);
         if let Some(routed) = world.get_resource_mut::<RoutedInput>() {
@@ -255,7 +286,7 @@ impl UiRouter {
             }
         }
         self.stream = stream;
-        self.key_actions = key_actions;
+        self.nav_actions = nav_actions;
     }
 }
 
@@ -281,11 +312,36 @@ pub fn ui_route_system(world: &mut World) {
     }
 }
 
-/// The `ui_*` actions `code` is bound to, as bits.
-fn ui_actions(map: &ActionMap, code: KeyCode) -> u8 {
+/// The press `input` is, when it may navigate: a key press that is not an
+/// OS repeat, a pad button press or a stick direction press.
+fn nav_press(input: RawInput) -> Option<NavInput> {
+    match input {
+        RawInput::Key {
+            code,
+            pressed: true,
+            repeat: false,
+            ..
+        } => Some(NavInput::Key(code)),
+        RawInput::GamepadButton {
+            pad,
+            button,
+            pressed: true,
+        } => Some(NavInput::Pad(pad, button)),
+        RawInput::GamepadStick {
+            pad,
+            axis,
+            direction,
+            pressed: true,
+        } => Some(NavInput::Stick(pad, axis, direction)),
+        _ => None,
+    }
+}
+
+/// The `ui_*` actions `binding` is in, as bits.
+fn ui_actions(map: &ActionMap, binding: Binding) -> u8 {
     ACTIONS
         .iter()
-        .filter(|(action, _)| map.bindings(action).contains(&Binding::Key { code }))
+        .filter(|(action, _)| map.bindings(action).contains(&binding))
         .fold(0, |bits, (_, bit)| bits | bit)
 }
 
@@ -326,6 +382,27 @@ fn feed(routed: &mut InputState, input: RawInput) {
         } => routed.add_scroll_pixel_delta(x, y),
         RawInput::Modifiers(modifiers) => routed.set_modifiers(modifiers),
         RawInput::Focus(focused) => routed.set_focused(focused),
+        RawInput::GamepadButton {
+            pad,
+            button,
+            pressed: true,
+        } => routed.gamepad_button_down(pad, button),
+        RawInput::GamepadButton {
+            pad,
+            button,
+            pressed: false,
+        } => routed.gamepad_button_up(pad, button),
+        RawInput::GamepadAxis { pad, axis, value } => routed.set_gamepad_axis(pad, axis, value),
+        // The routed view derives its stick edges from the values it is fed.
+        RawInput::GamepadStick { .. } => {}
+        RawInput::Gamepad {
+            pad,
+            connected: true,
+        } => routed.gamepad_connected(pad),
+        RawInput::Gamepad {
+            pad,
+            connected: false,
+        } => routed.gamepad_disconnected(pad),
     }
 }
 
@@ -335,7 +412,7 @@ struct Routing<'a> {
     tree: &'a mut UiTree,
     scale: f32,
     hide: bool,
-    key_actions: &'a [(KeyCode, u8)],
+    nav_actions: &'a [(Binding, u8)],
     /// The top modal root that takes input; fixed for the routing, since
     /// only game code shows or hides roots.
     modal: Option<WidgetId>,
@@ -351,7 +428,7 @@ impl Routing<'_> {
             .copied()
             .find(|root| self.tree.root_routes(*root, self.hide) && self.tree.modal(*root));
         self.tree
-            .set_focus_visible(self.router.last_device == InputDevice::Keyboard);
+            .set_focus_visible(self.router.last_device != InputDevice::Pointer);
         self.sync_focus();
         self.check_presses();
         self.focus_into_modal();
@@ -394,7 +471,7 @@ impl Routing<'_> {
             RawInput::Key {
                 code, repeat: true, ..
             } => {
-                if !self.router.ui_keys.contains(&code) {
+                if !self.router.ui_held.contains(&NavInput::Key(code)) {
                     self.router.routed.push(input);
                 }
             }
@@ -403,12 +480,80 @@ impl Routing<'_> {
                 pressed: true,
                 modifiers,
                 ..
-            } => self.key_down(code, modifiers.shift(), input),
+            } => {
+                self.nav_down(
+                    NavInput::Key(code),
+                    modifiers.shift(),
+                    input,
+                    InputDevice::Keyboard,
+                );
+            }
             RawInput::Key {
                 code,
                 pressed: false,
                 ..
-            } => self.key_up(code, input),
+            } => self.nav_up(NavInput::Key(code), Some(input)),
+            RawInput::GamepadButton {
+                pad,
+                button,
+                pressed: true,
+            } => {
+                self.nav_down(
+                    NavInput::Pad(pad, button),
+                    false,
+                    input,
+                    InputDevice::Gamepad,
+                );
+            }
+            RawInput::GamepadButton {
+                pad,
+                button,
+                pressed: false,
+            } => self.nav_up(NavInput::Pad(pad, button), Some(input)),
+            RawInput::GamepadStick {
+                pad,
+                axis,
+                direction,
+                pressed: true,
+            } => {
+                let nav = NavInput::Stick(pad, axis, direction);
+                if self.nav_down(nav, false, input, InputDevice::Gamepad) {
+                    // The routed view reads the axis as 0 while the UI holds
+                    // the direction.
+                    self.router.withheld.push((pad, axis));
+                    self.router.routed.push(RawInput::GamepadAxis {
+                        pad,
+                        axis,
+                        value: 0.0,
+                    });
+                }
+            }
+            RawInput::GamepadStick {
+                pad,
+                axis,
+                direction,
+                pressed: false,
+            } => {
+                if self
+                    .router
+                    .ui_held
+                    .contains(&NavInput::Stick(pad, axis, direction))
+                {
+                    self.router.withheld.retain(|held| *held != (pad, axis));
+                }
+                self.nav_up(NavInput::Stick(pad, axis, direction), None);
+            }
+            RawInput::GamepadAxis { pad, axis, .. } => {
+                if !self.router.withheld.contains(&(pad, axis)) {
+                    self.router.routed.push(input);
+                }
+            }
+            RawInput::Gamepad { pad, connected } => {
+                if !connected {
+                    self.pad_lost(pad);
+                }
+                self.router.routed.push(input);
+            }
             RawInput::Modifiers(_) => self.router.routed.push(input),
             RawInput::Focus(focused) => {
                 if !focused {
@@ -619,20 +764,34 @@ impl Routing<'_> {
         }
     }
 
-    fn key_down(&mut self, code: KeyCode, shift: bool, input: RawInput) {
+    /// A key, pad button or stick direction press: the UI takes it while a
+    /// modal root is shown, or while a widget holds visible focus and the
+    /// press is bound to a `ui_*` action; otherwise it goes to the routed
+    /// view, except a stick press, whose axis record carries it. Returns
+    /// whether the UI took it.
+    fn nav_down(
+        &mut self,
+        nav: NavInput,
+        shift: bool,
+        input: RawInput,
+        device: InputDevice,
+    ) -> bool {
+        let binding = nav.binding();
         let actions = self
-            .key_actions
+            .nav_actions
             .iter()
-            .find(|(key, _)| *key == code)
+            .find(|(seen, _)| *seen == binding)
             .map_or(0, |(_, actions)| *actions);
         let takes = self.modal.is_some()
             || (actions != 0 && self.focus_in_play().is_some() && self.tree.focus_visible());
-        self.set_device(InputDevice::Keyboard);
+        self.set_device(device);
         if !takes {
-            self.router.routed.push(input);
-            return;
+            if !matches!(nav, NavInput::Stick(..)) {
+                self.router.routed.push(input);
+            }
+            return false;
         }
-        self.router.ui_keys.push(code);
+        self.router.ui_held.push(nav);
         if actions & (NEXT | PREV) != 0 && self.focus_in_play().is_some() {
             if actions & PREV != 0 || shift {
                 self.tree.focus_prev();
@@ -648,7 +807,7 @@ impl Routing<'_> {
             }
             self.router.repeat = Some(Repeat {
                 dir,
-                key: code,
+                input: nav,
                 next: self.router.clock + f64::from(self.router.settings.repeat_delay),
             });
         }
@@ -670,17 +829,34 @@ impl Routing<'_> {
                 self.sync_focus();
             }
         }
+        true
     }
 
-    fn key_up(&mut self, code: KeyCode, input: RawInput) {
-        if self.router.repeat.is_some_and(|repeat| repeat.key == code) {
+    /// A release: the UI's when it took the press, else `input` goes to the
+    /// routed view (a stick release has none: its axis record carries it).
+    fn nav_up(&mut self, nav: NavInput, input: Option<RawInput>) {
+        if self.router.repeat.is_some_and(|repeat| repeat.input == nav) {
             self.router.repeat = None;
         }
-        match self.router.ui_keys.iter().position(|key| *key == code) {
+        match self.router.ui_held.iter().position(|held| *held == nav) {
             Some(at) => {
-                self.router.ui_keys.swap_remove(at);
+                self.router.ui_held.swap_remove(at);
             }
-            None => self.router.routed.push(input),
+            None => self.router.routed.extend(input),
+        }
+    }
+
+    /// A pad disconnected: the UI forgets its held presses and its withheld
+    /// axes, and a repeat it drove stops.
+    fn pad_lost(&mut self, pad: GamepadId) {
+        self.router.ui_held.retain(|held| held.pad() != Some(pad));
+        self.router.withheld.retain(|(held, _)| *held != pad);
+        if self
+            .router
+            .repeat
+            .is_some_and(|repeat| repeat.input.pad() == Some(pad))
+        {
+            self.router.repeat = None;
         }
     }
 
@@ -706,12 +882,14 @@ impl Routing<'_> {
         self.router.repeat = Some(repeat);
     }
 
-    /// Window focus loss: ends the presses, forgets the UI's held keys and
-    /// buttons and the pointer, and clears the hover.
+    /// Window focus loss: ends the presses, forgets the UI's held keys,
+    /// buttons, stick directions and withheld axes and the pointer, and
+    /// clears the hover.
     fn focus_lost(&mut self) {
         self.cancel_presses();
-        self.router.ui_keys.clear();
+        self.router.ui_held.clear();
         self.router.ui_buttons.clear();
+        self.router.withheld.clear();
         self.router.repeat = None;
         self.router.pointer = None;
         self.update_hover();
@@ -721,7 +899,7 @@ impl Routing<'_> {
 
     fn set_device(&mut self, device: InputDevice) {
         self.router.last_device = device;
-        self.tree.set_focus_visible(device == InputDevice::Keyboard);
+        self.tree.set_focus_visible(device != InputDevice::Pointer);
     }
 
     /// Reports a focus change since the last report: the router's or the

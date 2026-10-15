@@ -9,8 +9,8 @@ use tungsten::core::tween::UniformOverrideBlock;
 use tungsten::core::{
     AnimationRegistry, AnimationState, AssetRegistry, CameraState, Collider, CollisionEvent,
     CommandBuffer, Entity, EventQueue, Light, Particle, ParticleEmitter, ParticleEmitterState,
-    Position, RigidBody, ShakeEvent, Sprite, SquashEvent, SquashTrigger, Time, Transform,
-    TweenComplete, Velocity, Visibility, World, splitmix64,
+    Position, RigidBody, ScaleFactor, ShakeEvent, Sprite, SquashEvent, SquashTrigger, Time,
+    Transform, TweenComplete, Velocity, Visibility, World, WorldLabel, WorldLabels, splitmix64,
 };
 use tungsten::render::TextSection;
 
@@ -445,9 +445,14 @@ fn section(content: String, size: f32, color: [u8; 4], at: Vec2) -> TextSection 
     }
 }
 
-/// Rewrites the HUD and the name tags: the `tags` walkers nearest the view
-/// center, each labelled with its name, hit points and x position, so every
-/// moving walker's tag changes every frame.
+/// Rewrites the HUD and pushes the name tags as world labels (M54,
+/// `D-161`): the `tags` walkers nearest the view center, each labelled with
+/// its name, hit points and x position, so every moving walker's tag changes
+/// every frame. A tag's offset and scale are divided by the scale factor,
+/// which the extract multiplies back, so the tags keep the benchmark's
+/// physical size and place at any OS or UI scale; the anchor is the walker's
+/// centre and the offset carries the head's height, so at zoom 1 the tag
+/// lands on the pixel the hand projection gave.
 pub(super) fn name_tags(world: &mut World) {
     let Some(mut runtime) = world.remove_resource::<Runtime>() else {
         return;
@@ -478,17 +483,27 @@ pub(super) fn name_tags(world: &mut World) {
         near.truncate(tags);
     }
     near.sort_unstable_by_key(|&(_, slot, _)| slot);
-    runtime.tags.clear();
-    for (_, slot, position) in near {
-        let s = slot as usize;
-        let name = if runtime.actors.caster[s] { 'C' } else { 'W' };
-        let content = format!(
-            "{name}{slot:04} {}hp x{}",
-            runtime.actors.hp[s], position.x as i32
-        );
-        let at =
-            (position - camera.position) * camera.zoom + Vec2::new(-24.0, -WALKER_HALF.y - 28.0);
-        runtime.tags.push(section(content, 11.0, TAG_COLOR, at));
+    let scale_factor = world
+        .get_resource::<ScaleFactor>()
+        .map_or(1.0, ScaleFactor::get);
+    let offset = Vec2::new(-24.0, -WALKER_HALF.y - 28.0) / scale_factor;
+    if let Some(labels) = world.get_resource_mut::<WorldLabels>() {
+        for (_, slot, position) in near {
+            let s = slot as usize;
+            let name = if runtime.actors.caster[s] { 'C' } else { 'W' };
+            let content = format!(
+                "{name}{slot:04} {}hp x{}",
+                runtime.actors.hp[s], position.x as i32
+            );
+            labels.push(
+                WorldLabel::new(content, position, FONT, 11.0)
+                    .with_offset(offset)
+                    .with_pivot(Vec2::ZERO)
+                    .with_line_height(15.0)
+                    .with_color(TAG_COLOR)
+                    .with_scale(1.0 / scale_factor),
+            );
+        }
     }
     let totals = &runtime.totals;
     let lines = [

@@ -35,3 +35,7 @@ Sources are [criteria](criteria.md) sections unless another file is named.
 | Deep-pile lever: `contact_hertz` 60 on the constant fixed step ([known issues](../../known-issues.md)) | [w03](w03-frame-loop.md#follow-ups) follow-up 1; M41 Q8 (`D-137`) | A game's pile needs the stiffer contacts; it moves the physics hash and every engine pile |
 | Tile layers ordered among sprites by z in the default sprite channel, which draws every tilemap under every sprite | M42 Q2 (`D-138`) | A game needs a tile layer between its sprites without an extract of its own, as example 01 and the `integrated` bench row have; W16b's tilemap builder may take it |
 | Game cursors (a sprite or a custom image), cursor visibility and grab | [w01](w01-ui-text-suite.md) §14, "Cursors"; M47's non-goals (`D-149`) | A game hides or replaces the cursor, or locks it for mouse-look; M47's system cursors go through the same bridge |
+| Per-player action maps for local multiplayer | M54 Q5: actions read any pad, `InputState` keeps per-pad state | A game seats two players on one machine |
+| Analog trigger values | M54 Q9: triggers are digital buttons | A game needs a throttle or a pressure-sensitive trigger |
+| Rumble (force feedback) | M54 Q9: force feedback stays off, so its thread never starts | A game asks, with the thread rule amended for it |
+| A pooled, allocation-free world-label push | M54 Q21 (`D-161`): `push` takes an owned `String` | Labels show in an allocation profile, with W1 M4's allocation-free values |

@@ -701,10 +701,15 @@ pub tungsten::telemetry::RenderCounts::text_atlas_full: u64
 pub tungsten::telemetry::RenderCounts::text_batches: u32
 pub tungsten::telemetry::RenderCounts::text_batches_prepared: u32
 pub tungsten::telemetry::RenderCounts::text_full_frames: u64
+pub tungsten::telemetry::RenderCounts::text_label_glyphs: u32
+pub tungsten::telemetry::RenderCounts::text_layouts: u32
 pub tungsten::telemetry::RenderCounts::ui_commands: u32
 pub tungsten::telemetry::RenderCounts::ui_layout_us: u32
 pub tungsten::telemetry::RenderCounts::ui_nodes_laid_out: u32
 pub tungsten::telemetry::RenderCounts::ui_roots_laid_out: u32
+pub tungsten::telemetry::RenderCounts::world_labels: u32
+pub tungsten::telemetry::RenderCounts::world_labels_culled: u32
+pub tungsten::telemetry::RenderCounts::world_labels_dropped: u32
 impl core::clone::Clone for tungsten::telemetry::RenderCounts
 pub fn tungsten::telemetry::RenderCounts::clone(&self) -> tungsten::telemetry::RenderCounts
 impl core::default::Default for tungsten::telemetry::RenderCounts
@@ -729,6 +734,7 @@ pub tungsten::testing::FrameDraw::quads: alloc::vec::Vec<tungsten_render::quad::
 pub tungsten::testing::FrameDraw::sprites: alloc::vec::Vec<tungsten_render::sprite::SpriteBatch>
 pub tungsten::testing::FrameDraw::text: alloc::vec::Vec<tungsten_render::text::TextSection>
 pub tungsten::testing::FrameDraw::ui: tungsten_core::ui::paint::PaintList
+pub tungsten::testing::FrameDraw::world_labels: alloc::vec::Vec<tungsten_render::text::WorldLabelRun>
 impl core::marker::Freeze for tungsten::testing::FrameDraw
 impl core::marker::Send for tungsten::testing::FrameDraw
 impl core::marker::Sync for tungsten::testing::FrameDraw
@@ -1343,10 +1349,15 @@ pub tungsten::RenderCounts::text_atlas_full: u64
 pub tungsten::RenderCounts::text_batches: u32
 pub tungsten::RenderCounts::text_batches_prepared: u32
 pub tungsten::RenderCounts::text_full_frames: u64
+pub tungsten::RenderCounts::text_label_glyphs: u32
+pub tungsten::RenderCounts::text_layouts: u32
 pub tungsten::RenderCounts::ui_commands: u32
 pub tungsten::RenderCounts::ui_layout_us: u32
 pub tungsten::RenderCounts::ui_nodes_laid_out: u32
 pub tungsten::RenderCounts::ui_roots_laid_out: u32
+pub tungsten::RenderCounts::world_labels: u32
+pub tungsten::RenderCounts::world_labels_culled: u32
+pub tungsten::RenderCounts::world_labels_dropped: u32
 impl core::clone::Clone for tungsten::telemetry::RenderCounts
 pub fn tungsten::telemetry::RenderCounts::clone(&self) -> tungsten::telemetry::RenderCounts
 impl core::default::Default for tungsten::telemetry::RenderCounts

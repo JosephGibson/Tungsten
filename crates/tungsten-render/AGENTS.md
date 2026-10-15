@@ -11,7 +11,7 @@ Scoped rules for this crate, on top of the root `AGENTS.md`. The `tungsten-wgpu`
 
 ## Frame order
 
-`Scene → PostStack → [SMAA tail] → Overlay` (`D-087`, `D-147`). The last full-screen stage renders into the swapchain and clears it: SMAA's neighborhood pass; without SMAA the last post pass, or bloom's composite; with neither the scene pass, or its resolve under MSAA. The overlay (timing label `text`) then draws the UI paint list, each item under its scissor, then the text, after presentation AA.
+`Scene → PostStack → [SMAA tail] → Overlay` (`D-087`, `D-147`, `D-161`). The last full-screen stage renders into the swapchain and clears it: SMAA's neighborhood pass; without SMAA the last post pass, or bloom's composite; with neither the scene pass, or its resolve under MSAA. The overlay (timing label `text`) then draws the world labels, the UI paint list, each item under its scissor, then the text, after presentation AA.
 
 A capture frame (`Renderer::capture_frame`, `TUNGSTEN_CAPTURE_FRAME`) keeps the blit tail, `… → [SMAA tail → PresentSource] → Overlay → Present Blit → Swapchain`, and the screenshot reads the blit's source. `default_pass_order` takes the `PresentPath`; a new full-screen stage must work on both. `TUNGSTEN_CAPTURE_DIRECT=1` captures the direct path instead, for the pixel test that compares the two.
 

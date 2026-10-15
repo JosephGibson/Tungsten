@@ -13,6 +13,10 @@
 //! - `hidden_ui_equals_an_empty_ui`: `engine_toggle_ui`'s state draws what an
 //!   app with no roots draws.
 //! - `the_ui_draws_over_the_scene`: the lab differs from the empty frame.
+//! - `ui_labels_match_fixture` compares the `labels` fixture, world labels
+//!   under the lab (M54, `D-161`), with its fixture PNG at tolerance 0.
+//! - `direct_and_capture_paths_draw_the_same_image_with_labels`: the two
+//!   present paths with world labels, as with the UI.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -84,6 +88,37 @@ fn ui_visual_matches_fixture() {
     );
 }
 
+/// Captures `fixture` through both present paths with no AA, SMAA high and
+/// a vignette, and asserts they draw the same pixels.
+fn assert_paths_agree(fixture: &str) {
+    let cases = [
+        ("aa-off", "off", "off"),
+        ("smaa-high", "smaa_high", "off"),
+        ("vignette", "off", "vignette"),
+    ];
+    for (name, post_aa, post) in cases {
+        let blit = capture(
+            &format!("{fixture}-{name}-blit"),
+            fixture,
+            post_aa,
+            post,
+            false,
+        );
+        let direct = capture(
+            &format!("{fixture}-{name}-direct"),
+            fixture,
+            post_aa,
+            post,
+            true,
+        );
+        let report = compare_png(&blit, &direct, 0).expect("compare the two paths");
+        assert_eq!(
+            report.pixels_above_tolerance, 0,
+            "{fixture} {name}: the direct path differs from the capture path: {report:?}"
+        );
+    }
+}
+
 /// With the UI visible, the direct path and the capture path must draw the
 /// same pixels whichever stage ends the frame (`D-087`, `D-147`).
 #[test]
@@ -91,20 +126,33 @@ fn direct_and_capture_paths_draw_the_same_image_with_ui() {
     if !gated() {
         return;
     }
-    let cases = [
-        ("aa-off", "off", "off"),
-        ("smaa-high", "smaa_high", "off"),
-        ("vignette", "off", "vignette"),
-    ];
-    for (name, post_aa, post) in cases {
-        let blit = capture(&format!("{name}-blit"), "default", post_aa, post, false);
-        let direct = capture(&format!("{name}-direct"), "default", post_aa, post, true);
-        let report = compare_png(&blit, &direct, 0).expect("compare the two paths");
-        assert_eq!(
-            report.pixels_above_tolerance, 0,
-            "{name}: the direct path differs from the capture path: {report:?}"
-        );
+    assert_paths_agree("default");
+}
+
+/// The same with world labels under the UI (`D-161`).
+#[test]
+fn direct_and_capture_paths_draw_the_same_image_with_labels() {
+    if !gated() {
+        return;
     }
+    assert_paths_agree("labels");
+}
+
+#[test]
+fn ui_labels_match_fixture() {
+    if !gated() {
+        return;
+    }
+    let actual = capture("labels", "labels", "off", "off", false);
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join("ui-labels.png");
+    let report = compare_png(&fixture, &actual, 0).expect("compare fixture");
+    assert_eq!(
+        report.pixels_above_tolerance, 0,
+        "visual regression: {report:?}"
+    );
 }
 
 #[test]

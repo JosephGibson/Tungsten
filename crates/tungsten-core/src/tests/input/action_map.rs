@@ -1,6 +1,8 @@
 use super::*;
 use std::sync::atomic::{AtomicU32, Ordering};
 
+use crate::input::GamepadId;
+
 const SAMPLE_JSON: &str = r#"{
     "actions": {
         "move_left":   [{ "kind": "key", "code": "ArrowLeft" }, { "kind": "key", "code": "KeyA" }],
@@ -62,19 +64,26 @@ fn default_map_binds_the_ui_actions() {
             .map(|&code| Binding::Key { code })
             .collect::<Vec<_>>()
     };
-    assert_eq!(
-        map.bindings(UI_ACCEPT),
-        keys(&[KeyCode::Enter, KeyCode::Space])
-    );
-    assert_eq!(map.bindings(UI_CANCEL), keys(&[KeyCode::Escape]));
-    assert_eq!(map.bindings(UI_NEXT), keys(&[KeyCode::Tab]));
-    assert_eq!(map.bindings(UI_UP), keys(&[KeyCode::ArrowUp]));
-    assert_eq!(map.bindings(UI_DOWN), keys(&[KeyCode::ArrowDown]));
-    assert_eq!(map.bindings(UI_LEFT), keys(&[KeyCode::ArrowLeft]));
-    assert_eq!(map.bindings(UI_RIGHT), keys(&[KeyCode::ArrowRight]));
+    // The keys lead; the gamepad's follow (M54).
+    let leading = |action: &str, codes: &[KeyCode]| {
+        assert_eq!(
+            &map.bindings(action)[..codes.len()],
+            keys(codes),
+            "{action}"
+        );
+    };
+    leading(UI_ACCEPT, &[KeyCode::Enter, KeyCode::Space]);
+    leading(UI_CANCEL, &[KeyCode::Escape]);
+    leading(UI_NEXT, &[KeyCode::Tab]);
+    leading(UI_UP, &[KeyCode::ArrowUp]);
+    leading(UI_DOWN, &[KeyCode::ArrowDown]);
+    leading(UI_LEFT, &[KeyCode::ArrowLeft]);
+    leading(UI_RIGHT, &[KeyCode::ArrowRight]);
     assert!(
-        map.bindings(UI_PREV).is_empty(),
-        "unbound: Shift with ui_next goes back"
+        map.bindings(UI_PREV)
+            .iter()
+            .all(|binding| !matches!(binding, Binding::Key { .. })),
+        "no key: Shift with ui_next goes back"
     );
     assert!(
         map.iter().any(|(action, _)| action == UI_PREV),
@@ -451,6 +460,7 @@ fn an_action_left_with_no_saveable_binding_is_left_out() {
             code: KeyCode::Other(42),
         }],
     );
+    map.replace_bindings("ui_prev", Vec::new());
     map.persist_to(&path).unwrap();
     let persisted = std::fs::read_to_string(&path).unwrap();
     assert!(!persisted.contains("\"jump\""), "{persisted}");
@@ -494,7 +504,8 @@ fn a_user_layer_overlays_per_action_and_saves_only_the_difference() {
     std::fs::create_dir_all(user.parent().unwrap()).unwrap();
     std::fs::write(
         &user,
-        r#"{ "actions": { "jump": [{ "kind": "key", "code": "KeyZ" }], "ui_prev": [] } }"#,
+        r#"{ "actions": { "jump": [{ "kind": "key", "code": "KeyZ" }],
+            "ui_prev": [{ "kind": "gamepad_button", "button": "LeftShoulder" }] } }"#,
     )
     .unwrap();
 
@@ -605,4 +616,183 @@ fn no_user_layer_persist_is_missing_source_path() {
         std::fs::read_to_string(&shipped_path).unwrap(),
         SHIPPED_JSON
     );
+}
+
+// ---- gamepads (M54) ----
+
+#[test]
+fn gamepad_bindings_round_trip_through_json() {
+    let json = r#"{
+    "actions": {
+        "jump": [{ "kind": "gamepad_button", "button": "South" }],
+        "move_left": [
+            { "kind": "gamepad_axis", "axis": "LeftStickX", "direction": "negative" },
+            { "kind": "gamepad_button", "button": "DPadLeft" }
+        ]
+    }
+}"#;
+    let map = ActionMap::from_json(json, Path::new("pad.json")).unwrap();
+    assert_eq!(
+        map.bindings("jump"),
+        &[Binding::GamepadButton {
+            button: GamepadButton::South
+        }]
+    );
+    assert_eq!(
+        map.bindings("move_left"),
+        &[
+            Binding::GamepadAxis {
+                axis: GamepadAxis::LeftStickX,
+                direction: AxisDirection::Negative
+            },
+            Binding::GamepadButton {
+                button: GamepadButton::DPadLeft
+            }
+        ]
+    );
+    let rendered = serde_json::to_string(map.bindings("move_left")).unwrap();
+    assert_eq!(
+        rendered,
+        r#"[{"kind":"gamepad_axis","axis":"LeftStickX","direction":"negative"},{"kind":"gamepad_button","button":"DPadLeft"}]"#
+    );
+    let back: Vec<Binding> = serde_json::from_str(&rendered).unwrap();
+    assert_eq!(back, map.bindings("move_left"));
+
+    // Every name loads back to its button, axis or direction.
+    for button in [
+        GamepadButton::South,
+        GamepadButton::East,
+        GamepadButton::North,
+        GamepadButton::West,
+        GamepadButton::LeftShoulder,
+        GamepadButton::RightShoulder,
+        GamepadButton::LeftTrigger,
+        GamepadButton::RightTrigger,
+        GamepadButton::Select,
+        GamepadButton::Start,
+        GamepadButton::Mode,
+        GamepadButton::LeftStick,
+        GamepadButton::RightStick,
+        GamepadButton::DPadUp,
+        GamepadButton::DPadDown,
+        GamepadButton::DPadLeft,
+        GamepadButton::DPadRight,
+    ] {
+        let name = serde_json::to_string(&button).unwrap();
+        assert_eq!(name.trim_matches('"'), format!("{button:?}"));
+        assert_eq!(
+            serde_json::from_str::<GamepadButton>(&name).unwrap(),
+            button
+        );
+    }
+    for axis in [
+        GamepadAxis::LeftStickX,
+        GamepadAxis::LeftStickY,
+        GamepadAxis::RightStickX,
+        GamepadAxis::RightStickY,
+    ] {
+        let name = serde_json::to_string(&axis).unwrap();
+        assert_eq!(serde_json::from_str::<GamepadAxis>(&name).unwrap(), axis);
+    }
+    assert!(serde_json::from_str::<GamepadButton>(r#""A""#).is_err());
+    assert!(serde_json::from_str::<AxisDirection>(r#""up""#).is_err());
+}
+
+#[test]
+fn value_reads_a_sticks_magnitude() {
+    let mut map = ActionMap::new();
+    map.replace_bindings(
+        "move_right",
+        vec![
+            Binding::Key {
+                code: KeyCode::KeyD,
+            },
+            Binding::GamepadAxis {
+                axis: GamepadAxis::LeftStickX,
+                direction: AxisDirection::Positive,
+            },
+        ],
+    );
+    let pad = GamepadId::new(0);
+    let mut input = InputState::new();
+    let value = |input: &InputState| map.value(input, "move_right");
+    assert_eq!(value(&input), 0.0);
+    for (tilt, expected) in [
+        (0.2, 0.0),
+        (0.35, 0.0),
+        (0.675, 0.5),
+        (1.0, 1.0),
+        (-1.0, 0.0),
+    ] {
+        input.set_gamepad_axis(pad, GamepadAxis::LeftStickX, tilt);
+        assert!(
+            (value(&input) - expected).abs() < 1e-6,
+            "tilt {tilt}: {}",
+            value(&input)
+        );
+    }
+    // A held key is full speed, whatever the stick says.
+    input.set_gamepad_axis(pad, GamepadAxis::LeftStickX, 0.5);
+    input.key_down(KeyCode::KeyD);
+    assert_eq!(value(&input), 1.0);
+    input.key_up(KeyCode::KeyD);
+    // The farthest pad that way counts.
+    input.set_gamepad_axis(GamepadId::new(1), GamepadAxis::LeftStickX, -1.0);
+    assert!((value(&input) - 0.15 / 0.65).abs() < 1e-6);
+    assert_eq!(map.value(&input, "unknown"), 0.0);
+}
+
+#[test]
+fn default_map_binds_ui_actions_on_a_gamepad() {
+    let map = ActionMap::default_map();
+    let pad = |button| Binding::GamepadButton { button };
+    let stick = |axis, direction| Binding::GamepadAxis { axis, direction };
+    let has = |action: &str, binding: Binding| {
+        assert!(
+            map.bindings(action).contains(&binding),
+            "{action}: {binding:?}"
+        );
+    };
+    has(UI_ACCEPT, pad(GamepadButton::South));
+    has(UI_CANCEL, pad(GamepadButton::East));
+    has(UI_NEXT, pad(GamepadButton::RightShoulder));
+    has(UI_PREV, pad(GamepadButton::LeftShoulder));
+    for (action, button, axis, direction) in [
+        (
+            UI_UP,
+            GamepadButton::DPadUp,
+            GamepadAxis::LeftStickY,
+            AxisDirection::Positive,
+        ),
+        (
+            UI_DOWN,
+            GamepadButton::DPadDown,
+            GamepadAxis::LeftStickY,
+            AxisDirection::Negative,
+        ),
+        (
+            UI_LEFT,
+            GamepadButton::DPadLeft,
+            GamepadAxis::LeftStickX,
+            AxisDirection::Negative,
+        ),
+        (
+            UI_RIGHT,
+            GamepadButton::DPadRight,
+            GamepadAxis::LeftStickX,
+            AxisDirection::Positive,
+        ),
+    ] {
+        has(action, pad(button));
+        has(action, stick(axis, direction));
+    }
+
+    // A press reads through the action as a key's does.
+    let mut input = InputState::new();
+    input.gamepad_button_down(GamepadId::new(2), GamepadButton::South);
+    assert!(map.just_pressed(&input, UI_ACCEPT));
+    assert!(map.is_pressed(&input, UI_ACCEPT));
+    input.set_gamepad_axis(GamepadId::new(2), GamepadAxis::LeftStickY, -0.8);
+    assert!(map.just_pressed(&input, UI_DOWN));
+    assert!(!map.is_pressed(&input, UI_UP));
 }

@@ -46,7 +46,7 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-060` | Bloom records an HDR mip pyramid and composite; scene color stays sRGB. Mip count is startup-only. |
 | `D-061` | Forward normal-mapped lighting, capped at 16 lights; normal/emissive sibling atlases; lit wins over material. |
 | `D-073` | CPU parallax, trauma shake and dedicated squash/stretch components. Narrows `D-018`, `D-042`, `D-055`. |
-| `D-085` | Bounded text layout cache and reused post GPU objects. Amended by `D-090`: slot uniform writes; `D-117`: cache in `TextEngine`. Extract: `D-086`. |
+| `D-085` | Bounded text layout cache and reused post GPU objects. Amended by `D-090`: slot uniform writes; `D-117`: cache in `TextEngine`; `D-161`: one frame count over sections and world labels. Extract: `D-086`. |
 | `D-086` | Extract reuses buffers and compact sort keys. Amended by `D-113`: registry IDs replace asset cache; `D-114`: culled keys stay. |
 | `D-087` | Last full-screen stage writes swapchain, then text; captures keep the blit. Amends `D-059`. |
 | `D-089` | Validate references on merged roots; any root reload rebuilds the graph. Amends `D-017`, `D-052`, `D-053`. |
@@ -63,8 +63,9 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-126` | 1.0 glyph path: shared atlas, batch renderers, deferred trim (T1b); owned path/R3 deferred. Extends `D-026`. |
 | `D-127` | Logical UI layout, physical text rasterization, hinting off; scene scaling deferred to 1.x. |
 | `D-145` | W2 R2 late acquire: passes before the swapchain stage record and submit before the acquire; a resize inside it records them again; `render_encode` stays whole, `render_encode_pre_acquire` its part before. |
-| `D-147` | W1 M2 UI overlay: core paints one ordered list in physical pixels under `D-127`'s rounding rule with indexed integer clips; the overlay pass draws SDF primitives and `D-126` text batches in paint order, each item setting its scissor, sRGB colours decoded in the shader; an empty list leaves the frame unchanged. Extends `D-087`, `D-125`, `D-126`, `D-127`. |
+| `D-147` | W1 M2 UI overlay: core paints one ordered list in physical pixels under `D-127`'s rounding rule with indexed integer clips; the overlay pass draws SDF primitives and `D-126` text batches in paint order, each item setting its scissor, sRGB colours decoded in the shader; an empty list leaves the frame unchanged. Extends `D-087`, `D-125`, `D-126`, `D-127`. Amended by `D-161`: world labels draw before the paint list. |
 | `D-148` | W1 M2 theme asset and skins: `ui_themes` manifest files (optional fields over the built-in theme, sRGB colours) in a core `UiThemeRegistry`, reloaded live and re-applied to the tree following the ID; `nine_slice` insets on sprite entries through `set_sprite_nine_slice`; `sprite_epoch` for repaints; `UiDebug` with `engine_toggle_ui_bounds` (F5) and `engine_toggle_ui` (F6). Extends `D-031`, `D-045`, `D-048`, `D-053`. |
+| `D-161` | W1 WL world labels: core `WorldLabels` pushed each frame; the extract projects through `world_to_screen`, culls, caps at 512 and snaps scale to 1/8; one glyphon batch below the paint list on the shared layout cache, a batch under the trim rule. Amends `D-085`, `D-147`. |
 
 ## Dependencies / Tooling
 

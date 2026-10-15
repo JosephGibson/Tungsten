@@ -3,10 +3,13 @@
 //! hot-reloaded from `assets/ui/themes/ex05_default.json`. The popup is a
 //! modal the pointer and keys drive (M47, `D-149`).
 //!
+//! The interactive run floats damage numbers as world labels (M54, `D-161`).
+//!
 //! Env for the smoke matrix and `tests/ui_regression.rs`:
-//! `TUNGSTEN_UI_LAB_FIXTURE={default|empty|hidden}` turns the debug HUD off
-//! and builds the lab (`default`), no UI at all (`empty`) or the lab with
-//! `UiDebug::hide_game_layers` set at startup (`hidden`);
+//! `TUNGSTEN_UI_LAB_FIXTURE={default|empty|hidden|labels}` turns the debug
+//! HUD off and builds the lab (`default`), no UI at all (`empty`), the lab
+//! with `UiDebug::hide_game_layers` set at startup (`hidden`) or the lab with
+//! a fixed set of world labels (`labels`);
 //! `TUNGSTEN_UI_LAB_POST={off|vignette}` appends a vignette to the post
 //! stack. `TUNGSTEN_RENDER_POST_AA` works as everywhere.
 
@@ -34,6 +37,8 @@ enum Fixture {
     Empty,
     /// The lab with the game layers hidden at startup.
     Hidden,
+    /// The lab with a fixed set of world labels.
+    Labels,
 }
 
 fn fixture() -> anyhow::Result<Fixture> {
@@ -44,8 +49,9 @@ fn fixture() -> anyhow::Result<Fixture> {
         "default" => Ok(Fixture::Default),
         "empty" => Ok(Fixture::Empty),
         "hidden" => Ok(Fixture::Hidden),
+        "labels" => Ok(Fixture::Labels),
         other => anyhow::bail!(
-            "invalid TUNGSTEN_UI_LAB_FIXTURE='{other}': expected one of default, empty, hidden"
+            "invalid TUNGSTEN_UI_LAB_FIXTURE='{other}': expected one of default, empty, hidden, labels"
         ),
     }
 }
@@ -99,6 +105,16 @@ fn main() -> anyhow::Result<()> {
     });
     app.add_system_named("ui_lab_counter", counter_system);
     app.add_system_named("ui_lab_popup", screens::popup_system);
+    // The other fixtures keep their schedule.
+    match fixture {
+        Fixture::Labels => app.add_system_named("ui_lab_labels", screens::fixture_labels_system),
+        Fixture::Off => {
+            app.world_mut()
+                .insert_resource(screens::DamageNumbers::default());
+            app.add_system_named("ui_lab_damage_numbers", screens::damage_numbers_system);
+        }
+        _ => {}
+    }
 
     app.run()
 }

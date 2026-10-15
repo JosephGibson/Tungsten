@@ -3,14 +3,16 @@
 //! buttons, and a popup on the popup layer overlapping the window, so its
 //! text paints over the window's panel and opens the second text batch
 //! (w01 §6's partition rule). The popup is modal (`D-149`): its buttons or
-//! Escape hide it, and the window's "Drop" shows it again.
+//! Escape hide it, and the window's "Drop" shows it again. World labels
+//! (M54, `D-161`) draw under the UI: a fixed set for the `labels` fixture and
+//! floating damage numbers in the interactive run.
 
 use glam::Vec2;
 use tungsten::core::ui::{
     Align, Anchor, CursorIcon, Justify, LayoutStyle, Sizing, StyleOverrides, TextOverrides,
     UiEvent, UiLayer, UiTree, Visibility, WidgetId,
 };
-use tungsten::core::{AssetRegistry, EventQueue, World};
+use tungsten::core::{AssetRegistry, EventQueue, Time, World, WorldLabel, WorldLabels};
 
 /// The `ui_themes` ID the lab applies.
 pub const THEME_ID: &str = "ex05_default";
@@ -205,4 +207,127 @@ pub fn popup_system(world: &mut World) {
         tree.set_visibility(popup, Visibility::Visible);
         tree.focus(drop_it);
     }
+}
+
+const RED: [u8; 4] = [255, 90, 90, 255];
+const GREEN: [u8; 4] = [110, 230, 120, 255];
+const BLUE: [u8; 4] = [150, 190, 255, 255];
+const GOLD: [u8; 4] = [255, 200, 40, 255];
+const WHITE: [u8; 4] = [255, 244, 236, 255];
+
+/// The `labels` fixture's labels, pushed every frame: five on screen at
+/// scales 1.0, 1.25 and 1.5 in three colours, a crit in `sans_bold`, one
+/// straddling the window's left edge, which the panel partly covers, and one
+/// off the view, which the extract culls. The camera stays at the origin, so
+/// world units are physical pixels; the places suit the reference capture's
+/// 1280×720 at an OS scale of 1.75, where the window's left edge is at 185.
+pub fn fixture_labels_system(world: &mut World) {
+    let Some(labels) = world.get_resource_mut::<WorldLabels>() else {
+        return;
+    };
+    let on_screen = [
+        ("12", Vec2::new(110.0, 600.0), 1.0, RED),
+        ("250", Vec2::new(300.0, 680.0), 1.25, GREEN),
+        ("Lantern", Vec2::new(1080.0, 160.0), 1.0, BLUE),
+        ("7", Vec2::new(1040.0, 300.0), 1.5, RED),
+        ("+30", Vec2::new(800.0, 690.0), 1.25, GREEN),
+    ];
+    for (text, anchor, scale, color) in on_screen {
+        labels.push(
+            WorldLabel::new(text, anchor, "sans", 20.0)
+                .with_scale(scale)
+                .with_color(color),
+        );
+    }
+    labels.push(
+        WorldLabel::new("99!", Vec2::new(500.0, 690.0), "sans_bold", 26.0)
+            .with_scale(1.5)
+            .with_color(GOLD),
+    );
+    labels
+        .push(WorldLabel::new("under 5", Vec2::new(185.0, 330.0), "sans", 18.0).with_color(WHITE));
+    labels.push(WorldLabel::new(
+        "culled",
+        Vec2::new(-400.0, 300.0),
+        "sans",
+        18.0,
+    ));
+}
+
+/// Seconds between two damage numbers.
+const SPAWN_INTERVAL: f32 = 0.25;
+/// A damage number's life in seconds.
+const LIFE: f32 = 0.8;
+/// How far a number floats up over its life, in UI units.
+const RISE: f32 = 40.0;
+/// The pop: the scale falls from `POP_SCALE` to 1 over `POP_TIME` seconds.
+const POP_SCALE: f32 = 1.6;
+const POP_TIME: f32 = 0.15;
+/// The world point the numbers spawn near.
+const SPAWN_POINT: Vec2 = Vec2::new(1040.0, 560.0);
+
+#[derive(Debug)]
+struct DamageNumber {
+    value: u32,
+    crit: bool,
+    anchor: Vec2,
+    age: f32,
+}
+
+/// The interactive run's floating damage numbers, a `World` resource the
+/// lab owns.
+#[derive(Debug, Default)]
+pub struct DamageNumbers {
+    numbers: Vec<DamageNumber>,
+    until_next: f32,
+    spawned: u32,
+}
+
+/// Spawns a number every 0.25 s near a fixed point, every fourth a gold
+/// crit in `sans_bold`; each floats 40 UI units up over 0.8 s, pops from
+/// scale 1.6 to 1 over its first 0.15 s and fades out, ticked on
+/// `Time::delta`.
+pub fn damage_numbers_system(world: &mut World) {
+    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
+    let Some(mut damage) = world.remove_resource::<DamageNumbers>() else {
+        return;
+    };
+    damage.until_next -= dt;
+    while damage.until_next <= 0.0 {
+        damage.until_next += SPAWN_INTERVAL;
+        let n = damage.spawned;
+        damage.spawned += 1;
+        let jitter = [-24.0, 8.0, -8.0, 24.0][(n % 4) as usize];
+        damage.numbers.push(DamageNumber {
+            value: 7 + (n * 37) % 90,
+            crit: n % 4 == 3,
+            anchor: SPAWN_POINT + Vec2::new(jitter, 0.0),
+            age: 0.0,
+        });
+    }
+    for number in &mut damage.numbers {
+        number.age += dt;
+    }
+    damage.numbers.retain(|number| number.age < LIFE);
+    if let Some(labels) = world.get_resource_mut::<WorldLabels>() {
+        for number in &damage.numbers {
+            let t = number.age / LIFE;
+            let pop = (number.age / POP_TIME).min(1.0);
+            let scale = POP_SCALE + (1.0 - POP_SCALE) * pop;
+            let fade = ((LIFE - number.age) / (LIFE * 0.5)).clamp(0.0, 1.0);
+            let (font, size, mut color) = if number.crit {
+                ("sans_bold", 26.0, GOLD)
+            } else {
+                ("sans", 20.0, WHITE)
+            };
+            color[3] = (255.0 * fade) as u8;
+            labels.push(
+                WorldLabel::new(number.value.to_string(), number.anchor, font, size)
+                    .with_offset(Vec2::new(0.0, -RISE * t))
+                    .with_scale(scale)
+                    .with_color(color),
+            );
+        }
+    }
+    world.insert_resource(damage);
 }

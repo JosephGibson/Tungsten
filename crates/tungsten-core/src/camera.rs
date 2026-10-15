@@ -245,6 +245,15 @@ impl CameraState {
         let zoom = self.zoom.max(f32::EPSILON);
         self.position + rotate_vec(screen / zoom, self.rotation)
     }
+
+    /// The screen point, in physical pixels from the window's top-left, at
+    /// which `world` is drawn: the inverse of
+    /// [`screen_to_world`](Self::screen_to_world), rotation included.
+    #[must_use]
+    pub fn world_to_screen(&self, world: Vec2) -> Vec2 {
+        let zoom = self.zoom.max(f32::EPSILON);
+        rotate_vec(world - self.position, -self.rotation) * zoom
+    }
 }
 
 impl Default for CameraState {

@@ -10,9 +10,9 @@
 //! wakes a struck crate, and adds camera trauma near the view. Crates sit in
 //! piles and may sleep; lit props stand still; pickups bob through tweens;
 //! each torch carries a point light and a fire emitter, and the light
-//! extract keeps the 16 nearest the view. A HUD and `tags` name tags change
-//! every frame, and the scripted camera (`CameraMode::Scripted`) ping-pongs
-//! along the level at `camera_speed`.
+//! extract keeps the 16 nearest the view. A HUD and `tags` name tags, world
+//! labels since M54 (`D-161`), change every frame, and the scripted camera
+//! (`CameraMode::Scripted`) ping-pongs along the level at `camera_speed`.
 //!
 //! Row `integrated` owns `stage.total` p50/p95/p99 plus its jitter (p99 −
 //! p50), and every stage is reported only. Everything draws through the
@@ -34,8 +34,8 @@ use tungsten::core::{
 };
 use tungsten::render::{SpriteBatch, TextSection};
 use tungsten::{
-    App, camera_update_system, extract_sprites_default, extract_tilemaps, shake_tick_system,
-    squash_stretch_tick_system, squash_stretch_trigger_system,
+    App, RenderCounts, camera_update_system, extract_sprites_default, extract_tilemaps,
+    shake_tick_system, squash_stretch_tick_system, squash_stretch_trigger_system,
 };
 
 use crate::counters::{BenchCounters, FrameCounters, bench_counters_system};
@@ -129,6 +129,9 @@ const COUNTERS: &[&str] = &[
     "shots",
     "turns",
     "events",
+    "labels",
+    "label_glyphs",
+    "text_layouts",
 ];
 
 const ROWS: &[Row] = &[Row {
@@ -147,8 +150,8 @@ const ROWS: &[Row] = &[Row {
            physics_step, is the stage calibration found limiting (walkers and crates against the \
            tile proxies), ahead of the default extract. Tiles draw at z_norm 0, so the row needs \
            the default cpu_stable depth sort (under gpu_depth they cover every sprite). Particle \
-           and tween time is timed under the engine's `post_update` systems (M38). Changing \
-           HUD and name-tag text grows RSS through the text buffer cache (360-frame TTL)",
+           and tween time is timed under the engine's `post_update` systems (M38). The name \
+           tags draw as world labels (M54)",
 }];
 
 /// Every n-th walker is a caster.
@@ -421,14 +424,11 @@ fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     sprites
 }
 
+/// The HUD; the name tags are world labels.
 fn extract_text(world: &World) -> Vec<TextSection> {
     world
         .get_resource::<runtime::Runtime>()
-        .map(|runtime| {
-            let mut sections = runtime.hud.clone();
-            sections.extend(runtime.tags.iter().cloned());
-            sections
-        })
+        .map(|runtime| runtime.hud.clone())
         .unwrap_or_default()
 }
 
@@ -439,7 +439,9 @@ fn distance_sq(point: Vec2, min: Vec2, max: Vec2) -> f32 {
 
 /// `bench:` counters. `lights` counts the point lights that reach the view,
 /// before the extract keeps 16; `view_out` is how far the final view leaves
-/// the level, in whole px (the guard).
+/// the level, in whole px (the guard). `labels`, `label_glyphs` and
+/// `text_layouts` come from `RenderCounts`: the world labels the frame kept,
+/// the glyphs their prepare took and the text layouts cached (M54).
 #[derive(Debug, Default)]
 struct IntegratedCounts {
     hits: u32,
@@ -478,10 +480,15 @@ impl FrameCounters for IntegratedCounts {
                 LightKind::Directional { .. } => false,
             })
             .count();
+        let render = world
+            .get_resource::<RenderCounts>()
+            .copied()
+            .unwrap_or_default();
         let _ = write!(
             line,
             " actors={} projectiles={} hits={} particles={} lights={lights} camera_x={} \
-             view_out={out} flashing={} landings={} shots={} turns={} events={}",
+             view_out={out} flashing={} landings={} shots={} turns={} events={} labels={} \
+             label_glyphs={} text_layouts={}",
             runtime.actors.len(),
             world.query::<(Entity, &runtime::Projectile)>().count(),
             self.hits,
@@ -492,6 +499,9 @@ impl FrameCounters for IntegratedCounts {
             self.shots,
             self.turns,
             self.events,
+            render.world_labels,
+            render.text_label_glyphs,
+            render.text_layouts,
         );
     }
 

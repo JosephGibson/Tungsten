@@ -464,6 +464,176 @@ pub trait TextNodeStore: TextMeasure {
     fn committed(&self, node: TextNodeId) -> Option<TextMetrics>;
 }
 
+/// One label for this frame: text drawn at a world point, such as a damage
+/// number or a name tag. The extract projects `anchor` through the camera,
+/// adds `offset`, and places the label's box so that its `pivot` lands
+/// there; the label then scales as a whole (`D-126`). Labels with equal text,
+/// font and size share one layout (`D-085`).
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub struct WorldLabel {
+    /// The label's text, laid out on one line.
+    pub text: String,
+    /// The world point the label follows, in world units.
+    pub anchor: Vec2,
+    /// A shift after projection, in UI units, y down; (0, 0) by default.
+    pub offset: Vec2,
+    /// The point of the label's box placed at `anchor` + `offset`, from
+    /// (0, 0) at its top-left to (1, 1) at its bottom-right; (0.5, 1.0), so
+    /// the label sits centred above the point, by default.
+    pub pivot: Vec2,
+    /// A face or family ID from the manifest.
+    pub font_id: String,
+    /// Font size in UI units.
+    pub font_size: f32,
+    /// Line height in UI units; one that is not finite and above zero, such
+    /// as the default 0, lays out at 1.25 times `font_size`.
+    pub line_height: f32,
+    /// RGBA colour, sRGB; opaque white by default.
+    pub color: [u8; 4],
+    /// The label's own scale around its pivot, such as a pop; 1.0 by
+    /// default. The extract snaps the drawn scale to steps of 1/8.
+    pub scale: f32,
+}
+
+impl WorldLabel {
+    /// White `text` at `anchor`, centred above it, in `font_id` at
+    /// `font_size` UI units.
+    #[must_use]
+    pub fn new(
+        text: impl Into<String>,
+        anchor: Vec2,
+        font_id: impl Into<String>,
+        font_size: f32,
+    ) -> Self {
+        Self {
+            text: text.into(),
+            anchor,
+            offset: Vec2::ZERO,
+            pivot: Vec2::new(0.5, 1.0),
+            font_id: font_id.into(),
+            font_size,
+            line_height: 0.0,
+            color: [255, 255, 255, 255],
+            scale: 1.0,
+        }
+    }
+
+    /// This label shifted by `offset` UI units after projection.
+    #[must_use]
+    pub fn with_offset(mut self, offset: Vec2) -> Self {
+        self.offset = offset;
+        self
+    }
+
+    /// This label with `pivot`.
+    #[must_use]
+    pub fn with_pivot(mut self, pivot: Vec2) -> Self {
+        self.pivot = pivot;
+        self
+    }
+
+    /// This label with `line_height` UI units.
+    #[must_use]
+    pub fn with_line_height(mut self, line_height: f32) -> Self {
+        self.line_height = line_height;
+        self
+    }
+
+    /// This label with `color`.
+    #[must_use]
+    pub fn with_color(mut self, color: [u8; 4]) -> Self {
+        self.color = color;
+        self
+    }
+
+    /// This label at `scale`.
+    #[must_use]
+    pub fn with_scale(mut self, scale: f32) -> Self {
+        self.scale = scale;
+        self
+    }
+}
+
+/// The labels pushed this frame: a `World` resource that `App` inserts.
+/// Systems push during the frame; every extract drains it, drawn or not, so
+/// a label lasts one frame. The extract culls labels whose projected point
+/// lies outside the viewport grown by [`cull_margin`](Self::cull_margin) and
+/// keeps the first [`cap`](Self::cap) of the rest in push order.
+#[derive(Debug)]
+pub struct WorldLabels {
+    labels: Vec<WorldLabel>,
+    cap: usize,
+    cull_margin: f32,
+}
+
+impl Default for WorldLabels {
+    /// No labels, a cap of 512 and a cull margin of 64 UI units.
+    fn default() -> Self {
+        Self {
+            labels: Vec::new(),
+            cap: 512,
+            cull_margin: 64.0,
+        }
+    }
+}
+
+impl WorldLabels {
+    /// Adds `label` to this frame's labels.
+    pub fn push(&mut self, label: WorldLabel) {
+        self.labels.push(label);
+    }
+
+    /// The labels pushed since the last drain.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.labels.len()
+    }
+
+    /// True when no label was pushed since the last drain.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.labels.is_empty()
+    }
+
+    /// Drops this frame's labels.
+    pub fn clear(&mut self) {
+        self.labels.clear();
+    }
+
+    /// Takes this frame's labels in push order. For the extract.
+    pub fn drain(&mut self) -> impl Iterator<Item = WorldLabel> + '_ {
+        self.labels.drain(..)
+    }
+
+    /// The most labels a frame draws; later pushes beyond it are dropped and
+    /// counted.
+    #[must_use]
+    pub fn cap(&self) -> usize {
+        self.cap
+    }
+
+    /// Sets the most labels a frame draws.
+    pub fn set_cap(&mut self, cap: usize) {
+        self.cap = cap;
+    }
+
+    /// How far outside the viewport, in UI units, a label's projected point
+    /// may lie and still draw.
+    #[must_use]
+    pub fn cull_margin(&self) -> f32 {
+        self.cull_margin
+    }
+
+    /// Sets the cull margin in UI units; a value that is not finite or is
+    /// negative is ignored.
+    pub fn set_cull_margin(&mut self, margin: f32) {
+        if margin.is_finite() && margin >= 0.0 {
+            self.cull_margin = margin;
+        }
+    }
+}
+
 #[cfg(test)]
 #[path = "tests/text.rs"]
 mod tests;

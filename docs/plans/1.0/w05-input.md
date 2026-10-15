@@ -17,6 +17,7 @@ Skeleton. The scoping text stays in [criteria](criteria.md) §8.1 until this wor
 - **Feeds:** UI controller navigation through `ui_*` actions; the acceptance game; RC-A5.
 - **Owner questions:** None open; Q9 answered at the definition gate.
 - **Decisions:** A gamepad dependency (`D-015` rule 1).
+- **Landed:** W5a's core half in 0.74 (M54 step 4): the pad types, `InputState`'s pad state, the `gamepad_button` and `gamepad_axis` bindings, `ActionMap::value`, routing from pads and the template's pad bindings. The `gilrs` backend (step 5) and its decision did not land: `gilrs` 0.11.2 and `gilrs-core` 0.6.8 ship no licence file, and the licence texts `just notices` needs were not in the plan's file list ([known issues](../../known-issues.md)); the re-land writes the decision for both halves.
 
 ## Context digest
 

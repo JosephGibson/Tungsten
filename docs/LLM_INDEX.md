@@ -1,6 +1,6 @@
 # LLM Navigation Index
 
-Task → file map. Open it before a broad search; read only the matching row's files. Prefixes: `core/` = `crates/tungsten-core/src/`, `render/` = `crates/tungsten-render/src/`, `tungsten/` = `crates/tungsten/src/`; other paths start at the repo root. `tungsten/app.rs` is the frame-loop hub. `D-NNN` IDs resolve through [DECISION_INDEX.md](DECISION_INDEX.md); [the documentation map](README.md) names canonical guides. Unit tests usually live in `crates/<crate>/src/tests/`, per the module's `#[path]`.
+Task → file map. Open it before a broad search; read only the matching row's files. Prefixes: `core/` = `crates/tungsten-core/src/`, `render/` = `crates/tungsten-render/src/`, `tungsten/` = `crates/tungsten/src/`; other paths start at the repo root. `tungsten/app.rs` is the frame-loop hub. `D-NNN` IDs resolve through [DECISION_INDEX.md](DECISION_INDEX.md); [the documentation map](README.md) names canonical guides. Unit tests usually live in `crates/<crate>/src/tests/` (the module's `#[path]`).
 
 ## Runtime and ECS
 
@@ -19,7 +19,7 @@ Task → file map. Open it before a broad search; read only the matching row's f
 | Logs, user folder, saves, crash reports, their target triple, `TUNGSTEN_USER_DIR`, `TUNGSTEN_TEST_PANIC` (`D-119`, `D-160`) | `tungsten/logging.rs`, `tungsten/user_dir.rs`, `core/save.rs`, `core/persist.rs`, `tungsten/crash.rs`, `tungsten/app.rs`, `crates/tungsten/build.rs`, `tools/crash-probe/` |
 | Display apply, fullscreen, vsync, frame cap (`D-043`) | `tungsten/display.rs`, `core/display.rs` |
 | Input actions, `input.json`, rebind reload (`D-045`, `D-159`) | `core/input/action_map.rs`, `core/input/key_serde.rs`, `tungsten/asset_loader/reload.rs`, `tungsten/debug_hud.rs`, `tungsten/display.rs`, `input.json` |
-| Input state, raw stream, focus loss, modifiers, pointer leave, `ScaleFactor`, winit bridge (`D-144`) | `core/input.rs`, `core/display.rs`, `tungsten/input_bridge.rs`, `tungsten/app.rs`, `core/tests/input.rs`, `tungsten/tests/input_bridge.rs` |
+| Input state, raw stream, gamepads, focus loss, modifiers, pointer leave, `ScaleFactor`, winit bridge (`D-144`) | `core/input.rs`, `core/display.rs`, `tungsten/input_bridge.rs`, `tungsten/app.rs`, `core/tests/input.rs`, `tungsten/tests/input_bridge.rs` |
 | Camera follow/zoom/bounds/shake (`D-073`) | `core/camera.rs`, `tungsten/camera.rs`, `examples/01_platformer/src/setup.rs`, `examples/01_platformer/src/systems.rs` |
 | State stack, scenes and components, `SceneEntity` cleanup, transitions (`D-046`, `D-093`, `D-153`) | `tungsten/state.rs`, `tungsten/transition.rs`, `core/assets/scene.rs`, `core/component_registry.rs`, `tungsten/asset_loader/scene.rs`, `examples/03_scene_state/src/states.rs` |
 | Tweens (`D-054`–`D-056`) | `core/tween.rs`, `tungsten/tweens.rs`, `core/assets/scene.rs` |
@@ -58,10 +58,10 @@ Read `crates/tungsten-render/AGENTS.md` before editing the render crate.
 | --- | --- |
 | Renderer, pools, draw, GPU timings, surface acquire | `render/lib.rs`, `render/renderer.rs`, `render/timing.rs`, `render/surface_acquire.rs` |
 | Pass order, direct present, late acquire (`D-087`, `D-145`) | `render/passes/order.rs`, `render/renderer.rs`, `render/surface_acquire.rs`, `render/screenshot.rs` |
-| Text engine, GPU halves, layout cache, retained nodes, font families, fallback (`D-085`, `D-115`–`D-117`, `D-123`) | `render/text.rs`, `render/text/engine.rs`, `render/text/nodes.rs`, `render/text/fonts.rs`, `render/text/gpu.rs`, `tungsten/asset_loader/mod.rs`, `tungsten/engine_font.rs` |
-| Neutral text types, `TextMeasure`, `TextNodeStore` (`D-117`, `D-125`) | `core/text.rs` |
+| Text engine, GPU halves, layout cache, world labels, retained nodes, font families, fallback (`D-085`, `D-115`–`D-117`, `D-123`, `D-161`) | `render/text.rs`, `render/text/engine.rs`, `render/text/nodes.rs`, `render/text/fonts.rs`, `render/text/gpu.rs`, `tungsten/asset_loader/mod.rs`, `tungsten/engine_font.rs` |
+| Neutral text types, world labels, `TextMeasure`, `TextNodeStore` (`D-117`, `D-125`) | `core/text.rs` |
 | UI tree, style, layout, focus, hit testing, routing (`D-124`, `D-125`, `D-149`) | `core/ui/`, `tungsten/testing/ui.rs`, `core/tests/ui/`, `tungsten/tests/ui_route.rs` |
-| UI paint list, overlay pipeline, text batches, layout stage, debug actions (`D-147`, `D-148`) | `core/ui/paint.rs`, `render/ui.rs`, `render/ui.wgsl`, `render/text/gpu.rs`, `tungsten/app.rs`, `tungsten/ui_debug.rs`, `core/tests/ui/paint.rs`, `render/tests/ui.rs`, `render/tests/text_batches.rs` |
+| UI paint list, overlay pipeline, text batches, layout stage, debug actions (`D-147`, `D-148`) | `core/ui/paint.rs`, `render/ui.rs`, `render/ui.wgsl`, `tungsten/app.rs`, `tungsten/ui_debug.rs`, `core/tests/ui/paint.rs`, `render/tests/ui.rs`, `render/tests/text_batches.rs` |
 | Render components, default sprite extract, `Extracts` channels (`D-042`, `D-086`, `D-113`, `D-114`, `D-138`) | `core/components.rs`, `tungsten/sprite_extract.rs`, `tungsten/extract.rs` |
 | Materials, post-stack (`D-058`) | `core/assets/material.rs`, `core/post.rs`, `render/material.rs`, `render/post/`, `render/shaders/stock/` |
 | SMAA (`D-059`) | `tungsten/post_aa.rs`, `render/post/smaa.rs`, `render/post/smaa_luts.rs`, `render/targets.rs`, `render/passes/order.rs` |
@@ -82,7 +82,7 @@ Run with `cargo run -p example-NN-name`.
 | One benchmark's workload | `examples/02_bench/src/<bench>.rs` |
 | Scene/state lifecycle | `examples/03_scene_state/src/main.rs`, `examples/03_scene_state/src/states.rs` |
 | Shader/material/post fixtures | `examples/04_shader_playground/src/main.rs` |
-| UI lab: paint list, live theme reload, UI debug actions (M46) | `examples/05_ui_lab/src/main.rs`, `examples/05_ui_lab/src/screens.rs`, `examples/05_ui_lab/tests/ui_regression.rs`, `examples/05_ui_lab/tools/README.md` |
+| UI lab: paint list, live theme reload, debug actions | `examples/05_ui_lab/src/main.rs`, `examples/05_ui_lab/src/screens.rs`, `examples/05_ui_lab/tests/ui_regression.rs`, `examples/05_ui_lab/tools/README.md` |
 | The game template, a game's own folder (`D-123`) | `templates/basic/src/game.rs`, `templates/basic/src/states.rs`, `templates/basic/tests/game.rs`, `templates/basic/AGENTS.md`, `scripts/smoke-examples.sh`, `scripts/template-check.sh`, `docs/getting-started.md` |
 | GPU smoke run, fixture matrices (`just smoke`) | `scripts/smoke-examples.sh`, `scripts/test-smoke-examples.sh` |
 | Documentation maintenance | `docs/README.md`, `docs/plans/README.md` |

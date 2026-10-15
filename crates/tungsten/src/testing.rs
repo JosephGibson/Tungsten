@@ -30,10 +30,11 @@ use std::time::Instant;
 
 use tungsten_core::ui::PaintList;
 use tungsten_core::{
-    ActionMap, AudioCommand, Binding, EventQueue, InputState, ScrollDirection, World,
+    ActionMap, AudioCommand, Binding, EventQueue, GamepadId, InputState, ScrollDirection, World,
 };
 use tungsten_render::{
     DebugLineInstance, LightUbo, MeshParticleBatch, QuadInstance, SpriteBatch, TextSection,
+    WorldLabelRun,
 };
 
 use crate::app::{App, FrameClock, FrameEnd, FrameExtract};
@@ -45,6 +46,9 @@ pub use ui::UiHarness;
 /// The dt each frame gets until [`Harness::set_dt`] changes it: 60 Hz, as
 /// smoke mode pins it.
 const DEFAULT_DT_SECS: f32 = 1.0 / 60.0;
+
+/// The pad gamepad bindings press on.
+const HARNESS_PAD: GamepadId = GamepadId::new(0);
 
 /// Runs an [`App`]'s frames one call at a time, with a pinned dt and no
 /// window.
@@ -125,10 +129,12 @@ impl Harness {
         frames
     }
 
-    /// Presses `action`'s first binding, as the key, button or wheel event
-    /// would between redraws: the next frame reads it as just pressed, and
-    /// later frames as held until [`Harness::release_action`]. A scroll
-    /// binding lasts one frame, as a wheel notch does.
+    /// Presses `action`'s first binding, as the key, button, wheel or
+    /// gamepad event would between redraws: the next frame reads it as just
+    /// pressed, and later frames as held until [`Harness::release_action`].
+    /// A scroll binding lasts one frame, as a wheel notch does. A gamepad
+    /// binding presses on [`GamepadId::new(0)`](GamepadId::new); a stick
+    /// binding tilts its axis fully its way.
     ///
     /// # Panics
     ///
@@ -146,11 +152,17 @@ impl Harness {
                 };
                 input.add_scroll_line_delta(0.0, lines);
             }
+            Binding::GamepadButton { button } => input.gamepad_button_down(HARNESS_PAD, button),
+            Binding::GamepadAxis { axis, direction } => {
+                input.set_gamepad_axis(HARNESS_PAD, axis, direction.along(1.0));
+            }
+            other => panic!("Harness: {other:?} cannot be pressed"),
         }
     }
 
     /// Releases `action`'s first binding: the next frame reads it as just
-    /// released. A scroll binding has nothing to release.
+    /// released. A scroll binding has nothing to release; a stick binding
+    /// centres its axis.
     ///
     /// # Panics
     ///
@@ -161,7 +173,9 @@ impl Harness {
         match binding {
             Binding::Key { code } => input.key_up(code),
             Binding::Mouse { button } => input.mouse_up(button),
-            Binding::Scroll { .. } => {}
+            Binding::GamepadButton { button } => input.gamepad_button_up(HARNESS_PAD, button),
+            Binding::GamepadAxis { axis, .. } => input.set_gamepad_axis(HARNESS_PAD, axis, 0.0),
+            _ => {}
         }
     }
 
@@ -267,6 +281,10 @@ pub struct FrameDraw {
     /// repainted when the tree, the scale, `UiDebug` or the sprite epoch
     /// changed.
     pub ui: PaintList,
+    /// The world labels the frame drew (M54): those pushed to
+    /// [`WorldLabels`](tungsten_core::WorldLabels) since the last frame,
+    /// projected through the camera, culled and capped.
+    pub world_labels: Vec<WorldLabelRun>,
 }
 
 impl FrameDraw {
@@ -291,6 +309,7 @@ impl FrameDraw {
             light_ubo: extract.light_ubo,
             mesh_particles: extract.mesh_particles.clone(),
             ui: extract.ui.clone(),
+            world_labels: extract.world_labels.clone(),
         }
     }
 }

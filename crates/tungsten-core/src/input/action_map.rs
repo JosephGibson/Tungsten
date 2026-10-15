@@ -7,17 +7,41 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::input::key_serde::keycode_to_str;
-use crate::input::{InputState, KeyCode, MouseButton, ScrollDirection};
+use crate::input::{
+    AxisDirection, GamepadAxis, GamepadButton, InputState, KeyCode, MouseButton, STICK_RELEASE,
+    ScrollDirection,
+};
 use crate::persist::{quarantine, write_atomic};
 use crate::ui::{UI_ACCEPT, UI_CANCEL, UI_DOWN, UI_LEFT, UI_NEXT, UI_PREV, UI_RIGHT, UI_UP};
 
-/// Physical input binding.
+/// Physical input binding. Gamepad bindings read any connected pad (M54).
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Binding {
-    Key { code: KeyCode },
-    Mouse { button: MouseButton },
-    Scroll { direction: ScrollDirection },
+    Key {
+        code: KeyCode,
+    },
+    Mouse {
+        button: MouseButton,
+    },
+    Scroll {
+        direction: ScrollDirection,
+    },
+    /// A gamepad button: `"kind": "gamepad_button"`.
+    GamepadButton {
+        /// The button.
+        button: GamepadButton,
+    },
+    /// A stick direction: `"kind": "gamepad_axis"`. Held while the stick
+    /// direction is pressed ([`InputState::is_stick_pressed`]);
+    /// [`ActionMap::value`] reads how far it goes.
+    GamepadAxis {
+        /// The axis.
+        axis: GamepadAxis,
+        /// The direction along it.
+        direction: AxisDirection,
+    },
 }
 
 /// String action names mapped to physical bindings.
@@ -79,9 +103,10 @@ impl ActionMap {
     }
 
     /// Engine default bindings for examples and engine-owned controls, the
-    /// UI's `ui_*` actions among them (`D-149`): `ui_accept` on Enter and
-    /// Space, `ui_cancel` on Escape, `ui_next` on Tab, the directions on the
-    /// arrows and `ui_prev` unbound.
+    /// UI's `ui_*` actions among them (`D-149`): `ui_accept` on Enter, Space
+    /// and South, `ui_cancel` on Escape and East, `ui_next` on Tab and
+    /// RightShoulder, `ui_prev` on LeftShoulder, and the directions on the
+    /// arrows, the d-pad and the left stick (M54).
     #[must_use]
     pub fn default_map() -> Self {
         let mut actions: HashMap<String, Vec<Binding>> = HashMap::new();
@@ -243,17 +268,61 @@ impl ActionMap {
             }],
         );
         let key = |code| Binding::Key { code };
+        let pad = |button| Binding::GamepadButton { button };
+        let stick = |axis, direction| Binding::GamepadAxis { axis, direction };
         actions.insert(
             UI_ACCEPT.into(),
-            vec![key(KeyCode::Enter), key(KeyCode::Space)],
+            vec![
+                key(KeyCode::Enter),
+                key(KeyCode::Space),
+                pad(GamepadButton::South),
+            ],
         );
-        actions.insert(UI_CANCEL.into(), vec![key(KeyCode::Escape)]);
-        actions.insert(UI_NEXT.into(), vec![key(KeyCode::Tab)]);
-        actions.insert(UI_PREV.into(), Vec::new());
-        actions.insert(UI_UP.into(), vec![key(KeyCode::ArrowUp)]);
-        actions.insert(UI_DOWN.into(), vec![key(KeyCode::ArrowDown)]);
-        actions.insert(UI_LEFT.into(), vec![key(KeyCode::ArrowLeft)]);
-        actions.insert(UI_RIGHT.into(), vec![key(KeyCode::ArrowRight)]);
+        actions.insert(
+            UI_CANCEL.into(),
+            vec![key(KeyCode::Escape), pad(GamepadButton::East)],
+        );
+        actions.insert(
+            UI_NEXT.into(),
+            vec![key(KeyCode::Tab), pad(GamepadButton::RightShoulder)],
+        );
+        actions.insert(UI_PREV.into(), vec![pad(GamepadButton::LeftShoulder)]);
+        let directions = [
+            (
+                UI_UP,
+                KeyCode::ArrowUp,
+                GamepadButton::DPadUp,
+                GamepadAxis::LeftStickY,
+                AxisDirection::Positive,
+            ),
+            (
+                UI_DOWN,
+                KeyCode::ArrowDown,
+                GamepadButton::DPadDown,
+                GamepadAxis::LeftStickY,
+                AxisDirection::Negative,
+            ),
+            (
+                UI_LEFT,
+                KeyCode::ArrowLeft,
+                GamepadButton::DPadLeft,
+                GamepadAxis::LeftStickX,
+                AxisDirection::Negative,
+            ),
+            (
+                UI_RIGHT,
+                KeyCode::ArrowRight,
+                GamepadButton::DPadRight,
+                GamepadAxis::LeftStickX,
+                AxisDirection::Positive,
+            ),
+        ];
+        for (action, code, button, axis, direction) in directions {
+            actions.insert(
+                action.into(),
+                vec![key(code), pad(button), stick(axis, direction)],
+            );
+        }
         Self {
             actions,
             ..Self::default()
@@ -422,6 +491,8 @@ impl ActionMap {
             Binding::Key { code } => input.is_pressed(code),
             Binding::Mouse { button } => input.is_mouse_pressed(button),
             Binding::Scroll { direction } => input.is_scroll_active(direction),
+            Binding::GamepadButton { button } => input.is_gamepad_pressed(button),
+            Binding::GamepadAxis { axis, direction } => input.is_stick_pressed(axis, direction),
         })
     }
 
@@ -432,6 +503,8 @@ impl ActionMap {
             Binding::Key { code } => input.just_pressed(code),
             Binding::Mouse { button } => input.mouse_just_pressed(button),
             Binding::Scroll { direction } => input.scroll_just_pressed(direction),
+            Binding::GamepadButton { button } => input.gamepad_just_pressed(button),
+            Binding::GamepadAxis { axis, direction } => input.stick_just_pressed(axis, direction),
         })
     }
 
@@ -442,7 +515,35 @@ impl ActionMap {
             Binding::Key { code } => input.just_released(code),
             Binding::Mouse { button } => input.mouse_just_released(button),
             Binding::Scroll { direction } => input.scroll_just_released(direction),
+            Binding::GamepadButton { button } => input.gamepad_just_released(button),
+            Binding::GamepadAxis { axis, direction } => input.stick_just_released(axis, direction),
         })
+    }
+
+    /// How far `action` is held, 0 to 1: the largest of its bindings. A held
+    /// key, button or scroll binding gives 1. A stick binding gives how far
+    /// the stick goes its way on any pad, rescaled from [`STICK_RELEASE`]..1
+    /// to 0..1, and 0 below; so a stick moves in proportion and a key at
+    /// full speed (M54).
+    #[must_use]
+    pub fn value(&self, input: &InputState, action: &str) -> f32 {
+        self.bindings(action)
+            .iter()
+            .map(|binding| match *binding {
+                Binding::GamepadAxis { axis, direction } => {
+                    let reach = input.stick_reach(axis, direction);
+                    ((reach - STICK_RELEASE) / (1.0 - STICK_RELEASE)).clamp(0.0, 1.0)
+                }
+                Binding::Key { code } => f32::from(u8::from(input.is_pressed(code))),
+                Binding::Mouse { button } => f32::from(u8::from(input.is_mouse_pressed(button))),
+                Binding::Scroll { direction } => {
+                    f32::from(u8::from(input.is_scroll_active(direction)))
+                }
+                Binding::GamepadButton { button } => {
+                    f32::from(u8::from(input.is_gamepad_pressed(button)))
+                }
+            })
+            .fold(0.0, f32::max)
     }
 
     /// Iterate `(action, bindings)`; order unstable.
@@ -507,7 +608,10 @@ impl ActionMap {
 fn binding_has_name(binding: Binding) -> bool {
     match binding {
         Binding::Key { code } => keycode_to_str(code).is_some(),
-        Binding::Mouse { .. } | Binding::Scroll { .. } => true,
+        Binding::Mouse { .. }
+        | Binding::Scroll { .. }
+        | Binding::GamepadButton { .. }
+        | Binding::GamepadAxis { .. } => true,
     }
 }
 

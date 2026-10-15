@@ -199,6 +199,126 @@ impl Modifiers {
     }
 }
 
+/// A gamepad, as the backend numbers it: stable while it stays connected
+/// (M54).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct GamepadId(u32);
+
+impl GamepadId {
+    /// The gamepad numbered `id`.
+    #[must_use]
+    pub const fn new(id: u32) -> Self {
+        Self(id)
+    }
+
+    /// The number.
+    #[must_use]
+    pub const fn get(self) -> u32 {
+        self.0
+    }
+}
+
+/// A gamepad button by its position, as the standard layout names it, so one
+/// `input.json` serves every pad family (Q10 of M54). Its `input.json` name
+/// is the variant name.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum GamepadButton {
+    /// The bottom face button: A on Xbox, Cross on PlayStation.
+    South,
+    /// The right face button: B on Xbox, Circle on PlayStation.
+    East,
+    /// The top face button: Y on Xbox, Triangle on PlayStation.
+    North,
+    /// The left face button: X on Xbox, Square on PlayStation.
+    West,
+    /// The left shoulder button (LB, L1).
+    LeftShoulder,
+    /// The right shoulder button (RB, R1).
+    RightShoulder,
+    /// The left trigger (LT, L2), as a button.
+    LeftTrigger,
+    /// The right trigger (RT, R2), as a button.
+    RightTrigger,
+    /// The left centre button: View, Back or Share.
+    Select,
+    /// The right centre button: Menu, Start or Options.
+    Start,
+    /// The logo button: Guide or PS.
+    Mode,
+    /// The left stick pressed in.
+    LeftStick,
+    /// The right stick pressed in.
+    RightStick,
+    /// The d-pad's up.
+    DPadUp,
+    /// The d-pad's down.
+    DPadDown,
+    /// The d-pad's left.
+    DPadLeft,
+    /// The d-pad's right.
+    DPadRight,
+}
+
+/// A stick axis, from −1 to 1: x grows to the right and y upward. Its
+/// `input.json` name is the variant name.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum GamepadAxis {
+    /// The left stick's x.
+    LeftStickX,
+    /// The left stick's y.
+    LeftStickY,
+    /// The right stick's x.
+    RightStickX,
+    /// The right stick's y.
+    RightStickY,
+}
+
+impl GamepadAxis {
+    /// The axis's slot in a pad's values.
+    fn index(self) -> usize {
+        match self {
+            Self::LeftStickX => 0,
+            Self::LeftStickY => 1,
+            Self::RightStickX => 2,
+            Self::RightStickY => 3,
+        }
+    }
+}
+
+/// One direction of a stick axis; `input.json` names them `negative` and
+/// `positive`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AxisDirection {
+    /// Toward −1: left on x, down on y.
+    Negative,
+    /// Toward 1: right on x, up on y.
+    Positive,
+}
+
+impl AxisDirection {
+    const BOTH: [Self; 2] = [Self::Negative, Self::Positive];
+
+    /// How far `value` goes this way: `value` for `Positive`, `-value` for
+    /// `Negative`.
+    #[must_use]
+    pub fn along(self, value: f32) -> f32 {
+        match self {
+            Self::Negative => -value,
+            Self::Positive => value,
+        }
+    }
+}
+
+/// A stick direction presses when the value along it reaches this, after
+/// the backend's deadzone (Q8 of M54).
+pub const STICK_PRESS: f32 = 0.5;
+/// A pressed stick direction releases when the value along it falls below
+/// this. [`ActionMap::value`] reads an axis binding from here: 0 at it, 1 at
+/// full tilt.
+pub const STICK_RELEASE: f32 = 0.35;
+
 /// A scroll amount as the window reports it: lines from a notched wheel or
 /// pixels from a touchpad. A positive `y` scrolls up.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -256,6 +376,51 @@ pub enum RawInput {
     Modifiers(Modifiers),
     /// The window gained (`true`) or lost (`false`) the keyboard focus.
     Focus(bool),
+    /// A gamepad button press or release.
+    #[non_exhaustive]
+    GamepadButton {
+        /// The pad.
+        pad: GamepadId,
+        /// The button.
+        button: GamepadButton,
+        /// Pressed, or released.
+        pressed: bool,
+    },
+    /// A stick axis moved to `value`. Adjacent moves of one pad's axis
+    /// coalesce into the first one's record unless either crossed a stick
+    /// threshold: a crossing's record keeps its value, so a release or press
+    /// always reaches a reader that derives them from the values.
+    #[non_exhaustive]
+    GamepadAxis {
+        /// The pad.
+        pad: GamepadId,
+        /// The axis.
+        axis: GamepadAxis,
+        /// The new value, −1 to 1.
+        value: f32,
+    },
+    /// A stick direction crossed [`STICK_PRESS`] (pressed) or
+    /// [`STICK_RELEASE`] (released). It comes right before the
+    /// [`GamepadAxis`](Self::GamepadAxis) record of the move that crossed.
+    #[non_exhaustive]
+    GamepadStick {
+        /// The pad.
+        pad: GamepadId,
+        /// The axis.
+        axis: GamepadAxis,
+        /// The direction along it.
+        direction: AxisDirection,
+        /// Pressed, or released.
+        pressed: bool,
+    },
+    /// A gamepad connected (`true`) or disconnected (`false`).
+    #[non_exhaustive]
+    Gamepad {
+        /// The pad.
+        pad: GamepadId,
+        /// Connected, or disconnected.
+        connected: bool,
+    },
 }
 
 /// A [`RawInput`] and its place in arrival order.
@@ -301,6 +466,48 @@ impl<'de> Deserialize<'de> for MouseButton {
     }
 }
 
+impl Serialize for GamepadButton {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(key_serde::gamepad_button_to_str(*self))
+    }
+}
+
+impl<'de> Deserialize<'de> for GamepadButton {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let raw = String::deserialize(deserializer)?;
+        key_serde::gamepad_button_from_str(&raw)
+            .ok_or_else(|| de::Error::custom(format!("unknown gamepad button '{raw}'")))
+    }
+}
+
+impl Serialize for GamepadAxis {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(key_serde::gamepad_axis_to_str(*self))
+    }
+}
+
+impl<'de> Deserialize<'de> for GamepadAxis {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let raw = String::deserialize(deserializer)?;
+        key_serde::gamepad_axis_from_str(&raw)
+            .ok_or_else(|| de::Error::custom(format!("unknown gamepad axis '{raw}'")))
+    }
+}
+
+impl Serialize for AxisDirection {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(key_serde::axis_direction_to_str(*self))
+    }
+}
+
+impl<'de> Deserialize<'de> for AxisDirection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let raw = String::deserialize(deserializer)?;
+        key_serde::axis_direction_from_str(&raw)
+            .ok_or_else(|| de::Error::custom(format!("unknown axis direction '{raw}'")))
+    }
+}
+
 impl Serialize for ScrollDirection {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_str(key_serde::scroll_direction_to_str(*self))
@@ -315,8 +522,8 @@ impl<'de> Deserialize<'de> for ScrollDirection {
     }
 }
 
-/// Keyboard/mouse/scroll state with per-frame edges, and the frame's raw
-/// input in arrival order.
+/// Keyboard, mouse, scroll and gamepad state with per-frame edges, and the
+/// frame's raw input in arrival order.
 ///
 /// Edges have two views. The frame view, the default, holds the presses and
 /// releases since the last [`begin_frame`](Self::begin_frame). The fixed
@@ -330,6 +537,12 @@ impl<'de> Deserialize<'de> for ScrollDirection {
 /// clock reaches no step (`D-146`).
 /// Level queries, the cursor, the deltas and
 /// [`raw_events`](Self::raw_events) stay per frame.
+///
+/// Gamepads (M54): each connected pad keeps its buttons, its stick
+/// directions and its axes. The plain queries read any pad, which is what
+/// [`ActionMap`] does; the `_on` queries read one. A stick direction presses
+/// when the value along it reaches [`STICK_PRESS`] and releases below
+/// [`STICK_RELEASE`]. Input from a pad not yet connected connects it.
 ///
 /// Each mutator applies its state and records its [`RawEvent`], so input fed
 /// through these methods, the window's or a test's, reaches the stream as
@@ -347,6 +560,13 @@ pub struct InputState {
     scroll_pressed: HashSet<ScrollDirection>,
     scroll_just_pressed: HashSet<ScrollDirection>,
     scroll_just_released: HashSet<ScrollDirection>,
+
+    /// Connected pads, by ID.
+    pads: Vec<PadState>,
+    pad_edges: PadEdges,
+    /// The last record is a move of this pad's axis that crossed nothing, so
+    /// the next such move may coalesce into it.
+    open_axis: Option<(GamepadId, GamepadAxis)>,
 
     fixed: FixedEdges,
     fixed_view: bool,
@@ -375,6 +595,35 @@ struct FixedEdges {
     mouse_just_released: HashSet<MouseButton>,
     scroll_just_pressed: HashSet<ScrollDirection>,
     scroll_just_released: HashSet<ScrollDirection>,
+    pad: PadEdges,
+}
+
+/// One connected pad: held buttons and stick directions, and its axes by
+/// `GamepadAxis::index`.
+#[derive(Debug, Clone)]
+struct PadState {
+    id: GamepadId,
+    buttons: Vec<GamepadButton>,
+    sticks: Vec<(GamepadAxis, AxisDirection)>,
+    axes: [f32; 4],
+}
+
+/// One view's gamepad edges, each with its pad.
+#[derive(Debug, Clone, Default)]
+struct PadEdges {
+    pressed: Vec<(GamepadId, GamepadButton)>,
+    released: Vec<(GamepadId, GamepadButton)>,
+    stick_pressed: Vec<(GamepadId, GamepadAxis, AxisDirection)>,
+    stick_released: Vec<(GamepadId, GamepadAxis, AxisDirection)>,
+}
+
+impl PadEdges {
+    fn clear(&mut self) {
+        self.pressed.clear();
+        self.released.clear();
+        self.stick_pressed.clear();
+        self.stick_released.clear();
+    }
 }
 
 impl InputState {
@@ -390,6 +639,9 @@ impl InputState {
             scroll_pressed: HashSet::new(),
             scroll_just_pressed: HashSet::new(),
             scroll_just_released: HashSet::new(),
+            pads: Vec::new(),
+            pad_edges: PadEdges::default(),
+            open_axis: None,
             fixed: FixedEdges::default(),
             fixed_view: false,
             cursor_position: None,
@@ -421,10 +673,13 @@ impl InputState {
             self.fixed.scroll_just_released.insert(direction);
         }
 
+        self.pad_edges.clear();
+
         self.cursor_delta = (0.0, 0.0);
         self.scroll_line_delta = (0.0, 0.0);
         self.scroll_pixel_delta = (0.0, 0.0);
         self.raw_events.clear();
+        self.open_axis = None;
     }
 
     /// Turns the fixed view on or off: while it is on, `just_pressed`,
@@ -446,6 +701,7 @@ impl InputState {
         fixed.mouse_just_released.clear();
         fixed.scroll_just_pressed.clear();
         fixed.scroll_just_released.clear();
+        fixed.pad.clear();
     }
 
     /// A press: holds `key` and records it; a press of a held key records a
@@ -551,10 +807,12 @@ impl InputState {
     }
 
     /// Sets the keyboard focus and records it. Losing it releases every held
-    /// key and mouse button, with release edges in both views and no
-    /// recorded releases, and clears the modifiers and every
+    /// key, mouse button, gamepad button and stick direction, with release
+    /// edges in both views and no recorded releases, zeroes every gamepad
+    /// axis, and clears the modifiers and every
     /// [`suppress_until_release`](Self::suppress_until_release) mark, since
-    /// the window may never hear those releases (`D-144`).
+    /// the window may never hear those releases (`D-144`). The pads stay
+    /// connected.
     pub fn set_focused(&mut self, focused: bool) {
         self.focused = focused;
         if !focused {
@@ -566,10 +824,128 @@ impl InputState {
                 self.mouse_just_released.insert(button);
                 self.fixed.mouse_just_released.insert(button);
             }
+            for index in 0..self.pads.len() {
+                self.release_pad(index);
+            }
             self.modifiers = Modifiers::empty();
             self.suppressed.clear();
         }
         self.record(RawInput::Focus(focused));
+    }
+
+    /// Connects `pad` and records it; a pad already connected records only.
+    pub fn gamepad_connected(&mut self, pad: GamepadId) {
+        self.pad_index(pad);
+        self.record(RawInput::Gamepad {
+            pad,
+            connected: true,
+        });
+    }
+
+    /// Disconnects `pad` and records it: its held buttons and stick
+    /// directions release, with edges in both views and no recorded
+    /// releases, and its axes read 0.
+    pub fn gamepad_disconnected(&mut self, pad: GamepadId) {
+        if let Some(index) = self.pads.iter().position(|state| state.id == pad) {
+            self.release_pad(index);
+            self.pads.remove(index);
+        }
+        self.record(RawInput::Gamepad {
+            pad,
+            connected: false,
+        });
+    }
+
+    /// A press of `button` on `pad`: holds and records it; a press of a held
+    /// button changes and records nothing.
+    pub fn gamepad_button_down(&mut self, pad: GamepadId, button: GamepadButton) {
+        let index = self.pad_index(pad);
+        let state = &mut self.pads[index];
+        if state.buttons.contains(&button) {
+            return;
+        }
+        state.buttons.push(button);
+        self.pad_edges.pressed.push((pad, button));
+        self.fixed.pad.pressed.push((pad, button));
+        self.record(RawInput::GamepadButton {
+            pad,
+            button,
+            pressed: true,
+        });
+    }
+
+    /// A release of `button` on `pad`: releases and records it when held.
+    pub fn gamepad_button_up(&mut self, pad: GamepadId, button: GamepadButton) {
+        let Some(state) = self.pads.iter_mut().find(|state| state.id == pad) else {
+            return;
+        };
+        let Some(at) = state.buttons.iter().position(|held| *held == button) else {
+            return;
+        };
+        state.buttons.swap_remove(at);
+        self.pad_edges.released.push((pad, button));
+        self.fixed.pad.released.push((pad, button));
+        self.record(RawInput::GamepadButton {
+            pad,
+            button,
+            pressed: false,
+        });
+    }
+
+    /// Moves `pad`'s `axis` to `value`, clamped to −1..1, and records it. A
+    /// direction whose value crosses [`STICK_PRESS`] presses and one that
+    /// falls below [`STICK_RELEASE`] releases, each with edges in both views
+    /// and a [`RawInput::GamepadStick`] record before the axis record. A move
+    /// that crosses nothing, right after a move of the same axis that crossed
+    /// nothing, updates that one's record.
+    pub fn set_gamepad_axis(&mut self, pad: GamepadId, axis: GamepadAxis, value: f32) {
+        let value = if value.is_nan() {
+            0.0
+        } else {
+            value.clamp(-1.0, 1.0)
+        };
+        let index = self.pad_index(pad);
+        self.pads[index].axes[axis.index()] = value;
+        let mut crossed = false;
+        for direction in AxisDirection::BOTH {
+            let along = direction.along(value);
+            let state = &mut self.pads[index];
+            let held = state.sticks.iter().position(|s| *s == (axis, direction));
+            let pressed = match held {
+                None if along >= STICK_PRESS => {
+                    state.sticks.push((axis, direction));
+                    self.pad_edges.stick_pressed.push((pad, axis, direction));
+                    self.fixed.pad.stick_pressed.push((pad, axis, direction));
+                    true
+                }
+                Some(at) if along < STICK_RELEASE => {
+                    state.sticks.swap_remove(at);
+                    self.pad_edges.stick_released.push((pad, axis, direction));
+                    self.fixed.pad.stick_released.push((pad, axis, direction));
+                    false
+                }
+                _ => continue,
+            };
+            crossed = true;
+            self.record(RawInput::GamepadStick {
+                pad,
+                axis,
+                direction,
+                pressed,
+            });
+        }
+        if !crossed
+            && self.open_axis == Some((pad, axis))
+            && let Some(RawInput::GamepadAxis { value: last, .. }) =
+                self.raw_events.last_mut().map(|event| &mut event.input)
+        {
+            *last = value;
+            return;
+        }
+        self.record(RawInput::GamepadAxis { pad, axis, value });
+        if !crossed {
+            self.open_axis = Some((pad, axis));
+        }
     }
 
     /// Sets the modifiers held and records them.
@@ -693,6 +1069,104 @@ impl InputState {
         self.scroll_pixel_delta
     }
 
+    /// The connected gamepads, in ID order.
+    pub fn gamepads(&self) -> impl Iterator<Item = GamepadId> + '_ {
+        self.pads.iter().map(|state| state.id)
+    }
+
+    /// Whether `button` is held on any pad.
+    #[must_use]
+    pub fn is_gamepad_pressed(&self, button: GamepadButton) -> bool {
+        self.pads
+            .iter()
+            .any(|state| state.buttons.contains(&button))
+    }
+
+    /// Whether `button` is held on `pad`.
+    #[must_use]
+    pub fn is_gamepad_pressed_on(&self, pad: GamepadId, button: GamepadButton) -> bool {
+        self.pad(pad)
+            .is_some_and(|state| state.buttons.contains(&button))
+    }
+
+    /// As [`just_pressed`](Self::just_pressed), for `button` on any pad.
+    #[must_use]
+    pub fn gamepad_just_pressed(&self, button: GamepadButton) -> bool {
+        self.view_pad_edges()
+            .pressed
+            .iter()
+            .any(|(_, pressed)| *pressed == button)
+    }
+
+    /// As [`just_released`](Self::just_released), for `button` on any pad.
+    #[must_use]
+    pub fn gamepad_just_released(&self, button: GamepadButton) -> bool {
+        self.view_pad_edges()
+            .released
+            .iter()
+            .any(|(_, released)| *released == button)
+    }
+
+    /// Whether `axis` is held toward `direction` on any pad: pressed at
+    /// [`STICK_PRESS`], released below [`STICK_RELEASE`].
+    #[must_use]
+    pub fn is_stick_pressed(&self, axis: GamepadAxis, direction: AxisDirection) -> bool {
+        self.pads
+            .iter()
+            .any(|state| state.sticks.contains(&(axis, direction)))
+    }
+
+    /// As [`just_pressed`](Self::just_pressed), for a stick direction on any
+    /// pad.
+    #[must_use]
+    pub fn stick_just_pressed(&self, axis: GamepadAxis, direction: AxisDirection) -> bool {
+        self.view_pad_edges()
+            .stick_pressed
+            .iter()
+            .any(|&(_, a, d)| (a, d) == (axis, direction))
+    }
+
+    /// As [`just_released`](Self::just_released), for a stick direction on
+    /// any pad.
+    #[must_use]
+    pub fn stick_just_released(&self, axis: GamepadAxis, direction: AxisDirection) -> bool {
+        self.view_pad_edges()
+            .stick_released
+            .iter()
+            .any(|&(_, a, d)| (a, d) == (axis, direction))
+    }
+
+    /// `axis`'s value, −1 to 1, on the pad where it is farthest from 0; 0
+    /// with no pad.
+    #[must_use]
+    pub fn gamepad_axis(&self, axis: GamepadAxis) -> f32 {
+        self.pads
+            .iter()
+            .map(|state| state.axes[axis.index()])
+            .fold(0.0, |best, value| {
+                if value.abs() > best.abs() {
+                    value
+                } else {
+                    best
+                }
+            })
+    }
+
+    /// `axis`'s value on `pad`, −1 to 1; 0 for a pad not connected.
+    #[must_use]
+    pub fn gamepad_axis_on(&self, pad: GamepadId, axis: GamepadAxis) -> f32 {
+        self.pad(pad).map_or(0.0, |state| state.axes[axis.index()])
+    }
+
+    /// The farthest any pad's `axis` goes toward `direction`, 0 when none
+    /// does.
+    pub(crate) fn stick_reach(&self, axis: GamepadAxis, direction: AxisDirection) -> f32 {
+        self.pads
+            .iter()
+            .map(|state| direction.along(state.axes[axis.index()]))
+            .fold(0.0, f32::max)
+    }
+
     /// The frame's input in arrival order: every event recorded since the
     /// last [`begin_frame`](Self::begin_frame), not routed. The fixed view
     /// does not change it.
@@ -727,6 +1201,55 @@ impl InputState {
             input,
         });
         self.next_seq += 1;
+        self.open_axis = None;
+    }
+
+    fn pad(&self, pad: GamepadId) -> Option<&PadState> {
+        self.pads.iter().find(|state| state.id == pad)
+    }
+
+    /// `pad`'s slot, connecting it when it is not.
+    fn pad_index(&mut self, pad: GamepadId) -> usize {
+        match self.pads.binary_search_by_key(&pad, |state| state.id) {
+            Ok(index) => index,
+            Err(index) => {
+                self.pads.insert(
+                    index,
+                    PadState {
+                        id: pad,
+                        buttons: Vec::new(),
+                        sticks: Vec::new(),
+                        axes: [0.0; 4],
+                    },
+                );
+                index
+            }
+        }
+    }
+
+    /// Releases the pad at `index`'s buttons and stick directions, with
+    /// edges in both views and no records, and zeroes its axes.
+    fn release_pad(&mut self, index: usize) {
+        let state = &mut self.pads[index];
+        let pad = state.id;
+        for button in state.buttons.drain(..) {
+            self.pad_edges.released.push((pad, button));
+            self.fixed.pad.released.push((pad, button));
+        }
+        for (axis, direction) in state.sticks.drain(..) {
+            self.pad_edges.stick_released.push((pad, axis, direction));
+            self.fixed.pad.stick_released.push((pad, axis, direction));
+        }
+        state.axes = [0.0; 4];
+    }
+
+    /// The pad edges of the view in use.
+    fn view_pad_edges(&self) -> &PadEdges {
+        if self.fixed_view {
+            &self.fixed.pad
+        } else {
+            &self.pad_edges
+        }
     }
 
     fn register_scroll_direction(&mut self, y: f32) {

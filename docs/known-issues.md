@@ -43,6 +43,7 @@ Priorities: P2 = functional follow-up; P3 = limitation, rare edge case or contra
 | P3 — `tungsten/app.rs` (`resumed`) | Review minor note: `AudioSystem::init`, which resamples every sound, runs after `last_frame` is stamped, so its time lands in the first frame's dt (capped at 0.1 s), though the comment there says startup time is excluded. | Phase 6 QA pass. |
 | P3 — `tungsten/debug_hud.rs`, `tungsten/systems_overlay.rs` | Review minor note: the HUD and overlay refresh throttles add the frame's work time, not its interval, so under vsync or a frame cap the 500 ms refresh stretches to seconds. | Phase 6 QA pass. |
 | P3 — `tungsten/tweens.rs` | Review minor note: tween `Loop` and `Times` drop the overshoot at each cycle, so the period drifts by up to a dt per cycle. | Phase 6 QA pass. |
+| P2 — `crates/tungsten/` (no gamepad backend) | M54 step 5: no window reads a gamepad. Core's pad input, bindings and routing and the template's pad bindings landed in 0.74, but the `gilrs` backend did not: `gilrs` 0.11.2 and `gilrs-core` 0.6.8 ship no licence file, so `just notices` failed without licence texts the plan's file list did not name. | Re-land M54 step 5 with `licenses/gilrs/LICENSE-APACHE` and `LICENSE-MIT` from `gitlab.com/gilrs-project/gilrs` at `07e286e24b046cf39e5c367daa2770b805a64692`, a `texts` entry for each crate, and the decision for W5a; the step's diff is machine-local in `perf-runs/20261014-m54-labels-gamepad/step5-skipped.patch`. Once it lands, a pad without an SDL mapping reads only what gilrs's fallback maps. |
 
 ## Recorded limits
 
