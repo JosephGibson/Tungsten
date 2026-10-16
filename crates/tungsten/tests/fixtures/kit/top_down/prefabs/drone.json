@@ -1,0 +1,34 @@
+{
+  "tag": "drone",
+  "components": {
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "circle",
+        "radius": 6
+      }
+    },
+    "path_follower": {
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          100,
+          0
+        ],
+        [
+          100,
+          100
+        ],
+        [
+          0,
+          100
+        ]
+      ],
+      "speed": 120,
+      "mode": "loop"
+    }
+  }
+}

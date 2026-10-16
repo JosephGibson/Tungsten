@@ -1,5 +1,6 @@
 use super::*;
 use serde_json::json;
+use tungsten_core::Stage;
 use tungsten_core::{PrefabData, PrefabRegistry, Tag};
 
 /// A World with the clock, a buffer and prefab `slime`, and the plugin's
@@ -18,10 +19,10 @@ fn setup() -> (World, Schedule) {
     (world, schedule)
 }
 
-/// One frame of `dt` seconds: the clock, `post_update`, the command flush.
+/// One step of `dt` seconds: the clock, `fixed_update`, the command flush.
 fn frame(world: &mut World, schedule: &mut Schedule, dt: f32) {
     world.resource_mut::<Time>().advance_frame(dt);
-    schedule.run_stage(Stage::PostUpdate, world, |_, _| {});
+    schedule.run_stage(Stage::FixedUpdate, world, |_, _| {});
     let mut commands = world.remove_resource::<CommandBuffer>().unwrap();
     world.flush_reusing(&mut commands);
     world.insert_resource(commands);
@@ -41,10 +42,10 @@ fn nest(world: &mut World, spawner: Spawner) -> tungsten_core::Entity {
 }
 
 #[test]
-fn the_plugin_registers_its_system_in_post_update() {
+fn the_plugin_registers_its_system_in_the_react_phase() {
     let (_, schedule) = setup();
-    assert_eq!(schedule.stage_of(SPAWNER_TICK), Some(Stage::PostUpdate));
-    assert_eq!(schedule.len(), 1);
+    assert_eq!(schedule.stage_of(SPAWNER_TICK), Some(Stage::FixedUpdate));
+    assert_eq!(schedule.len(), 8, "the seven anchors and the tick");
 }
 
 #[test]
@@ -127,7 +128,7 @@ fn without_a_command_buffer_the_spawners_hold() {
     let nest = nest(&mut world, Spawner::new("slime", 0.25));
     world.remove_resource::<CommandBuffer>();
     world.resource_mut::<Time>().advance_frame(1.0);
-    schedule.run_stage(Stage::PostUpdate, &mut world, |_, _| {});
+    schedule.run_stage(Stage::FixedUpdate, &mut world, |_, _| {});
     assert!(slimes(&world).is_empty());
     assert!(
         world.get::<Spawner>(nest).unwrap().timer().elapsed() < 1e-6,

@@ -11,7 +11,7 @@ Task → file map: read only the matching row's files. Prefixes: `core/` = `crat
 | Event flush, holds, `EventCursor` (`D-040`, `D-139`, `D-170`) | `core/ecs/event_queue.rs`, `core/ecs/world.rs` |
 | Frame order, smoke-frame exit, winit loop (`D-018`, `D-043`) | `tungsten/app.rs`, `tungsten/lib.rs` |
 | Schedule, stages, plugins, `DefaultPlugins`, engine system names (`D-128`, `D-133`) | `core/schedule.rs`, `core/physics/plugin.rs`, `tungsten/plugins.rs`, `tungsten/app.rs`, `tungsten/tests/plugins.rs` |
-| Kit: animation, lifetimes, despawn, sound per event, cursor, hierarchy, spawner, controllers, health, zones, paths, state machine (`D-155`, `D-157`, `D-158`) | `crates/tungsten-kit/src/`, `tungsten/tests/kit.rs` |
+| Kit by domain: phases, tags, scene components, recipes, descriptions (`D-155`, `D-172`) | `crates/tungsten-kit/src/`, `tungsten/tests/kit.rs`, `tungsten/tests/kit_recipes/`, `crates/tungsten/tests/fixtures/kit/` |
 | Game clock, `Time`, `Timer`, `DeltaTime`, fixed step, interpolation (`D-088`, `D-129`, `D-134`, `D-137`, `D-139`, `D-146`) | `core/time.rs`, `core/tests/time.rs`, `core/physics/plugin.rs`, `tungsten/app.rs`, `tungsten/tests/fixed_step.rs`, `tungsten/tests/testing.rs`, `examples/01_platformer/src/tests/regime.rs` |
 | Tuple queries, `With`/`Without`, bundles, `spawn_with`, `RigidBodyBundle` (`D-130`, `D-135`) | `core/ecs/query.rs`, `core/ecs/bundle.rs`, `core/ecs/world.rs`, `core/tests/ecs/query.rs` |
 | Headless harness, `Harness`, `FrameDraw`, `UiHarness` (`D-110`, `D-125`) | `tungsten/testing.rs`, `tungsten/testing/ui.rs`, `tungsten/app.rs`, `tungsten/tests/testing.rs` |

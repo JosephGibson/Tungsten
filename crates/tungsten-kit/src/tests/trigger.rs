@@ -1,7 +1,10 @@
 use super::*;
+use crate::{KIT_INTENT, KIT_MOVE, KIT_OVERLAP, KIT_REACT, KIT_RESOLVE, KIT_TICK};
 use glam::Vec2;
+use tungsten_core::Stage;
 use tungsten_core::physics::{
-    Collider, PHYSICS_PREV_SNAPSHOT, PhysicsPlugin, Position, RigidBodyBundle, Velocity,
+    Collider, PHYSICS_PREV_SNAPSHOT, PHYSICS_STEP, PhysicsPlugin, Position, RigidBodyBundle,
+    Velocity,
 };
 use tungsten_core::{Bundle, Time};
 
@@ -54,7 +57,17 @@ fn the_zone_runs_after_the_step() {
     assert!(world.has_event::<TriggerEntered<Zone, Player>>());
     assert_eq!(
         schedule.names(Stage::FixedUpdate).collect::<Vec<_>>(),
-        [PHYSICS_PREV_SNAPSHOT, PHYSICS_STEP, "zone_player"]
+        [
+            PHYSICS_PREV_SNAPSHOT,
+            KIT_TICK,
+            KIT_INTENT,
+            KIT_MOVE,
+            PHYSICS_STEP,
+            KIT_OVERLAP,
+            "zone_player",
+            KIT_RESOLVE,
+            KIT_REACT
+        ]
     );
 }
 

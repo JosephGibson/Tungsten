@@ -1,6 +1,7 @@
 use super::*;
-use crate::hierarchy::{Children, spawn_child};
+use crate::transform::hierarchy::{Children, spawn_child};
 use glam::Vec2;
+use tungsten_core::Stage;
 use tungsten_core::Transform;
 
 fn setup() -> (World, Schedule) {
@@ -13,20 +14,20 @@ fn setup() -> (World, Schedule) {
     (world, schedule)
 }
 
-/// One frame of `dt` seconds: the clock, `post_update`, the command flush.
+/// One step of `dt` seconds: the clock, `fixed_update`, the command flush.
 fn frame(world: &mut World, schedule: &mut Schedule, dt: f32) {
     world.resource_mut::<Time>().advance_frame(dt);
-    schedule.run_stage(Stage::PostUpdate, world, |_, _| {});
+    schedule.run_stage(Stage::FixedUpdate, world, |_, _| {});
     let mut commands = world.remove_resource::<CommandBuffer>().unwrap();
     world.flush_reusing(&mut commands);
     world.insert_resource(commands);
 }
 
 #[test]
-fn the_plugin_registers_its_system_in_post_update() {
+fn the_plugin_registers_its_system_in_the_tick_phase() {
     let (_, schedule) = setup();
-    assert_eq!(schedule.stage_of(LIFETIME_TICK), Some(Stage::PostUpdate));
-    assert_eq!(schedule.len(), 1);
+    assert_eq!(schedule.stage_of(LIFETIME_TICK), Some(Stage::FixedUpdate));
+    assert_eq!(schedule.len(), 8, "the seven anchors and the tick");
 }
 
 #[test]
@@ -126,7 +127,7 @@ fn without_a_command_buffer_a_finished_lifetime_waits() {
     let commands = world.remove_resource::<CommandBuffer>().unwrap();
     let bolt = world.spawn_with((Lifetime::new(0.1),));
     world.resource_mut::<Time>().advance_frame(0.2);
-    schedule.run_stage(Stage::PostUpdate, &mut world, |_, _| {});
+    schedule.run_stage(Stage::FixedUpdate, &mut world, |_, _| {});
     assert!(world.is_alive(bolt));
     world.insert_resource(commands);
     frame(&mut world, &mut schedule, 0.0);

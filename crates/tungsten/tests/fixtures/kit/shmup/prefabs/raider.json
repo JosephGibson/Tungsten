@@ -1,0 +1,31 @@
+{
+  "tag": "raider",
+  "components": {
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          8,
+          8
+        ]
+      }
+    },
+    "tags": [
+      "team.enemy"
+    ],
+    "path_follower": {
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          200
+        ]
+      ],
+      "speed": 150
+    }
+  }
+}

@@ -1,12 +1,15 @@
 //! The game on the engine's headless harness: no window or renderer, the
-//! frames stepped one call at a time. A test per system.
+//! frames stepped one call at a time. A test per system, and one per kit
+//! component the player prefab composes.
 
 use std::path::{Path, PathBuf};
 
 use tungsten::core::assets::manifest::ResolvedManifest;
 use tungsten::core::{
-    ActionMap, AssetRegistry, Binding, Config, Settings, Sprite, Time, Transform, UserFolder, With,
+    ActionMap, AssetRegistry, Binding, CameraController, CameraMode, CameraState, Config, Entity,
+    Position, Settings, Sprite, Time, Transform, UserFolder, With,
 };
+use tungsten::kit::{Damaged, Health, Hit, HitFlash, damage};
 use tungsten::testing::Harness;
 use tungsten::{App, SceneEntity};
 use tungsten_template_basic::components::Player;
@@ -14,6 +17,14 @@ use tungsten_template_basic::game::{self, active_state};
 use tungsten_template_basic::states::{
     AUTOSAVE, GAMEPLAY, PAUSE, PLAYER_PREFAB, PLAYER_START, TITLE,
 };
+
+/// How far the player moves per second, in pixels: the prefab's
+/// `top_down_mover.speed`.
+const PLAYER_SPEED: f32 = 240.0;
+
+/// How far one fixed step moves the player: the drawn position trails the
+/// step by up to one, so a distance is checked within it.
+const ONE_STEP: f32 = PLAYER_SPEED / 60.0;
 
 /// The game's config with its user folder set: `Off` in tests, so they
 /// never read or write the developer's own settings and saves.
@@ -26,8 +37,8 @@ fn config(user_folder: UserFolder) -> Config {
 /// The game as `main.rs` builds it, with one frame stepped: its `Startup`
 /// stage runs `setup`, which requests the title state, and the engine's
 /// dispatcher applies it in the same frame's `pre_update`. The harness loads
-/// no manifest, so the prefabs load from it here, as a window's startup
-/// loads them.
+/// the manifest's headless sections (the prefabs, the tags data and the
+/// flash material's metadata), as a window's startup loads them.
 fn harness() -> Harness {
     harness_with(UserFolder::Off)
 }
@@ -36,8 +47,9 @@ fn harness_with(user_folder: UserFolder) -> Harness {
     let mut app = App::new(config(user_folder)).expect("App::new failed");
     game::register(&mut app);
     let mut harness = Harness::new(app);
-    let manifest = ResolvedManifest::load(game::MANIFEST).expect("the manifest loads");
-    tungsten::asset_loader::load_prefabs(&manifest, harness.world_mut()).expect("the prefabs load");
+    harness
+        .load_manifest(game::MANIFEST)
+        .expect("the manifest loads");
     harness.step(1);
     harness
 }
@@ -59,6 +71,24 @@ fn player(harness: &Harness) -> Option<[f32; 2]> {
         .map(|transform| [transform.position.x, transform.position.y])
 }
 
+/// The player's body position: where the mover left it, which the drawn
+/// `Transform` trails by up to a step.
+fn player_position(harness: &Harness) -> Option<[f32; 2]> {
+    harness
+        .world()
+        .query_filtered::<&Position, With<Player>>()
+        .next()
+        .map(|position| [position.0.x, position.0.y])
+}
+
+fn player_entity(harness: &Harness) -> Entity {
+    harness
+        .world()
+        .query_filtered::<Entity, With<Player>>()
+        .next()
+        .expect("the player spawned")
+}
+
 /// A fresh user folder for one persistence test.
 fn user_folder(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("tungsten-template-{tag}-{}", std::process::id()));
@@ -66,14 +96,15 @@ fn user_folder(tag: &str) -> PathBuf {
     dir
 }
 
-/// The resolved schedule as `register` builds it: the game's systems in
-/// their stages between the engine's. A reorder shows up here as a diff.
+/// The resolved schedule as `register` builds it: the kit's phases and
+/// systems in their stages between the engine's, and the game's. A reorder
+/// shows up here as a diff.
 const SCHEDULE: &str = "\
 startup: setup
 pre_update: physics_debug_toggle, systems_overlay_toggle, inspector_toggle, hud_toggle, ui_debug_toggle, ui_inspector_toggle, log_console_toggle, display_input, ui_state_roots, ui_route, inspector_pick, ui_animate, state_dispatcher
-fixed_update: physics_prev_snapshot, physics_step
-update: player_movement, toggle_mute
-post_update: physics_sync, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, camera_update
+fixed_update: physics_prev_snapshot, kit_tick, lifetime_tick, health_tick, kit_intent, action_input, kit_move, path_follow, platformer_controller, top_down_mover, physics_step, kit_overlap, despawn_outside, zone_tick, kit_resolve, kit_react, spawner_tick
+update: toggle_mute
+post_update: physics_sync, transform_propagate, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, transform_propagate_late, kit_present, animation_tick, hit_flash_tick, camera_target, kit_debug_draw, camera_update
 ";
 
 #[test]
@@ -110,6 +141,9 @@ fn data_files_load() {
     assert!(manifest.sprites["player"].path.is_file());
     assert!(manifest.fonts[game::FONT].path.is_file());
     assert!(manifest.prefabs[PLAYER_PREFAB].path.is_file());
+    assert!(manifest.data["tags"]["game"].path.is_file());
+    assert!(manifest.shaders["damage_flash"].path.is_file());
+    assert_eq!(manifest.materials["damage_flash"].shader, "damage_flash");
 }
 
 #[test]
@@ -138,18 +172,22 @@ fn player_moves_under_move_right_only_in_gameplay() {
     harness.press_action("move_right");
     harness.step(30);
     let [x, y] = player(&harness).expect("the player spawned");
-    let expected = PLAYER_START[0] + game::PLAYER_SPEED * 30.0 / 60.0;
-    assert!((x - expected).abs() < 1e-3, "x = {x}, expected {expected}");
+    let expected = PLAYER_START[0] + PLAYER_SPEED * 30.0 / 60.0;
+    assert!(
+        (x - expected).abs() <= ONE_STEP + 1e-3,
+        "x = {x}, expected {expected}"
+    );
     assert!((y - PLAYER_START[1]).abs() < f32::EPSILON);
     harness.release_action("move_right");
 
     tap(&mut harness, "state_pause");
+    let paused_at = player(&harness).map(|[x, _]| x);
     harness.press_action("move_right");
     harness.step(10);
     assert_eq!(
         player(&harness).map(|[x, _]| x),
-        Some(x),
-        "paused, the player stays"
+        paused_at,
+        "paused, the clock holds and the player stays"
     );
 }
 
@@ -170,8 +208,11 @@ fn a_gamepad_stick_moves_the_player() {
     harness.press_action("move_right");
     harness.step(30);
     let [x, y] = player(&harness).expect("the player spawned");
-    let expected = PLAYER_START[0] + game::PLAYER_SPEED * 30.0 / 60.0;
-    assert!((x - expected).abs() < 1e-3, "x = {x}, expected {expected}");
+    let expected = PLAYER_START[0] + PLAYER_SPEED * 30.0 / 60.0;
+    assert!(
+        (x - expected).abs() <= ONE_STEP + 1e-3,
+        "x = {x}, expected {expected}"
+    );
     assert!((y - PLAYER_START[1]).abs() < f32::EPSILON);
 }
 
@@ -194,10 +235,77 @@ fn clock_half_scale_moves_the_player_half_as_far() {
     }
     let (full, half) = (moved[0], moved[1]);
     assert!(
-        (full - game::PLAYER_SPEED * 30.0 / 60.0).abs() < 1e-3,
+        (full - PLAYER_SPEED * 30.0 / 60.0).abs() <= ONE_STEP + 1e-3,
         "full {full}"
     );
-    assert!((half - full / 2.0).abs() < 1e-3, "half {half}, full {full}");
+    assert!(
+        (half - full / 2.0).abs() <= ONE_STEP + 1e-3,
+        "half {half}, full {full}"
+    );
+}
+
+#[test]
+fn damage_lowers_the_health_starts_the_flash_and_sends_damaged() {
+    let mut harness = harness();
+    tap(&mut harness, "state_start");
+    let entity = player_entity(&harness);
+    assert_eq!(
+        harness.world().get::<Health>(entity).unwrap().current(),
+        5.0
+    );
+    assert_eq!(damage(harness.world_mut(), entity, 1.0), Hit::Hurt);
+    let world = harness.world();
+    assert_eq!(world.get::<Health>(entity).unwrap().current(), 4.0);
+    assert!(
+        world.get::<HitFlash>(entity).unwrap().is_active(),
+        "the manifest's damage_flash material is in place"
+    );
+    assert_eq!(
+        damage(harness.world_mut(), entity, 1.0),
+        Hit::Ignored,
+        "inside the invulnerability window"
+    );
+    harness.step(1);
+    let sent: Vec<Damaged> = harness.events::<Damaged>().copied().collect();
+    assert_eq!(sent, [Damaged::new(entity, 1.0, false)]);
+    // The window is half a second: 30 steps later the next hit lands.
+    harness.step(30);
+    assert_eq!(damage(harness.world_mut(), entity, 1.0), Hit::Hurt);
+}
+
+#[test]
+fn the_camera_follows_the_player() {
+    let mut harness = harness();
+    assert_eq!(
+        harness.world().resource::<CameraController>().mode,
+        CameraMode::Free,
+        "no target on the title"
+    );
+    tap(&mut harness, "state_start");
+    let entity = player_entity(&harness);
+    assert_eq!(
+        harness.world().resource::<CameraController>().mode,
+        CameraMode::Follow(entity)
+    );
+    assert_eq!(
+        harness
+            .world()
+            .resource::<CameraController>()
+            .dead_zone_size
+            .to_array(),
+        game::CAMERA_DEAD_ZONE
+    );
+    let before = harness.world().resource::<CameraState>().position;
+    harness.press_action("move_right");
+    // 120 px: still inside the dead zone, so the player moves on screen.
+    harness.step(30);
+    let inside = harness.world().resource::<CameraState>().position;
+    assert_eq!(inside, before, "the camera holds while the player roams");
+    // 360 px: past the zone's edge, the camera follows.
+    harness.step(60);
+    let after = harness.world().resource::<CameraState>().position;
+    assert!(after.x > before.x, "the camera moved with the player");
+    assert!((after.y - before.y).abs() < 1e-3);
 }
 
 #[test]
@@ -206,10 +314,12 @@ fn state_pause_pauses_and_state_back_resumes() {
     tap(&mut harness, "state_start");
     tap(&mut harness, "state_pause");
     assert_eq!(active_state(harness.world()), Some(PAUSE));
+    assert!(harness.world().resource::<Time>().is_paused());
     // Gameplay and its player stay under the pause.
     assert!(player(&harness).is_some());
     tap(&mut harness, "state_back");
     assert_eq!(active_state(harness.world()), Some(GAMEPLAY));
+    assert!(!harness.world().resource::<Time>().is_paused());
     assert_eq!(player(&harness), Some(PLAYER_START));
 }
 
@@ -273,15 +383,23 @@ fn continue_from_the_autosave() {
     tap(&mut harness, "state_start");
     harness.press_action("move_right");
     harness.step(30);
-    harness.release_action("move_right");
-    let moved = player(&harness).expect("the player spawned");
-    assert_ne!(moved, PLAYER_START);
+    // Paused with the movement still held: the frame that pushes the
+    // pause runs the step it owed, and the next frame, with no step, saves
+    // where the body stopped.
     tap(&mut harness, "state_pause");
+    harness.step(1);
+    let moved = player_position(&harness).expect("the player spawned");
+    assert_ne!(moved, PLAYER_START);
     assert!(dir.join("saves").join(format!("{AUTOSAVE}.json")).is_file());
 
     let mut restarted = harness_with(UserFolder::At(dir.clone()));
     tap(&mut restarted, "state_start");
-    assert_eq!(player(&restarted), Some(moved), "gameplay continues");
+    assert_eq!(
+        player_position(&restarted),
+        Some(moved),
+        "gameplay continues where the body stopped"
+    );
+    assert_eq!(player(&restarted), Some(moved), "drawn there too");
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -298,6 +416,7 @@ fn a_slot_that_fails_to_load_is_never_overwritten() {
     tap(&mut harness, "state_start");
     assert_eq!(player(&harness), Some(PLAYER_START));
     tap(&mut harness, "state_pause");
+    harness.step(1);
     assert_eq!(active_state(harness.world()), Some(PAUSE));
     assert_eq!(
         std::fs::read_to_string(&slot).unwrap(),

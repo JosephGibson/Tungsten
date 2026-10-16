@@ -1,6 +1,6 @@
 # Tungsten game template
 
-A small game laid out the way a Tungsten game is: a title screen, a player that the arrow keys or WASD move, and a pause.
+A small game laid out the way a Tungsten game is: a title screen, a player that the arrow keys or WASD move, and a pause. The player is a prefab of the engine kit's components (`assets/prefabs/player.json`): its movement, health, hit flash and the camera that follows it come from `tungsten::kit`, with no game code for them. The camera holds while the player roams the middle of the view and follows once it leaves; with nothing else in the world, that is what shows the movement.
 
 Run it from this folder, where `tungsten.json`, `input.json` and `assets/` sit:
 

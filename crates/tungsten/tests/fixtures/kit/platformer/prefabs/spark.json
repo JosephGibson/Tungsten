@@ -1,0 +1,8 @@
+{
+  "tag": "spark",
+  "components": {
+    "lifetime": {
+      "seconds": 0.2
+    }
+  }
+}

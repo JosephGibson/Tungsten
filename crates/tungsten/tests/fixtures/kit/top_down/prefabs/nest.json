@@ -1,0 +1,10 @@
+{
+  "tag": "nest",
+  "components": {
+    "spawner": {
+      "prefab": "slime",
+      "interval": 0.5,
+      "count": 2
+    }
+  }
+}

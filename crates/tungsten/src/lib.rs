@@ -85,6 +85,10 @@ pub use ui_debug::ui_debug_toggle_system;
 #[path = "tests/kit.rs"]
 mod kit_tests;
 
+#[cfg(all(test, feature = "kit"))]
+#[path = "tests/kit_recipes/mod.rs"]
+mod kit_recipes;
+
 #[cfg(test)]
 #[path = "tests/save_slots.rs"]
 mod save_slots_tests;

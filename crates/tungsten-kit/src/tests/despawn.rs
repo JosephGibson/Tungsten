@@ -1,5 +1,6 @@
 use super::*;
-use crate::hierarchy::spawn_child;
+use crate::transform::hierarchy::spawn_child;
+use tungsten_core::Stage;
 
 fn setup() -> (World, Schedule) {
     let mut world = World::new();
@@ -10,9 +11,9 @@ fn setup() -> (World, Schedule) {
     (world, schedule)
 }
 
-/// One frame: `post_update`, then the command flush.
+/// One step: `fixed_update`, then the command flush.
 fn frame(world: &mut World, schedule: &mut Schedule) {
-    schedule.run_stage(Stage::PostUpdate, world, |_, _| {});
+    schedule.run_stage(Stage::FixedUpdate, world, |_, _| {});
     let mut commands = world.remove_resource::<CommandBuffer>().unwrap();
     world.flush_reusing(&mut commands);
     world.insert_resource(commands);
@@ -23,10 +24,10 @@ fn at(x: f32, y: f32, rule: DespawnOutside) -> (Transform, DespawnOutside) {
 }
 
 #[test]
-fn the_plugin_registers_its_system_in_post_update() {
+fn the_plugin_registers_its_system_in_the_overlap_phase() {
     let (_, schedule) = setup();
-    assert_eq!(schedule.stage_of(DESPAWN_OUTSIDE), Some(Stage::PostUpdate));
-    assert_eq!(schedule.len(), 1);
+    assert_eq!(schedule.stage_of(DESPAWN_OUTSIDE), Some(Stage::FixedUpdate));
+    assert_eq!(schedule.len(), 8, "the seven anchors and the system");
 }
 
 #[test]

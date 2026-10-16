@@ -1,7 +1,10 @@
 //! What the game runs: its plugin (the setup its first frame needs, its
-//! systems by stage and its text).
+//! systems by stage and its text). The player's movement, health, hit flash
+//! and camera are the kit's: components named on its prefab, run by
+//! `KitPlugins::set()`, with no game Rust for them.
 
-use tungsten::core::{ActionMap, InputState, Settings, Time, Transform, With, World};
+use tungsten::core::{ActionMap, CameraController, InputState, Settings, World};
+use tungsten::kit::KitPlugins;
 use tungsten::render::TextSection;
 use tungsten::{
     App, DebugHud, Extracts, HudCorner, Plugin, Schedule, Stage, StateId, StateStack, system,
@@ -14,14 +17,17 @@ use crate::states::{GAMEPLAY, PAUSE, TITLE, TitleState};
 pub const MANIFEST: &str = "assets/manifest.json";
 /// The manifest's font for the game's text.
 pub const FONT: &str = "sans";
-/// How far the player moves per second, in pixels.
-pub const PLAYER_SPEED: f32 = 240.0;
+/// The camera's dead zone, in world pixels: the player roams the middle
+/// of a 1280 × 720 view before the camera follows, so its movement shows
+/// against the view. A level with a world to move against can shrink it.
+pub const CAMERA_DEAD_ZONE: [f32; 2] = [640.0, 360.0];
 
 /// The game as a plugin: the components its prefab files name, `setup` at
-/// startup, `player_movement` and `toggle_mute` in `Update`, its text after
-/// what the engine draws, and the engine's HUD on in debug builds, at the top
-/// right, clear of the title. It names no engine system; the engine's own
-/// come from `DefaultPlugins`, which `App::new` installs.
+/// startup, `toggle_mute` in `Update`, its text after what the engine draws,
+/// the camera's dead zone, and the engine's HUD on in debug builds, at the
+/// top right, clear of the title. It names no engine system; the engine's
+/// own come from `DefaultPlugins`, which `App::new` installs, and the kit's
+/// from `KitPlugins::set()`, which [`register`] adds before this plugin.
 pub struct GamePlugin;
 
 impl Plugin for GamePlugin {
@@ -34,14 +40,21 @@ impl Plugin for GamePlugin {
             hud.corner = HudCorner::TopRight;
         }
         world.resource_mut::<Extracts>().add_text(text);
+        if let Some(camera) = world.get_resource_mut::<CameraController>() {
+            camera.dead_zone_size = CAMERA_DEAD_ZONE.into();
+        }
         schedule.add(Stage::Startup, system("setup", setup));
-        schedule.add(Stage::Update, system("player_movement", player_movement));
         schedule.add(Stage::Update, system("toggle_mute", toggle_mute));
     }
 }
 
-/// Registers the game with `app`: its plugin.
+/// Registers the game with `app`: the kit's plugins, then the game's. The
+/// kit reads the player prefab's `action_input` into the move actions,
+/// moves its `top_down_mover` on the fixed step, keeps its `health` and
+/// flashes its `hit_flash` on a hit, and points the camera at its
+/// `camera_target`.
 pub fn register(app: &mut App) {
+    app.add_plugins(KitPlugins::set());
     app.add_plugin(GamePlugin);
 }
 
@@ -59,32 +72,6 @@ pub fn active_state(world: &World) -> Option<StateId> {
     world
         .get_resource::<StateStack>()
         .and_then(StateStack::active_id)
-}
-
-/// Moves the player by the move actions while gameplay is on top: a key at
-/// full speed, a stick in proportion to its tilt (`ActionMap::value`).
-pub fn player_movement(world: &mut World) {
-    if active_state(world) != Some(GAMEPLAY) {
-        return;
-    }
-    let (Some(input), Some(actions)) = (
-        world.get_resource::<InputState>(),
-        world.get_resource::<ActionMap>(),
-    ) else {
-        return;
-    };
-    let axis = |negative: &str, positive: &str| {
-        actions.value(input, positive) - actions.value(input, negative)
-    };
-    let (dx, dy) = (
-        axis("move_left", "move_right"),
-        axis("move_up", "move_down"),
-    );
-    let step = PLAYER_SPEED * world.resource::<Time>().delta();
-    for transform in world.query_mut_filtered::<&mut Transform, With<Player>>() {
-        transform.position.x += dx * step;
-        transform.position.y += dy * step;
-    }
 }
 
 /// Mutes or unmutes on `toggle_mute` and keeps the choice in the player's

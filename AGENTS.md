@@ -28,7 +28,7 @@ GPU smoke and pixel comparisons stay local. A CPU test run without `TUNGSTEN_VIS
 - ECS, config, asset registry/manifest schema/IDs, math used twice+ → `tungsten-core`
 - Rendering primitives, GPU upload of decoded assets → `tungsten-render`
 - App/event loop, input, time, load bridge → `tungsten`
-- Generic gameplay components and systems with a user, under the kit's admission rule (`D-155`) → `tungsten-kit`, on core alone
+- Generic gameplay with recipes in two genres, the kit's admission rule (`D-172`) → `tungsten-kit`, on core alone
 - Demo-specific components/systems → `examples/`, never library crates
 
 Seam (`D-007`, `D-016`, `D-018`): core defines `TextureHandle(u32)`, has no `wgpu` types and never calls render. Render allocates handles (`D-048`); the umbrella registers core metadata and uploads pixels under the same handle. Extract runs on the main thread with `&World` and passes render data; render needs no mutable `World`.

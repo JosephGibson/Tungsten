@@ -1,0 +1,11 @@
+{
+  "tag": "rat",
+  "components": {
+    "tags": [
+      "team.enemy"
+    ],
+    "health": {
+      "max": 1
+    }
+  }
+}

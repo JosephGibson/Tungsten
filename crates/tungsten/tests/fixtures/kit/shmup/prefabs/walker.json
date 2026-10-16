@@ -1,0 +1,29 @@
+{
+  "tag": "walker",
+  "components": {
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          8,
+          12
+        ]
+      }
+    },
+    "platformer_controller": {
+      "run_speed": 100,
+      "jump_speed": 300,
+      "gravity": 1500
+    },
+    "action_input": {
+      "move": [
+        "move_left",
+        "move_right"
+      ]
+    },
+    "tags": [
+      "team.enemy"
+    ]
+  }
+}

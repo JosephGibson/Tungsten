@@ -9,7 +9,25 @@
     "sans": { "faces": ["sans"] }
   },
   "font_fallback": ["sans"],
+  "shaders": {
+    "damage_flash": { "path": "shaders/damage_flash.wgsl" }
+  },
+  "materials": {
+    "damage_flash": {
+      "shader": "damage_flash",
+      "uniform_defaults": {
+        "vec4": [[1.0, 0.2, 0.1, 1.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]],
+        "f32s": [0.0, 0.0, 0.0, 0.0],
+        "i32s": [0, 0, 0, 0]
+      }
+    }
+  },
   "prefabs": {
     "player": { "path": "prefabs/player.json" }
+  },
+  "data": {
+    "tags": {
+      "game": { "path": "data/tags.json" }
+    }
   }
 }

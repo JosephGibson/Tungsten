@@ -105,23 +105,23 @@ Tests set the folder in code, so they never read or write your own settings or s
 ## How the game is laid out
 
 - `src/main.rs` loads `tungsten.json`, creates the app, names the manifest, turns on hot reload in debug builds, registers the game and runs it.
-- `src/game.rs` is the game's plugin: its systems by stage, the setup its first frame needs, and its text.
+- `src/game.rs` is the game's plugin: its systems by stage, the setup its first frame needs, the camera's dead zone and its text. The player's movement, health and camera are the kit's, named on its prefab ([Composing with the kit](#composing-with-the-kit)).
 - `src/states.rs` holds the title, gameplay and pause states on the engine's state stack.
 - `src/components.rs` holds the game's components.
 - `tests/game.rs` steps the game on the headless harness, with no window: a test per system and a snapshot of the resolved schedule.
 - `assets/manifest.json` names every asset by an ID, and game code uses the IDs, never file paths ([assets](assets.md)).
-- `assets/prefabs/` holds the prefab files, one per entity kind the game spawns by ID ([Queries and spawns](#queries-and-spawns)).
+- `assets/prefabs/` holds the prefab files, one per entity kind the game spawns by ID ([Queries and spawns](#queries-and-spawns)); `assets/data/tags.json` declares the tags its prefabs name, and `assets/shaders/damage_flash.wgsl` is the kit's hit-flash shader.
 - `AGENTS.md` holds the repository's rules for agent sessions, and `CLAUDE.md` imports it.
 
 ## Systems and stages
 
-A system is a function over the world, `fn(&mut World)`, registered under a name in one of five stages the engine runs in order each frame: `startup` (once, on the first frame), `pre_update` (the engine's hotkeys, its state dispatcher and the UI's input routing), `fixed_update` (once per fixed step: the physics snapshot and `physics_step`), `update` and `post_update` (the physics sync, particles, tweens, game feel and the camera). A game with a UI reads its gameplay input from `RoutedInput`, which `ActionMap` reads as it reads `InputState` but which holds only what the UI did not take, so a click on a button is not also a jump (`D-149`). The template's `GamePlugin` registers `setup` in `startup` and `player_movement` in `update`:
+A system is a function over the world, `fn(&mut World)`, registered under a name in one of five stages the engine runs in order each frame: `startup` (once, on the first frame), `pre_update` (the engine's hotkeys, its state dispatcher and the UI's input routing), `fixed_update` (once per fixed step: the physics snapshot and `physics_step`), `update` and `post_update` (the physics sync, particles, tweens, game feel and the camera). A game with a UI reads its gameplay input from `RoutedInput`, which `ActionMap` reads as it reads `InputState` but which holds only what the UI did not take, so a click on a button is not also a jump (`D-149`). The template's `GamePlugin` registers `setup` in `startup` and `toggle_mute` in `update`; the player's movement is the kit's, on the fixed step ([Composing with the kit](#composing-with-the-kit)):
 
 ```rust
 impl Plugin for GamePlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         schedule.add(Stage::Startup, system("setup", setup));
-        schedule.add(Stage::Update, system("player_movement", player_movement));
+        schedule.add(Stage::Update, system("toggle_mute", toggle_mute));
     }
 }
 ```
@@ -136,21 +136,19 @@ A constraint names a system in the same stage. A typo, a duplicate name or a cyc
 
 ## Queries and spawns
 
-A system reads and writes components through one query that names its data as a type: `&A` reads a component, `&mut A` writes one, `Option<&A>` reads one the entity may lack, and `Entity` is the entity itself, alone or in a tuple of up to eight. A filter as the second type parameter, `With<T>`, `Without<T>` or a tuple of them, narrows the rows by components the body never reads. The template's `player_movement` moves every entity that carries `Player` (`D-130`):
+A system reads and writes components through one query that names its data as a type: `&A` reads a component, `&mut A` writes one, `Option<&A>` reads one the entity may lack, and `Entity` is the entity itself, alone or in a tuple of up to eight. A filter as the second type parameter, `With<T>`, `Without<T>` or a tuple of them, narrows the rows by components the body never reads. A game system reads the kit's components the same way: here, whether the player, found by the game's `Player` marker, is down to its last hit (`D-130`):
 
 ```rust
-let step = PLAYER_SPEED * world.resource::<Time>().delta();
-for transform in world.query_mut_filtered::<&mut Transform, With<Player>>() {
-    transform.position.x += dx * step;
-    transform.position.y += dy * step;
-}
+let last_hit = world
+    .query_filtered::<&Health, With<Player>>()
+    .any(|health| health.current() <= 1.0);
 ```
 
 `world.query::<(Entity, &Transform, Option<&Sprite>)>()` reads; `query_mut` writes, and panics at the call if two items name one component. Write in place through the query rather than collecting entities and calling `get_mut` on each. The engine's `query2`, `query3_mut` and the other numbered functions are deprecated and go at the API freeze; each one's deprecation note gives its tuple form.
 
 A spawn gives the entity every component at once, in one archetype move, through a tuple of up to sixteen components: `world.spawn_with((Player, transform, sprite, Visibility::default()))`. A tuple's elements are components, never bundles; join a bundle with `with`: `RigidBodyBundle::dynamic(position, collider).with((Player, transform))` spawns a body with its `Position`, `PrevPosition` (the history it is drawn from), `Velocity`, `Collider` and `RigidBody` and the game's components beside them. A system without `&mut World` records the same through `CommandBuffer::spawn_with`. A body that jumps to a new place, a respawn or a portal, writes `Position` and `PrevPosition` together; otherwise it is drawn sliding from the old point for a step.
 
-An entity kind the game places more than once, or that a level places, is a prefab: a file under `assets/prefabs/`, listed in the manifest's `prefabs`, with a scene entry's fields but no transform: its sprite, visibility, tag, one tween and its components by their registered names. The template's player is one, `{ "sprite": { "asset_id": "player" }, "components": { "player": null } }`, and `GamePlugin::build` registers `Player` as `player` before the manifest loads, which checks each prefab's components and the assets they name. The template's `spawn_player`:
+An entity kind the game places more than once, or that a level places, is a prefab: a file under `assets/prefabs/`, listed in the manifest's `prefabs`, with a scene entry's fields but no transform: its sprite, visibility, tag, one tween and its components by their registered names. The template's player is one: its sprite, the game's `player` marker and the kit's components ([Composing with the kit](#composing-with-the-kit)); `GamePlugin::build` registers `Player` as `player` before the manifest loads, which checks each prefab's components and the assets they name, and the kit's plugins register theirs. The template's `spawn_player`:
 
 ```rust
 world
@@ -165,6 +163,35 @@ world
 
 `world.resource::<Time>()` returns a resource the engine always inserts and panics naming the type if it is missing; `get_resource` is the `Option` form for a resource a game may not have inserted.
 
+## Composing with the kit
+
+`tungsten::kit` holds the generic gameplay a game composes in data rather than writes: `game::register` adds every kit plugin before the game's own, `app.add_plugins(KitPlugins::set())`, and a prefab names the kit's components by their scene names. The template's player:
+
+```json
+{
+  "sprite": { "asset_id": "player" },
+  "components": {
+    "player": null,
+    "tags": ["team.player"],
+    "action_input": { "move": ["move_left", "move_right", "move_up", "move_down"] },
+    "top_down_mover": { "speed": 240 },
+    "health": { "max": 5, "invulnerability": 0.5 },
+    "hit_flash": { "color": [1, 1, 1, 1], "seconds": 0.12 },
+    "camera_target": null
+  }
+}
+```
+
+- `tags` are dotted names the kit's items filter on (`team.player` carries `team`). `assets/data/tags.json`, listed under the manifest's `data.tags`, declares them, and a prefab or a zone filter that names an undeclared tag fails the load, naming the field.
+- `action_input` reads the named actions into the entity's `Intent` each fixed step: a movement direction and named slots (`"slots": { "jump": "jump" }`) read as held and just pressed. The movers take the intent when the entity has one, so an AI that writes an `Intent` drives them the same way; a misspelt action fails the load naming its field.
+- `top_down_mover` moves the entity at its speed in the intent's direction on the fixed step: on a kinematic `rigid_body` it slides along walls, without one it moves its `Position` freely, drawn through the physics sync as a body is. `platformer_controller` is the side-view counterpart, on a kinematic body.
+- `health` takes hits through `tungsten::kit::damage(world, entity, amount)`, which lowers it, opens its invulnerability window, starts the `hit_flash` on the entity's sprite through the manifest's `damage_flash` material and sends a `Damaged` event.
+- `camera_target` marks what the camera follows; the template gives the camera a dead zone, so the player roams the middle of the view before the camera moves.
+
+Every kit system runs in one of seven phases, anchor systems in `fixed_update` and `post_update` ordered against the engine's: timers first, then intent, motion before `physics_step`, overlap after it, resolution, reactions, and presentation after the physics sync. A game system that belongs with the kit's joins a phase instead of naming an engine system: `ensure_phases(schedule)` in the plugin's `build`, then `schedule.add(Stage::FixedUpdate, Phase::Move.join(system("magnet", magnet)))`. The rustdoc of `tungsten::kit` lists every item by domain, and `api/tungsten-kit-components.txt` every scene component's fields with their types and defaults. The engine's genre fixtures, `crates/tungsten/tests/fixtures/kit/`, are the cookbook: a platformer, a top-down, a shmup and a grid folder of prefabs and data, each kit item in at least two of them, with the harness tests that drive them in `crates/tungsten/src/tests/kit_recipes/`.
+
+When the game passes about three components or two features, move each feature into `src/features/<name>/`: `mod.rs` holds its `Plugin`, `components.rs` and `systems.rs` the rest; `game.rs` only adds the feature plugins, a component two features share goes in `src/shared.rs`, and a feature plugin registers its own prefab components, data kinds and systems, as a kit item does. The kit's scene names and data kinds are reserved: the registries fail startup on a duplicate.
+
 ## Drawing
 
 The engine draws what the world holds: each entity with a `Sprite`, a `Transform` and `Visibility`, in `z_order`, over the render layers of every tilemap. Anything else the game draws, its own sprite batches, quads and text, it adds to the `Extracts` resource in its plugin's `build`, as the template's `GamePlugin` adds its text (`D-138`):
@@ -177,7 +204,7 @@ world.resource_mut::<Extracts>().add_text(text);
 
 ## Time and timers
 
-The engine keeps two clocks in the `Time` resource and advances both once a frame, before any stage runs (`D-129`). Real time is the frame's elapsed time, capped at 0.1 s so that a stall cannot throw bodies about. Game time is real time times a scale, 1 unless you set one, and stands still while the game clock is paused. A system that moves or animates something reads the game clock's dt, `delta()`, as the template's `player_movement` does:
+The engine keeps two clocks in the `Time` resource and advances both once a frame, before any stage runs (`D-129`). Real time is the frame's elapsed time, capped at 0.1 s so that a stall cannot throw bodies about. Game time is real time times a scale, 1 unless you set one, and stands still while the game clock is paused. A system of your own that moves or animates something reads the game clock's dt, `delta()`:
 
 ```rust
 let dt = world.resource::<Time>().delta();
@@ -185,7 +212,7 @@ let dt = world.resource::<Time>().delta();
 
 `real_delta()` is the real clock's dt, for anything that should keep running over a pause, such as a pause menu's own animation; the engine's screen transitions run on it. `elapsed()` and `real_elapsed()` sum each clock's dts, and `frame()` counts frames.
 
-`pause()`, `resume()` and `set_scale(0.5)` take effect from the next frame: `world.get_resource_mut::<Time>().unwrap().pause()`. A paused clock freezes whatever moves by game time: physics, tweens, particles, game feel, the camera's follow and the game's own systems that read `delta()`. Input keeps arriving, so a pause screen still reads its keys. The template's pause state stops movement through the state stack instead, since nothing else in it moves.
+`pause()`, `resume()` and `set_scale(0.5)` take effect from the next frame: `world.get_resource_mut::<Time>().unwrap().pause()`. A paused clock freezes whatever moves by game time: physics, tweens, particles, game feel, the camera's follow and the game's own systems that read `delta()`. Input keeps arriving, so a pause screen still reads its keys. The template's pause state pauses the clock on enter and resumes it on exit, so the kit's fixed-step systems, which move its player, hold with it.
 
 A `Timer` counts down a cooldown, a wave or a lifetime by whichever clock's dt you tick it with. `tick` returns how many times it finished during the tick, so a long frame cannot swallow a repeat:
 
