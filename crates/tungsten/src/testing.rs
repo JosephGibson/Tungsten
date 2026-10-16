@@ -15,8 +15,9 @@
 //! rotation, extract and audio. Render draws nothing: [`Harness::draw`]
 //! holds what the frame would have drawn and [`Harness::audio`] what it would
 //! have played. Input goes in between steps, as winit events do between
-//! redraws. The startup hook does not run and no manifest loads, since both
-//! need the renderer; seed resources and assets through
+//! redraws. The startup hook does not run and no manifest loads at
+//! startup, since both need the renderer; [`Harness::load_manifest`] loads
+//! a manifest's headless sections, and the rest seeds through
 //! [`Harness::world_mut`].
 //!
 //! The harness's dt is the real clock's: each frame advances
@@ -26,11 +27,14 @@
 
 #![deny(missing_docs)]
 
+use std::path::Path;
 use std::time::Instant;
 
+use tungsten_core::assets::ResolvedManifest;
 use tungsten_core::ui::PaintList;
 use tungsten_core::{
-    ActionMap, AudioCommand, Binding, EventQueue, GamepadId, InputState, ScrollDirection, World,
+    ActionMap, AudioCommand, Binding, EventQueue, GamepadId, InputState, MaterialRegistry,
+    ScrollDirection, World,
 };
 use tungsten_render::{
     DebugLineInstance, LightUbo, MeshParticleBatch, QuadInstance, SpriteBatch, TextSection,
@@ -38,6 +42,7 @@ use tungsten_render::{
 };
 
 use crate::app::{App, FrameClock, FrameEnd, FrameExtract};
+use crate::asset_loader;
 
 mod ui;
 
@@ -83,6 +88,46 @@ impl Harness {
             frames: 0,
             exit_requested: false,
         }
+    }
+
+    /// Loads the manifest at `path` without the renderer: its animations,
+    /// UI themes, sounds, tilemaps and particle configs, in the order a
+    /// window's startup loads them; each `materials` entry's metadata (its
+    /// ID, source manifest, shader ID and uniform defaults) in the
+    /// `MaterialRegistry`, with no upload, so a kit `HitFlash` finds
+    /// `damage_flash` headless; then the prefabs and data entries in two
+    /// phases, every ID checked ([`load_prefabs`](asset_loader::load_prefabs)).
+    /// What needs the renderer is skipped: sprites, fonts, shaders and
+    /// particle meshes; a prefab's sprite name is interned at its spawn. A
+    /// manifest that fails to load is the error the loader gives.
+    ///
+    /// Call it after the plugins are built, as the window's startup does,
+    /// so the prefabs check against every registered component and data
+    /// kind.
+    pub fn load_manifest(&mut self, path: impl AsRef<Path>) -> anyhow::Result<()> {
+        let manifest = ResolvedManifest::load(path)?;
+        let world = self.app.world_mut();
+        asset_loader::load_animations(&manifest, world)?;
+        asset_loader::load_ui_themes(&manifest, world)?;
+        let mut materials = world
+            .remove_resource::<MaterialRegistry>()
+            .unwrap_or_default();
+        let mut ids: Vec<&String> = manifest.materials.keys().collect();
+        ids.sort();
+        for id in ids {
+            let material = &manifest.materials[id];
+            materials.allocate(
+                id,
+                material.source_manifest.clone(),
+                material.shader.clone(),
+                material.uniform_defaults,
+            );
+        }
+        world.insert_resource(materials);
+        asset_loader::load_sounds(&manifest, world)?;
+        asset_loader::load_tilemaps(&manifest, world)?;
+        asset_loader::load_particles(&manifest, world)?;
+        asset_loader::load_prefabs(&manifest, world)
     }
 
     /// Sets the real dt, in seconds, that each later frame advances

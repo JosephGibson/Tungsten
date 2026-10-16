@@ -1,0 +1,10 @@
+{
+  "tag": "hole",
+  "components": {
+    "spawner": {
+      "prefab": "rat",
+      "interval": 0.5,
+      "count": 2
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "tag": "bullet",
+  "components": {
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "circle",
+        "radius": 2
+      },
+      "velocity": [
+        0,
+        -900
+      ]
+    },
+    "lifetime": {
+      "seconds": 1.5
+    },
+    "despawn_outside": {
+      "view": 32
+    }
+  }
+}

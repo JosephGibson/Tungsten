@@ -1,0 +1,29 @@
+{
+  "tag": "lift",
+  "components": {
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          40,
+          8
+        ]
+      }
+    },
+    "path_follower": {
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          200,
+          0
+        ]
+      ],
+      "speed": 100,
+      "mode": "ping_pong"
+    }
+  }
+}

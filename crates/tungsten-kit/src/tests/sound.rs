@@ -1,4 +1,5 @@
 use super::*;
+use tungsten_core::Stage;
 use tungsten_core::{AudioCommand, SoundData};
 
 /// A hit with the sound it names.
@@ -66,7 +67,7 @@ fn the_plugin_registers_the_queue_and_its_system_under_the_name() {
     assert!(world.has_event::<Hit>());
     assert_eq!(world.registered_event_count(), 1);
     assert_eq!(schedule.stage_of("hit_sound"), Some(Stage::PostUpdate));
-    assert_eq!(schedule.len(), 1);
+    assert_eq!(schedule.len(), 8, "the seven anchors and the reader");
 }
 
 #[test]

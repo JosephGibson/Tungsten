@@ -1,0 +1,31 @@
+{
+  "prefabs": {
+    "hero": {
+      "path": "prefabs/hero.json"
+    },
+    "ground": {
+      "path": "prefabs/ground.json"
+    },
+    "door": {
+      "path": "prefabs/door.json"
+    },
+    "spark": {
+      "path": "prefabs/spark.json"
+    },
+    "lift": {
+      "path": "prefabs/lift.json"
+    }
+  },
+  "data": {
+    "tags": {
+      "game": {
+        "path": "data/tags.json"
+      }
+    }
+  },
+  "animations": {
+    "hero_run": {
+      "path": "animations/hero_run.json"
+    }
+  }
+}

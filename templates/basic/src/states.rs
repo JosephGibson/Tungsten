@@ -1,10 +1,13 @@
 //! The game's states on the engine's state stack: title, then gameplay, with
 //! pause pushed over gameplay. Each state reads actions, never keys.
-//! Gameplay continues from the autosave, which pause writes.
+//! Gameplay continues from the autosave, which pause writes; pause holds
+//! the game clock, so the kit's fixed-step systems hold with it.
 
 use serde::{Deserialize, Serialize};
 use tungsten::core::save::SaveError;
-use tungsten::core::{ActionMap, InputState, SaveData, SaveSlots, Transform, With, World};
+use tungsten::core::{
+    ActionMap, InputState, Position, SaveData, SaveSlots, Time, Transform, With, World,
+};
 use tungsten::{GameState, SceneEntity, StateContext, StateId, StateStack};
 
 use crate::components::Player;
@@ -12,14 +15,15 @@ use crate::components::Player;
 pub const TITLE: StateId = "title";
 pub const GAMEPLAY: StateId = "gameplay";
 pub const PAUSE: StateId = "pause";
-/// The player's prefab, by its manifest ID: its sprite and `Player`.
+/// The player's prefab, by its manifest ID: its sprite, `Player` and the
+/// kit's components that move, hurt, flash and follow it.
 pub const PLAYER_PREFAB: &str = "player";
 /// Where the player starts: the middle of a 1280 × 720 window.
 pub const PLAYER_START: [f32; 2] = [624.0, 344.0];
 /// The save slot gameplay continues from and pause writes.
 pub const AUTOSAVE: &str = "autosave";
 
-/// What the autosave holds: the player's position.
+/// What the autosave holds: the player's position, its body's `Position`.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct SaveGame {
     pub player: [f32; 2],
@@ -71,14 +75,20 @@ impl GameState for GameplayState {
 
     fn update(&mut self, world: &mut World) {
         if just_pressed(world, "state_pause") {
-            request(world, |stack| stack.request_push(PauseState));
+            request(world, |stack| stack.request_push(PauseState::default()));
         }
     }
 }
 
-/// Pause, pushed over gameplay, saves the autosave; `state_back` or
-/// `state_pause` resumes.
-pub struct PauseState;
+/// Pause, pushed over gameplay, pauses the game clock, so nothing on the
+/// fixed step moves, and saves the autosave on its first frame that runs no
+/// step: the pause takes effect from the next frame, and the frame that
+/// pushes it still runs the steps it owed. `state_back` or `state_pause`
+/// resumes.
+#[derive(Default)]
+pub struct PauseState {
+    saved: bool,
+}
 
 impl GameState for PauseState {
     fn id(&self) -> StateId {
@@ -86,12 +96,26 @@ impl GameState for PauseState {
     }
 
     fn on_enter(&mut self, ctx: &mut StateContext) {
-        write_autosave(ctx.world);
+        self.saved = false;
+        if let Some(time) = ctx.world.get_resource_mut::<Time>() {
+            time.pause();
+        }
     }
 
-    fn on_exit(&mut self, _ctx: &mut StateContext) {}
+    fn on_exit(&mut self, ctx: &mut StateContext) {
+        if let Some(time) = ctx.world.get_resource_mut::<Time>() {
+            time.resume();
+        }
+    }
 
     fn update(&mut self, world: &mut World) {
+        let settled = world
+            .get_resource::<Time>()
+            .is_none_or(|time| time.fixed_steps_this_frame() == 0);
+        if !self.saved && settled {
+            write_autosave(world);
+            self.saved = true;
+        }
         if just_pressed(world, "state_back") || just_pressed(world, "state_pause") {
             request(world, StateStack::request_pop);
         }
@@ -115,15 +139,17 @@ fn load_autosave(world: &mut World) -> Option<SaveGame> {
     }
 }
 
-/// Saves the player's position, unless the autosave failed to load.
+/// Saves the player's position, unless the autosave failed to load: its
+/// body's `Position`, where the mover left it, which the drawn `Transform`
+/// trails by up to a step.
 fn write_autosave(world: &mut World) {
     if world.get_resource::<AutosaveReadOnly>().is_some() {
         return;
     }
     let Some(position) = world
-        .query_filtered::<&Transform, With<Player>>()
+        .query_filtered::<(&Position, &Transform), With<Player>>()
         .next()
-        .map(|transform| [transform.position.x, transform.position.y])
+        .map(|(position, _)| [position.0.x, position.0.y])
     else {
         return;
     };

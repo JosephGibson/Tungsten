@@ -12,94 +12,176 @@
 //! dependency, and the kit's API is inside the 1.0 promise through that
 //! re-export (`D-103`).
 //!
-//! An item joins the kit when it is generic and has a user (the template, a
-//! migrated example or the acceptance game), with rustdoc that carries an
-//! example and a harness test. An item with no user by the 1.0 freeze moves
-//! to 1.x.
+//! An item joins the kit when it is generic, names no game type and passes
+//! a recipe (a fixture of prefabs and data plus a harness test, with no
+//! game Rust) in two of the four reference genres: platformer, top-down,
+//! shmup and grid (`D-155`, as the kit foundations amend it). Each item has
+//! a scene component under its bare name, rustdoc with an example, a unit
+//! test and a harness test.
 //!
-//! Every item is opt-in: a game adds the plugins it uses, after the
-//! engine's (`App::add_plugin`), and `DefaultPlugins` holds none of them.
-//! Each system runs under a public name, or under the name the game gives a
-//! generic plugin, and its constraints on the engine's names and on the
-//! other kit plugins apply only when those are registered, so leaving a
-//! plugin out never fails startup. A system runs in `PostUpdate`, except
-//! those that drive a body or count a window on the fixed-step clock: they
-//! run in `FixedUpdate` before `physics_step`, in this order after the
-//! history snapshot, and the trigger zones after the step (`D-158`).
+//! # Composing a game
 //!
-//! 1. [`HEALTH_TICK`]: invulnerability windows.
-//! 2. A [`StateMachinePlugin`]'s system: per-entity states.
-//! 3. [`PATH_FOLLOW`]: bodies along paths.
-//! 4. [`PLATFORMER_CONTROLLER`] and [`TOP_DOWN_MOVER`]: the controllers.
-//! 5. `physics_step`, then a [`TriggerZone`]'s system.
+//! [`KitPlugins::set()`] is every kit plugin that takes no game type, which
+//! a game builds after the engine's `DefaultPlugins`
+//! (`app.add_plugins(KitPlugins::set())`); `without` drops one.
+//! [`SoundOnEvent`], [`TriggerZone`] and [`StateMachinePlugin`] take a
+//! game type, so a game adds them itself. [`prelude`] imports the plugins,
+//! components, events and helpers in one line. Each plugin registers its
+//! scene component, so a prefab composes the kit with no Rust:
 //!
-//! A game's input system for a controller runs in `FixedUpdate` before it.
+//! ```json
+//! {
+//!   "sprite": { "asset_id": "hero" },
+//!   "components": {
+//!     "tags": ["team.player"],
+//!     "action_input": { "move": ["move_left", "move_right", "move_up", "move_down"] },
+//!     "top_down_mover": { "speed": 240 },
+//!     "health": { "max": 5, "invulnerability": 0.5 },
+//!     "hit_flash": { "seconds": 0.12 },
+//!     "camera_target": null
+//!   }
+//! }
+//! ```
 //!
-//! - [`AnimationPlugin`]: an animated sprite, whose `AnimationState` writes
-//!   its current frame into `Sprite.asset_id`.
-//! - [`Lifetime`] and [`LifetimePlugin`]: an entity despawned once its time
-//!   on the game clock has passed.
-//! - [`DespawnOutside`] and [`DespawnOutsidePlugin`]: an entity despawned
-//!   once it leaves a world-space box or the camera's view.
-//! - [`SoundOnEvent`]: a manifest sound played once per event.
-//! - [`Spawner`] and [`SpawnerPlugin`]: a prefab spawned at an entity's
-//!   position once per interval of game time.
-//! - [`cursor_to_world`]: the world point under the cursor.
-//! - The transform hierarchy: [`spawn_child`], [`Parent`], [`Children`],
-//!   [`LocalOffset`], [`despawn_recursive`] and [`HierarchyPlugin`], which
-//!   moves children with their parents' positions after the physics sync.
-//!   Physics bodies live on root entities (`D-132`).
-//! - [`PlatformerController`] and [`PlatformerControllerPlugin`]: a
-//!   platformer character on a kinematic body, with a ground check, coyote
-//!   time, a jump buffer and variable jump height.
-//! - [`TopDownMover`] and [`TopDownMoverPlugin`]: a top-down character on a
-//!   kinematic body that slides along walls.
-//! - [`Health`], [`damage`], [`Hit`], [`Damaged`], [`HitFlash`] and
-//!   [`HealthPlugin`]: health with an invulnerability window and a hit
+//! Every value type keeps private fields behind a constructor and
+//! `with_*` builders; a type that is data derives `Serialize` and
+//! `Deserialize`, so a game's save can hold it.
+//!
+//! # Phases
+//!
+//! Every kit system joins one of seven phases, each an anchor system the
+//! kit's plugins add once ([`ensure_phases`]) and order against the
+//! engine's names: [`Phase::Tick`], [`Phase::Intent`], [`Phase::Move`],
+//! [`Phase::Overlap`], [`Phase::Resolve`] and [`Phase::React`] in
+//! `FixedUpdate`, around `physics_step`, and [`Phase::Present`] in
+//! `PostUpdate`, after the physics sync and before the camera. Timers,
+//! lifetimes, spawns and motion run on the fixed step, so a paused clock
+//! holds them and a hit sequence lands the same at any frame rate; the
+//! animation, the hit flash, the camera target and sounds run once a frame.
+//! A game's system joins a phase with [`Phase::join`]; the [`Phase`] table
+//! says what runs where.
+//!
+//! # Catalogue
+//!
+//! - **Foundation.** [`Tags`], [`TagFilter`] and [`TagsPlugin`]: dotted
+//!   names on an entity, the filters items match on and the `tags` data
+//!   kind that declares them. [`Source`] and [`SourcePlugin`]: the spawn
+//!   chain's origin, derived at the flush. [`Phase`], [`ensure_phases`]
+//!   and [`KitPlugins`].
+//! - **Intent.** [`ActionInput`], [`Intent`] and [`ActionInputPlugin`]:
+//!   the action map read into what each entity means to do, which the
+//!   movers take. [`StateMachine`] and [`StateMachinePlugin`]: a per-entity
+//!   state with enter, exit and update hooks. [`cursor_to_world`]: the
+//!   world point under the cursor.
+//! - **Motion.** [`PlatformerController`] and
+//!   [`PlatformerControllerPlugin`]: a platformer character on a kinematic
+//!   body, with a ground check, coyote time, a jump buffer and variable
+//!   jump height. [`TopDownMover`] and [`TopDownMoverPlugin`]: a top-down
+//!   character that slides along walls on a kinematic body, or moves its
+//!   `Position` without one. [`PathFollower`] and [`PathFollowerPlugin`]: a
+//!   kinematic body moved along points, such as a moving platform.
+//! - **Lifecycle.** [`Lifetime`] and [`LifetimePlugin`]: an entity
+//!   despawned once its time on the game clock has passed.
+//!   [`DespawnOutside`] and [`DespawnOutsidePlugin`]: one despawned once it
+//!   leaves a world-space box or the camera's view. [`Spawner`] and
+//!   [`SpawnerPlugin`]: a prefab spawned at an entity's position once per
+//!   interval of game time.
+//! - **Overlap.** [`Zone`], [`ZoneEntered`] and [`ZonePlugin`]: a sensor
+//!   entered by the entities whose tags pass its filter. [`TriggerZone`]
+//!   and [`TriggerEntered`]: a sensor of one game type entered by an entity
+//!   of another.
+//! - **Damage.** [`Health`], [`damage`], [`Hit`], [`Damaged`], [`HitFlash`]
+//!   and [`HealthPlugin`]: health with an invulnerability window and a hit
 //!   flash on the `damage_flash` material ([`HIT_FLASH_MATERIAL`]).
-//! - [`TriggerZone`] and [`TriggerEntered`]: a sensor of one game type
-//!   entered by an entity of another.
-//! - [`PathFollower`] and [`PathFollowerPlugin`]: a kinematic body moved
-//!   along points, such as a moving platform.
-//! - [`StateMachine`] and [`StateMachinePlugin`]: a per-entity state with
-//!   enter, exit and update hooks.
+//! - **Present.** [`AnimationPlugin`]: an animated sprite, whose
+//!   `AnimationState` writes its current frame into `Sprite.asset_id`.
+//!   [`CameraTarget`] and [`CameraTargetPlugin`]: the marker the camera
+//!   follows. [`SoundOnEvent`]: a manifest sound played once per event.
+//! - **Transform.** [`spawn_child`], [`Parent`], [`Children`],
+//!   [`LocalOffset`], [`despawn_recursive`] and [`HierarchyPlugin`]: the
+//!   hierarchy that moves children with their parents' positions after the
+//!   physics sync. Physics bodies live on root entities (`D-132`).
+//!
+//! # Seeing the kit
+//!
+//! Every kit component has inspector rows, which the umbrella's inspector
+//! prints for a picked entity. [`KitDebugPlugin`] draws each item with a
+//! shape through core's `DebugDraw` while the [`KitDebug`] resource is on.
+//! Each scene component has a [`ComponentDescription`] in the
+//! [`KitDescriptions`] resource: its fields with their types and defaults,
+//! its events and the genres that use it, rendered into
+//! `api/tungsten-kit-components.txt` by `just api` and compared by
+//! `just api-check`, so a changed default or a renamed field is a visible
+//! diff (`D-107`). A test holds each description to its DTO: the sample
+//! round-trips to the described defaults, every enum variant deserializes
+//! and every numeric field refuses what lies outside its bounds.
+//!
+//! The engine's genre fixtures (`crates/tungsten/tests/fixtures/kit/`) are
+//! the cookbook: one folder of prefabs and data per genre, each item in at
+//! least two of them.
 
 #![deny(missing_docs)]
 
-mod animation;
-mod cursor;
-mod despawn;
-mod health;
-mod hierarchy;
-mod lifetime;
-mod path;
-mod platformer;
-mod slide;
-mod sound;
-mod spawner;
-mod state_machine;
-mod top_down;
-mod trigger;
+mod damage;
+mod foundation;
+mod intent;
+mod lifecycle;
+mod motion;
+mod overlap;
+mod present;
+mod transform;
 
-pub use animation::{ANIMATION_TICK, AnimationPlugin};
-pub use cursor::cursor_to_world;
-pub use despawn::{DESPAWN_OUTSIDE, DespawnOutside, DespawnOutsidePlugin};
-pub use health::{
+pub use damage::health::{
     Damaged, HEALTH_TICK, HIT_FLASH_MATERIAL, HIT_FLASH_TICK, Health, HealthPlugin, Hit, HitFlash,
     damage,
 };
-pub use hierarchy::{
+pub use foundation::debug::{KIT_DEBUG_DRAW, KitDebug, KitDebugPlugin};
+pub use foundation::describe::{
+    Bound, ComponentDescription, FieldDescription, FieldType, KitDescriptions,
+};
+pub use foundation::phases::{
+    KIT_INTENT, KIT_MOVE, KIT_OVERLAP, KIT_PRESENT, KIT_REACT, KIT_RESOLVE, KIT_TICK, Phase,
+    ensure_phases,
+};
+pub use foundation::plugins::KitPlugins;
+pub use foundation::source::{Source, SourcePlugin};
+pub use foundation::tags::{TagFilter, Tags, TagsPlugin};
+pub use intent::action_input::{ACTION_INPUT, ActionInput, ActionInputPlugin, Intent};
+pub use intent::cursor::cursor_to_world;
+pub use intent::state_machine::{StateMachine, StateMachinePlugin};
+pub use lifecycle::despawn::{DESPAWN_OUTSIDE, DespawnOutside, DespawnOutsidePlugin};
+pub use lifecycle::lifetime::{LIFETIME_TICK, Lifetime, LifetimePlugin};
+pub use lifecycle::spawner::{SPAWNER_TICK, Spawner, SpawnerPlugin};
+pub use motion::path::{PATH_FOLLOW, PathFollower, PathFollowerPlugin};
+pub use motion::platformer::{
+    PLATFORMER_CONTROLLER, PlatformerController, PlatformerControllerPlugin,
+};
+pub use motion::top_down::{TOP_DOWN_MOVER, TopDownMover, TopDownMoverPlugin};
+pub use overlap::trigger::{TriggerEntered, TriggerZone};
+pub use overlap::zone::{ZONE_TICK, Zone, ZoneEntered, ZonePlugin};
+pub use present::animation::{ANIMATION_TICK, AnimationPlugin};
+pub use present::camera::{CAMERA_TARGET, CameraTarget, CameraTargetPlugin};
+pub use present::sound::SoundOnEvent;
+pub use transform::hierarchy::{
     Children, HierarchyPlugin, LocalOffset, Parent, TRANSFORM_PROPAGATE, TRANSFORM_PROPAGATE_LATE,
     despawn_recursive, spawn_child,
 };
-pub use lifetime::{LIFETIME_TICK, Lifetime, LifetimePlugin};
-pub use path::{PATH_FOLLOW, PathFollower, PathFollowerPlugin};
-pub use platformer::{PLATFORMER_CONTROLLER, PlatformerController, PlatformerControllerPlugin};
-pub use sound::SoundOnEvent;
-pub use spawner::{SPAWNER_TICK, Spawner, SpawnerPlugin};
-pub use state_machine::{StateMachine, StateMachinePlugin};
-pub use top_down::{TOP_DOWN_MOVER, TopDownMover, TopDownMoverPlugin};
-pub use trigger::{TriggerEntered, TriggerZone};
+
+/// The plugins, components, events and helpers in one import:
+/// `use tungsten::kit::prelude::*;`. The system-name constants stay at the
+/// root.
+pub mod prelude {
+    pub use crate::{
+        ActionInput, ActionInputPlugin, AnimationPlugin, CameraTarget, CameraTargetPlugin,
+        Children, Damaged, DespawnOutside, DespawnOutsidePlugin, Health, HealthPlugin,
+        HierarchyPlugin, Hit, HitFlash, Intent, KitDebug, KitDebugPlugin, KitPlugins, Lifetime,
+        LifetimePlugin, LocalOffset, Parent, PathFollower, PathFollowerPlugin, Phase,
+        PlatformerController, PlatformerControllerPlugin, SoundOnEvent, Source, SourcePlugin,
+        Spawner, SpawnerPlugin, StateMachine, StateMachinePlugin, TagFilter, Tags, TagsPlugin,
+        TopDownMover, TopDownMoverPlugin, TriggerEntered, TriggerZone, Zone, ZoneEntered,
+        ZonePlugin, cursor_to_world, damage, despawn_recursive, ensure_phases, spawn_child,
+    };
+}
 
 /// Seconds a countdown treats as already over, so a window of whole steps
 /// ends on its last step whatever the sum's rounding.

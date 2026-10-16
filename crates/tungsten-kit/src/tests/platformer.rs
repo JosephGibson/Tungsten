@@ -1,5 +1,9 @@
 use super::*;
-use tungsten_core::physics::{PhysicsPlugin, RigidBody, RigidBodyBundle};
+use crate::{KIT_INTENT, KIT_MOVE, KIT_OVERLAP, KIT_REACT, KIT_RESOLVE, KIT_TICK};
+use tungsten_core::Stage;
+use tungsten_core::physics::{
+    PHYSICS_PREV_SNAPSHOT, PHYSICS_STEP, PhysicsPlugin, RigidBody, RigidBodyBundle,
+};
 use tungsten_core::{Bundle, LayerKind, TilemapData, TilemapInstance, TilemapRegistry, Time};
 
 const DT: f32 = 1.0 / 60.0;
@@ -103,7 +107,17 @@ fn the_plugin_runs_between_the_snapshot_and_the_step() {
     let (_, schedule) = rig();
     assert_eq!(
         schedule.names(Stage::FixedUpdate).collect::<Vec<_>>(),
-        [PHYSICS_PREV_SNAPSHOT, PLATFORMER_CONTROLLER, PHYSICS_STEP]
+        [
+            PHYSICS_PREV_SNAPSHOT,
+            KIT_TICK,
+            KIT_INTENT,
+            KIT_MOVE,
+            PLATFORMER_CONTROLLER,
+            PHYSICS_STEP,
+            KIT_OVERLAP,
+            KIT_RESOLVE,
+            KIT_REACT
+        ]
     );
 }
 

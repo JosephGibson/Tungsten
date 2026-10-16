@@ -1,5 +1,6 @@
 //! The kit's harness tests: each item through the engine's frame on
-//! `Harness`, with `DefaultPlugins` and the kit's plugins added after them.
+//! `Harness`, with `DefaultPlugins`, then `KitPlugins::set()` and the
+//! plugins that take a game type added after them.
 
 use std::path::PathBuf;
 
@@ -20,24 +21,22 @@ use tungsten_core::{
 
 use crate::App;
 use crate::kit::{
-    AnimationPlugin, Children, Damaged, DespawnOutside, DespawnOutsidePlugin, HEALTH_TICK,
-    HIT_FLASH_MATERIAL, Health, HealthPlugin, HierarchyPlugin, Hit as Outcome, HitFlash, Lifetime,
-    LifetimePlugin, LocalOffset, Parent, PathFollower, PathFollowerPlugin, PlatformerController,
-    PlatformerControllerPlugin, SoundOnEvent, Spawner, SpawnerPlugin, StateMachine,
-    StateMachinePlugin, TopDownMover, TopDownMoverPlugin, TriggerEntered, TriggerZone,
-    cursor_to_world, damage, despawn_recursive, spawn_child,
+    Children, Damaged, DespawnOutside, HEALTH_TICK, HIT_FLASH_MATERIAL, Health, Hit as Outcome,
+    HitFlash, KitPlugins, Lifetime, LocalOffset, Parent, PathFollower, PlatformerController,
+    SoundOnEvent, Source, Spawner, StateMachine, StateMachinePlugin, TopDownMover, TriggerEntered,
+    TriggerZone, cursor_to_world, damage, despawn_recursive, spawn_child,
 };
 use crate::state::{GameState, SceneEntity, StateContext, StateId, StateStack};
 use crate::testing::Harness;
 
-/// `post_update` with `DefaultPlugins`, then the hierarchy, animation,
-/// lifetime, despawn-outside, sound, spawner and health plugins added in
-/// that order.
-const KIT_POST_UPDATE: &str = "post_update: physics_sync, transform_propagate, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, transform_propagate_late, camera_update, animation_tick, lifetime_tick, despawn_outside, hit_sound, spawner_tick, hit_flash_tick";
+/// `post_update` with `DefaultPlugins`, then `KitPlugins::set()`, the sound
+/// plugin, the trigger zone and the state machine: the present phase after
+/// the late propagation and before the camera.
+const KIT_POST_UPDATE: &str = "post_update: physics_sync, transform_propagate, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, transform_propagate_late, kit_present, animation_tick, hit_flash_tick, camera_target, kit_debug_draw, hit_sound, camera_update";
 
-/// `fixed_update` with `DefaultPlugins`, then the controllers, health, path,
-/// zone and state-machine plugins added in that order (`D-158`).
-const KIT_FIXED_UPDATE: &str = "fixed_update: physics_prev_snapshot, health_tick, phases, path_follow, platformer_controller, top_down_mover, physics_step, zone_entered";
+/// `fixed_update` with the same plugins: the six fixed phases around
+/// `physics_step`, each member in its registration order.
+const KIT_FIXED_UPDATE: &str = "fixed_update: physics_prev_snapshot, kit_tick, lifetime_tick, health_tick, kit_intent, action_input, phases, kit_move, path_follow, platformer_controller, top_down_mover, physics_step, kit_overlap, despawn_outside, zone_tick, zone_entered, kit_resolve, kit_react, spawner_tick";
 
 /// The event the sound plugin plays.
 struct Hit;
@@ -89,16 +88,8 @@ fn update_dash(world: &mut World, entity: Entity) {
 
 fn kit_app() -> App {
     let mut app = App::new(Config::default()).unwrap();
-    app.add_plugin(HierarchyPlugin);
-    app.add_plugin(AnimationPlugin);
-    app.add_plugin(LifetimePlugin);
-    app.add_plugin(DespawnOutsidePlugin);
+    app.add_plugins(KitPlugins::set());
     app.add_plugin(SoundOnEvent::<Hit>::new("hit_sound", "thud"));
-    app.add_plugin(SpawnerPlugin);
-    app.add_plugin(PlatformerControllerPlugin);
-    app.add_plugin(TopDownMoverPlugin);
-    app.add_plugin(HealthPlugin);
-    app.add_plugin(PathFollowerPlugin);
     app.add_plugin(TriggerZone::<Zone, Runner>::new("zone_entered"));
     app.add_plugin(
         StateMachinePlugin::<Phase>::new("phases")
@@ -124,7 +115,7 @@ fn close(a: Vec2, b: Vec2) -> bool {
 }
 
 #[test]
-fn kit_plugins_resolve_between_the_sync_and_the_readers() {
+fn kit_plugins_resolve_into_their_phases() {
     let mut app = kit_app();
     app.resolve_schedule().unwrap();
     let text = app.schedule().resolved_text();
@@ -190,7 +181,8 @@ fn animated_sprite_shows_the_current_frame_and_holds_while_paused() {
 #[test]
 fn lifetime_despawns_the_entity_and_its_children_at_its_end() {
     let mut harness = Harness::new(kit_app());
-    harness.set_dt(0.05);
+    // Two fixed steps a frame, the default bound: the lifetime counts them.
+    harness.set_dt(1.0 / 30.0);
     let bolt = spawn_at(&mut harness, 0.0, 0.0, (Lifetime::new(0.12),));
     let trail = spawn_child(
         harness.world_mut(),
@@ -199,19 +191,25 @@ fn lifetime_despawns_the_entity_and_its_children_at_its_end() {
         (Sprite::new(SpriteAssetId::new(0)),),
     );
 
-    harness.step(2);
-    assert!(harness.world().is_alive(bolt) && harness.world().is_alive(trail));
+    harness.step(3);
+    assert!(
+        harness.world().is_alive(bolt) && harness.world().is_alive(trail),
+        "0.1 s of six steps"
+    );
 
     harness.world_mut().resource_mut::<Time>().pause();
     harness.step(10);
     assert!(
         harness.world().is_alive(bolt),
-        "a paused clock holds the lifetime"
+        "a paused clock runs no step"
     );
 
     harness.world_mut().resource_mut::<Time>().resume();
     harness.step(1);
-    assert!(!harness.world().is_alive(bolt));
+    assert!(
+        !harness.world().is_alive(bolt),
+        "the eighth step passed 0.12 s"
+    );
     assert!(!harness.world().is_alive(trail));
 }
 
@@ -614,7 +612,8 @@ fn a_spawner_spawns_its_prefab_on_the_game_clock_at_its_position() {
         .world_mut()
         .resource_mut::<PrefabRegistry>()
         .insert("slime".to_string(), slime);
-    harness.set_dt(0.05);
+    // Two fixed steps a frame, the default bound: 0.1 s is three frames.
+    harness.set_dt(1.0 / 30.0);
     let nest = spawn_at(
         &mut harness,
         40.0,
@@ -630,7 +629,7 @@ fn a_spawner_spawns_its_prefab_on_the_game_clock_at_its_position() {
             .collect::<Vec<_>>()
     };
 
-    harness.step(1);
+    harness.step(2);
     assert!(slimes(&harness).is_empty(), "the first after one interval");
     harness.step(1);
     assert_eq!(
@@ -648,7 +647,7 @@ fn a_spawner_spawns_its_prefab_on_the_game_clock_at_its_position() {
     );
 
     harness.world_mut().resource_mut::<Time>().resume();
-    harness.step(4);
+    harness.step(6);
     assert_eq!(slimes(&harness).len(), 3);
     harness.step(10);
     assert_eq!(slimes(&harness).len(), 3, "the count is spent");
@@ -682,10 +681,11 @@ impl GameState for Level {
     fn update(&mut self, _world: &mut World) {}
 }
 
-/// The kit app with prefab `slime` at dt 0.05 s after one frame, a control
-/// spawner at x 90 outside any state with the level's interval, and `Level`
-/// pushed: both spawners first tick in the next frame, so they share their
-/// phase. Returns the harness and the entity count before the push.
+/// The kit app with prefab `slime` at dt 1/30 s (two fixed steps a frame)
+/// after one frame, a control spawner at x 90 outside any state with the
+/// level's interval, and `Level` pushed: both spawners first tick in the
+/// next frame, so they share their phase. Returns the harness and the
+/// entity count before the push.
 fn level_harness(test: &str) -> (Harness, u32) {
     use tungsten_core::{PrefabData, PrefabRegistry};
 
@@ -700,7 +700,7 @@ fn level_harness(test: &str) -> (Harness, u32) {
         .world_mut()
         .resource_mut::<PrefabRegistry>()
         .insert("slime".to_string(), slime);
-    harness.set_dt(0.05);
+    harness.set_dt(1.0 / 30.0);
     harness.step(1);
     spawn_at(&mut harness, 90.0, 0.0, (Spawner::new("slime", 0.1),));
     let count = harness.world().entity_count();
@@ -736,7 +736,8 @@ fn pop_state(harness: &mut Harness) {
 #[test]
 fn a_spawners_entities_leave_with_its_state() {
     let (mut harness, count) = level_harness("leave_with_state");
-    harness.step(4);
+    // Twelve steps: two periods.
+    harness.step(6);
     assert_eq!(
         slimes_and_states(&harness),
         [
@@ -766,7 +767,9 @@ fn a_spawner_due_in_its_states_exit_frame_leaves_nothing() {
         slimes_and_states(&harness),
         [(10.0, Some("level")), (90.0, None)]
     );
-    // The pop's frame is the next period's end for both spawners.
+    // The pop's frame holds the twelfth step, the next period's end for
+    // both spawners.
+    harness.step(2);
     pop_state(&mut harness);
     harness.step(1);
     assert_eq!(
@@ -783,6 +786,70 @@ fn a_spawner_due_in_its_states_exit_frame_leaves_nothing() {
         harness.world().entity_count(),
         count + 2,
         "the control and its two spawns"
+    );
+}
+
+#[test]
+fn a_child_spawner_on_a_moving_parent_spawns_at_its_last_propagated_point() {
+    use tungsten_core::{PrefabData, PrefabRegistry, Tag};
+
+    let dir = std::env::temp_dir().join(format!("tungsten_kit_child_nest_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("slime.json");
+    std::fs::write(&path, r#"{ "tag": "slime" }"#).unwrap();
+    let mut harness = Harness::new(kit_app());
+    let slime = PrefabData::load(&path, harness.world()).unwrap();
+    std::fs::remove_dir_all(&dir).unwrap();
+    harness
+        .world_mut()
+        .resource_mut::<PrefabRegistry>()
+        .insert("slime".to_string(), slime);
+    // A cart moving right one pixel a step, with a nest hanging off it that
+    // spawns once a step.
+    let cart = harness.world_mut().spawn_with(
+        RigidBodyBundle::kinematic(Position::new(0.0, 0.0), Collider::aabb(Vec2::splat(4.0)))
+            .with_velocity(Velocity::new(60.0, 0.0))
+            .with((Transform::default(),)),
+    );
+    let nest = spawn_child(
+        harness.world_mut(),
+        cart,
+        Vec2::new(10.0, 0.0),
+        (Spawner::new("slime", STEP * 0.99),),
+    );
+    let slimes = |harness: &Harness| -> Vec<f32> {
+        let mut found: Vec<f32> = harness
+            .world()
+            .query::<(&Tag, &Transform)>()
+            .filter(|(tag, _)| tag.name == "slime")
+            .map(|(_, transform)| transform.position.x)
+            .collect();
+        found.sort_by(f32::total_cmp);
+        found
+    };
+    harness.step(1);
+    for _ in 0..3 {
+        let nest_drawn = position(&harness, nest).x;
+        let cart_before = body_at(&harness, cart).x;
+        let count = slimes(&harness).len();
+        harness.step(1);
+        let now = slimes(&harness);
+        assert_eq!(now.len(), count + 1, "one spawn a step");
+        let newest = now[now.len() - 1];
+        assert_eq!(newest, nest_drawn, "where the nest was last drawn");
+        assert_eq!(body_at(&harness, cart).x, cart_before + 1.0);
+        assert!(
+            newest < body_at(&harness, cart).x + 10.0,
+            "behind the cart's position: a recorded limit"
+        );
+    }
+    // The spawns carry the chain's origin: the nest, which has no source.
+    assert!(
+        harness
+            .world()
+            .query::<(&Tag, &Source)>()
+            .filter(|(tag, _)| tag.name == "slime")
+            .all(|(_, source)| source.entity() == nest)
     );
 }
 

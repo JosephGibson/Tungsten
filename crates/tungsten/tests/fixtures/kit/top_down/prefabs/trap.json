@@ -1,0 +1,22 @@
+{
+  "tag": "trap",
+  "components": {
+    "rigid_body": {
+      "kind": "sensor",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          12,
+          12
+        ]
+      }
+    },
+    "zone": {
+      "filter": {
+        "all": [
+          "team.player"
+        ]
+      }
+    }
+  }
+}

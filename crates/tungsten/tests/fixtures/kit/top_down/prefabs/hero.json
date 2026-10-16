@@ -1,0 +1,37 @@
+{
+  "sprite": {
+    "asset_id": "hero"
+  },
+  "tag": "hero",
+  "components": {
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          10,
+          10
+        ]
+      }
+    },
+    "top_down_mover": {
+      "speed": 120
+    },
+    "action_input": {
+      "move": [
+        "move_left",
+        "move_right",
+        "move_up",
+        "move_down"
+      ]
+    },
+    "tags": [
+      "team.player"
+    ],
+    "health": {
+      "max": 5,
+      "invulnerability": 0.5
+    },
+    "camera_target": null
+  }
+}

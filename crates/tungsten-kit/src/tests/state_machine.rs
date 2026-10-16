@@ -1,5 +1,8 @@
 use super::*;
-use tungsten_core::physics::PhysicsPlugin;
+use crate::HEALTH_TICK;
+use crate::{KIT_INTENT, KIT_MOVE, KIT_OVERLAP, KIT_REACT, KIT_RESOLVE, KIT_TICK};
+use tungsten_core::Stage;
+use tungsten_core::physics::{PHYSICS_PREV_SNAPSHOT, PHYSICS_STEP, PhysicsPlugin};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
@@ -178,7 +181,18 @@ fn it_runs_after_the_window_count_and_before_the_step() {
     schedule.resolve().unwrap();
     assert_eq!(
         schedule.names(Stage::FixedUpdate).collect::<Vec<_>>(),
-        [PHYSICS_PREV_SNAPSHOT, HEALTH_TICK, "modes", PHYSICS_STEP]
+        [
+            PHYSICS_PREV_SNAPSHOT,
+            KIT_TICK,
+            HEALTH_TICK,
+            KIT_INTENT,
+            "modes",
+            KIT_MOVE,
+            PHYSICS_STEP,
+            KIT_OVERLAP,
+            KIT_RESOLVE,
+            KIT_REACT
+        ]
     );
 }
 

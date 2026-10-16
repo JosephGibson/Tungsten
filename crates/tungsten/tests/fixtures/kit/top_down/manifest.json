@@ -1,0 +1,87 @@
+{
+  "prefabs": {
+    "hero": {
+      "path": "prefabs/hero.json"
+    },
+    "wall": {
+      "path": "prefabs/wall.json"
+    },
+    "slime": {
+      "path": "prefabs/slime.json"
+    },
+    "nest": {
+      "path": "prefabs/nest.json"
+    },
+    "trap": {
+      "path": "prefabs/trap.json"
+    },
+    "drone": {
+      "path": "prefabs/drone.json"
+    },
+    "bolt": {
+      "path": "prefabs/bolt.json"
+    }
+  },
+  "data": {
+    "tags": {
+      "game": {
+        "path": "data/tags.json"
+      }
+    }
+  },
+  "animations": {
+    "slime_idle": {
+      "path": "animations/slime_idle.json"
+    }
+  },
+  "shaders": {
+    "damage_flash": {
+      "path": "shaders/damage_flash.wgsl"
+    }
+  },
+  "materials": {
+    "damage_flash": {
+      "shader": "damage_flash",
+      "uniform_defaults": {
+        "vec4": [
+          [
+            1.0,
+            0.2,
+            0.1,
+            1.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        ],
+        "f32s": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "i32s": [
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  }
+}

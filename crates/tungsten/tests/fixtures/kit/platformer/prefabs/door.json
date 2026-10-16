@@ -1,0 +1,22 @@
+{
+  "tag": "door",
+  "components": {
+    "rigid_body": {
+      "kind": "sensor",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          16,
+          32
+        ]
+      }
+    },
+    "zone": {
+      "filter": {
+        "all": [
+          "team.player"
+        ]
+      }
+    }
+  }
+}

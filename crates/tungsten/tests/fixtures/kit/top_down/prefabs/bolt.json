@@ -1,0 +1,31 @@
+{
+  "tag": "bolt",
+  "components": {
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "circle",
+        "radius": 2
+      },
+      "velocity": [
+        800,
+        0
+      ]
+    },
+    "lifetime": {
+      "seconds": 2
+    },
+    "despawn_outside": {
+      "region": [
+        [
+          0,
+          0
+        ],
+        [
+          640,
+          360
+        ]
+      ]
+    }
+  }
+}

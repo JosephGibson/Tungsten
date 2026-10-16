@@ -5,6 +5,9 @@
 # The umbrella's call enables its `testing` feature, so the headless harness
 # is listed too (D-110); its default `kit` feature prints the kit as one
 # `pub use tungsten::kit` line, and tungsten-kit has a file of its own.
+# The kit's scene components are data: their field descriptions, rendered by
+# the kit's `components` example, go to api/tungsten-kit-components.txt
+# under the same check (M62).
 # --check writes to target/public-api/check/ instead and fails when a tracked
 # file differs, so the release checks catch a stale snapshot.
 #
@@ -66,9 +69,16 @@ for crate in "${CRATES[@]}"; do
     stale=1
   fi
 done
+components="tungsten-kit-components"
+cargo run -q --locked -p tungsten-kit --example components > "$out/$components.txt"
+if [[ "$out" != "api" ]] && ! cmp -s "$out/$components.txt" "api/$components.txt"; then
+  echo "api/$components.txt is stale; run 'just api' and review its diff:" >&2
+  diff -u "api/$components.txt" "$out/$components.txt" | head -40 >&2 || true
+  stale=1
+fi
 if [[ "$out" == "api" ]]; then
-  printf 'Wrote api/%s.txt\n' "${CRATES[@]}"
+  printf 'Wrote api/%s.txt\n' "${CRATES[@]}" "$components"
 elif [[ "$stale" == 0 ]]; then
-  echo "Public API snapshots current: ${#CRATES[@]} crates"
+  echo "Public API snapshots current: ${#CRATES[@]} crates and the kit's components"
 fi
 exit "$stale"

@@ -784,6 +784,7 @@ pub fn tungsten::testing::Harness::draw(&self) -> core::option::Option<&tungsten
 pub fn tungsten::testing::Harness::events<T: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = &T>
 pub fn tungsten::testing::Harness::exit_requested(&self) -> bool
 pub fn tungsten::testing::Harness::frame(&self) -> u64
+pub fn tungsten::testing::Harness::load_manifest(&mut self, impl core::convert::AsRef<std::path::Path>) -> anyhow::Result<()>
 pub fn tungsten::testing::Harness::new(tungsten::app::App) -> Self
 pub fn tungsten::testing::Harness::press_action(&mut self, &str)
 pub fn tungsten::testing::Harness::release_action(&mut self, &str)

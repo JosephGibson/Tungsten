@@ -1,0 +1,8 @@
+{
+  "tag": "potion",
+  "components": {
+    "lifetime": {
+      "seconds": 0.5
+    }
+  }
+}

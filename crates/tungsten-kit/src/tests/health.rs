@@ -1,7 +1,9 @@
 use std::path::PathBuf;
 
 use super::*;
-use tungsten_core::physics::PhysicsPlugin;
+use crate::{KIT_INTENT, KIT_MOVE, KIT_OVERLAP, KIT_REACT, KIT_RESOLVE, KIT_TICK};
+use tungsten_core::Stage;
+use tungsten_core::physics::{PHYSICS_PREV_SNAPSHOT, PHYSICS_STEP, PhysicsPlugin};
 use tungsten_core::{MaterialUniformDefaults, SpriteAssetId};
 
 const STEP: f32 = 1.0 / 60.0;
@@ -62,7 +64,7 @@ fn the_plugin_registers_its_queue_and_both_systems() {
     assert!(world.has_event::<Damaged>());
     assert_eq!(schedule.stage_of(HEALTH_TICK), Some(Stage::FixedUpdate));
     assert_eq!(schedule.stage_of(HIT_FLASH_TICK), Some(Stage::PostUpdate));
-    assert_eq!(schedule.len(), 2);
+    assert_eq!(schedule.len(), 9, "the seven anchors and both systems");
 }
 
 #[test]
@@ -269,7 +271,17 @@ fn the_window_count_runs_first_after_the_snapshot() {
     schedule.resolve().unwrap();
     assert_eq!(
         schedule.names(Stage::FixedUpdate).collect::<Vec<_>>(),
-        [PHYSICS_PREV_SNAPSHOT, HEALTH_TICK, PHYSICS_STEP]
+        [
+            PHYSICS_PREV_SNAPSHOT,
+            KIT_TICK,
+            HEALTH_TICK,
+            KIT_INTENT,
+            KIT_MOVE,
+            PHYSICS_STEP,
+            KIT_OVERLAP,
+            KIT_RESOLVE,
+            KIT_REACT
+        ]
     );
 }
 
@@ -309,4 +321,34 @@ fn a_non_finite_flash_color_panics() {
 #[should_panic(expected = "seconds must be finite and > 0")]
 fn a_zero_flash_panics() {
     let _ = HitFlash::new([1.0; 4], 0.0);
+}
+
+#[test]
+fn health_is_data_within_its_bounds() {
+    let mut health = Health::new(5.0).with_invulnerability(0.5);
+    health.current = 2.0;
+    let value = serde_json::to_value(&health).unwrap();
+    let back: Health = serde_json::from_value(value).unwrap();
+    assert_eq!((back.current(), back.max()), (2.0, 5.0));
+    assert!(!back.is_invulnerable());
+
+    let refused = [
+        serde_json::json!({ "current": 5.0, "max": -1.0 }),
+        serde_json::json!({ "current": 6.0, "max": 5.0 }),
+        serde_json::json!({ "current": -1.0, "max": 5.0 }),
+        serde_json::json!({ "current": 1.0, "max": 5.0, "invulnerability": -0.5 }),
+        serde_json::json!({ "current": 1.0, "max": 5.0, "window_left": f64::NAN }),
+        serde_json::json!({ "current": 1.0, "max": 5.0, "lives": 3 }),
+    ];
+    for value in refused {
+        assert!(
+            serde_json::from_value::<Health>(value.clone()).is_err(),
+            "{value}"
+        );
+    }
+    let mut revived: Health =
+        serde_json::from_value(serde_json::json!({ "current": 0.0, "max": 5.0 })).unwrap();
+    assert!(revived.is_dead());
+    revived.heal(3.0);
+    assert!(revived.is_dead(), "the dead stay dead");
 }

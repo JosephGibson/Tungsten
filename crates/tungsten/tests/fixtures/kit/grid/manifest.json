@@ -1,0 +1,23 @@
+{
+  "prefabs": {
+    "rogue": {
+      "path": "prefabs/rogue.json"
+    },
+    "hole": {
+      "path": "prefabs/hole.json"
+    },
+    "rat": {
+      "path": "prefabs/rat.json"
+    },
+    "potion": {
+      "path": "prefabs/potion.json"
+    }
+  },
+  "data": {
+    "tags": {
+      "game": {
+        "path": "data/tags.json"
+      }
+    }
+  }
+}

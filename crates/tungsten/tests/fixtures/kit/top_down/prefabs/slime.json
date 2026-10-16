@@ -1,0 +1,36 @@
+{
+  "sprite": {
+    "asset_id": "slime"
+  },
+  "tag": "slime",
+  "components": {
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          8,
+          8
+        ]
+      }
+    },
+    "tags": [
+      "team.enemy"
+    ],
+    "health": {
+      "max": 2
+    },
+    "hit_flash": {
+      "color": [
+        1,
+        0.2,
+        0.2,
+        1
+      ],
+      "seconds": 0.15
+    },
+    "animation": {
+      "id": "slime_idle"
+    }
+  }
+}

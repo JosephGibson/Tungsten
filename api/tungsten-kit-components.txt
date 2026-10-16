@@ -1,0 +1,69 @@
+component action_input: The actions that steer the entity, read into its Intent each fixed step.
+  field move: list of text — [left, right] or [left, right, up, down]: the movement actions
+  field aim: list of text = null — [left, right, up, down]: the aim actions
+  field slots: { slot: action } = {} — named slots, such as `jump`, read as held and just pressed
+  genres: platformer, top_down, shmup, grid
+  sample: { "move": ["move_left", "move_right"] }
+component animation: An animated sprite: its current frame written into the entity's Sprite.
+  field id: text — a manifest animation ID
+  genres: platformer, top_down
+  sample: { "id": "blink" }
+component camera_target: The marker the camera follows: the lowest-indexed live one.
+  genres: platformer, top_down, shmup, grid
+  sample: null
+component despawn_outside: Despawns the entity, with its children, once it leaves a world-space box or the camera's view; exactly one of `region` and `view`.
+  field region: [[min_x, min_y], [max_x, max_y]] — the closed box, in world pixels
+  field view: f32 (>= 0) — the margin outside the last frame's camera view
+  genres: top_down, shmup
+  sample: { "view": 16 }
+component health: Health with an invulnerability window after each hit, which `damage` lowers.
+  field max: f32 (> 0) — the full health, which it starts at
+  field invulnerability: f32 (>= 0) = 0.0 — seconds of game time a hit is ignored after one lands
+  events: Damaged
+  genres: platformer, top_down, shmup, grid
+  sample: { "max": 5 }
+component hit_flash: A flash of colour on the sprite when `damage` hits the entity, through the `damage_flash` material.
+  field color: [r, g, b, a] = [1.0, 1.0, 1.0, 1.0] — the flash's colour; its alpha weighs the mix
+  field seconds: f32 (> 0) = 0.1 — how long the flash fades over
+  genres: top_down, shmup
+  sample: {}
+component lifetime: Despawns the entity, with its children, once its time on the game clock has passed.
+  field seconds: f32 (>= 0) — how long it lives; 0 despawns it at its first step
+  genres: platformer, top_down, shmup, grid
+  sample: { "seconds": 0.5 }
+component path_follower: Moves a kinematic body along points at a speed: a moving platform, a patrol.
+  field points: list of [x, y] — two or more offsets from the spawn position, neighbours differing
+  field speed: f32 (> 0) — world pixels per second along the path
+  field mode: one of stop | loop | ping_pong = "stop" — what it does after the last point
+  field easing: one of linear | quad_in | quad_out | quad_in_out | cubic_in | cubic_out | cubic_in_out | quart_in | quart_out | quart_in_out | sine_in | sine_out | sine_in_out | expo_in | expo_out | expo_in_out | back_in | back_out | back_in_out | bounce_in | bounce_out | bounce_in_out = "linear" — each segment's progress, one of core's easings
+  genres: platformer, top_down, shmup
+  sample: { "points": [[0, 0], [0, -100]], "speed": 100 }
+component platformer_controller: A side-view character on a kinematic body: it runs, jumps and falls, stops at walls, lands on floors and rides moving platforms.
+  field run_speed: f32 (> 0) — world pixels per second at full run
+  field jump_speed: f32 (> 0) — the jump's upward speed; it peaks at jump_speed² / 2g
+  field gravity: f32 (>= 0) = null — its own gravity, y down; the world's when left out
+  field coyote_time: f32 (>= 0) = 0.1 — seconds after leaving an edge a jump still starts
+  field jump_buffer: f32 (>= 0) = 0.1 — seconds a press before it can jump is kept
+  field jump_cut: f32 (>= 0, <= 1) = 0.5 — the rising speed kept when the jump is released early
+  genres: platformer, shmup
+  sample: { "run_speed": 200, "jump_speed": 600 }
+component spawner: Spawns a prefab at the entity's position once per interval of game time.
+  field prefab: prefab ID — what it spawns; the load checks the ID
+  field interval: f32 (> 0) — seconds between spawns; the first after one interval
+  field count: u32 = null — how many it spawns in all; without end when left out
+  genres: top_down, shmup, grid
+  sample: { "prefab": "slime", "interval": 0.5 }
+component tags: The entity's tags: dotted names the items filter on.
+  field names: list of tag — the value itself: the names, each declared by `tags` data or a `TagsPlugin`
+  genres: platformer, top_down, shmup, grid
+  sample: ["team.player"]
+component top_down_mover: A top-down character: it moves at its speed in its intent's direction, sliding along walls on a kinematic body, or freely without one.
+  field speed: f32 (> 0) — world pixels per second at full tilt
+  genres: top_down, shmup, grid
+  sample: { "speed": 240 }
+component zone: A sensor entered by the entities whose tags pass its filter.
+  field filter: tag filter = {} — what enters; the load checks its tags
+  events: ZoneEntered
+  genres: platformer, top_down
+  sample: {}
+kind tags: A JSON array of tag names; each declares itself and its dotted ancestors.

@@ -1,0 +1,10 @@
+{
+  "tag": "wave",
+  "components": {
+    "spawner": {
+      "prefab": "raider",
+      "interval": 0.25,
+      "count": 3
+    }
+  }
+}

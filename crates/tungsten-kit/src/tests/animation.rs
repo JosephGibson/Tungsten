@@ -1,5 +1,6 @@
 use super::*;
 use serde_json::json;
+use tungsten_core::Stage;
 use tungsten_core::assets::AnimationFrame;
 use tungsten_core::{
     AnimationData, CommandBuffer, ComponentRegistry, Entity, SpriteAssetId, Transform,
@@ -64,7 +65,7 @@ fn shown(world: &World, entity: Entity) -> SpriteAssetId {
 fn the_plugin_registers_its_system_in_post_update() {
     let (_, schedule) = setup();
     assert_eq!(schedule.stage_of(ANIMATION_TICK), Some(Stage::PostUpdate));
-    assert_eq!(schedule.len(), 1);
+    assert_eq!(schedule.len(), 8, "the seven anchors and the tick");
 }
 
 #[test]

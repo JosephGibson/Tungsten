@@ -46,7 +46,7 @@ fn the_plugin_registers_two_passes_in_post_update() {
     let (_, schedule) = setup();
     assert_eq!(
         schedule.resolved_text().lines().nth(4),
-        Some("post_update: transform_propagate, transform_propagate_late")
+        Some("post_update: transform_propagate, transform_propagate_late, kit_present")
     );
 }
 
@@ -248,7 +248,7 @@ fn a_parent_tweened_between_the_passes_draws_with_its_children() {
     schedule.resolve().unwrap();
     assert_eq!(
         schedule.resolved_text().lines().nth(4),
-        Some("post_update: transform_propagate, tween_tick, transform_propagate_late")
+        Some("post_update: transform_propagate, tween_tick, transform_propagate_late, kit_present")
     );
     let ship = root_at(&mut world, 0.0, 0.0);
     let flag = spawn_child(&mut world, ship, Vec2::new(0.0, -3.0), (Tag,));
