@@ -2,30 +2,42 @@
   "tokens": {
     "colors": {
       "surface": "#1e1e24",
-      "border": "#4a4e63",
+      "border": "#70758f",
       "text": "#f0f0f5",
       "text_muted": "#a0a2af",
-      "accent": "#5b8def",
+      "accent": "#3563c9",
       "accent_text": "#ffffff",
-      "focus": "#ffd166"
+      "focus": "#ffd166",
+      "disabled_text": "#999cab"
     },
-    "radii": { "md": 6, "lg": 10 },
-    "text": { "size": 16, "line_height": 22, "heading_size": 24 }
+    "radii": { "sm": 4, "md": 6, "lg": 10 },
+    "text": { "size": 16, "line_height": 22, "heading_size": 22 }
   },
   "kinds": {
-    "panel": { "normal": { "corner_radius": 10, "border_width": 1 } },
+    "panel": {
+      "normal": { "corner_radius": 10, "border_width": 1 },
+      "focused": { "border": "#ffd166", "border_width": 2 },
+      "hovered": { "border": "#a3a8c2", "border_width": 1 },
+      "pressed": { "border": "#7aa7ff", "border_width": 1 }
+    },
     "button": {
-      "normal": { "border_width": 1, "corner_radius": 6, "text": { "weight": 600 } },
-      "focused": { "border": "#ffd166", "border_width": 2 }
+      "normal": { "border_width": 1, "corner_radius": 6, "text": { "weight": 600, "align": "center" } },
+      "focused": { "border": "#ffd166", "border_width": 2 },
+      "hovered": { "background": "#3d6dd6" },
+      "pressed": { "background": "#2a52aa" },
+      "disabled": { "background": "#1e1e24", "text": { "color": "#999cab" } }
     },
     "toggle": {
-      "normal": { "background": "#15151a", "corner_radius": 4, "text": { "color": "#5b8def" } },
-      "focused": { "border": "#ffd166", "border_width": 2 }
+      "normal": { "background": "#15151a", "border_width": 1, "corner_radius": 4, "text": { "color": "#7aa7ff" } },
+      "focused": { "border": "#ffd166", "border_width": 2 },
+      "hovered": { "background": "#24242c" },
+      "pressed": { "background": "#0e0e12" }
     },
     "slider": {
-      "normal": { "background": "#4a4e63", "corner_radius": 11, "text": { "color": "#5b8def" } },
+      "normal": { "background": "#363a4b", "corner_radius": 4, "text": { "color": "#7aa7ff" } },
       "focused": { "border": "#ffd166", "border_width": 2 },
-      "hovered": { "text": { "color": "#86a9f3" } }
+      "hovered": { "text": { "color": "#9dbdff" } },
+      "pressed": { "text": { "color": "#6a97f0" } }
     }
   }
 }

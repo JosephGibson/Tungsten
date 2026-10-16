@@ -78,7 +78,7 @@ if let Err(err) = world.resource::<Settings>().save() {
 }
 ```
 
-`apply_settings` applies them as a restart would: the display through a request the next frame takes, the UI scale to `ScaleFactor` and the master volume to the mixer. A value set back to `None` returns to `tungsten.json`'s, and the `TUNGSTEN_DISPLAY_*` overrides still win over both. `ActionMap::replace_bindings_and_persist` writes a rebinding to the user folder's `input.json`, and only the actions that differ from the shipped file, so a game update's new bindings reach every action the player left alone.
+`apply_settings` applies them as a restart would: the display through a request the next frame takes, the UI scale to `ScaleFactor` and the master volume to the mixer. A value set back to `None` returns to `tungsten.json`'s, and the `TUNGSTEN_DISPLAY_*` overrides still win over both. A window the player resized or maximized keeps its size: the resolution goes out only when the set or shipped one changes (`D-169`). `ActionMap::replace_bindings_and_persist` writes a rebinding to the user folder's `input.json`, and only the actions that differ from the shipped file, so a game update's new bindings reach every action the player left alone.
 
 Saves go in the user folder's `saves` (`~/.local/share/<id>/saves` on Linux, `saves` beside the settings on Windows and macOS), one file per slot, through the `SaveSlots` resource (`D-160`). A save is the game's own serde type with a schema number; bump the number when the type changes shape, and write `migrate` to rewrite an older save into the new shape. The template's `SaveGame` holds the player's position: gameplay continues from slot `autosave` and pause saves it.
 

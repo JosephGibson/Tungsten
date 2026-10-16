@@ -256,8 +256,9 @@ impl UiTree {
     }
 
     /// Moves focus `dir` inside the current scope (`D-149`): to the focused
-    /// widget's explicit neighbour that way when it can take focus;
-    /// otherwise to the nearest laid-out widget that can, in the focused
+    /// widget's explicit neighbour that way when it can take focus and its
+    /// root is not frozen (`D-163`); otherwise to the nearest laid-out
+    /// widget that can, in the focused
     /// widget's scope, whose centre lies that way, scored by the distance
     /// that way plus twice the offset across it, the first in tab order on a
     /// tie. When none lies that way and the scope wraps
@@ -268,6 +269,7 @@ impl UiTree {
         let focused = self.focused?;
         if let Some(neighbor) = self.focus_neighbor(focused, dir)
             && self.can_focus(neighbor)
+            && !self.root_of(neighbor).is_some_and(|root| self.frozen(root))
         {
             return self.focus(neighbor).then_some(neighbor);
         }

@@ -20,16 +20,28 @@ pub(crate) struct DisplayDelta {
 }
 
 impl DisplayDelta {
+    /// What `requested` changes from `current`; the mode as it runs, so an
+    /// exclusive request over borderless changes no mode (M59).
     pub(crate) fn between(current: &DisplayState, requested: &DisplayState) -> Self {
         Self {
             resize: current.resolution != requested.resolution,
-            display_mode_changed: current.display_mode != requested.display_mode,
+            display_mode_changed: current.display_mode
+                != runtime_display_mode(requested.display_mode),
             surface_pacing_changed: current.vsync != requested.vsync
                 || current.present_mode != requested.present_mode
                 || current.max_frame_latency != requested.max_frame_latency,
             scale_mode_changed: current.scale_mode != requested.scale_mode,
             frame_rate_cap_changed: current.frame_rate_cap != requested.frame_rate_cap,
         }
+    }
+}
+
+/// The mode `requested` runs as: exclusive fullscreen as borderless, which
+/// is all the runtime switch supports yet.
+pub(crate) fn runtime_display_mode(requested: DisplayMode) -> DisplayMode {
+    match requested {
+        DisplayMode::ExclusiveFullscreen => DisplayMode::BorderlessFullscreen,
+        other => other,
     }
 }
 

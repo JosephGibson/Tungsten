@@ -6,6 +6,28 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.79.0] - 2026-10-16
+
+Summary: M59, UI lab reference and QA (plan archived at `docs/plans/archive/1.0/phase6-milestone-59-ui-lab-reference.md`): a QA pass over the UI work since M54, windowed mode that keeps a hand-sized or maximized window's size through settings applies and display-mode switches, and example 05 reworked into the reference later examples copy
+
+### Added
+
+- **Inventory screen** (example 05): a scroll panel of 30 focusable slots in rows of five, ten example items with generated 32×32 icons, a rarity stripe and stack counts; a detail pane that follows focus with Use, Equip (one item per gear kind) and Drop; a drop confirmation with Cancel focused; `inventory_use`, `inventory_equip` and `inventory_drop` hotkeys (U/West, E/North, Delete/Select) read from the raw input behind the modal screen's own guards, and `inventory_open` (I/North) from play; an "Inventory" button on the pause menu. The paint-path fixtures build it directly with the confirmation open.
+- **Reference layout** (example 05): one module per pattern (`theme`, `widgets`, `hud`, `labels`, `controls`, `menus`, `inventory`, `budget`, `screens`, `fixtures`), each opening with the pattern it shows, and `lib.rs` as the map; shared builders for screen roots, windows, buttons, action rows, setting rows and prompt rows.
+- **Fixtures** (example 05): `display`, the settings screen through a resize to 1600×900, a volume step and the display-mode cycle, printing the engine's view of the window at each change (not a smoke row); `TUNGSTEN_UI_LAB_BOUNDS=1` shows the layout bounds from the first frame; the `menus` script opens and closes the inventory and prints `top 'play', settled` within its 150 frames.
+
+### Changed
+
+- **Hand-sized windows keep their size** (`D-169` amends `D-159`): in windowed mode `apply_settings` sends the resolution only when the set or shipped one differs from the last one it sent, so an unrelated apply (a volume step) no longer returns a window sized by hand to 1280×720, and a resolution set while fullscreen is sent on the return to windowed.
+- **Exclusive fullscreen at runtime**: a request for exclusive over borderless changes no mode, since exclusive runs as borderless, and the downgrade warning logs once a run instead of at every apply.
+- **Example 05's look and motion**: one theme whose text keeps 4.5:1 and whose focus borders, rarity stripes and control indicators keep 3:1 in linear light; buttons centred, padded 6 by 14 and at least 96 units wide; every screen centred and its rows on shared caption and control columns, checked at three window sizes; fades of 0.08 s, a 0.12 s slide over 12 units and a 0.08 s popup fade; the controls window titled "Controls" and owned with `Hide` under pushed screens. `ui-visual.png` `79b1c659…5971330` → `ebd096ca…a048dbd902`, `ui-labels.png` `72c3308f…42133ae266` → `564403ae…2b4eda7613` (sha256).
+- **Records**: `DESIGN.md`'s Settings and Save Slots paragraph and the getting-started guide on hand sizes; two break-ledger rows; w01 §11's note; a backlog row for drag and drop between widgets; a known-issues row for a label that grows past its committed width, and a follow-up for a game's Quit.
+
+### Fixed
+
+- **A frozen root's explicit focus neighbour** (known issues, M56): `UiTree::focus_direction` no longer moves focus to a neighbour set with `set_focus_neighbor` whose root is frozen.
+- **The UI inspector's first refresh** (known issues, M58): a pick made before its widget's first layout refreshes once the widget is laid out, not 500 ms later.
+
 ## [0.78.0] - 2026-10-15
 
 Summary: M58, W1 M5 polish (plan archived at `docs/plans/archive/1.0/phase6-milestone-58-debug-views-polish.md`): M57's debug views become readable on any display and tidy at their defaults, on the OS scale alone with zoom keys and a step down on small windows, docked so that no two overlap, in one dark palette whose colours carry meaning, with the engine font's SemiBold, window chrome and new HUD, systems, inspector and log console columns.

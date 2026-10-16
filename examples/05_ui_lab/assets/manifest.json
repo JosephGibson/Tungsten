@@ -1,7 +1,17 @@
 {
   "sprites": {
     "ex05_frame": { "path": "sprites/frame.png", "filter": "nearest", "nine_slice": [12, 12, 12, 12] },
-    "ex05_icon": { "path": "sprites/icon.png", "filter": "nearest" }
+    "ex05_icon": { "path": "sprites/icon.png", "filter": "nearest" },
+    "ex05_item_draught": { "path": "sprites/items/draught.png", "filter": "nearest" },
+    "ex05_item_sword": { "path": "sprites/items/sword.png", "filter": "nearest" },
+    "ex05_item_cap": { "path": "sprites/items/cap.png", "filter": "nearest" },
+    "ex05_item_lantern": { "path": "sprites/items/lantern.png", "filter": "nearest" },
+    "ex05_item_ore": { "path": "sprites/items/ore.png", "filter": "nearest" },
+    "ex05_item_herb": { "path": "sprites/items/herb.png", "filter": "nearest" },
+    "ex05_item_elixir": { "path": "sprites/items/elixir.png", "filter": "nearest" },
+    "ex05_item_bow": { "path": "sprites/items/bow.png", "filter": "nearest" },
+    "ex05_item_mail": { "path": "sprites/items/mail.png", "filter": "nearest" },
+    "ex05_item_moonstone": { "path": "sprites/items/moonstone.png", "filter": "nearest" }
   },
   "ui_themes": {
     "ex05_default": { "path": "ui/themes/ex05_default.json" }

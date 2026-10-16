@@ -1,47 +1,38 @@
-//! The lab's gameplay screens (M56): a `play` state owning the lab's roots
-//! and a HUD row (a live timer written without allocating and a
-//! binding-aware prompt), a `pause` state's modal menu and a `settings`
-//! state's screen (display mode, UI and text scale, master volume, one
-//! rebind, Back), each pushed and popped behind a fade. Each state owns its
-//! roots on the state stack, so a covered screen hides or freezes and the
-//! transition fades every owned root with the frame. The menu fixtures'
-//! 100-widget menu, the budget's subject, lives here too, with the script
-//! the `menus` smoke row runs.
+//! State-owned screens (`D-163`): a `play` state owning the game screen's
+//! roots and its HUD, a `pause` state's modal menu and a `settings` state's
+//! screen, each pushed and popped behind a fade and sliding in. A state
+//! owns its roots on the state stack, so a covered screen hides (`Hide`)
+//! or stays drawn and frozen (`Show`), and a transition freezes and fades
+//! every owned root with the frame. A screen reads its widgets' events
+//! from the routing in its `update`, and acts only when no transition runs.
+//!
+//! The settings screen shows the runtime apply (`D-159`, `D-169`): each
+//! change goes into `Settings` and `apply_settings` applies it as a restart
+//! would; Back or `ui_cancel` saves the file and pops. Its rebind row
+//! captures the next key, button or stick direction (`D-164`) and persists
+//! the action map's user layer. The pad's Start pauses through a binding
+//! added in code ([`add_pause_pad_binding`]).
 
-use std::fmt::Write as _;
-
-use glam::Vec2;
 use tungsten::core::ui::{
-    Align, Anchor, CursorIcon, LayoutStyle, SliderRange, StyleOverrides, TextOverrides, UiEvent,
-    UiLayer, UiRouter, UiTrack, UiTree, UiValue, WidgetId,
+    LayoutStyle, Sizing, SliderRange, UiEvent, UiRouter, UiTree, UiValue, WidgetId,
 };
 use tungsten::core::{
-    ActionMap, Binding, DisplayMode, DisplayState, Easing, EventQueue, GamepadButton, RoutedInput,
-    Settings, Time, World,
+    ActionMap, AssetRegistry, Binding, DisplayMode, DisplayState, EventQueue, GamepadButton,
+    RoutedInput, Settings, Time, World,
 };
-use tungsten::{
-    GameState, RootCover, StateContext, StateId, StateStack, Transition, TransitionEffect,
-    apply_settings,
-};
+use tungsten::{GameState, RootCover, StateContext, StateId, StateStack, apply_settings};
 
-/// The fade every screen change takes, each way, in seconds.
-pub const FADE_SECS: f32 = 0.15;
+use crate::controls;
+use crate::hud::{self, PlayHud};
+use crate::inventory::{self, InventoryState};
+use crate::theme;
+use crate::widgets;
+
 /// The action the play state pauses on: P in the engine defaults, and the
 /// pad's Start, which [`add_pause_pad_binding`] adds in code.
 pub const PAUSE_ACTION: &str = "state_pause";
 /// The action the settings screen rebinds.
 pub const REBIND_ACTION: &str = "jump";
-
-/// A fade to black and back, [`FADE_SECS`] each way.
-#[must_use]
-pub fn fade() -> Transition {
-    Transition::new(
-        TransitionEffect::Fade {
-            color: [0.0, 0.0, 0.0, 1.0],
-        },
-        FADE_SECS,
-    )
-}
 
 /// Adds the pad's Start to [`PAUSE_ACTION`]'s bindings, once.
 pub fn add_pause_pad_binding(world: &mut World) {
@@ -56,61 +47,6 @@ pub fn add_pause_pad_binding(world: &mut World) {
         bindings.push(start);
         map.replace_bindings(PAUSE_ACTION, bindings);
     }
-}
-
-fn transparent() -> StyleOverrides {
-    StyleOverrides {
-        background: Some([0, 0, 0, 0]),
-        border_width: Some(0.0),
-        ..StyleOverrides::default()
-    }
-}
-
-fn heading(tree: &mut UiTree, parent: WidgetId, text: &str, size: f32) -> WidgetId {
-    let label = tree.label(parent, text);
-    tree.set_overrides(
-        label,
-        StyleOverrides {
-            text: TextOverrides {
-                size: Some(size),
-                line_height: Some(size * 1.3),
-                weight: Some(700),
-                ..TextOverrides::default()
-            },
-            ..StyleOverrides::default()
-        },
-    );
-    label
-}
-
-fn button(tree: &mut UiTree, parent: WidgetId, text: &str) -> WidgetId {
-    let id = tree.button(parent, text);
-    tree.set_cursor(id, Some(CursorIcon::Pointer));
-    id
-}
-
-/// A modal screen root on the popup layer, centred.
-fn screen_root(tree: &mut UiTree, width: f32) -> WidgetId {
-    let mut style = LayoutStyle::column()
-        .with_padding(20.0)
-        .with_gap(10.0)
-        .with_size(
-            tungsten::core::ui::Sizing::Px(width),
-            tungsten::core::ui::Sizing::Auto,
-        )
-        .anchored(Anchor::Center, Vec2::ZERO);
-    style.align_items = Align::Stretch;
-    let root = tree.add_root(UiLayer::GamePopup, style);
-    tree.set_modal(root, true);
-    root
-}
-
-/// Slides a new screen up into place over 0.2 real seconds.
-fn slide_in(tree: &mut UiTree, root: WidgetId) {
-    tree.animate(
-        root,
-        UiTrack::translation(Vec2::new(0.0, 24.0), Vec2::ZERO, 0.2).with_easing(Easing::QuadOut),
-    );
 }
 
 fn activated(world: &World, widget: WidgetId) -> bool {
@@ -129,37 +65,50 @@ fn cancelled(world: &World, scope: WidgetId) -> bool {
         })
 }
 
-fn stack(world: &mut World) -> &mut StateStack {
+pub(crate) fn stack(world: &mut World) -> &mut StateStack {
     world.resource_mut::<StateStack>()
 }
 
 // ---- play ----
 
-/// The play state's HUD row: a `World` resource while `play` is on the
-/// stack.
-#[derive(Debug)]
-pub struct PlayHud {
-    /// The row's root.
-    pub root: WidgetId,
-    /// Game seconds, written with `set_plain_text` from [`Self::text`].
-    pub timer: WidgetId,
-    /// "Press {action:state_pause} to pause".
-    pub prompt: WidgetId,
-    text: String,
+/// Applies the lab's theme and builds the play screen's roots: the lab HUD
+/// (`Show`) and, when `controls` is set, the controls window (`Hide`), each
+/// inserted as its resource; returns them with their covers for
+/// [`PlayState::new`]. The play HUD comes with the state.
+pub fn build_play_screen(world: &mut World, controls: bool) -> Vec<(WidgetId, RootCover)> {
+    let Some(mut tree) = world.remove_resource::<UiTree>() else {
+        return Vec::new();
+    };
+    theme::apply(world, &mut tree);
+    let lab_hud = {
+        let sprites = world.resource_mut::<AssetRegistry>();
+        hud::build_lab_hud(&mut tree, sprites)
+    };
+    let mut roots = vec![(lab_hud.root, RootCover::Show)];
+    if controls {
+        let window = controls::build_controls(&mut tree);
+        roots.push((window.window, RootCover::Hide));
+        world.insert_resource(window);
+    }
+    world.insert_resource(tree);
+    world.insert_resource(lab_hud);
+    roots
 }
 
-/// The game screen: owns the lab's roots (`Show`, so they stay drawn and
-/// frozen under the pause menu) and a HUD row, counts game time, and pushes
-/// [`PauseState`] behind a fade on [`PAUSE_ACTION`]. Pauses the game clock
-/// while covered.
+/// The game screen: owns the lab's roots, each with its cover (the lab
+/// HUD `Show`, so it stays drawn and frozen under a pushed screen; the
+/// controls window `Hide`, so no pushed screen shares the screen with it),
+/// and the play HUD (`Show`); counts game time; pushes [`PauseState`] on
+/// [`PAUSE_ACTION`] and [`InventoryState`] on `inventory_open`, each
+/// behind a fade. Pauses the game clock while covered.
 pub struct PlayState {
-    roots: Vec<WidgetId>,
+    roots: Vec<(WidgetId, RootCover)>,
 }
 
 impl PlayState {
-    /// A play state that will own `roots`, the lab's.
+    /// A play state that will own `roots`, the lab's, with their covers.
     #[must_use]
-    pub fn new(roots: Vec<WidgetId>) -> Self {
+    pub fn new(roots: Vec<(WidgetId, RootCover)>) -> Self {
         Self { roots }
     }
 }
@@ -170,37 +119,17 @@ impl GameState for PlayState {
     }
 
     fn on_enter(&mut self, ctx: &mut StateContext) {
-        let tree = ctx.world.resource_mut::<UiTree>();
-        let mut style = LayoutStyle::row()
-            .with_padding(8.0)
-            .with_gap(16.0)
-            .anchored(Anchor::BottomStart, Vec2::new(16.0, 16.0));
-        style.align_items = Align::Center;
-        let root = tree.add_root(UiLayer::Game, style);
-        tree.set_hit_testable(root, false);
-        let timer = tree.label(root, "0.0 s");
-        tree.set_overrides(
-            timer,
-            StyleOverrides {
-                text: TextOverrides {
-                    family: Some("mono".to_owned()),
-                    ..TextOverrides::default()
-                },
-                ..StyleOverrides::default()
-            },
-        );
-        let prompt = tree.label(root, "");
-        tree.set_prompt(prompt, "Press {action:state_pause} to pause");
+        let play_hud = hud::build_play_hud(ctx.world.resource_mut::<UiTree>());
         let stack = stack(ctx.world);
-        for owned in self.roots.iter().copied().chain([root]) {
-            stack.own_root(owned, RootCover::Show);
+        for (owned, cover) in self
+            .roots
+            .iter()
+            .copied()
+            .chain([(play_hud.root, RootCover::Show)])
+        {
+            stack.own_root(owned, cover);
         }
-        ctx.world.insert_resource(PlayHud {
-            root,
-            timer,
-            prompt,
-            text: String::with_capacity(16),
-        });
+        ctx.world.insert_resource(play_hud);
     }
 
     fn on_exit(&mut self, ctx: &mut StateContext) {
@@ -216,21 +145,21 @@ impl GameState for PlayState {
     }
 
     fn update(&mut self, world: &mut World) {
-        let seconds = world.resource::<Time>().elapsed();
-        if let Some(mut hud) = world.remove_resource::<PlayHud>() {
-            hud.text.clear();
-            let _ = write!(hud.text, "{seconds:.1} s");
+        hud::write_play_timer(world);
+        let pressed = |action: &str| {
             world
-                .resource_mut::<UiTree>()
-                .set_plain_text(hud.timer, &hud.text);
-            world.insert_resource(hud);
+                .get_resource::<ActionMap>()
+                .zip(world.get_resource::<RoutedInput>())
+                .is_some_and(|(map, routed)| map.just_pressed(routed, action))
+        };
+        let (pause, open) = (pressed(PAUSE_ACTION), pressed(inventory::OPEN_ACTION));
+        if world.resource::<StateStack>().is_transitioning() {
+            return;
         }
-        let pressed = world
-            .get_resource::<ActionMap>()
-            .zip(world.get_resource::<RoutedInput>())
-            .is_some_and(|(map, routed)| map.just_pressed(routed, PAUSE_ACTION));
-        if pressed && !world.resource::<StateStack>().is_transitioning() {
-            stack(world).request_push_transition(PauseState, fade());
+        if pause {
+            stack(world).request_push_transition(PauseState, theme::fade());
+        } else if open {
+            stack(world).request_push_transition(InventoryState, theme::fade());
         }
     }
 }
@@ -246,13 +175,18 @@ pub struct PauseMenu {
     pub resume: WidgetId,
     /// "Settings".
     pub settings: WidgetId,
+    /// "Inventory".
+    pub inventory: WidgetId,
     /// The prompt row.
     pub prompt: WidgetId,
+    /// The button that pushed the screen above, which takes focus back.
+    opened: Option<WidgetId>,
 }
 
-/// The pause screen: a modal "Paused" menu (Resume, Settings) with a prompt
-/// row, owned with `Hide`; Resume or `ui_cancel` pops it and Settings
-/// pushes [`SettingsState`], each behind a fade.
+/// The pause screen: a modal "Paused" menu (Resume, Settings, Inventory)
+/// with a prompt row, owned with `Hide`; Resume or `ui_cancel` pops it,
+/// Settings pushes [`SettingsState`] and Inventory [`InventoryState`], each
+/// behind a fade.
 pub struct PauseState;
 
 impl GameState for PauseState {
@@ -262,23 +196,26 @@ impl GameState for PauseState {
 
     fn on_enter(&mut self, ctx: &mut StateContext) {
         let tree = ctx.world.resource_mut::<UiTree>();
-        let root = screen_root(tree, 260.0);
-        heading(tree, root, "Paused", 24.0);
-        let resume = button(tree, root, "Resume");
-        let settings = button(tree, root, "Settings");
-        let prompt = tree.label(root, "");
-        tree.set_prompt(
-            prompt,
+        let root = widgets::screen_root(tree, PAUSE_WIDTH);
+        widgets::heading(tree, root, "Paused");
+        let resume = widgets::button(tree, root, "Resume");
+        let settings = widgets::button(tree, root, "Settings");
+        let inventory = widgets::button(tree, root, "Inventory");
+        let prompt = widgets::prompt_row(
+            tree,
+            root,
             "{action:ui_accept} select   {action:ui_cancel} resume",
         );
         tree.focus(resume);
-        slide_in(tree, root);
+        theme::slide_in(tree, root);
         stack(ctx.world).own_root(root, RootCover::Hide);
         ctx.world.insert_resource(PauseMenu {
             root,
             resume,
             settings,
+            inventory,
             prompt,
+            opened: None,
         });
     }
 
@@ -287,8 +224,12 @@ impl GameState for PauseState {
     }
 
     fn on_resume(&mut self, ctx: &mut StateContext) {
-        if let Some(settings) = ctx.world.get_resource::<PauseMenu>().map(|m| m.settings) {
-            ctx.world.resource_mut::<UiTree>().focus(settings);
+        if let Some(button) = ctx
+            .world
+            .get_resource::<PauseMenu>()
+            .map(|menu| menu.opened.unwrap_or(menu.settings))
+        {
+            ctx.world.resource_mut::<UiTree>().focus(button);
         }
     }
 
@@ -296,14 +237,19 @@ impl GameState for PauseState {
         let Some(menu) = world.get_resource::<PauseMenu>() else {
             return;
         };
-        let (root, resume, settings) = (menu.root, menu.resume, menu.settings);
+        let (root, resume, settings, inventory) =
+            (menu.root, menu.resume, menu.settings, menu.inventory);
         if world.resource::<StateStack>().is_transitioning() {
             return;
         }
         if activated(world, resume) || cancelled(world, root) {
-            stack(world).request_pop_transition(fade());
+            stack(world).request_pop_transition(theme::fade());
         } else if activated(world, settings) {
-            stack(world).request_push_transition(SettingsState, fade());
+            world.resource_mut::<PauseMenu>().opened = Some(settings);
+            stack(world).request_push_transition(SettingsState, theme::fade());
+        } else if activated(world, inventory) {
+            world.resource_mut::<PauseMenu>().opened = Some(inventory);
+            stack(world).request_push_transition(InventoryState, theme::fade());
         }
     }
 }
@@ -354,45 +300,10 @@ fn mode_text(mode: DisplayMode) -> &'static str {
     }
 }
 
-/// A row of the settings screen: a caption filling the space before the
-/// control.
-fn setting_row(tree: &mut UiTree, root: WidgetId, caption: &str) -> WidgetId {
-    let mut style = LayoutStyle::row().with_gap(8.0);
-    style.align_items = Align::Center;
-    let row = tree.panel(root, style);
-    tree.set_overrides(row, transparent());
-    let label = tree.label(row, caption);
-    tree.set_layout_style(
-        label,
-        LayoutStyle::default().with_size(
-            tungsten::core::ui::Sizing::Fill,
-            tungsten::core::ui::Sizing::Auto,
-        ),
-    );
-    row
-}
-
-fn slider(
-    tree: &mut UiTree,
-    row: WidgetId,
-    range: SliderRange,
-    value: f32,
-    name: &str,
-) -> WidgetId {
-    let id = tree.slider(row, range, value);
-    tree.set_layout_style(
-        id,
-        LayoutStyle::default().with_size(
-            tungsten::core::ui::Sizing::Px(140.0),
-            tungsten::core::ui::Sizing::Auto,
-        ),
-    );
-    tree.set_accessible_name(id, Some(name.to_owned()));
-    tree.set_cursor(id, Some(CursorIcon::Pointer));
-    id
-}
-
 const REBIND_PROMPT: &str = "{action:jump}";
+
+/// The pause menu's width, in UI units.
+const PAUSE_WIDTH: f32 = 240.0;
 
 impl GameState for SettingsState {
     fn id(&self) -> StateId {
@@ -411,39 +322,43 @@ impl GameState for SettingsState {
                 .map_or(DisplayMode::Windowed, |state| state.display_mode)
         });
         let tree = ctx.world.resource_mut::<UiTree>();
-        let root = screen_root(tree, 380.0);
-        heading(tree, root, "Settings", 24.0);
-        let display_mode = button(tree, root, mode_text(mode));
-        let row = setting_row(tree, root, "UI scale");
-        let ui_scale = slider(
+        let root = widgets::screen_root(tree, widgets::setting_width(0.0));
+        widgets::heading(tree, root, "Settings");
+        let display_mode = widgets::button(tree, root, mode_text(mode));
+        let (_, ui_scale) = widgets::slider_row(
             tree,
-            row,
+            root,
+            "UI scale",
             SliderRange::new(0.5, 2.0).with_step(0.25),
             settings.ui_scale().unwrap_or(1.0),
-            "UI scale",
         );
-        let row = setting_row(tree, root, "Text scale");
-        let text_scale = slider(
+        let (_, text_scale) = widgets::slider_row(
             tree,
-            row,
+            root,
+            "Text scale",
             SliderRange::new(0.75, 2.0).with_step(0.25),
             settings.text_scale().unwrap_or(1.0),
-            "Text scale",
         );
-        let row = setting_row(tree, root, "Volume");
-        let volume = slider(
+        let (_, volume) = widgets::slider_row(
             tree,
-            row,
+            root,
+            "Volume",
             SliderRange::new(0.0, 100.0).with_step(5.0),
             settings.master_volume().unwrap_or(1.0) * 100.0,
-            "Volume",
         );
-        let row = setting_row(tree, root, "Jump");
-        let rebind = button(tree, row, "");
+        let (row, _) = widgets::caption_row(tree, root, "Jump");
+        let rebind = widgets::button(tree, row, "");
+        tree.set_layout_style(
+            rebind,
+            LayoutStyle {
+                width: Sizing::Px(theme::CONTROL_WIDTH),
+                ..widgets::button_style()
+            },
+        );
         tree.set_prompt(rebind, REBIND_PROMPT);
-        let back = button(tree, root, "Back");
+        let back = widgets::button(tree, root, "Back");
         tree.focus(display_mode);
-        slide_in(tree, root);
+        theme::slide_in(tree, root);
         stack(ctx.world).own_root(root, RootCover::Hide);
         ctx.world.insert_resource(SettingsMenu {
             root,
@@ -485,7 +400,7 @@ impl GameState for SettingsState {
             {
                 println!("settings not saved: {error}");
             }
-            stack(world).request_pop_transition(fade());
+            stack(world).request_pop_transition(theme::fade());
         }
         world.insert_resource(menu);
     }
@@ -514,22 +429,7 @@ fn settings_event(world: &mut World, menu: &mut SettingsMenu, event: UiEvent) ->
     let scales = [menu.ui_scale, menu.text_scale];
     match event {
         UiEvent::Activated { widget, .. } if widget == menu.display_mode => {
-            let current = world
-                .get_resource::<Settings>()
-                .and_then(Settings::display_mode)
-                .or_else(|| {
-                    world
-                        .get_resource::<DisplayState>()
-                        .map(|state| state.display_mode)
-                })
-                .unwrap_or(DisplayMode::Windowed);
-            let at = MODES.iter().position(|mode| *mode == current).unwrap_or(0);
-            let next = MODES[(at + 1) % MODES.len()];
-            change_settings(world, |settings| settings.set_display_mode(Some(next)));
-            menu.display_requests += 1;
-            world
-                .resource_mut::<UiTree>()
-                .set_text(menu.display_mode, mode_text(next));
+            cycle_display_mode(world, menu);
         }
         UiEvent::Activated { widget, .. } if widget == menu.rebind => {
             world
@@ -567,11 +467,7 @@ fn settings_event(world: &mut World, menu: &mut SettingsMenu, event: UiEvent) ->
             widget,
             value: UiValue::Number(value),
             ..
-        } if widget == menu.volume => {
-            change_settings(world, |settings| {
-                settings.set_master_volume(Some(value / 100.0));
-            });
-        }
+        } if widget == menu.volume => set_volume(world, value),
         UiEvent::InputCaptured {
             widget, binding, ..
         } if widget == menu.rebind => {
@@ -588,6 +484,49 @@ fn settings_event(world: &mut World, menu: &mut SettingsMenu, event: UiEvent) ->
         _ => {}
     }
     false
+}
+
+/// The display button's action: the mode after the current one of
+/// windowed, borderless and exclusive, set in `Settings` and applied, and
+/// the button's text. The `display` fixture runs it too.
+pub fn cycle_display_mode(world: &mut World, menu: &mut SettingsMenu) {
+    let current = world
+        .get_resource::<Settings>()
+        .and_then(Settings::display_mode)
+        .or_else(|| {
+            world
+                .get_resource::<DisplayState>()
+                .map(|state| state.display_mode)
+        })
+        .unwrap_or(DisplayMode::Windowed);
+    let at = MODES.iter().position(|mode| *mode == current).unwrap_or(0);
+    let next = MODES[(at + 1) % MODES.len()];
+    change_settings(world, |settings| settings.set_display_mode(Some(next)));
+    menu.display_requests += 1;
+    world
+        .resource_mut::<UiTree>()
+        .set_text(menu.display_mode, mode_text(next));
+}
+
+/// The volume slider's action: the master volume at `percent`, applied.
+pub fn set_volume(world: &mut World, percent: f32) {
+    change_settings(world, |settings| {
+        settings.set_master_volume(Some(percent / 100.0));
+    });
+}
+
+/// One step of the volume slider, as an arrow key moves it: 5 down, or up
+/// from 0, then [`set_volume`]. The `display` fixture runs it.
+pub fn step_volume(world: &mut World, menu: &SettingsMenu) {
+    let tree = world.resource_mut::<UiTree>();
+    let value = tree.slider_value(menu.volume).unwrap_or(100.0);
+    let next = if value >= 5.0 {
+        value - 5.0
+    } else {
+        value + 5.0
+    };
+    tree.set_slider_value(menu.volume, next);
+    set_volume(world, next);
 }
 
 /// Whether `binding` is a pad's: a button or a stick direction.
@@ -626,166 +565,4 @@ fn rebind(world: &mut World, binding: Binding) {
     {
         println!("bindings not saved: {error}");
     }
-}
-
-// ---- the menu fixtures ----
-
-/// The menu fixtures' menu: a `World` resource.
-#[derive(Debug)]
-pub struct BudgetMenu {
-    /// The root.
-    pub root: WidgetId,
-}
-
-/// Item names for the menu's buttons: varied letters, so a first open
-/// rasterizes a realistic set of glyphs.
-const ITEMS: [&str; 46] = [
-    "Longsword",
-    "Quartz Ring",
-    "Healing Draught",
-    "Iron Buckler",
-    "Lantern",
-    "Map of Vexley",
-    "Jade Amulet",
-    "Rope (50 ft)",
-    "Flint & Steel",
-    "Bedroll",
-    "Wizard's Hat",
-    "Cloak of Mist",
-    "Throwing Axe",
-    "Spyglass",
-    "Bag of Holding",
-    "Zephyr Boots",
-    "Kettle",
-    "Quill & Ink",
-    "Obsidian Dagger",
-    "Warhammer",
-    "Elixir No. 9",
-    "Yew Longbow",
-    "Arrows x24",
-    "Gauntlets",
-    "Tome of Frost",
-    "Crowbar",
-    "Hourglass",
-    "Lockpicks",
-    "Mirror Shard",
-    "Pickaxe",
-    "Silver Key",
-    "Torch",
-    "Waterskin",
-    "Xylophone",
-    "Brass Compass",
-    "Dice Set",
-    "Fishing Rod",
-    "Grappling Hook",
-    "Herb Pouch",
-    "Ivory Comb",
-    "Jester's Bell",
-    "Knight's Crest",
-    "Moonstone",
-    "Nightshade",
-    "Ox Horn",
-    "Prism",
-];
-
-/// Builds the menu fixtures' 100-widget menu into `tree`: a centred root
-/// holding a title, a row of four columns of 46 buttons and a footer. With
-/// each button's label, the tree holds 1 + 1 + 1 + 4 + 92 + 1 = 100 nodes.
-/// Hidden when `hidden`.
-pub fn build_budget_menu(tree: &mut UiTree, hidden: bool) -> BudgetMenu {
-    let mut style = LayoutStyle::column()
-        .with_padding(16.0)
-        .with_gap(10.0)
-        .anchored(Anchor::Center, Vec2::ZERO);
-    style.align_items = Align::Center;
-    let root = tree.add_root(UiLayer::Game, style);
-    heading(tree, root, "Inventory — 46 items", 26.0);
-    let row = tree.panel(root, LayoutStyle::row().with_gap(10.0));
-    tree.set_overrides(row, transparent());
-    let columns: Vec<WidgetId> = (0..4)
-        .map(|_| {
-            let column = tree.panel(row, LayoutStyle::column().with_gap(4.0));
-            tree.set_overrides(column, transparent());
-            column
-        })
-        .collect();
-    for (i, item) in ITEMS.iter().enumerate() {
-        button(tree, columns[i % columns.len()], item);
-    }
-    tree.label(root, "Quick-sort: weight, value, rarity — 9 kg free");
-    if hidden {
-        tree.set_visibility(root, tungsten::core::ui::Visibility::Hidden);
-    }
-    BudgetMenu { root }
-}
-
-/// The frames at which the `menu-prewarm` and `menu-cold` fixtures show,
-/// hide and show the menu again.
-pub const MENU_SHOW: u64 = 240;
-/// See [`MENU_SHOW`].
-pub const MENU_HIDE: u64 = 300;
-/// See [`MENU_SHOW`].
-pub const MENU_REOPEN: u64 = 360;
-
-/// Counts frames for the menu fixtures; a `World` resource.
-#[derive(Debug, Default)]
-pub struct FixtureClock {
-    /// Frames counted, the current one included.
-    pub frame: u64,
-}
-
-/// Shows the hidden menu at frame [`MENU_SHOW`], hides it at
-/// [`MENU_HIDE`] and shows it again at [`MENU_REOPEN`], printing each
-/// frame index for the first-open check.
-pub fn menu_open_system(world: &mut World) {
-    let Some(clock) = world.get_resource_mut::<FixtureClock>() else {
-        return;
-    };
-    clock.frame += 1;
-    let frame = clock.frame;
-    let Some(root) = world.get_resource::<BudgetMenu>().map(|menu| menu.root) else {
-        return;
-    };
-    let (visibility, verb) = match frame {
-        MENU_SHOW => (tungsten::core::ui::Visibility::Visible, "shown"),
-        MENU_HIDE => (tungsten::core::ui::Visibility::Hidden, "hidden"),
-        MENU_REOPEN => (tungsten::core::ui::Visibility::Visible, "reopened"),
-        _ => return,
-    };
-    world
-        .resource_mut::<UiTree>()
-        .set_visibility(root, visibility);
-    println!("ui_lab menu: {verb} at frame {frame}");
-}
-
-/// The `menus` fixture's script, by frame at smoke's pinned dt: pause at
-/// frame 10, settings at 40, a capture started at 60 and cancelled at 70,
-/// Back at 80 and Resume at 110, so the run is back in play well before
-/// frame 150.
-pub fn menus_script_system(world: &mut World) {
-    let Some(clock) = world.get_resource_mut::<FixtureClock>() else {
-        return;
-    };
-    clock.frame += 1;
-    let frame = clock.frame;
-    match frame {
-        10 => {
-            stack(world).request_push_transition(PauseState, fade());
-        }
-        40 => {
-            stack(world).request_push_transition(SettingsState, fade());
-        }
-        60 => {
-            if let Some(rebind) = world.get_resource::<SettingsMenu>().map(|m| m.rebind) {
-                world.resource_mut::<UiRouter>().capture_next_input(rebind);
-            }
-        }
-        70 => world.resource_mut::<UiRouter>().cancel_capture(),
-        80 | 110 => {
-            stack(world).request_pop_transition(fade());
-        }
-        _ => return,
-    }
-    let top = world.resource::<StateStack>().active_id().unwrap_or("");
-    println!("ui_lab menus: frame {frame}, top '{top}'");
 }

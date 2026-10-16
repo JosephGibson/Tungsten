@@ -420,6 +420,8 @@ Suggested future sequence: finalize the architecture/API/acceptance criteria; bu
 | **M6** examples | One example at a time, per the table above; examples 01, 03 and 04 in one pass each with W12b's move onto the template layout (implementation plan amendment 6). | Examples | Per-example smoke; workload versions bumped where benchmark work changes. |
 | Later | Virtualization, editable fields and IME, accessibility, docking, data-defined screens, string tables and localization, bitmap fonts (with T2, `D-126`), an editable inspector and a command console (§14). | | Their own plans. |
 
+Between M5 and M6, M59 (0.79) read M54–M58's UI work in a QA pass (two fixes, a third finding to the known issues) and reworked example 05 into the reference M6 copies: one module per pattern, an inventory screen driven by every device, shorter transitions and one theme in which every screen is centred and aligned at three window sizes.
+
 Decisions this work will likely need (IDs unassigned; each adds its `DECISION_INDEX.md` row in the same change):
 
 - UI dependency admission under `D-015` (Taffy first; AccessKit and a clipboard crate later).

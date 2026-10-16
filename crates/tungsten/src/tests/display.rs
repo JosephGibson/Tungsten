@@ -103,3 +103,24 @@ fn engine_display_input_system_uses_engine_actions() {
     assert_eq!(requested.vsync, !current.vsync);
     assert_eq!(requested.present_mode, None);
 }
+
+#[test]
+fn an_exclusive_request_over_borderless_changes_no_mode() {
+    let current = DisplayState {
+        display_mode: DisplayMode::BorderlessFullscreen,
+        ..DisplayState::default()
+    };
+    let requested = DisplayState {
+        display_mode: DisplayMode::ExclusiveFullscreen,
+        ..current
+    };
+    assert!(
+        !DisplayDelta::between(&current, &requested).display_mode_changed,
+        "exclusive runs as borderless, which the window already is"
+    );
+    let windowed = DisplayState {
+        display_mode: DisplayMode::Windowed,
+        ..current
+    };
+    assert!(DisplayDelta::between(&windowed, &requested).display_mode_changed);
+}

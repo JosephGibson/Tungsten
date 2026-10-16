@@ -712,6 +712,25 @@
       "questions": []
     },
     {
+      "id": "uilab",
+      "row": "UI lab reference and QA",
+      "label": "UI lab reference and QA",
+      "group": "ui-input",
+      "kind": "release",
+      "level": "B",
+      "title": "A UI lab to copy from",
+      "summary": "A QA pass over the UI work since M54, windowed mode that keeps its size through resizes and fullscreen switches, and the UI lab reworked into a reference: documented modules, an inventory screen, shorter transitions and one aligned theme.",
+      "note": "The owner's request of 2026-10-15, after M58; no implementation-plan card.",
+      "src": ["docs/plans/1.0/w01-ui-text-suite.md §11", "docs/known-issues.md"],
+      "slug": "ui-lab-reference",
+      "complexity": 3,
+      "effort": "XL",
+      "shows": "see",
+      "roles": [],
+      "flags": ["api", "visual"],
+      "questions": []
+    },
+    {
       "id": "w6bc",
       "row": "W6b and W6c",
       "label": "W6b and W6c",
