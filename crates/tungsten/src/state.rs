@@ -2,6 +2,11 @@
 //!
 //! Push pauses old top; pop/replace exits and auto-despawns matching `SceneEntity`s.
 //!
+//! M60: under `StatePlugin` a prefab queued from a scene entity
+//! (`CommandBuffer::spawn_prefab_from`) takes its `SceneEntity` at the
+//! command flush, so it leaves with its state; one whose source an earlier
+//! command despawned, as a state's exit does, is dropped.
+//!
 //! M31 (`D-093`): a `request_*_transition` call holds its command behind a
 //! screen transition. The dispatcher runs the command on the frame the `Out`
 //! phase completes, with the same hooks and despawns as a plain request.
@@ -30,7 +35,10 @@ pub struct StateContext<'a> {
     pub state_id: StateId,
 }
 
-/// State-owned entity marker.
+/// State-owned entity marker. Under [`StatePlugin`](crate::StatePlugin) a
+/// prefab queued from an entity that carries one
+/// ([`CommandBuffer::spawn_prefab_from`]) takes a copy, so it leaves with
+/// the same state.
 #[derive(Debug, Clone, Copy)]
 pub struct SceneEntity {
     pub state_id: StateId,

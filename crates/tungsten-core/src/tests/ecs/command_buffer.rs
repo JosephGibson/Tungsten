@@ -160,3 +160,53 @@ fn bundle_forms_record_one_insert_per_component() {
         vec![(true, 0), (true, 1), (false, 1), (true, 0), (true, 1)]
     );
 }
+
+#[test]
+fn a_command_stays_24_bytes() {
+    assert_eq!(std::mem::size_of::<Command>(), 24);
+}
+
+#[test]
+fn a_derive_after_a_run_adds_one_archetype_per_derived_type() {
+    #[derive(Clone)]
+    struct A;
+    #[derive(Clone)]
+    struct B;
+
+    let mut world = World::new();
+    world.inherit_from_source::<A>();
+    world.inherit_from_source::<B>();
+    let source = world.spawn_with((A, B));
+    // The spawn without a source makes the run's archetype, P.
+    let mut buffer = CommandBuffer::new();
+    buffer.spawn_with((Position { x: 0.0, y: 0.0 }, 7u32));
+    world.flush(buffer);
+    let before = world.archetypes.archetypes.len();
+
+    let mut buffer = CommandBuffer::new();
+    let pending = buffer.spawn_with((Position { x: 1.0, y: 2.0 }, 8u32));
+    buffer.derive_pending(source, pending);
+    world.flush(buffer);
+    let added: Vec<Vec<TypeId>> = world.archetypes.archetypes[before..]
+        .iter()
+        .map(|arch| arch.component_types.to_vec())
+        .collect();
+    let key = |types: &[TypeId]| {
+        let mut types = types.to_vec();
+        types.sort_unstable();
+        types
+    };
+    let p = [TypeId::of::<Position>(), TypeId::of::<u32>()];
+    let a = TypeId::of::<A>();
+    let b = TypeId::of::<B>();
+    assert_eq!(
+        added,
+        [key(&[p[0], p[1], a]), key(&[p[0], p[1], a, b])],
+        "P+A, then P+A+B"
+    );
+    let spawned: Vec<u32> = world
+        .query::<(&u32, &A, &B)>()
+        .map(|(n, _, _)| *n)
+        .collect();
+    assert_eq!(spawned, [8]);
+}

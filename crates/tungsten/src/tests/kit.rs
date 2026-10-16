@@ -27,6 +27,7 @@ use crate::kit::{
     StateMachinePlugin, TopDownMover, TopDownMoverPlugin, TriggerEntered, TriggerZone,
     cursor_to_world, damage, despawn_recursive, spawn_child,
 };
+use crate::state::{GameState, SceneEntity, StateContext, StateId, StateStack};
 use crate::testing::Harness;
 
 /// `post_update` with `DefaultPlugins`, then the hierarchy, animation,
@@ -654,6 +655,134 @@ fn a_spawner_spawns_its_prefab_on_the_game_clock_at_its_position() {
     assert_eq!(
         harness.world().get::<Spawner>(nest).unwrap().remaining(),
         Some(0)
+    );
+}
+
+/// A level whose `on_enter` spawns a `slime` spawner at x 10 with its
+/// `SceneEntity`.
+struct Level;
+
+impl GameState for Level {
+    fn id(&self) -> StateId {
+        "level"
+    }
+
+    fn on_enter(&mut self, ctx: &mut StateContext) {
+        ctx.world.spawn_with((
+            Transform::from_position(Vec2::new(10.0, 0.0)),
+            Spawner::new("slime", 0.1),
+            SceneEntity {
+                state_id: ctx.state_id,
+            },
+        ));
+    }
+
+    fn on_exit(&mut self, _ctx: &mut StateContext) {}
+
+    fn update(&mut self, _world: &mut World) {}
+}
+
+/// The kit app with prefab `slime` at dt 0.05 s after one frame, a control
+/// spawner at x 90 outside any state with the level's interval, and `Level`
+/// pushed: both spawners first tick in the next frame, so they share their
+/// phase. Returns the harness and the entity count before the push.
+fn level_harness(test: &str) -> (Harness, u32) {
+    use tungsten_core::{PrefabData, PrefabRegistry};
+
+    let dir = std::env::temp_dir().join(format!("tungsten_kit_{test}_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("slime.json");
+    std::fs::write(&path, r#"{ "tag": "slime" }"#).unwrap();
+    let mut harness = Harness::new(kit_app());
+    let slime = PrefabData::load(&path, harness.world()).unwrap();
+    std::fs::remove_dir_all(&dir).unwrap();
+    harness
+        .world_mut()
+        .resource_mut::<PrefabRegistry>()
+        .insert("slime".to_string(), slime);
+    harness.set_dt(0.05);
+    harness.step(1);
+    spawn_at(&mut harness, 90.0, 0.0, (Spawner::new("slime", 0.1),));
+    let count = harness.world().entity_count();
+    harness
+        .world_mut()
+        .resource_mut::<StateStack>()
+        .request_push(Level);
+    (harness, count)
+}
+
+/// Each slime's x, its spawner's (10 the level's, 90 the control's), and
+/// its state marker's state, by x.
+fn slimes_and_states(harness: &Harness) -> Vec<(f32, Option<StateId>)> {
+    use tungsten_core::Tag;
+
+    let mut found: Vec<_> = harness
+        .world()
+        .query::<(&Tag, &Transform, Option<&SceneEntity>)>()
+        .filter(|(tag, ..)| tag.name == "slime")
+        .map(|(_, transform, marker)| (transform.position.x, marker.map(|m| m.state_id)))
+        .collect();
+    found.sort_by(|a, b| a.0.total_cmp(&b.0));
+    found
+}
+
+fn pop_state(harness: &mut Harness) {
+    harness
+        .world_mut()
+        .resource_mut::<StateStack>()
+        .request_pop();
+}
+
+#[test]
+fn a_spawners_entities_leave_with_its_state() {
+    let (mut harness, count) = level_harness("leave_with_state");
+    harness.step(4);
+    assert_eq!(
+        slimes_and_states(&harness),
+        [
+            (10.0, Some("level")),
+            (10.0, Some("level")),
+            (90.0, None),
+            (90.0, None),
+        ],
+        "the level's spawns take its marker, the control's none"
+    );
+    pop_state(&mut harness);
+    harness.step(1);
+    assert_eq!(
+        slimes_and_states(&harness),
+        [(90.0, None), (90.0, None)],
+        "nothing of the level remains"
+    );
+    assert_eq!(harness.world().query::<&SceneEntity>().count(), 0);
+    assert_eq!(harness.world().entity_count(), count + 2);
+}
+
+#[test]
+fn a_spawner_due_in_its_states_exit_frame_leaves_nothing() {
+    let (mut harness, count) = level_harness("exit_frame");
+    harness.step(3);
+    assert_eq!(
+        slimes_and_states(&harness),
+        [(10.0, Some("level")), (90.0, None)]
+    );
+    // The pop's frame is the next period's end for both spawners.
+    pop_state(&mut harness);
+    harness.step(1);
+    assert_eq!(
+        slimes_and_states(&harness),
+        [(90.0, None), (90.0, None)],
+        "the control spawned in the exit frame; the level left no spawn"
+    );
+    assert_eq!(
+        harness.world().query::<&Spawner>().count(),
+        1,
+        "the control"
+    );
+    assert_eq!(
+        harness.world().entity_count(),
+        count + 2,
+        "the control and its two spawns"
     );
 }
 

@@ -178,6 +178,25 @@ fn two_plugins_with_two_names_each_play_once() {
 }
 
 #[test]
+fn a_replaced_queue_plays_its_events_once() {
+    let (mut world, thud, _) = world();
+    let mut schedule = build(&mut world, &[SoundOnEvent::new("hit_sound", "thud")]);
+    send(&mut world, None);
+    send(&mut world, None);
+    let twice = [(thud, 0.5, false), (thud, 0.5, false)];
+    assert_eq!(frame(&mut world, &mut schedule), twice);
+    world.insert_resource(EventQueue::<Hit>::new());
+    send(&mut world, None);
+    send(&mut world, None);
+    assert_eq!(
+        frame(&mut world, &mut schedule),
+        twice,
+        "the fresh queue's two"
+    );
+    assert_eq!(frame(&mut world, &mut schedule), []);
+}
+
+#[test]
 fn a_frame_without_the_queue_does_nothing() {
     let (mut world, _, _) = world();
     let mut schedule = build(&mut world, &[SoundOnEvent::new("hit_sound", "thud")]);

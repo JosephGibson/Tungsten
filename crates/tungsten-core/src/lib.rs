@@ -57,8 +57,8 @@ pub use display::{
     ScaleMode, WindowSize,
 };
 pub use ecs::{
-    Bundle, CommandBuffer, Entity, EventQueue, OptionalColumn, PendingEntity, ShakeEvent,
-    SquashEvent, With, Without, World,
+    Bundle, CommandBuffer, Entity, EventCursor, EventQueue, EventRead, OptionalColumn,
+    PendingEntity, ShakeEvent, SquashEvent, With, Without, World,
 };
 pub use input::{
     ActionMap, ActionMapError, AxisDirection, Binding, GamepadAxis, GamepadButton, GamepadId,

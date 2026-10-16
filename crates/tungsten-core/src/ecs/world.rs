@@ -2,7 +2,7 @@ use std::any::{TypeId, type_name};
 use std::collections::HashSet;
 
 use super::archetype::{AnyColumn, Archetype, TypedVec};
-use super::bundle::{Bundle, BundleScratch};
+use super::bundle::{Bundle, BundleScratch, BundleSink};
 use super::command_buffer::{Command, CommandBuffer, CommandTarget};
 use super::entity::Entity;
 use super::event_queue::EventQueue;
@@ -24,9 +24,37 @@ pub struct World {
     /// Beside each flusher, the fixed steps' view switch for the same queue.
     event_steppers: Vec<fn(&mut World, EventStep)>,
     event_types: HashSet<TypeId>,
+    /// One deriver per type a spawn from a source takes, in registration
+    /// order ([`inherit_from_source`](Self::inherit_from_source)); each
+    /// stages its value for the target in `bundle_scratch`.
+    source_derivers: Vec<fn(&mut World, Entity, Entity)>,
+    source_types: HashSet<TypeId>,
     /// Staging for [`spawn_with`](Self::spawn_with) and
     /// [`insert_bundle`](Self::insert_bundle).
     bundle_scratch: BundleScratch,
+}
+
+/// The function a spawn from a source takes `T` through, a resource of the
+/// World's own, which no other crate can name.
+struct SourceDerive<T>(fn(&World, Entity) -> Option<T>);
+
+/// What [`World::inherit_from_source`] derives: a clone of the source's `T`.
+fn clone_from_source<T: Clone + 'static>(world: &World, source: Entity) -> Option<T> {
+    world.get::<T>(source).cloned()
+}
+
+/// Stages `T` for `target` from `source` when `target` lacks one and the
+/// registered function gives one.
+fn derive_onto<T: 'static>(world: &mut World, source: Entity, target: Entity) {
+    if world.has::<T>(target) {
+        return;
+    }
+    let Some(&SourceDerive(derive)) = world.get_resource::<SourceDerive<T>>() else {
+        return;
+    };
+    if let Some(value) = derive(world, source) {
+        world.bundle_scratch.put(value);
+    }
 }
 
 /// What [`World::set_fixed_event_view`], [`World::end_fixed_step_events`]
@@ -63,6 +91,8 @@ impl World {
             event_flushers: Vec::new(),
             event_steppers: Vec::new(),
             event_types: HashSet::new(),
+            source_derivers: Vec::new(),
+            source_types: HashSet::new(),
             bundle_scratch: BundleScratch::default(),
         }
     }
@@ -128,6 +158,44 @@ impl World {
     pub fn hold_events_for_fixed_step(&mut self) {
         for i in 0..self.event_steppers.len() {
             (self.event_steppers[i])(self, EventStep::Hold);
+        }
+    }
+
+    /// A spawn from a source
+    /// ([`CommandBuffer::spawn_prefab_from`](crate::ecs::CommandBuffer::spawn_prefab_from))
+    /// takes a clone of the source's `T` when the source has one and the
+    /// spawn does not. Idempotent per type: the first registration of `T`,
+    /// this or [`derive_from_source`](Self::derive_from_source), stands.
+    /// Returns whether `T` was new.
+    pub fn inherit_from_source<T: Clone + 'static>(&mut self) -> bool {
+        self.derive_from_source::<T>(clone_from_source::<T>)
+    }
+
+    /// A spawn from a source takes `derive(world, source)` when that returns
+    /// a value and the spawn has no `T`: what a spawn takes that is not a
+    /// copy, such as the first entity of a spawn chain. Idempotent per type,
+    /// as [`inherit_from_source`](Self::inherit_from_source).
+    pub fn derive_from_source<T: 'static>(
+        &mut self,
+        derive: fn(&World, Entity) -> Option<T>,
+    ) -> bool {
+        if !self.source_types.insert(TypeId::of::<T>()) {
+            return false;
+        }
+        self.resources.insert(SourceDerive(derive));
+        self.source_derivers.push(derive_onto::<T>);
+        true
+    }
+
+    /// Gives `target` what the spawn inheritance derives from `source`, in
+    /// one archetype move after its own components, when anything is given.
+    fn derive_from(&mut self, source: Entity, target: Entity) {
+        self.bundle_scratch.reset();
+        for i in 0..self.source_derivers.len() {
+            (self.source_derivers[i])(self, source, target);
+        }
+        if !self.bundle_scratch.run.is_empty() {
+            self.apply_bundle(target);
         }
     }
 
@@ -739,6 +807,23 @@ impl World {
                         self.despawn(entity);
                     }
                     index += 1;
+                }
+                Command::Derive { source, target } => {
+                    index += 1;
+                    let entity = match target {
+                        CommandTarget::Live(entity) => entity,
+                        CommandTarget::Pending(id) => pending_entities[id as usize],
+                    };
+                    if !self.is_alive(entity) {
+                        continue;
+                    }
+                    // A source an earlier command despawned drops the spawn
+                    // whole: its run has applied, so nothing of it remains.
+                    if self.is_alive(source) {
+                        self.derive_from(source, entity);
+                    } else {
+                        self.despawn(entity);
+                    }
                 }
             }
         }
