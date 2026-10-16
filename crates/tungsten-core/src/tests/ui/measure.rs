@@ -315,3 +315,69 @@ fn a_zero_or_negative_advance_puts_every_glyph_on_one_line() {
         }
     }
 }
+
+// ---- M58: the line limit ----
+
+fn ellipsis(lines: Option<u32>) -> TextStyle {
+    TextStyle::new("sans", 10.0, LINE_HEIGHT).with_layout(
+        TextLayout::default()
+            .with_wrap(TextWrap::Glyph)
+            .with_overflow(crate::text::TextOverflow::Ellipsis {
+                at: crate::text::EllipsisAt::End,
+                lines,
+            }),
+    )
+}
+
+#[test]
+fn a_line_limit_holds_a_definite_width_to_its_lines_per_paragraph() {
+    let mut store = FixedAdvanceMeasure::default();
+    // Ten glyphs at 5 px in 20 px wrap to 4, 4 and 2.
+    let one = node_with(&mut store, "abcdefghij", &ellipsis(Some(1)));
+    let held = store.measure(one, Some(20.0), MeasureWidth::MaxContent);
+    assert_eq!(held.line_count, 1);
+    assert_eq!(held.size, Vec2::new(4.0 * ADVANCE, LINE_HEIGHT));
+    assert_eq!(store.measure(one, None, MeasureWidth::Definite(20.0)), held);
+    assert_eq!(
+        store.commit_layout(one, Vec2::new(20.0, 100.0)).line_count,
+        1,
+        "a commit keeps the limit"
+    );
+    assert_eq!(
+        store
+            .measure(one, None, MeasureWidth::MinContent)
+            .line_count,
+        10,
+        "min-content ignores overflow, as the engine's does"
+    );
+
+    let two = node_with(&mut store, "abcdefghij", &ellipsis(Some(2)));
+    assert_eq!(
+        store
+            .measure(two, None, MeasureWidth::Definite(20.0))
+            .line_count,
+        2
+    );
+    let zero = node_with(&mut store, "abcdefghij\nabcdefghij", &ellipsis(Some(0)));
+    assert_eq!(
+        store
+            .measure(zero, None, MeasureWidth::Definite(20.0))
+            .line_count,
+        2,
+        "0 keeps one line, and each paragraph counts its own"
+    );
+
+    for (style, why) in [
+        (ellipsis(None), "an ellipsis with no limit keeps every line"),
+        (style(TextWrap::Glyph), "a clip keeps every line"),
+    ] {
+        let node = node_with(&mut store, "abcdefghij", &style);
+        assert_eq!(
+            store
+                .measure(node, None, MeasureWidth::Definite(20.0))
+                .line_count,
+            3,
+            "{why}"
+        );
+    }
+}

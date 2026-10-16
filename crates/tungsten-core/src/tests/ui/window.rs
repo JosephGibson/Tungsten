@@ -506,3 +506,113 @@ fn entries_that_are_not_two_finite_numbers_are_dropped_with_a_warning_each() {
     assert!(path.exists(), "the file stays; a save rewrites it");
     assert!(placements.take_load_warnings().is_empty(), "taken once");
 }
+
+// ---- M58: the debug layers' scale and the zoom ----
+
+#[test]
+fn a_debug_window_clamps_to_its_layers_viewport() {
+    let (mut tree, root, _handle, _button) = window();
+    tree.set_debug_scale(0.5);
+    layout(&mut tree);
+    assert!(tree.set_window_position(root, Vec2::new(700.0, 550.0)));
+    layout(&mut tree);
+    assert_eq!(
+        tree.window_position(root),
+        Some(Vec2::new(600.0, 480.0)),
+        "inside the debug layer's 800 by 600 units"
+    );
+    let game = tree.add_root(UiLayer::Game, at(0.0, 0.0, 100.0, 50.0));
+    layout(&mut tree);
+    assert!(tree.set_window_position(game, Vec2::new(700.0, 550.0)));
+    layout(&mut tree);
+    assert_eq!(
+        tree.window_position(game),
+        Some(Vec2::new(300.0, 250.0)),
+        "a game root inside the 400 by 300 viewport"
+    );
+}
+
+#[test]
+fn a_drag_and_a_pixel_wheel_move_a_debug_root_and_panel_in_their_units() {
+    let (mut tree, root, _handle, _button) = window();
+    tree.set_debug_scale(0.5);
+    layout(&mut tree);
+    let mut rig = Rig::new(tree);
+    // The handle spans (50, 50) to (150, 60) in tree units.
+    rig.press(60.0, 55.0);
+    rig.move_to(70.0, 65.0);
+    assert_eq!(
+        rig.tree().window_position(root),
+        Some(Vec2::new(120.0, 120.0)),
+        "10 tree units are 20 of the root's"
+    );
+    rig.release();
+
+    let mut tree = UiTree::new();
+    let debug = tree.add_root(UiLayer::Debug, at(0.0, 0.0, 200.0, 100.0));
+    let panel = tree.scroll_panel(debug, fixed(200.0, 100.0));
+    for _ in 0..10 {
+        tree.panel(panel, fixed(200.0, 40.0));
+    }
+    tree.set_debug_scale(0.5);
+    layout(&mut tree);
+    let mut rig = Rig::new(tree);
+    rig.world.resource_mut::<ScaleFactor>().set_os(2.0);
+    // 30 physical pixels at OS scale 2 are 15 tree units, 30 of the panel's.
+    rig.frame(|input| {
+        input.update_cursor_position(100.0, 50.0);
+        input.add_scroll_pixel_delta(0.0, -30.0);
+    });
+    assert_eq!(rig.tree().scroll(panel), Some(30.0));
+    rig.frame(|input| input.add_scroll_line_delta(0.0, -1.0));
+    assert_eq!(
+        rig.tree().scroll(panel),
+        Some(70.0),
+        "a line stays 40 of the panel's units"
+    );
+}
+
+#[test]
+fn placements_keep_a_zoom_across_a_save_and_drop_a_bad_one_with_a_warning() {
+    let path = tempdir().join("debug_windows.json");
+    let mut placements = WindowPlacements::load(&path);
+    assert_eq!(placements.zoom(), None);
+    for bad in [f32::NAN, 0.0, -1.0, f32::INFINITY] {
+        assert!(!placements.set_zoom(bad), "{bad}");
+    }
+    assert_eq!(placements.zoom(), None, "nothing kept");
+    assert!(placements.set("hud", Vec2::new(1.0, 2.0)));
+    placements.save().unwrap();
+    let json = |path: &PathBuf| -> serde_json::Value {
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+    };
+    assert!(json(&path).get("zoom").is_none(), "no zoom, no key");
+    assert!(placements.set_zoom(1.25));
+    placements.save().unwrap();
+    let saved = json(&path);
+    assert_eq!(saved["version"], 1, "still version 1");
+    assert_eq!(saved["zoom"], 1.25);
+    let mut loaded = WindowPlacements::load(&path);
+    assert!(loaded.take_load_warnings().is_empty());
+    assert_eq!(loaded.zoom(), Some(1.25));
+    assert_eq!(loaded.get("hud"), Some(Vec2::new(1.0, 2.0)));
+
+    for text in [
+        r#"{"version": 1, "windows": {"hud": [3, 4]}}"#,
+        r#"{"version": 1, "zoom": null, "windows": {}}"#,
+    ] {
+        let (_path, mut placements) = load_text(text);
+        assert!(placements.take_load_warnings().is_empty(), "{text}");
+        assert_eq!(placements.zoom(), None, "{text}");
+    }
+    for zoom in ["0", "-1", r#""big""#, "1e39", "[1]"] {
+        let text = format!(r#"{{"version": 1, "zoom": {zoom}, "windows": {{"hud": [3, 4]}}}}"#);
+        let (path, mut placements) = load_text(&text);
+        let warnings = placements.take_load_warnings();
+        assert_eq!(warnings.len(), 1, "{zoom}: {warnings:?}");
+        assert!(warnings[0].contains("zoom"), "{}", warnings[0]);
+        assert_eq!(placements.zoom(), None);
+        assert_eq!(placements.get("hud"), Some(Vec2::new(3.0, 4.0)));
+        assert!(path.exists(), "the file stays; a save rewrites it");
+    }
+}

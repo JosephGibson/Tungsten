@@ -4,7 +4,8 @@
 //! From M57 a movable window on the core UI (`debug_views`): the entity, then
 //! section, row and value columns in a scrolling body. With the UI's routing
 //! installed the pick reads the routed input, so a press the UI took never
-//! picks, at the press's own position.
+//! picks, at the press's own position. From M58 two columns: a header row
+//! per component, then its fields indented, each value in its kind's hue.
 
 use glam::Vec2;
 
@@ -16,10 +17,42 @@ use tungsten_core::ui::WidgetId;
 use tungsten_core::{AssetRegistry, CameraState, Entity, InspectRegistry, Inspectable, World};
 
 use crate::debug_hud::HudCorner;
-use crate::debug_views::{BACKGROUND, Look, Shape, ViewFrame, ViewSpec, ViewWindow, write_rows};
+use crate::debug_views::{
+    AMBER, BORDER, CYAN, Cell, Column, GREEN, Header, PANEL, Row, Shape, Tone, VALUE, VIOLET,
+    ViewFrame, ViewSpec, ViewWindow, Width, look_of, toggle_key, write_table,
+};
 
-/// The inspector's columns: section, row, value.
-const COLUMNS: &[TextAlign] = &[TextAlign::Start, TextAlign::Start, TextAlign::Start];
+/// The inspector's columns (M58): the field, then its value.
+const COLUMNS: &[Column] = &[
+    Column::new(TextAlign::Start, Width::Capped(40), Tone::Label),
+    Column::new(TextAlign::Start, Width::Fill, Tone::Value),
+];
+
+/// A value's hue by its kind, read from its text (M58): `true` and `false`
+/// violet; a number, or a bracketed or parenthesised list of numbers, cyan;
+/// an entity, `Entity(n)`, amber; anything else, a string, green.
+pub(crate) fn value_hue(value: &str) -> [u8; 4] {
+    let number = |text: &str| text.trim().parse::<f64>().is_ok();
+    let list = |open: char, close: char| {
+        value
+            .strip_prefix(open)
+            .and_then(|rest| rest.strip_suffix(close))
+            .is_some_and(|inner| !inner.trim().is_empty() && inner.split(',').all(number))
+    };
+    let entity = value
+        .strip_prefix("Entity(")
+        .and_then(|rest| rest.strip_suffix(')'))
+        .is_some_and(|index| !index.is_empty() && index.bytes().all(|b| b.is_ascii_digit()));
+    if value == "true" || value == "false" {
+        VIOLET
+    } else if number(value) || list('(', ')') || list('[', ']') {
+        CYAN
+    } else if entity {
+        AMBER
+    } else {
+        GREEN
+    }
+}
 
 /// Whether the schedule's `PreUpdate` holds `ui_route`, which
 /// `App::resolve_schedule` records (M57): the pick then reads the routed
@@ -36,23 +69,28 @@ pub struct InspectorState {
     /// [`InspectorState::register`]; the overlay prints them after the
     /// [`InspectRegistry`] resource's rows.
     registered: Vec<(&'static str, InspectFn)>,
-    /// The corner the window opens at when no place is saved for it.
+    /// The corner the window docks at when no place is saved for it: the
+    /// bottom left (M58).
     pub corner: HudCorner,
     /// Space between the window and its corner, in UI units.
     pub padding_px: f32,
     /// The UI font family the window's text takes: the engine font's,
     /// [`ENGINE_FONT_ID`](crate::ENGINE_FONT_ID), by default (M57).
     pub font_id: String,
-    /// Text size in UI units.
+    /// Text size in UI units; 15 (M58), titles two more.
     pub font_size: f32,
-    /// Line height in UI units.
+    /// Line height in UI units; 20 (M58).
     pub line_height: f32,
+    /// The values' and the title's colour; names take the palette's grey
+    /// (M58).
     pub color: [u8; 4],
     /// The window's fill (M57).
     pub background: [u8; 4],
-    /// The window's border colour; the text outline's before M57.
+    /// The window's border colour; the text outline's before M57; brighter
+    /// while the pointer is over the window (M58).
     pub outline_color: [u8; 4],
-    /// The window's border width in UI units; `0.0` draws none.
+    /// The window's border width in physical pixels (M58); `0.0` draws
+    /// none.
     pub outline_px: f32,
     /// Row refresh interval on the frame interval; a new selection
     /// refreshes at once.
@@ -71,16 +109,17 @@ impl Default for InspectorState {
             enabled: false,
             selected: None,
             registered: Vec::new(),
-            // Avoid HUD TopRight and systems overlay BottomRight.
+            // Below the HUD; the systems overlay and the UI inspector take
+            // the right side (M58).
             corner: HudCorner::BottomLeft,
-            padding_px: 12.0,
+            padding_px: 8.0,
             font_id: crate::ENGINE_FONT_ID.to_string(),
-            font_size: 28.0,
-            line_height: 32.0,
-            color: [240, 240, 240, 240],
-            background: BACKGROUND,
-            outline_color: [0, 0, 0, 220],
-            outline_px: 1.5,
+            font_size: 15.0,
+            line_height: 20.0,
+            color: VALUE,
+            background: PANEL,
+            outline_color: BORDER,
+            outline_px: 1.0,
             refresh_interval_ms: 500.0,
             shown_selected: None,
             time_since_refresh_ms: f32::INFINITY,
@@ -160,26 +199,21 @@ impl InspectorState {
     /// The inspector's frame (M57): the selected entity's rows, on its
     /// interval or at once when the selection changed; while it is shown.
     pub(crate) fn update_window(&mut self, world: &World, frame: &mut ViewFrame<'_>) {
+        if frame.closes(self.window.as_ref()) {
+            self.enabled = false;
+        }
         let spec = ViewSpec {
             name: "inspector",
             title: "Inspector",
+            key: toggle_key(world, "engine_toggle_inspector"),
             enabled: self.enabled,
             corner: self.corner,
             padding: self.padding_px,
-            look: Look {
-                family: self.font_id.clone(),
-                size: self.font_size,
-                line_height: self.line_height,
-                color: self.color,
-                background: self.background,
-                border: self.outline_color,
-                border_width: self.outline_px,
-            },
+            strip: false,
+            look: look_of!(self),
             shape: Shape {
                 columns: COLUMNS,
-                header: true,
-                graph: false,
-                scroll: true,
+                header: Header::Line,
             },
         };
         if !frame.sync(&mut self.window, &spec) {
@@ -205,7 +239,7 @@ impl InspectorState {
         if let Some(line) = window.header {
             frame.tree.set_plain_text(line, &header);
         }
-        write_rows(frame.tree, window, &rows);
+        write_table(frame.tree, window, &rows);
     }
 }
 
@@ -396,24 +430,40 @@ pub fn default_inspect_registry() -> InspectRegistry {
     registry
 }
 
-/// The header line and the rows: `mouse 3 to pick` and none with nothing
-/// selected; else `entity <e>` and each section's rows, the registry's
-/// first, then the state's own (deprecated) list.
-fn inspector_rows(state: &InspectorState, world: &World) -> (String, Vec<Vec<String>>) {
+/// The header line and the rows: `middle-click an entity to pick` and none
+/// with nothing selected (M58); else `entity Entity(n)`, then for each
+/// section with rows, the registry's first, then the state's own
+/// (deprecated) list, a header row of its name and its fields indented
+/// below it, each value in its kind's hue (M58).
+fn inspector_rows(state: &InspectorState, world: &World) -> (String, Vec<Row>) {
     let empty = InspectRegistry::new();
     let registry = world.get_resource::<InspectRegistry>().unwrap_or(&empty);
     let Some(entity) = state.selected.filter(|entity| world.is_alive(*entity)) else {
-        return ("mouse 3 to pick".to_string(), Vec::new());
+        return ("middle-click an entity to pick".to_string(), Vec::new());
     };
     let own = state.registered.iter().map(|(label, rows)| (*label, rows));
     let mut rows = Vec::new();
     for (section, inspect) in registry.iter().chain(own) {
-        for (row, value) in inspect(world, entity) {
-            rows.push(vec![section.to_string(), row.to_string(), value]);
+        let fields = inspect(world, entity);
+        if fields.is_empty() {
+            continue;
+        }
+        rows.push(Row {
+            cells: vec![Cell::new(section)],
+            header: true,
+            indent: false,
+        });
+        for (field, value) in fields {
+            let hue = value_hue(&value);
+            rows.push(Row {
+                cells: vec![Cell::new(field), Cell::new(value).colored(hue)],
+                header: false,
+                indent: true,
+            });
         }
     }
     if rows.is_empty() {
-        rows.push(vec!["(no registered components)".to_string()]);
+        rows.push(Row::data(vec![Cell::new("(no registered components)")]));
     }
     (format!("entity {entity}"), rows)
 }

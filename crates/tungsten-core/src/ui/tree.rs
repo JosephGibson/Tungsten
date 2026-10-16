@@ -3,9 +3,11 @@
 //! the dirty flags. Every mutation is a method call that marks only what it
 //! changes: text, visibility, an image's size and layout style mark layout
 //! (and so paint); enabled, a tint, the clip flag, opacity, translation,
-//! scale and a root's fade mark paint (M56), as a mesh's triangles do (M57);
-//! hover, press and focus visibility mark the widgets' styles; roles, names,
-//! the behaviour flags and a root's freeze mark nothing.
+//! scale and a root's fade mark paint (M56), as a mesh's triangles do (M57),
+//! and a shadow and raising a root (M58); the debug scale marks the debug
+//! roots for layout (M58); hover, press and focus visibility mark the
+//! widgets' styles; roles, names, the behaviour flags and a root's freeze
+//! mark nothing.
 
 use std::collections::HashSet;
 
@@ -17,7 +19,8 @@ use crate::text::{FontEpoch, StyledText, TextNodeId, TextStyle};
 use super::anim::RunningTrack;
 use super::id::WidgetId;
 use super::node::{
-    CursorIcon, ImageContent, Node, Role, TextContent, UiLayer, UiVertex, Visibility, WidgetKind,
+    CursorIcon, ImageContent, Node, Role, TextContent, UiLayer, UiShadow, UiVertex, Visibility,
+    WidgetKind,
 };
 use super::prompt::Prompt;
 use super::style::LayoutStyle;
@@ -118,6 +121,11 @@ pub struct UiTree {
     pub(crate) text_scale: Option<f32>,
     /// Roots whose text runs the next [`Self::paint_prewarm`] paints (M56).
     pub(crate) prewarm_roots: Vec<WidgetId>,
+    /// The debug layers' scale as set (M58); `None` is 1.
+    pub(crate) debug_scale: Option<f32>,
+    /// The debug scale of the last layout pass, which the debug roots' rects
+    /// are in; `None` before the first.
+    pub(crate) laid_debug_scale: Option<f32>,
 }
 
 impl std::fmt::Debug for UiTree {
@@ -224,7 +232,8 @@ impl UiTree {
     // ---- building ----
 
     /// A new root panel on `layer`. Roots on the same layer keep their
-    /// insertion order; a later root is in front.
+    /// insertion order, a later root in front, until [`Self::raise`] moves
+    /// one.
     pub fn add_root(&mut self, layer: UiLayer, style: LayoutStyle) -> WidgetId {
         let seq = self.next_root_seq;
         self.next_root_seq += 1;
@@ -241,6 +250,34 @@ impl UiTree {
         self.roots.insert(at, id);
         self.paint_dirty = true;
         id
+    }
+
+    /// Moves `root` after the other roots of its layer (M58), so it paints
+    /// over them and hit testing finds it first. Returns whether the order
+    /// changed, and then marks paint; `false` for a root already in front or
+    /// a widget that is not a root. The router raises a
+    /// [`Role::Window`] root on a primary press over it.
+    pub fn raise(&mut self, root: WidgetId) -> bool {
+        let Some(layer) = self
+            .node(root)
+            .filter(|node| node.parent.is_none())
+            .map(|node| node.layer)
+        else {
+            return false;
+        };
+        let Some(from) = self.roots.iter().position(|id| *id == root) else {
+            return false;
+        };
+        let end = self.roots[from..]
+            .iter()
+            .position(|id| self.node(*id).is_some_and(|node| node.layer != layer))
+            .map_or(self.roots.len(), |offset| from + offset);
+        if from + 1 == end {
+            return false;
+        }
+        self.roots[from..end].rotate_left(1);
+        self.paint_dirty = true;
+        true
     }
 
     pub(crate) fn add_child(
@@ -597,11 +634,12 @@ impl UiTree {
 
     /// Sets the scale every label's text size and line height take, and the
     /// controls whose natural size follows the line height, beside the UI
-    /// scale; clamped to 0.25..=4.0, a value that is not finite or not
+    /// scale, on the `Game` and `GamePopup` layers; the debug layers skip it
+    /// (M58). Clamped to 0.25..=4.0, a value that is not finite or not
     /// positive ignored. Resolved styles and their inheritance stay
     /// unscaled; the scale applies where a label's text node is set. A
-    /// change marks every label for a new text node set and every root for
-    /// layout; an equal value marks nothing.
+    /// change marks every game-layer label for a new text node set and every
+    /// game-layer root for layout; an equal value marks nothing.
     pub fn set_text_scale(&mut self, scale: f32) {
         if !scale.is_finite() || scale <= 0.0 {
             return;
@@ -612,7 +650,9 @@ impl UiTree {
         }
         self.text_scale = Some(scale);
         for slot in &mut self.slots {
-            if let Some(node) = &mut slot.node {
+            if let Some(node) = &mut slot.node
+                && !node.layer.is_debug()
+            {
                 node.text_stale |= node.kind == WidgetKind::Label;
                 node.layout_dirty |= node.parent.is_none();
             }
@@ -624,6 +664,62 @@ impl UiTree {
     #[must_use]
     pub fn text_scale(&self) -> f32 {
         self.text_scale.unwrap_or(1.0)
+    }
+
+    /// The text scale labels and controls on `layer` take: the text scale on
+    /// the game layers, 1 on the debug layers (M58).
+    pub(crate) fn layer_text_scale(&self, layer: UiLayer) -> f32 {
+        if layer.is_debug() {
+            1.0
+        } else {
+            self.text_scale()
+        }
+    }
+
+    // ---- debug scale (M58) ----
+
+    /// Sets how many of the tree's UI units one unit of a `Debug` or
+    /// `DebugPopup` root spans: such a root lays out in the viewport divided
+    /// by it, and paints and is hit at the paint scale times it, so the
+    /// debug layers keep a size of their own whatever scale the game's UI
+    /// takes. Clamped to 1/64..=64 and otherwise kept as given, not rounded;
+    /// a value that is not finite or not positive is ignored. A change marks
+    /// the debug roots for layout and the tree for paint; an equal value
+    /// marks nothing.
+    pub fn set_debug_scale(&mut self, scale: f32) {
+        if !scale.is_finite() || scale <= 0.0 {
+            return;
+        }
+        let scale = scale.clamp(MIN_SCALE, 1.0 / MIN_SCALE);
+        if self.debug_scale() == scale {
+            return;
+        }
+        self.debug_scale = Some(scale);
+        for slot in &mut self.slots {
+            if let Some(node) = &mut slot.node
+                && node.layer.is_debug()
+            {
+                node.layout_dirty |= node.parent.is_none();
+            }
+        }
+        self.paint_dirty = true;
+    }
+
+    /// The debug layers' scale; 1 on a new tree.
+    #[must_use]
+    pub fn debug_scale(&self) -> f32 {
+        self.debug_scale.unwrap_or(1.0)
+    }
+
+    /// How many tree units one unit of a root on `layer` spans in the last
+    /// layout: the debug scale it used on the debug layers, 1 on the game
+    /// layers.
+    pub(crate) fn layer_scale(&self, layer: UiLayer) -> f32 {
+        if layer.is_debug() {
+            self.laid_debug_scale.unwrap_or(1.0)
+        } else {
+            1.0
+        }
     }
 
     // ---- layout style ----
@@ -722,6 +818,27 @@ impl UiTree {
     #[must_use]
     pub fn scale(&self, id: WidgetId) -> Option<f32> {
         self.node(id).map(|node| node.scale)
+    }
+
+    /// Sets the shadow `id` paints under its box, or clears it with `None`
+    /// (M58): one mesh before the box, under the node's map and opacity and
+    /// in the clip the box paints in. Marks paint, never layout; an equal
+    /// value marks nothing.
+    pub fn set_shadow(&mut self, id: WidgetId, shadow: Option<UiShadow>) {
+        let Some(node) = self.node_mut(id) else {
+            return;
+        };
+        if node.shadow == shadow {
+            return;
+        }
+        node.shadow = shadow;
+        self.mark_paint_dirty();
+    }
+
+    /// The shadow set on `id`; `None` when none is set or for an invalid ID.
+    #[must_use]
+    pub fn shadow(&self, id: WidgetId) -> Option<UiShadow> {
+        self.node(id)?.shadow
     }
 
     /// Sets a root's fade, multiplied into its paint as opacity is and

@@ -29,6 +29,14 @@ pub enum UiLayer {
     DebugPopup,
 }
 
+impl UiLayer {
+    /// Whether roots on this layer take the tree's debug scale (M58):
+    /// `Debug` and `DebugPopup`.
+    pub(crate) const fn is_debug(self) -> bool {
+        matches!(self, Self::Debug | Self::DebugPopup)
+    }
+}
+
 /// What a widget is.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -181,6 +189,36 @@ impl UiVertex {
     }
 }
 
+/// A soft shadow a widget paints under its box (M58), set with
+/// [`UiTree::set_shadow`](super::UiTree::set_shadow): the box moved by
+/// `offset` and filled with `color`, ringed `blur` wide by a band that fades
+/// to transparent. Lengths are in the widget's UI units. Paint only: hit
+/// testing ignores it.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct UiShadow {
+    /// The colour under the box, sRGB with straight alpha; the ring fades
+    /// from it to transparent.
+    pub color: [u8; 4],
+    /// The ring's width; a value that is not finite and positive paints no
+    /// shadow.
+    pub blur: f32,
+    /// How far the shadow sits from the box.
+    pub offset: Vec2,
+}
+
+impl UiShadow {
+    /// A shadow of `color`, ringed `blur` wide, moved by `offset`.
+    #[must_use]
+    pub const fn new(color: [u8; 4], blur: f32, offset: Vec2) -> Self {
+        Self {
+            color,
+            blur,
+            offset,
+        }
+    }
+}
+
 /// A label's text and its flattened form, for the accessible name.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TextContent {
@@ -229,6 +267,8 @@ pub(crate) struct Node {
     pub(crate) clip_children: bool,
     /// Scroll panels: their offset and the last layout's maximum (M57).
     pub(crate) scroll: Option<ScrollState>,
+    /// The shadow painted under the box (M58).
+    pub(crate) shadow: Option<UiShadow>,
     pub(crate) layout_style: LayoutStyle,
     pub(crate) visibility: Visibility,
     pub(crate) role: Role,
@@ -307,6 +347,7 @@ impl Node {
             mesh: Vec::new(),
             clip_children: false,
             scroll: None,
+            shadow: None,
             layout_style,
             visibility: Visibility::Visible,
             role: kind.default_role(),

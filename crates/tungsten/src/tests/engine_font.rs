@@ -5,7 +5,9 @@ use tungsten_core::Config;
 use tungsten_core::assets::ResolvedFontFamily;
 use tungsten_core::ui::{WidgetId, WidgetKind};
 
-use super::{ENGINE_FONT, ENGINE_FONT_ID, with_engine_family};
+use super::{
+    ENGINE_FONT, ENGINE_FONT_ID, ENGINE_FONT_SEMIBOLD, ENGINE_FONT_SEMIBOLD_ID, with_engine_family,
+};
 use crate::testing::UiHarness;
 use crate::{App, DebugHud, InspectorState, SystemTimingOverlay};
 
@@ -30,6 +32,15 @@ fn engine_font_is_the_root_jetbrains_mono_regular_with_its_license() {
 }
 
 #[test]
+fn the_semibold_face_is_the_root_jetbrains_mono_semibold() {
+    assert_eq!(
+        ENGINE_FONT_SEMIBOLD,
+        root_font_file("static/JetBrainsMono-SemiBold.ttf").as_slice()
+    );
+    assert_eq!(ENGINE_FONT_SEMIBOLD_ID, "engine_mono_semibold");
+}
+
+#[test]
 fn the_engine_family_joins_the_manifests_families_unless_they_declare_it() {
     let mut families = HashMap::new();
     families.insert(
@@ -38,11 +49,14 @@ fn the_engine_family_joins_the_manifests_families_unless_they_declare_it() {
     );
     let all = with_engine_family(&families);
     assert_eq!(all.len(), 2);
-    assert_eq!(all[ENGINE_FONT_ID].faces, [ENGINE_FONT_ID]);
+    assert_eq!(
+        all[ENGINE_FONT_ID].faces,
+        [ENGINE_FONT_ID, ENGINE_FONT_SEMIBOLD_ID]
+    );
     assert_eq!(all["sans"].faces, ["sans"]);
     assert_eq!(
         with_engine_family(&HashMap::new())[ENGINE_FONT_ID].faces,
-        [ENGINE_FONT_ID],
+        [ENGINE_FONT_ID, ENGINE_FONT_SEMIBOLD_ID],
         "with no manifest at all"
     );
     families.insert(

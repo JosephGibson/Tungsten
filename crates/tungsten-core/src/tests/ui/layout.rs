@@ -802,3 +802,70 @@ fn set_plain_text_compares_without_setting_and_sets_a_new_value_once() {
     assert_eq!(store.counts.set_text_calls, sets + 1);
     assert_eq!(tree.accessible_name(label), Some("13"));
 }
+
+// ---- M58: the debug layers' scale ----
+
+#[test]
+fn a_debug_root_lays_out_in_the_viewport_over_the_debug_scale_without_the_text_scale() {
+    let mut tree = UiTree::new();
+    let full = || {
+        LayoutStyle::default()
+            .with_size(Sizing::Percent(100.0), Sizing::Percent(100.0))
+            .anchored(Anchor::TopStart, Vec2::ZERO)
+    };
+    let game = tree.add_root(UiLayer::Game, full());
+    let debug = tree.add_root(UiLayer::Debug, full());
+    let content = || LayoutStyle::default().anchored(Anchor::TopStart, Vec2::ZERO);
+    let game_label = tree.label(game, "abcd");
+    let debug_label = tree.label(debug, "abcd");
+    let debug_toggle = tree.toggle(debug, false);
+    for id in [game_label, debug_label] {
+        tree.set_layout_style(id, content());
+    }
+    tree.set_layout_style(
+        debug_toggle,
+        LayoutStyle::default().anchored(Anchor::TopStart, Vec2::new(0.0, 100.0)),
+    );
+    let mut store = store();
+    assert_eq!(tree.layer_viewport(UiLayer::Debug), None, "before a layout");
+    tree.layout(VIEWPORT, &mut store);
+    let label_size = tree.rect(debug_label).unwrap().size();
+    let toggle_size = tree.rect(debug_toggle).unwrap().size();
+
+    tree.set_debug_scale(0.75);
+    tree.set_text_scale(2.0);
+    let stats = tree.layout(VIEWPORT, &mut store);
+    assert_eq!(stats.roots_laid_out, 2);
+    let debug_viewport = VIEWPORT / 0.75;
+    assert_eq!(tree.rect(debug).unwrap().size(), debug_viewport);
+    assert_eq!(tree.rect(game).unwrap().size(), VIEWPORT);
+    assert_eq!(tree.layer_viewport(UiLayer::Debug), Some(debug_viewport));
+    assert_eq!(
+        tree.layer_viewport(UiLayer::DebugPopup),
+        Some(debug_viewport)
+    );
+    assert_eq!(tree.layer_viewport(UiLayer::Game), Some(VIEWPORT));
+    assert_eq!(tree.layer_viewport(UiLayer::GamePopup), Some(VIEWPORT));
+    assert_eq!(
+        tree.rect(debug_label).unwrap().size(),
+        label_size,
+        "a debug label skips the text scale"
+    );
+    assert_eq!(tree.rect(debug_toggle).unwrap().size(), toggle_size);
+    assert_eq!(
+        tree.rect(game_label).unwrap().size(),
+        label_size * 2.0,
+        "a game label takes it"
+    );
+    assert_commits_fit(&tree, &mut store);
+
+    tree.set_debug_scale(0.5);
+    assert_eq!(
+        tree.layer_viewport(UiLayer::Debug),
+        Some(debug_viewport),
+        "the last layout's until the next"
+    );
+    let stats = tree.layout(VIEWPORT, &mut store);
+    assert_eq!(stats.roots_laid_out, 1, "the debug root alone");
+    assert_eq!(tree.layer_viewport(UiLayer::Debug), Some(VIEWPORT * 2.0));
+}

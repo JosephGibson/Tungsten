@@ -340,12 +340,12 @@ fn window_texts(world: &World) -> (String, Vec<Vec<String>>) {
 }
 
 #[test]
-fn the_window_says_mouse_3_to_pick_with_nothing_selected() {
+fn the_window_says_middle_click_to_pick_with_nothing_selected() {
     let mut world = make_world();
     world.resource_mut::<InspectorState>().enabled = true;
     views_frame(&mut world, None);
     let (header, rows) = window_texts(&world);
-    assert_eq!(header, "mouse 3 to pick");
+    assert_eq!(header, "middle-click an entity to pick");
     assert!(rows.is_empty());
 }
 
@@ -364,13 +364,13 @@ fn the_window_lists_the_entity_then_section_row_and_value_columns() {
     views_frame(&mut world, None);
     let (header, rows) = window_texts(&world);
     assert_eq!(header, format!("entity {e}"));
-    assert_eq!(rows[0], ["Tag", "name", "hero"]);
-    assert!(
-        rows.iter()
-            .any(|row| row[0] == "Transform" && row[1] == "pos")
-    );
+    assert_eq!(header, format!("entity Entity({})", e.id()));
+    assert_eq!(rows[0], ["Tag", ""], "the component's header row");
+    assert_eq!(rows[1], ["name", "hero"], "its field below it");
+    let transform = rows.iter().position(|row| row[0] == "Transform").unwrap();
+    assert_eq!(rows[transform + 1][0], "pos");
     assert_eq!(
-        rows.last().unwrap()[0],
+        rows[rows.len() - 2][0],
         "Again",
         "the registry's rows first, then the state's own"
     );
@@ -380,7 +380,7 @@ fn the_window_lists_the_entity_then_section_row_and_value_columns() {
     views_frame(&mut world, None);
     let (header, rows) = window_texts(&world);
     assert_eq!(header, format!("entity {bare}"));
-    assert_eq!(rows, [["(no registered components)", "", ""]]);
+    assert_eq!(rows, [["(no registered components)", ""]]);
 }
 
 #[test]
@@ -397,19 +397,19 @@ fn a_new_selection_refreshes_at_once_and_otherwise_the_interval_does() {
         state.refresh_interval_ms = 100.0;
     }
     views_frame(&mut world, None);
-    assert_eq!(window_texts(&world).1[0][2], "hero");
+    assert_eq!(window_texts(&world).1[1][1], "hero");
 
     world.get_mut::<Tag>(hero).unwrap().name = "renamed".into();
     views_frame(&mut world, Some(60.0));
-    assert_eq!(window_texts(&world).1[0][2], "hero", "inside the interval");
+    assert_eq!(window_texts(&world).1[1][1], "hero", "inside the interval");
     views_frame(&mut world, Some(60.0));
-    assert_eq!(window_texts(&world).1[0][2], "renamed", "past it");
+    assert_eq!(window_texts(&world).1[1][1], "renamed", "past it");
 
     world.resource_mut::<InspectorState>().selected = Some(villain);
     views_frame(&mut world, Some(1.0));
     let (header, rows) = window_texts(&world);
     assert_eq!(header, format!("entity {villain}"), "at once");
-    assert_eq!(rows[0][2], "villain");
+    assert_eq!(rows[1][1], "villain");
 }
 
 #[test]
@@ -452,4 +452,102 @@ fn pick_follows_a_rotated_camera() {
     inspector_pick_system(&mut world);
     let selected = world.get_resource::<InspectorState>().unwrap().selected;
     assert_eq!(selected, Some(target));
+}
+
+// ---- M58 step 6: component headers and value hues ----
+
+#[test]
+fn each_value_takes_its_kinds_hue() {
+    use crate::debug_views::{AMBER, CYAN, GREEN, VIOLET};
+    for (value, hue) in [
+        ("true", VIOLET),
+        ("false", VIOLET),
+        ("12", CYAN),
+        ("-0.5", CYAN),
+        ("(1.00, 2.00)", CYAN),
+        ("[255, 0, 0, 255]", CYAN),
+        ("Entity(3)", AMBER),
+        ("lab_hero", GREEN),
+        ("", GREEN),
+        ("(a, 2)", GREEN),
+        ("()", GREEN),
+        ("Entity()", GREEN),
+    ] {
+        assert_eq!(value_hue(value), hue, "{value:?}");
+    }
+}
+
+/// A custom component whose rows hold one value of each kind.
+struct Kinds;
+
+impl Inspectable for Kinds {
+    fn inspect_rows(&self) -> Vec<(&'static str, String)> {
+        [
+            ("on", "true"),
+            ("off", "false"),
+            ("count", "12"),
+            ("bias", "-0.5"),
+            ("at", "(1.00, 2.00)"),
+            ("tint", "[255, 0, 0, 255]"),
+            ("target", "Entity(3)"),
+            ("name", "lab_hero"),
+            ("note", ""),
+        ]
+        .into_iter()
+        .map(|(field, value)| (field, value.to_string()))
+        .collect()
+    }
+}
+
+#[test]
+fn a_header_row_per_component_holds_its_fields_indented_each_in_its_hue() {
+    use crate::debug_views::{AMBER, CYAN, GREEN, LABEL, VALUE, VIOLET};
+    let mut world = make_world();
+    world
+        .resource_mut::<InspectRegistry>()
+        .register::<Kinds>("Kinds");
+    let e = world.spawn();
+    world.insert(e, Tag::new("hero"));
+    world.insert(e, Kinds);
+    {
+        let state = world.resource_mut::<InspectorState>();
+        state.enabled = true;
+        state.selected = Some(e);
+    }
+    views_frame(&mut world, None);
+    world.resource_mut::<UiTree>().layout(
+        Vec2::new(800.0, 600.0),
+        &mut tungsten_core::ui::FixedAdvanceMeasure::default(),
+    );
+    let window = world.resource::<InspectorState>().window.as_ref().unwrap();
+    let tree = world.resource::<UiTree>();
+    let names = tree.children(window.columns[0]);
+    let values = tree.children(window.columns[1]);
+    let text = |id: WidgetId| -> String {
+        tree.text(id)
+            .map(|text| text.spans.iter().map(|span| span.text.as_str()).collect())
+            .unwrap_or_default()
+    };
+    let style = |id: WidgetId| tree.resolved_style(id).unwrap().text.clone();
+    let start = |id: WidgetId| tree.layout_style(id).unwrap().padding.start;
+    let at = (0..names.len())
+        .find(|i| text(names[*i]) == "Kinds")
+        .unwrap();
+    assert_eq!(
+        (style(names[at]).weight, style(names[at]).color),
+        (600, VALUE)
+    );
+    assert_eq!(start(names[at]), 6.0, "the header row");
+    let hues = [VIOLET, VIOLET, CYAN, CYAN, CYAN, CYAN, AMBER, GREEN, GREEN];
+    for (k, hue) in hues.into_iter().enumerate() {
+        let row = at + 1 + k;
+        assert_eq!(start(names[row]), 18.0, "{}: indented", text(names[row]));
+        assert_eq!(style(names[row]).color, LABEL);
+        assert_eq!(style(values[row]).color, hue, "{}", text(values[row]));
+        assert_eq!(style(values[row]).weight, 400);
+    }
+    let header = window.header.unwrap();
+    assert_eq!(text(header), format!("entity {e}"));
+    assert_eq!(style(header).weight, 600, "the header line");
+    assert_eq!(start(names[0]), 6.0, "Tag's header row first");
 }

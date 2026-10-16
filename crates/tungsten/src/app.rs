@@ -24,7 +24,7 @@ use crate::post_aa::{PendingPostAa, PostAaState, sync_post_aa_state, take_pendin
 use crate::settings::ShippedConfig;
 use crate::sprite_extract::ExtractScratch;
 use crate::state::StateStack;
-use crate::systems_overlay::SystemTimingOverlay;
+use crate::systems_overlay::{SystemStages, SystemTimingOverlay};
 use crate::telemetry::{DisplayTelemetry, FrameTimings, RenderCounts};
 use crate::user_dir::{self, Platform};
 use log::LevelFilter;
@@ -429,6 +429,16 @@ impl App {
             .names(Stage::PreUpdate)
             .any(|name| name == UI_ROUTE);
         self.world.insert_resource(UiRouteInstalled(routed));
+        // M58: the systems overlay groups its rows by stage.
+        let stages = Stage::ALL
+            .into_iter()
+            .flat_map(|stage| {
+                self.schedule
+                    .names(stage)
+                    .map(move |name| (name.to_string(), stage))
+            })
+            .collect();
+        self.world.insert_resource(SystemStages(stages));
         Ok(())
     }
 

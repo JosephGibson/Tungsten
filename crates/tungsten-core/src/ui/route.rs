@@ -12,7 +12,9 @@
 //! capture-next-input mode for rebinding and resolves prompts after each
 //! routing. M57's wheel moves the scroll panels under the pointer, and a
 //! primary press on a drag handle drags its root once the pointer moves
-//! past the drag threshold.
+//! past the drag threshold. M58 raises a `Role::Window` root on a primary
+//! press over it, and drags a debug root and scrolls its panels in its own
+//! units.
 
 use glam::Vec2;
 
@@ -28,7 +30,7 @@ use super::control;
 use super::event::{UiEvent, UiValue};
 use super::focus::NavDirection;
 use super::id::WidgetId;
-use super::node::CursorIcon;
+use super::node::{CursorIcon, Role};
 use super::paint::UiDebug;
 use super::prompt;
 use super::tree::UiTree;
@@ -185,8 +187,8 @@ impl UiRouteSettings {
 }
 
 /// A primary press on a drag handle (M57): the root it moves, the press's
-/// point and the root's top-left then, in UI units, and whether the pointer
-/// has passed the threshold.
+/// point in UI units and the root's top-left then in the root's (M58), and
+/// whether the pointer has passed the threshold.
 #[derive(Debug, Clone, Copy)]
 struct Drag {
     root: WidgetId,
@@ -789,6 +791,9 @@ impl Routing<'_> {
             return;
         }
         self.router.ui_buttons.push(button);
+        if button == MouseButton::Left {
+            self.raise_window();
+        }
         let Some(widget) = self.hit().1 else {
             return;
         };
@@ -833,20 +838,44 @@ impl Routing<'_> {
         }
     }
 
+    /// A primary press the UI takes over a `Role::Window` root that is not
+    /// frozen raises it over its layer's other roots (M58), before the press
+    /// is handled, so the raised window takes it.
+    fn raise_window(&mut self) {
+        let Some(root) = self.hit().0.and_then(|hit| self.tree.root_of(hit)) else {
+            return;
+        };
+        if self.tree.role(root) == Some(Role::Window) && !self.tree.frozen(root) {
+            self.tree.raise(root);
+        }
+    }
+
+    /// How many UI units one unit of `id`'s root spans: the debug scale of
+    /// the last layout under a debug root (M58), else 1.
+    fn root_scale(&self, id: WidgetId) -> f32 {
+        self.tree
+            .layer(id)
+            .map_or(1.0, |layer| self.tree.layer_scale(layer))
+    }
+
     /// The wheel over the UI (M57): moves the innermost scroll panel at or
     /// above the widget under the pointer that can move that way and takes
-    /// input, a line by `scroll_line` units and a pixel delta divided by the
-    /// scale; a positive `y` moves the content down. A delta that is not
-    /// finite moves nothing.
+    /// input, a line by `scroll_line` units of the panel and a pixel delta
+    /// divided by the scale and, under a debug root, the debug scale (M58);
+    /// a positive `y` moves the content down. A delta that is not finite
+    /// moves nothing.
     fn wheel(&mut self, delta: WheelDelta) {
+        let hit = self.hit().0;
         let y = match delta {
             WheelDelta::Lines(_, y) => y * self.router.settings.line(),
-            WheelDelta::Pixels(_, y) => y / self.scale,
+            WheelDelta::Pixels(_, y) => {
+                y / (self.scale * hit.map_or(1.0, |hit| self.root_scale(hit)))
+            }
         };
         if !y.is_finite() || y == 0.0 {
             return;
         }
-        let mut current = self.hit().0;
+        let mut current = hit;
         while let Some(id) = current {
             if self.takes_input(id) && self.tree.scroll_by(id, -y).is_some() {
                 if !self.scrolled.contains(&id) {
@@ -880,7 +909,8 @@ impl Routing<'_> {
     }
 
     /// Moves a drag's root by the pointer's motion since the press, once
-    /// that motion is past the threshold.
+    /// that motion is past the threshold; a debug root moves by it divided
+    /// by the debug scale, in its own units (M58).
     fn drag_to_pointer(&mut self) {
         let (Some(mut drag), Some(point)) = (self.router.drag, self.point()) else {
             return;
@@ -892,8 +922,9 @@ impl Routing<'_> {
             drag.moving = true;
             self.router.drag = Some(drag);
         }
+        let motion = (point - drag.from) / self.root_scale(drag.root);
         self.tree
-            .set_window_position(drag.root, drag.start + (point - drag.from));
+            .set_window_position(drag.root, drag.start + motion);
     }
 
     /// Ends the drag of a press that ended: a root it moved, still in the

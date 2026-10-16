@@ -1600,3 +1600,174 @@ fn a_triangle_leaving_its_box_over_earlier_text_closes_that_batch() {
         "A's batch closes before the mesh, which draws over A"
     );
 }
+
+// ---- M58: the debug layers' scale and shadows ----
+
+/// A bare `Debug` root holding an opaque panel at (100, 100), 100 by 50,
+/// which holds the label "ab": (tree, root, panel, label).
+fn debug_panel() -> (UiTree, WidgetId, WidgetId, WidgetId) {
+    let mut tree = UiTree::new();
+    let root = tree.add_root(UiLayer::Debug, LayoutStyle::default());
+    tree.set_overrides(root, bare());
+    let panel = tree.panel(root, at(100.0, 100.0, 100.0, 50.0));
+    tree.set_overrides(panel, opaque());
+    let label = tree.label(panel, "ab");
+    (tree, root, panel, label)
+}
+
+#[test]
+fn a_debug_roots_units_paint_at_the_paint_scale_times_the_debug_scale() {
+    let (mut tree, root, panel, _label) = debug_panel();
+    let scroller = tree.scroll_panel(root, at(0.0, 200.0, 100.0, 40.0));
+    tree.set_overrides(scroller, bare());
+    let rows: Vec<WidgetId> = (0..5)
+        .map(|_| {
+            let row = tree.panel(scroller, fixed(100.0, 20.0));
+            tree.set_overrides(row, opaque());
+            row
+        })
+        .collect();
+    tree.set_debug_scale(0.75);
+    let sprites = AssetRegistry::new();
+    let list = paint(&mut tree, 1.5, UiDebug::default(), &sprites);
+    let unit = 1.5 * 0.75;
+    let PaintCommand::Rect {
+        rect: panel_box,
+        border_width,
+        corner_radius,
+        ..
+    } = list.commands[0]
+    else {
+        panic!("the panel's box first");
+    };
+    assert_eq!(
+        panel_box,
+        Rect::new(Vec2::splat(100.0 * unit), Vec2::new(200.0, 150.0) * unit)
+    );
+    assert_eq!((border_width, corner_radius), (2.0 * unit, 4.0 * unit));
+    assert_eq!(
+        list.clips[0],
+        to_physical(rect(0.0, 0.0, 800.0, 600.0), 1.5),
+        "clip 0 stays the viewport"
+    );
+    assert_eq!(list.scale, 1.5, "the list keeps the tree's scale");
+    assert_eq!(
+        list.clips[1],
+        to_physical(rect(0.0, 200.0, 100.0, 40.0), unit),
+        "a clip in the root's units"
+    );
+    assert_eq!(
+        tree.visual_rect(panel),
+        Some(Rect::new(Vec2::splat(75.0), Vec2::new(150.0, 112.5))),
+        "in the tree's units"
+    );
+    assert_eq!(tree.rect(panel), Some(rect(100.0, 100.0, 100.0, 50.0)));
+
+    // 7.3 units × 1.125 = 8.21 physical pixels, which round to 8.
+    assert!(tree.set_scroll(scroller, 7.3));
+    let list = paint(&mut tree, 1.5, UiDebug::default(), &sprites);
+    let first_row = list
+        .commands
+        .iter()
+        .find(|command| command.clip() == 1)
+        .expect("the rows paint in the scroll panel's clip")
+        .rect();
+    assert!(
+        (first_row.min.y - 217.0).abs() < 1e-3,
+        "225 less 8 whole pixels: {}",
+        first_row.min.y
+    );
+    // Tree units: the first row shows from 150 to 159.7, the second below.
+    assert_eq!(tree.hit_test(Vec2::new(10.0, 155.0)), Some(rows[0]));
+    assert_eq!(tree.hit_test(Vec2::new(10.0, 162.0)), Some(rows[1]));
+    // (140, 100) is (186.7, 133.3) in the root's units: past the label.
+    assert_eq!(tree.hit_test(Vec2::new(140.0, 100.0)), Some(panel));
+    assert_eq!(tree.hit_test(Vec2::new(155.0, 100.0)), None, "past 150");
+}
+
+#[test]
+fn a_label_on_a_debug_root_draws_its_run_at_the_debug_scale_exactly() {
+    for (debug_scale, node_scale, drawn) in [
+        (2.0 / 3.0, 1.0, 2.0 / 3.0),
+        (2.0 / 3.0, 1.02, 2.0 / 3.0),
+        (0.75, 1.03125, 0.75 * 1.03125),
+    ] {
+        let (mut tree, _root, panel, label) = debug_panel();
+        tree.set_debug_scale(debug_scale);
+        tree.set_scale(panel, node_scale);
+        let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+        let PaintCommand::Text { scale, rect, .. } = list.commands[1] else {
+            panic!("the label's run second");
+        };
+        assert_eq!(scale, drawn, "{debug_scale} × {node_scale}");
+        if node_scale == 1.0 {
+            assert_eq!(
+                Some(rect),
+                tree.visual_rect(label),
+                "the layer's scale never steps, so the run fills its box"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_shadow_paints_one_mesh_before_its_box_fading_to_transparent() {
+    let mut tree = UiTree::new();
+    let root = bare_root(&mut tree, LayoutStyle::default());
+    let panel = tree.panel(root, at(100.0, 100.0, 100.0, 50.0));
+    tree.set_overrides(panel, opaque());
+    tree.set_opacity(panel, 0.5);
+    let shadow = |color, blur| Some(UiShadow::new(color, blur, Vec2::new(0.0, 3.0)));
+    tree.set_shadow(panel, shadow([0, 0, 0, 90], 10.0));
+    let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+    assert_eq!(kinds(&list), "MR", "the shadow, then the box");
+    assert_eq!(
+        list.commands[0],
+        PaintCommand::Mesh {
+            rect: rect(90.0, 93.0, 120.0, 70.0),
+            first: 0,
+            count: 54,
+            clip: 0,
+        }
+    );
+    let inner = Rect::new(Vec2::new(100.0, 103.0), Vec2::new(200.0, 153.0));
+    let vertices = list.mesh_vertices(&list.commands[0]);
+    let mut inner_count = 0;
+    for vertex in vertices {
+        assert_eq!(vertex.color[..3], [0, 0, 0]);
+        let p = vertex.position;
+        if vertex.color[3] == 45 {
+            assert!(inner.contains(p), "90 × 0.5 inside the moved box: {p:?}");
+            inner_count += 1;
+        } else {
+            assert_eq!(vertex.color[3], 0, "{p:?}");
+            assert!(
+                p.x == 90.0 || p.x == 210.0 || p.y == 93.0 || p.y == 163.0,
+                "transparent on the ring's outer edge: {p:?}"
+            );
+        }
+    }
+    assert_eq!(inner_count, 26, "6 in the box, 3 per edge, 2 per corner");
+    for triangle in vertices.chunks(3) {
+        assert!(
+            triangle.iter().any(|vertex| vertex.color[3] > 0),
+            "no corner triangle is left wholly transparent"
+        );
+    }
+    assert_ne!(
+        tree.hit_test(Vec2::new(95.0, 120.0)),
+        Some(panel),
+        "the shadow is not hit"
+    );
+
+    for (color, blur) in [
+        ([0, 0, 0, 90], 0.0),
+        ([0, 0, 0, 90], f32::NAN),
+        ([0, 0, 0, 90], -4.0),
+        ([0, 0, 0, 0], 10.0),
+    ] {
+        tree.set_shadow(panel, shadow(color, blur));
+        let list = paint(&mut tree, 1.0, UiDebug::default(), &AssetRegistry::new());
+        assert_eq!(kinds(&list), "R", "{color:?} {blur}");
+    }
+}

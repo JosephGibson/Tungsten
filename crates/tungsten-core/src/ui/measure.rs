@@ -6,7 +6,7 @@ use glam::Vec2;
 
 use crate::text::{
     FontEpoch, MeasureWidth, StyledText, TextMeasure, TextMetrics, TextNodeId, TextNodeStore,
-    TextStyle, TextWrap,
+    TextOverflow, TextStyle, TextWrap,
 };
 
 /// Where the first baseline sits in a line, as a fraction of the line height.
@@ -43,11 +43,15 @@ struct Slot {
 /// [`TextWrap`] (a word wider than the box overflows under `Word` and breaks
 /// inside under `WordOrGlyph`), height is `lines × line_height`, the first
 /// baseline sits at 0.8 of the line height, empty text is one line, and
-/// nothing is rounded. Overflow and ellipses are ignored. Min-content is the
-/// widest word, the widest glyph under `Glyph`, or the unwrapped width under
-/// `None`, as the engine computes it. A stale ID or a node without text
-/// measures [`TextMetrics::default()`]. Public, since games' headless tests
-/// lay out with it too.
+/// nothing is rounded. At a definite width, an ellipsis with a line limit
+/// (`TextOverflow::Ellipsis { lines: Some(n), .. }`) keeps the first `n`
+/// lines of each paragraph, at least one, as the engine does (M58); other
+/// overflow, and an ellipsis without a limit, keep every line, as the
+/// engine's measurement does. Min-content is the widest word, the widest
+/// glyph under `Glyph`, or the unwrapped width under `None`, as the engine
+/// computes it. A stale ID or a node without text measures
+/// [`TextMetrics::default()`]. Public, since games' headless tests lay out
+/// with it too.
 #[derive(Debug)]
 pub struct FixedAdvanceMeasure {
     advance_em: f32,
@@ -122,12 +126,21 @@ impl FixedAdvanceMeasure {
         self.slot(id)?.node.as_ref()
     }
 
-    /// The metrics of `data` laid out at `width`, or unwrapped when `None`.
-    fn metrics_of(&self, data: &NodeData, width: Option<f32>) -> TextMetrics {
+    /// The metrics of `data` laid out at `width`, or unwrapped when `None`;
+    /// an ellipsis's line limit applies when `limited` (M58).
+    fn metrics_of(&self, data: &NodeData, width: Option<f32>, limited: bool) -> TextMetrics {
         let advance = glyph_advance(&data.style, self.advance_em);
         let text = flatten(&data.text);
         let lines = match width {
-            Some(width) => line_lengths(&text, data.style.layout.wrap, advance, width),
+            Some(width) => {
+                let limit = match data.style.layout.overflow {
+                    TextOverflow::Ellipsis {
+                        lines: Some(limit), ..
+                    } if limited => Some(limit.max(1) as usize),
+                    _ => None,
+                };
+                line_lengths(&text, data.style.layout.wrap, advance, width, limit)
+            }
             None => text.split('\n').map(|line| line.chars().count()).collect(),
         };
         let widest = lines.iter().copied().max().unwrap_or(0);
@@ -175,11 +188,20 @@ fn fits(glyphs: usize, advance: f32, width: f32) -> bool {
     glyphs as f32 * advance <= width
 }
 
-/// Glyphs per line when `text` wraps at `width` under `wrap`. Every paragraph
-/// yields at least one line, so empty text is one line of no glyphs.
-fn line_lengths(text: &str, wrap: TextWrap, advance: f32, width: f32) -> Vec<usize> {
+/// Glyphs per line when `text` wraps at `width` under `wrap`, each
+/// paragraph's lines cut to the first `limit` when one is given. Every
+/// paragraph yields at least one line, so empty text is one line of no
+/// glyphs.
+fn line_lengths(
+    text: &str,
+    wrap: TextWrap,
+    advance: f32,
+    width: f32,
+    limit: Option<usize>,
+) -> Vec<usize> {
     let mut lines = Vec::new();
     for paragraph in text.split('\n') {
+        let start = lines.len();
         let glyphs = paragraph.chars().count();
         match wrap {
             TextWrap::None => lines.push(glyphs),
@@ -214,6 +236,9 @@ fn line_lengths(text: &str, wrap: TextWrap, advance: f32, width: f32) -> Vec<usi
                 }
                 lines.push(line);
             }
+        }
+        if let Some(limit) = limit {
+            lines.truncate(start + limit);
         }
     }
     lines
@@ -253,10 +278,10 @@ impl TextMeasure for FixedAdvanceMeasure {
         match known_width.map_or(available, MeasureWidth::Definite) {
             MeasureWidth::MinContent => {
                 let width = self.min_content_width(data);
-                self.metrics_of(data, Some(width))
+                self.metrics_of(data, Some(width), false)
             }
-            MeasureWidth::Definite(width) => self.metrics_of(data, Some(width)),
-            MeasureWidth::MaxContent => self.metrics_of(data, None),
+            MeasureWidth::Definite(width) => self.metrics_of(data, Some(width), true),
+            MeasureWidth::MaxContent => self.metrics_of(data, None, false),
         }
     }
 }
@@ -318,7 +343,7 @@ impl TextNodeStore for FixedAdvanceMeasure {
         let Some(data) = self.node(node) else {
             return TextMetrics::default();
         };
-        let metrics = self.metrics_of(data, Some(size.x));
+        let metrics = self.metrics_of(data, Some(size.x), true);
         let epoch = self.epoch;
         if let Some(data) = self.slot_mut(node).and_then(|slot| slot.node.as_mut()) {
             data.committed = Some((epoch, metrics));

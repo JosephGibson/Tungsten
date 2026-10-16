@@ -92,7 +92,7 @@ CLARIFICATIONS = "licenses/clarifications.json"
 # Third-party works the engine compiles into every binary, each with the file holding its license.
 EMBEDDED_WORKS = (
     ("SMAA lookup textures and shaders (tungsten-render)", "crates/tungsten-render/src/assets/smaa/ATTRIBUTION.md"),
-    ("JetBrains Mono Regular, the engine font (tungsten, D-123)", "crates/tungsten/assets/fonts/OFL.txt"),
+    ("JetBrains Mono Regular and SemiBold, the engine font (tungsten, D-123)", "crates/tungsten/assets/fonts/OFL.txt"),
 )
 # Root-level package files that may hold a license text or notices, by name prefix in any case.
 LICENSE_FILE_RE = re.compile(r"^(licen[cs]e|copying|copyright|unlicense|notice)", re.I)

@@ -12,7 +12,9 @@
 //! can rasterize them before the root first opens. M57 adds the mesh
 //! command: a mesh widget's triangles, their vertices in
 //! [`PaintList::vertices`]; and scroll panels, whose children map through
-//! their offset and whose thumb paints after them.
+//! their offset and whose thumb paints after them. M58 paints a debug
+//! root's units at the paint scale times the debug scale, its text runs at
+//! that scale exactly, and a node's shadow as a mesh before its box.
 
 use std::collections::HashSet;
 use std::fmt::Write as _;
@@ -26,7 +28,7 @@ use crate::text::TextNodeId;
 use super::control::{self, Control};
 use super::geometry::{Rect, UiTransform};
 use super::id::WidgetId;
-use super::node::{Node, UiLayer, UiVertex, Visibility, WidgetKind};
+use super::node::{Node, UiLayer, UiShadow, UiVertex, Visibility, WidgetKind};
 use super::scroll::{self, THUMB_WIDTH, children_transform};
 use super::tree::{MIN_SCALE, UiTree};
 
@@ -145,8 +147,9 @@ fn faded(color: [u8; 4], alpha: f32) -> [u8; 4] {
     [r, g, b, (f32::from(a) * alpha).round() as u8]
 }
 
-/// A node's own map in UI units (M56): its scale about its layout centre,
-/// then its translation rounded to whole physical pixels at `paint_scale`.
+/// A node's own map in its root's units (M56): its scale about its layout
+/// centre, then its translation rounded to whole physical pixels at
+/// `paint_scale`, the physical pixels per unit of its root (M58).
 pub(crate) fn node_transform(node: &Node, rect: Rect, paint_scale: f32) -> UiTransform {
     if node.scale == 1.0 && node.translation == Vec2::ZERO {
         return UiTransform::IDENTITY;
@@ -161,12 +164,15 @@ pub(crate) fn node_transform(node: &Node, rect: Rect, paint_scale: f32) -> UiTra
 
 /// A label's text command under `transform`: its content box mapped, at
 /// the composed scale rounded down to a 32nd and shrunk to match about its
-/// centre, so the run never outgrows its box or its clips.
+/// centre, so the run never outgrows its box or its clips; `unit` is the
+/// physical pixels per unit of its root, and `layer` its root's layer
+/// scale (M58), which multiplies the run's scale unstepped.
 fn text_command(
     node: &Node,
     rect: Rect,
     transform: UiTransform,
-    scale: f32,
+    unit: f32,
+    layer: f32,
     color: [u8; 4],
     clip: u32,
 ) -> Option<PaintCommand> {
@@ -180,9 +186,9 @@ fn text_command(
     };
     Some(PaintCommand::Text {
         node: text_node,
-        rect: scaled(text_rect, scale),
+        rect: scaled(text_rect, unit),
         color,
-        scale: text_scale,
+        scale: layer * text_scale,
         clip,
     })
 }
@@ -255,7 +261,8 @@ pub enum PaintCommand {
         /// Text colour, sRGB, its alpha times the label's opacity.
         color: [u8; 4],
         /// The scale the run draws at on top of [`PaintList::scale`]: the
-        /// label's composed scale rounded down to a multiple of 1/32 (M56);
+        /// label's composed scale rounded down to a multiple of 1/32 (M56),
+        /// times its debug root's debug scale, which is not rounded (M58);
         /// 1 for a label nothing scales.
         scale: f32,
         /// The clip index.
@@ -665,6 +672,66 @@ fn push_mesh(
     });
 }
 
+/// Pushes `shadow` under a node of box `rect` as one mesh (M58): the box
+/// moved by the offset, in the colour, and a ring `blur` wide around it
+/// fading to transparent, as nine quads of two triangles (54 vertices),
+/// mapped by `transform` into physical pixels at `scale`, the colour's alpha
+/// times `alpha`. Nothing when the blur is not finite and positive, the
+/// offset is not finite or the colour's alpha is 0.
+fn push_shadow(
+    out: &mut PaintList,
+    rect: Rect,
+    shadow: UiShadow,
+    transform: UiTransform,
+    scale: f32,
+    alpha: f32,
+    clip: u32,
+) {
+    let blur = shadow.blur;
+    if !blur.is_finite() || blur <= 0.0 || !shadow.offset.is_finite() || shadow.color[3] == 0 {
+        return;
+    }
+    let inner = faded(shadow.color, alpha);
+    let outer = [inner[0], inner[1], inner[2], 0];
+    let (min, max) = (rect.min + shadow.offset, rect.max + shadow.offset);
+    let xs = [min.x - blur, min.x, max.x, max.x + blur];
+    let ys = [min.y - blur, min.y, max.y, max.y + blur];
+    let corner = |i: usize, j: usize| {
+        let color = if (1..=2).contains(&i) && (1..=2).contains(&j) {
+            inner
+        } else {
+            outer
+        };
+        UiVertex::new(transform.point(Vec2::new(xs[i], ys[j])) * scale, color)
+    };
+    let first = out.vertices.len();
+    for row in 0..3 {
+        for col in 0..3 {
+            let [a, b, c, d] = [
+                corner(col, row),
+                corner(col + 1, row),
+                corner(col + 1, row + 1),
+                corner(col, row + 1),
+            ];
+            // The top-right and bottom-left corners split along the
+            // diagonal through their one inner vertex, as the others do.
+            let triangles = if col != row && col != 1 && row != 1 {
+                [a, b, d, b, c, d]
+            } else {
+                [a, b, c, a, c, d]
+            };
+            out.vertices.extend(triangles);
+        }
+    }
+    let outline = Rect::new(Vec2::new(xs[0], ys[0]), Vec2::new(xs[3], ys[3]));
+    out.commands.push(PaintCommand::Mesh {
+        rect: scaled(transform.rect(outline), scale),
+        first: first as u32,
+        count: (out.vertices.len() - first) as u32,
+        clip,
+    });
+}
+
 /// Pushes a rectangle when its fill or its border shows.
 fn push_box(
     out: &mut PaintList,
@@ -689,17 +756,20 @@ fn push_box(
 
 impl UiTree {
     /// Paints the tree into `out` at `scale` physical pixels per UI unit:
-    /// layers low to high, roots and children in order, each node's own box
-    /// when its fill or border is visible, then a label's text run, an
-    /// image's sprite (`sprites` resolves it; an unregistered sprite warns
-    /// once per ID and draws nothing), a toggle's mark when it is on or a
-    /// mesh's triangles; a slider paints its track, fill and thumb in place
-    /// of its box. Then its children, inside the intersection of its box and
-    /// the enclosing clip when it clips them, skipped when that is empty.
-    /// Clip 0 is the viewport of the last [`Self::layout`]. `Hidden` and
-    /// `Collapsed` subtrees paint nothing; with `debug.hide_game_layers`
-    /// neither do the `Game` and `GamePopup` layers, and `debug.show_bounds`
-    /// appends an outline per painted node. Clears the paint-dirty flag.
+    /// layers low to high, roots and children in order, each node's shadow
+    /// (M58) and its own box when its fill or border is visible, then a
+    /// label's text run, an image's sprite (`sprites` resolves it; an
+    /// unregistered sprite warns once per ID and draws nothing), a toggle's
+    /// mark when it is on or a mesh's triangles; a slider paints its track,
+    /// fill and thumb in place of its box. Then its children, inside the
+    /// intersection of its box and the enclosing clip when it clips them,
+    /// skipped when that is empty. A debug root's units paint at `scale`
+    /// times the debug scale of the last layout, and its translations and
+    /// scroll offsets round to whole pixels there (M58). Clip 0 is the
+    /// viewport of the last [`Self::layout`]. `Hidden` and `Collapsed`
+    /// subtrees paint nothing; with `debug.hide_game_layers` neither do the
+    /// `Game` and `GamePopup` layers, and `debug.show_bounds` appends an
+    /// outline per painted node. Clears the paint-dirty flag.
     pub fn paint(
         &mut self,
         scale: f32,
@@ -773,8 +843,9 @@ impl UiTree {
     /// under a scroll panel's thumb. The node's alpha is `inherited.alpha`
     /// times its opacity (and a root's fade); its map is the inherited one
     /// after its own, and its children's that after a scroll panel's
-    /// offset. A subtree at alpha 0 or under a composed scale below 1/64
-    /// paints nothing.
+    /// offset, in its root's units, which paint at `scale` times its
+    /// layer's scale. A subtree at alpha 0 or under a composed scale below
+    /// 1/64 paints nothing.
     #[allow(clippy::too_many_arguments)] // The walk's state, passed rather than kept on the tree.
     #[allow(clippy::too_many_lines)] // One arm per kind, each a few pushes.
     fn paint_node(
@@ -803,18 +874,25 @@ impl UiTree {
             1.0
         };
         let alpha = inherited.alpha * node.opacity * fade;
+        // Physical pixels per unit of this node's root: a debug root's units
+        // span the debug scale (M58).
+        let layer = self.layer_scale(node.layer);
+        let unit = scale * layer;
         let transform = inherited
             .transform
-            .compose(node_transform(node, rect, scale));
+            .compose(node_transform(node, rect, unit));
         if alpha <= 0.0 || transform.scale < MIN_SCALE {
             return;
         }
         let clip = inherited.clip;
         // Lengths in physical pixels per UI unit, under this node's scale.
-        let length = scale * transform.scale;
-        let physical = scaled(transform.rect(rect), scale);
-        let paint_rect = |part: Rect| scaled(transform.rect(part), scale);
+        let length = unit * transform.scale;
+        let physical = scaled(transform.rect(rect), unit);
+        let paint_rect = |part: Rect| scaled(transform.rect(part), unit);
         bounds.push(physical);
+        if let Some(shadow) = node.shadow {
+            push_shadow(out, rect, shadow, transform, unit, alpha, clip);
+        }
         if node.kind != WidgetKind::Slider {
             push_box(
                 out,
@@ -829,8 +907,9 @@ impl UiTree {
         match node.kind {
             WidgetKind::Label => {
                 let color = faded(resolved.text.color, alpha);
-                out.commands
-                    .extend(text_command(node, rect, transform, scale, color, clip));
+                out.commands.extend(text_command(
+                    node, rect, transform, unit, layer, color, clip,
+                ));
             }
             WidgetKind::Image => {
                 if let Some(image) = node.image {
@@ -902,7 +981,7 @@ impl UiTree {
                 }
             }
             WidgetKind::Mesh => {
-                push_mesh(out, &node.mesh, rect, transform, scale, alpha, clip);
+                push_mesh(out, &node.mesh, rect, transform, unit, alpha, clip);
             }
             WidgetKind::Panel | WidgetKind::Button => {}
         }
@@ -915,7 +994,7 @@ impl UiTree {
                 .get(clip as usize)
                 .copied()
                 .unwrap_or_default()
-                .intersect(to_physical(transform.rect(rect), scale));
+                .intersect(to_physical(transform.rect(rect), unit));
             if inner.is_empty() {
                 return;
             }
@@ -940,7 +1019,7 @@ impl UiTree {
         let inherited = Inherited {
             clip: child_clip,
             alpha,
-            transform: transform.compose(children_transform(node, scale)),
+            transform: transform.compose(children_transform(node, unit)),
         };
         for child in node.children.iter().rev() {
             stack.push(PaintStep::Node(*child, inherited));
@@ -1022,7 +1101,9 @@ impl UiTree {
         let (Some(rect), Some(resolved)) = (node.rect, node.resolved.as_ref()) else {
             return;
         };
-        let transform = parent.compose(node_transform(node, rect, scale));
+        let layer = self.layer_scale(node.layer);
+        let unit = scale * layer;
+        let transform = parent.compose(node_transform(node, rect, unit));
         if transform.scale < MIN_SCALE {
             return;
         }
@@ -1031,12 +1112,13 @@ impl UiTree {
                 node,
                 rect,
                 transform,
-                scale,
+                unit,
+                layer,
                 resolved.text.color,
                 0,
             ));
         }
-        let children = transform.compose(children_transform(node, scale));
+        let children = transform.compose(children_transform(node, unit));
         for child in node.children.iter().rev() {
             stack.push((*child, children));
         }

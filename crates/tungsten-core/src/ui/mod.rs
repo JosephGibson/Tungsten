@@ -17,8 +17,11 @@
 //! its [`UiVertex`] triangles and their paint command, vertical scroll
 //! panels (paint-only offsets, the wheel, scrolling focus into view), drag
 //! handles that move their root, [`WindowPlacements`], the file that keeps
-//! named windows' places, and [`WidgetDirty`], what a widget waits on.
-//! Nothing here draws: the render crate consumes the paint list.
+//! named windows' places, and [`WidgetDirty`], what a widget waits on. M58
+//! gives the debug layers a scale of their own, raises a pressed window,
+//! paints [`UiShadow`]s as meshes, keeps a line limit in the measure double
+//! and a zoom in the placements file. Nothing here draws: the render crate
+//! consumes the paint list.
 
 pub mod anim;
 pub mod control;
@@ -47,7 +50,7 @@ pub use focus::NavDirection;
 pub use geometry::Rect;
 pub use id::WidgetId;
 pub use measure::{FixedAdvanceMeasure, MeasureCounts};
-pub use node::{CursorIcon, Role, UiLayer, UiVertex, Visibility, WidgetKind};
+pub use node::{CursorIcon, Role, UiLayer, UiShadow, UiVertex, Visibility, WidgetKind};
 pub use paint::{ClipRect, PaintCommand, PaintList, UiDebug, to_physical};
 pub use route::{
     InputDevice, UI_ACCEPT, UI_CANCEL, UI_DOWN, UI_LEFT, UI_NEXT, UI_PREV, UI_RIGHT, UI_UP,

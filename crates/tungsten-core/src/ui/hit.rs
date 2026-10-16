@@ -7,6 +7,8 @@
 //! widget's box is where it paints, under its and its ancestors'
 //! translation and scale; opacity and a root's freeze change nothing here.
 //! From M57 a scroll panel's children are hit where its offset moves them.
+//! From M58 a debug root is hit in its own units: the point divided by the
+//! debug scale of the last layout. Shadows are not hit.
 
 use glam::Vec2;
 
@@ -39,12 +41,17 @@ impl UiTree {
     /// [`Self::hit_test`] with the `Game` and `GamePopup` roots left out
     /// while `hide_game_layers` is set, as their paint is.
     pub(crate) fn hit_test_layers(&self, point: Vec2, hide_game_layers: bool) -> Option<WidgetId> {
-        let viewport = Rect::from_pos_size(Vec2::ZERO, self.viewport?);
+        let viewport = self.viewport?;
         for &root in self.roots.iter().rev() {
             if !self.root_routes(root, hide_game_layers) {
                 continue;
             }
-            if let Some(hit) = self.hit_node(root, point, viewport, UiTransform::IDENTITY) {
+            // In the root's units: a debug root's span the debug scale (M58).
+            let layer = self
+                .node(root)
+                .map_or(1.0, |node| self.layer_scale(node.layer));
+            let clip = Rect::from_pos_size(Vec2::ZERO, viewport / layer);
+            if let Some(hit) = self.hit_node(root, point / layer, clip, UiTransform::IDENTITY) {
                 return Some(hit);
             }
             if self.modal(root) {
@@ -65,7 +72,7 @@ impl UiTree {
     }
 
     /// The hit in `id`'s subtree, inside `clip`: the clip `id` paints in,
-    /// under its ancestors' composed map `parent`.
+    /// under its ancestors' composed map `parent`, all in its root's units.
     fn hit_node(
         &self,
         id: WidgetId,
@@ -81,7 +88,8 @@ impl UiTree {
             return None;
         }
         let layout = node.rect?;
-        let transform = parent.compose(node_transform(node, layout, self.paint_scale()));
+        let unit = self.unit_scale(node.layer);
+        let transform = parent.compose(node_transform(node, layout, unit));
         if transform.scale < MIN_SCALE {
             return None;
         }
@@ -91,7 +99,7 @@ impl UiTree {
         } else {
             Some(clip)
         };
-        let children = transform.compose(children_transform(node, self.paint_scale()));
+        let children = transform.compose(children_transform(node, unit));
         if let Some(child_clip) = child_clip
             && let Some(hit) = node
                 .children
@@ -104,16 +112,19 @@ impl UiTree {
         (node.hit_testable && rect.contains(point)).then_some(id)
     }
 
-    /// The scale translations round at: the last paint's, else 1.
-    fn paint_scale(&self) -> f32 {
-        self.paint_scale.unwrap_or(1.0)
+    /// The scale translations round at in a root on `layer`, in physical
+    /// pixels per unit of that root: the last paint's scale, else 1, times
+    /// the layer's scale (M58).
+    fn unit_scale(&self, layer: UiLayer) -> f32 {
+        self.paint_scale.unwrap_or(1.0) * self.layer_scale(layer)
     }
 
     /// Where `id` paints and is hit, in viewport space (M56): its committed
     /// box under its own and its ancestors' translation and scale, and its
     /// scroll panel ancestors' offsets (M57), with translations rounded at
-    /// the last paint's scale. Equal to [`Self::rect`] when nothing moves
-    /// it; `None` when that is.
+    /// the last paint's scale; under a debug root, mapped from the root's
+    /// units into the tree's (M58). Equal to [`Self::rect`] on a game layer
+    /// when nothing moves it; `None` when that is.
     #[must_use]
     pub fn visual_rect(&self, id: WidgetId) -> Option<Rect> {
         let mut chain = Vec::new();
@@ -123,18 +134,20 @@ impl UiTree {
             chain.push((node, node.rect?));
             current = node.parent;
         }
-        let scale = self.paint_scale();
         let (own, ancestors) = chain.split_first()?;
+        let layer = self.layer_scale(own.0.layer);
+        let unit = self.unit_scale(own.0.layer);
         let parent = ancestors
             .iter()
             .rev()
             .fold(UiTransform::IDENTITY, |parent, (node, rect)| {
                 parent
-                    .compose(node_transform(node, *rect, scale))
-                    .compose(children_transform(node, scale))
+                    .compose(node_transform(node, *rect, unit))
+                    .compose(children_transform(node, unit))
             });
-        let transform = parent.compose(node_transform(own.0, own.1, scale));
-        Some(transform.rect(own.1))
+        let transform = parent.compose(node_transform(own.0, own.1, unit));
+        let rect = transform.rect(own.1);
+        Some(Rect::new(rect.min * layer, rect.max * layer))
     }
 }
 

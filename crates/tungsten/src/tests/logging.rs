@@ -297,3 +297,75 @@ fn an_install_after_a_logger_is_set_has_no_console_feed() {
     assert!(feed.is_none(), "the logger already set keeps its sinks");
     assert!(file.get().is_none());
 }
+
+// ---- M58: the console's fields ----
+
+/// A writer the logger's pipe fills, which the test reads back.
+#[derive(Clone, Default)]
+struct Captured(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+impl Write for Captured {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+/// What `builder`'s logger writes for one record, its newline dropped as
+/// the console's sink drops it.
+fn formatted(level: Level, target: &str, message: &str) -> String {
+    let captured = Captured::default();
+    let mut builder = builder(None, LevelFilter::Trace);
+    builder.target(Target::Pipe(Box::new(captured.clone())));
+    let logger = builder.build();
+    logger.log(
+        &log::Record::builder()
+            .args(format_args!("{message}"))
+            .level(level)
+            .target(target)
+            .build(),
+    );
+    let mut text = String::from_utf8(captured.0.lock().unwrap().clone()).unwrap();
+    assert_eq!(text.pop(), Some('\n'));
+    text
+}
+
+#[test]
+fn record_fields_reads_the_loggers_own_format() {
+    let record = formatted(Level::Warn, "game::player", "low health");
+    let fields = record_fields(&record).unwrap_or_else(|| panic!("{record:?}"));
+    assert_eq!(fields.level, Level::Warn);
+    assert_eq!(fields.target, "player");
+    assert_eq!(fields.message, "low health");
+    assert!(!fields.more);
+    let stamp = record[1..].split_whitespace().next().unwrap();
+    assert_eq!(fields.time, &stamp[11..19], "{record:?}");
+    assert!(fields.time.as_bytes()[2] == b':' && fields.time.as_bytes()[5] == b':');
+
+    let record = formatted(Level::Error, "engine", "first\nsecond");
+    let fields = record_fields(&record).unwrap();
+    assert_eq!((fields.level, fields.target), (Level::Error, "engine"));
+    assert_eq!(fields.message, "first");
+    assert!(fields.more, "a second line follows");
+
+    for level in [Level::Info, Level::Debug, Level::Trace] {
+        assert_eq!(
+            record_fields(&formatted(level, "a", "m")).unwrap().level,
+            level
+        );
+    }
+    for other in [
+        "plain text",
+        "[only]",
+        "[2026-10-15T12:00:00Z LOUD a] m",
+        "[noon INFO a] m",
+        "[2026-10-15T12:00:00Z INFO a b] m",
+        "",
+    ] {
+        assert_eq!(record_fields(other), None, "{other:?}");
+    }
+}
