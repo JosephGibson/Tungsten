@@ -160,6 +160,8 @@ Owner-added on 2026-10-03, with all four groups in scope. A crate of generic com
 - **Stability.** Decided at the definition gate (question 24, `D-103`): the kit's API is inside the 1.0 promise through the umbrella's re-export, with `#[non_exhaustive]` on kit settings structs, and joins the freeze (§7).
 - **Done-when sketch:** every item used by the template or a migrated example, with rustdoc and a harness test; example 01's copies of kit features deleted; `just physics-release` green, since the controllers move kinematic bodies through the physics step.
 
+Graduated on 2026-10-16 for the candidates after W13d: [w13](w13-kit.md) holds the kit catalogue, the scoping source of W13e to W13k; this section stays the record of W13a to W13d.
+
 ### 8.5 W14: tooling
 
 Graduated on 2026-10-03: [w14](w14-tooling.md) holds the scope, the candidates and their done-when checks; this section only places it.

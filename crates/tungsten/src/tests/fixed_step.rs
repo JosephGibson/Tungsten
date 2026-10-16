@@ -8,9 +8,9 @@ use crate::{App, FrameTimings};
 use glam::Vec2;
 use tungsten_core::physics::PHYSICS_STEP;
 use tungsten_core::{
-    ActionMap, Binding, Bundle, Collider, CollisionEvent, Config, Entity, EventQueue, InputState,
-    KeyCode, PhysicsConfig, Position, PrevPosition, RigidBodyBundle, Stage, Time, Transform,
-    Velocity, World, system,
+    ActionMap, Binding, Bundle, Collider, CollisionEvent, Config, Entity, EventCursor, EventQueue,
+    InputState, KeyCode, PhysicsConfig, Position, PrevPosition, RigidBodyBundle, Stage, Time,
+    Transform, Velocity, World, system,
 };
 
 const PIN: f32 = 1.0 / 60.0;
@@ -301,6 +301,142 @@ fn at_144_hz_a_fixed_reader_reads_each_update_event_once_and_a_pause_drops_them(
         "only the last paused frame's event reaches the next step"
     );
     assert!(after.windows(2).all(|w| w[1] == w[0] + 1), "{after:?}");
+}
+
+/// An event numbered by one counter, whichever system sends it.
+struct Ping(u32);
+
+/// One cursor read: its ids and what it counted missed.
+type CursorRead = (Vec<u32>, u64);
+
+/// The cursor readers' reads, and the counter when the fixed one last ran.
+#[derive(Default)]
+struct CursorReads {
+    fixed: Vec<CursorRead>,
+    post: Vec<CursorRead>,
+    sent_at_fixed_read: u32,
+}
+
+fn send_ping(world: &mut World) {
+    let id = *world.resource::<u32>();
+    *world.resource_mut::<u32>() += 1;
+    world.resource_mut::<EventQueue<Ping>>().send(Ping(id));
+}
+
+/// `Ping`s sent in `update`, in `fixed_update` after its reader and in
+/// `post_update` after its reader, read through a cursor in both stages.
+fn cursor_app() -> App {
+    let mut app = app();
+    app.world_mut().register_event::<Ping>();
+    app.world_mut().insert_resource(0_u32);
+    app.world_mut().insert_resource(CursorReads::default());
+    for fixed in [true, false] {
+        let mut cursor = EventCursor::<Ping>::new();
+        let (stage, reader, sender) = if fixed {
+            (Stage::FixedUpdate, "fixed_cursor", "fixed_ping")
+        } else {
+            (Stage::PostUpdate, "post_cursor", "post_ping")
+        };
+        let mut read = system(reader, move |world: &mut World| {
+            let read = cursor.read(world.resource::<EventQueue<Ping>>());
+            let missed = read.missed();
+            let ids: Vec<u32> = read.map(|ping| ping.0).collect();
+            let sent = *world.resource::<u32>();
+            let reads = world.resource_mut::<CursorReads>();
+            if fixed {
+                reads.fixed.push((ids, missed));
+                reads.sent_at_fixed_read = sent;
+            } else {
+                reads.post.push((ids, missed));
+            }
+        });
+        if fixed {
+            read = read.before(PHYSICS_STEP);
+        }
+        app.add_system_to(stage, read);
+        app.add_system_to(stage, system(sender, send_ping).after(reader));
+    }
+    app.add_system_to(Stage::Update, system("update_ping", send_ping));
+    app
+}
+
+/// One reader's reads against the counter: each read's ids follow on from
+/// the last read's past what it counted missed, so no id is read twice or
+/// both read and missed. Returns the ids accounted for and those missed.
+fn account(reads: &[CursorRead]) -> (u32, u64) {
+    let (mut next, mut missed) = (0_u64, 0_u64);
+    for (i, (ids, skipped)) in reads.iter().enumerate() {
+        next += skipped;
+        missed += skipped;
+        let expected: Vec<u32> = (next..next + ids.len() as u64)
+            .map(|id| id as u32)
+            .collect();
+        assert_eq!(*ids, expected, "read {i}");
+        next += ids.len() as u64;
+    }
+    (next as u32, missed)
+}
+
+/// The fixed reader read or counted every id sent before its last run, and
+/// the `post_update` reader every id but the one sent after it, missing
+/// none. Returns the fixed reader's missed count.
+fn check_cursor_reads(harness: &Harness, context: &str) -> u64 {
+    let reads = harness.world().resource::<CursorReads>();
+    let (fixed_seen, fixed_missed) = account(&reads.fixed);
+    assert_eq!(
+        fixed_seen, reads.sent_at_fixed_read,
+        "{context}: the fixed reader lags by the ids sent since its last step"
+    );
+    let (post_seen, post_missed) = account(&reads.post);
+    assert_eq!(post_missed, 0, "{context}");
+    assert_eq!(post_seen, ids_sent(harness) - 1, "{context}");
+    fixed_missed
+}
+
+#[test]
+fn a_cursor_reads_each_event_once_at_any_frame_rate_and_counts_what_was_dropped() {
+    for dt in [SLOW, PIN, FAST, 1.0 / 1000.0] {
+        let mut harness = Harness::new(cursor_app());
+        harness.set_dt(dt);
+        for frame in 0..120 {
+            harness.step(1);
+            let missed = check_cursor_reads(&harness, &format!("dt {dt}, frame {frame}"));
+            assert_eq!(missed, 0, "dt {dt}, frame {frame}");
+        }
+        assert!(
+            harness.world().resource::<CursorReads>().sent_at_fixed_read > 0,
+            "dt {dt}: a step ran"
+        );
+    }
+
+    let mut harness = Harness::new(cursor_app());
+    harness.step(10);
+    set_paused(&mut harness, true);
+    harness.step(5);
+    set_paused(&mut harness, false);
+    harness.step(1);
+    while timings(&harness).fixed_steps == 0 {
+        harness.step(1);
+    }
+    let after_pause = check_cursor_reads(&harness, "after a pause");
+    assert!(after_pause > 0, "the paused frames dropped events");
+
+    harness.world_mut().resource_mut::<Time>().set_scale(0.001);
+    let mut frames = 0;
+    loop {
+        harness.step(1);
+        frames += 1;
+        assert!(frames < 3000, "no step at scale 0.001");
+        if timings(&harness).fixed_steps > 0 {
+            break;
+        }
+        check_cursor_reads(&harness, &format!("slow motion, frame {frames}"));
+    }
+    let slow = check_cursor_reads(&harness, "slow motion's step");
+    assert!(
+        slow > after_pause,
+        "the hold cap dropped frames over {frames} frames"
+    );
 }
 
 /// The keys the edge recorder watches.

@@ -4,7 +4,8 @@ use std::collections::HashSet;
 use std::fmt;
 
 use tungsten_core::{
-    AudioCommands, AudioHandle, EventQueue, Plugin, Schedule, SoundRegistry, Stage, World, system,
+    AudioCommands, AudioHandle, EventCursor, EventQueue, Plugin, Schedule, SoundRegistry, Stage,
+    World, system,
 };
 
 /// Plays a manifest sound for each event `E`, once per event: a hit, a
@@ -12,9 +13,11 @@ use tungsten_core::{
 /// and its system in `PostUpdate` under the name the game passes, as any
 /// system takes one; two sound plugins need two names.
 ///
-/// The system plays each event once, whatever its place among the senders:
-/// an event sent before it in the frame plays that frame, one sent after
-/// it plays the next, and none plays twice. It plays at the manifest's
+/// The system reads its queue through an [`EventCursor`], so it plays each
+/// event once, whatever its place among the senders: an event sent before
+/// it in the frame plays that frame, one sent after it plays the next, and
+/// none plays twice; a queue replaced between runs plays its own events
+/// from the first. It plays at the manifest's
 /// volume, never looping, through `AudioCommands`. Audio runs on real time,
 /// so events sent while the game clock is paused play. An unknown sound ID
 /// logs one warning per ID and plays nothing, and a world without a
@@ -116,7 +119,7 @@ impl<E: 'static> Plugin for SoundOnEvent<E> {
         world.register_event::<E>();
         let mut reader = Reader {
             pick: self.pick,
-            handled: 0,
+            cursor: EventCursor::new(),
             warned: HashSet::new(),
             play: Vec::new(),
         };
@@ -130,9 +133,8 @@ impl<E: 'static> Plugin for SoundOnEvent<E> {
 /// The system's state between frames.
 struct Reader<E> {
     pick: Pick<E>,
-    /// How many events the current window held when the system last ran:
-    /// after the flush they head the previous window, already played.
-    handled: usize,
+    /// The system's place in the queue: what it has played.
+    cursor: EventCursor<E>,
     /// The unknown sound IDs already warned about.
     warned: HashSet<String>,
     /// This run's sounds and their volumes, kept so a frame allocates
@@ -145,21 +147,17 @@ impl<E: 'static> Reader<E> {
         let Some(queue) = world.get_resource::<EventQueue<E>>() else {
             return;
         };
-        // Outside the fixed steps a queue reads its previous window, then
-        // its current one: skip the events of the previous window this
-        // system played last frame, then play the rest and the current.
-        let current = queue.iter_current().count();
-        let previous = queue.len() - current;
-        let skip = self.handled.min(previous);
-        self.handled = current;
-        if queue.len() == skip {
+        // The read moves the cursor past every event at once, so with no
+        // registry or commands to play them nothing replays later.
+        let events = self.cursor.read(queue);
+        if events.len() == 0 {
             return;
         }
         let Some(sounds) = world.get_resource::<SoundRegistry>() else {
             return;
         };
         self.play.clear();
-        for event in queue.iter().skip(skip) {
+        for event in events {
             let id = match self.pick {
                 Pick::Every(sound) => sound,
                 Pick::Select(pick) => match pick(event) {

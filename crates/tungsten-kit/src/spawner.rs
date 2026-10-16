@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use glam::Vec2;
 use tungsten_core::physics::PHYSICS_SYNC;
 use tungsten_core::{
-    CommandBuffer, Plugin, Schedule, Stage, Time, Timer, Transform, World, system,
+    CommandBuffer, Entity, Plugin, Schedule, Stage, Time, Timer, Transform, World, system,
 };
 
 use crate::hierarchy::TRANSFORM_PROPAGATE_LATE;
@@ -25,8 +25,11 @@ pub const SPAWNER_TICK: &str = "spawner_tick";
 ///
 /// A prefab that does not prepare (an unknown ID, a component that fails)
 /// logs one error per prefab ID and spawns nothing; the period still
-/// counts. The spawned entities carry no state marker, so a state's exit
-/// leaves them.
+/// counts. Each spawn comes from its spawner
+/// ([`CommandBuffer::spawn_prefab_from`]) and takes what the World's spawn
+/// inheritance gives, a state's `SceneEntity` under the umbrella's
+/// `StatePlugin`, so it leaves with the spawner's state; a spawner despawned
+/// earlier in the frame's commands, as by its state's exit, spawns nothing.
 ///
 /// # Examples
 ///
@@ -144,8 +147,9 @@ impl Plugin for SpawnerPlugin {
 struct Ticker {
     /// The prefab IDs whose failure was logged.
     warned: HashSet<String>,
-    /// This frame's spawns, kept so a frame allocates no list once warm.
-    due: Vec<(String, Vec2)>,
+    /// This frame's spawns and their spawners, kept so a frame allocates no
+    /// list once warm.
+    due: Vec<(Entity, String, Vec2)>,
 }
 
 impl Ticker {
@@ -155,7 +159,8 @@ impl Ticker {
         }
         let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
         let Self { warned, due } = self;
-        for (spawner, transform) in world.query_mut::<(&mut Spawner, &Transform)>() {
+        for (entity, spawner, transform) in world.query_mut::<(Entity, &mut Spawner, &Transform)>()
+        {
             if spawner.remaining == Some(0) {
                 continue;
             }
@@ -165,13 +170,15 @@ impl Ticker {
                 *remaining -= count;
             }
             for _ in 0..count {
-                due.push((spawner.prefab.clone(), transform.position));
+                due.push((entity, spawner.prefab.clone(), transform.position));
             }
         }
-        for (prefab, position) in due.drain(..) {
+        for (spawner, prefab, position) in due.drain(..) {
             match world.prepare_prefab(&prefab, position) {
                 Ok(prepared) => {
-                    world.resource_mut::<CommandBuffer>().spawn_prefab(prepared);
+                    world
+                        .resource_mut::<CommandBuffer>()
+                        .spawn_prefab_from(spawner, prepared);
                 }
                 Err(err) => {
                     if !warned.contains(&prefab) {

@@ -14,13 +14,14 @@ use tungsten_core::assets::{
     TilemapInstance, UvRect,
 };
 use tungsten_core::{
-    AssetRegistry, Config, Entity, LayerKind, Particle, ParticleEmitter, PrefabRegistry,
-    TextureHandle, With,
+    AssetRegistry, CommandBuffer, Config, Entity, LayerKind, Particle, ParticleEmitter,
+    PrefabRegistry, Tag, TextureHandle, Transform, With,
 };
 
 use super::*;
 use crate::App;
 use crate::asset_loader::{load_scene, reload_tilemap};
+use crate::state::{GameState, SceneEntity, StateContext, StateId, StateStack};
 use crate::testing::Harness;
 
 static COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -450,5 +451,81 @@ fn a_tilemap_prefab_draws_its_tiles_through_the_harness() {
     let drawn = draw(true);
     assert_eq!(drawn.len(), 5, "six cells, one cleared");
     assert_eq!(drawn, draw(false));
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+/// A state with one entity of its own, whose `on_exit` queues prefab
+/// `spark` from that entity.
+struct Sparkler;
+
+impl GameState for Sparkler {
+    fn id(&self) -> StateId {
+        "sparkler"
+    }
+
+    fn on_enter(&mut self, ctx: &mut StateContext) {
+        ctx.world.spawn_with((
+            Transform::default(),
+            SceneEntity {
+                state_id: ctx.state_id,
+            },
+        ));
+    }
+
+    fn on_exit(&mut self, ctx: &mut StateContext) {
+        let owner = ctx
+            .world
+            .query::<(Entity, &SceneEntity)>()
+            .find(|(_, marker)| marker.state_id == ctx.state_id)
+            .map(|(entity, _)| entity)
+            .unwrap();
+        let prepared = ctx.world.prepare_prefab("spark", [0.0, 0.0]).unwrap();
+        ctx.world
+            .resource_mut::<CommandBuffer>()
+            .spawn_prefab_from(owner, prepared);
+    }
+
+    fn update(&mut self, _world: &mut World) {}
+}
+
+#[test]
+fn a_spawn_queued_in_on_exit_from_a_states_entity_leaves_nothing() {
+    let dir = tempdir();
+    let spark = dir.join("prefabs/spark.json");
+    write(&spark, r#"{ "tag": "spark" }"#);
+    let mut app = app_with_assets();
+    load_prefabs(&manifest(&[("spark", &spark)], &[]), app.world_mut()).unwrap();
+    let mut harness = Harness::new(app);
+    harness.step(1);
+    let before = harness.world().entity_count();
+    let request = |harness: &mut Harness, push: bool| {
+        let stack = harness.world_mut().resource_mut::<StateStack>();
+        if push {
+            stack.request_push(Sparkler);
+        } else {
+            stack.request_pop();
+        }
+    };
+    request(&mut harness, true);
+    harness.step(1);
+    assert_eq!(harness.world().entity_count(), before + 1, "its entity");
+    request(&mut harness, false);
+    harness.step(1);
+    let sparkler = |marker: &&SceneEntity| marker.state_id == "sparkler";
+    assert_eq!(
+        harness
+            .world()
+            .query::<&SceneEntity>()
+            .filter(sparkler)
+            .count(),
+        0
+    );
+    let sparks = harness
+        .world()
+        .query::<&Tag>()
+        .filter(|tag| tag.name == "spark")
+        .count();
+    assert_eq!(sparks, 0, "the spawn followed its source's despawn");
+    assert_eq!(harness.world().entity_count(), before);
     fs::remove_dir_all(&dir).unwrap();
 }

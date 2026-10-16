@@ -882,3 +882,226 @@ fn a_prefab_inserted_in_code_is_checked_at_its_spawn() {
         expected
     );
 }
+
+/// A component a spawn takes from its source in the inheritance tests.
+#[derive(Debug, Clone, PartialEq)]
+struct Team(u8);
+
+/// A second inherited component.
+#[derive(Debug, Clone, PartialEq)]
+struct Rank(u8);
+
+/// A component no test registers for inheritance.
+#[derive(Debug, Clone, PartialEq)]
+struct Secret(u8);
+
+/// F3's `Source` shape: the first entity of a spawn chain.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Origin(Entity);
+
+/// The test World with the prefab `bolt`, tagged `bolt`.
+fn bolt_world() -> World {
+    with_prefabs(world(), &[("bolt", json!({ "tag": "bolt" }))])
+}
+
+/// `bolt` prepared at `x`, which tells the spawns apart.
+fn bolt_at(world: &mut World, x: f32) -> PreparedPrefab {
+    world.prepare_prefab("bolt", [x, 0.0]).unwrap()
+}
+
+/// A spawned bolt's x, `Team`, `Rank` and `Secret`.
+type Bolt = (f32, Option<Team>, Option<Rank>, Option<Secret>);
+
+/// Each spawned bolt, by x.
+fn bolts(world: &World) -> Vec<Bolt> {
+    let mut found: Vec<_> = world
+        .query::<(
+            &Transform,
+            &Tag,
+            Option<&Team>,
+            Option<&Rank>,
+            Option<&Secret>,
+        )>()
+        .filter(|(_, tag, ..)| tag.name == "bolt")
+        .map(|(transform, _, team, rank, secret)| {
+            (
+                transform.position.x,
+                team.cloned(),
+                rank.cloned(),
+                secret.cloned(),
+            )
+        })
+        .collect();
+    found.sort_by(|a, b| a.0.total_cmp(&b.0));
+    found
+}
+
+#[test]
+fn a_spawn_from_a_source_takes_what_it_inherits_and_nothing_else() {
+    let mut world = bolt_world();
+    assert!(world.inherit_from_source::<Team>());
+    let armed = world.spawn_with((Team(2), Secret(9)));
+    let bare = world.spawn_with((Secret(1),));
+    let mut buffer = CommandBuffer::new();
+    buffer.spawn_prefab_from(armed, bolt_at(&mut world, 1.0));
+    buffer.spawn_prefab_from(bare, bolt_at(&mut world, 2.0));
+    buffer.spawn_prefab(bolt_at(&mut world, 3.0));
+    world.flush(buffer);
+    assert_eq!(
+        bolts(&world),
+        [
+            (1.0, Some(Team(2)), None, None),
+            (2.0, None, None, None),
+            (3.0, None, None, None),
+        ],
+        "the registered type from the source that has it; `Secret` from neither"
+    );
+}
+
+#[test]
+fn spawn_prefab_from_records_one_derive_after_the_run() {
+    let mut world = with_prefabs(
+        world(),
+        &[(
+            "slime",
+            json!({ "sprite": { "asset_id": "slime" }, "tag": "enemy",
+                    "components": { "health": { "max": 3 }, "player": null } }),
+        )],
+    );
+    world.inherit_from_source::<Team>();
+    let source = world.spawn_with((Team(4),));
+    let prepare = |world: &mut World| {
+        world
+            .prepare_prefab("slime", Vec2::new(4.0, 8.0))
+            .unwrap()
+            .with((Route { points: Vec::new() },))
+    };
+    let mut plain = CommandBuffer::new();
+    plain.spawn_prefab(prepare(&mut world));
+    assert_eq!(plain.len(), 8);
+    let mut buffer = CommandBuffer::new();
+    let pending = buffer.spawn_prefab_from(source, prepare(&mut world));
+    assert_eq!(buffer.len(), 9, "the spawn, its run of 7 and one derive");
+    assert_eq!(pending, PendingEntity(0));
+    world.flush(buffer);
+    let found: Vec<_> = world
+        .query::<(&Health, &Player, &Route, &Tag, &Team)>()
+        .map(|(health, _, _, tag, team)| (health.max, tag.name.clone(), team.clone()))
+        .collect();
+    assert_eq!(found, [(3, "enemy".to_owned(), Team(4))]);
+}
+
+#[test]
+fn a_queued_spawn_derives_from_the_source_as_the_flush_finds_it() {
+    let mut world = bolt_world();
+    world.inherit_from_source::<Team>();
+    world.inherit_from_source::<Rank>();
+    let source = world.spawn_with((Team(1),));
+    let mut buffer = CommandBuffer::new();
+    buffer.insert(source, Rank(4));
+    buffer.remove_component::<Team>(source);
+    buffer.spawn_prefab_from(source, bolt_at(&mut world, 1.0));
+    world.flush(buffer);
+    assert_eq!(bolts(&world), [(1.0, None, Some(Rank(4)), None)]);
+}
+
+#[test]
+fn a_source_despawned_by_an_earlier_command_drops_the_spawn() {
+    let mut world = bolt_world();
+    world.inherit_from_source::<Team>();
+    let gone = world.spawn_with((Team(1),));
+    let kept = world.spawn_with((Team(2),));
+    let count = world.entity_count();
+    let mut buffer = CommandBuffer::new();
+    buffer.despawn(gone);
+    buffer.spawn_prefab_from(gone, bolt_at(&mut world, 1.0).with((Secret(1),)));
+    buffer.spawn_prefab_from(kept, bolt_at(&mut world, 2.0).with((Secret(2),)));
+    world.flush(buffer);
+    assert_eq!(
+        bolts(&world),
+        [(2.0, Some(Team(2)), None, Some(Secret(2)))],
+        "the next spawn keeps its own `with` value"
+    );
+    assert_eq!(
+        world.entity_count(),
+        count,
+        "the source and its spawn gone, the other spawn added"
+    );
+    assert!(!world.is_alive(gone));
+    assert_eq!(world.query::<&Secret>().count(), 1, "nothing of it remains");
+}
+
+#[test]
+fn a_source_despawned_by_a_later_command_still_spawns() {
+    let mut world = bolt_world();
+    world.inherit_from_source::<Team>();
+    let source = world.spawn_with((Team(3),));
+    let mut buffer = CommandBuffer::new();
+    buffer.spawn_prefab_from(source, bolt_at(&mut world, 1.0));
+    buffer.despawn(source);
+    world.flush(buffer);
+    assert_eq!(bolts(&world), [(1.0, Some(Team(3)), None, None)]);
+    assert!(!world.is_alive(source));
+    assert_eq!(world.entity_count(), 1);
+}
+
+#[test]
+fn the_prefab_and_a_with_bundle_keep_their_own_values() {
+    let mut world = bolt_world();
+    world.inherit_from_source::<Tag>();
+    world.inherit_from_source::<Team>();
+    world.inherit_from_source::<Rank>();
+    let source = world.spawn_with((Tag::new("turret"), Team(1), Rank(1)));
+    let mut buffer = CommandBuffer::new();
+    buffer.spawn_prefab_from(source, bolt_at(&mut world, 1.0).with((Team(5),)));
+    world.flush(buffer);
+    assert_eq!(
+        bolts(&world),
+        [(1.0, Some(Team(5)), Some(Rank(1)), None)],
+        "the prefab's tag and the bundle's team win; the rank is inherited"
+    );
+}
+
+#[test]
+fn derive_from_source_keeps_a_spawn_chains_first_entity() {
+    let mut world = bolt_world();
+    assert!(world.derive_from_source::<Origin>(|world, source| {
+        Some(
+            world
+                .get::<Origin>(source)
+                .copied()
+                .unwrap_or(Origin(source)),
+        )
+    }));
+    let a = world.spawn();
+    let mut buffer = CommandBuffer::new();
+    buffer.spawn_prefab_from(a, bolt_at(&mut world, 1.0));
+    world.flush(buffer);
+    let b: Vec<(Entity, Origin)> = world
+        .query::<(Entity, &Origin)>()
+        .map(|(entity, origin)| (entity, *origin))
+        .collect();
+    assert_eq!(b.len(), 1);
+    assert_eq!(b[0].1, Origin(a), "A spawns B");
+    let mut buffer = CommandBuffer::new();
+    buffer.spawn_prefab_from(b[0].0, bolt_at(&mut world, 2.0));
+    world.flush(buffer);
+    let origins: Vec<Origin> = world.query::<&Origin>().copied().collect();
+    assert_eq!(origins, [Origin(a), Origin(a)], "B spawns C: both name A");
+}
+
+#[test]
+fn the_first_registration_of_a_type_stands() {
+    let mut world = bolt_world();
+    assert!(world.derive_from_source::<Team>(|_, _| Some(Team(7))));
+    assert!(!world.inherit_from_source::<Team>());
+    assert!(!world.derive_from_source::<Team>(|_, _| Some(Team(8))));
+    assert!(world.inherit_from_source::<Rank>());
+    assert!(!world.inherit_from_source::<Rank>());
+    assert!(!world.derive_from_source::<Rank>(|_, _| Some(Rank(9))));
+    let source = world.spawn_with((Team(1), Rank(2)));
+    let mut buffer = CommandBuffer::new();
+    buffer.spawn_prefab_from(source, bolt_at(&mut world, 1.0));
+    world.flush(buffer);
+    assert_eq!(bolts(&world), [(1.0, Some(Team(7)), Some(Rank(2)), None)]);
+}

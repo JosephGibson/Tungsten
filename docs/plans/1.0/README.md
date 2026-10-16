@@ -5,10 +5,10 @@ Planning for Tungsten 1.0: what it means, which workstreams reach it, in what or
 ## Now
 
 <!-- roadmap-summary:start -->
-- **Workspace:** `0.79.0`
-- **First open stop:** `w6bc`
+- **Workspace:** `0.80.0`
+- **First open stop:** `w13f`
 - **Stop state:** `todo`
-- **Next milestone:** `M60`
+- **Next milestone:** `M61`
 <!-- roadmap-summary:end -->
 
 This is the local tree's snapshot, not proof of publication. `python3 -B scripts/roadmap.py summary` prints the four owned fields above, and `--write` replaces them; `just repo-check` checks them against workspace metadata and the existing status derivation. `python3 -B scripts/roadmap.py status` reports the branch, tags, stop evidence and last fetch without fetching. Refresh/review local refs before claiming a release is merged or published.
@@ -59,7 +59,7 @@ Phase 5 is complete in the local refs. The [queue](implementation-plan.md#6-crit
 - **Names.** One `wNN-slug.md` per workstream. Milestone plans for 1.0 are written here too, named by the [plan naming rule](../README.md#naming) and numbered from M32 when they are next to start. The [register](implementation-plan.md#10-register) maps each candidate to its plan and release.
 - **Headers.** Every file except this one carries the six plan header fields, which the repository check reads (below). Skeletons say `draft (skeleton)`.
 - **Catalog.** [roadmap.json](roadmap.json) is data, not a plan: it carries no plan headers, and the repository check reads it against the register instead (`D-109`).
-- **Graduation.** W2, W3, W4, W9, W11, W12, W14 and W15 graduated: their criteria sections moved verbatim into their files, which hold their candidates in order, each with a done-when, and criteria.md keeps a placement paragraph. The rest stay in criteria.md, and no graduation session is scheduled (`D-150`): a milestone plan cites its workstream's criteria section as its scoping source. A workstream file that has not graduated holds placement only and never a copy of the scoping text, so each fact has one source.
+- **Graduation.** W2, W3, W4, W9, W11, W12, W14 and W15 graduated: their criteria sections moved verbatim into their files, which hold their candidates in order, each with a done-when, and criteria.md keeps a placement paragraph. W13 graduated on 2026-10-16 for its remaining candidates: [w13](w13-kit.md) holds the kit catalogue, the scoping source of W13e–W13k, while criteria.md §8.4 stays the record of the landed W13a–W13d. The rest stay in criteria.md, and no graduation session is scheduled (`D-150`): a milestone plan cites its workstream's criteria section as its scoping source. A workstream file that has not graduated holds placement only and never a copy of the scoping text, so each fact has one source.
 - **Repository check.** `just repo-check` reads this folder too (Step 0a): it checks every file's headers but this one's and flags a finished file left here, naming `docs/plans/archive/1.0/` as its place.
 - **Lifecycle.** A finished, abandoned or superseded file moves to `docs/plans/archive/1.0/` with the same basename, and the rest of the folder follows after 1.0. Agents never read the archive.
 - **Former paths.** `docs/plans/1.0-criteria-draft.md` is now [criteria.md](criteria.md), and `docs/plans/ui-text-suite-draft.md` is now [w01-ui-text-suite.md](w01-ui-text-suite.md). The released sections of `CHANGELOG.md` and the 0.40 QA plan still name the old paths; `DESIGN.md` names the new one since 0.40 QA step 11.

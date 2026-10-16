@@ -138,6 +138,12 @@ pub(super) enum Command {
         call: fn(&mut World, Entity),
     },
     Despawn(Entity),
+    /// The spawn inheritance of a spawn from `source`
+    /// ([`World::inherit_from_source`]); a dead source despawns the target.
+    Derive {
+        source: Entity,
+        target: CommandTarget,
+    },
 }
 
 impl Command {
@@ -253,6 +259,16 @@ impl CommandBuffer {
     /// Queue despawn; dead entity is no-op at flush.
     pub fn despawn(&mut self, entity: Entity) {
         self.commands.push(Command::Despawn(entity));
+    }
+
+    /// Queue the spawn inheritance of `pending` from `source`, after the
+    /// spawn's own inserts: what [`CommandBuffer::spawn_prefab_from`]
+    /// records.
+    pub(crate) fn derive_pending(&mut self, source: Entity, pending: PendingEntity) {
+        self.commands.push(Command::Derive {
+            source,
+            target: CommandTarget::Pending(pending.0),
+        });
     }
 }
 

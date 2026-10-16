@@ -27,6 +27,12 @@
 //! over an earlier one of its type. Every component is prepared against the
 //! World before anything changes, so a spawn that fails leaves the World as
 //! it was.
+//!
+//! A spawn queued from a source ([`CommandBuffer::spawn_prefab_from`]), such
+//! as a spawner's, then takes what the World's spawn inheritance gives from
+//! that source as the flush finds it ([`World::inherit_from_source`]), a
+//! state's marker say, each type the spawn lacks, in one more move; a source
+//! an earlier command despawned drops the spawn.
 
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
@@ -624,6 +630,42 @@ impl CommandBuffer {
     pub fn spawn_prefab(&mut self, prefab: PreparedPrefab) -> PendingEntity {
         let pending = self.spawn();
         prefab.record(self, At::Pending(pending));
+        pending
+    }
+
+    /// Queues `prefab` as [`spawn_prefab`](Self::spawn_prefab) does, spawned
+    /// from `source`: at the flush, after its own fields and `with` bundles,
+    /// the entity takes what the World's spawn inheritance
+    /// ([`World::inherit_from_source`], [`World::derive_from_source`]) gives
+    /// from `source` as the flush finds it, in one more archetype move when
+    /// anything is given. A source an earlier command despawned drops the
+    /// spawn: nothing of it remains.
+    ///
+    /// ```
+    /// use serde_json::json;
+    /// use tungsten_core::{CommandBuffer, PrefabData, PrefabRegistry, World};
+    ///
+    /// #[derive(Clone, Debug, PartialEq)]
+    /// struct Team(u8);
+    ///
+    /// let mut world = World::new();
+    /// let bolt: PrefabData = serde_json::from_value(json!({ "tag": "bolt" })).unwrap();
+    /// let mut prefabs = PrefabRegistry::new();
+    /// prefabs.insert("bolt".to_string(), bolt);
+    /// world.insert_resource(prefabs);
+    /// world.inherit_from_source::<Team>();
+    /// let turret = world.spawn_with((Team(2),));
+    ///
+    /// let prepared = world.prepare_prefab("bolt", [8.0, 8.0]).unwrap();
+    /// let mut commands = CommandBuffer::new();
+    /// commands.spawn_prefab_from(turret, prepared);
+    /// world.flush(commands);
+    /// let teams: Vec<_> = world.query::<&Team>().collect();
+    /// assert_eq!(teams, [&Team(2), &Team(2)], "the turret's and the bolt's");
+    /// ```
+    pub fn spawn_prefab_from(&mut self, source: Entity, prefab: PreparedPrefab) -> PendingEntity {
+        let pending = self.spawn_prefab(prefab);
+        self.derive_pending(source, pending);
         pending
     }
 }

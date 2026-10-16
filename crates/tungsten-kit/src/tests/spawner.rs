@@ -135,6 +135,45 @@ fn without_a_command_buffer_the_spawners_hold() {
     );
 }
 
+/// What a spawner passes on to its spawns in the test below.
+#[derive(Debug, Clone, PartialEq)]
+struct Owner(u8);
+
+#[test]
+fn a_spawn_takes_what_its_spawner_passes_on_and_a_despawned_spawner_spawns_nothing() {
+    let (mut world, mut schedule) = setup();
+    world.inherit_from_source::<Owner>();
+    let owned = world.spawn_with((
+        Transform::from_position(Vec2::new(10.0, 0.0)),
+        Spawner::new("slime", 0.25),
+        Owner(3),
+    ));
+    let control = nest(&mut world, Spawner::new("slime", 0.25));
+    let owners = |world: &World| {
+        let mut found: Vec<(f32, Option<Owner>)> = world
+            .query::<(&Tag, &Transform, Option<&Owner>)>()
+            .filter(|(tag, ..)| tag.name == "slime")
+            .map(|(_, transform, owner)| (transform.position.x, owner.cloned()))
+            .collect();
+        found.sort_by(|a, b| a.0.total_cmp(&b.0));
+        found
+    };
+    frame(&mut world, &mut schedule, 0.25);
+    assert_eq!(owners(&world), [(10.0, Some(Owner(3))), (64.0, None)]);
+
+    // A due frame whose commands despawn the spawner before its tick.
+    world.resource_mut::<CommandBuffer>().despawn(owned);
+    frame(&mut world, &mut schedule, 0.25);
+    assert!(!world.is_alive(owned));
+    assert_eq!(
+        owners(&world),
+        [(10.0, Some(Owner(3))), (64.0, None), (64.0, None)],
+        "the despawned spawner spawned nothing; the other did"
+    );
+    assert!(world.is_alive(control));
+    assert_eq!(world.entity_count(), 4, "one nest and three slimes");
+}
+
 #[test]
 #[should_panic(expected = "interval must be finite and > 0")]
 fn a_zero_interval_panics() {

@@ -6,6 +6,21 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.80.0] - 2026-10-16
+
+Summary: M60, W13e (plan archived at `docs/plans/archive/1.0/phase6-milestone-60-kit-core-events-ownership.md`): the kit catalogue's F1 in core, an event cursor that reads each event once from any stage and counts what the queue dropped, and spawn inheritance applied at the command flush, so the kit's spawner's entities leave with its state.
+
+### Added
+
+- **Event cursors** (`D-170` amends `D-040`): `EventCursor<T>`, a reader's place in an `EventQueue<T>` by sequence. `read` returns an `EventRead`, an exact-size, fused iterator of the events past the cursor, oldest first, which moves the cursor past them all and counts in `missed()` what flushes or the 256-frame hold cap dropped first. It ignores the fixed steps' views and reads held frames, so a reader in any stage, step or place among its senders reads each event once; a new cursor starts at the queue's oldest event, and one whose queue was replaced at the new queue's. Both types at `tungsten_core` and `tungsten_core::ecs`.
+- **Spawn inheritance** (`D-170` amends `D-157`): `World::inherit_from_source::<T>()` and `World::derive_from_source::<T>(derive)` register what a spawn from a source takes when it lacks a `T`, a clone or a function of the source; `CommandBuffer::spawn_prefab_from(source, prepared)` queues a prefab that takes it at the flush, after its own fields and `with` bundles, in one more archetype move, and a source an earlier command despawned drops the spawn. `StatePlugin` registers `SceneEntity`.
+
+### Changed
+
+- **The kit's spawner spawns from its spawner** (`D-170`): `spawner_tick` queues each spawn with `spawn_prefab_from`, so under `StatePlugin` a spawn takes its spawner's `SceneEntity` and leaves with its state, and a spawner due in its state's exit frame spawns nothing. Known issues keep an entity that takes a state's marker in its exit frame ahead of the dispatcher's despawns.
+- **`SoundOnEvent` and `TriggerZone` read through cursors** (`D-170` amends `D-155`); their plugins, names, stages and behaviour are unchanged.
+- **Records**: `DESIGN.md`'s M60 section, the template's `AGENTS.md` and the getting-started guide on `spawn_prefab_from`, two break-ledger rows, the LLM index's event, prefab and kit rows, and w13-kit's follow-ups. `api/tungsten-core.txt` gains 76 lines, none removed; the umbrella's, kit's and render snapshots, the determinism and containment hashes and the six CPU rows' first-run digests are unchanged.
+
 ## [0.79.0] - 2026-10-16
 
 Summary: M59, UI lab reference and QA (plan archived at `docs/plans/archive/1.0/phase6-milestone-59-ui-lab-reference.md`): a QA pass over the UI work since M54, windowed mode that keeps a hand-sized or maximized window's size through settings applies and display-mode switches, and example 05 reworked into the reference later examples copy

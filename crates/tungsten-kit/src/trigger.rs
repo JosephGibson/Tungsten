@@ -5,7 +5,7 @@ use std::fmt;
 use std::marker::PhantomData;
 
 use tungsten_core::physics::{PHYSICS_STEP, SensorEntered};
-use tungsten_core::{Entity, EventQueue, Plugin, Schedule, Stage, World, system};
+use tungsten_core::{Entity, EventCursor, EventQueue, Plugin, Schedule, Stage, World, system};
 
 /// Sends a [`TriggerEntered<Z, T>`] each time an entity carrying a `T`
 /// enters a sensor carrying a `Z`: a gem picked up by the player, a door's
@@ -15,7 +15,8 @@ use tungsten_core::{Entity, EventQueue, Plugin, Schedule, Stage, World, system};
 /// The plugin registers `EventQueue<TriggerEntered<Z, T>>` and its system
 /// in `FixedUpdate` under the name the game passes, after `physics_step`
 /// when that is registered. Each step the system reads the step's
-/// `SensorEntered` events in order and sends one `TriggerEntered` for each
+/// `SensorEntered` events in order, each once through an [`EventCursor`],
+/// and sends one `TriggerEntered` for each
 /// whose sensor carries a `Z` and whose other body carries a `T`; a tile
 /// never triggers. It reports entering only, as the physics does. Two
 /// zones over different types are two plugins with two names.
@@ -92,25 +93,31 @@ impl<Z, T> fmt::Debug for TriggerZone<Z, T> {
 impl<Z: 'static, T: 'static> Plugin for TriggerZone<Z, T> {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         world.register_event::<TriggerEntered<Z, T>>();
+        let mut sensors = EventCursor::<SensorEntered>::new();
         let mut entered: Vec<TriggerEntered<Z, T>> = Vec::new();
         schedule.add(
             Stage::FixedUpdate,
             system(self.name, move |world: &mut World| {
-                read_zone::<Z, T>(world, &mut entered);
+                read_zone::<Z, T>(world, &mut sensors, &mut entered);
             })
             .after_if_present(PHYSICS_STEP),
         );
     }
 }
 
-/// Sends the step's entries of a `T` into a `Z`; `entered` is the system's
-/// scratch list.
-fn read_zone<Z: 'static, T: 'static>(world: &mut World, entered: &mut Vec<TriggerEntered<Z, T>>) {
+/// Sends the entries of a `T` into a `Z` sent since the system last ran,
+/// after `physics_step` the step's own; `cursor` is the system's place in
+/// the sensor queue and `entered` its scratch list.
+fn read_zone<Z: 'static, T: 'static>(
+    world: &mut World,
+    cursor: &mut EventCursor<SensorEntered>,
+    entered: &mut Vec<TriggerEntered<Z, T>>,
+) {
     let Some(sensors) = world.get_resource::<EventQueue<SensorEntered>>() else {
         return;
     };
     entered.clear();
-    entered.extend(sensors.iter_current().filter_map(|event| {
+    entered.extend(cursor.read(sensors).filter_map(|event| {
         let other = event.other?;
         (world.has::<Z>(event.sensor) && world.has::<T>(other))
             .then(|| TriggerEntered::new(event.sensor, other))

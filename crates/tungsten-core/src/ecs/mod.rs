@@ -11,6 +11,6 @@ mod world;
 pub use bundle::Bundle;
 pub use command_buffer::{CommandBuffer, PendingEntity};
 pub use entity::Entity;
-pub use event_queue::{EventQueue, ShakeEvent, SquashEvent};
+pub use event_queue::{EventCursor, EventQueue, EventRead, ShakeEvent, SquashEvent};
 pub use query::{OptionalColumn, With, Without};
 pub use world::World;

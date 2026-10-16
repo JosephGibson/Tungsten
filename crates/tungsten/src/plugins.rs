@@ -31,7 +31,7 @@ use crate::particles::{
     particle_emit_system, particle_tick_system,
 };
 use crate::physics_debug::physics_debug_toggle_system;
-use crate::state::{state_dispatcher_system, ui_state_roots_system};
+use crate::state::{SceneEntity, state_dispatcher_system, ui_state_roots_system};
 use crate::systems_overlay::systems_overlay_toggle_system;
 use crate::tweens::tween_tick_system;
 use crate::ui_debug::ui_debug_toggle_system;
@@ -103,12 +103,18 @@ impl Plugin for DisplayPlugin {
 }
 
 /// The state stack's dispatcher, in `PreUpdate` after the display hotkeys
-/// (and the UI's systems, which order themselves before it).
+/// (and the UI's systems, which order themselves before it). It registers
+/// [`SceneEntity`] for spawn inheritance
+/// ([`World::inherit_from_source`](tungsten_core::World::inherit_from_source)),
+/// so a prefab queued from a scene entity with
+/// [`CommandBuffer::spawn_prefab_from`](tungsten_core::CommandBuffer::spawn_prefab_from),
+/// as the kit's spawner spawns, takes its marker and leaves with its state.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct StatePlugin;
 
 impl Plugin for StatePlugin {
-    fn build(&self, schedule: &mut Schedule, _world: &mut World) {
+    fn build(&self, schedule: &mut Schedule, world: &mut World) {
+        world.inherit_from_source::<SceneEntity>();
         schedule.add(
             Stage::PreUpdate,
             system(STATE_DISPATCHER, state_dispatcher_system).after_if_present(DISPLAY_INPUT),

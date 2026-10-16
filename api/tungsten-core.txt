@@ -5077,6 +5077,7 @@ pub fn tungsten_core::CommandBuffer::spawn(&mut self) -> tungsten_core::PendingE
 pub fn tungsten_core::CommandBuffer::spawn_with<B: tungsten_core::ecs::bundle::Bundle>(&mut self, B) -> tungsten_core::PendingEntity
 impl tungsten_core::CommandBuffer
 pub fn tungsten_core::CommandBuffer::spawn_prefab(&mut self, tungsten_core::assets::prefab::PreparedPrefab) -> tungsten_core::PendingEntity
+pub fn tungsten_core::CommandBuffer::spawn_prefab_from(&mut self, tungsten_core::Entity, tungsten_core::assets::prefab::PreparedPrefab) -> tungsten_core::PendingEntity
 impl core::default::Default for tungsten_core::CommandBuffer
 pub fn tungsten_core::CommandBuffer::default() -> Self
 impl core::marker::Freeze for tungsten_core::CommandBuffer
@@ -5127,6 +5128,23 @@ impl core::marker::Unpin for tungsten_core::Entity
 impl core::marker::UnsafeUnpin for tungsten_core::Entity
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::Entity
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::Entity
+pub struct tungsten_core::ecs::EventCursor<T>
+impl<T> tungsten_core::EventCursor<T>
+pub fn tungsten_core::EventCursor<T>::new() -> Self
+pub fn tungsten_core::EventCursor<T>::read<'q>(&mut self, &'q tungsten_core::EventQueue<T>) -> tungsten_core::EventRead<'q, T>
+impl<T> core::clone::Clone for tungsten_core::EventCursor<T>
+pub fn tungsten_core::EventCursor<T>::clone(&self) -> Self
+impl<T> core::default::Default for tungsten_core::EventCursor<T>
+pub fn tungsten_core::EventCursor<T>::default() -> Self
+impl<T> core::fmt::Debug for tungsten_core::EventCursor<T>
+pub fn tungsten_core::EventCursor<T>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<T> core::marker::Freeze for tungsten_core::EventCursor<T>
+impl<T> core::marker::Send for tungsten_core::EventCursor<T>
+impl<T> core::marker::Sync for tungsten_core::EventCursor<T>
+impl<T> core::marker::Unpin for tungsten_core::EventCursor<T>
+impl<T> core::marker::UnsafeUnpin for tungsten_core::EventCursor<T>
+impl<T> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::EventCursor<T>
+impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::EventCursor<T>
 pub struct tungsten_core::ecs::EventQueue<T>
 impl tungsten_core::EventQueue<tungsten_core::ui::event::UiEvent>
 pub fn tungsten_core::EventQueue<tungsten_core::ui::event::UiEvent>::activated(&self, tungsten_core::ui::id::WidgetId) -> bool
@@ -5150,6 +5168,24 @@ impl<T> core::marker::Unpin for tungsten_core::EventQueue<T> where T: core::mark
 impl<T> core::marker::UnsafeUnpin for tungsten_core::EventQueue<T>
 impl<T> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::EventQueue<T> where T: core::panic::unwind_safe::RefUnwindSafe
 impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::EventQueue<T> where T: core::panic::unwind_safe::UnwindSafe
+pub struct tungsten_core::ecs::EventRead<'q, T>
+impl<T> tungsten_core::EventRead<'_, T>
+pub fn tungsten_core::EventRead<'_, T>::missed(&self) -> u64
+impl<'q, T> core::iter::traits::iterator::Iterator for tungsten_core::EventRead<'q, T>
+pub type tungsten_core::EventRead<'q, T>::Item = &'q T
+pub fn tungsten_core::EventRead<'q, T>::next(&mut self) -> core::option::Option<&'q T>
+pub fn tungsten_core::EventRead<'q, T>::size_hint(&self) -> (usize, core::option::Option<usize>)
+impl<T> core::fmt::Debug for tungsten_core::EventRead<'_, T>
+pub fn tungsten_core::EventRead<'_, T>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<T> core::iter::traits::exact_size::ExactSizeIterator for tungsten_core::EventRead<'_, T>
+impl<T> core::iter::traits::marker::FusedIterator for tungsten_core::EventRead<'_, T>
+impl<'q, T> core::marker::Freeze for tungsten_core::EventRead<'q, T>
+impl<'q, T> core::marker::Send for tungsten_core::EventRead<'q, T> where T: core::marker::Sync
+impl<'q, T> core::marker::Sync for tungsten_core::EventRead<'q, T> where T: core::marker::Sync
+impl<'q, T> core::marker::Unpin for tungsten_core::EventRead<'q, T>
+impl<'q, T> core::marker::UnsafeUnpin for tungsten_core::EventRead<'q, T>
+impl<'q, T> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::EventRead<'q, T> where T: core::panic::unwind_safe::RefUnwindSafe
+impl<'q, T> core::panic::unwind_safe::UnwindSafe for tungsten_core::EventRead<'q, T> where T: core::panic::unwind_safe::RefUnwindSafe
 pub struct tungsten_core::ecs::OptionalColumn<I>(pub core::option::Option<I>)
 impl<I: core::iter::traits::iterator::Iterator> core::iter::traits::iterator::Iterator for tungsten_core::ecs::query::OptionalColumn<I>
 pub type tungsten_core::ecs::query::OptionalColumn<I>::Item = core::option::Option<<I as core::iter::traits::iterator::Iterator>::Item>
@@ -5243,6 +5279,7 @@ pub fn tungsten_core::World::prepare_prefab(&mut self, &str, impl core::convert:
 pub fn tungsten_core::World::spawn_map_objects(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<alloc::vec::Vec<tungsten_core::Entity>, tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::World::spawn_prefab(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<tungsten_core::Entity, tungsten_core::assets::prefab::PrefabError>
 impl tungsten_core::World
+pub fn tungsten_core::World::derive_from_source<T: 'static>(&mut self, fn(&tungsten_core::World, tungsten_core::Entity) -> core::option::Option<T>) -> bool
 pub fn tungsten_core::World::despawn(&mut self, tungsten_core::Entity)
 pub fn tungsten_core::World::end_fixed_step_events(&mut self)
 pub fn tungsten_core::World::entity_count(&self) -> u32
@@ -5257,6 +5294,7 @@ pub fn tungsten_core::World::has<T: 'static>(&self, tungsten_core::Entity) -> bo
 pub fn tungsten_core::World::has_event<T: 'static>(&self) -> bool
 pub fn tungsten_core::World::has_resource<T: 'static>(&self) -> bool
 pub fn tungsten_core::World::hold_events_for_fixed_step(&mut self)
+pub fn tungsten_core::World::inherit_from_source<T: core::clone::Clone + 'static>(&mut self) -> bool
 pub fn tungsten_core::World::insert<T: 'static>(&mut self, tungsten_core::Entity, T)
 pub fn tungsten_core::World::insert_bundle<B: tungsten_core::ecs::bundle::Bundle>(&mut self, tungsten_core::Entity, B)
 pub fn tungsten_core::World::insert_resource<T: 'static>(&mut self, T)
@@ -13832,6 +13870,7 @@ pub fn tungsten_core::CommandBuffer::spawn(&mut self) -> tungsten_core::PendingE
 pub fn tungsten_core::CommandBuffer::spawn_with<B: tungsten_core::ecs::bundle::Bundle>(&mut self, B) -> tungsten_core::PendingEntity
 impl tungsten_core::CommandBuffer
 pub fn tungsten_core::CommandBuffer::spawn_prefab(&mut self, tungsten_core::assets::prefab::PreparedPrefab) -> tungsten_core::PendingEntity
+pub fn tungsten_core::CommandBuffer::spawn_prefab_from(&mut self, tungsten_core::Entity, tungsten_core::assets::prefab::PreparedPrefab) -> tungsten_core::PendingEntity
 impl core::default::Default for tungsten_core::CommandBuffer
 pub fn tungsten_core::CommandBuffer::default() -> Self
 impl core::marker::Freeze for tungsten_core::CommandBuffer
@@ -14162,6 +14201,23 @@ impl core::marker::Unpin for tungsten_core::Entity
 impl core::marker::UnsafeUnpin for tungsten_core::Entity
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::Entity
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::Entity
+pub struct tungsten_core::EventCursor<T>
+impl<T> tungsten_core::EventCursor<T>
+pub fn tungsten_core::EventCursor<T>::new() -> Self
+pub fn tungsten_core::EventCursor<T>::read<'q>(&mut self, &'q tungsten_core::EventQueue<T>) -> tungsten_core::EventRead<'q, T>
+impl<T> core::clone::Clone for tungsten_core::EventCursor<T>
+pub fn tungsten_core::EventCursor<T>::clone(&self) -> Self
+impl<T> core::default::Default for tungsten_core::EventCursor<T>
+pub fn tungsten_core::EventCursor<T>::default() -> Self
+impl<T> core::fmt::Debug for tungsten_core::EventCursor<T>
+pub fn tungsten_core::EventCursor<T>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<T> core::marker::Freeze for tungsten_core::EventCursor<T>
+impl<T> core::marker::Send for tungsten_core::EventCursor<T>
+impl<T> core::marker::Sync for tungsten_core::EventCursor<T>
+impl<T> core::marker::Unpin for tungsten_core::EventCursor<T>
+impl<T> core::marker::UnsafeUnpin for tungsten_core::EventCursor<T>
+impl<T> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::EventCursor<T>
+impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::EventCursor<T>
 pub struct tungsten_core::EventQueue<T>
 impl tungsten_core::EventQueue<tungsten_core::ui::event::UiEvent>
 pub fn tungsten_core::EventQueue<tungsten_core::ui::event::UiEvent>::activated(&self, tungsten_core::ui::id::WidgetId) -> bool
@@ -14185,6 +14241,24 @@ impl<T> core::marker::Unpin for tungsten_core::EventQueue<T> where T: core::mark
 impl<T> core::marker::UnsafeUnpin for tungsten_core::EventQueue<T>
 impl<T> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::EventQueue<T> where T: core::panic::unwind_safe::RefUnwindSafe
 impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::EventQueue<T> where T: core::panic::unwind_safe::UnwindSafe
+pub struct tungsten_core::EventRead<'q, T>
+impl<T> tungsten_core::EventRead<'_, T>
+pub fn tungsten_core::EventRead<'_, T>::missed(&self) -> u64
+impl<'q, T> core::iter::traits::iterator::Iterator for tungsten_core::EventRead<'q, T>
+pub type tungsten_core::EventRead<'q, T>::Item = &'q T
+pub fn tungsten_core::EventRead<'q, T>::next(&mut self) -> core::option::Option<&'q T>
+pub fn tungsten_core::EventRead<'q, T>::size_hint(&self) -> (usize, core::option::Option<usize>)
+impl<T> core::fmt::Debug for tungsten_core::EventRead<'_, T>
+pub fn tungsten_core::EventRead<'_, T>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<T> core::iter::traits::exact_size::ExactSizeIterator for tungsten_core::EventRead<'_, T>
+impl<T> core::iter::traits::marker::FusedIterator for tungsten_core::EventRead<'_, T>
+impl<'q, T> core::marker::Freeze for tungsten_core::EventRead<'q, T>
+impl<'q, T> core::marker::Send for tungsten_core::EventRead<'q, T> where T: core::marker::Sync
+impl<'q, T> core::marker::Sync for tungsten_core::EventRead<'q, T> where T: core::marker::Sync
+impl<'q, T> core::marker::Unpin for tungsten_core::EventRead<'q, T>
+impl<'q, T> core::marker::UnsafeUnpin for tungsten_core::EventRead<'q, T>
+impl<'q, T> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::EventRead<'q, T> where T: core::panic::unwind_safe::RefUnwindSafe
+impl<'q, T> core::panic::unwind_safe::UnwindSafe for tungsten_core::EventRead<'q, T> where T: core::panic::unwind_safe::RefUnwindSafe
 pub struct tungsten_core::FadeParams
 pub tungsten_core::FadeParams::color: [f32; 4]
 pub tungsten_core::FadeParams::progress: f32
@@ -17097,6 +17171,7 @@ pub fn tungsten_core::World::prepare_prefab(&mut self, &str, impl core::convert:
 pub fn tungsten_core::World::spawn_map_objects(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<alloc::vec::Vec<tungsten_core::Entity>, tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::World::spawn_prefab(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<tungsten_core::Entity, tungsten_core::assets::prefab::PrefabError>
 impl tungsten_core::World
+pub fn tungsten_core::World::derive_from_source<T: 'static>(&mut self, fn(&tungsten_core::World, tungsten_core::Entity) -> core::option::Option<T>) -> bool
 pub fn tungsten_core::World::despawn(&mut self, tungsten_core::Entity)
 pub fn tungsten_core::World::end_fixed_step_events(&mut self)
 pub fn tungsten_core::World::entity_count(&self) -> u32
@@ -17111,6 +17186,7 @@ pub fn tungsten_core::World::has<T: 'static>(&self, tungsten_core::Entity) -> bo
 pub fn tungsten_core::World::has_event<T: 'static>(&self) -> bool
 pub fn tungsten_core::World::has_resource<T: 'static>(&self) -> bool
 pub fn tungsten_core::World::hold_events_for_fixed_step(&mut self)
+pub fn tungsten_core::World::inherit_from_source<T: core::clone::Clone + 'static>(&mut self) -> bool
 pub fn tungsten_core::World::insert<T: 'static>(&mut self, tungsten_core::Entity, T)
 pub fn tungsten_core::World::insert_bundle<B: tungsten_core::ecs::bundle::Bundle>(&mut self, tungsten_core::Entity, B)
 pub fn tungsten_core::World::insert_resource<T: 'static>(&mut self, T)
