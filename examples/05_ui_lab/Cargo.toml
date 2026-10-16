@@ -9,6 +9,7 @@ publish = false
 tungsten = { workspace = true }
 glam = { workspace = true }
 anyhow = { workspace = true }
+log = { workspace = true }
 
 [dev-dependencies]
 # The headless test harness, `tungsten::testing` (D-110, D-125).

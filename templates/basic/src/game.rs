@@ -3,7 +3,9 @@
 
 use tungsten::core::{ActionMap, InputState, Settings, Time, Transform, With, World};
 use tungsten::render::TextSection;
-use tungsten::{App, DebugHud, Extracts, Plugin, Schedule, Stage, StateId, StateStack, system};
+use tungsten::{
+    App, DebugHud, Extracts, HudCorner, Plugin, Schedule, Stage, StateId, StateStack, system,
+};
 
 use crate::components::Player;
 use crate::states::{GAMEPLAY, PAUSE, TITLE, TitleState};
@@ -17,9 +19,9 @@ pub const PLAYER_SPEED: f32 = 240.0;
 
 /// The game as a plugin: the components its prefab files name, `setup` at
 /// startup, `player_movement` and `toggle_mute` in `Update`, its text after
-/// what the engine draws, and the engine's HUD on in debug builds. It names no engine
-/// system; the engine's own come from `DefaultPlugins`, which `App::new`
-/// installs.
+/// what the engine draws, and the engine's HUD on in debug builds, at the top
+/// right, clear of the title. It names no engine system; the engine's own
+/// come from `DefaultPlugins`, which `App::new` installs.
 pub struct GamePlugin;
 
 impl Plugin for GamePlugin {
@@ -28,6 +30,8 @@ impl Plugin for GamePlugin {
         world.register_component::<Player>("player");
         if let Some(hud) = world.get_resource_mut::<DebugHud>() {
             hud.enabled = cfg!(debug_assertions);
+            // The HUD docks at the top left by default, over the title.
+            hud.corner = HudCorner::TopRight;
         }
         world.resource_mut::<Extracts>().add_text(text);
         schedule.add(Stage::Startup, system("setup", setup));

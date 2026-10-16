@@ -552,3 +552,102 @@ fn widget_dirty_names_the_style_text_and_layout_a_widget_waits_on() {
     tree.remove(label);
     assert_eq!(tree.widget_dirty(label), None);
 }
+
+// ---- M58: the debug scale, raise and shadows ----
+
+#[test]
+fn set_debug_scale_keeps_its_value_and_marks_only_the_debug_roots() {
+    let (mut tree, game) = clean_tree();
+    let debug = tree.add_root(UiLayer::Debug, LayoutStyle::default());
+    let popup = tree.add_root(UiLayer::DebugPopup, LayoutStyle::default());
+    tree.panel(debug, LayoutStyle::default());
+    settle(&mut tree);
+    assert_eq!(tree.debug_scale(), 1.0, "1 on a new tree");
+
+    tree.set_debug_scale(0.7);
+    assert_eq!(tree.debug_scale(), 0.7, "kept as given, not rounded");
+    assert!(tree.is_paint_dirty());
+    let dirty = |tree: &UiTree, id| tree.widget_dirty(id).unwrap().layout;
+    assert!(dirty(&tree, debug) && dirty(&tree, popup));
+    assert!(!dirty(&tree, game), "a game root keeps its layout");
+    settle(&mut tree);
+
+    for ignored in [f32::NAN, 0.0, -1.0, f32::INFINITY] {
+        tree.set_debug_scale(ignored);
+        assert_eq!(tree.debug_scale(), 0.7, "{ignored}");
+    }
+    tree.set_debug_scale(0.7);
+    assert!(
+        !tree.is_layout_dirty() && !tree.is_paint_dirty(),
+        "an equal value marks nothing"
+    );
+    tree.set_debug_scale(1e-6);
+    assert_eq!(tree.debug_scale(), 1.0 / 64.0);
+    tree.set_debug_scale(1e6);
+    assert_eq!(tree.debug_scale(), 64.0);
+}
+
+#[test]
+fn the_text_scale_leaves_the_debug_roots_alone() {
+    let (mut tree, game) = clean_tree();
+    let debug = tree.add_root(UiLayer::Debug, LayoutStyle::default());
+    let label = tree.label(debug, "x");
+    settle(&mut tree);
+    tree.set_text_scale(2.0);
+    assert!(tree.widget_dirty(game).unwrap().layout);
+    assert_eq!(
+        tree.widget_dirty(label),
+        Some(WidgetDirty::default()),
+        "a debug label is not set again"
+    );
+}
+
+#[test]
+fn raise_moves_a_root_after_its_layers_other_roots() {
+    let (mut tree, game) = clean_tree();
+    let a = tree.add_root(UiLayer::Debug, LayoutStyle::default());
+    let b = tree.add_root(UiLayer::Debug, LayoutStyle::default());
+    let c = tree.add_root(UiLayer::Debug, LayoutStyle::default());
+    let popup = tree.add_root(UiLayer::DebugPopup, LayoutStyle::default());
+    let child = tree.panel(a, LayoutStyle::default());
+    settle(&mut tree);
+
+    assert!(tree.raise(a));
+    assert_eq!(tree.roots(), [game, b, c, a, popup], "a popup stays above");
+    assert!(tree.is_paint_dirty());
+    assert!(!tree.is_layout_dirty(), "paint only");
+    settle(&mut tree);
+    assert!(!tree.raise(a), "already in front");
+    assert!(!tree.is_paint_dirty());
+    assert!(!tree.raise(child), "not a root");
+    assert!(!tree.raise(popup), "alone on its layer");
+    assert!(tree.raise(b));
+    assert_eq!(tree.roots(), [game, c, a, b, popup]);
+    let later = tree.add_root(UiLayer::Debug, LayoutStyle::default());
+    assert_eq!(
+        tree.roots(),
+        [game, c, a, b, later, popup],
+        "a new root still goes in front of its layer"
+    );
+    tree.remove(later);
+    assert!(!tree.raise(later), "removed");
+}
+
+#[test]
+fn set_shadow_marks_paint_only_and_an_equal_shadow_nothing() {
+    let (mut tree, root) = clean_tree();
+    let panel = tree.panel(root, LayoutStyle::default());
+    settle(&mut tree);
+    assert_eq!(tree.shadow(panel), None);
+    let shadow = crate::ui::UiShadow::new([0, 0, 0, 90], 10.0, Vec2::new(0.0, 3.0));
+    tree.set_shadow(panel, Some(shadow));
+    assert_eq!(tree.shadow(panel), Some(shadow));
+    assert!(tree.is_paint_dirty());
+    assert!(!tree.is_layout_dirty(), "paint only");
+    tree.clear_paint_dirty();
+    tree.set_shadow(panel, Some(shadow));
+    assert!(!tree.is_paint_dirty(), "an equal shadow marks nothing");
+    tree.set_shadow(panel, None);
+    assert_eq!(tree.shadow(panel), None);
+    assert!(tree.is_paint_dirty());
+}

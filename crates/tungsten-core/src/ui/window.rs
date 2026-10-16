@@ -1,9 +1,10 @@
 //! Movable windows (M57): drag handles, whose root follows the pointer once
 //! a primary press on them has moved past the router's drag threshold, the
-//! root's place as an anchored top-left clamped to the viewport, and
-//! [`WindowPlacements`], the file that keeps named windows' places between
-//! runs. The router does the dragging; this module holds the flag, the
-//! clamp and the file.
+//! root's place as an anchored top-left clamped to its layer's viewport
+//! (M58), and [`WindowPlacements`], the file that keeps named windows'
+//! places and a zoom (M58) between runs. The router does the dragging and
+//! raises a pressed window; this module holds the flag, the clamp and the
+//! file.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -43,15 +44,16 @@ impl UiTree {
         self.node(id).is_some_and(|node| node.drag_handle)
     }
 
-    /// Places a root's top-left at `position` in UI units: its placement
-    /// becomes `Anchored` at `TopStart` with that offset, clamped to the
-    /// last layout's viewport. With a laid-out size, each axis keeps the
-    /// whole root inside when it fits and its top-left at the viewport's
-    /// when it does not; before its first layout, each axis keeps the
-    /// top-left within `0..=viewport − 48`, so a title bar shows, and before
-    /// any layout, at least 0. Returns whether the placement changed, and
-    /// then marks layout; `false`, changing nothing, for a widget that is
-    /// not a root or a position that is not finite.
+    /// Places a root's top-left at `position` in its units (a debug root's
+    /// are its layer's, M58): its placement becomes `Anchored` at
+    /// `TopStart` with that offset, clamped to its layer's viewport at the
+    /// last layout ([`Self::layer_viewport`]). With a laid-out size, each
+    /// axis keeps the whole root inside when it fits and its top-left at the
+    /// viewport's when it does not; before its first layout, each axis keeps
+    /// the top-left within `0..=viewport − 48`, so a title bar shows, and
+    /// before any layout, at least 0. Returns whether the placement changed,
+    /// and then marks layout; `false`, changing nothing, for a widget that
+    /// is not a root or a position that is not finite.
     pub fn set_window_position(&mut self, root: WidgetId, position: Vec2) -> bool {
         let Some(node) = self.node(root) else {
             return false;
@@ -59,7 +61,8 @@ impl UiTree {
         if node.parent.is_some() || !position.is_finite() {
             return false;
         }
-        let position = self.clamp_window(position, node.rect.map(|rect| rect.size()));
+        let viewport = self.layer_viewport(node.layer);
+        let position = clamp_window(position, node.rect.map(|rect| rect.size()), viewport);
         let mut style = node.layout_style.clone();
         style.placement = Placement::Anchored {
             anchor: Anchor::TopStart,
@@ -72,8 +75,8 @@ impl UiTree {
         true
     }
 
-    /// A root's top-left after the last layout; `None` before it, for a
-    /// collapsed root or for a widget that is not a root.
+    /// A root's top-left after the last layout, in its units; `None` before
+    /// it, for a collapsed root or for a widget that is not a root.
     #[must_use]
     pub fn window_position(&self, root: WidgetId) -> Option<Vec2> {
         let node = self.node(root)?;
@@ -82,40 +85,44 @@ impl UiTree {
         }
         node.rect.map(|rect| rect.min)
     }
-
-    /// `position` clamped as [`Self::set_window_position`] clamps a root of
-    /// `size`.
-    fn clamp_window(&self, position: Vec2, size: Option<Vec2>) -> Vec2 {
-        let Some(viewport) = self.viewport else {
-            return position.max(Vec2::ZERO);
-        };
-        let axis = |at: f32, extent: f32, size: Option<f32>| match size {
-            Some(size) if size <= extent => at.clamp(0.0, extent - size),
-            Some(_) => 0.0,
-            None => at.clamp(0.0, (extent - VISIBLE_EDGE).max(0.0)),
-        };
-        Vec2::new(
-            axis(position.x, viewport.x, size.map(|size| size.x)),
-            axis(position.y, viewport.y, size.map(|size| size.y)),
-        )
-    }
 }
 
-/// Named windows' top-left positions in UI units, kept between runs (M57)
-/// in a JSON file: `{"version": 1, "windows": {"<name>": [x, y]}}`.
+/// `position` clamped as [`UiTree::set_window_position`] clamps a root of
+/// `size` in `viewport`, its layer's at the last layout.
+fn clamp_window(position: Vec2, size: Option<Vec2>, viewport: Option<Vec2>) -> Vec2 {
+    let Some(viewport) = viewport else {
+        return position.max(Vec2::ZERO);
+    };
+    let axis = |at: f32, extent: f32, size: Option<f32>| match size {
+        Some(size) if size <= extent => at.clamp(0.0, extent - size),
+        Some(_) => 0.0,
+        None => at.clamp(0.0, (extent - VISIBLE_EDGE).max(0.0)),
+    };
+    Vec2::new(
+        axis(position.x, viewport.x, size.map(|size| size.x)),
+        axis(position.y, viewport.y, size.map(|size| size.y)),
+    )
+}
+
+/// Named windows' top-left positions, kept between runs (M57) with an
+/// optional zoom (M58) in a JSON file: `{"version": 1, "zoom": 1.25,
+/// "windows": {"<name>": [x, y]}}`. A position means what its caller
+/// stores; the umbrella's debug views store OS-logical units.
 ///
 /// [`load`](Self::load) never fails. A missing file loads empty; a corrupt
 /// or invalid one loads empty and is renamed `<file>.bad` beside itself, as
 /// `Settings::load` does, and a file it cannot read is left where it is,
 /// each with one warning; a newer version loads empty, leaves the file
 /// alone and warns. An entry that is not two finite numbers is dropped with
-/// a warning. Warnings wait in [`take_load_warnings`](Self::take_load_warnings).
-/// The umbrella keeps its debug views' places in the user folder's
-/// settings (`debug_windows.json`).
+/// a warning, as a zoom that is not a finite positive number is. Warnings
+/// wait in [`take_load_warnings`](Self::take_load_warnings). The umbrella
+/// keeps its debug views' places in the user folder's settings
+/// (`debug_windows.json`).
 #[derive(Debug, Default)]
 pub struct WindowPlacements {
     path: Option<PathBuf>,
     positions: BTreeMap<String, Vec2>,
+    zoom: Option<f32>,
     load_warnings: Vec<String>,
 }
 
@@ -140,7 +147,15 @@ impl WindowPlacements {
             }
         };
         match parse(&bytes) {
-            Ok(File::Windows(entries)) => {
+            Ok(File::Windows { entries, zoom }) => {
+                match zoom {
+                    Zoom::Absent => {}
+                    Zoom::Kept(zoom) => placements.zoom = Some(zoom),
+                    Zoom::Bad => placements.load_warnings.push(format!(
+                        "the zoom in window placements '{}' is not a finite positive number; dropped",
+                        path.display()
+                    )),
+                }
                 for (name, entry) in entries {
                     match entry {
                         Some(position) => {
@@ -191,8 +206,24 @@ impl WindowPlacements {
         true
     }
 
-    /// Writes every kept position through [`write_atomic`]; with no path,
-    /// writes nothing and succeeds.
+    /// The zoom kept (M58); `None` when none was loaded or set.
+    #[must_use]
+    pub fn zoom(&self) -> Option<f32> {
+        self.zoom
+    }
+
+    /// Keeps `zoom` (M58); returns `false`, keeping nothing, unless it is
+    /// finite and positive.
+    pub fn set_zoom(&mut self, zoom: f32) -> bool {
+        if !zoom.is_finite() || zoom <= 0.0 {
+            return false;
+        }
+        self.zoom = Some(zoom);
+        true
+    }
+
+    /// Writes every kept position, and the zoom when one is kept, through
+    /// [`write_atomic`]; with no path, writes nothing and succeeds.
     ///
     /// # Errors
     ///
@@ -210,18 +241,23 @@ impl WindowPlacements {
         std::mem::take(&mut self.load_warnings)
     }
 
-    /// The file's text: the version, then the windows by name.
+    /// The file's text: the version, the zoom when kept, then the windows
+    /// by name.
     fn to_json(&self) -> String {
         let windows: serde_json::Map<String, serde_json::Value> = self
             .positions
             .iter()
             .map(|(name, position)| (name.clone(), serde_json::json!([position.x, position.y])))
             .collect();
-        let mut json = serde_json::to_string_pretty(&serde_json::json!({
+        let mut file = serde_json::json!({
             "version": VERSION,
             "windows": windows,
-        }))
-        .expect("placements serialize: numbers under string keys");
+        });
+        if let (Some(zoom), Some(object)) = (self.zoom, file.as_object_mut()) {
+            object.insert("zoom".into(), serde_json::json!(zoom));
+        }
+        let mut json = serde_json::to_string_pretty(&file)
+            .expect("placements serialize: numbers under string keys");
         json.push('\n');
         json
     }
@@ -229,10 +265,24 @@ impl WindowPlacements {
 
 /// What a readable file holds.
 enum File {
-    /// Version 1's entries by name: a position, or `None` for a bad entry.
-    Windows(Vec<(String, Option<Vec2>)>),
+    /// Version 1's entries by name, a position or `None` for a bad entry,
+    /// and its zoom.
+    Windows {
+        entries: Vec<(String, Option<Vec2>)>,
+        zoom: Zoom,
+    },
     /// A version this build does not read.
     Newer(u64),
+}
+
+/// A version 1 file's zoom (M58).
+enum Zoom {
+    /// No `zoom` key, or `null`.
+    Absent,
+    /// A finite positive number.
+    Kept(f32),
+    /// Anything else, dropped with a warning.
+    Bad,
 }
 
 /// The file, or why the whole of it falls back.
@@ -257,7 +307,15 @@ fn parse(bytes: &[u8]) -> Result<File, String> {
             .collect(),
         Some(_) => return Err("expected 'windows' to be an object".into()),
     };
-    Ok(File::Windows(entries))
+    let zoom = match object.get("zoom") {
+        None | Some(serde_json::Value::Null) => Zoom::Absent,
+        Some(value) => value
+            .as_f64()
+            .map(|zoom| zoom as f32)
+            .filter(|zoom| zoom.is_finite() && *zoom > 0.0)
+            .map_or(Zoom::Bad, Zoom::Kept),
+    };
+    Ok(File::Windows { entries, zoom })
 }
 
 /// An entry as a position: an array of two numbers, finite as `f32`.

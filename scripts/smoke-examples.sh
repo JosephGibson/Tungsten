@@ -236,10 +236,12 @@ row "fixture=menus" "$log_dir/${ui_pkg}-menus.log" "$ui_pkg" \
 end_section "UI screens passed" "UI screens failures" 1
 
 # M57: the engine's debug views as windows over the UI lab. The `debug`
-# fixture opens the HUD with its frame-time graph, the timing overlay and
-# the inspector over a selected entity, scrolls the overlay and moves the
-# HUD at frame 30. The views draw with the engine font family, so an
-# unknown font ID or family fails the row.
+# fixture opens every view docked at its corner (M58): the HUD with its
+# frame-time graph and a 120-character row, the timing overlay, the
+# inspector over a selected entity, the log console over an ERROR, a WARN
+# and an INFO record, and the UI inspector; it scrolls the overlay at frame
+# 30. The views draw with the engine font family and its SemiBold face, so
+# an unknown font ID or family fails the row.
 begin_section "M57 Debug views row (pkg: $ui_pkg)"
 log_forbids="Unknown font"
 row "fixture=debug" "$log_dir/${ui_pkg}-debug.log" "$ui_pkg" \

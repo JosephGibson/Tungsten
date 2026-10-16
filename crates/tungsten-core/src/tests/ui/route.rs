@@ -1652,3 +1652,46 @@ fn a_capture_ends_without_input_for_each_cancelling_cause() {
         )]
     );
 }
+
+// ---- M58: raising a window on a press ----
+
+#[test]
+fn a_primary_press_raises_a_window_root_but_not_another_role_or_a_frozen_one() {
+    let (mut rig, game) = Rig::empty();
+    let tree = rig.tree_mut();
+    let a = tree.add_root(UiLayer::Debug, at(0.0, 0.0, 200.0, 200.0));
+    let b = tree.add_root(UiLayer::Debug, at(100.0, 100.0, 200.0, 150.0));
+    tree.set_role(a, Role::Window);
+    tree.set_role(b, Role::Window);
+    let ok = tree.button(a, "ok");
+    tree.set_layout_style(ok, at(10.0, 150.0, 50.0, 30.0));
+    rig.layout();
+
+    let events = rig.click_px(Vec2::new(30.0, 165.0));
+    assert_eq!(rig.tree().roots(), [game, b, a], "a rises over b");
+    assert_eq!(activations(&events), [ok], "and takes the press");
+    rig.click_px(Vec2::new(150.0, 150.0));
+    assert_eq!(rig.tree().roots(), [game, b, a], "a press on the front one");
+    rig.click_px(Vec2::new(250.0, 220.0));
+    assert_eq!(rig.tree().roots(), [game, a, b]);
+    rig.frame(|input| {
+        input.update_cursor_position(50.0, 50.0);
+        input.mouse_down(MouseButton::Right);
+        input.mouse_up(MouseButton::Right);
+    });
+    assert_eq!(rig.tree().roots(), [game, a, b], "a primary press only");
+
+    rig.tree_mut().set_frozen(a, true);
+    rig.click_px(Vec2::new(50.0, 50.0));
+    assert_eq!(rig.tree().roots(), [game, a, b], "a frozen window stays");
+    rig.tree_mut().set_frozen(a, false);
+    rig.tree_mut().set_role(a, Role::None);
+    rig.click_px(Vec2::new(50.0, 50.0));
+    assert_eq!(
+        rig.tree().roots(),
+        [game, a, b],
+        "a panel's own role is not a window's"
+    );
+    rig.click_px(Vec2::new(350.0, 30.0));
+    assert_eq!(rig.tree().roots(), [game, a, b], "a miss changes nothing");
+}

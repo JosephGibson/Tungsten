@@ -693,6 +693,25 @@
       "questions": []
     },
     {
+      "id": "m5polish",
+      "row": "W1 M5 polish",
+      "label": "W1 M5 polish",
+      "group": "ui-input",
+      "kind": "release",
+      "level": "B",
+      "title": "Debug views you can read",
+      "summary": "The debug windows at a readable size on any display, docked so their defaults never overlap, in a dark look whose colours mean something, with zoom keys and new columns.",
+      "note": "The owner's request of 2026-10-15, after M57; no implementation-plan card.",
+      "src": ["docs/plans/1.0/w01-ui-text-suite.md §11"],
+      "slug": "debug-views-polish",
+      "complexity": 3,
+      "effort": "L",
+      "shows": "see",
+      "roles": [],
+      "flags": ["api", "perf", "visual"],
+      "questions": []
+    },
+    {
       "id": "w6bc",
       "row": "W6b and W6c",
       "label": "W6b and W6c",

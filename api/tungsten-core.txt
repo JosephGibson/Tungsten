@@ -9069,6 +9069,27 @@ impl core::marker::Unpin for tungsten_core::ui::node::WidgetKind
 impl core::marker::UnsafeUnpin for tungsten_core::ui::node::WidgetKind
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::node::WidgetKind
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::node::WidgetKind
+#[non_exhaustive] pub struct tungsten_core::ui::node::UiShadow
+pub tungsten_core::ui::node::UiShadow::blur: f32
+pub tungsten_core::ui::node::UiShadow::color: [u8; 4]
+pub tungsten_core::ui::node::UiShadow::offset: glam::f32::vec2::Vec2
+impl tungsten_core::ui::node::UiShadow
+pub const fn tungsten_core::ui::node::UiShadow::new([u8; 4], f32, glam::f32::vec2::Vec2) -> Self
+impl core::clone::Clone for tungsten_core::ui::node::UiShadow
+pub fn tungsten_core::ui::node::UiShadow::clone(&self) -> tungsten_core::ui::node::UiShadow
+impl core::cmp::PartialEq for tungsten_core::ui::node::UiShadow
+pub fn tungsten_core::ui::node::UiShadow::eq(&self, &tungsten_core::ui::node::UiShadow) -> bool
+impl core::fmt::Debug for tungsten_core::ui::node::UiShadow
+pub fn tungsten_core::ui::node::UiShadow::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::ui::node::UiShadow
+impl core::marker::StructuralPartialEq for tungsten_core::ui::node::UiShadow
+impl core::marker::Freeze for tungsten_core::ui::node::UiShadow
+impl core::marker::Send for tungsten_core::ui::node::UiShadow
+impl core::marker::Sync for tungsten_core::ui::node::UiShadow
+impl core::marker::Unpin for tungsten_core::ui::node::UiShadow
+impl core::marker::UnsafeUnpin for tungsten_core::ui::node::UiShadow
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::node::UiShadow
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::node::UiShadow
 #[non_exhaustive] pub struct tungsten_core::ui::node::UiVertex
 pub tungsten_core::ui::node::UiVertex::color: [u8; 4]
 pub tungsten_core::ui::node::UiVertex::position: glam::f32::vec2::Vec2
@@ -9961,6 +9982,7 @@ pub fn tungsten_core::ui::tree::UiTree::clear_paint_dirty(&mut self)
 pub fn tungsten_core::ui::tree::UiTree::clips_children(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::contains(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::cursor(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::node::CursorIcon>
+pub fn tungsten_core::ui::tree::UiTree::debug_scale(&self) -> f32
 pub fn tungsten_core::ui::tree::UiTree::enabled(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::fade(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<f32>
 pub fn tungsten_core::ui::tree::UiTree::focus_scope(&self, tungsten_core::ui::id::WidgetId) -> bool
@@ -9987,6 +10009,7 @@ pub fn tungsten_core::ui::tree::UiTree::overrides(&self, tungsten_core::ui::id::
 pub fn tungsten_core::ui::tree::UiTree::panel(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::style::LayoutStyle) -> tungsten_core::ui::id::WidgetId
 pub fn tungsten_core::ui::tree::UiTree::parent(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten_core::ui::tree::UiTree::pressed(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
+pub fn tungsten_core::ui::tree::UiTree::raise(&mut self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::remove(&mut self, tungsten_core::ui::id::WidgetId)
 pub fn tungsten_core::ui::tree::UiTree::resolved_style(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<&tungsten_core::ui::theme::ResolvedStyle>
 pub fn tungsten_core::ui::tree::UiTree::role(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::node::Role>
@@ -9996,6 +10019,7 @@ pub fn tungsten_core::ui::tree::UiTree::scale(&self, tungsten_core::ui::id::Widg
 pub fn tungsten_core::ui::tree::UiTree::set_accessible_name(&mut self, tungsten_core::ui::id::WidgetId, core::option::Option<alloc::string::String>)
 pub fn tungsten_core::ui::tree::UiTree::set_clip_children(&mut self, tungsten_core::ui::id::WidgetId, bool)
 pub fn tungsten_core::ui::tree::UiTree::set_cursor(&mut self, tungsten_core::ui::id::WidgetId, core::option::Option<tungsten_core::ui::node::CursorIcon>)
+pub fn tungsten_core::ui::tree::UiTree::set_debug_scale(&mut self, f32)
 pub fn tungsten_core::ui::tree::UiTree::set_enabled(&mut self, tungsten_core::ui::id::WidgetId, bool)
 pub fn tungsten_core::ui::tree::UiTree::set_fade(&mut self, tungsten_core::ui::id::WidgetId, f32)
 pub fn tungsten_core::ui::tree::UiTree::set_focus_scope(&mut self, tungsten_core::ui::id::WidgetId, bool)
@@ -10013,12 +10037,14 @@ pub fn tungsten_core::ui::tree::UiTree::set_overrides(&mut self, tungsten_core::
 pub fn tungsten_core::ui::tree::UiTree::set_plain_text(&mut self, tungsten_core::ui::id::WidgetId, &str) -> bool
 pub fn tungsten_core::ui::tree::UiTree::set_role(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::node::Role)
 pub fn tungsten_core::ui::tree::UiTree::set_scale(&mut self, tungsten_core::ui::id::WidgetId, f32)
+pub fn tungsten_core::ui::tree::UiTree::set_shadow(&mut self, tungsten_core::ui::id::WidgetId, core::option::Option<tungsten_core::ui::node::UiShadow>)
 pub fn tungsten_core::ui::tree::UiTree::set_text(&mut self, tungsten_core::ui::id::WidgetId, impl core::convert::Into<tungsten_core::text::StyledText>) -> bool
 pub fn tungsten_core::ui::tree::UiTree::set_text_scale(&mut self, f32)
 pub fn tungsten_core::ui::tree::UiTree::set_theme(&mut self, tungsten_core::ui::theme::Theme)
 pub fn tungsten_core::ui::tree::UiTree::set_theme_asset(&mut self, &str, tungsten_core::ui::theme::Theme)
 pub fn tungsten_core::ui::tree::UiTree::set_translation(&mut self, tungsten_core::ui::id::WidgetId, glam::f32::vec2::Vec2)
 pub fn tungsten_core::ui::tree::UiTree::set_visibility(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::node::Visibility)
+pub fn tungsten_core::ui::tree::UiTree::shadow(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::node::UiShadow>
 pub fn tungsten_core::ui::tree::UiTree::text(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<&tungsten_core::text::StyledText>
 pub fn tungsten_core::ui::tree::UiTree::text_scale(&self) -> f32
 pub fn tungsten_core::ui::tree::UiTree::theme(&self) -> &tungsten_core::ui::theme::Theme
@@ -10051,6 +10077,7 @@ pub fn tungsten_core::ui::tree::UiTree::set_window_position(&mut self, tungsten_
 pub fn tungsten_core::ui::tree::UiTree::window_position(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<glam::f32::vec2::Vec2>
 impl tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::dump_layout(&self) -> alloc::string::String
+pub fn tungsten_core::ui::tree::UiTree::layer_viewport(&self, tungsten_core::ui::node::UiLayer) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_core::ui::tree::UiTree::layout(&mut self, glam::f32::vec2::Vec2, &mut dyn tungsten_core::text::TextNodeStore) -> tungsten_core::ui::tree::LayoutStats
 pub fn tungsten_core::ui::tree::UiTree::rect(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::geometry::Rect>
 pub fn tungsten_core::ui::tree::UiTree::text_node(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::text::TextNodeId>
@@ -10120,7 +10147,9 @@ pub fn tungsten_core::ui::window::WindowPlacements::get(&self, &str) -> core::op
 pub fn tungsten_core::ui::window::WindowPlacements::load(impl core::convert::Into<std::path::PathBuf>) -> Self
 pub fn tungsten_core::ui::window::WindowPlacements::save(&self) -> core::result::Result<(), tungsten_core::persist::WriteError>
 pub fn tungsten_core::ui::window::WindowPlacements::set(&mut self, &str, glam::f32::vec2::Vec2) -> bool
+pub fn tungsten_core::ui::window::WindowPlacements::set_zoom(&mut self, f32) -> bool
 pub fn tungsten_core::ui::window::WindowPlacements::take_load_warnings(&mut self) -> alloc::vec::Vec<alloc::string::String>
+pub fn tungsten_core::ui::window::WindowPlacements::zoom(&self) -> core::option::Option<f32>
 impl core::default::Default for tungsten_core::ui::window::WindowPlacements
 pub fn tungsten_core::ui::window::WindowPlacements::default() -> tungsten_core::ui::window::WindowPlacements
 impl core::fmt::Debug for tungsten_core::ui::window::WindowPlacements
@@ -11301,6 +11330,27 @@ impl core::marker::Unpin for tungsten_core::ui::route::UiRouter
 impl core::marker::UnsafeUnpin for tungsten_core::ui::route::UiRouter
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::route::UiRouter
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::route::UiRouter
+#[non_exhaustive] pub struct tungsten_core::ui::UiShadow
+pub tungsten_core::ui::UiShadow::blur: f32
+pub tungsten_core::ui::UiShadow::color: [u8; 4]
+pub tungsten_core::ui::UiShadow::offset: glam::f32::vec2::Vec2
+impl tungsten_core::ui::node::UiShadow
+pub const fn tungsten_core::ui::node::UiShadow::new([u8; 4], f32, glam::f32::vec2::Vec2) -> Self
+impl core::clone::Clone for tungsten_core::ui::node::UiShadow
+pub fn tungsten_core::ui::node::UiShadow::clone(&self) -> tungsten_core::ui::node::UiShadow
+impl core::cmp::PartialEq for tungsten_core::ui::node::UiShadow
+pub fn tungsten_core::ui::node::UiShadow::eq(&self, &tungsten_core::ui::node::UiShadow) -> bool
+impl core::fmt::Debug for tungsten_core::ui::node::UiShadow
+pub fn tungsten_core::ui::node::UiShadow::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::ui::node::UiShadow
+impl core::marker::StructuralPartialEq for tungsten_core::ui::node::UiShadow
+impl core::marker::Freeze for tungsten_core::ui::node::UiShadow
+impl core::marker::Send for tungsten_core::ui::node::UiShadow
+impl core::marker::Sync for tungsten_core::ui::node::UiShadow
+impl core::marker::Unpin for tungsten_core::ui::node::UiShadow
+impl core::marker::UnsafeUnpin for tungsten_core::ui::node::UiShadow
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ui::node::UiShadow
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::ui::node::UiShadow
 pub struct tungsten_core::ui::UiThemeRegistry
 impl tungsten_core::ui::theme_file::UiThemeRegistry
 pub fn tungsten_core::ui::theme_file::UiThemeRegistry::contains(&self, &str) -> bool
@@ -11361,6 +11411,7 @@ pub fn tungsten_core::ui::tree::UiTree::clear_paint_dirty(&mut self)
 pub fn tungsten_core::ui::tree::UiTree::clips_children(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::contains(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::cursor(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::node::CursorIcon>
+pub fn tungsten_core::ui::tree::UiTree::debug_scale(&self) -> f32
 pub fn tungsten_core::ui::tree::UiTree::enabled(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::fade(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<f32>
 pub fn tungsten_core::ui::tree::UiTree::focus_scope(&self, tungsten_core::ui::id::WidgetId) -> bool
@@ -11387,6 +11438,7 @@ pub fn tungsten_core::ui::tree::UiTree::overrides(&self, tungsten_core::ui::id::
 pub fn tungsten_core::ui::tree::UiTree::panel(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::style::LayoutStyle) -> tungsten_core::ui::id::WidgetId
 pub fn tungsten_core::ui::tree::UiTree::parent(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten_core::ui::tree::UiTree::pressed(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
+pub fn tungsten_core::ui::tree::UiTree::raise(&mut self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::remove(&mut self, tungsten_core::ui::id::WidgetId)
 pub fn tungsten_core::ui::tree::UiTree::resolved_style(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<&tungsten_core::ui::theme::ResolvedStyle>
 pub fn tungsten_core::ui::tree::UiTree::role(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::node::Role>
@@ -11396,6 +11448,7 @@ pub fn tungsten_core::ui::tree::UiTree::scale(&self, tungsten_core::ui::id::Widg
 pub fn tungsten_core::ui::tree::UiTree::set_accessible_name(&mut self, tungsten_core::ui::id::WidgetId, core::option::Option<alloc::string::String>)
 pub fn tungsten_core::ui::tree::UiTree::set_clip_children(&mut self, tungsten_core::ui::id::WidgetId, bool)
 pub fn tungsten_core::ui::tree::UiTree::set_cursor(&mut self, tungsten_core::ui::id::WidgetId, core::option::Option<tungsten_core::ui::node::CursorIcon>)
+pub fn tungsten_core::ui::tree::UiTree::set_debug_scale(&mut self, f32)
 pub fn tungsten_core::ui::tree::UiTree::set_enabled(&mut self, tungsten_core::ui::id::WidgetId, bool)
 pub fn tungsten_core::ui::tree::UiTree::set_fade(&mut self, tungsten_core::ui::id::WidgetId, f32)
 pub fn tungsten_core::ui::tree::UiTree::set_focus_scope(&mut self, tungsten_core::ui::id::WidgetId, bool)
@@ -11413,12 +11466,14 @@ pub fn tungsten_core::ui::tree::UiTree::set_overrides(&mut self, tungsten_core::
 pub fn tungsten_core::ui::tree::UiTree::set_plain_text(&mut self, tungsten_core::ui::id::WidgetId, &str) -> bool
 pub fn tungsten_core::ui::tree::UiTree::set_role(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::node::Role)
 pub fn tungsten_core::ui::tree::UiTree::set_scale(&mut self, tungsten_core::ui::id::WidgetId, f32)
+pub fn tungsten_core::ui::tree::UiTree::set_shadow(&mut self, tungsten_core::ui::id::WidgetId, core::option::Option<tungsten_core::ui::node::UiShadow>)
 pub fn tungsten_core::ui::tree::UiTree::set_text(&mut self, tungsten_core::ui::id::WidgetId, impl core::convert::Into<tungsten_core::text::StyledText>) -> bool
 pub fn tungsten_core::ui::tree::UiTree::set_text_scale(&mut self, f32)
 pub fn tungsten_core::ui::tree::UiTree::set_theme(&mut self, tungsten_core::ui::theme::Theme)
 pub fn tungsten_core::ui::tree::UiTree::set_theme_asset(&mut self, &str, tungsten_core::ui::theme::Theme)
 pub fn tungsten_core::ui::tree::UiTree::set_translation(&mut self, tungsten_core::ui::id::WidgetId, glam::f32::vec2::Vec2)
 pub fn tungsten_core::ui::tree::UiTree::set_visibility(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::node::Visibility)
+pub fn tungsten_core::ui::tree::UiTree::shadow(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::node::UiShadow>
 pub fn tungsten_core::ui::tree::UiTree::text(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<&tungsten_core::text::StyledText>
 pub fn tungsten_core::ui::tree::UiTree::text_scale(&self) -> f32
 pub fn tungsten_core::ui::tree::UiTree::theme(&self) -> &tungsten_core::ui::theme::Theme
@@ -11451,6 +11506,7 @@ pub fn tungsten_core::ui::tree::UiTree::set_window_position(&mut self, tungsten_
 pub fn tungsten_core::ui::tree::UiTree::window_position(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<glam::f32::vec2::Vec2>
 impl tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::dump_layout(&self) -> alloc::string::String
+pub fn tungsten_core::ui::tree::UiTree::layer_viewport(&self, tungsten_core::ui::node::UiLayer) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_core::ui::tree::UiTree::layout(&mut self, glam::f32::vec2::Vec2, &mut dyn tungsten_core::text::TextNodeStore) -> tungsten_core::ui::tree::LayoutStats
 pub fn tungsten_core::ui::tree::UiTree::rect(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::geometry::Rect>
 pub fn tungsten_core::ui::tree::UiTree::text_node(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::text::TextNodeId>
@@ -11581,7 +11637,9 @@ pub fn tungsten_core::ui::window::WindowPlacements::get(&self, &str) -> core::op
 pub fn tungsten_core::ui::window::WindowPlacements::load(impl core::convert::Into<std::path::PathBuf>) -> Self
 pub fn tungsten_core::ui::window::WindowPlacements::save(&self) -> core::result::Result<(), tungsten_core::persist::WriteError>
 pub fn tungsten_core::ui::window::WindowPlacements::set(&mut self, &str, glam::f32::vec2::Vec2) -> bool
+pub fn tungsten_core::ui::window::WindowPlacements::set_zoom(&mut self, f32) -> bool
 pub fn tungsten_core::ui::window::WindowPlacements::take_load_warnings(&mut self) -> alloc::vec::Vec<alloc::string::String>
+pub fn tungsten_core::ui::window::WindowPlacements::zoom(&self) -> core::option::Option<f32>
 impl core::default::Default for tungsten_core::ui::window::WindowPlacements
 pub fn tungsten_core::ui::window::WindowPlacements::default() -> tungsten_core::ui::window::WindowPlacements
 impl core::fmt::Debug for tungsten_core::ui::window::WindowPlacements
@@ -16718,6 +16776,7 @@ pub fn tungsten_core::ui::tree::UiTree::clear_paint_dirty(&mut self)
 pub fn tungsten_core::ui::tree::UiTree::clips_children(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::contains(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::cursor(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::node::CursorIcon>
+pub fn tungsten_core::ui::tree::UiTree::debug_scale(&self) -> f32
 pub fn tungsten_core::ui::tree::UiTree::enabled(&self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::fade(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<f32>
 pub fn tungsten_core::ui::tree::UiTree::focus_scope(&self, tungsten_core::ui::id::WidgetId) -> bool
@@ -16744,6 +16803,7 @@ pub fn tungsten_core::ui::tree::UiTree::overrides(&self, tungsten_core::ui::id::
 pub fn tungsten_core::ui::tree::UiTree::panel(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::style::LayoutStyle) -> tungsten_core::ui::id::WidgetId
 pub fn tungsten_core::ui::tree::UiTree::parent(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 pub fn tungsten_core::ui::tree::UiTree::pressed(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
+pub fn tungsten_core::ui::tree::UiTree::raise(&mut self, tungsten_core::ui::id::WidgetId) -> bool
 pub fn tungsten_core::ui::tree::UiTree::remove(&mut self, tungsten_core::ui::id::WidgetId)
 pub fn tungsten_core::ui::tree::UiTree::resolved_style(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<&tungsten_core::ui::theme::ResolvedStyle>
 pub fn tungsten_core::ui::tree::UiTree::role(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::node::Role>
@@ -16753,6 +16813,7 @@ pub fn tungsten_core::ui::tree::UiTree::scale(&self, tungsten_core::ui::id::Widg
 pub fn tungsten_core::ui::tree::UiTree::set_accessible_name(&mut self, tungsten_core::ui::id::WidgetId, core::option::Option<alloc::string::String>)
 pub fn tungsten_core::ui::tree::UiTree::set_clip_children(&mut self, tungsten_core::ui::id::WidgetId, bool)
 pub fn tungsten_core::ui::tree::UiTree::set_cursor(&mut self, tungsten_core::ui::id::WidgetId, core::option::Option<tungsten_core::ui::node::CursorIcon>)
+pub fn tungsten_core::ui::tree::UiTree::set_debug_scale(&mut self, f32)
 pub fn tungsten_core::ui::tree::UiTree::set_enabled(&mut self, tungsten_core::ui::id::WidgetId, bool)
 pub fn tungsten_core::ui::tree::UiTree::set_fade(&mut self, tungsten_core::ui::id::WidgetId, f32)
 pub fn tungsten_core::ui::tree::UiTree::set_focus_scope(&mut self, tungsten_core::ui::id::WidgetId, bool)
@@ -16770,12 +16831,14 @@ pub fn tungsten_core::ui::tree::UiTree::set_overrides(&mut self, tungsten_core::
 pub fn tungsten_core::ui::tree::UiTree::set_plain_text(&mut self, tungsten_core::ui::id::WidgetId, &str) -> bool
 pub fn tungsten_core::ui::tree::UiTree::set_role(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::node::Role)
 pub fn tungsten_core::ui::tree::UiTree::set_scale(&mut self, tungsten_core::ui::id::WidgetId, f32)
+pub fn tungsten_core::ui::tree::UiTree::set_shadow(&mut self, tungsten_core::ui::id::WidgetId, core::option::Option<tungsten_core::ui::node::UiShadow>)
 pub fn tungsten_core::ui::tree::UiTree::set_text(&mut self, tungsten_core::ui::id::WidgetId, impl core::convert::Into<tungsten_core::text::StyledText>) -> bool
 pub fn tungsten_core::ui::tree::UiTree::set_text_scale(&mut self, f32)
 pub fn tungsten_core::ui::tree::UiTree::set_theme(&mut self, tungsten_core::ui::theme::Theme)
 pub fn tungsten_core::ui::tree::UiTree::set_theme_asset(&mut self, &str, tungsten_core::ui::theme::Theme)
 pub fn tungsten_core::ui::tree::UiTree::set_translation(&mut self, tungsten_core::ui::id::WidgetId, glam::f32::vec2::Vec2)
 pub fn tungsten_core::ui::tree::UiTree::set_visibility(&mut self, tungsten_core::ui::id::WidgetId, tungsten_core::ui::node::Visibility)
+pub fn tungsten_core::ui::tree::UiTree::shadow(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::node::UiShadow>
 pub fn tungsten_core::ui::tree::UiTree::text(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<&tungsten_core::text::StyledText>
 pub fn tungsten_core::ui::tree::UiTree::text_scale(&self) -> f32
 pub fn tungsten_core::ui::tree::UiTree::theme(&self) -> &tungsten_core::ui::theme::Theme
@@ -16808,6 +16871,7 @@ pub fn tungsten_core::ui::tree::UiTree::set_window_position(&mut self, tungsten_
 pub fn tungsten_core::ui::tree::UiTree::window_position(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<glam::f32::vec2::Vec2>
 impl tungsten_core::ui::tree::UiTree
 pub fn tungsten_core::ui::tree::UiTree::dump_layout(&self) -> alloc::string::String
+pub fn tungsten_core::ui::tree::UiTree::layer_viewport(&self, tungsten_core::ui::node::UiLayer) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_core::ui::tree::UiTree::layout(&mut self, glam::f32::vec2::Vec2, &mut dyn tungsten_core::text::TextNodeStore) -> tungsten_core::ui::tree::LayoutStats
 pub fn tungsten_core::ui::tree::UiTree::rect(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::ui::geometry::Rect>
 pub fn tungsten_core::ui::tree::UiTree::text_node(&self, tungsten_core::ui::id::WidgetId) -> core::option::Option<tungsten_core::text::TextNodeId>

@@ -24,11 +24,12 @@
 //! shown from the first frame (`menu`, the warmed-menu budget's subject),
 //! or that menu hidden and shown at frame 240, hidden at 300 and shown
 //! again at 360, prewarmed or not (`menu-prewarm`, `menu-cold`, the
-//! first-open check), or the lab with every debug view open: the HUD, the
-//! system timing overlay, the inspector over a selected entity, the log
-//! console over the engine's warning about an ownerless root, and the UI
-//! inspector over the lab's counter; the overlay scrolled and the HUD moved
-//! at frame 30 (`debug`, smoke's M57 row);
+//! first-open check), or the lab with every debug view open: the HUD with a
+//! 120-character `lab` row, the system timing overlay, the inspector over a
+//! selected entity, the log console over one `ERROR`, one `WARN` and one
+//! `INFO` record, and the UI inspector over the lab's counter, each docked
+//! at its corner; the overlay scrolled at frame 30 (`debug`, smoke's M57
+//! row);
 //! `TUNGSTEN_UI_LAB_POST={off|vignette}` appends a
 //! vignette to the post stack. `TUNGSTEN_RENDER_POST_AA` works as
 //! everywhere.
@@ -47,8 +48,7 @@ use tungsten::core::post::{PostPass, PostStack, VignetteParams};
 use tungsten::core::ui::{UiDebug, UiThemeRegistry, UiTree, WidgetId};
 use tungsten::core::{AssetRegistry, Config, World};
 use tungsten::{
-    App, DebugHud, InspectorState, LogConsole, RootCover, StateStack, SystemTimingOverlay,
-    UiInspector,
+    App, DebugHud, HudRow, InspectorState, LogConsole, StateStack, SystemTimingOverlay, UiInspector,
 };
 
 const ROOT_MANIFEST: &str = "assets/manifest.json";
@@ -241,9 +241,10 @@ fn build_menu(world: &mut World, fixture: Fixture) {
 }
 
 /// Opens the timing overlay, the inspector over a tagged entity it selects,
-/// the log console and the UI inspector over the lab's counter (M57), and
-/// logs one warning: the state stack's, for a root with no state to own it.
-/// The HUD opens with the fixture.
+/// the log console and the UI inspector over the lab's counter (M57); adds
+/// the HUD a 120-character row, which ends in `…`, and logs one `ERROR`,
+/// one `WARN` and one `INFO` record for the console (M58). The HUD opens
+/// with the fixture.
 fn open_debug_views(world: &mut World) {
     let hero = world.spawn_with((
         Tag::new("lab_hero"),
@@ -259,28 +260,29 @@ fn open_debug_views(world: &mut World) {
     if let Some(console) = world.get_resource_mut::<LogConsole>() {
         console.enabled = true;
     }
-    let lab = world
-        .get_resource::<UiLab>()
-        .map(|lab| (lab.hud, lab.counter));
+    if let Some(hud) = world.get_resource_mut::<DebugHud>() {
+        hud.add_row(|_| {
+            vec![HudRow {
+                label: "lab",
+                value: "a row longer than the HUD is wide: ".repeat(4)[..120].to_string(),
+            }]
+        });
+    }
+    let counter = world.get_resource::<UiLab>().map(|lab| lab.counter);
     if let Some(inspector) = world.get_resource_mut::<UiInspector>() {
         inspector.enabled = true;
-        inspector.picked = lab.map(|(_, counter)| counter);
+        inspector.picked = counter;
     }
-    if let Some((hud, _)) = lab {
-        // No state is pushed: the stack warns and ignores it.
-        world
-            .resource_mut::<StateStack>()
-            .own_root(hud, RootCover::Hide);
-    }
+    log::error!("ui lab: an error for the log console");
+    log::warn!("ui lab: a warning for the log console");
+    log::info!("ui lab: a note for the log console");
 }
 
-/// At frame 30, scrolls the timing overlay's body and moves the HUD's
-/// window, as the wheel and a drag would.
+/// At frame 30, scrolls the timing overlay's body, as the wheel would.
 fn debug_fixture_system(world: &mut World) {
     if world.get_resource::<UiLab>().map(|lab| lab.frames) != Some(30) {
         return;
     }
-    let hud = world.get_resource::<DebugHud>().and_then(DebugHud::window);
     let overlay = world
         .get_resource::<SystemTimingOverlay>()
         .and_then(SystemTimingOverlay::window);
@@ -299,10 +301,6 @@ fn debug_fixture_system(world: &mut World) {
             "ui lab: scrolled the timing overlay to {:?}",
             tree.scroll(body)
         );
-    }
-    if let Some(root) = hud {
-        tree.set_window_position(root, Vec2::new(40.0, 160.0));
-        println!("ui lab: moved the HUD window");
     }
 }
 

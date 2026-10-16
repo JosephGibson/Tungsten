@@ -318,3 +318,33 @@ fn hidden_game_layers_take_no_hits() {
     assert!(!tree.root_routes(game, true));
     assert!(tree.root_routes(game, false));
 }
+
+// ---- M58: the debug layers' scale ----
+
+#[test]
+fn a_debug_root_is_hit_in_its_units_and_its_translations_round_at_their_pixels() {
+    let mut tree = UiTree::new();
+    let game = tree.add_root(UiLayer::Game, boxed(400.0, 300.0));
+    let debug = tree.add_root(UiLayer::Debug, at(0.0, 0.0, 200.0, 100.0));
+    let child = tree.panel(debug, at(10.0, 10.0, 40.0, 40.0));
+    tree.set_debug_scale(0.5);
+    layout(&mut tree);
+    // The debug root spans 100 by 50 tree units.
+    assert_eq!(tree.hit_test(Vec2::new(99.0, 49.0)), Some(debug));
+    assert_eq!(tree.hit_test(Vec2::new(101.0, 49.0)), Some(game));
+    assert_eq!(tree.hit_test(Vec2::new(15.0, 15.0)), Some(child));
+    assert_eq!(
+        tree.visual_rect(child),
+        Some(crate::ui::Rect::new(Vec2::splat(5.0), Vec2::splat(25.0)))
+    );
+    assert_eq!(
+        tree.rect(child).unwrap().min,
+        Vec2::splat(10.0),
+        "the layout box stays in the root's units"
+    );
+    // 3.3 units at 0.5 pixels each are 1.65 pixels, which round to 2:
+    // 4 of the root's units, 2 of the tree's.
+    tree.set_translation(child, Vec2::new(3.3, 0.0));
+    assert_eq!(tree.visual_rect(child).unwrap().min, Vec2::new(7.0, 5.0));
+    assert_eq!(tree.hit_test(Vec2::new(26.0, 15.0)), Some(child));
+}

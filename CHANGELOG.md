@@ -6,6 +6,31 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.78.0] - 2026-10-15
+
+Summary: M58, W1 M5 polish (plan archived at `docs/plans/archive/1.0/phase6-milestone-58-debug-views-polish.md`): M57's debug views become readable on any display and tidy at their defaults, on the OS scale alone with zoom keys and a step down on small windows, docked so that no two overlap, in one dark palette whose colours carry meaning, with the engine font's SemiBold, window chrome and new HUD, systems, inspector and log console columns.
+
+### Added
+
+- **The debug layers' own scale** (`D-167`): `UiTree::set_debug_scale`, `debug_scale` and `layer_viewport`; a `Debug` or `DebugPopup` root lays out in the viewport divided by the debug scale, paints at the paint scale times it with its text runs unstepped, and is hit, dragged and wheel-scrolled in its own units. The game layers are unchanged.
+- **Raise, shadows and a zoom** (`D-167`): `UiTree::raise`, and a primary press the UI takes over a `Role::Window` root raises it over its layer's roots; `UiShadow` (`color`, `blur`, `offset`) with `UiTree::set_shadow` and `shadow`, painted as one mesh before the node's box; `WindowPlacements::zoom` and `set_zoom`.
+- **The views' scale and zoom keys** (`D-168`): the views draw at `zoom × step / ui_scale`, so their 15-unit text follows the OS scale whatever the player's UI and text scales, the step falling to 7/8 or 3/4 when the OS-logical viewport is under 960×540; Ctrl+=, Ctrl+- and Ctrl+0 zoom in eighths from 1/2 to 2, saved with the places.
+- **Docking and snap** (`D-168`): with no saved place the HUD and the entity inspector dock on the left, the systems overlay and the UI inspector on the right and the log console as a strip along the bottom, each given a fixed height from what its content asked for at the last layout, so no two overlap; a dropped window within 16 units of the margin snaps onto it.
+- **Window chrome** (`D-168`): a title bar with the view's toggle key and collapse and close buttons, an optional fixed header above a scrolling table whose cells keep one line and end in an ellipsis, a brighter border under the pointer and a shadow.
+- **New columns** (`D-168`): the HUD's graph block with min, mean, max and 1% low, and its `ui` row split into `ui`, `text` and `labels`; the systems overlay's stage groups in frame order with their totals, each system's most over four refreshes, its share of the frame and a bar (`SystemStages`, from the resolved schedule); a row per component in the entity inspector, values in hues by type; the log console's time, level, target and message columns read from each raw record, level filters, pause and clear (`LogConsole::clear`).
+- **SemiBold face** (`D-168`): the engine font's `JetBrainsMono-SemiBold.ttf`, embedded as `engine_mono_semibold`, the `engine_mono` family's weight 600 face for titles, headers and key numbers; the release notices name both faces.
+
+### Changed
+
+- **Core UI rules** (`D-167` amends `D-147`, `D-149`, `D-163`): `set_text_scale` marks the game layers only; `set_window_position` clamps to the root's layer's viewport; `FixedAdvanceMeasure` keeps an ellipsis's line limit at a definite width.
+- **The views' defaults** (`D-168` amends `D-123`, `D-165`, `D-166`): `font_size` 15, `line_height` 20, `padding_px` 8 and `outline_px` 1 in physical pixels; `color`, `background` and `outline_color` from one palette whose text colours keep 4.5:1 composited in linear light; the corners as docked; `debug_windows.json` keeps places in OS-logical units with a `zoom`; the template's HUD sits top right, clear of its title.
+- **UI lab**: the `debug` fixture opens every view docked and logs an `ERROR`, a `WARN` and an `INFO` record of its own through a `log` dependency.
+- **Records**: `DESIGN.md`'s Debug Views Polish section; three break-ledger rows; w01's M5 row; two backlog rows (the UI inspector's on-screen outline, breadcrumbs and swatches; a debug menu) in place of the raise row; `docs/assets.md` reserves `engine_mono_semibold`.
+
+### Fixed
+
+- **Overlapping debug views** (known issues' M57 row): at 1280×720 the five windows overlapped and the HUD's `ui` row widened its window to the viewport; they now dock apart inside their caps, long rows ending in an ellipsis.
+
 ## [0.77.0] - 2026-10-15
 
 Summary: M57, W1 M5 (plan archived at `docs/plans/archive/1.0/phase6-milestone-57-engine-debug-views.md`): the engine's debug views become movable windows on the core UI's debug layer, on scroll panels, drag handles and places saved in the user folder, with a frame-time graph drawn by a new mesh paint command, a log console on the engine logger and a picked-widget panel.

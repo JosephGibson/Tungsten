@@ -364,12 +364,14 @@ fn clear_rects(tree: &mut UiTree, id: WidgetId) {
     }
 }
 
-/// Lays `root` out in a `viewport`-sized parent, writes the rects and commits
+/// Lays `root` out in a `viewport`-sized parent, its controls' line height
+/// times `text_scale` (its layer's, M58), writes the rects and commits
 /// every text leaf once.
 pub(crate) fn lay_out_root(
     tree: &mut UiTree,
     root: WidgetId,
     viewport: Vec2,
+    text_scale: f32,
     store: &mut dyn TextNodeStore,
 ) -> RootLayout {
     let mut result = RootLayout::default();
@@ -387,7 +389,6 @@ pub(crate) fn lay_out_root(
     result.nodes = map.len() as u32;
 
     let mut measure_calls = 0_u32;
-    let text_scale = tree.text_scale();
     taffy
         .compute_layout_with_measure(
             viewport_node,
@@ -415,7 +416,7 @@ pub(crate) fn lay_out_root(
                         }
                         if let Some(control) = node.control {
                             // The text scale grows a control with its line
-                            // height (M56).
+                            // height (M56), on the game layers (M58).
                             let line = node
                                 .resolved
                                 .as_ref()

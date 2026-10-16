@@ -1324,6 +1324,7 @@ pub tungsten::LogConsole::outline_px: f32
 pub tungsten::LogConsole::padding_px: f32
 pub tungsten::LogConsole::refresh_interval_ms: f32
 impl tungsten::LogConsole
+pub fn tungsten::LogConsole::clear(&mut self)
 pub fn tungsten::LogConsole::dropped(&self) -> u64
 pub fn tungsten::LogConsole::lines(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
 pub fn tungsten::LogConsole::toggle(&mut self)

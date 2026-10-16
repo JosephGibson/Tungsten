@@ -1,7 +1,8 @@
 //! The engine logger (`D-119`): one `env_logger` per process, installed by
 //! `App::new` unless the game set its own, writing to stderr and to a log
 //! file per run in the game's user folder. From M57 its [`Tee`] also copies
-//! each record into the log console's bounded channel.
+//! each record into the log console's bounded channel; from M58 the console
+//! reads each record's fields with [`record_fields`] as it shows it.
 
 use std::fs::{File, OpenOptions};
 use std::io::{self, Write};
@@ -12,7 +13,7 @@ use std::sync::{Arc, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use env_logger::{Builder, Target};
-use log::LevelFilter;
+use log::{Level, LevelFilter};
 
 /// The run's log file, which the logger's [`Tee`] and the crash hook share;
 /// empty until the file is opened, and for good when it is not.
@@ -109,6 +110,54 @@ pub(crate) fn console_channel(capacity: usize) -> (ConsoleSink, ConsoleFeed) {
         },
         ConsoleFeed { records, dropped },
     )
+}
+
+/// A record's fields (M58), as [`record_fields`] reads them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RecordFields<'a> {
+    /// `HH:MM:SS` from the record's timestamp.
+    pub(crate) time: &'a str,
+    pub(crate) level: Level,
+    /// The target's last `::` segment.
+    pub(crate) target: &'a str,
+    /// The message's first line.
+    pub(crate) message: &'a str,
+    /// Whether more lines follow it.
+    pub(crate) more: bool,
+}
+
+/// The fields of one record in `env_logger`'s default format, `[<time>
+/// <LEVEL> <target>] <message>`, as [`builder`]'s logger writes it (M58):
+/// the time of day of its RFC 3339 stamp, the level, the target's last `::`
+/// segment and the message's first line. `None` for text in another shape.
+pub(crate) fn record_fields(record: &str) -> Option<RecordFields<'_>> {
+    let (head, message) = record.strip_prefix('[')?.split_once(']')?;
+    let message = message.strip_prefix(' ').unwrap_or(message);
+    let mut tokens = head.split_whitespace();
+    let stamp = tokens.next()?;
+    let level: Level = tokens.next()?.parse().ok()?;
+    let target = tokens.next().unwrap_or("");
+    if tokens.next().is_some() {
+        return None;
+    }
+    let time = stamp.split_once('T')?.1.get(..8)?;
+    let digits =
+        |range: std::ops::Range<usize>| time.as_bytes()[range].iter().all(u8::is_ascii_digit);
+    if !(digits(0..2) && digits(3..5) && digits(6..8) && &time[2..3] == ":" && &time[5..6] == ":") {
+        return None;
+    }
+    let target = target.rsplit("::").next().unwrap_or(target);
+    let (message, more) = match message.split_once('\n') {
+        Some((first, _)) => (first, true),
+        None => (message, false),
+    };
+    Some(RecordFields {
+        time,
+        level,
+        target,
+        message,
+        more,
+    })
 }
 
 /// Installs the engine logger unless a logger is already set, the game's
