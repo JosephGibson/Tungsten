@@ -26,16 +26,17 @@ pub mod ui;
 
 pub use assets::{
     AnimationData, AnimationRegistry, AnimationState, AssetId, AssetRegistry, AudioHandle,
-    BlendMode, Curve, EMPTY_TILE, EmissionKind, FilterMode, FontEntry, FontFamilyEntry,
-    FontRegistry, InitialVelocity, LayerKind, Lerp, LoadedManifest, ManifestError, MapObject,
-    MaterialAssetId, MaterialRegistry, MaterialUniformDefaults, ObjectLayer, ParticleActive,
-    ParticleBudget, ParticleConfig, ParticleConfigError, ParticleConfigRegistry, ParticleEntry,
-    ParticleMesh, ParticleMeshAssetId, ParticleMeshEntry, ParticleMeshRegistry, ParticleRender,
-    PrefabData, PrefabEntry, PrefabError, PrefabRegistry, PreparedPrefab, Range, ResolvedFont,
-    ResolvedFontFamily, ResolvedManifest, ResolvedMaterial, ResolvedParticle, ResolvedParticleMesh,
-    ResolvedPrefab, ResolvedSound, ResolvedUiTheme, SceneData, SceneEntry, SceneError, SceneSprite,
-    SceneTransform, SceneTween, SceneTweenChannel, SceneTweenRepeat, SoundData, SoundEntry,
-    SoundRegistry, SpriteAsset, SpriteAssetId, TextureHandle, TileIndex, TilemapData,
+    BlendMode, Curve, DataEntry, DataError, DataRef, DataRegistry, EMPTY_TILE, EmissionKind,
+    FilterMode, FontEntry, FontFamilyEntry, FontRegistry, InitialVelocity, LayerKind, Lerp,
+    LoadedManifest, ManifestError, MapObject, MaterialAssetId, MaterialRegistry,
+    MaterialUniformDefaults, ObjectLayer, ParticleActive, ParticleBudget, ParticleConfig,
+    ParticleConfigError, ParticleConfigRegistry, ParticleEntry, ParticleMesh, ParticleMeshAssetId,
+    ParticleMeshEntry, ParticleMeshRegistry, ParticleRender, PrefabData, PrefabEntry, PrefabError,
+    PrefabRegistry, PreparedPrefab, Range, ResolvedDataEntry, ResolvedFont, ResolvedFontFamily,
+    ResolvedManifest, ResolvedMaterial, ResolvedParticle, ResolvedParticleMesh, ResolvedPrefab,
+    ResolvedSound, ResolvedUiTheme, SceneData, SceneEntry, SceneError, SceneSprite, SceneTransform,
+    SceneTween, SceneTweenChannel, SceneTweenRepeat, SoundData, SoundEntry, SoundRegistry,
+    SpriteAsset, SpriteAssetId, StagedLoad, StagedLoadError, TextureHandle, TileIndex, TilemapData,
     TilemapInstance, TilemapLayer, TilemapRegistry, UiThemeEntry, WorldRngSeed,
 };
 pub use audio::{AudioCommand, AudioCommands};

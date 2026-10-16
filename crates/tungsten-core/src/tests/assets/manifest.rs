@@ -801,8 +801,161 @@ fn a_repeated_prefab_id_fails_in_one_section_and_across_manifests() {
     b.prefabs.insert("slime".into(), prefab.clone());
     let err = a.merge(b).unwrap_err();
     assert!(matches!(err, ManifestError::DuplicateId { id } if id == "slime"));
+    // `bat` has a file of its own: one file backs one prefab (M61).
     let mut c = ResolvedManifest::default();
-    c.prefabs.insert("bat".into(), prefab);
+    c.prefabs
+        .insert("bat".into(), ResolvedPrefab::new(PathBuf::from("b.json")));
     a.merge(c).unwrap();
     assert_eq!(a.prefabs.len(), 2);
+}
+
+#[test]
+fn load_manifest_with_data_entries() {
+    let tmp = tempdir();
+    write_file(&tmp, "data/effects/burning.json");
+    write_file(&tmp, "data/items/potion.json");
+    let path = write_manifest(
+        &tmp,
+        r#"{"data": {
+            "effects": {"burning": {"path": "data/effects/burning.json"}},
+            "items": {"potion": {"path": "data/items/potion.json"}},
+            "tags": {}
+        }}"#,
+    );
+    let m = ResolvedManifest::load(&path).unwrap();
+    assert_eq!(
+        m.data.keys().collect::<Vec<_>>(),
+        ["effects", "items", "tags"]
+    );
+    let burning = &m.data["effects"]["burning"].path;
+    assert!(burning.ends_with("data/effects/burning.json"));
+    assert!(burning.is_absolute(), "canonicalized");
+    assert!(m.data["items"]["potion"].path.ends_with("potion.json"));
+    assert!(m.data["tags"].is_empty());
+}
+
+#[test]
+fn no_data_key_gives_an_empty_section() {
+    let tmp = tempdir();
+    let path = write_manifest(&tmp, r#"{"sprites": {}}"#);
+    let m = ResolvedManifest::load(&path).unwrap();
+    assert!(m.data.is_empty());
+}
+
+#[test]
+fn a_repeated_data_kind_or_id_in_one_manifest_is_a_parse_error() {
+    let tmp = tempdir();
+    write_file(&tmp, "a.json");
+    for (content, needle) in [
+        (
+            r#"{"data": {"effects": {"a": {"path": "a.json"}}, "effects": {}}}"#,
+            "duplicate data kind `effects` in one manifest",
+        ),
+        (
+            r#"{"data": {"effects": {"a": {"path": "a.json"}, "a": {"path": "a.json"}}}}"#,
+            "duplicate ID `a` in one section",
+        ),
+    ] {
+        let path = write_manifest(&tmp, content);
+        let err = ResolvedManifest::load(&path).unwrap_err();
+        assert!(matches!(err, ManifestError::Parse { .. }), "{err}");
+        assert!(err.to_string().contains(needle), "{err}");
+    }
+}
+
+#[test]
+fn load_manifest_missing_data_file() {
+    let tmp = tempdir();
+    let path = write_manifest(
+        &tmp,
+        r#"{"data": {"effects": {"burning": {"path": "data/burning.json"}}}}"#,
+    );
+    let err = ResolvedManifest::load(&path).unwrap_err();
+    assert!(
+        matches!(&err, ManifestError::MissingDataFile { kind, id, path }
+            if kind == "effects" && id == "burning" && path.ends_with("burning.json")),
+        "{err:?}"
+    );
+    assert!(
+        err.to_string()
+            .starts_with("data `effects` entry 'burning' references missing file: ")
+    );
+}
+
+#[test]
+fn a_data_id_is_unique_within_its_kind_across_roots() {
+    let entry = |path: &str| ResolvedDataEntry::new(PathBuf::from(path));
+    let mut a = ResolvedManifest::default();
+    a.data
+        .entry("effects".into())
+        .or_default()
+        .insert("burning".into(), entry("a.json"));
+    let mut b = ResolvedManifest::default();
+    b.data
+        .entry("effects".into())
+        .or_default()
+        .insert("burning".into(), entry("b.json"));
+    let err = a.clone().merge(b).unwrap_err();
+    assert!(
+        matches!(&err, ManifestError::DuplicateId { id } if id == "data.effects.burning"),
+        "{err}"
+    );
+
+    // Two kinds, or a prefab and a kind, may share an ID.
+    let mut c = ResolvedManifest::default();
+    c.data
+        .entry("items".into())
+        .or_default()
+        .insert("burning".into(), entry("c.json"));
+    c.prefabs.insert(
+        "burning".into(),
+        ResolvedPrefab::new(PathBuf::from("d.json")),
+    );
+    a.merge(c).unwrap();
+    assert_eq!(a.data["effects"].len() + a.data["items"].len(), 2);
+}
+
+#[test]
+fn one_file_backs_one_prefab_or_data_entry() {
+    let tmp = tempdir();
+    write_file(&tmp, "shared.json");
+    write_file(&tmp, "other.json");
+    let path = write_manifest(
+        &tmp,
+        r#"{"prefabs": {"slime": {"path": "shared.json"}, "bat": {"path": "other.json"}},
+            "data": {"effects": {"ooze": {"path": "shared.json"}, "acid": {"path": "shared.json"}}}}"#,
+    );
+    let err = ResolvedManifest::load(&path).unwrap_err();
+    assert!(
+        matches!(&err, ManifestError::SharedFile { path, first, second }
+            if path.ends_with("shared.json") && first == "data.effects.acid" && second == "data.effects.ooze"),
+        "the smallest pair: {err:?}"
+    );
+    assert!(err.to_string().ends_with(
+        "backs both data.effects.acid and data.effects.ooze; a file backs one prefab or data entry"
+    ));
+
+    // Across two roots, a prefab in one and a data entry in the other.
+    let one = tempdir();
+    let two = tempdir();
+    write_file(&one, "shared.json");
+    write_manifest(&one, r#"{"prefabs": {"slime": {"path": "shared.json"}}}"#);
+    // The sibling root names the same file through `..`.
+    let sibling = one.file_name().unwrap().to_str().unwrap();
+    write_manifest(
+        &two,
+        &format!(
+            r#"{{"data": {{"effects": {{"ooze": {{"path": "../{sibling}/shared.json"}}}}}}}}"#
+        ),
+    );
+    let roots = [one.join("manifest.json"), two.join("manifest.json")];
+    let err = ResolvedManifest::load_and_merge_many(&roots).unwrap_err();
+    assert!(
+        matches!(&err, ManifestError::SharedFile { first, second, .. }
+            if first == "data.effects.ooze" && second == "prefabs.slime"),
+        "{err:?}"
+    );
+    let mut a = ResolvedManifest::load(&roots[0]).unwrap();
+    let b = ResolvedManifest::load(&roots[1]).unwrap();
+    assert!(matches!(a.merge(b), Err(ManifestError::SharedFile { .. })));
 }

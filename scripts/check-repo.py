@@ -85,10 +85,20 @@ def check_assets(root, errors, notes):
         try:
             data = json.loads(manifest.read_text(), object_pairs_hook=unique_object)
             refs = set()
+            # `data` holds kinds, each an object of entries by ID (M61), so its
+            # entries sit one level deeper than every other section's.
+            sections = []
             for section, entries in data.items():
+                if section == "data" and isinstance(entries, dict):
+                    for kind, kind_entries in entries.items():
+                        if isinstance(kind_entries, dict):
+                            sections.append((f"data.{kind}", kind_entries))
+                        else:
+                            errors.append(f"{manifest.relative_to(root)}: data.{kind}: a data kind must be an object of entries by ID")
                 # A list section such as `font_fallback` names IDs, not files.
-                if not isinstance(entries, dict):
-                    continue
+                elif isinstance(entries, dict):
+                    sections.append((section, entries))
+            for section, entries in sections:
                 for name, entry in entries.items():
                     for field in ("path", "normal_map", "emissive_mask"):
                         if entry.get(field) is None:

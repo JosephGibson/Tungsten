@@ -6,6 +6,20 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.81.0] - 2026-10-16
+
+Summary: M61, W13f (plan archived at `docs/plans/archive/1.0/phase6-milestone-61-kit-core-data-assets.md`): the kit catalogue's F2 in core, a `data` manifest section of shared definitions by kind and ID that prefabs and other entries name, and a two-phase load in which every prefab and data entry may name any other.
+
+### Added
+
+- **Data entries** (`D-171` amends `D-017`, `D-052`): a manifest's `data` section of kinds, each an object of entries by ID with a file each (`DataEntry`, `ResolvedDataEntry`, `ManifestError::MissingDataFile`); an ID is unique within its kind across roots, and one file backs one prefab or data entry (`ManifestError::SharedFile`). Plugins register kinds into a core `DataRegistry` with `World::register_data_kind` and `register_data_kind_with_assets`; `DataRef<T>` names an entry from a field, by ID or written in place, with `resolve` and an asset `check`; `World::check_prefab_id` checks a field that names a prefab. `tungsten::asset_loader::reload_data` hot-reloads one entry.
+- **The two-phase load** (`D-171` amends `D-157`): `StagedLoad` reads and parses every prefab and data file, then its `commit` puts them in place and checks every entry loaded from a file against the World, keeping all or none (`DataError`, `StagedLoadError`), so a prefab may name another prefab or a data entry whatever the order; a missing prefab or data ID suggests the nearest.
+
+### Changed
+
+- **Prefab loading and reloading** (`D-171`): `load_prefabs` loads the `data` entries with the prefabs and adds over the World's registries; a hot-reload batch's prefab and data edits commit together, a manifest reload reads every prefab and data file again and keeps all or none, and `PrefabRegistry::insert` and `insert_with_path` drop an ID's old file. Known issues record that edits saved apart which need each other load at the next manifest save.
+- **Records**: `DESIGN.md`'s M61 section and reload-matrix rows, `docs/assets.md`'s Data entry row, the template's `AGENTS.md` rule, three break-ledger rows, the LLM index's merged manifest row, the asset coverage check and Layer 1 over data files, and w13-kit's follow-ups. `api/tungsten-core.txt` gains 526 lines and `api/tungsten.txt` one, none removed; the kit and render snapshots, the determinism and containment hashes, the row digests and `DefaultPlugins`' schedule are unchanged.
+
 ## [0.80.0] - 2026-10-16
 
 Summary: M60, W13e (plan archived at `docs/plans/archive/1.0/phase6-milestone-60-kit-core-events-ownership.md`): the kit catalogue's F1 in core, an event cursor that reads each event once from any stage and counts what the queue dropped, and spawn inheritance applied at the command flush, so the kit's spawner's entities leave with its state.

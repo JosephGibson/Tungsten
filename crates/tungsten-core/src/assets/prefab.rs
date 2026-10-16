@@ -43,6 +43,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use thiserror::Error;
 
+use crate::assets::data;
 use crate::assets::registry::AssetRegistry;
 use crate::assets::scene::{
     MAX_POSITION, SceneSprite, SceneTween, default_visible, strict_components,
@@ -97,34 +98,53 @@ impl PrefabData {
     /// [`PrefabError::Parse`]. More than one tween, a tween that fails its
     /// checks, an unknown component, a value that does not deserialize and
     /// an asset ID that `world` lacks are [`PrefabError::Validation`], whose
-    /// message names `tweens`, `tweens[0]` or the [`ComponentError`].
+    /// message names `tweens`, `tweens[0]` or the [`ComponentError`]; a
+    /// missing prefab or data entry's ID ends with the nearest one, as
+    /// "; did you mean `<id>`?", when one is near.
+    ///
+    /// A prefab that names other prefabs or data entries loads with them in
+    /// one [`StagedLoad`](crate::assets::data::StagedLoad), which checks
+    /// after every file is in place.
     pub fn load(path: &Path, world: &World) -> Result<Self, PrefabError> {
-        let file = || path.display().to_string();
-        let contents = std::fs::read_to_string(path).map_err(|source| PrefabError::Io {
-            path: file(),
-            source,
-        })?;
-        let data: PrefabData =
-            serde_json::from_str(&contents).map_err(|source| PrefabError::Parse {
-                path: file(),
-                source,
-            })?;
+        let data = Self::parse(path)?;
         data.validate(world)
             .map_err(|message| PrefabError::Validation {
-                path: file(),
+                path: path.display().to_string(),
                 message,
             })?;
         Ok(data)
     }
 
-    fn validate(&self, world: &World) -> Result<(), String> {
+    /// Phase one of a load: reads and parses `path`, with no World check.
+    pub(crate) fn parse(path: &Path) -> Result<Self, PrefabError> {
+        let file = || path.display().to_string();
+        let contents = std::fs::read_to_string(path).map_err(|source| PrefabError::Io {
+            path: file(),
+            source,
+        })?;
+        serde_json::from_str(&contents).map_err(|source| PrefabError::Parse {
+            path: file(),
+            source,
+        })
+    }
+
+    /// Phase two of a load: the fields' checks, then each component's
+    /// `check_in` against `world`, a missing prefab or data ID with the
+    /// nearest one appended.
+    pub(crate) fn validate(&self, world: &World) -> Result<(), String> {
         self.validate_fields()?;
         let empty = ComponentRegistry::new();
         let registry = world.get_resource::<ComponentRegistry>().unwrap_or(&empty);
         for (name, value) in &self.components {
-            registry
-                .check_in(name, value, world)
-                .map_err(|err| err.to_string())?;
+            registry.check_in(name, value, world).map_err(|err| {
+                let hint = match &err {
+                    ComponentError::MissingAsset { kind, id, .. } => {
+                        data::suggestion(world, kind, id)
+                    }
+                    _ => None,
+                };
+                format!("{err}{}", data::did_you_mean(hint.as_deref()))
+            })?;
         }
         Ok(())
     }
@@ -151,10 +171,13 @@ impl PrefabData {
 
 /// The loaded prefabs by ID, a `World` resource: what
 /// [`World::prepare_prefab`] reads. The umbrella's loader fills it from the
-/// manifest's `prefabs` section.
+/// manifest's `prefabs` section. Each file backs one prefab.
 #[derive(Debug, Default)]
 pub struct PrefabRegistry {
     prefabs: BTreeMap<String, PrefabData>,
+    /// Each prefab loaded from a file: the file, by ID.
+    paths: BTreeMap<String, PathBuf>,
+    /// The reverse of `paths`: the prefab each file routes to.
     path_to_id: HashMap<PathBuf, String>,
 }
 
@@ -165,17 +188,23 @@ impl PrefabRegistry {
         Self::default()
     }
 
-    /// Adds `data` as prefab `id`, replacing a prefab of the same ID. The
-    /// data is taken as given; each spawn checks it.
+    /// Adds `data` as prefab `id`, replacing a prefab of the same ID and
+    /// dropping the file it was loaded from. The data is taken as given:
+    /// each spawn checks it, no load's commit does, and hot reload routes no
+    /// file to it.
     pub fn insert(&mut self, id: String, data: PrefabData) {
+        self.drop_path(&id);
         self.prefabs.insert(id, data);
     }
 
     /// [`insert`](Self::insert), keeping `path` for
-    /// [`id_for_path`](Self::id_for_path), which hot reload reads.
+    /// [`id_for_path`](Self::id_for_path), which hot reload reads. The ID's
+    /// old file no longer routes to it, and a prefab that held `path` loses
+    /// it.
     pub fn insert_with_path(&mut self, id: String, data: PrefabData, path: PathBuf) {
-        self.path_to_id.insert(path, id.clone());
-        self.prefabs.insert(id, data);
+        self.drop_path(&id);
+        self.release_path(&path);
+        self.put_entry(id, data, Some(path));
     }
 
     /// The prefab `id`.
@@ -205,6 +234,57 @@ impl PrefabRegistry {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.prefabs.is_empty()
+    }
+
+    /// Drops the route of the file prefab `id` was loaded from.
+    fn drop_path(&mut self, id: &str) {
+        if let Some(path) = self.paths.remove(id) {
+            self.path_to_id.remove(&path);
+        }
+    }
+
+    /// The prefab `path` routes to loses the file, keeping its data.
+    pub(crate) fn release_path(&mut self, path: &Path) -> Option<String> {
+        let id = self.path_to_id.remove(path)?;
+        self.paths.remove(&id);
+        Some(id)
+    }
+
+    /// Gives prefab `id` the file `path` back.
+    pub(crate) fn give_path(&mut self, id: &str, path: PathBuf) {
+        if self.prefabs.contains_key(id) {
+            self.path_to_id.insert(path.clone(), id.to_owned());
+            self.paths.insert(id.to_owned(), path);
+        }
+    }
+
+    /// Removes prefab `id` with its file's route.
+    pub(crate) fn take_entry(&mut self, id: &str) -> Option<(PrefabData, Option<PathBuf>)> {
+        let data = self.prefabs.remove(id)?;
+        let path = self.paths.remove(id);
+        if let Some(path) = &path {
+            self.path_to_id.remove(path);
+        }
+        Some((data, path))
+    }
+
+    /// Puts `data` as prefab `id`, routing `path` to it; the caller has
+    /// freed the path and the ID's old one.
+    pub(crate) fn put_entry(&mut self, id: String, data: PrefabData, path: Option<PathBuf>) {
+        if let Some(path) = path {
+            self.path_to_id.insert(path.clone(), id.clone());
+            self.paths.insert(id.clone(), path);
+        }
+        self.prefabs.insert(id, data);
+    }
+
+    /// Every prefab loaded from a file, by ID, with its file.
+    pub(crate) fn file_backed(&self) -> impl Iterator<Item = (&str, &PrefabData, &Path)> {
+        self.paths.iter().filter_map(|(id, path)| {
+            self.prefabs
+                .get(id)
+                .map(|data| (id.as_str(), data, path.as_path()))
+        })
     }
 }
 

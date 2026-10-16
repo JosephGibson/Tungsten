@@ -360,8 +360,9 @@ pub(crate) fn strict_components<'de, D: Deserializer<'de>>(
     deserializer.deserialize_map(Components)
 }
 
-/// A JSON value whose objects refuse a repeated key.
-struct StrictValue(Value);
+/// A JSON value whose objects refuse a repeated key: scene and prefab
+/// components' values and whole data files read through it.
+pub(crate) struct StrictValue(pub(crate) Value);
 
 impl<'de> Deserialize<'de> for StrictValue {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {

@@ -271,6 +271,140 @@ impl core::marker::UnsafeUnpin for tungsten_core::assets::audio::SoundRegistry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::audio::SoundRegistry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::audio::SoundRegistry
 pub const tungsten_core::assets::audio::SUPPORTED_SAMPLE_RATES: core::ops::range::RangeInclusive<u32>
+pub mod tungsten_core::assets::data
+#[non_exhaustive] pub enum tungsten_core::assets::data::DataError
+pub tungsten_core::assets::data::DataError::Invalid
+pub tungsten_core::assets::data::DataError::Invalid::field: alloc::string::String
+pub tungsten_core::assets::data::DataError::Invalid::path: alloc::string::String
+pub tungsten_core::assets::data::DataError::Invalid::source: serde_json::error::Error
+pub tungsten_core::assets::data::DataError::Io
+pub tungsten_core::assets::data::DataError::Io::path: alloc::string::String
+pub tungsten_core::assets::data::DataError::Io::source: core::io::error::Error
+pub tungsten_core::assets::data::DataError::MismatchedKind
+pub tungsten_core::assets::data::DataError::MismatchedKind::kind: alloc::string::String
+pub tungsten_core::assets::data::DataError::MismatchedKind::path: alloc::string::String
+pub tungsten_core::assets::data::DataError::MismatchedKind::registered: &'static str
+pub tungsten_core::assets::data::DataError::MismatchedKind::staged: &'static str
+pub tungsten_core::assets::data::DataError::MissingAsset
+pub tungsten_core::assets::data::DataError::MissingAsset::field: alloc::string::String
+pub tungsten_core::assets::data::DataError::MissingAsset::id: alloc::string::String
+pub tungsten_core::assets::data::DataError::MissingAsset::kind: &'static str
+pub tungsten_core::assets::data::DataError::MissingAsset::path: alloc::string::String
+pub tungsten_core::assets::data::DataError::MissingAsset::suggestion: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::data::DataError::Parse
+pub tungsten_core::assets::data::DataError::Parse::path: alloc::string::String
+pub tungsten_core::assets::data::DataError::Parse::source: serde_json::error::Error
+pub tungsten_core::assets::data::DataError::UnknownKind
+pub tungsten_core::assets::data::DataError::UnknownKind::kind: alloc::string::String
+pub tungsten_core::assets::data::DataError::UnknownKind::path: alloc::string::String
+pub tungsten_core::assets::data::DataError::UnknownKind::registered: alloc::vec::Vec<alloc::string::String>
+pub tungsten_core::assets::data::DataError::UnknownKind::suggestion: core::option::Option<alloc::string::String>
+impl core::error::Error for tungsten_core::assets::data::DataError
+pub fn tungsten_core::assets::data::DataError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tungsten_core::assets::data::DataError
+pub fn tungsten_core::assets::data::DataError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::assets::data::DataError
+pub fn tungsten_core::assets::data::DataError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::data::DataError
+impl core::marker::Send for tungsten_core::assets::data::DataError
+impl core::marker::Sync for tungsten_core::assets::data::DataError
+impl core::marker::Unpin for tungsten_core::assets::data::DataError
+impl core::marker::UnsafeUnpin for tungsten_core::assets::data::DataError
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::data::DataError
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::data::DataError
+#[non_exhaustive] pub enum tungsten_core::assets::data::StagedLoadError
+pub tungsten_core::assets::data::StagedLoadError::Data
+pub tungsten_core::assets::data::StagedLoadError::Data::id: alloc::string::String
+pub tungsten_core::assets::data::StagedLoadError::Data::kind: alloc::string::String
+pub tungsten_core::assets::data::StagedLoadError::Data::source: alloc::boxed::Box<tungsten_core::assets::data::DataError>
+pub tungsten_core::assets::data::StagedLoadError::Prefab
+pub tungsten_core::assets::data::StagedLoadError::Prefab::id: alloc::string::String
+pub tungsten_core::assets::data::StagedLoadError::Prefab::source: alloc::boxed::Box<tungsten_core::assets::prefab::PrefabError>
+impl core::error::Error for tungsten_core::assets::data::StagedLoadError
+pub fn tungsten_core::assets::data::StagedLoadError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tungsten_core::assets::data::StagedLoadError
+pub fn tungsten_core::assets::data::StagedLoadError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::assets::data::StagedLoadError
+pub fn tungsten_core::assets::data::StagedLoadError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::data::StagedLoadError
+impl core::marker::Send for tungsten_core::assets::data::StagedLoadError
+impl core::marker::Sync for tungsten_core::assets::data::StagedLoadError
+impl core::marker::Unpin for tungsten_core::assets::data::StagedLoadError
+impl core::marker::UnsafeUnpin for tungsten_core::assets::data::StagedLoadError
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::data::StagedLoadError
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::data::StagedLoadError
+pub struct tungsten_core::assets::data::DataRef<T>
+impl<T: 'static> tungsten_core::assets::data::DataRef<T>
+pub fn tungsten_core::assets::data::DataRef<T>::check(&self, &tungsten_core::World, &str) -> core::result::Result<(), tungsten_core::component_registry::MissingAsset>
+pub fn tungsten_core::assets::data::DataRef<T>::resolve<'a>(&'a self, &'a tungsten_core::assets::data::DataRegistry) -> core::option::Option<&'a T>
+impl<T> tungsten_core::assets::data::DataRef<T>
+pub fn tungsten_core::assets::data::DataRef<T>::as_inline(&self) -> core::option::Option<&T>
+pub fn tungsten_core::assets::data::DataRef<T>::by_id(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_core::assets::data::DataRef<T>::id(&self) -> core::option::Option<&str>
+pub fn tungsten_core::assets::data::DataRef<T>::inline(T) -> Self
+impl<'de, T: serde_core::de::Deserialize<'de>> serde_core::de::Deserialize<'de> for tungsten_core::assets::data::DataRef<T>
+pub fn tungsten_core::assets::data::DataRef<T>::deserialize<D: serde_core::de::Deserializer<'de>>(D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error>
+impl<T: core::clone::Clone> core::clone::Clone for tungsten_core::assets::data::DataRef<T>
+pub fn tungsten_core::assets::data::DataRef<T>::clone(&self) -> tungsten_core::assets::data::DataRef<T>
+impl<T: core::cmp::Eq> core::cmp::Eq for tungsten_core::assets::data::DataRef<T>
+impl<T: core::cmp::PartialEq> core::cmp::PartialEq for tungsten_core::assets::data::DataRef<T>
+pub fn tungsten_core::assets::data::DataRef<T>::eq(&self, &tungsten_core::assets::data::DataRef<T>) -> bool
+impl<T: core::cmp::PartialEq> core::marker::StructuralPartialEq for tungsten_core::assets::data::DataRef<T>
+impl<T: core::fmt::Debug> core::fmt::Debug for tungsten_core::assets::data::DataRef<T>
+pub fn tungsten_core::assets::data::DataRef<T>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<T: serde_core::ser::Serialize> serde_core::ser::Serialize for tungsten_core::assets::data::DataRef<T>
+pub fn tungsten_core::assets::data::DataRef<T>::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl<T> core::marker::Freeze for tungsten_core::assets::data::DataRef<T>
+impl<T> core::marker::Send for tungsten_core::assets::data::DataRef<T> where T: core::marker::Send
+impl<T> core::marker::Sync for tungsten_core::assets::data::DataRef<T> where T: core::marker::Sync
+impl<T> core::marker::Unpin for tungsten_core::assets::data::DataRef<T>
+impl<T> core::marker::UnsafeUnpin for tungsten_core::assets::data::DataRef<T>
+impl<T> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::data::DataRef<T> where T: core::panic::unwind_safe::RefUnwindSafe
+impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::data::DataRef<T> where T: core::panic::unwind_safe::UnwindSafe
+pub struct tungsten_core::assets::data::DataRegistry
+impl tungsten_core::assets::data::DataRegistry
+pub fn tungsten_core::assets::data::DataRegistry::contains_kind(&self, &str) -> bool
+pub fn tungsten_core::assets::data::DataRegistry::entry_for_path(&self, &std::path::Path) -> core::option::Option<(&'static str, &str)>
+pub fn tungsten_core::assets::data::DataRegistry::get<T: 'static>(&self, &str) -> core::option::Option<&T>
+pub fn tungsten_core::assets::data::DataRegistry::ids(&self, &str) -> impl core::iter::traits::iterator::Iterator<Item = &str>
+pub fn tungsten_core::assets::data::DataRegistry::insert<T: 'static>(&mut self, impl core::convert::Into<alloc::string::String>, T)
+pub fn tungsten_core::assets::data::DataRegistry::is_empty(&self) -> bool
+pub fn tungsten_core::assets::data::DataRegistry::kind_of<T: 'static>(&self) -> core::option::Option<&'static str>
+pub fn tungsten_core::assets::data::DataRegistry::kinds(&self) -> impl core::iter::traits::iterator::Iterator<Item = &'static str>
+pub fn tungsten_core::assets::data::DataRegistry::len(&self) -> usize
+pub fn tungsten_core::assets::data::DataRegistry::new() -> Self
+pub fn tungsten_core::assets::data::DataRegistry::register<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &'static str) -> bool
+pub fn tungsten_core::assets::data::DataRegistry::register_with_assets<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &'static str, impl core::ops::function::Fn(&T, &tungsten_core::World) -> core::result::Result<(), tungsten_core::component_registry::MissingAsset> + 'static) -> bool
+impl core::default::Default for tungsten_core::assets::data::DataRegistry
+pub fn tungsten_core::assets::data::DataRegistry::default() -> tungsten_core::assets::data::DataRegistry
+impl core::fmt::Debug for tungsten_core::assets::data::DataRegistry
+pub fn tungsten_core::assets::data::DataRegistry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::data::DataRegistry
+impl !core::marker::Send for tungsten_core::assets::data::DataRegistry
+impl !core::marker::Sync for tungsten_core::assets::data::DataRegistry
+impl core::marker::Unpin for tungsten_core::assets::data::DataRegistry
+impl core::marker::UnsafeUnpin for tungsten_core::assets::data::DataRegistry
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::data::DataRegistry
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::data::DataRegistry
+pub struct tungsten_core::assets::data::StagedLoad
+impl tungsten_core::assets::data::StagedLoad
+pub fn tungsten_core::assets::data::StagedLoad::add_data(&mut self, &tungsten_core::World, &str, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<std::path::PathBuf>) -> core::result::Result<(), tungsten_core::assets::data::DataError>
+pub fn tungsten_core::assets::data::StagedLoad::add_prefab(&mut self, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<std::path::PathBuf>) -> core::result::Result<(), tungsten_core::assets::prefab::PrefabError>
+pub fn tungsten_core::assets::data::StagedLoad::commit(self, &mut tungsten_core::World) -> core::result::Result<(), tungsten_core::assets::data::StagedLoadError>
+pub fn tungsten_core::assets::data::StagedLoad::is_empty(&self) -> bool
+pub fn tungsten_core::assets::data::StagedLoad::len(&self) -> usize
+pub fn tungsten_core::assets::data::StagedLoad::new() -> Self
+impl core::default::Default for tungsten_core::assets::data::StagedLoad
+pub fn tungsten_core::assets::data::StagedLoad::default() -> tungsten_core::assets::data::StagedLoad
+impl core::fmt::Debug for tungsten_core::assets::data::StagedLoad
+pub fn tungsten_core::assets::data::StagedLoad::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::data::StagedLoad
+impl !core::marker::Send for tungsten_core::assets::data::StagedLoad
+impl !core::marker::Sync for tungsten_core::assets::data::StagedLoad
+impl core::marker::Unpin for tungsten_core::assets::data::StagedLoad
+impl core::marker::UnsafeUnpin for tungsten_core::assets::data::StagedLoad
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::data::StagedLoad
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::data::StagedLoad
 pub mod tungsten_core::assets::manifest
 pub enum tungsten_core::assets::manifest::FilterMode
 pub tungsten_core::assets::manifest::FilterMode::Linear
@@ -313,6 +447,10 @@ pub tungsten_core::assets::manifest::ManifestError::MaterialShaderMissing::shade
 pub tungsten_core::assets::manifest::ManifestError::MissingAnimationFile
 pub tungsten_core::assets::manifest::ManifestError::MissingAnimationFile::id: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::MissingAnimationFile::path: alloc::string::String
+pub tungsten_core::assets::manifest::ManifestError::MissingDataFile
+pub tungsten_core::assets::manifest::ManifestError::MissingDataFile::id: alloc::string::String
+pub tungsten_core::assets::manifest::ManifestError::MissingDataFile::kind: alloc::string::String
+pub tungsten_core::assets::manifest::ManifestError::MissingDataFile::path: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::MissingEmissiveMaskFile
 pub tungsten_core::assets::manifest::ManifestError::MissingEmissiveMaskFile::id: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::MissingEmissiveMaskFile::path: alloc::string::String
@@ -346,6 +484,10 @@ pub tungsten_core::assets::manifest::ManifestError::MissingUiThemeFile::path: al
 pub tungsten_core::assets::manifest::ManifestError::Parse
 pub tungsten_core::assets::manifest::ManifestError::Parse::path: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::Parse::source: serde_json::error::Error
+pub tungsten_core::assets::manifest::ManifestError::SharedFile
+pub tungsten_core::assets::manifest::ManifestError::SharedFile::first: alloc::string::String
+pub tungsten_core::assets::manifest::ManifestError::SharedFile::path: alloc::string::String
+pub tungsten_core::assets::manifest::ManifestError::SharedFile::second: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::UnknownFallbackFamily
 pub tungsten_core::assets::manifest::ManifestError::UnknownFallbackFamily::family: alloc::string::String
 impl core::error::Error for tungsten_core::assets::manifest::ManifestError
@@ -376,6 +518,21 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::AnimationEntry
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::AnimationEntry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::AnimationEntry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::AnimationEntry
+#[non_exhaustive] pub struct tungsten_core::assets::manifest::DataEntry
+pub tungsten_core::assets::manifest::DataEntry::path: alloc::string::String
+impl core::clone::Clone for tungsten_core::assets::manifest::DataEntry
+pub fn tungsten_core::assets::manifest::DataEntry::clone(&self) -> tungsten_core::assets::manifest::DataEntry
+impl core::fmt::Debug for tungsten_core::assets::manifest::DataEntry
+pub fn tungsten_core::assets::manifest::DataEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::manifest::DataEntry
+pub fn tungsten_core::assets::manifest::DataEntry::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::manifest::DataEntry
+impl core::marker::Send for tungsten_core::assets::manifest::DataEntry
+impl core::marker::Sync for tungsten_core::assets::manifest::DataEntry
+impl core::marker::Unpin for tungsten_core::assets::manifest::DataEntry
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::DataEntry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::DataEntry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::DataEntry
 pub struct tungsten_core::assets::manifest::FontEntry
 pub tungsten_core::assets::manifest::FontEntry::path: alloc::string::String
 impl core::clone::Clone for tungsten_core::assets::manifest::FontEntry
@@ -471,6 +628,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::PrefabEntry
 pub struct tungsten_core::assets::manifest::RawManifest
 pub tungsten_core::assets::manifest::RawManifest::animations: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::AnimationEntry>
+pub tungsten_core::assets::manifest::RawManifest::data: alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::collections::btree::map::BTreeMap<alloc::string::String, tungsten_core::assets::manifest::DataEntry>>
 pub tungsten_core::assets::manifest::RawManifest::font_fallback: alloc::vec::Vec<alloc::string::String>
 pub tungsten_core::assets::manifest::RawManifest::font_families: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::FontFamilyEntry>
 pub tungsten_core::assets::manifest::RawManifest::fonts: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::FontEntry>
@@ -511,6 +669,21 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedAnimation
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedAnimation
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedAnimation
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedAnimation
+#[non_exhaustive] pub struct tungsten_core::assets::manifest::ResolvedDataEntry
+pub tungsten_core::assets::manifest::ResolvedDataEntry::path: std::path::PathBuf
+impl tungsten_core::assets::manifest::ResolvedDataEntry
+pub fn tungsten_core::assets::manifest::ResolvedDataEntry::new(std::path::PathBuf) -> Self
+impl core::clone::Clone for tungsten_core::assets::manifest::ResolvedDataEntry
+pub fn tungsten_core::assets::manifest::ResolvedDataEntry::clone(&self) -> tungsten_core::assets::manifest::ResolvedDataEntry
+impl core::fmt::Debug for tungsten_core::assets::manifest::ResolvedDataEntry
+pub fn tungsten_core::assets::manifest::ResolvedDataEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::manifest::ResolvedDataEntry
+impl core::marker::Send for tungsten_core::assets::manifest::ResolvedDataEntry
+impl core::marker::Sync for tungsten_core::assets::manifest::ResolvedDataEntry
+impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedDataEntry
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedDataEntry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedDataEntry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedDataEntry
 pub struct tungsten_core::assets::manifest::ResolvedFont
 pub tungsten_core::assets::manifest::ResolvedFont::path: std::path::PathBuf
 impl core::clone::Clone for tungsten_core::assets::manifest::ResolvedFont
@@ -545,6 +718,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedFontFamily
 pub struct tungsten_core::assets::manifest::ResolvedManifest
 pub tungsten_core::assets::manifest::ResolvedManifest::animations: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedAnimation>
+pub tungsten_core::assets::manifest::ResolvedManifest::data: alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::collections::btree::map::BTreeMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedDataEntry>>
 pub tungsten_core::assets::manifest::ResolvedManifest::font_fallback: alloc::vec::Vec<alloc::string::String>
 pub tungsten_core::assets::manifest::ResolvedManifest::font_families: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedFontFamily>
 pub tungsten_core::assets::manifest::ResolvedManifest::fonts: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedFont>
@@ -1887,6 +2061,46 @@ impl core::marker::Unpin for tungsten_core::assets::particle::BlendMode
 impl core::marker::UnsafeUnpin for tungsten_core::assets::particle::BlendMode
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::particle::BlendMode
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::particle::BlendMode
+#[non_exhaustive] pub enum tungsten_core::assets::DataError
+pub tungsten_core::assets::DataError::Invalid
+pub tungsten_core::assets::DataError::Invalid::field: alloc::string::String
+pub tungsten_core::assets::DataError::Invalid::path: alloc::string::String
+pub tungsten_core::assets::DataError::Invalid::source: serde_json::error::Error
+pub tungsten_core::assets::DataError::Io
+pub tungsten_core::assets::DataError::Io::path: alloc::string::String
+pub tungsten_core::assets::DataError::Io::source: core::io::error::Error
+pub tungsten_core::assets::DataError::MismatchedKind
+pub tungsten_core::assets::DataError::MismatchedKind::kind: alloc::string::String
+pub tungsten_core::assets::DataError::MismatchedKind::path: alloc::string::String
+pub tungsten_core::assets::DataError::MismatchedKind::registered: &'static str
+pub tungsten_core::assets::DataError::MismatchedKind::staged: &'static str
+pub tungsten_core::assets::DataError::MissingAsset
+pub tungsten_core::assets::DataError::MissingAsset::field: alloc::string::String
+pub tungsten_core::assets::DataError::MissingAsset::id: alloc::string::String
+pub tungsten_core::assets::DataError::MissingAsset::kind: &'static str
+pub tungsten_core::assets::DataError::MissingAsset::path: alloc::string::String
+pub tungsten_core::assets::DataError::MissingAsset::suggestion: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::DataError::Parse
+pub tungsten_core::assets::DataError::Parse::path: alloc::string::String
+pub tungsten_core::assets::DataError::Parse::source: serde_json::error::Error
+pub tungsten_core::assets::DataError::UnknownKind
+pub tungsten_core::assets::DataError::UnknownKind::kind: alloc::string::String
+pub tungsten_core::assets::DataError::UnknownKind::path: alloc::string::String
+pub tungsten_core::assets::DataError::UnknownKind::registered: alloc::vec::Vec<alloc::string::String>
+pub tungsten_core::assets::DataError::UnknownKind::suggestion: core::option::Option<alloc::string::String>
+impl core::error::Error for tungsten_core::assets::data::DataError
+pub fn tungsten_core::assets::data::DataError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tungsten_core::assets::data::DataError
+pub fn tungsten_core::assets::data::DataError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::assets::data::DataError
+pub fn tungsten_core::assets::data::DataError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::data::DataError
+impl core::marker::Send for tungsten_core::assets::data::DataError
+impl core::marker::Sync for tungsten_core::assets::data::DataError
+impl core::marker::Unpin for tungsten_core::assets::data::DataError
+impl core::marker::UnsafeUnpin for tungsten_core::assets::data::DataError
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::data::DataError
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::data::DataError
 pub enum tungsten_core::assets::EmissionKind
 pub tungsten_core::assets::EmissionKind::Burst
 pub tungsten_core::assets::EmissionKind::Burst::count: u32
@@ -1997,6 +2211,10 @@ pub tungsten_core::assets::ManifestError::MaterialShaderMissing::shader: alloc::
 pub tungsten_core::assets::ManifestError::MissingAnimationFile
 pub tungsten_core::assets::ManifestError::MissingAnimationFile::id: alloc::string::String
 pub tungsten_core::assets::ManifestError::MissingAnimationFile::path: alloc::string::String
+pub tungsten_core::assets::ManifestError::MissingDataFile
+pub tungsten_core::assets::ManifestError::MissingDataFile::id: alloc::string::String
+pub tungsten_core::assets::ManifestError::MissingDataFile::kind: alloc::string::String
+pub tungsten_core::assets::ManifestError::MissingDataFile::path: alloc::string::String
 pub tungsten_core::assets::ManifestError::MissingEmissiveMaskFile
 pub tungsten_core::assets::ManifestError::MissingEmissiveMaskFile::id: alloc::string::String
 pub tungsten_core::assets::ManifestError::MissingEmissiveMaskFile::path: alloc::string::String
@@ -2030,6 +2248,10 @@ pub tungsten_core::assets::ManifestError::MissingUiThemeFile::path: alloc::strin
 pub tungsten_core::assets::ManifestError::Parse
 pub tungsten_core::assets::ManifestError::Parse::path: alloc::string::String
 pub tungsten_core::assets::ManifestError::Parse::source: serde_json::error::Error
+pub tungsten_core::assets::ManifestError::SharedFile
+pub tungsten_core::assets::ManifestError::SharedFile::first: alloc::string::String
+pub tungsten_core::assets::ManifestError::SharedFile::path: alloc::string::String
+pub tungsten_core::assets::ManifestError::SharedFile::second: alloc::string::String
 pub tungsten_core::assets::ManifestError::UnknownFallbackFamily
 pub tungsten_core::assets::ManifestError::UnknownFallbackFamily::family: alloc::string::String
 impl core::error::Error for tungsten_core::assets::manifest::ManifestError
@@ -2239,6 +2461,27 @@ impl core::marker::Unpin for tungsten_core::assets::scene::SceneTweenRepeat
 impl core::marker::UnsafeUnpin for tungsten_core::assets::scene::SceneTweenRepeat
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::scene::SceneTweenRepeat
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::scene::SceneTweenRepeat
+#[non_exhaustive] pub enum tungsten_core::assets::StagedLoadError
+pub tungsten_core::assets::StagedLoadError::Data
+pub tungsten_core::assets::StagedLoadError::Data::id: alloc::string::String
+pub tungsten_core::assets::StagedLoadError::Data::kind: alloc::string::String
+pub tungsten_core::assets::StagedLoadError::Data::source: alloc::boxed::Box<tungsten_core::assets::data::DataError>
+pub tungsten_core::assets::StagedLoadError::Prefab
+pub tungsten_core::assets::StagedLoadError::Prefab::id: alloc::string::String
+pub tungsten_core::assets::StagedLoadError::Prefab::source: alloc::boxed::Box<tungsten_core::assets::prefab::PrefabError>
+impl core::error::Error for tungsten_core::assets::data::StagedLoadError
+pub fn tungsten_core::assets::data::StagedLoadError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tungsten_core::assets::data::StagedLoadError
+pub fn tungsten_core::assets::data::StagedLoadError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::assets::data::StagedLoadError
+pub fn tungsten_core::assets::data::StagedLoadError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::data::StagedLoadError
+impl core::marker::Send for tungsten_core::assets::data::StagedLoadError
+impl core::marker::Sync for tungsten_core::assets::data::StagedLoadError
+impl core::marker::Unpin for tungsten_core::assets::data::StagedLoadError
+impl core::marker::UnsafeUnpin for tungsten_core::assets::data::StagedLoadError
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::data::StagedLoadError
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::data::StagedLoadError
 pub enum tungsten_core::assets::TilemapError
 pub tungsten_core::assets::TilemapError::DuplicateTile
 pub tungsten_core::assets::TilemapError::DuplicateTile::path: alloc::string::String
@@ -2454,6 +2697,74 @@ impl<V> core::marker::Unpin for tungsten_core::assets::particle::Curve<V> where 
 impl<V> core::marker::UnsafeUnpin for tungsten_core::assets::particle::Curve<V>
 impl<V> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::particle::Curve<V> where V: core::panic::unwind_safe::RefUnwindSafe
 impl<V> core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::particle::Curve<V> where V: core::panic::unwind_safe::UnwindSafe
+#[non_exhaustive] pub struct tungsten_core::assets::DataEntry
+pub tungsten_core::assets::DataEntry::path: alloc::string::String
+impl core::clone::Clone for tungsten_core::assets::manifest::DataEntry
+pub fn tungsten_core::assets::manifest::DataEntry::clone(&self) -> tungsten_core::assets::manifest::DataEntry
+impl core::fmt::Debug for tungsten_core::assets::manifest::DataEntry
+pub fn tungsten_core::assets::manifest::DataEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::manifest::DataEntry
+pub fn tungsten_core::assets::manifest::DataEntry::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::manifest::DataEntry
+impl core::marker::Send for tungsten_core::assets::manifest::DataEntry
+impl core::marker::Sync for tungsten_core::assets::manifest::DataEntry
+impl core::marker::Unpin for tungsten_core::assets::manifest::DataEntry
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::DataEntry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::DataEntry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::DataEntry
+pub struct tungsten_core::assets::DataRef<T>
+impl<T: 'static> tungsten_core::assets::data::DataRef<T>
+pub fn tungsten_core::assets::data::DataRef<T>::check(&self, &tungsten_core::World, &str) -> core::result::Result<(), tungsten_core::component_registry::MissingAsset>
+pub fn tungsten_core::assets::data::DataRef<T>::resolve<'a>(&'a self, &'a tungsten_core::assets::data::DataRegistry) -> core::option::Option<&'a T>
+impl<T> tungsten_core::assets::data::DataRef<T>
+pub fn tungsten_core::assets::data::DataRef<T>::as_inline(&self) -> core::option::Option<&T>
+pub fn tungsten_core::assets::data::DataRef<T>::by_id(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_core::assets::data::DataRef<T>::id(&self) -> core::option::Option<&str>
+pub fn tungsten_core::assets::data::DataRef<T>::inline(T) -> Self
+impl<'de, T: serde_core::de::Deserialize<'de>> serde_core::de::Deserialize<'de> for tungsten_core::assets::data::DataRef<T>
+pub fn tungsten_core::assets::data::DataRef<T>::deserialize<D: serde_core::de::Deserializer<'de>>(D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error>
+impl<T: core::clone::Clone> core::clone::Clone for tungsten_core::assets::data::DataRef<T>
+pub fn tungsten_core::assets::data::DataRef<T>::clone(&self) -> tungsten_core::assets::data::DataRef<T>
+impl<T: core::cmp::Eq> core::cmp::Eq for tungsten_core::assets::data::DataRef<T>
+impl<T: core::cmp::PartialEq> core::cmp::PartialEq for tungsten_core::assets::data::DataRef<T>
+pub fn tungsten_core::assets::data::DataRef<T>::eq(&self, &tungsten_core::assets::data::DataRef<T>) -> bool
+impl<T: core::cmp::PartialEq> core::marker::StructuralPartialEq for tungsten_core::assets::data::DataRef<T>
+impl<T: core::fmt::Debug> core::fmt::Debug for tungsten_core::assets::data::DataRef<T>
+pub fn tungsten_core::assets::data::DataRef<T>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<T: serde_core::ser::Serialize> serde_core::ser::Serialize for tungsten_core::assets::data::DataRef<T>
+pub fn tungsten_core::assets::data::DataRef<T>::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl<T> core::marker::Freeze for tungsten_core::assets::data::DataRef<T>
+impl<T> core::marker::Send for tungsten_core::assets::data::DataRef<T> where T: core::marker::Send
+impl<T> core::marker::Sync for tungsten_core::assets::data::DataRef<T> where T: core::marker::Sync
+impl<T> core::marker::Unpin for tungsten_core::assets::data::DataRef<T>
+impl<T> core::marker::UnsafeUnpin for tungsten_core::assets::data::DataRef<T>
+impl<T> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::data::DataRef<T> where T: core::panic::unwind_safe::RefUnwindSafe
+impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::data::DataRef<T> where T: core::panic::unwind_safe::UnwindSafe
+pub struct tungsten_core::assets::DataRegistry
+impl tungsten_core::assets::data::DataRegistry
+pub fn tungsten_core::assets::data::DataRegistry::contains_kind(&self, &str) -> bool
+pub fn tungsten_core::assets::data::DataRegistry::entry_for_path(&self, &std::path::Path) -> core::option::Option<(&'static str, &str)>
+pub fn tungsten_core::assets::data::DataRegistry::get<T: 'static>(&self, &str) -> core::option::Option<&T>
+pub fn tungsten_core::assets::data::DataRegistry::ids(&self, &str) -> impl core::iter::traits::iterator::Iterator<Item = &str>
+pub fn tungsten_core::assets::data::DataRegistry::insert<T: 'static>(&mut self, impl core::convert::Into<alloc::string::String>, T)
+pub fn tungsten_core::assets::data::DataRegistry::is_empty(&self) -> bool
+pub fn tungsten_core::assets::data::DataRegistry::kind_of<T: 'static>(&self) -> core::option::Option<&'static str>
+pub fn tungsten_core::assets::data::DataRegistry::kinds(&self) -> impl core::iter::traits::iterator::Iterator<Item = &'static str>
+pub fn tungsten_core::assets::data::DataRegistry::len(&self) -> usize
+pub fn tungsten_core::assets::data::DataRegistry::new() -> Self
+pub fn tungsten_core::assets::data::DataRegistry::register<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &'static str) -> bool
+pub fn tungsten_core::assets::data::DataRegistry::register_with_assets<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &'static str, impl core::ops::function::Fn(&T, &tungsten_core::World) -> core::result::Result<(), tungsten_core::component_registry::MissingAsset> + 'static) -> bool
+impl core::default::Default for tungsten_core::assets::data::DataRegistry
+pub fn tungsten_core::assets::data::DataRegistry::default() -> tungsten_core::assets::data::DataRegistry
+impl core::fmt::Debug for tungsten_core::assets::data::DataRegistry
+pub fn tungsten_core::assets::data::DataRegistry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::data::DataRegistry
+impl !core::marker::Send for tungsten_core::assets::data::DataRegistry
+impl !core::marker::Sync for tungsten_core::assets::data::DataRegistry
+impl core::marker::Unpin for tungsten_core::assets::data::DataRegistry
+impl core::marker::UnsafeUnpin for tungsten_core::assets::data::DataRegistry
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::data::DataRegistry
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::data::DataRegistry
 pub struct tungsten_core::assets::FontEntry
 pub tungsten_core::assets::FontEntry::path: alloc::string::String
 impl core::clone::Clone for tungsten_core::assets::manifest::FontEntry
@@ -2933,6 +3244,21 @@ impl core::marker::Unpin for tungsten_core::assets::particle::Range
 impl core::marker::UnsafeUnpin for tungsten_core::assets::particle::Range
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::particle::Range
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::particle::Range
+#[non_exhaustive] pub struct tungsten_core::assets::ResolvedDataEntry
+pub tungsten_core::assets::ResolvedDataEntry::path: std::path::PathBuf
+impl tungsten_core::assets::manifest::ResolvedDataEntry
+pub fn tungsten_core::assets::manifest::ResolvedDataEntry::new(std::path::PathBuf) -> Self
+impl core::clone::Clone for tungsten_core::assets::manifest::ResolvedDataEntry
+pub fn tungsten_core::assets::manifest::ResolvedDataEntry::clone(&self) -> tungsten_core::assets::manifest::ResolvedDataEntry
+impl core::fmt::Debug for tungsten_core::assets::manifest::ResolvedDataEntry
+pub fn tungsten_core::assets::manifest::ResolvedDataEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::manifest::ResolvedDataEntry
+impl core::marker::Send for tungsten_core::assets::manifest::ResolvedDataEntry
+impl core::marker::Sync for tungsten_core::assets::manifest::ResolvedDataEntry
+impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedDataEntry
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedDataEntry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedDataEntry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedDataEntry
 pub struct tungsten_core::assets::ResolvedFont
 pub tungsten_core::assets::ResolvedFont::path: std::path::PathBuf
 impl core::clone::Clone for tungsten_core::assets::manifest::ResolvedFont
@@ -2967,6 +3293,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedFontFamily
 pub struct tungsten_core::assets::ResolvedManifest
 pub tungsten_core::assets::ResolvedManifest::animations: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedAnimation>
+pub tungsten_core::assets::ResolvedManifest::data: alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::collections::btree::map::BTreeMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedDataEntry>>
 pub tungsten_core::assets::ResolvedManifest::font_fallback: alloc::vec::Vec<alloc::string::String>
 pub tungsten_core::assets::ResolvedManifest::font_families: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedFontFamily>
 pub tungsten_core::assets::ResolvedManifest::fonts: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedFont>
@@ -3343,6 +3670,25 @@ impl core::marker::Unpin for tungsten_core::assets::registry::SpriteAsset
 impl core::marker::UnsafeUnpin for tungsten_core::assets::registry::SpriteAsset
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::registry::SpriteAsset
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::registry::SpriteAsset
+pub struct tungsten_core::assets::StagedLoad
+impl tungsten_core::assets::data::StagedLoad
+pub fn tungsten_core::assets::data::StagedLoad::add_data(&mut self, &tungsten_core::World, &str, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<std::path::PathBuf>) -> core::result::Result<(), tungsten_core::assets::data::DataError>
+pub fn tungsten_core::assets::data::StagedLoad::add_prefab(&mut self, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<std::path::PathBuf>) -> core::result::Result<(), tungsten_core::assets::prefab::PrefabError>
+pub fn tungsten_core::assets::data::StagedLoad::commit(self, &mut tungsten_core::World) -> core::result::Result<(), tungsten_core::assets::data::StagedLoadError>
+pub fn tungsten_core::assets::data::StagedLoad::is_empty(&self) -> bool
+pub fn tungsten_core::assets::data::StagedLoad::len(&self) -> usize
+pub fn tungsten_core::assets::data::StagedLoad::new() -> Self
+impl core::default::Default for tungsten_core::assets::data::StagedLoad
+pub fn tungsten_core::assets::data::StagedLoad::default() -> tungsten_core::assets::data::StagedLoad
+impl core::fmt::Debug for tungsten_core::assets::data::StagedLoad
+pub fn tungsten_core::assets::data::StagedLoad::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::data::StagedLoad
+impl !core::marker::Send for tungsten_core::assets::data::StagedLoad
+impl !core::marker::Sync for tungsten_core::assets::data::StagedLoad
+impl core::marker::Unpin for tungsten_core::assets::data::StagedLoad
+impl core::marker::UnsafeUnpin for tungsten_core::assets::data::StagedLoad
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::data::StagedLoad
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::data::StagedLoad
 pub struct tungsten_core::assets::TextureHandle(pub u32)
 impl core::clone::Clone for tungsten_core::assets::registry::TextureHandle
 pub fn tungsten_core::assets::registry::TextureHandle::clone(&self) -> tungsten_core::assets::registry::TextureHandle
@@ -5278,6 +5624,10 @@ pub fn tungsten_core::World::prepare_map_objects(&mut self, &str, impl core::con
 pub fn tungsten_core::World::prepare_prefab(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<tungsten_core::assets::prefab::PreparedPrefab, tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::World::spawn_map_objects(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<alloc::vec::Vec<tungsten_core::Entity>, tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::World::spawn_prefab(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<tungsten_core::Entity, tungsten_core::assets::prefab::PrefabError>
+impl tungsten_core::World
+pub fn tungsten_core::World::check_prefab_id(&self, &str, &str) -> core::result::Result<(), tungsten_core::component_registry::MissingAsset>
+pub fn tungsten_core::World::register_data_kind<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &'static str) -> bool
+pub fn tungsten_core::World::register_data_kind_with_assets<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &'static str, impl core::ops::function::Fn(&T, &tungsten_core::World) -> core::result::Result<(), tungsten_core::component_registry::MissingAsset> + 'static) -> bool
 impl tungsten_core::World
 pub fn tungsten_core::World::derive_from_source<T: 'static>(&mut self, fn(&tungsten_core::World, tungsten_core::Entity) -> core::option::Option<T>) -> bool
 pub fn tungsten_core::World::despawn(&mut self, tungsten_core::Entity)
@@ -11925,6 +12275,46 @@ impl core::marker::Unpin for tungsten_core::config::ConfigError
 impl core::marker::UnsafeUnpin for tungsten_core::config::ConfigError
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::ConfigError
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::config::ConfigError
+#[non_exhaustive] pub enum tungsten_core::DataError
+pub tungsten_core::DataError::Invalid
+pub tungsten_core::DataError::Invalid::field: alloc::string::String
+pub tungsten_core::DataError::Invalid::path: alloc::string::String
+pub tungsten_core::DataError::Invalid::source: serde_json::error::Error
+pub tungsten_core::DataError::Io
+pub tungsten_core::DataError::Io::path: alloc::string::String
+pub tungsten_core::DataError::Io::source: core::io::error::Error
+pub tungsten_core::DataError::MismatchedKind
+pub tungsten_core::DataError::MismatchedKind::kind: alloc::string::String
+pub tungsten_core::DataError::MismatchedKind::path: alloc::string::String
+pub tungsten_core::DataError::MismatchedKind::registered: &'static str
+pub tungsten_core::DataError::MismatchedKind::staged: &'static str
+pub tungsten_core::DataError::MissingAsset
+pub tungsten_core::DataError::MissingAsset::field: alloc::string::String
+pub tungsten_core::DataError::MissingAsset::id: alloc::string::String
+pub tungsten_core::DataError::MissingAsset::kind: &'static str
+pub tungsten_core::DataError::MissingAsset::path: alloc::string::String
+pub tungsten_core::DataError::MissingAsset::suggestion: core::option::Option<alloc::string::String>
+pub tungsten_core::DataError::Parse
+pub tungsten_core::DataError::Parse::path: alloc::string::String
+pub tungsten_core::DataError::Parse::source: serde_json::error::Error
+pub tungsten_core::DataError::UnknownKind
+pub tungsten_core::DataError::UnknownKind::kind: alloc::string::String
+pub tungsten_core::DataError::UnknownKind::path: alloc::string::String
+pub tungsten_core::DataError::UnknownKind::registered: alloc::vec::Vec<alloc::string::String>
+pub tungsten_core::DataError::UnknownKind::suggestion: core::option::Option<alloc::string::String>
+impl core::error::Error for tungsten_core::assets::data::DataError
+pub fn tungsten_core::assets::data::DataError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tungsten_core::assets::data::DataError
+pub fn tungsten_core::assets::data::DataError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::assets::data::DataError
+pub fn tungsten_core::assets::data::DataError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::data::DataError
+impl core::marker::Send for tungsten_core::assets::data::DataError
+impl core::marker::Sync for tungsten_core::assets::data::DataError
+impl core::marker::Unpin for tungsten_core::assets::data::DataError
+impl core::marker::UnsafeUnpin for tungsten_core::assets::data::DataError
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::data::DataError
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::data::DataError
 pub enum tungsten_core::DebugShape
 pub tungsten_core::DebugShape::Aabb
 pub tungsten_core::DebugShape::Aabb::max: glam::f32::vec2::Vec2
@@ -12445,6 +12835,10 @@ pub tungsten_core::ManifestError::MaterialShaderMissing::shader: alloc::string::
 pub tungsten_core::ManifestError::MissingAnimationFile
 pub tungsten_core::ManifestError::MissingAnimationFile::id: alloc::string::String
 pub tungsten_core::ManifestError::MissingAnimationFile::path: alloc::string::String
+pub tungsten_core::ManifestError::MissingDataFile
+pub tungsten_core::ManifestError::MissingDataFile::id: alloc::string::String
+pub tungsten_core::ManifestError::MissingDataFile::kind: alloc::string::String
+pub tungsten_core::ManifestError::MissingDataFile::path: alloc::string::String
 pub tungsten_core::ManifestError::MissingEmissiveMaskFile
 pub tungsten_core::ManifestError::MissingEmissiveMaskFile::id: alloc::string::String
 pub tungsten_core::ManifestError::MissingEmissiveMaskFile::path: alloc::string::String
@@ -12478,6 +12872,10 @@ pub tungsten_core::ManifestError::MissingUiThemeFile::path: alloc::string::Strin
 pub tungsten_core::ManifestError::Parse
 pub tungsten_core::ManifestError::Parse::path: alloc::string::String
 pub tungsten_core::ManifestError::Parse::source: serde_json::error::Error
+pub tungsten_core::ManifestError::SharedFile
+pub tungsten_core::ManifestError::SharedFile::first: alloc::string::String
+pub tungsten_core::ManifestError::SharedFile::path: alloc::string::String
+pub tungsten_core::ManifestError::SharedFile::second: alloc::string::String
 pub tungsten_core::ManifestError::UnknownFallbackFamily
 pub tungsten_core::ManifestError::UnknownFallbackFamily::family: alloc::string::String
 impl core::error::Error for tungsten_core::assets::manifest::ManifestError
@@ -13035,6 +13433,27 @@ impl core::marker::Unpin for tungsten_core::schedule::Stage
 impl core::marker::UnsafeUnpin for tungsten_core::schedule::Stage
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::schedule::Stage
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::schedule::Stage
+#[non_exhaustive] pub enum tungsten_core::StagedLoadError
+pub tungsten_core::StagedLoadError::Data
+pub tungsten_core::StagedLoadError::Data::id: alloc::string::String
+pub tungsten_core::StagedLoadError::Data::kind: alloc::string::String
+pub tungsten_core::StagedLoadError::Data::source: alloc::boxed::Box<tungsten_core::assets::data::DataError>
+pub tungsten_core::StagedLoadError::Prefab
+pub tungsten_core::StagedLoadError::Prefab::id: alloc::string::String
+pub tungsten_core::StagedLoadError::Prefab::source: alloc::boxed::Box<tungsten_core::assets::prefab::PrefabError>
+impl core::error::Error for tungsten_core::assets::data::StagedLoadError
+pub fn tungsten_core::assets::data::StagedLoadError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tungsten_core::assets::data::StagedLoadError
+pub fn tungsten_core::assets::data::StagedLoadError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::assets::data::StagedLoadError
+pub fn tungsten_core::assets::data::StagedLoadError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::data::StagedLoadError
+impl core::marker::Send for tungsten_core::assets::data::StagedLoadError
+impl core::marker::Sync for tungsten_core::assets::data::StagedLoadError
+impl core::marker::Unpin for tungsten_core::assets::data::StagedLoadError
+impl core::marker::UnsafeUnpin for tungsten_core::assets::data::StagedLoadError
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::data::StagedLoadError
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::data::StagedLoadError
 #[non_exhaustive] pub enum tungsten_core::TextAlign
 pub tungsten_core::TextAlign::Center
 pub tungsten_core::TextAlign::End
@@ -13992,6 +14411,74 @@ impl<V> core::marker::Unpin for tungsten_core::assets::particle::Curve<V> where 
 impl<V> core::marker::UnsafeUnpin for tungsten_core::assets::particle::Curve<V>
 impl<V> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::particle::Curve<V> where V: core::panic::unwind_safe::RefUnwindSafe
 impl<V> core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::particle::Curve<V> where V: core::panic::unwind_safe::UnwindSafe
+#[non_exhaustive] pub struct tungsten_core::DataEntry
+pub tungsten_core::DataEntry::path: alloc::string::String
+impl core::clone::Clone for tungsten_core::assets::manifest::DataEntry
+pub fn tungsten_core::assets::manifest::DataEntry::clone(&self) -> tungsten_core::assets::manifest::DataEntry
+impl core::fmt::Debug for tungsten_core::assets::manifest::DataEntry
+pub fn tungsten_core::assets::manifest::DataEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::manifest::DataEntry
+pub fn tungsten_core::assets::manifest::DataEntry::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::manifest::DataEntry
+impl core::marker::Send for tungsten_core::assets::manifest::DataEntry
+impl core::marker::Sync for tungsten_core::assets::manifest::DataEntry
+impl core::marker::Unpin for tungsten_core::assets::manifest::DataEntry
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::DataEntry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::DataEntry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::DataEntry
+pub struct tungsten_core::DataRef<T>
+impl<T: 'static> tungsten_core::assets::data::DataRef<T>
+pub fn tungsten_core::assets::data::DataRef<T>::check(&self, &tungsten_core::World, &str) -> core::result::Result<(), tungsten_core::component_registry::MissingAsset>
+pub fn tungsten_core::assets::data::DataRef<T>::resolve<'a>(&'a self, &'a tungsten_core::assets::data::DataRegistry) -> core::option::Option<&'a T>
+impl<T> tungsten_core::assets::data::DataRef<T>
+pub fn tungsten_core::assets::data::DataRef<T>::as_inline(&self) -> core::option::Option<&T>
+pub fn tungsten_core::assets::data::DataRef<T>::by_id(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_core::assets::data::DataRef<T>::id(&self) -> core::option::Option<&str>
+pub fn tungsten_core::assets::data::DataRef<T>::inline(T) -> Self
+impl<'de, T: serde_core::de::Deserialize<'de>> serde_core::de::Deserialize<'de> for tungsten_core::assets::data::DataRef<T>
+pub fn tungsten_core::assets::data::DataRef<T>::deserialize<D: serde_core::de::Deserializer<'de>>(D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error>
+impl<T: core::clone::Clone> core::clone::Clone for tungsten_core::assets::data::DataRef<T>
+pub fn tungsten_core::assets::data::DataRef<T>::clone(&self) -> tungsten_core::assets::data::DataRef<T>
+impl<T: core::cmp::Eq> core::cmp::Eq for tungsten_core::assets::data::DataRef<T>
+impl<T: core::cmp::PartialEq> core::cmp::PartialEq for tungsten_core::assets::data::DataRef<T>
+pub fn tungsten_core::assets::data::DataRef<T>::eq(&self, &tungsten_core::assets::data::DataRef<T>) -> bool
+impl<T: core::cmp::PartialEq> core::marker::StructuralPartialEq for tungsten_core::assets::data::DataRef<T>
+impl<T: core::fmt::Debug> core::fmt::Debug for tungsten_core::assets::data::DataRef<T>
+pub fn tungsten_core::assets::data::DataRef<T>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<T: serde_core::ser::Serialize> serde_core::ser::Serialize for tungsten_core::assets::data::DataRef<T>
+pub fn tungsten_core::assets::data::DataRef<T>::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl<T> core::marker::Freeze for tungsten_core::assets::data::DataRef<T>
+impl<T> core::marker::Send for tungsten_core::assets::data::DataRef<T> where T: core::marker::Send
+impl<T> core::marker::Sync for tungsten_core::assets::data::DataRef<T> where T: core::marker::Sync
+impl<T> core::marker::Unpin for tungsten_core::assets::data::DataRef<T>
+impl<T> core::marker::UnsafeUnpin for tungsten_core::assets::data::DataRef<T>
+impl<T> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::data::DataRef<T> where T: core::panic::unwind_safe::RefUnwindSafe
+impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::data::DataRef<T> where T: core::panic::unwind_safe::UnwindSafe
+pub struct tungsten_core::DataRegistry
+impl tungsten_core::assets::data::DataRegistry
+pub fn tungsten_core::assets::data::DataRegistry::contains_kind(&self, &str) -> bool
+pub fn tungsten_core::assets::data::DataRegistry::entry_for_path(&self, &std::path::Path) -> core::option::Option<(&'static str, &str)>
+pub fn tungsten_core::assets::data::DataRegistry::get<T: 'static>(&self, &str) -> core::option::Option<&T>
+pub fn tungsten_core::assets::data::DataRegistry::ids(&self, &str) -> impl core::iter::traits::iterator::Iterator<Item = &str>
+pub fn tungsten_core::assets::data::DataRegistry::insert<T: 'static>(&mut self, impl core::convert::Into<alloc::string::String>, T)
+pub fn tungsten_core::assets::data::DataRegistry::is_empty(&self) -> bool
+pub fn tungsten_core::assets::data::DataRegistry::kind_of<T: 'static>(&self) -> core::option::Option<&'static str>
+pub fn tungsten_core::assets::data::DataRegistry::kinds(&self) -> impl core::iter::traits::iterator::Iterator<Item = &'static str>
+pub fn tungsten_core::assets::data::DataRegistry::len(&self) -> usize
+pub fn tungsten_core::assets::data::DataRegistry::new() -> Self
+pub fn tungsten_core::assets::data::DataRegistry::register<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &'static str) -> bool
+pub fn tungsten_core::assets::data::DataRegistry::register_with_assets<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &'static str, impl core::ops::function::Fn(&T, &tungsten_core::World) -> core::result::Result<(), tungsten_core::component_registry::MissingAsset> + 'static) -> bool
+impl core::default::Default for tungsten_core::assets::data::DataRegistry
+pub fn tungsten_core::assets::data::DataRegistry::default() -> tungsten_core::assets::data::DataRegistry
+impl core::fmt::Debug for tungsten_core::assets::data::DataRegistry
+pub fn tungsten_core::assets::data::DataRegistry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::data::DataRegistry
+impl !core::marker::Send for tungsten_core::assets::data::DataRegistry
+impl !core::marker::Sync for tungsten_core::assets::data::DataRegistry
+impl core::marker::Unpin for tungsten_core::assets::data::DataRegistry
+impl core::marker::UnsafeUnpin for tungsten_core::assets::data::DataRegistry
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::data::DataRegistry
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::data::DataRegistry
 pub struct tungsten_core::DebugCommand
 pub tungsten_core::DebugCommand::color: [f32; 4]
 pub tungsten_core::DebugCommand::shape: tungsten_core::debug_draw::DebugShape
@@ -15524,6 +16011,21 @@ impl core::marker::Unpin for tungsten_core::display::Resolution
 impl core::marker::UnsafeUnpin for tungsten_core::display::Resolution
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::display::Resolution
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::display::Resolution
+#[non_exhaustive] pub struct tungsten_core::ResolvedDataEntry
+pub tungsten_core::ResolvedDataEntry::path: std::path::PathBuf
+impl tungsten_core::assets::manifest::ResolvedDataEntry
+pub fn tungsten_core::assets::manifest::ResolvedDataEntry::new(std::path::PathBuf) -> Self
+impl core::clone::Clone for tungsten_core::assets::manifest::ResolvedDataEntry
+pub fn tungsten_core::assets::manifest::ResolvedDataEntry::clone(&self) -> tungsten_core::assets::manifest::ResolvedDataEntry
+impl core::fmt::Debug for tungsten_core::assets::manifest::ResolvedDataEntry
+pub fn tungsten_core::assets::manifest::ResolvedDataEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::manifest::ResolvedDataEntry
+impl core::marker::Send for tungsten_core::assets::manifest::ResolvedDataEntry
+impl core::marker::Sync for tungsten_core::assets::manifest::ResolvedDataEntry
+impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedDataEntry
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedDataEntry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedDataEntry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedDataEntry
 pub struct tungsten_core::ResolvedFont
 pub tungsten_core::ResolvedFont::path: std::path::PathBuf
 impl core::clone::Clone for tungsten_core::assets::manifest::ResolvedFont
@@ -15558,6 +16060,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedFontFamily
 pub struct tungsten_core::ResolvedManifest
 pub tungsten_core::ResolvedManifest::animations: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedAnimation>
+pub tungsten_core::ResolvedManifest::data: alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::collections::btree::map::BTreeMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedDataEntry>>
 pub tungsten_core::ResolvedManifest::font_fallback: alloc::vec::Vec<alloc::string::String>
 pub tungsten_core::ResolvedManifest::font_families: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedFontFamily>
 pub tungsten_core::ResolvedManifest::fonts: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedFont>
@@ -16229,6 +16732,25 @@ impl core::marker::Unpin for tungsten_core::components::SquashStretchState
 impl core::marker::UnsafeUnpin for tungsten_core::components::SquashStretchState
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::components::SquashStretchState
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::components::SquashStretchState
+pub struct tungsten_core::StagedLoad
+impl tungsten_core::assets::data::StagedLoad
+pub fn tungsten_core::assets::data::StagedLoad::add_data(&mut self, &tungsten_core::World, &str, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<std::path::PathBuf>) -> core::result::Result<(), tungsten_core::assets::data::DataError>
+pub fn tungsten_core::assets::data::StagedLoad::add_prefab(&mut self, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<std::path::PathBuf>) -> core::result::Result<(), tungsten_core::assets::prefab::PrefabError>
+pub fn tungsten_core::assets::data::StagedLoad::commit(self, &mut tungsten_core::World) -> core::result::Result<(), tungsten_core::assets::data::StagedLoadError>
+pub fn tungsten_core::assets::data::StagedLoad::is_empty(&self) -> bool
+pub fn tungsten_core::assets::data::StagedLoad::len(&self) -> usize
+pub fn tungsten_core::assets::data::StagedLoad::new() -> Self
+impl core::default::Default for tungsten_core::assets::data::StagedLoad
+pub fn tungsten_core::assets::data::StagedLoad::default() -> tungsten_core::assets::data::StagedLoad
+impl core::fmt::Debug for tungsten_core::assets::data::StagedLoad
+pub fn tungsten_core::assets::data::StagedLoad::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::data::StagedLoad
+impl !core::marker::Send for tungsten_core::assets::data::StagedLoad
+impl !core::marker::Sync for tungsten_core::assets::data::StagedLoad
+impl core::marker::Unpin for tungsten_core::assets::data::StagedLoad
+impl core::marker::UnsafeUnpin for tungsten_core::assets::data::StagedLoad
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::data::StagedLoad
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::data::StagedLoad
 pub struct tungsten_core::StyledText
 pub tungsten_core::StyledText::spans: alloc::vec::Vec<tungsten_core::text::TextSpan>
 impl core::clone::Clone for tungsten_core::text::StyledText
@@ -17170,6 +17692,10 @@ pub fn tungsten_core::World::prepare_map_objects(&mut self, &str, impl core::con
 pub fn tungsten_core::World::prepare_prefab(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<tungsten_core::assets::prefab::PreparedPrefab, tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::World::spawn_map_objects(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<alloc::vec::Vec<tungsten_core::Entity>, tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::World::spawn_prefab(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<tungsten_core::Entity, tungsten_core::assets::prefab::PrefabError>
+impl tungsten_core::World
+pub fn tungsten_core::World::check_prefab_id(&self, &str, &str) -> core::result::Result<(), tungsten_core::component_registry::MissingAsset>
+pub fn tungsten_core::World::register_data_kind<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &'static str) -> bool
+pub fn tungsten_core::World::register_data_kind_with_assets<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &'static str, impl core::ops::function::Fn(&T, &tungsten_core::World) -> core::result::Result<(), tungsten_core::component_registry::MissingAsset> + 'static) -> bool
 impl tungsten_core::World
 pub fn tungsten_core::World::derive_from_source<T: 'static>(&mut self, fn(&tungsten_core::World, tungsten_core::Entity) -> core::option::Option<T>) -> bool
 pub fn tungsten_core::World::despawn(&mut self, tungsten_core::Entity)

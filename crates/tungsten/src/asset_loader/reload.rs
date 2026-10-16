@@ -4,15 +4,16 @@
 use std::path::{Path, PathBuf};
 
 use tungsten_core::assets::{
-    AnimationData, AnimationRegistry, FilterMode, FontRegistry, LoadedManifest, MaterialRegistry,
-    ParticleConfig, ParticleConfigRegistry, ParticleMeshRegistry, ResolvedManifest, SoundRegistry,
-    TextureHandle, TilemapData, TilemapRegistry, UvRect,
+    AnimationData, AnimationRegistry, DataRegistry, FilterMode, FontRegistry, LoadedManifest,
+    MaterialRegistry, ParticleConfig, ParticleConfigRegistry, ParticleMeshRegistry, PrefabRegistry,
+    ResolvedManifest, SoundRegistry, StagedLoad, TextureHandle, TilemapData, TilemapRegistry,
+    UvRect,
 };
 use tungsten_core::ui::{Theme, ThemeFile, UiThemeRegistry, UiTree};
 use tungsten_core::{ActionMap, ActionMapError, AssetRegistry, World};
 use tungsten_render::Renderer;
 
-use super::prefab::reload_new_prefabs;
+use super::prefab::{MANIFEST_HINT, failure, reload_prefabs_and_data};
 use super::{
     UiThemePaths, diff_particle_meshes, missing_particle_render_ref, rebuild_atlas_for_filter,
     warn_unknown_font_tokens,
@@ -254,6 +255,98 @@ pub fn reload_particle(id: &str, path: &Path, world: &mut World) -> anyhow::Resu
 
     log::info!("Hot-reloaded particle '{id}'");
     Ok(())
+}
+
+/// The JSON files of one drained batch (M61), each by the path its loader
+/// recorded: a theme, an animation or a particle config reloads on its own,
+/// as before. The batch's prefab and data files stage in one `StagedLoad`
+/// and commit once, so edits saved together that need each other load
+/// together; a failure keeps every previous entry and its log names the
+/// entry and the way out, a manifest save. A batch whose manifest reloaded
+/// skips that commit, since the manifest's block read every prefab and data
+/// file again. Returns the error lines it logged.
+pub(crate) fn reload_json_files(
+    paths: &[PathBuf],
+    world: &mut World,
+    manifest_reloaded: bool,
+) -> Vec<String> {
+    let mut errors = Vec::new();
+    let mut error = |line: String| {
+        log::error!("{line}");
+        errors.push(line);
+    };
+    let mut load = StagedLoad::new();
+    let mut staged = Vec::new();
+    for path in paths {
+        let theme_id = world
+            .get_resource::<UiThemePaths>()
+            .and_then(|paths| paths.id_for_path(path).map(ToString::to_string));
+        let anim_id = world
+            .get_resource::<AnimationRegistry>()
+            .and_then(|ar| ar.id_for_path(path).map(ToString::to_string));
+        let particle_id = world
+            .get_resource::<ParticleConfigRegistry>()
+            .and_then(|pr| {
+                pr.id_for_path(path)
+                    .and_then(|aid| pr.name_for_id(aid).map(ToString::to_string))
+            });
+        let prefab_id = world
+            .get_resource::<PrefabRegistry>()
+            .and_then(|prefabs| prefabs.id_for_path(path).map(ToString::to_string));
+        let data_entry = world
+            .get_resource::<DataRegistry>()
+            .and_then(|data| data.entry_for_path(path))
+            .map(|(kind, id)| (kind, id.to_owned()));
+        if let Some(id) = theme_id {
+            if let Err(e) = reload_ui_theme(&id, path, world) {
+                error(format!("Ui theme reload '{id}': {e}"));
+            }
+        } else if let Some(id) = anim_id {
+            if let Err(e) = reload_animation(&id, path, world) {
+                error(format!("Animation reload '{id}': {e}"));
+            }
+        } else if let Some(id) = particle_id {
+            if let Err(e) = reload_particle(&id, path, world) {
+                error(format!("Particle reload '{id}': {e}"));
+            }
+        } else if manifest_reloaded && (prefab_id.is_some() || data_entry.is_some()) {
+            // The manifest's block read this file again.
+        } else if let Some(id) = prefab_id {
+            match load.add_prefab(id.clone(), path.clone()) {
+                Ok(()) => staged.push(format!("prefab '{id}'")),
+                Err(e) => error(format!(
+                    "Hot reload prefab '{id}': {e}; keeping the previous prefab"
+                )),
+            }
+        } else if let Some((kind, id)) = data_entry {
+            match load.add_data(world, kind, id.clone(), path.clone()) {
+                Ok(()) => staged.push(format!("data `{kind}` entry `{id}`")),
+                Err(e) => error(format!(
+                    "Hot reload data `{kind}` entry `{id}`: {e}; keeping the previous entry"
+                )),
+            }
+        } else {
+            log::debug!(
+                "Hot reload: no animation, particle, prefab, data entry or ui theme registered for '{}'",
+                path.display()
+            );
+        }
+    }
+    if !load.is_empty() {
+        match load.commit(world) {
+            Ok(()) => {
+                for name in &staged {
+                    log::info!("Hot-reloaded {name}");
+                }
+            }
+            Err(e) => error(format!(
+                "Hot reload {}: {}; keeping the previous entries ({MANIFEST_HINT})",
+                staged.join(", "),
+                failure(&e)
+            )),
+        }
+    }
+    errors
 }
 
 /// Hot-reload WGSL shader; validation or rebuild failure logs and keeps the
@@ -614,9 +707,10 @@ pub fn reload_manifest(
         }
     }
 
-    // M51 prefabs, in the startup order: after the tilemaps and particle
-    // configs their components name; then the new maps' objects.
-    reload_new_prefabs(&new_manifest, world, &new_maps);
+    // M51 prefabs and M61 data entries, in the startup order: after the
+    // tilemaps and particle configs their components name, every file read
+    // again and committed once; then the new maps' objects.
+    reload_prefabs_and_data(&new_manifest, world, &new_maps);
 
     // D-053: audio session-static; mixer owns cloned PCM.
     {

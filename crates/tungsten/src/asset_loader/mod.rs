@@ -1,7 +1,7 @@
 //! Manifest-driven asset loading and hot reload. `atlas` packs and reloads
 //! sprites, `reload` holds the other hot-reload paths, `scene` loads and
-//! spawns scene files and `prefab` loads and reloads prefab files; every
-//! public item is re-exported here.
+//! spawns scene files and `prefab` loads and reloads prefab and data files
+//! in two phases (M61); every public item is re-exported here.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -21,7 +21,8 @@ mod reload;
 mod scene;
 
 pub use atlas::{AtlasRegistry, load_sprites, rebuild_atlas_for_filter, reload_sprite};
-pub use prefab::{load_prefabs, reload_prefab};
+pub use prefab::{load_prefabs, reload_data, reload_prefab};
+pub(crate) use reload::reload_json_files;
 pub use reload::{
     reload_action_map, reload_animation, reload_font, reload_manifest, reload_material,
     reload_particle, reload_shader, reload_tilemap, reload_ui_theme,
@@ -418,8 +419,8 @@ pub fn load_particles(manifest: &ResolvedManifest, world: &mut World) -> anyhow:
 
 /// Load all assets and validate sprite and particle-mesh cross-references
 /// (D-009), then every map's objects against the loaded prefabs (M51). The
-/// prefabs load after the particle configs and tilemaps their components
-/// name.
+/// prefabs and data entries load together, in two phases (M61), after the
+/// particle configs and tilemaps their components name.
 pub fn load_all(
     manifest: &ResolvedManifest,
     world: &mut World,
