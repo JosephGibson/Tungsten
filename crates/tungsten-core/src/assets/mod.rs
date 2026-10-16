@@ -1,6 +1,7 @@
 pub mod animation;
 pub mod atlas;
 pub mod audio;
+pub mod data;
 pub mod manifest;
 pub mod material;
 pub mod particle;
@@ -15,12 +16,13 @@ pub use animation::{
 };
 pub use atlas::{AtlasPage, PackInput, PackResult, PackedSprite, UvRect, oversized, pack_shelf};
 pub use audio::{AudioDecodeError, AudioHandle, SoundData, SoundRegistry};
+pub use data::{DataError, DataRef, DataRegistry, StagedLoad, StagedLoadError};
 pub use manifest::{
-    FilterMode, FontEntry, FontFamilyEntry, LoadedManifest, ManifestError, MaterialEntry,
-    ParticleEntry, ParticleMeshEntry, PrefabEntry, ResolvedFont, ResolvedFontFamily,
-    ResolvedManifest, ResolvedMaterial, ResolvedParticle, ResolvedParticleMesh, ResolvedPrefab,
-    ResolvedShader, ResolvedSound, ResolvedTilemap, ResolvedUiTheme, ShaderEntry, SoundEntry,
-    TilemapEntry, UiThemeEntry,
+    DataEntry, FilterMode, FontEntry, FontFamilyEntry, LoadedManifest, ManifestError,
+    MaterialEntry, ParticleEntry, ParticleMeshEntry, PrefabEntry, ResolvedDataEntry, ResolvedFont,
+    ResolvedFontFamily, ResolvedManifest, ResolvedMaterial, ResolvedParticle, ResolvedParticleMesh,
+    ResolvedPrefab, ResolvedShader, ResolvedSound, ResolvedTilemap, ResolvedUiTheme, ShaderEntry,
+    SoundEntry, TilemapEntry, UiThemeEntry,
 };
 pub use material::{MaterialAssetId, MaterialRegistry, MaterialUniformDefaults};
 pub use particle::{

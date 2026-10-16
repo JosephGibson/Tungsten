@@ -35,8 +35,7 @@ Task → file map: read only the matching row's files. Prefixes: `core/` = `crat
 
 | Task | Open |
 | --- | --- |
-| Manifest load, registry, IDs, composition (`D-009`, `D-017`, `D-035`, `D-052`, `D-113`) | `core/assets/manifest.rs`, `core/assets/registry.rs`, `core/assets/mod.rs`, `tungsten/asset_loader/mod.rs` |
-| Load path, GPU upload bridge | `tungsten/asset_loader/` |
+| Manifest load, data entries, load path, GPU upload, registry, IDs, composition (`D-009`, `D-017`, `D-035`, `D-052`, `D-113`, `D-171`) | `core/assets/manifest.rs`, `core/assets/data.rs`, `core/assets/registry.rs`, `core/assets/mod.rs`, `tungsten/asset_loader/` |
 | Hot reload, file watch (`D-031`, `D-053`) | `tungsten/hot_reload.rs`, `tungsten/asset_loader/reload.rs` |
 | Sprite atlases (`D-048`) | `core/assets/atlas.rs`, `tungsten/asset_loader/atlas.rs` |
 | Tilemaps, tile collision (`D-032`, `D-033`) | `core/assets/tilemap.rs`, `tungsten/tilemap_extract.rs`, `core/physics/step/gather.rs` |

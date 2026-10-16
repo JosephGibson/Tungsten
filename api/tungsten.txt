@@ -119,6 +119,7 @@ pub fn tungsten::asset_loader::load_ui_themes(&tungsten_core::assets::manifest::
 pub fn tungsten::asset_loader::rebuild_atlas_for_filter(tungsten_core::assets::manifest::FilterMode, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::reload_action_map(&std::path::Path, &mut tungsten_core::ecs::world::World) -> core::result::Result<(), tungsten_core::input::action_map::ActionMapError>
 pub fn tungsten::asset_loader::reload_animation(&str, &std::path::Path, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
+pub fn tungsten::asset_loader::reload_data(&str, &str, &std::path::Path, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::reload_font(&str, &std::path::Path, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::reload_manifest(&[std::path::PathBuf], &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::reload_material(&str, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>

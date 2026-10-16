@@ -305,6 +305,66 @@ fn the_registry_sorts_ids_replaces_and_maps_paths() {
 }
 
 #[test]
+fn a_replaced_path_no_longer_routes() {
+    let mut registry = PrefabRegistry::new();
+    let (old, new) = (
+        PathBuf::from("/game/bat.json"),
+        PathBuf::from("/game/bat2.json"),
+    );
+    registry.insert_with_path("bat".to_owned(), prefab(json!({})), old.clone());
+    registry.insert_with_path("bat".to_owned(), prefab(json!({})), new.clone());
+    assert_eq!(
+        registry.id_for_path(&old),
+        None,
+        "the moved file's old path"
+    );
+    assert_eq!(registry.id_for_path(&new), Some("bat"));
+    // A prefab given a held file takes it; one replaced in code drops its own.
+    registry.insert_with_path("rat".to_owned(), prefab(json!({})), new.clone());
+    assert_eq!(registry.id_for_path(&new), Some("rat"));
+    registry.insert("rat".to_owned(), prefab(json!({})));
+    assert_eq!(registry.id_for_path(&new), None);
+    assert_eq!(registry.len(), 2);
+}
+
+#[test]
+fn a_validation_message_suggests_the_nearest_prefab_id() {
+    #[derive(Deserialize)]
+    struct Spawns {
+        prefab: String,
+    }
+    let mut world = with_prefabs(world(), &[("slime", json!({})), ("slug", json!({}))]);
+    world.register_component_with_assets(
+        "spawns",
+        |spawns: &Spawns, world: &World| world.check_prefab_id("prefab", &spawns.prefab),
+        |spawns: Spawns, _: &SpawnContext<'_>| (spawns,),
+    );
+    let near = PrefabFile::new(Some(
+        r#"{ "components": { "spawns": { "prefab": "slme" } } }"#,
+    ));
+    let err = PrefabData::load(&near.path, &world).unwrap_err();
+    assert!(matches!(err, PrefabError::Validation { .. }));
+    assert!(
+        err.to_string().ends_with(
+            "component `spawns`, field `prefab`: unknown prefab `slme`; did you mean `slime`?"
+        ),
+        "{err}"
+    );
+    let far = PrefabFile::new(Some(
+        r#"{ "components": { "spawns": { "prefab": "dragon" } } }"#,
+    ));
+    let err = PrefabData::load(&far.path, &world).unwrap_err();
+    assert!(
+        err.to_string().ends_with("unknown prefab `dragon`"),
+        "{err}"
+    );
+    let ok = PrefabFile::new(Some(
+        r#"{ "components": { "spawns": { "prefab": "slug" } } }"#,
+    ));
+    PrefabData::load(&ok.path, &world).unwrap();
+}
+
+#[test]
 fn a_spawn_gives_the_fields_then_the_components_then_with() {
     let mut world = with_prefabs(
         world(),

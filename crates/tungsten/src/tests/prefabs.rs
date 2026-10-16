@@ -1,6 +1,7 @@
 //! Prefab loading, hot reload and the manifest reload's prefab block (M51);
 //! the `particle_emitter` and `tilemap` components through prefab files,
-//! scene files and the harness.
+//! scene files and the harness; data entries loaded and reloaded with the
+//! prefabs in two phases (M61).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -8,19 +9,20 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use glam::Vec2;
+use serde::Deserialize;
 use tungsten_core::assets::{
-    BlendMode, EmissionKind, FilterMode, InitialVelocity, ParticleConfig, ParticleConfigRegistry,
-    ParticleRender, PrefabError, Range, ResolvedPrefab, ResolvedTilemap, TilemapData,
-    TilemapInstance, UvRect,
+    AnimationData, AnimationRegistry, BlendMode, EmissionKind, FilterMode, InitialVelocity,
+    ParticleConfig, ParticleConfigRegistry, ParticleRender, PrefabError, Range, ResolvedDataEntry,
+    ResolvedPrefab, ResolvedTilemap, TilemapData, TilemapInstance, UvRect,
 };
 use tungsten_core::{
-    AssetRegistry, CommandBuffer, Config, Entity, LayerKind, Particle, ParticleEmitter,
-    PrefabRegistry, Tag, TextureHandle, Transform, With,
+    AssetRegistry, CommandBuffer, Config, DataRef, DataRegistry, Entity, LayerKind, MissingAsset,
+    Particle, ParticleEmitter, PrefabRegistry, SpawnContext, Tag, TextureHandle, Transform, With,
 };
 
 use super::*;
 use crate::App;
-use crate::asset_loader::{load_scene, reload_tilemap};
+use crate::asset_loader::{load_scene, reload_json_files, reload_tilemap};
 use crate::state::{GameState, SceneEntity, StateContext, StateId, StateStack};
 use crate::testing::Harness;
 
@@ -143,7 +145,11 @@ fn load_prefabs_loads_each_prefab_with_its_path() {
     let prefabs = world.resource::<PrefabRegistry>();
     assert_eq!(prefabs.ids().collect::<Vec<_>>(), ["bat", "torch"]);
     assert_eq!(prefabs.get("bat").unwrap().tag.as_deref(), Some("bat"));
-    assert_eq!(prefabs.id_for_path(&torch), Some("torch"));
+    // The commit keeps each file's canonical path (M61), as hot reload's.
+    assert_eq!(
+        prefabs.id_for_path(&torch.canonicalize().unwrap()),
+        Some("torch")
+    );
 
     let entity = world.spawn_prefab("torch", [4.0, 2.0]).unwrap();
     let emitter = world.get::<ParticleEmitter>(entity).unwrap();
@@ -169,7 +175,12 @@ fn a_malformed_prefab_fails_the_load_naming_its_id_file_and_field() {
         .unwrap_err()
         .to_string();
     assert!(err.starts_with("Failed to load prefab 'torch': "), "{err}");
-    assert!(err.contains(&torch.display().to_string()), "{err}");
+    // The commit's check names the file by its canonical path (M61), which
+    // on Windows carries the `\\?\` prefix.
+    assert!(
+        err.contains(&torch.canonicalize().unwrap().display().to_string()),
+        "{err}"
+    );
     assert!(
         err.contains("component `particle_emitter`, field `sed`: unknown field `sed`"),
         "{err}"
@@ -261,7 +272,7 @@ fn a_manifest_reload_adds_maps_and_prefabs_that_name_each_other() {
     let mut new_maps = super::super::reload::reload_new_tilemaps(&edit, world);
     new_maps.sort();
     assert_eq!(new_maps, ["arena", "cave"]);
-    reload_new_prefabs(&edit, world, &new_maps);
+    reload_prefabs_and_data(&edit, world, &new_maps);
     assert!(
         world
             .resource::<PrefabRegistry>()
@@ -291,7 +302,7 @@ fn a_new_map_whose_objects_fail_keeps_its_tiles_and_spawn_returns_the_error() {
     let world = app.world_mut();
     let edit = manifest(&[], &[("cave", &cave)]);
     let new_maps = super::super::reload::reload_new_tilemaps(&edit, world);
-    reload_new_prefabs(&edit, world, &new_maps);
+    reload_prefabs_and_data(&edit, world, &new_maps);
 
     let maps = world.resource::<tungsten_core::TilemapRegistry>();
     assert_eq!(
@@ -527,5 +538,553 @@ fn a_spawn_queued_in_on_exit_from_a_states_entity_leaves_nothing() {
         .count();
     assert_eq!(sparks, 0, "the spawn followed its source's despawn");
     assert_eq!(harness.world().entity_count(), before);
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+/// An effect: how long it lasts, and the prefab its trail names.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Effect {
+    duration: f32,
+    #[serde(default)]
+    trail: Option<String>,
+}
+
+/// The declared tags: the `tags` entry `all`, which `filter` reads.
+#[derive(Debug, Deserialize)]
+struct Tags {
+    names: Vec<String>,
+}
+
+/// A component that names a prefab, an effect, or both.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Spawns {
+    #[serde(default)]
+    prefab: Option<String>,
+    #[serde(default)]
+    effect: Option<DataRef<Effect>>,
+}
+
+/// A component that names a declared tag.
+#[derive(Debug, Deserialize)]
+struct Filter {
+    tag: String,
+}
+
+/// `app_with_assets`, plus the data kinds `effects` (its trail a prefab)
+/// and `tags`, and the components `spawns` and `filter`, as a game's
+/// plugins would register them.
+fn app_with_data() -> App {
+    let mut app = app_with_assets();
+    let world = app.world_mut();
+    world.register_data_kind_with_assets::<Effect>("effects", |effect, world| {
+        match &effect.trail {
+            Some(trail) => world.check_prefab_id("trail", trail),
+            None => Ok(()),
+        }
+    });
+    world.register_data_kind::<Tags>("tags");
+    world.register_component_with_assets(
+        "spawns",
+        |spawns: &Spawns, world: &World| {
+            if let Some(prefab) = &spawns.prefab {
+                world.check_prefab_id("prefab", prefab)?;
+            }
+            match &spawns.effect {
+                Some(effect) => effect.check(world, "effect"),
+                None => Ok(()),
+            }
+        },
+        |spawns: Spawns, _: &SpawnContext<'_>| (spawns,),
+    );
+    world.register_component_with_assets(
+        "filter",
+        |filter: &Filter, world: &World| {
+            let declared = world
+                .get_resource::<DataRegistry>()
+                .and_then(|data| data.get::<Tags>("all"))
+                .is_some_and(|tags| tags.names.contains(&filter.tag));
+            if declared {
+                Ok(())
+            } else {
+                Err(MissingAsset::new("tag", "tag", &filter.tag))
+            }
+        },
+        |filter: Filter, _: &SpawnContext<'_>| (filter,),
+    );
+    app
+}
+
+/// A manifest of `prefabs`, each `(id, path)`, and `data` entries, each
+/// `(kind, id, path)`.
+fn data_manifest(prefabs: &[(&str, &Path)], data: &[(&str, &str, &Path)]) -> ResolvedManifest {
+    let mut manifest = manifest(prefabs, &[]);
+    for (kind, id, path) in data {
+        manifest
+            .data
+            .entry((*kind).to_string())
+            .or_default()
+            .insert(
+                (*id).to_string(),
+                ResolvedDataEntry::new(path.to_path_buf()),
+            );
+    }
+    manifest
+}
+
+/// Writes `path` and returns its canonical path, as the watcher gives it.
+fn canonical(path: &Path, contents: &str) -> PathBuf {
+    write(path, contents);
+    path.canonicalize().unwrap()
+}
+
+fn duration(world: &World, id: &str) -> Option<f32> {
+    world
+        .resource::<DataRegistry>()
+        .get::<Effect>(id)
+        .map(|effect| effect.duration)
+}
+
+fn declared(world: &World) -> Vec<String> {
+    world
+        .resource::<DataRegistry>()
+        .get::<Tags>("all")
+        .map(|tags| tags.names.clone())
+        .unwrap_or_default()
+}
+
+fn filter_tag(world: &World) -> Option<String> {
+    let slime = world.resource::<PrefabRegistry>().get("slime")?;
+    Some(slime.components["filter"]["tag"].as_str()?.to_owned())
+}
+
+#[test]
+fn a_prefab_naming_a_missing_prefab_fails_the_load_with_the_nearest() {
+    let dir = tempdir();
+    let (bat, nest) = (dir.join("prefabs/bat.json"), dir.join("prefabs/nest.json"));
+    write(&bat, r#"{ "tag": "bat" }"#);
+    write(
+        &nest,
+        r#"{ "components": { "spawns": { "prefab": "bats" } } }"#,
+    );
+    let mut app = app_with_data();
+    let err = load_prefabs(
+        &manifest(&[("bat", &bat), ("nest", &nest)], &[]),
+        app.world_mut(),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(err.starts_with("Failed to load prefab 'nest': "), "{err}");
+    assert!(
+        err.contains(&nest.canonicalize().unwrap().display().to_string()),
+        "{err}"
+    );
+    assert!(
+        err.ends_with(
+            "component `spawns`, field `prefab`: unknown prefab `bats`; did you mean `bat`?"
+        ),
+        "{err}"
+    );
+    assert!(
+        app.world().resource::<PrefabRegistry>().is_empty(),
+        "nothing loaded"
+    );
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_missing_data_id_or_prefab_fails_with_its_file_and_field() {
+    let dir = tempdir();
+    let (burning, nest) = (dir.join("data/burning.json"), dir.join("prefabs/nest.json"));
+    write(&burning, r#"{ "duration": 1.0 }"#);
+    write(
+        &nest,
+        r#"{ "components": { "spawns": { "effect": "burnin" } } }"#,
+    );
+    let mut app = app_with_data();
+    let edit = data_manifest(&[("nest", &nest)], &[("effects", "burning", &burning)]);
+    let err = load_prefabs(&edit, app.world_mut())
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.starts_with("Failed to load prefab 'nest': invalid prefab '"),
+        "{err}"
+    );
+    assert!(
+        err.ends_with(
+            "component `spawns`, field `effect`: unknown effects `burnin`; did you mean `burning`?"
+        ),
+        "{err}"
+    );
+
+    write(&burning, r#"{ "duration": 1.0, "trail": "ghost" }"#);
+    let edit = data_manifest(&[], &[("effects", "burning", &burning)]);
+    let err = load_prefabs(&edit, app.world_mut())
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.starts_with("Failed to load data `effects` entry `burning`: invalid data file '"),
+        "{err}"
+    );
+    assert!(
+        err.contains(&burning.canonicalize().unwrap().display().to_string()),
+        "{err}"
+    );
+    assert!(
+        err.ends_with(", field `trail`: unknown prefab `ghost`"),
+        "{err}"
+    );
+    assert!(app.world().resource::<DataRegistry>().is_empty());
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn prefabs_and_entries_naming_each_other_load_in_any_id_order() {
+    // `a_fx`'s trail names `z_bolt`, which names `a_fx`; `a_nest` names
+    // `z_bolt`, a prefab later in ID order.
+    let dir = tempdir();
+    let fx = dir.join("data/a_fx.json");
+    let (bolt, nest) = (
+        dir.join("prefabs/z_bolt.json"),
+        dir.join("prefabs/a_nest.json"),
+    );
+    write(&fx, r#"{ "duration": 0.5, "trail": "z_bolt" }"#);
+    write(
+        &bolt,
+        r#"{ "components": { "spawns": { "effect": "a_fx" } } }"#,
+    );
+    write(
+        &nest,
+        r#"{ "components": { "spawns": { "prefab": "z_bolt", "effect": { "duration": 2.0 } } } }"#,
+    );
+    let mut app = app_with_data();
+    let world = app.world_mut();
+    let edit = data_manifest(
+        &[("z_bolt", &bolt), ("a_nest", &nest)],
+        &[("effects", "a_fx", &fx)],
+    );
+    load_prefabs(&edit, world).unwrap();
+    assert_eq!(duration(world, "a_fx"), Some(0.5));
+    let nest_entity = world.spawn_prefab("a_nest", [0.0, 0.0]).unwrap();
+    let spawns = world.get::<Spawns>(nest_entity).unwrap();
+    let data = world.resource::<DataRegistry>();
+    let effect = spawns.effect.as_ref().unwrap().resolve(data).unwrap();
+    assert_eq!(effect.duration, 2.0, "the inline definition");
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_data_edit_reloads_by_path_and_a_bad_edit_keeps_the_previous() {
+    let dir = tempdir();
+    let burning = canonical(&dir.join("data/burning.json"), r#"{ "duration": 1.0 }"#);
+    let mut app = app_with_data();
+    let world = app.world_mut();
+    load_prefabs(
+        &data_manifest(&[], &[("effects", "burning", &burning)]),
+        world,
+    )
+    .unwrap();
+
+    write(&burning, r#"{ "duration": 2.0 }"#);
+    let errors = reload_json_files(std::slice::from_ref(&burning), world, false);
+    assert!(errors.is_empty(), "{errors:?}");
+    assert_eq!(
+        duration(world, "burning"),
+        Some(2.0),
+        "later reads see the edit"
+    );
+
+    write(&burning, r#"{ "duration": "long" }"#);
+    let errors = reload_json_files(std::slice::from_ref(&burning), world, false);
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert!(errors[0].starts_with("Hot reload data `effects` entry `burning`: "));
+    assert!(errors[0].contains("field `duration`"), "{errors:?}");
+    assert_eq!(
+        duration(world, "burning"),
+        Some(2.0),
+        "the previous entry stays"
+    );
+
+    write(&burning, r#"{ "duration": 3.0 }"#);
+    reload_data("effects", "burning", &burning, world).unwrap();
+    assert_eq!(duration(world, "burning"), Some(3.0));
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+/// The tags `all` declaring `enemy`, and the prefab `slime` whose filter
+/// names it, loaded on an app's World; their files and the manifest.
+fn tagged_slime(dir: &Path) -> (App, PathBuf, PathBuf, ResolvedManifest) {
+    let tags = canonical(
+        &dir.join("data/tags.json"),
+        r#"{ "names": ["enemy", "ally"] }"#,
+    );
+    let slime = canonical(
+        &dir.join("prefabs/slime.json"),
+        r#"{ "components": { "filter": { "tag": "enemy" } } }"#,
+    );
+    let mut app = app_with_data();
+    let edit = data_manifest(&[("slime", &slime)], &[("tags", "all", &tags)]);
+    load_prefabs(&edit, app.world_mut()).unwrap();
+    (app, tags, slime, edit)
+}
+
+#[test]
+fn a_data_edit_that_breaks_an_unchanged_prefab_is_refused() {
+    let dir = tempdir();
+    let (mut app, tags, _, _) = tagged_slime(&dir);
+    let world = app.world_mut();
+    write(&tags, r#"{ "names": ["foe", "ally"] }"#);
+    let errors = reload_json_files(std::slice::from_ref(&tags), world, false);
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    let line = &errors[0];
+    assert!(
+        line.starts_with("Hot reload data `tags` entry `all`: Failed to load prefab 'slime': "),
+        "{line}"
+    );
+    assert!(
+        line.contains("component `filter`, field `tag`: unknown tag `enemy`"),
+        "{line}"
+    );
+    assert!(
+        line.ends_with("saving the manifest reloads every prefab and data file together)"),
+        "{line}"
+    );
+    assert_eq!(
+        declared(world),
+        ["enemy", "ally"],
+        "the previous entry stays"
+    );
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn edits_that_need_each_other_load_in_one_batch_or_from_the_manifest() {
+    let rename = |tags: &Path, slime: &Path| {
+        write(tags, r#"{ "names": ["foe", "ally"] }"#);
+        write(slime, r#"{ "components": { "filter": { "tag": "foe" } } }"#);
+    };
+    // Saved together: one batch, one commit.
+    let dir = tempdir();
+    let (mut app, tags, slime, _) = tagged_slime(&dir);
+    let world = app.world_mut();
+    rename(&tags, &slime);
+    let errors = reload_json_files(&[slime.clone(), tags.clone()], world, false);
+    assert!(errors.is_empty(), "{errors:?}");
+    assert_eq!(declared(world), ["foe", "ally"]);
+    assert_eq!(filter_tag(world).as_deref(), Some("foe"));
+    fs::remove_dir_all(&dir).unwrap();
+
+    // Saved apart: each fails against the other's old file, then the
+    // manifest's block loads both.
+    let dir = tempdir();
+    let (mut app, tags, slime, edit) = tagged_slime(&dir);
+    let world = app.world_mut();
+    rename(&tags, &slime);
+    assert_eq!(
+        reload_json_files(std::slice::from_ref(&tags), world, false).len(),
+        1
+    );
+    assert_eq!(
+        reload_json_files(std::slice::from_ref(&slime), world, false).len(),
+        1
+    );
+    assert_eq!(declared(world), ["enemy", "ally"]);
+    assert_eq!(filter_tag(world).as_deref(), Some("enemy"));
+    reload_prefabs_and_data(&edit, world, &[]);
+    assert_eq!(declared(world), ["foe", "ally"]);
+    assert_eq!(filter_tag(world).as_deref(), Some("foe"));
+
+    // A batch whose manifest reloaded leaves its prefab and data files to
+    // the manifest's block.
+    write(&tags, r#"{ "names": ["foe"] }"#);
+    assert!(reload_json_files(std::slice::from_ref(&tags), world, true).is_empty());
+    assert_eq!(declared(world), ["foe", "ally"]);
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_theme_or_animation_in_the_same_batch_still_reloads() {
+    let dir = tempdir();
+    let burning = canonical(&dir.join("data/burning.json"), r#"{ "duration": 1.0 }"#);
+    let walk = canonical(
+        &dir.join("anims/walk.json"),
+        r#"{ "looping": true, "frames": [{ "sprite": "ground", "duration_ms": 100 }] }"#,
+    );
+    let mut app = app_with_data();
+    let world = app.world_mut();
+    load_prefabs(
+        &data_manifest(&[], &[("effects", "burning", &burning)]),
+        world,
+    )
+    .unwrap();
+    let initial = AnimationData::load(&walk, world.resource_mut::<AssetRegistry>()).unwrap();
+    let mut animations = AnimationRegistry::new();
+    animations.insert_with_path("walk".into(), initial, walk.clone());
+    world.insert_resource(animations);
+
+    write(&burning, r#"{ "duration": 2.0 }"#);
+    write(
+        &walk,
+        r#"{ "looping": false, "frames": [{ "sprite": "ground", "duration_ms": 250 }] }"#,
+    );
+    let unknown = canonical(&dir.join("other.json"), "{}");
+    let errors = reload_json_files(&[walk.clone(), burning.clone(), unknown], world, false);
+    assert!(errors.is_empty(), "{errors:?}");
+    assert_eq!(duration(world, "burning"), Some(2.0));
+    let walk = world.resource::<AnimationRegistry>().get("walk").unwrap();
+    assert!(!walk.looping, "the animation reloaded too");
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_manifest_edit_adding_a_prefab_and_an_entry_that_name_each_other_loads_both() {
+    let dir = tempdir();
+    let fx = canonical(
+        &dir.join("data/fx.json"),
+        r#"{ "duration": 1.0, "trail": "bolt" }"#,
+    );
+    let bolt = canonical(
+        &dir.join("prefabs/bolt.json"),
+        r#"{ "components": { "spawns": { "effect": "fx" } } }"#,
+    );
+    let mut app = app_with_data();
+    let world = app.world_mut();
+    let edit = data_manifest(&[("bolt", &bolt)], &[("effects", "fx", &fx)]);
+    reload_prefabs_and_data(&edit, world, &[]);
+    assert_eq!(duration(world, "fx"), Some(1.0));
+    assert_eq!(
+        world.resource::<PrefabRegistry>().id_for_path(&bolt),
+        Some("bolt")
+    );
+    assert_eq!(
+        world.resource::<DataRegistry>().entry_for_path(&fx),
+        Some(("effects", "fx"))
+    );
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_failed_manifest_reload_keeps_every_previous_entry_until_the_next_good_edit() {
+    let dir = tempdir();
+    let bat = canonical(&dir.join("prefabs/bat.json"), r#"{ "tag": "bat" }"#);
+    let mut app = app_with_data();
+    let world = app.world_mut();
+    load_prefabs(&manifest(&[("bat", &bat)], &[]), world).unwrap();
+
+    // One edit adds an effect and a prefab whose own check fails, and
+    // changes `bat`'s file: none of it loads.
+    let burning = canonical(&dir.join("data/burning.json"), r#"{ "duration": 1.0 }"#);
+    let nest = canonical(
+        &dir.join("prefabs/nest.json"),
+        r#"{ "components": { "spawns": { "prefab": "ghost" } } }"#,
+    );
+    write(&bat, r#"{ "tag": "vampire" }"#);
+    let edit = data_manifest(
+        &[("bat", &bat), ("nest", &nest)],
+        &[("effects", "burning", &burning)],
+    );
+    reload_prefabs_and_data(&edit, world, &[]);
+    let tag = |world: &World| {
+        world
+            .resource::<PrefabRegistry>()
+            .get("bat")
+            .unwrap()
+            .tag
+            .clone()
+    };
+    assert_eq!(tag(world).as_deref(), Some("bat"));
+    assert!(world.resource::<PrefabRegistry>().get("nest").is_none());
+    assert_eq!(duration(world, "burning"), None);
+
+    write(
+        &nest,
+        r#"{ "components": { "spawns": { "prefab": "bat" } } }"#,
+    );
+    reload_prefabs_and_data(&edit, world, &[]);
+    assert_eq!(tag(world).as_deref(), Some("vampire"));
+    assert!(world.resource::<PrefabRegistry>().get("nest").is_some());
+    assert_eq!(duration(world, "burning"), Some(1.0));
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_prefab_whose_manifest_path_moved_reloads_from_the_new_file() {
+    let dir = tempdir();
+    let old = canonical(&dir.join("prefabs/bat.json"), r#"{ "tag": "bat" }"#);
+    let new = canonical(&dir.join("prefabs/vampire.json"), r#"{ "tag": "vampire" }"#);
+    let mut app = app_with_data();
+    let world = app.world_mut();
+    load_prefabs(&manifest(&[("bat", &old)], &[]), world).unwrap();
+    reload_prefabs_and_data(&manifest(&[("bat", &new)], &[]), world, &[]);
+    let prefabs = world.resource::<PrefabRegistry>();
+    assert_eq!(prefabs.get("bat").unwrap().tag.as_deref(), Some("vampire"));
+    assert_eq!(prefabs.id_for_path(&new), Some("bat"));
+    assert_eq!(
+        prefabs.id_for_path(&old),
+        None,
+        "the old file no longer routes"
+    );
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_removed_prefabs_file_given_to_a_data_entry_routes_to_the_entry() {
+    let dir = tempdir();
+    let shared = canonical(&dir.join("shared.json"), r#"{ "tag": "old" }"#);
+    let mut app = app_with_data();
+    let world = app.world_mut();
+    load_prefabs(&manifest(&[("old", &shared)], &[]), world).unwrap();
+
+    write(&shared, r#"{ "duration": 1.0 }"#);
+    reload_prefabs_and_data(
+        &data_manifest(&[], &[("effects", "new", &shared)]),
+        world,
+        &[],
+    );
+    assert!(
+        world.resource::<PrefabRegistry>().get("old").is_some(),
+        "kept stale"
+    );
+    assert_eq!(
+        world.resource::<PrefabRegistry>().id_for_path(&shared),
+        None
+    );
+    assert_eq!(
+        world.resource::<DataRegistry>().entry_for_path(&shared),
+        Some(("effects", "new"))
+    );
+
+    write(&shared, r#"{ "duration": 2.0 }"#);
+    let errors = reload_json_files(std::slice::from_ref(&shared), world, false);
+    assert!(errors.is_empty(), "{errors:?}");
+    assert_eq!(
+        duration(world, "new"),
+        Some(2.0),
+        "the edit reaches the entry"
+    );
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn an_unregistered_kind_fails_the_load_naming_the_registered_kinds() {
+    let dir = tempdir();
+    let burning = dir.join("data/burning.json");
+    write(&burning, r#"{ "duration": 1.0 }"#);
+    let mut app = app_with_data();
+    let edit = data_manifest(&[], &[("efects", "burning", &burning)]);
+    let err = load_prefabs(&edit, app.world_mut())
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.starts_with("Failed to load data `efects` entry `burning`: data file '"),
+        "{err}"
+    );
+    assert!(
+        err.ends_with(
+            "unknown data kind `efects` (registered: `effects`, `tags`); did you mean `effects`?"
+        ),
+        "{err}"
+    );
     fs::remove_dir_all(&dir).unwrap();
 }

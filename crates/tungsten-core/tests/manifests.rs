@@ -154,3 +154,40 @@ fn every_prefab_file_parses() {
         failures.join("\n  - ")
     );
 }
+
+/// Every `data` entry's file of every example and template manifest parses
+/// as JSON (M61). Its kind's type needs the game's plugins, which the
+/// game's own load checks.
+#[test]
+fn every_data_file_parses() {
+    let root = workspace_root();
+    let mut manifests = collect_manifests(&root);
+    manifests.extend(collect_template_manifests(&root));
+    let mut failures = Vec::new();
+    for manifest in &manifests {
+        let loaded = ResolvedManifest::load(manifest)
+            .unwrap_or_else(|e| panic!("{}: {e:?}", manifest.display()));
+        for (kind, entries) in &loaded.data {
+            for (id, entry) in entries {
+                let parsed = std::fs::read_to_string(&entry.path)
+                    .map_err(|e| e.to_string())
+                    .and_then(|text| {
+                        serde_json::from_str::<serde_json::Value>(&text).map_err(|e| e.to_string())
+                    });
+                if let Err(e) = parsed {
+                    failures.push(format!(
+                        "{}: data `{kind}` entry '{id}' ({}): {e}",
+                        manifest.display(),
+                        entry.path.display()
+                    ));
+                }
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{} data file(s) failed to parse:\n  - {}",
+        failures.len(),
+        failures.join("\n  - ")
+    );
+}

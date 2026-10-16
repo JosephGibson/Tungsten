@@ -12,7 +12,7 @@ Skeleton. The scoping text stays in [criteria](criteria.md) §8.8 until this wor
 ## Placement
 
 - **Proposed tier:** Must; C2 is gated by budget.
-- **Candidates:** C1 before the freeze; C2 after it; C3 on each release candidate (all Phase 7). C3 includes RC-A9's agent-built feature (implementation plan amendment 16) and diffs the API against `D-104`'s snapshot (amendment 17).
+- **Candidates:** C1 before the freeze; C2 after it; C3 on each release candidate (all Phase 7). C3 includes RC-A9's agent-built feature (implementation plan amendment 16) and diffs the API against `D-104`'s snapshot (amendment 17). The [Phase 7 rewrite](../phase7-rewrite.md) proposes a bench rewrite and two optimization passes around C1 and a process, crush and docs step around C2; the feature gate adopts or rejects it, and graduation follows whichever stands.
 - **Needs first:** The feature gate, so that the UI, kit and acceptance-game rows exist, and Q12 answered there (implementation plan §7); the profiling workflow extended for worker threads.
 - **Feeds:** The freeze gate (C1's API fixes); the RC and 1.0 gates.
 - **Owner questions:** Q12.

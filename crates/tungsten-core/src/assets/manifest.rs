@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
@@ -45,6 +45,28 @@ pub enum ManifestError {
         id: String,
         /// The file the entry resolves to.
         path: String,
+    },
+    /// A `data` entry names a file that does not exist (M61).
+    #[error("data `{kind}` entry '{id}' references missing file: {path}")]
+    MissingDataFile {
+        /// The entry's kind.
+        kind: String,
+        /// The entry's ID.
+        id: String,
+        /// The file the entry resolves to.
+        path: String,
+    },
+    /// One file backs two `prefabs` or `data` entries, in one manifest or
+    /// across roots; an edit to it could reload only one (M61). Of several,
+    /// the smallest pair is named.
+    #[error("'{path}' backs both {first} and {second}; a file backs one prefab or data entry")]
+    SharedFile {
+        /// The shared file.
+        path: String,
+        /// The smaller entry, as `prefabs.<id>` or `data.<kind>.<id>`.
+        first: String,
+        /// The other entry.
+        second: String,
     },
     #[error("material '{id}' references unknown shader '{shader}'")]
     MaterialShaderMissing { id: String, shader: String },
@@ -92,6 +114,11 @@ pub struct RawManifest {
     /// Prefabs: a prefab ID and the prefab file it loads (M51).
     #[serde(default, deserialize_with = "unique_ids")]
     pub prefabs: HashMap<String, PrefabEntry>,
+    /// Data entries by kind, then ID, each with the file it loads (M61). A
+    /// kind, or an ID within a kind, repeated in one manifest is a parse
+    /// error; a plugin registers each kind.
+    #[serde(default, deserialize_with = "data_sections")]
+    pub data: BTreeMap<String, BTreeMap<String, DataEntry>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -196,6 +223,54 @@ where
     deserializer.deserialize_map(Section(std::marker::PhantomData))
 }
 
+/// The `data` section: kinds, each an object of entries by ID, refusing a
+/// kind or an ID within a kind that it repeats.
+fn data_sections<'de, D>(
+    deserializer: D,
+) -> Result<BTreeMap<String, BTreeMap<String, DataEntry>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct Kinds;
+
+    impl<'de> serde::de::Visitor<'de> for Kinds {
+        type Value = BTreeMap<String, BTreeMap<String, DataEntry>>;
+
+        fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("an object of data kinds")
+        }
+
+        fn visit_map<A: serde::de::MapAccess<'de>>(
+            self,
+            mut map: A,
+        ) -> Result<Self::Value, A::Error> {
+            let mut kinds = BTreeMap::new();
+            while let Some(kind) = map.next_key::<String>()? {
+                if kinds.contains_key(&kind) {
+                    return Err(serde::de::Error::custom(format_args!(
+                        "duplicate data kind `{kind}` in one manifest"
+                    )));
+                }
+                let DataSection(entries) = map.next_value()?;
+                kinds.insert(kind, entries);
+            }
+            Ok(kinds)
+        }
+    }
+
+    deserializer.deserialize_map(Kinds)
+}
+
+/// One data kind's entries by ID, refusing a repeated ID.
+struct DataSection(BTreeMap<String, DataEntry>);
+
+impl<'de> Deserialize<'de> for DataSection {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let entries: HashMap<String, DataEntry> = unique_ids(deserializer)?;
+        Ok(Self(entries.into_iter().collect()))
+    }
+}
+
 /// A sound's `volume`, which the mixer multiplies by: finite and at least
 /// 0 (`1e39` narrows to an infinite `f32`).
 fn sound_volume<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<f32, D::Error> {
@@ -223,6 +298,14 @@ pub struct TilemapEntry {
 #[non_exhaustive]
 pub struct PrefabEntry {
     /// The prefab file, relative to the manifest.
+    pub path: String,
+}
+
+/// A `data` entry: the data file's path, relative to the manifest (M61).
+#[derive(Debug, Clone, Deserialize)]
+#[non_exhaustive]
+pub struct DataEntry {
+    /// The data file, relative to the manifest.
     pub path: String,
 }
 
@@ -287,6 +370,8 @@ pub struct ResolvedManifest {
     pub ui_themes: HashMap<String, ResolvedUiTheme>,
     /// Prefabs by ID (M51).
     pub prefabs: HashMap<String, ResolvedPrefab>,
+    /// Data entries by kind, then ID (M61).
+    pub data: BTreeMap<String, BTreeMap<String, ResolvedDataEntry>>,
 }
 
 #[derive(Debug, Clone)]
@@ -353,6 +438,22 @@ pub struct ResolvedPrefab {
 
 impl ResolvedPrefab {
     /// A prefab loaded from `path`.
+    #[must_use]
+    pub fn new(path: PathBuf) -> Self {
+        Self { path }
+    }
+}
+
+/// A data entry: the data file's resolved path (M61).
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct ResolvedDataEntry {
+    /// The data file, canonical when it resolves.
+    pub path: PathBuf,
+}
+
+impl ResolvedDataEntry {
+    /// A data entry loaded from `path`.
     #[must_use]
     pub fn new(path: PathBuf) -> Self {
         Self { path }
@@ -588,6 +689,22 @@ impl ResolvedManifest {
                 .insert(id, ResolvedPrefab { path: full_path });
         }
 
+        for (kind, entries) in raw.data {
+            let section = result.data.entry(kind.clone()).or_default();
+            for (id, entry) in entries {
+                let full_path = base_dir.join(&entry.path);
+                if !full_path.exists() {
+                    return Err(ManifestError::MissingDataFile {
+                        kind,
+                        id,
+                        path: full_path.display().to_string(),
+                    });
+                }
+                let full_path = full_path.canonicalize().unwrap_or(full_path);
+                section.insert(id, ResolvedDataEntry { path: full_path });
+            }
+        }
+
         // The material -> shader reference is checked by the caller, on this
         // file alone (`load`) or on the merged graph (`load_and_merge_many`).
         let source_manifest = manifest_path
@@ -641,9 +758,10 @@ impl ResolvedManifest {
     }
 
     /// Every material's shader must be declared in this graph, and so must
-    /// every font family's faces and every family in the fallback chain. Of
-    /// several failures of one kind, the smallest ID is reported, so the error
-    /// does not depend on map order.
+    /// every font family's faces and every family in the fallback chain; and
+    /// no file may back two prefab or data entries. Of several failures of
+    /// one kind, the smallest ID is reported, so the error does not depend on
+    /// map order.
     fn validate_cross_refs(&self) -> Result<(), ManifestError> {
         let missing = self
             .materials
@@ -656,7 +774,47 @@ impl ResolvedManifest {
                 shader: material.shader.clone(),
             });
         }
-        self.validate_font_refs()
+        self.validate_font_refs()?;
+        self.validate_shared_files()
+    }
+
+    /// Each file backs one prefab or data entry, since an edit routes to
+    /// one (M61); of several shared files, the smallest pair of entries is
+    /// reported.
+    fn validate_shared_files(&self) -> Result<(), ManifestError> {
+        let mut holders: HashMap<&Path, Vec<String>> = HashMap::new();
+        for (id, prefab) in &self.prefabs {
+            holders
+                .entry(prefab.path.as_path())
+                .or_default()
+                .push(format!("prefabs.{id}"));
+        }
+        for (kind, entries) in &self.data {
+            for (id, entry) in entries {
+                holders
+                    .entry(entry.path.as_path())
+                    .or_default()
+                    .push(format!("data.{kind}.{id}"));
+            }
+        }
+        let shared = holders
+            .into_iter()
+            .filter(|(_, names)| names.len() > 1)
+            .map(|(path, mut names)| {
+                names.sort();
+                let second = names.swap_remove(1);
+                let first = names.swap_remove(0);
+                (first, second, path)
+            })
+            .min();
+        match shared {
+            Some((first, second, path)) => Err(ManifestError::SharedFile {
+                path: path.display().to_string(),
+                first,
+                second,
+            }),
+            None => Ok(()),
+        }
     }
 
     /// Every family face names a `fonts` entry and every chain entry a family
@@ -687,9 +845,10 @@ impl ResolvedManifest {
         }
     }
 
-    /// Merge another manifest; duplicate IDs are fatal (D-017). A merged
-    /// material's shader must already be in the graph or arrive with it, and
-    /// so must a family's faces and a chain entry's family (`D-115`).
+    /// Merge another manifest; duplicate IDs are fatal (D-017), a data ID
+    /// within its kind. A merged material's shader must already be in the
+    /// graph or arrive with it, and so must a family's faces and a chain
+    /// entry's family (`D-115`); no file may back two prefab or data entries.
     pub fn merge(&mut self, other: ResolvedManifest) -> Result<(), ManifestError> {
         self.merge_entries(other, true)
     }
@@ -781,9 +940,21 @@ impl ResolvedManifest {
             }
             self.prefabs.insert(id, prefab);
         }
+        for (kind, entries) in other.data {
+            let section = self.data.entry(kind.clone()).or_default();
+            for (id, entry) in entries {
+                if section.contains_key(&id) {
+                    return Err(ManifestError::DuplicateId {
+                        id: format!("data.{kind}.{id}"),
+                    });
+                }
+                section.insert(id, entry);
+            }
+        }
         append_fallback(&mut self.font_fallback, other.font_fallback);
         if check_refs {
             self.validate_font_refs()?;
+            self.validate_shared_files()?;
         }
         Ok(())
     }

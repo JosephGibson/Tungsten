@@ -30,8 +30,8 @@ use crate::user_dir::{self, Platform};
 use log::LevelFilter;
 use serde::de::DeserializeOwned;
 use tungsten_core::assets::{
-    AnimationRegistry, FontRegistry, ParticleConfigRegistry, ParticleMeshRegistry, ShaderRegistry,
-    SoundRegistry, TilemapRegistry,
+    FontRegistry, ParticleConfigRegistry, ParticleMeshRegistry, ShaderRegistry, SoundRegistry,
+    TilemapRegistry,
 };
 use tungsten_core::physics::{PhysicsBuffers, PhysicsConfig};
 use tungsten_core::post::{PostPass, PostStack};
@@ -282,6 +282,7 @@ impl App {
         world.insert_resource(audio_commands);
         world.insert_resource(TilemapRegistry::new());
         world.insert_resource(tungsten_core::PrefabRegistry::new());
+        world.insert_resource(tungsten_core::DataRegistry::new());
         world.insert_resource(ParticleConfigRegistry::new());
         world.insert_resource(ParticleMeshRegistry::new());
         world.insert_resource(ShaderRegistry::new());
@@ -655,6 +656,9 @@ impl App {
         let reload_roots =
             manifest_reload_roots(&self.manifest_roots, self.manifest_path.as_deref());
         let mut manifest_reloaded = false;
+        // M61: the batch's JSON files reload after the loop, its prefab and
+        // data files in one commit.
+        let mut json_paths = Vec::new();
 
         for path in &ready {
             let canon = path.canonicalize().unwrap_or_else(|_| path.clone());
@@ -706,53 +710,9 @@ impl App {
                         log::debug!("Hot reload: no sprite registered for '{}'", canon.display());
                     }
                 }
-                "json" => {
-                    // M46: a theme file, by the path the loader recorded.
-                    let theme_id = self
-                        .world
-                        .get_resource::<asset_loader::UiThemePaths>()
-                        .and_then(|paths| paths.id_for_path(&canon).map(ToString::to_string));
-                    let anim_id = self
-                        .world
-                        .get_resource::<AnimationRegistry>()
-                        .and_then(|ar| ar.id_for_path(&canon).map(ToString::to_string));
-                    let particle_id = self
-                        .world
-                        .get_resource::<ParticleConfigRegistry>()
-                        .and_then(|pr| {
-                            pr.id_for_path(&canon)
-                                .and_then(|aid| pr.name_for_id(aid).map(ToString::to_string))
-                        });
-                    let prefab_id = self
-                        .world
-                        .get_resource::<tungsten_core::PrefabRegistry>()
-                        .and_then(|prefabs| prefabs.id_for_path(&canon).map(ToString::to_string));
-                    if let Some(id) = theme_id {
-                        if let Err(e) = asset_loader::reload_ui_theme(&id, &canon, &mut self.world)
-                        {
-                            log::error!("Ui theme reload '{id}': {e}");
-                        }
-                    } else if let Some(id) = anim_id {
-                        if let Err(e) = asset_loader::reload_animation(&id, &canon, &mut self.world)
-                        {
-                            log::error!("Animation reload '{id}': {e}");
-                        }
-                    } else if let Some(id) = particle_id {
-                        if let Err(e) = asset_loader::reload_particle(&id, &canon, &mut self.world)
-                        {
-                            log::error!("Particle reload '{id}': {e}");
-                        }
-                    } else if let Some(id) = prefab_id {
-                        if let Err(e) = asset_loader::reload_prefab(&id, &canon, &mut self.world) {
-                            log::error!("Prefab reload '{id}': {e}");
-                        }
-                    } else {
-                        log::debug!(
-                            "Hot reload: no animation, particle, prefab or ui theme registered for '{}'",
-                            canon.display()
-                        );
-                    }
-                }
+                // Themes, animations, particle configs, prefabs and data
+                // entries, by the paths their loaders recorded (M46, M61).
+                "json" => json_paths.push(canon),
                 "ttf" | "otf" => {
                     let id = self
                         .world
@@ -799,6 +759,9 @@ impl App {
                 }
                 _ => {}
             }
+        }
+        if !json_paths.is_empty() {
+            asset_loader::reload_json_files(&json_paths, &mut self.world, manifest_reloaded);
         }
     }
 

@@ -106,6 +106,27 @@ class RepoChecks(unittest.TestCase):
         (self.root / "assets/loop").symlink_to(self.root / "assets", target_is_directory=True)
         self.assertEqual(self.assets()[0], [])
 
+    def data_manifest(self, data):
+        self.write("assets/manifest.json", '{"sprites":{"hero":{"path":"sprites/hero.png","normal_map":"sprites/normal.png"}},'
+                   f'"data":{data}}}')
+
+    def test_data_entries_cover_their_files_two_levels_deep(self):
+        self.data_manifest('{"effects":{"burning":{"path":"data/effects/burning.json"}}}')
+        self.write("assets/data/effects/burning.json", "{}")
+        self.assertEqual(self.assets()[0], [])
+        self.write("assets/data/effects/frozen.json", "{}")
+        self.assertEqual(self.assets()[0], ["unlisted asset: assets/data/effects/frozen.json"])
+
+    def test_data_entry_missing_file_names_its_kind_and_id(self):
+        self.data_manifest('{"effects":{"burning":{"path":"data/effects/burning.json"}}}')
+        self.assertEqual(self.assets()[0], [
+            "assets/manifest.json: data.effects.burning.path: missing file data/effects/burning.json"])
+
+    def test_data_kind_that_is_not_an_object_fails(self):
+        self.data_manifest('{"effects":["burning"]}')
+        self.assertEqual(self.assets()[0], [
+            "assets/manifest.json: data.effects: a data kind must be an object of entries by ID"])
+
     def test_active_and_yaml_headers(self):
         errors, notes = [], []
         qa.check_plans(self.root, errors, notes)
