@@ -1,7 +1,10 @@
 //! The runtime apply of the player's [`Settings`] (`D-159`): what a settings
 //! screen calls after changing them, before `Settings::save`.
 
-use tungsten_core::{AudioCommands, Config, DisplayState, ScaleFactor, Settings, UiTree, World};
+use tungsten_core::{
+    AudioCommands, Config, DisplayMode, DisplayState, Resolution, ScaleFactor, Settings, UiTree,
+    World,
+};
 
 use crate::app::resolve_startup_display;
 use crate::display::{PendingDisplay, request_display_settings};
@@ -11,6 +14,11 @@ use crate::display::{PendingDisplay, request_display_settings};
 /// shipped one.
 pub(crate) struct ShippedConfig(pub(crate) Config);
 
+/// The last windowed target [`apply_settings`] sent, or the resolution
+/// startup resolved (`D-169`): a windowed apply sends the target only when
+/// it differs, so a size the window took by hand or by a maximize stays.
+pub(crate) struct WindowedTarget(pub(crate) Resolution);
+
 /// Applies the world's [`Settings`] now, as a restart would: the display
 /// mode, resolution and vsync through a display request, the UI scale to
 /// [`ScaleFactor`], the text scale to the [`UiTree`] (M56), the master
@@ -18,8 +26,12 @@ pub(crate) struct ShippedConfig(pub(crate) Config);
 /// the shipped one, the UI scale, the text scale and the master volume to
 /// 1.0. A display request queued earlier this frame, such as a
 /// hotkey's, takes the persisted values, so the last apply wins; the F9 and
-/// F11 hotkeys' changes to them since startup are replaced. A function, not
-/// a system: call it after changing `Settings`, then save them.
+/// F11 hotkeys' changes to them since startup are replaced. In windowed
+/// mode the resolution is sent only when the set or shipped one differs
+/// from the last one sent (`D-169`), so a window resized by hand or
+/// maximized keeps its size at an unrelated apply, and one set while
+/// fullscreen is sent on the return to windowed. A function, not a system:
+/// call it after changing `Settings`, then save them.
 ///
 /// Without `App`'s shipped config (a `World` built by hand), unset display
 /// values keep the current state. Without `Settings`, nothing happens.
@@ -53,9 +65,18 @@ pub fn apply_settings(world: &mut World) {
         }
         let target = resolve_startup_display(&config);
         next.display_mode = target.display_mode;
-        next.resolution = target.resolution;
         next.vsync = target.vsync;
         next.present_mode = target.present_mode;
+        let sent = world
+            .get_resource::<WindowedTarget>()
+            .map(|windowed| windowed.0);
+        if target.display_mode != DisplayMode::Windowed {
+            // The fullscreen path ignores it; the memory stays (`D-169`).
+            next.resolution = target.resolution;
+        } else if sent != Some(target.resolution) {
+            next.resolution = target.resolution;
+            world.insert_resource(WindowedTarget(target.resolution));
+        }
     } else {
         if let Some(mode) = settings.display_mode() {
             next.display_mode = mode;

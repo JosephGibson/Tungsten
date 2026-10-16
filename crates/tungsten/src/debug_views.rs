@@ -2320,12 +2320,15 @@ pub struct UiInspector {
     pub outline_px: f32,
     /// Space between the window and its corner, in UI units.
     pub padding_px: f32,
-    /// Row refresh interval on the frame interval; a new pick refreshes at
-    /// once.
+    /// Row refresh interval on the frame interval; a new pick, and a pick's
+    /// first layout, refresh at once.
     pub refresh_interval_ms: f32,
     /// The widget whose rows show.
     pub picked: Option<WidgetId>,
     shown_picked: Option<WidgetId>,
+    /// Whether the shown pick had a layout rect at the last refresh: its
+    /// first layout refreshes at once (M59).
+    shown_laid_out: bool,
     time_since_refresh_ms: f32,
     /// Where the cursor ended the previous frame it was shown, physical
     /// pixels: a press with no move before it picks there.
@@ -2349,6 +2352,7 @@ impl Default for UiInspector {
             refresh_interval_ms: 500.0,
             picked: None,
             shown_picked: None,
+            shown_laid_out: false,
             time_since_refresh_ms: f32::INFINITY,
             last_cursor: None,
             window: None,
@@ -2375,7 +2379,7 @@ impl UiInspector {
     }
 
     /// The UI inspector's frame: the pick, then on its interval, or at once
-    /// for a new pick, the rows; while it is shown.
+    /// for a new pick or a pick's first layout, the rows; while it is shown.
     fn update_window(
         &mut self,
         world: &World,
@@ -2408,12 +2412,18 @@ impl UiInspector {
             return;
         };
         self.time_since_refresh_ms += frame_interval(world);
-        if self.time_since_refresh_ms < self.refresh_interval_ms && self.shown_picked == self.picked
+        let laid_out = self
+            .picked
+            .is_some_and(|widget| frame.tree.rect(widget).is_some());
+        if self.time_since_refresh_ms < self.refresh_interval_ms
+            && self.shown_picked == self.picked
+            && self.shown_laid_out == laid_out
         {
             return;
         }
         self.time_since_refresh_ms = 0.0;
         self.shown_picked = self.picked;
+        self.shown_laid_out = laid_out;
         let (header, rows) = match self.picked {
             Some(widget) => (
                 format!("widget {}:{}", widget.index(), widget.generation()),

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Deterministic offline authoring of example 05's two sprites; never invoked
-by Cargo or the engine. Standard library only: the PNGs are written by hand
-(zlib + the PNG chunk layout), so no Pillow is needed.
+"""Deterministic offline authoring of example 05's sprites: the window frame,
+the HUD icon and the inventory's ten item icons; never invoked by Cargo or
+the engine. Standard library only: the PNGs are written by hand (zlib + the
+PNG chunk layout), so no Pillow is needed.
 
     python3 -B examples/05_ui_lab/tools/generate.py           # write the sprites
     python3 -B examples/05_ui_lab/tools/generate.py --check   # compare bytes
@@ -14,6 +15,7 @@ from pathlib import Path
 
 TOOLS = Path(__file__).resolve().parent
 SPRITES = TOOLS.parent / "assets" / "sprites"
+ITEMS = SPRITES / "items"
 
 FRAME_SIZE = 48
 FRAME_INSET = 12  # the nine-slice inset the manifest declares
@@ -90,17 +92,136 @@ def icon_pixels():
     return out
 
 
+# The item icons: 32×32, each a few flat shapes painted in order on a
+# transparent ground. A shape is (kind, colour, *params) in pixel units.
+def inside(shape, x, y):
+    kind = shape[0]
+    if kind == "circle":
+        _, _, cx, cy, r = shape
+        return (x - cx) ** 2 + (y - cy) ** 2 <= r * r
+    if kind == "ellipse":
+        _, _, cx, cy, rx, ry = shape
+        return ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1.0
+    if kind == "rect":
+        _, _, x0, y0, x1, y1 = shape
+        return x0 <= x < x1 and y0 <= y < y1
+    if kind == "line":
+        _, _, x0, y0, x1, y1, width = shape
+        dx, dy = x1 - x0, y1 - y0
+        t = max(0.0, min(1.0, ((x - x0) * dx + (y - y0) * dy) / (dx * dx + dy * dy)))
+        px, py = x0 + t * dx, y0 + t * dy
+        return (x - px) ** 2 + (y - py) ** 2 <= (width / 2) ** 2
+    if kind == "ring":
+        _, _, cx, cy, r, width = shape
+        d = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
+        return abs(d - r) <= width / 2
+    if kind == "arc":
+        # The left half of a ring: a bow's limb.
+        _, _, cx, cy, r, width = shape
+        d = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
+        return abs(d - r) <= width / 2 and x <= cx
+    if kind == "poly":
+        _, _, points = shape
+        hit = False
+        for i in range(len(points)):
+            (ax, ay), (bx, by) = points[i], points[i - 1]
+            if (ay > y) != (by > y) and x < (bx - ax) * (y - ay) / (by - ay) + ax:
+                hit = not hit
+        return hit
+    raise ValueError(kind)
+
+
+def item_pixels(shapes):
+    out = []
+    for y in range(ICON_SIZE):
+        for x in range(ICON_SIZE):
+            color = CLEAR
+            for shape in shapes:
+                if inside(shape, x + 0.5, y + 0.5):
+                    color = shape[1]
+            out.append(color)
+    return out
+
+
+GLASS = (215, 225, 240, 255)
+STEEL = (190, 196, 210, 255)
+WOOD = (140, 92, 52, 255)
+GOLD = (236, 190, 70, 255)
+
+ITEM_SHAPES = {
+    "draught": [
+        ("rect", GLASS, 13, 4, 19, 12),
+        ("rect", WOOD, 12, 2, 20, 5),
+        ("circle", GLASS, 16, 20, 10),
+        ("circle", (214, 64, 72, 255), 16, 21, 8),
+    ],
+    "sword": [
+        ("line", STEEL, 9, 23, 27, 5, 4),
+        ("line", (120, 126, 140, 255), 12, 20, 27, 5, 1.2),
+        ("line", GOLD, 6, 15, 17, 26, 3),
+        ("line", WOOD, 4, 28, 10, 22, 3),
+    ],
+    "cap": [
+        ("ellipse", (150, 102, 60, 255), 16, 18, 11, 10),
+        ("rect", CLEAR, 0, 18, 32, 32),
+        ("rect", (110, 72, 40, 255), 3, 17, 29, 21),
+    ],
+    "lantern": [
+        ("ring", (90, 90, 100, 255), 16, 7, 4, 2),
+        ("rect", (70, 70, 80, 255), 9, 9, 23, 28),
+        ("rect", (255, 214, 102, 255), 11, 11, 21, 26),
+        ("circle", (255, 244, 200, 255), 16, 18, 3),
+    ],
+    "ore": [
+        ("poly", (110, 110, 118, 255), [(5, 20), (10, 9), (20, 6), (28, 14), (26, 25), (13, 28)]),
+        ("circle", (214, 132, 70, 255), 13, 15, 2.5),
+        ("circle", (214, 132, 70, 255), 21, 19, 2),
+        ("circle", (214, 132, 70, 255), 15, 23, 1.5),
+    ],
+    "herb": [
+        ("line", (70, 120, 50, 255), 16, 29, 16, 12, 2),
+        ("ellipse", (92, 176, 84, 255), 11, 13, 6, 9),
+        ("ellipse", (120, 200, 100, 255), 21, 15, 6, 9),
+    ],
+    "elixir": [
+        ("rect", GLASS, 13, 3, 19, 11),
+        ("poly", GLASS, [(13, 10), (19, 10), (28, 28), (4, 28)]),
+        ("poly", (80, 140, 255, 255), [(10, 17), (22, 17), (26, 26), (6, 26)]),
+    ],
+    "bow": [
+        ("arc", WOOD, 24, 16, 13, 3),
+        ("line", (230, 230, 230, 255), 24, 3.5, 24, 28.5, 1),
+        ("line", STEEL, 7, 16, 27, 16, 1.5),
+    ],
+    "mail": [
+        ("rect", (176, 196, 222, 255), 9, 8, 23, 28),
+        ("poly", (176, 196, 222, 255), [(9, 8), (3, 14), (6, 18), (9, 15)]),
+        ("poly", (176, 196, 222, 255), [(23, 8), (29, 14), (26, 18), (23, 15)]),
+        ("rect", (120, 140, 170, 255), 13, 6, 19, 10),
+        ("line", (140, 160, 190, 255), 9, 18, 23, 18, 1),
+    ],
+    "moonstone": [
+        ("ring", (196, 170, 255, 255), 16, 16, 12, 2),
+        ("circle", (228, 220, 255, 255), 16, 16, 8),
+        ("circle", (255, 255, 255, 255), 13, 13, 2.5),
+    ],
+}
+
 OUTPUTS = {
     "frame.png": lambda: png_bytes(FRAME_SIZE, FRAME_SIZE, frame_pixels()),
     "icon.png": lambda: png_bytes(ICON_SIZE, ICON_SIZE, icon_pixels()),
 }
+for _name, _shapes in ITEM_SHAPES.items():
+    OUTPUTS[f"items/{_name}.png"] = (
+        lambda shapes=_shapes: png_bytes(ICON_SIZE, ICON_SIZE, item_pixels(shapes))
+    )
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--check", action="store_true", help="compare the files on disk with what would be written")
     args = parser.parse_args()
-    SPRITES.mkdir(parents=True, exist_ok=True)
+    ITEMS.mkdir(parents=True, exist_ok=True)
     stale = []
     for name, make in OUTPUTS.items():
         path = SPRITES / name

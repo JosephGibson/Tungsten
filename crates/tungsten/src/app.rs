@@ -9,8 +9,8 @@ use crate::crash::{self, CrashContext};
 use crate::debug_hud::{DebugHud, HudActiveState};
 use crate::debug_views::{DEBUG_WINDOWS_FILE, LogConsole, UiInspector};
 use crate::display::{
-    DisplayDelta, PendingDisplay, frame_budget_for, sync_display_state_and_telemetry,
-    sync_window_resolution, take_pending_display,
+    DisplayDelta, PendingDisplay, frame_budget_for, runtime_display_mode,
+    sync_display_state_and_telemetry, sync_window_resolution, take_pending_display,
 };
 use crate::extract::Extracts;
 use crate::hot_reload::HotReloadWatcher;
@@ -21,7 +21,7 @@ use crate::physics_debug::{PhysicsDebugOverlay, physics_debug_emit_system};
 use crate::plugins::DefaultPlugins;
 use crate::plugins::UI_ROUTE;
 use crate::post_aa::{PendingPostAa, PostAaState, sync_post_aa_state, take_pending_post_aa};
-use crate::settings::ShippedConfig;
+use crate::settings::{ShippedConfig, WindowedTarget};
 use crate::sprite_extract::ExtractScratch;
 use crate::state::StateStack;
 use crate::systems_overlay::{SystemStages, SystemTimingOverlay};
@@ -137,6 +137,9 @@ pub struct App {
     ui_paint: PaintList,
     /// What the retained list was painted with; `None` before the first.
     painted_at: Option<PaintedAt>,
+    /// An exclusive fullscreen request's downgrade to borderless, logged
+    /// once a run (M59), not at every apply.
+    exclusive_warning: std::sync::Once,
     /// The system cursor last set on the window (`D-149`).
     cursor: CursorIcon,
     /// The frame's raw events when `PreUpdate`, and so the UI's routing,
@@ -268,6 +271,9 @@ impl App {
         world.insert_resource(scale_factor);
         world.insert_resource(settings);
         world.insert_resource(shipped);
+        // D-169: the windowed size startup resolved, which an unrelated
+        // apply does not send again.
+        world.insert_resource(WindowedTarget(resolved_display.resolution));
         world.insert_resource(SaveSlots::new(
             user_dirs.as_ref().map(|dirs| dirs.saves.clone()),
         ));
@@ -355,6 +361,7 @@ impl App {
             transition_post_stack: PostStack::new(),
             ui_paint: PaintList::default(),
             painted_at: None,
+            exclusive_warning: std::sync::Once::new(),
             cursor: CursorIcon::Default,
             routed_events: 0,
         };
@@ -807,6 +814,16 @@ impl App {
             .unwrap_or_default();
         let delta = DisplayDelta::between(&current, &requested);
         let mut effective = current;
+        let runtime_mode = runtime_display_mode(requested.display_mode);
+        if runtime_mode != requested.display_mode {
+            self.exclusive_warning.call_once(|| {
+                log::warn!(
+                    "Display mode '{}' is not supported at runtime yet; downgrading to '{}'",
+                    requested.display_mode.as_str(),
+                    runtime_mode.as_str()
+                );
+            });
+        }
 
         let Some(window) = self.window.as_ref() else {
             sync_display_state_and_telemetry(&mut self.world, current, None);
@@ -819,14 +836,6 @@ impl App {
             .and_then(|renderer| renderer.gpu_timings.present_mode.clone());
 
         if delta.display_mode_changed {
-            let runtime_mode = runtime_display_mode(requested.display_mode);
-            if runtime_mode != requested.display_mode {
-                log::warn!(
-                    "Display mode '{}' is not supported at runtime yet; downgrading to '{}'",
-                    requested.display_mode.as_str(),
-                    runtime_mode.as_str()
-                );
-            }
             apply_window_fullscreen(window, runtime_mode);
             effective.display_mode = runtime_mode;
 
@@ -2093,13 +2102,6 @@ fn expand_circle(
             color,
         });
         prev = next;
-    }
-}
-
-fn runtime_display_mode(requested: DisplayMode) -> DisplayMode {
-    match requested {
-        DisplayMode::ExclusiveFullscreen => DisplayMode::BorderlessFullscreen,
-        other => other,
     }
 }
 

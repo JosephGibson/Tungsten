@@ -177,3 +177,66 @@ fn apply_settings_sets_the_trees_text_scale_and_unset_returns_it_to_one() {
     apply_settings(world);
     assert_eq!(world.resource::<tungsten_core::UiTree>().text_scale(), 1.0);
 }
+
+#[test]
+fn a_window_resized_by_hand_keeps_its_size_at_the_next_apply() {
+    let dir = tempdir();
+    let mut app = app_at(&dir, Config::default());
+    let world = app.world_mut();
+    // The `Resized` event of a drag's end.
+    crate::display::sync_window_resolution(world, 1600, 900, None);
+    world
+        .resource_mut::<Settings>()
+        .set_master_volume(Some(0.5));
+    apply_settings(world);
+    assert_eq!(
+        pending(world).map(|request| request.resolution),
+        None,
+        "an unrelated apply leaves the hand size (D-169)"
+    );
+    assert_eq!(
+        world.resource::<DisplayState>().resolution,
+        Resolution {
+            width: 1600,
+            height: 900
+        }
+    );
+}
+
+#[test]
+fn a_resolution_set_while_fullscreen_applies_when_windowed() {
+    let dir = tempdir();
+    let mut app = app_at(&dir, Config::default());
+    let world = app.world_mut();
+    let settings = world.resource_mut::<Settings>();
+    settings.set_display_mode(Some(DisplayMode::BorderlessFullscreen));
+    settings.set_resolution(Some(HD));
+    apply_settings(world);
+    apply_request(world);
+    world
+        .resource_mut::<Settings>()
+        .set_display_mode(Some(DisplayMode::Windowed));
+    apply_settings(world);
+    let request = pending(world).expect("back to windowed");
+    assert_eq!(request.display_mode, DisplayMode::Windowed);
+    assert_eq!(request.resolution, HD, "the size set while fullscreen");
+}
+
+#[test]
+fn two_applies_before_a_frame_keep_the_queued_resolution() {
+    let dir = tempdir();
+    let mut app = app_at(&dir, Config::default());
+    let world = app.world_mut();
+    world.resource_mut::<Settings>().set_resolution(Some(HD));
+    apply_settings(world);
+    world
+        .resource_mut::<Settings>()
+        .set_master_volume(Some(0.5));
+    apply_settings(world);
+    assert_eq!(
+        pending(world)
+            .expect("the first apply's request")
+            .resolution,
+        HD
+    );
+}

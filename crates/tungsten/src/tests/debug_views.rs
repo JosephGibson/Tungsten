@@ -893,6 +893,33 @@ fn the_panel_rows_show_the_rects_look_pending_work_and_batch() {
 }
 
 #[test]
+fn a_pick_made_before_its_first_layout_refreshes_once_it_is_laid_out() {
+    let mut harness = UiHarness::new(app());
+    harness.world_mut().resource_mut::<UiInspector>().enabled = true;
+    harness.step(2);
+    let panel = game_panel(&mut harness);
+    harness.world_mut().resource_mut::<UiInspector>().picked = Some(panel);
+    harness.step(3);
+    let at = harness.tree().rect(panel).unwrap();
+    let (_, rows) = ui_inspector_rows(&harness);
+    let layout = rows
+        .iter()
+        .find(|(name, _)| name == "layout")
+        .map(|(_, value)| value.clone());
+    assert_eq!(
+        layout,
+        Some(format!(
+            "({:.1}, {:.1}) {:.1}×{:.1}",
+            at.min.x,
+            at.min.y,
+            at.width(),
+            at.height()
+        )),
+        "the rows refresh once the pick is laid out, not 500 ms later"
+    );
+}
+
+#[test]
 fn a_removed_widget_clears_the_pick() {
     let mut harness = UiHarness::new(app());
     let panel = game_panel(&mut harness);

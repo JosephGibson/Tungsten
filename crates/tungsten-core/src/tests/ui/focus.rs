@@ -518,3 +518,24 @@ fn closing_a_popup_with_a_scope_inside_restores_the_focus_from_before_it() {
     tree.remove(popup);
     assert_eq!(tree.focused(), Some(a));
 }
+
+#[test]
+fn an_explicit_neighbour_in_a_frozen_root_takes_no_focus() {
+    let mut tree = UiTree::new();
+    let live = tree.add_root(UiLayer::Game, LayoutStyle::default());
+    let a = tree.button(live, "a");
+    let frozen = tree.add_root(UiLayer::Game, at(200.0, 0.0, 100.0, 40.0));
+    let b = tree.button(frozen, "b");
+    settle(&mut tree);
+    tree.set_focus_neighbor(a, NavDirection::Right, Some(b));
+    tree.set_frozen(frozen, true);
+    assert!(tree.focus(a));
+    assert_eq!(
+        tree.focus_direction(NavDirection::Right),
+        None,
+        "a frozen root's widget takes no focus by navigation (D-163)"
+    );
+    assert_eq!(tree.focused(), Some(a));
+    tree.set_frozen(frozen, false);
+    assert_eq!(tree.focus_direction(NavDirection::Right), Some(b));
+}
