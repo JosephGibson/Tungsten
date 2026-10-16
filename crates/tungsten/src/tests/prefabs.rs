@@ -175,7 +175,12 @@ fn a_malformed_prefab_fails_the_load_naming_its_id_file_and_field() {
         .unwrap_err()
         .to_string();
     assert!(err.starts_with("Failed to load prefab 'torch': "), "{err}");
-    assert!(err.contains(&torch.display().to_string()), "{err}");
+    // The commit's check names the file by its canonical path (M61), which
+    // on Windows carries the `\\?\` prefix.
+    assert!(
+        err.contains(&torch.canonicalize().unwrap().display().to_string()),
+        "{err}"
+    );
     assert!(
         err.contains("component `particle_emitter`, field `sed`: unknown field `sed`"),
         "{err}"
