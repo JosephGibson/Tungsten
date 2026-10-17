@@ -136,6 +136,23 @@ fn heal_fills_up_to_max_and_the_dead_stay_dead() {
 }
 
 #[test]
+fn a_new_max_keeps_the_fraction_and_the_dead_stay_dead() {
+    let mut health = Health::new(5.0);
+    health.set_max(8.0);
+    assert_eq!((health.current(), health.max()), (8.0, 8.0));
+    health.current = 2.0;
+    health.set_max(4.0);
+    assert_eq!((health.current(), health.max()), (1.0, 4.0));
+    for ignored in [0.0, -1.0, f32::NAN, f32::INFINITY] {
+        health.set_max(ignored);
+        assert_eq!(health.max(), 4.0);
+    }
+    health.current = 0.0;
+    health.set_max(10.0);
+    assert!(health.is_dead());
+}
+
+#[test]
 fn a_flash_takes_the_material_and_block_then_restores_both() {
     let (mut world, mut schedule, flash, glow) = flash_rig();
     let own = UniformOverrideBlock::from_slots(
@@ -351,4 +368,33 @@ fn health_is_data_within_its_bounds() {
     assert!(revived.is_dead());
     revived.heal(3.0);
     assert!(revived.is_dead(), "the dead stay dead");
+}
+
+#[test]
+fn a_hit_and_a_kill_go_in_the_trace() {
+    use crate::foundation::trace::{KitTrace, TraceKind};
+
+    let (mut world, _) = rig();
+    world.insert_resource(KitTrace::default());
+    let target = world.spawn_with((Health::new(2.0),));
+    damage(&mut world, target, 1.0);
+    damage(&mut world, target, 0.0);
+    damage(&mut world, target, 3.0);
+    let names: Vec<(&str, Option<f32>)> = world
+        .resource::<KitTrace>()
+        .about(target)
+        .map(|entry| match entry.kind {
+            TraceKind::Event { name, amount, .. } => (name, amount),
+            ref other => panic!("{other:?}"),
+        })
+        .collect();
+    assert_eq!(
+        names,
+        [
+            ("damaged", Some(1.0)),
+            ("damaged", Some(3.0)),
+            ("killed", Some(3.0))
+        ],
+        "an ignored hit records nothing"
+    );
 }

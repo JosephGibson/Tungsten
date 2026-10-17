@@ -450,6 +450,18 @@ fn a_paused_clock_moves_nothing() {
 }
 
 #[test]
+fn a_run_speed_from_a_stat_takes_zero_and_ignores_a_bad_one() {
+    let mut pc = PlatformerController::new(RUN, JUMP);
+    pc.set_run_speed(0.0);
+    assert_eq!(pc.run_speed, 0.0);
+    pc.set_run_speed(f32::NAN);
+    pc.set_run_speed(-1.0);
+    assert_eq!(pc.run_speed, 0.0);
+    pc.set_run_speed(RUN * 2.0);
+    assert_eq!(pc.run_speed, RUN * 2.0);
+}
+
+#[test]
 fn the_run_input_is_clamped_and_nan_is_zero() {
     let mut pc = PlatformerController::new(RUN, JUMP);
     pc.set_run(3.0);

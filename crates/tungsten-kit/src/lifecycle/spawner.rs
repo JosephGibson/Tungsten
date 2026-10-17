@@ -18,6 +18,7 @@ use crate::foundation::describe::{
 use crate::foundation::inspect::register_rows;
 use crate::foundation::phases::{Phase, ensure_phases};
 use crate::foundation::positive;
+use crate::foundation::trace::{TraceKind, trace};
 
 /// [`SpawnerPlugin`]'s system, in the react phase.
 pub const SPAWNER_TICK: &str = "spawner_tick";
@@ -263,12 +264,21 @@ impl Ticker {
                     world
                         .resource_mut::<CommandBuffer>()
                         .spawn_prefab_from(spawner, prepared);
+                    trace(world, spawner, || TraceKind::Spawn {
+                        prefab,
+                        by: "spawner",
+                    });
                 }
                 Err(err) => {
                     if !warned.contains(&prefab) {
                         log::error!("Spawner: prefab `{prefab}` spawns nothing: {err}");
-                        warned.insert(prefab);
+                        warned.insert(prefab.clone());
                     }
+                    trace(world, spawner, || TraceKind::SpawnFailed {
+                        prefab,
+                        by: "spawner",
+                        error: err.to_string(),
+                    });
                 }
             }
         }

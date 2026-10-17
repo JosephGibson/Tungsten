@@ -14,12 +14,29 @@
     },
     "lift": {
       "path": "prefabs/lift.json"
+    },
+    "runner": {
+      "path": "prefabs/runner.json"
+    },
+    "key": {
+      "path": "prefabs/key.json"
+    },
+    "torch": {
+      "path": "prefabs/torch.json"
+    },
+    "glow": {
+      "path": "prefabs/glow.json"
     }
   },
   "data": {
     "tags": {
       "game": {
         "path": "data/tags.json"
+      }
+    },
+    "stats": {
+      "game": {
+        "path": "data/stats.json"
       }
     }
   },

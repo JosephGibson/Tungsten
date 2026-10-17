@@ -14,6 +14,7 @@ use crate::foundation::describe::{
 use crate::foundation::inspect::register_rows;
 use crate::foundation::phases::{Phase, ensure_phases};
 use crate::foundation::tags::{TagFilter, TagFilterDef, Tags, check_declared};
+use crate::foundation::trace::{TraceKind, trace};
 
 /// [`ZonePlugin`]'s system, in the overlap phase.
 pub const ZONE_TICK: &str = "zone_tick";
@@ -199,6 +200,13 @@ fn zone_tick(
     }));
     if entered.is_empty() {
         return;
+    }
+    for event in entered.iter() {
+        trace(world, event.zone, || TraceKind::Event {
+            name: "zone_entered",
+            other: Some(event.entity),
+            amount: None,
+        });
     }
     let Some(queue) = world.get_resource_mut::<EventQueue<ZoneEntered>>() else {
         return;

@@ -13,6 +13,7 @@ use crate::foundation::describe::{
 use crate::foundation::inspect::register_rows;
 use crate::foundation::non_negative;
 use crate::foundation::phases::{Phase, ensure_phases};
+use crate::foundation::trace::{TraceKind, trace};
 use crate::transform::hierarchy::despawn_recursive;
 
 /// [`LifetimePlugin`]'s system, in the tick phase.
@@ -137,14 +138,23 @@ struct LifetimeDef {
 fn lifetime_tick(world: &mut World) {
     let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
     let mut finished: Vec<Entity> = Vec::new();
+    let mut ended: Vec<Entity> = Vec::new();
     for (entity, lifetime) in world.query_mut::<(Entity, &mut Lifetime)>() {
         lifetime.timer.tick(dt);
         if lifetime.timer.finished() {
             finished.push(entity);
+            if lifetime.timer.just_finished() {
+                ended.push(entity);
+            }
         }
     }
     if finished.is_empty() {
         return;
+    }
+    // Traced once, at the step its time ends; the despawn is queued again
+    // each step until the flush.
+    for entity in ended {
+        trace(world, entity, || TraceKind::Despawn { by: "lifetime" });
     }
     let Some(commands) = world.get_resource_mut::<CommandBuffer>() else {
         return;

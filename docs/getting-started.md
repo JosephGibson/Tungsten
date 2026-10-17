@@ -177,7 +177,8 @@ world
     "top_down_mover": { "speed": 240 },
     "health": { "max": 5, "invulnerability": 0.5 },
     "hit_flash": { "color": [1, 1, 1, 1], "seconds": 0.12 },
-    "camera_target": null
+    "camera_target": null,
+    "cues": { "damaged": [{ "shake": 0.25 }, { "label": { "font": "sans" } }] }
   }
 }
 ```
@@ -187,6 +188,10 @@ world
 - `top_down_mover` moves the entity at its speed in the intent's direction on the fixed step: on a kinematic `rigid_body` it slides along walls, without one it moves its `Position` freely, drawn through the physics sync as a body is. `platformer_controller` is the side-view counterpart, on a kinematic body.
 - `health` takes hits through `tungsten::kit::damage(world, entity, amount)`, which lowers it, opens its invulnerability window, starts the `hit_flash` on the entity's sprite through the manifest's `damage_flash` material and sends a `Damaged` event.
 - `camera_target` marks what the camera follows; the template gives the camera a dead zone, so the player roams the middle of the view before the camera moves.
+- `cues` reacts in data to the events about the entity, on the fixed step that reads them: the player's `damaged` list shakes the camera and floats the hit's amount above it in the manifest face `sans`. Each event, `damaged`, `killed`, `zone_entered` (the zone's, with the entrant as the other entity) or `cooldown_elapsed`, takes a list of actions run in order: `prefab`, `counter`, `flag`, `despawn`, `sound`, `shake`, `squash`, `flash` and `label`. A reaction many prefabs share is a rule in the `cue_rules` data kind, `[{ "on": "killed", "filter": { "all": ["team.enemy"] }, "do": [{ "counter": { "name": "kills", "add": 1, "target": "game" } }] }]`, run after each entity's own cues; a game's own event joins through `CuesOnEvent`. The vocabulary stops at the rule's tag filter: a reaction that needs a condition is the game's Rust.
+- `stats` holds named values that modifiers change, `{ "move_speed": 160 }`. The movers, health and cooldowns read the well-known ones (`move_speed`, `max_health`, `cooldown_rate`) when the entity has them; a game declares its own, with their bounds, in the `stats` data kind.
+- `cooldown` repeats on the game clock and sends `cooldown_elapsed` each time, with an optional jitter drawn from the kit's seeded `KitRng`. `counters` and `flags` hold named counts and switches that cues write, on the entity or, with `"target": "game"`, in the World's own `Counters` and `Flags`. `spawn_children` spawns prefabs once as the entity's children, at offsets; they follow it and leave with its state.
+- `KitTrace` records what the kit's items did, each event, cue action, spawn and despawn; with `KitDebug` on, the log console shows each entry as it lands.
 
 Every kit system runs in one of seven phases, anchor systems in `fixed_update` and `post_update` ordered against the engine's: timers first, then intent, motion before `physics_step`, overlap after it, resolution, reactions, and presentation after the physics sync. A game system that belongs with the kit's joins a phase instead of naming an engine system: `ensure_phases(schedule)` in the plugin's `build`, then `schedule.add(Stage::FixedUpdate, Phase::Move.join(system("magnet", magnet)))`. The rustdoc of `tungsten::kit` lists every item by domain, and `api/tungsten-kit-components.txt` every scene component's fields with their types and defaults. The engine's genre fixtures, `crates/tungsten/tests/fixtures/kit/`, are the cookbook: a platformer, a top-down, a shmup and a grid folder of prefabs and data, each kit item in at least two of them, with the harness tests that drive them in `crates/tungsten/src/tests/kit_recipes/`.
 

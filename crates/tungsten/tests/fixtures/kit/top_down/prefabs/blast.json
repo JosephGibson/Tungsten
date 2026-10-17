@@ -1,0 +1,8 @@
+{
+  "tag": "blast",
+  "components": {
+    "lifetime": {
+      "seconds": 0.3
+    }
+  }
+}

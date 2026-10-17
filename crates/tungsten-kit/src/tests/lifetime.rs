@@ -139,3 +139,22 @@ fn without_a_command_buffer_a_finished_lifetime_waits() {
 fn a_negative_lifetime_panics() {
     let _ = Lifetime::new(-1.0);
 }
+
+#[test]
+fn the_trace_records_one_despawn_at_the_step_its_time_ends() {
+    use crate::foundation::trace::{KitTrace, TraceKind};
+
+    let (mut world, mut schedule) = setup();
+    world.insert_resource(KitTrace::default());
+    let spark = world.spawn_with((Lifetime::new(0.1),));
+    // Two steps in one frame, no flush between: the despawn is queued twice.
+    for _ in 0..2 {
+        world.resource_mut::<Time>().advance_frame(0.1);
+        schedule.run_stage(Stage::FixedUpdate, &mut world, |_, _| {});
+    }
+    let despawns: Vec<_> = world.resource::<KitTrace>().about(spark).collect();
+    assert_eq!(despawns.len(), 1);
+    assert_eq!(despawns[0].kind, TraceKind::Despawn { by: "lifetime" });
+    frame(&mut world, &mut schedule, 0.1);
+    assert!(!world.is_alive(spark));
+}

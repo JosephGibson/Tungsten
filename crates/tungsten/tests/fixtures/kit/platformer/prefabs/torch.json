@@ -1,0 +1,14 @@
+{
+  "tag": "torch",
+  "components": {
+    "spawn_children": [
+      {
+        "prefab": "glow",
+        "offset": [
+          0,
+          -12
+        ]
+      }
+    ]
+  }
+}

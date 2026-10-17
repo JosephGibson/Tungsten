@@ -57,6 +57,22 @@ fn the_plugin_runs_between_the_snapshot_and_the_step() {
 }
 
 #[test]
+fn a_speed_set_to_zero_stands_it_still_and_a_bad_one_is_ignored() {
+    let (mut world, mut schedule) = rig();
+    let mover = mover_at(&mut world, Vec2::ZERO, Vec2::X);
+    world.get_mut::<TopDownMover>(mover).unwrap().set_speed(0.0);
+    steps(&mut world, &mut schedule, 10);
+    assert_eq!(position(&world, mover), Vec2::ZERO);
+    let state = world.get_mut::<TopDownMover>(mover).unwrap();
+    state.set_speed(f32::NAN);
+    state.set_speed(-5.0);
+    assert_eq!(state.speed, 0.0);
+    state.set_speed(60.0);
+    steps(&mut world, &mut schedule, 2);
+    assert!(position(&world, mover).x > 0.0);
+}
+
+#[test]
 fn spawned_against_a_wall_it_never_enters_it_and_slides_along() {
     let (mut world, mut schedule) = rig();
     world.spawn_with(RigidBodyBundle::r#static(

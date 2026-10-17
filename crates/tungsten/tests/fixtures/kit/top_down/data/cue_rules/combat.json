@@ -1,0 +1,34 @@
+[
+  {
+    "on": "killed",
+    "filter": {
+      "all": [
+        "team.enemy"
+      ]
+    },
+    "do": [
+      {
+        "counter": {
+          "name": "kills",
+          "add": 1,
+          "target": "game"
+        }
+      }
+    ]
+  },
+  {
+    "on": "damaged",
+    "filter": {
+      "all": [
+        "team.enemy"
+      ]
+    },
+    "do": [
+      {
+        "label": {
+          "font": "sans"
+        }
+      }
+    ]
+  }
+]

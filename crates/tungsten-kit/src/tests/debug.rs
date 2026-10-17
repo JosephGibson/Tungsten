@@ -85,3 +85,44 @@ fn without_a_debug_draw_resource_nothing_happens() {
     schedule.run_stage(Stage::PostUpdate, &mut world, |_, _| {});
     assert!(!world.has_resource::<DebugDraw>());
 }
+
+#[test]
+fn the_plugin_inserts_a_trace_and_counts_each_step_last_in_the_react_phase() {
+    let (mut world, mut schedule) = rig();
+    assert_eq!(
+        world.resource::<KitTrace>().capacity(),
+        KitTrace::DEFAULT_CAPACITY
+    );
+    assert_eq!(schedule.stage_of(KIT_TRACE_STEP), Some(Stage::FixedUpdate));
+    for _ in 0..3 {
+        schedule.run_stage(Stage::FixedUpdate, &mut world, |_, _| {});
+    }
+    assert_eq!(world.resource::<KitTrace>().steps(), 3);
+}
+
+#[test]
+fn the_view_logs_only_the_entries_pushed_while_it_is_on() {
+    use crate::foundation::trace::{TraceKind, trace};
+
+    let (mut world, _) = rig();
+    let slime = world.spawn();
+    let despawn = || TraceKind::Despawn { by: "cues" };
+    let mut logged = 0;
+    trace(&mut world, slime, despawn);
+    log_trace(&world, &mut logged);
+    assert_eq!(logged, 1, "off: it follows the trace and logs nothing");
+    world.resource_mut::<KitDebug>().set_enabled(true);
+    trace(&mut world, slime, despawn);
+    trace(&mut world, slime, despawn);
+    let trace = world.resource::<KitTrace>();
+    assert_eq!(trace.since(logged).count(), 2, "the two new ones");
+    log_trace(&world, &mut logged);
+    assert_eq!(logged, 3);
+    assert_eq!(world.resource::<KitTrace>().since(logged).count(), 0);
+    world.resource_mut::<KitTrace>().clear();
+    assert_eq!(
+        world.resource::<KitTrace>().since(logged).count(),
+        0,
+        "a clear logs nothing"
+    );
+}

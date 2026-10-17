@@ -1,0 +1,36 @@
+{
+  "tag": "key",
+  "components": {
+    "rigid_body": {
+      "kind": "sensor",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          8,
+          8
+        ]
+      }
+    },
+    "zone": {
+      "filter": {
+        "all": [
+          "team.player"
+        ]
+      }
+    },
+    "cues": {
+      "zone_entered": [
+        {
+          "flag": {
+            "name": "has_key",
+            "set": true,
+            "target": "other"
+          }
+        },
+        {
+          "despawn": {}
+        }
+      ]
+    }
+  }
+}

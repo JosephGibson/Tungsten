@@ -1,0 +1,48 @@
+{
+  "tag": "gunship",
+  "components": {
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          12,
+          8
+        ]
+      }
+    },
+    "path_follower": {
+      "points": [
+        [
+          100,
+          100
+        ],
+        [
+          300,
+          100
+        ]
+      ],
+      "speed": 100,
+      "mode": "ping_pong"
+    },
+    "tags": [
+      "team.enemy"
+    ],
+    "spawn_children": [
+      {
+        "prefab": "wing",
+        "offset": [
+          -24,
+          0
+        ]
+      },
+      {
+        "prefab": "wing",
+        "offset": [
+          24,
+          0
+        ]
+      }
+    ]
+  }
+}

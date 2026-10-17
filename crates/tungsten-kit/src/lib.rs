@@ -24,8 +24,8 @@
 //! [`KitPlugins::set()`] is every kit plugin that takes no game type, which
 //! a game builds after the engine's `DefaultPlugins`
 //! (`app.add_plugins(KitPlugins::set())`); `without` drops one.
-//! [`SoundOnEvent`], [`TriggerZone`] and [`StateMachinePlugin`] take a
-//! game type, so a game adds them itself. [`prelude`] imports the plugins,
+//! [`SoundOnEvent`], [`TriggerZone`], [`StateMachinePlugin`] and
+//! [`CuesOnEvent`] take a game type, so a game adds them itself. [`prelude`] imports the plugins,
 //! components, events and helpers in one line. Each plugin registers its
 //! scene component, so a prefab composes the kit with no Rust:
 //!
@@ -38,7 +38,8 @@
 //!     "top_down_mover": { "speed": 240 },
 //!     "health": { "max": 5, "invulnerability": 0.5 },
 //!     "hit_flash": { "seconds": 0.12 },
-//!     "camera_target": null
+//!     "camera_target": null,
+//!     "cues": { "damaged": [{ "shake": 0.25 }, { "label": { "font": "sans" } }] }
 //!   }
 //! }
 //! ```
@@ -66,7 +67,12 @@
 //! - **Foundation.** [`Tags`], [`TagFilter`] and [`TagsPlugin`]: dotted
 //!   names on an entity, the filters items match on and the `tags` data
 //!   kind that declares them. [`Source`] and [`SourcePlugin`]: the spawn
-//!   chain's origin, derived at the flush. [`Phase`], [`ensure_phases`]
+//!   chain's origin, derived at the flush. [`Stats`], [`Modifier`] and
+//!   [`StatsPlugin`]: named values with ordered modifiers, which the
+//!   movers, health and cooldowns read, and the `stats` data kind that
+//!   declares a game's. [`KitRng`]: the kit's seeded random stream.
+//!   [`KitTrace`], [`TraceEntry`] and [`TraceKind`]: what the items did,
+//!   for a failing recipe or the debug view. [`Phase`], [`ensure_phases`]
 //!   and [`KitPlugins`].
 //! - **Intent.** [`ActionInput`], [`Intent`] and [`ActionInputPlugin`]:
 //!   the action map read into what each entity means to do, which the
@@ -85,7 +91,10 @@
 //!   [`DespawnOutside`] and [`DespawnOutsidePlugin`]: one despawned once it
 //!   leaves a world-space box or the camera's view. [`Spawner`] and
 //!   [`SpawnerPlugin`]: a prefab spawned at an entity's position once per
-//!   interval of game time.
+//!   interval of game time. [`Cooldown`], [`CooldownElapsed`] and
+//!   [`CooldownPlugin`]: a repeating countdown with an optional jitter.
+//!   [`SpawnChildren`] and [`SpawnChildrenPlugin`]: prefabs spawned once
+//!   as an entity's children.
 //! - **Overlap.** [`Zone`], [`ZoneEntered`] and [`ZonePlugin`]: a sensor
 //!   entered by the entities whose tags pass its filter. [`TriggerZone`]
 //!   and [`TriggerEntered`]: a sensor of one game type entered by an entity
@@ -93,10 +102,16 @@
 //! - **Damage.** [`Health`], [`damage`], [`Hit`], [`Damaged`], [`HitFlash`]
 //!   and [`HealthPlugin`]: health with an invulnerability window and a hit
 //!   flash on the `damage_flash` material ([`HIT_FLASH_MATERIAL`]).
+//! - **React.** [`Cues`], [`CueAction`], [`CueEvent`], [`CuesOnEvent`] and
+//!   [`CuesPlugin`]: the one way to react to events in data, an entity's
+//!   `cues` and the shared `cue_rules` kind. [`Counters`], [`Flags`] and
+//!   [`CountersPlugin`]: named counts and switches, an entity's or the
+//!   game's, that cues write.
 //! - **Present.** [`AnimationPlugin`]: an animated sprite, whose
 //!   `AnimationState` writes its current frame into `Sprite.asset_id`.
 //!   [`CameraTarget`] and [`CameraTargetPlugin`]: the marker the camera
 //!   follows. [`SoundOnEvent`]: a manifest sound played once per event.
+//!   [`LabelStyle`]: how a cue's `label` floats an amount.
 //! - **Transform.** [`spawn_child`], [`Parent`], [`Children`],
 //!   [`LocalOffset`], [`despawn_recursive`] and [`HierarchyPlugin`]: the
 //!   hierarchy that moves children with their parents' positions after the
@@ -108,8 +123,9 @@
 //! prints for a picked entity. [`KitDebugPlugin`] draws each item with a
 //! shape through core's `DebugDraw` while the [`KitDebug`] resource is on.
 //! Each scene component has a [`ComponentDescription`] in the
-//! [`KitDescriptions`] resource: its fields with their types and defaults,
-//! its events and the genres that use it, rendered into
+//! [`KitDescriptions`] resource, as does each shape its fields refer to:
+//! its fields with their types and defaults, its events and the genres
+//! that use it, rendered into
 //! `api/tungsten-kit-components.txt` by `just api` and compared by
 //! `just api-check`, so a changed default or a renamed field is a visible
 //! diff (`D-107`). A test holds each description to its DTO: the sample
@@ -129,6 +145,7 @@ mod lifecycle;
 mod motion;
 mod overlap;
 mod present;
+mod react;
 mod transform;
 
 pub use damage::health::{
@@ -144,11 +161,16 @@ pub use foundation::phases::{
     ensure_phases,
 };
 pub use foundation::plugins::KitPlugins;
+pub use foundation::rng::KitRng;
 pub use foundation::source::{Source, SourcePlugin};
+pub use foundation::stats::{Modifier, STATS_APPLY, Stats, StatsPlugin};
 pub use foundation::tags::{TagFilter, Tags, TagsPlugin};
+pub use foundation::trace::{KIT_TRACE_STEP, KitTrace, TraceEntry, TraceKind};
 pub use intent::action_input::{ACTION_INPUT, ActionInput, ActionInputPlugin, Intent};
 pub use intent::cursor::cursor_to_world;
 pub use intent::state_machine::{StateMachine, StateMachinePlugin};
+pub use lifecycle::children::{SPAWN_CHILDREN, SpawnChildren, SpawnChildrenPlugin};
+pub use lifecycle::cooldown::{COOLDOWN_TICK, Cooldown, CooldownElapsed, CooldownPlugin};
 pub use lifecycle::despawn::{DESPAWN_OUTSIDE, DespawnOutside, DespawnOutsidePlugin};
 pub use lifecycle::lifetime::{LIFETIME_TICK, Lifetime, LifetimePlugin};
 pub use lifecycle::spawner::{SPAWNER_TICK, Spawner, SpawnerPlugin};
@@ -161,7 +183,10 @@ pub use overlap::trigger::{TriggerEntered, TriggerZone};
 pub use overlap::zone::{ZONE_TICK, Zone, ZoneEntered, ZonePlugin};
 pub use present::animation::{ANIMATION_TICK, AnimationPlugin};
 pub use present::camera::{CAMERA_TARGET, CameraTarget, CameraTargetPlugin};
+pub use present::labels::{LABEL_TICK, LabelStyle};
 pub use present::sound::SoundOnEvent;
+pub use react::counters::{Counters, CountersPlugin, Flags};
+pub use react::cues::{CUES, CueAction, CueEvent, Cues, CuesOnEvent, CuesPlugin};
 pub use transform::hierarchy::{
     Children, HierarchyPlugin, LocalOffset, Parent, TRANSFORM_PROPAGATE, TRANSFORM_PROPAGATE_LATE,
     despawn_recursive, spawn_child,
@@ -173,12 +198,15 @@ pub use transform::hierarchy::{
 pub mod prelude {
     pub use crate::{
         ActionInput, ActionInputPlugin, AnimationPlugin, CameraTarget, CameraTargetPlugin,
-        Children, Damaged, DespawnOutside, DespawnOutsidePlugin, Health, HealthPlugin,
-        HierarchyPlugin, Hit, HitFlash, Intent, KitDebug, KitDebugPlugin, KitPlugins, Lifetime,
-        LifetimePlugin, LocalOffset, Parent, PathFollower, PathFollowerPlugin, Phase,
+        Children, Cooldown, CooldownElapsed, CooldownPlugin, Counters, CountersPlugin, CueAction,
+        CueEvent, Cues, CuesOnEvent, CuesPlugin, Damaged, DespawnOutside, DespawnOutsidePlugin,
+        Flags, Health, HealthPlugin, HierarchyPlugin, Hit, HitFlash, Intent, KitDebug,
+        KitDebugPlugin, KitPlugins, KitRng, KitTrace, LabelStyle, Lifetime, LifetimePlugin,
+        LocalOffset, Modifier, Parent, PathFollower, PathFollowerPlugin, Phase,
         PlatformerController, PlatformerControllerPlugin, SoundOnEvent, Source, SourcePlugin,
-        Spawner, SpawnerPlugin, StateMachine, StateMachinePlugin, TagFilter, Tags, TagsPlugin,
-        TopDownMover, TopDownMoverPlugin, TriggerEntered, TriggerZone, Zone, ZoneEntered,
+        SpawnChildren, SpawnChildrenPlugin, Spawner, SpawnerPlugin, StateMachine,
+        StateMachinePlugin, Stats, StatsPlugin, TagFilter, Tags, TagsPlugin, TopDownMover,
+        TopDownMoverPlugin, TraceEntry, TraceKind, TriggerEntered, TriggerZone, Zone, ZoneEntered,
         ZonePlugin, cursor_to_world, damage, despawn_recursive, ensure_phases, spawn_child,
     };
 }

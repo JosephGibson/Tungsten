@@ -1,0 +1,22 @@
+[
+  {
+    "on": "killed",
+    "filter": {
+      "all": [
+        "team.enemy"
+      ]
+    },
+    "do": [
+      {
+        "counter": {
+          "name": "score",
+          "add": 1,
+          "target": "game"
+        }
+      },
+      {
+        "shake": 0.3
+      }
+    ]
+  }
+]

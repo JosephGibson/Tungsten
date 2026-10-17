@@ -7,6 +7,7 @@
     "top_down_mover": { "speed": 240 },
     "health": { "max": 5, "invulnerability": 0.5 },
     "hit_flash": { "color": [1, 1, 1, 1], "seconds": 0.12 },
-    "camera_target": null
+    "camera_target": null,
+    "cues": { "damaged": [{ "shake": 0.25 }, { "label": { "font": "sans" } }] }
   }
 }

@@ -17,12 +17,26 @@
     },
     "floor": {
       "path": "prefabs/floor.json"
+    },
+    "turret": {
+      "path": "prefabs/turret.json"
+    },
+    "gunship": {
+      "path": "prefabs/gunship.json"
+    },
+    "wing": {
+      "path": "prefabs/wing.json"
     }
   },
   "data": {
     "tags": {
       "game": {
         "path": "data/tags.json"
+      }
+    },
+    "cue_rules": {
+      "score": {
+        "path": "data/cue_rules/score.json"
       }
     }
   },
@@ -74,6 +88,11 @@
           0
         ]
       }
+    }
+  },
+  "sounds": {
+    "blip": {
+      "path": "sounds/blip.ogg"
     }
   }
 }

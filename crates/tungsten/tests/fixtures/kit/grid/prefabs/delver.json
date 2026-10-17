@@ -1,0 +1,24 @@
+{
+  "tag": "delver",
+  "components": {
+    "tags": [
+      "team.player"
+    ],
+    "counters": {
+      "turns": 0
+    },
+    "cooldown": {
+      "seconds": 0.25
+    },
+    "cues": {
+      "cooldown_elapsed": [
+        {
+          "counter": {
+            "name": "turns",
+            "add": 1
+          }
+        }
+      ]
+    }
+  }
+}

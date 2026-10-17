@@ -5,8 +5,11 @@ use tungsten_core::PluginSet;
 use crate::damage::health::HealthPlugin;
 use crate::foundation::debug::KitDebugPlugin;
 use crate::foundation::source::SourcePlugin;
+use crate::foundation::stats::StatsPlugin;
 use crate::foundation::tags::TagsPlugin;
 use crate::intent::action_input::ActionInputPlugin;
+use crate::lifecycle::children::SpawnChildrenPlugin;
+use crate::lifecycle::cooldown::CooldownPlugin;
 use crate::lifecycle::despawn::DespawnOutsidePlugin;
 use crate::lifecycle::lifetime::LifetimePlugin;
 use crate::lifecycle::spawner::SpawnerPlugin;
@@ -16,14 +19,17 @@ use crate::motion::top_down::TopDownMoverPlugin;
 use crate::overlap::zone::ZonePlugin;
 use crate::present::animation::AnimationPlugin;
 use crate::present::camera::CameraTargetPlugin;
+use crate::react::counters::CountersPlugin;
+use crate::react::cues::CuesPlugin;
 use crate::transform::hierarchy::HierarchyPlugin;
 
 /// Every kit plugin that takes no game type, in the kit's order, as a
 /// `PluginSet` a game builds after the engine's `DefaultPlugins`
 /// (`App::add_plugins`); `PluginSet::without` drops one. The plugins that
 /// take a game type, [`SoundOnEvent`](crate::SoundOnEvent),
-/// [`TriggerZone`](crate::TriggerZone) and
-/// [`StateMachinePlugin`](crate::StateMachinePlugin), a game adds itself.
+/// [`TriggerZone`](crate::TriggerZone),
+/// [`StateMachinePlugin`](crate::StateMachinePlugin) and
+/// [`CuesOnEvent`](crate::CuesOnEvent), a game adds itself.
 ///
 /// # Examples
 ///
@@ -50,8 +56,9 @@ pub struct KitPlugins;
 impl KitPlugins {
     /// Tags, source, hierarchy, animation, lifetime, despawn outside,
     /// spawner, health, path follower, the platformer controller, the
-    /// top-down mover, zone, action input, the camera target and the
-    /// debug drawing, in that order.
+    /// top-down mover, zone, action input, the camera target, stats,
+    /// counters, cooldown, spawn children, cues and the debug drawing, in
+    /// that order.
     #[must_use]
     pub fn set() -> PluginSet {
         PluginSet::new()
@@ -69,6 +76,11 @@ impl KitPlugins {
             .with(ZonePlugin)
             .with(ActionInputPlugin)
             .with(CameraTargetPlugin)
+            .with(StatsPlugin::new())
+            .with(CountersPlugin)
+            .with(CooldownPlugin)
+            .with(SpawnChildrenPlugin)
+            .with(CuesPlugin)
             .with(KitDebugPlugin)
     }
 }

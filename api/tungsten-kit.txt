@@ -21,6 +21,30 @@ impl core::marker::Unpin for tungsten_kit::Hit
 impl core::marker::UnsafeUnpin for tungsten_kit::Hit
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Hit
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Hit
+#[non_exhaustive] pub enum tungsten_kit::prelude::Modifier
+pub tungsten_kit::prelude::Modifier::Add(f32)
+pub tungsten_kit::prelude::Modifier::Mul(f32)
+pub tungsten_kit::prelude::Modifier::Override(f32)
+pub tungsten_kit::prelude::Modifier::Pct(f32)
+impl core::clone::Clone for tungsten_kit::Modifier
+pub fn tungsten_kit::Modifier::clone(&self) -> tungsten_kit::Modifier
+impl core::cmp::PartialEq for tungsten_kit::Modifier
+pub fn tungsten_kit::Modifier::eq(&self, &tungsten_kit::Modifier) -> bool
+impl core::fmt::Debug for tungsten_kit::Modifier
+pub fn tungsten_kit::Modifier::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::Modifier
+impl core::marker::StructuralPartialEq for tungsten_kit::Modifier
+impl serde_core::ser::Serialize for tungsten_kit::Modifier
+pub fn tungsten_kit::Modifier::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::Modifier
+pub fn tungsten_kit::Modifier::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::Modifier
+impl core::marker::Send for tungsten_kit::Modifier
+impl core::marker::Sync for tungsten_kit::Modifier
+impl core::marker::Unpin for tungsten_kit::Modifier
+impl core::marker::UnsafeUnpin for tungsten_kit::Modifier
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Modifier
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Modifier
 pub enum tungsten_kit::prelude::Phase
 pub tungsten_kit::prelude::Phase::Intent
 pub tungsten_kit::prelude::Phase::Move
@@ -52,6 +76,42 @@ impl core::marker::Unpin for tungsten_kit::Phase
 impl core::marker::UnsafeUnpin for tungsten_kit::Phase
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Phase
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Phase
+#[non_exhaustive] pub enum tungsten_kit::prelude::TraceKind
+pub tungsten_kit::prelude::TraceKind::Cue
+pub tungsten_kit::prelude::TraceKind::Cue::action: &'static str
+pub tungsten_kit::prelude::TraceKind::Cue::event: &'static str
+pub tungsten_kit::prelude::TraceKind::Cue::rule: core::option::Option<alloc::string::String>
+pub tungsten_kit::prelude::TraceKind::Despawn
+pub tungsten_kit::prelude::TraceKind::Despawn::by: &'static str
+pub tungsten_kit::prelude::TraceKind::Event
+pub tungsten_kit::prelude::TraceKind::Event::amount: core::option::Option<f32>
+pub tungsten_kit::prelude::TraceKind::Event::name: &'static str
+pub tungsten_kit::prelude::TraceKind::Event::other: core::option::Option<tungsten_core::ecs::entity::Entity>
+pub tungsten_kit::prelude::TraceKind::Skipped
+pub tungsten_kit::prelude::TraceKind::Skipped::action: &'static str
+pub tungsten_kit::prelude::TraceKind::Skipped::event: &'static str
+pub tungsten_kit::prelude::TraceKind::Skipped::why: &'static str
+pub tungsten_kit::prelude::TraceKind::Spawn
+pub tungsten_kit::prelude::TraceKind::Spawn::by: &'static str
+pub tungsten_kit::prelude::TraceKind::Spawn::prefab: alloc::string::String
+pub tungsten_kit::prelude::TraceKind::SpawnFailed
+pub tungsten_kit::prelude::TraceKind::SpawnFailed::by: &'static str
+pub tungsten_kit::prelude::TraceKind::SpawnFailed::error: alloc::string::String
+pub tungsten_kit::prelude::TraceKind::SpawnFailed::prefab: alloc::string::String
+impl core::clone::Clone for tungsten_kit::TraceKind
+pub fn tungsten_kit::TraceKind::clone(&self) -> tungsten_kit::TraceKind
+impl core::cmp::PartialEq for tungsten_kit::TraceKind
+pub fn tungsten_kit::TraceKind::eq(&self, &tungsten_kit::TraceKind) -> bool
+impl core::fmt::Debug for tungsten_kit::TraceKind
+pub fn tungsten_kit::TraceKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::TraceKind
+impl core::marker::Freeze for tungsten_kit::TraceKind
+impl core::marker::Send for tungsten_kit::TraceKind
+impl core::marker::Sync for tungsten_kit::TraceKind
+impl core::marker::Unpin for tungsten_kit::TraceKind
+impl core::marker::UnsafeUnpin for tungsten_kit::TraceKind
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::TraceKind
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::TraceKind
 pub struct tungsten_kit::prelude::ActionInput
 impl tungsten_kit::ActionInput
 pub fn tungsten_kit::ActionInput::new(impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> Self
@@ -177,6 +237,250 @@ impl core::marker::Unpin for tungsten_kit::Children
 impl core::marker::UnsafeUnpin for tungsten_kit::Children
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Children
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Children
+pub struct tungsten_kit::prelude::Cooldown
+impl tungsten_kit::Cooldown
+pub const tungsten_kit::Cooldown::MAX_ELAPSES_PER_STEP: u32
+pub fn tungsten_kit::Cooldown::left(&self) -> f32
+pub fn tungsten_kit::Cooldown::new(f32) -> Self
+pub fn tungsten_kit::Cooldown::rate(&self) -> f32
+pub fn tungsten_kit::Cooldown::remaining(&self) -> core::option::Option<u32>
+pub fn tungsten_kit::Cooldown::restart(&mut self)
+pub fn tungsten_kit::Cooldown::seconds(&self) -> f32
+pub fn tungsten_kit::Cooldown::with_count(self, u32) -> Self
+pub fn tungsten_kit::Cooldown::with_jitter(self, f32) -> Self
+impl core::clone::Clone for tungsten_kit::Cooldown
+pub fn tungsten_kit::Cooldown::clone(&self) -> tungsten_kit::Cooldown
+impl core::cmp::PartialEq for tungsten_kit::Cooldown
+pub fn tungsten_kit::Cooldown::eq(&self, &tungsten_kit::Cooldown) -> bool
+impl core::fmt::Debug for tungsten_kit::Cooldown
+pub fn tungsten_kit::Cooldown::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Cooldown
+impl serde_core::ser::Serialize for tungsten_kit::Cooldown
+pub fn tungsten_kit::Cooldown::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl tungsten_core::inspect::Inspectable for tungsten_kit::Cooldown
+pub fn tungsten_kit::Cooldown::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::Cooldown
+pub fn tungsten_kit::Cooldown::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::Cooldown
+impl core::marker::Send for tungsten_kit::Cooldown
+impl core::marker::Sync for tungsten_kit::Cooldown
+impl core::marker::Unpin for tungsten_kit::Cooldown
+impl core::marker::UnsafeUnpin for tungsten_kit::Cooldown
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Cooldown
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Cooldown
+#[non_exhaustive] pub struct tungsten_kit::prelude::CooldownElapsed
+pub tungsten_kit::prelude::CooldownElapsed::entity: tungsten_core::ecs::entity::Entity
+impl tungsten_kit::CooldownElapsed
+pub fn tungsten_kit::CooldownElapsed::new(tungsten_core::ecs::entity::Entity) -> Self
+impl core::clone::Clone for tungsten_kit::CooldownElapsed
+pub fn tungsten_kit::CooldownElapsed::clone(&self) -> tungsten_kit::CooldownElapsed
+impl core::cmp::Eq for tungsten_kit::CooldownElapsed
+impl core::cmp::PartialEq for tungsten_kit::CooldownElapsed
+pub fn tungsten_kit::CooldownElapsed::eq(&self, &tungsten_kit::CooldownElapsed) -> bool
+impl core::fmt::Debug for tungsten_kit::CooldownElapsed
+pub fn tungsten_kit::CooldownElapsed::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::CooldownElapsed
+impl core::marker::StructuralPartialEq for tungsten_kit::CooldownElapsed
+impl core::marker::Freeze for tungsten_kit::CooldownElapsed
+impl core::marker::Send for tungsten_kit::CooldownElapsed
+impl core::marker::Sync for tungsten_kit::CooldownElapsed
+impl core::marker::Unpin for tungsten_kit::CooldownElapsed
+impl core::marker::UnsafeUnpin for tungsten_kit::CooldownElapsed
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CooldownElapsed
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CooldownElapsed
+pub struct tungsten_kit::prelude::CooldownPlugin
+impl core::clone::Clone for tungsten_kit::CooldownPlugin
+pub fn tungsten_kit::CooldownPlugin::clone(&self) -> tungsten_kit::CooldownPlugin
+impl core::default::Default for tungsten_kit::CooldownPlugin
+pub fn tungsten_kit::CooldownPlugin::default() -> tungsten_kit::CooldownPlugin
+impl core::fmt::Debug for tungsten_kit::CooldownPlugin
+pub fn tungsten_kit::CooldownPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::CooldownPlugin
+impl tungsten_core::schedule::Plugin for tungsten_kit::CooldownPlugin
+pub fn tungsten_kit::CooldownPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten_kit::CooldownPlugin
+impl core::marker::Send for tungsten_kit::CooldownPlugin
+impl core::marker::Sync for tungsten_kit::CooldownPlugin
+impl core::marker::Unpin for tungsten_kit::CooldownPlugin
+impl core::marker::UnsafeUnpin for tungsten_kit::CooldownPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CooldownPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CooldownPlugin
+pub struct tungsten_kit::prelude::Counters
+impl tungsten_kit::Counters
+pub fn tungsten_kit::Counters::add(&mut self, &str, i64) -> i64
+pub fn tungsten_kit::Counters::get(&self, &str) -> i64
+pub fn tungsten_kit::Counters::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, i64)>
+pub fn tungsten_kit::Counters::new() -> Self
+pub fn tungsten_kit::Counters::set(&mut self, &str, i64)
+pub fn tungsten_kit::Counters::with(self, &str, i64) -> Self
+impl core::clone::Clone for tungsten_kit::Counters
+pub fn tungsten_kit::Counters::clone(&self) -> tungsten_kit::Counters
+impl core::cmp::Eq for tungsten_kit::Counters
+impl core::cmp::PartialEq for tungsten_kit::Counters
+pub fn tungsten_kit::Counters::eq(&self, &tungsten_kit::Counters) -> bool
+impl core::convert::From<tungsten_kit::Counters> for alloc::collections::btree::map::BTreeMap<alloc::string::String, i64>
+pub fn alloc::collections::btree::map::BTreeMap<alloc::string::String, i64>::from(tungsten_kit::Counters) -> Self
+impl core::convert::TryFrom<alloc::collections::btree::map::BTreeMap<alloc::string::String, i64>> for tungsten_kit::Counters
+pub type tungsten_kit::Counters::Error = alloc::string::String
+pub fn tungsten_kit::Counters::try_from(alloc::collections::btree::map::BTreeMap<alloc::string::String, i64>) -> core::result::Result<Self, Self::Error>
+impl core::default::Default for tungsten_kit::Counters
+pub fn tungsten_kit::Counters::default() -> tungsten_kit::Counters
+impl core::fmt::Debug for tungsten_kit::Counters
+pub fn tungsten_kit::Counters::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Counters
+impl serde_core::ser::Serialize for tungsten_kit::Counters
+pub fn tungsten_kit::Counters::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl tungsten_core::inspect::Inspectable for tungsten_kit::Counters
+pub fn tungsten_kit::Counters::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::Counters
+pub fn tungsten_kit::Counters::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::Counters
+impl core::marker::Send for tungsten_kit::Counters
+impl core::marker::Sync for tungsten_kit::Counters
+impl core::marker::Unpin for tungsten_kit::Counters
+impl core::marker::UnsafeUnpin for tungsten_kit::Counters
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Counters
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Counters
+pub struct tungsten_kit::prelude::CountersPlugin
+impl core::clone::Clone for tungsten_kit::CountersPlugin
+pub fn tungsten_kit::CountersPlugin::clone(&self) -> tungsten_kit::CountersPlugin
+impl core::default::Default for tungsten_kit::CountersPlugin
+pub fn tungsten_kit::CountersPlugin::default() -> tungsten_kit::CountersPlugin
+impl core::fmt::Debug for tungsten_kit::CountersPlugin
+pub fn tungsten_kit::CountersPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::CountersPlugin
+impl tungsten_core::schedule::Plugin for tungsten_kit::CountersPlugin
+pub fn tungsten_kit::CountersPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten_kit::CountersPlugin
+impl core::marker::Send for tungsten_kit::CountersPlugin
+impl core::marker::Sync for tungsten_kit::CountersPlugin
+impl core::marker::Unpin for tungsten_kit::CountersPlugin
+impl core::marker::UnsafeUnpin for tungsten_kit::CountersPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CountersPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CountersPlugin
+pub struct tungsten_kit::prelude::CueAction
+impl tungsten_kit::CueAction
+pub fn tungsten_kit::CueAction::counter_add(&str, i64) -> Self
+pub fn tungsten_kit::CueAction::counter_set(&str, i64) -> Self
+pub fn tungsten_kit::CueAction::despawn() -> Self
+pub fn tungsten_kit::CueAction::flag(&str, bool) -> Self
+pub fn tungsten_kit::CueAction::flash() -> Self
+pub fn tungsten_kit::CueAction::for_game(self) -> Self
+pub fn tungsten_kit::CueAction::for_other(self) -> Self
+pub fn tungsten_kit::CueAction::label(tungsten_kit::LabelStyle) -> Self
+pub fn tungsten_kit::CueAction::name(&self) -> &'static str
+pub fn tungsten_kit::CueAction::prefab(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::CueAction::shake(f32) -> Self
+pub fn tungsten_kit::CueAction::sound(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::CueAction::squash(tungsten_core::components::SquashTrigger) -> Self
+pub fn tungsten_kit::CueAction::with_min_interval(self, f32) -> Self
+impl core::clone::Clone for tungsten_kit::CueAction
+pub fn tungsten_kit::CueAction::clone(&self) -> tungsten_kit::CueAction
+impl core::cmp::PartialEq for tungsten_kit::CueAction
+pub fn tungsten_kit::CueAction::eq(&self, &tungsten_kit::CueAction) -> bool
+impl core::fmt::Debug for tungsten_kit::CueAction
+pub fn tungsten_kit::CueAction::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::CueAction
+impl serde_core::ser::Serialize for tungsten_kit::CueAction
+pub fn tungsten_kit::CueAction::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::CueAction
+pub fn tungsten_kit::CueAction::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::CueAction
+impl core::marker::Send for tungsten_kit::CueAction
+impl core::marker::Sync for tungsten_kit::CueAction
+impl core::marker::Unpin for tungsten_kit::CueAction
+impl core::marker::UnsafeUnpin for tungsten_kit::CueAction
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CueAction
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CueAction
+#[non_exhaustive] pub struct tungsten_kit::prelude::CueEvent
+pub tungsten_kit::prelude::CueEvent::amount: core::option::Option<f32>
+pub tungsten_kit::prelude::CueEvent::entity: tungsten_core::ecs::entity::Entity
+pub tungsten_kit::prelude::CueEvent::other: core::option::Option<tungsten_core::ecs::entity::Entity>
+pub tungsten_kit::prelude::CueEvent::position: glam::f32::vec2::Vec2
+impl tungsten_kit::CueEvent
+pub fn tungsten_kit::CueEvent::new(tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_kit::CueEvent::with_amount(self, f32) -> Self
+pub fn tungsten_kit::CueEvent::with_other(self, tungsten_core::ecs::entity::Entity) -> Self
+impl core::clone::Clone for tungsten_kit::CueEvent
+pub fn tungsten_kit::CueEvent::clone(&self) -> tungsten_kit::CueEvent
+impl core::cmp::PartialEq for tungsten_kit::CueEvent
+pub fn tungsten_kit::CueEvent::eq(&self, &tungsten_kit::CueEvent) -> bool
+impl core::fmt::Debug for tungsten_kit::CueEvent
+pub fn tungsten_kit::CueEvent::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::CueEvent
+impl core::marker::StructuralPartialEq for tungsten_kit::CueEvent
+impl core::marker::Freeze for tungsten_kit::CueEvent
+impl core::marker::Send for tungsten_kit::CueEvent
+impl core::marker::Sync for tungsten_kit::CueEvent
+impl core::marker::Unpin for tungsten_kit::CueEvent
+impl core::marker::UnsafeUnpin for tungsten_kit::CueEvent
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CueEvent
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CueEvent
+pub struct tungsten_kit::prelude::Cues
+impl tungsten_kit::Cues
+pub fn tungsten_kit::Cues::actions(&self, &str) -> &[tungsten_kit::CueAction]
+pub fn tungsten_kit::Cues::new() -> Self
+pub fn tungsten_kit::Cues::on(self, &str, impl core::iter::traits::collect::IntoIterator<Item = tungsten_kit::CueAction>) -> Self
+impl core::clone::Clone for tungsten_kit::Cues
+pub fn tungsten_kit::Cues::clone(&self) -> tungsten_kit::Cues
+impl core::cmp::PartialEq for tungsten_kit::Cues
+pub fn tungsten_kit::Cues::eq(&self, &tungsten_kit::Cues) -> bool
+impl core::convert::From<tungsten_kit::Cues> for alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::vec::Vec<tungsten_kit::CueAction>>
+pub fn alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::vec::Vec<tungsten_kit::CueAction>>::from(tungsten_kit::Cues) -> Self
+impl core::convert::TryFrom<alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::vec::Vec<tungsten_kit::CueAction>>> for tungsten_kit::Cues
+pub type tungsten_kit::Cues::Error = alloc::string::String
+pub fn tungsten_kit::Cues::try_from(alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::vec::Vec<tungsten_kit::CueAction>>) -> core::result::Result<Self, Self::Error>
+impl core::default::Default for tungsten_kit::Cues
+pub fn tungsten_kit::Cues::default() -> tungsten_kit::Cues
+impl core::fmt::Debug for tungsten_kit::Cues
+pub fn tungsten_kit::Cues::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Cues
+impl serde_core::ser::Serialize for tungsten_kit::Cues
+pub fn tungsten_kit::Cues::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl tungsten_core::inspect::Inspectable for tungsten_kit::Cues
+pub fn tungsten_kit::Cues::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::Cues
+pub fn tungsten_kit::Cues::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::Cues
+impl core::marker::Send for tungsten_kit::Cues
+impl core::marker::Sync for tungsten_kit::Cues
+impl core::marker::Unpin for tungsten_kit::Cues
+impl core::marker::UnsafeUnpin for tungsten_kit::Cues
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Cues
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Cues
+pub struct tungsten_kit::prelude::CuesOnEvent<E>
+impl<E: 'static> tungsten_kit::CuesOnEvent<E>
+pub fn tungsten_kit::CuesOnEvent<E>::new(&'static str, fn(&E) -> core::option::Option<tungsten_kit::CueEvent>) -> Self
+impl<E: 'static> tungsten_core::schedule::Plugin for tungsten_kit::CuesOnEvent<E>
+pub fn tungsten_kit::CuesOnEvent<E>::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl<E> core::clone::Clone for tungsten_kit::CuesOnEvent<E>
+pub fn tungsten_kit::CuesOnEvent<E>::clone(&self) -> Self
+impl<E> core::fmt::Debug for tungsten_kit::CuesOnEvent<E>
+pub fn tungsten_kit::CuesOnEvent<E>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<E> core::marker::Freeze for tungsten_kit::CuesOnEvent<E>
+impl<E> core::marker::Send for tungsten_kit::CuesOnEvent<E>
+impl<E> core::marker::Sync for tungsten_kit::CuesOnEvent<E>
+impl<E> core::marker::Unpin for tungsten_kit::CuesOnEvent<E>
+impl<E> core::marker::UnsafeUnpin for tungsten_kit::CuesOnEvent<E>
+impl<E> core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CuesOnEvent<E>
+impl<E> core::panic::unwind_safe::UnwindSafe for tungsten_kit::CuesOnEvent<E>
+pub struct tungsten_kit::prelude::CuesPlugin
+impl core::clone::Clone for tungsten_kit::CuesPlugin
+pub fn tungsten_kit::CuesPlugin::clone(&self) -> tungsten_kit::CuesPlugin
+impl core::default::Default for tungsten_kit::CuesPlugin
+pub fn tungsten_kit::CuesPlugin::default() -> tungsten_kit::CuesPlugin
+impl core::fmt::Debug for tungsten_kit::CuesPlugin
+pub fn tungsten_kit::CuesPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::CuesPlugin
+impl tungsten_core::schedule::Plugin for tungsten_kit::CuesPlugin
+pub fn tungsten_kit::CuesPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten_kit::CuesPlugin
+impl core::marker::Send for tungsten_kit::CuesPlugin
+impl core::marker::Sync for tungsten_kit::CuesPlugin
+impl core::marker::Unpin for tungsten_kit::CuesPlugin
+impl core::marker::UnsafeUnpin for tungsten_kit::CuesPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CuesPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CuesPlugin
 #[non_exhaustive] pub struct tungsten_kit::prelude::Damaged
 pub tungsten_kit::prelude::Damaged::amount: f32
 pub tungsten_kit::prelude::Damaged::entity: tungsten_core::ecs::entity::Entity
@@ -236,6 +540,41 @@ impl core::marker::Unpin for tungsten_kit::DespawnOutsidePlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::DespawnOutsidePlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::DespawnOutsidePlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::DespawnOutsidePlugin
+pub struct tungsten_kit::prelude::Flags
+impl tungsten_kit::Flags
+pub fn tungsten_kit::Flags::has(&self, &str) -> bool
+pub fn tungsten_kit::Flags::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
+pub fn tungsten_kit::Flags::new() -> Self
+pub fn tungsten_kit::Flags::set(&mut self, &str, bool) -> bool
+pub fn tungsten_kit::Flags::with(self, &str) -> Self
+impl core::clone::Clone for tungsten_kit::Flags
+pub fn tungsten_kit::Flags::clone(&self) -> tungsten_kit::Flags
+impl core::cmp::Eq for tungsten_kit::Flags
+impl core::cmp::PartialEq for tungsten_kit::Flags
+pub fn tungsten_kit::Flags::eq(&self, &tungsten_kit::Flags) -> bool
+impl core::convert::From<tungsten_kit::Flags> for alloc::vec::Vec<alloc::string::String>
+pub fn alloc::vec::Vec<alloc::string::String>::from(tungsten_kit::Flags) -> Self
+impl core::convert::TryFrom<alloc::vec::Vec<alloc::string::String>> for tungsten_kit::Flags
+pub type tungsten_kit::Flags::Error = alloc::string::String
+pub fn tungsten_kit::Flags::try_from(alloc::vec::Vec<alloc::string::String>) -> core::result::Result<Self, Self::Error>
+impl core::default::Default for tungsten_kit::Flags
+pub fn tungsten_kit::Flags::default() -> tungsten_kit::Flags
+impl core::fmt::Debug for tungsten_kit::Flags
+pub fn tungsten_kit::Flags::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Flags
+impl serde_core::ser::Serialize for tungsten_kit::Flags
+pub fn tungsten_kit::Flags::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl tungsten_core::inspect::Inspectable for tungsten_kit::Flags
+pub fn tungsten_kit::Flags::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::Flags
+pub fn tungsten_kit::Flags::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::Flags
+impl core::marker::Send for tungsten_kit::Flags
+impl core::marker::Sync for tungsten_kit::Flags
+impl core::marker::Unpin for tungsten_kit::Flags
+impl core::marker::UnsafeUnpin for tungsten_kit::Flags
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Flags
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Flags
 pub struct tungsten_kit::prelude::Health
 impl tungsten_kit::Health
 pub fn tungsten_kit::Health::current(&self) -> f32
@@ -396,6 +735,77 @@ impl core::marker::Unpin for tungsten_kit::KitPlugins
 impl core::marker::UnsafeUnpin for tungsten_kit::KitPlugins
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::KitPlugins
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::KitPlugins
+pub struct tungsten_kit::prelude::KitRng
+impl tungsten_kit::KitRng
+pub const tungsten_kit::KitRng::DEFAULT_SEED: u64
+pub fn tungsten_kit::KitRng::draws(&self) -> u64
+pub fn tungsten_kit::KitRng::index(&mut self, usize) -> usize
+pub fn tungsten_kit::KitRng::next_u32(&mut self) -> u32
+pub fn tungsten_kit::KitRng::range(&mut self, f32, f32) -> f32
+pub fn tungsten_kit::KitRng::reseed(&mut self, u64)
+pub fn tungsten_kit::KitRng::seed(&self) -> u64
+pub fn tungsten_kit::KitRng::seeded(u64) -> Self
+pub fn tungsten_kit::KitRng::unit(&mut self) -> f32
+impl core::clone::Clone for tungsten_kit::KitRng
+pub fn tungsten_kit::KitRng::clone(&self) -> tungsten_kit::KitRng
+impl core::default::Default for tungsten_kit::KitRng
+pub fn tungsten_kit::KitRng::default() -> Self
+impl core::fmt::Debug for tungsten_kit::KitRng
+pub fn tungsten_kit::KitRng::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_kit::KitRng
+impl core::marker::Send for tungsten_kit::KitRng
+impl core::marker::Sync for tungsten_kit::KitRng
+impl core::marker::Unpin for tungsten_kit::KitRng
+impl core::marker::UnsafeUnpin for tungsten_kit::KitRng
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::KitRng
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::KitRng
+pub struct tungsten_kit::prelude::KitTrace
+impl tungsten_kit::KitTrace
+pub const tungsten_kit::KitTrace::DEFAULT_CAPACITY: usize
+pub fn tungsten_kit::KitTrace::about(&self, tungsten_core::ecs::entity::Entity) -> impl core::iter::traits::iterator::Iterator<Item = &tungsten_kit::TraceEntry>
+pub fn tungsten_kit::KitTrace::capacity(&self) -> usize
+pub fn tungsten_kit::KitTrace::clear(&mut self)
+pub fn tungsten_kit::KitTrace::dropped(&self) -> u64
+pub fn tungsten_kit::KitTrace::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = &tungsten_kit::TraceEntry>
+pub fn tungsten_kit::KitTrace::new(usize) -> Self
+pub fn tungsten_kit::KitTrace::steps(&self) -> u64
+impl core::default::Default for tungsten_kit::KitTrace
+pub fn tungsten_kit::KitTrace::default() -> Self
+impl core::fmt::Debug for tungsten_kit::KitTrace
+pub fn tungsten_kit::KitTrace::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_kit::KitTrace
+impl core::marker::Send for tungsten_kit::KitTrace
+impl core::marker::Sync for tungsten_kit::KitTrace
+impl core::marker::Unpin for tungsten_kit::KitTrace
+impl core::marker::UnsafeUnpin for tungsten_kit::KitTrace
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::KitTrace
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::KitTrace
+pub struct tungsten_kit::prelude::LabelStyle
+impl tungsten_kit::LabelStyle
+pub fn tungsten_kit::LabelStyle::new(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::LabelStyle::with_color(self, [f32; 4]) -> Self
+pub fn tungsten_kit::LabelStyle::with_pop(self, f32) -> Self
+pub fn tungsten_kit::LabelStyle::with_rise(self, f32) -> Self
+pub fn tungsten_kit::LabelStyle::with_seconds(self, f32) -> Self
+pub fn tungsten_kit::LabelStyle::with_size(self, f32) -> Self
+impl core::clone::Clone for tungsten_kit::LabelStyle
+pub fn tungsten_kit::LabelStyle::clone(&self) -> tungsten_kit::LabelStyle
+impl core::cmp::PartialEq for tungsten_kit::LabelStyle
+pub fn tungsten_kit::LabelStyle::eq(&self, &tungsten_kit::LabelStyle) -> bool
+impl core::fmt::Debug for tungsten_kit::LabelStyle
+pub fn tungsten_kit::LabelStyle::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::LabelStyle
+impl serde_core::ser::Serialize for tungsten_kit::LabelStyle
+pub fn tungsten_kit::LabelStyle::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::LabelStyle
+pub fn tungsten_kit::LabelStyle::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::LabelStyle
+impl core::marker::Send for tungsten_kit::LabelStyle
+impl core::marker::Sync for tungsten_kit::LabelStyle
+impl core::marker::Unpin for tungsten_kit::LabelStyle
+impl core::marker::UnsafeUnpin for tungsten_kit::LabelStyle
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::LabelStyle
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::LabelStyle
 pub struct tungsten_kit::prelude::Lifetime
 impl tungsten_kit::Lifetime
 pub fn tungsten_kit::Lifetime::new(f32) -> Self
@@ -561,6 +971,7 @@ pub struct tungsten_kit::prelude::SoundOnEvent<E>
 impl<E: 'static> tungsten_kit::SoundOnEvent<E>
 pub fn tungsten_kit::SoundOnEvent<E>::new(&'static str, &'static str) -> Self
 pub fn tungsten_kit::SoundOnEvent<E>::select(&'static str, fn(&E) -> core::option::Option<&str>) -> Self
+pub fn tungsten_kit::SoundOnEvent<E>::with_min_interval(self, f32) -> Self
 impl<E: 'static> tungsten_core::schedule::Plugin for tungsten_kit::SoundOnEvent<E>
 pub fn tungsten_kit::SoundOnEvent<E>::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
 impl<E> core::clone::Clone for tungsten_kit::SoundOnEvent<E>
@@ -615,6 +1026,55 @@ impl core::marker::Unpin for tungsten_kit::SourcePlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::SourcePlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::SourcePlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::SourcePlugin
+pub struct tungsten_kit::prelude::SpawnChildren
+impl tungsten_kit::SpawnChildren
+pub fn tungsten_kit::SpawnChildren::children(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, glam::f32::vec2::Vec2)>
+pub fn tungsten_kit::SpawnChildren::new() -> Self
+pub fn tungsten_kit::SpawnChildren::with_child(self, impl core::convert::Into<alloc::string::String>, glam::f32::vec2::Vec2) -> Self
+impl core::clone::Clone for tungsten_kit::SpawnChildren
+pub fn tungsten_kit::SpawnChildren::clone(&self) -> tungsten_kit::SpawnChildren
+impl core::cmp::PartialEq for tungsten_kit::SpawnChildren
+pub fn tungsten_kit::SpawnChildren::eq(&self, &tungsten_kit::SpawnChildren) -> bool
+impl core::convert::From<tungsten_kit::SpawnChildren> for alloc::vec::Vec<ChildDef>
+pub fn alloc::vec::Vec<ChildDef>::from(tungsten_kit::SpawnChildren) -> Self
+impl core::convert::TryFrom<alloc::vec::Vec<ChildDef>> for tungsten_kit::SpawnChildren
+pub type tungsten_kit::SpawnChildren::Error = alloc::string::String
+pub fn tungsten_kit::SpawnChildren::try_from(alloc::vec::Vec<ChildDef>) -> core::result::Result<Self, Self::Error>
+impl core::default::Default for tungsten_kit::SpawnChildren
+pub fn tungsten_kit::SpawnChildren::default() -> tungsten_kit::SpawnChildren
+impl core::fmt::Debug for tungsten_kit::SpawnChildren
+pub fn tungsten_kit::SpawnChildren::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::SpawnChildren
+impl serde_core::ser::Serialize for tungsten_kit::SpawnChildren
+pub fn tungsten_kit::SpawnChildren::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl tungsten_core::inspect::Inspectable for tungsten_kit::SpawnChildren
+pub fn tungsten_kit::SpawnChildren::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::SpawnChildren
+pub fn tungsten_kit::SpawnChildren::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::SpawnChildren
+impl core::marker::Send for tungsten_kit::SpawnChildren
+impl core::marker::Sync for tungsten_kit::SpawnChildren
+impl core::marker::Unpin for tungsten_kit::SpawnChildren
+impl core::marker::UnsafeUnpin for tungsten_kit::SpawnChildren
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::SpawnChildren
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::SpawnChildren
+pub struct tungsten_kit::prelude::SpawnChildrenPlugin
+impl core::clone::Clone for tungsten_kit::SpawnChildrenPlugin
+pub fn tungsten_kit::SpawnChildrenPlugin::clone(&self) -> tungsten_kit::SpawnChildrenPlugin
+impl core::default::Default for tungsten_kit::SpawnChildrenPlugin
+pub fn tungsten_kit::SpawnChildrenPlugin::default() -> tungsten_kit::SpawnChildrenPlugin
+impl core::fmt::Debug for tungsten_kit::SpawnChildrenPlugin
+pub fn tungsten_kit::SpawnChildrenPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::SpawnChildrenPlugin
+impl tungsten_core::schedule::Plugin for tungsten_kit::SpawnChildrenPlugin
+pub fn tungsten_kit::SpawnChildrenPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten_kit::SpawnChildrenPlugin
+impl core::marker::Send for tungsten_kit::SpawnChildrenPlugin
+impl core::marker::Sync for tungsten_kit::SpawnChildrenPlugin
+impl core::marker::Unpin for tungsten_kit::SpawnChildrenPlugin
+impl core::marker::UnsafeUnpin for tungsten_kit::SpawnChildrenPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::SpawnChildrenPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::SpawnChildrenPlugin
 pub struct tungsten_kit::prelude::Spawner
 impl tungsten_kit::Spawner
 pub fn tungsten_kit::Spawner::new(impl core::convert::Into<alloc::string::String>, f32) -> Self
@@ -689,6 +1149,71 @@ impl<S> core::marker::Unpin for tungsten_kit::StateMachinePlugin<S> where S: cor
 impl<S> core::marker::UnsafeUnpin for tungsten_kit::StateMachinePlugin<S>
 impl<S> core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::StateMachinePlugin<S> where S: core::panic::unwind_safe::RefUnwindSafe
 impl<S> core::panic::unwind_safe::UnwindSafe for tungsten_kit::StateMachinePlugin<S> where S: core::panic::unwind_safe::UnwindSafe
+pub struct tungsten_kit::prelude::Stats
+impl tungsten_kit::Stats
+pub const tungsten_kit::Stats::AREA: &'static str
+pub const tungsten_kit::Stats::COOLDOWN_RATE: &'static str
+pub const tungsten_kit::Stats::DAMAGE: &'static str
+pub const tungsten_kit::Stats::MAX_HEALTH: &'static str
+pub const tungsten_kit::Stats::MOVE_SPEED: &'static str
+pub const tungsten_kit::Stats::PICKUP_RADIUS: &'static str
+pub const tungsten_kit::Stats::PROJECTILE_SPEED: &'static str
+pub const tungsten_kit::Stats::WELL_KNOWN: [&'static str; 7]
+pub fn tungsten_kit::Stats::add_modifier(&mut self, &str, &str, tungsten_kit::Modifier) -> bool
+pub fn tungsten_kit::Stats::base(&self, &str) -> core::option::Option<f32>
+pub fn tungsten_kit::Stats::get(&self, &str) -> core::option::Option<f32>
+pub fn tungsten_kit::Stats::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, f32)>
+pub fn tungsten_kit::Stats::new() -> Self
+pub fn tungsten_kit::Stats::remove_modifiers(&mut self, &str) -> usize
+pub fn tungsten_kit::Stats::set_base(&mut self, &str, f32)
+pub fn tungsten_kit::Stats::with(self, &str, f32) -> Self
+pub fn tungsten_kit::Stats::with_bounds(self, &str, f32, f32) -> Self
+impl core::clone::Clone for tungsten_kit::Stats
+pub fn tungsten_kit::Stats::clone(&self) -> tungsten_kit::Stats
+impl core::cmp::PartialEq for tungsten_kit::Stats
+pub fn tungsten_kit::Stats::eq(&self, &tungsten_kit::Stats) -> bool
+impl core::convert::From<tungsten_kit::Stats> for alloc::collections::btree::map::BTreeMap<alloc::string::String, StatFields>
+pub fn alloc::collections::btree::map::BTreeMap<alloc::string::String, StatFields>::from(tungsten_kit::Stats) -> Self
+impl core::convert::TryFrom<alloc::collections::btree::map::BTreeMap<alloc::string::String, StatFields>> for tungsten_kit::Stats
+pub type tungsten_kit::Stats::Error = alloc::string::String
+pub fn tungsten_kit::Stats::try_from(alloc::collections::btree::map::BTreeMap<alloc::string::String, StatFields>) -> core::result::Result<Self, Self::Error>
+impl core::default::Default for tungsten_kit::Stats
+pub fn tungsten_kit::Stats::default() -> tungsten_kit::Stats
+impl core::fmt::Debug for tungsten_kit::Stats
+pub fn tungsten_kit::Stats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Stats
+impl serde_core::ser::Serialize for tungsten_kit::Stats
+pub fn tungsten_kit::Stats::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl tungsten_core::inspect::Inspectable for tungsten_kit::Stats
+pub fn tungsten_kit::Stats::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::Stats
+pub fn tungsten_kit::Stats::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::Stats
+impl core::marker::Send for tungsten_kit::Stats
+impl core::marker::Sync for tungsten_kit::Stats
+impl core::marker::Unpin for tungsten_kit::Stats
+impl core::marker::UnsafeUnpin for tungsten_kit::Stats
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Stats
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Stats
+pub struct tungsten_kit::prelude::StatsPlugin
+impl tungsten_kit::StatsPlugin
+pub fn tungsten_kit::StatsPlugin::new() -> Self
+pub fn tungsten_kit::StatsPlugin::with_stat(self, &str, f32, f32) -> Self
+impl core::clone::Clone for tungsten_kit::StatsPlugin
+pub fn tungsten_kit::StatsPlugin::clone(&self) -> tungsten_kit::StatsPlugin
+impl core::default::Default for tungsten_kit::StatsPlugin
+pub fn tungsten_kit::StatsPlugin::default() -> tungsten_kit::StatsPlugin
+impl core::fmt::Debug for tungsten_kit::StatsPlugin
+pub fn tungsten_kit::StatsPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl tungsten_core::schedule::Plugin for tungsten_kit::StatsPlugin
+pub fn tungsten_kit::StatsPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten_kit::StatsPlugin
+impl core::marker::Send for tungsten_kit::StatsPlugin
+impl core::marker::Sync for tungsten_kit::StatsPlugin
+impl core::marker::Unpin for tungsten_kit::StatsPlugin
+impl core::marker::UnsafeUnpin for tungsten_kit::StatsPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::StatsPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::StatsPlugin
 pub struct tungsten_kit::prelude::TagFilter
 impl tungsten_kit::TagFilter
 pub fn tungsten_kit::TagFilter::all(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
@@ -810,6 +1335,27 @@ impl core::marker::Unpin for tungsten_kit::TopDownMoverPlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::TopDownMoverPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::TopDownMoverPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::TopDownMoverPlugin
+#[non_exhaustive] pub struct tungsten_kit::prelude::TraceEntry
+pub tungsten_kit::prelude::TraceEntry::entity: tungsten_core::ecs::entity::Entity
+pub tungsten_kit::prelude::TraceEntry::frame: u64
+pub tungsten_kit::prelude::TraceEntry::kind: tungsten_kit::TraceKind
+pub tungsten_kit::prelude::TraceEntry::step: u64
+impl core::clone::Clone for tungsten_kit::TraceEntry
+pub fn tungsten_kit::TraceEntry::clone(&self) -> tungsten_kit::TraceEntry
+impl core::cmp::PartialEq for tungsten_kit::TraceEntry
+pub fn tungsten_kit::TraceEntry::eq(&self, &tungsten_kit::TraceEntry) -> bool
+impl core::fmt::Debug for tungsten_kit::TraceEntry
+pub fn tungsten_kit::TraceEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_kit::TraceEntry
+pub fn tungsten_kit::TraceEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::TraceEntry
+impl core::marker::Freeze for tungsten_kit::TraceEntry
+impl core::marker::Send for tungsten_kit::TraceEntry
+impl core::marker::Sync for tungsten_kit::TraceEntry
+impl core::marker::Unpin for tungsten_kit::TraceEntry
+impl core::marker::UnsafeUnpin for tungsten_kit::TraceEntry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::TraceEntry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::TraceEntry
 pub struct tungsten_kit::prelude::TriggerEntered<Z, T>
 pub tungsten_kit::prelude::TriggerEntered::other: tungsten_core::ecs::entity::Entity
 pub tungsten_kit::prelude::TriggerEntered::zone: tungsten_core::ecs::entity::Entity
@@ -943,9 +1489,13 @@ pub tungsten_kit::FieldType::F32
 pub tungsten_kit::FieldType::F32::max: tungsten_kit::Bound
 pub tungsten_kit::FieldType::F32::min: tungsten_kit::Bound
 pub tungsten_kit::FieldType::Filter
+pub tungsten_kit::FieldType::I64
+pub tungsten_kit::FieldType::I64::max: core::option::Option<i64>
+pub tungsten_kit::FieldType::I64::min: core::option::Option<i64>
 pub tungsten_kit::FieldType::List(alloc::boxed::Box<tungsten_kit::FieldType>)
 pub tungsten_kit::FieldType::Object(&'static str)
 pub tungsten_kit::FieldType::Prefab
+pub tungsten_kit::FieldType::Shape(&'static str)
 pub tungsten_kit::FieldType::Tag
 pub tungsten_kit::FieldType::Text
 pub tungsten_kit::FieldType::U32
@@ -986,6 +1536,30 @@ impl core::marker::Unpin for tungsten_kit::Hit
 impl core::marker::UnsafeUnpin for tungsten_kit::Hit
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Hit
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Hit
+#[non_exhaustive] pub enum tungsten_kit::Modifier
+pub tungsten_kit::Modifier::Add(f32)
+pub tungsten_kit::Modifier::Mul(f32)
+pub tungsten_kit::Modifier::Override(f32)
+pub tungsten_kit::Modifier::Pct(f32)
+impl core::clone::Clone for tungsten_kit::Modifier
+pub fn tungsten_kit::Modifier::clone(&self) -> tungsten_kit::Modifier
+impl core::cmp::PartialEq for tungsten_kit::Modifier
+pub fn tungsten_kit::Modifier::eq(&self, &tungsten_kit::Modifier) -> bool
+impl core::fmt::Debug for tungsten_kit::Modifier
+pub fn tungsten_kit::Modifier::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::Modifier
+impl core::marker::StructuralPartialEq for tungsten_kit::Modifier
+impl serde_core::ser::Serialize for tungsten_kit::Modifier
+pub fn tungsten_kit::Modifier::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::Modifier
+pub fn tungsten_kit::Modifier::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::Modifier
+impl core::marker::Send for tungsten_kit::Modifier
+impl core::marker::Sync for tungsten_kit::Modifier
+impl core::marker::Unpin for tungsten_kit::Modifier
+impl core::marker::UnsafeUnpin for tungsten_kit::Modifier
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Modifier
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Modifier
 pub enum tungsten_kit::Phase
 pub tungsten_kit::Phase::Intent
 pub tungsten_kit::Phase::Move
@@ -1017,6 +1591,42 @@ impl core::marker::Unpin for tungsten_kit::Phase
 impl core::marker::UnsafeUnpin for tungsten_kit::Phase
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Phase
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Phase
+#[non_exhaustive] pub enum tungsten_kit::TraceKind
+pub tungsten_kit::TraceKind::Cue
+pub tungsten_kit::TraceKind::Cue::action: &'static str
+pub tungsten_kit::TraceKind::Cue::event: &'static str
+pub tungsten_kit::TraceKind::Cue::rule: core::option::Option<alloc::string::String>
+pub tungsten_kit::TraceKind::Despawn
+pub tungsten_kit::TraceKind::Despawn::by: &'static str
+pub tungsten_kit::TraceKind::Event
+pub tungsten_kit::TraceKind::Event::amount: core::option::Option<f32>
+pub tungsten_kit::TraceKind::Event::name: &'static str
+pub tungsten_kit::TraceKind::Event::other: core::option::Option<tungsten_core::ecs::entity::Entity>
+pub tungsten_kit::TraceKind::Skipped
+pub tungsten_kit::TraceKind::Skipped::action: &'static str
+pub tungsten_kit::TraceKind::Skipped::event: &'static str
+pub tungsten_kit::TraceKind::Skipped::why: &'static str
+pub tungsten_kit::TraceKind::Spawn
+pub tungsten_kit::TraceKind::Spawn::by: &'static str
+pub tungsten_kit::TraceKind::Spawn::prefab: alloc::string::String
+pub tungsten_kit::TraceKind::SpawnFailed
+pub tungsten_kit::TraceKind::SpawnFailed::by: &'static str
+pub tungsten_kit::TraceKind::SpawnFailed::error: alloc::string::String
+pub tungsten_kit::TraceKind::SpawnFailed::prefab: alloc::string::String
+impl core::clone::Clone for tungsten_kit::TraceKind
+pub fn tungsten_kit::TraceKind::clone(&self) -> tungsten_kit::TraceKind
+impl core::cmp::PartialEq for tungsten_kit::TraceKind
+pub fn tungsten_kit::TraceKind::eq(&self, &tungsten_kit::TraceKind) -> bool
+impl core::fmt::Debug for tungsten_kit::TraceKind
+pub fn tungsten_kit::TraceKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::TraceKind
+impl core::marker::Freeze for tungsten_kit::TraceKind
+impl core::marker::Send for tungsten_kit::TraceKind
+impl core::marker::Sync for tungsten_kit::TraceKind
+impl core::marker::Unpin for tungsten_kit::TraceKind
+impl core::marker::UnsafeUnpin for tungsten_kit::TraceKind
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::TraceKind
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::TraceKind
 pub struct tungsten_kit::ActionInput
 impl tungsten_kit::ActionInput
 pub fn tungsten_kit::ActionInput::new(impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> Self
@@ -1150,8 +1760,10 @@ pub fn tungsten_kit::ComponentDescription::field(self, tungsten_kit::FieldDescri
 pub fn tungsten_kit::ComponentDescription::fields(&self) -> &[tungsten_kit::FieldDescription]
 pub fn tungsten_kit::ComponentDescription::genre(self, &'static str) -> Self
 pub fn tungsten_kit::ComponentDescription::genres(&self) -> &[&'static str]
+pub fn tungsten_kit::ComponentDescription::is_one_of(&self) -> bool
 pub fn tungsten_kit::ComponentDescription::name(&self) -> &'static str
 pub fn tungsten_kit::ComponentDescription::new(&'static str, &'static str) -> Self
+pub fn tungsten_kit::ComponentDescription::one_of(self) -> Self
 pub fn tungsten_kit::ComponentDescription::round_trip(&self, serde_json::value::Value) -> core::option::Option<core::result::Result<serde_json::value::Value, alloc::string::String>>
 pub fn tungsten_kit::ComponentDescription::roundtrip(self, fn(serde_json::value::Value) -> core::result::Result<serde_json::value::Value, alloc::string::String>) -> Self
 pub fn tungsten_kit::ComponentDescription::sample(self, &'static str) -> Self
@@ -1168,6 +1780,250 @@ impl core::marker::Unpin for tungsten_kit::ComponentDescription
 impl core::marker::UnsafeUnpin for tungsten_kit::ComponentDescription
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ComponentDescription
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ComponentDescription
+pub struct tungsten_kit::Cooldown
+impl tungsten_kit::Cooldown
+pub const tungsten_kit::Cooldown::MAX_ELAPSES_PER_STEP: u32
+pub fn tungsten_kit::Cooldown::left(&self) -> f32
+pub fn tungsten_kit::Cooldown::new(f32) -> Self
+pub fn tungsten_kit::Cooldown::rate(&self) -> f32
+pub fn tungsten_kit::Cooldown::remaining(&self) -> core::option::Option<u32>
+pub fn tungsten_kit::Cooldown::restart(&mut self)
+pub fn tungsten_kit::Cooldown::seconds(&self) -> f32
+pub fn tungsten_kit::Cooldown::with_count(self, u32) -> Self
+pub fn tungsten_kit::Cooldown::with_jitter(self, f32) -> Self
+impl core::clone::Clone for tungsten_kit::Cooldown
+pub fn tungsten_kit::Cooldown::clone(&self) -> tungsten_kit::Cooldown
+impl core::cmp::PartialEq for tungsten_kit::Cooldown
+pub fn tungsten_kit::Cooldown::eq(&self, &tungsten_kit::Cooldown) -> bool
+impl core::fmt::Debug for tungsten_kit::Cooldown
+pub fn tungsten_kit::Cooldown::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Cooldown
+impl serde_core::ser::Serialize for tungsten_kit::Cooldown
+pub fn tungsten_kit::Cooldown::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl tungsten_core::inspect::Inspectable for tungsten_kit::Cooldown
+pub fn tungsten_kit::Cooldown::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::Cooldown
+pub fn tungsten_kit::Cooldown::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::Cooldown
+impl core::marker::Send for tungsten_kit::Cooldown
+impl core::marker::Sync for tungsten_kit::Cooldown
+impl core::marker::Unpin for tungsten_kit::Cooldown
+impl core::marker::UnsafeUnpin for tungsten_kit::Cooldown
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Cooldown
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Cooldown
+#[non_exhaustive] pub struct tungsten_kit::CooldownElapsed
+pub tungsten_kit::CooldownElapsed::entity: tungsten_core::ecs::entity::Entity
+impl tungsten_kit::CooldownElapsed
+pub fn tungsten_kit::CooldownElapsed::new(tungsten_core::ecs::entity::Entity) -> Self
+impl core::clone::Clone for tungsten_kit::CooldownElapsed
+pub fn tungsten_kit::CooldownElapsed::clone(&self) -> tungsten_kit::CooldownElapsed
+impl core::cmp::Eq for tungsten_kit::CooldownElapsed
+impl core::cmp::PartialEq for tungsten_kit::CooldownElapsed
+pub fn tungsten_kit::CooldownElapsed::eq(&self, &tungsten_kit::CooldownElapsed) -> bool
+impl core::fmt::Debug for tungsten_kit::CooldownElapsed
+pub fn tungsten_kit::CooldownElapsed::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::CooldownElapsed
+impl core::marker::StructuralPartialEq for tungsten_kit::CooldownElapsed
+impl core::marker::Freeze for tungsten_kit::CooldownElapsed
+impl core::marker::Send for tungsten_kit::CooldownElapsed
+impl core::marker::Sync for tungsten_kit::CooldownElapsed
+impl core::marker::Unpin for tungsten_kit::CooldownElapsed
+impl core::marker::UnsafeUnpin for tungsten_kit::CooldownElapsed
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CooldownElapsed
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CooldownElapsed
+pub struct tungsten_kit::CooldownPlugin
+impl core::clone::Clone for tungsten_kit::CooldownPlugin
+pub fn tungsten_kit::CooldownPlugin::clone(&self) -> tungsten_kit::CooldownPlugin
+impl core::default::Default for tungsten_kit::CooldownPlugin
+pub fn tungsten_kit::CooldownPlugin::default() -> tungsten_kit::CooldownPlugin
+impl core::fmt::Debug for tungsten_kit::CooldownPlugin
+pub fn tungsten_kit::CooldownPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::CooldownPlugin
+impl tungsten_core::schedule::Plugin for tungsten_kit::CooldownPlugin
+pub fn tungsten_kit::CooldownPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten_kit::CooldownPlugin
+impl core::marker::Send for tungsten_kit::CooldownPlugin
+impl core::marker::Sync for tungsten_kit::CooldownPlugin
+impl core::marker::Unpin for tungsten_kit::CooldownPlugin
+impl core::marker::UnsafeUnpin for tungsten_kit::CooldownPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CooldownPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CooldownPlugin
+pub struct tungsten_kit::Counters
+impl tungsten_kit::Counters
+pub fn tungsten_kit::Counters::add(&mut self, &str, i64) -> i64
+pub fn tungsten_kit::Counters::get(&self, &str) -> i64
+pub fn tungsten_kit::Counters::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, i64)>
+pub fn tungsten_kit::Counters::new() -> Self
+pub fn tungsten_kit::Counters::set(&mut self, &str, i64)
+pub fn tungsten_kit::Counters::with(self, &str, i64) -> Self
+impl core::clone::Clone for tungsten_kit::Counters
+pub fn tungsten_kit::Counters::clone(&self) -> tungsten_kit::Counters
+impl core::cmp::Eq for tungsten_kit::Counters
+impl core::cmp::PartialEq for tungsten_kit::Counters
+pub fn tungsten_kit::Counters::eq(&self, &tungsten_kit::Counters) -> bool
+impl core::convert::From<tungsten_kit::Counters> for alloc::collections::btree::map::BTreeMap<alloc::string::String, i64>
+pub fn alloc::collections::btree::map::BTreeMap<alloc::string::String, i64>::from(tungsten_kit::Counters) -> Self
+impl core::convert::TryFrom<alloc::collections::btree::map::BTreeMap<alloc::string::String, i64>> for tungsten_kit::Counters
+pub type tungsten_kit::Counters::Error = alloc::string::String
+pub fn tungsten_kit::Counters::try_from(alloc::collections::btree::map::BTreeMap<alloc::string::String, i64>) -> core::result::Result<Self, Self::Error>
+impl core::default::Default for tungsten_kit::Counters
+pub fn tungsten_kit::Counters::default() -> tungsten_kit::Counters
+impl core::fmt::Debug for tungsten_kit::Counters
+pub fn tungsten_kit::Counters::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Counters
+impl serde_core::ser::Serialize for tungsten_kit::Counters
+pub fn tungsten_kit::Counters::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl tungsten_core::inspect::Inspectable for tungsten_kit::Counters
+pub fn tungsten_kit::Counters::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::Counters
+pub fn tungsten_kit::Counters::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::Counters
+impl core::marker::Send for tungsten_kit::Counters
+impl core::marker::Sync for tungsten_kit::Counters
+impl core::marker::Unpin for tungsten_kit::Counters
+impl core::marker::UnsafeUnpin for tungsten_kit::Counters
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Counters
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Counters
+pub struct tungsten_kit::CountersPlugin
+impl core::clone::Clone for tungsten_kit::CountersPlugin
+pub fn tungsten_kit::CountersPlugin::clone(&self) -> tungsten_kit::CountersPlugin
+impl core::default::Default for tungsten_kit::CountersPlugin
+pub fn tungsten_kit::CountersPlugin::default() -> tungsten_kit::CountersPlugin
+impl core::fmt::Debug for tungsten_kit::CountersPlugin
+pub fn tungsten_kit::CountersPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::CountersPlugin
+impl tungsten_core::schedule::Plugin for tungsten_kit::CountersPlugin
+pub fn tungsten_kit::CountersPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten_kit::CountersPlugin
+impl core::marker::Send for tungsten_kit::CountersPlugin
+impl core::marker::Sync for tungsten_kit::CountersPlugin
+impl core::marker::Unpin for tungsten_kit::CountersPlugin
+impl core::marker::UnsafeUnpin for tungsten_kit::CountersPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CountersPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CountersPlugin
+pub struct tungsten_kit::CueAction
+impl tungsten_kit::CueAction
+pub fn tungsten_kit::CueAction::counter_add(&str, i64) -> Self
+pub fn tungsten_kit::CueAction::counter_set(&str, i64) -> Self
+pub fn tungsten_kit::CueAction::despawn() -> Self
+pub fn tungsten_kit::CueAction::flag(&str, bool) -> Self
+pub fn tungsten_kit::CueAction::flash() -> Self
+pub fn tungsten_kit::CueAction::for_game(self) -> Self
+pub fn tungsten_kit::CueAction::for_other(self) -> Self
+pub fn tungsten_kit::CueAction::label(tungsten_kit::LabelStyle) -> Self
+pub fn tungsten_kit::CueAction::name(&self) -> &'static str
+pub fn tungsten_kit::CueAction::prefab(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::CueAction::shake(f32) -> Self
+pub fn tungsten_kit::CueAction::sound(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::CueAction::squash(tungsten_core::components::SquashTrigger) -> Self
+pub fn tungsten_kit::CueAction::with_min_interval(self, f32) -> Self
+impl core::clone::Clone for tungsten_kit::CueAction
+pub fn tungsten_kit::CueAction::clone(&self) -> tungsten_kit::CueAction
+impl core::cmp::PartialEq for tungsten_kit::CueAction
+pub fn tungsten_kit::CueAction::eq(&self, &tungsten_kit::CueAction) -> bool
+impl core::fmt::Debug for tungsten_kit::CueAction
+pub fn tungsten_kit::CueAction::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::CueAction
+impl serde_core::ser::Serialize for tungsten_kit::CueAction
+pub fn tungsten_kit::CueAction::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::CueAction
+pub fn tungsten_kit::CueAction::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::CueAction
+impl core::marker::Send for tungsten_kit::CueAction
+impl core::marker::Sync for tungsten_kit::CueAction
+impl core::marker::Unpin for tungsten_kit::CueAction
+impl core::marker::UnsafeUnpin for tungsten_kit::CueAction
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CueAction
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CueAction
+#[non_exhaustive] pub struct tungsten_kit::CueEvent
+pub tungsten_kit::CueEvent::amount: core::option::Option<f32>
+pub tungsten_kit::CueEvent::entity: tungsten_core::ecs::entity::Entity
+pub tungsten_kit::CueEvent::other: core::option::Option<tungsten_core::ecs::entity::Entity>
+pub tungsten_kit::CueEvent::position: glam::f32::vec2::Vec2
+impl tungsten_kit::CueEvent
+pub fn tungsten_kit::CueEvent::new(tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_kit::CueEvent::with_amount(self, f32) -> Self
+pub fn tungsten_kit::CueEvent::with_other(self, tungsten_core::ecs::entity::Entity) -> Self
+impl core::clone::Clone for tungsten_kit::CueEvent
+pub fn tungsten_kit::CueEvent::clone(&self) -> tungsten_kit::CueEvent
+impl core::cmp::PartialEq for tungsten_kit::CueEvent
+pub fn tungsten_kit::CueEvent::eq(&self, &tungsten_kit::CueEvent) -> bool
+impl core::fmt::Debug for tungsten_kit::CueEvent
+pub fn tungsten_kit::CueEvent::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::CueEvent
+impl core::marker::StructuralPartialEq for tungsten_kit::CueEvent
+impl core::marker::Freeze for tungsten_kit::CueEvent
+impl core::marker::Send for tungsten_kit::CueEvent
+impl core::marker::Sync for tungsten_kit::CueEvent
+impl core::marker::Unpin for tungsten_kit::CueEvent
+impl core::marker::UnsafeUnpin for tungsten_kit::CueEvent
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CueEvent
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CueEvent
+pub struct tungsten_kit::Cues
+impl tungsten_kit::Cues
+pub fn tungsten_kit::Cues::actions(&self, &str) -> &[tungsten_kit::CueAction]
+pub fn tungsten_kit::Cues::new() -> Self
+pub fn tungsten_kit::Cues::on(self, &str, impl core::iter::traits::collect::IntoIterator<Item = tungsten_kit::CueAction>) -> Self
+impl core::clone::Clone for tungsten_kit::Cues
+pub fn tungsten_kit::Cues::clone(&self) -> tungsten_kit::Cues
+impl core::cmp::PartialEq for tungsten_kit::Cues
+pub fn tungsten_kit::Cues::eq(&self, &tungsten_kit::Cues) -> bool
+impl core::convert::From<tungsten_kit::Cues> for alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::vec::Vec<tungsten_kit::CueAction>>
+pub fn alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::vec::Vec<tungsten_kit::CueAction>>::from(tungsten_kit::Cues) -> Self
+impl core::convert::TryFrom<alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::vec::Vec<tungsten_kit::CueAction>>> for tungsten_kit::Cues
+pub type tungsten_kit::Cues::Error = alloc::string::String
+pub fn tungsten_kit::Cues::try_from(alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::vec::Vec<tungsten_kit::CueAction>>) -> core::result::Result<Self, Self::Error>
+impl core::default::Default for tungsten_kit::Cues
+pub fn tungsten_kit::Cues::default() -> tungsten_kit::Cues
+impl core::fmt::Debug for tungsten_kit::Cues
+pub fn tungsten_kit::Cues::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Cues
+impl serde_core::ser::Serialize for tungsten_kit::Cues
+pub fn tungsten_kit::Cues::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl tungsten_core::inspect::Inspectable for tungsten_kit::Cues
+pub fn tungsten_kit::Cues::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::Cues
+pub fn tungsten_kit::Cues::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::Cues
+impl core::marker::Send for tungsten_kit::Cues
+impl core::marker::Sync for tungsten_kit::Cues
+impl core::marker::Unpin for tungsten_kit::Cues
+impl core::marker::UnsafeUnpin for tungsten_kit::Cues
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Cues
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Cues
+pub struct tungsten_kit::CuesOnEvent<E>
+impl<E: 'static> tungsten_kit::CuesOnEvent<E>
+pub fn tungsten_kit::CuesOnEvent<E>::new(&'static str, fn(&E) -> core::option::Option<tungsten_kit::CueEvent>) -> Self
+impl<E: 'static> tungsten_core::schedule::Plugin for tungsten_kit::CuesOnEvent<E>
+pub fn tungsten_kit::CuesOnEvent<E>::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl<E> core::clone::Clone for tungsten_kit::CuesOnEvent<E>
+pub fn tungsten_kit::CuesOnEvent<E>::clone(&self) -> Self
+impl<E> core::fmt::Debug for tungsten_kit::CuesOnEvent<E>
+pub fn tungsten_kit::CuesOnEvent<E>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<E> core::marker::Freeze for tungsten_kit::CuesOnEvent<E>
+impl<E> core::marker::Send for tungsten_kit::CuesOnEvent<E>
+impl<E> core::marker::Sync for tungsten_kit::CuesOnEvent<E>
+impl<E> core::marker::Unpin for tungsten_kit::CuesOnEvent<E>
+impl<E> core::marker::UnsafeUnpin for tungsten_kit::CuesOnEvent<E>
+impl<E> core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CuesOnEvent<E>
+impl<E> core::panic::unwind_safe::UnwindSafe for tungsten_kit::CuesOnEvent<E>
+pub struct tungsten_kit::CuesPlugin
+impl core::clone::Clone for tungsten_kit::CuesPlugin
+pub fn tungsten_kit::CuesPlugin::clone(&self) -> tungsten_kit::CuesPlugin
+impl core::default::Default for tungsten_kit::CuesPlugin
+pub fn tungsten_kit::CuesPlugin::default() -> tungsten_kit::CuesPlugin
+impl core::fmt::Debug for tungsten_kit::CuesPlugin
+pub fn tungsten_kit::CuesPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::CuesPlugin
+impl tungsten_core::schedule::Plugin for tungsten_kit::CuesPlugin
+pub fn tungsten_kit::CuesPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten_kit::CuesPlugin
+impl core::marker::Send for tungsten_kit::CuesPlugin
+impl core::marker::Sync for tungsten_kit::CuesPlugin
+impl core::marker::Unpin for tungsten_kit::CuesPlugin
+impl core::marker::UnsafeUnpin for tungsten_kit::CuesPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CuesPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CuesPlugin
 #[non_exhaustive] pub struct tungsten_kit::Damaged
 pub tungsten_kit::Damaged::amount: f32
 pub tungsten_kit::Damaged::entity: tungsten_core::ecs::entity::Entity
@@ -1246,6 +2102,41 @@ impl core::marker::Unpin for tungsten_kit::FieldDescription
 impl core::marker::UnsafeUnpin for tungsten_kit::FieldDescription
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::FieldDescription
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::FieldDescription
+pub struct tungsten_kit::Flags
+impl tungsten_kit::Flags
+pub fn tungsten_kit::Flags::has(&self, &str) -> bool
+pub fn tungsten_kit::Flags::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
+pub fn tungsten_kit::Flags::new() -> Self
+pub fn tungsten_kit::Flags::set(&mut self, &str, bool) -> bool
+pub fn tungsten_kit::Flags::with(self, &str) -> Self
+impl core::clone::Clone for tungsten_kit::Flags
+pub fn tungsten_kit::Flags::clone(&self) -> tungsten_kit::Flags
+impl core::cmp::Eq for tungsten_kit::Flags
+impl core::cmp::PartialEq for tungsten_kit::Flags
+pub fn tungsten_kit::Flags::eq(&self, &tungsten_kit::Flags) -> bool
+impl core::convert::From<tungsten_kit::Flags> for alloc::vec::Vec<alloc::string::String>
+pub fn alloc::vec::Vec<alloc::string::String>::from(tungsten_kit::Flags) -> Self
+impl core::convert::TryFrom<alloc::vec::Vec<alloc::string::String>> for tungsten_kit::Flags
+pub type tungsten_kit::Flags::Error = alloc::string::String
+pub fn tungsten_kit::Flags::try_from(alloc::vec::Vec<alloc::string::String>) -> core::result::Result<Self, Self::Error>
+impl core::default::Default for tungsten_kit::Flags
+pub fn tungsten_kit::Flags::default() -> tungsten_kit::Flags
+impl core::fmt::Debug for tungsten_kit::Flags
+pub fn tungsten_kit::Flags::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Flags
+impl serde_core::ser::Serialize for tungsten_kit::Flags
+pub fn tungsten_kit::Flags::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl tungsten_core::inspect::Inspectable for tungsten_kit::Flags
+pub fn tungsten_kit::Flags::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::Flags
+pub fn tungsten_kit::Flags::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::Flags
+impl core::marker::Send for tungsten_kit::Flags
+impl core::marker::Sync for tungsten_kit::Flags
+impl core::marker::Unpin for tungsten_kit::Flags
+impl core::marker::UnsafeUnpin for tungsten_kit::Flags
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Flags
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Flags
 pub struct tungsten_kit::Health
 impl tungsten_kit::Health
 pub fn tungsten_kit::Health::current(&self) -> f32
@@ -1393,11 +2284,14 @@ pub struct tungsten_kit::KitDescriptions
 impl tungsten_kit::KitDescriptions
 pub fn tungsten_kit::KitDescriptions::add(&mut self, tungsten_kit::ComponentDescription)
 pub fn tungsten_kit::KitDescriptions::add_kind(&mut self, &'static str, &'static str)
+pub fn tungsten_kit::KitDescriptions::add_shape(&mut self, tungsten_kit::ComponentDescription)
 pub fn tungsten_kit::KitDescriptions::get(&self, &str) -> core::option::Option<&tungsten_kit::ComponentDescription>
+pub fn tungsten_kit::KitDescriptions::get_shape(&self, &str) -> core::option::Option<&tungsten_kit::ComponentDescription>
 pub fn tungsten_kit::KitDescriptions::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = &tungsten_kit::ComponentDescription>
 pub fn tungsten_kit::KitDescriptions::kinds(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&'static str, &'static str)>
 pub fn tungsten_kit::KitDescriptions::new() -> Self
 pub fn tungsten_kit::KitDescriptions::render(&self) -> alloc::string::String
+pub fn tungsten_kit::KitDescriptions::shapes(&self) -> impl core::iter::traits::iterator::Iterator<Item = &tungsten_kit::ComponentDescription>
 impl core::default::Default for tungsten_kit::KitDescriptions
 pub fn tungsten_kit::KitDescriptions::default() -> tungsten_kit::KitDescriptions
 impl core::fmt::Debug for tungsten_kit::KitDescriptions
@@ -1426,6 +2320,77 @@ impl core::marker::Unpin for tungsten_kit::KitPlugins
 impl core::marker::UnsafeUnpin for tungsten_kit::KitPlugins
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::KitPlugins
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::KitPlugins
+pub struct tungsten_kit::KitRng
+impl tungsten_kit::KitRng
+pub const tungsten_kit::KitRng::DEFAULT_SEED: u64
+pub fn tungsten_kit::KitRng::draws(&self) -> u64
+pub fn tungsten_kit::KitRng::index(&mut self, usize) -> usize
+pub fn tungsten_kit::KitRng::next_u32(&mut self) -> u32
+pub fn tungsten_kit::KitRng::range(&mut self, f32, f32) -> f32
+pub fn tungsten_kit::KitRng::reseed(&mut self, u64)
+pub fn tungsten_kit::KitRng::seed(&self) -> u64
+pub fn tungsten_kit::KitRng::seeded(u64) -> Self
+pub fn tungsten_kit::KitRng::unit(&mut self) -> f32
+impl core::clone::Clone for tungsten_kit::KitRng
+pub fn tungsten_kit::KitRng::clone(&self) -> tungsten_kit::KitRng
+impl core::default::Default for tungsten_kit::KitRng
+pub fn tungsten_kit::KitRng::default() -> Self
+impl core::fmt::Debug for tungsten_kit::KitRng
+pub fn tungsten_kit::KitRng::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_kit::KitRng
+impl core::marker::Send for tungsten_kit::KitRng
+impl core::marker::Sync for tungsten_kit::KitRng
+impl core::marker::Unpin for tungsten_kit::KitRng
+impl core::marker::UnsafeUnpin for tungsten_kit::KitRng
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::KitRng
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::KitRng
+pub struct tungsten_kit::KitTrace
+impl tungsten_kit::KitTrace
+pub const tungsten_kit::KitTrace::DEFAULT_CAPACITY: usize
+pub fn tungsten_kit::KitTrace::about(&self, tungsten_core::ecs::entity::Entity) -> impl core::iter::traits::iterator::Iterator<Item = &tungsten_kit::TraceEntry>
+pub fn tungsten_kit::KitTrace::capacity(&self) -> usize
+pub fn tungsten_kit::KitTrace::clear(&mut self)
+pub fn tungsten_kit::KitTrace::dropped(&self) -> u64
+pub fn tungsten_kit::KitTrace::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = &tungsten_kit::TraceEntry>
+pub fn tungsten_kit::KitTrace::new(usize) -> Self
+pub fn tungsten_kit::KitTrace::steps(&self) -> u64
+impl core::default::Default for tungsten_kit::KitTrace
+pub fn tungsten_kit::KitTrace::default() -> Self
+impl core::fmt::Debug for tungsten_kit::KitTrace
+pub fn tungsten_kit::KitTrace::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_kit::KitTrace
+impl core::marker::Send for tungsten_kit::KitTrace
+impl core::marker::Sync for tungsten_kit::KitTrace
+impl core::marker::Unpin for tungsten_kit::KitTrace
+impl core::marker::UnsafeUnpin for tungsten_kit::KitTrace
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::KitTrace
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::KitTrace
+pub struct tungsten_kit::LabelStyle
+impl tungsten_kit::LabelStyle
+pub fn tungsten_kit::LabelStyle::new(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tungsten_kit::LabelStyle::with_color(self, [f32; 4]) -> Self
+pub fn tungsten_kit::LabelStyle::with_pop(self, f32) -> Self
+pub fn tungsten_kit::LabelStyle::with_rise(self, f32) -> Self
+pub fn tungsten_kit::LabelStyle::with_seconds(self, f32) -> Self
+pub fn tungsten_kit::LabelStyle::with_size(self, f32) -> Self
+impl core::clone::Clone for tungsten_kit::LabelStyle
+pub fn tungsten_kit::LabelStyle::clone(&self) -> tungsten_kit::LabelStyle
+impl core::cmp::PartialEq for tungsten_kit::LabelStyle
+pub fn tungsten_kit::LabelStyle::eq(&self, &tungsten_kit::LabelStyle) -> bool
+impl core::fmt::Debug for tungsten_kit::LabelStyle
+pub fn tungsten_kit::LabelStyle::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::LabelStyle
+impl serde_core::ser::Serialize for tungsten_kit::LabelStyle
+pub fn tungsten_kit::LabelStyle::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::LabelStyle
+pub fn tungsten_kit::LabelStyle::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::LabelStyle
+impl core::marker::Send for tungsten_kit::LabelStyle
+impl core::marker::Sync for tungsten_kit::LabelStyle
+impl core::marker::Unpin for tungsten_kit::LabelStyle
+impl core::marker::UnsafeUnpin for tungsten_kit::LabelStyle
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::LabelStyle
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::LabelStyle
 pub struct tungsten_kit::Lifetime
 impl tungsten_kit::Lifetime
 pub fn tungsten_kit::Lifetime::new(f32) -> Self
@@ -1591,6 +2556,7 @@ pub struct tungsten_kit::SoundOnEvent<E>
 impl<E: 'static> tungsten_kit::SoundOnEvent<E>
 pub fn tungsten_kit::SoundOnEvent<E>::new(&'static str, &'static str) -> Self
 pub fn tungsten_kit::SoundOnEvent<E>::select(&'static str, fn(&E) -> core::option::Option<&str>) -> Self
+pub fn tungsten_kit::SoundOnEvent<E>::with_min_interval(self, f32) -> Self
 impl<E: 'static> tungsten_core::schedule::Plugin for tungsten_kit::SoundOnEvent<E>
 pub fn tungsten_kit::SoundOnEvent<E>::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
 impl<E> core::clone::Clone for tungsten_kit::SoundOnEvent<E>
@@ -1645,6 +2611,55 @@ impl core::marker::Unpin for tungsten_kit::SourcePlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::SourcePlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::SourcePlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::SourcePlugin
+pub struct tungsten_kit::SpawnChildren
+impl tungsten_kit::SpawnChildren
+pub fn tungsten_kit::SpawnChildren::children(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, glam::f32::vec2::Vec2)>
+pub fn tungsten_kit::SpawnChildren::new() -> Self
+pub fn tungsten_kit::SpawnChildren::with_child(self, impl core::convert::Into<alloc::string::String>, glam::f32::vec2::Vec2) -> Self
+impl core::clone::Clone for tungsten_kit::SpawnChildren
+pub fn tungsten_kit::SpawnChildren::clone(&self) -> tungsten_kit::SpawnChildren
+impl core::cmp::PartialEq for tungsten_kit::SpawnChildren
+pub fn tungsten_kit::SpawnChildren::eq(&self, &tungsten_kit::SpawnChildren) -> bool
+impl core::convert::From<tungsten_kit::SpawnChildren> for alloc::vec::Vec<ChildDef>
+pub fn alloc::vec::Vec<ChildDef>::from(tungsten_kit::SpawnChildren) -> Self
+impl core::convert::TryFrom<alloc::vec::Vec<ChildDef>> for tungsten_kit::SpawnChildren
+pub type tungsten_kit::SpawnChildren::Error = alloc::string::String
+pub fn tungsten_kit::SpawnChildren::try_from(alloc::vec::Vec<ChildDef>) -> core::result::Result<Self, Self::Error>
+impl core::default::Default for tungsten_kit::SpawnChildren
+pub fn tungsten_kit::SpawnChildren::default() -> tungsten_kit::SpawnChildren
+impl core::fmt::Debug for tungsten_kit::SpawnChildren
+pub fn tungsten_kit::SpawnChildren::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::SpawnChildren
+impl serde_core::ser::Serialize for tungsten_kit::SpawnChildren
+pub fn tungsten_kit::SpawnChildren::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl tungsten_core::inspect::Inspectable for tungsten_kit::SpawnChildren
+pub fn tungsten_kit::SpawnChildren::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::SpawnChildren
+pub fn tungsten_kit::SpawnChildren::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::SpawnChildren
+impl core::marker::Send for tungsten_kit::SpawnChildren
+impl core::marker::Sync for tungsten_kit::SpawnChildren
+impl core::marker::Unpin for tungsten_kit::SpawnChildren
+impl core::marker::UnsafeUnpin for tungsten_kit::SpawnChildren
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::SpawnChildren
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::SpawnChildren
+pub struct tungsten_kit::SpawnChildrenPlugin
+impl core::clone::Clone for tungsten_kit::SpawnChildrenPlugin
+pub fn tungsten_kit::SpawnChildrenPlugin::clone(&self) -> tungsten_kit::SpawnChildrenPlugin
+impl core::default::Default for tungsten_kit::SpawnChildrenPlugin
+pub fn tungsten_kit::SpawnChildrenPlugin::default() -> tungsten_kit::SpawnChildrenPlugin
+impl core::fmt::Debug for tungsten_kit::SpawnChildrenPlugin
+pub fn tungsten_kit::SpawnChildrenPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::SpawnChildrenPlugin
+impl tungsten_core::schedule::Plugin for tungsten_kit::SpawnChildrenPlugin
+pub fn tungsten_kit::SpawnChildrenPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten_kit::SpawnChildrenPlugin
+impl core::marker::Send for tungsten_kit::SpawnChildrenPlugin
+impl core::marker::Sync for tungsten_kit::SpawnChildrenPlugin
+impl core::marker::Unpin for tungsten_kit::SpawnChildrenPlugin
+impl core::marker::UnsafeUnpin for tungsten_kit::SpawnChildrenPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::SpawnChildrenPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::SpawnChildrenPlugin
 pub struct tungsten_kit::Spawner
 impl tungsten_kit::Spawner
 pub fn tungsten_kit::Spawner::new(impl core::convert::Into<alloc::string::String>, f32) -> Self
@@ -1719,6 +2734,71 @@ impl<S> core::marker::Unpin for tungsten_kit::StateMachinePlugin<S> where S: cor
 impl<S> core::marker::UnsafeUnpin for tungsten_kit::StateMachinePlugin<S>
 impl<S> core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::StateMachinePlugin<S> where S: core::panic::unwind_safe::RefUnwindSafe
 impl<S> core::panic::unwind_safe::UnwindSafe for tungsten_kit::StateMachinePlugin<S> where S: core::panic::unwind_safe::UnwindSafe
+pub struct tungsten_kit::Stats
+impl tungsten_kit::Stats
+pub const tungsten_kit::Stats::AREA: &'static str
+pub const tungsten_kit::Stats::COOLDOWN_RATE: &'static str
+pub const tungsten_kit::Stats::DAMAGE: &'static str
+pub const tungsten_kit::Stats::MAX_HEALTH: &'static str
+pub const tungsten_kit::Stats::MOVE_SPEED: &'static str
+pub const tungsten_kit::Stats::PICKUP_RADIUS: &'static str
+pub const tungsten_kit::Stats::PROJECTILE_SPEED: &'static str
+pub const tungsten_kit::Stats::WELL_KNOWN: [&'static str; 7]
+pub fn tungsten_kit::Stats::add_modifier(&mut self, &str, &str, tungsten_kit::Modifier) -> bool
+pub fn tungsten_kit::Stats::base(&self, &str) -> core::option::Option<f32>
+pub fn tungsten_kit::Stats::get(&self, &str) -> core::option::Option<f32>
+pub fn tungsten_kit::Stats::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, f32)>
+pub fn tungsten_kit::Stats::new() -> Self
+pub fn tungsten_kit::Stats::remove_modifiers(&mut self, &str) -> usize
+pub fn tungsten_kit::Stats::set_base(&mut self, &str, f32)
+pub fn tungsten_kit::Stats::with(self, &str, f32) -> Self
+pub fn tungsten_kit::Stats::with_bounds(self, &str, f32, f32) -> Self
+impl core::clone::Clone for tungsten_kit::Stats
+pub fn tungsten_kit::Stats::clone(&self) -> tungsten_kit::Stats
+impl core::cmp::PartialEq for tungsten_kit::Stats
+pub fn tungsten_kit::Stats::eq(&self, &tungsten_kit::Stats) -> bool
+impl core::convert::From<tungsten_kit::Stats> for alloc::collections::btree::map::BTreeMap<alloc::string::String, StatFields>
+pub fn alloc::collections::btree::map::BTreeMap<alloc::string::String, StatFields>::from(tungsten_kit::Stats) -> Self
+impl core::convert::TryFrom<alloc::collections::btree::map::BTreeMap<alloc::string::String, StatFields>> for tungsten_kit::Stats
+pub type tungsten_kit::Stats::Error = alloc::string::String
+pub fn tungsten_kit::Stats::try_from(alloc::collections::btree::map::BTreeMap<alloc::string::String, StatFields>) -> core::result::Result<Self, Self::Error>
+impl core::default::Default for tungsten_kit::Stats
+pub fn tungsten_kit::Stats::default() -> tungsten_kit::Stats
+impl core::fmt::Debug for tungsten_kit::Stats
+pub fn tungsten_kit::Stats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Stats
+impl serde_core::ser::Serialize for tungsten_kit::Stats
+pub fn tungsten_kit::Stats::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl tungsten_core::inspect::Inspectable for tungsten_kit::Stats
+pub fn tungsten_kit::Stats::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::Stats
+pub fn tungsten_kit::Stats::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::Stats
+impl core::marker::Send for tungsten_kit::Stats
+impl core::marker::Sync for tungsten_kit::Stats
+impl core::marker::Unpin for tungsten_kit::Stats
+impl core::marker::UnsafeUnpin for tungsten_kit::Stats
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Stats
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Stats
+pub struct tungsten_kit::StatsPlugin
+impl tungsten_kit::StatsPlugin
+pub fn tungsten_kit::StatsPlugin::new() -> Self
+pub fn tungsten_kit::StatsPlugin::with_stat(self, &str, f32, f32) -> Self
+impl core::clone::Clone for tungsten_kit::StatsPlugin
+pub fn tungsten_kit::StatsPlugin::clone(&self) -> tungsten_kit::StatsPlugin
+impl core::default::Default for tungsten_kit::StatsPlugin
+pub fn tungsten_kit::StatsPlugin::default() -> tungsten_kit::StatsPlugin
+impl core::fmt::Debug for tungsten_kit::StatsPlugin
+pub fn tungsten_kit::StatsPlugin::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl tungsten_core::schedule::Plugin for tungsten_kit::StatsPlugin
+pub fn tungsten_kit::StatsPlugin::build(&self, &mut tungsten_core::schedule::Schedule, &mut tungsten_core::ecs::world::World)
+impl core::marker::Freeze for tungsten_kit::StatsPlugin
+impl core::marker::Send for tungsten_kit::StatsPlugin
+impl core::marker::Sync for tungsten_kit::StatsPlugin
+impl core::marker::Unpin for tungsten_kit::StatsPlugin
+impl core::marker::UnsafeUnpin for tungsten_kit::StatsPlugin
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::StatsPlugin
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::StatsPlugin
 pub struct tungsten_kit::TagFilter
 impl tungsten_kit::TagFilter
 pub fn tungsten_kit::TagFilter::all(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
@@ -1840,6 +2920,27 @@ impl core::marker::Unpin for tungsten_kit::TopDownMoverPlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::TopDownMoverPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::TopDownMoverPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::TopDownMoverPlugin
+#[non_exhaustive] pub struct tungsten_kit::TraceEntry
+pub tungsten_kit::TraceEntry::entity: tungsten_core::ecs::entity::Entity
+pub tungsten_kit::TraceEntry::frame: u64
+pub tungsten_kit::TraceEntry::kind: tungsten_kit::TraceKind
+pub tungsten_kit::TraceEntry::step: u64
+impl core::clone::Clone for tungsten_kit::TraceEntry
+pub fn tungsten_kit::TraceEntry::clone(&self) -> tungsten_kit::TraceEntry
+impl core::cmp::PartialEq for tungsten_kit::TraceEntry
+pub fn tungsten_kit::TraceEntry::eq(&self, &tungsten_kit::TraceEntry) -> bool
+impl core::fmt::Debug for tungsten_kit::TraceEntry
+pub fn tungsten_kit::TraceEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_kit::TraceEntry
+pub fn tungsten_kit::TraceEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::TraceEntry
+impl core::marker::Freeze for tungsten_kit::TraceEntry
+impl core::marker::Send for tungsten_kit::TraceEntry
+impl core::marker::Sync for tungsten_kit::TraceEntry
+impl core::marker::Unpin for tungsten_kit::TraceEntry
+impl core::marker::UnsafeUnpin for tungsten_kit::TraceEntry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::TraceEntry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::TraceEntry
 pub struct tungsten_kit::TriggerEntered<Z, T>
 pub tungsten_kit::TriggerEntered::other: tungsten_core::ecs::entity::Entity
 pub tungsten_kit::TriggerEntered::zone: tungsten_core::ecs::entity::Entity
@@ -1944,6 +3045,8 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ZonePlugin
 pub const tungsten_kit::ACTION_INPUT: &str
 pub const tungsten_kit::ANIMATION_TICK: &str
 pub const tungsten_kit::CAMERA_TARGET: &str
+pub const tungsten_kit::COOLDOWN_TICK: &str
+pub const tungsten_kit::CUES: &str
 pub const tungsten_kit::DESPAWN_OUTSIDE: &str
 pub const tungsten_kit::HEALTH_TICK: &str
 pub const tungsten_kit::HIT_FLASH_MATERIAL: &str
@@ -1956,10 +3059,14 @@ pub const tungsten_kit::KIT_PRESENT: &str
 pub const tungsten_kit::KIT_REACT: &str
 pub const tungsten_kit::KIT_RESOLVE: &str
 pub const tungsten_kit::KIT_TICK: &str
+pub const tungsten_kit::KIT_TRACE_STEP: &str
+pub const tungsten_kit::LABEL_TICK: &str
 pub const tungsten_kit::LIFETIME_TICK: &str
 pub const tungsten_kit::PATH_FOLLOW: &str
 pub const tungsten_kit::PLATFORMER_CONTROLLER: &str
 pub const tungsten_kit::SPAWNER_TICK: &str
+pub const tungsten_kit::SPAWN_CHILDREN: &str
+pub const tungsten_kit::STATS_APPLY: &str
 pub const tungsten_kit::TOP_DOWN_MOVER: &str
 pub const tungsten_kit::TRANSFORM_PROPAGATE: &str
 pub const tungsten_kit::TRANSFORM_PROPAGATE_LATE: &str

@@ -6,6 +6,23 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.83.0] - 2026-10-17
+
+Summary: M63, W13h (plan archived at `docs/plans/archive/1.0/phase6-milestone-63-kit-data-reactions.md`): the kit catalogue's A, data and reactions: stats with ordered modifiers that the movers, health and cooldowns read, cues that react to events in data with a closed set of actions and timed damage labels, cooldowns, counters, flags, a seeded random stream, child spawns and an event trace, each proven by recipes in two genres, and the template's player shaking the camera and floating its damage on a hit.
+
+### Added
+
+- **Stats** (`D-173` amends `D-158`): `Stats`, `Modifier` and `StatsPlugin`: named values with modifiers keyed by source in the order `((base + Σadd) × (1 + Σpct) × Πmul)`, the last override winning, clamped and always finite; the well-known stats (`move_speed`, `max_health`, `damage`, `cooldown_rate`, `area`, `pickup_radius`, `projectile_speed`) and a game's own in the `stats` data kind or at build, checked at load; `stats_apply` in `kit_tick` writes them into the movers' speeds, `Health`'s max (keeping the fraction left) and `Cooldown`'s rate when present.
+- **Cues** (`D-173`): `Cues`, `CueAction`, `CueEvent`, `CuesOnEvent<E>` and `CuesPlugin`: an entity's `cues` and the shared `cue_rules` kind react to `damaged`, `killed`, `zone_entered`, `cooldown_elapsed` and a game's own events with `prefab`, `counter`, `flag`, `despawn`, `sound` (with `min_interval`), `shake`, `squash`, `flash` and `label`, own cues before rules and despawns after spawns, every ID, tag and event checked at load; `LabelStyle`, the `label` action's timed world labels that rise, pop and fade on the game clock.
+- **State items** (`D-173`): `Cooldown`, `CooldownElapsed` and `CooldownPlugin` (repeating, at most 16 elapses a step, a jitter per cycle); `KitRng`, the kit's seeded stream; `Counters`, `Flags` and `CountersPlugin`, on entities and the game's own; `SpawnChildren` and `SpawnChildrenPlugin`, children queued at the flush and adopted in order; `SoundOnEvent::with_min_interval`.
+- **Seeing reactions** (`D-173` amends `D-172`): `KitTrace`, `TraceEntry` and `TraceKind`, a ring of what the items did that `KitDebugPlugin` inserts and logs while `KitDebug` is on; described shapes (`FieldType::I64`, `FieldType::Shape`, `one_of`, `KitDescriptions::add_shape`) in the components snapshot; 13 recipes, fixtures for each new item in two genres and the `stats_apply`, `cooldown_tick` and `cues` bench rows.
+
+### Changed
+
+- **The kit's schedule and hash** (`D-173`): `KitPlugins::set()` adds `stats_apply` and `cooldown_tick` after `health_tick`, `spawn_children`, `cues` and `kit_trace_step` after `spawner_tick`, and `label_tick` before `kit_debug_draw`; the kit determinism hash moves to `0xd2a0_6495_3ac2_b9c1`, its script now spawning the new prefabs and landing hits, its rows adding counters, flags and stats; the physics hashes, row digests and `DefaultPlugins`' schedule are unchanged.
+- **The template**: the player prefab's `cues` shake the camera and float a hit's amount, with a test; `AGENTS.md`, the README and the guide's "Composing with the kit" name cues, rules, stats, cooldowns, counters, flags and children.
+- **Records**: decision 173 with its marker lines on `D-155`, `D-158` and `D-172`; `DESIGN.md`'s M63 section and status line; known issues (a label's unchecked font face, world labels resolving faces only, a child's first frame, a cue on a subject despawned earlier, labels after a state's exit, a cue's step lag); the W4 ledger's two rows; the LLM index's kit row; w13-kit's revision, answered questions and follow-ups. `api/tungsten-kit.txt` gains 1,107 lines and `api/tungsten-kit-components.txt` 86, none removed; no new dependency.
+
 ## [0.82.0] - 2026-10-16
 
 Summary: M62, W13g (plan archived at `docs/plans/archive/1.0/phase6-milestone-62-kit-foundations.md`): the kit catalogue's F3, the kit's foundations: domain folders behind unchanged paths, seven phases every kit system joins, tags, intents and a camera target, a scene component per item, inspector rows, debug drawing and field descriptions under `just api-check`, recipes in four genre fixtures as the admission rule, and the template's player as a prefab of kit components.

@@ -1,0 +1,22 @@
+{
+  "tag": "trapdoor",
+  "components": {
+    "flags": [
+      "closed"
+    ],
+    "cooldown": {
+      "seconds": 1,
+      "count": 1
+    },
+    "cues": {
+      "cooldown_elapsed": [
+        {
+          "flag": {
+            "name": "closed",
+            "set": false
+          }
+        }
+      ]
+    }
+  }
+}

@@ -11,6 +11,15 @@
     },
     "potion": {
       "path": "prefabs/potion.json"
+    },
+    "delver": {
+      "path": "prefabs/delver.json"
+    },
+    "trapdoor": {
+      "path": "prefabs/trapdoor.json"
+    },
+    "slug": {
+      "path": "prefabs/slug.json"
     }
   },
   "data": {

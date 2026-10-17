@@ -20,12 +20,34 @@
     },
     "bolt": {
       "path": "prefabs/bolt.json"
+    },
+    "brute": {
+      "path": "prefabs/brute.json"
+    },
+    "bomb": {
+      "path": "prefabs/bomb.json"
+    },
+    "blast": {
+      "path": "prefabs/blast.json"
+    },
+    "hopper": {
+      "path": "prefabs/hopper.json"
     }
   },
   "data": {
     "tags": {
       "game": {
         "path": "data/tags.json"
+      }
+    },
+    "stats": {
+      "game": {
+        "path": "data/stats.json"
+      }
+    },
+    "cue_rules": {
+      "combat": {
+        "path": "data/cue_rules/combat.json"
       }
     }
   },
@@ -82,6 +104,11 @@
           0
         ]
       }
+    }
+  },
+  "sounds": {
+    "blip": {
+      "path": "sounds/blip.ogg"
     }
   }
 }

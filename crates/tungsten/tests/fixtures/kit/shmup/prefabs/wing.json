@@ -1,0 +1,11 @@
+{
+  "tag": "wing",
+  "components": {
+    "tags": [
+      "team.enemy"
+    ],
+    "health": {
+      "max": 1
+    }
+  }
+}

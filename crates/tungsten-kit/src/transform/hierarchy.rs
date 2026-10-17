@@ -125,6 +125,54 @@ pub fn spawn_child<B: Bundle>(
     child
 }
 
+/// Marks a child queued on the command buffer, with its place among its
+/// parent's queued children, until [`adopt_at_flush`] lists it in the
+/// parent's [`Children`].
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Adopt(u32);
+
+/// What a child queued from `parent` takes, its `index`-th: its [`Parent`],
+/// its [`LocalOffset`] and the [`Adopt`] mark that [`adopt_at_flush`]
+/// reads. `Parent`'s field is this module's, so a queued child gets it
+/// here.
+pub(crate) fn queued_child(
+    parent: Entity,
+    offset: Vec2,
+    index: u32,
+) -> (Parent, LocalOffset, Adopt) {
+    (Parent(parent), LocalOffset(offset), Adopt(index))
+}
+
+/// A [`CommandBuffer::call`] that lists `parent`'s queued children, those
+/// marked [`Adopt`] whose [`Parent`] names it, in its [`Children`] in their
+/// queued order and drops their marks. Queued after the children's spawns,
+/// it finds them in place; a dead parent adopts nothing, its children's
+/// spawns dropped with it.
+pub(crate) fn adopt_at_flush(world: &mut World, parent: Entity) {
+    if !world.is_alive(parent) {
+        return;
+    }
+    let mut queued: Vec<(u32, Entity)> = world
+        .query::<(Entity, &Adopt, &Parent)>()
+        .filter(|(_, _, p)| p.0 == parent)
+        .map(|(entity, adopt, _)| (adopt.0, entity))
+        .collect();
+    if queued.is_empty() {
+        return;
+    }
+    queued.sort_unstable_by_key(|&(index, child)| (index, child.id()));
+    for &(_, child) in &queued {
+        world.remove_component::<Adopt>(child);
+    }
+    let children = queued.into_iter().map(|(_, child)| child);
+    if let Some(list) = world.get_mut::<Children>(parent) {
+        list.0.extend(children);
+    } else {
+        let list: Vec<Entity> = children.collect();
+        world.insert(parent, Children(list));
+    }
+}
+
 /// Queues the despawn of `entity` and its descendants for the command flush.
 /// At the flush it despawns `entity` and every child that still hangs from
 /// it, down the tree, and drops `entity` from its parent's [`Children`]. A
