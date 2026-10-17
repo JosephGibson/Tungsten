@@ -1,12 +1,15 @@
 //! The platformer fixture: a hero on a kinematic body under the move
 //! actions and a jump slot, a ground, a door zone, a spark and a lift.
 
-use tungsten_core::PluginSet;
+use tungsten_core::physics::Velocity;
+use tungsten_core::{PluginSet, Transform, World};
 
-use super::{DTS, body_at, frames_for, recipe, spawn};
+use super::{DTS, body_at, drawn_at, frames_for, recipe, spawn, tagged};
 use crate::kit::{
-    KitPlugins, PathFollowerPlugin, PlatformerController, PlatformerControllerPlugin, ZoneEntered,
+    Children, Flags, Health, KitPlugins, PathFollowerPlugin, PlatformerController,
+    PlatformerControllerPlugin, Stats, ZoneEntered,
 };
+use crate::state::{GameState, SceneEntity, StateContext, StateId, StateStack};
 
 const GENRE: &str = "platformer";
 
@@ -141,4 +144,130 @@ fn the_reverse_order_still_resolves_the_follower_before_the_controller() {
     let follow = fixed.find("path_follow").unwrap();
     let controller = fixed.find("platformer_controller").unwrap();
     assert!(follow < controller, "{fixed}");
+}
+
+#[test]
+fn the_runner_runs_at_its_move_speed_stat_with_its_max_health() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "ground", [0.0, 300.0]);
+        let runner = spawn(&mut harness, "runner", [0.0, 270.0]);
+        harness.step(2);
+        let world = harness.world();
+        let health = world.get::<Health>(runner).unwrap();
+        assert_eq!(
+            (health.current(), health.max()),
+            (4.0, 4.0),
+            "dt {dt}: 3/3 becomes 4/4"
+        );
+        assert_eq!(
+            world.get::<Stats>(runner).unwrap().get("jump_boost"),
+            Some(1.0)
+        );
+        harness.press_action("move_right");
+        harness.step(frames_for(0.5, dt));
+        let speed = harness.world().get::<Velocity>(runner).unwrap().0.x;
+        assert!(
+            (speed - 150.0).abs() < 1e-3,
+            "dt {dt}: the stat's 150, not the controller's 200: {speed}"
+        );
+    }
+}
+
+#[test]
+fn the_key_sets_the_runners_flag_and_goes() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "ground", [0.0, 300.0]);
+        let runner = spawn(&mut harness, "runner", [0.0, 270.0]);
+        let key = spawn(&mut harness, "key", [80.0, 270.0]);
+        harness.step(2);
+        assert!(!harness.world().get::<Flags>(runner).unwrap().has("has_key"));
+        harness.press_action("move_right");
+        harness.step(frames_for(1.0, dt));
+        let world = harness.world();
+        assert!(
+            world.get::<Flags>(runner).unwrap().has("has_key"),
+            "dt {dt}"
+        );
+        assert!(!world.is_alive(key), "dt {dt}: the key went");
+    }
+}
+
+/// A room whose `on_enter` spawns the torch with its `SceneEntity`.
+struct Room;
+
+impl GameState for Room {
+    fn id(&self) -> StateId {
+        "room"
+    }
+
+    fn on_enter(&mut self, ctx: &mut StateContext) {
+        let torch = ctx
+            .world
+            .prepare_prefab("torch", [300.0, 200.0])
+            .unwrap()
+            .with((SceneEntity {
+                state_id: ctx.state_id,
+            },));
+        torch.spawn(ctx.world);
+    }
+
+    fn on_exit(&mut self, _ctx: &mut StateContext) {}
+
+    fn update(&mut self, _world: &mut World) {}
+}
+
+#[test]
+fn the_torchs_glow_hangs_above_it_and_leaves_with_its_state() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        harness.step(1);
+        harness
+            .world_mut()
+            .resource_mut::<StateStack>()
+            .request_push(Room);
+        harness.step(2);
+        let torch = tagged(&harness, "torch")[0];
+        let glows = tagged(&harness, "glow");
+        assert_eq!(glows.len(), 1, "dt {dt}");
+        let glow = glows[0];
+        let world = harness.world();
+        assert_eq!(
+            world
+                .get::<Children>(torch)
+                .unwrap()
+                .iter()
+                .collect::<Vec<_>>(),
+            [glow]
+        );
+        assert_eq!(world.get::<SceneEntity>(glow).unwrap().state_id, "room");
+        assert_eq!(
+            drawn_at(&harness, glow),
+            drawn_at(&harness, torch) + glam::Vec2::new(0.0, -12.0)
+        );
+
+        harness
+            .world_mut()
+            .get_mut::<Transform>(torch)
+            .unwrap()
+            .position
+            .x += 50.0;
+        harness.step(1);
+        assert_eq!(
+            drawn_at(&harness, glow),
+            glam::Vec2::new(350.0, 188.0),
+            "dt {dt}: it follows"
+        );
+
+        harness
+            .world_mut()
+            .resource_mut::<StateStack>()
+            .request_pop();
+        harness.step(1);
+        assert!(
+            tagged(&harness, "torch").is_empty() && tagged(&harness, "glow").is_empty(),
+            "dt {dt}"
+        );
+    }
 }

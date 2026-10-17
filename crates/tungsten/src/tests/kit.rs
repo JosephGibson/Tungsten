@@ -21,10 +21,12 @@ use tungsten_core::{
 
 use crate::App;
 use crate::kit::{
-    Children, Damaged, DespawnOutside, HEALTH_TICK, HIT_FLASH_MATERIAL, Health, Hit as Outcome,
-    HitFlash, KitPlugins, Lifetime, LocalOffset, Parent, PathFollower, PlatformerController,
-    SoundOnEvent, Source, Spawner, StateMachine, StateMachinePlugin, TopDownMover, TriggerEntered,
-    TriggerZone, cursor_to_world, damage, despawn_recursive, spawn_child,
+    Children, Cooldown, CooldownElapsed, Counters, CueAction, CueEvent, Cues, CuesOnEvent, Damaged,
+    DespawnOutside, HEALTH_TICK, HIT_FLASH_MATERIAL, Health, Hit as Outcome, HitFlash, KitPlugins,
+    KitRng, KitTrace, LabelStyle, Lifetime, LocalOffset, Modifier, Parent, PathFollower,
+    PlatformerController, SoundOnEvent, Source, SpawnChildren, Spawner, StateMachine,
+    StateMachinePlugin, Stats, TopDownMover, TraceKind, TriggerEntered, TriggerZone,
+    cursor_to_world, damage, despawn_recursive, spawn_child,
 };
 use crate::state::{GameState, SceneEntity, StateContext, StateId, StateStack};
 use crate::testing::Harness;
@@ -32,11 +34,11 @@ use crate::testing::Harness;
 /// `post_update` with `DefaultPlugins`, then `KitPlugins::set()`, the sound
 /// plugin, the trigger zone and the state machine: the present phase after
 /// the late propagation and before the camera.
-const KIT_POST_UPDATE: &str = "post_update: physics_sync, transform_propagate, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, transform_propagate_late, kit_present, animation_tick, hit_flash_tick, camera_target, kit_debug_draw, hit_sound, camera_update";
+const KIT_POST_UPDATE: &str = "post_update: physics_sync, transform_propagate, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, transform_propagate_late, kit_present, animation_tick, hit_flash_tick, camera_target, label_tick, kit_debug_draw, hit_sound, camera_update";
 
 /// `fixed_update` with the same plugins: the six fixed phases around
 /// `physics_step`, each member in its registration order.
-const KIT_FIXED_UPDATE: &str = "fixed_update: physics_prev_snapshot, kit_tick, lifetime_tick, health_tick, kit_intent, action_input, phases, kit_move, path_follow, platformer_controller, top_down_mover, physics_step, kit_overlap, despawn_outside, zone_tick, zone_entered, kit_resolve, kit_react, spawner_tick";
+const KIT_FIXED_UPDATE: &str = "fixed_update: physics_prev_snapshot, kit_tick, lifetime_tick, health_tick, stats_apply, cooldown_tick, kit_intent, action_input, phases, kit_move, path_follow, platformer_controller, top_down_mover, physics_step, kit_overlap, despawn_outside, zone_tick, zone_entered, kit_resolve, kit_react, spawner_tick, spawn_children, cues, kit_trace_step";
 
 /// The event the sound plugin plays.
 struct Hit;
@@ -1578,4 +1580,565 @@ fn a_state_machine_transitions_before_the_step_on_the_game_clock() {
         .unwrap()
         .elapsed();
     assert!((elapsed - 11.0 * STEP).abs() < 1e-4, "{elapsed}");
+}
+
+#[test]
+fn stats_drive_the_movers_health_and_cooldowns() {
+    let mut harness = Harness::new(kit_app());
+    harness.set_dt(1.0 / 60.0);
+    let mut mover = TopDownMover::new(240.0);
+    mover.set_direction(Vec2::X);
+    let runner = spawn_at(
+        &mut harness,
+        0.0,
+        0.0,
+        (
+            Position::new(0.0, 0.0),
+            mover,
+            Health::new(5.0),
+            Cooldown::new(0.5),
+            Stats::new()
+                .with(Stats::MOVE_SPEED, 60.0)
+                .with(Stats::MAX_HEALTH, 8.0)
+                .with(Stats::COOLDOWN_RATE, 2.0),
+        ),
+    );
+    let mut elapsed = 0;
+    for _ in 0..60 {
+        harness.step(1);
+        elapsed += harness.events::<CooldownElapsed>().count();
+    }
+    let world = harness.world();
+    let at = world.get::<Position>(runner).unwrap().0;
+    assert!(
+        (at.x - 60.0).abs() < 1e-3,
+        "60 px/s from its first step: {at}"
+    );
+    let health = world.get::<Health>(runner).unwrap();
+    assert_eq!(
+        (health.current(), health.max()),
+        (8.0, 8.0),
+        "5/5 becomes 8/8"
+    );
+    assert_eq!(elapsed, 4, "a 0.5 s cooldown at twice the game clock");
+
+    // A modifier doubles the speed from the next step.
+    harness
+        .world_mut()
+        .get_mut::<Stats>(runner)
+        .unwrap()
+        .add_modifier(Stats::MOVE_SPEED, "haste", Modifier::Pct(1.0));
+    harness.step(30);
+    let at = harness.world().get::<Position>(runner).unwrap().0;
+    assert!((at.x - 120.0).abs() < 1e-3, "{at}");
+
+    // An entity without stats keeps its own fields.
+    let plain = spawn_at(
+        &mut harness,
+        0.0,
+        50.0,
+        (Position::new(0.0, 50.0), Health::new(5.0)),
+    );
+    harness.step(1);
+    assert_eq!(harness.world().get::<Health>(plain).unwrap().max(), 5.0);
+}
+
+/// The frames, at dt 1/30, on which `entity`'s cooldown elapsed, with how
+/// many times each.
+fn elapses(harness: &mut Harness, entity: Entity, frames: u32) -> Vec<(u32, usize)> {
+    (0..frames)
+        .filter_map(|frame| {
+            harness.step(1);
+            let count = harness
+                .events::<CooldownElapsed>()
+                .filter(|event| event.entity == entity)
+                .count();
+            (count > 0).then_some((frame, count))
+        })
+        .collect()
+}
+
+/// A jittered cooldown's elapses over three seconds under `seed`.
+fn jittered_run(seed: u64) -> Vec<(u32, usize)> {
+    let mut harness = Harness::new(kit_app());
+    harness.set_dt(1.0 / 30.0);
+    harness.world_mut().resource_mut::<KitRng>().reseed(seed);
+    let hopper = spawn_at(
+        &mut harness,
+        0.0,
+        0.0,
+        (Cooldown::new(0.25).with_jitter(0.25),),
+    );
+    elapses(&mut harness, hopper, 90)
+}
+
+#[test]
+fn a_cooldown_elapses_on_the_game_clock_and_its_jitter_repeats_under_a_seed() {
+    // Two fixed steps a frame: a 0.25 s cooldown elapses every 7.5 frames.
+    let mut harness = Harness::new(kit_app());
+    harness.set_dt(1.0 / 30.0);
+    let fuse = spawn_at(&mut harness, 0.0, 0.0, (Cooldown::new(0.25),));
+    let seen = elapses(&mut harness, fuse, 30);
+    assert_eq!(seen.iter().map(|&(_, n)| n).sum::<usize>(), 4, "{seen:?}");
+
+    // A paused clock holds it.
+    harness.world_mut().resource_mut::<Time>().pause();
+    assert!(elapses(&mut harness, fuse, 30).is_empty());
+    harness.world_mut().resource_mut::<Time>().resume();
+    assert_eq!(elapses(&mut harness, fuse, 30).len(), 4);
+
+    let first = jittered_run(11);
+    assert_eq!(first, jittered_run(11), "one seed, one run");
+    assert_ne!(first, jittered_run(12));
+    assert!(
+        (6..=12).contains(&first.len()),
+        "0.25 to 0.5 s a cycle: {first:?}"
+    );
+}
+
+/// A hangar whose `on_enter` spawns a moving gunship with two wings to
+/// spawn, carrying its `SceneEntity`.
+struct Hangar;
+
+impl GameState for Hangar {
+    fn id(&self) -> StateId {
+        "hangar"
+    }
+
+    fn on_enter(&mut self, ctx: &mut StateContext) {
+        ctx.world.spawn_with(
+            RigidBodyBundle::kinematic(
+                Position::new(100.0, 100.0),
+                Collider::aabb(Vec2::splat(8.0)),
+            )
+            .with_velocity(Velocity::new(60.0, 0.0))
+            .with((
+                Transform::from_position(Vec2::new(100.0, 100.0)),
+                SpawnChildren::new()
+                    .with_child("wing", Vec2::new(-24.0, 0.0))
+                    .with_child("wing", Vec2::new(24.0, 0.0)),
+                SceneEntity {
+                    state_id: ctx.state_id,
+                },
+            )),
+        );
+    }
+
+    fn on_exit(&mut self, _ctx: &mut StateContext) {}
+
+    fn update(&mut self, _world: &mut World) {}
+}
+
+#[test]
+fn spawned_children_follow_their_parent_and_leave_with_its_state() {
+    use tungsten_core::{PrefabData, PrefabRegistry, Tag};
+
+    let dir = std::env::temp_dir().join(format!("tungsten_kit_wings_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("wing.json");
+    std::fs::write(&path, r#"{ "tag": "wing" }"#).unwrap();
+    let mut harness = Harness::new(kit_app());
+    let wing = PrefabData::load(&path, harness.world()).unwrap();
+    std::fs::remove_dir_all(&dir).unwrap();
+    harness
+        .world_mut()
+        .resource_mut::<PrefabRegistry>()
+        .insert("wing".to_string(), wing);
+    harness.set_dt(1.0 / 60.0);
+    harness.step(1);
+    let count = harness.world().entity_count();
+    harness
+        .world_mut()
+        .resource_mut::<StateStack>()
+        .request_push(Hangar);
+    harness.step(2);
+    let gunship = harness
+        .world()
+        .query::<(Entity, &RigidBody)>()
+        .map(|(entity, _)| entity)
+        .next()
+        .unwrap();
+    let wings: Vec<Entity> = harness
+        .world()
+        .get::<Children>(gunship)
+        .expect("the wings joined its list")
+        .iter()
+        .collect();
+    assert_eq!(wings.len(), 2);
+    for _ in 0..20 {
+        harness.step(1);
+        let at = position(&harness, gunship);
+        for (&wing, dx) in wings.iter().zip([-24.0, 24.0]) {
+            assert!(close(position(&harness, wing), at + Vec2::new(dx, 0.0)));
+        }
+    }
+    let world = harness.world();
+    for &wing in &wings {
+        assert_eq!(world.get::<Tag>(wing).unwrap().name, "wing");
+        assert_eq!(world.get::<Source>(wing), Some(&Source::new(gunship)));
+        assert_eq!(world.get::<SceneEntity>(wing).unwrap().state_id, "hangar");
+    }
+    assert!(position(&harness, gunship).x > 110.0, "it moved");
+
+    pop_state(&mut harness);
+    harness.step(1);
+    assert_eq!(harness.world().query::<&SceneEntity>().count(), 0);
+    assert_eq!(
+        harness.world().entity_count(),
+        count,
+        "nothing of the hangar remains"
+    );
+}
+
+#[test]
+fn sound_on_event_waits_out_its_min_interval() {
+    let mut app = App::new(Config::default()).unwrap();
+    app.add_plugins(KitPlugins::set());
+    app.add_plugin(SoundOnEvent::<Hit>::new("hit_sound", "thud").with_min_interval(0.1));
+    let mut harness = Harness::new(app);
+    harness.set_dt(1.0 / 60.0);
+    harness
+        .world_mut()
+        .resource_mut::<SoundRegistry>()
+        .register(
+            "thud".to_string(),
+            SoundData {
+                samples: vec![0.0; 4],
+                sample_rate: 44_100,
+                channels: 1,
+            },
+            0.5,
+            false,
+        );
+    let mut played = Vec::new();
+    for frame in 0..13 {
+        harness
+            .world_mut()
+            .resource_mut::<EventQueue<Hit>>()
+            .send(Hit);
+        harness.step(1);
+        if !harness.audio().is_empty() {
+            played.push(frame);
+        }
+    }
+    assert_eq!(played, [0, 6, 12], "a hit every frame plays every 0.1 s");
+
+    // Real time runs while the game clock is paused.
+    harness.world_mut().resource_mut::<Time>().pause();
+    let mut paused = 0;
+    for _ in 0..6 {
+        harness
+            .world_mut()
+            .resource_mut::<EventQueue<Hit>>()
+            .send(Hit);
+        harness.step(1);
+        paused += harness.audio().len();
+    }
+    assert_eq!(paused, 1);
+}
+
+/// Hits on the slime for the test systems to land: one in `update`, one in
+/// `post_update` after the kit's, one in the fixed step before the cues.
+#[derive(Default)]
+struct PendingStrikes {
+    target: Option<Entity>,
+    update: bool,
+    post_update: bool,
+    fixed: bool,
+}
+
+fn strike(world: &mut World, take: fn(&mut PendingStrikes) -> &mut bool) {
+    let pending = world.resource_mut::<PendingStrikes>();
+    if std::mem::take(take(pending))
+        && let Some(target) = pending.target
+    {
+        damage(world, target, 1.0);
+    }
+}
+
+fn game_count(harness: &Harness, name: &str) -> i64 {
+    harness.world().resource::<Counters>().get(name)
+}
+
+#[test]
+fn cues_react_once_to_each_event_from_any_stage() {
+    let mut app = kit_app();
+    app.add_system_named("strike_update", |world: &mut World| {
+        strike(world, |p| &mut p.update);
+    });
+    app.add_system_to(
+        Stage::PostUpdate,
+        system("strike_late", |world: &mut World| {
+            strike(world, |p| &mut p.post_update);
+        })
+        .after("kit_debug_draw"),
+    );
+    app.add_system_to(
+        Stage::FixedUpdate,
+        crate::kit::Phase::Resolve.join(system("strike_fixed", |world: &mut World| {
+            strike(world, |p| &mut p.fixed);
+        })),
+    );
+    let mut harness = Harness::new(app);
+    // Two fixed steps a frame.
+    harness.set_dt(1.0 / 30.0);
+    let slime = spawn_at(
+        &mut harness,
+        0.0,
+        0.0,
+        (
+            Health::new(100.0),
+            Cues::new().on("damaged", [CueAction::counter_add("hits", 1).for_game()]),
+        ),
+    );
+    harness.world_mut().insert_resource(PendingStrikes {
+        target: Some(slime),
+        ..PendingStrikes::default()
+    });
+    let arms: [fn(&mut PendingStrikes); 3] = [
+        |p| p.update = true,
+        |p| p.post_update = true,
+        |p| p.fixed = true,
+    ];
+    let mut counts = Vec::new();
+    for arm in arms {
+        arm(harness.world_mut().resource_mut::<PendingStrikes>());
+        harness.step(4);
+        counts.push(game_count(&harness, "hits"));
+    }
+    assert_eq!(counts, [1, 2, 3], "each hit once, whichever stage sent it");
+}
+
+#[test]
+fn entity_cues_run_before_rules_and_despawns_after_spawns() {
+    use crate::kit_recipes::{DTS, recipe, spawn};
+    use tungsten_core::Tag;
+
+    for dt in DTS {
+        let mut harness = recipe("top_down", KitPlugins::set(), dt);
+        let slime = spawn(&mut harness, "slime", [40.0, 40.0]);
+        harness.world_mut().insert(
+            slime,
+            Cues::new().on(
+                "killed",
+                [
+                    CueAction::despawn(),
+                    CueAction::counter_set("kills", 10).for_game(),
+                    CueAction::prefab("blast"),
+                ],
+            ),
+        );
+        harness.step(1);
+        assert_eq!(damage(harness.world_mut(), slime, 5.0), Outcome::Killed);
+        harness.step(1);
+        // The own cue sets 10, then the shared `killed` rule adds 1.
+        assert_eq!(game_count(&harness, "kills"), 11, "dt {dt}");
+        let world = harness.world();
+        assert!(!world.is_alive(slime));
+        let blasts: Vec<(Entity, Vec2)> = world
+            .query::<(Entity, &Tag, &Transform)>()
+            .filter(|(_, tag, _)| tag.name == "blast")
+            .map(|(entity, _, transform)| (entity, transform.position))
+            .collect();
+        assert_eq!(
+            blasts.len(),
+            1,
+            "dt {dt}: the spawn queued before the despawn"
+        );
+        assert_eq!(blasts[0].1, Vec2::new(40.0, 40.0));
+        assert_eq!(world.get::<Source>(blasts[0].0), Some(&Source::new(slime)));
+        let order: Vec<String> = world
+            .resource::<KitTrace>()
+            .about(slime)
+            .filter_map(|entry| match &entry.kind {
+                TraceKind::Cue { action, rule, .. } => Some(format!("{action} {rule:?}")),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            order,
+            [
+                "despawn None",
+                "counter None",
+                "prefab None",
+                "label Some(\"combat.1\")",
+                "counter Some(\"combat.0\")"
+            ],
+            "dt {dt}: every occurrence's own cues, then the hit's rule and the kill's"
+        );
+    }
+}
+
+/// The game's pickup: a coin taken by a hero.
+struct PickedUp {
+    coin: Entity,
+    hero: Entity,
+}
+
+/// A coin that picks itself up is no pickup.
+fn picked_up(event: &PickedUp) -> Option<CueEvent> {
+    (event.coin != event.hero).then(|| {
+        CueEvent::new(event.coin, Vec2::ZERO)
+            .with_amount(5.0)
+            .with_other(event.hero)
+    })
+}
+
+#[test]
+fn a_game_event_reaches_cues_through_cues_on_event() {
+    let mut app = kit_app();
+    app.add_plugin(CuesOnEvent::<PickedUp>::new("picked_up", picked_up));
+    let mut harness = Harness::new(app);
+    let hero = spawn_at(&mut harness, 0.0, 0.0, (Visibility::default(),));
+    let coin = spawn_at(
+        &mut harness,
+        8.0,
+        0.0,
+        (Cues::new().on(
+            "picked_up",
+            [
+                CueAction::counter_add("coins", 5).for_other(),
+                CueAction::label(LabelStyle::new("sans")),
+                CueAction::despawn(),
+            ],
+        ),),
+    );
+    let fake = spawn_at(&mut harness, 16.0, 0.0, (Visibility::default(),));
+    let queue = harness.world_mut().resource_mut::<EventQueue<PickedUp>>();
+    queue.send(PickedUp { coin, hero });
+    queue.send(PickedUp {
+        coin: fake,
+        hero: fake,
+    });
+    harness.step(2);
+    let world = harness.world();
+    assert_eq!(world.get::<Counters>(hero).unwrap().get("coins"), 5);
+    assert!(!world.is_alive(coin));
+    assert!(world.is_alive(fake), "the map's `None` skipped it");
+    harness.step(2);
+    assert_eq!(
+        harness.world().get::<Counters>(hero).unwrap().get("coins"),
+        5,
+        "once"
+    );
+}
+
+/// The frame's drawn labels: text, the pivot's physical point, scale and
+/// alpha.
+fn drawn_labels(harness: &Harness) -> Vec<(String, [f32; 2], f32, u8)> {
+    harness
+        .draw()
+        .unwrap()
+        .world_labels
+        .iter()
+        .map(|run| (run.content.clone(), run.position, run.scale, run.color[3]))
+        .collect()
+}
+
+#[test]
+fn labels_rise_fade_and_hold_while_paused() {
+    let mut harness = Harness::new(kit_app());
+    harness.set_dt(0.1);
+    let slime = spawn_at(
+        &mut harness,
+        0.0,
+        0.0,
+        (
+            Health::new(10.0),
+            Cues::new().on(
+                "damaged",
+                [CueAction::label(
+                    LabelStyle::new("sans")
+                        .with_seconds(1.0)
+                        .with_rise(50.0)
+                        .with_pop(2.0),
+                )],
+            ),
+        ),
+    );
+    harness.step(1);
+    damage(harness.world_mut(), slime, 2.5);
+    let mut frames = Vec::new();
+    for _ in 0..4 {
+        harness.step(1);
+        frames.push(drawn_labels(&harness));
+    }
+    // The hit's own frame draws it fresh: at its point, popped to 2.
+    let first = frames[0][0].clone();
+    assert_eq!(first.0, "2.5");
+    assert_eq!(first.3, 255);
+    for pair in frames.windows(2) {
+        let (before, after) = (&pair[0][0], &pair[1][0]);
+        assert!(
+            after.1[1] < before.1[1],
+            "it rises: {before:?} then {after:?}"
+        );
+    }
+    assert!(frames[3][0].2 < first.2, "the pop settles");
+
+    harness.world_mut().resource_mut::<Time>().pause();
+    harness.step(1);
+    let held = drawn_labels(&harness)[0].clone();
+    harness.step(5);
+    let paused = drawn_labels(&harness);
+    assert_eq!(paused.len(), 1, "still drawn every frame");
+    assert_eq!(paused[0].1, held.1, "a paused clock holds it");
+
+    harness.world_mut().resource_mut::<Time>().resume();
+    harness.step(3);
+    let fading = drawn_labels(&harness);
+    assert!(fading[0].3 < 255, "past half its second it fades");
+    harness.step(4);
+    assert!(drawn_labels(&harness).is_empty(), "gone after its second");
+}
+
+#[test]
+fn the_trace_tells_why_an_entity_died() {
+    let mut harness = Harness::new(kit_app());
+    let slime = spawn_at(
+        &mut harness,
+        0.0,
+        0.0,
+        (
+            Health::new(1.0),
+            Cues::new().on("killed", [CueAction::despawn()]),
+        ),
+    );
+    harness.step(1);
+    damage(harness.world_mut(), slime, 3.0);
+    harness.step(1);
+    assert!(!harness.world().is_alive(slime));
+    let trace = harness.world().resource::<KitTrace>();
+    let head = format!("{slime} ");
+    let story: Vec<String> = trace
+        .about(slime)
+        .map(|entry| {
+            let line = entry.to_string();
+            line.split_once(&head)
+                .map(|(_, rest)| rest.to_owned())
+                .unwrap()
+        })
+        .collect();
+    assert_eq!(
+        story,
+        [
+            "damaged 3",
+            "killed 3",
+            "killed: despawn (own cue)",
+            "despawned by cues"
+        ],
+        "{}",
+        trace
+            .about(slime)
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    // The hit came between frames; the cue ran in the next frame's step.
+    let entries: Vec<_> = trace.about(slime).collect();
+    assert_eq!(
+        entries[0].step, entries[2].step,
+        "pushed outside the steps: the next one"
+    );
+    assert_eq!(entries[2].frame, entries[0].frame + 1);
 }

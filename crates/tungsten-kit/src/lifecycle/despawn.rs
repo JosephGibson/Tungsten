@@ -5,8 +5,8 @@ use glam::Vec2;
 use serde::{Deserialize, Serialize};
 use tungsten_core::physics::Position;
 use tungsten_core::{
-    CameraState, CommandBuffer, Entity, Inspectable, Plugin, Schedule, SpawnContext, Transform,
-    WindowSize, World, system,
+    CameraState, CommandBuffer, Entity, Inspectable, Plugin, Schedule, SpawnContext, Time,
+    Transform, WindowSize, World, system,
 };
 
 use crate::foundation::describe::{
@@ -14,6 +14,7 @@ use crate::foundation::describe::{
 };
 use crate::foundation::inspect::{point, register_rows};
 use crate::foundation::phases::{Phase, ensure_phases};
+use crate::foundation::trace::{TraceKind, trace};
 use crate::transform::hierarchy::despawn_recursive;
 
 /// [`DespawnOutsidePlugin`]'s system, in the overlap phase.
@@ -156,9 +157,12 @@ impl Plugin for DespawnOutsidePlugin {
             DESPAWN_OUTSIDE_COMPONENT,
             |def: DespawnOutsideDef, _: &SpawnContext<'_>| (DespawnOutside::from(def),),
         );
+        let mut traced = Traced::default();
         schedule.add(
             Phase::Overlap.stage(),
-            Phase::Overlap.join(system(DESPAWN_OUTSIDE, despawn_outside)),
+            Phase::Overlap.join(system(DESPAWN_OUTSIDE, move |world: &mut World| {
+                despawn_outside(world, &mut traced);
+            })),
         );
     }
 }
@@ -226,7 +230,15 @@ fn outside(point: Vec2, min: Vec2, max: Vec2) -> bool {
     point.x < min.x || point.x > max.x || point.y < min.y || point.y > max.y
 }
 
-fn despawn_outside(world: &mut World) {
+/// The entities the trace already has a despawn for this frame: the system
+/// queues a despawn each step until the flush, and traces it once.
+#[derive(Default)]
+struct Traced {
+    frame: u64,
+    entities: Vec<Entity>,
+}
+
+fn despawn_outside(world: &mut World, traced: &mut Traced) {
     let view = match (
         world.get_resource::<CameraState>(),
         world.get_resource::<WindowSize>(),
@@ -253,6 +265,19 @@ fn despawn_outside(world: &mut World) {
     }
     if gone.is_empty() {
         return;
+    }
+    let frame = world.get_resource::<Time>().map_or(0, Time::frame);
+    if traced.frame != frame {
+        traced.frame = frame;
+        traced.entities.clear();
+    }
+    for &entity in &gone {
+        if !traced.entities.contains(&entity) {
+            traced.entities.push(entity);
+            trace(world, entity, || TraceKind::Despawn {
+                by: DESPAWN_OUTSIDE,
+            });
+        }
     }
     let Some(commands) = world.get_resource_mut::<CommandBuffer>() else {
         return;

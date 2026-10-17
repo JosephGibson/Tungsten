@@ -4,8 +4,9 @@ use tungsten_core::physics::{Collider, Position, RigidBodyBundle};
 use tungsten_core::{Bundle, InspectRegistry, Schedule, Transform};
 
 use crate::{
-    ActionInput, CameraTarget, Health, HitFlash, Intent, KitDescriptions, KitPlugins, Lifetime,
-    PathFollower, Spawner, TagFilter, Tags, TopDownMover, Zone, spawn_child,
+    ActionInput, CameraTarget, Cooldown, Counters, CueAction, Cues, Flags, Health, HitFlash,
+    Intent, KitDescriptions, KitPlugins, Lifetime, Modifier, PathFollower, SpawnChildren, Spawner,
+    Stats, TagFilter, Tags, TopDownMover, Zone, spawn_child,
 };
 
 fn world() -> World {
@@ -52,6 +53,12 @@ fn a_world_from_the_kit_plugins_has_rows_for_each_described_component() {
         ("top_down_mover", "TopDownMover"),
         ("platformer_controller", "PlatformerController"),
         ("animation", "AnimationState"),
+        ("stats", "Stats"),
+        ("cues", "Cues"),
+        ("cooldown", "Cooldown"),
+        ("counters", "Counters"),
+        ("flags", "Flags"),
+        ("spawn_children", "SpawnChildren"),
     ] {
         assert!(described.get(scene).is_some(), "{scene} is described");
         assert!(labels.contains(&label), "{scene} has rows under {label}");
@@ -59,7 +66,7 @@ fn a_world_from_the_kit_plugins_has_rows_for_each_described_component() {
     for label in ["Intent", "Source", "Parent", "Children", "LocalOffset"] {
         assert!(labels.contains(&label), "{label}");
     }
-    assert_eq!(described.iter().count(), 13);
+    assert_eq!(described.iter().count(), 19);
 }
 
 #[test]
@@ -111,6 +118,32 @@ fn the_rows_print_each_components_state() {
     assert_eq!(find("Zone", "filter"), "all: team.player");
     assert_eq!(find("CameraTarget", "camera"), "follows");
     assert_eq!(find("Children", "children"), "1");
+    let mut stats = Stats::new().with("armor", 2.0);
+    stats.add_modifier("armor", "stone", Modifier::Add(1.0));
+    let keeper = world.spawn_with((
+        stats,
+        Cues::new().on("damaged", [CueAction::flash(), CueAction::shake(0.1)]),
+        Cooldown::new(0.5).with_count(2),
+        Counters::new().with("coins", 3),
+        Flags::new().with("door.locked").with("has_key"),
+        SpawnChildren::new().with_child("glow", Vec2::ZERO),
+    ));
+    let rows = rows_of(&world, keeper);
+    let find = |label: &str, name: &str| -> String {
+        rows.iter()
+            .find(|(l, n, _)| *l == label && *n == name)
+            .map_or_else(
+                || panic!("no row {label}.{name} in {rows:?}"),
+                |(_, _, value)| value.clone(),
+            )
+    };
+    assert_eq!(find("Stats", "stat"), "armor = 3 (base 2, 1 mods)");
+    assert_eq!(find("Cues", "cues"), "damaged: 2");
+    assert_eq!(find("Cooldown", "next"), "0.50 s");
+    assert_eq!(find("Cooldown", "remaining"), "2");
+    assert_eq!(find("Counters", "counter"), "coins = 3");
+    assert_eq!(find("Flags", "flags"), "door.locked, has_key");
+    assert_eq!(find("SpawnChildren", "children"), "glow");
     let pod_rows = rows_of(&world, pod);
     assert!(
         pod_rows

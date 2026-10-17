@@ -163,6 +163,14 @@ impl TopDownMover {
     pub fn direction(&self) -> Vec2 {
         self.direction
     }
+
+    /// Sets the speed, 0 standing it still: what a `move_speed` stat
+    /// writes. One that is not finite and at least 0 is ignored.
+    pub(crate) fn set_speed(&mut self, speed: f32) {
+        if speed.is_finite() && speed >= 0.0 {
+            self.speed = speed;
+        }
+    }
 }
 
 /// Registers the `top_down_mover` scene component and [`TOP_DOWN_MOVER`] in

@@ -1,0 +1,25 @@
+{
+  "tag": "slug",
+  "components": {
+    "tags": [
+      "team.enemy"
+    ],
+    "health": {
+      "max": 1
+    },
+    "cues": {
+      "killed": [
+        {
+          "counter": {
+            "name": "slugs",
+            "add": 1,
+            "target": "game"
+          }
+        },
+        {
+          "despawn": {}
+        }
+      ]
+    }
+  }
+}

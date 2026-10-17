@@ -211,11 +211,63 @@ fn debug_names_the_system_and_the_sound() {
     let every = SoundOnEvent::<Hit>::new("hit_sound", "thud");
     assert_eq!(
         format!("{every:?}"),
-        r#"SoundOnEvent { name: "hit_sound", sound: "thud" }"#
+        r#"SoundOnEvent { name: "hit_sound", sound: "thud", min_interval: 0.0 }"#
     );
-    let select = SoundOnEvent::<Hit>::select("hit_sound", |hit| hit.sound).clone();
+    let select = SoundOnEvent::<Hit>::select("hit_sound", |hit| hit.sound)
+        .with_min_interval(0.5)
+        .clone();
     assert_eq!(
         format!("{select:?}"),
-        r#"SoundOnEvent { name: "hit_sound", sound: "selected per event" }"#
+        r#"SoundOnEvent { name: "hit_sound", sound: "selected per event", min_interval: 0.5 }"#
     );
+}
+
+/// One frame of `dt` real seconds on the World's clock, then `frame`.
+fn timed_frame(
+    world: &mut World,
+    schedule: &mut Schedule,
+    dt: f32,
+) -> Vec<(AudioHandle, f32, bool)> {
+    world.resource_mut::<Time>().advance_frame(dt);
+    frame(world, schedule)
+}
+
+#[test]
+fn a_min_interval_plays_each_sound_once_per_interval_of_real_time() {
+    let (mut world, thud, clang) = world();
+    world.insert_resource(Time::new());
+    let mut schedule = build(
+        &mut world,
+        &[SoundOnEvent::select("hit_sound", |hit: &Hit| hit.sound).with_min_interval(0.1)],
+    );
+    send(&mut world, Some("thud"));
+    send(&mut world, Some("thud"));
+    send(&mut world, Some("clang"));
+    let first = timed_frame(&mut world, &mut schedule, 0.05);
+    assert_eq!(
+        first,
+        [(thud, 0.5, false), (clang, 0.8, false)],
+        "one per ID"
+    );
+    send(&mut world, Some("thud"));
+    assert!(
+        timed_frame(&mut world, &mut schedule, 0.04).is_empty(),
+        "0.04 s later"
+    );
+    send(&mut world, Some("thud"));
+    assert_eq!(
+        timed_frame(&mut world, &mut schedule, 0.06),
+        [(thud, 0.5, false)],
+        "0.1 s after the first"
+    );
+    // A paused game clock does not hold real time.
+    world.resource_mut::<Time>().pause();
+    send(&mut world, Some("thud"));
+    assert_eq!(timed_frame(&mut world, &mut schedule, 0.1).len(), 1);
+}
+
+#[test]
+#[should_panic(expected = "seconds must be finite and >= 0")]
+fn a_negative_min_interval_panics() {
+    let _ = SoundOnEvent::<Hit>::new("hit_sound", "thud").with_min_interval(-1.0);
 }

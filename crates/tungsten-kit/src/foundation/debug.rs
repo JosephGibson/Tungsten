@@ -6,11 +6,14 @@ use tungsten_core::physics::{Collider, Position, Shape};
 use tungsten_core::{DebugDraw, Entity, Plugin, Schedule, Transform, World, system};
 
 use crate::foundation::phases::{Phase, ensure_phases};
+use crate::foundation::trace::{KIT_TRACE_STEP, KitTrace};
+use crate::lifecycle::children::SPAWN_CHILDREN;
 use crate::lifecycle::despawn::DespawnOutside;
-use crate::lifecycle::spawner::Spawner;
+use crate::lifecycle::spawner::{SPAWNER_TICK, Spawner};
 use crate::motion::path::PathFollower;
 use crate::overlap::zone::Zone;
 use crate::present::camera::CameraTarget;
+use crate::react::cues::CUES;
 
 /// [`KitDebugPlugin`]'s system, in the present phase.
 pub const KIT_DEBUG_DRAW: &str = "kit_debug_draw";
@@ -73,12 +76,16 @@ impl KitDebug {
     }
 }
 
-/// Inserts [`KitDebug`] when the World has none and registers
-/// [`KIT_DEBUG_DRAW`] in the present phase: while the resource is on and
-/// the World has a `DebugDraw`, it draws a path follower's polyline and
-/// current target, a `DespawnOutside` region, a zone's collider, a
-/// spawner's mark and a camera target's cross, once a frame before the
-/// camera.
+/// Inserts [`KitDebug`] and a [`KitTrace`] when the World has none,
+/// registers [`KIT_TRACE_STEP`] last in the react phase, after the spawner,
+/// the child spawns and the cues when they are registered, which counts
+/// each ended step for the trace, and registers [`KIT_DEBUG_DRAW`] in the
+/// present phase: while the resource is on and the World has a
+/// `DebugDraw`, it draws a path follower's polyline and current target, a
+/// `DespawnOutside` region, a zone's collider, a spawner's mark and a
+/// camera target's cross, once a frame before the camera. While the
+/// resource is on it also logs each new [`KitTrace`] entry once, at `info`
+/// under target `tungsten_kit::trace`, which the log console shows.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct KitDebugPlugin;
 
@@ -88,10 +95,54 @@ impl Plugin for KitDebugPlugin {
         if !world.has_resource::<KitDebug>() {
             world.insert_resource(KitDebug::default());
         }
+        if !world.has_resource::<KitTrace>() {
+            world.insert_resource(KitTrace::default());
+        }
+        schedule.add(
+            Phase::React.stage(),
+            Phase::React.join(
+                system(KIT_TRACE_STEP, kit_trace_step)
+                    .after_if_present(SPAWNER_TICK)
+                    .after_if_present(SPAWN_CHILDREN)
+                    .after_if_present(CUES),
+            ),
+        );
+        let mut logged = 0;
         schedule.add(
             Phase::Present.stage(),
-            Phase::Present.join(system(KIT_DEBUG_DRAW, kit_debug_draw)),
+            Phase::Present.join(system(KIT_DEBUG_DRAW, move |world: &mut World| {
+                log_trace(world, &mut logged);
+                kit_debug_draw(world);
+            })),
         );
+    }
+}
+
+/// The trace's log target.
+pub(crate) const TRACE_TARGET: &str = "tungsten_kit::trace";
+
+/// Logs the trace entries pushed since `logged`, while [`KitDebug`] is on,
+/// and moves `logged` past them; while it is off, `logged` follows the
+/// trace, so turning it on logs from then on.
+pub(crate) fn log_trace(world: &World, logged: &mut u64) {
+    let Some(trace) = world.get_resource::<KitTrace>() else {
+        return;
+    };
+    let on = world
+        .get_resource::<KitDebug>()
+        .is_some_and(KitDebug::enabled);
+    if on {
+        for entry in trace.since(*logged) {
+            log::info!(target: TRACE_TARGET, "{entry}");
+        }
+    }
+    *logged = trace.pushed();
+}
+
+/// Counts the step that just ended in the World's [`KitTrace`].
+fn kit_trace_step(world: &mut World) {
+    if let Some(trace) = world.get_resource_mut::<KitTrace>() {
+        trace.end_step();
     }
 }
 

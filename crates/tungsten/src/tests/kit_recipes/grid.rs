@@ -5,7 +5,7 @@ use tungsten_core::RigidBody;
 use tungsten_core::{CameraController, CameraMode, CameraState};
 
 use super::{DTS, body_at, frames_for, recipe, spawn, tagged};
-use crate::kit::{Health, KitPlugins, Source, Tags};
+use crate::kit::{Cooldown, Counters, Flags, Health, Hit, KitPlugins, Source, Tags, damage};
 
 const GENRE: &str = "grid";
 
@@ -67,5 +67,80 @@ fn the_camera_follows_the_rogue() {
         harness.step(frames_for(1.0, dt));
         let after = harness.world().resource::<CameraState>().position;
         assert!(after.x > before.x, "dt {dt}: the camera moved");
+    }
+}
+
+#[test]
+fn the_delvers_turns_tick_on_its_cooldown() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let delver = spawn(&mut harness, "delver", [10.0, 10.0]);
+        let turns = |harness: &super::Harness| {
+            harness
+                .world()
+                .get::<Counters>(delver)
+                .unwrap()
+                .get("turns")
+        };
+        harness.step(frames_for(0.2, dt));
+        assert_eq!(turns(&harness), 0, "dt {dt}");
+        harness.step(frames_for(0.8, dt));
+        assert_eq!(turns(&harness), 4, "dt {dt}: a turn each quarter second");
+        harness
+            .world_mut()
+            .resource_mut::<tungsten_core::Time>()
+            .pause();
+        harness.step(frames_for(1.0, dt));
+        assert_eq!(
+            turns(&harness),
+            4,
+            "dt {dt}: a paused clock holds the turns"
+        );
+    }
+}
+
+#[test]
+fn the_trapdoor_opens_once_its_timer_ends() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let trapdoor = spawn(&mut harness, "trapdoor", [20.0, 20.0]);
+        let closed = |harness: &super::Harness| {
+            harness
+                .world()
+                .get::<Flags>(trapdoor)
+                .unwrap()
+                .has("closed")
+        };
+        harness.step(frames_for(0.9, dt));
+        assert!(closed(&harness), "dt {dt}");
+        harness.step(frames_for(0.2, dt));
+        assert!(!closed(&harness), "dt {dt}: it opened");
+        assert_eq!(
+            harness
+                .world()
+                .get::<Cooldown>(trapdoor)
+                .unwrap()
+                .remaining(),
+            Some(0)
+        );
+        harness.step(frames_for(2.0, dt));
+        assert!(!closed(&harness), "dt {dt}: and stays open");
+    }
+}
+
+#[test]
+fn the_slug_counts_its_death_and_goes() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let slug = spawn(&mut harness, "slug", [30.0, 30.0]);
+        harness.step(1);
+        assert_eq!(damage(harness.world_mut(), slug, 1.0), Hit::Killed);
+        harness.step(1);
+        assert!(!harness.world().is_alive(slug), "dt {dt}");
+        assert_eq!(
+            harness.world().resource::<Counters>().get("slugs"),
+            1,
+            "dt {dt}"
+        );
     }
 }

@@ -1,0 +1,9 @@
+{
+  "tag": "hopper",
+  "components": {
+    "cooldown": {
+      "seconds": 0.25,
+      "jitter": 0.25
+    }
+  }
+}

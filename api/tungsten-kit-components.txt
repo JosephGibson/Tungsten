@@ -11,11 +11,34 @@ component animation: An animated sprite: its current frame written into the enti
 component camera_target: The marker the camera follows: the lowest-indexed live one.
   genres: platformer, top_down, shmup, grid
   sample: null
+component cooldown: A repeating countdown on the game clock that sends an event each time it elapses.
+  field seconds: f32 (> 0) — seconds of game time a cycle
+  field jitter: f32 (>= 0) = 0.0 — up to this many seconds more each cycle, drawn from the kit's random stream
+  field count: u32 = null — how many times it elapses in all; without end when left out
+  events: CooldownElapsed
+  genres: top_down, shmup, grid
+  sample: { "seconds": 0.5 }
+component counters: Named whole numbers on the entity, which cues add to or set.
+  field counts: counter name → i64 — the value itself: the starting counts; names are dotted, undeclared
+  genres: top_down, grid
+  sample: { "coins": 0 }
+component cues: The entity's reactions: for each event about it, actions run in order.
+  field damaged: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
+  field killed: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
+  field zone_entered: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
+  field cooldown_elapsed: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
+  events: ShakeEvent, SquashEvent
+  genres: platformer, top_down, shmup, grid
+  sample: {}
 component despawn_outside: Despawns the entity, with its children, once it leaves a world-space box or the camera's view; exactly one of `region` and `view`.
   field region: [[min_x, min_y], [max_x, max_y]] — the closed box, in world pixels
   field view: f32 (>= 0) — the margin outside the last frame's camera view
   genres: top_down, shmup
   sample: { "view": 16 }
+component flags: Named switches on the entity, which cues set or clear.
+  field names: list of text — the value itself: the flags set at the start; names are dotted, undeclared
+  genres: platformer, grid
+  sample: ["door.locked"]
 component health: Health with an invulnerability window after each hit, which `damage` lowers.
   field max: f32 (> 0) — the full health, which it starts at
   field invulnerability: f32 (>= 0) = 0.0 — seconds of game time a hit is ignored after one lands
@@ -47,12 +70,20 @@ component platformer_controller: A side-view character on a kinematic body: it r
   field jump_cut: f32 (>= 0, <= 1) = 0.5 — the rising speed kept when the jump is released early
   genres: platformer, shmup
   sample: { "run_speed": 200, "jump_speed": 600 }
+component spawn_children: Prefabs spawned once as the entity's children, at offsets from it.
+  field children: list of shape child — the value itself: each child's prefab and offset, in order
+  genres: platformer, shmup
+  sample: [{ "prefab": "glow" }]
 component spawner: Spawns a prefab at the entity's position once per interval of game time.
   field prefab: prefab ID — what it spawns; the load checks the ID
   field interval: f32 (> 0) — seconds between spawns; the first after one interval
   field count: u32 = null — how many it spawns in all; without end when left out
   genres: top_down, shmup, grid
   sample: { "prefab": "slime", "interval": 0.5 }
+component stats: Named values with ordered modifiers, which the movers, health and cooldowns read.
+  field bases: stat name → finite base — the value itself: each stat well-known or declared, its base within its bounds
+  genres: platformer, top_down
+  sample: { "move_speed": 160 }
 component tags: The entity's tags: dotted names the items filter on.
   field names: list of tag — the value itself: the names, each declared by `tags` data or a `TagsPlugin`
   genres: platformer, top_down, shmup, grid
@@ -66,4 +97,59 @@ component zone: A sensor entered by the entities whose tags pass its filter.
   events: ZoneEntered
   genres: platformer, top_down
   sample: {}
+shape child: One child: its prefab and its offset from the parent.
+  field prefab: prefab ID — what it spawns; the load checks the ID and refuses a prefab with a `rigid_body`
+  field offset: [x, y] = [0.0, 0.0] — world pixels from the parent's position
+  sample: { "prefab": "glow" }
+shape counter_action: A counter added to or set: exactly one of `add` and `set`.
+  field name: text — the counter: dotted, undeclared
+  field add: i64 = null — added, saturating
+  field set: i64 = null — the new count
+  field target: one of self | other | game = "self" — the subject's counters, the other entity's or the game's
+  sample: { "name": "kills", "add": 1 }
+shape cue_action: One reaction to an event.
+  exactly one of its fields
+  field prefab: prefab ID — spawned at the event's position from the subject; the load checks the ID
+  field counter: shape counter_action — a counter added to or set
+  field flag: shape flag_action — a flag set or cleared
+  field despawn: shape despawn_action — the subject or the other despawned with its children, after the step's spawns
+  field sound: shape sound_action — a manifest sound played at its volume
+  field shake: f32 (>= 0) — camera trauma added
+  field squash: one of on_land | on_hit | on_pickup | manual — the subject's squash armed for this trigger
+  field flash: shape flash_action — the subject's hit flash started
+  field label: shape label_style — the event's amount floated at its position
+  sample: { "despawn": {} }
+shape cue_rule: A shared reaction: on an event, for each subject whose tags pass the filter, the actions in order.
+  field on: text — the cue event; the load checks it is registered
+  field filter: tag filter = {} — the subjects it runs for; the load checks its tags
+  field do: list of shape cue_action — the actions, in order
+  sample: { "on": "killed", "do": [] }
+shape despawn_action: An entity despawned with its children.
+  field target: one of self | other = "self" — the subject or the other entity
+  sample: {}
+shape flag_action: A flag set or cleared.
+  field name: text — the flag: dotted, undeclared
+  field set: bool = true — set when true, cleared when false
+  field target: one of self | other | game = "self" — the subject's flags, the other entity's or the game's
+  sample: { "name": "has_key" }
+shape flash_action: The subject's hit flash started, as a hit starts it.
+  sample: {}
+shape label_style: The event's amount as a timed world label: it rises, pops from its scale to 1 over its first fifth and fades over its second half.
+  field font: text — a manifest font face; the load does not check it
+  field size: f32 (> 0) = 16.0 — UI units tall
+  field color: [r, g, b, a] = [1.0, 1.0, 1.0, 1.0] — linear, encoded to sRGB when drawn
+  field seconds: f32 (> 0) = 0.8 — game seconds it lasts
+  field rise: f32 = 32.0 — UI units it rises over its seconds
+  field pop: f32 (> 0) = 1.5 — the scale it starts at
+  sample: { "font": "sans" }
+shape sound_action: A manifest sound played at its volume, never looping.
+  field id: text — the manifest sound; the load checks the ID
+  field min_interval: f32 (>= 0) = 0.0 — game seconds before this sound plays again from a cue
+  sample: { "id": "blip" }
+shape stat_bounds: A game stat's clamp.
+  field min: f32 = null — the least value; none when left out
+  field max: f32 = null — the greatest value, at least `min`; none when left out
+  sample: {}
+kind cue_rules: A list of `cue_rule`: shared reactions to an event, run after the entity's own cues.
+kind stats: An object of `stat_bounds` by stat name: each declares a game stat and its clamp.
 kind tags: A JSON array of tag names; each declares itself and its dotted ancestors.

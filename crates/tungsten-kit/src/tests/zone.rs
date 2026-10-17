@@ -146,3 +146,26 @@ fn a_zone_is_data() {
     assert_eq!(value, json!({ "filter": { "none": ["boss"] } }));
     assert_eq!(serde_json::from_value::<Zone>(value).unwrap(), zone);
 }
+
+#[test]
+fn an_entry_goes_in_the_trace_with_the_entrant() {
+    use crate::foundation::trace::{KitTrace, TraceKind};
+
+    let (mut world, mut schedule) = rig();
+    world.insert_resource(KitTrace::default());
+    let zone = door(&mut world, TagFilter::new().all(["team.player"]));
+    let hero = runner(&mut world, 0.0, Some(Tags::new(["team.player"])));
+    steps(&mut world, &mut schedule, 20);
+    let trace = world.resource::<KitTrace>();
+    let entries: Vec<_> = trace.about(hero).collect();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].entity, zone);
+    assert_eq!(
+        entries[0].kind,
+        TraceKind::Event {
+            name: "zone_entered",
+            other: Some(hero),
+            amount: None
+        }
+    );
+}

@@ -311,6 +311,14 @@ impl PlatformerController {
         self
     }
 
+    /// Sets the run speed, 0 standing it still: what a `move_speed` stat
+    /// writes. One that is not finite and at least 0 is ignored.
+    pub(crate) fn set_run_speed(&mut self, speed: f32) {
+        if speed.is_finite() && speed >= 0.0 {
+            self.run_speed = speed;
+        }
+    }
+
     /// Sets the run input, held until changed: -1 runs left at full speed,
     /// 1 right. It is clamped to `[-1, 1]`, and NaN counts as 0.
     pub fn set_run(&mut self, axis: f32) {

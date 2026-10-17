@@ -11,8 +11,9 @@ use tungsten_core::World;
 
 /// What a scene component takes: its summary, fields, events, genres and
 /// a minimal sample, with a round-trip hook over its private DTO. Each kit
-/// plugin adds one per scene component it registers; a game's own plugin
-/// may add its own.
+/// plugin adds one per scene component it registers, and one per shape, a
+/// named object its fields refer to ([`FieldType::Shape`]); a game's own
+/// plugin may add its own.
 ///
 /// # Examples
 ///
@@ -42,6 +43,7 @@ pub struct ComponentDescription {
     genres: Vec<&'static str>,
     sample: Option<&'static str>,
     roundtrip: Option<fn(Value) -> Result<Value, String>>,
+    one_of: bool,
 }
 
 impl ComponentDescription {
@@ -56,6 +58,7 @@ impl ComponentDescription {
             genres: Vec::new(),
             sample: None,
             roundtrip: None,
+            one_of: false,
         }
     }
 
@@ -96,6 +99,22 @@ impl ComponentDescription {
     pub fn roundtrip(mut self, hook: fn(Value) -> Result<Value, String>) -> Self {
         self.roundtrip = Some(hook);
         self
+    }
+
+    /// The description, for a shape whose value is an object holding
+    /// exactly one of its fields, such as a cue action: each field is one
+    /// form, and the description tests probe each one alone.
+    #[must_use]
+    pub fn one_of(mut self) -> Self {
+        self.one_of = true;
+        self
+    }
+
+    /// Whether the value holds exactly one of its fields
+    /// ([`one_of`](Self::one_of)).
+    #[must_use]
+    pub fn is_one_of(&self) -> bool {
+        self.one_of
     }
 
     /// The scene name.
@@ -140,8 +159,11 @@ impl ComponentDescription {
         self.roundtrip.map(|hook| hook(value))
     }
 
-    fn render(&self, out: &mut String) {
-        let _ = writeln!(out, "component {}: {}", self.name, self.summary);
+    fn render(&self, out: &mut String, heading: &str) {
+        let _ = writeln!(out, "{heading} {}: {}", self.name, self.summary);
+        if self.one_of {
+            let _ = writeln!(out, "  exactly one of its fields");
+        }
         for field in &self.fields {
             let _ = write!(out, "  field {}: {}", field.name, field.ty.render());
             if let Some(default) = field.default {
@@ -247,6 +269,13 @@ pub enum FieldType {
         /// The greatest value.
         max: Option<u32>,
     },
+    /// A signed whole number within its bounds, each inclusive when given.
+    I64 {
+        /// The least value.
+        min: Option<i64>,
+        /// The greatest value.
+        max: Option<i64>,
+    },
     /// Any text.
     Text,
     /// `[x, y]`.
@@ -263,8 +292,11 @@ pub enum FieldType {
     Tag,
     /// A tag filter: `{ "all": [..], "any": [..], "none": [..] }`.
     Filter,
-    /// An object of the named shape.
+    /// An object written as this text describes it.
     Object(&'static str),
+    /// An object of the shape of this name, described in
+    /// [`KitDescriptions::shapes`].
+    Shape(&'static str),
 }
 
 impl FieldType {
@@ -286,17 +318,8 @@ impl FieldType {
                 }
                 text
             }
-            FieldType::U32 { min, max } => {
-                let mut text = "u32".to_string();
-                let bounds: Vec<String> = [(">=", min), ("<=", max)]
-                    .into_iter()
-                    .filter_map(|(sign, bound)| bound.map(|value| format!("{sign} {value}")))
-                    .collect();
-                if !bounds.is_empty() {
-                    let _ = write!(text, " ({})", bounds.join(", "));
-                }
-                text
-            }
+            FieldType::U32 { min, max } => whole("u32", *min, *max),
+            FieldType::I64 { min, max } => whole("i64", *min, *max),
             FieldType::Text => "text".to_string(),
             FieldType::Vec2 => "[x, y]".to_string(),
             FieldType::Color => "[r, g, b, a]".to_string(),
@@ -305,18 +328,34 @@ impl FieldType {
             FieldType::Prefab => "prefab ID".to_string(),
             FieldType::Tag => "tag".to_string(),
             FieldType::Filter => "tag filter".to_string(),
-            FieldType::Object(shape) => (*shape).to_string(),
+            FieldType::Object(text) => (*text).to_string(),
+            FieldType::Shape(name) => format!("shape {name}"),
         }
     }
 }
 
+/// A whole-number type's name with its inclusive bounds.
+fn whole<T: std::fmt::Display>(name: &str, min: Option<T>, max: Option<T>) -> String {
+    let mut text = name.to_string();
+    let bounds: Vec<String> = [(">=", min), ("<=", max)]
+        .into_iter()
+        .filter_map(|(sign, bound)| bound.map(|value| format!("{sign} {value}")))
+        .collect();
+    if !bounds.is_empty() {
+        let _ = write!(text, " ({})", bounds.join(", "));
+    }
+    text
+}
+
 /// The descriptions the kit's plugins registered, a World resource, sorted
-/// by name, with the data kinds beside them; [`render`](Self::render) is
-/// the components snapshot. A game's plugin adds its own through
-/// [`add`](Self::add) and [`add_kind`](Self::add_kind).
+/// by name, with the shapes their fields refer to and the data kinds
+/// beside them; [`render`](Self::render) is the components snapshot. A
+/// game's plugin adds its own through [`add`](Self::add),
+/// [`add_shape`](Self::add_shape) and [`add_kind`](Self::add_kind).
 #[derive(Debug, Default)]
 pub struct KitDescriptions {
     components: Vec<ComponentDescription>,
+    shapes: Vec<ComponentDescription>,
     kinds: Vec<(&'static str, &'static str)>,
 }
 
@@ -343,6 +382,26 @@ impl KitDescriptions {
                 description.name
             ),
             Err(at) => self.components.insert(at, description),
+        }
+    }
+
+    /// Adds `description` as a shape: a named object that a field refers
+    /// to with [`FieldType::Shape`], such as a cue action, in name order.
+    ///
+    /// # Panics
+    ///
+    /// When a shape of that name is already there.
+    #[track_caller]
+    pub fn add_shape(&mut self, description: ComponentDescription) {
+        match self
+            .shapes
+            .binary_search_by(|d| d.name.cmp(description.name))
+        {
+            Ok(_) => panic!(
+                "KitDescriptions::add_shape: `{}` is already described",
+                description.name
+            ),
+            Err(at) => self.shapes.insert(at, description),
         }
     }
 
@@ -373,19 +432,36 @@ impl KitDescriptions {
         self.components.iter()
     }
 
+    /// The description of the shape `name`.
+    #[must_use]
+    pub fn get_shape(&self, name: &str) -> Option<&ComponentDescription> {
+        self.shapes
+            .binary_search_by(|d| d.name.cmp(name))
+            .ok()
+            .map(|at| &self.shapes[at])
+    }
+
+    /// The shapes, by name.
+    pub fn shapes(&self) -> impl Iterator<Item = &ComponentDescription> {
+        self.shapes.iter()
+    }
+
     /// The data kinds and their summaries, by name.
     pub fn kinds(&self) -> impl Iterator<Item = (&'static str, &'static str)> {
         self.kinds.iter().copied()
     }
 
     /// The snapshot: one `component` line per description with a line per
-    /// field, its events, genres and sample, then a `kind` line per data
-    /// kind.
+    /// field, its events, genres and sample, then a `shape` line per shape
+    /// in the same form, then a `kind` line per data kind.
     #[must_use]
     pub fn render(&self) -> String {
         let mut out = String::new();
         for description in &self.components {
-            description.render(&mut out);
+            description.render(&mut out, "component");
+        }
+        for description in &self.shapes {
+            description.render(&mut out, "shape");
         }
         for (kind, summary) in &self.kinds {
             let _ = writeln!(out, "kind {kind}: {summary}");
@@ -402,6 +478,14 @@ pub(crate) fn describe(world: &mut World, description: ComponentDescription) {
     let descriptions = descriptions_mut(world);
     if descriptions.get(description.name()).is_none() {
         descriptions.add(description);
+    }
+}
+
+/// Adds `description` to the World's [`KitDescriptions`] as a shape, once.
+pub(crate) fn describe_shape(world: &mut World, description: ComponentDescription) {
+    let descriptions = descriptions_mut(world);
+    if descriptions.get_shape(description.name()).is_none() {
+        descriptions.add_shape(description);
     }
 }
 

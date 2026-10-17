@@ -15,6 +15,7 @@ use crate::foundation::describe::{
 };
 use crate::foundation::inspect::register_rows;
 use crate::foundation::phases::{Phase, ensure_phases};
+use crate::foundation::trace::{TraceKind, trace};
 use crate::foundation::{finite_color, non_negative, positive};
 
 /// [`HealthPlugin`]'s system that counts invulnerability windows down, in
@@ -204,6 +205,18 @@ impl Health {
             self.current = (self.current + amount).min(self.max);
         }
     }
+
+    /// Sets the full health to `max`, the health left kept as the same
+    /// fraction of it, so 5 of 5 at a max of 8 becomes 8 of 8 and the dead
+    /// stay dead: what a `max_health` stat writes. A max that is not finite
+    /// and above 0 is ignored.
+    pub(crate) fn set_max(&mut self, max: f32) {
+        if max == self.max || !(max.is_finite() && max > 0.0) {
+            return;
+        }
+        self.current = (self.current / self.max * max).clamp(0.0, max);
+        self.max = max;
+    }
 }
 
 /// What [`damage`] did. A match outside this crate needs a wildcard arm,
@@ -252,7 +265,8 @@ impl Damaged {
 /// one or one inside its invulnerability window is [`Hit::Ignored`].
 /// Otherwise its health falls by `amount`, to no less than 0, its window
 /// starts, its [`HitFlash`] starts when it has one and a `Sprite`, and a
-/// [`Damaged`] is sent when [`HealthPlugin`] has registered its queue.
+/// [`Damaged`] is sent when [`HealthPlugin`] has registered its queue. The
+/// World's [`KitTrace`](crate::KitTrace) records the hit, and the kill.
 /// See [`Health`] for an example.
 ///
 /// # Panics
@@ -281,6 +295,18 @@ pub fn damage(world: &mut World, target: Entity, amount: f32) -> Hit {
         world
             .resource_mut::<EventQueue<Damaged>>()
             .send(Damaged::new(target, amount, killed));
+    }
+    trace(world, target, || TraceKind::Event {
+        name: "damaged",
+        other: None,
+        amount: Some(amount),
+    });
+    if killed {
+        trace(world, target, || TraceKind::Event {
+            name: "killed",
+            other: None,
+            amount: Some(amount),
+        });
     }
     if killed { Hit::Killed } else { Hit::Hurt }
 }
@@ -410,8 +436,9 @@ impl HitFlash {
     }
 }
 
-/// Starts the flash on `target` when it has a [`HitFlash`] and a `Sprite`.
-fn start_flash(world: &mut World, target: Entity) {
+/// Starts the flash on `target` when it has a [`HitFlash`] and a `Sprite`:
+/// a hit's, or a cue's `flash` action.
+pub(crate) fn start_flash(world: &mut World, target: Entity) {
     let Some(material_id) = world.get::<Sprite>(target).map(|sprite| sprite.material_id) else {
         return;
     };

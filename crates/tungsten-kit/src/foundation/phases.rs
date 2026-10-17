@@ -38,13 +38,16 @@ pub const KIT_PRESENT: &str = "kit_present";
 ///
 /// | Phase | Stage | What runs there |
 /// | --- | --- | --- |
-/// | `Tick` | `FixedUpdate`, after the history snapshot | timers, lifetimes, health windows |
+/// | `Tick` | `FixedUpdate`, after the history snapshot | timers, lifetimes, health windows, stats, cooldowns |
 /// | `Intent` | `FixedUpdate` | input, state machines |
 /// | `Move` | `FixedUpdate`, before `physics_step` | the controllers, the path follower |
 /// | `Overlap` | `FixedUpdate`, after `physics_step` | zones, despawn outside |
 /// | `Resolve` | `FixedUpdate` | damage and effects (later milestones) |
-/// | `React` | `FixedUpdate`, last | spawners, cues |
-/// | `Present` | `PostUpdate`, after the sync and the late propagation, before the camera | animation, the hit flash, the camera target, sounds |
+/// | `React` | `FixedUpdate`, last | spawners, child spawns, cues, the trace's step count |
+/// | `Present` | `PostUpdate`, after the sync and the late propagation, before the camera | animation, the hit flash, the camera target, labels, sounds |
+///
+/// Stats sit in `Tick`, not `Resolve`, so an entity spawned at a flush
+/// moves at its stats from its first step.
 ///
 /// A game's own system joins a phase the same way: its plugin calls
 /// [`ensure_phases`], then adds [`Phase::join`]'s description in the

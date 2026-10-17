@@ -1,11 +1,11 @@
 //! Sound on an event: a manifest sound played once per event.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use tungsten_core::{
-    AudioCommands, AudioHandle, EventCursor, EventQueue, Plugin, Schedule, SoundRegistry, World,
-    system,
+    AudioCommands, AudioHandle, EventCursor, EventQueue, Plugin, Schedule, SoundRegistry, Time,
+    World, system,
 };
 
 use crate::foundation::phases::{Phase, ensure_phases};
@@ -21,9 +21,11 @@ use crate::foundation::phases::{Phase, ensure_phases};
 /// none plays twice; a queue replaced between runs plays its own events
 /// from the first. It plays at the manifest's
 /// volume, never looping, through `AudioCommands`. Audio runs on real time,
-/// so events sent while the game clock is paused play. An unknown sound ID
-/// logs one warning per ID and plays nothing, and a world without a
-/// `SoundRegistry` or `AudioCommands` plays nothing.
+/// so events sent while the game clock is paused play. With
+/// [`with_min_interval`](Self::with_min_interval), a sound ID plays at most
+/// once per interval of real time, and the events between are read and
+/// dropped. An unknown sound ID logs one warning per ID and plays nothing,
+/// and a world without a `SoundRegistry` or `AudioCommands` plays nothing.
 ///
 /// # Examples
 ///
@@ -57,6 +59,7 @@ use crate::foundation::phases::{Phase, ensure_phases};
 pub struct SoundOnEvent<E> {
     name: &'static str,
     pick: Pick<E>,
+    min_interval: f32,
 }
 
 /// Which sound an event plays.
@@ -81,6 +84,7 @@ impl<E: 'static> SoundOnEvent<E> {
         Self {
             name,
             pick: Pick::Every(sound),
+            min_interval: 0.0,
         }
     }
 
@@ -91,7 +95,57 @@ impl<E: 'static> SoundOnEvent<E> {
         Self {
             name,
             pick: Pick::Select(pick),
+            min_interval: 0.0,
         }
+    }
+
+    /// The plugin, playing each sound ID at most once per `seconds` of real
+    /// time, as `Time::real_elapsed` counts it; 0, the default, plays every
+    /// event. A burst of hits then plays one sound.
+    ///
+    /// ```
+    /// use tungsten_core::{
+    ///     AudioCommands, EventQueue, Plugin, Schedule, SoundData, SoundRegistry, Stage, Time,
+    ///     World,
+    /// };
+    /// use tungsten_kit::SoundOnEvent;
+    ///
+    /// struct Hit;
+    ///
+    /// let mut world = World::new();
+    /// world.insert_resource(Time::new());
+    /// let mut sounds = SoundRegistry::new();
+    /// let thud = SoundData { samples: vec![0.0; 4], sample_rate: 44_100, channels: 1 };
+    /// sounds.register("thud".to_string(), thud, 1.0, false);
+    /// world.insert_resource(sounds);
+    /// world.insert_resource(AudioCommands::new());
+    /// let mut schedule = Schedule::new();
+    /// SoundOnEvent::<Hit>::new("hit_sound", "thud")
+    ///     .with_min_interval(0.1)
+    ///     .build(&mut schedule, &mut world);
+    /// schedule.resolve().unwrap();
+    ///
+    /// // Three hits in one frame play once.
+    /// for _ in 0..3 {
+    ///     world.resource_mut::<EventQueue<Hit>>().send(Hit);
+    /// }
+    /// world.resource_mut::<Time>().advance_frame(1.0 / 60.0);
+    /// schedule.run_stage(Stage::PostUpdate, &mut world, |_, _| {});
+    /// assert_eq!(world.resource_mut::<AudioCommands>().drain().len(), 1);
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// When `seconds` is not finite and at least 0.
+    #[must_use]
+    #[track_caller]
+    pub fn with_min_interval(mut self, seconds: f32) -> Self {
+        assert!(
+            seconds.is_finite() && seconds >= 0.0,
+            "SoundOnEvent::with_min_interval: seconds must be finite and >= 0 (got {seconds})"
+        );
+        self.min_interval = seconds;
+        self
     }
 }
 
@@ -100,6 +154,7 @@ impl<E> Clone for SoundOnEvent<E> {
         Self {
             name: self.name,
             pick: self.pick,
+            min_interval: self.min_interval,
         }
     }
 }
@@ -112,6 +167,7 @@ impl<E> fmt::Debug for SoundOnEvent<E> {
             Pick::Every(sound) => out.field("sound", &sound),
             Pick::Select(_) => out.field("sound", &"selected per event"),
         };
+        out.field("min_interval", &self.min_interval);
         out.finish()
     }
 }
@@ -121,8 +177,10 @@ impl<E: 'static> Plugin for SoundOnEvent<E> {
         world.register_event::<E>();
         let mut reader = Reader {
             pick: self.pick,
+            min_interval: self.min_interval,
             cursor: EventCursor::new(),
             warned: HashSet::new(),
+            last: HashMap::new(),
             play: Vec::new(),
         };
         ensure_phases(schedule);
@@ -135,13 +193,21 @@ impl<E: 'static> Plugin for SoundOnEvent<E> {
     }
 }
 
+/// Seconds an interval's end may be early by and still pass, against the
+/// sum's rounding.
+const INTERVAL_SLACK: f64 = 1e-6;
+
 /// The system's state between frames.
 struct Reader<E> {
     pick: Pick<E>,
+    min_interval: f32,
     /// The system's place in the queue: what it has played.
     cursor: EventCursor<E>,
     /// The unknown sound IDs already warned about.
     warned: HashSet<String>,
+    /// When each sound ID last played, in real seconds, while an interval
+    /// applies.
+    last: HashMap<String, f64>,
     /// This run's sounds and their volumes, kept so a frame allocates
     /// nothing once warm.
     play: Vec<(AudioHandle, f32)>,
@@ -161,6 +227,8 @@ impl<E: 'static> Reader<E> {
         let Some(sounds) = world.get_resource::<SoundRegistry>() else {
             return;
         };
+        let now = world.get_resource::<Time>().map(Time::real_elapsed);
+        let interval = f64::from(self.min_interval);
         self.play.clear();
         for event in events {
             let id = match self.pick {
@@ -171,7 +239,19 @@ impl<E: 'static> Reader<E> {
                 },
             };
             match sounds.get_by_id(id) {
-                Some(handle) => self.play.push((handle, sounds.get_volume(handle))),
+                Some(handle) => {
+                    if interval > 0.0
+                        && let Some(now) = now
+                    {
+                        if let Some(&last) = self.last.get(id)
+                            && now - last + INTERVAL_SLACK < interval
+                        {
+                            continue;
+                        }
+                        self.last.insert(id.to_owned(), now);
+                    }
+                    self.play.push((handle, sounds.get_volume(handle)));
+                }
                 None => {
                     if !self.warned.contains(id) {
                         log::warn!(

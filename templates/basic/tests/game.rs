@@ -102,9 +102,9 @@ fn user_folder(tag: &str) -> PathBuf {
 const SCHEDULE: &str = "\
 startup: setup
 pre_update: physics_debug_toggle, systems_overlay_toggle, inspector_toggle, hud_toggle, ui_debug_toggle, ui_inspector_toggle, log_console_toggle, display_input, ui_state_roots, ui_route, inspector_pick, ui_animate, state_dispatcher
-fixed_update: physics_prev_snapshot, kit_tick, lifetime_tick, health_tick, kit_intent, action_input, kit_move, path_follow, platformer_controller, top_down_mover, physics_step, kit_overlap, despawn_outside, zone_tick, kit_resolve, kit_react, spawner_tick
+fixed_update: physics_prev_snapshot, kit_tick, lifetime_tick, health_tick, stats_apply, cooldown_tick, kit_intent, action_input, kit_move, path_follow, platformer_controller, top_down_mover, physics_step, kit_overlap, despawn_outside, zone_tick, kit_resolve, kit_react, spawner_tick, spawn_children, cues, kit_trace_step
 update: toggle_mute
-post_update: physics_sync, transform_propagate, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, transform_propagate_late, kit_present, animation_tick, hit_flash_tick, camera_target, kit_debug_draw, camera_update
+post_update: physics_sync, transform_propagate, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, transform_propagate_late, kit_present, animation_tick, hit_flash_tick, camera_target, label_tick, kit_debug_draw, camera_update
 ";
 
 #[test]
@@ -271,6 +271,35 @@ fn damage_lowers_the_health_starts_the_flash_and_sends_damaged() {
     // The window is half a second: 30 steps later the next hit lands.
     harness.step(30);
     assert_eq!(damage(harness.world_mut(), entity, 1.0), Hit::Hurt);
+}
+
+#[test]
+fn a_hit_shakes_the_camera_and_shows_its_damage() {
+    let mut harness = harness();
+    tap(&mut harness, "state_start");
+    let entity = player_entity(&harness);
+    assert_eq!(
+        harness.world().resource::<CameraController>().shake_trauma,
+        0.0
+    );
+    assert_eq!(damage(harness.world_mut(), entity, 1.0), Hit::Hurt);
+    harness.step(1);
+    let labels: Vec<(&str, &str)> = harness
+        .draw()
+        .expect("a frame was drawn")
+        .world_labels
+        .iter()
+        .map(|run| (run.content.as_str(), run.font_id.as_str()))
+        .collect();
+    assert_eq!(
+        labels,
+        [("1", "sans")],
+        "the player's damaged cue floats the hit"
+    );
+    assert!(
+        harness.world().resource::<CameraController>().shake_trauma > 0.0,
+        "and shakes the camera"
+    );
 }
 
 #[test]

@@ -138,3 +138,27 @@ fn a_negative_margin_panics() {
 fn an_infinite_margin_panics() {
     let _ = DespawnOutside::view(f32::INFINITY);
 }
+
+#[test]
+fn the_trace_records_one_despawn_a_frame() {
+    use crate::foundation::trace::{KitTrace, TraceKind};
+
+    let (mut world, mut schedule) = setup();
+    world.insert_resource(Time::new());
+    world.insert_resource(KitTrace::default());
+    let arena = DespawnOutside::region(Vec2::ZERO, Vec2::new(10.0, 10.0));
+    let stray = world.spawn_with(at(50.0, 5.0, arena));
+    world.resource_mut::<Time>().advance_frame(1.0 / 60.0);
+    // Two steps of one frame, then the flush.
+    schedule.run_stage(Stage::FixedUpdate, &mut world, |_, _| {});
+    frame(&mut world, &mut schedule);
+    let despawns: Vec<_> = world.resource::<KitTrace>().about(stray).collect();
+    assert_eq!(despawns.len(), 1);
+    assert_eq!(
+        despawns[0].kind,
+        TraceKind::Despawn {
+            by: DESPAWN_OUTSIDE
+        }
+    );
+    assert!(!world.is_alive(stray));
+}

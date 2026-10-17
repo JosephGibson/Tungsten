@@ -341,3 +341,35 @@ fn despawn_recursive_of_a_dead_entity_is_a_no_op() {
     flush(&mut world);
     assert_eq!(world.entity_count(), count);
 }
+
+#[test]
+fn queued_children_join_their_parents_list_in_queued_order_at_the_flush() {
+    let (mut world, _) = setup();
+    let parent = root_at(&mut world, 10.0, 0.0);
+    let earlier = spawn_child(&mut world, parent, Vec2::ZERO, (Tag,));
+    let commands = world.resource_mut::<CommandBuffer>();
+    let second =
+        commands.spawn_with((Transform::default(),).with(queued_child(parent, Vec2::Y, 1)));
+    let first = commands.spawn_with((Transform::default(),).with(queued_child(parent, Vec2::X, 0)));
+    commands.call(parent, adopt_at_flush);
+    let _ = (first, second);
+    flush(&mut world);
+    let children: Vec<Entity> = world.get::<Children>(parent).unwrap().iter().collect();
+    assert_eq!(children.len(), 3);
+    assert_eq!(children[0], earlier);
+    let offsets: Vec<Vec2> = children[1..]
+        .iter()
+        .map(|&child| world.get::<LocalOffset>(child).unwrap().0)
+        .collect();
+    assert_eq!(offsets, [Vec2::X, Vec2::Y], "queued order, not spawn order");
+    assert_eq!(world.query::<&Adopt>().count(), 0, "the marks are gone");
+}
+
+#[test]
+fn a_dead_parent_adopts_nothing() {
+    let (mut world, _) = setup();
+    let parent = root_at(&mut world, 0.0, 0.0);
+    world.despawn(parent);
+    adopt_at_flush(&mut world, parent);
+    assert!(!world.is_alive(parent));
+}

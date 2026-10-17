@@ -180,3 +180,28 @@ fn a_spawn_takes_what_its_spawner_passes_on_and_a_despawned_spawner_spawns_nothi
 fn a_zero_interval_panics() {
     let _ = Spawner::new("slime", 0.0);
 }
+
+#[test]
+fn spawns_and_failures_go_in_the_trace() {
+    use crate::foundation::trace::{KitTrace, TraceKind};
+
+    let (mut world, mut schedule) = setup();
+    world.insert_resource(KitTrace::default());
+    let nest = world.spawn_with((Transform::default(), Spawner::new("slime", 0.1)));
+    let broken = world.spawn_with((Transform::default(), Spawner::new("ruby", 0.1)));
+    frame(&mut world, &mut schedule, 0.1);
+    let trace = world.resource::<KitTrace>();
+    let kinds: Vec<&TraceKind> = trace.about(nest).map(|entry| &entry.kind).collect();
+    assert_eq!(
+        kinds,
+        [&TraceKind::Spawn {
+            prefab: "slime".to_string(),
+            by: "spawner"
+        }]
+    );
+    let failed: Vec<&TraceKind> = trace.about(broken).map(|entry| &entry.kind).collect();
+    assert!(
+        matches!(failed[..], [TraceKind::SpawnFailed { prefab, .. }] if prefab == "ruby"),
+        "{failed:?}"
+    );
+}

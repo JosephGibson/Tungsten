@@ -16,8 +16,9 @@ use crate::foundation::phases::ensure_phases;
 /// The scene component [`TagsPlugin`] registers, and the data kind.
 pub(crate) const TAGS: &str = "tags";
 
-/// Whether `name` is a tag name: `[a-z][a-z0-9_]*` segments joined by dots.
-fn valid_tag(name: &str) -> bool {
+/// Whether `name` is a tag name: `[a-z][a-z0-9_]*` segments joined by dots,
+/// the rule counter and flag names follow too.
+pub(crate) fn valid_tag(name: &str) -> bool {
     !name.is_empty()
         && name.split('.').all(|segment| {
             let mut chars = segment.chars();

@@ -1,14 +1,17 @@
 //! The kit's foundations: the phases every kit system joins, the plugin
-//! set, tags and the spawn chain's origin, and the field checks the scene
-//! components share.
+//! set, tags and the spawn chain's origin, stats, the random stream, the
+//! event trace, and the field checks the scene components share.
 
 pub(crate) mod debug;
 pub(crate) mod describe;
 pub(crate) mod inspect;
 pub(crate) mod phases;
 pub(crate) mod plugins;
+pub(crate) mod rng;
 pub(crate) mod source;
+pub(crate) mod stats;
 pub(crate) mod tags;
+pub(crate) mod trace;
 
 use glam::Vec2;
 use serde::de::Error as _;

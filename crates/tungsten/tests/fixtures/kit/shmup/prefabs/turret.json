@@ -1,0 +1,24 @@
+{
+  "tag": "turret",
+  "components": {
+    "tags": [
+      "team.enemy"
+    ],
+    "cooldown": {
+      "seconds": 0.4,
+      "jitter": 0.1
+    },
+    "cues": {
+      "cooldown_elapsed": [
+        {
+          "prefab": "bullet"
+        },
+        {
+          "sound": {
+            "id": "blip"
+          }
+        }
+      ]
+    }
+  }
+}

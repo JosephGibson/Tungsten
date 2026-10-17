@@ -1,0 +1,19 @@
+{
+  "tag": "bomb",
+  "components": {
+    "cooldown": {
+      "seconds": 0.5,
+      "count": 1
+    },
+    "cues": {
+      "cooldown_elapsed": [
+        {
+          "prefab": "blast"
+        },
+        {
+          "despawn": {}
+        }
+      ]
+    }
+  }
+}

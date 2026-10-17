@@ -4,9 +4,12 @@
 
 use tungsten_core::RigidBody;
 use tungsten_core::physics::{Position, Velocity};
+use tungsten_core::{AudioCommand, CameraController};
 
 use super::{DTS, body_at, drawn_at, frames_for, recipe, spawn, tagged};
-use crate::kit::{KitPlugins, PlatformerController};
+use crate::kit::{
+    Children, CooldownElapsed, Counters, Hit, KitPlugins, PlatformerController, Source, damage,
+};
 
 const GENRE: &str = "shmup";
 
@@ -92,6 +95,114 @@ fn the_walker_runs_on_its_floor() {
                 .get::<PlatformerController>(walker)
                 .unwrap()
                 .grounded()
+        );
+    }
+}
+
+#[test]
+fn the_turret_fires_at_jittered_intervals_with_a_sound() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let turret = spawn(&mut harness, "turret", [200.0, 300.0]);
+        let mut shots = Vec::new();
+        for frame in 0..frames_for(2.0, dt) {
+            harness.step(1);
+            let fired = harness
+                .events::<CooldownElapsed>()
+                .filter(|event| event.entity == turret)
+                .count();
+            let played = harness
+                .audio()
+                .iter()
+                .filter(|command| matches!(command, AudioCommand::Play { .. }))
+                .count();
+            assert_eq!(played, fired, "dt {dt}: a sound per shot");
+            if fired > 0 {
+                shots.push(frame);
+                let bullets = tagged(&harness, "bullet");
+                assert!(
+                    bullets
+                        .iter()
+                        .any(|&bullet| harness.world().get::<Source>(bullet)
+                            == Some(&Source::new(turret))),
+                    "dt {dt}: the shot's bullet"
+                );
+            }
+        }
+        assert!(
+            (4..=5).contains(&shots.len()),
+            "dt {dt}: 0.4 to 0.5 s apart: {shots:?}"
+        );
+        let (low, high) = (frames_for(0.4, dt) - 1, frames_for(0.5, dt) + 1);
+        for pair in shots.windows(2) {
+            assert!(
+                (low..=high).contains(&(pair[1] - pair[0])),
+                "dt {dt}: {shots:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_gunships_wings_follow_it() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let gunship = spawn(&mut harness, "gunship", [100.0, 100.0]);
+        harness.step(2);
+        let wings: Vec<_> = harness
+            .world()
+            .get::<Children>(gunship)
+            .unwrap()
+            .iter()
+            .collect();
+        assert_eq!(wings, tagged(&harness, "wing"), "dt {dt}");
+        for _ in 0..frames_for(1.0, dt) {
+            harness.step(1);
+            let at = drawn_at(&harness, gunship);
+            for (&wing, dx) in wings.iter().zip([-24.0, 24.0]) {
+                let offset = drawn_at(&harness, wing) - at;
+                assert!(
+                    (offset - glam::Vec2::new(dx, 0.0)).length() < 1e-3,
+                    "dt {dt}: {offset}"
+                );
+            }
+        }
+        assert!(
+            body_at(&harness, gunship).x > 150.0,
+            "dt {dt}: it flew its path"
+        );
+    }
+}
+
+#[test]
+fn a_score_rule_counts_each_kill_and_shakes_the_camera() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let wings = [
+            spawn(&mut harness, "wing", [300.0, 300.0]),
+            spawn(&mut harness, "wing", [340.0, 300.0]),
+        ];
+        harness.step(1);
+        assert_eq!(
+            harness.world().resource::<CameraController>().shake_trauma,
+            0.0
+        );
+        for wing in wings {
+            assert_eq!(damage(harness.world_mut(), wing, 1.0), Hit::Killed);
+        }
+        harness.step(1);
+        assert_eq!(
+            harness.world().resource::<Counters>().get("score"),
+            2,
+            "dt {dt}"
+        );
+        let trauma = harness.world().resource::<CameraController>().shake_trauma;
+        assert!(trauma > 0.5, "dt {dt}: two kills of 0.3 each: {trauma}");
+        harness.step(1);
+        assert_eq!(
+            harness.world().resource::<Counters>().get("score"),
+            2,
+            "dt {dt}: once each"
         );
     }
 }
