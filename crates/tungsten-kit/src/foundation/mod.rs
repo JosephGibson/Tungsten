@@ -17,6 +17,16 @@ use glam::Vec2;
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+/// A finite number, for a scene field's `deserialize_with`.
+pub(crate) fn finite<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, D::Error> {
+    let value = f32::deserialize(deserializer)?;
+    if value.is_finite() {
+        Ok(value)
+    } else {
+        Err(D::Error::custom(format!("must be finite (got {value})")))
+    }
+}
+
 /// A finite number above 0, for a scene field's `deserialize_with`.
 pub(crate) fn positive<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, D::Error> {
     let value = f32::deserialize(deserializer)?;
@@ -52,6 +62,30 @@ pub(crate) fn optional_non_negative<'de, D: Deserializer<'de>>(
             "must be finite and >= 0 (got {value})"
         ))),
         value => Ok(value),
+    }
+}
+
+/// An optional finite number above 0, for a scene field's
+/// `deserialize_with`.
+pub(crate) fn optional_positive<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<f32>, D::Error> {
+    let value = Option::<f32>::deserialize(deserializer)?;
+    match value {
+        Some(value) if !(value.is_finite() && value > 0.0) => Err(D::Error::custom(format!(
+            "must be finite and > 0 (got {value})"
+        ))),
+        value => Ok(value),
+    }
+}
+
+/// A number in `[0, 1)`, for a scene field's `deserialize_with`.
+pub(crate) fn below_one<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, D::Error> {
+    let value = f32::deserialize(deserializer)?;
+    if (0.0..1.0).contains(&value) {
+        Ok(value)
+    } else {
+        Err(D::Error::custom(format!("must be in [0, 1) (got {value})")))
     }
 }
 
@@ -92,6 +126,28 @@ pub(crate) mod vec2 {
     ) -> Result<Vec2, D::Error> {
         let [x, y] = <[f32; 2]>::deserialize(deserializer)?;
         Ok(Vec2::new(x, y))
+    }
+}
+
+/// A finite `Vec2` written as `[x, y]`, for a
+/// `#[serde(with = "finite_vec2")]` field of a scene component.
+pub(crate) mod finite_vec2 {
+    use serde::de::Error as _;
+
+    use super::{Deserialize, Deserializer, Vec2};
+
+    pub(crate) use super::vec2::serialize;
+
+    pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Vec2, D::Error> {
+        let [x, y] = <[f32; 2]>::deserialize(deserializer)?;
+        let value = Vec2::new(x, y);
+        if value.is_finite() {
+            Ok(value)
+        } else {
+            Err(D::Error::custom(format!("must be finite (got [{x}, {y}])")))
+        }
     }
 }
 

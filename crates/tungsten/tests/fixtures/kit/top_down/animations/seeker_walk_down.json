@@ -1,0 +1,13 @@
+{
+  "frames": [
+    {
+      "duration_ms": 100,
+      "sprite": "seeker_walk_down_0"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "seeker_walk_down_1"
+    }
+  ],
+  "looping": true
+}

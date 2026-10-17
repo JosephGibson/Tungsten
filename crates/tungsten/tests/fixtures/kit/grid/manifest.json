@@ -20,6 +20,12 @@
     },
     "slug": {
       "path": "prefabs/slug.json"
+    },
+    "crawler": {
+      "path": "prefabs/crawler.json"
+    },
+    "warden": {
+      "path": "prefabs/warden.json"
     }
   },
   "data": {

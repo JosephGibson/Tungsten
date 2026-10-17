@@ -1,0 +1,21 @@
+{
+  "sprite": {
+    "asset_id": "drifter"
+  },
+  "tag": "drifter",
+  "components": {
+    "linear_motion": {
+      "velocity": [
+        0,
+        20
+      ],
+      "acceleration": [
+        0,
+        200
+      ]
+    },
+    "speed_limit": {
+      "speed": 150
+    }
+  }
+}

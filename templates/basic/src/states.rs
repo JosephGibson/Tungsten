@@ -8,6 +8,7 @@ use tungsten::core::save::SaveError;
 use tungsten::core::{
     ActionMap, InputState, Position, SaveData, SaveSlots, Time, Transform, With, World,
 };
+use tungsten::kit::Health;
 use tungsten::{GameState, SceneEntity, StateContext, StateId, StateStack};
 
 use crate::components::Player;
@@ -20,6 +21,12 @@ pub const PAUSE: StateId = "pause";
 pub const PLAYER_PREFAB: &str = "player";
 /// Where the player starts: the middle of a 1280 × 720 window.
 pub const PLAYER_START: [f32; 2] = [624.0, 344.0];
+/// The hazard's prefab, by its manifest ID: the player's sprite tinted red,
+/// which patrols a line and hurts the player on touch.
+pub const HAZARD_PREFAB: &str = "hazard";
+/// Where the hazard's patrol starts: 160 px below the player's start, so
+/// its line stays clear of the player standing or walking across the view.
+pub const HAZARD_START: [f32; 2] = [624.0, 504.0];
 /// The save slot gameplay continues from and pause writes.
 pub const AUTOSAVE: &str = "autosave";
 
@@ -57,8 +64,9 @@ impl GameState for TitleState {
     }
 }
 
-/// Gameplay: the player spawns with it, where the autosave left it, and
-/// leaves with it; `state_pause` pauses.
+/// Gameplay: the player spawns with it, where the autosave left it, and the
+/// hazard at its patrol's start, and both leave with it; `state_pause`
+/// pauses, and a player whose health runs out starts gameplay over.
 pub struct GameplayState;
 
 impl GameState for GameplayState {
@@ -68,16 +76,29 @@ impl GameState for GameplayState {
 
     fn on_enter(&mut self, ctx: &mut StateContext) {
         let start = load_autosave(ctx.world).map_or(PLAYER_START, |save| save.player);
-        spawn_player(ctx.world, start);
+        spawn(ctx.world, PLAYER_PREFAB, start);
+        spawn(ctx.world, HAZARD_PREFAB, HAZARD_START);
     }
 
     fn on_exit(&mut self, _ctx: &mut StateContext) {}
 
     fn update(&mut self, world: &mut World) {
-        if just_pressed(world, "state_pause") {
+        if player_dead(world) {
+            // The fifth hit: gameplay starts over, from the autosave when
+            // there is one.
+            request(world, |stack| stack.request_replace(GameplayState));
+        } else if just_pressed(world, "state_pause") {
             request(world, |stack| stack.request_push(PauseState::default()));
         }
     }
+}
+
+/// Whether the player's health has run out.
+fn player_dead(world: &World) -> bool {
+    world
+        .query_filtered::<&Health, With<Player>>()
+        .next()
+        .is_some_and(Health::is_dead)
 }
 
 /// Pause, pushed over gameplay, pauses the game clock, so nothing on the
@@ -162,12 +183,13 @@ fn write_autosave(world: &mut World) {
     }
 }
 
-/// Spawns the player prefab at `position`. The startup load checked the
-/// prefab against the game's components, so a failure here is a bug.
-fn spawn_player(world: &mut World, position: [f32; 2]) {
+/// Spawns `prefab` at `position`, owned by gameplay. The startup load
+/// checked each prefab against the game's components, so a failure here
+/// is a bug.
+fn spawn(world: &mut World, prefab: &str, position: [f32; 2]) {
     world
-        .prepare_prefab(PLAYER_PREFAB, position)
-        .expect("the player prefab loads with the manifest")
+        .prepare_prefab(prefab, position)
+        .expect("the manifest's prefabs load with it")
         // The state stack despawns it when gameplay leaves the stack.
         .with((SceneEntity { state_id: GAMEPLAY },))
         .spawn(world);

@@ -1,23 +1,26 @@
 //! The kit determinism hash: each genre's fixture run through a fixed
-//! input script for 300 frames at 1/60 s, with hits at fixed frames, the
-//! world hashed in entity order and the game's counters and flags after
-//! it, the four hashes combined; equal across two in-process runs and
-//! pinned. The App flushes commands once a frame, so the hash is a
+//! input script for 300 frames at 1/60 s, with hits and pushes at fixed
+//! frames, the world hashed in entity order and the game's counters and
+//! flags after it, the four hashes combined; equal across two in-process
+//! runs and pinned. The App flushes commands once a frame, so the hash is a
 //! one-step-per-frame claim, as the physics hash is.
 
 use std::fmt::Write as _;
 
+use glam::Vec2;
 use tungsten_core::physics::Position;
-use tungsten_core::{Entity, Transform, World};
+use tungsten_core::{AnimationState, Entity, Sprite, Transform, World};
 
 use super::{DTS, GENRES, recipe, spawn, tagged};
-use crate::kit::{Counters, Flags, Health, KitPlugins, Stats, Tags, damage};
+use crate::kit::{Counters, Flags, Health, KitPlugins, Stats, Tags, damage, knock_back};
 use crate::testing::Harness;
 
 /// The hash of the four recipes, pinned from the first run; moved by M63,
 /// whose script spawns the stats, cues, cooldowns, counters, flags and
-/// children prefabs and lands hits.
-const KIT_RECIPES_HASH: u64 = 0xd2a0_6495_3ac2_b9c1;
+/// children prefabs and lands hits, then by M64, whose script spawns the
+/// motion and facing prefabs and pushes, and whose rows add the rotation,
+/// the depth and the clip.
+const KIT_RECIPES_HASH: u64 = 0xd651_23fe_e583_03ee;
 
 const FRAMES: u32 = 300;
 
@@ -30,8 +33,8 @@ fn fnv1a(hash: &mut u64, bytes: &[u8]) {
 
 const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
 
-/// An entity's index, point, health, then its tags, counters, flags and
-/// stat values as text.
+/// An entity's index, point, health, then its tags, counters, flags, stat
+/// values, rotation, depth and clip as text.
 type Row = (u32, [f32; 2], Option<(f32, f32)>, String);
 
 /// `counters` as text: `name=value` by name.
@@ -47,8 +50,9 @@ fn flags_text(flags: &Flags) -> String {
     flags.iter().collect::<Vec<_>>().join(",")
 }
 
-/// Every entity's index, point, health, tags, counters, flags and stat
-/// values, in entity order, then the game's counters and flags.
+/// Every entity's index, point, health, tags, counters, flags, stat values,
+/// rotation, sprite depth and animation, in entity order, then the game's
+/// counters and flags.
 fn hash_world(hash: &mut u64, world: &World) {
     let mut rows: Vec<Row> = world
         .query::<(
@@ -81,6 +85,15 @@ fn hash_world(hash: &mut u64, world: &World) {
                         let _ = write!(text, "|s:{name}={:08x}", value.to_bits());
                     }
                 }
+                if let Some(transform) = transform {
+                    let _ = write!(text, "|r:{:08x}", transform.rotation.to_bits());
+                }
+                if let Some(sprite) = world.get::<Sprite>(entity) {
+                    let _ = write!(text, "|z:{}", sprite.z_order);
+                }
+                if let Some(state) = world.get::<AnimationState>(entity) {
+                    let _ = write!(text, "|a:{}", state.animation_id);
+                }
                 (entity.id(), point, health, text)
             },
         )
@@ -108,6 +121,58 @@ fn hits(genre: &str) -> &'static [(u32, &'static str, f32)] {
         "shmup" => &[(120, "wing", 1.0)],
         "grid" => &[(90, "slug", 1.0), (91, "rogue", 3.0)],
         other => panic!("no hits for {other}"),
+    }
+}
+
+/// The script's pushes: at `frame`, a `knock_back` of `velocity` on each
+/// entity tagged `tag`.
+fn pushes(genre: &str) -> &'static [(u32, &'static str, [f32; 2])] {
+    match genre {
+        "platformer" => &[(150, "acrobat", [-300.0, -400.0])],
+        "top_down" => &[
+            (150, "rover", [-400.0, 0.0]),
+            (150, "brawler", [600.0, -300.0]),
+        ],
+        "shmup" | "grid" => &[],
+        other => panic!("no pushes for {other}"),
+    }
+}
+
+/// The genre's M64 prefabs, spawned after its others, clear of them.
+fn motion_prefabs(genre: &str) -> &'static [(&'static str, [f32; 2])] {
+    match genre {
+        "platformer" => &[
+            ("conveyor", [-300.0, 200.0]),
+            ("bob_lift", [-150.0, 150.0]),
+            ("acrobat", [-200.0, 270.0]),
+            ("firebar", [500.0, 50.0]),
+            ("firefly", [-100.0, 100.0]),
+        ],
+        "top_down" => &[
+            ("seeker", [100.0, 300.0]),
+            ("coward", [600.0, 300.0]),
+            ("crate", [50.0, 250.0]),
+            ("crate", [150.0, 350.0]),
+            ("sentry", [150.0, 150.0]),
+            ("wielder", [700.0, 300.0]),
+            ("rover", [620.0, -300.0]),
+            ("brawler", [800.0, -200.0]),
+            ("pet", [0.0, 200.0]),
+            ("gem", [700.0, 0.0]),
+        ],
+        "shmup" => &[
+            ("fighter", [900.0, 300.0]),
+            ("drifter", [1000.0, 0.0]),
+            ("asteroid", [600.0, 150.0]),
+            ("mine", [1100.0, 100.0]),
+            ("gun", [700.0, 500.0]),
+        ],
+        "grid" => &[
+            ("crawler", [200.0, 40.0]),
+            ("crawler", [200.0, 100.0]),
+            ("warden", [300.0, 120.0]),
+        ],
+        other => panic!("no motion prefabs for {other}"),
     }
 }
 
@@ -155,6 +220,9 @@ fn script(genre: &str, harness: &mut Harness) {
         }
         other => panic!("no script for {other}"),
     }
+    for &(id, at) in motion_prefabs(genre) {
+        spawn(harness, id, at);
+    }
     for frame in 0..FRAMES {
         match frame {
             10 => harness.press_action("move_right"),
@@ -171,6 +239,13 @@ fn script(genre: &str, harness: &mut Harness) {
             if at == frame {
                 for entity in tagged(harness, tag) {
                     damage(harness.world_mut(), entity, amount);
+                }
+            }
+        }
+        for &(at, tag, velocity) in pushes(genre) {
+            if at == frame {
+                for entity in tagged(harness, tag) {
+                    knock_back(harness.world_mut(), entity, Vec2::from(velocity));
                 }
             }
         }

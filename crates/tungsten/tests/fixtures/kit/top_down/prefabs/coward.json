@@ -1,0 +1,23 @@
+{
+  "sprite": {
+    "asset_id": "coward"
+  },
+  "tag": "coward",
+  "components": {
+    "steering": {
+      "target": {
+        "nearest": {
+          "all": [
+            "team.player"
+          ]
+        }
+      },
+      "mode": "flee",
+      "max_speed": 80,
+      "radius": 96
+    },
+    "tags": [
+      "team.enemy"
+    ]
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "sprite": {
+    "asset_id": "firefly"
+  },
+  "tag": "firefly",
+  "components": {
+    "follow": {
+      "target": {
+        "nearest": {
+          "all": [
+            "team.player"
+          ]
+        }
+      },
+      "offset": [
+        -24,
+        -32
+      ],
+      "lag": 0.2
+    }
+  }
+}

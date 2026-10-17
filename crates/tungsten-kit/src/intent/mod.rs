@@ -1,6 +1,8 @@
 //! What an entity means to do: input read into an [`Intent`](action_input::Intent),
-//! per-entity state machines and the cursor in world space.
+//! per-entity state machines, the cursor in world space and the direction
+//! it aims in.
 
 pub(crate) mod action_input;
+pub(crate) mod aim;
 pub(crate) mod cursor;
 pub(crate) mod state_machine;

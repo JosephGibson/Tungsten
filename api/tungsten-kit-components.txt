@@ -4,6 +4,12 @@ component action_input: The actions that steer the entity, read into its Intent 
   field slots: { slot: action } = {} — named slots, such as `jump`, read as held and just pressed
   genres: platformer, top_down, shmup, grid
   sample: { "move": ["move_left", "move_right"] }
+component aim: The direction the entity aims in, from its intent, the cursor, its movement or a target, kept while its source gives none.
+  field from: one of intent | cursor | movement | target = "intent" — the intent's aim, the cursor's world point, the movement or a target
+  field target: shape target = null — what it aims at with `from: target`, unused otherwise; the load checks its tags
+  field offset: [x, y] = [0.0, 0.0] — the aim's origin from the entity's point, in world pixels
+  genres: top_down, shmup
+  sample: { "from": "target", "target": { "nearest": { "all": ["team.player"] } } }
 component animation: An animated sprite: its current frame written into the entity's Sprite.
   field id: text — a manifest animation ID
   genres: platformer, top_down
@@ -11,6 +17,14 @@ component animation: An animated sprite: its current frame written into the enti
 component camera_target: The marker the camera follows: the lowest-indexed live one.
   genres: platformer, top_down, shmup, grid
   sample: null
+component character_animator: Picks the entity's animation clip each frame: idle, move, rise or fall, by its facing when a clip is a set.
+  field idle: an animation ID, or { left, right, up, down } of animation IDs by facing — what it shows standing; the load checks each ID
+  field move: an animation ID, or { left, right, up, down } of animation IDs by facing = null — what it shows moving; `idle` when left out
+  field rise: an animation ID, or { left, right, up, down } of animation IDs by facing = null — what a platformer shows rising; `idle` when left out
+  field fall: an animation ID, or { left, right, up, down } of animation IDs by facing = null — what a platformer shows falling; `idle` when left out
+  field min_speed: f32 (>= 0) = 10.0 — world pixels per second from which it moves
+  genres: platformer, top_down
+  sample: { "idle": "hero_idle" }
 component cooldown: A repeating countdown on the game clock that sends an event each time it elapses.
   field seconds: f32 (> 0) — seconds of game time a cycle
   field jitter: f32 (>= 0) = 0.0 — up to this many seconds more each cycle, drawn from the kit's random stream
@@ -30,15 +44,35 @@ component cues: The entity's reactions: for each event about it, actions run in 
   events: ShakeEvent, SquashEvent
   genres: platformer, top_down, shmup, grid
   sample: {}
+component depth_sort: Sorts the entity's sprite by how low it stands: z_order = base + round(y + offset), so what stands lower draws in front.
+  field offset: f32 = 0.0 — world pixels from the drawn point down to the feet, such as the sprite's height
+  field base: i64 (>= -2147483648, <= 2147483647) = 0 — added to the sort, lifting a layer over another
+  genres: top_down, grid
+  sample: {}
 component despawn_outside: Despawns the entity, with its children, once it leaves a world-space box or the camera's view; exactly one of `region` and `view`.
   field region: [[min_x, min_y], [max_x, max_y]] — the closed box, in world pixels
   field view: f32 (>= 0) — the margin outside the last frame's camera view
   genres: top_down, shmup
   sample: { "view": 16 }
+component facing: The direction the entity faces, from its motion, intent or aim, snapped and held while it stops; it turns the entity when asked.
+  field from: one of motion | intent | aim = "motion" — the velocity, the intent's movement or the aim's direction
+  field snap: one of free | horizontal | four | eight = "free" — unsnapped, left or right, or the nearest of four or eight
+  field turn: bool = false — writes the entity's rotation as the direction's angle plus `offset`
+  field offset: f32 = 0.0 — radians added to the angle it turns to: π/2 for art drawn facing up
+  field min_speed: f32 (>= 0) = 1.0 — world pixels per second under which it keeps facing
+  genres: platformer, top_down, shmup
+  sample: {}
 component flags: Named switches on the entity, which cues set or clear.
   field names: list of text — the value itself: the flags set at the start; names are dotted, undeclared
   genres: platformer, grid
   sample: ["door.locked"]
+component follow: Places the entity on a target's point plus an offset, closing the gap with a lag and a top speed.
+  field target: shape target — what it follows; the load checks its tags
+  field offset: [x, y] = [0.0, 0.0] — world pixels from the target's point
+  field lag: f32 (>= 0) = 0.0 — seconds to close about 63% of the gap; 0 sits on the goal
+  field max_speed: f32 (> 0) = null — world pixels per second at most; none when left out
+  genres: platformer, top_down
+  sample: { "target": { "source": {} } }
 component health: Health with an invulnerability window after each hit, which `damage` lowers.
   field max: f32 (> 0) — the full health, which it starts at
   field invulnerability: f32 (>= 0) = 0.0 — seconds of game time a hit is ignored after one lands
@@ -50,10 +84,35 @@ component hit_flash: A flash of colour on the sprite when `damage` hits the enti
   field seconds: f32 (> 0) = 0.1 — how long the flash fades over
   genres: top_down, shmup
   sample: {}
+component knockback: How the entity takes a push from `knock_back`: a push that falls to 0 over its seconds.
+  field seconds: f32 (> 0) = 0.2 — seconds of game time a push lasts, and a platformer's input stays locked
+  field resist: f32 (>= 0, <= 1) = 0.0 — the part of each push it ignores
+  genres: platformer, top_down
+  sample: {}
 component lifetime: Despawns the entity, with its children, once its time on the game clock has passed.
   field seconds: f32 (>= 0) — how long it lives; 0 despawns it at its first step
   genres: platformer, top_down, shmup, grid
   sample: { "seconds": 0.5 }
+component linear_motion: Moves the entity by a velocity that an acceleration changes, bodiless or as a kinematic body's driver.
+  field velocity: [x, y] — world pixels per second at its first step
+  field acceleration: [x, y] = [0.0, 0.0] — world pixels per second squared, changing the velocity
+  genres: platformer, shmup
+  sample: { "velocity": [0, 120] }
+component orbit: Places the entity on a circle about a centre, turning at a speed: blades about a wielder, a firebar's ball.
+  field center: shape target = null — the circle's centre; the point it is at on its first step when left out
+  field radius: f32 (>= 0) — world pixels from the centre
+  field speed: f32 — radians per second, clockwise on screen when positive
+  field angle: f32 = 0.0 — the angle it starts at, in radians: 0 points right, π/2 down
+  field offset: [x, y] = [0.0, 0.0] — world pixels from the centre's point to the circle's centre
+  genres: platformer, top_down
+  sample: { "radius": 48, "speed": 3 }
+component oscillator: A sine wave on the entity's position, rotation or scale, on the fixed step's clock: a bobbing pickup, a patrolling hazard, a pulsing gem.
+  field position: shape position_wave = null — an offset from where it starts, added to its other motion
+  field rotation: shape wave = null — radians about the rotation it had at its first frame
+  field scale: shape wave = null — a fraction of the scale it had at its first frame, its amplitude in [0, 1)
+  field phase: f32 (>= 0, < 1) = 0.0 — how far into its swing every channel starts, in periods
+  genres: platformer, top_down
+  sample: { "position": { "amplitude": [0, 3], "period": 1.2 } }
 component path_follower: Moves a kinematic body along points at a speed: a moving platform, a patrol.
   field points: list of [x, y] — two or more offsets from the spawn position, neighbours differing
   field speed: f32 (> 0) — world pixels per second along the path
@@ -80,10 +139,30 @@ component spawner: Spawns a prefab at the entity's position once per interval of
   field count: u32 = null — how many it spawns in all; without end when left out
   genres: top_down, shmup, grid
   sample: { "prefab": "slime", "interval": 0.5 }
+component speed_limit: Caps the entity's speed, the length first, then each axis; at least one of `speed`, `x` and `y`.
+  field speed: f32 (> 0) = null — world pixels per second the velocity's length stays at or under
+  field x: f32 (> 0) = null — world pixels per second the horizontal speed stays at or under
+  field y: f32 (> 0) = null — world pixels per second the vertical speed stays at or under
+  genres: platformer, shmup
+  sample: { "speed": 600 }
 component stats: Named values with ordered modifiers, which the movers, health and cooldowns read.
   field bases: stat name → finite base — the value itself: each stat well-known or declared, its base within its bounds
   genres: platformer, top_down
   sample: { "move_speed": 160 }
+component stay_in_view: Clamps the entity's box inside an area and stops its outward speed; exactly one of `region` and `view`.
+  field region: [[min_x, min_y], [max_x, max_y]] = null — the closed box, in world pixels
+  field view: f32 (>= 0) = null — the margin inside the last frame's camera view, without its shake
+  field size: [x, y] = [0.0, 0.0] — the entity's box from its point, in world pixels
+  genres: shmup, grid
+  sample: { "view": 0 }
+component steering: Seeks, flees or arrives at a target, its velocity turned toward the one it wants by a bounded acceleration.
+  field target: shape target — what it steers at; the load checks its tags
+  field mode: one of seek | flee | arrive = "seek" — full speed at it, away from it inside the radius, or onto it and stopping
+  field max_speed: f32 (> 0) — world pixels per second at most; a `move_speed` stat sets it
+  field acceleration: f32 (> 0) = null — world pixels per second squared it turns by; at once when left out
+  field radius: f32 (> 0) = 64.0 — world pixels: `arrive` slows inside it, `flee` flees inside it
+  genres: top_down, shmup
+  sample: { "target": { "nearest": { "all": ["team.player"] } }, "max_speed": 90 }
 component tags: The entity's tags: dotted names the items filter on.
   field names: list of tag — the value itself: the names, each declared by `tags` data or a `TagsPlugin`
   genres: platformer, top_down, shmup, grid
@@ -92,6 +171,13 @@ component top_down_mover: A top-down character: it moves at its speed in its int
   field speed: f32 (> 0) — world pixels per second at full tilt
   genres: top_down, shmup, grid
   sample: { "speed": 240 }
+component wrap: Brings the entity back in from the far side once its box leaves an area; exactly one of `region` and `view`.
+  field region: [[min_x, min_y], [max_x, max_y]] = null — the closed box, in world pixels
+  field view: f32 (>= 0) = null — the margin outside the last frame's camera view, without its shake
+  field size: [x, y] = [0.0, 0.0] — the entity's box from its point, in world pixels
+  field axes: one of both | x | y = "both" — the sides it wraps through
+  genres: top_down, shmup
+  sample: { "view": 0 }
 component zone: A sensor entered by the entities whose tags pass its filter.
   field filter: tag filter = {} — what enters; the load checks its tags
   events: ZoneEntered
@@ -142,6 +228,16 @@ shape label_style: The event's amount as a timed world label: it rises, pops fro
   field rise: f32 = 32.0 — UI units it rises over its seconds
   field pop: f32 (> 0) = 1.5 — the scale it starts at
   sample: { "font": "sans" }
+shape nearest: The nearest other entity whose tags pass a filter that names an `all` or an `any` tag; ties go to the lower entity index.
+  field all: list of tag = [] — tags it carries every one of
+  field any: list of tag = [] — tags it carries at least one of
+  field none: list of tag = [] — tags it carries none of
+  field range: f32 (> 0) = null — world pixels from the seeker; any distance when left out
+  sample: { "all": ["team.player"] }
+shape position_wave: A position channel: amplitude · sin(2π(t / period + phase)), less its value at the start.
+  field amplitude: [x, y] — world pixels at the peak
+  field period: f32 (> 0) — seconds of game time a swing takes
+  sample: { "amplitude": [0, 3], "period": 1.2 }
 shape sound_action: A manifest sound played at its volume, never looping.
   field id: text — the manifest sound; the load checks the ID
   field min_interval: f32 (>= 0) = 0.0 — game seconds before this sound plays again from a cue
@@ -150,6 +246,16 @@ shape stat_bounds: A game stat's clamp.
   field min: f32 = null — the least value; none when left out
   field max: f32 = null — the greatest value, at least `min`; none when left out
   sample: {}
+shape target: What an item follows, circles, steers toward or aims at, resolved again each step.
+  exactly one of its fields
+  field source: {} — the entity's `Source`: the origin of the spawn chain it came from
+  field nearest: shape nearest — the nearest other entity whose tags pass the filter; the load checks its tags
+  field point: [x, y] — a world point
+  sample: { "source": {} }
+shape wave: A rotation or scale channel: amplitude · sin(2π(t / period + phase)) about the first frame's value.
+  field amplitude: f32 — the peak: radians for `rotation`, a fraction in [0, 1) of the base for `scale`
+  field period: f32 (> 0) — seconds of game time a swing takes
+  sample: { "amplitude": 0.3, "period": 0.8 }
 kind cue_rules: A list of `cue_rule`: shared reactions to an event, run after the entity's own cues.
 kind stats: An object of `stat_bounds` by stat name: each declares a game stat and its clamp.
 kind tags: A JSON array of tag names; each declares itself and its dotted ancestors.

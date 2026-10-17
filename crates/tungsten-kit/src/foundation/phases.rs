@@ -32,19 +32,23 @@ pub const KIT_PRESENT: &str = "kit_present";
 /// Where a kit system runs: one of seven phases, each an anchor system
 /// ([`ensure_phases`]) that its members are ordered after, and before the
 /// next anchor of its stage. Inside a phase, systems run in registration
-/// order; an item names another item's system only where it reads that
-/// item's output in the same step (the path follower before the
-/// controllers, so a rider reads its platform's velocity).
+/// order; an item names another item's system only where it reads or
+/// adds to that item's output in the same step: the path follower, the
+/// linear motion and the oscillator before the controllers, so a rider
+/// reads its platform's velocity; the follower and the orbit after the
+/// movers their target moves by; the knockback after the drivers it adds
+/// to, and the speed limit after everything it caps; the aim after the
+/// input; the character animator after the facing and the animation tick.
 ///
 /// | Phase | Stage | What runs there |
 /// | --- | --- | --- |
 /// | `Tick` | `FixedUpdate`, after the history snapshot | timers, lifetimes, health windows, stats, cooldowns |
-/// | `Intent` | `FixedUpdate` | input, state machines |
-/// | `Move` | `FixedUpdate`, before `physics_step` | the controllers, the path follower |
-/// | `Overlap` | `FixedUpdate`, after `physics_step` | zones, despawn outside |
+/// | `Intent` | `FixedUpdate` | input, aim, state machines |
+/// | `Move` | `FixedUpdate`, before `physics_step` | the controllers, the path follower, linear motion, the oscillator, steering, follow, orbit, knockback, the speed limit |
+/// | `Overlap` | `FixedUpdate`, after `physics_step` | zones, despawn outside, the speed limit's settle, wrap, stay in view |
 /// | `Resolve` | `FixedUpdate` | damage and effects (later milestones) |
 /// | `React` | `FixedUpdate`, last | spawners, child spawns, cues, the trace's step count |
-/// | `Present` | `PostUpdate`, after the sync and the late propagation, before the camera | animation, the hit flash, the camera target, labels, sounds |
+/// | `Present` | `PostUpdate`, after the sync and the late propagation, before the camera | animation, the hit flash, the camera target, labels, sounds, the oscillator's rotation and scale, facing, the character animator, depth sort |
 ///
 /// Stats sit in `Tick`, not `Resolve`, so an entity spawned at a flush
 /// moves at its stats from its first step.

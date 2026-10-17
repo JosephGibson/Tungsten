@@ -3,9 +3,11 @@ use tungsten_core::physics::PhysicsPlugin;
 use tungsten_core::{Plugin, Stage};
 
 use crate::{
-    ACTION_INPUT, ANIMATION_TICK, CAMERA_TARGET, DESPAWN_OUTSIDE, HEALTH_TICK, HIT_FLASH_TICK,
-    KitPlugins, LIFETIME_TICK, PATH_FOLLOW, PLATFORMER_CONTROLLER, SPAWNER_TICK, TOP_DOWN_MOVER,
-    TRANSFORM_PROPAGATE_LATE, ZONE_TICK,
+    ACTION_INPUT, AIM, ANIMATION_TICK, CAMERA_TARGET, CHARACTER_ANIMATOR, DEPTH_SORT,
+    DESPAWN_OUTSIDE, FACING, FOLLOW, HEALTH_TICK, HIT_FLASH_TICK, KNOCKBACK, KitPlugins,
+    LIFETIME_TICK, LINEAR_MOTION, ORBIT, OSCILLATOR, OSCILLATOR_PRESENT, PATH_FOLLOW,
+    PLATFORMER_CONTROLLER, SPAWNER_TICK, SPEED_LIMIT, SPEED_LIMIT_SETTLE, STAY_IN_VIEW, STEERING,
+    TOP_DOWN_MOVER, TRANSFORM_PROPAGATE_LATE, WRAP, ZONE_TICK,
 };
 
 /// The engine's names the phases order against: the physics plugin, the
@@ -45,8 +47,21 @@ fn check_order(build: fn(&mut Schedule, &mut World)) {
     for member in [LIFETIME_TICK, HEALTH_TICK] {
         assert!(fixed(member) > fixed(KIT_TICK) && fixed(member) < fixed(KIT_INTENT));
     }
-    assert!(fixed(ACTION_INPUT) > fixed(KIT_INTENT) && fixed(ACTION_INPUT) < fixed(KIT_MOVE));
-    for member in [PATH_FOLLOW, PLATFORMER_CONTROLLER, TOP_DOWN_MOVER] {
+    for member in [ACTION_INPUT, AIM] {
+        assert!(fixed(member) > fixed(KIT_INTENT) && fixed(member) < fixed(KIT_MOVE));
+    }
+    for member in [
+        PATH_FOLLOW,
+        PLATFORMER_CONTROLLER,
+        TOP_DOWN_MOVER,
+        LINEAR_MOTION,
+        OSCILLATOR,
+        STEERING,
+        FOLLOW,
+        ORBIT,
+        KNOCKBACK,
+        SPEED_LIMIT,
+    ] {
         assert!(fixed(member) > fixed(KIT_MOVE), "{member} after its anchor");
         assert!(
             fixed(member) < fixed(PHYSICS_STEP),
@@ -54,7 +69,13 @@ fn check_order(build: fn(&mut Schedule, &mut World)) {
         );
     }
     assert!(fixed(KIT_OVERLAP) > fixed(PHYSICS_STEP));
-    for member in [DESPAWN_OUTSIDE, ZONE_TICK] {
+    for member in [
+        DESPAWN_OUTSIDE,
+        ZONE_TICK,
+        SPEED_LIMIT_SETTLE,
+        WRAP,
+        STAY_IN_VIEW,
+    ] {
         assert!(fixed(member) > fixed(KIT_OVERLAP) && fixed(member) < fixed(KIT_RESOLVE));
     }
     assert!(fixed(KIT_REACT) > fixed(KIT_RESOLVE));
@@ -63,7 +84,15 @@ fn check_order(build: fn(&mut Schedule, &mut World)) {
     assert!(post(KIT_PRESENT) > post(PHYSICS_SYNC));
     assert!(post(KIT_PRESENT) > post(TRANSFORM_PROPAGATE_LATE));
     assert!(post(KIT_PRESENT) > post(TWEEN_TICK));
-    for member in [ANIMATION_TICK, HIT_FLASH_TICK, CAMERA_TARGET] {
+    for member in [
+        ANIMATION_TICK,
+        HIT_FLASH_TICK,
+        CAMERA_TARGET,
+        OSCILLATOR_PRESENT,
+        FACING,
+        CHARACTER_ANIMATOR,
+        DEPTH_SORT,
+    ] {
         assert!(
             post(member) > post(KIT_PRESENT),
             "{member} after its anchor"
@@ -133,7 +162,7 @@ fn a_game_system_joins_a_phase_whichever_side_of_the_kit_it_registers() {
             );
             schedule.add(
                 Stage::PostUpdate,
-                Phase::Present.join(system("facing", |_: &mut World| {})),
+                Phase::Present.join(system("nameplate", |_: &mut World| {})),
             );
         };
         if game_first {
@@ -148,7 +177,7 @@ fn a_game_system_joins_a_phase_whichever_side_of_the_kit_it_registers() {
         let post = |name: &str| index(&schedule, Stage::PostUpdate, name);
         assert!(fixed("magnet") > fixed(KIT_MOVE) && fixed("magnet") < fixed(PHYSICS_STEP));
         assert!(fixed("magnet") < fixed(KIT_OVERLAP));
-        assert!(post("facing") > post(KIT_PRESENT) && post("facing") < post(CAMERA_UPDATE));
+        assert!(post("nameplate") > post(KIT_PRESENT) && post("nameplate") < post(CAMERA_UPDATE));
         // Inside a phase, registration order.
         assert_eq!(fixed("magnet") < fixed(PATH_FOLLOW), game_first);
     }

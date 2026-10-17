@@ -1,0 +1,13 @@
+{
+  "frames": [
+    {
+      "duration_ms": 100,
+      "sprite": "acrobat_run_left_0"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "acrobat_run_left_1"
+    }
+  ],
+  "looping": true
+}

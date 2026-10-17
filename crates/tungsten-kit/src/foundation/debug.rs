@@ -7,10 +7,15 @@ use tungsten_core::{DebugDraw, Entity, Plugin, Schedule, Transform, World, syste
 
 use crate::foundation::phases::{Phase, ensure_phases};
 use crate::foundation::trace::{KIT_TRACE_STEP, KitTrace};
+use crate::intent::aim::Aim;
 use crate::lifecycle::children::SPAWN_CHILDREN;
 use crate::lifecycle::despawn::DespawnOutside;
 use crate::lifecycle::spawner::{SPAWNER_TICK, Spawner};
+use crate::motion::follow::Follow;
+use crate::motion::orbit::Orbit;
 use crate::motion::path::PathFollower;
+use crate::motion::stay_in_view::StayInView;
+use crate::motion::wrap::Wrap;
 use crate::overlap::zone::Zone;
 use crate::present::camera::CameraTarget;
 use crate::react::cues::CUES;
@@ -29,6 +34,9 @@ const REGION_COLOR: [f32; 4] = [1.0, 0.6, 0.2, 1.0];
 const ZONE_COLOR: [f32; 4] = [0.6, 1.0, 0.4, 1.0];
 const SPAWNER_COLOR: [f32; 4] = [1.0, 0.4, 0.8, 1.0];
 const CAMERA_COLOR: [f32; 4] = [1.0, 1.0, 0.3, 1.0];
+const ORBIT_COLOR: [f32; 4] = [0.7, 0.5, 1.0, 1.0];
+const FOLLOW_COLOR: [f32; 4] = [0.4, 1.0, 1.0, 1.0];
+const AIM_COLOR: [f32; 4] = [1.0, 0.3, 0.3, 1.0];
 
 /// Whether the kit draws its debug shapes, a World resource, off by
 /// default; a game's hotkey or console command flips it.
@@ -82,8 +90,10 @@ impl KitDebug {
 /// each ended step for the trace, and registers [`KIT_DEBUG_DRAW`] in the
 /// present phase: while the resource is on and the World has a
 /// `DebugDraw`, it draws a path follower's polyline and current target, a
-/// `DespawnOutside` region, a zone's collider, a spawner's mark and a
-/// camera target's cross, once a frame before the camera. While the
+/// `DespawnOutside` region, a zone's collider, a spawner's mark, a camera
+/// target's cross, an orbit's circle and centre, a follower's goal, a
+/// `Wrap`'s and a `StayInView`'s region and an aim's ray (32 px, or to its
+/// target), once a frame before the camera. While the
 /// resource is on it also logs each new [`KitTrace`] entry once, at `info`
 /// under target `tungsten_kit::trace`, which the log console shows.
 #[derive(Debug, Default, Clone, Copy)]
@@ -223,6 +233,33 @@ fn kit_debug_draw(world: &mut World) {
     for entity in targets {
         if let Some(at) = point_of(world, entity) {
             cross(&mut draw, at, MARK * 2.0, CAMERA_COLOR);
+        }
+    }
+    for orbit in world.query::<&Orbit>() {
+        if let Some((centre, radius)) = orbit.circle() {
+            draw.draw_circle(centre, radius, ORBIT_COLOR, THICKNESS);
+            cross(&mut draw, centre, MARK, ORBIT_COLOR);
+        }
+    }
+    for follow in world.query::<&Follow>() {
+        if let Some(goal) = follow.goal() {
+            cross(&mut draw, goal, MARK, FOLLOW_COLOR);
+        }
+    }
+    let regions = world
+        .query::<&Wrap>()
+        .filter_map(Wrap::region_bounds)
+        .chain(
+            world
+                .query::<&StayInView>()
+                .filter_map(StayInView::region_bounds),
+        );
+    for (min, max) in regions {
+        draw.draw_aabb(min, max, REGION_COLOR, THICKNESS);
+    }
+    for aim in world.query::<&Aim>() {
+        if let Some((origin, end)) = aim.ray() {
+            draw.draw_line(origin, end, AIM_COLOR, THICKNESS);
         }
     }
     world.insert_resource(draw);
