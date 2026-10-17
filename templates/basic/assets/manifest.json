@@ -23,7 +23,8 @@
     }
   },
   "prefabs": {
-    "player": { "path": "prefabs/player.json" }
+    "player": { "path": "prefabs/player.json" },
+    "hazard": { "path": "prefabs/hazard.json" }
   },
   "data": {
     "tags": {

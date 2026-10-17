@@ -98,6 +98,9 @@ fn valid_value(descriptions: &KitDescriptions, ty: &FieldType) -> Value {
         },
         FieldType::Enum(names) => json!(names[0]),
         FieldType::Prefab | FieldType::Text | FieldType::Tag => json!("puff"),
+        FieldType::Vec2 => json!([1.0, 2.0]),
+        // A target's `source` takes the empty object.
+        FieldType::Object(_) => json!({}),
         FieldType::Shape(name) => sample_of(descriptions.get_shape(name).unwrap()),
         other => panic!("no probe value for {other:?}"),
     }
@@ -116,9 +119,9 @@ fn every_registered_scene_name_and_kind_is_described_and_nothing_else() {
     let kinds: BTreeSet<&str> = descriptions.kinds().map(|(kind, _)| kind).collect();
     let registered_kinds: BTreeSet<&str> = world.resource::<DataRegistry>().kinds().collect();
     assert_eq!(kinds, registered_kinds);
-    assert_eq!(described.len(), 19);
+    assert_eq!(described.len(), 32);
     assert_eq!(kinds.len(), 3);
-    assert_eq!(descriptions.shapes().count(), 10);
+    assert_eq!(descriptions.shapes().count(), 14);
 }
 
 #[test]
@@ -221,7 +224,10 @@ fn a_one_of_shape_takes_each_field_alone_and_refuses_two() {
             shape.name()
         );
     }
-    assert_eq!(probed, 9, "the cue action's nine forms");
+    assert_eq!(
+        probed, 12,
+        "the cue action's nine forms and the target's three"
+    );
 }
 
 #[test]
@@ -246,8 +252,10 @@ fn each_described_enum_variant_deserializes() {
     }
     assert_eq!(
         variants,
-        3 + EASING_NAMES.len() + 4 + 3 + 3 + 2,
-        "the path follower's modes and easings, the squash triggers and the action targets"
+        3 + EASING_NAMES.len() + 4 + 3 + 3 + 2 + 3 + 4 + 3 + 4 + 3,
+        "the path follower's modes and easings, the squash triggers, the action targets, the \
+         steering's modes, the aim's and the facing's sources, the facing's snaps and the wrap's \
+         axes"
     );
 }
 
@@ -347,7 +355,7 @@ fn numeric_fields_take_their_extremes_and_refuse_beyond() {
             }
         }
     }
-    assert_eq!(checked, 28, "the kit's numeric fields");
+    assert_eq!(checked, 53, "the kit's numeric fields");
 }
 
 #[test]
@@ -355,8 +363,8 @@ fn the_snapshot_renders_one_line_per_component_shape_and_field() {
     let world = world();
     let text = world.resource::<KitDescriptions>().render();
     let count = |prefix: &str| text.lines().filter(|l| l.starts_with(prefix)).count();
-    assert_eq!(count("component "), 19);
-    assert_eq!(count("shape "), 10);
+    assert_eq!(count("component "), 32);
+    assert_eq!(count("shape "), 14);
     assert_eq!(count("kind "), 3);
     assert!(count("  field ") >= 40, "{}", count("  field "));
     assert!(text.contains("component health: "));

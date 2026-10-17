@@ -1,0 +1,14 @@
+{
+  "sprite": {
+    "asset_id": "crawler"
+  },
+  "tag": "crawler",
+  "components": {
+    "top_down_mover": {
+      "speed": 32
+    },
+    "depth_sort": {
+      "offset": 16
+    }
+  }
+}

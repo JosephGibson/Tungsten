@@ -1,0 +1,12 @@
+{
+  "sprite": {
+    "asset_id": "fireball"
+  },
+  "tag": "firebar",
+  "components": {
+    "orbit": {
+      "radius": 64,
+      "speed": 2
+    }
+  }
+}

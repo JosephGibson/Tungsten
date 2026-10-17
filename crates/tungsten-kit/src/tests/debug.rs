@@ -2,7 +2,11 @@ use super::*;
 use tungsten_core::physics::{PhysicsPlugin, RigidBodyBundle};
 use tungsten_core::{Bundle, DebugDraw, Stage};
 
-use crate::{CameraTarget, DespawnOutside, Spawner, TagFilter, Zone};
+use crate::{
+    Aim, CameraTarget, DespawnOutside, Follow, Orbit, Spawner, StayInView, TagFilter, Target, Wrap,
+    Zone,
+};
+use tungsten_core::Plugin;
 
 fn rig() -> (World, Schedule) {
     let mut world = World::new();
@@ -74,6 +78,38 @@ fn each_shaped_item_draws_once() {
     // The region's box, the zone's circle, the spawner's circle and the
     // camera target's cross (two lines); a view rule has no shape.
     assert_eq!(frame(&mut world, &mut schedule), 5);
+}
+
+#[test]
+fn the_motion_items_draw_their_circles_goals_regions_and_rays() {
+    let (mut world, mut schedule) = rig();
+    world.insert_resource(tungsten_core::Time::new());
+    crate::OrbitPlugin.build(&mut schedule, &mut world);
+    crate::FollowPlugin.build(&mut schedule, &mut world);
+    crate::AimPlugin.build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    world.resource_mut::<KitDebug>().set_enabled(true);
+    let anchor = Target::point(Vec2::new(5.0, 5.0));
+    world.spawn_with((
+        Orbit::new(40.0, 1.0).around(anchor.clone()),
+        Position::new(0.0, 0.0),
+    ));
+    world.spawn_with((Follow::new(anchor.clone()), Position::new(0.0, 0.0)));
+    world.spawn_with((Wrap::region(Vec2::ZERO, Vec2::splat(64.0)),));
+    world.spawn_with((Wrap::view(4.0),));
+    world.spawn_with((StayInView::region(Vec2::ZERO, Vec2::splat(32.0)),));
+    world.spawn_with((Aim::at(anchor), Position::new(0.0, 0.0)));
+    // Before their first step the orbit, the follower and the aim draw
+    // nothing: the two boxes.
+    assert_eq!(frame(&mut world, &mut schedule), 2);
+    world
+        .resource_mut::<tungsten_core::Time>()
+        .advance_frame(1.0 / 60.0);
+    schedule.run_stage(Stage::FixedUpdate, &mut world, |_, _| {});
+    // The orbit's circle and its centre's cross (two lines), the goal's
+    // cross (two), the wrap's and the clamp's boxes and the aim's ray; a
+    // view wrap has no shape.
+    assert_eq!(frame(&mut world, &mut schedule), 8);
 }
 
 #[test]

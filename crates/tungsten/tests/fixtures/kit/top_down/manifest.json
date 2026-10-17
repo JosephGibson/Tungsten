@@ -32,6 +32,36 @@
     },
     "hopper": {
       "path": "prefabs/hopper.json"
+    },
+    "seeker": {
+      "path": "prefabs/seeker.json"
+    },
+    "coward": {
+      "path": "prefabs/coward.json"
+    },
+    "crate": {
+      "path": "prefabs/crate.json"
+    },
+    "sentry": {
+      "path": "prefabs/sentry.json"
+    },
+    "wielder": {
+      "path": "prefabs/wielder.json"
+    },
+    "blade": {
+      "path": "prefabs/blade.json"
+    },
+    "rover": {
+      "path": "prefabs/rover.json"
+    },
+    "brawler": {
+      "path": "prefabs/brawler.json"
+    },
+    "pet": {
+      "path": "prefabs/pet.json"
+    },
+    "gem": {
+      "path": "prefabs/gem.json"
     }
   },
   "data": {
@@ -54,6 +84,21 @@
   "animations": {
     "slime_idle": {
       "path": "animations/slime_idle.json"
+    },
+    "seeker_idle": {
+      "path": "animations/seeker_idle.json"
+    },
+    "seeker_walk_left": {
+      "path": "animations/seeker_walk_left.json"
+    },
+    "seeker_walk_right": {
+      "path": "animations/seeker_walk_right.json"
+    },
+    "seeker_walk_up": {
+      "path": "animations/seeker_walk_up.json"
+    },
+    "seeker_walk_down": {
+      "path": "animations/seeker_walk_down.json"
     }
   },
   "shaders": {

@@ -1,0 +1,24 @@
+{
+  "tag": "bob_lift",
+  "components": {
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          40,
+          8
+        ]
+      }
+    },
+    "oscillator": {
+      "position": {
+        "amplitude": [
+          0,
+          24
+        ],
+        "period": 2
+      }
+    }
+  }
+}

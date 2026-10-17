@@ -244,3 +244,34 @@ fn stats_apply_writes_the_movers_health_and_cooldowns() {
     let health = world.get::<Health>(runner).unwrap();
     assert_eq!((health.current(), health.max()), (3.0, 4.0));
 }
+
+#[test]
+fn a_move_speed_stat_sets_a_steerings_top_speed_and_zero_stops_it() {
+    let mut world = World::new();
+    world.insert_resource(Time::new());
+    let mut schedule = Schedule::new();
+    StatsPlugin::new().build(&mut schedule, &mut world);
+    crate::SteeringPlugin.build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    let chaser = world.spawn_with((
+        Steering::seek(crate::Target::point(glam::Vec2::new(500.0, 0.0)), 90.0),
+        Stats::new().with(Stats::MOVE_SPEED, 40.0),
+        tungsten_core::physics::Position(glam::Vec2::ZERO),
+    ));
+    step(&mut world, &mut schedule);
+    let velocity = world.get::<Steering>(chaser).unwrap().velocity();
+    assert_eq!(
+        velocity,
+        glam::Vec2::new(40.0, 0.0),
+        "its top speed from the stat"
+    );
+    world
+        .get_mut::<Stats>(chaser)
+        .unwrap()
+        .set_base(Stats::MOVE_SPEED, 0.0);
+    step(&mut world, &mut schedule);
+    assert_eq!(
+        world.get::<Steering>(chaser).unwrap().velocity(),
+        glam::Vec2::ZERO
+    );
+}

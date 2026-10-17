@@ -1,13 +1,15 @@
 //! The platformer fixture: a hero on a kinematic body under the move
-//! actions and a jump slot, a ground, a door zone, a spark and a lift.
+//! actions and a jump slot, a ground, a door zone, a spark and a lift; M64's
+//! conveyor, bobbing lift, acrobat, firebar and firefly.
 
+use glam::Vec2;
 use tungsten_core::physics::Velocity;
-use tungsten_core::{PluginSet, Transform, World};
+use tungsten_core::{AnimationState, PluginSet, Transform, World};
 
-use super::{DTS, body_at, drawn_at, frames_for, recipe, spawn, tagged};
+use super::{DTS, body_at, drawn_at, frames_for, motion_reversed, recipe, spawn, tagged};
 use crate::kit::{
-    Children, Flags, Health, KitPlugins, PathFollowerPlugin, PlatformerController,
-    PlatformerControllerPlugin, Stats, ZoneEntered,
+    CharacterAnimator, Children, Facing, Flags, Health, KitPlugins, PathFollowerPlugin,
+    PlatformerController, PlatformerControllerPlugin, Stats, ZoneEntered, knock_back,
 };
 use crate::state::{GameState, SceneEntity, StateContext, StateId, StateStack};
 
@@ -268,6 +270,179 @@ fn the_torchs_glow_hangs_above_it_and_leaves_with_its_state() {
         assert!(
             tagged(&harness, "torch").is_empty() && tagged(&harness, "glow").is_empty(),
             "dt {dt}"
+        );
+    }
+}
+
+/// The animator's state and the clip it shows.
+fn animated(harness: &super::Harness, entity: tungsten_core::Entity) -> (&'static str, String) {
+    let world = harness.world();
+    (
+        world.get::<CharacterAnimator>(entity).unwrap().state(),
+        world
+            .get::<AnimationState>(entity)
+            .unwrap()
+            .animation_id
+            .clone(),
+    )
+}
+
+#[test]
+fn a_conveyor_and_a_bobbing_lift_carry_the_hero_with_motion_built_in_reverse() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, motion_reversed(), dt);
+        // Each platform's top at y 192, a hero's feet on it.
+        let belt = spawn(&mut harness, "conveyor", [100.0, 200.0]);
+        let rider = spawn(&mut harness, "hero", [100.0, 172.0]);
+        let lift = spawn(&mut harness, "bob_lift", [500.0, 200.0]);
+        let bobber = spawn(&mut harness, "hero", [500.0, 172.0]);
+        harness.step(frames_for(0.1, dt));
+        assert!(
+            grounded(&harness, rider) && grounded(&harness, bobber),
+            "dt {dt}: aboard"
+        );
+        let gap = |harness: &super::Harness, hero, platform| {
+            body_at(harness, hero) - body_at(harness, platform)
+        };
+        let (belt_gap, lift_gap) = (gap(&harness, rider, belt), gap(&harness, bobber, lift));
+        let belt_start = body_at(&harness, belt).x;
+        let (mut low, mut high) = (f32::NEG_INFINITY, f32::INFINITY);
+        for _ in 0..frames_for(2.0, dt) {
+            harness.step(1);
+            assert!(
+                grounded(&harness, rider) && grounded(&harness, bobber),
+                "dt {dt}"
+            );
+            let riding = gap(&harness, rider, belt) - belt_gap;
+            assert!(
+                riding.length() < 0.05,
+                "dt {dt}: carried by the belt: {riding}"
+            );
+            let bobbing = gap(&harness, bobber, lift) - lift_gap;
+            assert!(
+                bobbing.length() < 0.05,
+                "dt {dt}: carried by the lift: {bobbing}"
+            );
+            let y = body_at(&harness, lift).y;
+            low = low.max(y);
+            high = high.min(y);
+        }
+        assert!(
+            (body_at(&harness, belt).x - belt_start - 80.0).abs() < 1.0,
+            "dt {dt}"
+        );
+        assert!(low - high > 40.0, "dt {dt}: the lift bobbed {}", low - high);
+    }
+}
+
+#[test]
+fn the_acrobat_faces_and_animates_its_run_falls_at_its_cap_and_is_knocked_back() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "ground", [0.0, 300.0]);
+        let acrobat = spawn(&mut harness, "acrobat", [0.0, 270.0]);
+        // Far off the ground: it falls the whole recipe.
+        let diver = spawn(&mut harness, "acrobat", [2000.0, -5000.0]);
+        let mut fastest: f32 = 0.0;
+        let mut frame = |harness: &mut super::Harness, count: u32| {
+            for _ in 0..count {
+                harness.step(1);
+                let fall = harness.world().get::<Velocity>(diver).unwrap().0.y;
+                assert!(fall <= 900.0 + 1e-3, "dt {dt}: at its cap: {fall}");
+                fastest = fastest.max(fall);
+            }
+        };
+        frame(&mut harness, 2);
+        assert_eq!(
+            animated(&harness, acrobat),
+            ("idle", "acrobat_idle_right".into())
+        );
+
+        harness.press_action("move_left");
+        frame(&mut harness, frames_for(0.3, dt));
+        let facing = harness.world().get::<Facing>(acrobat).unwrap().direction();
+        assert_eq!(facing, Vec2::NEG_X, "dt {dt}");
+        assert_eq!(
+            animated(&harness, acrobat),
+            ("move", "acrobat_run_left".into())
+        );
+        harness.release_action("move_left");
+        frame(&mut harness, 2);
+        assert_eq!(
+            animated(&harness, acrobat),
+            ("idle", "acrobat_idle_left".into()),
+            "dt {dt}: it keeps facing left"
+        );
+
+        harness.press_action("jump");
+        frame(&mut harness, 2);
+        assert_eq!(animated(&harness, acrobat), ("rise", "acrobat_rise".into()));
+        harness.release_action("jump");
+        let mut fell = false;
+        for _ in 0..frames_for(1.0, dt) {
+            frame(&mut harness, 1);
+            fell |= animated(&harness, acrobat).0 == "fall";
+            if fell && grounded(&harness, acrobat) {
+                break;
+            }
+        }
+        assert!(
+            fell && grounded(&harness, acrobat),
+            "dt {dt}: it fell and landed"
+        );
+
+        // Thrown up and right, its input locked against the stick.
+        assert!(knock_back(
+            harness.world_mut(),
+            acrobat,
+            Vec2::new(300.0, -400.0)
+        ));
+        harness.press_action("move_left");
+        frame(&mut harness, frames_for(0.1, dt));
+        let thrown = harness.world().get::<Velocity>(acrobat).unwrap().0;
+        assert!(
+            (thrown.x - 300.0).abs() < 1e-3,
+            "dt {dt}: the launch, not the run: {thrown}"
+        );
+        frame(&mut harness, frames_for(0.3, dt));
+        assert!(
+            harness.world().get::<Velocity>(acrobat).unwrap().0.x < 0.0,
+            "dt {dt}: the run once the lock ends"
+        );
+        harness.release_action("move_left");
+        assert!(
+            (fastest - 900.0).abs() < 1e-3,
+            "dt {dt}: it reached its cap: {fastest}"
+        );
+    }
+}
+
+#[test]
+fn a_firebars_ball_circles_its_pivot_and_a_firefly_trails_the_hero() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "ground", [0.0, 300.0]);
+        let hero = spawn(&mut harness, "hero", [0.0, 270.0]);
+        let pivot = Vec2::new(300.0, 100.0);
+        let ball = spawn(&mut harness, "firebar", pivot.to_array());
+        let firefly = spawn(&mut harness, "firefly", [-200.0, 100.0]);
+        for _ in 0..frames_for(2.0, dt) {
+            harness.step(1);
+            let radius = body_at(&harness, ball).distance(pivot);
+            assert!((radius - 64.0).abs() < 1e-3, "dt {dt}: {radius}");
+        }
+        let beside = body_at(&harness, hero) + Vec2::new(-24.0, -32.0);
+        assert!(
+            body_at(&harness, firefly).distance(beside) < 0.5,
+            "dt {dt}: it settled"
+        );
+        harness.press_action("move_right");
+        harness.step(frames_for(0.5, dt));
+        harness.release_action("move_right");
+        let trail = body_at(&harness, hero).x - 24.0 - body_at(&harness, firefly).x;
+        assert!(
+            trail > 5.0,
+            "dt {dt}: it trails the running hero by {trail}"
         );
     }
 }

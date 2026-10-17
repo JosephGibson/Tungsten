@@ -1,0 +1,15 @@
+{
+  "sprite": {
+    "asset_id": "blade"
+  },
+  "tag": "blade",
+  "components": {
+    "orbit": {
+      "center": {
+        "source": {}
+      },
+      "radius": 40,
+      "speed": 6.2831855
+    }
+  }
+}

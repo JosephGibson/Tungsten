@@ -10,6 +10,11 @@ use tungsten_core::physics::Position;
 use tungsten_core::{ActionMap, Binding, Config, Entity, KeyCode, PluginSet, Transform};
 
 use crate::App;
+use crate::kit::{
+    AimPlugin, CharacterAnimatorPlugin, DepthSortPlugin, FacingPlugin, FollowPlugin, KitPlugins,
+    KnockbackPlugin, LinearMotionPlugin, OrbitPlugin, OscillatorPlugin, SpeedLimitPlugin,
+    StayInViewPlugin, SteeringPlugin, WrapPlugin,
+};
 use crate::testing::Harness;
 
 mod coverage;
@@ -61,6 +66,39 @@ pub(crate) fn recipe(genre: &str, plugins: PluginSet, dt: f32) -> Harness {
     harness
 }
 
+/// `KitPlugins::set()` with M64's motion and facing plugins built last, in
+/// the reverse of their order in the set: the within-phase edges, not
+/// registration order, must order them.
+pub(crate) fn motion_reversed() -> PluginSet {
+    KitPlugins::set()
+        .without::<LinearMotionPlugin>()
+        .without::<OscillatorPlugin>()
+        .without::<SteeringPlugin>()
+        .without::<FollowPlugin>()
+        .without::<OrbitPlugin>()
+        .without::<KnockbackPlugin>()
+        .without::<SpeedLimitPlugin>()
+        .without::<WrapPlugin>()
+        .without::<StayInViewPlugin>()
+        .without::<AimPlugin>()
+        .without::<FacingPlugin>()
+        .without::<CharacterAnimatorPlugin>()
+        .without::<DepthSortPlugin>()
+        .with(DepthSortPlugin)
+        .with(CharacterAnimatorPlugin)
+        .with(FacingPlugin)
+        .with(AimPlugin)
+        .with(StayInViewPlugin)
+        .with(WrapPlugin)
+        .with(SpeedLimitPlugin)
+        .with(KnockbackPlugin)
+        .with(OrbitPlugin)
+        .with(FollowPlugin)
+        .with(SteeringPlugin)
+        .with(OscillatorPlugin)
+        .with(LinearMotionPlugin)
+}
+
 /// Spawns the fixture's prefab `id` at `at`.
 pub(crate) fn spawn(harness: &mut Harness, id: &str, at: [f32; 2]) -> Entity {
     let prepared = harness
@@ -83,6 +121,17 @@ pub(crate) fn drawn_at(harness: &Harness, entity: Entity) -> Vec2 {
 /// The frames that cover `seconds` of game time at `dt`.
 pub(crate) fn frames_for(seconds: f32, dt: f32) -> u32 {
     (seconds / dt).round() as u32
+}
+
+/// Writes `entity`'s `Position` and `PrevPosition` to `at`: a teleport, as
+/// a game moves a body to a new place.
+pub(crate) fn teleport(harness: &mut Harness, entity: Entity, at: Vec2) {
+    use tungsten_core::physics::PrevPosition;
+    let world = harness.world_mut();
+    world.get_mut::<Position>(entity).unwrap().0 = at;
+    if let Some(prev) = world.get_mut::<PrevPosition>(entity) {
+        prev.0 = at;
+    }
 }
 
 /// The entities whose `Tag` is `name`.

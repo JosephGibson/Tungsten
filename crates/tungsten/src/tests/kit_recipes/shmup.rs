@@ -1,14 +1,17 @@
 //! The shmup fixture: a bodiless ship under the move actions, bullets that
 //! expire or leave the view, raiders from a wave on a path, and a walker
-//! on a floor under the same actions.
+//! on a floor under the same actions; M64's fighter, drifter, asteroid,
+//! mine and gun.
 
+use glam::Vec2;
 use tungsten_core::RigidBody;
-use tungsten_core::physics::{Position, Velocity};
-use tungsten_core::{AudioCommand, CameraController};
+use tungsten_core::physics::{Position, PrevPosition, Velocity};
+use tungsten_core::{AudioCommand, CameraController, Transform};
 
 use super::{DTS, body_at, drawn_at, frames_for, recipe, spawn, tagged};
 use crate::kit::{
-    Children, CooldownElapsed, Counters, Hit, KitPlugins, PlatformerController, Source, damage,
+    Aim, Children, CooldownElapsed, Counters, Hit, KitPlugins, LinearMotion, PlatformerController,
+    Source, Steering, TopDownMover, damage,
 };
 
 const GENRE: &str = "shmup";
@@ -203,6 +206,96 @@ fn a_score_rule_counts_each_kill_and_shakes_the_camera() {
             harness.world().resource::<Counters>().get("score"),
             2,
             "dt {dt}: once each"
+        );
+    }
+}
+
+#[test]
+fn a_fighter_held_against_the_views_edge_stays_in_and_a_drifter_tops_out() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let fighter = spawn(&mut harness, "fighter", [600.0, 300.0]);
+        harness
+            .world_mut()
+            .get_mut::<TopDownMover>(fighter)
+            .unwrap()
+            .set_direction(Vec2::new(1.0, -0.2));
+        let drifter = spawn(&mut harness, "drifter", [100.0, 0.0]);
+        for _ in 0..frames_for(3.0, dt) {
+            let before = body_at(&harness, drifter);
+            harness.step(1);
+            let step = body_at(&harness, drifter) - before;
+            assert!(
+                step.length() <= 150.0 * dt + 1e-3,
+                "dt {dt}: under its cap: {step}"
+            );
+            // The 1280-wide view less its margin and the 24 px box.
+            assert!(body_at(&harness, fighter).x <= 1248.0, "dt {dt}");
+        }
+        let held = body_at(&harness, fighter);
+        assert_eq!(held.x, 1248.0, "dt {dt}: against the edge");
+        assert!(held.y < 300.0, "dt {dt}: and still free along it: {held}");
+        assert_eq!(
+            harness
+                .world()
+                .get::<LinearMotion>(drifter)
+                .unwrap()
+                .velocity(),
+            Vec2::new(0.0, 150.0),
+            "dt {dt}: it topped out"
+        );
+    }
+}
+
+#[test]
+fn an_asteroid_drifts_and_wraps_the_arena() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let rock = spawn(&mut harness, "asteroid", [600.0, 100.0]);
+        let mut wrapped = false;
+        for n in 1..=frames_for(1.0, dt) {
+            harness.step(1);
+            let drawn = drawn_at(&harness, rock).x;
+            assert!(
+                drawn > 560.0 || drawn < 40.0,
+                "dt {dt}: never between: {drawn}"
+            );
+            wrapped |= drawn < 40.0;
+            let t = n as f32 * dt;
+            assert!((body_at(&harness, rock).y - (100.0 + 30.0 * t)).abs() < 1e-2);
+        }
+        assert!(wrapped, "dt {dt}: back in from the left");
+        let prev = harness.world().get::<PrevPosition>(rock).unwrap().0;
+        assert!(prev.x < 40.0, "dt {dt}: its history moved with it");
+    }
+}
+
+#[test]
+fn a_mine_arrives_at_the_ship_and_a_gun_aims_and_turns_to_it() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let ship = spawn(&mut harness, "ship", [640.0, 600.0]);
+        let mine = spawn(&mut harness, "mine", [200.0, 200.0]);
+        let gun = spawn(&mut harness, "gun", [640.0, 100.0]);
+        harness.step(frames_for(15.0, dt));
+        let settled = body_at(&harness, mine).distance(body_at(&harness, ship));
+        assert!(settled < 0.5, "dt {dt}: on the ship: {settled}");
+        let steering = harness.world().get::<Steering>(mine).unwrap();
+        assert!(steering.velocity().length() < 0.5, "dt {dt}");
+        assert_eq!(steering.target_entity(), Some(ship));
+        // The gun has no body: its point is its `Transform`'s.
+        let origin = drawn_at(&harness, gun) + Vec2::new(8.0, 8.0);
+        let toward = (body_at(&harness, ship) - origin).normalize();
+        let aim = harness.world().get::<Aim>(gun).unwrap();
+        assert!(
+            (aim.direction().unwrap() - toward).length() < 1e-4,
+            "dt {dt}"
+        );
+        let turned = harness.world().get::<Transform>(gun).unwrap().rotation;
+        let heading = toward.to_angle() + std::f32::consts::FRAC_PI_2;
+        assert!(
+            (turned - heading).abs() < 1e-4,
+            "dt {dt}: {turned} vs {heading}"
         );
     }
 }

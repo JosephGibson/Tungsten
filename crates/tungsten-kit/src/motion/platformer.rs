@@ -396,6 +396,12 @@ impl PlatformerController {
         self.grounded
     }
 
+    /// Its own velocity, which its next step starts from: what a speed
+    /// limit caps and a clamp stops on an axis.
+    pub(crate) fn velocity_mut(&mut self) -> &mut Vec2 {
+        &mut self.velocity
+    }
+
     /// A press would jump at its next step: it is grounded or within coyote
     /// time, and its input is not locked.
     #[must_use]

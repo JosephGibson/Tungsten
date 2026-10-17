@@ -215,3 +215,76 @@ fn a_loop_with_a_zero_closing_segment_panics() {
 fn a_zero_speed_panics() {
     let _ = PathFollower::new([Vec2::ZERO, Vec2::X], 0.0);
 }
+
+/// A rig with the oscillator built before the path follower when `swapped`,
+/// so the fold is checked with the two systems in either order.
+fn rig_with_oscillator(swapped: bool) -> (World, Schedule) {
+    let mut world = World::new();
+    world.insert_resource(Time::new());
+    let mut schedule = Schedule::new();
+    PhysicsPlugin.build(&mut schedule, &mut world);
+    if swapped {
+        crate::OscillatorPlugin.build(&mut schedule, &mut world);
+        PathFollowerPlugin.build(&mut schedule, &mut world);
+    } else {
+        PathFollowerPlugin.build(&mut schedule, &mut world);
+        crate::OscillatorPlugin.build(&mut schedule, &mut world);
+    }
+    schedule.resolve().unwrap();
+    (world, schedule)
+}
+
+#[test]
+fn an_oscillating_platform_rides_the_path_with_the_whole_wave_in_either_order() {
+    for swapped in [false, true] {
+        let (mut world, mut schedule) = rig_with_oscillator(swapped);
+        let follower = PathFollower::new([Vec2::ZERO, Vec2::new(120.0, 0.0)], 60.0).ping_pong();
+        let lift = world.spawn_with(
+            RigidBodyBundle::kinematic(Position(Vec2::ZERO), Collider::aabb(Vec2::new(30.0, 5.0)))
+                .with((
+                    follower,
+                    crate::Oscillator::position(Vec2::new(0.0, 10.0), 1.0),
+                )),
+        );
+        for n in 1..=240 {
+            step(&mut world, &mut schedule);
+            let t = n as f32 * DT;
+            // Two seconds each way along 120 px, and the bob on top.
+            let leg = t % 4.0;
+            let x = if leg <= 2.0 {
+                60.0 * leg
+            } else {
+                120.0 - 60.0 * (leg - 2.0)
+            };
+            let y = 10.0 * (std::f32::consts::TAU * t).sin();
+            let at = position(&world, lift);
+            assert!(
+                (at - Vec2::new(x, y)).length() < 1e-2,
+                "{swapped} {n}: {at} vs ({x}, {y})"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_stopped_follower_keeps_its_wave_and_one_without_stops_still() {
+    let (mut world, mut schedule) = rig_with_oscillator(false);
+    let bobbing = world.spawn_with(
+        RigidBodyBundle::kinematic(Position(Vec2::ZERO), Collider::aabb(Vec2::new(30.0, 5.0)))
+            .with((
+                PathFollower::new([Vec2::ZERO, Vec2::new(6.0, 0.0)], 60.0),
+                crate::Oscillator::position(Vec2::new(0.0, 4.0), 1.0),
+            )),
+    );
+    let still = platform(
+        &mut world,
+        PathFollower::new([Vec2::ZERO, Vec2::new(6.0, 0.0)], 60.0),
+    );
+    for _ in 0..75 {
+        step(&mut world, &mut schedule);
+    }
+    // Past its end at 0.1 s: at 1.25 s the bob is at its peak.
+    assert!((position(&world, bobbing) - Vec2::new(6.0, 4.0)).length() < 1e-2);
+    assert_eq!(world.get::<Velocity>(still).unwrap().0, Vec2::ZERO);
+    assert!((position(&world, still) - Vec2::new(6.0, 0.0)).length() < 1e-4);
+}

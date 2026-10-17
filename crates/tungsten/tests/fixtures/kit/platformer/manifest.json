@@ -26,6 +26,21 @@
     },
     "glow": {
       "path": "prefabs/glow.json"
+    },
+    "conveyor": {
+      "path": "prefabs/conveyor.json"
+    },
+    "bob_lift": {
+      "path": "prefabs/bob_lift.json"
+    },
+    "acrobat": {
+      "path": "prefabs/acrobat.json"
+    },
+    "firebar": {
+      "path": "prefabs/firebar.json"
+    },
+    "firefly": {
+      "path": "prefabs/firefly.json"
     }
   },
   "data": {
@@ -43,6 +58,24 @@
   "animations": {
     "hero_run": {
       "path": "animations/hero_run.json"
+    },
+    "acrobat_idle_left": {
+      "path": "animations/acrobat_idle_left.json"
+    },
+    "acrobat_idle_right": {
+      "path": "animations/acrobat_idle_right.json"
+    },
+    "acrobat_run_left": {
+      "path": "animations/acrobat_run_left.json"
+    },
+    "acrobat_run_right": {
+      "path": "animations/acrobat_run_right.json"
+    },
+    "acrobat_rise": {
+      "path": "animations/acrobat_rise.json"
+    },
+    "acrobat_fall": {
+      "path": "animations/acrobat_fall.json"
     }
   }
 }
